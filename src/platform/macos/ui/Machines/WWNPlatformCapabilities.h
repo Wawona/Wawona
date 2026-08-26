@@ -25,8 +25,14 @@ static inline bool WWNPlatformAllowsContainer(void) {
 }
 
 static inline bool WWNPlatformAllowsGpuStack(void) {
-#if TARGET_OS_TV || TARGET_OS_WATCH
+#if TARGET_OS_WATCH
   return false;
+#elif TARGET_OS_TV
+#if defined(WWN_TVOS_GPU_BUNDLED) && WWN_TVOS_GPU_BUNDLED
+  return true;
+#else
+  return false;
+#endif
 #else
   return true;
 #endif
@@ -82,6 +88,14 @@ static inline bool WWNPlatformAllowsClientTabs(void) {
   return true; /* phone only at runtime; iPad uses multi-window scenes */
 #else
   return false;
+#endif
+}
+
+static inline bool WWNPlatformAllowsGlesStack(void) {
+#if TARGET_OS_WATCH
+  return false;
+#else
+  return WWNPlatformAllowsGpuStack();
 #endif
 }
 

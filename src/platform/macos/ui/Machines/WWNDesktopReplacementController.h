@@ -25,6 +25,53 @@ typedef NS_ENUM(NSInteger, WWNModeBVerdict) {
 @property(nonatomic, copy) NSString *token;
 @property(nonatomic, copy) NSString *reason;
 @property(nonatomic, copy) NSString *nextStep;
+/** Friend-facing paragraph for Settings / alerts. No CLI recipes. */
+@property(nonatomic, copy) NSString *userSummary;
+/** Blocked only because SIP is not fully disabled. Show SIP How-To. */
+@property(nonatomic, assign) BOOL needsSipHowTo;
+/**
+ * Blocked, but Enable Desktop Replacement can stage the helper and/or arm Path B.
+ * Never true when SIP blocks or this build omitted Mode B.
+ */
+@property(nonatomic, assign) BOOL canPrepareRequirements;
+@end
+
+/**
+ * Watchdog coverage for Settings → Desktop. Friend-facing; no CLI recipes.
+ * `needsHeal` means Enable / Replace now must restore Apple coverage first.
+ * Never Classic-engage until coverage is healthy.
+ */
+@interface WWNModeBCoverageReport : NSObject
+@property(nonatomic, copy) NSString *statusLabel;
+@property(nonatomic, copy) NSString *userSummary;
+@property(nonatomic, copy) NSString *detailText;
+@property(nonatomic, copy) NSString *pathBLabel;
+@property(nonatomic, copy) NSString *safetyLabel;
+@property(nonatomic, assign) BOOL coverageOk;
+@property(nonatomic, assign) BOOL needsHeal;
+@property(nonatomic, assign) BOOL needsReboot;
+/** Apple job is enabled; this session has no live watchdogd. Restart, do not Restore again. */
+@property(nonatomic, assign) BOOL rebootForAppleJob;
+@property(nonatomic, assign) BOOL canPrepare;
+@property(nonatomic, assign) BOOL pathBInstalled;
+@property(nonatomic, assign) BOOL pathBLive;
+@property(nonatomic, assign) BOOL dualPath;
+@property(nonatomic, copy, nullable) NSString *watchdogdPid;
+@property(nonatomic, copy, nullable) NSString *doctorText;
+@end
+
+/**
+ * Menubar Desktop row. `state` is ready / takeover / reboot / blocked,
+ * colored like Compositor: running / restarting / stopped.
+ */
+@interface WWNModeBMenuBarStatus : NSObject
+@property(nonatomic, copy) NSString *state;
+@property(nonatomic, copy) NSString *tooltip;
+@property(nonatomic, assign) BOOL canTakeOver;
+@property(nonatomic, assign) BOOL canRestore;
+@property(nonatomic, assign) BOOL canRestartMac;
+/** Play button runs Replace now. Blocked still enables play so setup can run. */
+@property(nonatomic, assign) BOOL canPrepare;
 @end
 
 @interface WWNDesktopReplacementController : NSObject
@@ -63,15 +110,16 @@ typedef NS_ENUM(NSInteger, WWNModeBVerdict) {
 - (nullable NSError *)injectionPreflightError;
 
 /**
- * Keep DesktopReplacementMachineId pointing at a nested compositor. Reuses
- * an existing weston/niri/custom profile, or creates "Weston Desktop".
+ * Keep DesktopReplacementMachineId pointing at an own-display machine
+ * (weston/niri/custom, modeb-tty, or a KMS client). Reuses an existing
+ * profile, or creates "Weston Desktop".
  */
 - (BOOL)ensureDesktopMachineSelected:(NSError *_Nullable *_Nullable)error;
 
 /**
  * Launch the Desktop machine's nested compositor with Mode B insert
  * (privileged). Installs a root-owned helper and a tight sudoers NOPASSWD
- * rule. Does not install a login LaunchAgent. Take Over Screen Now is the
+ * rule. Does not install a login LaunchAgent. Replace now is the
  * only activate step. Logout and the next Aqua login return normal macOS.
  * Injects into the nested compositor (niri or weston), not into
  * WindowServer. WindowServer is unloaded only after framebufferd is live.
@@ -80,8 +128,8 @@ typedef NS_ENUM(NSInteger, WWNModeBVerdict) {
                    error:(NSError *_Nullable *_Nullable)error;
 
 /**
- * Engage the machine stored in DesktopReplacementMachineId. Settings uses
- * this after the user turns the toggle on.
+ * Engage the machine stored in DesktopReplacementMachineId. Settings and
+ * the menubar call this from Replace now only. Enable never engages.
  */
 - (BOOL)engageSelectedDesktopMachine:(NSError *_Nullable *_Nullable)error;
 
@@ -95,7 +143,7 @@ typedef NS_ENUM(NSInteger, WWNModeBVerdict) {
 
 /**
  * After Aqua login: never unload WindowServer. Boots out any leftover
- * Mode B login LaunchAgent from older builds. Take Over Screen Now is
+ * Mode B login LaunchAgent from older builds. Replace now is
  * the only activate path.
  */
 - (void)resumeAfterAquaLogin;
@@ -118,21 +166,101 @@ typedef NS_ENUM(NSInteger, WWNModeBVerdict) {
 - (int)cliReady;
 /** Same gate as CLI, with exact reason text for Settings / alerts. */
 - (WWNModeBReadyReport *)evaluateClassicReadiness;
+/** Live Mode B compositor pid (Classic Take Over or KEEP_WS probe). */
+- (BOOL)isModeBCompositorLive;
+/** Classic engaged: live pid and WindowServer down. */
+- (BOOL)isClassicTakeoverLive;
+/**
+ * Menubar Desktop row. `refreshGate=YES` when the menu opens (runs the
+ * Classic helper ACK check). The 2s poll passes NO and reuses the last
+ * gate, overlaying live takeover.
+ */
+- (WWNModeBMenuBarStatus *)menuBarDesktopStatusRefreshingGate:(BOOL)refreshGate;
 /**
  * Ask loginwindow to restart via the Core Event `kAERestart` (TN QA1134).
  * That is the native Restart sheet with the 60-second countdown, not a
  * custom Wawona timer. Aqua must be up.
  */
 - (BOOL)requestNativeMacOSRestart:(NSError *_Nullable *_Nullable)error;
+/**
+ * Stage the Mode B helper if needed and arm Path B
+ * (`wwn-iowatchdog-claim-install --path-b`) with administrator
+ * authorization. Never unloads watchdogd. Never Take Over.
+ */
+- (BOOL)installDesktopReplacementRequirements:
+    (NSError *_Nullable *_Nullable)error;
+/**
+ * Desktop-host builds: refresh helper + dylib when they do not match this app
+ * bundle. No Take Over. Called from install, first launch, and Enable.
+ */
+- (BOOL)syncDesktopHostInstallArtifactsIfNeeded:
+    (NSError *_Nullable *_Nullable)error;
+- (BOOL)installedHelperMatchesCurrentBuildForProfile:
+    (WWNMachineProfile *)profile;
+/**
+ * Check watchdog coverage, heal if stale or dual-path, then stage helper
+ * + Path B if Classic is not ready. Never unloads watchdogd. Never Take
+ * Over. Enable and Replace now both call this.
+ */
+- (BOOL)ensureWatchdogSafetyReady:(NSError *_Nullable *_Nullable)error;
+/**
+ * Native Restart sheet after Path B arm or Apple-job heal. Does not
+ * clear DesktopReplacementEnabled and does not Take Over.
+ */
+- (void)presentRestartAfterPrepareWithMessage:(NSString *)message;
+/**
+ * Friend-facing CLI/setup helper. Same as ensureWatchdogSafetyReady plus
+ * Restart if needed. Never Take Over.
+ */
+- (void)presentDesktopReplacementPrepareFlow;
+/**
+ * Confirm and Classic-engage if this Mac is ready. If setup is missing,
+ * runs watchdog check / heal / Path B arm (never unloads watchdogd) and
+ * may open Restart. Shared by Settings and the menubar Replace now control.
+ */
+- (void)presentReplaceNowFlow;
+/**
+ * Enable finished setup and Classic is ready (no restart). Offer Take
+ * Over Now or Cancel. Cancel leaves Enable on. Never auto-engages.
+ */
+- (void)presentReadyTakeOverOffer;
+/**
+ * End a live Classic / KEEP_WS session and restore Aqua. Leaves Path B
+ * and the helper installed. Heal runs automatically from Enable / Replace
+ * now when coverage is unhealthy.
+ */
+- (BOOL)endClassicSession;
+/**
+ * Local coverage snapshot. Does not prompt for administrator. Does not
+ * Take Over.
+ */
+- (WWNModeBCoverageReport *)evaluateWatchdogCoverage;
+/**
+ * Runs bundled `claim-install --doctor` with administrator authorization.
+ * Updates the cached report used by Settings. Never Take Over.
+ */
+- (nullable WWNModeBCoverageReport *)runWatchdogDoctor:
+    (NSError *_Nullable *_Nullable)error;
+/**
+ * Runs bundled `claim-install --heal`. Restores Apple watchdog coverage.
+ * Never unloads watchdogd for Classic. Never Take Over.
+ */
+- (BOOL)healWatchdogCoverage:(NSError *_Nullable *_Nullable)error;
+- (void)presentWatchdogCoverageCheck;
+- (void)presentWatchdogHealFlow;
+/** CLI: same work as Enable Desktop Replacement setup. Exit codes match `--mode-b-ready`. */
+- (int)cliPrepare;
 - (int)cliEngageKeepWindowServer:(BOOL)keepWindowServer;
 - (int)cliDisengage;
-/** Restage helper + dylib for this build. Does not take over the screen. */
+/** Internal install hook (nix/pkg). Prefer syncDesktopHostInstallArtifactsIfNeeded. */
 - (int)cliStage;
 /**
  * Select Desktop Replacement machine by id, name, or client alias.
  * Persists DesktopReplacementMachineId. Does not engage.
- * Alias "weston" creates "Weston Desktop" (NativeClientId=weston) if needed.
- * Non-nested profiles (weston-terminal, cubes) are refused.
+ * Aliases: weston, niri, kmscube, gbm-es2-demo, vkcube, modeb-tty.
+ * Weston/niri aliases create nested compositor machines (Mode A still
+ * nests them). Take Over uses their DRM backend. Wayland-only clients
+ * such as opengl-cube are refused.
  */
 - (int)cliSelectDesktopMachine:(NSString *)idOrName;
 

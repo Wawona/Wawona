@@ -9,7 +9,7 @@ Wawona uses **Nix Flakes** for all builds. For the full build pipeline (crate2ni
 nix run .#wawona
 nix run .#wawona-macos
 
-# Low-RAM / OOM (exit 137 on librsvg). See Troubleshooting below.
+# Low-RAM / OOM. See Troubleshooting below.
 ./scripts/nix-build-low-mem.sh .#wawona-macos
 
 # Store-shaped macOS vs SIP Desktop Replacement host
@@ -61,18 +61,28 @@ nix build .#wawona-android-backend
 
 ## Xcode Iteration
 
-The Xcode pre-build phase is **incremental**: it only runs when declared inputs
-(`Cargo.lock`, `flake.nix`, `Cargo.toml`, `xcode-prebuild.sh`) have changed.
-By default it builds only the **active SDK backend** (device or simulator, not
-both), cutting ~50% of Nix work on each rebuild.
+`xcodebuild` (including `nix run .#wawona-macos`) may print notes that Run
+Script phases will run during **every** build because "Based on dependency
+analysis" is unchecked. Those are notes, not errors.
+
+`dependencies/generators/xcodegen.nix` sets `basedOnDependencyAnalysis = false`
+for several phases on purpose. Xcode cannot skip them from declared inputs and
+outputs. The Nix closure, store copies, and Info.plist edits are not a graph
+Xcode can track. On `Wawona-macOS` that includes Stamp Build Number, Build
+Rust Backend via Nix (`scripts/xcode-prebuild.sh`), Bundle Executables, and
+Strip iOS-only keys from Info.plist (#138).
+
+The **script still runs** every time. Cheap when the store is warm: Nix
+cache, `WAWONA_BACKEND_OUT*` copy of a realized `libwawona.a`, or
+`WAWONA_SKIP_NIX_PREBUILD=1` for UI-only iteration. By default the prebuild
+builds only the **active SDK backend** (device or simulator, not both).
 
 ```bash
 # One-time warm (full iOS, both device and simulator backends)
 nix build .#wawona-ios-backend .#wawona-ios-sim-backend
 mkdir -p .nix-gcroots && nix build --out-link .nix-gcroots/xcodegen .#xcodegen
 
-# UI-only iteration. No special env needed; prebuild auto-skips when inputs
-# are unchanged. For explicit skip (no Nix at all):
+# UI-only iteration. Skip Nix entirely (script still runs, then exits):
 export WAWONA_SKIP_NIX_PREBUILD=1
 
 # Release builds that want both device+sim warm in one pass:
@@ -129,39 +139,35 @@ See [README](../README.md) for environment setup.
 
 ## Troubleshooting macOS builds
 
-A cold `nix build .#wawona-macos` can fail in **nixpkgs** `librsvg` (build
-dep of `pkgs.adwaita-icon-theme`, which supplies Weston cursor assets) with
-`Killed: 9` and **exit 137**. That is the OOM killer, not a Wawona recipe
-bug. Wawona keeps `pkgs.adwaita-icon-theme`.
+Weston cursor assets come from `adwaita-cursors`: unpack GNOME's Xcursor
+files from the source tarball. `nix build .#wawona-macos` does **not**
+build nixpkgs `adwaita-icon-theme`, `librsvg`, Sphinx, or mypy.
+
+A remaining OOM on a tiny laptop is usually some other cold nixpkgs compile
+running too many jobs. Cap parallelism:
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| `librsvg` / `adwaita-icon-theme` / exit 137 | OOM during nixpkgs compile | FlakeHub login, then low-memory build |
-| Full cold compile on a laptop | Not logged into FlakeHub | `determinate-nixd login` |
-| Still OOM after login | Parallel jobs exceed RAM | `./scripts/nix-build-low-mem.sh .#wawona-macos` |
+| Full cold compile on a laptop | Not logged into FlakeHub for `wwn-*` slices | `determinate-nixd login` |
+| Exit 137 / `Killed: 9` on a small machine | Too many parallel Nix jobs | `./scripts/nix-build-low-mem.sh .#wawona-macos` |
 
 Recommended order for new contributors:
 
 ```bash
 determinate-nixd login
 determinate-nixd status   # Logged in: true
+nix build .#wawona-macos
+```
+
+On a machine that still OOMs:
+
+```bash
 ./scripts/nix-build-low-mem.sh .#wawona-macos
 ```
 
-Manual equivalent (the helper defaults to these flags):
-
-```bash
-nix build .#wawona-macos --option max-jobs 1 --option cores 2 -L
-```
-
-If `librsvg` alone keeps failing, build it first with one core:
-
-```bash
-nix build 'nixpkgs#librsvg' --option max-jobs 1 --option cores 1 -L
-```
-
-Do not lower flake-wide `max-jobs` / `cores` in `flake.nix`. Those stay
-`auto` / `0` for CI. Cache details: [`flakehub-cache.md`](flakehub-cache.md).
+CI sets `max-jobs` / `cores` in the Nix installer extra-conf, not in flake
+`nixConfig` (that setting is untrusted on laptops). Cache details:
+[`flakehub-cache.md`](flakehub-cache.md).
 
 ## Release beta (TestFlight + Play)
 

@@ -103,9 +103,19 @@ WWNGraphicsDriverSelection WWNSettings_ResolveGraphicsDriverSelection(void) {
   const char *vulkan = WWNSettings_GetVulkanDriver();
   const char *openGL = WWNSettings_GetOpenGLDriver();
 
-#if TARGET_OS_TV || TARGET_OS_WATCH
+#if TARGET_OS_WATCH
   vulkan = "none";
   openGL = "none";
+#elif TARGET_OS_TV
+#if defined(WWN_TVOS_GPU_BUNDLED) && WWN_TVOS_GPU_BUNDLED
+  if (!wwnDriverIs(vulkan, "none") && !wwnDriverIs(vulkan, "moltenvk"))
+    vulkan = "moltenvk";
+  if (!wwnDriverIs(openGL, "none") && !wwnDriverIs(openGL, "angle"))
+    openGL = "angle";
+#else
+  vulkan = "none";
+  openGL = "none";
+#endif
 #elif TARGET_OS_OSX
   if (!wwnDriverIs(vulkan, "none") && !wwnDriverIs(vulkan, "moltenvk") &&
       !wwnDriverIs(vulkan, "kosmickrisp") && !wwnDriverIs(vulkan, "swiftshader"))

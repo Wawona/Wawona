@@ -11,6 +11,9 @@ struct WWNMachinesGridView: View {
   @State private var editingProfile: WWNMachineProfile?
   @State private var isCreating = false
   @State private var searchQuery = ""
+  #if os(tvOS)
+  @FocusState private var focusedMachineId: String?
+  #endif
 
   var body: some View {
     Group {
@@ -61,17 +64,13 @@ struct WWNMachinesGridView: View {
     NavigationStack {
       ScrollView {
         VStack(alignment: .leading, spacing: 28) {
-          Text("Machines")
-            .font(.title2.weight(.bold))
-            .foregroundStyle(.secondary)
-
           if visibleProfiles.isEmpty {
             ContentUnavailableView(
               "No Machines",
               systemImage: "tv",
               description: Text("Add a Local or Remote machine profile, then Start it with the Siri Remote.")
             )
-            .frame(maxWidth: .infinity, minHeight: 220)
+            .frame(maxWidth: .infinity, minHeight: 420)
           } else {
             LazyVStack(spacing: 22) {
               ForEach(visibleProfiles, id: \.machineId) { profile in
@@ -112,9 +111,10 @@ struct WWNMachinesGridView: View {
                   .padding(28)
                 }
                 .buttonStyle(.card)
+                .focused($focusedMachineId, equals: profile.machineId)
               }
             }
-            .frame(maxWidth: 1100, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
           }
 
           Text("\(model.profiles.count) profiles · \(model.connectedCount) connected · \(model.launchableCount) ready")
@@ -144,9 +144,15 @@ struct WWNMachinesGridView: View {
           }
         }
         .padding(48)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
       }
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
       .navigationTitle("Machines")
+      .onAppear {
+        if focusedMachineId == nil {
+          focusedMachineId = visibleProfiles.first?.machineId
+        }
+      }
       .fullScreenCover(isPresented: $isCreating) {
         WWNMachineEditorView(
           title: "Add Machine Profile",
@@ -164,6 +170,7 @@ struct WWNMachinesGridView: View {
         .presentationBackground(Color(white: 0.07))
       }
     }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
     .preferredColorScheme(.dark)
   }
   #endif
@@ -520,15 +527,18 @@ struct WWNMachineTVRow: View {
           .foregroundStyle(.secondary)
           .lineLimit(1)
         HStack(spacing: 14) {
-          metaChip(scopeLabel)
-          metaChip(typeLabel)
-          Text(status.title)
-            .font(.title3.weight(.bold))
-            .foregroundStyle(statusColor)
+          MachineStatusChip(text: scopeLabel, font: .title3.weight(.semibold))
+          MachineStatusChip(text: typeLabel, font: .title3.weight(.semibold))
+          MachineFittingLabel(
+            text: status.title,
+            font: .title3.weight(.bold),
+            alignment: .leading
+          )
+          .foregroundStyle(statusColor)
+          .frame(minWidth: 0)
+          .layoutPriority(1)
           if isActive {
-            Text("Active")
-              .font(.title3.weight(.bold))
-              .foregroundStyle(.yellow)
+            MachineStatusChip(text: "Active", font: .title3.weight(.semibold))
           }
         }
       }
@@ -563,14 +573,6 @@ struct WWNMachineTVRow: View {
     case .disconnected: return .secondary
     }
   }
-
-  private func metaChip(_ text: String) -> some View {
-    Text(text)
-      .font(.title3.weight(.semibold))
-      .padding(.horizontal, 14)
-      .padding(.vertical, 6)
-      .background(Color.secondary.opacity(0.22), in: Capsule())
-  }
 }
 
 /// Detail actions for one machine. Large focusable buttons for Siri Remote.
@@ -591,96 +593,110 @@ struct WWNMachineTVDetailView: View {
   let onFocus: () -> Void
 
   @Environment(\.dismiss) private var dismiss
+  @FocusState private var focusedActionId: String?
 
   var body: some View {
     ScrollView {
-      VStack(alignment: .leading, spacing: 36) {
-        VStack(alignment: .leading, spacing: 14) {
+      VStack(alignment: .leading, spacing: 40) {
+        VStack(alignment: .leading, spacing: 16) {
           Text(profile.name.isEmpty ? "Unnamed Machine" : profile.name)
             .font(.largeTitle.weight(.bold))
           Text(subtitle)
-            .font(.title2)
+            .font(.title)
             .foregroundStyle(.secondary)
           Text(summary)
-            .font(.title3)
+            .font(.title2)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
-          HStack(spacing: 24) {
+          HStack(spacing: 28) {
             Label(scopeLabel, systemImage: "circle.grid.2x2")
             Label(typeLabel, systemImage: "tag")
             Label(status.title, systemImage: "circle.fill")
               .foregroundStyle(statusColor)
           }
-          .font(.title3.weight(.semibold))
+          .font(.title2.weight(.semibold))
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
 
-        VStack(spacing: 22) {
-          if isRunning {
-            Button {
-              onFocus()
-            } label: {
-              Label("Focus Session", systemImage: "scope")
-                .font(.title3.weight(.semibold))
-                .frame(maxWidth: .infinity, minHeight: 56)
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .wwnA11y(WWNA11y.machinesFocus, label: "Focus Session")
-
-            Button(role: .destructive) {
-              onStop()
-            } label: {
-              Label("Stop Session", systemImage: "stop.fill")
-                .font(.title3.weight(.semibold))
-                .frame(maxWidth: .infinity, minHeight: 56)
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.large)
-            .wwnA11y(WWNA11y.machinesStop, label: "Stop Session")
-          } else {
-            Button {
-              onConnect()
-            } label: {
-              Label("Start Machine", systemImage: "play.fill")
-                .font(.title3.weight(.semibold))
-                .frame(maxWidth: .infinity, minHeight: 56)
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .disabled(!launchSupported)
-            .wwnA11y(WWNA11y.machinesStart, label: "Start Machine")
+        VStack(alignment: .leading, spacing: 22) {
+          ForEach(tvActionItems) { item in
+            MachineActionBar(items: [item], layout: .stack)
+              .frame(maxWidth: .infinity, minHeight: 88, alignment: .leading)
+              .focused($focusedActionId, equals: item.accessibilityID)
           }
-
-          Button {
-            onEdit()
-          } label: {
-            Label("Edit Profile", systemImage: "slider.horizontal.3")
-              .font(.title3.weight(.semibold))
-              .frame(maxWidth: .infinity, minHeight: 56)
-          }
-          .buttonStyle(.bordered)
-          .controlSize(.large)
-          .wwnA11y(WWNA11y.machinesEdit, label: "Edit Profile")
-
-          Button(role: .destructive) {
-            onDelete()
-            dismiss()
-          } label: {
-            Label("Delete Profile", systemImage: "trash")
-              .font(.title3.weight(.semibold))
-              .frame(maxWidth: .infinity, minHeight: 56)
-          }
-          .buttonStyle(.bordered)
-          .controlSize(.large)
-          .disabled(isRunning)
-          .wwnA11y(WWNA11y.machinesDelete, label: "Delete Profile")
         }
-        .frame(maxWidth: 900)
+        .frame(maxWidth: .infinity, alignment: .leading)
       }
-      .padding(48)
-      .frame(maxWidth: .infinity, alignment: .leading)
+      .padding(64)
+      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
     .navigationTitle("Machine")
+    .onAppear {
+      focusedActionId = tvActionItems.first?.accessibilityID
+    }
+  }
+
+  private var tvActionItems: [MachineActionItem] {
+    var items: [MachineActionItem] = []
+    if isRunning {
+      items.append(
+        MachineActionItem(
+          title: "Focus",
+          systemImage: "scope",
+          prominent: true,
+          accessibilityID: WWNA11y.machinesFocus,
+          accessibilityLabel: "Focus Session",
+          action: onFocus
+        )
+      )
+      items.append(
+        MachineActionItem(
+          title: "Stop",
+          systemImage: "stop.fill",
+          role: .destructive,
+          accessibilityID: WWNA11y.machinesStop,
+          accessibilityLabel: "Stop Session",
+          action: onStop
+        )
+      )
+    } else {
+      items.append(
+        MachineActionItem(
+          title: "Start",
+          systemImage: "play.fill",
+          prominent: true,
+          enabled: launchSupported,
+          accessibilityID: WWNA11y.machinesStart,
+          accessibilityLabel: "Start Machine",
+          action: onConnect
+        )
+      )
+    }
+    items.append(
+      MachineActionItem(
+        title: "Edit",
+        systemImage: "slider.horizontal.3",
+        accessibilityID: WWNA11y.machinesEdit,
+        accessibilityLabel: "Edit Profile",
+        action: onEdit
+      )
+    )
+    items.append(
+      MachineActionItem(
+        title: "Delete",
+        systemImage: "trash",
+        role: .destructive,
+        enabled: !isRunning,
+        accessibilityID: WWNA11y.machinesDelete,
+        accessibilityLabel: "Delete Profile",
+        action: {
+          onDelete()
+          dismiss()
+        }
+      )
+    )
+    return items
   }
 
   private var statusColor: Color {
@@ -715,6 +731,7 @@ final class WWNMachinesHostingBridge: NSObject {
     #if os(tvOS)
     let hosting = WWNMachinesTVHostingController(rootView: root)
     hosting.view.backgroundColor = .black
+    hosting.sizingOptions = []
     #else
     let hosting = UIHostingController(rootView: root)
     hosting.view.backgroundColor = UIColor.systemBackground
@@ -724,19 +741,35 @@ final class WWNMachinesHostingBridge: NSObject {
 }
 
 #if os(tvOS)
-/// Prefers the first focusable control in the Machines list after welcome dismiss.
+/// Fills the TV window. SwiftUI owns focus via FocusState on the machine cards.
 private final class WWNMachinesTVHostingController<Content: View>: UIHostingController<Content> {
-  override var preferredFocusEnvironments: [any UIFocusEnvironment] {
-    if let first = view.subviews.first(where: { $0.canBecomeFocused }) {
-      return [first]
-    }
-    return super.preferredFocusEnvironments
+  override func viewDidLoad() {
+    super.viewDidLoad()
+    view.backgroundColor = .black
+  }
+
+  override func viewDidLayoutSubviews() {
+    super.viewDidLayoutSubviews()
+    hideStrayPageControls(in: view.window ?? view)
   }
 
   override func viewDidAppear(_ animated: Bool) {
     super.viewDidAppear(animated)
+    hideStrayPageControls(in: view.window ?? view)
     setNeedsFocusUpdate()
     updateFocusIfNeeded()
+  }
+
+  /// NavigationStack on tvOS injects a UIPageControl labelled "0 pages".
+  private func hideStrayPageControls(in root: UIView) {
+    for sub in root.subviews {
+      if let pages = sub as? UIPageControl {
+        pages.isHidden = true
+        pages.alpha = 0
+        pages.isUserInteractionEnabled = false
+      }
+      hideStrayPageControls(in: sub)
+    }
   }
 }
 #endif

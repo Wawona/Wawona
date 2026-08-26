@@ -9,6 +9,7 @@ struct MachineStatusView: View {
     @State var showingAdd = false
     @State var editingProfile: MachineProfile?
     @State var showingGlobalSettings = false
+    @State private var runningCover: WatchMachineCover?
 
     var body: some View {
         Group {
@@ -25,7 +26,13 @@ struct MachineStatusView: View {
                             QuickConnectView(
                                 profile: profile,
                                 profileStore: profileStore,
-                                sessions: sessions
+                                sessions: sessions,
+                                onStarted: { session in
+                                    runningCover = WatchMachineCover(
+                                        profile: profile,
+                                        session: session
+                                    )
+                                }
                             )
                         } label: {
                             MachineRowLabel(profile: profile, sessions: sessions)
@@ -35,6 +42,7 @@ struct MachineStatusView: View {
                                 editingProfile = profile
                             } label: {
                                 Label("Edit", systemImage: "pencil")
+                                .lineLimit(1)
                             }
                             .tint(.blue)
                         }
@@ -43,6 +51,7 @@ struct MachineStatusView: View {
                                 profileStore.delete(id: profile.id)
                             } label: {
                                 Label("Delete", systemImage: "trash")
+                                .lineLimit(1)
                             }
                         }
                     }
@@ -93,7 +102,25 @@ struct MachineStatusView: View {
         .sheet(isPresented: $showingGlobalSettings) {
             WatchGlobalSettingsView()
         }
+        .fullScreenCover(item: $runningCover) { cover in
+            NavigationStack {
+                CompositorActiveView(
+                    profile: cover.profile,
+                    session: cover.session,
+                    sessions: sessions
+                )
+            }
+        }
     }
+}
+
+/// Stable cover item. Start must not live on QuickConnect's NavigationLink
+/// destination: saving `activeMachineId` republishes the list and tears that
+/// view down before `navigationDestination` can push.
+struct WatchMachineCover: Identifiable {
+    var id: UUID { session.id }
+    let profile: MachineProfile
+    let session: MachineSession
 }
 
 struct MachineRowLabel: View {

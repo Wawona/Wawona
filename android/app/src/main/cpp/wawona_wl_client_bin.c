@@ -33,6 +33,7 @@ struct client_map {
 /* Prefer the light weston-simple-shm .so; other toys are linked into libwawona. */
 static const struct client_map k_clients[] = {
     {"weston-simple-shm", "libweston_simple_shm.so", "weston_simple_shm_main"},
+    {"weston-simple-egl", "libwawona.so", "simple_egl_main"},
     {"weston-flower", "libwawona.so", "flower_main"},
     {"weston-clickdot", "libwawona.so", "clickdot_main"},
     {"weston-smoke", "libwawona.so", "smoke_main"},

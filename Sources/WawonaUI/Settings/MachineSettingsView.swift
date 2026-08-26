@@ -27,7 +27,9 @@ public struct MachineSettingsView: View {
                     Button("Open Wawona Settings…") {
                         PlatformGlobalSettings.open()
                     }
-                    Text("Global defaults (Display, Input, Graphics, Waypipe, SSH). Values below override those settings for this machine only.")
+                    Text(draft?.type.isSSH == true
+                         ? "Global defaults (Display, Input, Graphics, Waypipe, SSH). Values below override those settings for this machine only."
+                         : "Global defaults (Display, Input, Graphics). Values below override those settings for this machine only.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -78,6 +80,8 @@ public struct MachineSettingsView: View {
                 sshWaypipeSection()
                 if draft.type == .container {
                     containerSection()
+                if draft.type.isSSH {
+                    sshWaypipeSection()
                 }
                 displaySection()
                 inputSection()
@@ -216,24 +220,30 @@ public struct MachineSettingsView: View {
                 .autocorrectionDisabled()
 
             Toggle("Enable Waypipe", isOn: waypipeEnabledBinding)
-                .disabled(draft?.type == .native)
         }
     }
 
     @ViewBuilder
     private func inputSection() -> some View {
         Section("Input") {
-            Toggle("Show Virtual Cursor", isOn: renderMacOSPointerBinding)
-            Picker("Nested Compositor Cursor", selection: nestedCompositorCursorBinding) {
-                Text("Virtual Pointer").tag("virtual")
+            if draft?.nestedCompositorDrawsOwnCursor == true {
+                Text("Nested compositor (weston, niri, or custom) draws its own cursor. The host virtual pointer stays hidden in Multi-Touch and Touchpad. Show Virtual Cursor applies only to non-compositor clients.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            } else {
+                Toggle("Show Virtual Cursor", isOn: renderMacOSPointerBinding)
                 #if os(macOS)
-                Text("macOS Cursor").tag("host")
-                #else
-                Text("Host Cursor").tag("host")
+                Picker("Nested Compositor Cursor", selection: nestedCompositorCursorBinding) {
+                    Text("Virtual Pointer").tag("virtual")
+                    Text("macOS Cursor").tag("host")
+                }
+                .wwnDisclosurePicker()
+                .disabled(!(draft?.runtimeOverrides.renderMacOSPointer ?? preferences.renderMacOSPointer))
                 #endif
+                Text("Nested and iland DRM compositors hide and grab the host pointer. They draw their own cursor. Show Virtual Cursor is only for non-compositor clients.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
-            .wwnDisclosurePicker()
-            .disabled(!(draft?.runtimeOverrides.renderMacOSPointer ?? preferences.renderMacOSPointer))
             #if os(tvOS)
             Text("Touch Input Type: Touchpad (tvOS)")
                 .foregroundStyle(.secondary)
@@ -294,7 +304,7 @@ public struct MachineSettingsView: View {
             }
             .wwnDisclosurePicker()
             #if os(tvOS)
-            Toggle("Long-press Menu to Exit Machine", isOn: shakeToCloseBinding)
+            Toggle("Menu / Shake to Exit Machine", isOn: shakeToCloseBinding)
             #else
             Toggle("Shake to Exit Machine", isOn: shakeToCloseBinding)
             #endif
@@ -338,17 +348,22 @@ public struct MachineSettingsView: View {
             Text("OpenGL Driver: \(resolved.openGLDriver)")
             Text("DMABUF: \(resolved.dmabufEnabled ? "Enabled" : "Disabled")")
             Text("Force SSD: \(resolved.forceSSD ? "Enabled" : "Disabled")")
-            Text("Show Virtual Cursor: \(resolved.renderMacOSPointer ? "Enabled" : "Disabled")")
-            Text("Nested Compositor Cursor: \(resolved.nestedCompositorCursor)")
+            if profile.nestedCompositorDrawsOwnCursor {
+                Text("Host cursor overlay: Hidden (nested compositor draws its own)")
+            } else {
+                Text("Show Virtual Cursor: \(resolved.renderMacOSPointer ? "Enabled" : "Disabled")")
+            }
             Text("Auto Scale: \(resolved.autoScale ? "Enabled" : "Disabled")")
             Text("HDR: \(resolved.colorOperations ? "Enabled" : "Disabled")")
             Text("Display: \(resolved.waylandDisplay)")
             Text("Touch Input: \(WawonaPreferences.normalizedTouchInputType(resolved.inputProfile))")
-            Text("Host: \(resolved.sshHost)")
-            Text("User: \(resolved.sshUser)")
-            Text("Port: \(resolved.sshPort)")
-            Text("Waypipe Password: \(resolved.waypipeSSHPassword.isEmpty ? "Inherit global" : "Per-machine override")")
-            Text("Waypipe: \(resolved.waypipeEnabled ? "Enabled" : "Disabled")")
+            if profile.type.isSSH {
+                Text("Host: \(resolved.sshHost)")
+                Text("User: \(resolved.sshUser)")
+                Text("Port: \(resolved.sshPort)")
+                Text("Waypipe Password: \(resolved.waypipeSSHPassword.isEmpty ? "Inherit global" : "Per-machine override")")
+                Text("Waypipe: \(resolved.waypipeEnabled ? "Enabled" : "Disabled")")
+            }
             Text("Bundled App: \(resolved.bundledAppID.isEmpty ? "Off" : resolved.bundledAppID)")
             Text("Log Level: \(resolved.logLevel)")
             if resolved.machineType == .container {
@@ -361,7 +376,7 @@ public struct MachineSettingsView: View {
                 Text("Container Initfs: \(resolved.containerInitfsPath.isEmpty ? "vminit:latest" : resolved.containerInitfsPath)")
             }
             #if os(tvOS)
-            Text("Long-press Menu to Exit: \(resolved.shakeToCloseEnabled ? "Enabled" : "Disabled")")
+            Text("Menu / Shake to Exit: \(resolved.shakeToCloseEnabled ? "Enabled" : "Disabled")")
             #else
             Text("Shake to Exit: \(resolved.shakeToCloseEnabled ? "Enabled" : "Disabled")")
             Text("Swipe Back to Exit: \(resolved.swipeBackToCloseEnabled ? "Enabled" : "Disabled")")

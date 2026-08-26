@@ -45,7 +45,7 @@ separately. Evidence is `file:line` in the local tree or an issue.
 | macOS desktop-host | A (toggle off) | WIRED (same as product) | WIRED | WIRED | WIRED | N/A |
 | macOS desktop-host | B (SIP fully disabled + toggle) | WIRED | WIRED | WIRED (Dobby `open`/`ioctl` hooks virtual calls) | WIRED (framebufferd host-vsync present + Mach ACK drives page-flip event; runtime proof pending) | WIRED (engage path real, not CI-proven; #87) |
 | iOS / iPadOS / visionOS | A | WIRED (ANGLE direct-to-Metal present path; target runtime/tint evidence remains pending) | WIRED (pinned store-safe MoltenVK 1.4.1 static slice is L1-owned and force-linked; vkcube runtime proof pending) | WIRED (Mode-A open shim landed. `iland_drm_open_card` + `iland_drm_open_compat.h`; #58 open path fixed, device render unproven) | WIRED (preferred-mode host wiring + fourcc contract landed; scene/multi-window runtime evidence pending) | N/A |
-| tvOS | A soft | MISSING (deferred. SDK has GLES/Metal, ANGLE lacks a tvOS GN target) | MISSING (deferred. MoltenVK supports tvOS 14.5+; gated `WWN_TVOS_GPU=1`) | N/A | N/A | N/A |
+| tvOS | A | WIRED (ANGLE source GN `target_platform=tvos`, static `libEGL.a`/`libGLESv2.a`. Rendered-frame evidence pending) | WIRED (MoltenVK static, same apple-mobile.nix as iOS. Rendered-frame evidence pending) | WIRED (iland DRM when Display Backend is drm) | WIRED | N/A |
 | watchOS | A soft | N/A (no Metal/GLES in SDK; empty `libiland_userland.a`; correct) | N/A (no Metal backend to target) | N/A | N/A | N/A |
 | Android Play / Home Desktop | A (no root) | WIRED (`OpenGLDriver` is consumed at connect; ANGLE remains the bundled direct backend) | split: `system` WIRED (loader owns ANativeWindow WSI) / `swiftshader` WIRED for *client* ICD (host always loads `libvulkan.so`; staged ICD manifest + `WWN_SWIFTSHADER_LIBRARY` for offscreen iland/vkcube. See 2026-07-26 entry; headless→Surface present adapter still open) | WIRED (userland `drm_linux.c`; GBM storage is AHardwareBuffer-backed) | WIRED (present callback; zero-copy import acceptance pending) | WIRED (Home = rootless Mode A launcher/VD; no dylib) |
 | Android power | B (Shizuku/root WM) | WIRED | WIRED (same runtime-only drivers) | WIRED | WIRED | WIRED (window/display policy only; no root framebuffer or kernel-device access) |
@@ -68,7 +68,7 @@ this is the winsys path (`libiland_wayland_egl`: `wl_egl_window_*` +
 | macOS 3rd-party product | **PROPER** (`opengl-cube` renders a depth-correct cube through `wl_egl_window` + `eglSwapBuffers` at ~62 fps, ANGLE-on-Metal, presented from the posted IOSurface. Screenshot + posted-buffer sample in the 2026-07-26 entry below) | **PROPER** (`vkcube` Wayland xdg-shell + IOSurface dmabuf; owner-confirmed spinning cube under both `VulkanDriver=moltenvk` and `VulkanDriver=kosmickrisp`. 2026-07-31) |
 | iOS / iPadOS / visionOS | WIRED (winsys built; Apple-mobile `simple_egl_main` was a stub returning 127. Replaced with real `clients/simple-egl.c` + mobile roundtrip macros in `wwn-weston/.../ios.nix` 2026-07-25; iPad OpenGL Cube blank under investigation. UIKit IOSurface→CGImage + opaque-alpha force; kmscube needs dedicated UIWindowScene. No Wayland toplevel) | WIRED (same WSI + Wayland `vkcube` archive; no device run yet) |
 | Android Play / Home Desktop | WIRED (AHardwareBuffer variant of the same winsys) | MISSING (AHB Vulkan present variant still open) |
-| tvOS / watchOS | N/A (fallback path; no GPU stack. See the tvOS GPU section) | N/A |
+| tvOS / watchOS | tvOS: WIRED (ANGLE + MoltenVK in-bundle; rendered-frame evidence pending). watchOS: N/A (no Metal) | tvOS: WIRED (MoltenVK). watchOS: N/A |
 
 Grading rule for this table: **PROPER needs a rendered frame observed on that
 target**, not a client that reaches `eglSwapBuffers` without error. Do not
@@ -92,12 +92,12 @@ kept as `vkcube_kms.c`. Machines Start routes `vkcube` like `opengl-cube`
 rendered frame is observed. SHAs: wwn-iland `fe08db2`, wwn-kmscube `d37dd29`,
 Wawona `03b146e`.
 
-**2026-07-26 `final-tvos-gpu` still deferred.** Plan order: only after every
-other GPU target is PROPER. `verify-iland-graphics-bundle.sh` already flips
-from "no MoltenVK on tvOS" to "require MoltenVK" when `WWN_TVOS_GPU=1`;
-watchOS stays blocked (no Metal in SDK). Do not start the MoltenVK/ANGLE tvOS
-port while macOS Wayland+Vulkan / Apple-mobile / Android cells are still
-WIRED/MISSING.
+**2026-08-25 `final-tvos-gpu` WIRED (both drivers).** ANGLE source GN
+(`target_platform=tvos`, Chromium trampoline, `use_blink=true` for GN only)
+and MoltenVK static both link into `.#wawona-tvos-app-sim`. Verifier
+`WWN_TVOS_GPU=1` requires both `MoltenVK version` and `ANGLE (`. Rendered-frame
+PROPER is still pending (Apple TV 4K sim cube paint). watchOS stays blocked
+(no Metal in SDK).
 
 **2026-07-26 audit follow-up (Mode A stubs + store/#86).** Stock kmscube Mode A
 path is not ENOSYS-blocked. Remaining hard stubs are for *other* clients:
@@ -886,34 +886,32 @@ installed SDKs (Xcode 26.6) rather than documentation:
   QuartzCore: present              QuartzCore: present
 ```
 
-**tvOS is deferred, not impossible.** It has Metal, MetalKit, and even the
-deprecated `OpenGLES.framework`, and MoltenVK upstream lists tvOS (14.5+) as a
-supported platform built strictly on public API, so it is store-legal. Two
-asymmetric paths: Vulkan is short, because MoltenVK already builds for tvOS and
-Wawona dispatches straight into the ICD via `WWN_VULKAN_LIBRARY`. Which matters,
-since LunarG's Jan-2026 status notes the Vulkan **loader** does not work on tvOS
-yet, a limitation we already sidestep. GLES is long, because ANGLE has no
-maintained Chromium GN tvOS target, the same wall that made visionOS ANGLE a
-pinned-artifact-plus-patch-series job (P2a). This is scheduled as the **final**
-graphics phase, after every other target is PROPER.
+**tvOS GPU is WIRED as of 2026-08-25, not deferred.** It has Metal, MetalKit, and
+`OpenGLES.framework`, and MoltenVK upstream lists tvOS (14.5+) as a supported
+platform built strictly on public API, so it is store-legal. Vulkan dispatches
+straight into the MoltenVK ICD via `WWN_VULKAN_LIBRARY` (LunarG's Vulkan
+**loader** still does not work on tvOS). GLES uses ANGLE source GN
+(`target_platform=tvos`, same ios.nix path as visionOS; `use_blink=true` is a
+Chromium GN assert only). Both drivers are required when `WWN_TVOS_GPU=1`.
+Rendered-frame PROPER is still pending.
 
-**watchOS has no floor.** The watchOS 26.5 SDK ships no `Metal.framework` at all
-- device or simulator. No `OpenGLES.framework`, and no Metal `.tbd` to link.
+**watchOS has no GL/VK floor.** The watchOS 26.5 SDK ships no `Metal.framework` at
+all, device or simulator. No `OpenGLES.framework`, and no Metal `.tbd` to link.
 `CAMetalLayer.h` is present (headers are shared across platforms) but the class is
 annotated `API_AVAILABLE(macos(10.11), ios(13.0), tvos(13.0))
-API_UNAVAILABLE(watchos)`. The only rendering frameworks are SpriteKit and
-SceneKit, which render internally and expose no device, drawable, or shader entry
-point. Since ANGLE and MoltenVK both terminate in Metal, neither has a backend;
-MoltenVK's own platform list is macOS/iOS/tvOS/visionOS, so watchOS is absent
-rather than merely untested. Enabling watchOS GPU therefore requires a public
-Metal-equivalent surface to appear first. It is not a porting task today, and
-must not be "solved" via private API or SpriteKit as a shader backdoor.
+API_UNAVAILABLE(watchos)`. ANGLE and MoltenVK both terminate in Metal; MoltenVK's
+own platform list is macOS/iOS/tvOS/visionOS.
 
-Enforcement: `verify-iland-graphics-bundle.sh` keeps tv/watch strict by default,
-but tvOS strictness is now conditional on `WWN_TVOS_GPU != 1`, and setting
-`WWN_TVOS_GPU=1` inverts it into a positive MoltenVK assertion. So the deferred
-phase flips one variable instead of rewriting the verifier, with no window where a
-driver can drift in unnoticed. watchOS strictness is unconditional.
+**watchOS present accelerator (2026-08-25, Track A):** compositor *output* is
+GPU-composited with SpriteKit (`WatchSpritePresentView`, `SKTexture` from SHM
+`CGImage`). Clients stay software. `watchPresentAcceleratorGate` is available.
+`gpuStackGate` stays blocked. Store IPA must not link Metal, ANGLE, or MoltenVK.
+`WWN_WATCHOS_METAL=1` is a research flag (never TestFlight / ASC Watch IPA).
+Vulkan/OpenGL Watch remain a follow-up until the SDK ships public Metal.
+
+Enforcement: `verify-iland-graphics-bundle.sh` requires both MoltenVK and ANGLE
+when `WWN_TVOS_GPU=1`. watchOS forbids those drivers unconditionally, requires
+SpriteKit, and fails if the Watch Mach-O links Metal unless `WWN_WATCHOS_METAL=1`.
 
 Repos touched: `Wawona` (verifier, this doc), workspace `wawona-platform-targets`
 rule (GPU row `❌` → `⏳`, hard rule 1 split per platform).
@@ -1297,8 +1295,10 @@ Apple (macOS/iOS/iPadOS/visionOS). Parallel, not stacked:
 Android:
   GLES → EGL → ANGLE OR system GLES → Surface present
   Vulkan → loader → system OR SwiftShader
-tvOS: software/pixman today; deferred final phase adds
-  Vulkan → MoltenVK(tvOS) → Metal present   (no loader: direct ICD dispatch)
+tvOS (Mode A, public Metal):
+  GLES/OpenGL ES → EGL → ANGLE(Metal, target_platform=tvos) → IOSurface/Metal present
+  Vulkan         → MoltenVK ICD (no loader) → Metal present
+  DRM/KMS/GBM    → iland userland → same present callback
 watchOS: software/pixman only. No Metal in the SDK, so no translate stack exists
 ```
 

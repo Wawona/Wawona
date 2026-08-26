@@ -97,11 +97,11 @@ public final class WWNEnvironmentSettingsPresenter: NSObject {
     }
 
     private static func presentIOS(from host: UIViewController?) {
+        // Env Vars is the Settings detail pane (`WWNPreferences.wwnSyncEnvironmentInventory`).
+        // Do not `showDetailViewController` this host in place of the secondary nav:
+        // that left the one-row stub on the back stack / as the fallback page.
         let hosting = inventoryController()
-        // Match macOS: Env Vars is the Settings detail pane, not a one-row stub
-        // and not a nested NavigationStack sheet (that hid the catalog).
-        if let split = host?.splitViewController {
-            split.showDetailViewController(hosting, sender: host)
+        if host?.splitViewController != nil {
             return
         }
         if let nav = host as? UINavigationController {
@@ -143,7 +143,9 @@ private final class WWNEnvironmentInventoryHostingController:
             )
         )
         title = "Environment Variables"
+        #if !os(tvOS)
         navigationItem.largeTitleDisplayMode = .never
+        #endif
         view.accessibilityIdentifier = "wwn.settings.environment"
         #if os(tvOS)
         navigationItem.rightBarButtonItem = UIBarButtonItem(

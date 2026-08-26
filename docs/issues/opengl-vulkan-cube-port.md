@@ -87,13 +87,13 @@ it in-process through `WWNClientMainForId` like `weston-simple-shm`. The
 family cannot use `wl_egl_window` / `EGL_PLATFORM_WAYLAND_KHR` was an artifact of
 iland having no Wayland winsys, not a platform limit: nothing in the path needs
 anything unavailable on iOS. iland now carries the winsys on
-macOS/iOS/iPadOS/visionOS (IOSurface-backed `wl_buffer`s posted through
+macOS/iOS/iPadOS/tvOS/visionOS (IOSurface-backed `wl_buffer`s posted through
 `zwp_linux_dmabuf_v1` with the IOSurface-id modifier), plus an AHardwareBuffer
-variant for Android. tvOS/watchOS stay on the fallback.
+variant for Android. watchOS stays on the SHM/CPU fallback (no Metal).
 `simple-egl-apple-mobile-stub.c` is therefore obsolete as a *statement of
 impossibility*; it remains only until the mobile unstub lands.
 - Vulkan Cube = krh/vkcube **KMS/GBM** against iland virtual DRM (`/dev/dri/card0` → fd 42) + host Vulkan ICD (MoltenVK Apple; device Vulkan / SwiftShader Android).
-- tvOS / watchOS: **never** link or show these clients (`allowsGpuStack == false`).
+- tvOS: GLES (ANGLE) and Vulkan (MoltenVK) when `WWN_TVOS_GPU_BUNDLED`. watchOS: **never** (`allowsGpuStack == false`).
 
 **Prerequisite:** wwn-iland supplies OpenGL (ANGLE) + Vulkan + software-fallback for DRM/GBM bind. This issue owns **client packaging + launch wiring**, not a new iland graphics architecture.
 
@@ -104,7 +104,8 @@ impossibility*; it remains only until the mobile unstub lands.
 | **macOS** | `libopengl_cube.a` / `libvkcube.a` + `bin/opengl-cube` / `bin/vkcube` | `vkcube` = **in-process** iland presenter; `opengl-cube` = out-of-process bundled Wayland client (`bin/opengl-cube`) |
 | **iOS / iPadOS / visionOS** | archives only (`*_main`) | `vkcube` in-process via Machines → WaypipeRunner → iland presenter; `opengl-cube` in-process via `WWNClientMainForId`, same as `weston-simple-shm` |
 | **Android** | archives linked into `libwawona.so` | JNI → presenter path (mirror `kmscube_stub_main`) |
-| **tvOS / watchOS** | not built / not linked | hidden + refuse |
+| **tvOS** | archives (`*_main`) when GPU bundled | in-process, same as iOS (kmscube/gbm-es2 via presenter; opengl-cube/vkcube via compositor) |
+| **watchOS** | not built / not linked | hidden + refuse |
 
 Symbols:
 
@@ -133,7 +134,9 @@ Never force-push `master`/`development`. Do not commit unless the human asks.
   made it indistinguishable from KMS Cube (and, when both paths raced, made
   Start sometimes show kmscube). It is a Wayland client on every target that
   has a GPU stack.
-- Do **not** add ANGLE/Vulkan/MoltenVK to tvOS/watchOS deps or schemes.
+- Do **not** add ANGLE/Vulkan/MoltenVK to watchOS deps or schemes.
+- Do **not** ship tvOS without both ANGLE (OpenGL ES to Metal) and MoltenVK
+  (Vulkan to Metal). `WWN_TVOS_GPU=1` requires both. Never Vulkan-only.
 - Do **not** ship Mode B `libwayland-mac.dylib` for these clients.
 - Do **not** leave Android calling `opengl_cube_main` / `vkcube_main` without
   the same iland presenter setup kmscube uses.

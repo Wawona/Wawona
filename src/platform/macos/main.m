@@ -195,6 +195,7 @@ static int g_host_lock_fd = -1;
 static int g_menubar_lock_fd = -1;
 static BOOL g_show_about_on_launch = NO;
 static BOOL g_show_settings_on_launch = NO;
+static NSString *g_show_settings_section = nil;
 static BOOL g_service_host_mode = NO;
 
 // Compositor-host is an agent: same Mach-O as the Machines UI, so Cocoa will
@@ -222,10 +223,11 @@ static void wwn_print_cli_help(void) {
       "  --mode-b-status         Desktop Replacement Mode B status and exit\n"
       "  --mode-b-ready          Classic gate: takeover-now, reboot, or blocked\n"
       "                          (prints VERDICT and REASON)\n"
+      "  --mode-b-prepare        Sync helper + arm Path B (admin once).\n"
+      "                          Does not take over. Reboot opens Restart\n"
       "  --mode-b-machine <id>   Select Desktop Take Over machine (id, name,\n"
       "                          or weston). Creates Weston Desktop if needed.\n"
       "                          Does not take over the screen\n"
-      "  --mode-b-stage          Install helper + dylib for this build, no take-over\n"
       "  --mode-b-engage         takeover-now: take over. reboot: native Restart\n"
       "                          sheet. blocked: print exact reason\n"
       "  --mode-b-probe          Same wait as engage, keep WindowServer\n"
@@ -257,6 +259,7 @@ static void wwn_print_cli_help(void) {
       "  --menubar               Menu-bar agent\n"
       "  --show-about            Show About instead of Machines\n"
       "  --show-settings         Show Settings instead of Machines\n"
+      "  --settings-section=Name Open Settings to that sidebar section\n"
       "\n"
       "Examples:\n"
       "  # Nested Weston (Wayland backend) without the Machines GUI\n"
@@ -272,6 +275,7 @@ static void wwn_print_cli_help(void) {
       "  Wawona --mode-b-machine weston\n"
       "  Wawona --mode-b-status\n"
       "  Wawona --mode-b-ready\n"
+      "  Wawona --mode-b-prepare\n"
       "  Wawona --mode-b-probe\n"
       "  Wawona --mode-b-probe --machine <id>\n"
       "  Wawona --mode-b-engage\n"
@@ -681,6 +685,10 @@ static void setup_signal_sources(void) {
     [[WWNAboutPanel sharedAboutPanel] showAboutPanel:NSApp];
   } else if (g_show_settings_on_launch) {
     [[WWNPreferences sharedPreferences] showPreferences:NSApp];
+    if (g_show_settings_section.length > 0) {
+      [[WWNPreferences sharedPreferences]
+          selectSectionWithTitle:g_show_settings_section];
+    }
   } else if (!g_cli_headless) {
     [[WWNMachinesCoordinator sharedCoordinator] showMachinesWindowAndActivate:YES];
   } else {
@@ -689,6 +697,18 @@ static void setup_signal_sources(void) {
            @"(WAYLAND_DISPLAY=wayland-0)");
     // Accessory: stay out of the Dock / Cmd-Tab unless the user opens UI later.
     [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+  }
+
+  if (!g_service_host_mode && [WWNDesktopReplacementController sharedController]
+                                   .bundledDylibPath.length > 0) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+      NSError *syncErr = nil;
+      if (![[WWNDesktopReplacementController sharedController]
+              syncDesktopHostInstallArtifactsIfNeeded:&syncErr]) {
+        WWNLog("MAIN", @"Desktop host helper sync: %@",
+               syncErr.localizedDescription ?: @"failed");
+      }
+    });
   }
 
   void (^startClient)(void) = ^{
@@ -936,6 +956,11 @@ static void wwn_install_host_main_menu(id target) {
 @property(nonatomic, strong) NSButton *restartButton;
 @property(nonatomic, strong) NSSwitch *loginAtLoginSwitch;
 @property(nonatomic, strong) NSView *compositorRow;
+@property(nonatomic, strong) NSView *desktopRow;
+@property(nonatomic, strong) NSTextField *desktopStatusLabel;
+@property(nonatomic, strong) NSButton *desktopTakeOverButton;
+@property(nonatomic, strong) NSButton *desktopRestoreButton;
+@property(nonatomic, strong) NSButton *desktopRestartButton;
 @property(nonatomic, strong) NSView *loginRow;
 @property(nonatomic, strong) NSTimer *pollTimer;
 @property(nonatomic, strong) NSTimer *restartPollTimer;
@@ -947,7 +972,8 @@ static NSFont *WWNMenuBarItemFont(void) {
   return [NSFont menuFontOfSize:[NSFont systemFontSize]];
 }
 
-static NSAttributedString *WWNMenuBarStatusAttributed(NSString *state,
+static NSAttributedString *WWNMenuBarStatusAttributed(NSString *prefix,
+                                                      NSString *state,
                                                       NSColor *stateColor) {
   NSFont *font = WWNMenuBarItemFont();
   NSDictionary *prefixAttrs = @{
@@ -959,7 +985,7 @@ static NSAttributedString *WWNMenuBarStatusAttributed(NSString *state,
     NSForegroundColorAttributeName : stateColor
   };
   NSMutableAttributedString *text = [[NSMutableAttributedString alloc]
-      initWithString:@"Compositor: "
+      initWithString:[prefix stringByAppendingString:@": "]
           attributes:prefixAttrs];
   [text appendAttributedString:[[NSAttributedString alloc]
                                    initWithString:state
@@ -1052,7 +1078,8 @@ static NSImage *WWNMenuBarTemplateIcon(void) {
     NSTextField *statusLabel = [NSTextField labelWithString:@""];
     statusLabel.font = WWNMenuBarItemFont();
     statusLabel.attributedStringValue =
-        WWNMenuBarStatusAttributed(@"stopped", [NSColor systemRedColor]);
+        WWNMenuBarStatusAttributed(@"Compositor", @"stopped",
+                                   [NSColor systemRedColor]);
     statusLabel.frame = NSMakeRect(14, 6, 150, 20);
     statusLabel.autoresizingMask =
         NSViewWidthSizable | NSViewMinYMargin | NSViewMaxYMargin;
@@ -1078,6 +1105,41 @@ static NSImage *WWNMenuBarTemplateIcon(void) {
                                                      keyEquivalent:@""];
     compositorItem.view = compositorRow;
     [menu addItem:compositorItem];
+    [menu addItem:[NSMenuItem separatorItem]];
+
+    NSView *desktopRow = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 268, 32)];
+    desktopRow.autoresizesSubviews = YES;
+    NSTextField *desktopStatus = [NSTextField labelWithString:@""];
+    desktopStatus.font = WWNMenuBarItemFont();
+    desktopStatus.attributedStringValue = WWNMenuBarStatusAttributed(
+        @"Desktop", @"blocked", [NSColor systemRedColor]);
+    desktopStatus.frame = NSMakeRect(14, 6, 150, 20);
+    desktopStatus.autoresizingMask =
+        NSViewWidthSizable | NSViewMinYMargin | NSViewMaxYMargin;
+    [desktopRow addSubview:desktopStatus];
+    _desktopStatusLabel = desktopStatus;
+
+    NSButton *desktopRestartBtn = WWNMenuBarSymbolButton(
+        @"arrow.clockwise", @"Restart Mac (Path B reboot)", self,
+        @selector(restartMacForDesktop:));
+    NSButton *desktopRestoreBtn = WWNMenuBarSymbolButton(
+        @"stop.fill", @"Restore Aqua", self, @selector(restoreDesktop:));
+    NSButton *desktopTakeOverBtn = WWNMenuBarSymbolButton(
+        @"play.fill", @"Replace now", self,
+        @selector(takeOverDesktop:));
+    [desktopRow addSubview:desktopRestartBtn];
+    [desktopRow addSubview:desktopRestoreBtn];
+    [desktopRow addSubview:desktopTakeOverBtn];
+    _desktopRestartButton = desktopRestartBtn;
+    _desktopRestoreButton = desktopRestoreBtn;
+    _desktopTakeOverButton = desktopTakeOverBtn;
+    _desktopRow = desktopRow;
+
+    NSMenuItem *desktopItem = [[NSMenuItem alloc] initWithTitle:@""
+                                                         action:nil
+                                                  keyEquivalent:@""];
+    desktopItem.view = desktopRow;
+    [menu addItem:desktopItem];
     [menu addItem:[NSMenuItem separatorItem]];
 
     NSView *loginRow = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 268, 28)];
@@ -1183,6 +1245,23 @@ static NSImage *WWNMenuBarTemplateIcon(void) {
     status.size.width = MAX(80.0, x - kBtn - 8.0 - 14.0);
     self.statusLabel.frame = status;
   }
+  if (self.desktopRow) {
+    NSRect frame = self.desktopRow.frame;
+    frame.size.width = width;
+    self.desktopRow.frame = frame;
+    CGFloat x = width - kTrailing;
+    self.desktopTakeOverButton.frame =
+        NSMakeRect(x - kBtn, 5, kBtn, kBtn);
+    x -= (kBtn + kGap);
+    self.desktopRestoreButton.frame =
+        NSMakeRect(x - kBtn, 5, kBtn, kBtn);
+    x -= (kBtn + kGap);
+    self.desktopRestartButton.frame =
+        NSMakeRect(x - kBtn, 5, kBtn, kBtn);
+    NSRect deskStatus = self.desktopStatusLabel.frame;
+    deskStatus.size.width = MAX(80.0, x - kBtn - 8.0 - 14.0);
+    self.desktopStatusLabel.frame = deskStatus;
+  }
   if (self.loginRow && self.loginAtLoginSwitch) {
     NSRect frame = self.loginRow.frame;
     frame.size.width = width;
@@ -1238,7 +1317,7 @@ static NSImage *WWNMenuBarTemplateIcon(void) {
     color = [NSColor systemGreenColor];
   }
   self.statusLabel.attributedStringValue =
-      WWNMenuBarStatusAttributed(state, color);
+      WWNMenuBarStatusAttributed(@"Compositor", state, color);
   self.statusLabel.toolTip =
       [NSString stringWithFormat:@"Compositor: %@", state];
 
@@ -1249,6 +1328,28 @@ static NSImage *WWNMenuBarTemplateIcon(void) {
   BOOL loginOn = [[WWNLaunchAgentManager sharedManager] isAppLaunchAgentLoaded];
   self.loginAtLoginSwitch.state =
       loginOn ? NSControlStateValueOn : NSControlStateValueOff;
+
+  BOOL refreshDesktopGate = ![sender isKindOfClass:[NSTimer class]];
+  WWNModeBMenuBarStatus *desk =
+      [[WWNDesktopReplacementController sharedController]
+          menuBarDesktopStatusRefreshingGate:refreshDesktopGate];
+  NSColor *deskColor = [NSColor systemRedColor];
+  if ([desk.state isEqualToString:@"ready"] ||
+      [desk.state isEqualToString:@"takeover"]) {
+    deskColor = [NSColor systemGreenColor];
+  } else if ([desk.state isEqualToString:@"reboot"]) {
+    deskColor = [NSColor systemPurpleColor];
+  }
+  self.desktopStatusLabel.attributedStringValue =
+      WWNMenuBarStatusAttributed(@"Desktop", desk.state, deskColor);
+  self.desktopStatusLabel.toolTip =
+      desk.tooltip.length
+          ? desk.tooltip
+          : [NSString stringWithFormat:@"Desktop: %@", desk.state];
+  self.desktopTakeOverButton.enabled = desk.canTakeOver || desk.canPrepare;
+  self.desktopRestoreButton.enabled = desk.canRestore;
+  self.desktopRestartButton.enabled = desk.canRestartMac;
+  self.desktopTakeOverButton.toolTip = @"Replace now";
 }
 
 - (void)restartCompositor:(id)sender {
@@ -1270,6 +1371,72 @@ static NSImage *WWNMenuBarTemplateIcon(void) {
   [self endRestarting];
   [[WWNLaunchAgentManager sharedManager] startCompositorAgent];
   [self refreshStatus:nil];
+}
+
+- (void)takeOverDesktop:(id)sender {
+  (void)sender;
+  [[WWNDesktopReplacementController sharedController] presentReplaceNowFlow];
+  [self refreshStatus:self.statusItem.menu];
+}
+
+- (void)restoreDesktop:(id)sender {
+  (void)sender;
+  NSAlert *confirm = [[NSAlert alloc] init];
+  confirm.alertStyle = NSAlertStyleWarning;
+  confirm.messageText = @"Restore Aqua?";
+  confirm.informativeText =
+      @"Ends this Desktop Replacement session and restores WindowServer. "
+      @"Path B stays installed. Enable Desktop Replacement stays on.";
+  [confirm addButtonWithTitle:@"Restore Aqua"];
+  [confirm addButtonWithTitle:@"Cancel"];
+  if ([confirm runModal] != NSAlertFirstButtonReturn) {
+    return;
+  }
+  if (![[WWNDesktopReplacementController sharedController] endClassicSession]) {
+    NSAlert *fail = [[NSAlert alloc] init];
+    fail.alertStyle = NSAlertStyleCritical;
+    fail.messageText = @"Could not restore Aqua";
+    fail.informativeText =
+        @"Approve the administrator prompt so Wawona can restore "
+        @"WindowServer.";
+    [fail addButtonWithTitle:@"OK"];
+    [fail runModal];
+    [self refreshStatus:self.statusItem.menu];
+    return;
+  }
+  [self refreshStatus:self.statusItem.menu];
+}
+
+- (void)restartMacForDesktop:(id)sender {
+  (void)sender;
+  WWNDesktopReplacementController *desk =
+      [WWNDesktopReplacementController sharedController];
+  WWNModeBReadyReport *ready = [desk evaluateClassicReadiness];
+  NSAlert *confirm = [[NSAlert alloc] init];
+  confirm.alertStyle = NSAlertStyleWarning;
+  confirm.messageText = @"Restart required before Take Over";
+  confirm.informativeText = [NSString
+      stringWithFormat:
+          @"%@\n\nWawona will open the native macOS Restart sheet "
+          @"(loginwindow kAERestart, 60-second countdown). After you log "
+          @"back in, use Replace now. Login does not take over.",
+          ready.reason];
+  [confirm addButtonWithTitle:@"Restart"];
+  [confirm addButtonWithTitle:@"Cancel"];
+  if ([confirm runModal] != NSAlertFirstButtonReturn) {
+    return;
+  }
+  NSError *rst = nil;
+  if (![desk requestNativeMacOSRestart:&rst]) {
+    NSAlert *fail = [[NSAlert alloc] init];
+    fail.alertStyle = NSAlertStyleCritical;
+    fail.messageText = @"Could not open Restart";
+    fail.informativeText =
+        rst.localizedDescription ?: @"Use the Apple menu, then Restart.";
+    [fail addButtonWithTitle:@"OK"];
+    [fail runModal];
+  }
+  [self refreshStatus:self.statusItem.menu];
 }
 
 - (void)toggleAppLaunchAtLogin:(id)sender {
@@ -1374,6 +1541,7 @@ int main(int argc, char *argv[]) {
        */
       if (strcmp(arg, "--mode-b-status") == 0 ||
           strcmp(arg, "--mode-b-ready") == 0 ||
+          strcmp(arg, "--mode-b-prepare") == 0 ||
           strcmp(arg, "--mode-b-stage") == 0 ||
           strcmp(arg, "--mode-b-probe") == 0 ||
           strcmp(arg, "--mode-b-engage") == 0 ||
@@ -1389,6 +1557,8 @@ int main(int argc, char *argv[]) {
             modeBAction = "status";
           } else if (strcmp(a, "--mode-b-ready") == 0) {
             modeBAction = "ready";
+          } else if (strcmp(a, "--mode-b-prepare") == 0) {
+            modeBAction = "prepare";
           } else if (strcmp(a, "--mode-b-stage") == 0) {
             modeBAction = "stage";
           } else if (strcmp(a, "--mode-b-probe") == 0) {
@@ -1453,6 +1623,9 @@ int main(int argc, char *argv[]) {
         if (modeBAction && strcmp(modeBAction, "ready") == 0) {
           return [ctl cliReady];
         }
+        if (modeBAction && strcmp(modeBAction, "prepare") == 0) {
+          return [ctl cliPrepare];
+        }
         if (modeBAction && strcmp(modeBAction, "stage") == 0) {
           return [ctl cliStage];
         }
@@ -1485,6 +1658,9 @@ int main(int argc, char *argv[]) {
         g_show_about_on_launch = YES;
       } else if (strcmp(arg, "--show-settings") == 0) {
         g_show_settings_on_launch = YES;
+      } else if (strncmp(arg, "--settings-section=", 19) == 0) {
+        g_show_settings_on_launch = YES;
+        g_show_settings_section = [NSString stringWithUTF8String:arg + 19];
       } else if (strcmp(arg, "--headless") == 0 ||
                  strcmp(arg, "--no-gui") == 0) {
         g_cli_headless = YES;
@@ -1522,6 +1698,7 @@ int main(int argc, char *argv[]) {
                  strcmp(arg, "--list-machines") == 0 ||
                  strcmp(arg, "--mode-b-status") == 0 ||
                  strcmp(arg, "--mode-b-ready") == 0 ||
+                 strcmp(arg, "--mode-b-prepare") == 0 ||
                  strcmp(arg, "--mode-b-stage") == 0 ||
                  strcmp(arg, "--mode-b-probe") == 0 ||
                  strcmp(arg, "--mode-b-engage") == 0 ||
@@ -1602,15 +1779,18 @@ int main(int argc, char *argv[]) {
                                                       error:nil];
 
       WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
-      // wl_output mirrors the real display; per-window geometry overrides
-      // handle nested-compositor host windows.
+      // Nested weston copies parent wl_output.mode at bind time. Advertising
+      // physical pixels (logical * backingScale) made the first mode 3360x2100
+      // on a 1680x1050 Retina display, then every xdg_toplevel configure in
+      // points failed ("Mode switch failed"). compositor-host exists for CLI
+      // nested compositors; advertise points at scale 1. Per-window HiDPI
+      // still applies to regular clients after app_id lands.
       NSScreen *hostScreen = [NSScreen mainScreen];
       NSSize hostScreenSize = hostScreen ? hostScreen.frame.size
                                          : NSMakeSize(1024, 768);
-      CGFloat hostScale = hostScreen ? hostScreen.backingScaleFactor : 1.0;
       [bridge setOutputWidth:(uint32_t)hostScreenSize.width
                       height:(uint32_t)hostScreenSize.height
-                       scale:(float)hostScale];
+                       scale:1.0f];
       [bridge setForceSSD:WWNSettings_GetForceServerSideDecorations()];
       if (![bridge startWithSocketName:@"wayland-0"]) {
         wwn_write_runtime_state(NO, @"wayland-0", nil, @"compositor-host",
@@ -1628,21 +1808,15 @@ int main(int argc, char *argv[]) {
       signal(SIGBUS, crash_handler);
       signal(SIGILL, crash_handler);
       WWNLog("MAIN", @"Rust Compositor running!");
-      
-      if ([[NSUserDefaults standardUserDefaults] boolForKey:kWWNPrefsDesktopReplacementEnabled]) {
-        NSString *desktopMachineId = [[NSUserDefaults standardUserDefaults] stringForKey:kWWNPrefsDesktopReplacementMachineId];
-        if (desktopMachineId.length > 0) {
-          WWNLog("MAIN", @"Compositor daemon: Desktop Replacement enabled. Auto-starting machine %@.", desktopMachineId);
-          dispatch_async(dispatch_get_main_queue(), ^{
-            WWNMachineProfile *profile = [WWNMachineProfileStore profileById:desktopMachineId];
-            if (profile) {
-              NSError *err = nil;
-              if (![WWNMachineSessionBridge connectProfile:profile error:&err]) {
-                WWNLog("MAIN", @"Failed to auto-start desktop replacement: %@", err);
-              }
-            }
-          });
-        }
+      // Take Over is per session (Settings / menubar Replace now).
+      // compositor-host is a login KeepAlive agent for Mode A nested
+      // compositors. It must never Classic-engage, even if
+      // DesktopReplacementEnabled is leftover from a previous session.
+      if ([[NSUserDefaults standardUserDefaults]
+              boolForKey:kWWNPrefsDesktopReplacementEnabled]) {
+        WWNLog("MAIN",
+               @"Compositor daemon: Desktop Replacement is enabled. "
+               @"Not auto-starting. Use Replace now.");
       }
 
       WWNKeepServiceHostOutOfDock();

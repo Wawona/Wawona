@@ -13,7 +13,8 @@ NS_ASSUME_NONNULL_BEGIN
 extern NSNotificationName const WWNWatchCompositorFrameReadyNotification;
 
 /// Manages the in-process Wayland compositor for watchOS.
-/// Presents frames as CGImage snapshots that SwiftUI displays via Canvas.
+/// Presents frames as CGImage snapshots. Watch UI GPU-composites them with
+/// SpriteKit (`WatchSpritePresentView`). Not GLES/Vulkan.
 @interface WWNWatchCompositorBridge : NSObject
 
 /// Singleton accessor.
@@ -100,7 +101,7 @@ extern NSNotificationName const WWNWatchCompositorFrameReadyNotification;
 
 /// The most recently rendered compositor frame, or nil if nothing has been drawn yet.
 /// This image is updated on the main thread every time a new frame is committed.
-@property(nonatomic, readonly, nullable) CGImageRef latestFrame;
+@property(nonatomic, readonly, nullable) CGImageRef latestFrame CF_RETURNS_NOT_RETAINED;
 
 /// Width of the compositor output in points.
 @property(nonatomic, assign) uint32_t outputWidth;

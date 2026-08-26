@@ -154,7 +154,8 @@ public enum GlobalSettingsSectionID: String, Sendable, CaseIterable, Hashable {
     case localShell
     /// Global machine-session gestures (shake / swipe / tvOS Menu). Not the Machines window.
     case machines
-    /// Apple iCloud Drive sync for shell HOME. Omit on Android and Linux.
+    /// Apple iCloud Drive sync for shell HOME. Omit on Android, Linux, and tvOS
+    /// (iCloud Drive is unavailable on tvOS; Apple QA1935). watchOS shows status only.
     case iCloudSync
     /// iPhone/iPad send-side companion documents (WatchConnectivity). Not a watchOS catalog twin.
     case appleWatch
@@ -250,6 +251,12 @@ public enum GlobalSettingsFieldID: String, Sendable, CaseIterable {
     case logLevel
     case shakeToClose
     case swipeBackToClose
+    case sessionThumbnails
+    case vmEngine
+    case vmVsockPort
+    case containerRuntime
+    case containerImageStore
+    case machinesStatus
     case aboutVersion
     case aboutPlatform
     case aboutAuthor
@@ -299,7 +306,7 @@ public struct GlobalSettingsCatalog: Sendable {
         case .tvOS:
             return [
                 .display, .input, .graphics, .connection, .environment,
-                .machines, .iCloudSync, .advanced, .waypipe, .ssh, .about,
+                .machines, .advanced, .waypipe, .ssh, .about,
                 .dependencies,
             ]
         case .watchOS:
@@ -364,14 +371,24 @@ public struct GlobalSettingsCatalog: Sendable {
             if host == .iOS || host == .watchOS || host == .visionOS || host == .android {
                 fields.append(.swipeBackToClose)
             }
+            fields.append(.sessionThumbnails)
+            switch host {
+            case .macOS, .iOS, .android, .linux:
+                fields.append(contentsOf: [
+                    .vmEngine, .vmVsockPort, .containerRuntime, .containerImageStore,
+                    .machinesStatus,
+                ])
+            case .tvOS, .watchOS, .visionOS:
+                break
+            }
             return fields
         case .iCloudSync:
             switch host {
             case .macOS, .iOS, .visionOS:
                 return [.iCloudSyncEnabled, .iCloudSyncStatus]
-            case .tvOS, .watchOS:
+            case .watchOS:
                 return [.iCloudSyncStatus]
-            case .android, .linux:
+            case .tvOS, .android, .linux:
                 return []
             }
         case .appleWatch:

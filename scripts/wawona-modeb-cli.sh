@@ -208,7 +208,7 @@ cmd_ready() {
   if [ ! -x "$HELPER" ]; then
     log "VERDICT blocked"
     log "REASON Mode B helper is missing at $HELPER"
-    log "next: Wawona --mode-b-stage"
+    log "next: nix run .#install from the Wawona repo, or open Wawona (desktop-host syncs the helper automatically)"
     return 3
   fi
   set +e
@@ -232,7 +232,7 @@ cmd_ready() {
   fi
   log "VERDICT blocked"
   log "REASON ${reason:-Classic Take Over is blocked. See --ack-status above.}"
-  log "next: arm Path B (claim-install --path-b), reboot, then Wawona --mode-b-ready"
+  log "next: Wawona --mode-b-prepare (or Settings → Prepare this Mac)"
   return 3
 }
 

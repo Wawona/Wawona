@@ -94,11 +94,13 @@ typedef void (^WaypipeOutputHandler)(NSString *output);
 
 #if TARGET_OS_OSX
 /**
- * Argv and environment to run a nested compositor as the Mode B display
- * server (wwn-iland framebufferd). Forces that client's own DRM/KMS backend,
- * clears WAYLAND_DISPLAY so it does not nest inside Wawona, and leaves
- * compositor-specific flags to that client (weston --backend=drm, niri
- * NIRI_BACKEND=tty, custom command exec as-is). Does not start the process.
+ * Argv and environment to run a compositor or KMS client as the Mode B
+ * display server (wwn-iland framebufferd). Classic Take Over has no host
+ * Wayland, so weston/niri use their DRM backends here (`--backend=drm`,
+ * `NIRI_BACKEND=tty`). That does not remove nested Wayland: Mode A Machines
+ * Start still honours Display Backend (wayland vs drm). KMS-only clients
+ * (kmscube, gbm-es2-demo, vkcube-kms) scan out the same userspace KMS path.
+ * Does not start the process.
  */
 - (BOOL)baremetalCompositorLaunchSpecForProfile:(WWNMachineProfile *)profile
                                      executable:(NSString *_Nullable *_Nonnull)outPath
@@ -109,11 +111,19 @@ typedef void (^WaypipeOutputHandler)(NSString *output);
 
 @end
 
+/// YES when there is no host compositor to nest inside: Classic Desktop
+/// Replacement has unloaded WindowServer. Nested Wayland cannot work there,
+/// so weston/niri must use wwn-iland DRM/KMS/GBM. Aqua is NSScreen or a
+/// visible WindowServer process, never a censored `proc_name` miss, leaked
+/// `WWN_MODEB_TTY`, or Desktop Replacement enabled but not engaged.
+FOUNDATION_EXPORT BOOL WWNHostSessionUsesOwnDisplayDRM(void);
+
 /// Resolves the display backend a bundled compositor should run against:
 /// @"wayland" to nest it inside Wawona, or @"drm" to run it against
 /// wwn-iland's userland KMS the way it would run on bare metal. Pass the
 /// machine's CompositorBackend override, or nil to take the CLI override /
-/// global setting. Falls back to @"wayland" when the choice is unavailable
+/// global setting. Classic / own-display always returns @"drm" (no host
+/// Wayland). In Aqua, falls back to @"wayland" when the choice is unavailable
 /// (notably OpenGLDriver=none, which leaves nothing behind iland to present
 /// with).
 FOUNDATION_EXPORT NSString *_Nonnull WWNResolveCompositorBackend(

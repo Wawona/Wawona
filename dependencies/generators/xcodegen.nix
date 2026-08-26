@@ -35,6 +35,7 @@
   macosModebTty ? null,
   macosOpenglCube ? null,
   macosVkcube ? null,
+  macosGbmEs2Demo ? null,
   macosWestonSimpleEgl ? null,
   macosNiri ? null,
   macosFuzzel ? null,
@@ -76,6 +77,8 @@ let
     else if gh != "" then gh
     else "1";
   derivedRustLib = "$(DERIVED_FILE_DIR)/libwawona.a";
+  # Cursor files only. Do not use pkgs.adwaita-icon-theme (librsvg + mypy).
+  adwaitaCursors = pkgs.callPackage ../wawona/adwaita-cursors.nix { };
 
   # Simulator slices on Apple Silicon CI: never compile x86_64. App targets
   # already set ARCHS[sdk=*simulator*]=arm64; shared frameworks did not, so
@@ -220,15 +223,17 @@ let
     "${strip deps.pixman}/include"
     "${strip deps.pixman}/include/pixman-1"
   ];
-  ilandGlHeaderPaths = deps: [
-    "${strip (deps.iland or null)}/include"
-    "${strip (deps.iland or null)}/include/EGL"
-    "${strip (deps.iland or null)}/include/GLES2"
-    "${strip (deps.angle or null)}/include"
-    "${strip (deps.kmscube or deps."iland-gl-clients" or null)}/include"
-  ]
-  ++ lib.optional (deps.vkcube or null != null) "${strip deps.vkcube}/include"
-  ++ lib.optional (deps."opengl-cube" or null != null) "${strip deps."opengl-cube"}/include";
+  ilandGlHeaderPaths = deps:
+    lib.optionals (deps.iland or null != null) [
+      "${strip deps.iland}/include"
+      "${strip deps.iland}/include/EGL"
+      "${strip deps.iland}/include/GLES2"
+    ]
+    ++ lib.optional (deps.angle or null != null) "${strip deps.angle}/include"
+    ++ lib.optional ((deps.kmscube or deps."iland-gl-clients" or null) != null)
+      "${strip (deps.kmscube or deps."iland-gl-clients")}/include"
+    ++ lib.optional (deps.vkcube or null != null) "${strip deps.vkcube}/include"
+    ++ lib.optional (deps."opengl-cube" or null != null) "${strip deps."opengl-cube"}/include";
   # foot: force-load the privatized $(DERIVED_FILE_DIR) copy (see xcode-prebuild.sh),
   # not the raw store archive. Its embedded protocol symbols must be localised so
   # they do not collide with weston / fuzzel at final link.
@@ -544,7 +549,15 @@ let
     "Wawona-visionOS"
   ];
 
-  schemesConfig = lib.genAttrs appSchemeNames mkAppScheme;
+  schemesConfig = (lib.genAttrs appSchemeNames mkAppScheme) // {
+    Wawona-PrefPane = {
+      build = {
+        targets = {
+          Wawona-PrefPane = "all";
+        };
+      };
+    };
+  };
 
   # Shared helper for iOS-family application targets (iOS, iPadOS, tvOS).
   mkAppleMobileTarget =
@@ -781,7 +794,8 @@ PLIST
     if angleSimDylib != null then angleEmbedScript "iphonesimulator" angleSimDylib
     else pkgs.writeShellScript "embed-angle-sim-dylibs-noop.sh" "exit 0";
   angleDeviceEmbedScript =
-    # No appletvos. TvOS must not ship ANGLE (platform-targets matrix).
+    # Static ANGLE archives (source GN on tvOS/visionOS, XCSoar dylibs on
+    # iOS). appletvos must not embed libEGL.dylib; xcodegen links libEGL.a.
     if angleDeviceDylib != null then angleEmbedScript "iphoneos" angleDeviceDylib
     else pkgs.writeShellScript "embed-angle-device-dylibs-noop.sh" "exit 0";
 
@@ -1021,13 +1035,23 @@ ICDJSON
         echo "warning: weston $NAME not found at $SRC" >&2
       fi
     done
-    CURSOR_SRC="${pkgs.adwaita-icon-theme}/share/icons/Adwaita/cursors"
+    CURSOR_SRC="${adwaitaCursors}/share/icons/Adwaita/cursors"
     if [ -d "$CURSOR_SRC" ]; then
       mkdir -p "$ICONS_DEST"
       cp -RL "$CURSOR_SRC/." "$ICONS_DEST/"
       echo "Embedded Adwaita cursors into $ICONS_DEST"
     else
       echo "warning: Adwaita cursors not found at $CURSOR_SRC" >&2
+    fi
+    if [ -f "${adwaitaCursors}/share/icons/Adwaita/index.theme" ]; then
+      mkdir -p "$BUNDLE/share/icons/Adwaita"
+      cp -L "${adwaitaCursors}/share/icons/Adwaita/index.theme" \
+        "$BUNDLE/share/icons/Adwaita/index.theme"
+    fi
+    if [ -d "${adwaitaCursors}/share/icons/default" ]; then
+      mkdir -p "$BUNDLE/share/icons/default"
+      cp -RL "${adwaitaCursors}/share/icons/default/." \
+        "$BUNDLE/share/icons/default/"
     fi
     chmod -R u+w "$WESTON_DEST" "$ICONS_DEST" 2>/dev/null || true
   '';
@@ -1350,7 +1374,7 @@ ICDJSON
   # modeb/ is documentation only; wwn-iowatchdog ships from flake input
   # wwn-iowatchdog (bundled in macos.nix). Never link a Watchdog main() into
   # any app target.
-  commonExcludes = ["**/*.rs" "**/*.toml" "**/*.md" "**/Cargo.lock" "**/.DS_Store" "**/renderer_android.*" "**/WWNSettings.c" "**/Skip/**" "modeb/**"];
+  commonExcludes = ["**/*.rs" "**/*.toml" "**/*.md" "**/Cargo.lock" "**/.DS_Store" "**/renderer_android.*" "**/WWNSettings.c" "**/Skip/**" "modeb/**" "**/PrefPane/**"];
   # Mobile targets ship src/platform/ios/WWNIlandPresenter.*; omit macOS copies.
   mobileMacPlatformExcludes = commonExcludes ++ [
     "WWNIlandPresenter.m"
@@ -1364,17 +1388,18 @@ ICDJSON
     { path = "src/util/WWNStartupLogger.m"; type = "file"; }
   ];
 
-  # WWNMachineEditorView (src/platform/macos/ui/Machines) uses EnvironmentVariablesView.
-  # That type lives under Sources/WawonaUI, which macOS embeds as a whole tree but
-  # Apple-mobile app targets do not. Compile the minimal Settings UI pieces so
-  # iOS/iPadOS/tvOS/visionOS resolve the type (and ObjC can NSClassFromString the
-  # presenter). Do not add these to macOS (already covered by Sources/WawonaUI)
-  # or watchOS (no WWNMachineEditorView).
+  # Shared SwiftUI under Sources/WawonaUI. macOS embeds that tree; Apple-mobile
+  # app targets do not. Compile the pieces WWNMachineEditorView /
+  # WWNMachineCardView / WWNMachinesGridView need so iOS/iPadOS/tvOS/visionOS
+  # resolve the types (and ObjC can NSClassFromString the presenter). Do not add
+  # these to macOS (already covered by Sources/WawonaUI) or watchOS (no those
+  # Machines views).
   appleMobileEnvUISources = [
     { path = "Sources/WawonaUI/Settings/EnvironmentVariablesView.swift"; type = "file"; }
     { path = "Sources/WawonaUI/Settings/WWNEnvironmentSettingsPresenter.swift"; type = "file"; }
     { path = "Sources/WawonaUI/View+WawonaTextField.swift"; type = "file"; }
     { path = "Sources/WawonaUI/MachineRuntimeSettingsApplicator.swift"; type = "file"; }
+    { path = "Sources/WawonaUI/Machines/MachineActionBar.swift"; type = "file"; }
   ];
 
   # Xcode “Update to recommended settings” for framework targets with Swift/ObjC clients.
@@ -1496,6 +1521,7 @@ ICDJSON
           # Missing this makes ASC accept the IPA then discard the build (never listed).
           { path = "src/resources/app-bundle/PrivacyInfo.xcprivacy"; type = "file"; buildPhase = "resources"; }
           (settingsDepsResource "ios")
+          { path = "src/resources/Settings.bundle"; type = "folder"; buildPhase = "resources"; }
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
@@ -1689,6 +1715,7 @@ ICDJSON
           # Missing this makes ASC accept the IPA then discard the build (never listed).
           { path = "src/resources/app-bundle/PrivacyInfo.xcprivacy"; type = "file"; buildPhase = "resources"; }
           (settingsDepsResource "ipados")
+          { path = "src/resources/Settings.bundle"; type = "folder"; buildPhase = "resources"; }
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
@@ -1857,12 +1884,11 @@ ICDJSON
               "ui/**"
             ];
           }
-          # Real WWNIlandPresenter.m pulls ANGLE/iland; use the tv/watch stub.
-          # Optional C stubs cover dispatch symbols Darwin will not leave undefined.
+          # Real WWNIlandPresenter.m: Vulkan/MoltenVK present. Stub is watchOS-only.
           { path = "src/platform/ios"; excludes = commonExcludes ++ [
             "WWNWaypipeRunnerVisionStub.m"
             "WWNGetprognameStub.c"
-            "WWNIlandPresenter.m"
+            "WWNIlandPresenterStub.m"
           ]; }
           {
             path = "src/platform/macos/ui/Machines";
@@ -1886,7 +1912,8 @@ ICDJSON
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
         ] ++ iosUtilSources ++ appleMobileEnvUISources;
         preBuildScripts = [ stampBuildNumberPhase tvosPreBuild ];
-        # No ANGLE embed / no VM guest on tvOS (platform-targets: no GL, no VM).
+        # ANGLE is statically linked (libEGL.a / libGLESv2.a), not embedded as
+        # dylibs. tvOS GPU is Mode A GLES+Vulkan. VM/container machines stay forbidden.
         # appsCatalogEmbedPhase is cheap and already gates on appletvos|appletvsimulator
         # so nested niri/fuzzel can resolve .desktop entries from the share tree.
         postBuildScripts = [ xkbEmbedPhase fontEmbedPhase westonDataEmbedPhase tvosNiriDataEmbedPhase appsCatalogEmbedPhase tvosRootfsEmbedPhase tvosNeovimRootfsEmbedPhase simInstallWritableBundlePhase stripIOSOnlyInfoPlistKeysPhase ];
@@ -1954,6 +1981,7 @@ ICDJSON
             ] ++ westonToytoolkitLdflagsAppleMobile tvosDeps ++ westonCompositorLdflagsAppleMobile tvosDeps ++ niriLdflags tvosDeps ++ footLdflags tvosDeps ++ fastfetchLdflags tvosDeps ++ phoonLdflags tvosDeps ++ wasmLdflags tvosDeps
             ++ sshCliLdflags tvosDeps
              ++ appleMobileResolvLdflags
+            ++ (ilandGlLdflags { deps = tvosDeps; simulator = false; }) ++ moltenvkLdflags tvosDeps
             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ "-liconv" derivedRustLib ] ++ finalCxxLdflagsNoIokit;
             "OTHER_LDFLAGS[sdk=appletvsimulator*]" = [
               "$(inherited)"
@@ -1987,27 +2015,31 @@ ICDJSON
             ] ++ westonToytoolkitLdflagsAppleMobile tvosSimDeps ++ westonCompositorLdflagsAppleMobile tvosSimDeps ++ niriLdflags tvosSimDeps ++ footLdflags tvosSimDeps ++ fastfetchLdflags tvosSimDeps ++ phoonLdflags tvosSimDeps ++ wasmLdflags tvosSimDeps
             ++ sshCliLdflags tvosSimDeps
              ++ appleMobileResolvLdflags
+            ++ (ilandGlLdflags { deps = tvosSimDeps; simulator = true; }) ++ moltenvkLdflags tvosSimDeps
             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ "-liconv" derivedRustLib ] ++ finalCxxLdflagsNoIokit;
             GCC_PREPROCESSOR_DEFINITIONS = [
               "$(inherited)"
               "TARGET_OS_IPHONE=1"
               "TARGET_OS_TV=1"
+              "WWN_TVOS_GPU_BUNDLED=1"
               "PRODUCT_BUNDLE_IDENTIFIER=\\\"com.aspauldingcode.Wawona\\\""
             ] ++ versionDefs;
+            "SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=appletvos*]" = [ "$(inherited)" "WWN_TVOS_GPU_BUNDLED" ];
+            "SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=appletvsimulator*]" = [ "$(inherited)" "WWN_TVOS_GPU_BUNDLED" ];
             "HEADER_SEARCH_PATHS[sdk=appletvos*]" = [
               "$(inherited)"
               "${strip (tvosDeps.libwayland or null)}/include"
               "${strip (tvosDeps.libwayland or null)}/include/wayland"
               "${strip (tvosDeps.xkbcommon or null)}/include"
               "${strip (tvosDeps.libssh2 or null)}/include"
-            ] ++ (pixmanHeaderPaths tvosDeps);
+            ] ++ (pixmanHeaderPaths tvosDeps) ++ (ilandGlHeaderPaths tvosDeps);
             "HEADER_SEARCH_PATHS[sdk=appletvsimulator*]" = [
               "$(inherited)"
               "${strip (tvosSimDeps.libwayland or null)}/include"
               "${strip (tvosSimDeps.libwayland or null)}/include/wayland"
               "${strip (tvosSimDeps.xkbcommon or null)}/include"
               "${strip (tvosSimDeps.libssh2 or null)}/include"
-            ] ++ (pixmanHeaderPaths tvosSimDeps);
+            ] ++ (pixmanHeaderPaths tvosSimDeps) ++ (ilandGlHeaderPaths tvosSimDeps);
           };
         };
         dependencies = [
@@ -2029,6 +2061,70 @@ ICDJSON
           { sdk = "Network.framework"; }
           { sdk = "StoreKit.framework"; }
           { sdk = "GameController.framework"; }
+        ];
+      };
+      Wawona-PrefPane = {
+        type = "bundle";
+        platform = "macOS";
+        sources = [
+          { path = "src/platform/macos/ui/Settings/PrefPane/WWNPreferencePane.m"; type = "file"; }
+          { path = "src/platform/macos/ui/Settings/PrefPane/WWNPreferencePane.h"; type = "file"; }
+          { path = "src/platform/macos/ui/Settings/PrefPane/WWNPrefPaneHandoff.m"; type = "file"; }
+          { path = "src/platform/macos/ui/Settings/PrefPane/WWNPrefPaneHandoff.h"; type = "file"; }
+          { path = "src/platform/macos/ui/Settings/PrefPane/WWNPrefPaneStubs.m"; type = "file"; }
+          # Keep Info.plist in the project group without copying it into Resources.
+          { path = "src/platform/macos/ui/Settings/PrefPane/Info.plist"; type = "file"; buildPhase = "none"; }
+          { path = "src/platform/macos/ui/Settings/WWNPreferences.m"; type = "file"; }
+          { path = "src/platform/macos/ui/Settings/WWNPreferences.h"; type = "file"; }
+          { path = "src/platform/macos/ui/Settings/WWNPreferencesManager.m"; type = "file"; }
+          { path = "src/platform/macos/ui/Settings/WWNPreferencesManager.h"; type = "file"; }
+          { path = "src/platform/macos/ui/Settings/WWNSettingsModel.m"; type = "file"; }
+          { path = "src/platform/macos/ui/Settings/WWNSettingsModel.h"; type = "file"; }
+          { path = "src/platform/macos/ui/Settings/WWNSettingsDefines.h"; type = "file"; }
+          { path = "src/platform/macos/ui/Settings/WWNSipStatus.m"; type = "file"; }
+          { path = "src/platform/macos/ui/Settings/WWNSipStatus.h"; type = "file"; }
+          { path = "src/platform/macos/ui/Helpers/WWNImageLoader.m"; type = "file"; }
+          { path = "src/platform/macos/ui/Helpers/WWNImageLoader.h"; type = "file"; }
+          { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; buildPhase = "resources"; }
+        ];
+        settings = {
+          base = {
+            INFOPLIST_FILE = "src/platform/macos/ui/Settings/PrefPane/Info.plist";
+            GENERATE_INFOPLIST_FILE = "NO";
+            PRODUCT_NAME = "Wawona";
+            PRODUCT_BUNDLE_IDENTIFIER = "com.aspauldingcode.Wawona.prefPane";
+            WRAPPER_EXTENSION = "prefPane";
+            MACH_O_TYPE = "mh_bundle";
+            SUPPORTED_PLATFORMS = "macosx";
+            SWIFT_OBJC_BRIDGING_HEADER = "";
+            SWIFT_INSTALL_OBJC_HEADER = "NO";
+            CLANG_ENABLE_MODULES = "YES";
+            CODE_SIGNING_ALLOWED = "NO";
+            CODE_SIGNING_REQUIRED = "NO";
+            CODE_SIGN_STYLE = "Automatic";
+            COMBINE_HIDPI_IMAGES = "YES";
+            HEADER_SEARCH_PATHS = [
+              "$(inherited)"
+              "$(SRCROOT)/src"
+              "$(SRCROOT)/src/util"
+              "$(SRCROOT)/src/platform/macos"
+              "$(SRCROOT)/src/platform/macos/ui"
+              "$(SRCROOT)/src/platform/macos/ui/Machines"
+              "$(SRCROOT)/src/platform/macos/ui/Helpers"
+              "$(SRCROOT)/src/platform/macos/ui/Settings"
+            ];
+            GCC_PREPROCESSOR_DEFINITIONS = [
+              "$(inherited)"
+              "WWN_PREFPANE=1"
+            ] ++ versionDefs;
+          };
+        };
+        dependencies = [
+          { sdk = "Cocoa.framework"; }
+          { sdk = "PreferencePanes.framework"; }
+          { sdk = "Foundation.framework"; }
+          { sdk = "Network.framework"; }
+          { sdk = "Security.framework"; }
         ];
       };
       Wawona-macOS = {
@@ -2058,6 +2154,23 @@ ICDJSON
         preBuildScripts = [ stampBuildNumberPhase macosPreBuild ];
         postBuildScripts = [
           {
+            name = "Bundle Preference Pane";
+            basedOnDependencyAnalysis = false;
+            script = ''
+              PREF_SRC="$BUILT_PRODUCTS_DIR/Wawona.prefPane"
+              PREF_DST="$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/Resources/PreferencePanes/Wawona.prefPane"
+              if [ -d "$PREF_SRC" ]; then
+                mkdir -p "$(dirname "$PREF_DST")"
+                rm -rf "$PREF_DST"
+                ditto "$PREF_SRC" "$PREF_DST"
+                echo "Bundled Wawona.prefPane"
+              else
+                echo "error: Wawona.prefPane missing at $PREF_SRC" >&2
+                exit 1
+              fi
+            '';
+          }
+          {
             name = "Bundle Executables";
             basedOnDependencyAnalysis = false;
             script = ''
@@ -2073,6 +2186,7 @@ ICDJSON
               MODEB_TTY_BIN="${strip macosModebTty}/bin"
               OPENGL_CUBE_BIN="${strip macosOpenglCube}/bin"
               VKCUBE_BIN="${strip macosVkcube}/bin"
+              GBM_ES2_BIN="${strip macosGbmEs2Demo}/bin"
               WESTON_SIMPLE_EGL_BIN="${strip macosWestonSimpleEgl}/bin"
               NIRI_BIN="${strip macosNiri}/bin"
               NIRI_CFG="${strip macosNiri}/share/niri/default-config.kdl"
@@ -2154,6 +2268,11 @@ ICDJSON
               bundle_bin "$NEOVIM_BIN/nvim" "vim"
               bundle_bin "$ZSH_BIN/zsh" "zsh"
               require_bin "$KMSCUBE_BIN/kmscube" "kmscube"
+              if [ -f "$GBM_ES2_BIN/gbm-es2-demo" ]; then
+                bundle_bin "$GBM_ES2_BIN/gbm-es2-demo" "gbm-es2-demo"
+              elif [ -f "$GBM_ES2_BIN/gbm_es2_demo" ]; then
+                bundle_bin "$GBM_ES2_BIN/gbm_es2_demo" "gbm-es2-demo"
+              fi
               # Mode B multi-VT console (Classic own-display). Soft-require so
               # older product graphs without modebTty still link.
               if [ -f "$MODEB_TTY_BIN/igettyd" ]; then
@@ -2171,6 +2290,14 @@ ICDJSON
                   ln -sf ../MacOS/igetty "$BIN_DEST/igetty"
                   ln -sf igetty "$MACOS_DEST/modeb-getty"
                   ln -sf ../MacOS/igetty "$BIN_DEST/modeb-getty"
+                fi
+                MODEB_SESSION="$MODEB_TTY_BIN/../libexec/wwn-modeb-session"
+                if [ -d "$MODEB_SESSION" ]; then
+                  DEST="$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/Resources/libexec/wwn-modeb-session"
+                  mkdir -p "$DEST"
+                  cp -R "$MODEB_SESSION/." "$DEST/"
+                  chmod +x "$DEST/niri" "$DEST/weston" 2>/dev/null || true
+                  echo "Bundled Mode B TTY niri/weston DRM wrappers"
                 fi
               elif [ -f "$MODEB_TTY_BIN/modeb-ttyd" ]; then
                 require_bin "$MODEB_TTY_BIN/modeb-ttyd" "modeb-ttyd"
@@ -2192,6 +2319,9 @@ ICDJSON
                 bundle_bin "$OPENGL_CUBE_BIN/opengl-cube" "opengl-cube"
               fi
               require_bin "$VKCUBE_BIN/vkcube" "vkcube"
+              if [ -f "$VKCUBE_BIN/vkcube-kms" ]; then
+                bundle_bin "$VKCUBE_BIN/vkcube-kms" "vkcube-kms"
+              fi
               require_bin "$WESTON_SIMPLE_EGL_BIN/weston-simple-egl" "weston-simple-egl"
 
               # niri (wwn-niri): nested scrollable-tiling compositor. Ship the
@@ -2220,6 +2350,16 @@ ICDJSON
               # Resources/lib/weston, Resources/lib/libweston-13). Mirrors macos.nix.
               WESTON_STORE="${strip macosWeston}"
               RES_DEST="$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/Resources"
+              if [ -d "$WESTON_STORE/libexec" ]; then
+                for helper in "$WESTON_STORE/libexec"/weston-*; do
+                  [ -f "$helper" ] || continue
+                  hbase="$(basename "$helper")"
+                  bundle_bin "$helper" "$hbase"
+                  install -m 755 "$helper" "$MACOS_DEST/$hbase"
+                  sign_bin "$MACOS_DEST/$hbase"
+                  echo "Bundled weston helper $hbase"
+                done
+              fi
               if [ -d "$WESTON_STORE/share/weston" ]; then
                 mkdir -p "$RES_DEST/share/weston"
                 cp -R "$WESTON_STORE/share/weston/." "$RES_DEST/share/weston/"
@@ -2267,11 +2407,25 @@ ICDJSON
               cp -RL "${wawonaBundledFonts}/share/fonts/." "$RES_DEST/share/fonts/"
               chmod -R u+w "$RES_DEST/share/fonts"
               echo "Bundled Wawona fonts (DejaVu + DejaVuSansM Nerd Font Mono)"
-              CURSOR_SRC="${pkgs.adwaita-icon-theme}/share/icons/Adwaita/cursors"
+              CURSOR_SRC="${adwaitaCursors}/share/icons/Adwaita/cursors"
               if [ -d "$CURSOR_SRC" ]; then
                 mkdir -p "$RES_DEST/share/icons/Adwaita"
                 cp -RL "$CURSOR_SRC" "$RES_DEST/share/icons/Adwaita/cursors"
                 chmod -R u+w "$RES_DEST/share/icons/Adwaita/cursors"
+                [ -e "$RES_DEST/share/icons/Adwaita/cursors/dnd-copy" ] \
+                  || ln -sf copy "$RES_DEST/share/icons/Adwaita/cursors/dnd-copy"
+                [ -e "$RES_DEST/share/icons/Adwaita/cursors/dnd-none" ] \
+                  || ln -sf default "$RES_DEST/share/icons/Adwaita/cursors/dnd-none"
+                if [ -f "${adwaitaCursors}/share/icons/Adwaita/index.theme" ]; then
+                  cp -L "${adwaitaCursors}/share/icons/Adwaita/index.theme" \
+                    "$RES_DEST/share/icons/Adwaita/index.theme"
+                fi
+                if [ -d "${adwaitaCursors}/share/icons/default" ]; then
+                  mkdir -p "$RES_DEST/share/icons/default"
+                  cp -RL "${adwaitaCursors}/share/icons/default/." \
+                    "$RES_DEST/share/icons/default/"
+                  chmod -R u+w "$RES_DEST/share/icons/default"
+                fi
                 echo "Bundled Adwaita cursors"
               fi
 
@@ -2302,6 +2456,28 @@ ICDJSON
               CONTENTS="$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH"
               FW="$CONTENTS/Frameworks"
               mkdir -p "$FW"
+
+              # Host Wawona LC_LOADs @rpath/libEGL.dylib (iland shim
+              # install_name). Relocator skips @rpath and skips the main
+              # executable, so stage the shim + ANGLE here before the copy
+              # loop walks Frameworks/*.dylib for wayland-client deps.
+              ILAND_EGL="${strip (macosDeps.iland or null)}/lib/libEGL.dylib"
+              ANGLE_EGL="${strip (macosDeps.angle or null)}/lib/libEGL.dylib"
+              if [ ! -f "$ILAND_EGL" ]; then
+                echo "error: iland Wayland-EGL shim missing: $ILAND_EGL" >&2
+                exit 1
+              fi
+              if [ ! -f "$ANGLE_EGL" ]; then
+                echo "error: ANGLE libEGL.dylib missing: $ANGLE_EGL" >&2
+                exit 1
+              fi
+              cp -L "$ANGLE_EGL" "$FW/libEGL_angle.dylib"
+              chmod 755 "$FW/libEGL_angle.dylib"
+              install_name_tool -id "@rpath/libEGL_angle.dylib" "$FW/libEGL_angle.dylib" 2>/dev/null || true
+              cp -L "$ILAND_EGL" "$FW/libEGL.dylib"
+              chmod 755 "$FW/libEGL.dylib"
+              install_name_tool -id "@rpath/libEGL.dylib" "$FW/libEGL.dylib" 2>/dev/null || true
+              echo "Bundled iland libEGL.dylib (shim) + libEGL_angle.dylib (ANGLE)"
 
               # NOTE: Xcode run-script phases execute under /bin/sh, which lacks
               # process substitution (< <(...)) and needs plain temp-file reads.
@@ -2499,6 +2675,7 @@ ICDJSON
           };
         };
         dependencies = [
+          { target = "Wawona-PrefPane"; embed = false; }
           { target = "WawonaModel"; embed = true; codeSign = true; }
           { target = "WawonaUIContracts"; embed = true; codeSign = true; }
           { sdk = "Cocoa.framework"; }
@@ -2747,6 +2924,8 @@ ICDJSON
             DEFINES_MODULE = "YES";
             SKIP_INSTALL = "YES";
             BUILD_LIBRARY_FOR_DISTRIBUTION = "NO";
+            "SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=appletvos*]" = [ "$(inherited)" "WWN_TVOS_GPU_BUNDLED" ];
+            "SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=appletvsimulator*]" = [ "$(inherited)" "WWN_TVOS_GPU_BUNDLED" ];
             # Never on framework targets (ASC ITMS-90429/90427): only the app
             # target's "Embed Frameworks" phase should run swift-stdlib-tool.
             ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = "NO";
@@ -2937,7 +3116,13 @@ ICDJSON
             "EXCLUDED_SOURCE_FILE_NAMES[arch=arm64_32]" = [
               "WWNMiniWaylandServer.c"
             ];
-            HEADER_SEARCH_PATHS = [
+            # Split by SDK like tvOS/visionOS. A single HEADER_SEARCH_PATHS
+            # used watchosDeps, which is empty in simulatorOnly / ios-sim
+            # xcodegen (device watch packages are skipped). The mini server
+            # then compiled as the stub (__has_include wayland-server.h false)
+            # while OTHER_LDFLAGS[sdk=watchsimulator*] still linked the real
+            # libwayland-server. Start failed: wwn_wls_create returned NULL.
+            "HEADER_SEARCH_PATHS[sdk=watchos*]" = [
               "$(inherited)"
               "${strip (watchosDeps.libffi or null)}/include"
               "${strip (watchosDeps.libwayland or null)}/include"
@@ -2947,6 +3132,16 @@ ICDJSON
               "$(SRCROOT)/src/platform/macos/ui/Helpers"
               "$(SRCROOT)/src/util"
             ] ++ (pixmanHeaderPaths watchosDeps);
+            "HEADER_SEARCH_PATHS[sdk=watchsimulator*]" = [
+              "$(inherited)"
+              "${strip (watchosSimDeps.libffi or null)}/include"
+              "${strip (watchosSimDeps.libwayland or null)}/include"
+              "${strip (watchosSimDeps.libwayland or null)}/include/wayland"
+              "${strip (watchosSimDeps.libssh2 or iosSimDeps.libssh2 or null)}/include"
+              "$(SRCROOT)/src/platform/watchos"
+              "$(SRCROOT)/src/platform/macos/ui/Helpers"
+              "$(SRCROOT)/src/util"
+            ] ++ (pixmanHeaderPaths watchosSimDeps);
             # WawonaModel/WawonaUIContracts are embed=false, link=false above
             # (see dependencies comment): Xcode unconditionally adds
             # -F$(CONFIGURATION_BUILD_DIR) for every target's *own* build
@@ -3097,6 +3292,7 @@ ICDJSON
           { sdk = "Foundation.framework"; }
           { sdk = "CoreGraphics.framework"; }
           { sdk = "Security.framework"; }
+          { sdk = "SpriteKit.framework"; }
         ];
       };
     };
@@ -3112,6 +3308,7 @@ ICDJSON
     Wawona-watchOS = "watchos";
     Wawona-visionOS = "visionos";
     Wawona-macOS = "macos";
+    Wawona-PrefPane = "macos";
   };
 
   sharedXcodeTargets = [ "WawonaModel" "WawonaUIContracts" ];

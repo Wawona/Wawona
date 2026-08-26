@@ -59,7 +59,7 @@ struct MachineEditorView: View {
     }
 
     private var isNative: Bool { type == .native }
-    private var isSSH:    Bool { type == .sshWaypipe || type == .sshTerminal }
+    private var isSSH:    Bool { type.isSSH }
     private var contractState: MachineEditorState {
         persistableEditorState()
     }

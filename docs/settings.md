@@ -18,16 +18,17 @@
 
 | Layer | UI | Entry points |
 |-------|-----|--------------|
-| **Global Wawona Settings** | ObjC + AppKit (macOS) / UIKit (iOS, iPadOS, tvOS, visionOS) / WatchKit + SwiftUI catalog (watchOS); Kotlin on Android | App menu **Settings…**, Settings tab (`ObjCSettingsHostView`), Machines window gear icon, watch gear → `WatchGlobalSettingsView` (same `GlobalSettingsCatalog` as WatchKit `WWNWatchSettings`) |
+| **Global Wawona Settings** | ObjC + AppKit (macOS) / UIKit (iOS, iPadOS, tvOS, visionOS) / WatchKit + SwiftUI catalog (watchOS); Kotlin on Android | App menu **Settings…**, Settings tab (`ObjCSettingsHostView`), Machines window gear icon, watch gear → `WatchGlobalSettingsView` (same `GlobalSettingsCatalog` as WatchKit `WWNWatchSettings`). **macOS System Settings:** Wawona pane (Wawona icon; under Other on macOS 13+). Installed by `nix run .#install` and the GitHub DMG `WawonaAgent.pkg`. **iOS Settings:** Settings → Apps → Wawona → Wawona Settings (`Settings.bundle`; toggles share `NSUserDefaults` with the app. Buttons such as Copy logs stay in-app.) |
 | **Machine profiles + overrides** | SwiftUI (`MachineEditorView` via `MachineEditorValidation`, `MachineSettingsView`) | Add / swipe **Edit** = identity editor; **Machine Settings** = per-machine overrides |
 
 Global Settings sections are declared in `WawonaUIContracts.GlobalSettingsCatalog`.
 iOS includes **Apple Watch** (companion document transfer via WatchConnectivity;
 send-side only. Not a watchOS Settings twin). Catalog sections include Display
-(Enable HDR), Machines (shake / swipe / tvOS Menu), iCloud Sync (Apple), Local
-Shell (three buttons), Dependencies (this product's linked packages only), plus
-the existing Input / Graphics / Env Vars / Advanced / Waypipe / SSH / About
-pages. watchOS omits Desktop (forbidden), Local Shell, and Apple Watch. SwiftUI
+(Enable HDR), Machines (shake / swipe / tvOS Menu), iCloud Sync (Apple; omit on
+tvOS, iCloud Drive is unavailable), Local Shell (three buttons), Dependencies
+(this product's linked packages only), plus the existing Input / Graphics /
+Env Vars / Advanced / Waypipe / SSH / About pages. watchOS omits Desktop
+(forbidden), Local Shell, and Apple Watch. SwiftUI
 on watch is the in-process host (WatchKit present from `@main` is unreliable);
 both hosts must render that catalog and the same `wawona.pref.*` keys.
 
@@ -80,8 +81,8 @@ watchOS WASM runtime remains size-gated off ([#156](https://github.com/Wawona/Wa
 
 | Setting | Key | Type | Default | Platforms | Description |
 |---------|-----|------|---------|------------|-------------|
-| **Vulkan Driver** | `vulkanDriver` / `VulkanDriver` | Dropdown | KosmicKrisp on Apple Silicon + macOS 26+; else MoltenVK on Apple; `system` on Android | GPU targets | Android: None, System, or SwiftShader. No Turnip, no `/dev/kgsl`. Apple: None, MoltenVK, KosmicKrisp. watchOS GPU is blocked (no Metal). |
-| **OpenGL Driver** | `openglDriver` / `OpenGLDriver` | Dropdown | `system` (Android), `angle` (macOS/iOS) | GPU targets | Android: None, ANGLE, System. Apple GPU targets: None, ANGLE. No MoltenGL. |
+| **Vulkan Driver** | `vulkanDriver` / `VulkanDriver` | Dropdown | KosmicKrisp on Apple Silicon + macOS 26+; else MoltenVK on Apple; `system` on Android | GPU targets | Android: None, System, or SwiftShader. No Turnip, no `/dev/kgsl`. Apple: None, MoltenVK, KosmicKrisp. watchOS GL/VK is blocked (no Metal). Watch present is SpriteKit. |
+| **OpenGL Driver** | `openglDriver` / `OpenGLDriver` | Dropdown | `system` (Android), `angle` (macOS/iOS/tvOS GPU) | GPU targets | Android: None, ANGLE, System. Apple GPU targets: None, ANGLE. No MoltenGL. tvOS GPU defaults to ANGLE (Phase 1 leftover `none` migrates once). watchOS: None. |
 
 ---
 
@@ -90,6 +91,8 @@ watchOS WASM runtime remains size-gated off ([#156](https://github.com/Wawona/Wa
 | Setting | Key | Type | Default | Platforms | Description |
 |---------|-----|------|---------|------------|-------------|
 | **Touch Input Type** | `TouchInputType` / runtime `inputProfile` | Dropdown | Multi-Touch | iOS, iPadOS, visionOS, Android (global + per-machine); watchOS Multi-Touch only | Multi-Touch (`wl_touch`) or Touchpad (virtual pointer). watchOS is direct finger only. No virtual/trackpad cursor. Per-machine override lives in Machine Settings → Input only (not Add/Edit). Prefer Multi-Touch for Weston panel / terminals / nested clients. |
+| **Show Virtual Cursor** | `RenderMacOSPointer` | Switch | Off | All except watchOS | Host overlay or real macOS pointer. **Non-compositor clients only.** Nested niri/weston and iland DRM compositors hide and grab the host pointer (including iOS Touchpad `_cursorLayer`) and draw `wl_pointer` themselves. The switch does not unhide that overlay. |
+| **Nested Compositor Cursor** | `NestedCompositorCursor` | Dropdown | virtual | Leftover | Must not put a Wawona pointer on a compositor. Ignore for niri/weston. See `wawona-nested-compositor-cursor`. |
 | **Touchpad Mode** | `touchpadMode` | Switch | Off | Android | Same as Touchpad on iOS |
 | **Swap CMD with ALT** | `SwapCmdWithAlt` | Switch | On (macOS/iOS) | macOS, iOS | Swap Command and Alt keys |
 | **Universal Clipboard** | `universalClipboard` / `UniversalClipboard` | Switch | On | All | Sync clipboard with host platform |
@@ -131,7 +134,7 @@ AX id: `wwn.settings.machines`.
 | Setting | Key | Type | Default | Platforms | Description |
 |---------|-----|------|---------|------------|-------------|
 | **Shake to Exit Machine** | `wawona.pref.shakeToCloseEnabled` | Switch | On | iOS, Android, watchOS, visionOS | Shake confirms closing the active machine session |
-| **Long-press Menu to Exit Machine** | `wawona.pref.shakeToCloseEnabled` (same key) | Switch | On | tvOS | Hold Menu/Back (~1s) confirms session exit. Short Menu sends Escape |
+| **Menu / Shake to Exit Machine** | `wawona.pref.shakeToCloseEnabled` (same key) | Switch | On | tvOS | Menu/Back confirms session exit. Shake on the 1st-gen Siri Remote only (`GCMotion`). Play/Pause toggles keyboard. Clickpad moves the pointer |
 | **Swipe Back to Exit Machine** | `wawona.pref.swipeBackToCloseEnabled` | Switch | On | iOS, Android, watchOS, visionOS | Edge swipe back asks before closing |
 | **Session Thumbnails** | `MachineSessionThumbnailsEnabled` | Switch | On | All | Last session frame on machine cards |
 | **Virtual Machine Engine** | (read-only) | Info | platform | macOS, iOS, Android, Linux | Selected by `wwn-vms`. Hidden on tvOS / watchOS / visionOS |
@@ -145,9 +148,13 @@ One Settings section. Session gestures and VM/container prefs share `wwn.setting
 
 ## iCloud Sync (Apple)
 
-AX id: `wwn.settings.icloudSync`. Omit on Android and Linux. Key:
+AX id: `wwn.settings.icloudSync`. Omit on Android, Linux, and tvOS. Key:
 `wawona.pref.localShellICloudSyncEnabled` (`WWNRootfsICloudSync`). Toggle on
-macOS, iOS, iPadOS, visionOS. tvOS / watchOS show status only (no fake toggle).
+macOS, iOS, iPadOS, visionOS. Apple [QA1935](https://developer.apple.com/library/archive/qa/qa1935/_index.html):
+iCloud Drive is unavailable on tvOS and watchOS (`ubiquityIdentityToken` is
+always nil). Wawona iCloud Sync is Drive ubiquity for shell HOME, not CloudKit
+or iCloud KVS, so the section is omitted on tvOS rather than shown as
+unsupported. watchOS may keep a status page that says Drive is unavailable.
 
 ---
 
@@ -232,7 +239,7 @@ targets, and never mention jailbreak in those binaries. Canonical behavior:
 | Setting | Key | Type | Default | Description |
 |---------|-----|------|---------|-------------|
 | SIP status (info) | (runtime `WWNSipStatus`) | Info | - | Value is **Fully Disabled** only when `csrutil disable` took. Partial (`enable --without debug`) shows Partially Disabled and Mode B is refused |
-| Enable Desktop Replacement | `DesktopReplacementEnabled` | Switch | Off | Mode B when SIP allows; refused/cleared if SIP blocks or Mode B dylib missing. First enable installs sudoers NOPASSWD for the root helper and `wwn-iowatchdog`. Take Over Screen Now disables IOWatchdog, then unloads watchdogd and WindowServer. Login does not unload WindowServer. |
+| Enable Desktop Replacement | `DesktopReplacementEnabled` | Switch | Off | Mode B intent when SIP allows; refused/cleared if SIP blocks or Mode B dylib missing. Enable checks watchdog coverage, heals if stale, and installs sudoers NOPASSWD plus Path B. Does not take over the screen. **Replace now** disables IOWatchdog, then unloads watchdogd and WindowServer. Login and `--compositor-host` do not unload WindowServer. Restart keeps this switch on. |
 | Desktop Machine | `DesktopReplacementMachineId` | Popup | - | Nested compositor native profiles only (weston, niri, custom compositor) |
 | Enable Lockscreen Replacement | `LockscreenReplacementEnabled` | Switch | Off | Greeter / machine picker before Desktop |
 | Lockscreen Machine | `LockscreenReplacementMachineId` | Popup | - | Native-port greeter machine |
@@ -270,8 +277,14 @@ another platform's list. Rule: [`agent-rules/wawona-settings-dependencies.md`](a
 | Copy Recent Logs | Button | Apple, Android, Linux | Copies a GitHub-ready report (version, host, install, active machine without secrets, last ~2000 log lines) |
 | Copy Active Machine Logs | Button | Apple Settings | Same header plus only lines tagged with the active machine id |
 | Report a Bug on GitHub | Button | Apple, Android, Linux, watchOS | Opens `Wawona/Wawona` issue form `bug.yml` with platform, install channel, version, host OS, and recent logs filled. Also copies the full report to the clipboard (except tvOS/watchOS) |
-| Wawona.io | Link | All About hosts | Always shown. Opens `https://wawona.io` |
-| Author | Link | All About hosts | Subtext is Alex Spaulding. Opens `https://aspauldingcode.com` (portfolio). There is no separate Portfolio row |
+| Wawona.io | Link | All About hosts | Subtext is documentation and downloads. Button: Visit. Opens `https://wawona.io` |
+| Author | Link | All About hosts | Subtext is Alex Spaulding. Button: Visit Portfolio. Opens `https://aspauldingcode.com`. There is no separate Portfolio row |
+| GitHub | Link | All About hosts | Subtext `github.com/aspauldingcode`. Button: View Profile |
+| X | Link | All About hosts | Subtext `@aspauldingcode`. Button: Follow. Icon is a 24px rounded square like the other About logos |
+| LinkedIn | Link | All About hosts | Subtext `linkedin.com/in/aspauldingcode`. Button: Connect |
+| Ko-fi | Link | All About hosts | Subtext Buy me a coffee. Button: Support |
+| GitHub Sponsors | Link | All About hosts | Button: Sponsor |
+| Source Code | Link | All About hosts | Subtext `github.com/Wawona/Wawona`. Button: View on GitHub |
 
 Sideloaded iOS IPAs have no TestFlight crash pipeline. TestFlight testers should send **Beta Feedback** from the TestFlight app *and* paste copied logs on GitHub. Full steps: [`reporting-bugs.md`](reporting-bugs.md).
 
@@ -279,13 +292,13 @@ Sideloaded iOS IPAs have no TestFlight crash pipeline. TestFlight testers should
 
 ## Platform-Specific Defaults
 
-| Setting | macOS | iOS | Android |
-|---------|-------|-----|---------|
-| Force SSD | Off (toggle) | Always SSD (no row) | Always SSD (no row) |
-| Multiple Clients | On | On | On |
-| Enable HDR | On | On | On |
-| Vulkan Driver | KosmicKrisp (Apple Silicon + macOS 26+), else moltenvk | moltenvk | system |
-| OpenGL Driver | angle | angle | system |
+| Setting | macOS | iOS | tvOS | Android |
+|---------|-------|-----|------|---------|
+| Force SSD | Off (toggle) | Always SSD (no row) | Always SSD (no row) | Always SSD (no row) |
+| Multiple Clients | On | On | On | On |
+| Enable HDR | On | On | On | On |
+| Vulkan Driver | KosmicKrisp (Apple Silicon + macOS 26+), else moltenvk | moltenvk | moltenvk (GPU bundle) | system |
+| OpenGL Driver | angle | angle | angle (GPU bundle) | system |
 
 ---
 

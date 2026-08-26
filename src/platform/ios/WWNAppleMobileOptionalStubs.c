@@ -7,7 +7,9 @@
  * allow-missing the way ELF does when the referencing .o is -force_load'd.
  * Provide empty definitions so platforms without those archives still link.
  *
- * tvOS also omits GPU clients / bundled editors.
+ * tvOS omits neovim and fuzzel (no fork/exec launcher). GPU clients
+ * (ANGLE, kmscube, weston-simple-egl) are linked for real; do not stub
+ * those entry points or they collide with the archives.
  */
 #include <stdio.h>
 #include <stddef.h>
@@ -33,16 +35,6 @@ int wawona_nvim_main(int argc, char *argv[]) {
  * dedupes against niri's force-load), so the real C ABI entry is always pulled.
  * A stub here would satisfy the -u and stop the archive member from linking. */
 int fuzzel_main(int argc, char *argv[]) {
-  (void)argc;
-  (void)argv;
-  return 127;
-}
-int simple_egl_main(int argc, char *argv[]) {
-  (void)argc;
-  (void)argv;
-  return 127;
-}
-int kmscube_main(int argc, char *argv[]) {
   (void)argc;
   (void)argv;
   return 127;

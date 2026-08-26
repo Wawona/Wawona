@@ -40,14 +40,15 @@ and GNOME. Complementary to the SDL2 toolkit smoke in
 |----------|----------|--------|----------|
 | **macOS** | `bin/gtk4-demo` (+ archive optional) | NSTask from Resources **or** in-process | Wayland; GL demos OK |
 | **iOS / iPadOS / visionOS** | `libgtk4_demo.a` + `gtk4_demo_main` | in-process after install / launch | Cairo/SHM first; GL behind `allowGpu` |
-| **tvOS / watchOS** | same archive | in-process | **Cairo/SHM only**. Never ANGLE/MoltenVK/IOKit |
+| **tvOS** | same archive | in-process | Cairo/SHM first; GL behind `allowGpu` (ANGLE). Never IOKit |
+| **watchOS** | same archive | in-process | **Cairo/SHM only**. No Metal, so no ANGLE/MoltenVK |
 | **Android** | `libgtk4_demo_bin.so` / `libgtk4_demo.so` | exec or in-process | SHM first; GLES optional |
 | **Linux** | nixpkgs / host `gtk4-demo` | CI / compat-matrix baseline | reference |
 
 **Hard rules (from platform targets):**
 
 - Entire Apple family stays first-class. Do not drop schemes to unblock another target.
-- watchOS/tvOS: native + remote only; **no** VM/container; **no** bundled Vulkan/OpenGL/ANGLE/ICD.
+- watchOS/tvOS: native + remote only; **no** VM/container. watchOS: **no** GPU. tvOS: ANGLE + MoltenVK like iOS.
 - visionOS = macOS product parity for this module once green.
 - Gate in `mobile-platform-deps.nix` / `xcodegen.nix` / Machines. Not ad-hoc `#ifdef` sprawl.
 - Optional-module link only (do **not** permanently force-load into base IPA).
@@ -100,7 +101,7 @@ zsh / Machines (after install / launch gtk4-demo)
 ### Phase 3. `gtk4_demo_main` + matrix recipes
 
 - [ ] `libgtk4_demo.a` + header with `gtk4_demo_main`
-- [ ] tvOS/watchOS: Cairo/SHM only; CI assert no ANGLE/MoltenVK/IOKit
+- [ ] watchOS: Cairo/SHM only. tvOS: GL behind `allowGpu`; never IOKit
 - [ ] visionOS: macOS product parity once green
 - [ ] Android NDK PIE/archive recipes
 - [ ] Flake outputs: `gtk4-demo-macos`, `gtk4-demo-ios`, …

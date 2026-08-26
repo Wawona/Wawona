@@ -90,6 +90,7 @@ public enum EnvironmentCatalog {
         .init(name: "WAYLAND_DISPLAY", category: .session, mutability: .managed, ownedBy: "waylandDisplay", defaultToken: "waylandDisplay", help: "Socket name clients connect to."),
         .init(name: "WAYLAND_SOCKET", category: .session, mutability: .computed, defaultToken: "", help: "Inherited fd socket; usually cleared for multi-client launches."),
         .init(name: "WAWONA_NESTED_WAYLAND_DISPLAY", category: .session, mutability: .computed, defaultToken: "nestedWaylandDisplay"),
+        .init(name: "WAWONA_NESTED_WAYLAND", category: .session, mutability: .computed, defaultToken: "1", help: "Nested weston sizes from xdg_toplevel instead of parent wl_output.mode."),
         .init(name: "WAWONA_OUTPUT_SCALE", category: .session, mutability: .computed, defaultToken: "outputScale"),
         .init(name: "NIRI_BACKEND", category: .session, mutability: .managed, ownedBy: "compositorBackend", defaultToken: "niriBackend", help: "Mapped from Display Backend."),
         .init(name: "NIRI_CONFIG", category: .session, mutability: .computed, defaultToken: "niriConfig"),

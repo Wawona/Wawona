@@ -1102,6 +1102,10 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
     return;
   }
 
+  if (WWNWestonDemoPrefersFixedSquare(nil, self.title) || self.prefersFixedSquare) {
+    return;
+  }
+
   // Match Rust/AppKit round-trip sizing to the actual frame<->content mapping.
   NSSize size = [self contentRectForFrameRect:self.frame].size;
   uint32_t width = (uint32_t)MAX(1, lround(size.width));
@@ -1186,6 +1190,10 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
 
 - (NSSize)windowWillResize:(NSWindow *)sender toSize:(NSSize)frameSize {
   (void)sender;
+  if (self.prefersFixedSquare ||
+      WWNWestonDemoPrefersFixedSquare(nil, self.title)) {
+    return self.frame.size;
+  }
   if (self.processingResize || self.suppressCompositorCallbacks ||
       !self.isVisible || self.isMiniaturized ||
       self.wwnMiniaturizeInProgress || self.wwnFullscreenTransitionInProgress) {

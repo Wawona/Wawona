@@ -8,6 +8,9 @@ the same non-negotiable gates.
 | Rule | Topic |
 |------|--------|
 | [wawona-macos-mode-a.md](./wawona-macos-mode-a.md) | macOS Mode A always works with SIP on (in-window iland DRM) |
+| [wawona-compositor-backend.md](./wawona-compositor-backend.md) | macOS weston/niri nest in Aqua; iland DRM after Classic (WindowServer down) |
+| [wawona-nested-compositor-cursor.md](./wawona-nested-compositor-cursor.md) | Nested/iland compositors hide+grab host cursor; they draw their own. iOS Touchpad overlay stays off |
+| [wawona-inprocess-cairo.md](./wawona-inprocess-cairo.md) | Apple mobile + Android weston must not cairo_debug_reset_static_data on nested teardown |
 | [wawona-mode-b-watchdog-safety.md](./wawona-mode-b-watchdog-safety.md) | Never Take Over / LLDB-attach `watchdogd` (macOS 26 SIGTRAP panic) |
 | [wawona-swinging-bridge.md](./wawona-swinging-bridge.md) | Wawona Swinging Bridge Mode A/B (not Desktop) |
 | [wawona-product-map.md](./wawona-product-map.md) | Swinging Bridge / Desktop / VMs / containers / Runtime packages |

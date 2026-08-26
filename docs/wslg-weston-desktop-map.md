@@ -105,8 +105,8 @@ Invariant: exactly one writer of agreed size. Unit test
 | OWL / xdg `configure(0,0)` | `AwaitingFirstCommit` then first buffer → `Client` |
 | Smithay serial/ack | `Host` ignores lagging commits while pending serial ≠ 0 |
 | WSLg/RAIL / waypipe (ref) | `Host` during drag; settle on match or client refuse |
-| weston-flower / smoke | Refuse → `Client` at **200×200** |
-| weston-simple-shm | Follows configure; never inject display size on map |
+| weston-flower / smoke | Refuse → `Client` at **200x200** |
+| weston-simple-shm / simple-egl | Preferred square (250x250); never inject display size on map. Same host policy as flower. |
 
 Research trees: `vendor-research/{owl,wslg,weston-upstream,weston-mirror}`
 (gitignored; clone locally for diffs).

@@ -148,11 +148,11 @@ impl Dispatch<zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1, ()> for CompositorState {
             }
             zwp_linux_dmabuf_v1::Request::GetDefaultFeedback { id } => {
                 let feedback = data_init.init(id, ());
-                send_empty_dmabuf_feedback(&feedback);
+                send_iosurface_dmabuf_feedback(&feedback);
             }
             zwp_linux_dmabuf_v1::Request::GetSurfaceFeedback { id, surface: _ } => {
                 let feedback = data_init.init(id, ());
-                send_empty_dmabuf_feedback(&feedback);
+                send_iosurface_dmabuf_feedback(&feedback);
             }
             zwp_linux_dmabuf_v1::Request::Destroy => {}
             _ => {}
@@ -162,24 +162,57 @@ impl Dispatch<zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1, ()> for CompositorState {
 
 use wayland_protocols::wp::linux_dmabuf::zv1::server::zwp_linux_dmabuf_feedback_v1;
 
-/// Send a complete (v4) feedback sequence describing zero renderable dmabuf
-/// formats. Clients waiting on `done` proceed immediately and fall back to
-/// wl_shm instead of stalling on a feedback object that never resolves.
-fn send_empty_dmabuf_feedback(
+/// Advertise IOSurface-modifier dmabuf formats (v4 feedback). Clients waiting
+/// on `done` proceed immediately. Do not advertise LINEAR (raw dmabuf): that
+/// path is unsupported and caused client failures.
+fn send_iosurface_dmabuf_feedback(
     feedback: &zwp_linux_dmabuf_feedback_v1::ZwpLinuxDmabufFeedbackV1,
 ) {
+    use std::io::Write;
     use std::os::fd::AsFd;
+
+    const DRM_FORMAT_ARGB8888: u32 = 0x34325241;
+    const DRM_FORMAT_XRGB8888: u32 = 0x34325258;
+    const IOSURFACE_MODIFIER: u64 = 0x8000_0000_0000_0000;
+    const FORMATS: [u32; 2] = [DRM_FORMAT_ARGB8888, DRM_FORMAT_XRGB8888];
+
     match tempfile::tempfile() {
-        Ok(file) => {
-            feedback.format_table(file.as_fd(), 0);
+        Ok(mut file) => {
+            for fmt in FORMATS {
+                let mut rec = [0u8; 16];
+                rec[0..4].copy_from_slice(&fmt.to_le_bytes());
+                rec[8..16].copy_from_slice(&IOSURFACE_MODIFIER.to_le_bytes());
+                if file.write_all(&rec).is_err() {
+                    tracing::warn!("linux-dmabuf: failed to write format table");
+                    feedback.format_table(file.as_fd(), 0);
+                    feedback.main_device(Vec::new());
+                    feedback.done();
+                    return;
+                }
+            }
+            let _ = file.flush();
+            let table_size = (FORMATS.len() * 16) as u32;
+            feedback.format_table(file.as_fd(), table_size);
+
+            // No DRM render node on Wawona hosts. 8 zero bytes so the tranche
+            // still names a device; clients that require a real node fall back.
+            let dummy_dev = vec![0u8; 8];
+            feedback.main_device(dummy_dev.clone());
+            feedback.tranche_target_device(dummy_dev);
+            let mut indices = Vec::with_capacity(FORMATS.len() * 2);
+            for i in 0u16..(FORMATS.len() as u16) {
+                indices.extend_from_slice(&i.to_le_bytes());
+            }
+            feedback.tranche_formats(indices);
+            feedback.tranche_done();
+            feedback.done();
         }
         Err(e) => {
-            tracing::warn!("linux-dmabuf: failed to create empty format table: {}", e);
+            tracing::warn!("linux-dmabuf: failed to create format table: {}", e);
+            feedback.main_device(Vec::new());
+            feedback.done();
         }
     }
-    // No main device: there is no DRM render node on Wawona hosts.
-    feedback.main_device(Vec::new());
-    feedback.done();
 }
 
 impl Dispatch<zwp_linux_dmabuf_feedback_v1::ZwpLinuxDmabufFeedbackV1, ()> for CompositorState {

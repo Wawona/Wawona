@@ -221,7 +221,7 @@ pkgs.stdenvNoCC.mkDerivation {
   version = "1.0";
 
   dontUnpack = true;
-  nativeBuildInputs = [ pkgs.imagemagick ];
+  nativeBuildInputs = [ ];
 
   buildPhase = ''
     set -euo pipefail
@@ -232,6 +232,8 @@ pkgs.stdenvNoCC.mkDerivation {
       share/icons/hicolor/index.theme
     cp -L ${desktopEntries}/share/applications/*.desktop share/applications/
 
+    # Copy source PNGs as-is. Do not use ImageMagick: convert pulls libtiff
+    # docs → Sphinx → mypy pytest (~45 min on a cold Darwin laptop).
     install_icon() {
       local id="$1"
       local src="$2"
@@ -239,10 +241,8 @@ pkgs.stdenvNoCC.mkDerivation {
         echo "warning: missing icon source for $id at $src" >&2
         src="${iconWindowPng}"
       fi
-      ${pkgs.imagemagick}/bin/convert "$src" -resize 48x48 \
-        "share/icons/hicolor/48x48/apps/$id.png"
-      ${pkgs.imagemagick}/bin/convert "$src" -resize 64x64 \
-        "share/icons/hicolor/64x64/apps/$id.png"
+      cp -L "$src" "share/icons/hicolor/48x48/apps/$id.png"
+      cp -L "$src" "share/icons/hicolor/64x64/apps/$id.png"
     }
 
     ${lib.concatMapStrings (app: ''

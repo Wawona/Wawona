@@ -186,3 +186,53 @@ func compositorBackendMachineOverride() {
     let resolved = preferences.resolvedSettings(for: machine)
     #expect(resolved.compositorBackend == "drm")
 }
+
+@Test
+func nestedCompositorDrawsOwnCursorForWestonAndNiri() {
+    let weston = MachineProfile(
+        name: "Weston",
+        type: .native,
+        runtimeOverrides: MachineRuntimeOverrides(bundledAppID: "weston")
+    )
+    let niri = MachineProfile(
+        name: "Niri",
+        type: .native,
+        runtimeOverrides: MachineRuntimeOverrides(bundledAppID: "niri")
+    )
+    let terminal = MachineProfile(
+        name: "Term",
+        type: .native,
+        runtimeOverrides: MachineRuntimeOverrides(bundledAppID: "weston-terminal")
+    )
+    #expect(weston.nestedCompositorDrawsOwnCursor)
+    #expect(niri.nestedCompositorDrawsOwnCursor)
+    #expect(!terminal.nestedCompositorDrawsOwnCursor)
+    #expect(weston.isNestedCompositorClient)
+    #expect(!niri.isNestedCompositorClient)
+}
+
+@Test
+func watchPresentAcceleratorIsWatchOnlyAndGpuStackStaysBlocked() {
+    #if os(watchOS)
+    #expect(PlatformCapabilities.gpuStackGate.isBlocked)
+    #expect(PlatformCapabilities.watchPresentAcceleratorGate.isAvailable)
+    #expect(PlatformCapabilities.allowsWatchPresentAccelerator)
+    #else
+    #expect(!PlatformCapabilities.watchPresentAcceleratorGate.isAvailable)
+    switch PlatformCapabilities.watchPresentAcceleratorGate {
+    case .forbidden(reason: _):
+        break
+    default:
+        Issue.record("watchPresentAcceleratorGate must be forbidden off watchOS")
+    }
+    #endif
+}
+
+@Test
+func sshWaypipeSettingsAreRemoteTypesOnly() {
+    #expect(!MachineType.native.isSSH)
+    #expect(!MachineType.virtualMachine.isSSH)
+    #expect(!MachineType.container.isSSH)
+    #expect(MachineType.sshWaypipe.isSSH)
+    #expect(MachineType.sshTerminal.isSSH)
+}

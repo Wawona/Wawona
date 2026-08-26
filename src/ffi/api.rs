@@ -258,6 +258,29 @@ fn is_weston_family_app_id(app_id: &str) -> bool {
         || app_id.contains("weston")
 }
 
+/// Nested compositor process, not weston-terminal / flower / toys.
+fn is_nested_compositor_app_id(app_id: &str) -> bool {
+    let id = app_id.trim();
+    if id.is_empty() {
+        return false;
+    }
+    let lower = id.to_ascii_lowercase();
+    lower == "weston"
+        || lower == "org.freedesktop.weston"
+        || lower == "niri"
+        || lower.starts_with("niri.")
+}
+
+fn nested_compositor_output_scale(app_id: &str, global_scale: f32) -> f32 {
+    if is_nested_compositor_app_id(app_id) {
+        1.0
+    } else if global_scale < 1.0 {
+        1.0
+    } else {
+        global_scale
+    }
+}
+
 fn buffer_size_mismatch_px(
     buf_w: u32,
     buf_h: u32,
@@ -655,6 +678,21 @@ impl WawonaCore {
             policy
         );
         state.pending_client_decoration_policy = Some(policy);
+    }
+
+    /// Stage fill-host for the **next** machine's Wayland client.
+    ///
+    /// Nested weston/niri must receive a non-zero first xdg configure.
+    /// `configure(0,0)` becomes their output mode and the parent window stays
+    /// blank. Demos (flower/smoke/simple-egl) must stage `false`.
+    pub fn set_fills_host_for_client_launch(&self, fills_host: bool) {
+        let mut state = self.state.write_recover();
+        crate::wlog!(
+            crate::util::logging::FFI,
+            "FFI: set_fills_host_for_client_launch({})",
+            fills_host
+        );
+        state.pending_client_fills_host = Some(fills_host);
     }
 
     /// Mark whether `window_id` is hosted in its own independent OS
@@ -1203,6 +1241,7 @@ impl WawonaCore {
                 decoration_mode,
                 fullscreen_shell,
                 host_locked,
+                fills_host,
             } => {
                 let internal_client_id = self
                     .internal_client_id(&client_id)
@@ -1244,6 +1283,7 @@ impl WawonaCore {
                     decoration_mode: ffi_decoration_mode,
                     fullscreen_shell,
                     host_locked,
+                    fills_host,
                     owner_client_internal_id: internal_client_id as u64,
                     state: crate::ffi::types::WindowState::Normal,
                     parent: None,
@@ -1256,11 +1296,12 @@ impl WawonaCore {
                 );
                 crate::wlog!(
                     crate::util::logging::FFI,
-                    "WindowCreated queued: window_id={} {}x{} host_locked={}",
+                    "WindowCreated queued: window_id={} {}x{} host_locked={} fills_host={}",
                     window_id,
                     width,
                     height,
-                    host_locked
+                    host_locked,
+                    fills_host
                 );
             }
             CompositorEvent::PopupCreated { client_id, window_id, surface_id, parent_id, x, y, width, height } => {
@@ -1279,6 +1320,7 @@ impl WawonaCore {
                     decoration_mode: DecorationMode::ClientSide,
                     fullscreen_shell: false,
                     host_locked: false,
+                    fills_host: false,
                     owner_client_internal_id: internal_client_id as u64,
                     state: crate::ffi::types::WindowState::Normal,
                     parent: if parent_id > 0 { Some(WindowId::new(parent_id as u64)) } else { None },
@@ -2674,6 +2716,22 @@ impl WawonaCore {
         popped
     }
 
+    /// Nested Weston gl-renderer Y-corrects for Wayland. Niri/ANGLE Metal
+    /// IOSurfaces are already top-down in the CPU mapping, so the same
+    /// identity CGImage bake inverts Weston. Flip only that compositor.
+    /// Match title as well: wayland-backend never sends set_app_id.
+    pub fn nested_weston_cpu_y_flip(&self, window_id: u64) -> bool {
+        let state = self.state.read_recover();
+        let (app_id, title) = state
+            .get_window(window_id as u32)
+            .map(|w| {
+                let w = w.read().unwrap();
+                (w.app_id.clone(), w.title.clone())
+            })
+            .unwrap_or_default();
+        crate::core::wayland::xdg::decoration::is_nested_weston_compositor(&app_id, &title)
+    }
+
     /// Pop pending gamma restore (platform restores original tables)
     pub fn pop_pending_gamma_restore(&self) -> Option<u32> {
         if !self.is_running() {
@@ -3071,9 +3129,19 @@ impl WawonaCore {
             // framebuffer from output mode; updating only on txn-settle made
             // mode lag/lead the host and flash before/after sizes mid-drag.
             // set_output_geometry_for_window is per-client and deduped.
+            // Nested weston/niri follow xdg in points at scale 1. Direct
+            // clients keep the global HiDPI scale.
             let scale = {
-                let cur = self.output_size.read_recover();
-                cur.2
+                let global = {
+                    let cur = self.output_size.read_recover();
+                    cur.2
+                };
+                let state = self.state.read_recover();
+                let app_id = state
+                    .get_window(wid)
+                    .map(|w| w.read_recover().app_id.clone())
+                    .unwrap_or_default();
+                nested_compositor_output_scale(&app_id, global)
             };
             self.set_output_geometry_for_window(window_id, width, height, scale);
 
@@ -3309,10 +3377,15 @@ impl WawonaCore {
             if let Some(tl) = state.xdg.toplevels.get_mut(&tid) {
                 tl.interactive_resize = false;
             }
-            let scale = {
+            let app_id = state
+                .get_window(wid)
+                .map(|w| w.read_recover().app_id.clone())
+                .unwrap_or_default();
+            let global = {
                 let cur = self.output_size.read_recover();
                 cur.2
             };
+            let scale = nested_compositor_output_scale(&app_id, global);
             // Keep per-window output geometry in lockstep with the settle
             // configure (nested compositors size from output mode).
             drop(state);

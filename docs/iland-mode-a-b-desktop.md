@@ -140,46 +140,68 @@ What you boot into is **wwn-igetty** (Linux-shaped VTs + Doorman getty). Setting
 (weston, niri, kmscube, custom). That session is **assigned a VT**
 (`DesktopReplacementGuiVt`, default 1, like a typical Linux display manager).
 It is not guaranteed to stay VT1. Remaining VTs are getty. Ctrl+Option+F1-F6
-switches. Ctrl+Option+Backspace restores Aqua.
+switches. Ctrl+Option+Backspace restores Aqua. Fn+Ctrl+Option+Backspace
+does the same on MacBook keyboards (Fn remaps Backspace to Delete).
+Arrow keys, Page Up, Page Down, Home, and End reach text VTs as CSI
+(MacBook: Fn+arrows is PgUp/PgDn/Home/End). Ctrl+Option+F7-F9 overlay
+kmscube, gbm-es2-demo, and vkcube-kms. Those clients, plus Wayland
+opengl-cube and vkcube, draw a corner status hub: client name, fps, kms/drm/gbm,
+OpenGL vs Vulkan, and the live backend (ANGLE, MoltenVK, KosmicKrisp).
 
 Do not put VT switching in iland or in L4 Wawona besides launching `igettyd`
 and passing `WWN_IGETTY_GUI_*`.
 
-Classic already runs `framebufferd` / `inputd`. After login on a text VT you
-can still start another DRM client:
+Classic already runs `framebufferd` / `inputd`. After login on a text VT,
+`niri` and `weston` use iland DRM/KMS/GBM (same as the assigned GUI VT).
+Login env sets `NIRI_BACKEND=tty` and clears nested `WAYLAND_DISPLAY`.
+Doorman login sets `ZDOTDIR` to session zsh files so macOS `path_helper`
+cannot put `~/.local/bin` ahead of the DRM wrappers. Typed `weston` /
+`niri` restore `DYLD_INSERT_LIBRARIES` from `WWN_MODEB_INSERT` (iland
+`libwayland-mac.dylib` intercepts `/dev/dri`) and exec the bundled
+binary. Host CLI wrappers (`~/.local/bin/weston`) detect Classic by
+Apple WindowServer being down, not by a leaked `WWN_MODEB_TTY`. While
+Aqua is up they nest (`--backend=wayland`, `NIRI_BACKEND=nested`) and
+may kickstart compositor-host. After Take Over they use iland DRM and
+do not nest. You do not need to pass `--backend=drm` or
+`NIRI_BACKEND=tty` by hand.
 
 ```text
-export DYLD_INSERT_LIBRARIES="$WWN_MODEB_INSERT"
-weston --backend=drm --shell=desktop-shell.so
-NIRI_BACKEND=tty niri
+niri
+weston
 ```
 
-`PATH` includes `WWN_MODEB_BIN` (Wawona `Resources/bin`) so `weston` / `niri`
-resolve without typing store paths. `WESTON_BACKEND_DIR` and related env from
-the helper stay inherited. Send compositor stderr to a file if you are
-reporting a failure:
+`PATH` includes session wrappers first, then `WWN_MODEB_BIN` (Wawona
+`Resources/bin`). `WESTON_BACKEND_DIR` and related env from the helper stay
+inherited. Send compositor stderr to a file if you are reporting a failure:
 
 ```text
-weston --backend=drm --shell=desktop-shell.so 2>/tmp/modeb-weston.err
+weston 2>/tmp/modeb-weston.err
+niri 2>/tmp/modeb-niri.err
 ```
 
 Ctrl+Option+F1 returns to the text VT if the compositor does not take over
-input. Ctrl+Option+Backspace still restores Aqua.
+input. Ctrl+Option+Backspace still restores Aqua. Fn+Ctrl+Option+Backspace
+too.
 
 This is userspace only (no kernel tty). See also
 [`mode-b-windowserver-options.md`](mode-b-windowserver-options.md).
 
-Before Classic Take Over:
+Before Classic Take Over, Settings → Desktop is **Enable Desktop Replacement**
+plus **Replace now**. Enable checks watchdog coverage, restores Apple coverage
+when it is stale or dual-path, stages the helper, and arms Path B, then opens
+the native Restart sheet if needed. Enable never takes over the screen.
+**Replace now** (Settings and the menubar) is the only activate step. CLI:
+`Wawona --mode-b-prepare` is the same setup as Enable.
 
 ```text
 Wawona --mode-b-ready
 ```
 
-Exit 0: `VERDICT takeover-now` plus `REASON` (run `Wawona --mode-b-engage`).
-Exit 2: reboot first. Engage and Settings Take Over open the native macOS
-Restart sheet (`kAERestart` / QA1134, 60-second countdown). Exit 3: blocked,
-with the exact SIP / helper / claim-ok / sock text in `REASON`. Settings shows
-the same report as **Classic readiness**.
+Exit 0: `VERDICT takeover-now` plus `REASON` (run `Wawona --mode-b-engage`
+or Replace now). Exit 2: reboot first. Engage and Settings Replace
+now open the native macOS Restart sheet (`kAERestart` / QA1134,
+60-second countdown). Exit 3: blocked. Settings Enable Desktop
+Replacement runs doctor, heal, and Path B arm instead of CLI recipes.
 
 ## Mode B launch (macOS)
 
@@ -197,8 +219,8 @@ repo: [`wwn-iland/docs/mode-b/baremetal-display-spi-25F80.md`](../../wwn-iland/d
 1. Settings stores `DesktopReplacementMachineId` (weston, niri, or custom
    compositor). Demo clients (`kmscube`, `weston-terminal`, `foot`) are not
    eligible.
-2. `nix run .#install` (and `Wawona --mode-b-stage`) restages
-   `libwayland-mac.dylib`, `wwn-iowatchdog`, and a root-owned helper
+2. `nix run .#install` syncs the Mode B helper, `libwayland-mac.dylib`,
+   `wwn-iowatchdog`, and a root-owned helper
    (`/Library/Application Support/Wawona/run-modeb.sh`) and installs
    `/etc/sudoers.d/wawona-modeb` (`NOPASSWD` for that helper and
    `wwn-iowatchdog` only). One admin authorization. If a prior Take Over
@@ -208,25 +230,28 @@ repo: [`wwn-iland/docs/mode-b/baremetal-display-spi-25F80.md`](../../wwn-iland/d
    that probe paniced on 2026-08-20 (`watchdogd` exited SIGTRAP /
    namespace 2 subcode 0x5 while kernel IOWatchdog was still armed).
    IOWatchdog disable belongs only on Take Over. Stage does **not** take
-   over the screen and does **not** install a login LaunchAgent. Take
-   Over Screen Now is the only activate step. Logout and the next Aqua
+   over the screen and does **not** install a login LaunchAgent. Replace
+   now is the only activate step. Logout and the next Aqua
    login return normal macOS.
 3. Take Over consumes sticky Path B (preferred) or Path A
    `/var/db/wwn-iowatchdog/claim-ok` before unloading watchdogd /
    WindowServer (`WWN_MODEB_WD=iowatchdog-then-unload`). Soft-inject /
    `lldb` stay forbidden. Without `claim-ok`, Settings refuses Classic
-   Take Over and points at `claim-install --path-b` + reboot. KEEP_WS
+   and Enable / Replace now runs bundled `claim-install` doctor, heal if
+   needed, then `--path-b` plus native Restart. KEEP_WS
    `--mode-b-probe` may still inject while WindowServer and watchdogd
-   stay up. `nix run .#install` skips Mode B restage by default
-   (`WAWONA_MODEB_STAGE=1` to force). Never `export
+   stay up. Opening desktop-host Wawona or `nix run .#install` syncs the Mode B
+   helper and dylib for this build. Never `export
    DYLD_INSERT_LIBRARIES`. Insert on the niri/weston exec only.
    `ws-guard` may restore WindowServer only.
 4. After logout, Aqua's login screen starts WindowServer. The next login
-   does not re-run Mode B. Use Settings → Desktop → Take Over Screen Now
-   again. Older builds that wrote
-   `com.aspauldingcode.wawona.modeb-login` caused a login WindowServer
-   crash loop (helper kills WS, Aqua dies, launchd sends TERM,
-   restore_aqua, agent fires again). The menubar boots that agent out if
+   does not re-run Mode B. Use Settings → Desktop → **Replace now**.
+   `--compositor-host` (login
+   KeepAlive for Mode A nested compositors) must never Classic-engage,
+   even if `DesktopReplacementEnabled` is leftover. Older builds that
+   auto-started the Desktop machine from compositor-host, or that wrote
+   `com.aspauldingcode.wawona.modeb-login`, unloaded WindowServer at
+   login. The menubar boots the leftover `modeb-login` agent out if
    a leftover plist is present. A leftover KeepAlive system daemon can
    keep niri running in the background without owning the screen.
 5. `WWNWaypipeRunner` `baremetalCompositorLaunchSpecForProfile:` supplies argv
@@ -239,11 +264,17 @@ repo: [`wwn-iland/docs/mode-b/baremetal-display-spi-25F80.md`](../../wwn-iland/d
    root niri/weston and framebufferd/inputd, and remove the login
    LaunchAgent, sudoers drop-in, helper, installed `libwayland-mac.dylib`,
    and `ws-guard` LaunchDaemon. Settings keeps the switch on if the
-   privileged uninstall is cancelled.
+   privileged uninstall is cancelled. **Replace now** session restore
+   (Ctrl+Option+Backspace, Fn+Ctrl+Option+Backspace, or the Mode B client
+   exiting) restores
+   WindowServer only. With Path B sticky it must not kickstart Path B or
+   Apple-enable `watchdogd` (2026-08-23 kernel timeout). Kernel Disable
+   stays sticky. See
+   [`incident-reports/2026-08-23-vt-switch-restore-aqua-timeout/`](incident-reports/2026-08-23-vt-switch-restore-aqua-timeout/).
 7. If the nested compositor exits unexpectedly, or framebufferd never
    starts, the helper leaves or restores Apple's WindowServer, writes
    `/tmp/wawona-modeb-failed.reason`, and exits 0. Aqua stays usable.
-   The Enable switch is turned off. Take Over Screen Now retries. Log:
+   The Enable switch is turned off. Replace now retries. Log:
    `/tmp/wawona-modeb.log`. See
    [`incident-reports/2026-08-19-windowserver-login.md`](incident-reports/2026-08-19-windowserver-login.md).
 
@@ -271,8 +302,8 @@ Wawona Swinging Bridge Mode B.
 | **iOS** | App Store | Mode A only; no Desktop/LockScreen UI; **no jailbreak mentions**; no Mode B dylib; SSH = libssh2 only |
 | **iPadOS** | App Store | Same as iOS for Desktop/Wawona Swinging Bridge store policy + multi-window required |
 | **visionOS** | App Store | Same Mode A / macOS-product GLES+Vulkan parity; no Mode B; multi-window required |
-| **tvOS** | App Store | Mode A **software only**. No ANGLE/MVK/KK/Vulkan ICD, no IOKit, no GPU DRM clients |
-| **watchOS** | App Store | Same software policy as tvOS |
+| **tvOS** | App Store | Mode A GLES (ANGLE to Metal) + Vulkan (MoltenVK to Metal). No IOKit, no Mode B, no KosmicKrisp |
+| **watchOS** | App Store | Software/SHM only. No Metal in the SDK, so no ANGLE/MVK |
 | **Android** | Google Play | Mode A graphics; Home Desktop **without root** when it ships; Wawona Swinging Bridge Mode B never Play-required |
 | **macOS** | **3rd-party** (not MAS) | Mode A default (SIP may stay on). Mode B desktop-host only with SIP **fully disabled** (`csrutil disable`). Partial SIP is refused. Never contaminate iOS/Android store artifacts |
 
@@ -284,8 +315,9 @@ Wawona Swinging Bridge Mode B.
    (including kmscube, waypipe, Android Home Desktop when shipped).
 3. **Private API / entitlement firewall:** Mode A present = public
    Metal/UIKit/AppKit/Surface + userland DRM shims only.
-4. **tvOS/watchOS:** software Mode A only. Never "fix" compliance by shipping
-   GPU stacks.
+4. **watchOS:** software Mode A only. Never "fix" the missing Metal SDK with
+   private API or SpriteKit. **tvOS:** Mode A ANGLE + MoltenVK is required;
+   never IOKit or Mode B.
 5. **visionOS/iPadOS:** store Mode A meets multi-window + product GLES/Vulkan
    expectations without Mode B.
 6. **Shared Nix/xcodegen:** gate Mode B + desktop-host dylibs so store schemes

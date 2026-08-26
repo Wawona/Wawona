@@ -85,7 +85,7 @@ pub fn show_editor(
     for client in BUNDLED_CLIENTS {
         let row = adw::ActionRow::new();
         row.set_title(client.name);
-        row.set_subtitle(client.description);
+        row.set_title_lines(1);
         row.set_activatable(false);
         let radio = gtk::CheckButton::new();
         if let Some(ref first) = first_radio {
@@ -458,6 +458,7 @@ pub fn show_editor(
 fn add_row(group: &adw::PreferencesGroup, title: &str, widget: &impl IsA<gtk::Widget>) {
     let row = adw::ActionRow::new();
     row.set_title(title);
+    row.set_title_lines(1);
     row.add_suffix(widget);
     row.set_activatable(false);
     group.add(&row);

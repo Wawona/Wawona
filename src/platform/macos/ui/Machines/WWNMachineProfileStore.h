@@ -70,14 +70,17 @@ extern NSString *const kWWNMachineTypeContainer;
 + (BOOL)resolvedRenderMacOSPointerForProfile:
     (nullable WWNMachineProfile *)profile;
 + (BOOL)resolvedRenderMacOSPointerActive;
-/// @"virtual" or @"host". Which cursor nested compositors grab when virtual
-/// cursor is enabled. Falls back to global NestedCompositorCursor.
+/// Leftover @"virtual" / @"host" pref. Nested weston/niri ignore this and
+/// always hide the host overlay. Non-compositor clients do not use it.
 + (NSString *)resolvedNestedCompositorCursorForProfile:
     (nullable WWNMachineProfile *)profile;
 + (NSString *)resolvedNestedCompositorCursorActive;
 /// Effective host (macOS NSCursor) visibility for the active machine.
+/// Nested compositors (weston, niri, …) always return NO. They draw wl_pointer.
 + (BOOL)resolvedShowHostCursorActive;
 /// Effective virtual pointer overlay visibility for the active machine.
+/// Nested compositors always return NO, including iOS-family Touchpad mode
+/// and Show Virtual Cursor on. Non-compositor clients follow that toggle.
 + (BOOL)resolvedShowVirtualPointerActive;
 /// macOS-only per-machine window override: keep this machine's window above
 /// all other windows, even when unfocused. Defaults to NO. There is no
@@ -89,12 +92,27 @@ extern NSString *const kWWNMachineTypeContainer;
     NS_SWIFT_NAME(profileIndicatesNested(nativeClientId:customCommand:));
 + (BOOL)profileIndicatesNestedCompositor:(WWNMachineProfile *)profile;
 
+/// Mode B Classic own-display: nested compositors (weston/niri/custom) plus
+/// DRM/KMS/GBM clients (kmscube, gbm-es2-demo, vkcube KMS) and modeb-tty.
+/// Weston and niri stay dual-backend. This does not pin them to DRM. Mode A
+/// Machines Start still nests them when Display Backend is Wayland. Mode B
+/// Take Over has no host Wayland, so those same binaries use `--backend=drm`
+/// / `NIRI_BACKEND=tty` on the assigned GUI VT.
++ (BOOL)nativeClientIdIndicatesModeBOwnDisplay:(NSString *)clientId
+                                 customCommand:(NSString *)customCommand
+    NS_SWIFT_NAME(profileIndicatesModeBOwnDisplay(nativeClientId:customCommand:));
++ (BOOL)profileIndicatesModeBOwnDisplay:(WWNMachineProfile *)profile;
+
 /// App Bridge (anowaW) eligibility: YES only when the profile is a local-only
 /// native machine whose client is the **nested Weston** compositor
 /// (`weston` running `--backend=wayland`), never a plain demo client. This is
 /// stricter than -profileIndicatesNestedCompositor: (which also accepts
 /// sway/niri/etc.) because anowaW v1 supports weston nested only.
 + (BOOL)profileEligibleForAppBridge:(WWNMachineProfile *)profile;
+
+/// One-shot tvOS GPU upgrade: leftover Phase 1 `OpenGLDriver=none` snapshots
+/// become ANGLE. Reads UserDefaults JSON directly (no preferences singleton).
++ (void)migrateTvosGpuOpenGLDriverSnapshotsIfNeeded;
 
 @end
 

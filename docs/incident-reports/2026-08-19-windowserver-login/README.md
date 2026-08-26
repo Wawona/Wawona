@@ -31,7 +31,7 @@ This is not a SkyLight crash from injection alone. It is launchd + helper logic 
 1. Take Over does **not** install `com.aspauldingcode.wawona.modeb-login`. Logout returns normal macOS. The menubar boots out any leftover plist.
 2. Take Over disables kernel IOWatchdog (`wwn-iowatchdog disable`) first, then unloads `watchdogd`, then WindowServer, then injects. Abort if IOWatchdog disable fails. Marker: `WWN_MODEB_WD=iowatchdog-then-unload`. Probe may inject while both jobs stay up.
 3. WindowServer reaper loop removed. `ws-guard` restores WindowServer only. It must never enable, load, bootstrap, kickstart, or bootout `watchdogd`. `kickstart -k` on watchdogd paniced at 23:12.
-4. Passwordless engage refuses helpers that lack `WWN_MODEB_WD=iowatchdog-then-unload` / `stop_watchdogd_after_iowatchdog`, that contain `WWN_MODEB_WD=hands-off` or `launchctl-unload`, that lack `WWN_MODEB_GATE=pidfile-not-pgrep`, that still contain `reap WindowServer`, or that `kickstart -k` watchdogd.
+4. Passwordless engage refuses helpers that lack `WWN_MODEB_WD=iowatchdog-then-unload` / `stop_watchdogd_after_iowatchdog`, that contain `WWN_MODEB_WD=hands-off` or `launchctl-unload`, that lack `WWN_MODEB_GATE=pidfile-not-pgrep` or `WWN_MODEB_GATE=live-fb-before-ws-unload`, that still contain `reap WindowServer`, or that `kickstart -k` watchdogd.
 
 The 12:04 take-over extracted framebufferd (pidfile on disk) but the installed helper still required `pgrep -x framebufferd` while WindowServer was up, then killed niri. That gate is a deadlock: SkyLight is already taken, so framebufferd cannot stay up, and `pgrep` is also a bad sensor after WindowServer dies.
 

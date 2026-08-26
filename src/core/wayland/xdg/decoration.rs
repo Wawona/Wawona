@@ -79,6 +79,36 @@ pub fn is_weston_family_app_id(app_id: &str) -> bool {
     app_id == "weston" || app_id.starts_with("weston-") || app_id.contains("weston")
 }
 
+/// Nested compositor process (weston/niri), not weston-terminal or toys.
+pub fn is_nested_compositor_app_id(app_id: &str) -> bool {
+    let id = app_id.trim();
+    if id.is_empty() {
+        return false;
+    }
+    let lower = id.to_ascii_lowercase();
+    lower == "weston"
+        || lower == "org.freedesktop.weston"
+        || lower == "niri"
+        || lower.starts_with("niri.")
+}
+
+/// Nested Weston compositor only. Not niri, not weston-terminal.
+pub fn is_nested_weston_compositor_app_id(app_id: &str) -> bool {
+    let lower = app_id.trim().to_ascii_lowercase();
+    lower == "weston" || lower == "org.freedesktop.weston"
+}
+
+/// Weston wayland-backend never sends `xdg_toplevel.set_app_id`. The nested
+/// window title is `Weston Compositor - <output>` (`WINDOW_TITLE` in
+/// `libweston/backend-wayland/wayland.c`).
+pub fn is_nested_weston_compositor(app_id: &str, title: &str) -> bool {
+    if is_nested_weston_compositor_app_id(app_id) {
+        return true;
+    }
+    let t = title.trim().to_ascii_lowercase();
+    t == "weston compositor" || t.starts_with("weston compositor -")
+}
+
 /// Loose tolerance for “is this commit related to the last configure?” checks
 /// (CSD chrome / geometry insets). **Not** used to drive host window sizing -
 /// see [`committed_size_authorizes_host_sync`] (#111).
@@ -396,6 +426,30 @@ mod tests {
             None,
         );
         assert_eq!(geom, None);
+    }
+
+    #[test]
+    fn nested_compositor_app_id_excludes_toys() {
+        assert!(is_nested_compositor_app_id("weston"));
+        assert!(is_nested_compositor_app_id("org.freedesktop.weston"));
+        assert!(is_nested_compositor_app_id("niri"));
+        assert!(is_nested_compositor_app_id("niri.desktop"));
+        assert!(!is_nested_compositor_app_id(
+            "org.freedesktop.weston.wayland-terminal"
+        ));
+        assert!(!is_nested_compositor_app_id("weston-terminal"));
+        assert!(!is_nested_compositor_app_id("weston-flower"));
+        assert!(!is_nested_compositor_app_id(""));
+        assert!(is_nested_weston_compositor_app_id("weston"));
+        assert!(!is_nested_weston_compositor_app_id("niri"));
+        assert!(is_nested_weston_compositor(
+            "",
+            "Weston Compositor - wayland0"
+        ));
+        assert!(is_nested_weston_compositor("", "Weston Compositor"));
+        assert!(!is_nested_weston_compositor("", "Weston Terminal"));
+        assert!(!is_nested_weston_compositor("niri", "niri"));
+        assert!(!is_nested_weston_compositor("", ""));
     }
 
     #[test]

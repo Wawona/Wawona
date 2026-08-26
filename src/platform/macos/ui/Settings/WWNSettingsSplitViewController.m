@@ -23,9 +23,15 @@
         [[WWNSettingsSidebarViewController alloc]
             initWithPreferences:preferences];
 
-    [self setViewController:sidebar
+    UINavigationController *sidebarNav =
+        [[UINavigationController alloc] initWithRootViewController:sidebar];
+    UINavigationController *detailNav =
+        [[UINavigationController alloc] initWithRootViewController:preferences];
+    sidebar.detailNavigationController = detailNav;
+    preferences.settingsColumnNavigationController = detailNav;
+    [self setViewController:sidebarNav
                   forColumn:UISplitViewControllerColumnPrimary];
-    [self setViewController:preferences
+    [self setViewController:detailNav
                   forColumn:UISplitViewControllerColumnSecondary];
   }
   return self;
@@ -33,6 +39,21 @@
 
 - (void)viewDidLoad {
   [super viewDidLoad];
+#if TARGET_OS_TV
+  self.view.clipsToBounds = NO;
+  UIViewController *primary =
+      [self viewControllerForColumn:UISplitViewControllerColumnPrimary];
+  primary.view.clipsToBounds = NO;
+  if ([primary isKindOfClass:[UINavigationController class]]) {
+    ((UINavigationController *)primary).view.clipsToBounds = NO;
+  }
+  UIViewController *secondary =
+      [self viewControllerForColumn:UISplitViewControllerColumnSecondary];
+  secondary.view.clipsToBounds = NO;
+  if ([secondary isKindOfClass:[UINavigationController class]]) {
+    ((UINavigationController *)secondary).view.clipsToBounds = NO;
+  }
+#endif
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -63,10 +84,19 @@
 - (BOOL)splitViewController:(UISplitViewController *)splitViewController
     collapseSecondaryViewController:(UIViewController *)secondaryViewController
           ontoPrimaryViewController:(UIViewController *)primaryViewController {
+#if TARGET_OS_TV
+  (void)splitViewController;
+  (void)secondaryViewController;
+  (void)primaryViewController;
+  // Keep sidebar + detail both on screen. Collapsing produces an iPhone
+  // list in the corner of a 1920px display.
+  return NO;
+#else
   // Return YES to prevent collapsing the secondary view controller onto the
   // primary view controller This allows the primary (sidebar) to be the initial
   // view on iPhone
   return YES;
+#endif
 }
 
 - (void)splitViewControllerDidExpand:(UISplitViewController *)svc {

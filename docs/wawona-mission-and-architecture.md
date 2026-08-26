@@ -204,10 +204,10 @@ one it is. In the rules, in `CapabilityGate`
 The graphics stack is the worked example, and the two "small" Apple targets land
 in different states despite usually being lumped together:
 
-- **tvOS. Planned.** The SDK ships `Metal.framework` *and* `OpenGLES.framework`,
-  with `CAMetalLayer` available since tvOS 9. Wayland GL, Vulkan, and userspace
-  DRM/KMS/GBM on tvOS are all legal public-API work; they are off only because
-  they are unfinished (final phase, `WWN_TVOS_GPU=1`).
+- **tvOS. Planned until a rendered GLES and Vulkan frame.** The SDK ships
+  `Metal.framework` *and* `OpenGLES.framework`, with `CAMetalLayer` available
+  since tvOS 9. ANGLE (`target_platform=tvos`) and MoltenVK are linked when
+  `WWN_TVOS_GPU_BUNDLED`. Runtime PROPER still needs a spinning cube on device.
 - **watchOS. Blocked.** The SDK ships no `Metal.framework` and annotates
   `CAMetalLayer` `API_UNAVAILABLE(watchos)`. ANGLE and MoltenVK both bottom out
   in Metal, so there is no floor. We want it; Apple offers nothing to build it

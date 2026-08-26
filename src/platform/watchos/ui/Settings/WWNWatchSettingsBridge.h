@@ -43,6 +43,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy) NSString *logLevel;
 @property (nonatomic, assign) BOOL shakeToCloseEnabled;
 @property (nonatomic, assign) BOOL swipeBackToCloseEnabled;
+@property (nonatomic, assign) BOOL machineSessionThumbnailsEnabled;
 
 /// Re-read properties from UserDefaults (call when presenting settings UI).
 - (void)reloadFromDefaults;

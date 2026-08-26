@@ -35,8 +35,11 @@ let
     ) {
       waypipe = buildFn "waypipe" { inherit simulator; };
     };
-  # tv/watch: shm/pixman only. No ANGLE/Vulkan (platform-targets matrix).
-  allowGpu = variant == "mobile" || variant == "vision";
+  # tv: GLES (ANGLE) + Vulkan (MoltenVK). watch: SHM/CPU only. iOS/vision: full GLES+VK.
+  # SwiftShader stays iOS/vision simulator only (no tvOS recipe).
+  allowGpu = variant == "mobile" || variant == "vision" || variant == "tv";
+  allowVulkan = allowGpu;
+  allowSwiftShaderSim = (variant == "mobile" || variant == "vision") && simulator;
   base =
     {
       xkbcommon = buildFn "xkbcommon" { inherit simulator; };
@@ -61,30 +64,31 @@ let
     // lib.optionalAttrs (
       variant == "mobile" || variant == "tv" || variant == "watch" || variant == "vision"
     ) networkStack
-    // lib.optionalAttrs allowGpu {
+    // lib.optionalAttrs allowVulkan {
       iland = buildFn "iland" { inherit simulator; };
-      angle = buildFn "angle" { inherit simulator; };
       moltenvk = buildFn "moltenvk" { inherit simulator; };
+    }
+    // lib.optionalAttrs allowGpu {
+      angle = buildFn "angle" { inherit simulator; };
     }
     # SwiftShader CPU Vulkan ICD. IOS *Simulator* / CI only. On-device store
     # builds stay MoltenVK-only (App Store posture; verify-iland-graphics-bundle
     # forbids it there). The Simulator's Metal cannot bring up MoltenVK's pipeline
     # on headless CI (the app is killed with Metal domain 102), so vkcube needs a
     # pure-CPU device to fall back to.
-    // lib.optionalAttrs (allowGpu && simulator) {
+    // lib.optionalAttrs allowSwiftShaderSim {
       swiftshader = buildFn "swiftshader" { inherit simulator; };
     }
     // lib.optionalAttrs allowGpu {
       kmscube = buildFn "kmscube" { inherit simulator; };
       "iland-gl-clients" = buildFn "kmscube" { inherit simulator; };
       "gbm-es2-demo" = buildFn "gbm-es2-demo" { inherit simulator; };
-      # Vulkan acceptance client (krh/vkcube) over the same iland virtual DRM,
-      # presenting through MoltenVK. GPU variants only; wwn-kmscube has no
-      # tv/watch recipe for it by design.
-      vkcube = buildFn "vkcube" { inherit simulator; };
-      # Same mesa/kmscube sources as `kmscube` under opengl_cube_main, so Machines
-      # can present the GLES cube as its own id. No tv/watch recipe by design.
+      # GLES cube over Wayland-EGL (iland + ANGLE). tvOS uses the same recipe.
       "opengl-cube" = buildFn "opengl-cube" { inherit simulator; };
+    }
+    // lib.optionalAttrs allowVulkan {
+      # Vulkan cube over Wayland IOSurface dmabuf + MoltenVK.
+      vkcube = buildFn "vkcube" { inherit simulator; };
     }
     // lib.optionalAttrs
       (variant == "mobile" || variant == "tv" || variant == "watch" || variant == "vision")

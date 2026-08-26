@@ -17,7 +17,7 @@ mod app {
     use wawona::ffi::api::{build_info, version};
     use wawona::ffi::types::{
         AxisSource, BufferData, DecorationMode, KeyState as WlKeyState, PointerAxis,
-        PointerButton, RenderScene, WindowEvent, WindowId,
+        PointerButton, RenderScene, WindowEvent, WindowId, WindowSizeCause,
     };
     use wawona::linux::config;
     use wawona::linux::machine_profile::MachineType;
@@ -50,6 +50,8 @@ mod app {
         allow_host_close: Rc<Cell<bool>>,
         /// When true, skip opaque host fill so CSD rounded corners stay transparent.
         client_side_decorated: bool,
+        /// Nested weston/niri / terminals: do not OWL-shrink on ClientCommit.
+        fills_host: bool,
     }
 
     struct CompositorState {
@@ -365,6 +367,9 @@ mod app {
         let layout_binding = LayoutBinding::new(LayoutMode::Expanded);
 
         let compositor = start_embedded_compositor();
+        if let Some(core) = compositor.as_ref() {
+            wawona::linux::embedded_core::set(core.clone());
+        }
         // Propagate the GTK/GDK monitor scale factor into wl_output so HiDPI
         // clients render at native density instead of a hardcoded 1x.
         if let Some(core) = compositor.as_ref() {
@@ -864,8 +869,9 @@ mod app {
                                 }
                             });
 
+                            let fills_host = config.fills_host;
                             client_win.present();
-                            {
+                            if !fills_host {
                                 let comp_init = comp.clone();
                                 let da_init = da.clone();
                                 let wid_init = wid;
@@ -876,6 +882,9 @@ mod app {
                                     cs.pending_host_resizes.insert(wid_init, (w, h));
                                     dispatch_pending_host_resize(&mut cs, wid_init);
                                 });
+                            } else if config.width > 0 && config.height > 0 {
+                                cs.last_dispatched_host_resizes
+                                    .insert(wid, (config.width, config.height));
                             }
                             cs.client_windows.insert(wid, ClientWindow {
                                 gtk_window: client_win,
@@ -884,6 +893,7 @@ mod app {
                                 companion_window_ids,
                                 allow_host_close,
                                 client_side_decorated: is_csd,
+                                fills_host,
                             });
                         }
                         WindowEvent::Destroyed { window_id } => {
@@ -923,9 +933,11 @@ mod app {
                                 cw.gtk_window.set_title(Some(&title));
                             }
                         }
-                        WindowEvent::SizeChanged { window_id, width, height, .. } => {
+                        WindowEvent::SizeChanged { window_id, width, height, cause, .. } => {
                             if let Some(cw) = cs.client_windows.get(&window_id.id) {
-                                cw.gtk_window.set_default_size(width as i32, height as i32);
+                                if !(cw.fills_host && cause == WindowSizeCause::ClientCommit) {
+                                    cw.gtk_window.set_default_size(width as i32, height as i32);
+                                }
                             }
                             if cs.resize_in_flight.remove(&window_id.id) {
                                 if cs.pending_host_resizes.get(&window_id.id).copied()

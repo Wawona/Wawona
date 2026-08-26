@@ -22,6 +22,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.lazy.LazyColumn
@@ -49,10 +51,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -108,12 +113,14 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -475,6 +482,7 @@ private fun MachineGridCard(
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 Icon(
                     statusIconFor(status),
@@ -482,19 +490,24 @@ private fun MachineGridCard(
                     tint = statusColor,
                     modifier = Modifier.size(18.dp),
                 )
-                Spacer(Modifier.size(6.dp))
-                Text(
-                    status.displayTitle,
+                FittingBadgeText(
+                    text = status.displayTitle,
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold,
                     color = statusColor,
-                    maxLines = 1,
+                    modifier = Modifier.weight(1f, fill = false),
                 )
                 Spacer(Modifier.weight(1f))
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    StatusChip(machineScopeLabel(profile.type))
-                    StatusChip(typeChipLabel(profile))
-                    if (isActive) StatusChip("ACTIVE")
+                StatusChip(
+                    machineScopeLabel(profile.type),
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                StatusChip(
+                    typeChipLabel(profile),
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (isActive) {
+                    StatusChip("ACTIVE", modifier = Modifier.weight(1f, fill = false))
                 }
             }
 
@@ -506,71 +519,66 @@ private fun MachineGridCard(
                 overflow = TextOverflow.Ellipsis
             )
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
+            MachineActionButtonRow {
                 if (isRunning) {
                     CompactOutlinedButton(
                         onClick = onFocus,
-                        modifier = Modifier.weight(1f).testTag(WawonaTestTags.MACHINES_FOCUS),
+                        modifier = Modifier.testTag(WawonaTestTags.MACHINES_FOCUS),
                     ) {
-                        Icon(Icons.Outlined.CenterFocusStrong, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.size(4.dp))
-                        Text("Focus", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        MachineActionContent(
+                            icon = { Icon(Icons.Outlined.CenterFocusStrong, contentDescription = null, modifier = Modifier.size(machineActionIconSize())) },
+                            title = "Focus",
+                        )
                     }
                     CompactFilledButton(
                         onClick = onStop,
-                        modifier = Modifier.weight(1f).testTag(WawonaTestTags.MACHINES_STOP),
+                        modifier = Modifier.testTag(WawonaTestTags.MACHINES_STOP),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.error,
                             contentColor = MaterialTheme.colorScheme.onError,
                         ),
                     ) {
-                        Icon(Icons.Filled.Stop, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.size(4.dp))
-                        Text("Stop", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        MachineActionContent(
+                            icon = { Icon(Icons.Filled.Stop, contentDescription = null, modifier = Modifier.size(machineActionIconSize())) },
+                            title = "Stop",
+                        )
                     }
                 } else {
                     CompactFilledButton(
                         onClick = onConnect,
-                        modifier = Modifier.weight(1f).testTag(WawonaTestTags.MACHINES_START),
+                        modifier = Modifier.testTag(WawonaTestTags.MACHINES_START),
                         enabled = capabilities.launchSupported && status != MachineStatus.CONNECTING,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.primary,
                             contentColor = MaterialTheme.colorScheme.onPrimary,
                         ),
                     ) {
-                        Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.size(4.dp))
-                        Text(
-                            when (status) {
-                                MachineStatus.CONNECTING -> "Starting…"
-                                else -> "Start"
-                            },
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
+                        MachineActionContent(
+                            icon = { Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(machineActionIconSize())) },
+                            title = if (status == MachineStatus.CONNECTING) "Starting…" else "Start",
                         )
                     }
                 }
                 CompactOutlinedButton(
                     onClick = onEdit,
-                    modifier = Modifier.weight(1f).testTag(WawonaTestTags.MACHINES_EDIT),
+                    modifier = Modifier.testTag(WawonaTestTags.MACHINES_EDIT),
                 ) {
-                    Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.size(4.dp))
-                    Text("Edit", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    MachineActionContent(
+                        icon = { Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(machineActionIconSize())) },
+                        title = "Edit",
+                    )
                 }
                 CompactOutlinedButton(
                     onClick = onDelete,
                     enabled = !isRunning,
-                    modifier = Modifier.weight(1f).testTag(WawonaTestTags.MACHINES_DELETE),
+                    modifier = Modifier.testTag(WawonaTestTags.MACHINES_DELETE),
                     contentColor = MaterialTheme.colorScheme.error,
                     borderColor = MaterialTheme.colorScheme.error.copy(alpha = 0.5f),
                 ) {
-                    Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.size(4.dp))
-                    Text("Delete", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    MachineActionContent(
+                        icon = { Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(machineActionIconSize())) },
+                        title = "Delete",
+                    )
                 }
             }
         }
@@ -580,6 +588,43 @@ private fun MachineGridCard(
 private fun machineSubtitle(profile: MachineProfile): String = MachineSearch.subtitle(profile)
 
 private fun configurationSummary(profile: MachineProfile): String = MachineSearch.summary(profile)
+
+@Composable
+private fun machineActionIconSize() =
+    if (LocalConfiguration.current.screenWidthDp < 360) 14.dp else 16.dp
+
+@Composable
+private fun machineActionPadding(): PaddingValues {
+    val narrow = LocalConfiguration.current.screenWidthDp < 360
+    return if (narrow) PaddingValues(horizontal = 6.dp, vertical = 4.dp) else compactButtonPadding
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun MachineActionButtonRow(content: @Composable () -> Unit) {
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun MachineActionContent(
+    icon: @Composable () -> Unit,
+    title: String,
+) {
+    icon()
+    Spacer(Modifier.size(4.dp))
+    Text(
+        title,
+        maxLines = 1,
+        softWrap = false,
+        overflow = TextOverflow.Clip,
+    )
+}
 
 @Composable
 private fun CompactOutlinedButton(
@@ -592,9 +637,9 @@ private fun CompactOutlinedButton(
 ) {
     OutlinedButton(
         onClick = onClick,
-        modifier = modifier.defaultMinSize(minWidth = 0.dp),
+        modifier = modifier.defaultMinSize(minWidth = 0.dp, minHeight = 36.dp),
         enabled = enabled,
-        contentPadding = compactButtonPadding,
+        contentPadding = machineActionPadding(),
         border = BorderStroke(1.dp, borderColor),
         colors = ButtonDefaults.outlinedButtonColors(
             contentColor = contentColor,
@@ -613,9 +658,9 @@ private fun CompactFilledButton(
 ) {
     Button(
         onClick = onClick,
-        modifier = modifier.defaultMinSize(minWidth = 0.dp),
+        modifier = modifier.defaultMinSize(minWidth = 0.dp, minHeight = 36.dp),
         enabled = enabled,
-        contentPadding = compactButtonPadding,
+        contentPadding = machineActionPadding(),
         colors = colors,
         content = content,
     )
@@ -714,17 +759,44 @@ private fun MachineCardBanner(
 }
 
 @Composable
-private fun StatusChip(text: String) {
-    Text(
-        text,
+private fun FittingBadgeText(
+    text: String,
+    modifier: Modifier = Modifier,
+    style: TextStyle = MaterialTheme.typography.labelSmall,
+    fontWeight: FontWeight? = FontWeight.Bold,
+    color: Color = Color.Unspecified,
+) {
+    val resolved = style.copy(
+        fontWeight = fontWeight ?: style.fontWeight,
+        color = if (color == Color.Unspecified) style.color else color,
+    )
+    val maxSp = resolved.fontSize.takeIf { it.isSp } ?: 12.sp
+    BasicText(
+        text = text,
+        modifier = modifier.widthIn(min = 0.dp),
+        style = resolved,
+        maxLines = 1,
+        overflow = TextOverflow.Clip,
+        autoSize = TextAutoSize.StepBased(
+            minFontSize = 7.sp,
+            maxFontSize = maxSp,
+            stepSize = 0.5.sp,
+        ),
+    )
+}
+
+@Composable
+private fun StatusChip(text: String, modifier: Modifier = Modifier) {
+    FittingBadgeText(
+        text = text,
         style = MaterialTheme.typography.labelSmall,
         fontWeight = FontWeight.Bold,
-        modifier = Modifier
+        modifier = modifier
             .background(
                 MaterialTheme.colorScheme.onSurface.copy(alpha = 0.14f),
                 RoundedCornerShape(50),
             )
-            .padding(horizontal = 8.dp, vertical = 5.dp)
+            .padding(horizontal = 8.dp, vertical = 5.dp),
     )
 }
 

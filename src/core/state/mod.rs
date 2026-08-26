@@ -1448,6 +1448,14 @@ pub struct CompositorState {
     /// client claims it. `None` means "use the global default."
     pub pending_client_decoration_policy: Option<DecorationPolicy>,
 
+    /// Whether the **next** connecting client's first toplevel should get a
+    /// non-zero xdg configure (fill the parent output). Nested weston/niri
+    /// copy the first configure into their output mode; `configure(0,0)`
+    /// leaves no mode and a blank parent window. Flower/smoke must stay 0x0.
+    pub pending_client_fills_host: Option<bool>,
+    /// Per-client fill-host pin, claimed from `pending_client_fills_host`.
+    pub client_fills_host: HashMap<ClientId, bool>,
+
     /// Keyboard repeat rate (Hz)
     pub keyboard_repeat_rate: i32,
     
@@ -1573,6 +1581,8 @@ impl CompositorState {
             decoration_policy,
             client_decoration_policy: HashMap::new(),
             pending_client_decoration_policy: None,
+            pending_client_fills_host: None,
+            client_fills_host: HashMap::new(),
             keyboard_repeat_rate: 33,
             keyboard_repeat_delay: 500,
             advertise_fullscreen_shell,
@@ -1935,6 +1945,31 @@ impl CompositorState {
         }
     }
 
+    /// Claim fill-host for this client's first toplevel. See
+    /// `pending_client_fills_host`.
+    pub fn claim_pending_fills_host(&mut self, client: &ClientId) {
+        if self.client_fills_host.contains_key(client) {
+            return;
+        }
+        if let Some(fills) = self.pending_client_fills_host.take() {
+            self.client_fills_host.insert(client.clone(), fills);
+        }
+    }
+
+    /// First xdg configure size for a fill-host nested compositor. `None`
+    /// means `configure(0,0)` (client decides). Uses the live primary
+    /// output (seeded from the host window, not a 1920x1080 default) so
+    /// niri/weston copy a size that already matches the host window.
+    pub fn fill_host_configure_size(&self, client: &ClientId) -> Option<(i32, i32)> {
+        if !self.client_fills_host.get(client).copied().unwrap_or(false) {
+            return None;
+        }
+        let out = self.primary_output();
+        let w = if out.width > 0 { out.width as i32 } else { 1024 };
+        let h = if out.height > 0 { out.height as i32 } else { 768 };
+        Some((w, h))
+    }
+
     /// Drop a client's per-client decoration override (client disconnected).
     pub fn remove_client_decoration_policy(&mut self, client: &ClientId) {
         self.client_decoration_policy.remove(client);
@@ -2094,6 +2129,7 @@ impl CompositorState {
         // Force SSD per-machine (#120): drop this machine's decoration override
         // so a reused ClientId cannot inherit a stale policy.
         self.client_decoration_policy.remove(&client);
+        self.client_fills_host.remove(&client);
 
         self.wlr.layer_surfaces.retain(|(cid, _), _| *cid != client);
         self.wlr.surface_to_layer.retain(|(cid, _), _| *cid != client);

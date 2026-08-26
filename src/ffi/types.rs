@@ -555,6 +555,9 @@ pub struct WindowConfig {
     pub fullscreen_shell: bool,
     /// True when the host view owns placement/size (weston-family embedded semantics).
     pub host_locked: bool,
+    /// Nested weston/niri / terminals: host size is authoritative. Hosts must
+    /// not OWL-shrink to a smaller first client commit.
+    pub fills_host: bool,
     /// Stable per-connection id (maps nested kiosk + xdg to one host window on Linux/GTK).
     pub owner_client_internal_id: u64,
     pub state: WindowState,
@@ -575,6 +578,7 @@ impl WindowConfig {
             decoration_mode: DecorationMode::ServerSide,
             fullscreen_shell: false,
             host_locked: false,
+            fills_host: false,
             owner_client_internal_id: 0,
             state: WindowState::Normal,
             parent: None,

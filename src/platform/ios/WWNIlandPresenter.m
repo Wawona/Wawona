@@ -44,10 +44,10 @@ static uint32_t WWNIlandRefreshMillihz(void) {
     return 0;
 }
 
+extern int vkcube_main(int argc, char *argv[]) __attribute__((weak_import));
 extern int kmscube_main(int argc, char *argv[]) __attribute__((weak_import));
 extern int gbm_es2_demo_main(int argc, char *argv[]) __attribute__((weak_import));
 extern int opengl_cube_main(int argc, char *argv[]) __attribute__((weak_import));
-extern int vkcube_main(int argc, char *argv[]) __attribute__((weak_import));
 /* iland drm_linux.c. Write end of the page-flip event pipe (fd 42 read end). */
 extern int g_drm_event_pipe_write;
 #ifndef DRM_VIRTUAL_FD

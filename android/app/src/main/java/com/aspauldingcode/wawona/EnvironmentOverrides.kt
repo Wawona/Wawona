@@ -14,7 +14,7 @@ object EnvironmentOverrides {
     /** Catalog names that Reset Wawona-managed clears (keep user extras). */
     val CATALOG_NAMES: Set<String> = setOf(
         "XDG_RUNTIME_DIR", "WAYLAND_DISPLAY", "WAYLAND_SOCKET",
-        "WAWONA_NESTED_WAYLAND_DISPLAY", "WAWONA_OUTPUT_SCALE",
+        "WAWONA_NESTED_WAYLAND_DISPLAY", "WAWONA_NESTED_WAYLAND", "WAWONA_OUTPUT_SCALE",
         "NIRI_BACKEND", "NIRI_CONFIG", "WESTON_CONFIG_FILE",
         "WESTON_DATA_DIR", "WESTON_MODULE_DIR", "WESTON_BACKEND_DIR",
         "VK_DRIVER_FILES", "VK_ICD_FILENAMES", "WWN_VULKAN_LIBRARY",

@@ -33,8 +33,9 @@ Tracking issues already open:
    toolkit.
 2. **No stacked translation.** Toolkit GLES goes EGL→ANGLE→Metal (or system
    GLES on Android). Toolkit Vulkan goes ICD→Metal. Never Zink-to-reach-Metal.
-3. **tvOS / watchOS stay software.** SDL/GTK/Qt demos that want those targets
-   must ship a SHM/software renderer; never pull ANGLE/MVK into those schemes.
+3. **watchOS stays software.** No Metal in the SDK. **tvOS** uses the same
+   Mode A ANGLE + MoltenVK stack as iOS; toolkit ports may still ship a SHM
+   fallback, but they must not assert "no GPU on tvOS".
 4. **waypipe zero-copy stays available.** A toolkit that only speaks SHM is
    fine; a GPU session must still be able to use the IOSurface/AHB dmabuf
    route (#86). See [`zerocopy-waypipe`](iland-graphics-progress.md).

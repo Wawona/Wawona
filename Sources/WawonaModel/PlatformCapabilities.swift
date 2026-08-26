@@ -104,16 +104,17 @@ public enum PlatformCapabilities: Sendable {
     /// - **watchOS ships no `Metal.framework` at all** (device or simulator),
     ///   no `OpenGLES.framework`, and `CAMetalLayer` is `API_UNAVAILABLE(watchos)`.
     ///   ANGLE and MoltenVK both terminate in Metal, so neither has a floor.
-    ///   SceneKit/SpriteKit are present but are not a shader backdoor, and
-    ///   private Metal would forfeit store compliance.
+    ///   Do not use SpriteKit/SceneKit as a shader backdoor, and private Metal
+    ///   would forfeit store compliance.
     ///
-    /// Until slices are actually bundled the tvOS gate stays `planned` whatever
-    /// the environment says. A runtime flag cannot conjure a framework into the
-    /// bundle.
+    /// tvOS: `.available` when this target was linked with MoltenVK and
+    /// ANGLE (`WWN_TVOS_GPU_BUNDLED`). watchOS GL/VK stays blocked (no Metal).
+    /// Watch *present* of SHM frames is a separate gate
+    /// (`watchPresentAcceleratorGate`): SpriteKit blit, not GLES/Vulkan.
     public static var gpuStackGate: CapabilityGate {
         #if os(tvOS)
         #if WWN_TVOS_GPU_BUNDLED
-        return isFlagEnabled("WWN_TVOS_GPU") ? .available : .planned(flag: "WWN_TVOS_GPU")
+        return .available
         #else
         return .planned(flag: "WWN_TVOS_GPU")
         #endif
@@ -125,6 +126,61 @@ public enum PlatformCapabilities: Sendable {
     }
 
     public static var allowsGpuStack: Bool { gpuStackGate.isAvailable }
+
+    /// SpriteKit (default) GPU composite of Wayland SHM frames on watchOS.
+    /// Not GLES, not Vulkan, not `CAMetalLayer`. `WWN_WATCH_SK_PRESENT=0`
+    /// forces the CPU `Image` path for A/B. Research weak-link Metal is
+    /// `WWN_WATCHOS_METAL` and never ships in the store Watch IPA.
+    public static var watchPresentAcceleratorGate: CapabilityGate {
+        #if os(watchOS)
+        return .available
+        #else
+        return .forbidden(reason: "SpriteKit compositor present is watchOS-only")
+        #endif
+    }
+
+    public static var allowsWatchPresentAccelerator: Bool {
+        watchPresentAcceleratorGate.isAvailable
+    }
+
+    /// Runtime switch for the Watch SpriteKit presenter. Default on when the
+    /// gate is available. `WWN_WATCH_SK_PRESENT=0` keeps SwiftUI Image blit.
+    public static var watchPresentAcceleratorEnabled: Bool {
+        #if os(watchOS)
+        if let value = ProcessInfo.processInfo.environment["WWN_WATCH_SK_PRESENT"] {
+            if value == "0" || value.lowercased() == "false" {
+                return false
+            }
+        }
+        return allowsWatchPresentAccelerator
+        #else
+        return false
+        #endif
+    }
+
+    /// ANGLE / GLES clients (kmscube, opengl-cube, weston-simple-egl).
+    /// tvOS ships ANGLE when `WWN_TVOS_GPU_BUNDLED`. watchOS has no Metal.
+    public static var allowsGlesStack: Bool {
+        #if os(watchOS)
+        return false
+        #else
+        return allowsGpuStack
+        #endif
+    }
+
+    /// Machines / launcher ids that need a live OpenGL ES driver (ANGLE).
+    public static let glesClientIds: Set<String> = [
+        "kmscube",
+        "gbm-es2-demo",
+        "opengl-cube",
+        "weston-simple-egl",
+    ]
+
+    /// Settings → Graphics OpenGL driver is a real GLES implementation, not None.
+    public static var openGLDriverEnabled: Bool {
+        guard allowsGlesStack else { return false }
+        return UserDefaults.standard.string(forKey: "OpenGLDriver") != "none"
+    }
 
     /// Desktop + LockScreen host replacement. Coming soon on macOS (Android is
     /// gated in Compose). App Store Apple-mobile builds keep this forbidden and

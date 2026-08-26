@@ -41,14 +41,15 @@ Vulkan/OpenGL/ANGLE (platform rule).
 |----------|----------|--------|----------|
 | **macOS** | `bin/testgfx` + `libtestgfx.a` | fork/exec from Resources **or** in-process | software (default); GLES optional later |
 | **iOS / iPadOS / visionOS** | `libtestgfx.a` + `testgfx_main` | in-process via `wawona-dispatch` / Machines | software SHM required first |
-| **tvOS / watchOS** | `libtestgfx.a` + `testgfx_main` | in-process / remote as allowed | **software only**. Never link ANGLE/MoltenVK/IOKit GL stack |
+| **tvOS** | `libtestgfx.a` + `testgfx_main` | in-process / remote as allowed | software SHM first; GLES later via bundled ANGLE. Never IOKit |
+| **watchOS** | `libtestgfx.a` + `testgfx_main` | in-process / remote as allowed | **software only**. No Metal, so no ANGLE/MoltenVK |
 | **Android** | `libtestgfx_bin.so` PIE and/or archive | exec from `nativeLibraryDir` or in-process | software first; GLES optional |
 | **Linux** | nixpkgs / host reference binary | baseline | nixpkgs SDL2 + SDL2_gfx |
 
 **Hard rules (from platform targets):**
 
 - Entire Apple family stays first-class. Do not drop schemes to unblock another target.
-- watchOS/tvOS: native + remote only; **no** VM/container; **no** bundled Vulkan/OpenGL/ANGLE/ICD.
+- watchOS/tvOS: native + remote only; **no** VM/container. watchOS: **no** GPU. tvOS: ANGLE + MoltenVK like iOS.
 - visionOS = macOS product parity for nested/bundled clients (including this demo once green).
 - Gate in `mobile-platform-deps.nix` / `xcodegen.nix` / Machines profile kinds. Not ad-hoc `#ifdef` sprawl.
 
@@ -97,7 +98,7 @@ zsh / Machines launcher
 ### Phase 3. Per-platform recipes
 
 - [ ] macOS / iOS / iPadOS / visionOS / tvOS / watchOS / Android / Linux
-- [ ] tvOS/watchOS: assert no ANGLE/MoltenVK/IOKit GL on the link line
+- [ ] watchOS: assert no ANGLE/MoltenVK/IOKit GL. tvOS: ANGLE + MoltenVK like iOS; never IOKit
 - [ ] Flake outputs: `testgfx-ios`, `testgfx-macos`, `testgfx-android`, …
 
 ### Phase 4. Wawona integration
@@ -126,14 +127,14 @@ zsh / Machines launcher
 | SDL2 pulls UIKit/AppKit video by default on Apple | Configure/patch Wayland-only |
 | Archive size | Measure; demote to Wasm Runtime package if needed |
 | `exit()` kills host on mobile | In-process exit shim (kmscube/fastfetch pattern) |
-| Accidental ANGLE on tvOS/watchOS | CI link-flag assert + deps gating |
+| Accidental ANGLE on watchOS | CI link-flag assert + deps gating |
 | Audio/joystick subsystems | Disable until needed (#46 is separate) |
 
 ## Done when
 
 - [ ] `wwn-sdl2` + `wwn-sdl2-gfx` are source of truth
 - [ ] `testgfx` / `testgfx_main` runs on macOS, iOS, iPadOS, tvOS, watchOS, visionOS, Android (software path)
-- [ ] tvOS/watchOS builds do not link ANGLE/MoltenVK/Vulkan ICDs
+- [ ] watchOS builds do not link ANGLE/MoltenVK/Vulkan ICDs
 - [ ] Dispatch + Machines/zsh launch documented and smoke-tested
 - [ ] Docs + CI green for sample outputs
 

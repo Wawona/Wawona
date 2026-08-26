@@ -83,6 +83,10 @@ func iosGlobalSettingsIncludeInputAndWaypipe() {
         .vulkanDriver, .openGLDriver,
     ])
     #expect(GlobalSettingsCatalog.visibleFields(in: .machines, for: .iOS).contains(.shakeToClose))
+    #expect(GlobalSettingsCatalog.visibleFields(in: .machines, for: .iOS).contains(.sessionThumbnails))
+    #expect(GlobalSettingsCatalog.visibleFields(in: .machines, for: .iOS).contains(.vmEngine))
+    #expect(!GlobalSettingsCatalog.visibleFields(in: .machines, for: .watchOS).contains(.vmEngine))
+    #expect(GlobalSettingsCatalog.visibleFields(in: .machines, for: .watchOS).contains(.sessionThumbnails))
     #expect(GlobalSettingsCatalog.visibleFields(in: .advanced, for: .iOS) == [
         .nestedCompositors, .compositorBackend, .multipleClients, .logLevel,
     ])
@@ -114,4 +118,12 @@ func visionOSOmitsAppleWatchCompanionSection() {
     let sections = GlobalSettingsCatalog.visibleSections(for: .visionOS)
     #expect(!sections.contains(.appleWatch))
     #expect(sections.contains(.localShell))
+}
+
+@Test
+func tvOSOmitsICloudDriveSection() {
+    let sections = GlobalSettingsCatalog.visibleSections(for: .tvOS)
+    #expect(!sections.contains(.iCloudSync))
+    #expect(!sections.contains(.localShell))
+    #expect(GlobalSettingsCatalog.visibleFields(in: .iCloudSync, for: .tvOS).isEmpty)
 }

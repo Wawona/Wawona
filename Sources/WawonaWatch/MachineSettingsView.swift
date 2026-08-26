@@ -20,7 +20,9 @@ struct MachineSettingsView: View {
                     WatchKitGlobalSettings.registerHost()
                     showingGlobalSettings = true
                 }
-                Text("Global defaults (Display, Input, Graphics, Waypipe, SSH). Values below override those settings for this machine only.")
+                Text(draft?.type.isSSH == true
+                     ? "Global defaults (Display, Input, Graphics, Waypipe, SSH). Values below override those settings for this machine only."
+                     : "Global defaults (Display, Input, Graphics). Values below override those settings for this machine only.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -45,12 +47,15 @@ struct MachineSettingsView: View {
                             Text(profile.name).tag(profile.id)
                         }
                     }
+                    .pickerStyle(.navigationLink)
                 }
             }
 
             if let draft {
                 machineConfigurationSection(for: draft)
-                sshWaypipeSection()
+                if draft.type.isSSH {
+                    sshWaypipeSection()
+                }
                 displaySection()
                 inputSection()
                 graphicsSection()
@@ -120,7 +125,6 @@ struct MachineSettingsView: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
             Toggle("Enable Waypipe", isOn: waypipeEnabledBinding)
-                .disabled(draft?.type == .native)
         }
     }
 
@@ -147,11 +151,13 @@ struct MachineSettingsView: View {
                 Text("Virtual Pointer").tag("virtual")
                 Text("Host Cursor").tag("host")
             }
+            .pickerStyle(.navigationLink)
             .disabled(!(draft?.runtimeOverrides.renderMacOSPointer ?? preferences.renderMacOSPointer))
             Picker("Touch Input Type", selection: touchInputTypeBinding) {
                 Text("Multi-Touch").tag("Multi-Touch")
                 Text("Touchpad").tag("Touchpad")
             }
+            .pickerStyle(.navigationLink)
             Text("Overrides global Settings → Input. Multi-Touch is finger→wl_touch; Touchpad is the iOS virtual pointer.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
@@ -168,6 +174,7 @@ struct MachineSettingsView: View {
                 Text("metal").tag("metal")
                 Text("software").tag("software")
             }
+            .pickerStyle(.navigationLink)
             // watchOS has no GPU stack (ANGLE/Vulkan). Keep fields for profile
             // portability but mark them clearly.
             if PlatformCapabilities.allowsGpuStack {
@@ -197,6 +204,7 @@ struct MachineSettingsView: View {
                 Text("Warn").tag("warn")
                 Text("Error").tag("error")
             }
+            .pickerStyle(.navigationLink)
             Toggle("Shake to Exit Machine", isOn: shakeToCloseBinding)
             Toggle("Swipe Back to Exit Machine", isOn: swipeBackToCloseBinding)
         }
@@ -231,10 +239,12 @@ struct MachineSettingsView: View {
             Text("HDR: \(resolved.colorOperations ? "On" : "Off")")
             Text("Display: \(resolved.waylandDisplay)")
             Text("Input: \(resolved.inputProfile)")
-            Text("Host: \(resolved.sshHost.isEmpty ? "-" : resolved.sshHost)")
-            Text("User: \(resolved.sshUser.isEmpty ? "-" : resolved.sshUser)")
-            Text("Port: \(resolved.sshPort)")
-            Text("Waypipe: \(resolved.waypipeEnabled ? "On" : "Off")")
+            if profile.type.isSSH {
+                Text("Host: \(resolved.sshHost.isEmpty ? "-" : resolved.sshHost)")
+                Text("User: \(resolved.sshUser.isEmpty ? "-" : resolved.sshUser)")
+                Text("Port: \(resolved.sshPort)")
+                Text("Waypipe: \(resolved.waypipeEnabled ? "On" : "Off")")
+            }
             Text("Bundled App: \(resolved.bundledAppID.isEmpty ? "Off" : resolved.bundledAppID)")
             Text("Log Level: \(resolved.logLevel)")
             Text("Shake to Exit: \(resolved.shakeToCloseEnabled ? "On" : "Off")")

@@ -24,10 +24,12 @@ fallback) instead of removing it from the product surface.
 | Remote (SSH/waypipe) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | VM / containers | ⏳ planned | ⏳ planned | ⏳ planned | ❌ | ⏳ planned | ❌ | ❌ |
 | Multi-window (1 window per Wayland client) | ✅ | ✅ (if OS allows) | ✅ **required** | ✅ **required** | ⚠️ single primary | ❌ | ❌ |
-| Nested compositors + bundled clients | ✅ | ✅ | ✅ | ✅ **macOS parity** | ✅ | ⚠️ limited | ⚠️ limited |
-| Vulkan / OpenGL / ANGLE bundle | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ planned | ⛔ blocked |
+| Nested compositors + bundled clients | ✅ | ✅ | ✅ | ✅ **macOS parity** | ✅ | ✅ | ⚠️ limited |
+| Vulkan / OpenGL / ANGLE bundle | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⛔ blocked |
+| Watch SpriteKit present | n/a | n/a | n/a | n/a | n/a | n/a | ✅ |
 | Desktop + LockScreen replacement | ⏳ planned | ⏳ planned | ❌ App Store | ❌ | ❌ App Store | ❌ | ❌ |
 | Wawona Swinging Bridge | ⏳ Mode A+B | ⏳ Mode A+B | ❌ App Store (Mode B only) | ❌ | ❌ App Store (Mode B only) | ❌ | ❌ |
+| iCloud Drive (shell HOME) | ✅ | ❌ | ✅ | ✅ | ✅ | ⛔ blocked | ⛔ blocked |
 
 ### Legend. The four gate states
 
@@ -89,31 +91,28 @@ forbidden while iPhone is planned for those features.
    types, engines, and UI are **❌ forbidden** on these targets: that is policy,
    not a gap. GPU is a *separate* question, and the two platforms differ -
    verified against the 26.5 SDKs, re-verify rather than trusting memory:
-   - **tvOS GPU is ⏳ planned.** `AppleTVOS26.5.sdk` ships `Metal.framework`,
+   - **tvOS GPU is bundled.** `AppleTVOS26.5.sdk` ships `Metal.framework`,
      `MetalKit`, `MetalFX`, MPS/MPSGraph, **and** `OpenGLES.framework`, and
-     `CAMetalLayer` is available since tvOS 9. So Wayland GL **and** Vulkan
-     **and** iland DRM/KMS/GBM are all legal public-API work on tvOS. The only
-     reason they are off is that we have not done them. This is the **last**
-     phase of the graphics stack, after every other target is PROPER. Gate:
-     `WWN_TVOS_GPU=1` in `verify-iland-graphics-bundle.sh`. Vulkan is the short
-     path (MoltenVK supports tvOS 14.5+); GLES is the long one (ANGLE has no
-     maintained Chromium GN tvOS target. Same wall as visionOS. Though tvOS's
-     own `OpenGLES.framework` may serve instead). The Vulkan **loader** does not
+     `CAMetalLayer` is available since tvOS 9. ANGLE (OpenGL ES to Metal,
+     `target_platform=tvos`) and MoltenVK (Vulkan to Metal) link when
+     `WWN_TVOS_GPU_BUNDLED`. Gate: `WWN_TVOS_GPU=1` in
+     `verify-iland-graphics-bundle.sh` requires both. The Vulkan **loader** does not
      work on tvOS: dispatch straight into the ICD, as `WWN_VULKAN_LIBRARY`
-     already does. Never drop tvOS from the graphics roadmap.
-   - **watchOS GPU is ⛔ blocked, not forbidden and not deferred.** `WatchOS26.5.sdk`
+     already does. Rendered-frame PROPER is still pending. Never drop tvOS
+     from the graphics roadmap.
+   - **watchOS GL/VK is ⛔ blocked, not forbidden and not deferred.** `WatchOS26.5.sdk`
      ships **no `Metal.framework` at all** (device *or* simulator), no
      `OpenGLES.framework`, and `CAMetalLayer` is annotated
-     `API_UNAVAILABLE(watchos)`. Only `QuartzCore`, `SceneKit`, and `SpriteKit`
-     are present. ANGLE and MoltenVK both terminate in Metal, so neither has a
-     floor to stand on, and iland has no present target. We *want* this; Apple
-     currently offers nothing to build it from. Re-check on each SDK bump by
-     listing `$(xcrun --sdk watchos --show-sdk-path)/System/Library/Frameworks`.
-     Do **not** "fix" it with private Metal or by abusing SpriteKit/SceneKit as a
-     shader backdoor. That forfeits store compliance, which is the whole point
-     of Mode A. Until then watchOS stays on the SHM/CPU present path
-     (`wwn-iland-apple-fallback`) and the verifier enforces GPU absence
-     unconditionally.
+     `API_UNAVAILABLE(watchos)`. ANGLE and MoltenVK both terminate in Metal, so
+     neither has a floor. Re-check on each SDK bump by listing
+     `$(xcrun --sdk watchos --show-sdk-path)/System/Library/Frameworks`.
+     Do **not** "fix" GL/VK with private Metal or by abusing SpriteKit/SceneKit
+     as a shader backdoor.
+   - **watchOS present accelerator is ✅ available.** SpriteKit `SKTexture` blit
+     of Wayland SHM frames (`watchPresentAcceleratorGate`). Clients stay
+     software; the *output* is GPU-composited. Not GLES/Vulkan. Verifier
+     requires SpriteKit and forbids Metal/ANGLE/MoltenVK in the store Watch
+     IPA. `WWN_WATCHOS_METAL=1` is research only and never ships to stores.
 2. **visionOS / iPadOS**. Multi-window is mandatory: one host window/scene per
    Wayland client, same model as macOS. Android should match when the OS can
    host multiple app windows.
@@ -175,13 +174,20 @@ forbidden while iPhone is planned for those features.
     real DRM/KMS/KGSL ioctls, ship kernel code, or require kernel patches.
     Mode B `baremetal` is a legacy package name, not kernel access. Android
     direct Turnip/KGSL is forbidden; use system Vulkan/Metal or SwiftShader.
+13. **iCloud Drive (shell HOME)**. Settings → iCloud Sync is ubiquity Documents
+    for the on-device shell HOME (`WWNRootfsICloudSync`), not CloudKit or iCloud
+    KVS. Apple QA1935: iCloud Drive is unavailable on tvOS and watchOS
+    (`ubiquityIdentityToken` is always nil). That is **⛔ blocked**, not a
+    Settings stub. Omit the iCloud section on tvOS. watchOS may show a status
+    page that says Drive is unavailable. Do not add a fake toggle. CloudKit/KVS
+    exist on tvOS; they are not this section. Re-check on SDK bumps.
 
 ## Implementation checkpoints
 
 - Gate in `mobile-platform-deps.nix` variants, `xcodegen.nix` `OTHER_LDFLAGS`,
   Machines profile kinds, and platform UI. Not ad-hoc `#ifdef` sprawl.
-- tvOS/watchOS link flags must not pull `-framework IOKit`, ANGLE, MoltenVK,
-  or Vulkan ICDs. Until the deferred tvOS GPU phase, which flips only tvOS and
-  only behind `WWN_TVOS_GPU=1`. watchOS keeps this checkpoint permanently.
+- tvOS/watchOS link flags must not pull `-framework IOKit`. watchOS must
+  not pull ANGLE, MoltenVK, or Vulkan ICDs (no Metal). tvOS links ANGLE and
+  MoltenVK when `WWN_TVOS_GPU=1`.
 - When adding a Machines feature: classify it (native / remote / VM /
   container) and refuse it on targets that forbid that class.

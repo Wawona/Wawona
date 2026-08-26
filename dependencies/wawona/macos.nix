@@ -63,6 +63,9 @@ let
   # DejaVu (UI/CSD) + DejaVuSansM Nerd Font Mono (terminals / prompts).
   wawonaBundledFonts = pkgs.callPackage ../libs/fonts { };
 
+  # Cursor files only. Do not use pkgs.adwaita-icon-theme (librsvg + mypy).
+  adwaitaCursors = pkgs.callPackage ./adwaita-cursors.nix { };
+
   ilandGlLdflags = { deps, simulator ? false }: import ilandGlLdflagsNix {
     inherit lib deps simulator;
     forceLoad = true;
@@ -533,6 +536,36 @@ let
             ;;
         esac
       done < <(list_machos | sort -u)
+    }
+  '';
+
+  # Public libEGL.dylib is iland's Wayland-EGL shim. ANGLE is always staged as
+  # libEGL_angle.dylib so the shim's load_angle() does not recurse.
+  bundleIlandEglShim = ''
+    bundle_iland_egl_shim() {
+      local app="$1"
+      local fw="$app/Contents/Frameworks"
+      local shim="${effectiveNativeDeps.iland}/lib/libEGL.dylib"
+      local angle_egl="${effectiveNativeDeps.angle}/lib/libEGL.dylib"
+      mkdir -p "$fw"
+      if [ -f "$angle_egl" ]; then
+        cp -L "$angle_egl" "$fw/libEGL_angle.dylib"
+        chmod 755 "$fw/libEGL_angle.dylib"
+        install_name_tool -id "@rpath/libEGL_angle.dylib" "$fw/libEGL_angle.dylib" 2>/dev/null || true
+        echo "Bundled ANGLE as libEGL_angle.dylib"
+      else
+        echo "ERROR: ANGLE libEGL.dylib missing at $angle_egl" >&2
+        exit 1
+      fi
+      if [ -f "$shim" ]; then
+        cp -L "$shim" "$fw/libEGL.dylib"
+        chmod 755 "$fw/libEGL.dylib"
+        install_name_tool -id "@rpath/libEGL.dylib" "$fw/libEGL.dylib" 2>/dev/null || true
+        echo "Bundled iland Wayland-EGL shim as libEGL.dylib"
+      else
+        echo "ERROR: iland libEGL.dylib shim missing at $shim" >&2
+        exit 1
+      fi
     }
   '';
 
@@ -1055,10 +1088,42 @@ SHELL_EOF
                 mkdir -p "$APP/lib/libweston-13"
                 cp -r "${weston}/lib/libweston-13/"* "$APP/lib/libweston-13/"
               fi
-              CURSOR_SRC="${pkgs.adwaita-icon-theme}/share/icons/Adwaita/cursors"
+              CURSOR_SRC="${adwaitaCursors}/share/icons/Adwaita/cursors"
               if [ -d "$CURSOR_SRC" ]; then
-                mkdir -p "$APP/share/icons/Adwaita"
-                cp -r "$CURSOR_SRC" "$APP/share/icons/Adwaita/cursors"
+                # Copy into a mkdir'd dir then chmod: `cp -r` of a nix-store
+                # tree creates a 555 dest, and ln dnd-copy then Permission denied.
+                mkdir -p "$APP/share/icons/Adwaita/cursors"
+                cp -RL "$CURSOR_SRC/." "$APP/share/icons/Adwaita/cursors/"
+                chmod -R u+w "$APP/share/icons/Adwaita/cursors"
+                # Weston looks for dnd-copy / dnd-none; Adwaita 50 only ships dnd-move.
+                [ -e "$APP/share/icons/Adwaita/cursors/dnd-copy" ] \
+                  || ln -sf copy "$APP/share/icons/Adwaita/cursors/dnd-copy"
+                [ -e "$APP/share/icons/Adwaita/cursors/dnd-none" ] \
+                  || ln -sf default "$APP/share/icons/Adwaita/cursors/dnd-none"
+                if [ -f "${adwaitaCursors}/share/icons/Adwaita/index.theme" ]; then
+                  cp -L "${adwaitaCursors}/share/icons/Adwaita/index.theme" \
+                    "$APP/share/icons/Adwaita/index.theme"
+                fi
+                if [ -d "${adwaitaCursors}/share/icons/default" ]; then
+                  mkdir -p "$APP/share/icons/default"
+                  cp -RL "${adwaitaCursors}/share/icons/default/." \
+                    "$APP/share/icons/default/"
+                  chmod -R u+w "$APP/share/icons/default"
+                fi
+              fi
+              # Weston shell helpers (weston-desktop-shell / weston-keyboard /
+              # weston-simple-im). Same loop as the manual install path below.
+              # desktop-shell.so spawns these from a baked nix-store libexec
+              # path that does not exist at runtime.
+              if [ -d "${weston}/libexec" ]; then
+                for helper in "${weston}/libexec"/weston-*; do
+                  [ -f "$helper" ] || continue
+                  hbase="$(basename "$helper")"
+                  cp "$helper" "$APP/Contents/Resources/bin/"
+                  cp "$helper" "$APP/Contents/MacOS/"
+                  chmod +x "$APP/Contents/Resources/bin/$hbase" "$APP/Contents/MacOS/$hbase"
+                  echo "Bundled weston helper $hbase (xcodebuild)"
+                done
               fi
               WA_FONTS="${wawonaBundledFonts}"
               rm -rf "$APP/share/fonts" "$APP/Contents/Resources/share/fonts"
@@ -1068,8 +1133,10 @@ SHELL_EOF
               chmod -R u+w "$APP/share/fonts" "$APP/Contents/Resources/share/fonts"
 
               ${bundleMacOSAppDylibs}
+              ${bundleIlandEglShim}
               ${bundleIlandBaremetalDylib}
               echo "Bundling portable dylibs for Xcode-built Wawona.app..."
+              bundle_iland_egl_shim "$APP"
               bundle_macos_app_dylibs "$APP"
               ${lib.optionalString (ilandBaremetal != null) ''bundle_iland_baremetal_dylib "$APP"''}
 
@@ -1236,10 +1303,25 @@ SHELL_EOF
               cp -r "${weston}/lib/libweston-13/"* "$APP/lib/libweston-13/"
               echo "DEBUG: Bundled lib/libweston-13 backends"
             fi
-            CURSOR_SRC="${pkgs.adwaita-icon-theme}/share/icons/Adwaita/cursors"
+            CURSOR_SRC="${adwaitaCursors}/share/icons/Adwaita/cursors"
             if [ -d "$CURSOR_SRC" ]; then
-              mkdir -p "$APP/share/icons/Adwaita"
-              cp -r "$CURSOR_SRC" "$APP/share/icons/Adwaita/cursors"
+              mkdir -p "$APP/share/icons/Adwaita/cursors"
+              cp -RL "$CURSOR_SRC/." "$APP/share/icons/Adwaita/cursors/"
+              chmod -R u+w "$APP/share/icons/Adwaita/cursors"
+              [ -e "$APP/share/icons/Adwaita/cursors/dnd-copy" ] \
+                || ln -sf copy "$APP/share/icons/Adwaita/cursors/dnd-copy"
+              [ -e "$APP/share/icons/Adwaita/cursors/dnd-none" ] \
+                || ln -sf default "$APP/share/icons/Adwaita/cursors/dnd-none"
+              if [ -f "${adwaitaCursors}/share/icons/Adwaita/index.theme" ]; then
+                cp -L "${adwaitaCursors}/share/icons/Adwaita/index.theme" \
+                  "$APP/share/icons/Adwaita/index.theme"
+              fi
+              if [ -d "${adwaitaCursors}/share/icons/default" ]; then
+                mkdir -p "$APP/share/icons/default"
+                cp -RL "${adwaitaCursors}/share/icons/default/." \
+                  "$APP/share/icons/default/"
+                chmod -R u+w "$APP/share/icons/default"
+              fi
               echo "DEBUG: Bundled Adwaita cursors"
             fi
             WA_FONTS="${wawonaBundledFonts}"
@@ -1493,6 +1575,14 @@ SHELL_EOF
                 ln -sf igetty $out/Applications/Wawona.app/Contents/Resources/bin/modeb-getty
                 ln -sf igetty $out/Applications/Wawona.app/Contents/MacOS/modeb-getty
               fi
+              if [ -d "${modebTty}/libexec/wwn-modeb-session" ]; then
+                mkdir -p $out/Applications/Wawona.app/Contents/Resources/libexec/wwn-modeb-session
+                cp -R ${modebTty}/libexec/wwn-modeb-session/. \
+                  $out/Applications/Wawona.app/Contents/Resources/libexec/wwn-modeb-session/
+                chmod +x $out/Applications/Wawona.app/Contents/Resources/libexec/wwn-modeb-session/niri \
+                  $out/Applications/Wawona.app/Contents/Resources/libexec/wwn-modeb-session/weston
+                echo "DEBUG: Bundled Mode B TTY niri/weston DRM wrappers"
+              fi
               echo "DEBUG: Bundled wwn-igetty (igettyd + igetty)"
             elif [ -f "$IGETTY_BIN/modeb-ttyd" ]; then
               cp "$IGETTY_BIN/modeb-ttyd" $out/Applications/Wawona.app/Contents/Resources/bin/
@@ -1520,6 +1610,24 @@ SHELL_EOF
               cp "${effectiveNativeDeps.vkcube}/bin/vkcube" $out/Applications/Wawona.app/Contents/Resources/bin/
               chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/vkcube
               echo "DEBUG: Bundled vkcube (Wayland)"
+            fi
+            if [ -f "${effectiveNativeDeps.vkcube}/bin/vkcube-kms" ]; then
+              cp "${effectiveNativeDeps.vkcube}/bin/vkcube-kms" $out/Applications/Wawona.app/Contents/Resources/bin/
+              chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/vkcube-kms
+              echo "DEBUG: Bundled vkcube-kms (iland KMS/GBM)"
+            fi
+            '' else ''
+            ''}
+
+            ${if effectiveNativeDeps."gbm-es2-demo" or null != null then ''
+            if [ -f "${effectiveNativeDeps."gbm-es2-demo"}/bin/gbm-es2-demo" ]; then
+              cp "${effectiveNativeDeps."gbm-es2-demo"}/bin/gbm-es2-demo" $out/Applications/Wawona.app/Contents/Resources/bin/
+              chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/gbm-es2-demo
+              echo "DEBUG: Bundled gbm-es2-demo"
+            elif [ -f "${effectiveNativeDeps."gbm-es2-demo"}/bin/gbm_es2_demo" ]; then
+              cp "${effectiveNativeDeps."gbm-es2-demo"}/bin/gbm_es2_demo" $out/Applications/Wawona.app/Contents/Resources/bin/gbm-es2-demo
+              chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/gbm-es2-demo
+              echo "DEBUG: Bundled gbm-es2-demo (from gbm_es2_demo)"
             fi
             '' else ''
             ''}
@@ -1660,8 +1768,11 @@ PLIST_EOF
             ${installMacOSIcons}
 
             ${bundleMacOSAppDylibs}
+            ${bundleIlandEglShim}
             ${bundleIlandBaremetalDylib}
             echo "Bundling portable dylibs into Wawona.app..."
+            bundle_macos_app_dylibs "$out/Applications/Wawona.app"
+            bundle_iland_egl_shim "$out/Applications/Wawona.app"
             bundle_macos_app_dylibs "$out/Applications/Wawona.app"
             ${lib.optionalString (ilandBaremetal != null) ''bundle_iland_baremetal_dylib "$out/Applications/Wawona.app"''}
             if command -v codesign >/dev/null 2>&1; then

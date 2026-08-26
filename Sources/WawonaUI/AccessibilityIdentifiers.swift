@@ -12,6 +12,8 @@ enum WawonaA11y {
   static let machinesImages = "wwn.machines.images"
   static let machinesAdd = "wwn.machines.add"
   static let machinesStart = "wwn.machines.start"
+  static let machinesStop = "wwn.machines.stop"
+  static let machinesFocus = "wwn.machines.focus"
   static let machinesConnect = "wwn.machines.connect"
   static let machinesEdit = "wwn.machines.edit"
   static let machinesDelete = "wwn.machines.delete"

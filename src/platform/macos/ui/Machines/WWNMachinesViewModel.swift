@@ -43,9 +43,12 @@ struct BundledClient: Identifiable, Hashable {
   var requiresGpuStack: Bool = false
 }
 
-/// Bundled clients visible on this platform (GPU demos omitted on tvOS/watchOS).
+/// Bundled clients visible on this platform (GPU demos omitted on watchOS).
 var kBundledClients: [BundledClient] {
   kAllBundledClients.filter { client in
+    if PlatformCapabilities.glesClientIds.contains(client.id) {
+      return PlatformCapabilities.openGLDriverEnabled
+    }
     if client.requiresGpuStack {
       return PlatformCapabilities.allowsGpuStack
     }
@@ -80,14 +83,14 @@ let kAllBundledClients: [BundledClient] = [
     name: "Weston",
     prefsKey: "WestonEnabled",
     icon: "rectangle.on.rectangle",
-    description: "Wayland reference compositor (nested compositor)"
+    description: "Wayland reference compositor. Nested Wayland or iland DRM/KMS (Display Backend). Mode B Take Over uses DRM."
   ),
   BundledClient(
     id: "niri",
     name: "Niri",
     prefsKey: "NiriEnabled",
     icon: "rectangle.split.3x1",
-    description: "Scrollable-tiling compositor (nested compositor)"
+    description: "Scrollable-tiling compositor. Nested Wayland or iland DRM/KMS (Display Backend). Mode B Take Over uses DRM."
   ),
   BundledClient(
     id: "foot",
@@ -132,7 +135,7 @@ let kAllBundledClients: [BundledClient] = [
     name: "Vulkan Cube",
     prefsKey: "VkcubeEnabled",
     icon: "cube",
-    description: "Vulkan API smoke test",
+    description: "Vulkan cube. Mode A: Wayland client. Mode B Take Over: vkcube-kms (iland DRM/KMS/GBM).",
     requiresGpuStack: true
   ),
   BundledClient(
@@ -319,6 +322,10 @@ final class WWNMachinesViewModel: ObservableObject {
   }
 
   func reload() {
+    // Swift persist leftover OpenGLDriver=none → ANGLE, then ObjC profile JSON
+    // rewrite. Machines UI on tvOS never created WawonaPreferences otherwise.
+    _ = WawonaPreferences.shared
+    _ = WWNPreferencesManager.shared()
     profiles = WWNMachineProfileStore.loadProfiles()
     for profile in profiles {
       if statusByMachineId[profile.machineId] == nil {

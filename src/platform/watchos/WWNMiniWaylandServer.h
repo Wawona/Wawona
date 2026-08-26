@@ -57,6 +57,18 @@ void wwn_wls_feed_text(WWNMiniWaylandServer *srv, const char *utf8);
 /// state. Thread-safe, same delivery semantics as wwn_wls_feed_text.
 void wwn_wls_feed_key(WWNMiniWaylandServer *srv, uint32_t evdev_keycode, int pressed);
 
+/// Queue an in-process client via socketpair + WAYLAND_SOCKET (non-blocking).
+/// Named AF_UNIX bind often fails on Watch (sandbox TMPDIR vs Darwin sun_path
+/// 104). Call on the UI thread immediately before launching the client thread.
+/// The dispatch thread creates the wl_client. Returns 0 if the fd was queued.
+int wwn_wls_attach_inprocess_client(WWNMiniWaylandServer *srv);
+
+/// Size policy for the next xdg_toplevel / wl_shell configure (OWL).
+/// fill_host=0 (default): configure(0,0), client picks (simple-shm 250²,
+/// flower/smoke 200²). fill_host=1: output size + maximized (terminal / nested
+/// compositor). Same split as iOS `WWNIosBundledClientFillsHost`.
+void wwn_wls_set_fill_host(WWNMiniWaylandServer *srv, int fill_host);
+
 /// Destroy the server and close the socket.
 void wwn_wls_destroy(WWNMiniWaylandServer *srv);
 

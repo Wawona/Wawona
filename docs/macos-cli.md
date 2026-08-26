@@ -7,6 +7,45 @@ Machines / Settings GUI.
 /Applications/Wawona.app/Contents/MacOS/Wawona --help
 ```
 
+## Bundled software on PATH
+
+`nix run .#install` copies Wawona.app to `/Applications` and also drops
+wrappers in `~/.local/bin` (and `/usr/local/bin` when that directory is
+writable) for every bundled CLI that does not shadow Apple `/bin` or
+`/usr/bin`:
+
+```bash
+weston-terminal
+niri
+foot
+kmscube
+waypipe
+wawona --help
+```
+
+Wrappers point at the installed app, kick the compositor LaunchAgent if the
+Wayland socket is missing, and set `WESTON_*` / `FONTCONFIG_FILE` /
+`DYLD_LIBRARY_PATH`. They are not nix-store paths, so they survive GC.
+
+Apple names (`ssh`, `zsh`, `vi`, `login`) stay in
+`/Applications/Wawona.app/Contents/Resources/bin/` so host OpenSSH and zsh
+are not replaced. `nix run .#uninstall` removes the wrappers and PATH
+hooks.
+
+PATH is prepended in `~/.zprofile` (login shells: Terminal.app) and, when
+administrator authorization is available, in `/etc/zshenv.local`. nix-darwin
+sources that file from `/etc/zshenv` for **every** zsh, including Cursor and
+a nested `zsh` (those are not login shells, so `.zprofile` never runs).
+home-manager `~/.zshrc` is a nix-store symlink and is left alone.
+
+A shell that was already open still needs:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Or add `home.sessionPath = [ "$HOME/.local/bin" ];` and rebuild home-manager.
+
 ## Informational (no GUI, no instance lock)
 
 | Flag | Effect |
@@ -67,19 +106,20 @@ window. Logs to stdout plus `/tmp/wawona-modeb-cli.log` and
 |------|--------|
 | `--mode-b-status` | SIP, helper, sudoers, compositor PID (EPERM-aware), WindowServer, plus Classic `VERDICT` |
 | `--mode-b-ready` | Classic gate. Prints `VERDICT` and `REASON`. `takeover-now` (exit 0), `reboot` (exit 2), `blocked` (exit 3) |
-| `--mode-b-stage` | Install helper + dylib for this build. Does not take over the screen |
+| `--mode-b-prepare` | Sync helper if needed and arm Path B. Does not take over. `reboot` opens the native Restart sheet |
 | `--mode-b-probe` | Wait for a live root compositor without taking the screen |
 | `--mode-b-engage` | `takeover-now`: take over now. `reboot`: open the native macOS Restart sheet (`kAERestart` / QA1134, 60-second countdown). `blocked`: print the exact reason and exit 3 |
 | `--mode-b-disengage` | Full teardown: restore WindowServer, kill root compositor, remove helper / sudoers / login agent / dylib / ws-guard |
 
-`nix run .#install` **skips** Mode B restage by default. Set `WAWONA_MODEB_STAGE=1` to restage
-`/Library/Application Support/Wawona/run-modeb.sh`, copy this build's
-`libwayland-mac.dylib`, refresh sudoers, and clear a stale `modeb.lock`.
+`nix run .#install` syncs `/Library/Application Support/Wawona/run-modeb.sh`,
+copies this build's `libwayland-mac.dylib`, refreshes sudoers, and clears a
+stale `modeb.lock`.
 It prompts for administrator authorization once and fails if the helper
 still points at a previous nix store or still `export`s
 `DYLD_INSERT_LIBRARIES` (insert is compositor-only). It does not unload
-WindowServer. It does not Take Over. Public notes:
-https://wawona.io/docs/desktop/ (restage helper and dylib).
+WindowServer. It does not Take Over. Opening desktop-host Wawona also syncs
+when the helper is stale. Public notes:
+https://wawona.io/docs/desktop/ (install and updates).
 
 `--mode-b-engage` uses the already-installed `sudo -n` helper when present, so
 it does not block on an administrator dialog after a successful install.
@@ -93,21 +133,25 @@ must be fully disabled (`csrutil disable` in Recovery). Partial SIP
 ```bash
 Wawona --mode-b-status
 Wawona --mode-b-ready
-Wawona --mode-b-stage
+Wawona --mode-b-prepare
 Wawona --mode-b-probe
 Wawona --mode-b-engage
 Wawona --mode-b-disengage
 ```
 
-`--mode-b-ready` and Settings → Desktop Replacement → Classic readiness share
+`--mode-b-ready` and Settings → Desktop → Status share
 one gate. Helper `--ack-status` prints `verdict=` and `reason=`. Path B sock
 `done=1` is takeover-now. `claim-ok` `path=b sticky=1` with sock not live is
-reboot (native Restart sheet, not a custom timer). Anything else is blocked
-with the exact SIP / helper / claim-ok / sock text.
+reboot (native Restart sheet, not a custom timer). Path B pending / pathb
+plist without live Disable is also reboot. Anything else is blocked.
+
+Friends use Settings → Desktop: **Enable Desktop Replacement** then
+**Replace now**. Enable checks coverage, heals if needed, stages the helper,
+and runs bundled `wwn-iowatchdog-claim-install --path-b`, then Restart when
+needed. It never Take Over. `--mode-b-prepare` is the same setup from the CLI.
 
 `--mode-b-engage` on reboot opens loginwindow Restart (`kAERestart`). On
-blocked it does not take over. On takeover-now it engages. Restage the helper
-(`Wawona --mode-b-stage`) so `--ack-status` includes `reason=`.
+blocked it does not take over. On takeover-now it engages.
 
 Until this build of `Wawona` is installed, the same report is:
 

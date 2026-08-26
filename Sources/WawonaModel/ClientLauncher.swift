@@ -86,6 +86,9 @@ public extension ClientLauncher {
                 return true
                 #endif
             }
+            if PlatformCapabilities.glesClientIds.contains(launcher.name) {
+                return PlatformCapabilities.openGLDriverEnabled
+            }
             if launcher.requiresGpuStack {
                 return PlatformCapabilities.allowsGpuStack
             }

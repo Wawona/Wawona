@@ -27,4 +27,5 @@ or testing Mode B must never break Mode A.
 - Treating "macOS Wawona" as Desktop Replacement only.
 - Breaking CAMetalLayer / Mode A present to finish Classic Take Over.
 
-Cursor rule: `wawona-macos-mode-a`. See also `wawona-iland-mode-b-desktop`.
+Cursor rule: `wawona-macos-mode-a`. See also `wawona-iland-mode-b-desktop`,
+`wawona-compositor-backend`.

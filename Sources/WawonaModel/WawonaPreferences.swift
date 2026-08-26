@@ -128,8 +128,14 @@ public final class WawonaPreferences: ObservableObject {
     public static let shared = WawonaPreferences()
 
     private static var defaultVulkanDriver: String {
-        #if os(tvOS) || os(watchOS)
+        #if os(watchOS)
         return "none"
+        #elseif os(tvOS)
+        #if WWN_TVOS_GPU_BUNDLED
+        return "moltenvk"
+        #else
+        return "none"
+        #endif
         #elseif os(macOS) && arch(arm64)
         if #available(macOS 26.0, *) {
             return "kosmickrisp"
@@ -140,9 +146,23 @@ public final class WawonaPreferences: ObservableObject {
         #endif
     }
 
+    private static var defaultOpenGLDriver: String {
+        #if os(watchOS)
+        return "none"
+        #elseif os(tvOS)
+        #if WWN_TVOS_GPU_BUNDLED
+        return "angle"
+        #else
+        return "none"
+        #endif
+        #else
+        return "angle"
+        #endif
+    }
+
     @Published public var renderer: String = "metal"
     @Published public var vulkanDriver: String = WawonaPreferences.defaultVulkanDriver
-    @Published public var openGLDriver: String = "angle"
+    @Published public var openGLDriver: String = WawonaPreferences.defaultOpenGLDriver
     @Published public var forceSSD: Bool = false
     @Published public var renderMacOSPointer: Bool = false
     /// "virtual" or "host"
@@ -203,6 +223,7 @@ public final class WawonaPreferences: ObservableObject {
     @Published public var containerVsockPort: Int = 1024
     @Published public var shakeToCloseEnabled: Bool = true
     @Published public var swipeBackToCloseEnabled: Bool = true
+    @Published public var machineSessionThumbnailsEnabled: Bool = true
     @Published public var hasCompletedWelcome: Bool = false
     @Published public var globalClientLaunchers: [ClientLauncher] = ClientLauncher.presets
     @Published public var diagnostics: [SettingsDiagnosticEntry] = []
@@ -219,7 +240,25 @@ public final class WawonaPreferences: ObservableObject {
     public func load() {
         renderer = defaults.string(forKey: keyPrefix + "renderer") ?? "metal"
         vulkanDriver = defaults.string(forKey: "VulkanDriver") ?? WawonaPreferences.defaultVulkanDriver
-        openGLDriver = defaults.string(forKey: "OpenGLDriver") ?? "angle"
+        let storedOpenGL = defaults.string(forKey: "OpenGLDriver")
+        #if os(tvOS)
+        #if WWN_TVOS_GPU_BUNDLED
+        // ObjC owns the one-shot persist. Until that flag is set, leftover
+        // Phase 1 `none` is ANGLE so Swift save() cannot write none first.
+        let migrated = defaults.bool(forKey: "wawona.tvosOpenGLDriverMigrated.v1")
+        if storedOpenGL == "none" && !migrated {
+            openGLDriver = WawonaPreferences.defaultOpenGLDriver
+            defaults.set(openGLDriver, forKey: "OpenGLDriver")
+            defaults.synchronize()
+        } else {
+            openGLDriver = storedOpenGL ?? WawonaPreferences.defaultOpenGLDriver
+        }
+        #else
+        openGLDriver = storedOpenGL ?? "none"
+        #endif
+        #else
+        openGLDriver = storedOpenGL ?? WawonaPreferences.defaultOpenGLDriver
+        #endif
         if defaults.object(forKey: "ForceServerSideDecorations") != nil {
             forceSSD = defaults.bool(forKey: "ForceServerSideDecorations")
         } else {
@@ -289,6 +328,10 @@ public final class WawonaPreferences: ObservableObject {
         containerVsockPort = defaults.object(forKey: "ContainerVsockPort") as? Int ?? 1024
         shakeToCloseEnabled = defaults.object(forKey: keyPrefix + "shakeToCloseEnabled") as? Bool ?? true
         swipeBackToCloseEnabled = defaults.object(forKey: keyPrefix + "swipeBackToCloseEnabled") as? Bool ?? true
+        machineSessionThumbnailsEnabled =
+            defaults.object(forKey: "MachineSessionThumbnailsEnabled") as? Bool
+            ?? defaults.object(forKey: keyPrefix + "machineSessionThumbnailsEnabled") as? Bool
+            ?? true
         hasCompletedWelcome = defaults.bool(forKey: keyPrefix + "hasCompletedWelcome")
 
         if let launchersData = defaults.data(forKey: keyPrefix + "globalClientLaunchers"),
@@ -385,6 +428,8 @@ public final class WawonaPreferences: ObservableObject {
         defaults.set(containerVsockPort, forKey: "ContainerVsockPort")
         defaults.set(shakeToCloseEnabled, forKey: keyPrefix + "shakeToCloseEnabled")
         defaults.set(swipeBackToCloseEnabled, forKey: keyPrefix + "swipeBackToCloseEnabled")
+        defaults.set(machineSessionThumbnailsEnabled, forKey: "MachineSessionThumbnailsEnabled")
+        defaults.set(machineSessionThumbnailsEnabled, forKey: keyPrefix + "machineSessionThumbnailsEnabled")
         defaults.set(hasCompletedWelcome, forKey: keyPrefix + "hasCompletedWelcome")
         if let data = try? JSONEncoder().encode(globalClientLaunchers) {
             defaults.set(data, forKey: keyPrefix + "globalClientLaunchers")
@@ -449,7 +494,7 @@ public final class WawonaPreferences: ObservableObject {
             vulkanDriver: PlatformCapabilities.allowsGpuStack
                 ? (normalizedVulkanDriver.isEmpty ? vulkanDriver : normalizedVulkanDriver)
                 : "none",
-            openGLDriver: PlatformCapabilities.allowsGpuStack
+            openGLDriver: PlatformCapabilities.allowsGlesStack
                 ? (normalizedOpenGLDriver.isEmpty ? openGLDriver : normalizedOpenGLDriver)
                 : "none",
             dmabufEnabled: PlatformCapabilities.allowsGpuStack

@@ -214,20 +214,34 @@ impl XdgShellHandler for CompositorState {
         // the policy the host staged for this machine's launch, and the window
         // pins it so a concurrent machine toggling Force SSD cannot restyle it.
         self.claim_pending_decoration_policy(&client_id);
+        self.claim_pending_fills_host(&client_id);
         let client_policy = self.client_decoration_policy.get(&client_id).copied();
+        let fill_host_size = self.fill_host_configure_size(&client_id);
 
         let window_id = self.next_window_id();
         let mut window = Window::new(window_id, surface_id);
         window.decoration_policy = client_policy;
-        // OWL / xdg-shell: initial configure is 0x0 ("client decides"). Keep
-        // core + toplevel expected size at 0 so host sync does not treat the
-        // wl_output size as a configure the client must match (weston-flower /
-        // weston-smoke stay 200×200; seeding output size left a giant host
-        // window around a small buffer).
-        let (initial_width, initial_height) = (0u32, 0u32);
-        window.width = 0;
-        window.height = 0;
-        window.size_authority = crate::core::window::SizeAuthority::AwaitingFirstCommit;
+        // OWL / xdg-shell: initial configure is 0x0 ("client decides") for
+        // demos. Nested weston/niri copy the first configure into their
+        // output mode; 0x0 means no mode and a blank parent window. Those
+        // clients are staged fill-host before launch.
+        let (initial_width, initial_height) = match fill_host_size {
+            Some((w, h)) => (w.max(1) as u32, h.max(1) as u32),
+            None => (0u32, 0u32),
+        };
+        window.width = initial_width as i32;
+        window.height = initial_height as i32;
+        window.fills_host = fill_host_size.is_some();
+        window.size_authority = if window.fills_host {
+            crate::core::window::SizeAuthority::Host {
+                requested_w: initial_width.max(1),
+                requested_h: initial_height.max(1),
+                configure_serial: 0,
+                generation: 1,
+            }
+        } else {
+            crate::core::window::SizeAuthority::AwaitingFirstCommit
+        };
 
         let mut toplevel_data =
             XdgToplevelData::new(window_id, surface_id, xdg_surface_id);
@@ -255,23 +269,34 @@ impl XdgShellHandler for CompositorState {
             }
         }
 
-        // Always defer the initial configure to (0, 0). Per xdg-shell §xdg_toplevel,
-        // a zero size means "the client should decide its own size." Sending a
-        // real size here (e.g. the primary output's) forces well-behaved clients
-        // to render at that size even when it doesn't match what they actually
-        // want, and forces fixed-size clients (weston-smoke, etc.) into a
-        // host/client size mismatch that misaligns content inside the window on
-        // every platform. The client's first commit is trusted unconditionally
-        // (see `Window::has_committed_buffer`), so deferring here is safe and
-        // lets every window. On every platform. Start edge-to-edge with its
-        // own content.
-        let (configure_w, configure_h) = (0i32, 0i32);
+        // Demos: configure(0,0) so the client picks (flower/smoke 200x200).
+        // Nested compositors: non-zero fill-host size. Weston's wayland
+        // backend copies configure into wl_output.mode; a later inject does
+        // not recover from a 0x0 first mode.
+        let (configure_w, configure_h) = match fill_host_size {
+            Some((w, h)) => (w.max(1), h.max(1)),
+            None => (0i32, 0i32),
+        };
+        if fill_host_size.is_some() {
+            crate::wlog!(
+                crate::util::logging::COMPOSITOR,
+                "new_toplevel: fill-host configure {}x{} (nested compositor)",
+                configure_w,
+                configure_h
+            );
+        }
 
         surface.with_pending_state(|state| {
             state.states.set(xdg_toplevel::State::Activated);
             state.size = Some((configure_w, configure_h).into());
         });
         let serial = u32::from(surface.send_configure());
+        if fill_host_size.is_some() {
+            if let Some(window_ref) = self.get_window(window_id) {
+                let mut window = window_ref.write().unwrap();
+                window.size_authority = window.size_authority.clone().on_configure_sent(serial);
+            }
+        }
 
         if let Some(surface_data) = self
             .xdg
@@ -321,6 +346,7 @@ impl XdgShellHandler for CompositorState {
             ),
             fullscreen_shell: false,
             host_locked,
+            fills_host: fill_host_size.is_some(),
         });
         crate::core::wayland::wlr::foreign_toplevel_management::notify_toplevel_created(
             self, window_id,

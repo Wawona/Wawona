@@ -106,6 +106,7 @@ NSNotificationName const WWNWatchCompositorFrameReadyNotification =
                     stride:(uint32_t)stride;
 - (void)_waypipeThreadDidExit;
 - (BOOL)_isCompatShimEnabledForClient:(const char *)name;
+- (void)_applyMiniServerSizePolicyForClient:(const char *)name;
 @end
 
 // ── Server dispatch thread ────────────────────────────────────────────────────
@@ -139,6 +140,7 @@ typedef struct {
 static void *compositorThreadFunc(void *ctx) {
     CompositorThreadArgs *args = (CompositorThreadArgs *)ctx;
     WWNLog("WATCH", @"weston_compositor_main starting");
+    setenv("WAWONA_NESTED_WAYLAND", "1", 1);
     int rc = weston_compositor_main(args->argc, args->argv);
     WWNLog("WATCH", @"weston_compositor_main exited with code %d", rc);
     if (args->argv) {
@@ -165,8 +167,13 @@ static void *clientThreadFunc(void *ctx) {
     char **argv = args->argv ? args->argv : fallback;
 
     WWNLog("WATCH", @"Client '%s' starting", args->name);
+    NSLog(@"WATCH: Client '%s' starting (WAYLAND_SOCKET=%s WAYLAND_DISPLAY=%s)",
+          args->name,
+          getenv("WAYLAND_SOCKET") ?: "(unset)",
+          getenv("WAYLAND_DISPLAY") ?: "(unset)");
     int rc = args->entry(argc, argv);
     WWNLog("WATCH", @"Client '%s' exited with code %d", args->name, rc);
+    NSLog(@"WATCH: Client '%s' exited with code %d", args->name, rc);
 
     if (args->argv) {
         for (int i = 0; i < args->argc; i++)
@@ -424,10 +431,25 @@ static int wwn_watch_niri_entry(int argc, char **argv) {
     if (!pixels || !width || !height) { free(pixels); return; }
 
     size_t bytesPerRow = stride > 0 ? stride : (size_t)width * 4;
+    size_t srcSize = bytesPerRow * height;
+    uint8_t *rgba = malloc((size_t)width * height * 4);
+    if (!rgba) { free(pixels); return; }
+    for (uint32_t y = 0; y < height; y++) {
+        const uint8_t *src = pixels + (size_t)y * bytesPerRow;
+        uint8_t *dst = rgba + (size_t)y * width * 4;
+        for (uint32_t x = 0; x < width; x++) {
+            dst[x * 4 + 0] = src[x * 4 + 2];
+            dst[x * 4 + 1] = src[x * 4 + 1];
+            dst[x * 4 + 2] = src[x * 4 + 0];
+            dst[x * 4 + 3] = 0xFF;
+        }
+    }
+    free(pixels);
+    pixels = rgba;
+    bytesPerRow = (size_t)width * 4;
 
     CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
-    // wl_shm ARGB8888 is stored as B8G8R8A8 in little-endian memory
-    CGBitmapInfo bitmapInfo = (CGBitmapInfo)(kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedFirst);
+    CGBitmapInfo bitmapInfo = (CGBitmapInfo)(kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
 
     CGDataProviderRef provider = CGDataProviderCreateWithData(
         NULL,
@@ -448,7 +470,12 @@ static int wwn_watch_niri_entry(int argc, char **argv) {
 
     if (!self->_loggedFirstFrame) {
         self->_loggedFirstFrame = YES;
-        WWNLog("WATCH", @"First frame %ux%u stride=%u", width, height, stride);
+        WWNLog("WATCH", @"First frame %ux%u stride=%u px0=%02x%02x%02x%02x",
+              width, height, stride,
+              pixels[0], pixels[1], pixels[2], pixels[3]);
+        NSLog(@"WATCH: First frame %ux%u stride=%u px0=%02x %02x %02x %02x",
+              width, height, stride,
+              pixels[0], pixels[1], pixels[2], pixels[3]);
     }
 
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -488,6 +515,7 @@ static int wwn_watch_niri_entry(int argc, char **argv) {
                  argc:(int)argc
                  argv:(char **)argv {
     [self stopClient];
+    [self _applyMiniServerSizePolicyForClient:name];
 
     if (!entry) {
         WWNLog("WATCH", @"Refusing '%s': entry point is NULL", name);
@@ -502,6 +530,18 @@ static int wwn_watch_niri_entry(int argc, char **argv) {
     // Clear weston shutdown latch so a fresh compositor client can run.
     wwn_weston_compositor_shutdown_requested = 0;
 
+    if (_miniServer) {
+        if (wwn_wls_attach_inprocess_client(_miniServer) != 0) {
+            WWNLog("WATCH",
+                  @"In-process WAYLAND_SOCKET attach failed for '%s'; "
+                   "client will try WAYLAND_DISPLAY",
+                  name);
+        } else {
+            WWNLog("WATCH", @"Queued in-process WAYLAND_SOCKET for '%s'", name);
+            NSLog(@"WATCH: Queued in-process WAYLAND_SOCKET for '%s'", name);
+        }
+    }
+
     ClientThreadArgs *args = malloc(sizeof(ClientThreadArgs));
     args->entry = entry;
     args->name  = name;
@@ -513,6 +553,7 @@ static int wwn_watch_niri_entry(int argc, char **argv) {
         _clientRunning = YES;
         _clientThreadValid = YES;
         WWNLog("WATCH", @"Launched client '%s'", name);
+        NSLog(@"WATCH: Launched client '%s'", name);
     } else {
         if (argv) {
             for (int i = 0; i < argc; i++)
@@ -532,6 +573,7 @@ static int wwn_watch_niri_entry(int argc, char **argv) {
         return;
     }
     [self stopClient];
+    [self _applyMiniServerSizePolicyForClient:"weston"];
 
     const char *parent_display = getenv("WAYLAND_DISPLAY");
     if (!parent_display || parent_display[0] == '\0')
@@ -678,6 +720,7 @@ static int wwn_watch_niri_entry(int argc, char **argv) {
         return;
     }
     [self stopClient];
+    [self _applyMiniServerSizePolicyForClient:"niri"];
     [WWNWatchShellEnvironment apply];
 
     const char *parent_display = getenv("WAYLAND_DISPLAY");
@@ -981,6 +1024,22 @@ static void *waypipeThreadFunc(void *ctx) {
         return YES;
     }
     return NO;
+}
+
+- (void)_applyMiniServerSizePolicyForClient:(const char *)name {
+    if (!_miniServer || !name) {
+        return;
+    }
+    // Same fill set as iOS WWNIosBundledClientFillsHost. Demos (simple-shm,
+    // flower, smoke, …) keep configure(0,0) so the client owns its square.
+    int fill = strcmp(name, "weston-terminal") == 0 ||
+               strcmp(name, "wayland-terminal") == 0 ||
+               strcmp(name, "foot") == 0 ||
+               strcmp(name, "niri") == 0 ||
+               strcmp(name, "weston") == 0;
+    wwn_wls_set_fill_host(_miniServer, fill);
+    WWNLog("WATCH", @"xdg size policy for '%s': %s",
+          name, fill ? "fill-host" : "client-pick (0x0)");
 }
 
 // MARK: - Properties

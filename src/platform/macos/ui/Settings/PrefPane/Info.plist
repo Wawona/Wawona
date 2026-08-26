@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>Wawona</string>
+	<key>CFBundleExecutable</key>
+	<string>Wawona</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.aspauldingcode.Wawona.prefPane</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>Wawona</string>
+	<key>CFBundlePackageType</key>
+	<string>BNDL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>Copyright 2026 Wawona</string>
+	<key>NSPrincipalClass</key>
+	<string>WWNPreferencePane</string>
+	<key>NSPrefPaneIconFile</key>
+	<string>Wawona-iOS-Dark-1024x1024@1x.png</string>
+	<key>NSPrefPaneIconLabel</key>
+	<string>Wawona</string>
+</dict>
+</plist>

@@ -1,5 +1,6 @@
-// tvOS/watchOS: no ANGLE/iland GPU stack (platform-targets matrix).
-// Keep the ObjC class so WWNCompositorView_ios links; methods are no-ops.
+// watchOS: no Metal, so no iland GPU presenter (platform-targets matrix).
+// tvOS compiles the real WWNIlandPresenter.m (ANGLE GLES + MoltenVK).
+// Keep this stub so watchOS WWNCompositorView_ios links; methods are no-ops.
 
 #import "WWNIlandPresenter.h"
 
@@ -7,7 +8,7 @@
 #include <TargetConditionals.h>
 #endif
 
-#if TARGET_OS_TV || TARGET_OS_WATCH
+#if TARGET_OS_WATCH
 
 @implementation WWNIlandPresenter
 

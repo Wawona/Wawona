@@ -54,12 +54,12 @@ Upstream docs: [FlakeHub Cache](https://docs.determinate.systems/flakehub/cache)
 | Fork PRs | No FlakeHub Cache auth. Rebuild cold |
 | Laptop push | Not allowed. Only trusted CI builders push |
 
-Gate: products already uploads `wawona-macos` and its nixpkgs deps
-(`adwaita-icon-theme`, `librsvg`) for org members who are logged in. Skip
-`determinate-nixd login` and a laptop compiles those from source. On 8 GB
-machines that often OOMs in `librsvg` (exit 137 / `Killed: 9` during
-gdk-pixbuf-loader install). Keep `pkgs.adwaita-icon-theme`; substitute from
-cache, or build with [`scripts/nix-build-low-mem.sh`](../scripts/nix-build-low-mem.sh).
+Gate: products already uploads `wawona-macos` for org members who are logged
+in. Skip `determinate-nixd login` and a laptop compiles unmatched `wwn-*`
+hashes from source. Cursor files are `adwaita-cursors` (source tarball only).
+They do not pull `librsvg` or `adwaita-icon-theme`. On 8 GB machines, cap
+jobs with [`scripts/nix-build-low-mem.sh`](../scripts/nix-build-low-mem.sh)
+if some other cold compile still OOMs.
 Troubleshooting: [`compilation.md`](compilation.md#troubleshooting-macos-builds).
 
 ## CI fragment (every Nix-building job)
@@ -100,7 +100,8 @@ FlakeHub does **not** reduce Nix **eval** / crate2nix IFD cost, and it does
 - Warm host simulator SDKs before Apple `xcodebuild` ([`warm-ios-simulator-sdk.sh`](../.github/scripts/warm-ios-simulator-sdk.sh) on ios-sim, apple-family, and frontend-syntax)
 - Path-filter Darwin Gate: packages cells on docs-only tips
 - Hoist `generatedCargoNix` per `workspace-src-*` (ios / macos / watchos)
-- `nixConfig` / CI `max-jobs` + `cores`
+- CI installer `extra-conf` `max-jobs` + `cores` (not flake `nixConfig`; that
+  setting is untrusted on laptops and prints a warning on every `nix run`)
 
 L2 `build` jobs append a FlakeHub hit probe to the step summary (`nix path-info`
 + `cache.flakehub.com`). Treat “likely” as a hint. Same-job local builds can

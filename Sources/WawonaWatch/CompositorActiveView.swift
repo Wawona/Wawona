@@ -30,7 +30,7 @@ struct CompositorActiveView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .bottomTrailing) {
+        ZStack {
             WatchCompositorSurfaceView(onFirstFrame: {
                 startupLog.scheduleDismissAfterFirstFrame()
             })
@@ -63,24 +63,6 @@ struct CompositorActiveView: View {
                         commitDraftToWayland()
                     }
                 }
-
-            if !startupLog.isPresented {
-                Button {
-                    draftText = ""
-                    keyboardFocused = true
-                } label: {
-                    Image(systemName: "keyboard")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(.primary)
-                        .frame(width: 40, height: 40)
-                        .background(.ultraThinMaterial, in: Circle())
-                }
-                .buttonStyle(.plain)
-                .padding(.trailing, 6)
-                .padding(.bottom, 6)
-                .accessibilityIdentifier("wwn.watch.keyboard")
-                .accessibilityLabel("Keyboard")
-            }
         }
         .navigationTitle(profile.name)
         .navigationBarTitleDisplayMode(.inline)
@@ -98,7 +80,25 @@ struct CompositorActiveView: View {
                 )
                 .accessibilityLabel(profile.type == .native ? "Stop" : "Disconnect")
             }
+            if !startupLog.isPresented {
+                if #available(watchOS 26.0, *) {
+                    ToolbarSpacer(.flexible, placement: .bottomBar)
+                    ToolbarItem(placement: .bottomBar) {
+                        keyboardToolbarButton
+                    }
+                } else {
+                    ToolbarItem(placement: .bottomBar) {
+                        HStack {
+                            Spacer(minLength: 0)
+                            keyboardToolbarButton
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                }
+            }
         }
+        .toolbarBackground(.hidden, for: .bottomBar)
+        .toolbarColorScheme(.dark, for: .bottomBar)
         .confirmationDialog(
             "Close current Wayland app?",
             isPresented: $showStopConfirmation,
@@ -116,6 +116,39 @@ struct CompositorActiveView: View {
         }
         .onDisappear {
             startupLog.dismiss()
+        }
+    }
+
+    /// Bottom-trailing Liquid Glass keyboard control. Same toolbar slot as
+    /// Whisperer's watch input strip; watchOS 26 uses native `.glass`.
+    @ViewBuilder
+    private var keyboardToolbarButton: some View {
+        if #available(watchOS 26.0, *) {
+            Button {
+                draftText = ""
+                keyboardFocused = true
+            } label: {
+                Image(systemName: "keyboard")
+                    .font(.system(size: 16, weight: .semibold))
+            }
+            .buttonStyle(.glass)
+            .buttonBorderShape(.circle)
+            .accessibilityIdentifier("wwn.watch.keyboard")
+            .accessibilityLabel("Keyboard")
+        } else {
+            Button {
+                draftText = ""
+                keyboardFocused = true
+            } label: {
+                Image(systemName: "keyboard")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .frame(width: 36, height: 36)
+                    .background(.ultraThinMaterial, in: Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("wwn.watch.keyboard")
+            .accessibilityLabel("Keyboard")
         }
     }
 
@@ -145,28 +178,44 @@ struct CompositorActiveView: View {
     }
 }
 
-/// Paints the mini compositor's latest SHM commit. Frames arrive on
-/// `WWNWatchCompositorFrameReadyNotification`; without this view the client
-/// runs (PTY, configure, redraw) and nothing appears on the watch.
+/// Paints the mini compositor's latest SHM commit. Default present is SpriteKit
+/// (`WatchSpritePresentView`). `WWN_WATCH_SK_PRESENT=0` keeps the CPU Image path
+/// for A/B. Frames arrive on `WWNWatchCompositorFrameReadyNotification`.
 struct WatchCompositorSurfaceView: View {
     var onFirstFrame: (() -> Void)? = nil
     @State private var frameID = 0
     @State private var didNotifyFirstFrame = false
 
     var body: some View {
-        Group {
-            if let image = WWNWatchCompositorBridge.shared().latestFrame {
-                Image(uiImage: UIImage(cgImage: image))
-                    .resizable()
-                    .scaledToFit()
-                    .id(frameID)
-            } else if onFirstFrame == nil {
-                // Standalone use: keep the old placeholder. When a startup
-                // log overlay is active, skip this so logs aren't covered.
-                Text("Waiting for surface…")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+        if PlatformCapabilities.watchPresentAcceleratorEnabled {
+            WatchSpritePresentView(onFirstFrame: onFirstFrame)
+        } else {
+            cpuImagePresent
+        }
+    }
+
+    private var cpuImagePresent: some View {
+        GeometryReader { geo in
+            ZStack {
+                Color.black
+                if let image = WWNWatchCompositorBridge.shared().latestFrame {
+                    let iw = CGFloat(image.width)
+                    let ih = CGFloat(image.height)
+                    let scale = min(
+                        1,
+                        min(geo.size.width / max(iw, 1), geo.size.height / max(ih, 1))
+                    )
+                    Image(uiImage: UIImage(cgImage: image))
+                        .resizable()
+                        .frame(width: iw * scale, height: ih * scale)
+                        .id(frameID)
+                } else if onFirstFrame == nil {
+                    Text("Waiting for surface…")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
             }
+            .frame(width: geo.size.width, height: geo.size.height)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.black)

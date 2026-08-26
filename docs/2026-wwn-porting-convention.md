@@ -63,18 +63,18 @@ flake + `registryFragment` skeleton + port-plan README
 ### Toolkit smoke (companion)
 
 - `wwn-sdl2` + `wwn-sdl2-gfx`. SDL2 Wayland + SDL2_gfx `testgfx` demo across
-  the board (software/`wl_shm` first so tvOS/watchOS stay in scope without
-  ANGLE). Tracking: [#107](https://github.com/Wawona/Wawona/issues/107),
+  the board (software/`wl_shm` first; tvOS may use GLES via bundled ANGLE,
+  watchOS stays software). Tracking: [#107](https://github.com/Wawona/Wawona/issues/107),
   plan mirror [`issues/sdl2-gfx-demo-port.md`](./issues/sdl2-gfx-demo-port.md).
   Complements `wwn-kmscube` (GLES/iland path).
 - `wwn-gtk`. GTK4 Wayland + `gtk4_demo` / `gtk4_demo_main` across the board
-  (Cairo/`wl_shm` first on tvOS/watchOS; GL only where `allowGpu`). Prefer
+  (Cairo/`wl_shm` first on watchOS; GL where `allowGpu`, including tvOS). Prefer
   **core-bundled or Wasm** when size/compliance allow. Not ODR. Tracking:
   [#109](https://github.com/Wawona/Wawona/issues/109), plan mirror
   [`issues/gtk4-demo-port.md`](./issues/gtk4-demo-port.md). Shared foundation
   for `wwn-gtkgreet` / `wwn-gtklock` / `wwn-gnome`.
 - `wwn-qt6` + `wwn-qmlscene`. Qt6 Wayland QPA + `qmlscene` demo across the
-  board (software RHI / `wl_shm` first so tvOS/watchOS stay in scope without
-  ANGLE). Tracking: [#108](https://github.com/Wawona/Wawona/issues/108),
+  board (software RHI / `wl_shm` first; tvOS may use GPU, watchOS stays
+  software). Tracking: [#108](https://github.com/Wawona/Wawona/issues/108),
   plan mirror [`issues/qmlscene-port.md`](./issues/qmlscene-port.md).
   Complements `wwn-kmscube` and `#107`; shared Qt foundation for `#74` `wwn-kde`.

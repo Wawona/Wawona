@@ -21,15 +21,13 @@ struct WWNMachineCardView: View {
     VStack(alignment: .leading, spacing: 12) {
       headerBanner
 
-      HStack {
+      HStack(spacing: 6) {
         statusBadge
-        Spacer()
-        HStack(spacing: 6) {
-          chip(scopeLabel.uppercased())
-          chip(typeLabel.uppercased())
-          if isActive {
-            chip("ACTIVE")
-          }
+        Spacer(minLength: 4)
+        MachineStatusChip(text: scopeLabel.uppercased())
+        MachineStatusChip(text: typeLabel.uppercased())
+        if isActive {
+          MachineStatusChip(text: "ACTIVE")
         }
       }
 
@@ -38,10 +36,7 @@ struct WWNMachineCardView: View {
         .foregroundStyle(.secondary)
         .lineLimit(3)
 
-      HStack(spacing: 8) {
-        actionButtons
-      }
-      .controlSize(.small)
+      actionButtons
     }
     .padding(16)
     .background(
@@ -117,10 +112,12 @@ struct WWNMachineCardView: View {
           Text(profile.name.isEmpty ? "Unnamed Machine" : profile.name)
             .font(.title3.weight(.bold))
             .lineLimit(1)
+            .truncationMode(.tail)
           Text(subtitle)
             .font(.subheadline)
             .foregroundStyle(.secondary)
             .lineLimit(1)
+            .truncationMode(.tail)
         }
         Spacer()
         Image(systemName: iconName)
@@ -196,7 +193,67 @@ struct WWNMachineCardView: View {
       .buttonStyle(.bordered)
       .disabled(isRunning || isPreparing)
       .wwnA11y(WWNA11y.machinesDelete, label: "Delete \(descriptor)")
+    MachineActionBar(items: actionItems)
+  }
+
+  private var actionItems: [MachineActionItem] {
+    var items: [MachineActionItem] = []
+    if isRunning {
+      items.append(
+        MachineActionItem(
+          title: "Focus",
+          systemImage: "scope",
+          accessibilityID: WWNA11y.machinesFocus,
+          accessibilityLabel: "Focus \(descriptor)",
+          action: onFocus
+        )
+      )
+      items.append(
+        MachineActionItem(
+          title: "Stop",
+          systemImage: "stop.fill",
+          role: .destructive,
+          prominent: true,
+          tint: .red,
+          accessibilityID: WWNA11y.machinesStop,
+          accessibilityLabel: "Stop \(descriptor)",
+          action: onStop
+        )
+      )
+    } else {
+      items.append(
+        MachineActionItem(
+          title: "Start",
+          systemImage: "play.fill",
+          prominent: true,
+          enabled: launchSupported,
+          accessibilityID: WWNA11y.machinesStart,
+          accessibilityLabel: "Start \(descriptor)",
+          action: onConnect
+        )
+      )
     }
+    items.append(
+      MachineActionItem(
+        title: "Edit",
+        systemImage: "slider.horizontal.3",
+        accessibilityID: WWNA11y.machinesEdit,
+        accessibilityLabel: "Edit \(descriptor)",
+        action: onEdit
+      )
+    )
+    items.append(
+      MachineActionItem(
+        title: "Delete",
+        systemImage: "trash",
+        role: .destructive,
+        enabled: !isRunning,
+        accessibilityID: WWNA11y.machinesDelete,
+        accessibilityLabel: "Delete \(descriptor)",
+        action: onDelete
+      )
+    )
+    return items
   }
 
   // MARK: - Computed Properties
@@ -230,10 +287,24 @@ struct WWNMachineCardView: View {
   }
 
   private var statusBadge: some View {
-    Label(status.title, systemImage: statusSymbol)
-      .font(.caption.weight(.semibold))
-      .foregroundStyle(statusColor)
-      .labelStyle(.titleAndIcon)
+    Label {
+      MachineFittingLabel(
+        text: status.title,
+        font: .caption.weight(.semibold),
+        alignment: .leading
+      )
+    } icon: {
+      Image(systemName: statusSymbol)
+    }
+    .font(.caption.weight(.semibold))
+    .foregroundStyle(statusColor)
+    .labelStyle(.titleAndIcon)
+    .lineLimit(1)
+    .minimumScaleFactor(0.35)
+    .allowsTightening(true)
+    .fixedSize(horizontal: false, vertical: true)
+    .frame(minWidth: 0)
+    .layoutPriority(1)
   }
 
   private var statusSymbol: String {
@@ -253,11 +324,4 @@ struct WWNMachineCardView: View {
     }
   }
 
-  private func chip(_ text: String) -> some View {
-    Text(text)
-      .font(.caption2.weight(.bold))
-      .padding(.horizontal, 8)
-      .padding(.vertical, 5)
-      .background(Color.secondary.opacity(0.16), in: Capsule())
-  }
 }

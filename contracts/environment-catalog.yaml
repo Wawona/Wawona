@@ -38,6 +38,12 @@ entries:
     default: nestedWaylandDisplay
     resettable: true
     help: Nested compositor socket name.
+  - name: WAWONA_NESTED_WAYLAND
+    category: session
+    mutability: computed
+    default: "1"
+    resettable: true
+    help: Nested weston sizes from xdg_toplevel instead of parent wl_output.mode.
   - name: WAWONA_OUTPUT_SCALE
     category: session
     mutability: computed

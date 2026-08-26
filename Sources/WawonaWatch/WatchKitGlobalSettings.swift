@@ -105,6 +105,33 @@ private func watchShows(_ field: GlobalSettingsFieldID, in section: GlobalSettin
     GlobalSettingsCatalog.visibleFields(in: section, for: .watchOS).contains(field)
 }
 
+/// Title plus the real value. Long copy wraps. Never a placeholder ellipsis.
+private struct WatchInfoRow: View {
+    let title: String
+    let detail: String
+    @State private var showDetail = false
+
+    var body: some View {
+        Button {
+            showDetail = true
+        } label: {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .lineLimit(1)
+                Text(detail.split { $0.isNewline || $0.isWhitespace }.joined(separator: " "))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .alert(title, isPresented: $showDetail) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(detail)
+        }
+    }
+}
+
 // MARK: - Section detail views
 
 private struct WatchSettingsDisplaySection: View {
@@ -114,17 +141,17 @@ private struct WatchSettingsDisplaySection: View {
         Form {
             if watchShows(.colorOperations, in: .display) {
                 Toggle("Enable HDR", isOn: $preferences.colorOperations)
-                    .lineLimit(2)
+                    .lineLimit(1)
             }
             if watchShows(.forceSSD, in: .display), PlatformCapabilities.supportsClientSideDecorations {
                 Toggle("Force SSD", isOn: $preferences.forceSSD)
-                    .lineLimit(2)
+                    .lineLimit(1)
             }
             if watchShows(.respectSafeArea, in: .display) {
-                Text("Respect Safe Area is iPhone-only.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(nil)
+                WatchInfoRow(
+                    title: "Respect Safe Area",
+                    detail: "Respect Safe Area is iPhone-only."
+                )
             }
         }
         .navigationTitle(GlobalSettingsSectionID.display.title)
@@ -145,6 +172,7 @@ private struct WatchSettingsInputSection: View {
                     Text("Virtual Pointer").tag("virtual")
                     Text("Host Cursor").tag("host")
                 }
+                .pickerStyle(.navigationLink)
                 .disabled(!preferences.renderMacOSPointer)
             }
             if watchShows(.touchInputType, in: .input) {
@@ -152,9 +180,7 @@ private struct WatchSettingsInputSection: View {
                     Text("Multi-Touch").tag("Multi-Touch")
                     Text("Touchpad").tag("Touchpad")
                 }
-                Text("Multi-Touch is finger→wl_touch. Touchpad is the iOS virtual pointer (relative drag, tap=click). Crown scrolls in Touchpad mode.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                .pickerStyle(.navigationLink)
             }
             if watchShows(.resizeDisplayForVirtualKeyboard, in: .input) {
                 Toggle("Resize Display for Virtual Keyboard", isOn: $preferences.resizeDisplayForVirtualKeyboard)
@@ -181,17 +207,22 @@ private struct WatchSettingsGraphicsSection: View {
                     Text("metal").tag("metal")
                     Text("software").tag("software")
                 }
+                .pickerStyle(.navigationLink)
             }
             if watchShows(.vulkanDriver, in: .graphics) {
-                LabeledContent("Vulkan Driver", value: "None")
+                WatchInfoRow(title: "Vulkan Driver", detail: "None")
             }
             if watchShows(.openGLDriver, in: .graphics) {
-                LabeledContent("OpenGL Driver", value: "None")
+                WatchInfoRow(title: "OpenGL Driver", detail: "None")
             }
-            Text("watchOS has no Metal GPU stack. Compositor presents via SHM/CPU. GPU clients stay unavailable.")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .lineLimit(nil)
+            WatchInfoRow(
+                title: "Present",
+                detail: "SpriteKit GPU blit of SHM frames. Vulkan and OpenGL stay blocked until the SDK ships public Metal."
+            )
+            WatchInfoRow(
+                title: "GPU stack",
+                detail: "No Metal.framework in the watchOS SDK. ANGLE and MoltenVK are not bundled."
+            )
         }
         .navigationTitle(GlobalSettingsSectionID.graphics.title)
         .onDisappear { preferences.save() }
@@ -247,6 +278,7 @@ private struct WatchSettingsWaypipeSection: View {
                     Text("lz4").tag("lz4")
                     Text("zstd").tag("zstd")
                 }
+                .pickerStyle(.navigationLink)
             }
             if watchShows(.waypipeVideo, in: .waypipe) {
                 Picker("Video Codec", selection: $preferences.waypipeVideo) {
@@ -255,6 +287,7 @@ private struct WatchSettingsWaypipeSection: View {
                     Text("vp9").tag("vp9")
                     Text("av1").tag("av1")
                 }
+                .pickerStyle(.navigationLink)
             }
             if watchShows(.waypipeRemoteCommand, in: .waypipe) {
                 TextField("Remote Command", text: $preferences.waypipeRemoteCommand)
@@ -303,6 +336,7 @@ private struct WatchSettingsSSHSection: View {
                     Text("Password").tag(0)
                     Text("Public Key").tag(1)
                 }
+                .pickerStyle(.navigationLink)
             }
             if preferences.sshAuthMethod == 0 {
                 if watchShows(.sshPassword, in: .ssh) {
@@ -315,6 +349,7 @@ private struct WatchSettingsSSHSection: View {
                         Text("ecdsa").tag("ecdsa")
                         Text("rsa").tag("rsa")
                     }
+                    .pickerStyle(.navigationLink)
                 }
                 if watchShows(.sshKeyPath, in: .ssh) {
                     TextField("Key Path", text: $preferences.sshKeyPath)
@@ -360,11 +395,15 @@ private struct WatchSettingsMachinesSection: View {
         Form {
             if watchShows(.shakeToClose, in: .machines) {
                 Toggle("Shake to Exit Machine", isOn: $preferences.shakeToCloseEnabled)
-                    .lineLimit(2)
+                    .lineLimit(1)
             }
             if watchShows(.swipeBackToClose, in: .machines) {
                 Toggle("Swipe Back to Exit Machine", isOn: $preferences.swipeBackToCloseEnabled)
-                    .lineLimit(2)
+                    .lineLimit(1)
+            }
+            if watchShows(.sessionThumbnails, in: .machines) {
+                Toggle("Session Thumbnails", isOn: $preferences.machineSessionThumbnailsEnabled)
+                    .lineLimit(1)
             }
         }
         .navigationTitle(GlobalSettingsSectionID.machines.title)
@@ -375,11 +414,10 @@ private struct WatchSettingsMachinesSection: View {
 private struct WatchSettingsICloudSection: View {
     var body: some View {
         Form {
-            LabeledContent("iCloud Status", value: "Not available on watchOS")
-            Text("iCloud Drive Documents for shell HOME ships on iPhone, iPad, Mac, and Vision Pro.")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .lineLimit(nil)
+            WatchInfoRow(
+                title: "iCloud Status",
+                detail: "Not available on watchOS. iCloud Drive Documents for shell HOME ships on iPhone, iPad, Mac, and Vision Pro."
+            )
         }
         .navigationTitle(GlobalSettingsSectionID.iCloudSync.title)
     }
@@ -403,21 +441,16 @@ private struct WatchSettingsDependenciesSection: View {
     var body: some View {
         Form {
             if packages.isEmpty {
-                Text("SettingsDependencies.json missing from this watchOS build.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(nil)
+                WatchInfoRow(
+                    title: "Dependencies",
+                    detail: "SettingsDependencies.json missing from this watchOS build."
+                )
             } else {
                 ForEach(packages, id: \.0) { name, version, role in
-                    VStack(alignment: .leading, spacing: 2) {
-                        LabeledContent(name, value: version)
-                        if !role.isEmpty {
-                            Text(role)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(nil)
-                        }
-                    }
+                    WatchInfoRow(
+                        title: name,
+                        detail: [version, role].filter { !$0.isEmpty }.joined(separator: "\n\n")
+                    )
                 }
             }
         }
@@ -432,7 +465,7 @@ private struct WatchSettingsAdvancedSection: View {
         Form {
             if watchShows(.nestedCompositors, in: .advanced) {
                 Toggle("Nested Compositors", isOn: $preferences.nestedCompositorsSupport)
-                    .lineLimit(2)
+                    .lineLimit(1)
             }
             if watchShows(.compositorBackend, in: .advanced) {
                 Picker("Display Backend", selection: $preferences.compositorBackend) {
@@ -440,10 +473,11 @@ private struct WatchSettingsAdvancedSection: View {
                     Text("Wayland (nested)").tag("wayland")
                     Text("DRM/KMS (wwn-iland)").tag("drm")
                 }
+                .pickerStyle(.navigationLink)
             }
             if watchShows(.multipleClients, in: .advanced) {
                 Toggle("Multiple Clients", isOn: $preferences.multipleClients)
-                    .lineLimit(2)
+                    .lineLimit(1)
             }
             if watchShows(.logLevel, in: .advanced) {
                 Picker("Log Level", selection: $preferences.logLevel) {
@@ -452,6 +486,7 @@ private struct WatchSettingsAdvancedSection: View {
                     Text("Warn").tag("warn")
                     Text("Error").tag("error")
                 }
+                .pickerStyle(.navigationLink)
             }
         }
         .navigationTitle(GlobalSettingsSectionID.advanced.title)
@@ -463,10 +498,10 @@ private struct WatchSettingsAboutSection: View {
     var body: some View {
         Form {
             if watchShows(.aboutVersion, in: .about) {
-                LabeledContent("Version", value: watchAboutVersion)
+                WatchInfoRow(title: "Version", detail: watchAboutVersion)
             }
             if watchShows(.aboutPlatform, in: .about) {
-                LabeledContent("Platform", value: "watchOS")
+                WatchInfoRow(title: "Platform", detail: "watchOS")
             }
             Button("Report a Bug on GitHub") {
                 let raw = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
@@ -490,7 +525,7 @@ private struct WatchSettingsAboutSection: View {
             }
             if watchShows(.aboutAuthor, in: .about) {
                 Link(destination: URL(string: "https://aspauldingcode.com")!) {
-                    LabeledContent("Author", value: "Alex Spaulding")
+                    LabeledContent("Author", value: "aspauldingcode.com")
                 }
             }
             if watchShows(.aboutSource, in: .about) {
