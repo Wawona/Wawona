@@ -23,6 +23,13 @@
   fastfetch ? null,
   phoon ? null,
   wawonaWasm ? null,
+  containerCli ? null,
+  # Container Wayland bridge (desktop-session machines): host waypipe with a
+  # working --socket-fds (SplitFD) transport, and the guest aarch64-linux
+  # waypipe injected into the container VM. Null = desktop sessions unavailable
+  # (the backend reports the missing piece clearly).
+  containerWaypipeFds ? null,
+  containerWaypipeGuestLinux ? null,
   neovim ? null,
   zsh ? null,
   kmscube ? null,
@@ -713,6 +720,8 @@ in
         "src/platform/macos/ui/Machines/WWNAccessibilityIdentifiers.swift"
         "src/platform/macos/ui/Machines/WWNMachineCardView.swift"
         "src/platform/macos/ui/Machines/WWNMachineEditorView.swift"
+        "src/platform/macos/ui/Machines/WWNContainerHubClient.swift"
+        "src/platform/macos/ui/Machines/WWNContainerHubSearchView.swift"
         "src/platform/macos/ui/Machines/WWNMachinesViewModel.swift"
         "src/platform/macos/ui/Machines/WWNMachinesGridView.swift"
       )
@@ -1009,6 +1018,61 @@ GEN_HEADER
                   fi
                 done
               fi
+
+              # Bundle the wwn-containers `container` CLI (wwn-oci + macOS
+              # backend) so the GUI search + runner work without a system
+              # install. Its deps stay in the derivation's runtime closure.
+              ${if containerCli != null then ''
+              if [ -f "${containerCli}/bin/container" ]; then
+                cp "${containerCli}/bin/container" "$APP/Contents/Resources/bin/"
+                cp "${containerCli}/bin/container" "$APP/Contents/MacOS/"
+                chmod +x "$APP/Contents/Resources/bin/container" "$APP/Contents/MacOS/container"
+                echo "DEBUG: Bundled container CLI (Xcode path)"
+              else
+                echo "Warning: container binary not found at ${containerCli}/bin/container"
+              fi
+              '' else ''
+              echo "Warning: container-cli not provided, skipping container bundling"
+              ''}
+
+              # Container Wayland bridge (desktop sessions): host waypipe (SplitFD,
+              # signed Mach-O) and guest aarch64-linux waypipe (ELF data payload — the
+              # backend injects it into the Linux VM, so it must NOT be codesigned).
+              ${if containerWaypipeFds != null then ''
+              if [ -f "${containerWaypipeFds}/bin/waypipe" ]; then
+                cp "${containerWaypipeFds}/bin/waypipe" "$APP/Contents/Resources/bin/waypipe-fds"
+                chmod +x "$APP/Contents/Resources/bin/waypipe-fds"
+                echo "DEBUG: Bundled waypipe-fds"
+              else
+                echo "Warning: waypipe-fds binary not found at ${containerWaypipeFds}/bin/waypipe"
+              fi
+              '' else ''
+              echo "Warning: container waypipe-fds not provided, desktop sessions unavailable"
+              ''}
+              ${if containerWaypipeGuestLinux != null then ''
+              if [ -f "${containerWaypipeGuestLinux}/bin/waypipe" ]; then
+                cp "${containerWaypipeGuestLinux}/bin/waypipe" "$APP/Contents/Resources/bin/waypipe-guest"
+                chmod +x "$APP/Contents/Resources/bin/waypipe-guest"
+                echo "DEBUG: Bundled waypipe-guest (aarch64-linux)"
+              else
+                echo "Warning: waypipe-guest binary not found at ${containerWaypipeGuestLinux}/bin/waypipe"
+              fi
+              '' else ''
+              echo "Warning: container waypipe-guest not provided, desktop sessions unavailable"
+              ''}
+
+              # Terminal SHELL for container machines: weston-terminal runs
+              # $SHELL, and WWNContainerRunner points it here so the container
+              # command (WAWONA_CONTAINER_CMD) runs inside the Wawona terminal.
+              cat > "$APP/Contents/Resources/bin/wawona-container-shell" <<'SHELL_EOF'
+#!/bin/sh
+# Wawona container shell. The terminal emulator runs $SHELL; for container
+# machines Wawona points SHELL here and passes the full command in
+# WAWONA_CONTAINER_CMD.
+exec /bin/sh -lc "$WAWONA_CONTAINER_CMD"
+SHELL_EOF
+              chmod +x "$APP/Contents/Resources/bin/wawona-container-shell"
+
               if [ -d "${weston}/share/weston" ]; then
                 mkdir -p "$APP/share/weston"
                 cp -r "${weston}/share/weston/"* "$APP/share/weston/"
@@ -1391,6 +1455,61 @@ GEN_HEADER
             '' else ''
             echo "Warning: wawona-wasm not provided, skipping wasm/wpm bundling"
             ''}
+
+            # Bundle the wwn-containers `container` CLI (wwn-oci + the macOS
+            # execution backend). The script references its deps by store path,
+            # so they stay in the app's runtime closure automatically.
+            ${if containerCli != null then ''
+            if [ -f "${containerCli}/bin/container" ]; then
+              cp "${containerCli}/bin/container" $out/Applications/Wawona.app/Contents/Resources/bin/
+              cp "${containerCli}/bin/container" $out/Applications/Wawona.app/Contents/MacOS/
+              chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/container
+              chmod +x $out/Applications/Wawona.app/Contents/MacOS/container
+              echo "DEBUG: Bundled container CLI"
+            else
+              echo "Warning: container binary not found at ${containerCli}/bin/container"
+            fi
+            '' else ''
+            echo "Warning: container-cli not provided, skipping container bundling"
+            ''}
+
+            # Container Wayland bridge (desktop sessions): host waypipe
+            # (SplitFD, signed Mach-O) + guest aarch64-linux waypipe (ELF
+            # payload injected into the Linux VM — not codesigned).
+            ${if containerWaypipeFds != null then ''
+            if [ -f "${containerWaypipeFds}/bin/waypipe" ]; then
+              cp "${containerWaypipeFds}/bin/waypipe" $out/Applications/Wawona.app/Contents/Resources/bin/waypipe-fds
+              chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/waypipe-fds
+              echo "DEBUG: Bundled waypipe-fds"
+            else
+              echo "Warning: waypipe-fds binary not found at ${containerWaypipeFds}/bin/waypipe"
+            fi
+            '' else ''
+            echo "Warning: container waypipe-fds not provided, desktop sessions unavailable"
+            ''}
+            ${if containerWaypipeGuestLinux != null then ''
+            if [ -f "${containerWaypipeGuestLinux}/bin/waypipe" ]; then
+              cp "${containerWaypipeGuestLinux}/bin/waypipe" $out/Applications/Wawona.app/Contents/Resources/bin/waypipe-guest
+              chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/waypipe-guest
+              echo "DEBUG: Bundled waypipe-guest (aarch64-linux)"
+            else
+              echo "Warning: waypipe-guest binary not found at ${containerWaypipeGuestLinux}/bin/waypipe"
+            fi
+            '' else ''
+            echo "Warning: container waypipe-guest not provided, desktop sessions unavailable"
+            ''}
+
+            # Terminal SHELL for container machines: weston-terminal runs
+            # $SHELL, and WWNContainerRunner points it here so the container
+            # command (WAWONA_CONTAINER_CMD) runs inside the Wawona terminal.
+            cat > $out/Applications/Wawona.app/Contents/Resources/bin/wawona-container-shell <<'SHELL_EOF'
+#!/bin/sh
+# Wawona container shell. The terminal emulator runs $SHELL; for container
+# machines Wawona points SHELL here and passes the full command in
+# WAWONA_CONTAINER_CMD.
+exec /bin/sh -lc "$WAWONA_CONTAINER_CMD"
+SHELL_EOF
+            chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/wawona-container-shell
 
             # Bundle neovim
             ${if neovim != null then ''

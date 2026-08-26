@@ -74,6 +74,15 @@ extern NSString *const kWWNPrefsMachineVMProvider;
 extern NSString *const kWWNPrefsMachineVMVsockPort;
 extern NSString *const kWWNPrefsMachineContainerRuntime;
 extern NSString *const kWWNPrefsMachineContainerImageStore;
+// Global container defaults (Settings → Containers). Empty strings mean
+// "CLI default"; image + command form the one-shot `container run` baseline.
+extern NSString *const kWWNPrefsContainerDefaultImage;
+extern NSString *const kWWNPrefsContainerDefaultCommand;
+extern NSString *const kWWNPrefsContainerMemory;
+extern NSString *const kWWNPrefsContainerShmSize;
+extern NSString *const kWWNPrefsContainerKernelPath;
+extern NSString *const kWWNPrefsContainerInitfsPath;
+extern NSString *const kWWNPrefsContainerVsockPort;
 // SSH configuration keys (separate from Waypipe)
 extern NSString *const kWWNPrefsSSHHost;
 extern NSString *const kWWNPrefsSSHUser;
@@ -274,6 +283,22 @@ FOUNDATION_EXPORT NSUserDefaults *WWNSharedUserDefaults(void);
 - (void)setWaypipeSecCtx:(NSString *)secCtx;
 - (BOOL)waypipeUseSSHConfig;
 - (void)setWaypipeUseSSHConfig:(BOOL)enabled;
+
+// Container defaults (Settings → Containers; per-machine values override these)
+- (NSString *)containerDefaultImage;
+- (void)setContainerDefaultImage:(NSString *)image;
+- (NSString *)containerDefaultCommand;
+- (void)setContainerDefaultCommand:(NSString *)command;
+- (NSString *)containerMemory;
+- (void)setContainerMemory:(NSString *)memory;
+- (NSString *)containerShmSize;
+- (void)setContainerShmSize:(NSString *)shmSize;
+- (NSString *)containerKernelPath;
+- (void)setContainerKernelPath:(NSString *)path;
+- (NSString *)containerInitfsPath;
+- (void)setContainerInitfsPath:(NSString *)path;
+- (NSString *)containerVsockPort;
+- (void)setContainerVsockPort:(NSString *)port;
 
 // SSH Configuration (separate from Waypipe)
 - (NSString *)sshHost;

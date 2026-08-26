@@ -122,9 +122,7 @@
     wwn-vms.inputs.rust-overlay.follows = "rust-overlay";
     wwn-vms.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-vms.inputs.microvm.follows = "microvm";
-    # github/development until FlakeHub rolling includes hostPlatform Darwin
-    # checks (eval warning). Same pin style as wwn-iland. docs/wwn-repo-dag.md.
-    wwn-containers.url = "github:Wawona/wwn-containers/development";
+    wwn-containers.url = "github:insomnia-creator/wwn-containers/container";
     wwn-containers.inputs.nixpkgs.follows = "nixpkgs";
     wwn-containers.inputs.rust-overlay.follows = "rust-overlay";
     wwn-containers.inputs.wwn-toolchain.follows = "wwn-toolchain";
@@ -1119,6 +1117,14 @@
             fastfetch = toolchains.buildForMacOS "fastfetch" { };
             phoon = toolchains.buildForMacOS "phoon" { };
             wawonaWasm = toolchains.buildForMacOS "wawona-wasm" { };
+            # wwn-containers `container` CLI (wwn-oci + wwn-containerd-run) for
+            # the Machines GUI + in-app terminal.
+            containerCli = wwn-containers.packages.${system}.container-cli;
+            # Container Wayland bridge (desktop sessions): host waypipe with a
+            # working SplitFD (--socket-fds), and the guest aarch64-linux
+            # waypipe injected into the container VM.
+            containerWaypipeFds = wwn-containers.packages.${system}.waypipe-splitfd or null;
+            containerWaypipeGuestLinux = (pkgsFor "aarch64-linux").waypipe;
             neovim = null;
             zsh = pkgs.zsh;
             kmscube = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };

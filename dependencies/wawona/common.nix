@@ -17,6 +17,7 @@ rec {
     "Darwin/Sources/Main.swift"
     "Sources/WawonaModel/ClientLauncher.swift"
     "Sources/WawonaModel/MachineProfile.swift"
+    "Sources/WawonaModel/ContainerHubModels.swift"
     "Sources/WawonaModel/SessionOrchestrator.swift"
     "Sources/WawonaModel/WawonaPreferences.swift"
     "Sources/WawonaUIContracts/MachineEditorContracts.swift"

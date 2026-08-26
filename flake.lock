@@ -825,6 +825,11 @@
         ]
       },
       "locked": {
+        "lastModified": 1787054267,
+        "narHash": "sha256-dEKaAFloEkB13BnRcnW68HDFo2whajEy58WEg9UIicY=",
+        "owner": "insomnia-creator",
+        "repo": "wwn-containers",
+        "rev": "8254173b5329e6dc36dc24bab538992e23c1879b",
         "lastModified": 1787685763,
         "narHash": "sha256-hdYiHNYJzmv196oyTdzqYBcu6rPCaHbx23SCdWyPIl0=",
         "owner": "Wawona",
@@ -833,8 +838,8 @@
         "type": "github"
       },
       "original": {
-        "owner": "Wawona",
-        "ref": "development",
+        "owner": "insomnia-creator",
+        "ref": "container",
         "repo": "wwn-containers",
         "type": "github"
       }

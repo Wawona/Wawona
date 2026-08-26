@@ -567,6 +567,7 @@ struct WWNMachineTVRow: View {
     switch status {
     case .connected: return .green
     case .connecting: return .blue
+    case .preparing: return .blue
     case .degraded: return .orange
     case .error: return .red
     case .disconnected: return .secondary
@@ -702,6 +703,7 @@ struct WWNMachineTVDetailView: View {
     switch status {
     case .connected: return .green
     case .connecting: return .blue
+    case .preparing: return .blue
     case .degraded: return .orange
     case .error: return .red
     case .disconnected: return .secondary

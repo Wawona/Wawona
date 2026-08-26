@@ -11,10 +11,20 @@ NS_ASSUME_NONNULL_BEGIN
 //           crun/podman inside a wwn-vms guest, surfaced over vsock+waypipe.
 //   watchOS OCI image management only (no execution).
 //
-// On macOS the configured boot command (profile.customScript, e.g.
-// `nix run .#wwn-containerd -- run ...` or `wwn-oci pull ...`) is run as a
-// tracked subprocess. On mobile the container-in-VM guest is driven by the VM
-// runner; this class reports image-management-only where execution is disallowed.
+// On macOS the boot command is built from the profile's per-machine
+// `containerSettings` (image ref, command, memory, kernel/initfs, read-only,
+// init, desktop session) with every empty field inheriting the global
+// Settings → Containers default; a profile `customScript` (advanced escape
+// hatch) always wins. A "desktop session" machine adds
+// --wayland-vsock-port + --waypipe-guest-bin and sets WWNP_WAYPIPE_BIN, so
+// wwn-containerd injects the guest waypipe and bridges the container's
+// Wayland session into Wawona as windows. The
+// command runs inside Wawona's bundled terminal (weston-terminal): the
+// terminal spawns the bundled `wawona-container-shell` as its $SHELL, which
+// execs the `container` CLI (Apple Containerization,
+// WAWONA_CONTAINER_BACKEND=containerization). The backend writes ready/done
+// marker files (WAWONA_CONTAINER_READY_FILE / _DONE_FILE) that this runner
+// polls to drive the GUI status.
 @interface WWNContainerRunner : NSObject
 
 + (instancetype)sharedRunner;

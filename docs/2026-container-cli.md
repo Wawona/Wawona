@@ -2,12 +2,15 @@
 
 > **Status: PARTIALLY IMPLEMENTED (2026-07-05, verified on macOS 26.5.1 arm64).**
 > Image management is REAL on the host: `pull` / `images` / `rmi` / `inspect` /
-> `resolve` are wired to `wwn-oci` (digest-verified registry v2 pull, CAS store,
-> per-image rootfs unpack, local catalog under `$WWN_OCI_ROOT` /
-> `~/.local/share/wwn-oci`). `run` is REAL on macOS: it boots a per-container VM
-> via `wwn-containerd` (Apple Containerization framework; kernel discovered from
-> `WAWONA_VM_KERNEL` or the installed containerization kernels; optional bundled
-> initfs via `WAWONA_VM_INITFS`). Verified booting `alpine:3.20`. Still stubs:
+> `resolve` / `search` / `tags` are wired to `wwn-oci` (digest-verified registry
+> v2 pull, CAS store, per-image rootfs unpack, local catalog under `$WWN_OCI_ROOT` /
+> `~/.local/share/wwn-oci`; Docker Hub discovery via the Hub JSON API). `run` is
+> REAL on macOS: it boots a per-container VM via `wwn-containerd` (Apple
+> Containerization framework; kernel discovered from `WAWONA_VM_KERNEL` or the
+> installed containerization kernels; optional bundled initfs via
+> `WAWONA_VM_INITFS`) — verified booting `alpine:3.20`. The GUI layer (Settings →
+> Containers + per-machine `containerSettings`, resolution documented in
+> `2026-container-settings.md`) is implemented on macOS. Still stubs:
 > `exec`/`ps`/`start`/`stop`/`rm`/`logs` (need a persistent container session;
 > `wwn-containerd` is one-shot run+wait), `run` on non-macOS targets
 > (container-in-VM via `wwn-vms`), and per-target cross-built registry variants.
@@ -48,10 +51,15 @@ execution backend.
 Image management (universal. Pure userspace `wwn-oci`, compliant on **every**
 target incl. iOS/watchOS):
 
-- `container pull <ref>`. Pull an OCI image into the local content-addressable store
-- `container images`. List stored images
-- `container inspect <ref>`. Show manifest/config
-- `container rmi <ref>`. Remove an image
+- `container pull <ref>` — pull an OCI image into the local content-addressable store
+- `container images` — list stored images
+- `container inspect <ref>` — show manifest/config
+- `container rmi <ref>` — remove an image
+- `container resolve <ref>` — parse a reference and print its components
+- `container search <query>` — search Docker Hub (metadata only, `--json` for
+  machine output; Hub's JSON API is outside the OCI distribution spec)
+- `container tags <repo>` — list a Docker Hub repository's tags (single-component
+  names resolve to the official `library/` namespace)
 
 Lifecycle (only where a Linux kernel is legally available. See the matrix):
 
@@ -61,6 +69,14 @@ Lifecycle (only where a Linux kernel is legally available. See the matrix):
 - `container ps`. List containers
 - `container start|stop|rm <id>`. Lifecycle control
 - `container logs <id>`. Stream logs
+
+`run` parses the flags the macOS backend (`wwn-containerd`) can honor —
+`-k/--kernel`, `--initfs`, `-m/--memory`, `-c/--cpus`, `--fs-size`,
+`--read-only`, `--init`, `--id`, `--wayland-vsock-port`, plus `--rm` as an
+accepted no-op (every run is one-shot) — and **rejects** flags it cannot honor
+(e.g. `--mount`, `--publish`, `--shm-size`, `--platform`, `--env`) with exit 3,
+never silently dropping them. See [`2026-container-settings.md`](2026-container-settings.md)
+for the GUI ↔ CLI field mapping.
 
 The scaffold prints this surface via `container --help` and exits non-zero (code
 `3`) for any real subcommand, pointing back to this doc.

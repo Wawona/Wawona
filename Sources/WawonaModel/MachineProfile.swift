@@ -74,6 +74,100 @@ public enum MachineStatus: String, Codable, CaseIterable, Sendable {
     case error
 }
 
+/// Per-machine container configuration (machine type `container`).
+///
+/// Every field is optional: a nil field inherits the global Wawona Settings →
+/// Containers default at resolution time, so a brand-new container machine
+/// created with empty fields runs exactly the global defaults.
+///
+/// JSON keys match the Android `ContainerSettings` schema (`runtime`,
+/// `containerRef`, `entryCommand`, `notes`) and extend it with the macOS
+/// Apple `container` CLI surface (memory/shm/mounts/ports/…). Unknown keys on
+/// other platforms are ignored on decode.
+public struct ContainerMachineSettings: Codable, Hashable, Sendable {
+    /// Backend runtime label. Fixed per build target (macOS:
+    /// "containerization"); kept as a display/record field, never user-set.
+    public var runtime: String?
+    /// OCI image reference, e.g. `alpine:3.20`, `python:3.12-slim`,
+    /// `ghcr.io/org/app`. Docker Hub shorthand is accepted.
+    public var containerRef: String?
+    /// Command (and args) to run in the container; maps to the CLI's
+    /// `[cmd...]` positional args.
+    public var entryCommand: String?
+    /// Free-form notes shown in the machine editor.
+    public var notes: String?
+    /// `--memory` (1MiB granularity, K/M/G/T/P suffixes accepted).
+    public var memory: String?
+    /// `--shm-size` (e.g. 64M, 1G).
+    public var shmSize: String?
+    /// `--mount` specs (`type=<>,source=<>,target=<>,readonly`).
+    public var mounts: [String]?
+    /// `--publish` specs (`[host-ip:]host-port:container-port[/protocol]`).
+    public var ports: [String]?
+    /// `--platform` (e.g. linux/arm64); takes precedence over os/arch.
+    public var platform: String?
+    /// `--read-only`: mount the container rootfs read-only.
+    public var readOnly: Bool?
+    /// `--init`: run an init process (signal forwarding + zombie reaping).
+    public var initProcess: Bool?
+    /// `--rm`: remove the container after it stops.
+    public var remove: Bool?
+    /// `--kernel` path override (maps to WAWONA_VM_KERNEL).
+    public var kernelPath: String?
+    /// Prebuilt vminitd initfs override (maps to WAWONA_VM_INITFS).
+    public var initfsPath: String?
+    /// vsock port the guest waypipe server binds (maps to
+    /// `--wayland-vsock-port` when the GUI session attaches).
+    public var vsockPort: Int?
+    /// Desktop session: attach the container's Wayland session to Wawona via
+    /// the waypipe vsock bridge (a window per surface, or one window for a
+    /// nested compositor image). When false/nil the container runs
+    /// terminal-only.
+    public var desktopSession: Bool?
+    /// Local OCI layout directory to run from instead of pulling `containerRef`
+    /// from a registry (`--image-archive`). Emitted by `container import` next
+    /// to the unpacked rootfs.
+    public var imageArchivePath: String?
+
+    public init(
+        runtime: String? = nil,
+        containerRef: String? = nil,
+        entryCommand: String? = nil,
+        notes: String? = nil,
+        memory: String? = nil,
+        shmSize: String? = nil,
+        mounts: [String]? = nil,
+        ports: [String]? = nil,
+        platform: String? = nil,
+        readOnly: Bool? = nil,
+        initProcess: Bool? = nil,
+        remove: Bool? = nil,
+        kernelPath: String? = nil,
+        initfsPath: String? = nil,
+        vsockPort: Int? = nil,
+        desktopSession: Bool? = nil,
+        imageArchivePath: String? = nil
+    ) {
+        self.runtime = runtime
+        self.containerRef = containerRef
+        self.entryCommand = entryCommand
+        self.notes = notes
+        self.memory = memory
+        self.shmSize = shmSize
+        self.mounts = mounts
+        self.ports = ports
+        self.platform = platform
+        self.readOnly = readOnly
+        self.initProcess = initProcess
+        self.remove = remove
+        self.kernelPath = kernelPath
+        self.initfsPath = initfsPath
+        self.vsockPort = vsockPort
+        self.desktopSession = desktopSession
+        self.imageArchivePath = imageArchivePath
+    }
+}
+
 public struct MachineRuntimeOverrides: Codable, Hashable, Sendable {
     public var renderer: String?
     public var vulkanDriver: String?
@@ -160,6 +254,8 @@ public struct MachineProfile: Codable, Identifiable, Hashable, Sendable {
     public var launchers: [ClientLauncher]
     public var favorite: Bool
     public var runtimeOverrides: MachineRuntimeOverrides
+    /// Container machine configuration (nil = inherit all global defaults).
+    public var containerSettings: ContainerMachineSettings?
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -176,6 +272,7 @@ public struct MachineProfile: Codable, Identifiable, Hashable, Sendable {
         case launchers
         case favorite
         case runtimeOverrides
+        case containerSettings
     }
 
     public init(
@@ -192,7 +289,8 @@ public struct MachineProfile: Codable, Identifiable, Hashable, Sendable {
         remoteCommand: String = "weston-simple-shm",
         launchers: [ClientLauncher] = [],
         favorite: Bool = false,
-        runtimeOverrides: MachineRuntimeOverrides = MachineRuntimeOverrides()
+        runtimeOverrides: MachineRuntimeOverrides = MachineRuntimeOverrides(),
+        containerSettings: ContainerMachineSettings? = nil
     ) {
         self.id = id
         self.name = name
@@ -208,6 +306,7 @@ public struct MachineProfile: Codable, Identifiable, Hashable, Sendable {
         self.launchers = launchers
         self.favorite = favorite
         self.runtimeOverrides = runtimeOverrides
+        self.containerSettings = containerSettings
     }
 
     public init(from decoder: any Decoder) throws {
@@ -229,6 +328,7 @@ public struct MachineProfile: Codable, Identifiable, Hashable, Sendable {
         launchers = try container.decodeIfPresent([ClientLauncher].self, forKey: .launchers) ?? []
         favorite = try container.decodeIfPresent(Bool.self, forKey: .favorite) ?? false
         runtimeOverrides = try container.decodeIfPresent(MachineRuntimeOverrides.self, forKey: .runtimeOverrides) ?? MachineRuntimeOverrides()
+        containerSettings = try container.decodeIfPresent(ContainerMachineSettings.self, forKey: .containerSettings)
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -247,6 +347,7 @@ public struct MachineProfile: Codable, Identifiable, Hashable, Sendable {
         try container.encode(launchers, forKey: .launchers)
         try container.encode(favorite, forKey: .favorite)
         try container.encode(runtimeOverrides, forKey: .runtimeOverrides)
+        try container.encodeIfPresent(containerSettings, forKey: .containerSettings)
     }
 }
 

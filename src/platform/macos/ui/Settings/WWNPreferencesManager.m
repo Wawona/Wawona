@@ -77,6 +77,14 @@ NSString *const kWWNPrefsMachineVMVsockPort = @"MachineVMVsockPort";
 NSString *const kWWNPrefsMachineContainerRuntime = @"MachineContainerRuntime";
 NSString *const kWWNPrefsMachineContainerImageStore =
     @"MachineContainerImageStore";
+// Global container defaults (Settings → Containers)
+NSString *const kWWNPrefsContainerDefaultImage = @"ContainerDefaultImage";
+NSString *const kWWNPrefsContainerDefaultCommand = @"ContainerDefaultCommand";
+NSString *const kWWNPrefsContainerMemory = @"ContainerMemory";
+NSString *const kWWNPrefsContainerShmSize = @"ContainerShmSize";
+NSString *const kWWNPrefsContainerKernelPath = @"ContainerKernelPath";
+NSString *const kWWNPrefsContainerInitfsPath = @"ContainerInitfsPath";
+NSString *const kWWNPrefsContainerVsockPort = @"ContainerVsockPort";
 // SSH configuration keys (separate from Waypipe)
 NSString *const kWWNPrefsSSHHost = @"SSHHost";
 NSString *const kWWNPrefsSSHUser = @"SSHUser";
@@ -401,6 +409,15 @@ NSUserDefaults *WWNSharedUserDefaults(void) {
     kWWNPrefsMachineContainerRuntime : @"container-in-vm",
 #endif
     kWWNPrefsMachineContainerImageStore : @"~/.local/share/wawona/oci",
+    // Global container defaults (empty = CLI default; image + command form the
+    // one-shot `container run <image> <command>` baseline).
+    kWWNPrefsContainerDefaultImage : @"alpine:3.20",
+    kWWNPrefsContainerDefaultCommand : @"/bin/sh",
+    kWWNPrefsContainerMemory : @"",
+    kWWNPrefsContainerShmSize : @"",
+    kWWNPrefsContainerKernelPath : @"",
+    kWWNPrefsContainerInitfsPath : @"",
+    kWWNPrefsContainerVsockPort : @"1024",
     // SSH
     kWWNPrefsSSHHost : @"",
     kWWNPrefsSSHUser : @"",
@@ -533,6 +550,13 @@ NSUserDefaults *WWNSharedUserDefaults(void) {
   [defaults removeObjectForKey:kWWNPrefsMachineVMVsockPort];
   [defaults removeObjectForKey:kWWNPrefsMachineContainerRuntime];
   [defaults removeObjectForKey:kWWNPrefsMachineContainerImageStore];
+  [defaults removeObjectForKey:kWWNPrefsContainerDefaultImage];
+  [defaults removeObjectForKey:kWWNPrefsContainerDefaultCommand];
+  [defaults removeObjectForKey:kWWNPrefsContainerMemory];
+  [defaults removeObjectForKey:kWWNPrefsContainerShmSize];
+  [defaults removeObjectForKey:kWWNPrefsContainerKernelPath];
+  [defaults removeObjectForKey:kWWNPrefsContainerInitfsPath];
+  [defaults removeObjectForKey:kWWNPrefsContainerVsockPort];
   // SSH
   [defaults removeObjectForKey:kWWNPrefsSSHHost];
   [defaults removeObjectForKey:kWWNPrefsSSHUser];
@@ -1368,6 +1392,92 @@ NSUserDefaults *WWNSharedUserDefaults(void) {
   [WWNSharedUserDefaults()
       setObject:command
          forKey:kWWNPrefsWaypipeRemoteCommand];
+}
+
+// Container defaults (Settings → Containers). Per-machine containerSettings
+// override these; empty strings pass through to the CLI's own defaults.
+- (NSString *)containerDefaultImage {
+  NSString *value = [[NSUserDefaults standardUserDefaults]
+      stringForKey:kWWNPrefsContainerDefaultImage];
+  return value ? value : @"alpine:3.20";
+}
+
+- (void)setContainerDefaultImage:(NSString *)image {
+  [[NSUserDefaults standardUserDefaults]
+      setObject:image ?: @""
+         forKey:kWWNPrefsContainerDefaultImage];
+}
+
+- (NSString *)containerDefaultCommand {
+  NSString *value = [[NSUserDefaults standardUserDefaults]
+      stringForKey:kWWNPrefsContainerDefaultCommand];
+  return value ? value : @"/bin/sh";
+}
+
+- (void)setContainerDefaultCommand:(NSString *)command {
+  [[NSUserDefaults standardUserDefaults]
+      setObject:command ?: @""
+         forKey:kWWNPrefsContainerDefaultCommand];
+}
+
+- (NSString *)containerMemory {
+  NSString *value = [[NSUserDefaults standardUserDefaults]
+      stringForKey:kWWNPrefsContainerMemory];
+  return value ? value : @"";
+}
+
+- (void)setContainerMemory:(NSString *)memory {
+  [[NSUserDefaults standardUserDefaults]
+      setObject:memory ?: @""
+         forKey:kWWNPrefsContainerMemory];
+}
+
+- (NSString *)containerShmSize {
+  NSString *value = [[NSUserDefaults standardUserDefaults]
+      stringForKey:kWWNPrefsContainerShmSize];
+  return value ? value : @"";
+}
+
+- (void)setContainerShmSize:(NSString *)shmSize {
+  [[NSUserDefaults standardUserDefaults]
+      setObject:shmSize ?: @""
+         forKey:kWWNPrefsContainerShmSize];
+}
+
+- (NSString *)containerKernelPath {
+  NSString *value = [[NSUserDefaults standardUserDefaults]
+      stringForKey:kWWNPrefsContainerKernelPath];
+  return value ? value : @"";
+}
+
+- (void)setContainerKernelPath:(NSString *)path {
+  [[NSUserDefaults standardUserDefaults]
+      setObject:path ?: @""
+         forKey:kWWNPrefsContainerKernelPath];
+}
+
+- (NSString *)containerInitfsPath {
+  NSString *value = [[NSUserDefaults standardUserDefaults]
+      stringForKey:kWWNPrefsContainerInitfsPath];
+  return value ? value : @"";
+}
+
+- (void)setContainerInitfsPath:(NSString *)path {
+  [[NSUserDefaults standardUserDefaults]
+      setObject:path ?: @""
+         forKey:kWWNPrefsContainerInitfsPath];
+}
+
+- (NSString *)containerVsockPort {
+  NSString *value = [[NSUserDefaults standardUserDefaults]
+      stringForKey:kWWNPrefsContainerVsockPort];
+  return value ? value : @"1024";
+}
+
+- (void)setContainerVsockPort:(NSString *)port {
+  [[NSUserDefaults standardUserDefaults]
+      setObject:port ?: @"1024"
+         forKey:kWWNPrefsContainerVsockPort];
 }
 
 - (NSString *)waypipeCustomScript {

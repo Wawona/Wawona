@@ -135,6 +135,64 @@ struct WWNMachineCardView: View {
   // MARK: - Action Buttons
 
   private var actionButtons: some View {
+    Group {
+      if isRunning {
+        Button {
+          onFocus()
+        } label: {
+          Label("Focus", systemImage: "scope")
+        }
+        .buttonStyle(.bordered)
+        .wwnA11y(WWNA11y.machinesFocus, label: "Focus \(descriptor)")
+
+        Button(role: .destructive) {
+          onStop()
+        } label: {
+          Label("Stop", systemImage: "stop.fill")
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(.red)
+        .wwnA11y(WWNA11y.machinesStop, label: "Stop \(descriptor)")
+      } else if isPreparing {
+        Button {
+        } label: {
+          HStack(spacing: 6) {
+            ProgressView()
+              .controlSize(.small)
+            Text("Compiling backend...")
+          }
+        }
+        .buttonStyle(.bordered)
+        .disabled(true)
+        .opacity(0.7)
+        .wwnA11y(WWNA11y.machinesStart, label: "Compiling backend \(descriptor)")
+      } else {
+        Button {
+          onConnect()
+        } label: {
+          Label("Start", systemImage: "play.fill")
+        }
+        .buttonStyle(.borderedProminent)
+        .disabled(!launchSupported)
+        .wwnA11y(WWNA11y.machinesStart, label: "Start \(descriptor)")
+      }
+
+      Button {
+        onEdit()
+      } label: {
+        Label("Edit", systemImage: "slider.horizontal.3")
+      }
+      .buttonStyle(.bordered)
+      .wwnA11y(WWNA11y.machinesEdit, label: "Edit \(descriptor)")
+
+      Button(role: .destructive) {
+        onDelete()
+      } label: {
+        Label("Delete", systemImage: "trash")
+      }
+      .buttonStyle(.bordered)
+      .disabled(isRunning || isPreparing)
+      .wwnA11y(WWNA11y.machinesDelete, label: "Delete \(descriptor)")
     MachineActionBar(items: actionItems)
   }
 
@@ -200,6 +258,8 @@ struct WWNMachineCardView: View {
 
   // MARK: - Computed Properties
 
+  private var isPreparing: Bool { status == .preparing }
+
   private var iconName: String {
     switch profile.type {
     case kWWNMachineTypeNative:
@@ -219,6 +279,7 @@ struct WWNMachineCardView: View {
     switch status {
     case .connected: return .green
     case .connecting: return .blue
+    case .preparing: return .blue
     case .degraded: return .orange
     case .error: return .red
     case .disconnected: return .secondary
@@ -252,6 +313,8 @@ struct WWNMachineCardView: View {
       return "checkmark.circle.fill"
     case .connecting:
       return "arrow.triangle.2.circlepath.circle.fill"
+    case .preparing:
+      return "gearshape.2.fill"
     case .degraded:
       return "exclamationmark.triangle.fill"
     case .error:

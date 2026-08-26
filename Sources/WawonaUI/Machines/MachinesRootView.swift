@@ -11,6 +11,7 @@ struct MachinesRootView: View {
     @State var search = ""
     @State var showingEditor = false
     @State var editingProfile: MachineProfile?
+    @State var showingContainerImages = false
     #if os(iOS)
     @State private var isGlassSearchPresented = false
     @FocusState private var isGlassSearchFocused: Bool
@@ -45,6 +46,14 @@ struct MachinesRootView: View {
             #endif
             .toolbar {
                 #if os(macOS)
+                ToolbarItem(placement: .navigation) {
+                    Button {
+                        showingContainerImages = true
+                    } label: {
+                        Label("Images", systemImage: "shippingbox")
+                    }
+                    .wwnA11y(WawonaA11y.machinesImages, label: "Container Images")
+                }
                 ToolbarItem(placement: .navigation) {
                     Button {
                         openPlatformSettings()
@@ -99,6 +108,9 @@ struct MachinesRootView: View {
                 MachineEditorView(profile: profile) { updated in
                     profileStore.upsert(updated)
                 }
+            }
+            .sheet(isPresented: $showingContainerImages) {
+                ContainerImagesView(onSelect: nil)
             }
         }
     }
