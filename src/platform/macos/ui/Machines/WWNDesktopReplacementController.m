@@ -1638,7 +1638,13 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
         [base isEqualToString:@"igettyd"] ||
         [base isEqualToString:@"modeb-ttyd"] ||
         [base isEqualToString:@"modeb-tty"];
+    BOOL clientUsesDylibInsert =
+        ![base isEqualToString:@"igettyd"] &&
+        ![base isEqualToString:@"modeb-ttyd"] &&
+        ![base isEqualToString:@"modeb-tty"];
     [script appendFormat:@"WWN_MODEB_PROOF_KMSCUBE=%d\n", skipWestonOut ? 1 : 0];
+    [script appendFormat:@"WWN_MODEB_CLIENT_USE_INSERT=%d\n",
+                           clientUsesDylibInsert ? 1 : 0];
   }
   [script appendString:@"WWN_MODEB_CLIENT_ARGV=("];
   [script appendFormat:@"%@ ", [self wwnShellQuote:executablePath]];
@@ -1647,8 +1653,12 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   }
   [script appendString:@")\n"];
   [script appendString:@"if [ -f /tmp/wawona-modeb-keep-ws ]; then\n"];
-  [script appendString:@"  DYLD_INSERT_LIBRARIES=\"$WWN_MODEB_INSERT\" "
+  [script appendString:@"  if [ \"$WWN_MODEB_CLIENT_USE_INSERT\" = 1 ]; then\n"];
+  [script appendString:@"    DYLD_INSERT_LIBRARIES=\"$WWN_MODEB_INSERT\" "
                        @"\"${WWN_MODEB_CLIENT_ARGV[@]}\" >>\"$LOG\" 2>&1 &\n"];
+  [script appendString:@"  else\n"];
+  [script appendString:@"    \"${WWN_MODEB_CLIENT_ARGV[@]}\" >>\"$LOG\" 2>&1 &\n"];
+  [script appendString:@"  fi\n"];
   [script appendString:@"  pid=$!\n"];
   [script appendString:@"else\n"];
   [script appendString:@"  wwn_log \"Classic: launch Mode B client via launchd "
@@ -1665,8 +1675,12 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendString:@"    echo 'set -a'\n"];
   [script appendString:@"    echo \". \\\"$EXPORTS\\\" 2>/dev/null || true\"\n"];
   [script appendString:@"    echo 'set +a'\n"];
-  [script appendString:@"    echo \"export DYLD_INSERT_LIBRARIES=$(printf %q "
-                       @"\"$WWN_MODEB_INSERT\")\"\n"];
+  [script appendString:@"    echo 'if [ \"$WWN_MODEB_CLIENT_USE_INSERT\" = 1 ]; then'\n"];
+  [script appendString:@"    echo \"  export DYLD_INSERT_LIBRARIES=$(printf %q "
+                       @"\\\"$WWN_MODEB_INSERT\\\")\"\n"];
+  [script appendString:@"    echo 'else'\n"];
+  [script appendString:@"    echo '  unset DYLD_INSERT_LIBRARIES'\n"];
+  [script appendString:@"    echo 'fi'\n"];
   [script appendString:@"    echo -n 'exec'\n"];
   [script appendString:@"    for a in \"${WWN_MODEB_CLIENT_ARGV[@]}\"; do\n"];
   [script appendString:@"      printf ' %q' \"$a\"\n"];
@@ -1713,8 +1727,12 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   [script appendString:@"  if [ -z \"$pid\" ]; then\n"];
   [script appendString:@"    wwn_log \"launchd client missing after bootstrap; "
                        @"falling back to direct spawn\"\n"];
-  [script appendString:@"    DYLD_INSERT_LIBRARIES=\"$WWN_MODEB_INSERT\" "
+  [script appendString:@"    if [ \"$WWN_MODEB_CLIENT_USE_INSERT\" = 1 ]; then\n"];
+  [script appendString:@"      DYLD_INSERT_LIBRARIES=\"$WWN_MODEB_INSERT\" "
                        @"\"${WWN_MODEB_CLIENT_ARGV[@]}\" >>\"$LOG\" 2>&1 &\n"];
+  [script appendString:@"    else\n"];
+  [script appendString:@"      \"${WWN_MODEB_CLIENT_ARGV[@]}\" >>\"$LOG\" 2>&1 &\n"];
+  [script appendString:@"    fi\n"];
   [script appendString:@"    pid=$!\n"];
   [script appendString:@"    sleep 0.3\n"];
   [script appendString:@"    if ! kill -0 \"$pid\" 2>/dev/null; then\n"];
