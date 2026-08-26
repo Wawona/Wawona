@@ -34,7 +34,7 @@ pkill -f "agent-device/dist/src/internal/daemon.js" 2>/dev/null || true
 sleep 1
 
 log "open Wawona"
-agent-device open Wawona --relaunch "${ad[@]}"
+agent-device open Wawona "${ad[@]}"
 
 log "Add Machine"
 agent-device snapshot -i "${ad[@]}" | tee "$ARTIFACTS/macos-container-machines.txt"
