@@ -962,6 +962,13 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"2>/dev/null | awk '/[[:space:]]pid =/{print $3; exit}')\n"
                        @"    if [ -z \"$PATHB_PID\" ]; then LIVE=1; fi\n"
                        @"  fi\n"
+                       @"  if [ \"$LIVE\" = 1 ] && [ \"$MARKER\" = 1 ]; then\n"
+                       @"    case \"$SOCK_ST\" in *done=1*) ;; *)\n"
+                       @"      if /usr/bin/pgrep -x watchdogd >/dev/null 2>&1; then\n"
+                       @"        LIVE=0\n"
+                       @"      fi ;;\n"
+                       @"    esac\n"
+                       @"  fi\n"
                        @"  PENDING=0\n"
                        @"  if [ -f /var/db/wwn-iowatchdog/claim-pending ]; then "
                        @"PENDING=1; fi\n"
@@ -1241,6 +1248,16 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                        @"present (Path B job not running; kernel Disable "
                        @"sticky after Classic)\"\n"];
   [script appendString:@"    fi\n"];
+  [script appendString:@"  fi\n"];
+  [script appendString:@"  if [ \"$LIVE_DIS\" = 1 ] && [ -f \"$MARKER\" ]; then\n"];
+  [script appendString:@"    case \"$SOCK_ST\" in *done=1*) ;; *)\n"];
+  [script appendString:@"      if /usr/bin/pgrep -x watchdogd >/dev/null 2>&1; then\n"];
+  [script appendString:@"        LIVE_DIS=0\n"];
+  [script appendString:@"        wwn_log \"Take Over refused: marker without "
+                       @"Path B sock done=1 while watchdogd is alive "
+                       @"(kernel may still be armed; 2026-08-25)\"\n"];
+  [script appendString:@"      fi ;;\n"];
+  [script appendString:@"    esac\n"];
   [script appendString:@"  fi\n"];
   [script appendString:@"  if [ \"$LIVE_DIS\" != 1 ]; then\n"];
   [script appendString:@"    write_reason \"Mode B Take Over refused: claim-ok "
@@ -2279,6 +2296,114 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   return [self engageForProfile:profile error:error];
 }
 
+- (BOOL)installedHelperMatchesCurrentBuildForProfile:
+    (WWNMachineProfile *)profile {
+  NSString *helperPath = [self modeBHelperPath];
+  if (![[NSFileManager defaultManager] isExecutableFileAtPath:helperPath]) {
+    return NO;
+  }
+  NSString *existingHelper =
+      [NSString stringWithContentsOfFile:helperPath
+                                encoding:NSUTF8StringEncoding
+                                   error:nil];
+  if (existingHelper.length == 0) {
+    return NO;
+  }
+
+  NSString *executablePath = nil;
+  NSArray<NSString *> *launchArgs = nil;
+  NSDictionary<NSString *, NSString *> *launchEnv = nil;
+  NSError *specError = nil;
+  if (![[WWNWaypipeRunner sharedRunner]
+          baremetalCompositorLaunchSpecForProfile:profile
+                                       executable:&executablePath
+                                        arguments:&launchArgs
+                                      environment:&launchEnv
+                                            error:&specError]) {
+    return NO;
+  }
+  (void)launchArgs;
+
+  NSString *installedDylib = [self installedDylibPath];
+  NSString *bundlePath = [[NSBundle mainBundle] bundlePath];
+  BOOL helperMatchesLaunch =
+      bundlePath.length > 0 &&
+      [existingHelper containsString:@"WWN_MODEB_INSERT=compositor-only"] &&
+      [existingHelper containsString:@"WWN_MODEB_DYLIB="] &&
+      [existingHelper containsString:installedDylib] &&
+      [existingHelper containsString:executablePath] &&
+      [existingHelper containsString:@"WWN_MODEB_GATE=pidfile-not-pgrep"] &&
+      [existingHelper containsString:@"WWN_MODEB_GATE=live-fb-before-ws-unload"] &&
+      [existingHelper containsString:@"WWN_MODEB_LOCK=helper-argv-only"] &&
+      [existingHelper containsString:@"WWN_MODEB_WD=iowatchdog-then-unload"] &&
+      [existingHelper containsString:@"stop_watchdogd_after_iowatchdog"] &&
+      [existingHelper containsString:@"LIVE_DIS"] &&
+      [existingHelper containsString:@"done=1"] &&
+      [existingHelper containsString:@"skip restore_watchdogd"] &&
+      [existingHelper containsString:@"WWN_MODEB_WD=pathb-no-kickstart-after-classic"] &&
+      [existingHelper containsString:@"--exec-compositor"] &&
+      [existingHelper containsString:@"modeb-insert"] &&
+      [existingHelper containsString:@"wawona-unloaded-watchdogd"] &&
+      ![existingHelper containsString:@"Path B bootstrap after Classic"] &&
+      [existingHelper containsString:@"stale modeb.lock"] &&
+      [existingHelper containsString:@"# WWN_WAWONA_STORE="] &&
+      [existingHelper containsString:bundlePath] &&
+      ![existingHelper containsString:@"reap WindowServer"] &&
+      ![existingHelper containsString:@"WWN_MODEB_WD=launchctl-unload"] &&
+      ![existingHelper containsString:@"WWN_MODEB_WD=blocked-no-iowatchdog"] &&
+      ![existingHelper containsString:@"echo path-b-takeover"] &&
+      ![existingHelper
+          containsString:@"kickstart -k system/com.apple.watchdogd"] &&
+      ![existingHelper containsString:@"Mode B helper DISABLED"];
+  NSString *guiCmd = launchEnv[@"WWN_IGETTY_GUI_CMD"] ?: @"";
+  NSString *guiVt = launchEnv[@"WWN_IGETTY_GUI_VT"] ?: @"0";
+  NSString *guiStamp =
+      [NSString stringWithFormat:@"# WWN_MODEB_GUI_CMD=%@\n", guiCmd];
+  NSString *vtStamp =
+      [NSString stringWithFormat:@"# WWN_MODEB_GUI_VT=%@\n", guiVt];
+  return helperMatchesLaunch && [existingHelper containsString:guiStamp] &&
+         [existingHelper containsString:vtStamp];
+}
+
+- (BOOL)syncDesktopHostInstallArtifactsIfNeeded:
+    (NSError *_Nullable *_Nullable)error {
+  if ([self bundledDylibPath].length == 0) {
+    return YES;
+  }
+  NSError *selErr = nil;
+  if (![self ensureDesktopMachineSelected:&selErr]) {
+    if ([self cliSelectDesktopMachine:@"weston"] != 0 ||
+        ![self ensureDesktopMachineSelected:&selErr]) {
+      if (error) {
+        *error = selErr;
+      }
+      return NO;
+    }
+  }
+  NSString *desktopId = [[NSUserDefaults standardUserDefaults]
+      stringForKey:kWWNPrefsDesktopReplacementMachineId];
+  WWNMachineProfile *profile =
+      [WWNMachineProfileStore profileById:desktopId];
+  if (!profile) {
+    if (error) {
+      *error = [NSError
+          errorWithDomain:@"WWNDesktopReplacement"
+                     code:9
+                 userInfo:@{
+                   NSLocalizedDescriptionKey :
+                       @"Could not select a Desktop Machine to install the "
+                       @"helper."
+                 }];
+    }
+    return NO;
+  }
+  if ([self installedHelperMatchesCurrentBuildForProfile:profile] &&
+      [self sudoersAllowsHelper]) {
+    return YES;
+  }
+  return [self installModeBHelperAndDylibForProfile:profile error:error];
+}
+
 - (BOOL)engageForProfile:(WWNMachineProfile *)profile
                    error:(NSError *_Nullable *_Nullable)error {
   if (![self shouldEngageModeB]) {
@@ -2379,63 +2504,18 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   (void)launchArgs;
   (void)launchEnv;
 
-  NSString *installedDylib = [self installedDylibPath];
   NSString *helperPath = [self modeBHelperPath];
   BOOL passwordless =
       [self sudoersAllowsHelper] &&
       [[NSFileManager defaultManager] isExecutableFileAtPath:helperPath];
-  BOOL helperMatchesLaunch = NO;
-  if (passwordless) {
-    NSString *existingHelper =
-        [NSString stringWithContentsOfFile:helperPath
-                                  encoding:NSUTF8StringEncoding
-                                     error:nil];
-    NSString *bundlePath = [[NSBundle mainBundle] bundlePath];
-    helperMatchesLaunch =
-        existingHelper.length > 0 && bundlePath.length > 0 &&
-        [existingHelper containsString:@"WWN_MODEB_INSERT=compositor-only"] &&
-        [existingHelper containsString:@"WWN_MODEB_DYLIB="] &&
-        [existingHelper containsString:installedDylib] &&
-        [existingHelper containsString:executablePath] &&
-        [existingHelper containsString:@"WWN_MODEB_GATE=pidfile-not-pgrep"] &&
-        [existingHelper containsString:@"WWN_MODEB_GATE=live-fb-before-ws-unload"] &&
-        [existingHelper containsString:@"WWN_MODEB_LOCK=helper-argv-only"] &&
-        [existingHelper containsString:@"WWN_MODEB_WD=iowatchdog-then-unload"] &&
-        [existingHelper containsString:@"stop_watchdogd_after_iowatchdog"] &&
-        [existingHelper containsString:@"LIVE_DIS"] &&
-        [existingHelper containsString:@"done=1"] &&
-        [existingHelper containsString:@"skip restore_watchdogd"] &&
-        [existingHelper containsString:@"WWN_MODEB_WD=pathb-no-kickstart-after-classic"] &&
-        [existingHelper containsString:@"--exec-compositor"] &&
-        [existingHelper containsString:@"modeb-insert"] &&
-        [existingHelper containsString:@"wawona-unloaded-watchdogd"] &&
-        ![existingHelper containsString:@"Path B bootstrap after Classic"] &&
-        [existingHelper containsString:@"stale modeb.lock"] &&
-        [existingHelper containsString:@"# WWN_WAWONA_STORE="] &&
-        [existingHelper containsString:bundlePath] &&
-        ![existingHelper containsString:@"reap WindowServer"] &&
-        ![existingHelper containsString:@"WWN_MODEB_WD=launchctl-unload"] &&
-        ![existingHelper containsString:@"WWN_MODEB_WD=blocked-no-iowatchdog"] &&
-        ![existingHelper containsString:@"echo path-b-takeover"] &&
-        ![existingHelper
-            containsString:@"kickstart -k system/com.apple.watchdogd"] &&
-        ![existingHelper containsString:@"Mode B helper DISABLED"];
-    NSString *guiCmd = launchEnv[@"WWN_IGETTY_GUI_CMD"] ?: @"";
-    NSString *guiVt = launchEnv[@"WWN_IGETTY_GUI_VT"] ?: @"0";
-    NSString *guiStamp =
-        [NSString stringWithFormat:@"# WWN_MODEB_GUI_CMD=%@\n", guiCmd];
-    NSString *vtStamp =
-        [NSString stringWithFormat:@"# WWN_MODEB_GUI_VT=%@\n", guiVt];
-    helperMatchesLaunch = helperMatchesLaunch &&
-                          [existingHelper containsString:guiStamp] &&
-                          [existingHelper containsString:vtStamp];
-    if (!helperMatchesLaunch) {
-      WWNModeBCliLog(
-          @"passwordless helper at %@ is stale/broken (missing dylib/exec or "
-          @"recovery stub). Requiring admin reinstall so we do not disable "
-          @"WindowServer without injection.",
-          helperPath);
-    }
+  BOOL helperMatchesLaunch =
+      [self installedHelperMatchesCurrentBuildForProfile:profile];
+  if (passwordless && !helperMatchesLaunch) {
+    WWNModeBCliLog(
+        @"passwordless helper at %@ is stale/broken (missing dylib/exec or "
+        @"recovery stub). Requiring admin reinstall so we do not disable "
+        @"WindowServer without injection.",
+        helperPath);
   }
   if (!(passwordless && helperMatchesLaunch)) {
     if (![self installModeBHelperAndDylibForProfile:profile error:error]) {
@@ -4324,30 +4404,8 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
     }
   }
 
-  BOOL helperOk = [[NSFileManager defaultManager]
-      isExecutableFileAtPath:[self modeBHelperPath]];
-  BOOL sudoOk = [self sudoersAllowsHelper];
-  if (!helperOk || !sudoOk) {
-    NSString *desktopId = [[NSUserDefaults standardUserDefaults]
-        stringForKey:kWWNPrefsDesktopReplacementMachineId];
-    WWNMachineProfile *profile =
-        [WWNMachineProfileStore profileById:desktopId];
-    if (!profile) {
-      if (error) {
-        *error = [NSError
-            errorWithDomain:@"WWNDesktopReplacement"
-                       code:9
-                   userInfo:@{
-                     NSLocalizedDescriptionKey :
-                         @"Could not select a Desktop Machine to stage the "
-                         @"helper."
-                   }];
-      }
-      return NO;
-    }
-    if (![self installModeBHelperAndDylibForProfile:profile error:error]) {
-      return NO;
-    }
+  if (![self syncDesktopHostInstallArtifactsIfNeeded:error]) {
+    return NO;
   }
 
   WWNModeBReadyReport *ready = [self evaluateClassicReadiness];
@@ -4727,28 +4785,23 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
 }
 
 - (int)cliStage {
-  WWNModeBCliLog(@"mode-b-stage");
-  /* Stage Mode B TTY so helper argv matches Classic engage. */
+  WWNModeBCliLog(@"sync-desktop-host-artifacts");
   int sel = [self cliSelectDesktopMachine:@"modeb-tty"];
   if (sel != 0) {
-    WWNModeBCliLog(@"stage failed: could not select modeb-tty machine");
+    WWNModeBCliLog(@"sync failed: could not select modeb-tty machine");
     return sel;
   }
   NSError *err = nil;
-  if (![self ensureDesktopMachineSelected:&err]) {
-    WWNModeBCliLog(@"stage failed: %@", err.localizedDescription);
-    return 2;
+  if (![self syncDesktopHostInstallArtifactsIfNeeded:&err]) {
+    WWNModeBCliLog(@"sync failed: %@", err.localizedDescription);
+    return 1;
   }
   NSString *desktopId = [[NSUserDefaults standardUserDefaults]
       stringForKey:kWWNPrefsDesktopReplacementMachineId];
   WWNMachineProfile *profile = [WWNMachineProfileStore profileById:desktopId];
   if (!profile) {
-    WWNModeBCliLog(@"stage failed: no Desktop Machine");
+    WWNModeBCliLog(@"sync failed: no Desktop Machine");
     return 2;
-  }
-  if (![self installModeBHelperAndDylibForProfile:profile error:&err]) {
-    WWNModeBCliLog(@"stage failed: %@", err.localizedDescription);
-    return 1;
   }
   NSString *helper = [self modeBHelperPath];
   NSString *helperText =
@@ -4765,11 +4818,11 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                                       environment:&env
                                             error:&err] ||
       exe.length == 0 || ![helperText containsString:exe]) {
-    WWNModeBCliLog(@"stage verify failed: helper missing %@ (%@)", exe,
+    WWNModeBCliLog(@"sync verify failed: helper missing %@ (%@)", exe,
                    err.localizedDescription);
     return 1;
   }
-  WWNModeBCliLog(@"RESULT staged helper=%@ executable=%@", helper, exe);
+  WWNModeBCliLog(@"RESULT synced helper=%@ executable=%@", helper, exe);
   return 0;
 }
 
@@ -4920,6 +4973,16 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                              }];
   }
   return NO;
+}
+- (BOOL)installedHelperMatchesCurrentBuildForProfile:
+    (WWNMachineProfile *)profile {
+  (void)profile;
+  return NO;
+}
+- (BOOL)syncDesktopHostInstallArtifactsIfNeeded:
+    (NSError *_Nullable *_Nullable)error {
+  (void)error;
+  return YES;
 }
 - (BOOL)installDesktopReplacementRequirements:
     (NSError *_Nullable *_Nullable)error {

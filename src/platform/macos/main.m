@@ -223,12 +223,11 @@ static void wwn_print_cli_help(void) {
       "  --mode-b-status         Desktop Replacement Mode B status and exit\n"
       "  --mode-b-ready          Classic gate: takeover-now, reboot, or blocked\n"
       "                          (prints VERDICT and REASON)\n"
-      "  --mode-b-prepare        Stage helper + arm Path B (admin once).\n"
+      "  --mode-b-prepare        Sync helper + arm Path B (admin once).\n"
       "                          Does not take over. Reboot opens Restart\n"
       "  --mode-b-machine <id>   Select Desktop Take Over machine (id, name,\n"
       "                          or weston). Creates Weston Desktop if needed.\n"
       "                          Does not take over the screen\n"
-      "  --mode-b-stage          Install helper + dylib for this build, no take-over\n"
       "  --mode-b-engage         takeover-now: take over. reboot: native Restart\n"
       "                          sheet. blocked: print exact reason\n"
       "  --mode-b-probe          Same wait as engage, keep WindowServer\n"
@@ -698,6 +697,18 @@ static void setup_signal_sources(void) {
            @"(WAYLAND_DISPLAY=wayland-0)");
     // Accessory: stay out of the Dock / Cmd-Tab unless the user opens UI later.
     [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+  }
+
+  if (!g_service_host_mode && [WWNDesktopReplacementController sharedController]
+                                   .bundledDylibPath.length > 0) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+      NSError *syncErr = nil;
+      if (![[WWNDesktopReplacementController sharedController]
+              syncDesktopHostInstallArtifactsIfNeeded:&syncErr]) {
+        WWNLog("MAIN", @"Desktop host helper sync: %@",
+               syncErr.localizedDescription ?: @"failed");
+      }
+    });
   }
 
   void (^startClient)(void) = ^{

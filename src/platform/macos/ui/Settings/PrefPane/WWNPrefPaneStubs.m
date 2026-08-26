@@ -96,6 +96,9 @@ BOOL WWNWestonDemoPrefersFixedSquare(NSString *clientId, NSString *title) {
 - (void)setForceSSDForClientLaunch:(BOOL)enabled {
   (void)enabled;
 }
+- (void)setFillsHostForClientLaunch:(BOOL)fillsHost {
+  (void)fillsHost;
+}
 @end
 
 BOOL WWNHostSessionUsesOwnDisplayDRM(void) { return NO; }

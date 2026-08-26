@@ -111,6 +111,7 @@ extern void WWNCoreFlushClients(void *core);
 extern uint32_t WWNCoreDisconnectAllClients(void *core);
 extern void WWNCoreSetForceSSD(void *core, bool enabled);
 extern void WWNCoreSetForceSSDForClientLaunch(void *core, bool enabled);
+extern void WWNCoreSetFillsHostForClientLaunch(void *core, bool fills_host);
 extern void WWNCoreSetWindowHostSceneIndependent(void *core, uint64_t window_id,
                                                  bool independent);
 
@@ -3404,13 +3405,38 @@ extern void WWNCoreInject_touch_frame(void *core);
       break;
     }
   }
-  if ((w == 0 || h == 0) && [NSScreen mainScreen]) {
-    NSSize size = [NSScreen mainScreen].frame.size;
-    if (size.width > 1.0 && size.height > 1.0) {
-      w = (uint32_t)lround(size.width);
-      h = (uint32_t)lround(size.height);
-      s = (float)[NSScreen mainScreen].backingScaleFactor;
+  if ((w == 0 || h == 0) && [NSApp keyWindow]) {
+    NSWindow *appWin = [NSApp keyWindow];
+    if (![appWin isKindOfClass:[WWNWindow class]]) {
+      NSSize size = [appWin contentRectForFrameRect:appWin.frame].size;
+      if (size.width > 1.0 && size.height > 1.0) {
+        w = (uint32_t)lround(size.width);
+        h = (uint32_t)lround(size.height);
+        s = (float)(appWin.backingScaleFactor > 0 ? appWin.backingScaleFactor
+                                                  : 1.0);
+      }
     }
+  }
+  if ((w == 0 || h == 0) && [NSApp mainWindow]) {
+    NSWindow *appWin = [NSApp mainWindow];
+    if (![appWin isKindOfClass:[WWNWindow class]]) {
+      NSSize size = [appWin contentRectForFrameRect:appWin.frame].size;
+      if (size.width > 1.0 && size.height > 1.0) {
+        w = (uint32_t)lround(size.width);
+        h = (uint32_t)lround(size.height);
+        s = (float)(appWin.backingScaleFactor > 0 ? appWin.backingScaleFactor
+                                                  : 1.0);
+      }
+    }
+  }
+  // Do not seed from the full NSScreen. That made nested niri's first
+  // configure huge, then AppKit/OWL shrank the NSWindow during init and
+  // niri kept drawing the large output.
+  if ((w == 0 || h == 0)) {
+    w = 1024;
+    h = 768;
+    s = [NSScreen mainScreen] ? (float)[NSScreen mainScreen].backingScaleFactor
+                              : 1.0f;
   }
 #endif
 
@@ -3644,9 +3670,21 @@ extern void WWNCoreInject_touch_frame(void *core);
   if (!_rustCore) {
     return;
   }
-  [self _dispatchToRust:^{
+  // Must be on the compositor thread before NSTask connects. Async dispatch
+  // raced nested weston mapping against a still-empty pending policy.
+  [self _dispatchSyncToCompositor:^{
     WWNCoreSetForceSSDForClientLaunch(self->_rustCore, enabled);
     WWNLog("BRIDGE", @"Force SSD staged for next client launch: %d", enabled);
+  }];
+}
+
+- (void)setFillsHostForClientLaunch:(BOOL)fillsHost {
+  if (!_rustCore) {
+    return;
+  }
+  [self _dispatchSyncToCompositor:^{
+    WWNCoreSetFillsHostForClientLaunch(self->_rustCore, fillsHost);
+    WWNLog("BRIDGE", @"Fill-host staged for next client launch: %d", fillsHost);
   }];
 }
 - (void)setKeyboardRepeatRate:(int32_t)rate delay:(int32_t)delay {
@@ -3707,6 +3745,7 @@ typedef struct CWindowEvent {
   uint8_t edges;            // xdg_toplevel resize_edge
   uint8_t size_kind;        // 0=Frame, 1=Content, 2=Buffer
   uint8_t size_cause;       // 0=Unknown, 1=HostConfigure, 2=ClientCommit, 3=OutputModeChange
+  uint8_t fills_host;       // nested weston/niri / terminals
   uint32_t configure_serial;
   uint64_t transaction_id;
 } CWindowEvent;
@@ -3982,10 +4021,10 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
   // xdg configure. Weston's wayland backend copies configure_width/height into
   // its output; 0x0 means no mode and a blank parent window. Demos stay OWL
   // client-pick (64px placeholder, configure 0x0).
-  BOOL fillHost =
-      !kiosk && !WWNWestonDemoPrefersFixedSquare(bundledClient, createdTitle) &&
-      (WWNBundledClientFillsHost(bundledClient) ||
-       WWNTitleIndicatesNestedCompositor(createdTitle));
+  BOOL fillHost = event->fills_host ||
+      (!kiosk && !WWNWestonDemoPrefersFixedSquare(bundledClient, createdTitle) &&
+       (WWNBundledClientFillsHost(bundledClient) ||
+        WWNTitleIndicatesNestedCompositor(createdTitle)));
 
   NSRect contentRect;
   if (kiosk) {
@@ -3999,13 +4038,19 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
       shouldUpdateOutput = YES;
     }
   } else if (fillHost) {
-    uint32_t fw = _latestOutputW > 0 ? _latestOutputW : 1024;
-    uint32_t fh = _latestOutputH > 0 ? _latestOutputH : 768;
+    // Match the first xdg configure already sent (event size). A second
+    // inject at a different _latestOutputW during init is what left nested
+    // niri drawing the large mode into a shrunken NSWindow.
+    uint32_t fw = event->width > 0 ? event->width
+                                   : (_latestOutputW > 0 ? _latestOutputW : 1024);
+    uint32_t fh = event->height > 0 ? event->height
+                                    : (_latestOutputH > 0 ? _latestOutputH : 768);
     contentRect = NSMakeRect(100, 100, fw, fh);
-    shouldInjectResize = YES;
+    shouldInjectResize = NO;
     shouldUpdateOutput = YES;
     WWNLog("BRIDGE",
-           @"macOS fill-host window=%llu client='%@' title='%@' %ux%u",
+           @"macOS fill-host window=%llu client='%@' title='%@' %ux%u "
+           @"(same as first configure; no map inject)",
            event->window_id, bundledClient ?: @"(nil)", createdTitle, fw, fh);
   } else {
     // OWL / xdg-shell: WindowCreated carries 0×0 until the client commits.
@@ -4045,6 +4090,10 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
   window.hostLocked = kiosk;
   [window setTitle:title];
   window.prefersFixedSquare = fixedSquare;
+  window.fillsHost = fillHost;
+  if (fillHost) {
+    [_windowsWithInitialSizeSynced addObject:@(event->window_id)];
+  }
 
   // Create content view in window-local coordinates.
   // `contentRect` includes screen-space origin; using it directly as an NSView
@@ -4147,6 +4196,16 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
     [self injectWindowResize:event->window_id
                        width:(uint32_t)MAX(1, lround(contentSize.width))
                       height:(uint32_t)MAX(1, lround(contentSize.height))];
+  } else if (fillHost && shouldUpdateOutput) {
+    NSSize contentSize = WWNWaylandContentSizeForWindow(window);
+    if (contentSize.width > 0 && contentSize.height > 0) {
+      uint64_t wid = event->window_id;
+      uint32_t ow = (uint32_t)MAX(1, lround(contentSize.width));
+      uint32_t oh = (uint32_t)MAX(1, lround(contentSize.height));
+      [self _dispatchToRust:^{
+        WWNCoreSetOutputGeometryForWindow(self->_rustCore, wid, ow, oh, 1.0f);
+      }];
+    }
   }
 }
 
@@ -4633,6 +4692,17 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
              event->window_id, event->width, event->height, contentSize.width,
              contentSize.height, WWNSizeCauseString(event->size_cause),
              event->configure_serial, event->transaction_id);
+      return;
+    }
+    // Nested weston/niri: host size is the fill-host configure. A smaller
+    // first ClientCommit is init, not a refuse. Applying it shrinks the
+    // NSWindow while the nested compositor still has the large output.
+    if (window.fillsHost && event->size_cause == 2) {
+      WWNLog("BRIDGE",
+             @"Ignoring ClientCommit SizeChanged for fill-host nested "
+             @"compositor window=%llu event=%ux%u current=%.0fx%.0f",
+             event->window_id, event->width, event->height, contentSize.width,
+             contentSize.height);
       return;
     }
     // OWL rule: every ClientCommit SizeChanged drives host content size
@@ -5243,6 +5313,23 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
            @"xdg fullscreen for nested compositor window %llu fills the "
            @"NSWindow, not Spaces",
            event->window_id);
+    NSSize contentSize = WWNWaylandContentSizeForWindow(window);
+    uint32_t ow = _latestOutputW > 0 ? _latestOutputW : 1024;
+    uint32_t oh = _latestOutputH > 0 ? _latestOutputH : 768;
+    if (contentSize.width <= 64.0 || contentSize.height <= 64.0 ||
+        contentSize.width + 1.0 < (CGFloat)ow ||
+        contentSize.height + 1.0 < (CGFloat)oh) {
+      NSRect frame = [window frameRectForContentRect:NSMakeRect(0, 0, ow, oh)];
+      frame.origin = window.frame.origin;
+      window.processingResize = YES;
+      [window setFrame:frame display:NO];
+      window.processingResize = NO;
+      uint64_t wid = event->window_id;
+      [self _dispatchToRust:^{
+        WWNCoreSetOutputGeometryForWindow(self->_rustCore, wid, ow, oh, 1.0f);
+      }];
+      [self injectWindowResize:wid width:ow height:oh];
+    }
     return;
   }
   window.processingResize = YES;
@@ -5871,7 +5958,8 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
       bundledClientForSize = (NSString *)settingsNative;
     }
   }
-  BOOL fillShellToHost = WWNIosBundledClientFillsHost(bundledClientForSize);
+  BOOL fillShellToHost = event->fills_host ||
+      WWNIosBundledClientFillsHost(bundledClientForSize);
   // Only the machine's primary shell/compositor window fills the host. Extra
   // toplevels from in-process zsh (weston-simple-shm / simple-egl / flower)
   // keep the preferred square, like weston-flower.
@@ -6227,12 +6315,13 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
       else if ([sn isKindOfClass:[NSString class]])
         shellClient = (NSString *)sn;
     }
-    BOOL activeShell = WWNIosBundledClientFillsHost(shellClient);
+    BOOL activeShell = event->fills_host ||
+        WWNIosBundledClientFillsHost(shellClient);
     BOOL fixedSizeClient =
         WWNWestonDemoPrefersFixedSquare(shellClient, iosView.accessibilityLabel);
     if (fixedSizeClient) {
       iosView.followHostSize = NO;
-    } else if (hostLocked || iosView.followHostSize) {
+    } else if (hostLocked || iosView.followHostSize || activeShell) {
       // Shells / host-locked always follow the compositor container. Do not
       // drop followHost when the first commit is still a floating cell-snap
       // (e.g. 80x25). That cleared full-bleed and re-centered gutters.

@@ -225,6 +225,23 @@ pub extern "C" fn WWNCoreSetForceSSDForClientLaunch(
     }));
 }
 
+/// Stage fill-host for the next machine's Wayland client. Nested weston/niri
+/// need a non-zero first xdg configure; demos must pass false.
+#[no_mangle]
+pub extern "C" fn WWNCoreSetFillsHostForClientLaunch(
+    core: *mut WWNCore,
+    fills_host: bool
+) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if core.is_null() {
+            return;
+        }
+
+        let core = unsafe { &*core };
+        core.set_fills_host_for_client_launch(fills_host);
+    }));
+}
+
 /// Mark whether a window is hosted in its own independent OS window/scene
 /// (macOS NSWindow-per-toplevel, or one `UIWindowScene` per Wayland client on
 /// iPadOS/visionOS). See `WWNCore::set_window_host_scene_independent` (#120).
@@ -489,6 +506,8 @@ pub struct CWindowEvent {
     pub size_kind: u8,
     /// WindowSizeCause: 0=Unknown, 1=HostConfigure, 2=ClientCommit, 3=OutputModeChange
     pub size_cause: u8,
+    /// Nested compositor / terminal: do not OWL-shrink the host on first commit.
+    pub fills_host: u8,
     pub configure_serial: u32,
     pub transaction_id: u64,
 }
@@ -520,6 +539,7 @@ pub extern "C" fn WWNCorePopWindowEvent(core: *mut WWNCore) -> *mut CWindowEvent
                 edges: 0,
                 size_kind: 1,
                 size_cause: 0,
+                fills_host: 0,
                 configure_serial: 0,
                 transaction_id: 0,
             });
@@ -536,6 +556,7 @@ pub extern "C" fn WWNCorePopWindowEvent(core: *mut WWNCore) -> *mut CWindowEvent
                     };
                     c_event.fullscreen_shell = if config.fullscreen_shell { 1 } else { 0 };
                     c_event.host_locked = if config.host_locked { 1 } else { 0 };
+                    c_event.fills_host = if config.fills_host { 1 } else { 0 };
                     c_event.title = CString::new(config.title).ok()
                         .map(|s| s.into_raw())
                         .unwrap_or(std::ptr::null_mut());

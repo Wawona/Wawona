@@ -680,6 +680,21 @@ impl WawonaCore {
         state.pending_client_decoration_policy = Some(policy);
     }
 
+    /// Stage fill-host for the **next** machine's Wayland client.
+    ///
+    /// Nested weston/niri must receive a non-zero first xdg configure.
+    /// `configure(0,0)` becomes their output mode and the parent window stays
+    /// blank. Demos (flower/smoke/simple-egl) must stage `false`.
+    pub fn set_fills_host_for_client_launch(&self, fills_host: bool) {
+        let mut state = self.state.write_recover();
+        crate::wlog!(
+            crate::util::logging::FFI,
+            "FFI: set_fills_host_for_client_launch({})",
+            fills_host
+        );
+        state.pending_client_fills_host = Some(fills_host);
+    }
+
     /// Mark whether `window_id` is hosted in its own independent OS
     /// window/scene (macOS NSWindow-per-toplevel, or one `UIWindowScene` per
     /// Wayland client on iPadOS/visionOS. See `ipad-scene-parity` /
@@ -1226,6 +1241,7 @@ impl WawonaCore {
                 decoration_mode,
                 fullscreen_shell,
                 host_locked,
+                fills_host,
             } => {
                 let internal_client_id = self
                     .internal_client_id(&client_id)
@@ -1267,6 +1283,7 @@ impl WawonaCore {
                     decoration_mode: ffi_decoration_mode,
                     fullscreen_shell,
                     host_locked,
+                    fills_host,
                     owner_client_internal_id: internal_client_id as u64,
                     state: crate::ffi::types::WindowState::Normal,
                     parent: None,
@@ -1279,11 +1296,12 @@ impl WawonaCore {
                 );
                 crate::wlog!(
                     crate::util::logging::FFI,
-                    "WindowCreated queued: window_id={} {}x{} host_locked={}",
+                    "WindowCreated queued: window_id={} {}x{} host_locked={} fills_host={}",
                     window_id,
                     width,
                     height,
-                    host_locked
+                    host_locked,
+                    fills_host
                 );
             }
             CompositorEvent::PopupCreated { client_id, window_id, surface_id, parent_id, x, y, width, height } => {
@@ -1302,6 +1320,7 @@ impl WawonaCore {
                     decoration_mode: DecorationMode::ClientSide,
                     fullscreen_shell: false,
                     host_locked: false,
+                    fills_host: false,
                     owner_client_internal_id: internal_client_id as u64,
                     state: crate::ffi::types::WindowState::Normal,
                     parent: if parent_id > 0 { Some(WindowId::new(parent_id as u64)) } else { None },

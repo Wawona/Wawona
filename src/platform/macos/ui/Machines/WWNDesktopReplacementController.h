@@ -190,6 +190,14 @@ typedef NS_ENUM(NSInteger, WWNModeBVerdict) {
 - (BOOL)installDesktopReplacementRequirements:
     (NSError *_Nullable *_Nullable)error;
 /**
+ * Desktop-host builds: refresh helper + dylib when they do not match this app
+ * bundle. No Take Over. Called from install, first launch, and Enable.
+ */
+- (BOOL)syncDesktopHostInstallArtifactsIfNeeded:
+    (NSError *_Nullable *_Nullable)error;
+- (BOOL)installedHelperMatchesCurrentBuildForProfile:
+    (WWNMachineProfile *)profile;
+/**
  * Check watchdog coverage, heal if stale or dual-path, then stage helper
  * + Path B if Classic is not ready. Never unloads watchdogd. Never Take
  * Over. Enable and Replace now both call this.
@@ -244,7 +252,7 @@ typedef NS_ENUM(NSInteger, WWNModeBVerdict) {
 - (int)cliPrepare;
 - (int)cliEngageKeepWindowServer:(BOOL)keepWindowServer;
 - (int)cliDisengage;
-/** Restage helper + dylib for this build. Does not take over the screen. */
+/** Internal install hook (nix/pkg). Prefer syncDesktopHostInstallArtifactsIfNeeded. */
 - (int)cliStage;
 /**
  * Select Desktop Replacement machine by id, name, or client alias.

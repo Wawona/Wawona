@@ -25,6 +25,9 @@
 /// Flower/smoke/simple-egl/simple-shm: client owns a preferred square. Host
 /// must not inject live resize or leave the NSWindow resizable.
 @property(nonatomic, assign) BOOL prefersFixedSquare;
+/// Nested weston/niri (and terminals): host size is authoritative. Do not
+/// OWL-shrink the NSWindow to a smaller first client commit.
+@property(nonatomic, assign) BOOL fillsHost;
 /// Toggle AppKit chrome vs transparent host for SSD/CSD presentation.
 - (void)applyPresentationPolicyForServerSideDecorations:(BOOL)serverSideDecorations;
 /// Called when bridge tears host down (client path) so delayed force-close cancels.

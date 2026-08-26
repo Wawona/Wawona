@@ -221,6 +221,8 @@ pub enum CompositorEvent {
         decoration_mode: DecorationMode,
         fullscreen_shell: bool,
         host_locked: bool,
+        /// Nested weston/niri / terminals: host size is authoritative.
+        fills_host: bool,
     },
     /// A new popup was created
     PopupCreated { client_id: ClientId, window_id: u32, surface_id: u32, parent_id: u32, x: i32, y: i32, width: u32, height: u32 },

@@ -208,7 +208,7 @@ cmd_ready() {
   if [ ! -x "$HELPER" ]; then
     log "VERDICT blocked"
     log "REASON Mode B helper is missing at $HELPER"
-    log "next: Wawona --mode-b-stage"
+    log "next: nix run .#install from the Wawona repo, or open Wawona (desktop-host syncs the helper automatically)"
     return 3
   fi
   set +e

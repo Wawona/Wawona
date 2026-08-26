@@ -18,11 +18,14 @@ as history.
   path that then fails without insert. Agent rule:
   `docs/agent-rules/wawona-compositor-backend.md` (Cursor
   `wawona-compositor-backend`).
+- **macOS install syncs Mode B by default.** `nix run .#install` always
+  installs helper + dylib. Opening desktop-host Wawona syncs when stale.
+  Removed `WAWONA_MODEB_STAGE`.
 - **macOS Mode B TTY niri/weston.** Type them as the login user. Never sudo.
   `libwayland-mac.dylib` client-only insert installs iland open/ioctl hooks
   so `/dev/dri/...` is userspace DRM, not a real node. `sudo niri` strips
-  insert and fails ENOENT. Do not Take Over until
-  `WAWONA_MODEB_STAGE=1 nix run .#install` restages the dylib and helper.
+  insert and fails ENOENT. Run `nix run .#install` so the helper matches
+  this build before Take Over.
 - **macOS Desktop Replacement panic (2026-08-23).** Classic Aqua restore
   kickstarted Path B, which re-armed kernel IOWatchdog (8 checkins, then a
   92s timeout). Restore now leaves Path B down and the kernel Disable
@@ -149,8 +152,8 @@ as history.
   `watchdogd exited` SIGTRAP panics (lldb attach and related paths,
   2026-08-20), Take Over refuses before touching IOWatchdog or unloading
   `watchdogd` (`WWN_MODEB_WD=blocked-no-iowatchdog`). `--mode-b-probe`
-  may still inject while Aqua stays up. `nix run .#install` skips Mode B
-  restage by default (`WAWONA_MODEB_STAGE=1` to force a blocked helper).
+  may still inject while Aqua stays up. Older builds skipped Mode B restage on
+  install unless forced.
 - **Mode B drops the lldb IOWatchdog fallback.** Attaching `lldb` to live
   `watchdogd` exited it with SIGTRAP (namespace 2 subcode 0x5) and paniced
   during install, app open, and restore (2026-08-20, three times).

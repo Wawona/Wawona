@@ -169,6 +169,20 @@ pub fn label_for(id: &str) -> String {
     bundled_client(id).map(|c| c.name.to_string()).unwrap_or_else(|| id.to_string())
 }
 
+/// Terminals and nested compositors fill the host. Demos stay client-preferred
+/// (`configure(0,0)`). Same set as macOS `WWNBundledClientFillsHost`.
+pub fn fills_host(command_or_id: &str) -> bool {
+    let token = command_or_id.split_whitespace().next().unwrap_or(command_or_id);
+    let base = std::path::Path::new(token)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or(token);
+    matches!(
+        base,
+        "weston-terminal" | "wayland-terminal" | "foot" | "niri" | "weston"
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -187,5 +201,9 @@ mod tests {
         assert_eq!(bundled_client("foot").unwrap().name, "Foot Terminal");
         assert_eq!(label_for("kmscube"), "KMS Cube");
         assert_eq!(label_for("does-not-exist"), "does-not-exist");
+        assert!(fills_host("niri"));
+        assert!(fills_host("/usr/bin/weston --backend=wayland"));
+        assert!(!fills_host("weston-flower"));
+        assert!(!fills_host("weston-simple-egl"));
     }
 }

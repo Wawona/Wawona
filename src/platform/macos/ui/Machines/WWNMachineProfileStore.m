@@ -922,6 +922,19 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
   [[WWNCompositorBridge sharedBridge]
       setForceSSDForClientLaunch:machineForceSSD];
 
+  NSString *nativeCid = nil;
+  NSString *nativeCmd = nil;
+  [self resolvedNativeIdentityForProfile:profile
+                                clientId:&nativeCid
+                           customCommand:&nativeCmd];
+  BOOL fillsHost =
+      [nativeCid isEqualToString:@"weston-terminal"] ||
+      [nativeCid isEqualToString:@"wayland-terminal"] ||
+      [nativeCid isEqualToString:@"foot"] ||
+      [self profileIndicatesNestedWithNativeClientId:nativeCid
+                                      customCommand:nativeCmd];
+  [[WWNCompositorBridge sharedBridge] setFillsHostForClientLaunch:fillsHost];
+
   // Environment overrides (#157): machine > global, after prefs/graphics apply.
   {
     NSDictionary *machineEnv = nil;

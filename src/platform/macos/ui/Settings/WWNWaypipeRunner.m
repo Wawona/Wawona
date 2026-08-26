@@ -2841,7 +2841,7 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
   /*
    * Do not applyMachineToRuntimePrefs here. That writes the Desktop machine
    * onto the GUI prefs session and, historically, called +sharedBridge which
-   * started WWNCore in `Wawona --mode-b-stage`. Mode B env is built below
+   * started WWNCore during desktop-host helper sync. Mode B env is built below
    * without touching the Aqua compositor.
    */
   WWNConfigureBundledRuntimeEnvIfNeeded();
@@ -3504,6 +3504,9 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
   }
 
   [WWNMachineProfileStore applyActiveMachineToRuntimePrefs];
+  // Nested weston must not see configure(0,0) as its first mode, even if
+  // NativeClientId raced empty in applyActiveMachineToRuntimePrefs.
+  [bridge setFillsHostForClientLaunch:YES];
 
   uint32_t outW = 1024;
   uint32_t outH = 768;

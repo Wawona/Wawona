@@ -78,7 +78,7 @@ sudo …/wwn-iowatchdog-claim-install --doctor
 
 ## 3. Stage + KEEP_WS (before Classic)
 
-1. `WAWONA_MODEB_STAGE=1 nix run .#install` (or `Wawona --mode-b-stage`) once.
+1. `nix run .#install` once (syncs helper + dylib automatically).
 2. Assert CLI at `/Library/Application Support/Wawona/bin/wwn-iowatchdog` (file).
 3. `Wawona --mode-b-probe` with weston selected; Aqua stays up; log must **not**
    Apple-enable `watchdogd` on success or failure (`skip restore_watchdogd`).

@@ -128,6 +128,7 @@ extern void WWNCoreSetOutputSize(void *core, uint32_t width, uint32_t height,
 extern void WWNCoreSetSafeAreaInsets(void *core, int32_t top, int32_t right,
                                      int32_t bottom, int32_t left);
 extern void WWNCoreSetForceSSD(void *core, int enabled);
+extern void WWNCoreSetFillsHostForClientLaunch(void *core, bool fills_host);
 extern void WWNCoreFree(void *core);
 
 typedef struct {
@@ -189,6 +190,7 @@ typedef struct {
   uint8_t edges;       /* xdg_toplevel resize_edge. Must match c_api.rs layout */
   uint8_t size_kind;   /* 0=Frame, 1=Content, 2=Buffer */
   uint8_t size_cause;  /* 0=Unknown, 1=HostConfigure, 2=ClientCommit, 3=OutputModeChange */
+  uint8_t fills_host;  /* nested weston/niri / terminals */
   uint32_t configure_serial;
   uint64_t transaction_id;
 } CWindowEvent;
@@ -794,6 +796,7 @@ static void push_safe_area_to_core(void) {
  * square) must not be streamed to logical output size on every density/output
  * tick. */
 static char g_bundled_client_id[64] = "";
+static pthread_mutex_t g_bundled_client_mu = PTHREAD_MUTEX_INITIALIZER;
 #define ANDROID_OWL_MAX_WINDOWS 64
 typedef struct {
   uint64_t window_id;
@@ -834,6 +837,9 @@ static int android_window_should_follow_host(uint64_t window_id) {
   return w->host_locked || w->follow_host;
 }
 
+static int android_bundled_prefers_fixed_square(void);
+static int android_bundled_fills_host(void);
+
 static void android_owl_on_created(const CWindowEvent *evt) {
   if (!evt || evt->window_id == 0)
     return;
@@ -841,10 +847,15 @@ static void android_owl_on_created(const CWindowEvent *evt) {
   if (!w)
     return;
   w->host_locked = evt->host_locked || evt->fullscreen_shell;
-  /* Ordinary toplevels wait for ClientCommit; host_locked fills immediately. */
-  w->follow_host = w->host_locked ? 1 : 0;
-  LOGI("OWL create window=%llu host_locked=%u follow_host=%u",
-       (unsigned long long)evt->window_id, w->host_locked, w->follow_host);
+  /* Nested weston/niri / terminals fill the host immediately. Demos wait
+   * for ClientCommit (OWL). */
+  w->follow_host = (w->host_locked || evt->fills_host ||
+                    android_bundled_fills_host())
+                       ? 1
+                       : 0;
+  LOGI("OWL create window=%llu host_locked=%u fills_host=%u follow_host=%u",
+       (unsigned long long)evt->window_id, w->host_locked, evt->fills_host,
+       w->follow_host);
 }
 
 static int android_bundled_prefers_fixed_square(void) {
@@ -856,6 +867,27 @@ static int android_bundled_prefers_fixed_square(void) {
          strcmp(g_bundled_client_id, "weston-smoke") == 0 ||
          strcmp(g_bundled_client_id, "weston-clickdot") == 0 ||
          strcmp(g_bundled_client_id, "weston-eventdemo") == 0;
+}
+
+static int android_bundled_fills_host(void) {
+  if (!g_bundled_client_id || !g_bundled_client_id[0])
+    return 0;
+  return strcmp(g_bundled_client_id, "weston-terminal") == 0 ||
+         strcmp(g_bundled_client_id, "wayland-terminal") == 0 ||
+         strcmp(g_bundled_client_id, "foot") == 0 ||
+         strcmp(g_bundled_client_id, "niri") == 0 ||
+         strcmp(g_bundled_client_id, "weston") == 0;
+}
+
+static void android_stage_client_launch(const char *id, int fills_host) {
+  pthread_mutex_lock(&g_bundled_client_mu);
+  if (id && id[0])
+    snprintf(g_bundled_client_id, sizeof(g_bundled_client_id), "%s", id);
+  else
+    g_bundled_client_id[0] = '\0';
+  pthread_mutex_unlock(&g_bundled_client_mu);
+  if (g_core)
+    WWNCoreSetFillsHostForClientLaunch(g_core, fills_host ? true : false);
 }
 
 static void android_owl_on_size_changed(const CWindowEvent *evt) {
@@ -873,8 +905,11 @@ static void android_owl_on_size_changed(const CWindowEvent *evt) {
          (unsigned long long)evt->window_id, evt->width, evt->height);
     return;
   }
-  if (w->host_locked) {
+  if (w->host_locked || w->follow_host || evt->fills_host ||
+      android_bundled_fills_host()) {
     w->follow_host = 1;
+    LOGI("OWL ClientCommit window=%llu %ux%u follow_host=1 (fill-host)",
+         (unsigned long long)evt->window_id, evt->width, evt->height);
     return;
   }
   int sf = compute_auto_scale_factor();
@@ -4807,6 +4842,7 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeRunWestonSimpleSHM(
   (void)env;
   (void)thiz;
 
+  android_stage_client_launch("weston-simple-shm", 0);
   atomic_fetch_add(&g_weston_shm_count, 1);
   pthread_t thread = 0;
   int result = pthread_create(&thread, NULL, weston_simple_shm_thread_func, NULL);
@@ -4916,6 +4952,7 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeRunWeston(
   if (g_weston_running)
     return JNI_FALSE;
   wwn_android_prepare_shell_environment(getenv("WAWONA_FILES_DIR"));
+  android_stage_client_launch("weston", 1);
   g_weston_running = 1;
   if (pthread_create(&g_weston_thread, NULL, weston_thread_func, NULL) != 0) {
     g_weston_running = 0;
@@ -4994,6 +5031,7 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeRunWestonTerminal(
     return JNI_FALSE;
   }
   wwn_android_prepare_shell_environment(getenv("WAWONA_FILES_DIR"));
+  android_stage_client_launch("weston-terminal", 1);
   atomic_fetch_add(&g_weston_terminal_count, 1);
   pthread_t thread = 0;
   if (pthread_create(&thread, NULL, weston_terminal_thread_func, NULL) != 0) {
@@ -5235,7 +5273,6 @@ static jboolean wwn_bundled_client_available(const char *client_id) {
 }
 
 static _Atomic int g_bundled_client_count = 0;
-static pthread_mutex_t g_bundled_client_mu = PTHREAD_MUTEX_INITIALIZER;
 
 typedef struct {
   char id[64];
@@ -5338,6 +5375,8 @@ static jboolean wwn_launch_niri_nested(void) {
          strerror(errno));
     return JNI_FALSE;
   }
+
+  android_stage_client_launch("niri", 1);
 
   const char *backend = WWNSettings_ResolveCompositorBackend();
   const int use_drm = (backend && strcmp(backend, "drm") == 0);
@@ -5531,6 +5570,8 @@ static jboolean wwn_launch_foot(void) {
     return JNI_FALSE;
   }
 
+  android_stage_client_launch("foot", 1);
+
   const char *files_dir = getenv("WAWONA_FILES_DIR");
   if (files_dir && files_dir[0])
     wwn_android_prepare_shell_environment(files_dir);
@@ -5682,9 +5723,12 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeRunBundledClient(
   snprintf(params->id, sizeof(params->id), "%s", id_utf);
   (*env)->ReleaseStringUTFChars(env, clientId, id_utf);
 
-  pthread_mutex_lock(&g_bundled_client_mu);
-  snprintf(g_bundled_client_id, sizeof(g_bundled_client_id), "%s", params->id);
-  pthread_mutex_unlock(&g_bundled_client_mu);
+  int fills = strcmp(params->id, "weston-terminal") == 0 ||
+              strcmp(params->id, "wayland-terminal") == 0 ||
+              strcmp(params->id, "foot") == 0 ||
+              strcmp(params->id, "niri") == 0 ||
+              strcmp(params->id, "weston") == 0;
+  android_stage_client_launch(params->id, fills);
   atomic_fetch_add(&g_bundled_client_count, 1);
 
   pthread_t thread = 0;

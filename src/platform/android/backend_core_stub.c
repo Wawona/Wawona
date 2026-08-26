@@ -41,6 +41,7 @@ typedef struct {
   uint8_t edges; /* must match c_api.rs CWindowEvent */
   uint8_t size_kind;
   uint8_t size_cause;
+  uint8_t fills_host;
   uint32_t configure_serial;
   uint64_t transaction_id;
 } CWindowEvent;

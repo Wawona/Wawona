@@ -106,20 +106,20 @@ window. Logs to stdout plus `/tmp/wawona-modeb-cli.log` and
 |------|--------|
 | `--mode-b-status` | SIP, helper, sudoers, compositor PID (EPERM-aware), WindowServer, plus Classic `VERDICT` |
 | `--mode-b-ready` | Classic gate. Prints `VERDICT` and `REASON`. `takeover-now` (exit 0), `reboot` (exit 2), `blocked` (exit 3) |
-| `--mode-b-prepare` | Stage helper if needed and arm Path B. Does not take over. `reboot` opens the native Restart sheet |
-| `--mode-b-stage` | Install helper + dylib for this build. Does not take over the screen |
+| `--mode-b-prepare` | Sync helper if needed and arm Path B. Does not take over. `reboot` opens the native Restart sheet |
 | `--mode-b-probe` | Wait for a live root compositor without taking the screen |
 | `--mode-b-engage` | `takeover-now`: take over now. `reboot`: open the native macOS Restart sheet (`kAERestart` / QA1134, 60-second countdown). `blocked`: print the exact reason and exit 3 |
 | `--mode-b-disengage` | Full teardown: restore WindowServer, kill root compositor, remove helper / sudoers / login agent / dylib / ws-guard |
 
-`nix run .#install` **skips** Mode B restage by default. Set `WAWONA_MODEB_STAGE=1` to restage
-`/Library/Application Support/Wawona/run-modeb.sh`, copy this build's
-`libwayland-mac.dylib`, refresh sudoers, and clear a stale `modeb.lock`.
+`nix run .#install` syncs `/Library/Application Support/Wawona/run-modeb.sh`,
+copies this build's `libwayland-mac.dylib`, refreshes sudoers, and clears a
+stale `modeb.lock`.
 It prompts for administrator authorization once and fails if the helper
 still points at a previous nix store or still `export`s
 `DYLD_INSERT_LIBRARIES` (insert is compositor-only). It does not unload
-WindowServer. It does not Take Over. Public notes:
-https://wawona.io/docs/desktop/ (restage helper and dylib).
+WindowServer. It does not Take Over. Opening desktop-host Wawona also syncs
+when the helper is stale. Public notes:
+https://wawona.io/docs/desktop/ (install and updates).
 
 `--mode-b-engage` uses the already-installed `sudo -n` helper when present, so
 it does not block on an administrator dialog after a successful install.
@@ -134,7 +134,6 @@ must be fully disabled (`csrutil disable` in Recovery). Partial SIP
 Wawona --mode-b-status
 Wawona --mode-b-ready
 Wawona --mode-b-prepare
-Wawona --mode-b-stage
 Wawona --mode-b-probe
 Wawona --mode-b-engage
 Wawona --mode-b-disengage

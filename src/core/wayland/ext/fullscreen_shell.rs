@@ -136,6 +136,7 @@ impl Dispatch<ZwpFullscreenShellV1, ()> for CompositorState {
                             decoration_mode: DecorationMode::ServerSide,
                             fullscreen_shell: true,
                             host_locked: true,
+                            fills_host: false,
                         }
                     );
 
@@ -207,6 +208,7 @@ impl Dispatch<ZwpFullscreenShellV1, ()> for CompositorState {
                             decoration_mode: DecorationMode::ServerSide,
                             fullscreen_shell: true,
                             host_locked: true,
+                            fills_host: false,
                         }
                     );
                 }

@@ -63,7 +63,7 @@ kickstarted.
 
 ## Do not
 
-- Take Over until `WAWONA_MODEB_STAGE=1 nix run .#install` restages the
+- Take Over until `nix run .#install` restages the
   helper (this change is dead in the installed `run-modeb.sh` until then).
 - Heal Path B or `kickstart -k` Apple `watchdogd` to "fix" coverage.
 - Attach lldb to `watchdogd`.

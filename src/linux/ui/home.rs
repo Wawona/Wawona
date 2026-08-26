@@ -725,6 +725,11 @@ pub fn try_launch_profile(machine_id: &str, state: &SharedAppState) -> Result<Ch
     let settings = app.settings.clone();
     drop(app);
     let rt = runtime::read_runtime_state().map_err(|e| format!("{e}"))?;
+    if let Some(core) = crate::linux::embedded_core::get() {
+        core.set_fills_host_for_client_launch(crate::linux::bundled_clients::fills_host(
+            &profile.effective_command(),
+        ));
+    }
     launcher::launch_profile(&profile, &settings, &rt).map_err(|e| format!("{e}"))
 }
 

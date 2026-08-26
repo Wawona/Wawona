@@ -332,6 +332,10 @@ extern NSString *const WWNClientWindowSceneWindowIdKey;
 /// per-machine (#120): concurrent CSD + SSD machines must not stomp.
 - (void)setForceSSDForClientLaunch:(BOOL)enabled;
 
+/// Stage fill-host for the NEXT machine's client launch. Nested weston/niri
+/// need a non-zero first xdg configure; demos must pass NO.
+- (void)setFillsHostForClientLaunch:(BOOL)fillsHost;
+
 /// Set keyboard repeat rate
 - (void)setKeyboardRepeatRate:(int32_t)rate delay:(int32_t)delay;
 

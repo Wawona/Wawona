@@ -204,7 +204,7 @@ fi
 
 if [[ -x "$APP_EXEC" ]]; then
   echo "Staging Desktop Replacement helper (no Take Over)..."
-  "$APP_EXEC" --mode-b-stage || echo "warning: --mode-b-stage failed; Enable Desktop Replacement in Wawona Settings" >&2
+  "$APP_EXEC" --mode-b-stage || echo "warning: Desktop Replacement helper install failed; open Wawona once or use Settings → Desktop → Enable" >&2
 fi
 
 rc=0

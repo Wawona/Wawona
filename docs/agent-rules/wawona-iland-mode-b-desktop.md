@@ -98,8 +98,8 @@ Never invent CSR_* syscalls; stay on `csrutil status` string matching.
 - SIP + prefs UI: `WWNSipStatus.*`, `WWNPreferences.m` Desktop section
   (**Enable Desktop Replacement** runs doctor / heal / Path B; Replace now stays gated).
 - Engage/disengage: `WWNDesktopReplacementController.*`,
-  `WWNMachineSessionBridge.m`. Default `nix run .#install` skips Mode B
-  restage. `WAWONA_MODEB_STAGE=1 nix run .#install` (or `Wawona --mode-b-stage`)
+   `WWNMachineSessionBridge.m`. `nix run .#install` syncs helper + dylib +
+   `wwn-iowatchdog` + sudoers for this store (administrator once) and
   copies helper + dylib for this store (no take-over; never `wwn-iowatchdog`
   disable/enable or lldb on `watchdogd` during stage).
   Site: https://wawona.io/docs/desktop/ (restage helper and dylib).

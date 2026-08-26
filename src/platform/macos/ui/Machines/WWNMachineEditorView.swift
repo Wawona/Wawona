@@ -1212,9 +1212,6 @@ struct WWNMachineEditorView: View {
       RoundedRectangle(cornerRadius: 14, style: .continuous)
         .fill(Color.secondary.opacity(0.08))
     )
-    #if os(macOS)
-    .wwnMachineConfigScrollTransition()
-    #endif
   }
 
   private var selectedClientDrawsOwnCursor: Bool {
@@ -1444,22 +1441,6 @@ private extension View {
       self
     }
   }
-
-  /// Cards fade and blur as they enter or leave the visible scroll region.
-  func wwnMachineConfigScrollTransition() -> some View {
-    scrollTransition(
-      topLeading: .interactive,
-      bottomTrailing: .interactive,
-      axis: .vertical
-    ) { effect, phase in
-      // Stronger fade under the titlebar (negative) than at the bottom edge.
-      let t = phase.value < 0 ? abs(phase.value) : abs(phase.value) * 0.45
-      return effect
-        .opacity(1 - 0.65 * t)
-        .blur(radius: 12 * t)
-        .scaleEffect(1 - 0.03 * t)
-    }
-  }
 }
 #endif
 
@@ -1556,9 +1537,6 @@ private struct WWNNativeClientPickerView: View {
       )
     }
     .buttonStyle(.plain)
-    #if os(macOS)
-    .wwnMachineConfigScrollTransition()
-    #endif
   }
 
   @ViewBuilder
@@ -1595,9 +1573,6 @@ private struct WWNNativeClientPickerView: View {
       )
     }
     .buttonStyle(.plain)
-    #if os(macOS)
-    .wwnMachineConfigScrollTransition()
-    #endif
   }
 }
 
