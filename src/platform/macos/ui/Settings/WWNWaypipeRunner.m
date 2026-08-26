@@ -3044,9 +3044,16 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
     guiVt = 1;
   }
   BOOL ttyOnly = modebTty;
+  NSString *sessionBin = [[[NSBundle mainBundle] resourcePath]
+      stringByAppendingPathComponent:@"libexec/wwn-modeb-session"];
   if (!ttyOnly) {
     env[@"WWN_IGETTY_GUI_VT"] = [NSString stringWithFormat:@"%ld", (long)guiVt];
-    env[@"WWN_IGETTY_GUI_CMD"] = executable;
+    NSString *guiCmd = executable;
+    NSString *wrapper = [sessionBin stringByAppendingPathComponent:clientId];
+    if ([[NSFileManager defaultManager] isExecutableFileAtPath:wrapper]) {
+      guiCmd = wrapper;
+    }
+    env[@"WWN_IGETTY_GUI_CMD"] = guiCmd;
     if (args.count > 0) {
       env[@"WWN_IGETTY_GUI_ARGS"] = [args componentsJoinedByString:@"\x1f"];
     }
@@ -3059,8 +3066,6 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
     env[@"WWN_IGETTY_GETTY"] = igetty;
     env[@"WWN_MODEB_GETTY"] = igetty;
   }
-  NSString *sessionBin = [[[NSBundle mainBundle] resourcePath]
-      stringByAppendingPathComponent:@"libexec/wwn-modeb-session"];
   if ([[NSFileManager defaultManager] fileExistsAtPath:sessionBin]) {
     env[@"WWN_MODEB_SESSION_BIN"] = sessionBin;
   }
