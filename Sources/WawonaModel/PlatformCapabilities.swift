@@ -161,10 +161,41 @@ public enum PlatformCapabilities: Sendable {
     }
 
     /// ANGLE / GLES clients (kmscube, opengl-cube, weston-simple-egl).
-    /// tvOS ships ANGLE when `WWN_TVOS_GPU_BUNDLED`. watchOS has no Metal.
+    /// tvOS ships ANGLE when `WWN_TVOS_GPU_BUNDLED`. watchOS uses CPU
+    /// ANGLE+SwiftShader when the CPU ICD is linked (`WWN_WATCH_SWIFTSHADER_BUNDLED`).
+    public static var watchSoftwareGlesVkGate: CapabilityGate {
+        #if os(watchOS)
+        #if WWN_WATCH_SWIFTSHADER_BUNDLED
+        return .available
+        #else
+        if ProcessInfo.processInfo.environment["WWN_WATCH_SWIFTSHADER"] == "1"
+            || ProcessInfo.processInfo.environment["WWN_WATCH_SWIFTSHADER"]?.lowercased() == "true"
+        {
+            return .available
+        }
+        return .planned(flag: "WWN_WATCH_SWIFTSHADER")
+        #endif
+        #else
+        return .forbidden(reason: "watch software GLES/VK is watchOS-only")
+        #endif
+    }
+
+    public static var allowsWatchSoftwareGlesVk: Bool {
+        watchSoftwareGlesVkGate.isAvailable
+    }
+
+    /// Vulkan demos (vkcube). watchOS uses CPU SwiftShader, not MoltenVK.
+    public static var allowsVulkanStack: Bool {
+        #if os(watchOS)
+        return allowsWatchSoftwareGlesVk
+        #else
+        return allowsGpuStack
+        #endif
+    }
+
     public static var allowsGlesStack: Bool {
         #if os(watchOS)
-        return false
+        return allowsWatchSoftwareGlesVk
         #else
         return allowsGpuStack
         #endif
@@ -181,6 +212,11 @@ public enum PlatformCapabilities: Sendable {
     /// Settings → Graphics OpenGL driver is a real GLES implementation, not None.
     public static var openGLDriverEnabled: Bool {
         guard allowsGlesStack else { return false }
+        #if os(watchOS)
+        if allowsWatchSoftwareGlesVk {
+            return true
+        }
+        #endif
         return UserDefaults.standard.string(forKey: "OpenGLDriver") != "none"
     }
 

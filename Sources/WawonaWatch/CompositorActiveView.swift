@@ -11,8 +11,6 @@ struct CompositorActiveView: View {
     @ObservedObject private var preferences = WawonaPreferences.shared
     @StateObject private var startupLog = WatchStartupLogModel()
     @State private var showStopConfirmation = false
-    @State private var draftText = ""
-    @FocusState private var keyboardFocused: Bool
 
     private var requiresExitConfirmation: Bool {
         let resolved = preferences.resolvedSettings(for: profile)
@@ -45,24 +43,6 @@ struct CompositorActiveView: View {
                 .transition(.opacity)
                 .zIndex(2)
             }
-
-            // Hidden field: focusing it opens the native watch text-entry UI
-            // immediately (scribble / QuickType / dictation). No on-screen
-            // "Type…" chrome. Submit/Send injects into the Wayland client.
-            TextField("", text: $draftText)
-                .focused($keyboardFocused)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled(true)
-                .submitLabel(.send)
-                .frame(width: 1, height: 1)
-                .opacity(0.01)
-                .accessibilityHidden(true)
-                .onSubmit { commitDraftToWayland() }
-                .onChange(of: keyboardFocused) { _, focused in
-                    if !focused {
-                        commitDraftToWayland()
-                    }
-                }
         }
         .navigationTitle(profile.name)
         .navigationBarTitleDisplayMode(.inline)
@@ -81,22 +61,16 @@ struct CompositorActiveView: View {
                 .accessibilityLabel(profile.type == .native ? "Stop" : "Disconnect")
             }
             if !startupLog.isPresented {
-                if #available(watchOS 26.0, *) {
-                    ToolbarSpacer(.flexible, placement: .bottomBar)
-                    ToolbarItem(placement: .bottomBar) {
-                        keyboardToolbarButton
-                    }
-                } else {
-                    ToolbarItem(placement: .bottomBar) {
-                        HStack {
-                            Spacer(minLength: 0)
-                            keyboardToolbarButton
-                        }
-                        .frame(maxWidth: .infinity)
-                    }
+                // Same trailing bottom-bar slot as Whisperer's mic
+                // (`bottomRightControls` after `Spacer()` in AppView).
+                ToolbarItemGroup(placement: .bottomBar) {
+                    Spacer(minLength: 0)
+                    keyboardButton
+                        .fixedSize()
                 }
             }
         }
+        .toolbarBackground(.hidden, for: .navigationBar)
         .toolbarBackground(.hidden, for: .bottomBar)
         .toolbarColorScheme(.dark, for: .bottomBar)
         .confirmationDialog(
@@ -119,36 +93,39 @@ struct CompositorActiveView: View {
         }
     }
 
-    /// Bottom-trailing Liquid Glass keyboard control. Same toolbar slot as
-    /// Whisperer's watch input strip; watchOS 26 uses native `.glass`.
+    /// Whisperer watch `keyboardButton`: `TextFieldLink` + `keyboard` SF Symbol
+    /// with circular liquid glass. Placed in Whisperer's mic slot (bottom-bar
+    /// trailing), not Whisperer's leading keyboard slot.
+    private var keyboardButton: some View {
+        TextFieldLink(prompt: Text("Type message")) {
+            keyboardGlyph
+        } onSubmit: { value in
+            commitDraftToWayland(value)
+        }
+        .textInputAutocapitalization(.never)
+        .autocorrectionDisabled()
+        .submitLabel(.send)
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("wwn.watch.keyboard")
+        .accessibilityLabel("Keyboard")
+    }
+
     @ViewBuilder
-    private var keyboardToolbarButton: some View {
+    private var keyboardGlyph: some View {
         if #available(watchOS 26.0, *) {
-            Button {
-                draftText = ""
-                keyboardFocused = true
-            } label: {
+            GlassEffectContainer {
                 Image(systemName: "keyboard")
                     .font(.system(size: 16, weight: .semibold))
-            }
-            .buttonStyle(.glass)
-            .buttonBorderShape(.circle)
-            .accessibilityIdentifier("wwn.watch.keyboard")
-            .accessibilityLabel("Keyboard")
-        } else {
-            Button {
-                draftText = ""
-                keyboardFocused = true
-            } label: {
-                Image(systemName: "keyboard")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.primary)
                     .frame(width: 36, height: 36)
-                    .background(.ultraThinMaterial, in: Circle())
+                    .contentShape(Circle())
+                    .glassEffect(.regular.interactive(), in: .circle)
             }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("wwn.watch.keyboard")
-            .accessibilityLabel("Keyboard")
+        } else {
+            Image(systemName: "keyboard")
+                .font(.system(size: 16, weight: .semibold))
+                .frame(width: 36, height: 36)
+                .contentShape(Circle())
+                .background(.ultraThinMaterial, in: Circle())
         }
     }
 
@@ -160,18 +137,15 @@ struct CompositorActiveView: View {
         }
     }
 
-    /// Native text-entry Send / dismiss → inject into the focused Wayland
-    /// surface (same contract as iOS/Android soft keyboard commit).
-    private func commitDraftToWayland() {
-        let text = draftText
-        guard !text.isEmpty else { return }
-        draftText = ""
+    /// Native text-entry Send → inject into the focused Wayland surface
+    /// (same contract as iOS/Android soft keyboard commit).
+    private func commitDraftToWayland(_ raw: String) {
+        guard !raw.isEmpty else { return }
         // Append Return so shell commands execute (weston-terminal → zsh).
-        WWNWatchCompositorBridge.shared().sendText(text.hasSuffix("\n") ? text : text + "\n")
+        WWNWatchCompositorBridge.shared().sendText(raw.hasSuffix("\n") ? raw : raw + "\n")
     }
 
     private func disconnectActiveSession() {
-        keyboardFocused = false
         WatchMachineSessionBridge.disconnect(profile: profile)
         sessions.disconnect(sessionId: session.id)
         dismiss()

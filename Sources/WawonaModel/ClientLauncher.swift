@@ -90,7 +90,14 @@ public extension ClientLauncher {
                 return PlatformCapabilities.openGLDriverEnabled
             }
             if launcher.requiresGpuStack {
+                #if os(watchOS)
+                if launcher.name == "vkcube" {
+                    return PlatformCapabilities.allowsVulkanStack
+                }
+                return false
+                #else
                 return PlatformCapabilities.allowsGpuStack
+                #endif
             }
             return true
         }

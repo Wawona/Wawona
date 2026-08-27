@@ -14,7 +14,7 @@ from [`product-build.yml`](../../.github/workflows/product-build.yml).
 | iPadOS | `ipados` | absent | same |
 | visionOS | `visionos` | absent | same |
 | tvOS | `tvos` | absent | ANGLE + MoltenVK (`WWN_TVOS_GPU=1`; product-build exports this) |
-| watchOS | `watchos` | absent | **none** (SpriteKit present; no Metal/ANGLE/MVK) |
+| watchOS | `watchos` | absent | **CPU GLES/VK** when `WWN_WATCH_SWIFTSHADER_BUNDLED` (SwiftShader + ANGLE static; SpriteKit present; no Metal/MVK) |
 | Android Play APK | `android` | **absent** (+ no Turnip/KGSL; requires ANGLE + SwiftShader `.so` + ICD JSON) | ANGLE + SwiftShader |
 | macOS 3rd-party | `macos` | **absent** | MoltenVK + KosmicKrisp dylibs |
 | macOS desktop-host | `macos-desktop` | **present** (`verify-iland-mode-b-bundle.sh --mode present`) | same + Mode B dylib |
@@ -43,4 +43,5 @@ nix-shell one-off alone.
   Play artifact.
 - Marking tvOS/watchOS **GL/VK** cells anything but N/A / MISSING until
   those stacks have a public Metal floor on Watch (tvOS is bundled). Watch
-  **present** is SpriteKit (Track A), not a GL/VK cell.
+  **present** is SpriteKit (Track A). Watch **software GL/VK** is CPU ICD +
+  SHM readback when bundled, not a GPU stack cell.

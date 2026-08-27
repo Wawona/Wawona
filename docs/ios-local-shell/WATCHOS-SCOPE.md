@@ -73,6 +73,12 @@ no exceptions.
 Watch clients still commit **SHM** (`CGImage` in `WWNWatchCompositorBridge`).
 The session surface GPU-composites those frames with SpriteKit
 (`WatchSpritePresentView`, 30 fps cap, paused when the scene is not active).
-That is **not** GLES/Vulkan. `gpuStackGate` stays blocked until the watchOS
-SDK ships public Metal. `WWN_WATCHOS_METAL=1` is research only and never in
-the store Watch IPA. `WWN_WATCH_SK_PRESENT=0` restores the CPU `Image` blit.
+That is **not** GLES/Vulkan client parity. `gpuStackGate` stays blocked (no
+public Metal). **Software GLES/VK** (CPU ANGLE-on-Vulkan + SwiftShader ICD,
+`wl_shm` readback into the mini server) ships when
+`WWN_WATCH_SWIFTSHADER_BUNDLED` is linked. Clients: `weston-simple-egl`,
+`opengl-cube`, `vkcube`. KMS clients (`kmscube`, `gbm-es2-demo`) stay deferred.
+Reactor still uses LLVM JIT (Subzero has no watchOS target); App Store 2.5.2
+go/no-go is tracked separately. Prefer Mesa softpipe if JIT cannot be cleared.
+`WWN_WATCHOS_METAL=1` is research only and never in the store Watch IPA.
+`WWN_WATCH_SK_PRESENT=0` restores the CPU `Image` blit.

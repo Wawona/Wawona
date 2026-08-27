@@ -934,8 +934,19 @@
           tvosSimDeps = mobilePlatformDeps { buildFn = toolchains.buildForTVOS; inherit toolchains; variant = "tv"; simulator = true; };
           visionosDeps = mobilePlatformDeps { buildFn = toolchains.buildForVisionOS; inherit toolchains; variant = "vision"; };
           visionosSimDeps = mobilePlatformDeps { buildFn = toolchains.buildForVisionOS; inherit toolchains; variant = "vision"; simulator = true; };
-          watchosDeps = mobilePlatformDeps { buildFn = toolchains.buildForWatchOS; inherit toolchains; variant = "watch"; };
-          watchosSimDeps = mobilePlatformDeps { buildFn = toolchains.buildForWatchOS; inherit toolchains; variant = "watch"; simulator = true; };
+          watchosDeps = mobilePlatformDeps {
+            buildFn = toolchains.buildForWatchOS;
+            inherit toolchains;
+            variant = "watch";
+            watchSoftwareGlesVk = true;
+          };
+          watchosSimDeps = mobilePlatformDeps {
+            buildFn = toolchains.buildForWatchOS;
+            inherit toolchains;
+            variant = "watch";
+            simulator = true;
+            watchSoftwareGlesVk = true;
+          };
           # One generatedCargoNix IFD per distinct workspaceSrc (#68 / runner speedups).
           sharedIosCargoNix = crate2nix.tools.${pkgs.stdenv.hostPlatform.system}.generatedCargoNix {
             name = "wawona-ios-workspace";

@@ -45,6 +45,9 @@ extern int image_main(int argc, char **argv) __attribute__((weak));
 extern int scaler_main(int argc, char **argv) __attribute__((weak));
 extern int editor_main(int argc, char **argv) __attribute__((weak));
 extern int constraints_main(int argc, char **argv) __attribute__((weak));
+extern int simple_egl_main(int argc, char **argv) __attribute__((weak));
+extern int opengl_cube_main(int argc, char **argv) __attribute__((weak));
+extern int vkcube_main(int argc, char **argv) __attribute__((weak));
 
 // In-process waypipe with libssh2 (statically linked from Rust).
 // Weak so the bridge can nil-check before calling.
@@ -706,6 +709,25 @@ static int wwn_watch_niri_entry(int argc, char **argv) {
     [self _launchClient:foot_main name:"foot" argc:8 argv:argv];
 }
 
+- (void)_applyWatchSoftwareGraphicsEnv {
+    setenv("ANGLE_DEFAULT_PLATFORM", "vulkan", 1);
+    setenv("WWN_VULKAN_DRIVER", "swiftshader", 1);
+    // Static SwiftShader is force-loaded into the watch binary; vkcube resolves
+    // vkGetInstanceProcAddr via dlopen(NULL) when WWN_VULKAN_LIBRARY is unset.
+    unsetenv("WWN_VULKAN_LIBRARY");
+    unsetenv("WWN_VULKAN_LIBRARY_FALLBACKS");
+}
+
+- (void)_launchWatchGpuClient:(int (*)(int, char **))entry
+                         name:(const char *)name {
+    if (!entry) {
+        WWNLog("WATCH", @"'%s' not linked (enable WWN_WATCH_SWIFTSHADER build)", name);
+        return;
+    }
+    [self _applyWatchSoftwareGraphicsEnv];
+    [self _launchNamedDemo:entry name:name];
+}
+
 - (void)_launchNamedDemo:(int (*)(int, char **))entry name:(const char *)name {
     if (!entry) {
         WWNLog("WATCH", @"Demo '%s' not linked (weak stub / missing archive)", name);
@@ -794,13 +816,16 @@ static int wwn_watch_niri_entry(int argc, char **argv) {
         [self _launchNamedDemo:editor_main name:"weston-editor"];
     } else if ([cid isEqualToString:@"weston-constraints"]) {
         [self _launchNamedDemo:constraints_main name:"weston-constraints"];
+    } else if ([cid isEqualToString:@"weston-simple-egl"]) {
+        [self _launchWatchGpuClient:simple_egl_main name:"weston-simple-egl"];
+    } else if ([cid isEqualToString:@"opengl-cube"]) {
+        [self _launchWatchGpuClient:opengl_cube_main name:"opengl-cube"];
+    } else if ([cid isEqualToString:@"vkcube"]) {
+        [self _launchWatchGpuClient:vkcube_main name:"vkcube"];
     } else if ([cid isEqualToString:@"kmscube"] ||
-               [cid isEqualToString:@"gbm-es2-demo"] ||
-               [cid isEqualToString:@"opengl-cube"] ||
-               [cid isEqualToString:@"vkcube"] ||
-               [cid isEqualToString:@"weston-simple-egl"]) {
+               [cid isEqualToString:@"gbm-es2-demo"]) {
         WWNLog("WATCH",
-               @"Refusing '%@': GPU client. WatchOS has no Metal/ANGLE stack",
+               @"Refusing '%@': KMS clients deferred on watchOS (iland DRM phase)",
                cid);
     } else {
         // Default / weston-simple-shm

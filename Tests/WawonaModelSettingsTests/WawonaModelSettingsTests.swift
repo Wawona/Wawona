@@ -229,6 +229,34 @@ func watchPresentAcceleratorIsWatchOnlyAndGpuStackStaysBlocked() {
 }
 
 @Test
+func watchSoftwareGlesVkIsWatchOnlyAndGpuStackStaysBlocked() {
+    #if os(watchOS)
+    #if WWN_WATCH_SWIFTSHADER_BUNDLED
+    #expect(PlatformCapabilities.watchSoftwareGlesVkGate.isAvailable)
+    #expect(PlatformCapabilities.allowsWatchSoftwareGlesVk)
+    #expect(PlatformCapabilities.allowsGlesStack)
+    #expect(PlatformCapabilities.allowsVulkanStack)
+    #else
+    switch PlatformCapabilities.watchSoftwareGlesVkGate {
+    case .planned(flag: let flag):
+        #expect(flag == "WWN_WATCH_SWIFTSHADER")
+    default:
+        Issue.record("watchSoftwareGlesVkGate should be planned without bundled ICD")
+    }
+    #endif
+    #expect(PlatformCapabilities.gpuStackGate.isBlocked)
+    #else
+    #expect(!PlatformCapabilities.watchSoftwareGlesVkGate.isAvailable)
+    switch PlatformCapabilities.watchSoftwareGlesVkGate {
+    case .forbidden(reason: _):
+        break
+    default:
+        Issue.record("watchSoftwareGlesVkGate must be forbidden off watchOS")
+    }
+    #endif
+}
+
+@Test
 func sshWaypipeSettingsAreRemoteTypesOnly() {
     #expect(!MachineType.native.isSSH)
     #expect(!MachineType.virtualMachine.isSSH)

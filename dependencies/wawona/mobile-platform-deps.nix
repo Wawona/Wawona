@@ -6,6 +6,11 @@
   # mobile: iOS/iPadOS (full stack). tv: tvOS. watch: watchOS. vision: visionOS.
   # All Apple mobile variants: libssh2 + waypipe remote (never OpenSSH).
   variant ? "mobile",
+  # CPU ANGLE + SwiftShader for watchOS store GLES/VK (no Metal).
+  watchSoftwareGlesVk ? (
+    builtins.getEnv "WWN_WATCH_SWIFTSHADER" == "1"
+    || builtins.getEnv "WWN_WATCH_SWIFTSHADER" == "true"
+  ),
   extras ? {},
 }:
 let
@@ -35,11 +40,15 @@ let
     ) {
       waypipe = buildFn "waypipe" { inherit simulator; };
     };
-  # tv: GLES (ANGLE) + Vulkan (MoltenVK). watch: SHM/CPU only. iOS/vision: full GLES+VK.
-  # SwiftShader stays iOS/vision simulator only (no tvOS recipe).
+  # tv: GLES (ANGLE) + Vulkan (MoltenVK). watch: CPU GLES/VK when flagged.
+  # iOS/vision: full GLES+VK.
   allowGpu = variant == "mobile" || variant == "vision" || variant == "tv";
-  allowVulkan = allowGpu;
-  allowSwiftShaderSim = (variant == "mobile" || variant == "vision") && simulator;
+  allowWatchSoftwareGlesVk = variant == "watch" && watchSoftwareGlesVk;
+  allowGpuStack = allowGpu || allowWatchSoftwareGlesVk;
+  allowVulkan = allowGpuStack;
+  allowSwiftShaderSim =
+    ((variant == "mobile" || variant == "vision") && simulator)
+    || (variant == "watch" && allowWatchSoftwareGlesVk);
   base =
     {
       xkbcommon = buildFn "xkbcommon" { inherit simulator; };
@@ -49,7 +58,7 @@ let
       pixman = buildFn "pixman" { inherit simulator; };
       weston = buildFn "weston" {
         inherit simulator;
-        enableGlClients = allowGpu;
+        enableGlClients = allowGpuStack;
       };
       weston-simple-shm = buildFn "weston-simple-shm" { inherit simulator; };
       # Unified archive: Settings can switch Wayland/Pixman vs iland DRM/GL at
@@ -66,29 +75,24 @@ let
     ) networkStack
     // lib.optionalAttrs allowVulkan {
       iland = buildFn "iland" { inherit simulator; };
-      moltenvk = buildFn "moltenvk" { inherit simulator; };
     }
-    // lib.optionalAttrs allowGpu {
+    // lib.optionalAttrs allowGpuStack {
       angle = buildFn "angle" { inherit simulator; };
     }
-    # SwiftShader CPU Vulkan ICD. IOS *Simulator* / CI only. On-device store
-    # builds stay MoltenVK-only (App Store posture; verify-iland-graphics-bundle
-    # forbids it there). The Simulator's Metal cannot bring up MoltenVK's pipeline
-    # on headless CI (the app is killed with Metal domain 102), so vkcube needs a
-    # pure-CPU device to fall back to.
     // lib.optionalAttrs allowSwiftShaderSim {
       swiftshader = buildFn "swiftshader" { inherit simulator; };
     }
-    // lib.optionalAttrs allowGpu {
-      kmscube = buildFn "kmscube" { inherit simulator; };
-      "iland-gl-clients" = buildFn "kmscube" { inherit simulator; };
-      "gbm-es2-demo" = buildFn "gbm-es2-demo" { inherit simulator; };
-      # GLES cube over Wayland-EGL (iland + ANGLE). tvOS uses the same recipe.
+    // lib.optionalAttrs allowGpuStack {
+      kmscube = if variant == "watch" then null else buildFn "kmscube" { inherit simulator; };
+      "iland-gl-clients" = if variant == "watch" then null else buildFn "kmscube" { inherit simulator; };
+      "gbm-es2-demo" = if variant == "watch" then null else buildFn "gbm-es2-demo" { inherit simulator; };
       "opengl-cube" = buildFn "opengl-cube" { inherit simulator; };
     }
     // lib.optionalAttrs allowVulkan {
-      # Vulkan cube over Wayland IOSurface dmabuf + MoltenVK.
       vkcube = buildFn "vkcube" { inherit simulator; };
+    }
+    // lib.optionalAttrs (allowGpu && variant != "watch") {
+      moltenvk = buildFn "moltenvk" { inherit simulator; };
     }
     // lib.optionalAttrs
       (variant == "mobile" || variant == "tv" || variant == "watch" || variant == "vision")

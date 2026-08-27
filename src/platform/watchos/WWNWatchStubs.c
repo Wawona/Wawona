@@ -107,12 +107,24 @@ int niri_main(void) {
     return 127;
 }
 
-/* GLES clients (weston-simple-egl) are not on the Watch store path. Dispatch
- * still references simple_egl_main; fail closed. Do not link ANGLE. */
+/* GLES/VK clients: weak stubs for baseline watch builds. When
+ * WWN_WATCH_SWIFTSHADER links ANGLE/SwiftShader and the cube archives,
+ * -Wl,-u pulls real *_main and overrides these. */
 __attribute__((weak))
 int simple_egl_main(int argc, char **argv) {
-    (void)argc;
-    (void)argv;
+    (void)argc; (void)argv;
+    return 127;
+}
+
+__attribute__((weak))
+int opengl_cube_main(int argc, char **argv) {
+    (void)argc; (void)argv;
+    return 127;
+}
+
+__attribute__((weak))
+int vkcube_main(int argc, char **argv) {
+    (void)argc; (void)argv;
     return 127;
 }
 

@@ -219,6 +219,31 @@ public enum ContainerImageManager {
 
     // MARK: - process plumbing
 
+#if os(watchOS)
+    private static let watchUnavailable = ContainerImageError("Containers are not available on watchOS")
+
+    private static func run(_ args: [String]) throws -> String {
+        throw watchUnavailable
+    }
+
+    private static func run(_ args: [String]) async throws -> String {
+        throw watchUnavailable
+    }
+
+    private static func runStreaming(
+        _ args: [String],
+        onLine: @escaping @Sendable (String) -> Void
+    ) async throws {
+        throw watchUnavailable
+    }
+
+    private static func runStreamingCapturing(
+        _ args: [String],
+        onLine: @escaping @Sendable (String) -> Void
+    ) async throws -> String {
+        throw watchUnavailable
+    }
+#else
     private static func run(_ args: [String]) throws -> String {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: containerCLIPath())
@@ -389,4 +414,5 @@ public enum ContainerImageManager {
             return _data
         }
     }
+#endif
 }

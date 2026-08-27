@@ -309,6 +309,32 @@ if [[ "$platform" == "watchos" ]]; then
     echo "FAIL: watchos bundle does not link SpriteKit.framework (present accelerator)" >&2
     exit 1
   fi
+
+  found_swiftshader=0
+  found_angle=0
+  if command -v nm >/dev/null 2>&1; then
+    while IFS= read -r binary; do
+      if file "$binary" 2>/dev/null | grep -q 'Mach-O'; then
+        if nm -gU "$binary" 2>/dev/null | grep -q '_vkGetInstanceProcAddr'; then
+          found_swiftshader=1
+        fi
+        if nm -gU "$binary" 2>/dev/null | grep -q '_eglGetDisplay'; then
+          found_angle=1
+        fi
+      fi
+    done < <(find "$root" -type f \( -name 'WawonaWatch' -o -name 'Wawona Watch' \) 2>/dev/null | head -5)
+  fi
+  if [[ "${WWN_WATCH_SWIFTSHADER:-1}" == "1" ]]; then
+    if [[ "$found_swiftshader" -eq 0 ]]; then
+      echo "FAIL: watchos WWN_WATCH_SWIFTSHADER=1 but WawonaWatch lacks static SwiftShader (vkGetInstanceProcAddr)" >&2
+      exit 1
+    fi
+    if [[ "$found_angle" -eq 0 ]]; then
+      echo "FAIL: watchos WWN_WATCH_SWIFTSHADER=1 but WawonaWatch lacks static ANGLE (eglGetDisplay)" >&2
+      exit 1
+    fi
+    echo "OK: watchos CPU GLES/VK (SwiftShader + ANGLE static, no Metal)"
+  fi
   echo "OK: watchos present accelerator (SpriteKit linked, Metal absent unless WWN_WATCHOS_METAL=1)"
 fi
 

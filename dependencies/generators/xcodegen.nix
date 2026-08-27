@@ -219,6 +219,18 @@ let
         "-framework" "IOSurface"
         "-framework" "UIKit"
       ];
+  swiftshaderWatchLdflags = deps:
+    let
+      ss = deps.swiftshader or null;
+      archive = "${strip ss}/lib/libvk_swiftshader.a";
+    in if ss == null || !builtins.pathExists archive then [ ] else [
+      "-force_load" archive
+    ];
+  watchSwiftshaderBundled = deps: (deps.swiftshader or null) != null;
+  watchSwiftshaderCompileDefs = deps:
+    lib.optionals (watchSwiftshaderBundled deps) [ "WWN_WATCH_SWIFTSHADER_BUNDLED=1" ];
+  watchSwiftshaderSwiftConds = deps:
+    lib.optionals (watchSwiftshaderBundled deps) [ "WWN_WATCH_SWIFTSHADER_BUNDLED" ];
   pixmanHeaderPaths = deps: lib.optionals (deps ? pixman && deps.pixman != null) [
     "${strip deps.pixman}/include"
     "${strip deps.pixman}/include/pixman-1"
@@ -3106,7 +3118,11 @@ ICDJSON
               "$(inherited)"
               "TARGET_OS_IPHONE=1"
               "TARGET_OS_WATCH=1"
-            ];
+            ] ++ (watchSwiftshaderCompileDefs watchosDeps);
+            "SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=watchos*]" =
+              [ "$(inherited)" ] ++ (watchSwiftshaderSwiftConds watchosDeps);
+            "SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=watchsimulator*]" =
+              [ "$(inherited)" ] ++ (watchSwiftshaderSwiftConds watchosSimDeps);
             "VALID_ARCHS[sdk=watchos*]" = "arm64_32 arm64";
             "ARCHS[sdk=watchos*]" = "arm64_32 arm64";
             "VALID_ARCHS[sdk=watchsimulator*]" = "arm64";
@@ -3131,7 +3147,8 @@ ICDJSON
               "$(SRCROOT)/src/platform/watchos"
               "$(SRCROOT)/src/platform/macos/ui/Helpers"
               "$(SRCROOT)/src/util"
-            ] ++ (pixmanHeaderPaths watchosDeps);
+            ] ++ (pixmanHeaderPaths watchosDeps)
+            ++ (ilandGlHeaderPaths watchosDeps);
             "HEADER_SEARCH_PATHS[sdk=watchsimulator*]" = [
               "$(inherited)"
               "${strip (watchosSimDeps.libffi or null)}/include"
@@ -3141,7 +3158,8 @@ ICDJSON
               "$(SRCROOT)/src/platform/watchos"
               "$(SRCROOT)/src/platform/macos/ui/Helpers"
               "$(SRCROOT)/src/util"
-            ] ++ (pixmanHeaderPaths watchosSimDeps);
+            ] ++ (pixmanHeaderPaths watchosSimDeps)
+            ++ (ilandGlHeaderPaths watchosSimDeps);
             # WawonaModel/WawonaUIContracts are embed=false, link=false above
             # (see dependencies comment): Xcode unconditionally adds
             # -F$(CONFIGURATION_BUILD_DIR) for every target's *own* build
@@ -3211,13 +3229,11 @@ ICDJSON
             ] ++ westonToytoolkitLdflagsAppleMobile watchosDeps ++ westonCompositorLdflagsAppleMobile watchosDeps ++ niriLdflags watchosDeps ++ footLdflags watchosDeps ++ fastfetchLdflags watchosDeps ++ phoonLdflags watchosDeps ++ neovimLdflags watchosDeps ++ [
               "-lwayland-server"
             ] ++ lib.optionals (watchosDeps ? waypipe && watchosDeps.waypipe != null) [
-              # Lazy archive link, not -force_load: niri is already force-loaded
-              # and both are Rust staticlibs bundling std/core, so forcing both
-              # yields thousands of duplicate symbols. _waypipe_main is kept
-              # alive by the global -Wl,-u in mobileDispatchLdflags.
               "-L${strip watchosDeps.waypipe}/lib"
               "-lwaypipe"
             ] ++ sshCliLdflags watchosDeps
+            ++ (ilandGlLdflags { deps = watchosDeps; simulator = false; })
+            ++ swiftshaderWatchLdflags watchosDeps
             ++ appleMobileResolvLdflags ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ "-liconv" ] ++ lib.optionals (watchosBackend != null) [
               derivedRustLib
             ] ++ finalCxxLdflagsNoIokit;
@@ -3260,6 +3276,8 @@ ICDJSON
               "-L${strip watchosSimDeps.waypipe}/lib"
               "-lwaypipe"
             ] ++ sshCliLdflags watchosSimDeps
+            ++ (ilandGlLdflags { deps = watchosSimDeps; simulator = true; })
+            ++ swiftshaderWatchLdflags watchosSimDeps
             ++ appleMobileResolvLdflags ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ "-liconv" ] ++ lib.optionals (watchosSimBackend != null) [
               derivedRustLib
             ] ++ finalCxxLdflagsNoIokit;
