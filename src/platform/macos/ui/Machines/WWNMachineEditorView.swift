@@ -105,7 +105,8 @@ struct WWNMachineEditorView: View {
     _entryCommand = State(
       initialValue: (containerSettings["entryCommand"] as? String) ?? "")
     _desktopSession = State(
-      initialValue: (containerSettings["desktopSession"] as? Bool) ?? false)
+      initialValue: (containerSettings["desktopSession"] as? Bool)
+        ?? ((initial?.type ?? defaultType) == kWWNMachineTypeContainer))
     _imageArchivePath = State(
       initialValue: (containerSettings["imageArchivePath"] as? String) ?? "")
 

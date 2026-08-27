@@ -32,7 +32,7 @@ enum WawonaUIContractAdapters {
             waypipeEnabled: profile.runtimeOverrides.waypipeEnabled ?? true,
             containerRef: profile.containerSettings?.containerRef ?? "",
             entryCommand: profile.containerSettings?.entryCommand ?? "",
-            desktopSession: profile.containerSettings?.desktopSession ?? false,
+            desktopSession: profile.containerSettings?.desktopSession ?? (profile.type == .container),
             imageArchivePath: profile.containerSettings?.imageArchivePath ?? ""
         )
     }

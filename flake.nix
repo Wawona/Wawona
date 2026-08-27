@@ -1337,6 +1337,17 @@ EOF
               return 1
             }
 
+            graceful_quit_wawona() {
+              if command -v osascript >/dev/null 2>&1; then
+                osascript <<'APPLESCRIPT' 2>/dev/null || true
+tell application id "com.aspauldingcode.Wawona"
+  quit
+end tell
+APPLESCRIPT
+                sleep 1
+              fi
+            }
+
             kill_matching_wawona() {
               # TERM leftover MacOS/Wawona processes so a stale flock lock
               # cannot make the new compositor-host exit as "already running".
@@ -1355,6 +1366,21 @@ EOF
                     ;;
                 esac
               done
+            }
+
+            stop_wawona_runtime() {
+              echo "Stopping running Wawona instances for clean reinstall..."
+              # Stop launch agents first so they cannot respawn during copy.
+              launchctl bootout "$domain/$compositor_label" >/dev/null 2>&1 || true
+              launchctl bootout "$domain/$menubar_label" >/dev/null 2>&1 || true
+              launchctl bootout "$domain/$applaunch_label" >/dev/null 2>&1 || true
+              launchctl remove "$applaunch_label" >/dev/null 2>&1 || true
+              rm -f "$launch_agents_dir/$applaunch_label.plist"
+              wait_unloaded "$domain/$compositor_label" || true
+              wait_unloaded "$domain/$menubar_label" || true
+              graceful_quit_wawona
+              kill_matching_wawona
+              rm -f "$runtime_dir/compositor-host.lock" "$runtime_dir/menubar.lock" "$runtime_dir/instance.lock"
             }
 
             ensure_loaded() {
@@ -1411,6 +1437,7 @@ EOF
               echo "macOS Desktop Replacement needs libwayland-mac.dylib." >&2
               exit 1
             fi
+            stop_wawona_runtime
             echo "Installing Wawona.app to $app_dst"
             rm -rf "$app_dst"
             /usr/bin/ditto "$store_app" "$app_dst"
@@ -1484,19 +1511,9 @@ EOF
             fi
             echo "Mode B helper installed (iowatchdog-then-unload): $helper_path"
 
-            # Stop both jobs first so compositor-host cannot respawn the
-            # menubar from an old bundle while we rewrite plists.
-            # Drop leftover applaunch: it `open -a`s a GC'd store path
-            # (2026-08-19 login after panic launched Documents/ahaha 0.2.2).
-            launchctl bootout "$domain/$compositor_label" >/dev/null 2>&1 || true
-            launchctl bootout "$domain/$menubar_label" >/dev/null 2>&1 || true
-            launchctl bootout "$domain/$applaunch_label" >/dev/null 2>&1 || true
-            launchctl remove "$applaunch_label" >/dev/null 2>&1 || true
-            rm -f "$launch_agents_dir/$applaunch_label.plist"
-            wait_unloaded "$domain/$compositor_label" || true
-            wait_unloaded "$domain/$menubar_label" || true
-            kill_matching_wawona
-            rm -f "$runtime_dir/compositor-host.lock" "$runtime_dir/menubar.lock" "$runtime_dir/instance.lock"
+            # mode-b-stage may have spawned the new binary; stop again before
+            # rewriting launch agents so they bind to this install.
+            stop_wawona_runtime
 
             write_agent "$compositor_label" "--compositor-host" "wawona-compositor"
             write_agent "$menubar_label" "--menubar" "wawona-menubar"

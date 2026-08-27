@@ -325,14 +325,14 @@ static NSString *WWNContainerShellQuote(NSString *value) {
         [prefs.containerInitfsPath stringByExpandingTildeInPath];
   }
 
-  // Desktop session: hand wwn-containerd the host-side waypipe with a working
-  // --socket-fds transport (wwn-waypipe's macos build parses the flag but
-  // cannot use it) and the guest-side aarch64-linux waypipe (also passed on
-  // the command line; the env is the fallback). Absent binaries stay unset:
-  // the backend reports the missing piece clearly.
+  // Desktop session: host waypipe-fds (--socket-fds SplitFD transport for vsock).
+  // Guest aarch64-linux waypipe is passed on the command line as well.
   NSDictionary *desktopCs = profile.containerSettings ?: @{};
   if (WWNContainerBool(desktopCs, @"desktopSession")) {
     NSString *hostWaypipe = WWNWawonaFindBundledExecutable(@"waypipe-fds");
+    if (hostWaypipe.length == 0) {
+      hostWaypipe = WWNWawonaFindBundledExecutable(@"waypipe");
+    }
     if (hostWaypipe.length > 0) {
       env[@"WWNP_WAYPIPE_BIN"] = hostWaypipe;
     }
