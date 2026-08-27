@@ -1856,6 +1856,21 @@ PLIST_EOF
         fi
       done
       echo "Verified macOS bundled weston/fonts/backend assets"
+      ${if containerCli != null then ''
+      if [ -f "${containerCli}/bin/container" ]; then
+        install -m755 "${containerCli}/bin/container" "$APP/Contents/Resources/bin/container"
+        install -m755 "${containerCli}/bin/container" "$APP/Contents/MacOS/container"
+      fi
+      '' else ""}
+      ${if containerDaemon != null then ''
+      if [ -f "${containerDaemon}/bin/wwn-containerd" ]; then
+        install -m755 "${containerDaemon}/bin/wwn-containerd" "$APP/Contents/Resources/bin/wwn-containerd"
+        echo "Verified bundled wwn-containerd from ${containerDaemon}"
+      else
+        echo "ERROR: wwn-containerd missing at ${containerDaemon}/bin/wwn-containerd" >&2
+        exit 1
+      fi
+      '' else ""}
       ${if ilandBaremetal != null then ''
       if [ ! -f "$APP/Contents/Library/Wawona/iland/libwayland-mac.dylib" ]; then
         echo "ERROR: desktop-host build missing Mode B dylib" >&2
