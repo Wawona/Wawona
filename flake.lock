@@ -952,16 +952,16 @@
         ]
       },
       "locked": {
-        "lastModified": 1787756699,
-        "narHash": "sha256-aQ01ed3x0vG44R421xcqk3ao7YFSXY7Rv+q3n8e9S48=",
+        "lastModified": 1787860778,
+        "narHash": "sha256-1FeW3irQ1KjzWqwRPmLPmQ8vWy12R0a1OzaCio/eV1Y=",
         "owner": "Wawona",
         "repo": "wwn-iland",
-        "rev": "a548e2e653a8f59bf5499b0a4f7ae0b2e7c6c0ee",
+        "rev": "26e0a360c9c8aea82283c0391b69f1258a763823",
         "type": "github"
       },
       "original": {
         "owner": "Wawona",
-        "ref": "development",
+        "ref": "watchos-gpu",
         "repo": "wwn-iland",
         "type": "github"
       }
@@ -1029,16 +1029,16 @@
         ]
       },
       "locked": {
-        "lastModified": 1787681767,
-        "narHash": "sha256-nUBFo080EAlWnyCT4mWNsYQe2X/ZY5XyajlwaH6buas=",
+        "lastModified": 1787860778,
+        "narHash": "sha256-RSSQy2p7bq+spKAx3F+jNj7DCQiYc5g6txK6uq+xCiM=",
         "owner": "Wawona",
         "repo": "wwn-kmscube",
-        "rev": "480ab2a5726390d7c740c8bdf5bfa7c3411664f6",
+        "rev": "609c17164f01af11a28f9d90e4274960f1e499ed",
         "type": "github"
       },
       "original": {
         "owner": "Wawona",
-        "ref": "development",
+        "ref": "watchos-gpu",
         "repo": "wwn-kmscube",
         "type": "github"
       }

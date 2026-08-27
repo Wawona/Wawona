@@ -43,12 +43,12 @@
     wwn-toolchain.url = "github:Wawona/wwn-toolchain/development";
     wwn-toolchain.inputs.nixpkgs.follows = "nixpkgs";
     wwn-toolchain.inputs.rust-overlay.follows = "rust-overlay";
-    wwn-iland.url = "github:Wawona/wwn-iland/development";
+    # watchos-gpu: CPU SwiftShader + ANGLE recipes (merge to development when proven).
+    wwn-iland.url = "github:Wawona/wwn-iland/watchos-gpu";
     wwn-iland.inputs.nixpkgs.follows = "nixpkgs";
     wwn-iland.inputs.wwn-toolchain.follows = "wwn-toolchain";
-    # github/development until FlakeHub rolling includes vkcube-kms (L2).
-    # Cited: docs/wwn-repo-dag.md.
-    wwn-kmscube.url = "github:Wawona/wwn-kmscube/development";
+    # watchos-gpu: vkcube/opengl-cube watchOS variants. Cited: docs/wwn-repo-dag.md.
+    wwn-kmscube.url = "github:Wawona/wwn-kmscube/watchos-gpu";
     wwn-kmscube.inputs.nixpkgs.follows = "nixpkgs";
     wwn-kmscube.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-kmscube.inputs.wwn-iland.follows = "wwn-iland";
