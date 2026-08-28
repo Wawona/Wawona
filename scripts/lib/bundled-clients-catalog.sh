@@ -62,17 +62,31 @@ bundled_client_prefs_key() {
   esac
 }
 
-# Platform-targets matrix: tvOS/watchOS forbid Vulkan/OpenGL/ANGLE bundles.
+# Platform-targets matrix: tvOS forbids Vulkan/OpenGL in store matrix cells unless
+# WWN_TVOS_GPU. watchOS CPU GLES/VK (SwiftShader + ANGLE) when WWN_WATCH_SWIFTSHADER=1.
 # Nested compositors (weston/niri) are allowed everywhere native machines are.
 # weston-simple-egl is a Wayland-EGL client (wl_egl_window + ANGLE). Not KMS.
 bundled_client_skip_reason() {
   local platform="$1" client="$2"
   case "$platform" in
-    tvos|watchos)
+    tvos)
       case "$client" in
         kmscube|gbm-es2-demo|opengl-cube|vkcube|weston-simple-egl)
           echo "platform-targets: no Vulkan/OpenGL/ANGLE on ${platform}"
           return 0
+          ;;
+      esac
+      ;;
+    watchos)
+      case "$client" in
+        opengl-cube|vkcube|weston-simple-egl)
+          case "${WWN_WATCH_SWIFTSHADER:-1}" in
+            1|true|TRUE|yes|YES) ;;
+            *)
+              echo "watchos: CPU GLES/VK requires WWN_WATCH_SWIFTSHADER=1 build"
+              return 0
+              ;;
+          esac
           ;;
       esac
       ;;
@@ -99,6 +113,8 @@ bundled_client_fail_patterns() {
     'Unknown bundled client id' \
     'WWNNativeClientLaunchFailed' \
     'LaunchFailedNotification' \
+    'exited with code 127' \
+    'Refusing launch: empty bundled client' \
     'SIGABRT' \
     'panic_cannot_unwind' \
     'Fatal error:' \
@@ -121,11 +137,19 @@ bundled_client_ok_patterns() {
     foot)
       printf '%s\n' 'foot_main' 'Launching in-process foot'
       ;;
-    kmscube)
-      printf '%s\n' 'launchNestedKmscube' 'iland Metal presenter' 'kmscube_main'
+    opengl-cube|vkcube|weston-simple-egl)
+      printf '%s\n' \
+        'First frame' \
+        'Launching in-process' \
+        'Launched client' \
+        'Starting ' \
+        'RENDER' \
+        'Node present'
       ;;
-    gbm-es2-demo)
-      printf '%s\n' 'iland DRM present' 'started in-process gbm-es2-demo' 'iland Metal presenter'
+    kmscube|gbm-es2-demo)
+      printf '%s\n' \
+        'Refusing' \
+        'KMS clients deferred'
       ;;
     weston-smoke)
       # Require a real SHM buffer / frame. Process-alive alone is not PASS.
