@@ -56,8 +56,8 @@ extern NSNotificationName const WWNWatchCompositorFrameReadyNotification;
 /// Launch niri nested compositor in-process.
 - (void)launchNiri;
 
-/// Launch any known bundled client id (weston-flower, weston-smoke, …).
-/// Unknown ids fall back to weston-simple-shm.
+/// Launch any known bundled client id (weston-simple-shm, weston-flower, …).
+/// Empty or unknown ids are refused (configure the client on the machine profile).
 - (void)launchClientWithId:(NSString *)clientId;
 
 /// Stop any running in-process client.

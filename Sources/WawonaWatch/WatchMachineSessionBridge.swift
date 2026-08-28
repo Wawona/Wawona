@@ -27,6 +27,11 @@ enum WatchMachineSessionBridge {
         switch profile.type {
         case .native:
             let clientId = resolvedNativeClientId(for: profile)
+            guard !clientId.isEmpty else {
+                logger.appendLine("[LAUNCH] No bundled client configured on this machine")
+                logger.endCapture()
+                return false
+            }
             logger.appendLine("[LAUNCH] Starting \(clientId) …")
             bridge.launchClient(withId: clientId)
             return true
@@ -84,9 +89,7 @@ enum WatchMachineSessionBridge {
         if let launcher = profile.launchers.first?.name, !launcher.isEmpty {
             return launcher
         }
-        // Prefer an explicit launcher; fall back to SHM demo (always works on
-        // the watch mini server without GPU).
-        return "weston-simple-shm"
+        return ""
     }
 }
 #endif

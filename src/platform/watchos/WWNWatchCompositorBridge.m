@@ -298,9 +298,8 @@ static int wwn_watch_niri_entry(int argc, char **argv) {
         // connects. Otherwise Start can race and look like a blank surface until
         // the next relaunch.
         usleep(80 * 1000);
-        // Do not auto-launch here. Swift `WatchMachineSessionBridge.connect`
-        // (and WAWONA_WATCH_AUTO_CLIENT via WawonaWatchMain) owns client Start.
-        // Dual auto-launch raced: connect → launch, then env block → stopClient.
+        // Client Start is owned by Swift `WatchMachineSessionBridge.connect`
+        // after the user starts a configured machine.
         return YES;
     }
 
@@ -492,26 +491,6 @@ static int wwn_watch_niri_entry(int argc, char **argv) {
 }
 
 // MARK: - Client launch
-
-/// Automation hook: `WAWONA_WATCH_AUTO_CLIENT=weston-simple-shm|weston-smoke|…`
-/// launches a shm-class native client after compositor start (ISSUE-017 verify).
-- (void)_maybeAutoLaunchBundledClientFromEnvironment {
-    const char *autoClient = getenv("WAWONA_WATCH_AUTO_CLIENT");
-    if (!autoClient || autoClient[0] == '\0') {
-        return;
-    }
-    NSString *clientId = [NSString stringWithUTF8String:autoClient];
-    WWNLog("WATCH", @"Auto-launching bundled client '%@' (WAWONA_WATCH_AUTO_CLIENT)",
-          clientId);
-    __weak typeof(self) weakSelf = self;
-    dispatch_async(dispatch_get_main_queue(), ^{
-        __strong typeof(weakSelf) self = weakSelf;
-        if (!self) {
-            return;
-        }
-        [self launchClientWithId:clientId];
-    });
-}
 
 - (void)_launchClient:(int (*)(int, char **))entry
                  name:(const char *)name
@@ -781,7 +760,13 @@ static int wwn_watch_niri_entry(int argc, char **argv) {
 }
 
 - (void)launchClientWithId:(NSString *)clientId {
-    NSString *cid = clientId.length > 0 ? clientId : @"weston-simple-shm";
+    NSString *cid = [clientId stringByTrimmingCharactersInSet:
+                     [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (cid.length == 0) {
+        WWNLog("WATCH", @"Refusing launch: empty bundled client id "
+              "(pick a client in Machine Settings)");
+        return;
+    }
     if ([cid isEqualToString:@"weston"]) {
         [self launchWeston];
     } else if ([cid isEqualToString:@"weston-terminal"]) {
@@ -822,14 +807,15 @@ static int wwn_watch_niri_entry(int argc, char **argv) {
         [self _launchWatchGpuClient:opengl_cube_main name:"opengl-cube"];
     } else if ([cid isEqualToString:@"vkcube"]) {
         [self _launchWatchGpuClient:vkcube_main name:"vkcube"];
+    } else if ([cid isEqualToString:@"weston-simple-shm"]) {
+        [self launchWestonSimpleSHM];
     } else if ([cid isEqualToString:@"kmscube"] ||
                [cid isEqualToString:@"gbm-es2-demo"]) {
         WWNLog("WATCH",
                @"Refusing '%@': KMS clients deferred on watchOS (iland DRM phase)",
                cid);
     } else {
-        // Default / weston-simple-shm
-        [self launchWestonSimpleSHM];
+        WWNLog("WATCH", @"Refusing unknown bundled client '%@'", cid);
     }
 }
 

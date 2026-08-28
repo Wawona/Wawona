@@ -107,9 +107,11 @@ int niri_main(void) {
     return 127;
 }
 
-/* GLES/VK clients: weak stubs for baseline watch builds. When
- * WWN_WATCH_SWIFTSHADER links ANGLE/SwiftShader and the cube archives,
- * -Wl,-u pulls real *_main and overrides these. */
+/* GLES/VK clients: weak stubs for baseline watch builds only. When
+ * WWN_WATCH_SWIFTSHADER_BUNDLED is set, omit these so -Wl,-u pulls the real
+ * *_main from libweston-13.a / libopengl_cube.a / libvkcube.a (same rule as
+ * phoon_main: a weak stub satisfies -u and blocks the archive member). */
+#ifndef WWN_WATCH_SWIFTSHADER_BUNDLED
 __attribute__((weak))
 int simple_egl_main(int argc, char **argv) {
     (void)argc; (void)argv;
@@ -127,6 +129,7 @@ int vkcube_main(int argc, char **argv) {
     (void)argc; (void)argv;
     return 127;
 }
+#endif
 
 // ── Waypipe stub ─────────────────────────────────────────────────────────────
 // Overridden by libwaypipe.a when linked. The bridge nil-checks the weak
