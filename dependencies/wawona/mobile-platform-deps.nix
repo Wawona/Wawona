@@ -83,9 +83,15 @@ let
       swiftshader = buildFn "swiftshader" { inherit simulator; };
     }
     // lib.optionalAttrs allowGpuStack {
-      kmscube = if variant == "watch" then null else buildFn "kmscube" { inherit simulator; };
-      "iland-gl-clients" = if variant == "watch" then null else buildFn "kmscube" { inherit simulator; };
-      "gbm-es2-demo" = if variant == "watch" then null else buildFn "gbm-es2-demo" { inherit simulator; };
+      kmscube =
+        if variant == "watch" && !allowWatchSoftwareGlesVk then null
+        else buildFn "kmscube" { inherit simulator; };
+      "iland-gl-clients" =
+        if variant == "watch" && !allowWatchSoftwareGlesVk then null
+        else buildFn "kmscube" { inherit simulator; };
+      "gbm-es2-demo" =
+        if variant == "watch" && !allowWatchSoftwareGlesVk then null
+        else buildFn "gbm-es2-demo" { inherit simulator; };
       "opengl-cube" = buildFn "opengl-cube" { inherit simulator; };
     }
     // lib.optionalAttrs allowVulkan {

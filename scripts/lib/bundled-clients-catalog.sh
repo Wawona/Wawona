@@ -79,7 +79,7 @@ bundled_client_skip_reason() {
       ;;
     watchos)
       case "$client" in
-        opengl-cube|vkcube|weston-simple-egl)
+        kmscube|gbm-es2-demo|opengl-cube|vkcube|weston-simple-egl)
           case "${WWN_WATCH_SWIFTSHADER:-1}" in
             1|true|TRUE|yes|YES) ;;
             *)
@@ -115,6 +115,7 @@ bundled_client_fail_patterns() {
     'LaunchFailedNotification' \
     'exited with code 127' \
     'Refusing launch: empty bundled client' \
+    'KMS clients deferred' \
     'SIGABRT' \
     'panic_cannot_unwind' \
     'Fatal error:' \
@@ -139,17 +140,19 @@ bundled_client_ok_patterns() {
       ;;
     opengl-cube|vkcube|weston-simple-egl)
       printf '%s\n' \
-        'First frame' \
+        'WATCH: First frame' \
         'Launching in-process' \
-        'Launched client' \
+        "Launched client '" \
         'Starting ' \
         'RENDER' \
         'Node present'
       ;;
     kmscube|gbm-es2-demo)
       printf '%s\n' \
-        'Refusing' \
-        'KMS clients deferred'
+        'WATCH: First frame' \
+        "Launched client '" \
+        'iland DRM present' \
+        'enter (iland DRM present)'
       ;;
     weston-smoke)
       # Require a real SHM buffer / frame. Process-alive alone is not PASS.

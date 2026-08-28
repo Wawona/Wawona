@@ -220,12 +220,53 @@ let
         "-framework" "UIKit"
       ];
   swiftshaderWatchLdflags = deps:
-    let
-      ss = deps.swiftshader or null;
-      archive = "${strip ss}/lib/libvk_swiftshader.a";
-    in if ss == null || !builtins.pathExists archive then [ ] else [
-      "-force_load" archive
+    let ss = deps.swiftshader or null;
+    in if ss == null then [ ] else [
+      # SwiftShader is embedded as Frameworks/libvk_swiftshader.dylib + ICD JSON;
+      # ANGLE's loader dlopens the ICD (see watchSwiftshaderEmbedScript).
     ];
+  watchSwiftshaderEmbedScript =
+    let ss = watchosSimDeps.swiftshader or watchosDeps.swiftshader or null;
+    in if ss == null then
+      pkgs.writeShellScript "embed-swiftshader-watch-noop.sh" "exit 0"
+    else
+      pkgs.writeShellScript "embed-swiftshader-watch.sh" ''
+        case "''${PLATFORM_NAME:-}" in
+          watchsimulator|watchos) ;;
+          *) exit 0 ;;
+        esac
+        BUNDLE="$BUILT_PRODUCTS_DIR/$FULL_PRODUCT_NAME"
+        DEST="$BUNDLE/Frameworks"
+        ICD_DEST="$BUNDLE/vulkan/icd.d"
+        SS_SRC="${strip ss}/lib/libvk_swiftshader.dylib"
+        if [ ! -f "$SS_SRC" ]; then
+          echo "warning: SwiftShader ICD missing at $SS_SRC" >&2
+          exit 0
+        fi
+        mkdir -p "$DEST" "$ICD_DEST"
+        cp -f "$SS_SRC" "$DEST/libvk_swiftshader.dylib"
+        cat > "$ICD_DEST/vk_swiftshader_icd.json" <<'ICDJSON'
+{
+  "file_format_version": "1.0.0",
+  "ICD": {
+    "library_path": "../../Frameworks/libvk_swiftshader.dylib",
+    "api_version": "1.3.0"
+  }
+}
+ICDJSON
+        chmod -R u+w "$DEST/libvk_swiftshader.dylib" "$ICD_DEST" 2>/dev/null || true
+        if [ -n "''${EXPANDED_CODE_SIGN_IDENTITY:-}" ] && [ "''${EXPANDED_CODE_SIGN_IDENTITY}" != "-" ]; then
+          /usr/bin/codesign --force --sign "''${EXPANDED_CODE_SIGN_IDENTITY}" \
+            --preserve-metadata=identifier,entitlements,flags \
+            "$DEST/libvk_swiftshader.dylib"
+        fi
+        echo "Embedded SwiftShader CPU Vulkan ICD into $DEST (watch)"
+      '';
+  watchSwiftshaderEmbedPhase = {
+    path = watchSwiftshaderEmbedScript;
+    name = "Embed SwiftShader CPU Vulkan ICD (watch)";
+    basedOnDependencyAnalysis = false;
+  };
   watchSwiftshaderBundled = deps: (deps.swiftshader or null) != null;
   watchSwiftshaderCompileDefs = deps:
     lib.optionals (watchSwiftshaderBundled deps) [ "WWN_WATCH_SWIFTSHADER_BUNDLED=1" ];
@@ -3031,6 +3072,7 @@ ICDJSON
           watchosNiriDataEmbedPhase
           appsCatalogEmbedPhase
           watchosRootfsEmbedPhase
+          watchSwiftshaderEmbedPhase
           {
             # Copies watch-platform WawonaModel/UIContracts (Xcode Embed is
             # off; ISSUE-017) and re-signs them with the app identity.

@@ -5,11 +5,11 @@ import WawonaModel
 struct MachineStatusView: View {
     @ObservedObject var profileStore: MachineProfileStore
     @ObservedObject var sessions: SessionOrchestrator
+    @Binding var runningCover: WatchMachineCover?
 
     @State var showingAdd = false
     @State var editingProfile: MachineProfile?
     @State var showingGlobalSettings = false
-    @State private var runningCover: WatchMachineCover?
 
     var body: some View {
         Group {

@@ -315,12 +315,17 @@ if [[ "$platform" == "watchos" ]]; then
 
   found_swiftshader=0
   found_angle=0
+  if [[ -f "$root/Frameworks/libvk_swiftshader.dylib" ]]; then
+    found_swiftshader=1
+  fi
   if command -v nm >/dev/null 2>&1; then
     while IFS= read -r binary; do
       if file "$binary" 2>/dev/null | grep -q 'Mach-O'; then
-        hits="$(nm "$binary" 2>/dev/null | grep -cE ' [Tt] _vkGetInstanceProcAddr$' || true)"
-        if [[ "$hits" -gt 0 ]]; then
-          found_swiftshader=1
+        if [[ "$found_swiftshader" -eq 0 ]]; then
+          hits="$(nm "$binary" 2>/dev/null | grep -cE ' [Tt] _vkGetInstanceProcAddr$' || true)"
+          if [[ "$hits" -gt 0 ]]; then
+            found_swiftshader=1
+          fi
         fi
         hits="$(nm "$binary" 2>/dev/null | grep -cE ' [Tt] _(angle_eglGetDisplay|eglGetDisplay)$' || true)"
         if [[ "$hits" -gt 0 ]]; then
@@ -331,7 +336,7 @@ if [[ "$platform" == "watchos" ]]; then
   fi
   if [[ "${WWN_WATCH_SWIFTSHADER:-1}" == "1" ]]; then
     if [[ "$found_swiftshader" -eq 0 ]]; then
-      echo "FAIL: watchos WWN_WATCH_SWIFTSHADER=1 but WawonaWatch lacks static SwiftShader (vkGetInstanceProcAddr)" >&2
+      echo "FAIL: watchos WWN_WATCH_SWIFTSHADER=1 but bundle lacks SwiftShader ICD (Frameworks/libvk_swiftshader.dylib or vkGetInstanceProcAddr in WawonaWatch)" >&2
       exit 1
     fi
     if [[ "$found_angle" -eq 0 ]]; then

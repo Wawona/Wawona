@@ -41,7 +41,9 @@ nix-shell one-off alone.
 - Promoting a store cell on the strength of desktop-host Mode B.
 - Shipping `libwayland-mac.dylib` / Dobby / Mode B daemons in any App Store or
   Play artifact.
-- Marking tvOS/watchOS **GL/VK** cells anything but N/A / MISSING until
+- Marking tvOS **GL/VK** cells anything but N/A / MISSING until
   those stacks have a public Metal floor on Watch (tvOS is bundled). Watch
   **present** is SpriteKit (Track A). Watch **software GL/VK** is CPU ICD +
-  SHM readback when bundled, not a GPU stack cell.
+  SHM readback when `WWN_WATCH_SWIFTSHADER=1`; matrix gate requires
+  `WATCH: First frame` (or KMS `iland DRM present`) in console logs, not
+  process-alive alone.

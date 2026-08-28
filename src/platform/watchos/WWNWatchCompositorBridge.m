@@ -18,6 +18,29 @@
 #import <unistd.h>
 #include <time.h>
 
+// Watch iland uses malloc IOSurface stubs (no IOSurface.framework). Do not
+// include iosurface_stub.h here: CoreGraphics forward-declares IOSurfaceRef
+// and the stub typedef would conflict.
+typedef struct ILandWatchSurface *WWNWatchIlandSurfaceRef;
+extern uint32_t ILandWatchSurfaceGetWidth(WWNWatchIlandSurfaceRef surf);
+extern uint32_t ILandWatchSurfaceGetHeight(WWNWatchIlandSurfaceRef surf);
+extern size_t ILandWatchSurfaceGetBytesPerRow(WWNWatchIlandSurfaceRef surf);
+extern void *ILandWatchSurfaceGetBaseAddress(WWNWatchIlandSurfaceRef surf);
+extern int ILandWatchSurfaceLock(WWNWatchIlandSurfaceRef surf);
+extern int ILandWatchSurfaceUnlock(WWNWatchIlandSurfaceRef surf);
+
+// iland Mode A present hook (kmscube / gbm-es2-demo). ABI matches iland_present.h.
+typedef void (*iland_present_callback_t)(uint32_t crtc_id,
+                                         uint32_t fb_id,
+                                         WWNWatchIlandSurfaceRef surface,
+                                         uint32_t flags,
+                                         void *user);
+extern void iland_drm_set_present_callback(iland_present_callback_t cb, void *user);
+extern void iland_drm_set_preferred_mode(uint32_t w, uint32_t h,
+                                         uint32_t refresh_millihz);
+extern void iland_drm_complete_page_flip(uint32_t crtc_id, uint32_t fb_id);
+extern int iland_drm_prepare_virtual_fd(void);
+
 // ── Client entry points ───────────────────────────────────────────────────────
 // Provided by -force_load'd static libraries (weston, foot, etc.) built via Nix.
 // Weak stubs in WWNWatchStubs.c allow compilation without Nix but should never
@@ -48,6 +71,8 @@ extern int constraints_main(int argc, char **argv) __attribute__((weak));
 extern int simple_egl_main(int argc, char **argv) __attribute__((weak));
 extern int opengl_cube_main(int argc, char **argv) __attribute__((weak));
 extern int vkcube_main(int argc, char **argv) __attribute__((weak));
+extern int kmscube_main(int argc, char **argv) __attribute__((weak));
+extern int gbm_es2_demo_main(int argc, char **argv) __attribute__((weak));
 
 // In-process waypipe with libssh2 (statically linked from Rust).
 // Weak so the bridge can nil-check before calling.
@@ -214,6 +239,52 @@ static void miniServerFrameCallback(const uint8_t *pixels,
     [bridge _deliverPixelsCopy:copy width:width height:height stride:stride];
 }
 
+// ── iland DRM present (kmscube / gbm-es2-demo) ───────────────────────────────
+// Malloc IOSurface stub → BGRA copy → SpriteKit via _deliverPixelsCopy.
+
+static void wwn_watch_iland_present_trampoline(uint32_t crtc_id,
+                                               uint32_t fb_id,
+                                               WWNWatchIlandSurfaceRef surface,
+                                               uint32_t flags,
+                                               void *user) {
+    (void)flags;
+    WWNWatchCompositorBridge *bridge =
+        (__bridge WWNWatchCompositorBridge *)user;
+    if (!bridge || !surface) {
+        iland_drm_complete_page_flip(crtc_id, fb_id);
+        return;
+    }
+
+    uint32_t width = ILandWatchSurfaceGetWidth(surface);
+    uint32_t height = ILandWatchSurfaceGetHeight(surface);
+    if (width == 0 || height == 0) {
+        iland_drm_complete_page_flip(crtc_id, fb_id);
+        return;
+    }
+
+    size_t stride = ILandWatchSurfaceGetBytesPerRow(surface);
+    if (stride == 0) {
+        stride = (size_t)width * 4;
+    }
+
+    ILandWatchSurfaceLock(surface);
+    const uint8_t *base = (const uint8_t *)ILandWatchSurfaceGetBaseAddress(surface);
+    size_t size = stride * height;
+    uint8_t *copy = base ? malloc(size) : NULL;
+    if (copy) {
+        memcpy(copy, base, size);
+    }
+    ILandWatchSurfaceUnlock(surface);
+
+    if (copy) {
+        [bridge _deliverPixelsCopy:copy
+                             width:width
+                            height:height
+                            stride:(uint32_t)stride];
+    }
+    iland_drm_complete_page_flip(crtc_id, fb_id);
+}
+
 // ── WWNWatchCompositorBridge implementation ───────────────────────────────────
 
 
@@ -274,6 +345,10 @@ static int wwn_watch_niri_entry(int argc, char **argv) {
             setenv("XDG_RUNTIME_DIR", tmp.fileSystemRepresentation, 0); // 0 = don't overwrite
         }
     }
+
+#if defined(WWN_WATCH_SWIFTSHADER_BUNDLED) && WWN_WATCH_SWIFTSHADER_BUNDLED
+    [self _applyWatchSoftwareGraphicsEnv];
+#endif
 
     const char *name = socketName ? [socketName UTF8String] : "wayland-0";
     WWNLog("WATCH", @"Starting compositor. Socket='%s' size=%ux%u XDG_RUNTIME_DIR='%s'",
@@ -689,12 +764,35 @@ static int wwn_watch_niri_entry(int argc, char **argv) {
 }
 
 - (void)_applyWatchSoftwareGraphicsEnv {
-    setenv("ANGLE_DEFAULT_PLATFORM", "vulkan", 1);
+    setenv("WWN_OPENGL_DRIVER", "angle", 1);
     setenv("WWN_VULKAN_DRIVER", "swiftshader", 1);
-    // Static SwiftShader is force-loaded into the watch binary; vkcube resolves
-    // vkGetInstanceProcAddr via dlopen(NULL) when WWN_VULKAN_LIBRARY is unset.
+    setenv("ANGLE_DEFAULT_PLATFORM", "vulkan", 1);
+    unsetenv("WWN_DISABLE_EGL");
     unsetenv("WWN_VULKAN_LIBRARY");
     unsetenv("WWN_VULKAN_LIBRARY_FALLBACKS");
+#if defined(WWN_WATCH_SWIFTSHADER_BUNDLED) && WWN_WATCH_SWIFTSHADER_BUNDLED
+    NSBundle *bundle = [NSBundle mainBundle];
+    NSString *icdManifest =
+        [bundle pathForResource:@"vk_swiftshader_icd"
+                         ofType:@"json"
+                    inDirectory:@"vulkan/icd.d"];
+    NSString *dylibPath =
+        [[bundle.bundlePath stringByAppendingPathComponent:@"Frameworks"]
+            stringByAppendingPathComponent:@"libvk_swiftshader.dylib"];
+    if (icdManifest.length > 0 &&
+        [[NSFileManager defaultManager] fileExistsAtPath:icdManifest]) {
+        setenv("VK_ICD_FILENAMES", icdManifest.fileSystemRepresentation, 1);
+        setenv("VK_DRIVER_FILES", icdManifest.fileSystemRepresentation, 1);
+        WWNLog("WATCH", @"SwiftShader ICD manifest %@", icdManifest);
+    } else {
+        WWNLog("WATCH", @"SwiftShader ICD manifest missing in bundle");
+    }
+    if (dylibPath.length > 0 &&
+        [[NSFileManager defaultManager] fileExistsAtPath:dylibPath]) {
+        setenv("WWN_VULKAN_LIBRARY", dylibPath.fileSystemRepresentation, 1);
+        WWNLog("WATCH", @"SwiftShader ICD dylib %@", dylibPath);
+    }
+#endif
 }
 
 - (void)_launchWatchGpuClient:(int (*)(int, char **))entry
@@ -705,6 +803,50 @@ static int wwn_watch_niri_entry(int argc, char **argv) {
     }
     [self _applyWatchSoftwareGraphicsEnv];
     [self _launchNamedDemo:entry name:name];
+}
+
+- (void)_launchWatchKmsClient:(int (*)(int, char **))entry
+                         name:(const char *)name
+                    logModule:(const char *)logModule {
+    if (!entry) {
+        WWNLog(logModule ?: "WATCH",
+               @"'%s' not linked (enable WWN_WATCH_SWIFTSHADER build)", name);
+        return;
+    }
+    [self stopClient];
+    [self _applyWatchSoftwareGraphicsEnv];
+
+    if (iland_drm_prepare_virtual_fd() != 0) {
+        WWNLog(logModule ?: "WATCH",
+               @"Virtual DRM fd not ready for '%s'", name);
+        return;
+    }
+
+    iland_drm_set_preferred_mode(_outputWidth, _outputHeight, 60000);
+    iland_drm_set_present_callback(wwn_watch_iland_present_trampoline,
+                                   (__bridge void *)self);
+
+    wwn_weston_compositor_shutdown_requested = 0;
+
+    ClientThreadArgs *args = malloc(sizeof(ClientThreadArgs));
+    args->entry = entry;
+    args->name = name;
+    args->argc = 0;
+    args->argv = NULL;
+
+    int rc = pthread_create(&_clientThread, NULL, clientThreadFunc, args);
+    if (rc == 0) {
+        _clientRunning = YES;
+        _clientThreadValid = YES;
+        WWNLog(logModule ?: "WATCH",
+               @"Launched '%s' (iland DRM present %ux%u)", name,
+               _outputWidth, _outputHeight);
+    } else {
+        free(args);
+        iland_drm_set_present_callback(NULL, NULL);
+        WWNLog(logModule ?: "WATCH",
+               @"Failed to launch '%s' (pthread_create=%d)", name, rc);
+    }
 }
 
 - (void)_launchNamedDemo:(int (*)(int, char **))entry name:(const char *)name {
@@ -809,17 +951,20 @@ static int wwn_watch_niri_entry(int argc, char **argv) {
         [self _launchWatchGpuClient:vkcube_main name:"vkcube"];
     } else if ([cid isEqualToString:@"weston-simple-shm"]) {
         [self launchWestonSimpleSHM];
-    } else if ([cid isEqualToString:@"kmscube"] ||
-               [cid isEqualToString:@"gbm-es2-demo"]) {
-        WWNLog("WATCH",
-               @"Refusing '%@': KMS clients deferred on watchOS (iland DRM phase)",
-               cid);
+    } else if ([cid isEqualToString:@"kmscube"]) {
+        [self _launchWatchKmsClient:kmscube_main name:"kmscube" logModule:"KMSCUBE"];
+    } else if ([cid isEqualToString:@"gbm-es2-demo"]) {
+        [self _launchWatchKmsClient:gbm_es2_demo_main
+                               name:"gbm-es2-demo"
+                          logModule:"GBM_ES2_DEMO"];
     } else {
         WWNLog("WATCH", @"Refusing unknown bundled client '%@'", cid);
     }
 }
 
 - (void)stopClient {
+    iland_drm_set_present_callback(NULL, NULL);
+
     if (_clientRunning && _clientThreadValid) {
         wwn_weston_compositor_shutdown_requested = 1;
         _clientRunning = NO;

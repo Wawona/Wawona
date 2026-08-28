@@ -89,11 +89,15 @@ iland having no Wayland winsys, not a platform limit: nothing in the path needs
 anything unavailable on iOS. iland now carries the winsys on
 macOS/iOS/iPadOS/tvOS/visionOS (IOSurface-backed `wl_buffer`s posted through
 `zwp_linux_dmabuf_v1` with the IOSurface-id modifier), plus an AHardwareBuffer
-variant for Android. watchOS stays on the SHM/CPU fallback (no Metal).
+variant for Android. watchOS uses SHM/CPU fallback for present (SpriteKit, no
+Metal). When `WWN_WATCH_SWIFTSHADER_BUNDLED`, ANGLE-on-Vulkan + static
+SwiftShader ICD link for software GLES/VK clients (`opengl-cube`, `vkcube`,
+`weston-simple-egl`) plus KMS clients (`kmscube`, `gbm-es2-demo`) via iland
+DRM readback.
 `simple-egl-apple-mobile-stub.c` is therefore obsolete as a *statement of
 impossibility*; it remains only until the mobile unstub lands.
 - Vulkan Cube = krh/vkcube **KMS/GBM** against iland virtual DRM (`/dev/dri/card0` → fd 42) + host Vulkan ICD (MoltenVK Apple; device Vulkan / SwiftShader Android).
-- tvOS: GLES (ANGLE) and Vulkan (MoltenVK) when `WWN_TVOS_GPU_BUNDLED`. watchOS: **never** (`allowsGpuStack == false`).
+- tvOS: GLES (ANGLE) and Vulkan (MoltenVK) when `WWN_TVOS_GPU_BUNDLED`. watchOS: no public Metal stack; software GLES/VK when `WWN_WATCH_SWIFTSHADER_BUNDLED` (store default-off while LLVM JIT remains).
 
 **Prerequisite:** wwn-iland supplies OpenGL (ANGLE) + Vulkan + software-fallback for DRM/GBM bind. This issue owns **client packaging + launch wiring**, not a new iland graphics architecture.
 
@@ -105,7 +109,7 @@ impossibility*; it remains only until the mobile unstub lands.
 | **iOS / iPadOS / visionOS** | archives only (`*_main`) | `vkcube` in-process via Machines → WaypipeRunner → iland presenter; `opengl-cube` in-process via `WWNClientMainForId`, same as `weston-simple-shm` |
 | **Android** | archives linked into `libwawona.so` | JNI → presenter path (mirror `kmscube_stub_main`) |
 | **tvOS** | archives (`*_main`) when GPU bundled | in-process, same as iOS (kmscube/gbm-es2 via presenter; opengl-cube/vkcube via compositor) |
-| **watchOS** | not built / not linked | hidden + refuse |
+| **watchOS** | archives when `WWN_WATCH_SWIFTSHADER=1` | in-process; SpriteKit present; matrix via `WAWONA_AUTO_CLIENT` |
 
 Symbols:
 
@@ -134,7 +138,9 @@ Never force-push `master`/`development`. Do not commit unless the human asks.
   made it indistinguishable from KMS Cube (and, when both paths raced, made
   Start sometimes show kmscube). It is a Wayland client on every target that
   has a GPU stack.
-- Do **not** add ANGLE/Vulkan/MoltenVK to watchOS deps or schemes.
+- Do **not** add MoltenVK or Metal-backed ANGLE to watchOS store builds.
+  Software GLES/VK (`WWN_WATCH_SWIFTSHADER=1`) is the only allowed GPU path on
+  Watch; keep store default-off until LLVM JIT is cleared for 2.5.2.
 - Do **not** ship tvOS without both ANGLE (OpenGL ES to Metal) and MoltenVK
   (Vulkan to Metal). `WWN_TVOS_GPU=1` requires both. Never Vulkan-only.
 - Do **not** ship Mode B `libwayland-mac.dylib` for these clients.
@@ -467,7 +473,8 @@ For each of `kmscube`, `opengl-cube`, `vkcube` on **macOS** and **iOS sim/device
 1. Machines → pick client → Start.
 2. Expect animated cube frames on Metal / Android overlay.
 3. Logs under `[KMSCUBE]` / `[VKCUBE]`, never `[WESTON]` for these Starts.
-4. tvOS/watchOS: client hidden; if forced, refuse.
+4. tvOS: GPU bundled clients in-process. watchOS: software GLES/VK when
+   `WWN_WATCH_SWIFTSHADER=1`; otherwise hidden + refuse.
 
 Use agent-device for iOS when available (`agent-device --version`,
 `Wawona/agent-device.json`, prepare + dismiss system UI). Capture screenshots

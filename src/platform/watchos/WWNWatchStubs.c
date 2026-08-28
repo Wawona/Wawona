@@ -129,6 +129,18 @@ int vkcube_main(int argc, char **argv) {
     (void)argc; (void)argv;
     return 127;
 }
+
+__attribute__((weak))
+int kmscube_main(int argc, char **argv) {
+    (void)argc; (void)argv;
+    return 127;
+}
+
+__attribute__((weak))
+int gbm_es2_demo_main(int argc, char **argv) {
+    (void)argc; (void)argv;
+    return 127;
+}
 #endif
 
 // ── Waypipe stub ─────────────────────────────────────────────────────────────

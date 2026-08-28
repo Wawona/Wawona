@@ -104,8 +104,15 @@ WWNGraphicsDriverSelection WWNSettings_ResolveGraphicsDriverSelection(void) {
   const char *openGL = WWNSettings_GetOpenGLDriver();
 
 #if TARGET_OS_WATCH
+#if defined(WWN_WATCH_SWIFTSHADER_BUNDLED) && WWN_WATCH_SWIFTSHADER_BUNDLED
+  if (!wwnDriverIs(vulkan, "none") && !wwnDriverIs(vulkan, "swiftshader"))
+    vulkan = "swiftshader";
+  if (!wwnDriverIs(openGL, "none") && !wwnDriverIs(openGL, "angle"))
+    openGL = "angle";
+#else
   vulkan = "none";
   openGL = "none";
+#endif
 #elif TARGET_OS_TV
 #if defined(WWN_TVOS_GPU_BUNDLED) && WWN_TVOS_GPU_BUNDLED
   if (!wwnDriverIs(vulkan, "none") && !wwnDriverIs(vulkan, "moltenvk"))

@@ -4,6 +4,18 @@ import WawonaModel
 
 /// watchOS machine connect: native → local compositor + bundled client; remote → waypipe only.
 enum WatchMachineSessionBridge {
+    static func connectBundledClient(_ clientId: String) -> Bool {
+        var overrides = MachineRuntimeOverrides()
+        overrides.bundledAppID = clientId
+        let profile = MachineProfile(
+            id: "wawona-auto-client",
+            name: "Auto Client",
+            type: .native,
+            runtimeOverrides: overrides
+        )
+        return connect(profile: profile)
+    }
+
     static func connect(profile: MachineProfile) -> Bool {
         let logger = WWNStartupLogger.shared()
         // Capture before compositor/client start so early lines aren't missed

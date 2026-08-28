@@ -275,6 +275,39 @@ scan_fail() {
   return 1
 }
 
+# Drop simctl log stream filter headers / os_log metadata so broad patterns
+# (e.g. "First frame" in a predicate line) do not false-pass.
+sanitize_console_log() {
+  local src="$1"
+  local dst="$2"
+  grep -Ev \
+    '^(Filtering|Timestamp|Thread|Process|Library|Subsystem|Category|Level|Message|----)' \
+    "$src" >"$dst" 2>/dev/null || cp "$src" "$dst"
+}
+
+scan_ok() {
+  local logf="$1"
+  local client="$2"
+  local pat
+  while IFS= read -r pat; do
+    [[ -z "$pat" ]] && continue
+    if grep -Fqi -- "$pat" "$logf" 2>/dev/null; then
+      return 0
+    fi
+  done < <(bundled_client_ok_patterns "$client")
+  return 1
+}
+
+watch_gpu_client_needs_ok_scan() {
+  local platform="$1"
+  local client="$2"
+  [[ "$platform" == "watchos" ]] || return 1
+  case "$client" in
+    opengl-cube|vkcube|kmscube|gbm-es2-demo|weston-simple-egl) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 # --- results -----------------------------------------------------------------
 
 RESULTS_TSV="$OUT_ROOT/results.tsv"
@@ -472,6 +505,16 @@ run_apple_cell() {
   if [[ -z "$p3" || "$p3" == "-" ]]; then
     record "$platform" "$client" FAIL "process gone during hold" "$hold" "$cell"
     return 1
+  fi
+
+  if watch_gpu_client_needs_ok_scan "$platform" "$client"; then
+    local sanitized="$cell/console-sanitized.log"
+    sanitize_console_log "$cell/console.log" "$sanitized"
+    if ! scan_ok "$sanitized" "$client"; then
+      record "$platform" "$client" FAIL "console missing watch GPU ok pattern" "$hold" "$cell"
+      xcrun simctl terminate "$udid" "$bundle" >/dev/null 2>&1 || true
+      return 1
+    fi
   fi
 
   record "$platform" "$client" PASS "alive ${hold}s after Start; no fail markers" "$hold" "$cell"
