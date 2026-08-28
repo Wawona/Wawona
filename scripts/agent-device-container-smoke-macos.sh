@@ -18,7 +18,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ARTIFACTS="$ROOT/.agent-device/test-artifacts"
 IMAGE="${WAWONA_CONTAINER_IMAGE:-nixos/nix}"
-COMMAND="${WAWONA_CONTAINER_COMMAND:-nix --extra-experimental-features nix-command run nixpkgs#weston -- weston-flower}"
+COMMAND="${WAWONA_CONTAINER_COMMAND:-nix --extra-experimental-features 'nix-command flakes' shell nixpkgs#weston -c weston-flower}"
 MACHINE_NAME="${WAWONA_CONTAINER_MACHINE_NAME:-Nix Weston Container}"
 SESS="${WAWONA_CONTAINER_SESSION:-wawona-macos-container}"
 
