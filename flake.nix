@@ -1128,6 +1128,12 @@
             # waypipe injected into the container VM.
             containerWaypipeFds = wwn-containers.packages.${system}.waypipe-splitfd or null;
             containerWaypipeGuestLinux = (pkgsFor "aarch64-linux").waypipe;
+            containerWaypipeGuestRoot =
+              wwn-containers.packages.${system}.waypipe-guest-root or null;
+            containerWaypipeGuestClosure =
+              (pkgsFor "aarch64-linux").closureInfo {
+                rootPaths = [ (pkgsFor "aarch64-linux").waypipe ];
+              };
             neovim = null;
             zsh = pkgs.zsh;
             kmscube = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };

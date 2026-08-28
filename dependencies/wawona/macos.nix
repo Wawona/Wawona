@@ -32,6 +32,11 @@
   # (the backend reports the missing piece clearly).
   containerWaypipeFds ? null,
   containerWaypipeGuestLinux ? null,
+  # Relocatable aarch64-linux waypipe tree (bin/ + lib/, patchelf'd to
+  # /opt/wawona-waypipe). Preferred over mounting the full nix closure.
+  containerWaypipeGuestRoot ? null,
+  # Fallback: closureInfo store-paths list for dynamic linker mounts.
+  containerWaypipeGuestClosure ? null,
   neovim ? null,
   zsh ? null,
   kmscube ? null,
@@ -1064,7 +1069,22 @@ GEN_HEADER
               if [ -f "${containerWaypipeGuestLinux}/bin/waypipe" ]; then
                 cp "${containerWaypipeGuestLinux}/bin/waypipe" "$APP/Contents/Resources/bin/waypipe-guest"
                 chmod +x "$APP/Contents/Resources/bin/waypipe-guest"
-                echo "DEBUG: Bundled waypipe-guest (aarch64-linux)"
+                printf '%s\n' "${containerWaypipeGuestLinux}/bin/waypipe" > "$APP/Contents/Resources/bin/waypipe-guest.store"
+                ${if containerWaypipeGuestRoot != null then ''
+                mkdir -p "$APP/Contents/Resources/bin/waypipe-guest-root"
+                cp -a "${containerWaypipeGuestRoot}/." "$APP/Contents/Resources/bin/waypipe-guest-root/"
+                chmod -R u+w "$APP/Contents/Resources/bin/waypipe-guest-root" || true
+                echo "DEBUG: Bundled waypipe-guest-root (relocatable)"
+                '' else ""}
+                ${if containerWaypipeGuestClosure != null then ''
+                cp "${containerWaypipeGuestClosure}/store-paths" "$APP/Contents/Resources/bin/waypipe-guest.closure"
+                '' else ''
+                # Fallback: query references at build time (path is a build input).
+                if command -v nix-store >/dev/null 2>&1; then
+                  nix-store -qR "${containerWaypipeGuestLinux}" > "$APP/Contents/Resources/bin/waypipe-guest.closure"
+                fi
+                ''}
+                echo "DEBUG: Bundled waypipe-guest (aarch64-linux) + closure"
               else
                 echo "Warning: waypipe-guest binary not found at ${containerWaypipeGuestLinux}/bin/waypipe"
               fi
@@ -1511,7 +1531,21 @@ SHELL_EOF
             if [ -f "${containerWaypipeGuestLinux}/bin/waypipe" ]; then
               cp "${containerWaypipeGuestLinux}/bin/waypipe" $out/Applications/Wawona.app/Contents/Resources/bin/waypipe-guest
               chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/waypipe-guest
-              echo "DEBUG: Bundled waypipe-guest (aarch64-linux)"
+              printf '%s\n' "${containerWaypipeGuestLinux}/bin/waypipe" > $out/Applications/Wawona.app/Contents/Resources/bin/waypipe-guest.store
+              ${if containerWaypipeGuestRoot != null then ''
+              mkdir -p $out/Applications/Wawona.app/Contents/Resources/bin/waypipe-guest-root
+              cp -a "${containerWaypipeGuestRoot}/." $out/Applications/Wawona.app/Contents/Resources/bin/waypipe-guest-root/
+              chmod -R u+w $out/Applications/Wawona.app/Contents/Resources/bin/waypipe-guest-root || true
+              echo "DEBUG: Bundled waypipe-guest-root (relocatable)"
+              '' else ""}
+              ${if containerWaypipeGuestClosure != null then ''
+              cp "${containerWaypipeGuestClosure}/store-paths" $out/Applications/Wawona.app/Contents/Resources/bin/waypipe-guest.closure
+              '' else ''
+              if command -v nix-store >/dev/null 2>&1; then
+                nix-store -qR "${containerWaypipeGuestLinux}" > $out/Applications/Wawona.app/Contents/Resources/bin/waypipe-guest.closure
+              fi
+              ''}
+              echo "DEBUG: Bundled waypipe-guest (aarch64-linux) + closure"
             else
               echo "Warning: waypipe-guest binary not found at ${containerWaypipeGuestLinux}/bin/waypipe"
             fi

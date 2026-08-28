@@ -167,6 +167,24 @@ static NSString *WWNContainerShellQuote(NSString *value) {
       [parts addObject:[NSString
                            stringWithFormat:@"--waypipe-guest-bin %@",
                                             WWNContainerShellQuote(guestWaypipe)]];
+      NSString *guestRoot =
+          [[guestWaypipe stringByDeletingLastPathComponent]
+              stringByAppendingPathComponent:@"waypipe-guest-root"];
+      NSString *guestRootExec =
+          [guestRoot stringByAppendingPathComponent:@"bin/waypipe"];
+      if ([[NSFileManager defaultManager] isExecutableFileAtPath:guestRootExec]) {
+        [parts addObject:[NSString
+                             stringWithFormat:@"--waypipe-guest-root %@",
+                                              WWNContainerShellQuote(guestRoot)]];
+      } else {
+        NSString *closurePath =
+            [guestWaypipe stringByAppendingString:@".closure"];
+        if ([[NSFileManager defaultManager] fileExistsAtPath:closurePath]) {
+          [parts addObject:[NSString
+                               stringWithFormat:@"--waypipe-guest-closure %@",
+                                                WWNContainerShellQuote(closurePath)]];
+        }
+      }
     }
   }
 
@@ -339,6 +357,11 @@ static NSString *WWNContainerShellQuote(NSString *value) {
     NSString *guestWaypipe = WWNWawonaFindBundledExecutable(@"waypipe-guest");
     if (guestWaypipe.length > 0) {
       env[@"WAWONA_WAYPIPE_GUEST"] = guestWaypipe;
+      NSString *closurePath =
+          [guestWaypipe stringByAppendingString:@".closure"];
+      if ([[NSFileManager defaultManager] fileExistsAtPath:closurePath]) {
+        env[@"WAWONA_WAYPIPE_GUEST_CLOSURE"] = closurePath;
+      }
     }
   }
   task.environment = env;
