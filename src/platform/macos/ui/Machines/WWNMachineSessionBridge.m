@@ -143,7 +143,7 @@
       }
       return NO;
     }
-    if (!WWNPlatformAllowsGpuStack() &&
+    if (!WWNPlatformAllowsGlesStack() && !WWNPlatformAllowsVulkanStack() &&
         ([clientId isEqualToString:@"kmscube"] ||
          [clientId isEqualToString:@"gbm-es2-demo"] ||
          [clientId isEqualToString:@"opengl-cube"] ||
@@ -156,8 +156,8 @@
                    userInfo:@{
                      NSLocalizedDescriptionKey : [NSString
                          stringWithFormat:
-                             @"%@ requires a GPU stack unavailable on this "
-                             @"platform.",
+                             @"%@ requires a GLES/Vulkan stack unavailable on "
+                             @"this platform.",
                              clientId]
                    }];
       }

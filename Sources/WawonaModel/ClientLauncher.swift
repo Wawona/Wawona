@@ -8,7 +8,8 @@ public struct ClientLauncher: Codable, Identifiable, Hashable, Sendable {
     public var autoLaunch: Bool
     public var displayName: String
     /// ANGLE / Vulkan / iland GLES demos. Omitted from availablePresets when
-    /// `PlatformCapabilities.allowsGpuStack` is false (watchOS blocked).
+    /// neither Metal GPU (`allowsGpuStack`) nor watch software GLES/VK
+    /// (`allowsWatchSoftwareGlesVk`) is available.
     public var requiresGpuStack: Bool
 
     public init(
@@ -75,8 +76,8 @@ public extension ClientLauncher {
         ClientLauncher(name: "weston-constraints", executablePath: "weston-constraints", displayName: "Weston Constraints"),
     ]
 
-    /// Clients runnable on this platform (GPU demos dropped when the stack is
-    /// blocked/forbidden. E.g. watchOS has no Metal).
+    /// Clients runnable on this platform. GPU demos need Metal/ANGLE
+    /// (`allowsGpuStack`) or watch software GLES/VK (`allowsWatchSoftwareGlesVk`).
     static var availablePresets: [ClientLauncher] {
         allPresets.filter { launcher in
             if launcher.name == "wawona-wasm" {
@@ -90,14 +91,10 @@ public extension ClientLauncher {
                 return PlatformCapabilities.openGLDriverEnabled
             }
             if launcher.requiresGpuStack {
-                #if os(watchOS)
-                if launcher.name == "vkcube" {
+                if launcher.name == "vkcube" || launcher.name == "vkcube-kms" {
                     return PlatformCapabilities.allowsVulkanStack
                 }
-                return false
-                #else
                 return PlatformCapabilities.allowsGpuStack
-                #endif
             }
             return true
         }
@@ -106,9 +103,14 @@ public extension ClientLauncher {
     /// Back-compat alias used throughout UI.
     static var presets: [ClientLauncher] { availablePresets }
 
-    /// GPU demos present in the catalog but not launchable here.
+    /// GPU demos in the catalog that are not launchable on this build.
+    /// Complement of `availablePresets` (watch software GLES/VK must not
+    /// still appear under a disabled "Requires GPU" section).
     static var unavailableGpuPresets: [ClientLauncher] {
-        allPresets.filter { $0.requiresGpuStack && !PlatformCapabilities.allowsGpuStack }
+        let availableNames = Set(availablePresets.map(\.name))
+        return allPresets.filter { launcher in
+            launcher.requiresGpuStack && !availableNames.contains(launcher.name)
+        }
     }
 
     static func displayName(for clientID: String) -> String {

@@ -24,6 +24,8 @@ static inline bool WWNPlatformAllowsContainer(void) {
 #endif
 }
 
+/// Metal / ANGLE / MoltenVK product GPU stack. watchOS has no public Metal;
+/// software GLES/VK is ``WWNPlatformAllowsWatchSoftwareGlesVk`` instead.
 static inline bool WWNPlatformAllowsGpuStack(void) {
 #if TARGET_OS_WATCH
   return false;
@@ -35,6 +37,16 @@ static inline bool WWNPlatformAllowsGpuStack(void) {
 #endif
 #else
   return true;
+#endif
+}
+
+/// CPU ANGLE + SwiftShader on watch when the ICD is linked into this binary.
+static inline bool WWNPlatformAllowsWatchSoftwareGlesVk(void) {
+#if TARGET_OS_WATCH && defined(WWN_WATCH_SWIFTSHADER_BUNDLED) && \
+    WWN_WATCH_SWIFTSHADER_BUNDLED
+  return true;
+#else
+  return false;
 #endif
 }
 
@@ -93,7 +105,15 @@ static inline bool WWNPlatformAllowsClientTabs(void) {
 
 static inline bool WWNPlatformAllowsGlesStack(void) {
 #if TARGET_OS_WATCH
-  return false;
+  return WWNPlatformAllowsWatchSoftwareGlesVk();
+#else
+  return WWNPlatformAllowsGpuStack();
+#endif
+}
+
+static inline bool WWNPlatformAllowsVulkanStack(void) {
+#if TARGET_OS_WATCH
+  return WWNPlatformAllowsWatchSoftwareGlesVk();
 #else
   return WWNPlatformAllowsGpuStack();
 #endif

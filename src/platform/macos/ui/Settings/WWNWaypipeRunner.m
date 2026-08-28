@@ -113,16 +113,19 @@ static NSString *WWNGpuClientRefusalReason(NSString *clientId) {
   if (!WWNIsGpuFamilyClientId(clientId)) {
     return nil;
   }
-  if (!WWNPlatformAllowsGpuStack()) {
-    return @"platform has no GPU stack (watchOS has no Metal)";
-  }
   WWNGraphicsDriverSelection selection =
       WWNSettings_ResolveGraphicsDriverSelection();
   if ([clientId isEqualToString:@"vkcube"] ||
       [clientId isEqualToString:@"vkcube-kms"]) {
+    if (!WWNPlatformAllowsVulkanStack()) {
+      return @"platform has no Vulkan stack (watchOS needs WWN_WATCH_SWIFTSHADER)";
+    }
     return selection.vulkanEnabled
                ? nil
                : @"Settings → Graphics → Vulkan driver is None";
+  }
+  if (!WWNPlatformAllowsGlesStack()) {
+    return @"platform has no GLES stack (watchOS needs WWN_WATCH_SWIFTSHADER)";
   }
   return selection.openGLEnabled ? nil
                                  : @"Settings → Graphics → OpenGL driver is None";

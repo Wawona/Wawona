@@ -43,13 +43,17 @@ struct BundledClient: Identifiable, Hashable {
   var requiresGpuStack: Bool = false
 }
 
-/// Bundled clients visible on this platform (GPU demos omitted on watchOS).
+/// Bundled clients visible on this platform (GPU demos need Metal or watch
+/// software GLES/VK).
 var kBundledClients: [BundledClient] {
   kAllBundledClients.filter { client in
     if PlatformCapabilities.glesClientIds.contains(client.id) {
       return PlatformCapabilities.openGLDriverEnabled
     }
     if client.requiresGpuStack {
+      if client.id == "vkcube" || client.id == "vkcube-kms" {
+        return PlatformCapabilities.allowsVulkanStack
+      }
       return PlatformCapabilities.allowsGpuStack
     }
     return true

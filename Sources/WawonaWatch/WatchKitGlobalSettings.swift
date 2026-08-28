@@ -217,11 +217,15 @@ private struct WatchSettingsGraphicsSection: View {
             }
             WatchInfoRow(
                 title: "Present",
-                detail: "SpriteKit GPU blit of SHM frames. Vulkan and OpenGL stay blocked until the SDK ships public Metal."
+                detail: PlatformCapabilities.allowsWatchSoftwareGlesVk
+                    ? "SpriteKit composites CPU GLES/VK frames (ANGLE + SwiftShader)."
+                    : "SpriteKit GPU blit of SHM frames. Software GLES/VK needs WWN_WATCH_SWIFTSHADER=1."
             )
             WatchInfoRow(
                 title: "GPU stack",
-                detail: "No Metal.framework in the watchOS SDK. ANGLE and MoltenVK are not bundled."
+                detail: PlatformCapabilities.allowsWatchSoftwareGlesVk
+                    ? "No public Metal. Software OpenGL ES / Vulkan via ANGLE + SwiftShader is linked."
+                    : "No Metal.framework in the watchOS SDK. Rebuild with WWN_WATCH_SWIFTSHADER=1 for CPU GLES/VK."
             )
         }
         .navigationTitle(GlobalSettingsSectionID.graphics.title)

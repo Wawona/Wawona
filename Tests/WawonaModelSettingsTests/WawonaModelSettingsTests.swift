@@ -236,6 +236,12 @@ func watchSoftwareGlesVkIsWatchOnlyAndGpuStackStaysBlocked() {
     #expect(PlatformCapabilities.allowsWatchSoftwareGlesVk)
     #expect(PlatformCapabilities.allowsGlesStack)
     #expect(PlatformCapabilities.allowsVulkanStack)
+    #expect(PlatformCapabilities.openGLDriverEnabled)
+    let available = Set(ClientLauncher.availablePresets.map(\.name))
+    for id in ["kmscube", "gbm-es2-demo", "opengl-cube", "vkcube", "weston-simple-egl"] {
+        #expect(available.contains(id))
+    }
+    #expect(ClientLauncher.unavailableGpuPresets.isEmpty)
     #else
     switch PlatformCapabilities.watchSoftwareGlesVkGate {
     case .planned(flag: let flag):

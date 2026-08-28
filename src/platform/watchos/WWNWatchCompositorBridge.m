@@ -240,7 +240,13 @@ static void miniServerFrameCallback(const uint8_t *pixels,
 }
 
 // ── iland DRM present (kmscube / gbm-es2-demo) ───────────────────────────────
-// Malloc IOSurface stub → BGRA copy → SpriteKit via _deliverPixelsCopy.
+// Malloc IOSurface stub → BGRA copy (v-flip for GL origin) → SpriteKit via
+// _deliverPixelsCopy. Pace page-flip completion to the watch present rate so
+// software GLES clients do not spin unbound on the CPU.
+
+// SpriteView preferredFramesPerSecond is 30; advertise the same millihertz.
+static const uint32_t kWWNWatchIlandPresentMillihz = 30000;
+static const int64_t kWWNWatchIlandPresentPeriodNs = NSEC_PER_SEC / 30;
 
 static void wwn_watch_iland_present_trampoline(uint32_t crtc_id,
                                                uint32_t fb_id,
@@ -271,8 +277,14 @@ static void wwn_watch_iland_present_trampoline(uint32_t crtc_id,
     const uint8_t *base = (const uint8_t *)ILandWatchSurfaceGetBaseAddress(surface);
     size_t size = stride * height;
     uint8_t *copy = base ? malloc(size) : NULL;
-    if (copy) {
-        memcpy(copy, base, size);
+    if (copy && base) {
+        // GL / GLES scanout is bottom-up. CGImage + SpriteKit are top-down.
+        // macOS/iOS Metal present flips in the sample UV; do the same here.
+        for (uint32_t y = 0; y < height; y++) {
+            memcpy(copy + (size_t)y * stride,
+                   base + (size_t)(height - 1 - y) * stride,
+                   stride);
+        }
     }
     ILandWatchSurfaceUnlock(surface);
 
@@ -282,7 +294,15 @@ static void wwn_watch_iland_present_trampoline(uint32_t crtc_id,
                             height:height
                             stride:(uint32_t)stride];
     }
-    iland_drm_complete_page_flip(crtc_id, fb_id);
+
+    // Client blocks on DRM_MODE_PAGE_FLIP_EVENT. Completing immediately made
+    // kmscube/gbm-es2 spin at CPU rate. Hold the flip until the next present
+    // slot (~30 Hz), matching SpriteView.
+    dispatch_after(
+        dispatch_time(DISPATCH_TIME_NOW, kWWNWatchIlandPresentPeriodNs),
+        dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^{
+            iland_drm_complete_page_flip(crtc_id, fb_id);
+        });
 }
 
 // ── WWNWatchCompositorBridge implementation ───────────────────────────────────
@@ -822,7 +842,8 @@ static int wwn_watch_niri_entry(int argc, char **argv) {
         return;
     }
 
-    iland_drm_set_preferred_mode(_outputWidth, _outputHeight, 60000);
+    iland_drm_set_preferred_mode(_outputWidth, _outputHeight,
+                                 kWWNWatchIlandPresentMillihz);
     iland_drm_set_present_callback(wwn_watch_iland_present_trampoline,
                                    (__bridge void *)self);
 
@@ -1186,13 +1207,20 @@ static void *waypipeThreadFunc(void *ctx) {
     if (!_miniServer || !name) {
         return;
     }
-    // Same fill set as iOS WWNIosBundledClientFillsHost. Demos (simple-shm,
-    // flower, smoke, …) keep configure(0,0) so the client owns its square.
+    // Same fill set as iOS WWNIosBundledClientFillsHost, plus watch software
+    // GLES/VK demos: client-pick left them at 800² and SpriteKit downscaled
+    // into the face (edge fringe + mushy HUD glyphs). Fill so they match the
+    // host surface.
     int fill = strcmp(name, "weston-terminal") == 0 ||
                strcmp(name, "wayland-terminal") == 0 ||
                strcmp(name, "foot") == 0 ||
                strcmp(name, "niri") == 0 ||
-               strcmp(name, "weston") == 0;
+               strcmp(name, "weston") == 0 ||
+               strcmp(name, "opengl-cube") == 0 ||
+               strcmp(name, "vkcube") == 0 ||
+               strcmp(name, "weston-simple-egl") == 0 ||
+               strcmp(name, "kmscube") == 0 ||
+               strcmp(name, "gbm-es2-demo") == 0;
     wwn_wls_set_fill_host(_miniServer, fill);
     WWNLog("WATCH", @"xdg size policy for '%s': %s",
           name, fill ? "fill-host" : "client-pick (0x0)");

@@ -2979,6 +2979,13 @@ ICDJSON
             BUILD_LIBRARY_FOR_DISTRIBUTION = "NO";
             "SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=appletvos*]" = [ "$(inherited)" "WWN_TVOS_GPU_BUNDLED" ];
             "SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=appletvsimulator*]" = [ "$(inherited)" "WWN_TVOS_GPU_BUNDLED" ];
+            # Same flag as the watch app target so ClientLauncher.availablePresets
+            # and watchSoftwareGlesVkGate see software GLES/VK when SwiftShader
+            # is linked (picker otherwise keeps cubes under "Requires GPU").
+            "SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=watchos*]" =
+              [ "$(inherited)" ] ++ (watchSwiftshaderSwiftConds watchosDeps);
+            "SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=watchsimulator*]" =
+              [ "$(inherited)" ] ++ (watchSwiftshaderSwiftConds watchosSimDeps);
             # Never on framework targets (ASC ITMS-90429/90427): only the app
             # target's "Embed Frameworks" phase should run swift-stdlib-tool.
             ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = "NO";

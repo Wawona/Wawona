@@ -175,9 +175,18 @@ struct MachineSettingsView: View {
                 Text("software").tag("software")
             }
             .pickerStyle(.navigationLink)
-            // watchOS has no GPU stack (ANGLE/Vulkan). Keep fields for profile
-            // portability but mark them clearly.
-            if PlatformCapabilities.allowsGpuStack {
+            if PlatformCapabilities.allowsWatchSoftwareGlesVk {
+                Text("Software OpenGL ES / Vulkan (ANGLE + SwiftShader). Present via SpriteKit.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                TextField("Vulkan Driver", text: vulkanDriverBinding)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                TextField("OpenGL Driver", text: openGLDriverBinding)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                Toggle("Enable HDR", isOn: colorOperationsBinding)
+            } else if PlatformCapabilities.allowsGpuStack {
                 TextField("Vulkan Driver", text: vulkanDriverBinding)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
@@ -187,7 +196,7 @@ struct MachineSettingsView: View {
                 Toggle("Enable DMABUF", isOn: dmabufEnabledBinding)
                 Toggle("Enable HDR", isOn: colorOperationsBinding)
             } else {
-                Text("GPU stack not available on watchOS (native + remote only).")
+                Text("Software GLES/VK needs a WWN_WATCH_SWIFTSHADER=1 build. Metal is unavailable on watchOS.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                 Toggle("Enable HDR", isOn: colorOperationsBinding)

@@ -32,7 +32,9 @@ final class WatchSpritePresentScene: SKScene {
         }
         let uiImage = UIImage(cgImage: image)
         let texture = SKTexture(image: uiImage)
-        texture.filteringMode = .linear
+        // Nearest avoids linear fringe when a client buffer is still scaled;
+        // fill-host demos are 1:1 so this is a no-op visually for them.
+        texture.filteringMode = .nearest
         sprite.texture = texture
         layoutSprite()
     }

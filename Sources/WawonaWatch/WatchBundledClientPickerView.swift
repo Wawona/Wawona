@@ -3,7 +3,8 @@ import SwiftUI
 import WawonaModel
 
 /// Full-screen client list for native machine profiles / global defaults.
-/// Shows platform-available clients; GPU demos appear as unavailable on watchOS.
+/// Software GLES/VK builds (`WWN_WATCH_SWIFTSHADER_BUNDLED`) list the cubes
+/// with everyone else. Builds without that ICD keep them under Unavailable.
 struct WatchBundledClientPickerView: View {
     @Binding var selection: String
     let clients: [ClientLauncher]
@@ -26,14 +27,17 @@ struct WatchBundledClientPickerView: View {
                     clientRow(launcher, enabled: true)
                 }
             } footer: {
-                if !unavailableGpu.isEmpty {
-                    Text("GPU demos need Metal/ANGLE (blocked on watchOS). They ship on macOS, iOS, iPadOS, visionOS, and Android.")
+                if PlatformCapabilities.allowsWatchSoftwareGlesVk {
+                    Text("Software OpenGL ES / Vulkan (ANGLE + SwiftShader) is linked. Cubes present through SpriteKit.")
+                        .font(.caption2)
+                } else if !unavailableGpu.isEmpty {
+                    Text("GPU demos need a WWN_WATCH_SWIFTSHADER=1 build (CPU ANGLE + SwiftShader). Metal GLES/VK is not available on watchOS.")
                         .font(.caption2)
                 }
             }
 
             if !unavailableGpu.isEmpty {
-                Section("Requires GPU") {
+                Section("Unavailable") {
                     ForEach(unavailableGpu) { launcher in
                         clientRow(launcher, enabled: false)
                     }
