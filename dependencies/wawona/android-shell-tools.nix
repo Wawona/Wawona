@@ -10,7 +10,9 @@
   lib,
   zshAndroid ? null,
   fastfetchAndroid ? null,
+  coreutilsAndroid ? null,
   phoonAndroid ? null,
+  wasmAndroid ? null,
   neovimAndroid ? null,
   waypipeAndroid ? null,
   niriAndroid ? null,
@@ -43,6 +45,17 @@
     fi
     ''}
 
+    ${lib.optionalString (coreutilsAndroid != null) ''
+    # uutils multicall (safe subset). android_jni.c symlinks usr/bin/ls, whoami, …
+    # → libcoreutils_bin.so so PATH does not fall through to toybox.
+    if [ -f "${coreutilsAndroid}/bin/coreutils" ]; then
+      cp -L "${coreutilsAndroid}/bin/coreutils" "$JNI_LIB_DIR/libcoreutils_bin.so"
+      chmod +x "$JNI_LIB_DIR/libcoreutils_bin.so"
+    else
+      echo "WARNING: Missing Android coreutils multicall at ${coreutilsAndroid}/bin/coreutils"
+    fi
+    ''}
+
     ${lib.optionalString (phoonAndroid != null) ''
     # phoon (wwn-phoon-rs): clean-room Rust moon-phase utility. Android uses the
     # fork/exec spawn model, so ship the PIE as libphoon_bin.so (android_jni.c
@@ -52,6 +65,16 @@
       chmod +x "$JNI_LIB_DIR/libphoon_bin.so"
     else
       echo "WARNING: Missing Android phoon binary at ${phoonAndroid}/bin/phoon"
+    fi
+    ''}
+
+    ${lib.optionalString (wasmAndroid != null) ''
+    # wwn-wasm: WASI P1/P2 runner (Pulley). Android fork/execs libwasm_bin.so.
+    if [ -f "${wasmAndroid}/bin/wasm" ]; then
+      cp -L "${wasmAndroid}/bin/wasm" "$JNI_LIB_DIR/libwasm_bin.so"
+      chmod +x "$JNI_LIB_DIR/libwasm_bin.so"
+    else
+      echo "WARNING: Missing Android wasm binary at ${wasmAndroid}/bin/wasm"
     fi
     ''}
 
@@ -100,7 +123,7 @@
 
     ${lib.optionalString (fuzzelAndroid != null) ''
     # fuzzel (wwn-niri): niri Mod+D launcher. Same waypipe/jniLibs PIE pattern
-    # as niri — PATH symlink usr/bin/fuzzel → libfuzzel_bin.so (issue #78).
+    # as niri. PATH symlink usr/bin/fuzzel → libfuzzel_bin.so (issue #78).
     if [ -f "${fuzzelAndroid}/lib/libfuzzel_bin.so" ]; then
       cp -L "${fuzzelAndroid}/lib/libfuzzel_bin.so" "$JNI_LIB_DIR/libfuzzel_bin.so"
       chmod +x "$JNI_LIB_DIR/libfuzzel_bin.so"

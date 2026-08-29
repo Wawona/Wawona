@@ -206,7 +206,7 @@ jobs:
             while IFS=$'\t' read -r plat client status reason _rest; do
               [[ "$status" == "FAIL" ]] || continue
               fails="${fails:+$fails,}${plat}/${client}"
-              echo "FAIL $plat/$client — $reason"
+              echo "FAIL $plat/$client. $reason"
             done < <(tail -n +2 "$f")
           done < <(find arts -name results.tsv -type f)
           {

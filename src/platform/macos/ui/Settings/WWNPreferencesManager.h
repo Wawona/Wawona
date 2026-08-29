@@ -68,12 +68,21 @@ extern NSString *const kWWNPrefsWaypipeVsock;
 extern NSString *const kWWNPrefsWaypipeXwls;
 extern NSString *const kWWNPrefsWaypipeTitlePrefix;
 extern NSString *const kWWNPrefsWaypipeSecCtx;
-// Machine settings — backed by the wwn-vms (VM engine) + wwn-containers (OCI)
+// Machine settings. Backed by the wwn-vms (VM engine) + wwn-containers (OCI)
 // dependencies. Capability-driven per target (see each dep's COMPLIANCE.md).
 extern NSString *const kWWNPrefsMachineVMProvider;
 extern NSString *const kWWNPrefsMachineVMVsockPort;
 extern NSString *const kWWNPrefsMachineContainerRuntime;
 extern NSString *const kWWNPrefsMachineContainerImageStore;
+// Global container defaults (Settings → Containers). Empty strings mean
+// "CLI default"; image + command form the one-shot `container run` baseline.
+extern NSString *const kWWNPrefsContainerDefaultImage;
+extern NSString *const kWWNPrefsContainerDefaultCommand;
+extern NSString *const kWWNPrefsContainerMemory;
+extern NSString *const kWWNPrefsContainerShmSize;
+extern NSString *const kWWNPrefsContainerKernelPath;
+extern NSString *const kWWNPrefsContainerInitfsPath;
+extern NSString *const kWWNPrefsContainerVsockPort;
 // SSH configuration keys (separate from Waypipe)
 extern NSString *const kWWNPrefsSSHHost;
 extern NSString *const kWWNPrefsSSHUser;
@@ -92,12 +101,18 @@ extern NSString *const kWWNPrefsDesktopReplacementEnabled;
 extern NSString *const kWWNPrefsDesktopReplacementMachineId;
 extern NSString *const kWWNPrefsLockscreenReplacementEnabled;
 extern NSString *const kWWNPrefsLockscreenReplacementMachineId;
-// App Bridge (anowaW): render native macOS (Cocoa/AppKit) apps as Wayland
-// clients inside the nested-Weston desktop. Layered on Desktop Replacement and
-// reusing its single, local-only, nested-Weston machine selection. macOS uses
-// Developer ID distribution (Screen Recording + Accessibility permissions);
+// Wawona Swinging Bridge (formerly anowaW): render native macOS (Cocoa/AppKit)
+// apps as Wayland clients inside the nested-Weston desktop / over waypipe.
+// Layered on Desktop Replacement eligibility (local-only nested-Weston).
+// macOS uses Developer ID distribution (Screen Recording + Accessibility);
 // never a Mac App Store path for the embedding capability.
+extern NSString *const kWWNPrefsSwingingBridgeEnabled;
+/// Deprecated preference key name; still read for migration.
 extern NSString *const kWWNPrefsAnowaWEnabled;
+/// App domain `com.aspauldingcode.Wawona`. The System Settings pane must not
+/// use `standardUserDefaults` (that is System Settings' own domain).
+FOUNDATION_EXPORT NSUserDefaults *WWNSharedUserDefaults(void);
+
 @interface WWNPreferencesManager : NSObject
 
 + (instancetype)sharedManager;
@@ -195,13 +210,16 @@ extern NSString *const kWWNPrefsAnowaWEnabled;
 // Capability-tiered default ICD: KosmicKrisp on Apple Silicon + macOS 26+,
 // MoltenVK otherwise. Used when the user has not made an explicit choice.
 + (NSString *)defaultVulkanDriverForHardware;
+// ANGLE on Apple GPU targets (including tvOS when WWN_TVOS_GPU_BUNDLED).
+// None on watchOS and on tvOS builds without the GPU bundle.
++ (NSString *)defaultOpenGLDriverForHardware;
 - (NSString *)openglDriver;
 - (void)setOpenGLDriver:(NSString *)driver;
 
 // Display backend for bundled clients / nested compositors.
 // Stored as `auto` | `wayland` | `drm`; `auto` resolves per client (see
 // WWNResolveCompositorBackend in WWNWaypipeRunner.m). A client that supports
-// both must never hardcode one — niri and weston each have a real DRM backend,
+// both must never hardcode one. Niri and weston each have a real DRM backend,
 // which is the whole reason wwn-iland's userspace KMS exists.
 - (NSString *)compositorBackend;
 - (void)setCompositorBackend:(NSString *)backend;
@@ -265,6 +283,22 @@ extern NSString *const kWWNPrefsAnowaWEnabled;
 - (void)setWaypipeSecCtx:(NSString *)secCtx;
 - (BOOL)waypipeUseSSHConfig;
 - (void)setWaypipeUseSSHConfig:(BOOL)enabled;
+
+// Container defaults (Settings → Containers; per-machine values override these)
+- (NSString *)containerDefaultImage;
+- (void)setContainerDefaultImage:(NSString *)image;
+- (NSString *)containerDefaultCommand;
+- (void)setContainerDefaultCommand:(NSString *)command;
+- (NSString *)containerMemory;
+- (void)setContainerMemory:(NSString *)memory;
+- (NSString *)containerShmSize;
+- (void)setContainerShmSize:(NSString *)shmSize;
+- (NSString *)containerKernelPath;
+- (void)setContainerKernelPath:(NSString *)path;
+- (NSString *)containerInitfsPath;
+- (void)setContainerInitfsPath:(NSString *)path;
+- (NSString *)containerVsockPort;
+- (void)setContainerVsockPort:(NSString *)port;
 
 // SSH Configuration (separate from Waypipe)
 - (NSString *)sshHost;

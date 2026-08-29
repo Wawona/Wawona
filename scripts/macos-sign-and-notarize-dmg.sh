@@ -18,7 +18,7 @@
 #   ./scripts/macos-sign-and-notarize-dmg.sh \
 #     --app dmg-staging/Wawona.app \
 #     --pkg dmg-staging/WawonaAgent.pkg \
-#     --dmg Wawona-26.8.9.dmg \
+#     --dmg Wawona-26.8.9-macOS-arm64.dmg \
 #     --staging dmg-staging
 #
 # Env:
@@ -61,7 +61,7 @@ if [[ -z "$VERSION" ]]; then
   VERSION="$(cat "$ROOT/VERSION" 2>/dev/null || echo 0.0.0)"
 fi
 if [[ -z "$DMG" ]]; then
-  DMG="$ROOT/Wawona-${VERSION}.dmg"
+  DMG="$ROOT/Wawona-${VERSION}-macOS-arm64.dmg"
 fi
 if [[ -z "$STAGING" ]]; then
   STAGING="$(dirname "$APP")"
@@ -115,7 +115,7 @@ security import "$APP_P12" -k "$KEYCHAIN" -P "$MATCH_PASSWORD" \
   -T /usr/bin/codesign -T /usr/bin/security -T /usr/bin/productsign >/dev/null
 security import "$INST_P12" -k "$KEYCHAIN" -P "$MATCH_PASSWORD" \
   -T /usr/bin/codesign -T /usr/bin/security -T /usr/bin/productsign >/dev/null
-# Developer ID G2 intermediate — needed for a complete signing chain in a
+# Developer ID G2 intermediate. Needed for a complete signing chain in a
 # fresh keychain (system roots alone are not always enough for codesign).
 DEVID_G2="$WORKDIR/DeveloperIDG2CA.cer"
 if curl -fsSL -o "$DEVID_G2" \
@@ -245,7 +245,7 @@ while IFS= read -r -d '' fw; do
   sign_framework "$fw"
 done < <(find "$APP/Contents" -name '*.framework' -print0 2>/dev/null | sort -z)
 
-# Loose dylibs / bundles (skip anything inside a .framework — already sealed)
+# Loose dylibs / bundles (skip anything inside a .framework. Already sealed)
 while IFS= read -r -d '' lib; do
   case "$lib" in
     *.framework/*) continue ;;
@@ -312,7 +312,7 @@ else
 fi
 
 if [[ "${WAWONA_SKIP_NOTARIZE:-0}" == "1" ]]; then
-  echo "WAWONA_SKIP_NOTARIZE=1 — skipping notarytool/staple"
+  echo "WAWONA_SKIP_NOTARIZE=1. Skipping notarytool/staple"
   ls -lah "$DMG"
   exit 0
 fi

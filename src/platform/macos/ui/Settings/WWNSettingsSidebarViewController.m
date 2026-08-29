@@ -17,9 +17,11 @@
 
 - (instancetype)initWithPreferences:(WWNPreferences *)preferences {
 #if TARGET_OS_TV
+  // InsetGrouped keeps the focus platter inside the column. Plain cells sit
+  // flush against the split divider and clip the white hover on the right.
   UICollectionLayoutListConfiguration *config =
       [[UICollectionLayoutListConfiguration alloc]
-          initWithAppearance:UICollectionLayoutListAppearancePlain];
+          initWithAppearance:UICollectionLayoutListAppearanceInsetGrouped];
 #else
   UICollectionLayoutListConfiguration *config =
       [[UICollectionLayoutListConfiguration alloc]
@@ -35,7 +37,6 @@
   }
   return self;
 }
-// ... (viewDidLoad stays same) ...
 
 - (void)viewDidAppear:(BOOL)animated {
   [super viewDidAppear:animated];
@@ -80,11 +81,18 @@
   self.title = @"Settings";
   self.view.accessibilityIdentifier = @"wwn.settings.root";
   self.view.accessibilityLabel = @"Settings";
-#if !TARGET_OS_TV
+#if TARGET_OS_TV
+  // tvOS focus rings draw larger than the cell. Parent clipsToBounds would
+  // cut the platter at the split divider (a common UIKit issue).
+  self.view.clipsToBounds = NO;
+  self.collectionView.clipsToBounds = NO;
+  self.collectionView.layer.masksToBounds = NO;
+  self.collectionView.contentInset = UIEdgeInsetsMake(8, 12, 24, 28);
+  self.collectionView.remembersLastFocusedIndexPath = YES;
+#else
   self.navigationController.navigationBar.prefersLargeTitles = YES;
 #endif
-
-  // Add Done button to dismiss settings
+  [self wwn_syncDismissButtonWithSplitView];
 
   // Configure cell registration
   UICollectionViewCellRegistration *cellRegistration =
@@ -93,17 +101,7 @@
                configurationHandler:^(UICollectionViewListCell *cell,
                                       NSIndexPath *indexPath,
                                       WWNPreferencesSection *section) {
-                 UIListContentConfiguration *content =
-                     [cell defaultContentConfiguration];
-                 content.text = section.title;
-                 content.image = [UIImage systemImageNamed:section.icon];
-
-                 // Use the section color for the icon
-                 if (section.iconColor) {
-                   content.imageProperties.tintColor = section.iconColor;
-                 }
-
-                 cell.contentConfiguration = content;
+                 (void)indexPath;
                  cell.accessories =
                      @[ [[UICellAccessoryDisclosureIndicator alloc] init] ];
                  cell.accessibilityLabel = section.title;
@@ -115,6 +113,42 @@
                                                      stringByReplacingOccurrencesOfString:
                                                          @" "
                                                                              withString:@"."]];
+#if TARGET_OS_TV
+                 cell.configurationUpdateHandler =
+                     ^(UICollectionViewListCell *updatedCell,
+                       UICellConfigurationState *state) {
+                       UIListContentConfiguration *content =
+                           [updatedCell defaultContentConfiguration];
+                       content.text = section.title;
+                       content.image = [UIImage systemImageNamed:section.icon];
+                       if (state.isFocused) {
+                         // Focused tvOS platter is light. labelColor stays
+                         // white and the title vanishes without this swap.
+                         content.textProperties.color = [UIColor blackColor];
+                         content.imageProperties.tintColor = [UIColor darkGrayColor];
+                       } else if (section.iconColor) {
+                         content.textProperties.color = [UIColor labelColor];
+                         content.imageProperties.tintColor = section.iconColor;
+                       } else {
+                         content.textProperties.color = [UIColor labelColor];
+                       }
+                       updatedCell.contentConfiguration = content;
+                       UIBackgroundConfiguration *bg =
+                           [UIBackgroundConfiguration listGroupedCellConfiguration];
+                       bg.backgroundInsets =
+                           NSDirectionalEdgeInsetsMake(4, 8, 4, 12);
+                       updatedCell.backgroundConfiguration = bg;
+                     };
+#else
+                 UIListContentConfiguration *content =
+                     [cell defaultContentConfiguration];
+                 content.text = section.title;
+                 content.image = [UIImage systemImageNamed:section.icon];
+                 if (section.iconColor) {
+                   content.imageProperties.tintColor = section.iconColor;
+                 }
+                 cell.contentConfiguration = content;
+#endif
                }];
 
   // Configure data source
@@ -134,6 +168,64 @@
   [self updateSnapshot];
 }
 
+- (void)dismissSettings {
+  [self.splitViewController dismissViewControllerAnimated:YES completion:nil];
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+  [super viewWillAppear:animated];
+  [self wwn_syncDismissButtonWithSplitView];
+}
+
+- (void)viewWillTransitionToSize:(CGSize)size
+       withTransitionCoordinator:
+           (id<UIViewControllerTransitionCoordinator>)coordinator {
+  [super viewWillTransitionToSize:size withTransitionCoordinator:coordinator];
+  [coordinator
+      animateAlongsideTransition:^(
+          id<UIViewControllerTransitionCoordinatorContext> context) {
+        (void)context;
+        [self wwn_syncDismissButtonWithSplitView];
+      }
+      completion:^(id<UIViewControllerTransitionCoordinatorContext> context) {
+        (void)context;
+        [self wwn_syncDismissButtonWithSplitView];
+      }];
+}
+
+- (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
+  [super traitCollectionDidChange:previousTraitCollection];
+  [self wwn_syncDismissButtonWithSplitView];
+}
+
+// Expanded split (iPhone landscape / iPad): the system already shows the
+// sidebar toggle. Done lives on the detail column (blue checkmark). Showing
+// another Done on this nav bar duplicates it next to the toggle.
+// tvOS is always two columns: never put Done in the sidebar.
+- (void)wwn_syncDismissButtonWithSplitView {
+#if TARGET_OS_TV
+  self.navigationItem.rightBarButtonItem = nil;
+  self.navigationItem.leftBarButtonItem = nil;
+  return;
+#else
+  UISplitViewController *split = self.splitViewController;
+  if (split && !split.collapsed) {
+    self.navigationItem.rightBarButtonItem = nil;
+    return;
+  }
+  if (self.navigationItem.rightBarButtonItem) {
+    return;
+  }
+  UIBarButtonItem *done =
+      [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone
+                                                    target:self
+                                                    action:@selector(dismissSettings)];
+  done.accessibilityIdentifier = @"wwn.settings.done";
+  done.accessibilityLabel = @"Done";
+  self.navigationItem.rightBarButtonItem = done;
+#endif
+}
+
 - (void)updateSnapshot {
   NSDiffableDataSourceSnapshot<NSString *, WWNPreferencesSection *>
       *snapshot = [[NSDiffableDataSourceSnapshot alloc] init];
@@ -150,29 +242,26 @@
   WWNPreferencesSection *section =
       [self.dataSource itemIdentifierForIndexPath:indexPath];
 
-  // Set the active section on the detail view controller
   self.preferencesDetailViewController.activeSection = section;
-
-  // Refresh the detail view
-  [self.preferencesDetailViewController.tableView reloadData];
   self.preferencesDetailViewController.title = section.title;
 
-  // On iPhone (compact width), we need to push the detail view
-  // On iPad (regular width), the split view shows both, so we just update the
-  // detail
+  // Always show the secondary nav. After Env Vars swaps in the inventory,
+  // Preferences is no longer in that nav, so falling back to it would show
+  // the stub table again.
+  UIViewController *detail = self.detailNavigationController
+      ?: self.preferencesDetailViewController.navigationController
+      ?: self.preferencesDetailViewController;
   if (self.splitViewController.isCollapsed) {
-    [self.splitViewController
-        showDetailViewController:self.preferencesDetailViewController
-                          sender:nil];
-  } else {
-    // Ensure detail is shown (might be needed if we were in a different state)
-    if (self.preferencesDetailViewController.parentViewController != self &&
-        self.preferencesDetailViewController.parentViewController !=
-            self.splitViewController) {
-      [self.splitViewController
-          showDetailViewController:self.preferencesDetailViewController
-                            sender:nil];
-    }
+    [self.splitViewController showDetailViewController:detail sender:nil];
+  } else if (self.preferencesDetailViewController.parentViewController !=
+                 self &&
+             self.preferencesDetailViewController.parentViewController !=
+                 self.splitViewController &&
+             self.detailNavigationController.parentViewController !=
+                 self.splitViewController &&
+             self.preferencesDetailViewController.navigationController
+                     .parentViewController != self.splitViewController) {
+    [self.splitViewController showDetailViewController:detail sender:nil];
   }
 }
 

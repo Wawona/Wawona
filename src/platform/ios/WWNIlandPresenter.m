@@ -1,6 +1,6 @@
 //
 //  WWNIlandPresenter.m
-//  Wawona — iOS
+//  Wawona. IOS
 //
 //  See WWNIlandPresenter.h. Imports nested iland GL-client IOSurfaces into Metal
 //  and composites them into a CAMetalLayer (Mode A).
@@ -31,7 +31,7 @@ extern void iland_drm_complete_page_flip(uint32_t crtc_id, uint32_t fb_id);
 
 /*
  * iland wants the mode's refresh in millihertz. Passing 0 makes it assume 60,
- * since it can only query the real rate through CoreGraphics on macOS — so a
+ * since it can only query the real rate through CoreGraphics on macOS. So a
  * 120 Hz ProMotion host published a 60 Hz mode and any client pacing off it
  * (Weston's DRM backend does) ran at half the display's cadence. visionOS does
  * not publish a comparable rate, so it stays on auto.
@@ -44,11 +44,11 @@ static uint32_t WWNIlandRefreshMillihz(void) {
     return 0;
 }
 
+extern int vkcube_main(int argc, char *argv[]) __attribute__((weak_import));
 extern int kmscube_main(int argc, char *argv[]) __attribute__((weak_import));
 extern int gbm_es2_demo_main(int argc, char *argv[]) __attribute__((weak_import));
 extern int opengl_cube_main(int argc, char *argv[]) __attribute__((weak_import));
-extern int vkcube_main(int argc, char *argv[]) __attribute__((weak_import));
-/* iland drm_linux.c — write end of the page-flip event pipe (fd 42 read end). */
+/* iland drm_linux.c. Write end of the page-flip event pipe (fd 42 read end). */
 extern int g_drm_event_pipe_write;
 #ifndef DRM_VIRTUAL_FD
 #define DRM_VIRTUAL_FD 42
@@ -297,8 +297,8 @@ static MTLPixelFormat WWNMetalFormatForIOSurface(uint32_t fourcc) {
         return;
     }
 
-    // Host geometry is deliberately NOT touched here. Reading — let alone
-    // assigning — CALayer state from the client's render thread races AppKit/
+    // Host geometry is deliberately NOT touched here. Reading. Let alone
+    // assigning. CALayer state from the client's render thread races AppKit/
     // UIKit during a resize, and republishing the preferred mode per present was
     // inert regardless: iland applies it when a client enumerates modes, and a
     // stock KMS client enumerates once. -hostGeometryDidChange owns that now.
@@ -376,7 +376,7 @@ static MTLPixelFormat WWNMetalFormatForIOSurface(uint32_t fourcc) {
 
     // A stock KMS client keeps its startup framebuffer size for the whole run,
     // so after a host resize source and destination extents disagree. Letterbox
-    // rather than stretch — a real display scaling a mode it cannot change.
+    // rather than stretch. A real display scaling a mode it cannot change.
     NSUInteger tw = drawable.texture.width;
     NSUInteger th = drawable.texture.height;
     if (tw > 0 && th > 0 && (tw != w || th != h)) {
@@ -388,7 +388,7 @@ static MTLPixelFormat WWNMetalFormatForIOSurface(uint32_t fourcc) {
             s_lastFitW = tw;
             s_lastFitH = th;
             WWNLog(_presentLogModule ?: "ILAND",
-                   @"host resized to %lux%lu; client mode is fixed at %lux%lu — "
+                   @"host resized to %lux%lu; client mode is fixed at %lux%lu. "
                    @"letterboxing to %.0fx%.0f",
                    (unsigned long)tw, (unsigned long)th, (unsigned long)w,
                    (unsigned long)h, fitW, fitH);
@@ -485,7 +485,7 @@ static void *wwn_cube_thread(void *arg) {
 
     if (!wwn_prepare_iland_virtual_drm_fd()) {
         WWNLog(client->logModule,
-               @"aborting %@ — virtual DRM fd not ready", clientId);
+               @"aborting %@. Virtual DRM fd not ready", clientId);
         return NULL;
     }
 
@@ -514,7 +514,7 @@ static void *wwn_cube_thread(void *arg) {
     }
     if (wwn_cube_entry_for_id(clientId) == NULL) {
         WWNLog(client->logModule,
-               @"%@ unavailable — archive not linked "
+               @"%@ unavailable. Archive not linked "
                @"(-Wl,-u,_%s_main)", clientId, client->clientId);
         return NO;
     }
@@ -523,7 +523,7 @@ static void *wwn_cube_thread(void *arg) {
             return YES;
         }
         WWNLog(client->logModule,
-               @"refusing %@ — in-process %@ still owns iland DRM", clientId,
+               @"refusing %@. In-process %@ still owns iland DRM", clientId,
                _clientId ?: @"(unknown)");
         return NO;
     }

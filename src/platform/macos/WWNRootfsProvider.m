@@ -37,9 +37,9 @@ static NSDictionary<NSString *, NSString *> *WWNRootfsHostSnapshot(void) {
     @"mode" : @"host",
     @"filesRoot" : home,
     @"home" : home,
-    @"systemRoot" : xdgRuntime.length ? xdgRuntime : @"(host system — no bundled rootfs)",
-    @"bundleTemplateVersion" : @"—",
-    @"appliedTemplateVersion" : @"—",
+    @"systemRoot" : xdgRuntime.length ? xdgRuntime : @"(host system. No bundled rootfs)",
+    @"bundleTemplateVersion" : @"-",
+    @"appliedTemplateVersion" : @"-",
     @"filesHint" : @"Finder → Go → Home, or open Terminal with your login shell.",
     @"platformLabel" : WWNRootfsPlatformLabel(),
     @"shellPath" : shell,
@@ -59,7 +59,8 @@ static NSDictionary<NSString *, NSString *> *WWNRootfsHostSnapshot(void) {
          WWNRootfsCapabilityReinstallSystemTree |
          WWNRootfsCapabilityBrowseUserFiles | WWNRootfsCapabilityImportFile;
 #elif TARGET_OS_OSX
-  caps = WWNRootfsCapabilitySettings | WWNRootfsCapabilityBrowseUserFiles;
+  caps = WWNRootfsCapabilitySettings | WWNRootfsCapabilityBrowseUserFiles |
+         WWNRootfsCapabilityImportFile;
 #endif
 #if (TARGET_OS_IPHONE || TARGET_OS_OSX) && !TARGET_OS_TV
   if ([WWNRootfsICloudSync isSupported]) {

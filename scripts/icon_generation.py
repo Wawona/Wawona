@@ -1,5 +1,5 @@
 """
-Wawona icon — orange→purple vertical gradient, angular W, bear-claw scratches.
+Wawona icon. Orange→purple vertical gradient, angular W, bear-claw scratches.
 """
 
 import math

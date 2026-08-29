@@ -27,7 +27,7 @@ load_from_pass() {
 }
 
 if ! load_from_pass; then
-  echo "Missing SecretSpec/pass secrets — see docs/maintainers/secrets.md" >&2
+  echo "Missing SecretSpec/pass secrets. See docs/maintainers/secrets.md" >&2
   echo "Need: nix develop .#release && secretspec check -P local" >&2
   exit 1
 fi

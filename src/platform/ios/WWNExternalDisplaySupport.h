@@ -1,6 +1,6 @@
 //
 //  WWNExternalDisplaySupport.h
-//  Wawona — iOS AirPlay / external display mirroring.
+//  Wawona. IOS AirPlay / external display mirroring.
 //
 //  When an external (AirPlay or wired) display connects, iOS creates a scene
 //  with the ExternalDisplayNonInteractive role. WWNExternalSceneDelegate hosts

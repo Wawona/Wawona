@@ -109,6 +109,18 @@ public struct ResolvedMachineSettings: Hashable, Sendable {
     public var logLevel: String
     public var shakeToCloseEnabled: Bool
     public var swipeBackToCloseEnabled: Bool
+    public var compositorBackend: String
+    // Container (resolved machine > global; only meaningful when
+    // machineType == .container).
+    public var containerImageRef: String
+    public var containerCommand: String
+    public var containerMemory: String
+    public var containerShmSize: String
+    public var containerKernelPath: String
+    public var containerInitfsPath: String
+    public var containerVsockPort: Int
+    public var containerReadOnly: Bool
+    public var containerRemove: Bool
 }
 
 @MainActor
@@ -116,8 +128,14 @@ public final class WawonaPreferences: ObservableObject {
     public static let shared = WawonaPreferences()
 
     private static var defaultVulkanDriver: String {
-        #if os(tvOS) || os(watchOS)
+        #if os(watchOS)
         return "none"
+        #elseif os(tvOS)
+        #if WWN_TVOS_GPU_BUNDLED
+        return "moltenvk"
+        #else
+        return "none"
+        #endif
         #elseif os(macOS) && arch(arm64)
         if #available(macOS 26.0, *) {
             return "kosmickrisp"
@@ -128,15 +146,29 @@ public final class WawonaPreferences: ObservableObject {
         #endif
     }
 
+    private static var defaultOpenGLDriver: String {
+        #if os(watchOS)
+        return "none"
+        #elseif os(tvOS)
+        #if WWN_TVOS_GPU_BUNDLED
+        return "angle"
+        #else
+        return "none"
+        #endif
+        #else
+        return "angle"
+        #endif
+    }
+
     @Published public var renderer: String = "metal"
     @Published public var vulkanDriver: String = WawonaPreferences.defaultVulkanDriver
-    @Published public var openGLDriver: String = "angle"
+    @Published public var openGLDriver: String = WawonaPreferences.defaultOpenGLDriver
     @Published public var forceSSD: Bool = false
     @Published public var renderMacOSPointer: Bool = false
     /// "virtual" or "host"
     @Published public var nestedCompositorCursor: String = "virtual"
     @Published public var autoScale: Bool = true
-    @Published public var colorOperations: Bool = false
+    @Published public var colorOperations: Bool = true
     @Published public var waylandDisplay: String = "wayland-0"
     @Published public var sshHost: String = ""
     @Published public var sshUser: String = ""
@@ -168,11 +200,35 @@ public final class WawonaPreferences: ObservableObject {
     @Published public var defaultWaypipeEnabled: Bool = true
     /// When true, Waypipe is launched with `--xwls` (XWayland integration) for supported sessions.
     @Published public var xwaylandSupport: Bool = false
+    @Published public var compositorBackend: String = "auto"
+    @Published public var nestedCompositorsSupport: Bool = true
+    @Published public var multipleClients: Bool = true
+    @Published public var universalClipboard: Bool = true
+    @Published public var swapCmdWithAlt: Bool = true
+    @Published public var resizeDisplayForVirtualKeyboard: Bool = true
+    @Published public var waypipeCompress: String = "lz4"
+    @Published public var waypipeVideo: String = "none"
+    @Published public var waypipeRemoteCommand: String = ""
+    @Published public var waypipeDebug: Bool = false
+    @Published public var waypipeNoGpu: Bool = false
+    // Container defaults (Settings → Containers). Plain keys so the ObjC
+    // settings window and the SwiftUI machine settings share one source of
+    // truth (same pattern as SSHAuthMethod). Empty values mean "CLI default".
+    @Published public var containerDefaultImage: String = "alpine:3.20"
+    @Published public var containerDefaultCommand: String = "/bin/sh"
+    @Published public var containerMemory: String = ""
+    @Published public var containerShmSize: String = ""
+    @Published public var containerKernelPath: String = ""
+    @Published public var containerInitfsPath: String = ""
+    @Published public var containerVsockPort: Int = 1024
     @Published public var shakeToCloseEnabled: Bool = true
     @Published public var swipeBackToCloseEnabled: Bool = true
+    @Published public var machineSessionThumbnailsEnabled: Bool = true
     @Published public var hasCompletedWelcome: Bool = false
     @Published public var globalClientLaunchers: [ClientLauncher] = ClientLauncher.presets
     @Published public var diagnostics: [SettingsDiagnosticEntry] = []
+    /// Global environment overrides (`wawona.pref.environment.v1`). Absence of a key = inherit catalog/session default.
+    @Published public var environmentOverrides: EnvironmentOverrideMap = [:]
 
     private let defaults = UserDefaults.standard
     private let keyPrefix = "wawona.pref."
@@ -184,7 +240,25 @@ public final class WawonaPreferences: ObservableObject {
     public func load() {
         renderer = defaults.string(forKey: keyPrefix + "renderer") ?? "metal"
         vulkanDriver = defaults.string(forKey: "VulkanDriver") ?? WawonaPreferences.defaultVulkanDriver
-        openGLDriver = defaults.string(forKey: "OpenGLDriver") ?? "angle"
+        let storedOpenGL = defaults.string(forKey: "OpenGLDriver")
+        #if os(tvOS)
+        #if WWN_TVOS_GPU_BUNDLED
+        // ObjC owns the one-shot persist. Until that flag is set, leftover
+        // Phase 1 `none` is ANGLE so Swift save() cannot write none first.
+        let migrated = defaults.bool(forKey: "wawona.tvosOpenGLDriverMigrated.v1")
+        if storedOpenGL == "none" && !migrated {
+            openGLDriver = WawonaPreferences.defaultOpenGLDriver
+            defaults.set(openGLDriver, forKey: "OpenGLDriver")
+            defaults.synchronize()
+        } else {
+            openGLDriver = storedOpenGL ?? WawonaPreferences.defaultOpenGLDriver
+        }
+        #else
+        openGLDriver = storedOpenGL ?? "none"
+        #endif
+        #else
+        openGLDriver = storedOpenGL ?? WawonaPreferences.defaultOpenGLDriver
+        #endif
         if defaults.object(forKey: "ForceServerSideDecorations") != nil {
             forceSSD = defaults.bool(forKey: "ForceServerSideDecorations")
         } else {
@@ -195,7 +269,8 @@ public final class WawonaPreferences: ObservableObject {
         nestedCompositorCursor =
             (nestedCursor == "host" || nestedCursor == "virtual") ? nestedCursor : "virtual"
         autoScale = defaults.object(forKey: keyPrefix + "autoScale") as? Bool ?? true
-        colorOperations = defaults.object(forKey: keyPrefix + "colorOperations") as? Bool ?? false
+        colorOperations = defaults.object(forKey: "ColorOperations") as? Bool
+            ?? defaults.object(forKey: keyPrefix + "colorOperations") as? Bool ?? true
         waylandDisplay = defaults.string(forKey: keyPrefix + "waylandDisplay") ?? "wayland-0"
         sshHost = defaults.string(forKey: keyPrefix + "sshHost") ?? ""
         sshUser = defaults.string(forKey: keyPrefix + "sshUser") ?? ""
@@ -220,9 +295,43 @@ public final class WawonaPreferences: ObservableObject {
         defaultInputProfile = Self.normalizedTouchInputType(loadedInput)
         defaultBundledAppID = defaults.string(forKey: keyPrefix + "defaultBundledAppID") ?? "weston-terminal"
         defaultWaypipeEnabled = defaults.object(forKey: keyPrefix + "defaultWaypipeEnabled") as? Bool ?? true
-        xwaylandSupport = defaults.object(forKey: keyPrefix + "xwaylandSupport") as? Bool ?? false
+        xwaylandSupport = defaults.object(forKey: keyPrefix + "xwaylandSupport") as? Bool
+            ?? defaults.object(forKey: "WaypipeXwls") as? Bool ?? false
+        compositorBackend = defaults.string(forKey: "CompositorBackend")
+            ?? defaults.string(forKey: keyPrefix + "compositorBackend") ?? "auto"
+        nestedCompositorsSupport = defaults.object(forKey: "NestedCompositorsSupport") as? Bool
+            ?? defaults.object(forKey: keyPrefix + "nestedCompositorsSupport") as? Bool ?? true
+        multipleClients = defaults.object(forKey: "MultipleClients") as? Bool
+            ?? defaults.object(forKey: keyPrefix + "multipleClients") as? Bool ?? true
+        universalClipboard = defaults.object(forKey: "UniversalClipboard") as? Bool
+            ?? defaults.object(forKey: keyPrefix + "universalClipboard") as? Bool ?? true
+        swapCmdWithAlt = defaults.object(forKey: "SwapCmdWithAlt") as? Bool
+            ?? defaults.object(forKey: keyPrefix + "swapCmdWithAlt") as? Bool ?? true
+        resizeDisplayForVirtualKeyboard = defaults.object(forKey: "resizeDisplayForVirtualKeyboard") as? Bool
+            ?? defaults.object(forKey: keyPrefix + "resizeDisplayForVirtualKeyboard") as? Bool ?? true
+        waypipeCompress = defaults.string(forKey: "WaypipeCompress")
+            ?? defaults.string(forKey: keyPrefix + "waypipeCompress") ?? "lz4"
+        waypipeVideo = defaults.string(forKey: "WaypipeVideo")
+            ?? defaults.string(forKey: keyPrefix + "waypipeVideo") ?? "none"
+        waypipeRemoteCommand = defaults.string(forKey: "WaypipeRemoteCommand")
+            ?? defaults.string(forKey: keyPrefix + "waypipeRemoteCommand") ?? ""
+        waypipeDebug = defaults.object(forKey: "WaypipeDebug") as? Bool
+            ?? defaults.object(forKey: keyPrefix + "waypipeDebug") as? Bool ?? false
+        waypipeNoGpu = defaults.object(forKey: "WaypipeNoGpu") as? Bool
+            ?? defaults.object(forKey: keyPrefix + "waypipeNoGpu") as? Bool ?? false
+        containerDefaultImage = defaults.string(forKey: "ContainerDefaultImage") ?? "alpine:3.20"
+        containerDefaultCommand = defaults.string(forKey: "ContainerDefaultCommand") ?? "/bin/sh"
+        containerMemory = defaults.string(forKey: "ContainerMemory") ?? ""
+        containerShmSize = defaults.string(forKey: "ContainerShmSize") ?? ""
+        containerKernelPath = defaults.string(forKey: "ContainerKernelPath") ?? ""
+        containerInitfsPath = defaults.string(forKey: "ContainerInitfsPath") ?? ""
+        containerVsockPort = defaults.object(forKey: "ContainerVsockPort") as? Int ?? 1024
         shakeToCloseEnabled = defaults.object(forKey: keyPrefix + "shakeToCloseEnabled") as? Bool ?? true
         swipeBackToCloseEnabled = defaults.object(forKey: keyPrefix + "swipeBackToCloseEnabled") as? Bool ?? true
+        machineSessionThumbnailsEnabled =
+            defaults.object(forKey: "MachineSessionThumbnailsEnabled") as? Bool
+            ?? defaults.object(forKey: keyPrefix + "machineSessionThumbnailsEnabled") as? Bool
+            ?? true
         hasCompletedWelcome = defaults.bool(forKey: keyPrefix + "hasCompletedWelcome")
 
         if let launchersData = defaults.data(forKey: keyPrefix + "globalClientLaunchers"),
@@ -233,6 +342,9 @@ public final class WawonaPreferences: ObservableObject {
            let decoded = try? JSONDecoder().decode([SettingsDiagnosticEntry].self, from: diagnosticsData) {
             diagnostics = decoded
         }
+        environmentOverrides = EnvironmentResolver.decodeMap(
+            from: defaults.data(forKey: EnvironmentCatalog.storageKey)
+        )
     }
 
     public func save() {
@@ -258,6 +370,7 @@ public final class WawonaPreferences: ObservableObject {
             forKey: "NestedCompositorCursor"
         )
         defaults.set(autoScale, forKey: keyPrefix + "autoScale")
+        defaults.set(colorOperations, forKey: "ColorOperations")
         defaults.set(colorOperations, forKey: keyPrefix + "colorOperations")
         defaults.set(waylandDisplay, forKey: keyPrefix + "waylandDisplay")
         defaults.set(sshHost, forKey: keyPrefix + "sshHost")
@@ -279,17 +392,55 @@ public final class WawonaPreferences: ObservableObject {
         defaults.set(waypipeSSHPassword, forKey: keyPrefix + "waypipeSSHPassword")
         defaults.set(logLevel, forKey: keyPrefix + "logLevel")
         defaults.set(defaultInputProfile, forKey: keyPrefix + "defaultInputProfile")
+        defaults.set(defaultInputProfile, forKey: "TouchInputType")
         defaults.set(defaultBundledAppID, forKey: keyPrefix + "defaultBundledAppID")
         defaults.set(defaultWaypipeEnabled, forKey: keyPrefix + "defaultWaypipeEnabled")
         defaults.set(xwaylandSupport, forKey: keyPrefix + "xwaylandSupport")
+        defaults.set(xwaylandSupport, forKey: "WaypipeXwls")
+        defaults.set(compositorBackend, forKey: "CompositorBackend")
+        defaults.set(compositorBackend, forKey: keyPrefix + "compositorBackend")
+        defaults.set(nestedCompositorsSupport, forKey: "NestedCompositorsSupport")
+        defaults.set(nestedCompositorsSupport, forKey: keyPrefix + "nestedCompositorsSupport")
+        defaults.set(multipleClients, forKey: "MultipleClients")
+        defaults.set(multipleClients, forKey: keyPrefix + "multipleClients")
+        defaults.set(universalClipboard, forKey: "UniversalClipboard")
+        defaults.set(universalClipboard, forKey: keyPrefix + "universalClipboard")
+        defaults.set(swapCmdWithAlt, forKey: "SwapCmdWithAlt")
+        defaults.set(swapCmdWithAlt, forKey: keyPrefix + "swapCmdWithAlt")
+        defaults.set(resizeDisplayForVirtualKeyboard, forKey: "resizeDisplayForVirtualKeyboard")
+        defaults.set(resizeDisplayForVirtualKeyboard, forKey: keyPrefix + "resizeDisplayForVirtualKeyboard")
+        defaults.set(waypipeCompress, forKey: "WaypipeCompress")
+        defaults.set(waypipeCompress, forKey: keyPrefix + "waypipeCompress")
+        defaults.set(waypipeVideo, forKey: "WaypipeVideo")
+        defaults.set(waypipeVideo, forKey: keyPrefix + "waypipeVideo")
+        defaults.set(waypipeRemoteCommand, forKey: "WaypipeRemoteCommand")
+        defaults.set(waypipeRemoteCommand, forKey: keyPrefix + "waypipeRemoteCommand")
+        defaults.set(waypipeDebug, forKey: "WaypipeDebug")
+        defaults.set(waypipeDebug, forKey: keyPrefix + "waypipeDebug")
+        defaults.set(waypipeNoGpu, forKey: "WaypipeNoGpu")
+        defaults.set(waypipeNoGpu, forKey: keyPrefix + "waypipeNoGpu")
+        defaults.set(containerDefaultImage, forKey: "ContainerDefaultImage")
+        defaults.set(containerDefaultCommand, forKey: "ContainerDefaultCommand")
+        defaults.set(containerMemory, forKey: "ContainerMemory")
+        defaults.set(containerShmSize, forKey: "ContainerShmSize")
+        defaults.set(containerKernelPath, forKey: "ContainerKernelPath")
+        defaults.set(containerInitfsPath, forKey: "ContainerInitfsPath")
+        defaults.set(containerVsockPort, forKey: "ContainerVsockPort")
         defaults.set(shakeToCloseEnabled, forKey: keyPrefix + "shakeToCloseEnabled")
         defaults.set(swipeBackToCloseEnabled, forKey: keyPrefix + "swipeBackToCloseEnabled")
+        defaults.set(machineSessionThumbnailsEnabled, forKey: "MachineSessionThumbnailsEnabled")
+        defaults.set(machineSessionThumbnailsEnabled, forKey: keyPrefix + "machineSessionThumbnailsEnabled")
         defaults.set(hasCompletedWelcome, forKey: keyPrefix + "hasCompletedWelcome")
         if let data = try? JSONEncoder().encode(globalClientLaunchers) {
             defaults.set(data, forKey: keyPrefix + "globalClientLaunchers")
         }
         if let diagnosticsData = try? JSONEncoder().encode(diagnostics) {
             defaults.set(diagnosticsData, forKey: keyPrefix + "diagnostics")
+        }
+        if let envData = EnvironmentResolver.encodeMap(environmentOverrides) {
+            defaults.set(envData, forKey: EnvironmentCatalog.storageKey)
+        } else {
+            defaults.removeObject(forKey: EnvironmentCatalog.storageKey)
         }
         NotificationCenter.default.post(name: .wawonaPreferencesDidSave, object: self)
     }
@@ -311,6 +462,19 @@ public final class WawonaPreferences: ObservableObject {
         let normalizedWaylandDisplay = profile.runtimeOverrides.waylandDisplay?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
         let normalizedWaypipePassword = profile.runtimeOverrides.waypipeSSHPassword ?? ""
         let normalizedLogLevel = profile.runtimeOverrides.logLevel?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
+        let normalizedCompositorBackend = profile.runtimeOverrides.compositorBackend?
+            .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
+
+        // Container settings: per-machine value wins, empty/nil inherits the
+        // global default. New container machines created with empty fields
+        // therefore run exactly the global Settings → Containers defaults.
+        let cs = profile.containerSettings
+        let normalizedContainerRef = cs?.containerRef?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
+        let normalizedContainerCommand = cs?.entryCommand?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
+        let normalizedContainerMemory = cs?.memory?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
+        let normalizedContainerShmSize = cs?.shmSize?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
+        let normalizedContainerKernel = cs?.kernelPath?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
+        let normalizedContainerInitfs = cs?.initfsPath?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
 
         let resolvedWaypipeEnabled: Bool = {
             if profile.type == .native {
@@ -330,7 +494,7 @@ public final class WawonaPreferences: ObservableObject {
             vulkanDriver: PlatformCapabilities.allowsGpuStack
                 ? (normalizedVulkanDriver.isEmpty ? vulkanDriver : normalizedVulkanDriver)
                 : "none",
-            openGLDriver: PlatformCapabilities.allowsGpuStack
+            openGLDriver: PlatformCapabilities.allowsGlesStack
                 ? (normalizedOpenGLDriver.isEmpty ? openGLDriver : normalizedOpenGLDriver)
                 : "none",
             dmabufEnabled: PlatformCapabilities.allowsGpuStack
@@ -364,8 +528,86 @@ public final class WawonaPreferences: ObservableObject {
             inputProfile: normalizedInputProfile,
             logLevel: normalizedLogLevel.isEmpty ? logLevel : normalizedLogLevel,
             shakeToCloseEnabled: profile.runtimeOverrides.shakeToCloseEnabled ?? shakeToCloseEnabled,
-            swipeBackToCloseEnabled: profile.runtimeOverrides.swipeBackToCloseEnabled ?? swipeBackToCloseEnabled
+            swipeBackToCloseEnabled: profile.runtimeOverrides.swipeBackToCloseEnabled ?? swipeBackToCloseEnabled,
+            compositorBackend: {
+                let allowed = Set(["auto", "wayland", "drm"])
+                if allowed.contains(normalizedCompositorBackend.lowercased()) {
+                    return normalizedCompositorBackend.lowercased()
+                }
+                return compositorBackend
+            }(),
+            containerImageRef: normalizedContainerRef.isEmpty ? containerDefaultImage : normalizedContainerRef,
+            containerCommand: normalizedContainerCommand.isEmpty ? containerDefaultCommand : normalizedContainerCommand,
+            containerMemory: normalizedContainerMemory.isEmpty ? containerMemory : normalizedContainerMemory,
+            containerShmSize: normalizedContainerShmSize.isEmpty ? containerShmSize : normalizedContainerShmSize,
+            containerKernelPath: normalizedContainerKernel.isEmpty ? containerKernelPath : normalizedContainerKernel,
+            containerInitfsPath: normalizedContainerInitfs.isEmpty ? containerInitfsPath : normalizedContainerInitfs,
+            containerVsockPort: cs?.vsockPort ?? containerVsockPort,
+            containerReadOnly: cs?.readOnly ?? false,
+            containerRemove: cs?.remove ?? true
         )
+    }
+
+    /// Resolve environment rows for Settings UI / launch (machine > global > catalog/session).
+    /// Pass `machineOverrideMap` to preview a draft (e.g. machine editor) without upserting yet.
+    public func resolvedEnvironment(
+        for profile: MachineProfile?,
+        machineOverrideMap: EnvironmentOverrideMap? = nil,
+        session: EnvironmentSessionContext = EnvironmentSessionContext(),
+        stripBannedLocalShellKeys: Bool = false
+    ) -> [ResolvedEnvironmentEntry] {
+        var ctx = session
+        let resolved = profile.map { resolvedSettings(for: $0) }
+        ctx.waylandDisplay = resolved?.waylandDisplay ?? waylandDisplay
+        ctx.vulkanDriver = resolved?.vulkanDriver ?? vulkanDriver
+        ctx.openGLDriver = resolved?.openGLDriver ?? openGLDriver
+        let backend = resolved?.compositorBackend ?? compositorBackend
+        ctx.niriBackend = EnvironmentResolver.niriBackend(for: backend)
+        let level = resolved?.logLevel ?? logLevel
+        ctx.rustLog = EnvironmentResolver.rustLog(for: level)
+        ctx.disableVulkan = (ctx.vulkanDriver == "none")
+        ctx.disableEGL = (ctx.openGLDriver == "none")
+        if ctx.anglePlatform.isEmpty {
+            ctx.anglePlatform = "metal"
+        }
+
+        let machine =
+            machineOverrideMap
+            ?? profile?.runtimeOverrides.environment
+            ?? [:]
+
+        return EnvironmentResolver.resolve(
+            globalOverrides: environmentOverrides,
+            machineOverrides: machine,
+            session: ctx,
+            includeSecrets: false,
+            stripBannedLocalShellKeys: stripBannedLocalShellKeys
+        )
+    }
+
+    public func setEnvironmentOverride(name: String, override: EnvironmentOverride?) {
+        var next = environmentOverrides
+        if let override {
+            next[name] = override
+        } else {
+            EnvironmentResolver.resetOne(&next, name: name)
+        }
+        environmentOverrides = next
+        save()
+    }
+
+    public func resetEnvironmentManaged() {
+        var next = environmentOverrides
+        EnvironmentResolver.resetWawonaManaged(&next)
+        environmentOverrides = next
+        save()
+    }
+
+    public func resetEnvironmentAll() {
+        var next = environmentOverrides
+        EnvironmentResolver.resetAll(&next)
+        environmentOverrides = next
+        save()
     }
 
     public func recordDiagnostic(

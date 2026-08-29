@@ -1,15 +1,15 @@
 # NixOS VM bridge (p26-vm-nixos)
 
 How Wawona runs a full Linux (NixOS) Wayland session as a "machine", using
-Apple's native **Virtualization.framework** + **virtio-vsock** + **waypipe** —
+Apple's native **Virtualization.framework** + **virtio-vsock** + **waypipe** -
 the OrbStack model, not WSLg's RDP. This replaces the old QEMU-cocoa
 `wawona-linux-vm` path (which rendered into QEMU's own window) with surfaces
 presented natively inside Wawona.
 
 Status: **first vertical slice landed** (host launcher + guest image + flake
-wiring). Everything — including the `aarch64-linux` guest image — builds locally
+wiring). Everything. Including the `aarch64-linux` guest image. Builds locally
 on the Mac via **Determinate Nix's native VZ Linux builder**; no separate NixOS
-host is needed. End-to-end Wayland-over-vsock still needs a boot-test — see
+host is needed. End-to-end Wayland-over-vsock still needs a boot-test. See
 "Build & run" and "Known gaps".
 
 > **Relocated into [`wwn-vms`](../../wwn-vms).** The VM engine + guests now live in
@@ -23,24 +23,24 @@ host is needed. End-to-end Wayland-over-vsock still needs a boot-test — see
 
 There are two ways to boot the guest, both on Virtualization.framework:
 
-1. **Developer track — `microvm.nix` + `vfkit`** (recommended, working now).
+1. **Developer track. `microvm.nix` + `vfkit`** (recommended, working now).
    [microvm.nix](https://github.com/microvm-nix/microvm.nix) drives `vfkit`
    (a thin Virtualization.framework CLI). We adopted it after finding it already
    proven in `/etc/nix-darwin/.dotfiles` (`den.aspects.microvm` + a
    `wawona-vm-bridge.sh`). It builds the guest with **`writableStoreOverlay` +
    a virtiofs read-only share of the host `/nix/store`**, so the rootfs is a tiny
-   writable overlay disk and **no `make-disk-image`/QEMU/KVM is needed** — which
+   writable overlay disk and **no `make-disk-image`/QEMU/KVM is needed**. Which
    is exactly what stalled the hand-rolled guest on the VZ Linux builder.
    Files: [microvm-guest.nix](../../wwn-vms/dependencies/vms/microvm-guest.nix); flake
    apps `wawona-microvm` (boot) and `wawona-vm-bridge` (Wayland relay).
-2. **In-app track — native Swift launcher `wawona-vz`** (future, for embedding
+2. **In-app track. Native Swift launcher `wawona-vz`** (future, for embedding
    in Wawona.app with no external hypervisor):
    [WawonaLinuxVZ.swift](../../wwn-vms/dependencies/vms/WawonaLinuxVZ.swift) +
    [vz-launcher.nix](../../wwn-vms/dependencies/vms/vz-launcher.nix) +
    [nixos-guest.nix](../dependencies/wawona/nixos-guest.nix) (kernel/initrd/rootfs;
    deferred artifact track, still in Wawona).
 
-### vsock over vfkit — the one caveat
+### vsock over vfkit. The one caveat
 
 Upstream microvm.nix's vfkit runner still `throw`s on `microvm.vsock.cid != null`
 ("vfkit vsock support not yet implemented"). The dotfiles setup works because it
@@ -62,14 +62,14 @@ Wawona's `wayland-0`. (If/when upstream lands real vfkit vsock, switch to
 ### Run (developer track)
 
 ```sh
-# terminal 1 — build + boot the guest (uses the aarch64-linux builder once)
+# terminal 1. Build + boot the guest (uses the aarch64-linux builder once)
 nix run .#wawona-microvm
-# terminal 2 — relay the guest Wayland session into Wawona (must be running)
+# terminal 2. Relay the guest Wayland session into Wawona (must be running)
 nix run .#wawona-vm-bridge          # honors WAWONA_RUNTIME=/path/to/xdg-runtime
 ```
 
 **Build status:** `nix build .#packages.aarch64-darwin.wawona-microvm` is
-**verified** — the guest closure, systemd initrd, vfkit runner, and wrapper all
+**verified**. The guest closure, systemd initrd, vfkit runner, and wrapper all
 realize in ~90s on the Determinate aarch64-linux (VZ) builder with **no
 make-disk-image and no KVM**. Boot-test (guest → bridge → Wawona window) is the
 next validation.
@@ -91,13 +91,13 @@ Verified from OrbStack's architecture docs + HN/benchmarks:
   hypervisor for the CPU (Apple won't let third parties set the Rosetta CPU
   flags outside VZ anyway).
 - **Shared kernel** across machines (WSL2-style) for near-instant start and low
-  overhead. (We don't need this yet — one guest at a time.)
-- **vsock transport instead of a virtual NIC** for host↔guest — high throughput,
+  overhead. (We don't need this yet. One guest at a time.)
+- **vsock transport instead of a virtual NIC** for host↔guest. High throughput,
   low latency. This is the key idea we adopt for the Wayland pipe.
 - **Custom VirtioFS** with dynamic caching for fast file sharing. We use plain
   `VZVirtioFileSystemDeviceConfiguration` (virtiofs) for an optional host-dir
   share; OrbStack's caching is a future optimization.
-- **Rosetta** for x86_64 Linux binaries — we expose it optionally
+- **Rosetta** for x86_64 Linux binaries. We expose it optionally
   (`--rosetta`, `VZLinuxRosettaDirectoryShare`).
 - **Dynamic memory** (balloon, return unused RAM). We attach a virtio balloon.
 
@@ -131,7 +131,7 @@ a natural flake output).
   bidirectional **vsock↔unix bridge** so guest Wayland traffic reaches Wawona's
   socket. Ad-hoc signed with `com.apple.security.virtualization` at first run.
 - **Guest**: `wawona-nixos-guest` ([nixos-guest.nix](../dependencies/wawona/nixos-guest.nix))
-  — a NixOS system producing `Image` (uncompressed arm64 kernel), `initrd`, and a
+ . A NixOS system producing `Image` (uncompressed arm64 kernel), `initrd`, and a
   raw ext4 `rootfs.img`, plus a `wawona-wayland-bridge` service that runs a Wayland
   session under waypipe over vsock.
 
@@ -147,18 +147,18 @@ kernel `Image` (a compressed kernel hangs at boot). NixOS builds this at
 `VZVirtioSocketDevice` exposes virtio-vsock; the guest sees `/dev/vsock` at CID 3.
 `wawona-vz` supports both directions so we can match whatever waypipe wants:
 
-- `--vsock-listen PORT --forward-unix PATH` — host accepts guest-initiated vsock
+- `--vsock-listen PORT --forward-unix PATH`. Host accepts guest-initiated vsock
   connections on `PORT` and forwards each to host unix socket `PATH`
   (e.g. Wawona's `wayland-0`).
-- `--vsock-connect PORT --listen-unix PATH` — host listens on unix `PATH` and
+- `--vsock-connect PORT --listen-unix PATH`. Host listens on unix `PATH` and
   dials the guest on `PORT` for each local client.
 
 ## Build & run
 
-### 1. Build the guest — **locally on the Mac** (Determinate native Linux builder)
+### 1. Build the guest. **locally on the Mac** (Determinate native Linux builder)
 
 The guest is an `aarch64-linux` derivation (uncompressed arm64 kernel + initrd +
-ext4 rootfs) and can't be realized on `aarch64-darwin` directly — but you do
+ext4 rootfs) and can't be realized on `aarch64-darwin` directly. But you do
 **not** need a separate NixOS host. **Determinate Nix** on macOS ships a native
 Linux builder that runs the `aarch64-linux`/`x86_64-linux` build in a lightweight
 VM **using Virtualization.framework** (the same tech `wawona-vz` uses). It's
@@ -185,10 +185,10 @@ frontend, dEQP): they all realize on the same Determinate builder.
 > `aarch64-linux` builder, or building on an aarch64 NixOS host. An x86_64 NixOS
 > host would need `boot.binfmt.emulatedSystems = [ "aarch64-linux" ]` (slow).
 
-### 2. Run — on the Mac (this M1, macOS 26)
+### 2. Run. On the Mac (this M1, macOS 26)
 
 ```sh
-# rootfs must be writable — copy it out of the read-only Nix store first
+# rootfs must be writable. Copy it out of the read-only Nix store first
 cp ~/wawona-guest/rootfs.img /tmp/wawona-rootfs.img && chmod u+w /tmp/wawona-rootfs.img
 
 nix run .#wawona-vz -- \
@@ -205,7 +205,7 @@ vsock:6000 and its Wayland clients appear as Wawona windows.
 ## Where everything runs (summary)
 
 Thanks to Determinate's native (VZ-backed) Linux builder, **all of this is local
-to the Mac** — no separate NixOS host required.
+to the Mac**. No separate NixOS host required.
 
 | Task | Where | Notes |
 | --- | --- | --- |
@@ -225,7 +225,7 @@ GTK runtime, dEQP).
   `wawona-nixos-guest` (kernel/initrd/rootfs for the embedded Swift launcher)
   fails in `make-initrd-ng` on a dangling `ncurses` terminfo symlink
   (`share/terminfo/l/linux`, `No such file or directory`) on the Determinate VZ
-  Linux builder — independent of scripted-vs-systemd initrd. The microvm/vfkit
+  Linux builder. Independent of scripted-vs-systemd initrd. The microvm/vfkit
   track builds its own initrd fine, so it is the working path; the embedded
   `wawona-vz` in-app track is deferred until this store/ncurses issue is fixed.
 - **waypipe vsock topology unverified**: the guest service runs
@@ -239,12 +239,12 @@ GTK runtime, dEQP).
   `virtual_machine` machine type + `Machine*Stub` prefs
   ([WWNMachineProfileStore](../src/platform/macos/ui/Machines/WWNMachineProfileStore.m))
   are the next hook to launch this from the app.
-- **Not App Store viable** (spawns VMs) — ships in the direct (non-MAS) macOS
+- **Not App Store viable** (spawns VMs). Ships in the direct (non-MAS) macOS
   channel, like Mode B.
 
 ## Related
 
-- [2026-tier2-roadmap.md](./2026-tier2-roadmap.md) — p26 entry
-- [2026-platform-delivery-matrix.md](./2026-platform-delivery-matrix.md) — delivery modes
-- `wawona-linux-vm` (QEMU, [linux-vm.nix](../dependencies/wawona/linux-vm.nix)) —
+- [2026-tier2-roadmap.md](./2026-tier2-roadmap.md). P26 entry
+- [2026-platform-delivery-matrix.md](./2026-platform-delivery-matrix.md). Delivery modes
+- `wawona-linux-vm` (QEMU, [linux-vm.nix](../dependencies/wawona/linux-vm.nix)) -
   the legacy full-desktop QEMU path this supersedes for Wayland-into-Wawona.

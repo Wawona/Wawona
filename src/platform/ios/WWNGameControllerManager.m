@@ -1,6 +1,6 @@
 //
 //  WWNGameControllerManager.m
-//  Wawona — GameController framework input. See header.
+//  Wawona. GameController framework input. See header.
 //
 
 #import "WWNGameControllerManager.h"
@@ -9,6 +9,17 @@
 #import "WWNCompositorView_ios.h"
 
 #import <GameController/GameController.h>
+#import <QuartzCore/QuartzCore.h>
+#include <math.h>
+
+NSNotificationName const WWNTvRemoteShakeNotification =
+    @"WWNTvRemoteShakeNotification";
+NSNotificationName const WWNTvRemoteMenuBeganNotification =
+    @"WWNTvRemoteMenuBeganNotification";
+NSNotificationName const WWNTvRemoteMenuEndedNotification =
+    @"WWNTvRemoteMenuEndedNotification";
+NSNotificationName const WWNTvRemoteMenuCancelledNotification =
+    @"WWNTvRemoteMenuCancelledNotification";
 
 // Linux input-event-codes.h button values.
 static const uint32_t kBtnLeft = 0x110;
@@ -17,15 +28,21 @@ static const uint32_t kBtnMiddle = 0x112;
 
 /// Cursor speed in points/second at full stick deflection.
 static const CGFloat kStickCursorSpeed = 900.0;
+/// Siri Remote clickpad / 1st-gen touch surface as a relative pointer.
+static const CGFloat kSiriTouchpadCursorSpeed = 1400.0;
 /// Scroll speed at full deflection (wl_pointer axis units/second).
 static const CGFloat kStickScrollSpeed = 600.0;
 /// Deadzone for analog sticks.
 static const float kStickDeadzone = 0.15f;
+/// 1st-gen Siri Remote userAcceleration magnitude (g). Apple has no shake event.
+static const double kRemoteShakeG = 2.2;
+static const NSTimeInterval kRemoteShakeCooldown = 1.2;
 
 @implementation WWNGameControllerManager {
   BOOL _started;
   CADisplayLink *_stickLink;
   CFTimeInterval _lastStickTick;
+  CFTimeInterval _lastRemoteShakeTime;
 }
 
 + (instancetype)sharedManager {
@@ -124,14 +141,96 @@ static const float kStickDeadzone = 0.15f;
          (unsigned long)GCController.controllers.count);
 }
 
-- (void)_configureController:(GCController *)controller {
-  GCExtendedGamepad *pad = controller.extendedGamepad;
-  if (!pad) {
+- (void)_postTvMenuPressed:(BOOL)pressed {
+#if TARGET_OS_TV
+  NSNotificationName name = pressed ? WWNTvRemoteMenuBeganNotification
+                                    : WWNTvRemoteMenuEndedNotification;
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [[NSNotificationCenter defaultCenter] postNotificationName:name object:nil];
+  });
+#else
+  (void)pressed;
+#endif
+}
+
+- (void)_bindMenuButton:(GCControllerButtonInput *)button {
+  if (!button) {
     return;
   }
-  _gamepadConnected = YES;
-  WWNLog("GAMEPAD", @"Controller connected: %@", controller.vendorName);
+  __weak __typeof(self) weakSelf = self;
+  button.pressedChangedHandler =
+      ^(GCControllerButtonInput *b, float value, BOOL pressed) {
+        (void)b;
+        (void)value;
+        [weakSelf _postTvMenuPressed:pressed];
+      };
+}
 
+- (void)_noteRemoteShake {
+#if TARGET_OS_TV
+  CFTimeInterval now = CACurrentMediaTime();
+  if (now - _lastRemoteShakeTime < kRemoteShakeCooldown) {
+    return;
+  }
+  _lastRemoteShakeTime = now;
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [[NSNotificationCenter defaultCenter]
+        postNotificationName:WWNTvRemoteShakeNotification
+                      object:nil];
+  });
+#endif
+}
+
+- (BOOL)_shouldEnableRemoteShake:(GCController *)controller {
+  if (!controller.motion) {
+    return NO;
+  }
+  if (@available(iOS 15.0, tvOS 15.0, *)) {
+    NSString *cat = controller.productCategory;
+    // Black glass 1st-gen: Micro profile with motion.
+    if ([cat isEqualToString:GCProductCategorySiriRemote1stGen]) {
+      return YES;
+    }
+    // Silver clickpad remotes (2nd gen and 3rd gen USB-C): Directional, no IMU.
+    if ([cat isEqualToString:GCProductCategorySiriRemote2ndGen]) {
+      return NO;
+    }
+    // iPhone Control Center / Apple TV Remote app: touch only, no gyro.
+    if ([cat isEqualToString:GCProductCategoryControlCenterRemote]) {
+      return NO;
+    }
+    if ([cat isEqualToString:GCProductCategoryCoalescedRemote]) {
+      return NO;
+    }
+  }
+  // DualSense / Xbox / MFi: real IMU, not a virtual remote.
+  return controller.extendedGamepad != nil;
+}
+
+- (void)_configureMotion:(GCController *)controller {
+  if (![self _shouldEnableRemoteShake:controller]) {
+    return;
+  }
+  GCMotion *motion = controller.motion;
+  if (!motion) {
+    return;
+  }
+  if (@available(iOS 14.0, tvOS 14.0, *)) {
+    motion.sensorsActive = YES;
+  }
+  __weak __typeof(self) weakSelf = self;
+  motion.valueChangedHandler = ^(GCMotion *m) {
+    // Apple does not deliver UIEventSubtypeMotionShake for the Siri Remote.
+    // Classify a shake from userAcceleration (g, gravity removed).
+    GCAcceleration a = m.userAcceleration;
+    double mag = sqrt(a.x * a.x + a.y * a.y + a.z * a.z);
+    if (mag >= kRemoteShakeG) {
+      [weakSelf _noteRemoteShake];
+    }
+  };
+}
+
+- (void)_configureExtendedGamepad:(GCExtendedGamepad *)pad {
   __weak __typeof(self) weakSelf = self;
   pad.buttonA.pressedChangedHandler =
       ^(GCControllerButtonInput *button, float value, BOOL pressed) {
@@ -147,7 +246,6 @@ static const float kStickDeadzone = 0.15f;
         [[weakSelf _targetView] clickVirtualPointerButton:kBtnRight
                                                   pressed:pressed];
       };
-  // Dpad taps nudge the cursor for fine positioning.
   pad.dpad.valueChangedHandler =
       ^(GCControllerDirectionPad *dpad, float xValue, float yValue) {
         (void)dpad;
@@ -156,6 +254,54 @@ static const float kStickDeadzone = 0.15f;
                                                       dy:-yValue * 10.0];
         }
       };
+  if (@available(iOS 14.0, tvOS 14.0, *)) {
+#if TARGET_OS_TV
+    [self _bindMenuButton:pad.buttonMenu];
+#endif
+  }
+}
+
+- (void)_configureMicroGamepad:(GCMicroGamepad *)micro {
+  // Relative finger motion on the clickpad / 1st-gen touch surface.
+  // Absolute values pin the cursor to pad coordinates and fight swipe-look.
+  micro.reportsAbsoluteDpadValues = NO;
+  if (@available(iOS 14.0, tvOS 14.0, *)) {
+#if TARGET_OS_TV
+    [self _bindMenuButton:micro.buttonMenu];
+#endif
+  }
+  // Select/clickpad click already arrives as UIPressTypeSelect. Do not also
+  // bind buttonA or a cube gets a double click.
+}
+
+- (void)_configureController:(GCController *)controller {
+  BOOL any = NO;
+  if (controller.extendedGamepad) {
+    [self _configureExtendedGamepad:controller.extendedGamepad];
+    any = YES;
+  }
+  if (controller.microGamepad) {
+    [self _configureMicroGamepad:controller.microGamepad];
+    any = YES;
+  }
+#if TARGET_OS_TV
+  [self _configureMotion:controller];
+#endif
+  if (!any) {
+    return;
+  }
+  _gamepadConnected = YES;
+  NSString *category = @"(unknown)";
+  if (@available(iOS 13.0, tvOS 13.0, *)) {
+    category = controller.productCategory ?: @"(nil)";
+  }
+  WWNLog("GAMEPAD",
+         @"Controller connected: %@ category=%@ extended=%d micro=%d motion=%d "
+         @"shake=%d",
+         controller.vendorName ?: @"(unnamed)", category,
+         controller.extendedGamepad != nil ? 1 : 0,
+         controller.microGamepad != nil ? 1 : 0, controller.motion != nil ? 1 : 0,
+         [self _shouldEnableRemoteShake:controller] ? 1 : 0);
   [self _startStickLink];
 }
 
@@ -174,8 +320,9 @@ static const float kStickDeadzone = 0.15f;
   _stickLink = nil;
 }
 
-/// Per-frame analog stick sampling: left stick moves the cursor, right stick
-/// scrolls. Event handlers cannot express "held at constant deflection".
+/// Per-frame analog sampling: extended left stick moves the cursor, right
+/// stick scrolls. Siri Remote microGamepad dpad is the clickpad trackpad.
+/// Event handlers cannot express "held at constant deflection".
 - (void)_stickTick:(CADisplayLink *)link {
   CFTimeInterval now = link.timestamp;
   CFTimeInterval dt = _lastStickTick > 0 ? (now - _lastStickTick) : 0;
@@ -183,31 +330,37 @@ static const float kStickDeadzone = 0.15f;
   if (dt <= 0 || dt > 0.25) {
     return;
   }
-  GCExtendedGamepad *pad = nil;
-  for (GCController *controller in GCController.controllers) {
-    if (controller.extendedGamepad) {
-      pad = controller.extendedGamepad;
-      break;
-    }
-  }
-  if (!pad) {
-    return;
-  }
   WWNCompositorView_ios *view = [self _targetView];
   if (!view) {
     return;
   }
-  float lx = pad.leftThumbstick.xAxis.value;
-  float ly = pad.leftThumbstick.yAxis.value;
-  if (fabsf(lx) > kStickDeadzone || fabsf(ly) > kStickDeadzone) {
-    [view moveVirtualPointerByDx:lx * kStickCursorSpeed * dt
-                              dy:-ly * kStickCursorSpeed * dt];
-  }
-  float rx = pad.rightThumbstick.xAxis.value;
-  float ry = pad.rightThumbstick.yAxis.value;
-  if (fabsf(rx) > kStickDeadzone || fabsf(ry) > kStickDeadzone) {
-    [view scrollVirtualPointerByDx:rx * kStickScrollSpeed * dt
-                                dy:-ry * kStickScrollSpeed * dt];
+  for (GCController *controller in GCController.controllers) {
+    GCExtendedGamepad *pad = controller.extendedGamepad;
+    if (pad) {
+      float lx = pad.leftThumbstick.xAxis.value;
+      float ly = pad.leftThumbstick.yAxis.value;
+      if (fabsf(lx) > kStickDeadzone || fabsf(ly) > kStickDeadzone) {
+        [view moveVirtualPointerByDx:lx * kStickCursorSpeed * dt
+                                  dy:-ly * kStickCursorSpeed * dt];
+      }
+      float rx = pad.rightThumbstick.xAxis.value;
+      float ry = pad.rightThumbstick.yAxis.value;
+      if (fabsf(rx) > kStickDeadzone || fabsf(ry) > kStickDeadzone) {
+        [view scrollVirtualPointerByDx:rx * kStickScrollSpeed * dt
+                                    dy:-ry * kStickScrollSpeed * dt];
+      }
+      continue;
+    }
+    GCMicroGamepad *micro = controller.microGamepad;
+    if (!micro) {
+      continue;
+    }
+    float x = micro.dpad.xAxis.value;
+    float y = micro.dpad.yAxis.value;
+    if (fabsf(x) > kStickDeadzone || fabsf(y) > kStickDeadzone) {
+      [view moveVirtualPointerByDx:x * kSiriTouchpadCursorSpeed * dt
+                                dy:-y * kSiriTouchpadCursorSpeed * dt];
+    }
   }
 }
 

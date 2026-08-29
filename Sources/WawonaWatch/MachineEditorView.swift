@@ -1,69 +1,104 @@
 #if os(watchOS)
+import Foundation
 import SwiftUI
 import WawonaModel
+import WawonaUIContracts
 
+/// Add / Edit Machine. Same `MachineEditorValidation.visibleFields` catalog as iOS/macOS.
+/// Input (Touch Input Type) is Machine Settings only; do not show it here.
 struct MachineEditorView: View {
-    let profileStore: MachineProfileStore
+    @ObservedObject var profileStore: MachineProfileStore
     let existingProfile: MachineProfile?
 
     @Environment(\.dismiss) var dismiss
 
     @State var name: String
     @State var type: MachineType
+    @State var selectedLauncherName: String
     @State var sshHost: String
     @State var sshUser: String
-    @State var sshPort: String
+    @State var sshPort: Int
     @State var sshPassword: String
+    @State var sshAuthMethod: Int
+    @State var sshKeyPath: String
+    @State var sshKeyPassphrase: String
     @State var remoteCommand: String
-    @State var selectedLauncherName: String
-    @State var inputProfile: String
     @State var waypipeEnabled: Bool
+    @State private var keygenMessage: String?
 
     private var isEditing: Bool { existingProfile != nil }
-    private var isSSH: Bool { type == .sshWaypipe || type == .sshTerminal }
-    private var canSave: Bool { !name.trimmingCharacters(in: .whitespaces).isEmpty }
-    private var selectableTypes: [MachineType] {
-        PlatformCapabilities.availableMachineTypes
+    private var isNative: Bool { type == .native }
+    private var isSSH: Bool { type.isSSH }
+
+    private var contractState: MachineEditorState {
+        persistableEditorState()
+    }
+
+    private var visibleFields: [MachineEditorFieldID] {
+        MachineEditorValidation.visibleFields(for: contractState)
+    }
+
+    private func shows(_ field: MachineEditorFieldID) -> Bool {
+        visibleFields.contains(field)
+    }
+
+    private var hasValidationIssues: Bool {
+        var state = persistableEditorState()
+        if state.name.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines).isEmpty {
+            state.name = "Unnamed Machine"
+        }
+        return !MachineEditorValidation.validate(state).isEmpty
     }
 
     init(profileStore: MachineProfileStore, profile: MachineProfile? = nil) {
         self.profileStore = profileStore
         self.existingProfile = profile
-        _name = State(initialValue: profile?.name ?? "")
-        _type = State(initialValue: profile?.type ?? .native)
-        _sshHost = State(initialValue: profile?.sshHost ?? "")
-        _sshUser = State(initialValue: profile?.sshUser ?? "")
-        _sshPort = State(initialValue: profile.map { "\($0.sshPort)" } ?? "22")
-        _sshPassword = State(initialValue: profile?.sshPassword ?? "")
-        _remoteCommand = State(initialValue: profile?.remoteCommand ?? "weston-simple-shm")
-        let launcher = profile?.runtimeOverrides.bundledAppID?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let fallback = profile?.launchers.first?.name ?? "weston-simple-shm"
-        _selectedLauncherName = State(initialValue: launcher.isEmpty ? fallback : launcher)
-        _inputProfile = State(initialValue: profile?.runtimeOverrides.inputProfile ?? "direct")
-        _waypipeEnabled = State(initialValue: profile?.runtimeOverrides.waypipeEnabled ?? true)
+        let state = WatchUIContractAdapters.machineEditorState(from: profile)
+        _name = State(initialValue: state.name)
+        let parsed = MachineType(rawValue: state.typeRawValue) ?? .native
+        if parsed == .container || parsed == .virtualMachine {
+            _type = State(initialValue: .native)
+        } else {
+            _type = State(initialValue: parsed)
+        }
+        _selectedLauncherName = State(initialValue: state.selectedLauncherName)
+        _sshHost = State(initialValue: state.sshHost)
+        _sshUser = State(initialValue: state.sshUser)
+        _sshPort = State(initialValue: MachineEditorValidation.normalizedPort(from: state))
+        _sshPassword = State(initialValue: state.sshPassword)
+        _sshAuthMethod = State(initialValue: state.sshAuthMethod)
+        _sshKeyPath = State(initialValue: state.sshKeyPath)
+        _sshKeyPassphrase = State(initialValue: state.sshKeyPassphrase)
+        _remoteCommand = State(initialValue: state.remoteCommand)
+        _waypipeEnabled = State(initialValue: state.waypipeEnabled)
     }
 
     var body: some View {
         NavigationStack {
             Form {
-                Section("Profile") {
-                    TextField("Name", text: $name)
-                    Picker("Type", selection: $type) {
-                        ForEach(selectableTypes, id: \.self) { t in
-                            Label(t.userFacingName, systemImage: t.symbolName).tag(t)
+                if shows(.name) || shows(.type) {
+                    Section("Profile") {
+                        if shows(.name) {
+                            TextField("Unnamed Machine", text: $name)
+                        }
+                        if shows(.type) {
+                            Picker("Type", selection: $type) {
+                                ForEach(PlatformCapabilities.availableMachineTypes, id: \.self) { t in
+                                    Label(t.userFacingName, systemImage: t.symbolName).tag(t)
+                                }
+                            }
+                            .pickerStyle(.navigationLink)
                         }
                     }
-                    .pickerStyle(.navigationLink)
                 }
 
-                if type == .native {
+                if isNative && shows(.launcher) {
                     Section {
                         NavigationLink {
                             WatchBundledClientPickerView(selection: $selectedLauncherName)
                         } label: {
                             HStack {
-                                Text("Wayland Client")
+                                Text(MachineEditorValidation.metadata(for: .launcher).label)
                                 Spacer()
                                 Text(ClientLauncher.displayName(for: selectedLauncherName))
                                     .foregroundStyle(.secondary)
@@ -77,36 +112,86 @@ struct MachineEditorView: View {
 
                 if isSSH {
                     Section("Remote Host") {
-                        TextField("Host", text: $sshHost)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                        TextField("Username", text: $sshUser)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                        SecureField("Password", text: $sshPassword)
-                        TextField("Port", text: $sshPort)
-                        TextField(
-                            type == .sshWaypipe ? "Waypipe command" : "SSH command",
-                            text: $remoteCommand
-                        )
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
+                        if shows(.sshHost) {
+                            TextField(MachineEditorValidation.metadata(for: .sshHost).label, text: $sshHost)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                        }
+                        if shows(.sshUser) {
+                            TextField(MachineEditorValidation.metadata(for: .sshUser).label, text: $sshUser)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                        }
+                        if shows(.sshPort) {
+                            TextField(MachineEditorValidation.metadata(for: .sshPort).label, text: sshPortText)
+                        }
+                        if shows(.sshAuthMethod) {
+                            Picker(MachineEditorValidation.metadata(for: .sshAuthMethod).label, selection: $sshAuthMethod) {
+                                Text("Password").tag(0)
+                                Text("Public Key").tag(1)
+                            }
+                        }
+                        if shows(.sshPassword), sshAuthMethod == 0 {
+                            SecureField(MachineEditorValidation.metadata(for: .sshPassword).label, text: $sshPassword)
+                        }
+                        if sshAuthMethod == 1 {
+                            if shows(.sshKeyPath) {
+                                TextField(MachineEditorValidation.metadata(for: .sshKeyPath).label, text: $sshKeyPath)
+                                    .textInputAutocapitalization(.never)
+                                    .autocorrectionDisabled()
+                            }
+                            if shows(.sshKeyPassphrase) {
+                                SecureField(
+                                    MachineEditorValidation.metadata(for: .sshKeyPassphrase).label,
+                                    text: $sshKeyPassphrase
+                                )
+                            }
+                            Button("Generate Key") {
+                                do {
+                                    let path = try WWNSSHKeygen.generateKeyType(
+                                        "ed25519",
+                                        passphrase: sshKeyPassphrase
+                                    )
+                                    sshKeyPath = path
+                                    sshAuthMethod = 1
+                                    keygenMessage = "Created \(path)"
+                                } catch {
+                                    keygenMessage = error.localizedDescription
+                                }
+                            }
+                            if let keygenMessage {
+                                Text(keygenMessage).font(.caption2)
+                            }
+                        }
                     }
-                    Section("Remote Session") {
-                        Toggle("Waypipe Enabled", isOn: $waypipeEnabled)
-                    }
-                }
 
-                Section("Input") {
-                    TextField("Input Profile", text: $inputProfile)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
+                    if shows(.remoteCommand) {
+                        Section {
+                            TextField(
+                                type == .sshWaypipe ? "e.g. weston-simple-shm" : "e.g. bash -l",
+                                text: $remoteCommand
+                            )
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                        } header: {
+                            Text(type == .sshWaypipe ? "Waypipe Remote Command" : "SSH Command")
+                        }
+                    }
+
+                    if shows(.waypipeEnabled) {
+                        Section("Remote Session") {
+                            Toggle(
+                                MachineEditorValidation.metadata(for: .waypipeEnabled).label,
+                                isOn: $waypipeEnabled
+                            )
+                        }
+                    }
                 }
             }
             .navigationTitle(isEditing ? "Edit Machine" : "Add Machine")
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save", action: save).disabled(!canSave)
+                    Button("Save", action: save).disabled(hasValidationIssues)
                 }
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -115,23 +200,57 @@ struct MachineEditorView: View {
         }
     }
 
+    private var sshPortText: Binding<String> {
+        Binding(
+            get: { String(sshPort) },
+            set: { sshPort = MachineEditorValidation.normalizeSSHPort($0, fallback: sshPort) }
+        )
+    }
+
+    private func persistableEditorState() -> MachineEditorState {
+        let base = WatchUIContractAdapters.machineEditorState(from: existingProfile)
+        return MachineEditorState(
+            id: existingProfile?.id ?? base.id,
+            name: name,
+            typeRawValue: type.rawValue,
+            selectedLauncherName: selectedLauncherName,
+            sshHost: MachineEditorValidation.sanitizeSSHHost(sshHost),
+            sshUser: sshUser,
+            sshPortText: String(MachineEditorValidation.normalizeSSHPort(String(sshPort))),
+            sshPassword: sshPassword,
+            sshAuthMethod: sshAuthMethod,
+            sshKeyPath: sshKeyPath,
+            sshKeyPassphrase: sshKeyPassphrase,
+            remoteCommand: remoteCommand,
+            inputProfile: base.inputProfile,
+            bundledAppID: isNative ? selectedLauncherName : base.bundledAppID,
+            waypipeEnabled: waypipeEnabled
+        )
+    }
+
     private func save() {
-        var profile = existingProfile ?? MachineProfile(name: "", type: type)
-        profile.name = name.trimmingCharacters(in: .whitespaces)
-        profile.type = type
-        profile.sshHost = sshHost.trimmingCharacters(in: .whitespaces)
-        profile.sshUser = sshUser.trimmingCharacters(in: .whitespaces)
-        profile.sshPort = Int(sshPort.trimmingCharacters(in: .whitespaces)) ?? 22
-        profile.sshPassword = sshPassword
-        profile.remoteCommand = remoteCommand.trimmingCharacters(in: .whitespaces)
-        profile.runtimeOverrides.inputProfile = inputProfile.trimmingCharacters(in: .whitespaces)
-        profile.runtimeOverrides.waypipeEnabled = waypipeEnabled
-        if type == .native {
-            profile.runtimeOverrides.bundledAppID = selectedLauncherName
-            profile.launchers = ClientLauncher.presets.filter { $0.name == selectedLauncherName }
-        } else {
-            profile.runtimeOverrides.bundledAppID = nil
-            profile.launchers = []
+        let state = persistableEditorState()
+        if isSSH && !MachineEditorValidation.validate(state).isEmpty {
+            return
+        }
+        var profile = WatchUIContractAdapters.profile(from: state)
+        if profile.name.isEmpty {
+            profile.name = "Unnamed Machine"
+        }
+        if let baseline = existingProfile {
+            profile.favorite = baseline.favorite
+            profile.runtimeOverrides.renderer = baseline.runtimeOverrides.renderer
+            profile.runtimeOverrides.inputProfile = baseline.runtimeOverrides.inputProfile
+            profile.runtimeOverrides.autoScale = baseline.runtimeOverrides.autoScale
+            profile.runtimeOverrides.forceSSD = baseline.runtimeOverrides.forceSSD
+            profile.runtimeOverrides.renderMacOSPointer = baseline.runtimeOverrides.renderMacOSPointer
+            profile.runtimeOverrides.nestedCompositorCursor = baseline.runtimeOverrides.nestedCompositorCursor
+            profile.runtimeOverrides.colorOperations = baseline.runtimeOverrides.colorOperations
+            profile.runtimeOverrides.waylandDisplay = baseline.runtimeOverrides.waylandDisplay
+            profile.runtimeOverrides.logLevel = baseline.runtimeOverrides.logLevel
+            profile.runtimeOverrides.shakeToCloseEnabled = baseline.runtimeOverrides.shakeToCloseEnabled
+            profile.runtimeOverrides.swipeBackToCloseEnabled = baseline.runtimeOverrides.swipeBackToCloseEnabled
+            profile.runtimeOverrides.waypipeSSHPassword = baseline.runtimeOverrides.waypipeSSHPassword
         }
         profileStore.upsert(profile)
         dismiss()

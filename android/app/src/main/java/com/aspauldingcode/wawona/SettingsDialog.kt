@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import com.aspauldingcode.wawona.anowaw.AnowawPowerController
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -28,15 +29,18 @@ import androidx.compose.ui.viewinterop.AndroidView
 import android.widget.ImageView
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.net.Uri
+import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -52,6 +56,7 @@ private enum class SettingsTab(val label: String, val icon: ImageVector, val tes
     INPUT("Input", Icons.Filled.Keyboard, WawonaTestTags.SETTINGS_INPUT),
     GRAPHICS("Graphics", Icons.Filled.GraphicEq, WawonaTestTags.SETTINGS_GRAPHICS),
     CONNECTION("Connection", Icons.Filled.Computer, WawonaTestTags.SETTINGS_CONNECTION),
+    ENVIRONMENT("Env Vars", Icons.Filled.List, WawonaTestTags.SETTINGS_ENVIRONMENT),
     LOCAL_SHELL("Local Shell", Icons.Filled.Folder, WawonaTestTags.SETTINGS_LOCAL_SHELL),
     DESKTOP("Desktop", Icons.Filled.DesktopMac, WawonaTestTags.SETTINGS_DESKTOP),
     ADVANCED("Advanced", Icons.Filled.Tune, WawonaTestTags.SETTINGS_ADVANCED),
@@ -67,6 +72,7 @@ private enum class SettingsTab(val label: String, val icon: ImageVector, val tes
             INPUT -> Color(0xFF34A853)
             GRAPHICS -> Color(0xFFEA4335)
             CONNECTION -> Color(0xFFFBBC04)
+            ENVIRONMENT -> Color(0xFF00BFA5)
             LOCAL_SHELL -> Color(0xFF188038)
             DESKTOP -> Color(0xFF00ACC1)
             ADVANCED -> Color(0xFF9AA0A6)
@@ -76,6 +82,19 @@ private enum class SettingsTab(val label: String, val icon: ImageVector, val tes
             ABOUT -> Color(0xFF188038)
             DEPENDENCIES -> Color(0xFF1967D2)
         }
+}
+
+private data class SettingsChoiceSpec(
+    val key: String,
+    val title: String,
+    val options: List<String>,
+    val optionLabels: Map<String, String> = emptyMap(),
+    val default: String,
+    val persist: ((SharedPreferences, String) -> Unit)? = null,
+)
+
+private val LocalOpenSettingsChoice = staticCompositionLocalOf<(SettingsChoiceSpec) -> Unit> {
+    {}
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -91,14 +110,19 @@ fun SettingsDialog(
     val isWide = configuration.screenWidthDp >= 600
     var selectedTab by remember { mutableStateOf(SettingsTab.DISPLAY) }
     var narrowDetailTab by remember { mutableStateOf<SettingsTab?>(null) }
+    var choicePage by remember { mutableStateOf<SettingsChoiceSpec?>(null) }
 
     WawonaModalSheet(
         onDismiss = { onApply(); onDismiss() },
-        title = "Wawona Settings",
+        title = choicePage?.title ?: "Wawona Settings",
         defaultDetent = WawonaSheetDetent.Large,
         scrollBehavior = WawonaSheetScrollBehavior.ExpandWithContent,
         navigationIcon = {
-            if (!isWide && narrowDetailTab != null) {
+            if (choicePage != null) {
+                IconButton(onClick = { choicePage = null }) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                }
+            } else if (!isWide && narrowDetailTab != null) {
                 IconButton(onClick = { narrowDetailTab = null }) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                 }
@@ -113,11 +137,18 @@ fun SettingsDialog(
             }
         },
     ) { _ ->
-        if (isWide) {
+        CompositionLocalProvider(LocalOpenSettingsChoice provides { spec -> choicePage = spec }) {
+            if (choicePage != null) {
+                SettingsChoiceList(
+                    spec = choicePage!!,
+                    prefs = prefs,
+                    onPicked = { choicePage = null },
+                )
+            } else if (isWide) {
             Row(Modifier.fillMaxSize().testTag(WawonaTestTags.SETTINGS_ROOT)) {
                 SettingsSidebarList(
                     selected = selectedTab,
-                    onSelect = { selectedTab = it },
+                    onSelect = { selectedTab = it; choicePage = null },
                     modifier = Modifier.width(220.dp),
                 )
                 VerticalDivider()
@@ -160,6 +191,7 @@ fun SettingsDialog(
                     )
                 }
             }
+        }
         }
     }
 }
@@ -239,6 +271,7 @@ private fun SettingsSectionContent(
             SettingsTab.INPUT -> InputSection(prefs)
             SettingsTab.GRAPHICS -> GraphicsSection(prefs)
             SettingsTab.CONNECTION -> ConnectionSection(prefs, localIpAddress, context, SettingsTab.CONNECTION.accentColor)
+            SettingsTab.ENVIRONMENT -> EnvironmentSection(prefs, SettingsTab.ENVIRONMENT.accentColor)
             SettingsTab.LOCAL_SHELL -> LocalShellSection(context, SettingsTab.LOCAL_SHELL.accentColor)
             SettingsTab.DESKTOP -> {
                 DesktopSection(prefs, context, SettingsTab.DESKTOP.accentColor)
@@ -256,7 +289,18 @@ private fun SettingsSectionContent(
 
 @Composable
 private fun MachineStubsSection(prefs: SharedPreferences, accent: Color) {
-    SettingsSectionHeader("Virtual Machines", Icons.Filled.Storage, accent)
+    SettingsSectionHeader("Machines", Icons.Filled.Storage, accent)
+    SettingsGroup(accent) {
+        SettingsSwitchItem(prefs, "wawona.pref.shakeToCloseEnabled", "Shake to Exit Machine",
+            "When enabled, shaking the device asks before closing the active machine session.",
+            Icons.Filled.Vibration, default = true, iconTint = accent)
+        SettingsSwitchItem(prefs, "wawona.pref.swipeBackToCloseEnabled", "Swipe Back to Exit Machine",
+            "When enabled, the system back gesture asks before closing the active machine session.",
+            Icons.Filled.ArrowBack, default = true, iconTint = accent)
+        SettingsSwitchItem(prefs, "MachineSessionThumbnailsEnabled", "Session Thumbnails",
+            "Save the last frame from a machine session and show it on machine cards.",
+            Icons.Filled.Image, default = true, iconTint = accent)
+    }
     SettingsTextInputItem(
         prefs, "machineVmProvider", "VM Provider",
         "Hypervisor lane (microvm, utm-se, qemu-jit)", Icons.Filled.Storage,
@@ -267,10 +311,6 @@ private fun MachineStubsSection(prefs: SharedPreferences, accent: Color) {
         "Guest waypipe port (wwn-vms mobile guest default)", Icons.Filled.Tune,
         "1024", KeyboardType.Number
     )
-
-    Spacer(Modifier.height(12.dp))
-
-    SettingsSectionHeader("Containers", Icons.Filled.Inventory2, accent)
     SettingsTextInputItem(
         prefs, "machineContainerDefaultRef", "Default Image Ref",
         "OCI reference for container profiles", Icons.Filled.Inventory2,
@@ -291,11 +331,9 @@ private fun MachineStubsSection(prefs: SharedPreferences, accent: Color) {
 private fun DisplaySection(prefs: SharedPreferences) {
     SettingsSectionHeader("Display", Icons.Filled.DesktopWindows, SettingsTab.DISPLAY.accentColor)
     SettingsGroup(SettingsTab.DISPLAY.accentColor) {
-        SettingsSwitchItem(prefs, "forceServerSideDecorations", "Force Server-Side Decorations",
-            "When off, Wayland clients (e.g. weston-terminal) draw their own window frames. When on, the compositor owns decorations.",
-            Icons.Filled.BorderOuter, default = false, iconTint = SettingsTab.DISPLAY.accentColor)
-        SettingsSwitchItem(prefs, "autoScale", "Auto Scale",
-            "Detect and match Android UI scaling", Icons.Filled.AspectRatio, default = true, iconTint = SettingsTab.DISPLAY.accentColor)
+        SettingsSwitchItem(prefs, "colorOperations", "Enable HDR",
+            "Color profiles and HDR present path", Icons.Filled.Palette, default = true,
+            iconTint = SettingsTab.DISPLAY.accentColor)
         SettingsSwitchItem(prefs, "respectSafeArea", "Respect Safe Area",
             "Avoid system UI and notches", Icons.Filled.Security, default = true, iconTint = SettingsTab.DISPLAY.accentColor)
     }
@@ -312,10 +350,126 @@ private fun GraphicsSection(prefs: SharedPreferences) {
             "Select OpenGL/GLES implementation. None disables OpenGL.", Icons.Filled.GraphicEq, "ANGLE",
             listOf("None", "ANGLE", "System"), iconTint = SettingsTab.GRAPHICS.accentColor)
     }
-    SettingsSectionHeader("Features", Icons.Filled.Tune, SettingsTab.GRAPHICS.accentColor)
-    SettingsGroup(SettingsTab.GRAPHICS.accentColor) {
-        SettingsSwitchItem(prefs, "dmabufEnabled", "DmaBuf Support",
-            "Enable DMA buffer sharing between clients", Icons.Filled.Share, default = true, iconTint = SettingsTab.GRAPHICS.accentColor)
+}
+
+@Composable
+private fun EnvironmentSection(prefs: SharedPreferences, accent: Color) {
+    var map by remember {
+        mutableStateOf(EnvironmentOverrides.loadGlobal(prefs).toList().sortedBy { it.first })
+    }
+    var showEditor by remember { mutableStateOf(false) }
+    var editName by remember { mutableStateOf("") }
+    var editValue by remember { mutableStateOf("") }
+    var isNew by remember { mutableStateOf(false) }
+
+    fun persist(next: Map<String, EnvironmentOverrides.Entry>) {
+        EnvironmentOverrides.saveGlobal(prefs, next)
+        map = next.toList().sortedBy { it.first }
+        try {
+            WawonaNative.nativeApplyEnvironmentOverrides(
+                EnvironmentOverrides.jniPayload(prefs, null)
+            )
+        } catch (_: Throwable) {
+        }
+    }
+
+    SettingsSectionHeader("Env Vars", Icons.Filled.List, accent)
+    Text(
+        "Windows-style overrides for vars Wawona injects (TERM, WAYLAND_DISPLAY, VK_*, …). " +
+            "Machine Settings can override these. Applies on next Start.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(bottom = 8.dp).testTag(WawonaTestTags.SETTINGS_ENVIRONMENT),
+    )
+    SettingsGroup(accent) {
+        if (map.isEmpty()) {
+            Text(
+                "No global overrides (Wawona defaults).",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(12.dp),
+            )
+        } else {
+            map.forEach { (name, entry) ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(name, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            if (entry.action == "unset") "(unset)" else (entry.value ?: ""),
+                            fontFamily = FontFamily.Monospace,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    TextButton(onClick = {
+                        isNew = false
+                        editName = name
+                        editValue = entry.value ?: ""
+                        showEditor = true
+                    }) { Text("Edit") }
+                    TextButton(onClick = {
+                        val next = EnvironmentOverrides.loadGlobal(prefs)
+                        next.remove(name)
+                        persist(next)
+                    }) { Text("Reset") }
+                }
+            }
+        }
+    }
+    Row(modifier = Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Button(onClick = {
+            isNew = true
+            editName = ""
+            editValue = ""
+            showEditor = true
+        }) { Text("New") }
+        OutlinedButton(onClick = {
+            val next = EnvironmentOverrides.loadGlobal(prefs)
+            EnvironmentOverrides.resetManaged(next)
+            persist(next)
+        }) { Text("Reset Wawona-managed") }
+        OutlinedButton(onClick = { persist(emptyMap()) }) { Text("Reset All") }
+    }
+
+    if (showEditor) {
+        AlertDialog(
+            onDismissRequest = { showEditor = false },
+            title = { Text(if (isNew) "New Variable" else "Edit Variable") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = editName,
+                        onValueChange = { editName = it },
+                        label = { Text("Name") },
+                        enabled = isNew,
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = editValue,
+                        onValueChange = { editValue = it },
+                        label = { Text("Value") },
+                        singleLine = true,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val name = editName.trim()
+                    if (name.isNotEmpty()) {
+                        val next = EnvironmentOverrides.loadGlobal(prefs)
+                        next[name] = EnvironmentOverrides.Entry.set(editValue)
+                        persist(next)
+                    }
+                    showEditor = false
+                }) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEditor = false }) { Text("Cancel") }
+            },
+        )
     }
 }
 
@@ -323,15 +477,6 @@ private fun GraphicsSection(prefs: SharedPreferences) {
 private fun AdvancedSection(prefs: SharedPreferences) {
     SettingsSectionHeader("Advanced", Icons.Filled.Tune, SettingsTab.ADVANCED.accentColor)
     SettingsGroup(SettingsTab.ADVANCED.accentColor) {
-        SettingsSwitchItem(prefs, "wawona.pref.shakeToCloseEnabled", "Shake to Exit Machine",
-            "When enabled, shaking the device asks before closing the active machine session.",
-            Icons.Filled.Vibration, default = true, iconTint = SettingsTab.ADVANCED.accentColor)
-        SettingsSwitchItem(prefs, "wawona.pref.swipeBackToCloseEnabled", "Swipe Back to Exit Machine",
-            "When enabled, the system back gesture asks before closing the active machine session.",
-            Icons.Filled.ArrowBack, default = true, iconTint = SettingsTab.ADVANCED.accentColor)
-        SettingsSwitchItem(prefs, "colorOperations", "Color Operations",
-            "Enable color profiles, HDR requests, etc.", Icons.Filled.Palette, default = true,
-            iconTint = SettingsTab.ADVANCED.accentColor)
         SettingsSwitchItem(prefs, "nestedCompositorsSupport", "Nested Compositors",
             "Support nested Wayland compositors", Icons.Filled.Layers, default = true,
             iconTint = SettingsTab.ADVANCED.accentColor)
@@ -351,7 +496,7 @@ private fun AdvancedSection(prefs: SharedPreferences) {
             ),
         )
         SettingsSwitchItem(prefs, "multipleClients", "Multiple Clients",
-            "Allow multiple Wayland clients", Icons.Filled.Group, default = false,
+            "Allow multiple Wayland clients", Icons.Filled.Group, default = true,
             iconTint = SettingsTab.ADVANCED.accentColor)
         SettingsSwitchItem(prefs, "westonSimpleSHMEnabled", "Enable Weston Simple SHM",
             "Start weston-simple-shm on launch", Icons.Filled.PlayArrow, default = false,
@@ -369,13 +514,13 @@ private fun AdvancedSection(prefs: SharedPreferences) {
 @Composable
 private fun DesktopSection(prefs: SharedPreferences, context: Context, accent: Color) {
     var enabled by remember { mutableStateOf(DesktopReplacement.isEnabled(prefs)) }
-    var selectedMachineId by remember { mutableStateOf(DesktopReplacement.desktopMachineId(prefs)) }
+    val selectedMachineId = DesktopReplacement.desktopMachineId(prefs)
     val profiles = remember { MachineProfileStore.loadProfiles(prefs) }
     val nativeMachines = remember(profiles) { DesktopReplacement.eligibleMachines(profiles) }
     var isHome by remember { mutableStateOf(DesktopReplacement.isWawonaHome(context)) }
-    var pickerExpanded by remember { mutableStateOf(false) }
     var appBridgeEnabled by remember { mutableStateOf(DesktopReplacement.isAppBridgeEnabled(prefs)) }
     var powerModeEnabled by remember { mutableStateOf(DesktopReplacement.isPowerModeEnabled(prefs)) }
+    val openChoice = LocalOpenSettingsChoice.current
 
     SettingsSectionHeader("Desktop Replacement", Icons.Filled.DesktopMac, accent)
 
@@ -388,7 +533,7 @@ private fun DesktopSection(prefs: SharedPreferences, context: Context, accent: C
             "Turn Wawona into an Android Launcher: one native machine becomes your " +
                 "Wayland desktop, and an app drawer lets you open both Android apps and " +
                 "the Wayland clients from Machine Configuration. Only a Native machine " +
-                "can be the desktop — VM, container, and network (waypipe/SSH) machines " +
+                "can be the desktop. VM, container, and network (waypipe/SSH) machines " +
                 "are not eligible.\n\n" +
                 "Unlike macOS Desktop Replacement, Android does not require SIP changes or " +
                 "Recovery-mode steps. Set Wawona as your Home app below.",
@@ -417,11 +562,9 @@ private fun DesktopSection(prefs: SharedPreferences, context: Context, accent: C
                     Spacer(Modifier.width(16.dp))
                     Column(Modifier.weight(1f)) {
                         Text("Enable Desktop Replacement",
-                            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium))
-                        Spacer(Modifier.height(4.dp))
-                        Text("Run Wawona as the device desktop / home.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis)
                     }
                 }
                 Spacer(Modifier.width(16.dp))
@@ -451,39 +594,51 @@ private fun DesktopSection(prefs: SharedPreferences, context: Context, accent: C
         } else {
             val selectedProfile = nativeMachines.firstOrNull { it.id == selectedMachineId }
             SettingsGroup(accent) {
-                ExposedDropdownMenuBox(
-                    expanded = pickerExpanded,
-                    onExpandedChange = { pickerExpanded = it },
-                ) {
-                    OutlinedTextField(
-                        value = selectedProfile?.name?.ifBlank { "Unnamed Machine" }
-                            ?: "Select a native machine",
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text("Desktop Machine (Native only)") },
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = pickerExpanded) },
-                        modifier = Modifier.fillMaxWidth().menuAnchor().padding(8.dp),
-                    )
-                    DropdownMenu(expanded = pickerExpanded, onDismissRequest = { pickerExpanded = false }) {
-                        nativeMachines.forEach { machine ->
-                            DropdownMenuItem(
-                                text = {
-                                    Column {
-                                        Text(machine.name.ifBlank { "Unnamed Machine" })
-                                        Text(
-                                            BundledClients.labelFor(machine.nativeLauncher),
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
-                                    }
+                val displayName = selectedProfile?.name?.ifBlank { "Unnamed Machine" }
+                    ?: "Select a native machine"
+                Surface(
+                    onClick = {
+                        openChoice(
+                            SettingsChoiceSpec(
+                                key = DesktopReplacement.KEY_MACHINE_ID,
+                                title = "Desktop Machine",
+                                options = nativeMachines.map { it.id },
+                                optionLabels = nativeMachines.associate { machine ->
+                                    machine.id to machine.name.ifBlank { "Unnamed Machine" }
                                 },
-                                onClick = {
-                                    selectedMachineId = machine.id
-                                    DesktopReplacement.setDesktopMachineId(prefs, machine.id)
-                                    pickerExpanded = false
-                                },
+                                default = selectedMachineId ?: "",
+                                persist = { p, id -> DesktopReplacement.setDesktopMachineId(p, id) },
                             )
-                        }
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "Desktop Machine",
+                            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(
+                            displayName,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Icon(
+                            Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = "Show choices",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
             }
@@ -527,8 +682,8 @@ private fun DesktopSection(prefs: SharedPreferences, context: Context, accent: C
             }
         }
 
-        // ── App Bridge (anowaW) ──────────────────────────────────────────────
-        SettingsSectionHeader("App Bridge (anowaW)", Icons.Filled.Apps, accent)
+        // ── Wawona Swinging Bridge ──────────────────────────────────────────────
+        SettingsSectionHeader("Wawona Swinging Bridge", Icons.Filled.Apps, accent)
 
         Surface(
             Modifier.fillMaxWidth().padding(vertical = 4.dp),
@@ -540,7 +695,7 @@ private fun DesktopSection(prefs: SharedPreferences, context: Context, accent: C
                     "desktop (waypipe-rs mirror). Requires a local nested Weston " +
                     "desktop machine.\n\n" +
                     "Rootless / baseline (Play-safe): own Wawona surfaces + consented " +
-                    "MediaProjection mirroring — no SIP, no root.\n\n" +
+                    "MediaProjection mirroring. No SIP, no root.\n\n" +
                     "Power Mode (Shizuku or root): embed any installed app with " +
                     "privileged input. Auto-falls back to rootless if Shizuku/root " +
                     "is unavailable. Not Play-compliant.",
@@ -575,11 +730,9 @@ private fun DesktopSection(prefs: SharedPreferences, context: Context, accent: C
                         Spacer(Modifier.width(16.dp))
                         Column(Modifier.weight(1f)) {
                             Text("Enable App Bridge",
-                                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium))
-                            Spacer(Modifier.height(4.dp))
-                            Text("Show Android apps as Wayland windows in the desktop.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis)
                         }
                     }
                     Spacer(Modifier.width(16.dp))
@@ -666,10 +819,10 @@ private fun DesktopSection(prefs: SharedPreferences, context: Context, accent: C
 @Composable
 private fun LockscreenSection(prefs: SharedPreferences, accent: Color) {
     var enabled by remember { mutableStateOf(LockscreenReplacement.isEnabled(prefs)) }
-    var selectedMachineId by remember { mutableStateOf(LockscreenReplacement.lockscreenMachineId(prefs)) }
+    val selectedMachineId = LockscreenReplacement.lockscreenMachineId(prefs)
     val profiles = remember { MachineProfileStore.loadProfiles(prefs) }
     val lockMachines = remember(profiles) { LockscreenReplacement.eligibleMachines(profiles) }
-    var pickerExpanded by remember { mutableStateOf(false) }
+    val openChoice = LocalOpenSettingsChoice.current
 
     SettingsSectionHeader("Lockscreen Replacement", Icons.Filled.Lock, accent)
     Surface(
@@ -704,12 +857,8 @@ private fun LockscreenSection(prefs: SharedPreferences, accent: Color) {
                     Text(
                         "Enable Lockscreen Replacement",
                         style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "Local Native greeter before desktop session.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
                 Switch(checked = enabled, onCheckedChange = {
@@ -730,32 +879,49 @@ private fun LockscreenSection(prefs: SharedPreferences, accent: Color) {
         } else {
             val selected = lockMachines.firstOrNull { it.id == selectedMachineId }
             SettingsGroup(accent) {
-                ExposedDropdownMenuBox(
-                    expanded = pickerExpanded,
-                    onExpandedChange = { pickerExpanded = it },
-                ) {
-                    OutlinedTextField(
-                        value = selected?.name ?: "Select lockscreen machine",
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text("Lockscreen Machine") },
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = pickerExpanded) },
-                        modifier = Modifier.menuAnchor().fillMaxWidth(),
-                    )
-                    ExposedDropdownMenu(
-                        expanded = pickerExpanded,
-                        onDismissRequest = { pickerExpanded = false },
-                    ) {
-                        lockMachines.forEach { machine ->
-                            DropdownMenuItem(
-                                text = { Text(machine.name) },
-                                onClick = {
-                                    selectedMachineId = machine.id
-                                    LockscreenReplacement.setLockscreenMachineId(prefs, machine.id)
-                                    pickerExpanded = false
+                Surface(
+                    onClick = {
+                        openChoice(
+                            SettingsChoiceSpec(
+                                key = LockscreenReplacement.KEY_MACHINE_ID,
+                                title = "Lockscreen Machine",
+                                options = lockMachines.map { it.id },
+                                optionLabels = lockMachines.associate { it.id to it.name },
+                                default = selectedMachineId ?: "",
+                                persist = { p, id ->
+                                    LockscreenReplacement.setLockscreenMachineId(p, id)
                                 },
                             )
-                        }
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "Lockscreen Machine",
+                            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(
+                            selected?.name ?: "Select lockscreen machine",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Icon(
+                            Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = "Show choices",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
             }
@@ -819,26 +985,12 @@ private fun InputSection(prefs: SharedPreferences) {
 @Composable
 private fun ConnectionSection(prefs: SharedPreferences, localIp: String?, context: Context, accent: Color) {
     SettingsSectionHeader("Network", Icons.Filled.Computer, accent)
-    Surface(
-        Modifier.fillMaxWidth().padding(vertical = 4.dp),
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-    ) {
-        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Filled.Info, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.width(16.dp))
-            Column(Modifier.weight(1f)) {
-                Text("Local IP Address",
-                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
-                    color = MaterialTheme.colorScheme.onSurface)
-                Spacer(Modifier.height(4.dp))
-                Text(localIp ?: "Not available",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontFamily = FontFamily.Monospace)
-            }
-        }
-    }
+    SettingsInfoRow(
+        title = "Local IP Address",
+        value = localIp ?: "Not available",
+        description = "",
+        icon = Icons.Filled.Info
+    )
 
     SettingsTextInputItem(prefs, "waypipeDisplay", "Wayland Display",
         "Display socket name (e.g., wayland-0)", Icons.Filled.DesktopWindows,
@@ -852,8 +1004,6 @@ private fun ConnectionSection(prefs: SharedPreferences, localIp: String?, contex
 
 @Composable
 private fun LocalShellSection(context: Context, accent: Color) {
-    val snap = remember { LocalShellRootfs.snapshot(context) }
-    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     var statusMessage by remember { mutableStateOf<String?>(null) }
 
     val importLauncher = rememberLauncherForActivityResult(
@@ -872,26 +1022,13 @@ private fun LocalShellSection(context: Context, accent: Color) {
     }
 
     SettingsSectionHeader("Local Shell", Icons.Filled.Folder, accent)
-    SettingsInfoRow("Platform", snap.platformLabel, "Android bundled rootfs", Icons.Filled.PhoneAndroid)
-    SettingsInfoRow("Browse", snap.filesHint, "Path in Files or file manager", Icons.Filled.FolderOpen)
-    SettingsInfoRow("Shell HOME", snap.home, "\$HOME for in-process / nested shell", Icons.Filled.Home)
-    SettingsInfoRow("System Root", snap.systemRoot, "WAWONA_ROOTFS", Icons.Filled.Storage)
-    SettingsInfoRow("Template", snap.templateStatus, "Bundled vs installed version", Icons.Filled.Info)
 
     SettingsGroup(accent) {
-        OutlinedButton(
-            onClick = {
-                clipboard.setPrimaryClip(ClipData.newPlainText("HOME", snap.home))
-                Toast.makeText(context, "Copied HOME path", Toast.LENGTH_SHORT).show()
-            },
-            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
-        ) { Text("Copy HOME Path") }
-
         if (LocalShellCapability.ImportFile in LocalShellRootfs.capabilities()) {
             OutlinedButton(
                 onClick = { importLauncher.launch(arrayOf("*/*")) },
                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
-            ) { Text("Import File to Home") }
+            ) { Text("Import File to Home", maxLines = 2) }
         }
 
         if (LocalShellCapability.ResetDotfiles in LocalShellRootfs.capabilities()) {
@@ -906,7 +1043,7 @@ private fun LocalShellSection(context: Context, accent: Color) {
                         }
                 },
                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
-            ) { Text("Reset Shell Dotfiles") }
+            ) { Text("Reset Shell Dotfiles", maxLines = 2) }
         }
 
         if (LocalShellCapability.ReinstallSystemTree in LocalShellRootfs.capabilities()) {
@@ -914,14 +1051,14 @@ private fun LocalShellSection(context: Context, accent: Color) {
                 onClick = {
                     LocalShellRootfs.reinstallSystemTree(context)
                         .onSuccess {
-                            Toast.makeText(context, "System tree reinstalled", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "System tree reset", Toast.LENGTH_SHORT).show()
                         }
                         .onFailure { e ->
                             Toast.makeText(context, "Failed: ${e.message}", Toast.LENGTH_LONG).show()
                         }
                 },
                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
-            ) { Text("Reinstall System Tree") }
+            ) { Text("Reset System Tree", maxLines = 2) }
         }
     }
 
@@ -1003,14 +1140,16 @@ private fun WaypipeSection(prefs: SharedPreferences, context: Context, accent: C
             Icon(Icons.Filled.Description, null, Modifier.size(24.dp),
                 tint = MaterialTheme.colorScheme.secondary)
             Spacer(Modifier.width(16.dp))
-            Column(Modifier.weight(1f)) {
-                Text("Waypipe & SSH Logs", style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurface)
-                Text("View and copy Waypipe/OpenSSH output",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Icon(Icons.Filled.ChevronRight, "Open", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Waypipe & SSH Logs", style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f))
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = "Show logs",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
     if (showLogsDialog) {
@@ -1033,14 +1172,16 @@ private fun WaypipeSection(prefs: SharedPreferences, context: Context, accent: C
             Icon(Icons.Filled.SettingsSuggest, null, Modifier.size(24.dp),
                 tint = MaterialTheme.colorScheme.secondary)
             Spacer(Modifier.width(16.dp))
-            Column(Modifier.weight(1f)) {
-                Text("Advanced Waypipe Options", style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurface)
-                Text("Debug, GPU, login shell, title prefix, security context",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Icon(Icons.Filled.ChevronRight, "Open", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Advanced Waypipe Options", style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f))
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = "Advanced Waypipe Options",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
     if (showAdvanced) {
@@ -1280,13 +1421,60 @@ private fun AboutSection(context: Context) {
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(8.dp))
+        OutlinedButton(
+            onClick = { uriHandler.openUri("https://wawona.io") },
+            modifier = Modifier.fillMaxWidth().testTag("wwn.settings.aboutWebsite"),
+            shape = RoundedCornerShape(12.dp)
+        ) { Text("https://wawona.io") }
+        Spacer(Modifier.height(8.dp))
+        val hostOs = remember {
+            "Android ${Build.VERSION.RELEASE} (${Build.MODEL})"
+        }
+        val installChannel = remember { androidInstallChannel(context) }
+        val versionBare = remember {
+            if (version.startsWith("v")) version.drop(1) else version
+        }
+        OutlinedButton(
+            onClick = {
+                copyWawonaBugDiagnostics(
+                    context,
+                    version,
+                    hostOs,
+                    installChannel,
+                    machineOnly = false,
+                )
+            },
+            modifier = Modifier.fillMaxWidth().testTag("wwn.settings.copyRecentLogs"),
+            shape = RoundedCornerShape(12.dp)
+        ) { Text("Copy Recent Logs") }
+        Spacer(Modifier.height(8.dp))
+        OutlinedButton(
+            onClick = {
+                openWawonaGithubBugReport(
+                    context,
+                    uriHandler,
+                    versionBare,
+                    hostOs,
+                    installChannel,
+                )
+            },
+            modifier = Modifier.fillMaxWidth().testTag("wwn.settings.reportBug"),
+            shape = RoundedCornerShape(12.dp)
+        ) { Text("Report a Bug on GitHub") }
+        Spacer(Modifier.height(8.dp))
         Text("A Wayland Compositor for macOS, iOS & Android",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(24.dp))
-        Text("Alex Spaulding",
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.onSurface)
+        Text("Author",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(4.dp))
+        OutlinedButton(
+            onClick = { uriHandler.openUri("https://aspauldingcode.com") },
+            modifier = Modifier.fillMaxWidth().testTag("wwn.settings.aboutAuthor"),
+            shape = RoundedCornerShape(12.dp)
+        ) { Text("Alex Spaulding") }
         Spacer(Modifier.height(16.dp))
         OutlinedButton(
             onClick = { uriHandler.openUri("https://github.com/wawona/wawona") },
@@ -1329,15 +1517,30 @@ private fun AboutSection(context: Context) {
 
 @Composable
 private fun DependenciesSection() {
-    AboutDependencyRow("Waypipe", "v0.10.6", "Remote Wayland display proxy")
-    AboutDependencyRow("libwayland", "v1.23", "Wayland protocol library")
-    AboutDependencyRow("xkbcommon", "v1.7.0", "Keyboard handling library")
-    AboutDependencyRow("LZ4", "v1.9", "Fast compression algorithm")
-    AboutDependencyRow("Zstd", "v1.5", "Zstandard compression")
-    AboutDependencyRow("libffi", "v3.4", "Foreign function interface")
-    AboutDependencyRow("SwiftShader", "v2024", "Vulkan software renderer")
-    AboutDependencyRow("OpenSSH", "v9.8p1", "SSH client for Android (wwn-ssh portable)")
-    AboutDependencyRow("OpenSSL", "v3.4", "Cryptography library")
+    val context = LocalContext.current
+    val packages = remember {
+        runCatching {
+            val json = context.assets.open("SettingsDependencies.json")
+                .bufferedReader().use { it.readText() }
+            val arr = org.json.JSONObject(json).getJSONArray("packages")
+            (0 until arr.length()).map { i ->
+                val o = arr.getJSONObject(i)
+                Triple(o.optString("name"), o.optString("version"), o.optString("role"))
+            }
+        }.getOrDefault(emptyList())
+    }
+    if (packages.isEmpty()) {
+        SettingsInfoRow(
+            title = "Dependencies",
+            value = "unavailable",
+            description = "SettingsDependencies.json missing from this Android build.",
+            icon = Icons.Filled.Inventory2
+        )
+    } else {
+        packages.forEach { (name, version, role) ->
+            AboutDependencyRow(name, version, role)
+        }
+    }
 }
 
 @Composable
@@ -1352,9 +1555,11 @@ private fun AboutDependencyRow(name: String, version: String, description: Strin
 
 @Composable
 private fun SettingsInfoRow(title: String, value: String, description: String, icon: ImageVector) {
-    val displayVersion = if (value.startsWith("v")) value else "v$value"
+    var showDetail by remember { mutableStateOf(false) }
+    val body = listOf(description, value).filter { it.isNotBlank() }.joinToString("\n\n")
     Surface(
-        Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        onClick = { showDetail = true },
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
     ) {
@@ -1366,14 +1571,33 @@ private fun SettingsInfoRow(title: String, value: String, description: String, i
                 tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f))
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                    color = MaterialTheme.colorScheme.onSurface)
-                Text(description, style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    title,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Clip
+                )
+                if (value.isNotBlank()) {
+                    Text(
+                        value.replace('\n', ' ').replace(Regex(" +"), " ").trim(),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        overflow = TextOverflow.Clip
+                    )
+                }
             }
-            Text(displayVersion, style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
-                color = MaterialTheme.colorScheme.primary)
         }
+    }
+    if (showDetail) {
+        AlertDialog(
+            onDismissRequest = { showDetail = false },
+            title = { Text(title) },
+            text = { Text(body.ifEmpty { title }) },
+            confirmButton = {
+                TextButton(onClick = { showDetail = false }) { Text("OK") }
+            }
+        )
     }
 }
 
@@ -1545,13 +1769,11 @@ fun LockedSwitchItem(
                 Icon(icon, null, Modifier.size(24.dp),
                     tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f))
                 Spacer(Modifier.width(16.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(title, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
-                    Spacer(Modifier.height(4.dp))
-                    Text(description, style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
-                }
+                Text(title, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f))
             }
             Spacer(Modifier.width(16.dp))
             Switch(checked = true, onCheckedChange = { showDialog = true }, enabled = false,
@@ -1612,13 +1834,11 @@ fun SettingsSwitchItem(
                 Icon(icon, null, Modifier.size(24.dp),
                     tint = iconTint.copy(alpha = if (enabled) 0.9f else 0.4f))
                 Spacer(Modifier.width(16.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(title, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.6f))
-                    Spacer(Modifier.height(4.dp))
-                    Text(description, style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (enabled) 1f else 0.6f))
-                }
+                Text(title, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.6f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f))
             }
             Spacer(Modifier.width(16.dp))
             Switch(checked = checked, onCheckedChange = {
@@ -1654,13 +1874,11 @@ fun SettingsTextInputItem(
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Icon(icon, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f))
                 Spacer(Modifier.width(16.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(title, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
-                        color = MaterialTheme.colorScheme.onSurface)
-                    Spacer(Modifier.height(4.dp))
-                    Text(description, style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+                Text(title, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f))
             }
             Spacer(Modifier.height(12.dp))
             OutlinedTextField(
@@ -1704,13 +1922,11 @@ fun SettingsPasswordInputItem(
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Icon(icon, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f))
                 Spacer(Modifier.width(16.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(title, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
-                        color = MaterialTheme.colorScheme.onSurface)
-                    Spacer(Modifier.height(4.dp))
-                    Text(description, style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+                Text(title, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f))
             }
             Spacer(Modifier.height(12.dp))
             OutlinedTextField(
@@ -1752,13 +1968,11 @@ fun SettingsMultiLineTextInputItem(
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Icon(icon, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f))
                 Spacer(Modifier.width(16.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(title, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
-                        color = MaterialTheme.colorScheme.onSurface)
-                    Spacer(Modifier.height(4.dp))
-                    Text(description, style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+                Text(title, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f))
             }
             Spacer(Modifier.height(12.dp))
             OutlinedTextField(
@@ -1777,6 +1991,59 @@ fun SettingsMultiLineTextInputItem(
     }
 }
 
+@Composable
+private fun SettingsChoiceList(
+    spec: SettingsChoiceSpec,
+    prefs: SharedPreferences,
+    onPicked: () -> Unit,
+) {
+    val selected = prefs.getString(spec.key, spec.default) ?: spec.default
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+    ) {
+        spec.options.forEach { option ->
+            val label = spec.optionLabels[option] ?: option
+            Surface(
+                onClick = {
+                    val persist = spec.persist
+                    if (persist != null) {
+                        persist(prefs, option)
+                    } else {
+                        prefs.edit().putString(spec.key, option).apply()
+                    }
+                    onPicked()
+                },
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.45f),
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (option == selected) {
+                        Icon(
+                            Icons.Filled.Check,
+                            contentDescription = "Selected",
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsDropdownItem(
@@ -1786,61 +2053,53 @@ fun SettingsDropdownItem(
     enabled: Boolean = true,
     optionLabels: Map<String, String> = emptyMap(),
 ) {
-    var expanded by remember { mutableStateOf(false) }
     var selectedOption by remember { mutableStateOf(prefs.getString(key, default) ?: default) }
     LaunchedEffect(key) { selectedOption = prefs.getString(key, default) ?: default }
     val displayValue = optionLabels[selectedOption] ?: selectedOption
+    val openChoice = LocalOpenSettingsChoice.current
     Surface(
-        Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        onClick = {
+            if (enabled) {
+                openChoice(
+                    SettingsChoiceSpec(
+                        key = key,
+                        title = title,
+                        options = options,
+                        optionLabels = optionLabels,
+                        default = default,
+                    )
+                )
+            }
+        },
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (enabled) 0.4f else 0.22f)
     ) {
-        Column(Modifier.fillMaxWidth().padding(16.dp)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Icon(icon, null, Modifier.size(24.dp),
-                    tint = iconTint.copy(alpha = if (enabled) 0.9f else 0.4f))
-                Spacer(Modifier.width(16.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(title, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.6f))
-                    Spacer(Modifier.height(4.dp))
-                    Text(description, style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (enabled) 1f else 0.6f))
-                }
-            }
-            Spacer(Modifier.height(12.dp))
-            Box {
-                ExposedDropdownMenuBox(
-                    expanded = expanded && enabled,
-                    onExpandedChange = { if (enabled) expanded = !expanded },
-                ) {
-                    OutlinedTextField(
-                        value = displayValue, onValueChange = {}, readOnly = true,
-                        enabled = enabled,
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded && enabled) },
-                        modifier = Modifier.fillMaxWidth().menuAnchor(),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = MaterialTheme.colorScheme.primary,
-                            unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                            disabledTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                            disabledBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
-                        ),
-                        shape = RoundedCornerShape(12.dp)
-                    )
-                    ExposedDropdownMenu(expanded = expanded && enabled, onDismissRequest = { expanded = false }) {
-                        options.forEach { option ->
-                            DropdownMenuItem(
-                                text = { Text(optionLabels[option] ?: option) },
-                                onClick = {
-                                    selectedOption = option
-                                    prefs.edit().putString(key, option).apply()
-                                    expanded = false
-                                },
-                            )
-                        }
-                    }
-                }
-            }
+        Row(
+            Modifier.fillMaxWidth().padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(icon, null, Modifier.size(24.dp),
+                tint = iconTint.copy(alpha = if (enabled) 0.9f else 0.4f))
+            Spacer(Modifier.width(16.dp))
+            Text(title, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.6f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f))
+            Text(
+                displayValue,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (enabled) 1f else 0.6f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.width(4.dp))
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = "Show choices",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (enabled) 0.9f else 0.4f),
+            )
         }
     }
 }
@@ -1961,4 +2220,111 @@ private fun androidGenerateSshKey(context: Context, prefs: SharedPreferences): S
     val pub = File(keyFile.absolutePath + ".pub")
     val pubText = if (pub.exists()) pub.readText().trim() else ""
     return "OK: Generated ${keyFile.absolutePath}\n$pubText"
+}
+
+private fun androidInstallChannel(context: Context): String {
+    return try {
+        val pm = context.packageManager
+        val installer = if (Build.VERSION.SDK_INT >= 30) {
+            pm.getInstallSourceInfo(context.packageName).installingPackageName
+        } else {
+            @Suppress("DEPRECATION")
+            pm.getInstallerPackageName(context.packageName)
+        }
+        when (installer) {
+            "com.android.vending", "com.google.android.feedback" ->
+                "Play Store (Beta)"
+            null, "", "com.google.android.packageinstaller",
+            "com.android.packageinstaller" -> "Sideload APK"
+            else -> "Other"
+        }
+    } catch (_: Exception) {
+        "Other"
+    }
+}
+
+private fun wawonaBugDiagnostics(
+    version: String,
+    hostOs: String,
+    installChannel: String,
+    machineOnly: Boolean,
+): String {
+    val dump = try {
+        WawonaNative.nativeLogRingDump(null)
+    } catch (_: UnsatisfiedLinkError) {
+        "(log ring unavailable)"
+    } catch (_: Exception) {
+        "(log ring unavailable)"
+    }
+    val logs = if (dump.isBlank()) "(no recent Wawona logs)" else dump
+    val machine = if (machineOnly) {
+        "(machine filter requested; Android uses the process log ring)"
+    } else {
+        "(process log ring)"
+    }
+    return buildString {
+        append("### Wawona diagnostics\n")
+        append("Wawona: $version\n")
+        append("Host: $hostOs\n")
+        append("Install: $installChannel\n")
+        append("\n### Active machine\n")
+        append(machine)
+        append("\n\n### Logs\n```\n")
+        append(logs)
+        append("\n```\n")
+    }
+}
+
+private fun copyWawonaBugDiagnostics(
+    context: Context,
+    version: String,
+    hostOs: String,
+    installChannel: String,
+    machineOnly: Boolean,
+) {
+    val text = wawonaBugDiagnostics(version, hostOs, installChannel, machineOnly)
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    clipboard.setPrimaryClip(ClipData.newPlainText("Wawona diagnostics", text))
+    Toast.makeText(context, "Copied recent logs", Toast.LENGTH_SHORT).show()
+}
+
+private fun openWawonaGithubBugReport(
+    context: Context,
+    uriHandler: UriHandler,
+    versionBare: String,
+    hostOs: String,
+    installChannel: String,
+) {
+    val report = wawonaBugDiagnostics(
+        if (versionBare.startsWith("v")) versionBare else "v$versionBare",
+        hostOs,
+        installChannel,
+        machineOnly = false,
+    )
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    clipboard.setPrimaryClip(ClipData.newPlainText("Wawona diagnostics", report))
+    val url = try {
+        WawonaNative.nativeGithubBugReportUrl(
+            "Android",
+            installChannel,
+            versionBare,
+            hostOs,
+            report,
+        )
+    } catch (_: UnsatisfiedLinkError) {
+        "https://github.com/Wawona/Wawona/issues/new?template=bug.yml&platform=Android"
+    } catch (_: Exception) {
+        "https://github.com/Wawona/Wawona/issues/new?template=bug.yml&platform=Android"
+    }
+    try {
+        uriHandler.openUri(url)
+        Toast.makeText(
+            context,
+            "Copied logs and opened the GitHub bug form",
+            Toast.LENGTH_SHORT,
+        ).show()
+    } catch (_: Exception) {
+        Toast.makeText(context, "Copied logs. Open GitHub to paste them.", Toast.LENGTH_LONG)
+            .show()
+    }
 }

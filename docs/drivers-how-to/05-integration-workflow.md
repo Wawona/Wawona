@@ -5,8 +5,8 @@ General steps to integrate Vulkan (and optional OpenGL) into Wawona across platf
 ## macOS / iOS
 
 1. **Install Vulkan SDK** that includes MoltenVK (and optionally KosmicKrisp) for your OS.
-2. **Build setup** — Configure CMake or Xcode to link the Vulkan loader and MoltenVK (or KosmicKrisp) for Apple targets.
-3. **Instance creation** — Enable the portability extension when using MoltenVK:
+2. **Build setup**. Configure CMake or Xcode to link the Vulkan loader and MoltenVK (or KosmicKrisp) for Apple targets.
+3. **Instance creation**. Enable the portability extension when using MoltenVK:
 
    ```c
    VkApplicationInfo appInfo = { ... };
@@ -16,8 +16,8 @@ General steps to integrate Vulkan (and optional OpenGL) into Wawona across platf
    vkCreateInstance(&createInfo, NULL, &instance);
    ```
 
-4. **Surfaces and swapchain** — Create window surfaces (e.g. from CAMetalLayer or equivalent), then create swapchain and command buffers as in any Vulkan app.
-5. **Testing** — Check shader translation, unsupported extensions, and resize/fullscreen behavior.
+4. **Surfaces and swapchain**. Create window surfaces (e.g. from CAMetalLayer or equivalent), then create swapchain and command buffers as in any Vulkan app.
+5. **Testing**. Check shader translation, unsupported extensions, and resize/fullscreen behavior.
 
 ## Android
 
@@ -32,6 +32,6 @@ General steps to integrate Vulkan (and optional OpenGL) into Wawona across platf
 
 ## Cross-platform tips
 
-- **Single code path** — Use one Vulkan render path; only instance/surface creation and build config differ per platform.
-- **Extensions** — Query and enable only the extensions available on the current platform (e.g. portability on Apple, Android surface on Android).
-- **Validation** — Use Vulkan validation layers from the SDK during development; disable or strip in release builds.
+- **Single code path**. Use one Vulkan render path; only instance/surface creation and build config differ per platform.
+- **Extensions**. Query and enable only the extensions available on the current platform (e.g. portability on Apple, Android surface on Android).
+- **Validation**. Use Vulkan validation layers from the SDK during development; disable or strip in release builds.

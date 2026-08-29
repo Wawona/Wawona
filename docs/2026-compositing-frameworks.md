@@ -1,4 +1,4 @@
-# Wawona — Compositing Frameworks & Present-Path Contract
+# Wawona. Compositing Frameworks & Present-Path Contract
 
 One contract, four backends. The Rust core produces composited surface content;
 each platform frontend presents it. This doc defines the present-path contract
@@ -16,7 +16,7 @@ surface carries:
 
 The frontend must:
 
-1. Present at native (physical) resolution — never upscale a HiDPI buffer.
+1. Present at native (physical) resolution. Never upscale a HiDPI buffer.
 2. Use top-left gravity and an explicit `contentsScale` when buffer size and
    node size mismatch (no implicit stretch).
 3. Honor damage where the backend supports partial present.

@@ -1,5 +1,6 @@
 pub mod bundled_clients;
 pub mod config;
+pub mod embedded_core;
 pub mod launcher;
 pub mod machine_profile;
 pub mod profile_store;

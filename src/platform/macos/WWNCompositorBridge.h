@@ -26,8 +26,14 @@ FOUNDATION_EXPORT NSNotificationName const WWNClientMinimizeRequestedNotificatio
 FOUNDATION_EXPORT NSNotificationName const WWNClientFocusRequestedNotification;
 /// Posted on the main queue when Wayland toplevel host windows are created,
 /// destroyed, or retitled. Tab chrome (phone/tvOS/watchOS) refreshes from this.
-/// Tabs map 1:1 to Wayland client toplevels — never Shell / Machines chrome.
+/// Tabs map 1:1 to Wayland client toplevels. Never Shell / Machines chrome.
 FOUNDATION_EXPORT NSNotificationName const WWNHostWindowsDidChangeNotification;
+
+/// Weston demos that keep a preferred square (flower/smoke 200x200, simple-shm
+/// and simple-egl 250x250). Matches catalog ids, xdg app_ids, and titles
+/// (`Weston Simple EGL`). Host must not inject fill-to-output configures.
+FOUNDATION_EXPORT BOOL WWNWestonDemoPrefersFixedSquare(NSString *_Nullable clientId,
+                                                       NSString *_Nullable title);
 
 /// Window event types from Rust compositor
 typedef NS_ENUM(NSInteger, WWNWindowEventType) {
@@ -52,6 +58,7 @@ typedef struct {
   size_t size;
   size_t capacity;
   uint32_t iosurface_id;
+  uint8_t cpu_y_flip;
 } CBufferData;
 
 /// Bridge between Objective-C and Rust compositor
@@ -125,6 +132,11 @@ typedef struct {
 
 - (void)injectKeyboardLeaveForWindow:(uint64_t)windowId;
 
+- (void)injectDragEnterForWindow:(uint64_t)windowId x:(double)x y:(double)y mimeTypes:(NSString *)mimeTypes;
+- (void)injectDragMotionForWindow:(uint64_t)windowId x:(double)x y:(double)y;
+- (void)injectDragDropForWindow:(uint64_t)windowId data:(NSString *)data;
+- (void)injectDragLeaveForWindow:(uint64_t)windowId;
+
 - (void)injectWindowResize:(uint64_t)windowId
                      width:(uint32_t)width
                     height:(uint32_t)height;
@@ -136,7 +148,7 @@ typedef struct {
 /// before calling injectWindowResize:, or fixed-size demo clients
 /// (weston-flower/smoke, simple-shm) get their small buffer force-stretched
 /// to the host window instead of staying centered at their own size. Returns
-/// NO for windows not yet tracked (fail closed — nothing to resize yet).
+/// NO for windows not yet tracked (fail closed. Nothing to resize yet).
 - (BOOL)shouldFollowHostSizeForWindowId:(uint64_t)windowId;
 
 /// Host changed native fullscreen or zoom (macOS) or fill-primary max/fs (mobile).
@@ -174,7 +186,7 @@ typedef struct {
 #if TARGET_OS_IPHONE
 /// Sorted toplevel ids suitable for in-window client tabs (excludes
 /// fullscreen_shell kiosk surfaces). Empty when per-window hosting is on
-/// (iPadOS/visionOS) — those platforms use one UIWindowScene per client.
+/// (iPadOS/visionOS). Those platforms use one UIWindowScene per client.
 - (NSArray<NSNumber *> *)tabbedClientWindowIds;
 
 /// Best-effort title for a host window (xdg title, else bundled client id).
@@ -320,6 +332,10 @@ extern NSString *const WWNClientWindowSceneWindowIdKey;
 /// per-machine (#120): concurrent CSD + SSD machines must not stomp.
 - (void)setForceSSDForClientLaunch:(BOOL)enabled;
 
+/// Stage fill-host for the NEXT machine's client launch. Nested weston/niri
+/// need a non-zero first xdg configure; demos must pass NO.
+- (void)setFillsHostForClientLaunch:(BOOL)fillsHost;
+
 /// Set keyboard repeat rate
 - (void)setKeyboardRepeatRate:(int32_t)rate delay:(int32_t)delay;
 
@@ -355,12 +371,16 @@ extern NSString *const WWNClientWindowSceneWindowIdKey;
 
 /// Launch an iland KMS client (`kmscube` or `gbm-es2-demo`) in-process on the
 /// iland presentation view, compositing its DRM page-flips into the host layer.
-/// `clientId` selects the real entry point and host chrome title — never alias.
+/// `clientId` selects the real entry point and host chrome title. Never alias.
 - (BOOL)launchNestedIlandGpuClientOnPrimaryView:(NSString *)clientId;
 
 - (BOOL)launchNestedKmscubeOnPrimaryView;
 /// Prepare iland Metal presentation on the primary compositor view (Weston DRM/GL).
 - (BOOL)prepareIlandMetalPresentationOnPrimaryView;
+/// Same, with a host-chrome title (e.g. weston). Never brand Weston as kmscube.
+- (BOOL)prepareIlandMetalPresentationOnPrimaryViewForClientId:(nullable NSString *)clientId;
+/// Hide the iland Metal overlay and restore Wayland content (nested Weston).
+- (void)stopIlandGpuClientOnPrimaryView;
 
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
 @property(nonatomic, weak) UIView *containerView;

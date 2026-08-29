@@ -17,6 +17,7 @@ rec {
     "Darwin/Sources/Main.swift"
     "Sources/WawonaModel/ClientLauncher.swift"
     "Sources/WawonaModel/MachineProfile.swift"
+    "Sources/WawonaModel/ContainerHubModels.swift"
     "Sources/WawonaModel/SessionOrchestrator.swift"
     "Sources/WawonaModel/WawonaPreferences.swift"
     "Sources/WawonaUIContracts/MachineEditorContracts.swift"
@@ -35,6 +36,7 @@ rec {
     "Sources/WawonaUI/Machines/MachinesRootView.swift"
     "Sources/WawonaUI/Machines/MachinesGridView.swift"
     "Sources/WawonaUI/Machines/MachineCardView.swift"
+    "Sources/WawonaUI/Machines/MachineActionBar.swift"
     "Sources/WawonaUI/Machines/MachineEditorView.swift"
     "Sources/WawonaUI/Machines/BundledClientPickerView.swift"
     "Sources/WawonaUI/Machines/MachineFuzzySearch.swift"
@@ -73,9 +75,9 @@ rec {
     "src/platform/macos/ui/Machines/WWNMachineSessionBridge.m"
     "src/platform/macos/ui/Machines/WWNMachineSessionBridge.h"
     # Header-only platform gates used by WWNMachineSessionBridge.m (must be in
-    # the staged source list — nix copies only explicitly listed paths).
+    # the staged source list. Nix copies only explicitly listed paths).
     "src/platform/macos/ui/Machines/WWNPlatformCapabilities.h"
-    # anowaW App Bridge — macOS-only (added in macos.nix sources, not shared).
+    # Swinging Bridge App Bridge. MacOS-only (added in macos.nix sources, not shared).
     # VM/container runners + jitless QEMU engine (shared macOS/iOS; each file
     # carries TARGET_OS_OSX branches). Referenced by WWNMachineSessionBridge.m.
     "src/platform/macos/ui/Machines/WWNVirtualMachineRunner.m"
@@ -91,14 +93,13 @@ rec {
     # Machine session thumbnails (referenced by WWNCompositorBridge.m + view model).
     "src/platform/macos/ui/Machines/WWNMachineThumbnailStore.m"
     "src/platform/macos/ui/Machines/WWNMachineThumbnailStore.h"
-    # Module manager (referenced by main.m; defines WWNModuleStore(+Bridge) inline).
-    "src/platform/macos/ui/Modules/WWNModuleManager.m"
-    "src/platform/macos/ui/Modules/WWNModuleManager.h"
     "src/platform/macos/ui/Settings/WWNPreferences.m"
     "src/platform/macos/ui/Settings/WWNPreferences.h"
     "src/platform/macos/ui/Settings/WWNPreferencesManager.m"
     "src/platform/macos/ui/Settings/WWNPreferencesManager.h"
-    # WWNSipStatus — macOS-only (Desktop Replacement SIP helper; see macos.nix).
+    "src/platform/macos/ui/Settings/WWNEnvironmentOverrides.m"
+    "src/platform/macos/ui/Settings/WWNEnvironmentOverrides.h"
+    # WWNSipStatus. MacOS-only (Desktop Replacement SIP helper; see macos.nix).
     "src/platform/macos/ui/About/WWNAboutPanel.m"
     "src/platform/macos/ui/About/WWNAboutPanel.h"
     "src/platform/macos/ui/Settings/WWNSettingsDefines.h"

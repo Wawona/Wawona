@@ -5,7 +5,7 @@
 #   WAWONA_XCODE_APP=/Applications/Xcode_26.6.0.app
 #   WAWONA_XCODE_VERSION=26.6.0   # resolves to /Applications/Xcode_${VERSION}.app
 #
-# Bumping the pin is a deliberate PR — silent "newest Xcode" churn invalidates
+# Bumping the pin is a deliberate PR. Silent "newest Xcode" churn invalidates
 # impure weston/backend/product hashes. See docs/ci.md.
 set -euo pipefail
 
@@ -46,7 +46,7 @@ if [[ ! -x "$DEVELOPER_DIR/usr/bin/xcodebuild" ]]; then
 fi
 
 echo "Selected Xcode (pinned): $XCODE_APP"
-# Capture once — piping a live xcodebuild into awk can SIGPIPE/abort on
+# Capture once. Piping a live xcodebuild into awk can SIGPIPE/abort on
 # Xcode 26 ("Broken pipe" / NSFileHandleOperationException).
 XCODE_VERSION_OUT="$("$DEVELOPER_DIR/usr/bin/xcodebuild" -version)"
 printf '%s\n' "$XCODE_VERSION_OUT"

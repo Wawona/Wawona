@@ -1,4 +1,10 @@
 import SwiftUI
+import WawonaModel
+import UniformTypeIdentifiers
+
+private enum WWNMachineEditorRoute: Hashable {
+  case bundledClient
+}
 
 struct WWNMachineEditorView: View {
   let title: String
@@ -19,9 +25,19 @@ struct WWNMachineEditorView: View {
   @State private var sshKeyPassphrase: String
   @State private var sshAuthMethod: Int
   @State private var remoteCommand: String
+  @State private var containerRef: String
+  @State private var entryCommand: String
+  @State private var desktopSession: Bool
+  @State private var imageArchivePath: String
+  @State private var showContainerHubSearch: Bool = false
+  @State private var showContainerArchiveImporter: Bool = false
+  @State private var containerImporting: Bool = false
+  @State private var containerImportNote: String?
 
   @State private var selectedClientId: String
   @State private var customCommand: String
+  @State private var wasmModulePath: String
+  @State private var showWasmFileImporter: Bool = false
   @State private var machineThumbnailEnabled: Bool
   @State private var waypipeDisplayNumber: String
   @State private var waypipeCompress: String
@@ -59,6 +75,9 @@ struct WWNMachineEditorView: View {
   #if os(macOS)
   @State private var alwaysOnTop: Bool
   #endif
+  @State private var environmentOverrides: EnvironmentOverrideMap
+  @State private var showEnvironmentEditor = false
+  @State private var editorPath = NavigationPath()
 
   init(
     title: String,
@@ -80,12 +99,24 @@ struct WWNMachineEditorView: View {
     _sshKeyPassphrase = State(initialValue: initial?.sshKeyPassphrase ?? "")
     _sshAuthMethod = State(initialValue: initial?.sshAuthMethod ?? 0)
     _remoteCommand = State(initialValue: initial?.remoteCommand ?? "")
+    let containerSettings = initial?.containerSettings ?? [:]
+    _containerRef = State(
+      initialValue: (containerSettings["containerRef"] as? String) ?? "")
+    _entryCommand = State(
+      initialValue: (containerSettings["entryCommand"] as? String) ?? "")
+    _desktopSession = State(
+      initialValue: (containerSettings["desktopSession"] as? Bool)
+        ?? ((initial?.type ?? defaultType) == kWWNMachineTypeContainer))
+    _imageArchivePath = State(
+      initialValue: (containerSettings["imageArchivePath"] as? String) ?? "")
 
     let runtimeOverrides: [String: Any] = initial?.runtimeOverrides ?? [:]
     let overrides: [String: Any] = initial?.settingsOverrides ?? [:]
     let prefs = WWNPreferencesManager.shared()
     let initialCustomCommand = (overrides["NativeCustomCommand"] as? String) ?? ""
     _customCommand = State(initialValue: initialCustomCommand)
+    let initialWasmPath = (runtimeOverrides[kRuntimeWasmModulePathKey] as? String) ?? ""
+    _wasmModulePath = State(initialValue: initialWasmPath)
     _machineThumbnailEnabled = State(
       initialValue: (runtimeOverrides["machineThumbnailEnabledOverride"] as? Bool)
         ?? WWNPreferencesManager.shared().machineSessionThumbnailsEnabled()
@@ -130,6 +161,9 @@ struct WWNMachineEditorView: View {
     #if os(macOS)
     _alwaysOnTop = State(initialValue: (runtimeOverrides["alwaysOnTop"] as? Bool) ?? false)
     #endif
+    _environmentOverrides = State(
+      initialValue: Self.decodeEnvironmentOverrides(runtimeOverrides["environment"])
+    )
 
     let initialNativeClientId: String
     if let stored = runtimeOverrides["bundledAppID"] as? String, !stored.isEmpty {
@@ -197,7 +231,7 @@ struct WWNMachineEditorView: View {
     NavigationStack {
       Form {
         Section {
-          TextField("Display Name", text: $name)
+          WWNTvFormTextField("Display Name", text: $name, prompt: "Enter a name")
           Picker("Type", selection: $type) {
             machineTypeOptions
           }
@@ -213,8 +247,7 @@ struct WWNMachineEditorView: View {
           Section("Wayland Client") {
             NavigationLink {
               WWNNativeClientPickerView(
-                selectedClientId: $selectedClientId,
-                customCommand: $customCommand
+                selectedClientId: $selectedClientId
               )
             } label: {
               HStack {
@@ -225,16 +258,37 @@ struct WWNMachineEditorView: View {
                   .lineLimit(1)
               }
             }
+            #if !os(iOS)
+            if selectedClientId == kNativeClientCustomId {
+              WWNTvFormTextField("Custom command", text: $customCommand, prompt: "/usr/bin/my-wayland-app")
+              Text("e.g. /usr/bin/my-wayland-app")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            }
+            #endif
+            if selectedClientId == kNativeClientWasmId {
+              WWNTvFormTextField("Wasm module path", text: $wasmModulePath)
+            }
           }
         }
 
         if isRemote {
           Section("Remote SSH") {
-            TextField("Host", text: $sshHost)
-            TextField("User", text: $sshUser)
-            TextField("Port", text: $sshPort)
-            SecureField("Password", text: $sshPassword)
-            TextField("Remote Command", text: $remoteCommand)
+            WWNTvFormTextField("Host", text: $sshHost)
+            WWNTvFormTextField("User", text: $sshUser)
+            WWNTvFormTextField("Port", text: $sshPort)
+            Picker("Auth", selection: $sshAuthMethod) {
+              Text("Password").tag(0)
+              Text("Public Key").tag(1)
+            }
+            .pickerStyle(.navigationLink)
+            if sshAuthMethod == 0 {
+              WWNTvFormTextField("Password", text: $sshPassword, secure: true)
+            } else {
+              WWNTvFormTextField("Key Path", text: $sshKeyPath)
+              WWNTvFormTextField("Key Passphrase", text: $sshKeyPassphrase, secure: true)
+            }
+            WWNTvFormTextField("Remote Command", text: $remoteCommand)
           }
 
           Section("Waypipe") {
@@ -259,27 +313,79 @@ struct WWNMachineEditorView: View {
         Section {
           Toggle("Auto Scale", isOn: $autoScale)
           Toggle("Respect Safe Area", isOn: $respectSafeArea)
-          Toggle("Universal Clipboard", isOn: $universalClipboard)
+          Picker("Display Backend", selection: $compositorBackend) {
+            Text("Auto").tag("auto")
+            Text("Wayland (nested)").tag("wayland")
+            Text("DRM/KMS (wwn-iland)").tag("drm")
+          }
+          .pickerStyle(.navigationLink)
           Button("Open Wawona Settings…") {
             WWNPreferences.shared().show(nil)
           }
         } header: {
           Text("Display")
+        } footer: {
+          Text("Nested weston/niri use Wayland. DRM is userspace iland, not a real /dev/dri node.")
         }
 
         Section {
-          Toggle("Long-press Menu to Exit Machine", isOn: $shakeToCloseEnabled)
+          Picker("Vulkan Driver", selection: $vulkanDriver) {
+            Text("None").tag("none")
+            if PlatformCapabilities.allowsGpuStack {
+              Text("MoltenVK").tag("moltenvk")
+            }
+          }
+          .pickerStyle(.navigationLink)
+          Picker("OpenGL Driver", selection: $openGLDriver) {
+            Text("None").tag("none")
+            if PlatformCapabilities.allowsGlesStack {
+              Text("ANGLE").tag("angle")
+            }
+          }
+          .pickerStyle(.navigationLink)
+          Toggle("Enable DMABUF", isOn: $dmabufEnabled)
+          Toggle("Enable HDR", isOn: $colorOperations)
+        } header: {
+          Text("Graphics")
+        } footer: {
+          Text("MoltenVK is Vulkan to Metal. ANGLE is OpenGL ES to Metal. Same drivers as iOS.")
+        }
+
+        Section("Environment Variables") {
+          Button {
+            showEnvironmentEditor = true
+          } label: {
+            HStack {
+              Text("Edit Environment Variables…")
+              Spacer()
+              Text(
+                environmentOverrides.isEmpty
+                  ? "Inherit global"
+                  : "\(environmentOverrides.count) override(s)"
+              )
+              .foregroundStyle(.secondary)
+            }
+          }
+          .accessibilityIdentifier("wwn.settings.environment.machine")
+        }
+
+        Section {
+          Toggle("Menu / Shake to Exit Machine", isOn: $shakeToCloseEnabled)
         } header: {
           Text("Session Exit")
         } footer: {
           Text(
-            "Siri Remote has no shake API. Short Menu/Back sends Escape to the "
-              + "Wayland client. Long-press Menu (~1s) confirms leaving the session "
-              + "when this is enabled (same preference key as Shake to Exit on iPhone)."
+            "Menu/Back on the Siri Remote (or Simulator remote) confirms leaving "
+              + "the session. Shake the original black 1st-generation Siri Remote "
+              + "(GCMotion) does the same when this is on. Silver 2nd/3rd-gen remotes "
+              + "and the iPhone Apple TV Remote have no motion. Play/Pause toggles "
+              + "the keyboard. Swipe the clickpad to move the pointer, then click "
+              + "Select. The TV/Home button leaves Wawona for the Apple TV Home "
+              + "screen and is not an in-app Back."
           )
         }
       }
-      // Default tvOS Form chrome is glass over the Machines grid — unreadable at 10ft.
+      // Default tvOS Form chrome is glass over the Machines grid. Unreadable at 10ft.
       // Note: `.scrollContentBackground` is unavailable on tvOS; opaque background is enough.
       .background {
         Color(white: 0.07).ignoresSafeArea()
@@ -293,6 +399,21 @@ struct WWNMachineEditorView: View {
           Button("Save", action: save)
         }
       }
+      .fullScreenCover(isPresented: $showEnvironmentEditor) {
+        NavigationStack {
+          EnvironmentVariablesView(
+            preferences: WawonaPreferences.shared,
+            perMachine: true,
+            draftMachineOverrides: $environmentOverrides
+          )
+          .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+              Button("Done") { showEnvironmentEditor = false }
+            }
+          }
+        }
+        .presentationBackground(Color(white: 0.07))
+      }
     }
     .preferredColorScheme(.dark)
     .presentationBackground(Color(white: 0.07))
@@ -300,20 +421,22 @@ struct WWNMachineEditorView: View {
   #endif
 
   private var desktopMobileEditorBody: some View {
-    NavigationStack {
+    NavigationStack(path: $editorPath) {
       ScrollView {
         VStack(alignment: .leading, spacing: 16) {
           sectionCard("Connection Profile", subtitle: "Name and type for this machine profile.") {
             labeledField("Display Name") {
               TextField("e.g. Studio Linux VM", text: $name)
                 .textFieldStyle(.roundedBorder)
+                .wwnA11y(WWNA11y.machinesEditorName, label: "Display Name")
             }
             labeledField("Type") {
               Picker("", selection: $type) {
                 machineTypeOptions
               }
-              .pickerStyle(.menu)
+              .wwnPlatformPickerStyle()
               .labelsHidden()
+              .wwnA11y(WWNA11y.machinesEditorType, label: "Machine Type")
             }
             Divider()
             Toggle("Show Session Thumbnail On Card", isOn: $machineThumbnailEnabled)
@@ -324,6 +447,10 @@ struct WWNMachineEditorView: View {
             nativeClientSection
           }
 
+          if type == kWWNMachineTypeContainer {
+            containerSection
+          }
+
           if isRemote {
             remoteConnectivitySection
             waypipeOverridesSection
@@ -331,6 +458,8 @@ struct WWNMachineEditorView: View {
           }
 
           displayInputGraphicsSection
+
+          environmentVariablesSection
 
           sectionCard("Session Exit", subtitle: "Per-machine overrides for closing an active session.") {
             Toggle("Shake to Exit Machine", isOn: $shakeToCloseEnabled)
@@ -340,28 +469,105 @@ struct WWNMachineEditorView: View {
           if type == kWWNMachineTypeVirtualMachine {
             virtualMachineSection
           }
-
-          if type == kWWNMachineTypeContainer {
-            containerSection
-          }
         }
         .padding(16)
         .frame(maxWidth: 880, alignment: .leading)
         .frame(maxWidth: .infinity, alignment: .center)
       }
+      #if os(macOS)
+      .wwnMachineConfigScrollEdgeEffect()
+      #endif
       .navigationTitle(title)
+      .wwnA11y(WWNA11y.machinesEditor, label: title)
       .toolbar {
-        ToolbarItem(placement: .cancellationAction) {
-          Button("Cancel") { dismiss() }
+        if editorPath.isEmpty {
+          ToolbarItem(placement: .cancellationAction) {
+            Button("Cancel") { dismiss() }
+              .wwnA11y(WWNA11y.machinesEditorCancel, label: "Cancel")
+          }
+          ToolbarItem(placement: .confirmationAction) {
+            Button("Save", action: save)
+              .wwnA11y(WWNA11y.machinesEditorSave, label: "Save")
+          }
         }
-        ToolbarItem(placement: .confirmationAction) {
-          Button("Save", action: save)
+      }
+      .navigationDestination(for: WWNMachineEditorRoute.self) { route in
+        switch route {
+        case .bundledClient:
+          WWNNativeClientPickerView(
+            selectedClientId: $selectedClientId,
+            onPicked: popEditorRoute
+          )
+          #if os(macOS)
+          .wwnMachineConfigScrollEdgeEffect()
+          .wwnMachineConfigUnifiedToolbar()
+          #endif
         }
+      }
+      #if os(macOS)
+      .wwnMachineConfigUnifiedToolbar()
+      #endif
+      .sheet(isPresented: $showEnvironmentEditor) {
+        NavigationStack {
+          EnvironmentVariablesView(
+            preferences: WawonaPreferences.shared,
+            perMachine: true,
+            draftMachineOverrides: $environmentOverrides
+          )
+          .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+              Button("Done") { showEnvironmentEditor = false }
+            }
+          }
+        }
+        #if os(macOS)
+        .frame(minWidth: 520, minHeight: 560)
+        #endif
       }
     }
     #if os(macOS)
     .frame(minWidth: 640, idealWidth: 760, maxWidth: 920, minHeight: 560, idealHeight: 760)
     #endif
+  }
+
+  private var environmentVariablesSection: some View {
+    sectionCard(
+      "Environment Variables",
+      subtitle: "Per-machine overrides for variables Wawona injects. Inherited (dimmed) rows use global Settings → Environment Variables until you override them."
+    ) {
+      Button {
+        showEnvironmentEditor = true
+      } label: {
+        HStack {
+          Text("Edit Environment Variables…")
+          Spacer()
+          Text(environmentOverrides.isEmpty ? "Inherit global" : "\(environmentOverrides.count) override(s)")
+            .foregroundStyle(.secondary)
+        }
+      }
+      .buttonStyle(.plain)
+      .accessibilityIdentifier("wwn.settings.environment.machine")
+
+      if !environmentOverrides.isEmpty {
+        ForEach(environmentOverrides.keys.sorted(), id: \.self) { name in
+          HStack {
+            Text(name)
+              .font(.body.monospaced())
+            Spacer()
+            if let override = environmentOverrides[name] {
+              Text(override.action == .unset ? "(unset)" : (override.value ?? ""))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            }
+          }
+          .font(.caption)
+        }
+        Button("Clear machine overrides") {
+          environmentOverrides = [:]
+        }
+        .foregroundStyle(.red)
+      }
+    }
   }
 
   private var displayInputGraphicsSection: some View {
@@ -389,31 +595,36 @@ struct WWNMachineEditorView: View {
       #if os(iOS) || os(tvOS)
       Toggle("Respect Safe Area", isOn: $respectSafeArea)
       #endif
-      Toggle("Show Virtual Cursor", isOn: $renderMacOSPointer)
-      labeledField("Nested Compositor Cursor") {
-        Picker("", selection: $nestedCompositorCursor) {
-          Text("Virtual Pointer").tag("virtual")
-          #if os(macOS)
-          Text("macOS Cursor").tag("host")
-          #else
-          Text("Host Cursor").tag("host")
-          #endif
+      if selectedClientDrawsOwnCursor {
+        Text("Nested compositor (weston, niri, or custom) draws its own cursor. The host virtual pointer stays hidden.")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .padding(.leading, 24)
+      } else {
+        Toggle("Show Virtual Cursor", isOn: $renderMacOSPointer)
+        #if os(macOS)
+        labeledField("Nested Compositor Cursor") {
+          Picker("", selection: $nestedCompositorCursor) {
+            Text("Virtual Pointer").tag("virtual")
+            Text("macOS Cursor").tag("host")
+          }
+          .wwnPlatformPickerStyle()
+          .labelsHidden()
+          .disabled(!renderMacOSPointer)
         }
-        .pickerStyle(.menu)
-        .labelsHidden()
-        .disabled(!renderMacOSPointer)
+        #endif
+        Text("Nested and iland DRM compositors hide and grab the host pointer. They draw their own cursor. Show Virtual Cursor is only for non-compositor clients.")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .opacity(renderMacOSPointer ? 1 : 0.45)
+          .padding(.leading, 24)
       }
-      Text("When nested compositors run, grab the virtual pointer or the real host cursor. Requires Show Virtual Cursor.")
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .opacity(renderMacOSPointer ? 1 : 0.45)
-        .padding(.leading, 24)
       labeledField("Touch Input Type") {
         Picker("", selection: $touchInputType) {
           Text("Multi-Touch").tag("Multi-Touch")
           Text("Touchpad").tag("Touchpad")
         }
-        .pickerStyle(.menu)
+        .wwnPlatformPickerStyle()
         .labelsHidden()
       }
       Toggle("Swap CMD with ALT", isOn: $swapCmdWithAlt)
@@ -428,7 +639,7 @@ struct WWNMachineEditorView: View {
           Text("MoltenVK").tag("moltenvk")
 #endif
         }
-        .pickerStyle(.menu)
+        .wwnPlatformPickerStyle()
         .labelsHidden()
       }
       labeledField("OpenGL Driver") {
@@ -436,7 +647,7 @@ struct WWNMachineEditorView: View {
           Text("None").tag("none")
           Text("ANGLE").tag("angle")
         }
-        .pickerStyle(.menu)
+        .wwnPlatformPickerStyle()
         .labelsHidden()
       }
       // Nested compositors (niri, weston) support both. Running them nested
@@ -448,7 +659,7 @@ struct WWNMachineEditorView: View {
           Text("Wayland (nested)").tag("wayland")
           Text("DRM/KMS (wwn-iland)").tag("drm")
         }
-        .pickerStyle(.menu)
+        .wwnPlatformPickerStyle()
         .labelsHidden()
         .disabled(openGLDriver == "none")
         .help(openGLDriver == "none"
@@ -456,7 +667,7 @@ struct WWNMachineEditorView: View {
           : "Wayland runs the client nested inside Wawona. DRM/KMS runs it against wwn-iland's userspace display stack, as it would on bare metal.")
       }
       Toggle("Enable DMABUF", isOn: $dmabufEnabled)
-      Toggle("HDR / Color Operations", isOn: $colorOperations)
+      Toggle("Enable HDR", isOn: $colorOperations)
     }
   }
 
@@ -479,7 +690,24 @@ struct WWNMachineEditorView: View {
     if selectedClientId == kNativeClientCustomId {
       return customCommand.isEmpty ? "Custom Command" : customCommand
     }
+    if selectedClientId == kNativeClientWasmId {
+      if wasmModulePath.isEmpty { return "Wawona Runtime (.wasm)" }
+      return (wasmModulePath as NSString).lastPathComponent
+    }
     return kBundledClients.first { $0.id == selectedClientId }?.name ?? selectedClientId
+  }
+
+  private var bundledClientRowIcon: String? {
+    if selectedClientId == kNativeClientCustomId {
+      return "terminal.fill"
+    }
+    return kBundledClients.first { $0.id == selectedClientId }?.icon
+  }
+
+  private func popEditorRoute() {
+    if !editorPath.isEmpty {
+      editorPath.removeLast()
+    }
   }
 
   private var nativeClientSection: some View {
@@ -487,21 +715,152 @@ struct WWNMachineEditorView: View {
       "Wayland Client",
       subtitle: "Choose a bundled client to connect directly to the compositor via Wayland socket. No SSH or network required."
     ) {
-      NavigationLink {
-        WWNNativeClientPickerView(
-          selectedClientId: $selectedClientId,
-          customCommand: $customCommand
-        )
-      } label: {
+      NavigationLink(value: WWNMachineEditorRoute.bundledClient) {
         HStack {
           Text("Bundled Client")
             .foregroundStyle(.primary)
           Spacer()
+          if let icon = bundledClientRowIcon {
+            Image(systemName: icon)
+              .foregroundStyle(.secondary)
+          }
           Text(nativeClientSummary)
             .foregroundStyle(.secondary)
             .lineLimit(1)
+          #if os(macOS)
+          Image(systemName: "chevron.right")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.tertiary)
+          #endif
         }
       }
+      #if os(macOS)
+      .buttonStyle(.plain)
+      #endif
+
+      #if !os(iOS)
+      if selectedClientId == kNativeClientCustomId {
+        customCommandRows
+      }
+      #endif
+
+      if selectedClientId == kNativeClientWasmId {
+        wasmModulePickerRows
+      }
+    }
+  }
+
+  @ViewBuilder
+  private var customCommandRows: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Text("Custom command")
+        .font(.subheadline.weight(.semibold))
+      TextField("e.g. /usr/bin/my-wayland-app", text: $customCommand)
+        .textFieldStyle(.roundedBorder)
+        .wwnDisableAutocapitalization()
+        .autocorrectionDisabled()
+        .font(.system(.body, design: .monospaced))
+      Text("Absolute path or argv0 of a Wayland client. Runs against this machine’s compositor socket.")
+        .font(.caption2)
+        .foregroundStyle(.secondary)
+    }
+    .padding(.top, 4)
+  }
+
+  @ViewBuilder
+  private var wasmModulePickerRows: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Text("Wasm module")
+        .font(.subheadline.weight(.semibold))
+      Text(
+        wasmModulePath.isEmpty
+          ? "No .wasm selected"
+          : wasmModulePath
+      )
+      .font(.caption)
+      .foregroundStyle(.secondary)
+      .lineLimit(3)
+      #if !os(tvOS)
+      .textSelection(.enabled)
+      #endif
+
+      HStack(spacing: 10) {
+        #if os(tvOS)
+        TextField("Path to .wasm", text: $wasmModulePath)
+          .textFieldStyle(.roundedBorder)
+        #else
+        Button("Choose…") {
+          showWasmFileImporter = true
+        }
+        .buttonStyle(.bordered)
+        TextField("Path", text: $wasmModulePath)
+          .textFieldStyle(.roundedBorder)
+          .wwnDisableAutocapitalization()
+        #endif
+        if !wasmModulePath.isEmpty {
+          Button("Clear", role: .destructive) {
+            wasmModulePath = ""
+          }
+          .buttonStyle(.borderless)
+        }
+      }
+      Text("Drop or pick a Wayland WASI `.wasm` (e.g. wayland-shm-rust.wasm). Runs via the bundled Wawona Runtime.")
+        .font(.caption2)
+        .foregroundStyle(.secondary)
+    }
+    .padding(.top, 4)
+    #if !os(tvOS)
+    .fileImporter(
+      isPresented: $showWasmFileImporter,
+      allowedContentTypes: [UTType(filenameExtension: "wasm") ?? .data],
+      allowsMultipleSelection: false
+    ) { result in
+      guard case .success(let urls) = result, let url = urls.first else { return }
+      let accessed = url.startAccessingSecurityScopedResource()
+      defer {
+        if accessed { url.stopAccessingSecurityScopedResource() }
+      }
+      // Prefer copying into Documents/Wawona so sandboxed relaunches keep the file.
+      if let stable = Self.importWasmModule(from: url) {
+        wasmModulePath = stable
+      } else {
+        wasmModulePath = url.path
+      }
+    }
+    #endif
+  }
+
+  /// Copy a picked `.wasm` into Application Support / Documents so the path survives.
+  private static func importWasmModule(from url: URL) -> String? {
+    let name = url.lastPathComponent
+    guard name.lowercased().hasSuffix(".wasm") else {
+      // Still allow non-suffixed picks if magic is checked at launch.
+      return copyWasmIntoWawonaDir(from: url, preferredName: name.hasSuffix(".wasm") ? name : name + ".wasm")
+    }
+    return copyWasmIntoWawonaDir(from: url, preferredName: name)
+  }
+
+  private static func copyWasmIntoWawonaDir(from url: URL, preferredName: String) -> String? {
+    let fm = FileManager.default
+    let base: URL
+    if let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first {
+      base = docs.appendingPathComponent("Wawona", isDirectory: true)
+    } else if let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+      base = appSupport.appendingPathComponent("Wawona", isDirectory: true)
+    } else {
+      return nil
+    }
+    let destDir = base.appendingPathComponent("wasm-modules", isDirectory: true)
+    do {
+      try fm.createDirectory(at: destDir, withIntermediateDirectories: true)
+      let dest = destDir.appendingPathComponent(preferredName)
+      if fm.fileExists(atPath: dest.path) {
+        try fm.removeItem(at: dest)
+      }
+      try fm.copyItem(at: url, to: dest)
+      return dest.path
+    } catch {
+      return nil
     }
   }
 
@@ -542,7 +901,7 @@ struct WWNMachineEditorView: View {
           Text("Password").tag(0)
           Text("Public Key").tag(1)
         }
-        .pickerStyle(.menu)
+        .wwnPlatformPickerStyle()
         .labelsHidden()
       }
       if sshAuthMethod == 0 {
@@ -591,7 +950,7 @@ struct WWNMachineEditorView: View {
           Text("lz4").tag("lz4")
           Text("zstd").tag("zstd")
         }
-        .pickerStyle(.menu)
+        .wwnPlatformPickerStyle()
         .labelsHidden()
       }
       labeledField("Compression Level") {
@@ -613,7 +972,7 @@ struct WWNMachineEditorView: View {
           Text("vp9").tag("vp9")
           Text("av1").tag("av1")
         }
-        .pickerStyle(.menu)
+        .wwnPlatformPickerStyle()
         .labelsHidden()
       }
       labeledField("Video Encoding") {
@@ -623,7 +982,7 @@ struct WWNMachineEditorView: View {
           Text("hwenc").tag("hwenc")
           Text("swenc").tag("swenc")
         }
-        .pickerStyle(.menu)
+        .wwnPlatformPickerStyle()
         .labelsHidden()
       }
       labeledField("Video Decoding") {
@@ -633,7 +992,7 @@ struct WWNMachineEditorView: View {
           Text("hwdec").tag("hwdec")
           Text("swdec").tag("swdec")
         }
-        .pickerStyle(.menu)
+        .wwnPlatformPickerStyle()
         .labelsHidden()
       }
       labeledField("Bits Per Frame") {
@@ -698,22 +1057,130 @@ struct WWNMachineEditorView: View {
   // MARK: - Container Section
 
   private var containerSection: some View {
-    sectionCard("Container", subtitle: "Container runtime is selected automatically for this platform.") {
+    let card = sectionCard("Container", subtitle: "Apple Containerization runs this image in a per-container VM.") {
       labeledField("Backend") {
         Text("containerization.framework")
           .foregroundStyle(.secondary)
       }
-      labeledField("Startup Command") {
-        TextField("weston-simple-shm", text: $remoteCommand)
+      labeledField("Image") {
+        HStack(spacing: 8) {
+          TextField("e.g. alpine:3.20 or python:3.12-slim", text: $containerRef)
+            .textFieldStyle(.roundedBorder)
+            .wwnDisableAutocapitalization()
+            .autocorrectionDisabled()
+            .wwnA11y(WWNA11y.machinesEditorContainerRef, label: "Container Image")
+          #if os(macOS)
+          Button {
+            showContainerHubSearch = true
+          } label: {
+            Label("Search Docker Hub", systemImage: "magnifyingglass")
+          }
+          .wwnA11y(WWNA11y.machinesEditorContainerHub, label: "Search Docker Hub")
+          #endif
+        }
+      }
+      #if os(macOS)
+      Button {
+        showContainerArchiveImporter = true
+      } label: {
+        Label("Import image archive…", systemImage: "square.and.arrow.down")
+      }
+      .disabled(containerImporting)
+      if containerImporting {
+        HStack(spacing: 6) {
+          ProgressView().controlSize(.small)
+          Text("Importing…").font(.caption).foregroundStyle(.secondary)
+        }
+      }
+      if let containerImportNote {
+        Text(containerImportNote)
+          .font(.caption)
+          .foregroundStyle(containerImportNote.hasPrefix("imported") ? .green : .red)
+      }
+      if !imageArchivePath.isEmpty {
+        HStack {
+          Image(systemName: "internaldrive").foregroundStyle(.secondary)
+          Text("Archive: \(displayContainerArchivePath)")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .truncationMode(.middle)
+          Spacer()
+          Button("Clear") {
+            imageArchivePath = ""
+            containerRef = ""
+            containerImportNote = nil
+          }
+          .buttonStyle(.borderless)
+          .controlSize(.small)
+        }
+      }
+      #endif
+      labeledField("Command") {
+        TextField("e.g. /bin/sh", text: $entryCommand)
           .textFieldStyle(.roundedBorder)
           .wwnDisableAutocapitalization()
           .autocorrectionDisabled()
+          .wwnA11y(WWNA11y.machinesEditorContainerCommand, label: "Container Command")
       }
-      Text("Container launch support is currently placeholder behavior until runtime integration is complete.")
+      #if os(macOS)
+      Toggle("Desktop session", isOn: $desktopSession)
+        .wwnA11y(WWNA11y.machinesEditorContainerDesktop, label: "Desktop session")
+      #endif
+      Text("Empty fields inherit the global Settings > Containers defaults. Memory, mounts and ports are configured in Machine Settings.")
         .font(.footnote)
         .foregroundStyle(.secondary)
     }
+    #if os(macOS)
+    return card
+      .sheet(isPresented: $showContainerHubSearch) {
+        WWNContainerHubSearchView { selected in
+          containerRef = selected
+        }
+      }
+      .fileImporter(
+        isPresented: $showContainerArchiveImporter,
+        allowedContentTypes: [.item, .directory]
+      ) { result in
+        handleContainerArchiveImport(result)
+      }
+    #else
+    return card
+    #endif
   }
+
+  private var displayContainerArchivePath: String {
+    (imageArchivePath as NSString).lastPathComponent
+  }
+
+  #if os(macOS)
+  private func handleContainerArchiveImport(_ result: Result<URL, Error>) {
+    switch result {
+    case .success(let url):
+      guard url.startAccessingSecurityScopedResource() else {
+        containerImportNote = "import failed: permission denied"
+        return
+      }
+      defer { url.stopAccessingSecurityScopedResource() }
+      let path = url.path
+      containerImporting = true
+      containerImportNote = nil
+      Task {
+        do {
+          let imported = try await ContainerImageManager.importFromDiskResolved(path) { _ in }
+          containerRef = imported.canonical
+          imageArchivePath = imported.ociLayout
+          containerImportNote = "imported \(imported.canonical)"
+        } catch {
+          containerImportNote = "import failed: \(error.localizedDescription)"
+        }
+        containerImporting = false
+      }
+    case .failure(let error):
+      containerImportNote = "import failed: \(error.localizedDescription)"
+    }
+  }
+  #endif
 
   // MARK: - Helpers
 
@@ -878,6 +1345,14 @@ struct WWNMachineEditorView: View {
     )
   }
 
+  private var selectedClientDrawsOwnCursor: Bool {
+    type == kWWNMachineTypeNative &&
+      WWNMachineProfileStore.profileIndicatesNested(
+        nativeClientId: selectedClientId,
+        customCommand: customCommand
+      )
+  }
+
   @ViewBuilder
   private func labeledField<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {
     ViewThatFits(in: .horizontal) {
@@ -921,6 +1396,40 @@ struct WWNMachineEditorView: View {
     // vmSubtype / containerSubtype are no longer user-editable (Residual E):
     // the backend engine is fixed per build target. Leave profile defaults as-is.
 
+    // Container machines persist image ref + command in containerSettings
+    // (read by WWNContainerRunner). Advanced fields (memory, mounts, ports,
+    // kernel paths) are edited in Machine Settings and preserved untouched.
+    if type == kWWNMachineTypeContainer {
+      var containerSettings = profile.containerSettings
+      let ref = containerRef.trimmingCharacters(in: .whitespacesAndNewlines)
+      let cmd = entryCommand.trimmingCharacters(in: .whitespacesAndNewlines)
+      if ref.isEmpty {
+        containerSettings.removeValue(forKey: "containerRef")
+      } else {
+        containerSettings["containerRef"] = ref
+      }
+      if cmd.isEmpty {
+        containerSettings.removeValue(forKey: "entryCommand")
+      } else {
+        containerSettings["entryCommand"] = cmd
+      }
+      if desktopSession {
+        containerSettings["desktopSession"] = true
+      } else {
+        containerSettings.removeValue(forKey: "desktopSession")
+      }
+      let archive = imageArchivePath.trimmingCharacters(in: .whitespacesAndNewlines)
+      if archive.isEmpty {
+        containerSettings.removeValue(forKey: "imageArchivePath")
+      } else {
+        containerSettings["imageArchivePath"] = archive
+      }
+      if (containerSettings["runtime"] as? String)?.isEmpty ?? true {
+        containerSettings["runtime"] = "containerization"
+      }
+      profile.containerSettings = containerSettings
+    }
+
     var overrides: [String: Any] = profile.settingsOverrides
     var runtimeOverrides: [String: Any] = profile.runtimeOverrides
     overrides["NativeClientId"] = selectedClientId
@@ -948,13 +1457,15 @@ struct WWNMachineEditorView: View {
     overrides["NestedCompositorCursor"] =
       (nestedCompositorCursor == "host") ? "host" : "virtual"
     #if os(tvOS)
-    // Desktop window chrome is unusable on the 10-foot UI; never persist SSD/GPU stack.
-    overrides["ForceServerSideDecorations"] = false
-    overrides["VulkanDriver"] = "none"
-    overrides["OpenGLDriver"] = "none"
-    overrides["DmabufEnabled"] = false
-    overrides["ColorOperations"] = false
-    overrides["TouchInputType"] = "Touchpad"
+    // Fill-primary: Wayland CSD cannot stand alone on tvOS, so SSD stays on.
+    // Persist the graphics/input the editor actually shows. Do not force
+    // Vulkan off; that made every GPU client refuse after Save.
+    overrides["ForceServerSideDecorations"] = true
+    overrides["TouchInputType"] = touchInputType
+    overrides["VulkanDriver"] = vulkanDriver
+    overrides["OpenGLDriver"] = openGLDriver
+    overrides["DmabufEnabled"] = dmabufEnabled
+    overrides["ColorOperations"] = colorOperations
     #else
     overrides["ForceServerSideDecorations"] = forceServerSideDecorations
     overrides["TouchInputType"] = touchInputType
@@ -999,6 +1510,12 @@ struct WWNMachineEditorView: View {
 
     runtimeOverrides["useBundledApp"] = (type == kWWNMachineTypeNative && !selectedClientId.isEmpty)
     runtimeOverrides["bundledAppID"] = selectedClientId
+    let trimmedWasm = wasmModulePath.trimmingCharacters(in: .whitespacesAndNewlines)
+    if selectedClientId == kNativeClientWasmId && !trimmedWasm.isEmpty {
+      runtimeOverrides[kRuntimeWasmModulePathKey] = trimmedWasm
+    } else {
+      runtimeOverrides.removeValue(forKey: kRuntimeWasmModulePathKey)
+    }
     runtimeOverrides["inputProfile"] = touchInputType
     runtimeOverrides["waypipeEnabled"] = (type == kWWNMachineTypeSSHWaypipe || type == kWWNMachineTypeSSHTerminal)
     if machineThumbnailEnabled != WWNPreferencesManager.shared().machineSessionThumbnailsEnabled() {
@@ -1028,6 +1545,11 @@ struct WWNMachineEditorView: View {
     }
     #endif
     runtimeOverrides["legacySettingsOverrides"] = overrides
+    if environmentOverrides.isEmpty {
+      runtimeOverrides.removeValue(forKey: "environment")
+    } else if let encoded = Self.encodeEnvironmentOverrides(environmentOverrides) {
+      runtimeOverrides["environment"] = encoded
+    }
 
     profile.settingsOverrides = overrides
     profile.runtimeOverrides = runtimeOverrides
@@ -1035,12 +1557,67 @@ struct WWNMachineEditorView: View {
     onSave(profile)
     dismiss()
   }
+
+  private static func decodeEnvironmentOverrides(_ raw: Any?) -> EnvironmentOverrideMap {
+    guard let raw else { return [:] }
+    if let map = raw as? EnvironmentOverrideMap {
+      return map
+    }
+    guard JSONSerialization.isValidJSONObject(raw),
+          let data = try? JSONSerialization.data(withJSONObject: raw),
+          let decoded = try? JSONDecoder().decode(EnvironmentOverrideMap.self, from: data)
+    else {
+      return [:]
+    }
+    return decoded
+  }
+
+  private static func encodeEnvironmentOverrides(_ map: EnvironmentOverrideMap) -> [String: Any]? {
+    guard let data = try? JSONEncoder().encode(map),
+          let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    else {
+      return nil
+    }
+    return obj
+  }
 }
+
+#if os(macOS)
+private extension View {
+  /// Soft fade where editor cards meet the unified titlebar.
+  @ViewBuilder
+  func wwnMachineConfigScrollEdgeEffect() -> some View {
+    if #available(macOS 26.0, *) {
+      self.scrollEdgeEffectStyle(.soft, for: .top)
+    } else {
+      self
+    }
+  }
+
+  /// Frosted material so scrolling content blurs under Cancel / Save.
+  @ViewBuilder
+  func wwnMachineConfigUnifiedToolbar() -> some View {
+    if #available(macOS 26.0, *) {
+      self
+        .toolbarBackground(.regularMaterial, for: .windowToolbar)
+        .toolbarBackgroundVisibility(.visible, for: .windowToolbar)
+        .toolbarTitleDisplayMode(.inline)
+    } else {
+      self
+    }
+  }
+}
+#endif
 
 private struct WWNNativeClientPickerView: View {
   @Environment(\.dismiss) private var dismiss
   @Binding var selectedClientId: String
-  @Binding var customCommand: String
+  var onPicked: (() -> Void)? = nil
+  @State private var draftId: String = ""
+
+  private var shownId: String {
+    draftId.isEmpty ? selectedClientId : draftId
+  }
 
   var body: some View {
     ScrollView {
@@ -1055,20 +1632,47 @@ private struct WWNNativeClientPickerView: View {
       .padding(16)
     }
     .navigationTitle("Wayland Client")
+    .onAppear {
+      if draftId.isEmpty {
+        draftId = selectedClientId
+      }
+    }
     #if os(tvOS)
+    .toolbar {
+      ToolbarItem(placement: .cancellationAction) {
+        Button("Cancel") { dismiss() }
+      }
+      ToolbarItem(placement: .confirmationAction) {
+        Button("Done") {
+          selectedClientId = shownId
+          dismiss()
+        }
+      }
+    }
     .background {
       Color(white: 0.07).ignoresSafeArea()
     }
     #endif
   }
 
+  private func choose(_ id: String) {
+    #if os(tvOS)
+    draftId = id
+    #else
+    selectedClientId = id
+    if let onPicked {
+      onPicked()
+    } else {
+      dismiss()
+    }
+    #endif
+  }
+
   @ViewBuilder
   private func clientOption(_ client: BundledClient) -> some View {
-    let isSelected = selectedClientId == client.id
+    let isSelected = shownId == client.id
     Button {
-      selectedClientId = client.id
-      // Match Android/iOS: choosing a bundled client pops the picker immediately.
-      dismiss()
+      choose(client.id)
     } label: {
       HStack(spacing: 12) {
         Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
@@ -1102,52 +1706,51 @@ private struct WWNNativeClientPickerView: View {
 
   @ViewBuilder
   private var customClientOption: some View {
-    let isSelected = selectedClientId == kNativeClientCustomId
-    VStack(alignment: .leading, spacing: 8) {
-      Button {
-        selectedClientId = kNativeClientCustomId
-      } label: {
-        HStack(spacing: 12) {
-          Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-            .font(.title3)
-            .foregroundStyle(isSelected ? Color.accentColor : .secondary)
-            .frame(width: 28, alignment: .center)
-          Image(systemName: "terminal.fill")
-            .font(.title3)
-            .foregroundStyle(Color.accentColor)
-            .frame(width: 28, alignment: .center)
-          VStack(alignment: .leading, spacing: 2) {
-            Text("Custom Command")
-              .font(.subheadline.weight(.semibold))
-              .foregroundStyle(.primary)
-            Text("Run any Wayland-compatible executable")
-              .font(.caption)
-              .foregroundStyle(.secondary)
-          }
-          Spacer()
+    let isSelected = shownId == kNativeClientCustomId
+    Button {
+      choose(kNativeClientCustomId)
+    } label: {
+      HStack(spacing: 12) {
+        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+          .font(.title3)
+          .foregroundStyle(isSelected ? Color.accentColor : .secondary)
+          .frame(width: 28, alignment: .center)
+        Image(systemName: "terminal.fill")
+          .font(.title3)
+          .foregroundStyle(Color.accentColor)
+          .frame(width: 28, alignment: .center)
+        VStack(alignment: .leading, spacing: 2) {
+          Text("Custom Command")
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.primary)
+          Text("Enter the executable on the machine editor")
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
-        .contentShape(Rectangle())
-        .padding(.vertical, 6)
-        .padding(.horizontal, 8)
-        .background(
-          RoundedRectangle(cornerRadius: 8, style: .continuous)
-            .fill(isSelected ? Color.accentColor.opacity(0.1) : Color.clear)
-        )
+        Spacer()
       }
-      .buttonStyle(.plain)
-
-      if isSelected {
-        TextField("e.g. /usr/bin/my-wayland-app", text: $customCommand)
-          .textFieldStyle(.roundedBorder)
-          .wwnDisableAutocapitalization()
-          .autocorrectionDisabled()
-          .padding(.leading, 68)
-      }
+      .contentShape(Rectangle())
+      .padding(.vertical, 6)
+      .padding(.horizontal, 8)
+      .background(
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+          .fill(isSelected ? Color.accentColor.opacity(0.1) : Color.clear)
+      )
     }
+    .buttonStyle(.plain)
   }
 }
 
 private extension View {
+  @ViewBuilder
+  func wwnPlatformPickerStyle() -> some View {
+    #if os(macOS)
+    self.pickerStyle(.menu)
+    #else
+    self.pickerStyle(.navigationLink)
+    #endif
+  }
+
   @ViewBuilder
   func wwnDisableAutocapitalization() -> some View {
     #if os(iOS)
@@ -1162,5 +1765,58 @@ private extension View {
 extension TextFieldStyle where Self == PlainTextFieldStyle {
   /// tvOS does not ship RoundedBorderTextFieldStyle; map calls to plain style.
   static var roundedBorder: PlainTextFieldStyle { .plain }
+}
+
+/// One Form row, matching Picker/Toggle. A bare `TextField` in a tvOS Form
+/// draws its own capsule inside the row's capsule (a double button).
+/// Selecting the row opens the system keyboard in an alert instead.
+private struct WWNTvFormTextField: View {
+  let title: String
+  @Binding var text: String
+  var prompt: String = ""
+  var secure: Bool = false
+
+  @State private var showEditor = false
+  @State private var draft = ""
+
+  init(_ title: String, text: Binding<String>, prompt: String = "", secure: Bool = false) {
+    self.title = title
+    self._text = text
+    self.prompt = prompt
+    self.secure = secure
+  }
+
+  var body: some View {
+    Button {
+      draft = text
+      showEditor = true
+    } label: {
+      LabeledContent(title) {
+        Text(displayValue)
+          .foregroundStyle(text.isEmpty ? .secondary : .primary)
+          .multilineTextAlignment(.trailing)
+      }
+    }
+    .buttonStyle(.plain)
+    .alert(title, isPresented: $showEditor) {
+      if secure {
+        SecureField(prompt.isEmpty ? title : prompt, text: $draft)
+      } else {
+        TextField(prompt.isEmpty ? title : prompt, text: $draft)
+      }
+      Button("OK") { text = draft }
+      Button("Cancel", role: .cancel) {}
+    }
+  }
+
+  private var displayValue: String {
+    if text.isEmpty {
+      return prompt.isEmpty ? "Required" : prompt
+    }
+    if secure {
+      return String(repeating: "•", count: min(text.count, 8))
+    }
+    return text
+  }
 }
 #endif

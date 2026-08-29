@@ -3,15 +3,21 @@
 #import "../Machines/WWNMachineProfileStore.h"
 #if TARGET_OS_OSX
 #import "WWNSipStatus.h"
+#import "../../WWNLaunchAgentManager.h"
 #import "../Machines/WWNDesktopReplacementController.h"
 #endif
-#import "../../platform/macos/WWNCompositorBridge.h"
+#import "../../WWNCompositorBridge.h"
+#import "../../WWNRootfsProvider.h"
+#import "../Helpers/WWNSSHKeygen.h"
 #import "../../../../util/WWNLog.h"
 #import "../../WWNPlatformCallbacks.h"
 #import "../Helpers/WWNImageLoader.h"
 #import "WWNPreferencesManager.h"
 #import "WWNSettingsModel.h"
 #import "WWNWaypipeRunner.h"
+#ifdef WWN_PREFPANE
+#import "PrefPane/WWNPrefPaneHandoff.h"
+#endif
 // #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
 // #import <HIAHKernel/HIAHKernel.h>
 // #endif
@@ -36,23 +42,23 @@
 #import <sys/socket.h>
 #import <sys/stat.h>
 #import <sys/types.h>
+#import <sys/utsname.h>
 #import <sys/wait.h>
 #import <unistd.h>
 #if TARGET_OS_IPHONE
 #import "../../platform/ios/WWNIOSVersions.h"
 #import "../../platform/macos/WWNRootfsProvider.h"
-#if !TARGET_OS_TV
-#import "../../platform/macos/WWNRootfsICloudSync.h"
+#if !TARGET_OS_TV && !TARGET_OS_WATCH
+#import "../../platform/ios/WWNWatchCompanionBridge.h"
 #endif
+#import "../../platform/macos/WWNRootfsICloudSync.h"
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <libssh2.h>
 #import "WWNSSHKeygen.h"
 #else
 #import "../../platform/macos/WWNRootfsProvider.h"
 #import "WWNSSHKeygen.h"
-#if !TARGET_OS_TV
 #import "../../platform/macos/WWNRootfsICloudSync.h"
-#endif
 #endif
 
 #ifndef WAWONA_VERSION
@@ -120,6 +126,156 @@
 #define WAWONA_SSHPASS_VERSION "Bundled"
 #endif
 
+/// Body for a Settings Info tap sheet: helper copy, then the stored value.
+static NSString *WWNSettingsOneLine(NSString *text) {
+  if (text.length == 0) {
+    return @"";
+  }
+  NSString *flat =
+      [[text componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]]
+          componentsJoinedByString:@" "];
+  while ([flat containsString:@"  "]) {
+    flat = [flat stringByReplacingOccurrencesOfString:@"  " withString:@" "];
+  }
+  return [flat stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+}
+
+static NSString *WWNSettingsInfoTrailingText(WWNSettingItem *item) {
+  id val = nil;
+  if (item.key.length > 0) {
+    val = [WWNSharedUserDefaults() objectForKey:item.key];
+  }
+  if (!val) {
+    val = item.defaultValue;
+  }
+  NSString *text = WWNSettingsOneLine([val description] ?: @"");
+  if (text.length == 0) {
+    text = WWNSettingsOneLine(item.desc);
+  }
+  return text;
+}
+
+/// Short values sit in the trailing column. Longer copy wraps in the row so
+/// the cell never collapses to a lone ellipsis placeholder.
+static BOOL WWNSettingsInfoValueIsCompact(NSString *text) {
+  return text.length > 0 && text.length <= 32;
+}
+
+/// Body for a Settings Info tap sheet: helper copy, then the stored value.
+static NSString *WWNSettingsInfoDetailText(WWNSettingItem *item) {
+  id val = [WWNSharedUserDefaults() objectForKey:item.key];
+  if (!val) {
+    val = item.defaultValue;
+  }
+  NSString *valueString = [val description] ?: @"";
+  NSMutableArray<NSString *> *parts = [NSMutableArray array];
+  if (item.desc.length > 0) {
+    [parts addObject:item.desc];
+  }
+  if (valueString.length > 0 && ![valueString isEqualToString:item.desc]) {
+    [parts addObject:valueString];
+  }
+  return [parts componentsJoinedByString:@"\n\n"];
+}
+
+static BOOL WWNSettingsPopupStoresIndex(NSString *key) {
+  return [key isEqualToString:@"SSHAuthMethod"] ||
+         [key isEqualToString:@"WaypipeSSHAuthMethod"];
+}
+
+static NSInteger WWNSettingsPopupSelectedIndex(WWNSettingItem *item) {
+  id val = [WWNSharedUserDefaults() objectForKey:item.key];
+  if (!val) {
+    val = item.defaultValue;
+  }
+  if (WWNSettingsPopupStoresIndex(item.key)) {
+    NSInteger i = [val isKindOfClass:[NSNumber class]] ? [val integerValue] : 0;
+    if (i < 0 || i >= (NSInteger)item.options.count) {
+      return 0;
+    }
+    return i;
+  }
+  NSString *stored = [val description] ?: @"";
+  if (item.optionValues.count == item.options.count) {
+    for (NSInteger i = 0; i < (NSInteger)item.optionValues.count; i++) {
+      if ([item.optionValues[i] isEqualToString:stored]) {
+        return i;
+      }
+    }
+  }
+  for (NSInteger i = 0; i < (NSInteger)item.options.count; i++) {
+    if ([item.options[i] isEqualToString:stored]) {
+      return i;
+    }
+  }
+  return 0;
+}
+
+static NSString *WWNSettingsPopupDisplayTitle(WWNSettingItem *item) {
+  NSInteger i = WWNSettingsPopupSelectedIndex(item);
+  if (i >= 0 && i < (NSInteger)item.options.count) {
+    return item.options[i];
+  }
+  return @"";
+}
+
+static void WWNSettingsPopupStoreIndex(WWNSettingItem *item, NSInteger index) {
+  if (index < 0 || index >= (NSInteger)item.options.count) {
+    return;
+  }
+  if (WWNSettingsPopupStoresIndex(item.key)) {
+    [WWNSharedUserDefaults() setInteger:index forKey:item.key];
+    return;
+  }
+  id value = (item.optionValues.count == item.options.count)
+                 ? item.optionValues[index]
+                 : item.options[index];
+  [WWNSharedUserDefaults() setObject:value forKey:item.key];
+}
+
+/// Aspect-fill a remote About icon into a rounded square so favicons (X) match
+/// GitHub / LinkedIn / Ko-fi plates.
+static WImage WWNSquareFilledIcon(WImage image, CGFloat size) {
+  if (!image || size < 1.0) {
+    return image;
+  }
+#if TARGET_OS_IPHONE
+  CGSize src = image.size;
+  if (src.width < 1.0 || src.height < 1.0) {
+    return image;
+  }
+  UIGraphicsImageRenderer *renderer =
+      [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(size, size)];
+  return [renderer imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
+    (void)ctx;
+    CGFloat scale = MAX(size / src.width, size / src.height);
+    CGSize dest = CGSizeMake(src.width * scale, src.height * scale);
+    [image drawInRect:CGRectMake((size - dest.width) / 2.0,
+                                 (size - dest.height) / 2.0, dest.width,
+                                 dest.height)];
+  }];
+#else
+  NSSize src = image.size;
+  if (src.width < 1.0 || src.height < 1.0) {
+    return image;
+  }
+  NSImage *out = [[NSImage alloc] initWithSize:NSMakeSize(size, size)];
+  [out lockFocus];
+  CGFloat scale = MAX(size / src.width, size / src.height);
+  NSSize dest = NSMakeSize(src.width * scale, src.height * scale);
+  NSRect r = NSMakeRect((size - dest.width) / 2.0, (size - dest.height) / 2.0,
+                        dest.width, dest.height);
+  [image drawInRect:r
+           fromRect:NSZeroRect
+          operation:NSCompositingOperationSourceOver
+           fraction:1.0
+     respectFlipped:YES
+              hints:@{NSImageHintInterpolation : @(NSImageInterpolationHigh)}];
+  [out unlockFocus];
+  return out;
+#endif
+}
+
 // MARK: - Helper Class Interfaces
 
 #if !TARGET_OS_IPHONE
@@ -132,7 +288,18 @@
 @interface WWNPreferencesContent
     : NSViewController <NSTableViewDataSource, NSTableViewDelegate>
 @property(nonatomic, strong) WWNPreferencesSection *section;
+@property(nonatomic, strong, nullable) WWNSettingItem *pickingItem;
 @property(nonatomic, strong) NSTableView *tableView;
+@property(nonatomic, strong) NSScrollView *scrollView;
+@property(nonatomic, strong) NSView *environmentHostView;
+@property(nonatomic, strong) NSView *pickerHeader;
+@property(nonatomic, strong) NSTextField *pickerTitleLabel;
+@property(nonatomic, strong) NSLayoutConstraint *scrollTopToView;
+@property(nonatomic, strong) NSLayoutConstraint *scrollTopToHeader;
+- (void)reloadForCurrentSection;
+- (void)showOptionPickerForItem:(WWNSettingItem *)item;
+- (void)exitOptionPicker;
+- (void)applyPopupSelectionForItem:(WWNSettingItem *)item index:(NSInteger)index;
 @end
 #endif
 
@@ -159,6 +326,7 @@
 // Which import a presented UIDocumentPicker is servicing (both the GPG/OpenSSH
 // key import and the shell-home file import share this VC as delegate).
 @property(nonatomic, assign) BOOL documentPickerImportsSSHKey;
+@property(nonatomic, assign) BOOL documentPickerSendsToAppleWatch;
 #if !TARGET_OS_TV
 - (void)importPickedFileToShellHome:(NSArray<NSURL *> *)urls;
 #endif
@@ -173,6 +341,21 @@
 #endif
 - (NSArray<WWNPreferencesSection *> *)buildSections;
 - (void)runWaypipe;
+- (void)previewWaypipeCommand;
+- (NSString *)wwnHostOsSummary;
+- (NSString *)wwnInstallChannel;
+- (NSString *)wwnDiagnosticReportMachineOnly:(BOOL)machineOnly;
+- (void)wwnCopyDiagnosticReportMachineOnly:(BOOL)machineOnly;
+- (void)wwnOpenGitHubBugReport;
+- (void)openEnvironmentVariablesManager;
+#if TARGET_OS_IPHONE
+- (void)wwnApplyPopupSelectionForItem:(WWNSettingItem *)item
+                                index:(NSInteger)index;
+- (void)wwnPushOptionPickerForItem:(WWNSettingItem *)item;
+- (void)wwnSyncEnvironmentInventory;
+- (UINavigationController *)wwnDetailNavigationController;
+@property(nonatomic, strong) UIViewController *environmentHostController;
+#endif
 - (NSString *)localIPAddress;
 - (NSString *)getLibSSH2Version;
 - (NSString *)getSocketPath;
@@ -188,13 +371,21 @@
 #endif
 #if TARGET_OS_OSX
 - (void)showDesktopReplacementSipHowTo;
+- (void)showDesktopReplacementReplaceNow;
+- (void)reloadDesktopSection;
+- (BOOL)applyDesktopReplacementEnabled:(BOOL)enabled
+                                revert:(void (^_Nullable)(void))revert;
 #endif
-#if TARGET_OS_IPHONE
 - (void)confirmResetShellDotfiles;
 - (void)confirmReinstallSystemTree;
+- (NSArray<NSDictionary *> *)loadSettingsDependenciesInventory;
+#if TARGET_OS_IPHONE
+- (void)presentSettingsFromRoot:(UIViewController *)root;
 #endif
-#if TARGET_OS_IPHONE && !TARGET_OS_TV
+#if !TARGET_OS_TV
 - (void)importFileToShellHome;
+- (void)sendDocumentToAppleWatch;
+- (void)sendPickedFileToAppleWatch:(NSArray<NSURL *> *)urls;
 #endif
 #if (TARGET_OS_IPHONE || TARGET_OS_OSX) && !TARGET_OS_TV
 - (void)handleLocalShellICloudSyncToggle:(BOOL)enabled;
@@ -204,9 +395,123 @@
 - (void)toggleMacOSPasswordVisibility:(NSButton *)sender;
 #endif
 #if TARGET_OS_TV
-- (void)tvSwitchButtonPressed:(UIButton *)button;
+- (void)tvSwitchChanged:(UISegmentedControl *)seg;
+- (void)wwnCommitSwitchItem:(WWNSettingItem *)item on:(BOOL)on;
 #endif
 @end
+
+#if TARGET_OS_IPHONE
+#if TARGET_OS_TV
+// Focused tvOS cells paint a light platter. labelColor stays white unless we
+// swap to dark text for the focused state (UIListContentConfiguration does
+// this automatically; classic textLabel does not).
+static void WWNTvInstallFocusTextHandler(UITableViewCell *cell) {
+  UIColor *titleRest = cell.textLabel.textColor ?: [UIColor labelColor];
+  UIColor *detailRest =
+      cell.detailTextLabel.textColor ?: [UIColor secondaryLabelColor];
+  cell.configurationUpdateHandler = ^(UITableViewCell *updated,
+                                      UICellConfigurationState *state) {
+    BOOL focused = state.isFocused;
+    updated.textLabel.textColor = focused ? [UIColor blackColor] : titleRest;
+    if (updated.detailTextLabel) {
+      updated.detailTextLabel.textColor =
+          focused ? [UIColor colorWithWhite:0.2 alpha:1] : detailRest;
+    }
+  };
+}
+#endif
+
+@interface WWNSettingsOptionPickerController : UITableViewController
+@property(nonatomic, strong) WWNSettingItem *item;
+@property(nonatomic, copy) void (^onPick)(NSInteger index);
+@end
+
+@implementation WWNSettingsOptionPickerController
+- (instancetype)initWithItem:(WWNSettingItem *)item {
+#if TARGET_OS_TV
+  self = [super initWithStyle:UITableViewStyleGrouped];
+#else
+  self = [super initWithStyle:UITableViewStyleInsetGrouped];
+#endif
+  if (self) {
+    _item = item;
+    self.title = item.title;
+    self.tableView.accessibilityIdentifier =
+        item.accessibilityIdentifier.length
+            ? [NSString stringWithFormat:@"%@.choices", item.accessibilityIdentifier]
+            : @"wwn.settings.choices";
+  }
+  return self;
+}
+
+- (void)viewDidLoad {
+  [super viewDidLoad];
+#if TARGET_OS_TV
+  self.view.clipsToBounds = NO;
+  self.tableView.clipsToBounds = NO;
+  self.navigationItem.leftBarButtonItem =
+      [[UIBarButtonItem alloc] initWithTitle:@"Cancel"
+                                       style:UIBarButtonItemStylePlain
+                                      target:self
+                                      action:@selector(wwnCancelPicker)];
+  self.navigationItem.leftBarButtonItem.accessibilityLabel = @"Cancel";
+#endif
+}
+
+- (void)wwnCancelPicker {
+  if (self.presentingViewController &&
+      self.navigationController.viewControllers.firstObject == self) {
+    [self dismissViewControllerAnimated:YES completion:nil];
+    return;
+  }
+  [self.navigationController popViewControllerAnimated:YES];
+}
+
+- (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)section {
+  (void)tv;
+  (void)section;
+  return (NSInteger)self.item.options.count;
+}
+
+- (NSString *)tableView:(UITableView *)tv titleForFooterInSection:(NSInteger)section {
+  (void)tv;
+  (void)section;
+  return self.item.desc.length > 0 ? self.item.desc : nil;
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tv
+         cellForRowAtIndexPath:(NSIndexPath *)ip {
+  static NSString *const kID = @"Choice";
+  UITableViewCell *cell = [tv dequeueReusableCellWithIdentifier:kID];
+  if (!cell) {
+    cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault
+                                  reuseIdentifier:kID];
+  }
+  cell.textLabel.text = self.item.options[ip.row];
+  cell.textLabel.numberOfLines = 1;
+  cell.textLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+  cell.detailTextLabel.text = nil;
+  BOOL selected = (ip.row == WWNSettingsPopupSelectedIndex(self.item));
+  cell.accessoryType = selected ? UITableViewCellAccessoryCheckmark
+                                : UITableViewCellAccessoryNone;
+  cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+  cell.accessibilityIdentifier = [NSString
+      stringWithFormat:@"wwn.settings.choice.%ld", (long)ip.row];
+#if TARGET_OS_TV
+  cell.textLabel.textColor = [UIColor labelColor];
+  WWNTvInstallFocusTextHandler(cell);
+#endif
+  return cell;
+}
+
+- (void)tableView:(UITableView *)tv didSelectRowAtIndexPath:(NSIndexPath *)ip {
+  [tv deselectRowAtIndexPath:ip animated:YES];
+  if (self.onPick) {
+    self.onPick(ip.row);
+  }
+}
+@end
+#endif
 
 // MARK: - Main Implementation
 
@@ -341,10 +646,18 @@ static UIImage *WWNAboutLogo(void) {
     if (self.sections.count > 0) {
       self.activeSection = self.sections[0];
     }
+#if TARGET_OS_TV
+    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
+        initWithTitle:@"Done"
+                style:UIBarButtonItemStylePlain
+               target:self
+               action:@selector(dismissSelf)];
+#else
     self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
         initWithBarButtonSystemItem:UIBarButtonSystemItemDone
                              target:self
                              action:@selector(dismissSelf)];
+#endif
     self.navigationItem.rightBarButtonItem.accessibilityIdentifier =
         @"wwn.settings.done";
     self.navigationItem.rightBarButtonItem.accessibilityLabel = @"Done";
@@ -362,7 +675,7 @@ static UIImage *WWNAboutLogo(void) {
   static BOOL sLastForceSSD = NO;
   static BOOL sHasCheckedForceSSD = NO;
 
-  NSUserDefaults *defs = [NSUserDefaults standardUserDefaults];
+  NSUserDefaults *defs = WWNSharedUserDefaults();
   BOOL enabled = [defs boolForKey:@"ForceServerSideDecorations"];
   if ([defs objectForKey:@"ForceServerSideDecorations"] || enabled) {
     if (!sHasCheckedForceSSD || sLastForceSSD != enabled) {
@@ -407,8 +720,25 @@ static UIImage *WWNAboutLogo(void) {
   // Remove extra top padding
   self.tableView.tableHeaderView =
       [[UIView alloc] initWithFrame:CGRectMake(0, 0, 1.0, 1.0)];
+  self.tableView.rowHeight = UITableViewAutomaticDimension;
+  self.tableView.estimatedRowHeight = 44.0;
+#if !TARGET_OS_TV
+  self.tableView.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
+  self.tableView.separatorColor = [UIColor separatorColor];
+  self.tableView.separatorInset = UIEdgeInsetsMake(0, 20, 0, 20);
+#endif
+  // Nav bar already names the page. Do not also use a large title that
+  // restates the same section string above the grouped rows.
+#if TARGET_OS_TV
+  self.tableView.clipsToBounds = NO;
+  self.view.clipsToBounds = NO;
+#else
+  self.navigationItem.largeTitleDisplayMode =
+      UINavigationItemLargeTitleDisplayModeNever;
+#endif
+  self.tableView.sectionHeaderTopPadding = 0;
 
-  __weak typeof(self) weakSelf = self;
+  __block typeof(self) weakSelf = self;
   [self registerForTraitChanges:@[ UITraitUserInterfaceStyle.class ]
                     withHandler:^(
                         id<UITraitEnvironment> _Nonnull traitEnvironment,
@@ -421,6 +751,11 @@ static UIImage *WWNAboutLogo(void) {
                     }];
 }
 
+- (void)viewDidAppear:(BOOL)animated {
+  [super viewDidAppear:animated];
+  [self wwnSyncEnvironmentInventory];
+}
+
 #endif
 
 #define ITEM(t, k, ty, def, d)                                                 \
@@ -429,19 +764,87 @@ static UIImage *WWNAboutLogo(void) {
 #if TARGET_OS_IPHONE
 - (void)setActiveSection:(WWNPreferencesSection *)activeSection {
   _activeSection = activeSection;
-  if (activeSection.accessibilityIdentifier.length > 0) {
+  if (activeSection.accessibilityIdentifier.length > 0 && self.isViewLoaded) {
     self.tableView.accessibilityIdentifier = activeSection.accessibilityIdentifier;
     self.tableView.accessibilityLabel = activeSection.title;
   }
-  if (self.isViewLoaded) {
+  [self wwnSyncEnvironmentInventory];
+  UINavigationController *nav = self.navigationController;
+  if (nav && [nav.viewControllers containsObject:self] &&
+      nav.topViewController != self &&
+      nav.topViewController != self.environmentHostController) {
+    [nav popToViewController:self animated:NO];
+  }
+  if (self.isViewLoaded && !self.tableView.hidden) {
     [self.tableView reloadData];
   }
+}
+
+- (UINavigationController *)wwnDetailNavigationController {
+  if (self.settingsColumnNavigationController) {
+    return self.settingsColumnNavigationController;
+  }
+  if (self.navigationController) {
+    return self.navigationController;
+  }
+  if (self.environmentHostController.navigationController) {
+    return self.environmentHostController.navigationController;
+  }
+  UISplitViewController *split = self.splitViewController
+      ?: self.environmentHostController.splitViewController;
+  UIViewController *secondary =
+      [split viewControllerForColumn:UISplitViewControllerColumnSecondary];
+  if ([secondary isKindOfClass:[UINavigationController class]]) {
+    return (UINavigationController *)secondary;
+  }
+  return nil;
+}
+
+- (void)wwnSyncEnvironmentInventory {
+  BOOL isEnv = [self.activeSection.title isEqualToString:@"Env Vars"];
+  UINavigationController *nav = [self wwnDetailNavigationController];
+  Class presenter = NSClassFromString(@"WWNEnvironmentSettingsPresenter");
+  UIViewController *host = nil;
+  if (isEnv && [presenter respondsToSelector:@selector(iOSHostingController)]) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+    host = [presenter performSelector:@selector(iOSHostingController)];
+#pragma clang diagnostic pop
+    if (![host isKindOfClass:[UIViewController class]]) {
+      host = nil;
+    }
+  }
+  if (isEnv && host) {
+    host.title = self.activeSection.title ?: @"Env Vars";
+#if !TARGET_OS_TV
+    host.navigationItem.largeTitleDisplayMode =
+        UINavigationItemLargeTitleDisplayModeNever;
+#endif
+    self.environmentHostController = host;
+    if (nav) {
+      if (nav.topViewController != host) {
+        [nav setViewControllers:@[ host ] animated:NO];
+      }
+      if (self.isViewLoaded) {
+        self.tableView.hidden = YES;
+      }
+    }
+    return;
+  }
+  if (self.isViewLoaded) {
+    self.tableView.hidden = NO;
+  }
+  if (nav && self.environmentHostController &&
+      [nav.viewControllers containsObject:self.environmentHostController]) {
+    [nav setViewControllers:@[ self ] animated:NO];
+  }
+  self.environmentHostController = nil;
 }
 #endif
 
 - (NSArray<WWNPreferencesSection *> *)buildSections {
   NSMutableArray *sects = [NSMutableArray array];
-  __weak typeof(self) weakSelf = self;
+  __block typeof(self) weakSelf = self;
 
   // DISPLAY
   WWNPreferencesSection *display = [[WWNPreferencesSection alloc] init];
@@ -453,16 +856,17 @@ static UIImage *WWNAboutLogo(void) {
 #else
   display.iconColor = [NSColor systemBlueColor];
 #endif
-  NSMutableArray *displayItems = [NSMutableArray arrayWithArray:@[
-    ITEM(@"Force Server-Side Decorations", @"ForceServerSideDecorations",
-         WSettingSwitch, @NO,
-         @"When off, weston-family clients draw their own window frames."),
-    ITEM(@"Auto Scale", @"AutoScale", WSettingSwitch, @YES,
-         @"Matches macOS UI Scaling.")
-  ]];
-
-#if TARGET_OS_IPHONE
-  // Respect Safe Area only makes sense on iOS (notch, Dynamic Island, etc.)
+  NSMutableArray *displayItems = [NSMutableArray array];
+  [displayItems addObject:ITEM(@"Enable HDR", @"ColorOperations", WSettingSwitch,
+                               @YES,
+                               @"Color profiles and HDR (EDR) present path.")];
+#if TARGET_OS_OSX
+  [displayItems addObject:ITEM(@"Force Server-Side Decorations",
+                               @"ForceServerSideDecorations", WSettingSwitch,
+                               @NO,
+                               @"When off, weston-family clients draw their own window frames.")];
+#endif
+#if TARGET_OS_IPHONE && !TARGET_OS_TV && !TARGET_OS_WATCH && !TARGET_OS_VISION
   [displayItems addObject:ITEM(@"Respect Safe Area", @"RespectSafeArea",
                                WSettingSwitch, @YES, @"Avoids notch areas.")];
 #endif
@@ -485,34 +889,41 @@ static UIImage *WWNAboutLogo(void) {
            @"Multi-Touch", @"Input method for touch interactions.");
   touchInputItem.options = @[ @"Multi-Touch", @"Touchpad" ];
 
-  BOOL showVirtualCursor =
-      [[NSUserDefaults standardUserDefaults] boolForKey:kWWNPrefsRenderMacOSPointer];
   WWNSettingItem *showVirtualCursorItem =
 #if TARGET_OS_IPHONE
       ITEM(@"Show Virtual Cursor", @"RenderMacOSPointer", WSettingSwitch, @NO,
-           @"Draws a host overlay pointer in touchpad mode.");
+           @"Host overlay in touchpad mode for non-compositor clients only. "
+           @"Nested niri/weston hide the overlay and draw their own cursor.");
 #else
       ITEM(@"Show Virtual Cursor", @"RenderMacOSPointer", WSettingSwitch, @NO,
-           @"Enables virtual cursor control (host overlay or real macOS cursor).");
+           @"Host overlay or real macOS cursor for non-compositor clients "
+           @"only. Nested niri/weston hide and grab the host pointer.");
 #endif
+#if !TARGET_OS_IPHONE
+  BOOL showVirtualCursor =
+      [WWNSharedUserDefaults() boolForKey:kWWNPrefsRenderMacOSPointer];
   WWNSettingItem *nestedCursorItem = ITEM(
       @"Nested Compositor Cursor", kWWNPrefsNestedCompositorCursor,
       WSettingPopup, @"virtual",
-      @"When using nested compositors, grab the virtual pointer or the real "
-      @"macOS / host cursor. Requires Show Virtual Cursor.");
-  nestedCursorItem.options =
-#if TARGET_OS_IPHONE
-      @[ @"Virtual Pointer", @"Host Cursor" ];
-#else
-      @[ @"Virtual Pointer", @"macOS Cursor" ];
-#endif
+      @"Leftover. Nested and iland DRM compositors hide and grab the host "
+      @"pointer and draw their own cursor. Show Virtual Cursor is only for "
+      @"non-compositor clients.");
+  nestedCursorItem.options = @[ @"Virtual Pointer", @"macOS Cursor" ];
   nestedCursorItem.optionValues = @[ @"virtual", @"host" ];
   nestedCursorItem.interactive = showVirtualCursor;
+#endif
 
-  input.items = @[
-    showVirtualCursorItem,
-    nestedCursorItem,
-    touchInputItem,
+  input.items =
+#if TARGET_OS_IPHONE
+      @[
+        showVirtualCursorItem,
+        touchInputItem,
+#else
+      @[
+        showVirtualCursorItem,
+        nestedCursorItem,
+        touchInputItem,
+#endif
     ITEM(@"Resize Display for Virtual Keyboard",
          @"resizeDisplayForVirtualKeyboard", WSettingSwitch, @YES,
          @"host IME + Wawona extra keyboard."),
@@ -534,9 +945,17 @@ static UIImage *WWNAboutLogo(void) {
   graphics.iconColor = [NSColor systemRedColor];
 #endif
   WWNSettingItem *vulkanDriverItem =
-#if TARGET_OS_TV || TARGET_OS_WATCH
+#if TARGET_OS_WATCH
       ITEM(@"Vulkan Driver", @"VulkanDriver", WSettingPopup, @"none",
            @"Vulkan is unavailable on this platform.");
+#elif TARGET_OS_TV
+#if defined(WWN_TVOS_GPU_BUNDLED) && WWN_TVOS_GPU_BUNDLED
+      ITEM(@"Vulkan Driver", @"VulkanDriver", WSettingPopup, @"moltenvk",
+           @"MoltenVK is the tvOS Vulkan ICD (Vulkan to Metal).");
+#else
+      ITEM(@"Vulkan Driver", @"VulkanDriver", WSettingPopup, @"none",
+           @"Vulkan is unavailable on this platform.");
+#endif
 #else
       ITEM(@"Vulkan Driver", @"VulkanDriver", WSettingPopup, @"moltenvk",
            @"Select the Vulkan ICD used by newly launched machine sessions.");
@@ -545,25 +964,49 @@ static UIImage *WWNAboutLogo(void) {
   vulkanDriverItem.options = @[ @"None", @"MoltenVK", @"KosmicKrisp", @"SwiftShader" ];
   vulkanDriverItem.optionValues =
       @[ @"none", @"moltenvk", @"kosmickrisp", @"swiftshader" ];
-#elif TARGET_OS_TV || TARGET_OS_WATCH
+#elif TARGET_OS_WATCH
   vulkanDriverItem.options = @[ @"None" ];
   vulkanDriverItem.optionValues = @[ @"none" ];
+#elif TARGET_OS_TV
+#if defined(WWN_TVOS_GPU_BUNDLED) && WWN_TVOS_GPU_BUNDLED
+  vulkanDriverItem.options = @[ @"None", @"MoltenVK" ];
+  vulkanDriverItem.optionValues = @[ @"none", @"moltenvk" ];
+#else
+  vulkanDriverItem.options = @[ @"None" ];
+  vulkanDriverItem.optionValues = @[ @"none" ];
+#endif
 #else
   vulkanDriverItem.options = @[ @"None", @"MoltenVK" ];
   vulkanDriverItem.optionValues = @[ @"none", @"moltenvk" ];
 #endif
 
   WWNSettingItem *openGLDriverItem =
-#if TARGET_OS_TV || TARGET_OS_WATCH
+#if TARGET_OS_WATCH
       ITEM(@"OpenGL Driver", @"OpenGLDriver", WSettingPopup, @"none",
            @"OpenGL ES is unavailable on this platform.");
+#elif TARGET_OS_TV
+#if defined(WWN_TVOS_GPU_BUNDLED) && WWN_TVOS_GPU_BUNDLED
+      ITEM(@"OpenGL Driver", @"OpenGLDriver", WSettingPopup, @"angle",
+           @"ANGLE is the tvOS OpenGL ES driver (GLES to Metal).");
+#else
+      ITEM(@"OpenGL Driver", @"OpenGLDriver", WSettingPopup, @"none",
+           @"OpenGL ES is unavailable on this platform.");
+#endif
 #else
       ITEM(@"OpenGL Driver", @"OpenGLDriver", WSettingPopup, @"angle",
            @"Select the OpenGL ES implementation used by newly launched machine sessions.");
 #endif
-#if TARGET_OS_TV || TARGET_OS_WATCH
+#if TARGET_OS_WATCH
   openGLDriverItem.options = @[ @"None" ];
   openGLDriverItem.optionValues = @[ @"none" ];
+#elif TARGET_OS_TV
+#if defined(WWN_TVOS_GPU_BUNDLED) && WWN_TVOS_GPU_BUNDLED
+  openGLDriverItem.options = @[ @"None", @"ANGLE" ];
+  openGLDriverItem.optionValues = @[ @"none", @"angle" ];
+#else
+  openGLDriverItem.options = @[ @"None" ];
+  openGLDriverItem.optionValues = @[ @"none" ];
+#endif
 #elif TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
   openGLDriverItem.options = @[ @"None", @"ANGLE" ];
   openGLDriverItem.optionValues = @[ @"none", @"angle" ];
@@ -572,14 +1015,11 @@ static UIImage *WWNAboutLogo(void) {
   openGLDriverItem.optionValues = @[ @"none", @"angle" ];
 #endif
 
-  graphics.items = @[
-    vulkanDriverItem, openGLDriverItem,
-    ITEM(@"Enable DMABUF", @"DmabufEnabled", WSettingSwitch, @YES,
-         @"Zero-copy texture sharing.")
-  ];
+  graphics.items = @[ vulkanDriverItem, openGLDriverItem ];
   [sects addObject:graphics];
 
-  // CONNECTION
+  // CONNECTION. Networking only. Wayland socket / XDG / TERM live in
+  // Environment Variables (#157), not duplicated here.
   WWNPreferencesSection *connection = [[WWNPreferencesSection alloc] init];
   connection.title = @"Connection";
   connection.accessibilityIdentifier = @"wwn.settings.connection";
@@ -590,53 +1030,43 @@ static UIImage *WWNAboutLogo(void) {
   connection.iconColor = [NSColor systemOrangeColor];
 #endif
 
-  // Build dynamic environment variable values
-  NSString *socketDir = [self getSocketPath];
-  NSDictionary *runtimeState = [self runtimeStateSnapshot];
-  NSString *socketName = runtimeState[@"waylandDisplay"];
-  if (![socketName isKindOfClass:[NSString class]] || socketName.length == 0) {
-    socketName = [[WWNCompositorBridge sharedBridge] socketName];
-  }
-  if (!socketName || socketName.length == 0)
-    socketName = @"wayland-0";
-  NSString *socketFullPath =
-      [socketDir stringByAppendingPathComponent:socketName];
-
-  NSString *envSnippet = [NSString
-      stringWithFormat:
-          @"export XDG_RUNTIME_DIR=\"%@\"\nexport WAYLAND_DISPLAY=\"%@\"",
-          socketDir, socketName];
-
   connection.items = @[
-    ITEM(@"XDG_RUNTIME_DIR", @"XDGRuntimeDir", WSettingInfo, socketDir,
-         @"Runtime directory where the Wayland socket lives. "
-         @"Set this in your shell to connect clients."),
-    ITEM(@"WAYLAND_DISPLAY", @"WaylandDisplay", WSettingInfo, socketName,
-         @"Socket name clients connect to (e.g. wayland-0)."),
-    ITEM(@"Socket Path", @"WaylandSocketPath", WSettingInfo, socketFullPath,
-         @"Full path to the Wayland socket."),
-    ITEM(@"Shell Setup", @"WaylandShellSetup", WSettingInfo, envSnippet,
-         @"Copy and paste into your terminal to connect "
-         @"Wayland clients to Wawona."),
     ITEM(@"TCP Port", @"TCPListenerPort", WSettingInfo, @6000,
-         @"Port for TCP listener.")
+         @"Port for TCP listener. Wayland socket variables "
+         @"(XDG_RUNTIME_DIR, WAYLAND_DISPLAY, ...) are under "
+         @"Env Vars."),
   ];
   [sects addObject:connection];
 
-  // LOCAL SHELL (WWN-ROOTFS — all platforms via WWNRootfsProvider)
+  // ENV VARS (#157). Single inventory + edit/reset surface.
+  {
+    WWNPreferencesSection *environment = [[WWNPreferencesSection alloc] init];
+    environment.title = @"Env Vars";
+    environment.accessibilityIdentifier = @"wwn.settings.environment";
+    environment.icon = @"list.bullet.rectangle";
+#if TARGET_OS_IPHONE
+    environment.iconColor = [UIColor systemTealColor];
+#else
+    environment.iconColor = [NSColor systemTealColor];
+#endif
+    // Detail pane embeds the full SwiftUI table (see showSection / selectSection).
+    // Keep a fallback button for hosts that cannot embed yet.
+    WWNSettingItem *manageBtn =
+        ITEM(@"Open Environment Variables…", @"EnvironmentManage", WSettingButton,
+             nil,
+             @"View every variable Wawona injects. Edit, add, or Reset each "
+             @"row to its catalog default. Per-machine overrides live in "
+             @"Edit Machine → Environment Variables.");
+    manageBtn.actionBlock = ^{
+      [weakSelf openEnvironmentVariablesManager];
+    };
+    environment.items = @[ manageBtn ];
+    [sects addObject:environment];
+  }
+
+  // LOCAL SHELL (WWN-ROOTFS. All platforms via WWNRootfsProvider)
   if ([WWNRootfsProvider capabilities] & WWNRootfsCapabilitySettings) {
     [WWNRootfsProvider prepareUserAccess];
-    NSDictionary *rootfs = [WWNRootfsProvider snapshot];
-    NSString *mode = rootfs[@"mode"] ?: @"host";
-    NSString *bundleVersion = rootfs[@"bundleTemplateVersion"];
-    NSString *appliedVersion = rootfs[@"appliedTemplateVersion"];
-    NSString *templateStatus =
-        [mode isEqualToString:@"host"]
-            ? @"host shell"
-            : [NSString
-                  stringWithFormat:@"bundle v%@ / installed v%@", bundleVersion,
-                                   appliedVersion.length ? appliedVersion
-                                                         : @"—"];
 
     WWNPreferencesSection *localShell = [[WWNPreferencesSection alloc] init];
     localShell.title = @"Local Shell";
@@ -649,54 +1079,30 @@ static UIImage *WWNAboutLogo(void) {
 #endif
 
     WWNRootfsCapabilities caps = [WWNRootfsProvider capabilities];
-    NSMutableArray *localItems = [NSMutableArray arrayWithArray:@[
-      ITEM(@"Platform", nil, WSettingInfo, rootfs[@"platformLabel"],
-           @"Operating system for this Wawona build."),
-      ITEM(@"Browse Hint", nil, WSettingInfo, rootfs[@"filesHint"],
-           @"How to open shell files with the platform file manager."),
-      ITEM(@"Shell HOME", nil, WSettingInfo, rootfs[@"home"],
-           @"$HOME for the local / nested shell."),
-      ITEM(@"System Root", nil, WSettingInfo, rootfs[@"systemRoot"],
-           @"WAWONA_ROOTFS (bundled) or host runtime directory."),
-      ITEM(@"Template Version", nil, WSettingInfo, templateStatus,
-           @"Bundled vs installed rootfs template (mobile only)."),
-    ]];
+    NSMutableArray *localItems = [NSMutableArray array];
+
+    if (caps & WWNRootfsCapabilityResetDotfiles) {
+      WWNSettingItem *resetDotfilesBtn =
+          ITEM(@"Reset Shell Dotfiles", @"RootfsResetDotfiles", WSettingButton,
+               nil,
+               @"Restore .zshenv, .zshrc, and .zlogin from bundled templates.");
+      resetDotfilesBtn.actionBlock = ^{
+        [weakSelf confirmResetShellDotfiles];
+      };
+      [localItems addObject:resetDotfilesBtn];
+    }
+
+    if (caps & WWNRootfsCapabilityReinstallSystemTree) {
+      WWNSettingItem *reinstallBtn =
+          ITEM(@"Reset System Tree", @"RootfsReinstallSystem", WSettingButton,
+               nil, @"Re-copy etc/ and usr/ from the app bundle.");
+      reinstallBtn.actionBlock = ^{
+        [weakSelf confirmReinstallSystemTree];
+      };
+      [localItems addObject:reinstallBtn];
+    }
 
 #if !TARGET_OS_TV
-    if (caps & WWNRootfsCapabilityICloudSync) {
-      BOOL iCloudOn = [WWNRootfsProvider isICloudSyncEnabled];
-      [localItems addObject:
-          ITEM(@"Sync Shell HOME via iCloud",
-               WWNRootfsICloudSyncPreferenceKey, WSettingSwitch, @(iCloudOn),
-               @"Optional. Syncs shell dotfiles and scripts across your Apple "
-               @"devices via iCloud Drive. Requires iCloud sign-in.")];
-      [localItems
-          addObject:ITEM(@"iCloud Status", nil, WSettingInfo,
-                         rootfs[@"iCloudStatus"] ?: @"", @"Current iCloud sync state.")];
-    }
-#endif
-
-    if (caps & WWNRootfsCapabilityBrowseUserFiles) {
-#if TARGET_OS_OSX
-      WWNSettingItem *finderBtn =
-          ITEM(@"Open HOME in Finder", @"RootfsOpenFinder", WSettingButton, nil,
-               @"Reveal shell HOME in Finder.");
-      finderBtn.actionBlock = ^{
-        [weakSelf openLocalShellInFinder];
-      };
-      [localItems addObject:finderBtn];
-#else
-      WWNSettingItem *filesHelpBtn =
-          ITEM(@"Browse User Files", @"RootfsFilesHelp", WSettingButton, nil,
-               rootfs[@"filesHint"]);
-      filesHelpBtn.actionBlock = ^{
-        [weakSelf showLocalShellHelp];
-      };
-      [localItems addObject:filesHelpBtn];
-#endif
-    }
-
-#if TARGET_OS_IPHONE && !TARGET_OS_TV
     if (caps & WWNRootfsCapabilityImportFile) {
       WWNSettingItem *importBtn =
           ITEM(@"Import File to Home", @"RootfsImportFile", WSettingButton, nil,
@@ -708,35 +1114,166 @@ static UIImage *WWNAboutLogo(void) {
     }
 #endif
 
-    if (caps & WWNRootfsCapabilityResetDotfiles) {
-      WWNSettingItem *resetDotfilesBtn =
-          ITEM(@"Reset Shell Dotfiles", @"RootfsResetDotfiles", WSettingButton,
-               nil,
-               @"Restore .zshenv, .zshrc, and .zlogin from bundled templates.");
-      resetDotfilesBtn.actionBlock = ^{
-#if TARGET_OS_IPHONE
-        [weakSelf confirmResetShellDotfiles];
-#endif
-      };
-      [localItems addObject:resetDotfilesBtn];
-    }
-
-    if (caps & WWNRootfsCapabilityReinstallSystemTree) {
-      WWNSettingItem *reinstallBtn = ITEM(@"Reinstall System Tree",
-                                           @"RootfsReinstallSystem",
-                                           WSettingButton, nil,
-                                           @"Re-copy etc/ and usr/ from the app bundle.");
-      reinstallBtn.actionBlock = ^{
-#if TARGET_OS_IPHONE
-        [weakSelf confirmReinstallSystemTree];
-#endif
-      };
-      [localItems addObject:reinstallBtn];
-    }
-
     localShell.items = localItems;
     [sects addObject:localShell];
   }
+
+  // MACHINES (session gestures plus VM/container prefs. Not the Machines window.)
+  {
+    WWNPreferencesSection *machines = [[WWNPreferencesSection alloc] init];
+    machines.title = @"Machines";
+    machines.accessibilityIdentifier = @"wwn.settings.machines";
+    machines.icon = @"desktopcomputer";
+#if TARGET_OS_IPHONE
+    machines.iconColor = [UIColor systemIndigoColor];
+#else
+    machines.iconColor = [NSColor systemIndigoColor];
+#endif
+    NSMutableArray *machineItems = [NSMutableArray array];
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+#if TARGET_OS_TV
+    [machineItems addObject:ITEM(@"Menu / Shake to Exit Machine",
+                                 @"wawona.pref.shakeToCloseEnabled",
+                                 WSettingSwitch, @YES,
+                                 @"Menu/Back confirms closing the session. "
+                                 @"Shake works on the original black "
+                                 @"1st-generation Siri Remote (motion). "
+                                 @"Silver 2nd/3rd-gen remotes and the iPhone "
+                                 @"Apple TV Remote have no gyro. Play/Pause "
+                                 @"opens the keyboard. Swipe the clickpad, "
+                                 @"then Select.")];
+#else
+    [machineItems addObject:ITEM(@"Shake to Exit Machine",
+                                 @"wawona.pref.shakeToCloseEnabled",
+                                 WSettingSwitch, @YES,
+                                 @"Shake the device to confirm closing the "
+                                 @"active machine session.")];
+    [machineItems addObject:ITEM(@"Swipe Back to Exit Machine",
+                                 @"wawona.pref.swipeBackToCloseEnabled",
+                                 WSettingSwitch, @YES,
+                                 @"When enabled, edge swipe back asks before "
+                                 @"closing the active machine session. When "
+                                 @"off, swipe back closes immediately.")];
+#endif
+#else
+    [machineItems
+        addObject:ITEM(@"Session close gestures", nil, WSettingInfo,
+                       @"iPhone / iPad / Apple TV",
+                       @"Shake, swipe-back, and Siri Remote Menu live on "
+                       @"those hosts. macOS uses window close.")];
+#endif
+    [machineItems addObject:ITEM(
+        @"Session Thumbnails", @"MachineSessionThumbnailsEnabled",
+        WSettingSwitch, @YES,
+        @"Save the last frame from a machine session and show it on machine cards.")];
+#if !TARGET_OS_TV && !TARGET_OS_WATCH && !TARGET_OS_VISION
+    // VM engine and container runtime are fixed per build target by the
+    // wwn-vms / wwn-containers capability lanes; they are read-only here and
+    // never user-configurable (Residual E). Engine swaps belong in the Nix
+    // engines/bridges, not in user preferences. Forbidden on tvOS / watchOS /
+    // visionOS.
+    [machineItems addObject:ITEM(@"Virtual Machine Engine", nil, WSettingInfo,
+#if TARGET_OS_OSX
+                                 @"Virtualization.framework",
+#else
+                                 @"QEMU (TCTI)",
+#endif
+                                 @"Selected automatically for this platform by wwn-vms. macOS: "
+                                 @"Virtualization.framework. iOS: jitless QEMU-TCTI. "
+                                 @"Android: QEMU/AVF.")];
+    [machineItems addObject:ITEM(@"Virtual Machine VSock Port", @"MachineVMVsockPort",
+                                 WSettingNumber, @"1024",
+                                 @"vsock port the guest's waypipe server binds; bridged into Wawona.")];
+    [machineItems addObject:ITEM(@"Container Runtime", nil, WSettingInfo,
+#if TARGET_OS_OSX
+                                 @"containerization.framework",
+#else
+                                 @"container-in-VM",
+#endif
+                                 @"Selected automatically for this platform by wwn-containers. macOS: "
+                                 @"Apple Containerization framework. Mobile/Android: container-in-VM "
+                                 @"(crun in a wwn-vms guest).")];
+    [machineItems addObject:ITEM(@"Container Image Store", @"MachineContainerImageStore",
+                                 WSettingText, @"~/.local/share/wawona/oci",
+                                 @"Content-addressable OCI store (wwn-oci) for pulled images. Universal "
+                                 @"and App-Store-compliant on every target.")];
+    [machineItems addObject:ITEM(
+        @"Status", nil, WSettingInfo, @"Active",
+        @"VM + container backends are provided by the wwn-vms / wwn-containers "
+        @"dependencies. macOS runs them directly; other targets are "
+        @"capability-gated (see each dep's COMPLIANCE.md).")];
+#endif
+    machines.items = machineItems;
+    [sects addObject:machines];
+  }
+
+#if TARGET_OS_OSX || TARGET_OS_IOS || TARGET_OS_VISION
+  // iCLOUD SYNC (Apple family with iCloud Drive. Own section, not Local Shell.)
+  // tvOS and watchOS have no iCloud Drive (Apple QA1935); omit the section.
+  {
+    WWNPreferencesSection *icloud = [[WWNPreferencesSection alloc] init];
+    icloud.title = @"iCloud Sync";
+    icloud.accessibilityIdentifier = @"wwn.settings.icloudSync";
+    icloud.icon = @"icloud";
+#if TARGET_OS_IPHONE
+    icloud.iconColor = [UIColor systemCyanColor];
+#else
+    icloud.iconColor = [NSColor systemCyanColor];
+#endif
+    NSMutableArray *icloudItems = [NSMutableArray array];
+#if (TARGET_OS_OSX || TARGET_OS_IOS || TARGET_OS_VISION) && !TARGET_OS_TV && !TARGET_OS_WATCH
+    BOOL iCloudOn = [WWNRootfsICloudSync isEnabled];
+    WWNSettingItem *syncSwitch =
+        ITEM(@"Sync Shell HOME via iCloud", WWNRootfsICloudSyncPreferenceKey,
+             WSettingSwitch, @(iCloudOn),
+             @"Optional. Syncs shell dotfiles and scripts across your Apple "
+             @"devices via iCloud Drive. Requires iCloud sign-in.");
+    [icloudItems addObject:syncSwitch];
+#endif
+    [icloudItems
+        addObject:ITEM(@"iCloud Status", nil, WSettingInfo,
+                       [WWNRootfsICloudSync statusSummary] ?: @"",
+                       @"Current iCloud Drive container state.")];
+    icloud.items = icloudItems;
+    [sects addObject:icloud];
+  }
+#endif
+
+#if TARGET_OS_IOS && !TARGET_OS_MACCATALYST && !TARGET_OS_TV && !TARGET_OS_WATCH && !TARGET_OS_VISION
+  // APPLE WATCH companion documents (WatchConnectivity. #151)
+  {
+    [[WWNWatchCompanionBridge sharedBridge] activate];
+    WWNPreferencesSection *appleWatch = [[WWNPreferencesSection alloc] init];
+    appleWatch.title = @"Apple Watch";
+    appleWatch.accessibilityIdentifier = @"wwn.settings.appleWatch";
+    appleWatch.icon = @"applewatch";
+    appleWatch.iconColor = [UIColor systemPinkColor];
+
+    WWNSettingItem *sendBtn =
+        ITEM(@"Send Document to Watch", @"WatchCompanionSend", WSettingButton, nil,
+             @"Copy a file (including .wasm) into the paired Watch Documents "
+             @"inbox via WatchConnectivity. Does not require an app update. "
+             @"Watch WASM runtime may still be off for size.");
+    sendBtn.actionBlock = ^{
+      [weakSelf sendDocumentToAppleWatch];
+    };
+    appleWatch.items = @[
+      ITEM(@"Companion Status", nil, WSettingInfo,
+           [[WWNWatchCompanionBridge sharedBridge] statusSummary],
+           @"Paired Watch / Wawona Watch app / reachability."),
+      ITEM(@"Last Transfer", nil, WSettingInfo,
+           [[WWNWatchCompanionBridge sharedBridge] lastTransferSummary],
+           @"Most recent send attempt from this iPhone."),
+      sendBtn,
+      ITEM(@"On the Watch", nil, WSettingInfo,
+           @"Files land in Documents/Wawona/inbox. Open Files on iPhone → "
+           @"On My iPhone → Wawona for local copies; Watch receives via "
+           @"WatchConnectivity (not iCloud Drive).",
+           @"Landing path and sync model."),
+    ];
+    [sects addObject:appleWatch];
+  }
+#endif
 
   // ADVANCED
   WWNPreferencesSection *advanced = [[WWNPreferencesSection alloc] init];
@@ -747,17 +1284,6 @@ static UIImage *WWNAboutLogo(void) {
   advanced.iconColor = [UIColor systemGrayColor];
 #else
   advanced.iconColor = [NSColor systemGrayColor];
-#endif
-#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
-  WWNSettingItem *nestedWestonBackendItem =
-      ITEM(@"Nested Weston Backend", @"NestedWestonBackend", WSettingPopup,
-           @"wayland-pixman",
-           @"Wayland (Pixman) nests in a Wawona window. iland DRM (GL) presents "
-           @"via Metal overlay (WWNIlandPresenter).");
-  nestedWestonBackendItem.options =
-      @[ @"Wayland (Pixman)", @"iland DRM (GL)" ];
-  nestedWestonBackendItem.optionValues =
-      @[ @"wayland-pixman", @"iland-drm-gl" ];
 #endif
   // General per-client backend choice. niri and weston both have real DRM
   // backends; pinning them to nested Wayland discards the userspace DRM/KMS/GBM
@@ -771,40 +1297,22 @@ static UIImage *WWNAboutLogo(void) {
       @[ @"Auto", @"Wayland (nested)", @"DRM/KMS (wwn-iland)" ];
   compositorBackendItem.optionValues = @[ @"auto", @"wayland", @"drm" ];
 
+  WWNSettingItem *logLevelItem =
+      ITEM(@"Log Level", @"wawona.pref.logLevel", WSettingPopup, @"info",
+           @"Minimum log severity written to the in-app log ring.");
+  logLevelItem.options = @[ @"Debug", @"Info", @"Warn", @"Error" ];
+  logLevelItem.optionValues = @[ @"debug", @"info", @"warn", @"error" ];
+
   NSMutableArray *advancedItems = [NSMutableArray arrayWithArray:@[
-    ITEM(@"Color Operations", @"ColorOperations", WSettingSwitch, @NO,
-         @"Color profiles and HDR."),
     ITEM(@"Nested Compositors", @"NestedCompositorsSupport", WSettingSwitch,
          @YES, @"Support for nested compositors."),
   ]];
   [advancedItems addObject:compositorBackendItem];
-#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
-  [advancedItems addObject:nestedWestonBackendItem];
-#endif
-  [advancedItems addObject:ITEM(@"Multiple Clients", @"MultipleClients", WSettingSwitch,
-#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
-         @NO,
-#else
-         @YES,
-#endif
-         @"Allow multiple Wayland clients to connect simultaneously.")];
-#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
-#if TARGET_OS_TV
-  [advancedItems addObject:ITEM(@"Long-press Menu to Exit Machine",
-                                @"wawona.pref.shakeToCloseEnabled", WSettingSwitch, @YES,
-                                @"Hold Menu/Back on the Siri Remote (~1s) to confirm closing the "
-                                @"active machine session. Short Menu sends Escape to the client. "
-                                @"(tvOS has no shake API.)")];
-#else
-  [advancedItems addObject:ITEM(@"Shake to Exit Machine", @"wawona.pref.shakeToCloseEnabled",
+  [advancedItems addObject:ITEM(@"Multiple Clients", @"MultipleClients",
                                 WSettingSwitch, @YES,
-                                @"Shake the device to confirm closing the active machine session.")];
-  [advancedItems addObject:ITEM(@"Swipe Back to Exit Machine",
-                                @"wawona.pref.swipeBackToCloseEnabled", WSettingSwitch, @YES,
-                                @"When enabled, edge swipe back asks before closing the active "
-                                @"machine session. When off, swipe back closes immediately.")];
-#endif
-#endif
+                                @"Allow multiple Wayland clients to connect "
+                                @"simultaneously.")];
+  [advancedItems addObject:logLevelItem];
   advanced.items = advancedItems;
   [sects addObject:advanced];
 
@@ -813,7 +1321,7 @@ static UIImage *WWNAboutLogo(void) {
   // Mirrors the Android Launcher desktop-replacement flow: the user picks a
   // single Native machine to become the Wayland desktop. On macOS this
   // corresponds to iland Mode B replacing SkyLight/WindowServer (requires SIP
-  // disabled + root; never an App Store path). Non-native machines (VM,
+  // fully disabled via csrutil disable + root; never an App Store path). Non-native machines (VM,
   // container, waypipe/SSH) are intentionally not selectable.
   {
     WWNPreferencesSection *desktop = [[WWNPreferencesSection alloc] init];
@@ -829,24 +1337,31 @@ static UIImage *WWNAboutLogo(void) {
     BOOL clearedForSip = [[WWNDesktopReplacementController sharedController]
         reconcilePrefsWithCurrentSip];
 
-    // System Integrity Protection status — Mode B requires SIP disabled or
-    // partially disabled (`csrutil enable --without debug`). Surface the current
+    // System Integrity Protection status. Mode B requires SIP fully disabled
+    // (`csrutil disable`). Partial SIP is not enough. Surface the current
     // state so the user knows whether desktop replacement can actually engage.
     WWNSipStatusType sipStatus = [WWNSipStatus current];
     BOOL sipAllowsDesktop = [WWNSipStatus allowsDesktopReplacement:sipStatus];
     if (clearedForSip) {
       sipAllowsDesktop = NO;
     }
+    NSString *sipLabel = [WWNSipStatus describe:sipStatus];
+    NSString *sipDetail;
+    if (sipAllowsDesktop) {
+      sipDetail = @"Status is Fully Disabled. wwn-iland Mode B "
+                  @"(library injection and WindowServer unload) can engage.";
+    } else if (sipStatus == WWNSipStatusPartiallyDisabled) {
+      sipDetail = @"Status is not Fully Disabled. Debugging Restrictions "
+                  @"off is not enough. Run csrutil disable in Recovery.";
+    } else {
+      sipDetail = @"SIP is blocking wwn-iland Mode B. Fully disable SIP "
+                  @"with csrutil disable in Recovery before enabling "
+                  @"desktop replacement (see SIP Requirements & How-To "
+                  @"below).";
+    }
     [desktopItems
         addObject:ITEM(@"System Integrity Protection", nil, WSettingInfo,
-                       [WWNSipStatus describe:sipStatus],
-                       sipAllowsDesktop
-                           ? @"SIP permits wwn-iland Mode B (debugging and "
-                             @"library injection). Desktop replacement can "
-                             @"engage."
-                           : @"SIP is blocking wwn-iland Mode B. Partially "
-                             @"disable SIP before enabling desktop replacement "
-                             @"(see SIP Requirements & How-To below).")];
+                       sipLabel, sipDetail)];
 
     WWNSettingItem *sipHowToBtn =
         ITEM(@"SIP Requirements & How-To", @"DesktopReplacementSipHowTo",
@@ -861,70 +1376,54 @@ static UIImage *WWNAboutLogo(void) {
     [desktopItems
         addObject:ITEM(@"Enable Desktop Replacement",
                        @"DesktopReplacementEnabled", WSettingSwitch, @NO,
-                       @"Run Wawona as the macOS desktop by replacing "
-                       @"SkyLight/WindowServer via wwn-iland Mode B. Requires "
-                       @"SIP partially disabled (not App Store). Pick one "
-                       @"nested-Weston machine below.")];
+                       @"Turns on Desktop Replacement for this Mac. Checks "
+                       @"watchdog coverage, restores Apple coverage if it is "
+                       @"unhealthy, and installs Path B if needed "
+                       @"(administrator and restart). Does not take over the "
+                       @"screen. Use Replace now when you want the screen. "
+                       @"Logout restores normal macOS. Login does not take "
+                       @"over.")];
 
-    // Machine picker, populated from the machine profile store. Only local
-    // nested-Weston native machines qualify (App Bridge shares this selection),
-    // so plain Weston demo clients / VM / container / SSH machines are excluded.
+#if TARGET_OS_OSX
+    {
+      WWNModeBReadyReport *ready =
+          [[WWNDesktopReplacementController sharedController]
+              evaluateClassicReadiness];
+      NSString *label = @"Needs setup";
+      if (ready.verdict == WWNModeBVerdictTakeoverNow) {
+        label = @"Ready";
+      } else if (ready.verdict == WWNModeBVerdictReboot) {
+        label = @"Restart required";
+      } else if (ready.needsSipHowTo) {
+        label = @"SIP required";
+      }
+      [desktopItems
+          addObject:ITEM(@"Status", nil, WSettingInfo, label,
+                         ready.userSummary.length ? ready.userSummary
+                                                  : ready.reason)];
+    }
+    WWNSettingItem *replaceNow =
+        ITEM(@"Replace now", @"DesktopReplacementTakeOver", WSettingButton,
+             nil,
+             @"Takes over this Mac's screen for this session. If watchdog "
+             @"safety is missing or stale, Wawona checks, restores, and "
+             @"prepares it first. Logout restores normal macOS.");
+    replaceNow.actionBlock = ^{
+      [weakSelf showDesktopReplacementReplaceNow];
+    };
+    [desktopItems addObject:replaceNow];
+#endif
+
+    // Machine picker: weston/niri/custom (dual-backend: nested Wayland in
+    // Mode A, DRM after Classic Take Over) plus KMS-only clients.
     NSArray<WWNMachineProfile *> *allProfiles =
         [WWNMachineProfileStore loadProfiles];
     NSMutableArray<NSString *> *nativeNames = [NSMutableArray array];
     NSMutableArray<NSString *> *nativeIds = [NSMutableArray array];
     for (WWNMachineProfile *p in allProfiles) {
-      if ([WWNMachineProfileStore profileEligibleForAppBridge:p]) {
-        NSString *label = p.name.length ? p.name : @"Unnamed Machine";
-        [nativeNames addObject:label];
-        [nativeIds addObject:p.machineId ?: @""];
-      }
-    }
-    if (nativeIds.count > 0) {
-      WWNSettingItem *machineItem =
-          ITEM(@"Desktop Machine (nested Weston only)",
-               @"DesktopReplacementMachineId", WSettingPopup,
-               nativeIds.firstObject,
-               @"The local Native machine whose nested Weston compositor "
-               @"becomes the desktop. Plain Weston clients (weston-terminal, "
-               @"simple-shm, foot) and remote/VM/container machines are not "
-               @"eligible.");
-      machineItem.options = nativeNames;
-      machineItem.optionValues = nativeIds;
-      [desktopItems addObject:machineItem];
-    } else {
-      [desktopItems
-          addObject:ITEM(@"Desktop Machine", nil, WSettingInfo, @"None",
-                         @"No eligible machine found. Create a Native machine "
-                         @"running the nested Weston compositor "
-                         @"(weston --backend=wayland) in Machine "
-                         @"Configuration, then select it here.")];
-    }
-
-    // ── App Bridge (anowaW) ──────────────────────────────────────────────
-    [desktopItems
-        addObject:ITEM(@"App Bridge (anowaW)", @"AnowaWEnabled", WSettingSwitch,
-                       @NO,
-                       @"Render native macOS apps as windows inside the nested "
-                       @"Wayland desktop. Uses ScreenCaptureKit per-window "
-                       @"capture plus CGEvent/Accessibility input injection, so "
-                       @"it needs Screen Recording and Accessibility "
-                       @"permissions (Developer ID, not the Mac App Store). "
-                       @"Requires the desktop machine above to be a nested "
-                       @"Weston compositor.")];
-
-    // ── Lockscreen Replacement (#103) — macOS + Android only ─────────────
-    [desktopItems
-        addObject:ITEM(@"Enable Lockscreen Replacement",
-                       @"LockscreenReplacementEnabled", WSettingSwitch, @NO,
-                       @"Run a local greeter/lock machine (gtkgreet, gtklock, …) "
-                       @"before the Desktop Replacement session. Never available "
-                       @"on iOS/iPadOS/tvOS/watchOS/visionOS.")];
-    NSMutableArray<NSString *> *lockNames = [NSMutableArray array];
-    NSMutableArray<NSString *> *lockIds = [NSMutableArray array];
-    for (WWNMachineProfile *p in allProfiles) {
-      if (![p.type isEqualToString:kWWNMachineTypeNative])
+      if (![WWNMachineProfileStore profileIndicatesModeBOwnDisplay:p]) {
         continue;
+      }
       NSDictionary *so =
           [p.settingsOverrides isKindOfClass:[NSDictionary class]]
               ? p.settingsOverrides
@@ -932,20 +1431,81 @@ static UIImage *WWNAboutLogo(void) {
       NSString *cid = [so[@"NativeClientId"] isKindOfClass:[NSString class]]
                           ? so[@"NativeClientId"]
                           : @"";
-      NSString *cmd = [so[@"NativeCustomCommand"] isKindOfClass:[NSString class]]
-                          ? so[@"NativeCustomCommand"]
-                          : @"";
-      NSString *script =
-          [p.customScript isKindOfClass:[NSString class]] ? p.customScript : @"";
-      NSString *launcher =
-          [[NSString stringWithFormat:@"%@ %@ %@", cid, cmd, script]
-              lowercaseString];
-      BOOL greeter = [launcher containsString:@"gtkgreet"] ||
-                     [launcher containsString:@"gtklock"] ||
-                     [launcher containsString:@"greetd"] ||
-                     [launcher containsString:@"wlgreet"] ||
-                     [launcher containsString:@"lock"];
-      if (!greeter)
+      NSString *label = p.name.length ? p.name : @"Unnamed Machine";
+      BOOL kmsOnly = [cid isEqualToString:@"kmscube"] ||
+                     [cid isEqualToString:@"gbm-es2-demo"] ||
+                     [cid isEqualToString:@"vkcube"] ||
+                     [cid isEqualToString:@"vkcube-kms"];
+      if (kmsOnly &&
+          [label rangeOfString:@"KMS"
+                       options:NSCaseInsensitiveSearch]
+                  .location == NSNotFound &&
+          [label rangeOfString:@"DRM"
+                       options:NSCaseInsensitiveSearch]
+                  .location == NSNotFound) {
+        label = [label stringByAppendingString:@" (KMS)"];
+      }
+      [nativeNames addObject:label];
+      [nativeIds addObject:p.machineId ?: @""];
+    }
+    if (nativeIds.count > 0) {
+      WWNSettingItem *machineItem =
+          ITEM(@"Desktop Machine",
+               @"DesktopReplacementMachineId", WSettingPopup,
+               nativeIds.firstObject,
+               @"Host desktop on an assigned VT after Classic Take Over. "
+               @"Weston and niri keep nested Wayland for Mode A Machines "
+               @"Start. Take Over has no host Wayland, so they use DRM/KMS/"
+               @"GBM. kmscube, GBM ES2, and vkcube-kms are KMS-only. "
+               @"wwn-igetty: Ctrl+Option+F1-F6 VTs; F7-F9 overlay KMS "
+               @"clients (status hub: client name, fps, kms/drm/gbm, GL/Vulkan backend). "
+               @"Ctrl+Option+Backspace or Fn+Ctrl+Option+Backspace restores "
+               @"Aqua. The Mode B dylib stays iland-baremetal.");
+      machineItem.options = nativeNames;
+      machineItem.optionValues = nativeIds;
+      [desktopItems addObject:machineItem];
+      WWNSettingItem *guiVtItem =
+          ITEM(@"GUI virtual terminal",
+               @"DesktopReplacementGuiVt", WSettingPopup, @"1",
+               @"Which VT runs the Desktop Machine (weston, niri, or a KMS "
+               @"client). Other VTs stay igetty/Doorman.");
+      guiVtItem.options = @[ @"VT1", @"VT2", @"VT3", @"VT4", @"VT5", @"VT6" ];
+      guiVtItem.optionValues = @[ @"1", @"2", @"3", @"4", @"5", @"6" ];
+      [desktopItems addObject:guiVtItem];
+    } else {
+      [desktopItems
+          addObject:ITEM(@"Desktop Machine", nil, WSettingInfo, @"None",
+                         @"No eligible own-display machine. Create a Native "
+                         @"machine whose client is weston, niri, custom, "
+                         @"kmscube, gbm-es2-demo, or vkcube, then select it "
+                         @"here. VT switching is always wwn-igetty.")];
+    }
+
+    // ── Wawona Swinging Bridge ──────────────────────────────────────────────
+    [desktopItems
+        addObject:ITEM(@"Wawona Swinging Bridge", @"SwingingBridgeEnabled", WSettingSwitch,
+                       @NO,
+                       @"Render native macOS apps as windows inside the nested "
+                       @"Wayland desktop. Uses ScreenCaptureKit per-window "
+                       @"capture plus CGEvent/Accessibility input injection, so "
+                       @"it needs Screen Recording and Accessibility "
+                       @"permissions. Requires the desktop machine above to be "
+                       @"a nested compositor.")];
+
+    // ── Lockscreen Replacement (#103). MacOS + Android only ─────────────
+    [desktopItems
+        addObject:ITEM(@"Enable Lockscreen Replacement",
+                       @"LockscreenReplacementEnabled", WSettingSwitch, @NO,
+                       @"Planned greeter/lock machine (gtkgreet, gtklock, …) "
+                       @"before Desktop Replacement. Enable after Classic "
+                       @"Desktop Take Over is green on this Mac. Never "
+                       @"available on iOS/iPadOS/tvOS/watchOS/visionOS.")];
+    NSMutableArray<NSString *> *lockNames = [NSMutableArray array];
+    NSMutableArray<NSString *> *lockIds = [NSMutableArray array];
+    for (WWNMachineProfile *p in allProfiles) {
+      if (![p.type isEqualToString:kWWNMachineTypeNative])
+        continue;
+      if (![WWNMachineProfileStore profileIndicatesNestedCompositor:p])
         continue;
       [lockNames addObject:p.name.length ? p.name : @"Unnamed Lock"];
       [lockIds addObject:p.machineId ?: @""];
@@ -954,74 +1514,23 @@ static UIImage *WWNAboutLogo(void) {
       WWNSettingItem *lockMachine = ITEM(
           @"Lockscreen Machine (greeter)", @"LockscreenReplacementMachineId",
           WSettingPopup, lockIds.firstObject,
-          @"Local Native greeter/lock machine. Unlock handoff resumes the "
-          @"Desktop Replacement machine when Desktop is enabled.");
+          @"Nested compositor greeter/lock profile. Unlock handoff to the "
+          @"Desktop Replacement machine is planned after Classic Take Over "
+          @"proof.");
       lockMachine.options = lockNames;
       lockMachine.optionValues = lockIds;
       [desktopItems addObject:lockMachine];
     } else {
       [desktopItems
           addObject:ITEM(@"Lockscreen Machine", nil, WSettingInfo, @"None",
-                         @"Create a Native machine with gtkgreet/gtklock (or "
-                         @"similar) in Machine Configuration to enable "
-                         @"Lockscreen Replacement.")];
+                         @"Create a nested compositor Native machine for the "
+                         @"greeter after Classic Desktop Take Over is proven.")];
     }
 
     desktop.items = desktopItems;
     [sects addObject:desktop];
   }
 #endif
-
-  // MACHINES (stubs)
-  WWNPreferencesSection *machines = [[WWNPreferencesSection alloc] init];
-  machines.title = @"Machines";
-  machines.accessibilityIdentifier = @"wwn.settings.machines";
-  machines.icon = @"server.rack";
-#if TARGET_OS_IPHONE
-  machines.iconColor = [UIColor systemCyanColor];
-#else
-  machines.iconColor = [NSColor systemCyanColor];
-#endif
-  machines.items = @[
-    ITEM(@"Session Thumbnails", @"MachineSessionThumbnailsEnabled",
-         WSettingSwitch, @YES,
-         @"Save the last frame from a machine session and show it on machine cards."),
-    // VM engine and container runtime are fixed per build target by the
-    // wwn-vms / wwn-containers capability lanes; they are read-only here and
-    // never user-configurable (Residual E). Engine swaps belong in the Nix
-    // engines/bridges, not in user preferences.
-    ITEM(@"Virtual Machine Engine", nil, WSettingInfo,
-#if TARGET_OS_OSX
-         @"Virtualization.framework",
-#else
-         @"QEMU (TCTI)",
-#endif
-         @"Selected automatically for this platform by wwn-vms. macOS: "
-         @"Virtualization.framework. iOS/tvOS/visionOS: jitless QEMU-TCTI. "
-         @"Android: QEMU/AVF."),
-    ITEM(@"Virtual Machine VSock Port", @"MachineVMVsockPort",
-         WSettingNumber, @"1024",
-         @"vsock port the guest's waypipe server binds; bridged into Wawona."),
-    ITEM(@"Container Runtime", nil, WSettingInfo,
-#if TARGET_OS_OSX
-         @"containerization.framework",
-#else
-         @"container-in-VM",
-#endif
-         @"Selected automatically for this platform by wwn-containers. macOS: "
-         @"Apple Containerization framework. Mobile/Android: container-in-VM "
-         @"(crun in a wwn-vms guest). watchOS: image management only."),
-    ITEM(@"Container Image Store", @"MachineContainerImageStore", WSettingText,
-         @"~/.local/share/wawona/oci",
-         @"Content-addressable OCI store (wwn-oci) for pulled images. Universal "
-         @"and App-Store-compliant on every target."),
-    ITEM(
-        @"Status", nil, WSettingInfo, @"Active",
-        @"VM + container backends are provided by the wwn-vms / wwn-containers "
-        @"dependencies. macOS runs them directly; other targets are "
-        @"capability-gated (see each dep's COMPLIANCE.md).")
-  ];
-  [sects addObject:machines];
 
   // WAYPIPE
   WWNPreferencesSection *waypipe = [[WWNPreferencesSection alloc] init];
@@ -1185,14 +1694,14 @@ static UIImage *WWNAboutLogo(void) {
 
   // Get current auth method to show appropriate nested options
   NSInteger authMethod =
-      [[NSUserDefaults standardUserDefaults] integerForKey:@"SSHAuthMethod"];
+      [WWNSharedUserDefaults() integerForKey:@"SSHAuthMethod"];
 
   if (authMethod == 0) {
     // Password authentication
     [sshItems addObject:ITEM(@"Password", @"SSHPassword", WSettingPassword, @"",
                              @"SSH password.")];
   } else {
-    // Public Key authentication — Generate / Import + path (synced to Waypipe*)
+    // Public Key authentication. Generate / Import + path (synced to Waypipe*)
     WWNSettingItem *keyTypeItem =
         ITEM(@"Key Type", @"SSHKeyType", WSettingPopup, @"ed25519",
              @"Algorithm for Generate Key (ed25519, ecdsa, rsa).");
@@ -1255,62 +1764,91 @@ static UIImage *WWNAboutLogo(void) {
 
   WWNSettingItem *headerItem =
       ITEM(@"Wawona", nil, WSettingHeader, nil,
-           @"A Wayland Compositor for macOS, iOS & Android");
+           @"A native Wayland compositor for macOS, iOS, iPadOS, tvOS, "
+           @"watchOS, visionOS, Android, and Linux. Run any desktop software, "
+           @"on any platform, natively.");
   headerItem.imageName = @"Wawona";
 
   WWNSettingItem *sourceItem =
-      ITEM(@"Source Code", nil, WSettingLink, nil, @"View on GitHub");
-  sourceItem.urlString = @"https://github.com/wawona/wawona";
+      ITEM(@"Source Code", nil, WSettingLink, nil, @"github.com/Wawona/Wawona");
+  sourceItem.urlString = @"https://github.com/Wawona/Wawona";
+  sourceItem.buttonTitle = @"View on GitHub";
   sourceItem.iconURL = @"https://github.githubassets.com/images/modules/logos_"
                        @"page/GitHub-Mark.png";
 
   WWNSettingItem *donateItem =
-      ITEM(@"GitHub Sponsors", nil, WSettingLink, nil, @"Sponsor on GitHub");
+      ITEM(@"GitHub Sponsors", nil, WSettingLink, nil,
+           @"github.com/sponsors/aspauldingcode");
   donateItem.urlString = @"https://github.com/sponsors/aspauldingcode";
+  donateItem.buttonTitle = @"Sponsor";
   donateItem.iconURL = @"https://encrypted-tbn0.gstatic.com/images?q=tbn:"
                        @"ANd9GcRp_gdQoe-SxKGw3IvS-1G_JPsMY70HkqxAPg&s";
 
+  WWNSettingItem *wawonaIoItem =
+      ITEM(@"Wawona.io", nil, WSettingLink, nil, @"Documentation and downloads");
+  wawonaIoItem.urlString = @"https://wawona.io";
+  wawonaIoItem.buttonTitle = @"Visit";
+
   WWNSettingItem *authorItem =
-      ITEM(@"Author", nil, WSettingInfo, @"Alex Spaulding", nil);
+      ITEM(@"Author", nil, WSettingLink, nil, @"Alex Spaulding");
+  authorItem.urlString = @"https://aspauldingcode.com";
+  authorItem.buttonTitle = @"Visit Portfolio";
   authorItem.iconURL = @"https://github.com/aspauldingcode.png?size=160";
 
   WWNSettingItem *githubItem =
-      ITEM(@"GitHub", nil, WSettingLink, nil, @"View GitHub Profile");
+      ITEM(@"GitHub", nil, WSettingLink, nil, @"github.com/aspauldingcode");
   githubItem.urlString = @"https://github.com/aspauldingcode";
+  githubItem.buttonTitle = @"View Profile";
   githubItem.iconURL = @"https://github.githubassets.com/images/modules/logos_"
                        @"page/GitHub-Mark.png";
 
-  WWNSettingItem *xItem = ITEM(@"X", nil, WSettingLink, nil, @"Follow on X");
+  WWNSettingItem *xItem =
+      ITEM(@"X", nil, WSettingLink, nil, @"@aspauldingcode");
   xItem.urlString = @"https://x.com/aspauldingcode";
-  xItem.iconURL = @"https://x.com/favicon.ico";
+  xItem.buttonTitle = @"Follow";
+  xItem.iconURL = @"https://www.google.com/s2/favicons?sz=128&domain=x.com";
 
   WWNSettingItem *linkedinItem =
-      ITEM(@"LinkedIn", nil, WSettingLink, nil, @"Connect on LinkedIn");
+      ITEM(@"LinkedIn", nil, WSettingLink, nil,
+           @"linkedin.com/in/aspauldingcode");
   linkedinItem.urlString = @"https://www.linkedin.com/in/aspauldingcode/";
+  linkedinItem.buttonTitle = @"Connect";
   linkedinItem.iconURL = @"https://upload.wikimedia.org/wikipedia/commons/c/"
                          @"ca/LinkedIn_logo_initials.png";
 
-  WWNSettingItem *websiteItem =
-      ITEM(@"Portfolio", nil, WSettingLink, nil, @"Visit Website");
-  websiteItem.urlString = @"https://aspauldingcode.com";
-  websiteItem.iconURL = @"https://aspauldingcode.com/favicon.ico";
-
   WWNSettingItem *kofiItem =
-      ITEM(@"Ko-fi", nil, WSettingLink, nil, @"Buy me a coffee ☕");
+      ITEM(@"Ko-fi", nil, WSettingLink, nil, @"Buy me a coffee");
   kofiItem.urlString = @"https://ko-fi.com/aspauldingcode";
+  kofiItem.buttonTitle = @"Support";
   kofiItem.iconURL = @"https://ko-fi.com/android-icon-192x192.png";
+
+  WWNSettingItem *copyRecentLogs = ITEM(
+      @"Copy Recent Logs", @"CopyRecentLogs", WSettingButton, nil,
+      @"Copy Wawona version, host OS, install channel, and recent logs");
+  copyRecentLogs.actionBlock = ^{
+    [[WWNPreferences sharedPreferences] wwnCopyDiagnosticReportMachineOnly:NO];
+  };
+
+  WWNSettingItem *copyMachineLogs = ITEM(
+      @"Copy Active Machine Logs", @"CopyMachineLogs", WSettingButton, nil,
+      @"Copy the active machine profile (no secrets) plus its log lines");
+  copyMachineLogs.actionBlock = ^{
+    [[WWNPreferences sharedPreferences] wwnCopyDiagnosticReportMachineOnly:YES];
+  };
+
+  WWNSettingItem *reportBug = ITEM(
+      @"Report a Bug on GitHub", @"ReportGitHubIssue", WSettingButton, nil,
+      @"Opens the Wawona bug form with this platform, version, and recent logs");
+  reportBug.actionBlock = ^{
+    [[WWNPreferences sharedPreferences] wwnOpenGitHubBugReport];
+  };
 
   about.items = @[
     headerItem, ITEM(@"Version", nil, WSettingInfo, [self getWWNVersion], nil),
-    ITEM(@"Platform", nil, WSettingInfo,
-#if TARGET_OS_IPHONE
-         @"iOS",
-#else
-         @"macOS",
-#endif
-         nil),
-    authorItem, websiteItem, githubItem, xItem, linkedinItem, kofiItem,
-    donateItem
+    ITEM(@"Platform", nil, WSettingInfo, [self wwnHostOsSummary], nil),
+    ITEM(@"Install", nil, WSettingInfo, [self wwnInstallChannel], nil),
+    wawonaIoItem, copyRecentLogs, copyMachineLogs, reportBug, authorItem,
+    githubItem, xItem, linkedinItem, kofiItem, donateItem, sourceItem
   ];
   [sects addObject:about];
 
@@ -1326,48 +1864,20 @@ static UIImage *WWNAboutLogo(void) {
 #endif
 
   NSMutableArray *depItems = [NSMutableArray array];
-
-  // Core dependencies
-  [depItems
-      addObject:ITEM(@"Waypipe", nil, WSettingInfo, [self getWaypipeVersion],
-                     @"Remote Wayland display proxy")];
-#if TARGET_OS_IPHONE
-  [depItems
-      addObject:ITEM(@"libssh2", nil, WSettingInfo, [self getLibSSH2Version],
-                     @"SSH connection library")];
-#else
-  [depItems addObject:ITEM(@"OpenSSH", nil, WSettingInfo,
-                           [self getOpenSSHVersion], @"Secure shell client")];
-#endif
-#if !TARGET_OS_IPHONE
-  [depItems
-      addObject:ITEM(@"sshpass", nil, WSettingInfo, [self getSshpassVersion],
-                     @"Non-interactive SSH password auth")];
-#endif
-  [depItems
-      addObject:ITEM(@"libwayland", nil, WSettingInfo,
-                     [self getLibwaylandVersion], @"Wayland protocol library")];
-  [depItems
-      addObject:ITEM(@"xkbcommon", nil, WSettingInfo,
-                     [self getXkbcommonVersion], @"Keyboard handling library")];
-
-  // Compression
-  [depItems addObject:ITEM(@"LZ4", nil, WSettingInfo, [self getLz4Version],
-                           @"Fast compression algorithm")];
-  [depItems addObject:ITEM(@"Zstd", nil, WSettingInfo, [self getZstdVersion],
-                           @"Zstandard compression")];
-
-  // Other libraries
-  [depItems
-      addObject:ITEM(@"libffi", nil, WSettingInfo, [self getLibffiVersion],
-                     @"Foreign function interface")];
-
-#if TARGET_OS_IPHONE
-  // iOS-specific dependencies
-  [depItems
-      addObject:ITEM(@"epoll-shim", nil, WSettingInfo,
-                     [self getEpollShimVersion], @"epoll compatibility layer")];
-#endif
+  NSArray *inventory = [self loadSettingsDependenciesInventory];
+  if (inventory.count > 0) {
+    for (NSDictionary *pkg in inventory) {
+      NSString *name = pkg[@"name"] ?: @"Package";
+      NSString *version = pkg[@"version"] ?: @"";
+      NSString *role = pkg[@"role"] ?: @"";
+      [depItems addObject:ITEM(name, nil, WSettingInfo, version, role)];
+    }
+  } else {
+    [depItems addObject:ITEM(@"Dependencies", nil, WSettingInfo, @"unavailable",
+                             @"SettingsDependencies.json missing from this "
+                             @"build. Rebuild so the product inventory is "
+                             @"embedded.")];
+  }
 
   deps.items = depItems;
   [sects addObject:deps];
@@ -1377,6 +1887,28 @@ static UIImage *WWNAboutLogo(void) {
 
 - (NSString *)findWaypipeBinary {
   return [[WWNWaypipeRunner sharedRunner] findWaypipeBinary];
+}
+
+- (NSArray<NSDictionary *> *)loadSettingsDependenciesInventory {
+  NSString *path = [[NSBundle mainBundle] pathForResource:@"SettingsDependencies"
+                                                   ofType:@"json"];
+  if (path.length == 0) {
+    return @[];
+  }
+  NSData *data = [NSData dataWithContentsOfFile:path];
+  if (!data) {
+    return @[];
+  }
+  NSError *error = nil;
+  id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&error];
+  if (![json isKindOfClass:[NSDictionary class]]) {
+    return @[];
+  }
+  id packages = json[@"packages"];
+  if (![packages isKindOfClass:[NSArray class]]) {
+    return @[];
+  }
+  return packages;
 }
 
 - (NSString *)getSocketPath {
@@ -1675,6 +2207,245 @@ static UIImage *WWNAboutLogo(void) {
   return version ?: @"v0.0.0";
 }
 
+- (NSString *)wwnHostOsSummary {
+  struct utsname u;
+  memset(&u, 0, sizeof(u));
+  (void)uname(&u);
+  NSString *machine = @(u.machine);
+#if TARGET_OS_VISION
+  NSString *name = @"visionOS";
+  NSString *ver = [[NSProcessInfo processInfo] operatingSystemVersionString];
+#elif TARGET_OS_TV
+  NSString *name = @"tvOS";
+  NSString *ver = [UIDevice currentDevice].systemVersion;
+#elif TARGET_OS_WATCH
+  NSString *name = @"watchOS";
+  NSString *ver = [[NSProcessInfo processInfo] operatingSystemVersionString];
+#elif TARGET_OS_IOS
+  NSString *name =
+      ([UIDevice currentDevice].userInterfaceIdiom == UIUserInterfaceIdiomPad)
+          ? @"iPadOS"
+          : @"iOS";
+  NSString *ver = [UIDevice currentDevice].systemVersion;
+#elif TARGET_OS_OSX
+  NSString *name = @"macOS";
+  NSString *ver = [[NSProcessInfo processInfo] operatingSystemVersionString];
+#else
+  NSString *name = @"unknown";
+  NSString *ver = @"";
+#endif
+  if (machine.length == 0) {
+    machine = @"unknown";
+  }
+  if (ver.length == 0) {
+    return [NSString stringWithFormat:@"%@ (%@)", name, machine];
+  }
+  return [NSString stringWithFormat:@"%@ %@ (%@)", name, ver, machine];
+}
+
+- (NSString *)wwnInstallChannel {
+#if TARGET_OS_SIMULATOR
+  return @"Simulator";
+#elif TARGET_OS_OSX
+  return @"macOS";
+#elif TARGET_OS_IPHONE
+  NSURL *receipt = [[NSBundle mainBundle] appStoreReceiptURL];
+  NSString *path = receipt.path;
+  if (path.length > 0 &&
+      [[NSFileManager defaultManager] fileExistsAtPath:path]) {
+    if ([path.lastPathComponent isEqualToString:@"sandboxReceipt"]) {
+      return @"TestFlight";
+    }
+    return @"App Store";
+  }
+  return @"Sideload";
+#else
+  return @"unknown";
+#endif
+}
+
+- (NSString *)wwnActiveMachineSummary {
+  NSString *mid = [WWNMachineProfileStore activeMachineId];
+  if (mid.length == 0) {
+    return @"(no active machine)";
+  }
+  WWNMachineProfile *p = [WWNMachineProfileStore profileById:mid];
+  if (!p) {
+    return [NSString stringWithFormat:@"id=%@ (profile missing)", mid];
+  }
+  NSDictionary *ov = [p.settingsOverrides isKindOfClass:[NSDictionary class]]
+                         ? p.settingsOverrides
+                         : @{};
+  NSDictionary *rt = [p.runtimeOverrides isKindOfClass:[NSDictionary class]]
+                         ? p.runtimeOverrides
+                         : @{};
+  id client = ov[@"NativeClientId"] ?: rt[@"bundledAppID"] ?: @"";
+  id backend = ov[@"CompositorBackend"] ?: @"";
+  id nested = ov[@"NestedWestonBackend"] ?: @"";
+  NSString *cmd = p.customScript.length > 0 ? p.customScript : @"";
+  return [NSString stringWithFormat:
+                       @"id=%@\nname=%@\ntype=%@\nclient=%@\n"
+                       @"customCommand=%@\ncompositorBackend=%@\n"
+                       @"nestedWestonBackend=%@",
+                       p.machineId ?: @"", p.name ?: @"", p.type ?: @"",
+                       client, cmd, backend, nested];
+}
+
+- (NSString *)wwnDiagnosticReportMachineOnly:(BOOL)machineOnly {
+  NSString *build = [[NSBundle mainBundle]
+      objectForInfoDictionaryKey:@"CFBundleVersion"];
+  NSMutableString *out = [NSMutableString string];
+  [out appendString:@"### Wawona diagnostics\n"];
+  [out appendFormat:@"Wawona: %@\n", [self getWWNVersion]];
+  if (build.length > 0) {
+    [out appendFormat:@"Build: %@\n", build];
+  }
+  [out appendFormat:@"Host: %@\n", [self wwnHostOsSummary]];
+  [out appendFormat:@"Install: %@\n", [self wwnInstallChannel]];
+  [out appendFormat:@"Bundle: %@\n",
+                    [[NSBundle mainBundle] bundleIdentifier] ?: @""];
+  [out appendString:@"\n### Active machine\n"];
+  [out appendString:[self wwnActiveMachineSummary]];
+  [out appendString:@"\n\n### Logs\n```\n"];
+  const char *filter = NULL;
+  if (machineOnly) {
+    NSString *mid = [WWNMachineProfileStore activeMachineId];
+    if (mid.length == 0) {
+      [out appendString:@"(no active machine selected)\n```\n"];
+      return out;
+    }
+    filter = mid.UTF8String;
+  }
+  char *dump = wwn_log_ring_dump ? wwn_log_ring_dump(filter) : NULL;
+  if (dump) {
+    [out appendFormat:@"%s", dump];
+    if (WWNStringFree) {
+      WWNStringFree(dump);
+    }
+  } else {
+    [out appendString:@"(log ring unavailable)"];
+  }
+  [out appendString:@"\n```\n"];
+  [out appendString:@"\nGitHub bug form: "
+                    @"https://github.com/Wawona/Wawona/issues/new?template=bug.yml\n"];
+  return out;
+}
+
+- (void)wwnCopyDiagnosticReportMachineOnly:(BOOL)machineOnly {
+  NSString *text = [self wwnDiagnosticReportMachineOnly:machineOnly];
+#if TARGET_OS_TV || TARGET_OS_WATCH
+  [self presentSafeAlertWithTitle:machineOnly ? @"Machine logs"
+                                              : @"Recent logs"
+                          message:text];
+#elif TARGET_OS_IPHONE
+  if ([UIApplication sharedApplication].applicationState ==
+      UIApplicationStateActive) {
+    [UIPasteboard generalPasteboard].string = text;
+  }
+  [self presentSafeAlertWithTitle:@"Copied"
+                          message:
+                              @"Paste into Copied diagnostics if the GitHub "
+                              @"form did not fill that field."];
+#else
+  NSPasteboard *pb = [NSPasteboard generalPasteboard];
+  [pb clearContents];
+  [pb setString:text forType:NSPasteboardTypeString];
+#endif
+}
+
+- (NSString *)wwnBugReportPlatform {
+#if TARGET_OS_VISION
+  return @"visionOS";
+#elif TARGET_OS_TV
+  return @"tvOS";
+#elif TARGET_OS_WATCH
+  return @"watchOS";
+#elif TARGET_OS_IOS
+  return ([UIDevice currentDevice].userInterfaceIdiom == UIUserInterfaceIdiomPad)
+             ? @"iPadOS"
+             : @"iOS";
+#elif TARGET_OS_OSX
+  return @"macOS";
+#else
+  return @"Unsure";
+#endif
+}
+
+- (NSString *)wwnBugReportVersion {
+  NSString *v = [self getWWNVersion];
+  if ([v hasPrefix:@"v"] && v.length > 1) {
+    return [v substringFromIndex:1];
+  }
+  return v ?: @"unknown";
+}
+
+- (void)wwnCopyDiagnosticReportToPasteboard:(NSString *)text {
+#if TARGET_OS_TV || TARGET_OS_WATCH
+  (void)text;
+#elif TARGET_OS_IPHONE
+  if ([UIApplication sharedApplication].applicationState ==
+      UIApplicationStateActive) {
+    [UIPasteboard generalPasteboard].string = text;
+  }
+#else
+  NSPasteboard *pb = [NSPasteboard generalPasteboard];
+  [pb clearContents];
+  [pb setString:text forType:NSPasteboardTypeString];
+#endif
+}
+
+- (void)wwnOpenGitHubBugReport {
+  NSString *mid = [WWNMachineProfileStore activeMachineId];
+  BOOL machineOnly = mid.length > 0;
+  NSString *report = [self wwnDiagnosticReportMachineOnly:machineOnly];
+  [self wwnCopyDiagnosticReportToPasteboard:report];
+
+  NSString *platform = [self wwnBugReportPlatform];
+  NSString *channel = [self wwnInstallChannel];
+  NSString *version = [self wwnBugReportVersion];
+  NSString *host = [self wwnHostOsSummary];
+  char *raw = wwn_github_bug_report_url
+                  ? wwn_github_bug_report_url(platform.UTF8String,
+                                              channel.UTF8String,
+                                              version.UTF8String,
+                                              host.UTF8String,
+                                              report.UTF8String)
+                  : NULL;
+  NSString *urlString = nil;
+  if (raw) {
+    urlString = [NSString stringWithUTF8String:raw];
+    if (WWNStringFree) {
+      WWNStringFree(raw);
+    }
+  }
+  if (urlString.length == 0) {
+    urlString =
+        @"https://github.com/Wawona/Wawona/issues/new?template=bug.yml";
+  }
+  NSURL *url = [NSURL URLWithString:urlString];
+  if (!url) {
+    url = [NSURL
+        URLWithString:
+            @"https://github.com/Wawona/Wawona/issues/new?template=bug.yml"];
+  }
+  if (!url) {
+    return;
+  }
+#if TARGET_OS_IPHONE
+  [[UIApplication sharedApplication] openURL:url
+                                     options:@{}
+                           completionHandler:nil];
+#if !TARGET_OS_TV && !TARGET_OS_WATCH
+  [self presentSafeAlertWithTitle:@"Bug report"
+                          message:
+                              @"Copied recent logs and opened the Wawona GitHub "
+                              @"bug form with this platform filled."];
+#endif
+#else
+  [[NSWorkspace sharedWorkspace] openURL:url];
+#endif
+}
+
 - (NSString *)getLibffiVersion {
   return
       [self cleanVersion:[NSString stringWithUTF8String:WAWONA_LIBFFI_VERSION]];
@@ -1723,6 +2494,10 @@ static UIImage *WWNAboutLogo(void) {
 }
 
 - (void)runWaypipe {
+#ifdef WWN_PREFPANE
+  WWNHandoffToWawonaApp(@"Waypipe");
+  return;
+#endif
   // Save any pending text field changes first (macOS only - iOS uses alerts)
 #if !TARGET_OS_IPHONE
   // On macOS, text fields might have unsaved changes
@@ -1752,7 +2527,7 @@ static UIImage *WWNAboutLogo(void) {
 
 #if TARGET_OS_IPHONE
   {
-    __weak typeof(self) weakSelf = self;
+    __block typeof(self) weakSelf = self;
 
     void (^showStatusAlert)(void) = ^{
       UIAlertController *statusAlert = [UIAlertController
@@ -2579,7 +3354,7 @@ static UIImage *WWNAboutLogo(void) {
 - (void)generateSSHKey {
   WWNPreferencesManager *prefs = [WWNPreferencesManager sharedManager];
   NSString *keyType =
-      [[NSUserDefaults standardUserDefaults] stringForKey:@"SSHKeyType"]
+      [WWNSharedUserDefaults() stringForKey:@"SSHKeyType"]
           ?: @"ed25519";
   NSString *passphrase = prefs.sshKeyPassphrase ?: @"";
   NSError *err = nil;
@@ -2676,6 +3451,11 @@ static UIImage *WWNAboutLogo(void) {
 - (void)documentPicker:(UIDocumentPickerViewController *)controller
     didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
   (void)controller;
+  if (self.documentPickerSendsToAppleWatch) {
+    self.documentPickerSendsToAppleWatch = NO;
+    [self sendPickedFileToAppleWatch:urls];
+    return;
+  }
   if (!self.documentPickerImportsSSHKey) {
     [self importPickedFileToShellHome:urls];
     return;
@@ -3600,10 +4380,49 @@ static UIImage *WWNAboutLogo(void) {
 
 #if TARGET_OS_IPHONE
 
+static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
+  if (!vc) {
+    return NO;
+  }
+  if ([vc isKindOfClass:[WWNSettingsSplitViewController class]]) {
+    return YES;
+  }
+  if ([vc isKindOfClass:[UINavigationController class]]) {
+    UINavigationController *nav = (UINavigationController *)vc;
+    UIViewController *root = nav.viewControllers.firstObject;
+    return [root isKindOfClass:[WWNPreferences class]] ||
+           [root isKindOfClass:[WWNSettingsSplitViewController class]];
+  }
+  return NO;
+}
+
+- (void)presentSettingsFromRoot:(UIViewController *)root {
+  WWNSettingsSplitViewController *splitVC =
+      [[WWNSettingsSplitViewController alloc] init];
+#if TARGET_OS_TV
+  // FormSheet on tvOS is a phone-sized card in the corner. Full screen plus
+  // a wide sidebar is the 10-foot layout.
+  splitVC.modalPresentationStyle = UIModalPresentationFullScreen;
+  splitVC.preferredPrimaryColumnWidthFraction = 0.35;
+  splitVC.minimumPrimaryColumnWidth = 400;
+  splitVC.maximumPrimaryColumnWidth = 640;
+#else
+  splitVC.modalPresentationStyle = UIModalPresentationFormSheet;
+  UISheetPresentationController *sheet = splitVC.sheetPresentationController;
+  if (sheet) {
+    // Capsule at the top of the card. Swipe down on it (or the sheet) to
+    // dismiss. Hidden by default for a single large detent.
+    sheet.prefersGrabberVisible = YES;
+    sheet.prefersEdgeAttachedInCompactHeight = YES;
+  }
+#endif
+  [root presentViewController:splitVC animated:YES completion:nil];
+}
+
 - (void)showPreferences:(id)sender {
   (void)sender;
   [self loadViewIfNeeded];
-  UIViewController *presenter = nil;
+  UIViewController *root = nil;
   for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
     if (![scene isKindOfClass:[UIWindowScene class]]) {
       continue;
@@ -3614,34 +4433,35 @@ static UIImage *WWNAboutLogo(void) {
     }
     for (UIWindow *window in windowScene.windows) {
       if (window.isKeyWindow && window.rootViewController) {
-        presenter = window.rootViewController;
+        root = window.rootViewController;
         break;
       }
     }
-    if (presenter) {
+    if (root) {
       break;
     }
   }
-  if (!presenter) {
-    presenter = UIApplication.sharedApplication.delegate.window.rootViewController;
+  if (!root) {
+    root = UIApplication.sharedApplication.delegate.window.rootViewController;
   }
-  if (!presenter) {
+  if (!root) {
     return;
   }
-  while (presenter.presentedViewController) {
-    if ([presenter.presentedViewController isKindOfClass:[UINavigationController class]]) {
-      UINavigationController *nav = (UINavigationController *)presenter.presentedViewController;
-      if (nav.viewControllers.count > 0 &&
-          [nav.viewControllers.firstObject isKindOfClass:[WWNPreferences class]]) {
-        return;
-      }
-    }
-    presenter = presenter.presentedViewController;
+  // Present from the window root. Walking into Edit Machine (or any other
+  // sheet) buries Settings under that sheet, so Apple Watch never appears.
+  UIViewController *presented = root.presentedViewController;
+  if (WWNIsSettingsPresentation(presented)) {
+    return;
   }
-  WWNSettingsSplitViewController *splitVC =
-      [[WWNSettingsSplitViewController alloc] init];
-  splitVC.modalPresentationStyle = UIModalPresentationFormSheet;
-  [presenter presentViewController:splitVC animated:YES completion:nil];
+  if (presented) {
+    __weak typeof(self) weakSelf = self;
+    [root dismissViewControllerAnimated:NO
+                             completion:^{
+                               [weakSelf presentSettingsFromRoot:root];
+                             }];
+    return;
+  }
+  [self presentSettingsFromRoot:root];
 }
 
 - (void)selectSectionWithTitle:(NSString *)title {
@@ -3652,9 +4472,6 @@ static UIImage *WWNAboutLogo(void) {
     if ([section.title caseInsensitiveCompare:title] == NSOrderedSame) {
       self.activeSection = section;
       self.title = section.title;
-      if (self.isViewLoaded) {
-        [self.tableView reloadData];
-      }
       break;
     }
   }
@@ -3676,6 +4493,59 @@ static UIImage *WWNAboutLogo(void) {
   [self dismissViewControllerAnimated:YES completion:nil];
 }
 
+- (void)wwnApplyPopupSelectionForItem:(WWNSettingItem *)item
+                                index:(NSInteger)index {
+  WWNSettingsPopupStoreIndex(item, index);
+  NSString *sectionTitle = self.activeSection.title;
+  if (WWNSettingsPopupStoresIndex(item.key) ||
+      [item.key isEqualToString:@"RenderMacOSPointer"]) {
+    self.sections = [self buildSections];
+    for (WWNPreferencesSection *section in self.sections) {
+      if ([section.title isEqualToString:sectionTitle]) {
+        self.activeSection = section;
+        break;
+      }
+    }
+  }
+  [self.tableView reloadData];
+}
+
+- (void)wwnPushOptionPickerForItem:(WWNSettingItem *)item {
+  WWNSettingsOptionPickerController *picker =
+      [[WWNSettingsOptionPickerController alloc] initWithItem:item];
+  __weak typeof(self) weakSelf = self;
+  picker.onPick = ^(NSInteger index) {
+    __strong typeof(weakSelf) strongSelf = weakSelf;
+    if (!strongSelf) {
+      return;
+    }
+    [strongSelf wwnApplyPopupSelectionForItem:item index:index];
+    [strongSelf.navigationController popViewControllerAnimated:YES];
+  };
+  UINavigationController *nav = self.navigationController;
+  if (nav) {
+    [nav pushViewController:picker animated:YES];
+    return;
+  }
+  UINavigationController *wrap =
+      [[UINavigationController alloc] initWithRootViewController:picker];
+  wrap.modalPresentationStyle =
+#if TARGET_OS_TV
+      UIModalPresentationFullScreen;
+#else
+      UIModalPresentationFormSheet;
+#endif
+  [self presentViewController:wrap animated:YES completion:nil];
+  picker.onPick = ^(NSInteger index) {
+    __strong typeof(weakSelf) strongSelf = weakSelf;
+    if (!strongSelf) {
+      return;
+    }
+    [strongSelf wwnApplyPopupSelectionForItem:item index:index];
+    [strongSelf dismissViewControllerAnimated:YES completion:nil];
+  };
+}
+
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tv {
   if (self.activeSection) {
     return 1;
@@ -3692,8 +4562,10 @@ static UIImage *WWNAboutLogo(void) {
 
 - (NSString *)tableView:(UITableView *)tv
     titleForHeaderInSection:(NSInteger)sec {
+  // One section per detail page. The nav bar already uses section.title
+  // (Display, About, …). Repeating it here doubles the title on iOS.
   if (self.activeSection) {
-    return self.activeSection.title;
+    return nil;
   }
   return self.sections[sec].title;
 }
@@ -3707,17 +4579,29 @@ static UIImage *WWNAboutLogo(void) {
     item = self.sections[ip.section].items[ip.row];
   }
 
-  BOOL usesSubtitleInfoCell =
-      (item.type == WSettingInfo && item.key == nil && item.desc.length > 0);
-  NSString *cellIdentifier =
-      usesSubtitleInfoCell ? @"InfoSubtitleCell" : @"Cell";
-  UITableViewCell *cell = [tv dequeueReusableCellWithIdentifier:cellIdentifier];
+  // Two-column rows are title | On/Off, title | current value, or title |
+  // current choice plus a chevron. Info shows the real value (never a
+  // placeholder ellipsis). Short values stay trailing; longer copy wraps.
+  // iOS family only: multi-option rows use a disclosure list. macOS uses
+  // an NSPopUpButton switcher in the trailing column.
+  NSString *infoValue = nil;
+  BOOL infoCompact = NO;
+  if (item.type == WSettingInfo) {
+    infoValue = WWNSettingsInfoTrailingText(item);
+    infoCompact = WWNSettingsInfoValueIsCompact(infoValue);
+  }
+  NSString *cellID = @"Cell";
+  UITableViewCellStyle style = UITableViewCellStyleValue1;
+  if (item.type == WSettingInfo && !infoCompact) {
+    cellID = @"InfoWrapCell";
+    style = UITableViewCellStyleSubtitle;
+  } else if (item.type == WSettingLink && item.desc.length > 0) {
+    cellID = @"LinkSubtitleCell";
+    style = UITableViewCellStyleSubtitle;
+  }
+  UITableViewCell *cell = [tv dequeueReusableCellWithIdentifier:cellID];
   if (!cell) {
-    UITableViewCellStyle style = usesSubtitleInfoCell
-                                     ? UITableViewCellStyleSubtitle
-                                     : UITableViewCellStyleValue1;
-    cell = [[UITableViewCell alloc] initWithStyle:style
-                                  reuseIdentifier:cellIdentifier];
+    cell = [[UITableViewCell alloc] initWithStyle:style reuseIdentifier:cellID];
   }
 
   // Reset image to avoid phantom reuse
@@ -3733,34 +4617,68 @@ static UIImage *WWNAboutLogo(void) {
   }
   cell.textLabel.textColor =
       [UIColor labelColor]; // Reset to default color (not blue)
+  cell.textLabel.numberOfLines = 1;
+  cell.textLabel.lineBreakMode = NSLineBreakByTruncatingTail;
   cell.detailTextLabel.text = nil;
   cell.detailTextLabel.numberOfLines = 1;
+  cell.detailTextLabel.lineBreakMode = NSLineBreakByTruncatingTail;
   cell.detailTextLabel.textColor = [UIColor secondaryLabelColor];
+  [cell.textLabel setContentCompressionResistancePriority:UILayoutPriorityDefaultHigh
+                                                  forAxis:UILayoutConstraintAxisHorizontal];
+  [cell.textLabel setContentHuggingPriority:UILayoutPriorityDefaultLow
+                                    forAxis:UILayoutConstraintAxisHorizontal];
+  [cell.detailTextLabel setContentCompressionResistancePriority:UILayoutPriorityDefaultHigh
+                                                        forAxis:UILayoutConstraintAxisHorizontal];
+  [cell.detailTextLabel setContentHuggingPriority:UILayoutPriorityDefaultLow
+                                          forAxis:UILayoutConstraintAxisHorizontal];
   cell.accessoryView = nil;
+  cell.accessoryType = UITableViewCellAccessoryNone;
   cell.selectionStyle = UITableViewCellSelectionStyleNone;
 
   if (item.type == WSettingSwitch) {
 #if TARGET_OS_TV
-    BOOL swOn = YES;
     BOOL swEnabled = item.interactive;
+    BOOL swOn = YES;
     if ([item.key isEqualToString:@"WaypipeOneshot"]) {
       swOn = YES;
       swEnabled = NO;
       cell.textLabel.textColor = [UIColor secondaryLabelColor];
-      cell.selectionStyle = UITableViewCellSelectionStyleDefault;
-    } else if ([item.key isEqualToString:@"ForceServerSideDecorations"]) {
-      swOn = [[NSUserDefaults standardUserDefaults] boolForKey:item.key];
     } else {
-      swOn = [[NSUserDefaults standardUserDefaults] boolForKey:item.key];
+      id stored = [WWNSharedUserDefaults() objectForKey:item.key];
+      swOn = stored ? [stored boolValue] : [item.defaultValue boolValue];
+      if (!item.interactive) {
+        cell.textLabel.textColor = [UIColor secondaryLabelColor];
+      }
     }
-    UIButton *toggleBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-    [toggleBtn setTitle:(swOn ? @"On" : @"Off") forState:UIControlStateNormal];
-    toggleBtn.enabled = swEnabled;
-    toggleBtn.tag = (ip.section * 1000) + ip.row;
-    [toggleBtn addTarget:self
-                  action:@selector(tvSwitchButtonPressed:)
-        forControlEvents:UIControlEventPrimaryActionTriggered];
-    cell.accessoryView = toggleBtn;
+    // UISwitch is unavailable on tvOS. A zero-size UIButton accessory is
+    // invisible. Off | On is the 10-foot binary control.
+    UISegmentedControl *seg =
+        [[UISegmentedControl alloc] initWithItems:@[ @"Off", @"On" ]];
+    seg.selectedSegmentIndex = swOn ? 1 : 0;
+    seg.enabled = swEnabled;
+    seg.tag = (ip.section * 1000) + ip.row;
+    [seg addTarget:self
+                  action:@selector(tvSwitchChanged:)
+        forControlEvents:UIControlEventValueChanged];
+    [seg sizeToFit];
+    CGRect segFrame = seg.frame;
+    if (segFrame.size.width < 220) {
+      segFrame.size.width = 220;
+    }
+    if (segFrame.size.height < 46) {
+      segFrame.size.height = 46;
+    }
+    seg.frame = segFrame;
+    seg.accessibilityLabel = item.title;
+    seg.accessibilityValue = swOn ? @"On" : @"Off";
+    cell.accessoryView = seg;
+    cell.detailTextLabel.text = nil;
+    if ([item.key isEqualToString:@"WaypipeOneshot"]) {
+      cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+    } else {
+      cell.selectionStyle = swEnabled ? UITableViewCellSelectionStyleDefault
+                                      : UITableViewCellSelectionStyleNone;
+    }
 #else
     UISwitch *sw = [[UISwitch alloc] initWithFrame:CGRectZero];
 #if TARGET_OS_IPHONE
@@ -3772,14 +4690,14 @@ static UIImage *WWNAboutLogo(void) {
       cell.textLabel.textColor = [UIColor secondaryLabelColor];
       cell.selectionStyle = UITableViewCellSelectionStyleDefault;
     } else {
-      sw.on = [[NSUserDefaults standardUserDefaults] boolForKey:item.key];
+      sw.on = [WWNSharedUserDefaults() boolForKey:item.key];
       sw.enabled = item.interactive;
       if (!item.interactive) {
         cell.textLabel.textColor = [UIColor secondaryLabelColor];
       }
     }
 #else
-    sw.on = [[NSUserDefaults standardUserDefaults] boolForKey:item.key];
+    sw.on = [WWNSharedUserDefaults() boolForKey:item.key];
     sw.enabled = item.interactive;
     if (!item.interactive) {
       cell.textLabel.textColor = [UIColor secondaryLabelColor];
@@ -3790,11 +4708,10 @@ static UIImage *WWNAboutLogo(void) {
                   action:@selector(swChg:)
         forControlEvents:UIControlEventValueChanged];
 
-    // No info buttons for switches - removed per user request
     cell.accessoryView = sw;
 #endif
   } else if (item.type == WSettingText || item.type == WSettingNumber) {
-    id val = [[NSUserDefaults standardUserDefaults] objectForKey:item.key];
+    id val = [WWNSharedUserDefaults() objectForKey:item.key];
     if (!val) {
       val = item.defaultValue;
     }
@@ -3831,68 +4748,33 @@ static UIImage *WWNAboutLogo(void) {
     cell.accessoryType = UITableViewCellAccessoryNone;
     cell.selectionStyle = UITableViewCellSelectionStyleDefault;
   } else if (item.type == WSettingPopup) {
-    id val = [[NSUserDefaults standardUserDefaults] objectForKey:item.key];
-    if (!val) {
-      val = item.defaultValue;
-    }
-
-    // Special handling for Auth Method: convert integer to string
-    if ([item.key isEqualToString:@"WaypipeSSHAuthMethod"] ||
-        [item.key isEqualToString:@"SSHAuthMethod"]) {
-      NSInteger methodIndex =
-          [val isKindOfClass:[NSNumber class]] ? [val integerValue] : 0;
-      if (methodIndex >= 0 && methodIndex < (NSInteger)item.options.count) {
-        cell.detailTextLabel.text = item.options[methodIndex];
-      } else {
-        cell.detailTextLabel.text = item.options[0]; // Default to "Password"
-      }
-    } else {
-      // If optionValues exists, find display text from options by matching
-      // stored value
-      if (item.optionValues && item.optionValues.count == item.options.count) {
-        NSString *stored = [val description];
-        for (NSInteger i = 0; i < (NSInteger)item.optionValues.count; i++) {
-          if ([item.optionValues[i] isEqualToString:stored]) {
-            cell.detailTextLabel.text = item.options[i];
-            goto popup_done;
-          }
-        }
-      }
-      cell.detailTextLabel.text = [val description];
-    }
-  popup_done:
-    cell.accessoryType = UITableViewCellAccessoryNone;
+    cell.detailTextLabel.text = WWNSettingsPopupDisplayTitle(item);
+    cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     if (item.interactive) {
       cell.selectionStyle = UITableViewCellSelectionStyleDefault;
     } else {
       cell.selectionStyle = UITableViewCellSelectionStyleNone;
       cell.textLabel.textColor = [UIColor secondaryLabelColor];
       cell.detailTextLabel.textColor = [UIColor tertiaryLabelColor];
+      cell.accessoryType = UITableViewCellAccessoryNone;
     }
   } else if (item.type == WSettingButton) {
     cell.textLabel.textColor = [UIColor systemBlueColor];
     cell.selectionStyle = UITableViewCellSelectionStyleDefault;
   } else if (item.type == WSettingInfo) {
-    id val = [[NSUserDefaults standardUserDefaults] objectForKey:item.key];
-    if (!val) {
-      val = item.defaultValue;
-    }
-    if (usesSubtitleInfoCell) {
-      NSString *valueString = [val description] ?: @"";
-      cell.detailTextLabel.text = item.desc;
-      cell.detailTextLabel.numberOfLines = 2;
-      cell.detailTextLabel.textColor = [UIColor secondaryLabelColor];
-      if (valueString.length > 0) {
-        UILabel *valueLabel = [[UILabel alloc] init];
-        valueLabel.font = [UIFont systemFontOfSize:15];
-        valueLabel.textColor = [UIColor secondaryLabelColor];
-        valueLabel.textAlignment = NSTextAlignmentRight;
-        valueLabel.text = valueString;
-        [valueLabel sizeToFit];
-        cell.accessoryView = valueLabel;
-      }
+    cell.detailTextLabel.text = infoValue;
+    if (infoCompact) {
+      cell.detailTextLabel.numberOfLines = 1;
+      cell.detailTextLabel.lineBreakMode = NSLineBreakByClipping;
+      [cell.detailTextLabel setContentCompressionResistancePriority:UILayoutPriorityRequired
+                                                            forAxis:UILayoutConstraintAxisHorizontal];
+      [cell.detailTextLabel setContentHuggingPriority:UILayoutPriorityRequired
+                                              forAxis:UILayoutConstraintAxisHorizontal];
+      [cell.textLabel setContentCompressionResistancePriority:UILayoutPriorityDefaultLow
+                                                      forAxis:UILayoutConstraintAxisHorizontal];
     } else {
-      cell.detailTextLabel.text = [val description];
+      cell.detailTextLabel.numberOfLines = 0;
+      cell.detailTextLabel.lineBreakMode = NSLineBreakByWordWrapping;
     }
     cell.selectionStyle = UITableViewCellSelectionStyleDefault;
     cell.accessoryType = UITableViewCellAccessoryNone;
@@ -3921,10 +4803,20 @@ static UIImage *WWNAboutLogo(void) {
       cell.imageView.image = nil;
     }
   } else if (item.type == WSettingLink) {
-    cell.textLabel.textColor = [UIColor systemBlueColor];
+    cell.textLabel.textColor = [UIColor labelColor];
     cell.detailTextLabel.text = item.desc;
-    cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+    cell.detailTextLabel.textColor = [UIColor secondaryLabelColor];
     cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+    if (item.buttonTitle.length > 0) {
+      UILabel *action = [[UILabel alloc] init];
+      action.text = item.buttonTitle;
+      action.font = [UIFont systemFontOfSize:15];
+      action.textColor = [UIColor linkColor];
+      [action sizeToFit];
+      cell.accessoryView = action;
+    } else {
+      cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+    }
 
     // Reset image to avoid phantom reuse
     cell.imageView.image = nil;
@@ -3933,15 +4825,18 @@ static UIImage *WWNAboutLogo(void) {
     if (item.iconURL) {
       // Set a placeholder so UITableViewCell reserves space for the imageView
       cell.imageView.image = [UIImage systemImageNamed:@"link.circle.fill"];
-      cell.imageView.layer.cornerRadius = 4;
+      cell.imageView.layer.cornerRadius = 6;
       cell.imageView.clipsToBounds = YES;
+      cell.imageView.contentMode = UIViewContentModeScaleAspectFill;
       [[WWNImageLoader sharedLoader]
           loadImageFromURL:item.iconURL
                 completion:^(WImage _Nullable image) {
                   if (image &&
                       [cell.textLabel.text isEqualToString:item.title]) {
                     dispatch_async(dispatch_get_main_queue(), ^{
-                      cell.imageView.image = image;
+                      cell.imageView.image = WWNSquareFilledIcon(image, 29);
+                      cell.imageView.layer.cornerRadius = 6;
+                      cell.imageView.clipsToBounds = YES;
                       [cell setNeedsLayout];
                     });
                   }
@@ -4044,6 +4939,9 @@ static UIImage *WWNAboutLogo(void) {
 
     return headerCell;
   }
+#if TARGET_OS_TV
+  WWNTvInstallFocusTextHandler(cell);
+#endif
   return cell;
 }
 
@@ -4062,36 +4960,15 @@ static UIImage *WWNAboutLogo(void) {
   }
 #endif
 #if TARGET_OS_OSX
-  if ([item.key isEqualToString:kWWNPrefsDesktopReplacementEnabled] && s.on) {
-    WWNSipStatusType sipStatus = [WWNSipStatus current];
-    if (![WWNSipStatus allowsDesktopReplacement:sipStatus]) {
-      s.on = NO;
-      [[NSUserDefaults standardUserDefaults]
-          setBool:NO
-           forKey:kWWNPrefsDesktopReplacementEnabled];
-      [self showDesktopReplacementSipHowTo];
-      return;
-    }
-    NSString *dylib = [[WWNDesktopReplacementController sharedController]
-        bundledDylibPath];
-    if (dylib.length == 0) {
-      s.on = NO;
-      [[NSUserDefaults standardUserDefaults]
-          setBool:NO
-           forKey:kWWNPrefsDesktopReplacementEnabled];
-      NSAlert *alert = [[NSAlert alloc] init];
-      alert.messageText = @"Mode B dylib not in this build";
-      alert.informativeText =
-          @"Desktop Replacement requires libwayland-mac.dylib from the "
-          @"desktop-host package (nix build .#wawona-macos-desktop-host). "
-          @"Store-safe builds stay on Mode A in-window present.";
-      alert.alertStyle = NSAlertStyleWarning;
-      [alert runModal];
-      return;
-    }
+  if ([item.key isEqualToString:kWWNPrefsDesktopReplacementEnabled]) {
+    [self applyDesktopReplacementEnabled:s.on
+                                  revert:^{
+                                    s.on = NO;
+                                  }];
+    return;
   }
 #endif
-  [[NSUserDefaults standardUserDefaults] setBool:s.on forKey:item.key];
+  [WWNSharedUserDefaults() setBool:s.on forKey:item.key];
   if ([item.key isEqualToString:kWWNPrefsRenderMacOSPointer]) {
     // Nested Compositor Cursor interactivity depends on Show Virtual Cursor.
     self.sections = [self buildSections];
@@ -4109,20 +4986,35 @@ static UIImage *WWNAboutLogo(void) {
 #endif
 
 #if TARGET_OS_TV
-- (void)tvSwitchButtonPressed:(UIButton *)button {
-  if (!button.enabled) {
+- (WWNSettingItem *)wwnItemForEncodedTag:(NSInteger)tag {
+  if (self.activeSection) {
+    return self.activeSection.items[tag % 1000];
+  }
+  return self.sections[tag / 1000].items[tag % 1000];
+}
+
+- (void)wwnCommitSwitchItem:(WWNSettingItem *)item on:(BOOL)on {
+  [WWNSharedUserDefaults() setBool:on forKey:item.key];
+  if ([item.key isEqualToString:kWWNPrefsRenderMacOSPointer]) {
+    self.sections = [self buildSections];
+    if (self.activeSection) {
+      for (WWNPreferencesSection *sect in self.sections) {
+        if ([sect.title isEqualToString:self.activeSection.title]) {
+          self.activeSection = sect;
+          break;
+        }
+      }
+    }
+    [self.tableView reloadData];
+  }
+}
+
+- (void)tvSwitchChanged:(UISegmentedControl *)seg {
+  if (!seg.enabled) {
     return;
   }
-  WWNSettingItem *item;
-  if (self.activeSection) {
-    item = self.activeSection.items[button.tag % 1000];
-  } else {
-    item = self.sections[button.tag / 1000].items[button.tag % 1000];
-  }
-  BOOL cur = [[NSUserDefaults standardUserDefaults] boolForKey:item.key];
-  BOOL next = !cur;
-  [[NSUserDefaults standardUserDefaults] setBool:next forKey:item.key];
-  [button setTitle:(next ? @"On" : @"Off") forState:UIControlStateNormal];
+  WWNSettingItem *item = [self wwnItemForEncodedTag:seg.tag];
+  [self wwnCommitSwitchItem:item on:(seg.selectedSegmentIndex == 1)];
 }
 #endif
 
@@ -4181,9 +5073,23 @@ static UIImage *WWNAboutLogo(void) {
   }
 #endif
 
-  // For switch items with help buttons, show help when row is tapped
-  // Info buttons removed from waypipe switches per user request
-  // No action needed for switches - they're handled by swChg:
+#if TARGET_OS_TV
+  if (item.type == WSettingSwitch) {
+    UITableViewCell *rowCell = [tv cellForRowAtIndexPath:ip];
+    if ([rowCell.accessoryView isKindOfClass:[UISegmentedControl class]] &&
+        rowCell.accessoryView.isFocused) {
+      return;
+    }
+    id stored = [WWNSharedUserDefaults() objectForKey:item.key];
+    BOOL cur = stored ? [stored boolValue] : [item.defaultValue boolValue];
+    [self wwnCommitSwitchItem:item on:!cur];
+    if (![item.key isEqualToString:kWWNPrefsRenderMacOSPointer]) {
+      [self.tableView reloadRowsAtIndexPaths:@[ ip ]
+                           withRowAnimation:UITableViewRowAnimationNone];
+    }
+    return;
+  }
+#endif
 
   if (item.type == WSettingText || item.type == WSettingNumber) {
     // Present text entry view controller
@@ -4194,7 +5100,7 @@ static UIImage *WWNAboutLogo(void) {
 
     [alert addTextFieldWithConfigurationHandler:^(UITextField *textField) {
       id currentValue =
-          [[NSUserDefaults standardUserDefaults] objectForKey:item.key];
+          [WWNSharedUserDefaults() objectForKey:item.key];
       if (!currentValue) {
         currentValue = item.defaultValue;
       }
@@ -4225,10 +5131,10 @@ static UIImage *WWNAboutLogo(void) {
 
                   if (item.type == WSettingNumber) {
                     NSNumber *numberValue = @([value doubleValue]);
-                    [[NSUserDefaults standardUserDefaults] setObject:numberValue
+                    [WWNSharedUserDefaults() setObject:numberValue
                                                               forKey:item.key];
                   } else {
-                    [[NSUserDefaults standardUserDefaults] setObject:value
+                    [WWNSharedUserDefaults() setObject:value
                                                               forKey:item.key];
                   }
                   // Reload the table view to show updated value
@@ -4318,18 +5224,16 @@ static UIImage *WWNAboutLogo(void) {
     // Header cells are not tappable
     return;
   } else if (item.type == WSettingInfo) {
-    // For info items, show copy dialog
-    id val = [[NSUserDefaults standardUserDefaults] objectForKey:item.key];
+    id val = [WWNSharedUserDefaults() objectForKey:item.key];
     if (!val) {
       val = item.defaultValue;
     }
-    NSString *valueString = [val description];
+    NSString *valueString = [val description] ?: @"";
+    NSString *message = WWNSettingsInfoDetailText(item);
 
     UIAlertController *alert = [UIAlertController
         alertControllerWithTitle:item.title
-                         message:[NSString stringWithFormat:@"%@\n\n%@",
-                                                            item.desc,
-                                                            valueString]
+                         message:message.length > 0 ? message : nil
                   preferredStyle:UIAlertControllerStyleAlert];
 
     UIAlertAction *okAction =
@@ -4354,98 +5258,7 @@ static UIImage *WWNAboutLogo(void) {
 
     [self presentViewController:alert animated:YES completion:nil];
   } else if (item.type == WSettingPopup) {
-    // Present popup selection
-    UIAlertController *alert = [UIAlertController
-        alertControllerWithTitle:item.title
-                         message:item.desc
-                  preferredStyle:UIAlertControllerStyleActionSheet];
-
-    id currentValue =
-        [[NSUserDefaults standardUserDefaults] objectForKey:item.key];
-    if (!currentValue) {
-      currentValue = item.defaultValue;
-    }
-
-    // Special handling for Auth Method: convert integer to string for
-    // comparison
-    NSString *currentValueString = nil;
-    NSInteger currentIndex = -1;
-    if ([item.key isEqualToString:@"WaypipeSSHAuthMethod"] ||
-        [item.key isEqualToString:@"SSHAuthMethod"]) {
-      currentIndex = [currentValue isKindOfClass:[NSNumber class]]
-                         ? [currentValue integerValue]
-                         : 0;
-      if (currentIndex >= 0 && currentIndex < (NSInteger)item.options.count) {
-        currentValueString = item.options[currentIndex];
-      } else {
-        currentValueString = item.options[0]; // Default to "Password"
-        currentIndex = 0;
-      }
-    } else {
-      currentValueString = [currentValue description];
-    }
-
-    for (NSInteger i = 0; i < (NSInteger)item.options.count; i++) {
-      NSString *option = item.options[i];
-      NSString *valueToStore =
-          (item.optionValues && i < (NSInteger)item.optionValues.count)
-              ? item.optionValues[i]
-              : option;
-      NSString *valueToStoreCopy = valueToStore;
-      NSInteger optionIndex = i;
-      UIAlertAction *optionAction = [UIAlertAction
-          actionWithTitle:option
-                    style:UIAlertActionStyleDefault
-                  handler:^(UIAlertAction *alertAction) {
-                    // For Auth Method, store as integer index
-                    if ([item.key isEqualToString:@"WaypipeSSHAuthMethod"] ||
-                        [item.key isEqualToString:@"SSHAuthMethod"]) {
-                      [[NSUserDefaults standardUserDefaults]
-                          setInteger:optionIndex
-                              forKey:item.key];
-                      // Auth method changed - rebuild sections to show
-                      // appropriate nested options
-                      self.sections = [self buildSections];
-                      [tv reloadData];
-                    } else {
-                      [[NSUserDefaults standardUserDefaults]
-                          setObject:valueToStoreCopy
-                             forKey:item.key];
-                      // Reload the table view to show updated value
-                      [tv reloadRowsAtIndexPaths:@[ ip ]
-                                withRowAnimation:UITableViewRowAnimationNone];
-                    }
-                  }];
-
-      // Mark current selection with checkmark
-      if ([item.key isEqualToString:@"WaypipeSSHAuthMethod"] ||
-          [item.key isEqualToString:@"SSHAuthMethod"]) {
-        if (i == currentIndex) {
-          [optionAction setValue:@YES forKey:@"checked"];
-        }
-      } else {
-        if ([valueToStore isEqualToString:currentValueString]) {
-          [optionAction setValue:@YES forKey:@"checked"];
-        }
-      }
-
-      [alert addAction:optionAction];
-    }
-
-    UIAlertAction *cancelAction =
-        [UIAlertAction actionWithTitle:@"Cancel"
-                                 style:UIAlertActionStyleCancel
-                               handler:nil];
-    [alert addAction:cancelAction];
-
-    // For iPad, we need to set the popover presentation
-    if (alert.popoverPresentationController) {
-      UITableViewCell *cell = [tv cellForRowAtIndexPath:ip];
-      alert.popoverPresentationController.sourceView = cell;
-      alert.popoverPresentationController.sourceRect = cell.bounds;
-    }
-
-    [self presentViewController:alert animated:YES completion:nil];
+    [self wwnPushOptionPickerForItem:item];
   } else if (item.actionBlock) {
     item.actionBlock();
   }
@@ -4454,6 +5267,46 @@ static UIImage *WWNAboutLogo(void) {
 #else
 
 // MARK: - macOS Interface
+
+- (void)installMacSettingsInterfaceInView:(NSView *)hostView {
+  if (!hostView) {
+    return;
+  }
+  if (self.splitVC) {
+    self.splitVC.view.frame = hostView.bounds;
+    self.splitVC.view.autoresizingMask =
+        NSViewWidthSizable | NSViewHeightSizable;
+    if (self.splitVC.view.superview != hostView) {
+      [self.splitVC.view removeFromSuperview];
+      [hostView addSubview:self.splitVC.view];
+    }
+    return;
+  }
+
+  self.sidebar = [[WWNPreferencesSidebar alloc] init];
+  self.sidebar.parent = self;
+  self.content = [[WWNPreferencesContent alloc] init];
+
+  self.splitVC = [[NSSplitViewController alloc] init];
+  NSSplitViewItem *sItem =
+      [NSSplitViewItem sidebarWithViewController:self.sidebar];
+  sItem.minimumThickness = 160;
+  sItem.maximumThickness = 220;
+  NSSplitViewItem *cItem =
+      [NSSplitViewItem contentListWithViewController:self.content];
+  [self.splitVC addSplitViewItem:sItem];
+  [self.splitVC addSplitViewItem:cItem];
+
+  self.splitVC.view.frame = hostView.bounds;
+  self.splitVC.view.autoresizingMask =
+      NSViewWidthSizable | NSViewHeightSizable;
+  [hostView addSubview:self.splitVC.view];
+
+  if (self.sections.count > 0) {
+    [self.sidebar.outlineView selectRowIndexes:[NSIndexSet indexSetWithIndex:0]
+                          byExtendingSelection:NO];
+  }
+}
 
 - (void)showPreferences:(id)sender {
   if (self.winController) {
@@ -4471,48 +5324,22 @@ static UIImage *WWNAboutLogo(void) {
   win.title = @"Wawona Settings";
   win.movableByWindowBackground = YES;
 
-  // Add Toolbar (Liquid Glass Style)
   NSToolbar *toolbar =
       [[NSToolbar alloc] initWithIdentifier:@"WWNPreferencesToolbar"];
   toolbar.delegate = self;
   toolbar.displayMode = NSToolbarDisplayModeIconOnly;
   win.toolbar = toolbar;
 
-  // Use the glass content view we just configured
-  NSView *v = win.contentView;
-
-  self.sidebar = [[WWNPreferencesSidebar alloc] init];
-  self.sidebar.parent = self;
-  self.content = [[WWNPreferencesContent alloc] init];
-
-  self.splitVC = [[NSSplitViewController alloc] init];
-  NSSplitViewItem *sItem =
-      [NSSplitViewItem sidebarWithViewController:self.sidebar];
-  sItem.minimumThickness = 160; // Ensure enough width for "Connection" text
-  sItem.maximumThickness = 220;
-  NSSplitViewItem *cItem =
-      [NSSplitViewItem contentListWithViewController:self.content];
-  [self.splitVC addSplitViewItem:sItem];
-  [self.splitVC addSplitViewItem:cItem];
-
-  // Embed SplitVC in Visual Effect View
-  self.splitVC.view.frame = v.bounds;
-  self.splitVC.view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-  [v addSubview:self.splitVC.view];
+  [self installMacSettingsInterfaceInView:win.contentView];
 
   self.winController = [[NSWindowController alloc] initWithWindow:win];
   [win center];
   [win makeKeyAndOrderFront:sender];
-
-  if (self.sections.count > 0) {
-    [self.sidebar.outlineView selectRowIndexes:[NSIndexSet indexSetWithIndex:0]
-                          byExtendingSelection:NO];
-  }
 }
 
 - (void)showSection:(NSInteger)idx {
   self.content.section = self.sections[idx];
-  [self.content.tableView reloadData];
+  [self.content reloadForCurrentSection];
 }
 
 - (void)selectSectionWithTitle:(NSString *)title {
@@ -4540,6 +5367,10 @@ static UIImage *WWNAboutLogo(void) {
 
 - (void)openMachinesConfiguration:(id)sender {
   (void)sender;
+#ifdef WWN_PREFPANE
+  WWNHandoffToWawonaApp(@"Machines");
+  return;
+#endif
   [[WWNMachinesCoordinator sharedCoordinator] showMachinesWindowAndActivate:YES];
 }
 
@@ -4701,13 +5532,13 @@ static UIImage *WWNAboutLogo(void) {
 
 - (void)confirmReinstallSystemTree {
   UIAlertController *alert = [UIAlertController
-      alertControllerWithTitle:@"Reinstall System Tree?"
+      alertControllerWithTitle:@"Reset System Tree?"
                        message:@"Re-copies etc/ and usr/ from the app bundle "
                                @"into Application Support. Your shell HOME "
                                @"(Documents/Wawona/home) is not modified."
                 preferredStyle:UIAlertControllerStyleAlert];
   [alert addAction:[UIAlertAction
-                       actionWithTitle:@"Reinstall"
+                       actionWithTitle:@"Reset"
                                  style:UIAlertActionStyleDestructive
                                handler:^(UIAlertAction *action) {
                                  NSError *error = nil;
@@ -4745,12 +5576,68 @@ static UIImage *WWNAboutLogo(void) {
   picker.delegate = self;
   picker.allowsMultipleSelection = NO;
   self.documentPickerImportsSSHKey = NO;
+  self.documentPickerSendsToAppleWatch = NO;
   if (picker.popoverPresentationController) {
     picker.popoverPresentationController.sourceView = self.view;
     picker.popoverPresentationController.sourceRect = self.view.bounds;
   }
   [self presentViewController:picker animated:YES completion:nil];
 }
+
+#if TARGET_OS_IOS && !TARGET_OS_MACCATALYST && !TARGET_OS_TV && !TARGET_OS_WATCH && !TARGET_OS_VISION
+- (void)sendDocumentToAppleWatch {
+  UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc]
+      initForOpeningContentTypes:@[ UTTypeItem ]
+                          asCopy:YES];
+  picker.delegate = self;
+  picker.allowsMultipleSelection = NO;
+  self.documentPickerImportsSSHKey = NO;
+  self.documentPickerSendsToAppleWatch = YES;
+  if (picker.popoverPresentationController) {
+    picker.popoverPresentationController.sourceView = self.view;
+    picker.popoverPresentationController.sourceRect = self.view.bounds;
+  }
+  [self presentViewController:picker animated:YES completion:nil];
+}
+
+- (void)sendPickedFileToAppleWatch:(NSArray<NSURL *> *)urls {
+  NSURL *src = urls.firstObject;
+  if (!src) {
+    return;
+  }
+  BOOL accessed = [src startAccessingSecurityScopedResource];
+  NSString *err =
+      [[WWNWatchCompanionBridge sharedBridge] sendDocumentAtURL:src];
+  if (accessed) {
+    [src stopAccessingSecurityScopedResource];
+  }
+  if (err) {
+    UIAlertController *alert = [UIAlertController
+        alertControllerWithTitle:@"Send Failed"
+                         message:err
+                  preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"OK"
+                                              style:UIAlertActionStyleDefault
+                                            handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+  } else {
+    self.sections = [self buildSections];
+    [self.tableView reloadData];
+    UIAlertController *ok = [UIAlertController
+        alertControllerWithTitle:@"Queued for Watch"
+                         message:[NSString
+                                     stringWithFormat:
+                                         @"%@ will transfer when the Watch is "
+                                         @"available.",
+                                         src.lastPathComponent ?: @"File"]
+                  preferredStyle:UIAlertControllerStyleAlert];
+    [ok addAction:[UIAlertAction actionWithTitle:@"OK"
+                                           style:UIAlertActionStyleDefault
+                                         handler:nil]];
+    [self presentViewController:ok animated:YES completion:nil];
+  }
+}
+#endif
 
 - (void)importPickedFileToShellHome:(NSArray<NSURL *> *)urls {
   NSURL *src = urls.firstObject;
@@ -4802,6 +5689,44 @@ static UIImage *WWNAboutLogo(void) {
 #endif /* !TARGET_OS_TV */
 #endif /* TARGET_OS_IPHONE */
 
+- (void)openEnvironmentVariablesManager {
+#if TARGET_OS_IPHONE
+  // Inventory is the Env Vars detail page (setActiveSection). Do not present
+  // a second sheet that only contains "Open Environment Variables".
+  [self wwnSyncEnvironmentInventory];
+  if (self.environmentHostController) {
+    return;
+  }
+#endif
+  // SwiftUI Environment Variables GUI (#157). macOS Settings embeds the table
+  // in the detail pane; this window is the fallback if embed is unavailable.
+  Class presenter = NSClassFromString(@"WWNEnvironmentSettingsPresenter");
+  if (presenter && [presenter respondsToSelector:@selector(presentFromHost:)]) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+    [presenter performSelector:@selector(presentFromHost:) withObject:self];
+#pragma clang diagnostic pop
+    return;
+  }
+#if TARGET_OS_IPHONE
+  UIAlertController *alert = [UIAlertController
+      alertControllerWithTitle:@"Environment Variables"
+                       message:@"Open Machine Settings → Environment, or rebuild "
+                               @"with WawonaUI linked."
+                preferredStyle:UIAlertControllerStyleAlert];
+  [alert addAction:[UIAlertAction actionWithTitle:@"OK"
+                                            style:UIAlertActionStyleDefault
+                                          handler:nil]];
+  [self presentViewController:alert animated:YES completion:nil];
+#else
+  NSAlert *alert = [[NSAlert alloc] init];
+  alert.messageText = @"Environment Variables";
+  alert.informativeText =
+      @"Open Machine Settings → Environment, or rebuild with WawonaUI linked.";
+  [alert runModal];
+#endif
+}
+
 #if TARGET_OS_OSX
 - (void)showLocalShellHelp {
   NSDictionary *rootfs = [WWNRootfsProvider snapshot];
@@ -4830,10 +5755,206 @@ static UIImage *WWNAboutLogo(void) {
   }
 }
 
+- (void)confirmResetShellDotfiles {
+  NSAlert *alert = [[NSAlert alloc] init];
+  alert.messageText = @"Reset Shell Dotfiles?";
+  alert.informativeText =
+      @"This overwrites .zshenv, .zshrc, and .zlogin in your shell HOME with "
+      @"bundled templates. Other files in home/ are kept.";
+  [alert addButtonWithTitle:@"Reset"];
+  [alert addButtonWithTitle:@"Cancel"];
+  if ([alert runModal] != NSAlertFirstButtonReturn) {
+    return;
+  }
+  NSError *error = nil;
+  if (![WWNRootfsProvider refreshShellDotfiles:&error]) {
+    NSAlert *err = [[NSAlert alloc] init];
+    err.messageText = @"Reset Failed";
+    err.informativeText = error.localizedDescription ?: @"Unknown error.";
+    [err runModal];
+    return;
+  }
+  self.sections = [self buildSections];
+  for (WWNPreferencesSection *s in self.sections) {
+    if ([s.title isEqualToString:@"Local Shell"]) {
+      self.content.section = s;
+      break;
+    }
+  }
+  [self.content reloadForCurrentSection];
+}
+
+- (void)confirmReinstallSystemTree {
+  NSAlert *alert = [[NSAlert alloc] init];
+  alert.messageText = @"Reset System Tree?";
+  alert.informativeText =
+      @"Re-copies etc/ and usr/ from the app bundle. Your shell HOME is not "
+      @"modified.";
+  [alert addButtonWithTitle:@"Reset"];
+  [alert addButtonWithTitle:@"Cancel"];
+  if ([alert runModal] != NSAlertFirstButtonReturn) {
+    return;
+  }
+  NSError *error = nil;
+  if (![WWNRootfsProvider reinstallSystemTree:&error]) {
+    NSAlert *err = [[NSAlert alloc] init];
+    err.messageText = @"Reset Failed";
+    err.informativeText = error.localizedDescription ?: @"Unknown error.";
+    [err runModal];
+    return;
+  }
+  self.sections = [self buildSections];
+  for (WWNPreferencesSection *s in self.sections) {
+    if ([s.title isEqualToString:@"Local Shell"]) {
+      self.content.section = s;
+      break;
+    }
+  }
+  [self.content reloadForCurrentSection];
+}
+
+- (void)importFileToShellHome {
+  NSOpenPanel *panel = [NSOpenPanel openPanel];
+  panel.canChooseFiles = YES;
+  panel.canChooseDirectories = NO;
+  panel.allowsMultipleSelection = NO;
+  panel.prompt = @"Import";
+  if ([panel runModal] != NSModalResponseOK) {
+    return;
+  }
+  NSURL *src = panel.URLs.firstObject;
+  if (!src) {
+    return;
+  }
+  NSFileManager *fm = [NSFileManager defaultManager];
+  NSString *home = [WWNRootfsProvider snapshot][@"home"];
+  [WWNRootfsProvider prepareUserAccess];
+  NSString *baseName = src.lastPathComponent.length ? src.lastPathComponent
+                                                    : @"imported-file";
+  NSString *dest = [home stringByAppendingPathComponent:baseName];
+  if ([fm fileExistsAtPath:dest]) {
+    NSString *stem = [baseName stringByDeletingPathExtension];
+    NSString *ext = [baseName pathExtension];
+    NSString *suffix = [[NSUUID UUID].UUIDString substringToIndex:8];
+    baseName = ext.length
+                   ? [NSString stringWithFormat:@"%@-%@.%@", stem, suffix, ext]
+                   : [NSString stringWithFormat:@"%@-%@", stem, suffix];
+    dest = [home stringByAppendingPathComponent:baseName];
+  }
+  NSError *error = nil;
+  if (![fm copyItemAtURL:src toURL:[NSURL fileURLWithPath:dest] error:&error]) {
+    NSAlert *err = [[NSAlert alloc] init];
+    err.messageText = @"Import Failed";
+    err.informativeText = error.localizedDescription ?: @"Unknown error.";
+    [err runModal];
+    return;
+  }
+  NSAlert *ok = [[NSAlert alloc] init];
+  ok.messageText = @"Imported";
+  ok.informativeText = [NSString stringWithFormat:@"Saved to %@", dest];
+  [ok runModal];
+}
+
+- (BOOL)applyDesktopReplacementEnabled:(BOOL)enabled
+                                revert:(void (^)(void))revert {
+#ifdef WWN_PREFPANE
+  (void)enabled;
+  (void)revert;
+  WWNHandoffToWawonaApp(@"Desktop");
+  return YES;
+#endif
+  WWNDesktopReplacementController *desk =
+      [WWNDesktopReplacementController sharedController];
+  if (!enabled) {
+    if ([desk isClassicTakeoverLive] || [desk isModeBCompositorLive]) {
+      if (![desk endClassicSession]) {
+        if (revert) {
+          revert();
+        }
+        NSAlert *fail = [[NSAlert alloc] init];
+        fail.alertStyle = NSAlertStyleCritical;
+        fail.messageText = @"Could not restore Aqua";
+        fail.informativeText =
+            @"Approve the administrator prompt so Wawona can restore "
+            @"WindowServer. Enable stays on until that finishes.";
+        [fail addButtonWithTitle:@"OK"];
+        [fail runModal];
+        return NO;
+      }
+    }
+    [WWNSharedUserDefaults()
+        setBool:NO
+         forKey:kWWNPrefsDesktopReplacementEnabled];
+    [self reloadDesktopSection];
+    return YES;
+  }
+
+  WWNSipStatusType sipStatus = [WWNSipStatus current];
+  if (![WWNSipStatus allowsDesktopReplacement:sipStatus]) {
+    if (revert) {
+      revert();
+    }
+    [WWNSharedUserDefaults()
+        setBool:NO
+         forKey:kWWNPrefsDesktopReplacementEnabled];
+    [self showDesktopReplacementSipHowTo];
+    return NO;
+  }
+
+  NSError *preflight = [desk injectionPreflightError];
+  if (preflight) {
+    if (revert) {
+      revert();
+    }
+    [WWNSharedUserDefaults()
+        setBool:NO
+         forKey:kWWNPrefsDesktopReplacementEnabled];
+    NSAlert *fail = [[NSAlert alloc] init];
+    fail.alertStyle = NSAlertStyleCritical;
+    fail.messageText = @"Desktop Replacement is not ready";
+    fail.informativeText = preflight.localizedDescription;
+    [fail addButtonWithTitle:@"OK"];
+    [fail runModal];
+    return NO;
+  }
+
+  NSError *setupErr = nil;
+  if (![desk ensureWatchdogSafetyReady:&setupErr]) {
+    if (revert) {
+      revert();
+    }
+    [WWNSharedUserDefaults()
+        setBool:NO
+         forKey:kWWNPrefsDesktopReplacementEnabled];
+    if (setupErr) {
+      NSAlert *fail = [[NSAlert alloc] init];
+      fail.alertStyle = NSAlertStyleCritical;
+      fail.messageText = @"Could not enable Desktop Replacement";
+      fail.informativeText = setupErr.localizedDescription;
+      [fail addButtonWithTitle:@"OK"];
+      [fail runModal];
+    }
+    [self reloadDesktopSection];
+    return NO;
+  }
+
+  [WWNSharedUserDefaults()
+      setBool:YES
+       forKey:kWWNPrefsDesktopReplacementEnabled];
+  WWNModeBReadyReport *ready = [desk evaluateClassicReadiness];
+  if (ready.verdict == WWNModeBVerdictReboot) {
+    [desk presentRestartAfterPrepareWithMessage:ready.userSummary];
+  } else if (ready.verdict == WWNModeBVerdictTakeoverNow) {
+    [desk presentReadyTakeOverOffer];
+  }
+  [self reloadDesktopSection];
+  return YES;
+}
+
 - (void)showDesktopReplacementSipHowTo {
   WWNSipStatusType sipStatus = [WWNSipStatus current];
   NSAlert *alert = [[NSAlert alloc] init];
-  alert.messageText = @"Desktop Replacement — SIP Requirements";
+  alert.messageText = @"Desktop Replacement. SIP Requirements";
   alert.informativeText = [WWNSipStatus desktopReplacementHowToMessage];
   if ([WWNSipStatus allowsDesktopReplacement:sipStatus]) {
     alert.alertStyle = NSAlertStyleInformational;
@@ -4846,9 +5967,28 @@ static UIImage *WWNAboutLogo(void) {
   if (response == NSAlertSecondButtonReturn) {
     NSPasteboard *pb = [NSPasteboard generalPasteboard];
     [pb clearContents];
-    [pb setString:@"csrutil enable --without debug"
-            forType:NSPasteboardTypeString];
+    [pb setString:@"csrutil disable" forType:NSPasteboardTypeString];
   }
+}
+
+- (void)showDesktopReplacementReplaceNow {
+#ifdef WWN_PREFPANE
+  WWNHandoffToWawonaApp(@"Desktop");
+  return;
+#endif
+  [[WWNDesktopReplacementController sharedController] presentReplaceNowFlow];
+  [self reloadDesktopSection];
+}
+
+- (void)reloadDesktopSection {
+  self.sections = [self buildSections];
+  for (WWNPreferencesSection *s in self.sections) {
+    if ([s.title isEqualToString:@"Desktop"]) {
+      self.content.section = s;
+      break;
+    }
+  }
+  [self.content reloadForCurrentSection];
 }
 #endif
 
@@ -5009,11 +6149,15 @@ static UIImage *WWNAboutLogo(void) {
 @property(nonatomic, strong)
     NSLayoutConstraint *leadingConstraint; // New: for layout
 @property(nonatomic, strong) NSLayoutConstraint *trailingConstraint;
+@property(nonatomic, strong) NSLayoutConstraint *titleBottomConstraint;
+@property(nonatomic, strong) NSLayoutConstraint *descBottomConstraint;
+@property(nonatomic, strong) NSLayoutConstraint *descHeightConstraint;
 @property(nonatomic, strong) WWNSettingItem *item;
 @property(nonatomic, assign) id delegate; // MRC: use assign for delegates
 - (void)configureWithItem:(WWNSettingItem *)item
                    target:(id)target
                    action:(SEL)action;
+- (void)configureAsChoice:(NSString *)title selected:(BOOL)selected;
 @end
 
 @implementation WWNPreferenceCell
@@ -5028,38 +6172,55 @@ static UIImage *WWNAboutLogo(void) {
     _titleLabel.textColor = [NSColor labelColor];
     _titleLabel.maximumNumberOfLines = 1;
     _titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+    _titleLabel.cell.wraps = NO;
+    _titleLabel.cell.usesSingleLineMode = YES;
     _titleLabel.cell.truncatesLastVisibleLine = YES;
     [_titleLabel
         setContentCompressionResistancePriority:NSLayoutPriorityRequired
                                  forOrientation:
                                      NSLayoutConstraintOrientationVertical];
     [_titleLabel
-        setContentCompressionResistancePriority:NSLayoutPriorityDefaultHigh
+        setContentCompressionResistancePriority:NSLayoutPriorityDefaultLow
                                  forOrientation:
                                      NSLayoutConstraintOrientationHorizontal];
+    [_titleLabel setContentHuggingPriority:NSLayoutPriorityDefaultLow
+                            forOrientation:
+                                NSLayoutConstraintOrientationHorizontal];
     [self addSubview:_titleLabel];
 
     _descLabel = [NSTextField labelWithString:@""];
     _descLabel.translatesAutoresizingMaskIntoConstraints = NO;
     _descLabel.font = [NSFont systemFontOfSize:11];
     _descLabel.textColor = [NSColor secondaryLabelColor];
-    _descLabel.maximumNumberOfLines = 1;
+    _descLabel.maximumNumberOfLines = 2;
     _descLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+    _descLabel.cell.wraps = NO;
     _descLabel.cell.truncatesLastVisibleLine = YES;
+    _descLabel.hidden = YES;
     [_descLabel
         setContentCompressionResistancePriority:NSLayoutPriorityRequired
                                  forOrientation:
                                      NSLayoutConstraintOrientationVertical];
     [_descLabel
-        setContentCompressionResistancePriority:NSLayoutPriorityDefaultHigh
+        setContentCompressionResistancePriority:NSLayoutPriorityDefaultLow
                                  forOrientation:
                                      NSLayoutConstraintOrientationHorizontal];
+    [_descLabel setContentHuggingPriority:NSLayoutPriorityDefaultLow
+                           forOrientation:
+                               NSLayoutConstraintOrientationHorizontal];
     [self addSubview:_descLabel];
 
     // Initialize all potential controls hidden
     _switchControl = [[NSSwitch alloc] init];
     _switchControl.translatesAutoresizingMaskIntoConstraints = NO;
     _switchControl.hidden = YES;
+    [_switchControl setContentHuggingPriority:NSLayoutPriorityRequired
+                               forOrientation:
+                                   NSLayoutConstraintOrientationHorizontal];
+    [_switchControl
+        setContentCompressionResistancePriority:NSLayoutPriorityRequired
+                                 forOrientation:
+                                     NSLayoutConstraintOrientationHorizontal];
     [self addSubview:_switchControl];
 
     // Text Field (standard AppKit)
@@ -5078,16 +6239,22 @@ static UIImage *WWNAboutLogo(void) {
     _buttonControl.hidden = YES;
     [self addSubview:_buttonControl];
 
-    _popupControl =
-        [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
+    _popupControl = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
     _popupControl.translatesAutoresizingMaskIntoConstraints = NO;
     _popupControl.hidden = YES;
+    [_popupControl setContentHuggingPriority:NSLayoutPriorityRequired
+                              forOrientation:NSLayoutConstraintOrientationHorizontal];
+    [_popupControl setContentCompressionResistancePriority:NSLayoutPriorityRequired
+                                            forOrientation:NSLayoutConstraintOrientationHorizontal];
     [self addSubview:_popupControl];
 
     _iconView = [[NSImageView alloc] init];
     _iconView.translatesAutoresizingMaskIntoConstraints = NO;
     _iconView.hidden = YES;
-    _iconView.imageScaling = NSImageScaleProportionallyUpOrDown;
+    _iconView.imageScaling = NSImageScaleAxesIndependently;
+    _iconView.wantsLayer = YES;
+    _iconView.layer.masksToBounds = YES;
+    _iconView.layer.cornerRadius = 6.0;
     [self addSubview:_iconView];
 
     _headerImageView = [[NSImageView alloc] init];
@@ -5123,6 +6290,9 @@ static UIImage *WWNAboutLogo(void) {
                                            constant:2],
       [_descLabel.trailingAnchor
           constraintEqualToAnchor:_titleLabel.trailingAnchor],
+      (_titleBottomConstraint = [_titleLabel.bottomAnchor
+           constraintEqualToAnchor:self.bottomAnchor
+                          constant:-8]),
 
       // Switch control - right column
       [_switchControl.trailingAnchor constraintEqualToAnchor:self.trailingAnchor
@@ -5141,7 +6311,6 @@ static UIImage *WWNAboutLogo(void) {
       [_buttonControl.centerYAnchor constraintEqualToAnchor:self.centerYAnchor],
       [_buttonControl.widthAnchor constraintGreaterThanOrEqualToConstant:80],
 
-      // Popup control - right column with fixed width
       [_popupControl.trailingAnchor constraintEqualToAnchor:self.trailingAnchor
                                                    constant:-20],
       [_popupControl.centerYAnchor constraintEqualToAnchor:self.centerYAnchor],
@@ -5162,8 +6331,25 @@ static UIImage *WWNAboutLogo(void) {
       [_headerImageView.widthAnchor constraintEqualToConstant:48],
       [_headerImageView.heightAnchor constraintEqualToConstant:48],
     ]];
+    _descBottomConstraint = [_descLabel.bottomAnchor
+        constraintEqualToAnchor:self.bottomAnchor
+                       constant:-8];
+    _descBottomConstraint.active = NO;
+    _descHeightConstraint =
+        [_descLabel.heightAnchor constraintEqualToConstant:0];
+    _descHeightConstraint.active = YES;
   }
   return self;
+}
+
+- (void)layout {
+  [super layout];
+  if (!self.descLabel.hidden && self.descLabel.cell.wraps) {
+    CGFloat width = NSWidth(self.descLabel.frame);
+    if (width > 1.0) {
+      self.descLabel.preferredMaxLayoutWidth = width;
+    }
+  }
 }
 
 - (void)configureWithItem:(WWNSettingItem *)item
@@ -5172,23 +6358,42 @@ static UIImage *WWNAboutLogo(void) {
   self.item = item;
   self.delegate = target; // Store controller as delegate
   self.titleLabel.stringValue = item.title ?: @"";
-  self.descLabel.stringValue = item.desc ?: @"";
+  self.titleLabel.font = [NSFont systemFontOfSize:13];
+  self.titleLabel.alignment = NSTextAlignmentLeft;
+  self.titleLabel.textColor = [NSColor labelColor];
+  self.titleLabel.maximumNumberOfLines = 1;
+  self.titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+  self.titleLabel.cell.wraps = NO;
+  self.titleLabel.cell.usesSingleLineMode = YES;
+  self.titleLabel.cell.truncatesLastVisibleLine = YES;
+  self.trailingConstraint.constant = -(160 + 16 + 20);
+
+  self.descLabel.stringValue = @"";
+  self.descLabel.hidden = YES;
+  self.descLabel.maximumNumberOfLines = 1;
+  self.descLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+  self.descLabel.cell.wraps = NO;
+  self.descLabel.cell.truncatesLastVisibleLine = YES;
+  self.titleBottomConstraint.active = YES;
+  self.descBottomConstraint.active = NO;
+  self.descHeightConstraint.active = YES;
 
   // Reset Visibility
   self.switchControl.hidden = YES;
   self.textControl.hidden = YES;
   self.buttonControl.hidden = YES;
+  self.buttonControl.image = nil;
+  self.buttonControl.imagePosition = NSImageLeft;
+  self.buttonControl.bordered = YES;
+  self.buttonControl.bezelStyle = NSBezelStyleRounded;
+  self.buttonControl.enabled = YES;
   self.popupControl.hidden = YES;
+  [self.popupControl removeAllItems];
   self.headerImageView.hidden = YES;
   self.headerImageView.image = nil;
   self.iconView.image = nil; // Reset to avoid reuse flickering
 
-  // Reset text wrapping/truncation state on reuse.
-  self.descLabel.maximumNumberOfLines = 1;
-  self.descLabel.lineBreakMode = NSLineBreakByTruncatingTail;
-  self.descLabel.cell.wraps = NO;
-  self.descLabel.cell.truncatesLastVisibleLine = YES;
-
+  // Title stays one line. Long copy is not a row column; tap Info for the sheet.
   self.textControl.maximumNumberOfLines = 1;
   self.textControl.cell.wraps = NO;
   self.textControl.cell.usesSingleLineMode = YES;
@@ -5203,10 +6408,13 @@ static UIImage *WWNAboutLogo(void) {
   // Icon logic
   if (item.iconURL) {
     self.iconView.hidden = NO;
+    self.iconView.imageScaling = NSImageScaleAxesIndependently;
+    self.iconView.layer.cornerRadius = 6.0;
     [[WWNImageLoader sharedLoader] loadImageFromURL:item.iconURL
                                          completion:^(WImage _Nullable image) {
                                            if (image) {
-                                             self.iconView.image = image;
+                                             self.iconView.image =
+                                                 WWNSquareFilledIcon(image, 24);
                                            }
                                          }];
     self.leadingConstraint.constant = 48; // Space for 24x24 icon + margin
@@ -5217,7 +6425,7 @@ static UIImage *WWNAboutLogo(void) {
   if (item.type == WSettingSwitch) {
     self.switchControl.hidden = NO;
     self.switchControl.state =
-        [[NSUserDefaults standardUserDefaults] boolForKey:item.key]
+        [WWNSharedUserDefaults() boolForKey:item.key]
             ? NSControlStateValueOn
             : NSControlStateValueOff;
     self.switchControl.enabled = item.interactive;
@@ -5227,7 +6435,7 @@ static UIImage *WWNAboutLogo(void) {
   } else if (item.type == WSettingText || item.type == WSettingNumber) {
     self.textControl.hidden = NO;
     NSString *val =
-        [[NSUserDefaults standardUserDefaults] stringForKey:item.key];
+        [WWNSharedUserDefaults() stringForKey:item.key];
     self.textControl.stringValue =
         val ? val : ([item.defaultValue description] ?: @"");
     self.textControl.target = target;
@@ -5298,90 +6506,85 @@ static UIImage *WWNAboutLogo(void) {
   } else if (item.type == WSettingPopup) {
     self.popupControl.hidden = NO;
     [self.popupControl removeAllItems];
-    [self.popupControl addItemsWithTitles:item.options];
-
-    // Handle SSHAuthMethod specially - stored as integer index
-    if ([item.key isEqualToString:@"SSHAuthMethod"] ||
-        [item.key isEqualToString:@"WaypipeSSHAuthMethod"]) {
-      NSInteger methodIndex =
-          [[NSUserDefaults standardUserDefaults] integerForKey:item.key];
-      if (methodIndex >= 0 && methodIndex < (NSInteger)item.options.count) {
-        [self.popupControl selectItemAtIndex:methodIndex];
-      } else {
-        [self.popupControl selectItemAtIndex:0]; // Default to Password
-      }
-    } else {
-      NSString *val =
-          [[NSUserDefaults standardUserDefaults] stringForKey:item.key];
-      NSString *stored = val ? val : [item.defaultValue description];
-      if (item.optionValues && item.optionValues.count == item.options.count) {
-        for (NSInteger i = 0; i < (NSInteger)item.optionValues.count; i++) {
-          if ([item.optionValues[i] isEqualToString:stored]) {
-            [self.popupControl selectItemAtIndex:i];
-            goto popup_sel_done;
-          }
-        }
-      }
-      [self.popupControl selectItemWithTitle:stored];
+    if (item.options.count > 0) {
+      [self.popupControl addItemsWithTitles:item.options];
     }
-  popup_sel_done:
+    NSInteger selected = WWNSettingsPopupSelectedIndex(item);
+    if (selected >= 0 && selected < (NSInteger)item.options.count) {
+      [self.popupControl selectItemAtIndex:selected];
+    }
     self.popupControl.enabled = item.interactive;
     self.popupControl.target = target;
     self.popupControl.action = action;
     active = self.popupControl;
   } else if (item.type == WSettingInfo) {
-    // Info type: show read-only text with copy button
-    self.textControl.hidden = NO;
-    NSString *val =
-        [[NSUserDefaults standardUserDefaults] stringForKey:item.key];
-    self.textControl.stringValue =
-        val ? val : ([item.defaultValue description] ?: @"");
-    self.textControl.editable = NO;
-    self.textControl.selectable = YES;
-    self.textControl.bezeled = NO;
-    self.textControl.bordered = NO;
-    self.textControl.backgroundColor = [NSColor clearColor];
-    self.textControl.drawsBackground = NO;
-    BOOL isConnectionInfoField =
-        [item.key isEqualToString:@"XDGRuntimeDir"] ||
-        [item.key isEqualToString:@"WaylandDisplay"] ||
-        [item.key isEqualToString:@"WaylandSocketPath"] ||
-        [item.key isEqualToString:@"WaylandShellSetup"];
-    if (isConnectionInfoField) {
-      // Connection rows often contain long path/env snippets; render fully.
+    NSString *value = WWNSettingsInfoTrailingText(item);
+    self.buttonControl.image = nil;
+    self.buttonControl.bezelStyle = NSBezelStyleAccessoryBarAction;
+    self.buttonControl.bordered = NO;
+    self.buttonControl.target = target;
+    self.buttonControl.action = action;
+    if (WWNSettingsInfoValueIsCompact(value)) {
+      self.buttonControl.hidden = NO;
+      self.buttonControl.title = value;
+      [self.buttonControl.cell setWraps:NO];
+      self.buttonControl.lineBreakMode = NSLineBreakByClipping;
+      active = self.buttonControl;
+    } else {
+      self.buttonControl.hidden = YES;
+      self.buttonControl.title = @"";
+      self.trailingConstraint.constant = -20;
+      self.descLabel.hidden = NO;
+      self.descLabel.stringValue = value;
       self.descLabel.maximumNumberOfLines = 0;
       self.descLabel.lineBreakMode = NSLineBreakByWordWrapping;
       self.descLabel.cell.wraps = YES;
       self.descLabel.cell.truncatesLastVisibleLine = NO;
-
-      self.textControl.maximumNumberOfLines = 0;
-      self.textControl.cell.wraps = YES;
-      self.textControl.cell.usesSingleLineMode = NO;
-      self.textControl.cell.truncatesLastVisibleLine = NO;
-      self.textControl.lineBreakMode = NSLineBreakByWordWrapping;
-    } else if ([item.key isEqualToString:@"WaylandSocketDir"] ||
-               [item.key containsString:@"Dir"] ||
-               [item.key containsString:@"Path"]) {
-      // Finder-style truncation for non-Connection path info rows.
-      self.textControl.lineBreakMode = NSLineBreakByTruncatingMiddle;
-    } else {
-      self.textControl.lineBreakMode = NSLineBreakByTruncatingTail;
+      self.titleBottomConstraint.active = NO;
+      self.descBottomConstraint.active = YES;
+      self.descHeightConstraint.active = NO;
+      active = nil;
     }
-    active = self.textControl;
   } else if (item.type == WSettingLink) {
-    // Show a small icon and description for the link
-    self.titleLabel.textColor = [NSColor linkColor];
+    self.titleLabel.textColor = [NSColor labelColor];
+    self.descLabel.hidden = item.desc.length == 0;
+    self.descLabel.stringValue = item.desc ?: @"";
+    self.descLabel.textColor = [NSColor secondaryLabelColor];
+    self.descLabel.maximumNumberOfLines = 1;
+    self.descLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+    self.descLabel.cell.wraps = NO;
+    self.descLabel.cell.usesSingleLineMode = YES;
+    self.descLabel.cell.truncatesLastVisibleLine = YES;
+    if (item.desc.length > 0) {
+      self.titleBottomConstraint.active = NO;
+      self.descBottomConstraint.active = YES;
+      self.descHeightConstraint.active = NO;
+    }
     self.buttonControl.hidden = NO;
-    self.buttonControl.title = item.desc ?: @"Open";
+    self.buttonControl.title =
+        item.buttonTitle.length > 0 ? item.buttonTitle : @"Open";
+    self.buttonControl.bezelStyle = NSBezelStyleRounded;
+    self.buttonControl.bordered = YES;
+    self.buttonControl.image = nil;
     self.buttonControl.target = target;
     self.buttonControl.action = action;
     active = self.buttonControl;
   } else if (item.type == WSettingHeader) {
-    // Header type: icon on the left, title + subtitle to the right
     self.titleLabel.font = [NSFont boldSystemFontOfSize:16];
     self.titleLabel.alignment = NSTextAlignmentLeft;
+    self.titleLabel.maximumNumberOfLines = 1;
+    self.titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+    self.descLabel.hidden = NO;
     self.descLabel.stringValue = item.desc ?: @"";
     self.descLabel.textColor = [NSColor secondaryLabelColor];
+    self.descLabel.maximumNumberOfLines = 0;
+    self.descLabel.lineBreakMode = NSLineBreakByWordWrapping;
+    self.descLabel.cell.wraps = YES;
+    self.descLabel.cell.usesSingleLineMode = NO;
+    self.descLabel.cell.truncatesLastVisibleLine = NO;
+    self.titleBottomConstraint.active = NO;
+    self.descBottomConstraint.active = YES;
+    self.descHeightConstraint.active = NO;
 
     if (item.imageURL || item.imageName) {
       self.headerImageView.hidden = NO;
@@ -5459,21 +6662,82 @@ static UIImage *WWNAboutLogo(void) {
     }
   }
 }
+
+- (void)configureAsChoice:(NSString *)title selected:(BOOL)selected {
+  self.item = nil;
+  self.titleLabel.stringValue = title ?: @"";
+  self.titleLabel.font = [NSFont systemFontOfSize:13];
+  self.titleLabel.alignment = NSTextAlignmentLeft;
+  self.titleLabel.textColor = [NSColor labelColor];
+  self.descLabel.hidden = YES;
+  self.descLabel.stringValue = @"";
+  self.switchControl.hidden = YES;
+  self.textControl.hidden = YES;
+  self.popupControl.hidden = YES;
+  self.headerImageView.hidden = YES;
+  self.iconView.hidden = YES;
+  self.buttonControl.hidden = !selected;
+  self.buttonControl.title = @"";
+  self.buttonControl.image =
+      selected ? [NSImage imageWithSystemSymbolName:@"checkmark"
+                           accessibilityDescription:@"Selected"]
+               : nil;
+  self.buttonControl.bordered = NO;
+  self.buttonControl.enabled = NO;
+  self.titleBottomConstraint.active = YES;
+  self.descBottomConstraint.active = NO;
+  self.descHeightConstraint.active = YES;
+  self.trailingConstraint.constant = selected ? -(40 + 20) : -20;
+}
+
+- (void)mouseDown:(NSEvent *)event {
+  if (self.item &&
+      (self.item.type == WSettingInfo || self.item.type == WSettingLink)) {
+    SEL actSel = NSSelectorFromString(@"act:");
+    if ([self.delegate respondsToSelector:actSel] && self.buttonControl) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+      [self.delegate performSelector:actSel withObject:self.buttonControl];
+#pragma clang diagnostic pop
+      return;
+    }
+  }
+  [super mouseDown:event];
+}
 @end
 
 @interface WWNSeparatorRowView : NSTableRowView
 @end
 @implementation WWNSeparatorRowView
+- (BOOL)isOpaque {
+  return NO;
+}
+
 - (void)drawSeparatorInRect:(NSRect)dirtyRect {
-  // Draw custom iOS-style separator
-  NSRect sRect =
-      NSMakeRect(20, 0, self.bounds.size.width - 20, 1.0); // Inset left
+  (void)dirtyRect;
+  NSView *view = self.superview;
+  while (view && ![view isKindOfClass:[NSTableView class]]) {
+    view = view.superview;
+  }
+  NSTableView *tv = (NSTableView *)view;
+  if ([tv isKindOfClass:[NSTableView class]]) {
+    NSInteger row = [tv rowForView:self];
+    if (row < 0 || row >= tv.numberOfRows - 1) {
+      return;
+    }
+  }
+  CGFloat scale =
+      self.window.backingScaleFactor > 0 ? self.window.backingScaleFactor : 2.0;
+  CGFloat hairline = 1.0 / scale;
+  NSRect bounds = self.bounds;
+  NSRect sRect = NSMakeRect(20.0, NSMaxY(bounds) - hairline,
+                            MAX(0.0, bounds.size.width - 40.0), hairline);
   [[NSColor separatorColor] setFill];
-  NSRectFill(sRect);
+  NSRectFillUsingOperation(sRect, NSCompositingOperationSourceOver);
 }
 @end
 
-/* Private interface for WWNPreferencesContent — macOS only (see #if !TARGET_OS_IPHONE guard). */
+/* Private interface for WWNPreferencesContent. MacOS only (see #if !TARGET_OS_IPHONE guard). */
 @interface WWNPreferencesContent ()
 #if (TARGET_OS_IPHONE || TARGET_OS_OSX) && !TARGET_OS_TV
 - (void)handleLocalShellICloudSyncToggle:(BOOL)enabled;
@@ -5484,21 +6748,46 @@ static UIImage *WWNAboutLogo(void) {
 - (void)loadView {
   NSView *v = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 400, 400)];
   self.view = v;
+  NSView *header = [[NSView alloc] initWithFrame:NSMakeRect(0, 364, 400, 36)];
+  header.autoresizingMask = NSViewWidthSizable | NSViewMinYMargin;
+  header.hidden = YES;
+  NSButton *back = [NSButton buttonWithTitle:@"Back"
+                                      target:self
+                                      action:@selector(exitOptionPicker)];
+  back.bezelStyle = NSBezelStyleAccessoryBarAction;
+  back.frame = NSMakeRect(12, 4, 72, 28);
+  [header addSubview:back];
+  NSTextField *title = [NSTextField labelWithString:@""];
+  title.font = [NSFont systemFontOfSize:13 weight:NSFontWeightSemibold];
+  title.frame = NSMakeRect(92, 8, 280, 20);
+  title.autoresizingMask = NSViewWidthSizable;
+  [header addSubview:title];
+  self.pickerHeader = header;
+  self.pickerTitleLabel = title;
+  [v addSubview:header];
+
   NSScrollView *sv = [[NSScrollView alloc] initWithFrame:v.bounds];
   sv.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
   sv.drawsBackground = NO; // Fix Unified Background
+  self.scrollView = sv;
 
   self.tableView = [[NSTableView alloc] initWithFrame:sv.bounds];
   self.tableView.dataSource = self;
   self.tableView.delegate = self;
   self.tableView.headerView = nil;
-  self.tableView.backgroundColor =
-      [NSColor clearColor];                           // Fix Unified Background
-  self.tableView.gridStyleMask = NSTableViewGridNone; // Custom separators
-  self.tableView.intercellSpacing =
-      NSMakeSize(0, 0); // Tight packing for custom rows
+  self.tableView.backgroundColor = [NSColor clearColor];
+  if (@available(macOS 11.0, *)) {
+    self.tableView.style = NSTableViewStyleInset;
+  }
+  // Horizontal grid is what actually invokes drawSeparatorInRect:. GridNone
+  // plus zero intercell spacing hid every divider.
+  self.tableView.gridStyleMask = NSTableViewSolidHorizontalGridLineMask;
+  self.tableView.gridColor = [NSColor separatorColor];
+  self.tableView.intercellSpacing = NSMakeSize(0, 1);
   self.tableView.columnAutoresizingStyle =
       NSTableViewUniformColumnAutoresizingStyle;
+  self.tableView.usesAutomaticRowHeights = NO;
+  self.tableView.selectionHighlightStyle = NSTableViewSelectionHighlightStyleNone;
 
   NSTableColumn *c = [[NSTableColumn alloc] initWithIdentifier:@"C"];
   c.width = sv.bounds.size.width;                 // Match scroll view width
@@ -5508,6 +6797,87 @@ static UIImage *WWNAboutLogo(void) {
   sv.documentView = self.tableView;
   sv.hasHorizontalScroller = NO; // No horizontal scroll - content should fit
   [v addSubview:sv];
+}
+
+- (void)viewDidLayout {
+  [super viewDidLayout];
+  NSRect bounds = self.view.bounds;
+  CGFloat headerH = self.pickingItem ? 36.0 : 0.0;
+  self.pickerHeader.hidden = (headerH < 1.0);
+  if (headerH > 0) {
+    self.pickerHeader.frame =
+        NSMakeRect(0, bounds.size.height - headerH, bounds.size.width, headerH);
+  }
+  self.scrollView.frame =
+      NSMakeRect(0, 0, bounds.size.width, bounds.size.height - headerH);
+  if (self.environmentHostView && !self.environmentHostView.hidden) {
+    self.environmentHostView.frame = self.view.bounds;
+  }
+}
+
+- (void)showOptionPickerForItem:(WWNSettingItem *)item {
+  self.pickingItem = item;
+  self.pickerTitleLabel.stringValue = item.title ?: @"";
+  [self.view setNeedsLayout:YES];
+  [self.view layoutSubtreeIfNeeded];
+  [self.tableView reloadData];
+}
+
+- (void)exitOptionPicker {
+  self.pickingItem = nil;
+  [self.view setNeedsLayout:YES];
+  [self.view layoutSubtreeIfNeeded];
+  [self.tableView reloadData];
+}
+
+- (void)reloadForCurrentSection {
+  self.pickingItem = nil;
+  [self.view setNeedsLayout:YES];
+  BOOL isEnvironment = [self.section.title isEqualToString:@"Env Vars"];
+  if (isEnvironment) {
+    [self embedEnvironmentVariablesIfNeeded];
+    if (self.environmentHostView != nil) {
+      self.scrollView.hidden = YES;
+      self.environmentHostView.hidden = NO;
+      self.environmentHostView.frame = self.view.bounds;
+    } else {
+      // Embed failed. Keep the fallback "Open Environment Variables…" button.
+      self.scrollView.hidden = NO;
+      [self.tableView reloadData];
+    }
+    return;
+  }
+  if (self.environmentHostView) {
+    self.environmentHostView.hidden = YES;
+  }
+  self.scrollView.hidden = NO;
+  [self.tableView reloadData];
+}
+
+- (void)embedEnvironmentVariablesIfNeeded {
+  if (self.environmentHostView) {
+    self.environmentHostView.frame = self.view.bounds;
+    self.environmentHostView.hidden = NO;
+    return;
+  }
+  Class presenter = NSClassFromString(@"WWNEnvironmentSettingsPresenter");
+  if (!presenter || ![presenter respondsToSelector:@selector(macOSHostingView)]) {
+    NSLog(@"[WWNPreferences] Env Vars embed unavailable (presenter missing)");
+    return;
+  }
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+  NSView *host = [presenter performSelector:@selector(macOSHostingView)];
+#pragma clang diagnostic pop
+  if (![host isKindOfClass:[NSView class]]) {
+    NSLog(@"[WWNPreferences] Env Vars embed failed (hosting view nil)");
+    return;
+  }
+  host.frame = self.view.bounds;
+  host.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+  host.translatesAutoresizingMaskIntoConstraints = YES;
+  [self.view addSubview:host];
+  self.environmentHostView = host;
 }
 
 // Use custom row view for separators
@@ -5523,6 +6893,9 @@ static UIImage *WWNAboutLogo(void) {
 }
 
 - (NSInteger)numberOfRowsInTableView:(NSTableView *)tv {
+  if (self.pickingItem) {
+    return (NSInteger)self.pickingItem.options.count;
+  }
   return self.section.items.count;
 }
 
@@ -5533,6 +6906,11 @@ static UIImage *WWNAboutLogo(void) {
   if (!cell) {
     cell = [[WWNPreferenceCell alloc] initWithFrame:NSMakeRect(0, 0, 400, 50)];
   }
+  if (self.pickingItem) {
+    BOOL selected = (row == WWNSettingsPopupSelectedIndex(self.pickingItem));
+    [cell configureAsChoice:self.pickingItem.options[row] selected:selected];
+    return cell;
+  }
   WWNSettingItem *item = self.section.items[row];
   [cell configureWithItem:item target:self action:@selector(act:)];
 
@@ -5542,21 +6920,70 @@ static UIImage *WWNAboutLogo(void) {
     cell.switchControl.tag = row;
   if (!cell.textControl.hidden)
     cell.textControl.tag = row;
-  if (!cell.buttonControl.hidden)
-    cell.buttonControl.tag = row;
   if (!cell.popupControl.hidden)
     cell.popupControl.tag = row;
+  cell.buttonControl.tag = row;
 
   return cell;
 }
 
+- (BOOL)tableView:(NSTableView *)tv shouldSelectRow:(NSInteger)row {
+  if (self.pickingItem) {
+    [self pickOptionAtRow:row];
+  }
+  return NO;
+}
+
+- (void)applyPopupSelectionForItem:(WWNSettingItem *)item index:(NSInteger)index {
+  WWNSettingsPopupStoreIndex(item, index);
+  if (WWNSettingsPopupStoresIndex(item.key) ||
+      [item.key isEqualToString:@"RenderMacOSPointer"]) {
+    WWNPreferences *prefs = [WWNPreferences sharedPreferences];
+    NSString *sectionTitle = self.section.title;
+    prefs.sections = [prefs buildSections];
+    for (WWNPreferencesSection *section in prefs.sections) {
+      if ([section.title isEqualToString:sectionTitle]) {
+        self.section = section;
+        break;
+      }
+    }
+  }
+  if (item.key) {
+    [[NSNotificationCenter defaultCenter]
+        postNotificationName:@"WWNPreferencesChanged"
+                      object:nil];
+  }
+  [self.tableView reloadData];
+}
+
+- (void)pickOptionAtRow:(NSInteger)row {
+  WWNSettingItem *item = self.pickingItem;
+  if (!item) {
+    return;
+  }
+  [self applyPopupSelectionForItem:item index:row];
+  [self exitOptionPicker];
+}
+
 - (void)act:(id)sender {
+  if (self.pickingItem) {
+    return;
+  }
   NSInteger row = (NSInteger)[sender tag];
   if (row < 0 || row >= (NSInteger)self.section.items.count) {
     return;
   }
 
   WWNSettingItem *item = self.section.items[row];
+
+  if ([sender isKindOfClass:[NSPopUpButton class]]) {
+    if (!item.interactive) {
+      return;
+    }
+    NSInteger index = [(NSPopUpButton *)sender indexOfSelectedItem];
+    [self applyPopupSelectionForItem:item index:index];
+    return;
+  }
 
   // Handle password fields - show a dialog for password entry
   if (item.type == WSettingPassword) {
@@ -5572,13 +6999,18 @@ static UIImage *WWNAboutLogo(void) {
   }
 
   if (item.type == WSettingInfo) {
-    // For Info type, copy to clipboard on click
-    NSString *val =
-        [[NSUserDefaults standardUserDefaults] stringForKey:item.key];
-    NSString *valueString = val ? val : [item.defaultValue description];
-    NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
-    [pasteboard clearContents];
-    [pasteboard setString:valueString forType:NSPasteboardTypeString];
+    NSString *valueString = WWNSettingsInfoDetailText(item);
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = item.title ?: @"";
+    alert.informativeText = valueString.length > 0 ? valueString : @"";
+    [alert addButtonWithTitle:@"OK"];
+    [alert addButtonWithTitle:@"Copy"];
+    NSModalResponse response = [alert runModal];
+    if (response == NSAlertSecondButtonReturn && valueString.length > 0) {
+      NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
+      [pasteboard clearContents];
+      [pasteboard setString:valueString forType:NSPasteboardTypeString];
+    }
     return;
   }
 
@@ -5610,46 +7042,30 @@ static UIImage *WWNAboutLogo(void) {
       return;
     }
 #endif
+
+#if TARGET_OS_OSX
+    if ([item.key isEqualToString:kWWNPrefsDesktopReplacementEnabled]) {
+      BOOL on = [(NSNumber *)val boolValue];
+      [[WWNPreferences sharedPreferences]
+          applyDesktopReplacementEnabled:on
+                                  revert:^{
+                                    [(NSSwitch *)sender
+                                        setState:NSControlStateValueOff];
+                                  }];
+      return;
+    }
+#endif
   } else if ([sender isKindOfClass:[NSTextField class]]) {
     val = [(NSTextField *)sender stringValue];
     // For text fields, save immediately when value changes
     if (val && item.key) {
-      [[NSUserDefaults standardUserDefaults] setObject:val forKey:item.key];
+      [WWNSharedUserDefaults() setObject:val forKey:item.key];
     }
     return; // Return early for text fields - they save on each change
-  } else if ([sender isKindOfClass:[NSPopUpButton class]]) {
-    if (!item.interactive) {
-      return;
-    }
-    // Handle SSHAuthMethod specially - store as integer index
-    if ([item.key isEqualToString:@"SSHAuthMethod"] ||
-        [item.key isEqualToString:@"WaypipeSSHAuthMethod"]) {
-      NSInteger selectedIndex = [(NSPopUpButton *)sender indexOfSelectedItem];
-      [[NSUserDefaults standardUserDefaults] setInteger:selectedIndex
-                                                 forKey:item.key];
-
-      // Auth method changed - rebuild sections to show appropriate nested
-      // options
-      WWNPreferences *prefs = [WWNPreferences sharedPreferences];
-      prefs.sections = [prefs buildSections];
-      [self.tableView reloadData];
-
-      [[NSNotificationCenter defaultCenter]
-          postNotificationName:@"WWNPreferencesChanged"
-                        object:nil];
-      return;
-    }
-    NSInteger idx = [(NSPopUpButton *)sender indexOfSelectedItem];
-    if (item.optionValues && idx >= 0 &&
-        idx < (NSInteger)item.optionValues.count) {
-      val = item.optionValues[idx];
-    } else {
-      val = [(NSPopUpButton *)sender titleOfSelectedItem];
-    }
   }
 
   if (val && item.key) {
-    [[NSUserDefaults standardUserDefaults] setObject:val forKey:item.key];
+    [WWNSharedUserDefaults() setObject:val forKey:item.key];
     [[NSNotificationCenter defaultCenter]
         postNotificationName:@"WWNPreferencesChanged"
                       object:nil];
@@ -5772,37 +7188,46 @@ static UIImage *WWNAboutLogo(void) {
 }
 
 - (CGFloat)tableView:(NSTableView *)tv heightOfRow:(NSInteger)row {
+  if (self.pickingItem) {
+    return 44.0;
+  }
   if (row < (NSInteger)self.section.items.count) {
     WWNSettingItem *item = self.section.items[row];
     if (item.type == WSettingHeader) {
-      return 68.0; // Taller row for header with icon
+      NSString *desc = item.desc ?: @"";
+      CGFloat width = MAX(180.0, tv.bounds.size.width - 100.0);
+      NSSize size = [desc
+          boundingRectWithSize:NSMakeSize(width, CGFLOAT_MAX)
+                       options:NSStringDrawingUsesLineFragmentOrigin |
+                               NSStringDrawingUsesFontLeading
+                    attributes:@{
+                      NSFontAttributeName : [NSFont systemFontOfSize:11]
+                    }
+                       context:nil]
+                         .size;
+      CGFloat textBlock = 8.0 + 22.0 + 2.0 + ceil(size.height) + 8.0;
+      return MAX(68.0, textBlock);
     }
-    BOOL isConnectionSection = [self.section.title isEqualToString:@"Connection"];
-    BOOL isConnectionInfoRow =
-        isConnectionSection && item.type == WSettingInfo &&
-        ([item.key isEqualToString:@"XDGRuntimeDir"] ||
-         [item.key isEqualToString:@"WaylandDisplay"] ||
-         [item.key isEqualToString:@"WaylandSocketPath"] ||
-         [item.key isEqualToString:@"WaylandShellSetup"]);
-    if (isConnectionInfoRow) {
-      NSString *val =
-          [[NSUserDefaults standardUserDefaults] stringForKey:item.key];
-      if (!val) {
-        val = [item.defaultValue description] ?: @"";
-      }
-      NSUInteger valueLines =
-          1 + MIN((NSUInteger)3, (NSUInteger)(val.length / 46));
-      if ([val containsString:@"\n"]) {
-        valueLines += 1;
-      }
-      NSUInteger descLines =
-          item.desc.length > 0
-              ? (1 + MIN((NSUInteger)2, (NSUInteger)(item.desc.length / 70)))
-              : 0;
-      CGFloat dynamicHeight =
-          18.0 + (CGFloat)descLines * 14.0 + (CGFloat)valueLines * 15.0;
-      return MAX(62.0, MIN(132.0, dynamicHeight));
+    if (item.type == WSettingLink && item.desc.length > 0) {
+      return 56.0;
     }
+    if (item.type == WSettingInfo) {
+      NSString *value = WWNSettingsInfoTrailingText(item);
+      if (!WWNSettingsInfoValueIsCompact(value)) {
+        CGFloat width = MAX(220.0, tv.bounds.size.width - 40.0);
+        NSSize size = [value
+            boundingRectWithSize:NSMakeSize(width, CGFLOAT_MAX)
+                         options:NSStringDrawingUsesLineFragmentOrigin |
+                                 NSStringDrawingUsesFontLeading
+                      attributes:@{
+                        NSFontAttributeName : [NSFont systemFontOfSize:11]
+                      }
+                         context:nil]
+                           .size;
+        return MIN(160.0, 8.0 + 18.0 + 2.0 + ceil(size.height) + 8.0);
+      }
+    }
+    return 44.0;
   }
   return 50.0;
 }

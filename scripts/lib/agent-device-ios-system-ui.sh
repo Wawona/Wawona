@@ -1,7 +1,7 @@
 # iOS system-UI helpers for agent-device sessions.
 #
 # Allow Paste (SpringBoard / CoreSimulatorBridge) cannot be exercised under
-# XCUITest — dismiss it with host Simulator CGEvent + screenshot locate.
+# XCUITest. Dismiss it with host Simulator CGEvent + screenshot locate.
 #
 # Keyboard input and the swipe-typing tutorial Continue use normal agent-device
 # commands (`type` / `fill` / `press label="Continue"`). Do not host-tap the
@@ -109,57 +109,18 @@ ios_host_dismiss_allow_paste() {
     return 1
   }
 
-  local screen_xy rc=0
-  screen_xy="$(/usr/bin/swift - "$shot" "$bounds" <<'SWIFT'
-import Foundation
-import AppKit
-let shotPath = CommandLine.arguments[1]
-let boundsArg = CommandLine.arguments[2]
-guard let img = NSImage(contentsOfFile: shotPath),
-      let tiff = img.tiffRepresentation,
-      let rep = NSBitmapImageRep(data: tiff) else { exit(1) }
-let w = rep.pixelsWide, h = rep.pixelsHigh
-struct P { var x: Int; var y: Int }
-var blues: [P] = [], grays: [P] = []
-// Centered alert only — exclude Machines Start/FAB (right/lower chrome).
-let y0 = h * 38 / 100, y1 = h * 62 / 100
-let x0 = w * 22 / 100, x1 = w * 78 / 100
-for y in stride(from: y0, through: y1, by: 3) {
-  for x in stride(from: x0, through: x1, by: 3) {
-    guard let c = rep.colorAt(x: x, y: y) else { continue }
-    var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
-    c.getRed(&r, green: &g, blue: &b, alpha: &a)
-    if b > 0.70 && r < 0.40 && g > 0.35 && g < 0.70 && b > g {
-      blues.append(P(x: x, y: y))
-    }
-    let maxc = max(r, g, b), minc = min(r, g, b)
-    if maxc > 0.75 && minc > 0.65 && (maxc - minc) < 0.12 {
-      grays.append(P(x: x, y: y))
-    }
-  }
-}
-func center(_ ps: [P]) -> (Int, Int)? {
-  guard !ps.isEmpty else { return nil }
-  return (ps.map(\.x).reduce(0, +) / ps.count, ps.map(\.y).reduce(0, +) / ps.count)
-}
-// No blue Don't Allow in the alert band → nothing to dismiss.
-guard let blue = center(blues) else { exit(0) }
-let below = grays.filter {
-  $0.y > blue.1 + 40 &&
-    $0.y < blue.1 + h * 12 / 100 &&
-    abs($0.x - blue.0) < w / 6
-}
-// Empirically ~11% of framebuffer height below Don't Allow center
-// (Allow Paste row under the blue button on iPhone 17 Pro @3x).
-let allow = center(below) ?? (blue.0, blue.1 + Int(Double(h) * 0.11))
-let parts = boundsArg.split(separator: ",").compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
-guard parts.count == 4 else { exit(3) }
-let wx = parts[0], wy = parts[1], ww = parts[2], wh = parts[3]
-let sx = wx + Double(allow.0) * ww / Double(w)
-let sy = wy + Double(allow.1) * wh / Double(h)
-print("\(sx) \(sy)")
-SWIFT
-)" || rc=$?
+  # Locator lives in a .swift file. macOS /bin/bash 3.2 still tokenizes
+  # apostrophes inside $(... <<'HEREDOC'), which broke sourcing this helper.
+  local helper_dir locator screen_xy rc=0
+  if [[ -n "${BASH_SOURCE[0]:-}" ]]; then
+    helper_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  elif [[ -n "${ROOT:-}" && -d "$ROOT/scripts/lib" ]]; then
+    helper_dir="$ROOT/scripts/lib"
+  else
+    helper_dir="$(cd "$(dirname "$0")" && pwd)"
+  fi
+  locator="$helper_dir/locate-allow-paste.swift"
+  screen_xy="$(/usr/bin/swift "$locator" "$shot" "$bounds")" || rc=$?
   rm -f "$shot"
   if [[ $rc -ne 0 ]]; then
     return "$rc"

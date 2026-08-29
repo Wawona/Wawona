@@ -195,7 +195,7 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("androidx.fragment:fragment-ktx:1.6.2")
 
-    // Android Auto (Car App Library) — status dashboard templates only;
+    // Android Auto (Car App Library). Status dashboard templates only;
     // full compositor surfaces are not permitted on car screens.
     implementation("androidx.car.app:app:1.4.0")
 

@@ -1,12 +1,20 @@
-# iland Mode A / Mode B and Desktop Replacement
+# iland Mode A / Mode B and Desktop / LockScreen Replacement
+
+> **Public subset** for wawona.io. Desktop / LockScreen are **macOS + Android**
+> (planned), plus **iOS / iPadOS jailbreak tweaks** documented only on the website /
+> `repo.wawona.io`. **Not** Linux. **Not** App Store Apple-mobile builds.
+>
+> **Wawona Swinging Bridge is separate**. See [`swinging-bridge.md`](swinging-bridge.md). Do not document
+> Swinging Bridge as Desktop or LockScreen. **VMs/containers** are separate. See
+> [`vms-containers.md`](vms-containers.md).
 
 Live grades: [`iland-graphics-progress.md`](iland-graphics-progress.md).
 CI bundle matrix: [`testing/graphics-ci-matrix.md`](testing/graphics-ci-matrix.md).
 
 Canonical description of how Wawona uses **wwn-iland** for graphics present and
-macOS Desktop Replacement. When this conflicts with older docs or comments,
-**this file wins** (also mirrored in `.cursor/rules/wawona-iland-mode-b-desktop.mdc`
-and `AGENTS.md`).
+macOS Desktop/LockScreen host replacement. When this conflicts with older docs
+or comments, **this file wins** (also mirrored in
+`.cursor/rules/wawona-iland-mode-b-desktop.mdc` and `AGENTS.md`).
 
 Upstream inspiration: [CoreBedtime/iland](https://github.com/CoreBedtime/iland).
 Wawona packaging: [wwn-iland](https://github.com/Wawona/wwn-iland).
@@ -14,37 +22,80 @@ Stack architecture and toolkit contracts:
 [`iland-graphics-stack.md`](iland-graphics-stack.md). Repository ownership:
 [`wwn-repo-dag.md`](wwn-repo-dag.md).
 
-## Summary
+## Status
 
-- **Mode A** is the default, App Store–safe path: static `libiland_userland.a`,
+**Desktop Classic Take Over: own-display proven (kmscube).** Multi-TTY and
+Path C (parked WindowServer) are next. Settings → Desktop engages Mode B
+Classic only with Path B sticky `/var/db/wwn-iowatchdog/claim-ok`
+(`path=b sticky=1`), then `iowatchdog-then-unload`. Operator checklist:
+[`desktop-replacement-classic-proof.md`](desktop-replacement-classic-proof.md).
+
+**Three WindowServer options** (Classic / KEEP_WS / Path C): see
+[`mode-b-windowserver-options.md`](mode-b-windowserver-options.md). Do not
+confuse those with IOWatchdog Path A / Path B.
+
+LockScreen greeter handoff stays planned until Classic multi-TTY + restore
+chords are green. Product gates stay **planned** on macOS and Android until
+Phase E PASS; App Store Apple-mobile builds keep Desktop/LockScreen
+**forbidden** and must **never mention jailbreak** in UI or strings.
+
+## What Desktop / LockScreen is
+
+Make Wawona the **host desktop environment** and **lock-screen / greeter** with
+a Wawona **machine picker**. Machine profile type for these roles: **native
+ports only**.
+
+| Host | Mechanism | Privilege |
+|---|---|---|
+| **macOS** | SIP fully disabled (`csrutil disable`) + `.dylib` tweak in `wawona-macos-desktop-host` | Required for Mode B |
+| **Android** | Default Home App + LockScreen APIs | **No root**; **no fallback tier** |
+| **iOS / iPadOS** | Jailbreak tweak from **`repo.wawona.io`** (Sileo source) | Outside App Store only; website docs only |
+| Linux / App Store Apple-mobile / tvOS / watchOS / visionOS | - | **Forbidden** in store binaries (never mention jailbreak there) |
+
+## Summary (iland present modes)
+
+- **Mode A** is the default, App Store-safe path: static `libiland_userland.a`,
   in-window DRM/KMS/EGL/GBM over IOSurface + ANGLE, present via
   `iland_drm_set_present_callback` into Wawona’s Metal layer.
-- **Mode B** is optional, **macOS-only**, **not** App Store safe: ship
-  `libwayland-mac.dylib`, load with `DYLD_INSERT_LIBRARIES` + Dobby (same model
-  as CoreBedtime), replace SkyLight/WindowServer via `framebufferd`. Requires
-  SIP debugging restrictions off (or SIP fully disabled) and root.
-- **Android** has no SIP. Desktop Replacement uses the HOME/launcher role;
-  anowaW is rootless (MediaProjection) vs power (Shizuku/root).
+- **Mode B** is optional, **macOS-only** for **Desktop/LockScreen host
+  replacement**, **not** App Store safe: ship `libwayland-mac.dylib`, load with
+  `DYLD_INSERT_LIBRARIES` + Dobby (same model as CoreBedtime), replace
+  SkyLight/WindowServer / lock path via `framebufferd`. Requires SIP fully
+  disabled (`csrutil disable` in Recovery) and root. `csrutil enable --without
+  debug` is not enough.
+- **Android Desktop/LockScreen** uses platform Home + LockScreen APIs. Not the
+  macOS dylib, and not Wawona Swinging Bridge.
+- **Wawona Swinging Bridge** (app bridge) has its own Mode A/B. See [`swinging-bridge.md`](swinging-bridge.md).
 
 ## Decision tree
 
 ```text
-platform?
-  iOS / iPadOS / visionOS     → Mode A only
-  tvOS / watchOS              → Mode A stub (no ANGLE / IOKit)
-  Android                     → anowaW power? → Shizuku/root : rootless baseline
-  macOS
-    SIP allows Mode B?        (Disabled | PartiallyDisabled)
-      no  → Mode A (ignore Desktop toggle; clear if stale)
-      yes → DesktopReplacementEnabled?
-            no  → Mode A
-            yes → Mode B (DYLD_INSERT bundled dylib + DRM weston)
+feature?
+  Wawona Swinging Bridge                      → see swinging-bridge.md (not this file)
+  Desktop / LockScreen
+    Linux                     → forbidden
+    App Store iOS family      → forbidden in-app (no jailbreak mentions)
+    iOS / iPadOS (website / repo only) → repo.wawona.io jailbreak tweak (planned)
+    Android                   → Default Home + LockScreen (planned; no root)
+    macOS
+      SIP fully disabled?     (`csrutil status`: disabled)
+        no  → Mode A (ignore Desktop toggle; clear if stale)
+        yes → DesktopReplacementEnabled?
+              no  → Mode A
+              yes → Mode B: disable kernel IOWatchdog, unload watchdogd,
+                    unload WindowServer, DYLD_INSERT bundled dylib into
+                    niri/weston (framebufferd). Abort if IOWatchdog
+                    disable fails. Compositor argv comes from
+                    WWNWaypipeRunner (weston --backend=drm, niri
+                    NIRI_BACKEND=tty, custom command as written).
 ```
 
 SIP detection: `WWNSipStatus` → `csrutil status` text parse (playground
-`checkSipStatus` port). Partial disable = line
-`Debugging Restrictions: disabled` (typical after
-`csrutil enable --without debug`). Do not use CSR_* APIs.
+`checkSipStatus` port). Mode B is allowed only when the **first line** is
+`System Integrity Protection status: disabled` (optional period). Settings
+shows that state as **Fully Disabled**. Custom Configuration /
+`Debugging Restrictions: disabled` after `csrutil enable --without debug`
+is classified as partial and **refused**. Do not use CSR_* APIs.
 
 ## Artifacts and packages
 
@@ -52,6 +103,7 @@ SIP detection: `WWNSipStatus` → `csrutil status` text parse (playground
 |------------------|------|--------|
 | `wwn-iland` `iland` (`macos.nix`, `ios.nix`, …) | A | `libiland_userland.a` |
 | `wwn-iland` `iland-baremetal` (`macos-baremetal.nix`) | B | `libwayland-mac.dylib` + embedded daemons |
+| `wwn-iowatchdog` (L3′, flake input) | B | macOS Watchdog CLIs; bundled as `Contents/Library/Wawona/wwn-iowatchdog` |
 | `.#wawona-macos` | A only | Product / store-safe shaped; **must not** contain Mode B dylib |
 | `.#wawona-macos-desktop-host` | A + B dylib | Developer ID / desktop-host; dylib at `Contents/Library/Wawona/iland/libwayland-mac.dylib` |
 | iOS / Android apps | A only | Never ship Mode B dylib |
@@ -67,6 +119,7 @@ not enable `iland-baremetal`.
 | SIP classify | `src/platform/macos/ui/Settings/WWNSipStatus.{h,m}` |
 | Desktop prefs UI + hard enforce | `WWNPreferences.m` (Desktop section), keys in `WWNPreferencesManager` |
 | Mode B engage / disengage | `WWNDesktopReplacementController.{h,m}` |
+| Mode B compositor argv/env | `WWNWaypipeRunner` `baremetalCompositorLaunchSpecForProfile:` |
 | Connect / lockscreen handoff | `WWNMachineSessionBridge.m` |
 | Mode A present | `WWNIlandPresenter.m` + `iland_present.h` |
 | Bundle verify | `.github/scripts/verify-iland-mode-b-bundle.sh` |
@@ -74,53 +127,204 @@ not enable `iland-baremetal`.
 Prefs (macOS `NSUserDefaults`):
 
 - `DesktopReplacementEnabled`
-- `DesktopReplacementMachineId`
+- `DesktopReplacementMachineId` (iland DRM/KMS native profile: weston, niri, kmscube, custom)
+- `DesktopReplacementGuiVt` (1-6, default 1). Assigned GUI VT for that machine. Not hardcoded forever.
 - `LockscreenReplacementEnabled` / `LockscreenReplacementMachineId`
-- `AnowaWEnabled`
+- `SwingingBridgeEnabled` (Wawona Swinging Bridge. Separate feature; see [`swinging-bridge.md`](swinging-bridge.md))
 
-## Android (no SIP)
+## Mode B: iland dylib vs wwn-igetty
 
-| Tier | Pref / condition | Behavior |
-|------|------------------|----------|
-| Rootless / baseline | Power off, or Shizuku/root unavailable | Own-app VD + consented MediaProjection; waypipe-rs mirror without privileged inject |
-| Power | `wawona.anowaW.powerMode` + `AnowawPowerController` available | Trusted VD, any app, privileged input + waypipe-rs |
+WindowServer replacement is **wwn-iland** `iland-baremetal` (`libwayland-mac.dylib`).
+What you boot into is **wwn-igetty** (Linux-shaped VTs + Doorman getty). Settings
+→ Desktop Replacement → Desktop Machine picks an iland DRM/KMS compositor
+(weston, niri, kmscube, custom). That session is **assigned a VT**
+(`DesktopReplacementGuiVt`, default 1, like a typical Linux display manager).
+It is not guaranteed to stay VT1. Remaining VTs are getty. Ctrl+Option+F1-F6
+switches. Ctrl+Option+Backspace restores Aqua. Fn+Ctrl+Option+Backspace
+does the same on MacBook keyboards (Fn remaps Backspace to Delete).
+Arrow keys, Page Up, Page Down, Home, and End reach text VTs as CSI
+(MacBook: Fn+arrows is PgUp/PgDn/Home/End). Ctrl+Option+F7-F9 overlay
+kmscube, gbm-es2-demo, and vkcube-kms. Those clients, plus Wayland
+opengl-cube and vkcube, draw a corner status hub: client name, fps, kms/drm/gbm,
+OpenGL vs Vulkan, and the live backend (ANGLE, MoltenVK, KosmicKrisp).
 
-Auto-fallback power → baseline is required when privilege is missing. See
-`DesktopReplacement.kt`, `AnowawSession.kt`, Settings Desktop / App Bridge copy.
+Do not put VT switching in iland or in L4 Wawona besides launching `igettyd`
+and passing `WWN_IGETTY_GUI_*`.
+
+Classic already runs `framebufferd` / `inputd`. After login on a text VT,
+`niri` and `weston` use iland DRM/KMS/GBM (same as the assigned GUI VT).
+Login env sets `NIRI_BACKEND=tty` and clears nested `WAYLAND_DISPLAY`.
+Doorman login sets `ZDOTDIR` to session zsh files so macOS `path_helper`
+cannot put `~/.local/bin` ahead of the DRM wrappers. Typed `weston` /
+`niri` restore `DYLD_INSERT_LIBRARIES` from `WWN_MODEB_INSERT` (iland
+`libwayland-mac.dylib` intercepts `/dev/dri`) and exec the bundled
+binary. Host CLI wrappers (`~/.local/bin/weston`) detect Classic by
+Apple WindowServer being down, not by a leaked `WWN_MODEB_TTY`. While
+Aqua is up they nest (`--backend=wayland`, `NIRI_BACKEND=nested`) and
+may kickstart compositor-host. After Take Over they use iland DRM and
+do not nest. You do not need to pass `--backend=drm` or
+`NIRI_BACKEND=tty` by hand.
+
+```text
+niri
+weston
+```
+
+`PATH` includes session wrappers first, then `WWN_MODEB_BIN` (Wawona
+`Resources/bin`). `WESTON_BACKEND_DIR` and related env from the helper stay
+inherited. Send compositor stderr to a file if you are reporting a failure:
+
+```text
+weston 2>/tmp/modeb-weston.err
+niri 2>/tmp/modeb-niri.err
+```
+
+Ctrl+Option+F1 returns to the text VT if the compositor does not take over
+input. Ctrl+Option+Backspace still restores Aqua. Fn+Ctrl+Option+Backspace
+too.
+
+This is userspace only (no kernel tty). See also
+[`mode-b-windowserver-options.md`](mode-b-windowserver-options.md).
+
+Before Classic Take Over, Settings → Desktop is **Enable Desktop Replacement**
+plus **Replace now**. Enable checks watchdog coverage, restores Apple coverage
+when it is stale or dual-path, stages the helper, and arms Path B, then opens
+the native Restart sheet if needed. Enable never takes over the screen.
+**Replace now** (Settings and the menubar) is the only activate step. CLI:
+`Wawona --mode-b-prepare` is the same setup as Enable.
+
+```text
+Wawona --mode-b-ready
+```
+
+Exit 0: `VERDICT takeover-now` plus `REASON` (run `Wawona --mode-b-engage`
+or Replace now). Exit 2: reboot first. Engage and Settings Replace
+now open the native macOS Restart sheet (`kAERestart` / QA1134,
+60-second countdown). Exit 3: blocked. Settings Enable Desktop
+Replacement runs doctor, heal, and Path B arm instead of CLI recipes.
+
+## Mode B launch (macOS)
+
+CoreBedtime's host takeover is the model: unload Apple's WindowServer, inject
+`libwayland-mac.dylib` into a **root** compositor process, let the dylib start
+`framebufferd` / `inputd` / `amfiexceptiond`. Wawona does not copy
+`run-weston.sh` or `WESTON_MODULE_MAP`. The display server is whichever nested
+compositor the Desktop Machine names.
+
+Private CoreDisplay / SkyLight / `CAWindowServer` SPI used by `framebufferd`
+(prototypes, ObjC encodings, 25F80 disasm, safe-call rules) lives in the L1
+repo: [`wwn-iland/docs/mode-b/baremetal-display-spi-25F80.md`](../../wwn-iland/docs/mode-b/baremetal-display-spi-25F80.md)
+(sibling checkout). Re-verify on each macOS point release.
+
+1. Settings stores `DesktopReplacementMachineId` (weston, niri, or custom
+   compositor). Demo clients (`kmscube`, `weston-terminal`, `foot`) are not
+   eligible.
+2. `nix run .#install` syncs the Mode B helper, `libwayland-mac.dylib`,
+   `wwn-iowatchdog`, and a root-owned helper
+   (`/Library/Application Support/Wawona/run-modeb.sh`) and installs
+   `/etc/sudoers.d/wawona-modeb` (`NOPASSWD` for that helper and
+   `wwn-iowatchdog` only). One admin authorization. If a prior Take Over
+   left `com.apple.watchdogd` disabled, stage only `launchctl enable` +
+   `bootstrap`s it (never `kickstart -k`). Stage must **never** run
+   `wwn-iowatchdog disable` / `enable` or attach `lldb` to `watchdogd`:
+   that probe paniced on 2026-08-20 (`watchdogd` exited SIGTRAP /
+   namespace 2 subcode 0x5 while kernel IOWatchdog was still armed).
+   IOWatchdog disable belongs only on Take Over. Stage does **not** take
+   over the screen and does **not** install a login LaunchAgent. Replace
+   now is the only activate step. Logout and the next Aqua
+   login return normal macOS.
+3. Take Over consumes sticky Path B (preferred) or Path A
+   `/var/db/wwn-iowatchdog/claim-ok` before unloading watchdogd /
+   WindowServer (`WWN_MODEB_WD=iowatchdog-then-unload`). Soft-inject /
+   `lldb` stay forbidden. Without `claim-ok`, Settings refuses Classic
+   and Enable / Replace now runs bundled `claim-install` doctor, heal if
+   needed, then `--path-b` plus native Restart. KEEP_WS
+   `--mode-b-probe` may still inject while WindowServer and watchdogd
+   stay up. Opening desktop-host Wawona or `nix run .#install` syncs the Mode B
+   helper and dylib for this build. Never `export
+   DYLD_INSERT_LIBRARIES`. Insert on the niri/weston exec only.
+   `ws-guard` may restore WindowServer only.
+4. After logout, Aqua's login screen starts WindowServer. The next login
+   does not re-run Mode B. Use Settings → Desktop → **Replace now**.
+   `--compositor-host` (login
+   KeepAlive for Mode A nested compositors) must never Classic-engage,
+   even if `DesktopReplacementEnabled` is leftover. Older builds that
+   auto-started the Desktop machine from compositor-host, or that wrote
+   `com.aspauldingcode.wawona.modeb-login`, unloaded WindowServer at
+   login. The menubar boots the leftover `modeb-login` agent out if
+   a leftover plist is present. A leftover KeepAlive system daemon can
+   keep niri running in the background without owning the screen.
+5. `WWNWaypipeRunner` `baremetalCompositorLaunchSpecForProfile:` supplies argv
+   and env: no `WAYLAND_DISPLAY` (this process *is* the display server),
+   `XDG_RUNTIME_DIR=/tmp/wawona-$uid`, weston `--backend=drm
+   --continue-without-input` plus the bundled `weston.ini`, niri
+   `NIRI_BACKEND=tty`, custom commands tokenized and exec'd as written.
+6. Disable is a full teardown: restore Apple's WindowServer (enable +
+   load; `kickstart -k` only if WindowServer is not already running), kill
+   root niri/weston and framebufferd/inputd, and remove the login
+   LaunchAgent, sudoers drop-in, helper, installed `libwayland-mac.dylib`,
+   and `ws-guard` LaunchDaemon. Settings keeps the switch on if the
+   privileged uninstall is cancelled. **Replace now** session restore
+   (Ctrl+Option+Backspace, Fn+Ctrl+Option+Backspace, or the Mode B client
+   exiting) restores
+   WindowServer only. With Path B sticky it must not kickstart Path B or
+   Apple-enable `watchdogd` (2026-08-23 kernel timeout). Kernel Disable
+   stays sticky. See
+   [`incident-reports/2026-08-23-vt-switch-restore-aqua-timeout/`](incident-reports/2026-08-23-vt-switch-restore-aqua-timeout/).
+7. If the nested compositor exits unexpectedly, or framebufferd never
+   starts, the helper leaves or restores Apple's WindowServer, writes
+   `/tmp/wawona-modeb-failed.reason`, and exits 0. Aqua stays usable.
+   The Enable switch is turned off. Replace now retries. Log:
+   `/tmp/wawona-modeb.log`. See
+   [`incident-reports/2026-08-19-windowserver-login.md`](incident-reports/2026-08-19-windowserver-login.md).
+
+## Android Desktop / LockScreen (no SIP, no root)
+
+| Surface | Behavior |
+|---------|----------|
+| Desktop | Default Home App role |
+| LockScreen | Platform LockScreen replacement APIs |
+| Privilege | No root required; no MediaProjection “fallback tier” as the Desktop story |
+
+Wawona Swinging Bridge settings (`wawona.swingingBridge.*`) are **not** Desktop/LockScreen. See
+[`swinging-bridge.md`](swinging-bridge.md) and Settings Desktop / App Bridge copy when those ship.
 
 ## Store / distribution compliance (per target)
 
 macOS is **third-party distribution** (Developer ID / notarized), **not** Mac
-App Store — never gated on Mac App Store review rules (see
+App Store. Never gated on Mac App Store review rules (see
 `wawona-macos-no-appstore.mdc`). Everything that ships to a store must be
-**Mode A–shaped end-to-end**.
+**Mode A-shaped end-to-end** for graphics, and must not ship Desktop Mode B or
+Wawona Swinging Bridge Mode B.
 
 | Target | Distribution | Compliance bar for graphics / Desktop |
 |--------|--------------|----------------------------------------|
-| **iOS** | App Store | Mode A only; static `libiland_userland`; in-app KMS/DRM; no `DYLD_INSERT`, no private SkyLight/IOKit abuse, no Mode B dylib; SSH = libssh2 only |
-| **iPadOS** | App Store | Same + multi-window (1 host window per Wayland client) |
-| **visionOS** | App Store | Same Mode A / macOS-product GLES+Vulkan parity via store-safe stack (MVK/ANGLE); no Mode B; multi-window required |
-| **tvOS** | App Store | Mode A **software only** — no ANGLE/MVK/KK/Vulkan ICD, no IOKit, no GPU DRM clients |
-| **watchOS** | App Store | Same software policy as tvOS |
-| **Android** | Google Play | Mode A: in-app KMS/DRM + consented MediaProjection / own VD; Home Desktop **without root**; optional power/root is sideload/opt-in, never Play-required |
-| **macOS** | **3rd-party** (not MAS) | Mode A default (SIP OK). Mode B desktop-host OK under SIP partial\|off; never contaminate iOS/Android store artifacts |
+| **iOS** | App Store | Mode A only; no Desktop/LockScreen UI; **no jailbreak mentions**; no Mode B dylib; SSH = libssh2 only |
+| **iPadOS** | App Store | Same as iOS for Desktop/Wawona Swinging Bridge store policy + multi-window required |
+| **visionOS** | App Store | Same Mode A / macOS-product GLES+Vulkan parity; no Mode B; multi-window required |
+| **tvOS** | App Store | Mode A GLES (ANGLE to Metal) + Vulkan (MoltenVK to Metal). No IOKit, no Mode B, no KosmicKrisp |
+| **watchOS** | App Store | Software/SHM only. No Metal in the SDK, so no ANGLE/MVK |
+| **Android** | Google Play | Mode A graphics; Home Desktop **without root** when it ships; Wawona Swinging Bridge Mode B never Play-required |
+| **macOS** | **3rd-party** (not MAS) | Mode A default (SIP may stay on). Mode B desktop-host only with SIP **fully disabled** (`csrutil disable`). Partial SIP is refused. Never contaminate iOS/Android store artifacts |
 
 ### Store-compliance checklist (assert per store build)
 
 1. **No Mode B artifacts** in App Store IPA / Play AAB/APK (no
    `libwayland-mac.dylib`, no inject, no `framebufferd`).
 2. **No SIP disablement / root** required for any store-listed feature
-   (including kmscube, waypipe, Android Home Desktop).
+   (including kmscube, waypipe, Android Home Desktop when shipped).
 3. **Private API / entitlement firewall:** Mode A present = public
    Metal/UIKit/AppKit/Surface + userland DRM shims only.
-4. **tvOS/watchOS:** software Mode A only — never "fix" compliance by shipping
-   GPU stacks.
+4. **watchOS:** software Mode A only. Never "fix" the missing Metal SDK with
+   private API or SpriteKit. **tvOS:** Mode A ANGLE + MoltenVK is required;
+   never IOKit or Mode B.
 5. **visionOS/iPadOS:** store Mode A meets multi-window + product GLES/Vulkan
    expectations without Mode B.
 6. **Shared Nix/xcodegen:** gate Mode B + desktop-host dylibs so store schemes
    cannot link them; `verify-iland-mode-b-bundle.sh` is the evidence.
 7. **macOS 3rd-party:** may ship desktop-host flavor separately; never reuse
    its packaging for iOS/Android store builds.
+8. **No jailbreak language** in App Store iOS binaries or metadata.
 
 Leak vectors to watch (from graphics-stack epic R7): manual packaging copying
 the dylib; sharing iOS GPU post-build phases onto tv/watch; adding IOKit
@@ -159,11 +363,11 @@ format/size) are tracked in [`iland-graphics-progress.md`](iland-graphics-progre
 ## Agent / Cursor rules
 
 - Workspace: `.cursor/rules/wawona-iland-mode-b-desktop.mdc` (alwaysApply)
+- Wawona Swinging Bridge: `.cursor/rules/wawona-swinging-bridge.mdc`
 - Wawona repo: `Wawona/.cursor/rules/wawona-iland-mode-b-desktop.mdc`
 - Repo DAG: `.cursor/rules/wawona-repo-dag.mdc` (+ Wawona repo mirror);
   canonical `docs/wwn-repo-dag.md`
-- Platform matrix: `.cursor/rules/wawona-platform-targets.mdc` (Desktop /
-  LockScreen / anowaW = macOS + Android only)
+- Platform matrix: `.cursor/rules/wawona-platform-targets.mdc`
 - tvOS/watchOS GL stubs: `.cursor/rules/wwn-iland-apple-fallback.mdc`
 - Agent entry: `Wawona/AGENTS.md`, `wwn-iland/AGENTS.md`
 - Graphics-stack progress + capability matrix:

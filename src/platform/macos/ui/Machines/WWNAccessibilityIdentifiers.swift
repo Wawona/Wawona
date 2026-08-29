@@ -16,13 +16,24 @@ enum WWNA11y {
   static let machinesEdit = "wwn.machines.edit"
   static let machinesDelete = "wwn.machines.delete"
 
+  static let machinesEditor = "wwn.machines.editor"
+  static let machinesEditorSave = "wwn.machines.editor.save"
+  static let machinesEditorCancel = "wwn.machines.editor.cancel"
+  static let machinesEditorName = "wwn.machines.editor.name"
+  static let machinesEditorType = "wwn.machines.editor.type"
+  static let machinesEditorContainerRef = "wwn.machines.editor.container.ref"
+  static let machinesEditorContainerCommand = "wwn.machines.editor.container.command"
+  static let machinesEditorContainerDesktop = "wwn.machines.editor.container.desktop"
+  static let machinesEditorContainerHub = "wwn.machines.editor.container.hub"
+  static let machinesContainerImages = "wwn.machines.container.images"
+
   static func machinesCard(_ machineId: String) -> String {
     "wwn.machines.card.\(machineId)"
   }
 
   /// Human label for a card and its actions. Profiles created without a name are
   /// stored as the literal "Unnamed Machine", so the name alone is not
-  /// distinguishing — the visible subtitle (what the machine runs, e.g. "OpenGL
+  /// distinguishing. The visible subtitle (what the machine runs, e.g. "OpenGL
   /// Cube") is what a person reads off the card, and it belongs in the label.
   ///
   /// The action *identifiers* stay shared across cards on purpose: several CI
@@ -37,7 +48,7 @@ enum WWNA11y {
     if trimmedName.isEmpty || trimmedName == "Unnamed Machine" {
       return trimmedSubtitle
     }
-    return "\(trimmedName) — \(trimmedSubtitle)"
+    return "\(trimmedName). \(trimmedSubtitle)"
   }
 
   static let settingsRoot = "wwn.settings.root"
@@ -67,7 +78,7 @@ extension View {
   /// Same, for a view that *contains* other labelled elements. A plain
   /// `accessibilityLabel` on a container is inherited by its whole subtree, so
   /// every button inside a machine card came back to XCUITest labelled with the
-  /// card's own text — eleven identical matches, none pressable by name.
+  /// card's own text. Eleven identical matches, none pressable by name.
   /// `children: .contain` keeps the descendants addressable with their own
   /// labels while the container stays findable.
   func wwnA11yContainer(_ id: String, label: String) -> some View {

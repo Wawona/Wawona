@@ -81,7 +81,7 @@ impl Dispatch<WpCommitTimingManagerV1, ()> for CompositorState {
 }
 
 // ============================================================================
-// wp_commit_timer_v1 — user data is surface_id: u32
+// wp_commit_timer_v1. User data is surface_id: u32
 // ============================================================================
 
 impl Dispatch<WpCommitTimerV1, u32> for CompositorState {

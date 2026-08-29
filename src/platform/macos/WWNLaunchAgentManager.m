@@ -60,6 +60,9 @@ static NSString *const kWWNAppLaunchAgentLabel =
 - (NSDictionary *)compositorAgentPlist {
   NSString *execPath = [self mainExecutablePath];
   uid_t uid = getuid();
+  // Login KeepAlive for Mode A nested compositors only. --compositor-host
+  // must never Classic-engage (unload WindowServer). Take Over is
+  // Settings / menubar Replace now, per session.
   return @{
     @"Label" : kWWNCompositorAgentLabel,
     @"ProgramArguments" : @[ execPath, @"--compositor-host" ],
@@ -93,9 +96,13 @@ static NSString *const kWWNAppLaunchAgentLabel =
     bundlePath = @"/Applications/Wawona.app";
   }
   uid_t uid = getuid();
+  // Open the exact bundle path. `open -a` looks up by name and can pick a
+  // stale copy (Documents/ahaha 0.2.2 dyld-aborts on a vanished pixman
+  // dylib). Install boots this agent out; keep the same path rule if it
+  // is ever rewritten from Settings.
   return @{
     @"Label" : kWWNAppLaunchAgentLabel,
-    @"ProgramArguments" : @[ [self openToolPath], @"-a", bundlePath ],
+    @"ProgramArguments" : @[ [self openToolPath], bundlePath ],
     @"RunAtLoad" : @YES,
     @"KeepAlive" : @NO,
     @"StandardOutPath" : [NSString stringWithFormat:@"/tmp/wawona-applaunch-%u.log", uid],
@@ -264,11 +271,9 @@ static NSString *const kWWNAppLaunchAgentLabel =
 }
 
 - (BOOL)restartCompositorAgent {
-  NSError *menuError = nil;
-  (void)[self ensureMenuBarAgent:&menuError];
-  BOOL compositor = [self kickstartLabel:kWWNCompositorAgentLabel];
-  BOOL menu = [self kickstartLabel:kWWNMenuBarAgentLabel];
-  return compositor && menu;
+  // Restart the compositor host only. Kickstarting the menubar agent here
+  // would kill the applet that is showing Restarting.
+  return [self kickstartLabel:kWWNCompositorAgentLabel];
 }
 
 - (BOOL)stopCompositorAgent {

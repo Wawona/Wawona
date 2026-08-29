@@ -24,7 +24,7 @@ on:
       - "flake.lock"
       - ".agent-device/**"
       - "scripts/agent-device-smoke.sh"
-      # SSH stack (libssh2 CLI / OpenSSH Android / Settings) — sparse shell-cli replay
+      # SSH stack (libssh2 CLI / OpenSSH Android / Settings). Sparse shell-cli replay
       - "src/platform/android/android_jni.c"
       - "src/platform/macos/ui/Settings/WWNPreferences.m"
       - "src/platform/macos/ui/Settings/WWNPreferencesManager.m"
@@ -36,6 +36,7 @@ on:
       - "scripts/agent-device-fuzzel-smoke.sh"
       - "scripts/agent-device-set-niri-android.sh"
       - "scripts/agent-device-set-niri-ios.sh"
+      - "scripts/agent-device-set-client-ios.sh"
       - "scripts/niri-smoke-macos.sh"
       - "scripts/niri-fuzzel-smoke-macos.sh"
       - "scripts/applications-catalog-smoke.sh"
@@ -170,7 +171,7 @@ jobs:
       id-token: write
       actions: read
 
-  # Advisory memory plateau — reuses product-* artifacts (no second product-build).
+  # Advisory memory plateau. Reuses product-* artifacts (no second product-build).
   # Soft-fail lives inside leak-idle-gate.yml (continue-on-error is invalid on uses: callers).
   leak-idle:
     name: "Watch: idle memory"

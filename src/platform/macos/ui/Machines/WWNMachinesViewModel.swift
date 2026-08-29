@@ -16,6 +16,7 @@ typealias WWNPlatformImage = UIImage
 @objc enum WWNMachineTransientStatus: Int, CaseIterable {
   case disconnected
   case connecting
+  case preparing
   case connected
   case degraded
   case error
@@ -24,6 +25,7 @@ typealias WWNPlatformImage = UIImage
     switch self {
     case .disconnected: return "Disconnected"
     case .connecting: return "Connecting"
+    case .preparing: return "Compiling backend"
     case .connected: return "Connected"
     case .degraded: return "Degraded"
     case .error: return "Error"
@@ -37,13 +39,16 @@ struct BundledClient: Identifiable, Hashable {
   let prefsKey: String
   let icon: String
   let description: String
-  /// ANGLE / iland / Vulkan demos — hidden when PlatformCapabilities.allowsGpuStack is false.
+  /// ANGLE / iland / Vulkan demos. Hidden when PlatformCapabilities.allowsGpuStack is false.
   var requiresGpuStack: Bool = false
 }
 
-/// Bundled clients visible on this platform (GPU demos omitted on tvOS/watchOS).
+/// Bundled clients visible on this platform (GPU demos omitted on watchOS).
 var kBundledClients: [BundledClient] {
   kAllBundledClients.filter { client in
+    if PlatformCapabilities.glesClientIds.contains(client.id) {
+      return PlatformCapabilities.openGLDriverEnabled
+    }
     if client.requiresGpuStack {
       return PlatformCapabilities.allowsGpuStack
     }
@@ -57,7 +62,7 @@ let kAllBundledClients: [BundledClient] = [
     name: "Weston Terminal",
     prefsKey: "WestonTerminalEnabled",
     icon: "terminal",
-    description: "Terminal emulator — uses host cursor"
+    description: "Terminal emulator. Uses host cursor"
   ),
   BundledClient(
     id: "weston-simple-shm",
@@ -67,18 +72,25 @@ let kAllBundledClients: [BundledClient] = [
     description: "Minimal shared-memory Wayland client"
   ),
   BundledClient(
+    id: "wawona-wasm",
+    name: "Wawona Runtime (.wasm)",
+    prefsKey: "WawonaWasmEnabled",
+    icon: "doc.badge.gearshape",
+    description: "Wayland WASI module from the filesystem (Wawona Runtime)"
+  ),
+  BundledClient(
     id: "weston",
     name: "Weston",
     prefsKey: "WestonEnabled",
     icon: "rectangle.on.rectangle",
-    description: "Wayland reference compositor (nested compositor)"
+    description: "Wayland reference compositor. Nested Wayland or iland DRM/KMS (Display Backend). Mode B Take Over uses DRM."
   ),
   BundledClient(
     id: "niri",
     name: "Niri",
     prefsKey: "NiriEnabled",
     icon: "rectangle.split.3x1",
-    description: "Scrollable-tiling compositor (nested compositor)"
+    description: "Scrollable-tiling compositor. Nested Wayland or iland DRM/KMS (Display Backend). Mode B Take Over uses DRM."
   ),
   BundledClient(
     id: "foot",
@@ -107,7 +119,7 @@ let kAllBundledClients: [BundledClient] = [
     name: "GBM ES2 Demo",
     prefsKey: "GbmEs2DemoEnabled",
     icon: "cube.fill",
-    description: "ds-hwang gbm_es2_demo — DRM/GBM/GLES2 over iland (KMS)",
+    description: "ds-hwang gbm_es2_demo. DRM/GBM/GLES2 over iland (KMS)",
     requiresGpuStack: true
   ),
   BundledClient(
@@ -123,7 +135,7 @@ let kAllBundledClients: [BundledClient] = [
     name: "Vulkan Cube",
     prefsKey: "VkcubeEnabled",
     icon: "cube",
-    description: "Vulkan API smoke test",
+    description: "Vulkan cube. Mode A: Wayland client. Mode B Take Over: vkcube-kms (iland DRM/KMS/GBM).",
     requiresGpuStack: true
   ),
   BundledClient(
@@ -221,10 +233,18 @@ let kAllBundledClients: [BundledClient] = [
 ]
 
 let kNativeClientCustomId = "custom"
+/// Per-machine Wayland client: Wawona Runtime interprets a `.wasm` document.
+let kNativeClientWasmId = "wawona-wasm"
+/// `runtimeOverrides` key for the selected module path (absolute or Documents-relative).
+let kRuntimeWasmModulePathKey = "wasmModulePath"
 
 /// Posted by `WWNWaypipeRunner` when a bundled native `NSTask` exits (quit, crash, or Stop).
 private let wwnNativeClientProcessDidTerminateNotification = Notification.Name(
   "WWNNativeClientProcessDidTerminateNotification")
+private let wwnContainerBackendDidBecomeReadyNotification = Notification.Name(
+  "WWNContainerBackendDidBecomeReadyNotification")
+private let wwnContainerBackendDidStopNotification = Notification.Name(
+  "WWNContainerBackendDidStopNotification")
 
 @MainActor
 final class WWNMachinesViewModel: ObservableObject {
@@ -237,6 +257,9 @@ final class WWNMachinesViewModel: ObservableObject {
   #endif
 
   private var nativeProcessTerminateObserver: NSObjectProtocol?
+  private var containerReadyObserver: NSObjectProtocol?
+  private var containerStopObserver: NSObjectProtocol?
+  private var pendingContainerConnectCallbacks: [String: () -> Void] = [:]
 
   init() {
     reload()
@@ -250,11 +273,35 @@ final class WWNMachinesViewModel: ObservableObject {
         self?.syncNativeConnectionStatusFromRunner()
       }
     }
+    containerReadyObserver = NotificationCenter.default.addObserver(
+      forName: wwnContainerBackendDidBecomeReadyNotification,
+      object: nil,
+      queue: .main
+    ) { [weak self] note in
+      Task { @MainActor [weak self] in
+        self?.handleContainerReady(note)
+      }
+    }
+    containerStopObserver = NotificationCenter.default.addObserver(
+      forName: wwnContainerBackendDidStopNotification,
+      object: nil,
+      queue: .main
+    ) { [weak self] note in
+      Task { @MainActor [weak self] in
+        self?.handleContainerStop(note)
+      }
+    }
   }
 
   deinit {
     if let nativeProcessTerminateObserver {
       NotificationCenter.default.removeObserver(nativeProcessTerminateObserver)
+    }
+    if let containerReadyObserver {
+      NotificationCenter.default.removeObserver(containerReadyObserver)
+    }
+    if let containerStopObserver {
+      NotificationCenter.default.removeObserver(containerStopObserver)
     }
   }
 
@@ -275,6 +322,10 @@ final class WWNMachinesViewModel: ObservableObject {
   }
 
   func reload() {
+    // Swift persist leftover OpenGLDriver=none → ANGLE, then ObjC profile JSON
+    // rewrite. Machines UI on tvOS never created WawonaPreferences otherwise.
+    _ = WawonaPreferences.shared
+    _ = WWNPreferencesManager.shared()
     profiles = WWNMachineProfileStore.loadProfiles()
     for profile in profiles {
       if statusByMachineId[profile.machineId] == nil {
@@ -312,11 +363,13 @@ final class WWNMachinesViewModel: ObservableObject {
   }
 
   func connect(_ profile: WWNMachineProfile, onConnected: (() -> Void)? = nil) {
-    statusByMachineId[profile.machineId] = .connecting
+    let isContainer = profile.type == kWWNMachineTypeContainer
+    statusByMachineId[profile.machineId] =
+      isContainer ? .preparing : .connecting
 
     #if os(iOS) || os(tvOS) || os(visionOS)
     // Native Wayland clients may run concurrently. VM / waypipe / container
-    // backends still share a single in-process engine on mobile — stop those
+    // backends still share a single in-process engine on mobile. Stop those
     // before switching. Never tear down an unrelated native client.
     if profile.type != kWWNMachineTypeNative {
       for other in profiles where other.machineId != profile.machineId &&
@@ -326,7 +379,7 @@ final class WWNMachinesViewModel: ObservableObject {
     }
     #endif
     // Native clients (and macOS VM/container NSTasks) are tracked per
-    // machineId — connecting one must never tear down another.
+    // machineId. Connecting one must never tear down another.
 
     // VM (wwn-vms) and container (wwn-containers) profiles are driven through the
     // session bridge, which delegates to WWNVirtualMachineRunner /
@@ -339,17 +392,46 @@ final class WWNMachinesViewModel: ObservableObject {
       return
     }
 
+    if isContainer {
+      pendingContainerConnectCallbacks[profile.machineId] = onConnected
+    }
+
     do {
-      // ObjC `+ (BOOL)connectProfile:error:` imports to Swift as the throwing
-      // method `connect(_:)` (error-peeling + trailing-noun drop).
       try WWNMachineSessionBridge.connect(profile)
     } catch {
       statusByMachineId[profile.machineId] = .error
+      pendingContainerConnectCallbacks.removeValue(forKey: profile.machineId)
+      return
+    }
+
+    if isContainer {
+      // Stay "Compiling backend" until WWNContainerRunner reports the VM is
+      // booted (WWNContainerBackendDidBecomeReadyNotification).
       return
     }
 
     statusByMachineId[profile.machineId] = .connected
     onConnected?()
+  }
+
+  private func handleContainerReady(_ note: Notification) {
+    guard let machineId = note.userInfo?["machineId"] as? String else { return }
+    guard status(for: machineId) == .preparing else { return }
+    statusByMachineId[machineId] = .connected
+    let callback = pendingContainerConnectCallbacks.removeValue(forKey: machineId)
+    callback?()
+  }
+
+  private func handleContainerStop(_ note: Notification) {
+    guard let machineId = note.userInfo?["machineId"] as? String else { return }
+    // If it never reached ready, the backend failed to boot (e.g. kernel or
+    // initfs compile error) rather than a clean stop.
+    let failedToBecomeReady = status(for: machineId) == .preparing
+    statusByMachineId[machineId] = failedToBecomeReady ? .error : .disconnected
+    pendingContainerConnectCallbacks.removeValue(forKey: machineId)
+    if WWNMachineProfileStore.activeMachineId() == machineId {
+      WWNMachineProfileStore.setActiveMachineId(nil)
+    }
   }
 
   func disconnect(_ profile: WWNMachineProfile) {
@@ -582,6 +664,13 @@ final class WWNMachinesViewModel: ObservableObject {
       let cmd = (profile.settingsOverrides as [String: Any])["NativeCustomCommand"] as? String ?? ""
       return cmd.isEmpty ? "Custom command" : cmd
     }
+    if clientId == kNativeClientWasmId {
+      let path = (profile.runtimeOverrides as [String: Any])[kRuntimeWasmModulePathKey] as? String ?? ""
+      if !path.isEmpty {
+        return (path as NSString).lastPathComponent
+      }
+      return "Wawona Runtime (.wasm)"
+    }
     return kBundledClients.first { $0.id == clientId }?.name
   }
 
@@ -591,7 +680,7 @@ final class WWNMachinesViewModel: ObservableObject {
       if let clientName = selectedClientName(for: profile) {
         return "Runs: \(clientName)"
       }
-      return "No client configured — edit to select one"
+      return "No client configured. Edit to select one"
     case kWWNMachineTypeSSHWaypipe:
       let command = profile.remoteCommand.isEmpty ? "weston-simple-shm" : profile.remoteCommand
       return "Waypipe command: \(command)"

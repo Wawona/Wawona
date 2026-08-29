@@ -35,7 +35,7 @@ stop_agent_device_daemons() {
 assert_log_has() {
   local file="$1" pattern="$2" label="$3"
   if ! rg -q "$pattern" "$file"; then
-    echo "FAIL: $label — expected /$pattern/ in $file" >&2
+    echo "FAIL: $label. Expected /$pattern/ in $file" >&2
     rg -i 'fuzzel|niri|spawn|XDG_DATA|desktop' "$file" | head -40 || true
     exit 1
   fi
@@ -83,7 +83,7 @@ run_android_fuzzel() {
   local desks
   desks="$(adb -s "$serial" shell 'run-as com.aspauldingcode.wawona sh -c "ls files/wawona-rootfs/usr/share/applications 2>/dev/null | wc -l"' | tr -d '[:space:]')"
   if [[ "${desks:-0}" -lt 3 ]]; then
-    # Fresh install: rootfs extracts on first launch — open once then recheck.
+    # Fresh install: rootfs extracts on first launch. Open once then recheck.
     adb -s "$serial" shell am start -n com.aspauldingcode.wawona/.MainActivity >/dev/null
     sleep 6
     adb -s "$serial" shell am force-stop com.aspauldingcode.wawona
@@ -129,7 +129,7 @@ run_android_fuzzel() {
     return 1
   }
   android_dismiss_welcome() {
-    # Single pass only — CI fail-fast; no smoke/control retries.
+    # Single pass only. CI fail-fast; no smoke/control retries.
     if android_uia_has_id "wwn.machines.root" || android_uia_has_text "Machine Configuration"; then
       return 0
     fi
@@ -321,7 +321,7 @@ run_android_fuzzel() {
     | sed -n 's/.*listening on Wayland socket: //p' | tail -1 | awk '{print $1}')"
   runtime_listing="$(adb -s "$serial" shell "run-as com.aspauldingcode.wawona sh -c 'ls -1 \"$xdg\" 2>/dev/null'" | tr -d '\r' || true)"
   if [[ -z "$nested" ]]; then
-    # Socket entries may appear as wayland-N or wayland-N.lock — never use .lock.
+    # Socket entries may appear as wayland-N or wayland-N.lock. Never use .lock.
     nested="$(printf '%s\n' "$runtime_listing" | sed 's/\.lock$//' \
       | grep -E '^wayland-[0-9]+$' | grep -v '^wayland-0$' | sort -u | head -1 || true)"
   fi
@@ -433,7 +433,7 @@ run_ios_fuzzel() {
   agent-device open com.aspauldingcode.Wawona --platform ios --device "$IOS_DEVICE" \
     --session "$session" || true
   sleep 1
-  # Try accessory Alt then D; ignore failures — catalog/process checks below.
+  # Try accessory Alt then D; ignore failures. Catalog/process checks below.
   agent-device press "Alt" --session "$session" 2>/dev/null \
     || agent-device press 48 820 --session "$session" 2>/dev/null \
     || true

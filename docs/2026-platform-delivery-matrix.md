@@ -1,4 +1,4 @@
-# Wawona — Per-Platform Wayland Delivery Matrix
+# Wawona. Per-Platform Wayland Delivery Matrix
 
 How a Wayland client's pixels reach the screen on each target. Three delivery
 modes exist; a platform may support several. Scope authority:
@@ -6,16 +6,17 @@ modes exist; a platform may support several. Scope authority:
 
 ## Delivery modes
 
-- **native** — client connects directly to the Wawona compositor socket
+- **native**. Client connects directly to the Wawona compositor socket
   (`$WAYLAND_DISPLAY`) running in-process. Buffers are `wl_shm` (CPU) or, where
   supported, IOSurface/AHardwareBuffer-backed dmabuf. Compositor composites into
   the platform present layer.
-- **nested** — a bundled Weston runs as a child compositor on its own
+- **nested**. A bundled Weston runs as a child compositor on its own
   `wayland-N` socket; its output is a single client surface into Wawona. Used for
   full desktop sessions and XWayland on non-store builds.
-- **waypipe** — client runs remotely (or in a VM); `waypipe` proxies the Wayland
-  protocol over SSH (libssh2 on iOS, Dropbear on Android) or vsock. GPU transport
-  requires a Vulkan ICD; without one we force `--no-gpu` SHM transport.
+- **waypipe**. Client runs remotely (or in a VM); `waypipe` proxies the Wayland
+  protocol over SSH (libssh2 on Apple mobile, OpenSSH portable on Android,
+  OpenSSH on macOS) or vsock. GPU transport requires a Vulkan ICD; without one
+  we force `--no-gpu` SHM transport.
 
 ## Matrix
 
@@ -25,21 +26,21 @@ modes exist; a platform may support several. Scope authority:
 | iOS / iPadOS | ✅ | ✅ | ✅ (libssh2) | native |
 | tvOS | ⚠️ focus-only | ✅ | ✅ | nested |
 | visionOS | ✅ | ✅ | ✅ | native |
-| watchOS | ❌ | ❌ | ✅ **remote-only** | waypipe |
-| Android | ✅ | ✅ | ✅ (Dropbear) | native |
+| watchOS | ✅ (SHM/CPU) | ✅ | ✅ (libssh2) | native |
+| Android | ✅ | ✅ | ✅ (OpenSSH portable) | native |
 | Linux (host) | client-to-host | ✅ | ✅ | client-to-host |
 
 Legend: ✅ supported · ⚠️ limited · ❌ not offered.
 
 ## Platform notes
 
-### watchOS — remote-only
-No local compositor session. Only a waypipe client to a remote host is offered;
-local shell and XWayland toggles are removed (see
-[WATCHOS-SCOPE](./ios-local-shell/WATCHOS-SCOPE.md)). Present path is still
-CAMetalLayer for the mirrored remote surface.
+### watchOS. Native + remote; GPU blocked
+The compositor runs natively (SHM/CPU present; no public Metal). Waypipe remote
+sessions are also offered. Local zsh is constrained (no coreutils). See
+[WATCHOS-SCOPE](./ios-local-shell/WATCHOS-SCOPE.md) and
+[`2026-SOURCE-OF-TRUTH.md`](./2026-SOURCE-OF-TRUTH.md).
 
-### tvOS — focus model
+### tvOS. Focus model
 No absolute pointer. Input is driven by the UIKit focus engine and
 `GCController`; a virtual pointer can be moved by the remote/siri controller.
 Clients that require a real pointer should run through the virtual-pointer path.

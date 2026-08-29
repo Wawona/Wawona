@@ -1,6 +1,6 @@
 # Security and Spawn Policy
 
-**Non-negotiable rules** for App Store–compliant local shell execution in Wawona. Any PR touching spawn, rootfs, or download code must cite this document.
+**Non-negotiable rules** for App Store-compliant local shell execution in Wawona. Any PR touching spawn, rootfs, or download code must cite this document.
 
 ---
 
@@ -14,7 +14,7 @@
 | **T4 Writable bundle tampering** | Modified binaries inside `.app` after install |
 | **T5 Data exfiltration** | Shell reads outside container without user action |
 
-We mitigate T1–T4 in code. T5 is sandbox + user consent for file picker / share.
+We mitigate T1-T4 in code. T5 is sandbox + user consent for file picker / share.
 
 ---
 
@@ -66,7 +66,7 @@ Before spawn, child environment is **constructed**, not inherited wholesale:
 |----------|--------|
 | `HOME`, `ZDOTDIR`, `PATH`, `TERM`, `WAWONA_*` | Wawona-set only |
 | `WAYLAND_*`, `XDG_RUNTIME_DIR` | Compositor layer (existing) |
-| `DYLD_*`, `LD_*` | **Strip** — do not pass |
+| `DYLD_*`, `LD_*` | **Strip**. Do not pass |
 | `SSH_*` | Not needed for local shell |
 
 ---
@@ -106,7 +106,7 @@ Local and remote paths must not share spawn functions.
 On `stopActiveIOSBundledClient` / session close:
 
 1. Send SIGHUP to shell process group (if supported)
-2. `wwn_pty_reap` — waitpid, close master fd
+2. `wwn_pty_reap`. Waitpid, close master fd
 3. Clear `WAWONA_SHELL` from env if reused for next session
 
 Prevents zombie shells and fd leaks (jetsam risk).

@@ -1,14 +1,14 @@
 # Launcher Panel + Bonjour Discovery ([#32](https://github.com/Wawona/Wawona/issues/32))
 
-Design and status for a dedicated connection launcher — an SSH-client-style
-control panel for creating and switching between many connections — plus
+Design and status for a dedicated connection launcher. An SSH-client-style
+control panel for creating and switching between many connections. Plus
 zero-config discovery of reachable hosts on the local network.
 
 ## Goal
 
 Today a connection is configured largely through Settings. Issue #32 asks for a
 first-class launcher: users open Wawona, see their saved machines, discover new
-ones on the LAN, and start a session in one or two taps — without treating
+ones on the LAN, and start a session in one or two taps. Without treating
 Settings as the primary connection surface.
 
 ## Model reuse (no schema change)
@@ -56,7 +56,7 @@ Resolution yields host + port + TXT metadata, which maps directly onto
 
 ## Status and scope
 
-- [x] Design recorded (this doc); model reuse confirmed — no new persisted schema.
+- [x] Design recorded (this doc); model reuse confirmed. No new persisted schema.
 - [ ] Apple `NWBrowser` discovery service in `WawonaModel` (publishes an
       observable list of `DiscoveredHost`), unit-testable in isolation.
 - [ ] Info.plist `NSBonjourServices` + `NSLocalNetworkUsageDescription` wiring.

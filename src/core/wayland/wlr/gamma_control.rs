@@ -1,4 +1,4 @@
-//! zwlr_gamma_control_manager_v1 — gamma table adjustment (night light, redshift).
+//! zwlr_gamma_control_manager_v1. Gamma table adjustment (night light, redshift).
 //! Platform applies via CGSetDisplayTransferByTable on macOS.
 
 use std::os::unix::io::AsRawFd;

@@ -7,6 +7,7 @@
 #import "../macos/ui/Machines/WWNMachineProfileStore.h"
 #import "../../util/WWNLog.h"
 #import "WWNCompositorBridge.h"
+#import "WWNGameControllerManager.h"
 #import <GameController/GameController.h>
 #import <QuartzCore/QuartzCore.h>
 #import <TargetConditionals.h>
@@ -18,6 +19,10 @@ extern ssize_t wwn_ios_terminal_inject(const void *buf, size_t len);
 
 NSNotificationName const WWNHostKeyboardGeometryDidChangeNotification =
     @"WWNHostKeyboardGeometryDidChangeNotification";
+NSNotificationName const WWNTvRequestSessionExitNotification =
+    @"WWNTvRequestSessionExitNotification";
+NSNotificationName const WWNTvKeyboardFocusDidChangeNotification =
+    @"WWNTvKeyboardFocusDidChangeNotification";
 
 // ===========================================================================
 // UITextPosition / UITextRange subclasses for UITextInput
@@ -509,16 +514,17 @@ typedef NS_ENUM(NSInteger, WWNKeyboardPipDockSide) {
 static const CGFloat kTapMovementThreshold = 12.0;
 // Duration less than this many seconds → short tap (left click at cursor)
 static const NSTimeInterval kTapDurationThreshold = 0.35;
-// Tap+hold drag: a radial indicator appears at this delay and fills until the
-// engage delay, at which point a sustained LMB-down (drag) engages.
-static const NSTimeInterval kDragArmShowDelay = 0.5;
-static const NSTimeInterval kDragEngageDelay = 1.0;
+// Tap+hold drag: radial appears after it is no longer a fast tap, then LMB
+// engages. Must be >= tap duration so a click is still a click; 1s was too
+// slow for nested weston/niri titlebar and resize grabs.
+static const NSTimeInterval kDragArmShowDelay = 0.22;
+static const NSTimeInterval kDragEngageDelay = 0.40;
 // Sensitivity multiplier for touchpad pointer movement
 static const CGFloat kTouchpadSensitivity = 1.5;
 // Scroll multiplier for two-finger drag (wl_fixed-ish units; weston-terminal
 // accumulates ~256 per line).
 static const CGFloat kScrollSensitivity = 12.0;
-// macOS arrow cursor (NSCursor arrowCursor / Tahoe theme) — hotspot at the tip.
+// macOS arrow cursor (NSCursor arrowCursor / Tahoe theme). Hotspot at the tip.
 static const CGSize kTouchpadCursorSize = {28.0, 40.0};
 static const CGFloat kTouchpadCursorHotspotX = 5.0;
 static const CGFloat kTouchpadCursorHotspotY = 5.0;
@@ -532,8 +538,30 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   WWNTouchInputModeTouchpad = 1,
 };
 
+@interface WWNCompositorView_ios ()
+- (void)_hideHostCursorOverlay;
+- (void)_syncHostCursorOverlay;
+- (void)_hostCursorPrefsDidChange:(NSNotification *)note;
+- (BOOL)_hostVirtualCursorOverlayAllowed;
+- (void)_multitouch_setPrimaryPointerButtonPressed:(BOOL)pressed
+                                                at:(CGPoint)loc
+                                         timestamp:(uint32_t)timestampMs;
+@end
+
 #if !TARGET_OS_TV
 @interface WWNCompositorView_ios () <UIPointerInteractionDelegate>
+@end
+#endif
+
+#if TARGET_OS_TV
+/// Corner Keyboard hint. Must not steal Siri Remote focus from the Wayland
+/// surface (Play/Pause toggles the system keyboard).
+@interface WWNTvChromeButton : UIButton
+@end
+@implementation WWNTvChromeButton
+- (BOOL)canBecomeFocused {
+  return NO;
+}
 @end
 #endif
 
@@ -604,6 +632,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   // Multi-Touch: mirror primary finger to wl_pointer for nested desktop-shell
   int32_t _primaryTouchId;
   BOOL _multitouchPointerEntered;
+  BOOL _multitouchPointerButtonDown;
   BOOL _touchpadPointerEntered;
   uint64_t _touchpadPointerWindowId;
   BOOL _waylandFrameOpaque;
@@ -624,7 +653,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   CGFloat _lastContentsScale;
   CGSize _lastWaylandLayoutSize;
 
-  // Physical (hardware) keyboard state — suppresses insertText: when active
+  // Physical (hardware) keyboard state. Suppresses insertText: when active
   NSInteger _pressedPhysicalKeyCount;
   uint32_t _physicalModifiers; // XKB depressed mask from physical keys
 
@@ -647,7 +676,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   BOOL _hostKeyboardReady;
   BOOL _pendingTextEntryWanted;
   BOOL _pendingTextEntryWantedValid;
-  /// User collapsed soft OSK via ⌨↓ — sticky until they expand again.
+  /// User collapsed soft OSK via ⌨↓. Sticky until they expand again.
   /// Prevents terminal text_entry synthesis from immediately re-Expanding.
   BOOL _userCollapsedSoftOsk;
 }
@@ -694,7 +723,13 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 
     // Initialise virtual pointer at center
     _pointerPos = CGPointMake(frame.size.width / 2, frame.size.height / 2);
+#if TARGET_OS_TV
+    // Siri Remote clickpad is the pointing device. Touchpad mode so the
+    // host cursor overlay can appear on non-compositor clients.
+    _currentInputMode = WWNTouchInputModeTouchpad;
+#else
     _currentInputMode = WWNTouchInputModeMultiTouch;
+#endif
 
     // UITextInput proxy state
     _textBuffer = [NSMutableString string];
@@ -703,7 +738,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
     _selectedRange = NSMakeRange(0, 0);
     _textAssistEnabled = [self _readTextAssistEnabled];
 
-    // Cursor layer for touchpad mode — hidden by default.
+    // Cursor layer for touchpad mode. Hidden by default.
     // It renders the Wayland client's cursor image.
     _cursorLayer = [CALayer layer];
     _cursorLayer.bounds =
@@ -715,6 +750,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
     _cursorLayer.zPosition = 10000; // always on top
     _cursorLayer.hidden = YES;
     [self.layer addSublayer:_cursorLayer];
+    [self _syncHostCursorOverlay];
 
     _ilandPresenter = nil;
     _lastPresentToken = 0;
@@ -771,6 +807,12 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
       [self addGestureRecognizer:hover];
     }
 #endif
+
+    [[NSNotificationCenter defaultCenter]
+        addObserver:self
+           selector:@selector(_hostCursorPrefsDidChange:)
+               name:NSUserDefaultsDidChangeNotification
+             object:nil];
 
 #if !TARGET_OS_TV
     NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
@@ -863,7 +905,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 
 - (void)setWaylandPresentationActive:(BOOL)active {
   if (_ilandPresentationActive) {
-    // DRM/Metal nested client owns this view — do not hide or tear Metal.
+    // DRM/Metal nested client owns this view. Do not hide or tear Metal.
     return;
   }
   _waylandFrameView.hidden = !active;
@@ -922,7 +964,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
     CGSize bounds = self.bounds.size;
 #if TARGET_OS_TV
     // 10-foot UI: host-owned surfaces go full-bleed. Client-constrained demos
-    // (flower/smoke 200×200) stay at negotiated size and are centered — same
+    // (flower/smoke 200×200) stay at negotiated size and are centered. Same
     // OWL rule as iPhone/iPad (do not stretch fixed buffers).
     (void)normalizedContentRect;
     if (hostOwnsPresent && bounds.width > 0.0 && bounds.height > 0.0) {
@@ -951,7 +993,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
     } else {
       // Client-constrained (flower/smoke/simple-shm): keep the presentation
       // plate at the client's negotiated size and only move it when the host
-      // UIWindowScene resizes — never upscale the buffer to fill the scene.
+      // UIWindowScene resizes. Never upscale the buffer to fill the scene.
       size_t imgWEarly = CGImageGetWidth(image);
       size_t imgHEarly = CGImageGetHeight(image);
       if (imgWEarly > 0 && imgHEarly > 0 &&
@@ -998,10 +1040,18 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   if (displayScale <= 0.0) {
     displayScale = 1.0;
   }
+  CGRect contentsRect = normalizedContentRect;
+#if TARGET_OS_TV
+  // Host-owned fill: never wrap a sub-rect of the SHM (tiling looks like
+  // mirrored copies of the terminal around the TV).
+  if (hostOwnsPresent) {
+    contentsRect = CGRectMake(0.0, 0.0, 1.0, 1.0);
+  }
+#endif
   NSString *gravity = kCAGravityResize;
   if (!hostOwnsPresent) {
     // Fixed / client-authoritative surfaces: 1:1 buffer pixels in the
-    // presentation plate (TopLeft). iPadOS scene resize only recenters — it
+    // presentation plate (TopLeft). iPadOS scene resize only recenters. It
     // must never change contentsScale or use Resize gravity upscaling.
     gravity = kCAGravityTopLeft;
     BOOL hiDpiBuffer =
@@ -1048,13 +1098,13 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   _waylandFrameView.layer.contentsScale = contentsScale;
   _waylandFrameView.layer.contents = nil;
   _waylandFrameView.layer.contents = (__bridge id)image;
-  _waylandFrameView.layer.contentsRect = normalizedContentRect;
+  _waylandFrameView.layer.contentsRect = contentsRect;
   [CATransaction commit];
 
-  [self _mirrorFrameToExternalDisplay:image contentRect:normalizedContentRect];
+  [self _mirrorFrameToExternalDisplay:image contentRect:contentsRect];
 
   /* Notify the startup log overlay that the first real frame has arrived.
-   * Also arm host keyboard (accessory / soft OSK) — deferred until now so
+   * Also arm host keyboard (accessory / soft OSK). Deferred until now so
    * UIKit cannot stall the first configure/buffer path. */
   if (wasEmpty && image != NULL) {
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -1105,7 +1155,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
       return YES;
     }
     WWNLog(logMod,
-           @"refusing %@ — in-process %@ still owns iland DRM (Stop that "
+           @"refusing %@. In-process %@ still owns iland DRM (Stop that "
            @"machine first)",
            clientId, running);
     return NO;
@@ -1168,7 +1218,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   _contentLayer.drawableSize =
       CGSizeMake(MAX(1.0, self.bounds.size.width * scale),
                  MAX(1.0, self.bounds.size.height * scale));
-  // DRM/GL clients are not text surfaces — keep soft OSK down.
+  // DRM/GL clients are not text surfaces. Keep soft OSK down.
   if (self.isFirstResponder) {
     [self resignFirstResponder];
   }
@@ -1186,6 +1236,15 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   }
   [self.layer insertSublayer:_contentLayer above:_waylandLayer];
   return YES;
+}
+
+- (void)stopIlandMetalPresentation {
+  _ilandPresentationActive = NO;
+  [self _teardownMetalPresentationLayer];
+  _waylandFrameView.hidden = NO;
+  _waylandLayer.hidden = YES;
+  self.opaque = NO;
+  self.backgroundColor = UIColor.clearColor;
 }
 
 - (CAMetalLayer *)contentLayer {
@@ -1238,7 +1297,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
              self.clientCommittedSize.width > 0 &&
              self.clientCommittedSize.height > 0 && layoutSizeChanged) {
     // Client-constrained (flower/smoke/simple-shm): host UIWindowScene resize
-    // must only re-center the presentation plate — never stretch it to the new
+    // must only re-center the presentation plate. Never stretch it to the new
     // compositor bounds (that upscales the buffer via kCAGravityResize).
     CGRect presentFrame = _waylandFrameView.frame;
     presentFrame.size = self.clientCommittedSize;
@@ -1307,6 +1366,9 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 // ---------------------------------------------------------------------------
 
 - (WWNTouchInputMode)_readInputMode {
+#if TARGET_OS_TV
+  return WWNTouchInputModeTouchpad;
+#else
   // With an external display mirrored, the device becomes a trackpad driving
   // the cursor shown on the big screen (pref-gated, default ON).
   if (WWNExternalDisplayIsConnected() &&
@@ -1318,6 +1380,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
     return WWNTouchInputModeTouchpad;
   }
   return WWNTouchInputModeMultiTouch;
+#endif
 }
 
 // ---------------------------------------------------------------------------
@@ -1325,11 +1388,9 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 // ---------------------------------------------------------------------------
 
 - (BOOL)_hardwareKeyboardConnected {
-#if !TARGET_OS_TV
-  if (@available(iOS 14.0, *)) {
+  if (@available(iOS 14.0, tvOS 14.0, *)) {
     return [GCKeyboard coalescedKeyboard] != nil;
   }
-#endif
   return NO;
 }
 
@@ -1381,7 +1442,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
     WWNKeyboardUiMode restore = _keyboardUiModeBeforeExternal;
     if (restore == WWNKeyboardUiModeHiddenExternal ||
         restore == WWNKeyboardUiModePip) {
-      // Soft OSK follows text_entry_wanted — never restore to Expanded by default.
+      // Soft OSK follows text_entry_wanted. Never restore to Expanded by default.
       restore = WWNKeyboardUiModeAccessoryOnly;
     }
     [self _setKeyboardUiMode:restore];
@@ -1410,7 +1471,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
     _hostKeyboardOverlap = overlap;
     kbHeight = CGRectGetHeight(kbScreen);
   }
-  // Soft Expand is owned by text_entry_wanted / user toggle — never promote
+  // Soft Expand is owned by text_entry_wanted / user toggle. Never promote
   // AccessoryOnly→Expanded from UIKeyboardWillShow. Becoming first responder
   // for the accessory bar (weston-simple-shm, flower, …) posts this
   // notification and previously forced the full soft OSK open.
@@ -1419,7 +1480,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
       (_keyboardUiMode == WWNKeyboardUiModeHiddenExternal) || hwAttached;
   if (wantSoftCollapsed && kbHeight > 48.0) {
     // System tried to show a real soft keyboard while HW keyboard is attached
-    // or we only want the accessory bar — reassert collapsed inputView.
+    // or we only want the accessory bar. Reassert collapsed inputView.
     if (_keyboardUiMode == WWNKeyboardUiModeExpanded && hwAttached) {
       _userCollapsedSoftOsk = YES;
       _keyboardUiMode = [self _wantsExtendedKeyboardBar]
@@ -1470,7 +1531,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 - (UIView *)inputAccessoryView {
   if ([self _wantsExtendedKeyboardBar]) {
     // Do not let GCKeyboard (always present on Simulator) force HiddenExternal
-    // mid-query — that returned nil and hid Esc/Ctrl/⌨↓ for weston-terminal.
+    // mid-query. That returned nil and hid Esc/Ctrl/⌨↓ for weston-terminal.
     _hardwareKeyboardActive = [self _hardwareKeyboardConnected];
     if (_keyboardUiMode == WWNKeyboardUiModeHiddenExternal) {
       _keyboardUiMode = WWNKeyboardUiModeAccessoryOnly;
@@ -1501,7 +1562,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 
 /// Build the two-row special key toolbar that sits above the iOS keyboard.
 ///
-/// Row 1: ESC  `  TAB  /  —  ↑  HOME  PGUP  END
+/// Row 1: ESC  `  TAB  / .  ↑  HOME  PGUP  END
 /// Row 2: ⇧  CTRL  ALT  ⌘  ←  ↓  →  PGDN  ⌨↑/⌨↓
 - (UIView *)_buildAccessoryBar {
   CGFloat contentHeight = 80;
@@ -1604,7 +1665,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   UIButton *slashBtn = [self _keyButton:@"/" action:@selector(_tapSlash)];
   slashBtn.tag = kTagKeySlash;
   [row1 addArrangedSubview:slashBtn];
-  UIButton *minusBtn = [self _keyButton:@"—" action:@selector(_tapMinus)];
+  UIButton *minusBtn = [self _keyButton:@"-" action:@selector(_tapMinus)];
   minusBtn.tag = kTagKeyMinus;
   [row1 addArrangedSubview:minusBtn];
   [row1
@@ -1839,7 +1900,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   UIButton *minusBtn = [_accessoryBar viewWithTag:kTagKeyMinus];
   [graveBtn setTitle:(shiftShown ? @"~" : @"`") forState:UIControlStateNormal];
   [slashBtn setTitle:(shiftShown ? @"?" : @"/") forState:UIControlStateNormal];
-  [minusBtn setTitle:(shiftShown ? @"_" : @"—") forState:UIControlStateNormal];
+  [minusBtn setTitle:(shiftShown ? @"_" : @"-") forState:UIControlStateNormal];
 }
 
 - (void)_ensureKeyboardPipButton {
@@ -2312,7 +2373,7 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
                                  locked:(BOOL)locked {
   if (@available(iOS 26, *)) {
 #if !TARGET_OS_TV
-    // Liquid Glass modifier states — translucent tints on glass
+    // Liquid Glass modifier states. Translucent tints on glass
     if (locked) {
       btn.backgroundColor =
           [[UIColor systemBlueColor] colorWithAlphaComponent:0.35];
@@ -2453,6 +2514,22 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
   return YES;
 }
 
+#if TARGET_OS_TV
+- (BOOL)canBecomeFocused {
+  return YES;
+}
+
+- (UIFocusEffect *)focusEffect {
+  // Default tvOS focus lifts the view and draws mirrored copies. That is
+  // chrome for buttons, not a Wayland surface.
+  return nil;
+}
+
+- (NSArray<id<UIFocusEnvironment>> *)preferredFocusEnvironments {
+  return @[ self ];
+}
+#endif
+
 - (BOOL)_readTextAssistEnabled {
   // Match Android default (off): nested Weston and terminals expect wl_keyboard.
   return [[NSUserDefaults standardUserDefaults] boolForKey:@"enableTextAssist"];
@@ -2473,12 +2550,34 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
   _cursorHotspotY = kTouchpadCursorHotspotY;
 }
 
-- (void)_ensureTouchpadCursorVisible {
-  if (_currentInputMode != WWNTouchInputModeTouchpad) {
-    return;
+- (void)_hideHostCursorOverlay {
+  _cursorLayer.contents = nil;
+  _cursorLayer.hidden = YES;
+  [self _broadcastCursorStateToExternalDisplay];
+}
+
+- (BOOL)_hostVirtualCursorOverlayAllowed {
+  return [WWNMachineProfileStore resolvedShowVirtualPointerActive];
+}
+
+- (void)_syncHostCursorOverlay {
+  WWNTouchInputMode mode =
+      (_activeTouchCount > 0) ? _currentInputMode : [self _readInputMode];
+  if (mode != WWNTouchInputModeTouchpad ||
+      ![self _hostVirtualCursorOverlayAllowed]) {
+    [self _hideHostCursorOverlay];
   }
-  if (![WWNMachineProfileStore resolvedShowVirtualPointerActive]) {
-    _cursorLayer.hidden = YES;
+}
+
+- (void)_hostCursorPrefsDidChange:(NSNotification *)note {
+  (void)note;
+  [self _syncHostCursorOverlay];
+}
+
+- (void)_ensureTouchpadCursorVisible {
+  if (_currentInputMode != WWNTouchInputModeTouchpad ||
+      ![self _hostVirtualCursorOverlayAllowed]) {
+    [self _hideHostCursorOverlay];
     return;
   }
   if (!_cursorLayer.contents) {
@@ -2686,7 +2785,7 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
     return;
   }
 
-  // All characters map to keycodes — send as key events (more compatible
+  // All characters map to keycodes. Send as key events (more compatible
   // with clients that only support wl_keyboard, e.g. terminal emulators).
   uint32_t ts = [self _timestampMs];
 
@@ -3137,7 +3236,7 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
 
 - (void)setBaseWritingDirection:(NSWritingDirection)writingDirection
                        forRange:(UITextRange *)range {
-  // No-op — Wayland clients manage their own writing direction.
+  // No-op. Wayland clients manage their own writing direction.
 }
 
 // --- Tokenizer ---
@@ -3162,6 +3261,7 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
 #if TARGET_OS_TV
   [self _ensureTvKeyboardToggleButton];
   [self _updateTvKeyboardToggleTitle];
+  [self _tvosNotifyKeyboardFocusChange];
 #endif
 }
 
@@ -3172,6 +3272,7 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
 #if TARGET_OS_TV
   [self _ensureTvKeyboardToggleButton];
   [self _updateTvKeyboardToggleTitle];
+  [self _tvosNotifyKeyboardFocusChange];
 #endif
 }
 
@@ -3185,6 +3286,7 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
     [self becomeFirstResponder];
   }
   [self _updateTvKeyboardToggleTitle];
+  [self _tvosNotifyKeyboardFocusChange];
 #else
   if (_keyboardUiMode == WWNKeyboardUiModeExpanded) {
     _userCollapsedSoftOsk = YES;
@@ -3241,7 +3343,7 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
 
 - (void)applyHostKeyboardForTextInputEnabled:(BOOL)enabled {
   // Soft Expand/collapse from text_entry_wanted. Do NOT becomeFirstResponder
-  // via `_setKeyboardUiMode` — that stalls configure/buffer delivery.
+  // via `_setKeyboardUiMode`. That stalls configure/buffer delivery.
 #if TARGET_OS_TV
   if (enabled) {
     [self _setKeyboardUiMode:WWNKeyboardUiModeExpanded];
@@ -3252,6 +3354,7 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
   }
   [self _ensureTvKeyboardToggleButton];
   [self _updateTvKeyboardToggleTitle];
+  [self _tvosNotifyKeyboardFocusChange];
   return;
 #else
   if (_keyboardUiMode == WWNKeyboardUiModePip) {
@@ -3265,7 +3368,7 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
     _keyboardUiMode = WWNKeyboardUiModeAccessoryOnly;
   }
   if (!_hostKeyboardReady) {
-    // Stash until first Wayland frame — Expand/FR before that leaves
+    // Stash until first Wayland frame. Expand/FR before that leaves
     // weston-terminal stuck under the startup log with no buffer.
     _pendingTextEntryWanted = enabled;
     _pendingTextEntryWantedValid = YES;
@@ -3278,7 +3381,7 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
   if (!enabled) {
     _userCollapsedSoftOsk = NO;
   }
-  // Re-probe HW keyboard every time — WillShow used to clear the flag and
+  // Re-probe HW keyboard every time. WillShow used to clear the flag and
   // soft-expand incorrectly while a Mac/Bluetooth keyboard stayed attached.
   _hardwareKeyboardActive = [self _hardwareKeyboardConnected];
   // Soft OSK only when no hardware keyboard. Terminals keep AccessoryOnly
@@ -3376,11 +3479,17 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
 }
 
 #if TARGET_OS_TV
+- (void)_tvosNotifyKeyboardFocusChange {
+  [[NSNotificationCenter defaultCenter]
+      postNotificationName:WWNTvKeyboardFocusDidChangeNotification
+                    object:self];
+}
+
 - (void)_ensureTvKeyboardToggleButton {
   if (_tvKeyboardToggleButton) {
     return;
   }
-  _tvKeyboardToggleButton = [UIButton buttonWithType:UIButtonTypeSystem];
+  _tvKeyboardToggleButton = [WWNTvChromeButton buttonWithType:UIButtonTypeSystem];
   _tvKeyboardToggleButton.translatesAutoresizingMaskIntoConstraints = NO;
   _tvKeyboardToggleButton.accessibilityIdentifier = @"wwn.keyboard.toggle";
   _tvKeyboardToggleButton.accessibilityLabel = @"Toggle Keyboard";
@@ -3389,7 +3498,7 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
   cfg.baseBackgroundColor = [UIColor colorWithWhite:0.18 alpha:0.92];
   cfg.baseForegroundColor = UIColor.whiteColor;
   cfg.contentInsets = NSDirectionalEdgeInsetsMake(16, 28, 16, 28);
-  cfg.title = @"⌨ Keyboard";
+  cfg.title = @"Keyboard · Play/Pause";
   cfg.titleTextAttributesTransformer =
       ^NSDictionary<NSAttributedStringKey, id> *(NSDictionary<NSAttributedStringKey, id> *incoming) {
         NSMutableDictionary *out = [incoming mutableCopy] ?: [NSMutableDictionary dictionary];
@@ -3415,7 +3524,7 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
   }
   BOOL open = self.isFirstResponder && _keyboardUiMode == WWNKeyboardUiModeExpanded;
   UIButtonConfiguration *cfg = _tvKeyboardToggleButton.configuration;
-  cfg.title = open ? @"⌨ Hide Keyboard" : @"⌨ Show Keyboard";
+  cfg.title = open ? @"Hide Keyboard · Play/Pause" : @"Keyboard · Play/Pause";
   _tvKeyboardToggleButton.configuration = cfg;
   _tvKeyboardToggleButton.accessibilityLabel = open ? @"Hide Keyboard" : @"Show Keyboard";
 }
@@ -3478,6 +3587,11 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
   if (_currentInputMode == WWNTouchInputModeTouchpad) {
     [self _touchpad_touchesCancelled];
   } else {
+    if (_multitouchPointerButtonDown) {
+      [self _multitouch_setPrimaryPointerButtonPressed:NO
+                                                    at:_prevTouchPoint
+                                             timestamp:[self _timestampMs]];
+    }
     [[WWNCompositorBridge sharedBridge] injectTouchCancel];
   }
   _activeTouchCount = 0;
@@ -3490,8 +3604,14 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
 // Direct 1:1 touch-to-surface mapping via Wayland wl_touch events.
 // Each finger is a separate touch point identified by its hash.
 //
-// Nested Weston desktop-shell only tracks wl_pointer for its cursor and
-// launcher; the primary finger is also mirrored to pointer at touch location.
+// Nested Weston/niri chrome (titlebar move, edge resize) and CSD clients
+// start those grabs from wl_pointer.button BTN_LEFT with a still-held
+// serial (xdg_toplevel.move/resize). Mirroring only motion, then clicking
+// on lift, cannot start a grab. One-finger axis synthesis also stole the
+// drag and turned it into a scroll.
+//
+// Primary finger: wl_touch + pointer enter/motion + BTN_LEFT held.
+// Two fingers: release LMB, wl_pointer.axis scroll, keep wl_touch.
 
 - (void)_multitouch_mirrorPointerAt:(CGPoint)loc
                           timestamp:(uint32_t)timestampMs
@@ -3518,6 +3638,32 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
                              timestamp:timestampMs];
 }
 
+- (void)_multitouch_setPrimaryPointerButtonPressed:(BOOL)pressed
+                                                at:(CGPoint)loc
+                                         timestamp:(uint32_t)timestampMs {
+  if (pressed == _multitouchPointerButtonDown) {
+    return;
+  }
+  if (self.wwnWindowId == 0) {
+    return;
+  }
+  uint64_t targetWindowId = self.wwnWindowId;
+  CGPoint sloc = [self _surfacePointForViewPoint:loc];
+  [self _resolveTargetWindowId:&targetWindowId
+                  surfacePoint:&sloc
+                  forViewPoint:loc];
+  if (pressed) {
+    [self _multitouch_mirrorPointerAt:loc
+                            timestamp:timestampMs
+                         enterIfNeeded:YES];
+  }
+  [[WWNCompositorBridge sharedBridge] injectPointerButtonForWindow:targetWindowId
+                                                            button:BTN_LEFT
+                                                           pressed:pressed
+                                                         timestamp:timestampMs];
+  _multitouchPointerButtonDown = pressed;
+}
+
 - (void)_multitouch_touchesBegan:(NSSet<UITouch *> *)touches
                        withEvent:(UIEvent *)event {
   uint32_t ts = (uint32_t)(event.timestamp * 1000);
@@ -3530,6 +3676,16 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
     _touchStartTime = event.timestamp;
     _touchTotalMovement = 0;
     _multitouchPointerEntered = NO;
+    _scrollActive = NO;
+    if (_multitouchPointerButtonDown) {
+      _multitouchPointerButtonDown = NO;
+    }
+  } else if (_activeTouchCount >= 2) {
+    [self _multitouch_setPrimaryPointerButtonPressed:NO
+                                                  at:_prevTouchPoint
+                                           timestamp:ts];
+    _scrollActive = YES;
+    _prevScrollCenter = [self _centroidOfTouches:event];
   }
 
   for (UITouch *touch in touches) {
@@ -3548,9 +3704,9 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
                                    y:sloc.y
                            timestamp:ts];
     if (touchId == _primaryTouchId) {
-      [self _multitouch_mirrorPointerAt:loc
-                              timestamp:ts
-                           enterIfNeeded:YES];
+      [self _multitouch_setPrimaryPointerButtonPressed:YES
+                                                    at:loc
+                                             timestamp:ts];
     }
   }
   [bridge injectTouchFrame];
@@ -3560,6 +3716,38 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
                        withEvent:(UIEvent *)event {
   uint32_t ts = (uint32_t)(event.timestamp * 1000);
   WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
+
+  if (_activeTouchCount >= 2) {
+    if (_multitouchPointerButtonDown) {
+      [self _multitouch_setPrimaryPointerButtonPressed:NO
+                                                    at:_prevTouchPoint
+                                             timestamp:ts];
+    }
+    _scrollActive = YES;
+    CGPoint center = [self _centroidOfTouches:event];
+    CGFloat dx = (center.x - _prevScrollCenter.x) * kScrollSensitivity;
+    CGFloat dy = (center.y - _prevScrollCenter.y) * kScrollSensitivity;
+    _prevScrollCenter = center;
+    uint64_t axisWindowId = self.wwnWindowId;
+    CGPoint sloc = [self _surfacePointForViewPoint:center];
+    [self _resolveTargetWindowId:&axisWindowId
+                    surfacePoint:&sloc
+                    forViewPoint:center];
+    if (fabs(dy) > 0.5) {
+      [bridge injectPointerAxisForWindow:axisWindowId
+                                    axis:0
+                                   value:-dy
+                                discrete:0
+                               timestamp:ts];
+    }
+    if (fabs(dx) > 0.5) {
+      [bridge injectPointerAxisForWindow:axisWindowId
+                                    axis:1
+                                   value:-dx
+                                discrete:0
+                               timestamp:ts];
+    }
+  }
 
   for (UITouch *touch in touches) {
     CGPoint loc = [touch locationInView:self];
@@ -3574,40 +3762,12 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
                                      x:sloc.x
                                      y:sloc.y
                              timestamp:ts];
-    if (touchId == _primaryTouchId) {
-      // Movement tracking stays in view space (tap threshold is a screen-space
-      // distance); only the injected coordinates are surface-mapped.
+    if (touchId == _primaryTouchId && _activeTouchCount == 1) {
       CGFloat rawDx = loc.x - _prevTouchPoint.x;
       CGFloat rawDy = loc.y - _prevTouchPoint.y;
       _touchTotalMovement += fabs(rawDx) + fabs(rawDy);
       _prevTouchPoint = loc;
       [self _multitouch_mirrorPointerAt:loc timestamp:ts enterIfNeeded:NO];
-
-      // Bundled toytoolkit clients (weston-terminal, etc.) only understand
-      // wl_pointer.axis for scrolling, not wl_touch — without this, a
-      // one-finger drag over such a client just sends touch events it
-      // ignores and nothing scrolls. Synthesize a scroll axis alongside the
-      // raw wl_touch forwarding above so direct-touch drags still scroll
-      // pointer-only clients. Gated to single-finger so it doesn't fight any
-      // future multi-finger gesture handling in this (non-touchpad) mode.
-      if (_activeTouchCount == 1) {
-        CGFloat sdx = rawDx * kScrollSensitivity;
-        CGFloat sdy = rawDy * kScrollSensitivity;
-        if (fabs(sdy) > 0.5) {
-          [bridge injectPointerAxisForWindow:targetWindowId
-                                        axis:0 // vertical
-                                       value:-sdy
-                                    discrete:0
-                                   timestamp:ts];
-        }
-        if (fabs(sdx) > 0.5) {
-          [bridge injectPointerAxisForWindow:targetWindowId
-                                        axis:1 // horizontal
-                                       value:-sdx
-                                    discrete:0
-                                   timestamp:ts];
-        }
-      }
     }
   }
   [bridge injectTouchFrame];
@@ -3617,30 +3777,15 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
                        withEvent:(UIEvent *)event {
   uint32_t ts = (uint32_t)(event.timestamp * 1000);
   WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
-  NSTimeInterval duration = event.timestamp - _touchStartTime;
-  BOOL isShortTap = (_touchTotalMovement < kTapMovementThreshold &&
-                     duration < kTapDurationThreshold);
 
   for (UITouch *touch in touches) {
     int32_t touchId = (int32_t)touch.hash;
     if (touchId == _primaryTouchId) {
       CGPoint loc = [touch locationInView:self];
       [self _multitouch_mirrorPointerAt:loc timestamp:ts enterIfNeeded:NO];
-      if (isShortTap && (NSInteger)touches.count <= 1 && _activeTouchCount <= 1) {
-        uint64_t targetWindowId = self.wwnWindowId;
-        CGPoint sloc = [self _surfacePointForViewPoint:loc];
-        [self _resolveTargetWindowId:&targetWindowId
-                        surfacePoint:&sloc
-                        forViewPoint:loc];
-        [bridge injectPointerButtonForWindow:targetWindowId
-                                      button:BTN_LEFT
-                                     pressed:YES
-                                   timestamp:ts];
-        [bridge injectPointerButtonForWindow:targetWindowId
-                                      button:BTN_LEFT
-                                     pressed:NO
-                                   timestamp:ts + 1];
-      }
+      [self _multitouch_setPrimaryPointerButtonPressed:NO
+                                                    at:loc
+                                             timestamp:ts];
     }
     [bridge injectTouchUpForWindow:self.wwnWindowId
                            touchId:touchId
@@ -3656,9 +3801,8 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
 // Simulates a laptop trackpad:
 //   1 finger drag       → move pointer (relative)
 //   1 finger tap        → left click at virtual cursor (touch location ignored)
-//   1 finger tap+hold   → at 0.5s a radial indicator appears and fills; at 1.0s
-//                         a sustained LMB-down engages so the finger drags, and
-//                         lifting releases LMB
+//   1 finger tap+hold   → radial fills after a fast-tap window; LMB-down engages
+//                         so the finger can drag nested weston/niri chrome
 //   2 finger tap        → right click at virtual cursor
 //   2 finger drag       → scroll (vertical + horizontal)
 //
@@ -3751,7 +3895,8 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
   } else if (_activeTouchCount == 1) {
     _prevTouchPoint = loc;
     _dragging = NO;
-    // Arm the tap-and-hold drag: show the radial at 0.5s, engage at 1.0s.
+    // Arm tap-and-hold drag: radial after kDragArmShowDelay, LMB at
+    // kDragEngageDelay (just past a short tap).
     NSInteger gen = ++_dragGeneration;
     __weak typeof(self) weakSelf = self;
     dispatch_after(
@@ -4283,15 +4428,23 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
 }
 
 - (void)handleEscape:(UIKeyCommand *)command {
+#if TARGET_OS_TV
+  (void)command;
+  [[NSNotificationCenter defaultCenter]
+      postNotificationName:WWNTvRequestSessionExitNotification
+                    object:self];
+  return;
+#else
   uint32_t ts = [self _timestampMs];
   [self _sendKeyPress:KEY_ESC withShift:NO timestamp:ts];
+#endif
 }
 
 /// Translate a hardware-keyboard/remote UIKey into the byte(s) a terminal shell
 /// expects and inject them straight into the fake PTY. wl_keyboard events do not
 /// reach the in-process PTY stdin on Apple mobile (see note above), so hardware
-/// typing — the only text input on tvOS, and hardware keyboards on iOS/iPadOS/
-/// visionOS — must be routed here for weston-terminal + in-process zsh to see
+/// typing. The only text input on tvOS, and hardware keyboards on iOS/iPadOS/
+/// visionOS. Must be routed here for weston-terminal + in-process zsh to see
 /// it. Returns NO for bare modifiers (tracked on the wl_keyboard path) and keys
 /// with no terminal representation. #95
 - (BOOL)_injectHardwareKeyToTerminal:(UIKey *)key keycode:(uint32_t)kc
@@ -4361,15 +4514,101 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
   return NO;
 }
 
+#if TARGET_OS_TV
+static uint32_t tvosPressTypeToLinuxKeycode(UIPressType type) {
+  switch (type) {
+  case UIPressTypeSelect:
+    return KEY_ENTER;
+  case UIPressTypeUpArrow:
+    return KEY_UP;
+  case UIPressTypeDownArrow:
+    return KEY_DOWN;
+  case UIPressTypeLeftArrow:
+    return KEY_LEFT;
+  case UIPressTypeRightArrow:
+    return KEY_RIGHT;
+  default:
+    return KEY_RESERVED;
+  }
+}
+
+- (BOOL)_tvosInjectRemotePresses:(NSSet<UIPress *> *)presses pressed:(BOOL)pressed {
+  WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
+  uint32_t ts = [self _timestampMs];
+  BOOL handled = NO;
+  for (UIPress *press in presses) {
+    if (press.type == UIPressTypePlayPause) {
+      // Dedicated remote button: system keyboard. Space stays on the OSK.
+      if (pressed) {
+        [self toggleKeyboard];
+      }
+      handled = YES;
+      continue;
+    }
+    uint32_t kc = tvosPressTypeToLinuxKeycode(press.type);
+    if (kc == KEY_RESERVED) {
+      continue;
+    }
+    handled = YES;
+    if (press.type == UIPressTypeSelect) {
+      [self clickVirtualPointerButton:BTN_LEFT pressed:pressed];
+    }
+    if (pressed && wwn_ios_terminal_is_active() != 0 && !isModifierKeycode(kc)) {
+      const char *seq = NULL;
+      size_t len = 0;
+      char enter = '\n';
+      switch (press.type) {
+      case UIPressTypeSelect:
+        seq = &enter;
+        len = 1;
+        break;
+      case UIPressTypeUpArrow:
+        seq = "\x1b[A";
+        len = 3;
+        break;
+      case UIPressTypeDownArrow:
+        seq = "\x1b[B";
+        len = 3;
+        break;
+      case UIPressTypeRightArrow:
+        seq = "\x1b[C";
+        len = 3;
+        break;
+      case UIPressTypeLeftArrow:
+        seq = "\x1b[D";
+        len = 3;
+        break;
+      default:
+        break;
+      }
+      if (seq && len > 0) {
+        (void)wwn_ios_terminal_inject(seq, len);
+      }
+    }
+    if (pressed) {
+      [self _sendKeyboardEnterIfNeeded];
+    }
+    [bridge injectKeyWithKeycode:kc pressed:pressed timestamp:ts];
+  }
+  return handled;
+}
+#endif
+
 - (void)pressesBegan:(NSSet<UIPress *> *)presses
            withEvent:(UIPressesEvent *)event {
 #if TARGET_OS_TV
-  // Menu has no UIKey — forward to the host VC for long-press exit / Escape.
+  // Do not call super for Menu. UIView eats it as a no-op / system back and
+  // the host VC never sees a short or long press.
   for (UIPress *press in presses) {
     if (press.type == UIPressTypeMenu) {
-      [super pressesBegan:presses withEvent:event];
+      [[NSNotificationCenter defaultCenter]
+          postNotificationName:WWNTvRemoteMenuBeganNotification
+                        object:self];
       return;
     }
+  }
+  if ([self _tvosInjectRemotePresses:presses pressed:YES]) {
+    return;
   }
 #endif
   if (@available(iOS 13.4, *)) {
@@ -4432,9 +4671,14 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
 #if TARGET_OS_TV
   for (UIPress *press in presses) {
     if (press.type == UIPressTypeMenu) {
-      [super pressesEnded:presses withEvent:event];
+      [[NSNotificationCenter defaultCenter]
+          postNotificationName:WWNTvRemoteMenuEndedNotification
+                        object:self];
       return;
     }
+  }
+  if ([self _tvosInjectRemotePresses:presses pressed:NO]) {
+    return;
   }
 #endif
   if (@available(iOS 13.4, *)) {
@@ -4490,7 +4734,9 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
 #if TARGET_OS_TV
   for (UIPress *press in presses) {
     if (press.type == UIPressTypeMenu) {
-      [super pressesCancelled:presses withEvent:event];
+      [[NSNotificationCenter defaultCenter]
+          postNotificationName:WWNTvRemoteMenuCancelledNotification
+                        object:self];
       return;
     }
   }
@@ -4537,9 +4783,8 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
                    height:(uint32_t)height
                  hotspotX:(float)hotspotX
                  hotspotY:(float)hotspotY {
-  if (![WWNMachineProfileStore resolvedShowVirtualPointerActive]) {
-    _cursorLayer.contents = nil;
-    _cursorLayer.hidden = YES;
+  if (![self _hostVirtualCursorOverlayAllowed]) {
+    [self _hideHostCursorOverlay];
     return;
   }
 

@@ -1,0 +1,62 @@
+name: FlakeHub publish
+
+# Registry releases (not the binary cache).
+# - development push: rolling 0.1.<commit-count> (DAG tips)
+# - vYY.M.D tags / dispatch: CalVer SemVer matching VERSION / GitHub Releases
+# Docs: docs/flakehub-registry.md
+
+on:
+  push:
+    branches: [development]
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+-*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing CalVer tag to publish (e.g. v26.8.12). Empty = rolling from this branch."
+        required: false
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  flakehub-publish:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+      - uses: DeterminateSystems/nix-installer-action@v22
+        with:
+          determinate: true
+          extra-conf: |
+            sandbox = relaxed
+            allow-import-from-derivation = true
+      - uses: DeterminateSystems/flakehub-cache-action@v3
+
+      - name: Publish rolling (development)
+        if: github.ref_type != 'tag' && (github.event.inputs.tag == '' || github.event.inputs.tag == null)
+        uses: DeterminateSystems/flakehub-push@main
+        with:
+          name: Wawona/Wawona
+          rolling: true
+          visibility: public
+          include-output-paths: false
+
+      # Historical vYY.M.D commits still list x86_64-darwin. flakehub-push
+      # otherwise runs `nix flake show --all-systems`, and Nixpkgs 26.11
+      # throws. This flag skips --all-systems (and output inspect); the
+      # uploaded tarball is still the authentic tagged tree.
+      - name: Publish CalVer tag
+        if: github.ref_type == 'tag' || (github.event.inputs.tag != '' && github.event.inputs.tag != null)
+        uses: DeterminateSystems/flakehub-push@main
+        with:
+          name: Wawona/Wawona
+          rolling: false
+          tag: ${{ github.event.inputs.tag || github.ref_name }}
+          visibility: public
+          include-output-paths: false
+          my-flake-is-too-big: true

@@ -3,7 +3,7 @@ package com.aspauldingcode.wawona
 import android.content.SharedPreferences
 
 object WawonaSettings {
-    fun apply(prefs: SharedPreferences) {
+    fun apply(prefs: SharedPreferences, profile: MachineProfile? = null) {
         // Default off: weston-family clients draw CSD unless Force SSD is enabled.
         val forceServerSideDecorations =
             prefs.getBoolean("forceServerSideDecorations", false)
@@ -37,7 +37,7 @@ object WawonaSettings {
         // Use Metal 4 - removed, always false
         val useMetal4ForNested = false
         
-        // Multiple Clients — match iOS/macOS default (shared Rust core supports it).
+        // Multiple Clients. Match iOS/macOS default (shared Rust core supports it).
         val multipleClients = prefs.getBoolean("multipleClients", true)
         
         // Waypipe RS Support - always enabled, always true
@@ -100,5 +100,12 @@ object WawonaSettings {
             openglDriver,
             compositorBackend
         )
+        try {
+            WawonaNative.nativeApplyEnvironmentOverrides(
+                EnvironmentOverrides.jniPayload(prefs, profile)
+            )
+        } catch (_: Throwable) {
+            // Older native libs without the symbol. Ignore until rebuild.
+        }
     }
 }

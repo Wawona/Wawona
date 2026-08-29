@@ -228,7 +228,7 @@ impl MachineProfile {
 
     /// Resolve the command/client this profile launches for native machines.
     /// The selected bundled client (`bundledAppID`) wins, then a custom
-    /// `remoteCommand`, then the weston-terminal default — matching how the
+    /// `remoteCommand`, then the weston-terminal default. Matching how the
     /// macOS front-end resolves `selectedClientId(for:)`.
     pub fn effective_command(&self) -> String {
         match self.machine_type {

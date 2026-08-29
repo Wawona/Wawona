@@ -1,9 +1,12 @@
-# Wawona — Single Source of Truth (2026)
+# Wawona. Single Source of Truth (2026)
 
 This document is the canonical reconciliation point for facts that were
 previously scattered (and drifting) across the docs tree: protocol counts,
 per-platform scope, the X11 story, and settings inventory. When any of these
 change, update **here first**, then the specialized docs linked below.
+
+> **Public subset:** wawona.io/docs may cite this file. Do not copy audits,
+> issue ledgers, or App Review checklists onto the site.
 
 > Rule: numbers and scope claims elsewhere must cite this file or the
 > auto-generated manifests it points at. Prose that contradicts an
@@ -12,8 +15,8 @@ change, update **here first**, then the specialized docs linked below.
 ## Protocol counts (authoritative)
 
 - **Advertised Wayland globals: see [`protocol-status.md`](./protocol-status.md)**
-  (auto-generated from the live registry; 64 globals on the `desktop-host`
-  profile as of last regen). Do **not** hand-maintain a count anywhere else.
+  (auto-generated from the live registry for the active `ProtocolProfile`).
+  Do **not** hand-maintain a count anywhere else.
 - Regenerate: `scripts/gen-protocol-status.sh`. CI (`cargo-test-linux`) fails if
   the committed manifest drifts from the live registry.
 - Behavioral requirements (not just presence) live in
@@ -26,12 +29,12 @@ change, update **here first**, then the specialized docs linked below.
 
 | Platform | UI toolkit | Present path | Wayland delivery | Local shell | Notes |
 |----------|-----------|--------------|------------------|-------------|-------|
-| macOS | AppKit (+ SwiftUI settings) | Mode A: CAMetalLayer / `WWNIlandPresenter`; Mode B (optional): `libwayland-mac.dylib` + `framebufferd` | native, nested Weston, waypipe/SSH | yes | Mode A default (store-safe). Mode B = SIP-gated Desktop Replacement in `wawona-macos-desktop-host` only — see [`iland-mode-a-b-desktop.md`](./iland-mode-a-b-desktop.md) |
-| iOS / iPadOS | UIKit | CAMetalLayer | native, nested Weston, waypipe/SSH (libssh2) | Phase 2 bundled zsh PTY | App Store compliant; StoreKit modules via `wwn-apt` |
-| tvOS | UIKit | CAMetalLayer | nested Weston, waypipe | no | Focus-engine driven; no pointer by default |
-| visionOS | UIKit | CAMetalLayer | nested Weston, waypipe | no | |
-| watchOS | WatchKit | CAMetalLayer | **remote-only (waypipe)** | **no** (redirect/stub) | See [WATCHOS-SCOPE](./ios-local-shell/WATCHOS-SCOPE.md); no XWayland toggle |
-| Android | Jetpack Compose (Material You 3) | ANativeWindow / dedicated render thread | native, nested Weston, waypipe (OpenSSH portable) | via container | Render off JNI thread (`render_thread`, urgent-display prio) |
+| macOS | AppKit (+ SwiftUI settings) | Mode A: CAMetalLayer / `WWNIlandPresenter`; Mode B (optional): `libwayland-mac.dylib` + `framebufferd` | native, nested Weston/Niri, waypipe/SSH | yes | Mode A default (store-safe). Mode B = SIP-gated Desktop Replacement in `wawona-macos-desktop-host` only. See [`iland-mode-a-b-desktop.md`](./iland-mode-a-b-desktop.md) |
+| iOS / iPadOS | UIKit | CAMetalLayer | native, nested Weston/Niri, waypipe/SSH (libssh2) | bundled zsh PTY | App Store compliant. Optional software: WASI `.wasm` via Wawona Runtime (Files + package client). Containers: planned container-in-VM (UTM-SE jitless), not Wasm |
+| tvOS | UIKit | CAMetalLayer / ANGLE + MoltenVK (rendered-frame evidence pending) | native, nested Weston/Niri, waypipe | constrained zsh | Focus-engine on Machines. In a client: Siri Remote clickpad is a virtual pointer (Select clicks). Play/Pause toggles the system keyboard. Menu confirms session exit. GPU drivers linked (`WWN_TVOS_GPU`). VM/container forbidden. |
+| visionOS | UIKit | CAMetalLayer | native, nested Weston/Niri, waypipe | bundled zsh PTY | macOS product parity for bundled clients / Machines UX; **VM/container kinds forbidden** |
+| watchOS | WatchKit | SHM/CPU (`wwn-iland-apple-fallback`); GPU ⛔ blocked | native + remote (waypipe) | constrained zsh (no coreutils) | GPU: no public Metal. Compositor is not remote-only. See [WATCHOS-SCOPE](./ios-local-shell/WATCHOS-SCOPE.md) |
+| Android | Jetpack Compose (Material You 3) | ANativeWindow / dedicated render thread | native, nested Weston/Niri, waypipe (OpenSSH portable via `wwn-ssh`) | via container | Render off JNI thread. Direct Turnip/KGSL forbidden |
 | Linux (host) | GTK4 + libadwaita | Cairo/GTK | client to host compositor; nested | yes | Reference target |
 
 Build targets per platform: [`testing/everywhere-matrix.md`](./testing/everywhere-matrix.md).
@@ -40,8 +43,8 @@ Build targets per platform: [`testing/everywhere-matrix.md`](./testing/everywher
 
 Wawona has **no local X server** on any platform. X11 clients are served via:
 
-1. **Remote XWayland over waypipe** (`waypipe --xwls`) — primary, App Store safe.
-2. **Nested-Weston XWayland** — only on non-store macOS builds (nested Weston can
+1. **Remote XWayland over waypipe** (`waypipe --xwls`). Primary, App Store safe.
+2. **Nested-Weston XWayland**. Only on non-store macOS builds (nested Weston can
    spawn its own Xwayland).
 
 `xwayland_shell_v1` + `zwp_xwayland_keyboard_grab_manager_v1` are advertised so a

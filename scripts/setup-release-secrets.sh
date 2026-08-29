@@ -29,7 +29,7 @@ EOF
 
 if [[ ! -d "${PASSWORD_STORE_DIR:-$HOME/.password-store}/secretspec/wawona" ]]; then
   echo ""
-  echo "warn: secretspec/wawona missing under PASSWORD_STORE_DIR — clone the private store first." >&2
+  echo "warn: secretspec/wawona missing under PASSWORD_STORE_DIR. Clone the private store first." >&2
   exit 1
 fi
 
@@ -48,6 +48,6 @@ if run_check; then
   echo ""
   echo "secretspec check -P local: OK"
 else
-  echo "secretspec check failed — see docs/maintainers/secrets.md" >&2
+  echo "secretspec check failed. See docs/maintainers/secrets.md" >&2
   exit 1
 fi

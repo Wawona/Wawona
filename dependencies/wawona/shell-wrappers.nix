@@ -15,7 +15,7 @@ let
       hangHint = ''
         echo "[LLDB] Debugger attached for the whole run (opt-in via --debug)."
         echo "[LLDB] Crash/halt → LLDB stops and prints 'thread backtrace all'."
-        echo "[LLDB] Freeze/hang?  process interrupt   (pause — backtraces print on stop)"
+        echo "[LLDB] Freeze/hang?  process interrupt   (pause. Backtraces print on stop)"
         echo "[LLDB] Resume: continue           Quit: quit"
       '';
     in {
@@ -94,10 +94,29 @@ let
     runtime_dir_default="/tmp/wawona-$uid"
     runtime_env_file="$runtime_dir_default/wawona-env.sh"
 
-    # Prefer compositor-exported runtime values when available.
-    if [ -f "$runtime_env_file" ]; then
+    # Nested niri/weston inherit WAYLAND_DISPLAY. Do not let wawona-env.sh
+    # steal those clients onto the host socket (new macOS window).
+    _wawona_saved_display="''${WAYLAND_DISPLAY:-}"
+    _wawona_saved_socket="''${WAYLAND_SOCKET:-}"
+    _wawona_saved_runtime="''${XDG_RUNTIME_DIR:-}"
+    _wawona_keep_caller=0
+    if [ -n "$_wawona_saved_socket" ]; then
+      _wawona_keep_caller=1
+    elif [ -n "$_wawona_saved_display" ]; then
+      _rt="''${_wawona_saved_runtime:-$runtime_dir_default}"
+      case "$_wawona_saved_display" in
+        /*) _sock="$_wawona_saved_display" ;;
+        *) _sock="$_rt/$_wawona_saved_display" ;;
+      esac
+      if [ -S "$_sock" ]; then
+        _wawona_keep_caller=1
+      fi
+      unset _rt _sock
+    fi
+
+    if [ "$_wawona_keep_caller" -eq 0 ] && [ -f "$runtime_env_file" ]; then
       # shellcheck source=/dev/null
-      . "$runtime_env_file" || true
+. "$runtime_env_file" || true
     fi
 
     export XDG_RUNTIME_DIR="''${XDG_RUNTIME_DIR:-$runtime_dir_default}"
@@ -109,12 +128,12 @@ let
     SOCKET_PATH="$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
 
     # If the service socket is missing, try to revive the compositor host agent.
-    if [ ! -S "$SOCKET_PATH" ] && command -v launchctl >/dev/null 2>&1; then
+    if [ "$_wawona_keep_caller" -eq 0 ] && [ ! -S "$SOCKET_PATH" ] && command -v launchctl >/dev/null 2>&1; then
       launchctl kickstart -k "gui/$uid/com.aspauldingcode.wawona.compositorhost" >/dev/null 2>&1 || true
       # Refresh from exported env (compositor may rewrite display/socket choice).
       if [ -f "$runtime_env_file" ]; then
         # shellcheck source=/dev/null
-        . "$runtime_env_file" || true
+. "$runtime_env_file" || true
         export XDG_RUNTIME_DIR="''${XDG_RUNTIME_DIR:-$runtime_dir_default}"
         export WAYLAND_DISPLAY="''${WAYLAND_DISPLAY:-wayland-0}"
         SOCKET_PATH="$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
@@ -125,6 +144,18 @@ let
         i=$((i + 1))
       done
     fi
+    if [ "$_wawona_keep_caller" -eq 1 ]; then
+      if [ -n "$_wawona_saved_runtime" ]; then
+        export XDG_RUNTIME_DIR="$_wawona_saved_runtime"
+      fi
+      if [ -n "$_wawona_saved_display" ]; then
+        export WAYLAND_DISPLAY="$_wawona_saved_display"
+      fi
+      if [ -n "$_wawona_saved_socket" ]; then
+        export WAYLAND_SOCKET="$_wawona_saved_socket"
+      fi
+    fi
+    unset _wawona_saved_display _wawona_saved_socket _wawona_saved_runtime _wawona_keep_caller
 
     if [ ! -S "$SOCKET_PATH" ]; then
       echo "Warning: Wayland socket not ready at $SOCKET_PATH." >&2
@@ -151,11 +182,11 @@ in rec {
       binaryReadyCheck = ''
         wawona_binary_ready() {
           if [ ! -d "$APP" ] || [ ! -x "$BIN" ]; then
-            echo "Error: Wawona.app or binary missing — build may have failed." >&2
+            echo "Error: Wawona.app or binary missing. Build may have failed." >&2
             return 1
           fi
           if ! file "$BIN" 2>/dev/null | grep -qE 'Mach-O.*executable'; then
-            echo "Error: $BIN is not a Mach-O executable — build may be broken." >&2
+            echo "Error: $BIN is not a Mach-O executable. Build may be broken." >&2
             return 1
           fi
           return 0

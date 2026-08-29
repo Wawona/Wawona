@@ -1,5 +1,5 @@
 /*
- * WWNStartupLogger — captures WWNLog output during the client-launch
+ * WWNStartupLogger. Captures WWNLog output during the client-launch
  * transition and forwards it to the native startup log view.
  *
  * Usage:
@@ -8,7 +8,8 @@
  *   [WWNStartupLogger endCapture];            // disable sink; call after reveal
  *
  * Captured entries are threaded to subscribers via the delegate on the main
- * queue; the delegate is typically WWNStartupLogViewController.
+ * queue; the delegate is typically WWNStartupLogViewController (iOS/tvOS) or
+ * WatchStartupLogModel (watchOS SwiftUI).
  */
 
 #ifndef WWNStartupLogger_h

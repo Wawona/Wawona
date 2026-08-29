@@ -2,10 +2,10 @@
 // Minimal in-process Wayland compositor for watchOS.
 //
 // Implements just enough of the Wayland protocol for weston-simple-shm
-// (and any other wl_shm client) to connect and commit pixel buffers:
-//   wl_display · wl_registry · wl_compositor · wl_shm · wl_shm_pool
-//   wl_buffer · wl_surface · wl_shell · wl_shell_surface
-//   wl_output · wl_seat (stub)
+// and toytoolkit cairo demos (flower/smoke) to connect and commit SHM:
+//   wl_display · wl_registry · wl_compositor · wl_subcompositor
+//   wl_shm · wl_shm_pool · wl_buffer · wl_surface
+//   xdg_wm_base · wl_shell · wl_output · wl_seat
 //
 // When libwayland-server.a is not linked (local Xcode build before Nix build)
 // all public functions return NULL/0 silently.
@@ -36,6 +36,7 @@
 #ifdef WWN_WL_SERVER_AVAILABLE
 
 #include <sys/mman.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
 #include <stdlib.h>
 #include <string.h>
@@ -75,6 +76,7 @@ struct WWNMiniWaylandServer {
     struct wl_event_loop *loop;
 
     struct wl_global *compositor_global;
+    struct wl_global *subcompositor_global;
     struct wl_global *shm_global;
     struct wl_global *xdg_wm_base_global; // primary (Weston 12+)
     struct wl_global *shell_global;        // legacy fallback
@@ -83,6 +85,7 @@ struct WWNMiniWaylandServer {
 
     uint32_t output_width;
     uint32_t output_height;
+    int fill_host; // 0 = configure(0,0) client pick; 1 = fill output (terminal)
 
     WWNFrameCallback frame_cb;
     void            *userdata;
@@ -99,6 +102,13 @@ struct WWNMiniWaylandServer {
     pthread_mutex_t     ev_lock;
     WWNPendingEv       *ev_head;
     WWNPendingEv       *ev_tail;
+
+    // In-process client attach (UI thread queues fd, dispatch thread creates
+    // wl_client). pending_client_fd is -1 when idle.
+    pthread_mutex_t     attach_lock;
+    pthread_cond_t      attach_cond;
+    int                 pending_client_fd;
+    int                 attach_result; // 1 ok, -1 fail, 0 waiting
 };
 
 // Forward decls for keyboard helpers used before their definitions.
@@ -115,7 +125,7 @@ static void notify_frame(struct WWNMiniWaylandServer *srv,
         srv->frame_cb(pixels, w, h, stride, srv->userdata);
 }
 
-// ── wl_shm_pool (forward declaration — needed by WWNBuffer) ───────────────────
+// ── wl_shm_pool (forward declaration. Needed by WWNBuffer) ───────────────────
 
 typedef struct {
     struct wl_resource *resource;
@@ -146,7 +156,7 @@ typedef struct {
     uint32_t            height;
     uint32_t            stride;
     int32_t             offset;
-    WWNPool            *pool;   // retained reference — keeps the mmap alive
+    WWNPool            *pool;   // retained reference. Keeps the mmap alive
 } WWNBuffer;
 
 static void buf_destroy(struct wl_client *client, struct wl_resource *res)
@@ -331,7 +341,7 @@ static void surf_commit(struct wl_client *client, struct wl_resource *res)
 
         // 3. Give keyboard focus to the first surface that presents content, so
         // synthesized key events (from the WatchKit text-entry affordance) reach
-        // the terminal/zsh client. Runs on the dispatch thread — safe to emit.
+        // the terminal/zsh client. Runs on the dispatch thread. Safe to emit.
         if (surf->srv && !surf->srv->focus_surface) {
             surf->srv->focus_surface = res;
             for (int i = 0; i < surf->srv->n_keyboards; i++) {
@@ -437,7 +447,64 @@ static void comp_bind(struct wl_client *client, void *data,
     wl_resource_set_implementation(res, &comp_impl, data, NULL);
 }
 
-// ── xdg_wm_base (XDG shell — primary shell protocol for Weston 12+) ──────────
+// ── wl_subcompositor (toytoolkit CSD: window_frame_create exits without it) ──
+
+static void subsurf_destroy(struct wl_client *c, struct wl_resource *r)
+{ (void)c; wl_resource_destroy(r); }
+static void subsurf_set_position(struct wl_client *c, struct wl_resource *r,
+                                 int32_t x, int32_t y)
+{ (void)c;(void)r;(void)x;(void)y; }
+static void subsurf_place_above(struct wl_client *c, struct wl_resource *r,
+                                struct wl_resource *sibling)
+{ (void)c;(void)r;(void)sibling; }
+static void subsurf_place_below(struct wl_client *c, struct wl_resource *r,
+                                struct wl_resource *sibling)
+{ (void)c;(void)r;(void)sibling; }
+static void subsurf_set_sync(struct wl_client *c, struct wl_resource *r)
+{ (void)c;(void)r; }
+static void subsurf_set_desync(struct wl_client *c, struct wl_resource *r)
+{ (void)c;(void)r; }
+
+static const struct wl_subsurface_interface subsurf_impl = {
+    .destroy       = subsurf_destroy,
+    .set_position  = subsurf_set_position,
+    .place_above   = subsurf_place_above,
+    .place_below   = subsurf_place_below,
+    .set_sync      = subsurf_set_sync,
+    .set_desync    = subsurf_set_desync,
+};
+
+static void subcomp_destroy(struct wl_client *c, struct wl_resource *r)
+{ (void)c; wl_resource_destroy(r); }
+
+static void subcomp_get_subsurface(struct wl_client *client,
+                                   struct wl_resource *subcomp_res,
+                                   uint32_t id,
+                                   struct wl_resource *surface,
+                                   struct wl_resource *parent)
+{
+    (void)subcomp_res;
+    (void)surface;
+    (void)parent;
+    struct wl_resource *sub = wl_resource_create(client, &wl_subsurface_interface, 1, id);
+    wl_resource_set_implementation(sub, &subsurf_impl, NULL, NULL);
+}
+
+static const struct wl_subcompositor_interface subcomp_impl = {
+    .destroy         = subcomp_destroy,
+    .get_subsurface  = subcomp_get_subsurface,
+};
+
+static void subcomp_bind(struct wl_client *client, void *data,
+                         uint32_t version, uint32_t id)
+{
+    (void)data;
+    struct wl_resource *res = wl_resource_create(client, &wl_subcompositor_interface,
+                                                 version < 1 ? 1 : (int)version, id);
+    wl_resource_set_implementation(res, &subcomp_impl, data, NULL);
+}
+
+// ── xdg_wm_base (XDG shell. Primary shell protocol for Weston 12+) ──────────
 // Requires xdg-shell-server-protocol.h (generated by libwayland/watchos.nix).
 // Falls back to wl_shell for older clients when XDG is not compiled in.
 
@@ -511,6 +578,7 @@ static const struct xdg_toplevel_interface xdg_toplevel_impl = {
 typedef struct {
     struct wl_resource *resource;
     struct wl_resource *surface;   // the underlying wl_surface
+    struct WWNMiniWaylandServer *srv;
 } WWNXdgSurface;
 
 static void xdg_surf_destroy(struct wl_client *c, struct wl_resource *r)
@@ -520,18 +588,38 @@ static void xdg_surf_get_toplevel(struct wl_client *client,
                                     struct wl_resource *xdg_surf_res,
                                     uint32_t id)
 {
+    WWNXdgSurface *xs = wl_resource_get_user_data(xdg_surf_res);
+    struct WWNMiniWaylandServer *srv = xs ? xs->srv : NULL;
     struct wl_resource *tl = wl_resource_create(client, &xdg_toplevel_interface, 1, id);
     wl_resource_set_implementation(tl, &xdg_toplevel_impl, NULL, NULL);
 
-    // Send configure: width=0, height=0 → client picks its own size; no states.
+    // OWL / xdg-shell: configure(0,0) = client decides. Stock simple-shm then
+    // commits 250×250; flower/smoke stay 200×200. Never inject output size on
+    // map for those ports (same as macOS/iOS; waypipe-equivalent). Fill-host
+    // is only for terminal / nested compositor (matches WWNIosBundledClientFillsHost).
     struct wl_array states;
     wl_array_init(&states);
-    xdg_toplevel_send_configure(tl, 0, 0, &states);
+    int32_t cfg_w = 0;
+    int32_t cfg_h = 0;
+    uint32_t *s = wl_array_add(&states, sizeof(uint32_t));
+    if (s) {
+        *s = XDG_TOPLEVEL_STATE_ACTIVATED;
+    }
+    if (srv && srv->fill_host && srv->output_width > 0 && srv->output_height > 0) {
+        s = wl_array_add(&states, sizeof(uint32_t));
+        if (s) {
+            *s = XDG_TOPLEVEL_STATE_MAXIMIZED;
+        }
+        cfg_w = (int32_t)srv->output_width;
+        cfg_h = (int32_t)srv->output_height;
+    }
+    xdg_toplevel_send_configure(tl, cfg_w, cfg_h, &states);
     wl_array_release(&states);
 
-    // Send xdg_surface.configure with a serial so client calls ack_configure.
     uint32_t serial = g_xdg_serial++;
     xdg_surface_send_configure(xdg_surf_res, serial);
+    fprintf(stderr, "[WatchCompositor] xdg_toplevel configure %dx%d serial=%u\n",
+            (int)cfg_w, (int)cfg_h, serial);
 }
 
 static void xdg_popup_destroy(struct wl_client *c, struct wl_resource *r)
@@ -636,6 +724,7 @@ static void xdg_wmbase_get_xdg_surface(struct wl_client *client,
 {
     WWNXdgSurface *xs = calloc(1, sizeof(WWNXdgSurface));
     xs->surface = surface_res;
+    xs->srv = wl_resource_get_user_data(wm_res);
     xs->resource = wl_resource_create(client, &xdg_surface_interface, 1, id);
     wl_resource_set_implementation(xs->resource, &xdg_surface_impl, xs, xdg_surf_resource_destroy);
 }
@@ -712,9 +801,16 @@ static void shell_get_shell_surface(struct wl_client *client,
                                       struct wl_resource *surface_res)
 {
     (void)surface_res;
+    struct WWNMiniWaylandServer *srv = wl_resource_get_user_data(shell_res);
     struct wl_resource *res = wl_resource_create(client, &wl_shell_surface_interface, 1, id);
     wl_resource_set_implementation(res, &shell_surface_impl, NULL, NULL);
-    wl_shell_surface_send_configure(res, 0, 0, 0);
+    int32_t cfg_w = 0;
+    int32_t cfg_h = 0;
+    if (srv && srv->fill_host && srv->output_width > 0 && srv->output_height > 0) {
+        cfg_w = (int32_t)srv->output_width;
+        cfg_h = (int32_t)srv->output_height;
+    }
+    wl_shell_surface_send_configure(res, 0, cfg_w, cfg_h);
 }
 
 static __attribute__((unused)) void shell_destroy(struct wl_client *c, struct wl_resource *r)
@@ -763,7 +859,7 @@ static void output_bind(struct wl_client *client, void *data,
         wl_output_send_done(res);
 }
 
-// ── wl_seat (keyboard capability — feeds the WatchKit text-entry affordance) ──
+// ── wl_seat (keyboard capability. Feeds the WatchKit text-entry affordance) ──
 // The watch has no hardware keyboard, so input arrives as UTF-8 strings from a
 // WKInterfaceController text-input controller (or dictation). We translate that
 // to a synthetic US-layout xkb keyboard: a real keymap + wl_keyboard.key events,
@@ -975,7 +1071,7 @@ static void wwn_enqueue(struct WWNMiniWaylandServer *srv, WWNEvType type,
     srv->ev_tail = ev;
     pthread_mutex_unlock(&srv->ev_lock);
     // The dispatch thread polls with a <=16ms timeout, so queued keys are
-    // flushed on the next loop iteration — imperceptible latency for typing.
+    // flushed on the next loop iteration. Imperceptible latency for typing.
 }
 
 static void wwn_enqueue_keystroke(struct WWNMiniWaylandServer *srv,
@@ -997,7 +1093,7 @@ static void wwn_wls_drain_input(struct WWNMiniWaylandServer *srv)
 
     if (!head) return;
     if (srv->n_keyboards == 0 || !srv->focus_surface) {
-        // No client to receive them yet — drop rather than buffer unboundedly.
+        // No client to receive them yet. Drop rather than buffer unboundedly.
         while (head) { WWNPendingEv *n = head->next; free(head); head = n; }
         return;
     }
@@ -1030,7 +1126,7 @@ WWNMiniWaylandServer *wwn_wls_create(const char *socket_name,
 {
     // Unix domain socket paths are limited to 103 usable characters on Darwin
     // (struct sockaddr_un.sun_path is char[104] including null terminator).
-    // The iOS/watchOS simulator's TMPDIR is typically 150+ characters — way over limit.
+    // The iOS/watchOS simulator's TMPDIR is typically 150+ characters. Way over limit.
     // Strategy: ensure XDG_RUNTIME_DIR + "/" + socket_name fits in 103 chars.
     // We prefer a short mkdtemp() dir under /tmp (accessible in simulator and on device).
     {
@@ -1064,9 +1160,13 @@ WWNMiniWaylandServer *wwn_wls_create(const char *socket_name,
         unlink(path);
     }
 
+    // Named AF_UNIX bind often fails on Watch (sandbox + sun_path 104). Keep
+    // the display; in-process clients attach via socketpair + WAYLAND_SOCKET.
     if (wl_display_add_socket(disp, socket_name) < 0) {
-        wl_display_destroy(disp);
-        return NULL;
+        fprintf(stderr,
+                "WATCH: wl_display_add_socket('%s') failed errno=%d (%s). "
+                "Using in-process WAYLAND_SOCKET.\n",
+                socket_name, errno, strerror(errno));
     }
 
     WWNMiniWaylandServer *srv = calloc(1, sizeof(WWNMiniWaylandServer));
@@ -1074,13 +1174,19 @@ WWNMiniWaylandServer *wwn_wls_create(const char *socket_name,
     srv->loop          = wl_display_get_event_loop(disp);
     srv->output_width  = output_width  ? output_width  : 184;
     srv->output_height = output_height ? output_height : 224;
+    srv->fill_host     = 0;
     srv->frame_cb      = frame_cb;
     srv->userdata      = userdata;
     srv->keymap_fd     = -1;
+    srv->pending_client_fd = -1;
+    srv->attach_result = 0;
     pthread_mutex_init(&srv->ev_lock, NULL);
+    pthread_mutex_init(&srv->attach_lock, NULL);
+    pthread_cond_init(&srv->attach_cond, NULL);
 
     // Advertise protocol globals
     srv->compositor_global = wl_global_create(disp, &wl_compositor_interface, 4, srv, comp_bind);
+    srv->subcompositor_global = wl_global_create(disp, &wl_subcompositor_interface, 1, srv, subcomp_bind);
     srv->shm_global        = wl_global_create(disp, &wl_shm_interface,        1, srv, shm_bind);
     srv->output_global     = wl_global_create(disp, &wl_output_interface,     3, srv, output_bind);
     srv->seat_global       = wl_global_create(disp, &wl_seat_interface,       8, srv, seat_bind);
@@ -1096,9 +1202,62 @@ WWNMiniWaylandServer *wwn_wls_create(const char *socket_name,
     return srv;
 }
 
+static void wwn_wls_drain_attach(WWNMiniWaylandServer *srv)
+{
+    pthread_mutex_lock(&srv->attach_lock);
+    if (srv->pending_client_fd >= 0) {
+        int fd = srv->pending_client_fd;
+        srv->pending_client_fd = -1;
+        struct wl_client *client = wl_client_create(srv->display, fd);
+        srv->attach_result = client ? 1 : -1;
+        fprintf(stderr, "WATCH: wl_client_create fd=%d -> %s\n",
+                fd, client ? "ok" : "NULL");
+        pthread_cond_signal(&srv->attach_cond);
+    }
+    pthread_mutex_unlock(&srv->attach_lock);
+}
+
+void wwn_wls_set_fill_host(WWNMiniWaylandServer *srv, int fill_host)
+{
+    if (!srv) return;
+    srv->fill_host = fill_host ? 1 : 0;
+}
+
+int wwn_wls_attach_inprocess_client(WWNMiniWaylandServer *srv)
+{
+    if (!srv || !srv->display) return -1;
+
+    int sv[2];
+    if (socketpair(AF_UNIX, SOCK_STREAM, 0, sv) < 0) {
+        return -1;
+    }
+    (void)fcntl(sv[0], F_SETFD, FD_CLOEXEC);
+    (void)fcntl(sv[1], F_SETFD, FD_CLOEXEC);
+
+    // Queue the server fd for the dispatch thread. Do not wait here: a
+    // cond_timedwait on the UI thread stalls WatchKit and watchOS kills the
+    // app (clock face) before weston-simple-shm can commit a frame.
+    pthread_mutex_lock(&srv->attach_lock);
+    if (srv->pending_client_fd >= 0) {
+        close(srv->pending_client_fd);
+    }
+    srv->pending_client_fd = sv[0];
+    srv->attach_result = 0;
+    pthread_mutex_unlock(&srv->attach_lock);
+
+    // libwayland wl_display_connect prefers WAYLAND_SOCKET over a named path.
+    // The client may write before wl_client_create; the socketpair buffers it.
+    char fdstr[16];
+    snprintf(fdstr, sizeof(fdstr), "%d", sv[1]);
+    setenv("WAYLAND_SOCKET", fdstr, 1);
+    unsetenv("WAYLAND_DISPLAY");
+    return 0;
+}
+
 int wwn_wls_dispatch(WWNMiniWaylandServer *srv, int timeout_ms)
 {
     if (!srv) return 0;
+    wwn_wls_drain_attach(srv);
     wl_event_loop_dispatch(srv->loop, timeout_ms);
     wwn_wls_drain_input(srv);      // emit any queued key events on this thread
     wl_display_flush_clients(srv->display);
@@ -1131,6 +1290,9 @@ void wwn_wls_destroy(WWNMiniWaylandServer *srv)
     WWNPendingEv *ev = srv->ev_head;
     while (ev) { WWNPendingEv *n = ev->next; free(ev); ev = n; }
     pthread_mutex_destroy(&srv->ev_lock);
+    pthread_mutex_destroy(&srv->attach_lock);
+    pthread_cond_destroy(&srv->attach_cond);
+    if (srv->pending_client_fd >= 0) close(srv->pending_client_fd);
     if (srv->keymap_fd >= 0) close(srv->keymap_fd);
     free(srv);
 }
@@ -1153,6 +1315,8 @@ WWNMiniWaylandServer *wwn_wls_create(const char *socket_name,
 }
 
 int  wwn_wls_dispatch(WWNMiniWaylandServer *srv, int timeout_ms) { (void)srv; (void)timeout_ms; return 0; }
+int  wwn_wls_attach_inprocess_client(WWNMiniWaylandServer *srv) { (void)srv; return -1; }
+void wwn_wls_set_fill_host(WWNMiniWaylandServer *srv, int fill_host) { (void)srv; (void)fill_host; }
 void wwn_wls_feed_text(WWNMiniWaylandServer *srv, const char *utf8) { (void)srv; (void)utf8; }
 void wwn_wls_feed_key(WWNMiniWaylandServer *srv, uint32_t k, int p) { (void)srv; (void)k; (void)p; }
 void wwn_wls_destroy (WWNMiniWaylandServer *srv) { (void)srv; }

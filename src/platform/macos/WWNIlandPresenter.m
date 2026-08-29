@@ -1,6 +1,6 @@
 //
 //  WWNIlandPresenter.m
-//  Wawona — macOS
+//  Wawona. MacOS
 //
 //  See WWNIlandPresenter.h. Imports nested iland GL-client IOSurfaces into Metal
 //  and composites them into a CAMetalLayer, in-window (Mode A).
@@ -83,7 +83,7 @@ static NSString *const kShaderSource = @""
     NSString               *_clientId;
     // Log tag for the present path. Presenting is not exclusive to the cubes
     // (the iland DRM Weston backend presents here too), so it starts neutral and
-    // is narrowed when a known client is launched — reporting every present as
+    // is narrowed when a known client is launched. Reporting every present as
     // KMSCUBE made a running opengl-cube or vkcube look like kmscube.
     const char             *_presentLogModule;
 }
@@ -219,8 +219,8 @@ static void wwn_iland_present_trampoline(uint32_t crtc_id, uint32_t fb_id,
 /*
  * The present callback hands over an IOSurface and nothing else, so the surface's
  * own pixel format is the only statement of what the client rendered. Importing
- * everything as BGRA8Unorm silently reinterpreted a 10-bit framebuffer — which
- * iland's GBM will hand out for the 2101010 fourccs as 'l10r' — as 8-bit, giving
+ * everything as BGRA8Unorm silently reinterpreted a 10-bit framebuffer. Which
+ * iland's GBM will hand out for the 2101010 fourccs as 'l10r'. As 8-bit, giving
  * wrong colours rather than a diagnosable failure. 0 means "refuse".
  */
 static MTLPixelFormat WWNMetalFormatForIOSurface(uint32_t fourcc) {
@@ -350,7 +350,7 @@ static MTLPixelFormat WWNMetalFormatForIOSurface(uint32_t fourcc) {
             s_lastFitW = tw;
             s_lastFitH = th;
             WWNLog(_presentLogModule ?: "ILAND",
-                   @"host resized to %lux%lu; client mode is fixed at %lux%lu — "
+                   @"host resized to %lux%lu; client mode is fixed at %lux%lu. "
                    @"letterboxing to %.0fx%.0f",
                    (unsigned long)tw, (unsigned long)th, (unsigned long)w,
                    (unsigned long)h, fitW, fitH);
@@ -449,7 +449,7 @@ static void *wwn_cube_thread(void *arg) {
 
     if (!wwn_prepare_iland_virtual_drm_fd()) {
         WWNLog(client->logModule,
-               @"aborting %@ — virtual DRM fd not ready", clientId);
+               @"aborting %@. Virtual DRM fd not ready", clientId);
         return NULL;
     }
 
@@ -479,7 +479,7 @@ static void *wwn_cube_thread(void *arg) {
     }
     if (wwn_cube_entry_for_id(clientId) == NULL) {
         WWNLog(client->logModule,
-               @"%@ unavailable — archive not linked", clientId);
+               @"%@ unavailable. Archive not linked", clientId);
         return NO;
     }
     if (_clientThreadStarted) {
@@ -487,7 +487,7 @@ static void *wwn_cube_thread(void *arg) {
             return YES;
         }
         WWNLog(client->logModule,
-               @"refusing %@ — in-process %@ still owns iland DRM", clientId,
+               @"refusing %@. In-process %@ still owns iland DRM", clientId,
                _clientId ?: @"(unknown)");
         return NO;
     }

@@ -3,6 +3,11 @@
 # Frameworks may copy Debug-iphonesimulator products into the watch app even when
 # Debug-watchsimulator slices exist. Replace embedded frameworks with the
 # matching watch(OS) SDK products after Embed.
+#
+# WatchOS keeps embed=false (see xcodegen.nix) so Xcode never runs Embed
+# Frameworks / codeSign=true for these two. This script is the only copy into
+# WawonaWatch.app/Frameworks, and therefore the only place that can re-sign
+# them. Device installd rejects unsigned nested frameworks (0xe800801c).
 set -euo pipefail
 
 case "${PLATFORM_NAME:-}" in
@@ -15,7 +20,7 @@ esac
 APP_FW="${TARGET_BUILD_DIR}/${FULL_PRODUCT_NAME}/Frameworks"
 
 # WawonaModel/WawonaUIContracts are embed=false, link=false dependencies (see
-# xcodegen.nix dependencies comment) — Xcode's own Embed Frameworks phase
+# xcodegen.nix dependencies comment). Xcode's own Embed Frameworks phase
 # never runs for them, so this script is the *only* thing that creates
 # Frameworks/ and copies them in; do not early-exit just because it is
 # missing.
@@ -70,6 +75,27 @@ build_framework() {
   echo "${scratch}/Build/Products/${CONFIGURATION}-${PLATFORM_NAME}/${fw}.framework"
 }
 
+# Framework targets build with CODE_SIGNING_ALLOWED=NO (IPA CI must not apply
+# a Manual PROVISIONING_PROFILE_SPECIFIER to them). iOS/tvOS/visionOS re-sign
+# on Xcode's Embed Frameworks phase; watchOS has to do it here.
+sign_embedded_framework() {
+  local fw_path="$1"
+  if [ "${CODE_SIGNING_ALLOWED:-YES}" != "YES" ]; then
+    return 0
+  fi
+  local identity="${EXPANDED_CODE_SIGN_IDENTITY:-}"
+  if [ -z "$identity" ]; then
+    identity="${CODE_SIGN_IDENTITY:-}"
+  fi
+  if [ -z "$identity" ]; then
+    echo "error: cannot sign ${fw_path}: no EXPANDED_CODE_SIGN_IDENTITY" >&2
+    exit 1
+  fi
+  chmod -R u+w "$fw_path"
+  /usr/bin/codesign --force --timestamp=none --sign "$identity" "$fw_path"
+  echo "Signed ${fw_path} with ${identity}"
+}
+
 for fw in WawonaModel WawonaUIContracts; do
   if ! src_fw="$(find_framework "$fw")"; then
     src_fw="$(build_framework "$fw" | tail -1)"
@@ -83,5 +109,6 @@ for fw in WawonaModel WawonaUIContracts; do
   dst_fw="${APP_FW}/${fw}.framework"
   rm -rf "$dst_fw"
   cp -R "$src_fw" "$dst_fw"
+  sign_embedded_framework "$dst_fw"
   echo "Embedded ${fw}.framework for ${PLATFORM_NAME} from ${src_fw}"
 done

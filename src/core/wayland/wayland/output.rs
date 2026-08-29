@@ -147,7 +147,7 @@ pub fn notify_output_change_for_client(
 /// Build an [`OutputState`] view with overridden logical size and scale for protocol
 /// emission, matching [`CompositorState::set_output_size`] mm / mode semantics.
 ///
-/// Does **not** mutate compositor state — used so one client can receive a
+/// Does **not** mutate compositor state. Used so one client can receive a
 /// per-window `wl_output.mode` without rewriting the global primary output
 /// (which would desync every other session).
 fn output_state_view_for_dimensions(

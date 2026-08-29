@@ -13,12 +13,12 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
-import android.view.InputDevice
 import android.view.inputmethod.InputMethodManager
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.WindowInsetsController
 import android.widget.Toast
+import java.io.File
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.BackHandler
@@ -239,7 +239,7 @@ class MainActivity : ComponentActivity(), SurfaceHolder.Callback {
         pendingResize?.let { resizeHandler.removeCallbacks(it) }
         pendingResize = null
         try {
-            WawonaNative.nativeDestroySurface()
+            WawonaNative.nativeDestroySurface(holder.surface)
             surfaceReady = false
         } catch (e: Exception) {
             WLog.e("SURFACE", "Error in surfaceDestroyed: ${e.message}")
@@ -248,14 +248,14 @@ class MainActivity : ComponentActivity(), SurfaceHolder.Callback {
 
     override fun onDestroy() {
         if (isFinishing && !SessionActivityRegistry.hasActiveSessions()) {
-            WLog.d("ACTIVITY", "onDestroy — shutting down idle compositor core")
+            WLog.d("ACTIVITY", "onDestroy. Shutting down idle compositor core")
             try {
                 WawonaNative.nativeShutdown()
             } catch (e: Exception) {
                 WLog.e("ACTIVITY", "Error in nativeShutdown: ${e.message}")
             }
         } else {
-            WLog.d("ACTIVITY", "onDestroy — preserving process compositor for host tasks")
+            WLog.d("ACTIVITY", "onDestroy. Preserving process compositor for host tasks")
         }
         super.onDestroy()
     }
@@ -274,32 +274,6 @@ private fun KeyboardUiMode.isPip(): Boolean =
     this == KeyboardUiMode.PIP_FLOATING ||
         this == KeyboardUiMode.PIP_DOCKED_LEFT ||
         this == KeyboardUiMode.PIP_DOCKED_RIGHT
-
-/**
- * True only when a real external/physical keyboard is present.
- * Emulators often report Configuration.KEYBOARD_QWERTY with hardKeyboardHidden=NO
- * even when the user expects soft+accessory input (issue #82).
- */
-private fun hasRealExternalKeyboard(configuration: Configuration): Boolean {
-    var external = false
-    for (id in InputDevice.getDeviceIds()) {
-        val device = InputDevice.getDevice(id) ?: continue
-        if (device.isVirtual) continue
-        val sources = device.sources
-        val isFullKeyboard =
-            (sources and InputDevice.SOURCE_KEYBOARD) == InputDevice.SOURCE_KEYBOARD &&
-                device.keyboardType == InputDevice.KEYBOARD_TYPE_ALPHABETIC
-        // Exclude the built-in/virtual soft-keyboard path; require a non-virtual
-        // alphabetic keyboard that Configuration also considers "shown".
-        if (isFullKeyboard && !device.name.contains("Virtual", ignoreCase = true)) {
-            external = true
-            break
-        }
-    }
-    if (!external) return false
-    return configuration.keyboard == Configuration.KEYBOARD_QWERTY &&
-        configuration.hardKeyboardHidden == Configuration.HARDKEYBOARDHIDDEN_NO
-}
 
 @Composable
 fun WawonaApp(
@@ -387,7 +361,7 @@ fun WawonaApp(
         val launched = when (clientId) {
             "weston-simple-shm" -> WawonaNative.nativeRunWestonSimpleSHM()
             "weston" -> {
-                // Nested Weston keeps a shared socket — reuse if already up.
+                // Nested Weston keeps a shared socket. Reuse if already up.
                 if (WawonaNative.nativeIsWestonRunning()) true
                 else WawonaNative.nativeRunWeston()
             }
@@ -527,6 +501,7 @@ fun WawonaApp(
         }
         val activeId = sessionOrchestrator.activeSessionId
         if (activeId != null) {
+            SessionActivityRegistry.finishSession(activeId)
             sessionOrchestrator.markDisconnected(activeId)
         }
         sessionOrchestrator.setActiveSession(null)
@@ -560,7 +535,15 @@ fun WawonaApp(
         val targetView = surfaceViewRef ?: activity?.window?.decorView
         if (imm != null && targetView != null) {
             targetView.requestFocus()
-            imm.showSoftInput(targetView, InputMethodManager.SHOW_IMPLICIT)
+            // SHOW_IMPLICIT often no-ops on SurfaceView; force + insets (#141).
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                activity?.window?.insetsController?.show(android.view.WindowInsets.Type.ime())
+            }
+            @Suppress("DEPRECATION")
+            imm.showSoftInput(targetView, InputMethodManager.SHOW_FORCED)
+            targetView.post {
+                imm.showSoftInput(targetView, 0)
+            }
         }
     }
 
@@ -633,6 +616,9 @@ fun WawonaApp(
         return try {
             WawonaShellRootfs.ensureInstalled(context)
             WawonaNative.nativePrepareShellEnvironment(context.filesDir.absolutePath)
+            val xkb = KeyboardLayouts.resolveSystemLayout(context)
+            WawonaNative.nativeSetXkbDefaults(xkb.layout, xkb.variant)
+            WLog.i("XKB", "follow-system layout=${xkb.layout} variant=${xkb.variant}")
             WawonaNative.nativeInit(cacheDirPath)
             if (!WawonaNative.nativeIsCompositorReady()) {
                 throw IllegalStateException("Wayland compositor did not start")
@@ -833,6 +819,43 @@ fun WawonaApp(
 
     fun launchNativeMachine(profile: MachineProfile): Boolean {
         val launcher = profile.nativeLauncher.ifBlank { "weston-terminal" }
+        if (launcher == "wawona-wasm") {
+            val path = profile.runtimeOverrides.optString("wasmModulePath", "").trim()
+            if (path.isEmpty() || !java.io.File(path).isFile) {
+                Toast.makeText(
+                    context,
+                    "Pick a Wayland .wasm path in Machine Settings first.",
+                    Toast.LENGTH_LONG
+                ).show()
+                return false
+            }
+            // Runtime CLI ships as a native binary beside the APK when packaged;
+            // fall back to a clear error until the Android Runtime package lands.
+            val wasmBin = listOf(
+                File(context.applicationInfo.nativeLibraryDir, "wasm"),
+                File(context.filesDir, "bin/wasm"),
+                File(context.applicationInfo.nativeLibraryDir, "libwasm.so")
+            ).firstOrNull { it.canExecute() || it.isFile }
+            if (wasmBin == null) {
+                Toast.makeText(
+                    context,
+                    "Wawona Runtime (wasm) is not bundled in this APK yet.",
+                    Toast.LENGTH_LONG
+                ).show()
+                return false
+            }
+            return try {
+                ProcessBuilder(wasmBin.absolutePath, path)
+                    .directory(File(path).parentFile)
+                    .redirectErrorStream(true)
+                    .start()
+                WLog.i("NATIVE", "Launched Runtime wasm $path")
+                true
+            } catch (e: Exception) {
+                Toast.makeText(context, "Runtime launch failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                false
+            }
+        }
         return launchNativeClient(launcher)
     }
 
@@ -853,6 +876,9 @@ fun WawonaApp(
         // Start is the Android multi-window entry point. Always give a machine
         // its own task on Android 7+; the OS chooses fullscreen/split/freeform.
         // The C claim map consumes the reservation exactly once on Created.
+        // Finish any leftover host task first so its surfaceDestroyed cannot
+        // race-destroy the new swapchain (#141).
+        SessionActivityRegistry.finishSession(targetSession)
         val hostId =
             if (SessionActivity.supportsHostTask()) SessionActivity.newHostId() else 0L
         if (hostId != 0L) {
@@ -885,7 +911,7 @@ fun WawonaApp(
             }
             sessionOrchestrator.markConnected(targetSession)
             sessionOrchestrator.setActiveSession(targetSession)
-            /* App Bridge (anowaW): once the nested-Weston desktop machine is up,
+            /* Wawona Swinging Bridge: once the nested-Weston desktop machine is up,
              * attach the bridge so Android apps can be embedded as Wayland
              * windows. Only fires for an eligible desktop machine with the
              * feature enabled; no-op otherwise. */
@@ -947,8 +973,8 @@ fun WawonaApp(
                 MachineType.SSH_WAYPIPE, MachineType.SSH_TERMINAL -> stopWaypipe()
                 MachineType.VM, MachineType.CONTAINER -> AndroidMobileVmRunner.stop()
             }
+            SessionActivityRegistry.finishSession(session.sessionId)
             sessionOrchestrator.markDisconnected(session.sessionId)
-            SessionActivityRegistry.release(session.sessionId)
             if (sessionOrchestrator.activeSessionId == session.sessionId) {
                 sessionOrchestrator.setActiveSession(null)
                 showMachinesHome = true
@@ -1105,7 +1131,7 @@ fun WawonaApp(
         }
         while (true) {
             clientTabs = buildList {
-                // #84: tabs map 1:1 to live Wayland clients only — never the
+                // #84: tabs map 1:1 to live Wayland clients only. Never the
                 // host "Shell"/Machines chrome. The Machines home is reached via
                 // the host back/Focus affordance, not a tab segment.
                 try {
@@ -1178,7 +1204,7 @@ fun WawonaApp(
                 lastWanted = wanted
                 val mode = keyboardUiModeLatest.value
                 if (mode.isPip() || mode == KeyboardUiMode.HIDDEN_EXTERNAL) {
-                    // User parked keyboard — don't yank it open/closed.
+                    // User parked keyboard. Don't yank it open/closed.
                 } else if (wanted && mode != KeyboardUiMode.EXPANDED) {
                     keyboardUiMode = KeyboardUiMode.EXPANDED
                     surfaceViewRef?.restartInputForContentType()
@@ -1191,7 +1217,7 @@ fun WawonaApp(
     }
 
     // IME visibility only maintains Expanded when already Expanded (user/text_entry_wanted).
-    // Never promote ACCESSORY_ONLY → EXPANDED from imeVisible — that forced Gboard open for
+    // Never promote ACCESSORY_ONLY → EXPANDED from imeVisible. That forced Gboard open for
     // demos like weston-simple-shm that only need the accessory bar.
     LaunchedEffect(imeBottom, keyboardUiMode, inSessionUi, hardwareKeyboardActive) {
         if (!inSessionUi || hardwareKeyboardActive) return@LaunchedEffect
@@ -1509,7 +1535,7 @@ fun WawonaApp(
 }
 
 /**
- * Startup log overlay — shown between "Run" and the first compositor frame.
+ * Startup log overlay. Shown between "Run" and the first compositor frame.
  *
  * Displays a native scrollable text view (LazyColumn of log lines) with a
  * frosted-glass card.  The user can long-press to select and copy text.
@@ -1574,7 +1600,7 @@ private fun StartupLogOverlay(
 
             HorizontalDivider(color = Color(0x33FFFFFF), thickness = 0.5.dp)
 
-            /* Log lines — selectable for copy */
+            /* Log lines. Selectable for copy */
             SelectionContainer {
                 LazyColumn(
                     state = listState,

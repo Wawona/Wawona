@@ -25,6 +25,8 @@
   androidConfigNix,
   westonAndroidSignalPolyfill ? null,
   releaseArtifact ? "debug",
+  # uutils multicall PIE (optional until wired from flake).
+  coreutilsAndroid ? null,
   ...
 }:
 
@@ -58,6 +60,7 @@ let
   fastfetchAndroid = buildModule.buildForAndroid "fastfetch" { };
   # phoon (wwn-phoon-rs): clean-room Rust moon-phase utility; PIE libphoon_bin.so.
   phoonAndroid = buildModule.buildForAndroid "phoon" { };
+  wasmAndroid = buildModule.buildForAndroid "wawona-wasm" { };
   neovimAndroid = buildModule.buildForAndroid "neovim" { };
   waypipeAndroid = buildModule.buildForAndroid "waypipe" { };
   # niri (wwn-niri): nested scrollable-tiling compositor (Wayland client of
@@ -70,7 +73,9 @@ let
     inherit pkgs lib;
     wawonaSrc = wawonaSrc;
   };
-  # anowaW app bridge: libanowaw.so + staged Kotlin/JNI shims (share/anowaw).
+  # DejaVu (UI/CSD) + DejaVuSansM Nerd Font Mono (terminals / prompts).
+  wawonaBundledFonts = pkgs.callPackage ../libs/fonts { };
+  # Swinging Bridge app bridge: libanowaw.so + staged Kotlin/JNI shims (share/anowaw).
   anowawAndroid = buildModule.buildForAndroid "anowaw" { };
   mobileToytoolkitDeps = import ./mobile-toytoolkit-deps.nix {
     buildFn = buildModule.buildForAndroid;
@@ -125,7 +130,7 @@ let
   androidQuadFrag = ../../src/platform/android/rendering/shaders/android_quad.frag;
 
   shellTools = import ./android-shell-tools.nix {
-    inherit lib zshAndroid fastfetchAndroid phoonAndroid neovimAndroid waypipeAndroid niriAndroid fuzzelAndroid footAndroid applicationsCatalog;
+    inherit lib zshAndroid fastfetchAndroid coreutilsAndroid phoonAndroid wasmAndroid neovimAndroid waypipeAndroid niriAndroid fuzzelAndroid footAndroid applicationsCatalog;
   };
   westonData = import ./android-weston-data.nix { inherit lib pkgs; };
   bundledClients = import ./android-bundled-clients.nix {
@@ -297,6 +302,10 @@ in
         echo "ERROR: Missing ModifierAccessoryBar.kt"
         exit 1
       fi
+      if [ ! -f android/app/src/main/java/com/aspauldingcode/wawona/KeyboardLayouts.kt ]; then
+        echo "ERROR: Missing KeyboardLayouts.kt (follow-system XKB; #60/#141)"
+        exit 1
+      fi
     '';
 
     # Fix egl_buffer_handler for Android (create Android-compatible stubs)
@@ -416,7 +425,7 @@ EOF
 
       # ANGLE archives are named libEGL.so / libGLESv2.so but their ELF SONAMEs
       # are libEGL_angle.so / libGLESv2_angle.so (libwawona NEEDED). Stage only
-      # the SONAME filenames — shipping both names as separate files loads two
+      # the SONAME filenames. Shipping both names as separate files loads two
       # ANGLE images (eglMakeCurrent on one, gl* on the other → empty shader
       # compile failures). WawonaNative loads EGL_angle / GLESv2_angle.
       if [ -f "$JNI_LIB_DIR/libEGL.so" ]; then
@@ -480,14 +489,11 @@ EOF
       cp -RL ${pkgs.xkeyboard_config}/share/X11/xkb/. app/src/main/assets/xkb/
       chmod -R u+w app/src/main/assets/xkb
 
-      # DejaVu fonts for the in-process weston toytoolkit clients (cairo/
-      # fontconfig text rendering). iOS embeds the same tree under share/fonts;
-      # android_jni.c writes a fonts.conf pointing here at runtime.
+      # DejaVu (UI/CSD) + DejaVuSansM Nerd Font Mono (terminals).
+      # iOS embeds the same tree under share/fonts; android_jni.c writes a
+      # fonts.conf pointing here at runtime.
       mkdir -p app/src/main/assets/fonts/truetype
-      cp -L ${pkgs.dejavu_fonts}/share/fonts/truetype/DejaVuSans.ttf \
-            ${pkgs.dejavu_fonts}/share/fonts/truetype/DejaVuSans-Bold.ttf \
-            ${pkgs.dejavu_fonts}/share/fonts/truetype/DejaVuSansMono.ttf \
-            ${pkgs.dejavu_fonts}/share/fonts/truetype/DejaVuSansMono-Bold.ttf \
+      cp -L ${wawonaBundledFonts}/share/fonts/truetype/*.ttf \
             app/src/main/assets/fonts/truetype/
       chmod -R u+w app/src/main/assets/fonts
 
@@ -498,7 +504,7 @@ EOF
       # android-bundled-clients.nix.
       ${bundledClients.preBuildFragment}
 
-      # anowaW app bridge: stage the Kotlin shims into the app sourceSet and the
+      # Swinging Bridge app bridge: stage the Kotlin shims into the app sourceSet and the
       # JNI glue next to android_jni.c so CMake picks it up. libanowaw.so is
       # bundled into jniLibs by the androidDeps .so copy loop above.
       if [ -d "${anowawAndroid}/share/anowaw/kotlin" ]; then

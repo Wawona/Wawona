@@ -26,7 +26,7 @@ use crate::core::wayland::policy;
 pub fn register(state: &mut CompositorState, dh: &DisplayHandle) {
     if policy::allow_desktop_extensions(state.protocol_profile) {
         crate::core::wayland::smithay_runtime::register_xdg_extensions(state, dh);
-        // xdg_toplevel_drag_v1 has no Smithay delegate in 0.7 — custom dispatch remains.
+        // xdg_toplevel_drag_v1 has no Smithay delegate in 0.7. Custom dispatch remains.
         xdg_toplevel_drag::register_xdg_toplevel_drag(dh);
 
         crate::wlog!(

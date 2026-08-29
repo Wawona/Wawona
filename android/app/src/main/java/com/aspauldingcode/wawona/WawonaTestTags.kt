@@ -32,6 +32,7 @@ object WawonaTestTags {
     const val SETTINGS_INPUT = "wwn.settings.input"
     const val SETTINGS_GRAPHICS = "wwn.settings.graphics"
     const val SETTINGS_CONNECTION = "wwn.settings.connection"
+    const val SETTINGS_ENVIRONMENT = "wwn.settings.environment"
     const val SETTINGS_LOCAL_SHELL = "wwn.settings.local.shell"
     const val SETTINGS_DESKTOP = "wwn.settings.desktop"
     const val SETTINGS_ADVANCED = "wwn.settings.advanced"

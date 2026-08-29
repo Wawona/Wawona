@@ -1,4 +1,4 @@
-// WWNWatchKeymap.h — GENERATED, do not edit by hand.
+// WWNWatchKeymap.h. GENERATED, do not edit by hand.
 // Complete, include-free US xkb keymap (XKB_KEYMAP_FORMAT_TEXT_V1),
 // produced by `xkbcli compile-keymap --layout us` (libxkbcommon 1.13.2).
 // Sent verbatim to weston-terminal via wl_keyboard.keymap so toytoolkit's

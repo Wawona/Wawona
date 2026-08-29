@@ -1,12 +1,19 @@
-# Attaching a Debugger
+# Debugging
+
+Launching Wawona, starting a machine, and capturing UI evidence is
+**agent-device** on every platform, including macOS. Do not use `osascript`,
+`screencapture`, or `open -n …/Wawona.app` as the test path. See
+`.cursor/rules/wawona-test-control.mdc` and `wawona-agent-device.mdc`.
+
+LLDB is opt-in for crashes and freezes.
 
 All flake apps launch **without** a debugger by default. Pass `--debug` to
-run under LLDB (or attach) so you can catch freezes and crashes.
+run under LLDB (or attach).
 
 ## Quick Reference
 
 ```bash
-# Default — no debugger
+# Default. No debugger
 nix run .#wawona-macos
 nix run .#wawona-ios
 nix run .#wawona-android
@@ -39,7 +46,7 @@ With `--debug`:
 
 1. Nix build must succeed
 2. Wrapper verifies `Wawona.app` + Mach-O binary exist
-3. **LLDB spawns the app** — backtraces on crash/halt
+3. **LLDB spawns the app**. Backtraces on crash/halt
 4. On hang/freeze: at the `(lldb)` prompt run `process interrupt`
    (same as Xcode Pause); stop-hooks print `thread backtrace all`
 

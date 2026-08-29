@@ -1,0 +1,84 @@
+{
+  "packages": [
+    {
+      "name": "libwayland",
+      "version": "1.23.0",
+      "role": "Wayland protocol library"
+    },
+    {
+      "name": "xkbcommon",
+      "version": "1.7.0",
+      "role": "Keyboard handling library"
+    },
+    {
+      "name": "LZ4",
+      "version": "1.10.0",
+      "role": "Fast compression"
+    },
+    {
+      "name": "Zstd",
+      "version": "1.5.7",
+      "role": "Zstandard compression"
+    },
+    {
+      "name": "libffi",
+      "version": "3.5.2",
+      "role": "Foreign function interface"
+    },
+    {
+      "name": "pixman",
+      "version": "0.44.2",
+      "role": "Software 2D compositor"
+    },
+    {
+      "name": "Waypipe",
+      "version": "0.11.0",
+      "role": "Remote Wayland display proxy"
+    },
+    {
+      "name": "libssh2",
+      "version": "1.11.1",
+      "role": "In-process SSH (Apple mobile)"
+    },
+    {
+      "name": "epoll-shim",
+      "version": "0.0.20240608",
+      "role": "epoll compatibility layer"
+    },
+    {
+      "name": "ANGLE",
+      "version": "chromium",
+      "role": "OpenGL ES on Metal"
+    },
+    {
+      "name": "MoltenVK",
+      "version": "1.3",
+      "role": "Vulkan on Metal"
+    },
+    {
+      "name": "iland",
+      "version": "userland",
+      "role": "Userspace DRM/KMS/GBM (Mode A)"
+    },
+    {
+      "name": "Weston",
+      "version": "14",
+      "role": "Bundled nested compositor"
+    },
+    {
+      "name": "Niri",
+      "version": "25",
+      "role": "Bundled nested compositor"
+    },
+    {
+      "name": "zsh",
+      "version": "5.9",
+      "role": "In-process local shell"
+    },
+    {
+      "name": "Foot",
+      "version": "1.21",
+      "role": "Wayland terminal"
+    }
+  ]
+}

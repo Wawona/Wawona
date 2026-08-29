@@ -1,4 +1,4 @@
-//! Machine profile editor modal — 1:1 with the macOS `WWNMachineEditorView`
+//! Machine profile editor modal. 1:1 with the macOS `WWNMachineEditorView`
 //! (section order, titles, subtitles, labels, and button placement).
 
 use std::cell::RefCell;
@@ -85,7 +85,7 @@ pub fn show_editor(
     for client in BUNDLED_CLIENTS {
         let row = adw::ActionRow::new();
         row.set_title(client.name);
-        row.set_subtitle(client.description);
+        row.set_title_lines(1);
         row.set_activatable(false);
         let radio = gtk::CheckButton::new();
         if let Some(ref first) = first_radio {
@@ -198,7 +198,7 @@ pub fn show_editor(
     add_row(&dig_group, "Vulkan Driver", &vulkan_driver);
     add_row(&dig_group, "OpenGL Driver", &opengl_driver);
     add_row(&dig_group, "Enable DMABUF", &dmabuf);
-    add_row(&dig_group, "HDR / Color Operations", &color_ops);
+    add_row(&dig_group, "Enable HDR", &color_ops);
 
     // MARK: Session Exit
     let session_exit_group = adw::PreferencesGroup::new();
@@ -458,6 +458,7 @@ pub fn show_editor(
 fn add_row(group: &adw::PreferencesGroup, title: &str, widget: &impl IsA<gtk::Widget>) {
     let row = adw::ActionRow::new();
     row.set_title(title);
+    row.set_title_lines(1);
     row.add_suffix(widget);
     row.set_activatable(false);
     group.add(&row);

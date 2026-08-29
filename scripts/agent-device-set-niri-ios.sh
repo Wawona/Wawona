@@ -27,10 +27,12 @@ xcrun simctl terminate "$UDID" "$BUNDLE_ID" >/dev/null 2>&1 || true
 
 PAYLOAD='[{"id":"e2e-niri-default","name":"Default Machine","type":"native","sshHost":"","sshUser":"","sshPort":22,"sshPassword":"","remoteCommand":"","launchers":[],"favorite":false,"runtimeOverrides":{"bundledAppID":"niri"},"settingsOverrides":{"NativeClientId":"niri","NiriEnabled":true},"nativeLauncher":"niri"}]'
 
-# String form hits the legacy loader in both stores.
+# data(forKey:) wins over string. Delete first so this write is not ignored.
+xcrun simctl spawn "$UDID" defaults delete "$BUNDLE_ID" "wawona.machineProfiles.v1" >/dev/null 2>&1 || true
 xcrun simctl spawn "$UDID" defaults write "$BUNDLE_ID" "wawona.machineProfiles.v1" -string "$PAYLOAD"
 xcrun simctl spawn "$UDID" defaults write "$BUNDLE_ID" "wawona.activeMachineId.v1" -string "e2e-niri-default"
 xcrun simctl spawn "$UDID" defaults write "$BUNDLE_ID" "NiriEnabled" -bool YES
+xcrun simctl spawn "$UDID" defaults write "$BUNDLE_ID" "TouchInputType" -string "Multi-Touch"
 # Welcome gates (ObjC prefs + Swift preferences).
 xcrun simctl spawn "$UDID" defaults write "$BUNDLE_ID" "hasSeenWelcome" -bool YES
 xcrun simctl spawn "$UDID" defaults write "$BUNDLE_ID" "wawona.pref.hasCompletedWelcome" -bool YES

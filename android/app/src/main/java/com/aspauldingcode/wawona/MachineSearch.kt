@@ -103,7 +103,7 @@ object MachineSearch {
     internal fun summary(profile: MachineProfile): String = when (profile.type) {
         MachineType.NATIVE -> {
             val client = BundledClients.labelFor(profile.nativeLauncher)
-            if (client.isBlank()) "No client configured — edit to select one"
+            if (client.isBlank()) "No client configured. Edit to select one"
             else "Runs: $client"
         }
         MachineType.SSH_WAYPIPE -> {

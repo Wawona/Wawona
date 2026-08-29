@@ -83,7 +83,7 @@ APP_PID=$!
 
 DISPLAY_SOCK=""
 for _ in $(seq 1 "$WAIT_SECS"); do
-  DISPLAY_SOCK="$(sed -n 's/.*Compositor started — socket: //p' /tmp/wawona-niri-fuzzel-app.log | head -n1)"
+  DISPLAY_SOCK="$(sed -n 's/.*Compositor started. Socket: //p' /tmp/wawona-niri-fuzzel-app.log | head -n1)"
   [[ -n "$DISPLAY_SOCK" && -S "$DISPLAY_SOCK" ]] && break
   DISPLAY_SOCK=""
   kill -0 "$APP_PID" 2>/dev/null || { log "FAIL: Wawona exited early"; tail -40 /tmp/wawona-niri-fuzzel-app.log; exit 1; }

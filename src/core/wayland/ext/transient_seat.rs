@@ -44,7 +44,7 @@ impl Dispatch<ExtTransientSeatManagerV1, ()> for CompositorState {
                 // In a single-seat compositor, the transient seat maps to "default"
                 // The `ready` event tells the client which global seat name to bind
                 ts.ready(0);
-                tracing::debug!("Created transient seat — ready with global_name=0, name=default");
+                tracing::debug!("Created transient seat. Ready with global_name=0, name=default");
             }
             ext_transient_seat_manager_v1::Request::Destroy => {}
             _ => {}

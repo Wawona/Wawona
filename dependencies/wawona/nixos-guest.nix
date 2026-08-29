@@ -14,7 +14,7 @@
   vsockPort ? 6000,
 }:
 
-# wawona-nixos-guest — a prebuilt NixOS guest for the p26 "NixOS VM" machine
+# wawona-nixos-guest. A prebuilt NixOS guest for the p26 "NixOS VM" machine
 # type. Produces the three artifacts `wawona-vz` needs for direct-kernel boot:
 #
 #   result/Image     uncompressed arm64 kernel (VZLinuxBootLoader requirement)
@@ -23,7 +23,7 @@
 #
 # BUILD LOCATION: this is an aarch64-linux derivation, but it builds LOCALLY on
 # an Apple Silicon Mac via Determinate Nix's native (Virtualization.framework)
-# Linux builder — no separate NixOS host needed. The rootfs is assembled with
+# Linux builder. No separate NixOS host needed. The rootfs is assembled with
 # `make-ext4-fs` (a plain derivation, like NixOS sd-images) specifically so it
 # does NOT need `make-disk-image`'s QEMU/KVM VM, which can't run nested inside
 # the VZ builder. See docs/2026-nixos-vm-bridge.md.
@@ -40,7 +40,7 @@ let
           boot.loader.systemd-boot.enable = false;
           # Modern systemd initrd (also clears the 26.11 scripted-initrd
           # deprecation). NOTE: this does NOT currently build on the Determinate
-          # VZ Linux builder — `make-initrd-ng` aborts on a dangling ncurses
+          # VZ Linux builder. `make-initrd-ng` aborts on a dangling ncurses
           # terminfo symlink (share/terminfo/l/linux) in this store view. The
           # microvm/vfkit track (microvm-guest.nix) builds its own initrd fine and
           # is the working p26 path; this wawona-vz artifact track is deferred
@@ -54,7 +54,7 @@ let
             "virtio_net"
             "virtiofs"
           ];
-          # virtio-vsock guest transport — the Wayland pipe to the host.
+          # virtio-vsock guest transport. The Wayland pipe to the host.
           boot.kernelModules = [ "vsock" "vmw_vsock_virtio_transport" ];
           boot.kernelParams = [ "console=hvc0" ];
 
@@ -147,7 +147,7 @@ let
   toplevel = cfg.system.build.toplevel;
   closureInfo = pkgs.closureInfo { rootPaths = [ toplevel ]; };
 
-  # Bare ext4 image containing the store closure — built by a plain derivation
+  # Bare ext4 image containing the store closure. Built by a plain derivation
   # (mkfs.ext4 -d), so NO QEMU/KVM VM is required and it realizes fine on the
   # Determinate VZ Linux builder. Mounted directly as /dev/vda; grows on first
   # boot via autoResize.
@@ -189,7 +189,7 @@ pkgs.runCommand "wawona-nixos-guest-${wawonaVersion}"
   # Authoritative kernel cmdline (includes the init= path); pass to wawona-vz.
   printf '%s\n' "${kernelCmdline}" > "$out/cmdline"
   cat > "$out/boot-hint.txt" <<EOF
-  # copy rootfs.img somewhere writable first — the store copy is read-only
+  # copy rootfs.img somewhere writable first. The store copy is read-only
   cp $out/rootfs.img /tmp/wawona-rootfs.img && chmod u+w /tmp/wawona-rootfs.img
   wawona-vz --kernel $out/Image --initrd $out/initrd --disk /tmp/wawona-rootfs.img \\
             --cmdline "$(cat $out/cmdline)" \\

@@ -15,6 +15,8 @@ public enum MachineEditorIntent: Sendable {
     case updateInputProfile(String)
     case updateBundledAppID(String)
     case updateWaypipeEnabled(Bool)
+    case updateContainerRef(String)
+    case updateEntryCommand(String)
 }
 
 public enum MachineEditorFieldID: String, Sendable, CaseIterable {
@@ -32,6 +34,9 @@ public enum MachineEditorFieldID: String, Sendable, CaseIterable {
     case inputProfile
     case bundledAppID
     case waypipeEnabled
+    case containerRef
+    case entryCommand
+    case desktopSession
 }
 
 public struct MachineEditorFieldMetadata: Sendable, Hashable {
@@ -69,6 +74,18 @@ public struct MachineEditorState: Sendable, Hashable {
     public var inputProfile: String
     public var bundledAppID: String
     public var waypipeEnabled: Bool
+    /// Container image reference (machine type container). Empty = inherit the
+    /// global default image.
+    public var containerRef: String
+    /// Container entry command (machine type container). Empty = inherit the
+    /// global default command.
+    public var entryCommand: String
+    /// Desktop session toggle (machine type container): attach the container's
+    /// Wayland session to Wawona via the waypipe vsock bridge.
+    public var desktopSession: Bool
+    /// Local OCI layout directory to run from instead of a registry image
+    /// (`--image-archive`). Set by the editor's "Import image archive…" flow.
+    public var imageArchivePath: String
 
     public init(
         id: String? = nil,
@@ -85,7 +102,11 @@ public struct MachineEditorState: Sendable, Hashable {
         remoteCommand: String = "",
         inputProfile: String = "direct",
         bundledAppID: String = "",
-        waypipeEnabled: Bool = true
+        waypipeEnabled: Bool = true,
+        containerRef: String = "",
+        entryCommand: String = "",
+        desktopSession: Bool = false,
+        imageArchivePath: String = ""
     ) {
         self.id = id
         self.name = name
@@ -102,6 +123,10 @@ public struct MachineEditorState: Sendable, Hashable {
         self.inputProfile = inputProfile
         self.bundledAppID = bundledAppID
         self.waypipeEnabled = waypipeEnabled
+        self.containerRef = containerRef
+        self.entryCommand = entryCommand
+        self.desktopSession = desktopSession
+        self.imageArchivePath = imageArchivePath
     }
 
     public var isNative: Bool { typeRawValue == "native" }
@@ -196,11 +221,17 @@ public struct MachineEditorValidation: Sendable {
                 MachineEditorFieldID.remoteCommand,
                 MachineEditorFieldID.waypipeEnabled,
             ])
+        } else if state.isContainer {
+            fields.append(contentsOf: [
+                MachineEditorFieldID.containerRef,
+                MachineEditorFieldID.entryCommand,
+                MachineEditorFieldID.desktopSession,
+            ])
         }
+        // Input profile (Touch Input Type) lives in Machine Settings, not Add/Edit.
         // Virtual-machine and container backends are selected automatically per
         // build target (see wwn-vms / wwn-containers capability lanes); they
         // expose no user-editable subtype field (Residual E).
-        fields.append(MachineEditorFieldID.inputProfile)
         return fields
     }
 
@@ -234,6 +265,12 @@ public struct MachineEditorValidation: Sendable {
             return MachineEditorFieldMetadata(id: .bundledAppID, label: "Bundled App", helperText: "Bundled native app identifier.")
         case .waypipeEnabled:
             return MachineEditorFieldMetadata(id: .waypipeEnabled, label: "Waypipe Enabled")
+        case .containerRef:
+            return MachineEditorFieldMetadata(id: .containerRef, label: "Image", helperText: "OCI image reference (e.g. alpine:3.20). Empty inherits the global default image.")
+        case .entryCommand:
+            return MachineEditorFieldMetadata(id: .entryCommand, label: "Command", helperText: "Command to run in the container. Empty inherits the global default command.")
+        case .desktopSession:
+            return MachineEditorFieldMetadata(id: .desktopSession, label: "Desktop Session", helperText: "Attach the container's Wayland session to Wawona (windows appear via the waypipe vsock bridge).")
         }
     }
 

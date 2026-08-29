@@ -1,4 +1,4 @@
-# Wawona — Build & CI Optimization
+# Wawona. Build & CI Optimization
 
 How to keep build/CI time bounded across the Wawona monorepo and the `wwn-*`
 port repos. Companion to [`2026-greenlight-gates.md`](./2026-greenlight-gates.md)
@@ -44,13 +44,13 @@ Operational runbook: [`flakehub-cache.md`](./flakehub-cache.md).
   owns `wawona-ios` / `wawona-android` / `wawona-macos` / `wawona-appimage`.
   [`device-gate.yml`](../.github/workflows/device-gate.yml) runs product-build
   then GUI smoke with `products_ready`, and Watch: idle memory with `products_ready` (advisory;
-  `continue-on-error` — do not re-call product-build on the Gate: products tip_key).
+  `continue-on-error`. Do not re-call product-build on the Gate: products tip_key).
   Release packages DMG/APK/AppImage from
   those GHA artifacts; Ship: beta (stores) resolves AppImages by SHA when possible.
   Impure IPA/AAB stay publish-only. See [`ci.md`](./ci.md).
 - **Curated push/PR matrix.** `nix.yml` builds only
   [`.github/ci-package-matrix.json`](../.github/ci-package-matrix.json)
-  (backends / substrate — not full product apps).
+  (backends / substrate. Not full product apps).
 - **Branch parity.** `development` and `master` both run Gate: packages + Gate: products.
   Android Gradle/meson lives inside Gate: packages (path-filtered). Ship: beta / Ship: GitHub assets
   stay on `master` / tags. Nightly does not re-run Gate: products.
@@ -58,12 +58,28 @@ Operational runbook: [`flakehub-cache.md`](./flakehub-cache.md).
   frontend-syntax / cargo-macos on docs-only tips), and `android-gradle-gate` so
   non-native pushes stop burning macos-26 minutes. `workflow_dispatch` stays full.
 - **Host Xcode pin.** [`.github/scripts/select-xcode.sh`](../.github/scripts/select-xcode.sh)
-  pins `Xcode_26.6.0.app` (not newest). Bump deliberately — see [`ci.md`](./ci.md).
+  pins `Xcode_26.6.0.app` (not newest). Bump deliberately. See [`ci.md`](./ci.md).
   Do **not** chase `apple-sdks.nix` / FlakeHub Apple frameworks for product SDKs.
+  nixpkgs `apple-sdk_15` (ANGLE Darwin) and `apple-sdk_26` (FFmpeg last-resort)
+  are the only packaged-framework uses; they are macOS-lib recipes, not product
+  `SDKROOT`.
+- **Host simulator SDK warm.** [`.github/scripts/warm-ios-simulator-sdk.sh`](../.github/scripts/warm-ios-simulator-sdk.sh)
+  is the Apple platform-SDK cache (`ios` / `ipados` / `tvos` / `watchos` /
+  `visionos` / `all`). Product ios-sim, apple-family, device-e2e in-job builds,
+  and Gate: packages frontend-syntax all run it before `xcodebuild`.
+- **Inner vs outer loop.** Fast iteration is `nix develop` / backend static libs
+  (FlakeHub-friendly). Outer `xcodegen` + `xcodebuild` / `.#wawona-ios` only when
+  app packaging inputs change. See [`compilation.md`](./compilation.md).
+- **Product xcodebuild must not nested-compile Rust.** `nix build .#wawona-ios`
+  passes `WAWONA_BACKEND_OUT*` so `xcode-prebuild.sh` copies `libwawona.a`.
+  Simulator Swift is `ARCHS=arm64` only (no x86_64 slice). Sim Rust backends
+  use `release = false` (skip thin LTO). These are the compile-time wins; host
+  SDK warm / apple-sdks.nix are not.
 - **crate2nix IFD hoist.** One `generatedCargoNix` per `workspace-src-*`
   (ios / macos / watchos); backends that share a workspace pass `cargoNixDrv`.
-- **Runner cores.** Flake `nixConfig.max-jobs/cores` + CI installer `extra-conf`
-  (`max-jobs = auto`, `cores = 0`) for compile-heavy attrs.
+- **Runner cores.** CI installer `extra-conf` (`max-jobs = auto`, `cores = 0`)
+  for compile-heavy attrs. Do not put those in flake `nixConfig` (untrusted
+  on laptops; every `nix run` warns).
 - **Fast PR gate vs nightly.**
   - *Push gate* (`nix.yml` + device-gate): curated builds + path-filtered Android
     Gradle/meson + GUI smoke/fuzzel.
@@ -75,6 +91,6 @@ Operational runbook: [`flakehub-cache.md`](./flakehub-cache.md).
 
 ## Sizing rules of thumb
 
-- Keep the base app to core bundled clients only; ship everything else via
-  `wwn-apt` (ODR/StoreKit) or waypipe. Smaller base → faster review + install.
+- Keep the base app to core bundled clients only; ship long-tail via
+  Wawona Runtime Wasm packages or waypipe. Smaller base → faster review + install.
 - Prefer `--no-link --print-out-paths` in CI scripts to avoid gcroot churn.

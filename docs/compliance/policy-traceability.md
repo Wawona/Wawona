@@ -41,7 +41,7 @@ This matrix links protocol/capability exposure policy to source policy documents
   - Cargo features (`profile-store-safe`, `profile-store-safe-remote`, `profile-desktop-host`, `profile-full-dev`)
   - Optional env override: `WAWONA_PROTOCOL_PROFILE`.
 - Local shell spawn (Apple mobile):
-  - `wwn-toolchain/dependencies/libs/wawona-pty/` — path allowlist, in-process spawn on Apple mobile
-  - `WWNRootfsManager` — bundled rootfs install under Application Support
-  - `WWNWaypipeRunner.m` — sanitized env before `weston_terminal_main`
+  - `wwn-toolchain/dependencies/libs/wawona-pty/`. Path allowlist, in-process spawn on Apple mobile
+  - `WWNRootfsManager`. Bundled rootfs install under Application Support
+  - `WWNWaypipeRunner.m`. Sanitized env before `weston_terminal_main`
   - Documentation: [docs/ios-local-shell/](../ios-local-shell/README.md)

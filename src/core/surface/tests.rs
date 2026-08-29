@@ -33,7 +33,7 @@ fn test_surface_commit() {
     // Commit
     surface.commit();
     
-    // Check current — dimensions derived from buffer at scale 1
+    // Check current. Dimensions derived from buffer at scale 1
     assert_eq!(surface.current.width, 100);
     assert_eq!(surface.current.height, 200);
     assert_eq!(surface.current.opaque, true);

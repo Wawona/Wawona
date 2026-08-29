@@ -32,7 +32,13 @@
 #include <string.h> // For strdup
 
 static BOOL WWNForceSSDEnabled(void) {
+#if TARGET_OS_TV
+  // Fill-primary: Wayland CSD cannot stand alone on the TV. macOS keeps the
+  // Settings toggle. iPhone still follows the pref (hostLocked fill is enough).
+  return YES;
+#else
   return [[WWNPreferencesManager sharedManager] forceServerSideDecorations];
+#endif
 }
 
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
@@ -105,8 +111,127 @@ extern void WWNCoreFlushClients(void *core);
 extern uint32_t WWNCoreDisconnectAllClients(void *core);
 extern void WWNCoreSetForceSSD(void *core, bool enabled);
 extern void WWNCoreSetForceSSDForClientLaunch(void *core, bool enabled);
+extern void WWNCoreSetFillsHostForClientLaunch(void *core, bool fills_host);
 extern void WWNCoreSetWindowHostSceneIndependent(void *core, uint64_t window_id,
                                                  bool independent);
+
+/// Bundled weston demos with a fixed preferred square (flower/smoke 200x200,
+/// simple-shm/simple-egl 250x250). Must never receive host fill configures or
+/// stretch presentation. OWL keeps Client authority, same as weston-flower.
+///
+/// Catalog ids (`weston-simple-egl`), xdg app_ids
+/// (`org.freedesktop.weston.simple-egl`), and display titles (`Weston Simple
+/// EGL`) must all match. Hyphen vs space is why simple-egl followed host
+/// resize while flower/smoke did not (`"flower"` is a substring of
+/// `"Weston Flower"`; `"simple-egl"` is not a substring of `"Weston Simple EGL"`).
+static NSString *WWNNormWestonDemoKey(NSString *value) {
+  if (value.length == 0) {
+    return @"";
+  }
+  NSString *lower = value.lowercaseString;
+  NSCharacterSet *sep = [NSCharacterSet characterSetWithCharactersInString:@" _"];
+  NSArray<NSString *> *parts = [lower componentsSeparatedByCharactersInSet:sep];
+  NSMutableArray<NSString *> *kept = [NSMutableArray array];
+  for (NSString *p in parts) {
+    if (p.length > 0) {
+      [kept addObject:p];
+    }
+  }
+  return [kept componentsJoinedByString:@"-"];
+}
+
+BOOL WWNWestonDemoPrefersFixedSquare(NSString *clientId, NSString *title) {
+  NSString *idNorm = WWNNormWestonDemoKey(clientId);
+  if (idNorm.length > 0) {
+    static NSSet<NSString *> *fixedClients;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+      fixedClients = [NSSet setWithArray:@[
+        @"weston-smoke",
+        @"smoke",
+        @"weston-flower",
+        @"flower",
+        @"weston-simple-shm",
+        @"simple-shm",
+        @"weston-simple-egl",
+        @"simple-egl",
+        @"org.freedesktop.weston.simple-egl",
+        @"org.freedesktop.weston.simple-shm",
+        @"weston-clickdot",
+        @"clickdot",
+        @"weston-eventdemo",
+        @"eventdemo",
+      ]];
+    });
+    if ([fixedClients containsObject:idNorm] ||
+        [idNorm hasSuffix:@"simple-egl"] || [idNorm hasSuffix:@"simple-shm"] ||
+        [idNorm hasSuffix:@"weston-flower"] || [idNorm hasSuffix:@"weston-smoke"] ||
+        [idNorm hasSuffix:@"weston-clickdot"] ||
+        [idNorm hasSuffix:@"weston-eventdemo"]) {
+      return YES;
+    }
+  }
+  NSString *tNorm = WWNNormWestonDemoKey(title);
+  if (tNorm.length == 0) {
+    return NO;
+  }
+  return [tNorm containsString:@"simple-shm"] ||
+         [tNorm containsString:@"simple-egl"] ||
+         [tNorm containsString:@"flower"] || [tNorm containsString:@"smoke"] ||
+         [tNorm containsString:@"clickdot"] ||
+         [tNorm containsString:@"eventdemo"];
+}
+
+/// Terminals and nested compositors fill the host. Demos stay client-preferred
+/// (`configure(0,0)`). Nested weston/niri size their output from the first
+/// non-zero xdg configure; a 0x0 seed leaves a blank parent window.
+static BOOL WWNBundledClientFillsHost(NSString *clientId) {
+  if (clientId.length == 0) {
+    return NO;
+  }
+  return [clientId isEqualToString:@"weston-terminal"] ||
+         [clientId isEqualToString:@"wayland-terminal"] ||
+         [clientId isEqualToString:@"foot"] ||
+         [clientId isEqualToString:@"niri"] ||
+         [clientId isEqualToString:@"weston"];
+}
+
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+static BOOL WWNTitleIndicatesNestedCompositor(NSString *title) {
+  NSString *t = title.lowercaseString;
+  if (t.length == 0) {
+    return NO;
+  }
+  if ([t isEqualToString:@"weston compositor"] ||
+      [t hasPrefix:@"weston compositor -"]) {
+    return YES;
+  }
+  if ([t isEqualToString:@"niri"] || [t hasPrefix:@"niri -"]) {
+    return YES;
+  }
+  return NO;
+}
+
+static NSString *WWNResolveActiveMachineBundledClientId(void) {
+  NSString *mid = [WWNMachineProfileStore activeMachineId];
+  WWNMachineProfile *profile =
+      mid.length > 0 ? [WWNMachineProfileStore profileById:mid] : nil;
+  if (!profile) {
+    return nil;
+  }
+  id runtimeBundled = profile.runtimeOverrides[@"bundledAppID"];
+  if ([runtimeBundled isKindOfClass:[NSString class]] &&
+      [(NSString *)runtimeBundled length] > 0) {
+    return (NSString *)runtimeBundled;
+  }
+  id settingsNative = profile.settingsOverrides[@"NativeClientId"];
+  if ([settingsNative isKindOfClass:[NSString class]] &&
+      [(NSString *)settingsNative length] > 0) {
+    return (NSString *)settingsNative;
+  }
+  return nil;
+}
+#endif
 
 #if TARGET_OS_IPHONE
 NSString *const WWNClientWindowSceneActivityType =
@@ -118,26 +243,14 @@ NSString *const WWNClientWindowSceneWindowIdKey = @"wwn.windowId";
 /// iPadOS / visionOS so the Metal plate is not buried under Machines UI.
 static const uint64_t kWWNIlandHostSceneWindowId = 0x574E4E494C414E44ULL; // "WNNILAND"
 
-/// Bundled weston demos with a fixed preferred size (200×200 or simple-shm
-/// preferred). Must never receive host fill configures or stretch presentation
-/// when the iPadOS UIWindowScene resizes — OWL keeps Client authority.
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
 static BOOL WWNIosBundledClientPrefersFixedSize(NSString *clientId) {
-  if (clientId.length == 0) {
-    return NO;
-  }
-  static NSSet<NSString *> *fixedClients;
-  static dispatch_once_t once;
-  dispatch_once(&once, ^{
-    fixedClients = [NSSet setWithArray:@[
-      @"weston-smoke",
-      @"weston-flower",
-      @"weston-simple-shm",
-      @"weston-clickdot",
-      @"weston-eventdemo",
-    ]];
-  });
-  return [fixedClients containsObject:clientId];
+  return WWNWestonDemoPrefersFixedSquare(clientId, nil);
 }
+static BOOL WWNIosBundledClientFillsHost(NSString *clientId) {
+  return WWNBundledClientFillsHost(clientId);
+}
+#endif
 
 static NSString *WWNIosResolveBundledClientIdForWindow(WWNCompositorBridge *bridge,
                                                        uint64_t windowId) {
@@ -322,8 +435,8 @@ static inline NSString *WWNBufferCacheKey(uint32_t surface_id,
 
 // Wayland buffers are top-down and so is CoreAnimation, but OpenGL renders
 // bottom-up, so a GPU client's IOSurface arrives upside down. Its wl_buffer
-// says so via the dmabuf Y_INVERT flag, which cannot reach here — we resolve
-// the surface by id and never see the buffer's flags — so iland's Wayland-EGL
+// says so via the dmabuf Y_INVERT flag, which cannot reach here. We resolve
+// the surface by id and never see the buffer's flags. So iland's Wayland-EGL
 // winsys also marks the IOSurface itself. A mirrored 3D scene looks like broken
 // depth testing rather than a flip, which makes this worth being explicit about.
 static BOOL WWNBufferIsBottomUp(IOSurfaceRef surf) {
@@ -338,10 +451,11 @@ static BOOL WWNBufferIsBottomUp(IOSurfaceRef surf) {
   return bottomUp;
 }
 
-#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
-/// UIKit does not composite IOSurface-as-CALayer.contents the way AppKit does.
-/// Convert to a CGImage (with optional Y-flip for GL bottom-up) so the existing
-/// presentWaylandFrame: path can paint opengl-cube / weston-simple-egl.
+/// Bake an IOSurface into a CGImage. UIKit cannot composite IOSurface as
+/// CALayer.contents. AppKit can, but a Y-scale transform under
+/// geometryFlipped looks like inverted X+Y, and CPU-mapping the IOSurface
+/// does not change the GPU plane CALayer samples. A flipped CGImage is the
+/// same present path as wl_shm and is upright on both families.
 static CGImageRef WWNCreateCGImageFromIOSurface(IOSurfaceRef surf,
                                                 BOOL flipVertical) {
   if (!surf) {
@@ -354,7 +468,7 @@ static CGImageRef WWNCreateCGImageFromIOSurface(IOSurfaceRef surf,
     return NULL;
   }
 
-  // Success is 0 (IOReturn). Do not use kIOReturnSuccess — IOKit is missing on
+  // Success is 0 (IOReturn). Do not use kIOReturnSuccess. IOKit is missing on
   // the iOS family SDKs.
   if (IOSurfaceLock(surf, kIOSurfaceLockReadOnly, NULL) != 0) {
     return NULL;
@@ -409,7 +523,7 @@ static CGImageRef WWNCreateCGImageFromIOSurface(IOSurfaceRef surf,
     return NULL;
   }
   CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
-  // ANGLE / Metal IOSurfaces are BGRA8 — same little-endian layout as wl_shm
+  // ANGLE / Metal IOSurfaces are BGRA8. Same little-endian layout as wl_shm
   // ARGB8888 (B,G,R,A in memory).
   CGBitmapInfo bitmapInfo = kCGBitmapByteOrder32Little |
                             (CGBitmapInfo)kCGImageAlphaPremultipliedFirst;
@@ -420,7 +534,6 @@ static CGImageRef WWNCreateCGImageFromIOSurface(IOSurfaceRef surf,
   CGDataProviderRelease(provider);
   return image;
 }
-#endif
 
 /// Drop stale SHM/IOSurface cache entries for a surface, keeping only `keepKey`.
 /// Required on macOS too: without this, every frame accumulates in `_bufferCache`
@@ -465,7 +578,7 @@ static uint32_t WWNBridgeFrameTimestampMs(void *core) {
   return (uint32_t)(CACurrentMediaTime() * 1000.0);
 }
 
-// Marks blocks running on _compositorQueue (reentrancy + pump routing).
+// Marks blocks running on _compositorThread (reentrancy + pump routing).
 static void *const kWWNCompositorQueueKey = (void *)&kWWNCompositorQueueKey;
 
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
@@ -515,13 +628,29 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
       dispatch_get_main_queue(), ^{
         if (token) {
           WWNLog("BRIDGE",
-                 @"Fullscreen exit timed out during teardown — forcing close");
+                 @"Fullscreen exit timed out during teardown. Forcing close");
           finishOnce();
         }
       });
   [window toggleFullScreen:nil];
 }
 #endif
+
+@interface WWNCompositorThread : NSThread
+@property (nonatomic, strong) NSRunLoop *runLoop;
+@end
+
+@implementation WWNCompositorThread
+- (void)main {
+    @autoreleasepool {
+        self.runLoop = [NSRunLoop currentRunLoop];
+        [self.runLoop addPort:[NSMachPort port] forMode:NSDefaultRunLoopMode];
+        while (!self.isCancelled) {
+            [self.runLoop runMode:NSDefaultRunLoopMode beforeDate:[NSDate distantFuture]];
+        }
+    }
+}
+@end
 
 @implementation WWNCompositorBridge {
   void *_rustCore;
@@ -538,11 +667,11 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
   // Serial queue for all Rust FFI calls. Keeps heavy compositor work
   // (Wayland dispatch, buffer processing, scene graph building) off the
   // main thread so UIKit/AppKit stays responsive.
-  dispatch_queue_t _compositorQueue;
+  WWNCompositorThread *_compositorThread;
 
   // Guards against frame pile-up: when YES, a compositor tick is in
   // flight and the next CADisplayLink/NSTimer callback is skipped.
-  // Atomic because it is written on _compositorQueue and read on the
+  // Atomic because it is written on _compositorThread and read on the
   // main thread; without barriers, ARM64 weak ordering can cause the
   // main thread to read a stale YES and skip ticks indefinitely.
   atomic_bool _compositorBusy;
@@ -616,14 +745,14 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
   // Windows whose AppKit frame has been authoritatively sized at least once
   // (either via an initial injected resize, or the client's first committed
   // buffer). Until a window is in this set, its first ClientCommit size is
-  // always trusted — the host defers the initial xdg_toplevel configure to
+  // always trusted. The host defers the initial xdg_toplevel configure to
   // (0, 0), so the client's first commit is its real preferred size for
   // every Wayland client, not just a known allowlist.
   NSMutableSet<NSNumber *> *_windowsWithInitialSizeSynced;
 
   // Windows already auto-shown after their first presented buffer. The render
   // loop must never re-order-front (or steal key status from) a window on
-  // subsequent frames — focus changes come only from explicit activation.
+  // subsequent frames. Focus changes come only from explicit activation.
   NSMutableSet<NSNumber *> *_windowsAutoShownAfterFirstBuffer;
 
   // Cursor policy: runtime detection from wp_cursor_shape or wl_pointer.set_cursor
@@ -677,11 +806,10 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
     // High-priority serial queue for all Rust compositor FFI work.
     // USER_INTERACTIVE QoS ensures low-latency event processing while
     // keeping the main thread free for UI.
-    dispatch_queue_attr_t attr = dispatch_queue_attr_make_with_qos_class(
-        DISPATCH_QUEUE_SERIAL, QOS_CLASS_USER_INTERACTIVE, 0);
-    _compositorQueue = dispatch_queue_create("com.wawona.compositor", attr);
-    dispatch_queue_set_specific(_compositorQueue, kWWNCompositorQueueKey,
-                                kWWNCompositorQueueKey, NULL);
+    _compositorThread = [[WWNCompositorThread alloc] init];
+    [_compositorThread setName:@"com.wawona.compositor"];
+    [_compositorThread setQualityOfService:NSQualityOfServiceUserInteractive];
+    [_compositorThread start];
 
     WWNLog("BRIDGE", @"WWNCore created successfully via C API!");
     _windows = [NSMutableDictionary dictionary];
@@ -715,7 +843,7 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
     [self setForceSSD:WWNForceSSDEnabled()];
     // SwiftUI MachineSettings / WawonaPreferences write Force SSD to defaults
     // and post this notification. ObjC WWNPreferences only observes defaults
-    // after its window is opened — without this, Force SSD toggles never reach
+    // after its window is opened. Without this, Force SSD toggles never reach
     // Rust and weston stays borderless (no macOS SSD chrome / resize controls).
     [[NSNotificationCenter defaultCenter]
         addObserver:self
@@ -795,7 +923,7 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
 #if TARGET_OS_IPHONE || TARGET_OS_TV || TARGET_OS_WATCH
   // iOS has no /etc/xdg or ~/.config. weston-desktop-shell parses weston.ini
   // via open_config_file() which only searches XDG_CONFIG_HOME, HOME/.config,
-  // and XDG_CONFIG_DIRS — never cwd. Without HOME the client gets NULL config
+  // and XDG_CONFIG_DIRS. Never cwd. Without HOME the client gets NULL config
   // and crashes in weston_config_section_get_bool(NULL, ...).
   if (!getenv("HOME")) {
     setenv("HOME", [runtimeDir UTF8String], 1);
@@ -839,12 +967,12 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
   WWNLog("BRIDGE", @"Starting compositor...");
 
   __block bool success = false;
-  if (_compositorQueue) {
+  if (_compositorThread) {
     // Ensure any pre-start configuration enqueued via _dispatchToRust
     // (e.g. setOutputWidth/setForceSSD from main.m) is applied before start.
-    dispatch_sync(_compositorQueue, ^{
+    [self _dispatchSyncToCompositor:^{
       success = WWNCoreStart(self->_rustCore, name);
-    });
+    }];
   } else {
     success = WWNCoreStart(_rustCore, name);
   }
@@ -861,7 +989,7 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
 
     char *socketPath = WWNCoreGetSocketPath(_rustCore);
     if (socketPath) {
-      WWNLog("BRIDGE", @"Compositor started — socket: %s", socketPath);
+      WWNLog("BRIDGE", @"Compositor started. Socket: %s", socketPath);
       WWNLog("BRIDGE", @"Connect clients with:");
       WWNLog("BRIDGE", @"  export XDG_RUNTIME_DIR=%s",
              getenv("XDG_RUNTIME_DIR"));
@@ -895,7 +1023,7 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
     // macOS: NSTimer at ~60fps for frame pacing.
     // Must run in CommonModes (includes NSEventTrackingRunLoopMode) so Wayland
     // client windows keep presenting while the user moves or live-resizes them.
-    // Pausing ticks until mouse-up freezes the surface mid-drag — forbidden by
+    // Pausing ticks until mouse-up freezes the surface mid-drag. Forbidden by
     // wawona-host-wm-verification (live resize must stream presents mid-drag).
     // Machines / non-Wayland chrome still opts out via
     // _hostWindowInteractionPaused (see _installHostWindowInteractionPause).
@@ -922,7 +1050,7 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
 - (void)stop {
   WWNLog("BRIDGE", @"Stopping compositor bridge...");
 
-  // 1. Stop timers first — no new ticks will be scheduled after this.
+  // 1. Stop timers first. No new ticks will be scheduled after this.
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
   if (_displayLink) {
     [_displayLink invalidate];
@@ -944,11 +1072,11 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
   // 2. Drain the compositor queue: wait for any in-flight tick to finish,
   //    then stop the Rust compositor.  dispatch_sync is safe here because
   //    the in-flight tick only uses dispatch_async to bounce back to main
-  //    (no deadlock — the async block will simply run after we return).
-  if (_rustCore && _compositorQueue) {
+  //    (no deadlock. The async block will simply run after we return).
+  if (_rustCore && _compositorThread) {
     dispatch_semaphore_t stopSem = dispatch_semaphore_create(0);
     __block bool stopped = false;
-    dispatch_async(_compositorQueue, ^{
+    [self _dispatchAsyncToCompositor:^{
       if (self->_rustCore) {
         WWNCoreStop(self->_rustCore);
         self->_rustCore = NULL;
@@ -956,11 +1084,11 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
         WWNLog("BRIDGE", @"Compositor stopped on compositor queue");
       }
       dispatch_semaphore_signal(stopSem);
-    });
+    }];
     dispatch_semaphore_wait(
         stopSem, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)));
     if (!stopped && _rustCore) {
-      WWNLog("BRIDGE", @"Compositor stop timed out — forcing teardown");
+      WWNLog("BRIDGE", @"Compositor stop timed out. Forcing teardown");
       WWNCoreStop(_rustCore);
       _rustCore = NULL;
     }
@@ -1097,7 +1225,7 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
     }
   }
   if (clientWindows.count == 0) {
-    // Do not fall back to focusing every client window — that steals focus
+    // Do not fall back to focusing every client window. That steals focus
     // from other machines when this profile has no windows yet (or its
     // windows were closed). Caller can retry after the client maps a surface.
     return NO;
@@ -1179,15 +1307,9 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
 #if TARGET_OS_TV
   // UIPasteboard is unavailable on tvOS; skip native clipboard bridge.
   return;
-#elif TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
-  UIPasteboard *pasteboard = [UIPasteboard generalPasteboard];
-#else
-  NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
 #endif
 #if !TARGET_OS_TV
-  NSInteger changeCount = pasteboard.changeCount;
-
-  // A client (e.g. weston-terminal) copied text — push it to the native
+  // A client (e.g. weston-terminal) copied text. Push it to the native
   // pasteboard.
   char *clientText = WWNCorePollClipboardText(_rustCore);
   if (clientText) {
@@ -1195,8 +1317,10 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
     WWNStringFree(clientText);
     if (text) {
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+      UIPasteboard *pasteboard = [UIPasteboard generalPasteboard];
       pasteboard.string = text;
 #else
+      NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
       [pasteboard clearContents];
       [pasteboard setString:text forType:NSPasteboardTypeString];
 #endif
@@ -1206,8 +1330,24 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
     }
   }
 
+#if TARGET_OS_SIMULATOR
+  // Reading UIPasteboard (even changeCount) pops
+  // "Wawona would like to paste from CoreSimulatorBridge" and blocks the
+  // main runloop. Nested EGL init (ANGLE Metal) then sits in eglInitialize
+  // until that alert is dismissed. Skip inbound host paste in the simulator.
+  _pasteboardChangeCountInitialized = YES;
+  return;
+#endif
+
+#if TARGET_OS_IPHONE
+  UIPasteboard *pasteboard = [UIPasteboard generalPasteboard];
+#else
+  NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
+#endif
+  NSInteger changeCount = pasteboard.changeCount;
+
   // Native copy (another app, or the user pasting into a text field outside
-  // Wawona) — push it into the compositor so clients can paste it.
+  // Wawona). Push it into the compositor so clients can paste it.
   if (!_pasteboardChangeCountInitialized) {
     // First tick: just observe, don't push whatever was already on the
     // pasteboard before Wawona launched into every freshly-focused client.
@@ -1234,7 +1374,7 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
 /// Drive host soft keyboard from `text_entry_wanted` (committed TI-v3 enable
 /// OR allowlisted terminal keyboard focus). Accessory bar stays independent.
-/// tvOS: manual toggle only — do not auto-Expand from synthesis/TI.
+/// tvOS: manual toggle only. Do not auto-Expand from synthesis/TI.
 - (void)_syncHostKeyboardWithTextInput {
   if (!_rustCore) {
     return;
@@ -1282,14 +1422,14 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
 
 /// Called from CADisplayLink (iOS) or NSTimer (macOS).  The callback fires
 /// on the main thread but we immediately dispatch the heavy Rust work to
-/// _compositorQueue, then bounce lightweight UI updates back to main.
+/// _compositorThread, then bounce lightweight UI updates back to main.
 - (void)_compositorTick {
   if (!_rustCore || atomic_load(&_compositorBusy)) {
     return;
   }
   atomic_store(&_compositorBusy, true);
 
-  dispatch_async(_compositorQueue, ^{
+  [self _dispatchAsyncToCompositor:^{
     // Guard: compositor may have been stopped between dispatch and execution
     if (!self->_rustCore) {
       atomic_store(&self->_compositorBusy, false);
@@ -1315,7 +1455,7 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
       CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
       if (now - s_lastTickSkipLog >= 2.0) {
         WWNLog("TICK",
-               @"Compositor tick skipped (%lu times) — event loop not ready "
+               @"Compositor tick skipped (%lu times). Event loop not ready "
                @"(see [FFI] ProcessEvents logs)",
                (unsigned long)s_tickSkipCount);
         s_lastTickSkipLog = now;
@@ -1406,7 +1546,7 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
     // NOTE: _compositorBusy is reset at the END of this main-queue block,
     // NOT here on the compositor queue.  Resetting here would allow the
     // next tick's [self cacheBuffer:] to write _bufferCache concurrently
-    // with updateLayerForNode: reading it — a data race on
+    // with updateLayerForNode: reading it. A data race on
     // NSMutableDictionary that causes visual flashing.
     dispatch_async(dispatch_get_main_queue(), ^{
       // Apply window events (create/destroy views, update titles)
@@ -1525,10 +1665,10 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
       // tick cannot mutate _bufferCache while we are still reading it.
       atomic_store(&self->_compositorBusy, false);
     });
-  });
+  }];
 }
 
-/// Runs on CADisplayLink (vsync-aligned frame callback) — iOS and macOS 14+
+/// Runs on CADisplayLink (vsync-aligned frame callback). IOS and macOS 14+
 - (void)onDisplayLink:(CADisplayLink *)link {
   // Window lifecycle events, buffer decode, and scene application must stay
   // in one _compositorTick pass. Draining events here races the tick and
@@ -1645,42 +1785,33 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
     IOSurfaceRef surf = IOSurfaceLookup(buffer->iosurface_id);
     if (surf) {
       BOOL bottomUp = WWNBufferIsBottomUp(surf);
-#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
-      // AppKit can assign IOSurface to CALayer.contents; UIKit cannot. Bake a
-      // CGImage (Y-flipped when GL marked WWNBottomUp) so _updateIOSPresentation
-      // hits presentWaylandFrame: instead of the blank legacy layer path.
-      CGImageRef image = WWNCreateCGImageFromIOSurface(surf, bottomUp);
+      // UIKit cannot assign IOSurface to CALayer.contents. AppKit can, but a
+      // CALayer Y-scale under geometryFlipped looks like inverted X+Y, so both
+      // families bake a CGImage. Niri/ANGLE Metal CPU mapping is already
+      // top-down; WWNBottomUp as a blanket flip inverted niri. Nested Weston
+      // gl-renderer leaves GL bottom-up rows. Flip only that compositor
+      // (cpu_y_flip, from title "Weston Compositor - wayland0"; wayland-backend
+      // never sends xdg app_id).
+      BOOL westonFlip = buffer->cpu_y_flip != 0;
+      (void)bottomUp;
+      CGImageRef image = WWNCreateCGImageFromIOSurface(surf, westonFlip);
       CFRelease(surf);
       if (image) {
         _bufferCache[cacheKey] = (__bridge_transfer id)image;
         [_bottomUpBuffers removeObject:cacheKey];
         WWNPruneBufferCacheForSurface(_bufferCache, buffer->surface_id,
                                       cacheKey);
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
         _waylandPresentGeneration++;
         _presentGenerationBySurface[surfaceId] = @(_waylandPresentGeneration);
-        WWNLog("CACHE", @"Cached IOSurface→CGImage buf=%llu bottomUp=%d",
-               buffer->buffer_id, (int)bottomUp);
+#endif
+        WWNLog("CACHE", @"Cached IOSurface→CGImage buf=%llu (westonFlip=%d)",
+               buffer->buffer_id, (int)westonFlip);
       } else {
         WWNLog("CACHE",
                @"FAILED IOSurface→CGImage for buf=%llu iosurface=%u",
                buffer->buffer_id, buffer->iosurface_id);
       }
-#else
-      if (bottomUp) {
-        [_bottomUpBuffers addObject:cacheKey];
-      } else {
-        [_bottomUpBuffers removeObject:cacheKey];
-      }
-      _bufferCache[cacheKey] = (__bridge_transfer id)surf;
-      WWNPruneBufferCacheForSurface(_bufferCache, buffer->surface_id, cacheKey);
-      // Keys outlive their cache entries otherwise. Only worth doing once the
-      // set has grown past a client's worth of swapchain slots.
-      if (_bottomUpBuffers.count > 64) {
-        [_bottomUpBuffers
-            intersectSet:[NSSet setWithArray:_bufferCache.allKeys]];
-      }
-      WWNLog("CACHE", @"Cached IOSurface buf=%llu", buffer->buffer_id);
-#endif
     } else {
       WWNLog("CACHE", @"FAILED IOSurface lookup for buf=%llu iosurface=%u",
              buffer->buffer_id, buffer->iosurface_id);
@@ -1918,7 +2049,7 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
   // Host-owned shells (weston-terminal/foot) set followHostSize without the
   // rust host_locked bit. Expand presentation to the compositor container so
-  // cell-snap / CSD lag (e.g. 398×763 vs 402×778) cannot leave gutters —
+  // cell-snap / CSD lag (e.g. 398×763 vs 402×778) cannot leave gutters -
   // presentWaylandFrame also stretches, but the logged/scene frame must match
   // host bounds or placement races recentering.
   BOOL hostOwnsFrame = [_hostLockedWindowIds containsObject:winId] ||
@@ -1937,7 +2068,7 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
              node->scale > 0.0f) {
     // SizeAuthority::Host can leave node dimensions at a stale host request
     // while the client buffer stays at its fixed preferred size (flower/smoke
-    // 200×200). Never pass an oversized frame into presentWaylandFrame — that
+    // 200×200). Never pass an oversized frame into presentWaylandFrame. That
     // triggers kCAGravityResize upscaling when the iPadOS scene resizes.
     float bufLogicalW = (float)node->buffer_width / node->scale;
     float bufLogicalH = (float)node->buffer_height / node->scale;
@@ -1980,10 +2111,10 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
   }
 
   // IOSurface-as-CALayer.contents is AppKit-only. If an IOSurface still reaches
-  // here (cache conversion failed), drop it — painting a blank legacy layer
+  // here (cache conversion failed), drop it. Painting a blank legacy layer
   // hides the real failure mode.
   WWNLog("RENDER",
-         @"IOS skip non-CGImage content for surf=%@ win=%@ (type=%lu) — "
+         @"IOS skip non-CGImage content for surf=%@ win=%@ (type=%lu). "
          @"IOSurface must be converted in cacheBuffer",
          surfId, winId,
          (unsigned long)CFGetTypeID((__bridge CFTypeRef)content));
@@ -2090,49 +2221,20 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
   [CATransaction begin];
   [CATransaction setDisableActions:YES];
 
-  // 2. Update Geometry — use anchor for window-local coords (subsurfaces)
+  // 2. Update Geometry. Use anchor for window-local coords (subsurfaces)
   float localX = node->x - node->anchor_output_x;
   float localY = node->y - node->anchor_output_y;
   // Use explicit frame assignment to avoid subpixel position/bounds drift that
   // can leave thin gutters at content-view edges.
   layer.frame = CGRectMake(localX, localY, node->width, node->height);
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
-  // #111: when the scene node tracks the host window and the client buffer
-  // still lags (nested niri/weston mid-drag), stretch into the node so the
-  // framebuffer does not jump between before/after sizes. Exact 1:1 uses the
-  // same Resize gravity once the buffer catches up.
-  float bufLogicalW =
-      node->scale > 0 ? (float)node->buffer_width / node->scale : node->width;
-  float bufLogicalH =
-      node->scale > 0 ? (float)node->buffer_height / node->scale : node->height;
-  BOOL bufferMatchesNode = node->buffer_width == 0 ||
-                           (fabsf(bufLogicalW - node->width) <= 1.0f &&
-                            fabsf(bufLogicalH - node->height) <= 1.0f);
-  CGFloat backingScale = 0.0;
-  id hostWin = _windows[winId] ?: _popups[winId];
-  if ([hostWin isKindOfClass:[NSWindow class]]) {
-    backingScale = ((NSWindow *)hostWin).backingScaleFactor;
-  } else if ([hostWin conformsToProtocol:@protocol(WWNPopupHost)] &&
-             [hostWin respondsToSelector:@selector(contentView)]) {
-    backingScale = ((NSView *)((id<WWNPopupHost>)hostWin).contentView)
-                       .window.backingScaleFactor;
-  }
-  if (backingScale < 1.0) {
-    backingScale = MAX(1.0, node->scale);
-  }
-  // #111 / xdg interactive resize: while SizeAuthority::Host, scene sizes the
-  // node to the host request and the buffer lags — stretch into the node so
-  // chrome and content stay aligned mid-drag. When buffer matches (Client
-  // authority / settle), fill 1:1 at the window backing scale. Scene never
-  // leaves a giant node around a fixed client (flower) under Client authority,
-  // so mismatch implies host-ahead stretch, not a TopLeft letterbox.
-  if (bufferMatchesNode) {
-    layer.contentsGravity = kCAGravityResize;
-    layer.contentsScale = backingScale;
-  } else {
-    layer.contentsGravity = kCAGravityResize;
-    layer.contentsScale = MAX(1.0, node->scale);
-  }
+  // Buffer pixels / wl_surface buffer_scale = layer points. Do not use
+  // NSWindow backingScaleFactor: that showed 1x weston buffers at half
+  // size on Retina (left black, right empty, panel clipped). HiDPI is
+  // the client's buffer_scale. #111 still stretches a lagging buffer
+  // into the host node during live resize (Resize gravity).
+  layer.contentsGravity = kCAGravityResize;
+  layer.contentsScale = MAX(1.0, node->scale);
 #else
   layer.contentsScale = MAX(1.0, node->scale);
 #endif
@@ -2219,11 +2321,10 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
     // buffer id is re-used with new SHM pixels (new CGImage, same key).
     layer.contents = nil;
     layer.contents = content;
-    // Surface layers are siblings under the host's contentLayer, never nested,
-    // so scaling this one by -1 in Y flips its own contents and nothing else.
-    layer.transform = [_bottomUpBuffers containsObject:cacheKey]
-                          ? CATransform3DMakeScale(1.0, -1.0, 1.0)
-                          : CATransform3DIdentity;
+    // Do not CATransform3DMakeScale(1,-1,1) under geometryFlipped: that looks
+    // like inverted X+Y. Bottom-up GLES IOSurfaces are baked into a flipped
+    // CGImage in cacheBuffer: instead.
+    layer.transform = CATransform3DIdentity;
   }
 
   [CATransaction commit];
@@ -2448,11 +2549,34 @@ extern void WWNCoreInject_touch_frame(void *core);
 /// All Rust FFI calls (input injection, configuration changes, etc.) go
 /// through here so they are serialized with the compositor tick and never
 /// contend for Rust-internal locks on the main thread.
+- (void)_runBlock:(dispatch_block_t)block {
+  block();
+}
+
 - (void)_dispatchToRust:(dispatch_block_t)block {
-  if (_compositorQueue) {
-    dispatch_async(_compositorQueue, block);
+  [self _dispatchAsyncToCompositor:block];
+}
+
+- (void)_dispatchAsyncToCompositor:(dispatch_block_t)block {
+  if (_compositorThread) {
+    if ([NSThread currentThread] == _compositorThread) {
+      block();
+    } else {
+      [self performSelector:@selector(_runBlock:) onThread:_compositorThread withObject:[block copy] waitUntilDone:NO];
+    }
   } else {
-    // Fallback: queue not yet created (should not happen in practice)
+    block();
+  }
+}
+
+- (void)_dispatchSyncToCompositor:(dispatch_block_t)block {
+  if (_compositorThread) {
+    if ([NSThread currentThread] == _compositorThread) {
+      block();
+    } else {
+      [self performSelector:@selector(_runBlock:) onThread:_compositorThread withObject:[block copy] waitUntilDone:YES];
+    }
+  } else {
     block();
   }
 }
@@ -2601,7 +2725,7 @@ extern void WWNCoreInject_touch_frame(void *core);
 
 - (BOOL)isTextInputEnabled {
   // Read-only poll; safe off the compositor queue (RwLock). Avoid
-  // dispatch_sync here — insertText runs on main and can deadlock the tick.
+  // dispatch_sync here. InsertText runs on main and can deadlock the tick.
   if (!_rustCore) {
     return NO;
   }
@@ -2789,22 +2913,28 @@ extern void WWNCoreInject_touch_frame(void *core);
 
 - (BOOL)shouldFollowHostSizeForWindowId:(uint64_t)windowId {
 #if TARGET_OS_IPHONE
+  id view = _windows[@(windowId)];
+  NSString *title = nil;
+  if ([view isKindOfClass:[WWNCompositorView_ios class]]) {
+    title = ((WWNCompositorView_ios *)view).accessibilityLabel;
+  }
   NSString *clientId =
       WWNIosResolveBundledClientIdForWindow(self, windowId);
-  if (WWNIosBundledClientPrefersFixedSize(clientId)) {
+  if (WWNWestonDemoPrefersFixedSquare(clientId, title)) {
     return NO;
   }
-  id view = _windows[@(windowId)];
   if ([view isKindOfClass:[WWNCompositorView_ios class]]) {
     WWNCompositorView_ios *iosView = (WWNCompositorView_ios *)view;
     return iosView.hostLocked || iosView.followHostSize;
   }
   return NO;
 #else
-  // macOS AppKit windows always own their own frame (CSD/SSD live-resize is
-  // host-driven by design); this gate exists for the mobile per-window
-  // dedicated-scene hosting path (#120).
-  (void)windowId;
+  WWNWindow *host = _windows[@(windowId)];
+  if ([host isKindOfClass:[WWNWindow class]] &&
+      (host.prefersFixedSquare ||
+       WWNWestonDemoPrefersFixedSquare(nil, host.title))) {
+    return NO;
+  }
   return YES;
 #endif
 }
@@ -2824,6 +2954,31 @@ extern void WWNCoreInject_touch_frame(void *core);
            @"Skipping injectWindowResize window=%llu (miniaturized/in-progress)",
            windowId);
     return;
+  }
+  if (hostWindow &&
+      (hostWindow.prefersFixedSquare ||
+       WWNWestonDemoPrefersFixedSquare(nil, hostWindow.title))) {
+    WWNLog("BRIDGE",
+           @"Skipping injectWindowResize window=%llu (fixed-square weston demo)",
+           windowId);
+    return;
+  }
+#endif
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+  {
+    id iosHost = _windows[key];
+    NSString *iosTitle = nil;
+    if ([iosHost isKindOfClass:[WWNCompositorView_ios class]]) {
+      iosTitle = ((WWNCompositorView_ios *)iosHost).accessibilityLabel;
+    }
+    NSString *iosClient =
+        WWNIosResolveBundledClientIdForWindow(self, windowId);
+    if (WWNWestonDemoPrefersFixedSquare(iosClient, iosTitle)) {
+      WWNLog("BRIDGE",
+             @"Skipping injectWindowResize window=%llu (fixed-square weston demo)",
+             windowId);
+      return;
+    }
   }
 #endif
   CGSize dims = CGSizeMake(width, height);
@@ -2943,13 +3098,13 @@ extern void WWNCoreInject_touch_frame(void *core);
 }
 
 - (BOOL)requestHostCloseForWindowId:(uint64_t)windowId {
-  if (!_rustCore || !_compositorQueue) {
+  if (!_rustCore || !_compositorThread) {
     return NO;
   }
   __block BOOL found = NO;
-  dispatch_sync(_compositorQueue, ^{
+  [self _dispatchSyncToCompositor:^{
     found = WWNCoreRequestWindowClose(self->_rustCore, windowId);
-  });
+  }];
   return found;
 }
 
@@ -2967,7 +3122,7 @@ extern void WWNCoreInject_touch_frame(void *core);
 }
 
 - (NSArray<NSNumber *> *)tabbedClientWindowIds {
-  // iPadOS / visionOS: one scene per client — no in-window tab strip.
+  // iPadOS / visionOS: one scene per client. No in-window tab strip.
   if (_iosPerWindowHostingEnabled) {
     return @[];
   }
@@ -3008,7 +3163,7 @@ extern void WWNCoreInject_touch_frame(void *core);
   // others are hidden so switching tabs actually swaps what the user sees
   // (fill-primary surfaces otherwise stack opaquely and the raise alone is not
   // enough once a client repaints). fullscreen_shell kiosk layers are display
-  // surfaces, not tabs — leave their visibility untouched.
+  // surfaces, not tabs. Leave their visibility untouched.
   NSArray<NSNumber *> *tabbed = [self tabbedClientWindowIds];
   NSSet<NSNumber *> *tabbedSet = [NSSet setWithArray:tabbed];
   for (NSNumber *wid in _windows.allKeys) {
@@ -3101,13 +3256,13 @@ extern void WWNCoreInject_touch_frame(void *core);
 #endif
 
 - (BOOL)requestForceDestroyHostWindowForWindowId:(uint64_t)windowId {
-  if (!_rustCore || !_compositorQueue) {
+  if (!_rustCore || !_compositorThread) {
     return NO;
   }
   __block BOOL ok = NO;
-  dispatch_sync(_compositorQueue, ^{
+  [self _dispatchSyncToCompositor:^{
     ok = WWNCoreForceDestroyHostWindow(self->_rustCore, windowId);
-  });
+  }];
   if (ok) {
     dispatch_async(dispatch_get_main_queue(), ^{
       [self pollAndHandleWindowEvents];
@@ -3250,13 +3405,38 @@ extern void WWNCoreInject_touch_frame(void *core);
       break;
     }
   }
-  if ((w == 0 || h == 0) && [NSScreen mainScreen]) {
-    NSSize size = [NSScreen mainScreen].frame.size;
-    if (size.width > 1.0 && size.height > 1.0) {
-      w = (uint32_t)lround(size.width);
-      h = (uint32_t)lround(size.height);
-      s = (float)[NSScreen mainScreen].backingScaleFactor;
+  if ((w == 0 || h == 0) && [NSApp keyWindow]) {
+    NSWindow *appWin = [NSApp keyWindow];
+    if (![appWin isKindOfClass:[WWNWindow class]]) {
+      NSSize size = [appWin contentRectForFrameRect:appWin.frame].size;
+      if (size.width > 1.0 && size.height > 1.0) {
+        w = (uint32_t)lround(size.width);
+        h = (uint32_t)lround(size.height);
+        s = (float)(appWin.backingScaleFactor > 0 ? appWin.backingScaleFactor
+                                                  : 1.0);
+      }
     }
+  }
+  if ((w == 0 || h == 0) && [NSApp mainWindow]) {
+    NSWindow *appWin = [NSApp mainWindow];
+    if (![appWin isKindOfClass:[WWNWindow class]]) {
+      NSSize size = [appWin contentRectForFrameRect:appWin.frame].size;
+      if (size.width > 1.0 && size.height > 1.0) {
+        w = (uint32_t)lround(size.width);
+        h = (uint32_t)lround(size.height);
+        s = (float)(appWin.backingScaleFactor > 0 ? appWin.backingScaleFactor
+                                                  : 1.0);
+      }
+    }
+  }
+  // Do not seed from the full NSScreen. That made nested niri's first
+  // configure huge, then AppKit/OWL shrank the NSWindow during init and
+  // niri kept drawing the large output.
+  if ((w == 0 || h == 0)) {
+    w = 1024;
+    h = 768;
+    s = [NSScreen mainScreen] ? (float)[NSScreen mainScreen].backingScaleFactor
+                              : 1.0f;
   }
 #endif
 
@@ -3371,7 +3551,7 @@ extern void WWNCoreInject_touch_frame(void *core);
     dispatch_sync(dispatch_get_main_queue(), seedOnMain);
   }
 
-  // Never sleep the main thread waiting for the async Rust drain — kmscube
+  // Never sleep the main thread waiting for the async Rust drain. Kmscube
   // Start prepares from the main queue.
   if (onMain) {
     uint32_t w = _latestOutputW;
@@ -3382,7 +3562,7 @@ extern void WWNCoreInject_touch_frame(void *core);
              _latestOutputScale > 0 ? _latestOutputScale : 1.0f);
     } else {
       WWNLog("BRIDGE",
-             @"Native client launch on main with unset output — client will "
+             @"Native client launch on main with unset output. Client will "
              @"negotiate size");
     }
     return;
@@ -3490,9 +3670,21 @@ extern void WWNCoreInject_touch_frame(void *core);
   if (!_rustCore) {
     return;
   }
-  [self _dispatchToRust:^{
+  // Must be on the compositor thread before NSTask connects. Async dispatch
+  // raced nested weston mapping against a still-empty pending policy.
+  [self _dispatchSyncToCompositor:^{
     WWNCoreSetForceSSDForClientLaunch(self->_rustCore, enabled);
     WWNLog("BRIDGE", @"Force SSD staged for next client launch: %d", enabled);
+  }];
+}
+
+- (void)setFillsHostForClientLaunch:(BOOL)fillsHost {
+  if (!_rustCore) {
+    return;
+  }
+  [self _dispatchSyncToCompositor:^{
+    WWNCoreSetFillsHostForClientLaunch(self->_rustCore, fillsHost);
+    WWNLog("BRIDGE", @"Fill-host staged for next client launch: %d", fillsHost);
   }];
 }
 - (void)setKeyboardRepeatRate:(int32_t)rate delay:(int32_t)delay {
@@ -3553,6 +3745,7 @@ typedef struct CWindowEvent {
   uint8_t edges;            // xdg_toplevel resize_edge
   uint8_t size_kind;        // 0=Frame, 1=Content, 2=Buffer
   uint8_t size_cause;       // 0=Unknown, 1=HostConfigure, 2=ClientCommit, 3=OutputModeChange
+  uint8_t fills_host;       // nested weston/niri / terminals
   uint32_t configure_serial;
   uint64_t transaction_id;
 } CWindowEvent;
@@ -3724,10 +3917,12 @@ extern void WWNWindowInfoFree(CWindowInfo *info);
   NSWindowStyleMask styleMask;
   if (useServerDecorations) {
     styleMask = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
-                NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable;
-  } else {
-    styleMask = NSWindowStyleMaskBorderless | NSWindowStyleMaskResizable |
                 NSWindowStyleMaskMiniaturizable;
+  } else {
+    styleMask = NSWindowStyleMaskBorderless | NSWindowStyleMaskMiniaturizable;
+  }
+  if (!window.prefersFixedSquare) {
+    styleMask |= NSWindowStyleMaskResizable;
   }
   // Avoid styleMask thrash (#53): compare chrome-relevant bits only so leftover
   // FullSizeContentView / textured bits from kiosk transitions don't block SSD.
@@ -3752,9 +3947,10 @@ extern void WWNWindowInfoFree(CWindowInfo *info);
   BOOL sizeSynced =
       [_windowsWithInitialSizeSynced containsObject:@(event->window_id)];
   NSSize contentSize = [window contentRectForFrameRect:window.frame].size;
-  if (sizeSynced && contentSize.width > 0 && contentSize.height > 0) {
+  if (sizeSynced && contentSize.width > 0 && contentSize.height > 0 &&
+      !window.prefersFixedSquare) {
     WWNLog("BRIDGE",
-           @"Decoration mode changed for window %llu: %s — injecting "
+           @"Decoration mode changed for window %llu: %s. Injecting "
            @"content resize %.0fx%.0f",
            event->window_id,
            useServerDecorations ? "ServerSide" : "ClientSide",
@@ -3817,6 +4013,19 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
   BOOL kiosk = event->host_locked || event->fullscreen_shell;
   BOOL useServerDecorations = !kiosk && (event->decoration_mode == 1);
 
+  NSString *createdTitle = (event->title && strlen(event->title) > 0)
+                               ? [NSString stringWithUTF8String:event->title]
+                               : @"";
+  NSString *bundledClient = WWNResolveActiveMachineBundledClientId();
+  // Same fill set as iOS: nested weston/niri (and terminals) need a non-zero
+  // xdg configure. Weston's wayland backend copies configure_width/height into
+  // its output; 0x0 means no mode and a blank parent window. Demos stay OWL
+  // client-pick (64px placeholder, configure 0x0).
+  BOOL fillHost = event->fills_host ||
+      (!kiosk && !WWNWestonDemoPrefersFixedSquare(bundledClient, createdTitle) &&
+       (WWNBundledClientFillsHost(bundledClient) ||
+        WWNTitleIndicatesNestedCompositor(createdTitle)));
+
   NSRect contentRect;
   if (kiosk) {
     uint32_t kw = _latestOutputW > 0 ? _latestOutputW : event->width;
@@ -3828,9 +4037,24 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
     if (event->fullscreen_shell) {
       shouldUpdateOutput = YES;
     }
+  } else if (fillHost) {
+    // Match the first xdg configure already sent (event size). A second
+    // inject at a different _latestOutputW during init is what left nested
+    // niri drawing the large mode into a shrunken NSWindow.
+    uint32_t fw = event->width > 0 ? event->width
+                                   : (_latestOutputW > 0 ? _latestOutputW : 1024);
+    uint32_t fh = event->height > 0 ? event->height
+                                    : (_latestOutputH > 0 ? _latestOutputH : 768);
+    contentRect = NSMakeRect(100, 100, fw, fh);
+    shouldInjectResize = NO;
+    shouldUpdateOutput = YES;
+    WWNLog("BRIDGE",
+           @"macOS fill-host window=%llu client='%@' title='%@' %ux%u "
+           @"(same as first configure; no map inject)",
+           event->window_id, bundledClient ?: @"(nil)", createdTitle, fw, fh);
   } else {
     // OWL / xdg-shell: WindowCreated carries 0×0 until the client commits.
-    // Use a tiny placeholder and never inject a configure here — injecting
+    // Use a tiny placeholder and never inject a configure here. Injecting
     // output/placeholder size forces weston-simple-shm to grow and leaves
     // weston-flower/smoke (fixed 200×200) inside a giant host window.
     uint32_t placeholderW = event->width > 0 ? event->width : 64;
@@ -3843,13 +4067,17 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
     contentRect = NSMakeRect(100, 100, placeholderW, placeholderH);
     shouldInjectResize = NO;
   }
+  NSString *title = createdTitle;
+  BOOL fixedSquare = WWNWestonDemoPrefersFixedSquare(bundledClient, title);
   NSWindowStyleMask styleMask;
   if (useServerDecorations) {
     styleMask = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
-                NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable;
-  } else {
-    styleMask = NSWindowStyleMaskBorderless | NSWindowStyleMaskResizable |
                 NSWindowStyleMaskMiniaturizable;
+  } else {
+    styleMask = NSWindowStyleMaskBorderless | NSWindowStyleMaskMiniaturizable;
+  }
+  if (!fixedSquare) {
+    styleMask |= NSWindowStyleMaskResizable;
   }
 
   WWNWindow *window =
@@ -3860,11 +4088,12 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
 
   window.wwnWindowId = event->window_id;
   window.hostLocked = kiosk;
-
-  NSString *title = (event->title && strlen(event->title) > 0)
-                        ? [NSString stringWithUTF8String:event->title]
-                        : @"";
   [window setTitle:title];
+  window.prefersFixedSquare = fixedSquare;
+  window.fillsHost = fillHost;
+  if (fillHost) {
+    [_windowsWithInitialSizeSynced addObject:@(event->window_id)];
+  }
 
   // Create content view in window-local coordinates.
   // `contentRect` includes screen-space origin; using it directly as an NSView
@@ -3873,7 +4102,8 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
       NSMakeRect(0, 0, contentRect.size.width, contentRect.size.height);
   WWNView *contentView = [[WWNView alloc] initWithFrame:contentViewRect];
   contentView.wantsLayer = YES;
-  contentView.layer.backgroundColor = [[NSColor clearColor] CGColor];
+  contentView.layer.backgroundColor =
+      fillHost ? [[NSColor blackColor] CGColor] : [[NSColor clearColor] CGColor];
   // Never upscale a smaller Wayland buffer into the content view. Host
   // content size must track the committed buffer (xdg / OWL); Resize would
   // silently stretch flower/smoke 200×200 into a wrong-sized window.
@@ -3901,6 +4131,9 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
   if (!kiosk) {
     [window orderFrontRegardless];
   }
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+  WWNKeepServiceHostOutOfDock();
+#endif
 
   [_windows setObject:window forKey:@(event->window_id)];
   NSString *ownerMachineId = [WWNMachineProfileStore activeMachineId];
@@ -3950,13 +4183,11 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
       uint64_t wid = event->window_id;
       uint32_t ow = (uint32_t)MAX(1, lround(contentSize.width));
       uint32_t oh = (uint32_t)MAX(1, lround(contentSize.height));
-      // Per-window wl_output must carry the real backing scale so clients
-      // render HiDPI buffers (crisp fonts) instead of 1x CALayer upscales.
-      float s = _latestOutputScale > 0 ? _latestOutputScale
-                                       : (float)window.backingScaleFactor;
-      if (s < 1.0f) {
-        s = 1.0f;
-      }
+      // Nested compositors size from wl_output.mode and xdg in points.
+      // Advertising backingScale here created a 2x framebuffer and made
+      // later configures fail mode-switch. Direct clients still see the
+      // global HiDPI output.
+      float s = 1.0f;
       [self _dispatchToRust:^{
         WWNCoreSetOutputGeometryForWindow(self->_rustCore, wid, ow, oh, s);
       }];
@@ -3965,6 +4196,16 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
     [self injectWindowResize:event->window_id
                        width:(uint32_t)MAX(1, lround(contentSize.width))
                       height:(uint32_t)MAX(1, lround(contentSize.height))];
+  } else if (fillHost && shouldUpdateOutput) {
+    NSSize contentSize = WWNWaylandContentSizeForWindow(window);
+    if (contentSize.width > 0 && contentSize.height > 0) {
+      uint64_t wid = event->window_id;
+      uint32_t ow = (uint32_t)MAX(1, lround(contentSize.width));
+      uint32_t oh = (uint32_t)MAX(1, lround(contentSize.height));
+      [self _dispatchToRust:^{
+        WWNCoreSetOutputGeometryForWindow(self->_rustCore, wid, ow, oh, 1.0f);
+      }];
+    }
   }
 }
 
@@ -3994,7 +4235,7 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
          event->window_id, (CGFloat)kw, (CGFloat)kh);
 }
 
-/// Apply host chrome drag policy from xdg-decoration mode — never from app_id.
+/// Apply host chrome drag policy from xdg-decoration mode. Never from app_id.
 ///
 /// Weston flower/simple-egl drag by calling `xdg_toplevel.move` on BTN_LEFT
 /// (see upstream `window_move` / flower `button_handler`). Smoke has no such
@@ -4162,7 +4403,7 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
   if (!_clientWantsCursorRendered) {
     _clientWantsCursorRendered = YES;
     WWNLog("BRIDGE",
-           @"Client requested cursor management — enabling host cursor rendering");
+           @"Client requested cursor management. Enabling host cursor rendering");
     for (NSNumber *key in _windows) {
       NSWindow *w = _windows[key];
       if ([w isKindOfClass:[WWNWindow class]]) {
@@ -4210,14 +4451,13 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
   if (!cgImage)
     return;
 
-  CGFloat scale = NSScreen.mainScreen.backingScaleFactor;
-  if (scale < 1.0)
-    scale = 1.0;
-  NSSize size =
-      NSMakeSize(scene->cursor_width / scale, scene->cursor_height / scale);
+  // Cursor buffer is SHM pixels; hotspot is already surface-local (logical).
+  // Do not divide by backingScaleFactor: that halved weston's 1x cursor on
+  // Retina and shifted the hotspot.
+  NSSize size = NSMakeSize(scene->cursor_width, scene->cursor_height);
   NSImage *image = [[NSImage alloc] initWithCGImage:cgImage size:size];
-  NSPoint hotSpot = NSMakePoint(scene->cursor_hotspot_x / scale,
-                                scene->cursor_hotspot_y / scale);
+  NSPoint hotSpot = NSMakePoint(scene->cursor_hotspot_x,
+                                scene->cursor_hotspot_y);
   NSCursor *cursor = [[NSCursor alloc] initWithImage:image hotSpot:hotSpot];
   [cursor set];
 }
@@ -4274,7 +4514,7 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
           // dead dock tile that restores to an empty frame. Close it so the
           // dock tile disappears with the client.
           WWNLog("BRIDGE",
-                 @"Client disconnected during minimize — closing host window "
+                 @"Client disconnected during minimize. Closing host window "
                  @"%llu (removing dock tile)",
                  event->window_id);
           [window close];
@@ -4337,7 +4577,7 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
       _lastCursorBufferId = 0;
       _lastCursorSurfaceId = 0;
       WWNLog("BRIDGE",
-             @"All windows destroyed — resetting cursor rendering flag");
+             @"All windows destroyed. Resetting cursor rendering flag");
     }
     [_surfaceLayers removeAllObjects];
     [_bufferCache removeAllObjects];
@@ -4367,11 +4607,44 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
     [window setTitle:newTitle];
     WWNLog("BRIDGE", @"Updated title for window %llu to '%@'", event->window_id,
            newTitle);
+    if (WWNWestonDemoPrefersFixedSquare(nil, newTitle)) {
+      window.styleMask = window.styleMask & ~NSWindowStyleMaskResizable;
+      if ([window isKindOfClass:[WWNWindow class]]) {
+        ((WWNWindow *)window).prefersFixedSquare = YES;
+      }
+    }
     if (newTitle.length > 0) {
       [[NSProcessInfo processInfo] setProcessName:newTitle];
     }
     // Title/app_id often land together; refresh demo surface-drag allowlist.
     [self refreshMacOSSurfaceDragPolicyForWindow:window];
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+    // Weston sets "Weston Compositor - <output>" after map. If Start raced
+    // NativeClientId empty, WindowCreated left a 64px 0x0 seed. Fill now.
+    if (WWNTitleIndicatesNestedCompositor(newTitle) &&
+        [window isKindOfClass:[WWNWindow class]] &&
+        !((WWNWindow *)window).hostLocked) {
+      NSSize contentSize = WWNWaylandContentSizeForWindow(window);
+      if (contentSize.width <= 64.0 && contentSize.height <= 64.0) {
+        uint32_t ow = _latestOutputW > 0 ? _latestOutputW : 1024;
+        uint32_t oh = _latestOutputH > 0 ? _latestOutputH : 768;
+        WWNLog("BRIDGE",
+               @"macOS fill-host on title '%@' window=%llu %ux%u (was %.0fx%.0f)",
+               newTitle, event->window_id, ow, oh, contentSize.width,
+               contentSize.height);
+        NSRect frame = [window frameRectForContentRect:NSMakeRect(0, 0, ow, oh)];
+        frame.origin = window.frame.origin;
+        ((WWNWindow *)window).processingResize = YES;
+        [window setFrame:frame display:NO];
+        ((WWNWindow *)window).processingResize = NO;
+        uint64_t wid = event->window_id;
+        [self _dispatchToRust:^{
+          WWNCoreSetOutputGeometryForWindow(self->_rustCore, wid, ow, oh, 1.0f);
+        }];
+        [self injectWindowResize:wid width:ow height:oh];
+      }
+    }
+#endif
   } else {
     WWNLog("BRIDGE",
            @"Warning: handleWindowTitleChanged for unknown window %llu",
@@ -4421,9 +4694,20 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
              event->configure_serial, event->transaction_id);
       return;
     }
+    // Nested weston/niri: host size is the fill-host configure. A smaller
+    // first ClientCommit is init, not a refuse. Applying it shrinks the
+    // NSWindow while the nested compositor still has the large output.
+    if (window.fillsHost && event->size_cause == 2) {
+      WWNLog("BRIDGE",
+             @"Ignoring ClientCommit SizeChanged for fill-host nested "
+             @"compositor window=%llu event=%ux%u current=%.0fx%.0f",
+             event->window_id, event->width, event->height, contentSize.width,
+             contentSize.height);
+      return;
+    }
     // OWL rule: every ClientCommit SizeChanged drives host content size
     // (OwlSurface commit → setFrameSize:buffer). Do not ignore "untracked"
-    // commits — that left weston-flower/smoke at a giant placeholder while
+    // commits. That left weston-flower/smoke at a giant placeholder while
     // the buffer stayed 200×200.
     //
     // Placement (center) is separate from sizing: after the first real
@@ -4456,10 +4740,23 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
       if (firstClientSizeSync) {
         [window center];
       }
+      if (window.prefersFixedSquare && event->width > 0 && event->height > 0) {
+        NSSize locked = NSMakeSize(event->width, event->height);
+        window.contentMinSize = locked;
+        window.contentMaxSize = locked;
+        window.styleMask = window.styleMask & ~NSWindowStyleMaskResizable;
+      }
       window.processingResize = NO;
     } else {
       if (firstClientSizeSync) {
         [window center];
+      }
+      if (firstClientSizeSync && window.prefersFixedSquare &&
+          event->width > 0 && event->height > 0) {
+        NSSize locked = NSMakeSize(event->width, event->height);
+        window.contentMinSize = locked;
+        window.contentMaxSize = locked;
+        window.styleMask = window.styleMask & ~NSWindowStyleMaskResizable;
       }
       WWNLog("BRIDGE",
              @"Ignoring SizeChanged window=%llu event=%ux%u (already applied) "
@@ -4630,7 +4927,7 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
 #endif // !TARGET_OS_IPHONE
 
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
-/// Host chrome title for iland KMS clients. Must match the Machines catalog —
+/// Host chrome title for iland KMS clients. Must match the Machines catalog -
 /// never brand every DRM client as "KMSCube".
 static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
   if ([clientId isEqualToString:@"gbm-es2-demo"]) {
@@ -4694,6 +4991,9 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
   window.contentView = view;
   [window makeKeyAndOrderFront:nil];
   _ilandHostWindow = window;
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+  WWNKeepServiceHostOutOfDock();
+#endif
   WWNLog("BRIDGE",
          @"Created iland presentation host %ux%u for %@ ", w, h,
          clientId ?: @"(nil)");
@@ -4713,16 +5013,37 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
 }
 
 - (BOOL)prepareIlandMetalPresentationOnPrimaryView {
-  // Weston DRM prep has no Machines cube client id; keep a neutral host title.
-  WWNView *view = [self ensureIlandPresentationViewForClientId:nil];
+  return [self prepareIlandMetalPresentationOnPrimaryViewForClientId:@"weston"];
+}
+
+- (BOOL)prepareIlandMetalPresentationOnPrimaryViewForClientId:(NSString *)clientId {
+  WWNView *view = [self ensureIlandPresentationViewForClientId:clientId];
   if (!view) {
     return NO;
   }
   return [view prepareIlandMetalPresentation];
 }
+
+- (void)stopIlandGpuClientOnPrimaryView {
+  for (NSNumber *key in _windows) {
+    id w = _windows[key];
+    if ([w isKindOfClass:[WWNWindow class]]) {
+      WWNView *view = (WWNView *)[(WWNWindow *)w contentView];
+      if ([view isKindOfClass:[WWNView class]]) {
+        [view stopIlandMetalPresentation];
+      }
+    }
+  }
+  if (_ilandHostWindow) {
+    WWNView *view = (WWNView *)_ilandHostWindow.contentView;
+    if ([view isKindOfClass:[WWNView class]]) {
+      [view stopIlandMetalPresentation];
+    }
+  }
+}
 #endif
 
-#endif // !TARGET_OS_IPHONE — close block opened at WWNWaylandContentSizeForWindow
+#endif // !TARGET_OS_IPHONE. Close block opened at WWNWaylandContentSizeForWindow
 
 // Shared AppKit + UIKit: host → xdg maximized/fullscreen sync.
 - (void)syncHostFullscreen:(BOOL)fullscreen
@@ -4809,13 +5130,13 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
   [self requestForceDestroyHostWindowForWindowId:windowIdKey.unsignedLongLongValue];
 }
 
-/// Mirror macOS WWNWindow windowShouldClose: — ask the Wayland client to exit,
+/// Mirror macOS WWNWindow windowShouldClose:. Ask the Wayland client to exit,
 /// then force-destroy if it does not tear down within the grace window.
 - (void)_iosBeginGracefulHostCloseForWindowId:(uint64_t)windowId {
   NSNumber *key = @(windowId);
   if ([_iosHostCloseDeferred containsObject:key]) {
     WWNLog("BRIDGE",
-           @"iOS host close: second close for window %llu — force-destroy",
+           @"iOS host close: second close for window %llu. Force-destroy",
            windowId);
     [self _iosClearHostCloseDeferredForWindowId:windowId];
     [self requestForceDestroyHostWindowForWindowId:windowId];
@@ -4828,7 +5149,7 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
   }
   [_iosHostCloseDeferred addObject:key];
   WWNLog("BRIDGE",
-         @"iOS host close: sent xdg_toplevel.close for window %llu — deferring "
+         @"iOS host close: sent xdg_toplevel.close for window %llu. Deferring "
          @"scene teardown",
          windowId);
   [self performSelector:@selector(_iosForceDestroyIfCloseStillDeferred:)
@@ -4838,10 +5159,14 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
 
 - (void)_iosSetFollowHostSizeForFillPrimaryWindowId:(uint64_t)windowId {
   NSString *clientId = WWNIosResolveBundledClientIdForWindow(self, windowId);
-  if (WWNIosBundledClientPrefersFixedSize(clientId)) {
+  id view = _windows[@(windowId)];
+  NSString *title = nil;
+  if ([view isKindOfClass:[WWNCompositorView_ios class]]) {
+    title = ((WWNCompositorView_ios *)view).accessibilityLabel;
+  }
+  if (WWNWestonDemoPrefersFixedSquare(clientId, title)) {
     return;
   }
-  id view = _windows[@(windowId)];
   if ([view isKindOfClass:[WWNCompositorView_ios class]]) {
     ((WWNCompositorView_ios *)view).followHostSize = YES;
   }
@@ -4863,7 +5188,7 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
 /// frames or true OS zoom. Maximize and fullscreen both mean: configure the
 /// Wayland toplevel to the active host surface bounds and advertise the
 /// matching xdg state. Unmaximize/unfullscreen clear state bits but keep
-/// fill-primary geometry (no floating restore size — host has none).
+/// fill-primary geometry (no floating restore size. Host has none).
 /// Minimize is handled separately (park session → Machines; Focus restores).
 - (void)_iosInjectFillPrimaryForWindowId:(uint64_t)windowId
                               maximized:(BOOL)maximized
@@ -4978,6 +5303,35 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
     return;
   if ((window.styleMask & NSWindowStyleMaskFullScreen) != 0)
     return;
+  // Nested weston/niri call xdg_toplevel.set_fullscreen to fill the parent
+  // Wayland output. That is not macOS Spaces fullscreen. Mapping it here
+  // fullscreened a 64px placeholder and left a blank space.
+  NSString *bundledClient = WWNResolveActiveMachineBundledClientId();
+  if (WWNBundledClientFillsHost(bundledClient) ||
+      WWNTitleIndicatesNestedCompositor(window.title)) {
+    WWNLog("BRIDGE",
+           @"xdg fullscreen for nested compositor window %llu fills the "
+           @"NSWindow, not Spaces",
+           event->window_id);
+    NSSize contentSize = WWNWaylandContentSizeForWindow(window);
+    uint32_t ow = _latestOutputW > 0 ? _latestOutputW : 1024;
+    uint32_t oh = _latestOutputH > 0 ? _latestOutputH : 768;
+    if (contentSize.width <= 64.0 || contentSize.height <= 64.0 ||
+        contentSize.width + 1.0 < (CGFloat)ow ||
+        contentSize.height + 1.0 < (CGFloat)oh) {
+      NSRect frame = [window frameRectForContentRect:NSMakeRect(0, 0, ow, oh)];
+      frame.origin = window.frame.origin;
+      window.processingResize = YES;
+      [window setFrame:frame display:NO];
+      window.processingResize = NO;
+      uint64_t wid = event->window_id;
+      [self _dispatchToRust:^{
+        WWNCoreSetOutputGeometryForWindow(self->_rustCore, wid, ow, oh, 1.0f);
+      }];
+      [self injectWindowResize:wid width:ow height:oh];
+    }
+    return;
+  }
   window.processingResize = YES;
   [window toggleFullScreen:nil];
   window.processingResize = NO;
@@ -5028,8 +5382,8 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
     pump();
     return;
   }
-  if (_compositorQueue) {
-    dispatch_sync(_compositorQueue, pump);
+  if (_compositorThread) {
+    [self _dispatchSyncToCompositor:pump];
   } else {
     pump();
   }
@@ -5129,15 +5483,15 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
 
 /// Stop rendering into live compositor views before native clients exit.
 - (void)tearDownActiveIOSCompositorViews {
-  if (_rustCore && _compositorQueue) {
-    dispatch_sync(_compositorQueue, ^{
+  if (_rustCore && _compositorThread) {
+    [self _dispatchSyncToCompositor:^{
       uint32_t disconnected = WWNCoreDisconnectAllClients(self->_rustCore);
       if (disconnected > 0) {
         WWNLog("BRIDGE", @"Disconnected %u in-process Wayland client(s)",
                disconnected);
       }
       WWNCoreFlushClients(self->_rustCore);
-    });
+    }];
   }
 
   for (NSNumber *key in [_windows copy]) {
@@ -5165,9 +5519,16 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
 }
 
 /// Prefer a dedicated Metal presentation view. Do NOT hijack an arbitrary
-/// Wayland toplevel view — those tear down CAMetalLayer on the first SHM/
+/// Wayland toplevel view. Those tear down CAMetalLayer on the first SHM/
 /// Wayland frame and leave kmscube blank.
 - (WWNCompositorView_ios *)ensureIlandPresentationView {
+  if (![NSThread isMainThread]) {
+    __block WWNCompositorView_ios *view = nil;
+    dispatch_sync(dispatch_get_main_queue(), ^{
+      view = [self ensureIlandPresentationView];
+    });
+    return view;
+  }
   if (_ilandHostView) {
     return _ilandHostView;
   }
@@ -5196,7 +5557,7 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
 
   if (!self.containerView && !_iosPerWindowHostingEnabled) {
     WWNLog("BRIDGE",
-           @"ensureIlandPresentationView: containerView is nil — cannot host "
+           @"ensureIlandPresentationView: containerView is nil. Cannot host "
            @"iland/kmscube");
     return nil;
   }
@@ -5215,7 +5576,7 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
   view.autoresizingMask =
       UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
   view.accessibilityIdentifier = @"wwn.compositor.iland-host";
-  // Real client id is applied in launchNestedIlandGpuClientOnPrimaryView —
+  // Real client id is applied in launchNestedIlandGpuClientOnPrimaryView -
   // do not brand every iland host as kmscube.
   view.accessibilityLabel = @"iland-host";
   view.hostLocked = YES;
@@ -5223,13 +5584,13 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
   _ilandHostView = view;
 
   if (_iosPerWindowHostingEnabled) {
-    // iPadOS / visionOS: do NOT attach under the primary Machines container —
+    // iPadOS / visionOS: do NOT attach under the primary Machines container -
     // launchNestedIlandGpuClient requests a dedicated UIWindowScene instead.
     WWNLog("BRIDGE",
            @"Created iland presentation host %.0fx%.0f (deferred dedicated scene)",
            frame.size.width, frame.size.height);
   } else if (self.containerView) {
-    // Phone / single-scene: above any race-created Wayland window views —
+    // Phone / single-scene: above any race-created Wayland window views -
     // insertSubview:atIndex:0 left the Metal plate covered by a later opaque
     // SHM window (black screen).
     [self.containerView addSubview:view];
@@ -5239,7 +5600,7 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
            frame.size.width, frame.size.height);
   } else {
     WWNLog("BRIDGE",
-           @"ensureIlandPresentationView: containerView is nil — cannot host "
+           @"ensureIlandPresentationView: containerView is nil. Cannot host "
            @"iland/kmscube");
     _ilandHostView = nil;
     return nil;
@@ -5279,7 +5640,7 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
                           errorHandler:^(NSError *err) {
                             WWNLog("BRIDGE",
                                    @"Scene activation failed for iland host "
-                                   @"%llu: %@ — falling back to primary container",
+                                   @"%llu: %@. Falling back to primary container",
                                    wid, err);
                             dispatch_async(dispatch_get_main_queue(), ^{
                               UIView *pending = [self
@@ -5293,7 +5654,7 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
                                 }
                                 [self.containerView bringSubviewToFront:pending];
                                 // Primary-scene fallback: Machines would cover
-                                // the plate — reveal compositor like phone.
+                                // the plate. Reveal compositor like phone.
                                 [[NSNotificationCenter defaultCenter]
                                     postNotificationName:
                                         WWNNativeClientWillLaunchNotification
@@ -5339,7 +5700,7 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
   BOOL ok = [view launchNestedIlandGpuClient:clientId];
   if (!ok) {
     WWNLog(logMod,
-           @"%@ launch failed after host view ready (%@ %.0fx%.0f) — "
+           @"%@ launch failed after host view ready (%@ %.0fx%.0f). "
            @"check iland presenter / entry point link",
            clientId, NSStringFromClass([view class]), view.bounds.size.width,
            view.bounds.size.height);
@@ -5372,6 +5733,37 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
   return [view prepareIlandMetalPresentation];
 }
 
+- (BOOL)prepareIlandMetalPresentationOnPrimaryViewForClientId:(NSString *)clientId {
+  (void)clientId;
+  return [self prepareIlandMetalPresentationOnPrimaryView];
+}
+
+- (void)stopIlandGpuClientOnPrimaryView {
+  if (![NSThread isMainThread]) {
+    dispatch_sync(dispatch_get_main_queue(), ^{
+      [self stopIlandGpuClientOnPrimaryView];
+    });
+    return;
+  }
+  void (^stopView)(id) = ^(id candidate) {
+    if ([candidate isKindOfClass:[WWNCompositorView_ios class]]) {
+      [(WWNCompositorView_ios *)candidate stopIlandMetalPresentation];
+    }
+  };
+  if (_ilandHostView) {
+    stopView(_ilandHostView);
+    if (_ilandHostView != self.containerView &&
+        [_ilandHostView.accessibilityIdentifier
+            isEqualToString:@"wwn.compositor.iland-host"]) {
+      [_ilandHostView removeFromSuperview];
+    }
+    _ilandHostView = nil;
+  }
+  for (NSNumber *key in _windows) {
+    stopView(_windows[key]);
+  }
+}
+
 - (void)handleWindowHostLocked:(CWindowEvent *)event {
   NSNumber *winKey = @(event->window_id);
   [_hostLockedWindowIds addObject:winKey];
@@ -5396,7 +5788,7 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
 
   if (!self.containerView) {
     WWNLog("BRIDGE",
-           @"WARNING: handleWindowCreated id=%llu but containerView is nil — "
+           @"WARNING: handleWindowCreated id=%llu but containerView is nil. "
            @"surface will not be visible",
            event->window_id);
   }
@@ -5416,7 +5808,7 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
       [[WWNCompositorView_ios alloc] initWithFrame:frame];
   view.wwnWindowId = event->window_id;
   // OWL: host_locked/fullscreen_shell own size; ordinary toplevels wait for
-  // ClientCommit (0×0 seed) — never inject fill-to-container on map.
+  // ClientCommit (0×0 seed). Never inject fill-to-container on map.
   view.hostLocked = (event->host_locked || event->fullscreen_shell) ? YES : NO;
   view.followHostSize = view.hostLocked;
   view.clientCommittedSize = CGSizeZero;
@@ -5426,7 +5818,7 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
                                      ? @"wwn.compositor.fullscreen-shell"
                                      : @"wwn.compositor.surface";
   // Seed tab/VoiceOver title from xdg title or the active bundled client id.
-  // Never use "Shell" — Shell/Machines is host chrome, not a Wayland client.
+  // Never use "Shell". Shell/Machines is host chrome, not a Wayland client.
   if (event->title && strlen(event->title) > 0) {
     view.accessibilityLabel = [NSString stringWithUTF8String:event->title];
   } else {
@@ -5442,7 +5834,7 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
     // iPadOS / visionOS multi-window (#120): request a DEDICATED UIWindowScene
     // for this client and attach its view only once that scene actually
     // connects (in -scene:willConnectToSession:). Attaching a UIWindow to the
-    // existing scene synchronously — as the old code did — stacked every client
+    // existing scene synchronously. As the old code did. Stacked every client
     // onto the primary scene instead of giving each its own OS window/scene.
     BOOL requestedScene = NO;
 #if !TARGET_OS_TV
@@ -5461,7 +5853,7 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
           activateSceneSessionForRequest:request
                             errorHandler:^(NSError *err) {
                               WWNLog("BRIDGE",
-                                     @"Scene activation failed for window %llu: %@ — "
+                                     @"Scene activation failed for window %llu: %@. "
                                      @"falling back to shared container",
                                      widForScene, err);
                               // Falling back to the shared container: this
@@ -5480,7 +5872,7 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
                               });
                             }];
       requestedScene = YES;
-      // This window now lives in its own independent UIWindowScene — never
+      // This window now lives in its own independent UIWindowScene. Never
       // let the shared/global output resize sweep (primary scene rotation,
       // safe-area/keyboard changes, …) snap it back to the primary window's
       // size. See ipad-scene-parity / vision-shell-parity (#120).
@@ -5516,7 +5908,7 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
   [_windows setObject:view forKey:@(event->window_id)];
   // Record which machine owns this toplevel so per-machine focus / minimize /
   // hide (focusClientWindowsForMachineId:, setClientHostWindowsHidden:) work
-  // when multiple machines run concurrently on iOS — mirrors the macOS path.
+  // when multiple machines run concurrently on iOS. Mirrors the macOS path.
   // Without this, every window has an empty owner and "focus machine" matches
   // all clients (#84 / concurrent machines).
   NSString *iosOwnerMachineId = [WWNMachineProfileStore activeMachineId];
@@ -5530,7 +5922,7 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
   // focus from the toplevel, sending a deactivation configure that makes
   // nested compositors like weston exit.  Skip activation entirely.
   if (event->fullscreen_shell) {
-    WWNLog("BRIDGE", @"Fullscreen shell window %llu — skipping activation",
+    WWNLog("BRIDGE", @"Fullscreen shell window %llu. Skipping activation",
            event->window_id);
     return;
   }
@@ -5543,14 +5935,16 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
   // - host_locked / fullscreen_shell → fill container
   // - weston-terminal / foot (shell apps) → fill container on phone/tablet
   //   so the PTY grid matches the compositor view (not a floating 80×25)
-  // - demos (flower/smoke/simple-shm) → client-preferred via xdg 0×0 seed;
-  //   never inject output size (keeps 200×200 fixed clients correct)
+  // - nested compositors (niri, weston) → fill container. niri's nested
+  //   backend ignores configure(0,0) and never commits a buffer.
+  // - demos (flower/smoke/simple-shm/simple-egl) → client-preferred via xdg
+  //   0×0 seed; never inject output size (keeps 200×200 / 250×250 correct)
   BOOL firstNativeToplevel = (_windows.count == 1);
   NSString *bundledClientForSize =
       [WWNWaypipeRunner sharedRunner].activeIOSBundledClientId;
   if (bundledClientForSize.length == 0) {
     // WindowCreated can race the runner ivar; resolve from active machine.
-    // Top-level defaults NativeClientId is often unset — only the profile JSON
+    // Top-level defaults NativeClientId is often unset. Only the profile JSON
     // carries bundledAppID / NativeClientId (see agent-device-set-client-ios).
     NSString *mid = [WWNMachineProfileStore activeMachineId];
     WWNMachineProfile *profile =
@@ -5564,11 +5958,31 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
       bundledClientForSize = (NSString *)settingsNative;
     }
   }
-  BOOL fillShellToHost =
-      [bundledClientForSize isEqualToString:@"weston-terminal"] ||
-      [bundledClientForSize isEqualToString:@"wayland-terminal"] ||
-      [bundledClientForSize isEqualToString:@"foot"];
-  BOOL injectFillConfigure = event->host_locked || fillShellToHost;
+  BOOL fillShellToHost = event->fills_host ||
+      WWNIosBundledClientFillsHost(bundledClientForSize);
+  // Only the machine's primary shell/compositor window fills the host. Extra
+  // toplevels from in-process zsh (weston-simple-shm / simple-egl / flower)
+  // keep the preferred square, like weston-flower.
+  NSUInteger windowsForMachine = 0;
+  if (iosOwnerMachineId.length > 0) {
+    for (NSNumber *wid in _windowOwnerMachineIdByWindowId) {
+      if ([_windowOwnerMachineIdByWindowId[wid] isEqualToString:iosOwnerMachineId]) {
+        windowsForMachine++;
+      }
+    }
+  }
+  BOOL primaryFillShell = fillShellToHost && (windowsForMachine <= 1);
+#if TARGET_OS_TV
+  // Fill-primary on the TV: the first toplevel fills even when NativeClientId
+  // races empty. That left default weston-terminal floating at cell-snap 80x25
+  // with the rest of the 1920x1080 surface black.
+  if (!WWNIosBundledClientPrefersFixedSize(bundledClientForSize) &&
+      windowsForMachine <= 1 && firstNativeToplevel) {
+    fillShellToHost = YES;
+    primaryFillShell = YES;
+  }
+#endif
+  BOOL injectFillConfigure = event->host_locked || primaryFillShell;
   if (injectFillConfigure && [view isKindOfClass:[WWNCompositorView_ios class]]) {
     view.followHostSize = YES;
     // Treat fill shells as host-owned for presentation/placement even when
@@ -5599,7 +6013,7 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
     uint32_t w = (uint32_t)MAX(1, viewFrame.size.width);
     uint32_t h = (uint32_t)MAX(1, viewFrame.size.height);
     WWNLog("BRIDGE",
-           @"%@ window %llu — immediate activate%@ (defer accessory keyboard)",
+           @"%@ window %llu. Immediate activate%@ (defer accessory keyboard)",
            event->host_locked ? @"Host-locked" : @"First native toplevel",
            windowId,
            injectFillConfigure
@@ -5608,14 +6022,14 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
                                                 ? @" (shell)"
                                                 : @""]
                : @" (client-preferred size)");
-    if (_compositorQueue) {
-      dispatch_sync(_compositorQueue, ^{
+    if (_compositorThread) {
+      [self _dispatchSyncToCompositor:^{
         WWNCoreSetWindowActivatedSilent(self->_rustCore, windowId, true);
         if (injectFillConfigure) {
           WWNCoreInjectWindowResize(self->_rustCore, windowId, w, h);
         }
         WWNCoreFlushClients(self->_rustCore);
-      });
+      }];
     } else {
       WWNCoreSetWindowActivatedSilent(_rustCore, windowId, true);
       if (injectFillConfigure) {
@@ -5640,10 +6054,10 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
         !event->host_locked && [bundledClient isEqualToString:@"niri"];
     if (needsCompositorKeyboard) {
       [self injectKeyboardEnterForWindow:windowId keys:@[]];
-      if (_compositorQueue) {
-        dispatch_sync(_compositorQueue, ^{
+      if (_compositorThread) {
+        [self _dispatchSyncToCompositor:^{
           WWNCoreFlushClients(self->_rustCore);
-        });
+        }];
       } else {
         WWNCoreFlushClients(_rustCore);
       }
@@ -5652,12 +6066,11 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
       // remain available for niri / nested clients.
       if ([view isKindOfClass:[WWNCompositorView_ios class]]) {
         WWNCompositorView_ios *cv = (WWNCompositorView_ios *)view;
-        // Nested compositor: accessory-only FR for Mod hotkeys. Soft Expand
-        // still waits for first Wayland frame (applyHostKeyboard stashes it).
-        [cv applyHostKeyboardForTextInputEnabled:NO];
-        dispatch_async(dispatch_get_main_queue(), ^{
-          [cv activateKeyboard];
-        });
+      // Nested compositor: accessory-only until the first Wayland frame.
+      // Immediate activateKeyboard shrinks the host output (soft OSK) and
+      // stalls ticks the same way it did for weston-terminal. Fill configure
+      // must land first.
+      [cv applyHostKeyboardForTextInputEnabled:NO];
       }
     } else if ([view isKindOfClass:[WWNCompositorView_ios class]]) {
       // Terminal / demo toplevels: do NOT activateKeyboard here. Soft OSK or
@@ -5681,7 +6094,7 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
     WWNCoreSetWindowActivatedSilent(self->_rustCore, windowId, true);
   }];
 
-  // 2. Input focus events (no injectWindowResize — ClientPreferred sizing).
+  // 2. Input focus events (no injectWindowResize. ClientPreferred sizing).
   UIView *hostView = view.superview ?: self.containerView;
   CGRect viewFrame = hostView ? hostView.bounds : CGRectMake(0, 0, 800, 600);
   [self injectKeyboardEnterForWindow:windowId keys:@[]];
@@ -5699,7 +6112,7 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
     WWNCoreFlushClients(self->_rustCore);
   }];
 
-  // 5. Mode only — first Wayland frame arms accessory / soft OSK
+  // 5. Mode only. First Wayland frame arms accessory / soft OSK
   //    (see -[WWNCompositorView_ios armHostKeyboardAfterFirstFrame]).
   if ([view isKindOfClass:[WWNCompositorView_ios class]]) {
     WWNCompositorView_ios *cv = (WWNCompositorView_ios *)view;
@@ -5775,7 +6188,7 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
     _clientWantsCursorRendered = NO;
     _lastCursorBufferId = 0;
     _lastCursorSurfaceId = 0;
-    WWNLog("BRIDGE", @"All iOS windows destroyed — cleared presentation caches");
+    WWNLog("BRIDGE", @"All iOS windows destroyed. Cleared presentation caches");
   }
   [self _notifyHostWindowsDidChange];
 }
@@ -5799,12 +6212,24 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
 
   // Late shell detection: if map-time fill missed (empty bundled id), adopt
   // followHost when the xdg title identifies weston-terminal / foot.
+  // Inverse: weston-flower / simple-shm / simple-egl keep a preferred square.
   NSString *titleLower = newTitle.lowercaseString;
+  BOOL titleLooksLikeDemo = WWNWestonDemoPrefersFixedSquare(nil, newTitle);
   BOOL titleLooksLikeShell =
       [titleLower containsString:@"weston terminal"] ||
       [titleLower containsString:@"wayland-terminal"] ||
-      [titleLower hasPrefix:@"foot"] || [titleLower containsString:@"foot "];
-  if (titleLooksLikeShell &&
+      [titleLower hasPrefix:@"foot"] || [titleLower containsString:@"foot "] ||
+      [titleLower containsString:@"niri"];
+  if (titleLooksLikeDemo &&
+      [clientView isKindOfClass:[WWNCompositorView_ios class]]) {
+    WWNCompositorView_ios *cv = (WWNCompositorView_ios *)clientView;
+    cv.followHostSize = NO;
+    cv.hostLocked = NO;
+    [_hostLockedWindowIds removeObject:@(event->window_id)];
+    WWNLog("BRIDGE",
+           @"iOS demo title '%@' → client-preferred square (no host fill)",
+           newTitle);
+  } else if (titleLooksLikeShell &&
       [clientView isKindOfClass:[WWNCompositorView_ios class]]) {
     WWNCompositorView_ios *cv = (WWNCompositorView_ios *)clientView;
     if (!cv.followHostSize && !cv.hostLocked && self.containerView) {
@@ -5855,7 +6280,7 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
       [_hostLockedWindowIds containsObject:@(event->window_id)] ||
       (iosView && iosView.hostLocked);
 
-  // Host-originated configure/output acks — do not re-apply (macOS parity).
+  // Host-originated configure/output acks. Do not re-apply (macOS parity).
   if (!hostLocked && (event->size_cause == 1 || event->size_cause == 3)) {
     WWNLog("BRIDGE",
            @"iOS ignoring non-authoritative SizeChanged window=%llu "
@@ -5890,19 +6315,21 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
       else if ([sn isKindOfClass:[NSString class]])
         shellClient = (NSString *)sn;
     }
-    BOOL activeShell =
-        [shellClient isEqualToString:@"weston-terminal"] ||
-        [shellClient isEqualToString:@"wayland-terminal"] ||
-        [shellClient isEqualToString:@"foot"];
-    BOOL fixedSizeClient = WWNIosBundledClientPrefersFixedSize(shellClient);
+    BOOL activeShell = event->fills_host ||
+        WWNIosBundledClientFillsHost(shellClient);
+    BOOL fixedSizeClient =
+        WWNWestonDemoPrefersFixedSquare(shellClient, iosView.accessibilityLabel);
     if (fixedSizeClient) {
       iosView.followHostSize = NO;
-    } else if (hostLocked || activeShell || iosView.followHostSize) {
+    } else if (hostLocked || iosView.followHostSize || activeShell) {
       // Shells / host-locked always follow the compositor container. Do not
       // drop followHost when the first commit is still a floating cell-snap
-      // (e.g. 80×25) — that cleared full-bleed and re-centered gutters.
+      // (e.g. 80x25). That cleared full-bleed and re-centered gutters.
+      // Do not use the machine-level shell id here: zsh-launched
+      // weston-simple-shm / simple-egl inside a terminal machine must keep
+      // their preferred square (flower/smoke refuse host fill the same way).
       iosView.followHostSize = YES;
-      if (activeShell && hostBounds.size.width > 0 &&
+      if (activeShell && iosView.followHostSize && hostBounds.size.width > 0 &&
           hostBounds.size.height > 0 &&
           (fabs((CGFloat)event->width - hostBounds.size.width) > 1.0 ||
            fabs((CGFloat)event->height - hostBounds.size.height) > 1.0)) {

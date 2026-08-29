@@ -213,7 +213,7 @@ def verify_no_ssh_stubs() -> list[str]:
                 # has no arm64_32 libwwn-ssh-cli.a build (ASC 90733 fat-slice
                 # requirement), so it keeps the weak fallback while arm64
                 # still resolves to the real implementation. Only a *strong*
-                # (non-weak) definition is the real policy violation — it can
+                # (non-weak) definition is the real policy violation. It can
                 # never be overridden, so ssh would stay permanently stubbed.
                 prev = lines[i - 1].strip() if i > 0 else ""
                 if "__attribute__((weak))" not in prev:

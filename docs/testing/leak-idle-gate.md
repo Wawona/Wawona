@@ -8,7 +8,7 @@ Authority for methodology: [`.agent-device/test-artifacts/instruments/LEAK-IDLE-
 
 ## Why not Instruments MCP / xctrace?
 
-- Instruments MCP is an IDE agent tool — not available on GitHub runners.
+- Instruments MCP is an IDE agent tool. Not available on GitHub runners.
 - `xctrace` Allocations traces are often **empty on iOS 26 Simulator** (ISSUE-012).
 - The campaign already gates Apple mobile on **`phys_footprint` plateau** and Android on **`dumpsys meminfo` TOTAL PSS**.
 
@@ -42,13 +42,13 @@ Extended Apple targets (iPadOS / visionOS / tvOS / watchOS) are gated **locally*
 Triggers:
 
 - **Gate: products** `workflow_call` with `products_ready: true` (product-path push to
-  `development` / `master`) — downloads that run’s `product-*` artifacts; does **not**
+  `development` / `master`). Downloads that run’s `product-*` artifacts; does **not**
   re-call `product-build` (avoids tip concurrency cancel against Gate: products)
-- `workflow_dispatch` (optional `lanes`: `all|ios|android|macos`) — builds under tip_key
+- `workflow_dispatch` (optional `lanes`: `all|ios|android|macos`). Builds under tip_key
   `leak-idle-*`
-- nightly schedule (`30 9 * * *` UTC) — same namespaced product-build tip_key
+- nightly schedule (`30 9 * * *` UTC). Same namespaced product-build tip_key
 
-**Not** a promote blocker — idle-memory jobs use `continue-on-error` inside the
+**Not** a promote blocker. Idle-memory jobs use `continue-on-error` inside the
 reusable workflow (`continue-on-error` is invalid on `uses:` callers). The
 **Gate: products** rollup job does not `needs:` Watch: idle memory. Promote still requires **Gate: packages** +
 **Gate: products** only. Treat red Watch: idle memory as a signal to triage before promote.
@@ -63,9 +63,9 @@ LEAK_GATE_FAIL targets=ios,android
 
 and fails the workflow. Per-target artifacts upload as `leak-idle-<target>/` containing:
 
-- `<target>-timeline.txt` — `t_sec mb iso`
-- `<target>-plateau.json` — spread / limits
-- `verdict.json` — `{target,status,reason,…}`
+- `<target>-timeline.txt`. `t_sec mb iso`
+- `<target>-plateau.json`. Spread / limits
+- `verdict.json`. `{target,status,reason,…}`
 - screenshots when Start/hold fails
 
 ## Local reproduction
@@ -103,5 +103,5 @@ Artifacts land under `.agent-device/test-artifacts/leak-idle-gate/<target>/`.
 
 ## Scripts
 
-- [`scripts/leak-idle-gate.sh`](../../scripts/leak-idle-gate.sh) — agent-device Start/Stop + hold
-- [`scripts/lib/leak-idle-measure.sh`](../../scripts/lib/leak-idle-measure.sh) — footprint / PSS parse + plateau analyze
+- [`scripts/leak-idle-gate.sh`](../../scripts/leak-idle-gate.sh). Agent-device Start/Stop + hold
+- [`scripts/lib/leak-idle-measure.sh`](../../scripts/lib/leak-idle-measure.sh). Footprint / PSS parse + plateau analyze

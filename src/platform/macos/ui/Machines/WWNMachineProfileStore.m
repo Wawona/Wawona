@@ -1,6 +1,9 @@
 #import "WWNMachineProfileStore.h"
 #import "../Settings/WWNPreferencesManager.h"
+#import "../Settings/WWNEnvironmentOverrides.h"
 #import "../../WWNCompositorBridge.h"
+#import "../../../../util/WWNLog.h"
+#import <TargetConditionals.h>
 
 NSString *const kWWNMachineTypeSSHWaypipe = @"ssh_waypipe";
 NSString *const kWWNMachineTypeSSHTerminal = @"ssh_terminal";
@@ -60,6 +63,7 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
     _waypipeTitlePrefix = @"";
     _waypipeSecCtx = @"";
     _runtimeOverrides = @{};
+    _containerSettings = @{};
     _favorite = NO;
     _createdAtMs = now;
     _updatedAtMs = now;
@@ -105,6 +109,7 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
     @"remoteCommand" : self.remoteCommand ?: @"",
     @"launchers" : @[],
     kWWNMachineRuntimeOverrides : runtimeOverrides,
+    @"containerSettings" : self.containerSettings ?: @{},
     @"favorite" : @(self.favorite),
   };
 }
@@ -355,6 +360,10 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
   }
   profile.runtimeOverrides = runtimeOverrides;
   profile.settingsOverrides = legacySettingsOverrides;
+  profile.containerSettings =
+      [obj[@"containerSettings"] isKindOfClass:[NSDictionary class]]
+          ? obj[@"containerSettings"]
+          : @{};
   if ([runtimeOverrides[kWWNRuntimeWaypipeEnabled]
           respondsToSelector:@selector(boolValue)]) {
     profile.sshEnabled = [runtimeOverrides[kWWNRuntimeWaypipeEnabled] boolValue];
@@ -616,21 +625,13 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
     @"labwc",
     @"cosmic-comp",
     @"cosmic_comp",
-    @" gnome-shell",
-    @"gnome-shell ",
-    @"/gnome-shell",
-    @" mutter",
-    @"/mutter",
-    @" kwin",
-    @"/kwin",
-    @" niri",
-    @"/niri",
-    @" river",
-    @"/river",
-    @" sway",
-    @"/sway",
-    @" tinywl",
-    @" wf-panel",
+    @"gnome-shell",
+    @"mutter",
+    @"kwin",
+    @"niri",
+    @"river",
+    @"tinywl",
+    @"wf-panel",
   ];
   for (NSString *hint in nestedHints) {
     if ([lower containsString:hint]) {
@@ -643,64 +644,164 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
   return NO;
 }
 
++ (void)resolvedNativeIdentityForProfile:(WWNMachineProfile *)profile
+                                clientId:(NSString **)outCid
+                           customCommand:(NSString **)outCmd {
+  NSString *cid = @"";
+  NSString *cmd = @"";
+  if (profile) {
+    NSDictionary *ro =
+        [profile.runtimeOverrides isKindOfClass:[NSDictionary class]]
+            ? profile.runtimeOverrides
+            : @{};
+    NSDictionary *so =
+        [profile.settingsOverrides isKindOfClass:[NSDictionary class]]
+            ? profile.settingsOverrides
+            : @{};
+    id bundled = ro[@"bundledAppID"];
+    if ([bundled isKindOfClass:[NSString class]] &&
+        [(NSString *)bundled length] > 0) {
+      cid = (NSString *)bundled;
+    } else {
+      id native = so[@"NativeClientId"];
+      if ([native isKindOfClass:[NSString class]] &&
+          [(NSString *)native length] > 0) {
+        cid = (NSString *)native;
+      }
+    }
+    id custom = so[@"NativeCustomCommand"];
+    if ([custom isKindOfClass:[NSString class]]) {
+      cmd = (NSString *)custom;
+    }
+  }
+  if (outCid) {
+    *outCid = cid;
+  }
+  if (outCmd) {
+    *outCmd = cmd;
+  }
+}
+
 + (BOOL)profileIndicatesNestedCompositor:(WWNMachineProfile *)profile {
   if (![profile.type isEqualToString:kWWNMachineTypeNative]) {
     return NO;
   }
-  NSDictionary *so =
-      [profile.settingsOverrides isKindOfClass:[NSDictionary class]]
-          ? profile.settingsOverrides
-          : @{};
-  NSString *cid = [so[@"NativeClientId"] isKindOfClass:[NSString class]]
-                      ? so[@"NativeClientId"]
-                      : @"";
-  NSString *cmd = [so[@"NativeCustomCommand"] isKindOfClass:[NSString class]]
-                      ? so[@"NativeCustomCommand"]
-                      : @"";
+  NSString *cid = nil;
+  NSString *cmd = nil;
+  [self resolvedNativeIdentityForProfile:profile clientId:&cid customCommand:&cmd];
   return [self profileIndicatesNestedWithNativeClientId:cid customCommand:cmd];
 }
 
-+ (BOOL)profileEligibleForAppBridge:(WWNMachineProfile *)profile {
-  // Local-only native machines only.
++ (BOOL)nativeClientIdIndicatesModeBOwnDisplay:(NSString *)clientId
+                                 customCommand:(NSString *)customCommand {
+  NSString *cid = [clientId isKindOfClass:[NSString class]] ? clientId : @"";
+  if ([cid isEqualToString:@"modeb-tty"] ||
+      [cid isEqualToString:@"modeb-ttyd"] ||
+      [cid isEqualToString:@"kmscube"] ||
+      [cid isEqualToString:@"gbm-es2-demo"] ||
+      [cid isEqualToString:@"vkcube"] ||
+      [cid isEqualToString:@"vkcube-kms"]) {
+    return YES;
+  }
+  return [self profileIndicatesNestedWithNativeClientId:cid
+                                          customCommand:customCommand];
+}
+
++ (BOOL)profileIndicatesModeBOwnDisplay:(WWNMachineProfile *)profile {
   if (![profile.type isEqualToString:kWWNMachineTypeNative]) {
     return NO;
   }
-  NSDictionary *so =
-      [profile.settingsOverrides isKindOfClass:[NSDictionary class]]
-          ? profile.settingsOverrides
-          : @{};
-  NSString *cid = [so[@"NativeClientId"] isKindOfClass:[NSString class]]
-                      ? so[@"NativeClientId"]
-                      : @"";
-  NSString *cmd = [so[@"NativeCustomCommand"] isKindOfClass:[NSString class]]
-                      ? so[@"NativeCustomCommand"]
-                      : @"";
+  NSString *cid = nil;
+  NSString *cmd = nil;
+  [self resolvedNativeIdentityForProfile:profile clientId:&cid customCommand:&cmd];
+  return [self nativeClientIdIndicatesModeBOwnDisplay:cid customCommand:cmd];
+}
 
-  // Preset weston client: the nested compositor path.
-  if ([cid isEqualToString:@"weston"]) {
-    return YES;
-  }
-  // Custom command must be weston with a nested wayland backend, and must not be
-  // a demo/toolkit client.
-  if ([cid isEqualToString:@"custom"]) {
-    NSString *lower =
-        [[cmd stringByTrimmingCharactersInSet:
-                  [NSCharacterSet whitespaceAndNewlineCharacterSet]]
-            lowercaseString];
-    if ([lower containsString:@"weston-terminal"] ||
-        [lower containsString:@"weston-simple-shm"]) {
-      return NO;
-    }
-    if ([lower containsString:@"weston"] &&
-        ([lower containsString:@"--backend=wayland"] ||
-         [lower containsString:@"-b wayland"])) {
-      return YES;
++ (BOOL)profileEligibleForAppBridge:(WWNMachineProfile *)profile {
+  return [self profileIndicatesNestedCompositor:profile];
+}
+
++ (void)migrateTvosGpuOpenGLDriverSnapshotsIfNeeded {
+#if TARGET_OS_TV
+#if defined(WWN_TVOS_GPU_BUNDLED) && WWN_TVOS_GPU_BUNDLED
+  NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+  NSData *raw = [defaults dataForKey:kWWNMachineProfilesJSON];
+  if (raw.length == 0) {
+    NSString *legacy = [defaults stringForKey:kWWNMachineProfilesJSON];
+    if (legacy.length > 0) {
+      raw = [legacy dataUsingEncoding:NSUTF8StringEncoding];
     }
   }
-  return NO;
+  if (raw.length == 0) {
+    return;
+  }
+
+  NSArray<WWNMachineProfile *> *profiles = [self parseProfilesData:raw];
+  if (profiles.count == 0) {
+    return;
+  }
+
+  BOOL changed = NO;
+  NSMutableArray<WWNMachineProfile *> *updated =
+      [NSMutableArray arrayWithCapacity:profiles.count];
+  for (WWNMachineProfile *profile in profiles) {
+    BOOL profileChanged = NO;
+    NSMutableDictionary *settings =
+        [profile.settingsOverrides isKindOfClass:[NSDictionary class]]
+            ? [profile.settingsOverrides mutableCopy]
+            : [NSMutableDictionary dictionary];
+    if ([settings[kWWNPrefsOpenGLDriver] isKindOfClass:[NSString class]] &&
+        [settings[kWWNPrefsOpenGLDriver] isEqualToString:@"none"]) {
+      settings[kWWNPrefsOpenGLDriver] = @"angle";
+      profileChanged = YES;
+    }
+
+    NSMutableDictionary *runtime =
+        [profile.runtimeOverrides isKindOfClass:[NSDictionary class]]
+            ? [profile.runtimeOverrides mutableCopy]
+            : [NSMutableDictionary dictionary];
+    if ([runtime[@"openGLDriver"] isKindOfClass:[NSString class]] &&
+        [runtime[@"openGLDriver"] isEqualToString:@"none"]) {
+      runtime[@"openGLDriver"] = @"angle";
+      profileChanged = YES;
+    }
+    id legacy = runtime[@"legacySettingsOverrides"];
+    if ([legacy isKindOfClass:[NSDictionary class]]) {
+      NSMutableDictionary *legacySettings = [legacy mutableCopy];
+      if ([legacySettings[kWWNPrefsOpenGLDriver] isKindOfClass:[NSString class]] &&
+          [legacySettings[kWWNPrefsOpenGLDriver] isEqualToString:@"none"]) {
+        legacySettings[kWWNPrefsOpenGLDriver] = @"angle";
+        runtime[@"legacySettingsOverrides"] = legacySettings;
+        profileChanged = YES;
+      }
+    }
+
+    if (profileChanged) {
+      profile.settingsOverrides = settings;
+      profile.runtimeOverrides = runtime;
+      changed = YES;
+    }
+    [updated addObject:profile];
+  }
+
+  if (changed) {
+    [self saveProfiles:updated];
+  }
+#endif
+#endif
 }
 
 + (void)applyMachineToRuntimePrefs:(WWNMachineProfile *)profile {
+  // tvOS GPU one-shot rewrites leftover OpenGLDriver=none in the profiles JSON
+  // during prefs init. Reload so this apply cannot clobber ANGLE with a stale
+  // in-memory snapshot taken before that rewrite.
+  (void)[WWNPreferencesManager sharedManager];
+  if (profile.machineId.length > 0) {
+    WWNMachineProfile *fresh = [self profileById:profile.machineId];
+    if (fresh) {
+      profile = fresh;
+    }
+  }
   [self ensureObserverRegistered];
   NSDictionary<NSString *, id> *resolved = [self resolvedRuntimeSettingsForProfile:profile];
   WWNPreferencesManager *prefs = [WWNPreferencesManager sharedManager];
@@ -817,7 +918,7 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
   // settingsOverrides or runtimeOverrides, both collected into
   // transportSnapshot above) or, absent an override, the global default which
   // "seeds" new machines. The connecting client's first toplevel claims and
-  // pins this, so a later machine connecting — or a later global toggle —
+  // pins this, so a later machine connecting. Or a later global toggle -
   // never restyles it.
   id machineForceSSDValue = transportSnapshot[kWWNPrefsForceServerSideDecorations];
   BOOL machineForceSSD =
@@ -826,10 +927,36 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
           : [[WWNPreferencesManager sharedManager] forceServerSideDecorations];
   [[WWNCompositorBridge sharedBridge]
       setForceSSDForClientLaunch:machineForceSSD];
+
+  NSString *nativeCid = nil;
+  NSString *nativeCmd = nil;
+  [self resolvedNativeIdentityForProfile:profile
+                                clientId:&nativeCid
+                           customCommand:&nativeCmd];
+  BOOL fillsHost =
+      [nativeCid isEqualToString:@"weston-terminal"] ||
+      [nativeCid isEqualToString:@"wayland-terminal"] ||
+      [nativeCid isEqualToString:@"foot"] ||
+      [self profileIndicatesNestedWithNativeClientId:nativeCid
+                                      customCommand:nativeCmd];
+  [[WWNCompositorBridge sharedBridge] setFillsHostForClientLaunch:fillsHost];
+
+  // Environment overrides (#157): machine > global, after prefs/graphics apply.
+  {
+    NSDictionary *machineEnv = nil;
+    id env = swiftRuntime[@"environment"];
+    if ([env isKindOfClass:[NSDictionary class]]) {
+      machineEnv = env;
+    }
+    WWNEnvironmentOverridesApply(machineEnv);
+  }
 }
 
 + (void)applyActiveMachineToRuntimePrefs {
   NSString *activeId = [self activeMachineId];
+  if (wwn_log_ring_set_machine) {
+    wwn_log_ring_set_machine(activeId.length > 0 ? activeId.UTF8String : "");
+  }
   if (activeId.length == 0) {
     return;
   }
@@ -1027,44 +1154,48 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
   return [self resolvedNestedCompositorCursorForProfile:profile];
 }
 
-+ (BOOL)resolvedShowHostCursorActive {
-  if (![self resolvedRenderMacOSPointerActive]) {
-    return NO;
-  }
++ (nullable WWNMachineProfile *)activeProfile {
   NSString *activeId = [self activeMachineId];
-  WWNMachineProfile *profile =
-      activeId.length > 0 ? [self profileById:activeId] : nil;
-  BOOL nested =
-      profile != nil && [self profileIndicatesNestedCompositor:profile];
-  if (!nested) {
-#if TARGET_OS_IPHONE
-    return NO;
-#else
-    return YES;
-#endif
+  if (activeId.length == 0) {
+    return nil;
   }
-  return [[self resolvedNestedCompositorCursorForProfile:profile]
-      isEqualToString:@"host"];
+  return [self profileById:activeId];
+}
+
++ (BOOL)resolvedShowHostCursorActive {
+  WWNMachineProfile *profile = [self activeProfile];
+  if (profile && [self profileIndicatesNestedCompositor:profile]) {
+    return NO;
+  }
+  if (![self resolvedRenderMacOSPointerForProfile:profile]) {
+    return NO;
+  }
+#if TARGET_OS_IPHONE
+  return NO;
+#else
+  return YES;
+#endif
 }
 
 + (BOOL)resolvedShowVirtualPointerActive {
-  if (![self resolvedRenderMacOSPointerActive]) {
+  WWNMachineProfile *profile = [self activeProfile];
+  if (profile && [self profileIndicatesNestedCompositor:profile]) {
     return NO;
   }
-  NSString *activeId = [self activeMachineId];
-  WWNMachineProfile *profile =
-      activeId.length > 0 ? [self profileById:activeId] : nil;
-  BOOL nested =
-      profile != nil && [self profileIndicatesNestedCompositor:profile];
-  if (!nested) {
-#if TARGET_OS_IPHONE
-    return YES;
+#if TARGET_OS_TV
+  // Siri Remote clickpad is the pointing device. Always show the host
+  // cursor on non-compositor clients so Select can hit Wayland pixels.
+  return YES;
 #else
+  if (![self resolvedRenderMacOSPointerForProfile:profile]) {
     return NO;
-#endif
   }
-  return [[self resolvedNestedCompositorCursorForProfile:profile]
-      isEqualToString:@"virtual"];
+#if TARGET_OS_IPHONE
+  return YES;
+#else
+  return NO;
+#endif
+#endif
 }
 
 + (BOOL)resolvedAlwaysOnTopForProfile:(WWNMachineProfile *)profile {

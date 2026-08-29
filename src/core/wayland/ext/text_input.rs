@@ -476,7 +476,7 @@ impl Dispatch<ZwpTextInputManagerV3, ()> for CompositorState {
 }
 
 // ============================================================================
-// zwp_text_input_v3 — user data is seat_id: u32
+// zwp_text_input_v3. User data is seat_id: u32
 // ============================================================================
 
 impl Dispatch<ZwpTextInputV3, u32> for CompositorState {
@@ -586,7 +586,7 @@ pub fn register_text_input_manager(display: &DisplayHandle) -> wayland_server::b
 }
 
 // ============================================================================
-// zwp_text_input_manager_v1 (legacy — weston-editor / weston toy-toolkit)
+// zwp_text_input_manager_v1 (legacy. Weston-editor / weston toy-toolkit)
 // ============================================================================
 //
 // weston's own clients still bind the unstable v1 manager and exit with
@@ -634,7 +634,7 @@ impl Dispatch<ZwpTextInputManagerV1, ()> for CompositorState {
     }
 }
 
-// zwp_text_input_v1 — user data is () (looked up by protocol id).
+// zwp_text_input_v1. User data is () (looked up by protocol id).
 impl Dispatch<ZwpTextInputV1, ()> for CompositorState {
     fn request(
         state: &mut Self,

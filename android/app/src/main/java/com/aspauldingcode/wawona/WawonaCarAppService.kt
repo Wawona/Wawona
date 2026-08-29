@@ -12,7 +12,7 @@ import androidx.car.app.validation.HostValidator
 
 /**
  * Android Auto entry point. Car screens only allow template-based UI for this
- * app category, so Wawona surfaces a compositor status dashboard — the actual
+ * app category, so Wawona surfaces a compositor status dashboard. The actual
  * Wayland content stays on the phone.
  */
 class WawonaCarAppService : CarAppService() {

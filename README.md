@@ -3,7 +3,7 @@
 [![Gate: packages (Linux/Android)](https://github.com/Wawona/Wawona/actions/workflows/nix.yml/badge.svg?branch=development&event=push&job=build-linux)](https://github.com/Wawona/Wawona/actions/workflows/nix.yml)
 [![Gate: packages (macOS/iOS)](https://github.com/Wawona/Wawona/actions/workflows/nix.yml/badge.svg?branch=development&event=push&job=build-macos-x86_64)](https://github.com/Wawona/Wawona/actions/workflows/nix.yml)
 
-**Wawona** is a native Wayland Compositor for macOS, iOS, and Android.
+**Wawona** is a native Wayland compositor for macOS, iOS, iPadOS, tvOS, watchOS, visionOS, Android, and Linux.
 <div align="center">
   <img src="gallery/wawona_nested_plasma.png" alt="Wawona - Wayland Compositor Preview 1" width="800"/>
   <details>
@@ -13,17 +13,17 @@
   </details>
 </div>
 
-> **Project Vision:** Read about long-term objectives in [Project Goals](docs/goals.md) and the themed [Roadmap](docs/roadmap.md).
+> **Mission:** [wawona-mission-and-architecture.md](docs/wawona-mission-and-architecture.md). Facts: [2026-SOURCE-OF-TRUTH.md](docs/2026-SOURCE-OF-TRUTH.md). Roadmap: [roadmap.md](docs/roadmap.md).
 
 ### What can you do with Wawona?
 
 Wawona brings the Linux desktop world to devices that never had it. In plain terms:
 
-- **Run Linux graphical apps on your Mac, iPhone, iPad, and Android** — Wawona is a real Wayland compositor, so Wayland apps and desktops draw directly into a native window on your device.
-- **Connect to a remote Linux machine and use its apps as if they were local** — point Wawona at a Linux box over SSH and its windows appear on your screen, forwarded efficiently with Waypipe.
-- **Nest full Linux desktops** — run desktops and compositors like KDE Plasma, XFCE, COSMIC, sway, and niri inside Wawona (see the previews above).
-- **Use a real terminal on iOS and iPadOS** — a genuine bundled `zsh` with common tools, running on-device and App Store–compliant (no jailbreak, no remote server required).
-- **Manage many connections from one place** — save machines and switch between them without digging through settings.
+- **Run Linux graphical apps on Mac, iPhone, iPad, Apple TV, Apple Watch, visionOS, Android, and Linux**. Wawona is a real Wayland compositor, so Wayland apps and desktops draw into a native window on the device.
+- **Connect to a remote Linux machine and use its apps as if they were local**. Point Wawona at a Linux box over SSH and its windows appear on your screen, forwarded efficiently with Waypipe.
+- **Nest full Linux desktops**. Run desktops and compositors like KDE Plasma, XFCE, COSMIC, sway, and niri inside Wawona (see the previews above).
+- **Use a real terminal on iOS and iPadOS**. A genuine bundled `zsh` with common tools, running on-device and App Store-compliant (no jailbreak, no remote server required).
+- **Manage many connections from one place**. Save machines and switch between them without digging through settings.
 
 If you have used an SSH client or a remote desktop app before, think of Wawona as that, but for the whole Linux graphical stack, built natively for Apple and Android devices.
 
@@ -31,9 +31,9 @@ If you have used an SSH client or a remote desktop app before, think of Wawona a
 
 A walkthrough video showcasing nested desktops, remote apps, and the on-device shell is planned ([#45](https://github.com/Wawona/Wawona/issues/45)). Until then, the previews above and the [Usage Guide](docs/usage.md) show what a running session looks like.
 
-### App Store–compliant local zsh (iOS / iPadOS)
+### App Store-compliant local zsh (iOS / iPadOS)
 
-Wawona is engineering **the world's first App Store–compliant bundled native Z shell on iOS and iPadOS** — real `zsh` + upstream Weston `terminal.c`, not a remote SSH passthrough or x86 Linux guest. Full architecture, compliance model, Nix plan, spawn policy, and TestFlight checklist:
+Wawona is engineering **the world's first App Store-compliant bundled native Z shell on iOS and iPadOS**. Real `zsh` + upstream Weston `terminal.c`, not a remote SSH passthrough or x86 Linux guest. Full architecture, compliance model, Nix plan, spawn policy, and TestFlight checklist:
 
 **→ [docs/ios-local-shell/README.md](docs/ios-local-shell/README.md)**
 
@@ -44,6 +44,19 @@ Wawona is engineering **the world's first App Store–compliant bundled native Z
 2. Install Nix.
 3. Configure your environment (see below).
 4. Build with the Nix flake.
+
+On a cold laptop build, log into FlakeHub so already-built `wwn-*` store
+paths substitute. Cursor assets no longer pull `librsvg` /
+`adwaita-icon-theme`. If a compile still dies with exit 137 / `Killed: 9`,
+cap Nix parallelism:
+
+```bash
+determinate-nixd login
+./scripts/nix-build-low-mem.sh .#wawona-macos
+```
+
+See [Compilation Guide](docs/compilation.md) (Troubleshooting macOS builds)
+and [FlakeHub Cache](docs/flakehub-cache.md).
 
 ### Environment Configuration
 
@@ -147,8 +160,8 @@ This keeps the wrapper minimal and lets the same flow work on local machines and
 
 - `nix build .#wawona-ios-app-sim`
 - `nix build .#wawona-ios-app-device`
-- `nix build .#weston-compositor-ios` — nested Weston (Wayland/Pixman)
-- `nix build .#weston-compositor-ios-drm` — nested Weston DRM+GL archive (CI)
+- `nix build .#weston-compositor-ios`. Nested Weston (Wayland/Pixman)
+- `nix build .#weston-compositor-ios-drm`. Nested Weston DRM+GL archive (CI)
 - `nix build .#wawona-ios-ipa --impure`
 - `nix build .#wawona-ios-xcarchive --impure`
 - `nix run .#wawona-ios`
@@ -159,7 +172,7 @@ This keeps the wrapper minimal and lets the same flow work on local machines and
 
 | Setting | Backend | Presentation |
 |---------|---------|--------------|
-| Wayland (Pixman) — default | `--backend=wayland --use-pixman` | xdg_toplevel in Wawona window |
+| Wayland (Pixman). Default | `--backend=wayland --use-pixman` | xdg_toplevel in Wawona window |
 | iland DRM (GL) | `--backend=drm` | Metal overlay (`WWNIlandPresenter`) |
 
 Production `weston.ini`, bundled `terminal.png`, and Adwaita cursors ship in the app bundle. Startup target: panel visible within ~2s on the Pixman path.
@@ -178,7 +191,7 @@ nix build .#wawona-ios-ipa --impure
 
 ### Contributing & Supporting
 
-For fast Xcode iteration after a warm Nix store, see [Compilation Guide — Xcode Iteration](docs/compilation.md#xcode-iteration).
+For fast Xcode iteration after a warm Nix store, see [Compilation Guide. Xcode Iteration](docs/compilation.md#xcode-iteration).
 
 Wawona is a massive undertaking to bring a native Wayland compositor to Apple platforms and Android, and **I cannot sustain this project alone**. Your support _whether through code, issues, ideas, or donations_ is essential to its progress and survival.
 

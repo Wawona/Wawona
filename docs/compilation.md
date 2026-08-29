@@ -7,13 +7,29 @@ Wawona uses **Nix Flakes** for all builds. For the full build pipeline (crate2ni
 ```bash
 # macOS app (build + launch)
 nix run .#wawona
+nix run .#wawona-macos
 
-# iOS Simulator app
+# Low-RAM / OOM. See Troubleshooting below.
+./scripts/nix-build-low-mem.sh .#wawona-macos
+
+# Store-shaped macOS vs SIP Desktop Replacement host
+nix build .#wawona-macos
+nix build .#wawona-macos-desktop-host
+
+# Apple family simulators
 nix run .#wawona-ios
+nix build .#wawona-watchos-app-sim
+nix build .#wawona-tvos-sim
+nix build .#wawona-visionos-sim
 
-# Android app
+# Android / Linux
 nix run .#wawona-android
+nix run .#wawona-linux
 ```
+
+`--rebuild` is not a Nix flag. Use `nix build --rebuild` only if you mean Nix's
+`--rebuild` (force rebuild of a derivation). For a clean tree, `nix build` the
+attribute again.
 
 ## Build Monitoring With `nom`
 
@@ -45,18 +61,28 @@ nix build .#wawona-android-backend
 
 ## Xcode Iteration
 
-The Xcode pre-build phase is **incremental**: it only runs when declared inputs
-(`Cargo.lock`, `flake.nix`, `Cargo.toml`, `xcode-prebuild.sh`) have changed.
-By default it builds only the **active SDK backend** (device or simulator, not
-both), cutting ~50% of Nix work on each rebuild.
+`xcodebuild` (including `nix run .#wawona-macos`) may print notes that Run
+Script phases will run during **every** build because "Based on dependency
+analysis" is unchecked. Those are notes, not errors.
+
+`dependencies/generators/xcodegen.nix` sets `basedOnDependencyAnalysis = false`
+for several phases on purpose. Xcode cannot skip them from declared inputs and
+outputs. The Nix closure, store copies, and Info.plist edits are not a graph
+Xcode can track. On `Wawona-macOS` that includes Stamp Build Number, Build
+Rust Backend via Nix (`scripts/xcode-prebuild.sh`), Bundle Executables, and
+Strip iOS-only keys from Info.plist (#138).
+
+The **script still runs** every time. Cheap when the store is warm: Nix
+cache, `WAWONA_BACKEND_OUT*` copy of a realized `libwawona.a`, or
+`WAWONA_SKIP_NIX_PREBUILD=1` for UI-only iteration. By default the prebuild
+builds only the **active SDK backend** (device or simulator, not both).
 
 ```bash
 # One-time warm (full iOS, both device and simulator backends)
 nix build .#wawona-ios-backend .#wawona-ios-sim-backend
 mkdir -p .nix-gcroots && nix build --out-link .nix-gcroots/xcodegen .#xcodegen
 
-# UI-only iteration — no special env needed; prebuild auto-skips when inputs
-# are unchanged. For explicit skip (no Nix at all):
+# UI-only iteration. Skip Nix entirely (script still runs, then exits):
 export WAWONA_SKIP_NIX_PREBUILD=1
 
 # Release builds that want both device+sim warm in one pass:
@@ -65,9 +91,12 @@ export WAWONA_WARM_BOTH_BACKENDS=1
 # Skip redundant simulator runtime download during Nix iOS app builds
 export WAWONA_SKIP_IOS_SIMULATOR_PLATFORM_DOWNLOAD=1
 
-# CI product-build / device-e2e set the skip flag via
-# `.github/scripts/warm-ios-simulator-sdk.sh` when the iphonesimulator SDK is present.
+# CI product-build (ios-sim + apple-family) / device-e2e / frontend-syntax set the
+# skip flag via `.github/scripts/warm-ios-simulator-sdk.sh` when the requested
+# simulator SDK is present (`ios`, `ipados`, `tvos`, `watchos`, `visionos`, or `all`).
 # Product `.#wawona-ios` uses `xcodegenIosSimOutputs` (ios-only + simulatorOnly).
+# Nix product builds also pass `WAWONA_BACKEND_OUT*` so xcode-prebuild copies
+# `libwawona.a` instead of nested-compiling the Rust backend during xcodebuild.
 ```
 
 After a `Cargo.lock` change, unset `WAWONA_SKIP_NIX_PREBUILD` or rebuild the relevant backend:
@@ -108,12 +137,46 @@ nix run .#gradlegen     # Generate ./Wawona-gradle-project for Android Studio
 
 See [README](../README.md) for environment setup.
 
-## Release beta (TestFlight + Play)
+## Troubleshooting macOS builds
 
-Wawona v2.5 adds Fastlane automation. See [wwn-mcp/knowledge/wawona/fastlane.md](../../wwn-mcp/knowledge/wawona/fastlane.md).
+Weston cursor assets come from `adwaita-cursors`: unpack GNOME's Xcursor
+files from the source tarball. `nix build .#wawona-macos` does **not**
+build nixpkgs `adwaita-icon-theme`, `librsvg`, Sphinx, or mypy.
+
+A remaining OOM on a tiny laptop is usually some other cold nixpkgs compile
+running too many jobs. Cap parallelism:
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| Full cold compile on a laptop | Not logged into FlakeHub for `wwn-*` slices | `determinate-nixd login` |
+| Exit 137 / `Killed: 9` on a small machine | Too many parallel Nix jobs | `./scripts/nix-build-low-mem.sh .#wawona-macos` |
+
+Recommended order for new contributors:
 
 ```bash
-# Tier 0 — docs/maintainers/secrets.md (SecretSpec + pass; sops-nix unlocks GPG)
+determinate-nixd login
+determinate-nixd status   # Logged in: true
+nix build .#wawona-macos
+```
+
+On a machine that still OOMs:
+
+```bash
+./scripts/nix-build-low-mem.sh .#wawona-macos
+```
+
+CI sets `max-jobs` / `cores` in the Nix installer extra-conf, not in flake
+`nixConfig` (that setting is untrusted on laptops). Cache details:
+[`flakehub-cache.md`](flakehub-cache.md).
+
+## Release beta (TestFlight + Play)
+
+CalVer is `VERSION` (`YY.M.D`). Fastlane lives in this repo. Contributor CI:
+[`ci.md`](./ci.md). Secrets: [`maintainers/secrets.md`](./maintainers/secrets.md)
+(not for the public site).
+
+```bash
+# Tier 0. Docs/maintainers/secrets.md (SecretSpec + pass; sops-nix unlocks GPG)
 ./scripts/setup-release-secrets.sh                      # verify pass + secretspec
 ./scripts/bootstrap-apple-signing.sh                    # one-time match → apple-signing repo
 ./scripts/sync-github-secrets.sh                        # pass → GitHub Environment release-beta

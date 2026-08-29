@@ -13,6 +13,13 @@
 @property(nonatomic, strong) NSTimer *wwnCloseForceTimer;
 @end
 
+#if TARGET_OS_OSX
+extern void WWNCoreInjectDragEnter(void *core, uint64_t window_id, double x, double y, const char *mime_types);
+extern void WWNCoreInjectDragMotion(void *core, uint64_t window_id, double x, double y);
+extern void WWNCoreInjectDragDrop(void *core, uint64_t window_id, const char *data);
+extern void WWNCoreInjectDragLeave(void *core, uint64_t window_id);
+#endif
+
 //
 // WWNView Implementation (macOS)
 //
@@ -41,6 +48,10 @@
     // Prevent NSView from scaling or redrawing contents during resize
     self.layerContentsRedrawPolicy = NSViewLayerContentsRedrawNever;
     self.layerContentsPlacement = NSViewLayerContentsPlacementTopLeft;
+    self.layerContentsRedrawPolicy = NSViewLayerContentsRedrawNever;
+#if TARGET_OS_OSX
+    [self registerForDraggedTypes:@[NSPasteboardTypeFileURL, NSPasteboardTypeString, NSPasteboardTypeURL, NSPasteboardTypeTIFF]];
+#endif
 
     contentLayer_ = [CALayer layer];
     contentLayer_.geometryFlipped = YES;
@@ -134,7 +145,7 @@
   }
   metalLayer_.hidden = NO;
   metalLayer_.frame = self.bounds;
-  // Never tear down a presenter that already owns an in-process DRM client —
+  // Never tear down a presenter that already owns an in-process DRM client -
   // recreating it left the old kmscube/gbm thread alive and made the next
   // Start look like the previous client (title + frames).
   if (ilandPresenter_) {
@@ -151,6 +162,17 @@
   return ilandPresenter_ != nil;
 }
 
+- (void)stopIlandMetalPresentation {
+  if (ilandPresenter_) {
+    [ilandPresenter_ invalidate];
+    ilandPresenter_ = nil;
+  }
+  if (metalLayer_) {
+    metalLayer_.hidden = YES;
+  }
+  contentLayer_.hidden = NO;
+}
+
 - (BOOL)launchNestedIlandGpuClient:(NSString *)clientId {
   NSString *running = [ilandPresenter_ runningClientId];
   if (running.length > 0) {
@@ -158,7 +180,7 @@
       return YES;
     }
     WWNLog("CLIENT",
-           @"refusing %@ — in-process %@ still owns iland DRM (Stop that "
+           @"refusing %@. In-process %@ still owns iland DRM (Stop that "
            @"machine first)",
            clientId, running);
     return NO;
@@ -321,12 +343,12 @@
 }
 
 // wl_pointer.axis (scroll). NSEvent already applies the user's natural-
-// scrolling preference before we see it, so deltas are forwarded as-is —
+// scrolling preference before we see it, so deltas are forwarded as-is -
 // no manual inversion. Trackpads report continuous, already-pixel-scaled
 // deltas via scrollingDelta{X,Y} (hasPreciseScrollingDeltas); traditional
 // mouse wheels report whole "clicks" via delta{X,Y} (~1.0 per notch), which
 // we scale up to roughly match the pixel-ish magnitude wl_pointer.axis
-// expects — same 15x convention the Linux GTK UI uses for its scroll
+// expects. Same 15x convention the Linux GTK UI uses for its scroll
 // controller (see wawona-linux-ui.rs) so client-side scroll speed (e.g.
 // weston-terminal's AXIS_UNITS_PER_LINE) behaves consistently everywhere.
 - (void)scrollWheel:(NSEvent *)event {
@@ -341,7 +363,7 @@
     dy = event.deltaY * 15.0;
     source = 0; // wheel
   }
-  (void)source; // WWNCoreInjectPointerAxis doesn't take a source yet.
+  (void)source; 
 
   if (dx == 0.0 && dy == 0.0) {
     return;
@@ -681,7 +703,7 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
   selectedRange_ = NSMakeRange(textBuffer_.length, 0);
 
   // If the raw keycode was already injected by keyDown:, we don't need
-  // to send it again — the wl_keyboard path already delivered it.
+  // to send it again. The wl_keyboard path already delivered it.
   // We only fall through to text-input-v3 for text that CAN'T be
   // expressed as a keycode (emoji, accented chars from dead keys, CJK).
   if (handledByKeyEvent_) {
@@ -690,7 +712,7 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
 
   // Text that arrived without a matching keyDown (e.g. emoji picker,
   // dead-key resolved composition, clipboard, IME, autocorrect,
-  // dictation) — commit via text-input-v3.
+  // dictation). Commit via text-input-v3.
   WWNLog("INPUT", @"Committing composed text via text-input-v3: \"%@\"", str);
   [[WWNCompositorBridge sharedBridge] textInputCommitString:str];
 }
@@ -813,6 +835,161 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
   }
 }
 
+#if TARGET_OS_OSX
+// MARK: - NSDraggingDestination
+
+- (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)sender {
+  NSPoint loc = [self convertPoint:[sender draggingLocation] fromView:nil];
+  WWNWindow *win = (WWNWindow *)self.window;
+  if (win) {
+    // Build MIME types from the pasteboard content so the Wayland client
+    // receives an accurate offer and can decide whether to accept.
+    NSPasteboard *pboard = [sender draggingPasteboard];
+    NSMutableArray<NSString *> *mimes = [NSMutableArray array];
+
+    // File / URL types → text/uri-list (primary DnD transfer MIME type)
+    if ([pboard availableTypeFromArray:@[NSPasteboardTypeFileURL, NSPasteboardTypeURL]]) {
+      [mimes addObject:@"text/uri-list"];
+      [mimes addObject:@"text/plain;charset=utf-8"];
+      [mimes addObject:@"text/plain"];
+    }
+    // Plain text
+    if ([pboard availableTypeFromArray:@[NSPasteboardTypeString]]) {
+      if (![mimes containsObject:@"text/plain;charset=utf-8"]) {
+        [mimes addObject:@"text/plain;charset=utf-8"];
+      }
+      if (![mimes containsObject:@"text/plain"]) {
+        [mimes addObject:@"text/plain"];
+      }
+    }
+    // Image data (TIFF is macOS's native pasteboard image type)
+    if ([pboard availableTypeFromArray:@[NSPasteboardTypeTIFF, NSPasteboardTypePNG]]) {
+      [mimes addObject:@"image/png"];
+      // Also offer as URI since we'll write to a temp file
+      if (![mimes containsObject:@"text/uri-list"]) {
+        [mimes addObject:@"text/uri-list"];
+      }
+    }
+    // Fallback — always offer at least text/plain
+    if (mimes.count == 0) {
+      [mimes addObject:@"text/plain"];
+    }
+
+    NSString *mimeStr = [mimes componentsJoinedByString:@","];
+    [[WWNCompositorBridge sharedBridge] injectDragEnterForWindow:win.wwnWindowId x:loc.x y:loc.y mimeTypes:mimeStr];
+  }
+  return NSDragOperationCopy;
+}
+
+- (NSDragOperation)draggingUpdated:(id<NSDraggingInfo>)sender {
+  NSPoint loc = [self convertPoint:[sender draggingLocation] fromView:nil];
+  WWNWindow *win = (WWNWindow *)self.window;
+  if (win) {
+    [[WWNCompositorBridge sharedBridge] injectDragMotionForWindow:win.wwnWindowId x:loc.x y:loc.y];
+  }
+  return NSDragOperationCopy;
+}
+
+- (void)draggingExited:(id<NSDraggingInfo>)sender {
+  WWNWindow *win = (WWNWindow *)self.window;
+  if (win) {
+    [[WWNCompositorBridge sharedBridge] injectDragLeaveForWindow:win.wwnWindowId];
+  }
+}
+
+- (BOOL)performDragOperation:(id<NSDraggingInfo>)sender {
+  NSPasteboard *pboard = [sender draggingPasteboard];
+  NSArray *urls = [pboard readObjectsForClasses:@[[NSURL class]] options:nil];
+  NSMutableString *uriList = [NSMutableString string];
+  
+  if (urls.count > 0) {
+    for (NSURL *url in urls) {
+      // Use absoluteString which is already properly percent-encoded
+      NSURL *filePathUrl = [url filePathURL];
+      if (filePathUrl) {
+        [uriList appendFormat:@"%@\r\n", filePathUrl.absoluteString];
+      } else {
+        [uriList appendFormat:@"%@\r\n", url.absoluteString];
+      }
+    }
+  } else {
+    // Try to read a string
+    NSArray *strings = [pboard readObjectsForClasses:@[[NSString class]] options:nil];
+    if (strings.count > 0) {
+      [uriList appendString:strings.firstObject];
+    } else {
+      // Try to read an image — convert to PNG (universally understood by
+      // Wayland clients, unlike TIFF which is macOS-specific)
+      NSArray *images = [pboard readObjectsForClasses:@[[NSImage class]] options:nil];
+      if (images.count > 0) {
+        NSImage *image = images.firstObject;
+        NSBitmapImageRep *rep = nil;
+        for (NSImageRep *r in image.representations) {
+          if ([r isKindOfClass:[NSBitmapImageRep class]]) {
+            rep = (NSBitmapImageRep *)r;
+            break;
+          }
+        }
+        if (!rep) {
+          // Fallback: render the image into a bitmap
+          CGSize sz = image.size;
+          rep = [[NSBitmapImageRep alloc]
+              initWithBitmapDataPlanes:NULL
+                            pixelsWide:(NSInteger)sz.width
+                            pixelsHigh:(NSInteger)sz.height
+                         bitsPerSample:8
+                       samplesPerPixel:4
+                              hasAlpha:YES
+                              isPlanar:NO
+                        colorSpaceName:NSCalibratedRGBColorSpace
+                           bytesPerRow:0
+                          bitsPerPixel:0];
+          if (rep) {
+            [NSGraphicsContext saveGraphicsState];
+            NSGraphicsContext *ctx = [NSGraphicsContext graphicsContextWithBitmapImageRep:rep];
+            [NSGraphicsContext setCurrentContext:ctx];
+            [image drawAtPoint:NSZeroPoint fromRect:NSMakeRect(0, 0, sz.width, sz.height)
+                     operation:NSCompositingOperationCopy fraction:1.0];
+            [NSGraphicsContext restoreGraphicsState];
+          }
+        }
+        if (rep) {
+          NSData *pngData = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
+          if (pngData) {
+            NSString *tmpPath = [NSTemporaryDirectory() stringByAppendingPathComponent:[[NSUUID UUID] UUIDString]];
+            tmpPath = [tmpPath stringByAppendingPathExtension:@"png"];
+            [pngData writeToFile:tmpPath atomically:YES];
+            NSURL *tmpUrl = [NSURL fileURLWithPath:tmpPath];
+            [uriList appendFormat:@"%@\r\n", tmpUrl.absoluteString];
+          }
+        }
+        if (uriList.length == 0) {
+          WWNWindow *win = (WWNWindow *)self.window;
+          if (win) {
+            [[WWNCompositorBridge sharedBridge] injectDragLeaveForWindow:win.wwnWindowId];
+          }
+          return NO;
+        }
+      } else {
+        WWNWindow *win = (WWNWindow *)self.window;
+        if (win) {
+          [[WWNCompositorBridge sharedBridge] injectDragLeaveForWindow:win.wwnWindowId];
+        }
+        return NO;
+      }
+    }
+  }
+  
+  WWNWindow *win = (WWNWindow *)self.window;
+  if (win) {
+    [[WWNCompositorBridge sharedBridge] injectDragDropForWindow:win.wwnWindowId data:uriList];
+  }
+  
+  return YES;
+}
+
+#endif
+
 @end
 
 //
@@ -842,7 +1019,7 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
     // ARC owns this window (held in WWNCompositorBridge._windows and by the
     // teardown block). NSWindow defaults releasedWhenClosed to YES, so -close
     // would hand AppKit an extra -autorelease and over-release the object when
-    // the run loop's autorelease pool drains — crashing in objc_release after a
+    // the run loop's autorelease pool drains. Crashing in objc_release after a
     // client (e.g. weston-terminal) tears down. Match WWNPopupWindow/prefs.
     self.releasedWhenClosed = NO;
     [self setDelegate:self];
@@ -922,6 +1099,10 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
   if (self.processingResize || self.suppressCompositorCallbacks ||
       !self.isVisible || self.isMiniaturized ||
       self.wwnMiniaturizeInProgress || self.wwnFullscreenTransitionInProgress) {
+    return;
+  }
+
+  if (WWNWestonDemoPrefersFixedSquare(nil, self.title) || self.prefersFixedSquare) {
     return;
   }
 
@@ -1009,6 +1190,10 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
 
 - (NSSize)windowWillResize:(NSWindow *)sender toSize:(NSSize)frameSize {
   (void)sender;
+  if (self.prefersFixedSquare ||
+      WWNWestonDemoPrefersFixedSquare(nil, self.title)) {
+    return self.frame.size;
+  }
   if (self.processingResize || self.suppressCompositorCallbacks ||
       !self.isVisible || self.isMiniaturized ||
       self.wwnMiniaturizeInProgress || self.wwnFullscreenTransitionInProgress) {
@@ -1148,7 +1333,7 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
     self.wwnCloseDeferred = NO;
     [[WWNCompositorBridge sharedBridge]
         requestForceDestroyHostWindowForWindowId:self.wwnWindowId];
-    WWNLog("INPUT", @"windowShouldClose: second close — force-destroy host for "
+    WWNLog("INPUT", @"windowShouldClose: second close. Force-destroy host for "
                      @"window %llu",
            self.wwnWindowId);
     return NO;
@@ -1159,7 +1344,7 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
     // Once close has been requested, stop feeding additional AppKit callbacks
     // for this host window while the Wayland client unwinds.
     self.suppressCompositorCallbacks = YES;
-    WWNLog("INPUT", @"windowShouldClose: sent xdg_toplevel.close for window %llu — "
+    WWNLog("INPUT", @"windowShouldClose: sent xdg_toplevel.close for window %llu. "
                      @"deferring NSWindow close",
            self.wwnWindowId);
     self.wwnCloseDeferred = YES;
@@ -1182,7 +1367,7 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
                                             strongSelf.wwnCloseForceTimer = nil;
                                             WWNLog("INPUT",
                                                    @"windowShouldClose: grace "
-                                                   @"timeout — force-destroy "
+                                                   @"timeout. Force-destroy "
                                                    @"host for window %llu",
                                                    wid);
                                             [[WWNCompositorBridge sharedBridge]

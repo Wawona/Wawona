@@ -27,7 +27,7 @@ Cloned shallow for themed diffs; not committed (`vendor-research/` in `.gitignor
 | `RAIL_WINDOW_MOVE` continuous geometry | Live host resize + configure every drag tick | SSD: `windowWillResize` + `injectWindowResize`; CSD: `handleWindowResizeRequested` track loop |
 | `rdprail-shell` app list / activate | Machines + foreign-toplevel / activation (desktop hosts) | P3; macOS+Android Desktop only |
 | VAIL shared pixels | IOSurface / dmabuf zero-copy | ISSUE #86 (P3) |
-| RDP transport / FreeRDP / mstsc | **Forbidden** | — |
+| RDP transport / FreeRDP / mstsc | **Forbidden** | - |
 
 ## Decoration policy (Smithay)
 
@@ -73,7 +73,7 @@ zoom frames. `PlatformCapabilities.hostWindowManagerPolicy` is authoritative.
 **iOS decision (cannot resize host windows):** treat maximize and fullscreen as
 the same host geometry (fill-primary). Advertise distinct xdg states so clients
 that branch on `maximized` vs `fullscreen` still see the bit they requested.
-Unmaximize/unfullscreen clear those bits but keep fill-primary size — there is
+Unmaximize/unfullscreen clear those bits but keep fill-primary size. There is
 no pre-max floating geometry to restore. Minimize must never terminate the
 client; Focus is the restore path.
 
@@ -87,14 +87,14 @@ client; Focus is the restore path.
 | [#88](https://github.com/Wawona/Wawona/issues/88) [#63](https://github.com/Wawona/Wawona/issues/63) [#80](https://github.com/Wawona/Wawona/issues/80) | waypipe remote resize | P2 |
 | [#86](https://github.com/Wawona/Wawona/issues/86) | IOSurface dmabuf | P3 |
 | [#84](https://github.com/Wawona/Wawona/issues/84) [#65](https://github.com/Wawona/Wawona/issues/65) | multi-window / tabs | P2 |
-| [#83](https://github.com/Wawona/Wawona/issues/83) [#59](https://github.com/Wawona/Wawona/issues/59) | WM / resize polish | P1–P2 |
+| [#83](https://github.com/Wawona/Wawona/issues/83) [#59](https://github.com/Wawona/Wawona/issues/59) | WM / resize polish | P1-P2 |
 | [#32](https://github.com/Wawona/Wawona/issues/32) [#103](https://github.com/Wawona/Wawona/issues/103) | Desktop/launcher | P3 macOS+Android only |
 
 ## Host ↔ client size sync (state machine)
 
 **Authority:** [`.cursor/rules/wawona-host-client-size-sync.mdc`](../.cursor/rules/wawona-host-client-size-sync.mdc).
 
-**Implementation:** `src/core/window/size_authority.rs` — permanent SM.
+**Implementation:** `src/core/window/size_authority.rs`. Permanent SM.
 States: `AwaitingFirstCommit` → `Client` ↔ `Host { requested }`.
 Invariant: exactly one writer of agreed size. Unit test
 `ping_pong_impossible_during_host_drive` must stay green.
@@ -105,8 +105,8 @@ Invariant: exactly one writer of agreed size. Unit test
 | OWL / xdg `configure(0,0)` | `AwaitingFirstCommit` then first buffer → `Client` |
 | Smithay serial/ack | `Host` ignores lagging commits while pending serial ≠ 0 |
 | WSLg/RAIL / waypipe (ref) | `Host` during drag; settle on match or client refuse |
-| weston-flower / smoke | Refuse → `Client` at **200×200** |
-| weston-simple-shm | Follows configure; never inject display size on map |
+| weston-flower / smoke | Refuse → `Client` at **200x200** |
+| weston-simple-shm / simple-egl | Preferred square (250x250); never inject display size on map. Same host policy as flower. |
 
 Research trees: `vendor-research/{owl,wslg,weston-upstream,weston-mirror}`
 (gitignored; clone locally for diffs).

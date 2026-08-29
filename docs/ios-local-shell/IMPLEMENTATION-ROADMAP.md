@@ -1,6 +1,6 @@
 # Implementation Roadmap: Weston Terminal + ZSH on Apple Mobile
 
-Phased delivery plan for the world's first App Store–compliant bundled native zsh on iOS/iPadOS. **Phase 0 is a hard gate** for Phase 2 shell integration.
+Phased delivery plan for the world's first App Store-compliant bundled native zsh on iOS/iPadOS. **Phase 0 is a hard gate** for Phase 2 shell integration.
 
 Master plan file: `.cursor/plans/ios_weston_terminal_zsh_b55c5cd8.plan.md`
 
@@ -32,9 +32,9 @@ gantt
 
 ---
 
-## Phase 0 — PTY + zsh spawn spike (GATE)
+## Phase 0. PTY + zsh spawn spike (GATE)
 
-**Owner deliverable:** [../ios-local-shell-spike.md](../ios-local-shell-spike.md) filled with device results.
+**Owner deliverable:** [../legacy/ios-local-shell-spike.md](../legacy/ios-local-shell-spike.md) filled with device results.
 
 | Task | Path / output |
 |------|----------------|
@@ -54,11 +54,11 @@ gantt
 
 **Exit:** Interactive echo works **OR** documented fallback (pipe-TTY) approved for Phase 2.
 
-**PR:** PR0 — spike + flake + spike doc only (no terminal.c yet).
+**PR:** PR0. Spike + flake + spike doc only (no terminal.c yet).
 
 ---
 
-## Phase 1 — Real weston-terminal UI (no shell)
+## Phase 1. Real weston-terminal UI (no shell)
 
 **Goal:** Replace `mobile-weston-terminal.c` SHM placeholder with upstream terminal **visual** client.
 
@@ -98,13 +98,13 @@ nix build .#weston-ios
 
 Update [../testing/everywhere-matrix.md](../testing/everywhere-matrix.md) line for `weston-terminal`.
 
-**PR:** PR1 — terminal patches + ios.nix + delete SHM stub.
+**PR:** PR1. Terminal patches + ios.nix + delete SHM stub.
 
 ---
 
-## Phase 2 — Bundled zsh + Wawona PTY layer
+## Phase 2. Bundled zsh + Wawona PTY layer
 
-### 2a — `wawona-pty` library
+### 2a. `wawona-pty` library
 
 Package: `wwn-toolchain/dependencies/libs/wawona-pty/`
 
@@ -112,15 +112,15 @@ Package: `wwn-toolchain/dependencies/libs/wawona-pty/`
 - Static archive `libwwn-pty.a` for iOS + sim
 - Unit tests on macOS host where possible; device tests via spike
 
-### 2b — `zsh-ios` + rootfs
+### 2b. `zsh-ios` + rootfs
 
-- `wwn-zsh/dependencies/libs/zsh/ios.nix` — zsh 5.9+ static
-- `dependencies/wawona/ios-rootfs.nix` — aggregate rootfs (Wawona integration)
+- `wwn-zsh/dependencies/libs/zsh/ios.nix`. Zsh 5.9+ static
+- `dependencies/wawona/ios-rootfs.nix`. Aggregate rootfs (Wawona integration)
 - Register in `wwn-toolchain/dependencies/toolchains/common/registry.nix`
 
 Details: [ROOTFS-AND-ZSH.md](ROOTFS-AND-ZSH.md)
 
-### 2c — App integration
+### 2c. App integration
 
 | Component | Work |
 |-----------|------|
@@ -129,7 +129,7 @@ Details: [ROOTFS-AND-ZSH.md](ROOTFS-AND-ZSH.md)
 | `WWNWaypipeRunner.m` | Set `HOME`, `PATH`, `WAWONA_SHELL`, … |
 | Link | `libwwn-pty.a` + `libweston-terminal.a` |
 
-### 2d — Patch `terminal.c` spawn sites
+### 2d. Patch `terminal.c` spawn sites
 
 ```c
 #if defined(__APPLE__) && (TARGET_OS_IPHONE || TARGET_OS_TV || TARGET_OS_WATCH)
@@ -141,11 +141,11 @@ Details: [ROOTFS-AND-ZSH.md](ROOTFS-AND-ZSH.md)
 
 **Do not** change `compositor-apple-mobile.nix` `fork()` stub.
 
-**PR:** PR2 — pty + zsh + rootfs + spawn integration.
+**PR:** PR2. Pty + zsh + rootfs + spawn integration.
 
 ---
 
-## Phase 3 — Compliance, security, TestFlight
+## Phase 3. Compliance, security, TestFlight
 
 | Task | Doc |
 |------|-----|
@@ -155,18 +155,18 @@ Details: [ROOTFS-AND-ZSH.md](ROOTFS-AND-ZSH.md)
 | Matrix + CI attrs | [../testing/everywhere-matrix.md](../testing/everywhere-matrix.md) |
 | Optional Settings toggle | "Enable local shell" |
 
-**PR:** PR3 — docs + settings + CI targets `.#zsh-ios`.
+**PR:** PR3. Docs + settings + CI targets `.#zsh-ios`.
 
 ---
 
-## Phase 4 — Ecosystem polish
+## Phase 4. Ecosystem polish
 
 | Item | Notes |
 |------|-------|
 | Nested Weston launcher | Already `path=weston-terminal` in `wwnWriteWestonIniAtPath` |
 | Extra rootfs tools | `grep`, coreutils subset (a-Shell model) |
 | foot client | After spawn proven; shares PTY layer |
-| Remote preset | "Remote dev shell" — waypipe, zero local PTY |
+| Remote preset | "Remote dev shell". Waypipe, zero local PTY |
 | watchOS | [WATCHOS-SCOPE.md](WATCHOS-SCOPE.md) only |
 
 ---

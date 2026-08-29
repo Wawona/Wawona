@@ -28,7 +28,7 @@ Linux-like rootfs (`/bin`, `/usr`, `/lib`, `/home`) embedded in the app bundle.
 
 On-device terminal connected to the kernel with real shell features.
 
-- Done: App Store–compliant bundled `zsh` + Weston `terminal.c`; history,
+- Done: App Store-compliant bundled `zsh` + Weston `terminal.c`; history,
   pipes, env vars.
 - Canonical: [`ios-local-shell/README.md`](./ios-local-shell/README.md).
 
@@ -36,7 +36,7 @@ On-device terminal connected to the kernel with real shell features.
 
 - Done: in-process, read-only `apt()` wrapper (App Store compliant); Nix-based
   ecosystem via the `wwn-*` repos.
-- Follow-up: StoreKit/ODR purchase + install flow (W2–W4 in the local-shell
+- Follow-up: StoreKit/ODR purchase + install flow (W2-W4 in the local-shell
   plan).
 - Canonical: [`ios-local-shell/STATUS.md`](./ios-local-shell/STATUS.md).
 
@@ -54,7 +54,7 @@ On-device terminal connected to the kernel with real shell features.
 ## Platform & input
 
 - Game controllers ([#46](https://github.com/Wawona/Wawona/issues/46)):
-  implemented — [`game-controller.md`](./game-controller.md).
+  implemented. [`game-controller.md`](./game-controller.md).
 - Platform delivery matrix:
   [`2026-platform-delivery-matrix.md`](./2026-platform-delivery-matrix.md).
 
@@ -63,7 +63,7 @@ On-device terminal connected to the kernel with real shell features.
 - Nested desktops/compositors and the `p29-wwn-*` native ports:
   [`2026-COMPOSITOR-COMPARISON-AND-ROADMAP.md`](./2026-COMPOSITOR-COMPARISON-AND-ROADMAP.md),
   [`2026-toolkit-de-compat.md`](./2026-toolkit-de-compat.md).
-- **Bucket C (`p29-wwn-sway`/`niri`/`kde`/`gnome`/`xfce`/`hyprland`) — deferred.**
+- **Bucket C (`p29-wwn-sway`/`niri`/`kde`/`gnome`/`xfce`/`hyprland`). Deferred.**
   These native ports were the fallback for running sway/niri nested if the
   Waypipe remote path proved insufficient. With the Waypipe remote-sway launch
   fixed ([#54](https://github.com/Wawona/Wawona/issues/54), the `env`-prefix fix
@@ -81,5 +81,5 @@ On-device terminal connected to the kernel with real shell features.
   form (use case, willingness to pay, perceived value). Needs a hosted form
   (e.g. Tally/Google Forms); link it from the README when live.
 - **Donations ([#26](https://github.com/Wawona/Wawona/issues/26)):** live via
-  [`.github/FUNDING.yml`](../.github/FUNDING.yml) — GitHub Sponsors (one-time and
+  [`.github/FUNDING.yml`](../.github/FUNDING.yml). GitHub Sponsors (one-time and
   monthly) and Ko-fi.

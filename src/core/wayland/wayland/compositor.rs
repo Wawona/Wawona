@@ -1,5 +1,5 @@
 
-//! Legacy compositor dispatch — core wl_compositor/wl_surface/wl_region owned by Smithay `delegate_compositor!`.
+//! Legacy compositor dispatch. Core wl_compositor/wl_surface/wl_region owned by Smithay `delegate_compositor!`.
 //!
 //! wl_buffer destroy bookkeeping remains here until fully migrated to Smithay buffer handlers.
 

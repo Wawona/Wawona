@@ -3,10 +3,28 @@
 #import "WWNWatchCompositorBridge.h"
 
 static NSString *const kWWNWatchSettingsSectionKey = @"section";
+static NSString *const kWWNWatchSettingsPickerKey = @"picker";
+static NSString *const kWWNWatchSettingsPickerOptionsKey = @"options";
+static NSString *const kWWNWatchSettingsPickerValueKey = @"current";
+static NSString *const kWWNWatchSettingsPickerStoreKey = @"storeKey";
+
+static NSString *WWNWatchOneLine(NSString *text) {
+    if (text.length == 0) {
+        return @"";
+    }
+    NSString *flat =
+        [[text componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]]
+            componentsJoinedByString:@" "];
+    while ([flat containsString:@"  "]) {
+        flat = [flat stringByReplacingOccurrencesOfString:@"  " withString:@" "];
+    }
+    return [flat stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+}
 
 typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
     WWNWatchSettingsRowKindToggle,
     WWNWatchSettingsRowKindAction,
+    WWNWatchSettingsRowKindInfo,
 };
 
 @interface WWNWatchSettingsRowModel : NSObject
@@ -14,6 +32,7 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
 @property (nonatomic, assign) WWNWatchSettingsRowKind kind;
 @property (nonatomic, copy, nullable) NSString *actionKey;
 @property (nonatomic, copy, nullable) NSString *valueText;
+@property (nonatomic, copy, nullable) NSString *detailText;
 @property (nonatomic, assign) BOOL boolValue;
 @end
 
@@ -33,10 +52,16 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
     [self setTitle:@"Wawona Settings"];
     NSArray<NSString *> *sections = @[
         @"Display",
+        @"Input",
         @"Graphics",
         @"Connection",
-        @"SSH Defaults",
+        @"Waypipe",
+        @"SSH",
+        @"Machines",
+        @"iCloud Sync",
         @"Advanced",
+        @"About",
+        @"Dependencies",
     ];
     [self.sectionsTable setNumberOfRows:sections.count withRowType:@"SectionRow"];
     for (NSInteger i = 0; i < (NSInteger)sections.count; i++) {
@@ -51,10 +76,16 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
     (void)table;
     NSArray<NSString *> *sections = @[
         @"Display",
+        @"Input",
         @"Graphics",
         @"Connection",
-        @"SSH Defaults",
+        @"Waypipe",
+        @"SSH",
+        @"Machines",
+        @"iCloud Sync",
         @"Advanced",
+        @"About",
+        @"Dependencies",
     ];
     if (rowIndex < 0 || rowIndex >= (NSInteger)sections.count) {
         return;
@@ -71,6 +102,8 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
 @property (weak, nonatomic) IBOutlet WKInterfaceTable *settingsTable;
 @property (nonatomic, copy) NSString *sectionTitle;
 @property (nonatomic, copy) NSArray<WWNWatchSettingsRowModel *> *rows;
+@property (nonatomic, assign) BOOL isPicker;
+@property (nonatomic, copy) NSString *pickerStoreKey;
 @end
 
 @implementation WWNWatchSettingsDetailInterfaceController
@@ -82,48 +115,173 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
 - (void)awakeWithContext:(id)context {
     [super awakeWithContext:context];
     [[self bridge] reloadFromDefaults];
-    self.sectionTitle = [(NSDictionary *)context objectForKey:kWWNWatchSettingsSectionKey] ?: @"Settings";
+    NSDictionary *ctx = [context isKindOfClass:[NSDictionary class]] ? context : @{};
+    if ([ctx[kWWNWatchSettingsPickerKey] boolValue]) {
+        self.isPicker = YES;
+        self.pickerStoreKey = ctx[kWWNWatchSettingsPickerStoreKey] ?: @"";
+        self.sectionTitle = ctx[kWWNWatchSettingsSectionKey] ?: @"Settings";
+        [self setTitle:self.sectionTitle];
+        NSArray *options = ctx[kWWNWatchSettingsPickerOptionsKey];
+        if (![options isKindOfClass:[NSArray class]]) {
+            options = @[];
+        }
+        NSString *current = ctx[kWWNWatchSettingsPickerValueKey] ?: @"";
+        NSMutableArray *rows = [NSMutableArray array];
+        for (NSString *option in options) {
+            if (![option isKindOfClass:[NSString class]]) {
+                continue;
+            }
+            NSString *mark = [option isEqualToString:current] ? @"✓" : @"";
+            [rows addObject:[self actionRow:option key:self.pickerStoreKey value:mark]];
+        }
+        self.rows = rows;
+        [self reloadTable];
+        return;
+    }
+    self.sectionTitle = ctx[kWWNWatchSettingsSectionKey] ?: @"Settings";
     [self setTitle:self.sectionTitle];
     self.rows = [self buildRowsForSection:self.sectionTitle];
     [self reloadTable];
 }
 
+- (void)willActivate {
+    [super willActivate];
+    if (!self.isPicker && self.sectionTitle.length > 0) {
+        [[self bridge] reloadFromDefaults];
+        self.rows = [self buildRowsForSection:self.sectionTitle];
+        [self reloadTable];
+    }
+}
+
 - (NSArray<WWNWatchSettingsRowModel *> *)buildRowsForSection:(NSString *)section {
     WWNWatchSettingsBridge *bridge = [self bridge];
     if ([section isEqualToString:@"Display"]) {
-        // Force SSD is macOS-only (#120): watchOS always draws server-side
-        // decorations (CSD only renders on macOS Wawona), so the row is omitted.
         return @[
-            [self toggleRow:@"Auto Scale" key:@"autoScale" value:bridge.autoScale],
-            [self toggleRow:@"Color Operations (HDR)" key:@"colorOperations" value:bridge.colorOperations],
+            [self toggleRow:@"Enable HDR" key:@"colorOperations" value:bridge.colorOperations],
+        ];
+    }
+    if ([section isEqualToString:@"Input"]) {
+        return @[
+            [self toggleRow:@"Show Virtual Cursor" key:@"renderMacOSPointer" value:bridge.renderMacOSPointer],
+            [self actionRow:@"Nested Compositor Cursor" key:@"nestedCompositorCursor" value:bridge.nestedCompositorCursor],
+            [self actionRow:@"Touch Input Type" key:@"defaultInputProfile" value:bridge.defaultInputProfile],
+            [self toggleRow:@"Resize Display for Virtual Keyboard" key:@"resizeDisplayForVirtualKeyboard" value:bridge.resizeDisplayForVirtualKeyboard],
+            [self toggleRow:@"Swap CMD with ALT" key:@"swapCmdWithAlt" value:bridge.swapCmdWithAlt],
+            [self toggleRow:@"Universal Clipboard" key:@"universalClipboard" value:bridge.universalClipboard],
         ];
     }
     if ([section isEqualToString:@"Graphics"]) {
         return @[
             [self actionRow:@"Renderer" key:@"renderer" value:bridge.renderer],
+            [self actionRow:@"Vulkan Driver" key:@"" value:@"none"],
+            [self actionRow:@"OpenGL Driver" key:@"" value:@"none"],
         ];
     }
     if ([section isEqualToString:@"Connection"]) {
         return @[
             [self actionRow:@"Wayland Display" key:@"waylandDisplay" value:bridge.waylandDisplay],
-            [self actionRow:@"Input Profile" key:@"defaultInputProfile" value:bridge.defaultInputProfile],
-            [self actionRow:@"Bundled App ID" key:@"defaultBundledAppID" value:bridge.defaultBundledAppID],
-            [self toggleRow:@"Waypipe by Default" key:@"defaultWaypipeEnabled" value:bridge.defaultWaypipeEnabled],
+            [self actionRow:@"Default Wayland Client" key:@"defaultBundledAppID" value:bridge.defaultBundledAppID],
         ];
     }
-    if ([section isEqualToString:@"SSH Defaults"]) {
+    if ([section isEqualToString:@"Waypipe"]) {
         return @[
+            [self toggleRow:@"Waypipe by Default" key:@"defaultWaypipeEnabled" value:bridge.defaultWaypipeEnabled],
+            [self toggleRow:@"XWayland" key:@"xwaylandSupport" value:bridge.xwaylandSupport],
+            [self actionRow:@"Compression" key:@"waypipeCompress" value:bridge.waypipeCompress],
+            [self actionRow:@"Video Codec" key:@"waypipeVideo" value:bridge.waypipeVideo],
+            [self actionRow:@"Remote Command" key:@"waypipeRemoteCommand" value:bridge.waypipeRemoteCommand],
+            [self toggleRow:@"Debug Mode" key:@"waypipeDebug" value:bridge.waypipeDebug],
+            [self toggleRow:@"Disable GPU" key:@"waypipeNoGpu" value:bridge.waypipeNoGpu],
+        ];
+    }
+    if ([section isEqualToString:@"SSH"] || [section isEqualToString:@"SSH Defaults"]) {
+        NSMutableArray<WWNWatchSettingsRowModel *> *sshRows = [NSMutableArray arrayWithArray:@[
             [self actionRow:@"Host" key:@"sshHost" value:bridge.sshHost],
             [self actionRow:@"User" key:@"sshUser" value:bridge.sshUser],
             [self actionRow:@"Port" key:@"sshPort" value:[NSString stringWithFormat:@"%ld", (long)bridge.sshPort]],
-            [self actionRow:@"Password" key:@"sshPassword" value:bridge.sshPassword.length > 0 ? @"••••••" : @""],
+            [self actionRow:@"Auth" key:@"sshAuthMethod" value:bridge.sshAuthMethod == 1 ? @"Public Key" : @"Password"],
+        ]];
+        if (bridge.sshAuthMethod == 0) {
+            [sshRows addObject:[self actionRow:@"Password" key:@"sshPassword" value:bridge.sshPassword.length > 0 ? @"••••••" : @""]];
+        } else {
+            [sshRows addObject:[self actionRow:@"Key Type" key:@"sshKeyType" value:bridge.sshKeyType]];
+            [sshRows addObject:[self actionRow:@"Key Path" key:@"sshKeyPath" value:bridge.sshKeyPath]];
+            [sshRows addObject:[self actionRow:@"Key Passphrase" key:@"sshKeyPassphrase" value:bridge.sshKeyPassphrase.length > 0 ? @"••••••" : @""]];
+        }
+        return sshRows;
+    }
+    if ([section isEqualToString:@"Machines"]) {
+        return @[
+            [self toggleRow:@"Shake to Exit Machine" key:@"shakeToCloseEnabled" value:bridge.shakeToCloseEnabled],
+            [self toggleRow:@"Swipe Back to Exit Machine" key:@"swipeBackToCloseEnabled" value:bridge.swipeBackToCloseEnabled],
+            [self toggleRow:@"Session Thumbnails" key:@"machineSessionThumbnailsEnabled" value:bridge.machineSessionThumbnailsEnabled],
+        ];
+    }
+    if ([section isEqualToString:@"iCloud Sync"]) {
+        return @[
+            [self infoRow:@"iCloud Status"
+                   detail:@"Not available on watchOS. iCloud Drive Documents for shell HOME ships on iPhone, iPad, Mac, and Vision Pro."],
         ];
     }
     if ([section isEqualToString:@"Advanced"]) {
         return @[
+            [self toggleRow:@"Nested Compositors" key:@"nestedCompositorsSupport" value:bridge.nestedCompositorsSupport],
+            [self actionRow:@"Display Backend" key:@"compositorBackend" value:bridge.compositorBackend],
+            [self toggleRow:@"Multiple Clients" key:@"multipleClients" value:bridge.multipleClients],
             [self actionRow:@"Log Level" key:@"logLevel" value:bridge.logLevel],
-            [self toggleRow:@"Shake to Close" key:@"shakeToCloseEnabled" value:bridge.shakeToCloseEnabled],
-            [self toggleRow:@"Swipe Back to Close" key:@"swipeBackToCloseEnabled" value:bridge.swipeBackToCloseEnabled],
+        ];
+    }
+    if ([section isEqualToString:@"Dependencies"]) {
+        NSString *path = [[NSBundle mainBundle] pathForResource:@"SettingsDependencies"
+                                                        ofType:@"json"];
+        NSData *data = path.length ? [NSData dataWithContentsOfFile:path] : nil;
+        id json = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
+        NSArray *packages = [json isKindOfClass:[NSDictionary class]] ? json[@"packages"] : nil;
+        NSMutableArray *rows = [NSMutableArray array];
+        if ([packages isKindOfClass:[NSArray class]]) {
+            for (NSDictionary *pkg in packages) {
+                if (![pkg isKindOfClass:[NSDictionary class]]) {
+                    continue;
+                }
+                NSString *name = pkg[@"name"] ?: @"Package";
+                NSString *version = pkg[@"version"] ?: @"";
+                NSString *role = pkg[@"role"] ?: @"";
+                NSMutableArray *parts = [NSMutableArray array];
+                if (version.length > 0) {
+                    [parts addObject:version];
+                }
+                if (role.length > 0) {
+                    [parts addObject:role];
+                }
+                [rows addObject:[self infoRow:name
+                                       detail:[parts componentsJoinedByString:@"\n\n"]]];
+            }
+        }
+        if (rows.count == 0) {
+            [rows addObject:[self actionRow:@"Dependencies" key:@"" value:@"unavailable"]];
+        }
+        return rows;
+    }
+    if ([section isEqualToString:@"About"]) {
+        NSString *raw = [[NSBundle mainBundle]
+            objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
+        NSString *version = (raw.length > 0) ? raw : @"0.0.0";
+        if (![version hasPrefix:@"v"]) {
+            version = [@"v" stringByAppendingString:version];
+        }
+        return @[
+            [self infoRow:@"Version" detail:version],
+            [self infoRow:@"Platform" detail:@"watchOS"],
+            [self actionRow:@"Wawona.io"
+                        key:@"OpenWawonaWebsite"
+                      value:@"wawona.io"],
+            [self actionRow:@"Report a Bug on GitHub"
+                        key:@"ReportGitHubIssue"
+                      value:@"GitHub"],
+            [self actionRow:@"Author"
+                        key:@"OpenAuthorPortfolio"
+                      value:@"aspauldingcode.com"],
+            [self infoRow:@"Source" detail:@"github.com/Wawona/Wawona"],
         ];
     }
     return @[];
@@ -136,6 +294,16 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
     row.actionKey = key;
     row.boolValue = value;
     row.valueText = value ? @"On" : @"Off";
+    return row;
+}
+
+- (WWNWatchSettingsRowModel *)infoRow:(NSString *)title detail:(NSString *)detail {
+    WWNWatchSettingsRowModel *row = [[WWNWatchSettingsRowModel alloc] init];
+    row.title = title;
+    row.kind = WWNWatchSettingsRowKindInfo;
+    row.actionKey = @"";
+    row.valueText = WWNWatchOneLine(detail);
+    row.detailText = detail ?: @"";
     return row;
 }
 
@@ -165,11 +333,27 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
         return;
     }
     WWNWatchSettingsRowModel *model = self.rows[(NSUInteger)rowIndex];
+    if (self.isPicker) {
+        [self applyTextValue:model.title forKey:self.pickerStoreKey];
+        [self popController];
+        return;
+    }
     if (model.kind == WWNWatchSettingsRowKindToggle) {
         model.boolValue = !model.boolValue;
         [self applyToggleValue:model.boolValue forKey:model.actionKey];
         self.rows = [self buildRowsForSection:self.sectionTitle];
         [self reloadTable];
+        return;
+    }
+    if (model.kind == WWNWatchSettingsRowKindInfo) {
+        WKAlertAction *ok = [WKAlertAction actionWithTitle:@"OK"
+                                                     style:WKAlertActionStyleDefault
+                                                   handler:^{
+                                                   }];
+        [self presentAlertControllerWithTitle:model.title
+                                      message:model.detailText
+                               preferredStyle:WKAlertControllerStyleAlert
+                                      actions:@[ ok ]];
         return;
     }
     if (model.actionKey.length == 0) {
@@ -188,6 +372,93 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
                             title:model.title
                           options:@[ @"debug", @"info", @"warn", @"error" ]
                      currentValue:[self bridge].logLevel];
+        return;
+    }
+    if ([model.actionKey isEqualToString:@"defaultInputProfile"]) {
+        [self presentChoiceForKey:model.actionKey
+                            title:model.title
+                          options:@[ @"Multi-Touch", @"Touchpad" ]
+                     currentValue:[self bridge].defaultInputProfile];
+        return;
+    }
+    if ([model.actionKey isEqualToString:@"nestedCompositorCursor"]) {
+        [self presentChoiceForKey:model.actionKey
+                            title:model.title
+                          options:@[ @"virtual", @"host" ]
+                     currentValue:[self bridge].nestedCompositorCursor];
+        return;
+    }
+    if ([model.actionKey isEqualToString:@"compositorBackend"]) {
+        [self presentChoiceForKey:model.actionKey
+                            title:model.title
+                          options:@[ @"auto", @"wayland", @"drm" ]
+                     currentValue:[self bridge].compositorBackend];
+        return;
+    }
+    if ([model.actionKey isEqualToString:@"waypipeCompress"]) {
+        [self presentChoiceForKey:model.actionKey
+                            title:model.title
+                          options:@[ @"none", @"lz4", @"zstd" ]
+                     currentValue:[self bridge].waypipeCompress];
+        return;
+    }
+    if ([model.actionKey isEqualToString:@"waypipeVideo"]) {
+        [self presentChoiceForKey:model.actionKey
+                            title:model.title
+                          options:@[ @"none", @"h264", @"vp9", @"av1" ]
+                     currentValue:[self bridge].waypipeVideo];
+        return;
+    }
+    if ([model.actionKey isEqualToString:@"sshAuthMethod"]) {
+        [self presentChoiceForKey:model.actionKey
+                            title:model.title
+                          options:@[ @"Password", @"Public Key" ]
+                     currentValue:[self bridge].sshAuthMethod == 1 ? @"Public Key" : @"Password"];
+        return;
+    }
+    if ([model.actionKey isEqualToString:@"sshKeyType"]) {
+        [self presentChoiceForKey:model.actionKey
+                            title:model.title
+                          options:@[ @"ed25519", @"ecdsa", @"rsa" ]
+                     currentValue:[self bridge].sshKeyType];
+        return;
+    }
+    if ([model.actionKey isEqualToString:@"OpenWawonaWebsite"]) {
+        NSURL *url = [NSURL URLWithString:@"https://wawona.io"];
+        if (url) {
+            [[WKExtension sharedExtension] openSystemURL:url];
+        }
+        return;
+    }
+    if ([model.actionKey isEqualToString:@"OpenAuthorPortfolio"]) {
+        NSURL *url = [NSURL URLWithString:@"https://aspauldingcode.com"];
+        if (url) {
+            [[WKExtension sharedExtension] openSystemURL:url];
+        }
+        return;
+    }
+    if ([model.actionKey isEqualToString:@"ReportGitHubIssue"]) {
+        NSString *ver = [[NSBundle mainBundle]
+            objectForInfoDictionaryKey:@"CFBundleShortVersionString"] ?: @"0.0.0";
+        if ([ver hasPrefix:@"v"] && ver.length > 1) {
+            ver = [ver substringFromIndex:1];
+        }
+        NSMutableCharacterSet *ok = [[NSCharacterSet URLQueryAllowedCharacterSet] mutableCopy];
+        [ok removeCharactersInString:@"&=?+"];
+        NSString *encVer =
+            [ver stringByAddingPercentEncodingWithAllowedCharacters:ok] ?: ver;
+        NSString *encHost =
+            [@"watchOS" stringByAddingPercentEncodingWithAllowedCharacters:ok] ?: @"watchOS";
+        NSString *urlString = [NSString
+            stringWithFormat:
+                @"https://github.com/Wawona/Wawona/issues/new?template=bug.yml"
+                @"&platform=watchOS&install_channel=Other&wawona_version=%@"
+                @"&host_os=%@",
+                encVer, encHost];
+        NSURL *url = [NSURL URLWithString:urlString];
+        if (url) {
+            [[WKExtension sharedExtension] openSystemURL:url];
+        }
         return;
     }
 
@@ -213,26 +484,14 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
                        title:(NSString *)title
                      options:(NSArray<NSString *> *)options
                 currentValue:(NSString *)currentValue {
-    NSMutableArray<WKAlertAction *> *actions = [NSMutableArray arrayWithCapacity:options.count];
-    __weak typeof(self) weakSelf = self;
-    for (NSString *option in options) {
-        WKAlertAction *action = [WKAlertAction actionWithTitle:option
-                                                         style:WKAlertActionStyleDefault
-                                                       handler:^{
-            __strong typeof(weakSelf) strongSelf = weakSelf;
-            if (!strongSelf) {
-                return;
-            }
-            [strongSelf applyTextValue:option forKey:key];
-            strongSelf.rows = [strongSelf buildRowsForSection:strongSelf.sectionTitle];
-            [strongSelf reloadTable];
-        }];
-        [actions addObject:action];
-    }
-    [self presentAlertControllerWithTitle:title
-                                  message:currentValue
-                           preferredStyle:WKAlertControllerStyleActionSheet
-                                  actions:actions];
+    [self pushControllerWithName:@"SettingsDetail"
+                         context:@{
+                             kWWNWatchSettingsPickerKey : @YES,
+                             kWWNWatchSettingsSectionKey : title ?: @"",
+                             kWWNWatchSettingsPickerStoreKey : key ?: @"",
+                             kWWNWatchSettingsPickerOptionsKey : options ?: @[],
+                             kWWNWatchSettingsPickerValueKey : currentValue ?: @"",
+                         }];
 }
 
 - (void)applyToggleValue:(BOOL)on forKey:(NSString *)key {
@@ -245,10 +504,30 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
         bridge.colorOperations = on;
     } else if ([key isEqualToString:@"defaultWaypipeEnabled"]) {
         bridge.defaultWaypipeEnabled = on;
+    } else if ([key isEqualToString:@"renderMacOSPointer"]) {
+        bridge.renderMacOSPointer = on;
+    } else if ([key isEqualToString:@"resizeDisplayForVirtualKeyboard"]) {
+        bridge.resizeDisplayForVirtualKeyboard = on;
+    } else if ([key isEqualToString:@"swapCmdWithAlt"]) {
+        bridge.swapCmdWithAlt = on;
+    } else if ([key isEqualToString:@"universalClipboard"]) {
+        bridge.universalClipboard = on;
+    } else if ([key isEqualToString:@"nestedCompositorsSupport"]) {
+        bridge.nestedCompositorsSupport = on;
+    } else if ([key isEqualToString:@"multipleClients"]) {
+        bridge.multipleClients = on;
+    } else if ([key isEqualToString:@"xwaylandSupport"]) {
+        bridge.xwaylandSupport = on;
+    } else if ([key isEqualToString:@"waypipeDebug"]) {
+        bridge.waypipeDebug = on;
+    } else if ([key isEqualToString:@"waypipeNoGpu"]) {
+        bridge.waypipeNoGpu = on;
     } else if ([key isEqualToString:@"shakeToCloseEnabled"]) {
         bridge.shakeToCloseEnabled = on;
     } else if ([key isEqualToString:@"swipeBackToCloseEnabled"]) {
         bridge.swipeBackToCloseEnabled = on;
+    } else if ([key isEqualToString:@"machineSessionThumbnailsEnabled"]) {
+        bridge.machineSessionThumbnailsEnabled = on;
     }
     [bridge synchronize];
 }
@@ -261,9 +540,19 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
     } else if ([key isEqualToString:@"waylandDisplay"]) {
         bridge.waylandDisplay = trimmed.length > 0 ? trimmed : @"wayland-0";
     } else if ([key isEqualToString:@"defaultInputProfile"]) {
-        bridge.defaultInputProfile = trimmed.length > 0 ? trimmed : @"direct";
+        bridge.defaultInputProfile = trimmed.length > 0 ? trimmed : @"Multi-Touch";
     } else if ([key isEqualToString:@"defaultBundledAppID"]) {
         bridge.defaultBundledAppID = trimmed.length > 0 ? trimmed : @"weston-terminal";
+    } else if ([key isEqualToString:@"nestedCompositorCursor"]) {
+        bridge.nestedCompositorCursor = [trimmed isEqualToString:@"host"] ? @"host" : @"virtual";
+    } else if ([key isEqualToString:@"compositorBackend"]) {
+        bridge.compositorBackend = trimmed.length > 0 ? trimmed : @"auto";
+    } else if ([key isEqualToString:@"waypipeCompress"]) {
+        bridge.waypipeCompress = trimmed.length > 0 ? trimmed : @"lz4";
+    } else if ([key isEqualToString:@"waypipeVideo"]) {
+        bridge.waypipeVideo = trimmed.length > 0 ? trimmed : @"none";
+    } else if ([key isEqualToString:@"waypipeRemoteCommand"]) {
+        bridge.waypipeRemoteCommand = trimmed;
     } else if ([key isEqualToString:@"sshHost"]) {
         bridge.sshHost = trimmed;
     } else if ([key isEqualToString:@"sshUser"]) {
@@ -272,6 +561,14 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
         bridge.sshPort = trimmed.integerValue > 0 ? trimmed.integerValue : 22;
     } else if ([key isEqualToString:@"sshPassword"]) {
         bridge.sshPassword = value ?: @"";
+    } else if ([key isEqualToString:@"sshAuthMethod"]) {
+        bridge.sshAuthMethod = [trimmed isEqualToString:@"Public Key"] ? 1 : 0;
+    } else if ([key isEqualToString:@"sshKeyType"]) {
+        bridge.sshKeyType = trimmed.length > 0 ? trimmed : @"ed25519";
+    } else if ([key isEqualToString:@"sshKeyPath"]) {
+        bridge.sshKeyPath = trimmed;
+    } else if ([key isEqualToString:@"sshKeyPassphrase"]) {
+        bridge.sshKeyPassphrase = value ?: @"";
     } else if ([key isEqualToString:@"logLevel"]) {
         bridge.logLevel = trimmed.length > 0 ? trimmed : @"info";
     }

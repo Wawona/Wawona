@@ -11,10 +11,10 @@ import UIKit
 /// so unfinished work read like policy and an SDK limitation read like a
 /// decision. Each case has a different correct response:
 ///
-/// - `planned`   — our work is unfinished. Finish it; never harden into removal.
-/// - `blocked`   — we want it, the platform offers no public API. Re-check on
+/// - `planned`. Our work is unfinished. Finish it; never harden into removal.
+/// - `blocked`. We want it, the platform offers no public API. Re-check on
 ///                 SDK updates. Never route around it with private API.
-/// - `forbidden` — product or store rule. Never "fix" it by turning it on.
+/// - `forbidden`. Product or store rule. Never "fix" it by turning it on.
 public enum CapabilityGate: Sendable, Equatable {
     case available
     /// Intended, not shipped yet. Opt in with `flag` once the slices are bundled.
@@ -49,27 +49,51 @@ public enum PlatformCapabilities: Sendable {
         return value == "1" || value.lowercased() == "true"
     }
 
-    /// Policy: tvOS and watchOS are native + remote only. Not a TODO.
+    /// Policy: VM machine kinds. Planned on macOS / iOS / iPadOS; forbidden on
+    /// tvOS / watchOS / visionOS. Android is gated in Compose the same way.
     public static var virtualMachineGate: CapabilityGate {
-        #if os(tvOS) || os(watchOS)
-        return .forbidden(reason: "tvOS/watchOS are native + remote only")
+        #if os(tvOS) || os(watchOS) || os(visionOS)
+        return .forbidden(reason: "VM machine kinds are not offered on tvOS/watchOS/visionOS")
         #else
-        return .available
+        return .planned(flag: "WWN_VMS")
         #endif
     }
 
     public static var allowsVirtualMachine: Bool { virtualMachineGate.isAvailable }
 
-    /// Policy: same as VMs — no container machine types on tvOS/watchOS.
+    /// Same platform set as VMs. Planned, not shipping yet.
+    ///
+    /// iOS / iPadOS Mode A: OCI pull is userspace (`wwn-oci`); execution is
+    /// container-in-VM via jitless UTM-SE-class interpreter (`wwn-vms`).
+    /// Mode B (Sileo Mode B IPA only. Never App Store): same OCI + JIT UTM.
+    /// Not Wasm Runtime packages. See docs/mode-a-b.md.
     public static var containerGate: CapabilityGate {
-        #if os(tvOS) || os(watchOS)
-        return .forbidden(reason: "tvOS/watchOS are native + remote only")
-        #else
+        #if os(tvOS) || os(watchOS) || os(visionOS)
+        return .forbidden(reason: "Container machine kinds are not offered on tvOS/watchOS/visionOS")
+        #elseif os(macOS)
         return .available
+        #else
+        return .planned(flag: "WWN_CONTAINERS")
         #endif
     }
 
     public static var allowsContainer: Bool { containerGate.isAvailable }
+
+    /// Apple Containerization.framework and the Apple `container` CLI.
+    ///
+    /// This is the macOS execution engine only (Virtualization.framework,
+    /// Apple silicon, macOS 15+ / 26 recommended). Other targets that allow
+    /// container *machine kinds* use container-in-VM (`wwn-vms`), never this
+    /// engine. Distinct from `containerGate`.
+    public static var appleContainerizationGate: CapabilityGate {
+        #if os(macOS)
+        return .available
+        #else
+        return .forbidden(reason: "Apple Containerization.framework and the Apple container CLI are macOS-only")
+        #endif
+    }
+
+    public static var allowsAppleContainerization: Bool { appleContainerizationGate.isAvailable }
 
     /// ANGLE / Vulkan / iland GL stack may be bundled and linked.
     ///
@@ -77,21 +101,22 @@ public enum PlatformCapabilities: Sendable {
     ///
     /// - **tvOS ships `Metal.framework` *and* `OpenGLES.framework`**, and
     ///   `CAMetalLayer` is available since tvOS 9. Both a Vulkan (MoltenVK) and
-    ///   a GLES path are legal public API, so this is a porting job — the final
+    ///   a GLES path are legal public API, so this is a porting job. The final
     ///   phase of the graphics plan, not a prohibition.
     /// - **watchOS ships no `Metal.framework` at all** (device or simulator),
     ///   no `OpenGLES.framework`, and `CAMetalLayer` is `API_UNAVAILABLE(watchos)`.
     ///   ANGLE and MoltenVK both terminate in Metal, so neither has a floor.
-    ///   SceneKit/SpriteKit are present but are not a shader backdoor, and
-    ///   private Metal would forfeit store compliance.
+    ///   Do not use SpriteKit/SceneKit as a shader backdoor, and private Metal
+    ///   would forfeit store compliance.
     ///
-    /// Until slices are actually bundled the tvOS gate stays `planned` whatever
-    /// the environment says — a runtime flag cannot conjure a framework into the
-    /// bundle.
+    /// tvOS: `.available` when this target was linked with MoltenVK and
+    /// ANGLE (`WWN_TVOS_GPU_BUNDLED`). watchOS GL/VK stays blocked (no Metal).
+    /// Watch *present* of SHM frames is a separate gate
+    /// (`watchPresentAcceleratorGate`): SpriteKit blit, not GLES/Vulkan.
     public static var gpuStackGate: CapabilityGate {
         #if os(tvOS)
         #if WWN_TVOS_GPU_BUNDLED
-        return isFlagEnabled("WWN_TVOS_GPU") ? .available : .planned(flag: "WWN_TVOS_GPU")
+        return .available
         #else
         return .planned(flag: "WWN_TVOS_GPU")
         #endif
@@ -104,24 +129,96 @@ public enum PlatformCapabilities: Sendable {
 
     public static var allowsGpuStack: Bool { gpuStackGate.isAvailable }
 
-    /// Policy: Mode B / desktop + lockscreen replacement is macOS only.
-    public static var desktopReplacementGate: CapabilityGate {
-        #if os(macOS)
+    /// SpriteKit (default) GPU composite of Wayland SHM frames on watchOS.
+    /// Not GLES, not Vulkan, not `CAMetalLayer`. `WWN_WATCH_SK_PRESENT=0`
+    /// forces the CPU `Image` path for A/B. Research weak-link Metal is
+    /// `WWN_WATCHOS_METAL` and never ships in the store Watch IPA.
+    public static var watchPresentAcceleratorGate: CapabilityGate {
+        #if os(watchOS)
         return .available
         #else
-        return .forbidden(reason: "Desktop/LockScreen replacement is macOS + Android only")
+        return .forbidden(reason: "SpriteKit compositor present is watchOS-only")
+        #endif
+    }
+
+    public static var allowsWatchPresentAccelerator: Bool {
+        watchPresentAcceleratorGate.isAvailable
+    }
+
+    /// Runtime switch for the Watch SpriteKit presenter. Default on when the
+    /// gate is available. `WWN_WATCH_SK_PRESENT=0` keeps SwiftUI Image blit.
+    public static var watchPresentAcceleratorEnabled: Bool {
+        #if os(watchOS)
+        if let value = ProcessInfo.processInfo.environment["WWN_WATCH_SK_PRESENT"] {
+            if value == "0" || value.lowercased() == "false" {
+                return false
+            }
+        }
+        return allowsWatchPresentAccelerator
+        #else
+        return false
+        #endif
+    }
+
+    /// ANGLE / GLES clients (kmscube, opengl-cube, weston-simple-egl).
+    /// tvOS ships ANGLE when `WWN_TVOS_GPU_BUNDLED`. watchOS has no Metal.
+    public static var allowsGlesStack: Bool {
+        #if os(watchOS)
+        return false
+        #else
+        return allowsGpuStack
+        #endif
+    }
+
+    /// Machines / launcher ids that need a live OpenGL ES driver (ANGLE).
+    public static let glesClientIds: Set<String> = [
+        "kmscube",
+        "gbm-es2-demo",
+        "opengl-cube",
+        "weston-simple-egl",
+    ]
+
+    /// Settings → Graphics OpenGL driver is a real GLES implementation, not None.
+    public static var openGLDriverEnabled: Bool {
+        guard allowsGlesStack else { return false }
+        return UserDefaults.standard.string(forKey: "OpenGLDriver") != "none"
+    }
+
+    /// Desktop + LockScreen host replacement. Coming soon on macOS (Android is
+    /// gated in Compose). App Store Apple-mobile builds keep this forbidden and
+    /// must never mention alternate distribution paths in UI or strings.
+    public static var desktopReplacementGate: CapabilityGate {
+        #if os(macOS)
+        return .planned(flag: "WWN_DESKTOP_REPLACEMENT")
+        #else
+        return .forbidden(reason: "Desktop/LockScreen replacement is not offered in App Store Apple-mobile builds")
         #endif
     }
 
     public static var allowsDesktopReplacement: Bool { desktopReplacementGate.isAvailable }
 
-    public static var allowsAnowaW: Bool {
+    /// Wawona Swinging Bridge (formerly anowaW): host apps → Wayland over
+    /// waypipe / nested compositor. Not Desktop/LockScreen.
+    /// macOS + Android: Mode A+B planned. iOS/iPadOS: Mode B only (forbidden
+    /// in store IPA). See docs/swinging-bridge.md.
+    public static var swingingBridgeGate: CapabilityGate {
         #if os(macOS)
-        return true
+        return .planned(flag: "WWN_SWINGING_BRIDGE")
+        #elseif os(iOS)
+        // Store IPA: no Swinging Bridge. Mode B is jailbreak / Sileo only.
+        return .forbidden(reason: "Wawona Swinging Bridge on iOS/iPadOS is Mode B (jailbreak) only")
         #else
-        return false
+        return .forbidden(reason: "Wawona Swinging Bridge is macOS and Android (Mode A); iOS Mode B only outside store")
         #endif
     }
+
+    public static var allowsSwingingBridge: Bool { swingingBridgeGate.isAvailable }
+
+    /// - Warning: Deprecated name for ``allowsSwingingBridge``.
+    public static var allowsAnowaW: Bool { allowsSwingingBridge }
+
+    /// - Warning: Deprecated name for ``swingingBridgeGate``.
+    public static var anowaWGate: CapabilityGate { swingingBridgeGate }
 
     /// Client-side decorations (CSD) only render correctly on macOS Wawona,
     /// which draws host chrome around a client-decorated surface. Every other

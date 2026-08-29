@@ -1,7 +1,7 @@
-# Android — Engineering Status (2026-06)
+# Android. Engineering Status (2026-06)
 
 Wawona on Android is a **native Jetpack Compose host** with a full JNI → Rust Wayland
-compositor path, Vulkan rendering, and OpenSSH/waypipe SSH — not a WebView wrapper.
+compositor path, Vulkan rendering, and OpenSSH/waypipe SSH. Not a WebView wrapper.
 
 ## Architecture
 
@@ -27,14 +27,14 @@ MainActivity (ComponentActivity, edge-to-edge)
 
 | Feature | Status |
 |---------|--------|
-| `MaterialExpressiveTheme` | **Yes** — `WawonaTheme.kt` |
-| `MotionScheme.expressive` | **Yes** — spring FAB / speed-dial |
-| Expressive color schemes (API 36+) | **Yes** — fallback to static Wawona palette |
-| Material You / dynamic color (API 31+) | **Yes** — when enabled |
-| System light/dark | **Yes** — no longer forced dark |
-| Expressive speed-dial FAB (API 36+) | **Yes** — Machines home + waypipe stop in session |
-| XML shell `Theme.Material3.DayNight` | **Yes** — `res/values/themes.xml` |
-| `material3.adaptive` (tablet split) | Not yet — phones/tablets use single-activity |
+| `MaterialExpressiveTheme` | **Yes**. `WawonaTheme.kt` |
+| `MotionScheme.expressive` | **Yes**. Spring FAB / speed-dial |
+| Expressive color schemes (API 36+) | **Yes**. Fallback to static Wawona palette |
+| Material You / dynamic color (API 31+) | **Yes**. When enabled |
+| System light/dark | **Yes**. No longer forced dark |
+| Expressive speed-dial FAB (API 36+) | **Yes**. Machines home + waypipe stop in session |
+| XML shell `Theme.Material3.DayNight` | **Yes**. `res/values/themes.xml` |
+| `material3.adaptive` (tablet split) | Not yet. Phones/tablets use single-activity |
 
 Apple uses **Liquid Glass (OS 26)**; Android uses **M3 Expressive (API 36+)** per `AGENTS.md`.
 
@@ -68,7 +68,7 @@ Studio fallback: `WAWONA_STUDIO_FALLBACK=1` in CMake → stub renderer/core for 
 | Settings | Compose bottom sheet | SwiftUI navigation |
 | Modifier accessory bar | M3-themed | iOS keyboard bar |
 
-See `docs/2026-Wawona-Android-Audit.md` for compositor-depth parity.
+Historical audit (do not copy to the site): `docs/legacy/android-audits/2026-Wawona-Android-Audit.md`.
 
 ## Manual smoke
 
@@ -76,11 +76,11 @@ See `docs/2026-Wawona-Android-Audit.md` for compositor-depth parity.
 2. Welcome → Machines grid (expressive FAB on API 36+).
 3. Connect native machine → compositor fills display; keyboard accessory bar when IME open.
 4. SSH machine → waypipe session; expressive **Stop Waypipe** FAB when running (API 36+).
-5. Toggle system dark/light — theme follows (dynamic color on supported devices).
+5. Toggle system dark/light. Theme follows (dynamic color on supported devices).
 
 ## Key paths
 
-- `android/app/src/main/java/com/aspauldingcode/wawona/` — Compose UI
-- `android/app/src/main/java/com/aspauldingcode/wawona/WawonaTheme.kt` — M3 Expressive theme
-- `src/platform/android/android_jni.c` — JNI bridge
-- `dependencies/wawona/android.nix` — APK pipeline
+- `android/app/src/main/java/com/aspauldingcode/wawona/`. Compose UI
+- `android/app/src/main/java/com/aspauldingcode/wawona/WawonaTheme.kt`. M3 Expressive theme
+- `src/platform/android/android_jni.c`. JNI bridge
+- `dependencies/wawona/android.nix`. APK pipeline

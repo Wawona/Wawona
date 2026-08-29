@@ -201,3 +201,6 @@ fastlane/report.xml
 
 # Local release build output (IPAs/APKs from fastlane gym/github_ipa lanes)
 /dist/
+
+# Local editor (home-manager / machine-specific)
+.zed/

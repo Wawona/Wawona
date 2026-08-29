@@ -66,7 +66,7 @@ class TouchpadOverlayView(context: Context) : View(context) {
         invalidate()
     }
 
-    /** Transparent overlay: never consume touches — they go to [WawonaSurfaceView] below. */
+    /** Transparent overlay: never consume touches. They go to [WawonaSurfaceView] below. */
     override fun onTouchEvent(event: MotionEvent): Boolean = false
 
     override fun onDraw(canvas: Canvas) {

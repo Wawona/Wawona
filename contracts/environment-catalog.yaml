@@ -1,0 +1,360 @@
+# Wawona environment variable catalog (source of truth for Settings GUI).
+# Keep in sync with Sources/WawonaModel/EnvironmentVariables.swift EnvironmentCatalog.
+# Tracking: https://github.com/Wawona/Wawona/issues/157
+#
+# mutability:
+#   computed . Session-derived; override is Advanced
+#   managed. Owned by a first-class setting (ownedBy)
+#   defaulted. Wawona default; fully editable; Reset restores default
+#   user. User extras only (not listed here; free-form)
+#   secret. Never show values in UI
+
+version: 1
+
+entries:
+  # Session / compositor
+  - name: XDG_RUNTIME_DIR
+    category: session
+    mutability: computed
+    default: xdgRuntimeDir
+    resettable: true
+    help: Runtime directory for the Wayland socket.
+  - name: WAYLAND_DISPLAY
+    category: session
+    mutability: managed
+    ownedBy: waylandDisplay
+    default: waylandDisplay
+    resettable: true
+    help: Socket name clients connect to (e.g. wayland-0).
+  - name: WAYLAND_SOCKET
+    category: session
+    mutability: computed
+    default: ""
+    resettable: true
+    help: Inherited fd socket; usually cleared for multi-client launches.
+  - name: WAWONA_NESTED_WAYLAND_DISPLAY
+    category: session
+    mutability: computed
+    default: nestedWaylandDisplay
+    resettable: true
+    help: Nested compositor socket name.
+  - name: WAWONA_NESTED_WAYLAND
+    category: session
+    mutability: computed
+    default: "1"
+    resettable: true
+    help: Nested weston sizes from xdg_toplevel instead of parent wl_output.mode.
+  - name: WAWONA_OUTPUT_SCALE
+    category: session
+    mutability: computed
+    default: outputScale
+    resettable: true
+    help: Output scale factor for nested clients.
+  - name: NIRI_BACKEND
+    category: session
+    mutability: managed
+    ownedBy: compositorBackend
+    default: niriBackend
+    resettable: true
+    help: Mapped from Display Backend (auto|wayland|drm).
+  - name: NIRI_CONFIG
+    category: session
+    mutability: computed
+    default: niriConfig
+    resettable: true
+    help: Path to generated niri KDL config.
+  - name: WESTON_CONFIG_FILE
+    category: session
+    mutability: computed
+    default: westonConfigFile
+    resettable: true
+    help: Path to generated weston.ini.
+  - name: WESTON_DATA_DIR
+    category: session
+    mutability: computed
+    default: westonDataDir
+    resettable: true
+    help: Bundled Weston data directory.
+  - name: WESTON_MODULE_DIR
+    category: session
+    mutability: computed
+    default: westonModuleDir
+    resettable: true
+    help: Bundled Weston module directory.
+  - name: WESTON_BACKEND_DIR
+    category: session
+    mutability: computed
+    default: westonBackendDir
+    resettable: true
+    help: Bundled Weston backend directory.
+
+  # Graphics
+  - name: VK_DRIVER_FILES
+    category: graphics
+    mutability: managed
+    ownedBy: vulkanDriver
+    default: vulkanIcd
+    resettable: true
+    help: Vulkan ICD JSON path (loader).
+  - name: VK_ICD_FILENAMES
+    category: graphics
+    mutability: managed
+    ownedBy: vulkanDriver
+    default: vulkanIcd
+    resettable: true
+    help: Vulkan ICD JSON path (legacy loader var).
+  - name: WWN_VULKAN_LIBRARY
+    category: graphics
+    mutability: managed
+    ownedBy: vulkanDriver
+    default: vulkanLibrary
+    resettable: true
+    help: Direct ICD dylib path for in-process clients.
+  - name: WWN_VULKAN_LIBRARY_FALLBACKS
+    category: graphics
+    mutability: managed
+    ownedBy: vulkanDriver
+    default: vulkanFallbacks
+    resettable: true
+    help: Colon-separated fallback ICD dylibs.
+  - name: WWN_VULKAN_DRIVER
+    category: graphics
+    mutability: managed
+    ownedBy: vulkanDriver
+    default: vulkanDriver
+    resettable: true
+    help: Selected Vulkan driver token.
+  - name: WWN_OPENGL_DRIVER
+    category: graphics
+    mutability: managed
+    ownedBy: openGLDriver
+    default: openGLDriver
+    resettable: true
+    help: Selected OpenGL/GLES driver token.
+  - name: WWN_DISABLE_VULKAN
+    category: graphics
+    mutability: managed
+    ownedBy: vulkanDriver
+    default: ""
+    resettable: true
+    help: Set when Vulkan driver is none.
+  - name: WWN_DISABLE_EGL
+    category: graphics
+    mutability: managed
+    ownedBy: openGLDriver
+    default: ""
+    resettable: true
+    help: Set when OpenGL driver is none.
+  - name: ANGLE_DEFAULT_PLATFORM
+    category: graphics
+    mutability: managed
+    ownedBy: openGLDriver
+    default: anglePlatform
+    resettable: true
+    help: ANGLE backend (metal on Apple, vulkan on Android).
+  - name: WWN_SWIFTSHADER_LIBRARY
+    category: graphics
+    mutability: managed
+    ownedBy: vulkanDriver
+    default: swiftshaderLibrary
+    resettable: true
+    help: Android SwiftShader library path.
+
+  # Shell / rootfs
+  - name: HOME
+    category: shell
+    mutability: computed
+    default: home
+    resettable: true
+    help: Shell home directory.
+  - name: USER
+    category: shell
+    mutability: defaulted
+    default: "mobile"
+    resettable: true
+    help: Unix user name for local shell.
+  - name: LOGNAME
+    category: shell
+    mutability: defaulted
+    default: "mobile"
+    resettable: true
+    help: Login name for local shell.
+  - name: SHELL
+    category: shell
+    mutability: computed
+    default: shell
+    resettable: true
+    help: Shell binary path.
+  - name: WAWONA_SHELL
+    category: shell
+    mutability: computed
+    default: shell
+    resettable: true
+    help: Wawona shell binary path.
+  - name: WAWONA_ZSH_IN_PROCESS
+    category: shell
+    mutability: defaulted
+    default: "1"
+    resettable: true
+    help: Mark in-process zsh on Apple mobile.
+  - name: TERM
+    category: shell
+    mutability: defaulted
+    default: "xterm-256color"
+    resettable: true
+    help: Terminal type for PTY / weston-terminal.
+  - name: PATH
+    category: shell
+    mutability: computed
+    default: path
+    resettable: true
+    help: Executable search path for local shell.
+  - name: ZDOTDIR
+    category: shell
+    mutability: computed
+    default: home
+    resettable: true
+    help: zsh config directory.
+  - name: WAWONA_ROOTFS
+    category: shell
+    mutability: computed
+    default: rootfs
+    resettable: true
+    help: Active rootfs path.
+  - name: WAWONA_BUNDLE_ROOTFS
+    category: shell
+    mutability: computed
+    default: bundleRootfs
+    resettable: true
+    help: Bundled rootfs template path.
+  - name: WAWONA_FILES_DIR
+    category: shell
+    mutability: computed
+    default: filesDir
+    resettable: true
+    help: Android files directory.
+  - name: PROMPT
+    category: shell
+    mutability: defaulted
+    default: "%F{cyan}%~%f %# "
+    resettable: true
+    help: zsh PROMPT.
+  - name: PS1
+    category: shell
+    mutability: defaulted
+    default: "%F{cyan}%~%f %# "
+    resettable: true
+    help: Shell PS1.
+
+  # XDG user dirs
+  - name: XDG_CONFIG_HOME
+    category: xdg
+    mutability: computed
+    default: xdgConfigHome
+    resettable: true
+  - name: XDG_CACHE_HOME
+    category: xdg
+    mutability: computed
+    default: xdgCacheHome
+    resettable: true
+  - name: XDG_DATA_HOME
+    category: xdg
+    mutability: computed
+    default: xdgDataHome
+    resettable: true
+  - name: XDG_STATE_HOME
+    category: xdg
+    mutability: computed
+    default: xdgStateHome
+    resettable: true
+  - name: XDG_DATA_DIRS
+    category: xdg
+    mutability: computed
+    default: xdgDataDirs
+    resettable: true
+
+  # Fonts / input
+  - name: FONTCONFIG_FILE
+    category: fonts
+    mutability: computed
+    default: fontconfigFile
+    resettable: true
+  - name: FONTCONFIG_PATH
+    category: fonts
+    mutability: computed
+    default: fontconfigPath
+    resettable: true
+  - name: WAWONA_MONO_FONT
+    category: fonts
+    mutability: computed
+    default: monoFont
+    resettable: true
+  - name: WAWONA_SANS_FONT
+    category: fonts
+    mutability: computed
+    default: sansFont
+    resettable: true
+  - name: WAWONA_TERMINAL_FONT_SIZE
+    category: fonts
+    mutability: defaulted
+    default: "12"
+    resettable: true
+  - name: XKB_CONFIG_ROOT
+    category: input
+    mutability: computed
+    default: xkbConfigRoot
+    resettable: true
+  - name: XKB_DEFAULT_LAYOUT
+    category: input
+    mutability: defaulted
+    default: "us"
+    resettable: true
+  - name: XKB_DEFAULT_VARIANT
+    category: input
+    mutability: defaulted
+    default: ""
+    resettable: true
+  - name: XCURSOR_PATH
+    category: fonts
+    mutability: computed
+    default: xcursorPath
+    resettable: true
+  - name: XCURSOR_THEME
+    category: fonts
+    mutability: defaulted
+    default: "Adwaita"
+    resettable: true
+
+  # Debug
+  - name: RUST_LOG
+    category: debug
+    mutability: managed
+    ownedBy: logLevel
+    default: rustLog
+    resettable: true
+    help: Mapped from Log Level (until override).
+  - name: RUST_BACKTRACE
+    category: debug
+    mutability: defaulted
+    default: "1"
+    resettable: true
+  - name: WAWONA_AUTO_CMD
+    category: debug
+    mutability: computed
+    default: ""
+    resettable: true
+    help: Auto-run command for weston-terminal (e.g. phoon).
+
+  # Secrets. Owned by SSH Settings; never show values
+  - name: SSHPASS
+    category: secrets
+    mutability: secret
+    ownedBy: sshPassword
+    default: ""
+    resettable: false
+  - name: WAYPIPE_SSH_PASSWORD
+    category: secrets
+    mutability: secret
+    ownedBy: sshPassword
+    default: ""
+    resettable: false

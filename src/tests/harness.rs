@@ -30,6 +30,7 @@ impl TestEnv {
         crate::core::wayland::wayland::register(&mut state, &handle);
         crate::core::wayland::xdg::register(&mut state, &handle);
         crate::core::wayland::wlr::register(&mut state, &handle);
+        crate::core::wayland::plasma::register(&mut state, &handle);
         crate::core::wayland::ext::register(&mut state, &handle);
         
         // Create client on server side

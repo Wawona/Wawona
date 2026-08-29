@@ -47,9 +47,11 @@ TestFlight mail does not replace copied diagnostics. After you send TestFlight
 feedback (or instead, if you prefer GitHub):
 
 1. **Settings → About → Copy Recent Logs** (or **Copy Active Machine Logs**).
-2. Open [the bug form](https://github.com/Wawona/Wawona/issues/new?template=bug.yml).
-3. Set install channel to **TestFlight**. Paste the clipboard into **Copied
-   diagnostics**.
+2. Open [the bug form](https://github.com/Wawona/Wawona/issues/new?template=bug.yml)
+   or tap **Report a Bug on GitHub** (that step also copies logs and fills
+   platform / version / host OS).
+3. Confirm install channel is **TestFlight (Beta)**. Paste the clipboard into
+   **Copied diagnostics** if that field is empty.
 
 If you already sent TestFlight feedback, say so in the GitHub issue (date and
 a short quote is enough). A scheduled importer (`Watch: TestFlight feedback`)
@@ -68,29 +70,23 @@ already omits those fields.
 1. Reproduce the problem once (Start the machine, wait a few seconds).
 2. Open **Settings → About**.
 3. Confirm **Version**, **Platform**, and **Install**.
-4. Tap **Copy Recent Logs**. For a Weston or Niri session that failed, prefer
-   **Copy Active Machine Logs** if that machine is still the active one.
-5. Tap **Report a Bug on GitHub**, or open
-   [the bug form](https://github.com/Wawona/Wawona/issues/new?template=bug.yml).
-6. Paste the clipboard into **Copied diagnostics**. Fill platform, install
-   channel, version, and host OS from the same block.
+4. Tap **Report a Bug on GitHub**. Wawona copies recent logs (active-machine
+   lines when a machine is selected) and opens the
+   [bug form](https://github.com/Wawona/Wawona/issues/new?template=bug.yml)
+   with platform, install channel, version, host OS, and logs filled.
+5. Write **What happened**. Submit.
 
-tvOS and watchOS have no pasteboard. **Copy Recent Logs** shows the text in an
-alert. Photograph it or type the Version / Platform / Install lines into the
-form, and describe what you tapped.
+**Copy Recent Logs** / **Copy Active Machine Logs** remain if you only need
+the clipboard.
+
+tvOS has no pasteboard. Report a Bug still opens the form with this platform
+filled. watchOS Report a Bug opens the form on the paired iPhone.
 
 ## Android and Linux
 
-There is no Copy Logs button on those UIs yet. Open the same
-[bug form](https://github.com/Wawona/Wawona/issues/new?template=bug.yml) and fill:
-
-- Platform
-- Install channel (Play, sideload APK, AppImage, nix, other)
-- Wawona version (About in the app, or the CalVer in the filename)
-- Host OS and version
-
-Then describe Start / Focus and what you saw. Attach `adb logcat` (Android) or
-a terminal capture (Linux) if you have one.
+**Settings → About → Report a Bug on GitHub** copies the in-app log ring and
+opens the same form with platform Android or Linux filled. Attach `adb logcat`
+or a terminal capture if the ring is empty.
 
 ## After you file
 

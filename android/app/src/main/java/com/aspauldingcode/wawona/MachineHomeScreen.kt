@@ -22,6 +22,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.lazy.LazyColumn
@@ -49,10 +51,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -66,6 +71,7 @@ import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.CenterFocusStrong
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -107,11 +113,14 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -473,6 +482,7 @@ private fun MachineGridCard(
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 Icon(
                     statusIconFor(status),
@@ -480,19 +490,24 @@ private fun MachineGridCard(
                     tint = statusColor,
                     modifier = Modifier.size(18.dp),
                 )
-                Spacer(Modifier.size(6.dp))
-                Text(
-                    status.displayTitle,
+                FittingBadgeText(
+                    text = status.displayTitle,
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold,
                     color = statusColor,
-                    maxLines = 1,
+                    modifier = Modifier.weight(1f, fill = false),
                 )
                 Spacer(Modifier.weight(1f))
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    StatusChip(machineScopeLabel(profile.type))
-                    StatusChip(typeChipLabel(profile))
-                    if (isActive) StatusChip("ACTIVE")
+                StatusChip(
+                    machineScopeLabel(profile.type),
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                StatusChip(
+                    typeChipLabel(profile),
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (isActive) {
+                    StatusChip("ACTIVE", modifier = Modifier.weight(1f, fill = false))
                 }
             }
 
@@ -504,71 +519,66 @@ private fun MachineGridCard(
                 overflow = TextOverflow.Ellipsis
             )
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
+            MachineActionButtonRow {
                 if (isRunning) {
                     CompactOutlinedButton(
                         onClick = onFocus,
-                        modifier = Modifier.weight(1f).testTag(WawonaTestTags.MACHINES_FOCUS),
+                        modifier = Modifier.testTag(WawonaTestTags.MACHINES_FOCUS),
                     ) {
-                        Icon(Icons.Outlined.CenterFocusStrong, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.size(4.dp))
-                        Text("Focus", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        MachineActionContent(
+                            icon = { Icon(Icons.Outlined.CenterFocusStrong, contentDescription = null, modifier = Modifier.size(machineActionIconSize())) },
+                            title = "Focus",
+                        )
                     }
                     CompactFilledButton(
                         onClick = onStop,
-                        modifier = Modifier.weight(1f).testTag(WawonaTestTags.MACHINES_STOP),
+                        modifier = Modifier.testTag(WawonaTestTags.MACHINES_STOP),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.error,
                             contentColor = MaterialTheme.colorScheme.onError,
                         ),
                     ) {
-                        Icon(Icons.Filled.Stop, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.size(4.dp))
-                        Text("Stop", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        MachineActionContent(
+                            icon = { Icon(Icons.Filled.Stop, contentDescription = null, modifier = Modifier.size(machineActionIconSize())) },
+                            title = "Stop",
+                        )
                     }
                 } else {
                     CompactFilledButton(
                         onClick = onConnect,
-                        modifier = Modifier.weight(1f).testTag(WawonaTestTags.MACHINES_START),
+                        modifier = Modifier.testTag(WawonaTestTags.MACHINES_START),
                         enabled = capabilities.launchSupported && status != MachineStatus.CONNECTING,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.primary,
                             contentColor = MaterialTheme.colorScheme.onPrimary,
                         ),
                     ) {
-                        Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.size(4.dp))
-                        Text(
-                            when (status) {
-                                MachineStatus.CONNECTING -> "Starting…"
-                                else -> "Start"
-                            },
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
+                        MachineActionContent(
+                            icon = { Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(machineActionIconSize())) },
+                            title = if (status == MachineStatus.CONNECTING) "Starting…" else "Start",
                         )
                     }
                 }
                 CompactOutlinedButton(
                     onClick = onEdit,
-                    modifier = Modifier.weight(1f).testTag(WawonaTestTags.MACHINES_EDIT),
+                    modifier = Modifier.testTag(WawonaTestTags.MACHINES_EDIT),
                 ) {
-                    Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.size(4.dp))
-                    Text("Edit", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    MachineActionContent(
+                        icon = { Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(machineActionIconSize())) },
+                        title = "Edit",
+                    )
                 }
                 CompactOutlinedButton(
                     onClick = onDelete,
                     enabled = !isRunning,
-                    modifier = Modifier.weight(1f).testTag(WawonaTestTags.MACHINES_DELETE),
+                    modifier = Modifier.testTag(WawonaTestTags.MACHINES_DELETE),
                     contentColor = MaterialTheme.colorScheme.error,
                     borderColor = MaterialTheme.colorScheme.error.copy(alpha = 0.5f),
                 ) {
-                    Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.size(4.dp))
-                    Text("Delete", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    MachineActionContent(
+                        icon = { Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(machineActionIconSize())) },
+                        title = "Delete",
+                    )
                 }
             }
         }
@@ -578,6 +588,43 @@ private fun MachineGridCard(
 private fun machineSubtitle(profile: MachineProfile): String = MachineSearch.subtitle(profile)
 
 private fun configurationSummary(profile: MachineProfile): String = MachineSearch.summary(profile)
+
+@Composable
+private fun machineActionIconSize() =
+    if (LocalConfiguration.current.screenWidthDp < 360) 14.dp else 16.dp
+
+@Composable
+private fun machineActionPadding(): PaddingValues {
+    val narrow = LocalConfiguration.current.screenWidthDp < 360
+    return if (narrow) PaddingValues(horizontal = 6.dp, vertical = 4.dp) else compactButtonPadding
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun MachineActionButtonRow(content: @Composable () -> Unit) {
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun MachineActionContent(
+    icon: @Composable () -> Unit,
+    title: String,
+) {
+    icon()
+    Spacer(Modifier.size(4.dp))
+    Text(
+        title,
+        maxLines = 1,
+        softWrap = false,
+        overflow = TextOverflow.Clip,
+    )
+}
 
 @Composable
 private fun CompactOutlinedButton(
@@ -590,9 +637,9 @@ private fun CompactOutlinedButton(
 ) {
     OutlinedButton(
         onClick = onClick,
-        modifier = modifier.defaultMinSize(minWidth = 0.dp),
+        modifier = modifier.defaultMinSize(minWidth = 0.dp, minHeight = 36.dp),
         enabled = enabled,
-        contentPadding = compactButtonPadding,
+        contentPadding = machineActionPadding(),
         border = BorderStroke(1.dp, borderColor),
         colors = ButtonDefaults.outlinedButtonColors(
             contentColor = contentColor,
@@ -611,9 +658,9 @@ private fun CompactFilledButton(
 ) {
     Button(
         onClick = onClick,
-        modifier = modifier.defaultMinSize(minWidth = 0.dp),
+        modifier = modifier.defaultMinSize(minWidth = 0.dp, minHeight = 36.dp),
         enabled = enabled,
-        contentPadding = compactButtonPadding,
+        contentPadding = machineActionPadding(),
         colors = colors,
         content = content,
     )
@@ -712,17 +759,44 @@ private fun MachineCardBanner(
 }
 
 @Composable
-private fun StatusChip(text: String) {
-    Text(
-        text,
+private fun FittingBadgeText(
+    text: String,
+    modifier: Modifier = Modifier,
+    style: TextStyle = MaterialTheme.typography.labelSmall,
+    fontWeight: FontWeight? = FontWeight.Bold,
+    color: Color = Color.Unspecified,
+) {
+    val resolved = style.copy(
+        fontWeight = fontWeight ?: style.fontWeight,
+        color = if (color == Color.Unspecified) style.color else color,
+    )
+    val maxSp = resolved.fontSize.takeIf { it.isSp } ?: 12.sp
+    BasicText(
+        text = text,
+        modifier = modifier.widthIn(min = 0.dp),
+        style = resolved,
+        maxLines = 1,
+        overflow = TextOverflow.Clip,
+        autoSize = TextAutoSize.StepBased(
+            minFontSize = 7.sp,
+            maxFontSize = maxSp,
+            stepSize = 0.5.sp,
+        ),
+    )
+}
+
+@Composable
+private fun StatusChip(text: String, modifier: Modifier = Modifier) {
+    FittingBadgeText(
+        text = text,
         style = MaterialTheme.typography.labelSmall,
         fontWeight = FontWeight.Bold,
-        modifier = Modifier
+        modifier = modifier
             .background(
                 MaterialTheme.colorScheme.onSurface.copy(alpha = 0.14f),
                 RoundedCornerShape(50),
             )
-            .padding(horizontal = 8.dp, vertical = 5.dp)
+            .padding(horizontal = 8.dp, vertical = 5.dp),
     )
 }
 
@@ -770,6 +844,9 @@ private fun MachineEditorSheet(
     var sshKeyPassphrase by remember { mutableStateOf(initial?.sshKeyPassphrase ?: "") }
     var sshAuthMethod by remember { mutableStateOf(initial?.sshAuthMethod ?: "password") }
     var nativeLauncher by remember { mutableStateOf(initial?.nativeLauncher ?: "weston-terminal") }
+    var wasmModulePath by remember {
+        mutableStateOf(initial?.runtimeOverrides?.optString("wasmModulePath", "") ?: "")
+    }
     var remoteCommand by remember { mutableStateOf(initial?.remoteCommand ?: "") }
     var vmIdentifier by remember { mutableStateOf(initial?.vmSettings?.vmIdentifier ?: "") }
     var vmVsockPort by remember { mutableStateOf(initial?.vmSettings?.vsockPort ?: "") }
@@ -887,6 +964,15 @@ private fun MachineEditorSheet(
             )
         )
     }
+    var machineEnvironment by remember {
+        mutableStateOf(
+            if (initial != null) EnvironmentOverrides.loadMachine(initial) else mutableMapOf()
+        )
+    }
+    var showMachineEnvEditor by remember { mutableStateOf(false) }
+    var machineEnvEditName by remember { mutableStateOf("") }
+    var machineEnvEditValue by remember { mutableStateOf("") }
+    var machineEnvIsNew by remember { mutableStateOf(false) }
 
     fun performSave() {
         val trimmedName = name.trim().ifEmpty { "Unnamed Machine" }
@@ -933,6 +1019,15 @@ private fun MachineEditorSheet(
         writeBoolOverride(settingsOverrides, "colorOperations", colorOperations, prefs.getBoolean("colorSyncSupport", false))
         writeBoolOverride(settingsOverrides, "shakeToCloseEnabled", shakeToCloseOverride, prefs.getBoolean("wawona.pref.shakeToCloseEnabled", true))
         writeBoolOverride(settingsOverrides, "swipeBackToCloseEnabled", swipeBackOverride, prefs.getBoolean("wawona.pref.swipeBackToCloseEnabled", true))
+        val withEnv = EnvironmentOverrides.withMachineEnv(base, machineEnvironment)
+        val runtimeOverrides = JSONObject(withEnv.runtimeOverrides.toString())
+        val trimmedWasm = wasmModulePath.trim()
+        if (nativeLauncher == "wawona-wasm" && trimmedWasm.isNotEmpty()) {
+            runtimeOverrides.put("wasmModulePath", trimmedWasm)
+            runtimeOverrides.put("bundledAppID", "wawona-wasm")
+        } else {
+            runtimeOverrides.remove("wasmModulePath")
+        }
         onSave(
             base.copy(
                 name = trimmedName,
@@ -947,6 +1042,7 @@ private fun MachineEditorSheet(
                 nativeLauncher = nativeLauncher,
                 remoteCommand = remoteCommand.trim(),
                 settingsOverrides = settingsOverrides,
+                runtimeOverrides = runtimeOverrides,
                 vmSettings = base.vmSettings.copy(
                     vmIdentifier = vmIdentifier.trim(),
                     vsockPort = vmVsockPort.trim(),
@@ -1064,10 +1160,29 @@ private fun MachineEditorSheet(
                             ) {
                                 Text("Bundled Client")
                                 Text(
-                                    BundledClients.labelFor(nativeLauncher),
+                                    if (nativeLauncher == "wawona-wasm" && wasmModulePath.isNotBlank()) {
+                                        wasmModulePath.substringAfterLast('/')
+                                    } else {
+                                        BundledClients.labelFor(nativeLauncher)
+                                    },
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            if (nativeLauncher == "wawona-wasm") {
+                                OutlinedTextField(
+                                    value = wasmModulePath,
+                                    onValueChange = { wasmModulePath = it },
+                                    label = { Text("Wasm module path") },
+                                    placeholder = { Text("/sdcard/…/wayland-shm-rust.wasm") },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                Text(
+                                    "Wayland WASI `.wasm` run by the bundled Wawona Runtime.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
@@ -1214,10 +1329,98 @@ private fun MachineEditorSheet(
                             }
                         )
                         ToggleRow("Enable DMABUF", dmabufEnabled) { dmabufEnabled = it }
-                        ToggleRow("HDR / Color Operations", colorOperations) { colorOperations = it }
+                        ToggleRow("Enable HDR", colorOperations) { colorOperations = it }
                         HorizontalDivider()
                         ToggleRow("Shake to Exit Machine", shakeToCloseOverride) { shakeToCloseOverride = it }
                         ToggleRow("Swipe Back to Exit Machine", swipeBackOverride) { swipeBackOverride = it }
+                        HorizontalDivider()
+                        Text(
+                            "Env Vars (this machine)",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            if (machineEnvironment.isEmpty())
+                                "Inherit global (Settings → Env Vars). Add overrides for this machine only."
+                            else
+                                "${machineEnvironment.size} machine override(s). Machine wins over global.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        machineEnvironment.toList().sortedBy { it.first }.forEach { (envName, entry) ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(envName, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
+                                    Text(
+                                        if (entry.action == "unset") "(unset)" else (entry.value ?: ""),
+                                        fontFamily = FontFamily.Monospace,
+                                        style = MaterialTheme.typography.bodySmall,
+                                    )
+                                }
+                                TextButton(onClick = {
+                                    machineEnvIsNew = false
+                                    machineEnvEditName = envName
+                                    machineEnvEditValue = entry.value ?: ""
+                                    showMachineEnvEditor = true
+                                }) { Text("Edit") }
+                                TextButton(onClick = {
+                                    machineEnvironment = machineEnvironment.toMutableMap().also { it.remove(envName) }
+                                }) { Text("Reset") }
+                            }
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(onClick = {
+                                machineEnvIsNew = true
+                                machineEnvEditName = ""
+                                machineEnvEditValue = ""
+                                showMachineEnvEditor = true
+                            }) { Text("New") }
+                            if (machineEnvironment.isNotEmpty()) {
+                                TextButton(onClick = { machineEnvironment = mutableMapOf() }) {
+                                    Text("Clear all")
+                                }
+                            }
+                        }
+                        if (showMachineEnvEditor) {
+                            AlertDialog(
+                                onDismissRequest = { showMachineEnvEditor = false },
+                                title = { Text(if (machineEnvIsNew) "New Variable" else "Edit Variable") },
+                                text = {
+                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        OutlinedTextField(
+                                            value = machineEnvEditName,
+                                            onValueChange = { machineEnvEditName = it },
+                                            label = { Text("Name") },
+                                            enabled = machineEnvIsNew,
+                                            singleLine = true,
+                                        )
+                                        OutlinedTextField(
+                                            value = machineEnvEditValue,
+                                            onValueChange = { machineEnvEditValue = it },
+                                            label = { Text("Value") },
+                                            singleLine = true,
+                                        )
+                                    }
+                                },
+                                confirmButton = {
+                                    TextButton(onClick = {
+                                        val n = machineEnvEditName.trim()
+                                        if (n.isNotEmpty()) {
+                                            machineEnvironment = machineEnvironment.toMutableMap().also {
+                                                it[n] = EnvironmentOverrides.Entry.set(machineEnvEditValue)
+                                            }
+                                        }
+                                        showMachineEnvEditor = false
+                                    }) { Text("Save") }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { showMachineEnvEditor = false }) { Text("Cancel") }
+                                },
+                            )
+                        }
                     }
 
                     if (type == MachineType.VM) {

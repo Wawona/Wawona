@@ -4,7 +4,7 @@
  * Android launcher bridge for bundled native Wayland clients that are still
  * shipped as separate shared objects. Weston toytoolkit clients (weston_main,
  * weston_terminal_main, flower_main, …) are static-linked from libweston-13.a
- * into libwawona.so — not dlopen'd here.
+ * into libwawona.so. Not dlopen'd here.
  */
 
 #include <android/log.h>

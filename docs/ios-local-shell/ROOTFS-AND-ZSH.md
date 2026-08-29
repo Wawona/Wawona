@@ -1,6 +1,6 @@
 # Rootfs and ZSH Packaging (Nix)
 
-How Wawona builds, bundles, and installs the **App Store–compliant zsh userland** for iOS/iPadOS.
+How Wawona builds, bundles, and installs the **App Store-compliant zsh userland** for iOS/iPadOS.
 
 ---
 
@@ -32,7 +32,7 @@ wwn_pty_spawn_shell(WAWONA_ROOTFS/usr/bin/zsh)
 | Features | Disable setuid, `/etc` assumptions, NIS, gdbm if problematic |
 | Size budget | Target <25 MB stripped (adjust after first build) |
 
-### Configure flags (starting point — tune after first compile)
+### Configure flags (starting point. Tune after first compile)
 
 ```bash
 ./configure \
@@ -71,7 +71,7 @@ rootfs/
   usr/bin/zsh          ← from zsh-ios
   usr/share/zsh/...    ← trimmed share
   etc/zsh/zshrc.template
-  README.txt           ← "Bundled userland — do not modify in bundle"
+  README.txt           ← "Bundled userland. Do not modify in bundle"
 ```
 
 ### Future binaries (Phase 4)
@@ -96,7 +96,7 @@ Goals:
 - No curl-to-bash, no plugin managers, no compinit paths outside rootfs
 
 ```zsh
-# Template — installed to $HOME/.zshrc on first launch
+# Template. Installed to $HOME/.zshrc on first launch
 export HISTFILE="$HOME/.zsh_history"
 export HISTSIZE=5000
 autoload -Uz add-zsh-hook
@@ -121,7 +121,7 @@ In `dependencies/generators/xcodegen.nix`:
 2. Copy phase: `"${rootfs}/rootfs" → Wawona.app/Resources/wawona-rootfs`
 3. Code sign as resources (same as fonts, xkb, weston assets)
 
-Do **not** mark rootfs binary as executable in a way that triggers AMFI outside spawn path — normal bundle resources are fine.
+Do **not** mark rootfs binary as executable in a way that triggers AMFI outside spawn path. Normal bundle resources are fine.
 
 ---
 
@@ -136,7 +136,7 @@ Do **not** mark rootfs binary as executable in a way that triggers AMFI outside 
 | `-shellPath` | `rootfs/usr/bin/zsh` |
 | `-rootfsVersion` | Compare `Resources/wawona-rootfs/VERSION` for upgrades |
 
-Version bump policy: merge user `home/` on upgrade except replace `.zshrc` if user hasn't modified (TBD — document in implementation PR).
+Version bump policy: merge user `home/` on upgrade except replace `.zshrc` if user hasn't modified (TBD. Document in implementation PR).
 
 ---
 
@@ -190,6 +190,6 @@ Record in Phase 0/2 spike:
 | `zsh` binary size | `ls -la`, App Store Connect upload size |
 | Rootfs total | `du -sh wawona-rootfs` |
 | Idle RSS with shell | Instruments Allocations |
-| Peak RSS during completion | zsh loads compinit — measure trimmed share |
+| Peak RSS during completion | zsh loads compinit. Measure trimmed share |
 
-If zsh exceeds budget: ship `dash` in rootfs for Phase 2.1, zsh opt-in — **document compliance equivalence** (still bundled binary).
+If zsh exceeds budget: ship `dash` in rootfs for Phase 2.1, zsh opt-in. **document compliance equivalence** (still bundled binary).

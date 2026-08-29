@@ -35,8 +35,11 @@ let
     ) {
       waypipe = buildFn "waypipe" { inherit simulator; };
     };
-  # tv/watch: shm/pixman only — no ANGLE/Vulkan (platform-targets matrix).
-  allowGpu = variant == "mobile" || variant == "vision";
+  # tv: GLES (ANGLE) + Vulkan (MoltenVK). watch: SHM/CPU only. iOS/vision: full GLES+VK.
+  # SwiftShader stays iOS/vision simulator only (no tvOS recipe).
+  allowGpu = variant == "mobile" || variant == "vision" || variant == "tv";
+  allowVulkan = allowGpu;
+  allowSwiftShaderSim = (variant == "mobile" || variant == "vision") && simulator;
   base =
     {
       xkbcommon = buildFn "xkbcommon" { inherit simulator; };
@@ -61,30 +64,31 @@ let
     // lib.optionalAttrs (
       variant == "mobile" || variant == "tv" || variant == "watch" || variant == "vision"
     ) networkStack
-    // lib.optionalAttrs allowGpu {
+    // lib.optionalAttrs allowVulkan {
       iland = buildFn "iland" { inherit simulator; };
-      angle = buildFn "angle" { inherit simulator; };
       moltenvk = buildFn "moltenvk" { inherit simulator; };
     }
-    # SwiftShader CPU Vulkan ICD — iOS *Simulator* / CI only. On-device store
+    // lib.optionalAttrs allowGpu {
+      angle = buildFn "angle" { inherit simulator; };
+    }
+    # SwiftShader CPU Vulkan ICD. IOS *Simulator* / CI only. On-device store
     # builds stay MoltenVK-only (App Store posture; verify-iland-graphics-bundle
     # forbids it there). The Simulator's Metal cannot bring up MoltenVK's pipeline
     # on headless CI (the app is killed with Metal domain 102), so vkcube needs a
     # pure-CPU device to fall back to.
-    // lib.optionalAttrs (allowGpu && simulator) {
+    // lib.optionalAttrs allowSwiftShaderSim {
       swiftshader = buildFn "swiftshader" { inherit simulator; };
     }
     // lib.optionalAttrs allowGpu {
       kmscube = buildFn "kmscube" { inherit simulator; };
       "iland-gl-clients" = buildFn "kmscube" { inherit simulator; };
       "gbm-es2-demo" = buildFn "gbm-es2-demo" { inherit simulator; };
-      # Vulkan acceptance client (krh/vkcube) over the same iland virtual DRM,
-      # presenting through MoltenVK. GPU variants only; wwn-kmscube has no
-      # tv/watch recipe for it by design.
-      vkcube = buildFn "vkcube" { inherit simulator; };
-      # Same mesa/kmscube sources as `kmscube` under opengl_cube_main, so Machines
-      # can present the GLES cube as its own id. No tv/watch recipe by design.
+      # GLES cube over Wayland-EGL (iland + ANGLE). tvOS uses the same recipe.
       "opengl-cube" = buildFn "opengl-cube" { inherit simulator; };
+    }
+    // lib.optionalAttrs allowVulkan {
+      # Vulkan cube over Wayland IOSurface dmabuf + MoltenVK.
+      vkcube = buildFn "vkcube" { inherit simulator; };
     }
     // lib.optionalAttrs
       (variant == "mobile" || variant == "tv" || variant == "watch" || variant == "vision")
@@ -111,20 +115,25 @@ let
         niri = buildFn "niri" { inherit simulator; };
         # phoon: pure-Rust in-process shell tool. Runs on the WHOLE Apple family
         # (rust-overlay stable ships std for the tier-3 tvOS/watchOS/visionOS
-        # triples), so it is bundled everywhere like niri — no GPU/framework deps.
+        # triples), so it is bundled everywhere like niri. No GPU/framework deps.
         phoon = buildFn "phoon" { inherit simulator; };
+      }
+    # wwn-wasm: WASI P1/P2 interpreter. Pulley on Apple mobile. Off on watchOS
+    # (size), same as coreutils. See docs/wasm-wasi.md and milestone #2.
+    // lib.optionalAttrs (variant == "mobile" || variant == "tv" || variant == "vision") {
+        "wawona-wasm" = buildFn "wawona-wasm" { inherit simulator; };
       }
     // lib.optionalAttrs (variant == "mobile" || variant == "vision") {
         neovim = buildFn "neovim" { inherit simulator; };
         "neovim-rootfs" = buildFn "neovim-rootfs" { inherit simulator; };
         # wwn-niri fuzzel stack (Mod+D launcher spawned in-process).
-        # fuzzel uses fork/exec — not available on tvOS; keep off tv/watch.
+        # fuzzel uses fork/exec. Not available on tvOS; keep off tv/watch.
         fuzzel = buildFn "fuzzel" { inherit simulator; };
       }
     # fastfetch is an in-process (`fastfetch_main`) system-info tool with no
     # fork/exec and no GPU dependency, so it ships on the WHOLE Apple family.
     # wwn-fastfetch drops Metal/VideoToolbox on watchOS (CPU-only, no-Metal wall)
-    # via its per-platform framework list — Wawona stays framework-agnostic. #139
+    # via its per-platform framework list. Wawona stays framework-agnostic. #139
     // lib.optionalAttrs (
       variant == "mobile" || variant == "vision" || variant == "tv" || variant == "watch"
     ) {

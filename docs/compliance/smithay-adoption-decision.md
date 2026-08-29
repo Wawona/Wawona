@@ -1,10 +1,10 @@
 # Smithay Adoption Decision (RFC #35 closure)
 
-**Status:** Accepted. Closes [RFC #35 — integrate with Smithay](https://github.com/Wawona/Wawona/issues/35).
+**Status:** Accepted. Closes [RFC #35. Integrate with Smithay](https://github.com/Wawona/Wawona/issues/35).
 
 This document is the single decision record for how Wawona uses Smithay. It ties
-together the two pieces the RFC asked about — the protocol layer and the
-backend/wlroots question — and points at the living docs that track ongoing
+together the two pieces the RFC asked about. The protocol layer and the
+backend/wlroots question. And points at the living docs that track ongoing
 migration status.
 
 ## Decision
@@ -26,13 +26,13 @@ own the platform integration Smithay intentionally leaves open.
 
 ## Rationale
 
-- **Backend reality (p18 — wlroots).** wlroots is GBM/DRM/libinput-first and
+- **Backend reality (p18. Wlroots).** wlroots is GBM/DRM/libinput-first and
   assumes Linux KMS. Apple platforms have none of these and Android exposes them
   only through restricted NDK surfaces, so porting wlroots would mean
   reimplementing every backend anyway while inheriting a C API that fights App
   Store sandboxing. Full reasoning and the wlroots semantics we deliberately
   mirror are in [`../2026-wlroots-compat.md`](../2026-wlroots-compat.md).
-- **Protocol correctness (p12 — protocol status).** Using Smithay's protocol
+- **Protocol correctness (p12. Protocol status).** Using Smithay's protocol
   state machines shrinks the bug surface versus custom structs/traits, exactly
   as the RFC argued. Advertised globals and per-profile exposure are tracked in
   the generated [`../protocol-status.md`](../protocol-status.md) and enforced in
@@ -68,5 +68,5 @@ target exists but runtime ownership is still custom and stays profile-gated
 until cutover). Because that classification is enforced by
 `verify-wayland-runtime-ownership.py --strict` and
 `verify-wayland-no-equivalent-closure.py`, the remaining migration work is a
-tracked, guarded queue rather than an open question — which is why RFC #35 is
+tracked, guarded queue rather than an open question. Which is why RFC #35 is
 closed with this decision rather than left open pending full cutover.

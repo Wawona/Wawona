@@ -20,16 +20,26 @@
 #import <sys/wait.h>
 #import <signal.h>
 #import <unistd.h>
+#import <getopt.h>
 #import <string.h>
 #import <math.h>
 #import <os/log.h>
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
 #import <pwd.h>
+#import <sys/types.h>
+#import <libproc.h>
 #endif
 
 extern volatile sig_atomic_t wwn_weston_compositor_shutdown_requested;
 
 extern char **environ;
+
+/* Weak: Apple mobile / macOS link wwn-wasm; missing → skip Runtime clients. */
+extern int wawona_wasm_run(int argc, char **argv) __attribute__((weak_import));
+extern int wawona_wasm_can_run(const char *path) __attribute__((weak_import));
+
+static NSString *const kWWNClientIdWasm = @"wawona-wasm";
+static NSString *const kWWNRuntimeWasmModulePath = @"wasmModulePath";
 
 // Global for signal handler safety
 volatile pid_t g_active_waypipe_pgid = 0;
@@ -52,6 +62,9 @@ extern int wwn_weston_terminal_is_compat_shim(void) __attribute__((weak));
 extern int wwn_foot_is_compat_shim(void) __attribute__((weak));
 extern int weston_compositor_main(int argc, char **argv) __attribute__((weak_import));
 extern int niri_main(void) __attribute__((weak_import));
+#if TARGET_OS_IPHONE
+static BOOL gWwnNiriMainConsumed = NO;
+#endif
 extern int weston_terminal_main(int argc, char **argv);
 #if TARGET_OS_IPHONE
 extern int flower_main(int argc, char **argv);
@@ -86,7 +99,9 @@ static BOOL WWNIsGpuFamilyClientId(NSString *clientId) {
   return WWNIsIlandGpuCubeClientId(clientId) ||
          [clientId isEqualToString:@"opengl-cube"] ||
          [clientId isEqualToString:@"vkcube"] ||
-         [clientId isEqualToString:@"weston-simple-egl"];
+         [clientId isEqualToString:@"vkcube-kms"] ||
+         [clientId isEqualToString:@"weston-simple-egl"] ||
+         [clientId isEqualToString:@"niri"];
 }
 
 /// Why this GPU client cannot run here, or nil if it can. A GPU-capable
@@ -99,11 +114,12 @@ static NSString *WWNGpuClientRefusalReason(NSString *clientId) {
     return nil;
   }
   if (!WWNPlatformAllowsGpuStack()) {
-    return @"platform has no GPU stack (tvOS/watchOS)";
+    return @"platform has no GPU stack (watchOS has no Metal)";
   }
   WWNGraphicsDriverSelection selection =
       WWNSettings_ResolveGraphicsDriverSelection();
-  if ([clientId isEqualToString:@"vkcube"]) {
+  if ([clientId isEqualToString:@"vkcube"] ||
+      [clientId isEqualToString:@"vkcube-kms"]) {
     return selection.vulkanEnabled
                ? nil
                : @"Settings → Graphics → Vulkan driver is None";
@@ -113,7 +129,7 @@ static NSString *WWNGpuClientRefusalReason(NSString *clientId) {
 }
 
 /// Log module for bundled native clients. Do not use "WESTON" for non-Weston
-/// clients — the startup log overlays these tags and misled users into thinking
+/// clients. The startup log overlays these tags and misled users into thinking
 /// Weston was launching kmscube/niri/foot/etc.
 static const char *WWNBundledClientLogModule(NSString *clientId) {
   if (clientId.length == 0) {
@@ -131,7 +147,8 @@ static const char *WWNBundledClientLogModule(NSString *clientId) {
   if ([clientId isEqualToString:@"opengl-cube"]) {
     return "OPENGL_CUBE";
   }
-  if ([clientId isEqualToString:@"vkcube"]) {
+  if ([clientId isEqualToString:@"vkcube"] ||
+      [clientId isEqualToString:@"vkcube-kms"]) {
     return "VKCUBE";
   }
   if ([clientId isEqualToString:@"niri"]) {
@@ -218,6 +235,14 @@ static NSString *WWNPreferredHostShellPath(void) {
 - (void)_launchWestonTerminalWithMachineId:(NSString *)machineId;
 - (void)_launchWestonSimpleSHMWithMachineId:(NSString *)machineId;
 - (void)_launchFootWithMachineId:(NSString *)machineId;
+#if !TARGET_OS_IPHONE
+- (void)_installNativeClientTerminationHandler:(NSTask *)task
+                                          kind:(NSString *)kind;
+#endif
+#if TARGET_OS_IPHONE || (!TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR)
+- (BOOL)wwnWriteWestonIniAtPath:(const char *)configPath
+                      usePixman:(BOOL)usePixman;
+#endif
 @end
 
 @implementation WWNWaypipeRunner
@@ -444,7 +469,7 @@ static NSString *WWNPreferredHostShellPath(void) {
   if (machineId.length > 0) {
     [self.iosRunningMachineIds removeObject:machineId];
   }
-  // In-process clients share one compositor view stack today — stopping one
+  // In-process clients share one compositor view stack today. Stopping one
   // machine tears down views only when nothing else remains bound.
   if (self.iosRunningMachineIds.count == 0) {
     [self stopActiveIOSBundledClient];
@@ -1479,9 +1504,124 @@ static NSString *WWNPreferredHostShellPath(void) {
 /// Clients that support both must never hardcode one. niri and weston each have
 /// a real DRM backend, and running them nested when they could drive iland's
 /// userspace KMS throws away the path iland exists to provide. `auto` keeps the
-/// nested default because it needs no GPU stack, but the user's choice — global
-/// preference or per-machine override — always wins where the platform allows.
+/// nested default because it needs no GPU stack, but the user's choice. Global
+/// preference or per-machine override. Always wins where the platform allows.
+/// Classic Take Over (WindowServer gone) always resolves to drm: there is no
+/// host compositor to nest inside.
 static NSString *g_cliCompositorBackendOverride = nil;
+
+#if TARGET_OS_OSX
+static BOOL WWNAppleWindowServerIsRunning(void) {
+  /* Classic is WindowServer gone. Aqua Machines Start has NSScreen.
+   * proc_name("WindowServer") often fails under hardened runtime; treating
+   * that miss as Classic forced NIRI_BACKEND=tty and in-process weston DRM
+   * while the user still had a Wawona window (2026-08-24 v26.8.23). */
+  if ([NSScreen screens].count > 0) {
+    return YES;
+  }
+
+  enum { kCap = 8192 };
+  pid_t pids[kCap];
+  int bytes = proc_listpids(PROC_ALL_PIDS, 0, pids, sizeof(pids));
+  if (bytes <= 0) {
+    return YES;
+  }
+  int n = bytes / (int)sizeof(pid_t);
+  char name[32];
+  int named = 0;
+  for (int i = 0; i < n; i++) {
+    if (pids[i] <= 0) {
+      continue;
+    }
+    if (proc_name(pids[i], name, sizeof(name)) <= 0) {
+      continue;
+    }
+    named++;
+    if (strcmp(name, "WindowServer") == 0) {
+      return YES;
+    }
+  }
+  /* Censored listing: do not conclude Classic. */
+  if (named < 16) {
+    return YES;
+  }
+  return NO;
+}
+#endif
+
+BOOL WWNHostSessionUsesOwnDisplayDRM(void) {
+#if TARGET_OS_OSX
+  return !WWNAppleWindowServerIsRunning();
+#else
+  return NO;
+#endif
+}
+
+static void WWNStripModeBInsertFromEnv(NSMutableDictionary<NSString *, NSString *> *env) {
+  NSString *insert = env[@"DYLD_INSERT_LIBRARIES"];
+  if (insert.length == 0) {
+    return;
+  }
+  NSMutableArray<NSString *> *keep = [NSMutableArray array];
+  for (NSString *part in [insert componentsSeparatedByString:@":"]) {
+    if (part.length == 0) {
+      continue;
+    }
+    if ([part.lastPathComponent isEqualToString:@"libwayland-mac.dylib"] ||
+        [part containsString:@"/libwayland-mac.dylib"]) {
+      continue;
+    }
+    [keep addObject:part];
+  }
+  if (keep.count == 0) {
+    [env removeObjectForKey:@"DYLD_INSERT_LIBRARIES"];
+  } else {
+    env[@"DYLD_INSERT_LIBRARIES"] = [keep componentsJoinedByString:@":"];
+  }
+}
+
+static void WWNStripModeBSessionKeysFromEnv(NSMutableDictionary<NSString *, NSString *> *env) {
+  if (!env) {
+    return;
+  }
+  [env removeObjectForKey:@"WWN_MODEB_TTY"];
+  [env removeObjectForKey:@"WWN_MODEB_INSERT"];
+  [env removeObjectForKey:@"WWN_MODEB_WESTON"];
+  [env removeObjectForKey:@"WWN_MODEB_NIRI"];
+  [env removeObjectForKey:@"WWN_MODEB_BIN"];
+  [env removeObjectForKey:@"WWN_MODEB_DYLIB"];
+  NSString *niriBackend = env[@"NIRI_BACKEND"];
+  if ([niriBackend isEqualToString:@"tty"]) {
+    [env removeObjectForKey:@"NIRI_BACKEND"];
+  }
+  WWNStripModeBInsertFromEnv(env);
+}
+
+static void WWNSanitizeModeACompositorProcessEnv(void) {
+  unsetenv("WWN_MODEB_TTY");
+  unsetenv("WWN_MODEB_INSERT");
+  const char *niri = getenv("NIRI_BACKEND");
+  if (niri && strcmp(niri, "tty") == 0) {
+    unsetenv("NIRI_BACKEND");
+  }
+}
+
+static BOOL WWNWaylandSocketIsLive(NSDictionary<NSString *, NSString *> *env) {
+  NSString *display = env[@"WAYLAND_DISPLAY"];
+  if (display.length == 0) {
+    return NO;
+  }
+  NSString *path = display;
+  if (![display hasPrefix:@"/"]) {
+    NSString *rt = env[@"XDG_RUNTIME_DIR"];
+    if (rt.length == 0) {
+      rt = @"/tmp";
+    }
+    path = [rt stringByAppendingPathComponent:display];
+  }
+  struct stat st;
+  return stat(path.UTF8String, &st) == 0 && S_ISSOCK(st.st_mode);
+}
 
 void WWNSetCompositorBackendCLIOverride(NSString *backend) {
   g_cliCompositorBackendOverride = backend.length > 0 ? [backend copy] : nil;
@@ -1492,6 +1632,12 @@ NSString *WWNCompositorBackendCLIOverride(void) {
 }
 
 NSString *WWNResolveCompositorBackend(NSString *overrideValue) {
+  if (WWNHostSessionUsesOwnDisplayDRM()) {
+    WWNLog("BACKEND",
+           @"own-display (WindowServer down): drm / wwn-iland, not nested");
+    return @"drm";
+  }
+
   NSString *choice = nil;
   if (overrideValue.length > 0) {
     choice = overrideValue;
@@ -1504,10 +1650,9 @@ NSString *WWNResolveCompositorBackend(NSString *overrideValue) {
   if ([choice isEqualToString:@"drm"]) {
     // The DRM backend presents through iland; without the GL stack there is
     // nothing behind it, so fall back rather than launch a client that hangs.
-    NSString *gl = [[WWNPreferencesManager sharedManager] openglDriver];
-    if ([gl isEqualToString:@"none"]) {
+    if (!WWNSettings_ResolveGraphicsDriverSelection().openGLEnabled) {
       WWNLog("BACKEND",
-             @"drm backend requested but OpenGLDriver=none; using wayland");
+             @"drm backend requested but OpenGL driver is None; using wayland");
       return @"wayland";
     }
     return @"drm";
@@ -1539,9 +1684,8 @@ static void wwnConfigureNiriNestedEnv(void) {
   if ([[NSFileManager defaultManager] fileExistsAtPath:kdl]) {
     setenv("NIRI_CONFIG", kdl.UTF8String, 1);
   }
-  // smithay dlopen's libEGL.dylib at runtime. ANGLE ships in the app
-  // Frameworks directory; without this path eglInitialize fails and niri panics
-  // during nested-backend init. Mirrors macOS NSTask env and niri-smoke-macos.sh.
+  // smithay resolves EGL from in-process iland (Library::this). ANGLE is
+  // dlopened as libEGL_angle.dylib from Frameworks.
   NSString *frameworksDir = [[[NSBundle mainBundle] bundlePath]
       stringByAppendingPathComponent:@"Frameworks"];
   if ([[NSFileManager defaultManager] fileExistsAtPath:frameworksDir]) {
@@ -1561,6 +1705,7 @@ static void wwnConfigureNiriNestedEnv(void) {
     }
   }
   wwnEnsureFuzzelXdgEnv();
+  setenv("XCURSOR_SIZE", "24", 1);
 }
 
 typedef int (*WWNClientMainFn)(int, char **);
@@ -1679,13 +1824,19 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   if (clientId.length == 0)
     return;
 
+  if ([clientId isEqualToString:kWWNClientIdWasm]) {
+    NSString *wasmPath = [self wwnResolveWasmModulePathForMachineId:machineId];
+    [self launchWasmModuleAtPath:wasmPath machineId:machineId];
+    return;
+  }
+
 #if !TARGET_OS_IPHONE
   // Idempotent per machine: reconnecting the same profile must not spawn a
   // duplicate while that profile's instance is still alive. A *different*
   // machine with the same client id always gets a new process.
   if (machineId.length > 0 && [self _recordForMachineId:machineId]) {
     WWNLog(WWNBundledClientLogModule(clientId),
-           @"%@ already running for machine %@ — keeping existing instance",
+           @"%@ already running for machine %@. Keeping existing instance",
            clientId, machineId);
     return;
   }
@@ -1718,7 +1869,7 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   NSString *gpuRefusal = WWNGpuClientRefusalReason(clientId);
   if (gpuRefusal) {
     WWNLog(WWNBundledClientLogModule(clientId),
-           @"Refusing GPU client %@ — %@", clientId, gpuRefusal);
+           @"Refusing GPU client %@. %@", clientId, gpuRefusal);
     if (machineId.length > 0) {
       [self.iosRunningMachineIds removeObject:machineId];
     }
@@ -1781,8 +1932,8 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     WWNLog(logMod, @"Launching in-process %@...", clientId);
 
     // Capture the client's own stdout/stderr into the app log. Bundled clients
-    // (vkcube, weston demos) write plain fprintf(stderr) diagnostics — e.g.
-    // "vkcube: no Vulkan physical device from any provider" — and on Apple
+    // (vkcube, weston demos) write plain fprintf(stderr) diagnostics. E.g.
+    // "vkcube: no Vulkan physical device from any provider". And on Apple
     // mobile raw fd 1/2 are NOT routed to os_log, so those lines (and any crash
     // output) were invisible in the bundled-clients matrix artifacts. Redirect
     // fd 1/2 to a pipe for the duration of entry() and relog each line via the
@@ -1801,7 +1952,7 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
       NSString *capTag = clientId;
       // Emit via os_log, NOT the raw saved fd: the bundled-clients matrix
       // captures the simulator's unified log (simctl log stream), where raw
-      // stdout/stderr writes never appear — that is why the earlier WWNLogFd
+      // stdout/stderr writes never appear. That is why the earlier WWNLogFd
       // capture was invisible in the artifacts. os_log also never writes back to
       // fd 2, so there is no feedback loop while fd 1/2 are redirected here.
       capDone = dispatch_semaphore_create(0);
@@ -1887,10 +2038,14 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   }
   [WWNMachineProfileStore applyActiveMachineToRuntimePrefs];
   WWNSettings_ApplyGraphicsDriverSelection();
+  WWNConfigureBundledRuntimeEnvIfNeeded();
+  if (!WWNHostSessionUsesOwnDisplayDRM()) {
+    WWNSanitizeModeACompositorProcessEnv();
+  }
   NSString *gpuRefusal = WWNGpuClientRefusalReason(clientId);
   if (gpuRefusal) {
     WWNLog(WWNBundledClientLogModule(clientId),
-           @"Refusing GPU client %@ — %@", clientId, gpuRefusal);
+           @"Refusing GPU client %@. %@", clientId, gpuRefusal);
     return;
   }
   // Product Start path: in-process iland Metal presenter (not an NSTask).
@@ -1940,13 +2095,138 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   }
   // Cubes / weston-simple-egl ship as Resources/bin executables on macOS.
   // In-process *_main fallback is the Apple-mobile path (above); do not call
-  // WWNClientMainForId here — that helper and its weak symbols are iOS-only.
+  // WWNClientMainForId here. That helper and its weak symbols are iOS-only.
   BOOL running = YES;
   NSTask *task = nil;
   [self launchGenericWestonClient:clientId taskInOut:&task runningFlagIn:&running];
   if (task) {
     [self _registerNativeTask:task clientId:clientId machineId:machineId];
   }
+#endif
+}
+
+- (NSString *)wwnResolveWasmModulePathForMachineId:(NSString *)machineId {
+  if (machineId.length == 0) {
+    return nil;
+  }
+#if __has_include("../Machines/WWNMachineProfileStore.h")
+  WWNMachineProfile *profile = [WWNMachineProfileStore profileById:machineId];
+  if (!profile) {
+    return nil;
+  }
+  NSDictionary *runtime =
+      [profile.runtimeOverrides isKindOfClass:[NSDictionary class]]
+          ? profile.runtimeOverrides
+          : @{};
+  id path = runtime[kWWNRuntimeWasmModulePath];
+  if ([path isKindOfClass:[NSString class]] && [(NSString *)path length] > 0) {
+    return [(NSString *)path stringByExpandingTildeInPath];
+  }
+  NSDictionary *settings =
+      [profile.settingsOverrides isKindOfClass:[NSDictionary class]]
+          ? profile.settingsOverrides
+          : @{};
+  id legacy = settings[@"WasmModulePath"];
+  if ([legacy isKindOfClass:[NSString class]] && [(NSString *)legacy length] > 0) {
+    return [(NSString *)legacy stringByExpandingTildeInPath];
+  }
+#endif
+  return nil;
+}
+
+- (void)launchWasmModuleAtPath:(NSString *)wasmModulePath
+                     machineId:(NSString *)machineId {
+  const char *logMod = "WASM";
+  NSString *path =
+      wasmModulePath.length > 0
+          ? [wasmModulePath stringByExpandingTildeInPath]
+          : [self wwnResolveWasmModulePathForMachineId:machineId];
+  if (path.length == 0) {
+    WWNLog(logMod,
+           @"No wasmModulePath on machine %@. Pick a .wasm in Machine Settings.",
+           machineId ?: @"(none)");
+    return;
+  }
+  if (![[NSFileManager defaultManager] fileExistsAtPath:path]) {
+    WWNLog(logMod, @"Wasm module missing at %@", path);
+    return;
+  }
+  if (wawona_wasm_can_run != NULL && !wawona_wasm_can_run(path.UTF8String)) {
+    WWNLog(logMod, @"Not a readable WASM module: %@", path);
+    return;
+  }
+
+#if !TARGET_OS_IPHONE
+  if (machineId.length > 0 && [self _recordForMachineId:machineId]) {
+    WWNLog(logMod, @"wasm already running for machine %@. Keeping existing instance",
+           machineId);
+    return;
+  }
+  if (machineId.length > 0) {
+    [WWNMachineProfileStore setActiveMachineId:machineId];
+  }
+  [WWNMachineProfileStore applyActiveMachineToRuntimePrefs];
+  [[WWNCompositorBridge sharedBridge]
+      prepareOutputSizeForNativeClientLaunchWithClientId:kWWNClientIdWasm];
+
+  NSString *wasmBin = [self findBinaryNamed:@"wasm"];
+  if (!wasmBin) {
+    WWNLog(logMod, @"Bundled Runtime `wasm` CLI missing from app bundle.");
+    return;
+  }
+  NSTask *task = [[NSTask alloc] init];
+  task.executableURL = [NSURL fileURLWithPath:wasmBin];
+  task.arguments = @[ path ];
+  NSMutableDictionary *env = [self wwnMutableHostWaylandEnvironment];
+  task.environment = env;
+  task.currentDirectoryURL = [NSURL fileURLWithPath:[path stringByDeletingLastPathComponent]];
+  [self _installNativeClientTerminationHandler:task kind:kWWNClientIdWasm];
+  @try {
+    [task launch];
+    [self _registerNativeTask:task clientId:kWWNClientIdWasm machineId:machineId];
+    WWNLog(logMod, @"Runtime launched %@ (pid %d) machine=%@", path, task.processIdentifier,
+           machineId ?: @"-");
+    [self wwnPumpHostCompositorAfterNativeClientLaunch];
+  } @catch (NSException *ex) {
+    WWNLog(logMod, @"Failed to launch Runtime: %@", ex);
+  }
+#else
+  if (machineId.length > 0) {
+    [self.iosRunningMachineIds addObject:machineId];
+  }
+  if (wawona_wasm_run == NULL) {
+    WWNLog(logMod, @"wawona_wasm_run not linked; cannot run %@", path);
+    if (machineId.length > 0) {
+      [self.iosRunningMachineIds removeObject:machineId];
+    }
+    return;
+  }
+  NSString *boundMachineId = [machineId copy];
+  NSString *boundPath = [path copy];
+  dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+    if (![self wwnBeginIOSNativeClientLaunch:kWWNClientIdWasm]) {
+      if (boundMachineId.length > 0) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+          [self.iosRunningMachineIds removeObject:boundMachineId];
+        });
+      }
+      return;
+    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [[WWNCompositorBridge sharedBridge]
+          prepareOutputSizeForNativeClientLaunchWithClientId:kWWNClientIdWasm];
+    });
+    char *argv[] = {(char *)"wasm", (char *)boundPath.UTF8String, NULL};
+    WWNLog(logMod, @"Launching in-process Runtime %@", boundPath);
+    int rc = wawona_wasm_run(2, argv);
+    WWNLog(logMod, @"Runtime exited code=%d for %@", rc, boundPath);
+    [self wwnEndIOSNativeClientLaunch];
+    if (boundMachineId.length > 0) {
+      dispatch_async(dispatch_get_main_queue(), ^{
+        [self.iosRunningMachineIds removeObject:boundMachineId];
+      });
+    }
+  });
 #endif
 }
 
@@ -2090,6 +2370,14 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   if (westonBackends && westonBackends[0]) {
     env[@"WESTON_BACKEND_DIR"] = @(westonBackends);
   }
+  const char *westonLibexec = getenv("WESTON_LIBEXEC_DIR");
+  if (westonLibexec && westonLibexec[0]) {
+    env[@"WESTON_LIBEXEC_DIR"] = @(westonLibexec);
+  }
+  const char *westonModuleMap = getenv("WESTON_MODULE_MAP");
+  if (westonModuleMap && westonModuleMap[0]) {
+    env[@"WESTON_MODULE_MAP"] = @(westonModuleMap);
+  }
   const char *fontConfig = getenv("FONTCONFIG_FILE");
   if (fontConfig && fontConfig[0]) {
     env[@"FONTCONFIG_FILE"] = @(fontConfig);
@@ -2106,6 +2394,10 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   if (xcursorTheme && xcursorTheme[0]) {
     env[@"XCURSOR_THEME"] = @(xcursorTheme);
   }
+  const char *xcursorSize = getenv("XCURSOR_SIZE");
+  if (xcursorSize && xcursorSize[0]) {
+    env[@"XCURSOR_SIZE"] = @(xcursorSize);
+  }
   const char *bundleRoot = getenv("WAWONA_APP_BUNDLE_ROOT");
   if (bundleRoot && bundleRoot[0]) {
     env[@"WAWONA_APP_BUNDLE_ROOT"] = @(bundleRoot);
@@ -2118,6 +2410,12 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   if (libRoot && libRoot[0]) {
     env[@"WAWONA_LIB_ROOT"] = @(libRoot);
   }
+  /* Aqua Machines Start must not inherit Classic session leftovers.
+   * weston rewrites --backend=wayland to drm when WWN_MODEB_TTY is set,
+   * and niri force-selects the TTY backend. Both then fail without insert. */
+  if (!WWNHostSessionUsesOwnDisplayDRM()) {
+    WWNStripModeBSessionKeysFromEnv(env);
+  }
   return env;
 }
 
@@ -2128,50 +2426,61 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
 }
 #endif
 
-/// Out-of-process bundled client (niri/kmscube demos/etc.). Named historically
-/// for Weston demos; log module must follow the real client id — never brand
-/// non-Weston launches as [WESTON] (see GitHub issue for this mis-tag).
-- (void)launchGenericWestonClient:(NSString *)name
-                        taskInOut:(NSTask *__strong *)taskPtr
-                    runningFlagIn:(BOOL *)runningFlag {
-#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
-  [WWNMachineProfileStore applyActiveMachineToRuntimePrefs];
-  // Machine prefs just rewrote OpenGLDriver / VulkanDriver; push them into
-  // the process env (ANGLE_DEFAULT_PLATFORM, WWN_VULKAN_LIBRARY, …) before
-  // the child inherits / we copy getenv into the NSTask environment.
-  WWNSettings_ApplyGraphicsDriverSelection();
-  [[WWNCompositorBridge sharedBridge]
-      prepareOutputSizeForNativeClientLaunchWithClientId:name];
-#endif
-  const char *logMod = WWNBundledClientLogModule(name);
-  NSString *path = [self findBinaryNamed:name];
-  if (!path) {
-    WWNLog(logMod, @"Could not find executable %@ in app bundle.", name);
-    *runningFlag = NO;
+/// Client-specific env overlays shared by nested NSTask launches and Mode B
+/// framebufferd exec. Does not choose WAYLAND_DISPLAY vs DRM; the caller
+/// supplies the base dictionary.
+- (void)wwnApplyBundledClientEnvironment:(NSMutableDictionary<NSString *, NSString *> *)env
+                             forClientId:(NSString *)name {
+  if (!env || name.length == 0) {
     return;
   }
-  NSTask *task = [[NSTask alloc] init];
-  task.executableURL = [NSURL fileURLWithPath:path];
-
-  NSMutableDictionary *env = [self wwnMutableHostWaylandEnvironment];
-  // GLES / Vulkan clients resolve ANGLE and ICD dylibs from
-  // Contents/Frameworks. @rpath on the binaries usually covers this, but
-  // NSTask launches still need the graphics env vars applied above, and
-  // DYLD_LIBRARY_PATH is the belt-and-suspenders path niri already uses.
+  if ([name isEqualToString:@"niri"] || [name isEqualToString:@"weston"]) {
+    // Nested compositors get wl_output / fractional scale 1. A 2x cursor
+    // theme in that 1x framebuffer is twice as large on HiDPI.
+    env[@"XCURSOR_SIZE"] = @"24";
+  }
   BOOL needsFrameworks =
       [name isEqualToString:@"vkcube"] ||
+      [name isEqualToString:@"vkcube-kms"] ||
       [name isEqualToString:@"opengl-cube"] ||
       [name isEqualToString:@"weston-simple-egl"] ||
       [name isEqualToString:@"kmscube"] ||
-      [name isEqualToString:@"niri"];
+      [name isEqualToString:@"gbm-es2-demo"] ||
+      [name isEqualToString:@"niri"] ||
+      [name isEqualToString:@"weston"] ||
+      [name isEqualToString:@"weston-desktop-shell"] ||
+      [name isEqualToString:@"weston-keyboard"];
   NSString *frameworksDir = [[[NSBundle mainBundle] bundlePath]
       stringByAppendingPathComponent:@"Contents/Frameworks"];
   if (needsFrameworks &&
       [[NSFileManager defaultManager] fileExistsAtPath:frameworksDir]) {
     env[@"DYLD_LIBRARY_PATH"] = frameworksDir;
+    // gl-renderer.so is built with -undefined dynamic_lookup (Mode B DRM).
+    // Load the iland EGL shim so nested weston gets Wayland-EGL. Do not
+    // override a Mode B insert. ANGLE is libEGL_angle.dylib inside the shim.
+    if (!env[@"DYLD_INSERT_LIBRARIES"] &&
+        ([name isEqualToString:@"weston"] ||
+         [name isEqualToString:@"weston-desktop-shell"] ||
+         [name isEqualToString:@"weston-keyboard"])) {
+      NSFileManager *fm = [NSFileManager defaultManager];
+      NSString *egl =
+          [frameworksDir stringByAppendingPathComponent:@"libEGL.dylib"];
+      NSString *gles =
+          [frameworksDir stringByAppendingPathComponent:@"libGLESv2.dylib"];
+      NSMutableArray<NSString *> *insert = [NSMutableArray array];
+      if ([fm fileExistsAtPath:egl]) {
+        [insert addObject:egl];
+      }
+      if ([fm fileExistsAtPath:gles]) {
+        [insert addObject:gles];
+      }
+      if (insert.count > 0) {
+        env[@"DYLD_INSERT_LIBRARIES"] = [insert componentsJoinedByString:@":"];
+      }
+    }
   }
-  if ([name isEqualToString:@"vkcube"]) {
-    /* Runtime ICD selection for the Wayland vkcube (dlopen path). */
+  if ([name isEqualToString:@"vkcube"] ||
+      [name isEqualToString:@"vkcube-kms"]) {
     const char *vkLib = getenv("WWN_VULKAN_LIBRARY");
     if (vkLib && vkLib[0])
       env[@"WWN_VULKAN_LIBRARY"] = @(vkLib);
@@ -2185,7 +2494,8 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   }
   if ([name isEqualToString:@"opengl-cube"] ||
       [name isEqualToString:@"weston-simple-egl"] ||
-      [name isEqualToString:@"kmscube"]) {
+      [name isEqualToString:@"kmscube"] ||
+      [name isEqualToString:@"gbm-es2-demo"]) {
     const char *anglePlat = getenv("ANGLE_DEFAULT_PLATFORM");
     if (anglePlat && anglePlat[0])
       env[@"ANGLE_DEFAULT_PLATFORM"] = @(anglePlat);
@@ -2194,20 +2504,27 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
       env[@"WWN_OPENGL_DRIVER"] = @(glDriver);
   }
   if ([name isEqualToString:@"niri"]) {
-    // niri (wwn-niri) hosts its own scrollable-tiling clients either as a
-    // nested Wayland client of Wawona or on iland's userspace DRM/KMS ("tty").
-    // Which one is the user's choice, not a hardcode. Point it at the bundled
-    // read-only config either way.
     NSString *backend = WWNResolveCompositorBackend(nil);
-    env[@"NIRI_BACKEND"] =
-        [backend isEqualToString:@"drm"] ? @"tty" : @"nested";
-    WWNLog("NIRI", @"backend=%@ (NIRI_BACKEND=%@)", backend,
-           env[@"NIRI_BACKEND"]);
-    // niri's nested backend now requests Metal ANGLE on macOS (wwn-niri
-    // wawona-nested-port.patch); the Vulkan-ANGLE path needs a Vulkan device the
-    // headless CI VM cannot create. Pin ANGLE to Metal in the child env too so a
-    // stray ANGLE_DEFAULT_PLATFORM in the environment cannot steer it back to
-    // Vulkan. Mirror scripts/niri-smoke-macos.sh.
+    BOOL ownDisplay = WWNHostSessionUsesOwnDisplayDRM();
+    if (ownDisplay) {
+      env[@"NIRI_BACKEND"] = @"tty";
+      env[@"WWN_MODEB_TTY"] = @"1";
+      [env removeObjectForKey:@"WAYLAND_DISPLAY"];
+      [env removeObjectForKey:@"WAYLAND_SOCKET"];
+    } else {
+      /* Aqua: nest on the Wawona socket. Display Backend=drm for niri as
+       * an NSTask cannot present into this process (no niri_main on macOS).
+       * Weston drm stays in-process iland. Classic uses tty + insert. */
+      WWNStripModeBSessionKeysFromEnv(env);
+      env[@"NIRI_BACKEND"] = @"nested";
+      if ([backend isEqualToString:@"drm"]) {
+        WWNLog("NIRI",
+               @"Aqua Display Backend=drm. niri nests on Wawona; iland DRM "
+               @"is Classic Take Over (insert) or weston in-window drm");
+      }
+    }
+    WWNLog("NIRI", @"backend=%@ ownDisplay=%d (NIRI_BACKEND=%@)", backend,
+           ownDisplay ? 1 : 0, env[@"NIRI_BACKEND"]);
     env[@"ANGLE_DEFAULT_PLATFORM"] = @"metal";
     NSString *shareRoot = env[@"WAWONA_SHARE_ROOT"];
     if (shareRoot.length == 0) {
@@ -2222,8 +2539,6 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
       if ([[NSFileManager defaultManager] fileExistsAtPath:kdl]) {
         env[@"NIRI_CONFIG"] = kdl;
       } else {
-        // Catalog may live under App/share while niri's KDL is only under
-        // Contents/Resources/share (or the reverse). Probe both.
         NSString *alt = [[WWNWawonaResourcesRoot()
             stringByAppendingPathComponent:@"share/niri/default-config.kdl"]
             stringByStandardizingPath];
@@ -2232,9 +2547,6 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
         }
       }
     }
-    // niri renders GLES through ANGLE's Metal backend on macOS (see above); the
-    // Vulkan ICD is only a fallback for other targets. Still forward the bundled
-    // ICD selection so nothing downstream loses it. Mirror the app's selection.
     const char *icd = getenv("VK_ICD_FILENAMES");
     if (!icd || !icd[0]) {
       icd = getenv("VK_DRIVER_FILES");
@@ -2251,25 +2563,15 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
         env[@"VK_DRIVER_FILES"] = icdJson;
       }
     }
-    // Bundled ANGLE/MoltenVK live in Contents/Frameworks. niri links
-    // libwayland-egl but dlopen's libEGL at runtime; without this path
-    // eglInitialize fails and niri panics in nested backend init.
-    // Mirrors scripts/niri-smoke-macos.sh and macos.nix bundle layout.
-    NSString *frameworksDir = [[[NSBundle mainBundle] bundlePath]
-        stringByAppendingPathComponent:@"Contents/Frameworks"];
     if ([[NSFileManager defaultManager] fileExistsAtPath:frameworksDir]) {
       env[@"DYLD_LIBRARY_PATH"] = frameworksDir;
     }
-    // niri spawns fuzzel via `spawn "fuzzel"`; put bundled helpers on PATH.
     NSString *bundleBin = [[[NSBundle mainBundle] bundlePath]
         stringByAppendingPathComponent:@"Contents/Resources/bin"];
     if ([[NSFileManager defaultManager] fileExistsAtPath:bundleBin]) {
       NSString *path = env[@"PATH"] ?: @"/usr/bin:/bin:/usr/sbin:/sbin";
       env[@"PATH"] = [NSString stringWithFormat:@"%@:%@", bundleBin, path];
     }
-    // fuzzel discovers apps via XDG (issue #78). Resolve the catalog share
-    // root at launch (do not trust a stale WAWONA_SHARE_ROOT) and force
-    // XDG_DATA_DIRS / XDG_DATA_HOME into the child so Mod+D is not empty.
     WWNEnsureFuzzelXdgEnv();
     {
       const char *sr = getenv("WAWONA_SHARE_ROOT");
@@ -2296,12 +2598,59 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
                env[@"XDG_DATA_DIRS"] ?: @"(unset)", appsDir);
       } else {
         WWNLog("NIRI",
-               @"No bundled share/applications — fuzzel Mod+D list will be "
+               @"No bundled share/applications. Fuzzel Mod+D list will be "
                @"empty (WAWONA_SHARE_ROOT=%s)",
                sr ? sr : "(nil)");
       }
     }
   }
+}
+
+/// Out-of-process bundled client (niri/kmscube demos/etc.). Named historically
+/// for Weston demos; log module must follow the real client id. Never brand
+/// non-Weston launches as [WESTON] (see GitHub issue for this mis-tag).
+- (void)launchGenericWestonClient:(NSString *)name
+                        taskInOut:(NSTask *__strong *)taskPtr
+                    runningFlagIn:(BOOL *)runningFlag {
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+  [WWNMachineProfileStore applyActiveMachineToRuntimePrefs];
+  // Machine prefs just rewrote OpenGLDriver / VulkanDriver; push them into
+  // the process env (ANGLE_DEFAULT_PLATFORM, WWN_VULKAN_LIBRARY, …) before
+  // the child inherits / we copy getenv into the NSTask environment.
+  WWNSettings_ApplyGraphicsDriverSelection();
+  [[WWNCompositorBridge sharedBridge]
+      prepareOutputSizeForNativeClientLaunchWithClientId:name];
+#endif
+  const char *logMod = WWNBundledClientLogModule(name);
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+  WWNConfigureBundledRuntimeEnvIfNeeded();
+  if (!WWNHostSessionUsesOwnDisplayDRM()) {
+    WWNSanitizeModeACompositorProcessEnv();
+  }
+#endif
+  NSString *path = [self findBinaryNamed:name];
+  if (!path) {
+    WWNLog(logMod, @"Could not find executable %@ in app bundle.", name);
+    *runningFlag = NO;
+    return;
+  }
+  NSTask *task = [[NSTask alloc] init];
+  task.executableURL = [NSURL fileURLWithPath:path];
+
+  NSMutableDictionary *env = [self wwnMutableHostWaylandEnvironment];
+  [self wwnApplyBundledClientEnvironment:env forClientId:name];
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+  if (!WWNHostSessionUsesOwnDisplayDRM() &&
+      ([name isEqualToString:@"niri"] || [name isEqualToString:@"weston"])) {
+    [self wwnPumpHostCompositorAfterNativeClientLaunch];
+    if (!WWNWaylandSocketIsLive(env)) {
+      WWNLog(logMod,
+             @"Host Wayland socket not live yet (WAYLAND_DISPLAY=%@ "
+             @"XDG_RUNTIME_DIR=%@). Nested %@ may fail to connect",
+             env[@"WAYLAND_DISPLAY"], env[@"XDG_RUNTIME_DIR"], name);
+    }
+  }
+#endif
   // weston-image is the only weston demo that takes a required positional arg:
   // one or more image paths. With no argv it prints usage and exits (status 1),
   // which read as a broken client. Feed it a bundled image so it renders.
@@ -2330,6 +2679,414 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     *runningFlag = NO;
   }
 }
+
+#if TARGET_OS_OSX
+static NSArray<NSString *> *WWNTokenizeCommandLine(NSString *command) {
+  NSMutableArray<NSString *> *tokens = [NSMutableArray array];
+  NSMutableString *cur = [NSMutableString string];
+  unichar quote = 0;
+  NSUInteger len = command.length;
+  for (NSUInteger i = 0; i < len; i++) {
+    unichar c = [command characterAtIndex:i];
+    if (quote != 0) {
+      if (c == quote) {
+        quote = 0;
+      } else {
+        [cur appendFormat:@"%C", c];
+      }
+      continue;
+    }
+    if (c == '\'' || c == '"') {
+      quote = c;
+      continue;
+    }
+    if ([[NSCharacterSet whitespaceAndNewlineCharacterSet] characterIsMember:c]) {
+      if (cur.length > 0) {
+        [tokens addObject:[cur copy]];
+        [cur setString:@""];
+      }
+      continue;
+    }
+    [cur appendFormat:@"%C", c];
+  }
+  if (cur.length > 0) {
+    [tokens addObject:[cur copy]];
+  }
+  return tokens;
+}
+
+static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
+                          NSString *key) {
+  const char *value = getenv(key.UTF8String);
+  if (value && value[0]) {
+    env[key] = @(value);
+  }
+}
+
+- (NSMutableDictionary<NSString *, NSString *> *)
+    wwnMutableBaremetalCompositorEnvironment {
+  /*
+   * Whitelist only. The root helper must not inherit the GUI session
+   * (WAYLAND_DISPLAY, DISPLAY, SSH_AUTH_SOCK, leftover DYLD_*).
+   */
+  NSMutableDictionary *env = [NSMutableDictionary dictionary];
+  env[@"XDG_RUNTIME_DIR"] =
+      [NSString stringWithFormat:@"/tmp/wawona-%d", getuid()];
+  env[@"XDG_SESSION_TYPE"] = @"tty";
+  env[@"NIRI_BACKEND"] = @"tty";
+  env[@"ANGLE_DEFAULT_PLATFORM"] = @"metal";
+
+  NSString *frameworksDir = [[[NSBundle mainBundle] bundlePath]
+      stringByAppendingPathComponent:@"Contents/Frameworks"];
+  if ([[NSFileManager defaultManager] fileExistsAtPath:frameworksDir]) {
+    env[@"DYLD_LIBRARY_PATH"] = frameworksDir;
+  }
+  NSString *bundleBin = [[[NSBundle mainBundle] bundlePath]
+      stringByAppendingPathComponent:@"Contents/Resources/bin"];
+  NSString *path = @"/usr/bin:/bin:/usr/sbin:/sbin";
+  if ([[NSFileManager defaultManager] fileExistsAtPath:bundleBin]) {
+    path = [NSString stringWithFormat:@"%@:%@", bundleBin, path];
+  }
+  env[@"PATH"] = path;
+
+  NSArray<NSString *> *fromProcess = @[
+    @"WESTON_DATA_DIR",
+    @"WESTON_MODULE_DIR",
+    @"WESTON_BACKEND_DIR",
+    @"WESTON_LIBEXEC_DIR",
+    @"WESTON_MODULE_MAP",
+    @"FONTCONFIG_FILE",
+    @"FONTCONFIG_PATH",
+    @"XCURSOR_PATH",
+    @"XCURSOR_THEME",
+    @"WAWONA_APP_BUNDLE_ROOT",
+    @"WAWONA_SHARE_ROOT",
+    @"WAWONA_LIB_ROOT",
+    @"XDG_DATA_DIRS",
+    @"XDG_DATA_HOME",
+    @"XDG_CACHE_HOME",
+    @"VK_ICD_FILENAMES",
+    @"VK_DRIVER_FILES",
+    @"WWN_VULKAN_LIBRARY",
+    @"WWN_OPENGL_DRIVER",
+    @"NIRI_CONFIG",
+  ];
+  for (NSString *key in fromProcess) {
+    WWNCopyGetenv(env, key);
+  }
+  return env;
+}
+
+- (BOOL)baremetalCompositorLaunchSpecForProfile:(WWNMachineProfile *)profile
+                                     executable:(NSString *_Nullable *_Nonnull)outPath
+                                      arguments:(NSArray<NSString *> *_Nullable *_Nonnull)outArgs
+                                    environment:(NSDictionary<NSString *, NSString *> *_Nullable *_Nonnull)outEnv
+                                          error:(NSError *_Nullable *_Nullable)error {
+  if (outPath) {
+    *outPath = nil;
+  }
+  if (outArgs) {
+    *outArgs = nil;
+  }
+  if (outEnv) {
+    *outEnv = nil;
+  }
+  /*
+   * Mode B own-display inject target. Weston and niri are dual-backend:
+   * Mode A Machines Start still nests them (Display Backend = Wayland) or
+   * runs them on iland DRM (Display Backend = DRM). Classic Take Over has
+   * no host Wayland display, so this spec uses each compositor's DRM
+   * backend. KMS-only clients (kmscube, gbm-es2-demo, vkcube-kms) scan out
+   * the same userspace KMS path. opengl-cube stays a Wayland client of the
+   * GUI compositor; it is not re-hosted onto KMS.
+   */
+  NSString *clientId =
+      [WWNMachineSessionBridge nativeClientIdForProfile:profile];
+  if (clientId.length == 0) {
+    if (error) {
+      *error = [NSError
+          errorWithDomain:@"WWNWaypipeRunner"
+                     code:41
+                 userInfo:@{
+                   NSLocalizedDescriptionKey :
+                       @"Desktop machine has no bundled compositor configured."
+                 }];
+    }
+    return NO;
+  }
+
+  BOOL modebTty = [clientId isEqualToString:@"modeb-tty"] ||
+                  [clientId isEqualToString:@"modeb-ttyd"];
+  BOOL kmsClient = [clientId isEqualToString:@"kmscube"] ||
+                   [clientId isEqualToString:@"gbm-es2-demo"] ||
+                   [clientId isEqualToString:@"vkcube"] ||
+                   [clientId isEqualToString:@"vkcube-kms"];
+  if (!modebTty && !kmsClient &&
+      ![WWNMachineProfileStore profileIndicatesNestedCompositor:profile]) {
+    if (error) {
+      *error = [NSError
+          errorWithDomain:@"WWNWaypipeRunner"
+                     code:40
+                 userInfo:@{
+                   NSLocalizedDescriptionKey :
+                       @"Desktop Replacement own-display needs weston or niri "
+                       @"(DRM backend after Take Over; nested Wayland remains "
+                       @"the Mode A path), modeb-tty, or a KMS client "
+                       @"(kmscube, gbm-es2-demo, vkcube-kms)."
+                 }];
+    }
+    return NO;
+  }
+
+  /*
+   * Do not applyMachineToRuntimePrefs here. That writes the Desktop machine
+   * onto the GUI prefs session and, historically, called +sharedBridge which
+   * started WWNCore during desktop-host helper sync. Mode B env is built below
+   * without touching the Aqua compositor.
+   */
+  WWNConfigureBundledRuntimeEnvIfNeeded();
+  WWNSettings_ApplyGraphicsDriverSelection();
+
+  NSMutableDictionary *env = [self wwnMutableBaremetalCompositorEnvironment];
+  [self wwnApplyBundledClientEnvironment:env forClientId:clientId];
+  [env removeObjectForKey:@"WAYLAND_DISPLAY"];
+  [env removeObjectForKey:@"WAYLAND_SOCKET"];
+  [env removeObjectForKey:@"DISPLAY"];
+  [env removeObjectForKey:@"DYLD_INSERT_LIBRARIES"];
+
+  NSString *xdg = env[@"XDG_RUNTIME_DIR"];
+  if (xdg.length > 0) {
+    [[NSFileManager defaultManager] createDirectoryAtPath:xdg
+                              withIntermediateDirectories:YES
+                                               attributes:@{
+                                                 NSFilePosixPermissions : @0700
+                                               }
+                                                    error:nil];
+  }
+
+  NSString *executable = nil;
+  NSArray<NSString *> *args = @[];
+
+  NSString *kms = [self findBinaryNamed:@"kmscube"];
+  if (kms.length > 0) {
+    env[@"WWN_MODEB_KMSCUBE"] = kms;
+  }
+  NSString *gbmEs2 = [self findBinaryNamed:@"gbm-es2-demo"];
+  if (gbmEs2.length == 0) {
+    gbmEs2 = [self findBinaryNamed:@"gbm_es2_demo"];
+  }
+  if (gbmEs2.length > 0) {
+    env[@"WWN_MODEB_GBM_ES2"] = gbmEs2;
+  }
+  NSString *vkcubeKms = [self findBinaryNamed:@"vkcube-kms"];
+  if (vkcubeKms.length > 0) {
+    env[@"WWN_MODEB_VKCUBE"] = vkcubeKms;
+    env[@"WAWONA_VKCUBE_FRAMES"] = @"0";
+  }
+  [self wwnApplyBundledClientEnvironment:env forClientId:@"kmscube"];
+  [self wwnApplyBundledClientEnvironment:env forClientId:@"gbm-es2-demo"];
+  [self wwnApplyBundledClientEnvironment:env forClientId:@"vkcube-kms"];
+
+  if (modebTty) {
+    executable = [self findBinaryNamed:@"modeb-ttyd"];
+    if (executable.length == 0) {
+      executable = [self findBinaryNamed:@"modeb-tty"];
+    }
+    NSString *weston = [self findBinaryNamed:@"weston"];
+    if (weston.length > 0) {
+      env[@"WWN_MODEB_WESTON"] = weston;
+      env[@"WWN_MODEB_BIN"] = [weston stringByDeletingLastPathComponent];
+    } else {
+      NSString *niriBin = [self findBinaryNamed:@"niri"];
+      if (niriBin.length > 0) {
+        env[@"WWN_MODEB_BIN"] = [niriBin stringByDeletingLastPathComponent];
+      }
+    }
+    NSString *niri = [self findBinaryNamed:@"niri"];
+    if (niri.length > 0) {
+      env[@"WWN_MODEB_NIRI"] = niri;
+    }
+    args = @[];
+  } else if ([clientId isEqualToString:@"kmscube"]) {
+    executable = kms;
+    args = @[];
+  } else if ([clientId isEqualToString:@"gbm-es2-demo"]) {
+    executable = gbmEs2;
+    args = @[];
+  } else if ([clientId isEqualToString:@"vkcube"] ||
+             [clientId isEqualToString:@"vkcube-kms"]) {
+    executable = vkcubeKms;
+    args = @[];
+  } else if ([clientId isEqualToString:@"niri"]) {
+    /* Mode B has no host Wayland. Mode A still uses NIRI_BACKEND=nested when
+     * Display Backend is Wayland. */
+    env[@"NIRI_BACKEND"] = @"tty";
+    executable = [self findBinaryNamed:@"niri"];
+  } else if ([clientId isEqualToString:@"weston"]) {
+    executable = [self findBinaryNamed:@"weston"];
+    NSString *backendDir = env[@"WESTON_BACKEND_DIR"];
+    if (backendDir.length == 0) {
+      backendDir = env[@"WESTON_MODULE_DIR"];
+    }
+    if (backendDir.length == 0 ||
+        ![[NSFileManager defaultManager]
+            fileExistsAtPath:[backendDir stringByAppendingPathComponent:
+                                           @"drm-backend.so"]]) {
+      if (error) {
+        *error = [NSError
+            errorWithDomain:@"WWNWaypipeRunner"
+                       code:44
+                   userInfo:@{
+                     NSLocalizedDescriptionKey :
+                         @"Desktop weston needs drm-backend.so under "
+                         @"WESTON_BACKEND_DIR (libweston-N). Rebuild "
+                         @"macOS weston with -Dbackend-drm=true and "
+                         @"reinstall desktop-host."
+                   }];
+      }
+      return NO;
+    }
+    NSString *configPath = [xdg stringByAppendingPathComponent:@"weston.ini"];
+    if (xdg.length > 0) {
+      [self wwnWriteWestonIniAtPath:configPath.UTF8String usePixman:NO];
+    }
+    NSMutableArray<NSString *> *westonArgs = [NSMutableArray arrayWithObjects:
+        /* Mode B own-display. Mode A nested still uses --backend=wayland. */
+        @"--backend=drm",
+        @"--continue-without-input",
+        [NSString stringWithFormat:@"--socket=%@",
+                                   [WWNPreferencesManager preferredNestedSocketName]],
+        @"--shell=desktop-shell.so",
+        nil];
+    if (xdg.length > 0) {
+      [westonArgs addObject:[NSString stringWithFormat:@"--config=%@", configPath]];
+    }
+    args = westonArgs;
+  } else if ([clientId isEqualToString:@"custom"]) {
+    NSDictionary *so =
+        [profile.settingsOverrides isKindOfClass:[NSDictionary class]]
+            ? profile.settingsOverrides
+            : @{};
+    NSString *cmd =
+        [so[@"NativeCustomCommand"] isKindOfClass:[NSString class]]
+            ? so[@"NativeCustomCommand"]
+            : @"";
+    cmd = [cmd stringByTrimmingCharactersInSet:
+                   [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    NSArray<NSString *> *tokens = WWNTokenizeCommandLine(cmd);
+    if (tokens.count == 0) {
+      if (error) {
+        *error = [NSError
+            errorWithDomain:@"WWNWaypipeRunner"
+                       code:42
+                   userInfo:@{
+                     NSLocalizedDescriptionKey :
+                         @"Custom desktop compositor command is empty."
+                   }];
+      }
+      return NO;
+    }
+    NSString *first = tokens[0];
+    NSString *bundled = [self findBinaryNamed:first.lastPathComponent];
+    if ([first hasPrefix:@"/"] &&
+        [[NSFileManager defaultManager] fileExistsAtPath:first]) {
+      executable = first;
+    } else if (bundled.length > 0) {
+      executable = bundled;
+    } else {
+      executable = first;
+    }
+    if (tokens.count > 1) {
+      args = [tokens subarrayWithRange:NSMakeRange(1, tokens.count - 1)];
+    }
+  } else {
+    executable = [self findBinaryNamed:clientId];
+  }
+
+  if (executable.length == 0) {
+    if (error) {
+      *error = [NSError
+          errorWithDomain:@"WWNWaypipeRunner"
+                     code:43
+                 userInfo:@{
+                   NSLocalizedDescriptionKey : [NSString
+                       stringWithFormat:@"Bundled %@ executable not found.",
+                                        clientId]
+                 }];
+    }
+    return NO;
+  }
+
+  /*
+   * WindowServer replacement is iland-baremetal. What we launch is always
+   * wwn-igetty. The selected Desktop Machine is the GUI session on an
+   * assigned VT (not hardcoded as VT1). Text VTs stay Doorman gettys.
+   */
+  NSString *igettyd = [self findBinaryNamed:@"igettyd"];
+  if (igettyd.length == 0) {
+    igettyd = [self findBinaryNamed:@"modeb-ttyd"];
+  }
+  if (igettyd.length == 0) {
+    if (error) {
+      *error = [NSError
+          errorWithDomain:@"WWNWaypipeRunner"
+                     code:45
+                 userInfo:@{
+                   NSLocalizedDescriptionKey :
+                       @"wwn-igetty (igettyd) is not bundled in this desktop-host."
+                 }];
+    }
+    return NO;
+  }
+  NSInteger guiVt =
+      [[NSUserDefaults standardUserDefaults] integerForKey:@"DesktopReplacementGuiVt"];
+  if (guiVt < 1 || guiVt > 6) {
+    guiVt = 1;
+  }
+  BOOL ttyOnly = modebTty;
+  NSString *sessionBin = [[[NSBundle mainBundle] resourcePath]
+      stringByAppendingPathComponent:@"libexec/wwn-modeb-session"];
+  if (!ttyOnly) {
+    env[@"WWN_IGETTY_GUI_VT"] = [NSString stringWithFormat:@"%ld", (long)guiVt];
+    NSString *guiCmd = executable;
+    NSString *wrapper = [sessionBin stringByAppendingPathComponent:clientId];
+    if ([[NSFileManager defaultManager] isExecutableFileAtPath:wrapper]) {
+      guiCmd = wrapper;
+    }
+    env[@"WWN_IGETTY_GUI_CMD"] = guiCmd;
+    if (args.count > 0) {
+      env[@"WWN_IGETTY_GUI_ARGS"] = [args componentsJoinedByString:@"\x1f"];
+    }
+  }
+  NSString *igetty = [self findBinaryNamed:@"igetty"];
+  if (igetty.length == 0) {
+    igetty = [self findBinaryNamed:@"modeb-getty"];
+  }
+  if (igetty.length > 0) {
+    env[@"WWN_IGETTY_GETTY"] = igetty;
+    env[@"WWN_MODEB_GETTY"] = igetty;
+  }
+  if ([[NSFileManager defaultManager] fileExistsAtPath:sessionBin]) {
+    env[@"WWN_MODEB_SESSION_BIN"] = sessionBin;
+  }
+  env[@"NIRI_BACKEND"] = @"tty";
+  executable = igettyd;
+  args = @[];
+
+  if (outPath) {
+    *outPath = executable;
+  }
+  if (outArgs) {
+    *outArgs = args;
+  }
+  if (outEnv) {
+    *outEnv = [env copy];
+  }
+  WWNLog("DESKTOP", @"Mode B launch spec client=%@ exe=%@ argv=%@", clientId,
+         executable, [args componentsJoinedByString:@" "]);
+  return YES;
+}
+#endif
 
 /// When the child exits (quit, crash, SIGKILL), drop its registry record and
 /// notify so UI can clear "connected" without requiring Stop.
@@ -2371,7 +3128,7 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   }
   NSString *terminalIcon = WWNWawonaBundledSharePath(@"weston/terminal.png");
   // Prefer background.png (RGB). pattern.png is an indexed-color PNG that
-  // cairo often fails to load — then only background-color shows (solid blue).
+  // cairo often fails to load. Then only background-color shows (solid blue).
   NSString *backgroundImage = WWNWawonaBundledSharePath(@"weston/background.png");
   NSFileManager *fm = [NSFileManager defaultManager];
   BOOL hasPattern = [fm fileExistsAtPath:backgroundImage];
@@ -2398,12 +3155,16 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   // so the shell UI actually comes up. Same idea for the on-screen keyboard.
   //
   // macOS only: this spawns separate helper executables via desktop-shell.so.
-  // Apple mobile has no fork/exec and runs weston fully in-process, so
-  // findBinaryNamed: is not compiled there — leave client=/input-method= unset
-  // and let weston use its in-process defaults.
+  // Apple mobile has no fork/exec. desktop-shell.so still launches
+  // weston-desktop-shell in-process (pthread + WAYLAND_SOCKET). Point
+  // [shell] client= at the basename wwn_lookup_client_main knows so it
+  // does not try the baked nix-store libexec path.
   NSString *shellClientLine = @"";
   NSString *keyboardLine = @"";
-#if !TARGET_OS_IPHONE
+#if TARGET_OS_IPHONE
+  shellClientLine = @"client=weston-desktop-shell\n";
+  keyboardLine = @"input-method=weston-keyboard\n";
+#else
   NSString *shellClient = [self findBinaryNamed:@"weston-desktop-shell"];
   shellClientLine =
       (shellClient.length > 0 && [fm isExecutableFileAtPath:shellClient])
@@ -2411,7 +3172,7 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
           : @"";
   if (shellClientLine.length == 0) {
     WWNLog("WESTON",
-           @"weston-desktop-shell helper not bundled — desktop-shell will fall "
+           @"weston-desktop-shell helper not bundled. Desktop-shell will fall "
            @"back to its baked libexec path and the panel/background will be "
            @"missing");
   } else {
@@ -2422,6 +3183,13 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
       (keyboardClient.length > 0 && [fm isExecutableFileAtPath:keyboardClient])
           ? [NSString stringWithFormat:@"input-method=%@\n", keyboardClient]
           : @"";
+#endif
+#if TARGET_OS_OSX
+  CGFloat fontSize = [NSFont systemFontSize];
+#elif TARGET_OS_IOS
+  CGFloat fontSize = [UIFont systemFontSize];
+#else
+  CGFloat fontSize = 17.0;
 #endif
   NSString *ini = [NSString
       stringWithFormat:@"[core]\n"
@@ -2439,10 +3207,14 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
                        @"\n"
                        @"[launcher]\n"
                        @"icon=%@\n"
-                       @"path=weston-terminal\n",
+                       @"path=weston-terminal\n"
+                       @"\n"
+                       @"[terminal]\n"
+                       @"font=DejaVuSansM Nerd Font Mono\n"
+                       @"font-size=%.0f\n",
                        usePixman ? "true" : "false", shellClientLine,
                        keyboardLine, backgroundImageLine,
-                       hasTerminalIcon ? terminalIcon : @""];
+                       hasTerminalIcon ? terminalIcon : @"", fontSize];
   NSError *iniErr = nil;
   BOOL wrote = [ini writeToFile:@(configPath)
                      atomically:YES
@@ -2469,7 +3241,15 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   }
   self.westonRunning = YES;
 
-  dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+  const char *backendCopy = backend;
+  BOOL pixmanCopy = usePixman;
+  BOOL ilandCopy = prepareIland;
+
+  // UIKit (iland Metal host addSubview / CAMetalLayer) must run on the main
+  // thread. 0.2.4 aborted in the Simulator when this ran on utility-qos:
+  // ensureIlandPresentationView -> _addSubview from a background queue.
+  dispatch_block_t startWorker = ^{
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
     CFAbsoluteTime launchStart = CFAbsoluteTimeGetCurrent();
     WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
     [WWNRootfsProvider applyShellEnvironment];
@@ -2480,30 +3260,12 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     // on the iOS Simulator instead of falling through to a Vulkan device it
     // cannot create. Settings may have changed since app startup.
     WWNSettings_ApplyGraphicsDriverSelection();
-    if (![self wwnBeginIOSNativeClientLaunch:@"weston"]) {
-      self.westonRunning = NO;
-      return;
-    }
     WWNLog("WESTON", @"prepareOutputSize: %.0fms",
            (CFAbsoluteTimeGetCurrent() - launchStart) * 1000.0);
 
-    if (prepareIland) {
-      if (![bridge prepareIlandMetalPresentationOnPrimaryView]) {
-        WWNLog("WESTON",
-               @"Failed to prepare iland Metal presentation for Weston DRM — "
-               @"falling back to nested --backend=wayland --use-pixman");
-        self.westonRunning = NO;
-        [self wwnEndIOSNativeClientLaunch];
-        // Recurse onto the nested Wayland path so Start still paints a
-        // Weston desktop instead of leaving a Connected card with no surface.
-        dispatch_async(dispatch_get_main_queue(), ^{
-          [self wwnLaunchWestonCompositorWithBackend:"--backend=wayland"
-                                           usePixman:YES
-                                        prepareIland:NO];
-        });
-        return;
-      }
-    }
+    BOOL prepareIland = ilandCopy;
+    const char *backend = backendCopy;
+    BOOL usePixman = pixmanCopy;
 
     if (!prepareIland) {
       const char *parent_display = getenv("WAYLAND_DISPLAY");
@@ -2519,23 +3281,16 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     [bridge latestOutputWidth:&outW height:&outH scale:&outScale];
     if (outW == 0 || outH == 0) {
       WWNLog("WESTON",
-             @"Host output size still unset after prepare — nested weston "
+             @"Host output size still unset after prepare. Nested weston "
              @"will negotiate via xdg_toplevel");
     }
 
-    unsigned hostScale =
-        (unsigned)lrintf(outScale >= 1.0f ? outScale : 1.0f);
-    if (hostScale < 1u) {
-      hostScale = 1u;
-    }
-    char scaleEnv[32];
-    snprintf(scaleEnv, sizeof(scaleEnv), "%u", hostScale);
-    setenv("WAWONA_OUTPUT_SCALE", scaleEnv, 1);
-
-    // Do not pass --width/--height. Nested Weston is a Wayland client of
-    // Wawona; size is negotiated via xdg_toplevel / per-window wl_output.
+    // Nested weston is a Wayland client of Wawona. Parent owns HiDPI.
+    // --scale=backingScaleFactor loads a 2x cursor into a 1x framebuffer.
+    unsigned launchScale = 1u;
+    setenv("WAWONA_OUTPUT_SCALE", "1", 1);
+    setenv("XCURSOR_SIZE", "24", 1);
     char scaleArg[32];
-    unsigned launchScale = hostScale;
     snprintf(scaleArg, sizeof(scaleArg), "--scale=%u", launchScale);
 
     char saved_cwd[512] = "";
@@ -2558,8 +3313,8 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     int argc_weston = 0;
     argv_weston[argc_weston++] = "weston";
     argv_weston[argc_weston++] = (char *)backend;
-    /* Deterministic nested socket so the anowaW app bridge can attach. Keep in
-     * sync with +preferredNestedSocketName and AnowawSession.NESTED_SOCKET. */
+    /* Deterministic nested socket so the Swinging Bridge app bridge can attach. Keep in
+     * sync with +preferredNestedSocketName and AnowawSession.NESTED_SOCKET (legacy Kotlin name). */
     static char nested_socket_arg[48];
     NSString *nestedSocket = [WWNPreferencesManager preferredNestedSocketName];
     snprintf(nested_socket_arg, sizeof(nested_socket_arg), "--socket=%s",
@@ -2568,6 +3323,7 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     /* Panel launchers connect via this named socket (not the host
      * WAYLAND_DISPLAY). Kept in sync with wwn_launch_panel_client. */
     setenv("WAWONA_NESTED_WAYLAND_DISPLAY", nestedSocket.UTF8String, 1);
+    setenv("WAWONA_NESTED_WAYLAND", "1", 1);
     argv_weston[argc_weston++] = "--shell=desktop-shell.so";
     argv_weston[argc_weston++] = scaleArg;
     if (!prepareIland) {
@@ -2597,7 +3353,7 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
            (CFAbsoluteTimeGetCurrent() - launchStart) * 1000.0);
     if (!weston_compositor_main) {
       WWNLog("WESTON",
-             @"weston_compositor_main not linked in this build — nested Weston "
+             @"weston_compositor_main not linked in this build. Nested Weston "
              @"unavailable");
       if (saved_cwd[0]) {
         chdir(saved_cwd);
@@ -2625,7 +3381,44 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
 
     self.westonRunning = NO;
     [self wwnEndIOSNativeClientLaunch];
-  });
+    });
+  };
+
+  dispatch_block_t prep = ^{
+    WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
+    [WWNRootfsProvider applyShellEnvironment];
+    WWNSettings_ApplyGraphicsDriverSelection();
+    if (![self wwnBeginIOSNativeClientLaunch:@"weston"]) {
+      self.westonRunning = NO;
+      return;
+    }
+    if (ilandCopy) {
+      if (![bridge prepareIlandMetalPresentationOnPrimaryView]) {
+        WWNLog("WESTON",
+               @"Failed to prepare iland Metal presentation for Weston DRM. "
+               @"falling back to nested --backend=wayland --use-pixman");
+        self.westonRunning = NO;
+        [self wwnEndIOSNativeClientLaunch];
+        dispatch_async(dispatch_get_main_queue(), ^{
+          [self wwnLaunchWestonCompositorWithBackend:"--backend=wayland"
+                                           usePixman:YES
+                                        prepareIland:NO];
+        });
+        return;
+      }
+    } else {
+      // Nested pixman/SHM. Drop a leftover kmscube Metal plate so Weston
+      // frames are not covered (iOS stopIlandGpuClient was previously empty).
+      [bridge stopIlandGpuClientOnPrimaryView];
+    }
+    startWorker();
+  };
+
+  if ([NSThread isMainThread]) {
+    prep();
+  } else {
+    dispatch_async(dispatch_get_main_queue(), prep);
+  }
 }
 #endif
 
@@ -2654,32 +3447,18 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
 
 - (void)launchWestonMacOSAsNestedClient {
   if (self.westonTask.isRunning || self.westonRunning) {
+    WWNLog("WESTON", @"Start skipped: Weston already running");
     return;
   }
 
-  // Prefer CompositorBackend / CLI --backend over the legacy
-  // NestedWestonBackend key. Taking the DRM in-process path when the user
-  // asked for wayland hung headless CLI: westonRunning was set before the
-  // branch, so launchWestonMacOSDrmInProcess returned as a silent no-op.
+  // Honour CompositorBackend / CLI --backend only. NestedWestonBackend is the
+  // iOS picker (wayland-pixman vs iland-drm-gl). On macOS it defaults to
+  // iland-drm-gl and is hidden, so treating auto as DRM launched the iland
+  // Metal overlay (kmscube present path) for every Weston Start.
   NSString *resolvedBackend = WWNResolveCompositorBackend(nil);
-  NSString *prefsBackend =
-      [[WWNPreferencesManager sharedManager] compositorBackend];
-  NSString *legacyNested =
-      [[WWNPreferencesManager sharedManager] nestedWestonBackend];
-  BOOL wantDrm = NO;
-  if ([resolvedBackend isEqualToString:@"drm"]) {
-    wantDrm = YES;
-  } else if (WWNCompositorBackendCLIOverride() != nil ||
-             [prefsBackend isEqualToString:@"wayland"] ||
-             [prefsBackend isEqualToString:@"drm"]) {
-    // Explicit CLI or Settings choice — never fall through to legacy.
-    wantDrm = [resolvedBackend isEqualToString:@"drm"];
-  } else {
-    // auto: NestedWestonBackend still selects weston's present path.
-    wantDrm = [legacyNested isEqualToString:@"iland-drm-gl"];
-  }
+  BOOL wantDrm = [resolvedBackend isEqualToString:@"drm"];
   if (wantDrm) {
-    WWNLog("WESTON", @"backend=drm — in-process iland DRM path");
+    WWNLog("WESTON", @"backend=drm. In-process weston on iland DRM");
     [self launchWestonMacOSDrmInProcess];
     return;
   }
@@ -2687,8 +3466,8 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   [self launchWestonMacOSNestedSubprocess];
 }
 
-/// Out-of-process nested Weston (`NSTask`). Used for `--backend=wayland` and as
-/// the fallback when in-process `weston_main` is unavailable for DRM.
+/// Out-of-process nested Weston (`NSTask`, `--backend=wayland`). DRM Weston
+/// stays in-process via weston_compositor_main. Never also start kmscube.
 - (void)launchWestonMacOSNestedSubprocess {
   if (self.westonTask.isRunning) {
     return;
@@ -2701,7 +3480,13 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     return;
   }
 
+  WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
+  [bridge stopIlandGpuClientOnPrimaryView];
+
   WWNConfigureBundledRuntimeEnvIfNeeded();
+  if (!WWNHostSessionUsesOwnDisplayDRM()) {
+    WWNSanitizeModeACompositorProcessEnv();
+  }
   NSString *envError = [self wwnValidateNestedWestonEnv];
   if (envError) {
     WWNLog("WESTON", @"Refusing to launch nested weston: %@", envError);
@@ -2724,54 +3509,42 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   }
 
   [WWNMachineProfileStore applyActiveMachineToRuntimePrefs];
-  WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
+  // Nested weston must not see configure(0,0) as its first mode, even if
+  // NativeClientId raced empty in applyActiveMachineToRuntimePrefs.
+  [bridge setFillsHostForClientLaunch:YES];
 
   uint32_t outW = 1024;
   uint32_t outH = 768;
   float outScale = 1.0f;
   [bridge latestOutputWidth:&outW height:&outH scale:&outScale];
-  unsigned hostScale = (unsigned)lrintf(outScale >= 1.0f ? outScale : 1.0f);
-  if (hostScale < 1u) {
-    hostScale = 1u;
-  }
 
   self.westonRunning = YES;
-
-  // Pixman only for nested Wayland; DRM needs GL against iland.
-  NSString *westonBackend = WWNResolveCompositorBackend(nil);
-  BOOL usePixman = ![westonBackend isEqualToString:@"drm"];
 
   const char *xdg_dir = getenv("XDG_RUNTIME_DIR");
   char configPath[512] = "";
   if (xdg_dir && xdg_dir[0]) {
     snprintf(configPath, sizeof(configPath), "%s/weston.ini", xdg_dir);
-    [self wwnWriteWestonIniAtPath:configPath usePixman:usePixman];
+    [self wwnWriteWestonIniAtPath:configPath usePixman:NO];
   }
 
-  char scaleEnv[32];
-  snprintf(scaleEnv, sizeof(scaleEnv), "%u", hostScale);
-  setenv("WAWONA_OUTPUT_SCALE", scaleEnv, 1);
-
-  // Backend is configurable, not assumed: weston can drive iland's userspace
-  // DRM/KMS instead of nesting. No --width/--height either way — nested Weston
-  // sizes via xdg negotiation with Wawona.
+  // Nested weston is an ordinary Wayland client of Wawona. Size and HiDPI
+  // belong to the parent: xdg_toplevel configure is the NSWindow content
+  // size in points, and Wawona already advertises wl_output scale. Copying
+  // backingScaleFactor into --scale made Weston's desktop 2x the window
+  // (huge cursor, panel clipped off the top). macOS weston is the unpatched
+  // nested binary, not the iOS apple-mobile staticlib that reads
+  // WAWONA_OUTPUT_SCALE. Keep --scale=1; do not mutate the parent env.
   NSMutableArray<NSString *> *args = [NSMutableArray arrayWithObjects:
-      [westonBackend isEqualToString:@"drm"] ? @"--backend=drm"
-                                             : @"--backend=wayland",
-      // Deterministic nested socket so the anowaW app bridge can attach. Keep
-      // in sync with +preferredNestedSocketName and AnowawSession.NESTED_SOCKET.
+      @"--backend=wayland",
       [NSString stringWithFormat:@"--socket=%@",
                                  [WWNPreferencesManager preferredNestedSocketName]],
       @"--shell=desktop-shell.so",
-      [NSString stringWithFormat:@"--scale=%u", hostScale],
+      @"--scale=1",
+      [NSString stringWithFormat:@"--width=%u", outW > 0 ? outW : 1024u],
+      [NSString stringWithFormat:@"--height=%u", outH > 0 ? outH : 768u],
       nil];
-  (void)outW;
-  (void)outH;
   if (configPath[0]) {
     [args addObject:[NSString stringWithFormat:@"--config=%s", configPath]];
-  }
-  if (usePixman) {
-    [args addObject:@"--use-pixman"];
   }
 
   NSTask *task = [[NSTask alloc] init];
@@ -2779,9 +3552,21 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   task.arguments = args;
 
   NSMutableDictionary *env = [self wwnMutableHostWaylandEnvironment];
+  env[@"WAWONA_OUTPUT_SCALE"] = @"1";
+  env[@"WAWONA_NESTED_WAYLAND"] = @"1";
+  [self wwnApplyBundledClientEnvironment:env forClientId:@"weston"];
+  [self wwnPumpHostCompositorAfterNativeClientLaunch];
+  if (!WWNWaylandSocketIsLive(env)) {
+    WWNLog("WESTON",
+           @"Host Wayland socket not live yet (WAYLAND_DISPLAY=%@ "
+           @"XDG_RUNTIME_DIR=%@). Nested weston may fail to connect",
+           env[@"WAYLAND_DISPLAY"], env[@"XDG_RUNTIME_DIR"]);
+  }
   task.environment = env;
 
-  WWNLog("WESTON", @"Launch argv: weston %@", [args componentsJoinedByString:@" "]);
+  WWNLog("WESTON",
+         @"Launch argv: weston %@ (host output %ux%u @ %.1fx; nested scale=1)",
+         [args componentsJoinedByString:@" "], outW, outH, outScale);
 
   NSError *err = nil;
   if ([task launchAndReturnError:&err]) {
@@ -2801,26 +3586,26 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     return;
   }
   WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
-  if (![bridge prepareIlandMetalPresentationOnPrimaryView]) {
+  if (![bridge prepareIlandMetalPresentationOnPrimaryViewForClientId:@"weston"]) {
     WWNLog("WESTON",
-           @"Failed to prepare iland Metal presentation — falling back to "
-           @"nested weston subprocess");
+           @"Failed to prepare iland Metal presentation. Falling back to "
+           @"nested weston (Wayland), not kmscube");
     [self launchWestonMacOSNestedSubprocess];
     return;
   }
-  typedef int (*WWNWestonMainFn)(int, char **);
-  WWNWestonMainFn westonFn =
-      (WWNWestonMainFn)(void *)dlsym(RTLD_DEFAULT, "weston_main");
-  if (westonFn == NULL) {
+  if (weston_compositor_main == NULL) {
     WWNLog("WESTON",
-           @"weston_main not linked — iland Metal ready (kmscube); "
-           @"falling back to nested weston subprocess (--backend=drm)");
+           @"weston_compositor_main not linked. Nested weston (Wayland) only. "
+           @"Not launching kmscube");
     [self launchWestonMacOSNestedSubprocess];
     return;
   }
   self.westonRunning = YES;
 
   [WWNMachineProfileStore applyActiveMachineToRuntimePrefs];
+  if (!WWNHostSessionUsesOwnDisplayDRM()) {
+    WWNSanitizeModeACompositorProcessEnv();
+  }
   uint32_t outW = 1024;
   uint32_t outH = 768;
   float outScale = 1.0f;
@@ -2833,6 +3618,8 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   char scaleEnv[32];
   snprintf(scaleEnv, sizeof(scaleEnv), "%u", hostScale);
   setenv("WAWONA_OUTPUT_SCALE", scaleEnv, 1);
+  setenv("WAWONA_NESTED_WAYLAND", "1", 1);
+  setenv("XCURSOR_SIZE", "24", 1);
 
   const char *xdg_dir = getenv("XDG_RUNTIME_DIR");
   char configPath[512] = "";
@@ -2854,8 +3641,6 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     self.westonRunning = NO;
     return;
   }
-  // No --width/--height: DRM/iland output size follows host view via
-  // runtime wl_output updates, not launch argv.
   (void)outW;
   (void)outH;
   snprintf(launchArgs->scale, sizeof(launchArgs->scale), "--scale=%u", hostScale);
@@ -2863,15 +3648,11 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     strncpy(launchArgs->config, configArg, sizeof(launchArgs->config) - 1);
   }
 
-  WWNWestonMainFn westonFnForBlock = westonFn;
-
   dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
     WWNWestonDrmLaunchArgs *args = launchArgs;
     char *argv_weston[] = {
         (char *)"weston",
         (char *)"--backend=drm",
-        /* Deterministic nested socket so the anowaW app bridge can attach
-         * regardless of backend. */
         (char *)"--socket=wawona-nested",
         (char *)"--shell=desktop-shell.so",
         args->scale,
@@ -2879,12 +3660,13 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
         NULL,
     };
     int argc_weston = args->config[0] ? 6 : 5;
-    WWNLog("WESTON", @"Starting in-process nested Weston (iland DRM) on macOS");
-    int rc = westonFnForBlock(argc_weston, argv_weston);
-    WWNLog("WESTON", @"In-process nested Weston (DRM) exited rc=%d", rc);
+    WWNLog("WESTON", @"Starting in-process weston_compositor_main (iland DRM)");
+    int rc = weston_compositor_main(argc_weston, argv_weston);
+    WWNLog("WESTON", @"In-process weston (DRM) exited rc=%d", rc);
     free(args);
     dispatch_async(dispatch_get_main_queue(), ^{
       self.westonRunning = NO;
+      [[WWNCompositorBridge sharedBridge] stopIlandGpuClientOnPrimaryView];
     });
   });
 
@@ -2895,22 +3677,21 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
 - (void)launchWeston {
   // Nested Weston keeps a single preferred nested socket; treat as singleton.
   if (self.westonRunning) {
+    WWNLog("WESTON", @"Start skipped: Weston already running");
     return;
   }
 #if TARGET_OS_IPHONE
-  // Legacy weston-specific key wins when explicitly set; otherwise fall back to
-  // the general per-client backend choice so weston and niri behave the same.
-  NSString *backend =
-      [[WWNPreferencesManager sharedManager] nestedWestonBackend];
-  // wayland-pixman / wayland-* → nested Wayland client of the host compositor
-  // (the path that paints a Weston desktop on iOS Simulator).
-  BOOL wantDrm = [backend isEqualToString:@"iland-drm-gl"] ||
-                 [backend isEqualToString:@"drm"] ||
-                 [WWNResolveCompositorBackend(nil) isEqualToString:@"drm"];
+  // Honour CompositorBackend only. NestedWestonBackend defaults to
+  // wayland-pixman on Apple mobile (iland-drm-gl is the macOS default).
+  // Nested GL (usePixman:NO) loads weston's gl-renderer via
+  // wwn_gl_renderer_module_init, which is a -1 stub on this archive, so
+  // weston_compositor_main exits immediately and Start looks like a no-op.
+  BOOL wantDrm = [WWNResolveCompositorBackend(nil) isEqualToString:@"drm"];
   if (wantDrm) {
     [self launchWestonDrm];
     return;
   }
+  WWNLog("WESTON", @"nested weston compositor (wayland-pixman) on iOS family");
   [self wwnLaunchWestonCompositorWithBackend:"--backend=wayland"
                                    usePixman:YES
                                 prepareIland:NO];
@@ -2931,7 +3712,40 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
 - (void)launchNiri {
   dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
     CFAbsoluteTime launchStart = CFAbsoluteTimeGetCurrent();
+    if (gWwnNiriMainConsumed) {
+      WWNLog("NIRI",
+             @"niri_main already ran in this process (not re-entrant). "
+             @"Relaunch Wawona before starting niri again");
+      dispatch_async(dispatch_get_main_queue(), ^{
+        [[NSNotificationCenter defaultCenter]
+            postNotificationName:@"WWNNativeClientLaunchFailedNotification"
+                          object:self
+                        userInfo:@{
+                          @"clientId" : @"niri",
+                          @"reason" : @"niri_main is not re-entrant. Relaunch Wawona.",
+                        }];
+      });
+      return;
+    }
     if (![self wwnBeginIOSNativeClientLaunch:@"niri"]) {
+      return;
+    }
+
+    [WWNMachineProfileStore applyActiveMachineToRuntimePrefs];
+    WWNSettings_ApplyGraphicsDriverSelection();
+    NSString *gpuRefusal = WWNGpuClientRefusalReason(@"niri");
+    if (gpuRefusal) {
+      WWNLog("NIRI", @"Refusing niri. %@", gpuRefusal);
+      [self wwnEndIOSNativeClientLaunch];
+      dispatch_async(dispatch_get_main_queue(), ^{
+        [[NSNotificationCenter defaultCenter]
+            postNotificationName:@"WWNNativeClientLaunchFailedNotification"
+                          object:self
+                        userInfo:@{
+                          @"clientId" : @"niri",
+                          @"reason" : gpuRefusal,
+                        }];
+      });
       return;
     }
 
@@ -2947,7 +3761,6 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     }
     setenv("WAYLAND_DISPLAY", parent_display, 1);
     wwnConfigureNiriNestedEnv();
-    // Surface niri panics/errors in Simulator Console (host reads stderr).
     if (!getenv("RUST_BACKTRACE") || !getenv("RUST_BACKTRACE")[0]) {
       setenv("RUST_BACKTRACE", "1", 0);
     }
@@ -2967,14 +3780,16 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
 
     WWNLog("NIRI",
            @"Launching in-process niri_main (nested) WAYLAND_DISPLAY=%s "
-           @"XDG_RUNTIME_DIR=%s NIRI_CONFIG=%s DYLD_LIBRARY_PATH=%s",
+           @"XDG_RUNTIME_DIR=%s NIRI_CONFIG=%s DYLD_LIBRARY_PATH=%s "
+           @"WWN_OPENGL_DRIVER=%s",
            getenv("WAYLAND_DISPLAY") ?: "(null)",
            getenv("XDG_RUNTIME_DIR") ?: "(null)",
            getenv("NIRI_CONFIG") ?: "(null)",
-           getenv("DYLD_LIBRARY_PATH") ?: "(null)");
+           getenv("DYLD_LIBRARY_PATH") ?: "(null)",
+           getenv("WWN_OPENGL_DRIVER") ?: "(null)");
     if (!niri_main) {
       WWNLog("NIRI",
-             @"niri_main not linked in this build — nested niri unavailable");
+             @"niri_main not linked in this build. Nested niri unavailable");
       if (saved_cwd[0]) {
         chdir(saved_cwd);
       }
@@ -2991,7 +3806,76 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
       return;
     }
 
+    gWwnNiriMainConsumed = YES;
+
+    int savedOut = dup(STDOUT_FILENO);
+    int savedErr = dup(STDERR_FILENO);
+    int capPipe[2] = {-1, -1};
+    NSMutableArray<NSString *> *captured = [NSMutableArray array];
+    dispatch_semaphore_t capDone = NULL;
+    if (pipe(capPipe) == 0) {
+      dup2(capPipe[1], STDOUT_FILENO);
+      dup2(capPipe[1], STDERR_FILENO);
+      close(capPipe[1]);
+      int readFd = capPipe[0];
+      capDone = dispatch_semaphore_create(0);
+      dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+        char buf[1024];
+        NSMutableData *line = [NSMutableData data];
+        ssize_t n;
+        while ((n = read(readFd, buf, sizeof(buf))) > 0) {
+          for (ssize_t i = 0; i < n; i++) {
+            if (buf[i] == '\n') {
+              if (line.length > 0) {
+                NSString *s = [[NSString alloc] initWithData:line
+                                                    encoding:NSUTF8StringEncoding];
+                if (s.length > 0) {
+                  @synchronized(captured) {
+                    [captured addObject:s];
+                  }
+                }
+                [line setLength:0];
+              }
+            } else {
+              [line appendBytes:&buf[i] length:1];
+            }
+          }
+        }
+        if (line.length > 0) {
+          NSString *s = [[NSString alloc] initWithData:line
+                                              encoding:NSUTF8StringEncoding];
+          if (s.length > 0) {
+            @synchronized(captured) {
+              [captured addObject:s];
+            }
+          }
+        }
+        close(readFd);
+        dispatch_semaphore_signal(capDone);
+      });
+    }
+
     int result = niri_main();
+    fflush(stdout);
+    fflush(stderr);
+    if (savedOut >= 0) {
+      dup2(savedOut, STDOUT_FILENO);
+      close(savedOut);
+    }
+    if (savedErr >= 0) {
+      dup2(savedErr, STDERR_FILENO);
+      close(savedErr);
+    }
+    if (capDone) {
+      dispatch_semaphore_wait(
+          capDone, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2 * NSEC_PER_SEC)));
+    }
+    @synchronized(captured) {
+      for (NSString *line in captured) {
+        WWNLog("NIRI", @"%@", line);
+      }
+    }
+
     WWNLog("NIRI", @"niri_main exit code: %d (total %.0fms)", result,
            (CFAbsoluteTimeGetCurrent() - launchStart) * 1000.0);
     if (saved_cwd[0]) {
@@ -3000,8 +3884,7 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     [self wwnEndIOSNativeClientLaunch];
     if (result != 0) {
       NSString *reason =
-          [NSString stringWithFormat:@"niri_main exited %d (see stderr for "
-                                     @"niri_main: fatal/panicked)",
+          [NSString stringWithFormat:@"niri_main exited %d (see [NIRI] lines)",
                                      result];
       dispatch_async(dispatch_get_main_queue(), ^{
         [[NSNotificationCenter defaultCenter]
@@ -3032,6 +3915,7 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   }
   self.westonMachineId = nil;
   self.westonRunning = NO;
+  [[WWNCompositorBridge sharedBridge] stopIlandGpuClientOnPrimaryView];
 #endif
 }
 
@@ -3126,13 +4010,13 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
                       attributes:nil
                            error:nil];
 
-  // .zshenv — source the user's original .zshenv so PATH etc. are intact
+  // .zshenv. Source the user's original .zshenv so PATH etc. are intact
   NSString *zshenv =
       @"_wz=\"${_WAWONA_ORIG_ZDOTDIR:-$HOME}\"\n"
       @"[ -f \"$_wz/.zshenv\" ] && . \"$_wz/.zshenv\"\n"
       @"unset _wz\n";
 
-  // .zshrc — source the user's original .zshrc, then add OSC 0 title hook
+  // .zshrc. Source the user's original .zshrc, then add OSC 0 title hook
   NSString *zshrc =
       @"_wz=\"${_WAWONA_ORIG_ZDOTDIR:-$HOME}\"\n"
       @"[ -f \"$_wz/.zshrc\" ] && . \"$_wz/.zshrc\"\n"
@@ -3169,6 +4053,14 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   }
 
   task.environment = env;
+  // AppKit process cwd is often "/"; start the shell in HOME.
+  {
+    NSString *homeDir = env[@"HOME"];
+    if (homeDir.length == 0)
+      homeDir = NSHomeDirectory();
+    if (homeDir.length > 0)
+      task.currentDirectoryURL = [NSURL fileURLWithPath:homeDir];
+  }
   NSError *err;
   if ([task launchAndReturnError:&err]) {
     WWNLog("WESTON_TERM", @"Launched weston-terminal with PID %d (shell=%@)",
@@ -3204,7 +4096,7 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
 #if TARGET_OS_IPHONE
   NSString *boundMachineId = [machineId copy];
   if (wwn_foot_is_compat_shim && wwn_foot_is_compat_shim() != 0) {
-    // Legacy APKs/archives only. Refuse silent weston-terminal substitution —
+    // Legacy APKs/archives only. Refuse silent weston-terminal substitution -
     // real foot must be force_loaded (wwn_foot_is_compat_shim == 0).
     WWNLog("FOOT",
            @"Refusing foot launch: compatibility shim still linked "
@@ -3224,6 +4116,8 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
 
     [WWNRootfsProvider applyShellEnvironment];
     WWNConfigureBundledRuntimeEnvIfNeeded();
+    setenv("TERM", "xterm-256color", 1);
+    setenv("COLORTERM", "truecolor", 1);
 
     char saved_cwd[512] = "";
     const char *home_dir = getenv("HOME");
@@ -3242,15 +4136,37 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     NSString *iniPath =
         [runtimeDir stringByAppendingPathComponent:@"wawona-foot.ini"];
     NSString *fontDir = WWNWawonaBundledSharePath(@"fonts");
-    NSString *monoTtf =
-        [fontDir stringByAppendingPathComponent:@"truetype/DejaVuSansMono.ttf"];
     NSFileManager *fm = [NSFileManager defaultManager];
+    NSString *monoTtf = [fontDir
+        stringByAppendingPathComponent:
+            @"truetype/DejaVuSansMNerdFontMono-Regular.ttf"];
+    if (![fm fileExistsAtPath:monoTtf]) {
+      monoTtf =
+          [fontDir stringByAppendingPathComponent:@"truetype/DejaVuSansMono.ttf"];
+    }
+#if TARGET_OS_OSX
+    CGFloat fontSize = [NSFont systemFontSize];
+#elif TARGET_OS_IOS
+    CGFloat fontSize = [UIFont systemFontSize];
+#else
+    CGFloat fontSize = 17.0;
+#endif
     NSString *fontSpec = [fm fileExistsAtPath:monoTtf]
-                             ? [NSString stringWithFormat:@"%@:size=14", monoTtf]
-                             : @"monospace:size=14";
+                             ? [NSString stringWithFormat:@"DejaVuSansM Nerd Font Mono:size=%.1f", fontSize]
+                             : [NSString stringWithFormat:@"monospace:size=%.1f", fontSize];
     NSString *ini = [NSString
-        stringWithFormat:@"[main]\nfont=%@\ndpi-aware=yes\n\n"
-                          "[tweak]\nfont-monospace-warn=no\n",
+        stringWithFormat:@"[main]\n"
+                          "term=xterm-256color\n"
+                          "font=%@\n"
+                          "dpi-aware=yes\n"
+                          "letter-spacing=0\n"
+                          "\n"
+                          "[tweak]\n"
+                          "font-monospace-warn=no\n"
+                          "\n"
+                          "[key-bindings]\n"
+                          "clipboard-copy=Super+c\n"
+                          "clipboard-paste=Super+v\n",
                          fontSpec];
     [ini writeToFile:iniPath
           atomically:YES
@@ -3263,6 +4179,8 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     }
     char *argv_foot[] = {
         "foot",
+        "-t",
+        "xterm-256color",
         "-o",
         "tweak.font-monospace-warn=no",
         "-c",
@@ -3272,7 +4190,12 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     };
     WWNLog("FOOT", @"Launching in-process foot_main (shell=%s ini=%@)...",
            shell, iniPath);
-    int result = foot_main(6, argv_foot);
+    /* foot uses getopt; reset so a prior host getopt does not skip -c. */
+    optind = 1;
+#if defined(__APPLE__)
+    optreset = 1;
+#endif
+    int result = foot_main(8, argv_foot);
     WWNLog("FOOT", @"foot_main exit code: %d", result);
 
     if (saved_cwd[0])
@@ -3291,7 +4214,7 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
 #else
   [WWNMachineProfileStore applyActiveMachineToRuntimePrefs];
 
-  // Prefer the real Mach-O (.foot-wrapped) over the shell wrapper — the
+  // Prefer the real Mach-O (.foot-wrapped) over the shell wrapper. The
   // wrapper shebang points at a nix-store bash that may be unavailable when
   // the app is relocated, which surfaces as an instant black/empty session.
   NSString *path = [self findBinaryNamed:@".foot-wrapped"];
@@ -3307,11 +4230,16 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   WWNConfigureBundledRuntimeEnvIfNeeded();
 
   NSString *fontDir = WWNWawonaBundledSharePath(@"fonts");
-  NSString *monoTtf =
-      [fontDir stringByAppendingPathComponent:@"truetype/DejaVuSansMono.ttf"];
   NSFileManager *fm = [NSFileManager defaultManager];
+  NSString *monoTtf = [fontDir
+      stringByAppendingPathComponent:
+          @"truetype/DejaVuSansMNerdFontMono-Regular.ttf"];
   if (![fm fileExistsAtPath:monoTtf]) {
-    WWNLog("FOOT", @"Missing bundled mono font at %@ — text will be blank",
+    monoTtf =
+        [fontDir stringByAppendingPathComponent:@"truetype/DejaVuSansMono.ttf"];
+  }
+  if (![fm fileExistsAtPath:monoTtf]) {
+    WWNLog("FOOT", @"Missing bundled mono font at %@. Text will be blank",
            monoTtf);
   }
 
@@ -3322,17 +4250,30 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   }
   NSString *iniPath =
       [runtimeDir stringByAppendingPathComponent:@"wawona-foot.ini"];
+#if TARGET_OS_OSX
+  CGFloat fontSize = [NSFont systemFontSize];
+#elif TARGET_OS_IOS
+  CGFloat fontSize = [UIFont systemFontSize];
+#else
+  CGFloat fontSize = 17.0;
+#endif
   NSString *fontSpec = [fm fileExistsAtPath:monoTtf]
-                           ? [NSString stringWithFormat:@"%@:size=12", monoTtf]
-                           : @"monospace:size=12";
+                           ? [NSString stringWithFormat:@"DejaVuSansM Nerd Font Mono:size=%.1f", fontSize]
+                           : [NSString stringWithFormat:@"monospace:size=%.1f", fontSize];
   NSString *ini = [NSString
       stringWithFormat:
           @"[main]\n"
+           "term=xterm-256color\n"
            "font=%@\n"
            "dpi-aware=yes\n"
+           "letter-spacing=0\n"
            "\n"
            "[tweak]\n"
-           "font-monospace-warn=no\n",
+           "font-monospace-warn=no\n"
+           "\n"
+           "[key-bindings]\n"
+           "clipboard-copy=Super+c\n"
+           "clipboard-paste=Super+v\n",
           fontSpec];
   NSError *iniErr = nil;
   if (![ini writeToFile:iniPath
@@ -3345,7 +4286,11 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   NSMutableDictionary *env = [self wwnMutableHostWaylandEnvironment];
   NSString *shellPath = WWNPreferredHostShellPath();
   env[@"SHELL"] = shellPath;
+  // Foot's default TERM is "foot". macOS has no foot terminfo in the sandbox
+  // (and often none on the host), so shells print "unknown terminal type" and
+  // erase/clear/completion redraw break. Force a terminfo that exists.
   env[@"TERM"] = @"xterm-256color";
+  env[@"COLORTERM"] = @"truecolor";
   if ([fm fileExistsAtPath:monoTtf]) {
     env[@"WAWONA_MONO_FONT"] = monoTtf;
   }
@@ -3360,11 +4305,20 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
 
   NSTask *task = [[NSTask alloc] init];
   task.executableURL = [NSURL fileURLWithPath:path];
-  // -c config; -o suppress monospace warn; then login shell as command.
+  // -c config; -t TERM for child shell; -o suppress monospace warn; then shell.
   task.arguments = @[
-    @"-o", @"tweak.font-monospace-warn=no", @"-c", iniPath, shellPath
+    @"-t", @"xterm-256color", @"-o", @"tweak.font-monospace-warn=no", @"-c",
+    iniPath, shellPath
   ];
   task.environment = env;
+  // AppKit process cwd is often "/"; start the shell in HOME.
+  {
+    NSString *homeDir = env[@"HOME"];
+    if (homeDir.length == 0)
+      homeDir = NSHomeDirectory();
+    if (homeDir.length > 0)
+      task.currentDirectoryURL = [NSURL fileURLWithPath:homeDir];
+  }
 
   NSError *err = nil;
   if ([task launchAndReturnError:&err]) {

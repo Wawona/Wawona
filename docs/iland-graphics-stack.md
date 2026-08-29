@@ -109,16 +109,15 @@ must retain its zero-copy dmabuf route.
   where allowed. iPadOS and visionOS require one host scene per Wayland client.
 - Android: AHardwareBuffer/Surface-backed Mode A; optional separate Mode B
   power path.
-- tvOS and watchOS: native/remote software-only presentation today. No ANGLE,
-  MoltenVK, Vulkan ICD, IOKit, VM or container graphics bundles. The two are
-  excluded for different reasons and only one is permanent:
-  - tvOS is **deferred**. Its SDK ships Metal, MetalKit and (deprecated)
-    OpenGLES, and MoltenVK supports tvOS 14.5+ on public API only, so Vulkan is
-    reachable and store-legal. Turning it on is the final phase of this stack,
-    gated behind `WWN_TVOS_GPU=1` in `verify-iland-graphics-bundle.sh`. The
-    Vulkan loader does not work on tvOS, so it must use the same direct ICD
-    dispatch (`WWN_VULKAN_LIBRARY`) the other targets already use. GLES is the
-    slower half: ANGLE has no maintained Chromium GN tvOS target.
+- tvOS: native/remote plus ANGLE (OpenGL ES to Metal) and MoltenVK (Vulkan to
+  Metal) when `WWN_TVOS_GPU=1`. Same Mode A drivers as iOS/visionOS. The two
+  Apple living-room/wrist targets are not the same:
+  - tvOS GPU is **in-bundle**. Its SDK ships Metal, MetalKit and OpenGLES,
+    and MoltenVK supports tvOS 14.5+ on public API only. The verifier requires
+    both MoltenVK and ANGLE when `WWN_TVOS_GPU=1`. The Vulkan loader does not
+    work on tvOS, so it must use the same direct ICD dispatch
+    (`WWN_VULKAN_LIBRARY`) the other targets already use. Rendered-frame
+    PROPER is still pending.
   - watchOS is **blocked**. Its SDK ships no `Metal.framework` (device or
     simulator), no OpenGLES, and `CAMetalLayer` is `API_UNAVAILABLE(watchos)`, so
     ANGLE and MoltenVK have nothing to terminate in. This needs a public
@@ -142,7 +141,7 @@ DRM open/resources and KMS modeset/page-flip are graded independently.
 | [`iland-mode-a-b-desktop.md`](iland-mode-a-b-desktop.md) | Privilege axis + packaging |
 | [`toolkit-soft-path.md`](toolkit-soft-path.md) | SDL/Qt/GTK readiness catalog |
 | [`testing/graphics-ci-matrix.md`](testing/graphics-ci-matrix.md) | CI + Agent-Device matrix |
-| [`wwn-repo-dag.md`](wwn-repo-dag.md) | L0–L4 ownership |
+| [`wwn-repo-dag.md`](wwn-repo-dag.md) | L0-L4 ownership |
 
 WWN-MCP indexes these paths under the Wawona project; prefer linking here over
 duplicating architecture prose in issue comments.

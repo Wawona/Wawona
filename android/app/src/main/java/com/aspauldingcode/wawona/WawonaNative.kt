@@ -6,7 +6,7 @@ object WawonaNative {
     init {
         try {
             // ANGLE SONAME is libEGL_angle.so / libGLESv2_angle.so. Load those
-            // only — never also load libEGL.so / libGLESv2.so as a second copy.
+            // only. Never also load libEGL.so / libGLESv2.so as a second copy.
             System.loadLibrary("EGL_angle")
             System.loadLibrary("GLESv2_angle")
             WLog.d("NATIVE", "Loading native library 'wawona'")
@@ -24,9 +24,18 @@ object WawonaNative {
     external fun nativePrepareShellEnvironment(filesDir: String)
 
     external fun nativeInit(cacheDir: String)
+    /**
+     * Set `XKB_DEFAULT_LAYOUT` / `XKB_DEFAULT_VARIANT` before seat keyboard
+     * init (follow-system; #60 / #141). Call before [nativeInit].
+     */
+    external fun nativeSetXkbDefaults(layout: String, variant: String)
     external fun nativeIsCompositorReady(): Boolean
     external fun nativeSetSurface(surface: Surface)
-    external fun nativeDestroySurface()
+    /**
+     * Tear down the Vulkan surface. Pass the dying [Surface] so a stale
+     * SessionActivity cannot destroy a newer host task's swapchain (#141).
+     */
+    external fun nativeDestroySurface(surface: Surface?)
     /** Fast resize: recreate swapchain only, no full teardown. */
     external fun nativeResizeSurface(width: Int, height: Int)
     /** Lightweight output sync: update compositor output size without touching the render pipeline. */
@@ -55,6 +64,9 @@ object WawonaNative {
         compositorBackend: String
     )
 
+    /** Apply environment override JSON: `{ "set": {...}, "unset": [...] }` (#157). */
+    external fun nativeApplyEnvironmentOverrides(json: String)
+
     external fun nativeSetCore(corePtr: Long)
 
     external fun nativeCommitText(text: String)
@@ -79,6 +91,12 @@ object WawonaNative {
     external fun nativePointerButton(buttonCode: Int, state: Int, timestampMs: Int)
     external fun nativePointerEnter(x: Double, y: Double, timestampMs: Int)
     external fun nativePointerLeave(timestampMs: Int)
+    
+    external fun injectDragEnter(windowId: Long, x: Double, y: Double, mimeTypes: String)
+    external fun injectDragMotion(windowId: Long, x: Double, y: Double)
+    external fun injectDragDrop(windowId: Long, data: String)
+    external fun injectDragLeave(windowId: Long)
+
     external fun nativeKeyboardFocus(hasFocus: Boolean)
     /** Ask focused toplevel to close (`xdg_toplevel.close`). */
     external fun nativeRequestActiveWindowClose(): Boolean
@@ -174,5 +192,14 @@ object WawonaNative {
         port: Int,
         keyPath: String,
         authMethod: Int
+    ): String
+
+    external fun nativeLogRingDump(machineId: String?): String
+    external fun nativeGithubBugReportUrl(
+        platform: String,
+        installChannel: String,
+        version: String,
+        hostOs: String,
+        logs: String
     ): String
 }

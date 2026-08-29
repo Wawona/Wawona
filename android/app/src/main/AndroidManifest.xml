@@ -7,7 +7,7 @@
     <!--
       Package visibility (Android 11+): allow the desktop-replacement app drawer
       to enumerate launchable Android apps. This is the documented, Play-Store
-      compliant way to query apps — no QUERY_ALL_PACKAGES.
+      compliant way to query apps. No QUERY_ALL_PACKAGES.
     -->
     <queries>
         <intent>

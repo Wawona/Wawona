@@ -7,7 +7,7 @@ import UIKit
 /// Opens native global Wawona Settings (ObjC + AppKit/UIKit). Not SwiftUI.
 enum PlatformGlobalSettings {
     static var isAvailable: Bool {
-        #if os(macOS) || os(iOS) || os(tvOS) || os(visionOS)
+        #if !SWIFT_PACKAGE && (os(macOS) || os(iOS) || os(tvOS) || os(visionOS))
         true
         #else
         false
@@ -15,10 +15,12 @@ enum PlatformGlobalSettings {
     }
 
     static func open() {
+        #if !SWIFT_PACKAGE
         #if os(iOS) || os(tvOS) || os(visionOS)
         WWNPreferences.shared().show(nil)
         #elseif os(macOS)
         WWNPreferences.shared().show(NSApp)
+        #endif
         #endif
     }
 }

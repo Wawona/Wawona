@@ -5,7 +5,7 @@ Structured build verification (CI) plus manual functional smoke per platform.
 For copy-pasteable exercise recipes (Waypipe/DELIVERER, native macOS Weston,
 iOS on-device shell, agent-device replays), see [`commands.md`](./commands.md).
 
-## Nix build targets (Phase 5A — CI)
+## Nix build targets (Phase 5A. CI)
 
 | Platform | Flake target | Notes |
 |----------|--------------|-------|
@@ -18,9 +18,9 @@ iOS on-device shell, agent-device replays), see [`commands.md`](./commands.md).
 | visionOS sim backend | `.#wawona-visionos-sim-backend` | |
 | watchOS sim backend | `.#wawona-watchos-sim-backend` | |
 | Weston toytoolkit iOS | `.#weston-ios` | cairo/pango demo clients |
-| zsh iOS (planned) | `.#zsh-ios` | App Store–compliant bundled shell — [ios-local-shell](../ios-local-shell/README.md) |
+| zsh iOS (planned) | `.#zsh-ios` | App Store-compliant bundled shell. [ios-local-shell](../ios-local-shell/README.md) |
 | wawona rootfs iOS (planned) | `.#wawona-rootfs-ios` | usr/bin/zsh + share for app bundle |
-| wawona-pty spike (planned) | `.#wawona-pty-spike-ios` | Phase 0 device PTY gate — [ios-local-shell-spike.md](../ios-local-shell-spike.md) |
+| wawona-pty spike (planned) | `.#wawona-pty-spike-ios` | Phase 0 device PTY gate. [ios-local-shell-spike.md](../legacy/ios-local-shell-spike.md) |
 | Weston compositor iOS | `.#weston-compositor-ios` | nested compositor archive (Wayland/Pixman default) |
 | Weston compositor iOS DRM | `.#weston-compositor-ios-drm` / `-sim` | iland DRM + GL renderer (CI validation) |
 | Weston GL clients iOS | `.#weston-ios-gl` / `.#weston-ios-gl-sim` | `enableGlClients=true` |
@@ -30,7 +30,7 @@ iOS on-device shell, agent-device replays), see [`commands.md`](./commands.md).
 | ANGLE Android | `.#angle-android` | |
 | iland iOS | `.#iland-ios` / `.#iland-ios-sim` | GBM/EGL/DRM userland |
 | kmscube iOS | `.#iland-gl-clients-ios` | in-process `kmscube_main` |
-| SDL2_gfx demo (planned) | `.#testgfx-ios` / `-macos` / `-android` | in-process `testgfx_main`; software/`wl_shm` first — [#107](https://github.com/Wawona/Wawona/issues/107) |
+| SDL2_gfx demo (planned) | `.#testgfx-ios` / `-macos` / `-android` | in-process `testgfx_main`; software/`wl_shm` first. [#107](https://github.com/Wawona/Wawona/issues/107) |
 | Linux reference | `pkgs.weston` (nixpkgs) | baseline |
 
 CI runs `.github/scripts/verify-wayland-profile-smoke.py` (host-scoped `nix eval`). Use `--build` for compile verification on the matching host.
@@ -74,22 +74,21 @@ Run on each simulator/emulator or device. Mark pass/fail with date + build attr.
 ### All mobile (iOS / iPadOS / tvOS / visionOS / watchOS)
 
 - [ ] Boot Wawona app
-- [ ] Launch `weston-simple-shm` — SHM buffer visible
-- [ ] Launch `weston-flower` — cairo animation visible
-- [ ] Launch `weston-terminal` — **Phase 1:** real cairo `terminal.c`; **today:** SHM stub (`mobile-weston-terminal.c`); **Phase 2:** bundled zsh PTY — see [ios-local-shell](../ios-local-shell/README.md)
+- [ ] Launch `weston-simple-shm`. SHM buffer visible
+- [ ] Launch `weston-flower`. Cairo animation visible
+- [ ] Launch `weston-terminal`. **Phase 1:** real cairo `terminal.c`; **today:** SHM stub (`mobile-weston-terminal.c`); **Phase 2:** bundled zsh PTY. See [ios-local-shell](../ios-local-shell/README.md)
 - [ ] Keyboard: evdev `KEY_A` → client receives correct keysym (protocol test: `test_keyboard_key_a_keysym`)
-- [ ] Launch nested compositor (`weston` / Settings) — child `wayland-N` socket; demo client through nested Weston
-- [ ] Nested Weston (default): Settings → **Wayland (Pixman)** — panel + dark background visible within ~2s; no `terminal.png` / cursor errors in log
-- [ ] Nested Weston (optional): Settings → **iland DRM (GL)** — Metal overlay via `WWNIlandPresenter`; log shows GL renderer (not Pixman)
-- [ ] kmscube smoke (Settings) — IOSurface/Metal overlay updates before enabling DRM Weston
+- [ ] Launch nested compositor (`weston` / Settings). Child `wayland-N` socket; demo client through nested Weston
+- [ ] Nested Weston: Settings → Advanced → **Display Backend** (`auto` / `wayland` / `drm`). Nested Wayland should show panel + desktop inside the host window. DRM uses `WWNIlandPresenter`
+- [ ] kmscube smoke (Settings). IOSurface/Metal overlay updates before enabling DRM Weston
 - [ ] waypipe session (where SSH + libssh2 available)
 
 ### macOS
 
 - [ ] All mobile checks against nested clients
-- [ ] Launch nested Weston compositor (subprocess) — child socket
-- [ ] Launch `kmscube` / `weston-simple-egl` — GL frame via iland + ANGLE
-- [ ] Live resize + configure ack — no SHM buffer exhaustion (protocol test: `test_configure_serial_backlog_without_ack`)
+- [ ] Launch nested Weston compositor (subprocess). Child socket
+- [ ] Launch `kmscube` / `weston-simple-egl`. GL frame via iland + ANGLE
+- [ ] Live resize + configure ack. No SHM buffer exhaustion (protocol test: `test_configure_serial_backlog_without_ack`)
 - [ ] waypipe over SSH
 
 ### Android
@@ -99,19 +98,19 @@ Run on each simulator/emulator or device. Mark pass/fail with date + build attr.
 - [ ] `weston-flower` / demo client from Settings
 - [ ] `weston-terminal` mobile client
 - [ ] Keyboard regression
-- [ ] Settings "Enable Native Weston" — nested compositor (not flower stub); demo client through child display
+- [ ] Settings "Enable Native Weston". Nested compositor (not flower stub); demo client through child display
 
-### iOS / iPadOS — local shell (Phase 2+, device required)
+### iOS / iPadOS. Local shell (Phase 2+, device required)
 
-- [ ] Phase 0 spike report complete — [ios-local-shell-spike.md](../ios-local-shell-spike.md)
+- [ ] Phase 0 spike report complete. [ios-local-shell-spike.md](../legacy/ios-local-shell-spike.md)
 - [ ] `echo hello` in bundled zsh via weston-terminal
 - [ ] `.zsh_history` in Application Support
-- [ ] Session stop reaps shell — no fd leak
+- [ ] Session stop reaps shell. No fd leak
 - [ ] Spawn rejects `/bin/sh` (compliance unit test or internal)
 
 ### watchOS
 
-- [ ] Local zsh **not** offered — stub / redirect only — [WATCHOS-SCOPE.md](../ios-local-shell/WATCHOS-SCOPE.md)
+- [ ] Local zsh **not** offered. Stub / redirect only. [WATCHOS-SCOPE.md](../ios-local-shell/WATCHOS-SCOPE.md)
 
 ### Linux (reference)
 
@@ -120,12 +119,12 @@ Run on each simulator/emulator or device. Mark pass/fail with date + build attr.
 
 ### GL mobile
 
-- [ ] Launch `kmscube` from Machines — GL frame via iland + ANGLE (iOS Simulator: ANGLE dylibs embedded at Xcode link)
+- [ ] Launch `kmscube` from Machines. GL frame via iland + ANGLE (iOS Simulator: ANGLE dylibs embedded at Xcode link)
 - [ ] `weston-simple-egl` when linked from `.#weston-ios-gl` archive
 
 ### Deferred (explicit)
 
-- Android iland / kmscube / `weston-simple-egl` — requires AHardwareBuffer GBM rewrite
+- Android iland / kmscube / `weston-simple-egl`. Requires AHardwareBuffer GBM rewrite
 
 ## Automated test-ID mapping (ci-docs-matrix)
 

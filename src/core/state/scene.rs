@@ -106,6 +106,11 @@ impl CompositorState {
             .and_then(|tl| tl.toplevel_surface.clone());
 
         if let Some(toplevel_surface) = smithay_surface {
+            let fallback_fs = self
+                .outputs
+                .get(self.primary_output)
+                .map(|o| (o.width.max(1), o.height.max(1)))
+                .unwrap_or((1024, 768));
             let (
                 final_w,
                 final_h,
@@ -121,10 +126,16 @@ impl CompositorState {
                 };
                 toplevel_data.deferred_configure_size = None;
                 let (final_w, final_h) = if toplevel_data.pending_fullscreen {
-                    (width.max(1), height.max(1))
+                    // Nested weston copies configure size into its output.
+                    // `max(1)` of a 0x0 fullscreen made a 1x1 mode (blank window).
+                    if width > 0 && height > 0 {
+                        (width, height)
+                    } else {
+                        fallback_fs
+                    }
                 } else if width == 0 && height == 0 {
                     // Per xdg-shell, 0x0 means "the client decides its own
-                    // size" — pass it through (first-commit trust).
+                    // size". Pass it through (first-commit trust).
                     (0, 0)
                 } else {
                     let (clamped_w, clamped_h) =
@@ -199,7 +210,7 @@ impl CompositorState {
 
         // Smithay is the only serial namespace: every real toplevel is created
         // by smithay's XdgShellHandler::new_toplevel and always carries a
-        // ToplevelSurface. A missing one means teardown is racing — do not
+        // ToplevelSurface. A missing one means teardown is racing. Do not
         // fall back to a hand-rolled configure with a self-invented serial
         // (the old path double-tracked serials and desynced ack matching).
         crate::wlog!(
@@ -369,7 +380,7 @@ impl CompositorState {
                 // Only while the host is size-authoritative mid live-resize
                 // (#111) stretch the last buffer into the host size so nested
                 // niri does not flash before/after sizes. Never leave a giant
-                // host frame around a small demo client — that is a sync bug.
+                // host frame around a small demo client. That is a sync bug.
                 let mut render_width = window.width.max(0) as u32;
                 let mut render_height = window.height.max(0) as u32;
                 if !is_kiosk_window {
@@ -384,6 +395,10 @@ impl CompositorState {
                         let committed_height = surface.current.height.max(0) as u32;
                         let win_w = window.width.max(0) as u32;
                         let win_h = window.height.max(0) as u32;
+                        let surface_scale = surface.current.scale.max(1) as u32;
+                        // current.{width,height} are already logical
+                        // (buffer / wl_surface.set_buffer_scale). Do not divide
+                        // again or a scale-2 800x600 surface becomes 400x300.
                         let host_ahead = window.size_authority.is_host()
                             && win_w > 0
                             && win_h > 0
@@ -397,7 +412,7 @@ impl CompositorState {
                             render_width = committed_width;
                             render_height = committed_height;
                         }
-                        node.scale = (surface.current.scale.max(1)) as f32;
+                        node.scale = surface_scale as f32;
                         // Weston-style HiDPI: the client committed a buffer at
                         // output-scale x window-size without calling
                         // wl_surface.set_buffer_scale. Present it at logical
@@ -420,7 +435,7 @@ impl CompositorState {
                                 // Window size may already equal the physical
                                 // buffer (client/host raced before density
                                 // applied). Still present at output *logical*
-                                // size when the buffer matches output×scale —
+                                // size when the buffer matches output×scale -
                                 // otherwise Android draws a 1080 quad into a
                                 // 360 viewport and only a black corner shows
                                 // (weston-simple-egl flash-then-black).

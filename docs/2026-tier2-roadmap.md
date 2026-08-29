@@ -1,4 +1,4 @@
-# Wawona — Tier 2 Roadmap (large, multi-session features)
+# Wawona. Tier 2 Roadmap (large, multi-session features)
 
 These are the deliberately-deferred large features from the compositor campaign.
 Each is genuinely multi-session (new native subsystems, entitlements, OS/SDK
@@ -7,12 +7,12 @@ work can start cleanly; it does **not** claim they are implemented.
 
 Status source of truth: [`2026-SOURCE-OF-TRUTH.md`](./2026-SOURCE-OF-TRUTH.md).
 
-## p9-iland-dmabuf — IOSurface-backed dmabuf zero-copy
+## p9-iland-dmabuf. IOSurface-backed dmabuf zero-copy
 
 - **Goal**: clients' GBM buffers presented as IOSurface-backed dmabuf without a
   CPU copy (currently SHM/copy path on Apple).
 - **Entry points**: `wwn-iland` (GBM/EGL/DRM userland), `zwp_linux_dmabuf_v1`
-  (`src/core/wayland/ext/linux_dmabuf.rs` — currently advertisement-honest, no
+  (`src/core/wayland/ext/linux_dmabuf.rs`. Currently advertisement-honest, no
   raw formats), `WWNIlandPresenter` (Metal present).
 - **Plan**: back GBM allocations with IOSurface; export dma-buf fd via the
   iland shim; import on the compositor side as an `IOSurface`-wrapped
@@ -21,7 +21,7 @@ Status source of truth: [`2026-SOURCE-OF-TRUTH.md`](./2026-SOURCE-OF-TRUTH.md).
 - **Gate**: `test_protocol_matrix_dmabuf_feedback_resolves` + a new zero-copy
   present test; graphics CTS lane.
 
-## p18-ui-toolkits — cross-platform UI parity
+## p18-ui-toolkits. Cross-platform UI parity
 
 - **Goal**: adaptive layouts + a shared machine-config model + a11y ids across
   AppKit/SwiftUI, UIKit, GTK4, Compose.
@@ -33,13 +33,13 @@ Status source of truth: [`2026-SOURCE-OF-TRUTH.md`](./2026-SOURCE-OF-TRUTH.md).
   interactive control, wire `ui_parity_diff.py` golden pairs.
 - **Gate**: nightly UI parity job (`nightly-full-matrix.yml`).
 
-## p25-macos-containers — containerization.framework + vsock waypipe (macOS 26+)
+## p25-macos-containers. Containerization.framework + vsock waypipe (macOS 26+)
 
-- **Goal**: "WSLg for macOS" — run Linux GUI apps in an Apple container, bridged
+- **Goal**: "WSLg for macOS". Run Linux GUI apps in an Apple container, bridged
   to Wawona over vsock waypipe.
 - **Now owned by [`wwn-containers`](../../wwn-containers)** (split out of Wawona):
   - Universal OCI image management is the Rust `wwn-oci` core (registry v2 pull,
-    CAS store, manifest/index parse, layer unpack) — `nix build .#wwn-oci`.
+    CAS store, manifest/index parse, layer unpack). `nix build .#wwn-oci`.
   - macOS execution backend `wwn-containerd` wraps Apple's Containerization
     framework (per-container VM + `vminitd`, gRPC/vsock); runtime-compiled Swift
     (host SDK) like `wawona-vz`.
@@ -49,25 +49,25 @@ Status source of truth: [`2026-SOURCE-OF-TRUTH.md`](./2026-SOURCE-OF-TRUTH.md).
 - **Gating**: macOS 26+, `com.apple.security.virtualization`; direct/notarized
   only (MAS ships image-management-only). See `wwn-containers/COMPLIANCE.md`.
 
-## p26-vm-nixos — prebuilt NixOS VMs via Virtualization.framework
+## p26-vm-nixos. Prebuilt NixOS VMs via Virtualization.framework
 
 - **Goal**: OrbStack-style prebuilt NixOS VMs, GUI forwarded into Wawona.
 - **Now owned by [`wwn-vms`](../../wwn-vms)** (split out of Wawona). Wawona
   consumes it as a flake input; the built-in VM is **NixOS-only**. See
   [2026-nixos-vm-bridge.md](./2026-nixos-vm-bridge.md).
 - **Two macOS tracks** (both on Virtualization.framework), relocated into wwn-vms:
-  - **Developer track (working): `microvm.nix` + `vfkit`** —
+  - **Developer track (working): `microvm.nix` + `vfkit`** -
     `wwn-vms/dependencies/vms/microvm-guest.nix`. `nix run .#wawona-microvm`
     boots the guest; `nix run .#wawona-vm-bridge` relays its Wayland session into
     Wawona. `writableStoreOverlay` + virtiofs ro `/nix/store` → **no
     make-disk-image/KVM**; stays on upstream microvm.nix via `vfkit.extraArgs`.
-  - **In-app track: native Swift `wawona-vz`** —
+  - **In-app track: native Swift `wawona-vz`** -
     `wwn-vms/dependencies/vms/{WawonaLinuxVZ.swift,vz-launcher.nix}`. Embeddable,
     ad-hoc signed with `com.apple.security.virtualization`.
 - **Machines UI wired**: `virtual_machine` profiles route through
   `WWNVirtualMachineRunner`; the `Machine*Stub` prefs are replaced by real
   `MachineVMProvider` / `MachineVMVsockPort` settings.
-- **Design**: OrbStack model — Virtualization.framework + **vsock** transport
+- **Design**: OrbStack model. Virtualization.framework + **vsock** transport
   (not a virtual NIC / RDP). Guest runs `waypipe --vsock -s 1024 server -- <client>`
   (connects out to host CID 2; vfkit default listen mode forwards to the host
   unix socket that the bridge listens on).
@@ -88,18 +88,18 @@ Status source of truth: [`2026-SOURCE-OF-TRUTH.md`](./2026-SOURCE-OF-TRUTH.md).
 - **No host-NixOS dependency**: guest images build locally on the Mac via
   Determinate Nix's native (Virtualization.framework) Linux builder.
 
-## p27-ios-utmse — UTM SE jitless VM backend (iOS/iPadOS/visionOS)
+## p27-ios-utmse. UTM SE jitless VM backend (iOS/iPadOS/visionOS)
 
 - **Goal**: run a jitless VM on iOS (UTM SE model), reusing Wawona's GUI.
 - **Now the mobile engine of [`wwn-vms`](../../wwn-vms)** (unifies with p26/p29
   under the vms/containers split):
-  - `wwn-vms/dependencies/vms/mobile/engine.nix` — jitless **QEMU-TCTI** engine
+  - `wwn-vms/dependencies/vms/mobile/engine.nix`. Jitless **QEMU-TCTI** engine
     built from the **vendored UTM sources in-repo**
     (`wwn-vms/dependencies/vms/utm/`, exposed as `wwn-vms.lib.utm`:
     `qemuUtmPatch`, build scripts, iOS-SE scheme). The former separate
     `wwn-utm` repo/input was folded into `wwn-vms` (the `github:Wawona/UTM`
-    repo was never published — phantom dependency, fixed 2026-07-05).
-  - `wwn-vms/dependencies/vms/mobile/guest.nix` — bundled minimal NixOS guest
+    repo was never published. Phantom dependency, fixed 2026-07-05).
+  - `wwn-vms/dependencies/vms/mobile/guest.nix`. Bundled minimal NixOS guest
     (`nixosConfigurations.wawona-mobile-guest`), shipped as ODR/bundled data.
 - **Containers on iOS**: container-in-VM via `wwn-containers`
   (`nixosConfigurations.wawona-container-guest`, crun in the guest, Wayland over
@@ -107,7 +107,7 @@ Status source of truth: [`2026-SOURCE-OF-TRUTH.md`](./2026-SOURCE-OF-TRUTH.md).
 - **Compliance**: no JIT, no Hypervisor.framework; guest is data. TCTI is the
   honest ceiling. See `wwn-vms/COMPLIANCE.md`.
 
-## p29-wwn-vms-containers — VM/container substrate split (supersedes p29-utm-orbstack)
+## p29-wwn-vms-containers. VM/container substrate split (supersedes p29-utm-orbstack)
 
 - **Done (scaffold + wiring)**: [`wwn-vms`](../../wwn-vms) (VM engines +
   NixOS-only guests) and [`wwn-containers`](../../wwn-containers) (universal OCI
@@ -124,7 +124,7 @@ Status source of truth: [`2026-SOURCE-OF-TRUTH.md`](./2026-SOURCE-OF-TRUTH.md).
   Containers and Machine profile → Containers. Requirement of record:
   [2026-container-cli.md](./2026-container-cli.md).
 
-## p11-mode-b — macOS SkyLight/WindowServer replacement (SIP-gated stretch)
+## p11-mode-b. MacOS SkyLight/WindowServer replacement (SIP-gated stretch)
 
 - **Goal**: on SIP-relaxed macOS, inject to replace WindowServer/SkyLight so
   Wawona is the desktop compositor (like iland's approach).

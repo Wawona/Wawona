@@ -43,6 +43,7 @@ public enum MachineSessionBridge {
     ) throws {
         profileStore.activeMachineId = profile.id
         profileStore.save()
+        #if !SWIFT_PACKAGE
         guard let objc = WWNMachineProfileStore.profile(byId: profile.id) else {
             throw ConnectError.missingProfile
         }
@@ -53,12 +54,17 @@ public enum MachineSessionBridge {
         } catch {
             throw ConnectError.backendFailed(error.localizedDescription)
         }
+        #endif
         MachineRuntimeSettingsApplicator.apply(profile: profile, preferences: preferences)
     }
 
     public static func disconnect(profile: MachineProfile) {
+        #if !SWIFT_PACKAGE
         guard let objc = WWNMachineProfileStore.profile(byId: profile.id) else { return }
         WWNMachineSessionBridge.disconnectProfile(objc)
+        #else
+        _ = profile
+        #endif
     }
     #else
     public static func connect(

@@ -85,7 +85,7 @@ impl Dispatch<zwlr_foreign_toplevel_handle_v1::ZwlrForeignToplevelHandleV1, u32>
             zwlr_foreign_toplevel_handle_v1::Request::SetMaximized => {
                 // Host-authority path (fill-primary on iOS, AppKit zoom on macOS):
                 // emit the event and let the platform bridge resize + sync xdg
-                // state. Do not pre-configure at the current client size here —
+                // state. Do not pre-configure at the current client size here -
                 // that races host fill-primary and never reaches ObjC/Swift
                 // (Close/Minimize push events; Maximize must too).
                 state.pending_compositor_events.push(

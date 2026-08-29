@@ -39,14 +39,29 @@ The flake defines all inputs, overlays, and packages.
 
 ### Inputs
 
-| Input           | Purpose                                              |
-|-----------------|------------------------------------------------------|
-| `nixpkgs`       | Base package set (unstable channel)                  |
-| `rust-overlay`  | Provides `rust-bin.stable.latest.default` with iOS/Android targets |
-| `crate2nix`     | Generates per-crate Nix derivations from `Cargo.lock` |
-| `nix-xcodeenvtests` | Reference Apple host-Xcode wrapper model used by `wwn-toolchain` |
-| `wwn-toolchain` | Cross-compile toolchains, Apple SDK wiring, Android SDK config, library substrate |
-| `wwn-weston`, `wwn-iland`, … | Patched application ports + platform-specific ldflags generators |
+Current flake inputs (see `flake.nix`; do not invent extra `wwn-*` edges):
+
+| Input | Layer / role |
+|-------|----------------|
+| `nixpkgs` | Base package set (unstable) |
+| `rust-overlay` | `rust-bin` with Apple/Android targets |
+| `crate2nix` | Per-crate Nix from `Cargo.lock` |
+| `microvm` | VM machine type (`wwn-vms`) |
+| `nix-appimage` | Linux AppImage packaging |
+| `wwn-toolchain` | L0 substrate (cairo, pango, wayland, openssl, …) |
+| `wwn-iland` | L1 graphics (ANGLE, SwiftShader, MoltenVK, KosmicKrisp) |
+| `wwn-kmscube` | L2 GLES/KMS client |
+| `wwn-weston` | L3 nested compositor |
+| `wwn-niri` | L3′ nested compositor |
+| `wwn-zsh`, `wwn-coreutils`, `wwn-foot`, `wwn-neovim`, `wwn-fastfetch`, `wwn-phoon-rs` | Bundled on-device clients |
+| `wwn-ssh` | OpenSSH (macOS), libssh2 (Apple mobile), OpenSSH portable (Android) |
+| `wwn-waypipe` | Remote Wayland |
+| `wwn-Wawona Swinging Bridge` | Android Desktop / LockScreen bridge |
+| `wwn-vms`, `wwn-containers` | VM and container machine types |
+
+`wwn-apt` was **removed**. Do not document StoreKit `apt install` as a delivery
+path; use Wawona Runtime Wasm packages ([`wasm-wasi.md`](./wasm-wasi.md)).
+as shipping. Canonical DAG: [`wwn-repo-dag.md`](./wwn-repo-dag.md).
 
 ### Rust toolchain overlay
 
@@ -113,9 +128,9 @@ Android, they use the NDK toolchain.
 `wwn-toolchain.lib.mkToolchains` acts as a dispatcher. It
 exports three main functions:
 
-- `buildForIOS name entry` — dispatches to `libs/<name>/ios.nix`
-- `buildForMacOS name entry` — dispatches to `libs/<name>/macos.nix`
-- `buildForAndroid name entry` — dispatches to `libs/<name>/android.nix`
+- `buildForIOS name entry`. Dispatches to `libs/<name>/ios.nix`
+- `buildForMacOS name entry`. Dispatches to `libs/<name>/macos.nix`
+- `buildForAndroid name entry`. Dispatches to `libs/<name>/android.nix`
 
 If no library-specific recipe exists, it falls back to the generic builder in
 `platforms/<platform>.nix`.
@@ -141,7 +156,7 @@ nativeDeps = {
 };
 ```
 
-Each of these is a standalone Nix derivation. Nix caches them individually —
+Each of these is a standalone Nix derivation. Nix caches them individually -
 changing `zstd` does not rebuild `openssl`.
 
 ---
@@ -152,7 +167,7 @@ changing `zstd` does not rebuild `openssl`.
 
 The previous approach used `buildRustPackage`, which treats the entire Cargo
 workspace as a single derivation. Any change to any Rust file or dependency
-forced a full rebuild of everything — tens of minutes for a one-line change.
+forced a full rebuild of everything. Tens of minutes for a one-line change.
 
 **crate2nix** solves this by generating a separate Nix derivation for every
 crate in `Cargo.lock`. Nix's content-addressed store caches each crate
@@ -213,14 +228,14 @@ This is the core file. It accepts:
 
 | Platform          | Cargo target                 | Linker target                         |
 |-------------------|------------------------------|---------------------------------------|
-| macOS             | (native, no `--target`)      | —                                     |
+| macOS             | (native, no `--target`)      |.                                     |
 | iOS device        | `aarch64-apple-ios`          | `arm64-apple-ios26.0`                 |
 | iOS simulator     | `aarch64-apple-ios-sim`      | `arm64-apple-ios26.0-simulator`       |
 | Android           | `aarch64-linux-android`      | via NDK linker wrapper                |
 
 #### Cross-compilation strategy
 
-For macOS builds, `buildRustCrate` runs natively — no cross-compilation
+For macOS builds, `buildRustCrate` runs natively. No cross-compilation
 needed.
 
 For iOS and Android, we face a fundamental problem: nixpkgs'
@@ -241,7 +256,7 @@ correctly set:
 This produces correctly-tagged Mach-O objects from the start (platform 7 for
 iOS Simulator, platform 2 for iOS device). No binary patching required.
 
-The override is surgical — we only change the fields that `configure-crate.nix`
+The override is surgical. We only change the fields that `configure-crate.nix`
 and `build-crate.nix` actually read:
 
 ```nix
@@ -312,11 +327,11 @@ crossPreConfigure = ''
 '';
 ```
 
-- `unset MACOSX_DEPLOYMENT_TARGET` — prevents cc-rs from injecting
+- `unset MACOSX_DEPLOYMENT_TARGET`. Prevents cc-rs from injecting
   `--target=arm64-apple-macosx`
-- `CC_<target>` / `CFLAGS_<target>` — target-specific overrides that cc-rs
+- `CC_<target>` / `CFLAGS_<target>`. Target-specific overrides that cc-rs
   reads; provides clang with the correct `-target` flag
-- `CRATE_CC_NO_DEFAULTS=1` — tells cc-rs to skip all default flag detection,
+- `CRATE_CC_NO_DEFAULTS=1`. Tells cc-rs to skip all default flag detection,
   including the `xcrun` SDK lookup
 
 This works because the C sources bundled in `-sys` crates (zlib, libssh2,
@@ -359,10 +374,10 @@ directly call them. Without this, rustc's dead code elimination would strip
 
 The final derivation (`stdenvNoCC.mkDerivation`) assembles:
 
-- `$out/lib/libwawona.a` — static library (iOS, macOS)
-- `$out/lib/libwawona_core.so` — shared library (Android, macOS)
-- `$out/bin/` — CLI tools (macOS only)
-- `$out/uniffi/` — generated Swift bindings (macOS only)
+- `$out/lib/libwawona.a`. Static library (iOS, macOS)
+- `$out/lib/libwawona_core.so`. Shared library (Android, macOS)
+- `$out/bin/`. CLI tools (macOS only)
+- `$out/uniffi/`. Generated Swift bindings (macOS only)
 
 ---
 

@@ -36,12 +36,14 @@ if [ "$AI_MAGIC" != "414902" ]; then
   exit 1
 fi
 
+# Product-build / Gate keep a short unversioned name. Ship: GitHub assets
+# renames to Wawona-{calver}-Linux-{arch}.AppImage in release.yml (aarch64→arm64).
 ARCH="${SYSTEM%%-*}"
 mkdir -p dist
 DEST="dist/Wawona-${ARCH}.AppImage"
 cp "$APPIMAGE" "$DEST"
 chmod +x "$DEST"
-echo "Staged $DEST"
+echo "Staged $DEST (ship boundary renames to CalVer+platform+arch)"
 
 # Best-effort FUSE-free extraction sanity. The type-2 runtime self-extracts
 # without FUSE; if the runner blocks even that, don't fail the gate.

@@ -1,5 +1,5 @@
 /*
- * anowaw_jni.c — JNI glue between the Wawona Android app and the anowaW Rust
+ * anowaw_jni.c. JNI glue between the Wawona Android app and the anowaW Rust
  * bridge core (include/anowaw.h).
  *
  * Mirrors the shape of Wawona's existing android_jni.c waypipe wiring: the

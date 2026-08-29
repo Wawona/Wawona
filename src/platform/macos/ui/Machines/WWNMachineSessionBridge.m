@@ -1,12 +1,13 @@
 #import "WWNMachineSessionBridge.h"
 #import "../Settings/WWNWaypipeRunner.h"
 #import "../Settings/WWNPreferencesManager.h"
+#import "../Settings/WWNEnvironmentOverrides.h"
 #import "WWNVirtualMachineRunner.h"
 #import "WWNContainerRunner.h"
 #import "WWNPlatformCapabilities.h"
 #import "../../WWNSettings.h"
 #if TARGET_OS_OSX
-#import "WWNAnowaWController.h"
+#import "WWNSwingingBridgeController.h"
 #import "WWNDesktopReplacementController.h"
 #endif
 
@@ -102,7 +103,7 @@
 #if TARGET_OS_IPHONE
   // Native Wayland clients may run concurrently (multiple weston-terminal,
   // flower, …). VM / waypipe / container backends on mobile still share a
-  // single in-process engine — tear those down before switching.
+  // single in-process engine. Tear those down before switching.
   if (![self profileUsesNativeCompositorClient:profile]) {
     [self stopAllActiveTransports];
   }
@@ -115,6 +116,18 @@
   [WWNMachineProfileStore applyMachineToRuntimePrefs:profile];
   [WWNMachineProfileStore setActiveMachineId:profile.machineId];
   WWNSettings_ApplyGraphicsDriverSelection();
+  // Re-apply env overrides after graphics setenv so user values win (#157).
+  {
+    NSDictionary *machineEnv = nil;
+    id runtime = profile.runtimeOverrides;
+    if ([runtime isKindOfClass:[NSDictionary class]]) {
+      id env = runtime[@"environment"];
+      if ([env isKindOfClass:[NSDictionary class]]) {
+        machineEnv = env;
+      }
+    }
+    WWNEnvironmentOverridesApply(machineEnv);
+  }
 
   if ([self profileUsesNativeCompositorClient:profile]) {
     NSString *clientId = [self nativeClientIdForProfile:profile];
@@ -150,32 +163,39 @@
       }
       return NO;
     }
-#if TARGET_OS_OSX
-    // Mode B Desktop Replacement: SIP + Desktop prefs + desktop machine →
-    // DYLD_INSERT libwayland-mac.dylib (not Mode A in-window present).
-    WWNDesktopReplacementController *desktop =
-        [WWNDesktopReplacementController sharedController];
-    if ([desktop shouldEngageModeB] && [desktop isDesktopMachine:profile] &&
-        [clientId isEqualToString:@"weston"]) {
-      NSError *modeBError = nil;
-      if (![desktop engageForProfile:profile error:&modeBError]) {
+    // Classic Take Over is Settings / menubar Replace now only. Starting
+    // the Desktop machine from Machines stays Mode A in-window.
+    if ([clientId isEqualToString:@"wawona-wasm"]) {
+      NSDictionary *runtime =
+          [profile.runtimeOverrides isKindOfClass:[NSDictionary class]]
+              ? profile.runtimeOverrides
+              : @{};
+      NSString *wasmPath =
+          [runtime[@"wasmModulePath"] isKindOfClass:[NSString class]]
+              ? runtime[@"wasmModulePath"]
+              : @"";
+      wasmPath = [wasmPath stringByExpandingTildeInPath];
+      if (wasmPath.length == 0 ||
+          ![[NSFileManager defaultManager] fileExistsAtPath:wasmPath]) {
         if (error) {
-          *error = modeBError;
+          *error = [NSError
+              errorWithDomain:@"WWNMachineSessionBridge"
+                         code:6
+                     userInfo:@{
+                       NSLocalizedDescriptionKey :
+                           @"Pick a Wayland .wasm module in Machine Settings "
+                           @"(Wawona Runtime) before starting."
+                     }];
         }
         return NO;
       }
-      if (WWNPlatformAllowsAnowaW()) {
-        [[WWNAnowaWController sharedController] attachForProfile:profile];
-      }
-      return YES;
     }
-#endif
     [[WWNWaypipeRunner sharedRunner] launchBundledClientWithId:clientId
                                                      machineId:profile.machineId];
 #if TARGET_OS_OSX
-    // App Bridge (anowaW): macOS-only (platform-targets matrix).
-    if (WWNPlatformAllowsAnowaW() && [clientId isEqualToString:@"weston"]) {
-      [[WWNAnowaWController sharedController] attachForProfile:profile];
+    // Wawona Swinging Bridge: macOS-only (platform-targets matrix).
+    if (WWNPlatformAllowsSwingingBridge() && [clientId isEqualToString:@"weston"]) {
+      [[WWNSwingingBridgeController sharedController] attachForProfile:profile];
     }
 #endif
     return YES;
@@ -262,11 +282,11 @@
     if ([desktop isDesktopMachine:profile]) {
       [desktop disengage];
     }
-    if (WWNPlatformAllowsAnowaW() && [clientId isEqualToString:@"weston"]) {
-      [[WWNAnowaWController sharedController] detach];
+    if (WWNPlatformAllowsSwingingBridge() && [clientId isEqualToString:@"weston"]) {
+      [[WWNSwingingBridgeController sharedController] detach];
     }
 #endif
-    // Stop only this machine's instance — other copies of the same client
+    // Stop only this machine's instance. Other copies of the same client
     // (and other machines) keep running.
     [runner stopBundledClientForMachineId:profile.machineId];
 #if TARGET_OS_IPHONE

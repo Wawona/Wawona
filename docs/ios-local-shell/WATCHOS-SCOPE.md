@@ -1,4 +1,4 @@
-# watchOS / tvOS Scope — Constrained In-Process Shell
+# watchOS / tvOS Scope. Constrained In-Process Shell
 
 **Decision (v2):** The in-process zsh stack (zsh + `wawona-pty` + `wawona-rootfs` +
 real `weston-terminal`) now ships across the **entire Apple family**, including
@@ -34,7 +34,7 @@ build" message for safe-subset names so the UX stays honest.
 
 | Constraint | Mitigation |
 |------------|-----------|
-| Screen size (~41–49 mm) | Constrained UX; short interactive sessions; redirect-to-iPhone affordance retained |
+| Screen size (~41-49 mm) | Constrained UX; short interactive sessions; redirect-to-iPhone affordance retained |
 | Memory budget | watchOS size-gates coreutils off; zsh + compositor only |
 | Input | Soft keyboard where available; tvOS uses focus-engine; redirect string still offered |
 
@@ -63,5 +63,16 @@ Rust utilities + zsh builtins, downloads no code, and never forks/execs on the
 sandbox (exit-safe via `catch_unwind`). For watchOS, describe the shell as a
 constrained companion experience; do not over-claim a full desktop terminal.
 
-Any spawn policy must re-use [SECURITY-SPAWN-POLICY.md](SECURITY-SPAWN-POLICY.md) —
+Any spawn policy must re-use [SECURITY-SPAWN-POLICY.md](SECURITY-SPAWN-POLICY.md) -
 no exceptions.
+
+---
+
+## Present (SpriteKit)
+
+Watch clients still commit **SHM** (`CGImage` in `WWNWatchCompositorBridge`).
+The session surface GPU-composites those frames with SpriteKit
+(`WatchSpritePresentView`, 30 fps cap, paused when the scene is not active).
+That is **not** GLES/Vulkan. `gpuStackGate` stays blocked until the watchOS
+SDK ships public Metal. `WWN_WATCHOS_METAL=1` is research only and never in
+the store Watch IPA. `WWN_WATCH_SK_PRESENT=0` restores the CPU `Image` blit.

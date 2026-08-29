@@ -78,7 +78,7 @@ impl Dispatch<WpFifoManagerV1, ()> for CompositorState {
 }
 
 // ============================================================================
-// wp_fifo_v1 — user data is surface_id: u32
+// wp_fifo_v1. User data is surface_id: u32
 // ============================================================================
 
 impl Dispatch<WpFifoV1, u32> for CompositorState {

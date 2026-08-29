@@ -1,6 +1,10 @@
 # Waypipe Integration
 
-> Waypipe enables remote Wayland application display over SSH. This document covers all platforms: macOS, iOS, and Android.
+> Remote Wayland over SSH. Public subset for wawona.io.
+
+SSH backends (`wwn-ssh`): **OpenSSH** on macOS, **libssh2** on Apple mobile
+(iOS / iPadOS / tvOS / watchOS / visionOS), **OpenSSH portable** on Android.
+Dropbear is not used.
 
 ---
 
@@ -131,9 +135,9 @@ iOS App                        SSH                          Remote
 
 ### Key Files
 
-- `wwn-toolchain/dependencies/libs/libssh2/patch-streamlocal.sh` — adds streamlocal support to libssh2
-- `wwn-waypipe/dependencies/libs/waypipe/patch-waypipe-source.sh` — creates `transport_ssh2.rs`
-- `wwn-waypipe/dependencies/libs/waypipe/ios.nix` — iOS waypipe build
+- `wwn-toolchain/dependencies/libs/libssh2/patch-streamlocal.sh`. Adds streamlocal support to libssh2
+- `wwn-waypipe/dependencies/libs/waypipe/patch-waypipe-source.sh`. Creates `transport_ssh2.rs`
+- `wwn-waypipe/dependencies/libs/waypipe/ios.nix`. IOS waypipe build
 
 ### libssh2 Streamlocal Patch
 

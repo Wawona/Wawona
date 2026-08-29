@@ -1,9 +1,9 @@
 /*
- * WWNLog.h — Unified logging for Wawona
+ * WWNLog.h. Unified logging for Wawona
  *
  * Format: YYYY-MM-DD HH:MM:SS [MODULE] message
  *
- * Writes to a preserved stderr fd so in-process zsh (dup2 onto fds 0–2) does
+ * Writes to a preserved stderr fd so in-process zsh (dup2 onto fds 0-2) does
  * not route compositor logs into weston-terminal.
  *
  * Usage (ObjC):  WWNLog("BRIDGE", @"Output: %ux%u", w, h);
@@ -28,12 +28,39 @@
  * dismisses itself (first frame presented or user tap).
  *
  * Call sites must not rely on the sink being called in any particular order
- * relative to the dprintf write — it is an advisory, best-effort channel.
+ * relative to the dprintf write. It is an advisory, best-effort channel.
  *
  * The sink is called with the module tag and a pre-formatted UTF-8 string.
  * It must be safe to call from any thread.
  */
 extern void (*wwn_startup_log_sink)(const char *module, const char *msg);
+
+/*
+ * In-process ring for Settings → About → Copy logs. Implemented in
+ * src/util/logging.rs. Caller frees dump strings with WWNStringFree.
+ */
+#ifdef __cplusplus
+extern "C" {
+#endif
+void wwn_log_ring_append(const char *module, const char *msg);
+void wwn_log_ring_set_machine(const char *machine_id);
+char *wwn_log_ring_dump(const char *machine_id_or_null);
+char *wwn_github_bug_report_url(const char *platform,
+                                const char *install_channel,
+                                const char *wawona_version,
+                                const char *host_os, const char *logs);
+void WWNStringFree(char *s);
+#ifdef __cplusplus
+}
+#endif
+
+/*
+ * Headless CLI (`--mode-b-*`, etc.) sets this so WWNLog does not dump
+ * compositor bring-up onto the caller's terminal. Operator output uses
+ * stdout / WWNModeBCliLog instead.
+ */
+extern int wwn_log_quiet;
+static inline void WWNLogSetQuiet(int quiet) { wwn_log_quiet = quiet; }
 
 static int g_wwn_preserved_stderr_fd = -1;
 static pthread_once_t g_wwn_preserved_stderr_once = PTHREAD_ONCE_INIT;
@@ -58,19 +85,24 @@ static inline int WWNPreservedStderrFd(void)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wgnu-zero-variadic-macro-arguments"
 
-/* ObjC variant — supports %@ via NSString formatting. */
+/* ObjC variant. Supports %@ via NSString formatting. */
 #define WWNLog(module, fmt, ...)                                               \
   do {                                                                         \
     time_t _wt = time(NULL);                                                   \
     struct tm _wtm;                                                            \
     localtime_r(&_wt, &_wtm);                                                  \
     NSString *_wmsg = [NSString stringWithFormat:fmt, ##__VA_ARGS__];          \
-    dprintf(WWNPreservedStderrFd(),                                            \
-            "%04d-%02d-%02d %02d:%02d:%02d [%s] %s\n",                         \
-            _wtm.tm_year + 1900, _wtm.tm_mon + 1, _wtm.tm_mday, _wtm.tm_hour,  \
-            _wtm.tm_min, _wtm.tm_sec, module, [_wmsg UTF8String]);             \
-    if (wwn_startup_log_sink) {                                                \
+    if (!wwn_log_quiet) {                                                      \
+      dprintf(WWNPreservedStderrFd(),                                          \
+              "%04d-%02d-%02d %02d:%02d:%02d [%s] %s\n",                       \
+              _wtm.tm_year + 1900, _wtm.tm_mon + 1, _wtm.tm_mday, _wtm.tm_hour,\
+              _wtm.tm_min, _wtm.tm_sec, module, [_wmsg UTF8String]);           \
+    }                                                                          \
+    if (!wwn_log_quiet && wwn_startup_log_sink) {                              \
       wwn_startup_log_sink(module, [_wmsg UTF8String]);                        \
+    }                                                                          \
+    if (wwn_log_ring_append) {                                                 \
+      wwn_log_ring_append(module, [_wmsg UTF8String]);                         \
     }                                                                          \
   } while (0)
 
@@ -78,20 +110,25 @@ static inline int WWNPreservedStderrFd(void)
 
 #else
 
-/* Pure-C variant — standard printf format specifiers only. */
+/* Pure-C variant. Standard printf format specifiers only. */
 #define WWNLog(module, fmt, ...)                                               \
   do {                                                                         \
     time_t _wt = time(NULL);                                                   \
     struct tm _wtm;                                                            \
     localtime_r(&_wt, &_wtm);                                                  \
-    dprintf(WWNPreservedStderrFd(),                                            \
-            "%04d-%02d-%02d %02d:%02d:%02d [%s] " fmt "\n",                    \
-            _wtm.tm_year + 1900, _wtm.tm_mon + 1, _wtm.tm_mday, _wtm.tm_hour,  \
-            _wtm.tm_min, _wtm.tm_sec, module, ##__VA_ARGS__);                  \
-    if (wwn_startup_log_sink) {                                                \
-      char _wbuf[1024];                                                        \
-      snprintf(_wbuf, sizeof(_wbuf), fmt, ##__VA_ARGS__);                      \
+    if (!wwn_log_quiet) {                                                      \
+      dprintf(WWNPreservedStderrFd(),                                          \
+              "%04d-%02d-%02d %02d:%02d:%02d [%s] " fmt "\n",                  \
+              _wtm.tm_year + 1900, _wtm.tm_mon + 1, _wtm.tm_mday, _wtm.tm_hour,\
+              _wtm.tm_min, _wtm.tm_sec, module, ##__VA_ARGS__);                \
+    }                                                                          \
+    char _wbuf[1024];                                                          \
+    snprintf(_wbuf, sizeof(_wbuf), fmt, ##__VA_ARGS__);                        \
+    if (!wwn_log_quiet && wwn_startup_log_sink) {                              \
       wwn_startup_log_sink(module, _wbuf);                                     \
+    }                                                                          \
+    if (wwn_log_ring_append) {                                                 \
+      wwn_log_ring_append(module, _wbuf);                                      \
     }                                                                          \
   } while (0)
 

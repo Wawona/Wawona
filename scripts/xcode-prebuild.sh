@@ -19,10 +19,18 @@ export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}"
 export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 mkdir -p "$XDG_CACHE_HOME" "$XDG_CONFIG_HOME"
 
-derived="${DERIVED_FILE_DIR:?DERIVED_FILE_DIR is unset — is this script running as an Xcode build phase?}"
+# Relocating HOME hides ~/.config/nix/nix.conf. Nested `nix build` then
+# fails with "experimental Nix feature 'nix-command' is disabled" unless
+# flakes live in /etc/nix/nix.conf. Keep nix-command + flakes on for this
+# process; extra-experimental-features is additive if they are already on.
+_wwn_nix_features="nix-command flakes"
+export NIX_CONFIG="${NIX_CONFIG:+${NIX_CONFIG}
+}experimental-features = ${_wwn_nix_features}"
+
+derived="${DERIVED_FILE_DIR:?DERIVED_FILE_DIR is unset. Is this script running as an Xcode build phase?}"
 mkdir -p "$derived"
 
-# Local getprogname/setprogname for Apple mobile — force-loaded before weston /
+# Local getprogname/setprogname for Apple mobile. Force-loaded before weston /
 # fontconfig so App Store Connect never sees libSystem's private ___progname.
 case "${PLATFORM_NAME:-}" in
   iphoneos|iphonesimulator|appletvos|appletvsimulator|xros|xrsimulator)
@@ -144,19 +152,36 @@ else
   _active_backend="${BACKENDS[0]}"
 fi
 
-_nix_flags=(--impure)
+_nix_flags=(
+  --impure
+  --extra-experimental-features "${_wwn_nix_features}"
+)
 if [ -n "${WAWONA_NIX_FLAGS:-}" ]; then
   # shellcheck disable=SC2206
   _nix_flags+=(${WAWONA_NIX_FLAGS})
 fi
 
-# Optional: reuse a previously realized backend when flake rebuild is broken
-# (e.g. watchOS waypipe cfg gates). Set WAWONA_BACKEND_OUT to a store path
-# containing lib/libwawona.a.
+# Optional: reuse a previously realized backend (Nix product builds pass the
+# store path so xcodebuild does not nested-compile crate2nix / rustc).
+# Per-target: WAWONA_BACKEND_OUT_Wawona_iOS, …_Wawona_watchOS, …
+# Fallback:   WAWONA_BACKEND_OUT
+_backend_env=""
+case "${TARGET_NAME:-}" in
+  Wawona-iOS) _backend_env="${WAWONA_BACKEND_OUT_Wawona_iOS:-}" ;;
+  Wawona-iPadOS) _backend_env="${WAWONA_BACKEND_OUT_Wawona_iPadOS:-}" ;;
+  Wawona-macOS) _backend_env="${WAWONA_BACKEND_OUT_Wawona_macOS:-}" ;;
+  Wawona-tvOS) _backend_env="${WAWONA_BACKEND_OUT_Wawona_tvOS:-}" ;;
+  Wawona-visionOS) _backend_env="${WAWONA_BACKEND_OUT_Wawona_visionOS:-}" ;;
+  Wawona-watchOS) _backend_env="${WAWONA_BACKEND_OUT_Wawona_watchOS:-}" ;;
+esac
+if [ -z "$_backend_env" ]; then
+  _backend_env="${WAWONA_BACKEND_OUT:-}"
+fi
+
 active_out=""
-if [ -n "${WAWONA_BACKEND_OUT:-}" ] && [ -f "${WAWONA_BACKEND_OUT}/lib/libwawona.a" ]; then
-  active_out="${WAWONA_BACKEND_OUT}"
-  echo "Using WAWONA_BACKEND_OUT=$active_out (skipping nix build #$_active_backend)"
+if [ -n "$_backend_env" ] && [ -f "$_backend_env/lib/libwawona.a" ]; then
+  active_out="$_backend_env"
+  echo "Using realized backend $active_out (skipping nix build #$_active_backend)"
 else
   echo "Realizing Nix backend(s) for ${TARGET_NAME} (sdk=${_sdk:-unknown}, active=${_active_backend}, nix=$NIX)"
 
@@ -201,7 +226,7 @@ if [ "${#LINK_DEPS[@]}" -gt 0 ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# privatize_lib — merge a static archive into a single relocatable .o, strip
+# privatize_lib. Merge a static archive into a single relocatable .o, strip
 # all global symbols except the listed exports, and repackage as .a.
 # This prevents duplicate-symbol collisions when linking multiple UNIX
 # toolchains (zsh, neovim, openssh) into a single iOS binary.
@@ -278,7 +303,7 @@ case "$_sdk" in
 esac
 
 if [ "$_with_zsh" = "1" ]; then
-  # Must match the app SDK platform — iOS zsh cannot link into tvOS/watchOS/visionOS.
+  # Must match the app SDK platform. IOS zsh cannot link into tvOS/watchOS/visionOS.
   _zsh_attr="zsh-ios"
   case "${TARGET_NAME:-}" in
     Wawona-tvOS) _zsh_attr="zsh-tvos" ;;
@@ -301,7 +326,7 @@ if [ "$_with_zsh" = "1" ]; then
   fi
 
   # neovim: linked on iOS/iPadOS/visionOS only (size + fork/exec editor). Skip
-  # on tvOS/watchOS — mobile-platform-deps does not ship it there.
+  # on tvOS/watchOS. Mobile-platform-deps does not ship it there.
   case "${TARGET_NAME:-}" in
     Wawona-iOS|Wawona-iPadOS|Wawona-visionOS)
       _nvim_attr="neovim-ios-device"
@@ -345,7 +370,7 @@ if [ "$_with_zsh" = "1" ]; then
   # foot + fuzzel: Wayland client archives that each embed their own copy of the
   # generated protocol marshalling (xdg_toplevel_interface, …). Force-loaded raw,
   # those symbols collide with weston's (and each other's). Privatize like
-  # neovim/zsh — merge to one .o, keep only the *_main entry global — so the
+  # neovim/zsh. Merge to one .o, keep only the *_main entry global. So the
   # protocol symbols become local and weston's copies stay authoritative.
   # foot is linked on every Apple-mobile target; fuzzel on iOS/iPadOS/visionOS.
   _foot_dev_attr="foot-ios"; _foot_sim_attr="foot-ios-sim"

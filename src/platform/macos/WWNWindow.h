@@ -1,6 +1,7 @@
 #pragma once
 
 #import <Cocoa/Cocoa.h>
+#import <TargetConditionals.h>
 
 @interface WWNWindow : NSWindow <NSWindowDelegate>
 @property(nonatomic, assign) uint64_t wwnWindowId;
@@ -21,16 +22,28 @@
 /// Last left-mouse-down in this window; used when `xdg_toplevel.move` arrives
 /// after button inject (WindowMoveRequested → performWindowDragWithEvent).
 @property(nonatomic, strong) NSEvent *lastMouseDownEvent;
+/// Flower/smoke/simple-egl/simple-shm: client owns a preferred square. Host
+/// must not inject live resize or leave the NSWindow resizable.
+@property(nonatomic, assign) BOOL prefersFixedSquare;
+/// Nested weston/niri (and terminals): host size is authoritative. Do not
+/// OWL-shrink the NSWindow to a smaller first client commit.
+@property(nonatomic, assign) BOOL fillsHost;
 /// Toggle AppKit chrome vs transparent host for SSD/CSD presentation.
 - (void)applyPresentationPolicyForServerSideDecorations:(BOOL)serverSideDecorations;
 /// Called when bridge tears host down (client path) so delayed force-close cancels.
 - (void)cancelPendingHostCloseEscalation;
 @end
 
-@interface WWNView : NSView <NSTextInputClient>
+@interface WWNView : NSView <NSTextInputClient
+#if TARGET_OS_OSX
+    ,
+    NSDraggingDestination
+#endif
+>
 @property(nonatomic, assign) uint64_t overrideWindowId;
 @property(nonatomic, strong, readonly) CALayer *contentLayer;
 - (BOOL)prepareIlandMetalPresentation;
+- (void)stopIlandMetalPresentation;
 - (BOOL)launchNestedIlandGpuClient:(NSString *)clientId;
 - (BOOL)launchNestedKmscube;
 @end

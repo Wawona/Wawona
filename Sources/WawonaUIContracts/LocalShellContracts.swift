@@ -19,7 +19,8 @@ public struct LocalShellCapabilities: OptionSet, Sendable {
     public static let importFile = LocalShellCapabilities(rawValue: 1 << 2)
     public static let resetDotfiles = LocalShellCapabilities(rawValue: 1 << 3)
     public static let reinstallSystemTree = LocalShellCapabilities(rawValue: 1 << 4)
-    /// Optional iCloud Drive sync for shell HOME (Apple platforms, user opt-in).
+    /// Optional iCloud Drive sync for shell HOME (macOS, iOS, iPadOS, visionOS).
+    /// Unavailable on tvOS and watchOS (Apple QA1935). Not CloudKit / KVS.
     public static let iCloudSync = LocalShellCapabilities(rawValue: 1 << 5)
 }
 
@@ -49,8 +50,8 @@ public struct LocalShellSnapshot: Sendable, Hashable {
         home: String = "",
         localHome: String? = nil,
         systemRoot: String = "",
-        bundleTemplateVersion: String = "—",
-        appliedTemplateVersion: String = "—",
+        bundleTemplateVersion: String = "-",
+        appliedTemplateVersion: String = "-",
         filesHint: String = "",
         shellPath: String? = nil,
         iCloudSync: LocalShellICloudSyncState? = nil,
@@ -74,7 +75,7 @@ public struct LocalShellSnapshot: Sendable, Hashable {
         if mode == .host {
             return "host shell"
         }
-        let applied = appliedTemplateVersion.isEmpty ? "—" : appliedTemplateVersion
+        let applied = appliedTemplateVersion.isEmpty ? "-" : appliedTemplateVersion
         return "bundle v\(bundleTemplateVersion) / installed v\(applied)"
     }
 }

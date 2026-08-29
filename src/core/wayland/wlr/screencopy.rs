@@ -1,4 +1,4 @@
-//! zwlr_screencopy_manager_v1 — screen capture via platform pixel readback.
+//! zwlr_screencopy_manager_v1. Screen capture via platform pixel readback.
 
 use wayland_server::{protocol::wl_shm, Dispatch, DisplayHandle, GlobalDispatch, Resource};
 
@@ -195,7 +195,7 @@ pub fn complete_screencopy(state: &mut CompositorState, capture_id: u64) -> bool
             let tv_nsec = now.subsec_nanos();
             // Protocol v3: flags event should be sent before ready. The wayland-protocols-wlr
             // generated API expects a Flags type that isn't publicly exported. Skipping flags
-            // (0 = no y_invert) — most clients accept ready without it.
+            // (0 = no y_invert). Most clients accept ready without it.
             pending.frame.ready(tv_sec_hi, tv_sec_lo, tv_nsec);
             tracing::debug!("screencopy complete: capture {} ready", capture_id);
         }

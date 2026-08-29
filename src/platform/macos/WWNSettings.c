@@ -2,13 +2,14 @@
 #include <string.h>
 
 /*
- * wwn_startup_log_sink — default NULL definition for non-iOS builds.
- * On iOS/tvOS/visionOS, WWNStartupLogger.m provides the real function pointer.
- * On macOS there is no startup log overlay so the sink stays NULL and all
- * WWNLog() calls fall through to dprintf only.
+ * wwn_startup_log_sink. Default NULL definition for non-iOS builds.
+ * On iOS/tvOS/visionOS/watchOS, WWNStartupLogger.m provides the real
+ * function pointer. On macOS there is no startup log overlay so the sink
+ * stays NULL and all WWNLog() calls fall through to dprintf only.
  */
 #if !TARGET_OS_IPHONE
 void (*wwn_startup_log_sink)(const char *module, const char *msg) = NULL;
+int wwn_log_quiet = 0;
 #endif
 
 #ifndef __APPLE__

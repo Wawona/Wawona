@@ -322,7 +322,7 @@ impl CompositorState {
                         // non-zero serial, and many clients (weston family) commit the
                         // first buffer before that serial is cleared. Blocking here left
                         // the host stuck on the 64×64 placeholder while the buffer was
-                        // already client-sized — or never adopted the real size at all.
+                        // already client-sized. Or never adopted the real size at all.
                         let awaiting_first = !window.has_committed_buffer
                             || matches!(
                                 window.size_authority,
@@ -356,9 +356,10 @@ impl CompositorState {
                                 }
                             }
 
-                            // Permanent size-authority state machine — see
+                            // Permanent size-authority state machine. See
                             // `core::window::size_authority`. Exactly one side
                             // may change agreed size; no host↔client ping-pong.
+                            let client_may_refuse = !window.fills_host;
                             let decision = window.size_authority.clone().on_client_commit(
                                 target_width,
                                 target_height,
@@ -367,6 +368,7 @@ impl CompositorState {
                                 xdg_pending_serial,
                                 window.has_committed_buffer,
                                 interactive_resize,
+                                client_may_refuse,
                             );
                             crate::wlog_hot!(
                                 crate::util::logging::STATE,

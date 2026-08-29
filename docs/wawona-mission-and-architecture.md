@@ -1,5 +1,7 @@
 # Wawona: mission and architecture
 
+> **Public subset** for wawona.io.
+
 Canonical statement of what Wawona is for. When a design decision is ambiguous,
 this document decides it. Per-target detail lives in the rules it links to; this
 is the intent those rules serve.
@@ -21,7 +23,7 @@ integrates with on its own terms:
 | tvOS | UIKit + Metal |
 | watchOS | WatchKit |
 | Android | Jetpack Compose / native surfaces |
-| Linux | GTK front-end — runs **under X11 or under another Wayland compositor** |
+| Linux | GTK front-end. Runs **under X11 or under another Wayland compositor** |
 
 The host-agnosticism is the point, not a side effect. Because bridging to native
 GUI is Wawona's own job, nothing in the compositor core presumes a Wayland (or
@@ -33,17 +35,20 @@ new backend, not a rewrite.
 Wawona is not a remote-desktop viewer. A Wayland client reaches the user through
 whichever of these fits the platform:
 
-1. **Native** — the client (or a nested compositor) is cross-compiled to the
+1. **Native**. The client (or a nested compositor) is cross-compiled to the
    host ABI and runs on the machine itself. Apple mobile runs these in-process as
    static libraries; macOS uses its unrestricted native process model; Android
-   uses native artifacts.
-2. **Container** — a Linux container on hosts that allow it (macOS, and possibly
-   Android).
-3. **VM or remote machine** — over patched `waypipe-rs`, including on-device
-   JIT-less VMs whose only job is hosting Wayland compositors.
+   uses native artifacts. The **on-device shell** (bundled zsh) is this path.
+2. **Container**. Planned Machine kind on macOS, iOS, iPadOS, Android, and
+   Linux (`wwn-containers` / Containerization.framework on macOS). Forbidden on
+   tvOS, watchOS, visionOS.
+3. **VM or remote machine**. Planned in-GUI VMs on the same platform set as
+   containers (`wwn-vms`; UTM-SE on iOS/iPadOS; Virtualization.framework on
+   macOS), plus remote guests over patched `waypipe-rs`.
 
 Every Machines feature must be classified as native / remote / VM / container and
-refused on targets that forbid that class. See `wawona-platform-targets`.
+refused on targets that forbid that class. See `wawona-platform-targets` and
+`docs/vms-containers.md`.
 
 ## Userland DRM/KMS/GBM (wwn-iland)
 
@@ -51,7 +56,7 @@ Linux graphics clients expect a kernel display stack. Apple and Android do not
 provide one, and a store-shipped app may not add one. `wwn-iland` therefore
 implements **DRM/KMS/GBM entirely in userspace**, emulating KMS objects
 (connector, CRTC, plane, framebuffer) over IOSurface + Metal on Apple and
-AHardwareBuffer on Android — no kernel interaction, no Linux required.
+AHardwareBuffer on Android. No kernel interaction, no Linux required.
 
 This is what makes nested compositors and unmodified GL/Vulkan clients possible
 inside a sandboxed, store-distributed app.
@@ -64,16 +69,31 @@ Detail: `wawona-iland-mode-b-desktop`, `docs/iland-mode-a-b-desktop.md`.
 
 ## Desktop and lockscreen replacement
 
-On **macOS**, Wawona can replace the system compositor outright: a userspace
-`.dylib` runtime tweak standing in for WindowServer / SkyLight / LoginWindow,
-driven by iland's DRM/KMS/GBM. That is **Mode B** — SIP-gated, never shipped in
-store-safe artifacts.
+**Coming soon.** Desktop and LockScreen make Wawona the **host** desktop
+environment and greeter (machine picker; **native-port** profiles only).
 
-On **Android**, the equivalent is **anowaW**: rootless (MediaProjection) or power
-(Shizuku/root). There is no SIP and never a Mode B dylib.
+- **macOS:** SIP **fully disabled** (`csrutil disable` in Recovery) + `.dylib`
+  (**iland Mode B**) in `wawona-macos-desktop-host`. Partial SIP
+  (`csrutil enable --without debug`) is refused. Still in development.
+- **Android:** Default Home App + LockScreen APIs. **no root**, no fallback
+  tier. Still in development.
+- **iOS / iPadOS:** only as a jailbreak tweak from **`repo.wawona.io`**
+  (website docs). App Store builds keep this **forbidden** and must **never
+  mention jailbreak**. iPhone and iPad share the same policy.
+- **Not** Linux. **Not** App Store tvOS / watchOS / visionOS.
 
-Desktop / LockScreen / anowaW are **macOS and Android only**. Not iOS, iPadOS,
-tvOS, watchOS, or visionOS.
+Detail: `wawona-iland-mode-b-desktop`, `docs/iland-mode-a-b-desktop.md`.
+
+## Wawona Swinging Bridge (app bridge. Separate from Desktop/LockScreen)
+
+**Coming soon.** Wawona Swinging Bridge bridges **macOS / Android / iOS / iPadOS** host apps
+onto Wayland surfaces (zero-copy surface bridge). It is **not** Desktop/LockScreen
+and **not** MediaProjection-as-desktop. Mode A ships in store/Play-shaped builds;
+Mode B is privileged (macOS Desktop Mode B needs SIP fully disabled;
+Android root paths; iOS/iPadOS via
+`repo.wawona.io`) and **forbidden** in App Store / Play artifacts.
+
+Detail: `wawona-swinging-bridge`, `docs/swinging-bridge.md`.
 
 Where Wawona is not replacing the desktop, it integrates with it: clients appear
 as ordinary host windows under the proprietary host compositor.
@@ -94,7 +114,7 @@ Host window-manager behaviour per target is fixed by
 
 ## Bundled ported software
 
-Wawona ships real Linux software compiled natively into the app — **Niri** and
+Wawona ships real Linux software compiled natively into the app. **Niri** and
 **Weston** are mandatory on every target (see `AGENTS.md`), alongside a growing
 set of Wayland clients. These are genuine ports using the target's native ABI,
 never stubs, fake entry points, or wrong-platform archives.
@@ -106,7 +126,7 @@ normally on Linux, running against Wawona over waypipe.** Because Wawona also
 supports the remote path, that reference is runnable: stream the real Linux build
 in from a VM or remote host and compare. If they differ, the port is wrong.
 
-A port substitutes the *platform underneath* the client — libc gaps, EGL→ANGLE,
+A port substitutes the *platform underneath* the client. Libc gaps, EGL→ANGLE,
 Vulkan→MoltenVK/KosmicKrisp, DRM/KMS/GBM→`wwn-iland`, static linking shape. It
 never substitutes the client's own behaviour: the protocols it speaks, the
 windowing path upstream itself uses, its renderer, or its feature set.
@@ -114,17 +134,20 @@ windowing path upstream itself uses, its renderer, or its feature set.
 That last point decides which graphics path a client gets. `kmscube` is a DRM/KMS
 program upstream, so its port uses iland's userspace KMS. `opengl-cube` and
 `vkcube` are Wayland clients upstream, so their ports must use Wayland-EGL and
-Wayland Vulkan WSI — re-hosting them onto our KMS emulation because that path
+Wayland Vulkan WSI. Re-hosting them onto our KMS emulation because that path
 happened to be finished first produces something that would look nothing like
 itself over waypipe. Full rule: `wawona-port-fidelity`.
 
 ## The GUI is the product
 
-Users will not set environment variables, and must never have to. Wawona provides
-the complete GUI to create and configure **per-machine profiles** — how software
-launches, which drivers and backends it uses, how it connects — with full control
-and **without ever touching a terminal**. A feature that only works by exporting a
-variable or editing a config file by hand is unfinished.
+Users will not set environment variables in a terminal, and must never have to.
+Wawona provides the complete GUI to create and configure **per-machine profiles**
+- how software launches, which drivers and backends it uses, how it connects -
+with full control and **without ever touching a terminal**. Settings →
+**Environment** inventories the variables Wawona injects and lets power users
+override or reset them (global + per-machine); that GUI is the supported path,
+not `export` in a shell. A feature that only works by exporting a variable or
+editing a config file by hand is unfinished.
 
 ### Where upstream offers a choice, so do we
 
@@ -135,8 +158,8 @@ one. Pinning them to nested throws away the userspace DRM/KMS/GBM path that
 `wwn-iland` exists to provide, and hides the bare-metal-shaped behaviour that
 Mode B ultimately depends on.
 
-So the backend is a setting — global (`CompositorBackend`: `auto` | `wayland` |
-`drm`) with a per-machine override — resolved at launch by
+So the backend is a setting. Global (`CompositorBackend`: `auto` | `wayland` |
+`drm`) with a per-machine override. Resolved at launch by
 `WWNResolveCompositorBackend`, which maps it onto each client's own switch
 (`NIRI_BACKEND=nested|tty`, `weston --backend=wayland|drm`). `auto` keeps the
 nested default because it needs no GPU stack; an explicit choice always wins
@@ -154,7 +177,7 @@ from the Linux ecosystem. Mode A exists to make that true simultaneously.
 The asymmetry is fixed and non-negotiable:
 
 - **Apple mobile** (iOS, iPadOS, tvOS, watchOS, visionOS) is the strict baseline:
-  App Store Review Guideline 2.5.2 — no executable code beyond the signed bundle,
+  App Store Review Guideline 2.5.2. No executable code beyond the signed bundle,
   no JIT, no fork/exec, in-process only, libssh2 only.
 - **Android (Play)** is more permissive and may take those freedoms in
   Android-only code.
@@ -168,7 +191,7 @@ relaxations separately.
 
 "Unsupported" is the most dangerous word in this codebase, because it hides four
 situations that demand opposite responses. Every capability gate must say which
-one it is — in the rules, in `CapabilityGate`
+one it is. In the rules, in `CapabilityGate`
 (`Sources/WawonaModel/PlatformCapabilities.swift`), and in the Nix registry.
 
 | State | Meaning | Correct response |
@@ -181,19 +204,22 @@ one it is — in the rules, in `CapabilityGate`
 The graphics stack is the worked example, and the two "small" Apple targets land
 in different states despite usually being lumped together:
 
-- **tvOS — planned.** The SDK ships `Metal.framework` *and* `OpenGLES.framework`,
-  with `CAMetalLayer` available since tvOS 9. Wayland GL, Vulkan, and userspace
-  DRM/KMS/GBM on tvOS are all legal public-API work; they are off only because
-  they are unfinished (final phase, `WWN_TVOS_GPU=1`).
-- **watchOS — blocked.** The SDK ships no `Metal.framework` and annotates
+- **tvOS. Planned until a rendered GLES and Vulkan frame.** The SDK ships
+  `Metal.framework` *and* `OpenGLES.framework`, with `CAMetalLayer` available
+  since tvOS 9. ANGLE (`target_platform=tvos`) and MoltenVK are linked when
+  `WWN_TVOS_GPU_BUNDLED`. Runtime PROPER still needs a spinning cube on device.
+- **watchOS. Blocked.** The SDK ships no `Metal.framework` and annotates
   `CAMetalLayer` `API_UNAVAILABLE(watchos)`. ANGLE and MoltenVK both bottom out
   in Metal, so there is no floor. We want it; Apple offers nothing to build it
   on. SHM/CPU is the current ceiling, not a preference.
-- **VM/containers on tvOS and watchOS — forbidden.** Policy, not a gap.
+- **VM/containers on tvOS, watchOS, and visionOS. Forbidden.** Policy, not a
+  gap. On macOS, iOS, iPadOS, Android, and Linux they are **planned** (UTM-SE /
+  Virtualization / Containerization / `wwn-vms`. See `docs/vms-containers.md`).
+  The on-device shell is separate.
 
 Two obligations follow. Never downgrade a `planned` gate into a permanent
 exclusion to make CI green. Never upgrade a `blocked` gate by reaching for
-private API — that trades store compliance, which Mode A exists to protect, for a
+private API. That trades store compliance, which Mode A exists to protect, for a
 demo.
 
 ## What this rules out
@@ -208,8 +234,8 @@ demo.
 
 ## See also
 
-- `wawona-platform-targets` — per-target capability matrix
-- `wawona-iland-mode-b-desktop` — Mode A / Mode B split
-- `wawona-macos-no-appstore` — macOS is never store-constrained
-- `wawona-repo-dag` — L0–L4 repository layering
-- `wawona-native-compositors` — Weston/Niri bundling requirement
+- `wawona-platform-targets`. Per-target capability matrix
+- `wawona-iland-mode-b-desktop`. Mode A / Mode B split
+- `wawona-macos-no-appstore`. MacOS is never store-constrained
+- `wawona-repo-dag`. L0-L4 repository layering
+- `wawona-native-compositors`. Weston/Niri bundling requirement

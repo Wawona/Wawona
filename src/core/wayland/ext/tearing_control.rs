@@ -23,7 +23,7 @@ use crate::core::state::CompositorState;
 /// Presentation hint from the client
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PresentationHint {
-    /// VSync — no tearing (default)
+    /// VSync. No tearing (default)
     #[default]
     Vsync,
     /// Allow tearing for lowest latency
@@ -92,7 +92,7 @@ impl Dispatch<WpTearingControlManagerV1, ()> for CompositorState {
 }
 
 // ============================================================================
-// wp_tearing_control_v1 — user data is surface_id: u32
+// wp_tearing_control_v1. User data is surface_id: u32
 // ============================================================================
 
 impl Dispatch<WpTearingControlV1, u32> for CompositorState {

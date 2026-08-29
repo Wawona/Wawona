@@ -1,13 +1,16 @@
-# Native `container` CLI — requirement + implementation status
+# Native `container` CLI. Requirement + implementation status
 
 > **Status: PARTIALLY IMPLEMENTED (2026-07-05, verified on macOS 26.5.1 arm64).**
 > Image management is REAL on the host: `pull` / `images` / `rmi` / `inspect` /
-> `resolve` are wired to `wwn-oci` (digest-verified registry v2 pull, CAS store,
-> per-image rootfs unpack, local catalog under `$WWN_OCI_ROOT` /
-> `~/.local/share/wwn-oci`). `run` is REAL on macOS: it boots a per-container VM
-> via `wwn-containerd` (Apple Containerization framework; kernel discovered from
-> `WAWONA_VM_KERNEL` or the installed containerization kernels; optional bundled
-> initfs via `WAWONA_VM_INITFS`) — verified booting `alpine:3.20`. Still stubs:
+> `resolve` / `search` / `tags` are wired to `wwn-oci` (digest-verified registry
+> v2 pull, CAS store, per-image rootfs unpack, local catalog under `$WWN_OCI_ROOT` /
+> `~/.local/share/wwn-oci`; Docker Hub discovery via the Hub JSON API). `run` is
+> REAL on macOS: it boots a per-container VM via `wwn-containerd` (Apple
+> Containerization framework; kernel discovered from `WAWONA_VM_KERNEL` or the
+> installed containerization kernels; optional bundled initfs via
+> `WAWONA_VM_INITFS`) — verified booting `alpine:3.20`. The GUI layer (Settings →
+> Containers + per-machine `containerSettings`, resolution documented in
+> `2026-container-settings.md`) is implemented on macOS. Still stubs:
 > `exec`/`ps`/`start`/`stop`/`rm`/`logs` (need a persistent container session;
 > `wwn-containerd` is one-shot run+wait), `run` on non-macOS targets
 > (container-in-VM via `wwn-vms`), and per-target cross-built registry variants.
@@ -16,8 +19,8 @@
 
 Wawona's **native terminals** (backed by [`wwn-zsh`](../../wwn-zsh)) must expose a
 first-class `container` command so a user can **manage and run OCI containers
-from a shell, on every Wawona target** — the whole Apple ecosystem (macOS, iOS,
-iPadOS, tvOS, visionOS, watchOS) and Android — and **boot containers from inside
+from a shell, on every Wawona target**. The whole Apple ecosystem (macOS, iOS,
+iPadOS, tvOS, visionOS, watchOS) and Android. And **boot containers from inside
 native clients as if using a real computer**.
 
 This is the shell/terminal front-end to the same substrate the GUI uses:
@@ -25,7 +28,7 @@ This is the shell/terminal front-end to the same substrate the GUI uses:
 - **Wawona Machine profile config → Containers** (per-profile container setup).
 
 All three surfaces (CLI, Settings, Machine profiles) drive the **one** backend in
-[`wwn-containers`](../../wwn-containers). The CLI is not a separate implementation —
+[`wwn-containers`](../../wwn-containers). The CLI is not a separate implementation -
 it is a thin front-end over `wwn-oci` (image management) and the per-target
 execution backend.
 
@@ -45,22 +48,35 @@ execution backend.
 
 ## Command surface (planned)
 
-Image management (universal — pure userspace `wwn-oci`, compliant on **every**
+Image management (universal. Pure userspace `wwn-oci`, compliant on **every**
 target incl. iOS/watchOS):
 
 - `container pull <ref>` — pull an OCI image into the local content-addressable store
 - `container images` — list stored images
 - `container inspect <ref>` — show manifest/config
 - `container rmi <ref>` — remove an image
+- `container resolve <ref>` — parse a reference and print its components
+- `container search <query>` — search Docker Hub (metadata only, `--json` for
+  machine output; Hub's JSON API is outside the OCI distribution spec)
+- `container tags <repo>` — list a Docker Hub repository's tags (single-component
+  names resolve to the official `library/` namespace)
 
-Lifecycle (only where a Linux kernel is legally available — see the matrix):
+Lifecycle (only where a Linux kernel is legally available. See the matrix):
 
-- `container run <ref> [cmd...]` — create + start a container and attach its
+- `container run <ref> [cmd...]`. Create + start a container and attach its
   Wayland session into Wawona (vsock + waypipe)
-- `container exec <id> <cmd...>` — exec a process in a running container
-- `container ps` — list containers
-- `container start|stop|rm <id>` — lifecycle control
-- `container logs <id>` — stream logs
+- `container exec <id> <cmd...>`. Exec a process in a running container
+- `container ps`. List containers
+- `container start|stop|rm <id>`. Lifecycle control
+- `container logs <id>`. Stream logs
+
+`run` parses the flags the macOS backend (`wwn-containerd`) can honor —
+`-k/--kernel`, `--initfs`, `-m/--memory`, `-c/--cpus`, `--fs-size`,
+`--read-only`, `--init`, `--id`, `--wayland-vsock-port`, plus `--rm` as an
+accepted no-op (every run is one-shot) — and **rejects** flags it cannot honor
+(e.g. `--mount`, `--publish`, `--shm-size`, `--platform`, `--env`) with exit 3,
+never silently dropping them. See [`2026-container-settings.md`](2026-container-settings.md)
+for the GUI ↔ CLI field mapping.
 
 The scaffold prints this surface via `container --help` and exits non-zero (code
 `3`) for any real subcommand, pointing back to this doc.
@@ -85,17 +101,17 @@ a capability message (never fake execution).
 
 ## Compliance requirements (must hold for every target)
 
-Inherited from `wwn-containers/COMPLIANCE.md` — the CLI does not get to relax any
+Inherited from `wwn-containers/COMPLIANCE.md`. The CLI does not get to relax any
 of these:
 
 - **Image management is universal and always compliant** (no code execution).
-- **No execution without a kernel** — Apple Containerization on macOS or a
+- **No execution without a kernel**. Apple Containerization on macOS or a
   `wwn-vms` VM everywhere else; on watchOS / MAS the CLI offers image management
   only.
-- **No JIT on Apple targets** — mobile execution rides the jitless QEMU-TCTI VM.
-- **No downloaded executables on Apple targets** — kernels/rootfs/runtime are
+- **No JIT on Apple targets**. Mobile execution rides the jitless QEMU-TCTI VM.
+- **No downloaded executables on Apple targets**. Kernels/rootfs/runtime are
   bundled resources; only OCI *image data* is fetched at runtime.
-- **Rootless where possible** — the Android proot path needs no root and no JIT.
+- **Rootless where possible**. The Android proot path needs no root and no JIT.
 
 ## Integration points to wire (later)
 
@@ -113,7 +129,7 @@ of these:
 
 ## Non-goals / honest limits
 
-- No execution on watchOS or under the Mac App Store sandbox — image management
+- No execution on watchOS or under the Mac App Store sandbox. Image management
   only there.
 - No Docker-daemon socket compatibility promised; this is a Wawona-native CLI
   over `wwn-oci` + per-target backends, not a `dockerd` drop-in.

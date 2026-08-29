@@ -27,7 +27,9 @@ public struct MachineSettingsView: View {
                     Button("Open Wawona Settings…") {
                         PlatformGlobalSettings.open()
                     }
-                    Text("Global defaults (Display, Input, Graphics, Waypipe, SSH). Values below override those settings for this machine only.")
+                    Text(draft?.type.isSSH == true
+                         ? "Global defaults (Display, Input, Graphics, Waypipe, SSH). Values below override those settings for this machine only."
+                         : "Global defaults (Display, Input, Graphics). Values below override those settings for this machine only.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -54,6 +56,7 @@ public struct MachineSettingsView: View {
                                 Text(profile.name).tag(profile.id)
                             }
                         }
+                        .wwnDisclosurePicker()
                     }
                     #else
                     Picker("Profile", selection: Binding(
@@ -67,17 +70,24 @@ public struct MachineSettingsView: View {
                             Text(profile.name).tag(profile.id)
                         }
                     }
+                    .wwnDisclosurePicker()
                     #endif
                 }
             }
 
             if let draft {
                 machineConfigurationSection(for: draft)
-                sshWaypipeSection()
+                if draft.type.isSSH {
+                    sshWaypipeSection()
+                }
+                if draft.type == .container {
+                    containerSection()
+                }
                 displaySection()
                 inputSection()
                 graphicsSection()
                 advancedSection()
+                environmentSection()
                 resolvedPreviewSection(for: draft)
                 actionsSection()
             }
@@ -87,6 +97,35 @@ public struct MachineSettingsView: View {
         .onAppear {
             selectedID = machineID ?? profileStore.activeMachineId ?? profileStore.profiles.first?.id
             loadDraft()
+        }
+    }
+
+    @ViewBuilder
+    private func containerSection() -> some View {
+        Section {
+            TextField("Image", text: containerImageRefBinding)
+                .wawonaTextFieldNoAutocaps()
+                .autocorrectionDisabled()
+            TextField("Command", text: containerCommandBinding)
+                .wawonaTextFieldNoAutocaps()
+                .autocorrectionDisabled()
+            TextField("Memory (MiB)", text: containerMemoryBinding)
+                .wawonaTextFieldNoAutocaps()
+                .autocorrectionDisabled()
+            Toggle("Read-Only Rootfs", isOn: containerReadOnlyBinding)
+            Toggle("Init Process", isOn: containerInitProcessBinding)
+            TextField("Kernel Path", text: containerKernelPathBinding)
+                .wawonaTextFieldNoAutocaps()
+                .autocorrectionDisabled()
+            TextField("Initfs Path", text: containerInitfsPathBinding)
+                .wawonaTextFieldNoAutocaps()
+                .autocorrectionDisabled()
+        } header: {
+            Text("Container")
+        } footer: {
+            Text("Empty values inherit the global Settings → Containers defaults. "
+                 + "Global default image: \(preferences.containerDefaultImage); "
+                 + "command: \(preferences.containerDefaultCommand).")
         }
     }
 
@@ -115,18 +154,36 @@ public struct MachineSettingsView: View {
                     Text(t.userFacingName).tag(t)
                 }
             }
+            .wwnDisclosurePicker()
 
             if profile.type == .native {
+                #if os(macOS)
+                Picker("Wayland Client", selection: bundledAppIDSelectionBinding) {
+                    ForEach(ClientLauncher.presets) { launcher in
+                        Text(launcher.displayName).tag(launcher.name)
+                    }
+                }
+                .wwnDisclosurePicker()
+                #else
                 NavigationLink {
                     BundledClientPickerView(selection: bundledAppIDSelectionBinding)
                 } label: {
                     HStack {
                         Text("Wayland Client")
                         Spacer()
-                        Text(ClientLauncher.displayName(for: resolvedBundledAppID))
+                        Text(wasmClientSummary)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                     }
+                }
+                #endif
+                if resolvedBundledAppID == "wawona-wasm" {
+                    TextField("Wasm module path", text: wasmModulePathBinding)
+                        .wawonaTextFieldNoAutocaps()
+                        .autocorrectionDisabled()
+                    Text("Wayland WASI `.wasm` run by the Wawona Runtime.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
 
@@ -163,23 +220,30 @@ public struct MachineSettingsView: View {
                 .autocorrectionDisabled()
 
             Toggle("Enable Waypipe", isOn: waypipeEnabledBinding)
-                .disabled(draft?.type == .native)
         }
     }
 
     @ViewBuilder
     private func inputSection() -> some View {
         Section("Input") {
-            Toggle("Show Virtual Cursor", isOn: renderMacOSPointerBinding)
-            Picker("Nested Compositor Cursor", selection: nestedCompositorCursorBinding) {
-                Text("Virtual Pointer").tag("virtual")
+            if draft?.nestedCompositorDrawsOwnCursor == true {
+                Text("Nested compositor (weston, niri, or custom) draws its own cursor. The host virtual pointer stays hidden in Multi-Touch and Touchpad. Show Virtual Cursor applies only to non-compositor clients.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            } else {
+                Toggle("Show Virtual Cursor", isOn: renderMacOSPointerBinding)
                 #if os(macOS)
-                Text("macOS Cursor").tag("host")
-                #else
-                Text("Host Cursor").tag("host")
+                Picker("Nested Compositor Cursor", selection: nestedCompositorCursorBinding) {
+                    Text("Virtual Pointer").tag("virtual")
+                    Text("macOS Cursor").tag("host")
+                }
+                .wwnDisclosurePicker()
+                .disabled(!(draft?.runtimeOverrides.renderMacOSPointer ?? preferences.renderMacOSPointer))
                 #endif
+                Text("Nested and iland DRM compositors hide and grab the host pointer. They draw their own cursor. Show Virtual Cursor is only for non-compositor clients.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
-            .disabled(!(draft?.runtimeOverrides.renderMacOSPointer ?? preferences.renderMacOSPointer))
             #if os(tvOS)
             Text("Touch Input Type: Touchpad (tvOS)")
                 .foregroundStyle(.secondary)
@@ -188,6 +252,7 @@ public struct MachineSettingsView: View {
                 Text("Multi-Touch").tag("Multi-Touch")
                 Text("Touchpad").tag("Touchpad")
             }
+            .wwnDisclosurePicker()
             Text("Overrides global Settings → Input. Multi-Touch is required for many Wayland clients (Weston panel, terminals); Touchpad uses a virtual pointer.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
@@ -217,7 +282,7 @@ public struct MachineSettingsView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
-            Toggle("HDR / Color Operations", isOn: colorOperationsBinding)
+            Toggle("Enable HDR", isOn: colorOperationsBinding)
         }
     }
 
@@ -230,11 +295,47 @@ public struct MachineSettingsView: View {
                 Text("Warn").tag("warn")
                 Text("Error").tag("error")
             }
+            .wwnDisclosurePicker()
+            Picker("Display Backend", selection: compositorBackendBinding) {
+                Text("Inherit global (\(preferences.compositorBackend))").tag("")
+                Text("Auto").tag("auto")
+                Text("Wayland (nested)").tag("wayland")
+                Text("DRM").tag("drm")
+            }
+            .wwnDisclosurePicker()
             #if os(tvOS)
-            Toggle("Long-press Menu to Exit Machine", isOn: shakeToCloseBinding)
+            Toggle("Menu / Shake to Exit Machine", isOn: shakeToCloseBinding)
             #else
             Toggle("Shake to Exit Machine", isOn: shakeToCloseBinding)
             #endif
+            #if !os(tvOS)
+            Toggle("Swipe Back to Exit Machine", isOn: swipeBackToCloseBinding)
+            #endif
+        }
+    }
+
+    @ViewBuilder
+    private func environmentSection() -> some View {
+        Section("Environment Variables") {
+            if let draft {
+                NavigationLink {
+                    EnvironmentVariablesView(
+                        preferences: preferences,
+                        profileStore: profileStore,
+                        machineID: draft.id,
+                        perMachine: true
+                    )
+                } label: {
+                    HStack {
+                        Text("Environment Variables")
+                        Spacer()
+                        let count = draft.runtimeOverrides.environment?.count ?? 0
+                        Text(count == 0 ? "Inherit global" : "\(count) override(s)")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .accessibilityIdentifier("wwn.settings.environment.machine")
+            }
         }
     }
 
@@ -247,23 +348,38 @@ public struct MachineSettingsView: View {
             Text("OpenGL Driver: \(resolved.openGLDriver)")
             Text("DMABUF: \(resolved.dmabufEnabled ? "Enabled" : "Disabled")")
             Text("Force SSD: \(resolved.forceSSD ? "Enabled" : "Disabled")")
-            Text("Show Virtual Cursor: \(resolved.renderMacOSPointer ? "Enabled" : "Disabled")")
-            Text("Nested Compositor Cursor: \(resolved.nestedCompositorCursor)")
+            if profile.nestedCompositorDrawsOwnCursor {
+                Text("Host cursor overlay: Hidden (nested compositor draws its own)")
+            } else {
+                Text("Show Virtual Cursor: \(resolved.renderMacOSPointer ? "Enabled" : "Disabled")")
+            }
             Text("Auto Scale: \(resolved.autoScale ? "Enabled" : "Disabled")")
             Text("HDR: \(resolved.colorOperations ? "Enabled" : "Disabled")")
             Text("Display: \(resolved.waylandDisplay)")
             Text("Touch Input: \(WawonaPreferences.normalizedTouchInputType(resolved.inputProfile))")
-            Text("Host: \(resolved.sshHost)")
-            Text("User: \(resolved.sshUser)")
-            Text("Port: \(resolved.sshPort)")
-            Text("Waypipe Password: \(resolved.waypipeSSHPassword.isEmpty ? "Inherit global" : "Per-machine override")")
-            Text("Waypipe: \(resolved.waypipeEnabled ? "Enabled" : "Disabled")")
+            if profile.type.isSSH {
+                Text("Host: \(resolved.sshHost)")
+                Text("User: \(resolved.sshUser)")
+                Text("Port: \(resolved.sshPort)")
+                Text("Waypipe Password: \(resolved.waypipeSSHPassword.isEmpty ? "Inherit global" : "Per-machine override")")
+                Text("Waypipe: \(resolved.waypipeEnabled ? "Enabled" : "Disabled")")
+            }
             Text("Bundled App: \(resolved.bundledAppID.isEmpty ? "Off" : resolved.bundledAppID)")
             Text("Log Level: \(resolved.logLevel)")
+            if resolved.machineType == .container {
+                Text("Container Image: \(resolved.containerImageRef)")
+                Text("Container Command: \(resolved.containerCommand)")
+                Text("Container Memory: \(resolved.containerMemory.isEmpty ? "default" : resolved.containerMemory + " MiB")")
+                Text("Container Rootfs: \(resolved.containerReadOnly ? "Read-Only" : "Writable")")
+                Text("Container Remove: \(resolved.containerRemove ? "On exit" : "Keep")")
+                Text("Container Kernel: \(resolved.containerKernelPath.isEmpty ? "auto-discover" : resolved.containerKernelPath)")
+                Text("Container Initfs: \(resolved.containerInitfsPath.isEmpty ? "vminit:latest" : resolved.containerInitfsPath)")
+            }
             #if os(tvOS)
-            Text("Long-press Menu to Exit: \(resolved.shakeToCloseEnabled ? "Enabled" : "Disabled")")
+            Text("Menu / Shake to Exit: \(resolved.shakeToCloseEnabled ? "Enabled" : "Disabled")")
             #else
             Text("Shake to Exit: \(resolved.shakeToCloseEnabled ? "Enabled" : "Disabled")")
+            Text("Swipe Back to Exit: \(resolved.swipeBackToCloseEnabled ? "Enabled" : "Disabled")")
             #endif
         }
     }
@@ -354,10 +470,40 @@ public struct MachineSettingsView: View {
         return raw.isEmpty ? preferences.defaultBundledAppID : raw
     }
 
+    private var wasmClientSummary: String {
+        if resolvedBundledAppID == "wawona-wasm" {
+            let path = draft?.runtimeOverrides.wasmModulePath?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !path.isEmpty {
+                return (path as NSString).lastPathComponent
+            }
+        }
+        return ClientLauncher.displayName(for: resolvedBundledAppID)
+    }
+
+    private var wasmModulePathBinding: Binding<String> {
+        Binding(
+            get: { draft?.runtimeOverrides.wasmModulePath ?? "" },
+            set: { value in
+                updateDraft { profile in
+                    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                    profile.runtimeOverrides.wasmModulePath = trimmed.isEmpty ? nil : trimmed
+                }
+            }
+        )
+    }
+
     private var bundledAppIDSelectionBinding: Binding<String> {
         Binding(
             get: { resolvedBundledAppID },
-            set: { value in updateDraft { $0.runtimeOverrides.bundledAppID = value } }
+            set: { value in
+                updateDraft { profile in
+                    profile.runtimeOverrides.bundledAppID = value
+                    if value != "wawona-wasm" {
+                        profile.runtimeOverrides.wasmModulePath = nil
+                    }
+                }
+            }
         )
     }
 
@@ -467,10 +613,105 @@ public struct MachineSettingsView: View {
         )
     }
 
+    private var compositorBackendBinding: Binding<String> {
+        Binding(
+            get: { draft?.runtimeOverrides.compositorBackend ?? "" },
+            set: { value in
+                updateDraft {
+                    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                    $0.runtimeOverrides.compositorBackend = trimmed.isEmpty ? nil : trimmed
+                }
+            }
+        )
+    }
+
+    // MARK: Container bindings (per-machine > global)
+
+    private var containerImageRefBinding: Binding<String> {
+        Binding(
+            get: { draft?.containerSettings?.containerRef ?? preferences.containerDefaultImage },
+            set: { value in
+                updateContainerSettings { $0.containerRef = value }
+            }
+        )
+    }
+
+    private var containerCommandBinding: Binding<String> {
+        Binding(
+            get: { draft?.containerSettings?.entryCommand ?? preferences.containerDefaultCommand },
+            set: { value in
+                updateContainerSettings { $0.entryCommand = value }
+            }
+        )
+    }
+
+    private var containerMemoryBinding: Binding<String> {
+        Binding(
+            get: { draft?.containerSettings?.memory ?? preferences.containerMemory },
+            set: { value in
+                updateContainerSettings { $0.memory = value }
+            }
+        )
+    }
+
+    private var containerReadOnlyBinding: Binding<Bool> {
+        Binding(
+            get: { draft?.containerSettings?.readOnly ?? false },
+            set: { value in
+                updateContainerSettings { $0.readOnly = value }
+            }
+        )
+    }
+
+    private var containerInitProcessBinding: Binding<Bool> {
+        Binding(
+            get: { draft?.containerSettings?.initProcess ?? false },
+            set: { value in
+                updateContainerSettings { $0.initProcess = value }
+            }
+        )
+    }
+
+    private var containerKernelPathBinding: Binding<String> {
+        Binding(
+            get: { draft?.containerSettings?.kernelPath ?? preferences.containerKernelPath },
+            set: { value in
+                updateContainerSettings { $0.kernelPath = value }
+            }
+        )
+    }
+
+    private var containerInitfsPathBinding: Binding<String> {
+        Binding(
+            get: { draft?.containerSettings?.initfsPath ?? preferences.containerInitfsPath },
+            set: { value in
+                updateContainerSettings { $0.initfsPath = value }
+            }
+        )
+    }
+
+    private func updateContainerSettings(_ mutate: (inout ContainerMachineSettings) -> Void) {
+        updateDraft { profile in
+            var cs = profile.containerSettings ?? ContainerMachineSettings()
+            mutate(&cs)
+            profile.containerSettings = cs
+        }
+    }
+
     private var shakeToCloseBinding: Binding<Bool> {
         Binding(
             get: { draft?.runtimeOverrides.shakeToCloseEnabled ?? preferences.shakeToCloseEnabled },
             set: { value in updateDraft { $0.runtimeOverrides.shakeToCloseEnabled = value } }
+        )
+    }
+
+    private var swipeBackToCloseBinding: Binding<Bool> {
+        Binding(
+            get: {
+                draft?.runtimeOverrides.swipeBackToCloseEnabled
+                    ?? preferences.swipeBackToCloseEnabled
+            },
+            set: { value in updateDraft { $0.runtimeOverrides.swipeBackToCloseEnabled = value } }
         )
     }
 
@@ -479,5 +720,16 @@ public struct MachineSettingsView: View {
         var copy = draft!
         mutate(&copy)
         draft = copy
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func wwnDisclosurePicker() -> some View {
+        #if os(macOS)
+        self.pickerStyle(.menu)
+        #else
+        self.pickerStyle(.navigationLink)
+        #endif
     }
 }

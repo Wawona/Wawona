@@ -11,6 +11,7 @@ pub mod xdg;
 pub mod wlr;
 pub mod plasma;
 pub mod ext;
+pub mod catalog;
 
 impl smithay::wayland::buffer::BufferHandler for crate::core::state::CompositorState {
     fn buffer_destroyed(
@@ -312,7 +313,7 @@ impl smithay::input::SeatHandler for crate::core::state::CompositorState {
 impl smithay::wayland::selection::SelectionHandler for crate::core::state::CompositorState {
     type SelectionUserData = ();
 
-    /// A client set the clipboard (or primary) selection — pull its text
+    /// A client set the clipboard (or primary) selection. Pull its text
     /// so the native platform layer can push it into NSPasteboard /
     /// UIPasteboard / ClipboardManager (see `ClipboardBridge`).
     ///
@@ -327,7 +328,9 @@ impl smithay::wayland::selection::SelectionHandler for crate::core::state::Compo
         source: Option<smithay::wayland::selection::SelectionSource>,
         seat: smithay::input::Seat<Self>,
     ) {
-        if ty != smithay::wayland::selection::SelectionTarget::Clipboard {
+        if ty != smithay::wayland::selection::SelectionTarget::Clipboard
+            && ty != smithay::wayland::selection::SelectionTarget::Primary
+        {
             return;
         }
         let Some(source) = source else {
@@ -380,7 +383,7 @@ impl smithay::wayland::selection::SelectionHandler for crate::core::state::Compo
 
     /// A client requested to read the compositor-owned selection (i.e. the
     /// native pasteboard content most recently pushed via
-    /// `WWNCoreSetClipboardText`) — write it into the client-provided fd.
+    /// `WWNCoreSetClipboardText`). Write it into the client-provided fd.
     fn send_selection(
         &mut self,
         ty: smithay::wayland::selection::SelectionTarget,
@@ -389,7 +392,9 @@ impl smithay::wayland::selection::SelectionHandler for crate::core::state::Compo
         _seat: smithay::input::Seat<Self>,
         _user_data: &Self::SelectionUserData,
     ) {
-        if ty != smithay::wayland::selection::SelectionTarget::Clipboard {
+        if ty != smithay::wayland::selection::SelectionTarget::Clipboard
+            && ty != smithay::wayland::selection::SelectionTarget::Primary
+        {
             return;
         }
         let text = self
@@ -405,6 +410,39 @@ impl smithay::wayland::selection::SelectionHandler for crate::core::state::Compo
     }
 }
 
+/// Decode percent-encoded URI path components (e.g. `%20` → ` `).
+/// Minimal implementation sufficient for file:// URIs; does not handle
+/// full RFC 3986 (query strings, fragments, etc.).
+fn percent_decode(input: &str) -> String {
+    let mut result = Vec::with_capacity(input.len());
+    let bytes = input.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let (Some(hi), Some(lo)) = (
+                hex_val(bytes[i + 1]),
+                hex_val(bytes[i + 2]),
+            ) {
+                result.push(hi << 4 | lo);
+                i += 3;
+                continue;
+            }
+        }
+        result.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8(result).unwrap_or_else(|_| input.to_string())
+}
+
+fn hex_val(b: u8) -> Option<u8> {
+    match b {
+        b'0'..=b'9' => Some(b - b'0'),
+        b'a'..=b'f' => Some(b - b'a' + 10),
+        b'A'..=b'F' => Some(b - b'A' + 10),
+        _ => None,
+    }
+}
+
 impl smithay::wayland::selection::data_device::ClientDndGrabHandler
     for crate::core::state::CompositorState
 {
@@ -413,6 +451,107 @@ impl smithay::wayland::selection::data_device::ClientDndGrabHandler
 impl smithay::wayland::selection::data_device::ServerDndGrabHandler
     for crate::core::state::CompositorState
 {
+    fn accept(&mut self, mime_type: Option<String>, seat: smithay::input::Seat<Self>) {
+        tracing::debug!("DnD server: accept mime_type={:?}, seat={}", mime_type, seat.name());
+    }
+
+    fn action(&mut self, action: wayland_server::protocol::wl_data_device_manager::DndAction, seat: smithay::input::Seat<Self>) {
+        tracing::debug!("DnD server: action={:?}, seat={}", action, seat.name());
+    }
+
+    fn dropped(&mut self, seat: smithay::input::Seat<Self>) {
+        tracing::debug!("DnD server: dropped, seat={}", seat.name());
+    }
+
+    fn cancelled(&mut self, seat: smithay::input::Seat<Self>) {
+        tracing::debug!("DnD server: cancelled, seat={}", seat.name());
+        // Clean up DnD bridge state on cancel
+        if let Ok(mut bridge) = self.dnd_bridge.write() {
+            bridge.active = false;
+            bridge.pending_drop_data = None;
+            bridge.active_mime_types.clear();
+        }
+    }
+
+    fn send(&mut self, mime_type: String, fd: std::os::fd::OwnedFd, _seat: smithay::input::Seat<Self>) {
+        tracing::debug!("DnD server: send requested for mime_type={}", mime_type);
+
+        let bridge_data = self
+            .dnd_bridge
+            .read()
+            .ok()
+            .and_then(|bridge| bridge.pending_drop_data.clone());
+
+        if let Some(data) = bridge_data {
+            let requested_mime = mime_type.clone();
+            // Write to the file descriptor in a background thread to avoid
+            // blocking the compositor.
+            std::thread::Builder::new()
+                .name("wwn-dnd-send".into())
+                .spawn(move || {
+                    use std::io::Write;
+                    let mut file = std::fs::File::from(fd);
+
+                    let payload = if requested_mime == "text/uri-list" {
+                        // Send the URI list as-is (already in text/uri-list format)
+                        data.into_bytes()
+                    } else if requested_mime.starts_with("text/plain") {
+                        // Convert URI list to plain text paths:
+                        // "file:///path/to/file.png\r\n" → "/path/to/file.png\n"
+                        let lines: Vec<String> = data
+                            .lines()
+                            .filter(|l| !l.is_empty())
+                            .map(|line| {
+                                let trimmed = line.trim();
+                                if let Some(path) = trimmed.strip_prefix("file://") {
+                                    // Percent-decode the path
+                                    percent_decode(path)
+                                } else {
+                                    trimmed.to_string()
+                                }
+                            })
+                            .collect();
+                        lines.join("\n").into_bytes()
+                    } else if requested_mime == "image/png" {
+                        // If the data is a file:// URI pointing to a PNG, read it
+                        let uri = data.lines().next().unwrap_or("").trim();
+                        if let Some(path) = uri.strip_prefix("file://") {
+                            let decoded_path = percent_decode(path);
+                            match std::fs::read(&decoded_path) {
+                                Ok(bytes) => bytes,
+                                Err(e) => {
+                                    tracing::warn!("DnD send: failed to read image at {}: {}", decoded_path, e);
+                                    return;
+                                }
+                            }
+                        } else {
+                            data.into_bytes()
+                        }
+                    } else {
+                        // Unknown MIME type — send raw data
+                        tracing::debug!("DnD send: unknown mime '{}', sending raw data", requested_mime);
+                        data.into_bytes()
+                    };
+
+                    if let Err(e) = file.write_all(&payload) {
+                        tracing::warn!("DnD send: failed to write to fd: {}", e);
+                    }
+                })
+                .ok();
+        } else {
+            tracing::warn!("DnD send: no pending drop data available for mime={}", mime_type);
+        }
+    }
+
+    fn finished(&mut self, seat: smithay::input::Seat<Self>) {
+        tracing::debug!("DnD server: finished, seat={}", seat.name());
+        // Clean up DnD bridge state
+        if let Ok(mut bridge) = self.dnd_bridge.write() {
+            bridge.active = false;
+            bridge.pending_drop_data = None;
+            bridge.active_mime_types.clear();
+        }
+    }
 }
 
 impl smithay::wayland::selection::data_device::DataDeviceHandler

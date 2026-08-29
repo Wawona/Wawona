@@ -1,4 +1,4 @@
-# Wawona — wlroots Compatibility
+# Wawona. Wlroots Compatibility
 
 Why Wawona is built on Smithay with native frontends rather than porting
 wlroots, and which wlroots semantics it deliberately mirrors.
@@ -8,7 +8,7 @@ wlroots, and which wlroots semantics it deliberately mirrors.
 - **wlroots is GBM/DRM/libinput-first.** Its backends assume Linux KMS, GBM, and
   evdev. Apple platforms have none of these; Android exposes them only through
   restricted NDK surfaces. Porting wlroots means reimplementing every backend
-  anyway — the hard part — while inheriting a C API and build system that fights
+  anyway. The hard part. While inheriting a C API and build system that fights
   App Store sandboxing.
 - **Smithay is a library, not a compositor.** It gives us the protocol state
   machines (`wayland_frontend`) without imposing a backend, so we plug in native

@@ -4,8 +4,29 @@
 #import "WWNPlatformCallbacks.h"
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
 #import "WWNWindow.h"
+#import <CoreText/CoreText.h>
 #endif
 #import "../../util/WWNLog.h"
+
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+static BOOL gWWNServiceHostMode = NO;
+
+void WWNSetServiceHostMode(BOOL enabled) {
+  gWWNServiceHostMode = enabled;
+  if (enabled) {
+    WWNKeepServiceHostOutOfDock();
+  }
+}
+
+void WWNKeepServiceHostOutOfDock(void) {
+  if (!gWWNServiceHostMode || !NSApp) {
+    return;
+  }
+  if ([NSApp activationPolicy] != NSApplicationActivationPolicyAccessory) {
+    [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+  }
+}
+#endif
 
 @implementation WWNPlatformCallbacks
 
@@ -62,6 +83,7 @@
 
     [self.windowRegistry setObject:window forKey:@(windowId)];
     [window makeKeyAndOrderFront:nil];
+    WWNKeepServiceHostOutOfDock();
 
     WWNLog("PLATFORM", @"Created native window %llu: %@", windowId, title);
 #else
@@ -187,7 +209,7 @@ static void WWNPrependBundledXdgDataDirs(NSString *shareRoot) {
       [shareRoot stringByAppendingPathComponent:@"applications"];
   if (![[NSFileManager defaultManager] fileExistsAtPath:appsDir]) {
     WWNLog("BUNDLE",
-           @"No applications catalog at %@ — fuzzel Mod+D list will be empty",
+           @"No applications catalog at %@. Fuzzel Mod+D list will be empty",
            appsDir);
     return;
   }
@@ -276,6 +298,15 @@ NSString *WWNWawonaAppBundleRoot(void) {
 }
 
 NSString *WWNWawonaAppBundleRootForUI(void) {
+  // LaunchAgents may run the nix-store binary. Dock / `open -a Wawona` must
+  // still open the installed GUI, not a GC'd store copy or a stale
+  // Documents/ahaha 0.2.2.
+  NSString *applications = @"/Applications/Wawona.app";
+  NSString *exec =
+      [applications stringByAppendingPathComponent:@"Contents/MacOS/Wawona"];
+  if ([[NSFileManager defaultManager] isExecutableFileAtPath:exec]) {
+    return applications;
+  }
   return WWNWawonaAppBundleRoot();
 }
 
@@ -556,6 +587,7 @@ static void WWNConfigureBundledFontsIfNeeded(void) {
                        @"  <cachedir>%@</cachedir>\n"
                        @"  <alias>\n"
                        @"    <family>monospace</family>\n"
+                       @"    <prefer><family>DejaVuSansM Nerd Font Mono</family></prefer>\n"
                        @"    <prefer><family>DejaVu Sans Mono</family></prefer>\n"
                        @"  </alias>\n"
                        @"  <alias>\n"
@@ -579,11 +611,46 @@ static void WWNConfigureBundledFontsIfNeeded(void) {
   WWNLog("BUNDLE", @"Configured FONTCONFIG_FILE: %s (fonts: %s)",
          confPath.UTF8String, fontDir.UTF8String);
 
-  NSString *monoFont =
-      [fontDir stringByAppendingPathComponent:@"truetype/DejaVuSansMono.ttf"];
-  if ([[NSFileManager defaultManager] fileExistsAtPath:monoFont]) {
-    setenv("WAWONA_MONO_FONT", monoFont.UTF8String, 1);
+  // Prefer DejaVuSansM Nerd Font Mono for terminals (icons / prompts).
+  // DejaVu Sans Mono remains bundled as a fallback for older layouts.
+  NSArray<NSString *> *monoCandidates = @[
+    @"truetype/DejaVuSansMNerdFontMono-Regular.ttf",
+    @"truetype/DejaVuSansMono.ttf",
+  ];
+  for (NSString *rel in monoCandidates) {
+    NSString *monoFont = [fontDir stringByAppendingPathComponent:rel];
+    if ([[NSFileManager defaultManager] fileExistsAtPath:monoFont]) {
+      setenv("WAWONA_MONO_FONT", monoFont.UTF8String, 1);
+      break;
+    }
   }
+
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+  // Cairo's quartz toy-font path ignores FONTCONFIG_FILE. Register every
+  // bundled face with Core Text so family-name lookups (and foot/fcft when
+  // it falls back) can resolve DejaVuSansM Nerd Font Mono.
+  NSString *ttfDir = [fontDir stringByAppendingPathComponent:@"truetype"];
+  NSArray<NSString *> *ttfs =
+      [[NSFileManager defaultManager] contentsOfDirectoryAtPath:ttfDir
+                                                          error:nil];
+  NSUInteger registered = 0;
+  for (NSString *name in ttfs) {
+    if (![[name lowercaseString] hasSuffix:@".ttf"] &&
+        ![[name lowercaseString] hasSuffix:@".otf"]) {
+      continue;
+    }
+    NSString *path = [ttfDir stringByAppendingPathComponent:name];
+    CFURLRef url = (__bridge CFURLRef)[NSURL fileURLWithPath:path];
+    if (url && CTFontManagerRegisterFontsForURL(
+                   url, kCTFontManagerScopeProcess, NULL)) {
+      registered++;
+    }
+  }
+  if (registered > 0) {
+    WWNLog("BUNDLE", @"Registered %lu bundled fonts with Core Text",
+           (unsigned long)registered);
+  }
+#endif
 }
 
 static void WWNConfigureBundledWestonDataIfNeeded(void) {
@@ -606,13 +673,45 @@ static void WWNConfigureBundledWestonDataIfNeeded(void) {
     setenv("WESTON_BACKEND_DIR", westonBackends.UTF8String, 1);
   }
 
+  NSFileManager *fm = [NSFileManager defaultManager];
+  NSString *bundleRoot = [[NSBundle mainBundle] bundlePath];
+  NSArray<NSString *> *libexecCands = @[
+    [bundleRoot stringByAppendingPathComponent:@"Contents/Resources/bin"],
+    [bundleRoot stringByAppendingPathComponent:@"Contents/MacOS"],
+  ];
+  NSString *westonLibexec = nil;
+  for (NSString *dir in libexecCands) {
+    NSString *helper =
+        [dir stringByAppendingPathComponent:@"weston-desktop-shell"];
+    if ([fm isExecutableFileAtPath:helper]) {
+      westonLibexec = dir;
+      break;
+    }
+  }
+  if (westonLibexec.length > 0) {
+    setenv("WESTON_LIBEXEC_DIR", westonLibexec.UTF8String, 1);
+    NSMutableArray<NSString *> *map = [NSMutableArray array];
+    for (NSString *name in @[ @"weston-desktop-shell", @"weston-keyboard",
+                              @"weston-simple-im" ]) {
+      NSString *path = [westonLibexec stringByAppendingPathComponent:name];
+      if ([fm isExecutableFileAtPath:path]) {
+        [map addObject:[NSString stringWithFormat:@"%@=%@", name, path]];
+      }
+    }
+    if (map.count > 0) {
+      setenv("WESTON_MODULE_MAP",
+             [[map componentsJoinedByString:@";"] UTF8String], 1);
+    }
+  }
+
   NSString *cursorTheme =
       WWNWawonaBundledSharePath(@"icons/Adwaita/cursors");
   if ([[NSFileManager defaultManager] fileExistsAtPath:cursorTheme]) {
     NSString *iconsRoot = WWNWawonaBundledSharePath(@"icons");
     setenv("XCURSOR_PATH", iconsRoot.UTF8String, 1);
     setenv("XCURSOR_THEME", "Adwaita", 1);
-    WWNLog("BUNDLE", @"Configured XCURSOR_PATH: %s (theme=Adwaita)",
+    setenv("XCURSOR_SIZE", "24", 1);
+    WWNLog("BUNDLE", @"Configured XCURSOR_PATH: %s (theme=Adwaita size=24)",
            iconsRoot.UTF8String);
   }
 }

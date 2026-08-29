@@ -29,7 +29,11 @@ enum WawonaUIContractAdapters {
             remoteCommand: profile.remoteCommand,
             inputProfile: profile.runtimeOverrides.inputProfile ?? "direct",
             bundledAppID: profile.runtimeOverrides.bundledAppID ?? "",
-            waypipeEnabled: profile.runtimeOverrides.waypipeEnabled ?? true
+            waypipeEnabled: profile.runtimeOverrides.waypipeEnabled ?? true,
+            containerRef: profile.containerSettings?.containerRef ?? "",
+            entryCommand: profile.containerSettings?.entryCommand ?? "",
+            desktopSession: profile.containerSettings?.desktopSession ?? (profile.type == .container),
+            imageArchivePath: profile.containerSettings?.imageArchivePath ?? ""
         )
     }
 
@@ -58,6 +62,17 @@ enum WawonaUIContractAdapters {
             profile.sshKeyPath = state.sshKeyPath.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
             profile.sshKeyPassphrase = state.sshKeyPassphrase
             profile.remoteCommand = state.remoteCommand.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+        }
+
+        if state.isContainer {
+            profile.containerSettings = ContainerMachineSettings(
+                containerRef: state.containerRef.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines),
+                entryCommand: state.entryCommand.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines),
+                desktopSession: state.desktopSession ? true : nil,
+                imageArchivePath: state.imageArchivePath.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines).isEmpty
+                    ? nil
+                    : state.imageArchivePath.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+            )
         }
 
         return profile

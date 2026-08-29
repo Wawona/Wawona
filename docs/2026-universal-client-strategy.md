@@ -1,4 +1,4 @@
-# Wawona — Universal Client Support & Bundling Strategy
+# Wawona. Universal Client Support & Bundling Strategy
 
 Goal: run "any" Wayland client without shipping a multi-gigabyte app or taking
 years to build every client for every platform. Strategy is **lazy, cached,
@@ -10,38 +10,39 @@ tiered**.
    smoke tests: `weston-simple-shm`, `weston-flower`, `weston-terminal` (mobile
    stub), `weston-smoke`, `weston-clickdot`. Statically linked; tiny.
    Planned toolkit companion: SDL2_gfx `testgfx` (software/`wl_shm`, full Apple
-   matrix including tvOS/watchOS) — [#107](https://github.com/Wawona/Wawona/issues/107).
-2. **On-demand modules (`wwn-apt`).** Larger apps/DEs (foot, neovim, sway, niri,
-   hyprland, xfce, kde, cosmic) are StoreKit products / ODR tags fetched only
-   when the user installs them. Not in the base download. See
-   [`2026-wwn-porting-convention.md`](./2026-wwn-porting-convention.md).
+   matrix including tvOS/watchOS). [#107](https://github.com/Wawona/Wawona/issues/107).
+   Larger native ports that ship in the binary (foot, neovim, …) stay **bundled
+   or weak-linked `*_main`**, not StoreKit ODR.
+2. **Wasm packages (Wawona Runtime).** Long-tail CLI and Wayland clients compiled
+   to WASI P1/P2 (Component Model). Users drop `.wasm` via Files.app / SCP, or
+   install via the bundled Wasm package client (OCI artifacts preferred). The
+   reviewed interpreter is `wwn-wasm`; packages are **data**, not Mach-O.
+   See [`wasm-wasi.md`](./wasm-wasi.md). **Not** a container machine and **not**
+   `wwn-apt` / StoreKit modules (removed).
 3. **Remote (waypipe).** Anything installable on a remote Linux host or NixOS VM
    runs there and streams in. Zero client bundling cost; widest coverage.
+4. **Container / VM machines (separate).** OCI Linux images and full VMs are
+   Machines kinds (`container` / `virtual_machine`) via `wwn-containers` /
+   `wwn-vms`. Not the Wasm package path. See [`vms-containers.md`](./vms-containers.md).
 
 ## Per-client caching
 
 - **Build cache:** each `wwn-*` port is its own flake; owner CI pushes to
-  **FlakeHub Cache** so a client rebuilds only when *its* source changes — not on
+  **FlakeHub Cache** so a client rebuilds only when *its* source changes. Not on
   every Wawona build. Shared cache: [`flakehub-cache.md`](./flakehub-cache.md)
   and [`2026-build-ci-optimization.md`](./2026-build-ci-optimization.md).
-- **Runtime cache:** ODR/StoreKit assets land in a managed cache dir tracked by
-  `WWNModuleManager`'s `installed.json`; eviction is LRU by Apple's ODR policy on
-  device, explicit `apt remove` otherwise.
+- **Runtime Wasm store:** installed components live under the app sandbox
+  (Documents / Application Support); Files.app sideload and the package client
+  share the same Runtime.
 - **Lazy link:** ANGLE/Vulkan dylibs and GL client archives are only linked into
-  a session when the client actually needs GPU transport (else SHM path, no load).
+  targets that allow GPU; watchOS stays on the CPU present path.
 
-## Why this scales
+## Decision tree
 
-- Base app stays small (core clients only) → fast review, fast install.
-- CI builds the base + core clients on every PR; heavy ports build in their own
-  repos' CI and publish to the shared cache (nightly full-matrix pulls them).
-- Coverage grows by adding `wwn-*` repos + `wwn-apt` catalog rows, not by growing
-  the monolith.
-
-## Delivery decision tree
-
-```
-client small + store-safe + frequently used?  -> core bundled
-client large but store-portable?               -> wwn-apt module (ODR/StoreKit)
-client not portable / needs full Linux?        -> waypipe (remote or VM)
+```text
+Need it always / tiny smoke?                   -> core bundled native
+Need Linux rootfs / Docker Hub image?          -> Machines kind container (wwn-containers)
+Need full guest OS?                            -> Machines kind virtual_machine (wwn-vms)
+Need long-tail tool/GUI without native port?   -> WASI .wasm → Wawona Runtime
+Need software already on a remote Linux box?   -> waypipe / SSH
 ```

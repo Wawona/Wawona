@@ -17,7 +17,7 @@ mod app {
     use wawona::ffi::api::{build_info, version};
     use wawona::ffi::types::{
         AxisSource, BufferData, DecorationMode, KeyState as WlKeyState, PointerAxis,
-        PointerButton, RenderScene, WindowEvent, WindowId,
+        PointerButton, RenderScene, WindowEvent, WindowId, WindowSizeCause,
     };
     use wawona::linux::config;
     use wawona::linux::machine_profile::MachineType;
@@ -44,12 +44,14 @@ mod app {
         gtk_window: gtk::Window,
         drawing_area: gtk::DrawingArea,
         window_id: u64,
-        /// `zwp_fullscreen_shell_v1` kiosk surfaces for this connection — drawn into this GtkWindow only.
+        /// `zwp_fullscreen_shell_v1` kiosk surfaces for this connection. Drawn into this GtkWindow only.
         companion_window_ids: Vec<u64>,
         /// Allow internal `WindowEvent::Destroyed` teardown to bypass the user close interceptor.
         allow_host_close: Rc<Cell<bool>>,
         /// When true, skip opaque host fill so CSD rounded corners stay transparent.
         client_side_decorated: bool,
+        /// Nested weston/niri / terminals: do not OWL-shrink on ClientCommit.
+        fills_host: bool,
     }
 
     struct CompositorState {
@@ -60,7 +62,7 @@ mod app {
         client_windows: HashMap<u64, ClientWindow>,
         /// Fullscreen-shell window ids waiting for a normal toplevel from the same client.
         pending_fullscreen_shell_by_client: HashMap<u64, Vec<u64>>,
-        /// First non–fullscreen-shell Wayland window per client → its Gtk host (for kiosk + xdg pairing).
+        /// First non-fullscreen-shell Wayland window per client → its Gtk host (for kiosk + xdg pairing).
         primary_host_wayland_window_by_client: HashMap<u64, u64>,
         /// Latest GTK allocation observed for each host window during live resize.
         pending_host_resizes: HashMap<u64, (u32, u32)>,
@@ -365,6 +367,9 @@ mod app {
         let layout_binding = LayoutBinding::new(LayoutMode::Expanded);
 
         let compositor = start_embedded_compositor();
+        if let Some(core) = compositor.as_ref() {
+            wawona::linux::embedded_core::set(core.clone());
+        }
         // Propagate the GTK/GDK monitor scale factor into wl_output so HiDPI
         // clients render at native density instead of a hardcoded 1x.
         if let Some(core) = compositor.as_ref() {
@@ -524,7 +529,7 @@ mod app {
                             if config.fullscreen_shell {
                                 wawona::wlog!(
                                     "COMPOSITOR",
-                                    "Fullscreen shell wid={} client={} — embedding in primary host (no extra GtkWindow)",
+                                    "Fullscreen shell wid={} client={}. Embedding in primary host (no extra GtkWindow)",
                                     wid,
                                     cid
                                 );
@@ -864,8 +869,9 @@ mod app {
                                 }
                             });
 
+                            let fills_host = config.fills_host;
                             client_win.present();
-                            {
+                            if !fills_host {
                                 let comp_init = comp.clone();
                                 let da_init = da.clone();
                                 let wid_init = wid;
@@ -876,6 +882,9 @@ mod app {
                                     cs.pending_host_resizes.insert(wid_init, (w, h));
                                     dispatch_pending_host_resize(&mut cs, wid_init);
                                 });
+                            } else if config.width > 0 && config.height > 0 {
+                                cs.last_dispatched_host_resizes
+                                    .insert(wid, (config.width, config.height));
                             }
                             cs.client_windows.insert(wid, ClientWindow {
                                 gtk_window: client_win,
@@ -884,6 +893,7 @@ mod app {
                                 companion_window_ids,
                                 allow_host_close,
                                 client_side_decorated: is_csd,
+                                fills_host,
                             });
                         }
                         WindowEvent::Destroyed { window_id } => {
@@ -923,9 +933,11 @@ mod app {
                                 cw.gtk_window.set_title(Some(&title));
                             }
                         }
-                        WindowEvent::SizeChanged { window_id, width, height, .. } => {
+                        WindowEvent::SizeChanged { window_id, width, height, cause, .. } => {
                             if let Some(cw) = cs.client_windows.get(&window_id.id) {
-                                cw.gtk_window.set_default_size(width as i32, height as i32);
+                                if !(cw.fills_host && cause == WindowSizeCause::ClientCommit) {
+                                    cw.gtk_window.set_default_size(width as i32, height as i32);
+                                }
                             }
                             if cs.resize_in_flight.remove(&window_id.id) {
                                 if cs.pending_host_resizes.get(&window_id.id).copied()
@@ -936,7 +948,7 @@ mod app {
                                 if cs.pending_host_resizes.contains_key(&window_id.id) {
                                     dispatch_pending_host_resize(&mut cs, window_id.id);
                                 } else {
-                                    // No newer host tick pending — clear
+                                    // No newer host tick pending. Clear
                                     // xdg_toplevel.state.resizing with a settle
                                     // configure (even if size is unchanged).
                                     settle_interactive_resize(
@@ -951,7 +963,7 @@ mod app {
                         WindowEvent::PopupCreated { window_id, parent_id, x, y, width, height } => {
                             // Composite the popup inside the host window that
                             // renders its parent (toplevel or another popup's
-                            // host) — same mechanism as fullscreen-shell
+                            // host). Same mechanism as fullscreen-shell
                             // companions.
                             let pid = parent_id.id;
                             let host_wid = if cs.client_windows.contains_key(&pid) {

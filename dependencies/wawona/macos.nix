@@ -9,19 +9,38 @@
   foot ? null,
   niri ? null,
   fuzzel ? null,
-  # anowaW app-bridge static lib (libanowaw.a + anowaw_mac_shim.o) + headers,
+  # Swinging Bridge app-bridge static lib (libanowaw.a + anowaw_mac_shim.o) + headers,
   # from `toolchains.buildForMacOS "anowaw"`. When null the compositor still
-  # builds; WWNAnowaWController falls back to its no-op stub (see common.nix).
+  # builds; WWNSwingingBridgeController falls back to its no-op stub (see common.nix).
   anowaw ? null,
   # Mode B dylib (libwayland-mac.dylib) from `buildForMacOS "iland-baremetal"`.
   # When non-null, copy into Contents/Library/Wawona/iland/ for Desktop
   # Replacement. Store-safe / App Store builds MUST pass null.
   ilandBaremetal ? null,
+  # Mode B IOWatchdog CLI from flake input wwn-iowatchdog (L3'). When non-null
+  # with ilandBaremetal, copy bin/wwn-iowatchdog into Contents/Library/Wawona/.
+  iowatchdog ? null,
   fastfetch ? null,
   phoon ? null,
+  wawonaWasm ? null,
+  # wwn-containers `container` CLI (wwn-oci + prebuilt wwn-containerd).
+  containerCli ? null,
+  containerDaemon ? null,
+  # Container Wayland bridge (desktop-session machines): host waypipe with a
+  # working --socket-fds (SplitFD) transport, and the guest aarch64-linux
+  # waypipe injected into the container VM. Null = desktop sessions unavailable
+  # (the backend reports the missing piece clearly).
+  containerWaypipeFds ? null,
+  containerWaypipeGuestLinux ? null,
+  # Relocatable aarch64-linux waypipe tree (bin/ + lib/, patchelf'd to
+  # /opt/wawona-waypipe). Preferred over mounting the full nix closure.
+  containerWaypipeGuestRoot ? null,
+  # Fallback: closureInfo store-paths list for dynamic linker mounts.
+  containerWaypipeGuestClosure ? null,
   neovim ? null,
   zsh ? null,
   kmscube ? null,
+  modebTty ? null,
   waylandVersion ? "unknown",
   xkbcommonVersion ? "unknown",
   lz4Version ? "unknown",
@@ -48,6 +67,12 @@ let
     inherit pkgs lib wawonaSrc;
   };
 
+  # DejaVu (UI/CSD) + DejaVuSansM Nerd Font Mono (terminals / prompts).
+  wawonaBundledFonts = pkgs.callPackage ../libs/fonts { };
+
+  # Cursor files only. Do not use pkgs.adwaita-icon-theme (librsvg + mypy).
+  adwaitaCursors = pkgs.callPackage ./adwaita-cursors.nix { };
+
   ilandGlLdflags = { deps, simulator ? false }: import ilandGlLdflagsNix {
     inherit lib deps simulator;
     forceLoad = true;
@@ -55,6 +80,12 @@ let
   westonToytoolkitLdflags = deps: import westonToytoolkitLdflagsNix {
     inherit lib deps;
     forceLoadWeston = true;
+  };
+  # Self-contained compositor-macos embeds helpers; skip -lweston-13.
+  westonToytoolkitLdflagsMacos = deps: import westonToytoolkitLdflagsNix {
+    inherit lib deps;
+    forceLoadWeston = true;
+    linkWestonLib = false;
   };
   westonCompositorLdflags = deps: import westonCompositorLdflagsNix {
     inherit lib deps;
@@ -81,7 +112,7 @@ let
   appleGlWestonLinkFlags =
     ilandGlLdflags { deps = effectiveNativeDeps; simulator = false; }
     ++ lib.optionals (effectiveNativeDeps ? "weston-compositor" && effectiveNativeDeps."weston-compositor" != null) (
-      (westonToytoolkitLdflags effectiveNativeDeps)
+      (westonToytoolkitLdflagsMacos effectiveNativeDeps)
       ++ (westonCompositorLdflags effectiveNativeDeps)
     );
   
@@ -161,14 +192,14 @@ let
     "src/platform/macos/WWNPopupWindow.h"
     "src/platform/macos/WWNIlandPresenter.m"
     "src/platform/macos/WWNIlandPresenter.h"
-    # Rootfs / iCloud sync — referenced by WWNPreferences.m on all Apple targets.
+    # Rootfs / iCloud sync. Referenced by WWNPreferences.m on all Apple targets.
     "src/platform/macos/WWNRootfsProvider.m"
     "src/platform/macos/WWNRootfsProvider.h"
     "src/platform/macos/WWNRootfsICloudSync.m"
     "src/platform/macos/WWNRootfsICloudSync.h"
-    # Desktop Replacement / anowaW — macOS + Android only (matrix).
-    "src/platform/macos/ui/Machines/WWNAnowaWController.m"
-    "src/platform/macos/ui/Machines/WWNAnowaWController.h"
+    # Desktop Replacement / Swinging Bridge. MacOS + Android only (matrix).
+    "src/platform/macos/ui/Machines/WWNSwingingBridgeController.m"
+    "src/platform/macos/ui/Machines/WWNSwingingBridgeController.h"
     "src/platform/macos/ui/Machines/WWNDesktopReplacementController.m"
     "src/platform/macos/ui/Machines/WWNDesktopReplacementController.h"
     "src/platform/macos/ui/Settings/WWNSipStatus.m"
@@ -313,21 +344,14 @@ let
       fi
     done
 
-    # Menubar icon must use the dedicated monochrome silhouette asset.
-    if [ -f "''$ICON_BUNDLE/Assets/wayland.png" ]; then
-      cp "''$ICON_BUNDLE/Assets/wayland.png" "''$RESOURCES/Wawona-menubar-silhouette.png"
-      echo "Installed Wawona-menubar-silhouette.png from Wawona.icon/Assets/wayland.png"
+    # Dedicated menubar glyph: Wayland W silhouette, no yellow disc / app-icon chrome.
+    SILHOUETTE_SRC="src/resources/macos/Wawona-menubar-silhouette.png"
+    if [ -f "''$SILHOUETTE_SRC" ]; then
+      cp "''$SILHOUETTE_SRC" "''$RESOURCES/Wawona-menubar-silhouette.png"
+      echo "Installed Wawona-menubar-silhouette.png"
     else
-      # Fallback only if the dedicated silhouette is missing.
-      for candidate in "Wawona-iOS-Dark-1024x1024@1x.png" \
-                       "Assets.xcassets/AppIcon.appiconset/AppIcon-Light-1024.png" \
-                       "Wawona-iOS-Light-1024x1024@1x.png"; do
-        if [ -f "''$ICON_ROOT/''$candidate" ]; then
-          cp "''$ICON_ROOT/''$candidate" "''$RESOURCES/Wawona-menubar-silhouette.png"
-          echo "Installed Wawona-menubar-silhouette.png from fallback source"
-          break
-        fi
-      done
+      echo "Error: missing ''$SILHOUETTE_SRC" >&2
+      exit 1
     fi
   '';
 
@@ -335,7 +359,7 @@ let
     mkdir -p "$out/Applications/Wawona.app/Contents/Resources"
   '';
 
-  # Mode B dylib — desktop-host / full-dev only (never store-safe).
+  # Mode B dylib + wwn-iowatchdog. Desktop-host / full-dev only (never store-safe).
   bundleIlandBaremetalDylib = lib.optionalString (ilandBaremetal != null) ''
     bundle_iland_baremetal_dylib() {
       local app="$1"
@@ -352,6 +376,57 @@ let
         codesign --force --sign - --timestamp=none "$dest/libwayland-mac.dylib" 2>/dev/null || true
       fi
       echo "Bundled Mode B dylib: $dest/libwayland-mac.dylib"
+
+      # Kernel IOWatchdog tool from L3' wwn-iowatchdog (not in-tree source).
+      local iow_bin="$app/Contents/Library/Wawona/wwn-iowatchdog"
+      ${if iowatchdog != null then ''
+      local iow_src="${iowatchdog}/bin/wwn-iowatchdog"
+      if [ ! -x "$iow_src" ]; then
+        echo "ERROR: missing $iow_src (Mode B IOWatchdog tool from wwn-iowatchdog)" >&2
+        exit 1
+      fi
+      mkdir -p "$app/Contents/Library/Wawona"
+      cp -L "$iow_src" "$iow_bin"
+      chmod 755 "$iow_bin"
+      if command -v codesign >/dev/null 2>&1; then
+        codesign --force --sign - --timestamp=none "$iow_bin" 2>/dev/null || true
+      fi
+      echo "Bundled Mode B IOWatchdog tool: $iow_bin"
+      # Path B arm + doctor (Classic Take Over requires sticky claim-ok).
+      for _iow_extra in wwn-iowatchdog-claim-install wwn-iowatchdog-claim; do
+        if [ -x "${iowatchdog}/bin/$_iow_extra" ]; then
+          cp -L "${iowatchdog}/bin/$_iow_extra" \
+            "$app/Contents/Library/Wawona/$_iow_extra"
+          chmod 755 "$app/Contents/Library/Wawona/$_iow_extra"
+          if command -v codesign >/dev/null 2>&1; then
+            codesign --force --sign - --timestamp=none \
+              "$app/Contents/Library/Wawona/$_iow_extra" 2>/dev/null || true
+          fi
+          echo "Bundled Mode B $_iow_extra"
+        fi
+      done
+      # arm64e Path B hook (claim-install --path-b).
+      local iow_hook_src="${iowatchdog}/lib/libwwn_watchdogd_hook.dylib"
+      local iow_hook_dst="$app/Contents/Library/Wawona/libwwn_watchdogd_hook.dylib"
+      if [ -f "$iow_hook_src" ]; then
+        cp -L "$iow_hook_src" "$iow_hook_dst"
+        chmod 755 "$iow_hook_dst"
+        mkdir -p "$app/Contents/Library/Wawona/lib"
+        cp -L "$iow_hook_src" \
+          "$app/Contents/Library/Wawona/lib/libwwn_watchdogd_hook.dylib"
+        chmod 755 "$app/Contents/Library/Wawona/lib/libwwn_watchdogd_hook.dylib"
+        if command -v codesign >/dev/null 2>&1; then
+          codesign --force --sign - --timestamp=none "$iow_hook_dst" 2>/dev/null || true
+          codesign --force --sign - --timestamp=none \
+            "$app/Contents/Library/Wawona/lib/libwwn_watchdogd_hook.dylib" \
+            2>/dev/null || true
+        fi
+        echo "Bundled Mode B watchdogd hook (arm64e): $iow_hook_dst"
+      fi
+      '' else ''
+      echo "ERROR: ilandBaremetal set but iowatchdog flake package is null" >&2
+      exit 1
+      ''}
     }
   '';
 
@@ -471,6 +546,36 @@ let
     }
   '';
 
+  # Public libEGL.dylib is iland's Wayland-EGL shim. ANGLE is always staged as
+  # libEGL_angle.dylib so the shim's load_angle() does not recurse.
+  bundleIlandEglShim = ''
+    bundle_iland_egl_shim() {
+      local app="$1"
+      local fw="$app/Contents/Frameworks"
+      local shim="${effectiveNativeDeps.iland}/lib/libEGL.dylib"
+      local angle_egl="${effectiveNativeDeps.angle}/lib/libEGL.dylib"
+      mkdir -p "$fw"
+      if [ -f "$angle_egl" ]; then
+        cp -L "$angle_egl" "$fw/libEGL_angle.dylib"
+        chmod 755 "$fw/libEGL_angle.dylib"
+        install_name_tool -id "@rpath/libEGL_angle.dylib" "$fw/libEGL_angle.dylib" 2>/dev/null || true
+        echo "Bundled ANGLE as libEGL_angle.dylib"
+      else
+        echo "ERROR: ANGLE libEGL.dylib missing at $angle_egl" >&2
+        exit 1
+      fi
+      if [ -f "$shim" ]; then
+        cp -L "$shim" "$fw/libEGL.dylib"
+        chmod 755 "$fw/libEGL.dylib"
+        install_name_tool -id "@rpath/libEGL.dylib" "$fw/libEGL.dylib" 2>/dev/null || true
+        echo "Bundled iland Wayland-EGL shim as libEGL.dylib"
+      else
+        echo "ERROR: iland libEGL.dylib shim missing at $shim" >&2
+        exit 1
+      fi
+    }
+  '';
+
 in
   pkgs.stdenv.mkDerivation rec {
     name = "wawona-macos";
@@ -577,6 +682,8 @@ in
           HOME="$HOME" \
           XDG_CACHE_HOME="$XDG_CACHE_HOME" \
           XDG_CONFIG_HOME="$XDG_CONFIG_HOME" \
+          WAWONA_BACKEND_OUT="${rustBackend}" \
+          WAWONA_BACKEND_OUT_Wawona_macOS="${rustBackend}" \
           xcodebuild \
           -project "./_xcode_project/Wawona.xcodeproj" \
           -scheme "Wawona-macOS" \
@@ -587,17 +694,19 @@ in
           CODE_SIGNING_REQUIRED=NO \
           ONLY_ACTIVE_ARCH=YES \
           build; then
-          XCODE_APP="./_xcode_project/DerivedData/Build/Products/Release/Wawona.app"
-          if [ -d "$XCODE_APP" ]; then
+          BUILT_APP="./_xcode_project/DerivedData/Build/Products/Release/Wawona.app"
+          if [ -d "$BUILT_APP" ]; then
             mkdir -p xcodebuild-out
-            cp -R "$XCODE_APP" "xcodebuild-out/Wawona.app"
+            cp -R "$BUILT_APP" "xcodebuild-out/Wawona.app"
             touch .use_xcodebuild_app
             echo "✅ Xcode project build produced Wawona.app"
           else
-            echo "⚠️  Xcode project build completed but Wawona.app was not found; continuing with manual fallback."
+            echo "❌ Xcode project build completed but Wawona.app was not found."
+            exit 1
           fi
         else
-          echo "⚠️  Xcode project build failed; continuing with manual fallback."
+          echo "❌ Xcode project build failed."
+          exit 1
         fi
       fi
 
@@ -613,11 +722,13 @@ in
       echo "📦 Phase 1: Compiling Swift sources..."
       SWIFT_OBJ=""
       SWIFT_SOURCES=(
-        # Shared View.wwnA11y(_:) — must stay unique with WWNAccessibilityIdentifiers.swift
+        # Shared View.wwnA11y(_:). Must stay unique with WWNAccessibilityIdentifiers.swift
         "Sources/WawonaUI/AccessibilityIdentifiers.swift"
         "src/platform/macos/ui/Machines/WWNAccessibilityIdentifiers.swift"
         "src/platform/macos/ui/Machines/WWNMachineCardView.swift"
         "src/platform/macos/ui/Machines/WWNMachineEditorView.swift"
+        "src/platform/macos/ui/Machines/WWNContainerHubClient.swift"
+        "src/platform/macos/ui/Machines/WWNContainerHubSearchView.swift"
         "src/platform/macos/ui/Machines/WWNMachinesViewModel.swift"
         "src/platform/macos/ui/Machines/WWNMachinesGridView.swift"
       )
@@ -806,10 +917,10 @@ GEN_HEADER
       # PHASE 3: Link everything together
       echo "🔗 Phase 3: Linking final binary..."
 
-      # anowaW app-bridge: static core lib + ScreenCaptureKit/CGEvent shim object.
-      # The shim (.o) is best-effort in wwn-anowaW (needs the macOS SDK frameworks
+      # Swinging Bridge app-bridge: static core lib + ScreenCaptureKit/CGEvent shim object.
+      # The shim (.o) is best-effort in Wawona-Swinging-Bridge (needs the macOS SDK frameworks
       # at dep-build time), so only add it when present. libanowaw.a is safe to
-      # pass unconditionally — if WWNAnowaWController compiled as a stub (header
+      # pass unconditionally. If WWNSwingingBridgeController compiled as a stub (header
       # not vendored) its symbols simply go unreferenced.
       ANOWAW_LINK=""
       ${lib.optionalString (anowaw != null) ''
@@ -900,7 +1011,7 @@ GEN_HEADER
               cp -R "xcodebuild-out/Wawona.app" "$out/Applications/Wawona.app"
               APP="$out/Applications/Wawona.app"
 
-              # Same runtime assets as the manual install path — Xcode's .app does
+              # Same runtime assets as the manual install path. Xcode's .app does
               # not embed weston share/fonts; postInstall verifies these exist.
               mkdir -p "$APP/Contents/Resources/bin" "$APP/Contents/MacOS"
               if [ -d "${weston}/bin" ]; then
@@ -914,6 +1025,85 @@ GEN_HEADER
                   fi
                 done
               fi
+
+              # Bundle the wwn-containers `container` CLI (wwn-oci + macOS
+              # backend) so the GUI search + runner work without a system
+              # install. Its deps stay in the derivation's runtime closure.
+              ${if containerCli != null then ''
+              if [ -f "${containerCli}/bin/container" ]; then
+                cp "${containerCli}/bin/container" "$APP/Contents/Resources/bin/"
+                cp "${containerCli}/bin/container" "$APP/Contents/MacOS/"
+                chmod +x "$APP/Contents/Resources/bin/container" "$APP/Contents/MacOS/container"
+                echo "DEBUG: Bundled container CLI (Xcode path)"
+              else
+                echo "Warning: container binary not found at ${containerCli}/bin/container"
+              fi
+              ${if containerDaemon != null then ''
+              if [ -f "${containerDaemon}/bin/wwn-containerd" ]; then
+                cp "${containerDaemon}/bin/wwn-containerd" "$APP/Contents/Resources/bin/"
+                chmod +x "$APP/Contents/Resources/bin/wwn-containerd"
+                echo "DEBUG: Bundled prebuilt wwn-containerd"
+              else
+                echo "Warning: wwn-containerd binary not found at ${containerDaemon}/bin/wwn-containerd"
+              fi
+              '' else ""}
+              '' else ''
+              echo "Warning: container-cli not provided, skipping container bundling"
+              ''}
+
+              # Container Wayland bridge (desktop sessions): host waypipe (SplitFD,
+              # signed Mach-O) and guest aarch64-linux waypipe (ELF data payload — the
+              # backend injects it into the Linux VM, so it must NOT be codesigned).
+              ${if containerWaypipeFds != null then ''
+              if [ -f "${containerWaypipeFds}/bin/waypipe" ]; then
+                cp "${containerWaypipeFds}/bin/waypipe" "$APP/Contents/Resources/bin/waypipe-fds"
+                chmod +x "$APP/Contents/Resources/bin/waypipe-fds"
+                echo "DEBUG: Bundled waypipe-fds"
+              else
+                echo "Warning: waypipe-fds binary not found at ${containerWaypipeFds}/bin/waypipe"
+              fi
+              '' else ''
+              echo "Warning: container waypipe-fds not provided, desktop sessions unavailable"
+              ''}
+              ${if containerWaypipeGuestLinux != null then ''
+              if [ -f "${containerWaypipeGuestLinux}/bin/waypipe" ]; then
+                cp "${containerWaypipeGuestLinux}/bin/waypipe" "$APP/Contents/Resources/bin/waypipe-guest"
+                chmod +x "$APP/Contents/Resources/bin/waypipe-guest"
+                printf '%s\n' "${containerWaypipeGuestLinux}/bin/waypipe" > "$APP/Contents/Resources/bin/waypipe-guest.store"
+                ${if containerWaypipeGuestRoot != null then ''
+                mkdir -p "$APP/Contents/Resources/bin/waypipe-guest-root"
+                cp -a "${containerWaypipeGuestRoot}/." "$APP/Contents/Resources/bin/waypipe-guest-root/"
+                chmod -R u+w "$APP/Contents/Resources/bin/waypipe-guest-root" || true
+                echo "DEBUG: Bundled waypipe-guest-root (relocatable)"
+                '' else ""}
+                ${if containerWaypipeGuestClosure != null then ''
+                cp "${containerWaypipeGuestClosure}/store-paths" "$APP/Contents/Resources/bin/waypipe-guest.closure"
+                '' else ''
+                # Fallback: query references at build time (path is a build input).
+                if command -v nix-store >/dev/null 2>&1; then
+                  nix-store -qR "${containerWaypipeGuestLinux}" > "$APP/Contents/Resources/bin/waypipe-guest.closure"
+                fi
+                ''}
+                echo "DEBUG: Bundled waypipe-guest (aarch64-linux) + closure"
+              else
+                echo "Warning: waypipe-guest binary not found at ${containerWaypipeGuestLinux}/bin/waypipe"
+              fi
+              '' else ''
+              echo "Warning: container waypipe-guest not provided, desktop sessions unavailable"
+              ''}
+
+              # Terminal SHELL for container machines: weston-terminal runs
+              # $SHELL, and WWNContainerRunner points it here so the container
+              # command (WAWONA_CONTAINER_CMD) runs inside the Wawona terminal.
+              cat > "$APP/Contents/Resources/bin/wawona-container-shell" <<'SHELL_EOF'
+#!/bin/sh
+# Wawona container shell. The terminal emulator runs $SHELL; for container
+# machines Wawona points SHELL here and passes the full command in
+# WAWONA_CONTAINER_CMD.
+exec /bin/sh -lc "$WAWONA_CONTAINER_CMD"
+SHELL_EOF
+              chmod +x "$APP/Contents/Resources/bin/wawona-container-shell"
+
               if [ -d "${weston}/share/weston" ]; then
                 mkdir -p "$APP/share/weston"
                 cp -r "${weston}/share/weston/"* "$APP/share/weston/"
@@ -929,21 +1119,55 @@ GEN_HEADER
                 mkdir -p "$APP/lib/libweston-13"
                 cp -r "${weston}/lib/libweston-13/"* "$APP/lib/libweston-13/"
               fi
-              CURSOR_SRC="${pkgs.adwaita-icon-theme}/share/icons/Adwaita/cursors"
+              CURSOR_SRC="${adwaitaCursors}/share/icons/Adwaita/cursors"
               if [ -d "$CURSOR_SRC" ]; then
-                mkdir -p "$APP/share/icons/Adwaita"
-                cp -r "$CURSOR_SRC" "$APP/share/icons/Adwaita/cursors"
+                # Copy into a mkdir'd dir then chmod: `cp -r` of a nix-store
+                # tree creates a 555 dest, and ln dnd-copy then Permission denied.
+                mkdir -p "$APP/share/icons/Adwaita/cursors"
+                cp -RL "$CURSOR_SRC/." "$APP/share/icons/Adwaita/cursors/"
+                chmod -R u+w "$APP/share/icons/Adwaita/cursors"
+                # Weston looks for dnd-copy / dnd-none; Adwaita 50 only ships dnd-move.
+                [ -e "$APP/share/icons/Adwaita/cursors/dnd-copy" ] \
+                  || ln -sf copy "$APP/share/icons/Adwaita/cursors/dnd-copy"
+                [ -e "$APP/share/icons/Adwaita/cursors/dnd-none" ] \
+                  || ln -sf default "$APP/share/icons/Adwaita/cursors/dnd-none"
+                if [ -f "${adwaitaCursors}/share/icons/Adwaita/index.theme" ]; then
+                  cp -L "${adwaitaCursors}/share/icons/Adwaita/index.theme" \
+                    "$APP/share/icons/Adwaita/index.theme"
+                fi
+                if [ -d "${adwaitaCursors}/share/icons/default" ]; then
+                  mkdir -p "$APP/share/icons/default"
+                  cp -RL "${adwaitaCursors}/share/icons/default/." \
+                    "$APP/share/icons/default/"
+                  chmod -R u+w "$APP/share/icons/default"
+                fi
               fi
-              if [ -d "${pkgs.dejavu_fonts}/share/fonts" ]; then
-                mkdir -p "$APP/share/fonts"
-                cp -RL "${pkgs.dejavu_fonts}/share/fonts/." "$APP/share/fonts/"
-                mkdir -p "$APP/Contents/Resources/share/fonts"
-                cp -RL "${pkgs.dejavu_fonts}/share/fonts/." "$APP/Contents/Resources/share/fonts/"
+              # Weston shell helpers (weston-desktop-shell / weston-keyboard /
+              # weston-simple-im). Same loop as the manual install path below.
+              # desktop-shell.so spawns these from a baked nix-store libexec
+              # path that does not exist at runtime.
+              if [ -d "${weston}/libexec" ]; then
+                for helper in "${weston}/libexec"/weston-*; do
+                  [ -f "$helper" ] || continue
+                  hbase="$(basename "$helper")"
+                  cp "$helper" "$APP/Contents/Resources/bin/"
+                  cp "$helper" "$APP/Contents/MacOS/"
+                  chmod +x "$APP/Contents/Resources/bin/$hbase" "$APP/Contents/MacOS/$hbase"
+                  echo "Bundled weston helper $hbase (xcodebuild)"
+                done
               fi
+              WA_FONTS="${wawonaBundledFonts}"
+              rm -rf "$APP/share/fonts" "$APP/Contents/Resources/share/fonts"
+              mkdir -p "$APP/share/fonts" "$APP/Contents/Resources/share/fonts"
+              cp -RL "$WA_FONTS/share/fonts/." "$APP/share/fonts/"
+              cp -RL "$WA_FONTS/share/fonts/." "$APP/Contents/Resources/share/fonts/"
+              chmod -R u+w "$APP/share/fonts" "$APP/Contents/Resources/share/fonts"
 
               ${bundleMacOSAppDylibs}
+              ${bundleIlandEglShim}
               ${bundleIlandBaremetalDylib}
               echo "Bundling portable dylibs for Xcode-built Wawona.app..."
+              bundle_iland_egl_shim "$APP"
               bundle_macos_app_dylibs "$APP"
               ${lib.optionalString (ilandBaremetal != null) ''bundle_iland_baremetal_dylib "$APP"''}
 
@@ -1110,22 +1334,36 @@ GEN_HEADER
               cp -r "${weston}/lib/libweston-13/"* "$APP/lib/libweston-13/"
               echo "DEBUG: Bundled lib/libweston-13 backends"
             fi
-            CURSOR_SRC="${pkgs.adwaita-icon-theme}/share/icons/Adwaita/cursors"
+            CURSOR_SRC="${adwaitaCursors}/share/icons/Adwaita/cursors"
             if [ -d "$CURSOR_SRC" ]; then
-              mkdir -p "$APP/share/icons/Adwaita"
-              cp -r "$CURSOR_SRC" "$APP/share/icons/Adwaita/cursors"
+              mkdir -p "$APP/share/icons/Adwaita/cursors"
+              cp -RL "$CURSOR_SRC/." "$APP/share/icons/Adwaita/cursors/"
+              chmod -R u+w "$APP/share/icons/Adwaita/cursors"
+              [ -e "$APP/share/icons/Adwaita/cursors/dnd-copy" ] \
+                || ln -sf copy "$APP/share/icons/Adwaita/cursors/dnd-copy"
+              [ -e "$APP/share/icons/Adwaita/cursors/dnd-none" ] \
+                || ln -sf default "$APP/share/icons/Adwaita/cursors/dnd-none"
+              if [ -f "${adwaitaCursors}/share/icons/Adwaita/index.theme" ]; then
+                cp -L "${adwaitaCursors}/share/icons/Adwaita/index.theme" \
+                  "$APP/share/icons/Adwaita/index.theme"
+              fi
+              if [ -d "${adwaitaCursors}/share/icons/default" ]; then
+                mkdir -p "$APP/share/icons/default"
+                cp -RL "${adwaitaCursors}/share/icons/default/." \
+                  "$APP/share/icons/default/"
+                chmod -R u+w "$APP/share/icons/default"
+              fi
               echo "DEBUG: Bundled Adwaita cursors"
             fi
-            if [ -d "${pkgs.dejavu_fonts}/share/fonts" ]; then
-              mkdir -p "$APP/share/fonts"
-              cp -RL "${pkgs.dejavu_fonts}/share/fonts/." "$APP/share/fonts/"
-              # Mirror under Contents/Resources/share for Resource-relative
-              # lookups (foot/fcft + older ShareRoot layouts).
-              mkdir -p "$APP/Contents/Resources/share/fonts"
-              cp -RL "${pkgs.dejavu_fonts}/share/fonts/." "$APP/Contents/Resources/share/fonts/"
-              chmod -R u+w "$APP/share/fonts" "$APP/Contents/Resources/share/fonts"
-              echo "DEBUG: Bundled DejaVu fonts"
-            fi
+            WA_FONTS="${wawonaBundledFonts}"
+            rm -rf "$APP/share/fonts" "$APP/Contents/Resources/share/fonts"
+            mkdir -p "$APP/share/fonts" "$APP/Contents/Resources/share/fonts"
+            cp -RL "$WA_FONTS/share/fonts/." "$APP/share/fonts/"
+            # Mirror under Contents/Resources/share for Resource-relative
+            # lookups (foot/fcft + older ShareRoot layouts).
+            cp -RL "$WA_FONTS/share/fonts/." "$APP/Contents/Resources/share/fonts/"
+            chmod -R u+w "$APP/share/fonts" "$APP/Contents/Resources/share/fonts"
+            echo "DEBUG: Bundled Wawona fonts (DejaVu + DejaVuSansM Nerd Font Mono)"
 
             # Bundle foot terminal
             ${if foot != null then ''
@@ -1224,6 +1462,109 @@ GEN_HEADER
             echo "Warning: phoon not provided, skipping phoon bundling"
             ''}
 
+            # Bundle wasm Runtime CLI + wpm (wwn-wasm). macOS may fork/exec;
+            # Apple mobile uses the in-process C ABI instead.
+            ${if wawonaWasm != null then ''
+            if [ -f "${wawonaWasm}/bin/wasm" ]; then
+              cp "${wawonaWasm}/bin/wasm" $out/Applications/Wawona.app/Contents/Resources/bin/
+              cp "${wawonaWasm}/bin/wasm" $out/Applications/Wawona.app/Contents/MacOS/
+              chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/wasm
+              chmod +x $out/Applications/Wawona.app/Contents/MacOS/wasm
+              echo "DEBUG: Bundled wasm"
+            else
+              echo "Warning: wasm binary not found at ${wawonaWasm}/bin/wasm"
+            fi
+            if [ -f "${wawonaWasm}/bin/wpm" ]; then
+              cp "${wawonaWasm}/bin/wpm" $out/Applications/Wawona.app/Contents/Resources/bin/
+              cp "${wawonaWasm}/bin/wpm" $out/Applications/Wawona.app/Contents/MacOS/
+              chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/wpm
+              chmod +x $out/Applications/Wawona.app/Contents/MacOS/wpm
+              echo "DEBUG: Bundled wpm"
+            else
+              echo "Warning: wpm binary not found at ${wawonaWasm}/bin/wpm"
+            fi
+            '' else ''
+            echo "Warning: wawona-wasm not provided, skipping wasm/wpm bundling"
+            ''}
+
+            # Bundle the wwn-containers `container` CLI (wwn-oci + the macOS
+            # execution backend). The script references its deps by store path,
+            # so they stay in the app's runtime closure automatically.
+            ${if containerCli != null then ''
+            if [ -f "${containerCli}/bin/container" ]; then
+              cp "${containerCli}/bin/container" $out/Applications/Wawona.app/Contents/Resources/bin/
+              cp "${containerCli}/bin/container" $out/Applications/Wawona.app/Contents/MacOS/
+              chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/container
+              chmod +x $out/Applications/Wawona.app/Contents/MacOS/container
+              echo "DEBUG: Bundled container CLI"
+            else
+              echo "Warning: container binary not found at ${containerCli}/bin/container"
+            fi
+            ${if containerDaemon != null then ''
+            if [ -f "${containerDaemon}/bin/wwn-containerd" ]; then
+              cp "${containerDaemon}/bin/wwn-containerd" $out/Applications/Wawona.app/Contents/Resources/bin/
+              chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/wwn-containerd
+              echo "DEBUG: Bundled prebuilt wwn-containerd"
+            else
+              echo "Warning: wwn-containerd binary not found at ${containerDaemon}/bin/wwn-containerd"
+            fi
+            '' else ""}
+            '' else ''
+            echo "Warning: container-cli not provided, skipping container bundling"
+            ''}
+
+            # Container Wayland bridge (desktop sessions): host waypipe
+            # (SplitFD, signed Mach-O) + guest aarch64-linux waypipe (ELF
+            # payload injected into the Linux VM — not codesigned).
+            ${if containerWaypipeFds != null then ''
+            if [ -f "${containerWaypipeFds}/bin/waypipe" ]; then
+              cp "${containerWaypipeFds}/bin/waypipe" $out/Applications/Wawona.app/Contents/Resources/bin/waypipe-fds
+              chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/waypipe-fds
+              echo "DEBUG: Bundled waypipe-fds"
+            else
+              echo "Warning: waypipe-fds binary not found at ${containerWaypipeFds}/bin/waypipe"
+            fi
+            '' else ''
+            echo "Warning: container waypipe-fds not provided, desktop sessions unavailable"
+            ''}
+            ${if containerWaypipeGuestLinux != null then ''
+            if [ -f "${containerWaypipeGuestLinux}/bin/waypipe" ]; then
+              cp "${containerWaypipeGuestLinux}/bin/waypipe" $out/Applications/Wawona.app/Contents/Resources/bin/waypipe-guest
+              chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/waypipe-guest
+              printf '%s\n' "${containerWaypipeGuestLinux}/bin/waypipe" > $out/Applications/Wawona.app/Contents/Resources/bin/waypipe-guest.store
+              ${if containerWaypipeGuestRoot != null then ''
+              mkdir -p $out/Applications/Wawona.app/Contents/Resources/bin/waypipe-guest-root
+              cp -a "${containerWaypipeGuestRoot}/." $out/Applications/Wawona.app/Contents/Resources/bin/waypipe-guest-root/
+              chmod -R u+w $out/Applications/Wawona.app/Contents/Resources/bin/waypipe-guest-root || true
+              echo "DEBUG: Bundled waypipe-guest-root (relocatable)"
+              '' else ""}
+              ${if containerWaypipeGuestClosure != null then ''
+              cp "${containerWaypipeGuestClosure}/store-paths" $out/Applications/Wawona.app/Contents/Resources/bin/waypipe-guest.closure
+              '' else ''
+              if command -v nix-store >/dev/null 2>&1; then
+                nix-store -qR "${containerWaypipeGuestLinux}" > $out/Applications/Wawona.app/Contents/Resources/bin/waypipe-guest.closure
+              fi
+              ''}
+              echo "DEBUG: Bundled waypipe-guest (aarch64-linux) + closure"
+            else
+              echo "Warning: waypipe-guest binary not found at ${containerWaypipeGuestLinux}/bin/waypipe"
+            fi
+            '' else ''
+            echo "Warning: container waypipe-guest not provided, desktop sessions unavailable"
+            ''}
+
+            # Terminal SHELL for container machines: weston-terminal runs
+            # $SHELL, and WWNContainerRunner points it here so the container
+            # command (WAWONA_CONTAINER_CMD) runs inside the Wawona terminal.
+            cat > $out/Applications/Wawona.app/Contents/Resources/bin/wawona-container-shell <<'SHELL_EOF'
+#!/bin/sh
+# Wawona container shell. The terminal emulator runs $SHELL; for container
+# machines Wawona points SHELL here and passes the full command in
+# WAWONA_CONTAINER_CMD.
+exec /bin/sh -lc "$WAWONA_CONTAINER_CMD"
+SHELL_EOF
+            chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/wawona-container-shell
+
             # Bundle neovim
             ${if neovim != null then ''
             if [ -f "${neovim}/bin/nvim" ]; then
@@ -1269,6 +1610,46 @@ GEN_HEADER
             '' else ''
             ''}
 
+            ${if modebTty != null then ''
+            IGETTY_BIN="${modebTty}/bin"
+            if [ -f "$IGETTY_BIN/igettyd" ]; then
+              cp "$IGETTY_BIN/igettyd" $out/Applications/Wawona.app/Contents/Resources/bin/
+              cp "$IGETTY_BIN/igettyd" $out/Applications/Wawona.app/Contents/MacOS/
+              chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/igettyd
+              chmod +x $out/Applications/Wawona.app/Contents/MacOS/igettyd
+              ln -sf igettyd $out/Applications/Wawona.app/Contents/Resources/bin/modeb-ttyd
+              ln -sf igettyd $out/Applications/Wawona.app/Contents/MacOS/modeb-ttyd
+              ln -sf igettyd $out/Applications/Wawona.app/Contents/Resources/bin/modeb-tty
+              ln -sf igettyd $out/Applications/Wawona.app/Contents/MacOS/modeb-tty
+              if [ -f "$IGETTY_BIN/igetty" ]; then
+                cp "$IGETTY_BIN/igetty" $out/Applications/Wawona.app/Contents/Resources/bin/
+                cp "$IGETTY_BIN/igetty" $out/Applications/Wawona.app/Contents/MacOS/
+                chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/igetty
+                chmod +x $out/Applications/Wawona.app/Contents/MacOS/igetty
+                ln -sf igetty $out/Applications/Wawona.app/Contents/Resources/bin/modeb-getty
+                ln -sf igetty $out/Applications/Wawona.app/Contents/MacOS/modeb-getty
+              fi
+              if [ -d "${modebTty}/libexec/wwn-modeb-session" ]; then
+                mkdir -p $out/Applications/Wawona.app/Contents/Resources/libexec/wwn-modeb-session
+                cp -R ${modebTty}/libexec/wwn-modeb-session/. \
+                  $out/Applications/Wawona.app/Contents/Resources/libexec/wwn-modeb-session/
+                chmod +x $out/Applications/Wawona.app/Contents/Resources/libexec/wwn-modeb-session/niri \
+                  $out/Applications/Wawona.app/Contents/Resources/libexec/wwn-modeb-session/weston
+                echo "DEBUG: Bundled Mode B TTY niri/weston DRM wrappers"
+              fi
+              echo "DEBUG: Bundled wwn-igetty (igettyd + igetty)"
+            elif [ -f "$IGETTY_BIN/modeb-ttyd" ]; then
+              cp "$IGETTY_BIN/modeb-ttyd" $out/Applications/Wawona.app/Contents/Resources/bin/
+              cp "$IGETTY_BIN/modeb-ttyd" $out/Applications/Wawona.app/Contents/MacOS/
+              chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/modeb-ttyd
+              chmod +x $out/Applications/Wawona.app/Contents/MacOS/modeb-ttyd
+              ln -sf modeb-ttyd $out/Applications/Wawona.app/Contents/Resources/bin/modeb-tty
+              ln -sf modeb-ttyd $out/Applications/Wawona.app/Contents/MacOS/modeb-tty
+              echo "DEBUG: Bundled legacy modeb-ttyd"
+            fi
+            '' else ''
+            ''}
+
             ${if effectiveNativeDeps."opengl-cube" or null != null then ''
             if [ -f "${effectiveNativeDeps."opengl-cube"}/bin/opengl-cube" ]; then
               cp "${effectiveNativeDeps."opengl-cube"}/bin/opengl-cube" $out/Applications/Wawona.app/Contents/Resources/bin/
@@ -1283,6 +1664,24 @@ GEN_HEADER
               cp "${effectiveNativeDeps.vkcube}/bin/vkcube" $out/Applications/Wawona.app/Contents/Resources/bin/
               chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/vkcube
               echo "DEBUG: Bundled vkcube (Wayland)"
+            fi
+            if [ -f "${effectiveNativeDeps.vkcube}/bin/vkcube-kms" ]; then
+              cp "${effectiveNativeDeps.vkcube}/bin/vkcube-kms" $out/Applications/Wawona.app/Contents/Resources/bin/
+              chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/vkcube-kms
+              echo "DEBUG: Bundled vkcube-kms (iland KMS/GBM)"
+            fi
+            '' else ''
+            ''}
+
+            ${if effectiveNativeDeps."gbm-es2-demo" or null != null then ''
+            if [ -f "${effectiveNativeDeps."gbm-es2-demo"}/bin/gbm-es2-demo" ]; then
+              cp "${effectiveNativeDeps."gbm-es2-demo"}/bin/gbm-es2-demo" $out/Applications/Wawona.app/Contents/Resources/bin/
+              chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/gbm-es2-demo
+              echo "DEBUG: Bundled gbm-es2-demo"
+            elif [ -f "${effectiveNativeDeps."gbm-es2-demo"}/bin/gbm_es2_demo" ]; then
+              cp "${effectiveNativeDeps."gbm-es2-demo"}/bin/gbm_es2_demo" $out/Applications/Wawona.app/Contents/Resources/bin/gbm-es2-demo
+              chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/gbm-es2-demo
+              echo "DEBUG: Bundled gbm-es2-demo (from gbm_es2_demo)"
             fi
             '' else ''
             ''}
@@ -1423,8 +1822,11 @@ PLIST_EOF
             ${installMacOSIcons}
 
             ${bundleMacOSAppDylibs}
+            ${bundleIlandEglShim}
             ${bundleIlandBaremetalDylib}
             echo "Bundling portable dylibs into Wawona.app..."
+            bundle_macos_app_dylibs "$out/Applications/Wawona.app"
+            bundle_iland_egl_shim "$out/Applications/Wawona.app"
             bundle_macos_app_dylibs "$out/Applications/Wawona.app"
             ${lib.optionalString (ilandBaremetal != null) ''bundle_iland_baremetal_dylib "$out/Applications/Wawona.app"''}
             if command -v codesign >/dev/null 2>&1; then
@@ -1446,7 +1848,7 @@ PLIST_EOF
       # Codesign / Gatekeeper: only Contents/ may sit at the .app root. Install
       # phases still stage FHS lib/ + share/ beside Contents for convenience;
       # relocate before sealing so Developer ID notarization can succeed.
-      # Assets copied from the nix store are often mode 444 — chmod before rm.
+      # Assets copied from the nix store are often mode 444. Chmod before rm.
       for d in lib share; do
         if [ -d "$APP/$d" ]; then
           mkdir -p "$APP/Contents/Resources/$d"
@@ -1480,19 +1882,68 @@ PLIST_EOF
       for req in \
         "$APP/Contents/Resources/share/weston/pattern.png" \
         "$APP/Contents/Resources/share/weston/terminal.png" \
-        "$APP/Contents/Resources/share/fonts/truetype/DejaVuSans.ttf"; do
+        "$APP/Contents/Resources/share/fonts/truetype/DejaVuSans.ttf" \
+        "$APP/Contents/Resources/share/fonts/truetype/DejaVuSansMNerdFontMono-Regular.ttf"; do
         if [ ! -e "$req" ]; then
           echo "ERROR: required bundled asset missing: $req" >&2
           exit 1
         fi
       done
       echo "Verified macOS bundled weston/fonts/backend assets"
+      ${if containerCli != null then ''
+      if [ -f "${containerCli}/bin/container" ]; then
+        install -m755 "${containerCli}/bin/container" "$APP/Contents/Resources/bin/container"
+        install -m755 "${containerCli}/bin/container" "$APP/Contents/MacOS/container"
+      fi
+      '' else ""}
+      ${if containerDaemon != null then ''
+      if [ -f "${containerDaemon}/bin/wwn-containerd" ]; then
+        install -m755 "${containerDaemon}/bin/wwn-containerd" "$APP/Contents/Resources/bin/wwn-containerd"
+        echo "Verified bundled wwn-containerd from ${containerDaemon}"
+      else
+        echo "ERROR: wwn-containerd missing at ${containerDaemon}/bin/wwn-containerd" >&2
+        exit 1
+      fi
+      '' else ""}
       ${if ilandBaremetal != null then ''
       if [ ! -f "$APP/Contents/Library/Wawona/iland/libwayland-mac.dylib" ]; then
         echo "ERROR: desktop-host build missing Mode B dylib" >&2
         exit 1
       fi
-      echo "Verified Mode B libwayland-mac.dylib present (desktop-host)"
+      if [ ! -x "$APP/Contents/Library/Wawona/wwn-iowatchdog" ]; then
+        echo "ERROR: desktop-host build missing wwn-iowatchdog" >&2
+        exit 1
+      fi
+      if [ ! -x "$APP/Contents/Library/Wawona/wwn-iowatchdog-claim-install" ]; then
+        echo "ERROR: desktop-host build missing wwn-iowatchdog-claim-install" >&2
+        exit 1
+      fi
+      if [ ! -f "$APP/Contents/Library/Wawona/lib/libwwn_watchdogd_hook.dylib" ]; then
+        echo "ERROR: desktop-host build missing Path B hook under lib/" >&2
+        exit 1
+      fi
+      echo "Verified Mode B dylib + wwn-iowatchdog + claim-install + hook (desktop-host)"
+      # Classic Mode B fork/exec needs shared DRM modules (macos-drm-shared.nix).
+      _drm_so=
+      for _cand in \
+        "$APP/Contents/Resources/lib/libweston-13/drm-backend.so" \
+        "$APP/Contents/Resources/lib/libweston-14/drm-backend.so" \
+        "$APP/Contents/MacOS/lib/libweston-13/drm-backend.so"; do
+        if [ -e "$_cand" ]; then _drm_so="$_cand"; break; fi
+      done
+      if [ -z "$_drm_so" ]; then
+        _drm_so=$(find "$APP/Contents" -name 'drm-backend.so' 2>/dev/null | head -1)
+      fi
+      if [ -z "$_drm_so" ] || [ ! -e "$_drm_so" ]; then
+        echo "ERROR: desktop-host missing libweston drm-backend.so (Mode B Classic)" >&2
+        find "$APP/Contents" -path '*libweston*' -name '*backend*' 2>/dev/null || true
+        exit 1
+      fi
+      if [ ! -e "$(dirname "$_drm_so")/gl-renderer.so" ]; then
+        echo "ERROR: desktop-host missing gl-renderer.so next to drm-backend.so" >&2
+        exit 1
+      fi
+      echo "Verified Mode B weston DRM modules: $_drm_so"
       '' else ''
       if [ -f "$APP/Contents/Library/Wawona/iland/libwayland-mac.dylib" ]; then
         echo "ERROR: store-safe/default macOS build must not ship Mode B dylib" >&2

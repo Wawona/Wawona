@@ -39,7 +39,7 @@ pub struct Window {
 
     /// When true, this window is hosted in its own independent OS
     /// window/scene (macOS NSWindow-per-toplevel, or iPadOS/visionOS
-    /// `UIWindowScene`-per-client — see `ipad-scene-parity` /
+    /// `UIWindowScene`-per-client. See `ipad-scene-parity` /
     /// `vision-shell-parity`, #120). Its size is driven exclusively by that
     /// dedicated host geometry via `resize_window`/`injectWindowResize`.
     /// `CompositorState::set_output_size` MUST skip these windows in its
@@ -49,17 +49,20 @@ pub struct Window {
     /// Machines window must never resize an unrelated client window).
     pub host_scene_independent: bool,
 
+    /// When true, this toplevel fills the host (nested weston/niri,
+    /// terminals). SizeAuthority stays Host until the committed buffer
+    /// matches the configure. A smaller first buffer must not shrink the
+    /// host window (niri/weston copy the first configure into their output
+    /// and miss a later shrink during init).
+    pub fills_host: bool,
+
     /// Whether the client has committed at least one buffer for this toplevel.
     ///
-    /// The compositor always defers the initial `xdg_toplevel` configure to
-    /// size (0, 0) — per the xdg-shell spec this tells the client "pick your
-    /// own size." The client's *first* commit is therefore always its true
-    /// preferred size and must be trusted unconditionally, regardless of
-    /// what output/window size hint the host used before that commit
-    /// arrived. Without this, host chrome (an AppKit `NSWindow`, for
-    /// example) can end up a different size than the buffer it displays,
-    /// leaving the content mis-aligned/cropped inside the window. This
-    /// applies to every Wayland client, not just known demo apps.
+    /// Demos (`configure(0,0)`): the first commit is the client's preferred
+    /// size and the host must follow it (OWL). Fill-host nested compositors
+    /// are the opposite: SizeAuthority stays Host until the buffer matches
+    /// the first non-zero configure. Trusting a smaller first commit shrinks
+    /// the host while niri/weston still hold the large output.
     pub has_committed_buffer: bool,
 
     /// Size-authority state machine (host ↔ client). See
@@ -99,6 +102,7 @@ impl Window {
             modal: false,
             host_locked: false,
             host_scene_independent: false,
+            fills_host: false,
             has_committed_buffer: false,
             size_authority: crate::core::window::SizeAuthority::AwaitingFirstCommit,
             geometry_x: 0,

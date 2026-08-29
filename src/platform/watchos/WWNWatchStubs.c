@@ -102,6 +102,20 @@ int wwn_foot_is_compat_shim(void) {
     return 1;
 }
 
+__attribute__((weak))
+int niri_main(void) {
+    return 127;
+}
+
+/* GLES clients (weston-simple-egl) are not on the Watch store path. Dispatch
+ * still references simple_egl_main; fail closed. Do not link ANGLE. */
+__attribute__((weak))
+int simple_egl_main(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+    return 127;
+}
+
 // ── Waypipe stub ─────────────────────────────────────────────────────────────
 // Overridden by libwaypipe.a when linked. The bridge nil-checks the weak
 // symbol before calling.
@@ -152,6 +166,43 @@ int wawona_coreutils_main(int argc, char **argv) {
     (void)argc; (void)argv;
     return 1;
 }
+
+/* WWNLog.h always calls the Rust log ring. arm64_32 does not link
+ * libwawona.a (Nix watch archives are arm64-only). */
+__attribute__((weak))
+void wwn_log_ring_append(const char *module, const char *msg) {
+    (void)module;
+    (void)msg;
+}
+
+__attribute__((weak))
+void wwn_log_ring_set_machine(const char *machine_id) {
+    (void)machine_id;
+}
+
+__attribute__((weak))
+char *wwn_log_ring_dump(const char *machine_id_or_null) {
+    (void)machine_id_or_null;
+    return NULL;
+}
+
+__attribute__((weak))
+char *wwn_github_bug_report_url(const char *platform,
+                                const char *install_channel,
+                                const char *wawona_version,
+                                const char *host_os, const char *logs) {
+    (void)platform;
+    (void)install_channel;
+    (void)wawona_version;
+    (void)host_os;
+    (void)logs;
+    return NULL;
+}
+
+__attribute__((weak))
+void WWNStringFree(char *s) {
+    (void)s;
+}
 #endif
 
 /* ssh_main / ssh_keygen_main / scp_main: real impls from libwwn-ssh-cli on
@@ -183,7 +234,7 @@ int weston_compositor_main(int argc, char **argv) {
 __attribute__((weak))
 volatile sig_atomic_t wwn_weston_compositor_shutdown_requested;
 
-/* Mini Wayland server — WWNMiniWaylandServer.c is excluded on arm64_32
+/* Mini Wayland server. WWNMiniWaylandServer.c is excluded on arm64_32
  * (needs libwayland-server). Weak stubs; arm64 uses the real .c. */
 typedef struct WWNMiniWaylandServer WWNMiniWaylandServer;
 typedef void (*WWNFrameCallback)(const uint8_t *, uint32_t, uint32_t, uint32_t, void *);
@@ -203,6 +254,18 @@ __attribute__((weak))
 int wwn_wls_dispatch(WWNMiniWaylandServer *srv, int timeout_ms) {
     (void)srv; (void)timeout_ms;
     return 0;
+}
+
+__attribute__((weak))
+int wwn_wls_attach_inprocess_client(WWNMiniWaylandServer *srv) {
+    (void)srv;
+    return -1;
+}
+
+__attribute__((weak))
+void wwn_wls_set_fill_host(WWNMiniWaylandServer *srv, int fill_host) {
+    (void)srv;
+    (void)fill_host;
 }
 
 __attribute__((weak))
@@ -246,7 +309,7 @@ WWN_WATCH_CLIENT_STUB(constraints_main)
 #undef WWN_WATCH_CLIENT_STUB
 
 /* Weak fallback only. xcodegen -force_load's libwawona-zsh.a so the real
- * App Store–compliant in-process zsh wins at link time. */
+ * App Store-compliant in-process zsh wins at link time. */
 __attribute__((weak))
 int wawona_zsh_main(int argc, char **argv) {
     (void)argc; (void)argv;
@@ -260,3 +323,29 @@ void wwn_ios_pump_host_compositor(void) {}
  * wwn_ios_refresh_bundle_env that applies share-tree + rootfs shell env. */
 __attribute__((weak))
 void wwn_ios_refresh_bundle_env(void) {}
+
+/* Weak fallback; real definition is in libwawona-pty.a. */
+__attribute__((weak))
+void wwn_pty_ios_allow_new_shell_session(void) {}
+
+/* wwn-wasm is size-gated off watchOS, so there is no libwawona_wasm.a.
+ * libwwn-pty dispatch still references these when -u pulls dispatch.o.
+ * Darwin treats those externs as strong undefs. Weak stubs keep the
+ * companion linking. Do not add -Wl,-u for these on watch. */
+__attribute__((weak))
+int wawona_wasm_run(int argc, char **argv) {
+    (void)argc; (void)argv;
+    return 1;
+}
+
+__attribute__((weak))
+int wawona_wasm_can_run(const char *path) {
+    (void)path;
+    return 0;
+}
+
+__attribute__((weak))
+int wpm_main(int argc, char **argv) {
+    (void)argc; (void)argv;
+    return 1;
+}

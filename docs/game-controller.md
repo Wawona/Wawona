@@ -20,8 +20,11 @@ the iOS / tvOS / Mac Catalyst targets).
 | Gamepad left stick | move cursor (per-frame sampling via `CADisplayLink`, `kStickCursorSpeed`) |
 | Gamepad right stick | scroll (`kStickScrollSpeed`) |
 | Gamepad D-pad | fine cursor nudge |
-| `GCMouse` move / buttons / scroll | relative pointer move, left/right/middle click, wheel |
-| `GCKeyboard` | presence tracked only — key events already flow through UIKit `pressesBegan`/`pressesEnded`, so they are **not** re-injected here (avoids double input) |
+| Siri Remote clickpad / 1st-gen touch surface (`GCMicroGamepad` dpad) | relative virtual pointer (tvOS). Select/click is `UIPressTypeSelect`, not a second GameController click |
+| Siri Remote Menu (`buttonMenu`) | same session-exit path as UIKit Menu |
+| 1st-gen Siri Remote `GCMotion` | shake-to-exit from `userAcceleration` (no system shake event). 2nd/3rd-gen remotes and `GCProductCategoryControlCenterRemote` (iPhone Apple TV Remote) have no motion |
+| `GCMouse` move / buttons / scroll | relative pointer move, left/right/middle click, wheel (API exists; Apple TV does not treat USB mice as a system cursor) |
+| `GCKeyboard` | presence tracked only. Key events already flow through UIKit `pressesBegan`/`pressesEnded`, so they are **not** re-injected here (avoids double input) |
 
 Analog sticks use a `kStickDeadzone` and are sampled every frame because
 `valueChangedHandler` cannot express a stick held at constant deflection.

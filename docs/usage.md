@@ -1,6 +1,23 @@
 # Wawona Usage Guide
 
-> How to run Weston natively on macOS, use Waypipe for remote apps, and connect Wayland clients.
+> Machines-first. Nested Weston and Niri. Bundled clients. Public subset for
+> wawona.io.
+
+---
+
+## Machines
+
+Start and focus sessions from the Machines window, not from env vars. Profile
+kinds: `native`, `ssh_waypipe`, `ssh_terminal`, `virtual_machine`, `container`.
+See [`machine-profiles.md`](./machine-profiles.md).
+
+Weston and Niri both ship on every product target. Display backend is
+`CompositorBackend`: `auto` | `wayland` | `drm`.
+
+VM and container Machine kinds are **planned** on macOS, iOS, iPadOS, Android,
+and Linux. **forbidden** on tvOS, watchOS, and visionOS. See
+[`vms-containers.md`](./vms-containers.md). The on-device shell is bundled zsh
+on a native machine, not a guest.
 
 ---
 
@@ -12,20 +29,29 @@ nix run .#wawona-linux
 
 Uses GTK4 with Wayland or X11 GDK fallback. Runtime includes weston, weston-terminal, foot, fastfetch, neovim, zsh, kmscube, and waypipe on PATH.
 
-## Virtual machines (v2.5)
+## Guest Machines (planned)
 
-| Platform | How |
-|----------|-----|
-| macOS | Machines → Virtual Machine profile opens UTM/UTM SE |
-| iOS | `nix run .#wawona-ios` (Simulator) |
-| Android | `nix run .#wawona-android` (emulator) |
-| Linux | `nix run .#wawona-linux-vm` (QEMU NixOS) |
+In-app `virtual_machine` / `container` profiles (coming soon):
+
+| Platform | Planned engine |
+|----------|----------------|
+| macOS | `Virtualization.framework` + Containerization |
+| iOS / iPadOS | UTM-SE (store-shaped); JIT UTM / TrollStore for sideload & jailbreak |
+| Android | `wwn-vms` / `wwn-containers` |
+| Linux | `wwn-vms` / `wwn-containers` |
+
+## Dev / CI hosts (not the Machines VM kind)
+
+| Host | How |
+|------|-----|
+| iOS Simulator | `nix run .#wawona-ios` |
+| Android emulator | `nix run .#wawona-android` |
+| Linux QEMU NixOS | `nix run .#wawona-linux-vm` |
 
 ---
-
 ## Native Weston on macOS (No Linux)
 
-Wawona includes a **native port of Weston** for macOS. No Linux, no VM — Weston runs as a nested compositor client inside Wawona.
+Wawona includes a **native port of Weston** for macOS. No Linux, no VM. Weston runs as a nested compositor client inside Wawona.
 
 ### Weston (Full Compositor)
 
@@ -37,11 +63,20 @@ Launches the full Weston compositor as a nested client. Weston runs natively on 
 
 ### Weston Terminal
 
+After `nix run .#install`, bundled clients are on PATH (see
+[`macos-cli.md`](./macos-cli.md)):
+
+```bash
+weston-terminal
+```
+
+From a nix tree without installing:
+
 ```bash
 nix run .#weston-terminal
 ```
 
-Launches Weston Terminal — a native Wayland terminal client. Connects to Wawona's Wayland display.
+Launches Weston Terminal. A native Wayland terminal client. Connects to Wawona's Wayland display.
 
 ### Other Weston Clients
 
@@ -123,9 +158,9 @@ When Wawona is running, clients connect via the Wayland socket.
 ### Get Socket Path
 
 In **Settings > Connection**, you'll see:
-- **XDG_RUNTIME_DIR** — e.g. `/tmp/wawona-$(id -u)`
-- **WAYLAND_DISPLAY** — e.g. `wayland-0`
-- **Shell Setup** — copy-paste snippet for your terminal
+- **XDG_RUNTIME_DIR**. E.g. `/tmp/wawona-$(id -u)`
+- **WAYLAND_DISPLAY**. E.g. `wayland-0`
+- **Shell Setup**. Copy-paste snippet for your terminal
 
 ### Run a Client
 
@@ -147,7 +182,7 @@ nix run .#foot
 | **Linux** | `nix run` (GTK shell + nested Wawona host service) | GUI-first Machine launcher (Native/SSH/Waypipe) |
 | **macOS** | `nix run .#weston`, `.#weston-terminal` | OpenSSH process spawn; Settings > Waypipe |
 | **iOS** | Via Settings > Advanced toggles | libssh2 in-process; Settings > Waypipe, SSH |
-| **Android** | Via Settings > Advanced toggles | Dropbear SSH; Settings > Waypipe, SSH |
+| **Android** | Via Settings > Advanced toggles | OpenSSH portable (`wwn-ssh`); Machines > Waypipe |
 
 On iOS and Android, **Enable Native Weston** and **Enable Weston Terminal** in Settings > Advanced start these on app launch.
 

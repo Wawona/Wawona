@@ -1,5 +1,5 @@
 /*
- * WWNStartupLogViewController — shows a native scrollable log overlay
+ * WWNStartupLogViewController. Shows a native scrollable log overlay
  * during the Wayland client launch transition.
  *
  * Presented over the compositor container between "Run" and the first

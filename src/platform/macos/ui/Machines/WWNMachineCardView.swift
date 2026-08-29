@@ -21,15 +21,13 @@ struct WWNMachineCardView: View {
     VStack(alignment: .leading, spacing: 12) {
       headerBanner
 
-      HStack {
+      HStack(spacing: 6) {
         statusBadge
-        Spacer()
-        HStack(spacing: 6) {
-          chip(scopeLabel.uppercased())
-          chip(typeLabel.uppercased())
-          if isActive {
-            chip("ACTIVE")
-          }
+        Spacer(minLength: 4)
+        MachineStatusChip(text: scopeLabel.uppercased())
+        MachineStatusChip(text: typeLabel.uppercased())
+        if isActive {
+          MachineStatusChip(text: "ACTIVE")
         }
       }
 
@@ -38,10 +36,7 @@ struct WWNMachineCardView: View {
         .foregroundStyle(.secondary)
         .lineLimit(3)
 
-      HStack(spacing: 8) {
-        actionButtons
-      }
-      .controlSize(.small)
+      actionButtons
     }
     .padding(16)
     .background(
@@ -66,7 +61,7 @@ struct WWNMachineCardView: View {
     .wwnA11yContainer(WWNA11y.machinesCard(profile.machineId), label: descriptor)
   }
 
-  /// What a person reads off this card — see `WWNA11y.machinesDescriptor`.
+  /// What a person reads off this card. See `WWNA11y.machinesDescriptor`.
   private var descriptor: String {
     WWNA11y.machinesDescriptor(name: profile.name, subtitle: subtitle)
   }
@@ -117,10 +112,12 @@ struct WWNMachineCardView: View {
           Text(profile.name.isEmpty ? "Unnamed Machine" : profile.name)
             .font(.title3.weight(.bold))
             .lineLimit(1)
+            .truncationMode(.tail)
           Text(subtitle)
             .font(.subheadline)
             .foregroundStyle(.secondary)
             .lineLimit(1)
+            .truncationMode(.tail)
         }
         Spacer()
         Image(systemName: iconName)
@@ -138,55 +135,84 @@ struct WWNMachineCardView: View {
   // MARK: - Action Buttons
 
   private var actionButtons: some View {
-    Group {
-      if isRunning {
-        Button {
-          onFocus()
-        } label: {
-          Label("Focus", systemImage: "scope")
-        }
-        .buttonStyle(.bordered)
-        .wwnA11y(WWNA11y.machinesFocus, label: "Focus \(descriptor)")
+    MachineActionBar(items: actionItems)
+  }
 
-        Button(role: .destructive) {
-          onStop()
-        } label: {
-          Label("Stop", systemImage: "stop.fill")
-        }
-        .buttonStyle(.borderedProminent)
-        .tint(.red)
-        .wwnA11y(WWNA11y.machinesStop, label: "Stop \(descriptor)")
-      } else {
-        Button {
-          onConnect()
-        } label: {
-          Label("Start", systemImage: "play.fill")
-        }
-        .buttonStyle(.borderedProminent)
-        .disabled(!launchSupported)
-        .wwnA11y(WWNA11y.machinesStart, label: "Start \(descriptor)")
-      }
-
-      Button {
-        onEdit()
-      } label: {
-        Label("Edit", systemImage: "slider.horizontal.3")
-      }
-      .buttonStyle(.bordered)
-      .wwnA11y(WWNA11y.machinesEdit, label: "Edit \(descriptor)")
-
-      Button(role: .destructive) {
-        onDelete()
-      } label: {
-        Label("Delete", systemImage: "trash")
-      }
-      .buttonStyle(.bordered)
-      .disabled(isRunning)
-      .wwnA11y(WWNA11y.machinesDelete, label: "Delete \(descriptor)")
+  private var actionItems: [MachineActionItem] {
+    var items: [MachineActionItem] = []
+    if isRunning {
+      items.append(
+        MachineActionItem(
+          title: "Focus",
+          systemImage: "scope",
+          accessibilityID: WWNA11y.machinesFocus,
+          accessibilityLabel: "Focus \(descriptor)",
+          action: onFocus
+        )
+      )
+      items.append(
+        MachineActionItem(
+          title: "Stop",
+          systemImage: "stop.fill",
+          role: .destructive,
+          prominent: true,
+          tint: .red,
+          accessibilityID: WWNA11y.machinesStop,
+          accessibilityLabel: "Stop \(descriptor)",
+          action: onStop
+        )
+      )
+    } else if isPreparing {
+      items.append(
+        MachineActionItem(
+          title: "Compiling backend...",
+          systemImage: "gearshape.2",
+          prominent: true,
+          enabled: false,
+          accessibilityID: WWNA11y.machinesStart,
+          accessibilityLabel: "Compiling backend \(descriptor)",
+          action: {}
+        )
+      )
+    } else {
+      items.append(
+        MachineActionItem(
+          title: "Start",
+          systemImage: "play.fill",
+          prominent: true,
+          enabled: launchSupported,
+          accessibilityID: WWNA11y.machinesStart,
+          accessibilityLabel: "Start \(descriptor)",
+          action: onConnect
+        )
+      )
     }
+    items.append(
+      MachineActionItem(
+        title: "Edit",
+        systemImage: "slider.horizontal.3",
+        accessibilityID: WWNA11y.machinesEdit,
+        accessibilityLabel: "Edit \(descriptor)",
+        action: onEdit
+      )
+    )
+    items.append(
+      MachineActionItem(
+        title: "Delete",
+        systemImage: "trash",
+        role: .destructive,
+        enabled: !isRunning && !isPreparing,
+        accessibilityID: WWNA11y.machinesDelete,
+        accessibilityLabel: "Delete \(descriptor)",
+        action: onDelete
+      )
+    )
+    return items
   }
 
   // MARK: - Computed Properties
+
+  private var isPreparing: Bool { status == .preparing }
 
   private var iconName: String {
     switch profile.type {
@@ -207,6 +233,7 @@ struct WWNMachineCardView: View {
     switch status {
     case .connected: return .green
     case .connecting: return .blue
+    case .preparing: return .blue
     case .degraded: return .orange
     case .error: return .red
     case .disconnected: return .secondary
@@ -214,10 +241,24 @@ struct WWNMachineCardView: View {
   }
 
   private var statusBadge: some View {
-    Label(status.title, systemImage: statusSymbol)
-      .font(.caption.weight(.semibold))
-      .foregroundStyle(statusColor)
-      .labelStyle(.titleAndIcon)
+    Label {
+      MachineFittingLabel(
+        text: status.title,
+        font: .caption.weight(.semibold),
+        alignment: .leading
+      )
+    } icon: {
+      Image(systemName: statusSymbol)
+    }
+    .font(.caption.weight(.semibold))
+    .foregroundStyle(statusColor)
+    .labelStyle(.titleAndIcon)
+    .lineLimit(1)
+    .minimumScaleFactor(0.35)
+    .allowsTightening(true)
+    .fixedSize(horizontal: false, vertical: true)
+    .frame(minWidth: 0)
+    .layoutPriority(1)
   }
 
   private var statusSymbol: String {
@@ -226,6 +267,8 @@ struct WWNMachineCardView: View {
       return "checkmark.circle.fill"
     case .connecting:
       return "arrow.triangle.2.circlepath.circle.fill"
+    case .preparing:
+      return "gearshape.2.fill"
     case .degraded:
       return "exclamationmark.triangle.fill"
     case .error:
@@ -235,11 +278,4 @@ struct WWNMachineCardView: View {
     }
   }
 
-  private func chip(_ text: String) -> some View {
-    Text(text)
-      .font(.caption2.weight(.bold))
-      .padding(.horizontal, 8)
-      .padding(.vertical, 5)
-      .background(Color.secondary.opacity(0.16), in: Capsule())
-  }
 }

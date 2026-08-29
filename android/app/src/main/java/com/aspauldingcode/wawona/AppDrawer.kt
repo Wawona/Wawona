@@ -58,9 +58,9 @@ import kotlinx.coroutines.withContext
  * A launcher-style app drawer shown when Wawona runs as a desktop/home
  * replacement. It presents two kinds of entries side by side:
  *
- *  1. **Wayland clients** — the native clients configured on native Machine
+ *  1. **Wayland clients**. The native clients configured on native Machine
  *     Configuration profiles, launched into the running Wawona compositor.
- *  2. **Android apps** — ordinary installed apps, launched via the Android
+ *  2. **Android apps**. Ordinary installed apps, launched via the Android
  *     PackageManager.
  *
  * This is the visible surface that gives the "Wayland desktop for Android"

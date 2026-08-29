@@ -804,7 +804,7 @@ pub enum SelectionSource {
 /// directly on `CompositorState`) because `SelectionHandler::new_selection`
 /// must read the client's offered selection data via a pipe fd, and that
 /// read can only complete *after* the compositor flushes/dispatches so the
-/// client actually receives the `wl_data_source.send` request — which
+/// client actually receives the `wl_data_source.send` request. Which
 /// cannot happen if we block synchronously inside the handler that's
 /// running on the same dispatch turn. The read is done on a background
 /// thread instead; giving it its own `Arc<RwLock<_>>` (cloned out of
@@ -820,6 +820,20 @@ pub struct ClipboardBridge {
     /// Served back to Wayland clients via `SelectionHandler::send_selection`
     /// when the compositor is the active selection source.
     pub outgoing_to_client: Option<String>,
+}
+
+/// Bridges Drag and Drop (DnD) state from the host OS into Wayland.
+#[derive(Debug, Default)]
+pub struct DndBridge {
+    /// If an active drag from the host is hovering over a Wayland window, this
+    /// stores the data (e.g. file URIs as `text/uri-list`) dropped from the
+    /// host OS.
+    pub pending_drop_data: Option<String>,
+    /// The MIME types offered for the current drag session (e.g.
+    /// `["text/uri-list", "text/plain;charset=utf-8"]`).
+    pub active_mime_types: Vec<String>,
+    /// Whether a server-initiated DnD grab is currently active.
+    pub active: bool,
 }
 
 /// Collection of seat resources bound by clients.
@@ -935,7 +949,7 @@ impl SeatState {
     }
 
     // =========================================================================
-    // Broadcast methods — delegate to sub-state modules
+    // Broadcast methods. Delegate to sub-state modules
     // =========================================================================
 
     pub fn broadcast_pointer_motion(&mut self, time: u32, x: f64, y: f64, focused_client: Option<&wayland_server::Client>) {
@@ -1057,7 +1071,7 @@ impl Default for DecorationPolicy {
 // Domain Sub-State: XDG Shell
 // ============================================================================
 
-/// XDG shell protocol state — surfaces, toplevels, popups, positioners,
+/// XDG shell protocol state. Surfaces, toplevels, popups, positioners,
 /// activation tokens, foreign toplevel export/import, decorations, outputs.
 pub struct XdgState {
     /// Active xdg_wm_base resources (legacy ping bookkeeping; prefer `shell_clients`)
@@ -1113,7 +1127,7 @@ impl Default for XdgState {
 // Domain Sub-State: Extension Protocols
 // ============================================================================
 
-/// Extension protocol state — pointer constraints, relative pointers,
+/// Extension protocol state. Pointer constraints, relative pointers,
 /// viewporter, dmabuf, sync objects, presentation, idle inhibit, etc.
 pub struct ExtProtocolState {
     /// Relative pointer state
@@ -1177,7 +1191,7 @@ pub struct ExtProtocolState {
     pub workspace: crate::core::wayland::ext::workspace::WorkspaceState,
     /// Background effect (blur) state
     pub background_effect: crate::core::wayland::ext::background_effect::BackgroundEffectState,
-    /// Fullscreen shell state (always available — used as the primary shell on iOS)
+    /// Fullscreen shell state (always available. Used as the primary shell on iOS)
     pub fullscreen_shell: crate::core::wayland::ext::fullscreen_shell::FullscreenShellState,
     /// XWayland keyboard grab state
     #[cfg(feature = "desktop-protocols")]
@@ -1235,7 +1249,7 @@ impl Default for ExtProtocolState {
 // Domain Sub-State: wlroots Protocols
 // ============================================================================
 
-/// wlroots protocol state — layer shell, virtual pointers/keyboards,
+/// wlroots protocol state. Layer shell, virtual pointers/keyboards,
 /// data control (clipboard managers), output management.
 pub struct WlrState {
     /// All active layer surfaces, keyed by (ClientId, surface_id)
@@ -1304,7 +1318,7 @@ impl Default for WlrState {
 /// Gamma ramp for one channel (u16 values, protocol little-endian)
 pub type GammaRamp = Vec<u16>;
 
-/// Pending gamma apply — platform calls CGSetDisplayTransferByTable
+/// Pending gamma apply. Platform calls CGSetDisplayTransferByTable
 #[cfg_attr(
     not(any(target_os = "ios", target_os = "visionos", target_os = "watchos")),
     derive(uniffi::Record)
@@ -1416,7 +1430,7 @@ pub struct CompositorState {
     // Configuration
     // =========================================================================
     
-    /// Global decoration policy — the **default** for clients (machines) that
+    /// Global decoration policy. The **default** for clients (machines) that
     /// have no per-client override. Global Settings seed this; it must not
     /// retroactively rewrite live clients that carry an explicit override.
     pub decoration_policy: DecorationPolicy,
@@ -1433,6 +1447,14 @@ pub struct CompositorState {
     /// (from that machine's resolved `forceSSD`); the first toplevel from that
     /// client claims it. `None` means "use the global default."
     pub pending_client_decoration_policy: Option<DecorationPolicy>,
+
+    /// Whether the **next** connecting client's first toplevel should get a
+    /// non-zero xdg configure (fill the parent output). Nested weston/niri
+    /// copy the first configure into their output mode; `configure(0,0)`
+    /// leaves no mode and a blank parent window. Flower/smoke must stay 0x0.
+    pub pending_client_fills_host: Option<bool>,
+    /// Per-client fill-host pin, claimed from `pending_client_fills_host`.
+    pub client_fills_host: HashMap<ClientId, bool>,
 
     /// Keyboard repeat rate (Hz)
     pub keyboard_repeat_rate: i32,
@@ -1453,6 +1475,8 @@ pub struct CompositorState {
     /// `core::wayland::mod` and `WWNCoreSetClipboardText` /
     /// `WWNCorePollClipboardText` in the FFI layer.
     pub clipboard_bridge: Arc<RwLock<ClipboardBridge>>,
+    /// Bridge for external drag and drop (host to Wayland).
+    pub dnd_bridge: Arc<RwLock<DndBridge>>,
     
     // =========================================================================
     // ID Generators
@@ -1557,12 +1581,15 @@ impl CompositorState {
             decoration_policy,
             client_decoration_policy: HashMap::new(),
             pending_client_decoration_policy: None,
+            pending_client_fills_host: None,
+            client_fills_host: HashMap::new(),
             keyboard_repeat_rate: 33,
             keyboard_repeat_delay: 500,
             advertise_fullscreen_shell,
             protocol_profile,
             smithay_runtime: SmithayRuntimeState::default(),
             clipboard_bridge: Arc::new(RwLock::new(ClipboardBridge::default())),
+            dnd_bridge: Arc::new(RwLock::new(DndBridge::default())),
             next_surface_id: 1,
             next_window_id: 1,
             serial: 0,
@@ -1774,7 +1801,7 @@ impl CompositorState {
                 // Windows hosted in their own independent OS window/scene
                 // (macOS NSWindow-per-toplevel, iPadOS/visionOS
                 // UIWindowScene-per-client) are never sized from the shared
-                // primary output — that would snap them to the *other*
+                // primary output. That would snap them to the *other*
                 // window's size whenever it resizes/rotates (#120). Their
                 // size is driven exclusively via resize_window /
                 // injectWindowResize from their own host geometry.
@@ -1842,7 +1869,7 @@ impl CompositorState {
 
     /// Mark whether a window is hosted in its own independent OS window/scene
     /// (macOS NSWindow-per-toplevel, or one `UIWindowScene` per Wayland client
-    /// on iPadOS/visionOS — `ipad-scene-parity` / `vision-shell-parity`,
+    /// on iPadOS/visionOS. `ipad-scene-parity` / `vision-shell-parity`,
     /// #120). Independent windows are excluded from the shared-output resize
     /// sweep in [`Self::set_output_size`]; their geometry is driven solely by
     /// `resize_window` calls scoped to their own host window/scene.
@@ -1877,7 +1904,7 @@ impl CompositorState {
     }
     
     /// Get decoration mode for new windows (global default; used where no
-    /// client is known — kept for tests / legacy callers).
+    /// client is known. Kept for tests / legacy callers).
     pub fn decoration_mode_for_new_window(&self) -> DecorationMode {
         Self::decoration_mode_for_policy(self.decoration_policy)
     }
@@ -1916,6 +1943,31 @@ impl CompositorState {
         if let Some(policy) = self.pending_client_decoration_policy.take() {
             self.client_decoration_policy.insert(client.clone(), policy);
         }
+    }
+
+    /// Claim fill-host for this client's first toplevel. See
+    /// `pending_client_fills_host`.
+    pub fn claim_pending_fills_host(&mut self, client: &ClientId) {
+        if self.client_fills_host.contains_key(client) {
+            return;
+        }
+        if let Some(fills) = self.pending_client_fills_host.take() {
+            self.client_fills_host.insert(client.clone(), fills);
+        }
+    }
+
+    /// First xdg configure size for a fill-host nested compositor. `None`
+    /// means `configure(0,0)` (client decides). Uses the live primary
+    /// output (seeded from the host window, not a 1920x1080 default) so
+    /// niri/weston copy a size that already matches the host window.
+    pub fn fill_host_configure_size(&self, client: &ClientId) -> Option<(i32, i32)> {
+        if !self.client_fills_host.get(client).copied().unwrap_or(false) {
+            return None;
+        }
+        let out = self.primary_output();
+        let w = if out.width > 0 { out.width as i32 } else { 1024 };
+        let h = if out.height > 0 { out.height as i32 } else { 768 };
+        Some((w, h))
     }
 
     /// Drop a client's per-client decoration override (client disconnected).
@@ -2077,6 +2129,7 @@ impl CompositorState {
         // Force SSD per-machine (#120): drop this machine's decoration override
         // so a reused ClientId cannot inherit a stale policy.
         self.client_decoration_policy.remove(&client);
+        self.client_fills_host.remove(&client);
 
         self.wlr.layer_surfaces.retain(|(cid, _), _| *cid != client);
         self.wlr.surface_to_layer.retain(|(cid, _), _| *cid != client);

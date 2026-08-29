@@ -2,7 +2,7 @@
 
 ## Status
 
-- Open — tracking issue [#108](https://github.com/Wawona/Wawona/issues/108)
+- Open. Tracking issue [#108](https://github.com/Wawona/Wawona/issues/108)
 - Class: toolkit-smoke companion (Tier 6 on [#77](https://github.com/Wawona/Wawona/issues/77))
 - Repos (to scaffold): `wwn-qt6`, `wwn-qmlscene`
 
@@ -12,7 +12,7 @@ delivery decisions change.
 ## Summary
 
 Port **qmlscene** (Qt Quick viewer) as a first-class Wawona Wayland client
-across the full platform matrix — complementary to
+across the full platform matrix. Complementary to
 [`wwn-kmscube`](https://github.com/Wawona/wwn-kmscube) (GLES/iland) and
 [#107](https://github.com/Wawona/Wawona/issues/107) (`testgfx` / SDL2 software
 SHM). Prefer **Qt Quick software RHI** so **tvOS and watchOS** stay in scope
@@ -20,13 +20,13 @@ without bundling Vulkan/OpenGL/ANGLE (platform rule).
 
 **Repos (to scaffold):**
 
-- [`wwn-qt6`](https://github.com/Wawona/wwn-qt6) — Qt6 foundation: `qtbase` +
+- [`wwn-qt6`](https://github.com/Wawona/wwn-qt6). Qt6 foundation: `qtbase` +
   `qtwayland` QPA + `qtdeclarative` (no JIT); shared later by
   [#74](https://github.com/Wawona/Wawona/issues/74) `wwn-kde`
-- [`wwn-qmlscene`](https://github.com/Wawona/wwn-qmlscene) — `qmlscene` / demo
+- [`wwn-qmlscene`](https://github.com/Wawona/wwn-qmlscene). `qmlscene` / demo
   entry (`qmlscene_main`), consumes `wwn-qt6`
 
-**Catalog class:** `wwn-apt` **optional** (`status: planned` → `approved` when
+**Delivery:** prefer core-bundled or **Wawona Runtime** Wasm (`planned` → ship when
 green). Qt closure is too large for core-bundled weston-toy tier.
 
 **Env contract:** `QT_QPA_PLATFORM=wayland` (see
@@ -48,16 +48,17 @@ green). Qt closure is too large for core-bundled weston-toy tier.
 |----------|----------|--------|----------|
 | **macOS** | `bin/qmlscene` + archive | fork/exec from Resources **or** in-process | software (default); GPU RHI optional later |
 | **iOS / iPadOS / visionOS** | `libqmlscene.a` + `qmlscene_main` | in-process via `wawona-dispatch` / Machines | software RHI required first |
-| **tvOS / watchOS** | `libqmlscene.a` + `qmlscene_main` | in-process / remote as allowed | **software only** — never link ANGLE/MoltenVK/IOKit GL stack |
+| **tvOS** | `libqmlscene.a` + `qmlscene_main` | in-process / remote as allowed | software RHI first; GPU later via bundled ANGLE/MoltenVK. Never IOKit |
+| **watchOS** | `libqmlscene.a` + `qmlscene_main` | in-process / remote as allowed | **software only**. No Metal, so no ANGLE/MoltenVK |
 | **Android** | PIE and/or archive | exec from `nativeLibraryDir` or in-process | software first; GLES optional |
 | **Linux** | nixpkgs / host reference binary | baseline | host Qt6 |
 
 **Hard rules (from platform targets):**
 
-- Entire Apple family stays first-class — do not drop schemes to unblock another target.
-- watchOS/tvOS: native + remote only; **no** VM/container; **no** bundled Vulkan/OpenGL/ANGLE/ICD.
+- Entire Apple family stays first-class. Do not drop schemes to unblock another target.
+- watchOS/tvOS: native + remote only; **no** VM/container. watchOS: **no** GPU. tvOS: ANGLE + MoltenVK like iOS.
 - visionOS = macOS product parity for nested/bundled clients (including this demo once green).
-- Gate in `mobile-platform-deps.nix` / `xcodegen.nix` / Machines profile kinds — not ad-hoc `#ifdef` sprawl.
+- Gate in `mobile-platform-deps.nix` / `xcodegen.nix` / Machines profile kinds. Not ad-hoc `#ifdef` sprawl.
 
 **Compliance (locked):**
 
@@ -80,21 +81,21 @@ zsh / Machines launcher
 
 **Registry keys (proposed):**
 
-- `qt6` — library recipes (`wwn-qt6.registryFragment`)
-- `qmlscene` — client recipes (`wwn-qmlscene.registryFragment`)
+- `qt6`. Library recipes (`wwn-qt6.registryFragment`)
+- `qmlscene`. Client recipes (`wwn-qmlscene.registryFragment`)
 - Entry symbol: `qmlscene_main` (header `qmlscene.h`)
 
 ## Phases
 
-### Phase 0 — Research & pins
+### Phase 0. Research & pins
 
 - [ ] Confirm upstream qmlscene entry in `qtdeclarative` (version pin)
 - [ ] Pin Qt6 set (`qtbase` + `qtwayland` + `qtdeclarative`); document software RHI flags
 - [ ] Map App Store constraints (no JIT, no dlopen of downloaded plugins, static archive on Apple mobile)
-- [ ] Confirm catalog class: **`wwn-apt` optional** (not core-bundled)
+- [ ] Confirm delivery: core-bundled vs Wasm package (not StoreKit ODR)
 - [ ] Keep [#108](https://github.com/Wawona/Wawona/issues/108) and this file in sync
 
-### Phase 1 — Scaffold `wwn-qt6`
+### Phase 1. Scaffold `wwn-qt6`
 
 - [ ] New repo: `flake.nix`, `registryFragment.qt6`, per-platform stubs
 - [ ] Build `qtbase` + Wayland QPA + `qtdeclarative` with **JIT off**
@@ -103,7 +104,7 @@ zsh / Machines launcher
 - [ ] Patch-anchor CI when patches land
 - [ ] Smoke: Qt Wayland window create/destroy on macOS + one mobile target
 
-### Phase 2 — Scaffold `wwn-qmlscene`
+### Phase 2. Scaffold `wwn-qmlscene`
 
 - [ ] New repo depending on `wwn-qt6` (+ `wwn-toolchain`)
 - [ ] Build qmlscene as `libqmlscene.a` with `-Dmain=qmlscene_main` (or equivalent)
@@ -111,28 +112,28 @@ zsh / Machines launcher
 - [ ] Bundle a minimal sample `.qml` as read-only data
 - [ ] README port plan + Qt license posture for store
 
-### Phase 3 — Per-platform recipes
+### Phase 3. Per-platform recipes
 
 - [ ] macOS / iOS / iPadOS / visionOS / tvOS / watchOS / Android / Linux
-- [ ] tvOS/watchOS: assert no ANGLE/MoltenVK/IOKit GL on the link line
+- [ ] watchOS: assert no ANGLE/MoltenVK/IOKit GL. tvOS: ANGLE + MoltenVK like iOS; never IOKit
 - [ ] Flake outputs: `qmlscene-ios`, `qmlscene-macos`, `qmlscene-android`, …
 
-### Phase 4 — Wawona integration
+### Phase 4. Wawona integration
 
 - [ ] Flake inputs + `registryFragment` merge
 - [ ] `wawona-dispatch.c`: `qmlscene` → `qmlscene_main`
 - [ ] RootFS / Machines launcher; `QT_QPA_PLATFORM=wayland` (+ software RHI env)
 - [ ] `xcodegen.nix` / `mobile-platform-deps.nix` / Android gradlegen
-- [ ] `wwn-apt` catalog row `planned` → `approved` when green
+- [ ] Mark port green / ship as bundle or Wasm package when green
 
-### Phase 5 — Smoke & capability lane
+### Phase 5. Smoke & capability lane
 
 - [ ] Full Apple family + Android software-path smoke
 - [ ] iPadOS / visionOS: one Wayland client ↔ one host window
 - [ ] agent-device replay once UI entry exists
 - [ ] Rows in [`testing/everywhere-matrix.md`](../testing/everywhere-matrix.md)
 
-### Phase 6 — CI, docs, lock
+### Phase 6. CI, docs, lock
 
 - [ ] Per-repo verify scripts + sample builds
 - [ ] Update porting convention / toolkit / universal-client docs
@@ -145,9 +146,9 @@ zsh / Machines launcher
 |------|------------|
 | Qt Quick assumes GPU Scene Graph | Software RHI first; GPU only behind `allowGpu` |
 | QML JIT / MAP_JIT on Apple | Force interpret-only; CI assert |
-| Massive archive size | apt ODR/optional — never core-bundled by default |
+| Massive archive size | apt ODR/optional. Never core-bundled by default |
 | Plugin/`dlopen` model vs store | Static modules / bundled imports only on mobile |
-| Accidental ANGLE on tvOS/watchOS | CI link-flag assert + deps gating |
+| Accidental ANGLE on watchOS | CI link-flag assert + deps gating |
 | Overlap with #74 | `wwn-qt6` shared; kde stays Plasma/KWin |
 | `exit()` kills host on mobile | In-process exit shim (kmscube/fastfetch pattern) |
 
@@ -155,10 +156,10 @@ zsh / Machines launcher
 
 - [ ] `wwn-qt6` + `wwn-qmlscene` are source of truth
 - [ ] `qmlscene` / `qmlscene_main` runs on macOS, iOS, iPadOS, tvOS, watchOS, visionOS, Android (software RHI)
-- [ ] tvOS/watchOS builds do not link ANGLE/MoltenVK/Vulkan ICDs
+- [ ] watchOS builds do not link ANGLE/MoltenVK/Vulkan ICDs
 - [ ] Dispatch + Machines/zsh + apt launch documented and smoke-tested
 - [ ] Docs + CI green for sample outputs
-- [ ] `wwn-apt` entry `planned` → `approved` when green
+- [ ] Ship as bundle or Wasm package when green
 
 ## Related
 

@@ -1,4 +1,4 @@
-# TestFlight Checklist — Local Shell (iOS / iPadOS)
+# TestFlight Checklist. Local Shell (iOS / iPadOS)
 
 Use before external TestFlight or App Review submission. Record **build attr**, **device**, **date**, **pass/fail** in PR or release notes.
 

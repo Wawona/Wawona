@@ -115,8 +115,8 @@ impl ClientData for WawonaClientData {
 /// It carries the per-client [`CompositorClientState`] required by Smithay's
 /// `CompositorHandler::client_compositor_state`. Storing it per client (instead
 /// of one process-wide shared instance) gives every client isolated
-/// surface/subsurface cached state — no cross-client bleed when multiple clients
-/// (e.g. waypipe + weston-terminal + a GL client) are connected at once — and
+/// surface/subsurface cached state. No cross-client bleed when multiple clients
+/// (e.g. waypipe + weston-terminal + a GL client) are connected at once. And
 /// lets the trait return a correctly-scoped `&'a` borrow with no unsafe
 /// lifetime extension.
 ///
@@ -221,6 +221,8 @@ pub enum CompositorEvent {
         decoration_mode: DecorationMode,
         fullscreen_shell: bool,
         host_locked: bool,
+        /// Nested weston/niri / terminals: host size is authoritative.
+        fills_host: bool,
     },
     /// A new popup was created
     PopupCreated { client_id: ClientId, window_id: u32, surface_id: u32, parent_id: u32, x: i32, y: i32, width: u32, height: u32 },
@@ -593,7 +595,7 @@ impl Compositor {
         self.reconcile_disconnected_clients(state);
 
         // Presentation feedback fires exclusively at the present boundary
-        // (notify_frame_presented) — never per-dispatch, which raced the real
+        // (notify_frame_presented). Never per-dispatch, which raced the real
         // present timestamps with a fake 60 Hz clock.
 
         // Periodic heartbeat for shell clients (every 1 second)
@@ -788,13 +790,13 @@ impl Compositor {
                 if let Ok(metadata) = std::fs::metadata(&dir) {
                     let perms = metadata.permissions();
                     if perms.mode() & 0o777 != 0o700 {
-                        // On iOS the sandbox already provides isolation — tighten when
+                        // On iOS the sandbox already provides isolation. Tighten when
                         // possible but accept the directory if chmod fails.
                         let mut new_perms = perms.clone();
                         new_perms.set_mode(0o700);
                         if let Err(e) = std::fs::set_permissions(&dir, new_perms) {
                             tracing::warn!(
-                                "Could not set 0700 on XDG_RUNTIME_DIR ({}): {} — using as-is",
+                                "Could not set 0700 on XDG_RUNTIME_DIR ({}): {}. Using as-is",
                                 dir,
                                 e
                             );
@@ -835,7 +837,7 @@ impl Compositor {
         for stale_serial in timed_out {
             if let Some((idx, ts)) = state.xdg.pending_pings.remove(&stale_serial) {
                 tracing::warn!(
-                    "xdg_wm_base ping timeout: serial={}, shell_index={}, elapsed={:.1}s — client may be unresponsive",
+                    "xdg_wm_base ping timeout: serial={}, shell_index={}, elapsed={:.1}s. Client may be unresponsive",
                     stale_serial,
                     idx,
                     now.duration_since(ts).as_secs_f64()

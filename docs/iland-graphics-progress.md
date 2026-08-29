@@ -1,7 +1,7 @@
-# wwn-iland graphics stack — living progress + capability matrix
+# wwn-iland graphics stack. Living progress + capability matrix
 
 Source-of-truth progress tracker for the **wwn-iland unified graphics stack**
-epic. Twin of the Cursor plan `wwn-iland graphics stack — prioritized phased
+epic. Twin of the Cursor plan `wwn-iland graphics stack. Prioritized phased
 plan` and of GitHub epic **#122** (`Wawona/Wawona`). Updated every inner-loop
 iteration (grades + repos touched + waypipe zero-copy impact).
 
@@ -25,36 +25,36 @@ iteration (grades + repos touched + waypipe zero-copy impact).
 | Grade | Meaning |
 |-------|---------|
 | **MISSING** | No code path / not shipped on target |
-| **STUB** | Symbol/pref exists; returns empty/ENOSYS/ENOENT/no-op — clients cannot succeed |
+| **STUB** | Symbol/pref exists; returns empty/ENOSYS/ENOENT/no-op. Clients cannot succeed |
 | **WIRED** | Code path connected; known broken or unproven (issue linked) |
-| **FUCKUP** | Intended behavior wrong in practice (wrong present/format, ICD ignored, pixman on GPU host, …) — cite bug |
+| **FUCKUP** | Intended behavior wrong in practice (wrong present/format, ICD ignored, pixman on GPU host, …). Cite bug |
 | **PROPER** | Acceptance client green on that target+mode; evidence logged (build + Agent-Device) |
 
 "Compiles" alone ≠ PROPER. STUB / WIRED / FUCKUP are all **not done**.
 
 ---
 
-## Living capability matrix (P0 baseline — honest)
+## Living capability matrix (P0 baseline. Honest)
 
 One grade per cell. DRM (open/resources) and KMS (modeset/flip/present) tracked
 separately. Evidence is `file:line` in the local tree or an issue.
 
 | Target | Mode | OpenGL / GLES | Vulkan | DRM | KMS | Desktop Repl. DRM/KMS |
 |--------|------|---------------|--------|-----|-----|------------------------|
-| macOS 3rd-party product | A | **PROPER** (stock kmscube: `gl.display` non-null, no duplicate-ANGLE warning, 600+ presents at ~40 fps, clean GL/GBM/DRM teardown — 2026-07-25 log below) | **PROPER** (both ICDs serve under selection: `libMoltenVK.dylib` / `libvulkan_kosmickrisp.dylib`, each logged `(selected)` not fallback, each rendering through iland KMS/GBM to `rc=0`) | **PROPER** (stock kmscube opens the virtual card, enumerates connector 1 / CRTC 1, picks a mode, and reaches `init gbm success` entirely in userland — no real device open) | **PROPER** (continuous flips, fourcc/size contract holds, per-frame texture import removed, resize letterboxes instead of stretching, depth attachment fixed; owner-accepted 2026-07-25 — cadence smoothness tracked separately as `kms-pipelining`) | N/A (Desktop tweak = desktop-host B) |
+| macOS 3rd-party product | A | **PROPER** (stock kmscube: `gl.display` non-null, no duplicate-ANGLE warning, 600+ presents at ~40 fps, clean GL/GBM/DRM teardown. 2026-07-25 log below) | **PROPER** (both ICDs serve under selection: `libMoltenVK.dylib` / `libvulkan_kosmickrisp.dylib`, each logged `(selected)` not fallback, each rendering through iland KMS/GBM to `rc=0`) | **PROPER** (stock kmscube opens the virtual card, enumerates connector 1 / CRTC 1, picks a mode, and reaches `init gbm success` entirely in userland. No real device open) | **PROPER** (continuous flips, fourcc/size contract holds, per-frame texture import removed, resize letterboxes instead of stretching, depth attachment fixed; owner-accepted 2026-07-25. Cadence smoothness tracked separately as `kms-pipelining`) | N/A (Desktop tweak = desktop-host B) |
 | macOS desktop-host | A (toggle off) | WIRED (same as product) | WIRED | WIRED | WIRED | N/A |
-| macOS desktop-host | B (SIP partial + toggle) | WIRED | WIRED | WIRED (Dobby `open`/`ioctl` hooks virtual calls) | WIRED (framebufferd host-vsync present + Mach ACK drives page-flip event; runtime proof pending) | WIRED (engage path real, not CI-proven; #87) |
-| iOS / iPadOS / visionOS | A | WIRED (ANGLE direct-to-Metal present path; target runtime/tint evidence remains pending) | WIRED (pinned store-safe MoltenVK 1.4.1 static slice is L1-owned and force-linked; vkcube runtime proof pending) | WIRED (Mode-A open shim landed — `iland_drm_open_card` + `iland_drm_open_compat.h`; #58 open path fixed, device render unproven) | WIRED (preferred-mode host wiring + fourcc contract landed; scene/multi-window runtime evidence pending) | N/A |
-| tvOS | A soft | MISSING (deferred — SDK has GLES/Metal, ANGLE lacks a tvOS GN target) | MISSING (deferred — MoltenVK supports tvOS 14.5+; gated `WWN_TVOS_GPU=1`) | N/A | N/A | N/A |
+| macOS desktop-host | B (SIP fully disabled + toggle) | WIRED | WIRED | WIRED (Dobby `open`/`ioctl` hooks virtual calls) | WIRED (framebufferd host-vsync present + Mach ACK drives page-flip event; runtime proof pending) | WIRED (engage path real, not CI-proven; #87) |
+| iOS / iPadOS / visionOS | A | WIRED (ANGLE direct-to-Metal present path; target runtime/tint evidence remains pending) | WIRED (pinned store-safe MoltenVK 1.4.1 static slice is L1-owned and force-linked; vkcube runtime proof pending) | WIRED (Mode-A open shim landed. `iland_drm_open_card` + `iland_drm_open_compat.h`; #58 open path fixed, device render unproven) | WIRED (preferred-mode host wiring + fourcc contract landed; scene/multi-window runtime evidence pending) | N/A |
+| tvOS | A | WIRED (ANGLE source GN `target_platform=tvos`, static `libEGL.a`/`libGLESv2.a`. Rendered-frame evidence pending) | WIRED (MoltenVK static, same apple-mobile.nix as iOS. Rendered-frame evidence pending) | WIRED (iland DRM when Display Backend is drm) | WIRED | N/A |
 | watchOS | A soft | N/A (no Metal/GLES in SDK; empty `libiland_userland.a`; correct) | N/A (no Metal backend to target) | N/A | N/A | N/A |
-| Android Play / Home Desktop | A (no root) | WIRED (`OpenGLDriver` is consumed at connect; ANGLE remains the bundled direct backend) | split: `system` WIRED (loader owns ANativeWindow WSI) / `swiftshader` WIRED for *client* ICD (host always loads `libvulkan.so`; staged ICD manifest + `WWN_SWIFTSHADER_LIBRARY` for offscreen iland/vkcube — see 2026-07-26 entry; headless→Surface present adapter still open) | WIRED (userland `drm_linux.c`; GBM storage is AHardwareBuffer-backed) | WIRED (present callback; zero-copy import acceptance pending) | WIRED (Home = rootless Mode A launcher/VD; no dylib) |
+| Android Play / Home Desktop | A (no root) | WIRED (`OpenGLDriver` is consumed at connect; ANGLE remains the bundled direct backend) | split: `system` WIRED (loader owns ANativeWindow WSI) / `swiftshader` WIRED for *client* ICD (host always loads `libvulkan.so`; staged ICD manifest + `WWN_SWIFTSHADER_LIBRARY` for offscreen iland/vkcube. See 2026-07-26 entry; headless→Surface present adapter still open) | WIRED (userland `drm_linux.c`; GBM storage is AHardwareBuffer-backed) | WIRED (present callback; zero-copy import acceptance pending) | WIRED (Home = rootless Mode A launcher/VD; no dylib) |
 | Android power | B (Shizuku/root WM) | WIRED | WIRED (same runtime-only drivers) | WIRED | WIRED | WIRED (window/display policy only; no root framebuffer or kernel-device access) |
 
 **Never** mark Desktop-Replacement DRM/KMS PROPER on macOS **product Mode A**
 (Desktop tweak is desktop-host Mode B only), or require root to mark Android
 Home Desktop / App Store cells PROPER.
 
-### Wayland GPU clients (EGL winsys) — tracked apart from KMS
+### Wayland GPU clients (EGL winsys). Tracked apart from KMS
 
 A client reaching the GPU through **iland's KMS/GBM** and a client reaching it
 through **`wl_egl_window` on Wawona's compositor** are different paths, so a
@@ -65,10 +65,10 @@ this is the winsys path (`libiland_wayland_egl`: `wl_egl_window_*` +
 
 | Target | Wayland + EGL/GLES client | Wayland + Vulkan client |
 |---|---|---|
-| macOS 3rd-party product | **PROPER** (`opengl-cube` renders a depth-correct cube through `wl_egl_window` + `eglSwapBuffers` at ~62 fps, ANGLE-on-Metal, presented from the posted IOSurface — screenshot + posted-buffer sample in the 2026-07-26 entry below) | **PROPER** (`vkcube` Wayland xdg-shell + IOSurface dmabuf; owner-confirmed spinning cube under both `VulkanDriver=moltenvk` and `VulkanDriver=kosmickrisp` — 2026-07-31) |
-| iOS / iPadOS / visionOS | WIRED (winsys built; Apple-mobile `simple_egl_main` was a stub returning 127 — replaced with real `clients/simple-egl.c` + mobile roundtrip macros in `wwn-weston/.../ios.nix` 2026-07-25; iPad OpenGL Cube blank under investigation — UIKit IOSurface→CGImage + opaque-alpha force; kmscube needs dedicated UIWindowScene — no Wayland toplevel) | WIRED (same WSI + Wayland `vkcube` archive; no device run yet) |
+| macOS 3rd-party product | **PROPER** (`opengl-cube` renders a depth-correct cube through `wl_egl_window` + `eglSwapBuffers` at ~62 fps, ANGLE-on-Metal, presented from the posted IOSurface. Screenshot + posted-buffer sample in the 2026-07-26 entry below) | **PROPER** (`vkcube` Wayland xdg-shell + IOSurface dmabuf; owner-confirmed spinning cube under both `VulkanDriver=moltenvk` and `VulkanDriver=kosmickrisp`. 2026-07-31) |
+| iOS / iPadOS / visionOS | WIRED (winsys built; Apple-mobile `simple_egl_main` was a stub returning 127. Replaced with real `clients/simple-egl.c` + mobile roundtrip macros in `wwn-weston/.../ios.nix` 2026-07-25; iPad OpenGL Cube blank under investigation. UIKit IOSurface→CGImage + opaque-alpha force; kmscube needs dedicated UIWindowScene. No Wayland toplevel) | WIRED (same WSI + Wayland `vkcube` archive; no device run yet) |
 | Android Play / Home Desktop | WIRED (AHardwareBuffer variant of the same winsys) | MISSING (AHB Vulkan present variant still open) |
-| tvOS / watchOS | N/A (fallback path; no GPU stack — see the tvOS GPU section) | N/A |
+| tvOS / watchOS | tvOS: WIRED (ANGLE + MoltenVK in-bundle; rendered-frame evidence pending). watchOS: N/A (no Metal) | tvOS: WIRED (MoltenVK). watchOS: N/A |
 
 Grading rule for this table: **PROPER needs a rendered frame observed on that
 target**, not a client that reaches `eglSwapBuffers` without error. Do not
@@ -92,17 +92,17 @@ kept as `vkcube_kms.c`. Machines Start routes `vkcube` like `opengl-cube`
 rendered frame is observed. SHAs: wwn-iland `fe08db2`, wwn-kmscube `d37dd29`,
 Wawona `03b146e`.
 
-**2026-07-26 `final-tvos-gpu` still deferred.** Plan order: only after every
-other GPU target is PROPER. `verify-iland-graphics-bundle.sh` already flips
-from "no MoltenVK on tvOS" to "require MoltenVK" when `WWN_TVOS_GPU=1`;
-watchOS stays blocked (no Metal in SDK). Do not start the MoltenVK/ANGLE tvOS
-port while macOS Wayland+Vulkan / Apple-mobile / Android cells are still
-WIRED/MISSING.
+**2026-08-25 `final-tvos-gpu` WIRED (both drivers).** ANGLE source GN
+(`target_platform=tvos`, Chromium trampoline, `use_blink=true` for GN only)
+and MoltenVK static both link into `.#wawona-tvos-app-sim`. Verifier
+`WWN_TVOS_GPU=1` requires both `MoltenVK version` and `ANGLE (`. Rendered-frame
+PROPER is still pending (Apple TV 4K sim cube paint). watchOS stays blocked
+(no Metal in SDK).
 
 **2026-07-26 audit follow-up (Mode A stubs + store/#86).** Stock kmscube Mode A
 path is not ENOSYS-blocked. Remaining hard stubs are for *other* clients:
 cursor (`ENOTSUP`), PRIME fake fds, syncobj export, overlay `SetPlane`.
-Android GBM still `ENOSYS` on `get_fd`/`import`, always RGBA8 AHB, no map —
+Android GBM still `ENOSYS` on `get_fd`/`import`, always RGBA8 AHB, no map -
 AHB present works locally; waypipe Android GBM is still stubbed. Store
 graphics/Mode-B asserts are in CI; still missing verifier checks for OpenSSH
 on Apple mobile and Desktop/SIP UI leakage into iOS-family bundles. Apple
@@ -114,7 +114,7 @@ Android GBM now matches Apple for `gbm_bo_map`/`unmap` (`map_count`),
 `gbm_device_is_format_supported`, `gbm_device_get_backend_name` (`iland-ahb`),
 honest AHB formats (BGRA8888 via HAL format 5; `R10G10B10A2` for 2101010), and
 tightened `get_fd`/`get_fd_for_plane`. `wwn-waypipe` stops stubbing Android
-GBM — same #86 high-bit modifier + `Library::this()` static link as Apple
+GBM. Same #86 high-bit modifier + `Library::this()` static link as Apple
 mobile (`patch-waypipe-iland-gbm.sh`). Remote SSH still cannot ship AHB
 handles (SHM/`--no-gpu` unchanged). Acceptance client
 [`gbm_es2_demo`](https://github.com/ds-hwang/gbm_es2_demo) vendored into
@@ -144,7 +144,7 @@ iland pin also predated `libiland_wayland_egl`). Dropped a rebuilt binary into
 the running app. Separate Start bug: GPU refusal ran *before* machine
 `OpenGLDriver`/`VulkanDriver` were applied, so a leftover global
 `VulkanDriver=none` (or stale GL) could refuse ANGLE clients the machine
-profile enables — fixed in `WWNWaypipeRunner.m` (apply machine prefs +
+profile enables. Fixed in `WWNWaypipeRunner.m` (apply machine prefs +
 `WWNSettings_ApplyGraphicsDriverSelection` before refusal). Needs rebuild to
 take effect in-app.
 
@@ -172,7 +172,7 @@ remains Shizuku/root window policy only (no dylib, no kernel FB). Grade stays
 present → disengage cycle under Agent-Device; that evidence belongs on #87,
 not as a store-cell blocker.
 
-**2026-07-26 IOSurface dmabuf zero-copy (#86) — Apple GPU path PROPER on
+**2026-07-26 IOSurface dmabuf zero-copy (#86). Apple GPU path PROPER on
 macOS.** The Wayland-EGL winsys posts IOSurface-backed `wl_buffer`s through
 `zwp_linux_dmabuf_v1` under the high-bit IOSurface-id modifier; the compositor
 imports via `IOSurfaceLookup` (`WWNCompositorBridge.m`). Proven end-to-end by
@@ -186,13 +186,13 @@ iland/GBM/dmabuf edit that forces SHM-only on a GPU target is a regression
 against this entry and #86.
 
 **2026-07-26 Android SwiftShader selection (host WSI vs client ICD).** Host
-`create_instance` already always `dlopen`s `libvulkan.so` — ANativeWindow WSI is
+`create_instance` already always `dlopen`s `libvulkan.so`. ANativeWindow WSI is
 loader-owned and must stay that way. Selecting `VulkanDriver=swiftshader` now
 (1) keeps that host path, (2) sets `WWN_SWIFTSHADER_LIBRARY` to the bundled
 `libvk_swiftshader.so` for in-process clients (vkcube direct ICD dispatch), and
 (3) writes a staged ICD JSON under `$WAWONA_FILES_DIR/vulkan/icd.d/` with an
 absolute `library_path`, then points `VK_ICD_FILENAMES` / `VK_DRIVER_FILES` at
-it — the opposite of the previous clear. The APK also stages the upstream
+it. The opposite of the previous clear. The APK also stages the upstream
 manifest under `assets/vulkan/icd.d/` (the jniLibs `*.so`-only copy loop had
 dropped it). `verify-iland-graphics-bundle.sh --platform android` now fails if
 the ICD JSON or a Mode B artifact is present. Remaining under `p3-android`: a
@@ -203,7 +203,7 @@ is the offscreen client ICD). Grade moves FUCKUP → WIRED for the client cell.
 **2026-07-26 Wayland GL clients presented white; IOSurface reached as a texture
 (macOS Wayland+EGL → PROPER).** `opengl-cube` connected, configured an xdg
 toplevel, reported 62 fps, and the compositor logged `Node present … buf=800x800`
-with `Cached IOSurface buf=11/13/15` rotating — and the window was pure white.
+with `Cached IOSurface buf=11/13/15` rotating. And the window was pure white.
 The give-away came from sampling the buffer at post time (`ILAND_EGL_DEBUG=1`,
 new): `posting 800x800 centre=0x00000000 near-corner=0x00000000`. Nothing on the
 client side had ever written the buffer, so the compositor and the winsys were
@@ -218,11 +218,11 @@ the blit and immediately produced `centre=0xff73bfd9`, which pinned it precisely
 
 `EGL_ANGLE_iosurface_client_buffer` expects the other direction: bind the pbuffer
 to a rectangle texture with `eglBindTexImage`, attach that texture to an FBO, blit
-into it, and let `eglReleaseTexImage` publish the writes — all with the client's
+into it, and let `eglReleaseTexImage` publish the writes. All with the client's
 context still current on the render pbuffer. With that, `centre=0xffec808b` and
 the cube renders solid, depth-correct, at ~62 fps:
 
-- `wwn-iland` `.../shims/egl/src/egl.c` — `zc_blit_to_slot` rewritten;
+- `wwn-iland` `.../shims/egl/src/egl.c`. `zc_blit_to_slot` rewritten;
   `zc_probe_iosurface`; `glGenTextures`/`glBindTexture`/`glGenFramebuffers`/
   `glFramebufferTexture2D`/`glCheckFramebufferStatus`/`glGetError` resolved on
   both the static and dlopen ANGLE paths; `eglBindTexImage`/`eglReleaseTexImage`
@@ -232,7 +232,7 @@ the cube renders solid, depth-correct, at ~62 fps:
   `default framebuffer depth attachment: present`).
 
 Also learned, and worth writing down because it cost time: a stale
-`$XDG_RUNTIME_DIR/instance.lock` makes the app start, log `Compositor started —
+`$XDG_RUNTIME_DIR/instance.lock` makes the app start, log `Compositor started -
 socket: …/wayland-0`, and then refuse every connection (`ECONNREFUSED`, no
 `wwn.sock`), which reads exactly like a broken client. And the app exits when its
 last client window closes, taking the compositor with it.
@@ -256,7 +256,7 @@ See R1 for the as-built detail.
 but produced no frames. Cause: the shim advertises `EGL_EXT_platform_base` in its
 `eglQueryString(EGL_NO_DISPLAY, EGL_EXTENSIONS)` reply, so weston's
 `weston_platform_create_egl_surface` correctly resolved
-`eglCreatePlatformWindowSurfaceEXT` — an entry point the shim never implemented,
+`eglCreatePlatformWindowSurfaceEXT`. An entry point the shim never implemented,
 leaving ANGLE to answer for it and be handed a `wl_egl_window` it knows nothing
 about. The shim now implements both that and the EGL 1.5
 `eglCreatePlatformWindowSurface`, forwarding to its own `eglCreateWindowSurface`,
@@ -299,7 +299,7 @@ niri, cairo-gobject, fuzzel, ssh-cli, weston-simple-shm) on
 archive is *already realised in the store*, not whether the platform provides
 it, and evaluation happens before realisation. A target that had never built
 niri therefore dropped `-force_load libniri.a` while still emitting the global
-`-Wl,-u,_niri_main`, so the link failed with an undefined `_niri_main` — and
+`-Wl,-u,_niri_main`, so the link failed with an undefined `_niri_main`. And
 because the archive was then never referenced, it was never built, making the
 condition permanently false. iOS/iPadOS/visionOS only linked niri because
 `niri-ios` is a top-level flake package that had been realised earlier; tvOS had
@@ -385,7 +385,7 @@ markers, 0 entry points) all pass, alongside `macos` and `macos-desktop`.
 **2026-07-25 vkcube reaches the Apple app for the first time:** `vkcube-*`
 built for every Apple GPU target and had correct slices (macOS `platform 1`,
 iOS `2`, iOS-sim `7`, xrOS `11`, xrOS-sim `12`, each exporting `_vkcube_main`),
-but **no Apple bundle linked it** — `iland-gl-ldflags.nix` only knew about
+but **no Apple bundle linked it**. `iland-gl-ldflags.nix` only knew about
 kmscube, and no Wawona dep requested `vkcube`. Wired end to end:
 `iland-gl-ldflags` now emits the same undefined-symbol archive pull for
 `opengl_cube_main` and `vkcube_main`; `mobile-platform-deps.nix` adds `vkcube`
@@ -422,7 +422,7 @@ and it suppresses the modal welcome sheet, which would otherwise swallow the
 start. The first run with it exposed a real crash:
 
 ```
-[MAIN] WAWONA_AUTO_CLIENT=kmscube — starting bundled client
+[MAIN] WAWONA_AUTO_CLIENT=kmscube. Starting bundled client
 [BRIDGE] Created iland presentation host 1680x1050 for nested GL client
 [KMSCUBE] kmscube enter (iland DRM present)
 ### Display [0]: CRTC = 1, Connector = 1, format = 0x34325258
@@ -437,7 +437,7 @@ CRITICAL: WWN crashed. Emergency cleanup...
 ```
 
 So DRM open, connector/CRTC enumeration, mode selection, and GBM init all
-succeed on macOS — the failure is one layer later, at `eglGetDisplay`. iland's
+succeed on macOS. The failure is one layer later, at `eglGetDisplay`. iland's
 EGL shim `dlopen`ed ANGLE by absolute Nix store path on macOS (the recipe
 rewrote the shim's MacPorts `/opt/local` default), while the app bundle links
 its own copy in `Contents/Frameworks`. Two ANGLE images in one process means two
@@ -458,7 +458,7 @@ with `EXC_BAD_ACCESS address=0x0` and `PC = 0`, called straight from
 address 0. The chain is:
 
 1. This machine's saved preference is `OpenGLDriver=none` (and
-   `VulkanDriver=none`), which is a **supported** mode, not a misconfiguration —
+   `VulkanDriver=none`), which is a **supported** mode, not a misconfiguration -
    the plan calls it an intentional efficiency mode.
 2. `WWNSettings_ApplyGraphicsDriverSelection` therefore exports
    `WWN_OPENGL_DRIVER=none` and `WWN_DISABLE_EGL=1`.
@@ -474,11 +474,11 @@ every entry point that dispatches to `real_egl*`, so ANGLE-absent now means clea
 EGL failure rather than a NULL jump. Wawona gained
 `WWNGpuClientRefusalReason`, which refuses a GPU-family client when the platform
 has no GPU stack *or* the resolved driver is `None`, naming the setting in the
-log — replacing two copies of a tvOS/watchOS-only check that let the
+log. Replacing two copies of a tvOS/watchOS-only check that let the
 driver-preference case through.
 
 Repos touched: `wwn-iland` (EGL shim + macOS/Android recipes), `Wawona`
-(autostart hook, present logging, GPU refusal). waypipe zero-copy impact: none —
+(autostart hook, present logging, GPU refusal). waypipe zero-copy impact: none -
 buffer export and dmabuf paths are untouched; this is which ANGLE image the
 process binds and whether EGL fails politely.
 
@@ -585,10 +585,10 @@ defer to libc `open`, incl. `O_CREAT` mode). Store-safe: no DYLD interpose, no
 `/dev/dri`, no privilege. Wired the force-include into iland's own GL-clients
 recipes (`gl-clients-macos.nix`, `gl-clients-ios.nix`) and installed the header
 in `macos.nix` / `ios.nix` / `android.nix`. **Verified (macOS, 4 levels):** (1) `clang -fsyntax-only` on `drm_linux.c` clean;
-(2) macro-routing compile/run test — `/dev/dri/*` → shim (fd 42), 2-arg + 3-arg
-passthrough opens compile; (3) **`nix build .#iland-macos` green** — archive
+(2) macro-routing compile/run test. `/dev/dri/*` → shim (fd 42), 2-arg + 3-arg
+passthrough opens compile; (3) **`nix build .#iland-macos` green**. Archive
 compiles, exports `_iland_drm_open_card` (`nm`), ships `iland_drm_open_compat.h`;
-(4) **integration** — the real `test/kmscube.c` (`open("/dev/dri/card0")` at
+(4) **integration**. The real `test/kmscube.c` (`open("/dev/dri/card0")` at
 `:237`) compiles against the built artifact with the force-include applied.
 **Grade: WIRED** (build + integration proven; in-app kmscube *render* → PROPER
 pending full Wawona app build + Agent-Device). **waypipe zero-copy impact: none.**
@@ -676,15 +676,15 @@ iland libdrm ABI rather than hidden behind product fallback.
 single-image ANGLE bind and the EGL policy guards in place, `WAWONA_AUTO_CLIENT`
 drives the whole macOS Mode A path headlessly. Two runs, one per policy branch.
 
-`OpenGLDriver=none` — refuses instead of crashing (this used to be the
+`OpenGLDriver=none`. Refuses instead of crashing (this used to be the
 `EXC_BAD_ACCESS address=0x0` at `eglInitialize`):
 
 ```
-[MAIN] WAWONA_AUTO_CLIENT=kmscube — starting bundled client
-[KMSCUBE] Refusing GPU client kmscube — Settings → Graphics → OpenGL driver is None
+[MAIN] WAWONA_AUTO_CLIENT=kmscube. Starting bundled client
+[KMSCUBE] Refusing GPU client kmscube. Settings → Graphics → OpenGL driver is None
 ```
 
-`OpenGLDriver=angle` — the full stack, end to end:
+`OpenGLDriver=angle`. The full stack, end to end:
 
 ```
 [KMSCUBE] started in-process kmscube 1680x914 via iland
@@ -704,7 +704,7 @@ Three things this settles. `gl.display` is non-null where it was `0x0` before, a
 the `ANGLESwapCGLLayer is implemented in both` warning is gone, so the process
 binds exactly one ANGLE image. Frames #300 and #600 land ~15 s after #0, i.e.
 ~40 fps sustained, which retires the page-flip-recycling suspicion for good on
-this target — presentation is not gated on a five-deep buffer ring. And teardown
+this target. Presentation is not gated on a five-deep buffer ring. And teardown
 is clean rather than a leak or a hang. macOS GL, DRM, and KMS therefore move to
 **PROPER**; the client is stock kmscube keeping its real libdrm calls, all in
 userland with no `/dev/dri` open.
@@ -715,7 +715,7 @@ The 3360x1828 IOSurface against a 1680x914 client is the 2× backing scale.
 
 **Vulkan needed one more round before it could be graded.** `vkcube` ran and
 exited `rc=0` under both `VulkanDriver=moltenvk` and `VulkanDriver=kosmickrisp`,
-presenting through the same iland KMS/GBM path — but the two runs were
+presenting through the same iland KMS/GBM path. But the two runs were
 byte-identical, with neither a MoltenVK nor a KosmicKrisp banner to tell them
 apart. A silent fallback to `WWN_VKCUBE_PROVIDER_FALLBACK` would have looked
 exactly the same, and passing a cell on ambiguous evidence is how the fourcc and
@@ -730,26 +730,26 @@ VulkanDriver=kosmickrisp → vkcube: Vulkan provider …/Frameworks/libvulkan_ko
 
 Both resolve inside the bundle, both report `(selected)` rather than the default,
 and both render to `rc=0`. Driver selection is therefore real rather than
-decorative, and macOS Vulkan moves to **PROPER** on two independent ICDs — which
+decorative, and macOS Vulkan moves to **PROPER** on two independent ICDs. Which
 also means KosmicKrisp's Mesa-style `vk_icdGetInstanceProcAddr`-only export path
 is exercised, not just MoltenVK's.
 
 Repos touched: `Wawona` (this doc), `wwn-kmscube` (provider log in
 `upstream/vkcube/vulkan_dispatch.h`; the Android/Apple env split became two macros
 so both arms share one lookup).
-**waypipe zero-copy impact: none** — no buffer, export, or dmabuf path touched.
+**waypipe zero-copy impact: none**. No buffer, export, or dmabuf path touched.
 
 ---
 
 **2026-07-25 Android SwiftShader WSI trace (regrades the `swiftshader` cell to
 FUCKUP; design recorded, not yet implemented):** the Android Vulkan cell was
 graded as one thing, but the two driver selections behave very differently, and
-`swiftshader` is not merely unproven — it cannot start.
+`swiftshader` is not merely unproven. It cannot start.
 
 `wwn_load_vulkan_driver()` `dlopen`s `libvk_swiftshader.so` directly, bypassing
 the Android loader. But `vkCreateAndroidSurfaceKHR` is **loader-owned** WSI on
 Android, not ICD-owned, so the ICD's `vkGetInstanceProcAddr` will never return
-it — and `wwn_load_vulkan_instance_dispatch()` loads that symbol through a
+it. And `wwn_load_vulkan_instance_dispatch()` loads that symbol through a
 fail-closed macro. Selecting SwiftShader therefore returns
 `VK_ERROR_INITIALIZATION_FAILED` from `create_instance()`, before a surface is
 ever requested. The build makes this structural rather than accidental: our
@@ -762,7 +762,7 @@ anything, so even a working headless swapchain renders in-process only.
 Two packaging gaps compound it: `dependencies/wawona/android.nix` copies only
 `*.so` into `jniLibs`, so `vulkan/icd.d/vk_swiftshader_icd.json` never reaches
 the APK, and `apply_graphics_driver_selection()` *clears* `VK_ICD_FILENAMES` /
-`VK_DRIVER_FILES` instead of pointing them at the bundled manifest — the
+`VK_DRIVER_FILES` instead of pointing them at the bundled manifest. The
 opposite of what macOS does in `WWNSettings_ApplyGraphicsDriverSelection()`.
 
 Agreed shape of the fix (deferred to `p3-android`), which keeps the recipe's own
@@ -774,7 +774,7 @@ direct `dlopen`; branch WSI by driver (`VK_KHR_android_surface` +
 adapter that copies the acquired swapchain image to `ANativeWindow` (CPU
 `vkCmdCopyImageToBuffer` + `ANativeWindow_lock`/`unlockAndPost` first, AHB-backed
 second). Explicitly rejected: enabling stock Android HAL SwiftShader (needs
-non-NDK framework headers), and any Turnip/KGSL path — both barred by the
+non-NDK framework headers), and any Turnip/KGSL path. Both barred by the
 runtime-only rule.
 
 **waypipe zero-copy impact: none** (analysis only). Note the AHB half of #86
@@ -787,7 +787,7 @@ stays blocked on the same missing
 The promotion above was wrong and user-visible behavior said so: the cube
 juddered, and resizing the host window did not change the client's size. Both
 were real, and both were in the present path. Sustained ~35 fps on a 60 Hz
-display should have been the tell — that is not "slow", it is frames landing an
+display should have been the tell. That is not "slow", it is frames landing an
 uneven number of vsyncs apart. Three defects, one function:
 
 1. **A fresh `MTLTexture` per frame.** `newTextureWithDescriptor:iosurface:` ran
@@ -795,7 +795,7 @@ uneven number of vsyncs apart. Three defects, one function:
    IOSurfaces recur and the import is pure overhead on the frame's critical path.
    Now cached per IOSurface (extent-validated, bounded at 16 so a mode change
    cannot grow it without bound).
-2. **Page-flip pacing — tried, measured, reverted.** Completing the flip from
+2. **Page-flip pacing. Tried, measured, reverted.** Completing the flip from
    `addCompletedHandler:` releases the client when the GPU finishes drawing,
    which is *before* the frame is visible, so the textbook fix is to complete
    from the drawable's `addPresentedHandler:` and lock the client to scanout.
@@ -805,7 +805,7 @@ uneven number of vsyncs apart. Three defects, one function:
    scanout leaves nothing in flight and each frame costs several vblanks instead
    of one. Reverted to GPU-finish completion. Decoupling client cadence from
    presentation requires more than one in-flight flip, which is an iland ABI
-   change rather than a presenter change — recorded as the next lead below.
+   change rather than a presenter change. Recorded as the next lead below.
 3. **CALayer geometry read from the client's render thread.** Every present called
    `syncPreferredModeFromLayer`, and the iOS variant went further and *assigned*
    `drawableSize`. That races AppKit/UIKit precisely during a resize drag. It was
@@ -826,8 +826,8 @@ path, and is graded separately.
 
 Result after the texture cache, measured over 1,500 frames with the window
 frontmost: 37.5 / 42.9 / 50.0 / 42.9 / 42.9 fps per 300-frame bucket. Better than
-the ~35–40 baseline, and the per-frame allocation is gone, but it is neither 60
-nor steady — the spread across buckets exceeds the ±7 % that 1-second log
+the ~35-40 baseline, and the per-frame allocation is gone, but it is neither 60
+nor steady. The spread across buckets exceeds the ±7 % that 1-second log
 timestamps can explain, so **the judder is reduced, not solved**.
 
 **2026-07-25 macOS KMS regraded FUCKUP → PROPER (owner acceptance):** both
@@ -835,7 +835,7 @@ defects this grade was withheld for are fixed and the remaining gap is
 throughput smoothness, not correctness: flips are continuous, the fourcc/size
 contract holds, the per-frame texture import is gone, and resize letterboxes
 instead of distorting. Depth also works now, which it did not when this section
-was written — ANGLE gives an IOSurface pbuffer no depth attachment while
+was written. ANGLE gives an IOSurface pbuffer no depth attachment while
 reporting one, so every GL client on this path silently lost `GL_DEPTH_TEST`
 (fixed in `wwn-iland` by rendering into a depth-capable pbuffer and blitting to
 the presented IOSurface). Accepted as PROPER by the owner on that basis. The
@@ -852,7 +852,7 @@ Two structural leads for the remainder, both outside the presenter:
   presenter use separate Metal queues on the same GPU, so *some* sync is
   required, but a shared `MTLSharedEvent` or a GL fence would order the work on
   the GPU instead of stalling the client thread.
-- **One outstanding flip.** See item 2 — this caps pipelining regardless of how
+- **One outstanding flip.** See item 2. This caps pipelining regardless of how
   fast either side renders.
 
 Also worth recording: the zero-copy path is the default (`ILAND_EGL_ZEROCOPY`
@@ -861,14 +861,14 @@ must be explicitly set to `0` to opt out), so the `glReadPixels` +
 That was the first suspect and it was wrong.
 
 Instruments, for the record, found **zero leaks** across a 90 s Leaks recording,
-and RSS stayed flat (roughly 280–330 MB) over ~9,600 frames, so none of this was
-a leak — it was per-frame work and mis-sequenced completion. Worth noting the
+and RSS stayed flat (roughly 280-330 MB) over ~9,600 frames, so none of this was
+a leak. It was per-frame work and mis-sequenced completion. Worth noting the
 first attempt profiled the wrong process: `pgrep -f` matched the coreutils
 `timeout` wrapper (5.9 MB RSS) rather than the app, and a clean "0 leaks" from a
 3-line C program is indistinguishable from a clean result for the real target.
 
 Repos touched: `Wawona` (macOS + iOS presenters, `WWNWindow` layout hook).
-**waypipe zero-copy impact: none** — buffer import is now cached rather than
+**waypipe zero-copy impact: none**. Buffer import is now cached rather than
 repeated; export and dmabuf paths untouched.
 
 ---
@@ -886,47 +886,45 @@ installed SDKs (Xcode 26.6) rather than documentation:
   QuartzCore: present              QuartzCore: present
 ```
 
-**tvOS is deferred, not impossible.** It has Metal, MetalKit, and even the
-deprecated `OpenGLES.framework`, and MoltenVK upstream lists tvOS (14.5+) as a
-supported platform built strictly on public API, so it is store-legal. Two
-asymmetric paths: Vulkan is short, because MoltenVK already builds for tvOS and
-Wawona dispatches straight into the ICD via `WWN_VULKAN_LIBRARY` — which matters,
-since LunarG's Jan-2026 status notes the Vulkan **loader** does not work on tvOS
-yet, a limitation we already sidestep. GLES is long, because ANGLE has no
-maintained Chromium GN tvOS target, the same wall that made visionOS ANGLE a
-pinned-artifact-plus-patch-series job (P2a). This is scheduled as the **final**
-graphics phase, after every other target is PROPER.
+**tvOS GPU is WIRED as of 2026-08-25, not deferred.** It has Metal, MetalKit, and
+`OpenGLES.framework`, and MoltenVK upstream lists tvOS (14.5+) as a supported
+platform built strictly on public API, so it is store-legal. Vulkan dispatches
+straight into the MoltenVK ICD via `WWN_VULKAN_LIBRARY` (LunarG's Vulkan
+**loader** still does not work on tvOS). GLES uses ANGLE source GN
+(`target_platform=tvos`, same ios.nix path as visionOS; `use_blink=true` is a
+Chromium GN assert only). Both drivers are required when `WWN_TVOS_GPU=1`.
+Rendered-frame PROPER is still pending.
 
-**watchOS has no floor.** The watchOS 26.5 SDK ships no `Metal.framework` at all
-— device or simulator — no `OpenGLES.framework`, and no Metal `.tbd` to link.
+**watchOS has no GL/VK floor.** The watchOS 26.5 SDK ships no `Metal.framework` at
+all, device or simulator. No `OpenGLES.framework`, and no Metal `.tbd` to link.
 `CAMetalLayer.h` is present (headers are shared across platforms) but the class is
 annotated `API_AVAILABLE(macos(10.11), ios(13.0), tvos(13.0))
-API_UNAVAILABLE(watchos)`. The only rendering frameworks are SpriteKit and
-SceneKit, which render internally and expose no device, drawable, or shader entry
-point. Since ANGLE and MoltenVK both terminate in Metal, neither has a backend;
-MoltenVK's own platform list is macOS/iOS/tvOS/visionOS, so watchOS is absent
-rather than merely untested. Enabling watchOS GPU therefore requires a public
-Metal-equivalent surface to appear first — it is not a porting task today, and
-must not be "solved" via private API or SpriteKit as a shader backdoor.
+API_UNAVAILABLE(watchos)`. ANGLE and MoltenVK both terminate in Metal; MoltenVK's
+own platform list is macOS/iOS/tvOS/visionOS.
 
-Enforcement: `verify-iland-graphics-bundle.sh` keeps tv/watch strict by default,
-but tvOS strictness is now conditional on `WWN_TVOS_GPU != 1`, and setting
-`WWN_TVOS_GPU=1` inverts it into a positive MoltenVK assertion — so the deferred
-phase flips one variable instead of rewriting the verifier, with no window where a
-driver can drift in unnoticed. watchOS strictness is unconditional.
+**watchOS present accelerator (2026-08-25, Track A):** compositor *output* is
+GPU-composited with SpriteKit (`WatchSpritePresentView`, `SKTexture` from SHM
+`CGImage`). Clients stay software. `watchPresentAcceleratorGate` is available.
+`gpuStackGate` stays blocked. Store IPA must not link Metal, ANGLE, or MoltenVK.
+`WWN_WATCHOS_METAL=1` is a research flag (never TestFlight / ASC Watch IPA).
+Vulkan/OpenGL Watch remain a follow-up until the SDK ships public Metal.
+
+Enforcement: `verify-iland-graphics-bundle.sh` requires both MoltenVK and ANGLE
+when `WWN_TVOS_GPU=1`. watchOS forbids those drivers unconditionally, requires
+SpriteKit, and fails if the Watch Mach-O links Metal unless `WWN_WATCHOS_METAL=1`.
 
 Repos touched: `Wawona` (verifier, this doc), workspace `wawona-platform-targets`
 rule (GPU row `❌` → `⏳`, hard rule 1 split per platform).
-**waypipe zero-copy impact: none** — no buffer path touched.
+**waypipe zero-copy impact: none**. No buffer path touched.
 
 ---
 
-## R1 — Mode A fail point (#58) + Apple KMS / IOSurface map
+## R1. Mode A fail point (#58) + Apple KMS / IOSurface map
 
 **#58 root cause (fixed):** kmscube logged `could not open drm device
 /dev/dri/card0` / `failed to initialize DRM` because the Mode A archive
 (`libiland_userland.a`) linked the userland `drmMode*` implementation but did
-**not** interpose `open("/dev/dri/card*")` — those hooks live only in the Mode B
+**not** interpose `open("/dev/dri/card*")`. Those hooks live only in the Mode B
 dylib (`upstream/shims/drm/.../wayland-mac.c:85-109`, Dobby), so stock clients
 failed at the raw card open before any `drmMode*` call. Mode A now has its own
 open path, `iland_drm_open_card` (`drm_linux.c:374`), which
@@ -936,7 +934,7 @@ Mode-A-safe equivalent of Mode B's Dobby hook.
 
 **As-built libdrm surface** (all in
 `dependencies/libs/iland/upstream/shims/drm/drm/src/drm_linux.c`, line numbers
-re-checked 2026-07-25 — the previous table's had drifted by ~150 lines):
+re-checked 2026-07-25. The previous table's had drifted by ~150 lines):
 
 | Symbol | file:line | Grade |
 |--------|-----------|-------|
@@ -950,14 +948,14 @@ re-checked 2026-07-25 — the previous table's had drifted by ~150 lines):
 | `drmModeAddFB2` | `767` | REAL (fourcc enforced against the backing IOSurface: mismatch = `EINVAL`, #94) |
 | `drmModeSetCrtc` | `844` | PARTIAL (records state; no present until flip) |
 | `drmModePageFlip` | `861` | REAL Mode A (→ `g_present_cb`); else Mode B IPC |
-| `drmHandleEvent` | `905` | PARTIAL (pipe byte on GPU-finish; not scanout-timed — see `kms-pipelining`) |
+| `drmHandleEvent` | `905` | PARTIAL (pipe byte on GPU-finish; not scanout-timed. See `kms-pipelining`) |
 | `drmIoctl` | `959`/`966` | REAL (shares Mode B's `drm_ioctl_dispatch`; stale STUB row removed 2026-07-26) |
 | `drmModeObjectGetProperties` | `1398` | REAL (per-object prop tables + `IN_FORMATS` blob) |
 | `drmModeGetPlaneResources`/`GetPlane` | `1499`,`1523` | PARTIAL (primary plane 1 only; gated on the universal-planes client cap) |
 | `drmModeAtomicCommit` | `1610` | PARTIAL (applies props; immediate flip event) |
-| `drmModeSetCursor`/`MoveCursor` | `1741`,`1749` | STUB (`ENOTSUP`) — breaks HW-cursor clients, not stock kmscube |
+| `drmModeSetCursor`/`MoveCursor` | `1741`,`1749` | STUB (`ENOTSUP`). Breaks HW-cursor clients, not stock kmscube |
 | `drmModeSetPlane` | `1884` | PARTIAL (primary plane only; overlay no-op) |
-| `drmPrimeHandleToFD`/`FDToHandle` | `1808`,`1824` | STUB (fake fd/handle) — Apple zero-copy uses IOSurface-id modifier instead |
+| `drmPrimeHandleToFD`/`FDToHandle` | `1808`,`1824` | STUB (fake fd/handle). Apple zero-copy uses IOSurface-id modifier instead |
 | `drmSyncobjExportSyncFile` / `HandleToFD` | ~1800 | STUB (`ENOSYS`) |
 | `iland_drm_set_present_callback` | `37` | REAL (Mode A gate) |
 | `iland_drm_set_preferred_mode` | `66` | REAL (**required on iOS/Android**) |
@@ -968,7 +966,7 @@ handle registry (`lookup_gbm_buffer:710`), `drmModeAddFB*` resolves that handle
 and retains the *same* IOSurface as the FB's backing (`722`, `767`), and
 `drmModePageFlip` resolves the FB id back to it (`fb_id_to_surface:834`) before
 handing it to the present callback. A client that allocates through GBM and
-scans out through KMS therefore never crosses a buffer boundary — which is the
+scans out through KMS therefore never crosses a buffer boundary. Which is the
 property that makes zero-copy dmabuf export possible at all.
 
 **Apple KMS ↔ IOSurface mapping (as-built):** connector/CRTC/encoder are fixed
@@ -986,13 +984,13 @@ Android at presenter init and on every surface-size change
 because publishing zero silently reverts to the 1920×1080 fallback and is
 indistinguishable from a deliberate choice.
 
-**Refresh is millihertz — a unit disagreement that has now been fixed.**
+**Refresh is millihertz. A unit disagreement that has now been fixed.**
 `iland_drm_set_preferred_mode`'s third argument was assigned straight to
 `drmModeModeInfo.vrefresh`, which is *Hz*, while the macOS host declared and
 passed millihertz. All three hosts therefore disagreed: macOS published a
 **60000 Hz** mode with a matching nonsense pixel clock, Android passed `60`
-(0.06 Hz read as millihertz), and iOS passed 0. Anything pacing off the mode —
-Weston's DRM backend does — was being lied to. The parameter is now millihertz
+(0.06 Hz read as millihertz), and iOS passed 0. Anything pacing off the mode -
+Weston's DRM backend does. Was being lied to. The parameter is now millihertz
 everywhere (`drm_linux.c:66-79`), converted to Hz only for `vrefresh` and kept at
 full precision for `clock` in 64-bit (`:109-124`, which also removes a 32-bit
 overflow that any real millihertz value would have triggered). The hosts ask
@@ -1002,22 +1000,22 @@ use `UIScreen.maximumFramesPerSecond` so a 120 Hz ProMotion host stops
 advertising 60, and visionOS stays on auto because it publishes no comparable
 rate.
 
-**The present callback still carries only `(crtc, fb, IOSurfaceRef, flags)`** —
-no width/height/format (`iland_present.h:37-41`) — and that is now sufficient
+**The present callback still carries only `(crtc, fb, IOSurfaceRef, flags)`** -
+no width/height/format (`iland_present.h:37-41`). And that is now sufficient
 rather than a gap, because the host reads geometry *and* format off the surface
 itself. Both presenters previously imported every surface as `BGRA8Unorm`
 regardless, so a 10-bit client (`l10r`, which GBM hands out for the 2101010
 fourccs) would have been reinterpreted as 8-bit: wrong colours, no error.
 `WWNMetalFormatForIOSurface` now maps `BGRA`/`l10r`/`w30r`/`l64r`/`RGhA`/`RGfA`
-and **refuses** an unmapped fourcc — logging it once and completing the page flip
-— instead of drawing garbage. The texture cache validates pixel format alongside
+and **refuses** an unmapped fourcc. Logging it once and completing the page flip
+- instead of drawing garbage. The texture cache validates pixel format alongside
 extent, so a format change cannot be served a stale texture.
 
 **Format handling is honest, not a lie (#94 closed at the allocator too).** An
 earlier revision of this section said GBM ignored the requested fourcc and always
 allocated BGRA. It does not: `iosurface_format_for_drm` (`gbm.m:22-35`) maps
-XRGB8888/ARGB8888 onto one BGRA IOSurface — they differ only in whether alpha is
-honoured, so one physical layout serves both — maps the 2101010 pair onto
+XRGB8888/ARGB8888 onto one BGRA IOSurface. They differ only in whether alpha is
+honoured, so one physical layout serves both. Maps the 2101010 pair onto
 `kWSPixelFormatARGB2101010`, and **returns 0 for anything needing a different
 channel order**, which surfaces as `EINVAL` from `gbm_bo_create` and
 `gbm_device_is_format_supported` (`:69-78`). The requested DRM fourcc, not the
@@ -1029,21 +1027,21 @@ Remaining Apple-backend gaps, none of which are the object model itself: cursor
 planes and PRIME fd export are stubs; only a primary plane exists, so a client
 that wants an overlay gets one plane and must composite itself; and
 `drmHandleEvent` signals on GPU-finish rather than scanout (`kms-pipelining`).
-`drmIoctl` is no longer among them — it now shares Mode B's dispatch table.
+`drmIoctl` is no longer among them. It now shares Mode B's dispatch table.
 
-## R2 — Mode B reality (macOS desktop-host)
+## R2. Mode B reality (macOS desktop-host)
 
 Engage path is **real and gated** but not a CI-proven finished product.
 
 - SIP detect `WWNSipStatus.m:6-38`; allow-gate `:55-57`; toggle hard-reject when
   SIP blocks `WWNPreferences.m:4041-4049`; toggle also requires bundled dylib
-  `:4051-4067` (store-safe builds cannot arm Mode B). — REAL
+  `:4051-4067` (store-safe builds cannot arm Mode B).. REAL
 - `shouldEngageModeB` `WWNDesktopReplacementController.m:53-62`; dylib discovery
   `:77-94`; privileged insert + `weston --backend=drm` `:187-258`; connect hook
-  `WWNMachineSessionBridge.m:150-168`. — REAL
+  `WWNMachineSessionBridge.m:150-168`.. REAL
 - Dylib constructor (root-gated, Dobby hooks, extracts framebufferd/inputd)
   `wayland-mac.c:259-337`; framebufferd CAWindowServer present
-  `framebufferd/src/main.m:267-303`. — REAL (upstream-derived)
+  `framebufferd/src/main.m:267-303`.. REAL (upstream-derived)
 - **Remaining gaps:** flip completion still signals when the Mach surface message
   is accepted rather than at a display-vblank (`drm_linux.c` page-flip); **no CI
   job builds/runs `wawona-macos-desktop-host`**; and
@@ -1051,7 +1049,7 @@ Engage path is **real and gated** but not a CI-proven finished product.
   inline Nix assert), while `docs/ci.md:51-52` overstates coverage. Tracked by
   #87.
 
-### P3 Mode B hardening — in progress
+### P3 Mode B hardening. In progress
 
 Mode B remains **macOS desktop-host only**: root + SIP debugging restrictions
 disabled/partially-disabled + explicit Desktop Replacement preference. No
@@ -1090,7 +1088,7 @@ fixture) and `--mode absent` (store-shaped fixture). This verifies packaging
 and compile/link ownership; it does **not** claim a SIP/root live desktop smoke
 or vblank-correct flips. Grade remains **WIRED**, not PROPER.
 
-## R3 — External stacks (reuse cheat-sheet)
+## R3. External stacks (reuse cheat-sheet)
 
 - **UTM** (`UTM/Documentation/Graphics.md:6-81`): reusable patterns for Mode A =
   ANGLE Metal backend (`ANGLE_DEFAULT_PLATFORM=metal`), IOSurface as zero-copy
@@ -1104,11 +1102,11 @@ or vblank-correct flips. Grade remains **WIRED**, not PROPER.
   runtime-only/no-direct-kernel policy.
 - **Termux/Android:** Wawona uses system Vulkan or bundled SwiftShader, and
   system EGL or bundled ANGLE. It never opens KGSL directly.
-- **Minimal-layers verdict:** one hop per API — Apple GLES→ANGLE→Metal,
+- **Minimal-layers verdict:** one hop per API. Apple GLES→ANGLE→Metal,
   Vulkan→MVK|KK→Metal; Android GLES→ANGLE|system, Vulkan→system|SwiftShader.
   Reject GLES→Zink→Vulkan→MVK→Metal.
 
-## R4 — Pref apply gap
+## R4. Pref apply gap
 
 | Pref | Saved | Applied on connect? | Grade |
 |------|-------|---------------------|-------|
@@ -1116,7 +1114,7 @@ or vblank-correct flips. Grade remains **WIRED**, not PROPER.
 | OpenGLDriver (macOS) | global `:33,791-799` | read by `WWNSettings_GetOpenGLDriver` `WWNSettings.m:87-94` but **no `setenv`/ANGLE selection site** | STUB |
 | VulkanDriver (Android) | `WawonaSettings.kt:62-81`→JNI | REAL at instance create `android_jni.c:1022-1047` (`VK_ICD_FILENAMES`) | PARTIAL (global real; per-machine ad-hoc) |
 | OpenGLDriver (Android) | same | stored `android_jni.c:2428-2430`, **no consumer** | STUB |
-| DriverSelector abstraction | — | — | **MISSING** |
+| DriverSelector abstraction | - |. | **MISSING** |
 
 ### P2 DriverSelector / ownership progress
 
@@ -1142,59 +1140,59 @@ an environment rewrite hot-switches Vulkan.
 launch and after `applyMachineToRuntimePrefs` (`WWNMachineSessionBridge.m:114`),
 before Mode B engage / WaypipeRunner launch, that re-`setenv`s ICD/ANGLE. Swift
 `resolvedSettings` also hardcodes `"moltenvk"` fallback instead of global
-(`WawonaPreferences.swift:289`) — inconsistent, fix in P2.
+(`WawonaPreferences.swift:289`). Inconsistent, fix in P2.
 
-## R5 — Flake DAG (edges)
+## R5. Flake DAG (edges)
 
 Actual flake-input edges match L0→L4 with **no inversions**: toolchain (none),
 iland (→toolchain), kmscube (→toolchain,iland), weston (→toolchain,iland,kmscube;
-`ilandSrc` source-injection only), waypipe/anowaW/vms (→toolchain; no iland
+`ilandSrc` source-injection only), waypipe/swinging-bridge/vms (→toolchain; no iland
 input), Wawona (→ all). Registry merge is `baseRegistry // fragment` (iland
 `flake.nix:96`, kmscube `74`, weston `83`, Wawona `222-240`). **Lock skew** (not
 a cycle): weston pins toolchain `7e00ad…` vs iland/kmscube `b0bc81…`; re-lock in
 land loop.
 
-## R6 — Ranked stub-replacement list (Mode A, iOS-store-shaped)
+## R6. Ranked stub-replacement list (Mode A, iOS-store-shaped)
 
-1. ~~**Card open without Dobby**~~ — DONE: `iland_drm_open_card` +
+1. ~~**Card open without Dobby**~~. DONE: `iland_drm_open_card` +
    `iland_drm_open_compat.h` give stock kmscube/weston a Mode-A-safe
    `open("/dev/dri/card*")`. Closed #58. (`wayland-mac.c` remains Mode B only.)
-2. ~~**`drmModeAddFB2` format honor + GBM format→pixelFormat map**~~ — DONE:
+2. ~~**`drmModeAddFB2` format honor + GBM format→pixelFormat map**~~. DONE:
    `AddFB2` enforces fourcc and `iosurface_format_for_drm` maps or rejects it
    (see R1); the "format lie" reading of #94 was itself wrong.
-3. ~~**Present metadata / size sync**~~ — DONE by making the host authoritative
+3. ~~**Present metadata / size sync**~~. DONE by making the host authoritative
    rather than by widening the callback: every target publishes a preferred mode
    (in millihertz, from its real display) and both presenters map the IOSurface's
    own fourcc to a Metal format, refusing unmapped ones. See R1.
-4. ~~**Real vsync / flip completion**~~ — DONE for Mode A: `drmModePageFlip`
+4. ~~**Real vsync / flip completion**~~. DONE for Mode A: `drmModePageFlip`
    arms a pending flip and the host presenter calls
    `iland_drm_complete_page_flip` from the Metal command-buffer completed
    handler (macOS/iOS) or after publishing the AHB frame (Android). The pipe
    byte is the *completion signal*, not an immediate fake. Scanout-locked
-   completion (`addPresentedHandler`) was measured and reverted — see
+   completion (`addPresentedHandler`) was measured and reverted. See
    `kms-pipelining`. Mode B still completes from the framebufferd ACK worker.
-5. ~~**`drmIoctl`→dispatch**~~ — DONE: `drmIoctl` validates the fd and calls
+5. ~~**`drmIoctl`→dispatch**~~. DONE: `drmIoctl` validates the fd and calls
    `drm_ioctl_dispatch`, the same table Mode B's Dobby `ioctl` hook uses, so a
    client reaching libdrm's generic entry point no longer gets ENOSYS for a
    request the shim can answer (`drm_linux.c:959-970`). Shared by Android, which
    compiles the same two files.
-6. **Planes/atomic completeness** — accepted Mode A scope: only primary plane;
+6. **Planes/atomic completeness**. Accepted Mode A scope: only primary plane;
    SetCursor ENOTSUP; modifiers off; PRIME fake. Stock kmscube does not need
    these; further plane work is follow-on, not a stub blocking Mode A.
-7. ~~**udev(+epoll) in Mode A link set**~~ — NOT A GAP, premise was wrong: each
+7. ~~**udev(+epoll) in Mode A link set**~~. NOT A GAP, premise was wrong: each
    weston recipe copies iland's `shims/udev/src/udev.c` into its own build
    (`compositor-apple-mobile.nix:835` → `compositor/wwn-udev-shim.c`), so adding
    it to the Apple Mode A archive would be a duplicate definition. Android's
    archive does compile it (`android.nix:136`) because its consumers link the
    archive instead. Mode A weston is nested (wayland backend) and does not
    enumerate DRM at all.
-8. **Android present plumbing** — no AHB/GPU zero-copy; zerocopy forced off.
-9. **EGL Android** — dlopen `libEGL.so` + CPU swap, not Metal IOSurface zero-copy.
-10. tvOS/watchOS — intentionally empty; do not add GL.
+8. **Android present plumbing**. No AHB/GPU zero-copy; zerocopy forced off.
+9. **EGL Android**. Dlopen `libEGL.so` + CPU swap, not Metal IOSurface zero-copy.
+10. tvOS/watchOS. Intentionally empty; do not add GL.
 
 Store builds confirmed to contain **zero** Mode B dylib / inject paths (see R7).
 
-## R7 — Universal A/B + store-matrix audit
+## R7. Universal A/B + store-matrix audit
 
 Gating is real: `.#wawona-macos` sets `ilandBaremetal = null` (`flake.nix:982-983`)
 and `macos.nix:1366-1370` fails the build if the dylib is present; desktop-host
@@ -1211,7 +1209,7 @@ without `#if` platform guards; enabling `desktopHost` on the wrong flake attr.
 
 **Asserted per build, not just described.** `verify-iland-graphics-bundle.sh` runs
 in `product-build.yml` for iOS, iPadOS, visionOS, tvOS, watchOS, Android, macOS
-product, and macOS desktop-host — the "verify script not in CI" caveat above is
+product, and macOS desktop-host. The "verify script not in CI" caveat above is
 stale. It now also enforces store-safety on the whole Apple mobile family
 (`apple_store_safety`): a **hard fail** if any Mach-O links
 `/System/Library/PrivateFrameworks/`, if any Mach-O defines *or references* a
@@ -1222,20 +1220,20 @@ shipping it), or if a Mode B daemon (`framebufferd`, `inputd`,
 line in shared code is not an API call and failing on it would reward deleting
 diagnostics instead of removing capability. macOS is exempt by design
 (`wawona-macos-no-appstore`): it may use all of the above. Verified against the
-existing `wawona-ios` bundle — clean on all three hard checks and with no
-warnings — and the daemon branch was confirmed to fire on a seeded fixture.
+existing `wawona-ios` bundle. Clean on all three hard checks and with no
+warnings. And the daemon branch was confirmed to fire on a seeded fixture.
 
 **Android Home Desktop = rootless Mode A** (HOME role + nested weston,
-`DesktopReplacement.kt:14-24`); anowaW baseline = MediaProjection/own VD
+`DesktopReplacement.kt:14-24`); swinging-bridge baseline = MediaProjection/own VD
 (`AnowawSession.kt:24-28`); power tier (Shizuku/root) only for arbitrary-app
 embed, auto-falls back (`:64-76`). No SIP, no dylib on Android.
 
-## R8 — Capability matrix
+## R8. Capability matrix
 
 See "Living capability matrix" above (filled with grades + evidence). This is the
 baseline the dual loop updates every iteration.
 
-## R9 — Verify model (draft)
+## R9. Verify model (draft)
 
 Adopt the closed input→output contract per layer so failures localize to the
 first broken seam (bindings ABI → Wayland wire → solved ICD/EGL → iland
@@ -1248,7 +1246,7 @@ symbol-for-symbol and message-for-message; Mode A golden = present-callback
 delete/avoid:** homegrown GL init, `iland_open()` client rewrite, "IOSurface
 instead of GBM" dual worlds, hand-rolled Rust GL/VK drivers.
 
-## R10 — Compositor backend audit (pixman vs GPU)
+## R10. Compositor backend audit (pixman vs GPU)
 
 GPU-capable Apple defaults now select `iland-drm-gl`; tvOS/watchOS retain the
 required software default. Android product wiring selects the DRM/GL archive
@@ -1267,7 +1265,7 @@ Remaining fix: add and package a macOS compositor-drm recipe; then verify each
 GPU target logs the GL renderer while explicit software mode and tv/watch stay
 pixman.
 
-## R11 — DAG / cycle watch list
+## R11. DAG / cycle watch list
 
 Flake edges are acyclic (R5). P2 resolved ANGLE, SwiftShader, MoltenVK and
 KosmicKrisp ownership under L1
@@ -1275,7 +1273,7 @@ KosmicKrisp ownership under L1
 `pixman` correctly stays L0 (cairo depends on it `cairo/ios.nix:24`); moving it
 to iland would force cairo→iland (cycle).
 In-toolchain `freetype↔harfbuzz↔cairo` disable edges are intentional one-way
-(`freetype/ios.nix:4-5`, `harfbuzz/ios.nix:6-7`) — keep. `ffmpeg`/`spirv-tools`
+(`freetype/ios.nix:4-5`, `harfbuzz/ios.nix:6-7`). Keep. `ffmpeg`/`spirv-tools`
 in L0 are borderline but not iland/weston; leave unless proven graphics-only.
 
 **Cycle-risk watch list** (full table in [`wwn-repo-dag.md`](wwn-repo-dag.md)):
@@ -1290,16 +1288,18 @@ not relocated to another layer.
 ## Minimal-layer canonical paths (locked)
 
 ```text
-Apple (macOS/iOS/iPadOS/visionOS) — parallel, not stacked:
+Apple (macOS/iOS/iPadOS/visionOS). Parallel, not stacked:
   GLES/OpenGL → EGL → ANGLE(Metal) → IOSurface/Metal present
   Vulkan      → loader → MoltenVK OR KosmicKrisp → Metal present
   DRM/KMS/GBM → iland userland → same present callback (no extra GL/VK hop)
 Android:
   GLES → EGL → ANGLE OR system GLES → Surface present
   Vulkan → loader → system OR SwiftShader
-tvOS: software/pixman today; deferred final phase adds
-  Vulkan → MoltenVK(tvOS) → Metal present   (no loader: direct ICD dispatch)
-watchOS: software/pixman only — no Metal in the SDK, so no translate stack exists
+tvOS (Mode A, public Metal):
+  GLES/OpenGL ES → EGL → ANGLE(Metal, target_platform=tvos) → IOSurface/Metal present
+  Vulkan         → MoltenVK ICD (no loader) → Metal present
+  DRM/KMS/GBM    → iland userland → same present callback
+watchOS: software/pixman only. No Metal in the SDK, so no translate stack exists
 ```
 
 Reject: GLES→Zink→Vulkan→MVK→Metal; virgl/Venus in Mode A; pixman nested on
@@ -1310,7 +1310,7 @@ GPU-capable Apple/Android; two active Vulkan ICDs in one process.
 #86 target: iland GBM/FB IOSurface exported as `zwp_linux_dmabuf`, importable by
 `wwn-waypipe` and nested clients without CPU blit when DmabufEnabled. waypipe
 does **not** take iland as a flake input today (`wwn-waypipe/flake.nix` →
-toolchain + ssh only) — GPU wiring is via env/ICD, keep it that way (no L1→L3'
+toolchain + ssh only). GPU wiring is via env/ICD, keep it that way (no L1→L3'
 inversion). Every buffer-touching change must log **waypipe zero-copy impact:
 none | preserved | broken→fix**. P0 impact: **none** (research-only).
 

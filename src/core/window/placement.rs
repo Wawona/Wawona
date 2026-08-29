@@ -1,4 +1,4 @@
-//! Compositor placement policy (position only — never buffer size).
+//! Compositor placement policy (position only. Never buffer size).
 //!
 //! Sizing is negotiated via xdg-shell + [`super::size_authority`]. Placement
 //! decides where a negotiated surface sits in the output/workspace.

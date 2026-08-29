@@ -126,6 +126,12 @@ pub struct LinuxSettings {
     pub waypipe_enabled: bool,
     // Advanced
     pub log_level: String,
+    /// Global environment overrides (#157): name → value. Empty value means unset.
+    #[serde(default)]
+    pub environment_overrides: std::collections::BTreeMap<String, String>,
+    /// Names to unset even if present in the host environment.
+    #[serde(default)]
+    pub environment_unsets: Vec<String>,
 }
 
 impl Default for LinuxSettings {
@@ -149,6 +155,8 @@ impl Default for LinuxSettings {
             waypipe_debug: false,
             waypipe_enabled: true,
             log_level: "info".to_string(),
+            environment_overrides: std::collections::BTreeMap::new(),
+            environment_unsets: Vec::new(),
         }
     }
 }

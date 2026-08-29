@@ -2,39 +2,57 @@
 // Wayland compositor bridge for watchOS.
 //
 // Compositor priority:
-//   1. WWNMiniWaylandServer (libwayland-server.a compiled via Nix) – pure C,
+//   1. WWNMiniWaylandServer (libwayland-server.a compiled via Nix) - pure C,
 //      no Rust required; works as soon as the Nix deps are linked.
-//   2. libwawona.a Rust backend – used when available (tier-3 Rust target).
+//   2. libwawona.a Rust backend - used when available (tier-3 Rust target).
 
 #import "WWNWatchCompositorBridge.h"
 #import "WWNMiniWaylandServer.h"
 #import "WWNWatchShellEnvironment.h"
+#import "WWNLog.h"
 #import <CoreGraphics/CoreGraphics.h>
 #import <pthread.h>
 #import <signal.h>
 #import <stdlib.h>
 #import <string.h>
 #import <unistd.h>
+#include <time.h>
 
 // ── Client entry points ───────────────────────────────────────────────────────
 // Provided by -force_load'd static libraries (weston, foot, etc.) built via Nix.
 // Weak stubs in WWNWatchStubs.c allow compilation without Nix but should never
 // be reached at runtime after a proper `nix run .#xcodegen` build.
 
-extern int weston_simple_shm_main(int argc, char **argv);
+extern int weston_simple_shm_main(int argc, char **argv) __attribute__((weak));
 extern int weston_compositor_main(int argc, char **argv);
 extern volatile sig_atomic_t wwn_weston_compositor_shutdown_requested;
-extern int weston_terminal_main(int argc, char **argv);
-extern int foot_main(int argc, char **argv);
+extern int weston_terminal_main(int argc, char **argv) __attribute__((weak));
+extern int foot_main(int argc, char **argv) __attribute__((weak));
 extern int wwn_weston_is_compat_shim(void) __attribute__((weak));
 extern int wwn_weston_terminal_is_compat_shim(void) __attribute__((weak));
 extern int wwn_foot_is_compat_shim(void) __attribute__((weak));
+extern int niri_main(void) __attribute__((weak));
+extern int flower_main(int argc, char **argv) __attribute__((weak));
+extern int smoke_main(int argc, char **argv) __attribute__((weak));
+extern int clickdot_main(int argc, char **argv) __attribute__((weak));
+extern int eventdemo_main(int argc, char **argv) __attribute__((weak));
+extern int resizor_main(int argc, char **argv) __attribute__((weak));
+extern int cliptest_main(int argc, char **argv) __attribute__((weak));
+extern int transformed_main(int argc, char **argv) __attribute__((weak));
+extern int stacking_main(int argc, char **argv) __attribute__((weak));
+extern int dnd_main(int argc, char **argv) __attribute__((weak));
+extern int image_main(int argc, char **argv) __attribute__((weak));
+extern int scaler_main(int argc, char **argv) __attribute__((weak));
+extern int editor_main(int argc, char **argv) __attribute__((weak));
+extern int constraints_main(int argc, char **argv) __attribute__((weak));
 
 // In-process waypipe with libssh2 (statically linked from Rust).
 // Weak so the bridge can nil-check before calling.
 extern int waypipe_main(int argc, char **argv) __attribute__((weak));
 
-// ── Rust compositor C-API (optional – satisfied by stubs when not linked) ─────
+// wawona-pty: clear one-shot shell latch after Stop (weak for incomplete links).
+void wwn_pty_ios_allow_new_shell_session(void) __attribute__((weak));
+// ── Rust compositor C-API (optional - satisfied by stubs when not linked) ─────
 
 typedef void *WawonaCompositorHandle;
 
@@ -58,7 +76,7 @@ void                   wawona_compositor_destroy(WawonaCompositorHandle handle);
 WatchCBufferData      *wawona_compositor_pop_buffer(WawonaCompositorHandle handle);
 void                   wawona_buffer_free(WatchCBufferData *buf);
 
-// ── @interface extensions — MUST appear before any C code that messages the class ──
+// ── @interface extensions. MUST appear before any C code that messages the class ──
 
 NSNotificationName const WWNWatchCompositorFrameReadyNotification =
     @"WWNWatchCompositorFrameReadyNotification";
@@ -74,6 +92,7 @@ NSNotificationName const WWNWatchCompositorFrameReadyNotification =
     pthread_t               _clientThread;
     BOOL                    _clientRunning;
     BOOL                    _clientThreadValid;
+    BOOL                    _loggedFirstFrame;
     CGImageRef              _latestFrame;
     // Waypipe
     pthread_t               _waypipeThread;
@@ -87,6 +106,7 @@ NSNotificationName const WWNWatchCompositorFrameReadyNotification =
                     stride:(uint32_t)stride;
 - (void)_waypipeThreadDidExit;
 - (BOOL)_isCompatShimEnabledForClient:(const char *)name;
+- (void)_applyMiniServerSizePolicyForClient:(const char *)name;
 @end
 
 // ── Server dispatch thread ────────────────────────────────────────────────────
@@ -100,11 +120,11 @@ typedef struct {
 
 static void *dispatchThreadFunc(void *ctx) {
     DispatchThreadArgs *args = (DispatchThreadArgs *)ctx;
-    NSLog(@"[WatchCompositor] Dispatch thread started");
+    WWNLog("WATCH", @"Dispatch thread started");
     while (*(args->running)) {
         wwn_wls_dispatch(args->srv, 16);
     }
-    NSLog(@"[WatchCompositor] Dispatch thread exiting");
+    WWNLog("WATCH", @"Dispatch thread exiting");
     free(args);
     return NULL;
 }
@@ -119,9 +139,15 @@ typedef struct {
 
 static void *compositorThreadFunc(void *ctx) {
     CompositorThreadArgs *args = (CompositorThreadArgs *)ctx;
-    NSLog(@"[WatchCompositor] weston_compositor_main starting");
+    WWNLog("WATCH", @"weston_compositor_main starting");
+    setenv("WAWONA_NESTED_WAYLAND", "1", 1);
     int rc = weston_compositor_main(args->argc, args->argv);
-    NSLog(@"[WatchCompositor] weston_compositor_main exited with code %d", rc);
+    WWNLog("WATCH", @"weston_compositor_main exited with code %d", rc);
+    if (args->argv) {
+        for (int i = 0; i < args->argc; i++)
+            free(args->argv[i]);
+        free(args->argv);
+    }
     free(args);
     return NULL;
 }
@@ -140,9 +166,14 @@ static void *clientThreadFunc(void *ctx) {
     int argc = args->argv ? args->argc : 1;
     char **argv = args->argv ? args->argv : fallback;
 
-    NSLog(@"[WatchCompositor] Client '%s' starting", args->name);
+    WWNLog("WATCH", @"Client '%s' starting", args->name);
+    NSLog(@"WATCH: Client '%s' starting (WAYLAND_SOCKET=%s WAYLAND_DISPLAY=%s)",
+          args->name,
+          getenv("WAYLAND_SOCKET") ?: "(unset)",
+          getenv("WAYLAND_DISPLAY") ?: "(unset)");
     int rc = args->entry(argc, argv);
-    NSLog(@"[WatchCompositor] Client '%s' exited with code %d", args->name, rc);
+    WWNLog("WATCH", @"Client '%s' exited with code %d", args->name, rc);
+    NSLog(@"WATCH: Client '%s' exited with code %d", args->name, rc);
 
     if (args->argv) {
         for (int i = 0; i < args->argc; i++)
@@ -182,6 +213,16 @@ static void miniServerFrameCallback(const uint8_t *pixels,
 
 // ── WWNWatchCompositorBridge implementation ───────────────────────────────────
 
+
+static int wwn_watch_niri_entry(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+    if (!niri_main) {
+        return 127;
+    }
+    return niri_main();
+}
+
 @implementation WWNWatchCompositorBridge
 
 // MARK: - Singleton
@@ -203,6 +244,7 @@ static void miniServerFrameCallback(const uint8_t *pixels,
         _dispatchThreadValid = NO;
         _clientRunning = NO;
         _clientThreadValid = NO;
+        _loggedFirstFrame = NO;
         _waypipeRunning = NO;
         _waypipeThreadValid = NO;
         _latestFrame  = NULL;
@@ -231,7 +273,7 @@ static void miniServerFrameCallback(const uint8_t *pixels,
     }
 
     const char *name = socketName ? [socketName UTF8String] : "wayland-0";
-    NSLog(@"[WatchCompositor] Starting compositor — socket='%s' size=%ux%u XDG_RUNTIME_DIR='%s'",
+    WWNLog("WATCH", @"Starting compositor. Socket='%s' size=%ux%u XDG_RUNTIME_DIR='%s'",
           name, _outputWidth, _outputHeight,
           getenv("XDG_RUNTIME_DIR") ?: "(unset)");
 
@@ -244,12 +286,16 @@ static void miniServerFrameCallback(const uint8_t *pixels,
     );
 
     if (_miniServer) {
-        NSLog(@"[WatchCompositor] Started mini Wayland server on socket '%s' (%u×%u) — XDG_RUNTIME_DIR='%s'",
+        WWNLog("WATCH", @"Started mini Wayland server on socket '%s' (%u×%u). XDG_RUNTIME_DIR='%s'",
               name, _outputWidth, _outputHeight,
               getenv("XDG_RUNTIME_DIR") ?: "(unset)");
         _isRunning = YES;
         [self _startDispatchThread];
-        // Do not auto-launch here — Swift `WatchMachineSessionBridge.connect`
+        // Let the dispatch thread park on wl_display_run before the first client
+        // connects. Otherwise Start can race and look like a blank surface until
+        // the next relaunch.
+        usleep(80 * 1000);
+        // Do not auto-launch here. Swift `WatchMachineSessionBridge.connect`
         // (and WAWONA_WATCH_AUTO_CLIENT via WawonaWatchMain) owns client Start.
         // Dual auto-launch raced: connect → launch, then env block → stopClient.
         return YES;
@@ -258,14 +304,14 @@ static void miniServerFrameCallback(const uint8_t *pixels,
     // ── Path 2: Rust compositor backend (libwawona.a) ─────────────────────────
     _rustCompositor = wawona_compositor_create(name);
     if (_rustCompositor) {
-        NSLog(@"[WatchCompositor] Started Rust compositor on socket '%s'", name);
+        WWNLog("WATCH", @"Started Rust compositor on socket '%s'", name);
         _isRunning = YES;
         [self _startDispatchTimer];
         return YES;
     }
 
-    // Neither mini server nor Rust backend started — something is wrong with the build.
-    NSLog(@"[WatchCompositor] ERROR: No compositor backend available. "
+    // Neither mini server nor Rust backend started. Something is wrong with the build.
+    WWNLog("WATCH", @"ERROR: No compositor backend available. "
           "Ensure libwayland-server.a is linked: nix run .#xcodegen");
     return NO;
 }
@@ -311,7 +357,7 @@ static void miniServerFrameCallback(const uint8_t *pixels,
     } else {
         free(args);
         _dispatchRunning = NO;
-        NSLog(@"[WatchCompositor] Failed to create dispatch thread (rc=%d)", rc);
+        WWNLog("WATCH", @"Failed to create dispatch thread (rc=%d)", rc);
     }
 }
 
@@ -320,7 +366,7 @@ static void miniServerFrameCallback(const uint8_t *pixels,
     _dispatchRunning = NO;
     pthread_join(_dispatchThread, NULL);
     _dispatchThreadValid = NO;
-    NSLog(@"[WatchCompositor] Dispatch thread stopped");
+    WWNLog("WATCH", @"Dispatch thread stopped");
 }
 
 // MARK: - Dispatch timer (Rust compositor fallback)
@@ -385,10 +431,25 @@ static void miniServerFrameCallback(const uint8_t *pixels,
     if (!pixels || !width || !height) { free(pixels); return; }
 
     size_t bytesPerRow = stride > 0 ? stride : (size_t)width * 4;
+    size_t srcSize = bytesPerRow * height;
+    uint8_t *rgba = malloc((size_t)width * height * 4);
+    if (!rgba) { free(pixels); return; }
+    for (uint32_t y = 0; y < height; y++) {
+        const uint8_t *src = pixels + (size_t)y * bytesPerRow;
+        uint8_t *dst = rgba + (size_t)y * width * 4;
+        for (uint32_t x = 0; x < width; x++) {
+            dst[x * 4 + 0] = src[x * 4 + 2];
+            dst[x * 4 + 1] = src[x * 4 + 1];
+            dst[x * 4 + 2] = src[x * 4 + 0];
+            dst[x * 4 + 3] = 0xFF;
+        }
+    }
+    free(pixels);
+    pixels = rgba;
+    bytesPerRow = (size_t)width * 4;
 
     CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
-    // wl_shm ARGB8888 is stored as B8G8R8A8 in little-endian memory
-    CGBitmapInfo bitmapInfo = (CGBitmapInfo)(kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedFirst);
+    CGBitmapInfo bitmapInfo = (CGBitmapInfo)(kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
 
     CGDataProviderRef provider = CGDataProviderCreateWithData(
         NULL,
@@ -406,6 +467,16 @@ static void miniServerFrameCallback(const uint8_t *pixels,
     CGColorSpaceRelease(cs);
 
     if (!image) return;
+
+    if (!self->_loggedFirstFrame) {
+        self->_loggedFirstFrame = YES;
+        WWNLog("WATCH", @"First frame %ux%u stride=%u px0=%02x%02x%02x%02x",
+              width, height, stride,
+              pixels[0], pixels[1], pixels[2], pixels[3]);
+        NSLog(@"WATCH: First frame %ux%u stride=%u px0=%02x %02x %02x %02x",
+              width, height, stride,
+              pixels[0], pixels[1], pixels[2], pixels[3]);
+    }
 
     dispatch_async(dispatch_get_main_queue(), ^{
         CGImageRef old = self->_latestFrame;
@@ -427,7 +498,7 @@ static void miniServerFrameCallback(const uint8_t *pixels,
         return;
     }
     NSString *clientId = [NSString stringWithUTF8String:autoClient];
-    NSLog(@"[WatchCompositor] Auto-launching bundled client '%@' (WAWONA_WATCH_AUTO_CLIENT)",
+    WWNLog("WATCH", @"Auto-launching bundled client '%@' (WAWONA_WATCH_AUTO_CLIENT)",
           clientId);
     __weak typeof(self) weakSelf = self;
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -435,16 +506,7 @@ static void miniServerFrameCallback(const uint8_t *pixels,
         if (!self) {
             return;
         }
-        if ([clientId isEqualToString:@"weston"]) {
-            [self launchWeston];
-        } else if ([clientId isEqualToString:@"weston-terminal"]) {
-            [self launchWestonTerminal];
-        } else if ([clientId isEqualToString:@"foot"]) {
-            [self launchFoot];
-        } else {
-            // Default / weston-simple-shm / weston-smoke → shm path
-            [self launchWestonSimpleSHM];
-        }
+        [self launchClientWithId:clientId];
     });
 }
 
@@ -453,6 +515,32 @@ static void miniServerFrameCallback(const uint8_t *pixels,
                  argc:(int)argc
                  argv:(char **)argv {
     [self stopClient];
+    [self _applyMiniServerSizePolicyForClient:name];
+
+    if (!entry) {
+        WWNLog("WATCH", @"Refusing '%s': entry point is NULL", name);
+        if (argv) {
+            for (int i = 0; i < argc; i++)
+                free(argv[i]);
+            free(argv);
+        }
+        return;
+    }
+
+    // Clear weston shutdown latch so a fresh compositor client can run.
+    wwn_weston_compositor_shutdown_requested = 0;
+
+    if (_miniServer) {
+        if (wwn_wls_attach_inprocess_client(_miniServer) != 0) {
+            WWNLog("WATCH",
+                  @"In-process WAYLAND_SOCKET attach failed for '%s'; "
+                   "client will try WAYLAND_DISPLAY",
+                  name);
+        } else {
+            WWNLog("WATCH", @"Queued in-process WAYLAND_SOCKET for '%s'", name);
+            NSLog(@"WATCH: Queued in-process WAYLAND_SOCKET for '%s'", name);
+        }
+    }
 
     ClientThreadArgs *args = malloc(sizeof(ClientThreadArgs));
     args->entry = entry;
@@ -464,7 +552,8 @@ static void miniServerFrameCallback(const uint8_t *pixels,
     if (rc == 0) {
         _clientRunning = YES;
         _clientThreadValid = YES;
-        NSLog(@"[WatchCompositor] Launched client '%s'", name);
+        WWNLog("WATCH", @"Launched client '%s'", name);
+        NSLog(@"WATCH: Launched client '%s'", name);
     } else {
         if (argv) {
             for (int i = 0; i < argc; i++)
@@ -472,7 +561,7 @@ static void miniServerFrameCallback(const uint8_t *pixels,
             free(argv);
         }
         free(args);
-        NSLog(@"[WatchCompositor] Failed to launch client '%s' (pthread_create=%d)", name, rc);
+        WWNLog("WATCH", @"Failed to launch client '%s' (pthread_create=%d)", name, rc);
     }
 }
 
@@ -480,17 +569,23 @@ static void miniServerFrameCallback(const uint8_t *pixels,
     [self _launchClient:weston_simple_shm_main name:"weston-simple-shm" argc:0 argv:NULL];
 }
 - (void)launchWeston {
+    if ([self _isCompatShimEnabledForClient:"weston"]) {
+        return;
+    }
     [self stopClient];
+    [self _applyMiniServerSizePolicyForClient:"weston"];
 
     const char *parent_display = getenv("WAYLAND_DISPLAY");
     if (!parent_display || parent_display[0] == '\0')
         parent_display = "wayland-0";
     setenv("WAYLAND_DISPLAY", parent_display, 1);
 
-    char arg0[] = "weston";
-    char arg1[] = "--backend=wayland";
-    char arg2[] = "--shell=desktop-shell.so";
-    char *argv[] = { arg0, arg1, arg2, NULL };
+    // Heap argv: compositorThreadFunc frees these after weston_main returns.
+    char **argv = calloc(4, sizeof(char *));
+    argv[0] = strdup("weston");
+    argv[1] = strdup("--backend=wayland");
+    argv[2] = strdup("--shell=desktop-shell.so");
+    argv[3] = NULL;
 
     CompositorThreadArgs *args = malloc(sizeof(CompositorThreadArgs));
     args->argc = 3;
@@ -502,10 +597,13 @@ static void miniServerFrameCallback(const uint8_t *pixels,
     if (rc == 0) {
         _clientRunning = YES;
         _clientThreadValid = YES;
-        NSLog(@"[WatchCompositor] Launched nested Weston compositor (WAYLAND_DISPLAY=%s)", parent_display);
+        WWNLog("WATCH", @"Launched nested Weston compositor (WAYLAND_DISPLAY=%s)", parent_display);
     } else {
+        for (int i = 0; i < 3; i++)
+            free(argv[i]);
+        free(argv);
         free(args);
-        NSLog(@"[WatchCompositor] Failed to launch weston compositor (pthread_create=%d)", rc);
+        WWNLog("WATCH", @"Failed to launch weston compositor (pthread_create=%d)", rc);
     }
 }
 
@@ -542,25 +640,208 @@ static void miniServerFrameCallback(const uint8_t *pixels,
     if (home_dir && home_dir[0]) {
         chdir(home_dir);
     }
+
+    // Match iOS/macOS: write a tiny foot.ini with an explicit DejaVu mono face
+    // so fcft does not resolve to a blank first frame on watch.
+    // Match iOS/macOS: write a tiny foot.ini with DejaVuSansM Nerd Font
+    // Mono so fcft does not resolve to a blank first frame on watch.
+    NSString *runtimeDir = NSTemporaryDirectory();
+    const char *xdg = getenv("XDG_RUNTIME_DIR");
+    if (xdg && xdg[0]) {
+        runtimeDir = @(xdg);
+    }
+    NSString *iniPath =
+        [runtimeDir stringByAppendingPathComponent:@"wawona-foot.ini"];
+    NSBundle *bundle = [NSBundle mainBundle];
+    NSString *fontDir = [bundle pathForResource:@"share/fonts" ofType:nil];
+    if (fontDir.length == 0) {
+        fontDir = [[bundle.bundlePath stringByAppendingPathComponent:@"share"]
+                      stringByAppendingPathComponent:@"fonts"];
+    }
+    NSFileManager *fm = [NSFileManager defaultManager];
+    NSString *monoTtf = [fontDir
+        stringByAppendingPathComponent:
+            @"truetype/DejaVuSansMNerdFontMono-Regular.ttf"];
+    if (![fm fileExistsAtPath:monoTtf]) {
+      monoTtf = [fontDir
+          stringByAppendingPathComponent:@"truetype/DejaVuSansMono.ttf"];
+    }
+    CGFloat fontSize = 17.0;
+    NSString *fontSpec = [fm fileExistsAtPath:monoTtf]
+                             ? [NSString stringWithFormat:@"DejaVuSansM Nerd Font Mono:size=%.1f", fontSize]
+                             : [NSString stringWithFormat:@"monospace:size=%.1f", fontSize];
+    NSString *ini = [NSString
+        stringWithFormat:@"[main]\n"
+                          "term=xterm-256color\n"
+                          "font=%@\n"
+                          "dpi-aware=yes\n"
+                          "letter-spacing=0\n"
+                          "\n"
+                          "[tweak]\n"
+                          "font-monospace-warn=no\n"
+                          "\n"
+                          "[key-bindings]\n"
+                          "clipboard-copy=Super+c\n"
+                          "clipboard-paste=Super+v\n",
+                         fontSpec];
+    [ini writeToFile:iniPath
+          atomically:YES
+            encoding:NSUTF8StringEncoding
+               error:nil];
+
     const char *shell = getenv("WAWONA_SHELL");
     if (!shell || !shell[0]) {
         shell = "/usr/bin/zsh";
     }
-    char **argv = calloc(3, sizeof(char *));
+    char **argv = calloc(9, sizeof(char *));
     argv[0] = strdup("foot");
-    argv[1] = strdup(shell);
-    argv[2] = NULL;
-    [self _launchClient:foot_main name:"foot" argc:2 argv:argv];
+    argv[1] = strdup("-t");
+    argv[2] = strdup("xterm-256color");
+    argv[3] = strdup("-o");
+    argv[4] = strdup("tweak.font-monospace-warn=no");
+    argv[5] = strdup("-c");
+    argv[6] = strdup(iniPath.fileSystemRepresentation);
+    argv[7] = strdup(shell);
+    argv[8] = NULL;
+    [self _launchClient:foot_main name:"foot" argc:8 argv:argv];
+}
+
+- (void)_launchNamedDemo:(int (*)(int, char **))entry name:(const char *)name {
+    if (!entry) {
+        WWNLog("WATCH", @"Demo '%s' not linked (weak stub / missing archive)", name);
+        return;
+    }
+    [self _launchClient:entry name:name argc:0 argv:NULL];
+}
+
+- (void)launchNiri {
+    if (!niri_main) {
+        WWNLog("WATCH", @"niri_main not linked. Nested niri unavailable");
+        return;
+    }
+    [self stopClient];
+    [self _applyMiniServerSizePolicyForClient:"niri"];
+    [WWNWatchShellEnvironment apply];
+
+    const char *parent_display = getenv("WAYLAND_DISPLAY");
+    if (!parent_display || parent_display[0] == '\0')
+        parent_display = "wayland-0";
+    setenv("WAYLAND_DISPLAY", parent_display, 1);
+    setenv("NIRI_BACKEND", "nested", 1);
+
+    NSBundle *bundle = [NSBundle mainBundle];
+    NSString *kdl = [bundle pathForResource:@"share/niri/default-config" ofType:@"kdl"];
+    if (kdl.length == 0) {
+        kdl = [[bundle.bundlePath stringByAppendingPathComponent:@"share/niri"]
+                  stringByAppendingPathComponent:@"default-config.kdl"];
+    }
+    if ([[NSFileManager defaultManager] fileExistsAtPath:kdl]) {
+        setenv("NIRI_CONFIG", kdl.fileSystemRepresentation, 1);
+    }
+
+    wwn_weston_compositor_shutdown_requested = 0;
+
+    ClientThreadArgs *args = malloc(sizeof(ClientThreadArgs));
+    args->entry = wwn_watch_niri_entry;
+    args->name = "niri";
+    args->argc = 0;
+    args->argv = NULL;
+
+    int rc = pthread_create(&_clientThread, NULL, clientThreadFunc, args);
+    if (rc == 0) {
+        _clientRunning = YES;
+        _clientThreadValid = YES;
+        WWNLog("WATCH", @"Launched nested niri (WAYLAND_DISPLAY=%s)", parent_display);
+    } else {
+        free(args);
+        WWNLog("WATCH", @"Failed to launch niri (pthread_create=%d)", rc);
+    }
+}
+
+- (void)launchClientWithId:(NSString *)clientId {
+    NSString *cid = clientId.length > 0 ? clientId : @"weston-simple-shm";
+    if ([cid isEqualToString:@"weston"]) {
+        [self launchWeston];
+    } else if ([cid isEqualToString:@"weston-terminal"]) {
+        [self launchWestonTerminal];
+    } else if ([cid isEqualToString:@"foot"]) {
+        [self launchFoot];
+    } else if ([cid isEqualToString:@"niri"]) {
+        [self launchNiri];
+    } else if ([cid isEqualToString:@"weston-flower"]) {
+        [self _launchNamedDemo:flower_main name:"weston-flower"];
+    } else if ([cid isEqualToString:@"weston-smoke"]) {
+        [self _launchNamedDemo:smoke_main name:"weston-smoke"];
+    } else if ([cid isEqualToString:@"weston-clickdot"]) {
+        [self _launchNamedDemo:clickdot_main name:"weston-clickdot"];
+    } else if ([cid isEqualToString:@"weston-eventdemo"]) {
+        [self _launchNamedDemo:eventdemo_main name:"weston-eventdemo"];
+    } else if ([cid isEqualToString:@"weston-resizor"]) {
+        [self _launchNamedDemo:resizor_main name:"weston-resizor"];
+    } else if ([cid isEqualToString:@"weston-cliptest"]) {
+        [self _launchNamedDemo:cliptest_main name:"weston-cliptest"];
+    } else if ([cid isEqualToString:@"weston-transformed"]) {
+        [self _launchNamedDemo:transformed_main name:"weston-transformed"];
+    } else if ([cid isEqualToString:@"weston-stacking"]) {
+        [self _launchNamedDemo:stacking_main name:"weston-stacking"];
+    } else if ([cid isEqualToString:@"weston-dnd"]) {
+        [self _launchNamedDemo:dnd_main name:"weston-dnd"];
+    } else if ([cid isEqualToString:@"weston-image"]) {
+        [self _launchNamedDemo:image_main name:"weston-image"];
+    } else if ([cid isEqualToString:@"weston-scaler"]) {
+        [self _launchNamedDemo:scaler_main name:"weston-scaler"];
+    } else if ([cid isEqualToString:@"weston-editor"]) {
+        [self _launchNamedDemo:editor_main name:"weston-editor"];
+    } else if ([cid isEqualToString:@"weston-constraints"]) {
+        [self _launchNamedDemo:constraints_main name:"weston-constraints"];
+    } else if ([cid isEqualToString:@"kmscube"] ||
+               [cid isEqualToString:@"gbm-es2-demo"] ||
+               [cid isEqualToString:@"opengl-cube"] ||
+               [cid isEqualToString:@"vkcube"] ||
+               [cid isEqualToString:@"weston-simple-egl"]) {
+        WWNLog("WATCH",
+               @"Refusing '%@': GPU client. WatchOS has no Metal/ANGLE stack",
+               cid);
+    } else {
+        // Default / weston-simple-shm
+        [self launchWestonSimpleSHM];
+    }
 }
 
 - (void)stopClient {
-    if (!_clientRunning || !_clientThreadValid) return;
-    wwn_weston_compositor_shutdown_requested = 1;
-    _clientRunning = NO;
-    _clientThreadValid = NO;
-    pthread_cancel(_clientThread);
-    pthread_join(_clientThread, NULL);
-    NSLog(@"[WatchCompositor] Client stopped");
+    if (_clientRunning && _clientThreadValid) {
+        wwn_weston_compositor_shutdown_requested = 1;
+        _clientRunning = NO;
+        _clientThreadValid = NO;
+        // pthread_timedjoin_np is unavailable on Apple. Cancel + join.
+        pthread_cancel(_clientThread);
+        pthread_join(_clientThread, NULL);
+        WWNLog("WATCH", @"Client stopped");
+    }
+
+    wwn_weston_compositor_shutdown_requested = 0;
+    _loggedFirstFrame = NO;
+
+    // Drop the last SHM frame so Start of another client does not paint the
+    // previous weston-terminal pixels while waiting for the first commit.
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (self->_latestFrame) {
+            CGImageRelease(self->_latestFrame);
+            self->_latestFrame = NULL;
+        }
+        [[NSNotificationCenter defaultCenter]
+            postNotificationName:WWNWatchCompositorFrameReadyNotification
+                          object:self];
+    });
+
+    // Allow Stop → Start without relaunching the whole watch app.
+    if (wwn_pty_ios_allow_new_shell_session) {
+        wwn_pty_ios_allow_new_shell_session();
+    }
+
+    // Brief settle so the mini server finishes disconnect cleanup before the
+    // next client binds globals (fixes flaky Close → Start on watchOS).
+    usleep(50 * 1000);
 }
 
 // MARK: - Keyboard input (WatchKit text entry → PTY)
@@ -568,13 +849,13 @@ static void miniServerFrameCallback(const uint8_t *pixels,
 - (void)sendText:(NSString *)text {
     if (text.length == 0) return;
     if (!_miniServer) {
-        NSLog(@"[WatchCompositor] sendText ignored: mini server not running "
+        WWNLog("WATCH", @"sendText ignored: mini server not running "
               "(Rust backend keyboard path not yet wired)");
         return;
     }
     // wwn_wls_feed_text is thread-safe; it enqueues and the dispatch thread emits.
     wwn_wls_feed_text(_miniServer, text.UTF8String);
-    NSLog(@"[WatchCompositor] Injected %lu chars of keyboard input", (unsigned long)text.length);
+    WWNLog("WATCH", @"Injected %lu chars of keyboard input", (unsigned long)text.length);
 }
 
 - (void)sendKeyCode:(uint32_t)evdevKeycode pressed:(BOOL)pressed {
@@ -610,9 +891,9 @@ static void *waypipeThreadFunc(void *ctx) {
     pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
 
     pthread_cleanup_push(waypipeThreadCleanup, ctx);
-    NSLog(@"[WatchCompositor] waypipe_main starting (%d args)", args->argc);
+    WWNLog("WATCH", @"waypipe_main starting (%d args)", args->argc);
     int result = waypipe_main(args->argc, args->argv);
-    NSLog(@"[WatchCompositor] waypipe_main exited with code %d", result);
+    WWNLog("WATCH", @"waypipe_main exited with code %d", result);
     pthread_cleanup_pop(1);
     return NULL;
 }
@@ -624,12 +905,12 @@ static void *waypipeThreadFunc(void *ctx) {
                 remoteCommand:(NSString *)remoteCommand
 {
     if (!_isRunning) {
-        NSLog(@"[WatchCompositor] launchWaypipe ignored: compositor is not running.");
+        WWNLog("WATCH", @"launchWaypipe ignored: compositor is not running.");
         return;
     }
 
     if (!waypipe_main) {
-        NSLog(@"[WatchCompositor] waypipe_main not linked — waypipe unavailable. "
+        WWNLog("WATCH", @"waypipe_main not linked. Waypipe unavailable. "
               "Run nix run .#xcodegen after building watchOS deps.");
         return;
     }
@@ -637,7 +918,7 @@ static void *waypipeThreadFunc(void *ctx) {
     NSString *trimmedHost = [host stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
     NSString *trimmedUser = [user stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
     if (trimmedHost.length == 0 || trimmedUser.length == 0) {
-        NSLog(@"[WatchCompositor] launchWaypipe requires non-empty host and user.");
+        WWNLog("WATCH", @"launchWaypipe requires non-empty host and user.");
         return;
     }
 
@@ -681,7 +962,7 @@ static void *waypipeThreadFunc(void *ctx) {
         cmd,
     ];
 
-    NSLog(@"[WatchCompositor] Launching waypipe: %@", [argsList componentsJoinedByString:@" "]);
+    WWNLog("WATCH", @"Launching waypipe: %@", [argsList componentsJoinedByString:@" "]);
 
     int argc = (int)argsList.count;
     char **argv = malloc(sizeof(char *) * (argc + 1));
@@ -699,12 +980,12 @@ static void *waypipeThreadFunc(void *ctx) {
     if (rc == 0) {
         _waypipeRunning = YES;
         _waypipeThreadValid = YES;
-        NSLog(@"[WatchCompositor] Waypipe thread started");
+        WWNLog("WATCH", @"Waypipe thread started");
     } else {
         for (int i = 0; i < argc; i++) free(argv[i]);
         free(argv);
         free(args);
-        NSLog(@"[WatchCompositor] Failed to create waypipe thread (rc=%d)", rc);
+        WWNLog("WATCH", @"Failed to create waypipe thread (rc=%d)", rc);
     }
 }
 
@@ -715,7 +996,7 @@ static void *waypipeThreadFunc(void *ctx) {
     pthread_join(_waypipeThread, NULL);
     _waypipeThreadValid = NO;
     unsetenv("WAYPIPE_SSH_PASSWORD");
-    NSLog(@"[WatchCompositor] Waypipe stopped");
+    WWNLog("WATCH", @"Waypipe stopped");
 }
 
 - (BOOL)isWaypipeRunning { return _waypipeRunning; }
@@ -739,10 +1020,26 @@ static void *waypipeThreadFunc(void *ctx) {
     }
 
     if (isShim) {
-        NSLog(@"[WatchCompositor] Refusing to launch '%s': client is still compiled as weston-simple-shm compatibility shim.", name);
+        WWNLog("WATCH", @"Refusing to launch '%s': client is still compiled as weston-simple-shm compatibility shim.", name);
         return YES;
     }
     return NO;
+}
+
+- (void)_applyMiniServerSizePolicyForClient:(const char *)name {
+    if (!_miniServer || !name) {
+        return;
+    }
+    // Same fill set as iOS WWNIosBundledClientFillsHost. Demos (simple-shm,
+    // flower, smoke, …) keep configure(0,0) so the client owns its square.
+    int fill = strcmp(name, "weston-terminal") == 0 ||
+               strcmp(name, "wayland-terminal") == 0 ||
+               strcmp(name, "foot") == 0 ||
+               strcmp(name, "niri") == 0 ||
+               strcmp(name, "weston") == 0;
+    wwn_wls_set_fill_host(_miniServer, fill);
+    WWNLog("WATCH", @"xdg size policy for '%s': %s",
+          name, fill ? "fill-host" : "client-pick (0x0)");
 }
 
 // MARK: - Properties

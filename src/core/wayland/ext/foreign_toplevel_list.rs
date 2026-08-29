@@ -14,7 +14,7 @@ use crate::core::wayland::protocol::server::ext::foreign_toplevel_list::v1::serv
 
 use crate::core::state::CompositorState;
 
-/// User data for a toplevel handle — links to the compositor window
+/// User data for a toplevel handle. Links to the compositor window
 #[derive(Debug, Clone, Default)]
 pub struct ForeignToplevelHandleData {
     pub window_id: u32,
@@ -59,7 +59,7 @@ impl GlobalDispatch<ExtForeignToplevelListV1, ()> for CompositorState {
             }
         }
 
-        tracing::debug!("Bound ext_foreign_toplevel_list_v1 — enumerated {} toplevels", window_ids.len());
+        tracing::debug!("Bound ext_foreign_toplevel_list_v1. Enumerated {} toplevels", window_ids.len());
     }
 }
 

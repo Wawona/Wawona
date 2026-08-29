@@ -1,0 +1,122 @@
+# macOS weston/niri: nested Wayland and iland DRM
+
+Weston and niri are dual-backend. They must launch from Machines Start in
+**Aqua** and after **Classic Desktop Replacement**. The session chooses the
+backend. Do not pin nested-only. Do not force DRM while WindowServer is up.
+
+This is **not** Wawona Swinging Bridge. Not Desktop Replacement itself. The
+clients are bundled compositors.
+
+## Detection
+
+Classic / own-display (no host compositor): **Apple WindowServer is not
+running**. `WWNHostSessionUsesOwnDisplayDRM()`: NSScreen first (Machines
+Start is AppKit), then a positive `proc_name` match for `WindowServer`.
+A censored process list (hardened runtime often cannot name WindowServer)
+is Aqua, not Classic. CLI wrappers: `pgrep -x WindowServer`.
+
+Never treat these as Classic while Aqua is up:
+
+- leaked `WWN_MODEB_TTY` / `NIRI_BACKEND=tty` / `WWN_MODEB_INSERT`
+- `DesktopReplacementEnabled=1` without Take Over
+- Settings Enable Desktop Replacement (Path B armed, WindowServer still up)
+
+## Aqua (WindowServer up)
+
+Honour Display Backend (`CompositorBackend` via `WWNResolveCompositorBackend`).
+`auto` is nested `wayland`.
+
+| Backend | weston | niri |
+|---|---|---|
+| `auto` / `wayland` | `--backend=wayland` on the Wawona socket | `NIRI_BACKEND=nested` |
+| `drm` | in-process `--backend=drm` + iland Metal present (`WWNIlandPresenter`) | nested on Wawona (macOS has no in-process `niri_main`). niri DRM is Classic insert |
+
+Strip Mode B leftovers from the Wawona process and from nested `NSTask` env:
+`WWN_MODEB_TTY`, `WWN_MODEB_INSERT`, `NIRI_BACKEND=tty`,
+`libwayland-mac.dylib` in `DYLD_INSERT_LIBRARIES`.
+
+macOS weston **rewrites** `--backend=wayland` to drm when `WWN_MODEB_TTY` is
+set. macOS niri **force-selects** the TTY backend when that var is set. Both
+then fail in Aqua (no insert, no real `/dev/dri`).
+
+CLI wrappers (`~/.local/bin/weston-terminal` and the rest) must keep a live
+caller `WAYLAND_DISPLAY`. Nested niri/weston (fuzzel, foot, zsh) inherit that
+socket; stealing it via `wawona-env.sh` opens a new macOS window. macOS
+Terminal.app has no nested socket, so those wrappers still attach to Wawona.
+
+Nested weston GL must allocate `wl_egl_window` from iland (`libEGL.dylib`),
+not the libwayland vendor stub. `wayland-backend` remaps that LC_LOAD at
+install, the same remap niri already does. Stub windows make
+`eglCreateWindowSurface` SIGBUS inside GBM.
+
+## Classic (WindowServer down)
+
+No host Wayland for the **session** compositor. That one uses wwn-iland
+userspace DRM/KMS/GBM:
+
+- weston `--backend=drm`
+- niri `NIRI_BACKEND=tty` and `WWN_MODEB_TTY=1`
+- Prefix `DYLD_INSERT_LIBRARIES` from `WWN_MODEB_INSERT` on the session
+  compositor exec only, as the **login user**
+- Do not nest the session compositor on Wawona. Do not kickstart
+  compositor-host. Do not export insert in the login shell (Apple `/bin/*`
+  is arm64e)
+
+Inner weston/niri started **inside** that session compositor (terminal,
+fuzzel, panel) are Wayland clients of its listen socket:
+
+- weston `--backend=wayland` with a unique `--socket`
+- niri `NIRI_BACKEND=nested`
+- Keep the caller's `WAYLAND_DISPLAY`. Do not set `WWN_MODEB_TTY`. Do not
+  insert the Mode B dylib.
+
+## Nested compositors inside nested compositors
+
+Required on every path (Aqua nested, Aqua iland DRM weston, Classic DRM):
+
+```text
+Wawona
+  weston (wayland or wwn-iland DRM)
+    weston --backend=wayland
+    niri NIRI_BACKEND=nested
+  niri (nested or Classic tty)
+    niri NIRI_BACKEND=nested
+    weston --backend=wayland
+```
+
+Same as Linux. The inner compositor speaks the same protocols as upstream
+nested weston/niri. Apple mobile in-process `weston_compositor_main` and
+`niri_main` are not re-entrant, so same-compositor doubling needs a second
+process (macOS) or fails closed with a log (iOS). Cross nesting (niri inside
+weston, weston inside niri) is the in-process path.
+
+## Hard rejects
+
+- Nesting the **session** compositor on Wawona's host Wayland after Classic
+  Take Over (there is no host Wayland)
+- Forcing DRM/tty on an inner weston/niri that already has a live parent
+  `WAYLAND_DISPLAY`
+- Forcing DRM/tty on Aqua Machines Start because Desktop Replacement is
+  enabled or `WWN_MODEB_TTY` leaked
+- `sudo niri` / `sudo weston` (sudo strips insert; libc `open("/dev/dri")`
+  hits a missing real node)
+- Opening a real DRM/KMS node. iland userspace only
+- Pinning nested-only and discarding the iland DRM path
+- Equating this with Swinging Bridge or with Mode B dylib present
+
+## Code
+
+- Resolver: `WWNResolveCompositorBackend`, `WWNHostSessionUsesOwnDisplayDRM`
+  in `src/platform/macos/ui/Settings/WWNWaypipeRunner.m`
+- CLI wrappers: `scripts/macos-register-cli-bins.sh`
+- Doorman session: `wwn-igetty` `libexec/wwn-modeb-session/`
+
+Cursor: nested and iland DRM compositors hide and grab the host pointer
+(iOS Touchpad overlay included). They draw `wl_pointer` themselves. See
+`wawona-nested-compositor-cursor`. Apple mobile / Android in-process weston
+must not reset cairo on destroy. See `wawona-inprocess-cairo`.
+
+Cursor rule: `wawona-compositor-backend`. Canonical prose:
+[`../iland-mode-a-b-desktop.md`](../iland-mode-a-b-desktop.md). See also
+`wawona-macos-mode-a`, `wawona-iland-mode-b-desktop`,
+`wawona-native-compositors`.

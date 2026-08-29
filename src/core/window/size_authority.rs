@@ -12,9 +12,9 @@
 //! - **Smithay**: configure serials + ack; compositor applies size from the
 //!   surface after commit, not by fighting the client mid-serial.
 //! - **WSLg / RAIL** (reference only): host chrome drives continuous geometry
-//!   during drag; settle uses the committed client size — never dual writers.
+//!   during drag; settle uses the committed client size. Never dual writers.
 //! - **waypipe**: remote lag means host must stay authoritative during drag
-//!   and only reconcile on match/refuse — same SM.
+//!   and only reconcile on match/refuse. Same SM.
 //!
 //! See `.cursor/rules/wawona-host-client-size-sync.mdc`.
 
@@ -25,8 +25,8 @@ pub enum SizeAuthority {
     AwaitingFirstCommit,
     /// Client owns size. Host frame must follow commits (OWL).
     Client,
-    /// Host owns size (live edge-drag / inject resize). Client lagging
-    /// commits must not yank the host frame (#111).
+    /// Host owns size (live edge-drag / inject resize / fill-host nested
+    /// compositor). Client lagging commits must not yank the host frame (#111).
     Host {
         requested_w: u32,
         requested_h: u32,
@@ -140,8 +140,12 @@ impl SizeAuthority {
     /// configures (no in-flight serial on the xdg_surface).
     /// `current_w/h` are the core window dimensions before this commit.
     /// `interactive_resize` is true while `xdg_toplevel.state.resizing` is set
-    /// (host SSD live-drag or CSD resize grab) — lagging commits must not
+    /// (host SSD live-drag or CSD resize grab). Lagging commits must not
     /// refuse/yank the host until the settle configure clears Resizing.
+    /// `client_may_refuse` is true for demos that keep a preferred square
+    /// (flower/smoke). Nested compositors (weston/niri) must stay false: a
+    /// smaller first buffer is init, not a refuse, and must not shrink the
+    /// host window out from under their output.
     pub fn on_client_commit(
         self,
         committed_w: i32,
@@ -151,6 +155,7 @@ impl SizeAuthority {
         xdg_pending_serial: u32,
         has_committed_buffer: bool,
         interactive_resize: bool,
+        client_may_refuse: bool,
     ) -> ClientCommitDecision {
         if committed_w <= 0 || committed_h <= 0 {
             let stretch = self.is_host();
@@ -200,7 +205,7 @@ impl SizeAuthority {
                 }
                 if xdg_pending_serial != 0 || interactive_resize {
                     // Still waiting for ack of a newer configure, or still in
-                    // an interactive resize session — keep host authority; do
+                    // an interactive resize session. Keep host authority; do
                     // not apply lagging buffer / refuse until settle.
                     return ClientCommitDecision {
                         authority: SizeAuthority::Host {
@@ -220,8 +225,25 @@ impl SizeAuthority {
                     };
                 }
                 // Client acked the settle configure and still commits a
-                // different size = refused the suggestion (weston-flower/smoke).
-                // Host must adopt.
+                // different size. Demos (flower/smoke) refuse: host adopts.
+                // Nested compositors copy the first configure into their
+                // output; a smaller first buffer is init, not a refuse.
+                // Shrinking the host leaves them drawing the large mode into
+                // a small window with no redraw.
+                if !client_may_refuse {
+                    return ClientCommitDecision {
+                        authority: SizeAuthority::Host {
+                            requested_w,
+                            requested_h,
+                            configure_serial,
+                            generation,
+                        },
+                        apply_client_size: false,
+                        emit_size_changed: false,
+                        stretch_present_to_host: true,
+                        reason: "host_fill_waiting_for_match",
+                    };
+                }
                 ClientCommitDecision {
                     authority: SizeAuthority::Client,
                     apply_client_size: true,
@@ -241,7 +263,7 @@ mod tests {
     #[test]
     fn first_commit_makes_client_authoritative() {
         let d = SizeAuthority::AwaitingFirstCommit.on_client_commit(
-            200, 200, 0, 0, 0, false, false,
+            200, 200, 0, 0, 0, false, false, true,
         );
         assert_eq!(d.authority, SizeAuthority::Client);
         assert!(d.apply_client_size);
@@ -255,7 +277,7 @@ mod tests {
         // Mirrors surfaces.rs: initial xdg configure is 0×0 with a non-zero
         // serial; weston often commits before that serial is cleared.
         let d = SizeAuthority::AwaitingFirstCommit.on_client_commit(
-            1024, 768, 0, 0, /*pending*/ 1, false, false,
+            1024, 768, 0, 0, /*pending*/ 1, false, false, true,
         );
         assert_eq!(d.authority, SizeAuthority::Client);
         assert!(d.apply_client_size);
@@ -269,7 +291,7 @@ mod tests {
             .on_host_resize_request(900, 700, 1)
             .authority
             .on_configure_sent(42);
-        let d = host.on_client_commit(800, 600, 900, 700, /*pending*/ 42, true, false);
+        let d = host.on_client_commit(800, 600, 900, 700, /*pending*/ 42, true, false, true);
         assert!(d.authority.is_host());
         assert!(!d.apply_client_size);
         assert!(!d.emit_size_changed);
@@ -287,7 +309,7 @@ mod tests {
             configure_serial: 7,
             generation: 3,
         };
-        let d = host.on_client_commit(800, 600, 900, 700, 0, true, true);
+        let d = host.on_client_commit(800, 600, 900, 700, 0, true, true, true);
         assert!(d.authority.is_host());
         assert!(!d.apply_client_size);
         assert!(d.stretch_present_to_host);
@@ -302,7 +324,7 @@ mod tests {
             configure_serial: 7,
             generation: 3,
         };
-        let d = host.on_client_commit(900, 700, 900, 700, 0, true, false);
+        let d = host.on_client_commit(900, 700, 900, 700, 0, true, false, true);
         assert_eq!(d.authority, SizeAuthority::Client);
         assert!(d.apply_client_size);
         assert!(!d.stretch_present_to_host);
@@ -318,7 +340,7 @@ mod tests {
             configure_serial: 9,
             generation: 1,
         };
-        let d = host.on_client_commit(200, 200, 1024, 768, 0, true, false);
+        let d = host.on_client_commit(200, 200, 1024, 768, 0, true, false, true);
         assert_eq!(d.authority, SizeAuthority::Client);
         assert!(d.apply_client_size);
         assert!(d.emit_size_changed);
@@ -350,6 +372,7 @@ mod tests {
                 gen as u32,
                 true,
                 true,
+                true,
             );
             assert!(
                 !d.apply_client_size,
@@ -370,6 +393,7 @@ mod tests {
             0,
             true,
             false,
+            true,
         );
         assert_eq!(d.authority, SizeAuthority::Client);
         assert!(d.apply_client_size);
@@ -377,13 +401,13 @@ mod tests {
 
     #[test]
     fn client_mode_always_follows_buffer() {
-        let d = SizeAuthority::Client.on_client_commit(200, 200, 64, 64, 0, true, false);
+        let d = SizeAuthority::Client.on_client_commit(200, 200, 64, 64, 0, true, false, true);
         assert!(d.apply_client_size);
         assert!(d.emit_size_changed);
         assert_eq!(d.authority, SizeAuthority::Client);
         let d2 = d
             .authority
-            .on_client_commit(250, 250, 200, 200, 0, true, false);
+            .on_client_commit(250, 250, 200, 200, 0, true, false, true);
         assert!(d2.apply_client_size);
         assert!(d2.emit_size_changed);
         assert!(!d2.stretch_present_to_host);
@@ -397,5 +421,24 @@ mod tests {
             .on_host_resize_request(900, 700, 2)
             .authority;
         assert_eq!(a.host_requested(), Some((900, 700)));
+    }
+
+    #[test]
+    fn nested_compositor_mismatch_does_not_shrink_host() {
+        // niri/weston: first buffer can be smaller than the fill-host
+        // configure during init. That is not a flower-style refuse.
+        let host = SizeAuthority::Host {
+            requested_w: 1920,
+            requested_h: 1080,
+            configure_serial: 3,
+            generation: 1,
+        };
+        let d = host.on_client_commit(800, 600, 1920, 1080, 0, true, false, false);
+        assert!(d.authority.is_host());
+        assert!(!d.apply_client_size);
+        assert!(!d.emit_size_changed);
+        assert!(d.stretch_present_to_host);
+        assert_eq!(d.reason, "host_fill_waiting_for_match");
+        assert_eq!(d.authority.host_requested(), Some((1920, 1080)));
     }
 }

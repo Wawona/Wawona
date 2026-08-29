@@ -48,7 +48,7 @@ Terminal **UI** (VT parsing, scrollback, cairo rendering, keyboard input) comes 
 
 **Critical invariant:** On iOS/iPadOS (and the rest of the sandboxed Apple family: tvOS, watchOS, visionOS) the shell runs **in-process**: `terminal.c` → `wwn_pty_spawn_shell_paced` → `ios_spawn_zsh_inprocess`, which starts a **pthread** that calls the statically-linked `wawona_zsh_main()`. **No `fork`/`exec`/`posix_spawn`/`system` is reached** on this path (the `posix_spawn` branch in `spawn_on_slave` is skipped by an early iOS return), and **no `dlopen`** occurs (zsh modules are statically linked). The compositor's disabled `fork()` is a second, independent layer.
 
-External commands are **also** in-process (see next section): zsh's exec path is patched so safe-subset utilities dispatch to bundled Rust uutils before any fork. Android is the only family member that forks — it is not sandboxed the same way, so it `posix_spawn`s a real on-disk `zsh` and execs the uutils multicall binary normally.
+External commands are **also** in-process (see next section): zsh's exec path is patched so safe-subset utilities dispatch to bundled Rust uutils before any fork. Android is the only family member that forks. It is not sandboxed the same way, so it `posix_spawn`s a real on-disk `zsh` and execs the uutils multicall binary normally.
 
 ---
 
@@ -89,8 +89,11 @@ listed in `WAWONA_INPROC_CLIENTS` in the `.zshrc` template:
 | Command | Archive | Entry point | Notes |
 |---------|---------|-------------|-------|
 | `fastfetch` | `libfastfetch.a` | `fastfetch_main` | No fork; patched for Apple mobile |
+| `phoon` | `libphoon_rs.a` | `phoon_main` | ASCII moon phase (wwn-phoon-rs); type `phoon` or Start the Phoon machine |
 | `nvim` / `vi` / `vim` | `libwawona-neovim.a` | `wawona_nvim_main` | PUC Lua only; `:terminal` stubbed |
 | `waypipe` | `libwawona.a` (`waypipe-ssh`) | `waypipe_main` | libssh2 SSH in-process; no openssh binary |
+| `help` / `wawona` | `libwwn-pty.a` | `wwn_run_help` | Catalog of builtins, uutils, clients, WASM |
+| `wasm` / `*.wasm` | `libwawona_wasm.a` | `wawona_wasm_run` | WASI P1/P2 interpreter (Pulley on mobile); user documents |
 
 SSH from a shell: `export WAYPIPE_SSH_PASSWORD=…` then `waypipe ssh user@host -- …`.
 The Settings UI uses the same entry point with captured stdout/stderr.
@@ -174,7 +177,7 @@ Wawona.app/
         .zsh_history
 ```
 
-zsh itself is **not** an on-disk binary — it is statically linked into the app (`libwawona-zsh.a`); `usr/bin/zsh` is a non-executable placeholder kept only for path conventions. `WWNRootfsManager` copies the `etc/zsh/*.template` dotfiles into the writable `home/` on first launch (install marker `.installed-v8`) so the user can edit `.zshenv`/`.zshrc`/`.zlogin` without mutating the signed bundle.
+zsh itself is **not** an on-disk binary. It is statically linked into the app (`libwawona-zsh.a`); `usr/bin/zsh` is a non-executable placeholder kept only for path conventions. `WWNRootfsManager` copies the `etc/zsh/*.template` dotfiles into the writable `home/` on first launch (install marker `.installed-v8`) so the user can edit `.zshenv`/`.zshrc`/`.zlogin` without mutating the signed bundle.
 
 ---
 
@@ -187,7 +190,7 @@ Set in `WWNWaypipeRunner.m` (or a dedicated `WWNLocalShellEnvironment`) **before
 | `HOME` | `…/Application Support/wawona-rootfs/home` | Writable user dir |
 | `ZDOTDIR` | same as `HOME` or explicit | zsh dotfile location |
 | `WAWONA_ROOTFS` | absolute rootfs path | Spawn layer validation |
-| `PATH` | `/usr/bin:/bin` | No host PATH leakage; on the Apple sandbox contains no real executables — `ls`/`cat`/… are dispatched in-process by the zsh exec hook, not found on `PATH`. (macOS/Android prepend the uutils multicall dir.) |
+| `PATH` | `/usr/bin:/bin` | No host PATH leakage; on the Apple sandbox contains no real executables. `ls`/`cat`/… are dispatched in-process by the zsh exec hook, not found on `PATH`. (macOS/Android prepend the uutils multicall dir.) |
 | `TERM` | `xterm-256color` | Matches terminal.c expectations |
 | `WAWONA_SHELL` | `$WAWONA_ROOTFS/usr/bin/zsh` | Explicit shell for spawn hook |
 | `XDG_RUNTIME_DIR` | existing Wawona tmp | Wayland socket dir |
@@ -201,12 +204,12 @@ Never inherit `DYLD_*`, `LD_*`, or host `PATH` from SpringBoard.
 
 | Platform | Terminal UI | Local zsh | Coreutils | Build attr |
 |----------|---------------|-----------|-----------|------------|
-| **iOS** | Full `terminal.c` | **Yes — in-process** | in-process uutils (safe subset) | `.#weston-ios`, `.#zsh-ios` |
-| **iPadOS** | Same (`ipados.nix` → `ios.nix`) | **Yes — in-process** | in-process uutils | same |
-| **tvOS** | Full `terminal.c` (constrained UX) | **Yes — in-process** | in-process uutils | reuses iOS recipes |
-| **visionOS** | Full `terminal.c` | **Yes — in-process** | in-process uutils | reuses iOS recipes |
-| **watchOS** | Full `terminal.c` (constrained UX) | **Yes — in-process** | **size-gated off** (builtins only) | see [WATCHOS-SCOPE.md](WATCHOS-SCOPE.md) |
-| **Android** | Full `terminal.c` | **Yes — forked** (`posix_spawn` real `zsh`) | uutils multicall on `PATH` | `.#zsh-android`, APK `libzsh_bin.so` |
+| **iOS** | Full `terminal.c` | **Yes. In-process** | in-process uutils (safe subset) | `.#weston-ios`, `.#zsh-ios` |
+| **iPadOS** | Same (`ipados.nix` → `ios.nix`) | **Yes. In-process** | in-process uutils | same |
+| **tvOS** | Full `terminal.c` (constrained UX) | **Yes. In-process** | in-process uutils | reuses iOS recipes |
+| **visionOS** | Full `terminal.c` | **Yes. In-process** | in-process uutils | reuses iOS recipes |
+| **watchOS** | Full `terminal.c` (constrained UX) | **Yes. In-process** | **size-gated off** (builtins only) | see [WATCHOS-SCOPE.md](WATCHOS-SCOPE.md) |
+| **Android** | Full `terminal.c` | **Yes. Forked** (`posix_spawn` real `zsh`) | uutils multicall on `PATH` | `.#zsh-android`, APK `libzsh_bin.so` |
 | **macOS** | Meson path | Host `/bin/zsh` via `forkpty` | uutils multicall on `PATH` | `weston/macos.nix` unchanged |
 
 ---

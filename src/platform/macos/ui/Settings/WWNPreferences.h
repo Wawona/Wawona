@@ -12,6 +12,10 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic, strong, readonly)
     NSArray<WWNPreferencesSection *> *sections;
 @property(nonatomic, strong) WWNPreferencesSection *activeSection;
+/// Secondary-column nav for Settings. Env Vars may replace this table as the
+/// visible root; keep the column nav so we can swap back.
+@property(nonatomic, weak, nullable)
+    UINavigationController *settingsColumnNavigationController;
 #else
 @class WWNPreferencesSection;
 @interface WWNPreferences : NSWindowController
@@ -21,7 +25,12 @@ NS_ASSUME_NONNULL_BEGIN
 
 + (instancetype)sharedPreferences NS_SWIFT_NAME(shared());
 - (void)showPreferences:(nullable id)sender NS_SWIFT_NAME(show(_:));
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+/// Embed sidebar + catalog in `hostView` (in-app window or NSPreferencePane).
+- (void)installMacSettingsInterfaceInView:(NSView *)hostView;
+#endif
 - (void)selectSectionWithTitle:(NSString *)title;
+- (void)openEnvironmentVariablesManager;
 - (void)openMachinesConfiguration:(id)sender;
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
 - (void)dismissSelf;

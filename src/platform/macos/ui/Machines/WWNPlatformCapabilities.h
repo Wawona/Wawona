@@ -25,14 +25,20 @@ static inline bool WWNPlatformAllowsContainer(void) {
 }
 
 static inline bool WWNPlatformAllowsGpuStack(void) {
-#if TARGET_OS_TV || TARGET_OS_WATCH
+#if TARGET_OS_WATCH
   return false;
+#elif TARGET_OS_TV
+#if defined(WWN_TVOS_GPU_BUNDLED) && WWN_TVOS_GPU_BUNDLED
+  return true;
+#else
+  return false;
+#endif
 #else
   return true;
 #endif
 }
 
-static inline bool WWNPlatformAllowsAnowaW(void) {
+static inline bool WWNPlatformAllowsSwingingBridge(void) {
 #if TARGET_OS_OSX
   return true;
 #else
@@ -40,7 +46,12 @@ static inline bool WWNPlatformAllowsAnowaW(void) {
 #endif
 }
 
-/// Desktop / LockScreen / Mode B iland — macOS (+ Android separately). Never
+/// Deprecated name for ``WWNPlatformAllowsSwingingBridge``.
+static inline bool WWNPlatformAllowsAnowaW(void) {
+  return WWNPlatformAllowsSwingingBridge();
+}
+
+/// Desktop / LockScreen / Mode B iland. MacOS (+ Android separately). Never
 /// iOS/iPadOS/tvOS/watchOS/visionOS.
 static inline bool WWNPlatformAllowsDesktopReplacement(void) {
 #if TARGET_OS_OSX
@@ -54,7 +65,7 @@ static inline bool WWNPlatformAllowsMultiWindowScenes(void) {
 #if TARGET_OS_VISION
   return true;
 #elif TARGET_OS_IOS && !TARGET_OS_MACCATALYST
-  /* iPad only — callers must still check UIUserInterfaceIdiomPad at runtime
+  /* iPad only. Callers must still check UIUserInterfaceIdiomPad at runtime
    * (see WWNEnablePerWindowHosting / PlatformCapabilities.allowsMultiWindowScenes). */
   return true;
 #elif TARGET_OS_OSX
@@ -77,6 +88,14 @@ static inline bool WWNPlatformAllowsClientTabs(void) {
   return true; /* phone only at runtime; iPad uses multi-window scenes */
 #else
   return false;
+#endif
+}
+
+static inline bool WWNPlatformAllowsGlesStack(void) {
+#if TARGET_OS_WATCH
+  return false;
+#else
+  return WWNPlatformAllowsGpuStack();
 #endif
 }
 

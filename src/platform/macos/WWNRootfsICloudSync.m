@@ -51,12 +51,12 @@ static NSString *const kICloudContainerID = @"iCloud.com.aspauldingcode.Wawona";
 
 + (NSString *)statusSummary {
   if (![self isEnabled]) {
-    return @"Off — shell HOME stays on this device only.";
+    return @"Off. Shell HOME stays on this device only.";
   }
   if (![self isContainerAvailable]) {
-    return @"On — waiting for iCloud sign-in (using local HOME until available).";
+    return @"On. Waiting for iCloud sign-in (using local HOME until available).";
   }
-  return @"On — shell HOME syncs via iCloud Drive (Settings → Apple ID → iCloud).";
+  return @"On. Shell HOME syncs via iCloud Drive (Settings → Apple ID → iCloud).";
 }
 
 + (void)prepareICloudLayout {

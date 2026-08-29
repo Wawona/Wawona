@@ -38,6 +38,9 @@ let
     else
       null;
 
+  # DejaVu (UI/CSD) + DejaVuSansM Nerd Font Mono (terminals / prompts).
+  wawonaBundledFonts = pkgs.callPackage ../libs/fonts { };
+
   # Single openable Gradle tree at ./Wawona-gradle-project (parallel to ./Wawona.xcodeproj).
   projectPath = if wawonaAndroidProject != null then toString wawonaAndroidProject else "";
   projectIconStorePath =
@@ -418,7 +421,7 @@ let
     # etc.) to resolve the seat's keymap. Without this, smithay's
     # seat.add_keyboard() fails for both the primary and fallback XKB config,
     # the seat ends up with zero keyboard capability, and no key event ever
-    # reaches any Wayland client (weston-terminal included) — a silent,
+    # reaches any Wayland client (weston-terminal included). A silent,
     # total keyboard-input failure. Extracted into wawona-rootfs at runtime
     # by WawonaShellRootfs. Mirrors dependencies/wawona/android.nix.
     XKB_ASSET_DIR="$OUT/app/src/main/assets/xkb"
@@ -429,19 +432,15 @@ let
       echo "Bundled xkeyboard-config into $XKB_ASSET_DIR"
     fi
 
-    # DejaVu fonts for the in-process weston toytoolkit clients (cairo/
-    # fontconfig text rendering). android_jni.c writes a fonts.conf pointing
-    # here at runtime.
+    # DejaVu (UI/CSD) + DejaVuSansM Nerd Font Mono (terminals).
+    # android_jni.c writes a fonts.conf pointing here at runtime.
     FONTS_ASSET_DIR="$OUT/app/src/main/assets/fonts/truetype"
-    if [ ! -f "$FONTS_ASSET_DIR/DejaVuSans.ttf" ]; then
+    if [ ! -f "$FONTS_ASSET_DIR/DejaVuSansMNerdFontMono-Regular.ttf" ]; then
+      rm -rf "$OUT/app/src/main/assets/fonts"
       mkdir -p "$FONTS_ASSET_DIR"
-      cp -L ${pkgs.dejavu_fonts}/share/fonts/truetype/DejaVuSans.ttf \
-            ${pkgs.dejavu_fonts}/share/fonts/truetype/DejaVuSans-Bold.ttf \
-            ${pkgs.dejavu_fonts}/share/fonts/truetype/DejaVuSansMono.ttf \
-            ${pkgs.dejavu_fonts}/share/fonts/truetype/DejaVuSansMono-Bold.ttf \
-            "$FONTS_ASSET_DIR/"
+      cp -L ${wawonaBundledFonts}/share/fonts/truetype/*.ttf "$FONTS_ASSET_DIR/"
       chmod -R u+w "$OUT/app/src/main/assets/fonts"
-      echo "Bundled DejaVu fonts into $FONTS_ASSET_DIR"
+      echo "Bundled Wawona fonts into $FONTS_ASSET_DIR"
     fi
 
     # Weston toytoolkit PNGs (sign_close.png, sign_maximize.png,

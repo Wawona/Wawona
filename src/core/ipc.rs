@@ -22,12 +22,12 @@ impl IpcServer {
             let _ = std::fs::remove_file(&socket_path);
         }
 
-        // Check path length before binding — Unix domain sockets have a
+        // Check path length before binding. Unix domain sockets have a
         // hard limit (SUN_LEN = 104 on Apple platforms).
         let path_bytes = socket_path.as_os_str().as_encoded_bytes().len();
         if path_bytes >= 104 {
             tracing::warn!(
-                "IPC socket path too long ({} bytes, max 103): {:?} — IPC disabled",
+                "IPC socket path too long ({} bytes, max 103): {:?}. IPC disabled",
                 path_bytes, socket_path
             );
             return IpcServer { socket_path: None };
@@ -36,7 +36,7 @@ impl IpcServer {
         let listener = match UnixListener::bind(&socket_path) {
             Ok(l) => l,
             Err(e) => {
-                tracing::warn!("Failed to bind IPC socket {:?}: {} — IPC disabled", socket_path, e);
+                tracing::warn!("Failed to bind IPC socket {:?}: {}. IPC disabled", socket_path, e);
                 return IpcServer { socket_path: None };
             }
         };

@@ -21,8 +21,8 @@ static WAYLAND_DISPATCH_MUTEX: Mutex<()> = Mutex::new(());
 /// Poison-recovering lock acquisition.
 ///
 /// A panic inside an event handler (isolated by `catch_unwind`) poisons any
-/// lock held at the time. The data is still structurally valid — Wawona's
-/// state updates are individually small — so recovering the guard and moving
+/// lock held at the time. The data is still structurally valid. Wawona's
+/// state updates are individually small. So recovering the guard and moving
 /// on is strictly better than latching the whole compositor into a dead
 /// "faulted" state. Every lock site at this FFI boundary must go through
 /// these helpers instead of `.unwrap()`.
@@ -182,7 +182,7 @@ fn apply_geometry_offset(
     state.view_to_surface_coords(surface_id, view_w, view_h, x, y)
 }
 
-/// macOS/iOS inject pointer in the host content view — already window-local.
+/// macOS/iOS inject pointer in the host content view. Already window-local.
 fn platform_pointer_surface_local(
     state: &CompositorState,
     window_id: WindowId,
@@ -256,6 +256,29 @@ fn is_weston_family_app_id(app_id: &str) -> bool {
     app_id == "weston"
         || app_id.starts_with("weston-")
         || app_id.contains("weston")
+}
+
+/// Nested compositor process, not weston-terminal / flower / toys.
+fn is_nested_compositor_app_id(app_id: &str) -> bool {
+    let id = app_id.trim();
+    if id.is_empty() {
+        return false;
+    }
+    let lower = id.to_ascii_lowercase();
+    lower == "weston"
+        || lower == "org.freedesktop.weston"
+        || lower == "niri"
+        || lower.starts_with("niri.")
+}
+
+fn nested_compositor_output_scale(app_id: &str, global_scale: f32) -> f32 {
+    if is_nested_compositor_app_id(app_id) {
+        1.0
+    } else if global_scale < 1.0 {
+        1.0
+    } else {
+        global_scale
+    }
 }
 
 fn buffer_size_mismatch_px(
@@ -531,7 +554,7 @@ impl WawonaCore {
         // 2. Update cached state
         *self.force_ssd.write_recover() = enabled;
 
-        // Window ids belonging to clients that carry a per-machine override —
+        // Window ids belonging to clients that carry a per-machine override -
         // these must be left untouched by the global toggle below.
         let overridden_windows: std::collections::HashSet<u32> = state
             .xdg
@@ -657,16 +680,31 @@ impl WawonaCore {
         state.pending_client_decoration_policy = Some(policy);
     }
 
+    /// Stage fill-host for the **next** machine's Wayland client.
+    ///
+    /// Nested weston/niri must receive a non-zero first xdg configure.
+    /// `configure(0,0)` becomes their output mode and the parent window stays
+    /// blank. Demos (flower/smoke/simple-egl) must stage `false`.
+    pub fn set_fills_host_for_client_launch(&self, fills_host: bool) {
+        let mut state = self.state.write_recover();
+        crate::wlog!(
+            crate::util::logging::FFI,
+            "FFI: set_fills_host_for_client_launch({})",
+            fills_host
+        );
+        state.pending_client_fills_host = Some(fills_host);
+    }
+
     /// Mark whether `window_id` is hosted in its own independent OS
     /// window/scene (macOS NSWindow-per-toplevel, or one `UIWindowScene` per
-    /// Wayland client on iPadOS/visionOS — see `ipad-scene-parity` /
+    /// Wayland client on iPadOS/visionOS. See `ipad-scene-parity` /
     /// `vision-shell-parity`, #120).
     ///
     /// Independent windows are excluded from the shared-output resize sweep
     /// in `CompositorState::set_output_size`: without this, resizing the
     /// *primary* host window (Machines UI) would snap every fill-primary
-    /// (maximized) client — including ones now living in their own,
-    /// differently-sized scene — to the primary window's size, producing
+    /// (maximized) client. Including ones now living in their own,
+    /// differently-sized scene. To the primary window's size, producing
     /// visible resize glitches on the unrelated client window.
     pub fn set_window_host_scene_independent(&self, window_id: WindowId, independent: bool) {
         let wid = window_id.id as u32;
@@ -1203,6 +1241,7 @@ impl WawonaCore {
                 decoration_mode,
                 fullscreen_shell,
                 host_locked,
+                fills_host,
             } => {
                 let internal_client_id = self
                     .internal_client_id(&client_id)
@@ -1244,6 +1283,7 @@ impl WawonaCore {
                     decoration_mode: ffi_decoration_mode,
                     fullscreen_shell,
                     host_locked,
+                    fills_host,
                     owner_client_internal_id: internal_client_id as u64,
                     state: crate::ffi::types::WindowState::Normal,
                     parent: None,
@@ -1256,11 +1296,12 @@ impl WawonaCore {
                 );
                 crate::wlog!(
                     crate::util::logging::FFI,
-                    "WindowCreated queued: window_id={} {}x{} host_locked={}",
+                    "WindowCreated queued: window_id={} {}x{} host_locked={} fills_host={}",
                     window_id,
                     width,
                     height,
-                    host_locked
+                    host_locked,
+                    fills_host
                 );
             }
             CompositorEvent::PopupCreated { client_id, window_id, surface_id, parent_id, x, y, width, height } => {
@@ -1279,6 +1320,7 @@ impl WawonaCore {
                     decoration_mode: DecorationMode::ClientSide,
                     fullscreen_shell: false,
                     host_locked: false,
+                    fills_host: false,
                     owner_client_internal_id: internal_client_id as u64,
                     state: crate::ffi::types::WindowState::Normal,
                     parent: if parent_id > 0 { Some(WindowId::new(parent_id as u64)) } else { None },
@@ -1753,7 +1795,7 @@ impl WawonaCore {
 
                         // Drop only during the configure handshake (pending serial or
                         // zero-sized toplevel). Post-stable mismatches are accepted
-                        // and scaled by the platform layer — required for fixed-size
+                        // and scaled by the platform layer. Required for fixed-size
                         // demos like weston-smoke (always 200×200, ignores resize).
                         let should_drop_size_mismatch = current_expected_size
                             .map(|(expected_w, expected_h)| {
@@ -2443,13 +2485,53 @@ fn smithay_send_pointer_button(
     sent
 }
 
+/// Deliver `wl_pointer.axis` the same way as buttons: via `client_pointers()`,
+/// not smithay's grab focus. Motion/enter already bypass smithay's internal
+/// focus (`deliver_pointer_motion_to_clients`), so `pointer.axis()` would
+/// often target `None` and silently drop scroll (terminals never scroll).
+fn smithay_send_pointer_axis(
+    state: &CompositorState,
+    client: &wayland_server::Client,
+    time: u32,
+    axis: wayland_server::protocol::wl_pointer::Axis,
+    value: f64,
+    source: wayland_server::protocol::wl_pointer::AxisSource,
+    discrete: i32,
+) -> usize {
+    let Some(pointer) = smithay_pointer_handle(state) else {
+        return 0;
+    };
+    let mut sent = 0;
+    for ptr in pointer.client_pointers(client) {
+        if ptr.version() >= 5 {
+            let src = if ptr.version() < 6 {
+                match source {
+                    wayland_server::protocol::wl_pointer::AxisSource::WheelTilt => {
+                        wayland_server::protocol::wl_pointer::AxisSource::Wheel
+                    }
+                    other => other,
+                }
+            } else {
+                source
+            };
+            ptr.axis_source(src);
+            if discrete != 0 {
+                ptr.axis_discrete(axis, discrete);
+            }
+        }
+        ptr.axis(time, axis, value);
+        sent += 1;
+    }
+    sent
+}
+
 fn smithay_send_pointer_frame(state: &CompositorState, client: &wayland_server::Client) -> usize {
     let Some(pointer) = smithay_pointer_handle(state) else {
         return 0;
     };
     let mut sent = 0;
     // Smithay's own seat path gates this; client_pointers() does not.
-    // Opcode 5 (`frame`) is since wl_pointer v5 — see broadcast_frame.
+    // Opcode 5 (`frame`) is since wl_pointer v5. See broadcast_frame.
     for ptr in pointer.client_pointers(client) {
         if ptr.version() >= 5 {
             ptr.frame();
@@ -2634,6 +2716,22 @@ impl WawonaCore {
         popped
     }
 
+    /// Nested Weston gl-renderer Y-corrects for Wayland. Niri/ANGLE Metal
+    /// IOSurfaces are already top-down in the CPU mapping, so the same
+    /// identity CGImage bake inverts Weston. Flip only that compositor.
+    /// Match title as well: wayland-backend never sends set_app_id.
+    pub fn nested_weston_cpu_y_flip(&self, window_id: u64) -> bool {
+        let state = self.state.read_recover();
+        let (app_id, title) = state
+            .get_window(window_id as u32)
+            .map(|w| {
+                let w = w.read().unwrap();
+                (w.app_id.clone(), w.title.clone())
+            })
+            .unwrap_or_default();
+        crate::core::wayland::xdg::decoration::is_nested_weston_compositor(&app_id, &title)
+    }
+
     /// Pop pending gamma restore (platform restores original tables)
     pub fn pop_pending_gamma_restore(&self) -> Option<u32> {
         if !self.is_running() {
@@ -2732,7 +2830,7 @@ impl WawonaCore {
                     surface_id.id, buf_id.id, callback_count > 0, callback_count, presented_count, release_count, pending_releases);
             } else {
                 crate::wtrace!(crate::util::logging::FFI,
-                    "FramePresented: surf={} buf={} — no client_id, buffer NOT released",
+                    "FramePresented: surf={} buf={}. No client_id, buffer NOT released",
                     surface_id.id, buf_id.id);
             }
         } else {
@@ -2778,11 +2876,202 @@ impl WawonaCore {
     // Window Management
     // =========================================================================
 
-    /// Resize a window.
+    /// Start a compositor-initiated (server) DnD grab.
     ///
-    /// For xdg toplevels: sends **per-client** `wl_output` / `xdg_output` geometry (so nested
-    /// compositors see the drawable size), then `xdg_toplevel.configure` for that surface only.
-    /// Fullscreen-shell surfaces still use a global output mode update (see branch below).
+    /// Called when the host OS reports a drag entered the Wayland window.
+    /// Sets up Smithay's `ServerDnDGrab`, which intercepts pointer events
+    /// and sends `wl_data_device.enter/motion/leave/drop` to the focused
+    /// Wayland client.
+    pub fn inject_drag_enter(&self, window_id: WindowId, x: f64, y: f64, mime_types: String) {
+        if let Ok(mut state) = self.state.write() {
+            // Store the offered MIME types so `ServerDndGrabHandler::send` can
+            // serve the right content when the client calls `wl_data_offer.receive`.
+            if let Ok(mut bridge) = state.dnd_bridge.write() {
+                bridge.active_mime_types = mime_types.split(',').map(|s| s.trim().to_string()).collect();
+                bridge.active = true;
+                bridge.pending_drop_data = None;
+                tracing::debug!(
+                    "DnD enter: window={}, pos=({}, {}), mimes={:?}",
+                    window_id.id, x, y, bridge.active_mime_types
+                );
+            }
+
+            let dh = if let Some(ref d) = state.smithay_runtime.display_handle {
+                d.clone()
+            } else {
+                return;
+            };
+            if let Some(ref seat) = state.smithay_runtime.seat.clone() {
+                let focus = state.get_window(window_id.id.try_into().unwrap())
+                    .and_then(|w| state.get_surface(w.read().unwrap().surface_id))
+                    .and_then(|s| s.read().unwrap().resource.clone());
+
+                if let Some(surface) = focus {
+                    use smithay::input::pointer::GrabStartData as PointerGrabStartData;
+                    use smithay::wayland::selection::data_device::{start_dnd, SourceMetadata};
+                    use wayland_server::protocol::wl_data_device_manager::DndAction;
+
+                    let parsed_mimes: Vec<String> = mime_types
+                        .split(',')
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect();
+
+                    let metadata = SourceMetadata {
+                        mime_types: parsed_mimes,
+                        dnd_action: DndAction::Copy,
+                    };
+
+                    let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                    let time_ms = {
+                        use std::time::{SystemTime, UNIX_EPOCH};
+                        SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .map(|d| d.as_millis() as u32)
+                            .unwrap_or(0)
+                    };
+                    let (sx, sy) = platform_pointer_surface_local(&state, window_id, x, y);
+
+                    let start_data = PointerGrabStartData {
+                        // The coordinate system is relative to (0.0, 0.0) for this window's surface
+                        focus: Some((surface, (0.0, 0.0).into())),
+                        button: 0x110, // BTN_LEFT — matches the button the grab tracks
+                        location: (sx, sy).into(),
+                    };
+
+                    start_dnd(
+                        &dh,
+                        seat,
+                        &mut *state,
+                        serial,
+                        Some(start_data),
+                        None,
+                        metadata,
+                    );
+                } else {
+                    tracing::warn!("DnD enter: no surface found for window {}", window_id.id);
+                }
+            }
+        }
+        // Flush so the client receives the enter event + data offer immediately,
+        // giving it a chance to call set_actions before the drop arrives.
+        self.flush_clients();
+    }
+
+    /// Forward pointer motion during an active host DnD drag.
+    ///
+    /// The active `ServerDnDGrab` intercepts this and sends
+    /// `wl_data_device.motion` to the client.
+    pub fn inject_drag_motion(&self, window_id: WindowId, x: f64, y: f64) {
+        let mut state = self.state.write_recover();
+        
+        let focus = state.get_window(window_id.id.try_into().unwrap())
+            .and_then(|w| state.get_surface(w.read().unwrap().surface_id))
+            .and_then(|s| s.read().unwrap().resource.clone());
+
+        let seat = state.smithay_runtime.seat.clone().unwrap();
+        let pointer = seat.get_pointer().unwrap();
+
+        let time_ms = {
+            use std::time::{SystemTime, UNIX_EPOCH};
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_millis() as u32)
+                .unwrap_or(0)
+        };
+        let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+
+        let (sx, sy) = platform_pointer_surface_local(&state, window_id, x, y);
+
+        let event = smithay::input::pointer::MotionEvent {
+            location: (sx, sy).into(),
+            serial,
+            time: time_ms,
+        };
+
+        if let Some(surface) = focus {
+            pointer.motion(&mut *state, Some((surface, (0.0, 0.0).into())), &event);
+        } else {
+            pointer.motion(&mut *state, None, &event);
+        }
+        drop(state);
+        self.flush_clients();
+    }
+
+    /// Complete the host DnD drop.
+    ///
+    /// Stores the drop data (URI list, text, etc.) in `DndBridge` so that
+    /// `ServerDndGrabHandler::send` can write it into the client's fd when
+    /// the client calls `wl_data_offer.receive`.  Then releases the virtual
+    /// button to trigger Smithay's `ServerDnDGrab::unset` → `drop()`.
+    pub fn inject_drag_drop(&self, _window_id: WindowId, data: String) {
+        tracing::debug!("DnD drop: data len={}", data.len());
+        let mut state = self.state.write_recover();
+        if let Ok(mut bridge) = state.dnd_bridge.write() {
+            bridge.pending_drop_data = Some(data);
+        }
+        if let Some(seat) = state.smithay_runtime.seat.clone() {
+            if let Some(pointer) = seat.get_pointer() {
+                let time_ms = {
+                    use std::time::{SystemTime, UNIX_EPOCH};
+                    SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .map(|d| d.as_millis() as u32)
+                        .unwrap_or(0)
+                };
+                let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                let event = smithay::input::pointer::ButtonEvent {
+                    button: 0x110, // BTN_LEFT — must match start_data.button
+                    state: smithay::backend::input::ButtonState::Released,
+                    serial,
+                    time: time_ms,
+                };
+                pointer.button(&mut *state, &event);
+            }
+        }
+        drop(state);
+        self.flush_clients();
+    }
+
+    /// Cancel/leave a host DnD drag without dropping.
+    pub fn inject_drag_leave(&self, _window_id: WindowId) {
+        let mut state = self.state.write_recover();
+        if let Ok(mut bridge) = state.dnd_bridge.write() {
+            bridge.active = false;
+        }
+
+        let seat = state.smithay_runtime.seat.clone().unwrap();
+        let pointer = seat.get_pointer().unwrap();
+        let time_ms = {
+            use std::time::{SystemTime, UNIX_EPOCH};
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_millis() as u32)
+                .unwrap_or(0)
+        };
+        let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+
+        // Send a motion event with no focus to make the grab send a leave event to the client
+        let motion_event = smithay::input::pointer::MotionEvent {
+            location: (0.0, 0.0).into(),
+            serial,
+            time: time_ms,
+        };
+        pointer.motion(&mut *state, None, &motion_event);
+
+        // Then release the button to unset the grab
+        let rel_event = smithay::input::pointer::ButtonEvent {
+            button: 0x110,
+            state: smithay::backend::input::ButtonState::Released,
+            serial: smithay::utils::SERIAL_COUNTER.next_serial(),
+            time: time_ms,
+        };
+        pointer.button(&mut *state, &rel_event);
+
+        drop(state);
+        self.flush_clients();
+    }
+
     pub fn resize_window(&self, window_id: WindowId, width: u32, height: u32) {
         if !self.is_running() {
             return;
@@ -2840,9 +3129,19 @@ impl WawonaCore {
             // framebuffer from output mode; updating only on txn-settle made
             // mode lag/lead the host and flash before/after sizes mid-drag.
             // set_output_geometry_for_window is per-client and deduped.
+            // Nested weston/niri follow xdg in points at scale 1. Direct
+            // clients keep the global HiDPI scale.
             let scale = {
-                let cur = self.output_size.read_recover();
-                cur.2
+                let global = {
+                    let cur = self.output_size.read_recover();
+                    cur.2
+                };
+                let state = self.state.read_recover();
+                let app_id = state
+                    .get_window(wid)
+                    .map(|w| w.read_recover().app_id.clone())
+                    .unwrap_or_default();
+                nested_compositor_output_scale(&app_id, global)
             };
             self.set_output_geometry_for_window(window_id, width, height, scale);
 
@@ -2882,7 +3181,7 @@ impl WawonaCore {
                     txn.requested_size.height
                 );
             } else {
-                // Configure not sent yet — still mark host authoritative so
+                // Configure not sent yet. Still mark host authoritative so
                 // lagging commits cannot yank size while we wait.
                 if let Some(window) = state.get_window(wid) {
                     let mut window = window.write_recover();
@@ -3078,10 +3377,15 @@ impl WawonaCore {
             if let Some(tl) = state.xdg.toplevels.get_mut(&tid) {
                 tl.interactive_resize = false;
             }
-            let scale = {
+            let app_id = state
+                .get_window(wid)
+                .map(|w| w.read_recover().app_id.clone())
+                .unwrap_or_default();
+            let global = {
                 let cur = self.output_size.read_recover();
                 cur.2
             };
+            let scale = nested_compositor_output_scale(&app_id, global);
             // Keep per-window output geometry in lockstep with the settle
             // configure (nested compositors size from output mode).
             drop(state);
@@ -3126,7 +3430,7 @@ impl WawonaCore {
         self.flush_clients();
     }
 
-    /// Native host entered or left fullscreen — update xdg toplevel state.
+    /// Native host entered or left fullscreen. Update xdg toplevel state.
     pub fn apply_host_window_fullscreen(
         &self,
         window_id: WindowId,
@@ -3157,7 +3461,7 @@ impl WawonaCore {
         }
     }
 
-    /// Native host zoomed or unzoomed — update xdg toplevel maximized state.
+    /// Native host zoomed or unzoomed. Update xdg toplevel maximized state.
     pub fn apply_host_window_maximized(
         &self,
         window_id: WindowId,
@@ -3424,7 +3728,7 @@ impl WawonaCore {
         window_id: WindowId,
         axis: PointerAxis,
         value: f64,
-        _discrete: i32,
+        discrete: i32,
         source: AxisSource,
         timestamp_ms: u32,
     ) {
@@ -3434,7 +3738,7 @@ impl WawonaCore {
         let mut state = self.state.write_recover();
         state.seat.cleanup_resources();
 
-        // Scroll is delivered at the virtual cursor — ensure focus and sync
+        // Scroll is delivered at the virtual cursor. Ensure focus and sync
         // motion first (same pattern as pointer buttons).
         ensure_pointer_focus(&mut state, window_id, &|| self.next_serial());
         dispatch_pointer_motion_at_seat(&mut state, timestamp_ms.saturating_sub(1), 0);
@@ -3450,12 +3754,38 @@ impl WawonaCore {
             AxisSource::Continuous => wayland_server::protocol::wl_pointer::AxisSource::Continuous,
             AxisSource::WheelTilt => wayland_server::protocol::wl_pointer::AxisSource::WheelTilt,
         };
+
+        // Prefer explicit client_pointers delivery (matches inject_pointer_button).
+        // smithay pointer.axis() only reaches the grab's focused surface; our
+        // motion path does not update that focus, so axis would be dropped.
+        if let Some(client) = focused_client.as_ref() {
+            let sent = smithay_send_pointer_axis(
+                &state,
+                client,
+                timestamp_ms,
+                wl_axis,
+                value,
+                wl_source,
+                discrete,
+            );
+            if sent > 0 {
+                smithay_send_pointer_frame(&state, client);
+                return;
+            }
+        }
+
         if let Some(pointer) = state
             .smithay_runtime
             .seat
             .as_ref()
             .and_then(|seat| seat.get_pointer())
         {
+            // Last resort: sync smithay focus then use the grab path.
+            let _ = smithay_dispatch_pointer_motion(
+                &mut *state,
+                timestamp_ms.saturating_sub(1),
+                self.next_serial(),
+            );
             let smithay_axis = match axis {
                 PointerAxis::Vertical => smithay::backend::input::Axis::Vertical,
                 PointerAxis::Horizontal => smithay::backend::input::Axis::Horizontal,
@@ -3469,8 +3799,8 @@ impl WawonaCore {
             let mut frame = smithay::input::pointer::AxisFrame::new(timestamp_ms)
                 .source(smithay_source)
                 .value(smithay_axis, value);
-            if _discrete != 0 {
-                frame = frame.v120(smithay_axis, _discrete);
+            if discrete != 0 {
+                frame = frame.v120(smithay_axis, discrete);
             }
             pointer.axis(&mut *state, frame);
             pointer.frame(&mut *state);
@@ -3703,7 +4033,7 @@ impl WawonaCore {
         
         // Process through XKB to update server-side modifier state and
         // pressed_keys.  This is essential for correct Shift/Ctrl/Alt/Super
-        // tracking — without it the server's cached modifier mask would
+        // tracking. Without it the server's cached modifier mask would
         // never update from key events alone, and capital letters (among
         // other shifted symbols) would not be recognised.
         let mods_changed = state.seat.keyboard.process_key(keycode, pressed)
@@ -4624,7 +4954,7 @@ impl WawonaCore {
         sent
     }
 
-    /// Host dismissed a popup (click-away, Escape, parent teardown) — tell the
+    /// Host dismissed a popup (click-away, Escape, parent teardown). Tell the
     /// client via `xdg_popup.popup_done` so it can destroy the popup cleanly.
     pub fn notify_popup_dismissed(&self, window_id: WindowId) -> bool {
         if !self.is_running() {
@@ -4880,7 +5210,7 @@ impl WawonaCore {
 }
 
 // ============================================================================
-// Image copy capture (ext-image-copy-capture-v1) — desktop-protocols only
+// Image copy capture (ext-image-copy-capture-v1). Desktop-protocols only
 // Exported only when feature enabled; c_api has stubs when disabled
 // ============================================================================
 #[cfg(feature = "desktop-protocols")]
@@ -4924,7 +5254,7 @@ impl WawonaCore {
 }
 
 // ============================================================================
-// Methods NOT exported via UniFFI (C API only — tuples / non-Record types)
+// Methods NOT exported via UniFFI (C API only. Tuples / non-Record types)
 // ============================================================================
 impl WawonaCore {
     /// True when a focused `zwp_text_input_v3` instance has committed `enable`.

@@ -1,0 +1,81 @@
+name: "Gate: wasm-wayland"
+
+# Prove the locked Wawona Runtime (wwn-wasm) runs a real Wayland SHM client
+# against Weston headless. Same connect / SCM_RIGHTS / xdg path used inside
+# the app. Static wiring is also checked here and in Gate: packages.
+
+on:
+  push:
+    branches: [development, master, main]
+    paths:
+      - "flake.nix"
+      - "flake.lock"
+      - "dependencies/generators/xcodegen.nix"
+      - "dependencies/wawona/mobile-platform-deps.nix"
+      - "dependencies/wawona/ios-rootfs.nix"
+      - "docs/wasm-wasi.md"
+      - "docs/wwn-repo-dag.md"
+      - ".github/workflows/wasm-wayland.yml"
+      - ".github/scripts/verify-wawona-wasm.py"
+      - ".github/scripts/smoke-wawona-wasm-wayland.sh"
+  pull_request:
+    branches: [development, master, main]
+    paths:
+      - "flake.nix"
+      - "flake.lock"
+      - "dependencies/generators/xcodegen.nix"
+      - "dependencies/wawona/mobile-platform-deps.nix"
+      - "dependencies/wawona/ios-rootfs.nix"
+      - "docs/wasm-wasi.md"
+      - "docs/wwn-repo-dag.md"
+      - ".github/workflows/wasm-wayland.yml"
+      - ".github/scripts/verify-wawona-wasm.py"
+      - ".github/scripts/smoke-wawona-wasm-wayland.sh"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: wasm-wayland-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  wiring:
+    name: Runtime wiring
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: verify-wawona-wasm.py
+        run: python3 ./.github/scripts/verify-wawona-wasm.py
+
+  wayland-smoke:
+    name: Wayland SHM smoke (Weston)
+    runs-on: ubuntu-latest
+    needs: [wiring]
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+      - name: Reclaim Disk Space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+            /usr/local/share/boost "${AGENT_TOOLSDIRECTORY:-}" || true
+          df -h
+      - uses: DeterminateSystems/nix-installer-action@v22
+        with:
+          determinate: true
+          extra-conf: |
+            sandbox = relaxed
+            allow-import-from-derivation = true
+            trusted-users = runner root
+            max-jobs = auto
+            cores = 0
+      - uses: DeterminateSystems/flakehub-cache-action@v3
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip1
+      - name: smoke-wawona-wasm-wayland.sh
+        run: |
+          chmod +x ./.github/scripts/smoke-wawona-wasm-wayland.sh
+          ./.github/scripts/smoke-wawona-wasm-wayland.sh

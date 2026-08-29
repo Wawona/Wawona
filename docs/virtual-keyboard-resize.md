@@ -19,9 +19,9 @@ Forced off while a hardware keyboard is active (no soft IME).
 
 | Platform | Status |
 |----------|--------|
-| **iOS** | Implemented — `WWNCompositorView_ios` reports IME overlap + accessory reserve; `WWNSceneDelegate` subtracts from output height (clamp ≥ 120). Settings: Input → “Resize Display for Virtual Keyboard”. |
-| **Android** | Implemented — compositor bottom padding = IME inset + accessory bar; prefs key matches. |
-| **Linux mobile** | Deferred — stub/doc only (see below). |
+| **iOS** | Implemented. `WWNCompositorView_ios` reports IME overlap + accessory reserve; `WWNSceneDelegate` subtracts from output height (clamp ≥ 120). Settings: Input → “Resize Display for Virtual Keyboard”. |
+| **Android** | Implemented. Compositor bottom padding = IME inset + accessory bar; prefs key matches. |
+| **Linux mobile** | Deferred. Stub/doc only (see below). |
 
 ## Linux mobile (deferred)
 

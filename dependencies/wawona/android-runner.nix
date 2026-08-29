@@ -222,7 +222,7 @@ pkgs.writeShellScript "wawona-android-run" ''
     #   keyboard passthrough needs hw.keyboard=yes;
     # - the 320x640@160 fallback display is too small for realistic UI
     #   testing and makes the camera hole-punch cutout emulation overlay
-    #   render at the wrong geometry — use a Pixel-like panel instead.
+    #   render at the wrong geometry. Use a Pixel-like panel instead.
     AVD_CONFIG_INI="$ANDROID_AVD_HOME/$AVD_NAME.avd/config.ini"
     if [ -f "$AVD_CONFIG_INI" ]; then
       if grep -qE '^hw\.keyboard *= *no' "$AVD_CONFIG_INI"; then
@@ -429,7 +429,7 @@ pkgs.writeShellScript "wawona-android-run" ''
         exit 1
       fi
 
-      echo "[Wawona] App PID: $PID (paused — no code has run yet)"
+      echo "[Wawona] App PID: $PID (paused. No code has run yet)"
 
       LLDB_SERVER=$(find "$NDK_ROOT/toolchains/llvm/prebuilt" -name "lldb-server" -path "*/aarch64/*" -type f 2>/dev/null | head -1)
       if [ -z "$LLDB_SERVER" ]; then

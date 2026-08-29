@@ -3,7 +3,7 @@
 # Apple: phys_footprint via `xcrun simctl spawn … vmmap --summary` or host `vmmap`.
 # Android: TOTAL PSS from `dumpsys meminfo`.
 #
-# Pass rule (Start→hold): samples must stay on a plateau — (max−min) ≤ WAWONA_LEAK_PLATEAU_MB
+# Pass rule (Start→hold): samples must stay on a plateau. (max−min) ≤ WAWONA_LEAK_PLATEAU_MB
 # and no strictly monotonic climb of ≥ WAWONA_LEAK_MONO_MB across consecutive samples.
 #
 # Usage:
@@ -54,7 +54,7 @@ leak_sample_apple_mb() {
     out="$(vmmap --summary "$pid" 2>/dev/null || true)"
   fi
   if [[ -z "$out" ]]; then
-    # Fallback: memorystatus / footprint via simctl (iOS) — try host vmmap anyway
+    # Fallback: memorystatus / footprint via simctl (iOS). Try host vmmap anyway
     out="$(vmmap --summary "$pid" 2>/dev/null || true)"
   fi
   leak_parse_phys_footprint_mb "$out"
@@ -90,7 +90,7 @@ leak_ios_pid() {
   local bundle="${2:-com.aspauldingcode.Wawona}"
   local pid
   # iOS app launchd labels are "UIKitApplication:<bundle>[0x..][rb-legacy]", not
-  # a bare "<bundle>" — an exact `$3==bundle` never matches, so match the bundle
+  # a bare "<bundle>". An exact `$3==bundle` never matches, so match the bundle
   # id as a substring of the label column. (This step was previously unreached:
   # iOS failed earlier at machines_home_not_reached before pid resolution.)
   pid="$(xcrun simctl spawn "$udid" launchctl list 2>/dev/null \

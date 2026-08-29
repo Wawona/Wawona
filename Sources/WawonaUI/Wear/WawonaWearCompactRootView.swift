@@ -76,6 +76,8 @@ struct WawonaWearMachineQuickView: View {
                 }
             } label: {
                 Text(buttonLabel)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
