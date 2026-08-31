@@ -1100,7 +1100,24 @@ GEN_HEADER
 # Wawona container shell. The terminal emulator runs $SHELL; for container
 # machines Wawona points SHELL here and passes the full command in
 # WAWONA_CONTAINER_CMD.
-exec /bin/sh -lc "$WAWONA_CONTAINER_CMD"
+#
+# If the last argv is a single-quoted string that contains spaces (legacy
+# runners quoted the whole entryCommand as one guest argv0), rewrite to
+# `/bin/sh -lc '…'` so multi-word nix/weston commands exec correctly.
+cmd=$WAWONA_CONTAINER_CMD
+case $cmd in
+  *"'"*" "*)
+    rewritten=$(printf '%s\n' "$cmd" | /usr/bin/perl -pe "s/(?:^|\\s)('[^']*\\s[^']*')\\s*$/ \\/bin\\/sh -lc \$1/")
+    if [ -n "$rewritten" ] && [ "$rewritten" != "$cmd" ]; then
+      cmd=$rewritten
+    fi
+    ;;
+esac
+# Never use a login shell (-l): macOS /etc/zprofile puts /usr/local/bin ahead
+# of Resources/bin, so Apple's `container` CLI steals `container run`.
+BIN=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+export PATH="$BIN:/usr/bin:/bin:/usr/sbin:/sbin${PATH:+:$PATH}"
+exec /bin/sh -c "$cmd"
 SHELL_EOF
               chmod +x "$APP/Contents/Resources/bin/wawona-container-shell"
 
@@ -1561,7 +1578,24 @@ SHELL_EOF
 # Wawona container shell. The terminal emulator runs $SHELL; for container
 # machines Wawona points SHELL here and passes the full command in
 # WAWONA_CONTAINER_CMD.
-exec /bin/sh -lc "$WAWONA_CONTAINER_CMD"
+#
+# If the last argv is a single-quoted string that contains spaces (legacy
+# runners quoted the whole entryCommand as one guest argv0), rewrite to
+# `/bin/sh -lc '…'` so multi-word nix/weston commands exec correctly.
+cmd=$WAWONA_CONTAINER_CMD
+case $cmd in
+  *"'"*" "*)
+    rewritten=$(printf '%s\n' "$cmd" | /usr/bin/perl -pe "s/(?:^|\\s)('[^']*\\s[^']*')\\s*$/ \\/bin\\/sh -lc \$1/")
+    if [ -n "$rewritten" ] && [ "$rewritten" != "$cmd" ]; then
+      cmd=$rewritten
+    fi
+    ;;
+esac
+# Never use a login shell (-l): macOS /etc/zprofile puts /usr/local/bin ahead
+# of Resources/bin, so Apple's `container` CLI steals `container run`.
+BIN=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+export PATH="$BIN:/usr/bin:/bin:/usr/sbin:/sbin${PATH:+:$PATH}"
+exec /bin/sh -c "$cmd"
 SHELL_EOF
             chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/wawona-container-shell
 

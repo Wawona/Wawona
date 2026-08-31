@@ -101,8 +101,17 @@ static NSString *WWNContainerShellQuote(NSString *value) {
     command = @"/bin/sh";
   }
 
-  NSMutableArray<NSString *> *parts =
-      [NSMutableArray arrayWithObject:@"container run --rm"];
+  NSMutableArray<NSString *> *parts = [NSMutableArray array];
+  // Prefer the bundled CLI by absolute path so Apple's /usr/local/bin/container
+  // (different flags) cannot win when PATH is polluted.
+  NSString *containerBin = WWNWawonaFindBundledExecutable(@"container");
+  if (containerBin.length > 0) {
+    [parts addObject:WWNContainerShellQuote(containerBin)];
+    [parts addObject:@"run"];
+    [parts addObject:@"--rm"];
+  } else {
+    [parts addObject:@"container run --rm"];
+  }
 
   // Unique container id per machine, so a crashed previous run can never
   // leave stale state that blocks the next launch.
@@ -198,6 +207,11 @@ static NSString *WWNContainerShellQuote(NSString *value) {
   }
 
   [parts addObject:WWNContainerShellQuote(ref)];
+  // Multi-word entry commands must not be a single guest argv0 (that makes
+  // exec look for a path with spaces). Run via /bin/sh -lc. Use -lc as one
+  // token so ArgumentParser never treats a bare -c as --cpus.
+  [parts addObject:@"/bin/sh"];
+  [parts addObject:@"-lc"];
   [parts addObject:WWNContainerShellQuote(command)];
   return [parts componentsJoinedByString:@" "];
 }
