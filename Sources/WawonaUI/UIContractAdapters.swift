@@ -45,7 +45,9 @@ enum WawonaUIContractAdapters {
             type: type,
             runtimeOverrides: MachineRuntimeOverrides(
                 inputProfile: state.inputProfile.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines),
-                bundledAppID: state.bundledAppID.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines),
+                bundledAppID: state.isNative
+                    ? state.bundledAppID.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+                    : nil,
                 waypipeEnabled: state.waypipeEnabled
             )
         )

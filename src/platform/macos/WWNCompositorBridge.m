@@ -216,7 +216,11 @@ static NSString *WWNResolveActiveMachineBundledClientId(void) {
   NSString *mid = [WWNMachineProfileStore activeMachineId];
   WWNMachineProfile *profile =
       mid.length > 0 ? [WWNMachineProfileStore profileById:mid] : nil;
-  if (!profile) {
+  if (!profile ||
+      [profile.type isEqualToString:kWWNMachineTypeContainer] ||
+      [profile.type isEqualToString:kWWNMachineTypeVirtualMachine] ||
+      [profile.type isEqualToString:kWWNMachineTypeSSHWaypipe] ||
+      [profile.type isEqualToString:kWWNMachineTypeSSHTerminal]) {
     return nil;
   }
   id runtimeBundled = profile.runtimeOverrides[@"bundledAppID"];
@@ -4610,7 +4614,28 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
     if (WWNWestonDemoPrefersFixedSquare(nil, newTitle)) {
       window.styleMask = window.styleMask & ~NSWindowStyleMaskResizable;
       if ([window isKindOfClass:[WWNWindow class]]) {
-        ((WWNWindow *)window).prefersFixedSquare = YES;
+        WWNWindow *wwnWin = (WWNWindow *)window;
+        wwnWin.prefersFixedSquare = YES;
+        wwnWin.fillsHost = NO;
+        NSSize contentSize = WWNWaylandContentSizeForWindow(window);
+        if (contentSize.width > 256.0 || contentSize.height > 256.0) {
+          uint32_t dw = 200;
+          uint32_t dh = 200;
+          WWNLog("BRIDGE",
+                 @"macOS demo shrink on title '%@' window=%llu (was %.0fx%.0f)",
+                 newTitle, event->window_id, contentSize.width, contentSize.height);
+          NSRect frame =
+              [window frameRectForContentRect:NSMakeRect(0, 0, dw, dh)];
+          frame.origin = window.frame.origin;
+          wwnWin.processingResize = YES;
+          [window setFrame:frame display:NO];
+          wwnWin.processingResize = NO;
+          uint64_t wid = event->window_id;
+          [self _dispatchToRust:^{
+            WWNCoreSetOutputGeometryForWindow(self->_rustCore, wid, dw, dh, 1.0f);
+          }];
+          [self injectWindowResize:wid width:dw height:dh];
+        }
       }
     }
     if (newTitle.length > 0) {

@@ -100,6 +100,39 @@ GUI: Machines → container profile → **Desktop session** on → command as ab
 (`shell ... -c weston-flower`, not `nix run ... -- weston-flower`). Smoke helper:
 `scripts/agent-device-container-smoke-macos.sh`.
 
+### Container desktop client matrix (CLI)
+
+With Wawona running (compositor socket under `/tmp/wawona-$(id -u)/`):
+
+```bash
+export PATH="/Applications/Wawona.app/Contents/Resources/bin:$PATH"
+export WAWONA_CONTAINER_BACKEND=containerization
+export WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=/tmp/wawona-$(id -u)
+
+# Demo (200×200, not fill-host)
+scripts/container-desktop-clients-macos.sh flower
+
+# Terminals (fill-host)
+scripts/container-desktop-clients-macos.sh weston-terminal
+scripts/container-desktop-clients-macos.sh foot
+
+# Nested compositors (fill-host)
+scripts/container-desktop-clients-macos.sh weston
+scripts/container-desktop-clients-macos.sh niri
+scripts/container-desktop-clients-macos.sh sway
+```
+
+| Client | Guest command | Host sizing |
+|---|---|---|
+| `weston-flower` | `shell nixpkgs#weston -c weston-flower` | ~200×200 fixed |
+| `weston-terminal` / `foot` | `shell nixpkgs#weston -c weston-terminal` | fill-host |
+| `weston` | `shell nixpkgs#weston -c weston --backend=wayland` | fill-host |
+| `niri` | `shell nixpkgs#niri -c niri` | fill-host |
+| `sway` | `shell nixpkgs#sway -c sway` | fill-host |
+
+Container profiles must **not** set `runtimeOverrides.bundledAppID` (that forces
+fill-host for flower). Use **Container command** only.
+
 ## Android / Linux VM automation
 
 ```bash

@@ -372,6 +372,21 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
       [runtimeOverrides[kWWNRuntimeBundledAppID] isKindOfClass:[NSString class]]
           ? runtimeOverrides[kWWNRuntimeBundledAppID]
           : @"";
+  NSString *profileType =
+      [obj[@"type"] isKindOfClass:[NSString class]] ? obj[@"type"] : @"";
+  // Container/remote/VM guests are not bundled native clients. Legacy saves
+  // copied selectedClientId into bundledAppID; drop it so fill-host stays off.
+  if (![profileType isEqualToString:kWWNMachineTypeNative]) {
+    if (bundledAppID.length > 0) {
+      NSMutableDictionary *ro =
+          [runtimeOverrides mutableCopy] ?: [NSMutableDictionary dictionary];
+      [ro removeObjectForKey:kWWNRuntimeBundledAppID];
+      [ro removeObjectForKey:kWWNRuntimeUseBundledApp];
+      runtimeOverrides = ro;
+      profile.runtimeOverrides = runtimeOverrides;
+    }
+    bundledAppID = @"";
+  }
   if (bundledAppID.length > 0) {
     NSMutableDictionary *merged = [legacySettingsOverrides mutableCopy];
     merged[@"NativeClientId"] = bundledAppID;
@@ -503,7 +518,25 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
   NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
   NSData *rawData = [defaults dataForKey:kWWNMachineProfilesJSON];
   if (rawData.length > 0) {
-    return [self parseProfilesData:rawData];
+    NSArray<WWNMachineProfile *> *profiles = [self parseProfilesData:rawData];
+    BOOL migrated = NO;
+    for (WWNMachineProfile *profile in profiles) {
+      if ([profile.type isEqualToString:kWWNMachineTypeNative]) {
+        continue;
+      }
+      NSMutableDictionary *ro =
+          [profile.runtimeOverrides mutableCopy] ?: [NSMutableDictionary dictionary];
+      if (ro[kWWNRuntimeBundledAppID] != nil || ro[kWWNRuntimeUseBundledApp] != nil) {
+        [ro removeObjectForKey:kWWNRuntimeBundledAppID];
+        [ro removeObjectForKey:kWWNRuntimeUseBundledApp];
+        profile.runtimeOverrides = ro;
+        migrated = YES;
+      }
+    }
+    if (migrated) {
+      [self saveProfiles:profiles];
+    }
+    return profiles;
   }
   NSString *legacy = [defaults stringForKey:kWWNMachineProfilesJSON];
   if (legacy.length > 0) {
@@ -610,7 +643,10 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
   }
   NSString *lower = cmd.lowercaseString;
   if ([lower containsString:@"weston-simple-shm"] ||
-      [lower containsString:@"weston-terminal"]) {
+      [lower containsString:@"weston-terminal"] ||
+      [lower containsString:@"weston-flower"] ||
+      [lower containsString:@"weston-smoke"] ||
+      [lower containsString:@"weston-simple-egl"]) {
     return NO;
   }
   if ([lower containsString:@"/foot"] || [lower isEqualToString:@"foot"] ||
@@ -933,12 +969,25 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
   [self resolvedNativeIdentityForProfile:profile
                                 clientId:&nativeCid
                            customCommand:&nativeCmd];
-  BOOL fillsHost =
-      [nativeCid isEqualToString:@"weston-terminal"] ||
-      [nativeCid isEqualToString:@"wayland-terminal"] ||
-      [nativeCid isEqualToString:@"foot"] ||
-      [self profileIndicatesNestedWithNativeClientId:nativeCid
-                                      customCommand:nativeCmd];
+  BOOL fillsHost = NO;
+  if ([profile.type isEqualToString:kWWNMachineTypeContainer]) {
+    // Waypipe guests are not bundled native clients. Size from the container
+    // entry command (weston-flower stays client-pick; weston/niri/sway fill).
+    NSDictionary *cs = profile.containerSettings ?: @{};
+    id entryObj = cs[@"entryCommand"];
+    NSString *entry =
+        [entryObj isKindOfClass:[NSString class]] ? (NSString *)entryObj : @"";
+    fillsHost =
+        [self profileIndicatesNestedWithNativeClientId:@"custom"
+                                       customCommand:entry];
+  } else {
+    fillsHost =
+        [nativeCid isEqualToString:@"weston-terminal"] ||
+        [nativeCid isEqualToString:@"wayland-terminal"] ||
+        [nativeCid isEqualToString:@"foot"] ||
+        [self profileIndicatesNestedWithNativeClientId:nativeCid
+                                        customCommand:nativeCmd];
+  }
   [[WWNCompositorBridge sharedBridge] setFillsHostForClientLaunch:fillsHost];
 
   // Environment overrides (#157): machine > global, after prefs/graphics apply.

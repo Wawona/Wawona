@@ -1506,7 +1506,12 @@ struct WWNMachineEditorView: View {
     overrides["SSHKeyPassphrase"] = profile.sshKeyPassphrase
 
     runtimeOverrides["useBundledApp"] = (type == kWWNMachineTypeNative && !selectedClientId.isEmpty)
-    runtimeOverrides["bundledAppID"] = selectedClientId
+    if type == kWWNMachineTypeNative {
+      runtimeOverrides["bundledAppID"] = selectedClientId
+    } else {
+      runtimeOverrides.removeValue(forKey: "bundledAppID")
+      runtimeOverrides.removeValue(forKey: "useBundledApp")
+    }
     let trimmedWasm = wasmModulePath.trimmingCharacters(in: .whitespacesAndNewlines)
     if selectedClientId == kNativeClientWasmId && !trimmedWasm.isEmpty {
       runtimeOverrides[kRuntimeWasmModulePathKey] = trimmedWasm
