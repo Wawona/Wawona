@@ -38,6 +38,15 @@ static NSNumber *WWNContainerNumber(NSDictionary *dict, NSString *key) {
   return nil;
 }
 
+/// Desktop session (vsock + waypipe → Wawona compositor) is the product default
+/// for container machines. Absent key → YES so older profiles still bridge.
+static BOOL WWNContainerWantsDesktopSession(NSDictionary *dict) {
+  if (dict[@"desktopSession"] == nil) {
+    return YES;
+  }
+  return WWNContainerBool(dict, @"desktopSession");
+}
+
 // Single-quote a value for the /bin/sh -lc command line.
 static NSString *WWNContainerShellQuote(NSString *value) {
   NSString *escaped = [value stringByReplacingOccurrencesOfString:@"'"
@@ -157,7 +166,7 @@ static NSString *WWNContainerShellQuote(NSString *value) {
   // waypipe vsock bridge (wwn-containerd injects the guest waypipe and wraps
   // the command; the host side dials the port). The bundled aarch64-linux
   // waypipe is passed explicitly so no system install is needed.
-  if (WWNContainerBool(cs, @"desktopSession")) {
+  if (WWNContainerWantsDesktopSession(cs)) {
     NSInteger vsockPort = 0;
     NSNumber *portNum = WWNContainerNumber(cs, @"vsockPort");
     if (portNum != nil) {
@@ -207,11 +216,11 @@ static NSString *WWNContainerShellQuote(NSString *value) {
   }
 
   [parts addObject:WWNContainerShellQuote(ref)];
-  // Multi-word entry commands must not be a single guest argv0 (that makes
-  // exec look for a path with spaces). Run via /bin/sh -lc. Use -lc as one
-  // token so ArgumentParser never treats a bare -c as --cpus.
+  // Multi-word entry commands must not be a single guest argv0. End option
+  // parsing with `--` (stripped in wwn-containerd) then `/bin/sh -c`.
+  [parts addObject:@"--"];
   [parts addObject:@"/bin/sh"];
-  [parts addObject:@"-lc"];
+  [parts addObject:@"-c"];
   [parts addObject:WWNContainerShellQuote(command)];
   return [parts componentsJoinedByString:@" "];
 }
@@ -268,21 +277,44 @@ static NSString *WWNContainerShellQuote(NSString *value) {
   [self stopProfileWithMachineId:profile.machineId];
 
   NSString *machineId = profile.machineId ?: @"";
+  NSDictionary *cs = profile.containerSettings ?: @{};
+  BOOL desktopSession = WWNContainerWantsDesktopSession(cs);
+
   NSString *shellScript =
       WWNWawonaFindBundledExecutable(@"wawona-container-shell");
-  NSString *terminal = WWNWawonaFindBundledExecutable(@"weston-terminal");
-  if (shellScript.length == 0 || terminal.length == 0) {
+  if (shellScript.length == 0) {
     if (error) {
       *error = [NSError
           errorWithDomain:@"WWNContainerRunner"
                      code:4
                  userInfo:@{
                    NSLocalizedDescriptionKey :
-                       @"Bundled terminal (weston-terminal) or "
-                       @"wawona-container-shell not found in the app bundle."
+                       @"Bundled wawona-container-shell not found in the app "
+                       @"bundle."
                  }];
     }
     return NO;
+  }
+
+  // Non-desktop: interactive shell in weston-terminal (PTY + ANSI). Desktop
+  // session: NSTask the container wrapper directly. weston-terminal is a
+  // Wayland client that can tear down (cairo) before the container is ready,
+  // which marked Machines Start as Error even when the OCI run was fine.
+  NSString *terminal = nil;
+  if (!desktopSession) {
+    terminal = WWNWawonaFindBundledExecutable(@"weston-terminal");
+    if (terminal.length == 0) {
+      if (error) {
+        *error = [NSError
+            errorWithDomain:@"WWNContainerRunner"
+                       code:4
+                   userInfo:@{
+                     NSLocalizedDescriptionKey :
+                         @"Bundled weston-terminal not found in the app bundle."
+                   }];
+      }
+      return NO;
+    }
   }
 
   NSString *readyFile = [self markerFilePathForMachineId:machineId
@@ -291,45 +323,60 @@ static NSString *WWNContainerShellQuote(NSString *value) {
   [[NSFileManager defaultManager] removeItemAtPath:readyFile error:nil];
   [[NSFileManager defaultManager] removeItemAtPath:doneFile error:nil];
 
-  // The container runs inside Wawona's terminal: weston-terminal spawns $SHELL
-  // (execl($SHELL, $SHELL, NULL) in weston 13), and we point SHELL at the
-  // bundled wrapper, which execs the container command. The container's
-  // stdin/stdout/ANSI flow through the terminal's PTY into the Wawona window.
   NSTask *task = [[NSTask alloc] init];
-  task.executableURL = [NSURL fileURLWithPath:terminal];
+  if (desktopSession) {
+    task.executableURL = [NSURL fileURLWithPath:shellScript];
+    task.arguments = @[];
+  } else {
+    task.executableURL = [NSURL fileURLWithPath:terminal];
+    task.arguments = @[];
+  }
 
   NSMutableDictionary<NSString *, NSString *> *env =
       [[[NSProcessInfo processInfo] environment] mutableCopy];
+  NSString *runtimeDir =
+      [NSString stringWithFormat:@"/tmp/wawona-%d", getuid()];
   if (!env[@"WAWONA_RUNTIME"]) {
-    env[@"WAWONA_RUNTIME"] =
-        [NSString stringWithFormat:@"/tmp/wawona-%d", getuid()];
+    env[@"WAWONA_RUNTIME"] = runtimeDir;
   }
-  // Tell the container backend this is the macOS (Apple Containerization) lane.
   env[@"WAWONA_CONTAINER_BACKEND"] = @"containerization";
 
-  // Wayland socket: the terminal must connect to Wawona's compositor.
+  // Host waypipe-fds needs a live compositor socket. Prefer the bridge path
+  // when it exists on disk; otherwise fall back to WAWONA_RUNTIME (Machines
+  // group sockets can be empty before Focus).
   WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
   NSString *socketName = [bridge socketName];
+  NSString *socketPath = [bridge socketPath];
+  NSFileManager *fmProbe = [NSFileManager defaultManager];
+  BOOL bridgeSocketLive =
+      (socketPath.length > 0 && [fmProbe fileExistsAtPath:socketPath]);
+  if (!bridgeSocketLive) {
+    NSString *fallbackSocket =
+        [runtimeDir stringByAppendingPathComponent:@"wayland-0"];
+    if ([fmProbe fileExistsAtPath:fallbackSocket]) {
+      socketPath = fallbackSocket;
+      socketName = @"wayland-0";
+      bridgeSocketLive = YES;
+    }
+  }
   if (socketName.length > 0) {
     env[@"WAYLAND_DISPLAY"] = socketName;
   } else if (!env[@"WAYLAND_DISPLAY"]) {
     env[@"WAYLAND_DISPLAY"] = @"wayland-0";
   }
-  NSString *socketPath = [bridge socketPath];
   if (socketPath.length > 0) {
     env[@"XDG_RUNTIME_DIR"] = [socketPath stringByDeletingLastPathComponent];
-  } else if (!env[@"XDG_RUNTIME_DIR"]) {
-    env[@"XDG_RUNTIME_DIR"] =
-        [NSString stringWithFormat:@"/tmp/wawona-%d", getuid()];
+  } else {
+    env[@"XDG_RUNTIME_DIR"] = runtimeDir;
   }
 
-  env[@"SHELL"] = shellScript;
+  if (!desktopSession) {
+    env[@"SHELL"] = shellScript;
+  }
   env[@"WAWONA_CONTAINER_CMD"] = command;
   env[@"WAWONA_CONTAINER_READY_FILE"] = readyFile;
   env[@"WAWONA_CONTAINER_DONE_FILE"] = doneFile;
 
-  // Resolve the bundled `container` CLI (Contents/Resources/bin) before the
-  // user PATH, so the wrapper finds it without a system install.
   NSString *resourcesBin =
       [NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"bin"];
   if (resourcesBin.length > 0) {
@@ -339,14 +386,11 @@ static NSString *WWNContainerShellQuote(NSString *value) {
         [NSString stringWithFormat:@"%@:%@", resourcesBin, existingPath];
   }
 
-  // Global Settings → Containers env: image store, kernel, initfs. Per-machine
-  // kernel/initfs overrides are already in the command line (flags beat env).
   WWNPreferencesManager *prefs = [WWNPreferencesManager sharedManager];
   NSString *imageStore = [[NSUserDefaults standardUserDefaults]
       stringForKey:kWWNPrefsMachineContainerImageStore];
   if (imageStore.length > 0) {
-    env[@"WWN_OCI_ROOT"] =
-        [imageStore stringByExpandingTildeInPath];
+    env[@"WWN_OCI_ROOT"] = [imageStore stringByExpandingTildeInPath];
   }
   if (prefs.containerKernelPath.length > 0) {
     env[@"WAWONA_VM_KERNEL"] =
@@ -357,10 +401,7 @@ static NSString *WWNContainerShellQuote(NSString *value) {
         [prefs.containerInitfsPath stringByExpandingTildeInPath];
   }
 
-  // Desktop session: host waypipe-fds (--socket-fds SplitFD transport for vsock).
-  // Guest aarch64-linux waypipe is passed on the command line as well.
-  NSDictionary *desktopCs = profile.containerSettings ?: @{};
-  if (WWNContainerBool(desktopCs, @"desktopSession")) {
+  if (desktopSession) {
     NSString *hostWaypipe = WWNWawonaFindBundledExecutable(@"waypipe-fds");
     if (hostWaypipe.length == 0) {
       hostWaypipe = WWNWawonaFindBundledExecutable(@"waypipe");
@@ -371,37 +412,54 @@ static NSString *WWNContainerShellQuote(NSString *value) {
     NSString *guestWaypipe = WWNWawonaFindBundledExecutable(@"waypipe-guest");
     if (guestWaypipe.length > 0) {
       env[@"WAWONA_WAYPIPE_GUEST"] = guestWaypipe;
+      NSString *guestRoot =
+          [[guestWaypipe stringByDeletingLastPathComponent]
+              stringByAppendingPathComponent:@"waypipe-guest-root"];
+      NSString *guestRootExec =
+          [guestRoot stringByAppendingPathComponent:@"bin/waypipe"];
+      if ([fmProbe isExecutableFileAtPath:guestRootExec]) {
+        env[@"WAWONA_WAYPIPE_GUEST_ROOT"] = guestRoot;
+      }
       NSString *closurePath =
           [guestWaypipe stringByAppendingString:@".closure"];
-      if ([[NSFileManager defaultManager] fileExistsAtPath:closurePath]) {
+      if ([fmProbe fileExistsAtPath:closurePath]) {
         env[@"WAWONA_WAYPIPE_GUEST_CLOSURE"] = closurePath;
       }
     }
   }
   task.environment = env;
+  NSLog(@"[WWNContainerRunner] launch machineId=%@ desktop=%d cmd=%@",
+        machineId, desktopSession ? 1 : 0, command);
 
-  // Capture the terminal's own stdout/stderr (the container's output flows
-  // through the PTY, not here) and drain them so a full pipe can never stall
-  // the terminal process.
   NSPipe *stdoutPipe = [NSPipe pipe];
   NSPipe *stderrPipe = [NSPipe pipe];
   task.standardOutput = stdoutPipe;
   task.standardError = stderrPipe;
   stdoutPipe.fileHandleForReading.readabilityHandler = ^(NSFileHandle *fh) {
-    if (fh.availableData.length == 0) {
+    NSData *data = fh.availableData;
+    if (data.length == 0) {
       fh.readabilityHandler = nil;
+      return;
+    }
+    NSString *line =
+        [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+    if (line.length > 0) {
+      NSLog(@"[WWNContainerRunner] stdout: %@", line);
     }
   };
   stderrPipe.fileHandleForReading.readabilityHandler = ^(NSFileHandle *fh) {
-    if (fh.availableData.length == 0) {
+    NSData *data = fh.availableData;
+    if (data.length == 0) {
       fh.readabilityHandler = nil;
+      return;
+    }
+    NSString *line =
+        [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+    if (line.length > 0) {
+      NSLog(@"[WWNContainerRunner] stderr: %@", line);
     }
   };
 
-  // Poll the marker files the backend writes: "ready" once the VM is booted
-  // (stop showing "compiling backend"), "done" once the container process
-  // exits (one-shot runs return the card to Disconnected). Cheap fixed poll
-  // on /tmp; each marker posts exactly once.
   NSFileManager *fm = [NSFileManager defaultManager];
   dispatch_queue_t pollQueue = dispatch_queue_create(
       "com.aspauldingcode.wawona.container-markers", DISPATCH_QUEUE_SERIAL);
@@ -438,12 +496,14 @@ static NSString *WWNContainerShellQuote(NSString *value) {
 
   __weak WWNContainerRunner *weakSelf = self;
   task.terminationHandler = ^(NSTask *finished) {
-    (void)finished;
+    NSInteger status = finished.terminationStatus;
     dispatch_async(dispatch_get_main_queue(), ^{
       WWNContainerRunner *strongSelf = weakSelf;
       if (!strongSelf) {
         return;
       }
+      NSLog(@"[WWNContainerRunner] task exited machineId=%@ status=%ld",
+            machineId, (long)status);
       @synchronized(strongSelf.tasksByMachineId) {
         if (strongSelf.tasksByMachineId[machineId] == finished) {
           [strongSelf.tasksByMachineId removeObjectForKey:machineId];
@@ -457,9 +517,9 @@ static NSString *WWNContainerShellQuote(NSString *value) {
     });
   };
 
-  // Same sizing/prep the bundled native clients get, so the terminal window
-  // lands at the compositor's current output size.
-  [bridge prepareOutputSizeForNativeClientLaunchWithClientId:@"weston-terminal"];
+  if (!desktopSession) {
+    [bridge prepareOutputSizeForNativeClientLaunchWithClientId:@"weston-terminal"];
+  }
 
   NSError *launchError = nil;
   if (![task launchAndReturnError:&launchError]) {
@@ -470,7 +530,7 @@ static NSString *WWNContainerShellQuote(NSString *value) {
                                           code:3
                                       userInfo:@{
                                         NSLocalizedDescriptionKey :
-                                            @"Failed to start container terminal."
+                                            @"Failed to start container session."
                                       }];
     }
     return NO;

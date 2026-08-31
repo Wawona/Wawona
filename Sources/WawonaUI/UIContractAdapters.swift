@@ -68,7 +68,7 @@ enum WawonaUIContractAdapters {
             profile.containerSettings = ContainerMachineSettings(
                 containerRef: state.containerRef.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines),
                 entryCommand: state.entryCommand.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines),
-                desktopSession: state.desktopSession ? true : nil,
+                desktopSession: state.desktopSession,
                 imageArchivePath: state.imageArchivePath.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines).isEmpty
                     ? nil
                     : state.imageArchivePath.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)

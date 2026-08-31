@@ -121,8 +121,8 @@ public struct ContainerMachineSettings: Codable, Hashable, Sendable {
     public var vsockPort: Int?
     /// Desktop session: attach the container's Wayland session to Wawona via
     /// the waypipe vsock bridge (a window per surface, or one window for a
-    /// nested compositor image). When false/nil the container runs
-    /// terminal-only.
+    /// nested compositor image). Product default is ON when the key is absent.
+    /// Explicit false keeps a terminal-only (weston-terminal) session.
     public var desktopSession: Bool?
     /// Local OCI layout directory to run from instead of pulling `containerRef`
     /// from a registry (`--image-archive`). Emitted by `container import` next

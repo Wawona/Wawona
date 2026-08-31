@@ -1413,11 +1413,8 @@ struct WWNMachineEditorView: View {
       } else {
         containerSettings["entryCommand"] = cmd
       }
-      if desktopSession {
-        containerSettings["desktopSession"] = true
-      } else {
-        containerSettings.removeValue(forKey: "desktopSession")
-      }
+      // Always persist so Off stays Off (absent key defaults to desktop ON).
+      containerSettings["desktopSession"] = desktopSession
       let archive = imageArchivePath.trimmingCharacters(in: .whitespacesAndNewlines)
       if archive.isEmpty {
         containerSettings.removeValue(forKey: "imageArchivePath")

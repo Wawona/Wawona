@@ -344,7 +344,7 @@ struct MachineEditorView: View {
                     kernelPath: base.kernelPath,
                     initfsPath: base.initfsPath,
                     vsockPort: base.vsockPort,
-                    desktopSession: desktopSession ? true : nil,
+                    desktopSession: desktopSession,
                     imageArchivePath: imageArchivePath.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines).isEmpty
                         ? nil
                         : imageArchivePath.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
