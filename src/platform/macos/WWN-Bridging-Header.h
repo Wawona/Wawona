@@ -27,6 +27,9 @@
 #if __has_include("ui/Machines/WWNMachineSessionBridge.h")
 #import "ui/Machines/WWNMachineSessionBridge.h"
 #endif
+#if __has_include("ui/Machines/WWNCLIMachineRecipes.h")
+#import "ui/Machines/WWNCLIMachineRecipes.h"
+#endif
 #if __has_include("ui/Settings/WWNPreferencesManager.h")
 #import "ui/Settings/WWNPreferencesManager.h"
 #endif

@@ -245,6 +245,8 @@ private let wwnContainerBackendDidBecomeReadyNotification = Notification.Name(
   "WWNContainerBackendDidBecomeReadyNotification")
 private let wwnContainerBackendDidStopNotification = Notification.Name(
   "WWNContainerBackendDidStopNotification")
+private let wwnMachineProfilesChangedNotification = Notification.Name(
+  "WWNMachineProfilesChangedNotification")
 
 @MainActor
 final class WWNMachinesViewModel: ObservableObject {
@@ -259,6 +261,8 @@ final class WWNMachinesViewModel: ObservableObject {
   private var nativeProcessTerminateObserver: NSObjectProtocol?
   private var containerReadyObserver: NSObjectProtocol?
   private var containerStopObserver: NSObjectProtocol?
+  private var profilesChangedObserver: NSObjectProtocol?
+  private var profilesChangedDistributedObserver: NSObjectProtocol?
   private var pendingContainerConnectCallbacks: [String: () -> Void] = [:]
 
   init() {
@@ -291,6 +295,29 @@ final class WWNMachinesViewModel: ObservableObject {
         self?.handleContainerStop(note)
       }
     }
+    profilesChangedObserver = NotificationCenter.default.addObserver(
+      forName: wwnMachineProfilesChangedNotification,
+      object: nil,
+      queue: .main
+    ) { [weak self] _ in
+      Task { @MainActor [weak self] in
+        self?.reload()
+      }
+    }
+    #if os(macOS)
+    profilesChangedDistributedObserver = DistributedNotificationCenter.default()
+      .addObserver(
+        forName: wwnMachineProfilesChangedNotification,
+        object: nil,
+        queue: .main
+      ) { [weak self] _ in
+        Task { @MainActor [weak self] in
+          // CLI process may have just written UserDefaults; synchronize first.
+          UserDefaults.standard.synchronize()
+          self?.reload()
+        }
+      }
+    #endif
   }
 
   deinit {
@@ -303,6 +330,15 @@ final class WWNMachinesViewModel: ObservableObject {
     if let containerStopObserver {
       NotificationCenter.default.removeObserver(containerStopObserver)
     }
+    if let profilesChangedObserver {
+      NotificationCenter.default.removeObserver(profilesChangedObserver)
+    }
+    #if os(macOS)
+    if let profilesChangedDistributedObserver {
+      DistributedNotificationCenter.default()
+        .removeObserver(profilesChangedDistributedObserver)
+    }
+    #endif
   }
 
   var activeMachineId: String? {
@@ -335,6 +371,12 @@ final class WWNMachinesViewModel: ObservableObject {
   }
 
   func upsert(_ profile: WWNMachineProfile) {
+    var runtime = Dictionary(uniqueKeysWithValues:
+      (profile.runtimeOverrides as? [String: Any] ?? [:]).map { ($0.key, $0.value) })
+    if runtime["origin"] == nil {
+      runtime["origin"] = "manual"
+      profile.runtimeOverrides = runtime
+    }
     profiles = WWNMachineProfileStore.upsertProfile(profile)
     if statusByMachineId[profile.machineId] == nil {
       statusByMachineId[profile.machineId] = .disconnected

@@ -197,6 +197,9 @@ let
     "src/platform/macos/WWNRootfsProvider.h"
     "src/platform/macos/WWNRootfsICloudSync.m"
     "src/platform/macos/WWNRootfsICloudSync.h"
+    # CLI run/machines recipes (auto-create Machines cards; macOS main.m only).
+    "src/platform/macos/ui/Machines/WWNCLIMachineRecipes.m"
+    "src/platform/macos/ui/Machines/WWNCLIMachineRecipes.h"
     # Desktop Replacement / Swinging Bridge. MacOS + Android only (matrix).
     "src/platform/macos/ui/Machines/WWNSwingingBridgeController.m"
     "src/platform/macos/ui/Machines/WWNSwingingBridgeController.h"
@@ -1187,6 +1190,19 @@ SHELL_EOF
               bundle_iland_egl_shim "$APP"
               bundle_macos_app_dylibs "$APP"
               ${lib.optionalString (ilandBaremetal != null) ''bundle_iland_baremetal_dylib "$APP"''}
+
+              # Fail closed: never ship a zero-byte main binary (seen when the
+              # volume is nearly full during cp / install_name_tool).
+              _wawona_bin="$APP/Contents/MacOS/Wawona"
+              if [ ! -f "$_wawona_bin" ]; then
+                echo "ERROR: missing $_wawona_bin after Xcode app install" >&2
+                exit 1
+              fi
+              _wawona_sz="$(stat -f%z "$_wawona_bin" 2>/dev/null || stat -c%s "$_wawona_bin")"
+              if [ "$_wawona_sz" -lt 1000000 ]; then
+                echo "ERROR: Wawona main binary too small ($_wawona_sz bytes). Check disk space." >&2
+                exit 1
+              fi
 
               mkdir -p $project
               cp -r . "$project/"

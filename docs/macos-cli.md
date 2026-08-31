@@ -1,10 +1,16 @@
 # Wawona macOS CLI (power-user)
 
-Start the compositor and bundled clients from the shell without opening the
-Machines / Settings GUI.
+CLI and the Machines GUI share one profile store (`wawona.machineProfiles.v1`).
+If you run something that has no Machines card yet, Wawona **auto-creates** one
+(`origin=cli`), then starts it. Add New Machine in the GUI creates cards
+manually (`origin=manual`).
 
 ```bash
 /Applications/Wawona.app/Contents/MacOS/Wawona --help
+Wawona run sway          # create card if needed + start (wallpaper, Alt+Enter)
+Wawona run flower        # container flower demo
+Wawona machines list
+Wawona machines show sway
 ```
 
 ## Bundled software on PATH
@@ -48,12 +54,15 @@ Or add `home.sessionPath = [ "$HOME/.local/bin" ];` and rebuild home-manager.
 
 ## Informational (no GUI, no instance lock)
 
-| Flag | Effect |
+| Flag / command | Effect |
 |------|--------|
 | `-h`, `--help` | Print usage and exit |
 | `-v`, `--version` | Print version and exit |
+| `run <recipe>` | Ensure Machines card (create if missing), then start |
+| `machines list` | Same profiles as the Machines GUI |
+| `machines show <id\|name>` | Print one profile |
 | `--list-clients` | Bundled client ids for `--client` |
-| `--list-machines` | Saved Machines profile ids for `--machine` |
+| `--list-machines` | Alias for `machines list` |
 
 ## Headless compositor
 
@@ -61,7 +70,7 @@ Or add `home.sessionPath = [ "$HOME/.local/bin" ];` and rebuild home-manager.
 |------|--------|
 | `--headless`, `--no-gui` | Compositor only. No Machines / Settings window |
 | `--gui` | Force Machines UI (overrides implied headless) |
-| `--client <id>` | Launch a bundled client (implies `--headless` unless `--gui`) |
+| `--client <id>` | Ensure Machines card for that client, then start (same as `run`) |
 | `--machine <id>` | Connect a saved Machines profile (implies `--headless` unless `--gui`) |
 | `--backend <mode>` | `auto` \| `wayland` \| `drm` (session-only; does not rewrite Settings) |
 
@@ -74,21 +83,21 @@ Or add `home.sessionPath = [ "$HOME/.local/bin" ];` and rebuild home-manager.
 ## Examples
 
 ```bash
-# Nested Weston (Wayland backend), no Machines window
-Wawona --headless --backend wayland --client weston
+# Nested sway with wallpaper + Alt+Enter (Ghostty, else foot). Creates a card.
+Wawona run sway
 
-# Niri nested on Wawona
-Wawona --headless --backend wayland --client niri
+# Flower in a container (auto-creates card; visible in Machines)
+Wawona run flower
+
+# Native nested Weston (also creates/updates a card)
+Wawona run weston
+Wawona --headless --backend wayland --client weston
 
 # Niri on wwn-iland userspace DRM/KMS
 Wawona --headless --backend drm --client niri
 
-# Weston nested (Wayland). Preferred until in-process weston_main +
-# drm-backend.so are packaged for macOS DRM
-Wawona --headless --backend wayland --client weston
-
-# Saved Machines profile by id
-Wawona --list-machines
+# Saved Machines profile by id or name
+Wawona machines list
 Wawona --machine <uuid>
 
 # Point other tools at the running compositor

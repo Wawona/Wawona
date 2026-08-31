@@ -441,6 +441,7 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
   NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
   [defaults setObject:json forKey:kWWNMachineProfilesJSON];
   [defaults removeObjectForKey:[kWWNMachineProfilesJSON stringByAppendingString:@".legacyString"]];
+  [defaults synchronize];
 }
 
 + (void)migrateFromLegacyPrefsIfNeeded {

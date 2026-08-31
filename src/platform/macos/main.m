@@ -29,6 +29,7 @@
 #import "./ui/Settings/WWNWaypipeRunner.h"
 #import "./ui/Machines/WWNMachineProfileStore.h"
 #import "./ui/Machines/WWNMachineSessionBridge.h"
+#import "./ui/Machines/WWNCLIMachineRecipes.h"
 #import "WWNSettings.h"
 
 // C FFI for Rust Compositor window events
@@ -213,13 +214,19 @@ static void wwn_print_cli_help(void) {
       "Wawona. Wayland compositor for macOS (and Apple / Android targets)\n"
       "\n"
       "Usage:\n"
+      "  Wawona run <recipe>           Auto-create Machines card if needed, then start\n"
+      "  Wawona machines list          Same profiles as the Machines GUI\n"
+      "  Wawona machines show <id|name>\n"
       "  Wawona [options]\n"
+      "\n"
+      "CLI and GUI stay in sync: run without a card creates one (origin=cli).\n"
+      "Add New Machine in the GUI creates cards manually (origin=manual).\n"
       "\n"
       "Informational (no GUI, no instance lock):\n"
       "  -h, --help              Show this help and exit\n"
       "  -v, --version           Print version and exit\n"
       "  --list-clients          List bundled client ids and exit\n"
-      "  --list-machines         List saved Machines profiles and exit\n"
+      "  --list-machines         Alias for: Wawona machines list\n"
       "  --mode-b-status         Desktop Replacement Mode B status and exit\n"
       "  --mode-b-ready          Classic gate: takeover-now, reboot, or blocked\n"
       "                          (prints VERDICT and REASON)\n"
@@ -262,14 +269,19 @@ static void wwn_print_cli_help(void) {
       "  --settings-section=Name Open Settings to that sidebar section\n"
       "\n"
       "Examples:\n"
-      "  # Nested Weston (Wayland backend) without the Machines GUI\n"
-      "  Wawona --headless --backend wayland --client weston\n"
+      "  # Nested sway (wallpaper + Alt+Enter terminal). Creates a Machines card\n"
+      "  Wawona run sway\n"
       "\n"
-      "  # Niri on wwn-iland userspace DRM/KMS\n"
-      "  Wawona --headless --backend drm --client niri\n"
+      "  # Flower demo in a container (auto-creates card)\n"
+      "  Wawona run flower\n"
       "\n"
-      "  # Start a saved Machines profile from the shell\n"
-      "  Wawona --machine my-niri-drm\n"
+      "  # Native nested Weston (also creates/updates a card)\n"
+      "  Wawona run weston\n"
+      "  Wawona --headless --backend wayland --client weston   # same path\n"
+      "\n"
+      "  # Start an existing card by id or name\n"
+      "  Wawona machines list\n"
+      "  Wawona --machine <id>\n"
       "\n"
       "Desktop Replacement (macOS Mode B, no Machines UI):\n"
       "  Wawona --mode-b-machine weston\n"
@@ -465,10 +477,22 @@ static NSString *WWNReopenPanelName(void) {
 }
 
 static void activate_existing_instance(void) {
+  NSMutableDictionary *info =
+      [@{@"panel" : WWNReopenPanelName()} mutableCopy];
+  if (g_cli_machine.length > 0) {
+    info[@"machineId"] = g_cli_machine;
+    info[@"action"] = @"connect";
+  }
   [[NSDistributedNotificationCenter defaultCenter]
       postNotificationName:@"WWNReopenUINotification"
                     object:nil
-                  userInfo:@{@"panel" : WWNReopenPanelName()}
+                  userInfo:info
+        deliverImmediately:YES];
+  // Also nudge Machines list (CLI may have just upserted UserDefaults).
+  [[NSDistributedNotificationCenter defaultCenter]
+      postNotificationName:WWNMachineProfilesChangedNotification
+                    object:nil
+                  userInfo:info
         deliverImmediately:YES];
 }
 
@@ -622,6 +646,16 @@ static void setup_signal_sources(void) {
   if ([raw isKindOfClass:[NSString class]]) {
     panel = raw;
   }
+  NSString *machineId = nil;
+  id mid = notif.userInfo[@"machineId"];
+  if ([mid isKindOfClass:[NSString class]]) {
+    machineId = mid;
+  }
+  NSString *action = nil;
+  id act = notif.userInfo[@"action"];
+  if ([act isKindOfClass:[NSString class]]) {
+    action = act;
+  }
   dispatch_async(dispatch_get_main_queue(), ^{
     [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
     [NSApp activateIgnoringOtherApps:YES];
@@ -632,7 +666,30 @@ static void setup_signal_sources(void) {
     } else {
       [[WWNMachinesCoordinator sharedCoordinator] showMachinesWindowAndActivate:YES];
     }
+    if (machineId.length > 0 && [action isEqualToString:@"connect"]) {
+      WWNMachineProfile *profile =
+          [WWNMachineProfileStore profileById:machineId];
+      if (!profile) {
+        (void)[WWNMachineProfileStore loadProfiles];
+        profile = [WWNMachineProfileStore profileById:machineId];
+      }
+      if (profile) {
+        [WWNMachineProfileStore setActiveMachineId:profile.machineId];
+        NSError *err = nil;
+        if (![WWNMachineSessionBridge connectProfile:profile error:&err]) {
+          WWNLog("MAIN", @"Handoff connect %@ failed: %@", machineId,
+                 err.localizedDescription ?: @"unknown");
+        } else {
+          WWNLog("MAIN", @"Handoff connected machine %@", machineId);
+        }
+      }
+    }
   });
+}
+
+- (void)handleProfilesChangedNotification:(NSNotification *)notif {
+  (void)notif;
+  WWNLog("MAIN", @"Machine profiles changed (CLI/GUI sync)");
 }
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
@@ -645,6 +702,11 @@ static void setup_signal_sources(void) {
                                                     selector:@selector(handleReopenNotification:)
                                                         name:@"WWNReopenUINotification"
                                                       object:nil];
+  [[NSDistributedNotificationCenter defaultCenter]
+      addObserver:self
+         selector:@selector(handleProfilesChangedNotification:)
+             name:WWNMachineProfilesChangedNotification
+           object:nil];
                                                       
   WWNPreferencesManager *prefs = [WWNPreferencesManager sharedManager];
 
@@ -716,20 +778,26 @@ static void setup_signal_sources(void) {
       WWNMachineProfile *profile =
           [WWNMachineProfileStore profileById:g_cli_machine];
       if (!profile) {
-        WWNLog("MAIN", @"--machine '%@' not found (try --list-machines)",
+        profile = [WWNCLIMachineRecipes profileMatchingIdOrName:g_cli_machine];
+      }
+      if (!profile) {
+        WWNLog("MAIN", @"--machine '%@' not found (try Wawona machines list)",
                g_cli_machine);
         return;
       }
+      [WWNMachineProfileStore setActiveMachineId:profile.machineId];
       NSError *err = nil;
       if (![WWNMachineSessionBridge connectProfile:profile error:&err]) {
-        WWNLog("MAIN", @"--machine %@ failed: %@", g_cli_machine,
+        WWNLog("MAIN", @"--machine %@ failed: %@", profile.machineId,
                err.localizedDescription ?: @"unknown");
       } else {
-        WWNLog("MAIN", @"Connected machine %@", g_cli_machine);
+        WWNLog("MAIN", @"Connected machine %@ (%@)", profile.name,
+               profile.machineId);
       }
       return;
     }
     if (autoClient.length > 0) {
+      // Fallback only if ensureProfile failed to set g_cli_machine.
       WWNLog("MAIN", @"CLI --client=%@. Starting bundled client", autoClient);
       [[WWNWaypipeRunner sharedRunner] launchBundledClientWithId:autoClient];
     }
@@ -1509,7 +1577,7 @@ int main(int argc, char *argv[]) {
     setbuf(stdout, NULL);
     setbuf(stderr, NULL);
 
-    // --- Early CLI: --help / --version / list before any bundle env logging ---
+    // --- Early CLI: --help / --version / list / run / machines ---
     BOOL forceGui = NO;
     for (int i = 1; i < argc; i++) {
       const char *arg = argv[i];
@@ -1534,6 +1602,80 @@ int main(int argc, char *argv[]) {
       }
       if (strcmp(arg, "--list-machines") == 0) {
         return wwn_print_list_machines();
+      }
+      // Git-style: Wawona run <recipe>  |  Wawona machines list|show
+      if (strcmp(arg, "run") == 0) {
+        if (i + 1 >= argc || argv[i + 1][0] == '-') {
+          [WWNCLIMachineRecipes printRecipeHelp];
+          return 2;
+        }
+        if (strcmp(argv[i + 1], "--help") == 0 || strcmp(argv[i + 1], "-h") == 0) {
+          [WWNCLIMachineRecipes printRecipeHelp];
+          return 0;
+        }
+        NSString *recipe = [NSString stringWithUTF8String:argv[i + 1]];
+        NSError *ensErr = nil;
+        WWNMachineProfile *ensured =
+            [WWNCLIMachineRecipes ensureProfileForRecipe:recipe error:&ensErr];
+        if (!ensured) {
+          fprintf(stderr, "Wawona: %s\n",
+                  ensErr.localizedDescription.UTF8String ?: "ensure failed");
+          return 2;
+        }
+        printf("Machine %s (%s) ready. Starting…\n",
+               ensured.name.UTF8String ?: "?",
+               ensured.machineId.UTF8String ?: "?");
+        g_cli_machine = [ensured.machineId copy];
+        // Show Machines UI so the auto-created card is visible unless headless.
+        forceGui = YES;
+        for (int k = 1; k < argc; k++) {
+          if (strcmp(argv[k], "--headless") == 0 ||
+              strcmp(argv[k], "--no-gui") == 0) {
+            forceGui = NO;
+            g_cli_headless = YES;
+          }
+        }
+        break;
+      }
+      if (strcmp(arg, "machines") == 0) {
+        const char *sub = (i + 1 < argc) ? argv[i + 1] : "list";
+        if (strcmp(sub, "list") == 0 || strcmp(sub, "--help") == 0) {
+          if (strcmp(sub, "--help") == 0) {
+            printf("Usage: Wawona machines list|show <id|name>\n");
+            return 0;
+          }
+          return wwn_print_list_machines();
+        }
+        if (strcmp(sub, "show") == 0) {
+          if (i + 2 >= argc) {
+            fprintf(stderr, "Wawona: machines show requires an id or name\n");
+            return 2;
+          }
+          NSString *q = [NSString stringWithUTF8String:argv[i + 2]];
+          WWNMachineProfile *p = [WWNCLIMachineRecipes profileMatchingIdOrName:q];
+          if (!p) {
+            fprintf(stderr, "Wawona: no machine matching '%s'\n", argv[i + 2]);
+            return 1;
+          }
+          printf("id:      %s\n", p.machineId.UTF8String ?: "");
+          printf("name:    %s\n", p.name.UTF8String ?: "");
+          printf("type:    %s\n", p.type.UTF8String ?: "");
+          NSString *origin = p.runtimeOverrides[kWWNMachineOrigin];
+          if ([origin isKindOfClass:[NSString class]]) {
+            printf("origin:  %s\n", origin.UTF8String);
+          }
+          NSString *key = p.runtimeOverrides[kWWNCLIRecipeKey];
+          if ([key isKindOfClass:[NSString class]]) {
+            printf("recipe:  %s\n", key.UTF8String);
+          }
+          NSString *cmd = p.containerSettings[@"entryCommand"];
+          if ([cmd isKindOfClass:[NSString class]] && cmd.length > 0) {
+            printf("command: %s\n", cmd.UTF8String);
+          }
+          return 0;
+        }
+        fprintf(stderr, "Wawona: unknown machines subcommand '%s'\n", sub);
+        return 2;
       }
       /*
        * Mode B CLI: scan once for --mode-b-* and optional --machine /
@@ -1724,7 +1866,24 @@ int main(int argc, char *argv[]) {
       g_cli_backend = b;
     }
 
-    // --client / --machine imply headless unless the user asked for --gui.
+    // --client always goes through Machines: ensure a card, then connect.
+    if (g_cli_client.length > 0 && g_cli_machine.length == 0) {
+      NSError *ensErr = nil;
+      WWNMachineProfile *ensured =
+          [WWNCLIMachineRecipes ensureProfileForRecipe:g_cli_client
+                                                 error:&ensErr];
+      if (!ensured) {
+        fprintf(stderr, "Wawona: %s\n",
+                ensErr.localizedDescription.UTF8String ?: "ensure failed");
+        return 2;
+      }
+      g_cli_machine = [ensured.machineId copy];
+      printf("Machine %s (%s) ready.\n", ensured.name.UTF8String ?: "?",
+             ensured.machineId.UTF8String ?: "?");
+    }
+
+    // --client / --machine imply headless unless the user asked for --gui
+    // (or used `Wawona run`, which defaults to showing Machines).
     if (!forceGui && (g_cli_client.length > 0 || g_cli_machine.length > 0)) {
       g_cli_headless = YES;
     }

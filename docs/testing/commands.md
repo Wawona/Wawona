@@ -88,50 +88,97 @@ export WAWONA_WAYPIPE_GUEST="$(dirname "$(command -v container)")/waypipe-guest-
 # Terminal smoke (use a TTY or `script` so guest stdout is attached)
 script -q /dev/null container run --rm --id wawona-echo alpine:3.20 /bin/echo OK-FROM-GUEST
 
-# Desktop session: weston-flower over vsock waypipe (guest-root + oneshot listen)
+# Desktop session: prebaked image (no nix shell at Start). Build image once:
+#   nix build path:../wwn-containers#packages.aarch64-linux.wawona-container-desktop
+#   container image load ./result
 container run --rm --id wawona-flower --fs-size 8192 -m 2048 \
   --wayland-vsock-port 1042 \
   --waypipe-guest-root "$WAWONA_WAYPIPE_GUEST" \
-  nixos/nix \
-  /bin/sh -lc "nix --extra-experimental-features 'nix-command flakes' shell nixpkgs#weston -c weston-flower"
+  wawona-container-desktop:latest \
+  weston-flower
 ```
 
-GUI: Machines → container profile → **Desktop session** on → command as above
-(`shell ... -c weston-flower`, not `nix run ... -- weston-flower`). Smoke helper:
+`wwn-containerd` is **prebuilt** in the app bundle. Machines Start shows
+**Starting container…** while the Apple Containerization VM boots (ready
+markers), not a compile. Guest `nix shell` is gone from CLI recipes.
+
+GUI: Machines → container profile → **Desktop session** on → image
+`wawona-container-desktop:latest` → command `weston-flower`. Smoke helper:
 `scripts/agent-device-container-smoke-macos.sh`.
 
 ### Container desktop client matrix (CLI)
 
-With Wawona running (compositor socket under `/tmp/wawona-$(id -u)/`):
+CLI and GUI stay in sync. Prefer:
 
 ```bash
-export PATH="/Applications/Wawona.app/Contents/Resources/bin:$PATH"
-export WAWONA_CONTAINER_BACKEND=containerization
-export WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=/tmp/wawona-$(id -u)
-
-# Demo (200×200, not fill-host)
-scripts/container-desktop-clients-macos.sh flower
-
-# Terminals (fill-host)
-scripts/container-desktop-clients-macos.sh weston-terminal
-scripts/container-desktop-clients-macos.sh foot
-
-# Nested compositors (fill-host)
-scripts/container-desktop-clients-macos.sh weston
-scripts/container-desktop-clients-macos.sh niri
-scripts/container-desktop-clients-macos.sh sway
+Wawona run flower    # auto-creates Machines card if missing
+Wawona run sway      # sway + swaybg + Alt+Enter (ghostty/foot)
+Wawona run hyprland
+Wawona run ghostty
+Wawona machines list
 ```
 
-| Client | Guest command | Host sizing |
+Legacy wrapper (calls `Wawona run`):
+
+```bash
+scripts/container-desktop-clients-macos.sh flower
+scripts/container-desktop-clients-macos.sh sway
+scripts/container-desktop-matrix-macos.sh
+```
+
+| Client | Notes | Status |
 |---|---|---|
-| `weston-flower` | `shell nixpkgs#weston -c weston-flower` | ~200×200 fixed |
-| `weston-terminal` / `foot` | `shell nixpkgs#weston -c weston-terminal` | fill-host |
-| `weston` | `shell nixpkgs#weston -c weston --backend=wayland` | fill-host |
-| `niri` | `shell nixpkgs#niri -c niri` | fill-host |
-| `sway` | `shell nixpkgs#sway -c sway` | fill-host |
+| `flower` | 200×200 weston-flower; entry has no `nix` | PASS once image loaded |
+| `weston` / `niri` | native bundled (`Wawona run`) or container via script | PASS |
+| `labwc` | container (prebaked) | PASS once image loaded |
+| `sway` | config + Mod1+Return → ghostty/foot; no nix shell | PASS once image loaded |
+| `hyprland` | prebaked Hyprland | PASS once image loaded |
+| `ghostty` | container guest (or host `nix shell` for HiDPI debug) | PASS once image loaded |
+| `plasma` / `gnome` | in prebaked image; need guest dbus | PARTIAL |
+
+Assert no-compile: `Wawona run flower` then inspect profile
+`containerSettings.entryCommand` (must not contain `nix shell`).
+
+Sway binds: **Alt+Enter** opens Ghostty (falls back to foot under `--no-gpu` waypipe).
+**Alt+Shift+E** exits.
 
 Container profiles must **not** set `runtimeOverrides.bundledAppID` (that forces
 fill-host for flower). Use **Container command** only.
+
+### macOS / iOS Machines parity checklist
+
+| Kind | macOS | iOS Mode A (store) |
+|---|---|---|
+| Native weston/niri/clients | available | available (in-process) |
+| Container | Apple Containerization + prebaked OCI | container-in-VM (QEMU-TCTI); `WWN_CONTAINERS=1` until shipping |
+| VM | QEMU+HVF; `WWN_VMS=1` | QEMU-TCTI; `WWN_VMS=1`; embed guest+engine |
+| Wasm Runtime | available | available (interpreter; no JIT) |
+| Hyprland / Ghostty | container-only | container-in-VM only (same guests) |
+
+iOS Simulator: set `WAWONA_MOBILE_GUEST_DIR` + `WAWONA_MOBILE_VM_ENGINE_DIR` for
+embed phases; without them Start fails closed with a clear error.
+
+## Ghostty / GTK HiDPI (Retina quadrant check)
+
+GTK4 clients (Ghostty) use `wp_fractional_scale` + `wp_viewporter`
+destination. On a 2x display they must fill the window, not only the
+bottom-left quadrant.
+
+**Root cause (fixed):** `wp_viewporter.get_viewport` must map the
+`wl_surface` to the compositor **internal** surface id (same as
+`ensure_internal_surface_mapping` / scene). Keying by Wayland
+`protocol_id` alone made destination apply miss on commit, so present
+kept buffer-sized logical geometry at scale 1.
+
+```bash
+# Product path: Machines → Nix Weston Container (nixos/nix) with
+#   nix shell nixpkgs#ghostty -c ghostty
+# Or: Wawona run ghostty when the prebaked image includes ghostty.
+# Expect: full window content on Retina, not one quadrant.
+```
+
+Compare with `weston-terminal` / `foot` (integer buffer_scale path) on the same
+Retina output.
 
 ## Android / Linux VM automation
 
