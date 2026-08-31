@@ -69,6 +69,37 @@ agent-device replay Wawona/.agent-device/wawona-android-machines.ad
 
 The macOS convenience wrapper is `Wawona/scripts/agent-device-smoke.sh`.
 
+## macOS OCI containers (Apple Containerization)
+
+Requires `/usr/local/bin/container system start` (apiserver) and a kernel under
+`~/Library/Application Support/com.apple.container/kernels/`. Prefer Wawona's
+bundled CLI (`/Applications/Wawona.app/Contents/Resources/bin/container`) over
+Apple's `/usr/local/bin/container` (different flags).
+
+```bash
+export PATH="/Applications/Wawona.app/Contents/Resources/bin:$PATH"
+export WAWONA_CONTAINER_BACKEND=containerization
+export WWN_OCI_ROOT="$HOME/.local/share/wawona/oci"
+export WAYLAND_DISPLAY=wayland-0
+export XDG_RUNTIME_DIR=/tmp/wawona-$(id -u)
+export WWNP_WAYPIPE_BIN="$(dirname "$(command -v container)")/waypipe-fds"
+export WAWONA_WAYPIPE_GUEST="$(dirname "$(command -v container)")/waypipe-guest-root"
+
+# Terminal smoke (use a TTY or `script` so guest stdout is attached)
+script -q /dev/null container run --rm --id wawona-echo alpine:3.20 /bin/echo OK-FROM-GUEST
+
+# Desktop session: weston-flower over vsock waypipe (guest-root + oneshot listen)
+container run --rm --id wawona-flower --fs-size 8192 -m 2048 \
+  --wayland-vsock-port 1042 \
+  --waypipe-guest-root "$WAWONA_WAYPIPE_GUEST" \
+  nixos/nix \
+  /bin/sh -lc "nix --extra-experimental-features 'nix-command flakes' shell nixpkgs#weston -c weston-flower"
+```
+
+GUI: Machines → container profile → **Desktop session** on → command as above
+(`shell … -c weston-flower`, not `nix run … -- weston-flower`). Smoke helper:
+`scripts/agent-device-container-smoke-macos.sh`.
+
 ## Android / Linux VM automation
 
 ```bash

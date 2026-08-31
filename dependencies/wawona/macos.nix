@@ -1103,7 +1103,7 @@ GEN_HEADER
 #
 # If the last argv is a single-quoted string that contains spaces (legacy
 # runners quoted the whole entryCommand as one guest argv0), rewrite to
-# `/bin/sh -lc '…'` so multi-word nix/weston commands exec correctly.
+# `/bin/sh -lc '...'` so multi-word nix/weston commands exec correctly.
 cmd=$WAWONA_CONTAINER_CMD
 case $cmd in
   *"'"*" "*)
@@ -1581,7 +1581,7 @@ SHELL_EOF
 #
 # If the last argv is a single-quoted string that contains spaces (legacy
 # runners quoted the whole entryCommand as one guest argv0), rewrite to
-# `/bin/sh -lc '…'` so multi-word nix/weston commands exec correctly.
+# `/bin/sh -lc '...'` so multi-word nix/weston commands exec correctly.
 cmd=$WAWONA_CONTAINER_CMD
 case $cmd in
   *"'"*" "*)
