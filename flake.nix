@@ -88,6 +88,9 @@
     wwn-foot.url = "https://flakehub.com/f/Wawona/wwn-foot/*";
     wwn-foot.inputs.nixpkgs.follows = "nixpkgs";
     wwn-foot.inputs.wwn-toolchain.follows = "wwn-toolchain";
+    wwn-ish.url = "github:toastmod/wwn-ish";
+    wwn-ish.inputs.nixpkgs.follows = "nixpkgs";
+    wwn-ish.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-fastfetch.url = "https://flakehub.com/f/Wawona/wwn-fastfetch/*";
     wwn-fastfetch.inputs.nixpkgs.follows = "nixpkgs";
     wwn-fastfetch.inputs.wwn-toolchain.follows = "wwn-toolchain";
@@ -147,7 +150,7 @@
     doorman.url = "github:Wawona/doorman";
   };
 
-  outputs = inputs@{ self, nixpkgs, android-nixpkgs, rust-overlay, crate2nix, nix-appimage, wwn-toolchain, wwn-iland, wwn-kmscube, wwn-weston, wwn-zsh, wwn-ssh, wwn-waypipe, wwn-swinging-bridge, wwn-coreutils, wwn-foot, wwn-fastfetch, wwn-phoon-rs, wwn-neovim, wwn-wasm, wwn-niri, wwn-vms, wwn-containers, wwn-iowatchdog, wwn-igetty, doorman, ... }:
+  outputs = inputs@{ self, nixpkgs, android-nixpkgs, rust-overlay, crate2nix, nix-appimage, wwn-toolchain, wwn-iland, wwn-kmscube, wwn-weston, wwn-zsh, wwn-ssh, wwn-waypipe, wwn-swinging-bridge, wwn-coreutils, wwn-foot, wwn-fastfetch, wwn-phoon-rs, wwn-neovim, wwn-ish, wwn-wasm, wwn-niri, wwn-vms, wwn-containers, wwn-iowatchdog, wwn-igetty, doorman, ... }:
   let
     linuxSystems = [ "x86_64-linux" "aarch64-linux" ];
     # Nixpkgs 26.11 throws on x86_64-darwin eval; flakehub-push runs
@@ -315,6 +318,7 @@
       // wwn-waypipe.registryFragment
       // wwn-swinging-bridge.registryFragment
       // wwn-foot.registryFragment
+      // wwn-ish.registryFragment
       // wwn-fastfetch.registryFragment
       // wwn-phoon-rs.registryFragment
       // wwn-neovim.registryFragment
@@ -348,6 +352,7 @@
     fastfetchMacosNix = "${wwn-fastfetch}/dependencies/clients/fastfetch/macos.nix";
     fastfetchIosNix = "${wwn-fastfetch}/dependencies/clients/fastfetch/apple-mobile.nix";
     fastfetchLdflagsNix = "${wwn-fastfetch}/dependencies/generators/fastfetch-ldflags.nix";
+    # TODO: Not sure if ish needs an entry here yet
     neovimMacosNix = "${wwn-neovim}/dependencies/libs/neovim/macos.nix";
     neovimIosNix = "${wwn-neovim}/dependencies/libs/neovim/apple-mobile.nix";
     neovimLdflagsNix = "${wwn-neovim}/dependencies/generators/neovim-ldflags.nix";
@@ -1788,6 +1793,14 @@ APPLESCRIPT
           foot-tvos-sim = toolchains.buildForTVOS "foot" { simulator = true; };
           foot-watchos = toolchains.buildForWatchOS "foot" { };
           foot-watchos-sim = toolchains.buildForWatchOS "foot" { simulator = true; };
+          # iSH CLI, in-process shell tool
+          # TODO: confirm ish works for all Apple mobile platforms
+          ish-ios = toolchains.buildForIOS "ish" { };
+          ish-ios-sim = toolchains.buildForIOS "ish" { simulator = true; };
+          ish-tvos = toolchains.buildForTVOS "ish" { };
+          ish-tvos-sim = toolchains.buildForTVOS "ish" { simulator = true; };
+          ish-watchos = toolchains.buildForWatchOS "ish" { };
+          ish-watchos-sim = toolchains.buildForWatchOS "ish" { simulator = true; };
           # phoon (clean-room Rust moon-phase utility, in-process shell tool).
           # Bundled on EVERY Apple target like foot/niri: rust-overlay stable
           # ships std for the tier-3 tvOS/watchOS/visionOS triples, so phoon
