@@ -825,11 +825,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1787914059,
-        "narHash": "sha256-rxwF7XndnNJSyyZme/ve00StfSW+0SLfxFCkv/xiHQM=",
+        "lastModified": 1788140692,
+        "narHash": "sha256-ZklQcD13ec6390/r3dIFSXrYrmqbF7ZJrLOBaU9zI7w=",
         "owner": "Wawona",
         "repo": "wwn-containers",
-        "rev": "ed72b6ba02128d9dbe38a0a7b6e58bcebf3b6714",
+        "rev": "ceb643ebb249580fcb76cb38471020544226346b",
         "type": "github"
       },
       "original": {
