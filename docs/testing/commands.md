@@ -97,7 +97,7 @@ container run --rm --id wawona-flower --fs-size 8192 -m 2048 \
 ```
 
 GUI: Machines → container profile → **Desktop session** on → command as above
-(`shell … -c weston-flower`, not `nix run … -- weston-flower`). Smoke helper:
+(`shell ... -c weston-flower`, not `nix run ... -- weston-flower`). Smoke helper:
 `scripts/agent-device-container-smoke-macos.sh`.
 
 ## Android / Linux VM automation
