@@ -209,6 +209,53 @@ static NSString *WWNContainerShellQuote(NSString *value) {
   // Local image from disk: run from the imported OCI layout directory instead
   // of pulling the reference from a registry (wwn-containerd --image-archive).
   NSString *archive = WWNContainerString(cs, @"imageArchivePath");
+  if (archive.length == 0 &&
+      [ref rangeOfString:@"wawona-container-desktop"].location != NSNotFound) {
+    // Prefer a local `container import` layout so Start never hits Docker Hub
+    // for the prebaked desktop image (short refs resolve to library/…).
+    NSString *root = NSProcessInfo.processInfo.environment[@"WWN_OCI_ROOT"];
+    if (root.length == 0) {
+      root = [NSHomeDirectory()
+          stringByAppendingPathComponent:@".local/share/wwn-oci"];
+    }
+    NSString *imagesDir = [root stringByAppendingPathComponent:@"images"];
+    for (NSString *name in [[NSFileManager defaultManager]
+             contentsOfDirectoryAtPath:imagesDir
+                                 error:nil]) {
+      if (![name.pathExtension isEqualToString:@"json"]) {
+        continue;
+      }
+      NSData *data = [NSData
+          dataWithContentsOfFile:[imagesDir stringByAppendingPathComponent:name]];
+      id json = data.length
+                    ? [NSJSONSerialization JSONObjectWithData:data
+                                                      options:0
+                                                        error:nil]
+                    : nil;
+      if (![json isKindOfClass:[NSDictionary class]]) {
+        continue;
+      }
+      NSString *cref = json[@"reference"] ?: json[@"canonical"];
+      if (![cref isKindOfClass:[NSString class]] ||
+          [cref rangeOfString:@"wawona-container-desktop"].location ==
+              NSNotFound) {
+        continue;
+      }
+      NSString *digest = json[@"manifest_digest"];
+      if (![digest isKindOfClass:[NSString class]] ||
+          ![digest hasPrefix:@"sha256:"] || digest.length <= 7) {
+        continue;
+      }
+      NSString *layout = [[root stringByAppendingPathComponent:@"oci-layout"]
+          stringByAppendingPathComponent:[digest substringFromIndex:7]];
+      if ([[NSFileManager defaultManager]
+              fileExistsAtPath:[layout stringByAppendingPathComponent:
+                                           @"index.json"]]) {
+        archive = layout;
+        break;
+      }
+    }
+  }
   if (archive.length > 0) {
     [parts addObject:[NSString
                          stringWithFormat:@"--image-archive %@",
@@ -426,6 +473,34 @@ static NSString *WWNContainerShellQuote(NSString *value) {
         env[@"WAWONA_WAYPIPE_GUEST_CLOSURE"] = closurePath;
       }
     }
+    // GPU/dmabuf is default for container waypipe. Disable GPU (profile or
+    // global) opts into SHM via wwn-containerd's WAWONA_WAYPIPE_NO_GPU.
+    // Pass host Vulkan ICD paths so waypipe/compositor share MoltenVK /
+    // KosmicKrisp / SwiftShader selection from Settings.
+    if (profile.waypipeDisableGpu || prefs.waypipeNoGpu) {
+      env[@"WAWONA_WAYPIPE_NO_GPU"] = @"1";
+    } else {
+      const char *icd = getenv("VK_DRIVER_FILES");
+      if (!icd || !icd[0]) {
+        icd = getenv("VK_ICD_FILENAMES");
+      }
+      if (icd && icd[0]) {
+        env[@"VK_DRIVER_FILES"] = @(icd);
+        env[@"VK_ICD_FILENAMES"] = @(icd);
+      } else {
+        NSString *icdJson = [NSBundle.mainBundle.resourcePath
+            stringByAppendingPathComponent:@"vulkan/icd.d/MoltenVK_icd.json"];
+        NSString *kkJson = [NSBundle.mainBundle.resourcePath
+            stringByAppendingPathComponent:@"vulkan/icd.d/kosmickrisp_icd.json"];
+        if ([fmProbe fileExistsAtPath:kkJson]) {
+          env[@"VK_DRIVER_FILES"] = kkJson;
+          env[@"VK_ICD_FILENAMES"] = kkJson;
+        } else if ([fmProbe fileExistsAtPath:icdJson]) {
+          env[@"VK_DRIVER_FILES"] = icdJson;
+          env[@"VK_ICD_FILENAMES"] = icdJson;
+        }
+      }
+    }
   }
   task.environment = env;
   NSLog(@"[WWNContainerRunner] launch machineId=%@ desktop=%d cmd=%@",
@@ -599,10 +674,95 @@ static NSString *WWNContainerShellQuote(NSString *value) {
   return shared;
 }
 
+/// Stage an OCI layout directory into Application Support so the guest can
+/// mount it (virtiofs tag `oci-bundle`). Prefer imageArchivePath; else a
+/// bundled Resources/oci/wawona-container-desktop layout.
+- (nullable NSString *)stageOciBundleForProfile:(WWNMachineProfile *)profile
+                                          error:(NSError *_Nullable *_Nullable)error {
+  NSDictionary *cs = profile.containerSettings ?: @{};
+  NSString *archive = cs[@"imageArchivePath"];
+  if (![archive isKindOfClass:[NSString class]] || archive.length == 0) {
+    archive = [[NSBundle mainBundle] pathForResource:@"wawona-container-desktop"
+                                              ofType:nil
+                                         inDirectory:@"oci"];
+  }
+  if (archive.length == 0) {
+    // No local layout: guest still boots; in-guest crun waits for a shared
+    // bundle. Surface a soft path via runtimeOverrides when present later.
+    return nil;
+  }
+  NSString *index = [archive stringByAppendingPathComponent:@"index.json"];
+  NSString *config = [archive stringByAppendingPathComponent:@"config.json"];
+  if (![[NSFileManager defaultManager] fileExistsAtPath:index] &&
+      ![[NSFileManager defaultManager] fileExistsAtPath:config]) {
+    if (error) {
+      *error = [NSError
+          errorWithDomain:@"WWNContainerRunner"
+                     code:20
+                 userInfo:@{
+                   NSLocalizedDescriptionKey : [NSString
+                       stringWithFormat:
+                           @"Container image archive at %@ is not an OCI layout "
+                           @"(missing index.json / config.json).",
+                           archive]
+                 }];
+    }
+    return nil;
+  }
+
+  NSArray<NSURL *> *urls = [[NSFileManager defaultManager]
+      URLsForDirectory:NSApplicationSupportDirectory
+             inDomains:NSUserDomainMask];
+  NSURL *base = urls.firstObject;
+  if (!base) {
+    return archive;
+  }
+  NSString *dest =
+      [[[base URLByAppendingPathComponent:@"Wawona" isDirectory:YES]
+          URLByAppendingPathComponent:@"oci-bundles"
+                          isDirectory:YES]
+          URLByAppendingPathComponent:profile.machineId.length > 0
+                                         ? profile.machineId
+                                         : @"default"
+                         isDirectory:YES]
+          .path;
+  NSError *copyErr = nil;
+  [[NSFileManager defaultManager] removeItemAtPath:dest error:nil];
+  [[NSFileManager defaultManager] createDirectoryAtPath:[dest stringByDeletingLastPathComponent]
+                            withIntermediateDirectories:YES
+                                             attributes:nil
+                                                  error:nil];
+  if (![[NSFileManager defaultManager] copyItemAtPath:archive
+                                               toPath:dest
+                                                error:&copyErr]) {
+    // Fall back to the source path (may already be app-local).
+    (void)copyErr;
+    return archive;
+  }
+  return dest;
+}
+
 - (BOOL)launchProfile:(WWNMachineProfile *)profile
                 error:(NSError *_Nullable *_Nullable)error {
   // Container-in-VM on Apple mobile: boot the bundled NixOS guest (same engine
   // as virtual_machine); OCI execution runs inside the guest over virtiofs.
+  NSError *stageErr = nil;
+  NSString *bundlePath = [self stageOciBundleForProfile:profile error:&stageErr];
+  if (stageErr && error) {
+    *error = stageErr;
+    return NO;
+  }
+  if (bundlePath.length > 0) {
+    NSMutableDictionary *ro =
+        [profile.runtimeOverrides mutableCopy] ?: [NSMutableDictionary dictionary];
+    ro[@"ociBundlePath"] = bundlePath;
+    NSDictionary *cs = profile.containerSettings ?: @{};
+    NSString *entry = cs[@"entryCommand"];
+    if ([entry isKindOfClass:[NSString class]] && entry.length > 0) {
+      ro[@"containerEntryCommand"] = entry;
+    }
+    profile.runtimeOverrides = ro;
+  }
   return [[WWNVirtualMachineRunner sharedRunner] launchProfile:profile error:error];
 }
 

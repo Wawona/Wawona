@@ -582,27 +582,14 @@ static NSString *WWNPreferredHostShellPath(void) {
   if (prefs.waypipeDebug) {
     [args addObject:@"--debug"];
   }
-  // wlroots/sway over waypipe can produce blank/broken windows on the
-  // GPU/IOSurface fast path. Default to CPU transport for remote sway unless
-  // the user already chose no-gpu explicitly.
-  // p15: waypipe's GPU (dmabuf/Vulkan) transport needs a working Vulkan ICD.
-  // main.m sets VK_DRIVER_FILES when a bundled ICD (MoltenVK/KosmicKrisp) was
-  // resolved; if it's absent there is no ICD, so force CPU/SHM transport
-  // (--no-gpu) to avoid empty-IOSurface / failed-import frames.
-  BOOL haveVulkanICD = (getenv("VK_DRIVER_FILES") != NULL);
-  BOOL forceNoGpu = prefs.waypipeNoGpu || isRemoteSwayLaunch || !haveVulkanICD;
-  if (forceNoGpu) {
+  // GPU/dmabuf is the default. Host macOS waypipe translates remote dmabuf
+  // into IOSurface (#86) for Wawona; guest OpenGL/Vulkan/ANGLE/llvmpipe keep
+  // their own drivers. MoltenVK / KosmicKrisp / SwiftShader are for the host
+  // compositor and native clients, not a gate to strip GPU transport.
+  // --no-gpu ONLY when the user turns on Disable GPU (prefs / per-machine).
+  if (prefs.waypipeNoGpu) {
     [args addObject:@"--no-gpu"];
-    if (isRemoteSwayLaunch && !prefs.waypipeNoGpu) {
-      WWNLog("WAYPIPE",
-             @"Auto-enabling --no-gpu for remote sway launch to avoid empty "
-             @"IOSurface frames");
-    }
-    if (!haveVulkanICD && !prefs.waypipeNoGpu && !isRemoteSwayLaunch) {
-      WWNLog("WAYPIPE",
-             @"No Vulkan ICD (VK_DRIVER_FILES unset); forcing --no-gpu SHM "
-             @"transport");
-    }
+    WWNLog("WAYPIPE", @"Disable GPU on: using --no-gpu SHM transport");
   }
 #if TARGET_OS_IPHONE
   // iOS App Store compliance: ALWAYS force --oneshot in SSH mode.

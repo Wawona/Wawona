@@ -12,9 +12,15 @@ Dropbear is not used.
 
 | Platform | Transport | Buffer Path | Status |
 |----------|-----------|-------------|--------|
-| **macOS** | OpenSSH process spawn | IOSurface → Metal | Working |
+| **macOS** | OpenSSH process spawn / container SplitFD | dmabuf → IOSurface → Metal (SHM via Disable GPU) | Working |
 | **iOS** | libssh2 in-process | IOSurface → Metal | Built, integrated |
-| **Android** | OpenSSH portable (fork/exec `--ssh-bin`) | SHM → Vulkan | Working |
+| **Android** | OpenSSH portable (fork/exec `--ssh-bin`) | dmabuf/SHM → Vulkan | Working |
+
+GPU transport is the default. **Disable GPU** forces `--no-gpu` (SHM). Clients
+keep their own OpenGL / Vulkan / ANGLE / Mesa / llvmpipe stacks; the host uses
+IOSurface (#86) with MoltenVK, KosmicKrisp, SwiftShader, or ANGLE as available
+for the compositor. Software Wayland clients may use `wl_shm` without Disable
+GPU.
 
 ---
 

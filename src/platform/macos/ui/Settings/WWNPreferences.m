@@ -1174,13 +1174,13 @@ static UIImage *WWNAboutLogo(void) {
     // visionOS.
     [machineItems addObject:ITEM(@"Virtual Machine Engine", nil, WSettingInfo,
 #if TARGET_OS_OSX
-                                 @"Virtualization.framework",
+                                 @"QEMU + HVF",
 #else
-                                 @"QEMU (TCTI)",
+                                 @"QEMU-TCTI (UTM SE)",
 #endif
                                  @"Selected automatically for this platform by wwn-vms. macOS: "
-                                 @"Virtualization.framework. iOS: jitless QEMU-TCTI. "
-                                 @"Android: QEMU/AVF.")];
+                                 @"QEMU + Hypervisor.framework (HVF). iOS: jitless QEMU-TCTI. "
+                                 @"Android: QEMU + KVM when /dev/kvm exists, else TCG+JIT.")];
     [machineItems addObject:ITEM(@"Virtual Machine VSock Port", @"MachineVMVsockPort",
                                  WSettingNumber, @"1024",
                                  @"vsock port the guest's waypipe server binds; bridged into Wawona.")];
@@ -1606,7 +1606,8 @@ static UIImage *WWNAboutLogo(void) {
     ITEM(@"Debug Mode", @"WaypipeDebug", WSettingSwitch, @NO,
          @"Print debug logs."),
     ITEM(@"Disable GPU", @"WaypipeNoGpu", WSettingSwitch, @NO,
-         @"Block GPU protocols."),
+         @"Force Waypipe SHM (--no-gpu). Off = allow dmabuf/GPU transport "
+         @"(OpenGL/Vulkan/ANGLE/software clients keep their own drivers)."),
     ITEM(@"One-shot", @"WaypipeOneshot", WSettingSwitch, @NO,
          @"Exit when client disconnects."),
     ITEM(@"Unlink Socket", @"WaypipeUnlinkSocket", WSettingSwitch, @NO,

@@ -72,8 +72,8 @@
     wwn-ssh.inputs.nixpkgs.follows = "nixpkgs";
     wwn-ssh.inputs.rust-overlay.follows = "rust-overlay";
     wwn-ssh.inputs.wwn-toolchain.follows = "wwn-toolchain";
-    # github/development until FlakeHub rolling includes the --no-gpu wrap
-    # interpolation (f8ca65d). Cited: docs/wwn-repo-dag.md.
+    # github/development (local path override in flake.lock when developing).
+    # Cited: docs/wwn-repo-dag.md.
     wwn-waypipe.url = "github:Wawona/wwn-waypipe/development";
     wwn-waypipe.inputs.nixpkgs.follows = "nixpkgs";
     wwn-waypipe.inputs.wwn-toolchain.follows = "wwn-toolchain";
@@ -1123,10 +1123,13 @@
             # the Machines GUI + in-app terminal.
             containerCli = wwn-containers.packages.${system}.container-cli;
             containerDaemon = wwn-containers.packages.${system}.wwn-containerd or null;
-            # Container Wayland bridge (desktop sessions): host waypipe with a
-            # working SplitFD (--socket-fds), and the guest aarch64-linux
-            # waypipe injected into the container VM.
-            containerWaypipeFds = wwn-containers.packages.${system}.waypipe-splitfd or null;
+            # Container Wayland bridge: host waypipe with SplitFD (--socket-fds)
+            # and IOSurface dmabuf (wwn-waypipe macos.nix). Prefer the full
+            # macOS waypipe over the SHM-only waypipe-splitfd spike.
+            containerWaypipeFds =
+              let wp = toolchains.buildForMacOS "waypipe" { };
+              in if wp != null then wp
+              else (wwn-containers.packages.${system}.waypipe-splitfd or null);
             containerWaypipeGuestLinux = (pkgsFor "aarch64-linux").waypipe;
             containerWaypipeGuestRoot =
               wwn-containers.packages.${system}.waypipe-guest-root or null;

@@ -196,7 +196,7 @@ Settings fields. Hidden on tvOS / watchOS when those capabilities are absent.
 | **Remote Command** | `WaypipeRemoteCommand` / `waypipeRemoteCommand` | Text | (empty) | Command to run remotely (e.g. weston-terminal) |
 | **Custom Script** | `waypipeCustomScript` | Multiline | (empty) | Full command line (overrides Remote Command) |
 | **Debug Mode** | `WaypipeDebug` / `waypipeDebug` | Switch | Off | Verbose logging |
-| **Disable GPU** | `WaypipeNoGpu` / `waypipeDisableGpu` | Switch | Off | Force software rendering |
+| **Disable GPU** | `WaypipeNoGpu` / `waypipeDisableGpu` | Switch | Off | Force Waypipe `--no-gpu` (SHM). Default off: dmabuf/GPU transport; clients keep GL/VK/ANGLE/llvmpipe |
 | **One-shot** | `WaypipeOneshot` / `waypipeOneshot` | Switch | Off | Exit when client disconnects |
 | **Unlink Socket** | `WaypipeUnlinkSocket` / `waypipeUnlinkOnExit` | Switch | Off (macOS/iOS), On (Android) | Remove socket on exit |
 | **Login Shell** | `WaypipeLoginShell` / `waypipeLoginShell` | Switch | Off | Run in login shell on remote |

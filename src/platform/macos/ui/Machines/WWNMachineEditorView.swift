@@ -1015,6 +1015,9 @@ struct WWNMachineEditorView: View {
       Toggle("Use SSH Config", isOn: $waypipeUseSSHConfig)
       Toggle("Debug Mode", isOn: $waypipeDebug)
       Toggle("Disable GPU", isOn: $waypipeNoGpu)
+      Text("Off: allow dmabuf/GPU (clients keep GL/VK/ANGLE/llvmpipe). On: Waypipe --no-gpu SHM only.")
+        .font(.caption)
+        .foregroundStyle(.secondary)
       Toggle("One-shot", isOn: $waypipeOneshot)
       Toggle("Unlink Socket", isOn: $waypipeUnlinkSocket)
       Toggle("Login Shell", isOn: $waypipeLoginShell)
@@ -1045,10 +1048,10 @@ struct WWNMachineEditorView: View {
   private var virtualMachineSection: some View {
     sectionCard("Virtual Machine", subtitle: "Hypervisor is selected automatically for this platform.") {
       labeledField("Backend") {
-        Text("Virtualization.framework")
+        Text("QEMU + HVF")
           .foregroundStyle(.secondary)
       }
-      Text("The VM engine is fixed per build target (Virtualization.framework on macOS) and is not user-configurable.")
+      Text("The VM engine is fixed per build target (QEMU + Hypervisor.framework on macOS; QEMU-TCTI on iOS; QEMU + KVM/TCG on Android) and is not user-configurable.")
         .font(.footnote)
         .foregroundStyle(.secondary)
     }

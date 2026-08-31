@@ -175,6 +175,9 @@ kept buffer-sized logical geometry at scale 1.
 #   nix shell nixpkgs#ghostty -c ghostty
 # Or: Wawona run ghostty when the prebaked image includes ghostty.
 # Expect: full window content on Retina, not one quadrant.
+# Expect: a real terminal (not "Unable to acquire an OpenGL context").
+# GPU transport is default (Disable GPU off + bundled Vulkan ICD).
+# Disable GPU on → SHM; foot / weston-flower still work for that check.
 ```
 
 Compare with `weston-terminal` / `foot` (integer buffer_scale path) on the same
