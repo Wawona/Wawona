@@ -125,13 +125,30 @@ static Class WWNFindMachinesHostingBridgeClass(void) {
 }
 #else
 - (void)showMachinesWindowAndActivate:(BOOL)activate {
-  // One Machines window forever. Never rebuild just because the existing
-  // window is ordered out / not yet visible: that orphaned the previous
-  // NSWindow (still retained by NSApp) and produced two "Machine Control
-  // Panel" windows in one process. Only build when we have no controller
-  // or its window was destroyed.
-  NSWindow *existing = self.macMachinesController.window;
-  if (!self.macMachinesController || existing == nil) {
+  // Unified SwiftUI window (Machines + Settings sidebar). Prefer it whenever
+  // the Swift bridge class is present; the grid-only fallback below is for
+  // stale builds without it.
+  Class unifiedClass = NSClassFromString(@"WWNUnifiedWindowController");
+  SEL sharedSel = NSSelectorFromString(@"sharedController");
+  SEL showSel = NSSelectorFromString(@"showMachines");
+  if (unifiedClass && [unifiedClass respondsToSelector:sharedSel]) {
+    id (*sharedFn)(id, SEL) = (id (*)(id, SEL))objc_msgSend;
+    id controller = sharedFn(unifiedClass, sharedSel);
+    if (controller && [controller respondsToSelector:showSel]) {
+      void (*showFn)(id, SEL) = (void (*)(id, SEL))objc_msgSend;
+      showFn(controller, showSel);
+      if (activate) {
+        [NSApp activateIgnoringOtherApps:YES];
+      }
+      return;
+    }
+  }
+  // Fallback: grid-only window. One window forever — never rebuild just
+  // because the existing window is ordered out / not yet visible (that
+  // orphaned an NSWindow and could produce two control panels). Only build
+  // when we have no controller or its window was destroyed / is invisible.
+  if (!self.macMachinesController || !self.macMachinesController.window ||
+      !self.macMachinesController.window.isVisible) {
     NSWindowController *controller =
         [self buildSwiftUIMachinesWindowController:nil];
     if (controller) {
