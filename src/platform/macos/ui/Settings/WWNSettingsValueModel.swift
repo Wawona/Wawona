@@ -1,6 +1,7 @@
 #if os(macOS)
 import AppKit
 import Foundation
+import SwiftUI
 import WawonaModel
 
 /// SwiftUI bridge over the shared ObjC settings inventory (`WWNPreferences`
@@ -160,12 +161,13 @@ final class WWNSettingsValueModel: ObservableObject {
         guard !key.isEmpty else { return }
         if key == WWNRootfsICloudSyncPreferenceKey {
             // iCloud sync is routed through the rootfs provider (it can fail).
-            var error: NSError?
-            let ok = WWNRootfsProvider.setICloudSyncEnabled(value, error: &error)
-            if !ok {
+            // ObjC `NSError **` imports as `throws` in Swift.
+            do {
+                try WWNRootfsProvider.setICloudSyncEnabled(value)
+            } catch {
                 let alert = NSAlert()
                 alert.messageText = "iCloud Sync Failed"
-                alert.informativeText = error?.localizedDescription ?? "Unknown error."
+                alert.informativeText = error.localizedDescription
                 alert.runModal()
             }
             commit(rebuild: false)
@@ -176,7 +178,7 @@ final class WWNSettingsValueModel: ObservableObject {
             // Live compositor reaction (same notification WawonaPreferences
             // save() posts for the SwiftUI machine settings).
             NotificationCenter.default.post(
-                name: Notification.Name(kWWNForceSSDChangedNotification),
+                name: NSNotification.Name.wwnForceSSDChanged,
                 object: nil
             )
         }
@@ -200,16 +202,17 @@ final class WWNSettingsValueModel: ObservableObject {
 
     func setPassword(_ password: String, for item: WWNSettingItem) {
         // Same WWNPreferencesManager setters the AppKit password dialog used.
+        // (The manager exposes getter/setter method pairs, not @properties.)
         let prefs = WWNPreferencesManager.shared()
         switch itemKey(item) {
         case "WaypipeSSHPassword":
-            prefs.waypipeSSHPassword = password
+            prefs.setWaypipeSSHPassword(password)
         case "WaypipeSSHKeyPassphrase":
-            prefs.waypipeSSHKeyPassphrase = password
+            prefs.setWaypipeSSHKeyPassphrase(password)
         case "SSHPassword":
-            prefs.sshPassword = password
+            prefs.setSshPassword(password)
         case "SSHKeyPassphrase":
-            prefs.sshKeyPassphrase = password
+            prefs.setSshKeyPassphrase(password)
         default:
             break
         }

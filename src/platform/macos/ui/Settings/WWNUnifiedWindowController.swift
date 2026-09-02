@@ -41,13 +41,6 @@ final class WWNUnifiedWindowController: NSObject {
         present()
     }
 
-    /// The window controller, so legacy callers (`WWNMachinesCoordinator`) can
-    /// treat the unified window like the old machines window.
-    @objc func windowController() -> NSWindowController {
-        makeWindowIfNeeded()
-        return windowController!
-    }
-
     // MARK: - Window lifecycle
 
     private func makeWindowIfNeeded() {
