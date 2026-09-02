@@ -533,6 +533,7 @@
         "wwn-swinging-bridge": "wwn-swinging-bridge",
         "wwn-toolchain": "wwn-toolchain",
         "wwn-vms": "wwn-vms",
+        "wwn-vphone": "wwn-vphone",
         "wwn-wasm": "wwn-wasm",
         "wwn-waypipe": "wwn-waypipe",
         "wwn-weston": "wwn-weston",
@@ -1223,6 +1224,27 @@
       "original": {
         "type": "tarball",
         "url": "https://flakehub.com/f/Wawona/wwn-vms/%2A"
+      }
+    },
+    "wwn-vphone": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1788378916,
+        "narHash": "sha256-9D5vx8HDI6iey65sgLXswTjdVW0qxHUAervA5bCB+p0=",
+        "owner": "Wawona",
+        "repo": "wwn-vphone",
+        "rev": "922983451f3d25f7ff97b3cd5e9b4254ff68a31d",
+        "type": "github"
+      },
+      "original": {
+        "owner": "Wawona",
+        "ref": "development",
+        "repo": "wwn-vphone",
+        "type": "github"
       }
     },
     "wwn-wasm": {

@@ -179,6 +179,11 @@ Full rule: workspace `.cursor/rules/wawona-local-before-ci.mdc`.
 ## agent-device: Multi-Touch for Wayland clients
 
 Drive app/UI with agent-device (`../.cursor/rules/wawona-agent-device.mdc`).
+Mode B tipa/APT on the jailbroken research VM:
+`nix run github:Wawona/wwn-vphone#vphone-jb-lab` then
+`agent-device packages …` (`help vphone-packages`; docs
+`docs/agent-rules/wawona-vphone-mode-b-packages.md`).
+
 Before tapping **Wayland client** content (Weston panel, nested compositors,
 terminals, cubes), set **Multi-Touch**. IOS `TouchInputType=Multi-Touch`,
 Android Touchpad Mode **Off**. Touchpad / virtual-pointer left-clicks often

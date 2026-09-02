@@ -133,6 +133,10 @@
     # Cited: docs/wwn-repo-dag.md. github: until FlakeHub rolling exists.
     wwn-iowatchdog.url = "github:Wawona/wwn-iowatchdog/development";
     wwn-iowatchdog.inputs.nixpkgs.follows = "nixpkgs";
+    # Jailbroken iOS research lab (vphone-cli). L3' nixpkgs-only. Never ships
+    # a prebuilt iOS VM / IPSW. Cited: docs/wwn-repo-dag.md.
+    wwn-vphone.url = "github:Wawona/wwn-vphone/development";
+    wwn-vphone.inputs.nixpkgs.follows = "nixpkgs";
     # Linux-shaped VTs + Doorman login after Mode B own-display. L3'.
     # Cited: docs/wwn-repo-dag.md. github: until FlakeHub rolling exists.
     wwn-igetty.url = "github:Wawona/wwn-igetty/development";
@@ -147,7 +151,7 @@
     doorman.url = "github:Wawona/doorman";
   };
 
-  outputs = inputs@{ self, nixpkgs, android-nixpkgs, rust-overlay, crate2nix, nix-appimage, wwn-toolchain, wwn-iland, wwn-kmscube, wwn-weston, wwn-zsh, wwn-ssh, wwn-waypipe, wwn-swinging-bridge, wwn-coreutils, wwn-foot, wwn-fastfetch, wwn-phoon-rs, wwn-neovim, wwn-wasm, wwn-niri, wwn-vms, wwn-containers, wwn-iowatchdog, wwn-igetty, doorman, ... }:
+  outputs = inputs@{ self, nixpkgs, android-nixpkgs, rust-overlay, crate2nix, nix-appimage, wwn-toolchain, wwn-iland, wwn-kmscube, wwn-weston, wwn-zsh, wwn-ssh, wwn-waypipe, wwn-swinging-bridge, wwn-coreutils, wwn-foot, wwn-fastfetch, wwn-phoon-rs, wwn-neovim, wwn-wasm, wwn-niri, wwn-vms, wwn-containers, wwn-iowatchdog, wwn-vphone, wwn-igetty, doorman, ... }:
   let
     linuxSystems = [ "x86_64-linux" "aarch64-linux" ];
     # Nixpkgs 26.11 throws on x86_64-darwin eval; flakehub-push runs
@@ -1150,6 +1154,9 @@
             ilandBaremetal = toolchains.buildForMacOS "iland-baremetal" { };
             # L3' Watchdog tools (github.com/Wawona/wwn-iowatchdog).
             iowatchdog = wwn-iowatchdog.packages.${system}.wwn-iowatchdog;
+            # L3' jailbroken iOS lab (github.com/Wawona/wwn-vphone). No prebuilt VM.
+            vphone-cli = wwn-vphone.packages.${system}.vphone-cli;
+            vphone-jb-lab = wwn-vphone.packages.${system}.vphone-jb-lab;
           };
           wawona-ios-app-sim = pkgs.callPackage ./dependencies/wawona/ios.nix {
             inherit wawonaSrc wawonaVersion teamId;
@@ -2033,7 +2040,11 @@ APPLESCRIPT
         xcodegen-apple = { type = "app"; program = "${systemPackages.xcodegen-apple}/bin/xcodegen"; };
         xcodegen-novision = { type = "app"; program = "${systemPackages.xcodegen-novision}/bin/xcodegen"; };
         wawona-ios-provision = { type = "app"; program = "${systemPackages.wawona-ios-provision}/bin/provision-xcode"; };
-      } // (pkgs.lib.optionalAttrs (systemPackages ? graphics-validate-macos) {
+      } // (pkgs.lib.optionalAttrs (systemPackages ? vphone-jb-lab) {
+        # Jailbroken iOS research lab (L3' wwn-vphone). No prebuilt VM.
+        vphone-jb-lab = { type = "app"; program = "${systemPackages.vphone-jb-lab}/bin/vphone-jb-lab"; };
+        vphone-cli = { type = "app"; program = "${systemPackages.vphone-cli}/bin/vphone-cli"; };
+      }) // (pkgs.lib.optionalAttrs (systemPackages ? graphics-validate-macos) {
         graphics-validate-macos = { type = "app"; program = "${systemPackages.graphics-validate-macos}/bin/graphics-validate-macos"; };
         # Fast graphics driver-sanity smoke, runnable as `nix run .#graphics-smoke`.
         graphics-smoke = { type = "app"; program = "${systemPackages.graphics-validate-macos}/bin/graphics-validate-macos"; };

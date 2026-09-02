@@ -25,7 +25,7 @@ L2  wwn-kmscube       GL acceptance client (→ toolchain + iland)
 L3  wwn-weston        nested compositor (→ toolchain + iland + kmscube; ilandSrc=source only)
 L3′ wwn-waypipe, Wawona-Swinging-Bridge, wwn-vms, wwn-containers, wwn-ssh,
     wwn-fastfetch, wwn-phoon-rs, wwn-neovim, wwn-foot, wwn-wasm, wwn-niri,
-    wwn-iowatchdog, doorman, wwn-igetty, …  (→ toolchain or nixpkgs-only; peers only downward)
+    wwn-iowatchdog, wwn-vphone, doorman, wwn-igetty, …  (→ toolchain or nixpkgs-only; peers only downward)
 L4  Wawona            merges all fragments; never an input of L0-L3
 ```
 
@@ -50,7 +50,7 @@ flowchart BT
 | **L1** | `wwn-iland` | Userland KMS/DRM/GBM/EGL/udev shims + Mode A present callback + Mode B baremetal; `iland`, `iland-baremetal`; **ANGLE and SwiftShader**; MoltenVK/KosmicKrisp packaging; `iland-cpu` CPU-present helpers; DriverSelector contract |
 | **L2** | `wwn-kmscube` | `kmscube`, `vkcube` (Wayland) + `vkcube-kms` (KMS/GBM), `gbm-es2-demo`, `opengl-cube`. Wawona pins `github:Wawona/wwn-kmscube/development` until FlakeHub rolling includes `vkcube-kms`. |
 | **L3** | `wwn-weston` | Dual-backend compositor: nested Wayland *and* DRM/KMS (`--backend=drm`) + weston-simple-egl + toytoolkit clients |
-| **L3′** | `wwn-waypipe`, `Wawona-Swinging-Bridge`, `wwn-vms`, `wwn-containers`, `wwn-ssh`, `wwn-fastfetch`, `wwn-phoon-rs`, `wwn-neovim`, `wwn-foot`, `wwn-wasm`, `wwn-iowatchdog`, `doorman`, `wwn-igetty`, … | Proxy / Android present / VM engine / OCI containers / in-process shell-tool ports (`*_main` C ABI, force-loaded static libs); `wwn-wasm` is the WASI P1/P2 **Wawona Runtime** (optional software = Wasm packages, not StoreKit ODR); `wwn-iowatchdog` is macOS Watchdog tools for Desktop Mode B (nixpkgs-only, never Apple-mobile); `doorman` is macOS user auth (Linux PAM-shaped; never Apple-mobile); `wwn-igetty` is Linux-shaped VT switching + Doorman getty on iland DRM after WindowServer is gone (never the Mode B dylib; that is L1 `iland-baremetal`) |
+| **L3′** | `wwn-waypipe`, `Wawona-Swinging-Bridge`, `wwn-vms`, `wwn-containers`, `wwn-ssh`, `wwn-fastfetch`, `wwn-phoon-rs`, `wwn-neovim`, `wwn-foot`, `wwn-wasm`, `wwn-iowatchdog`, `wwn-vphone`, `doorman`, `wwn-igetty`, … | Proxy / Android present / VM engine / OCI containers / in-process shell-tool ports (`*_main` C ABI, force-loaded static libs); `wwn-wasm` is the WASI P1/P2 **Wawona Runtime** (optional software = Wasm packages, not StoreKit ODR); `wwn-iowatchdog` is macOS Watchdog tools for Desktop Mode B (nixpkgs-only, never Apple-mobile); `wwn-vphone` is Darwin jailbroken iOS research lab via vphone-cli (nixpkgs-only; **never** ships a prebuilt iOS VM / IPSW); `doorman` is macOS user auth (Linux PAM-shaped; never Apple-mobile); `wwn-igetty` is Linux-shaped VT switching + Doorman getty on iland DRM after WindowServer is gone (never the Mode B dylib; that is L1 `iland-baremetal`) |
 | **L4** | `Wawona` | App integration, Settings, presenters, SIP/Desktop, Android JNI, CI, docs, `flake.lock` hub |
 
 ## Hard rules
