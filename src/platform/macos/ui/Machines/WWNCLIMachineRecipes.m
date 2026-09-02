@@ -238,11 +238,13 @@ static NSString *WWNCLIDesktopArchive(void) {
 }
 
 + (void)notifyProfilesChanged {
+#if TARGET_OS_OSX
   [[NSDistributedNotificationCenter defaultCenter]
       postNotificationName:WWNMachineProfilesChangedNotification
                     object:nil
                   userInfo:nil
         deliverImmediately:YES];
+#endif
   [[NSNotificationCenter defaultCenter]
       postNotificationName:WWNMachineProfilesChangedNotification
                     object:nil];

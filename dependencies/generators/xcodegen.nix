@@ -1199,7 +1199,7 @@ ICDJSON
   # the bundled VM sets WAWONA_MOBILE_GUEST_DIR to the built artifacts.
   mobileGuestIosEmbedScript = _guestArtifacts: pkgs.writeShellScript "embed-mobile-guest-ios.sh" ''
     case "''${PLATFORM_NAME:-}" in
-      iphoneos|appletvos|xros)
+      iphoneos|iphonesimulator|appletvos|appletvsimulator|xros|xrsimulator)
         guestSrc="''${WAWONA_MOBILE_GUEST_DIR:-}"
         ;;
       *)
@@ -1241,7 +1241,7 @@ ICDJSON
   # wants the bundled engine sets WAWONA_MOBILE_VM_ENGINE_DIR to the built sysroot.
   mobileVmEngineIosEmbedScript = _engineSysroot: pkgs.writeShellScript "embed-mobile-vm-engine-ios.sh" ''
     case "''${PLATFORM_NAME:-}" in
-      iphoneos|appletvos|xros)
+      iphoneos|iphonesimulator|appletvos|appletvsimulator|xros|xrsimulator)
         engineSrc="''${WAWONA_MOBILE_VM_ENGINE_DIR:-}"
         ;;
       *)
@@ -1679,6 +1679,7 @@ ICDJSON
           { sdk = "StoreKit.framework"; }
           { sdk = "GameController.framework"; }
           { sdk = "CarPlay.framework"; }
+          { sdk = "AudioToolbox.framework"; }
         ];
       };
       Wawona-iPadOS = {
@@ -1867,6 +1868,7 @@ ICDJSON
           { sdk = "StoreKit.framework"; }
           { sdk = "GameController.framework"; }
           { sdk = "CarPlay.framework"; }
+          { sdk = "AudioToolbox.framework"; }
         ];
       };
       Wawona-tvOS = {
