@@ -81,19 +81,14 @@ struct CompositorActiveView: View {
                 .accessibilityLabel(profile.type == .native ? "Stop" : "Disconnect")
             }
             if !startupLog.isPresented {
-                if #available(watchOS 26.0, *) {
-                    ToolbarSpacer(.flexible, placement: .bottomBar)
-                    ToolbarItem(placement: .bottomBar) {
+                // ToolbarSpacer is unavailable on watchOS (even 26.x); keep
+                // the HStack+Spacer layout that works on every watchOS SDK.
+                ToolbarItem(placement: .bottomBar) {
+                    HStack {
+                        Spacer(minLength: 0)
                         keyboardToolbarButton
                     }
-                } else {
-                    ToolbarItem(placement: .bottomBar) {
-                        HStack {
-                            Spacer(minLength: 0)
-                            keyboardToolbarButton
-                        }
-                        .frame(maxWidth: .infinity)
-                    }
+                    .frame(maxWidth: .infinity)
                 }
             }
         }
