@@ -181,8 +181,10 @@ Full rule: workspace `.cursor/rules/wawona-local-before-ci.mdc`.
 Drive app/UI with agent-device (`../.cursor/rules/wawona-agent-device.mdc`).
 Mode B tipa/APT on the jailbroken research VM:
 `nix run github:Wawona/wwn-vphone#vphone-jb-lab` then
-`agent-device packages …` (`help vphone-packages`; docs
-`docs/agent-rules/wawona-vphone-mode-b-packages.md`).
+`agent-device packages …` (`help vphone-packages`). Rules:
+`wawona-vphone-control`, `wawona-trollstore-tipa-iteration`,
+`wawona-vphone-mode-b-packages`, `wawona-vphone-lldb` (mirrors under
+`docs/agent-rules/`).
 
 Before tapping **Wayland client** content (Weston panel, nested compositors,
 terminals, cubes), set **Multi-Touch**. IOS `TouchInputType=Multi-Touch`,
