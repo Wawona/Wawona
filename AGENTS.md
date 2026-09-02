@@ -53,6 +53,11 @@ and **GitHub Actions** (`project=github-actions`) via wwn-mcp for upstream synta
   constructors, `WWNCore*` trampolines). Do not write a new Wawona program in C.
   Upstream ports stay in their upstream language. See
   `.cursor/rules/wawona-rust-first.mdc` and `docs/agent-rules/wawona-rust-first.md`.
+- **Wayland protocols: newest stable + version negotiation.** Do not maintain
+  duplicate implementations of the same interface for legacy clients. Older
+  *named* interfaces (e.g. text-input v1 vs v3) only with a demonstrated client
+  need. Policy: `docs/PROTOCOLS.md`; rule `wawona-wayland-protocol-compat`;
+  checklist in `CONTRIBUTING.md`.
 - **FFI**: production compositor bridge is hand-written C `WWNCore*` (`src/ffi/c_api.rs`)
   wrapped by ObjC (`WWNCompositorBridge.m`) / JNI (`android_jni.c`), polling
   model. Do NOT use `objc2`/`cocoa`/`jni`/`ndk` Rust crates or UniFFI callbacks.
@@ -204,21 +209,24 @@ is on (`wawona-nested-compositor-cursor`). Full rule:
   `.github/FUNDING.yml` as `Wawona/Wawona` (`github` / `ko_fi`:
   `aspauldingcode`). Copy the file when creating a repo. See
   `docs/agent-rules/wawona-github-funding.md` and rule `wawona-github-funding`.
-- **Desktop / LockScreen**. MacOS + Android **planned**; iOS/iPadOS only via
-  `repo.wawona.io` (website). Forbidden in App Store Apple-mobile apps (never
-  mention jailbreak there). See `wawona-platform-targets`,
-  `docs/iland-mode-a-b-desktop.md`.
-- **Wawona Swinging Bridge**. MacOS/Android Mode A+B planned; iOS/iPadOS Mode B
-  only (forbidden in store IPA). See `wawona-swinging-bridge`, `docs/swinging-bridge.md`.
-- **VM / containers**. Planned on macOS / iOS / iPadOS / Android / Linux;
-  forbidden on tvOS / watchOS / visionOS. See `docs/vms-containers.md`.
+- **Desktop / LockScreen**. MacOS + Android **planned**; iOS/iPadOS via
+  **TrollStore** (IOMobileFramebuffer own-display) and **Sileo** (`repo.wawona.io`,
+  ElleKit tweaks). Forbidden in App Store Apple-mobile apps (never mention
+  jailbreak / TrollStore / JIT there). See `wawona-platform-targets`,
+  `wawona-ios-mode-b-channels`, `docs/mode-a-b.md`, `docs/iland-mode-a-b-desktop.md`,
+  `docs/linux-dmabuf-zero-copy.md`.
+- **Wawona Swinging Bridge**. MacOS/Android Mode A+B planned; iOS/iPadOS
+  **Sileo Mode B only** (not TrollStore; forbidden in store IPA). See
+  `wawona-swinging-bridge`, `docs/swinging-bridge.md`.
 - **Binary filenames**. GitHub Release
-  `Wawona-{calver}-{platform}-{arch}.{ext}`; store uploads add `-{build}` before
+  `Wawona-{calver}-{platform}-{arch}.{ext}` plus Mode B
+  `.tipa` / `…-rootless.deb` / `…-rootful.deb`; store uploads add `-{build}` before
   the extension (TestFlight IPA / Play AAB). product-build may keep short names
   until a ship boundary. See `docs/ci.md`, `docs/agent-rules/wawona-release-assets.md`,
   rule `wawona-release-assets`.
 - Mode B **iland** dylib presence: assert with
-  `.github/scripts/verify-iland-mode-b-bundle.sh`.
+  `.github/scripts/verify-iland-mode-b-bundle.sh`. Store IPA Mode B absence:
+  `scripts/verify-ios-mode-b-absent.sh`.
 
 ## Product map (agents)
 

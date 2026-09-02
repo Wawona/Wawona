@@ -45,7 +45,7 @@ Workflow display names use a role prefix (`Gate` / `Build` / `Watch` / `Ship`). 
 | **FlakeHub publish** (`flakehub-publish.yml`) | push (`development`) + tags `vYY.M.D` + dispatch | - | Rolling `0.1.N` on development; CalVer SemVer on tags ([`flakehub-registry.md`](./flakehub-registry.md)); not a promote gate |
 | **Ship: beta (stores)** (`release-beta.yml`) | - | push + tags `v*` | Fastlane stores (match+gym). **Does not build AppImages**. See Ship: beta AppImages below |
 | **Ship: beta AppImages** (`ship-beta-appimage.yml`) | - | after a green master **Gate: products** (`workflow_run`) | Re-publishes that run's same-SHA `product-appimage-*` as 30-day `wawona-beta-appimage-*` via cross-run `download-artifact`. **no rebuild, no fallback**. Deletes the old master-push double AppImage build (Gate: products + Ship: beta). Keyed on the Gate run's `head_sha` so it never shares release-beta's concurrency group |
-| **Ship: GitHub assets** (`release.yml`) | - | tags `v*` (+ `workflow_dispatch`) | GitHub Release: DMG/APK/AppImage from product-build (`macos-app` / `android-apk` / `appimage` only; tip_key `ship-assets-<tag>`); IPA via Fastlane `ios github_ipa` (match+gym, same as Ship: beta). macOS DMG is **Developer ID signed + notarized** |
+| **Ship: GitHub assets** (`release.yml`) | - | tags `v*` (+ `workflow_dispatch`) | GitHub Release: DMG/APK/AppImage from product-build; IPA via Fastlane `ios github_ipa`; optional Mode B `release-ios-mode-b` (`.tipa` + rootless/rootful `.deb`, never TestFlight). macOS DMG is **Developer ID signed + notarized** |
 
 ### Binary filenames (three channels)
 

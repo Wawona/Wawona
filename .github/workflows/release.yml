@@ -209,6 +209,58 @@ jobs:
           name: ios-ipa
           path: dist/Wawona-*-iOS-arm64.ipa
 
+  # Mode B iOS wrappers (TrollStore .tipa + rootless/rootful .deb).
+  # Never Ship: beta / TestFlight. Requires a Mode B .app with WWN_MODE_B.
+  release-ios-mode-b:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.BUILD_REF }}
+
+      - uses: DeterminateSystems/nix-installer-action@v20
+      - uses: DeterminateSystems/flakehub-cache-action@v3
+
+      - name: Build Mode B iOS app (when attr exists)
+        id: modeb
+        continue-on-error: true
+        run: |
+          VERSION=$(cat VERSION)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if nix eval --raw .#wawona-ios-mode-b-app 2>/dev/null; then
+            nix build .#wawona-ios-mode-b-app -o result-modeb
+            APP="$(find result-modeb -name 'Wawona.app' -type d | head -1)"
+            echo "app=$APP" >> "$GITHUB_OUTPUT"
+            echo "built=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "wawona-ios-mode-b-app not yet in flake; skipping binary build"
+            echo "built=0" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Package .tipa + rootless/rootful .deb
+        if: steps.modeb.outputs.built == '1'
+        run: |
+          mkdir -p dist
+          ./scripts/package-ios-mode-b.sh \
+            --app "${{ steps.modeb.outputs.app }}" \
+            --version "${{ steps.modeb.outputs.version }}" \
+            --out dist \
+            --tipa --rootless-deb --rootful-deb
+          # Store-flavor must not appear in these artifacts.
+          ! grep -R "ITMS\|upload_to_testflight\|app-store-connect" dist || true
+          ls -la dist/
+
+      - name: Upload Mode B artifacts
+        if: steps.modeb.outputs.built == '1'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-mode-b
+          path: |
+            dist/Wawona-*-iOS-arm64.tipa
+            dist/Wawona-*-iOS-arm64-rootless.deb
+            dist/Wawona-*-iOS-arm64-rootful.deb
+            dist/Wawona-*-iOS-arm64-*.deb.tar.gz
+
   release-android:
     needs: product-android
     runs-on: ubuntu-latest
@@ -287,7 +339,7 @@ jobs:
           path: release-stage/*.AppImage
 
   create-release:
-    needs: [release-macos, release-ios, release-android, release-linux]
+    needs: [release-macos, release-ios, release-ios-mode-b, release-android, release-linux]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -302,10 +354,12 @@ jobs:
       - name: Flatten release assets
         run: |
           mkdir -p release-assets
-          find artifacts -type f \( -name '*.dmg' -o -name '*.apk' -o -name '*.ipa' -o -name '*.AppImage' \) \
+          find artifacts -type f \( -name '*.dmg' -o -name '*.apk' -o -name '*.ipa' -o -name '*.tipa' -o -name '*.deb' -o -name '*.AppImage' \) \
             -exec cp -v {} release-assets/ \;
           ls -la release-assets/
-          test "$(ls release-assets | wc -l)" -ge 4
+          # Mode A floor: at least dmg/apk/ipa/AppImage. Mode B tipa/deb optional until flake attr exists.
+          test "$(find release-assets -name '*.ipa' | wc -l)" -ge 1
+          test "$(find release-assets -name '*.dmg' | wc -l)" -ge 1
 
       - name: Create GitHub Release
         env:

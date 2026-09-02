@@ -175,6 +175,7 @@ enum {
   CWindowEventTypeUnmaximizeRequested = 11,
   CWindowEventTypeFullscreenRequested = 14,
   CWindowEventTypeUnfullscreenRequested = 15,
+  CWindowEventTypeSystemBell = 17,
 };
 typedef struct {
   uint64_t event_type;
@@ -593,6 +594,58 @@ static float g_display_density = 1.0f;
 
 // Compositor core pointer (set when Rust core is initialised)
 static void *g_core = NULL;
+static JavaVM *g_jvm = NULL;
+
+/** `xdg_system_bell_v1.ring` → ToneGenerator.TONE_PROP_BEEP (STREAM_NOTIFICATION). */
+static void android_ring_system_bell(void) {
+  if (!g_jvm) {
+    LOGI("SystemBell: no JavaVM");
+    return;
+  }
+  JNIEnv *env = NULL;
+  int need_detach = 0;
+  jint get_env = (*g_jvm)->GetEnv(g_jvm, (void **)&env, JNI_VERSION_1_6);
+  if (get_env == JNI_EDETACHED) {
+    if ((*g_jvm)->AttachCurrentThread(g_jvm, &env, NULL) != 0 || !env) {
+      LOGE("SystemBell: AttachCurrentThread failed");
+      return;
+    }
+    need_detach = 1;
+  } else if (get_env != JNI_OK || !env) {
+    LOGE("SystemBell: GetEnv failed");
+    return;
+  }
+
+  jclass cls =
+      (*env)->FindClass(env, "com/aspauldingcode/wawona/WawonaNative");
+  if (!cls) {
+    LOGE("SystemBell: FindClass WawonaNative failed");
+    if ((*env)->ExceptionCheck(env))
+      (*env)->ExceptionClear(env);
+    if (need_detach)
+      (*g_jvm)->DetachCurrentThread(g_jvm);
+    return;
+  }
+  jmethodID mid =
+      (*env)->GetStaticMethodID(env, cls, "ringSystemBell", "()V");
+  if (!mid) {
+    LOGE("SystemBell: GetStaticMethodID ringSystemBell failed");
+    if ((*env)->ExceptionCheck(env))
+      (*env)->ExceptionClear(env);
+    (*env)->DeleteLocalRef(env, cls);
+    if (need_detach)
+      (*g_jvm)->DetachCurrentThread(g_jvm);
+    return;
+  }
+  (*env)->CallStaticVoidMethod(env, cls, mid);
+  if ((*env)->ExceptionCheck(env)) {
+    LOGE("SystemBell: ringSystemBell threw");
+    (*env)->ExceptionClear(env);
+  }
+  (*env)->DeleteLocalRef(env, cls);
+  if (need_detach)
+    (*g_jvm)->DetachCurrentThread(g_jvm);
+}
 
 /* Modifier state for InjectModifiers (XKB modifier mask) */
 #define XKB_MOD_SHIFT (1 << 0)
@@ -1885,6 +1938,9 @@ static void choreographer_frame_cb(long frameTimeNanos, void *data) {
                                     /*fullscreen=*/0);
         break;
       }
+      case CWindowEventTypeSystemBell:
+        android_ring_system_bell();
+        break;
       default:
         break;
       }
@@ -1930,6 +1986,12 @@ static void choreographer_frame_cb(long frameTimeNanos, void *data) {
          * ILandIOSurface id. Lock CPU-mapped pixels and upload like SHM. */
         IOSurfaceRef surf = ILandIOSurfaceLookup(buf->iosurface_id);
         if (surf) {
+          __android_log_print(ANDROID_LOG_INFO, "WawonaDmabuf",
+                              "op=present os=android sink=ahb_surface "
+                              "backing_id=%u format=%u copy=cpu "
+                              "client=wayland (AHB lock→upload; zero-copy "
+                              "VkImage import is follow-on)",
+                              buf->iosurface_id, buf->format);
           ILandIOSurfaceLock(surf);
           void *base = ILandIOSurfaceGetBaseAddress(surf);
           uint32_t stride = (uint32_t)ILandIOSurfaceGetBytesPerRow(surf);
@@ -6118,27 +6180,167 @@ cleanup_strings:
 }
 
 static volatile int g_mobile_vm_running = 0;
+static pid_t g_mobile_vm_pid = -1;
+
+static int wwn_android_kvm_available(void) {
+  struct stat st;
+  return (stat("/dev/kvm", &st) == 0);
+}
+
+static int wwn_find_android_qemu(char *out, size_t out_sz) {
+  const char *candidates[] = {
+      "/data/data/com.aspauldingcode.wawona/lib/libqemu-system-aarch64.so",
+      NULL,
+  };
+  /* Prefer getenv for nativeLibraryDir passed as WAWONA_QEMU by Kotlin later. */
+  const char *envq = getenv("WAWONA_QEMU");
+  if (envq && envq[0] && access(envq, X_OK) == 0) {
+    snprintf(out, out_sz, "%s", envq);
+    return 1;
+  }
+  /* Kotlin writes filesDir/WAWONA_QEMU.path when nativeLibraryDir has qemu. */
+  {
+    const char *data = getenv("ANDROID_DATA");
+    char pathfile[512];
+    if (data && data[0]) {
+      snprintf(pathfile, sizeof(pathfile),
+               "%s/data/com.aspauldingcode.wawona/files/WAWONA_QEMU.path", data);
+    } else {
+      snprintf(pathfile, sizeof(pathfile),
+               "/data/data/com.aspauldingcode.wawona/files/WAWONA_QEMU.path");
+    }
+    FILE *f = fopen(pathfile, "r");
+    if (f) {
+      if (fgets(out, (int)out_sz, f)) {
+        size_t len = strlen(out);
+        while (len > 0 && (out[len - 1] == '\n' || out[len - 1] == '\r'))
+          out[--len] = '\0';
+        fclose(f);
+        if (len > 0 && (access(out, X_OK) == 0 || access(out, R_OK) == 0))
+          return 1;
+      } else {
+        fclose(f);
+      }
+    }
+  }
+  for (int i = 0; candidates[i]; i++) {
+    if (access(candidates[i], X_OK) == 0 || access(candidates[i], R_OK) == 0) {
+      snprintf(out, out_sz, "%s", candidates[i]);
+      return 1;
+    }
+  }
+  /* Bundled next to JNI libs: try common APK extract paths via /proc/self/exe dir. */
+  char self[512];
+  ssize_t n = readlink("/proc/self/exe", self, sizeof(self) - 1);
+  if (n > 0) {
+    self[n] = '\0';
+    char *slash = strrchr(self, '/');
+    if (slash) {
+      *slash = '\0';
+      snprintf(out, out_sz, "%s/libqemu-system-aarch64.so", self);
+      if (access(out, R_OK) == 0)
+        return 1;
+      snprintf(out, out_sz, "%s/qemu-system-aarch64", self);
+      if (access(out, X_OK) == 0)
+        return 1;
+    }
+  }
+  return 0;
+}
 
 JNIEXPORT jboolean JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_nativeLaunchMobileVm(
     JNIEnv *env, jclass clazz, jstring guest_dir, jint memory_mb) {
   (void)clazz;
-  (void)memory_mb;
   const char *dir = (*env)->GetStringUTFChars(env, guest_dir, NULL);
   if (!dir)
     return JNI_FALSE;
-  struct stat st;
+
   char rootfs[512];
+  char kernel[512];
   snprintf(rootfs, sizeof(rootfs), "%s/rootfs.img", dir);
+  struct stat st;
   int ok = (stat(rootfs, &st) == 0 && S_ISREG(st.st_mode));
+  kernel[0] = '\0';
   if (ok) {
-    g_mobile_vm_running = 1;
-    LOGI("mobile VM lane: guest at %s (embed QEMU engine to boot)", dir);
-  } else {
-    LOGE("mobile VM: missing %s", rootfs);
+    const char *names[] = {"Image", "zImage", "vmlinuz", "vmlinux", NULL};
+    for (int i = 0; names[i]; i++) {
+      snprintf(kernel, sizeof(kernel), "%s/%s", dir, names[i]);
+      if (stat(kernel, &st) == 0 && S_ISREG(st.st_mode))
+        break;
+      kernel[0] = '\0';
+    }
+    ok = kernel[0] != '\0';
   }
+
+  if (!ok) {
+    LOGE("mobile VM: incomplete guest under %s", dir);
+    (*env)->ReleaseStringUTFChars(env, guest_dir, dir);
+    return JNI_FALSE;
+  }
+
+  char qemu_bin[512];
+  if (!wwn_find_android_qemu(qemu_bin, sizeof(qemu_bin))) {
+    /* Guest present but engine not embedded yet: mark lane ready for UI,
+     * log clearly. Same posture as prior stub, but with HV probe. */
+    g_mobile_vm_running = 1;
+    LOGI("mobile VM: guest OK at %s; embed libqemu-system-aarch64.so to boot "
+         "(kvm=%d)",
+         dir, wwn_android_kvm_available());
+    (*env)->ReleaseStringUTFChars(env, guest_dir, dir);
+    return JNI_TRUE;
+  }
+
+  if (g_mobile_vm_pid > 0) {
+    kill(g_mobile_vm_pid, SIGTERM);
+    g_mobile_vm_pid = -1;
+  }
+
+  unsigned mem = memory_mb > 0 ? (unsigned)memory_mb : 768u;
+  char mem_arg[32];
+  snprintf(mem_arg, sizeof(mem_arg), "%u", mem);
+  char drive_arg[640];
+  snprintf(drive_arg, sizeof(drive_arg), "file=%s,if=virtio,format=raw", rootfs);
+
+  const char *accel = wwn_android_kvm_available() ? "kvm" : "tcg";
+  char machine_arg[64];
+  snprintf(machine_arg, sizeof(machine_arg), "virt,accel=%s", accel);
+
+  char *argv[] = {
+      qemu_bin,
+      "-machine",
+      machine_arg,
+      "-cpu",
+      "max",
+      "-m",
+      mem_arg,
+      "-kernel",
+      kernel,
+      "-drive",
+      drive_arg,
+      "-device",
+      "virtio-rng-pci",
+      "-nographic",
+      "-no-reboot",
+      NULL,
+  };
+
+  pid_t pid = fork();
+  if (pid == 0) {
+    execv(qemu_bin, argv);
+    _exit(127);
+  }
+  if (pid < 0) {
+    LOGE("mobile VM: fork failed");
+    (*env)->ReleaseStringUTFChars(env, guest_dir, dir);
+    return JNI_FALSE;
+  }
+
+  g_mobile_vm_pid = pid;
+  g_mobile_vm_running = 1;
+  LOGI("mobile VM: started pid=%d accel=%s qemu=%s", (int)pid, accel, qemu_bin);
   (*env)->ReleaseStringUTFChars(env, guest_dir, dir);
-  return ok ? JNI_TRUE : JNI_FALSE;
+  return JNI_TRUE;
 }
 
 JNIEXPORT void JNICALL
@@ -6146,6 +6348,10 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeStopMobileVm(JNIEnv *env,
                                                                jclass clazz) {
   (void)env;
   (void)clazz;
+  if (g_mobile_vm_pid > 0) {
+    kill(g_mobile_vm_pid, SIGTERM);
+    g_mobile_vm_pid = -1;
+  }
   g_mobile_vm_running = 0;
 }
 
@@ -6230,6 +6436,7 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeGithubBugReportUrl(
 }
 
 JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
+  g_jvm = vm;
   // Redirect stdout/stderr to logcat
   setvbuf(stdout, 0, _IOLBF, 0);
   setvbuf(stderr, 0, _IONBF, 0);

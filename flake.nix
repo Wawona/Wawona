@@ -744,6 +744,8 @@
           # wwn-igetty: Linux-shaped VTs + Doorman (Classic own-display).
           modeb-tty = wwn-igetty.packages.${system}.wwn-igetty;
           wwn-igetty = wwn-igetty.packages.${system}.wwn-igetty;
+          # Jailbroken iOS 26 lab (Virtualization.framework PCC). Apple Silicon only.
+          vphone-cli = pkgs.callPackage ./dependencies/tools/vphone-cli-app.nix { };
         };
 
         packages = commonPackages
@@ -1358,20 +1360,28 @@ APPLESCRIPT
             }
 
             kill_matching_wawona() {
-              # TERM leftover MacOS/Wawona processes so a stale flock lock
-              # cannot make the new compositor-host exit as "already running".
+              # TERM leftover Wawona processes so a stale flock lock cannot
+              # make the new compositor-host exit as "already running".
+              # Match full path AND bare process name (LaunchServices often
+              # shows only "Wawona" with no /Contents/MacOS/ prefix).
               ps -axo pid=,args= | while read -r pid args; do
                 case "$args" in
-                  *"/Contents/MacOS/Wawona"*)
-                    kill -TERM "$pid" >/dev/null 2>&1 || true
+                  *"/Contents/MacOS/Wawona"*|Wawona|Wawona\ *|WawonaMenuBar*|WawonaCompositor*)
+                    case "$args" in
+                      *Cursor*) ;;
+                      *) kill -TERM "$pid" >/dev/null 2>&1 || true ;;
+                    esac
                     ;;
                 esac
               done
               sleep 0.4
               ps -axo pid=,args= | while read -r pid args; do
                 case "$args" in
-                  *"/Contents/MacOS/Wawona"*)
-                    kill -KILL "$pid" >/dev/null 2>&1 || true
+                  *"/Contents/MacOS/Wawona"*|Wawona|Wawona\ *|WawonaMenuBar*|WawonaCompositor*)
+                    case "$args" in
+                      *Cursor*) ;;
+                      *) kill -KILL "$pid" >/dev/null 2>&1 || true ;;
+                    esac
                     ;;
                 esac
               done
@@ -2033,7 +2043,10 @@ APPLESCRIPT
         xcodegen-apple = { type = "app"; program = "${systemPackages.xcodegen-apple}/bin/xcodegen"; };
         xcodegen-novision = { type = "app"; program = "${systemPackages.xcodegen-novision}/bin/xcodegen"; };
         wawona-ios-provision = { type = "app"; program = "${systemPackages.wawona-ios-provision}/bin/provision-xcode"; };
-      } // (pkgs.lib.optionalAttrs (systemPackages ? graphics-validate-macos) {
+      } // (pkgs.lib.optionalAttrs (systemPackages ? vphone-cli) {
+        # Jailbroken iOS 26 lab (vphone-cli jb). See docs/testing/vphone-jailbreak-lab.md
+        vphone-cli = { type = "app"; program = "${systemPackages.vphone-cli}/bin/vphone-cli"; };
+      }) // (pkgs.lib.optionalAttrs (systemPackages ? graphics-validate-macos) {
         graphics-validate-macos = { type = "app"; program = "${systemPackages.graphics-validate-macos}/bin/graphics-validate-macos"; };
         # Fast graphics driver-sanity smoke, runnable as `nix run .#graphics-smoke`.
         graphics-smoke = { type = "app"; program = "${systemPackages.graphics-validate-macos}/bin/graphics-validate-macos"; };
