@@ -131,7 +131,7 @@ struct WWNMachineEditorView: View {
     _waypipeVideoBpf = State(initialValue: (overrides["WaypipeVideoBpf"] as? NSNumber)?.stringValue ?? (overrides["WaypipeVideoBpf"] as? String ?? prefs.waypipeVideoBpf()))
     _waypipeUseSSHConfig = State(initialValue: (overrides["WaypipeUseSSHConfig"] as? Bool) ?? prefs.waypipeUseSSHConfig())
     _waypipeDebug = State(initialValue: (overrides["WaypipeDebug"] as? Bool) ?? prefs.waypipeDebug())
-    _waypipeNoGpu = State(initialValue: (overrides["WaypipeNoGpu"] as? Bool) ?? prefs.waypipeNoGpu())
+    _waypipeNoGpu = State(initialValue: initial?.waypipeDisableGpu ?? false)
     _waypipeOneshot = State(initialValue: (overrides["WaypipeOneshot"] as? Bool) ?? prefs.waypipeOneshot())
     _waypipeUnlinkSocket = State(initialValue: (overrides["WaypipeUnlinkSocket"] as? Bool) ?? prefs.waypipeUnlinkSocket())
     _waypipeLoginShell = State(initialValue: (overrides["WaypipeLoginShell"] as? Bool) ?? prefs.waypipeLoginShell())

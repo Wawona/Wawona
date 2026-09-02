@@ -907,7 +907,12 @@ final class WWNMachinesHostingBridge: NSObject {
     window.center()
     window.contentViewController = hosting
     window.title = "Wawona Machine Control Panel"
+    // Stable id so reopen / Cmd-Shift-M never spawn a second panel.
+    window.identifier = NSUserInterfaceItemIdentifier("wwn.machines.control-panel")
     window.isRestorable = false
+    // Keep the window controller as owner across close; coordinator re-shows
+    // the same window instead of allocating another.
+    window.isReleasedWhenClosed = false
     return NSWindowController(window: window)
   }
 }

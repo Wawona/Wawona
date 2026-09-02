@@ -59,7 +59,17 @@ public enum PlatformCapabilities: Sendable {
         #endif
     }
 
-    public static var allowsVirtualMachine: Bool { virtualMachineGate.isAvailable }
+    public static var allowsVirtualMachine: Bool {
+        switch virtualMachineGate {
+        case .available:
+            return true
+        case .planned(let flag):
+            // Developer opt-in once engines are embedded (WWN_VMS=1).
+            return isFlagEnabled(flag)
+        case .blocked, .forbidden:
+            return false
+        }
+    }
 
     /// Same platform set as VMs. Planned, not shipping yet.
     ///
@@ -77,7 +87,17 @@ public enum PlatformCapabilities: Sendable {
         #endif
     }
 
-    public static var allowsContainer: Bool { containerGate.isAvailable }
+    public static var allowsContainer: Bool {
+        switch containerGate {
+        case .available:
+            return true
+        case .planned(let flag):
+            // Developer opt-in once engines are embedded (WWN_CONTAINERS=1).
+            return isFlagEnabled(flag)
+        case .blocked, .forbidden:
+            return false
+        }
+    }
 
     /// Apple Containerization.framework and the Apple `container` CLI.
     ///

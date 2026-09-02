@@ -118,7 +118,7 @@ work. Env: `WAWONA_CONTAINER_BACKEND=containerization`, `WWN_OCI_ROOT`,
 The backend reports progress to the runner via marker files in `/tmp`
 (`wawona-container-ready-<machineId>` when the VM is booted,
 `wawona-container-done-<machineId>` when the container process exits), which
-drive the card's Compiling backend → Connected → Disconnected transitions.
+drive the card's Starting container → Connected → Disconnected transitions.
 
 ## Docker Hub discovery (GUI search)
 

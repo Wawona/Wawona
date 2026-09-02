@@ -1,3 +1,4 @@
+#include <errno.h>
 #include <signal.h>
 #include <stdlib.h>
 #include <string.h>
@@ -496,7 +497,40 @@ static void activate_existing_instance(void) {
         deliverImmediately:YES];
 }
 
+// True if another Regular (Dock/Machines) Wawona is alive. Menubar and
+// compositor-host are Accessory and ignored. Catches the case where someone
+// unlinked instance.lock while a GUI still ran: flock on a new inode succeeds
+// even though a second Machines UI must never start.
+static BOOL wwn_other_regular_wawona_running(void) {
+  NSString *selfBundle = [[NSBundle mainBundle] bundleIdentifier];
+  if (selfBundle.length == 0) {
+    selfBundle = @"com.aspauldingcode.Wawona";
+  }
+  pid_t selfPid = getpid();
+  for (NSRunningApplication *app in
+       NSWorkspace.sharedWorkspace.runningApplications) {
+    if (app.processIdentifier == selfPid) {
+      continue;
+    }
+    NSString *bid = app.bundleIdentifier;
+    if (bid.length == 0) {
+      continue;
+    }
+    if (![bid isEqualToString:selfBundle] &&
+        ![bid isEqualToString:@"com.aspauldingcode.Wawona"]) {
+      continue;
+    }
+    if (app.activationPolicy == NSApplicationActivationPolicyRegular) {
+      return YES;
+    }
+  }
+  return NO;
+}
+
 static BOOL wwn_ui_instance_is_running(void) {
+  if (wwn_other_regular_wawona_running()) {
+    return YES;
+  }
   NSString *lockPath =
       [NSString stringWithFormat:@"/tmp/wawona-%d/instance.lock", getuid()];
   int fd = open([lockPath fileSystemRepresentation], O_CREAT | O_RDWR, 0600);
@@ -548,6 +582,14 @@ static void wwn_open_ui_panel(NSString *panel) {
 }
 
 static BOOL acquire_single_instance_lock(void) {
+  // Never unlink instance.lock while a GUI may still be alive: that creates a
+  // new inode and flock no longer serializes instances.
+  if (wwn_other_regular_wawona_running()) {
+    WWNLog("MAIN",
+           @"Another Regular Wawona GUI is already running (process scan)");
+    return NO;
+  }
+
   NSString *lockDir = [NSString stringWithFormat:@"/tmp/wawona-%d", getuid()];
   [[NSFileManager defaultManager] createDirectoryAtPath:lockDir
                             withIntermediateDirectories:YES
@@ -561,7 +603,9 @@ static BOOL acquire_single_instance_lock(void) {
   g_instance_lock_fd =
       open([lockPath fileSystemRepresentation], O_CREAT | O_RDWR, 0600);
   if (g_instance_lock_fd < 0) {
-    // If lock setup fails, do not block startup.
+    if (wwn_other_regular_wawona_running()) {
+      return NO;
+    }
     WWNLog("MAIN", @"Warning: failed to open single-instance lock file");
     return YES;
   }
@@ -570,6 +614,25 @@ static BOOL acquire_single_instance_lock(void) {
     close(g_instance_lock_fd);
     g_instance_lock_fd = -1;
     return NO;
+  }
+
+  // Re-check after flock: a GUI that lost its lock inode can still be up.
+  if (wwn_other_regular_wawona_running()) {
+    flock(g_instance_lock_fd, LOCK_UN);
+    close(g_instance_lock_fd);
+    g_instance_lock_fd = -1;
+    WWNLog("MAIN",
+           @"Another Regular Wawona GUI is already running (post-flock scan)");
+    return NO;
+  }
+
+  // Record holder pid for humans; flock on this fd is still the authority.
+  (void)ftruncate(g_instance_lock_fd, 0);
+  (void)lseek(g_instance_lock_fd, 0, SEEK_SET);
+  char pidbuf[32];
+  int n = snprintf(pidbuf, sizeof(pidbuf), "%d\n", (int)getpid());
+  if (n > 0) {
+    (void)write(g_instance_lock_fd, pidbuf, (size_t)n);
   }
   return YES;
 }

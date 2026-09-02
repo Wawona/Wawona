@@ -8,6 +8,11 @@ NSString *const kWWNMachineOrigin = @"origin";
 NSString *const kWWNMachineOriginCLI = @"cli";
 NSString *const kWWNMachineOriginManual = @"manual";
 
+/// Prebaked desktop OCI (wwn-containers `wawona-container-desktop`). No
+/// `nix shell` at Start. Fall back to pulling the tag if the archive is not
+/// bundled under Resources/oci/.
+static NSString *const kWWNCLIDesktopImageRef = @"wawona-container-desktop:latest";
+
 static NSString *WWNCLIStableMachineId(NSString *recipeKey) {
   // recipeKey is already cli:native:… / cli:container:… → cli-native-…
   return [[recipeKey stringByReplacingOccurrencesOfString:@":" withString:@"-"]
@@ -41,9 +46,89 @@ static NSString *WWNCLISwayConfig(void) {
          @"}\n";
 }
 
-static NSString *WWNCLINixShellPrefix(void) {
-  return @"nix --extra-experimental-features nix-command shell -f "
-         @"'<nixpkgs>'";
+/// Bundled OCI layout from product-build (optional). When present, Start uses
+/// `--image-archive` and never pulls or runs `nix shell`.
+static NSString *WWNCLIBundledDesktopArchive(void) {
+  NSBundle *bundle = [NSBundle mainBundle];
+  NSString *path =
+      [bundle pathForResource:@"wawona-container-desktop" ofType:nil
+                  inDirectory:@"oci"];
+  if (path.length == 0) {
+    path = [bundle pathForResource:@"wawona-container-desktop" ofType:nil];
+  }
+  if (path.length > 0) {
+    NSString *index = [path stringByAppendingPathComponent:@"index.json"];
+    if ([[NSFileManager defaultManager] fileExistsAtPath:index]) {
+      return path;
+    }
+  }
+  return nil;
+}
+
+/// Local `container import` layout under ~/.local/share/wwn-oci (or $WWN_OCI_ROOT).
+/// Prefers a catalog entry whose reference contains wawona-container-desktop.
+static NSString *WWNCLIImportedDesktopArchive(void) {
+  NSString *root = NSProcessInfo.processInfo.environment[@"WWN_OCI_ROOT"];
+  if (root.length == 0) {
+    root = [NSHomeDirectory()
+        stringByAppendingPathComponent:@".local/share/wwn-oci"];
+  }
+  NSFileManager *fm = [NSFileManager defaultManager];
+  NSString *imagesDir = [root stringByAppendingPathComponent:@"images"];
+  NSArray<NSString *> *catalogFiles =
+      [fm contentsOfDirectoryAtPath:imagesDir error:nil];
+  for (NSString *name in catalogFiles) {
+    if (![name.pathExtension isEqualToString:@"json"]) {
+      continue;
+    }
+    NSData *data =
+        [NSData dataWithContentsOfFile:[imagesDir stringByAppendingPathComponent:name]];
+    if (data.length == 0) {
+      continue;
+    }
+    id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    if (![json isKindOfClass:[NSDictionary class]]) {
+      continue;
+    }
+    NSString *ref = json[@"reference"] ?: json[@"canonical"];
+    if (![ref isKindOfClass:[NSString class]] ||
+        [ref rangeOfString:@"wawona-container-desktop"].location == NSNotFound) {
+      continue;
+    }
+    NSString *digest = json[@"manifest_digest"];
+    if (![digest isKindOfClass:[NSString class]] ||
+        ![digest hasPrefix:@"sha256:"] || digest.length <= 7) {
+      continue;
+    }
+    NSString *hex = [digest substringFromIndex:7];
+    NSString *layoutDir = [[root stringByAppendingPathComponent:@"oci-layout"]
+        stringByAppendingPathComponent:hex];
+    NSString *index = [layoutDir stringByAppendingPathComponent:@"index.json"];
+    if ([fm fileExistsAtPath:index]) {
+      return layoutDir;
+    }
+  }
+  // Fallback: single layout dir under oci-layout/ (common after one import).
+  NSString *layouts = [root stringByAppendingPathComponent:@"oci-layout"];
+  NSArray<NSString *> *kids =
+      [fm contentsOfDirectoryAtPath:layouts error:nil];
+  if (kids.count == 1) {
+    NSString *layoutDir =
+        [layouts stringByAppendingPathComponent:kids.firstObject];
+    NSString *index = [layoutDir stringByAppendingPathComponent:@"index.json"];
+    if ([fm fileExistsAtPath:index]) {
+      return layoutDir;
+    }
+  }
+  return nil;
+}
+
+static NSString *WWNCLIDesktopArchive(void) {
+  NSString *bundled = WWNCLIBundledDesktopArchive();
+  if (bundled.length > 0) {
+    return bundled;
+  }
+  return WWNCLIImportedDesktopArchive();
 }
 
 @implementation WWNCLIMachineRecipes
@@ -54,6 +139,7 @@ static NSString *WWNCLINixShellPrefix(void) {
     @"weston-flower",
     @"weston-terminal",
     @"foot",
+    @"ghostty",
     @"weston",
     @"weston-container",
     @"niri",
@@ -77,6 +163,7 @@ static NSString *WWNCLINixShellPrefix(void) {
          "  flower            weston-flower in a container (200x200)\n"
          "  weston-terminal   Weston Terminal (native bundled)\n"
          "  foot              foot terminal (native bundled)\n"
+         "  ghostty           Ghostty in prebaked desktop container\n"
          "  weston            nested Weston compositor (native)\n"
          "  weston-container  Weston in a container (waypipe)\n"
          "  niri              nested niri (native)\n"
@@ -87,7 +174,9 @@ static NSString *WWNCLINixShellPrefix(void) {
          "  gnome             GNOME Shell (container; needs guest dbus)\n"
          "  hyprland          Hyprland (container)\n"
          "\n"
-         "Also: Wawona machines list | show <id|name>\n");
+         "Container recipes use image %s (no nix shell at Start).\n"
+         "Also: Wawona machines list | show <id|name>\n",
+         [kWWNCLIDesktopImageRef UTF8String]);
 }
 
 + (nullable WWNMachineProfile *)profileMatchingIdOrName:(NSString *)query {
@@ -185,12 +274,22 @@ static NSString *WWNCLINixShellPrefix(void) {
 }
 
 + (nullable NSDictionary *)containerRecipeSpec:(NSString *)recipe {
-  NSString *nix = WWNCLINixShellPrefix();
+  // Direct binaries from wawona-container-desktop. Never nix shell at Start.
   if ([recipe isEqualToString:@"flower"] ||
       [recipe isEqualToString:@"weston-flower"]) {
     return @{
       @"name" : @"Flower (container)",
-      @"entry" : [NSString stringWithFormat:@"%@ weston -c weston-flower", nix],
+      @"entry" : @"weston-flower",
+      @"mem" : @"2048",
+    };
+  }
+  if ([recipe isEqualToString:@"ghostty"]) {
+    // Prebaked desktop image may omit ghostty (layer collisions). Prefer
+    // ghostty when present; otherwise foot from the same image.
+    return @{
+      @"name" : @"Ghostty (container)",
+      @"entry" : @"sh -c 'command -v ghostty >/dev/null && exec ghostty || "
+                 @"exec foot'",
       @"mem" : @"2048",
     };
   }
@@ -200,13 +299,12 @@ static NSString *WWNCLINixShellPrefix(void) {
         base64EncodedStringWithOptions:0];
     NSString *entry = [NSString
         stringWithFormat:
-            @"%@ sway-unwrapped swaybg ghostty foot -c sh -c "
-            @"'export WLR_BACKENDS=wayland WLR_RENDERER=pixman "
+            @"sh -c 'export WLR_BACKENDS=wayland WLR_RENDERER=pixman "
             @"WLR_LIBINPUT_NO_DEVICES=1 XDG_CONFIG_HOME=/tmp/wawona-xdg; "
             @"mkdir -p \"$XDG_CONFIG_HOME/sway\"; "
             @"echo %@ | base64 -d > \"$XDG_CONFIG_HOME/sway/config\"; "
             @"exec sway -c \"$XDG_CONFIG_HOME/sway/config\"'",
-            nix, b64];
+            b64];
     return @{
       @"name" : @"Sway (container)",
       @"entry" : entry,
@@ -216,42 +314,31 @@ static NSString *WWNCLINixShellPrefix(void) {
   if ([recipe isEqualToString:@"labwc"]) {
     return @{
       @"name" : @"labwc (container)",
-      @"entry" : [NSString stringWithFormat:@"%@ labwc -c labwc", nix],
+      @"entry" : @"labwc",
       @"mem" : @"2048",
     };
   }
   if ([recipe isEqualToString:@"plasma"] || [recipe isEqualToString:@"kwin"]) {
     return @{
       @"name" : @"Plasma / KWin (container)",
-      @"entry" : [NSString
-          stringWithFormat:@"%@ kwin qtwayland -c sh -c "
-                           @"'export QT_QPA_PLATFORM=wayland; "
-                           @"exec kwin_wayland --platform wayland'",
-                           nix],
+      @"entry" : @"sh -c 'export QT_QPA_PLATFORM=wayland; "
+                 @"exec kwin_wayland --platform wayland'",
       @"mem" : @"4096",
     };
   }
   if ([recipe isEqualToString:@"gnome"]) {
     return @{
       @"name" : @"GNOME (container)",
-      @"entry" : [NSString
-          stringWithFormat:
-              @"%@ gnome-shell mutter dbus -c sh -c "
-              @"'mkdir -p /run/user/0; exec dbus-run-session -- gnome-shell "
-              @"--wayland'",
-              nix],
+      @"entry" : @"sh -c 'mkdir -p /run/user/0; "
+                 @"exec dbus-run-session -- gnome-shell --wayland'",
       @"mem" : @"4096",
     };
   }
   if ([recipe isEqualToString:@"hyprland"]) {
     return @{
       @"name" : @"Hyprland (container)",
-      @"entry" : [NSString
-          stringWithFormat:
-              @"%@ hyprland -c sh -c "
-              @"'export WLR_BACKENDS=wayland WLR_RENDERER=pixman "
-              @"WLR_LIBINPUT_NO_DEVICES=1; exec Hyprland'",
-              nix],
+      @"entry" : @"sh -c 'export WLR_BACKENDS=wayland WLR_RENDERER=pixman "
+                 @"WLR_LIBINPUT_NO_DEVICES=1; exec Hyprland'",
       @"mem" : @"4096",
     };
   }
@@ -259,12 +346,25 @@ static NSString *WWNCLINixShellPrefix(void) {
   if ([recipe isEqualToString:@"weston-container"]) {
     return @{
       @"name" : @"Weston (container)",
-      @"entry" : [NSString
-          stringWithFormat:@"%@ weston -c weston --backend=wayland", nix],
+      @"entry" : @"weston --backend=wayland",
       @"mem" : @"2048",
     };
   }
   return nil;
+}
+
++ (NSMutableDictionary *)containerSettingsForSpec:(NSDictionary *)container {
+  NSMutableDictionary *cs = [NSMutableDictionary dictionary];
+  cs[@"entryCommand"] = container[@"entry"];
+  cs[@"containerRef"] = kWWNCLIDesktopImageRef;
+  cs[@"desktopSession"] = @YES;
+  cs[@"memory"] = container[@"mem"] ?: @"2048";
+  cs[@"remove"] = @YES;
+  NSString *archive = WWNCLIDesktopArchive();
+  if (archive.length > 0) {
+    cs[@"imageArchivePath"] = archive;
+  }
+  return cs;
 }
 
 + (nullable WWNMachineProfile *)ensureProfileForRecipe:(NSString *)rawRecipe
@@ -312,13 +412,7 @@ static NSString *WWNCLINixShellPrefix(void) {
   if (existing) {
     // Refresh launch settings from current recipe (CLI improvements apply).
     if (useContainer) {
-      NSMutableDictionary *cs =
-          [existing.containerSettings mutableCopy] ?: [NSMutableDictionary dictionary];
-      cs[@"entryCommand"] = container[@"entry"];
-      cs[@"containerRef"] = cs[@"containerRef"] ?: @"nixos/nix";
-      cs[@"desktopSession"] = @YES;
-      cs[@"memory"] = container[@"mem"] ?: @"2048";
-      existing.containerSettings = cs;
+      existing.containerSettings = [self containerSettingsForSpec:container];
       NSMutableDictionary *ro =
           [existing.runtimeOverrides mutableCopy] ?: [NSMutableDictionary dictionary];
       ro[kWWNCLIRecipeKey] = recipeKey;
@@ -351,13 +445,7 @@ static NSString *WWNCLINixShellPrefix(void) {
   if (useContainer) {
     profile.name = container[@"name"];
     profile.type = kWWNMachineTypeContainer;
-    profile.containerSettings = @{
-      @"containerRef" : @"nixos/nix",
-      @"entryCommand" : container[@"entry"],
-      @"desktopSession" : @YES,
-      @"memory" : container[@"mem"] ?: @"2048",
-      @"remove" : @YES,
-    };
+    profile.containerSettings = [self containerSettingsForSpec:container];
     profile.settingsOverrides = @{};
     profile.runtimeOverrides = @{
       kWWNCLIRecipeKey : recipeKey,

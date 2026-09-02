@@ -25,7 +25,7 @@ typealias WWNPlatformImage = UIImage
     switch self {
     case .disconnected: return "Disconnected"
     case .connecting: return "Connecting"
-    case .preparing: return "Compiling backend"
+    case .preparing: return "Starting container"
     case .connected: return "Connected"
     case .degraded: return "Degraded"
     case .error: return "Error"
@@ -447,8 +447,8 @@ final class WWNMachinesViewModel: ObservableObject {
     }
 
     if isContainer {
-      // Stay "Compiling backend" until WWNContainerRunner reports the VM is
-      // booted (WWNContainerBackendDidBecomeReadyNotification).
+      // Stay "Starting container" until WWNContainerRunner reports the VM is
+      // booted (WWNContainerBackendDidBecomeReadyNotification). Not a compile.
       return
     }
 
@@ -466,8 +466,8 @@ final class WWNMachinesViewModel: ObservableObject {
 
   private func handleContainerStop(_ note: Notification) {
     guard let machineId = note.userInfo?["machineId"] as? String else { return }
-    // If it never reached ready, the backend failed to boot (e.g. kernel or
-    // initfs compile error) rather than a clean stop.
+    // If it never reached ready, the backend failed to boot rather than a
+    // clean stop.
     let failedToBecomeReady = status(for: machineId) == .preparing
     statusByMachineId[machineId] = failedToBecomeReady ? .error : .disconnected
     pendingContainerConnectCallbacks.removeValue(forKey: machineId)
@@ -670,7 +670,7 @@ final class WWNMachinesViewModel: ObservableObject {
       return "No client configured"
     case kWWNMachineTypeVirtualMachine:
       // Backend engine is fixed per build target, not user-selected (Residual E).
-      return "VM profile (Virtualization.framework)"
+      return "VM profile (QEMU + HVF)"
     case kWWNMachineTypeContainer:
       return "Container profile (containerization.framework)"
     default:
@@ -730,7 +730,7 @@ final class WWNMachinesViewModel: ObservableObject {
       let command = profile.remoteCommand.isEmpty ? "terminal default" : profile.remoteCommand
       return "SSH terminal command: \(command)"
     case kWWNMachineTypeVirtualMachine:
-      return "Backend: Virtualization.framework"
+      return "Backend: QEMU + HVF (Hypervisor.framework)"
     case kWWNMachineTypeContainer:
       return "Backend: containerization.framework"
     default:

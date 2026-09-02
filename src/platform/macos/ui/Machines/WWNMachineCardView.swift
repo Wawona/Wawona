@@ -165,12 +165,12 @@ struct WWNMachineCardView: View {
     } else if isPreparing {
       items.append(
         MachineActionItem(
-          title: "Compiling backend...",
+          title: "Starting container...",
           systemImage: "gearshape.2",
           prominent: true,
           enabled: false,
           accessibilityID: WWNA11y.machinesStart,
-          accessibilityLabel: "Compiling backend \(descriptor)",
+          accessibilityLabel: "Starting container \(descriptor)",
           action: {}
         )
       )

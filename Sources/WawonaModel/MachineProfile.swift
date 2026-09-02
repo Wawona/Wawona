@@ -31,9 +31,9 @@ extension MachineType {
         switch self {
         case .virtualMachine:
             #if os(macOS)
-            return "Virtualization.framework"
+            return "QEMU + HVF"
             #else
-            return "QEMU (TCTI)"
+            return "QEMU-TCTI (UTM SE)"
             #endif
         case .container:
             #if os(macOS)

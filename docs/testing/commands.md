@@ -82,21 +82,48 @@ export WAWONA_CONTAINER_BACKEND=containerization
 export WWN_OCI_ROOT="$HOME/.local/share/wawona/oci"
 export WAYLAND_DISPLAY=wayland-0
 export XDG_RUNTIME_DIR=/tmp/wawona-$(id -u)
-export WWNP_WAYPIPE_BIN="$(dirname "$(command -v container)")/waypipe-fds"
-export WAWONA_WAYPIPE_GUEST="$(dirname "$(command -v container)")/waypipe-guest-root"
+BIN="$(dirname "$(command -v container)")"
+export WWNP_WAYPIPE_BIN="$BIN/waypipe-fds"
+export WAWONA_WAYPIPE_GUEST="$BIN/waypipe-guest"
+export WAWONA_WAYPIPE_GUEST_ROOT="$BIN/waypipe-guest-root"
+# Host ICD for GPU waypipe client (MoltenVK / KosmicKrisp)
+export VK_DRIVER_FILES="$BIN/../vulkan/icd.d/MoltenVK_icd.json"
+unset WAWONA_WAYPIPE_NO_GPU
 
-# Terminal smoke (use a TTY or `script` so guest stdout is attached)
-script -q /dev/null container run --rm --id wawona-echo alpine:3.20 /bin/echo OK-FROM-GUEST
+KERNEL="$HOME/Library/Application Support/com.apple.container/kernels/default.kernel-arm64"
+
+# Terminal smoke (use a TTY or `script` so guest stdout is attached).
+# Image is -i/--image (default alpine:3.20); command args are positional.
+script -q /dev/null container run --kernel "$KERNEL" --id wawona-echo \
+  -- /bin/echo OK-FROM-GUEST
+
+# Soft OpenGL over GPU waypipe (no /dev/dri): Alpine Mesa llvmpipe + weston-simple-egl
+script -q /dev/null container run --kernel "$KERNEL" -m 2048 --cpus 2 \
+  --wayland-vsock-port 1042 \
+  --waypipe-guest-bin "$WAWONA_WAYPIPE_GUEST" \
+  --waypipe-guest-root "$WAWONA_WAYPIPE_GUEST_ROOT" \
+  --id wawona-simple-egl \
+  -- sh -c 'apk add --no-cache mesa-egl mesa-dri-gallium weston-clients
+            unset WAYLAND_DISPLAY DISPLAY
+            export LIBGL_ALWAYS_SOFTWARE=1
+            timeout 10 weston-simple-egl'
 
 # Desktop session: prebaked image (no nix shell at Start). Build image once:
 #   nix build path:../wwn-containers#packages.aarch64-linux.wawona-container-desktop
 #   container image load ./result
-container run --rm --id wawona-flower --fs-size 8192 -m 2048 \
+container run --kernel "$KERNEL" --id wawona-flower --fs-size 8192 -m 2048 \
   --wayland-vsock-port 1042 \
-  --waypipe-guest-root "$WAWONA_WAYPIPE_GUEST" \
-  wawona-container-desktop:latest \
-  weston-flower
+  --waypipe-guest-bin "$WAWONA_WAYPIPE_GUEST" \
+  --waypipe-guest-root "$WAWONA_WAYPIPE_GUEST_ROOT" \
+  -i wawona-container-desktop:latest \
+  -- weston-flower
 ```
+
+Guest notes: waypipe sets `WAYLAND_SOCKET` (often leave `WAYLAND_DISPLAY` unset).
+Do not export `LD_LIBRARY_PATH=/opt/wawona-waypipe/lib` into musl images.
+Vulkan `vulkaninfo --summary` needs `unset WAYLAND_SOCKET` for headless enum;
+Wayland WSI clients keep the socket. Host GPU waypipe needs a guest-root with
+`libvulkan.so.1` + lavapipe ICD (else auto `--no-gpu` SHM).
 
 `wwn-containerd` is **prebuilt** in the app bundle. Machines Start shows
 **Starting container…** while the Apple Containerization VM boots (ready
@@ -171,13 +198,38 @@ bottom-left quadrant.
 kept buffer-sized logical geometry at scale 1.
 
 ```bash
-# Product path: Machines → Nix Weston Container (nixos/nix) with
-#   nix shell nixpkgs#ghostty -c ghostty
-# Or: Wawona run ghostty when the prebaked image includes ghostty.
-# Expect: full window content on Retina, not one quadrant.
-# Expect: a real terminal (not "Unable to acquire an OpenGL context").
-# GPU transport is default (Disable GPU off + bundled Vulkan ICD).
-# Disable GPU on → SHM; foot / weston-flower still work for that check.
+# Product path: Machines → Ghostty (nix) / nixos/nix. Soft Mesa is required
+# for the GL client (no /dev/dri). Waypipe itself can still be GPU/dmabuf.
+# Working entryCommand (PTY + XKB + Enter keybind; see sticky-Super note):
+nix --extra-experimental-features 'nix-command flakes' shell \
+  nixpkgs#ghostty nixpkgs#mesa nixpkgs#libglvnd nixpkgs#xkeyboard-config \
+  nixpkgs#fontconfig nixpkgs#dejavu_fonts -c bash -lc '
+  MESA_JSON=$(ls -1 /nix/store/*/share/glvnd/egl_vendor.d/50_mesa.json | head -1)
+  MESA_ROOT=$(dirname $(dirname $(dirname "$MESA_JSON")))
+  DRI=$(ls -d /nix/store/*/lib/dri | head -1)
+  GLVND_LIB=$(dirname $(ls -1 /nix/store/*/lib/libEGL.so.1 | head -1))
+  XKB=$(ls -d /nix/store/*/share/X11/xkb | head -1)
+  export LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe \
+    MESA_LOADER_DRIVER_OVERRIDE=llvmpipe GSK_RENDERER=gl GDK_BACKEND=wayland \
+    __EGL_VENDOR_LIBRARY_FILENAMES="$MESA_JSON" LIBGL_DRIVERS_PATH="$DRI" \
+    XKB_CONFIG_ROOT="$XKB" \
+    LD_LIBRARY_PATH="$MESA_ROOT/lib:$GLVND_LIB"
+  mkdir -p "${HOME:-/root}/.config/ghostty"
+  printf "%s\n" "shell-integration = none" "keybind = enter=text:\\r" \
+    > "${HOME:-/root}/.config/ghostty/config"
+  exec ghostty'
+# Expect: `info(opengl): loaded OpenGL 4.6` and a real shell.
+# Broken Enter that inserts ";10;13~" is sticky host Super (Cmd) after Cmd-Tab:
+# Ghostty encodes super+enter as fixterms CSI. Mitigations:
+#   1) Ghostty config keybinds for enter/super+enter/... = text:\r (above)
+#   2) Host fix: WWNWindow becomeKeyWindow resyncs modifiers from hardware
+#      (needs app rebuild into the running Wawona)
+# GPU OpenGL client (zink + nix lavapipe) over GPU waypipe: set
+# GALLIUM_DRIVER=zink MESA_LOADER_DRIVER_OVERRIDE=zink LIBGL_ALWAYS_SOFTWARE=0
+# VK_ICD_FILENAMES to nixpkgs *lvp*.json only (do not mix /opt/wawona-waypipe
+# into LD_LIBRARY_PATH for the client). Guest-root lavapipe is for waypipe.
+# ZINK "failed to choose pdev" means lavapipe did not enumerate; check
+# vulkaninfo --summary in the same env before blaming waypipe.
 ```
 
 Compare with `weston-terminal` / `foot` (integer buffer_scale path) on the same

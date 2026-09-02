@@ -125,11 +125,20 @@ static Class WWNFindMachinesHostingBridgeClass(void) {
 }
 #else
 - (void)showMachinesWindowAndActivate:(BOOL)activate {
-  if (!self.macMachinesController || !self.macMachinesController.window ||
-      !self.macMachinesController.window.isVisible) {
+  // One Machines window forever. Never rebuild just because the existing
+  // window is ordered out / not yet visible: that orphaned the previous
+  // NSWindow (still retained by NSApp) and produced two "Machine Control
+  // Panel" windows in one process. Only build when we have no controller
+  // or its window was destroyed.
+  NSWindow *existing = self.macMachinesController.window;
+  if (!self.macMachinesController || existing == nil) {
     NSWindowController *controller =
         [self buildSwiftUIMachinesWindowController:nil];
     if (controller) {
+      if (self.macMachinesController.window != nil &&
+          self.macMachinesController.window != controller.window) {
+        [self.macMachinesController.window close];
+      }
       self.macMachinesController = controller;
     }
   }
@@ -142,10 +151,25 @@ static Class WWNFindMachinesHostingBridgeClass(void) {
     [alert runModal];
     return;
   }
+  // Collapse any orphaned duplicates from older builds / races.
+  NSWindow *keep = self.macMachinesController.window;
+  for (NSWindow *window in [NSApp.windows copy]) {
+    if (window == keep) {
+      continue;
+    }
+    NSString *title = window.title ?: @"";
+    NSString *ident = window.identifier ?: @"";
+    if ([ident isEqualToString:@"wwn.machines.control-panel"] ||
+        [title isEqualToString:@"Wawona Machine Control Panel"] ||
+        [title isEqualToString:@"Machines"]) {
+      [window close];
+    }
+  }
   if (activate) {
     [NSApp activateIgnoringOtherApps:YES];
   }
   [self.macMachinesController showWindow:nil];
+  [keep makeKeyAndOrderFront:nil];
 }
 
 - (void)showMachinesWindowFromMenu:(id)sender {

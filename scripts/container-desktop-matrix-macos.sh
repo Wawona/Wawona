@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Timed smoke matrix: nested compositors in nixos/nix containers over vsock waypipe.
+# Timed smoke matrix: nested compositors via prebaked wawona-container-desktop
+# (Wawona run → no nix shell at Start) over vsock waypipe.
 #
 # Usage:
 #   scripts/container-desktop-matrix-macos.sh
-#   scripts/container-desktop-matrix-macos.sh sway niri plasma gnome
+#   scripts/container-desktop-matrix-macos.sh sway hyprland labwc flower
 #
 # Requires Wawona GUI compositor (wayland-0 under /tmp/wawona-$(id -u)/).
 # Writes logs + PNGs under .agent-device/test-artifacts/container-matrix/.
@@ -20,7 +21,7 @@ for candidate in /tmp/wawona-weston-test.log "/tmp/wawona-$(id -u)/wawona.log"; 
   fi
 done
 
-DEFAULT_CLIENTS=(sway niri plasma gnome hyprland labwc)
+DEFAULT_CLIENTS=(flower sway hyprland labwc weston)
 CLIENTS=("${@:-${DEFAULT_CLIENTS[@]}}")
 
 mkdir -p "$ARTIFACTS"

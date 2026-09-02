@@ -30,7 +30,7 @@ case "$CLIENT" in
     exec "$WAWONA_BIN" run --help
     ;;
   all)
-    for c in flower weston-terminal weston niri sway labwc; do
+    for c in flower sway hyprland labwc weston-container; do
       echo "=== Wawona run $c ==="
       "$WAWONA_BIN" run "$c" --headless || exit 1
     done

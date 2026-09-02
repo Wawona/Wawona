@@ -360,6 +360,19 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
   }
   profile.runtimeOverrides = runtimeOverrides;
   profile.settingsOverrides = legacySettingsOverrides;
+  // Disable GPU may only live under settingsOverrides / runtimeOverrides
+  // (WaypipeNoGpu) when the top-level waypipeDisableGpu key was never saved.
+  // Prefer an explicit top-level bool; otherwise recover from overrides so
+  // connect does not inherit a stale global WaypipeNoGpu.
+  if (obj[@"waypipeDisableGpu"] == nil) {
+    id noGpu = legacySettingsOverrides[kWWNPrefsWaypipeNoGpu];
+    if (![noGpu respondsToSelector:@selector(boolValue)]) {
+      noGpu = runtimeOverrides[kWWNPrefsWaypipeNoGpu];
+    }
+    if ([noGpu respondsToSelector:@selector(boolValue)]) {
+      profile.waypipeDisableGpu = [noGpu boolValue];
+    }
+  }
   profile.containerSettings =
       [obj[@"containerSettings"] isKindOfClass:[NSDictionary class]]
           ? obj[@"containerSettings"]
@@ -862,7 +875,12 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
   [prefs setWaypipeThreads:profile.waypipeThreads ?: @"0"];
   [prefs setWaypipeVideo:profile.waypipeVideo ?: @"none"];
   [prefs setWaypipeDebug:profile.waypipeDebug];
-  [prefs setWaypipeNoGpu:profile.waypipeDisableGpu];
+  // Session apply: WWNWaypipeRunner still reads prefs.waypipeNoGpu. Always take
+  // this machine's resolved Disable GPU (not a stale global merge) so GPU
+  // clients keep dmabuf and only explicit Disable GPU gets SHM/--no-gpu.
+  BOOL disableGpu = [self resolvedWaypipeDisableGpuForProfile:profile];
+  profile.waypipeDisableGpu = disableGpu;
+  [prefs setWaypipeNoGpu:disableGpu];
   [prefs setWaypipeOneshot:profile.waypipeOneshot];
   [prefs setWaypipeLoginShell:profile.waypipeLoginShell];
   [prefs setWaypipeTitlePrefix:profile.waypipeTitlePrefix ?: @""];
@@ -877,6 +895,9 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
       transportSnapshot[key] = value;
     }
   }
+  // normalizedSettingsOverrides merges the current global snapshot first; a
+  // leftover WaypipeNoGpu=YES must not override this machine's Disable GPU.
+  transportSnapshot[kWWNPrefsWaypipeNoGpu] = @(disableGpu);
 
   /* Touch Input Type: settingsOverrides TouchInputType wins, else
    * runtimeOverrides.inputProfile (Machine Settings), else global. Normalize
@@ -1210,6 +1231,29 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
     return nil;
   }
   return [self profileById:activeId];
+}
+
++ (BOOL)resolvedWaypipeDisableGpuForProfile:(WWNMachineProfile *)profile {
+  if (!profile) {
+    return NO;
+  }
+  if (profile.waypipeDisableGpu) {
+    return YES;
+  }
+  id noGpu = profile.settingsOverrides[kWWNPrefsWaypipeNoGpu];
+  if (![noGpu respondsToSelector:@selector(boolValue)]) {
+    noGpu = profile.runtimeOverrides[kWWNPrefsWaypipeNoGpu];
+  }
+  if (![noGpu respondsToSelector:@selector(boolValue)]) {
+    id legacy = profile.runtimeOverrides[@"legacySettingsOverrides"];
+    if ([legacy isKindOfClass:[NSDictionary class]]) {
+      noGpu = ((NSDictionary *)legacy)[kWWNPrefsWaypipeNoGpu];
+    }
+  }
+  if ([noGpu respondsToSelector:@selector(boolValue)]) {
+    return [noGpu boolValue];
+  }
+  return NO;
 }
 
 + (BOOL)resolvedShowHostCursorActive {

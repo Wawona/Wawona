@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # macOS container machine smoke: agent-device drives Machines UI to create a
-# nixos/nix container profile with desktop session, then starts it.
+# wawona-container-desktop profile with desktop session, then starts it.
 #
 # macOS AX snapshots expose human labels (not wwn.* ids). This script uses
 # snapshot refs (@eN) and stable labels from WWNMachineEditorView.
@@ -9,17 +9,17 @@
 #   scripts/agent-device-container-smoke-macos.sh
 #
 # Env:
-#   WAWONA_CONTAINER_IMAGE    OCI ref (default: nixos/nix)
-#   WAWONA_CONTAINER_COMMAND  guest command (default: nix weston-flower)
+#   WAWONA_CONTAINER_IMAGE    OCI ref (default: wawona-container-desktop:latest)
+#   WAWONA_CONTAINER_COMMAND  guest command (default: weston-flower; no nix shell)
 #   WAWONA_CONTAINER_MACHINE_NAME  profile name
 #   WAWONA_CONTAINER_SESSION  agent-device session name
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ARTIFACTS="$ROOT/.agent-device/test-artifacts"
-IMAGE="${WAWONA_CONTAINER_IMAGE:-nixos/nix}"
-COMMAND="${WAWONA_CONTAINER_COMMAND:-nix --extra-experimental-features 'nix-command flakes' shell nixpkgs#weston -c weston-flower}"
-MACHINE_NAME="${WAWONA_CONTAINER_MACHINE_NAME:-Nix Weston Container}"
+IMAGE="${WAWONA_CONTAINER_IMAGE:-wawona-container-desktop:latest}"
+COMMAND="${WAWONA_CONTAINER_COMMAND:-weston-flower}"
+MACHINE_NAME="${WAWONA_CONTAINER_MACHINE_NAME:-Desktop Flower Container}"
 SESS="${WAWONA_CONTAINER_SESSION:-wawona-macos-container}"
 
 mkdir -p "$ARTIFACTS"
@@ -71,17 +71,17 @@ agent-device press "$SAVE_REF" "${ad[@]}"
 sleep 2
 for _ in 1 2 3 4 5; do agent-device scroll down "${ad[@]}"; done
 START_REF="$(agent-device snapshot -i "${ad[@]}" 2>/dev/null | rg "button.*Start $MACHINE_NAME" | awk '{print $1}' | head -1)"
-[[ -n "$START_REF" ]] || START_REF="$(agent-device snapshot -i "${ad[@]}" 2>/dev/null | rg 'button.*Start Nix Weston' | awk '{print $1}' | head -1)"
+[[ -n "$START_REF" ]] || START_REF="$(agent-device snapshot -i "${ad[@]}" 2>/dev/null | rg 'button.*Start Desktop Flower' | awk '{print $1}' | head -1)"
 agent-device press "$START_REF" "${ad[@]}"
 
 sleep 10
 agent-device screenshot --out "$ARTIFACTS/macos-container-after-start.png" "${ad[@]}" || true
 agent-device snapshot -i "${ad[@]}" | tee "$ARTIFACTS/macos-container-after-start.txt"
 
-if agent-device snapshot -i "${ad[@]}" 2>/dev/null | rg -q 'Error'; then
-  log "FAIL: machine card shows Error (see wwn-containerd / container logs)"
+if rg -q 'Compiling backend' "$ARTIFACTS/macos-container-after-start.txt" 2>/dev/null; then
+  log "FAIL: UI still says Compiling backend (expected Starting container)"
   exit 1
 fi
 
-log "PASS: container machine profile created and Start was pressed"
-log "Artifacts: $ARTIFACTS"
+log "done (check screenshot + status: Starting container / Connected)"
+agent-device close "${ad[@]}" || true

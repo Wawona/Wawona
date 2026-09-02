@@ -91,7 +91,7 @@ Run on each simulator/emulator or device. Mark pass/fail with date + build attr.
 - [ ] Live resize + configure ack. No SHM buffer exhaustion (protocol test: `test_configure_serial_backlog_without_ack`)
 - [ ] waypipe over SSH (sliceanddice / DELIVERER when on LAN)
 - [ ] OCI container terminal smoke (`container run alpine:3.20 /bin/echo ...`). Prefer bundled CLI over `/usr/local/bin/container`
-- [ ] OCI container desktop session: `nixos/nix` + `shell nixpkgs#weston -c weston-flower`, Desktop session ON, `waypipe-fds` up on vsock (guest-root). GUI: `scripts/agent-device-container-smoke-macos.sh`
+- [ ] OCI container desktop session: `wawona-container-desktop:latest` + plain entry (`weston-flower` / `sway` / `Hyprland`), Desktop session ON, `waypipe-fds` up on vsock (guest-root). No guest `nix shell`. GUI: `scripts/agent-device-container-smoke-macos.sh`; CLI: `Wawona run flower|sway|hyprland`
 
 ### Android
 

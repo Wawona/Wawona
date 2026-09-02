@@ -61,6 +61,16 @@ APT for native tweaks. Do not merge indexes.
 | 3 | Mode B JIT run path + Sileo IPA wiring |
 | 4 | Docker Hub demo image documented for both modes |
 
+## Parity status (2026-08)
+
+| Item | Status |
+|------|--------|
+| macOS UI "Starting container" (not Compiling) | done |
+| `WWN_CONTAINERS=1` unlocks iOS container kind | done (`allowsContainer`) |
+| Prebaked `wawona-container-desktop` + recipes without `nix shell` | done (CLI recipes + local `--image-archive`; optional `Resources/oci/` bundle) |
+| iOS: stage OCI → 9p `oci-bundle` → QEMU-TCTI | wired; needs embedded engine+guest |
+| Simulator embed when `WAWONA_MOBILE_*_DIR` set | xcodegen phases accept iphonesimulator |
+
 ## Success
 
 - Mode A: `container pull` + run alpine-class image via jitless VM.

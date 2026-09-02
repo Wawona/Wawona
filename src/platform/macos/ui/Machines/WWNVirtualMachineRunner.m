@@ -41,6 +41,58 @@
   return script.length > 0 ? script : nil;
 }
 
+/// Default macOS Machines VM: QEMU + Hypervisor.framework (HVF).
+- (NSString *)defaultQemuHvfCommandForProfile:(WWNMachineProfile *)profile {
+  NSBundle *bundle = [NSBundle mainBundle];
+  NSString *resources = bundle.resourcePath ?: @"";
+  NSString *binDir = [resources stringByAppendingPathComponent:@"bin"];
+  NSString *guestDir = [bundle pathForResource:@"wawona-macos-guest" ofType:nil];
+  if (guestDir.length == 0) {
+    guestDir = [bundle pathForResource:@"wawona-mobile-guest" ofType:nil];
+  }
+  id guestOverride = profile.runtimeOverrides[@"guestDir"];
+  if ([guestOverride isKindOfClass:[NSString class]] &&
+      [(NSString *)guestOverride length] > 0) {
+    guestDir = (NSString *)guestOverride;
+  }
+
+  unsigned memoryMB = 2048;
+  id memOverride = profile.runtimeOverrides[@"memoryMB"];
+  if ([memOverride respondsToSelector:@selector(unsignedIntegerValue)]) {
+    memoryMB = (unsigned)[memOverride unsignedIntegerValue];
+  }
+
+  NSString *guestArg = guestDir.length > 0 ? guestDir : @"$WAWONA_VM_GUEST";
+  NSMutableString *cmd = [NSMutableString string];
+  [cmd appendString:@"export PATH=\""];
+  [cmd appendString:binDir];
+  [cmd appendString:@":$PATH\"; "];
+  [cmd appendFormat:
+      @"if command -v wawona-vm-launch >/dev/null 2>&1 && [ -d \"%@\" ]; then "
+       "exec wawona-vm-launch --guest-dir \"%@\" --memory %u; fi; ",
+      guestArg, guestArg, memoryMB];
+  [cmd appendFormat:
+      @"if command -v wawona-qemu-hvf >/dev/null 2>&1 && [ -d \"%@\" ]; then "
+       "exec wawona-qemu-hvf \"%@\" %u; fi; ",
+      guestArg, guestArg, memoryMB];
+  [cmd appendFormat:
+      @"QEMU=$(command -v qemu-system-aarch64 || command -v qemu-system-x86_64 || true); "
+       "if [ -z \"$QEMU\" ] || [ ! -d \"%@\" ]; then "
+       "echo 'Wawona VM: embed wwn-vms macOS QEMU+HVF engine and guest "
+       "(wawona-qemu-hvf + Image/rootfs.img), or set customScript.' >&2; exit 1; fi; "
+       "KERN=\"\"; for n in Image zImage vmlinuz vmlinux; do "
+       "[ -f \"%@/$n\" ] && KERN=\"%@/$n\" && break; done; "
+       "ROOT=\"%@/rootfs.img\"; "
+       "test -n \"$KERN\" -a -f \"$ROOT\" || { echo 'incomplete guest' >&2; exit 1; }; "
+       "case \"$QEMU\" in *aarch64*) MACH=virt,accel=hvf ;; *) MACH=q35,accel=hvf ;; esac; "
+       "echo \"[Wawona] QEMU + HVF (Hypervisor.framework) $QEMU\" >&2; "
+       "exec \"$QEMU\" -machine \"$MACH\" -cpu host -m %u "
+       "-kernel \"$KERN\" -drive \"file=$ROOT,if=virtio,format=raw\" "
+       "-device virtio-rng-pci -nographic -no-reboot",
+      guestArg, guestArg, guestArg, guestArg, memoryMB];
+  return cmd;
+}
+
 - (BOOL)launchProfile:(WWNMachineProfile *)profile
                 error:(NSError *_Nullable *_Nullable)error {
   if (!profile) {
@@ -57,22 +109,16 @@
 
   NSString *command = [self bootCommandForProfile:profile];
   if (!command) {
-    // Default developer lane: microvm guest + vsock/waypipe bridge into Wawona.
-    command =
-        @"wawona-microvm >/tmp/wawona-microvm.log 2>&1 & "
-         "sleep 2; exec wawona-vm-bridge";
+    // Product default: QEMU + Hypervisor.framework (HVF), not VZ/microvm.
+    command = [self defaultQemuHvfCommandForProfile:profile];
   }
 
-  // Replace any existing subprocess for this machine before starting a new one.
   [self stopProfileWithMachineId:profile.machineId];
 
   NSTask *task = [[NSTask alloc] init];
   task.executableURL = [NSURL fileURLWithPath:@"/bin/sh"];
   task.arguments = @[ @"-lc", command ];
 
-  // Give the guest bridge a hint for Wawona's Wayland runtime dir. The
-  // wawona-vm-bridge script honors WAWONA_RUNTIME; default to Wawona's per-uid
-  // runtime so `waypipe client` lands where the compositor advertises wayland-0.
   NSMutableDictionary<NSString *, NSString *> *env =
       [[[NSProcessInfo processInfo] environment] mutableCopy];
   if (!env[@"WAWONA_RUNTIME"]) {
@@ -149,9 +195,7 @@
 
 #else  // !TARGET_OS_OSX
 
-// iOS/iPadOS/tvOS/visionOS/watchOS: no NSTask / subprocess spawning is available
-// (and it would violate App Store rules). VM/container machine types use the
-// in-process UTM SE backend (p27) on these platforms, not this runner.
+// iOS family: in-process QEMU-TCTI (UTM SE), not NSTask.
 @implementation WWNVirtualMachineRunner
 
 + (instancetype)sharedRunner {
@@ -198,7 +242,9 @@
                  userInfo:@{
                    NSLocalizedDescriptionKey :
                        @"Bundled mobile guest (wawona-mobile-guest) is not embedded. "
-                       @"Build wawona-mobile-guest-artifacts and enable the Xcode embed phase."
+                       @"Build wawona-mobile-guest-artifacts, set WAWONA_MOBILE_GUEST_DIR, "
+                       @"and enable the Xcode embed phase. Required for VMs and "
+                       @"container-in-VM on iOS Mode A."
                  }];
     }
     return NO;
@@ -223,10 +269,19 @@
     memoryMB = (unsigned)[memOverride unsignedIntegerValue];
   }
 
-  return [[WWNMobileVmEngine sharedEngine] launchProfileWithKernelPath:kernel
-                                                            rootfsPath:rootfs
-                                                              memoryMB:memoryMB
-                                                                 error:error];
+  NSString *ociBundle = nil;
+  id ociOverride = profile.runtimeOverrides[@"ociBundlePath"];
+  if ([ociOverride isKindOfClass:[NSString class]] &&
+      [(NSString *)ociOverride length] > 0) {
+    ociBundle = (NSString *)ociOverride;
+  }
+
+  return [[WWNMobileVmEngine sharedEngine]
+      launchProfileWithKernelPath:kernel
+                       rootfsPath:rootfs
+                         memoryMB:memoryMB
+                    ociBundlePath:ociBundle
+                            error:error];
 }
 
 - (void)stopProfileWithMachineId:(NSString *)machineId {

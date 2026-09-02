@@ -70,6 +70,10 @@ extern NSString *const kWWNMachineTypeContainer;
 + (BOOL)resolvedRenderMacOSPointerForProfile:
     (nullable WWNMachineProfile *)profile;
 + (BOOL)resolvedRenderMacOSPointerActive;
+/// Per-machine Disable GPU (Waypipe --no-gpu). Top-level waypipeDisableGpu,
+/// then settingsOverrides / runtimeOverrides WaypipeNoGpu. Default NO (GPU
+/// /dmabuf allowed). Never trust a stale global WaypipeNoGpu alone.
++ (BOOL)resolvedWaypipeDisableGpuForProfile:(nullable WWNMachineProfile *)profile;
 /// Leftover @"virtual" / @"host" pref. Nested weston/niri ignore this and
 /// always hide the host overlay. Non-compositor clients do not use it.
 + (NSString *)resolvedNestedCompositorCursorForProfile:

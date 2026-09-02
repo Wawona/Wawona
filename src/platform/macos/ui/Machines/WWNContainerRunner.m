@@ -3,7 +3,9 @@
 #import "WWNVirtualMachineRunner.h"
 #import "WWNCompositorBridge.h"
 #import "WWNPlatformCallbacks.h"
+#import "WWNMachineProfileStore.h"
 #import "../Settings/WWNPreferencesManager.h"
+#import "../../../../util/WWNLog.h"
 
 #import <TargetConditionals.h>
 
@@ -108,6 +110,16 @@ static NSString *WWNContainerShellQuote(NSString *value) {
   }
   if (command.length == 0) {
     command = @"/bin/sh";
+  }
+  // Dev-only signal: product recipes must use prebaked images. A custom
+  // profile may still nix-build in-guest; never treat that as the default UX.
+  if ([command rangeOfString:@"nix shell"].location != NSNotFound ||
+      [command rangeOfString:@"nix build"].location != NSNotFound ||
+      [command rangeOfString:@"nixos/nix"].location != NSNotFound) {
+    WWNLog("CONTAINER",
+           @"WARNING: unbaked recipe entryCommand still uses nix "
+           @"(machine=%@). Prefer wawona-container-desktop + plain entry.",
+           profile.machineId ?: @"?");
   }
 
   NSMutableArray<NSString *> *parts = [NSMutableArray array];
@@ -473,13 +485,22 @@ static NSString *WWNContainerShellQuote(NSString *value) {
         env[@"WAWONA_WAYPIPE_GUEST_CLOSURE"] = closurePath;
       }
     }
-    // GPU/dmabuf is default for container waypipe. Disable GPU (profile or
-    // global) opts into SHM via wwn-containerd's WAWONA_WAYPIPE_NO_GPU.
-    // Pass host Vulkan ICD paths so waypipe/compositor share MoltenVK /
-    // KosmicKrisp / SwiftShader selection from Settings.
-    if (profile.waypipeDisableGpu || prefs.waypipeNoGpu) {
+    // GPU/dmabuf is default for container waypipe. Disable GPU (profile)
+    // opts into SHM via wwn-containerd's WAWONA_WAYPIPE_NO_GPU. Never inherit
+    // a stale WAWONA_WAYPIPE_NO_GPU from the process environment (NSTask
+    // copies NSProcessInfo.environment), or OpenGL/Vulkan clients stay on
+    // SHM and fail (Ghostty: unable to acquire an OpenGL context).
+    [env removeObjectForKey:@"WAWONA_WAYPIPE_NO_GPU"];
+    BOOL disableGpu =
+        [WWNMachineProfileStore resolvedWaypipeDisableGpuForProfile:profile];
+    profile.waypipeDisableGpu = disableGpu;
+    if (disableGpu) {
       env[@"WAWONA_WAYPIPE_NO_GPU"] = @"1";
+      NSLog(@"[WWNContainerRunner] Disable GPU on for %@: SHM waypipe",
+            machineId);
     } else {
+      NSLog(@"[WWNContainerRunner] GPU waypipe for %@ (dmabuf/IOSurface)",
+            machineId);
       const char *icd = getenv("VK_DRIVER_FILES");
       if (!icd || !icd[0]) {
         icd = getenv("VK_ICD_FILENAMES");
