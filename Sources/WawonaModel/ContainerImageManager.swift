@@ -219,6 +219,9 @@ public enum ContainerImageManager {
 
     // MARK: - process plumbing
 
+    // Foundation.Process is macOS-only. Apple mobile / watchOS use in-process
+    // dispatch for CLIs; container image verbs that shell out are macOS for now.
+    #if os(macOS)
     private static func run(_ args: [String]) throws -> String {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: containerCLIPath())
@@ -389,4 +392,27 @@ public enum ContainerImageManager {
             return _data
         }
     }
+    #else
+    private static func run(_ args: [String]) throws -> String {
+        throw ContainerImageError("container image CLI is unavailable on this platform (no Process)")
+    }
+
+    private static func run(_ args: [String]) async throws -> String {
+        throw ContainerImageError("container image CLI is unavailable on this platform (no Process)")
+    }
+
+    private static func runStreaming(
+        _ args: [String],
+        onLine: @escaping @Sendable (String) -> Void
+    ) async throws {
+        throw ContainerImageError("container image CLI is unavailable on this platform (no Process)")
+    }
+
+    private static func runStreamingCapturing(
+        _ args: [String],
+        onLine: @escaping @Sendable (String) -> Void
+    ) async throws -> String {
+        throw ContainerImageError("container image CLI is unavailable on this platform (no Process)")
+    }
+    #endif
 }

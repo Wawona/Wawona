@@ -1029,6 +1029,30 @@ GEN_HEADER
                 done
               fi
 
+              # Bundle wasm Runtime CLI + wpm (Mode A registry client). The
+              # Xcode .app path previously skipped these; without them
+              # Contents/Resources/bin has no wpm after nix run .#install.
+              ${if wawonaWasm != null then ''
+              if [ -f "${wawonaWasm}/bin/wasm" ]; then
+                cp "${wawonaWasm}/bin/wasm" "$APP/Contents/Resources/bin/"
+                cp "${wawonaWasm}/bin/wasm" "$APP/Contents/MacOS/"
+                chmod +x "$APP/Contents/Resources/bin/wasm" "$APP/Contents/MacOS/wasm"
+                echo "DEBUG: Bundled wasm (Xcode path)"
+              else
+                echo "Warning: wasm binary not found at ${wawonaWasm}/bin/wasm"
+              fi
+              if [ -f "${wawonaWasm}/bin/wpm" ]; then
+                cp "${wawonaWasm}/bin/wpm" "$APP/Contents/Resources/bin/"
+                cp "${wawonaWasm}/bin/wpm" "$APP/Contents/MacOS/"
+                chmod +x "$APP/Contents/Resources/bin/wpm" "$APP/Contents/MacOS/wpm"
+                echo "DEBUG: Bundled wpm (Xcode path)"
+              else
+                echo "Warning: wpm binary not found at ${wawonaWasm}/bin/wpm"
+              fi
+              '' else ''
+              echo "Warning: wawona-wasm not provided, skipping wasm/wpm bundling (Xcode path)"
+              ''}
+
               # Bundle the wwn-containers `container` CLI (wwn-oci + macOS
               # backend) so the GUI search + runner work without a system
               # install. Its deps stay in the derivation's runtime closure.
