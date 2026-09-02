@@ -17,8 +17,14 @@
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
 #import "WWNWindow.h"
 #endif
-#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+#if TARGET_OS_WATCH
+#import <WatchKit/WatchKit.h>
+#elif TARGET_OS_IPHONE || TARGET_OS_SIMULATOR || TARGET_OS_TV
 #import <UIKit/UIKit.h>
+#import <AudioToolbox/AudioToolbox.h>
+#elif defined(TARGET_OS_VISION) && TARGET_OS_VISION
+#import <UIKit/UIKit.h>
+#import <AudioToolbox/AudioToolbox.h>
 #else
 #import <Cocoa/Cocoa.h>
 #endif
@@ -1788,6 +1794,11 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
   if (buffer->iosurface_id != 0) {
     IOSurfaceRef surf = IOSurfaceLookup(buffer->iosurface_id);
     if (surf) {
+      WWNLog("WawonaDmabuf",
+             @"op=present os=apple sink=apple_metal backing_id=%u format=%u "
+             @"copy=cpu client=wayland "
+             @"(IOSurface→CGImage host path; iland Metal presenter is copy=zero)",
+             buffer->iosurface_id, buffer->format);
       BOOL bottomUp = WWNBufferIsBottomUp(surf);
       // UIKit cannot assign IOSurface to CALayer.contents. AppKit can, but a
       // CALayer Y-scale under geometryFlipped looks like inverted X+Y, so both
@@ -3731,6 +3742,7 @@ typedef enum : uint32_t {
   CWindowEventTypeFullscreenRequested = 14,
   CWindowEventTypeUnfullscreenRequested = 15,
   CWindowEventTypeCloseRequested = 16,
+  CWindowEventTypeSystemBell = 17,
 } CWindowEventType;
 
 typedef struct CWindowEvent {
@@ -3831,6 +3843,9 @@ extern void WWNWindowInfoFree(CWindowInfo *info);
   case CWindowEventTypeHostLocked:
     [self handleWindowHostLocked:event];
     break;
+  case CWindowEventTypeSystemBell:
+    [self handleSystemBell:event];
+    break;
   }
 }
 
@@ -3894,6 +3909,21 @@ extern void WWNWindowInfoFree(CWindowInfo *info);
       postNotificationName:WWNClientMinimizeRequestedNotification
                     object:self
                   userInfo:info];
+#endif
+}
+
+/// `xdg_system_bell_v1.ring` → platform system alert / beep / haptic.
+- (void)handleSystemBell:(CWindowEvent *)event {
+  WWNLog("BRIDGE", @"SystemBell surface_id=%u", event->surface_id);
+#if TARGET_OS_WATCH
+  [[WKInterfaceDevice currentDevice] playHaptic:WKHapticTypeNotification];
+#elif TARGET_OS_IPHONE || TARGET_OS_SIMULATOR || TARGET_OS_TV || (defined(TARGET_OS_VISION) && TARGET_OS_VISION)
+  // iOS/tvOS/visionOS: no App Store-accessible user-preferred alert sound.
+  // Play a short system UI sound as the audible stand-in for BEL.
+  AudioServicesPlaySystemSound(1057);
+#else
+  // macOS: Sound settings → Sound Effects → Alert sound (`NSBeep`).
+  NSBeep();
 #endif
 }
 
@@ -4595,8 +4625,25 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
   id popup = [_popups objectForKey:@(event->window_id)];
   if (popup) {
+    uint64_t parentWindowId = 0;
+    if ([popup conformsToProtocol:@protocol(WWNPopupHost)]) {
+      WWNNativeView *parentView = ((id<WWNPopupHost>)popup).parentView;
+      NSWindow *parentWin = parentView.window;
+      if ([parentWin isKindOfClass:[WWNWindow class]]) {
+        parentWindowId = ((WWNWindow *)parentWin).wwnWindowId;
+      }
+    }
+    // Clear onDismiss before dismiss so we do not re-enter handlePopupDismissed
+    // and double-send popup_done (WindowDestroyed already means the client is
+    // gone / protocol teardown is in progress).
+    if ([popup conformsToProtocol:@protocol(WWNPopupHost)]) {
+      ((id<WWNPopupHost>)popup).onDismiss = nil;
+    }
     [self wwnRemovePopupHost:popup windowId:event->window_id];
     WWNLog("BRIDGE", @"Destroyed popup %llu", event->window_id);
+    if (parentWindowId != 0) {
+      [self injectKeyboardEnterForWindow:parentWindowId keys:@[]];
+    }
   }
 #endif
 }
@@ -4904,8 +4951,23 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
 }
 
 - (void)handlePopupDismissed:(uint64_t)windowId {
-  WWNLog("BRIDGE", @"Popup dismissed locally: %llu", windowId);
   id popup = [_popups objectForKey:@(windowId)];
+  // Already torn down via WindowDestroyed -> wwnRemovePopupHost -> onDismiss.
+  // Do not send a second xdg_popup.popup_done (that races the client destroy).
+  if (!popup) {
+    return;
+  }
+  WWNLog("BRIDGE", @"Popup dismissed locally: %llu", windowId);
+
+  uint64_t parentWindowId = 0;
+  if ([popup conformsToProtocol:@protocol(WWNPopupHost)]) {
+    WWNNativeView *parentView = ((id<WWNPopupHost>)popup).parentView;
+    NSWindow *parentWin = parentView.window;
+    if ([parentWin isKindOfClass:[WWNWindow class]]) {
+      parentWindowId = ((WWNWindow *)parentWin).wwnWindowId;
+    }
+  }
+
   [self wwnRemovePopupHost:popup windowId:windowId];
   // Tell the client via xdg_popup.popup_done so it destroys the popup
   // instead of leaving a ghost grab.
@@ -4913,6 +4975,10 @@ static NSRect WWNScreenFrameForPopupInParentView(WWNView *parentView, CGFloat x,
     [self _dispatchToRust:^{
       WWNCoreNotifyPopupDismissed(self->_rustCore, windowId);
     }];
+  }
+  // GTK needs keyboard focus back on the parent before a second menu grab.
+  if (parentWindowId != 0) {
+    [self injectKeyboardEnterForWindow:parentWindowId keys:@[]];
   }
 }
 
@@ -6519,13 +6585,14 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
 }
 
 - (void)handlePopupDismissed:(uint64_t)windowId {
-  WWNLog("BRIDGE", @"iOS popup dismissed: %llu", windowId);
   UIView *popupView = (UIView *)[_popups objectForKey:@(windowId)];
-  if (popupView) {
-    [popupView removeFromSuperview];
-    [_popups removeObjectForKey:@(windowId)];
-    [_windows removeObjectForKey:@(windowId)];
+  if (!popupView) {
+    return;
   }
+  WWNLog("BRIDGE", @"iOS popup dismissed: %llu", windowId);
+  [popupView removeFromSuperview];
+  [_popups removeObjectForKey:@(windowId)];
+  [_windows removeObjectForKey:@(windowId)];
   if (_rustCore) {
     [self _dispatchToRust:^{
       WWNCoreNotifyPopupDismissed(self->_rustCore, windowId);

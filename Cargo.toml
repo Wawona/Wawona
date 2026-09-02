@@ -96,6 +96,9 @@ default = ["desktop-protocols"]
 # Desktop-only Wayland protocols (DRM, XWayland, screen capture, session lock).
 # Disable for App Store builds: `--no-default-features`
 desktop-protocols = ["smithay-desktop"]
+# iOS/iPadOS Mode B (TrollStore / Sileo): JIT + IOMobileFramebuffer Desktop.
+# Never enable on App Store / TestFlight schemes. CI greps store IPA for absence.
+mode-b-ios = []
 # Runtime policy baseline (choose at build time; env override available)
 profile-store-safe = []
 profile-store-safe-remote = []

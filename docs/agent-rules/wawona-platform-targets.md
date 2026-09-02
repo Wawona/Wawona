@@ -50,17 +50,19 @@ in both places.
 **Linux** (not in the Apple/Android columns): native + remote ✅; VM/containers
 ⏳ planned; Desktop/LockScreen ❌; Wawona Swinging Bridge ❌.
 
-**iOS and iPadOS are the same** for Desktop/LockScreen and Wawona Swinging Bridge (store Mode A
-vs `repo.wawona.io` Mode B / jailbreak Desktop). Do not special-case iPadOS as
+**iOS and iPadOS are the same** for Desktop/LockScreen and Wawona Swinging Bridge
+(store Mode A vs TrollStore / Sileo Mode B). Do not special-case iPadOS as
 forbidden while iPhone is planned for those features.
 
 **Desktop / LockScreen vs Wawona Swinging Bridge vs local shell vs VMs (do not conflate):**
 
 - **Desktop + LockScreen**. Host DE / greeter. macOS + Android ⏳; **iOS and
-  iPadOS** jailbreak path via `repo.wawona.io` (website only); App Store builds
-  ❌ and must never mention jailbreak. Not Linux. Not tvOS/watchOS/visionOS.
-- **Wawona Swinging Bridge**. MacOS/Android (and iOS Mode B) apps → Wayland
-  (+ waypipe to Linux). See `wawona-swinging-bridge`. Not Desktop/LockScreen.
+  iPadOS** via **TrollStore** (IOMobileFramebuffer own-display) and **Sileo**
+  (`repo.wawona.io`, + ElleKit SpringBoard tweaks). App Store builds ❌ and must
+  never mention jailbreak. Not Linux. Not tvOS/watchOS/visionOS.
+- **Wawona Swinging Bridge**. MacOS/Android (and iOS **Sileo** Mode B only) apps →
+  Wayland (+ waypipe to Linux). See `wawona-swinging-bridge`. Not Desktop/LockScreen.
+  Not available on TrollStore alone.
 - **On-device shell**. Bundled **zsh** + Weston terminal (native port path).
   Not a VM and not a container. Separate from `virtual_machine` / `container`
   machine kinds.
@@ -71,10 +73,13 @@ forbidden while iPhone is planned for those features.
   Engines (planned):
   - **iOS / iPadOS Mode A (store):** UTM-SE-class **jitless** interpreter
     (`wwn-vms` TCTI); containers = OCI pull + container-in-VM on that engine.
-  - **iOS / iPadOS Mode B (Sileo Mode B IPA from `repo.wawona.io`):** JIT-enabled
-    UTM/QEMU for VMs **and** containers; unsandboxed shell + host APT. Auto-
-    package Mode B IPA on the repo. **absent** from store IPA.
-  - **Sideload / TrollStore:** website may document JIT; App Store copy must not.
+  - **iOS / iPadOS Mode B (TrollStore `.tipa`):** JIT-enabled UTM/QEMU for VMs
+    **and** containers; IOMobileFramebuffer Desktop/LockScreen; **no** Swinging
+    Bridge / host APT. **absent** from store IPA.
+  - **iOS / iPadOS Mode B (Sileo from `repo.wawona.io`):** same JIT + Desktop
+    engines; plus unsandboxed shell, host APT, ElleKit tweaks, Swinging Bridge.
+    Auto-package Mode B IPA / `.deb` on the repo. **absent** from store IPA.
+  - Website may document TrollStore and Sileo; App Store copy must not.
   - **macOS:** Apple Containerization (`Containerization.framework`) + VMs via
     `Virtualization.framework`, bundled into Wawona. The Apple `container` CLI
     and Containerization.framework are **macOS-only** (`appleContainerizationGate`);
@@ -122,11 +127,11 @@ forbidden while iPhone is planned for those features.
    on visionOS (same class as tvOS/watchOS). Do not leave visionOS on a reduced
    iOS-phone feature set for everything else.
 4. **Desktop / LockScreen replacement**. **macOS + Android** (⏳ planned),
-   plus **iOS and iPadOS** jailbreak tweaks documented only on the website /
-   `repo.wawona.io` (Sileo). **Forbidden** on Linux and on App Store builds of
-   iOS/iPadOS (and all of tvOS/watchOS/visionOS). Machine profiles for
-   Desktop/LockScreen: **native ports only**. macOS engage path: SIP **fully
-   disabled** (`csrutil disable`) + `.dylib`. Partial SIP
+   plus **iOS and iPadOS** via TrollStore (IOMFB) and Sileo (`repo.wawona.io`,
+   ElleKit tweaks). Documented on the website; **forbidden** on Linux and on
+   App Store builds of iOS/iPadOS (and all of tvOS/watchOS/visionOS). Machine
+   profiles for Desktop/LockScreen: **native ports only**. macOS engage path:
+   SIP **fully disabled** (`csrutil disable`) + `.dylib`. Partial SIP
    (`csrutil enable --without debug`) is refused. Android: Default Home App + LockScreen APIs.
    **no root required, no fallback tier required**. Never wire Desktop/LockScreen
    UI into App Store Apple-mobile builds; never mention jailbreak in those

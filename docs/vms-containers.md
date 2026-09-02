@@ -11,18 +11,21 @@ Desktop/LockScreen or Wawona Swinging Bridge.
 
 ## Mode A vs Mode B (iOS / iPadOS)
 
-| | **Mode A** (App Store IPA) | **Mode B** (Sileo Mode B IPA) |
-|---|---|---|
-| Engine | UTM-SE-class **jitless** interpreter | UTM/QEMU **with JIT** |
-| Containers | OCI pull + container-in-VM on jitless VM | Same OCI pull + **JIT** container-in-VM |
-| Ship | Store / TestFlight only | `repo.wawona.io` auto-packages Mode B IPA. **never** in App Store |
+| | **Mode A** (App Store IPA) | **TrollStore** (JIT IPA) | **Mode B** (Sileo Mode B IPA) |
+|---|---|---|---|
+| Engine | UTM-SE-class **jitless** interpreter | UTM/QEMU **with JIT** | UTM/QEMU **with JIT** |
+| Containers | OCI pull + container-in-VM on jitless VM | Same OCI + **JIT** container-in-VM | Same OCI + **JIT** container-in-VM |
+| Wasm | No JIT | Wasm JIT allowed | Wasm JIT allowed |
+| Desktop / LockScreen / Swinging Bridge | Forbidden | Not implied | **Yes** (out of the box) |
+| Ship | Store / TestFlight only | Website sideload | `repo.wawona.io` auto-packages Mode B IPA. **never** in App Store |
 
 Design both in `wwn-vms` / `wwn-containers` / Wawona at all times. Mode B code
-must be compile-time absent from store artifacts.
+must be compile-time absent from store artifacts. Channels:
+[`agent-rules/wawona-ios-mode-b-channels.md`](./agent-rules/wawona-ios-mode-b-channels.md).
 
-**Backends differ by OS:** macOS → Virtualization / Apple Containerization;
-iOS family → UTM-SE-class (A) or JIT UTM (B); Android → QEMU±KVM/proot. Do not
-share one engine across those hosts. **Note:** active work on macOS Apple
+**Backends differ by OS:** macOS → QEMU+HVF / Apple Containerization;
+iOS family → UTM-SE-class (A) or JIT UTM (B); Android → QEMU±KVM. Do not
+share one engine binary across those hosts. **Note:** active work on macOS Apple
 Container in `wwn-containers`. Leave that repo alone until it merges; VMs and
 Wasm packages proceed independently.
 
@@ -30,9 +33,9 @@ Wasm packages proceed independently.
 
 | Platform | Gate | Planned engine |
 |---|---|---|
-| macOS | planned | `Virtualization.framework` + Apple Containerization (not MAS for run) |
-| iOS / iPadOS | planned | **A:** jitless UTM-SE-class. **B:** JIT UTM via Sileo Mode B IPA |
-| Android | planned | QEMU ± KVM/AVF; Play = Mode A; root paths = Mode B |
+| macOS | planned | **QEMU + HVF** (`Hypervisor.framework`). Apple Containerization for containers |
+| iOS / iPadOS | planned | **A:** jitless QEMU-TCTI (UTM SE). **B:** JIT UTM via Sileo Mode B IPA |
+| Android | planned | **QEMU + Android HV** (`/dev/kvm`) with TCG+JIT fallback; Play = Mode A |
 | Linux | planned | Machine profiles via `wwn-vms` / `wwn-containers` |
 | tvOS / watchOS / visionOS | **forbidden** | Native + remote only |
 

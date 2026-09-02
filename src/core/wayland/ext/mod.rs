@@ -76,7 +76,7 @@ pub fn register(_state: &mut CompositorState, dh: &DisplayHandle) {
     text_input::register_text_input_manager(dh);
     text_input::register_text_input_manager_v1(dh);
     keyboard_shortcuts_inhibit::register_keyboard_shortcuts_inhibit_manager(dh);
-    linux_dmabuf::register_linux_dmabuf(dh);
+    let _ = linux_dmabuf::register_linux_dmabuf(dh);
     linux_explicit_sync::register_linux_explicit_sync(dh);
     input_timestamps::register_input_timestamps(dh);
 
@@ -137,6 +137,7 @@ pub fn register(_state: &mut CompositorState, dh: &DisplayHandle) {
             xwayland_keyboard_grab::register_xwayland_keyboard_grab(dh);
             xwayland_shell::register_xwayland_shell(dh);
             input_method::register_input_method_manager(dh);
+            linux_drm_syncobj::register_linux_drm_syncobj(dh);
         } else {
             crate::wlog!(
                 crate::util::logging::COMPOSITOR,

@@ -382,10 +382,111 @@ fn test_protocol_matrix_dmabuf_feedback_resolves() {
 
     assert!(
         !probe.unrenderable_formats_advertised,
-        "bare Format / non-IOSurface modifiers must not be advertised (unrenderable)"
+        "bare Format / non-native modifiers must not be advertised on Apple/Android"
     );
     assert!(
         probe.feedback_done,
         "dmabuf feedback must resolve with done (clients would stall otherwise)"
     );
+}
+
+#[test]
+fn test_protocol_matrix_dmabuf_native_modifier_only_on_apple() {
+    // On Apple hosts, LINEAR must not appear in modifier events (see
+    // docs/linux-dmabuf-zero-copy.md). Linux CI advertises LINEAR on purpose.
+    #[cfg(not(target_vendor = "apple"))]
+    {
+        return;
+    }
+    #[cfg(target_vendor = "apple")]
+    {
+        use wayland_client::protocol::wl_registry::WlRegistry;
+        use wayland_protocols::wp::linux_dmabuf::zv1::client::zwp_linux_dmabuf_v1;
+
+        const IOSURFACE_MODIFIER: u64 = 0x8000_0000_0000_0000;
+
+        #[derive(Default)]
+        struct ModProbe {
+            dmabuf: Option<(u32, u32)>,
+            saw_native: bool,
+            saw_linear: bool,
+        }
+
+        impl Dispatch<WlRegistry, ()> for ModProbe {
+            fn event(
+                state: &mut Self,
+                _proxy: &WlRegistry,
+                event: wl_registry::Event,
+                _data: &(),
+                _conn: &Connection,
+                _qh: &QueueHandle<Self>,
+            ) {
+                if let wl_registry::Event::Global {
+                    name,
+                    interface,
+                    version,
+                } = event
+                {
+                    if interface == "zwp_linux_dmabuf_v1" {
+                        state.dmabuf = Some((name, version));
+                    }
+                }
+            }
+        }
+
+        impl Dispatch<zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1, ()> for ModProbe {
+            fn event(
+                state: &mut Self,
+                _proxy: &zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1,
+                event: zwp_linux_dmabuf_v1::Event,
+                _data: &(),
+                _conn: &Connection,
+                _qh: &QueueHandle<Self>,
+            ) {
+                match event {
+                    zwp_linux_dmabuf_v1::Event::Modifier {
+                        modifier_hi,
+                        modifier_lo,
+                        ..
+                    } => {
+                        let m = ((modifier_hi as u64) << 32) | (modifier_lo as u64);
+                        if (m & IOSURFACE_MODIFIER) != 0 {
+                            state.saw_native = true;
+                        }
+                        if m == 0 {
+                            state.saw_linear = true;
+                        }
+                    }
+                    zwp_linux_dmabuf_v1::Event::Format { .. } => {}
+                    _ => {}
+                }
+            }
+        }
+
+        impl Dispatch<wl_callback::WlCallback, ()> for ModProbe {
+            fn event(
+                _state: &mut Self,
+                _proxy: &wl_callback::WlCallback,
+                _event: wl_callback::Event,
+                _data: &(),
+                _conn: &Connection,
+                _qh: &QueueHandle<Self>,
+            ) {
+            }
+        }
+
+        let mut env = TestEnv::new();
+        let display = env.client.display();
+        let mut queue = env.client.new_event_queue::<ModProbe>();
+        let qh = queue.handle();
+        let registry = display.get_registry(&qh, ());
+        let mut probe = ModProbe::default();
+        env.wait_roundtrip(&mut queue, &mut probe);
+        let (name, version) = probe.dmabuf.expect("zwp_linux_dmabuf_v1");
+        let _dmabuf: zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1 =
+            registry.bind(name, version.min(4), &qh, ());
+        env.wait_roundtrip(&mut queue, &mut probe);
+        assert!(probe.saw_native, "Apple must advertise high-bit native modifier");
+        assert!(!probe.saw_linear, "Apple must not advertise LINEAR");
+    }
 }

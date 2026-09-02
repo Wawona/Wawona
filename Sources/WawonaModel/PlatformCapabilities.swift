@@ -204,14 +204,24 @@ public enum PlatformCapabilities: Sendable {
         return UserDefaults.standard.string(forKey: "OpenGLDriver") != "none"
     }
 
-    /// Desktop + LockScreen host replacement. Coming soon on macOS (Android is
-    /// gated in Compose). App Store Apple-mobile builds keep this forbidden and
-    /// must never mention alternate distribution paths in UI or strings.
+    /// Desktop + LockScreen host replacement.
+    /// - macOS: planned (Classic / iland Mode B dylib).
+    /// - iOS/iPadOS store schemes: always forbidden (never mention alternate
+    ///   distribution in UI strings).
+    /// - iOS/iPadOS Mode B schemes (`WWN_MODE_B`): planned then available
+    ///   (TrollStore IOMobileFramebuffer and/or Sileo). Store CI must fail if
+    ///   this flag is set on a store archive.
     public static var desktopReplacementGate: CapabilityGate {
         #if os(macOS)
         return .planned(flag: "WWN_DESKTOP_REPLACEMENT")
+        #elseif os(iOS)
+        #if WWN_MODE_B
+        return .planned(flag: "WWN_MODE_B_DESKTOP")
         #else
         return .forbidden(reason: "Desktop/LockScreen replacement is not offered in App Store Apple-mobile builds")
+        #endif
+        #else
+        return .forbidden(reason: "Desktop/LockScreen replacement is not offered on this Apple-mobile target")
         #endif
     }
 
