@@ -62,7 +62,7 @@ def main() -> None:
         errors.append('mobile-platform-deps.nix must build "wawona-wasm" on mobile/tv/vision')
 
     rootfs = read(IOS_ROOTFS)
-    for needle in ("help wawona wasm", "help()", 'echo "20"'):
+    for needle in ("help wawona wasm", "help()", 'echo "21"'):
         if needle not in rootfs:
             errors.append(f"ios-rootfs.nix missing catalog/stub marker: {needle}")
     if "wawona-dispatch" not in rootfs and "in-process" not in rootfs:
