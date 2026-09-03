@@ -59,14 +59,30 @@ fi
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
-unzip -q "$artifact" -d "$tmp"
+entries="$tmp/entries.txt"
+unzip -Z1 "$artifact" >"$entries"
+unzip -q "$artifact" -d "$tmp" \
+  "Payload/Wawona.app/Wawona" \
+  "Payload/Wawona.app/Info.plist"
 app="$tmp/Payload/Wawona.app"
 executable="$app/Wawona"
 [[ -x "$executable" ]] || fail "Mode B executable is missing"
-[[ ! -e "$app/_CodeSignature" ]] || fail "tipa must not contain _CodeSignature"
+! /usr/bin/grep -q '^Payload/Wawona\.app/_CodeSignature/' "$entries" ||
+  fail "tipa must not contain _CodeSignature"
 for framework in libEGL libGLESv2; do
-  [[ -f "$app/Frameworks/$framework.framework/$framework" ]] ||
+  /usr/bin/grep -Fxq \
+    "Payload/Wawona.app/Frameworks/$framework.framework/$framework" "$entries" ||
     fail "Mode B runtime dependency is missing: $framework.framework"
+done
+/usr/bin/grep -Fxq \
+  "Payload/Wawona.app/Frameworks/qemu-aarch64-softmmu.framework/qemu-aarch64-softmmu" \
+  "$entries" ||
+  fail "Mode B JIT QEMU engine framework is missing"
+for guest in wawona-mobile-guest wawona-container-guest; do
+  /usr/bin/grep -Fxq "Payload/Wawona.app/$guest/Image" "$entries" ||
+    fail "Mode B guest kernel is missing: $guest/Image"
+  /usr/bin/grep -Fxq "Payload/Wawona.app/$guest/rootfs.img" "$entries" ||
+    fail "Mode B guest rootfs is missing: $guest/rootfs.img"
 done
 [[ "$(plist_value "$app/Info.plist" CFBundleIdentifier)" == "com.aspauldingcode.Wawona.ModeB" ]] ||
   fail "Mode B bundle identifier is wrong"
