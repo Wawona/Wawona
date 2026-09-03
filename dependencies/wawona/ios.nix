@@ -9,6 +9,7 @@
   release ? false,
   generateIPA ? false,
   generateXCArchive ? false,
+  modeB ? false,
   certificateFile ? null,
   certificatePassword ? null,
   provisioningProfile ? null,
@@ -43,7 +44,7 @@ let
       let v = lib.removeSuffix "\n" (lib.fileContents (wawonaSrc + "/VERSION"));
       in if v == "" then "0.0.1" else v;
   xcodeUtils = import applePath { inherit lib pkgs TEAM_ID; };
-  releaseBuild = release || generateIPA || generateXCArchive;
+  releaseBuild = release || generateIPA || generateXCArchive || modeB;
   developmentTeam = if TEAM_ID == null || TEAM_ID == "" then null else TEAM_ID;
   autoSigning = automaticProvisioning || developmentTeam != null;
   # xcodebuild -sdk wants iphonesimulator / watchsimulator, not "iphoneos"+"simulator".
@@ -75,7 +76,9 @@ in
   inherit sdk;
   __noChroot = true;
   configuration = if releaseBuild then "Release" else "Debug";
-  release = releaseBuild;
+  # Mode B uses the Release Xcode configuration but remains an unsigned app
+  # build. Its executable receives the TrollStore ldid signature afterward.
+  release = releaseBuild && !modeB;
   inherit
     certificateFile
     certificatePassword
@@ -100,9 +103,14 @@ in
       # builder. ARCHS=arm64 below still pins the slice.
       ''-destination "generic/platform=${destinationPlatform}"''
     ]
-    ++ lib.optionals (!releaseBuild) [
+    ++ lib.optionals (!releaseBuild || modeB) [
       ''CODE_SIGNING_ALLOWED=NO''
       ''CODE_SIGNING_REQUIRED=NO''
+    ]
+    ++ lib.optionals modeB [
+      # Command-line scope reaches WawonaModel as well as the app target, so
+      # Swift capability gates are compiled for this immutable product flavor.
+      ''SWIFT_ACTIVE_COMPILATION_CONDITIONS="WWN_MODE_B"''
     ]
     # Impure Ship: beta (stores): fastlane match installs App Store profiles; force
     # Manual signing so xcodebuild does not look for a Development account.

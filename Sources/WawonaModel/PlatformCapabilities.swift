@@ -210,6 +210,8 @@ public enum PlatformCapabilities: Sendable {
     public static var desktopReplacementGate: CapabilityGate {
         #if os(macOS)
         return .planned(flag: "WWN_DESKTOP_REPLACEMENT")
+        #elseif WWN_MODE_B && os(iOS)
+        return .planned(flag: "WWN_MODE_B_DESKTOP")
         #else
         return .forbidden(reason: "Desktop/LockScreen replacement is not offered in App Store Apple-mobile builds")
         #endif

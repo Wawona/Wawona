@@ -1788,15 +1788,25 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
   if (buffer->iosurface_id != 0) {
     IOSurfaceRef surf = IOSurfaceLookup(buffer->iosurface_id);
     if (surf) {
-      BOOL bottomUp = WWNBufferIsBottomUp(surf);
-      // UIKit cannot assign IOSurface to CALayer.contents. AppKit can, but a
-      // CALayer Y-scale under geometryFlipped looks like inverted X+Y, so both
-      // families bake a CGImage. Niri/ANGLE Metal CPU mapping is already
-      // top-down; WWNBottomUp as a blanket flip inverted niri. Nested Weston
-      // gl-renderer leaves GL bottom-up rows. Flip only that compositor
-      // (cpu_y_flip, from title "Weston Compositor - wayland0"; wayland-backend
-      // never sends xdg app_id).
       BOOL westonFlip = buffer->cpu_y_flip != 0;
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+      // Keep the looked-up IOSurface retained in the cache. The UIKit view
+      // imports it directly into Metal; only wl_shm uses CGImage/upload.
+      _bufferCache[cacheKey] = CFBridgingRelease(surf);
+      if (westonFlip)
+        [_bottomUpBuffers addObject:cacheKey];
+      else
+        [_bottomUpBuffers removeObject:cacheKey];
+      WWNPruneBufferCacheForSurface(_bufferCache, buffer->surface_id, cacheKey);
+      _waylandPresentGeneration++;
+      _presentGenerationBySurface[surfaceId] = @(_waylandPresentGeneration);
+      WWNLog("DMABUF",
+             @"cache import backing_id=%u buf=%llu route=iosurface copy=zero",
+             buffer->iosurface_id, buffer->buffer_id);
+#else
+      BOOL bottomUp = WWNBufferIsBottomUp(surf);
+      // AppKit keeps the existing CGImage path until its host-window presenter
+      // moves to the shared IOSurface Metal route.
       (void)bottomUp;
       CGImageRef image = WWNCreateCGImageFromIOSurface(surf, westonFlip);
       CFRelease(surf);
@@ -1816,6 +1826,7 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
                @"FAILED IOSurface→CGImage for buf=%llu iosurface=%u",
                buffer->buffer_id, buffer->iosurface_id);
       }
+#endif
     } else {
       WWNLog("CACHE", @"FAILED IOSurface lookup for buf=%llu iosurface=%u",
              buffer->buffer_id, buffer->iosurface_id);
@@ -1991,11 +2002,13 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
     selectedBufferId = latestForSurface.unsignedLongLongValue;
   }
   NSString *cacheKey = WWNBufferCacheKey(node->surface_id, selectedBufferId);
+  NSString *effectiveCacheKey = cacheKey;
   id content = _bufferCache[cacheKey];
   if (!content && isStaleSceneBuffer) {
     NSString *sceneCacheKey =
         WWNBufferCacheKey(node->surface_id, node->buffer_id);
     content = _bufferCache[sceneCacheKey];
+    effectiveCacheKey = sceneCacheKey;
   }
 
   static uint64_t s_lastRenderLogBuf = 0;
@@ -2020,8 +2033,12 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
   }
 
   CGImageRef cgImage = NULL;
-  if (CFGetTypeID((__bridge CFTypeRef)content) == CGImageGetTypeID()) {
+  IOSurfaceRef ioSurface = NULL;
+  CFTypeID contentType = CFGetTypeID((__bridge CFTypeRef)content);
+  if (contentType == CGImageGetTypeID()) {
     cgImage = (__bridge CGImageRef)content;
+  } else if (contentType == IOSurfaceGetTypeID()) {
+    ioSurface = (__bridge IOSurfaceRef)content;
   }
 
   // During output resize, nested Weston may commit a portrait buffer while the
@@ -2068,7 +2085,8 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
     if (hostBounds.size.width > 0.0 && hostBounds.size.height > 0.0) {
       frame = CGRectMake(0, 0, hostBounds.size.width, hostBounds.size.height);
     }
-  } else if (cgImage && node->buffer_width > 0 && node->buffer_height > 0 &&
+  } else if ((cgImage || ioSurface) && node->buffer_width > 0 &&
+             node->buffer_height > 0 &&
              node->scale > 0.0f) {
     // SizeAuthority::Host can leave node dimensions at a stale host request
     // while the client buffer stays at its fixed preferred size (flower/smoke
@@ -2085,6 +2103,21 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
   if (node->content_rect_w > 0.0f && node->content_rect_h > 0.0f) {
     contentRect = CGRectMake(node->content_rect_x, node->content_rect_y,
                              node->content_rect_w, node->content_rect_h);
+  }
+
+  if (ioSurface) {
+    uint64_t presentToken =
+        [_presentGenerationBySurface[surfId] unsignedLongLongValue];
+    BOOL bottomUp = [_bottomUpBuffers containsObject:effectiveCacheKey];
+    [iosView presentWaylandIOSurface:ioSurface
+                               frame:frame
+                         contentRect:contentRect
+                        bottomUpRows:bottomUp
+                        presentToken:presentToken];
+    WWNLog("DMABUF",
+           @"present surface=%@ window=%@ backing_id=%u copy=zero bottom_up=%d",
+           surfId, winId, IOSurfaceGetID(ioSurface), (int)bottomUp);
+    return;
   }
 
   if (cgImage) {
@@ -2114,12 +2147,8 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
     return;
   }
 
-  // IOSurface-as-CALayer.contents is AppKit-only. If an IOSurface still reaches
-  // here (cache conversion failed), drop it. Painting a blank legacy layer
-  // hides the real failure mode.
   WWNLog("RENDER",
-         @"IOS skip non-CGImage content for surf=%@ win=%@ (type=%lu). "
-         @"IOSurface must be converted in cacheBuffer",
+         @"IOS skip unknown cached content for surf=%@ win=%@ (type=%lu)",
          surfId, winId,
          (unsigned long)CFGetTypeID((__bridge CFTypeRef)content));
 }

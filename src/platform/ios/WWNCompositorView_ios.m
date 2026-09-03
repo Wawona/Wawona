@@ -648,8 +648,10 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   /// YES while kmscube / nested DRM-GL owns this view's CAMetalLayer. Wayland
   /// present paths must not tear the plate down mid-session (blank kmscube).
   BOOL _ilandPresentationActive;
+  BOOL _waylandIOSurfacePresentationActive;
   uint64_t _lastPresentToken;
   CGImageRef _lastPresentedWaylandImage;
+  IOSurfaceRef _lastPresentedWaylandIOSurface;
   CGFloat _lastContentsScale;
   CGSize _lastWaylandLayoutSize;
 
@@ -867,7 +869,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 }
 
 - (void)_teardownMetalPresentationLayer {
-  if (_ilandPresentationActive) {
+  if (_ilandPresentationActive || _waylandIOSurfacePresentationActive) {
     return;
   }
   [_ilandPresenter invalidate];
@@ -879,6 +881,8 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 - (void)prepareForSessionTeardown {
   _sessionActive = NO;
   _ilandPresentationActive = NO;
+  _waylandIOSurfacePresentationActive = NO;
+  _lastPresentedWaylandIOSurface = NULL;
   // presentWaylandFrame: early-returns once _sessionActive is NO, so drop the
   // external-display mirror layer explicitly.
   [self _mirrorFrameToExternalDisplay:NULL contentRect:CGRectZero];
@@ -910,6 +914,8 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   }
   _waylandFrameView.hidden = !active;
   if (active) {
+    _waylandIOSurfacePresentationActive = NO;
+    _lastPresentedWaylandIOSurface = NULL;
     [self _teardownMetalPresentationLayer];
   }
 }
@@ -936,6 +942,8 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
     return;
   }
   if (!_ilandPresentationActive) {
+    _waylandIOSurfacePresentationActive = NO;
+    _lastPresentedWaylandIOSurface = NULL;
     [self _teardownMetalPresentationLayer];
   }
   _waylandLayer.hidden = YES;
@@ -1114,6 +1122,57 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
                         object:self];
     });
   }
+}
+
+- (void)presentWaylandIOSurface:(IOSurfaceRef)surface
+                          frame:(CGRect)frame
+                    contentRect:(CGRect)normalizedContentRect
+                   bottomUpRows:(BOOL)bottomUpRows
+                   presentToken:(uint64_t)presentToken {
+  if (!_sessionActive || !surface) return;
+  BOOL unchanged =
+      presentToken != 0 && presentToken == _lastPresentToken &&
+      surface == _lastPresentedWaylandIOSurface;
+  if (unchanged) return;
+
+  [self _ensureMetalPresentationLayer];
+  if (!_ilandPresenter || !_contentLayer) {
+    WWNLog("DMABUF", @"Metal presenter unavailable for IOSurface %u",
+           IOSurfaceGetID(surface));
+    return;
+  }
+  _waylandIOSurfacePresentationActive = YES;
+  _waylandFrameView.hidden = YES;
+  _waylandFrameView.layer.contents = nil;
+  _waylandLayer.hidden = YES;
+  _contentLayer.hidden = NO;
+  _contentLayer.frame = self.bounds;
+  CGFloat scale = self.contentScaleFactor;
+  if (scale <= 0.0) scale = 1.0;
+  _contentLayer.contentsScale = scale;
+  _contentLayer.drawableSize =
+      CGSizeMake(MAX(1.0, self.bounds.size.width * scale),
+                 MAX(1.0, self.bounds.size.height * scale));
+  BOOL presented =
+      [_ilandPresenter presentCompositorIOSurface:surface
+                                     bottomUpRows:bottomUpRows
+                                      contentRect:normalizedContentRect];
+  if (!presented) return;
+
+  BOOL firstFrame = _lastPresentedWaylandIOSurface == NULL;
+  _lastPresentToken = presentToken;
+  _lastPresentedWaylandImage = NULL;
+  _lastPresentedWaylandIOSurface = surface;
+  if (firstFrame) {
+    [self armHostKeyboardAfterFirstFrame];
+    [[NSNotificationCenter defaultCenter]
+        postNotificationName:@"WWNFirstWaylandFrameNotification"
+                      object:self];
+  }
+  WWNLog("DMABUF",
+         @"view present backing_id=%u frame=%.0f,%.0f %.0fx%.0f copy=zero",
+         IOSurfaceGetID(surface), frame.origin.x, frame.origin.y,
+         frame.size.width, frame.size.height);
 }
 
 /// Forward the presented frame to the external display mirror (AirPlay /

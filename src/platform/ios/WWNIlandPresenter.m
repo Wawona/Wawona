@@ -7,6 +7,7 @@
 //
 
 #import "WWNIlandPresenter.h"
+#import "WWNModeBDesktop.h"
 #import "../macos/WWNEDRSupport.h"
 #import "../macos/ui/Settings/WWNPreferencesManager.h"
 #import "../../util/WWNLog.h"
@@ -16,6 +17,7 @@
 #import <errno.h>
 #import <math.h>
 #import <pthread.h>
+#import <simd/simd.h>
 #import <stdatomic.h>
 #import <unistd.h>
 
@@ -58,15 +60,18 @@ static NSString *const kShaderSource = @""
 "#include <metal_stdlib>\n"
 "using namespace metal;\n"
 "struct VOut { float4 pos [[position]]; float2 uv; };\n"
-"vertex VOut wwn_vs(uint vid [[vertex_id]]) {\n"
+"vertex VOut wwn_vs(uint vid [[vertex_id]], constant uint &bottomUp [[buffer(0)]]) {\n"
 "  float2 p[4] = { float2(-1,-1), float2(1,-1), float2(-1,1), float2(1,1) };\n"
-"  float2 t[4] = { float2(0,1),  float2(1,1),  float2(0,0), float2(1,0) };\n"
-"  VOut o; o.pos = float4(p[vid], 0, 1); o.uv = t[vid]; return o;\n"
+"  float2 top[4] = { float2(0,0), float2(1,0), float2(0,1), float2(1,1) };\n"
+"  float2 bottom[4] = { float2(0,1), float2(1,1), float2(0,0), float2(1,0) };\n"
+"  VOut o; o.pos = float4(p[vid], 0, 1);\n"
+"  o.uv = bottomUp != 0 ? bottom[vid] : top[vid]; return o;\n"
 "}\n"
 "fragment float4 wwn_fs(VOut in [[stage_in]],\n"
-"                       texture2d<float> tex [[texture(0)]]) {\n"
+"                       texture2d<float> tex [[texture(0)]],\n"
+"                       constant float4 &rect [[buffer(0)]]) {\n"
 "  constexpr sampler s(filter::linear, address::clamp_to_edge);\n"
-"  return tex.sample(s, in.uv);\n"
+"  return tex.sample(s, rect.xy + in.uv * rect.zw);\n"
 "}\n";
 
 // See the macOS presenter: a GBM ring reuses a handful of IOSurfaces, so
@@ -248,6 +253,94 @@ static MTLPixelFormat WWNMetalFormatForIOSurface(uint32_t fourcc) {
     return tex;
 }
 
+- (BOOL)presentCompositorIOSurface:(IOSurfaceRef)surface
+                     bottomUpRows:(BOOL)bottomUpRows
+                      contentRect:(CGRect)normalizedContentRect {
+    if (!surface) return NO;
+#if WWN_MODE_B
+    if (wwn_modeb_desktop_phase() != 0) {
+        int32_t result = wwn_modeb_desktop_present_iosurface(
+            surface, (uint32_t)IOSurfaceGetWidth(surface),
+            (uint32_t)IOSurfaceGetHeight(surface));
+        return result == 0;
+    }
+#endif
+    if (![NSThread isMainThread]) {
+        CFRetain(surface);
+        __weak typeof(self) weakSelf = self;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [weakSelf presentCompositorIOSurface:surface
+                                   bottomUpRows:bottomUpRows
+                                    contentRect:normalizedContentRect];
+            CFRelease(surface);
+        });
+        return YES;
+    }
+
+    NSUInteger width = IOSurfaceGetWidth(surface);
+    NSUInteger height = IOSurfaceGetHeight(surface);
+    id<MTLTexture> source = [self cachedTextureForIOSurface:surface
+                                                      width:width
+                                                     height:height];
+    id<CAMetalDrawable> drawable = source ? [_layer nextDrawable] : nil;
+    if (!source || !drawable) {
+        WWNLog("DMABUF", @"present reject backing_id=%u texture=%@ drawable=%@",
+               IOSurfaceGetID(surface), source, drawable);
+        return NO;
+    }
+
+    MTLRenderPassDescriptor *pass = [MTLRenderPassDescriptor renderPassDescriptor];
+    pass.colorAttachments[0].texture = drawable.texture;
+    pass.colorAttachments[0].loadAction = MTLLoadActionClear;
+    pass.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 1);
+    pass.colorAttachments[0].storeAction = MTLStoreActionStore;
+    id<MTLCommandBuffer> commands = [_queue commandBuffer];
+    id<MTLRenderCommandEncoder> encoder =
+        [commands renderCommandEncoderWithDescriptor:pass];
+    [encoder setRenderPipelineState:_pipeline];
+    uint32_t bottomUp = bottomUpRows ? 1u : 0u;
+    [encoder setVertexBytes:&bottomUp length:sizeof(bottomUp) atIndex:0];
+    vector_float4 contentRect = {
+        normalizedContentRect.origin.x,
+        normalizedContentRect.origin.y,
+        normalizedContentRect.size.width,
+        normalizedContentRect.size.height,
+    };
+    [encoder setFragmentBytes:&contentRect
+                       length:sizeof(contentRect)
+                      atIndex:0];
+
+    NSUInteger targetWidth = drawable.texture.width;
+    NSUInteger targetHeight = drawable.texture.height;
+    if (targetWidth && targetHeight &&
+        (targetWidth != width || targetHeight != height)) {
+        double scale = fmin((double)targetWidth / (double)width,
+                            (double)targetHeight / (double)height);
+        double fitWidth = (double)width * scale;
+        double fitHeight = (double)height * scale;
+        MTLViewport viewport = {
+            .originX = ((double)targetWidth - fitWidth) * 0.5,
+            .originY = ((double)targetHeight - fitHeight) * 0.5,
+            .width = fitWidth,
+            .height = fitHeight,
+            .znear = 0.0,
+            .zfar = 1.0,
+        };
+        [encoder setViewport:viewport];
+    }
+    [encoder setFragmentTexture:source atIndex:0];
+    [encoder drawPrimitives:MTLPrimitiveTypeTriangleStrip
+                vertexStart:0
+                vertexCount:4];
+    [encoder endEncoding];
+    [commands presentDrawable:drawable];
+    [commands commit];
+    WWNLog("DMABUF",
+           @"present sink=CAMetalLayer backing_id=%u route=iosurface-metal copy=zero",
+           IOSurfaceGetID(surface));
+    return YES;
+}
+
 - (void)syncPreferredModeFromLayer {
     if (!_layer) return;
     CGFloat scale = _layer.contentsScale > 0.0 ? _layer.contentsScale : 1.0;
@@ -265,6 +358,18 @@ static MTLPixelFormat WWNMetalFormatForIOSurface(uint32_t fourcc) {
 - (void)presentIOSurface:(IOSurfaceRef)surface
                   crtcID:(uint32_t)crtcID
            framebufferID:(uint32_t)framebufferID {
+#if WWN_MODE_B
+    if (wwn_modeb_desktop_phase() != 0) {
+        int32_t result = wwn_modeb_desktop_present_iosurface(
+            surface, (uint32_t)IOSurfaceGetWidth(surface),
+            (uint32_t)IOSurfaceGetHeight(surface));
+        if (result != 0) {
+            WWNLog("MODEB", @"IOMFB direct present failed: %d", result);
+        }
+        iland_drm_complete_page_flip(crtcID, framebufferID);
+        return;
+    }
+#endif
     // CAMetalLayer nextDrawable is unreliable off the main thread on UIKit;
     // hop the whole present so kmscube's render thread does not paint into a
     // nil drawable (permanent black plate).
@@ -373,6 +478,10 @@ static MTLPixelFormat WWNMetalFormatForIOSurface(uint32_t fourcc) {
     id<MTLRenderCommandEncoder> enc =
         [cb renderCommandEncoderWithDescriptor:rp];
     [enc setRenderPipelineState:_pipeline];
+    uint32_t bottomUp = 1;
+    [enc setVertexBytes:&bottomUp length:sizeof(bottomUp) atIndex:0];
+    vector_float4 contentRect = {0, 0, 1, 1};
+    [enc setFragmentBytes:&contentRect length:sizeof(contentRect) atIndex:0];
 
     // A stock KMS client keeps its startup framebuffer size for the whole run,
     // so after a host resize source and destination extents disagree. Letterbox

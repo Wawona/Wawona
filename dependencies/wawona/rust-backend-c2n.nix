@@ -41,11 +41,16 @@
   # macOS desktop-host / full-dev: enable Mode B Cargo gates (iland-baremetal +
   # profile-desktop-host). Never set for store-safe or mobile backends.
 , desktopHost ? false
+  # Separate TrollStore iOS/iPadOS backend. Never enable for store products.
+, iosModeB ? false
   # Extracted-repo toolchain handles (default to legacy in-tree copies; Wawona's
   # flake injects wwn-toolchain store paths via the pkgs overlay).
 , applePath
 , androidToolchainNix
 }:
+
+assert lib.assertMsg (!iosModeB || platform == "ios" || platform == "ipados")
+  "iosModeB backend profile is restricted to iOS/iPadOS";
 
 let
   # ── Target triple ──────────────────────────────────────────────────
@@ -502,7 +507,9 @@ let
   # ── Features to enable ─────────────────────────────────────────────
   features =
     # waypipe-ssh = in-process waypipe + libssh2 (never OpenSSH) on Apple mobile.
-    if isIOS then [ "waypipe-ssh" "smithay-protocols" "coreutils" ]
+    if isIOS then
+      [ "waypipe-ssh" "smithay-protocols" "coreutils" ]
+      ++ lib.optionals iosModeB [ "profile-ios-mode-b" ]
     else if isTVOS then [ "waypipe-ssh" "smithay-protocols" "coreutils" ]
     else if isVisionOS then [ "waypipe-ssh" "smithay-protocols" "coreutils" ]
     else if isWatchOS then [ "waypipe-ssh" "smithay-protocols" "coreutils" ] # uutils enabled on all targets (per product requirement); Remote via libssh2

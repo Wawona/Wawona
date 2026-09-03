@@ -5,12 +5,12 @@
 // All shared logic lives in Rust core/, platform adapters handle
 // native rendering (Metal on macOS/iOS, GPU backend on Android)
 
-pub mod core;
-pub mod platform;
-pub mod ffi;
 pub mod config;
-pub mod util;
+pub mod core;
+pub mod ffi;
+pub mod platform;
 pub mod prelude;
+pub mod util;
 pub mod version;
 // The `linux` module holds the GTK app's support code plus the canonical
 // machine-profile model/store/catalog. It never references the optional GTK
@@ -26,7 +26,13 @@ pub mod linux;
 // feature in Cargo.toml.
 #[cfg(all(
     feature = "iland-baremetal",
-    any(target_os = "ios", target_os = "tvos", target_os = "watchos", target_os = "visionos", target_os = "android")
+    any(
+        target_os = "ios",
+        target_os = "tvos",
+        target_os = "watchos",
+        target_os = "visionos",
+        target_os = "android"
+    )
 ))]
 compile_error!(
     "feature `iland-baremetal` (iland Mode B) is macOS-only and cannot be built \
@@ -43,11 +49,20 @@ compile_error!(
      or `profile-full-dev`; it is not permitted in store-safe profiles."
 );
 
+#[cfg(all(feature = "profile-ios-mode-b", not(target_os = "ios")))]
+compile_error!("feature `profile-ios-mode-b` is restricted to iOS/iPadOS targets");
+
+#[cfg(all(
+    feature = "profile-ios-mode-b",
+    any(feature = "profile-store-safe", feature = "profile-store-safe-remote")
+))]
+compile_error!("feature `profile-ios-mode-b` cannot be combined with a store-safe profile");
+
 // Re-export FFI types at crate root for UniFFI
 // UniFFI's generated code expects these types to be accessible from the crate root
-pub use ffi::types::*;
+pub use ffi::api::{build_info, version, WawonaCore};
 pub use ffi::errors::*;
-pub use ffi::api::{WawonaCore, version, build_info};
+pub use ffi::types::*;
 
 // When the waypipe feature is enabled (iOS/Android), force the linker to
 // include waypipe's objects in the staticlib so waypipe_main is available

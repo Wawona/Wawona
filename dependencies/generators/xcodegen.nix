@@ -42,6 +42,7 @@
   # Bundled mobile VM guest (kernel + rootfs.img) and iOS-TCI QEMU engine sysroot.
   mobileGuestArtifacts ? null,
   mobileVmEngine ? null,
+  mobileVmEngineModeB ? null,
   # Prefer SDK-gated construction: only emit matching app targets (+ shared libs).
   # Combined with flake `mkXcodegen` passing empty unused platform deps, filtered
   # targets do not realize device/macOS/tvOS closures for ios-sim CI.
@@ -542,6 +543,7 @@ let
 
   appSchemeNames = [
     "Wawona-iOS"
+    "Wawona-iOS-ModeB"
     "Wawona-iPadOS"
     "Wawona-tvOS"
     "Wawona-macOS"
@@ -939,18 +941,18 @@ ICDJSON
     basedOnDependencyAnalysis = false;
   };
 
-  # Single source of truth for the GPU-capable Apple-mobile targets
-  # (iOS, iPadOS, visionOS. The three that must ship niri/fuzzel data, the
-  # VM/container embeds, and bundled ANGLE per wawona-platform-targets).
+  # Single source of truth for the GPU-capable Apple-mobile targets.
+  # iOS/iPadOS also receive VM/container embeds. visionOS keeps graphics
+  # parity but must not embed VM/container engines.
   # ALWAYS call this from those three targets' postBuildScripts instead of
   # hand-listing phases per target: a hand-maintained per-target list is
   # exactly how Wawona-iPadOS silently drifted from Wawona-iOS and shipped
   # without libEGL/libGLESv2 (dyld "Library not loaded: @rpath/libEGL...").
   # tvOS/watchOS intentionally do NOT call this. They must never get
   # ANGLE/Vulkan/OpenGL or VM/container embeds (native + remote only).
-  mkAppleGpuPostBuildPhases = { rootfsEmbedPhase, neovimRootfsEmbedPhase }:
+  mkAppleGpuPostBuildPhases = { rootfsEmbedPhase, neovimRootfsEmbedPhase, withVm ? true }:
     [ xkbEmbedPhase fontEmbedPhase westonDataEmbedPhase niriDataEmbedPhase appsCatalogEmbedPhase rootfsEmbedPhase neovimRootfsEmbedPhase ]
-    ++ mobileVmEmbedPhases
+    ++ lib.optionals withVm mobileVmEmbedPhases
     ++ lib.optionals (angleSimDylib != null) [ angleSimEmbedPhase ]
     ++ lib.optionals (angleDeviceDylib != null) [ angleDeviceEmbedPhase ]
     ++ lib.optionals (swiftshaderSimLib != null) [ swiftshaderSimEmbedPhase ]
@@ -1272,6 +1274,25 @@ ICDJSON
     basedOnDependencyAnalysis = false;
   };
 
+  iosModeBVmEngineEmbedPhase = {
+    path = pkgs.writeShellScript "embed-mobile-vm-engine-ios-modeb.sh" ''
+      if [ "''${PLATFORM_NAME:-}" != "iphoneos" ]; then
+        exit 0
+      fi
+      engineSrc="${if mobileVmEngineModeB == null then "" else toString mobileVmEngineModeB}"
+      if [ -z "$engineSrc" ] || [ ! -d "$engineSrc/Frameworks" ]; then
+        echo "Mode B JIT QEMU engine sysroot is missing" >&2
+        exit 1
+      fi
+      mkdir -p "$TARGET_BUILD_DIR/$FRAMEWORKS_FOLDER_PATH"
+      cp -R "$engineSrc/Frameworks/." \
+        "$TARGET_BUILD_DIR/$FRAMEWORKS_FOLDER_PATH/"
+      echo "Embedded Mode B JIT QEMU engine from $engineSrc"
+    '';
+    name = "Embed JIT QEMU engine (Mode B only)";
+    basedOnDependencyAnalysis = false;
+  };
+
   neovimRootfsIosEmbedScript = deviceRootfs: simRootfs: pkgs.writeShellScript "embed-neovim-rootfs-ios.sh" ''
     case "''${PLATFORM_NAME:-}" in
       iphoneos|appletvos|xros|watchos)
@@ -1465,7 +1486,7 @@ ICDJSON
         };
       };
     };
-    targets = {
+    targets = rec {
       # Layer-3 XCUITest bundle (ci-l3-apple-xcuitest). Drives the running app
       # through accessibility identifiers (e.g. `wwn.compositor.surface`).
       Wawona-iOSUITests = {
@@ -1597,7 +1618,12 @@ ICDJSON
              ++ (ilandGlLdflags { deps = iosSimDeps; simulator = true; }) ++ moltenvkLdflags iosSimDeps ++ footLdflags iosSimDeps ++ fastfetchLdflags iosSimDeps ++ phoonLdflags iosSimDeps ++ wasmLdflags iosSimDeps ++ neovimLdflags iosSimDeps ++ niriLdflags iosSimDeps ++ fuzzelLdflags iosSimDeps
              ++ sshCliLdflags iosSimDeps
              ++ appleMobileResolvLdflags
-             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
+             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [
+               derivedRustLib
+               "-Wl,-u,_wwn_vm_product_accel"
+               "-L${strip (iosSimDeps."vm-engine-contract" or null)}/lib"
+               "-lwwn_vms_engine"
+             ] ++ finalCxxLdflags;
             GCC_PREPROCESSOR_DEFINITIONS = [
               "$(inherited)"
               "TARGET_OS_IPHONE=1"
@@ -1609,6 +1635,7 @@ ICDJSON
               "${strip (iosSimDeps.libwayland or null)}/include/wayland"
               "${strip (iosSimDeps.xkbcommon or null)}/include"
               "${strip (iosSimDeps.libssh2 or null)}/include"
+              "${strip (iosSimDeps."vm-engine-contract" or null)}/include"
             ] ++ (pixmanHeaderPaths iosSimDeps) ++ (ilandGlHeaderPaths iosSimDeps);
           } // lib.optionalAttrs (!simulatorOnly) {
             "OTHER_CFLAGS[sdk=iphoneos*]" = [ "$(inherited)" ] ++ ios26ObjcAutolinkOff;
@@ -1645,13 +1672,19 @@ ICDJSON
              ++ (ilandGlLdflags { deps = iosDeps; simulator = false; }) ++ moltenvkLdflags iosDeps ++ footLdflags iosDeps ++ fastfetchLdflags iosDeps ++ phoonLdflags iosDeps ++ wasmLdflags iosDeps ++ neovimLdflags iosDeps ++ niriLdflags iosDeps ++ fuzzelLdflags iosDeps
              ++ sshCliLdflags iosDeps
              ++ appleMobileResolvLdflags
-             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
+             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [
+               derivedRustLib
+               "-Wl,-u,_wwn_vm_product_accel"
+               "-L${strip (iosDeps."vm-engine-contract" or null)}/lib"
+               "-lwwn_vms_engine"
+             ] ++ finalCxxLdflags;
             "HEADER_SEARCH_PATHS[sdk=iphoneos*]" = [
               "$(inherited)"
               "${strip (iosDeps.libwayland or null)}/include"
               "${strip (iosDeps.libwayland or null)}/include/wayland"
               "${strip (iosDeps.xkbcommon or null)}/include"
               "${strip (iosDeps.libssh2 or null)}/include"
+              "${strip (iosDeps."vm-engine-contract" or null)}/include"
             ] ++ (pixmanHeaderPaths iosDeps) ++ (ilandGlHeaderPaths iosDeps);
           };
         };
@@ -1681,6 +1714,59 @@ ICDJSON
           { sdk = "CarPlay.framework"; }
           { sdk = "AudioToolbox.framework"; }
         ];
+      };
+      Wawona-iOS-ModeB = Wawona-iOS // {
+        # TrollStore device product. It shares the iOS sources while compiling
+        # under a separate, immutable Mode B flavor and bundle identity.
+        postBuildScripts =
+          Wawona-iOS.postBuildScripts ++ [ iosModeBVmEngineEmbedPhase ];
+        dependencies = lib.filter
+          (dependency: !(dependency ? target && dependency.target == "Wawona-watchOS"))
+          Wawona-iOS.dependencies;
+        settings = Wawona-iOS.settings // {
+          base = Wawona-iOS.settings.base // {
+            PRODUCT_NAME = "Wawona";
+            PRODUCT_BUNDLE_IDENTIFIER = "com.aspauldingcode.Wawona.ModeB";
+            CURRENT_PROJECT_VERSION = wawonaBuildNumber;
+            CODE_SIGN_ENTITLEMENTS = "src/resources/app-bundle/Wawona-ModeB.entitlements";
+            SUPPORTED_PLATFORMS = "iphoneos";
+            CODE_SIGN_STYLE = "Manual";
+            CODE_SIGNING_ALLOWED = "NO";
+            CODE_SIGNING_REQUIRED = "NO";
+            GCC_PREPROCESSOR_DEFINITIONS = [
+              "$(inherited)"
+              "TARGET_OS_IPHONE=1"
+              "WWN_MODE_B=1"
+              "PRODUCT_BUNDLE_IDENTIFIER=\\\"com.aspauldingcode.Wawona.ModeB\\\""
+            ] ++ versionDefs;
+            "OTHER_LDFLAGS[sdk=iphoneos*]" =
+              lib.filter
+                (flag:
+                  flag != "-Wl,-u,_wwn_vm_product_accel"
+                  && flag != "-L${strip (iosDeps."vm-engine-contract" or null)}/lib"
+                  && flag != "-lwwn_vms_engine")
+                Wawona-iOS.settings.base."OTHER_LDFLAGS[sdk=iphoneos*]" ++ [
+                "-Wl,-u,_wwn_modeb_desktop_start"
+                "-Wl,-u,_wwn_vm_product_accel"
+                "-L${strip (iosDeps."vm-engine-contract-modeb" or null)}/lib"
+                "-lwwn_vms_engine"
+                "-Wl,-u,_wwn_iomfb_open"
+                "-L${strip (iosDeps."iland-iomfb" or null)}/lib"
+                "-lwwn_iland_iomfb"
+                "-Wl,-u,_wwn_igetty_ios_initialize"
+                "-L${strip (iosDeps."igetty-ios" or null)}/lib"
+                "-lwwn_igetty_ios"
+              ];
+            "HEADER_SEARCH_PATHS[sdk=iphoneos*]" =
+              lib.filter
+                (path: path != "${strip (iosDeps."vm-engine-contract" or null)}/include")
+                Wawona-iOS.settings.base."HEADER_SEARCH_PATHS[sdk=iphoneos*]" ++ [
+                "${strip (iosDeps."vm-engine-contract-modeb" or null)}/include"
+                "${strip (iosDeps."iland-iomfb" or null)}/include"
+                "${strip (iosDeps."igetty-ios" or null)}/include"
+              ];
+          };
+        };
       };
       Wawona-iPadOS = {
         type = "application";
@@ -1793,7 +1879,12 @@ ICDJSON
             ++ (ilandGlLdflags { deps = ipadosDeps; simulator = false; }) ++ moltenvkLdflags ipadosDeps ++ footLdflags ipadosDeps ++ fastfetchLdflags ipadosDeps ++ phoonLdflags ipadosDeps ++ wasmLdflags ipadosDeps ++ neovimLdflags ipadosDeps ++ niriLdflags ipadosDeps ++ fuzzelLdflags ipadosDeps
             ++ sshCliLdflags ipadosDeps
              ++ appleMobileResolvLdflags
-            ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
+            ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [
+              derivedRustLib
+              "-Wl,-u,_wwn_vm_product_accel"
+              "-L${strip (ipadosDeps."vm-engine-contract" or null)}/lib"
+              "-lwwn_vms_engine"
+            ] ++ finalCxxLdflags;
             "OTHER_LDFLAGS[sdk=iphonesimulator*]" = [
               "$(inherited)"
             ] ++ ios26SwiftUiClientLdflags ++ [
@@ -1825,7 +1916,12 @@ ICDJSON
             ++ (ilandGlLdflags { deps = ipadosSimDeps; simulator = true; }) ++ moltenvkLdflags ipadosSimDeps ++ footLdflags ipadosSimDeps ++ fastfetchLdflags ipadosSimDeps ++ phoonLdflags ipadosSimDeps ++ wasmLdflags ipadosSimDeps ++ neovimLdflags ipadosSimDeps ++ niriLdflags ipadosSimDeps ++ fuzzelLdflags ipadosSimDeps
             ++ sshCliLdflags ipadosSimDeps
              ++ appleMobileResolvLdflags
-            ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
+            ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [
+              derivedRustLib
+              "-Wl,-u,_wwn_vm_product_accel"
+              "-L${strip (ipadosSimDeps."vm-engine-contract" or null)}/lib"
+              "-lwwn_vms_engine"
+            ] ++ finalCxxLdflags;
             GCC_PREPROCESSOR_DEFINITIONS = [
               "$(inherited)"
               "TARGET_OS_IPHONE=1"
@@ -1837,6 +1933,7 @@ ICDJSON
               "${strip (ipadosDeps.libwayland or null)}/include/wayland"
               "${strip (ipadosDeps.xkbcommon or null)}/include"
               "${strip (ipadosDeps.libssh2 or null)}/include"
+              "${strip (ipadosDeps."vm-engine-contract" or null)}/include"
             ] ++ (pixmanHeaderPaths ipadosDeps) ++ (ilandGlHeaderPaths ipadosDeps);
             "HEADER_SEARCH_PATHS[sdk=iphonesimulator*]" = [
               "$(inherited)"
@@ -1844,6 +1941,7 @@ ICDJSON
               "${strip (ipadosSimDeps.libwayland or null)}/include/wayland"
               "${strip (ipadosSimDeps.xkbcommon or null)}/include"
               "${strip (ipadosSimDeps.libssh2 or null)}/include"
+              "${strip (ipadosSimDeps."vm-engine-contract" or null)}/include"
             ] ++ (pixmanHeaderPaths ipadosSimDeps) ++ (ilandGlHeaderPaths ipadosSimDeps);
           };
         };
@@ -2749,6 +2847,7 @@ ICDJSON
         postBuildScripts = mkAppleGpuPostBuildPhases {
           rootfsEmbedPhase = visionosRootfsEmbedPhase;
           neovimRootfsEmbedPhase = visionosNeovimRootfsEmbedPhase;
+          withVm = false;
         } ++ [ stripIOSOnlyInfoPlistKeysPhase ];
         settings = {
           base = {
@@ -3303,6 +3402,8 @@ ICDJSON
 
   targetPlatformKeys = {
     Wawona-iOS = "ios";
+    Wawona-iOS-ModeB =
+      if mobileVmEngineModeB != null then "ios" else "modeb-disabled";
     # UITest bundle lives/dies with the iOS app target (ci-l3-apple-xcuitest).
     Wawona-iOSUITests = "ios";
     Wawona-iPadOS = "ipados";

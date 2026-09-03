@@ -11,10 +11,12 @@
 #import "../macos/ui/Settings/WWNWaypipeRunner.h"
 #import "../macos/ui/Machines/WWNMachinesCoordinator.h"
 #import "../macos/ui/Machines/WWNMachineProfileStore.h"
+#import "../macos/ui/Machines/WWNMachineSessionBridge.h"
 #import "WWNCompositorBridge.h"
 #import "WWNStartupLogViewController.h"
 #import "WWNCompositorView_ios.h"
 #import "WWNGameControllerManager.h"
+#import "WWNModeBDesktop.h"
 #import "../../util/WWNLog.h"
 #import "../../util/WWNStartupLogger.h"
 #import <math.h>
@@ -69,6 +71,38 @@ typedef NS_ENUM(NSInteger, WWNSessionExitTrigger) {
 }
 
 @end
+
+#if WWN_MODE_B
+@interface WWNModeBDesktopInputView : UIView
+@property(nonatomic, assign) CGSize displaySize;
+@property(nonatomic, copy) void (^onMachineSelected)(NSInteger index);
+@end
+
+@implementation WWNModeBDesktopInputView
+
+- (void)finishTouch:(UITouch *)touch ended:(BOOL)ended {
+  if (self.bounds.size.width <= 0 || self.bounds.size.height <= 0) return;
+  CGPoint point = [touch locationInView:self];
+  float x = point.x * self.displaySize.width / self.bounds.size.width;
+  float y = point.y * self.displaySize.height / self.bounds.size.height;
+  int32_t selection = wwn_modeb_desktop_handle_touch(x, y, ended ? 1 : 0);
+  if (selection > 0 && self.onMachineSelected) {
+    self.onMachineSelected(selection - 1);
+  }
+}
+
+- (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+  (void)event;
+  [self finishTouch:touches.anyObject ended:NO];
+}
+
+- (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+  (void)event;
+  [self finishTouch:touches.anyObject ended:YES];
+}
+
+@end
+#endif
 
 #if TARGET_OS_TV
 static WWNCompositorView_ios *WWNFindCompositorSurface(UIView *root) {
@@ -475,6 +509,12 @@ static const NSTimeInterval kWWNTvMenuLongPressDuration = 0.85;
 @property(nonatomic, strong) NSArray<NSLayoutConstraint *> *machinesViewConstraints;
 @property(nonatomic, assign) CFTimeInterval lastShakePromptTime;
 @property(nonatomic, assign) BOOL sessionExitPromptVisible;
+#if WWN_MODE_B
+@property(nonatomic, strong) WWNModeBDesktopInputView *modeBDesktopInputView;
+@property(nonatomic, copy) NSArray<WWNMachineProfile *> *modeBProfiles;
+@property(nonatomic, assign) BOOL modeBDesktopActive;
+@property(nonatomic, strong) UIView *modeBFailureView;
+#endif
 #if !TARGET_OS_VISION && !TARGET_OS_TV
 @property(nonatomic, strong) UIScreenEdgePanGestureRecognizer *backSwipeGesture;
 #endif
@@ -818,10 +858,163 @@ static const NSTimeInterval kWWNTvMenuLongPressDuration = 0.85;
     });
   }
 
+#if WWN_MODE_B
+  if ([self startModeBDesktopWithRootView:root]) {
+    return;
+  }
+#endif
+
   if (![self startAutoClientIfRequested]) {
     [self presentWelcomeIfNeeded];
   }
 }
+
+#if WWN_MODE_B
+- (void)showModeBDesktopFailureInRootView:(UIView *)root
+                                     code:(int32_t)code {
+  const char *raw = wwn_modeb_desktop_last_error();
+  NSString *detail =
+      raw && raw[0] ? [NSString stringWithUTF8String:raw] : @"Unknown IOMFB error";
+  [self.modeBFailureView removeFromSuperview];
+
+  UIView *failure = [[UIView alloc] initWithFrame:root.bounds];
+  failure.translatesAutoresizingMaskIntoConstraints = NO;
+  failure.backgroundColor = UIColor.blackColor;
+  UILabel *label = [[UILabel alloc] initWithFrame:CGRectZero];
+  label.translatesAutoresizingMaskIntoConstraints = NO;
+  label.numberOfLines = 0;
+  label.textAlignment = NSTextAlignmentCenter;
+  label.textColor = UIColor.whiteColor;
+  label.font = [UIFont monospacedSystemFontOfSize:16
+                                          weight:UIFontWeightRegular];
+  label.text = [NSString
+      stringWithFormat:@"Wawona Desktop could not own the display.\n\n%@\n\nError %d",
+                       detail, code];
+  UIButton *retry = [UIButton buttonWithType:UIButtonTypeSystem];
+  retry.translatesAutoresizingMaskIntoConstraints = NO;
+  [retry setTitle:@"Retry Desktop" forState:UIControlStateNormal];
+  [retry addTarget:self
+                action:@selector(retryModeBDesktop:)
+      forControlEvents:UIControlEventTouchUpInside];
+  [failure addSubview:label];
+  [failure addSubview:retry];
+  [root addSubview:failure];
+  [NSLayoutConstraint activateConstraints:@[
+    [failure.topAnchor constraintEqualToAnchor:root.topAnchor],
+    [failure.bottomAnchor constraintEqualToAnchor:root.bottomAnchor],
+    [failure.leadingAnchor constraintEqualToAnchor:root.leadingAnchor],
+    [failure.trailingAnchor constraintEqualToAnchor:root.trailingAnchor],
+    [label.leadingAnchor constraintEqualToAnchor:failure.leadingAnchor
+                                           constant:28],
+    [label.trailingAnchor constraintEqualToAnchor:failure.trailingAnchor
+                                            constant:-28],
+    [label.centerYAnchor constraintEqualToAnchor:failure.centerYAnchor
+                                          constant:-32],
+    [retry.topAnchor constraintEqualToAnchor:label.bottomAnchor constant:28],
+    [retry.centerXAnchor constraintEqualToAnchor:failure.centerXAnchor],
+  ]];
+  self.modeBFailureView = failure;
+}
+
+- (void)retryModeBDesktop:(id)sender {
+  (void)sender;
+  UIView *root = self.window.rootViewController.view;
+  [self.modeBFailureView removeFromSuperview];
+  self.modeBFailureView = nil;
+  [self startModeBDesktopWithRootView:root];
+}
+
+- (BOOL)startModeBDesktopWithRootView:(UIView *)root {
+  uint32_t width = 0;
+  uint32_t height = 0;
+  int32_t start = wwn_modeb_desktop_start(&width, &height);
+  if (start != 0 || width == 0 || height == 0) {
+    const char *raw = wwn_modeb_desktop_last_error();
+    NSString *detail =
+        raw && raw[0] ? [NSString stringWithUTF8String:raw] : @"unknown";
+    WWNLog("MODEB", @"IOMFB ownership failed (%d): %@", start, detail);
+    [self showModeBDesktopFailureInRootView:root code:start];
+    return YES;
+  }
+  [self.modeBFailureView removeFromSuperview];
+  self.modeBFailureView = nil;
+
+  NSArray<WWNMachineProfile *> *profiles = [WWNMachineProfileStore loadProfiles];
+  self.modeBProfiles = profiles;
+  NSMutableArray<NSDictionary *> *serialized =
+      [NSMutableArray arrayWithCapacity:profiles.count];
+  for (WWNMachineProfile *profile in profiles) {
+    [serialized addObject:[profile serialize]];
+  }
+  NSError *jsonError = nil;
+  NSData *json = [NSJSONSerialization dataWithJSONObject:serialized
+                                                 options:0
+                                                   error:&jsonError];
+  if (!json || jsonError) {
+    WWNLog("MODEB", @"Machines profile serialization failed: %@", jsonError);
+    wwn_modeb_desktop_restore();
+    return NO;
+  }
+  NSString *jsonString = [[NSString alloc] initWithData:json
+                                               encoding:NSUTF8StringEncoding];
+  if (wwn_modeb_desktop_set_profiles_json(jsonString.UTF8String) != 0) {
+    WWNLog("MODEB", @"Rust Machines greeter rejected profile contract");
+    wwn_modeb_desktop_restore();
+    return NO;
+  }
+
+  WWNModeBDesktopInputView *input =
+      [[WWNModeBDesktopInputView alloc] initWithFrame:root.bounds];
+  input.translatesAutoresizingMaskIntoConstraints = NO;
+  input.backgroundColor = UIColor.clearColor;
+  input.displaySize = CGSizeMake(width, height);
+  __weak typeof(self) weakSelf = self;
+  __weak WWNModeBDesktopInputView *weakInput = input;
+  input.onMachineSelected = ^(NSInteger index) {
+    __strong typeof(weakSelf) strongSelf = weakSelf;
+    if (!strongSelf || index < 0 ||
+        index >= (NSInteger)strongSelf.modeBProfiles.count) {
+      return;
+    }
+    WWNMachineProfile *profile = strongSelf.modeBProfiles[(NSUInteger)index];
+    [WWNMachineProfileStore setActiveMachineId:profile.machineId];
+    [WWNMachineProfileStore applyMachineToRuntimePrefs:profile];
+    NSError *error = nil;
+    if (![WWNMachineSessionBridge connectProfile:profile error:&error]) {
+      WWNLog("MODEB", @"Machine %@ failed to start: %@", profile.machineId,
+             error.localizedDescription);
+      wwn_modeb_desktop_recover_to_greeter();
+      weakInput.hidden = NO;
+      return;
+    }
+    weakInput.hidden = YES;
+    strongSelf.compositorContainer.hidden = NO;
+    dispatch_after(
+        dispatch_time(DISPATCH_TIME_NOW, (int64_t)(500 * NSEC_PER_MSEC)),
+        dispatch_get_main_queue(), ^{
+          int32_t adopted = wwn_modeb_desktop_adopt_text_sessions();
+          WWNLog("MODEB", @"Logical PTY sessions available: %d", adopted);
+        });
+    // Keep UIKit alive for touch/keyboard/controller injection. Pixels are
+    // owned by IOMFB, so the WindowServer presentation is intentionally dim.
+    strongSelf.compositorContainer.alpha = 0.01;
+    [strongSelf setCompositorGestureDeferralEnabled:YES];
+  };
+  [root addSubview:input];
+  [NSLayoutConstraint activateConstraints:@[
+    [input.topAnchor constraintEqualToAnchor:root.topAnchor],
+    [input.bottomAnchor constraintEqualToAnchor:root.bottomAnchor],
+    [input.leadingAnchor constraintEqualToAnchor:root.leadingAnchor],
+    [input.trailingAnchor constraintEqualToAnchor:root.trailingAnchor],
+  ]];
+  self.modeBDesktopInputView = input;
+  self.modeBDesktopActive = YES;
+  self.showingMachinesUI = YES;
+  WWNLog("MODEB", @"Rust own-display Machines greeter active at %ux%u", width,
+         height);
+  return YES;
+}
+#endif
 
 // Acceptance / CI parity with macOS main.m: when WAWONA_AUTO_CLIENT is set
 // (simctl launch passes SIMCTL_CHILD_WAWONA_AUTO_CLIENT into the app's
@@ -1139,6 +1332,14 @@ static const NSTimeInterval kWWNTvMenuLongPressDuration = 0.85;
 
 - (void)sceneDidDisconnect:(UIScene *)scene {
   WWNLog("SCENE", @"Scene disconnected");
+#if WWN_MODE_B
+  if (self.modeBDesktopActive) {
+    [WWNMachineSessionBridge stopAllActiveTransports];
+    int32_t restore = wwn_modeb_desktop_restore();
+    WWNLog("MODEB", @"IOMFB restore on scene disconnect: %d", restore);
+    self.modeBDesktopActive = NO;
+  }
+#endif
 #if !TARGET_OS_TV
   // iPadOS / visionOS multi-window (#120): closing a client's dedicated
   // UIWindowScene (app switcher / Stage Manager) must ask the Wayland client to
@@ -1936,6 +2137,22 @@ static const uint32_t kWWNTvMenuEscapeKeycode = 1;
 }
 
 - (void)showMachinesUI {
+#if WWN_MODE_B
+  if (self.modeBDesktopActive) {
+    [self setCompositorGestureDeferralEnabled:NO];
+    self.compositorContainer.hidden = YES;
+    self.compositorContainer.alpha = 1.0;
+    self.clientTabsControl.hidden = YES;
+    if (wwn_modeb_desktop_recover_to_greeter() != 0) {
+      WWNLog("MODEB", @"Failed to restore Rust Machines greeter");
+    }
+    self.modeBDesktopInputView.hidden = NO;
+    [self.window.rootViewController.view
+        bringSubviewToFront:self.modeBDesktopInputView];
+    self.showingMachinesUI = YES;
+    return;
+  }
+#endif
   [self setCompositorGestureDeferralEnabled:NO];
   self.compositorContainer.hidden = YES;
   self.clientTabsControl.hidden = YES;

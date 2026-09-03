@@ -1,10 +1,8 @@
 #import "WWNMobileVmEngine.h"
 
-#import "WWNQemuSystem.h"
-
 #import <TargetConditionals.h>
 
-#if TARGET_OS_OSX
+#if TARGET_OS_OSX || TARGET_OS_TV || TARGET_OS_WATCH || TARGET_OS_VISION
 @implementation WWNMobileVmEngine
 + (instancetype)sharedEngine { return [WWNMobileVmEngine new]; }
 - (BOOL)isEngineAvailable { return NO; }
@@ -17,13 +15,17 @@
   (void)k; (void)r; (void)m; (void)oci;
   if (e) {
     *e = [NSError errorWithDomain:@"WWNMobileVmEngine" code:0
-                         userInfo:@{NSLocalizedDescriptionKey : @"Use WWNVirtualMachineRunner on macOS."}];
+                         userInfo:@{NSLocalizedDescriptionKey :
+                                        @"Virtual machines are unavailable on this platform."}];
   }
   return NO;
 }
 - (void)stop {}
 @end
 #else
+
+#import "WWNQemuSystem.h"
+#import "wwn_vms_engine.h"
 
 #import <pthread.h>
 #import <unistd.h>
@@ -131,10 +133,22 @@ static void *WWNMobileWaypipeThread(void *ctx) {
   qemu.currentDirectoryUrl = [NSURL fileURLWithPath:
       [[NSBundle mainBundle].bundlePath stringByAppendingPathComponent:@"Frameworks"]];
   [qemu clearArgv];
-  // Mode A App Store path: jitless TCG (UTM SE / TCTI). Never -accel hvf (absent
-  // on iOS) and never MAP_JIT. Mode B IPA (TrollStore JIT entitlement and/or
-  // Sileo full Mode B) uses a separate scheme with JIT enabled. See
-  // docs/agent-rules/wawona-ios-mode-b-channels.md.
+  // The linked Rust engine contract is immutable per product: Mode A returns
+  // TCTI, while the separate TrollStore target returns TCG JIT. A runtime
+  // preference or environment variable cannot upgrade the store engine.
+  int accel = wwn_vm_product_accel();
+  if (accel != WWN_VM_ACCEL_TCTI && accel != WWN_VM_ACCEL_TCG_JIT) {
+    if (error) {
+      *error = [NSError
+          errorWithDomain:@"WWNMobileVmEngine"
+                     code:3
+                 userInfo:@{
+                   NSLocalizedDescriptionKey :
+                       @"The linked VM engine contract selected an invalid iOS accelerator."
+                 }];
+    }
+    return NO;
+  }
   [qemu pushArgv:@"-machine"];
   [qemu pushArgv:@"virt,accel=tcg"];
   [qemu pushArgv:@"-accel"];
@@ -169,7 +183,10 @@ static void *WWNMobileWaypipeThread(void *ctx) {
   [qemu pushArgv:@"vhost-user-vsock-pci,chardev=vsock0"];
   [qemu pushArgv:@"-nographic"];
   [qemu pushArgv:@"-no-reboot"];
-  os_log(OS_LOG_DEFAULT, "WWNMobileVmEngine: QEMU-TCTI (accel=tcg) mem=%u", memoryMB);
+  const char *accelLabel = wwn_vm_accel_label(accel);
+  os_log(OS_LOG_DEFAULT,
+         "WWNMobileVmEngine: %{public}s (accel=tcg) mem=%u",
+         accelLabel ? accelLabel : "QEMU TCG", memoryMB);
 
   NSMutableDictionary<NSString *, NSString *> *env = [@{
     @"ANGLE_DEFAULT_PLATFORM" : @"metal",

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>get-task-allow</key>
+  <true/>
+  <key>platform-application</key>
+  <true/>
+  <key>com.apple.private.security.no-sandbox</key>
+  <true/>
+  <key>com.apple.private.security.storage.AppDataContainers</key>
+  <true/>
+  <key>com.apple.developer.kernel.increased-memory-limit</key>
+  <true/>
+  <key>com.apple.developer.kernel.extended-virtual-addressing</key>
+  <true/>
+  <key>com.apple.private.mapped-memory-buffer</key>
+  <true/>
+  <key>com.apple.private.IOMobileFramebuffer</key>
+  <true/>
+  <key>com.apple.private.allow-explicit-graphics-priority</key>
+  <true/>
+  <key>com.apple.IOSurface.IOSurface</key>
+  <true/>
+  <key>com.apple.security.exception.iokit-user-client-class</key>
+  <array>
+    <string>IOMobileFramebufferUserClient</string>
+    <string>IOSurfaceRootUserClient</string>
+  </array>
+  <key>com.apple.security.iokit-user-client-class</key>
+  <array>
+    <string>IOMobileFramebufferUserClient</string>
+    <string>IOSurfaceRootUserClient</string>
+  </array>
+  <key>com.apple.private.security.storage.AppBundles</key>
+  <true/>
+</dict>
+</plist>

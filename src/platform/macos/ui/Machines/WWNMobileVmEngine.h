@@ -2,7 +2,8 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-/// In-process jitless QEMU-TCTI engine for iOS/iPadOS/tvOS/visionOS (UTM SE model).
+/// In-process QEMU engine for iOS and iPadOS.
+/// Mode A uses TCTI. The separate Mode B product uses TCG JIT.
 @interface WWNMobileVmEngine : NSObject
 
 + (instancetype)sharedEngine;

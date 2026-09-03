@@ -101,6 +101,9 @@ profile-store-safe = []
 profile-store-safe-remote = []
 profile-desktop-host = []
 profile-full-dev = []
+# TrollStore iOS/iPadOS product. Separate backend build with IOMFB/JIT policy;
+# never enabled in the App Store or on non-iOS targets.
+profile-ios-mode-b = []
 # Enables Smithay protocol migration scaffolding / compile probes.
 smithay-protocols = []
 smithay-desktop = []

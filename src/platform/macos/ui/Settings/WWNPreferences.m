@@ -4411,10 +4411,12 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
   splitVC.modalPresentationStyle = UIModalPresentationFormSheet;
   UISheetPresentationController *sheet = splitVC.sheetPresentationController;
   if (sheet) {
+#if !TARGET_OS_VISION
     // Capsule at the top of the card. Swipe down on it (or the sheet) to
     // dismiss. Hidden by default for a single large detent.
     sheet.prefersGrabberVisible = YES;
     sheet.prefersEdgeAttachedInCompactHeight = YES;
+#endif
   }
 #endif
   [root presentViewController:splitVC animated:YES completion:nil];

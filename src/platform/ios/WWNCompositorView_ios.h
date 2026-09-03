@@ -2,6 +2,7 @@
 #import <QuartzCore/QuartzCore.h>
 #import <CoreGraphics/CoreGraphics.h>
 #import <Metal/Metal.h>
+#import <IOSurface/IOSurfaceRef.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -107,6 +108,13 @@ FOUNDATION_EXPORT NSNotificationName const WWNTvKeyboardFocusDidChangeNotificati
                       frame:(CGRect)frame
                 contentRect:(CGRect)normalizedContentRect
                presentToken:(uint64_t)presentToken;
+
+/// Present a compositor-imported IOSurface with a zero-CPU-copy Metal import.
+- (void)presentWaylandIOSurface:(IOSurfaceRef)surface
+                          frame:(CGRect)frame
+                    contentRect:(CGRect)normalizedContentRect
+                   bottomUpRows:(BOOL)bottomUpRows
+                   presentToken:(uint64_t)presentToken;
 
 /// Tear down presentation state before the view is removed (session close).
 - (void)prepareForSessionTeardown;

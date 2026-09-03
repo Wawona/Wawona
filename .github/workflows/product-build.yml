@@ -107,6 +107,9 @@ jobs:
       - name: Verify store-safe iOS graphics bundle
         run: ./.github/scripts/verify-iland-graphics-bundle.sh --platform ios --simulator dist/ios-sim/Wawona.app
 
+      - name: Verify iOS Mode A firewall
+        run: bash ./.github/scripts/verify-ios-modeb-artifacts.sh --mode-a dist/ios-sim/Wawona.app
+
       - uses: actions/upload-artifact@v7
         with:
           name: product-ios-sim

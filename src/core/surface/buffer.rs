@@ -1,6 +1,50 @@
-
 use wayland_server::Resource;
 
+#[cfg(all(target_vendor = "apple", not(target_os = "watchos")))]
+use std::{ffi::c_void, sync::Arc};
+
+#[cfg(all(target_vendor = "apple", not(target_os = "watchos")))]
+#[derive(Debug)]
+pub struct AppleIOSurfaceOwner {
+    raw: *mut c_void,
+}
+
+#[cfg(all(target_vendor = "apple", not(target_os = "watchos")))]
+impl AppleIOSurfaceOwner {
+    pub(crate) fn raw(&self) -> *mut c_void {
+        self.raw
+    }
+}
+
+#[cfg(all(target_vendor = "apple", not(target_os = "watchos")))]
+unsafe impl Send for AppleIOSurfaceOwner {}
+#[cfg(all(target_vendor = "apple", not(target_os = "watchos")))]
+unsafe impl Sync for AppleIOSurfaceOwner {}
+
+#[cfg(all(target_vendor = "apple", not(target_os = "watchos")))]
+impl Drop for AppleIOSurfaceOwner {
+    fn drop(&mut self) {
+        unsafe { CFRelease(self.raw.cast_const()) }
+    }
+}
+
+#[cfg(all(target_vendor = "apple", not(target_os = "watchos")))]
+#[link(name = "IOSurface", kind = "framework")]
+extern "C" {
+    fn IOSurfaceLookup(csid: u32) -> *mut c_void;
+}
+
+#[cfg(all(target_vendor = "apple", not(target_os = "watchos")))]
+#[link(name = "CoreFoundation", kind = "framework")]
+extern "C" {
+    fn CFRelease(value: *const c_void);
+}
+
+#[cfg(all(target_vendor = "apple", not(target_os = "watchos")))]
+pub fn retain_iosurface(id: u32) -> Option<Arc<AppleIOSurfaceOwner>> {
+    let raw = unsafe { IOSurfaceLookup(id) };
+    (!raw.is_null()).then(|| Arc::new(AppleIOSurfaceOwner { raw }))
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ShmBufferData {
@@ -46,16 +90,30 @@ pub struct Buffer {
     pub buffer_type: BufferType,
     pub released: bool,
     pub resource: Option<wayland_server::protocol::wl_buffer::WlBuffer>,
+    #[cfg(all(target_vendor = "apple", not(target_os = "watchos")))]
+    pub native_iosurface: Option<Arc<AppleIOSurfaceOwner>>,
 }
 
 impl Buffer {
-    pub fn new(id: u32, buffer_type: BufferType, resource: Option<wayland_server::protocol::wl_buffer::WlBuffer>) -> Self {
+    pub fn new(
+        id: u32,
+        buffer_type: BufferType,
+        resource: Option<wayland_server::protocol::wl_buffer::WlBuffer>,
+    ) -> Self {
         Self {
             id,
             buffer_type,
             released: false,
             resource,
+            #[cfg(all(target_vendor = "apple", not(target_os = "watchos")))]
+            native_iosurface: None,
         }
+    }
+
+    #[cfg(all(target_vendor = "apple", not(target_os = "watchos")))]
+    pub fn with_native_iosurface(mut self, owner: Arc<AppleIOSurfaceOwner>) -> Self {
+        self.native_iosurface = Some(owner);
+        self
     }
 
     /// Notify the client that the buffer is no longer being used
@@ -63,7 +121,7 @@ impl Buffer {
         if self.released {
             return;
         }
-        
+
         if let Some(resource) = &self.resource {
             if resource.is_alive() {
                 resource.release();
@@ -77,7 +135,7 @@ impl Buffer {
             #[cfg(feature = "verbose-logs")]
             eprintln!("[BUFFER] buf={} has NO resource, release NOT sent", self.id);
         }
-        
+
         self.released = true;
     }
 }

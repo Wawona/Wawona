@@ -117,7 +117,9 @@
     # VM + container substrate. wwn-containers depends on wwn-vms, so pin both to
     # Wawona's single nixpkgs/toolchain and make containers follow this same
     # wwn-vms.
-    wwn-vms.url = "https://flakehub.com/f/Wawona/wwn-vms/*";
+    # github/development until FlakeHub rolling includes the immutable iOS JIT
+    # engine split. Cited: docs/wwn-repo-dag.md.
+    wwn-vms.url = "github:Wawona/wwn-vms/development";
     wwn-vms.inputs.nixpkgs.follows = "nixpkgs";
     wwn-vms.inputs.rust-overlay.follows = "rust-overlay";
     wwn-vms.inputs.wwn-toolchain.follows = "wwn-toolchain";
@@ -932,8 +934,28 @@
             "weston-compositor" = toolchains.buildForMacOS "weston-compositor-drm" { };
             "wawona-wasm" = toolchains.buildForMacOS "wawona-wasm" { };
           } // macosToytoolkitDeps;
-          iosDeps = mobilePlatformDeps { buildFn = toolchains.buildForIOS; inherit toolchains; };
-          iosSimDeps = mobilePlatformDeps { buildFn = toolchains.buildForIOS; inherit toolchains; simulator = true; };
+          iosDeps = mobilePlatformDeps {
+            buildFn = toolchains.buildForIOS;
+            inherit toolchains;
+            extras = {
+              # Device-only and linked exclusively by Wawona-iOS-ModeB.
+              "iland-iomfb" = toolchains.buildForIOS "iland-iomfb" { };
+              "vm-engine-contract" = toolchains.buildForIOS "vm-engine-contract" { };
+              "vm-engine-contract-modeb" =
+                toolchains.buildForIOS "vm-engine-contract-modeb" { };
+              "igetty-ios" =
+                wwn-igetty.packages.${system}.wwn-igetty-ios;
+            };
+          };
+          iosSimDeps = mobilePlatformDeps {
+            buildFn = toolchains.buildForIOS;
+            inherit toolchains;
+            simulator = true;
+            extras = {
+              "vm-engine-contract" =
+                toolchains.buildForIOS "vm-engine-contract" { simulator = true; };
+            };
+          };
           tvosDeps = mobilePlatformDeps { buildFn = toolchains.buildForTVOS; inherit toolchains; variant = "tv"; };
           tvosSimDeps = mobilePlatformDeps { buildFn = toolchains.buildForTVOS; inherit toolchains; variant = "tv"; simulator = true; };
           visionosDeps = mobilePlatformDeps { buildFn = toolchains.buildForVisionOS; inherit toolchains; variant = "vision"; };
@@ -969,6 +991,12 @@
             inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
             workspaceSrc = workspace-src-ios; platform = "ios"; nativeDeps = iosDeps;
             cargoNixDrv = sharedIosCargoNix;
+          };
+          backend-ios-modeb = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
+            inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
+            workspaceSrc = workspace-src-ios; platform = "ios"; nativeDeps = iosDeps;
+            cargoNixDrv = sharedIosCargoNix;
+            iosModeB = true;
           };
           backend-ios-sim = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
             inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
@@ -1022,9 +1050,14 @@
             if pkgs.stdenv.hostPlatform.isDarwin && (wwn-vms.packages.${system}.wwn-vms-mobile-engine-ios-tci or null) != null then
               wwn-vms.packages.${system}.wwn-vms-mobile-engine-ios-tci
             else null;
+          mobileVmEngineModeB =
+            if pkgs.stdenv.hostPlatform.isDarwin && (wwn-vms.packages.${system}.wwn-vms-mobile-engine-ios-jit or null) != null then
+              wwn-vms.packages.${system}.wwn-vms-mobile-engine-ios-jit
+            else null;
           mkXcodegen = {
             platformFilter ? null,
             simulatorOnly ? false,
+            includeModeBEngine ? false,
             # waypipe-on-watch currently fails openssl-sys (ios vs watch
             # -m*-simulator-version-min clash). Drop it so project.yml can still
             # emit Wawona-watchOS; LDFLAGS already treat waypipe as optional.
@@ -1050,6 +1083,7 @@
             in
             pkgs.callPackage ./dependencies/generators/xcodegen.nix {
               inherit wawonaVersion wawonaSrc platformFilter simulatorOnly mobileGuestArtifacts mobileVmEngine;
+              mobileVmEngineModeB = if includeModeBEngine then mobileVmEngineModeB else null;
               iosDeps = if want "ios" || want "ipados" then (if simulatorOnly then empty else iosDeps) else empty;
               iosSimDeps = if want "ios" || want "ipados" then iosSimDeps else empty;
               ipadosDeps = if want "ipados" then (if simulatorOnly then empty else iosDeps) else empty;
@@ -1097,6 +1131,10 @@
             };
           xcodegenOutputs = mkXcodegen { };
           xcodegenIosOutputs = mkXcodegen { platformFilter = [ "ios" "ipados" ]; };
+          xcodegenIosModeBOutputs = mkXcodegen {
+            platformFilter = [ "ios" ];
+            includeModeBEngine = true;
+          };
           xcodegenIosSimOutputs = mkXcodegen {
             platformFilter = [ "ios" ];
             simulatorOnly = true;
@@ -1189,6 +1227,39 @@
             rustBackend = backend-ios;
             companionBackends = { "Wawona-watchOS" = backend-watchos; };
           };
+          wawona-ios-modeb-app-device = pkgs.callPackage ./dependencies/wawona/ios.nix {
+            inherit wawonaSrc wawonaVersion;
+            TEAM_ID = null;
+            xcodeProject = xcodegenIosModeBOutputs.project;
+            xcodeTarget = "Wawona-iOS-ModeB";
+            bundleId = "com.aspauldingcode.Wawona.ModeB";
+            simulator = false;
+            release = true;
+            modeB = true;
+            rustBackend = backend-ios-modeb;
+            companionBackends = { };
+          };
+          wawona-ios-modeb-tipa = pkgs.runCommand "wawona-ios-modeb-tipa-${wawonaVersion}" {
+            nativeBuildInputs = [
+              pkgs.ldid
+              pkgs.unzip
+              pkgs.zip
+            ];
+          } ''
+            set -euo pipefail
+            stage="$TMPDIR/wawona-modeb-tipa"
+            mkdir -p "$stage/Payload" "$out"
+            cp -R "${wawona-ios-modeb-app-device}/Wawona.app" "$stage/Payload/Wawona.app"
+            chmod -R u+w "$stage/Payload/Wawona.app"
+            rm -rf "$stage/Payload/Wawona.app/_CodeSignature"
+            ldid -S"${wawonaSrc}/src/resources/app-bundle/Wawona-ModeB.entitlements" \
+              "$stage/Payload/Wawona.app/Wawona"
+            rm -rf "$stage/Payload/Wawona.app/_CodeSignature"
+            artifact="$out/Wawona-${wawonaVersion}-iOS-arm64.tipa"
+            (cd "$stage" && zip -qry "$artifact" Payload)
+            bash "${wawonaSrc}/.github/scripts/verify-ios-modeb-artifacts.sh" \
+              --mode-b "$artifact"
+          '';
           wawona-ipados-app-sim = pkgs.callPackage ./dependencies/wawona/ipados.nix {
             inherit wawonaSrc wawonaVersion teamId;
             TEAM_ID = teamId;
@@ -1672,6 +1743,8 @@ APPLESCRIPT
           wawona-watchos-app-sim = wawona-watchos-app-sim;
           wawona-visionos-app-sim = wawona-visionos-app-sim;
           wawona-ios-app-device = wawona-ios-app-device;
+          wawona-ios-modeb-app-device = wawona-ios-modeb-app-device;
+          wawona-ios-modeb-tipa = wawona-ios-modeb-tipa;
           wawona-ipados-app-device = wawona-ipados-app-device;
           wawona-tvos-app-device = wawona-tvos-app-device;
           wawona-watchos-app-device = wawona-watchos-app-device;
@@ -1688,6 +1761,9 @@ APPLESCRIPT
 
           wawona-macos-xcode-env = backend-macos;
           wawona-ios-backend = backend-ios;
+          wawona-ios-modeb-backend = backend-ios-modeb;
+          wwn-vms-engine-contract-ios = iosDeps."vm-engine-contract";
+          wwn-vms-engine-contract-ios-modeb = iosDeps."vm-engine-contract-modeb";
           wawona-ios-xcode-env = backend-ios;
           wawona-ios-sim-backend = backend-ios-sim;
           wawona-ios-sim-xcode-env = backend-ios-sim;

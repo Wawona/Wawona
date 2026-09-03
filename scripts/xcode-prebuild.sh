@@ -117,7 +117,7 @@ esac
 
 _with_zsh=0
 case "${TARGET_NAME:-}" in
-  Wawona-iOS)
+  Wawona-iOS|Wawona-iOS-ModeB)
     BACKENDS=(wawona-ios-backend wawona-ios-sim-backend)
     _with_zsh=1
     ;;
@@ -167,7 +167,7 @@ fi
 # Fallback:   WAWONA_BACKEND_OUT
 _backend_env=""
 case "${TARGET_NAME:-}" in
-  Wawona-iOS) _backend_env="${WAWONA_BACKEND_OUT_Wawona_iOS:-}" ;;
+  Wawona-iOS|Wawona-iOS-ModeB) _backend_env="${WAWONA_BACKEND_OUT_Wawona_iOS:-}" ;;
   Wawona-iPadOS) _backend_env="${WAWONA_BACKEND_OUT_Wawona_iPadOS:-}" ;;
   Wawona-macOS) _backend_env="${WAWONA_BACKEND_OUT_Wawona_macOS:-}" ;;
   Wawona-tvOS) _backend_env="${WAWONA_BACKEND_OUT_Wawona_tvOS:-}" ;;
@@ -328,7 +328,7 @@ if [ "$_with_zsh" = "1" ]; then
   # neovim: linked on iOS/iPadOS/visionOS only (size + fork/exec editor). Skip
   # on tvOS/watchOS. Mobile-platform-deps does not ship it there.
   case "${TARGET_NAME:-}" in
-    Wawona-iOS|Wawona-iPadOS|Wawona-visionOS)
+    Wawona-iOS|Wawona-iOS-ModeB|Wawona-iPadOS|Wawona-visionOS)
       _nvim_attr="neovim-ios-device"
       case "$_sdk" in
         *simulator*) _nvim_attr="neovim-ios" ;;

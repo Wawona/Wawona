@@ -6,8 +6,8 @@ that treated “Mode B” as macOS-iland-only.
 
 | | **Mode A** | **Mode B** |
 |---|---|---|
-| **Who** | App Store / TestFlight / Play / store-shaped macOS | Jailbreak (iOS/iPadOS), SIP fully disabled for macOS Desktop/LockScreen (`csrutil disable`), rooted/privileged Android |
-| **Distribution** | Apple / Google store binaries; notarized `.#wawona-macos` | `repo.wawona.io` (Sileo `.deb` + **Mode B IPA**), desktop-host macOS flavor, sideload/TrollStore where documented on the **website only** |
+| **Who** | App Store / TestFlight / Play / store-shaped macOS | TrollStore or Sileo on iOS/iPadOS, SIP fully disabled for macOS Desktop/LockScreen (`csrutil disable`), rooted/privileged Android |
+| **Distribution** | Apple / Google store binaries; notarized `.#wawona-macos` | TrollStore `.tipa`, `repo.wawona.io` Sileo packages, desktop-host macOS flavor |
 | **In store IPA/AAB** | Only Mode A | **Never**. No Mode B engines, no jailbreak strings, no JIT |
 
 Related: [`iland-mode-a-b-desktop.md`](./iland-mode-a-b-desktop.md) (macOS iland
@@ -47,29 +47,37 @@ Design every iOS-family and Play path as Mode A first.
 
 ---
 
-## Mode B. Jailbreak / SIP / root
+## Mode B. TrollStore / jailbreak / SIP / root
 
 Mode B is **privileged host** access. Platforms:
 
 | Host | Mode B trigger |
 |------|----------------|
-| **iOS / iPadOS** | Jailbreak + packages from `repo.wawona.io` (Sileo) |
+| **iOS / iPadOS** | TrollStore `.tipa`, or full jailbreak packages from `repo.wawona.io` (Sileo) |
 | **macOS** | Desktop/LockScreen (iland Mode B): SIP fully disabled (`csrutil disable`) + `wawona-macos-desktop-host`. Other privileged Mode B paths (Swinging Bridge) are separate. |
 | **Android** | Root / privileged paths outside Play requirements |
 
-### iOS / iPadOS Mode B (full)
+### iOS / iPadOS Mode B channels
 
-On jailbreak, Wawona may use the host like NewTerm + UTM JIT + tweak stack:
+TrollStore and Sileo are separate products. The TrollStore build is
+`com.aspauldingcode.Wawona.ModeB`, packaged as
+`Wawona-{calver}-iOS-arm64.tipa` and signed with `ldid`.
 
-| Capability | Mode B |
-|------------|--------|
-| Desktop + LockScreen replacement | Yes (`.deb` / tweak + Mode B IPA as designed) |
-| Shell | Real jailbreak shell / unsandboxed zsh. **not** limited to `wwn-zsh` hatch |
-| Host CLI | Jailbreak APT packages, NewTerm-class tools |
-| **VMs** | **JIT-enabled** UTM / QEMU |
-| **Containers** | **JIT-enabled** container-in-VM (same JIT engine) |
-| Wasm Runtime packages | Still available (`/wasm/`); plus host APT for native tweaks |
-| Wawona Swinging Bridge Mode B | UIKit→Wayland bridge tweak path |
+| Capability | TrollStore `.tipa` | Sileo full Mode B |
+|------------|--------------------|-------------------|
+| Desktop + LockScreen foundations | IOMobileFramebuffer own-display greeter | IOMFB plus jailbreak integration |
+| Shell sessions | Bundled Wawona zsh virtual PTYs | Procursus/host PTYs may be added |
+| Host CLI / APT | No | Yes |
+| **VMs** | **JIT-enabled** UTM / QEMU | Same JIT engine |
+| **Containers** | **JIT-enabled** container-in-VM | Same JIT engine |
+| Wasm JIT | Deferred. Wawona Runtime remains Mode A | Deferred |
+| Wawona Swinging Bridge | No | Yes |
+| Doorman / ElleKit | No | Deferred Sileo provider |
+
+The TrollStore Desktop path uses the Rust `wwn-iland-iomfb` sink and
+`wwn-igetty` logical session switcher. UIKit remains input and lifecycle glue.
+Wayland and Metal IOSurfaces present to IOMFB without a CPU copy. `wl_shm`
+remains an explicit upload fallback.
 
 ### Mode B IPA on `repo.wawona.io` (critical)
 
@@ -112,7 +120,7 @@ flavors select the engine; Mode B code is **absent** from store artifacts
                               │
               ┌───────────────┴───────────────┐
               ▼                               ▼
-     Mode A (store IPA)              Mode B (Sileo IPA)
+     Mode A (store IPA)              Mode B (TrollStore / Sileo)
      UTM-SE / QEMU-TCTI              UTM / QEMU + JIT
      jitless interpreter             JIT enablement
               │                               │

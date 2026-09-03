@@ -17,11 +17,10 @@
 
 - (instancetype)initWithPreferences:(WWNPreferences *)preferences {
 #if TARGET_OS_TV
-  // InsetGrouped keeps the focus platter inside the column. Plain cells sit
-  // flush against the split divider and clip the white hover on the right.
+  // tvOS does not expose the inset-grouped list appearance.
   UICollectionLayoutListConfiguration *config =
       [[UICollectionLayoutListConfiguration alloc]
-          initWithAppearance:UICollectionLayoutListAppearanceInsetGrouped];
+          initWithAppearance:UICollectionLayoutListAppearancePlain];
 #else
   UICollectionLayoutListConfiguration *config =
       [[UICollectionLayoutListConfiguration alloc]

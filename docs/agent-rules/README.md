@@ -26,3 +26,5 @@ the same non-negotiable gates.
 
 When editing policy, update **all** of: workspace `.cursor/rules/`,
 `Wawona/.cursor/rules/` (local), this mirror, and `AGENTS.md`.
+
+- `wawona-trollstore-tipa-dev.md` — TrollStore tipa vs Sileo deb; JIT/ldid/IOMFB; nix+agent-device+vphone loop

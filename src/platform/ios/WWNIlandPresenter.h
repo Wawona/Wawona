@@ -16,6 +16,7 @@
 #import <Foundation/Foundation.h>
 #import <QuartzCore/QuartzCore.h>
 #import <Metal/Metal.h>
+#import <IOSurface/IOSurfaceRef.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -28,6 +29,12 @@ NS_ASSUME_NONNULL_BEGIN
 
 /// Re-read layer bounds×scale into drawableSize + iland preferred DRM mode.
 - (void)syncPreferredModeFromLayer;
+
+/// Present a compositor-imported IOSurface through the same Metal texture cache
+/// and pipeline as iland KMS. This does not complete a DRM page flip.
+- (BOOL)presentCompositorIOSurface:(IOSurfaceRef)surface
+                     bottomUpRows:(BOOL)bottomUpRows
+                      contentRect:(CGRect)normalizedContentRect;
 
 /// Launch one of the bundled in-process cube clients on a background thread; it
 /// presents through this presenter. `clientId` is a Machines catalog id:
