@@ -64,6 +64,10 @@ app="$tmp/Payload/Wawona.app"
 executable="$app/Wawona"
 [[ -x "$executable" ]] || fail "Mode B executable is missing"
 [[ ! -e "$app/_CodeSignature" ]] || fail "tipa must not contain _CodeSignature"
+for framework in libEGL libGLESv2; do
+  [[ -f "$app/Frameworks/$framework.framework/$framework" ]] ||
+    fail "Mode B runtime dependency is missing: $framework.framework"
+done
 [[ "$(plist_value "$app/Info.plist" CFBundleIdentifier)" == "com.aspauldingcode.Wawona.ModeB" ]] ||
   fail "Mode B bundle identifier is wrong"
 [[ -n "$(plist_value "$app/Info.plist" CFBundleVersion)" ]] ||
