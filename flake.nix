@@ -148,9 +148,10 @@
     wwn-igetty.inputs.wwn-iland.follows = "wwn-iland";
     wwn-igetty.inputs.doorman.follows = "doorman";
     # Mode B console login (Linux getty/login parity). L3' peer, macOS-only.
-    # Own nixpkgs + system SDK; do not follow Wawona nixpkgs.
+    # Follow the root nixpkgs lineage; the dependency remains nixpkgs-only.
     # Cited: docs/wwn-repo-dag.md.
     doorman.url = "github:Wawona/doorman";
+    doorman.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs = inputs@{ self, nixpkgs, android-nixpkgs, rust-overlay, crate2nix, nix-appimage, wwn-toolchain, wwn-iland, wwn-kmscube, wwn-weston, wwn-zsh, wwn-ssh, wwn-waypipe, wwn-swinging-bridge, wwn-coreutils, wwn-foot, wwn-fastfetch, wwn-phoon-rs, wwn-neovim, wwn-wasm, wwn-niri, wwn-vms, wwn-containers, wwn-iowatchdog, wwn-vphone, wwn-igetty, doorman, ... }:
@@ -1192,10 +1193,10 @@
             ilandBaremetal = toolchains.buildForMacOS "iland-baremetal" { };
             # L3' Watchdog tools (github.com/Wawona/wwn-iowatchdog).
             iowatchdog = wwn-iowatchdog.packages.${system}.wwn-iowatchdog;
-            # L3' jailbroken iOS lab (github.com/Wawona/wwn-vphone). No prebuilt VM.
-            vphone-cli = wwn-vphone.packages.${system}.vphone-cli;
-            vphone-jb-lab = wwn-vphone.packages.${system}.vphone-jb-lab;
           };
+          # L3' jailbroken iOS lab (github.com/Wawona/wwn-vphone). No prebuilt VM.
+          vphone-cli = wwn-vphone.packages.${system}.vphone-cli;
+          vphone-jb-lab = wwn-vphone.packages.${system}.vphone-jb-lab;
           wawona-ios-app-sim = pkgs.callPackage ./dependencies/wawona/ios.nix {
             inherit wawonaSrc wawonaVersion teamId;
             TEAM_ID = teamId;

@@ -165,7 +165,9 @@
     },
     "doorman": {
       "inputs": {
-        "nixpkgs": "nixpkgs_2"
+        "nixpkgs": [
+          "nixpkgs"
+        ]
       },
       "locked": {
         "lastModified": 1787430291,
@@ -452,22 +454,6 @@
     },
     "nixpkgs_2": {
       "locked": {
-        "lastModified": 1731603435,
-        "narHash": "sha256-CqCX4JG7UiHvkrBTpYC3wcEurvbtTADLbo3Ns2CEoL8=",
-        "owner": "nixos",
-        "repo": "nixpkgs",
-        "rev": "8b27c1239e5c421a2bbc2c65d52e4a6fbf2ff296",
-        "type": "github"
-      },
-      "original": {
-        "owner": "nixos",
-        "ref": "24.11",
-        "repo": "nixpkgs",
-        "type": "github"
-      }
-    },
-    "nixpkgs_3": {
-      "locked": {
         "lastModified": 1787631388,
         "narHash": "sha256-vMiXptXarfSdJb1Gkc+FYVOAibuBRj7qxGa8z68q1Uw=",
         "owner": "NixOS",
@@ -516,7 +502,7 @@
         "microvm": "microvm",
         "nix-appimage": "nix-appimage",
         "nix-xcodeenvtests": "nix-xcodeenvtests",
-        "nixpkgs": "nixpkgs_3",
+        "nixpkgs": "nixpkgs_2",
         "rust-overlay": "rust-overlay",
         "wwn-containers": "wwn-containers",
         "wwn-coreutils": "wwn-coreutils",
@@ -826,11 +812,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1788398249,
-        "narHash": "sha256-HhJU+QvvnsSGN3jXZsBSw7E3kTg9NTQtuAfZFvv++JU=",
+        "lastModified": 1788423835,
+        "narHash": "sha256-zQJu+kBXN4jqDPZP2hRE/Fxabz6hc7g5vLLYZTuOhYM=",
         "owner": "Wawona",
         "repo": "wwn-containers",
-        "rev": "39dfadc33ce18fc0bef95c2e72cdf3ec1e568f3b",
+        "rev": "af501b335e496714ba9834f84191f7bc84439bbf",
         "type": "github"
       },
       "original": {
@@ -953,11 +939,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1788408916,
-        "narHash": "sha256-BA+R7GPj5UeiFxDwPFmROjUy8aAs4NQFRqwbPgnTR0s=",
+        "lastModified": 1788423794,
+        "narHash": "sha256-KYXP/hphKy9YmdRxT6AYAu70LsWfOto+tMmzw4bf+8s=",
         "owner": "Wawona",
         "repo": "wwn-iland",
-        "rev": "acea8d13bbd3f7f375172563c73e8f4c3aa094d0",
+        "rev": "b6146dc025eae08ec1db28830745d4c445133cea",
         "type": "github"
       },
       "original": {
@@ -1214,11 +1200,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1788404012,
-        "narHash": "sha256-O6alZ4B+jQh7znfo/CfNgXT0jwa7cTa3FUzbGRL+qYA=",
+        "lastModified": 1788424202,
+        "narHash": "sha256-5wUyM7S0DNVITeGFINxvLKDFBVVh1vq9GXLPqRBVpz8=",
         "owner": "Wawona",
         "repo": "wwn-vms",
-        "rev": "c91b5cc8d318f247d4a29c54c62c9b08b1cba2ed",
+        "rev": "483cd05517477501bb84c297d1059dcc2f7bed9e",
         "type": "github"
       },
       "original": {
