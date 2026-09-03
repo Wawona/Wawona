@@ -7,6 +7,8 @@ enum WWNMainDestination: Hashable {
     case machines
     /// A settings section, keyed by its title (stable across section rebuilds).
     case settings(String)
+    /// A tag-filtered machine list (Finder-style sidebar tag).
+    case machinesTag(String)
 }
 
 /// Selection state shared between the SwiftUI window and the ObjC bridge
@@ -30,11 +32,23 @@ final class WWNMainWindowRouter: ObservableObject {
         selection = exists ? .settings(title) : .machines
     }
 
+    func selectTag(_ tagId: String) {
+        selection = .machinesTag(tagId)
+    }
+
     /// After `WWNPreferences` rebuilds its sections (auth method / cursor
     /// changes), drop selections that no longer exist.
     func validate(sections: [WWNPreferencesSection]) {
         if case .settings(let title) = selection,
            !sections.contains(where: { $0.title == title }) {
+            selection = .machines
+        }
+    }
+
+    /// Drop a tag destination when the tag itself was deleted.
+    func validateTags(_ tags: [WWNMachineTag]) {
+        if case .machinesTag(let tagId) = selection,
+           !tags.contains(where: { $0.id == tagId }) {
             selection = .machines
         }
     }
@@ -46,6 +60,10 @@ final class WWNMainWindowRouter: ObservableObject {
 struct WawonaMainWindowView: View {
     @ObservedObject var model: WWNSettingsValueModel
     @ObservedObject var router: WWNMainWindowRouter
+    @ObservedObject private var tagStore = WWNMachineTagStore.shared
+
+    @State private var tagEditorTag: WWNMachineTag?
+    @State private var showTagEditor = false
 
     var body: some View {
         NavigationSplitView {
@@ -56,6 +74,21 @@ struct WawonaMainWindowView: View {
         .navigationTitle("Wawona")
         .onChange(of: model.sections) { _, newValue in
             router.validate(sections: newValue)
+        }
+        .onChange(of: tagStore.tags) { _, newValue in
+            router.validateTags(newValue)
+        }
+        .sheet(isPresented: $showTagEditor) {
+            WWNTagEditorSheet(tag: tagEditorTag) { name, colorHex in
+                if let existing = tagEditorTag {
+                    var updated = existing
+                    updated.name = name
+                    updated.colorHex = colorHex
+                    tagStore.updateTag(updated)
+                } else {
+                    tagStore.createTag(name: name, colorHex: colorHex)
+                }
+            }
         }
     }
 
@@ -86,6 +119,32 @@ struct WawonaMainWindowView: View {
                     )
                 }
             }
+
+            if !tagStore.tags.isEmpty {
+                Section("Tags") {
+                    ForEach(tagStore.tags) { tag in
+                        Label {
+                            Text(tag.name)
+                        } icon: {
+                            WWNTagDot(colorHex: tag.colorHex, size: 10)
+                        }
+                        .tag(WWNMainDestination.machinesTag(tag.id))
+                        .contextMenu {
+                            Button {
+                                tagEditorTag = tag
+                                showTagEditor = true
+                            } label: {
+                                Label("Edit Tag…", systemImage: "pencil")
+                            }
+                            Button(role: .destructive) {
+                                tagStore.deleteTag(id: tag.id)
+                            } label: {
+                                Label("Delete Tag", systemImage: "trash")
+                            }
+                        }
+                    }
+                }
+            }
         }
         .listStyle(.sidebar)
         .navigationSplitViewColumnWidth(min: 200, ideal: 230, max: 280)
@@ -93,32 +152,41 @@ struct WawonaMainWindowView: View {
 
     // MARK: - Detail
 
-    @ViewBuilder
     private var detail: some View {
-        switch router.selection {
-        case .machines:
-            machinesPane
-        case .settings(let title):
-            if let section = model.sections.first(where: { $0.title == title }) {
-                WWNSettingsSectionView(section: section, model: model)
+        Group {
+            if case .settings(let title) = router.selection {
+                if let section = model.sections.first(where: { $0.title == title }) {
+                    WWNSettingsSectionView(section: section, model: model)
+                } else {
+                    ContentUnavailableView(
+                        "Section Unavailable",
+                        systemImage: "questionmark.circle",
+                        description: Text("This settings section is no longer available.")
+                    )
+                }
             } else {
-                ContentUnavailableView(
-                    "Section Unavailable",
-                    systemImage: "questionmark.circle",
-                    description: Text("This settings section is no longer available.")
-                )
+                machinesPane
             }
         }
     }
 
     /// The existing Machines grid (search / add / edit / launch), embedded as
     /// the first sidebar destination. The gear now jumps to Settings instead
-    /// of opening a second window.
+    /// of opening a second window. Selecting a sidebar tag filters the grid.
     private var machinesPane: some View {
         WWNMachinesGridView(
             onConnect: nil,
-            onOpenSettings: { router.showSettings() }
+            onOpenSettings: { router.showSettings() },
+            filterTagID: activeTagFilterID,
+            onClearTagFilter: { router.showMachines() }
         )
+    }
+
+    private var activeTagFilterID: String? {
+        if case .machinesTag(let tagId) = router.selection {
+            return tagId
+        }
+        return nil
     }
 }
 #endif

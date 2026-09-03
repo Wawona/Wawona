@@ -15,6 +15,10 @@ enum WWNA11y {
   static let machinesFocus = "wwn.machines.focus"
   static let machinesEdit = "wwn.machines.edit"
   static let machinesDelete = "wwn.machines.delete"
+  static let machinesSort = "wwn.machines.sort"
+  static let machinesTagCreate = "wwn.machines.tag.create"
+  static let machinesTagName = "wwn.machines.tag.name"
+  static let machinesTagFilter = "wwn.machines.tag.filter"
 
   static let machinesEditor = "wwn.machines.editor"
   static let machinesEditorSave = "wwn.machines.editor.save"
