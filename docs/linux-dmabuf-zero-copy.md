@@ -24,9 +24,10 @@ On iOS Mode A, `WWNCompositorBridge` keeps an IOSurface in the node cache and
 routes it through `WWNCompositorView_ios` and `WWNIlandPresenter`. It does not
 create a copied `CGImage`. `wl_shm` buffers retain the CPU upload path.
 
-On iOS Mode B, the same IOSurface reaches `wwn-iland-iomfb`. Direct
-IOSurface-backed textures are submitted to IOMFB unchanged. A Metal blit is
-allowed only when a producer texture has no IOSurface backing.
+On iOS Mode B, the same IOSurface must reach IOMFB unchanged. Authority
+for that swap is `wwn-iomfb-rs` (`GpuSwapchain::present_external`). The
+frozen `wwn-iland-iomfb` sink must not grow. A Metal blit is allowed
+only when a producer texture has no IOSurface backing.
 
 ## Formats and modifiers
 
@@ -60,4 +61,5 @@ Rust session policy, and CPU fallback.
 - Mode A presenter: `src/platform/ios/WWNIlandPresenter.m`
 - iOS compositor route: `src/platform/ios/WWNCompositorView_ios.m`
 - Mode B broker: `src/platform/ios_modeb.rs`
-- IOMFB sink: `wwn-iland/crates/wwn-iland-iomfb`
+- IOMFB present (Mode B): `wwn-iomfb-rs` (`docs/GPU.md`). Frozen sink:
+  `wwn-iland/crates/wwn-iland-iomfb` until Wawona switches.
