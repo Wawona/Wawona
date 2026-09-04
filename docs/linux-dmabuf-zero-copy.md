@@ -49,10 +49,9 @@ present: route=direct-iosurface copy=zero backing_id=<same IOSurfaceID>
 An intentional non-IOSurface producer reports `route=metal-blit`. A `wl_shm`
 frame reports its upload fallback separately and is not zero-copy evidence.
 
-The final hardware proof requires a physical TrollStore device because vPhone
-does not provide Metal or physical IOMFB behavior. vPhone remains valid for the
-TrollStore install path, bundle identity, `ldid` entitlements, JIT attach state,
-Rust session policy, and CPU fallback.
+vphone `wawona-jb` is the Mode B proof device. It ships `Metal.framework`
+and IOMFB. The `wwn-iomfb-rs` Metal tipa encodes a GPU clear into an
+IOSurface and presents that same ID. Do not treat vphone as CPU-only.
 
 ## Implementation
 
