@@ -26,6 +26,7 @@
 #endif
 //  #import "../../core/WWNKernel.h" // Removed
 #import <Network/Network.h>
+#import <objc/message.h>
 #import <objc/runtime.h>
 
 // System headers removed as they are now used in WWNWaypipeRunner or unused
@@ -5271,6 +5272,45 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
 
 // MARK: - macOS Interface
 
+// Unified SwiftUI window (Machines + Settings sidebar) owns macOS UI now.
+// These helpers route AppKit entry points (menu, gear, deep links) to
+// `WWNUnifiedWindowController` when the Swift bridge class is present, so the
+// AppKit window below is only a fallback for stale builds.
+static BOOL WWNRouteToUnifiedWindow(NSString *selectorName) {
+  Class unifiedClass = NSClassFromString(@"WWNUnifiedWindowController");
+  SEL sharedSel = NSSelectorFromString(@"sharedController");
+  if (!unifiedClass || ![unifiedClass respondsToSelector:sharedSel]) {
+    return NO;
+  }
+  id (*sharedFn)(id, SEL) = (id (*)(id, SEL))objc_msgSend;
+  id controller = sharedFn(unifiedClass, sharedSel);
+  SEL actionSel = NSSelectorFromString(selectorName);
+  if (!controller || ![controller respondsToSelector:actionSel]) {
+    return NO;
+  }
+  void (*actionFn)(id, SEL) = (void (*)(id, SEL))objc_msgSend;
+  actionFn(controller, actionSel);
+  return YES;
+}
+
+static BOOL WWNRouteToUnifiedWindowWithString(NSString *selectorName,
+                                              NSString *value) {
+  Class unifiedClass = NSClassFromString(@"WWNUnifiedWindowController");
+  SEL sharedSel = NSSelectorFromString(@"sharedController");
+  if (!unifiedClass || ![unifiedClass respondsToSelector:sharedSel]) {
+    return NO;
+  }
+  id (*sharedFn)(id, SEL) = (id (*)(id, SEL))objc_msgSend;
+  id controller = sharedFn(unifiedClass, sharedSel);
+  SEL actionSel = NSSelectorFromString(selectorName);
+  if (!controller || ![controller respondsToSelector:actionSel]) {
+    return NO;
+  }
+  void (*actionFn)(id, SEL, NSString *) = (void (*)(id, SEL, NSString *))objc_msgSend;
+  actionFn(controller, actionSel, value ?: @"");
+  return YES;
+}
+
 - (void)installMacSettingsInterfaceInView:(NSView *)hostView {
   if (!hostView) {
     return;
@@ -5312,6 +5352,9 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
 }
 
 - (void)showPreferences:(id)sender {
+  if (WWNRouteToUnifiedWindow(@"showSettings")) {
+    return;
+  }
   if (self.winController) {
     [self.winController.window makeKeyAndOrderFront:sender];
     return;
@@ -5345,8 +5388,15 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
   [self.content reloadForCurrentSection];
 }
 
+- (void)rebuildSections {
+  self.sections = [self buildSections];
+}
+
 - (void)selectSectionWithTitle:(NSString *)title {
   if (title.length == 0) {
+    return;
+  }
+  if (WWNRouteToUnifiedWindowWithString(@"selectSectionWithTitle:", title)) {
     return;
   }
   NSUInteger idx = [self.sections
@@ -5374,6 +5424,9 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
   WWNHandoffToWawonaApp(@"Machines");
   return;
 #endif
+  if (WWNRouteToUnifiedWindow(@"showMachines")) {
+    return;
+  }
   [[WWNMachinesCoordinator sharedCoordinator] showMachinesWindowAndActivate:YES];
 }
 

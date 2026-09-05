@@ -11,6 +11,8 @@ struct WWNMachineCardView: View {
   let launchSupported: Bool
   let isActive: Bool
   let isRunning: Bool
+  var isPinned: Bool = false
+  var tags: [WWNMachineTag] = []
   let onEdit: () -> Void
   let onDelete: () -> Void
   let onConnect: () -> Void
@@ -109,10 +111,25 @@ struct WWNMachineCardView: View {
 
       HStack {
         VStack(alignment: .leading, spacing: 4) {
-          Text(profile.name.isEmpty ? "Unnamed Machine" : profile.name)
-            .font(.title3.weight(.bold))
-            .lineLimit(1)
-            .truncationMode(.tail)
+          HStack(spacing: 6) {
+            Text(profile.name.isEmpty ? "Unnamed Machine" : profile.name)
+              .font(.title3.weight(.bold))
+              .lineLimit(1)
+              .truncationMode(.tail)
+            // Finder-style tag dots, inline with the machine name.
+            ForEach(tags.prefix(4)) { tag in
+              WWNTagDot(colorHex: tag.colorHex, size: 9)
+                .offset(y: 1)
+                .help(tag.name)
+                .accessibilityLabel(tag.name)
+            }
+            if tags.count > 4 {
+              Text("+\(tags.count - 4)")
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("\(tags.count - 4) more tags")
+            }
+          }
           Text(subtitle)
             .font(.subheadline)
             .foregroundStyle(.secondary)
@@ -125,6 +142,14 @@ struct WWNMachineCardView: View {
           .foregroundStyle(statusColor)
           .padding(8)
           .background(Color.white.opacity(0.35), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        if isPinned {
+          Image(systemName: "pin.fill")
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.white)
+            .padding(6)
+            .background(Color.black.opacity(0.45), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .help("Pinned")
+        }
       }
       .padding(.horizontal, 12)
     }

@@ -252,6 +252,45 @@ private let wwnMachineProfilesChangedNotification = Notification.Name(
 final class WWNMachinesViewModel: ObservableObject {
   @Published private(set) var profiles: [WWNMachineProfile] = []
   @Published private(set) var statusByMachineId: [String: WWNMachineTransientStatus] = [:]
+  /// Machine ids the user pinned via the card context menu. Pinned machines
+  /// sort first in the grid. Persisted per app in UserDefaults.
+  @Published private(set) var pinnedMachineIds: Set<String> = []
+  private static let pinnedDefaultsKey = "wawona.machines.pinnedMachineIds"
+
+  // MARK: Sorting
+
+  /// Finder-style sort criteria. Pinned machines always stay on top; the
+  /// selected key only orders inside the pinned / unpinned groups.
+  enum SortKey: String, CaseIterable {
+    case dateCreated
+    case dateLastUsed
+    case name
+    case kind
+
+    var title: String {
+      switch self {
+      case .dateCreated: return "Date Created"
+      case .dateLastUsed: return "Date Last Used"
+      case .name: return "Name"
+      case .kind: return "Kind"
+      }
+    }
+  }
+
+  /// Persisted sort state (per app, like pins).
+  @Published private(set) var sortKey: SortKey
+  @Published private(set) var sortAscending: Bool
+  private static let sortKeyDefaultsKey = "wawona.machines.sortKey"
+  private static let sortAscendingDefaultsKey = "wawona.machines.sortAscending"
+
+  // MARK: Machine metadata (timestamps)
+
+  /// First-seen / last-used timestamps per machineId, persisted alongside the
+  /// profiles. Existing machines get a creation date the first time they are
+  /// seen after this feature ships.
+  @Published private(set) var createdAtByMachine: [String: Date] = [:]
+  @Published private(set) var lastUsedAtByMachine: [String: Date] = [:]
+  private static let metadataDefaultsKey = "wawona.machines.metadata"
   #if os(macOS)
   /// Avoid re-hitting the ObjC thumbnail store on every SwiftUI body eval
   /// (window moves re-layout Machines and previously reloaded NSImage each time).
@@ -266,6 +305,13 @@ final class WWNMachinesViewModel: ObservableObject {
   private var pendingContainerConnectCallbacks: [String: () -> Void] = [:]
 
   init() {
+    pinnedMachineIds = Set(UserDefaults.standard.stringArray(forKey: Self.pinnedDefaultsKey) ?? [])
+    sortKey = SortKey(rawValue: UserDefaults.standard.string(forKey: Self.sortKeyDefaultsKey) ?? "")
+      ?? .dateCreated
+    sortAscending = UserDefaults.standard.object(forKey: Self.sortAscendingDefaultsKey) == nil
+      ? true
+      : UserDefaults.standard.bool(forKey: Self.sortAscendingDefaultsKey)
+    loadMetadata()
     reload()
     nativeProcessTerminateObserver = NotificationCenter.default.addObserver(
       forName: wwnNativeClientProcessDidTerminateNotification,
@@ -368,6 +414,20 @@ final class WWNMachinesViewModel: ObservableObject {
         statusByMachineId[profile.machineId] = .disconnected
       }
     }
+    // First-seen timestamps power "Date Created" sorting.
+    var created = createdAtByMachine
+    var changed = false
+    for profile in profiles where created[profile.machineId] == nil {
+      created[profile.machineId] = Date()
+      changed = true
+    }
+    if changed {
+      createdAtByMachine = created
+      persistMetadata()
+    }
+    WWNMachineTagStore.shared.pruneAssignments(
+      keeping: Set(profiles.map { $0.machineId })
+    )
   }
 
   func upsert(_ profile: WWNMachineProfile) {
@@ -383,12 +443,18 @@ final class WWNMachinesViewModel: ObservableObject {
     }
   }
 
+
+
   func delete(_ profile: WWNMachineProfile) {
     #if os(macOS)
     deleteThumbnail(for: profile.machineId)
     #endif
     profiles = WWNMachineProfileStore.deleteProfile(byId: profile.machineId)
     statusByMachineId.removeValue(forKey: profile.machineId)
+    removePinned(profile.machineId)
+    createdAtByMachine.removeValue(forKey: profile.machineId)
+    lastUsedAtByMachine.removeValue(forKey: profile.machineId)
+    persistMetadata()
   }
 
   func deleteAllProfiles() {
@@ -398,10 +464,143 @@ final class WWNMachinesViewModel: ObservableObject {
     }
     profiles = WWNMachineProfileStore.deleteAllProfiles()
     statusByMachineId.removeAll()
+    if !pinnedMachineIds.isEmpty {
+      pinnedMachineIds.removeAll()
+      persistPinnedIds()
+    }
+    createdAtByMachine.removeAll()
+    lastUsedAtByMachine.removeAll()
+    persistMetadata()
   }
 
   func status(for machineId: String) -> WWNMachineTransientStatus {
     statusByMachineId[machineId] ?? .disconnected
+  }
+
+  // MARK: - Pinning
+
+  func isPinned(_ machineId: String) -> Bool {
+    pinnedMachineIds.contains(machineId)
+  }
+
+  func togglePinned(_ machineId: String) {
+    if pinnedMachineIds.contains(machineId) {
+      pinnedMachineIds.remove(machineId)
+    } else {
+      pinnedMachineIds.insert(machineId)
+    }
+    persistPinnedIds()
+  }
+
+  private func removePinned(_ machineId: String) {
+    guard pinnedMachineIds.remove(machineId) != nil else { return }
+    persistPinnedIds()
+  }
+
+  private func persistPinnedIds() {
+    UserDefaults.standard.set(Array(pinnedMachineIds), forKey: Self.pinnedDefaultsKey)
+  }
+
+  // MARK: - Sorting + metadata
+
+  func setSortKey(_ key: SortKey) {
+    sortKey = key
+    UserDefaults.standard.set(key.rawValue, forKey: Self.sortKeyDefaultsKey)
+  }
+
+  func setSortAscending(_ ascending: Bool) {
+    sortAscending = ascending
+    UserDefaults.standard.set(ascending, forKey: Self.sortAscendingDefaultsKey)
+  }
+
+  func dateCreated(for machineId: String) -> Date {
+    createdAtByMachine[machineId] ?? .distantPast
+  }
+
+  func dateLastUsed(for machineId: String) -> Date {
+    lastUsedAtByMachine[machineId] ?? .distantPast
+  }
+
+  /// Record a machine as "used now" (connect / focus).
+  func touchLastUsed(_ machineId: String) {
+    lastUsedAtByMachine[machineId] = Date()
+    persistMetadata()
+  }
+
+  private func loadMetadata() {
+    guard let raw = UserDefaults.standard.dictionary(forKey: Self.metadataDefaultsKey) else {
+      return
+    }
+    var created: [String: Date] = [:]
+    var lastUsed: [String: Date] = [:]
+    for (machineId, value) in raw {
+      guard let payload = value as? [String: Double] else { continue }
+      if let ts = payload["createdAt"] {
+        created[machineId] = Date(timeIntervalSince1970: ts)
+      }
+      if let ts = payload["lastUsedAt"] {
+        lastUsed[machineId] = Date(timeIntervalSince1970: ts)
+      }
+    }
+    createdAtByMachine = created
+    lastUsedAtByMachine = lastUsed
+  }
+
+  private func persistMetadata() {
+    var payload: [String: [String: Double]] = [:]
+    let ids = Set(createdAtByMachine.keys).union(lastUsedAtByMachine.keys)
+    for machineId in ids {
+      var entry: [String: Double] = [:]
+      if let created = createdAtByMachine[machineId] {
+        entry["createdAt"] = created.timeIntervalSince1970
+      }
+      if let lastUsed = lastUsedAtByMachine[machineId] {
+        entry["lastUsedAt"] = lastUsed.timeIntervalSince1970
+      }
+      payload[machineId] = entry
+    }
+    UserDefaults.standard.set(payload, forKey: Self.metadataDefaultsKey)
+  }
+
+  /// Order profiles for display: pinned first (always), then the selected
+  /// sort key in the stored direction. Within equal keys, name breaks ties
+  /// (creation order as a final fallback keeps the order stable).
+  func displayOrder(_ profilesToSort: [WWNMachineProfile]) -> [WWNMachineProfile] {
+    profilesToSort.sorted { lhs, rhs in
+      let lhsPinned = isPinned(lhs.machineId)
+      let rhsPinned = isPinned(rhs.machineId)
+      if lhsPinned != rhsPinned {
+        return lhsPinned
+      }
+      let ascending = sortAscending
+      func ordered(_ a: Date, _ b: Date) -> Bool {
+        ascending ? a < b : a > b
+      }
+      func ordered(_ a: String, _ b: String) -> Bool {
+        ascending
+          ? a.localizedCaseInsensitiveCompare(b) == .orderedAscending
+          : a.localizedCaseInsensitiveCompare(b) == .orderedDescending
+      }
+      switch sortKey {
+      case .dateCreated:
+        let a = dateCreated(for: lhs.machineId)
+        let b = dateCreated(for: rhs.machineId)
+        if a != b { return ordered(a, b) }
+      case .dateLastUsed:
+        let a = dateLastUsed(for: lhs.machineId)
+        let b = dateLastUsed(for: rhs.machineId)
+        if a != b { return ordered(a, b) }
+      case .name:
+        return ordered(lhs.name, rhs.name)
+      case .kind:
+        let kindOrder = ordered(
+          machineTypeLabel(for: lhs),
+          machineTypeLabel(for: rhs)
+        )
+        if lhs.type != rhs.type { return kindOrder }
+      }
+      return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+    }
   }
 
   func connect(_ profile: WWNMachineProfile, onConnected: (() -> Void)? = nil) {
@@ -453,6 +652,7 @@ final class WWNMachinesViewModel: ObservableObject {
     }
 
     statusByMachineId[profile.machineId] = .connected
+    touchLastUsed(profile.machineId)
     onConnected?()
   }
 
@@ -460,6 +660,7 @@ final class WWNMachinesViewModel: ObservableObject {
     guard let machineId = note.userInfo?["machineId"] as? String else { return }
     guard status(for: machineId) == .preparing else { return }
     statusByMachineId[machineId] = .connected
+    touchLastUsed(machineId)
     let callback = pendingContainerConnectCallbacks.removeValue(forKey: machineId)
     callback?()
   }
@@ -487,6 +688,7 @@ final class WWNMachinesViewModel: ObservableObject {
             status(for: profile.machineId) == .connecting else {
       return
     }
+    touchLastUsed(profile.machineId)
     WWNMachineProfileStore.setActiveMachineId(profile.machineId)
     #if os(macOS)
     _ = WWNCompositorBridge.shared().focusClientWindows(forMachineId: profile.machineId)

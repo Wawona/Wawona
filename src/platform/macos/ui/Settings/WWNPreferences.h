@@ -32,6 +32,9 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)selectSectionWithTitle:(NSString *)title;
 - (void)openEnvironmentVariablesManager;
 - (void)openMachinesConfiguration:(id)sender;
+/// Rebuild `sections` from `buildSections` (auth method / cursor prefs change
+/// which rows a section shows). Used by the SwiftUI unified window.
+- (void)rebuildSections;
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
 - (void)dismissSelf;
 #endif

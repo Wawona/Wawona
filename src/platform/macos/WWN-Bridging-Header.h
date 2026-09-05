@@ -36,6 +36,22 @@
 #if __has_include("ui/Settings/WWNPreferences.h")
 #import "ui/Settings/WWNPreferences.h"
 #endif
+// Settings section/item model + setting-type enum: lets SwiftUI render the
+// shared ObjC `buildSections` output (WWNUnifiedWindow redesign).
+#if __has_include("ui/Settings/WWNSettingsModel.h")
+#import "ui/Settings/WWNSettingsModel.h"
+#endif
+#if __has_include("ui/Settings/WWNSettingsDefines.h")
+#import "ui/Settings/WWNSettingsDefines.h"
+#endif
+// Rootfs provider (Local Shell section rows, iCloud sync toggle) + its
+// preference key constant.
+#if __has_include("WWNRootfsProvider.h")
+#import "WWNRootfsProvider.h"
+#endif
+#if __has_include("WWNRootfsICloudSync.h")
+#import "WWNRootfsICloudSync.h"
+#endif
 #if __has_include("ui/Settings/WWNWaypipeRunner.h")
 #import "ui/Settings/WWNWaypipeRunner.h"
 #endif

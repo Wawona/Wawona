@@ -6,11 +6,17 @@ import AppKit
 struct WWNMachinesGridView: View {
   let onConnect: (() -> Void)?
   let onOpenSettings: (() -> Void)?
+  /// When set, the grid shows only machines carrying this tag (sidebar).
+  var filterTagID: String? = nil
+  var onClearTagFilter: (() -> Void)? = nil
 
   @StateObject private var model = WWNMachinesViewModel()
+  @ObservedObject private var tagStore = WWNMachineTagStore.shared
   @State private var editingProfile: WWNMachineProfile?
   @State private var isCreating = false
   @State private var searchQuery = ""
+  @State private var tagEditorTag: WWNMachineTag?
+  @State private var showTagEditor = false
   #if os(tvOS)
   @FocusState private var focusedMachineId: String?
   #endif
@@ -51,6 +57,18 @@ struct WWNMachinesGridView: View {
         .presentationDetents([.medium, .large])
         .presentationContentInteraction(.scrolls)
         #endif
+      }
+      .sheet(isPresented: $showTagEditor) {
+        WWNTagEditorSheet(tag: tagEditorTag) { name, colorHex in
+          if let existing = tagEditorTag {
+            var updated = existing
+            updated.name = name
+            updated.colorHex = colorHex
+            tagStore.updateTag(updated)
+          } else {
+            tagStore.createTag(name: name, colorHex: colorHex)
+          }
+        }
       }
     #endif
     #if !os(macOS)
@@ -231,6 +249,9 @@ struct WWNMachinesGridView: View {
   @ToolbarContentBuilder
   private var detailToolbarContent: some ToolbarContent {
     #if os(macOS)
+    ToolbarItem(placement: .primaryAction) {
+      sortMenu
+    }
     ToolbarItemGroup(placement: .primaryAction) {
       Button {
         isCreating = true
@@ -248,8 +269,13 @@ struct WWNMachinesGridView: View {
       }
     }
     #else
-    ToolbarItemGroup(placement: .topBarTrailing) {
-      if let onOpenSettings {
+    #if !os(tvOS)
+    ToolbarItem(placement: .topBarTrailing) {
+      sortMenu
+    }
+    #endif
+    if let onOpenSettings {
+      ToolbarItem(placement: .topBarTrailing) {
         Button(action: onOpenSettings) {
           Image(systemName: "gearshape")
         }
@@ -258,6 +284,51 @@ struct WWNMachinesGridView: View {
     }
     #endif
   }
+
+  // MARK: - Sort Menu
+
+  /// Finder-style sort control: grid + chevron toolbar button; picking a
+  /// criterion switches to it, picking the active one flips the direction.
+  #if !os(tvOS)
+  @ViewBuilder
+  private var sortMenu: some View {
+    Menu {
+      ForEach(WWNMachinesViewModel.SortKey.allCases, id: \.self) { key in
+        Button {
+          if model.sortKey == key {
+            // Clicking the active criterion flips the direction (Finder-style).
+            model.setSortAscending(!model.sortAscending)
+          } else {
+            model.setSortKey(key)
+          }
+        } label: {
+          HStack {
+            Text(key.title)
+            Spacer()
+            if model.sortKey == key {
+              Image(systemName: model.sortAscending ? "arrow.up" : "arrow.down")
+                .font(.caption.weight(.semibold))
+            }
+          }
+        }
+      }
+      Divider()
+      Button {
+        model.setSortAscending(!model.sortAscending)
+      } label: {
+        Label(
+          model.sortAscending ? "Ascending" : "Descending",
+          systemImage: model.sortAscending ? "arrow.up" : "arrow.down"
+        )
+      }
+    } label: {
+      Image(systemName: "line.3.horizontal.decrease")
+    }
+    .menuIndicator(.hidden)
+    .help("Sort — pinned machines stay on top")
+    .wwnA11y(WWNA11y.machinesSort, label: "Sort")
+  }
+  #endif
 
   // MARK: - Detail
 
@@ -290,6 +361,85 @@ struct WWNMachinesGridView: View {
     #endif
   }
 
+  // MARK: - Filtering
+
+  /// Pill shown inline with the summary strip while a sidebar tag filter is
+  /// active. Rendered in the strip's own row so nothing moves vertically.
+  @ViewBuilder
+  private var tagFilterBar: some View {
+    if let filterTagID,
+       let tag = tagStore.tags.first(where: { $0.id == filterTagID }) {
+      HStack(spacing: 6) {
+        // Label pairs icon + text with its own optical centering, so the dot
+        // sits on the text's true vertical center.
+        Label {
+          Text(tag.name)
+        } icon: {
+          WWNTagDot(colorHex: tag.colorHex, size: 9)
+        }
+        .font(.caption)
+        .labelStyle(.titleAndIcon)
+        .accessibilityLabel("Showing tag \(tag.name)")
+        if let onClearTagFilter {
+          Button(action: onClearTagFilter) {
+            Image(systemName: "xmark.circle.fill")
+              .font(.system(size: 11))
+              .foregroundStyle(.secondary)
+          }
+          .buttonStyle(.plain)
+          .help("Clear tag filter")
+        }
+      }
+      .padding(.leading, 10)
+      .padding(.trailing, 6)
+      .padding(.vertical, 6)
+      .background(Color.secondary.opacity(0.14), in: Capsule())
+      .help("Showing machines tagged \(tag.name)")
+      .wwnA11y(WWNA11y.machinesTagFilter, label: "Showing tag \(tag.name)")
+    }
+  }
+
+  private var visibleProfiles: [WWNMachineProfile] {
+    var base = model.profiles
+    if let filterTagID,
+       tagStore.tags.contains(where: { $0.id == filterTagID }) {
+      base = base.filter { tagStore.isAssigned(filterTagID, to: $0.machineId) }
+    }
+    let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    if query.isEmpty {
+      // Sort by the chosen key; pins stay on top regardless.
+      return model.displayOrder(base)
+    }
+
+    // Non-empty query always uses fuzzy scoring across searchable corpus.
+    // Pinned matches lead; ties break on fuzzy score, then name.
+    let terms = query.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+    let scored: [(profile: WWNMachineProfile, score: Int)] = base.compactMap { profile in
+      let haystack = model.searchableText(for: profile)
+      var total = 0
+      for term in terms {
+        guard let score = fzfScore(pattern: term, candidate: haystack) else {
+          return nil
+        }
+        total += score
+      }
+      return (profile, total)
+    }
+    return scored
+      .sorted {
+        let lhsPinned = model.isPinned($0.profile.machineId)
+        let rhsPinned = model.isPinned($1.profile.machineId)
+        if lhsPinned != rhsPinned {
+          return lhsPinned
+        }
+        if $0.score == $1.score {
+          return $0.profile.name.localizedCaseInsensitiveCompare($1.profile.name) == .orderedAscending
+        }
+        return $0.score > $1.score
+      }
+      .map(\.profile)
+  }
+
   @ViewBuilder
   private func machinesGrid(columns: [GridItem]) -> some View {
     if visibleProfiles.isEmpty {
@@ -315,6 +465,8 @@ struct WWNMachinesGridView: View {
             launchSupported: model.launchSupported(for: profile),
             isActive: profile.machineId == model.activeMachineId,
             isRunning: machineStatus == .connected || machineStatus == .connecting,
+            isPinned: model.isPinned(profile.machineId),
+            tags: tagStore.tags(for: profile.machineId),
             onEdit: { editingProfile = profile },
             onDelete: { model.delete(profile) },
             onConnect: {
@@ -325,6 +477,9 @@ struct WWNMachinesGridView: View {
             onStop: { model.disconnect(profile) },
             onFocus: { model.focusRunningMachine(profile) }
           )
+          .contextMenu {
+            machineCardContextMenu(for: profile)
+          }
           #if !os(macOS)
           .transition(.scale(scale: 0.95).combined(with: .opacity))
           #endif
@@ -351,35 +506,105 @@ struct WWNMachinesGridView: View {
     return [GridItem(.adaptive(minimum: minCardWidth), spacing: 14)]
   }
 
-  // MARK: - Filtering
+  // MARK: - Context Menu
 
-  private var visibleProfiles: [WWNMachineProfile] {
-    let base = model.profiles
-    let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-    if query.isEmpty { return base }
+  /// Right-click (macOS) / long-press (iOS) menu on a machine card. Card
+  /// actions come first; pinning sits under a divider for separation.
+  @ViewBuilder
+  private func machineCardContextMenu(for profile: WWNMachineProfile) -> some View {
+    let machineStatus = model.status(for: profile.machineId)
+    let running = machineStatus == .connected || machineStatus == .connecting
+    let preparing = machineStatus == .preparing
 
-    // Non-empty query always uses fuzzy scoring across searchable corpus.
-    let terms = query.split(whereSeparator: { $0.isWhitespace }).map(String.init)
-    let scored: [(profile: WWNMachineProfile, score: Int)] = base.compactMap { profile in
-      let haystack = model.searchableText(for: profile)
-      var total = 0
-      for term in terms {
-        guard let score = fzfScore(pattern: term, candidate: haystack) else {
-          return nil
-        }
-        total += score
+    if running {
+      Button {
+        model.focusRunningMachine(profile)
+      } label: {
+        Label("Focus", systemImage: "scope")
       }
-      return (profile, total)
+      Button(role: .destructive) {
+        model.disconnect(profile)
+      } label: {
+        Label("Stop", systemImage: "stop.fill")
+      }
+    } else if !preparing {
+      Button {
+        model.connect(profile) {
+          onConnect?()
+        }
+      } label: {
+        Label("Start", systemImage: "play.fill")
+      }
+      .disabled(!model.launchSupported(for: profile))
     }
-    return scored
-      .sorted {
-        if $0.score == $1.score {
-          return $0.profile.name.localizedCaseInsensitiveCompare($1.profile.name) == .orderedAscending
-        }
-        return $0.score > $1.score
-      }
-      .map(\.profile)
+
+    Button {
+      editingProfile = profile
+    } label: {
+      Label("Edit…", systemImage: "slider.horizontal.3")
+    }
+    Button(role: .destructive) {
+      model.delete(profile)
+    } label: {
+      Label("Delete", systemImage: "trash")
+    }
+    .disabled(running || preparing)
+
+    Divider()
+
+    #if !os(tvOS)
+    tagsContextMenu(for: profile)
+
+    Divider()
+    #endif
+
+    let pinned = model.isPinned(profile.machineId)
+    Button {
+      model.togglePinned(profile.machineId)
+    } label: {
+      Label(pinned ? "Unpin" : "Pin", systemImage: pinned ? "pin.slash" : "pin")
+    }
   }
+
+  /// Finder-style tag assignment submenu (colored dots + checkmarks) with a
+  /// "Create Tag…" entry.
+  #if !os(tvOS)
+  @ViewBuilder
+  private func tagsContextMenu(for profile: WWNMachineProfile) -> some View {
+    Menu {
+      if tagStore.tags.isEmpty {
+        Text("No tags yet")
+          .font(.caption)
+      }
+      ForEach(tagStore.tags) { tag in
+        let assigned = tagStore.isAssigned(tag.id, to: profile.machineId)
+        Button {
+          tagStore.setAssigned(!assigned, tag: tag, to: profile.machineId)
+        } label: {
+          HStack(spacing: 8) {
+            WWNTagDot(colorHex: tag.colorHex, size: 9)
+            Text(tag.name)
+              .frame(maxWidth: .infinity, alignment: .leading)
+            if assigned {
+              Image(systemName: "checkmark")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            }
+          }
+        }
+      }
+      Divider()
+      Button {
+        tagEditorTag = nil
+        showTagEditor = true
+      } label: {
+        Label("Create Tag…", systemImage: "plus")
+      }
+    } label: {
+      Label("Tags", systemImage: "tag")
+    }
+  }
+  #endif
 
   /// Lightweight fzf-style subsequence matcher with adjacency and boundary bonuses.
   private func fzfScore(pattern: String, candidate: String) -> Int? {
@@ -436,6 +661,9 @@ struct WWNMachinesGridView: View {
         summaryPill("Profiles", "\(model.profiles.count)")
         summaryPill("Connected", "\(model.connectedCount)")
         summaryPill("Ready", "\(model.launchableCount)")
+        // Inline with the summary pills so the strip height — and the grid
+        // below it — never shifts when a tag filter toggles.
+        tagFilterBar
       }
       .padding(.horizontal, 6)
       .padding(.vertical, 4)
