@@ -73,7 +73,7 @@ Watch; not iCloud Drive ubiquity on watchOS. AX id: `wwn.settings.appleWatch`.
 | **Send Document to Watch** | document picker → `transferFile` | Button | iOS | Queue a file (including `.wasm`) into Watch `Documents/Wawona/inbox` |
 
 CloudKit catalog mirror is tracked as a follow-up ([#155](https://github.com/Wawona/Wawona/issues/155)).
-watchOS WASM runtime remains size-gated off ([#156](https://github.com/Wawona/Wawona/issues/156) / [#143](https://github.com/Wawona/Wawona/issues/143)).
+watchOS runs the same Relay Pulley interpreter as iOS ([`wawona-relay-wasm`](agent-rules/wawona-relay-wasm.md)). Transfer via WatchConnectivity still lands in `Documents/Wawona/inbox`.
 
 ---
 

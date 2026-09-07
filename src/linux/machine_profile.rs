@@ -130,6 +130,8 @@ pub struct MachineRuntimeOverrides {
     pub shake_to_close_enabled: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none", rename = "swipeBackToCloseEnabled")]
     pub swipe_back_to_close_enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "wasmModulePath")]
+    pub wasm_module_path: Option<String>,
 }
 
 /// A configured Wayland client launcher (mirrors Swift `ClientLauncher`). The

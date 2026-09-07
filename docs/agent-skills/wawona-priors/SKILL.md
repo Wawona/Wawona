@@ -35,6 +35,8 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-nested-compositor-cursor` | Host cursor on niri/weston |
 | `wawona-inprocess-cairo` | Nested weston teardown |
 | `wawona-native-compositors` / `wawona-port-fidelity` | Weston/Niri; waypipe equivalence |
+| `wawona-relay-wasm` | WASI Runtime on every target including watchOS |
+| `wawona-linux-vms-relay-runtime` | NixOS VMs; Mode A/B engines; no QEMU/UTM |
 | `wawona-platform-targets` | Four-state gates |
 | `wawona-swinging-bridge` | Not Desktop, not LockScreen |
 | `wawona-test-control` / `wawona-agent-device` | UI / vphone |
@@ -60,6 +62,8 @@ skill, add one row. Capture flow: `wawona-learn`.
 - Tipa: bump `CFBundleVersion`. Never install under `/var/jb/Applications` (179).
 - Watch-bearing IPA needs `SwiftSupport/`. Watchless tvOS/visionOS must not.
 - Prove `ld` locally. Do not burn Gate: products to discover duplicates.
+- Relay Wasm ships on every target. Do not size-gate watchOS off.
+- hello-wasi-gui (`wl_shm`) must run on Watch Machines Start. Transfer is not run.
 - Port = substitute platform, not client. Waypipe Linux build is the reference.
 - Graphics keys live in L1 `wwn-iland`. Never L0 toolchain. Never invert DAG.
 - No real `/dev/dri` / kernel DRM. iland userspace only.

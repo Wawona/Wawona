@@ -1894,13 +1894,15 @@ APPLESCRIPT
           # (Linux hosts get the same attr from the isLinuxHost block.)
           phoon = toolchains.buildForMacOS "phoon" { };
           # wwn-wasm: WASI P1/P2 interpreter (Pulley on mobile; Cranelift on macOS).
-          # Cited: docs/wwn-repo-dag.md (L3′). Off on watchOS (size).
+          # Cited: docs/wwn-repo-dag.md (L3′). Mandatory on every target including watchOS.
           wawona-wasm-ios = toolchains.buildForIOS "wawona-wasm" { };
           wawona-wasm-ios-sim = toolchains.buildForIOS "wawona-wasm" { simulator = true; };
           wawona-wasm-tvos = toolchains.buildForTVOS "wawona-wasm" { };
           wawona-wasm-tvos-sim = toolchains.buildForTVOS "wawona-wasm" { simulator = true; };
           wawona-wasm-visionos = toolchains.buildForVisionOS "wawona-wasm" { };
           wawona-wasm-visionos-sim = toolchains.buildForVisionOS "wawona-wasm" { simulator = true; };
+          wawona-wasm-watchos = toolchains.buildForWatchOS "wawona-wasm" { };
+          wawona-wasm-watchos-sim = toolchains.buildForWatchOS "wawona-wasm" { simulator = true; };
           wawona-wasm-macos = toolchains.buildForMacOS "wawona-wasm" { };
           wawona-wasm = toolchains.buildForMacOS "wawona-wasm" { };
           "zsh-framework-ios" = toolchains.buildForIOS "zsh-framework" { };

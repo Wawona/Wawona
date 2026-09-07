@@ -328,10 +328,9 @@ void wwn_ios_refresh_bundle_env(void) {}
 __attribute__((weak))
 void wwn_pty_ios_allow_new_shell_session(void) {}
 
-/* wwn-wasm is size-gated off watchOS, so there is no libwawona_wasm.a.
- * libwwn-pty dispatch still references these when -u pulls dispatch.o.
- * Darwin treats those externs as strong undefs. Weak stubs keep the
- * companion linking. Do not add -Wl,-u for these on watch. */
+/* Weak fallbacks for watchOS arm64_32 (no aarch64 wasm archive).
+ * arm64 + simulator link libwawona_wasm.a (strong symbols win).
+ * Keep these weak so the 32-bit companion still links. */
 __attribute__((weak))
 int wawona_wasm_run(int argc, char **argv) {
     (void)argc; (void)argv;

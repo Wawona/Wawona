@@ -37,6 +37,8 @@ def main() -> None:
         "wawona-wasm-ios",
         "wawona-wasm-macos",
         "wawona-wasm-android",
+        "wawona-wasm-watchos",
+        "wawona-wasm-watchos-sim",
     ):
         if needle not in flake:
             errors.append(f"flake.nix missing {needle}")
@@ -54,12 +56,14 @@ def main() -> None:
     for needle in ("wasmLdflags", "-lwawona_wasm", "_wawona_wasm_run"):
         if needle not in xg:
             errors.append(f"xcodegen.nix missing {needle}")
-    if "wasmLdflags watchosDeps" in xg or "wasmLdflags watchosSimDeps" in xg:
-        errors.append("watchOS must not link wawona-wasm (size-gated off)")
+    if "wasmLdflags watchosDeps" not in xg or "wasmLdflags watchosSimDeps" not in xg:
+        errors.append("watchOS must link wawona-wasm (wasmLdflags watchosDeps / watchosSimDeps)")
 
     mobile = read(MOBILE_DEPS)
     if 'buildFn "wawona-wasm"' not in mobile and '"wawona-wasm" = buildFn' not in mobile:
-        errors.append('mobile-platform-deps.nix must build "wawona-wasm" on mobile/tv/vision')
+        errors.append('mobile-platform-deps.nix must build "wawona-wasm" on mobile/tv/watch/vision')
+    if 'variant == "watch"' not in mobile or "wawona-wasm" not in mobile:
+        errors.append("mobile-platform-deps.nix must include watch in the wawona-wasm optionalAttrs")
 
     rootfs = read(IOS_ROOTFS)
     for needle in ("help wawona wasm", "help()", 'echo "21"'):
@@ -74,6 +78,23 @@ def main() -> None:
 
     if not WASM_DOC.is_file():
         errors.append("docs/wasm-wasi.md missing")
+
+    hello = ROOT / "src/resources/wasm/hello-wasi-gui.wasm"
+    if not hello.is_file() or hello.stat().st_size < 32:
+        errors.append("src/resources/wasm/hello-wasi-gui.wasm must ship (Watch and every target)")
+    android_hello = ROOT / "android/app/src/main/assets/wasm/hello-wasi-gui.wasm"
+    if not android_hello.is_file():
+        errors.append("android assets must include wasm/hello-wasi-gui.wasm")
+
+    launchers = read(ROOT / "Sources/WawonaModel/ClientLauncher.swift")
+    if "allowsWasmRuntime" not in launchers:
+        errors.append("ClientLauncher must gate wawona-wasm with allowsWasmRuntime")
+    if "#if os(watchOS)" in launchers and "wawona-wasm" in launchers:
+        errors.append("ClientLauncher must not special-case watchOS off for wasm")
+
+    watch_bridge = read(ROOT / "src/platform/watchos/WWNWatchCompositorBridge.m")
+    if "launchWasmModuleAtPath" not in watch_bridge or "hello-wasi-gui" not in watch_bridge:
+        errors.append("watch compositor must launch hello-wasi-gui via wawona_wasm_run")
 
     if errors:
         for e in errors:

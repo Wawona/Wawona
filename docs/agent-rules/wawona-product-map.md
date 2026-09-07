@@ -47,7 +47,9 @@ Canonical prose: `Wawona/docs/mode-a-b.md`, `swinging-bridge.md`, `iland-mode-a-
 - **Wasm is not platform-native** (tradeoff vs a true Mach-O port). Payoff: one
   **portable** Runtime + **`wpm`** with **full App Store / Play compliance**.
 - **Wawona Runtime is always App Store / Play compliant.** There is **no Mode B
-  flavor of the Runtime**.
+  flavor of the Runtime**. (`wpm` WASI bytecode. Linux VM CPUs are a different
+  engine: `wawona-linux-vms-relay-runtime`.) Relay Wasm **ships on every
+  product target**, including watchOS / tvOS / visionOS (`wawona-relay-wasm`).
 - Packages are **bytecode data** (`.wasm` / WASI P1/P2), not unsigned Mach-O/`dlopen`, not `.deb`.
 - Dual channel on `repo.wawona.io`:
   - Humans: `/search/?channel=wasm` vs `/search/?channel=deb`. Never one list.
@@ -65,4 +67,5 @@ Canonical prose: `Wawona/docs/mode-a-b.md`, `swinging-bridge.md`, `iland-mode-a-
 ❌ Ship Mode B / JIT / jailbreak engage in store IPA/AAB  
 ❌ Treat Wasm packages as containers/VMs (or vice versa)  
 ❌ Put graphics/Desktop/Swinging Bridge ownership into `wwn-toolchain` (L0 substrate only)  
-❌ Document Runtime as needing Mode B for package install  
+❌ Document Runtime as needing Mode B for package install
+❌ Size-gate or stub wasm off watchOS / tvOS / visionOS / any product target  

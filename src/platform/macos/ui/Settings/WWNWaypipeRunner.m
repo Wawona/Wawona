@@ -2092,33 +2092,46 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
 #endif
 }
 
+- (NSString *)wwnBundledHelloWasiGuiPath {
+  NSString *path = [[NSBundle mainBundle] pathForResource:@"hello-wasi-gui"
+                                                   ofType:@"wasm"];
+  if (path.length > 0 && [[NSFileManager defaultManager] fileExistsAtPath:path]) {
+    return path;
+  }
+  return nil;
+}
+
 - (NSString *)wwnResolveWasmModulePathForMachineId:(NSString *)machineId {
-  if (machineId.length == 0) {
-    return nil;
-  }
 #if __has_include("../Machines/WWNMachineProfileStore.h")
-  WWNMachineProfile *profile = [WWNMachineProfileStore profileById:machineId];
-  if (!profile) {
-    return nil;
-  }
-  NSDictionary *runtime =
-      [profile.runtimeOverrides isKindOfClass:[NSDictionary class]]
-          ? profile.runtimeOverrides
-          : @{};
-  id path = runtime[kWWNRuntimeWasmModulePath];
-  if ([path isKindOfClass:[NSString class]] && [(NSString *)path length] > 0) {
-    return [(NSString *)path stringByExpandingTildeInPath];
-  }
-  NSDictionary *settings =
-      [profile.settingsOverrides isKindOfClass:[NSDictionary class]]
-          ? profile.settingsOverrides
-          : @{};
-  id legacy = settings[@"WasmModulePath"];
-  if ([legacy isKindOfClass:[NSString class]] && [(NSString *)legacy length] > 0) {
-    return [(NSString *)legacy stringByExpandingTildeInPath];
+  if (machineId.length > 0) {
+    WWNMachineProfile *profile = [WWNMachineProfileStore profileById:machineId];
+    if (profile) {
+      NSDictionary *runtime =
+          [profile.runtimeOverrides isKindOfClass:[NSDictionary class]]
+              ? profile.runtimeOverrides
+              : @{};
+      id path = runtime[kWWNRuntimeWasmModulePath];
+      if ([path isKindOfClass:[NSString class]] && [(NSString *)path length] > 0) {
+        NSString *expanded = [(NSString *)path stringByExpandingTildeInPath];
+        if ([[NSFileManager defaultManager] fileExistsAtPath:expanded]) {
+          return expanded;
+        }
+      }
+      NSDictionary *settings =
+          [profile.settingsOverrides isKindOfClass:[NSDictionary class]]
+              ? profile.settingsOverrides
+              : @{};
+      id legacy = settings[@"WasmModulePath"];
+      if ([legacy isKindOfClass:[NSString class]] && [(NSString *)legacy length] > 0) {
+        NSString *expanded = [(NSString *)legacy stringByExpandingTildeInPath];
+        if ([[NSFileManager defaultManager] fileExistsAtPath:expanded]) {
+          return expanded;
+        }
+      }
+    }
   }
 #endif
-  return nil;
+  return [self wwnBundledHelloWasiGuiPath];
 }
 
 - (void)launchWasmModuleAtPath:(NSString *)wasmModulePath

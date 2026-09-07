@@ -235,6 +235,9 @@ is on (`wawona-nested-compositor-cursor`). Full rule:
   only (forbidden in store IPA). See `wawona-swinging-bridge`, `docs/swinging-bridge.md`.
 - **VM / containers**. Planned on macOS / iOS / iPadOS / Android / Linux;
   forbidden on tvOS / watchOS / visionOS. See `docs/vms-containers.md`.
+- **Relay Wasm**. Mandatory on every product target including watchOS / tvOS /
+  visionOS / Linux. Pulley on Apple mobile store artifacts. See
+  `docs/agent-rules/wawona-relay-wasm.md`.
 - **Binary filenames**. GitHub Release
   `Wawona-{calver}-{platform}-{arch}.{ext}`; store uploads add `-{build}` before
   the extension (TestFlight IPA / Play AAB). product-build may keep short names

@@ -57,8 +57,13 @@ extern NSNotificationName const WWNWatchCompositorFrameReadyNotification;
 - (void)launchNiri;
 
 /// Launch any known bundled client id (weston-flower, weston-smoke, …).
-/// Unknown ids fall back to weston-simple-shm.
+/// `wawona-wasm` runs Relay Pulley on the bundled hello-wasi-gui.wasm
+/// (or `path` when set). Unknown ids fall back to weston-simple-shm.
 - (void)launchClientWithId:(NSString *)clientId;
+
+/// Run a WASI Wayland module in-process. Nil / missing path uses the
+/// bundled hello-wasi-gui.wasm (wl_shm + xdg). Required on watchOS.
+- (void)launchWasmModuleAtPath:(nullable NSString *)path;
 
 /// Stop any running in-process client.
 - (void)stopClient;

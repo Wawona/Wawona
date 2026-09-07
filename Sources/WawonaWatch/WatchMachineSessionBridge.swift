@@ -28,7 +28,14 @@ enum WatchMachineSessionBridge {
         case .native:
             let clientId = resolvedNativeClientId(for: profile)
             logger.appendLine("[LAUNCH] Starting \(clientId) …")
-            bridge.launchClient(withId: clientId)
+            if clientId == "wawona-wasm" || clientId == "hello-wasi-gui" {
+                let path = profile.runtimeOverrides.wasmModulePath?
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                logger.appendLine("[LAUNCH] Relay wasm \(path.isEmpty ? "hello-wasi-gui (bundled)" : path)")
+                bridge.launchWasmModule(atPath: path.isEmpty ? nil : path)
+            } else {
+                bridge.launchClient(withId: clientId)
+            }
             return true
         case .sshWaypipe, .sshTerminal:
             guard !profile.sshHost.isEmpty, !profile.sshUser.isEmpty else {

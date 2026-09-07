@@ -161,6 +161,14 @@ public enum PlatformCapabilities: Sendable {
         #endif
     }
 
+    /// Relay WASI Runtime (`wwn-wasm` / later `wwn-relay`). Mandatory on every
+    /// product target including watchOS. Apple mobile store execute is Pulley.
+    public static var wasmRuntimeGate: CapabilityGate {
+        return .available
+    }
+
+    public static var allowsWasmRuntime: Bool { wasmRuntimeGate.isAvailable }
+
     public static var allowsWatchPresentAccelerator: Bool {
         watchPresentAcceleratorGate.isAvailable
     }

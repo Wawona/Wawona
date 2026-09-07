@@ -75,19 +75,20 @@ channel).
 | Allowed | Forbidden |
 |---|---|
 | User `.wasm` as a **document** (Files / File Sharing / `scp`) | Downloading or `exec` of unsigned **Mach-O** |
-| Pulley **interpreter** on iOS / iPadOS / tvOS / visionOS | Cranelift native / `MAP_JIT` on Apple mobile |
+| Pulley **interpreter** on iOS / iPadOS / tvOS / watchOS / visionOS | Cranelift native / `MAP_JIT` on Apple mobile |
 | Sandbox FS preopen (HOME / Documents) | `..` escape, `dlopen` of `.wasm` |
 | POSIX sockets + host Wayland fd-bridge | Shipping WASM as the only way to run a port we already have natively |
 | Registry packages as Wasm **data** for the Runtime | Creating a storefront for other iOS apps |
 
-macOS may use Cranelift ([`wawona-macos-no-appstore`](../.cursor/rules/wawona-macos-no-appstore.mdc)).
-watchOS keeps the runtime **off** (size), same as coreutils.
+macOS and Linux may use Cranelift ([`wawona-macos-no-appstore`](../.cursor/rules/wawona-macos-no-appstore.mdc)).
+Relay Wasm ships on **every** product target, including watchOS
+([`wawona-relay-wasm`](agent-rules/wawona-relay-wasm.md)). watchOS and tvOS
+stay Pulley. Size is a recipe problem, not a reason to unlink the archive.
 
-iPhone Settings → **Apple Watch** can still **transfer** `.wasm` documents to
-the paired Watch via WatchConnectivity (`Documents/Wawona/inbox`). Transfer is
-not the same as running them. The Watch interpreter stays unlinked until the
-size gate lifts ([#151](https://github.com/Wawona/Wawona/issues/151),
-[#156](https://github.com/Wawona/Wawona/issues/156)).
+Apple Watch **runs** wasm. Machines Start on `wawona-wasm` launches bundled
+`hello-wasi-gui.wasm` (`wl_shm` + xdg) through Pulley. WatchConnectivity
+inbox transfer is extra, not a substitute. Watch GPU (GLES / Vulkan / Metal)
+stays blocked by the SDK. Present is SpriteKit of SHM frames.
 
 See [ios-local-shell/APP-STORE-COMPLIANCE.md](ios-local-shell/APP-STORE-COMPLIANCE.md).
 

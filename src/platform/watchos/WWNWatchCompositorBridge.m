@@ -45,6 +45,8 @@ extern int image_main(int argc, char **argv) __attribute__((weak));
 extern int scaler_main(int argc, char **argv) __attribute__((weak));
 extern int editor_main(int argc, char **argv) __attribute__((weak));
 extern int constraints_main(int argc, char **argv) __attribute__((weak));
+extern int wawona_wasm_run(int argc, char **argv) __attribute__((weak));
+extern int wawona_wasm_can_run(const char *path) __attribute__((weak));
 
 // In-process waypipe with libssh2 (statically linked from Rust).
 // Weak so the bridge can nil-check before calling.
@@ -107,7 +109,27 @@ NSNotificationName const WWNWatchCompositorFrameReadyNotification =
 - (void)_waypipeThreadDidExit;
 - (BOOL)_isCompatShimEnabledForClient:(const char *)name;
 - (void)_applyMiniServerSizePolicyForClient:(const char *)name;
+- (nullable NSString *)_resolveWasmModulePath:(nullable NSString *)explicitPath;
 @end
+
+static NSString *WWNWatchBundledHelloWasiGuiPath(void) {
+    NSBundle *bundle = [NSBundle mainBundle];
+    NSString *path = [bundle pathForResource:@"hello-wasi-gui" ofType:@"wasm"];
+    if (path.length > 0 && [[NSFileManager defaultManager] fileExistsAtPath:path]) {
+        return path;
+    }
+    NSArray<NSString *> *docs =
+        NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+    if (docs.count > 0) {
+        NSString *inbox = [[docs[0] stringByAppendingPathComponent:@"Wawona"]
+            stringByAppendingPathComponent:@"inbox"];
+        NSString *inboxWasm = [inbox stringByAppendingPathComponent:@"hello-wasi-gui.wasm"];
+        if ([[NSFileManager defaultManager] fileExistsAtPath:inboxWasm]) {
+            return inboxWasm;
+        }
+    }
+    return nil;
+}
 
 // ── Server dispatch thread ────────────────────────────────────────────────────
 // Runs a blocking event loop for WWNMiniWaylandServer so client requests are
@@ -758,8 +780,52 @@ static int wwn_watch_niri_entry(int argc, char **argv) {
     }
 }
 
+- (NSString *)_resolveWasmModulePath:(NSString *)explicitPath {
+    NSString *trimmed =
+        [explicitPath stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (trimmed.length > 0) {
+        NSString *expanded = [trimmed stringByExpandingTildeInPath];
+        if ([[NSFileManager defaultManager] fileExistsAtPath:expanded]) {
+            return expanded;
+        }
+        WWNLog("WATCH", @"Wasm path missing %@. Falling back to bundled hello-wasi-gui",
+               expanded);
+    }
+    return WWNWatchBundledHelloWasiGuiPath();
+}
+
+- (void)launchWasmModuleAtPath:(NSString *)path {
+    NSString *resolved = [self _resolveWasmModulePath:path];
+    if (resolved.length == 0) {
+        WWNLog("WATCH",
+               @"No hello-wasi-gui.wasm in the Watch bundle or Documents/Wawona/inbox");
+        return;
+    }
+    if (wawona_wasm_can_run != NULL && !wawona_wasm_can_run(resolved.UTF8String)) {
+        WWNLog("WATCH", @"Not a readable WASM module: %@", resolved);
+        return;
+    }
+    if (wawona_wasm_run == NULL) {
+        WWNLog("WATCH", @"wawona_wasm_run not linked; cannot run %@", resolved);
+        return;
+    }
+    char **argv = calloc(2, sizeof(char *));
+    if (!argv) {
+        return;
+    }
+    argv[0] = strdup("wasm");
+    argv[1] = strdup(resolved.UTF8String);
+    WWNLog("WATCH", @"Launching Relay wasm %@", resolved);
+    [self _launchClient:wawona_wasm_run name:"wawona-wasm" argc:2 argv:argv];
+}
+
 - (void)launchClientWithId:(NSString *)clientId {
     NSString *cid = clientId.length > 0 ? clientId : @"weston-simple-shm";
+    if ([cid isEqualToString:@"wawona-wasm"] ||
+        [cid isEqualToString:@"hello-wasi-gui"]) {
+        [self launchWasmModuleAtPath:nil];
+        return;
+    }
     if ([cid isEqualToString:@"weston"]) {
         [self launchWeston];
     } else if ([cid isEqualToString:@"weston-terminal"]) {

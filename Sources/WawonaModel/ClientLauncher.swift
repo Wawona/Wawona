@@ -52,7 +52,7 @@ public extension ClientLauncher {
         ClientLauncher(name: "weston-terminal", executablePath: "weston-terminal", displayName: "Weston Terminal"),
         ClientLauncher(name: "foot", executablePath: "foot", displayName: "Foot Terminal"),
         ClientLauncher(name: "weston-simple-shm", executablePath: "weston-simple-shm", displayName: "Weston Simple SHM"),
-        ClientLauncher(name: "wawona-wasm", executablePath: "wasm", displayName: "Wawona Runtime (.wasm)"),
+        ClientLauncher(name: "wawona-wasm", executablePath: "wasm", displayName: "Hello WASI GUI / Runtime (.wasm)"),
         ClientLauncher(name: "weston", executablePath: "weston", displayName: "Weston"),
         ClientLauncher(name: "niri", executablePath: "niri", displayName: "Niri"),
         ClientLauncher(name: "weston-flower", executablePath: "weston-flower", displayName: "Weston Flower"),
@@ -80,11 +80,7 @@ public extension ClientLauncher {
     static var availablePresets: [ClientLauncher] {
         allPresets.filter { launcher in
             if launcher.name == "wawona-wasm" {
-                #if os(watchOS)
-                return false
-                #else
-                return true
-                #endif
+                return PlatformCapabilities.allowsWasmRuntime
             }
             if PlatformCapabilities.glesClientIds.contains(launcher.name) {
                 return PlatformCapabilities.openGLDriverEnabled

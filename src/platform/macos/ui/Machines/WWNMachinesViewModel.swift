@@ -76,7 +76,7 @@ let kAllBundledClients: [BundledClient] = [
     name: "Wawona Runtime (.wasm)",
     prefsKey: "WawonaWasmEnabled",
     icon: "doc.badge.gearshape",
-    description: "Wayland WASI module from the filesystem (Wawona Runtime)"
+    description: "Wayland WASI. Empty path runs bundled hello-wasi-gui (wl_shm) on every target"
   ),
   BundledClient(
     id: "weston",

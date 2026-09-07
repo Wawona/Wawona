@@ -820,11 +820,15 @@ fun WawonaApp(
     fun launchNativeMachine(profile: MachineProfile): Boolean {
         val launcher = profile.nativeLauncher.ifBlank { "weston-terminal" }
         if (launcher == "wawona-wasm") {
-            val path = profile.runtimeOverrides.optString("wasmModulePath", "").trim()
-            if (path.isEmpty() || !java.io.File(path).isFile) {
+            val requested = profile.runtimeOverrides.optString("wasmModulePath", "").trim()
+            val path = when {
+                requested.isNotEmpty() && File(requested).isFile -> requested
+                else -> extractBundledHelloWasiGui()
+            }
+            if (path.isNullOrEmpty() || !File(path).isFile) {
                 Toast.makeText(
                     context,
-                    "Pick a Wayland .wasm path in Machine Settings first.",
+                    "Bundled hello-wasi-gui.wasm is missing. Pick a .wasm path.",
                     Toast.LENGTH_LONG
                 ).show()
                 return false
@@ -857,6 +861,23 @@ fun WawonaApp(
             }
         }
         return launchNativeClient(launcher)
+    }
+
+    private fun extractBundledHelloWasiGui(): String? {
+        val dest = File(filesDir, "wasm/hello-wasi-gui.wasm")
+        if (dest.isFile && dest.length() > 0) {
+            return dest.absolutePath
+        }
+        return try {
+            dest.parentFile?.mkdirs()
+            assets.open("wasm/hello-wasi-gui.wasm").use { input ->
+                dest.outputStream().use { output -> input.copyTo(output) }
+            }
+            dest.absolutePath
+        } catch (e: Exception) {
+            WLog.e("NATIVE", "hello-wasi-gui asset missing: ${e.message}")
+            null
+        }
     }
 
     fun connectMachine(profile: MachineProfile, sessionId: String? = null) {

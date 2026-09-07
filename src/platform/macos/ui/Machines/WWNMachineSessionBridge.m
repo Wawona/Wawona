@@ -175,16 +175,21 @@
               ? runtime[@"wasmModulePath"]
               : @"";
       wasmPath = [wasmPath stringByExpandingTildeInPath];
-      if (wasmPath.length == 0 ||
-          ![[NSFileManager defaultManager] fileExistsAtPath:wasmPath]) {
+      BOOL haveExplicit = wasmPath.length > 0 &&
+          [[NSFileManager defaultManager] fileExistsAtPath:wasmPath];
+      NSString *bundled = [[NSBundle mainBundle] pathForResource:@"hello-wasi-gui"
+                                                          ofType:@"wasm"];
+      BOOL haveBundled = bundled.length > 0 &&
+          [[NSFileManager defaultManager] fileExistsAtPath:bundled];
+      if (!haveExplicit && !haveBundled) {
         if (error) {
           *error = [NSError
               errorWithDomain:@"WWNMachineSessionBridge"
                          code:6
                      userInfo:@{
                        NSLocalizedDescriptionKey :
-                           @"Pick a Wayland .wasm module in Machine Settings "
-                           @"(Wawona Runtime) before starting."
+                           @"Bundled hello-wasi-gui.wasm is missing. Pick a "
+                           @"Wayland .wasm in Machine Settings."
                      }];
         }
         return NO;

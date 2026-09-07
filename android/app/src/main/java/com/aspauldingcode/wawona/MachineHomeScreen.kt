@@ -1180,7 +1180,7 @@ private fun MachineEditorSheet(
                                     modifier = Modifier.fillMaxWidth()
                                 )
                                 Text(
-                                    "Wayland WASI `.wasm` run by the bundled Wawona Runtime.",
+                                    "Empty path runs bundled hello-wasi-gui (wl_shm).",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )

@@ -292,7 +292,7 @@ let
     ];
 
   # wwn-wasm: Pulley interpreter on Apple mobile. Lazy -l like phoon (Wasmtime
-  # embeds Rust std). watchOS is size-gated off (no archive). Never -force_load.
+  # embeds Rust std). Mandatory on watchOS too (wawona-relay-wasm). Never -force_load.
   # Do not gate on pathExists. That silently drops the archive before first build.
   wasmLdflags = deps:
     let
@@ -450,6 +450,14 @@ let
 
   settingsDepsResource = target: {
     path = "src/resources/settings-deps/${target}/SettingsDependencies.json";
+    type = "file";
+    buildPhase = "resources";
+  };
+
+  # Portable WASI GUI smoke (wl_shm + xdg). Default module for wawona-wasm
+  # on every Apple target including watchOS (wawona-relay-wasm).
+  helloWasiGuiResource = {
+    path = "src/resources/wasm/hello-wasi-gui.wasm";
     type = "file";
     buildPhase = "resources";
   };
@@ -1542,6 +1550,7 @@ ICDJSON
           # Missing this makes ASC accept the IPA then discard the build (never listed).
           { path = "src/resources/app-bundle/PrivacyInfo.xcprivacy"; type = "file"; buildPhase = "resources"; }
           (settingsDepsResource "ios")
+          helloWasiGuiResource
           { path = "src/resources/Settings.bundle"; type = "folder"; buildPhase = "resources"; }
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
@@ -1802,6 +1811,7 @@ ICDJSON
           # Missing this makes ASC accept the IPA then discard the build (never listed).
           { path = "src/resources/app-bundle/PrivacyInfo.xcprivacy"; type = "file"; buildPhase = "resources"; }
           (settingsDepsResource "ipados")
+          helloWasiGuiResource
           { path = "src/resources/Settings.bundle"; type = "folder"; buildPhase = "resources"; }
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
@@ -2007,6 +2017,7 @@ ICDJSON
           # Missing this makes ASC accept the IPA then discard the build (never listed).
           { path = "src/resources/app-bundle/PrivacyInfo.xcprivacy"; type = "file"; buildPhase = "resources"; }
           (settingsDepsResource "tvos")
+          helloWasiGuiResource
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
@@ -2245,6 +2256,7 @@ ICDJSON
           # Missing this makes ASC accept the IPA then discard the build (never listed).
           { path = "src/resources/app-bundle/PrivacyInfo.xcprivacy"; type = "file"; buildPhase = "resources"; }
           (settingsDepsResource "macos")
+          helloWasiGuiResource
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
@@ -2836,6 +2848,7 @@ ICDJSON
           # Missing this makes ASC accept the IPA then discard the build (never listed).
           { path = "src/resources/app-bundle/PrivacyInfo.xcprivacy"; type = "file"; buildPhase = "resources"; }
           (settingsDepsResource "visionos")
+          helloWasiGuiResource
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
@@ -3091,6 +3104,7 @@ ICDJSON
           # Missing this makes ASC accept the IPA then discard the build (never listed).
           { path = "src/resources/app-bundle/PrivacyInfo.xcprivacy"; type = "file"; buildPhase = "resources"; }
           (settingsDepsResource "watchos")
+          helloWasiGuiResource
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
         ];
@@ -3309,7 +3323,7 @@ ICDJSON
             # lazy link just below: niri is force-loaded, so -lphoon_rs after it
             # dedupes std/core (no 2134 duplicate symbols) while keeping phoon
             # bundled on watchOS.
-            ] ++ westonToytoolkitLdflagsAppleMobile watchosDeps ++ westonCompositorLdflagsAppleMobile watchosDeps ++ niriLdflags watchosDeps ++ footLdflags watchosDeps ++ fastfetchLdflags watchosDeps ++ phoonLdflags watchosDeps ++ neovimLdflags watchosDeps ++ [
+            ] ++ westonToytoolkitLdflagsAppleMobile watchosDeps ++ westonCompositorLdflagsAppleMobile watchosDeps ++ niriLdflags watchosDeps ++ footLdflags watchosDeps ++ fastfetchLdflags watchosDeps ++ phoonLdflags watchosDeps ++ wasmLdflags watchosDeps ++ neovimLdflags watchosDeps ++ [
               "-lwayland-server"
             ] ++ lib.optionals (watchosDeps ? waypipe && watchosDeps.waypipe != null) [
               # Lazy archive link, not -force_load: niri is already force-loaded
@@ -3355,7 +3369,7 @@ ICDJSON
               "-lxkbcommon"
               "-lwayland-egl"
             # phoon lazy-linked on watchOS sim too (see watchOS device block).
-            ] ++ westonToytoolkitLdflagsAppleMobile watchosSimDeps ++ westonCompositorLdflagsAppleMobile watchosSimDeps ++ niriLdflags watchosSimDeps ++ footLdflags watchosSimDeps ++ fastfetchLdflags watchosSimDeps ++ phoonLdflags watchosSimDeps ++ neovimLdflags watchosSimDeps ++ [
+            ] ++ westonToytoolkitLdflagsAppleMobile watchosSimDeps ++ westonCompositorLdflagsAppleMobile watchosSimDeps ++ niriLdflags watchosSimDeps ++ footLdflags watchosSimDeps ++ fastfetchLdflags watchosSimDeps ++ phoonLdflags watchosSimDeps ++ wasmLdflags watchosSimDeps ++ neovimLdflags watchosSimDeps ++ [
               "-lwayland-server"
             ] ++ lib.optionals (watchosSimDeps ? waypipe && watchosSimDeps.waypipe != null) [
               "-L${strip watchosSimDeps.waypipe}/lib"

@@ -208,7 +208,7 @@ Never inherit `DYLD_*`, `LD_*`, or host `PATH` from SpringBoard.
 | **iPadOS** | Same (`ipados.nix` → `ios.nix`) | **Yes. In-process** | in-process uutils | same |
 | **tvOS** | Full `terminal.c` (constrained UX) | **Yes. In-process** | in-process uutils | reuses iOS recipes |
 | **visionOS** | Full `terminal.c` | **Yes. In-process** | in-process uutils | reuses iOS recipes |
-| **watchOS** | Full `terminal.c` (constrained UX) | **Yes. In-process** | **size-gated off** (builtins only) | see [WATCHOS-SCOPE.md](WATCHOS-SCOPE.md) |
+| **watchOS** | Full `terminal.c` (constrained UX) | **Yes. In-process** | **size-gated off** (builtins only) | wasm Pulley + [WATCHOS-SCOPE.md](WATCHOS-SCOPE.md) |
 | **Android** | Full `terminal.c` | **Yes. Forked** (`posix_spawn` real `zsh`) | uutils multicall on `PATH` | `.#zsh-android`, APK `libzsh_bin.so` |
 | **macOS** | Meson path | Host `/bin/zsh` via `forkpty` | uutils multicall on `PATH` | `weston/macos.nix` unchanged |
 

@@ -26,10 +26,8 @@ struct WatchBundledClientPickerView: View {
                     clientRow(launcher, enabled: true)
                 }
             } footer: {
-                if !unavailableGpu.isEmpty {
-                    Text("GPU demos need Metal/ANGLE (blocked on watchOS). They ship on macOS, iOS, iPadOS, visionOS, and Android.")
-                        .font(.caption2)
-                }
+                Text("Wawona Runtime runs bundled hello-wasi-gui over wl_shm on this Watch.")
+                    .font(.caption2)
             }
 
             if !unavailableGpu.isEmpty {

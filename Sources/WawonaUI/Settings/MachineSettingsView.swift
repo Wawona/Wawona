@@ -181,7 +181,7 @@ public struct MachineSettingsView: View {
                     TextField("Wasm module path", text: wasmModulePathBinding)
                         .wawonaTextFieldNoAutocaps()
                         .autocorrectionDisabled()
-                    Text("Wayland WASI `.wasm` run by the Wawona Runtime.")
+                    Text("Empty path runs bundled hello-wasi-gui (wl_shm) on this device, including Apple Watch.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

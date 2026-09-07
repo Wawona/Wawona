@@ -30,6 +30,7 @@ fallback) instead of removing it from the product surface.
 | Desktop + LockScreen replacement | ⏳ planned | ⏳ planned | ❌ App Store | ❌ | ❌ App Store | ❌ | ❌ |
 | Wawona Swinging Bridge | ⏳ Mode A+B | ⏳ Mode A+B | ❌ App Store (Mode B only) | ❌ | ❌ App Store (Mode B only) | ❌ | ❌ |
 | iCloud Drive (shell HOME) | ✅ | ❌ | ✅ | ✅ | ✅ | ⛔ blocked | ⛔ blocked |
+| Relay Wasm (WASI / `wpm`) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 ### Legend. The four gate states
 
@@ -47,8 +48,8 @@ Mirrored in code by `CapabilityGate` in
 `Wawona/Sources/WawonaModel/PlatformCapabilities.swift`. A gate change belongs
 in both places.
 
-**Linux** (not in the Apple/Android columns): native + remote ✅; VM/containers
-⏳ planned; Desktop/LockScreen ❌; Wawona Swinging Bridge ❌.
+**Linux** (not in the Apple/Android columns): native + remote ✅; Relay Wasm ✅;
+VM/containers ⏳ planned; Desktop/LockScreen ❌; Wawona Swinging Bridge ❌.
 
 **iOS and iPadOS are the same** for Desktop/LockScreen and Wawona Swinging Bridge (store Mode A
 vs `repo.wawona.io` Mode B / jailbreak Desktop). Do not special-case iPadOS as
@@ -169,6 +170,8 @@ forbidden while iPhone is planned for those features.
     must use their allowed non-GL fallback and must not gain forbidden GPU
     bundles. Fix each target's recipe/link/package/runtime path; never exclude
     either compositor to make the matrix green.
+    **Relay Wasm** is the same class of mandatory bundle on every row including
+    Linux (`wawona-relay-wasm`). Do not size-gate watchOS off.
 12. **Runtime-only graphics**. Iland DRM/KMS/GBM is userland emulation.
     Wawona code must never open real `/dev/dri` or `/dev/kgsl` nodes, forward
     real DRM/KMS/KGSL ioctls, ship kernel code, or require kernel patches.

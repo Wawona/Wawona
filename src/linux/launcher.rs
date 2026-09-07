@@ -23,7 +23,7 @@ pub fn launch(profile: &LinuxMachineProfile, settings: &LinuxSettings, rt: &Runt
 
     let mut cmd = match profile.machine_type {
         LinuxMachineType::Native => {
-            let run_cmd = profile.effective_command();
+            let run_cmd = rewrite_wasm_command(&profile.effective_command(), None);
             wlog!("LAUNCHER", "Native launch command={}", run_cmd);
             let mut c = Command::new("sh");
             c.args(["-c", &run_cmd]);
@@ -123,7 +123,10 @@ pub fn launch_profile(
 
     let mut cmd = match profile.machine_type {
         MachineType::Native | MachineType::VirtualMachine | MachineType::Container => {
-            let run_cmd = profile.effective_command();
+            let run_cmd = rewrite_wasm_command(
+                &profile.effective_command(),
+                profile.runtime_overrides.wasm_module_path.as_deref(),
+            );
             wlog!("LAUNCHER", "Local launch command={}", run_cmd);
             let mut c = Command::new("sh");
             c.args(["-c", &run_cmd]);
@@ -189,4 +192,40 @@ pub fn launch_profile(
         profile.name
     );
     Ok(child)
+}
+
+fn rewrite_wasm_command(command: &str, explicit_wasm: Option<&str>) -> String {
+    let token = command.trim();
+    if token != "wawona-wasm" && token != "hello-wasi-gui" {
+        return command.to_string();
+    }
+    if let Some(path) = explicit_wasm.map(str::trim).filter(|s| !s.is_empty()) {
+        if std::path::Path::new(path).is_file() {
+            return format!("wasm {}", shell_quote(path));
+        }
+    }
+    match write_bundled_hello_wasi_gui() {
+        Ok(path) => format!("wasm {}", shell_quote(&path)),
+        Err(err) => {
+            wlog!("LAUNCHER", "hello-wasi-gui extract failed: {err}");
+            "wasm hello-wasi-gui.wasm".to_string()
+        }
+    }
+}
+
+fn write_bundled_hello_wasi_gui() -> Result<String> {
+    const BYTES: &[u8] = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/src/resources/wasm/hello-wasi-gui.wasm"
+    ));
+    let dest = std::env::temp_dir().join("wawona-hello-wasi-gui.wasm");
+    if dest.is_file() && dest.metadata().map(|m| m.len() as usize).unwrap_or(0) == BYTES.len() {
+        return Ok(dest.display().to_string());
+    }
+    std::fs::write(&dest, BYTES).with_context(|| format!("write {}", dest.display()))?;
+    Ok(dest.display().to_string())
+}
+
+fn shell_quote(path: &str) -> String {
+    format!("'{}'", path.replace('\'', "'\\''"))
 }

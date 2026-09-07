@@ -118,9 +118,9 @@ let
         # triples), so it is bundled everywhere like niri. No GPU/framework deps.
         phoon = buildFn "phoon" { inherit simulator; };
       }
-    # wwn-wasm: WASI P1/P2 interpreter. Pulley on Apple mobile. Off on watchOS
-    # (size), same as coreutils. See docs/wasm-wasi.md and milestone #2.
-    // lib.optionalAttrs (variant == "mobile" || variant == "tv" || variant == "vision") {
+    # wwn-wasm: WASI P1/P2 interpreter. Pulley on Apple mobile. Mandatory on
+    # every Apple variant including watchOS (wawona-relay-wasm).
+    // lib.optionalAttrs (variant == "mobile" || variant == "tv" || variant == "watch" || variant == "vision") {
         "wawona-wasm" = buildFn "wawona-wasm" { inherit simulator; };
       }
     // lib.optionalAttrs (variant == "mobile" || variant == "vision") {

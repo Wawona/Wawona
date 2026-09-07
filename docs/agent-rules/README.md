@@ -8,6 +8,9 @@ the same non-negotiable gates.
 | Rule | Topic |
 |------|--------|
 | [wawona-agent-learn.md](./wawona-agent-learn.md) | RAG + skills + capture loop. Software must improve on prior knowledge. Caveman-lite |
+| [wawona-guest-wayland-iland.md](./wawona-guest-wayland-iland.md) | Linux guests are Wayland into Wawona (iland), never UTM Spice/ANGLE/virgl |
+| [wawona-linux-vms-relay-runtime.md](./wawona-linux-vms-relay-runtime.md) | NixOS-only VMs; Mode A = Wawona store runtime; Mode B adds Mode B runtime |
+| [wawona-relay-wasm.md](./wawona-relay-wasm.md) | Relay Wasm on every product target including watchOS |
 | [wawona-macos-mode-a.md](./wawona-macos-mode-a.md) | macOS Mode A always works with SIP on (in-window iland DRM) |
 | [wawona-compositor-backend.md](./wawona-compositor-backend.md) | macOS weston/niri nest in Aqua; iland DRM after Classic (WindowServer down) |
 | [wawona-nested-compositor-cursor.md](./wawona-nested-compositor-cursor.md) | Nested/iland compositors hide+grab host cursor; they draw their own. iOS Touchpad overlay stays off |

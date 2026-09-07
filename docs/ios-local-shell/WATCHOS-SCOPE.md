@@ -12,12 +12,12 @@ This supersedes the v1 "watchOS excludes the local shell" decision.
 
 ## What ships per platform
 
-| Platform | zsh / PTY / terminal | coreutils (uutils) | UX |
-|----------|----------------------|--------------------|----|
-| iOS / iPadOS | Full | Full safe subset | Full terminal |
-| visionOS | Full | Full safe subset | Full terminal |
-| tvOS | Full | Full safe subset | Constrained (no soft keyboard; focus-engine input) |
-| watchOS | Full (size-gated) | **Excluded** (binary-size budget) | Minimal: short sessions, redirect-to-iPhone affordance |
+| Platform | zsh / PTY / terminal | coreutils (uutils) | Relay Wasm | UX |
+|----------|----------------------|--------------------|------------|----|
+| iOS / iPadOS | Full | Full safe subset | Pulley | Full terminal |
+| visionOS | Full | Full safe subset | Pulley | Full terminal |
+| tvOS | Full | Full safe subset | Pulley | Constrained (no soft keyboard; focus-engine input) |
+| watchOS | Full (size-gated) | **Excluded** (binary-size budget) | Pulley (mandatory) | Minimal: short sessions, redirect-to-iPhone affordance |
 
 ### watchOS coreutils gate
 
