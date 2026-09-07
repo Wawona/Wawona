@@ -46,6 +46,7 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-no-em-dash` | Copy |
 | `wawona-github-funding` / `wawona-discord-github-webhook` | New org repos |
 | `wawona-vphone-*` / `wawona-trollstore-*` | Mode B lab / tipa |
+| `repo-wawona-io-*` | Dual wasm/deb catalog host (`repo.wawona.io`) |
 
 ## Hard-won (do not re-learn)
 
@@ -62,5 +63,7 @@ skill, add one row. Capture flow: `wawona-learn`.
 - Port = substitute platform, not client. Waypipe Linux build is the reference.
 - Graphics keys live in L1 `wwn-iland`. Never L0 toolchain. Never invert DAG.
 - No real `/dev/dri` / kernel DRM. iland userspace only.
+- `repo.wawona.io` is two catalogs, never one list. APT is repo root, not
+  `/jailbreak/`. `where_to_edit` must not treat it as the `wawona.io` website.
 
 Canonical prose: `Wawona/docs/` and `wwn-mcp/knowledge/wawona/`.

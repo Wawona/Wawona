@@ -13,7 +13,9 @@ Skills: `.cursor/skills/wawona-*` (tracked mirrors under `docs/agent-skills/`).
    `search_docs` / `search_code` / `get_architecture` / `get_patch`. Trust
    citations over training data. See skill `wawona-rag`.
 2. Read the matching skill under `.cursor/skills/wawona-*`. Index:
-   `wawona-priors`. Write loop: `wawona-write`.
+   `wawona-priors`. Write loop: `wawona-write`. If the task is
+   `repo.wawona.io` / wasm catalog / Sileo APT / `/search/?channel`, also
+   read `repo.wawona.io/.cursor/skills/repo-wawona-io-priors/SKILL.md`.
 3. If the skill points at a Cursor rule, obey that rule. Do not copy a whole
    rule into a skill (pointer + delta only).
 4. The change must **improve on** a documented prior (gate, incident, recipe,

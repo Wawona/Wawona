@@ -36,7 +36,8 @@ gates, incidents, or recipes from model priors.
 
 1. Query wwn-mcp first (even if a Cursor rule is already in context).
 2. Read matching `.cursor/skills/wawona-*` (tracked: `docs/agent-skills/`).
-   Start with `wawona-priors`, then `wawona-write`.
+   Start with `wawona-priors`, then `wawona-write`. Catalog host work:
+   `repo.wawona.io/.cursor/skills/repo-wawona-io-priors/SKILL.md`.
 3. After a durable finding: skill `wawona-learn` (skill + rule mirrors +
    `wwn-mcp/knowledge/wawona/` + reindex). Do not leave it in chat.
 4. User chat: caveman-lite (skill `wawona-caveman`). Code/commits stay normal
