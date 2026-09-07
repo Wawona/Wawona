@@ -64,6 +64,7 @@ packages ([`wasm-wasi.md`](./wasm-wasi.md)), not StoreKit/`apt` Mach-O modules.
 | [maintainers/secrets.md](maintainers/secrets.md) | Release secrets |
 | [compliance/](compliance/) | Cite only [smithay-adoption-decision.md](compliance/smithay-adoption-decision.md) |
 | [agent-rules/](agent-rules/) | Mirrors of `.cursor/rules/` |
+| [agent-skills/](agent-skills/) | Mirrors of `.cursor/skills/` |
 | [drivers-how-to/](drivers-how-to/README.md) | Graphics how-to |
 | [2026-ARCHITECTURE-STRUCTURE.md](2026-ARCHITECTURE-STRUCTURE.md) | Pointer stub only |
 | [goals.md](goals.md) | Pointer stub; mission is canonical |
@@ -83,4 +84,5 @@ packages ([`wasm-wasi.md`](./wasm-wasi.md)), not StoreKit/`apt` Mach-O modules.
 | Document | Description |
 |----------|-------------|
 | [agent-rules/](agent-rules/) | Tracked mirrors (`/.cursor/` is gitignored) |
+| [agent-skills/](agent-skills/) | Tracked Cursor skills (RAG + write + learn + caveman + priors) |
 | [../AGENTS.md](../AGENTS.md) | Agent entrypoint |

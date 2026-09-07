@@ -29,6 +29,21 @@ retrieved docs over your priors.** Key tools: `search`, `search_docs`,
 
 See `.cursor/rules/wawona-context.mdc` for the always-applied context.
 
+## Agent learn loop (skills + RAG)
+
+Software must **improve on** documented prior knowledge. Do not re-derive
+gates, incidents, or recipes from model priors.
+
+1. Query wwn-mcp first (even if a Cursor rule is already in context).
+2. Read matching `.cursor/skills/wawona-*` (tracked: `docs/agent-skills/`).
+   Start with `wawona-priors`, then `wawona-write`.
+3. After a durable finding: skill `wawona-learn` (skill + rule mirrors +
+   `wwn-mcp/knowledge/wawona/` + reindex). Do not leave it in chat.
+4. User chat: caveman-lite (skill `wawona-caveman`). Code/commits stay normal
+   English. No em dash.
+
+Rule: `wawona-agent-learn`. Knowledge: `wwn-mcp/knowledge/wawona/agent-learn.md`.
+
 For **Nix/nixpkgs** facts (package/attribute names, options, `nix-darwin`,
 `home-manager`, flakes, `noogle`, versions, binary-cache status), query the
 companion **`nixos`** MCP server (utensils/mcp-nixos via `uvx mcp-nixos`) via

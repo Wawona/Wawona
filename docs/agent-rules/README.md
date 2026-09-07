@@ -7,6 +7,7 @@ the same non-negotiable gates.
 
 | Rule | Topic |
 |------|--------|
+| [wawona-agent-learn.md](./wawona-agent-learn.md) | RAG + skills + capture loop. Software must improve on prior knowledge. Caveman-lite |
 | [wawona-macos-mode-a.md](./wawona-macos-mode-a.md) | macOS Mode A always works with SIP on (in-window iland DRM) |
 | [wawona-compositor-backend.md](./wawona-compositor-backend.md) | macOS weston/niri nest in Aqua; iland DRM after Classic (WindowServer down) |
 | [wawona-nested-compositor-cursor.md](./wawona-nested-compositor-cursor.md) | Nested/iland compositors hide+grab host cursor; they draw their own. iOS Touchpad overlay stays off |
@@ -26,5 +27,8 @@ the same non-negotiable gates.
 
 When editing policy, update **all** of: workspace `.cursor/rules/`,
 `Wawona/.cursor/rules/` (local), this mirror, and `AGENTS.md`.
+
+Skills (workflows, not hard gates): [`../agent-skills/`](../agent-skills/).
+Learn loop: `wawona-agent-learn`. Always query wwn-mcp first.
 
 - `wawona-trollstore-tipa-dev.md` — TrollStore tipa vs Sileo deb; JIT/ldid/IOMFB; nix+agent-device+vphone loop
