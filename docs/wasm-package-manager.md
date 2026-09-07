@@ -66,16 +66,15 @@ the Wasm channel. Jailbreak tools keep the APT/Sileo channel.
 
 ```text
 repo.wawona.io
-├── /wasm/          ← Mode A: App Store + Play + macOS  (Wasm packages ONLY)
-│   ├── index.html  (human search catalog)
-│   └── v1/
+├── /search/?channel=wasm   ← humans: Mode A catalog (wpm)
+├── /search/?channel=deb    ← humans: Mode B catalog (Sileo). Never mixed with wasm
+├── /wasm/                  ← HTML redirect to the wasm catalog
+│   └── v1/                 ← Mode A machine API (store `wpm` only)
 │       ├── index.json
 │       └── packages/<name>/<ver>/component.wasm
-│
-└── /jailbreak/     ← Mode B: Sileo / Procursus flat APT  (.deb tweaks)
-    ├── Packages / Release
-    ├── Desktop / LockScreen tweaks
-    └── Wawona Swinging Bridge Mode B, etc.
+├── /                       ← Sileo APT (`Packages`, `debs/`). Source URL stays here
+├── /deb/                   ← HTML redirect to the deb catalog
+└── /jailbreak/             ← HTML landing onto the deb catalog. Not a second APT tree
 ```
 
 ### Firewall rules
@@ -294,7 +293,8 @@ DAG: package client stays L3′ → `wwn-toolchain` only; no weston/iland flake 
 
 ### Parallel track. Jailbreak channel (unchanged intent)
 
-- Keep Procursus/Sileo flat APT under `/jailbreak/` (or existing APT root).
+- Keep Procursus/Sileo flat APT at the **repo root** (`https://repo.wawona.io/`).
+- `/jailbreak/` is a human bookmark onto `/search/?channel=deb`. Not a second APT tree.
 - Continue packaging Desktop / LockScreen / Wawona Swinging Bridge Mode B as **`.deb`**.
 - Never merge into `/wasm/` index.
 - Website-only docs for Mode B; zero mention in store IPA.

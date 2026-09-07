@@ -50,8 +50,10 @@ Canonical prose: `Wawona/docs/mode-a-b.md`, `swinging-bridge.md`, `iland-mode-a-
   flavor of the Runtime**.
 - Packages are **bytecode data** (`.wasm` / WASI P1/P2), not unsigned Mach-O/`dlopen`, not `.deb`.
 - Dual channel on `repo.wawona.io`:
-  - `/wasm/`. Mode A (store binaries may use)
-  - `/jailbreak/`. Mode B APT only (store binaries must **never** touch)
+  - Humans: `/search/?channel=wasm` vs `/search/?channel=deb`. Never one list.
+  - `/wasm/v1`. Mode A machine API (store binaries may use)
+  - APT at `https://repo.wawona.io/` (Sileo). `/jailbreak/` is a human landing
+    onto the deb catalog. Store binaries must **never** probe APT or `/jailbreak/`
 - Do not put `.deb` and `.wasm` in one index. Do not auto-discover jailbreak from `wpm`.
 
 ## Hard rejects

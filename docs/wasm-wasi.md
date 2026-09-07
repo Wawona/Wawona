@@ -25,8 +25,11 @@ Store / Play compliance**:
   **not** sign the `.wasm`, and there is **no** unsigned Mach-O download path
 
 There is **no Mode B flavor of the Runtime**. Jailbreak `.deb` APT is a
-separate channel on `repo.wawona.io/jailbreak/`. There is **no** StoreKit/`apt`
-Mach-O module catalog (`wwn-apt` was removed).
+separate catalog. Humans search it at
+[`repo.wawona.io/search/?channel=deb`](https://repo.wawona.io/search/?channel=deb).
+Sileo uses `https://repo.wawona.io/` (repo root). `/jailbreak/` is a bookmark
+onto that catalog. There is **no** StoreKit/`apt` Mach-O module catalog
+(`wwn-apt` was removed).
 
 Wasm packages are **not** OCI Linux containers (`wwn-containers`) and **not**
 VMs (`wwn-vms`). Same app process, sandboxed Runtime only.
