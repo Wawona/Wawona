@@ -24,12 +24,14 @@ Store / Play compliance**:
 - The reviewed Runtime in the signed app interprets the module. Apple does
   **not** sign the `.wasm`, and there is **no** unsigned Mach-O download path
 
-There is **no Mode B flavor of the Runtime**. Jailbreak `.deb` APT is a
-separate catalog. Humans search it at
+There is **no Mode B flavor of the Runtime**. Extra software outside stores is
+APT `.deb`, a separate catalog. Humans search it at
 [`repo.wawona.io/search/?channel=deb`](https://repo.wawona.io/search/?channel=deb).
-Sileo uses `https://repo.wawona.io/` (repo root). `/jailbreak/` is a bookmark
-onto that catalog. There is **no** StoreKit/`apt` Mach-O module catalog
-(`wwn-apt` was removed).
+**Sileo** (jailbroken iOS, rootless and rootful) and **Termux** (sideloaded
+Android, **not** jailbreak, **not** Play) share `https://repo.wawona.io/` at
+repo root. `/jailbreak/` is the Sileo bookmark. `/termux/` is the Termux
+bookmark. Store `wpm` never reads APT. There is **no** StoreKit/`apt` Mach-O
+module catalog (`wwn-apt` was removed).
 
 Wasm packages are **not** OCI Linux containers (`wwn-containers`) and **not**
 VMs (`wwn-vms`). Same app process, sandboxed Runtime only.
@@ -64,7 +66,9 @@ Do not brand this as an “App Store” for iOS apps. It is a **runtime package
 registry**. Prefer OCI artifacts + a thin client over inventing a bespoke protocol.
 
 **Full implementation plan:** [`wasm-package-manager.md`](./wasm-package-manager.md)
-(registry at `repo.wawona.io/wasm/v1`, human catalog at `/search/?channel=wasm`; jailbreak `.deb` stays a separate channel).
+(registry at `repo.wawona.io/wasm/v1`, human catalog at `/search/?channel=wasm`;
+Sileo iOS jailbreak debs and Termux Android sideload debs stay a separate APT
+channel).
 
 ## App Store
 
