@@ -1,6 +1,6 @@
 ---
 name: repo-wawona-io-priors
-description: Index of repo.wawona.io Cursor skills and rules. Use at every task start in this repo, and whenever the work mentions wasm catalog, Sileo debs, /search/, /wasm/v1, Packages, or jailbreak landing. Pointers only. Do not duplicate rule bodies.
+description: Index of repo.wawona.io Cursor skills and rules. Use at every task start in this repo, and whenever the work mentions wasm catalog, Sileo iOS debs, Termux Android debs, /search/, /wasm/v1, Packages, jailbreak landing, or store-only wasm. Pointers only. Do not duplicate rule bodies.
 ---
 
 # Priors index (this repo)
@@ -29,7 +29,7 @@ Org skills still apply: `wawona-rag`, `wawona-write`, `wawona-learn`,
 | `repo-wawona-io-agent-learn` | Always. Read skills. Write new learnings back. |
 | `repo-wawona-io-channels` | Two catalogs. Never one list. |
 | `repo-wawona-io-maintainers` | GitHub-queryable maintainers on every package |
-| `wawona-product-map` | Wasm Runtime vs Sileo `.deb`. Do not conflate. |
+| `wawona-product-map` | Wasm Runtime vs Sileo vs Termux. Do not conflate. |
 | `wawona-no-em-dash` | Copy |
 
 ## Hard-won (do not re-learn)

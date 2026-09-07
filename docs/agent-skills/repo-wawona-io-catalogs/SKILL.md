@@ -1,64 +1,70 @@
 ---
 name: repo-wawona-io-catalogs
-description: Dual catalog host for repo.wawona.io. Use when editing /search/, wasm/v1, Packages, jailbreak landing, OpenSearch, wpm registry, Sileo/Termux debs, wawona.io Search packages CTAs, or check-packages.py. Two lanes. Never one results list.
+description: Dual catalog host for repo.wawona.io. Use when editing /search/, wasm/v1, Packages, jailbreak or Termux landings, OpenSearch, wpm, Sileo iOS debs, Termux Android debs, wawona.io Search packages CTAs, or check-packages.py. Wasm is store-only. Termux is not jailbreak.
 ---
 
-# Dual catalogs
+# Dual catalogs, three audiences
 
 One host. Two catalogs. Never one results list. Hard gate:
 `.cursor/rules/repo-wawona-io-channels.mdc`. RAG:
 `wwn-mcp/knowledge/wawona/repo-wawona-io-catalogs.md`.
 
-| Lane | Humans | Machines | Who |
-|------|--------|----------|-----|
-| Mode A wasm | `/search/?channel=wasm` | `/wasm/v1/index.json` (`wpm`) | App Store / Play / macOS |
-| Mode B debs | `/search/?channel=deb` | APT at `https://repo.wawona.io/` (`Packages`) | Sileo / Termux |
+| Catalog | Humans | Machines | Who |
+|---------|--------|----------|-----|
+| wasm | `/search/?channel=wasm` | `/wasm/v1/index.json` (`wpm`) | **App Store / Play only** (store compliance). macOS `wpm` too. |
+| debs | `/search/?channel=deb` | APT at `https://repo.wawona.io/` (`Packages`) | Two APT audiences. Never mix with wasm. |
 
-`/search/` is a chooser, not a mixed All channel. `/wasm/`, `/deb/`, and
-`/jailbreak/` are HTML landings onto `/search/?channel=…`.
+Deb APT is one `Packages` file. Split by Architecture. **Never** call Termux
+jailbreak.
+
+| Deb audience | Client | Architecture | Jailbreak? | Store/Play? |
+|--------------|--------|--------------|------------|-------------|
+| Jailbroken iOS / iPadOS | Sileo / Zebra | `iphoneos-arm64` rootless, `iphoneos-arm` rootful, optional `iphoneos-arm64e` RootHide | Yes | No |
+| Sideloaded Android | Termux `apt` | `aarch64` (and `arm`) | **No** | **No** |
+
+`/search/` is a chooser, not a mixed All channel. HTML landings:
+
+- `/wasm/` → wasm catalog
+- `/deb/` → deb catalog (both APT audiences)
+- `/jailbreak/` → iOS Sileo bookmark. Not Termux. Not APT root.
+- `/termux/` → Termux Android sideload bookmark. Not jailbreak. Not Play.
 
 ## Firewall
 
 | Consumer | `/wasm/v1` | APT `/` (`Packages`) |
 |----------|------------|----------------------|
-| store `wpm` | Yes | **Never** |
-| Sileo / Termux | Optional | Yes |
+| App Store / Play `wpm` | Yes | **Never** |
+| Sileo (jailbroken iOS) | Optional | Yes |
+| Termux (sideloaded Android) | Optional | Yes |
 
 Store `wpm` default registry: `https://repo.wawona.io/wasm/v1` (client fetches
-`/index.json`). Never fetch `/jailbreak/`, `/Packages`, or `.deb`.
+`/index.json`). Never fetch `/jailbreak/`, `/termux/`, `/Packages`, or `.deb`.
 
 ## Never
 
-- Concatenate wasm + deb into one search list (`[...wasmPkgs, ...debPkgs]`)
+- Concatenate wasm + deb into one search list
 - Redirect `/wasm/v1/` or `/Packages`
-- Add `wasm/v1/index.html` (GitHub Pages would shadow `index.json`)
-- Treat `/jailbreak/` as APT. APT is repo root. `/jailbreak/` is a bookmark.
+- Add `wasm/v1/index.html` (would shadow `index.json`)
+- Treat `/jailbreak/` as APT or as Termux
+- Call Termux debs jailbreak, or lump "Sileo / Termux" as one jailbreak product
+- Put `.deb` install paths in App Store / Play binaries (wasm only for stores)
 - Claim this host is jailbreak-only. `/wasm/v1` is the store-safe exception.
-- Route `where_to_edit("repo.wawona.io …")` to the `wawona.io` website.
-  Match `repo.wawona.io` **before** `wawona.io`. If Cursor still lands on the
-  website, restart the wwn-mcp server. Do not edit wawona.io for catalog code.
+- Route `where_to_edit("repo.wawona.io …")` to the `wawona.io` website
 - Mention retired `wwn-apt` in `setup.sh`
 - Drop `hello-wasi` from `wasm/v1/index.json`
-- Mix handwritten display names into package metadata (GitHub maintainers)
 
 ## Humans
 
-- Deb catalog: architecture + section filters. Permalink copy on cards.
-- OpenSearch: `search/opensearch.xml` (chooser), `opensearch-wasm.xml`,
-  `opensearch-deb.xml`
-- `404.html` links both lanes (unknown paths looked like downtime)
-- wawona.io Explore **Search packages**: primary wasm CTA, secondary Sileo /
-  Termux debs. Site repo is `wawona.io`, not this one.
-- GitHub about: dual-catalog. Homepage `https://repo.wawona.io/search/`
+- Deb filters: architecture (labeled rootless / rootful / Termux) and section
+- OpenSearch: chooser, wasm lane, deb lane
+- wawona.io Explore: primary wasm (stores). Separate Sileo vs Termux debs.
+  Termux copy must say sideloaded Android, not jailbreak. Site repo is `wawona.io`.
 
 ## Prove
 
 ```bash
 python3 scripts/check-packages.py --offline --root .
 ```
-
-CI (network): `python3 scripts/check-packages.py`. Maintainers:
-`repo-wawona-io-maintainers`.
 
 ## Out of scope unless asked
 

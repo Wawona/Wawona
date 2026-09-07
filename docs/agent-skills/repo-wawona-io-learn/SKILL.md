@@ -40,5 +40,6 @@ agents see it when this folder is not the Cursor root.
 - Leave the fact in chat only
 - Re-ship a mixed wasm+deb results list
 - Redirect `/wasm/v1/` or `/Packages`
-- Teach store `wpm` to fetch `/jailbreak/`, `/Packages`, or `.deb`
+- Teach store `wpm` to fetch `/jailbreak/`, `/termux/`, `/Packages`, or `.deb`
+- Call Termux debs jailbreak, or lump Sileo and Termux as one jailbreak product
 - Treat `repo.wawona.io` as the `wawona.io` website

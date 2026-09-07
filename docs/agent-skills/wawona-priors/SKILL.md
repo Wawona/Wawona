@@ -63,7 +63,9 @@ skill, add one row. Capture flow: `wawona-learn`.
 - Port = substitute platform, not client. Waypipe Linux build is the reference.
 - Graphics keys live in L1 `wwn-iland`. Never L0 toolchain. Never invert DAG.
 - No real `/dev/dri` / kernel DRM. iland userspace only.
-- `repo.wawona.io` is two catalogs, never one list. APT is repo root, not
-  `/jailbreak/`. `where_to_edit` must not treat it as the `wawona.io` website.
+- `repo.wawona.io` is two catalogs. Wasm is App Store / Play only. Debs split:
+  Sileo iOS jailbreak (rootless/rootful) vs Termux Android sideload (not
+  jailbreak, not Play). APT is repo root. `where_to_edit` must not treat the
+  hostname as the `wawona.io` website.
 
 Canonical prose: `Wawona/docs/` and `wwn-mcp/knowledge/wawona/`.

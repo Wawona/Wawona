@@ -51,10 +51,13 @@ Canonical prose: `Wawona/docs/mode-a-b.md`, `swinging-bridge.md`, `iland-mode-a-
 - Packages are **bytecode data** (`.wasm` / WASI P1/P2), not unsigned Mach-O/`dlopen`, not `.deb`.
 - Dual channel on `repo.wawona.io`:
   - Humans: `/search/?channel=wasm` vs `/search/?channel=deb`. Never one list.
-  - `/wasm/v1`. Mode A machine API (store binaries may use)
-  - APT at `https://repo.wawona.io/` (Sileo). `/jailbreak/` is a human landing
-    onto the deb catalog. Store binaries must **never** probe APT or `/jailbreak/`
-- Do not put `.deb` and `.wasm` in one index. Do not auto-discover jailbreak from `wpm`.
+  - `/wasm/v1`. Mode A machine API. **App Store / Play compliance is wasm only.**
+  - APT at `https://repo.wawona.io/`: Sileo on jailbroken iOS (rootless/rootful)
+    and Termux on sideloaded Android (**not** jailbreak, **not** Play).
+  - `/jailbreak/` is the Sileo bookmark. `/termux/` is the Termux bookmark.
+    Store binaries must **never** probe APT, `/jailbreak/`, or `/termux/`.
+- Do not put `.deb` and `.wasm` in one index. Do not auto-discover APT from `wpm`.
+  Do not call Termux debs jailbreak.
 
 ## Hard rejects
 

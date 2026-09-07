@@ -62,37 +62,41 @@ Wawona’s client installs **Wasm components into the Runtime store**; the
 ## Dual-channel `repo.wawona.io` (hard firewall)
 
 One host, **two product channels**. App Store / Play binaries may only speak to
-the Wasm channel. Jailbreak tools keep the APT/Sileo channel.
+the Wasm channel. APT debs stay off store binaries. Sileo (jailbroken iOS,
+rootless and rootful) and Termux (sideloaded Android, **not** jailbreak) share
+that APT source.
 
 ```text
 repo.wawona.io
-├── /search/?channel=wasm   ← humans: Mode A catalog (wpm)
-├── /search/?channel=deb    ← humans: Mode B catalog (Sileo). Never mixed with wasm
+├── /search/?channel=wasm   ← humans: App Store / Play wasm (wpm)
+├── /search/?channel=deb    ← humans: APT debs. Never mixed with wasm
 ├── /wasm/                  ← HTML redirect to the wasm catalog
 │   └── v1/                 ← Mode A machine API (store `wpm` only)
 │       ├── index.json
 │       └── packages/<name>/<ver>/component.wasm
-├── /                       ← Sileo APT (`Packages`, `debs/`). Source URL stays here
+├── /                       ← APT (`Packages`, `debs/`). Sileo and Termux
 ├── /deb/                   ← HTML redirect to the deb catalog
-└── /jailbreak/             ← HTML landing onto the deb catalog. Not a second APT tree
+├── /jailbreak/             ← Sileo iOS bookmark. Not Termux. Not a second APT tree
+└── /termux/                ← Termux Android sideload bookmark. Not jailbreak. Not Play
 ```
 
 ### Firewall rules
 
-| Surface | May reference `/wasm/` | May reference `/jailbreak/` or Sileo `.deb` |
-|---------|------------------------|-----------------------------------------------|
+| Surface | May reference `/wasm/` | May reference APT `.deb` |
+|---------|------------------------|--------------------------|
 | App Store / TestFlight IPA + in-app UI | Yes | **Never** |
 | Play / store-shaped Android | Yes | **Never** |
-| `wawona.io` Mode A docs | Yes | No (or “jailbreak docs live elsewhere”) |
-| Website jailbreak / Desktop Mode B pages | Optional | Yes |
-| Sileo / jailbroken devices | Optional | Yes |
+| `wawona.io` store-safe docs | Yes | No (Sileo/Termux docs live elsewhere) |
+| Website Sileo / Termux pages | Optional | Yes |
+| Sileo on jailbroken iOS | Optional | Yes |
+| Termux on sideloaded Android | Optional | Yes |
 
 **Revise** older prose that said “App Store must never touch `repo.wawona.io`.”
 That applied when the host was **APT-only**. The host is now **split**: Wasm is
-store-safe CDN data; jailbreak APT remains off-limits inside store binaries.
+store-safe CDN data; APT debs remain off-limits inside store binaries.
 
-Do **not** put `.deb` and `.wasm` in one index. Do **not** auto-discover the
-jailbreak tree from the package client.
+Do **not** put `.deb` and `.wasm` in one index. Do **not** auto-discover APT
+from store `wpm`. Do **not** call Termux debs jailbreak.
 
 ## Package format
 
