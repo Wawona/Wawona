@@ -872,7 +872,7 @@ final class WWNMachinesViewModel: ObservableObject {
       return "No client configured"
     case kWWNMachineTypeVirtualMachine:
       // Backend engine is fixed per build target, not user-selected (Residual E).
-      return "VM profile (QEMU + HVF)"
+      return "VM profile (Relay VZ)"
     case kWWNMachineTypeContainer:
       return "Container profile (containerization.framework)"
     default:
@@ -932,7 +932,7 @@ final class WWNMachinesViewModel: ObservableObject {
       let command = profile.remoteCommand.isEmpty ? "terminal default" : profile.remoteCommand
       return "SSH terminal command: \(command)"
     case kWWNMachineTypeVirtualMachine:
-      return "Backend: QEMU + HVF (Hypervisor.framework)"
+      return "Backend: Relay VZ (Virtualization.framework)"
     case kWWNMachineTypeContainer:
       return "Backend: containerization.framework"
     default:

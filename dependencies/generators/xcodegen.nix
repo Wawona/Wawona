@@ -39,7 +39,7 @@
   macosWestonSimpleEgl ? null,
   macosNiri ? null,
   macosFuzzel ? null,
-  # Bundled mobile VM guest (kernel + rootfs.img) and iOS-TCI QEMU engine sysroot.
+  # Bundled mobile VM guest (kernel + rootfs.img). Never a QEMU sysroot.
   mobileGuestArtifacts ? null,
   mobileVmEngine ? null,
   mobileVmEngineModeB ? null,
@@ -297,13 +297,23 @@ let
   wasmLdflags = deps:
     let
       w = deps.wawona-wasm or null;
-    in if w == null then [] else [
-      "-L${strip w}/lib"
-      "-Wl,-u,_wawona_wasm_run"
-      "-Wl,-u,_wawona_wasm_can_run"
-      "-Wl,-u,_wpm_main"
-      "-lwawona_wasm"
-    ];
+      r = deps.wawona-relay or null;
+      wasm =
+        if w == null then [] else [
+          "-L${strip w}/lib"
+          "-Wl,-u,_wawona_wasm_run"
+          "-Wl,-u,_wawona_wasm_can_run"
+          "-Wl,-u,_wpm_main"
+          "-lwawona_wasm"
+        ];
+      relay =
+        if r == null then [] else [
+          "-L${strip r}/lib"
+          "-Wl,-u,_relay_resolve_backend"
+          "-Wl,-u,_relay_start"
+          "-lwawona_relay"
+        ];
+    in wasm ++ relay;
   neovimLdflags = deps:
     let libnvim = "${strip (deps.neovim or null)}/lib/libwawona-neovim.a";
     in if (deps.neovim or null) == null || !builtins.pathExists libnvim then [] else [
@@ -1245,59 +1255,27 @@ ICDJSON
     basedOnDependencyAnalysis = false;
   };
 
-  # The QEMU-TCTI engine is a multi-GB sysroot built impurely (needs Xcode +
-  # WAWONA_UTM_SYSROOT). Resolve it from the environment at xcodebuild time so
-  # project generation never forces the impure engine build. A device build that
-  # wants the bundled engine sets WAWONA_MOBILE_VM_ENGINE_DIR to the built sysroot.
-  mobileVmEngineIosEmbedScript = _engineSysroot: pkgs.writeShellScript "embed-mobile-vm-engine-ios.sh" ''
-    case "''${PLATFORM_NAME:-}" in
-      iphoneos|iphonesimulator|appletvos|appletvsimulator|xros|xrsimulator)
-        engineSrc="''${WAWONA_MOBILE_VM_ENGINE_DIR:-}"
-        ;;
-      *)
-        exit 0
-        ;;
-    esac
-    if [ -z "$engineSrc" ] || [ ! -d "$engineSrc/Frameworks" ]; then
-      echo "note: wwn-vms-mobile-engine sysroot not provided; set WAWONA_MOBILE_VM_ENGINE_DIR to embed the bundled QEMU-TCTI engine" >&2
+  # Relay owns the CPU. Never copy qemu-*.framework into an IPA or tipa.
+  refuseQemuBundleScript = pkgs.writeShellScript "refuse-qemu-bundle.sh" ''
+    BUNDLE="$BUILT_PRODUCTS_DIR/$FULL_PRODUCT_NAME"
+    if [ ! -d "$BUNDLE" ]; then
       exit 0
     fi
-    BUNDLE="$BUILT_PRODUCTS_DIR/$FULL_PRODUCT_NAME"
-    DEST="$BUNDLE/Frameworks"
-    mkdir -p "$DEST"
-    cp -R "$engineSrc/Frameworks/." "$DEST/"
-    if [ -d "$engineSrc/vulkan" ]; then
-      mkdir -p "$BUNDLE/vulkan"
-      cp -R "$engineSrc/vulkan/." "$BUNDLE/vulkan/"
+    if /usr/bin/find "$BUNDLE" \( -iname '*qemu*' -o -path '*/share/qemu/*' \) | /usr/bin/grep -q .; then
+      echo "QEMU/UTM artifacts are forbidden in Wawona bundles" >&2
+      exit 1
     fi
-    echo "Embedded QEMU-TCTI engine frameworks into $DEST"
   '';
 
-  # No declared outputFiles (see iosMobileGuestEmbedPhase note): Xcode
-  # pre-created Frameworks/qemu-aarch64-softmmu.framework/ in simulator
-  # bundles, which installd rejected for the missing Info.plist.
   iosMobileVmEngineEmbedPhase = {
-    path = mobileVmEngineIosEmbedScript mobileVmEngine;
-    name = "Embed QEMU-TCTI engine (mobile VM)";
+    path = refuseQemuBundleScript;
+    name = "Refuse QEMU engine (Mode A)";
     basedOnDependencyAnalysis = false;
   };
 
   iosModeBVmEngineEmbedPhase = {
-    path = pkgs.writeShellScript "embed-mobile-vm-engine-ios-modeb.sh" ''
-      if [ "''${PLATFORM_NAME:-}" != "iphoneos" ]; then
-        exit 0
-      fi
-      engineSrc="${if mobileVmEngineModeB == null then "" else toString mobileVmEngineModeB}"
-      if [ -z "$engineSrc" ] || [ ! -d "$engineSrc/Frameworks" ]; then
-        echo "Mode B JIT QEMU engine sysroot is missing" >&2
-        exit 1
-      fi
-      mkdir -p "$TARGET_BUILD_DIR/$FRAMEWORKS_FOLDER_PATH"
-      cp -R "$engineSrc/Frameworks/." \
-        "$TARGET_BUILD_DIR/$FRAMEWORKS_FOLDER_PATH/"
-      echo "Embedded Mode B JIT QEMU engine from $engineSrc"
-    '';
-    name = "Embed JIT QEMU engine (Mode B only)";
+    path = refuseQemuBundleScript;
+    name = "Refuse QEMU engine (Mode B)";
     basedOnDependencyAnalysis = false;
   };
 

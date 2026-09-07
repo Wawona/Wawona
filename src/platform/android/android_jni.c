@@ -6133,7 +6133,7 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeLaunchMobileVm(
   int ok = (stat(rootfs, &st) == 0 && S_ISREG(st.st_mode));
   if (ok) {
     g_mobile_vm_running = 1;
-    LOGI("mobile VM lane: guest at %s (embed QEMU engine to boot)", dir);
+    LOGI("mobile VM lane: guest at %s (Relay CPU planned; no QEMU)", dir);
   } else {
     LOGE("mobile VM: missing %s", rootfs);
   }

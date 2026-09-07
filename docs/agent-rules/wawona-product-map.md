@@ -6,9 +6,8 @@ These are **separate** products. Mixing them in code, docs, UI, or packaging is 
 |---|---|---|
 | **Wawona Swinging Bridge** (formerly **anowaW**) | Cocoa / Android / (future UIKit) apps → **Wayland clients**, local or over **waypipe-rs** to Linux (resize, placement, HID) | Desktop/LockScreen; MediaProjection-as-desktop |
 | **Desktop + LockScreen replacement** | Host DE / greeter (machine picker). macOS + Android planned; iOS/iPadOS jailbreak via `repo.wawona.io` only | Swinging Bridge; Linux; store Apple-mobile |
-| **`wwn-vms`** | Machines kind `virtual_machine` | Wasm packages; local shell; Swinging Bridge |
-| **`wwn-containers`** | Machines kind `container` (OCI) | Wasm packages; Desktop |
-| **Wawona Runtime + `wpm`** (`wwn-wasm`) | WASI P1/P2 **`.wasm` packages** for optional software | OCI containers; `.deb`; Mach-O modules (`wwn-apt` retired) |
+| **Wawona Relay** (`wwn-relay`) | Linux VMs + OCI-in-VM + Mode A WASI | Swinging Bridge; Desktop/LockScreen; host Docker |
+| **Wawona Runtime + `wpm`** (in Relay) | WASI P1/P2 **`.wasm` packages** for optional software | OCI containers; `.deb`; Mach-O modules (`wwn-apt` retired) |
 
 Canonical prose: `Wawona/docs/mode-a-b.md`, `swinging-bridge.md`, `iland-mode-a-b-desktop.md`, `vms-containers.md`, `wasm-package-manager.md`. Site: wawona.io `/docs/…`.
 
@@ -38,8 +37,10 @@ Canonical prose: `Wawona/docs/mode-a-b.md`, `swinging-bridge.md`, `iland-mode-a-
 ### VMs / containers
 
 - Platforms: planned on macOS, iOS, iPadOS, Android, Linux. **Forbidden** on tvOS, watchOS, visionOS.
-- iOS Mode A: UTM-SE-class **jitless**. iOS Mode B: JIT UTM via Mode B IPA.
-- Backends differ by OS (macOS Virtualization/Apple Container ≠ iOS UTM ≠ Android QEMU). Do not force one engine.
+- Guests are **Linux only** (NixOS prebuilts, OrbStack-style). Not arbitrary VMs.
+- Mode A: **only** Wawona’s App Store-compliant runtime (Relay). Mode B: that
+  runtime **plus** Wawona’s Mode B runtime. Never UTM. Guest GUI is Wayland
+  into Wawona (`wawona-guest-wayland-iland`, `wawona-linux-vms-relay-runtime`).
 - Not the same as on-device `wwn-zsh` shell or Wasm packages.
 
 ### Wawona Runtime packages (`wpm` / WASI). Mode A forever

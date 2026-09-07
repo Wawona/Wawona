@@ -807,10 +807,10 @@ struct WWNVirtualMachineEditorSection: View {
       icon: "desktopcomputer.and.macbook",
       title: "Virtual Machine",
       tint: .indigo,
-      info: "The VM engine is fixed per build target (QEMU + Hypervisor.framework on macOS; QEMU-TCTI on iOS; QEMU + KVM/TCG on Android) and is not user-configurable."
+      info: "Relay picks the hypervisor. macOS uses Virtualization.framework. iOS waits on Relay CPU. Linux uses KVM. Never QEMU."
     ) {
       WWNEditorFieldRow("Backend", icon: "cpu") {
-        Text("QEMU + HVF")
+        Text("Relay")
           .foregroundStyle(.secondary)
       }
     }

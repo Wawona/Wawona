@@ -36,6 +36,7 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-inprocess-cairo` | Nested weston teardown |
 | `wawona-native-compositors` / `wawona-port-fidelity` | Weston/Niri; waypipe equivalence |
 | `wawona-relay-wasm` | WASI Runtime on every target including watchOS |
+| `wawona-relay` | One L3′ engine: Linux VMs, OCI-in-VM, Mode A wasm. Never QEMU/UTM |
 | `wawona-linux-vms-relay-runtime` | NixOS VMs; Mode A/B engines; no QEMU/UTM |
 | `wawona-platform-targets` | Four-state gates |
 | `wawona-swinging-bridge` | Not Desktop, not LockScreen |

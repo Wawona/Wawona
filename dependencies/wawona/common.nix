@@ -78,18 +78,16 @@ rec {
     # the staged source list. Nix copies only explicitly listed paths).
     "src/platform/macos/ui/Machines/WWNPlatformCapabilities.h"
     # Swinging Bridge App Bridge. MacOS-only (added in macos.nix sources, not shared).
-    # VM/container runners + jitless QEMU engine (shared macOS/iOS; each file
-    # carries TARGET_OS_OSX branches). Referenced by WWNMachineSessionBridge.m.
+    # Relay runner (vm / container / wasm). Never QEMU.
+    "src/platform/macos/ui/Machines/WWNRelay.m"
+    "src/platform/macos/ui/Machines/WWNRelay.h"
+    "src/platform/macos/ui/Machines/wawona_relay.h"
     "src/platform/macos/ui/Machines/WWNVirtualMachineRunner.m"
     "src/platform/macos/ui/Machines/WWNVirtualMachineRunner.h"
     "src/platform/macos/ui/Machines/WWNContainerRunner.m"
     "src/platform/macos/ui/Machines/WWNContainerRunner.h"
     "src/platform/macos/ui/Machines/WWNMobileVmEngine.m"
     "src/platform/macos/ui/Machines/WWNMobileVmEngine.h"
-    "src/platform/macos/ui/Machines/WWNQemuProcess.m"
-    "src/platform/macos/ui/Machines/WWNQemuProcess.h"
-    "src/platform/macos/ui/Machines/WWNQemuSystem.m"
-    "src/platform/macos/ui/Machines/WWNQemuSystem.h"
     # Machine session thumbnails (referenced by WWNCompositorBridge.m + view model).
     "src/platform/macos/ui/Machines/WWNMachineThumbnailStore.m"
     "src/platform/macos/ui/Machines/WWNMachineThumbnailStore.h"

@@ -3,10 +3,10 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use gtk4 as gtk;
-use libadwaita as adw;
 use adw::prelude::*;
 use gtk::prelude::*;
+use gtk4 as gtk;
+use libadwaita as adw;
 
 use crate::ffi::api::{build_info, version};
 use crate::linux::runtime;
@@ -16,11 +16,7 @@ use crate::linux::ui::SharedAppState;
 use crate::linux::ui_model::LayoutMode;
 use crate::wlog;
 
-pub fn show_settings(
-    parent: &adw::ApplicationWindow,
-    state: &SharedAppState,
-    layout: LayoutMode,
-) {
+pub fn show_settings(parent: &adw::ApplicationWindow, state: &SharedAppState, layout: LayoutMode) {
     wlog!("UI", "Settings dialog opened");
 
     let header = adw::HeaderBar::new();
@@ -172,15 +168,15 @@ pub fn show_settings(
     vm_group.set_title("Virtual Machines");
     add_info_row(
         &vm_group,
-        "UTM SE integration",
-        "VM launch is a stub. Future support will come from Wawona's UTM SE fork.",
+        "Wawona Relay",
+        "Linux guests use KVM via cloud-hypervisor or crosvm. Fail closed without /dev/kvm. No QEMU.",
     );
     let container_group = adw::PreferencesGroup::new();
     container_group.set_title("Containers");
     add_info_row(
         &container_group,
-        "Container runtime",
-        "Container launch is a stub (integration pending).",
+        "OCI-in-VM",
+        "Containers unpack OCI, then run on the same KVM VM. Not host Docker or proot.",
     );
     machines_page.add(&vm_group);
     machines_page.add(&container_group);
@@ -283,7 +279,9 @@ pub fn show_settings(
     {
         let home_path = home.clone();
         open_home.connect_clicked(move |_| {
-            let _ = std::process::Command::new("xdg-open").arg(&home_path).spawn();
+            let _ = std::process::Command::new("xdg-open")
+                .arg(&home_path)
+                .spawn();
         });
     }
     add_row(&shell_group, "Open HOME", &open_home);
@@ -335,13 +333,18 @@ pub fn show_settings(
     if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(deps_json) {
         if let Some(packages) = parsed.get("packages").and_then(|p| p.as_array()) {
             for pkg in packages {
-                let name = pkg.get("name").and_then(|v| v.as_str()).unwrap_or("Package");
+                let name = pkg
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Package");
                 let version = pkg.get("version").and_then(|v| v.as_str()).unwrap_or("");
                 let role = pkg.get("role").and_then(|v| v.as_str()).unwrap_or("");
                 add_info_row(
                     &deps_group,
                     name,
-                    &format!("{version}. {role}").trim_end_matches(". ").to_string(),
+                    &format!("{version}. {role}")
+                        .trim_end_matches(". ")
+                        .to_string(),
                 );
             }
         }
@@ -458,11 +461,7 @@ pub fn show_settings(
     add_link_row(&about_group, "Wawona.io", "https://wawona.io");
     add_row(&about_group, "Diagnostics", &copy_logs);
     add_row(&about_group, "GitHub", &report_bug);
-    add_link_row(
-        &about_group,
-        "Author",
-        "https://aspauldingcode.com",
-    );
+    add_link_row(&about_group, "Author", "https://aspauldingcode.com");
     copy_logs.connect_clicked(|_| {
         linux_copy_bug_diagnostics();
     });

@@ -13,7 +13,7 @@ window. Those paths are forbidden in Wawona products.
 - Guest compositor and apps bind Wayland globals on Wawona (or waypipe into it).
 - Host present is `iland_drm_set_present_callback` / `WWNIlandPresenter`.
 - Graphics keys (ANGLE, MoltenVK, KosmicKrisp, SwiftShader) stay **L1**
-  `wwn-iland`. Never rebuild them inside `wwn-vms` / UTM.
+  `wwn-iland`. Never rebuild them inside Relay or a leftover UTM tree.
 
 ## Hard rejects
 

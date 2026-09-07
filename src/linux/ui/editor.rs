@@ -4,9 +4,9 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use adw::prelude::*;
 use gtk4 as gtk;
 use libadwaita as adw;
-use adw::prelude::*;
 
 use crate::linux::bundled_clients::BUNDLED_CLIENTS;
 use crate::linux::machine_profile::{MachineProfile, MachineType};
@@ -168,7 +168,11 @@ pub fn show_editor(
     let auto_scale = gtk::Switch::new();
     auto_scale.set_active(profile.runtime_overrides.auto_scale.unwrap_or(true));
     let vulkan_driver = gtk::ComboBoxText::new();
-    for (id, label) in [("none", "None"), ("moltenvk", "MoltenVK"), ("kosmickrisp", "KosmicKrisp")] {
+    for (id, label) in [
+        ("none", "None"),
+        ("moltenvk", "MoltenVK"),
+        ("kosmickrisp", "KosmicKrisp"),
+    ] {
         vulkan_driver.append(Some(id), label);
     }
     vulkan_driver.set_active_id(Some(
@@ -203,9 +207,8 @@ pub fn show_editor(
     // MARK: Session Exit
     let session_exit_group = adw::PreferencesGroup::new();
     session_exit_group.set_title("Session Exit");
-    session_exit_group.set_description(Some(
-        "Per-machine overrides for closing an active session.",
-    ));
+    session_exit_group
+        .set_description(Some("Per-machine overrides for closing an active session."));
     let shake_switch = gtk::Switch::new();
     shake_switch.set_active(session_exit::shake_to_close_enabled(
         &state.borrow().settings,
@@ -217,17 +220,23 @@ pub fn show_editor(
         Some(&profile),
     ));
     add_row(&session_exit_group, "Shake to Exit Machine", &shake_switch);
-    add_row(&session_exit_group, "Swipe Back to Exit Machine", &swipe_switch);
+    add_row(
+        &session_exit_group,
+        "Swipe Back to Exit Machine",
+        &swipe_switch,
+    );
 
     // MARK: Virtual Machine
     let vm_group = adw::PreferencesGroup::new();
     vm_group.set_title("Virtual Machine");
-    vm_group.set_description(Some("Hypervisor is selected automatically for this platform."));
-    let vm_backend = gtk::Label::new(Some("QEMU/KVM"));
+    vm_group.set_description(Some(
+        "Hypervisor is selected automatically for this platform.",
+    ));
+    let vm_backend = gtk::Label::new(Some("Relay KVM"));
     vm_backend.add_css_class("dim-label");
     add_row(&vm_group, "Backend", &vm_backend);
     let vm_note = gtk::Label::new(Some(
-        "The VM engine is fixed per build target (QEMU/KVM on Linux) and is not user-configurable.",
+        "Linux guests use KVM via cloud-hypervisor or crosvm. Fail closed without /dev/kvm. No QEMU.",
     ));
     vm_note.set_xalign(0.0);
     vm_note.set_wrap(true);
@@ -238,8 +247,10 @@ pub fn show_editor(
     // MARK: Container
     let container_group = adw::PreferencesGroup::new();
     container_group.set_title("Container");
-    container_group.set_description(Some("Container runtime is selected automatically for this platform."));
-    let container_backend = gtk::Label::new(Some("crun"));
+    container_group.set_description(Some(
+        "Container runtime is selected automatically for this platform.",
+    ));
+    let container_backend = gtk::Label::new(Some("OCI-in-VM"));
     container_backend.add_css_class("dim-label");
     add_row(&container_group, "Backend", &container_backend);
     let container_cmd = gtk::Entry::builder()
@@ -248,7 +259,7 @@ pub fn show_editor(
         .build();
     add_row(&container_group, "Startup Command", &container_cmd);
     let container_note = gtk::Label::new(Some(
-        "Container launch support is currently placeholder behavior until runtime integration is complete.",
+        "Containers unpack OCI, then run on the same KVM VM as virtual_machine. Not host Docker.",
     ));
     container_note.set_xalign(0.0);
     container_note.set_wrap(true);
@@ -285,7 +296,12 @@ pub fn show_editor(
             let port = port.text().trim().parse::<i32>().unwrap_or(22);
             let command = cmd.text().trim().to_string();
             let effective = if command.is_empty() {
-                if is_waypipe { "weston-simple-shm" } else { "bash -l" }.to_string()
+                if is_waypipe {
+                    "weston-simple-shm"
+                } else {
+                    "bash -l"
+                }
+                .to_string()
             } else {
                 command
             };
@@ -427,10 +443,8 @@ pub fn show_editor(
             Some(mt == MachineType::SshWaypipe || mt == MachineType::SshTerminal);
         updated.runtime_overrides.force_ssd = Some(force_ssd.is_active());
         updated.runtime_overrides.auto_scale = Some(auto_scale.is_active());
-        updated.runtime_overrides.vulkan_driver =
-            vulkan_driver.active_id().map(|s| s.to_string());
-        updated.runtime_overrides.open_gl_driver =
-            opengl_driver.active_id().map(|s| s.to_string());
+        updated.runtime_overrides.vulkan_driver = vulkan_driver.active_id().map(|s| s.to_string());
+        updated.runtime_overrides.open_gl_driver = opengl_driver.active_id().map(|s| s.to_string());
         updated.runtime_overrides.dmabuf_enabled = Some(dmabuf.is_active());
         updated.runtime_overrides.color_operations = Some(color_ops.is_active());
         session_exit::write_session_exit_overrides(

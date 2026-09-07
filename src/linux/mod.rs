@@ -3,11 +3,12 @@ pub mod config;
 pub mod embedded_core;
 pub mod launcher;
 pub mod machine_profile;
+pub mod relay;
 pub mod profile_store;
 pub mod runtime;
 pub mod service;
 pub mod session_exit;
 pub mod thumbnail_store;
-pub mod ui_model;
 #[cfg(feature = "linux-ui")]
 pub mod ui;
+pub mod ui_model;

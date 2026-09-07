@@ -2,6 +2,7 @@
 #import "../Settings/WWNWaypipeRunner.h"
 #import "../Settings/WWNPreferencesManager.h"
 #import "../Settings/WWNEnvironmentOverrides.h"
+#import "WWNRelay.h"
 #import "WWNVirtualMachineRunner.h"
 #import "WWNContainerRunner.h"
 #import "WWNPlatformCapabilities.h"
@@ -83,8 +84,7 @@
   if (runner.isRunning) {
     [runner stopWaypipe];
   }
-  [[WWNVirtualMachineRunner sharedRunner] stopAll];
-  [[WWNContainerRunner sharedRunner] stopAll];
+  [[WWNRelay sharedRelay] stopAll];
 }
 
 + (BOOL)connectProfile:(WWNMachineProfile *)profile
@@ -228,8 +228,7 @@
       }
       return NO;
     }
-    return [[WWNVirtualMachineRunner sharedRunner] launchProfile:profile
-                                                          error:error];
+    return [[WWNRelay sharedRelay] startProfile:profile error:error];
   }
 
   // OCI containers (wwn-containers): Apple Containerization on macOS, or
@@ -247,8 +246,7 @@
       }
       return NO;
     }
-    return [[WWNContainerRunner sharedRunner] launchProfile:profile
-                                                      error:error];
+    return [[WWNRelay sharedRelay] startProfile:profile error:error];
   }
 
   if (error) {
@@ -303,12 +301,9 @@
 #endif
   } else if ([self profileRequiresWaypipeTransport:profile]) {
     [[WWNWaypipeRunner sharedRunner] stopWaypipe];
-  } else if ([self profileUsesVirtualMachineBackend:profile]) {
-    [[WWNVirtualMachineRunner sharedRunner]
-        stopProfileWithMachineId:profile.machineId];
-  } else if ([self profileUsesContainerBackend:profile]) {
-    [[WWNContainerRunner sharedRunner]
-        stopProfileWithMachineId:profile.machineId];
+  } else if ([self profileUsesVirtualMachineBackend:profile] ||
+             [self profileUsesContainerBackend:profile]) {
+    [[WWNRelay sharedRelay] stopProfileWithMachineId:profile.machineId];
   }
 
   if ([[WWNMachineProfileStore activeMachineId] isEqualToString:profile.machineId]) {

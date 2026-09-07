@@ -23,8 +23,8 @@ L0  wwn-toolchain     builders + substrate libs (NO wwn-* flake inputs)
 L1  wwn-iland         complete graphics stack fragment (→ toolchain only)
 L2  wwn-kmscube       GL acceptance client (→ toolchain + iland)
 L3  wwn-weston        nested compositor (→ toolchain + iland + kmscube; ilandSrc=source only)
-L3′ wwn-waypipe, Wawona-Swinging-Bridge, wwn-vms, wwn-containers, wwn-ssh,
-    wwn-fastfetch, wwn-phoon-rs, wwn-neovim, wwn-foot, wwn-wasm, wwn-niri,
+L3′ wwn-waypipe, Wawona-Swinging-Bridge, wwn-relay, wwn-ssh,
+    wwn-fastfetch, wwn-phoon-rs, wwn-neovim, wwn-foot, wwn-niri,
     wwn-iowatchdog, wwn-vphone, wwn-iomfb-rs, doorman, wwn-igetty, …  (→ toolchain or nixpkgs-only; peers only downward)
 L4  Wawona            merges all fragments; never an input of L0-L3
 ```
@@ -35,11 +35,12 @@ flowchart BT
   il[L1 wwn-iland: iland, ANGLE, ICDs]
   km[L2 wwn-kmscube]
   we[L3 wwn-weston]
-  wp[L3' waypipe / Wawona Swinging Bridge / vms]
+  wp[L3' waypipe / Wawona Swinging Bridge / Relay]
   wa[L4 Wawona]
   tc --> il --> km --> we --> wa
   tc --> wp --> wa
   il --> wa
+  il --> wp
 ```
 
 ## What lives where
@@ -50,7 +51,7 @@ flowchart BT
 | **L1** | `wwn-iland` | Userland KMS/DRM/GBM/EGL/udev shims + Mode A present callback + Mode B baremetal; `iland`, `iland-baremetal`; **ANGLE and SwiftShader**; MoltenVK/KosmicKrisp packaging; `iland-cpu` CPU-present helpers; DriverSelector contract |
 | **L2** | `wwn-kmscube` | `kmscube`, `vkcube` (Wayland) + `vkcube-kms` (KMS/GBM), `gbm-es2-demo`, `opengl-cube`. Wawona pins `github:Wawona/wwn-kmscube/development` until FlakeHub rolling includes `vkcube-kms`. |
 | **L3** | `wwn-weston` | Dual-backend compositor: nested Wayland *and* DRM/KMS (`--backend=drm`) + weston-simple-egl + toytoolkit clients |
-| **L3′** | `wwn-waypipe`, `Wawona-Swinging-Bridge`, `wwn-vms`, `wwn-containers`, `wwn-ssh`, `wwn-fastfetch`, `wwn-phoon-rs`, `wwn-neovim`, `wwn-foot`, `wwn-wasm`, `wwn-iowatchdog`, `wwn-vphone`, `wwn-iomfb-rs`, `doorman`, `wwn-igetty`, … | Proxy / Android present / VM engine / OCI containers / in-process shell-tool ports (`*_main` C ABI, force-loaded static libs); `wwn-wasm` is the WASI P1/P2 **Wawona Runtime** (optional software = Wasm packages, not StoreKit ODR); `wwn-iowatchdog` is macOS Watchdog tools for Desktop Mode B (nixpkgs-only, never Apple-mobile); `wwn-vphone` is Darwin jailbroken iOS research lab via vphone-cli (nixpkgs-only; **never** ships a prebuilt iOS VM / IPSW); `wwn-iomfb-rs` is reconstructed iOS IOMobileFramebuffer (MIT, nixpkgs-only; TrollStore runtime; **L1 must not import this**; Wawona L4 may depend later); `doorman` is macOS user auth (Linux PAM-shaped; never Apple-mobile); `wwn-igetty` is Linux-shaped VT switching + Doorman getty on iland DRM after WindowServer is gone (never the Mode B dylib; that is L1 `iland-baremetal`) |
+| **L3′** | `wwn-waypipe`, `Wawona-Swinging-Bridge`, `wwn-relay`, `wwn-ssh`, `wwn-fastfetch`, `wwn-phoon-rs`, `wwn-neovim`, `wwn-foot`, `wwn-iowatchdog`, `wwn-vphone`, `wwn-iomfb-rs`, `doorman`, `wwn-igetty`, … | Proxy / Android present / in-process shell-tool ports (`*_main` C ABI); **`wwn-relay`** (`github.com/Wawona/Relay`) is the only Linux VM + OCI-in-VM + Mode A WASI engine (never QEMU/UTM); `wwn-iowatchdog` is macOS Watchdog tools for Desktop Mode B (nixpkgs-only, never Apple-mobile); `wwn-vphone` is Darwin jailbroken iOS research lab via vphone-cli (nixpkgs-only; **never** ships a prebuilt iOS VM / IPSW); `wwn-iomfb-rs` is reconstructed iOS IOMobileFramebuffer (MIT, nixpkgs-only; TrollStore + jailbreak channels; **L1 must not import this**; Wawona L4 Mode B iOS links `ios.nix`); `doorman` is macOS user auth (Linux PAM-shaped; never Apple-mobile); `wwn-igetty` is Linux-shaped VT switching + Doorman getty on iland DRM after WindowServer is gone (never the Mode B dylib; that is L1 `iland-baremetal`) |
 | **L4** | `Wawona` | App integration, Settings, presenters, SIP/Desktop, Android JNI, CI, docs, `flake.lock` hub |
 
 ## Hard rules
@@ -73,7 +74,8 @@ flowchart BT
 
 - Flake-input edges are **already acyclic** L0→L4. No inversions (verified:
   toolchain has no wwn-* inputs; iland → toolchain only; weston → toolchain +
-  iland + kmscube; waypipe/swinging-bridge/vms → toolchain; Wawona → all).
+  iland + kmscube; waypipe/swinging-bridge/relay → toolchain (+ iland when GPU);
+  Wawona → all).
 - Org-internal URLs are FlakeHub rolling
   (`https://flakehub.com/f/Wawona/<repo>/*`); `follows` still enforce the DAG.
   Exceptions already on `github:Wawona/<repo>/development`: `wwn-iland`,
@@ -107,20 +109,22 @@ flowchart BT
 | **waypipe → iland flake + iland → waypipe** | Zero-copy "shared crate" both ways | waypipe → iland (or only Wawona wires both); iland exposes C ABI only |
 | **Wawona Swinging Bridge → weston flake** | Nested compositor as flake input | Runtime/product launch only; Wawona Swinging Bridge → toolchain (+ optional iland if GPU) |
 | **Wawona as input of any wwn-*** | App headers leaking into libs | Use `wawonaSrc` extraArgs sparingly; never flake input L4→L0 |
-| **wwn-iland → wwn-iomfb-rs** | L1 imports libre IOMFB | Forbidden. `wwn-iomfb-rs` is L3′ nixpkgs-only. Wawona L4 may depend later |
-| **wwn-wasm → iland / weston** | Wayland fd-bridge tempting a graphics flake edge | Host uses existing `XDG_RUNTIME_DIR` unix sockets; **toolchain only** |
+| **wwn-iland → wwn-iomfb-rs** | L1 imports libre IOMFB | Forbidden. `wwn-iomfb-rs` is L3′ nixpkgs-only. Wawona L4 Mode B iOS links `ios.nix` |
+| **wwn-relay → iland / weston** | Wayland fd-bridge tempting a graphics flake edge | Host uses existing `XDG_RUNTIME_DIR` unix sockets; **toolchain only**. Guest GUI is waypipe into Wawona |
 | **freetype↔harfbuzz↔cairo** | Classic meson cycles | Keep disabled edges in ios/android recipes |
 | **spirv-tools / ffmpeg in wrong layer** | If only graphics needs spirv, OK L1; if foot/ssh need it, keep L0 | Prefer L0 unless proven graphics-only |
 | **MVK/KK recipe needing full mesa + iland headers** | Mesa build pulls iland | KK/MVK builds are standalone ICDs; iland *links* them |
+| **UTM rebuild of ANGLE/MVK/KK** | A leftover VM tree compiles WebKit ANGLE or UTM MoltenVK/KosmicKrisp | Forbidden. Guest GUI is vsock+waypipe into Wawona (`wwn-iland`). Never QEMU/UTM |
 | **Direct Turnip/KGSL** | App-owned ICD opens a kernel device | Excluded by runtime-only policy; use system Vulkan or SwiftShader |
-| **apple-container in L0** | Toolchain absorbs Apple `container` / Containerization | **macOS-only, L3′ `wwn-containers`**; `baseRegistry` throws |
+| **apple-container in L0** | Toolchain absorbs Apple `container` / Containerization | **macOS-only, L3′ `wwn-relay`**; `baseRegistry` throws |
 
 ## Who must merge `wwn-iland` after the P2 move
 
 Anyone calling `buildFor* "angle"` / a Vulkan ICD / `iland`: **wwn-kmscube**,
 **wwn-weston**, **wwn-niri** (macOS Mode B DRM/KMS tty), **wwn-waypipe** (GPU),
-**Wawona**. Repos that only need cairo/pango/text (**wwn-foot**, etc.) keep
-**toolchain-only** merge. No forced iland.
+**wwn-relay** (Linux guests; no host GPU ICD rebuild), **Wawona**. Repos that
+only need cairo/pango/text (**wwn-foot**, etc.) keep **toolchain-only** merge.
+No forced iland.
 
 ## Land order (multi-repo)
 
@@ -137,7 +141,7 @@ Wawona repo DAG (acyclic, never invert):
   L1 wwn-iland. Complete graphics stack (iland, ANGLE, SwiftShader, MoltenVK, KosmicKrisp). Depends on toolchain ONLY.
   L2 wwn-kmscube. Toolchain + iland.
   L3 wwn-weston. Toolchain + iland + kmscube; ilandSrc is source injection only.
-  L3′ waypipe / Wawona Swinging Bridge / vms / apt / iomfb-rs. Toolchain or nixpkgs-only; merge iland only if GPU needed; no weston flake edge from Wawona Swinging Bridge. L1 must not import wwn-iomfb-rs.
+  L3′ waypipe / Wawona Swinging Bridge / Relay / iomfb-rs. Toolchain or nixpkgs-only; merge iland only if GPU needed; no weston flake edge from Wawona Swinging Bridge. L1 must not import wwn-iomfb-rs.
   L4 Wawona. Merges fragments; never an input of L0-L3.
 
 FORBIDDEN: pixman/cairo/pango moved into iland; angle left owned by toolchain after graphics move;

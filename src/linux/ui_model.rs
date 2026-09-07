@@ -36,7 +36,9 @@ impl LayoutMode {
 }
 
 /// Scope chip label (mirrors `machineScopeLabel(for:)` on macOS).
-pub fn machine_scope_label(machine_type: crate::linux::machine_profile::MachineType) -> &'static str {
+pub fn machine_scope_label(
+    machine_type: crate::linux::machine_profile::MachineType,
+) -> &'static str {
     if machine_type.is_local() {
         "Local"
     } else {
@@ -73,8 +75,8 @@ pub fn machine_subtitle(profile: &MachineProfile) -> String {
             Some(label) => label,
             None => "No client configured".to_string(),
         },
-        MachineType::VirtualMachine => "VM profile (QEMU/KVM)".to_string(),
-        MachineType::Container => "Container profile (crun)".to_string(),
+        MachineType::VirtualMachine => "VM profile (Relay KVM)".to_string(),
+        MachineType::Container => "Container profile (OCI-in-VM)".to_string(),
         MachineType::SshWaypipe | MachineType::SshTerminal => {
             if profile.ssh_host.is_empty() {
                 "SSH endpoint not configured".to_string()
@@ -114,8 +116,8 @@ pub fn machine_configuration_summary(profile: &MachineProfile) -> String {
             };
             format!("SSH terminal command: {}", command)
         }
-        MachineType::VirtualMachine => "Backend: QEMU/KVM".to_string(),
-        MachineType::Container => "Backend: crun".to_string(),
+        MachineType::VirtualMachine => "Backend: Relay KVM (cloud-hypervisor)".to_string(),
+        MachineType::Container => "Backend: OCI on the same KVM VM".to_string(),
     }
 }
 
@@ -174,10 +176,7 @@ pub fn visible_machines<'a>(
 
 /// Placeholder text shown when the filtered list is empty (mirrors the macOS
 /// `ContentUnavailableView` in `WWNMachinesGridView`).
-pub fn empty_state_text(
-    _has_any: bool,
-    _has_query: bool,
-) -> (&'static str, &'static str) {
+pub fn empty_state_text(_has_any: bool, _has_query: bool) -> (&'static str, &'static str) {
     (
         "No Matching Machines",
         "Adjust search or add a new machine profile.",
@@ -231,14 +230,8 @@ mod tests {
 
     #[test]
     fn empty_state_matches_macos_content_unavailable_view() {
-        assert_eq!(
-            empty_state_text(false, false).0,
-            "No Matching Machines"
-        );
-        assert_eq!(
-            empty_state_text(true, true).0,
-            "No Matching Machines"
-        );
+        assert_eq!(empty_state_text(false, false).0, "No Matching Machines");
+        assert_eq!(empty_state_text(true, true).0, "No Matching Machines");
     }
 
     #[test]
@@ -247,7 +240,10 @@ mod tests {
         native.remote_command.clear();
         native.runtime_overrides.bundled_app_id = Some("foot".into());
         assert_eq!(machine_subtitle(&native), "Foot Terminal");
-        assert_eq!(machine_configuration_summary(&native), "Runs: Foot Terminal");
+        assert_eq!(
+            machine_configuration_summary(&native),
+            "Runs: Foot Terminal"
+        );
         assert!(launch_supported(&native));
         assert_eq!(machine_scope_label(native.machine_type), "Local");
 
@@ -266,5 +262,4 @@ mod tests {
             "Waypipe command: weston-simple-shm"
         );
     }
-
 }

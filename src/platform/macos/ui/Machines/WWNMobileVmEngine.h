@@ -2,8 +2,8 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-/// In-process QEMU engine for iOS and iPadOS.
-/// Mode A uses TCTI. The separate Mode B product uses TCG JIT.
+/// iOS / iPadOS Linux guests go through Wawona Relay.
+/// Mode A static CPU and Mode B JIT are planned. QEMU/TCTI is forbidden.
 @interface WWNMobileVmEngine : NSObject
 
 + (instancetype)sharedEngine;
@@ -15,8 +15,6 @@ NS_ASSUME_NONNULL_BEGIN
                            memoryMB:(unsigned)memoryMB
                               error:(NSError *_Nullable *_Nullable)error;
 
-/// Same as launchProfileWithKernelPath:… plus optional OCI layout shared into
-/// the guest as mount_tag `oci-bundle` (9p; guest crun path).
 - (BOOL)launchProfileWithKernelPath:(NSString *)kernelPath
                          rootfsPath:(NSString *)rootfsPath
                            memoryMB:(unsigned)memoryMB

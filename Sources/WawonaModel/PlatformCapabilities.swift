@@ -103,7 +103,7 @@ public enum PlatformCapabilities: Sendable {
     ///
     /// This is the macOS execution engine only (Virtualization.framework,
     /// Apple silicon, macOS 15+ / 26 recommended). Other targets that allow
-    /// container *machine kinds* use container-in-VM (`wwn-vms`), never this
+    /// container *machine kinds* use container-in-VM (`wwn-relay`), never this
     /// engine. Distinct from `containerGate`.
     public static var appleContainerizationGate: CapabilityGate {
         #if os(macOS)

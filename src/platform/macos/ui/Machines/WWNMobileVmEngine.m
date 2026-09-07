@@ -1,49 +1,5 @@
 #import "WWNMobileVmEngine.h"
 
-#import <TargetConditionals.h>
-
-#if TARGET_OS_OSX || TARGET_OS_TV || TARGET_OS_WATCH || TARGET_OS_VISION
-@implementation WWNMobileVmEngine
-+ (instancetype)sharedEngine { return [WWNMobileVmEngine new]; }
-- (BOOL)isEngineAvailable { return NO; }
-- (BOOL)launchProfileWithKernelPath:(NSString *)k rootfsPath:(NSString *)r memoryMB:(unsigned)m
-                              error:(NSError **)e {
-  return [self launchProfileWithKernelPath:k rootfsPath:r memoryMB:m ociBundlePath:nil error:e];
-}
-- (BOOL)launchProfileWithKernelPath:(NSString *)k rootfsPath:(NSString *)r memoryMB:(unsigned)m
-                      ociBundlePath:(NSString *)oci error:(NSError **)e {
-  (void)k; (void)r; (void)m; (void)oci;
-  if (e) {
-    *e = [NSError errorWithDomain:@"WWNMobileVmEngine" code:0
-                         userInfo:@{NSLocalizedDescriptionKey :
-                                        @"Virtual machines are unavailable on this platform."}];
-  }
-  return NO;
-}
-- (void)stop {}
-@end
-#else
-
-#import "WWNQemuSystem.h"
-#import "wwn_vms_engine.h"
-
-#import <pthread.h>
-#import <unistd.h>
-#import <os/log.h>
-
-extern int waypipe_main(int argc, char **argv);
-
-static NSString *WWNMobileGuestBundlePath(void) {
-  NSURL *url = [[NSBundle mainBundle] URLForResource:@"wawona-mobile-guest" withExtension:nil];
-  return url.path;
-}
-
-@interface WWNMobileVmEngine ()
-@property(nonatomic, strong, nullable) WWNQemuSystem *qemu;
-@property(nonatomic, assign) pthread_t waypipeThread;
-@property(nonatomic, assign) BOOL waypipeRunning;
-@end
-
 @implementation WWNMobileVmEngine
 
 + (instancetype)sharedEngine {
@@ -56,23 +12,7 @@ static NSString *WWNMobileGuestBundlePath(void) {
 }
 
 - (BOOL)isEngineAvailable {
-  NSString *fw = [[NSBundle mainBundle].bundlePath
-      stringByAppendingPathComponent:
-          @"Frameworks/qemu-aarch64-softmmu.framework/qemu-aarch64-softmmu"];
-  return [[NSFileManager defaultManager] fileExistsAtPath:fw];
-}
-
-static void *WWNMobileWaypipeThread(void *ctx) {
-  char *socketPath = (char *)ctx;
-  const char *display = getenv("WAYLAND_DISPLAY");
-  if (!display) {
-    display = "wayland-0";
-  }
-  char *argv[] = {"waypipe", "client", "--socket", socketPath, "--display",
-                  (char *)display, NULL};
-  waypipe_main(5, argv);
-  free(socketPath);
-  return NULL;
+  return NO;
 }
 
 - (BOOL)launchProfileWithKernelPath:(NSString *)kernelPath
@@ -91,124 +31,23 @@ static void *WWNMobileWaypipeThread(void *ctx) {
                            memoryMB:(unsigned)memoryMB
                       ociBundlePath:(NSString *)ociBundlePath
                               error:(NSError *_Nullable *_Nullable)error {
-  if (![self isEngineAvailable]) {
-    if (error) {
-      *error = [NSError
-          errorWithDomain:@"WWNMobileVmEngine"
-                     code:1
-                 userInfo:@{
-                   NSLocalizedDescriptionKey :
-                       @"QEMU-TCTI engine frameworks are not embedded in this build. "
-                       @"Build wwn-vms-mobile-engine-ios-tci and run the Xcode embed phase "
-                       @"(set WAWONA_MOBILE_VM_ENGINE_DIR). Required for VMs and "
-                       @"container-in-VM on iOS Mode A."
-                 }];
-    }
-    return NO;
+  (void)kernelPath;
+  (void)rootfsPath;
+  (void)memoryMB;
+  (void)ociBundlePath;
+  if (error) {
+    *error = [NSError
+        errorWithDomain:@"WWNMobileVmEngine"
+                   code:1
+               userInfo:@{
+                 NSLocalizedDescriptionKey :
+                     @"iOS Linux VMs wait on Relay CPU. No QEMU. No UTM."
+               }];
   }
-  if (kernelPath.length == 0 || rootfsPath.length == 0) {
-    if (error) {
-      *error = [NSError errorWithDomain:@"WWNMobileVmEngine" code:2
-                               userInfo:@{NSLocalizedDescriptionKey : @"Missing guest kernel or rootfs."}];
-    }
-    return NO;
-  }
-
-  [self stop];
-
-  NSString *vsockSocket =
-      [NSTemporaryDirectory() stringByAppendingPathComponent:@"wawona-mobile-vsock.sock"];
-  [[NSFileManager defaultManager] removeItemAtPath:vsockSocket error:nil];
-
-  {
-    self.waypipeRunning = YES;
-    char *socketPath = strdup(vsockSocket.UTF8String);
-    // pthread_create needs the address of the backing ivar; &self.waypipeThread
-    // (a property expression) is not addressable.
-    pthread_create(&_waypipeThread, NULL, WWNMobileWaypipeThread, socketPath);
-  }
-
-  WWNQemuSystem *qemu = [[WWNQemuSystem alloc] initWithArguments:@[]
-                                                    architecture:@"aarch64"];
-  qemu.currentDirectoryUrl = [NSURL fileURLWithPath:
-      [[NSBundle mainBundle].bundlePath stringByAppendingPathComponent:@"Frameworks"]];
-  [qemu clearArgv];
-  // The linked Rust engine contract is immutable per product: Mode A returns
-  // TCTI, while the separate TrollStore target returns TCG JIT. A runtime
-  // preference or environment variable cannot upgrade the store engine.
-  int accel = wwn_vm_product_accel();
-  if (accel != WWN_VM_ACCEL_TCTI && accel != WWN_VM_ACCEL_TCG_JIT) {
-    if (error) {
-      *error = [NSError
-          errorWithDomain:@"WWNMobileVmEngine"
-                     code:3
-                 userInfo:@{
-                   NSLocalizedDescriptionKey :
-                       @"The linked VM engine contract selected an invalid iOS accelerator."
-                 }];
-    }
-    return NO;
-  }
-  [qemu pushArgv:@"-machine"];
-  [qemu pushArgv:@"virt,accel=tcg"];
-  [qemu pushArgv:@"-accel"];
-  [qemu pushArgv:@"tcg"];
-  [qemu pushArgv:@"-cpu"];
-  [qemu pushArgv:@"max"];
-  [qemu pushArgv:@"-m"];
-  [qemu pushArgv:[NSString stringWithFormat:@"%u", memoryMB]];
-  [qemu pushArgv:@"-kernel"];
-  [qemu pushArgv:kernelPath];
-  [qemu pushArgv:@"-drive"];
-  [qemu pushArgv:[NSString stringWithFormat:@"file=%@,if=virtio,format=raw", rootfsPath]];
-  [qemu pushArgv:@"-device"];
-  [qemu pushArgv:@"virtio-rng-pci"];
-  // Container-in-VM: share host OCI layout into the guest (guest mounts tag
-  // oci-bundle via 9p; see wwn-containers container-in-vm/guest-module.nix).
-  if (ociBundlePath.length > 0 &&
-      [[NSFileManager defaultManager] fileExistsAtPath:ociBundlePath]) {
-    [qemu pushArgv:@"-virtfs"];
-    [qemu pushArgv:[NSString
-                       stringWithFormat:
-                           @"local,path=%@,mount_tag=oci-bundle,security_model=mapped-xattr,"
-                           @"readonly=on",
-                           ociBundlePath]];
-    os_log(OS_LOG_DEFAULT, "WWNMobileVmEngine: oci-bundle 9p share %{public}@",
-           ociBundlePath);
-  }
-  [qemu pushArgv:@"-chardev"];
-  [qemu pushArgv:[NSString stringWithFormat:@"socket,path=%@,server=on,wait=off,id=vsock0",
-                                            vsockSocket]];
-  [qemu pushArgv:@"-device"];
-  [qemu pushArgv:@"vhost-user-vsock-pci,chardev=vsock0"];
-  [qemu pushArgv:@"-nographic"];
-  [qemu pushArgv:@"-no-reboot"];
-  const char *accelLabel = wwn_vm_accel_label(accel);
-  os_log(OS_LOG_DEFAULT,
-         "WWNMobileVmEngine: %{public}s (accel=tcg) mem=%u",
-         accelLabel ? accelLabel : "QEMU TCG", memoryMB);
-
-  NSMutableDictionary<NSString *, NSString *> *env = [@{
-    @"ANGLE_DEFAULT_PLATFORM" : @"metal",
-  } mutableCopy];
-  NSString *runtime = [NSString stringWithFormat:@"/tmp/wawona-%d", getuid()];
-  env[@"XDG_RUNTIME_DIR"] = runtime;
-  qemu.environment = env;
-
-  self.qemu = qemu;
-  [qemu startQemuWithCompletion:^(NSError *err) {
-    if (err) {
-      os_log_error(OS_LOG_DEFAULT, "QEMU exited: %{public}@", err.localizedDescription);
-    }
-  }];
-  return YES;
+  return NO;
 }
 
 - (void)stop {
-  [self.qemu stopQemu];
-  self.qemu = nil;
-  self.waypipeRunning = NO;
 }
 
 @end
-#endif

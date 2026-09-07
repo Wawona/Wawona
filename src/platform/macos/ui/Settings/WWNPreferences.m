@@ -1168,20 +1168,17 @@ static UIImage *WWNAboutLogo(void) {
         WSettingSwitch, @YES,
         @"Save the last frame from a machine session and show it on machine cards.")];
 #if !TARGET_OS_TV && !TARGET_OS_WATCH && !TARGET_OS_VISION
-    // VM engine and container runtime are fixed per build target by the
-    // wwn-vms / wwn-containers capability lanes; they are read-only here and
-    // never user-configurable (Residual E). Engine swaps belong in the Nix
-    // engines/bridges, not in user preferences. Forbidden on tvOS / watchOS /
-    // visionOS.
+    // VM engine and container runtime are fixed per artifact by Wawona Relay.
+    // Never user-configurable. Forbidden on tvOS / watchOS / visionOS.
     [machineItems addObject:ITEM(@"Virtual Machine Engine", nil, WSettingInfo,
 #if TARGET_OS_OSX
-                                 @"QEMU + HVF",
+                                 @"Relay VZ",
 #else
-                                 @"QEMU-TCTI (UTM SE)",
+                                 @"Relay (planned)",
 #endif
-                                 @"Selected automatically for this platform by wwn-vms. macOS: "
-                                 @"QEMU + Hypervisor.framework (HVF). iOS: jitless QEMU-TCTI. "
-                                 @"Android: QEMU + KVM when /dev/kvm exists, else TCG+JIT.")];
+                                 @"Selected by Wawona Relay from the installed artifact. macOS: "
+                                 @"Virtualization.framework. iOS/iPadOS: Relay CPU (planned). "
+                                 @"Android Play: Relay static CPU (planned). Linux: KVM. Never QEMU.")];
     [machineItems addObject:ITEM(@"Virtual Machine VSock Port", @"MachineVMVsockPort",
                                  WSettingNumber, @"1024",
                                  @"vsock port the guest's waypipe server binds; bridged into Wawona.")];
@@ -1191,18 +1188,16 @@ static UIImage *WWNAboutLogo(void) {
 #else
                                  @"container-in-VM",
 #endif
-                                 @"Selected automatically for this platform by wwn-containers. macOS: "
-                                 @"Apple Containerization framework. Mobile/Android: container-in-VM "
-                                 @"(crun in a wwn-vms guest).")];
+                                 @"Selected by Wawona Relay. macOS: Apple Containerization "
+                                 @"(OCI on VZ Linux VMs). Mobile/Android: OCI on the same Relay VM.")];
     [machineItems addObject:ITEM(@"Container Image Store", @"MachineContainerImageStore",
                                  WSettingText, @"~/.local/share/wawona/oci",
                                  @"Content-addressable OCI store (wwn-oci) for pulled images. Universal "
                                  @"and App-Store-compliant on every target.")];
     [machineItems addObject:ITEM(
         @"Status", nil, WSettingInfo, @"Active",
-        @"VM + container backends are provided by the wwn-vms / wwn-containers "
-        @"dependencies. macOS runs them directly; other targets are "
-        @"capability-gated (see each dep's COMPLIANCE.md).")];
+        @"VM + container backends are provided by Wawona Relay. macOS uses VZ; "
+        @"other targets stay planned until Relay boots NixOS. Never QEMU.")];
 #endif
     machines.items = machineItems;
     [sects addObject:machines];

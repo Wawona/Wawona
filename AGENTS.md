@@ -168,9 +168,14 @@ and **GitHub Actions** (`project=github-actions`) via wwn-mcp for upstream synta
   `assert_ipa_has_swift_support!`). altool success ≠ ASC acceptance. Poll
   the ASC `buildUploads` API. See
   `.cursor/rules/wawona-asc-swift-support.mdc` and `docs/ci.md`.
-- **Virtualization**: Wawona iOS will host on-device, JIT-less VMs inside Wawona
-  (not UTM) only to run Wayland compositors. Containers only on macOS (maybe
-  Android); other Apple platforms = VMs or native only.
+- **Linux VMs only (NixOS prebuilts).** Machines kind `virtual_machine` is
+  Linux on iOS / macOS / Android, OrbStack-style. Not arbitrary ISOs. Mode A
+  ships **only** Wawona’s App Store-compliant runtime (Relay). Mode B adds
+  Wawona’s Mode B runtime. The only engine is **Wawona Relay**
+  (`github.com/Wawona/Relay`, flake input `wwn-relay`). Guests are Wayland
+  into Wawona (iland), never UTM Spice / ANGLE / virgl. Never QEMU. tvOS /
+  watchOS / visionOS: no VM/container kinds. See `wawona-relay`,
+  `wawona-linux-vms-relay-runtime`, and `wawona-guest-wayland-iland`.
 
 ## Local before CI (do not burn the queue)
 

@@ -15,11 +15,24 @@ fn machine_target(profile: &LinuxMachineProfile) -> String {
     }
 }
 
-pub fn launch(profile: &LinuxMachineProfile, settings: &LinuxSettings, rt: &RuntimeState) -> Result<Child> {
-    wlog!("LAUNCHER", "Launching profile name={} type={:?} id={}",
-        profile.name, profile.machine_type, profile.id);
-    wlog!("LAUNCHER", "Runtime target WAYLAND_DISPLAY={} XDG_RUNTIME_DIR={}",
-        rt.wayland_display, rt.xdg_runtime_dir);
+pub fn launch(
+    profile: &LinuxMachineProfile,
+    settings: &LinuxSettings,
+    rt: &RuntimeState,
+) -> Result<Child> {
+    wlog!(
+        "LAUNCHER",
+        "Launching profile name={} type={:?} id={}",
+        profile.name,
+        profile.machine_type,
+        profile.id
+    );
+    wlog!(
+        "LAUNCHER",
+        "Runtime target WAYLAND_DISPLAY={} XDG_RUNTIME_DIR={}",
+        rt.wayland_display,
+        rt.xdg_runtime_dir
+    );
 
     let mut cmd = match profile.machine_type {
         LinuxMachineType::Native => {
@@ -31,7 +44,12 @@ pub fn launch(profile: &LinuxMachineProfile, settings: &LinuxSettings, rt: &Runt
         }
         LinuxMachineType::SshTerminal => {
             let target = machine_target(profile);
-            wlog!("LAUNCHER", "SSH terminal target={} port={}", target, profile.ssh_port);
+            wlog!(
+                "LAUNCHER",
+                "SSH terminal target={} port={}",
+                target,
+                profile.ssh_port
+            );
             let mut c = Command::new("ssh");
             c.args(["-p", &profile.ssh_port.to_string(), &target]);
             if !profile.remote_command.trim().is_empty() {
@@ -47,8 +65,14 @@ pub fn launch(profile: &LinuxMachineProfile, settings: &LinuxSettings, rt: &Runt
             } else {
                 profile.remote_command.clone()
             };
-            wlog!("LAUNCHER", "Waypipe target={} port={} compress={} remote_cmd={}",
-                target, profile.ssh_port, settings.waypipe_compression, remote_cmd);
+            wlog!(
+                "LAUNCHER",
+                "Waypipe target={} port={} compress={} remote_cmd={}",
+                target,
+                profile.ssh_port,
+                settings.waypipe_compression,
+                remote_cmd
+            );
             let mut c = Command::new("waypipe");
             c.arg("--compress")
                 .arg(settings.waypipe_compression.clone())
@@ -76,9 +100,15 @@ pub fn launch(profile: &LinuxMachineProfile, settings: &LinuxSettings, rt: &Runt
     cmd.stdout(Stdio::inherit());
     cmd.stderr(Stdio::inherit());
 
-    let child = cmd.spawn()
+    let child = cmd
+        .spawn()
         .with_context(|| format!("failed to launch profile '{}'", profile.name))?;
-    wlog!("LAUNCHER", "Spawned process pid={} for profile '{}'", child.id(), profile.name);
+    wlog!(
+        "LAUNCHER",
+        "Spawned process pid={} for profile '{}'",
+        child.id(),
+        profile.name
+    );
     Ok(child)
 }
 
@@ -122,7 +152,7 @@ pub fn launch_profile(
     );
 
     let mut cmd = match profile.machine_type {
-        MachineType::Native | MachineType::VirtualMachine | MachineType::Container => {
+        MachineType::Native => {
             let run_cmd = rewrite_wasm_command(
                 &profile.effective_command(),
                 profile.runtime_overrides.wasm_module_path.as_deref(),
@@ -132,9 +162,33 @@ pub fn launch_profile(
             c.args(["-c", &run_cmd]);
             c
         }
+        MachineType::VirtualMachine | MachineType::Container => {
+            let kind = if profile.machine_type == MachineType::Container {
+                crate::linux::relay::RelayKind::Container
+            } else {
+                crate::linux::relay::RelayKind::Vm
+            };
+            let backend = crate::linux::relay::resolve_backend(kind)?;
+            wlog!("LAUNCHER", "Relay backend={}", backend.as_str());
+            let run_cmd = profile.effective_command();
+            if run_cmd.trim().is_empty() {
+                anyhow::bail!(
+                    "Relay {} needs a guest command. No QEMU fallback",
+                    backend.as_str()
+                );
+            }
+            let mut c = Command::new("sh");
+            c.args(["-c", &run_cmd]);
+            c
+        }
         MachineType::SshTerminal => {
             let target = canonical_target(profile);
-            wlog!("LAUNCHER", "SSH terminal target={} port={}", target, profile.ssh_port);
+            wlog!(
+                "LAUNCHER",
+                "SSH terminal target={} port={}",
+                target,
+                profile.ssh_port
+            );
             let mut c = Command::new("ssh");
             c.args(["-p", &profile.ssh_port.to_string(), &target]);
             if !profile.remote_command.trim().is_empty() {

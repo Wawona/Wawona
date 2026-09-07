@@ -41,8 +41,8 @@
   return script.length > 0 ? script : nil;
 }
 
-/// Default macOS Machines VM: QEMU + Hypervisor.framework (HVF).
-- (NSString *)defaultQemuHvfCommandForProfile:(WWNMachineProfile *)profile {
+/// Default macOS Machines VM: Virtualization.framework (VZ). Never QEMU.
+- (NSString *)defaultVzCommandForProfile:(WWNMachineProfile *)profile {
   NSBundle *bundle = [NSBundle mainBundle];
   NSString *resources = bundle.resourcePath ?: @"";
   NSString *binDir = [resources stringByAppendingPathComponent:@"bin"];
@@ -72,24 +72,11 @@
        "exec wawona-vm-launch --guest-dir \"%@\" --memory %u; fi; ",
       guestArg, guestArg, memoryMB];
   [cmd appendFormat:
-      @"if command -v wawona-qemu-hvf >/dev/null 2>&1 && [ -d \"%@\" ]; then "
-       "exec wawona-qemu-hvf \"%@\" %u; fi; ",
+      @"if command -v wawona-vz-run >/dev/null 2>&1 && [ -d \"%@\" ]; then "
+       "exec wawona-vz-run \"%@\" %u; fi; ",
       guestArg, guestArg, memoryMB];
-  [cmd appendFormat:
-      @"QEMU=$(command -v qemu-system-aarch64 || command -v qemu-system-x86_64 || true); "
-       "if [ -z \"$QEMU\" ] || [ ! -d \"%@\" ]; then "
-       "echo 'Wawona VM: embed wwn-vms macOS QEMU+HVF engine and guest "
-       "(wawona-qemu-hvf + Image/rootfs.img), or set customScript.' >&2; exit 1; fi; "
-       "KERN=\"\"; for n in Image zImage vmlinuz vmlinux; do "
-       "[ -f \"%@/$n\" ] && KERN=\"%@/$n\" && break; done; "
-       "ROOT=\"%@/rootfs.img\"; "
-       "test -n \"$KERN\" -a -f \"$ROOT\" || { echo 'incomplete guest' >&2; exit 1; }; "
-       "case \"$QEMU\" in *aarch64*) MACH=virt,accel=hvf ;; *) MACH=q35,accel=hvf ;; esac; "
-       "echo \"[Wawona] QEMU + HVF (Hypervisor.framework) $QEMU\" >&2; "
-       "exec \"$QEMU\" -machine \"$MACH\" -cpu host -m %u "
-       "-kernel \"$KERN\" -drive \"file=$ROOT,if=virtio,format=raw\" "
-       "-device virtio-rng-pci -nographic -no-reboot",
-      guestArg, guestArg, guestArg, guestArg, memoryMB];
+  [cmd appendString:
+      @"echo 'Wawona VM: Relay VZ launcher missing. No QEMU fallback.' >&2; exit 1"];
   return cmd;
 }
 
@@ -109,8 +96,7 @@
 
   NSString *command = [self bootCommandForProfile:profile];
   if (!command) {
-    // Product default: QEMU + Hypervisor.framework (HVF), not VZ/microvm.
-    command = [self defaultQemuHvfCommandForProfile:profile];
+    command = [self defaultVzCommandForProfile:profile];
   }
 
   [self stopProfileWithMachineId:profile.machineId];
@@ -195,7 +181,7 @@
 
 #else  // !TARGET_OS_OSX
 
-// iOS family: in-process QEMU-TCTI (UTM SE), not NSTask.
+// iOS family: Relay CPU (planned). Fail closed. Never QEMU.
 @implementation WWNVirtualMachineRunner
 
 + (instancetype)sharedRunner {
@@ -233,26 +219,50 @@
     return NO;
   }
 
-  NSString *guestDir = [[NSBundle mainBundle] pathForResource:@"wawona-mobile-guest" ofType:nil];
+  NSString *ociBundle = nil;
+  id ociOverride = profile.runtimeOverrides[@"ociBundlePath"];
+  if ([ociOverride isKindOfClass:[NSString class]] &&
+      [(NSString *)ociOverride length] > 0) {
+    ociBundle = (NSString *)ociOverride;
+  }
+  NSString *guestResource = @"wawona-mobile-guest";
+  if (ociBundle.length > 0 ||
+      [profile.type isEqualToString:kWWNMachineTypeContainer]) {
+    guestResource = @"wawona-container-guest";
+  }
+  NSFileManager *fm = NSFileManager.defaultManager;
+  NSString *guestDir =
+      [[NSBundle mainBundle] pathForResource:guestResource ofType:nil];
+  /* Slim / lab inject copies the guest dir after TrollStore install.
+     pathForResource only sees the signed resource map, so also accept a
+     real folder next to the executable. */
+  if (guestDir.length == 0) {
+    NSString *beside = [[[NSBundle mainBundle] bundlePath]
+        stringByAppendingPathComponent:guestResource];
+    if ([fm fileExistsAtPath:beside]) {
+      guestDir = beside;
+    }
+  }
   if (guestDir.length == 0) {
     if (error) {
       *error = [NSError
           errorWithDomain:@"WWNVirtualMachineRunner"
                      code:102
                  userInfo:@{
-                   NSLocalizedDescriptionKey :
-                       @"Bundled mobile guest (wawona-mobile-guest) is not embedded. "
-                       @"Build wawona-mobile-guest-artifacts, set WAWONA_MOBILE_GUEST_DIR, "
-                       @"and enable the Xcode embed phase. Required for VMs and "
-                       @"container-in-VM on iOS Mode A."
+                   NSLocalizedDescriptionKey : [NSString
+                       stringWithFormat:
+                           @"Bundled mobile guest (%@) is not embedded. "
+                           @"Build the matching VM/container guest artifact and "
+                           @"enable its Xcode embed phase.",
+                           guestResource]
                  }];
     }
     return NO;
   }
 
-  NSFileManager *fm = NSFileManager.defaultManager;
   NSString *kernel = nil;
-  for (NSString *name in @[ @"Image", @"zImage", @"vmlinuz", @"vmlinux" ]) {
+  for (NSString *name in
+       @[ @"Image", @"Image.vm", @"zImage", @"vmlinuz", @"vmlinux" ]) {
     NSString *candidate = [guestDir stringByAppendingPathComponent:name];
     if ([fm fileExistsAtPath:candidate]) {
       kernel = candidate;
@@ -263,17 +273,10 @@
     kernel = [guestDir stringByAppendingPathComponent:@"Image"];
   }
   NSString *rootfs = [guestDir stringByAppendingPathComponent:@"rootfs.img"];
-  unsigned memoryMB = 768;
+  unsigned memoryMB = 512;
   id memOverride = profile.runtimeOverrides[@"memoryMB"];
   if ([memOverride respondsToSelector:@selector(unsignedIntegerValue)]) {
     memoryMB = (unsigned)[memOverride unsignedIntegerValue];
-  }
-
-  NSString *ociBundle = nil;
-  id ociOverride = profile.runtimeOverrides[@"ociBundlePath"];
-  if ([ociOverride isKindOfClass:[NSString class]] &&
-      [(NSString *)ociOverride length] > 0) {
-    ociBundle = (NSString *)ociOverride;
   }
 
   return [[WWNMobileVmEngine sharedEngine]

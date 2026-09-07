@@ -4,7 +4,8 @@ Wawona does **not** run arbitrary VMs. Machines kind `virtual_machine` is
 **Linux only**: **NixOS prebuilts**, OrbStack-style, on **iOS / macOS / Android /
 Linux**. tvOS / watchOS / visionOS stay **forbidden** for VM/container kinds.
 
-The engine is **Wawona’s**, not UTM. Guest GUI is Wayland into Wawona
+The engine is **Wawona Relay** (`github.com/Wawona/Relay`, flake input
+`wwn-relay`). Not UTM. Guest GUI is Wayland into Wawona
 (`wawona-guest-wayland-iland`).
 
 ## Runtimes (never mix into the wrong artifact)
@@ -21,10 +22,11 @@ forbidden on watch/tv/vision. Wasm does not.
 
 ## Destination
 
-**Build toward Relay.** No QEMU. No UTM. No TCTI reference CPU. iOS / Play
+**Build in Relay.** No QEMU. No UTM. No TCTI reference CPU. iOS / Play
 Linux VMs stay **planned** and fail closed until Relay’s own CPU can boot
-NixOS. macOS may use Virtualization.framework. Linux may use KVM via
-cloud-hypervisor or crosvm. Never call a leftover QEMU tree the Wawona runtime.
+NixOS. macOS uses Virtualization.framework. Linux uses KVM via
+cloud-hypervisor or crosvm. Fail closed without `/dev/kvm`. Never call a
+leftover QEMU tree the Wawona runtime.
 
 ## Hard rejects
 

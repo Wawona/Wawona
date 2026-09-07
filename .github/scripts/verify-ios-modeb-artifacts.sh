@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: $0 --mode-a Wawona.app | --mode-b Wawona-YY.M.D-iOS-arm64.tipa" >&2
+  echo "usage: $0 --mode-a Wawona.app | --mode-b|--iteration Wawona-YY.M.D-iOS-arm64.tipa" >&2
   exit 2
 }
 
@@ -42,6 +42,9 @@ if [[ "$mode" == "--mode-a" ]]; then
     fail "Mode A links the TrollStore session switcher"
   ! /usr/bin/strings "$executable" | /usr/bin/grep -E 'IOMobileFramebuffer|WWN_MODE_B' >/dev/null ||
     fail "Mode A contains Mode B private symbols or strings"
+  if /usr/bin/find "$app" -iname '*qemu*' | /usr/bin/grep -q .; then
+    fail "QEMU artifacts are forbidden in Mode A"
+  fi
   if /usr/bin/codesign -d "$app" >/dev/null 2>&1; then
     entitlements="$(mktemp)"
     trap 'rm -f "$entitlements"' EXIT
@@ -53,7 +56,7 @@ if [[ "$mode" == "--mode-a" ]]; then
   exit 0
 fi
 
-[[ "$mode" == "--mode-b" ]] || usage
+[[ "$mode" == "--mode-b" || "$mode" == "--iteration" ]] || usage
 [[ "$(basename "$artifact")" =~ ^Wawona-[0-9]{2}\.[0-9]{1,2}\.[0-9]{1,2}-iOS-arm64\.tipa$ ]] ||
   fail "Mode B filename does not follow release naming"
 
@@ -61,6 +64,10 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 entries="$tmp/entries.txt"
 unzip -Z1 "$artifact" >"$entries"
+if zipinfo -l "$artifact" |
+  /usr/bin/awk '$1 ~ /^l/ { found=1 } END { exit(found ? 0 : 1) }'; then
+  fail "tipa must not contain symbolic links"
+fi
 unzip -q "$artifact" -d "$tmp" \
   "Payload/Wawona.app/Wawona" \
   "Payload/Wawona.app/Info.plist"
@@ -74,16 +81,19 @@ for framework in libEGL libGLESv2; do
     "Payload/Wawona.app/Frameworks/$framework.framework/$framework" "$entries" ||
     fail "Mode B runtime dependency is missing: $framework.framework"
 done
-/usr/bin/grep -Fxq \
-  "Payload/Wawona.app/Frameworks/qemu-aarch64-softmmu.framework/qemu-aarch64-softmmu" \
-  "$entries" ||
-  fail "Mode B JIT QEMU engine framework is missing"
-for guest in wawona-mobile-guest wawona-container-guest; do
-  /usr/bin/grep -Fxq "Payload/Wawona.app/$guest/Image" "$entries" ||
-    fail "Mode B guest kernel is missing: $guest/Image"
-  /usr/bin/grep -Fxq "Payload/Wawona.app/$guest/rootfs.img" "$entries" ||
-    fail "Mode B guest rootfs is missing: $guest/rootfs.img"
-done
+if /usr/bin/grep -E 'qemu-|wwn-qemu-run|share/qemu' "$entries" >/dev/null; then
+  fail "QEMU/UTM artifacts are forbidden in Mode B tipa"
+fi
+if [[ "$mode" == "--mode-b" ]]; then
+  for guest in wawona-mobile-guest wawona-container-guest; do
+    /usr/bin/grep -Fxq "Payload/Wawona.app/$guest/Image" "$entries" ||
+      fail "Mode B guest kernel is missing: $guest/Image"
+    /usr/bin/grep -Fxq "Payload/Wawona.app/$guest/rootfs.img" "$entries" ||
+      fail "Mode B guest rootfs is missing: $guest/rootfs.img"
+  done
+else
+  echo "iteration tipa: skipping guest Image/rootfs.img requirement"
+fi
 [[ "$(plist_value "$app/Info.plist" CFBundleIdentifier)" == "com.aspauldingcode.Wawona.ModeB" ]] ||
   fail "Mode B bundle identifier is wrong"
 [[ -n "$(plist_value "$app/Info.plist" CFBundleVersion)" ]] ||
@@ -109,4 +119,8 @@ for required in \
     fail "missing entitlement: $required"
 done
 check_forbidden_entitlements "$entitlements"
-echo "Mode B tipa firewall OK: $artifact"
+if [[ "$mode" == "--iteration" ]]; then
+  echo "Mode B iteration tipa firewall OK: $artifact"
+else
+  echo "Mode B tipa firewall OK: $artifact"
+fi

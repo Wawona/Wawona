@@ -99,13 +99,13 @@
     wwn-neovim.url = "https://flakehub.com/f/Wawona/wwn-neovim/*";
     wwn-neovim.inputs.nixpkgs.follows = "nixpkgs";
     wwn-neovim.inputs.wwn-toolchain.follows = "wwn-toolchain";
-    # WASI P1/P2 interpreter (Pulley on Apple mobile). L3′. Toolchain only.
-    # Cited: docs/wwn-repo-dag.md. github/development until FlakeHub rolling
-    # includes the wayland-shm example (cd7a800).
-    wwn-wasm.url = "github:Wawona/wwn-wasm/development";
-    wwn-wasm.inputs.nixpkgs.follows = "nixpkgs";
-    wwn-wasm.inputs.wwn-toolchain.follows = "wwn-toolchain";
-    wwn-wasm.inputs.rust-overlay.follows = "rust-overlay";
+    # Wawona Relay: Linux VMs, OCI-in-VM, Mode A WASI. L3′. Never QEMU/UTM.
+    # Replaces wwn-wasm + wwn-vms + wwn-containers. Cited: docs/wwn-repo-dag.md.
+    wwn-relay.url = "github:Wawona/Relay/development";
+    wwn-relay.inputs.nixpkgs.follows = "nixpkgs";
+    wwn-relay.inputs.wwn-toolchain.follows = "wwn-toolchain";
+    wwn-relay.inputs.rust-overlay.follows = "rust-overlay";
+    wwn-relay.inputs.microvm.follows = "microvm";
     # niri: nested Mode A on every target; macOS Mode B DRM/KMS tty (iland).
     # github/development until FlakeHub rolling includes the tty recipe.
     # docs/wwn-repo-dag.md (L3' may merge iland for GPU).
@@ -114,23 +114,6 @@
     wwn-niri.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-niri.inputs.rust-overlay.follows = "rust-overlay";
     wwn-niri.inputs.wwn-iland.follows = "wwn-iland";
-    # VM + container substrate. wwn-containers depends on wwn-vms, so pin both to
-    # Wawona's single nixpkgs/toolchain and make containers follow this same
-    # wwn-vms.
-    # github/development until FlakeHub rolling includes the immutable iOS JIT
-    # engine split. Cited: docs/wwn-repo-dag.md.
-    wwn-vms.url = "github:Wawona/wwn-vms/development";
-    wwn-vms.inputs.nixpkgs.follows = "nixpkgs";
-    wwn-vms.inputs.rust-overlay.follows = "rust-overlay";
-    wwn-vms.inputs.wwn-toolchain.follows = "wwn-toolchain";
-    wwn-vms.inputs.microvm.follows = "microvm";
-    # github/development until FlakeHub rolling includes hostPlatform Darwin
-    # checks (eval warning). Same pin style as wwn-iland. docs/wwn-repo-dag.md.
-    wwn-containers.url = "github:Wawona/wwn-containers/development";
-    wwn-containers.inputs.nixpkgs.follows = "nixpkgs";
-    wwn-containers.inputs.rust-overlay.follows = "rust-overlay";
-    wwn-containers.inputs.wwn-toolchain.follows = "wwn-toolchain";
-    wwn-containers.inputs.wwn-vms.follows = "wwn-vms";
     # macOS Watchdog tools (IOWatchdog / watchdogd). L3'. Desktop Mode B only.
     # Cited: docs/wwn-repo-dag.md. github: until FlakeHub rolling exists.
     wwn-iowatchdog.url = "github:Wawona/wwn-iowatchdog/development";
@@ -154,7 +137,7 @@
     doorman.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = inputs@{ self, nixpkgs, android-nixpkgs, rust-overlay, crate2nix, nix-appimage, wwn-toolchain, wwn-iland, wwn-kmscube, wwn-weston, wwn-zsh, wwn-ssh, wwn-waypipe, wwn-swinging-bridge, wwn-coreutils, wwn-foot, wwn-fastfetch, wwn-phoon-rs, wwn-neovim, wwn-wasm, wwn-niri, wwn-vms, wwn-containers, wwn-iowatchdog, wwn-vphone, wwn-igetty, doorman, ... }:
+  outputs = inputs@{ self, nixpkgs, android-nixpkgs, rust-overlay, crate2nix, nix-appimage, wwn-toolchain, wwn-iland, wwn-kmscube, wwn-weston, wwn-zsh, wwn-ssh, wwn-waypipe, wwn-swinging-bridge, wwn-coreutils, wwn-foot, wwn-fastfetch, wwn-phoon-rs, wwn-neovim, wwn-relay, wwn-niri, wwn-iowatchdog, wwn-vphone, wwn-igetty, doorman, ... }:
   let
     linuxSystems = [ "x86_64-linux" "aarch64-linux" ];
     # Nixpkgs 26.11 throws on x86_64-darwin eval; flakehub-push runs
@@ -325,10 +308,8 @@
       // wwn-fastfetch.registryFragment
       // wwn-phoon-rs.registryFragment
       // wwn-neovim.registryFragment
-      // wwn-wasm.registryFragment
-      // wwn-niri.registryFragment
-      // wwn-vms.registryFragment
-      // wwn-containers.registryFragment;
+      // wwn-relay.registryFragment
+      // wwn-niri.registryFragment;
     mkWawonaToolchains = { pkgs, pkgsAndroid ? null, pkgsIos ? null, androidSDK ? null, androidAllowExperimentalFallback ? false, wawonaSrc ? null }:
       wwn-toolchain.lib.mkToolchains {
         inherit pkgs pkgsAndroid pkgsIos androidSDK androidAllowExperimentalFallback wawonaSrc;
@@ -934,6 +915,7 @@
             weston = toolchains.buildForMacOS "weston" { };
             "weston-compositor" = toolchains.buildForMacOS "weston-compositor-drm" { };
             "wawona-wasm" = toolchains.buildForMacOS "wawona-wasm" { };
+            "wawona-relay" = toolchains.buildForMacOS "wawona-relay" { };
           } // macosToytoolkitDeps;
           iosDeps = mobilePlatformDeps {
             buildFn = toolchains.buildForIOS;
@@ -1044,17 +1026,11 @@
             release = false;
           };
           mobileGuestArtifacts =
-            if builtins.pathExists "${wwn-vms}/dependencies/vms/mobile/guest-artifacts.nix" then
-              wwn-vms.packages.aarch64-linux.wawona-mobile-guest-artifacts or null
+            if builtins.pathExists "${wwn-relay}/import/vms/dependencies/vms/mobile/guest-artifacts.nix" then
+              wwn-relay.packages.aarch64-linux.wawona-mobile-guest-artifacts or null
             else null;
-          mobileVmEngine =
-            if pkgs.stdenv.hostPlatform.isDarwin && (wwn-vms.packages.${system}.wwn-vms-mobile-engine-ios-tci or null) != null then
-              wwn-vms.packages.${system}.wwn-vms-mobile-engine-ios-tci
-            else null;
-          mobileVmEngineModeB =
-            if pkgs.stdenv.hostPlatform.isDarwin && (wwn-vms.packages.${system}.wwn-vms-mobile-engine-ios-jit or null) != null then
-              wwn-vms.packages.${system}.wwn-vms-mobile-engine-ios-jit
-            else null;
+          mobileVmEngine = null;
+          mobileVmEngineModeB = null;
           mkXcodegen = {
             platformFilter ? null,
             simulatorOnly ? false,
@@ -1162,20 +1138,20 @@
             fastfetch = toolchains.buildForMacOS "fastfetch" { };
             phoon = toolchains.buildForMacOS "phoon" { };
             wawonaWasm = toolchains.buildForMacOS "wawona-wasm" { };
-            # wwn-containers `container` CLI + prebuilt wwn-containerd for
+            # Relay `container` CLI + prebuilt wwn-containerd for
             # the Machines GUI + in-app terminal.
-            containerCli = wwn-containers.packages.${system}.container-cli;
-            containerDaemon = wwn-containers.packages.${system}.wwn-containerd or null;
+            containerCli = wwn-relay.packages.${system}.container-cli or null;
+            containerDaemon = wwn-relay.packages.${system}.wwn-containerd or null;
             # Container Wayland bridge: host waypipe with SplitFD (--socket-fds)
             # and IOSurface dmabuf (wwn-waypipe macos.nix). Prefer the full
             # macOS waypipe over the SHM-only waypipe-splitfd spike.
             containerWaypipeFds =
               let wp = toolchains.buildForMacOS "waypipe" { };
               in if wp != null then wp
-              else (wwn-containers.packages.${system}.waypipe-splitfd or null);
+              else (wwn-relay.packages.${system}.waypipe-splitfd or null);
             containerWaypipeGuestLinux = (pkgsFor "aarch64-linux").waypipe;
             containerWaypipeGuestRoot =
-              wwn-containers.packages.${system}.waypipe-guest-root or null;
+              wwn-relay.packages.${system}.waypipe-guest-root or null;
             containerWaypipeGuestClosure =
               (pkgsFor "aarch64-linux").closureInfo {
                 rootPaths = [ (pkgsFor "aarch64-linux").waypipe ];
@@ -1962,20 +1938,14 @@ APPLESCRIPT
           gl-cts-ios = toolchains.buildForIOS "gl-cts" { };
         }) // (pkgs.lib.optionalAttrs hasGraphicsValidate {
           graphics-validate-macos = pkgs.callPackage ./dependencies/tests/graphics-validate.nix { };
-        }) // (pkgs.lib.optionalAttrs (builtins.pathExists "${wwn-vms}/dependencies/vms/vz-launcher.nix") {
-          # p26-vm-nixos: native Virtualization.framework launcher (vsock+waypipe
-          # Wayland bridge). Pure build (compiles the Swift launcher on first run
-          # via host xcrun, like the other wawona-* Apple wrappers). This is the
-          # *in-app* track (embeddable in Wawona.app, no external hypervisor).
-          # Sourced from the wwn-vms dependency (relocated out of Wawona).
-          wawona-vz = pkgs.callPackage "${wwn-vms}/dependencies/vms/vz-launcher.nix" { inherit wawonaVersion; };
-        }) // (pkgs.lib.optionalAttrs (builtins.pathExists "${wwn-vms}/dependencies/vms/microvm-guest.nix") (
-          # p26-vm-nixos: microvm.nix + vfkit *developer* track. `wawona-microvm`
-          # builds+boots the NixOS guest under Virtualization.framework;
-          # `wawona-vm-bridge` relays its vsock Wayland session into Wawona.
-          # The guest definition lives in the wwn-vms dependency.
+        }) // (pkgs.lib.optionalAttrs (builtins.pathExists "${wwn-relay}/import/vms/dependencies/vms/vz-launcher.nix") {
+          # Native Virtualization.framework launcher (vsock+waypipe into Wawona).
+          # Sourced from Wawona Relay (imported VZ recipes). Never QEMU.
+          wawona-vz = pkgs.callPackage "${wwn-relay}/import/vms/dependencies/vms/vz-launcher.nix" { inherit wawonaVersion; };
+        }) // (pkgs.lib.optionalAttrs (builtins.pathExists "${wwn-relay}/import/vms/dependencies/vms/microvm-guest.nix") (
+          # microvm.nix + vfkit developer track. Guest definition lives in Relay.
           let
-            microvmGuest = import "${wwn-vms}/dependencies/vms/microvm-guest.nix" {
+            microvmGuest = import "${wwn-relay}/import/vms/dependencies/vms/microvm-guest.nix" {
               inherit nixpkgs;
               microvm = inputs.microvm;
               hostSystem = system;
@@ -2143,7 +2113,7 @@ APPLESCRIPT
     # p26-vm-nixos: the NixOS guest as a first-class flake output, so it can be
     # built on a linux-builder / NixOS host and inspected. The vfkit runner
     # (config.microvm.runner.vfkit) is what `.#wawona-microvm` execs on the Mac.
-    wawonaMicrovm = import "${wwn-vms}/dependencies/vms/microvm-guest.nix" {
+    wawonaMicrovm = import "${wwn-relay}/import/vms/dependencies/vms/microvm-guest.nix" {
       inherit nixpkgs;
       microvm = inputs.microvm;
     };
