@@ -2,7 +2,7 @@
 
 Status: **Phase 1 implemented in `wwn-wasm` (`crates/wpm`)**. Local store +
 CLI + Mode A registry client. Host `index.json` at `repo.wawona.io/wasm/v1`
-(packages list starts empty; publish demos next). Replaces retired `wwn-apt`.
+(human catalog at [`repo.wawona.io/search/?channel=wasm`](https://repo.wawona.io/search/?channel=wasm)). Replaces retired `wwn-apt`.
 Related: [`wasm-wasi.md`](./wasm-wasi.md), [`vms-containers.md`](./vms-containers.md),
 [`mode-a-b.md`](./mode-a-b.md),
 [`repo.wawona.io`](https://github.com/Wawona/repo.wawona.io).
@@ -67,9 +67,10 @@ the Wasm channel. Jailbreak tools keep the APT/Sileo channel.
 ```text
 repo.wawona.io
 ├── /wasm/          ← Mode A: App Store + Play + macOS  (Wasm packages ONLY)
-│   ├── index.json / OCI registry API
-│   ├── packages/<name>/<ver>/…
-│   └── examples/   (e.g. wayland-shm demo)
+│   ├── index.html  (human search catalog)
+│   └── v1/
+│       ├── index.json
+│       └── packages/<name>/<ver>/component.wasm
 │
 └── /jailbreak/     ← Mode B: Sileo / Procursus flat APT  (.deb tweaks)
     ├── Packages / Release
@@ -263,11 +264,14 @@ DAG: package client stays L3′ → `wwn-toolchain` only; no weston/iland flake 
 - `wasm <package>` resolves installed names via Runtime
 - C ABI `wpm_main` + dispatch/`help` wiring (toolchain + `-u,_wpm_main`)
 
-### Phase 2. Official registry on `repo.wawona.io/wasm`. **client done; catalog TBD**
+### Phase 2. Official registry on `repo.wawona.io/wasm`. **client + catalog**
 
 - Client: `wpm search` / `wpm install <name>` → `https://repo.wawona.io/wasm/v1`
 - Firewall refuses `/jailbreak/`, `.deb`, APT paths
-- Host: empty `index.json` scaffold; publish `wayland-shm-demo` next
+- Host: `index.json` plus published demos (`hello-wasi`, `hello-wasi-gui`,
+  `wayland-shm-demo`)
+- Human catalog: [`https://repo.wawona.io/search/?channel=wasm`](https://repo.wawona.io/search/?channel=wasm)
+  (`/wasm/` HTML redirects here; reads the same `index.json`)
 
 ### Phase 3. GUI + Android parity
 

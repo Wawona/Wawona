@@ -19,7 +19,8 @@ Store / Play compliance**:
 
 - Compile to **WASI P1 or P2** (`.wasm` bytecode as a document / package)
 - Install with **`wpm`** (Wawona Runtime’s dedicated package manager) or drop
-  into Files from the Mode A registry `repo.wawona.io/wasm`
+  into Files from the Mode A registry. Browse packages at
+  [`repo.wawona.io/search/?channel=wasm`](https://repo.wawona.io/search/?channel=wasm)
 - The reviewed Runtime in the signed app interprets the module. Apple does
   **not** sign the `.wasm`, and there is **no** unsigned Mach-O download path
 
@@ -60,7 +61,7 @@ Do not brand this as an “App Store” for iOS apps. It is a **runtime package
 registry**. Prefer OCI artifacts + a thin client over inventing a bespoke protocol.
 
 **Full implementation plan:** [`wasm-package-manager.md`](./wasm-package-manager.md)
-(registry on `repo.wawona.io/wasm`, jailbreak `.deb` stays a separate channel).
+(registry at `repo.wawona.io/wasm/v1`, human catalog at `/search/?channel=wasm`; jailbreak `.deb` stays a separate channel).
 
 ## App Store
 
