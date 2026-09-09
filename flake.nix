@@ -61,7 +61,7 @@
     wwn-weston.inputs.wwn-kmscube.follows = "wwn-kmscube";
     # github/main until FlakeHub rolling includes iOS HOME physicalize
     # (0e41745). Cited: docs/wwn-repo-dag.md.
-    wwn-zsh.url = "github:Wawona/wwn-zsh/main";
+    wwn-zsh.url = "github:Wawona/wwn-zsh/development";
     wwn-zsh.inputs.nixpkgs.follows = "nixpkgs";
     wwn-zsh.inputs.wwn-toolchain.follows = "wwn-toolchain";
     # SSH stack split out of wwn-toolchain: chooses the App-Store/Play

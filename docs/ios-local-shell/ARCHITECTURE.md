@@ -62,20 +62,23 @@ the umbrella `util_map`.
 
 ```
 zsh execcmd_exec (Src/exec.c, patched by patch-zsh-exec.py)
-  │  argv[0] basename in safe subset?  (wawona_dispatch_can_handle)
-  ├── no  → normal not-found / sandbox-denied path (no external binaries shipped)
-  └── yes → wawona_dispatch_inprocess()           [libwwn-pty.a / wawona-dispatch.c]
-             → wawona_coreutils_main()             [libcoreutils.a, Rust]
-                 → uucore::util_map()[name]        (in std::panic::catch_unwind)
-                 → returns i32 exit code  (NEVER process::exit)
+  │  always no-fork (wwn_inproc)
+  ├── wawona_dispatch_inprocess (safe subset, clients, ./file.wasm / file.wasm)
+  │     └── hit → wawona_coreutils_main / wasm Runtime / client main (never process::exit)
+  └── NOT_HANDLED
+        ├── shell script (./file.sh, file.sh, /abs/path, sh file.sh, sh -c) → zsh source()/execstring
+        ├── Mach-O / ELF magic → refuse (Guideline 2.5.2)
+        └── else command-not-found
 ```
 
 The patch runs **at zsh's fork-decision point**, so a handled command neither forks
 nor takes the fake-exec path; it behaves like a builtin (`lastval` set, fds restored
-via `fixfds`, `goto done`). A panic is caught so the host app survives. The safe
-subset is fixed in three places kept in sync: `Cargo.toml` `coreutils` feature,
-`wwn_safe_subset[]` in `wawona-dispatch.c`, and `WAWONA_INPROC_TOOLS` in the
-`.zshrc` template. `watchOS` size-gates the coreutils feature off (builtins only).
+via `fixfds`, `goto done`). User shell scripts are **interpreted** by that same
+signed zsh (`source`). They are not `execve`'d. A panic is caught so the host app
+survives. The safe subset is fixed in three places kept in sync: `Cargo.toml`
+`coreutils` feature, `wwn_safe_subset[]` in `wawona-dispatch.c`, and
+`WAWONA_INPROC_TOOLS` in the `.zshrc` template (`chmod` is in the subset).
+`watchOS` size-gates the coreutils feature off (builtins and scripts still run).
 
 On **macOS/Android** the identical utilities ship as an ordinary uutils **multicall
 binary** on `PATH` (`coreutils` + per-util symlinks); there zsh exec()s it normally

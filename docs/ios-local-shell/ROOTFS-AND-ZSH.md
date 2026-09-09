@@ -2,20 +2,26 @@
 
 How Wawona builds, bundles, and installs the **App Store-compliant zsh userland** for iOS/iPadOS.
 
+## Current packaging (2026-09)
+
+`zsh-ios` builds **`libwawona-zsh.a`**, not a spawnable `bin/zsh` Mach-O. Authority for the app rootfs is `wwn-zsh` `wawona-rootfs` (`dependencies/wawona/ios-rootfs.nix`, template v25). Wawona keeps a sync copy of that recipe.
+
+`usr/bin/zsh` and `usr/bin/sh` (also `bash` / `dash`) are comment placeholders, mode 755. `command -v zsh` prints `/usr/bin/zsh`. The exec hook never sources those files. User scripts and wasm run as commands by path, the same way macOS zsh runs a `+x` file: `./file.sh`, `file.sh` (`.` is on PATH), `/abs/path/file.sh`, `./file.wasm`, `file.wasm`. `sh file.sh` and `wasm file.wasm` still work. Native Mach-O and ELF stay refused.
+
 ---
 
 ## Package graph (target)
 
 ```
-zsh-ios (wwn-zsh/dependencies/libs/zsh/ios.nix)
+zsh-ios (wwn-zsh/dependencies/libs/zsh/ios.nix) → libwawona-zsh.a
     ↓
-ios-rootfs (dependencies/wawona/ios-rootfs.nix)
+ios-rootfs (wwn-zsh/dependencies/wawona/ios-rootfs.nix)
     ↓
 wawona-ios-backend / xcodegen (copy into Wawona.app/Resources)
     ↓
 WWNRootfsManager (first launch → Application Support)
     ↓
-wwn_pty_spawn_shell(WAWONA_ROOTFS/usr/bin/zsh)
+wwn_pty starts in-process zsh (placeholders at usr/bin/zsh, usr/bin/sh)
 ```
 
 ---
@@ -49,7 +55,7 @@ wwn_pty_spawn_shell(WAWONA_ROOTFS/usr/bin/zsh)
 
 | Path in `$out` | Purpose |
 |----------------|---------|
-| `bin/zsh` | Spawn target |
+| `lib/libwawona-zsh.a` | In-process interpreter (linked into the app) |
 | `share/zsh/` | Functions, completion (minimal subset) |
 | `etc/zshrc` | Template copied into rootfs |
 
@@ -68,10 +74,12 @@ Aggregates a **prefix tree** suitable for `WAWONA_ROOTFS`:
 
 ```
 rootfs/
-  usr/bin/zsh          ← from zsh-ios
+  usr/bin/zsh          ← comment placeholder (755), not a Mach-O
+  usr/bin/sh           ← same interpreter placeholder
+  usr/bin/chmod        ← uutils stub (in-process)
   usr/share/zsh/...    ← trimmed share
   etc/zsh/zshrc.template
-  README.txt           ← "Bundled userland. Do not modify in bundle"
+  README.txt           ← bundled userland. Do not modify in bundle
 ```
 
 ### Future binaries (Phase 4)

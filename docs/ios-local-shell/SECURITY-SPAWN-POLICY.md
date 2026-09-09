@@ -2,6 +2,12 @@
 
 **Non-negotiable rules** for App Store-compliant local shell execution in Wawona. Any PR touching spawn, rootfs, or download code must cite this document.
 
+## Current iOS Mode A path (2026-09)
+
+Apple mobile does **not** `posix_spawn` a zsh Mach-O. The signed app links `libwawona-zsh.a` and runs zsh on a PTY pthread. `WAWONA_SHELL` / `usr/bin/zsh` / `usr/bin/sh` are **comment placeholders** (mode 755) so `command -v` and PATH hashcmd resolve. They are never sourced. User `*.sh` is interpreted by that same zsh (`source` / `execstring`). `chmod +x` is Unix metadata only. Mach-O and ELF magic still exit 126.
+
+The allowlist below is the historical spawn sketch and still applies if a future path ever execs a bundled helper. It does **not** mean iOS ships a zsh binary on PATH.
+
 ---
 
 ## Threat model

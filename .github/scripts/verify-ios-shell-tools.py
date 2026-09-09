@@ -66,6 +66,10 @@ REQUIRED_INPROC_CLIENTS = {
     "ssh",
     "ssh-keygen",
     "scp",
+    "sh",
+    "zsh",
+    "bash",
+    "dash",
 }
 
 
@@ -191,6 +195,24 @@ def verify_inproc_clients(rootfs_text: str) -> list[str]:
     return errors
 
 
+def verify_interpreter_placeholders(rootfs_text: str) -> list[str]:
+    """usr/bin/zsh and usr/bin/sh are comment stubs, never Mach-O."""
+    errors = []
+    for needle in (
+        "for name in sh zsh bash dash",
+        "chmod 755",
+        "Not a Mach-O. Do not source this file.",
+        "# Wawona iOS:",
+    ):
+        if needle not in rootfs_text:
+            errors.append(
+                f"ios-rootfs.nix interpreter placeholder missing: {needle!r}"
+            )
+    if "MH_MAGIC" in rootfs_text or "\\xcf\\xfa\\xed\\xfe" in rootfs_text:
+        errors.append("ios-rootfs.nix must not embed Mach-O magic in stubs")
+    return errors
+
+
 def verify_no_ssh_stubs() -> list[str]:
     errors = []
     for rel in (
@@ -230,7 +252,9 @@ def main() -> int:
     errors.extend(verify_fastfetch_lock())
     errors.extend(verify_no_ssh_stubs())
     if IOS_ROOTFS.is_file():
-        errors.extend(verify_inproc_clients(read(IOS_ROOTFS)))
+        rootfs = read(IOS_ROOTFS)
+        errors.extend(verify_inproc_clients(rootfs))
+        errors.extend(verify_interpreter_placeholders(rootfs))
     else:
         errors.append("dependencies/wawona/ios-rootfs.nix missing")
 

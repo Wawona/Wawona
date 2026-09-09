@@ -124,7 +124,7 @@ Compliance is not policy PDFs alone. It is **code enforcement**:
 
 ## Review narrative (short)
 
-> Wawona is a developer tool that runs a Wayland compositor on iOS. The terminal window uses the open-source Weston terminal emulator. The shell is **zsh**, statically linked and run **in-process** (`wawona_zsh_main` on a pthread). There is no `fork`/`exec` of a zsh Mach-O. Optional user `.wasm` files are **documents** interpreted by a Pulley engine linked into the reviewed binary (no JIT, no unsigned native code). Remote administration via SSH is optional and uses the same approach as other App Store terminal apps.
+> Wawona is a developer tool that runs a Wayland compositor on iOS. The terminal window uses the open-source Weston terminal emulator. The shell is **zsh**, statically linked and run **in-process** (`wawona_zsh_main` on a pthread). There is no `fork`/`exec` of a zsh Mach-O. User shell scripts are interpreted by that zsh (`source`). Optional user `.wasm` files are **documents** interpreted by a Pulley engine linked into the reviewed binary (no JIT, no unsigned native code). Remote administration via SSH is optional and uses the same approach as other App Store terminal apps.
 
 Full reviewer copy: [APP-REVIEW-NOTES.md](APP-REVIEW-NOTES.md).
 

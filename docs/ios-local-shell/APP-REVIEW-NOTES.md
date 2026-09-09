@@ -19,7 +19,8 @@ The local shell is **not** a mechanism to download or run arbitrary code from th
 | Wawona compositor | Bundled in app | In-process |
 | Weston demo clients | Bundled static libraries | In-process (`weston_terminal_main`, etc.) |
 | **zsh** | Statically linked into the app binary (`libwawona-zsh.a`) | **In-process**. Runs on a pthread via `wawona_zsh_main()`; **no `fork`/`exec`/`posix_spawn`** |
-| **Core utilities (`ls`, `cat`, `cp`, …)** | Bundled Rust [uutils/coreutils](https://github.com/uutils/coreutils) (MIT), statically linked into the app binary | **In-process**. Dispatched by argv[0] from zsh through `wawona_dispatch_inprocess` → `wawona_coreutils_main`; **no `fork`/`exec`** |
+| **Core utilities (`ls`, `cat`, `chmod`, …)** | Bundled Rust [uutils/coreutils](https://github.com/uutils/coreutils) (MIT), statically linked into the app binary | **In-process**. Dispatched by argv[0] from zsh through `wawona_dispatch_inprocess` → `wawona_coreutils_main`; **no `fork`/`exec`** |
+| **User shell scripts** | Files in the app container | **Interpreted** by bundled zsh (`source` / `sh -c`). Not Mach-O exec. |
 | Remote SSH sessions | User-configured host | Network. Optional; same as other SSH clients |
 | **WASM / WASI** | User-provided `.wasm` **document** (Files / File Sharing) | Interpreted by bundled Wasmtime **Pulley** (`wawona_wasm_run`); not Mach-O, not JIT, not Apple-signed |
 
@@ -30,10 +31,11 @@ There is **no JIT**, **no x86 emulator**, and **no post-install download of nati
 - zsh is compiled to a **static archive** and linked directly into the signed app binary. Its `main` is renamed to `wawona_zsh_main`.
 - The terminal starts zsh by creating a **pthread** that calls `wawona_zsh_main()`. There is no child process. `fork`, `exec*`, `posix_spawn`, and `system` are never reached on this path.
 - All zsh modules (including `zle`, `complete`, `computil`, `zutil`) are **statically linked** (`configure --disable-dynamic`); there is **no `dlopen`** and no runtime module loading.
-- Common commands run **in-process too**: zsh's external-command path in `Src/exec.c` is patched (`patch-zsh-exec.py`) so that, *before* any `fork`/`execve`, a command whose `argv[0]` is in a fixed **safe subset** (`ls cat cp mv rm mkdir … truncate`) is dispatched to the statically linked Rust uutils/coreutils umbrella via `wawona_dispatch_inprocess()`. No child process is created; the utility returns an exit code like a builtin.
+- Common commands run **in-process too**: zsh's external-command path in `Src/exec.c` is patched (`patch-zsh-exec.py`) so that, *before* any `fork`/`execve`, commands go to `wawona_dispatch_inprocess()` (uutils safe subset including `chmod`, bundled clients, wasm). No child process is created; the utility returns an exit code like a builtin.
   - The utility set is **first-party, MIT-licensed Rust code compiled into the signed binary**. Nothing is downloaded. The safe subset deliberately excludes exit-prone / sandbox-meaningless utilities.
   - Each utility runs inside `std::panic::catch_unwind`, so a misbehaving utility returns a non-zero exit code instead of aborting the app. No utility in the subset calls `process::exit`.
-- Anything outside the safe subset still cannot launch: `command_not_found_handler` reports that external binaries cannot run in the sandbox, and any `execve` of a path would be denied by the OS sandbox; the app ships no loose external command binaries.
+- **User shell scripts** (`./file.sh`, `file.sh`, a full path, `sh file.sh`, `sh -c`) are **interpreted** by the same signed in-process zsh (`source` / `execstring`). That is data interpretation, not native `exec`. User `.wasm` documents (`./file.wasm`, `file.wasm`, `wasm file.wasm`) run in the linked Relay WASI Runtime. Mach-O and ELF files are refused (Guideline 2.5.2). `chmod +x` is allowed as Unix metadata inside the container. Unix `X_OK` is not required for scripts or wasm (`hashcmd` uses `wwn_inproc_runnable_path`).
+- Unknown names still cannot launch native code: `command_not_found_handler` reports that native binaries cannot run in the sandbox. The app ships no loose external command binaries.
 - Exactly **one** in-process shell session runs per app launch (zsh's process-global state is not re-entrant).
 
 ---
@@ -43,13 +45,14 @@ There is **no JIT**, **no x86 emulator**, and **no post-install download of nati
 1. User selects a machine profile or nested Weston demo that includes **Terminal**.
 2. A terminal window opens (text rendering, keyboard input).
 3. The app starts the **statically linked in-process zsh** (a pthread running `wawona_zsh_main`) attached to an in-process pseudo-terminal emulation (`socketpair` + input pipe + TTY shim). No child process is created.
-4. User commands run as zsh builtins with file access limited to the **app container** (and documents the user explicitly shares via system UI). External binaries cannot be launched.
+4. User commands run as zsh builtins, in-process uutils, and interpreted shell scripts. File access is limited to the **app container** (and documents the user explicitly shares via system UI). Native binaries cannot be launched.
 
 ---
 
 ## What the app does NOT do
 
-- Download Mach-O binaries, dylibs, or scripts that are then executed natively
+- Download Mach-O binaries or dylibs that are then executed natively
+- Execute user shell scripts as native code (they are **interpreted** by bundled zsh)
 - Expose a "run arbitrary command URL" from Safari
 - Install package managers that fetch native code
 - Escalate to root or modify system files
@@ -76,8 +79,11 @@ Privacy Nutrition Label: include **User Content** if Apple questionnaire asks ab
 4. Confirm shell prompt appears; type `echo hello` → output `hello`.
 5. Type `pwd` → path inside app container / rootfs home.
 6. Type `ls /` and `cat ~/.zshrc` → output produced by the in-process bundled uutils utilities (still no child process).
-7. Type `help` → catalog of builtins, uutils, clients, and WASM.
-8. Optional: drop a `.wasm` via Files / File Sharing and run `wasm ./tool.wasm hello`.
+7. Type `command -v zsh` → `/usr/bin/zsh` (comment placeholder, not a Mach-O).
+8. Type `printf '%s\n' 'echo hello-rel' > example.sh && chmod +x example.sh && ./example.sh && sh example.sh && zsh "$PWD/example.sh"` → `hello-rel` (script interpreted by bundled zsh).
+9. Type `zsh -c 'echo hello-c'` → `hello-c`. Type `source ~/.zshrc` (current session, no nested zsh).
+10. Type `help` → catalog of builtins, uutils, scripts, clients, and WASM.
+11. Optional: drop a `.wasm` via Files / File Sharing and run `wasm ./tool.wasm hello`.
 
 If local shell is behind a Settings toggle, enable **Enable local shell** first.
 
@@ -103,3 +109,4 @@ Reviewers may compare to **a-Shell** (bundled command binaries), **iSH** (bundle
 | 2026-06 | zsh moved fully in-process (static `wawona_zsh_main` on a pthread); modules statically linked (`--disable-dynamic`), no `dlopen`; no `fork`/`exec`/`posix_spawn`; builtins-only, single session per launch |
 | 2026-06 | Bundled in-process uutils/coreutils (MIT Rust): `ls`/`cat`/`cp`/… dispatched from zsh's exec path before any fork, via `wawona_dispatch_inprocess` → `wawona_coreutils_main`; safe subset only; `catch_unwind` exit-safety; still no `fork`/`exec`. macOS/Android ship the same utilities as a normal multicall binary on `PATH`. |
 | 2026-08 | WASI P1/P2 interpreter (`wwn-wasm`, Pulley on Apple mobile). User `.wasm` is a document; no Cranelift native / `MAP_JIT` on iOS family. Milestone [Support WASI P1 P2 WASM!](https://github.com/Wawona/Wawona/milestone/2). |
+| 2026-09 | `zsh` / `sh` are PATH names (`usr/bin` comment stubs, mode 755). User `*.sh` is sourced in-process. `chmod` is in the uutils subset. Mach-O/ELF still refused. |

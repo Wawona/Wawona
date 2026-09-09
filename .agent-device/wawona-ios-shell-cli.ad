@@ -2,6 +2,10 @@
 # native machine session and exercise the in-process commands that must dispatch
 # without fork/exec (whoami, ls, fastfetch, ssh, apt).
 #
+# Default Machine must be weston-terminal (not nested weston). Seed with
+# scripts/agent-device-set-client-ios.sh weston-terminal, then write the
+# profiles key as JSON NSData if the card still says "Runs: Weston".
+#
 # Coordinate taps are pinned to the iPhone 17 Pro logical size (402x874);
 # compositor/terminal surfaces expose no accessibility nodes, so screenshots are
 # the source of truth. Re-validate coordinates with `snapshot -i --json` if the
@@ -62,5 +66,64 @@ type "apt help"
 keyboard return
 wait 1000
 screenshot ./.agent-device/test-artifacts/ios-shell-cli-apt.png
+
+# zsh/sh identity: PATH stubs must resolve (not command-not-found).
+type "command -v zsh"
+keyboard return
+wait 800
+type "command -v sh"
+keyboard return
+wait 800
+type "type zsh"
+keyboard return
+wait 800
+screenshot ./.agent-device/test-artifacts/ios-shell-cli-zsh-identity.png
+
+# New .sh + chmod +x + path matrix (sourced by in-process zsh).
+type "echo 'echo hello-rel' > example.sh"
+keyboard return
+wait 800
+type "chmod +x example.sh"
+keyboard return
+wait 800
+type "./example.sh"
+keyboard return
+wait 800
+screenshot ./.agent-device/test-artifacts/ios-shell-cli-script-chmod.png
+
+type "sh example.sh"
+keyboard return
+wait 800
+type "zsh example.sh"
+keyboard return
+wait 800
+type "sh ./example.sh"
+keyboard return
+wait 800
+type "zsh \"$PWD/example.sh\""
+keyboard return
+wait 800
+# Path is a command, like macOS zsh. No sh / wasm prefix.
+type "example.sh"
+keyboard return
+wait 800
+type "\"$PWD/example.sh\""
+keyboard return
+wait 800
+type "chmod -x example.sh && example.sh"
+keyboard return
+wait 800
+type "[[ -f hello.wasm ]] && hello.wasm && ./hello.wasm && \"$PWD/hello.wasm\""
+keyboard return
+wait 2500
+screenshot ./.agent-device/test-artifacts/ios-shell-cli-script-paths.png
+
+type "source ~/.zshrc"
+keyboard return
+wait 800
+type "zsh -c 'echo hello-c'"
+keyboard return
+wait 1000
+screenshot ./.agent-device/test-artifacts/ios-shell-cli-script-source.png
 
 close

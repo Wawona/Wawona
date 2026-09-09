@@ -509,6 +509,7 @@
         "wwn-foot": "wwn-foot",
         "wwn-igetty": "wwn-igetty",
         "wwn-iland": "wwn-iland",
+        "wwn-iomfb": "wwn-iomfb",
         "wwn-iowatchdog": "wwn-iowatchdog",
         "wwn-kmscube": "wwn-kmscube",
         "wwn-neovim": "wwn-neovim",
@@ -949,6 +950,27 @@
         "url": "https://flakehub.com/f/Wawona/wwn-iland/%2A"
       }
     },
+    "wwn-iomfb": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1788591710,
+        "narHash": "sha256-FgocLf2cw3YqYILGHc6NvSkCdCQrY1kdMRB5A5ic7bk=",
+        "owner": "Wawona",
+        "repo": "wwn-iomfb-rs",
+        "rev": "07b1dd88df716c3e6e7e49be683821476fabbf20",
+        "type": "github"
+      },
+      "original": {
+        "owner": "Wawona",
+        "ref": "development",
+        "repo": "wwn-iomfb-rs",
+        "type": "github"
+      }
+    },
     "wwn-iowatchdog": {
       "inputs": {
         "nixpkgs": [
@@ -1168,11 +1190,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1788397785,
-        "narHash": "sha256-qkzlVJmQqxpyL8K1L41ZLz/JCSJdAt6kiMgjf8zk/Yw=",
+        "lastModified": 1788928190,
+        "narHash": "sha256-/H4/wJKSBI3jTMgOh2Nb5d9KzOugtIhV4tDrqEFu02g=",
         "owner": "Wawona",
         "repo": "wwn-toolchain",
-        "rev": "cc5158910c13e10686f855a386ab9c47e25c0ae5",
+        "rev": "eacbdeaccf40d9cf40d35a86c953a9fa21f6b88e",
         "type": "github"
       },
       "original": {
@@ -1274,16 +1296,16 @@
         ]
       },
       "locked": {
-        "lastModified": 1787603146,
-        "narHash": "sha256-tnAXfTG0ikxj/cxEhJPWZNW7y0/6SvdwJ/bZMRqDCWc=",
+        "lastModified": 1788928183,
+        "narHash": "sha256-9k4tehhcxgzsqmx44ggDbwaTM99xKsTj0Sbllj+tg2w=",
         "owner": "Wawona",
         "repo": "wwn-zsh",
-        "rev": "53c37777c849cc4954b2383d918b519b0e764c06",
+        "rev": "2ffd85ee2b4754420261b8a08274aeac6901bd89",
         "type": "github"
       },
       "original": {
         "owner": "Wawona",
-        "ref": "main",
+        "ref": "development",
         "repo": "wwn-zsh",
         "type": "github"
       }

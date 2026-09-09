@@ -23,6 +23,7 @@ let
     path=(
       $WAWONA_ROOTFS/usr/bin
       $WAWONA_ROOTFS/bin
+      .
       $path
     )
     typeset -gU path
@@ -101,14 +102,14 @@ let
     WAWONA_INPROC_TOOLS=(
       ls cat cp mv rm mkdir rmdir ln touch echo pwd head tail wc sort cut tr
       seq basename dirname stat du df date env printenv uname whoami yes tee
-      nl tac fold expand unexpand truncate
+      nl tac fold expand unexpand truncate chmod
     )
 
     # Static archives force-loaded into the app (wawona-dispatch.c weak symbols).
     # Not part of the uutils safe subset; listed separately for command_not_found.
     typeset -gaU WAWONA_INPROC_CLIENTS
     WAWONA_INPROC_CLIENTS=(
-      help wawona wasm
+      help wawona wasm sh zsh bash dash
       fastfetch phoon nvim vi vim waypipe waypipe-rs ssh ssh-keygen scp
       fuzzel foot weston-terminal
       weston-simple-shm weston-simple-egl weston-flower weston-clickdot weston-smoke
@@ -117,10 +118,11 @@ let
       weston-editor weston-constraints
     )
 
-    # iOS sandbox: there is no fork/exec. zsh builtins and the bundled
-    # in-process tools above run directly; everything else cannot launch.
+    # iOS sandbox: there is no fork/exec of Mach-O. zsh builtins, bundled
+    # in-process tools, and user shell scripts (sourced by bundled zsh) run
+    # directly. Native binaries cannot launch.
     # This handler is the clean fallback for commands the in-process dispatcher
-    # did not handle.
+    # and script interpreter did not handle.
     command_not_found_handler() {
       local cmd="$1"
       if (( ''${WAWONA_INPROC_TOOLS[(Ie)$cmd]} )); then
@@ -130,7 +132,7 @@ let
       elif (( ''${WAWONA_INPROC_CLIENTS[(Ie)$cmd]} )); then
         print -- "wawona: '$cmd' is bundled but unavailable in this build."
       else
-        print -- "wawona: command not found: $cmd (type help for the bundled catalog; external binaries can't run in the iOS sandbox)."
+        print -- "wawona: command not found: $cmd (type help for the catalog. Shell scripts: ./file.sh or sh file.sh. Native binaries cannot run in the iOS sandbox)."
       fi
       return 127
     }
@@ -164,14 +166,21 @@ pkgs.runCommand "wawona-rootfs-ios${if simulator then "-sim" else ""}"
     cp ${zshenvTemplate} $out/rootfs/etc/zsh/zshenv.template
     cp ${zshrcTemplate} $out/rootfs/etc/zsh/zshrc.template
     cp ${zloginTemplate} $out/rootfs/etc/zsh/zlogin.template
-    cat > $out/rootfs/usr/bin/zsh <<'EOF'
-# Wawona iOS: zsh is linked into the app binary (libwawona-zsh.a).
+    # Interpreter placeholders: command -v zsh/sh resolve here. Comment files
+    # only (no Mach-O). Mode 755 so hashcmd does not hide them. Never sourced.
+    for name in sh zsh bash dash; do
+      cat > "$out/rootfs/usr/bin/$name" <<EOF
+# Wawona iOS: $name is the in-process interpreter (libwawona-zsh.a).
 # This path exists only for shell conventions; exec is in-process via wawona-pty.
+# Not a Mach-O. Do not source this file.
 EOF
+      chmod 755 "$out/rootfs/usr/bin/$name"
+      cp "$out/rootfs/usr/bin/$name" "$out/rootfs/bin/$name"
+    done
     # Non-Mach-O catalog stubs so `ls /usr/bin` lists dispatched names.
     # zsh intercepts by basename; these files are never execve'd.
     for name in \
-      help wawona wasm clear apt \
+      help wawona wasm clear apt chmod \
       ls cat cp mv rm mkdir rmdir ln touch echo pwd head tail wc sort cut tr \
       seq basename dirname stat du df date env printenv uname whoami yes tee \
       nl tac fold expand unexpand truncate \
@@ -186,9 +195,9 @@ EOF
 # Wawona in-process: $name → wawona-dispatch (not a Mach-O).
 # Exec is intercepted by the zsh hook; this file exists so ls /usr/bin lists it.
 EOF
+      chmod 755 "$out/rootfs/usr/bin/$name"
       cp "$out/rootfs/usr/bin/$name" "$out/rootfs/bin/$name"
     done
-    cp $out/rootfs/usr/bin/zsh $out/rootfs/bin/zsh
     if [ -d "$zsh/share/zsh" ]; then
       cp -R "$zsh/share/zsh" $out/rootfs/usr/share/
     fi
@@ -197,5 +206,5 @@ Bundled Wawona userland templates. Do not modify files inside the app bundle.
 zsh is linked into the app binary; this tree holds templates, share files, and
 writable HOME data under Application Support after first launch.
 EOF
-    echo "21" > $out/rootfs/etc/zsh/.template-version
+    echo "25" > $out/rootfs/etc/zsh/.template-version
   ''
