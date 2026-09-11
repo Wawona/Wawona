@@ -331,12 +331,22 @@ let
       # Do not -u _relay_copy_frame: flake-pinned Relay often lacks that
       # export; Watch has no WWNRelay.m / stub object, so -u fails link.
       # Host apps that call it keep wawona_relay_copy_frame_stub.c (weak).
+      # relay-oci pulls zstd_safe → libzstd. Apple-mobile already has -lzstd
+      # earlier; macOS did not until crate2nix Relay. Link zstd after the .a.
       relay =
         if r == null then [] else [
           "-Wl,-u,_relay_resolve_backend"
           "-Wl,-u,_relay_start"
           "${strip r}/lib/libwawona_relay.a"
-        ];
+        ] ++ (
+          let
+            z = deps.zstd or null;
+            zPath = if z != null then "${strip z}/lib" else "${pkgs.zstd.out}/lib";
+          in [
+            "-L${zPath}"
+            "-lzstd"
+          ]
+        );
     in wasm ++ relay;
   neovimLdflags = deps:
     let libnvim = "${strip (deps.neovim or null)}/lib/libwawona-neovim.a";
