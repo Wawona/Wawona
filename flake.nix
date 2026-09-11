@@ -943,6 +943,75 @@
             "wawona-wasm" = toolchains.buildForMacOS "wawona-wasm" { };
             "wawona-relay" = toolchains.buildForMacOS "wawona-relay" { };
           } // macosToytoolkitDeps;
+          # Locked github Relay (flake.lock) may still ship host-only
+          # recipes/relay-staticlib.nix. buildForWatchOS then links a macOS
+          # libwawona_relay.a into WawonaWatch ("building for watchOS-simulator,
+          # but linking in object file built for macOS"). L4 cross-builds the
+          # same L3' source for every Apple-mobile dep set. Cited:
+          # dependencies/libs/wawona-relay-ios.nix, wawona-relay-wasm.
+          mkWawonaRelayApple =
+            {
+              simulator ? false,
+              platform ? "ios",
+            }:
+            let
+              baseTc = pkgs.iosToolchain;
+              iosToolchain =
+                if platform == "watch" then
+                  baseTc
+                  // {
+                    isWatchOSToolchain = true;
+                    deploymentTarget = "10.0";
+                    mkIOSBuildEnv =
+                      {
+                        simulator ? false,
+                        minVersion ? "10.0",
+                      }:
+                      baseTc.mkAppleEnv {
+                        sdkName = if simulator then "watchsimulator" else "watchos";
+                        platform = "watchos";
+                        inherit simulator minVersion;
+                      };
+                  }
+                else if platform == "tv" then
+                  baseTc
+                  // {
+                    isTVOSToolchain = true;
+                    deploymentTarget = "11.0";
+                    mkIOSBuildEnv =
+                      {
+                        simulator ? false,
+                        minVersion ? "11.0",
+                      }:
+                      baseTc.mkAppleEnv {
+                        sdkName = if simulator then "appletvsimulator" else "appletvos";
+                        platform = "tvos";
+                        inherit simulator minVersion;
+                      };
+                  }
+                else if platform == "vision" then
+                  baseTc
+                  // {
+                    isVisionOSToolchain = true;
+                    deploymentTarget = "26.0";
+                    mkIOSBuildEnv =
+                      {
+                        simulator ? false,
+                        minVersion ? "26.0",
+                      }:
+                      baseTc.mkAppleEnv {
+                        sdkName = if simulator then "xrsimulator" else "xros";
+                        platform = "visionos";
+                        inherit simulator minVersion;
+                      };
+                  }
+                else
+                  baseTc;
+            in
+            pkgs.callPackage ./dependencies/libs/wawona-relay-ios.nix {
+              inherit iosToolchain simulator;
+              src = wwn-relay;
+            };
           iosDeps = mobilePlatformDeps {
             buildFn = toolchains.buildForIOS;
             inherit toolchains;
@@ -959,13 +1028,9 @@
                 toolchains.buildForIOS "vm-engine-contract-modeb" { };
               "igetty-ios" =
                 wwn-igetty.packages.${system}.wwn-igetty-ios;
-              # Locked github Relay recipe is host rustPlatform (macOS dylib).
-              # Cross-compile the same L3' source until Relay ships the iOS
-              # staticlib. Cited: dependencies/libs/wawona-relay-ios.nix.
-              "wawona-relay" = pkgs.callPackage ./dependencies/libs/wawona-relay-ios.nix {
-                inherit (pkgs) iosToolchain;
-                src = wwn-relay;
+              "wawona-relay" = mkWawonaRelayApple {
                 simulator = false;
+                platform = "ios";
               };
             };
           };
@@ -976,14 +1041,81 @@
             extras = {
               "vm-engine-contract" =
                 toolchains.buildForIOS "vm-engine-contract" { simulator = true; };
+              "wawona-relay" = mkWawonaRelayApple {
+                simulator = true;
+                platform = "ios";
+              };
             };
           };
-          tvosDeps = mobilePlatformDeps { buildFn = toolchains.buildForTVOS; inherit toolchains; variant = "tv"; };
-          tvosSimDeps = mobilePlatformDeps { buildFn = toolchains.buildForTVOS; inherit toolchains; variant = "tv"; simulator = true; };
-          visionosDeps = mobilePlatformDeps { buildFn = toolchains.buildForVisionOS; inherit toolchains; variant = "vision"; };
-          visionosSimDeps = mobilePlatformDeps { buildFn = toolchains.buildForVisionOS; inherit toolchains; variant = "vision"; simulator = true; };
-          watchosDeps = mobilePlatformDeps { buildFn = toolchains.buildForWatchOS; inherit toolchains; variant = "watch"; };
-          watchosSimDeps = mobilePlatformDeps { buildFn = toolchains.buildForWatchOS; inherit toolchains; variant = "watch"; simulator = true; };
+          tvosDeps = mobilePlatformDeps {
+            buildFn = toolchains.buildForTVOS;
+            inherit toolchains;
+            variant = "tv";
+            extras = {
+              "wawona-relay" = mkWawonaRelayApple {
+                simulator = false;
+                platform = "tv";
+              };
+            };
+          };
+          tvosSimDeps = mobilePlatformDeps {
+            buildFn = toolchains.buildForTVOS;
+            inherit toolchains;
+            variant = "tv";
+            simulator = true;
+            extras = {
+              "wawona-relay" = mkWawonaRelayApple {
+                simulator = true;
+                platform = "tv";
+              };
+            };
+          };
+          visionosDeps = mobilePlatformDeps {
+            buildFn = toolchains.buildForVisionOS;
+            inherit toolchains;
+            variant = "vision";
+            extras = {
+              "wawona-relay" = mkWawonaRelayApple {
+                simulator = false;
+                platform = "vision";
+              };
+            };
+          };
+          visionosSimDeps = mobilePlatformDeps {
+            buildFn = toolchains.buildForVisionOS;
+            inherit toolchains;
+            variant = "vision";
+            simulator = true;
+            extras = {
+              "wawona-relay" = mkWawonaRelayApple {
+                simulator = true;
+                platform = "vision";
+              };
+            };
+          };
+          watchosDeps = mobilePlatformDeps {
+            buildFn = toolchains.buildForWatchOS;
+            inherit toolchains;
+            variant = "watch";
+            extras = {
+              "wawona-relay" = mkWawonaRelayApple {
+                simulator = false;
+                platform = "watch";
+              };
+            };
+          };
+          watchosSimDeps = mobilePlatformDeps {
+            buildFn = toolchains.buildForWatchOS;
+            inherit toolchains;
+            variant = "watch";
+            simulator = true;
+            extras = {
+              "wawona-relay" = mkWawonaRelayApple {
+                simulator = true;
+                platform = "watch";
+              };
+            };
+          };
           # One generatedCargoNix IFD per distinct workspaceSrc (#68 / runner speedups).
           sharedIosCargoNix = crate2nix.tools.${pkgs.stdenv.hostPlatform.system}.generatedCargoNix {
             name = "wawona-ios-workspace";

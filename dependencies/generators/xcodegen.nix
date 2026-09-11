@@ -300,6 +300,15 @@ let
       "-lphoon_rs"
     ];
 
+  # Relay iOS/iPadOS vm-engine-contract is fail-closed (bin/+share/README only;
+  # see Relay recipes/vm-engine-fail-closed.nix). Linking -lwwn_vms_engine against
+  # that path fails ("library not found"; no /lib). Mode A and Mode B skip the
+  # C ABI until Relay ships libwwn_vms_engine.a; ObjC WWNMobileVmEngine fail-closes.
+  # Do not use builtins.pathExists here (same footgun as wasmLdflags: silent drop
+  # before first realize). When the staticlib lands, return the -L/-l/-u flags.
+  vmEngineContractLdflags = _deps: [ ];
+  vmEngineContractHeaderPaths = _deps: [ ];
+
   # wwn-wasm: Pulley interpreter on Apple mobile. Lazy -l like phoon (Wasmtime
   # embeds Rust std). Mandatory on watchOS too (wawona-relay-wasm). Never -force_load.
   # Do not gate on pathExists. That silently drops the archive before first build.
@@ -319,11 +328,13 @@ let
         ];
       # Pass the static archive by path. ld prefers a same-dir
       # libwawona_relay.dylib (host macOS) over the .a.
+      # Do not -u _relay_copy_frame: flake-pinned Relay often lacks that
+      # export; Watch has no WWNRelay.m / stub object, so -u fails link.
+      # Host apps that call it keep wawona_relay_copy_frame_stub.c (weak).
       relay =
         if r == null then [] else [
           "-Wl,-u,_relay_resolve_backend"
           "-Wl,-u,_relay_start"
-          "-Wl,-u,_relay_copy_frame"
           "${strip r}/lib/libwawona_relay.a"
         ];
     in wasm ++ relay;
@@ -1641,10 +1652,7 @@ ICDJSON
              ++ appleMobileResolvLdflags
              ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [
                derivedRustLib
-               "-Wl,-u,_wwn_vm_product_accel"
-               "-L${strip (iosSimDeps."vm-engine-contract" or null)}/lib"
-               "-lwwn_vms_engine"
-             ] ++ finalCxxLdflags;
+             ] ++ vmEngineContractLdflags iosSimDeps ++ finalCxxLdflags;
             GCC_PREPROCESSOR_DEFINITIONS = [
               "$(inherited)"
               "TARGET_OS_IPHONE=1"
@@ -1656,8 +1664,7 @@ ICDJSON
               "${strip (iosSimDeps.libwayland or null)}/include/wayland"
               "${strip (iosSimDeps.xkbcommon or null)}/include"
               "${strip (iosSimDeps.libssh2 or null)}/include"
-              "${strip (iosSimDeps."vm-engine-contract" or null)}/include"
-            ] ++ (pixmanHeaderPaths iosSimDeps) ++ (ilandGlHeaderPaths iosSimDeps);
+            ] ++ vmEngineContractHeaderPaths iosSimDeps ++ (pixmanHeaderPaths iosSimDeps) ++ (ilandGlHeaderPaths iosSimDeps);
           } // lib.optionalAttrs (!simulatorOnly) {
             "OTHER_CFLAGS[sdk=iphoneos*]" = [ "$(inherited)" ] ++ ios26ObjcAutolinkOff;
             "OTHER_SWIFT_FLAGS[sdk=iphoneos*]" = [ "$(inherited)" ] ++ ios26SwiftAutolinkOff;
@@ -1695,18 +1702,14 @@ ICDJSON
              ++ appleMobileResolvLdflags
              ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [
                derivedRustLib
-               "-Wl,-u,_wwn_vm_product_accel"
-               "-L${strip (iosDeps."vm-engine-contract" or null)}/lib"
-               "-lwwn_vms_engine"
-             ] ++ finalCxxLdflags;
+             ] ++ vmEngineContractLdflags iosDeps ++ finalCxxLdflags;
             "HEADER_SEARCH_PATHS[sdk=iphoneos*]" = [
               "$(inherited)"
               "${strip (iosDeps.libwayland or null)}/include"
               "${strip (iosDeps.libwayland or null)}/include/wayland"
               "${strip (iosDeps.xkbcommon or null)}/include"
               "${strip (iosDeps.libssh2 or null)}/include"
-              "${strip (iosDeps."vm-engine-contract" or null)}/include"
-            ] ++ (pixmanHeaderPaths iosDeps) ++ (ilandGlHeaderPaths iosDeps);
+            ] ++ vmEngineContractHeaderPaths iosDeps ++ (pixmanHeaderPaths iosDeps) ++ (ilandGlHeaderPaths iosDeps);
           };
         };
         dependencies = [
@@ -1761,16 +1764,10 @@ ICDJSON
               "WWN_MODE_B=1"
               "PRODUCT_BUNDLE_IDENTIFIER=\\\"com.aspauldingcode.Wawona.ModeB\\\""
             ] ++ versionDefs;
-            # Relay CPU is planned. WWNMobileVmEngine fail-closes in ObjC.
-            # Do not link vm-engine-contract-modeb: that key is a host
-            # runCommand (bin/ + README), not libwwn_vms_engine.a. No QEMU.
+            # Mode A already skips vm-engine-contract (fail-closed runCommand).
+            # Mode B adds IOMFB + igetty only. No QEMU. No libwwn_vms_engine.a.
             "OTHER_LDFLAGS[sdk=iphoneos*]" =
-              lib.filter
-                (flag:
-                  flag != "-Wl,-u,_wwn_vm_product_accel"
-                  && flag != "-L${strip (iosDeps."vm-engine-contract" or null)}/lib"
-                  && flag != "-lwwn_vms_engine")
-                Wawona-iOS.settings.base."OTHER_LDFLAGS[sdk=iphoneos*]" ++ [
+              Wawona-iOS.settings.base."OTHER_LDFLAGS[sdk=iphoneos*]" ++ [
                 "-Wl,-u,_wwn_modeb_desktop_start"
                 "-Wl,-u,_wwn_iomfb_open"
                 "-L${strip (iosDeps."iomfb-ios" or null)}/lib"
@@ -1780,9 +1777,7 @@ ICDJSON
                 "-lwwn_igetty_ios"
               ];
             "HEADER_SEARCH_PATHS[sdk=iphoneos*]" =
-              lib.filter
-                (path: path != "${strip (iosDeps."vm-engine-contract" or null)}/include")
-                Wawona-iOS.settings.base."HEADER_SEARCH_PATHS[sdk=iphoneos*]" ++ [
+              Wawona-iOS.settings.base."HEADER_SEARCH_PATHS[sdk=iphoneos*]" ++ [
                 "${strip (iosDeps."iomfb-ios" or null)}/include"
                 "${strip (iosDeps."igetty-ios" or null)}/include"
               ];
@@ -1911,10 +1906,7 @@ ICDJSON
              ++ appleMobileResolvLdflags
             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [
               derivedRustLib
-              "-Wl,-u,_wwn_vm_product_accel"
-              "-L${strip (ipadosDeps."vm-engine-contract" or null)}/lib"
-              "-lwwn_vms_engine"
-            ] ++ finalCxxLdflags;
+            ] ++ vmEngineContractLdflags ipadosDeps ++ finalCxxLdflags;
             "OTHER_LDFLAGS[sdk=iphonesimulator*]" = [
               "$(inherited)"
             ] ++ ios26SwiftUiClientLdflags ++ [
@@ -1948,10 +1940,7 @@ ICDJSON
              ++ appleMobileResolvLdflags
             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [
               derivedRustLib
-              "-Wl,-u,_wwn_vm_product_accel"
-              "-L${strip (ipadosSimDeps."vm-engine-contract" or null)}/lib"
-              "-lwwn_vms_engine"
-            ] ++ finalCxxLdflags;
+            ] ++ vmEngineContractLdflags ipadosSimDeps ++ finalCxxLdflags;
             GCC_PREPROCESSOR_DEFINITIONS = [
               "$(inherited)"
               "TARGET_OS_IPHONE=1"
@@ -1963,16 +1952,14 @@ ICDJSON
               "${strip (ipadosDeps.libwayland or null)}/include/wayland"
               "${strip (ipadosDeps.xkbcommon or null)}/include"
               "${strip (ipadosDeps.libssh2 or null)}/include"
-              "${strip (ipadosDeps."vm-engine-contract" or null)}/include"
-            ] ++ (pixmanHeaderPaths ipadosDeps) ++ (ilandGlHeaderPaths ipadosDeps);
+            ] ++ vmEngineContractHeaderPaths ipadosDeps ++ (pixmanHeaderPaths ipadosDeps) ++ (ilandGlHeaderPaths ipadosDeps);
             "HEADER_SEARCH_PATHS[sdk=iphonesimulator*]" = [
               "$(inherited)"
               "${strip (ipadosSimDeps.libwayland or null)}/include"
               "${strip (ipadosSimDeps.libwayland or null)}/include/wayland"
               "${strip (ipadosSimDeps.xkbcommon or null)}/include"
               "${strip (ipadosSimDeps.libssh2 or null)}/include"
-              "${strip (ipadosSimDeps."vm-engine-contract" or null)}/include"
-            ] ++ (pixmanHeaderPaths ipadosSimDeps) ++ (ilandGlHeaderPaths ipadosSimDeps);
+            ] ++ vmEngineContractHeaderPaths ipadosSimDeps ++ (pixmanHeaderPaths ipadosSimDeps) ++ (ilandGlHeaderPaths ipadosSimDeps);
           };
         };
         dependencies = [
