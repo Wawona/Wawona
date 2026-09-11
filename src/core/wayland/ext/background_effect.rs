@@ -4,14 +4,12 @@
 //! a blur region per surface. Platform renderers can query this to apply
 //! NSVisualEffectView (macOS), UIVisualEffectView (iOS), or shader blur.
 
-use std::collections::HashMap;
-use wayland_server::{
-    Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
-};
 use crate::core::wayland::protocol::server::ext::background_effect::v1::server::{
     ext_background_effect_manager_v1::{self, ExtBackgroundEffectManagerV1},
     ext_background_effect_surface_v1::{self, ExtBackgroundEffectSurfaceV1},
 };
+use std::collections::HashMap;
+use wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource};
 
 use crate::core::state::CompositorState;
 
@@ -24,7 +22,10 @@ pub struct BackgroundEffectState {
 
 impl BackgroundEffectState {
     pub fn has_blur(&self, surface_id: u32) -> bool {
-        self.blur_surfaces.get(&surface_id).copied().unwrap_or(false)
+        self.blur_surfaces
+            .get(&surface_id)
+            .copied()
+            .unwrap_or(false)
     }
 }
 
@@ -56,7 +57,11 @@ impl Dispatch<ExtBackgroundEffectManagerV1, ()> for CompositorState {
             ext_background_effect_manager_v1::Request::GetBackgroundEffect { id, surface } => {
                 let surface_id = surface.id().protocol_id();
                 let _e = data_init.init(id, surface_id);
-                state.ext.background_effect.blur_surfaces.insert(surface_id, false);
+                state
+                    .ext
+                    .background_effect
+                    .blur_surfaces
+                    .insert(surface_id, false);
                 tracing::debug!("Created background effect for surface {}", surface_id);
             }
             ext_background_effect_manager_v1::Request::Destroy => {}
@@ -79,7 +84,11 @@ impl Dispatch<ExtBackgroundEffectSurfaceV1, u32> for CompositorState {
             ext_background_effect_surface_v1::Request::SetBlurRegion { region } => {
                 // If a region is provided, blur is enabled; if None, disabled
                 let has_blur = region.is_some();
-                state.ext.background_effect.blur_surfaces.insert(*surface_id, has_blur);
+                state
+                    .ext
+                    .background_effect
+                    .blur_surfaces
+                    .insert(*surface_id, has_blur);
                 tracing::debug!("Surface {} blur: {}", surface_id, has_blur);
             }
             ext_background_effect_surface_v1::Request::Destroy => {

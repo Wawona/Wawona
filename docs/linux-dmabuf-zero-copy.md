@@ -25,8 +25,9 @@ routes it through `WWNCompositorView_ios` and `WWNIlandPresenter`. It does not
 create a copied `CGImage`. `wl_shm` buffers retain the CPU upload path.
 
 On iOS Mode B, the same IOSurface must reach IOMFB unchanged. Authority
-for that swap is `wwn-iomfb-rs` (`GpuSwapchain::present_external`). The
-frozen `wwn-iland-iomfb` sink must not grow. A Metal blit is allowed
+for that swap is `wwn-iomfb-rs` (`wwn_iomfb_present_iosurface` /
+`GpuSwapchain::present_external`). The frozen `wwn-iland-iomfb` sink
+must not grow. A Metal blit is allowed
 only when a producer texture has no IOSurface backing.
 
 ## Formats and modifiers
@@ -49,9 +50,12 @@ present: route=direct-iosurface copy=zero backing_id=<same IOSurfaceID>
 An intentional non-IOSurface producer reports `route=metal-blit`. A `wl_shm`
 frame reports its upload fallback separately and is not zero-copy evidence.
 
-vphone `wawona-jb` is the Mode B proof device. It ships `Metal.framework`
-and IOMFB. The `wwn-iomfb-rs` Metal tipa encodes a GPU clear into an
-IOSurface and presents that same ID. Do not treat vphone as CPU-only.
+vphone `wawona-jb` is the Mode B proof device. Treat it as physical-class.
+Do not defer IOMFB or open-jit proof to STARDUST. It ships
+`Metal.framework` and IOMFB. The `wwn-iomfb-rs` Metal tipa encodes a GPU
+clear into an IOSurface and presents that same ID. Do not treat vphone as
+CPU-only. `MTLCreateSystemDefaultDevice()` is still nil on this guest,
+so niri GLES stays fail-closed and Weston remains own-display.
 
 ## Implementation
 
@@ -60,5 +64,5 @@ IOSurface and presents that same ID. Do not treat vphone as CPU-only.
 - Mode A presenter: `src/platform/ios/WWNIlandPresenter.m`
 - iOS compositor route: `src/platform/ios/WWNCompositorView_ios.m`
 - Mode B broker: `src/platform/ios_modeb.rs`
-- IOMFB present (Mode B): `wwn-iomfb-rs` (`docs/GPU.md`). Frozen sink:
-  `wwn-iland/crates/wwn-iland-iomfb` until Wawona switches.
+- IOMFB present (Mode B): `wwn-iomfb-rs` `ios.nix` (`libwwn_iomfb.a`).
+  Frozen `wwn-iland-iomfb` must not grow.

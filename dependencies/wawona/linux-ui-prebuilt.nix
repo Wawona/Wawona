@@ -84,6 +84,14 @@ rustPlatform.buildRustPackage {
   # the prebuilt/AppImage build fast and deterministic.
   doCheck = false;
 
+  # Bake ship build into About when CI/Fastlane sets WAWONA_BUILD_NUMBER.
+  WAWONA_BUILD_NUMBER =
+    let
+      bn = builtins.getEnv "WAWONA_BUILD_NUMBER";
+      gh = builtins.getEnv "GITHUB_RUN_NUMBER";
+    in
+    if bn != "" then bn else if gh != "" then gh else "1";
+
   nativeBuildInputs = [
     pkgs.pkg-config
     pkgs.wrapGAppsHook4

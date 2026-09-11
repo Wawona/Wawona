@@ -25,6 +25,7 @@ NSString *const kWWNPrefsMultipleClients = @"MultipleClients";
 NSString *const kWWNPrefsSwapCmdAsCtrl = @"SwapCmdAsCtrl";   // Legacy
 NSString *const kWWNPrefsSwapCmdWithAlt = @"SwapCmdWithAlt"; // New unified key
 NSString *const kWWNPrefsTouchInputType = @"TouchInputType";
+NSString *const kWWNPrefsTouchPointerEmulation = @"TouchPointerEmulation";
 NSString *const kWWNPrefsWaypipeRSSupport =
     @"WaypipeRSSupport"; // Deprecated - always enabled
 NSString *const kWWNPrefsEnableTCPListener =
@@ -105,6 +106,12 @@ NSString *const kWWNPrefsDesktopReplacementEnabled =
     @"DesktopReplacementEnabled";
 NSString *const kWWNPrefsDesktopReplacementMachineId =
     @"DesktopReplacementMachineId";
+#if WWN_MODE_B
+NSString *const kWWNModeBDesktopReplacementChangedNotification =
+    @"WWNModeBDesktopReplacementChangedNotification";
+NSString *const kWWNModeBDesktopReplacementReplaceNowNotification =
+    @"WWNModeBDesktopReplacementReplaceNowNotification";
+#endif
 NSString *const kWWNPrefsSwingingBridgeEnabled = @"SwingingBridgeEnabled";
 NSString *const kWWNPrefsAnowaWEnabled = @"AnowaWEnabled";
 NSString *const kWWNPrefsLockscreenReplacementEnabled =
@@ -341,6 +348,7 @@ NSUserDefaults *WWNSharedUserDefaults(void) {
     // Multi-Touch (wl_touch) is the reliable path for Wayland clients (Weston
     // panel, terminals, nested compositors). Touchpad/virtual-pointer is opt-in.
     kWWNPrefsTouchInputType : @"Multi-Touch",
+    kWWNPrefsTouchPointerEmulation : @NO,
     kWWNPrefsSwapCmdWithAlt : @YES,
     kWWNPrefsUniversalClipboard : @YES,
     // Graphics
@@ -504,6 +512,7 @@ NSUserDefaults *WWNSharedUserDefaults(void) {
   [defaults removeObjectForKey:kWWNPrefsNestedCompositorCursor];
   // Input
   [defaults removeObjectForKey:kWWNPrefsTouchInputType];
+  [defaults removeObjectForKey:kWWNPrefsTouchPointerEmulation];
   [defaults removeObjectForKey:kWWNPrefsSwapCmdWithAlt];
   [defaults removeObjectForKey:kWWNPrefsSwapCmdAsCtrl];
   [defaults removeObjectForKey:kWWNPrefsUniversalClipboard];
@@ -1098,6 +1107,15 @@ NSUserDefaults *WWNSharedUserDefaults(void) {
     [WWNSharedUserDefaults()
         removeObjectForKey:kWWNPrefsTouchInputType];
   }
+}
+
+- (BOOL)touchPointerEmulationEnabled {
+  return [WWNSharedUserDefaults() boolForKey:kWWNPrefsTouchPointerEmulation];
+}
+
+- (void)setTouchPointerEmulationEnabled:(BOOL)enabled {
+  [WWNSharedUserDefaults() setBool:enabled
+                            forKey:kWWNPrefsTouchPointerEmulation];
 }
 
 // Waypipe Configuration Methods

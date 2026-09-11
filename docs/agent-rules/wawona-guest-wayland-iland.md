@@ -10,6 +10,9 @@ window. Those paths are forbidden in Wawona products.
 
 ## Required
 
+- **Every Relay virtual-machine GUI** uses `wwn-iland` userspace DRM/KMS/GBM
+  framebuffer services and Wawona Wayland. This is mandatory for all targets
+  that support VM machines, including headless-to-GUI transitions.
 - Guest compositor and apps bind Wayland globals on Wawona (or waypipe into it).
 - Host present is `iland_drm_set_present_callback` / `WWNIlandPresenter`.
 - Graphics keys (ANGLE, MoltenVK, KosmicKrisp, SwiftShader) stay **L1**

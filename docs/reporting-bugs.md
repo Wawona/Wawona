@@ -14,7 +14,7 @@ A useful report has all of these:
 3. **Copied diagnostics** from the app when you can. That block includes:
    - Wawona version and build
    - Host OS, version, and device identifier
-   - Install channel (TestFlight, Sideload, App Store, Simulator, macOS)
+   - Install channel (TestFlight, App Store, TrollStore, Sileo, Sideload, Simulator, macOS)
    - Active machine (id, name, type, client). No SSH passwords.
    - Recent in-app log lines
 

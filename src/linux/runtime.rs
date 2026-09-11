@@ -59,15 +59,16 @@ pub fn write_runtime_env(runtime_dir: &Path, wayland_display: &str) -> Result<()
         runtime_dir.display(),
         wayland_display
     );
-    fs::write(&env_path, script).with_context(|| format!("failed to write {}", env_path.display()))?;
+    fs::write(&env_path, script)
+        .with_context(|| format!("failed to write {}", env_path.display()))?;
     Ok(())
 }
 
 pub fn read_runtime_state() -> Result<RuntimeState> {
     let runtime_dir = ensure_runtime_dir()?;
     let path = runtime_state_path(&runtime_dir);
-    let text = fs::read_to_string(&path)
-        .with_context(|| format!("failed to read {}", path.display()))?;
+    let text =
+        fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
     let state = serde_json::from_str(&text)
         .with_context(|| format!("failed to parse {}", path.display()))?;
     Ok(state)

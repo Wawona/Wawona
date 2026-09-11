@@ -1,5 +1,5 @@
-use crate::util::geometry::Rect;
 use crate::ffi::types::ContentRect;
+use crate::util::geometry::Rect;
 
 /// Represents a node in the scene graph.
 /// A node can be a surface, a container for other nodes, or a decorator.

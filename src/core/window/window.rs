@@ -1,5 +1,3 @@
-
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DecorationMode {
     ClientSide,
@@ -25,7 +23,7 @@ pub struct Window {
     pub decoration_policy: Option<crate::core::state::DecorationPolicy>,
     pub surface_id: u32,
     pub app_id: String,
-    
+
     // Window state
     pub maximized: bool,
     pub minimized: bool,
@@ -76,7 +74,7 @@ pub struct Window {
     /// produce correct surface-local coordinates.
     pub geometry_x: i32,
     pub geometry_y: i32,
-    
+
     /// IDs of outputs this window is visible on
     pub outputs: Vec<u32>,
 }

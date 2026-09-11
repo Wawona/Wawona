@@ -18,5 +18,3 @@ use wayland_server::DisplayHandle;
 pub fn register_linux_drm_syncobj(_display: &DisplayHandle) {
     // TODO: Register global
 }
-
-

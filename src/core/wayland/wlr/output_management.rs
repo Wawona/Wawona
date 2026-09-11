@@ -2,14 +2,11 @@
 //!
 //! This protocol allows clients to read and modify the compositor's output configuration.
 
-
-use wayland_server::{
-    Dispatch, DisplayHandle, GlobalDispatch, Resource,
-};
 use crate::core::wayland::protocol::wlroots::wlr_output_management_unstable_v1::{
-    zwlr_output_manager_v1, zwlr_output_head_v1, zwlr_output_mode_v1,
-    zwlr_output_configuration_v1, zwlr_output_configuration_head_v1,
+    zwlr_output_configuration_head_v1, zwlr_output_configuration_v1, zwlr_output_head_v1,
+    zwlr_output_manager_v1, zwlr_output_mode_v1,
 };
+use wayland_server::{Dispatch, DisplayHandle, GlobalDispatch, Resource};
 
 use crate::core::state::CompositorState;
 
@@ -30,19 +27,21 @@ impl GlobalDispatch<zwlr_output_manager_v1::ZwlrOutputManagerV1, ()> for Composi
     ) {
         let manager = data_init.init(resource, ());
         let version = manager.version();
-        
+
         // Advertise all current heads
         // Advertise all current heads
         for output in &state.outputs {
             // Correct order: <Resource, UserData, State>
-            let head = client.create_resource::<zwlr_output_head_v1::ZwlrOutputHeadV1, (), CompositorState>(
-                handle,
-                version,
-                (),
-            ).expect("Failed to create zwlr_output_head_v1");
-            
+            let head = client
+                .create_resource::<zwlr_output_head_v1::ZwlrOutputHeadV1, (), CompositorState>(
+                    handle,
+                    version,
+                    (),
+                )
+                .expect("Failed to create zwlr_output_head_v1");
+
             manager.head(&head);
-            
+
             // Send head metadata
             head.name(output.name.clone());
             head.description(output.description.clone());
@@ -50,35 +49,37 @@ impl GlobalDispatch<zwlr_output_manager_v1::ZwlrOutputManagerV1, ()> for Composi
             head.model(output.model.clone());
             head.serial_number(output.serial_number.clone());
             head.physical_size(output.physical_width as i32, output.physical_height as i32);
-            
+
             // Advertise modes for this head
             for (_i, mode_state) in output.modes.iter().enumerate() {
-                let mode = client.create_resource::<zwlr_output_mode_v1::ZwlrOutputModeV1, (), CompositorState>(
-                    handle,
-                    head.version(),
-                    (),
-                ).expect("Failed to create zwlr_output_mode_v1");
-                
+                let mode = client
+                    .create_resource::<zwlr_output_mode_v1::ZwlrOutputModeV1, (), CompositorState>(
+                        handle,
+                        head.version(),
+                        (),
+                    )
+                    .expect("Failed to create zwlr_output_mode_v1");
+
                 head.mode(&mode);
-                
+
                 mode.size(mode_state.width as i32, mode_state.height as i32);
                 mode.refresh(mode_state.refresh as i32);
                 if mode_state.preferred {
                     mode.preferred();
                 }
             }
-            
+
             // Current state
             head.enabled(1);
             head.position(output.x, output.y);
-            
+
             // scale expects f64 in high-level wayland-rs 0.31
             head.scale(output.scale as f64);
-            
+
             use wayland_server::protocol::wl_output;
             head.transform(wl_output::Transform::Normal);
         }
-        
+
         manager.done(state.wlr.last_output_manager_serial);
         tracing::debug!("Bound zwlr_output_manager_v1 and advertised heads");
     }
@@ -97,7 +98,10 @@ impl Dispatch<zwlr_output_manager_v1::ZwlrOutputManagerV1, ()> for CompositorSta
         match request {
             zwlr_output_manager_v1::Request::CreateConfiguration { id, serial } => {
                 data_init.init(id, ());
-                tracing::debug!("Created zwlr_output_configuration_v1 with serial {}", serial);
+                tracing::debug!(
+                    "Created zwlr_output_configuration_v1 with serial {}",
+                    serial
+                );
             }
             zwlr_output_manager_v1::Request::Stop => {
                 tracing::debug!("zwlr_output_manager_v1 stopped by client");
@@ -197,7 +201,9 @@ impl Dispatch<zwlr_output_configuration_v1::ZwlrOutputConfigurationV1, ()> for C
 // Output Configuration Head
 // ============================================================================
 
-impl Dispatch<zwlr_output_configuration_head_v1::ZwlrOutputConfigurationHeadV1, ()> for CompositorState {
+impl Dispatch<zwlr_output_configuration_head_v1::ZwlrOutputConfigurationHeadV1, ()>
+    for CompositorState
+{
     fn request(
         _state: &mut Self,
         _client: &wayland_server::Client,
@@ -211,11 +217,24 @@ impl Dispatch<zwlr_output_configuration_head_v1::ZwlrOutputConfigurationHeadV1, 
             zwlr_output_configuration_head_v1::Request::SetMode { mode: _ } => {
                 tracing::debug!("zwlr_output_configuration_head_v1.set_mode");
             }
-            zwlr_output_configuration_head_v1::Request::SetCustomMode { width, height, refresh } => {
-                tracing::debug!("zwlr_output_configuration_head_v1.set_custom_mode: {}x{}@{}", width, height, refresh);
+            zwlr_output_configuration_head_v1::Request::SetCustomMode {
+                width,
+                height,
+                refresh,
+            } => {
+                tracing::debug!(
+                    "zwlr_output_configuration_head_v1.set_custom_mode: {}x{}@{}",
+                    width,
+                    height,
+                    refresh
+                );
             }
             zwlr_output_configuration_head_v1::Request::SetPosition { x, y } => {
-                tracing::debug!("zwlr_output_configuration_head_v1.set_position: ({}, {})", x, y);
+                tracing::debug!(
+                    "zwlr_output_configuration_head_v1.set_position: ({}, {})",
+                    x,
+                    y
+                );
             }
             zwlr_output_configuration_head_v1::Request::SetTransform { transform: _ } => {
                 tracing::debug!("zwlr_output_configuration_head_v1.set_transform");

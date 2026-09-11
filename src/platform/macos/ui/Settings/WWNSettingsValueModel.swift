@@ -1,5 +1,9 @@
+#if os(macOS) || os(iOS) || os(tvOS) || os(visionOS)
 #if os(macOS)
 import AppKit
+#else
+import UIKit
+#endif
 import Foundation
 import SwiftUI
 import WawonaModel
@@ -11,7 +15,7 @@ import WawonaModel
 ///
 /// Write semantics mirror `WWNPreferencesContent act:` (switch/popup commit,
 /// auth-method integer storage, section rebuilds, iCloud routing).
-@MainActor
+/// Not `@MainActor`: iOS/tvOS/visionOS construct this from an ObjC trampoline.
 final class WWNSettingsValueModel: ObservableObject {
     static let shared = WWNSettingsValueModel()
 
@@ -159,26 +163,30 @@ final class WWNSettingsValueModel: ObservableObject {
     func setBool(_ value: Bool, for item: WWNSettingItem) {
         let key = itemKey(item)
         guard !key.isEmpty else { return }
+        #if !os(tvOS)
         if key == WWNRootfsICloudSyncPreferenceKey {
             // iCloud sync is routed through the rootfs provider (it can fail).
-            // ObjC `NSError **` imports as `throws` in Swift.
+            // ObjC `NSError **` imports as `throws` in Swift. tvOS has no Drive.
             do {
                 try WWNRootfsProvider.setICloudSyncEnabled(value)
             } catch {
+                #if os(macOS)
                 let alert = NSAlert()
                 alert.messageText = "iCloud Sync Failed"
                 alert.informativeText = error.localizedDescription
                 alert.runModal()
+                #endif
             }
             commit(rebuild: false)
             return
         }
+        #endif
         defaults.set(value, forKey: key)
         if key == "ForceServerSideDecorations" {
             // Live compositor reaction (same notification WawonaPreferences
             // save() posts for the SwiftUI machine settings).
             NotificationCenter.default.post(
-                name: NSNotification.Name.wwnForceSSDChanged,
+                name: Notification.Name("WWNForceSSDChangedNotification"),
                 object: nil
             )
         }
@@ -227,7 +235,9 @@ final class WWNSettingsValueModel: ObservableObject {
             WWNPreferences.shared().rebuildSections()
             reloadSections()
         }
-        WawonaPreferences.shared.load()
+        Task { @MainActor in
+            WawonaPreferences.shared.load()
+        }
         NotificationCenter.default.post(
             name: Notification.Name("WWNPreferencesChanged"),
             object: nil
@@ -248,8 +258,12 @@ final class WWNSettingsValueModel: ObservableObject {
 
     func copyValueToPasteboard(_ item: WWNSettingItem) {
         let value = stringValue(for: item)
+        #if os(macOS)
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(value, forType: .string)
+        #elseif !os(tvOS)
+        UIPasteboard.general.string = value
+        #endif
     }
 
     // MARK: - Bindings

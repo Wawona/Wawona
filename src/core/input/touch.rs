@@ -1,27 +1,44 @@
 use std::collections::HashMap;
-use wayland_server::Resource;
-use wayland_server::protocol::wl_touch::WlTouch;
-use wayland_server::protocol::wl_surface::WlSurface;
 
-/// A single active touch point
+/// A single active touch point (compositor bookkeeping, not the protocol owner).
 #[derive(Debug, Clone)]
 pub struct TouchPoint {
-    /// Touch point ID
     pub id: i32,
-    /// Surface that received the touch down event (internal ID)
     pub surface_id: u32,
-    /// Current position in surface-local coordinates
     pub x: f64,
     pub y: f64,
 }
 
-/// Touch state for a seat, managing active touch points and resources.
-#[derive(Debug, Clone, Default)]
+/// Contact-id tracker. Smithay `TouchHandle` owns `wl_touch` events.
+#[derive(Debug, Clone)]
 pub struct TouchState {
-    /// Active touch points, keyed by touch ID
     pub active_points: HashMap<i32, TouchPoint>,
-    /// Bound touch resources from clients
-    pub resources: Vec<WlTouch>,
+    /// Host-side concurrent-contact cap. Watch and other single-touch hosts use 1.
+    pub max_concurrent: usize,
+    /// Primary contact used for nested-compositor pointer chrome (or emulation).
+    pub pointer_mirror_id: Option<i32>,
+    /// True while a mirrored `BTN_LEFT` is held.
+    pub pointer_button_held: bool,
+}
+
+impl Default for TouchState {
+    fn default() -> Self {
+        Self {
+            active_points: HashMap::new(),
+            max_concurrent: default_touch_max_concurrent(),
+            pointer_mirror_id: None,
+            pointer_button_held: false,
+        }
+    }
+}
+
+/// Single-touch hosts keep one live id. Others allow a small multitouch set.
+pub fn default_touch_max_concurrent() -> usize {
+    if cfg!(target_os = "watchos") {
+        1
+    } else {
+        16
+    }
 }
 
 impl TouchState {
@@ -29,17 +46,13 @@ impl TouchState {
         Self::default()
     }
 
-    /// Add a touch resource
-    pub fn add_resource(&mut self, touch: WlTouch) {
-        self.resources.push(touch);
+    pub fn can_accept_down(&self, id: i32) -> bool {
+        if self.active_points.contains_key(&id) {
+            return true;
+        }
+        self.active_points.len() < self.max_concurrent.max(1)
     }
 
-    /// Remove a touch resource
-    pub fn remove_resource(&mut self, resource: &WlTouch) {
-        self.resources.retain(|t| t.id() != resource.id());
-    }
-
-    /// Record a new touch point
     pub fn touch_down(&mut self, id: i32, surface_id: u32, x: f64, y: f64) {
         self.active_points.insert(
             id,
@@ -50,9 +63,11 @@ impl TouchState {
                 y,
             },
         );
+        if self.pointer_mirror_id.is_none() {
+            self.pointer_mirror_id = Some(id);
+        }
     }
 
-    /// Update a touch point position
     pub fn touch_motion(&mut self, id: i32, x: f64, y: f64) {
         if let Some(point) = self.active_points.get_mut(&id) {
             point.x = x;
@@ -60,111 +75,76 @@ impl TouchState {
         }
     }
 
-    /// Remove a touch point
     pub fn touch_up(&mut self, id: i32) {
         self.active_points.remove(&id);
+        if self.pointer_mirror_id == Some(id) {
+            self.pointer_mirror_id = self.active_points.keys().next().copied();
+            self.pointer_button_held = false;
+        }
     }
 
-    /// Cancel all touch points
     pub fn touch_cancel(&mut self) {
         self.active_points.clear();
+        self.pointer_mirror_id = None;
+        self.pointer_button_held = false;
     }
 
-    /// Get the surface for a touch point
     pub fn get_touch_surface(&self, id: i32) -> Option<u32> {
         self.active_points.get(&id).map(|p| p.surface_id)
     }
 
-    /// Whether any touch points are active
     pub fn has_active_touches(&self) -> bool {
         !self.active_points.is_empty()
     }
 
-    /// Send touch down event
-    pub fn broadcast_down(
-        &self,
-        serial: u32,
-        time: u32,
-        surface: &WlSurface,
-        id: i32,
-        x: f64,
-        y: f64,
-    ) {
-        let client = surface.client();
-        for touch in &self.resources {
-            if touch.client() == client {
-                touch.down(serial, time, surface, id, x, y);
-            }
-        }
+    /// Custom `wl_touch` resources are no longer bound here. Smithay owns them.
+    pub fn add_resource(&mut self, _touch: wayland_server::protocol::wl_touch::WlTouch) {}
+
+    pub fn remove_resource(&mut self, _resource: &wayland_server::protocol::wl_touch::WlTouch) {}
+
+    pub fn cleanup_resources(&mut self) {}
+}
+
+/// Whether Multi-Touch should also hold `wl_pointer` + BTN_LEFT.
+/// Nested compositor chrome needs a button serial. Apps must not get it.
+pub fn should_mirror_pointer_for_chrome(nested_compositor: bool) -> bool {
+    nested_compositor
+}
+
+/// Pref-gated pointer stream for clients that never bind `wl_touch`.
+pub fn should_emulate_pointer(pref_enabled: bool, nested_compositor: bool) -> bool {
+    pref_enabled && !nested_compositor
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn single_touch_cap_rejects_second_id() {
+        let mut t = TouchState::new();
+        t.max_concurrent = 1;
+        assert!(t.can_accept_down(1));
+        t.touch_down(1, 10, 0.0, 0.0);
+        assert!(!t.can_accept_down(2));
+        assert!(t.can_accept_down(1));
     }
 
-    /// Send touch up event
-    pub fn broadcast_up(
-        &self,
-        serial: u32,
-        time: u32,
-        id: i32,
-        focused_client: Option<&wayland_server::Client>,
-    ) {
-        if let Some(focused) = focused_client {
-            for touch in &self.resources {
-                if touch.client().as_ref() == Some(focused) {
-                    touch.up(serial, time, id);
-                }
-            }
-        }
+    #[test]
+    fn cancel_clears_ids() {
+        let mut t = TouchState::new();
+        t.touch_down(3, 1, 1.0, 2.0);
+        t.touch_cancel();
+        assert!(!t.has_active_touches());
+        assert!(t.pointer_mirror_id.is_none());
     }
 
-    /// Send touch motion event
-    pub fn broadcast_motion(
-        &self,
-        time: u32,
-        id: i32,
-        x: f64,
-        y: f64,
-        focused_client: Option<&wayland_server::Client>,
-    ) {
-        if let Some(focused) = focused_client {
-            for touch in &self.resources {
-                if touch.client().as_ref() == Some(focused) {
-                    touch.motion(time, id, x, y);
-                }
-            }
-        }
-    }
-
-    /// Send touch frame event
-    pub fn broadcast_frame(&self, focused_client: Option<&wayland_server::Client>) {
-        if let Some(focused) = focused_client {
-            for touch in &self.resources {
-                if touch.client().as_ref() == Some(focused) {
-                    touch.frame();
-                }
-            }
-        }
-    }
-
-    /// Send touch cancel event
-    pub fn broadcast_cancel(&self, focused_client: Option<&wayland_server::Client>) {
-        if let Some(focused) = focused_client {
-            for touch in &self.resources {
-                if touch.client().as_ref() == Some(focused) {
-                    touch.cancel();
-                }
-            }
-        }
-    }
-
-    /// Clean up dead touch resources
-    pub fn cleanup_resources(&mut self) {
-        let before = self.resources.len();
-        self.resources.retain(|t| t.is_alive());
-        if before != self.resources.len() {
-            crate::wlog!(
-                crate::util::logging::SEAT,
-                "Cleaned up {} dead touches",
-                before - self.resources.len()
-            );
-        }
+    #[test]
+    fn chrome_mirror_only_when_nested() {
+        assert!(should_mirror_pointer_for_chrome(true));
+        assert!(!should_mirror_pointer_for_chrome(false));
+        assert!(should_emulate_pointer(true, false));
+        assert!(!should_emulate_pointer(true, true));
+        assert!(!should_emulate_pointer(false, false));
     }
 }

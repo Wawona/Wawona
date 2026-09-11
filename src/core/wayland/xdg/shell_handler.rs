@@ -12,7 +12,9 @@ use smithay::wayland::shell::xdg::{
 };
 
 use crate::core::compositor::CompositorEvent;
-use crate::core::state::{CompositorState, DecorationPolicy, XdgPopupData, XdgSurfaceData, XdgToplevelData};
+use crate::core::state::{
+    CompositorState, DecorationPolicy, XdgPopupData, XdgSurfaceData, XdgToplevelData,
+};
 use crate::core::surface::SurfaceRole;
 use crate::core::window::{DecorationMode, Window};
 
@@ -53,12 +55,10 @@ impl CompositorState {
     ) -> Option<(ClientId, u32)> {
         let client_id = surface.wl_surface().client()?.id();
         let popup_id = surface.xdg_popup().id().protocol_id();
-        self.xdg.popups.get(&(client_id, popup_id)).map(|_| {
-            (
-                surface.wl_surface().client().unwrap().id(),
-                popup_id,
-            )
-        })
+        self.xdg
+            .popups
+            .get(&(client_id, popup_id))
+            .map(|_| (surface.wl_surface().client().unwrap().id(), popup_id))
     }
 
     fn ensure_xdg_surface_entry(
@@ -70,14 +70,11 @@ impl CompositorState {
     ) -> u32 {
         let xdg_surface_key = wl_surface.id().protocol_id();
         let key = (client_id.clone(), xdg_surface_key);
-        self.xdg
-            .surfaces
-            .entry(key.clone())
-            .or_insert_with(|| {
-                let mut data = XdgSurfaceData::new(surface_id);
-                data.window_id = window_id;
-                data
-            });
+        self.xdg.surfaces.entry(key.clone()).or_insert_with(|| {
+            let mut data = XdgSurfaceData::new(surface_id);
+            data.window_id = window_id;
+            data
+        });
         if let Some(data) = self.xdg.surfaces.get_mut(&key) {
             if window_id.is_some() {
                 data.window_id = window_id;
@@ -105,7 +102,8 @@ impl CompositorState {
     }
 
     fn handle_toplevel_ack_configure(&mut self, wl_surface: &WlSurface, serial: u32) {
-        let Some((client_id, toplevel_id)) = self.xdg_toplevel_key_for_wl_surface(wl_surface) else {
+        let Some((client_id, toplevel_id)) = self.xdg_toplevel_key_for_wl_surface(wl_surface)
+        else {
             return;
         };
         let xdg_surface_id = self
@@ -131,7 +129,8 @@ impl CompositorState {
                     .position(|&pending| pending == serial)
                 {
                     surface_data.pending_serials.drain(..=pos);
-                    surface_data.pending_serial = surface_data.pending_serials.last().copied().unwrap_or(0);
+                    surface_data.pending_serial =
+                        surface_data.pending_serials.last().copied().unwrap_or(0);
                     surface_data.configured = surface_data.pending_serials.is_empty();
                     cleared_surface_pending = surface_data.pending_serials.is_empty();
                 }
@@ -243,8 +242,7 @@ impl XdgShellHandler for CompositorState {
             crate::core::window::SizeAuthority::AwaitingFirstCommit
         };
 
-        let mut toplevel_data =
-            XdgToplevelData::new(window_id, surface_id, xdg_surface_id);
+        let mut toplevel_data = XdgToplevelData::new(window_id, surface_id, xdg_surface_id);
         toplevel_data.width = initial_width;
         toplevel_data.height = initial_height;
         toplevel_data.resource = Some(surface.xdg_toplevel().clone());
@@ -334,20 +332,21 @@ impl XdgShellHandler for CompositorState {
             serial,
             host_locked
         );
-        self.pending_compositor_events.push(CompositorEvent::WindowCreated {
-            client_id: client_id.clone(),
-            window_id,
-            surface_id,
-            title: String::new(),
-            width: initial_width,
-            height: initial_height,
-            decoration_mode: crate::core::state::CompositorState::decoration_mode_for_policy(
-                self.effective_decoration_policy(Some(&client_id)),
-            ),
-            fullscreen_shell: false,
-            host_locked,
-            fills_host: fill_host_size.is_some(),
-        });
+        self.pending_compositor_events
+            .push(CompositorEvent::WindowCreated {
+                client_id: client_id.clone(),
+                window_id,
+                surface_id,
+                title: String::new(),
+                width: initial_width,
+                height: initial_height,
+                decoration_mode: crate::core::state::CompositorState::decoration_mode_for_policy(
+                    self.effective_decoration_policy(Some(&client_id)),
+                ),
+                fullscreen_shell: false,
+                host_locked,
+                fills_host: fill_host_size.is_some(),
+            });
         crate::core::wayland::wlr::foreign_toplevel_management::notify_toplevel_created(
             self, window_id,
         );
@@ -414,7 +413,10 @@ impl XdgShellHandler for CompositorState {
         }
         self.surface_to_window.insert(surface_id, window_id);
 
-        if let Some(surface_res) = self.get_surface(surface_id).and_then(|s| s.read().ok().and_then(|s| s.resource.clone())) {
+        if let Some(surface_res) = self
+            .get_surface(surface_id)
+            .and_then(|s| s.read().ok().and_then(|s| s.resource.clone()))
+        {
             for output in self.output_resources.values() {
                 if surface_res.client() == output.client() {
                     surface_res.enter(output);
@@ -422,16 +424,17 @@ impl XdgShellHandler for CompositorState {
             }
         }
 
-        self.pending_compositor_events.push(CompositorEvent::PopupCreated {
-            client_id: client_id.clone(),
-            window_id,
-            surface_id,
-            parent_id: parent_window_id.unwrap_or(0),
-            x: px,
-            y: py,
-            width: popup_w.max(1) as u32,
-            height: popup_h.max(1) as u32,
-        });
+        self.pending_compositor_events
+            .push(CompositorEvent::PopupCreated {
+                client_id: client_id.clone(),
+                window_id,
+                surface_id,
+                parent_id: parent_window_id.unwrap_or(0),
+                x: px,
+                y: py,
+                width: popup_w.max(1) as u32,
+                height: popup_h.max(1) as u32,
+            });
 
         if let Ok(serial) = surface.send_configure() {
             if let Some(surface_data) = self
@@ -464,7 +467,12 @@ impl XdgShellHandler for CompositorState {
         }
     }
 
-    fn reposition_request(&mut self, surface: PopupSurface, positioner: PositionerState, token: u32) {
+    fn reposition_request(
+        &mut self,
+        surface: PopupSurface,
+        positioner: PositionerState,
+        token: u32,
+    ) {
         let Some(client_id) = surface.wl_surface().client().map(|c| c.id()) else {
             return;
         };
@@ -482,13 +490,14 @@ impl XdgShellHandler for CompositorState {
                 positioner.anchor_rect.size.h,
             );
             data.repositioned_token = Some(token);
-            self.pending_compositor_events.push(CompositorEvent::PopupRepositioned {
-                window_id: data.window_id,
-                x: px,
-                y: py,
-                width: data.geometry.2 as u32,
-                height: data.geometry.3 as u32,
-            });
+            self.pending_compositor_events
+                .push(CompositorEvent::PopupRepositioned {
+                    window_id: data.window_id,
+                    x: px,
+                    y: py,
+                    width: data.geometry.2 as u32,
+                    height: data.geometry.3 as u32,
+                });
         }
 
         surface.with_pending_state(|state| {
@@ -544,8 +553,7 @@ impl XdgShellHandler for CompositorState {
         })
         .unwrap_or_default();
 
-        let weston_family =
-            crate::core::wayland::xdg::decoration::is_weston_family_app_id(&app_id);
+        let weston_family = crate::core::wayland::xdg::decoration::is_weston_family_app_id(&app_id);
 
         let Some((client_id, toplevel_id)) = self.xdg_toplevel_key_for_surface(&surface) else {
             return;
@@ -562,7 +570,11 @@ impl XdgShellHandler for CompositorState {
         // raced before the preference was applied to Rust.
         let should_reassert_decoration = weston_family || force_server;
 
-        let window_id = if let Some(tl) = self.xdg.toplevels.get_mut(&(client_id.clone(), toplevel_id)) {
+        let window_id = if let Some(tl) = self
+            .xdg
+            .toplevels
+            .get_mut(&(client_id.clone(), toplevel_id))
+        {
             tl.app_id = app_id.clone();
             tl.window_id
         } else {
@@ -574,10 +586,10 @@ impl XdgShellHandler for CompositorState {
             w.app_id = app_id.clone();
         }
         if should_reassert_decoration {
-            let xdg_mode =
-                crate::core::wayland::xdg::decoration::preferred_xdg_decoration_mode(self, window_id);
-            let mode =
-                crate::core::wayland::xdg::decoration::decoration_mode_from_xdg(xdg_mode);
+            let xdg_mode = crate::core::wayland::xdg::decoration::preferred_xdg_decoration_mode(
+                self, window_id,
+            );
+            let mode = crate::core::wayland::xdg::decoration::decoration_mode_from_xdg(xdg_mode);
             let mut changed = false;
             if let Some(window) = self.get_window(window_id) {
                 let mut w = window.write().unwrap();
@@ -587,10 +599,8 @@ impl XdgShellHandler for CompositorState {
                 }
             }
             if changed {
-                self.pending_compositor_events.push(CompositorEvent::DecorationModeChanged {
-                    window_id,
-                    mode,
-                });
+                self.pending_compositor_events
+                    .push(CompositorEvent::DecorationModeChanged { window_id, mode });
             }
         }
         self.apply_host_lock_for_app_id(window_id, &app_id);
@@ -605,7 +615,10 @@ impl XdgShellHandler for CompositorState {
             .toplevels
             .get(&(client_id.clone(), toplevel_id))
             .map(|tl| tl.window_id);
-        if window_id.map(|wid| self.is_host_locked_window(wid)).unwrap_or(false) {
+        if window_id
+            .map(|wid| self.is_host_locked_window(wid))
+            .unwrap_or(false)
+        {
             return;
         }
         if let Some(window_id) = self
@@ -682,13 +695,19 @@ impl XdgShellHandler for CompositorState {
             tl.and_then(|tl| self.get_window(tl.window_id))
                 .map(|window| {
                     let window = window.read().unwrap();
-                    window
-                        .outputs
-                        .first()
-                        .copied()
-                        .unwrap_or_else(|| self.outputs.get(self.primary_output).map(|o| o.id).unwrap_or(0))
+                    window.outputs.first().copied().unwrap_or_else(|| {
+                        self.outputs
+                            .get(self.primary_output)
+                            .map(|o| o.id)
+                            .unwrap_or(0)
+                    })
                 })
-                .unwrap_or_else(|| self.outputs.get(self.primary_output).map(|o| o.id).unwrap_or(0))
+                .unwrap_or_else(|| {
+                    self.outputs
+                        .get(self.primary_output)
+                        .map(|o| o.id)
+                        .unwrap_or(0)
+                })
         };
         let (width, height) = self
             .get_usable_region(output_id)
@@ -703,9 +722,18 @@ impl XdgShellHandler for CompositorState {
         if let Some(wid) = window_id {
             if let Some(geo) = self.get_window(wid).map(|window| {
                 let window = window.read().unwrap();
-                (window.x, window.y, window.width as u32, window.height as u32)
+                (
+                    window.x,
+                    window.y,
+                    window.width as u32,
+                    window.height as u32,
+                )
             }) {
-                if let Some(tl) = self.xdg.toplevels.get_mut(&(client_id.clone(), toplevel_id)) {
+                if let Some(tl) = self
+                    .xdg
+                    .toplevels
+                    .get_mut(&(client_id.clone(), toplevel_id))
+                {
                     if tl.saved_geometry.is_none() {
                         tl.saved_geometry = Some(geo);
                     }
@@ -721,7 +749,11 @@ impl XdgShellHandler for CompositorState {
             .get(&(client_id.clone(), toplevel_id))
             .map(|tl| tl.clamp_size(width, height))
             .unwrap_or((width, height));
-        if let Some(tl) = self.xdg.toplevels.get_mut(&(client_id.clone(), toplevel_id)) {
+        if let Some(tl) = self
+            .xdg
+            .toplevels
+            .get_mut(&(client_id.clone(), toplevel_id))
+        {
             tl.pending_maximized = true;
             tl.pending_fullscreen = false;
         }
@@ -808,13 +840,19 @@ impl XdgShellHandler for CompositorState {
                 .and_then(|tl| self.get_window(tl.window_id))
                 .map(|window| {
                     let window = window.read().unwrap();
-                    window
-                        .outputs
-                        .first()
-                        .copied()
-                        .unwrap_or_else(|| self.outputs.get(self.primary_output).map(|o| o.id).unwrap_or(0))
+                    window.outputs.first().copied().unwrap_or_else(|| {
+                        self.outputs
+                            .get(self.primary_output)
+                            .map(|o| o.id)
+                            .unwrap_or(0)
+                    })
                 })
-                .unwrap_or_else(|| self.outputs.get(self.primary_output).map(|o| o.id).unwrap_or(0))
+                .unwrap_or_else(|| {
+                    self.outputs
+                        .get(self.primary_output)
+                        .map(|o| o.id)
+                        .unwrap_or(0)
+                })
         };
         let (width, height) = self
             .get_output_geometry(output_id)
@@ -829,9 +867,18 @@ impl XdgShellHandler for CompositorState {
         if let Some(wid) = window_id {
             if let Some(geo) = self.get_window(wid).map(|window| {
                 let window = window.read().unwrap();
-                (window.x, window.y, window.width as u32, window.height as u32)
+                (
+                    window.x,
+                    window.y,
+                    window.width as u32,
+                    window.height as u32,
+                )
             }) {
-                if let Some(tl) = self.xdg.toplevels.get_mut(&(client_id.clone(), toplevel_id)) {
+                if let Some(tl) = self
+                    .xdg
+                    .toplevels
+                    .get_mut(&(client_id.clone(), toplevel_id))
+                {
                     if tl.saved_geometry.is_none() {
                         tl.saved_geometry = Some(geo);
                     }
@@ -843,7 +890,11 @@ impl XdgShellHandler for CompositorState {
                 window.maximized = false;
             }
         }
-        if let Some(tl) = self.xdg.toplevels.get_mut(&(client_id.clone(), toplevel_id)) {
+        if let Some(tl) = self
+            .xdg
+            .toplevels
+            .get_mut(&(client_id.clone(), toplevel_id))
+        {
             tl.pending_fullscreen = true;
             tl.pending_maximized = false;
         }
@@ -918,9 +969,7 @@ impl XdgShellHandler for CompositorState {
         };
         if let Some(data) = self.xdg.toplevels.remove(&(client_id.clone(), toplevel_id)) {
             self.remove_window(data.window_id);
-            self.xdg
-                .surfaces
-                .remove(&(client_id, data.xdg_surface_id));
+            self.xdg.surfaces.remove(&(client_id, data.xdg_surface_id));
         }
     }
 

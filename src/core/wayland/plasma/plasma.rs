@@ -2,16 +2,23 @@
 //!
 //! This module implements various protocols from the `wayland-protocols-plasma` crate.
 
-use wayland_server::{
-    Dispatch, DisplayHandle, GlobalDispatch, Resource,
-};
+use wayland_server::{Dispatch, DisplayHandle, GlobalDispatch, Resource};
 
 use crate::core::wayland::protocol::server::plasma::{
-    blur::server::{org_kde_kwin_blur_manager::{self, OrgKdeKwinBlurManager}, org_kde_kwin_blur::{self, OrgKdeKwinBlur}},
-    contrast::server::{org_kde_kwin_contrast_manager::{self, OrgKdeKwinContrastManager}, org_kde_kwin_contrast::{self, OrgKdeKwinContrast}},
-    shadow::server::{org_kde_kwin_shadow_manager::{self, OrgKdeKwinShadowManager}, org_kde_kwin_shadow::{self, OrgKdeKwinShadow}},
+    blur::server::{
+        org_kde_kwin_blur::{self, OrgKdeKwinBlur},
+        org_kde_kwin_blur_manager::{self, OrgKdeKwinBlurManager},
+    },
+    contrast::server::{
+        org_kde_kwin_contrast::{self, OrgKdeKwinContrast},
+        org_kde_kwin_contrast_manager::{self, OrgKdeKwinContrastManager},
+    },
     dpms::server::org_kde_kwin_dpms_manager::{self, OrgKdeKwinDpmsManager},
     idle::server::org_kde_kwin_idle_timeout::{self, OrgKdeKwinIdleTimeout},
+    shadow::server::{
+        org_kde_kwin_shadow::{self, OrgKdeKwinShadow},
+        org_kde_kwin_shadow_manager::{self, OrgKdeKwinShadowManager},
+    },
     slide::server::org_kde_kwin_slide_manager::{self, OrgKdeKwinSlideManager},
 };
 

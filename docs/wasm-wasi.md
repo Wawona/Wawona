@@ -55,12 +55,36 @@ Files.app / SCP / File Sharing     bundled Wasm package client (OCI preferred)
 | Path | Who |
 |---|---|
 | Drop `foo.wasm` under Wawona Documents | Developers / power users (rootshell-style) |
-| Machines → Native → **Wawona Runtime (.wasm)** | Per-machine profile: pick a filesystem `.wasm` and Start |
+| Machines type **wasm** | First-class Start. Same argv as native shell: `wasm hello-wasi-gui` |
+| Machines → Native → **Wawona Runtime (.wasm)** | Still valid. Native machines still run wasm from the shell and from `wawona-wasm` |
 | Package client install/search | Everyday users; registry packages as Runtime **data** |
 
-Per-machine field: `runtimeOverrides.wasmModulePath` (absolute or Documents
-path). Catalog id: `wawona-wasm`. Launch goes through the bundled Runtime
-(`wasm` CLI on macOS; in-process `wawona_wasm_run` on Apple mobile).
+## Machines type `wasm`
+
+Type `wasm` is first-class on every product target (macOS, iOS, iPadOS, tvOS,
+watchOS, visionOS, Android, Linux). Start is 1:1 with native-shell
+`wasm hello-wasi-gui` (alias `wasi-hello-gui` → `hello-wasi-gui`).
+
+The editor offers three ways to pick a module:
+
+1. **Local file** from the Wawona folder (`wasm-modules`, inbox, or a document picker)
+2. **Search** `https://repo.wawona.io/wasm/v1` only
+3. **Command**, same as zsh: `wasm hello-wasi-gui`, `wpm install <name>`
+
+`wpm install <name>` fetches `/wasm/v1`, writes the module into the Wawona
+folder, then runs `wasm <name>`. A missing package name uses the same catalog
+download. Store `wpm` never probes APT, `/jailbreak/`, or `/termux/`.
+
+Native is not replaced. A Native machine can still launch bundled
+`wawona-wasm`, and the on-device shell still runs `wasm` / `wpm`. Type `wasm`
+is the dedicated profile for that same Relay engine.
+
+Per-machine fields: `runtimeOverrides.wasmModulePath`, `wasmPackage`,
+`wasmCommand` (default `wasm hello-wasi-gui`), `wasmLaunchMode`
+(`file` / `repo` / `command`). Catalog id stays `wawona-wasm`. Launch goes
+through the bundled Runtime (`wasm` CLI on macOS and Linux; in-process
+`wawona_wasm_run` on Apple mobile and Android). Empty / alias resolves to
+bundled `hello-wasi-gui.wasm` (`wl_shm` + `xdg_wm_base`).
 
 Do not brand this as an “App Store” for iOS apps. It is a **runtime package
 registry**. Prefer OCI artifacts + a thin client over inventing a bespoke protocol.

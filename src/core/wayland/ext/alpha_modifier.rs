@@ -6,13 +6,11 @@
 //! The scene graph uses this value to modulate surface opacity.
 
 use std::collections::HashMap;
-use wayland_server::{
-    Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
-};
 use wayland_protocols::wp::alpha_modifier::v1::server::{
-    wp_alpha_modifier_v1::{self, WpAlphaModifierV1},
     wp_alpha_modifier_surface_v1::{self, WpAlphaModifierSurfaceV1},
+    wp_alpha_modifier_v1::{self, WpAlphaModifierV1},
 };
+use wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource};
 
 use crate::core::state::CompositorState;
 
@@ -70,7 +68,11 @@ impl Dispatch<WpAlphaModifierV1, ()> for CompositorState {
                 let surface_id = surface.id().protocol_id();
                 let _am = data_init.init(id, surface_id);
                 // Default: u32::MAX = 1.0 (no modification)
-                state.ext.alpha_modifier.surface_alpha.insert(surface_id, u32::MAX);
+                state
+                    .ext
+                    .alpha_modifier
+                    .surface_alpha
+                    .insert(surface_id, u32::MAX);
                 tracing::debug!("Created alpha modifier for surface {}", surface_id);
             }
             wp_alpha_modifier_v1::Request::Destroy => {
@@ -97,7 +99,11 @@ impl Dispatch<WpAlphaModifierSurfaceV1, u32> for CompositorState {
     ) {
         match request {
             wp_alpha_modifier_surface_v1::Request::SetMultiplier { factor } => {
-                state.ext.alpha_modifier.surface_alpha.insert(*surface_id, factor);
+                state
+                    .ext
+                    .alpha_modifier
+                    .surface_alpha
+                    .insert(*surface_id, factor);
                 let alpha = (factor as f64) / (u32::MAX as f64);
                 tracing::debug!("Surface {} alpha multiplier: {:.4}", surface_id, alpha);
             }

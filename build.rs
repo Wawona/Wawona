@@ -9,6 +9,7 @@ fn main() {
 
     // Rerun if wlroots protocols change
     println!("cargo:rerun-if-changed=protocols/wlroots/");
+    println!("cargo:rerun-if-env-changed=WAWONA_BUILD_NUMBER");
 
     // Android cross-link fallback: force xkbcommon link args when pkg-config
     // metadata does not propagate to the final crate link step.

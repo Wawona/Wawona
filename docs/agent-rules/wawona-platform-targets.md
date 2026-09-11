@@ -69,19 +69,24 @@ forbidden while iPhone is planned for those features.
   configured per-machine. ⏳ on **macOS, iOS, iPadOS, Android, Linux**. ❌ on
   **tvOS, watchOS, visionOS**. Design **Mode A and Mode B** together
   (`wawona-mode-a-b`, `docs/mode-a-b.md`); never ship Mode B to App Store/Play.
-  Engines (planned):
-  - **iOS / iPadOS Mode A (store):** UTM-SE-class **jitless** interpreter
-    (`wwn-vms` TCTI); containers = OCI pull + container-in-VM on that engine.
-  - **iOS / iPadOS Mode B (Sileo Mode B IPA from `repo.wawona.io`):** JIT-enabled
-    UTM/QEMU for VMs **and** containers; unsandboxed shell + host APT. Auto-
-    package Mode B IPA on the repo. **absent** from store IPA.
-  - **Sideload / TrollStore:** website may document JIT; App Store copy must not.
-  - **macOS:** Apple Containerization (`Containerization.framework`) + VMs via
-    `Virtualization.framework`, bundled into Wawona. The Apple `container` CLI
-    and Containerization.framework are **macOS-only** (`appleContainerizationGate`);
-    never evaluate that engine on iOS/Android/Linux.
-  - **Android / Linux:** containers and VMs through Wawona machine profiles
-    (engines TBD in `wwn-vms` / `wwn-containers`); Play = Mode A, root = Mode B.
+  Engines (planned): NixOS prebuilts only. Guest GUI is Wayland into Wawona
+  (iland), not UTM. See `wawona-linux-vms-relay-runtime`.
+  - **iOS / iPadOS Mode A (store):** Wawona App Store-compliant runtime only
+    (Relay / jitless). Containers = OCI-in-VM on that engine.
+  - **iOS / iPadOS Mode B (TrollStore `.tipa`):** Mode A runtime **plus**
+    Wawona Mode B runtime (JIT) for VMs **and** containers;
+    IOMobileFramebuffer Desktop/LockScreen; **no** Swinging
+    Bridge / host APT. **absent** from store IPA.
+  - **iOS / iPadOS Mode B (Sileo from `repo.wawona.io`):** same JIT + Desktop
+    engines; plus unsandboxed shell, host APT, ElleKit tweaks, Swinging Bridge.
+    Auto-package Mode B IPA / `.deb` on the repo. **absent** from store IPA.
+  - Website may document TrollStore and Sileo; App Store copy must not.
+  - **macOS:** Linux VMs use the Wawona runtime (Mode A, plus Mode B runtime
+    on desktop-host). Apple Containerization (`Containerization.framework`)
+    stays **macOS-only** (`appleContainerizationGate`); never evaluate that
+    engine on iOS/Android/Linux. Do not use UTM.
+  - **Android / Linux:** same NixOS prebuilts and Wawona runtimes via Machines
+    (`wwn-relay`); Play = Mode A, root = Mode B.
 
 ## Hard rules
 
@@ -194,3 +199,5 @@ forbidden while iPhone is planned for those features.
   MoltenVK when `WWN_TVOS_GPU=1`.
 - When adding a Machines feature: classify it (native / remote / VM /
   container) and refuse it on targets that forbid that class.
+- iOS / iPadOS Mach-O min OS is 11.0 against the latest iPhoneOS SDK only.
+  Never downgrade the SDK. One ANGLE, one MoltenVK. See `wawona-ios-min-os`.

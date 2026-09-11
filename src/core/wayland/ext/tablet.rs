@@ -3,20 +3,17 @@
 //! This protocol provides support for graphics tablets with pressure-sensitive
 //! styluses and other advanced input features.
 
-
-use wayland_server::{
-    Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
-};
 use wayland_protocols::wp::tablet::zv2::server::{
     zwp_tablet_manager_v2::{self, ZwpTabletManagerV2},
-    zwp_tablet_seat_v2::{self, ZwpTabletSeatV2},
-    zwp_tablet_v2::{self, ZwpTabletV2},
-    zwp_tablet_tool_v2::{self, ZwpTabletToolV2},
-    zwp_tablet_pad_v2::{self, ZwpTabletPadV2},
+    zwp_tablet_pad_group_v2::{self, ZwpTabletPadGroupV2},
     zwp_tablet_pad_ring_v2::{self, ZwpTabletPadRingV2},
     zwp_tablet_pad_strip_v2::{self, ZwpTabletPadStripV2},
-    zwp_tablet_pad_group_v2::{self, ZwpTabletPadGroupV2},
+    zwp_tablet_pad_v2::{self, ZwpTabletPadV2},
+    zwp_tablet_seat_v2::{self, ZwpTabletSeatV2},
+    zwp_tablet_tool_v2::{self, ZwpTabletToolV2},
+    zwp_tablet_v2::{self, ZwpTabletV2},
 };
+use wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource};
 
 use crate::core::state::CompositorState;
 
@@ -157,9 +154,18 @@ impl Dispatch<ZwpTabletToolV2, ()> for CompositorState {
         _data_init: &mut DataInit<'_, Self>,
     ) {
         match request {
-            zwp_tablet_tool_v2::Request::SetCursor { serial, surface, hotspot_x, hotspot_y } => {
-                tracing::debug!("Tablet tool set cursor: serial={}, hotspot=({}, {})", 
-                    serial, hotspot_x, hotspot_y);
+            zwp_tablet_tool_v2::Request::SetCursor {
+                serial,
+                surface,
+                hotspot_x,
+                hotspot_y,
+            } => {
+                tracing::debug!(
+                    "Tablet tool set cursor: serial={}, hotspot=({}, {})",
+                    serial,
+                    hotspot_x,
+                    hotspot_y
+                );
                 let _ = surface;
             }
             zwp_tablet_tool_v2::Request::Destroy => {
@@ -185,9 +191,17 @@ impl Dispatch<ZwpTabletPadV2, ()> for CompositorState {
         _data_init: &mut DataInit<'_, Self>,
     ) {
         match request {
-            zwp_tablet_pad_v2::Request::SetFeedback { button, description, serial } => {
-                tracing::debug!("Tablet pad feedback: button={}, desc={}, serial={}", 
-                    button, description, serial);
+            zwp_tablet_pad_v2::Request::SetFeedback {
+                button,
+                description,
+                serial,
+            } => {
+                tracing::debug!(
+                    "Tablet pad feedback: button={}, desc={}, serial={}",
+                    button,
+                    description,
+                    serial
+                );
             }
             zwp_tablet_pad_v2::Request::Destroy => {
                 tracing::debug!("zwp_tablet_pad_v2 destroyed");
@@ -212,8 +226,15 @@ impl Dispatch<ZwpTabletPadRingV2, ()> for CompositorState {
         _data_init: &mut DataInit<'_, Self>,
     ) {
         match request {
-            zwp_tablet_pad_ring_v2::Request::SetFeedback { description, serial } => {
-                tracing::debug!("Tablet pad ring feedback: desc={}, serial={}", description, serial);
+            zwp_tablet_pad_ring_v2::Request::SetFeedback {
+                description,
+                serial,
+            } => {
+                tracing::debug!(
+                    "Tablet pad ring feedback: desc={}, serial={}",
+                    description,
+                    serial
+                );
             }
             zwp_tablet_pad_ring_v2::Request::Destroy => {
                 tracing::debug!("zwp_tablet_pad_ring_v2 destroyed");
@@ -238,8 +259,15 @@ impl Dispatch<ZwpTabletPadStripV2, ()> for CompositorState {
         _data_init: &mut DataInit<'_, Self>,
     ) {
         match request {
-            zwp_tablet_pad_strip_v2::Request::SetFeedback { description, serial } => {
-                tracing::debug!("Tablet pad strip feedback: desc={}, serial={}", description, serial);
+            zwp_tablet_pad_strip_v2::Request::SetFeedback {
+                description,
+                serial,
+            } => {
+                tracing::debug!(
+                    "Tablet pad strip feedback: desc={}, serial={}",
+                    description,
+                    serial
+                );
             }
             zwp_tablet_pad_strip_v2::Request::Destroy => {
                 tracing::debug!("zwp_tablet_pad_strip_v2 destroyed");

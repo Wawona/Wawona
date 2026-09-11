@@ -56,6 +56,8 @@ var kBundledClients: [BundledClient] {
   }
 }
 
+/// Native Wayland / KMS clients only. Never add modeb-tty, igetty, or
+/// igettyd. wwn-igetty is the Doorman console, not a Machines client.
 let kAllBundledClients: [BundledClient] = [
   BundledClient(
     id: "weston-terminal",
@@ -237,6 +239,9 @@ let kNativeClientCustomId = "custom"
 let kNativeClientWasmId = "wawona-wasm"
 /// `runtimeOverrides` key for the selected module path (absolute or Documents-relative).
 let kRuntimeWasmModulePathKey = "wasmModulePath"
+let kRuntimeWasmLaunchModeKey = "wasmLaunchMode"
+let kRuntimeWasmPackageKey = "wasmPackage"
+let kRuntimeWasmCommandKey = "wasmCommand"
 
 /// Posted by `WWNWaypipeRunner` when a bundled native `NSTask` exits (quit, crash, or Stop).
 private let wwnNativeClientProcessDidTerminateNotification = Notification.Name(
@@ -612,7 +617,8 @@ final class WWNMachinesViewModel: ObservableObject {
     // Native Wayland clients may run concurrently. VM / waypipe / container
     // backends still share a single in-process engine on mobile. Stop those
     // before switching. Never tear down an unrelated native client.
-    if profile.type != kWWNMachineTypeNative {
+    if profile.type != kWWNMachineTypeNative &&
+       profile.type != kWWNMachineTypeWasm {
       for other in profiles where other.machineId != profile.machineId &&
         status(for: other.machineId) != .disconnected {
         disconnect(other)
@@ -812,7 +818,7 @@ final class WWNMachinesViewModel: ObservableObject {
       guard st == .connected || st == .connecting else { continue }
 
       let running: Bool = {
-        if profile.type == kWWNMachineTypeNative {
+        if profile.type == kWWNMachineTypeNative || profile.type == kWWNMachineTypeWasm {
           // Per-machine binding: two weston-terminal profiles must not share
           // a single global "running" bit or one will look taken over.
           return runner.isBundledClientRunning(forMachineId: profile.machineId)
@@ -841,6 +847,8 @@ final class WWNMachinesViewModel: ObservableObject {
     switch profile.type {
     case kWWNMachineTypeNative:
       return "Native"
+    case kWWNMachineTypeWasm:
+      return "Wasm"
     case kWWNMachineTypeSSHWaypipe:
       return "SSH + Waypipe"
     case kWWNMachineTypeSSHTerminal:
@@ -856,7 +864,7 @@ final class WWNMachinesViewModel: ObservableObject {
 
   func machineScopeLabel(for profile: WWNMachineProfile) -> String {
     switch profile.type {
-    case kWWNMachineTypeNative, kWWNMachineTypeVirtualMachine, kWWNMachineTypeContainer:
+    case kWWNMachineTypeNative, kWWNMachineTypeWasm, kWWNMachineTypeVirtualMachine, kWWNMachineTypeContainer:
       return "Local"
     default:
       return "Remote"
@@ -870,6 +878,8 @@ final class WWNMachinesViewModel: ObservableObject {
         return name
       }
       return "No client configured"
+    case kWWNMachineTypeWasm:
+      return wasmSummary(for: profile)
     case kWWNMachineTypeVirtualMachine:
       // Backend engine is fixed per build target, not user-selected (Residual E).
       return "VM profile (Relay VZ)"
@@ -884,7 +894,19 @@ final class WWNMachinesViewModel: ObservableObject {
     }
   }
 
+  func wasmSummary(for profile: WWNMachineProfile) -> String {
+    let runtime: [String: Any] = profile.runtimeOverrides
+    let cmd = (runtime[kRuntimeWasmCommandKey] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    if !cmd.isEmpty { return cmd }
+    let pkg = (runtime[kRuntimeWasmPackageKey] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    if !pkg.isEmpty { return "wasm \(pkg)" }
+    let path = (runtime[kRuntimeWasmModulePathKey] as? String) ?? ""
+    if !path.isEmpty { return (path as NSString).lastPathComponent }
+    return "wasm hello-wasi-gui"
+  }
+
   func selectedClientId(for profile: WWNMachineProfile) -> String? {
+    if profile.type == kWWNMachineTypeWasm { return kNativeClientWasmId }
     guard profile.type == kWWNMachineTypeNative else { return nil }
     let runtimeOverrides: [String: Any] = profile.runtimeOverrides
     if let clientId = runtimeOverrides["bundledAppID"] as? String, !clientId.isEmpty {
@@ -925,6 +947,8 @@ final class WWNMachinesViewModel: ObservableObject {
         return "Runs: \(clientName)"
       }
       return "No client configured. Edit to select one"
+    case kWWNMachineTypeWasm:
+      return "Runs: \(wasmSummary(for: profile))"
     case kWWNMachineTypeSSHWaypipe:
       let command = profile.remoteCommand.isEmpty ? "weston-simple-shm" : profile.remoteCommand
       return "Waypipe command: \(command)"
@@ -951,6 +975,8 @@ final class WWNMachinesViewModel: ObservableObject {
         return clientId
       }
       return ""
+    case kWWNMachineTypeWasm:
+      return wasmSummary(for: profile)
     case kWWNMachineTypeSSHWaypipe, kWWNMachineTypeSSHTerminal:
       if !profile.remoteCommand.isEmpty {
         return profile.remoteCommand
@@ -979,7 +1005,7 @@ final class WWNMachinesViewModel: ObservableObject {
   }
 
   func launchSupported(for profile: WWNMachineProfile) -> Bool {
-    if profile.type == kWWNMachineTypeNative {
+    if profile.type == kWWNMachineTypeNative || profile.type == kWWNMachineTypeWasm {
       return selectedClientId(for: profile) != nil
     }
     if profile.type == kWWNMachineTypeSSHWaypipe ||

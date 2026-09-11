@@ -49,10 +49,15 @@ impl Dispatch<zwlr_screencopy_manager_v1::ZwlrScreencopyManagerV1, ()> for Compo
         data_init: &mut wayland_server::DataInit<'_, Self>,
     ) {
         match request {
-            zwlr_screencopy_manager_v1::Request::CaptureOutput { frame, overlay_cursor: _, output: _ } => {
+            zwlr_screencopy_manager_v1::Request::CaptureOutput {
+                frame,
+                overlay_cursor: _,
+                output: _,
+            } => {
                 let _output_id = 0; // output.data::<u32>().copied().unwrap_or(0);
-                let frame: zwlr_screencopy_frame_v1::ZwlrScreencopyFrameV1 = data_init.init(frame, ());
-                
+                let frame: zwlr_screencopy_frame_v1::ZwlrScreencopyFrameV1 =
+                    data_init.init(frame, ());
+
                 // Send initial buffer information (default to primary output logic)
                 if let Some(output_state) = state.outputs.first() {
                     // Advertise ARGB8888 as the preferred SHM format
@@ -62,7 +67,7 @@ impl Dispatch<zwlr_screencopy_manager_v1::ZwlrScreencopyManagerV1, ()> for Compo
                         output_state.height,
                         output_state.width * 4,
                     );
-                    
+
                     if frame.version() >= 3 {
                         frame.buffer_done();
                     }
@@ -70,10 +75,19 @@ impl Dispatch<zwlr_screencopy_manager_v1::ZwlrScreencopyManagerV1, ()> for Compo
                     frame.failed();
                 }
             }
-            zwlr_screencopy_manager_v1::Request::CaptureOutputRegion { frame, overlay_cursor: _, output: _, x: _, y: _, width, height } => {
+            zwlr_screencopy_manager_v1::Request::CaptureOutputRegion {
+                frame,
+                overlay_cursor: _,
+                output: _,
+                x: _,
+                y: _,
+                width,
+                height,
+            } => {
                 let _output_id = 0; // output.data::<u32>().copied().unwrap_or(0);
-                let frame: zwlr_screencopy_frame_v1::ZwlrScreencopyFrameV1 = data_init.init(frame, ());
-                
+                let frame: zwlr_screencopy_frame_v1::ZwlrScreencopyFrameV1 =
+                    data_init.init(frame, ());
+
                 // Advertise requested region dimensions
                 frame.buffer(
                     wl_shm::Format::Argb8888,
@@ -81,7 +95,7 @@ impl Dispatch<zwlr_screencopy_manager_v1::ZwlrScreencopyManagerV1, ()> for Compo
                     height as u32,
                     width as u32 * 4,
                 );
-                
+
                 if frame.version() >= 3 {
                     frame.buffer_done();
                 }
@@ -143,7 +157,10 @@ impl Dispatch<zwlr_screencopy_frame_v1::ZwlrScreencopyFrameV1, ()> for Composito
                         (shm.width.max(0) as u32, h, s, ptr, sz)
                     }
                     _ => {
-                        tracing::warn!("screencopy Copy: buffer must be wl_shm, got {:?}", buffer_guard.buffer_type);
+                        tracing::warn!(
+                            "screencopy Copy: buffer must be wl_shm, got {:?}",
+                            buffer_guard.buffer_type
+                        );
                         resource.failed();
                         return;
                     }
@@ -159,7 +176,12 @@ impl Dispatch<zwlr_screencopy_frame_v1::ZwlrScreencopyFrameV1, ()> for Composito
                     ptr,
                     size,
                 });
-                tracing::debug!("screencopy Copy: queued capture {} ({}x{})", capture_id, width, height);
+                tracing::debug!(
+                    "screencopy Copy: queued capture {} ({}x{})",
+                    capture_id,
+                    width,
+                    height
+                );
             }
             zwlr_screencopy_frame_v1::Request::Destroy => {}
             _ => {}
@@ -168,22 +190,24 @@ impl Dispatch<zwlr_screencopy_frame_v1::ZwlrScreencopyFrameV1, ()> for Composito
 }
 
 /// Pop the first pending screencopy for platform to fulfill (does not remove; use complete_screencopy to remove)
-pub fn get_pending_screencopy(state: &CompositorState) -> Option<(u64, *mut u8, u32, u32, u32, usize)> {
-    state.wlr.pending_screencopies.first().map(|p| {
-        (
-            p.capture_id,
-            p.ptr,
-            p.width,
-            p.height,
-            p.stride,
-            p.size,
-        )
-    })
+pub fn get_pending_screencopy(
+    state: &CompositorState,
+) -> Option<(u64, *mut u8, u32, u32, u32, usize)> {
+    state
+        .wlr
+        .pending_screencopies
+        .first()
+        .map(|p| (p.capture_id, p.ptr, p.width, p.height, p.stride, p.size))
 }
 
 /// Complete a screencopy capture (success): send frame.ready(), remove from pending
 pub fn complete_screencopy(state: &mut CompositorState, capture_id: u64) -> bool {
-    if let Some(pos) = state.wlr.pending_screencopies.iter().position(|p| p.capture_id == capture_id) {
+    if let Some(pos) = state
+        .wlr
+        .pending_screencopies
+        .iter()
+        .position(|p| p.capture_id == capture_id)
+    {
         let pending = state.wlr.pending_screencopies.remove(pos);
         if pending.frame.is_alive() {
             let now = std::time::SystemTime::now()
@@ -207,7 +231,12 @@ pub fn complete_screencopy(state: &mut CompositorState, capture_id: u64) -> bool
 
 /// Fail a screencopy capture: send frame.failed(), remove from pending
 pub fn fail_screencopy(state: &mut CompositorState, capture_id: u64) -> bool {
-    if let Some(pos) = state.wlr.pending_screencopies.iter().position(|p| p.capture_id == capture_id) {
+    if let Some(pos) = state
+        .wlr
+        .pending_screencopies
+        .iter()
+        .position(|p| p.capture_id == capture_id)
+    {
         let pending = state.wlr.pending_screencopies.remove(pos);
         if pending.frame.is_alive() {
             pending.frame.failed();
@@ -221,5 +250,9 @@ pub fn fail_screencopy(state: &mut CompositorState, capture_id: u64) -> bool {
 
 /// Register zwlr_screencopy_manager_v1 global
 pub fn register_screencopy(display: &DisplayHandle) -> wayland_server::backend::GlobalId {
-    display.create_global::<CompositorState, zwlr_screencopy_manager_v1::ZwlrScreencopyManagerV1, ()>(1, ())
+    display
+        .create_global::<CompositorState, zwlr_screencopy_manager_v1::ZwlrScreencopyManagerV1, ()>(
+            1,
+            (),
+        )
 }

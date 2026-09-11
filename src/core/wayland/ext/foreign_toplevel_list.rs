@@ -4,13 +4,11 @@
 //! On bind, enumerates all current toplevel windows. The handle resources
 //! receive title, app_id, and done events, plus closed when a window is removed.
 
-use wayland_server::{
-    Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
-};
 use crate::core::wayland::protocol::server::ext::foreign_toplevel_list::v1::server::{
-    ext_foreign_toplevel_list_v1::{self, ExtForeignToplevelListV1},
     ext_foreign_toplevel_handle_v1::{self, ExtForeignToplevelHandleV1},
+    ext_foreign_toplevel_list_v1::{self, ExtForeignToplevelListV1},
 };
+use wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource};
 
 use crate::core::state::CompositorState;
 
@@ -59,7 +57,10 @@ impl GlobalDispatch<ExtForeignToplevelListV1, ()> for CompositorState {
             }
         }
 
-        tracing::debug!("Bound ext_foreign_toplevel_list_v1. Enumerated {} toplevels", window_ids.len());
+        tracing::debug!(
+            "Bound ext_foreign_toplevel_list_v1. Enumerated {} toplevels",
+            window_ids.len()
+        );
     }
 }
 
@@ -104,6 +105,8 @@ impl Dispatch<ExtForeignToplevelHandleV1, ForeignToplevelHandleData> for Composi
     }
 }
 
-pub fn register_foreign_toplevel_list(display: &DisplayHandle) -> wayland_server::backend::GlobalId {
+pub fn register_foreign_toplevel_list(
+    display: &DisplayHandle,
+) -> wayland_server::backend::GlobalId {
     display.create_global::<CompositorState, ExtForeignToplevelListV1, ()>(1, ())
 }

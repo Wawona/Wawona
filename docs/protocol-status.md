@@ -58,7 +58,7 @@ This generation advertised **72** globals.
 | `zwlr_output_power_manager_v1` | 1 | wlr (wlroots) | `src/core/wayland/wlr/output_power_management.rs` | Stub | [wayland.app](https://wayland.app/protocols/wlr-output-power-management-unstable-v1#zwlr_output_power_manager_v1) |
 | `zwlr_screencopy_manager_v1` | 1 | wlr (wlroots) | `src/core/wayland/wlr/screencopy.rs` | Stub | [wayland.app](https://wayland.app/protocols/wlr-screencopy-unstable-v1#zwlr_screencopy_manager_v1) |
 | `zwlr_virtual_pointer_manager_v1` | 2 | wlr (wlroots) | `src/core/wayland/wlr/virtual_pointer.rs` | Stub | [wayland.app](https://wayland.app/protocols/wlr-virtual-pointer-unstable-v1#zwlr_virtual_pointer_manager_v1) |
-| `zwp_virtual_keyboard_manager_v1` | 1 | wlr (wlroots) | `src/core/wayland/wlr/virtual_keyboard.rs` | Stub | [wayland.app](https://wayland.app/protocols/virtual-keyboard-unstable-v1#zwp_virtual_keyboard_manager_v1) |
+| `zwp_virtual_keyboard_manager_v1` | 1 | wlr (wlroots) | `src/core/wayland/mod.rs (smithay virtual_keyboard)` | Partial | [wayland.app](https://wayland.app/protocols/virtual-keyboard-unstable-v1#zwp_virtual_keyboard_manager_v1) |
 
 ## Extensions
 
@@ -88,18 +88,18 @@ This generation advertised **72** globals.
 | `wp_tearing_control_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/tearing_control.rs` | Stub | [wayland.app](https://wayland.app/protocols/tearing-control-v1#wp_tearing_control_manager_v1) |
 | `wp_viewporter` | 1 | ext / wayland-protocols | `src/core/wayland/ext/viewporter.rs` | Stub | [wayland.app](https://wayland.app/protocols/viewporter#wp_viewporter) |
 | `zwp_idle_inhibit_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/idle_inhibit.rs` | Stub | [wayland.app](https://wayland.app/protocols/idle-inhibit-unstable-v1#zwp_idle_inhibit_manager_v1) |
-| `zwp_input_method_manager_v2` | 1 | ext / wayland-protocols | `src/core/wayland/ext/input_method.rs` | Stub | [wayland.app](https://wayland.app/protocols/input-method-unstable-v2#zwp_input_method_manager_v2) |
+| `zwp_input_method_manager_v2` | 1 | ext / wayland-protocols | `src/core/wayland/mod.rs (smithay input_method)` | Partial | [wayland.app](https://wayland.app/protocols/input-method-unstable-v2#zwp_input_method_manager_v2) |
 | `zwp_input_timestamps_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/input_timestamps.rs` | Stub | [wayland.app](https://wayland.app/protocols/input-timestamps-unstable-v1#zwp_input_timestamps_manager_v1) |
 | `zwp_keyboard_shortcuts_inhibit_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/keyboard_shortcuts_inhibit.rs` | Stub | [wayland.app](https://wayland.app/protocols/keyboard-shortcuts-inhibit-unstable-v1#zwp_keyboard_shortcuts_inhibit_manager_v1) |
 | `zwp_linux_dmabuf_v1` | 4 | ext / wayland-protocols | `src/core/wayland/ext/linux_dmabuf.rs` | Partial | [wayland.app](https://wayland.app/protocols/linux-dmabuf-v1#zwp_linux_dmabuf_v1) |
 | `zwp_linux_explicit_synchronization_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/linux_explicit_sync.rs` | Stub | [wayland.app](https://wayland.app/protocols/linux-explicit-synchronization-unstable-v1#zwp_linux_explicit_synchronization_v1) |
 | `zwp_pointer_constraints_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/pointer_constraints.rs` | Stub | [wayland.app](https://wayland.app/protocols/pointer-constraints-unstable-v1#zwp_pointer_constraints_v1) |
 | `zwp_pointer_gestures_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/pointer_gestures.rs` | Stub | [wayland.app](https://wayland.app/protocols/pointer-gestures-unstable-v1#zwp_pointer_gestures_v1) |
-| `zwp_primary_selection_device_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/primary_selection.rs` | Stub | [wayland.app](https://wayland.app/protocols/primary-selection-unstable-v1#zwp_primary_selection_device_manager_v1) |
+| `zwp_primary_selection_device_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/mod.rs (smithay primary_selection)` | Functional | [wayland.app](https://wayland.app/protocols/primary-selection-unstable-v1#zwp_primary_selection_device_manager_v1) |
 | `zwp_relative_pointer_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/relative_pointer.rs` | Stub | [wayland.app](https://wayland.app/protocols/relative-pointer-unstable-v1#zwp_relative_pointer_manager_v1) |
 | `zwp_tablet_manager_v2` | 1 | ext / wayland-protocols | `src/core/wayland/ext/tablet.rs` | Stub | [wayland.app](https://wayland.app/protocols/tablet-v2#zwp_tablet_manager_v2) |
 | `zwp_text_input_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/text_input.rs` | Stub | [wayland.app](https://wayland.app/protocols/text-input-unstable-v1#zwp_text_input_manager_v1) |
-| `zwp_text_input_manager_v3` | 1 | ext / wayland-protocols | `src/core/wayland/ext/text_input.rs` | Stub | [wayland.app](https://wayland.app/protocols/text-input-unstable-v3#zwp_text_input_manager_v3) |
+| `zwp_text_input_manager_v3` | 1 | ext / wayland-protocols | `src/core/wayland/mod.rs (smithay text_input)` | Partial | [wayland.app](https://wayland.app/protocols/text-input-unstable-v3#zwp_text_input_manager_v3) |
 | `zwp_xwayland_keyboard_grab_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/xwayland_keyboard_grab.rs` | Stub | [wayland.app](https://wayland.app/protocols/xwayland-keyboard-grab-unstable-v1#zwp_xwayland_keyboard_grab_manager_v1) |
 
 ## KDE / Plasma

@@ -110,6 +110,9 @@ jobs:
       - name: Verify iOS Mode A firewall
         run: bash ./.github/scripts/verify-ios-modeb-artifacts.sh --mode-a dist/ios-sim/Wawona.app
 
+      - name: Verify iOS Mode B replay contract
+        run: bash ./.github/scripts/verify-ios-modeb-ci.sh
+
       - uses: actions/upload-artifact@v7
         with:
           name: product-ios-sim
@@ -183,6 +186,15 @@ jobs:
           fi
           ./.github/scripts/verify-iland-graphics-bundle.sh \
             --platform "${{ matrix.target }}" "$OUT_DIR/Wawona.app"
+          if [ "${{ matrix.target }}" = "ipados" ]; then
+            bash ./.github/scripts/verify-ios-modeb-artifacts.sh --mode-a "$OUT_DIR/Wawona.app"
+          fi
+          if [ -x "$OUT_DIR/Wawona.app/Wawona" ]; then
+            if /usr/bin/strings "$OUT_DIR/Wawona.app/Wawona" | /usr/bin/grep -E 'IOMobileFramebuffer|WWN_MODE_B'; then
+              echo "Mode B private strings leaked into ${{ matrix.label }} store-shaped app" >&2
+              exit 1
+            fi
+          fi
           printf '{"attr":"%s","sha":"%s","artifact":"product-%s-sim"}\n' \
             "${{ matrix.attr }}" "${{ github.sha }}" "${{ matrix.target }}" \
             > "$OUT_DIR/product-manifest.json"

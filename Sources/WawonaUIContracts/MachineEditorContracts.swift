@@ -37,6 +37,9 @@ public enum MachineEditorFieldID: String, Sendable, CaseIterable {
     case containerRef
     case entryCommand
     case desktopSession
+    case wasmCommand
+    case wasmModulePath
+    case wasmPackage
 }
 
 public struct MachineEditorFieldMetadata: Sendable, Hashable {
@@ -86,6 +89,9 @@ public struct MachineEditorState: Sendable, Hashable {
     /// Local OCI layout directory to run from instead of a registry image
     /// (`--image-archive`). Set by the editor's "Import image archive…" flow.
     public var imageArchivePath: String
+    public var wasmCommand: String
+    public var wasmModulePath: String
+    public var wasmPackage: String
 
     public init(
         id: String? = nil,
@@ -106,7 +112,10 @@ public struct MachineEditorState: Sendable, Hashable {
         containerRef: String = "",
         entryCommand: String = "",
         desktopSession: Bool = false,
-        imageArchivePath: String = ""
+        imageArchivePath: String = "",
+        wasmCommand: String = "wasm hello-wasi-gui",
+        wasmModulePath: String = "",
+        wasmPackage: String = ""
     ) {
         self.id = id
         self.name = name
@@ -127,12 +136,16 @@ public struct MachineEditorState: Sendable, Hashable {
         self.entryCommand = entryCommand
         self.desktopSession = desktopSession
         self.imageArchivePath = imageArchivePath
+        self.wasmCommand = wasmCommand
+        self.wasmModulePath = wasmModulePath
+        self.wasmPackage = wasmPackage
     }
 
     public var isNative: Bool { typeRawValue == "native" }
     public var isSSH: Bool { typeRawValue == "ssh_waypipe" || typeRawValue == "ssh_terminal" }
     public var isVirtualMachine: Bool { typeRawValue == "virtual_machine" }
     public var isContainer: Bool { typeRawValue == "container" }
+    public var isWasm: Bool { typeRawValue == "wasm" }
 }
 
 public enum MachineEditorValidationIssue: String, Sendable {
@@ -142,6 +155,8 @@ public enum MachineEditorValidationIssue: String, Sendable {
     case invalidSSHPort
 }
 
+/// Frozen Swift fallback of rust `src/domain/validation.rs`.
+/// Do not add rules here. Apple UI calls `MachineProfileDomain` first.
 /// Declared as `struct` to keep cross-platform generated bindings stable.
 public struct MachineEditorValidation: Sendable {
     public static func sanitizeSSHHost(_ raw: String) -> String {
@@ -227,6 +242,12 @@ public struct MachineEditorValidation: Sendable {
                 MachineEditorFieldID.entryCommand,
                 MachineEditorFieldID.desktopSession,
             ])
+        } else if state.isWasm {
+            fields.append(contentsOf: [
+                MachineEditorFieldID.wasmCommand,
+                MachineEditorFieldID.wasmModulePath,
+                MachineEditorFieldID.wasmPackage,
+            ])
         }
         // Input profile (Touch Input Type) lives in Machine Settings, not Add/Edit.
         // Virtual-machine and container backends are selected automatically per
@@ -271,6 +292,12 @@ public struct MachineEditorValidation: Sendable {
             return MachineEditorFieldMetadata(id: .entryCommand, label: "Command", helperText: "Command to run in the container. Empty inherits the global default command.")
         case .desktopSession:
             return MachineEditorFieldMetadata(id: .desktopSession, label: "Desktop Session", helperText: "Attach the container's Wayland session to Wawona (windows appear via the waypipe vsock bridge).")
+        case .wasmCommand:
+            return MachineEditorFieldMetadata(id: .wasmCommand, label: "Command", helperText: "Same as zsh: wasm hello-wasi-gui or wpm install hello-wasi-gui.")
+        case .wasmModulePath:
+            return MachineEditorFieldMetadata(id: .wasmModulePath, label: "Local .wasm", helperText: "File in the Wawona folder. Empty uses bundled hello-wasi-gui.")
+        case .wasmPackage:
+            return MachineEditorFieldMetadata(id: .wasmPackage, label: "Package", helperText: "wpm / wasm catalog name (hello-wasi-gui).")
         }
     }
 

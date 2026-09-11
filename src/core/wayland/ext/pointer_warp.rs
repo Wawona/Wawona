@@ -4,12 +4,8 @@
 //! moves the pointer to the requested coordinates relative to the surface,
 //! then sends normal pointer motion events to all affected surfaces.
 
-use wayland_server::{
-    Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
-};
-use wayland_protocols::wp::pointer_warp::v1::server::{
-    wp_pointer_warp_v1::{self, WpPointerWarpV1},
-};
+use wayland_protocols::wp::pointer_warp::v1::server::wp_pointer_warp_v1::{self, WpPointerWarpV1};
+use wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource};
 
 use crate::core::state::CompositorState;
 
@@ -38,7 +34,13 @@ impl Dispatch<WpPointerWarpV1, ()> for CompositorState {
         _data_init: &mut DataInit<'_, Self>,
     ) {
         match request {
-            wp_pointer_warp_v1::Request::WarpPointer { surface, x, y, pointer: _, serial: _ } => {
+            wp_pointer_warp_v1::Request::WarpPointer {
+                surface,
+                x,
+                y,
+                pointer: _,
+                serial: _,
+            } => {
                 let surface_id = surface.id().protocol_id();
 
                 // Convert surface-local coordinates to absolute by finding the surface position
@@ -63,7 +65,11 @@ impl Dispatch<WpPointerWarpV1, ()> for CompositorState {
                 state.inject_pointer_motion_absolute(abs_x, abs_y, time);
                 tracing::debug!(
                     "Pointer warped to surface {} ({}, {}) → absolute ({:.0}, {:.0})",
-                    surface_id, x, y, abs_x, abs_y
+                    surface_id,
+                    x,
+                    y,
+                    abs_x,
+                    abs_y
                 );
             }
             wp_pointer_warp_v1::Request::Destroy => {}

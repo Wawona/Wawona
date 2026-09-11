@@ -1,4 +1,4 @@
-use crate::core::window::{Window, DecorationMode};
+use crate::core::window::{DecorationMode, Window};
 
 #[test]
 fn test_window_creation() {

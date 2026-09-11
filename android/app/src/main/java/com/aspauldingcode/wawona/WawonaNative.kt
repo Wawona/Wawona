@@ -25,10 +25,15 @@ object WawonaNative {
 
     external fun nativeInit(cacheDir: String)
     /**
-     * Set `XKB_DEFAULT_LAYOUT` / `XKB_DEFAULT_VARIANT` before seat keyboard
-     * init (follow-system; #60 / #141). Call before [nativeInit].
+     * Nested weston/niri RMLVO only. Wawona seat uses [nativeApplyHostKeyLevels].
      */
     external fun nativeSetXkbDefaults(layout: String, variant: String)
+
+    /** UTF-32 levels from [KeyCharacterMap] (none/Shift/Alt/Shift+Alt per id). */
+    external fun nativeApplyHostKeyLevels(ids: IntArray, levels: IntArray)
+
+    /** Smithay `set_keymap_from_string` after a host dump. */
+    external fun nativeReloadHostKeymap()
     external fun nativeIsCompositorReady(): Boolean
     external fun nativeSetSurface(surface: Surface)
     /**
@@ -120,12 +125,19 @@ object WawonaNative {
     external fun nativeGetFocusedWindowTitle(): String
     /** Push text copied on the native side (ClipboardManager) into the compositor so clients can paste it. */
     external fun nativeSetClipboardText(text: String)
+    external fun nativeSetTouchPointerEmulation(enabled: Boolean)
     /** Pop text a Wayland client just copied, or null if nothing changed since the last poll. */
     external fun nativePollClipboardText(): String?
     /** True when a Wayland client has committed zwp_text_input_v3.enable (IME routing). */
     external fun nativeTextInputIsEnabled(): Boolean
     /** Soft OSK should expand: committed TI or terminal-focus synthesis. */
     external fun nativeTextEntryWanted(): Boolean
+
+    /** Native OSK. Always false on macOS. Android passes hardware-keyboard. */
+    external fun nativeOskShouldShow(hardwareKeyboard: Boolean, force: Boolean): Boolean
+
+    /** Remaining output height after OSK occlusion. Unchanged on macOS/Linux. */
+    external fun nativeUsableOutputHeight(outputHeight: Int, keyboardOverlap: Int): Int
     /** Fills [hint, purpose] from committed zwp_text_input_v3.content_type. */
     external fun nativeGetTextInputContentType(outHintPurpose: IntArray)
     /** Returns capture_id if pending, else 0. Fills outWidthHeight with [width, height]. */
@@ -170,6 +182,10 @@ object WawonaNative {
     external fun nativeRunFoot(): Boolean
     external fun nativeStopFoot()
     external fun nativeIsFootRunning(): Boolean
+
+    external fun nativeRunWasm(modulePath: String): Boolean
+    external fun nativeStopWasm()
+    external fun nativeIsWasmRunning(): Boolean
 
     external fun nativeRunBundledClient(clientId: String): Boolean
     external fun nativeStopBundledClient()

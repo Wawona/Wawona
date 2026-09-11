@@ -512,6 +512,7 @@ dependencies = [
  "textwrap",
  "uu_basename",
  "uu_cat",
+ "uu_chmod",
  "uu_cp",
  "uu_cut",
  "uu_date",
@@ -2743,6 +2744,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "uu_chmod"
+version = "0.0.30"
+dependencies = [
+ "clap",
+ "libc",
+ "uucore",
+]
+
+[[package]]
 name = "uu_cp"
 version = "0.0.30"
 dependencies = [
@@ -3240,7 +3250,7 @@ dependencies = [
 
 [[package]]
 name = "wawona"
-version = "26.8.23"
+version = "26.9.9"
 dependencies = [
  "anyhow",
  "ash",

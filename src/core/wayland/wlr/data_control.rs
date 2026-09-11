@@ -1,15 +1,10 @@
-
 use std::os::unix::io::AsFd;
-use wayland_server::{
-    Dispatch, DisplayHandle, GlobalDispatch, Resource,
-};
+use wayland_server::{Dispatch, DisplayHandle, GlobalDispatch, Resource};
 
 use crate::core::state::CompositorState;
 use crate::core::wayland::protocol::wlroots::wlr_data_control_unstable_v1::{
-    zwlr_data_control_manager_v1,
-    zwlr_data_control_device_v1,
+    zwlr_data_control_device_v1, zwlr_data_control_manager_v1, zwlr_data_control_offer_v1,
     zwlr_data_control_source_v1,
-    zwlr_data_control_offer_v1,
 };
 
 pub struct DataControlManagerData;
@@ -51,7 +46,7 @@ impl ProtocolState for DataControlState {
                 true
             }
         });
-        
+
         if let Some(src) = &self.selection_source {
             if let Some(c) = src.client() {
                 if c.id() == client_id {
@@ -59,7 +54,7 @@ impl ProtocolState for DataControlState {
                 }
             }
         }
-        
+
         if let Some(src) = &self.primary_selection_source {
             if let Some(c) = src.client() {
                 if c.id() == client_id {
@@ -70,8 +65,9 @@ impl ProtocolState for DataControlState {
     }
 }
 
-
-impl GlobalDispatch<zwlr_data_control_manager_v1::ZwlrDataControlManagerV1, ()> for CompositorState {
+impl GlobalDispatch<zwlr_data_control_manager_v1::ZwlrDataControlManagerV1, ()>
+    for CompositorState
+{
     fn bind(
         _state: &mut Self,
         _handle: &DisplayHandle,
@@ -101,23 +97,25 @@ impl Dispatch<zwlr_data_control_manager_v1::ZwlrDataControlManagerV1, ()> for Co
                 if let Some(client) = source.client() {
                     data.client_id = Some(client.id());
                 }
-                state.wlr.data_control.sources.insert(source.id().protocol_id(), data);
+                state
+                    .wlr
+                    .data_control
+                    .sources
+                    .insert(source.id().protocol_id(), data);
             }
             zwlr_data_control_manager_v1::Request::GetDataDevice { id, seat: _ } => {
                 let device = data_init.init(id, ());
-                
+
                 // Send initial selection events if available
                 // Note: In a real implementation we would clone the current selection offer
                 // and send it. For now we acknowledge no selection if none exists.
                 if state.wlr.data_control.selection_source.is_none() {
                     device.selection(None);
-
                 }
-                
+
                 if device.version() >= 2 {
                     if state.wlr.data_control.primary_selection_source.is_none() {
-                         device.primary_selection(None);
-
+                        device.primary_selection(None);
                     }
                 }
             }
@@ -142,7 +140,9 @@ impl Dispatch<zwlr_data_control_device_v1::ZwlrDataControlDeviceV1, ()> for Comp
         match request {
             zwlr_data_control_device_v1::Request::SetSelection { source } => {
                 tracing::debug!("Global selection source updated by data_control client");
-                let selection_source = source.as_ref().map(|s| crate::core::state::SelectionSource::Wlr(s.clone()));
+                let selection_source = source
+                    .as_ref()
+                    .map(|s| crate::core::state::SelectionSource::Wlr(s.clone()));
                 state.set_clipboard_source(selection_source);
             }
             zwlr_data_control_device_v1::Request::SetPrimarySelection { source: _ } => {

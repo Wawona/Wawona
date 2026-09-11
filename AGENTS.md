@@ -61,9 +61,15 @@ For **CI / prebuilt distribution** (Wawona v2.5+ Fastlane beta lanes), read
 `wwn-mcp/knowledge/wawona/fastlane.md` and use `scripts/sync-github-secrets.sh`
 + `scripts/bootstrap-apple-signing.sh`. Query **Fastlane** (`project=fastlane`)
 and **GitHub Actions** (`project=github-actions`) via wwn-mcp for upstream syntax.
+Mutating GitHub (issues, milestones, PRs, runs) is local **`gh` via Shell**,
+not MCP. Skill `wawona-gh`. Rule `wawona-gh`.
 
 ## Non-negotiable facts
 
+- **Host keymap is a bridge, not a catalog.** Seat keymap comes from
+  `HostKeymapBridge` + Smithay. Soft text is TI v3. No Settings layout picker,
+  no `charToLinuxKeycode` tables. See `wawona-host-keymap-bridge` and
+  `docs/keyboard-layouts.md`.
 - **Wawona-owned code is Rust.** New daemons, helpers, and product logic are
   Rust. C/ObjC/JNI/UniFFI is glue for native UI and ABI only (dylib
   constructors, `WWNCore*` trampolines). Do not write a new Wawona program in C.
@@ -72,6 +78,12 @@ and **GitHub Actions** (`project=github-actions`) via wwn-mcp for upstream synta
 - **FFI**: production compositor bridge is hand-written C `WWNCore*` (`src/ffi/c_api.rs`)
   wrapped by ObjC (`WWNCompositorBridge.m`) / JNI (`android_jni.c`), polling
   model. Do NOT use `objc2`/`cocoa`/`jni`/`ndk` Rust crates or UniFFI callbacks.
+- **Product domain vs compositor ABI.** UniFFI owns machines, prefs, launch,
+  validation. SwiftUI stays views (`Sources/WawonaUI`, `Sources/WawonaWatch`).
+  Do not fork JFFI. Full Apple set is Wawona’s job. Generated UniFFI
+  Swift/Kotlin are Nix `$out/uniffi` only (`wawona-nix-generated`). See
+  `.cursor/rules/wawona-uniffi-domain.mdc` and
+  `docs/agent-rules/wawona-uniffi-domain.md`.
 - **Smithay** `0.7`, `wayland_frontend` only.
 - **iland (wwn-iland). Two modes** (do not conflate):
   - **Mode A (default, App Store-safe):** static `libiland_userland.a`, in-window
@@ -96,6 +108,10 @@ and **GitHub Actions** (`project=github-actions`) via wwn-mcp for upstream synta
   for isolated/incremental rebuilds. Not a monolithic `buildRustPackage`. Query
   `project=crate2nix` for `tools.nix`/`defaultCrateOverrides`/strategy questions.
 - **Apple = OS 26 / Liquid Glass**; **Material 3 Expressive = Android 16+ only**.
+- **iOS min OS vs SDK.** Mach-O min is iOS **11.0**. Compile only against the
+  **latest** iPhoneOS SDK (26 now; 27 when it ships). Never downgrade the SDK.
+  One ANGLE, one MoltenVK, Wawona patches. App Store / TrollStore / Sileo.
+  See `docs/agent-rules/wawona-ios-min-os.md`.
 - **Patched software lives in `wwn-*` repos** (Wawona org): the cross-compile
   framework + common libraries + `wawona-pty` are in `wwn-toolchain`; the patched
   apps are in `wwn-zsh`, `wwn-weston` (+ `weston-simple-shm`), `wwn-iland`,
@@ -126,6 +142,9 @@ and **GitHub Actions** (`project=github-actions`) via wwn-mcp for upstream synta
   Classic by WindowServer gone, never by leaked `WWN_MODEB_TTY`. Never
   `sudo niri`. See `wawona-compositor-backend` and
   `docs/agent-rules/wawona-compositor-backend.md`.
+- **wwn-igetty is not a machine.** Doorman PAM console + Linux framebuffer
+  TTY. Machine Configuration must never list `modeb-tty` / igetty. Desktop
+  Machine is weston, niri, or a KMS client on an assigned VT.
 - **Graphics stays runtime-only:** iland virtualizes DRM/KMS/GBM in userland.
   Never open real `/dev/dri` or `/dev/kgsl`, forward real DRM/KMS/KGSL ioctls,
   ship kernel code, or require kernel patches. Mode B `baremetal` remains
@@ -140,6 +159,10 @@ and **GitHub Actions** (`project=github-actions`) via wwn-mcp for upstream synta
   coreutils is macOS/Android-only. Filesystem = `wawona-rootfs` (sandbox +
   Application Support, no chroot); "iOS containers" = app sandbox, not
   Containerization.framework. Query `project=ios-shell`.
+- **Android Gradle JVM is JBR 21**: Android Studio and local `./gradlew` use
+  the embedded JetBrains Runtime (JDK table `21`), not nixpkgs OpenJDK.
+  Linux Nix uses `jetbrains.jdk-no-jcef-21`. Darwin Nix sandbox cannot
+  (nixpkgs JBR is Linux-only). See `wawona-android-jbr`.
 - **Store-rule asymmetry**: Apple non-macOS platforms = strict (App Store 2.5.2:
   no post-bundle executable code, no JIT, no fork/exec). Android (Play) is more
   permissive. Default to the Apple-strict answer when platform is ambiguous.
@@ -173,7 +196,9 @@ and **GitHub Actions** (`project=github-actions`) via wwn-mcp for upstream synta
   ships **only** Wawona’s App Store-compliant runtime (Relay). Mode B adds
   Wawona’s Mode B runtime. The only engine is **Wawona Relay**
   (`github.com/Wawona/Relay`, flake input `wwn-relay`). Guests are Wayland
-  into Wawona (iland), never UTM Spice / ANGLE / virgl. Never QEMU. tvOS /
+  into Wawona (iland), never UTM Spice / ANGLE / virgl. Never QEMU. Mode B
+  iOS may use native Hypervisor.framework inside the UTM-era window
+  (`wawona-relay-ios-hypervisor`); that is not HVF-via-qemu. tvOS /
   watchOS / visionOS: no VM/container kinds. See `wawona-relay`,
   `wawona-linux-vms-relay-runtime`, and `wawona-guest-wayland-iland`.
 
@@ -203,9 +228,10 @@ Drive app/UI with agent-device (`../.cursor/rules/wawona-agent-device.mdc`).
 Mode B tipa/APT on the jailbroken research VM:
 `nix run github:Wawona/wwn-vphone#vphone-jb-lab` then
 `agent-device packages …` (`help vphone-packages`). Rules:
-`wawona-vphone-control`, `wawona-trollstore-tipa-iteration`,
-`wawona-vphone-mode-b-packages`, `wawona-vphone-lldb` (mirrors under
-`docs/agent-rules/`).
+`wawona-vphone-control`, `wawona-vphone-lab-recover`,
+`wawona-trollstore-tipa-iteration`, `wawona-vphone-mode-b-packages`,
+`wawona-vphone-lldb` (mirrors under `docs/agent-rules/`). Stuck sock:
+`nohup` relaunch. Never foreground `vm launch` in an agent Shell.
 
 Before tapping **Wayland client** content (Weston panel, nested compositors,
 terminals, cubes), set **Multi-Touch**. IOS `TouchInputType=Multi-Touch`,
@@ -243,6 +269,10 @@ is on (`wawona-nested-compositor-cursor`). Full rule:
 - **Relay Wasm**. Mandatory on every product target including watchOS / tvOS /
   visionOS / Linux. Pulley on Apple mobile store artifacts. See
   `docs/agent-rules/wawona-relay-wasm.md`.
+- **iOS min OS**. Phone and iPad min OS is **11.0** against the **latest**
+  iPhoneOS SDK only (26 now; 27 when it ships). Never downgrade the SDK. One
+  ANGLE, one MoltenVK, Wawona patches. App Store / TrollStore / Sileo. See
+  `docs/agent-rules/wawona-ios-min-os.md` and rule `wawona-ios-min-os`.
 - **Binary filenames**. GitHub Release
   `Wawona-{calver}-{platform}-{arch}.{ext}`; store uploads add `-{build}` before
   the extension (TestFlight IPA / Play AAB). product-build may keep short names

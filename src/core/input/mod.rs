@@ -1,15 +1,21 @@
-pub mod xkb;
+pub mod host_keymap;
 pub mod keyboard;
+pub mod osk;
+pub mod work_area;
 pub mod pointer;
-pub mod touch;
 pub mod seat;
+pub mod touch;
+pub mod xkb;
 
 // Re-export key types for convenience
+pub use host_keymap::{generate_from_host, FallbackHostKeymap, HostKeyCode, HostKeymapBridge};
+pub use osk::{default_osk_host, osk_should_show, OskHost};
+pub use work_area::usable_output_height;
 pub use keyboard::KeyboardState;
 pub use pointer::PointerState;
-pub use touch::TouchState;
 pub use seat::Seat;
-pub use xkb::{XkbContext, XkbState, KeyResult};
+pub use touch::TouchState;
+pub use xkb::{KeyResult, XkbContext, XkbState};
 
 /// Button/Key state
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

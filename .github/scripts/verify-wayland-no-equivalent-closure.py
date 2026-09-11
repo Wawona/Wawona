@@ -84,7 +84,7 @@ def main() -> int:
     parser.add_argument(
         "--expected-count",
         type=int,
-        default=55,
+        default=51,
         help="expected number of no-equivalent interfaces",
     )
     args = parser.parse_args()

@@ -21,8 +21,14 @@ struct MachineEditorView: View {
     @State var entryCommand: String
     @State var desktopSession: Bool
     @State var imageArchivePath: String
+    @State var wasmCommand: String
+    @State var wasmModulePath: String
+    @State var wasmPackage: String
+    @State var wasmCatalogResults: [WasmCatalogPackage] = []
+    @State var wasmCatalogNote: String?
+    @State var wasmCatalogLoading = false
     @State var showingImageBrowser = false
-    @State var showingArchiveImporter = false
+    @State var fileImportKind: MachineEditorFileImport?
     @State var importingArchive = false
     @State var importNote: String?
 
@@ -35,7 +41,7 @@ struct MachineEditorView: View {
         self.existingProfileId = profile?.id
         self.editingBaseline = profile
         self.onSave = onSave
-        let state = WawonaUIContractAdapters.machineEditorState(from: profile)
+        let state = MachineEditorDomain.machineEditorState(from: profile)
         _name = State(initialValue: state.name)
         #if os(iOS)
         let parsed = MachineType(rawValue: state.typeRawValue) ?? .native
@@ -56,18 +62,33 @@ struct MachineEditorView: View {
         _entryCommand = State(initialValue: state.entryCommand)
         _desktopSession = State(initialValue: state.desktopSession)
         _imageArchivePath = State(initialValue: state.imageArchivePath)
+        _wasmCommand = State(initialValue: state.wasmCommand)
+        _wasmModulePath = State(initialValue: state.wasmModulePath)
+        _wasmPackage = State(initialValue: state.wasmPackage)
+    }
+
+    private var fileImporterPresented: Binding<Bool> {
+        Binding(
+            get: { fileImportKind != nil },
+            set: { presented in
+                if !presented {
+                    fileImportKind = nil
+                }
+            }
+        )
     }
 
     private var isNative: Bool { type == .native }
+    private var isWasm: Bool { type == .wasm }
     private var isSSH:    Bool { type.isSSH }
     private var contractState: MachineEditorState {
         persistableEditorState()
     }
 
     private func persistableEditorState() -> MachineEditorState {
-        let base = WawonaUIContractAdapters.machineEditorState(from: editingBaseline)
-        let sanitizedHost = MachineEditorValidation.sanitizeSSHHost(sshHost)
-        let normalizedPort = MachineEditorValidation.normalizeSSHPort(String(sshPort))
+        let base = MachineEditorDomain.machineEditorState(from: editingBaseline)
+        let sanitizedHost = MachineProfileDomain.sanitizeSSHHost(sshHost)
+        let normalizedPort = MachineProfileDomain.normalizeSSHPort(String(sshPort))
         return MachineEditorState(
             id: existingProfileId ?? base.id,
             name: name,
@@ -82,12 +103,15 @@ struct MachineEditorView: View {
             sshKeyPassphrase: sshKeyPassphrase,
             remoteCommand: remoteCommand,
             inputProfile: base.inputProfile,
-            bundledAppID: isNative ? selectedLauncherName : base.bundledAppID,
+            bundledAppID: isNative ? selectedLauncherName : (isWasm ? "wawona-wasm" : base.bundledAppID),
             waypipeEnabled: base.waypipeEnabled,
             containerRef: containerRef,
             entryCommand: entryCommand,
             desktopSession: desktopSession,
-            imageArchivePath: imageArchivePath
+            imageArchivePath: imageArchivePath,
+            wasmCommand: wasmCommand,
+            wasmModulePath: wasmModulePath,
+            wasmPackage: wasmPackage
         )
     }
 
@@ -98,12 +122,12 @@ struct MachineEditorView: View {
         return name.isEmpty ? "New Machine" : name
     }
     private var hasValidationIssues: Bool {
-        !MachineEditorValidation.validate(contractState).isEmpty
+        !MachineProfileDomain.validate(contractState).isEmpty
     }
     private var sshPortText: Binding<String> {
         Binding(
             get: { String(sshPort) },
-            set: { sshPort = MachineEditorValidation.normalizeSSHPort($0, fallback: sshPort) }
+            set: { sshPort = MachineProfileDomain.normalizeSSHPort($0, fallback: sshPort) }
         )
     }
 
@@ -124,6 +148,56 @@ struct MachineEditorView: View {
                 }
 
                 // MARK: Native. Local Wayland socket, no network
+                if isWasm {
+                    Section {
+                        TextField("Command", text: $wasmCommand, prompt: Text("wasm hello-wasi-gui"))
+                            .wawonaTextFieldNoAutocaps()
+                            .autocorrectionDisabled()
+                        TextField("Package", text: $wasmPackage, prompt: Text("hello-wasi-gui"))
+                            .wawonaTextFieldNoAutocaps()
+                            .autocorrectionDisabled()
+                        Button(wasmCatalogLoading ? "Searching…" : "Search catalog") {
+                            searchWasmCatalog()
+                        }
+                        .disabled(wasmCatalogLoading)
+                        ForEach(wasmCatalogResults) { pkg in
+                            Button {
+                                wasmPackage = pkg.name
+                                wasmCommand = "wasm \(pkg.name)"
+                                downloadWasmPackage(pkg)
+                            } label: {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(pkg.name)
+                                    if !pkg.summary.isEmpty {
+                                        Text(pkg.summary)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                        }
+                        TextField("Local .wasm", text: $wasmModulePath)
+                            .wawonaTextFieldNoAutocaps()
+                            .autocorrectionDisabled()
+                        #if !os(tvOS)
+                        Button("Choose file…") {
+                            fileImportKind = .wasm
+                        }
+                        #endif
+                        ForEach(WasmLaunch.listLocalModules(), id: \.path) { url in
+                            Button(url.lastPathComponent) {
+                                wasmModulePath = url.path
+                                wasmCommand = "wasm \(url.path)"
+                            }
+                        }
+                        if let wasmCatalogNote {
+                            Text(wasmCatalogNote).font(.caption)
+                        }
+                    } footer: {
+                        Text("Same as native shell: wasm hello-wasi-gui. Search /wasm/v1, pick a local module, or type the command. Native still runs wasm from the shell.")
+                    }
+                }
+
                 if isNative {
                     Section {
                         #if os(macOS)
@@ -165,7 +239,7 @@ struct MachineEditorView: View {
                         }
                         .wwnA11y(WawonaA11y.machinesEditorContainerHub, label: "Choose from library")
                         Button {
-                            showingArchiveImporter = true
+                            fileImportKind = .archive
                         } label: {
                             Label("Import image archive…", systemImage: "square.and.arrow.down")
                         }
@@ -277,16 +351,64 @@ struct MachineEditorView: View {
                 }
             }
             .fileImporter(
-                isPresented: $showingArchiveImporter,
-                allowedContentTypes: [.item, .directory]
+                isPresented: fileImporterPresented,
+                allowedContentTypes: fileImportKind == .wasm
+                    ? [UTType(filenameExtension: "wasm") ?? .data]
+                    : [.item, .directory]
             ) { result in
-                handleArchiveImport(result)
+                let kind = fileImportKind
+                fileImportKind = nil
+                switch kind {
+                case .wasm:
+                    if case .success(let url) = result {
+                        wasmModulePath = url.path
+                        wasmCommand = "wasm \(url.path)"
+                    }
+                case .archive:
+                    handleArchiveImport(result)
+                case .none:
+                    break
+                }
             }
         }
     }
 
     private var displayArchivePath: String {
         (imageArchivePath as NSString).lastPathComponent
+    }
+
+    private func searchWasmCatalog() {
+        wasmCatalogLoading = true
+        wasmCatalogNote = nil
+        let query = wasmPackage
+        Task {
+            do {
+                wasmCatalogResults = try await Task.detached {
+                    try WasmLaunch.searchCatalog(query)
+                }.value
+                if wasmCatalogResults.isEmpty {
+                    wasmCatalogNote = "No packages in /wasm/v1 match."
+                }
+            } catch {
+                wasmCatalogNote = error.localizedDescription
+            }
+            wasmCatalogLoading = false
+        }
+    }
+
+    private func downloadWasmPackage(_ pkg: WasmCatalogPackage) {
+        wasmCatalogLoading = true
+        Task {
+            do {
+                wasmModulePath = try await Task.detached {
+                    try WasmLaunch.downloadPackage(pkg)
+                }.value
+                wasmCatalogNote = "Saved \(pkg.name) to the Wawona folder."
+            } catch {
+                wasmCatalogNote = error.localizedDescription
+            }
+            wasmCatalogLoading = false
+        }
     }
 
     private func handleArchiveImport(_ result: Result<URL, Error>) {
@@ -313,16 +435,18 @@ struct MachineEditorView: View {
 
     private func save() {
         let state = persistableEditorState()
-        if !MachineEditorValidation.validate(state).isEmpty {
+        if !MachineProfileDomain.validate(state).isEmpty {
             return
         }
-        var profile = WawonaUIContractAdapters.profile(from: state)
+        var profile = MachineEditorDomain.profile(from: state)
         if profile.name.isEmpty {
             profile.name = "Unnamed"
         }
         if let baseline = editingBaseline {
             profile.favorite = baseline.favorite
             profile.runtimeOverrides.renderer = baseline.runtimeOverrides.renderer
+            profile.runtimeOverrides.resizeDisplayForVirtualKeyboard =
+                baseline.runtimeOverrides.resizeDisplayForVirtualKeyboard
             // The editor form only carries image ref + command; preserve the
             // advanced container fields (memory, mounts, ports, kernel paths)
             // edited in Machine Settings.
@@ -354,6 +478,11 @@ struct MachineEditorView: View {
         onSave(profile)
         dismiss()
     }
+}
+
+enum MachineEditorFileImport {
+    case archive
+    case wasm
 }
 
 private extension View {

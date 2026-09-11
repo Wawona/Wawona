@@ -195,8 +195,8 @@ pub fn load_or_default() -> Result<LinuxAppConfig> {
     if !path.exists() {
         return Ok(LinuxAppConfig::default());
     }
-    let text = fs::read_to_string(&path)
-        .with_context(|| format!("failed to read {}", path.display()))?;
+    let text =
+        fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
     let cfg: LinuxAppConfig = serde_json::from_str(&text)
         .with_context(|| format!("failed to parse {}", path.display()))?;
 
@@ -226,8 +226,7 @@ pub fn save(cfg: &LinuxAppConfig) -> Result<()> {
             .with_context(|| format!("failed to create {}", parent.display()))?;
     }
     let serialized = serde_json::to_string_pretty(cfg)?;
-    fs::write(&path, serialized)
-        .with_context(|| format!("failed to write {}", path.display()))?;
+    fs::write(&path, serialized).with_context(|| format!("failed to write {}", path.display()))?;
     Ok(())
 }
 

@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(Darwin)
+import Darwin
+#endif
 
 public enum ConnectionSettingsIntent: Sendable {
     case updateWaylandDisplay(String)
@@ -186,6 +189,15 @@ public enum GlobalSettingsSectionID: String, Sendable, CaseIterable, Hashable {
         }
     }
 
+    /// ObjC `WWNPreferencesSection.accessibilityIdentifier`. localShell uses
+    /// a dotted token (`local.shell`); other slugs match `rawValue`.
+    public var objcAccessibilityIdentifier: String {
+        switch self {
+        case .localShell: return "wwn.settings.local.shell"
+        default: return "wwn.settings.\(rawValue)"
+        }
+    }
+
     public var systemImage: String {
         switch self {
         case .display: return "display"
@@ -214,6 +226,7 @@ public enum GlobalSettingsFieldID: String, Sendable, CaseIterable {
     case virtualCursor
     case nestedCompositorCursor
     case touchInputType
+    case touchPointerEmulation
     case resizeDisplayForVirtualKeyboard
     case swapCmdWithAlt
     case universalClipboard
@@ -258,6 +271,7 @@ public enum GlobalSettingsFieldID: String, Sendable, CaseIterable {
     case containerImageStore
     case machinesStatus
     case aboutVersion
+    case aboutBuild
     case aboutPlatform
     case aboutAuthor
     case aboutWebsite
@@ -272,8 +286,41 @@ public enum GlobalSettingsFieldID: String, Sendable, CaseIterable {
 /// Single catalog for global Wawona Settings. Watch, iOS, and macOS must
 /// render the same section/field IDs for a given host. Never a second
 /// free-text "Input Profile" beside Touch Input Type.
+///
+/// Section *order* is owned by Rust `src/domain/settings_catalog.rs`
+/// (`visible_sections` / `settings_visible_sections`). Do not grow this
+/// list independently. Field visibility stays here until that lift.
+///
+/// Prefer the C trampoline (`wawona_settings_visible_sections`) when
+/// `libwawona.a` is linked. UniFFI `settings_visible_sections` is the
+/// same list once bindgen can run. SPM / Watch tests keep the fallback.
 public struct GlobalSettingsCatalog: Sendable {
+    public static var currentHost: GlobalSettingsHost {
+        #if os(macOS)
+        .macOS
+        #elseif os(iOS)
+        .iOS
+        #elseif os(tvOS)
+        .tvOS
+        #elseif os(watchOS)
+        .watchOS
+        #elseif os(visionOS)
+        .visionOS
+        #else
+        .linux
+        #endif
+    }
+
     public static func visibleSections(for host: GlobalSettingsHost) -> [GlobalSettingsSectionID] {
+        if let rust = rustVisibleSections(for: host), !rust.isEmpty {
+            return rust
+        }
+        return fallbackVisibleSections(for: host)
+    }
+
+    /// Frozen mirror of `settings_catalog::visible_sections`. Used when the
+    /// rust domain library is not linked (SPM tests, Watch 32-bit stub).
+    public static func fallbackVisibleSections(for host: GlobalSettingsHost) -> [GlobalSettingsSectionID] {
         switch host {
         case .macOS:
             return [
@@ -282,11 +329,16 @@ public struct GlobalSettingsCatalog: Sendable {
                 .dependencies,
             ]
         case .iOS:
-            return [
+            var sections: [GlobalSettingsSectionID] = [
                 .display, .input, .graphics, .connection, .environment, .localShell,
-                .machines, .iCloudSync, .appleWatch, .advanced, .waypipe, .ssh, .about,
-                .dependencies,
+                .machines, .iCloudSync, .appleWatch, .advanced,
             ]
+            // Store IPA omits Desktop. Mode B tipa / Sileo compile with WWN_MODE_B.
+            #if WWN_MODE_B
+            sections.append(.desktop)
+            #endif
+            sections.append(contentsOf: [.waypipe, .ssh, .about, .dependencies])
+            return sections
         case .visionOS:
             return [
                 .display, .input, .graphics, .connection, .environment, .localShell,
@@ -318,6 +370,35 @@ public struct GlobalSettingsCatalog: Sendable {
         }
     }
 
+    /// C trampoline in `src/domain/c_api.rs`. dlsym so SPM tests that do
+    /// not link `libwawona.a` still compile. Watch 32-bit stays on fallback.
+    private static func rustVisibleSections(for host: GlobalSettingsHost) -> [GlobalSettingsSectionID]? {
+        #if canImport(Darwin)
+        typealias CatalogFn = @convention(c) (UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+        typealias FreeFn = @convention(c) (UnsafeMutablePointer<CChar>?) -> Void
+        guard
+            let catalogSym = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "wawona_settings_visible_sections"),
+            let freeSym = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "wawona_domain_string_free")
+        else {
+            return nil
+        }
+        let catalog = unsafeBitCast(catalogSym, to: CatalogFn.self)
+        let free = unsafeBitCast(freeSym, to: FreeFn.self)
+        return host.rawValue.withCString { cHost in
+            guard let raw = catalog(cHost) else { return nil }
+            defer { free(raw) }
+            let joined = String(cString: raw)
+            guard !joined.isEmpty else { return nil }
+            let parsed: [GlobalSettingsSectionID] = joined
+                .split(separator: ",")
+                .compactMap { GlobalSettingsSectionID(rawValue: String($0)) }
+            return parsed.isEmpty ? nil : parsed
+        }
+        #else
+        return nil
+        #endif
+    }
+
     public static func visibleFields(
         in section: GlobalSettingsSectionID,
         for host: GlobalSettingsHost
@@ -339,6 +420,7 @@ public struct GlobalSettingsCatalog: Sendable {
             ]
             if host != .tvOS {
                 fields.append(.touchInputType)
+                fields.append(.touchPointerEmulation)
             }
             fields.append(contentsOf: [
                 .resizeDisplayForVirtualKeyboard,
@@ -422,8 +504,8 @@ public struct GlobalSettingsCatalog: Sendable {
             ]
         case .about:
             return [
-                .aboutVersion, .aboutPlatform, .aboutWebsite, .aboutAuthor,
-                .aboutSource, .aboutSponsors,
+                .aboutVersion, .aboutBuild, .aboutPlatform, .aboutWebsite,
+                .aboutAuthor, .aboutSource, .aboutSponsors,
             ]
         case .dependencies:
             return [.dependenciesInventory]

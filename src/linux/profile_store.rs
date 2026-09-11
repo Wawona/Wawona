@@ -1,17 +1,14 @@
-//! Canonical machine-profile persistence for Linux.
+//! Linux file persistence for `wawona.machineProfiles.v1`.
 //!
-//! Stores the shared `wawona.machineProfiles.v1` payload as a JSON array at
-//! `~/.config/wawona/machine-profiles-v1.json` (byte-compatible with what the
-//! Apple/Android `MachineProfileStore` writes) plus the active machine id at
-//! `~/.config/wawona/active-machine-id-v1`. On first run it migrates the legacy
-//! `linux-config-v1.json` (`LinuxAppConfig` in `config.rs`) into the canonical
-//! schema, leaving the old file untouched as a backup.
+//! Schema and mutations live in `crate::domain`. This file only maps that
+//! document onto `~/.config/wawona/`. Do not add profile fields here.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 
+use crate::domain::validation::{is_igetty_console_not_a_machine, validate_profile};
 use crate::linux::config::{self, LinuxMachineType};
 use crate::linux::machine_profile::{MachineProfile, MachineType};
 
@@ -56,6 +53,10 @@ impl ProfileStore {
                 .with_context(|| format!("failed to read {}", path.display()))?;
             let profiles: Vec<MachineProfile> = serde_json::from_str(&text)
                 .with_context(|| format!("failed to parse {}", path.display()))?;
+            let profiles = profiles
+                .into_iter()
+                .filter(|p| !is_igetty_console_not_a_machine(p))
+                .collect();
             let active = read_active_id()?;
             return Ok(Self {
                 profiles,
@@ -87,8 +88,12 @@ impl ProfileStore {
         Ok(())
     }
 
-    /// Insert or replace a profile by id, then persist (mirrors Swift `upsert`).
+    /// Insert or replace a profile by id, then persist.
     pub fn upsert(&mut self, profile: MachineProfile) -> Result<()> {
+        if is_igetty_console_not_a_machine(&profile) {
+            return self.delete(&profile.id);
+        }
+        validate_profile(&profile).map_err(|e| anyhow::anyhow!(e))?;
         if let Some(idx) = self.profiles.iter().position(|p| p.id == profile.id) {
             self.profiles[idx] = profile;
         } else {
@@ -121,8 +126,8 @@ fn read_active_id() -> Result<Option<String>> {
     if !path.exists() {
         return Ok(None);
     }
-    let text = fs::read_to_string(&path)
-        .with_context(|| format!("failed to read {}", path.display()))?;
+    let text =
+        fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
     let trimmed = text.trim();
     Ok(if trimmed.is_empty() {
         None
@@ -137,9 +142,8 @@ fn write_active_id(id: Option<&str>) -> Result<()> {
         fs::create_dir_all(parent)
             .with_context(|| format!("failed to create {}", parent.display()))?;
     }
-    fs::write(&path, id.unwrap_or("")).with_context(|| {
-        format!("failed to write {}", path.display())
-    })?;
+    fs::write(&path, id.unwrap_or(""))
+        .with_context(|| format!("failed to write {}", path.display()))?;
     Ok(())
 }
 
@@ -194,9 +198,7 @@ pub fn canonical_from_legacy(legacy: &config::LinuxMachineProfile) -> MachinePro
         ssh_port: legacy.ssh_port as i32,
         ssh_password: legacy.ssh_password.clone(),
         remote_command,
-        launchers: Vec::new(),
-        favorite: false,
-        runtime_overrides: Default::default(),
+        ..MachineProfile::new(&legacy.name)
     }
 }
 

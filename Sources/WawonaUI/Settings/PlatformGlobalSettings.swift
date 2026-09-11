@@ -4,7 +4,9 @@ import AppKit
 import UIKit
 #endif
 
-/// Opens native global Wawona Settings (ObjC + AppKit/UIKit). Not SwiftUI.
+/// Opens native global Wawona Settings. Product hosts (iOS / tvOS / visionOS /
+/// macOS) now show the SwiftUI sidebar (`WawonaMainWindowView`). This helper
+/// is a leftover trampoline for gear buttons on the SPM `WawonaUI` path.
 enum PlatformGlobalSettings {
     static var isAvailable: Bool {
         #if !SWIFT_PACKAGE && (os(macOS) || os(iOS) || os(tvOS) || os(visionOS))
@@ -17,9 +19,9 @@ enum PlatformGlobalSettings {
     static func open() {
         #if !SWIFT_PACKAGE
         #if os(iOS) || os(tvOS) || os(visionOS)
-        WWNPreferences.shared().show(nil)
+        WWNMachinesHostingBridge.showSettings()
         #elseif os(macOS)
-        WWNPreferences.shared().show(NSApp)
+        WWNUnifiedWindowController.sharedController().showSettings()
         #endif
         #endif
     }

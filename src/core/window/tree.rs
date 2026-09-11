@@ -43,7 +43,15 @@ impl WindowTree {
     }
 
     /// Find the top-most window under the given point
-    pub fn window_under(&self, x: f64, y: f64, windows: &std::collections::HashMap<u32, std::sync::Arc<std::sync::RwLock<crate::core::window::Window>>>) -> Option<u32> {
+    pub fn window_under(
+        &self,
+        x: f64,
+        y: f64,
+        windows: &std::collections::HashMap<
+            u32,
+            std::sync::Arc<std::sync::RwLock<crate::core::window::Window>>,
+        >,
+    ) -> Option<u32> {
         // Iterate in reverse stacking order (top to bottom)
         for &window_id in self.stacking_order.iter().rev() {
             if let Some(window) = windows.get(&window_id) {

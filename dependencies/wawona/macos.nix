@@ -91,6 +91,39 @@ let
     inherit lib deps;
   };
 
+  # Xcode install used to exit before foot. Sep 8 everywhere matrix then
+  # advertised weston/shm/terminal/foot and only shipped icons.
+  bundleFootBin = lib.optionalString (foot != null) ''
+    if [ -f "${foot}/bin/foot" ]; then
+      cp "${foot}/bin/foot" "$APP/Contents/Resources/bin/"
+      chmod +x "$APP/Contents/Resources/bin/foot"
+      if [ -f "${foot}/bin/.foot-wrapped" ]; then
+        cp "${foot}/bin/.foot-wrapped" "$APP/Contents/Resources/bin/"
+        chmod +x "$APP/Contents/Resources/bin/.foot-wrapped"
+      fi
+      echo "DEBUG: Bundled foot terminal"
+    else
+      echo "Warning: foot binary not found at ${foot}/bin/foot"
+    fi
+  '';
+  verifyAquaClientBins = ''
+    echo "Verifying Aqua weston/foot bins in Resources/bin..."
+    missing=0
+    for need in weston weston-terminal weston-simple-shm foot; do
+      if [ ! -x "$APP/Contents/Resources/bin/$need" ]; then
+        echo "ERROR: missing Aqua client $need in Contents/Resources/bin" >&2
+        missing=1
+      else
+        echo "✓ Aqua $need"
+      fi
+    done
+    if [ "$missing" -ne 0 ]; then
+      ls -la "$APP/Contents/Resources/bin" >&2 || true
+      ls -la "${weston}/bin" >&2 || true
+      exit 1
+    fi
+  '';
+
   effectiveNativeDeps =
     {
       libwayland = buildModule.buildForMacOS "libwayland" { };
@@ -149,7 +182,7 @@ let
         if [ -d "$dep/libdata/pkgconfig" ]; then cp -rn "$dep/libdata/pkgconfig/"* ${dest}/libdata/pkgconfig/ 2>/dev/null || true; fi
       done
       
-      # Copy UniFFI generated bindings from rustBackend output
+      # Copy Nix-generated UniFFI Swift (store only; never from git Sources/)
       if [ -d "${rustBackend}/uniffi/swift" ]; then
         echo "📦 Copying UniFFI bindings from rustBackend output..."
         mkdir -p "${dest}/uniffi"
@@ -1200,6 +1233,8 @@ SHELL_EOF
                   echo "Bundled weston helper $hbase (xcodebuild)"
                 done
               fi
+              ${bundleFootBin}
+              ${verifyAquaClientBins}
               WA_FONTS="${wawonaBundledFonts}"
               rm -rf "$APP/share/fonts" "$APP/Contents/Resources/share/fonts"
               mkdir -p "$APP/share/fonts" "$APP/Contents/Resources/share/fonts"
@@ -1438,6 +1473,7 @@ SHELL_EOF
             '' else ''
             echo "Warning: foot not provided, skipping foot bundling"
             ''}
+            ${verifyAquaClientBins}
 
             # Bundle niri (scrollable-tiling compositor, runs nested under Wawona)
             ${if niri != null then ''
@@ -1954,6 +1990,7 @@ PLIST_EOF
       fi
       ''}
       for req in \
+        "$APP/Contents/Resources/share/weston/background.png" \
         "$APP/Contents/Resources/share/weston/pattern.png" \
         "$APP/Contents/Resources/share/weston/terminal.png" \
         "$APP/Contents/Resources/share/fonts/truetype/DejaVuSans.ttf" \

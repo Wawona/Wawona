@@ -7,10 +7,13 @@ the same non-negotiable gates.
 
 | Rule | Topic |
 |------|--------|
+| [wawona-android-jbr.md](./wawona-android-jbr.md) | Android Gradle / Studio use JBR 21, not nixpkgs OpenJDK |
 | [wawona-agent-learn.md](./wawona-agent-learn.md) | RAG + skills + capture loop. Software must improve on prior knowledge. Caveman-lite |
 | [wawona-guest-wayland-iland.md](./wawona-guest-wayland-iland.md) | Linux guests are Wayland into Wawona (iland), never UTM Spice/ANGLE/virgl |
 | [wawona-linux-vms-relay-runtime.md](./wawona-linux-vms-relay-runtime.md) | NixOS-only VMs; Mode A = Wawona store runtime; Mode B adds Mode B runtime |
 | [wawona-relay-wasm.md](./wawona-relay-wasm.md) | Relay Wasm on every product target including watchOS |
+| [wawona-ios-min-os.md](./wawona-ios-min-os.md) | iOS 11.0 min OS vs latest iPhoneOS SDK; one ANGLE, one MoltenVK |
+| [wawona-gh.md](./wawona-gh.md) | `gh` via Shell. No GitHub MCP. Authorship ban is not a `gh` ban |
 | [wawona-macos-mode-a.md](./wawona-macos-mode-a.md) | macOS Mode A always works with SIP on (in-window iland DRM) |
 | [wawona-compositor-backend.md](./wawona-compositor-backend.md) | macOS weston/niri nest in Aqua; iland DRM after Classic (WindowServer down) |
 | [wawona-nested-compositor-cursor.md](./wawona-nested-compositor-cursor.md) | Nested/iland compositors hide+grab host cursor; they draw their own. iOS Touchpad overlay stays off |

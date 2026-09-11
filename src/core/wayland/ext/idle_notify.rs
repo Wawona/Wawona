@@ -4,14 +4,12 @@
 //! (no input events for a configurable timeout). When the user resumes
 //! activity, a `resumed` event is sent.
 
-use std::time::Instant;
-use wayland_server::{
-    Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
-};
 use crate::core::wayland::protocol::server::ext::idle_notify::v1::server::{
-    ext_idle_notifier_v1::{self, ExtIdleNotifierV1},
     ext_idle_notification_v1::{self, ExtIdleNotificationV1},
+    ext_idle_notifier_v1::{self, ExtIdleNotifierV1},
 };
+use std::time::Instant;
+use wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource};
 
 use crate::core::state::CompositorState;
 
@@ -72,7 +70,11 @@ impl IdleNotifyState {
             if !notif.is_idle && elapsed_ms >= notif.timeout_ms && notif.resource.is_alive() {
                 notif.resource.idled();
                 notif.is_idle = true;
-                tracing::debug!("User idle for {}ms (timeout={}ms)", elapsed_ms, notif.timeout_ms);
+                tracing::debug!(
+                    "User idle for {}ms (timeout={}ms)",
+                    elapsed_ms,
+                    notif.timeout_ms
+                );
             }
         }
     }
@@ -147,7 +149,11 @@ impl Dispatch<ExtIdleNotificationV1, ()> for CompositorState {
         match request {
             ext_idle_notification_v1::Request::Destroy => {
                 let res_id = resource.id();
-                state.ext.idle_notify.notifications.retain(|n| n.resource.id() != res_id);
+                state
+                    .ext
+                    .idle_notify
+                    .notifications
+                    .retain(|n| n.resource.id() != res_id);
                 tracing::debug!("ext_idle_notification_v1 destroyed");
             }
             _ => {}

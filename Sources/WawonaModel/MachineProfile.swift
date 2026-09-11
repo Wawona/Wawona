@@ -1,8 +1,12 @@
 import Combine
 import Foundation
 
+// Schema owner is rust `src/domain` (`wawona.machineProfiles.v1`). These
+// Codable types are the Apple DTO + JSON keys. Do not add fields here.
+
 public enum MachineType: String, Codable, CaseIterable, Sendable {
     case native
+    case wasm
     case sshWaypipe = "ssh_waypipe"
     case sshTerminal = "ssh_terminal"
     case virtualMachine = "virtual_machine"
@@ -14,6 +18,7 @@ extension MachineType {
     public var userFacingName: String {
         switch self {
         case .native: return "Native"
+        case .wasm: return "Wasm"
         case .sshWaypipe: return "SSH + Waypipe"
         case .sshTerminal: return "SSH Terminal"
         case .virtualMachine: return "Virtual Machine"
@@ -31,16 +36,18 @@ extension MachineType {
         switch self {
         case .virtualMachine:
             #if os(macOS)
-            return "QEMU + HVF"
+            return "Relay VZ"
             #else
-            return "QEMU-TCTI (UTM SE)"
+            return "Relay Linux VM"
             #endif
         case .container:
             #if os(macOS)
-            return "containerization.framework"
+            return "OCI-in-VM (Relay)"
             #else
-            return "container-in-VM"
+            return "OCI-in-VM"
             #endif
+        case .wasm:
+            return "Relay WASI"
         default:
             return nil
         }
@@ -58,6 +65,7 @@ extension MachineType {
     public var symbolName: String {
         switch self {
         case .native: return "desktopcomputer"
+        case .wasm: return "doc.badge.gearshape"
         case .sshWaypipe: return "network"
         case .sshTerminal: return "terminal"
         case .virtualMachine: return "cube"
@@ -187,10 +195,19 @@ public struct MachineRuntimeOverrides: Codable, Hashable, Sendable {
     public var logLevel: String?
     public var shakeToCloseEnabled: Bool?
     public var swipeBackToCloseEnabled: Bool?
+    /// Per-machine OSK exclusive zone. When set, iOS/iPadOS resize + offset
+    /// the Wayland present plate above the soft keyboard.
+    public var resizeDisplayForVirtualKeyboard: Bool?
     /// Per-machine Display Backend override (`auto` | `wayland` | `drm`).
     public var compositorBackend: String?
     /// Absolute or sandbox-relative path to a Wayland `.wasm` for `bundledAppID == wawona-wasm`.
     public var wasmModulePath: String?
+    /// `file` | `repo` | `command`. Machines kind `wasm` source picker.
+    public var wasmLaunchMode: String?
+    /// Installed or catalog package name (`hello-wasi-gui`). `wasm <name>`.
+    public var wasmPackage: String?
+    /// Native-shell command (`wasm hello-wasi-gui` or `wpm install hello-wasi-gui`).
+    public var wasmCommand: String?
     /// Explicit env overrides (#157). Never stash in settingsOverrides. Codable drops unknown keys.
     public var environment: EnvironmentOverrideMap?
 
@@ -212,8 +229,12 @@ public struct MachineRuntimeOverrides: Codable, Hashable, Sendable {
         logLevel: String? = nil,
         shakeToCloseEnabled: Bool? = nil,
         swipeBackToCloseEnabled: Bool? = nil,
+        resizeDisplayForVirtualKeyboard: Bool? = nil,
         compositorBackend: String? = nil,
         wasmModulePath: String? = nil,
+        wasmLaunchMode: String? = nil,
+        wasmPackage: String? = nil,
+        wasmCommand: String? = nil,
         environment: EnvironmentOverrideMap? = nil
     ) {
         self.renderer = renderer
@@ -233,8 +254,12 @@ public struct MachineRuntimeOverrides: Codable, Hashable, Sendable {
         self.logLevel = logLevel
         self.shakeToCloseEnabled = shakeToCloseEnabled
         self.swipeBackToCloseEnabled = swipeBackToCloseEnabled
+        self.resizeDisplayForVirtualKeyboard = resizeDisplayForVirtualKeyboard
         self.compositorBackend = compositorBackend
         self.wasmModulePath = wasmModulePath
+        self.wasmLaunchMode = wasmLaunchMode
+        self.wasmPackage = wasmPackage
+        self.wasmCommand = wasmCommand
         self.environment = environment
     }
 }
@@ -417,12 +442,26 @@ extension MachineProfile {
     public var isAppBridgeEligible: Bool {
         type == .native && isNestedCompositorClient
     }
+
+    /// wwn-igetty / modeb-tty / Doorman PAM console. Not a machine.
+    public var isIgettyConsoleNotAMachine: Bool {
+        if name.trimmingCharacters(in: .whitespacesAndNewlines)
+            .localizedCaseInsensitiveCompare("Mode B TTY") == .orderedSame
+        {
+            return true
+        }
+        if MachineProfileDomain.isForbiddenClientId(resolvedNativeClientId) {
+            return true
+        }
+        let bundled = runtimeOverrides.bundledAppID ?? ""
+        return MachineProfileDomain.isForbiddenClientId(bundled)
+    }
 }
 
 @MainActor
 public final class MachineProfileStore: ObservableObject {
-    public static let profilesKey = "wawona.machineProfiles.v1"
-    public static let activeMachineIdKey = "wawona.activeMachineId.v1"
+    public static let profilesKey = MachineProfileDomain.profilesKey
+    public static let activeMachineIdKey = MachineProfileDomain.activeMachineIdKey
 
     @Published public private(set) var profiles: [MachineProfile] = []
     @Published public var activeMachineId: String?
@@ -440,13 +479,18 @@ public final class MachineProfileStore: ObservableObject {
         } else if let legacyString = defaults.string(forKey: Self.profilesKey) {
             payload = legacyString.data(using: .utf8)
         }
-        guard let data = payload else {
+        guard let data = payload, let json = String(data: data, encoding: .utf8) else {
             profiles = []
             return
         }
+        if let rust = MachineProfileDomain.decodeProfilesV1(json) {
+            profiles = rust
+            save()
+            return
+        }
         do {
-            profiles = try JSONDecoder().decode([MachineProfile].self, from: data)
-            // Canonicalize persisted representation to data payload.
+            let decoded = try JSONDecoder().decode([MachineProfile].self, from: data)
+            profiles = decoded.filter { !$0.isIgettyConsoleNotAMachine }
             save()
         } catch {
             profiles = []
@@ -455,13 +499,24 @@ public final class MachineProfileStore: ObservableObject {
 
     public func save() {
         let defaults = UserDefaults.standard
-        if let data = try? JSONEncoder().encode(profiles) {
+        if let data = MachineProfileDomain.encodeProfilesV1(profiles)
+            ?? (try? JSONEncoder().encode(profiles))
+        {
             defaults.set(data, forKey: Self.profilesKey)
         }
         defaults.set(activeMachineId, forKey: Self.activeMachineIdKey)
     }
 
     public func upsert(_ profile: MachineProfile) {
+        if let rust = MachineProfileDomain.put(profile, into: profiles) {
+            profiles = rust
+            save()
+            return
+        }
+        if profile.isIgettyConsoleNotAMachine {
+            delete(id: profile.id)
+            return
+        }
         if let idx = profiles.firstIndex(where: { $0.id == profile.id }) {
             var next = profiles
             next[idx] = profile
@@ -473,6 +528,14 @@ public final class MachineProfileStore: ObservableObject {
     }
 
     public func delete(id: String) {
+        if let rust = MachineProfileDomain.delete(id: id, from: profiles) {
+            profiles = rust
+            if activeMachineId == id {
+                activeMachineId = nil
+            }
+            save()
+            return
+        }
         profiles = profiles.filter { $0.id != id }
         if activeMachineId == id {
             activeMachineId = nil

@@ -47,13 +47,19 @@ fn remove_file_if_exists(path: &Path) -> Result<()> {
 }
 
 pub fn install_user_units() -> Result<()> {
-    let flake_ref = std::env::var("WAWONA_FLAKE").unwrap_or_else(|_| "/home/alex/Wawona".to_string());
-    crate::wlog!(COMPOSITOR, "Installing user units and autostart files for flake={}", flake_ref);
+    let flake_ref =
+        std::env::var("WAWONA_FLAKE").unwrap_or_else(|_| "/home/alex/Wawona".to_string());
+    crate::wlog!(
+        COMPOSITOR,
+        "Installing user units and autostart files for flake={}",
+        flake_ref
+    );
     let unit_dir = systemd_user_dir()?;
     fs::create_dir_all(&unit_dir)
         .with_context(|| format!("failed to create {}", unit_dir.display()))?;
 
-    let compositor = format!(r#"[Unit]
+    let compositor = format!(
+        r#"[Unit]
 Description=Wawona Nested Compositor Host
 After=graphical-session.target
 
@@ -65,9 +71,11 @@ RestartSec=2
 
 [Install]
 WantedBy=default.target
-"#);
+"#
+    );
 
-    let tray = format!(r#"[Unit]
+    let tray = format!(
+        r#"[Unit]
 Description=Wawona Linux Tray Applet
 After=graphical-session.target
 
@@ -79,7 +87,8 @@ RestartSec=2
 
 [Install]
 WantedBy=default.target
-"#);
+"#
+    );
 
     write_file(&unit_dir.join("wawona-compositor.service"), &compositor)?;
     write_file(&unit_dir.join("wawona-tray.service"), &tray)?;
@@ -87,13 +96,15 @@ WantedBy=default.target
     let auto_dir = autostart_dir()?;
     fs::create_dir_all(&auto_dir)
         .with_context(|| format!("failed to create {}", auto_dir.display()))?;
-    let desktop = format!(r#"[Desktop Entry]
+    let desktop = format!(
+        r#"[Desktop Entry]
 Type=Application
 Name=Wawona Linux
 Exec=nix run {flake_ref}#wawona-linux
 Terminal=false
 X-GNOME-Autostart-enabled=true
-"#);
+"#
+    );
     write_file(&auto_dir.join("wawona.desktop"), &desktop)?;
 
     run_systemctl_user(["daemon-reload"])?;
@@ -131,7 +142,9 @@ pub fn service_is_active(name: &str) -> bool {
         .stderr(Stdio::null())
         .output();
     match out {
-        Ok(output) => output.status.success() && String::from_utf8_lossy(&output.stdout).trim() == "active",
+        Ok(output) => {
+            output.status.success() && String::from_utf8_lossy(&output.stdout).trim() == "active"
+        }
         Err(_) => false,
     }
 }
@@ -196,7 +209,9 @@ pub fn uninstall_user_units() -> Result<()> {
 
 pub fn run_compositor_host(socket_name: Option<String>) -> Result<()> {
     let runtime_dir = ensure_runtime_dir()?;
-    let requested_socket = socket_name.clone().unwrap_or_else(|| "wawona-0".to_string());
+    let requested_socket = socket_name
+        .clone()
+        .unwrap_or_else(|| "wawona-0".to_string());
     crate::wlog!(
         COMPOSITOR,
         "Launching nested compositor host runtime_dir={} socket={}",
@@ -217,7 +232,10 @@ pub fn run_compositor_host(socket_name: Option<String>) -> Result<()> {
         core.set_force_ssd(true);
         core.set_advertise_fullscreen_shell(true);
         core.set_output_size(1280, 800, 1.0);
-        crate::wlog!(COMPOSITOR, "Configured default output=1280x800 scale=1.0 force_ssd=true");
+        crate::wlog!(
+            COMPOSITOR,
+            "Configured default output=1280x800 scale=1.0 force_ssd=true"
+        );
         match core.start(Some(candidate.clone())) {
             Ok(_) => {
                 crate::wlog!(COMPOSITOR, "Compositor host started socket={}", candidate);
@@ -226,7 +244,12 @@ pub fn run_compositor_host(socket_name: Option<String>) -> Result<()> {
                 break;
             }
             Err(err) => {
-                crate::wlog!(COMPOSITOR, "Failed to start compositor host socket={} error={}", candidate, err);
+                crate::wlog!(
+                    COMPOSITOR,
+                    "Failed to start compositor host socket={} error={}",
+                    candidate,
+                    err
+                );
             }
         }
     }
@@ -301,7 +324,11 @@ pub fn run_compositor_host(socket_name: Option<String>) -> Result<()> {
         last_error: Some("host loop exited".to_string()),
     };
     write_runtime_state(&down_state)?;
-    crate::wlog!(STATE, "Runtime state marked unhealthy reason={}", down_state.last_error.as_deref().unwrap_or("unknown"));
+    crate::wlog!(
+        STATE,
+        "Runtime state marked unhealthy reason={}",
+        down_state.last_error.as_deref().unwrap_or("unknown")
+    );
     crate::wlog!(COMPOSITOR, "Compositor host shutdown complete");
     Ok(())
 }

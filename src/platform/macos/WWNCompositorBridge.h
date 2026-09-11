@@ -195,6 +195,9 @@ typedef struct {
 /// Activate + raise a tabbed client surface inside the shared container.
 - (void)focusTabbedClientWindowId:(uint64_t)windowId;
 
+/// Safari-style tab card: last compositor frame for this toplevel.
+- (nullable UIImage *)previewImageForHostWindowId:(uint64_t)windowId;
+
 /// iPadOS / visionOS multi-window (#120): NSUserActivity type used to route a
 /// newly-activated UIWindowScene to a specific Wayland client toplevel. The
 /// activity's userInfo carries @{ WWNClientWindowSceneWindowIdKey: @(windowId) }.
@@ -289,6 +292,18 @@ extern NSString *const WWNClientWindowSceneWindowIdKey;
 /// Get the cursor rectangle reported by the focused Wayland client.
 /// Returns CGRectZero if no text input is active.
 - (CGRect)textInputCursorRect;
+
+/// Host chrome Copy/Paste (macOS Edit menu / hardware keyboard).
+/// Not a long-press overlay on Wayland pixels. Gate: Universal Clipboard.
+/// tvOS has no UIPasteboard: these stay NO / no-ops.
+- (BOOL)hostEditMenuEnabled;
+- (BOOL)hostEditCanPaste;
+- (nullable NSString *)hostEditPasteboardString;
+/// Ask the focused client to copy (Ctrl+Shift+C). Next tick syncs pasteboard.
+- (void)hostEditCopyFromClient;
+/// Push host pasteboard into `wl_data_device`, then TI commit or Ctrl+Shift+V.
+- (void)hostEditPasteIntoClient;
+- (void)hostEditSetClientClipboard:(NSString *)text;
 
 // MARK: - Configuration
 

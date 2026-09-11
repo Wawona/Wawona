@@ -6,15 +6,11 @@
 //! - Presentation software
 //! - Games
 
-
-use wayland_server::{
-    Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
-};
 use wayland_protocols::wp::idle_inhibit::zv1::server::{
     zwp_idle_inhibit_manager_v1::{self, ZwpIdleInhibitManagerV1},
     zwp_idle_inhibitor_v1::{self, ZwpIdleInhibitorV1},
 };
-
+use wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource};
 
 use crate::core::state::CompositorState;
 
@@ -36,7 +32,6 @@ pub struct IdleInhibitState {
     pub inhibitors: HashMap<u32, u32>, // inhibitor_id -> surface_id
     pub next_id: u32,
 }
-
 
 // ============================================================================
 // zwp_idle_inhibit_manager_v1
@@ -72,23 +67,24 @@ impl Dispatch<ZwpIdleInhibitManagerV1, ()> for CompositorState {
                 let inhibitor_id = state.ext.idle_inhibit.next_id;
                 state.ext.idle_inhibit.next_id += 1;
 
-                
                 // let data = IdleInhibitorData {
                 //     surface_id,
                 //     inhibitor_id,
                 // };
-                
+
                 let _inhibitor = data_init.init(id, ());
-                
 
-                
                 // Register the inhibitor
-                state.ext.idle_inhibit.inhibitors.insert(inhibitor_id, surface_id);
+                state
+                    .ext
+                    .idle_inhibit
+                    .inhibitors
+                    .insert(inhibitor_id, surface_id);
 
-                
                 tracing::debug!(
                     "Created idle inhibitor {} for surface {}",
-                    inhibitor_id, surface_id
+                    inhibitor_id,
+                    surface_id
                 );
             }
             zwp_idle_inhibit_manager_v1::Request::Destroy => {
@@ -116,9 +112,7 @@ impl Dispatch<ZwpIdleInhibitorV1, ()> for CompositorState {
         match request {
             zwp_idle_inhibitor_v1::Request::Destroy => {
                 // state.remove_idle_inhibitor(data.inhibitor_id);
-                tracing::debug!(
-                    "Idle inhibitor destroyed"
-                );
+                tracing::debug!("Idle inhibitor destroyed");
             }
             _ => {}
         }

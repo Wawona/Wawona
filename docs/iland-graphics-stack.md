@@ -124,6 +124,10 @@ must retain its zero-copy dmabuf route.
     Metal-equivalent surface to exist first, not a port.
 - Every Apple target and Android ships real native Weston and Niri entry points;
   compatibility stubs are not acceptance.
+- iOS / iPadOS Mach-O min OS is **11.0** against the **latest** iPhoneOS SDK
+  only (SDK 26 now; never downgrade). One ANGLE (Metal), one MoltenVK (Metal),
+  Wawona patches for iOS 11 / 11-14. See
+  [`agent-rules/wawona-ios-min-os.md`](agent-rules/wawona-ios-min-os.md).
 
 ## Evidence required for PROPER
 
@@ -141,7 +145,7 @@ DRM open/resources and KMS modeset/page-flip are graded independently.
 | [`iland-mode-a-b-desktop.md`](iland-mode-a-b-desktop.md) | Privilege axis + packaging |
 | [`toolkit-soft-path.md`](toolkit-soft-path.md) | SDL/Qt/GTK readiness catalog |
 | [`testing/graphics-ci-matrix.md`](testing/graphics-ci-matrix.md) | CI + Agent-Device matrix |
-| [`wwn-repo-dag.md`](wwn-repo-dag.md) | L0-L4 ownership |
+| [`agent-rules/wawona-ios-min-os.md`](agent-rules/wawona-ios-min-os.md) | iOS 11.0 min OS vs latest SDK; one ANGLE + one MoltenVK |
 
 WWN-MCP indexes these paths under the Wawona project; prefer linking here over
 duplicating architecture prose in issue comments.

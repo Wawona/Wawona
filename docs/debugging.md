@@ -16,6 +16,7 @@ run under LLDB (or attach).
 # Default. No debugger
 nix run .#wawona-macos
 nix run .#wawona-ios
+nix run .#wawona-ios-modeb
 nix run .#wawona-android
 nix run .#wawona-linux
 

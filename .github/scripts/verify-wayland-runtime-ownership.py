@@ -51,6 +51,9 @@ DELEGATE_OWNERSHIP_MARKERS = {
     "xdg_system_bell_v1": "delegate_xdg_system_bell!",
     "xdg_toplevel_icon_v1": "delegate_xdg_toplevel_icon!",
     "xdg_toplevel_tag_manager_v1": "delegate_xdg_toplevel_tag!",
+    "zwp_text_input_manager_v3": "delegate_text_input_manager!",
+    "zwp_input_method_manager_v2": "delegate_input_method_manager!",
+    "zwp_virtual_keyboard_manager_v1": "delegate_virtual_keyboard_manager!",
 }
 
 

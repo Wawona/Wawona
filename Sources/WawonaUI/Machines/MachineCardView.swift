@@ -71,6 +71,7 @@ struct MachineCardView: View {
     var subtitle: String {
         switch profile.type {
         case MachineType.native: return "Runs on this host"
+        case MachineType.wasm: return "Relay WASI (wasm / wpm)"
         case MachineType.sshWaypipe, MachineType.sshTerminal:
             return profile.sshHost.isEmpty ? "SSH host not configured" : "\(profile.sshUser)@\(profile.sshHost)"
         case MachineType.virtualMachine: return "Virtual machine profile"

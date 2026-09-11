@@ -1,0 +1,36 @@
+# Unified xkb / TI v3 smoke. Override platform + device + session on the CLI.
+# P0: ios (iPhone 17 Pro), watchos, android, macos.
+# P1: ipados, tvos, visionos.
+#
+# Prefs before replay (smoke.sh does this):
+#   Apple: TouchInputType=Multi-Touch
+#   Android: touchpadMode=Off
+# macOS Mode A only. Never Take Over / watchdogd. Not vphone.
+#
+# Wayland client pixels: press / type. Never click --button primary.
+context platform=ios
+context session=xkb-ios
+context device=iPhone 17 Pro
+
+open com.aspauldingcode.Wawona --relaunch
+wait 3000
+# Welcome is skipped via hasSeenWelcome prefs. Do not press Continue:
+# a missing Continue is a hard replay fail.
+screenshot ./.agent-device/test-artifacts/xkb-first-screen.png
+
+# Start Default Machine (weston-terminal when seeded).
+press id="wwn.machines.start"
+wait 8000
+screenshot ./.agent-device/test-artifacts/xkb-started.png
+
+# Focus compositor / terminal. Coordinates are iPhone 17 Pro logical (402x874).
+# Other devices: smoke.sh may press by id or skip this tap.
+press 201 437
+wait 800
+
+# Host IME -> TI v3 (printable). Unique token for screenshot grep.
+type "xkbhello"
+wait 800
+screenshot ./.agent-device/test-artifacts/xkb-typed.png
+
+close

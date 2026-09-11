@@ -8,6 +8,7 @@
 NSString *const kWWNMachineTypeSSHWaypipe = @"ssh_waypipe";
 NSString *const kWWNMachineTypeSSHTerminal = @"ssh_terminal";
 NSString *const kWWNMachineTypeNative = @"native";
+NSString *const kWWNMachineTypeWasm = @"wasm";
 NSString *const kWWNMachineTypeVirtualMachine = @"virtual_machine";
 NSString *const kWWNMachineTypeContainer = @"container";
 
@@ -25,6 +26,8 @@ static NSString *const kWWNRuntimeMachineThumbnailEnabledOverride =
     @"machineThumbnailEnabledOverride";
 static NSString *const kWWNRuntimeShakeToCloseEnabled = @"shakeToCloseEnabled";
 static NSString *const kWWNRuntimeSwipeBackToCloseEnabled = @"swipeBackToCloseEnabled";
+static NSString *const kWWNRuntimeResizeDisplayForVirtualKeyboard =
+    @"resizeDisplayForVirtualKeyboard";
 static NSString *const kWWNRuntimeAlwaysOnTop = @"alwaysOnTop";
 static NSString *const kWWNPrefShakeToCloseEnabled = @"wawona.pref.shakeToCloseEnabled";
 static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBackToCloseEnabled";
@@ -389,7 +392,9 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
       [obj[@"type"] isKindOfClass:[NSString class]] ? obj[@"type"] : @"";
   // Container/remote/VM guests are not bundled native clients. Legacy saves
   // copied selectedClientId into bundledAppID; drop it so fill-host stays off.
-  if (![profileType isEqualToString:kWWNMachineTypeNative]) {
+  // Wasm machines keep wawona-wasm. Same Start path as native shell.
+  if (![profileType isEqualToString:kWWNMachineTypeNative] &&
+      ![profileType isEqualToString:kWWNMachineTypeWasm]) {
     if (bundledAppID.length > 0) {
       NSMutableDictionary *ro =
           [runtimeOverrides mutableCopy] ?: [NSMutableDictionary dictionary];
@@ -526,6 +531,41 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
   [defaults setBool:YES forKey:kWWNMachineProfilesMigrated];
 }
 
++ (NSArray<WWNMachineProfile *> *)profilesPurgingIgettyConsole:(NSArray<WWNMachineProfile *> *)profiles
+                                                       persist:(BOOL)persist {
+  NSMutableArray<WWNMachineProfile *> *kept = [NSMutableArray array];
+  NSMutableSet<NSString *> *purgedIds = [NSMutableSet set];
+  for (WWNMachineProfile *profile in profiles) {
+    if ([self profileIsIgettyConsoleNotAMachine:profile]) {
+      if (profile.machineId.length > 0) {
+        [purgedIds addObject:profile.machineId];
+      }
+      continue;
+    }
+    [kept addObject:profile];
+  }
+  if (purgedIds.count == 0) {
+    return profiles;
+  }
+  NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+  NSString *desktopId =
+      [defaults stringForKey:kWWNPrefsDesktopReplacementMachineId];
+  if (desktopId.length > 0 && [purgedIds containsObject:desktopId]) {
+    [defaults removeObjectForKey:kWWNPrefsDesktopReplacementMachineId];
+  }
+  NSString *activeId = [defaults stringForKey:kWWNActiveMachineId];
+  if (activeId.length > 0 && [purgedIds containsObject:activeId]) {
+    [defaults removeObjectForKey:kWWNActiveMachineId];
+  }
+  NSArray<WWNMachineProfile *> *out = [kept copy];
+  if (persist) {
+    [self saveProfiles:out];
+  }
+  WWNLog("MACHINES", @"purged %lu igetty/modeb-tty profile(s); not a machine",
+         (unsigned long)purgedIds.count);
+  return out;
+}
+
 + (NSArray<WWNMachineProfile *> *)loadProfiles {
   [self ensureObserverRegistered];
   [self migrateFromLegacyPrefsIfNeeded];
@@ -535,7 +575,8 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
     NSArray<WWNMachineProfile *> *profiles = [self parseProfilesData:rawData];
     BOOL migrated = NO;
     for (WWNMachineProfile *profile in profiles) {
-      if ([profile.type isEqualToString:kWWNMachineTypeNative]) {
+      if ([profile.type isEqualToString:kWWNMachineTypeNative] ||
+          [profile.type isEqualToString:kWWNMachineTypeWasm]) {
         continue;
       }
       NSMutableDictionary *ro =
@@ -547,7 +588,9 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
         migrated = YES;
       }
     }
-    if (migrated) {
+    NSUInteger beforePurge = profiles.count;
+    profiles = [self profilesPurgingIgettyConsole:profiles persist:NO];
+    if (migrated || profiles.count != beforePurge) {
       [self saveProfiles:profiles];
     }
     return profiles;
@@ -556,6 +599,7 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
   if (legacy.length > 0) {
     NSData *legacyData = [legacy dataUsingEncoding:NSUTF8StringEncoding];
     NSArray<WWNMachineProfile *> *profiles = [self parseProfilesData:legacyData];
+    profiles = [self profilesPurgingIgettyConsole:profiles persist:NO];
     if (profiles.count > 0) {
       [self saveProfiles:profiles];
     }
@@ -565,6 +609,15 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
 }
 
 + (NSArray<WWNMachineProfile *> *)upsertProfile:(WWNMachineProfile *)profile {
+  if ([self profileIsIgettyConsoleNotAMachine:profile]) {
+    WWNLog("MACHINES",
+           @"refused upsert of igetty/modeb-tty '%@'; console is not a machine",
+           profile.name ?: @"");
+    if (profile.machineId.length > 0) {
+      return [self deleteProfileById:profile.machineId];
+    }
+    return [self loadProfiles];
+  }
   long long now = (long long)([[NSDate date] timeIntervalSince1970] * 1000.0);
   profile.updatedAtMs = now;
   if (profile.createdAtMs == 0) {
@@ -742,12 +795,42 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
   return [self profileIndicatesNestedWithNativeClientId:cid customCommand:cmd];
 }
 
++ (BOOL)nativeClientIdIsIgettyConsole:(NSString *)clientId {
+  NSString *cid = [(clientId ?: @"") lowercaseString];
+  return [cid isEqualToString:@"modeb-tty"] ||
+         [cid isEqualToString:@"modeb-ttyd"] ||
+         [cid isEqualToString:@"igetty"] ||
+         [cid isEqualToString:@"igettyd"] ||
+         [cid isEqualToString:@"modeb-getty"];
+}
+
++ (BOOL)profileIsIgettyConsoleNotAMachine:(WWNMachineProfile *)profile {
+  if (!profile) {
+    return NO;
+  }
+  if ([profile.name.lowercaseString isEqualToString:@"mode b tty"]) {
+    return YES;
+  }
+  NSString *cid = nil;
+  [self resolvedNativeIdentityForProfile:profile clientId:&cid customCommand:NULL];
+  if ([self nativeClientIdIsIgettyConsole:cid]) {
+    return YES;
+  }
+  id bundled = profile.runtimeOverrides[kWWNRuntimeBundledAppID];
+  if ([bundled isKindOfClass:[NSString class]] &&
+      [self nativeClientIdIsIgettyConsole:(NSString *)bundled]) {
+    return YES;
+  }
+  return NO;
+}
+
 + (BOOL)nativeClientIdIndicatesModeBOwnDisplay:(NSString *)clientId
                                  customCommand:(NSString *)customCommand {
   NSString *cid = [clientId isKindOfClass:[NSString class]] ? clientId : @"";
-  if ([cid isEqualToString:@"modeb-tty"] ||
-      [cid isEqualToString:@"modeb-ttyd"] ||
-      [cid isEqualToString:@"kmscube"] ||
+  if ([self nativeClientIdIsIgettyConsole:cid]) {
+    return NO;
+  }
+  if ([cid isEqualToString:@"kmscube"] ||
       [cid isEqualToString:@"gbm-es2-demo"] ||
       [cid isEqualToString:@"vkcube"] ||
       [cid isEqualToString:@"vkcube-kms"]) {
@@ -856,7 +939,8 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
   NSDictionary<NSString *, id> *resolved = [self resolvedRuntimeSettingsForProfile:profile];
   WWNPreferencesManager *prefs = [WWNPreferencesManager sharedManager];
 
-  if ([profile.type isEqualToString:kWWNMachineTypeNative]) {
+  if ([profile.type isEqualToString:kWWNMachineTypeNative] ||
+      [profile.type isEqualToString:kWWNMachineTypeWasm]) {
     [prefs setWaypipeSSHEnabled:NO];
   } else if ([profile.type isEqualToString:kWWNMachineTypeSSHWaypipe] ||
              [profile.type isEqualToString:kWWNMachineTypeSSHTerminal]) {
@@ -1171,6 +1255,23 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
                                  overrideKey:kWWNRuntimeSwipeBackToCloseEnabled
                                    globalKey:kWWNPrefSwipeBackToCloseEnabled
                                 defaultValue:YES];
+}
+
++ (BOOL)resolvedResizeDisplayForVirtualKeyboardForProfile:
+    (WWNMachineProfile *)profile {
+  return [self resolvedRuntimeBoolForProfile:profile
+                                 overrideKey:kWWNRuntimeResizeDisplayForVirtualKeyboard
+                                   globalKey:kWWNPrefsResizeDisplayForVirtualKeyboard
+                                defaultValue:YES];
+}
+
++ (BOOL)resolvedResizeDisplayForVirtualKeyboardActive {
+  NSString *activeId = [self activeMachineId];
+  WWNMachineProfile *profile = nil;
+  if (activeId.length > 0) {
+    profile = [self profileById:activeId];
+  }
+  return [self resolvedResizeDisplayForVirtualKeyboardForProfile:profile];
 }
 
 + (BOOL)resolvedRenderMacOSPointerForProfile:(WWNMachineProfile *)profile {

@@ -7,16 +7,15 @@
 
 pub mod config;
 pub mod core;
+pub mod domain;
 pub mod ffi;
 pub mod platform;
 pub mod prelude;
 pub mod util;
 pub mod version;
-// The `linux` module holds the GTK app's support code plus the canonical
-// machine-profile model/store/catalog. It never references the optional GTK
-// crates, so it compiles on any host. It is built for the `linux-ui` GTK
-// binaries and under `test` (so the model + migration unit tests run on the
-// CI host and locally), but stays out of normal mobile/Apple release builds.
+// Linux GTK + file store. Domain types live in `domain` (always compiled).
+// This module stays `linux-ui` / `test` only so Apple/Android release builds
+// do not pull GTK helpers.
 #[cfg(any(feature = "linux-ui", test))]
 pub mod linux;
 
@@ -60,9 +59,19 @@ compile_error!("feature `profile-ios-mode-b` cannot be combined with a store-saf
 
 // Re-export FFI types at crate root for UniFFI
 // UniFFI's generated code expects these types to be accessible from the crate root
-pub use ffi::api::{build_info, version, WawonaCore};
+pub use ffi::api::{build_info, build_number, version, WawonaCore};
 pub use ffi::errors::*;
 pub use ffi::types::*;
+pub use domain::error::DomainError;
+pub use domain::machine_profile::{
+    ClientLauncher, ContainerMachineSettings, DomainEnvironmentOverride, MachineProfile,
+    MachineRuntimeOverrides, MachineStatus, MachineType,
+};
+pub use domain::uniffi_api::{
+    machine_profiles_decode_v1, machine_profiles_encode_v1, normalize_ssh_port_uniffi,
+    sanitize_ssh_host_uniffi, validate_machine_editor, validate_machine_profile,
+    MachineProfileStoreApi,
+};
 
 // When the waypipe feature is enabled (iOS/Android), force the linker to
 // include waypipe's objects in the staticlib so waypipe_main is available

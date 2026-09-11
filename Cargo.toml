@@ -2,7 +2,7 @@ members = ["."]
 
 [package]
 name = "wawona"
-version = "26.8.23"
+version = "26.9.9"
 edition = "2021"
 
 [lints.rust]
@@ -78,7 +78,7 @@ coreutils = { path = "./coreutils", optional = true, default-features = false, f
   "pwd", "head", "tail", "wc", "sort", "cut", "tr", "seq", "basename",
   "dirname", "stat", "du", "df", "date", "env", "printenv", "uname",
   "whoami", "yes", "tee", "nl", "tac", "fold", "expand", "unexpand",
-  "truncate",
+  "truncate", "chmod",
 ] }
 
 [build-dependencies]

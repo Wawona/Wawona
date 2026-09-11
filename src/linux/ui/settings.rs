@@ -8,7 +8,7 @@ use gtk::prelude::*;
 use gtk4 as gtk;
 use libadwaita as adw;
 
-use crate::ffi::api::{build_info, version};
+use crate::ffi::api::{build_number, version};
 use crate::linux::runtime;
 use crate::linux::service;
 use crate::linux::ui::modal_sheet::present_sheet;
@@ -44,18 +44,19 @@ pub fn show_settings(parent: &adw::ApplicationWindow, state: &SharedAppState, la
     );
 
     let sections = [
-        "Machines",
         "Display",
         "Input",
         "Graphics",
+        "Connection",
         "Env Vars",
         "Local Shell",
-        "SSH and Waypipe",
-        "Dependencies",
+        "Machines",
         "Advanced",
+        "SSH and Waypipe",
+        "About",
+        "Dependencies",
         "Launch Agent",
         "Diagnostics",
-        "About",
     ];
     for name in &sections {
         let row = gtk::ListBoxRow::new();
@@ -186,12 +187,9 @@ pub fn show_settings(parent: &adw::ApplicationWindow, state: &SharedAppState, la
     let display_page = adw::PreferencesPage::new();
     let display_group = adw::PreferencesGroup::new();
     display_group.set_title("Display");
-    let wayland_display = gtk::Entry::new();
-    wayland_display.set_text(&settings.wayland_display);
     let color_ops = gtk::Switch::new();
     color_ops.set_active(settings.color_operations);
     add_row(&display_group, "Enable HDR", &color_ops);
-    add_row(&display_group, "Wayland Display", &wayland_display);
     display_page.add(&display_group);
     crate::linux::ui::a11y::set_wwn_a11y(
         &display_page,
@@ -226,6 +224,25 @@ pub fn show_settings(parent: &adw::ApplicationWindow, state: &SharedAppState, la
     );
     graphics_page.add(&graphics_group);
     stack.add_named(&graphics_page, Some("Graphics"));
+
+    // Connection (catalog: waylandDisplay + default client). Linux has no
+    // separate default-client picker here; socket name is the connection row.
+    let connection_page = adw::PreferencesPage::new();
+    let connection_group = adw::PreferencesGroup::new();
+    connection_group.set_title("Connection");
+    connection_group.set_description(Some(
+        "Networking and the compositor socket. Environment Variables hold XDG / TERM.",
+    ));
+    let wayland_display = gtk::Entry::new();
+    wayland_display.set_text(&settings.wayland_display);
+    add_row(&connection_group, "Wayland Display", &wayland_display);
+    connection_page.add(&connection_group);
+    crate::linux::ui::a11y::set_wwn_a11y(
+        &connection_page,
+        "wwn.settings.connection",
+        Some("Connection"),
+    );
+    stack.add_named(&connection_page, Some("Connection"));
 
     // Environment (#157 / #161)
     let env_page = adw::PreferencesPage::new();
@@ -339,13 +356,29 @@ pub fn show_settings(parent: &adw::ApplicationWindow, state: &SharedAppState, la
                     .unwrap_or("Package");
                 let version = pkg.get("version").and_then(|v| v.as_str()).unwrap_or("");
                 let role = pkg.get("role").and_then(|v| v.as_str()).unwrap_or("");
-                add_info_row(
-                    &deps_group,
-                    name,
-                    &format!("{version}. {role}")
-                        .trim_end_matches(". ")
-                        .to_string(),
-                );
+                let license = pkg.get("license").and_then(|v| v.as_str()).unwrap_or("");
+                let url = pkg.get("url").and_then(|v| v.as_str()).unwrap_or("");
+                let mut detail = String::new();
+                if !version.is_empty() {
+                    detail.push_str(version);
+                }
+                if !license.is_empty() {
+                    if !detail.is_empty() {
+                        detail.push_str(" · ");
+                    }
+                    detail.push_str(license);
+                }
+                if !role.is_empty() {
+                    if !detail.is_empty() {
+                        detail.push_str(". ");
+                    }
+                    detail.push_str(role);
+                }
+                if !url.is_empty() {
+                    add_dependency_row(&deps_group, name, &detail, url);
+                } else {
+                    add_info_row(&deps_group, name, &detail);
+                }
             }
         }
     }
@@ -434,11 +467,8 @@ pub fn show_settings(parent: &adw::ApplicationWindow, state: &SharedAppState, la
     let about_page = adw::PreferencesPage::new();
     let about_group = adw::PreferencesGroup::new();
     about_group.set_title("Wawona");
-    add_info_row(
-        &about_group,
-        "Version",
-        &format!("{} ({})", version(), build_info()),
-    );
+    add_info_row(&about_group, "Version", &format!("v{}", version()));
+    add_info_row(&about_group, "Build", &build_number());
     add_info_row(&about_group, "Platform", "Linux");
     add_info_row(
         &about_group,
@@ -646,6 +676,41 @@ fn add_link_row(group: &adw::PreferencesGroup, title: &str, url: &str) {
     let open_url = url.to_string();
     row.connect_activated(move |_| {
         linux_open_url(&open_url);
+    });
+    group.add(&row);
+}
+
+fn add_dependency_row(group: &adw::PreferencesGroup, title: &str, detail: &str, url: &str) {
+    let row = adw::ActionRow::new();
+    row.set_title(title);
+    row.set_title_lines(1);
+    row.set_subtitle(&settings_one_line(detail));
+    row.set_subtitle_lines(0);
+    row.set_activatable(true);
+    let title_owned = title.to_string();
+    let detail_owned = detail.to_string();
+    let url_owned = url.to_string();
+    row.connect_activated(move |row| {
+        let parent = row.root().and_downcast::<gtk::Window>();
+        let body = format!("{detail_owned}\n\n{url_owned}");
+        let dlg = gtk::MessageDialog::new(
+            parent.as_ref(),
+            gtk::DialogFlags::MODAL,
+            gtk::MessageType::Info,
+            gtk::ButtonsType::None,
+            &body,
+        );
+        dlg.set_title(Some(&title_owned));
+        dlg.add_button("Open Website", gtk::ResponseType::Accept);
+        dlg.add_button("OK", gtk::ResponseType::Ok);
+        let url_c = url_owned.clone();
+        dlg.connect_response(move |d, response| {
+            if response == gtk::ResponseType::Accept {
+                linux_open_url(&url_c);
+            }
+            d.close();
+        });
+        dlg.present();
     });
     group.add(&row);
 }

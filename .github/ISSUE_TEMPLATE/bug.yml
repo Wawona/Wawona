@@ -36,7 +36,7 @@ body:
     id: install_channel
     attributes:
       label: How you installed Wawona
-      description: Wawona fills this from the app. Use TestFlight (Beta), Play Store (Beta), App Store (Release), Play Store (Release), Sideload IPA (Xcode, AltStore, TrollStore, Sileo or similar), Sideload APK, Simulator, nix / local build (not a prebuilt installation), or Other.
+      description: Wawona fills this from the app. Use TestFlight (Beta), Play Store (Beta), App Store (Release), Play Store (Release), TrollStore, Sileo, Sideload IPA (Xcode, AltStore, or similar), Sideload APK, Simulator, nix / local build (not a prebuilt installation), or Other.
       placeholder: "TestFlight (Beta)"
     validations:
       required: true
@@ -46,7 +46,7 @@ body:
     attributes:
       label: Wawona version
       description: From Settings → About → Version, or the copied diagnostics header.
-      placeholder: "26.8.23"
+      placeholder: "26.9.9"
     validations:
       required: true
 

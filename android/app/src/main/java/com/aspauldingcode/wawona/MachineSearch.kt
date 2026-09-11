@@ -78,12 +78,13 @@ object MachineSearch {
         .lowercase()
 
     private fun scopeLabel(type: MachineType): String = when (type) {
-        MachineType.NATIVE, MachineType.VM, MachineType.CONTAINER -> "LOCAL"
+        MachineType.NATIVE, MachineType.WASM, MachineType.VM, MachineType.CONTAINER -> "LOCAL"
         MachineType.SSH_WAYPIPE, MachineType.SSH_TERMINAL -> "REMOTE"
     }
 
     private fun typeLabel(profile: MachineProfile): String = when (profile.type) {
         MachineType.NATIVE -> "NATIVE"
+        MachineType.WASM -> "WASM"
         MachineType.SSH_WAYPIPE -> "SSH+WAYPIPE"
         MachineType.SSH_TERMINAL -> "SSH TERMINAL"
         MachineType.VM -> "VM"
@@ -92,6 +93,8 @@ object MachineSearch {
 
     internal fun subtitle(profile: MachineProfile): String = when (profile.type) {
         MachineType.NATIVE -> BundledClients.labelFor(profile.nativeLauncher)
+        MachineType.WASM -> profile.runtimeOverrides.optString("wasmCommand", "wasm hello-wasi-gui")
+            .ifBlank { "wasm hello-wasi-gui" }
         MachineType.SSH_WAYPIPE, MachineType.SSH_TERMINAL -> {
             if (profile.sshHost.isBlank()) "SSH endpoint not configured"
             else "${profile.sshUser.ifBlank { "user" }}@${profile.sshHost}"
@@ -105,6 +108,11 @@ object MachineSearch {
             val client = BundledClients.labelFor(profile.nativeLauncher)
             if (client.isBlank()) "No client configured. Edit to select one"
             else "Runs: $client"
+        }
+        MachineType.WASM -> {
+            val cmd = profile.runtimeOverrides.optString("wasmCommand", "wasm hello-wasi-gui")
+                .ifBlank { "wasm hello-wasi-gui" }
+            "Runs: $cmd"
         }
         MachineType.SSH_WAYPIPE -> {
             val cmd = profile.remoteCommand.ifBlank { "weston-simple-shm" }

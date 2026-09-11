@@ -1,5 +1,3 @@
-
-
 /// Manages window resizing state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResizeEdge {
@@ -28,4 +26,3 @@ impl Default for ResizeEdge {
         Self::None
     }
 }
-

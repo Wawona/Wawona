@@ -12,3 +12,4 @@ pub mod thumbnail_store;
 #[cfg(feature = "linux-ui")]
 pub mod ui;
 pub mod ui_model;
+pub mod wasm_launch;

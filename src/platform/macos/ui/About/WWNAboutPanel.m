@@ -135,6 +135,17 @@ static UIImage *WWNAboutLogo(void) {
   versionLabel.textColor = [UIColor secondaryLabelColor];
   [contentStack addArrangedSubview:versionLabel];
 
+  NSString *build = [[NSBundle mainBundle]
+      objectForInfoDictionaryKey:@"CFBundleVersion"];
+  if (build.length == 0) {
+    build = @"1";
+  }
+  UILabel *buildLabel = [[UILabel alloc] init];
+  buildLabel.text = [NSString stringWithFormat:@"Build %@", build];
+  buildLabel.font = [UIFont systemFontOfSize:14];
+  buildLabel.textColor = [UIColor tertiaryLabelColor];
+  [contentStack addArrangedSubview:buildLabel];
+
   // Author Section
   UIImageView *avatarView =
       [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, 80, 80)];
@@ -446,11 +457,11 @@ static UIImage *WWNAboutLogo(void) {
   subtitle.selectable = NO;
   [stack addArrangedSubview:subtitle];
 
-  // Version Section (Vertically Centered Stack)
+  // Version / Build (separate rows)
   NSStackView *versionStack = [[NSStackView alloc] init];
-  versionStack.orientation = NSUserInterfaceLayoutOrientationHorizontal;
-  versionStack.spacing = 8;
-  versionStack.alignment = NSLayoutAttributeCenterY;
+  versionStack.orientation = NSUserInterfaceLayoutOrientationVertical;
+  versionStack.spacing = 4;
+  versionStack.alignment = NSLayoutAttributeCenterX;
   [stack addArrangedSubview:versionStack];
 
   NSString *version = [NSString stringWithUTF8String:WAWONA_VERSION];
@@ -468,6 +479,22 @@ static UIImage *WWNAboutLogo(void) {
   versionLabel.editable = NO;
   versionLabel.selectable = NO;
   [versionStack addArrangedSubview:versionLabel];
+
+  NSString *build = [[NSBundle mainBundle]
+      objectForInfoDictionaryKey:@"CFBundleVersion"];
+  if (build.length == 0) {
+    build = @"1";
+  }
+  NSTextField *buildLabel = [[NSTextField alloc] init];
+  buildLabel.stringValue = [NSString stringWithFormat:@"Build %@", build];
+  buildLabel.font = [NSFont systemFontOfSize:13 weight:NSFontWeightRegular];
+  buildLabel.textColor = [NSColor tertiaryLabelColor];
+  buildLabel.alignment = NSTextAlignmentCenter;
+  buildLabel.bezeled = NO;
+  buildLabel.drawsBackground = NO;
+  buildLabel.editable = NO;
+  buildLabel.selectable = NO;
+  [versionStack addArrangedSubview:buildLabel];
 
   [stack setCustomSpacing:30 afterView:versionStack];
 

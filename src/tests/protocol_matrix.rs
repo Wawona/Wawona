@@ -35,7 +35,10 @@ impl Dispatch<wl_registry::WlRegistry, ()> for RegistryProbe {
         _conn: &Connection,
         _qh: &QueueHandle<Self>,
     ) {
-        if let wl_registry::Event::Global { interface, version, .. } = event {
+        if let wl_registry::Event::Global {
+            interface, version, ..
+        } = event
+        {
             state.globals.insert(interface, version);
         }
     }
@@ -225,7 +228,8 @@ fn test_generate_protocol_status_manifest() {
         entries.len()
     ));
 
-    let mut by_origin: Vec<(ProtocolOrigin, Vec<(&String, u32, &ProtocolCatalogEntry)>)> = Vec::new();
+    let mut by_origin: Vec<(ProtocolOrigin, Vec<(&String, u32, &ProtocolCatalogEntry)>)> =
+        Vec::new();
     for origin in [
         ProtocolOrigin::WaylandCore,
         ProtocolOrigin::Xdg,
@@ -299,7 +303,12 @@ fn test_protocol_matrix_dmabuf_feedback_resolves() {
             _conn: &Connection,
             _qh: &QueueHandle<Self>,
         ) {
-            if let wl_registry::Event::Global { name, interface, version } = event {
+            if let wl_registry::Event::Global {
+                name,
+                interface,
+                version,
+            } = event
+            {
                 if interface == "zwp_linux_dmabuf_v1" {
                     state.dmabuf = Some((name, version));
                 }
@@ -372,11 +381,12 @@ fn test_protocol_matrix_dmabuf_feedback_resolves() {
     let mut probe = FeedbackProbe::default();
     env.wait_roundtrip(&mut queue, &mut probe);
 
-    let (name, version) = probe.dmabuf.expect("zwp_linux_dmabuf_v1 must be advertised");
+    let (name, version) = probe
+        .dmabuf
+        .expect("zwp_linux_dmabuf_v1 must be advertised");
     assert!(version >= 4, "dmabuf global must be v4+ for feedback");
 
-    let dmabuf: zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1 =
-        registry.bind(name, 4, &qh, ());
+    let dmabuf: zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1 = registry.bind(name, 4, &qh, ());
     let _feedback = dmabuf.get_default_feedback(&qh, ());
     env.wait_roundtrip(&mut queue, &mut probe);
 

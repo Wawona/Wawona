@@ -62,7 +62,37 @@ struct WWNMachineEditorView: View {
         } header: {
           Text("Connection Profile")
         } footer: {
-          Text("tvOS supports Native and Remote (SSH) machines only.")
+          Text("tvOS supports Native, Wasm, and Remote (SSH) machines. VM and Container are hidden.")
+        }
+
+        if draft.type == kWWNMachineTypeWasm {
+          Section("Wasm") {
+            Picker("Source", selection: $draft.wasmLaunchMode) {
+              Text("Local file").tag("file")
+              Text("Search repo").tag("repo")
+              Text("Command").tag("command")
+            }
+            .pickerStyle(.navigationLink)
+            if draft.wasmLaunchMode == "file" {
+              WWNTvFormTextField("Wasm module path", text: $draft.wasmModulePath)
+            } else if draft.wasmLaunchMode == "repo" {
+              WWNTvFormTextField("Package", text: $draft.wasmPackage, prompt: "hello-wasi-gui")
+              NavigationLink("Search catalog") {
+                WWNWasmCatalogSearchView { pkg in
+                  Task {
+                    draft.wasmPackage = pkg.name
+                    draft.wasmCommand = "wasm \(pkg.name)"
+                    draft.wasmLaunchMode = "repo"
+                    if let path = try? await WWNWasmCatalogClient.download(pkg) {
+                      draft.wasmModulePath = path
+                    }
+                  }
+                }
+              }
+            } else {
+              WWNTvFormTextField("Command", text: $draft.wasmCommand, prompt: "wasm hello-wasi-gui")
+            }
+          }
         }
 
         if draft.type == kWWNMachineTypeNative {
@@ -244,6 +274,7 @@ struct WWNMachineEditorView: View {
   @ViewBuilder
   private var machineTypeOptions: some View {
     Text("Native").tag(kWWNMachineTypeNative)
+    Text("Wasm").tag(kWWNMachineTypeWasm)
     Text("SSH + Waypipe").tag(kWWNMachineTypeSSHWaypipe)
     Text("SSH Terminal").tag(kWWNMachineTypeSSHTerminal)
     #if !os(tvOS) && !os(watchOS)
@@ -263,6 +294,10 @@ struct WWNMachineEditorView: View {
 
           if draft.type == kWWNMachineTypeNative {
             WWNNativeClientEditorSection(draft: draft)
+          }
+
+          if draft.type == kWWNMachineTypeWasm {
+            WWNWasmEditorSection(draft: draft)
           }
 
           if draft.type == kWWNMachineTypeContainer {

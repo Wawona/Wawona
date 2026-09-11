@@ -1,4 +1,5 @@
-# Weston toytoolkit PNG assets for Android (window frame decorations, panel icons).
+# Weston toytoolkit PNG assets for Android (window frame decorations, panel
+# icons, honeycomb wallpaper background.png).
 #
 # Without WESTON_DATA_DIR + these files, in-process CSD clients (weston-terminal,
 # cliptest, flower, …) SIGSEGV in window_frame_create when frame_create cannot
@@ -29,6 +30,10 @@ in
     chmod -R u+w app/src/main/assets/weston
     if [ ! -f app/src/main/assets/weston/icon_window.png ]; then
       echo "ERROR: Weston frame assets missing from APK assets/weston"
+      exit 1
+    fi
+    if [ ! -f app/src/main/assets/weston/background.png ]; then
+      echo "ERROR: Weston honeycomb wallpaper missing (data/background.png)"
       exit 1
     fi
     echo "Bundled $(ls app/src/main/assets/weston/*.png | wc -l) Weston PNG assets for toytoolkit CSD"

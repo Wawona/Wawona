@@ -18,6 +18,8 @@ nix build .#wawona-macos-desktop-host
 
 # Apple family simulators
 nix run .#wawona-ios
+# TrollStore Mode B on vphone (not the Xcode Simulator)
+nix run .#wawona-ios-modeb
 nix build .#wawona-watchos-app-sim
 nix build .#wawona-tvos-sim
 nix build .#wawona-visionos-sim

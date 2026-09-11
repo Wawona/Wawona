@@ -5,13 +5,14 @@
 
 use smithay::reexports::wayland_server::Resource;
 
+pub mod catalog;
+pub mod host_im;
+pub mod ext;
+pub mod plasma;
 pub mod protocol;
 pub mod wayland;
-pub mod xdg;
 pub mod wlr;
-pub mod plasma;
-pub mod ext;
-pub mod catalog;
+pub mod xdg;
 
 impl smithay::wayland::buffer::BufferHandler for crate::core::state::CompositorState {
     fn buffer_destroyed(
@@ -56,6 +57,9 @@ impl smithay::wayland::compositor::CompositorHandler for crate::core::state::Com
         if let Some(data) = client.get_data::<crate::core::compositor::WawonaBackendClientData>() {
             return &data.compositor_state;
         }
+        if let Some(data) = client.get_data::<crate::core::wayland::host_im::HostImClientData>() {
+            return &data.compositor_state;
+        }
         // Fallback for clients inserted without Wawona backend data (test
         // harnesses / legacy paths): a single process-lifetime shared instance.
         unsafe {
@@ -96,7 +100,9 @@ impl smithay::wayland::compositor::CompositorHandler for crate::core::state::Com
         &mut self,
         surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     ) {
-        use smithay::wayland::compositor::{BufferAssignment, Damage, SurfaceAttributes, with_states};
+        use smithay::wayland::compositor::{
+            with_states, BufferAssignment, Damage, SurfaceAttributes,
+        };
         use smithay::wayland::shm::with_buffer_contents;
 
         let Some(client_id) = surface.client().map(|c| c.id()) else {
@@ -217,7 +223,9 @@ impl smithay::wayland::compositor::CompositorHandler for crate::core::state::Com
                                     data.height,
                                     data.stride,
                                     data.offset,
-                                    crate::core::surface::buffer::wl_shm_format_to_legacy_u32(data.format),
+                                    crate::core::surface::buffer::wl_shm_format_to_legacy_u32(
+                                        data.format,
+                                    ),
                                 )
                             })
                         {
@@ -237,7 +245,8 @@ impl smithay::wayland::compositor::CompositorHandler for crate::core::state::Com
                                     Some(buffer_resource.clone()),
                                 ),
                             );
-                            surface_state.pending.buffer = crate::core::surface::BufferType::Shm(shm);
+                            surface_state.pending.buffer =
+                                crate::core::surface::BufferType::Shm(shm);
                         } else {
                             surface_state.pending.buffer = crate::core::surface::BufferType::None;
                         }
@@ -290,7 +299,11 @@ impl smithay::input::SeatHandler for crate::core::state::CompositorState {
             .expect("smithay seat state must be initialized before dispatch")
     }
 
-    fn cursor_image(&mut self, seat: &smithay::input::Seat<Self>, image: smithay::input::pointer::CursorImageStatus) {
+    fn cursor_image(
+        &mut self,
+        seat: &smithay::input::Seat<Self>,
+        image: smithay::input::pointer::CursorImageStatus,
+    ) {
         crate::core::wayland::wayland::input::pointer::on_cursor_image(self, seat, image);
     }
 
@@ -299,14 +312,18 @@ impl smithay::input::SeatHandler for crate::core::state::CompositorState {
         seat: &smithay::input::Seat<Self>,
         focused: Option<&smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
     ) {
-        // Keep the clipboard (wl_data_device) focus in lockstep with keyboard
-        // focus so the focused client receives selection offers, per spec.
+        // Clipboard focus tracks keyboard. Smithay KeyboardTarget also
+        // sets text-input enter/leave on the same surface (not touch focus).
+        // OSK waits for committed zwp_text_input_v3.enable after that enter.
         use smithay::reexports::wayland_server::Resource;
         let Some(dh) = self.smithay_runtime.display_handle.clone() else {
             return;
         };
         let client = focused.and_then(|surface| surface.client());
-        smithay::wayland::selection::data_device::set_data_device_focus(&dh, seat, client);
+        smithay::wayland::selection::data_device::set_data_device_focus(&dh, seat, client.clone());
+        if self.smithay_runtime.primary_selection.is_some() {
+            smithay::wayland::selection::primary_selection::set_primary_focus(&dh, seat, client);
+        }
     }
 }
 
@@ -338,10 +355,15 @@ impl smithay::wayland::selection::SelectionHandler for crate::core::state::Compo
             return;
         };
         let mimes = source.mime_types();
-        let mime = ["text/plain;charset=utf-8", "text/plain", "UTF8_STRING", "STRING"]
-            .into_iter()
-            .find(|candidate| mimes.iter().any(|m| m == candidate))
-            .map(str::to_string);
+        let mime = [
+            "text/plain;charset=utf-8",
+            "text/plain",
+            "UTF8_STRING",
+            "STRING",
+        ]
+        .into_iter()
+        .find(|candidate| mimes.iter().any(|m| m == candidate))
+        .map(str::to_string);
         let Some(mime) = mime else {
             return;
         };
@@ -419,10 +441,7 @@ fn percent_decode(input: &str) -> String {
     let mut i = 0;
     while i < bytes.len() {
         if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let (Some(hi), Some(lo)) = (
-                hex_val(bytes[i + 1]),
-                hex_val(bytes[i + 2]),
-            ) {
+            if let (Some(hi), Some(lo)) = (hex_val(bytes[i + 1]), hex_val(bytes[i + 2])) {
                 result.push(hi << 4 | lo);
                 i += 3;
                 continue;
@@ -452,10 +471,18 @@ impl smithay::wayland::selection::data_device::ServerDndGrabHandler
     for crate::core::state::CompositorState
 {
     fn accept(&mut self, mime_type: Option<String>, seat: smithay::input::Seat<Self>) {
-        tracing::debug!("DnD server: accept mime_type={:?}, seat={}", mime_type, seat.name());
+        tracing::debug!(
+            "DnD server: accept mime_type={:?}, seat={}",
+            mime_type,
+            seat.name()
+        );
     }
 
-    fn action(&mut self, action: wayland_server::protocol::wl_data_device_manager::DndAction, seat: smithay::input::Seat<Self>) {
+    fn action(
+        &mut self,
+        action: wayland_server::protocol::wl_data_device_manager::DndAction,
+        seat: smithay::input::Seat<Self>,
+    ) {
         tracing::debug!("DnD server: action={:?}, seat={}", action, seat.name());
     }
 
@@ -473,7 +500,12 @@ impl smithay::wayland::selection::data_device::ServerDndGrabHandler
         }
     }
 
-    fn send(&mut self, mime_type: String, fd: std::os::fd::OwnedFd, _seat: smithay::input::Seat<Self>) {
+    fn send(
+        &mut self,
+        mime_type: String,
+        fd: std::os::fd::OwnedFd,
+        _seat: smithay::input::Seat<Self>,
+    ) {
         tracing::debug!("DnD server: send requested for mime_type={}", mime_type);
 
         let bridge_data = self
@@ -520,7 +552,11 @@ impl smithay::wayland::selection::data_device::ServerDndGrabHandler
                             match std::fs::read(&decoded_path) {
                                 Ok(bytes) => bytes,
                                 Err(e) => {
-                                    tracing::warn!("DnD send: failed to read image at {}: {}", decoded_path, e);
+                                    tracing::warn!(
+                                        "DnD send: failed to read image at {}: {}",
+                                        decoded_path,
+                                        e
+                                    );
                                     return;
                                 }
                             }
@@ -529,7 +565,10 @@ impl smithay::wayland::selection::data_device::ServerDndGrabHandler
                         }
                     } else {
                         // Unknown MIME type — send raw data
-                        tracing::debug!("DnD send: unknown mime '{}', sending raw data", requested_mime);
+                        tracing::debug!(
+                            "DnD send: unknown mime '{}', sending raw data",
+                            requested_mime
+                        );
                         data.into_bytes()
                     };
 
@@ -539,7 +578,10 @@ impl smithay::wayland::selection::data_device::ServerDndGrabHandler
                 })
                 .ok();
         } else {
-            tracing::warn!("DnD send: no pending drop data available for mime={}", mime_type);
+            tracing::warn!(
+                "DnD send: no pending drop data available for mime={}",
+                mime_type
+            );
         }
     }
 
@@ -565,8 +607,22 @@ impl smithay::wayland::selection::data_device::DataDeviceHandler
     }
 }
 
+impl smithay::wayland::selection::primary_selection::PrimarySelectionHandler
+    for crate::core::state::CompositorState
+{
+    fn primary_selection_state(
+        &self,
+    ) -> &smithay::wayland::selection::primary_selection::PrimarySelectionState {
+        self.smithay_runtime
+            .primary_selection
+            .as_ref()
+            .expect("smithay primary selection used before init")
+    }
+}
+
 smithay::delegate_seat!(crate::core::state::CompositorState);
 smithay::delegate_data_device!(crate::core::state::CompositorState);
+smithay::delegate_primary_selection!(crate::core::state::CompositorState);
 smithay::delegate_xdg_shell!(crate::core::state::CompositorState);
 smithay::delegate_xdg_decoration!(crate::core::state::CompositorState);
 smithay::delegate_xdg_foreign!(crate::core::state::CompositorState);
@@ -575,6 +631,24 @@ smithay::delegate_xdg_dialog!(crate::core::state::CompositorState);
 smithay::delegate_xdg_system_bell!(crate::core::state::CompositorState);
 smithay::delegate_xdg_toplevel_icon!(crate::core::state::CompositorState);
 smithay::delegate_xdg_toplevel_tag!(crate::core::state::CompositorState);
+smithay::delegate_text_input_manager!(crate::core::state::CompositorState);
+smithay::delegate_input_method_manager!(crate::core::state::CompositorState);
+smithay::delegate_virtual_keyboard_manager!(crate::core::state::CompositorState);
+
+impl smithay::wayland::input_method::InputMethodHandler for crate::core::state::CompositorState {
+    fn new_popup(&mut self, _surface: smithay::wayland::input_method::PopupSurface) {}
+
+    fn dismiss_popup(&mut self, _surface: smithay::wayland::input_method::PopupSurface) {}
+
+    fn popup_repositioned(&mut self, _surface: smithay::wayland::input_method::PopupSurface) {}
+
+    fn parent_geometry(
+        &self,
+        _parent: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+    ) -> smithay::utils::Rectangle<i32, smithay::utils::Logical> {
+        smithay::utils::Rectangle::default()
+    }
+}
 
 pub mod smithay_runtime {
     //! Runtime Smithay protocol ownership boundary.
@@ -596,58 +670,214 @@ pub mod smithay_runtime {
 
     /// Canonical Smithay runtime targets.
     pub const SMITHAY_RUNTIME_BINDINGS: &[SmithayRuntimeBinding] = &[
-        SmithayRuntimeBinding { interface: "wl_compositor", module_path: "smithay::wayland::compositor" },
-        SmithayRuntimeBinding { interface: "wl_subcompositor", module_path: "smithay::wayland::compositor" },
-        SmithayRuntimeBinding { interface: "wl_shm", module_path: "smithay::wayland::shm" },
-        SmithayRuntimeBinding { interface: "wl_seat", module_path: "smithay::wayland::seat" },
-        SmithayRuntimeBinding { interface: "wl_output", module_path: "smithay::wayland::output" },
-        SmithayRuntimeBinding { interface: "zxdg_output_manager_v1", module_path: "smithay::wayland::output" },
-        SmithayRuntimeBinding { interface: "wl_data_device_manager", module_path: "smithay::wayland::selection::data_device" },
-        SmithayRuntimeBinding { interface: "wl_fixes", module_path: "smithay::wayland::fixes" },
-        SmithayRuntimeBinding { interface: "xdg_wm_base", module_path: "smithay::wayland::shell::xdg" },
-        SmithayRuntimeBinding { interface: "xdg_wm_dialog_v1", module_path: "smithay::wayland::shell::xdg::dialog" },
-        SmithayRuntimeBinding { interface: "zwlr_layer_shell_v1", module_path: "smithay::wayland::shell::wlr_layer" },
-        SmithayRuntimeBinding { interface: "zwlr_screencopy_manager_v1", module_path: "smithay::wayland::image_copy_capture (wlr equivalent)" },
-        SmithayRuntimeBinding { interface: "zwlr_export_dmabuf_manager_v1", module_path: "smithay::wayland::dmabuf export path" },
-        SmithayRuntimeBinding { interface: "zwlr_virtual_pointer_manager_v1", module_path: "smithay::wayland::virtual_pointer" },
-        SmithayRuntimeBinding { interface: "zxdg_toplevel_decoration_v1", module_path: "smithay::wayland::shell::xdg::decoration" },
-        SmithayRuntimeBinding { interface: "xdg_activation_v1", module_path: "smithay::wayland::xdg_activation" },
-        SmithayRuntimeBinding { interface: "zxdg_exporter_v2", module_path: "smithay::wayland::xdg_foreign" },
-        SmithayRuntimeBinding { interface: "zxdg_importer_v2", module_path: "smithay::wayland::xdg_foreign" },
-        SmithayRuntimeBinding { interface: "xdg_system_bell_v1", module_path: "smithay::wayland::xdg_system_bell" },
-        SmithayRuntimeBinding { interface: "xdg_toplevel_icon_v1", module_path: "smithay::wayland::xdg_toplevel_icon" },
-        SmithayRuntimeBinding { interface: "xdg_toplevel_tag_manager_v1", module_path: "smithay::wayland::xdg_toplevel_tag" },
-        SmithayRuntimeBinding { interface: "zwp_linux_dmabuf_v1", module_path: "smithay::wayland::dmabuf" },
-        SmithayRuntimeBinding { interface: "wp_presentation", module_path: "smithay::wayland::presentation" },
-        SmithayRuntimeBinding { interface: "ext_foreign_toplevel_list_v1", module_path: "smithay::wayland::foreign_toplevel_list" },
-        SmithayRuntimeBinding { interface: "wp_cursor_shape_manager_v1", module_path: "smithay::wayland::cursor_shape" },
-        SmithayRuntimeBinding { interface: "zwp_pointer_constraints_v1", module_path: "smithay::wayland::pointer_constraints" },
-        SmithayRuntimeBinding { interface: "zwp_pointer_gestures_v1", module_path: "smithay::wayland::pointer_gestures" },
-        SmithayRuntimeBinding { interface: "zwp_relative_pointer_manager_v1", module_path: "smithay::wayland::relative_pointer" },
-        SmithayRuntimeBinding { interface: "zwp_tablet_manager_v2", module_path: "smithay::wayland::tablet_manager" },
-        SmithayRuntimeBinding { interface: "zwp_text_input_manager_v3", module_path: "smithay::wayland::text_input" },
-        SmithayRuntimeBinding { interface: "zwp_input_method_manager_v2", module_path: "smithay::wayland::input_method" },
-        SmithayRuntimeBinding { interface: "zwp_virtual_keyboard_manager_v1", module_path: "smithay::wayland::virtual_keyboard" },
-        SmithayRuntimeBinding { interface: "zwlr_data_control_manager_v1", module_path: "smithay::wayland::selection::wlr_data_control" },
-        SmithayRuntimeBinding { interface: "ext_data_control_manager_v1", module_path: "smithay::wayland::selection::ext_data_control" },
-        SmithayRuntimeBinding { interface: "zwp_primary_selection_device_manager_v1", module_path: "smithay::wayland::selection::primary_selection" },
-        SmithayRuntimeBinding { interface: "wp_fractional_scale_manager_v1", module_path: "smithay::wayland::fractional_scale" },
-        SmithayRuntimeBinding { interface: "wp_viewporter", module_path: "smithay::wayland::viewporter" },
-        SmithayRuntimeBinding { interface: "wp_single_pixel_buffer_manager_v1", module_path: "smithay::wayland::single_pixel_buffer" },
-        SmithayRuntimeBinding { interface: "wp_alpha_modifier_v1", module_path: "smithay::wayland::alpha_modifier" },
-        SmithayRuntimeBinding { interface: "wp_content_type_manager_v1", module_path: "smithay::wayland::content_type" },
-        SmithayRuntimeBinding { interface: "wp_commit_timing_manager_v1", module_path: "smithay::wayland::commit_timing" },
-        SmithayRuntimeBinding { interface: "wp_fifo_manager_v1", module_path: "smithay::wayland::fifo" },
-        SmithayRuntimeBinding { interface: "ext_background_effect_manager_v1", module_path: "smithay::wayland::background_effect" },
-        SmithayRuntimeBinding { interface: "zwp_idle_inhibit_manager_v1", module_path: "smithay::wayland::idle_inhibit" },
-        SmithayRuntimeBinding { interface: "zwp_keyboard_shortcuts_inhibit_manager_v1", module_path: "smithay::wayland::keyboard_shortcuts_inhibit" },
-        SmithayRuntimeBinding { interface: "ext_idle_notifier_v1", module_path: "smithay::wayland::idle_notify" },
-        SmithayRuntimeBinding { interface: "wp_security_context_manager_v1", module_path: "smithay::wayland::security_context" },
-        SmithayRuntimeBinding { interface: "ext_session_lock_manager_v1", module_path: "smithay::wayland::session_lock" },
-        SmithayRuntimeBinding { interface: "xwayland_shell_v1", module_path: "smithay::wayland::xwayland_shell" },
-        SmithayRuntimeBinding { interface: "zwp_xwayland_keyboard_grab_manager_v1", module_path: "smithay::wayland::xwayland_keyboard_grab" },
-        SmithayRuntimeBinding { interface: "wp_drm_lease_device_v1", module_path: "smithay::wayland::drm_lease" },
-        SmithayRuntimeBinding { interface: "wp_linux_drm_syncobj_manager_v1", module_path: "smithay::wayland::drm_syncobj" },
+        SmithayRuntimeBinding {
+            interface: "wl_compositor",
+            module_path: "smithay::wayland::compositor",
+        },
+        SmithayRuntimeBinding {
+            interface: "wl_subcompositor",
+            module_path: "smithay::wayland::compositor",
+        },
+        SmithayRuntimeBinding {
+            interface: "wl_shm",
+            module_path: "smithay::wayland::shm",
+        },
+        SmithayRuntimeBinding {
+            interface: "wl_seat",
+            module_path: "smithay::wayland::seat",
+        },
+        SmithayRuntimeBinding {
+            interface: "wl_output",
+            module_path: "smithay::wayland::output",
+        },
+        SmithayRuntimeBinding {
+            interface: "zxdg_output_manager_v1",
+            module_path: "smithay::wayland::output",
+        },
+        SmithayRuntimeBinding {
+            interface: "wl_data_device_manager",
+            module_path: "smithay::wayland::selection::data_device",
+        },
+        SmithayRuntimeBinding {
+            interface: "wl_fixes",
+            module_path: "smithay::wayland::fixes",
+        },
+        SmithayRuntimeBinding {
+            interface: "xdg_wm_base",
+            module_path: "smithay::wayland::shell::xdg",
+        },
+        SmithayRuntimeBinding {
+            interface: "xdg_wm_dialog_v1",
+            module_path: "smithay::wayland::shell::xdg::dialog",
+        },
+        SmithayRuntimeBinding {
+            interface: "zwlr_layer_shell_v1",
+            module_path: "smithay::wayland::shell::wlr_layer",
+        },
+        SmithayRuntimeBinding {
+            interface: "zwlr_screencopy_manager_v1",
+            module_path: "smithay::wayland::image_copy_capture (wlr equivalent)",
+        },
+        SmithayRuntimeBinding {
+            interface: "zwlr_export_dmabuf_manager_v1",
+            module_path: "smithay::wayland::dmabuf export path",
+        },
+        SmithayRuntimeBinding {
+            interface: "zwlr_virtual_pointer_manager_v1",
+            module_path: "smithay::wayland::virtual_pointer",
+        },
+        SmithayRuntimeBinding {
+            interface: "zxdg_toplevel_decoration_v1",
+            module_path: "smithay::wayland::shell::xdg::decoration",
+        },
+        SmithayRuntimeBinding {
+            interface: "xdg_activation_v1",
+            module_path: "smithay::wayland::xdg_activation",
+        },
+        SmithayRuntimeBinding {
+            interface: "zxdg_exporter_v2",
+            module_path: "smithay::wayland::xdg_foreign",
+        },
+        SmithayRuntimeBinding {
+            interface: "zxdg_importer_v2",
+            module_path: "smithay::wayland::xdg_foreign",
+        },
+        SmithayRuntimeBinding {
+            interface: "xdg_system_bell_v1",
+            module_path: "smithay::wayland::xdg_system_bell",
+        },
+        SmithayRuntimeBinding {
+            interface: "xdg_toplevel_icon_v1",
+            module_path: "smithay::wayland::xdg_toplevel_icon",
+        },
+        SmithayRuntimeBinding {
+            interface: "xdg_toplevel_tag_manager_v1",
+            module_path: "smithay::wayland::xdg_toplevel_tag",
+        },
+        SmithayRuntimeBinding {
+            interface: "zwp_linux_dmabuf_v1",
+            module_path: "smithay::wayland::dmabuf",
+        },
+        SmithayRuntimeBinding {
+            interface: "wp_presentation",
+            module_path: "smithay::wayland::presentation",
+        },
+        SmithayRuntimeBinding {
+            interface: "ext_foreign_toplevel_list_v1",
+            module_path: "smithay::wayland::foreign_toplevel_list",
+        },
+        SmithayRuntimeBinding {
+            interface: "wp_cursor_shape_manager_v1",
+            module_path: "smithay::wayland::cursor_shape",
+        },
+        SmithayRuntimeBinding {
+            interface: "zwp_pointer_constraints_v1",
+            module_path: "smithay::wayland::pointer_constraints",
+        },
+        SmithayRuntimeBinding {
+            interface: "zwp_pointer_gestures_v1",
+            module_path: "smithay::wayland::pointer_gestures",
+        },
+        SmithayRuntimeBinding {
+            interface: "zwp_relative_pointer_manager_v1",
+            module_path: "smithay::wayland::relative_pointer",
+        },
+        SmithayRuntimeBinding {
+            interface: "zwp_tablet_manager_v2",
+            module_path: "smithay::wayland::tablet_manager",
+        },
+        SmithayRuntimeBinding {
+            interface: "zwp_text_input_manager_v3",
+            module_path: "smithay::wayland::text_input",
+        },
+        SmithayRuntimeBinding {
+            interface: "zwp_input_method_manager_v2",
+            module_path: "smithay::wayland::input_method",
+        },
+        SmithayRuntimeBinding {
+            interface: "zwp_virtual_keyboard_manager_v1",
+            module_path: "smithay::wayland::virtual_keyboard",
+        },
+        SmithayRuntimeBinding {
+            interface: "zwlr_data_control_manager_v1",
+            module_path: "smithay::wayland::selection::wlr_data_control",
+        },
+        SmithayRuntimeBinding {
+            interface: "ext_data_control_manager_v1",
+            module_path: "smithay::wayland::selection::ext_data_control",
+        },
+        SmithayRuntimeBinding {
+            interface: "zwp_primary_selection_device_manager_v1",
+            module_path: "smithay::wayland::selection::primary_selection",
+        },
+        SmithayRuntimeBinding {
+            interface: "wp_fractional_scale_manager_v1",
+            module_path: "smithay::wayland::fractional_scale",
+        },
+        SmithayRuntimeBinding {
+            interface: "wp_viewporter",
+            module_path: "smithay::wayland::viewporter",
+        },
+        SmithayRuntimeBinding {
+            interface: "wp_single_pixel_buffer_manager_v1",
+            module_path: "smithay::wayland::single_pixel_buffer",
+        },
+        SmithayRuntimeBinding {
+            interface: "wp_alpha_modifier_v1",
+            module_path: "smithay::wayland::alpha_modifier",
+        },
+        SmithayRuntimeBinding {
+            interface: "wp_content_type_manager_v1",
+            module_path: "smithay::wayland::content_type",
+        },
+        SmithayRuntimeBinding {
+            interface: "wp_commit_timing_manager_v1",
+            module_path: "smithay::wayland::commit_timing",
+        },
+        SmithayRuntimeBinding {
+            interface: "wp_fifo_manager_v1",
+            module_path: "smithay::wayland::fifo",
+        },
+        SmithayRuntimeBinding {
+            interface: "ext_background_effect_manager_v1",
+            module_path: "smithay::wayland::background_effect",
+        },
+        SmithayRuntimeBinding {
+            interface: "zwp_idle_inhibit_manager_v1",
+            module_path: "smithay::wayland::idle_inhibit",
+        },
+        SmithayRuntimeBinding {
+            interface: "zwp_keyboard_shortcuts_inhibit_manager_v1",
+            module_path: "smithay::wayland::keyboard_shortcuts_inhibit",
+        },
+        SmithayRuntimeBinding {
+            interface: "ext_idle_notifier_v1",
+            module_path: "smithay::wayland::idle_notify",
+        },
+        SmithayRuntimeBinding {
+            interface: "wp_security_context_manager_v1",
+            module_path: "smithay::wayland::security_context",
+        },
+        SmithayRuntimeBinding {
+            interface: "ext_session_lock_manager_v1",
+            module_path: "smithay::wayland::session_lock",
+        },
+        SmithayRuntimeBinding {
+            interface: "xwayland_shell_v1",
+            module_path: "smithay::wayland::xwayland_shell",
+        },
+        SmithayRuntimeBinding {
+            interface: "zwp_xwayland_keyboard_grab_manager_v1",
+            module_path: "smithay::wayland::xwayland_keyboard_grab",
+        },
+        SmithayRuntimeBinding {
+            interface: "wp_drm_lease_device_v1",
+            module_path: "smithay::wayland::drm_lease",
+        },
+        SmithayRuntimeBinding {
+            interface: "wp_linux_drm_syncobj_manager_v1",
+            module_path: "smithay::wayland::drm_syncobj",
+        },
     ];
 
     /// Register Smithay-owned core + shell runtime globals.
@@ -657,19 +887,26 @@ pub mod smithay_runtime {
         }
         if state.smithay_runtime.compositor.is_none() {
             state.smithay_runtime.compositor =
-                Some(smithay::wayland::compositor::CompositorState::new_v6::<CompositorState>(dh));
+                Some(smithay::wayland::compositor::CompositorState::new_v6::<
+                    CompositorState,
+                >(dh));
         }
         if state.smithay_runtime.xdg_shell.is_none() {
             state.smithay_runtime.xdg_shell =
-                Some(smithay::wayland::shell::xdg::XdgShellState::new::<CompositorState>(dh));
+                Some(smithay::wayland::shell::xdg::XdgShellState::new::<
+                    CompositorState,
+                >(dh));
         }
         if state.smithay_runtime.shm.is_none() {
-            state.smithay_runtime.shm =
-                Some(smithay::wayland::shm::ShmState::new::<CompositorState>(dh, []));
+            state.smithay_runtime.shm = Some(
+                smithay::wayland::shm::ShmState::new::<CompositorState>(dh, []),
+            );
         }
         if state.smithay_runtime.output_manager.is_none() {
             state.smithay_runtime.output_manager = Some(
-                smithay::wayland::output::OutputManagerState::new_with_xdg_output::<CompositorState>(dh),
+                smithay::wayland::output::OutputManagerState::new_with_xdg_output::<CompositorState>(
+                    dh,
+                ),
             );
         }
         if state.smithay_runtime.smithay_outputs.is_empty() {
@@ -722,43 +959,90 @@ pub mod smithay_runtime {
             let mut seat_state = smithay::input::SeatState::<CompositorState>::new();
             let mut seat = seat_state.new_wl_seat(dh, "seat0");
             let _ = seat.add_pointer();
-            // Keyboard capability is added on EVERY platform (including
-            // iOS/iPadOS/tvOS/visionOS/watchOS). The Smithay seat is the single
-            // keyboard path; the previous mobile cfg-gate forced those platforms
-            // onto the now-retired legacy broadcast_key fallback. The keymap is
-            // resolved by wawona_xkb_config() which bundles a full evdev/us
-            // keymap and falls back to MINIMAL_KEYMAP only as a last resort.
+            let _ = seat.add_touch();
+            // Keyboard capability is added on EVERY platform. Smithay is the
+            // only seat. Keymap comes from HostKeymapBridge (phase 1 may be
+            // MINIMAL_KEYMAP). Nested weston/niri still use XKB_CONFIG_ROOT.
+            crate::core::input::xkb::ensure_xkb_data_root();
             let repeat_delay = state.keyboard_repeat_delay;
             let repeat_rate = state.keyboard_repeat_rate;
+            let keymap = crate::core::input::host_keymap::generate_from_host();
             let kbd = seat
-                .add_keyboard(
-                    crate::core::input::xkb::wawona_xkb_config(),
-                    repeat_delay,
-                    repeat_rate,
-                )
-                .or_else(|_| {
-                    // xkb data root unavailable: retry with bare defaults so
-                    // xkbcommon can still resolve via XKB_DEFAULT_* env vars.
-                    seat.add_keyboard(Default::default(), repeat_delay, repeat_rate)
-                });
-            if let Err(e) = kbd {
-                tracing::error!(
-                    "seat0: failed to add keyboard (no xkb data root?): {e:?}; \
-                     keyboard input unavailable until XKB_CONFIG_ROOT/bundled \
-                     xkeyboard-config is present"
-                );
+                .add_keyboard(Default::default(), repeat_delay, repeat_rate)
+                .or_else(|_| seat.add_keyboard(Default::default(), repeat_delay, repeat_rate));
+            // SeatHandler::seat_state() is used by set_keymap_from_string and
+            // set_data_device_focus. Store before those calls. iOS launch
+            // panicked with "smithay seat state must be initialized before
+            // dispatch" when keymap ran against a still-None Option.
+            state.smithay_runtime.seat_state = Some(seat_state);
+            state.smithay_runtime.seat = Some(seat.clone());
+            match kbd {
+                Ok(handle) => {
+                    if let Err(e) = handle.set_keymap_from_string(state, keymap) {
+                        tracing::error!(
+                            "seat0: HostKeymapBridge keymap rejected ({e:?}); \
+                             keeping add_keyboard default"
+                        );
+                    } else {
+                        tracing::info!("xkb: using HostKeymapBridge keymap");
+                    }
+                }
+                Err(e) => {
+                    tracing::error!(
+                        "seat0: failed to add keyboard: {e:?}; \
+                         keyboard input unavailable"
+                    );
+                }
             }
             // Eagerly create the seat's selection SeatData so wl_data_device
             // requests (notably Release) can never observe a seat without it.
             // Smithay 0.7 unwraps that user-data in the Release handler; a
             // missing entry panics dispatch and poisons compositor locks.
             smithay::wayland::selection::data_device::set_data_device_focus(dh, &seat, None);
-            state.smithay_runtime.seat_state = Some(seat_state);
-            state.smithay_runtime.seat = Some(seat);
+        }
+        if state.smithay_runtime.text_input.is_none() {
+            state.smithay_runtime.text_input = Some(
+                smithay::wayland::text_input::TextInputManagerState::new::<CompositorState>(dh),
+            );
+        }
+        if state.smithay_runtime.input_method.is_none() {
+            let profile = state.protocol_profile;
+            state.smithay_runtime.input_method = Some(
+                smithay::wayland::input_method::InputMethodManagerState::new::<
+                    CompositorState,
+                    _,
+                >(dh, move |client| {
+                    crate::core::wayland::host_im::is_trusted_input_method(client, profile)
+                }),
+            );
+        }
+        if crate::core::wayland::policy::allow_privileged_wlr(state.protocol_profile)
+            && state.smithay_runtime.virtual_keyboard.is_none()
+        {
+            let profile = state.protocol_profile;
+            state.smithay_runtime.virtual_keyboard = Some(
+                smithay::wayland::virtual_keyboard::VirtualKeyboardManagerState::new::<
+                    CompositorState,
+                    _,
+                >(dh, move |client| {
+                    crate::core::wayland::host_im::is_trusted_virtual_keyboard(client, profile)
+                }),
+            );
         }
         if state.smithay_runtime.data_device.is_none() {
             state.smithay_runtime.data_device = Some(
-                smithay::wayland::selection::data_device::DataDeviceState::new::<CompositorState>(dh),
+                smithay::wayland::selection::data_device::DataDeviceState::new::<CompositorState>(
+                    dh,
+                ),
+            );
+        }
+        if crate::core::wayland::policy::allow_privileged_wlr(state.protocol_profile)
+            && state.smithay_runtime.primary_selection.is_none()
+        {
+            state.smithay_runtime.primary_selection = Some(
+                smithay::wayland::selection::primary_selection::PrimarySelectionState::new::<
+                    CompositorState,
+                >(dh),
             );
         }
         state.smithay_runtime.core_shell_initialized = true;
@@ -773,44 +1057,48 @@ pub mod smithay_runtime {
         }
 
         if state.smithay_runtime.xdg_decoration.is_none() {
-            state.smithay_runtime.xdg_decoration =
-                Some(smithay::wayland::shell::xdg::decoration::XdgDecorationState::new::<
-                    CompositorState,
-                >(dh));
+            state.smithay_runtime.xdg_decoration = Some(
+                smithay::wayland::shell::xdg::decoration::XdgDecorationState::new::<CompositorState>(
+                    dh,
+                ),
+            );
         }
         if state.smithay_runtime.xdg_foreign.is_none() {
             state.smithay_runtime.xdg_foreign =
-                Some(smithay::wayland::xdg_foreign::XdgForeignState::new::<CompositorState>(dh));
+                Some(smithay::wayland::xdg_foreign::XdgForeignState::new::<
+                    CompositorState,
+                >(dh));
         }
         if state.smithay_runtime.xdg_activation.is_none() {
             state.smithay_runtime.xdg_activation =
-                Some(smithay::wayland::xdg_activation::XdgActivationState::new::<CompositorState>(
-                    dh,
-                ));
+                Some(smithay::wayland::xdg_activation::XdgActivationState::new::<
+                    CompositorState,
+                >(dh));
         }
         if state.smithay_runtime.xdg_dialog.is_none() {
             state.smithay_runtime.xdg_dialog =
-                Some(smithay::wayland::shell::xdg::dialog::XdgDialogState::new::<CompositorState>(
-                    dh,
-                ));
+                Some(smithay::wayland::shell::xdg::dialog::XdgDialogState::new::<
+                    CompositorState,
+                >(dh));
         }
         if state.smithay_runtime.xdg_system_bell.is_none() {
-            state.smithay_runtime.xdg_system_bell =
-                Some(smithay::wayland::xdg_system_bell::XdgSystemBellState::new::<CompositorState>(
-                    dh,
-                ));
+            state.smithay_runtime.xdg_system_bell = Some(
+                smithay::wayland::xdg_system_bell::XdgSystemBellState::new::<CompositorState>(dh),
+            );
         }
         if state.smithay_runtime.xdg_toplevel_icon.is_none() {
-            state.smithay_runtime.xdg_toplevel_icon =
-                Some(smithay::wayland::xdg_toplevel_icon::XdgToplevelIconManager::new::<
-                    CompositorState,
-                >(dh));
+            state.smithay_runtime.xdg_toplevel_icon = Some(
+                smithay::wayland::xdg_toplevel_icon::XdgToplevelIconManager::new::<CompositorState>(
+                    dh,
+                ),
+            );
         }
         if state.smithay_runtime.xdg_toplevel_tag.is_none() {
-            state.smithay_runtime.xdg_toplevel_tag =
-                Some(smithay::wayland::xdg_toplevel_tag::XdgToplevelTagManager::new::<
-                    CompositorState,
-                >(dh));
+            state.smithay_runtime.xdg_toplevel_tag = Some(
+                smithay::wayland::xdg_toplevel_tag::XdgToplevelTagManager::new::<CompositorState>(
+                    dh,
+                ),
+            );
         }
     }
 
@@ -875,9 +1163,9 @@ pub mod smithay_runtime {
 }
 
 // Re-exports for common types if needed
-pub use wayland::display::WawonaDisplay as WaylandDisplay;
 pub use crate::core::state::CompositorState as CompositorData;
 pub use crate::core::state::OutputState as OutputData;
+pub use wayland::display::WawonaDisplay as WaylandDisplay;
 // SeatData is in state.rs too
 pub use crate::core::state::SeatState as SeatData;
 
@@ -1052,17 +1340,26 @@ pub mod policy {
 
     /// Whether wlroots screencopy/export/virtual-input class protocols are allowed.
     pub fn allow_privileged_wlr(profile: ProtocolProfile) -> bool {
-        matches!(profile, ProtocolProfile::DesktopHost | ProtocolProfile::FullDev)
+        matches!(
+            profile,
+            ProtocolProfile::DesktopHost | ProtocolProfile::FullDev
+        )
     }
 
     /// Whether desktop-specific extension protocols are allowed.
     pub fn allow_desktop_extensions(profile: ProtocolProfile) -> bool {
-        matches!(profile, ProtocolProfile::DesktopHost | ProtocolProfile::FullDev)
+        matches!(
+            profile,
+            ProtocolProfile::DesktopHost | ProtocolProfile::FullDev
+        )
     }
 
     /// Whether KDE/Plasma non-smithay extension suite should be exposed.
     pub fn allow_plasma_extensions(profile: ProtocolProfile) -> bool {
-        matches!(profile, ProtocolProfile::DesktopHost | ProtocolProfile::FullDev)
+        matches!(
+            profile,
+            ProtocolProfile::DesktopHost | ProtocolProfile::FullDev
+        )
     }
 
     /// Resolve profile from env override if present.
@@ -1087,8 +1384,12 @@ pub mod policy {
 
         #[test]
         fn test_manifest_has_core_interfaces() {
-            let has_wl = PROTOCOL_MANIFEST.iter().any(|e| e.interface == "wl_compositor");
-            let has_xdg = PROTOCOL_MANIFEST.iter().any(|e| e.interface == "xdg_wm_base");
+            let has_wl = PROTOCOL_MANIFEST
+                .iter()
+                .any(|e| e.interface == "wl_compositor");
+            let has_xdg = PROTOCOL_MANIFEST
+                .iter()
+                .any(|e| e.interface == "xdg_wm_base");
             assert!(has_wl, "manifest must include wl_compositor");
             assert!(has_xdg, "manifest must include xdg_wm_base");
         }

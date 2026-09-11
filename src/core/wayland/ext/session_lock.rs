@@ -4,15 +4,13 @@
 //! When locked, all other surfaces are hidden. Lock surfaces receive configure
 //! events with the output dimensions. UnlockAndDestroy releases the lock.
 
-use std::collections::HashMap;
-use wayland_server::{
-    Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
-};
 use crate::core::wayland::protocol::server::ext::session_lock::v1::server::{
     ext_session_lock_manager_v1::{self, ExtSessionLockManagerV1},
-    ext_session_lock_v1::{self, ExtSessionLockV1},
     ext_session_lock_surface_v1::{self, ExtSessionLockSurfaceV1},
+    ext_session_lock_v1::{self, ExtSessionLockV1},
 };
+use std::collections::HashMap;
+use wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource};
 
 use crate::core::state::CompositorState;
 
@@ -107,7 +105,11 @@ impl Dispatch<ExtSessionLockV1, ()> for CompositorState {
         data_init: &mut DataInit<'_, Self>,
     ) {
         match request {
-            ext_session_lock_v1::Request::GetLockSurface { id, surface, output } => {
+            ext_session_lock_v1::Request::GetLockSurface {
+                id,
+                surface,
+                output,
+            } => {
                 let output_id = output.id().protocol_id();
                 let surface_id = surface.id().protocol_id();
                 let serial = state.ext.session_lock.next_serial();
@@ -115,11 +117,14 @@ impl Dispatch<ExtSessionLockV1, ()> for CompositorState {
                 let lock_surface = data_init.init(id, output_id);
                 let ls_id = lock_surface.id().protocol_id();
 
-                state.ext.session_lock.lock_surfaces.insert(ls_id, SessionLockSurfaceData {
-                    output_id,
-                    surface_id,
-                    pending_serial: serial,
-                });
+                state.ext.session_lock.lock_surfaces.insert(
+                    ls_id,
+                    SessionLockSurfaceData {
+                        output_id,
+                        surface_id,
+                        pending_serial: serial,
+                    },
+                );
 
                 // Send configure with the output dimensions
                 let output = state.primary_output();
@@ -127,7 +132,12 @@ impl Dispatch<ExtSessionLockV1, ()> for CompositorState {
 
                 tracing::debug!(
                     "Created lock surface {} for output {} (surface {}), configure {}x{} serial {}",
-                    ls_id, output_id, surface_id, output.width, output.height, serial
+                    ls_id,
+                    output_id,
+                    surface_id,
+                    output.width,
+                    output.height,
+                    serial
                 );
             }
             ext_session_lock_v1::Request::UnlockAndDestroy => {

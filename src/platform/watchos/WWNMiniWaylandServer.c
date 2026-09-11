@@ -900,14 +900,25 @@ static int wwn_ensure_keymap_fd(struct WWNMiniWaylandServer *srv)
     if (fd < 0) return -1;
     unlink(tmpl); // keep only the open fd; content survives for mmap
 
-    size_t size = sizeof(kWWNWatchUSKeymap); // includes trailing NUL
+    char *km = WWNHostKeymapXkbV1Copy();
+    if (!km || !km[0]) {
+        WWNHostKeymapXkbV1Free(km);
+        close(fd);
+        return -1;
+    }
+    size_t size = strlen(km) + 1;
     ssize_t off = 0;
-    const char *p = kWWNWatchUSKeymap;
+    const char *p = km;
     while ((size_t)off < size) {
         ssize_t n = write(fd, p + off, size - (size_t)off);
-        if (n <= 0) { close(fd); return -1; }
+        if (n <= 0) {
+            WWNHostKeymapXkbV1Free(km);
+            close(fd);
+            return -1;
+        }
         off += n;
     }
+    WWNHostKeymapXkbV1Free(km);
     srv->keymap_fd   = fd;
     srv->keymap_size = size;
     return fd;

@@ -4,15 +4,13 @@
 //! single workspace group with one active workspace ("default").
 //! Activate/Deactivate/Remove requests are tracked and applied on Commit.
 
-use std::collections::HashMap;
-use wayland_server::{
-    Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
-};
 use crate::core::wayland::protocol::server::ext::workspace::v1::server::{
-    ext_workspace_manager_v1::{self, ExtWorkspaceManagerV1},
     ext_workspace_group_handle_v1::{self, ExtWorkspaceGroupHandleV1},
     ext_workspace_handle_v1::{self, ExtWorkspaceHandleV1},
+    ext_workspace_manager_v1::{self, ExtWorkspaceManagerV1},
 };
+use std::collections::HashMap;
+use wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource};
 
 use crate::core::state::CompositorState;
 
@@ -101,10 +99,13 @@ impl Dispatch<ExtWorkspaceGroupHandleV1, WorkspaceGroupData> for CompositorState
         match request {
             ext_workspace_group_handle_v1::Request::CreateWorkspace { workspace } => {
                 let ws_id = state.ext.workspace.alloc_id();
-                state.ext.workspace.workspaces.insert(ws_id, WorkspaceInfo {
-                    name: workspace,
-                    active: false,
-                });
+                state.ext.workspace.workspaces.insert(
+                    ws_id,
+                    WorkspaceInfo {
+                        name: workspace,
+                        active: false,
+                    },
+                );
                 tracing::debug!("Created workspace {}", ws_id);
             }
             ext_workspace_group_handle_v1::Request::Destroy => {

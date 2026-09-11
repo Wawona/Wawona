@@ -24,10 +24,17 @@ struct MachineEditorView: View {
     @State var sshKeyPassphrase: String
     @State var remoteCommand: String
     @State var waypipeEnabled: Bool
+    @State var wasmCommand: String
+    @State var wasmModulePath: String
+    @State var wasmPackage: String
     @State private var keygenMessage: String?
+    @State private var wasmCatalogResults: [WatchWasmHit] = []
+    @State private var wasmCatalogNote: String?
+    @State private var wasmCatalogLoading = false
 
     private var isEditing: Bool { existingProfile != nil }
     private var isNative: Bool { type == .native }
+    private var isWasm: Bool { type == .wasm }
     private var isSSH: Bool { type.isSSH }
 
     private var contractState: MachineEditorState {
@@ -47,13 +54,13 @@ struct MachineEditorView: View {
         if state.name.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines).isEmpty {
             state.name = "Unnamed Machine"
         }
-        return !MachineEditorValidation.validate(state).isEmpty
+        return !MachineProfileDomain.validate(state).isEmpty
     }
 
     init(profileStore: MachineProfileStore, profile: MachineProfile? = nil) {
         self.profileStore = profileStore
         self.existingProfile = profile
-        let state = WatchUIContractAdapters.machineEditorState(from: profile)
+        let state = MachineEditorDomain.machineEditorState(from: profile)
         _name = State(initialValue: state.name)
         let parsed = MachineType(rawValue: state.typeRawValue) ?? .native
         if parsed == .container || parsed == .virtualMachine {
@@ -71,6 +78,9 @@ struct MachineEditorView: View {
         _sshKeyPassphrase = State(initialValue: state.sshKeyPassphrase)
         _remoteCommand = State(initialValue: state.remoteCommand)
         _waypipeEnabled = State(initialValue: state.waypipeEnabled)
+        _wasmCommand = State(initialValue: state.wasmCommand)
+        _wasmModulePath = State(initialValue: state.wasmModulePath)
+        _wasmPackage = State(initialValue: state.wasmPackage)
     }
 
     var body: some View {
@@ -89,6 +99,57 @@ struct MachineEditorView: View {
                             }
                             .pickerStyle(.navigationLink)
                         }
+                    }
+                }
+
+                if isWasm {
+                    Section {
+                        if shows(.wasmCommand) {
+                            TextField("wasm hello-wasi-gui", text: $wasmCommand)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                        }
+                        if shows(.wasmPackage) {
+                            TextField("Package", text: $wasmPackage)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                        }
+                        Button(wasmCatalogLoading ? "Searching…" : "Search catalog") {
+                            searchWasmCatalog()
+                        }
+                        .disabled(wasmCatalogLoading)
+                        ForEach(wasmCatalogResults) { pkg in
+                            Button {
+                                wasmPackage = pkg.name
+                                wasmCommand = "wasm \(pkg.name)"
+                                downloadWasmPackage(pkg)
+                            } label: {
+                                VStack(alignment: .leading) {
+                                    Text(pkg.name)
+                                    if !pkg.summary.isEmpty {
+                                        Text(pkg.summary).font(.caption2).foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                        }
+                        if shows(.wasmModulePath) {
+                            TextField("Local .wasm", text: $wasmModulePath)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                        }
+                        ForEach(WasmLaunch.listLocalModules(), id: \.path) { url in
+                            Button(url.lastPathComponent) {
+                                wasmModulePath = url.path
+                                wasmCommand = "wasm \(url.path)"
+                            }
+                        }
+                        if let wasmCatalogNote {
+                            Text(wasmCatalogNote).font(.caption2)
+                        }
+                    } header: {
+                        Text("Wasm")
+                    } footer: {
+                        Text("Same as native shell: wasm hello-wasi-gui. Search /wasm/v1 or pick a local module.")
                     }
                 }
 
@@ -203,37 +264,81 @@ struct MachineEditorView: View {
     private var sshPortText: Binding<String> {
         Binding(
             get: { String(sshPort) },
-            set: { sshPort = MachineEditorValidation.normalizeSSHPort($0, fallback: sshPort) }
+            set: { sshPort = MachineProfileDomain.normalizeSSHPort($0, fallback: sshPort) }
         )
     }
 
     private func persistableEditorState() -> MachineEditorState {
-        let base = WatchUIContractAdapters.machineEditorState(from: existingProfile)
+        let base = MachineEditorDomain.machineEditorState(from: existingProfile)
         return MachineEditorState(
             id: existingProfile?.id ?? base.id,
             name: name,
             typeRawValue: type.rawValue,
             selectedLauncherName: selectedLauncherName,
-            sshHost: MachineEditorValidation.sanitizeSSHHost(sshHost),
+            sshHost: MachineProfileDomain.sanitizeSSHHost(sshHost),
             sshUser: sshUser,
-            sshPortText: String(MachineEditorValidation.normalizeSSHPort(String(sshPort))),
+            sshPortText: String(MachineProfileDomain.normalizeSSHPort(String(sshPort))),
             sshPassword: sshPassword,
             sshAuthMethod: sshAuthMethod,
             sshKeyPath: sshKeyPath,
             sshKeyPassphrase: sshKeyPassphrase,
             remoteCommand: remoteCommand,
             inputProfile: base.inputProfile,
-            bundledAppID: isNative ? selectedLauncherName : base.bundledAppID,
-            waypipeEnabled: waypipeEnabled
+            bundledAppID: isNative ? selectedLauncherName : (isWasm ? "wawona-wasm" : base.bundledAppID),
+            waypipeEnabled: waypipeEnabled,
+            wasmCommand: wasmCommand,
+            wasmModulePath: wasmModulePath,
+            wasmPackage: wasmPackage
         )
+    }
+
+    private func searchWasmCatalog() {
+        wasmCatalogLoading = true
+        wasmCatalogNote = nil
+        let query = wasmPackage
+        Task {
+            do {
+                wasmCatalogResults = try await Task.detached {
+                    try WasmLaunch.searchCatalog(query).map {
+                        WatchWasmHit(
+                            id: $0.id,
+                            name: $0.name,
+                            version: $0.version,
+                            summary: $0.summary
+                        )
+                    }
+                }.value
+                if wasmCatalogResults.isEmpty {
+                    wasmCatalogNote = "No packages in /wasm/v1 match."
+                }
+            } catch {
+                wasmCatalogNote = error.localizedDescription
+            }
+            wasmCatalogLoading = false
+        }
+    }
+
+    private func downloadWasmPackage(_ pkg: WatchWasmHit) {
+        wasmCatalogLoading = true
+        Task {
+            do {
+                wasmModulePath = try await Task.detached {
+                    try WasmLaunch.downloadPackage(name: pkg.name)
+                }.value
+                wasmCatalogNote = "Saved \(pkg.name) to the Wawona folder."
+            } catch {
+                wasmCatalogNote = error.localizedDescription
+            }
+            wasmCatalogLoading = false
+        }
     }
 
     private func save() {
         let state = persistableEditorState()
-        if isSSH && !MachineEditorValidation.validate(state).isEmpty {
+        if isSSH && !MachineProfileDomain.validate(state).isEmpty {
             return
         }
-        var profile = WatchUIContractAdapters.profile(from: state)
+        var profile = MachineEditorDomain.profile(from: state)
         if profile.name.isEmpty {
             profile.name = "Unnamed Machine"
         }
@@ -250,10 +355,18 @@ struct MachineEditorView: View {
             profile.runtimeOverrides.logLevel = baseline.runtimeOverrides.logLevel
             profile.runtimeOverrides.shakeToCloseEnabled = baseline.runtimeOverrides.shakeToCloseEnabled
             profile.runtimeOverrides.swipeBackToCloseEnabled = baseline.runtimeOverrides.swipeBackToCloseEnabled
+            profile.runtimeOverrides.resizeDisplayForVirtualKeyboard =
+                baseline.runtimeOverrides.resizeDisplayForVirtualKeyboard
             profile.runtimeOverrides.waypipeSSHPassword = baseline.runtimeOverrides.waypipeSSHPassword
         }
         profileStore.upsert(profile)
         dismiss()
     }
+}
+private struct WatchWasmHit: Identifiable {
+    let id: String
+    let name: String
+    let version: String
+    let summary: String
 }
 #endif

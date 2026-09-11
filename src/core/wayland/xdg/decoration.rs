@@ -53,8 +53,8 @@
 //! - Weston-family (`weston`, `weston-*`) → CSD when policy is not `ForceServer`
 //!   (terminals paint CSD; flower/smoke stay borderless host + no frame buffer).
 
-use wayland_protocols::xdg::decoration::zv1::server::{
-    zxdg_toplevel_decoration_v1::{self, ZxdgToplevelDecorationV1, Mode},
+use wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::{
+    self, Mode, ZxdgToplevelDecorationV1,
 };
 use wayland_server::Resource;
 
@@ -261,10 +261,7 @@ pub(crate) fn weston_family_prefers_client_decorations(policy: DecorationPolicy)
     !matches!(policy, DecorationPolicy::ForceServer)
 }
 
-pub fn preferred_xdg_decoration_mode(
-    state: &CompositorState,
-    window_id: u32,
-) -> Mode {
+pub fn preferred_xdg_decoration_mode(state: &CompositorState, window_id: u32) -> Mode {
     // Force SSD per-machine (#120): resolve against this window's client policy.
     let policy = state.window_decoration_policy(window_id);
     let weston_family = matches!(policy, DecorationPolicy::ForceServer)
@@ -355,11 +352,7 @@ impl CompositorState {
             .insert((client_id, decoration.id().protocol_id()), data);
     }
 
-    pub(crate) fn apply_decoration_mode_for_window(
-        &mut self,
-        window_id: u32,
-        preferred: Mode,
-    ) {
+    pub(crate) fn apply_decoration_mode_for_window(&mut self, window_id: u32, preferred: Mode) {
         let new_mode = decoration_mode_from_xdg(preferred);
         let changed = if let Some(window) = self.get_window(window_id) {
             let mut window = window.write().unwrap();
@@ -492,7 +485,11 @@ mod tests {
         // Within tolerance of the configured size.
         assert!(committed_size_matches_expected(800, 570, Some((800, 600))));
         // Far from the configured size: not a match, regardless of app id.
-        assert!(!committed_size_matches_expected(200, 200, Some((1680, 1050))));
+        assert!(!committed_size_matches_expected(
+            200,
+            200,
+            Some((1680, 1050))
+        ));
         // Degenerate commits never match.
         assert!(!committed_size_matches_expected(0, 200, None));
     }
@@ -501,8 +498,16 @@ mod tests {
     fn host_sync_rejects_near_miss_during_configured_resize() {
         // #111: loose CSD tolerance must not authorize host size rollback.
         assert!(committed_size_matches_expected(870, 600, Some((900, 600))));
-        assert!(!committed_size_authorizes_host_sync(870, 600, Some((900, 600))));
-        assert!(committed_size_authorizes_host_sync(900, 600, Some((900, 600))));
+        assert!(!committed_size_authorizes_host_sync(
+            870,
+            600,
+            Some((900, 600))
+        ));
+        assert!(committed_size_authorizes_host_sync(
+            900,
+            600,
+            Some((900, 600))
+        ));
         assert!(committed_size_authorizes_host_sync(200, 200, None));
     }
 

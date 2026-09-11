@@ -2,15 +2,13 @@
 //!
 //! Allows clipboard managers to access and manage clipboard contents.
 
-use wayland_server::{
-    Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
-};
 use crate::core::wayland::protocol::server::ext::data_control::v1::server::{
-    ext_data_control_manager_v1::{self, ExtDataControlManagerV1},
     ext_data_control_device_v1::{self, ExtDataControlDeviceV1},
-    ext_data_control_source_v1::{self, ExtDataControlSourceV1},
+    ext_data_control_manager_v1::{self, ExtDataControlManagerV1},
     ext_data_control_offer_v1::{self, ExtDataControlOfferV1},
+    ext_data_control_source_v1::{self, ExtDataControlSourceV1},
 };
+use wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource};
 
 use crate::core::state::CompositorState;
 

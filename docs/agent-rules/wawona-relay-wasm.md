@@ -45,6 +45,10 @@ KosmicKrisp) follow the platform GPU gate:
 
 - Empty `runCommand` / weak no-op stubs that leave watchOS (or any target)
   without `libwawona_wasm.a`
+- Shipping a header-only Android `wawona-wasm` (`include/` only, empty `lib/`)
+  as if Start can run hello-wasi-gui. Link `-lwawona_wasm` only when
+  `libwawona_wasm.a` exists. Fix the Relay Android recipe. Do not toast
+  ProcessBuilder "not bundled" as a substitute
 - Dropping wasm from a scheme, `mobile-platform-deps`, or `wasmLdflags` to
   make CI or size look green
 - Treating tvOS / watchOS / visionOS wasm as optional or "transfer only"

@@ -3,6 +3,14 @@
 This checklist is mandatory for any change that touches Android version pins or
 toolchain selection logic.
 
+## Gradle JVM (JBR)
+
+Android Studio and local `./gradlew` must use **JetBrains Runtime 21**
+(Studio embedded JBR, JDK table name `21`). Linux Nix assemble uses
+`jetbrains.jdk-no-jcef-21`. Darwin Nix sandbox cannot: nixpkgs JBR is
+Linux-only, so that path stays OpenJDK. Do not export Nix `JAVA_HOME`
+into Studio. See `docs/agent-rules/wawona-android-jbr.md`.
+
 ## Scope Triggers
 
 Treat a PR as an Android upgrade PR when any of the following change:

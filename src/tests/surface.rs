@@ -1,4 +1,4 @@
-use crate::core::surface::{Surface, buffer::BufferType, damage::DamageRegion};
+use crate::core::surface::{buffer::BufferType, damage::DamageRegion, Surface};
 
 #[test]
 fn test_surface_creation() {
@@ -13,9 +13,14 @@ fn test_surface_creation() {
 fn test_surface_damage_accumulation() {
     let mut surface = Surface::new(1, None, None);
     // Assuming damage is tracked in pending state
-    surface.pending.damage.push(DamageRegion { x: 0, y: 0, width: 100, height: 100 });
+    surface.pending.damage.push(DamageRegion {
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 100,
+    });
     assert!(!surface.pending.damage.is_empty());
-    
+
     // Commit logic would verify it moves to current, but that might depend on CompositorState
     // So we just test state accumulation here.
 }

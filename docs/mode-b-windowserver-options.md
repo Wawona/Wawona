@@ -15,7 +15,7 @@ Do not ship Path C UI until it is implemented and safety-reviewed.
 
 | Option | WindowServer | What the user sees | Why it exists |
 |---|---|---|---|
-| **Classic** (bootout) | Unloaded for the session | Wawona owns the panel (cube, Mode B TTY, nested compositor) | Full Desktop Replacement |
+| **Classic** (bootout) | Unloaded for the session | Wawona owns the panel (cube, igetty/Doorman console, nested compositor) | Full Desktop Replacement |
 | **KEEP_WS** | Left running normally | Normal macOS Aqua stays up | Safe probe / inject while Aqua lives |
 | **Path C** (parked) | Process kept, display ownership parked / suspended (planned) | Wawona owns the panel; Cocoa still has a live WindowServer to talk to | Let **Wawona Swinging Bridge** host AppKit apps without rewriting every SkyLight/AppKit path |
 

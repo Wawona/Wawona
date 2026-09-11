@@ -5,6 +5,7 @@ NS_ASSUME_NONNULL_BEGIN
 extern NSString *const kWWNMachineTypeSSHWaypipe;
 extern NSString *const kWWNMachineTypeSSHTerminal;
 extern NSString *const kWWNMachineTypeNative;
+extern NSString *const kWWNMachineTypeWasm;
 extern NSString *const kWWNMachineTypeVirtualMachine;
 extern NSString *const kWWNMachineTypeContainer;
 
@@ -67,6 +68,9 @@ extern NSString *const kWWNMachineTypeContainer;
 + (BOOL)isMachineThumbnailEnabledForProfile:(WWNMachineProfile *)profile;
 + (BOOL)resolvedShakeToCloseForProfile:(nullable WWNMachineProfile *)profile;
 + (BOOL)resolvedSwipeBackToCloseForProfile:(nullable WWNMachineProfile *)profile;
++ (BOOL)resolvedResizeDisplayForVirtualKeyboardForProfile:
+    (nullable WWNMachineProfile *)profile;
++ (BOOL)resolvedResizeDisplayForVirtualKeyboardActive;
 + (BOOL)resolvedRenderMacOSPointerForProfile:
     (nullable WWNMachineProfile *)profile;
 + (BOOL)resolvedRenderMacOSPointerActive;
@@ -97,7 +101,9 @@ extern NSString *const kWWNMachineTypeContainer;
 + (BOOL)profileIndicatesNestedCompositor:(WWNMachineProfile *)profile;
 
 /// Mode B Classic own-display: nested compositors (weston/niri/custom) plus
-/// DRM/KMS/GBM clients (kmscube, gbm-es2-demo, vkcube KMS) and modeb-tty.
+/// DRM/KMS/GBM clients (kmscube, gbm-es2-demo, vkcube KMS). Never igetty /
+/// modeb-tty. wwn-igetty is the Linux framebuffer/console + Doorman PAM
+/// login, not a Machines profile.
 /// Weston and niri stay dual-backend. This does not pin them to DRM. Mode A
 /// Machines Start still nests them when Display Backend is Wayland. Mode B
 /// Take Over has no host Wayland, so those same binaries use `--backend=drm`
@@ -106,6 +112,12 @@ extern NSString *const kWWNMachineTypeContainer;
                                  customCommand:(NSString *)customCommand
     NS_SWIFT_NAME(profileIndicatesModeBOwnDisplay(nativeClientId:customCommand:));
 + (BOOL)profileIndicatesModeBOwnDisplay:(WWNMachineProfile *)profile;
+
+/// wwn-igetty / modeb-tty / Doorman console. Not a machine. Machine
+/// Configuration must never list or persist these.
++ (BOOL)nativeClientIdIsIgettyConsole:(nullable NSString *)clientId
+    NS_SWIFT_NAME(nativeClientIdIsIgettyConsole(_:));
++ (BOOL)profileIsIgettyConsoleNotAMachine:(WWNMachineProfile *)profile;
 
 /// App Bridge (anowaW) eligibility: YES only when the profile is a local-only
 /// native machine whose client is the **nested Weston** compositor

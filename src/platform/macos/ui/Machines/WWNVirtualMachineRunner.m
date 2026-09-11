@@ -68,15 +68,12 @@
   [cmd appendString:binDir];
   [cmd appendString:@":$PATH\"; "];
   [cmd appendFormat:
-      @"if command -v wawona-vm-launch >/dev/null 2>&1 && [ -d \"%@\" ]; then "
-       "exec wawona-vm-launch --guest-dir \"%@\" --memory %u; fi; ",
-      guestArg, guestArg, memoryMB];
-  [cmd appendFormat:
       @"if command -v wawona-vz-run >/dev/null 2>&1 && [ -d \"%@\" ]; then "
        "exec wawona-vz-run \"%@\" %u; fi; ",
       guestArg, guestArg, memoryMB];
   [cmd appendString:
-      @"echo 'Wawona VM: Relay VZ launcher missing. No QEMU fallback.' >&2; exit 1"];
+      @"echo 'Wawona VM: use Machines Start via Relay (wawona_relay). "
+       "No wawona-vm-launch / QEMU fallback.' >&2; exit 1"];
   return cmd;
 }
 
@@ -181,7 +178,8 @@
 
 #else  // !TARGET_OS_OSX
 
-// iOS family: Relay CPU (planned). Fail closed. Never QEMU.
+// iOS family: Relay static CPU starts from WWNRelay. This runner is leftover
+// for a missing Relay ABI. No QEMU.
 @implementation WWNVirtualMachineRunner
 
 + (instancetype)sharedRunner {

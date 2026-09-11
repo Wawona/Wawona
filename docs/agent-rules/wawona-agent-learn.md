@@ -20,6 +20,8 @@ Skills: `.cursor/skills/wawona-*` (tracked mirrors under `docs/agent-skills/`).
    rule into a skill (pointer + delta only).
 4. The change must **improve on** a documented prior (gate, incident, recipe,
    rejected path). If RAG or a rule already forbids the approach, stop.
+5. GitHub issues, milestones, PRs, `gh run`: skill `wawona-gh`. Shell + local
+   `gh`. There is no GitHub MCP. Do not refuse `gh` as git authorship.
 
 ## After a durable finding
 

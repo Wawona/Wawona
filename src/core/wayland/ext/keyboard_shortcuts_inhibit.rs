@@ -3,15 +3,11 @@
 //! This protocol allows clients to inhibit compositor keyboard shortcuts,
 //! useful for fullscreen applications and games that need full keyboard control.
 
-
-use wayland_server::{
-    Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
-};
 use wayland_protocols::wp::keyboard_shortcuts_inhibit::zv1::server::{
     zwp_keyboard_shortcuts_inhibit_manager_v1::{self, ZwpKeyboardShortcutsInhibitManagerV1},
     zwp_keyboard_shortcuts_inhibitor_v1::{self, ZwpKeyboardShortcutsInhibitorV1},
 };
-
+use wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource};
 
 use crate::core::state::CompositorState;
 
@@ -28,7 +24,10 @@ pub struct KeyboardShortcutsInhibitorData {
 
 impl KeyboardShortcutsInhibitorData {
     pub fn new(surface_id: u32, seat_id: u32) -> Self {
-        Self { surface_id, seat_id }
+        Self {
+            surface_id,
+            seat_id,
+        }
     }
 }
 
@@ -51,7 +50,6 @@ impl KeyboardShortcutsInhibitState {
         self.inhibitors.remove(&surface_id);
     }
 }
-
 
 // ============================================================================
 // zwp_keyboard_shortcuts_inhibit_manager_v1
@@ -89,18 +87,23 @@ impl Dispatch<ZwpKeyboardShortcutsInhibitManagerV1, ()> for CompositorState {
             } => {
                 let surface_id = surface.id().protocol_id();
                 let seat_id = seat.id().protocol_id();
-                
+
                 let inhibitor = data_init.init(id, surface_id);
-                
+
                 // Register the inhibitor
-                state.ext.keyboard_shortcuts_inhibit.inhibitors.insert(surface_id, seat_id);
-                
+                state
+                    .ext
+                    .keyboard_shortcuts_inhibit
+                    .inhibitors
+                    .insert(surface_id, seat_id);
+
                 // Send active event immediately. We always honor the inhibitor
                 inhibitor.active();
-                
+
                 tracing::debug!(
                     "Keyboard shortcuts inhibited for surface {} on seat {} (active)",
-                    surface_id, seat_id
+                    surface_id,
+                    seat_id
                 );
             }
             zwp_keyboard_shortcuts_inhibit_manager_v1::Request::Destroy => {
@@ -128,9 +131,13 @@ impl Dispatch<ZwpKeyboardShortcutsInhibitorV1, u32> for CompositorState {
         let surface_id = *data;
         match request {
             zwp_keyboard_shortcuts_inhibitor_v1::Request::Destroy => {
-                state.ext.keyboard_shortcuts_inhibit.remove_inhibitor(surface_id);
+                state
+                    .ext
+                    .keyboard_shortcuts_inhibit
+                    .remove_inhibitor(surface_id);
                 tracing::debug!(
-                    "Keyboard shortcuts inhibitor destroyed for surface {}", surface_id
+                    "Keyboard shortcuts inhibitor destroyed for surface {}",
+                    surface_id
                 );
             }
             _ => {}
@@ -139,6 +146,8 @@ impl Dispatch<ZwpKeyboardShortcutsInhibitorV1, u32> for CompositorState {
 }
 
 /// Register zwp_keyboard_shortcuts_inhibit_manager_v1 global
-pub fn register_keyboard_shortcuts_inhibit_manager(display: &DisplayHandle) -> wayland_server::backend::GlobalId {
+pub fn register_keyboard_shortcuts_inhibit_manager(
+    display: &DisplayHandle,
+) -> wayland_server::backend::GlobalId {
     display.create_global::<CompositorState, ZwpKeyboardShortcutsInhibitManagerV1, ()>(1, ())
 }

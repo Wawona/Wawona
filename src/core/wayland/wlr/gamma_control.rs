@@ -12,11 +12,16 @@ use crate::core::wayland::protocol::wlroots::wlr_gamma_control_unstable_v1::{
 
 const GAMMA_SIZE: u32 = 256;
 
-fn output_id_from_wl_output(state: &CompositorState, _output: &wayland_server::protocol::wl_output::WlOutput) -> u32 {
+fn output_id_from_wl_output(
+    state: &CompositorState,
+    _output: &wayland_server::protocol::wl_output::WlOutput,
+) -> u32 {
     state.outputs.first().map(|o| o.id).unwrap_or(0)
 }
 
-impl GlobalDispatch<zwlr_gamma_control_manager_v1::ZwlrGammaControlManagerV1, ()> for CompositorState {
+impl GlobalDispatch<zwlr_gamma_control_manager_v1::ZwlrGammaControlManagerV1, ()>
+    for CompositorState
+{
     fn bind(
         _state: &mut Self,
         _handle: &DisplayHandle,
@@ -42,7 +47,12 @@ impl Dispatch<zwlr_gamma_control_manager_v1::ZwlrGammaControlManagerV1, ()> for 
         match request {
             zwlr_gamma_control_manager_v1::Request::GetGammaControl { id, output } => {
                 let output_id = output_id_from_wl_output(state, &output);
-                if state.wlr.gamma_control.active_controls.contains_key(&output_id) {
+                if state
+                    .wlr
+                    .gamma_control
+                    .active_controls
+                    .contains_key(&output_id)
+                {
                     let control: zwlr_gamma_control_v1::ZwlrGammaControlV1 =
                         data_init.init(id, output_id);
                     control.failed();
@@ -52,7 +62,10 @@ impl Dispatch<zwlr_gamma_control_manager_v1::ZwlrGammaControlManagerV1, ()> for 
                 let control: zwlr_gamma_control_v1::ZwlrGammaControlV1 =
                     data_init.init(id, output_id);
                 let client_id = client.id();
-                state.wlr.gamma_control.active_controls
+                state
+                    .wlr
+                    .gamma_control
+                    .active_controls
                     .insert(output_id, (control.id().protocol_id(), client_id));
                 control.gamma_size(GAMMA_SIZE);
                 tracing::debug!("Gamma control: created for output {}", output_id);
@@ -80,9 +93,19 @@ impl Dispatch<zwlr_gamma_control_v1::ZwlrGammaControlV1, u32> for CompositorStat
                 let expected_len = size * 3 * 2;
                 let mut bytes = vec![0u8; expected_len];
                 let raw_fd = fd.as_raw_fd();
-                let n = unsafe { libc::read(raw_fd, bytes.as_mut_ptr() as *mut libc::c_void, expected_len) };
+                let n = unsafe {
+                    libc::read(
+                        raw_fd,
+                        bytes.as_mut_ptr() as *mut libc::c_void,
+                        expected_len,
+                    )
+                };
                 if n != expected_len as isize {
-                    tracing::warn!("Gamma control SetGamma: read failed (got {} expected {})", n, expected_len);
+                    tracing::warn!(
+                        "Gamma control SetGamma: read failed (got {} expected {})",
+                        n,
+                        expected_len
+                    );
                     resource.failed();
                     return;
                 }
@@ -92,8 +115,10 @@ impl Dispatch<zwlr_gamma_control_v1::ZwlrGammaControlV1, u32> for CompositorStat
                 for i in 0..size {
                     let off = i * 2;
                     red[i] = u16::from_le_bytes([bytes[off], bytes[off + 1]]);
-                    green[i] = u16::from_le_bytes([bytes[off + size * 2], bytes[off + size * 2 + 1]]);
-                    blue[i] = u16::from_le_bytes([bytes[off + size * 4], bytes[off + size * 4 + 1]]);
+                    green[i] =
+                        u16::from_le_bytes([bytes[off + size * 2], bytes[off + size * 2 + 1]]);
+                    blue[i] =
+                        u16::from_le_bytes([bytes[off + size * 4], bytes[off + size * 4 + 1]]);
                 }
                 state.wlr.gamma_control.pending_apply = Some(GammaRampApply {
                     output_id,

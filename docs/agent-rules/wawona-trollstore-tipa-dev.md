@@ -94,6 +94,8 @@ Hard forbid: `com.apple.private.iowatchdog.user-access` and any watchdog disable
 - Fake helper verb `installforce` (Lite often returns 0 and installs nothing)
 - Wrong argv: must be `install force custom <path.tipa>` (or `installd`)
 - Xcode Simulator / visionOS for tipa/IOMFB/JIT proofs
+- Parking Mode B IOMFB / open-jit / niri proof on STARDUST or a retail iPhone.
+  Use `vphone wawona-jb` as the physical-class device
 - VNC as the control plane (use vphone **sock** + SSH + agent-device)
 - App Store / TestFlight / Ship: beta for tipa
 - Conflating tipa proof with Sileo `.deb` proof

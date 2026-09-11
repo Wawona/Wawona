@@ -2,6 +2,7 @@
 #import "../../util/WWNLog.h"
 #import "WWNCompositorBridge.h"
 #import "WWNSettings.h"
+#import "ui/Settings/WWNPreferencesManager.h"
 #import "WWNIlandPresenter.h"
 #import "ui/Machines/WWNMachineProfileStore.h"
 #import <ApplicationServices/ApplicationServices.h>
@@ -70,6 +71,18 @@ extern void WWNCoreInjectDragLeave(void *core, uint64_t window_id);
            selector:@selector(defaultsChanged:)
                name:NSUserDefaultsDidChangeNotification
              object:nil];
+#if TARGET_OS_OSX
+    [[NSNotificationCenter defaultCenter]
+        addObserver:self
+           selector:@selector(wwnWindowKeyChanged:)
+               name:NSWindowDidBecomeKeyNotification
+             object:nil];
+    [[NSNotificationCenter defaultCenter]
+        addObserver:self
+           selector:@selector(wwnWindowKeyChanged:)
+               name:NSWindowDidResignKeyNotification
+             object:nil];
+#endif
   }
   return self;
 }
@@ -81,6 +94,16 @@ extern void WWNCoreInjectDragLeave(void *core, uint64_t window_id);
 - (void)defaultsChanged:(NSNotification *)notification {
   (void)notification;
   [self.window invalidateCursorRectsForView:self];
+}
+
+- (void)viewDidMoveToWindow {
+  [super viewDidMoveToWindow];
+#if TARGET_OS_OSX
+  self.window.acceptsMouseMovedEvents = YES;
+  if (!self.window) {
+    [self wwnSyncNestedPointerGrab:NO];
+  }
+#endif
 }
 
 - (CALayer *)contentLayer {
@@ -238,6 +261,11 @@ extern void WWNCoreInjectDragLeave(void *core, uint64_t window_id);
         [chars isEqualToString:@"m"] || [chars isEqualToString:@"M"]) {
       return NO;
     }
+    if (([chars isEqualToString:@"c"] || [chars isEqualToString:@"C"] ||
+         [chars isEqualToString:@"v"] || [chars isEqualToString:@"V"]) &&
+        [[WWNPreferencesManager sharedManager] universalClipboardEnabled]) {
+      return NO;
+    }
   }
 
   [self keyDown:event];
@@ -263,10 +291,50 @@ extern void WWNCoreInjectDragLeave(void *core, uint64_t window_id);
 // Input Handling
 //
 
+#if TARGET_OS_OSX
+static void WWNSetHostPointerGrabbed(BOOL grab) {
+  static BOOL sGrabbed = NO;
+  if (grab == sGrabbed) {
+    return;
+  }
+  sGrabbed = grab;
+  // Nested weston/niri draw wl_pointer. Detach the Aqua cursor so it
+  // does not roam while we keep injecting seat motion.
+  CGAssociateMouseAndMouseCursorPosition(grab ? false : true);
+  if (grab) {
+    [NSCursor hide];
+  } else {
+    [NSCursor unhide];
+  }
+}
+
+- (void)wwnSyncNestedPointerGrab:(BOOL)pointerInside {
+  BOOL hideHost = ![WWNMachineProfileStore resolvedShowHostCursorActive];
+  BOOL key = self.window.isKeyWindow;
+  WWNSetHostPointerGrabbed(hideHost && pointerInside && key);
+}
+
+- (void)wwnWindowKeyChanged:(NSNotification *)note {
+  if (note.object != self.window) {
+    return;
+  }
+  BOOL inside = NO;
+  if (self.window) {
+    NSPoint loc = [self.window mouseLocationOutsideOfEventStream];
+    loc = [self convertPoint:loc fromView:nil];
+    inside = NSPointInRect(loc, self.bounds);
+  }
+  [self wwnSyncNestedPointerGrab:inside];
+}
+#endif
+
 - (void)mouseEntered:(NSEvent *)event {
   NSPoint loc = [self convertPoint:[event locationInWindow] fromView:nil];
   double y = loc.y;
 
+#if TARGET_OS_OSX
+  [self wwnSyncNestedPointerGrab:YES];
+#endif
   [[WWNCompositorBridge sharedBridge]
       injectPointerEnterForWindow:[self wwnWindowId]
                                 x:loc.x
@@ -275,6 +343,9 @@ extern void WWNCoreInjectDragLeave(void *core, uint64_t window_id);
 }
 
 - (void)mouseExited:(NSEvent *)event {
+#if TARGET_OS_OSX
+  [self wwnSyncNestedPointerGrab:NO];
+#endif
   [[WWNCompositorBridge sharedBridge]
       injectPointerLeaveForWindow:[self wwnWindowId]
                         timestamp:(uint32_t)(event.timestamp * 1000)];
@@ -989,6 +1060,31 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
 }
 
 #endif
+
+- (BOOL)validateMenuItem:(NSMenuItem *)menuItem {
+  SEL action = menuItem.action;
+  WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
+  if (action == @selector(copy:)) {
+    return [bridge hostEditMenuEnabled];
+  }
+  if (action == @selector(paste:)) {
+    return [bridge hostEditCanPaste];
+  }
+  if ([super respondsToSelector:@selector(validateMenuItem:)]) {
+    return [super validateMenuItem:menuItem];
+  }
+  return YES;
+}
+
+- (void)copy:(id)sender {
+  (void)sender;
+  [[WWNCompositorBridge sharedBridge] hostEditCopyFromClient];
+}
+
+- (void)paste:(id)sender {
+  (void)sender;
+  [[WWNCompositorBridge sharedBridge] hostEditPasteIntoClient];
+}
 
 @end
 

@@ -17,6 +17,7 @@
 #import <errno.h>
 #import <math.h>
 #import <pthread.h>
+#import <string.h>
 #import <simd/simd.h>
 #import <stdatomic.h>
 #import <unistd.h>
@@ -30,6 +31,7 @@ extern void iland_drm_set_present_callback(iland_present_callback_t cb, void *us
 extern void iland_drm_set_preferred_mode(uint32_t w, uint32_t h,
                                          uint32_t refresh_millihz);
 extern void iland_drm_complete_page_flip(uint32_t crtc_id, uint32_t fb_id);
+extern int iland_drm_prepare_virtual_fd(void);
 
 /*
  * iland wants the mode's refresh in millihertz. Passing 0 makes it assume 60,
@@ -112,6 +114,55 @@ static void wwn_iland_present_trampoline(uint32_t crtc_id, uint32_t fb_id,
         }
     }
 }
+
+#if WWN_MODE_B
+static void wwn_modeb_iland_present_direct(uint32_t crtc_id, uint32_t fb_id,
+                                          IOSurfaceRef surface, uint32_t flags,
+                                          void *user) {
+    (void)flags;
+    (void)user;
+    if (surface) {
+        uint32_t width = (uint32_t)IOSurfaceGetWidth(surface);
+        uint32_t height = (uint32_t)IOSurfaceGetHeight(surface);
+        int32_t result = wwn_modeb_desktop_present_iosurface(
+            surface, width, height);
+        static int s_iomfbPresent;
+        if (s_iomfbPresent < 5 || result != 0) {
+            uint32_t px0 = 0;
+            IOSurfaceLock(surface, kIOSurfaceLockReadOnly, NULL);
+            const uint8_t *base =
+                (const uint8_t *)IOSurfaceGetBaseAddress(surface);
+            if (base) {
+                memcpy(&px0, base, 4);
+            }
+            IOSurfaceUnlock(surface, kIOSurfaceLockReadOnly, NULL);
+            WWNLog("MODEB",
+                   @"IOMFB iland present #%d %ux%u rc=%d px0=0x%08x id=%u",
+                   s_iomfbPresent, width, height, result, px0,
+                   IOSurfaceGetID(surface));
+        }
+        s_iomfbPresent++;
+    }
+    iland_drm_complete_page_flip(crtc_id, fb_id);
+}
+
+int32_t wwn_modeb_desktop_bind_iland_present(void) {
+    uint32_t width = 0;
+    uint32_t height = 0;
+    if (wwn_modeb_desktop_size(&width, &height) != 0) {
+        WWNLog("MODEB", @"bind_iland_present: IOMFB size unavailable");
+        return -1;
+    }
+    iland_drm_set_preferred_mode(width, height, WWNIlandRefreshMillihz());
+    if (iland_drm_prepare_virtual_fd() != 0) {
+        WWNLog("MODEB", @"bind_iland_present: virtual DRM event pipe failed");
+        return -1;
+    }
+    iland_drm_set_present_callback(wwn_modeb_iland_present_direct, NULL);
+    WWNLog("MODEB", @"iland DRM present bound to IOMFB %ux%u", width, height);
+    return 0;
+}
+#endif
 
 - (instancetype)initWithLayer:(CAMetalLayer *)layer device:(id<MTLDevice>)device {
     self = [super init];
@@ -531,23 +582,11 @@ static MTLPixelFormat WWNMetalFormatForIOSurface(uint32_t fourcc) {
 /// Mirror wayland-mac constructor: pipe → DRM_VIRTUAL_FD so select/poll work
 /// for in-process kmscube (Apple mobile has no Dobby open/ioctl hooks).
 static BOOL wwn_prepare_iland_virtual_drm_fd(void) {
-    if (g_drm_event_pipe_write >= 0) {
-        return YES;
-    }
-    int p[2];
-    if (pipe(p) != 0) {
-        WWNLog("ILAND", @"pipe() for DRM virtual fd failed errno=%d", errno);
+    if (iland_drm_prepare_virtual_fd() != 0) {
+        WWNLog("ILAND", @"iland_drm_prepare_virtual_fd failed errno=%d", errno);
         return NO;
     }
-    if (dup2(p[0], DRM_VIRTUAL_FD) < 0) {
-        WWNLog("ILAND", @"dup2(DRM_VIRTUAL_FD) failed errno=%d", errno);
-        close(p[0]);
-        close(p[1]);
-        return NO;
-    }
-    close(p[0]);
-    g_drm_event_pipe_write = p[1];
-    WWNLog("ILAND", @"prepared iland virtual DRM fd=%d (event pipe)",
+    WWNLog("ILAND", @"prepared iland virtual DRM event pipe (fd=%d)",
            DRM_VIRTUAL_FD);
     return YES;
 }

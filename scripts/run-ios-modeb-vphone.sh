@@ -101,30 +101,54 @@ resolve_tipa() {
     abspath "${WAWONA_MODEB_TIPA}"
     return
   fi
-  local cand flake out built
+  local cand flake out built want_ver tipa_ver
+  # Prefer tipas that match repo VERSION. Stale result-modeb-slim → 26.8.23
+  # while VERSION is 26.9.9 caused nix run to reinstall the wrong build.
+  want_ver=""
+  if [[ -f VERSION ]]; then
+    want_ver="$(tr -d '[:space:]' <VERSION)"
+  elif [[ -f "$HERE/../VERSION" ]]; then
+    want_ver="$(tr -d '[:space:]' <"$HERE/../VERSION")"
+  fi
+  tipa_matches_version() {
+    local path="$1"
+    local base
+    base="$(basename "$path")"
+    # Wawona-{calver}-iOS-arm64.tipa
+    if [[ -n "$want_ver" && "$base" != Wawona-"$want_ver"-iOS-arm64.tipa ]]; then
+      return 1
+    fi
+    return 0
+  }
   if [[ "$KIND" == "official" ]]; then
     for cand in \
       result/Wawona-*-iOS-arm64.tipa \
       result-modeb/Wawona-*-iOS-arm64.tipa; do
-      if [[ -f $cand ]]; then
+      if [[ -f $cand ]] && tipa_matches_version "$cand"; then
         abspath "$cand"
         return
       fi
     done
-    echo "official tipa not found. Build it first:" >&2
+    echo "official tipa not found for VERSION=${want_ver:-unknown}. Build it first:" >&2
     echo "  nix build --impure .#wawona-ios-modeb-tipa -o result-modeb" >&2
     exit 1
   fi
   for cand in result-modeb-slim/Wawona-*-iOS-arm64.tipa; do
-    if [[ -f $cand ]]; then
+    if [[ -f $cand ]] && tipa_matches_version "$cand"; then
       abspath "$cand"
       return
     fi
+    if [[ -f $cand ]]; then
+      echo "ignoring stale $cand (want VERSION=${want_ver:-unknown})" >&2
+    fi
   done
-  echo "slim tipa not found. Building .#wawona-ios-modeb-tipa-slim..." >&2
+  echo "slim tipa not found for VERSION=${want_ver:-unknown}. Building .#wawona-ios-modeb-tipa-slim..." >&2
   flake="${WAWONA_MODEB_FLAKE:-.}"
   out="$(mktemp -d /tmp/wawona-ios-modeb.XXXXXX)"
   nix build --impure "${flake}#wawona-ios-modeb-tipa-slim" -o "$out/result"
+  # Keep result-modeb-slim in sync so the next nix run does not pick an old link.
+  rm -f result-modeb-slim
+  ln -sfn "$out/result" result-modeb-slim
   built="$(ls "$out"/result/Wawona-*-iOS-arm64.tipa 2>/dev/null | head -1 || true)"
   if [[ -z "$built" || ! -f "$built" ]]; then
     echo "nix build produced no tipa under $out/result" >&2

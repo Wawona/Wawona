@@ -1,9 +1,9 @@
-pub mod plasma;
 pub mod kde_decoration;
+pub mod plasma;
 
-use wayland_server::DisplayHandle;
 use crate::core::state::CompositorState;
 use crate::core::wayland::policy;
+use wayland_server::DisplayHandle;
 
 /// Register KDE/Plasma protocols
 pub fn register(state: &mut CompositorState, dh: &DisplayHandle) {
@@ -29,14 +29,29 @@ pub fn register(state: &mut CompositorState, dh: &DisplayHandle) {
     };
 
     dh.create_global::<CompositorState, OrgKdeKwinServerDecorationManager, KdeDecorationManagerGlobal>(1, KdeDecorationManagerGlobal);
-    crate::wlog!(crate::util::logging::COMPOSITOR, "Registered org_kde_kwin_server_decoration_manager (KDE fallback)");
-    
-    dh.create_global::<CompositorState, OrgKdeKwinBlurManager, BlurManagerGlobal>(1, BlurManagerGlobal);
-    dh.create_global::<CompositorState, OrgKdeKwinContrastManager, ContrastManagerGlobal>(1, ContrastManagerGlobal);
-    dh.create_global::<CompositorState, OrgKdeKwinShadowManager, ShadowManagerGlobal>(1, ShadowManagerGlobal);
+    crate::wlog!(
+        crate::util::logging::COMPOSITOR,
+        "Registered org_kde_kwin_server_decoration_manager (KDE fallback)"
+    );
+
+    dh.create_global::<CompositorState, OrgKdeKwinBlurManager, BlurManagerGlobal>(
+        1,
+        BlurManagerGlobal,
+    );
+    dh.create_global::<CompositorState, OrgKdeKwinContrastManager, ContrastManagerGlobal>(
+        1,
+        ContrastManagerGlobal,
+    );
+    dh.create_global::<CompositorState, OrgKdeKwinShadowManager, ShadowManagerGlobal>(
+        1,
+        ShadowManagerGlobal,
+    );
     dh.create_global::<CompositorState, OrgKdeKwinDpmsManager, _>(1, ());
     dh.create_global::<CompositorState, OrgKdeKwinIdleTimeout, _>(1, ());
     dh.create_global::<CompositorState, OrgKdeKwinSlideManager, _>(1, ());
 
-    crate::wlog!(crate::util::logging::COMPOSITOR, "Registered KDE/Plasma globals (blur, contrast, shadow, dpms, idle, slide)");
+    crate::wlog!(
+        crate::util::logging::COMPOSITOR,
+        "Registered KDE/Plasma globals (blur, contrast, shadow, dpms, idle, slide)"
+    );
 }

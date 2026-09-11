@@ -1,0 +1,17 @@
+# vphone Mode B smoke: research VM, not Simulator.
+# Requires: nix run .#vphone-jb-lab (visible window) and Mode B tipa installed.
+# Kill WawonaModeBDemo before this replay. Unlock SpringBoard before claiming
+# greeter failure. IOMFB owns the panel: UIKit AX wwn.machines.root is not required.
+# snapshot -i may be sparse; sock screenshot is the proof.
+context platform=ios
+context session=wawona-ios-vphone-smoke
+context device=vphone wawona-jb
+
+# scripts/agent-device-smoke.sh vphone runs packages tipa open-jit first.
+# Replay alone cannot enable JIT. Unlock SpringBoard. Kill WawonaModeBDemo.
+open com.aspauldingcode.Wawona.ModeB --relaunch
+wait 2500
+screenshot ./.agent-device/test-artifacts/modeb-ios/modeb-first-screen.png
+wait 1500
+screenshot ./.agent-device/test-artifacts/modeb-ios/modeb-iomfb-owned-display.png
+close

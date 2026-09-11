@@ -11,7 +11,7 @@
 //! compositor trace output would appear inside weston-terminal.
 
 use std::collections::VecDeque;
-use std::ffi::{CStr, CString, c_char, c_int};
+use std::ffi::{c_char, c_int, CStr, CString};
 use std::sync::{Mutex, OnceLock};
 
 static PRESERVED_STDERR: OnceLock<c_int> = OnceLock::new();
@@ -166,7 +166,9 @@ pub extern "C" fn wwn_log_ring_dump(machine_id: *const c_char) -> *mut c_char {
         }
     };
     let text = dump_ring(filter);
-    CString::new(text.replace('\0', "")).map(|s| s.into_raw()).unwrap_or(std::ptr::null_mut())
+    CString::new(text.replace('\0', ""))
+        .map(|s| s.into_raw())
+        .unwrap_or(std::ptr::null_mut())
 }
 
 /// Per-tick / per-frame FFI trace logging. Off unless `WWN_FFI_DEBUG=1`.

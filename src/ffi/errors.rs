@@ -10,103 +10,117 @@ use thiserror::Error;
 pub enum CompositorError {
     #[error("Failed to initialize compositor: {message}")]
     InitializationFailed { message: String },
-    
+
     #[error("Compositor already started")]
     AlreadyStarted,
-    
+
     #[error("Compositor not started")]
     NotStarted,
-    
+
     #[error("Invalid window ID: {id}")]
     InvalidWindowId { id: u64 },
-    
+
     #[error("Invalid surface ID: {id}")]
     InvalidSurfaceId { id: u32 },
-    
+
     #[error("Invalid buffer ID: {id}")]
     InvalidBufferId { id: u64 },
-    
+
     #[error("Invalid output ID: {id}")]
     InvalidOutputId { id: u32 },
-    
+
     #[error("Invalid client ID: {id}")]
     InvalidClientId { id: u32 },
-    
+
     #[error("Socket error: {message}")]
     SocketError { message: String },
-    
+
     #[error("Platform error: {message}")]
     PlatformError { message: String },
-    
+
     #[error("Wayland error: {message}")]
     WaylandError { message: String },
-    
+
     #[error("Protocol error: {message}")]
     ProtocolError { message: String },
-    
+
     #[error("Resource not found: {resource}")]
     ResourceNotFound { resource: String },
-    
+
     #[error("Buffer too small: expected {expected} bytes, got {actual}")]
     BufferTooSmall { expected: u64, actual: u64 },
-    
+
     #[error("Unsupported format: {format}")]
     UnsupportedFormat { format: String },
 }
 
 impl CompositorError {
     // ===== Convenience constructors =====
-    
+
     pub fn initialization_failed(msg: impl Into<String>) -> Self {
-        Self::InitializationFailed { message: msg.into() }
+        Self::InitializationFailed {
+            message: msg.into(),
+        }
     }
-    
+
     pub fn invalid_window_id(id: u64) -> Self {
         Self::InvalidWindowId { id }
     }
-    
+
     pub fn invalid_surface_id(id: u32) -> Self {
         Self::InvalidSurfaceId { id }
     }
-    
+
     pub fn invalid_buffer_id(id: u64) -> Self {
         Self::InvalidBufferId { id }
     }
-    
+
     pub fn invalid_output_id(id: u32) -> Self {
         Self::InvalidOutputId { id }
     }
-    
+
     pub fn invalid_client_id(id: u32) -> Self {
         Self::InvalidClientId { id }
     }
-    
+
     pub fn socket_error(msg: impl Into<String>) -> Self {
-        Self::SocketError { message: msg.into() }
+        Self::SocketError {
+            message: msg.into(),
+        }
     }
-    
+
     pub fn platform_error(msg: impl Into<String>) -> Self {
-        Self::PlatformError { message: msg.into() }
+        Self::PlatformError {
+            message: msg.into(),
+        }
     }
-    
+
     pub fn wayland_error(msg: impl Into<String>) -> Self {
-        Self::WaylandError { message: msg.into() }
+        Self::WaylandError {
+            message: msg.into(),
+        }
     }
-    
+
     pub fn protocol_error(msg: impl Into<String>) -> Self {
-        Self::ProtocolError { message: msg.into() }
+        Self::ProtocolError {
+            message: msg.into(),
+        }
     }
-    
+
     pub fn resource_not_found(resource: impl Into<String>) -> Self {
-        Self::ResourceNotFound { resource: resource.into() }
+        Self::ResourceNotFound {
+            resource: resource.into(),
+        }
     }
-    
+
     pub fn buffer_too_small(expected: u64, actual: u64) -> Self {
         Self::BufferTooSmall { expected, actual }
     }
-    
+
     pub fn unsupported_format(format: impl Into<String>) -> Self {
-        Self::UnsupportedFormat { format: format.into() }
+        Self::UnsupportedFormat {
+            format: format.into(),
+        }
     }
 }
 
@@ -121,7 +135,7 @@ pub type Result<T> = std::result::Result<T, CompositorError>;
 impl From<crate::core::errors::CoreError> for CompositorError {
     fn from(err: crate::core::errors::CoreError) -> Self {
         use crate::core::errors::CoreError;
-        
+
         match err {
             CoreError::WaylandError(msg) => CompositorError::wayland_error(msg),
             CoreError::StateError(msg) => CompositorError::platform_error(msg),
@@ -147,34 +161,35 @@ impl From<std::io::Error> for CompositorError {
 impl CompositorError {
     /// Check if this is a fatal error that requires stopping the compositor
     pub fn is_fatal(&self) -> bool {
-        matches!(self, 
-            CompositorError::InitializationFailed { .. } |
-            CompositorError::SocketError { .. }
+        matches!(
+            self,
+            CompositorError::InitializationFailed { .. } | CompositorError::SocketError { .. }
         )
     }
-    
+
     /// Check if this is a recoverable error
     pub fn is_recoverable(&self) -> bool {
-        matches!(self,
-            CompositorError::InvalidWindowId { .. } |
-            CompositorError::InvalidSurfaceId { .. } |
-            CompositorError::InvalidBufferId { .. } |
-            CompositorError::InvalidOutputId { .. } |
-            CompositorError::InvalidClientId { .. } |
-            CompositorError::ResourceNotFound { .. } |
-            CompositorError::BufferTooSmall { .. } |
-            CompositorError::UnsupportedFormat { .. }
+        matches!(
+            self,
+            CompositorError::InvalidWindowId { .. }
+                | CompositorError::InvalidSurfaceId { .. }
+                | CompositorError::InvalidBufferId { .. }
+                | CompositorError::InvalidOutputId { .. }
+                | CompositorError::InvalidClientId { .. }
+                | CompositorError::ResourceNotFound { .. }
+                | CompositorError::BufferTooSmall { .. }
+                | CompositorError::UnsupportedFormat { .. }
         )
     }
-    
+
     /// Check if this is a protocol error (client misbehaving)
     pub fn is_protocol_error(&self) -> bool {
-        matches!(self,
-            CompositorError::ProtocolError { .. } |
-            CompositorError::WaylandError { .. }
+        matches!(
+            self,
+            CompositorError::ProtocolError { .. } | CompositorError::WaylandError { .. }
         )
     }
-    
+
     /// Get error code for debugging
     pub fn code(&self) -> u32 {
         match self {
@@ -204,20 +219,20 @@ impl CompositorError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_error_display() {
         let err = CompositorError::initialization_failed("test");
         assert_eq!(err.to_string(), "Failed to initialize compositor: test");
     }
-    
+
     #[test]
     fn test_error_is_fatal() {
         assert!(CompositorError::initialization_failed("test").is_fatal());
         assert!(CompositorError::socket_error("test").is_fatal());
         assert!(!CompositorError::invalid_window_id(1).is_fatal());
     }
-    
+
     #[test]
     fn test_error_is_recoverable() {
         assert!(CompositorError::invalid_window_id(1).is_recoverable());

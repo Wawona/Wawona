@@ -40,6 +40,7 @@ let
 
   # DejaVu (UI/CSD) + DejaVuSansM Nerd Font Mono (terminals / prompts).
   wawonaBundledFonts = pkgs.callPackage ../libs/fonts { };
+  wawonaXkbTrimmed = pkgs.callPackage ../libs/xkb-trimmed.nix { };
 
   # Single openable Gradle tree at ./Wawona-gradle-project (parallel to ./Wawona.xcodeproj).
   projectPath = if wawonaAndroidProject != null then toString wawonaAndroidProject else "";
@@ -417,19 +418,15 @@ let
       echo "Mirrored Nix runtime .so libs into $JNI_LIB_DIR"
     fi
 
-    # xkeyboard-config: required at runtime by xkbcommon (rules/evdev, symbols,
-    # etc.) to resolve the seat's keymap. Without this, smithay's
-    # seat.add_keyboard() fails for both the primary and fallback XKB config,
-    # the seat ends up with zero keyboard capability, and no key event ever
-    # reaches any Wayland client (weston-terminal included). A silent,
-    # total keyboard-input failure. Extracted into wawona-rootfs at runtime
-    # by WawonaShellRootfs. Mirrors dependencies/wawona/android.nix.
+    # Trimmed us/evdev tree for nested weston/niri RMLVO. Wawona's seat uses
+    # HostKeymapBridge (MINIMAL_KEYMAP fallback). add_keyboard(Default) still
+    # compiles evdev+us from this tree, then set_keymap_from_string overwrites.
     XKB_ASSET_DIR="$OUT/app/src/main/assets/xkb"
     if [ ! -f "$XKB_ASSET_DIR/rules/evdev" ]; then
       mkdir -p "$XKB_ASSET_DIR"
-      cp -RL ${pkgs.xkeyboard_config}/share/X11/xkb/. "$XKB_ASSET_DIR/"
+      cp -RL ${wawonaXkbTrimmed}/share/X11/xkb/. "$XKB_ASSET_DIR/"
       chmod -R u+w "$XKB_ASSET_DIR"
-      echo "Bundled xkeyboard-config into $XKB_ASSET_DIR"
+      echo "Bundled trimmed xkb (us/evdev) into $XKB_ASSET_DIR"
     fi
 
     # DejaVu (UI/CSD) + DejaVuSansM Nerd Font Mono (terminals).
@@ -572,6 +569,29 @@ IDEAEOF
     } >> "$OUT/gradle.properties"
     chmod u+w "$OUT/gradle.properties" 2>/dev/null || true
     echo "Configured Gradle/Kotlin memory and worker limits in $OUT/gradle.properties"
+
+    # Local Gradle JVM: Android Studio JBR 21. Do not pin Nix OpenJDK here.
+    # Stale Nix JAVA_HOME breaks Studio sync (Invalid Gradle JDK configuration).
+    # nixpkgs jetbrains.jdk is Linux-only; Darwin local builds use Studio JBR.
+    JBR_HOME=""
+    for _jbr in \
+      "''${ANDROID_STUDIO_JBR:-}" \
+      "/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
+      "$HOME/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
+      "/opt/android-studio/jbr"
+    do
+      if [ -n "$_jbr" ] && [ -x "$_jbr/bin/java" ]; then
+        JBR_HOME="$_jbr"
+        break
+      fi
+    done
+    if [ -n "$JBR_HOME" ] && [ -f "$OUT/gradle.properties" ]; then
+      awk '!/^org\.gradle\.java\.home=/' "$OUT/gradle.properties" > "$OUT/gradle.properties.tmp"
+      mv "$OUT/gradle.properties.tmp" "$OUT/gradle.properties"
+      printf 'org.gradle.java.home=%s\n' "$JBR_HOME" >> "$OUT/gradle.properties"
+      chmod u+w "$OUT/gradle.properties" 2>/dev/null || true
+      echo "Pinned Gradle JVM to JBR at $JBR_HOME"
+    fi
 
     # Persist Nix native args so Android Studio matches nix build inputs.
     NIX_DEP_INCLUDES=${nixDepIncludesEscaped}

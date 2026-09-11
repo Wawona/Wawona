@@ -1,10 +1,10 @@
 #![cfg(feature = "waypipe-ssh")]
 
-use std::net::TcpStream;
 use ssh2::Session;
 use std::io::{Read, Write};
+use std::net::TcpStream;
 use std::os::unix::io::AsRawFd;
-use tracing::{info, debug};
+use tracing::{debug, info};
 
 pub struct SshConfig {
     pub host: String,
@@ -28,11 +28,22 @@ impl SshTunnel {
         session.handshake()?;
 
         if let Some(password) = config.password {
-            debug!("SSH: Authenticating with password for user {}", config.username);
+            debug!(
+                "SSH: Authenticating with password for user {}",
+                config.username
+            );
             session.userauth_password(&config.username, &password)?;
         } else if let Some(key_path) = config.key_path {
-            debug!("SSH: Authenticating with key {} for user {}", key_path, config.username);
-            session.userauth_pubkey_file(&config.username, None, std::path::Path::new(&key_path), None)?;
+            debug!(
+                "SSH: Authenticating with key {} for user {}",
+                key_path, config.username
+            );
+            session.userauth_pubkey_file(
+                &config.username,
+                None,
+                std::path::Path::new(&key_path),
+                None,
+            )?;
         } else {
             anyhow::bail!("No authentication method provided");
         }
@@ -43,10 +54,7 @@ impl SshTunnel {
 
         info!("SSH: Authenticated successfully");
 
-        Ok(Self {
-            session,
-            _tcp: tcp,
-        })
+        Ok(Self { session, _tcp: tcp })
     }
 
     /// Spawns a remote command and returns a channel that can be used for bidirectional I/O.

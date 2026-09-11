@@ -1,5 +1,5 @@
-use crate::core::surface::surface::SurfaceState;
 use crate::core::surface::damage::DamageRegion;
+use crate::core::surface::surface::SurfaceState;
 
 fn map_buffer_point_to_surface(
     x: i32,
@@ -11,10 +11,14 @@ fn map_buffer_point_to_surface(
     match transform {
         wayland_server::protocol::wl_output::Transform::Normal => (x, y),
         wayland_server::protocol::wl_output::Transform::_90 => (buffer_height - y, x),
-        wayland_server::protocol::wl_output::Transform::_180 => (buffer_width - x, buffer_height - y),
+        wayland_server::protocol::wl_output::Transform::_180 => {
+            (buffer_width - x, buffer_height - y)
+        }
         wayland_server::protocol::wl_output::Transform::_270 => (y, buffer_width - x),
         wayland_server::protocol::wl_output::Transform::Flipped => (buffer_width - x, y),
-        wayland_server::protocol::wl_output::Transform::Flipped90 => (buffer_height - y, buffer_width - x),
+        wayland_server::protocol::wl_output::Transform::Flipped90 => {
+            (buffer_height - y, buffer_width - x)
+        }
         wayland_server::protocol::wl_output::Transform::Flipped180 => (x, buffer_height - y),
         wayland_server::protocol::wl_output::Transform::Flipped270 => (y, x),
         _ => (x, y),
@@ -37,14 +41,40 @@ fn convert_buffer_damage_to_surface(
 ) -> DamageRegion {
     let corners = [
         map_buffer_point_to_surface(region.x, region.y, buffer_width, buffer_height, transform),
-        map_buffer_point_to_surface(region.x + region.width, region.y, buffer_width, buffer_height, transform),
-        map_buffer_point_to_surface(region.x, region.y + region.height, buffer_width, buffer_height, transform),
-        map_buffer_point_to_surface(region.x + region.width, region.y + region.height, buffer_width, buffer_height, transform),
+        map_buffer_point_to_surface(
+            region.x + region.width,
+            region.y,
+            buffer_width,
+            buffer_height,
+            transform,
+        ),
+        map_buffer_point_to_surface(
+            region.x,
+            region.y + region.height,
+            buffer_width,
+            buffer_height,
+            transform,
+        ),
+        map_buffer_point_to_surface(
+            region.x + region.width,
+            region.y + region.height,
+            buffer_width,
+            buffer_height,
+            transform,
+        ),
     ];
     let min_x = corners.iter().map(|(x, _)| *x).min().unwrap_or(region.x);
-    let max_x = corners.iter().map(|(x, _)| *x).max().unwrap_or(region.x + region.width);
+    let max_x = corners
+        .iter()
+        .map(|(x, _)| *x)
+        .max()
+        .unwrap_or(region.x + region.width);
     let min_y = corners.iter().map(|(_, y)| *y).min().unwrap_or(region.y);
-    let max_y = corners.iter().map(|(_, y)| *y).max().unwrap_or(region.y + region.height);
+    let max_y = corners
+        .iter()
+        .map(|(_, y)| *y)
+        .max()
+        .unwrap_or(region.y + region.height);
 
     let (sx, sr) = scale_damage_bounds(min_x, max_x, scale);
     let (sy, sb) = scale_damage_bounds(min_y, max_y, scale);
@@ -54,12 +84,23 @@ fn convert_buffer_damage_to_surface(
 
 /// Validates and clamps region rectangles to surface bounds.
 /// Returns None for regions that pass validation, or clamps out-of-bounds ones.
-fn validate_regions(regions: &Option<Vec<DamageRegion>>, width: i32, height: i32) -> Option<Vec<DamageRegion>> {
+fn validate_regions(
+    regions: &Option<Vec<DamageRegion>>,
+    width: i32,
+    height: i32,
+) -> Option<Vec<DamageRegion>> {
     regions.as_ref().map(|rects| {
-        rects.iter()
+        rects
+            .iter()
             .filter_map(|r| {
                 if r.width <= 0 || r.height <= 0 {
-                    tracing::warn!("Dropping invalid region: {}x{} at ({},{})", r.width, r.height, r.x, r.y);
+                    tracing::warn!(
+                        "Dropping invalid region: {}x{} at ({},{})",
+                        r.width,
+                        r.height,
+                        r.x,
+                        r.y
+                    );
                     return None;
                 }
                 if width > 0 && height > 0 {
@@ -90,20 +131,20 @@ pub fn apply_commit(pending: &mut SurfaceState, current: &mut SurfaceState) -> O
     // 1. Update buffer if pending
     current.buffer = pending.buffer.clone();
     current.buffer_id = pending.buffer_id;
-    
+
     // 2. Update dimensions based on buffer size, scale and transform
     if let Some((buffer_width, buffer_height)) = current.buffer.dimensions() {
         let scale = pending.scale.max(1);
-        
+
         // Handle transforms that swap width/height
         let swapped = match pending.transform {
-            wayland_server::protocol::wl_output::Transform::_90 |
-            wayland_server::protocol::wl_output::Transform::_270 |
-            wayland_server::protocol::wl_output::Transform::Flipped90 |
-            wayland_server::protocol::wl_output::Transform::Flipped270 => true,
+            wayland_server::protocol::wl_output::Transform::_90
+            | wayland_server::protocol::wl_output::Transform::_270
+            | wayland_server::protocol::wl_output::Transform::Flipped90
+            | wayland_server::protocol::wl_output::Transform::Flipped270 => true,
             _ => false,
         };
-        
+
         if swapped {
             current.width = buffer_height / scale;
             current.height = buffer_width / scale;
@@ -115,7 +156,7 @@ pub fn apply_commit(pending: &mut SurfaceState, current: &mut SurfaceState) -> O
         current.width = 0;
         current.height = 0;
     }
-    
+
     // 3. Accumulate damage (clamp to surface bounds)
     for region in pending.damage.drain(..) {
         if current.width > 0 && current.height > 0 {
@@ -157,7 +198,7 @@ pub fn apply_commit(pending: &mut SurfaceState, current: &mut SurfaceState) -> O
             }
         }
     }
-    
+
     // 4. Update other attributes
     current.opaque = pending.opaque;
     current.scale = pending.scale;
@@ -167,7 +208,7 @@ pub fn apply_commit(pending: &mut SurfaceState, current: &mut SurfaceState) -> O
     // 5. Validate and clamp input/opaque regions to surface bounds
     current.input_region = validate_regions(&pending.input_region, current.width, current.height);
     current.opaque_region = validate_regions(&pending.opaque_region, current.width, current.height);
-    
+
     old_buffer
 }
 
@@ -215,9 +256,7 @@ mod tests {
         });
         pending.buffer_id = Some(7);
         pending.transform = wayland_server::protocol::wl_output::Transform::_90;
-        pending
-            .buffer_damage
-            .push(DamageRegion::new(0, 0, 20, 10));
+        pending.buffer_damage.push(DamageRegion::new(0, 0, 20, 10));
 
         apply_commit(&mut pending, &mut current);
 

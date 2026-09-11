@@ -36,7 +36,7 @@ pub mod server {
     // -------------------------------------------------------------------------
     // Core Wayland Protocol
     // -------------------------------------------------------------------------
-    
+
     /// Core Wayland protocol (wl_compositor, wl_surface, wl_seat, etc.)
     pub use wayland_server::protocol as wayland_core;
 
@@ -45,25 +45,25 @@ pub mod server {
     // -------------------------------------------------------------------------
 
     /// wp_* protocols - Wayland Presentation/Platform extensions
-    /// 
+    ///
     /// Includes: viewporter, presentation_time, linux_dmabuf, fractional_scale,
     /// cursor_shape, fifo, tearing_control, etc.
     pub use wayland_protocols::wp;
 
     /// xdg_* protocols - Desktop shell protocols
-    /// 
+    ///
     /// Includes: xdg_shell, xdg_decoration, xdg_activation, xdg_output,
     /// xdg_foreign, xdg_dialog, xdg_toplevel_drag, etc.
     pub use wayland_protocols::xdg;
 
     /// ext_* protocols - Extended protocols
-    /// 
+    ///
     /// Includes: ext_session_lock, ext_idle_notify, ext_foreign_toplevel_list,
     /// ext_data_control, ext_workspace, etc.
     pub use wayland_protocols::ext;
 
     /// xwayland_* protocols - XWayland compatibility
-    /// 
+    ///
     /// Includes: xwayland_keyboard_grab, xwayland_shell
     pub use wayland_protocols::xwayland;
 
@@ -129,7 +129,7 @@ pub mod client {
     // -------------------------------------------------------------------------
     // Core Wayland Protocol
     // -------------------------------------------------------------------------
-    
+
     /// Core Wayland protocol (wl_compositor, wl_surface, wl_seat, etc.)
     pub use wayland_client::protocol as wayland_core;
 

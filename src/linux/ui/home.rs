@@ -6,9 +6,9 @@ use std::collections::HashMap;
 use std::process::Child;
 use std::rc::Rc;
 
+use adw::prelude::*;
 use gtk4 as gtk;
 use libadwaita as adw;
-use adw::prelude::*;
 
 use crate::linux::launcher;
 use crate::linux::machine_profile::MachineProfile;
@@ -308,8 +308,12 @@ fn build_machine_card(
     chips.set_halign(gtk::Align::End);
     chips.set_hexpand(true);
     chips.set_homogeneous(true);
-    chips.append(&chip(&machine_scope_label(profile.machine_type).to_uppercase()));
-    chips.append(&chip(&profile.machine_type.user_facing_name().to_uppercase()));
+    chips.append(&chip(
+        &machine_scope_label(profile.machine_type).to_uppercase(),
+    ));
+    chips.append(&chip(
+        &profile.machine_type.user_facing_name().to_uppercase(),
+    ));
     if is_active {
         chips.append(&chip("ACTIVE"));
     }
@@ -578,24 +582,22 @@ fn attach_card_actions(
     let state_r = state.clone();
     let parent_r = parent.clone();
     let sessions_r = sessions.clone();
-    start_btn.connect_clicked(move |_| {
-        match try_launch_profile(&mid, &state_r) {
-            Ok(child) => {
-                wlog!("UI", "Launched '{}' pid={}", mname, child.id());
-                sessions_r.borrow_mut().insert(mid.clone(), child);
-                let mut app = state_r.borrow_mut();
-                let _ = app.store.set_active(Some(mid.clone()));
-                drop(app);
-                rebuild_home(RebuildHome {
-                    shell: &shell_r,
-                    state: &state_r,
-                    parent: &parent_r,
-                    sessions: sessions_r.clone(),
-                    layout,
-                });
-            }
-            Err(e) => show_warning(&parent_r, &e),
+    start_btn.connect_clicked(move |_| match try_launch_profile(&mid, &state_r) {
+        Ok(child) => {
+            wlog!("UI", "Launched '{}' pid={}", mname, child.id());
+            sessions_r.borrow_mut().insert(mid.clone(), child);
+            let mut app = state_r.borrow_mut();
+            let _ = app.store.set_active(Some(mid.clone()));
+            drop(app);
+            rebuild_home(RebuildHome {
+                shell: &shell_r,
+                state: &state_r,
+                parent: &parent_r,
+                sessions: sessions_r.clone(),
+                layout,
+            });
         }
+        Err(e) => show_warning(&parent_r, &e),
     });
 
     // Focus: mark active (host window raise is compositor-driven).
@@ -709,7 +711,12 @@ fn machine_session_status(machine_id: &str, sessions: &MachineSessions) -> (bool
 
 fn stop_machine(machine_id: &str, sessions: &MachineSessions) {
     if let Some(mut child) = sessions.borrow_mut().remove(machine_id) {
-        wlog!("UI", "Stopping machine id={} pid={}", machine_id, child.id());
+        wlog!(
+            "UI",
+            "Stopping machine id={} pid={}",
+            machine_id,
+            child.id()
+        );
         let _ = child.kill();
         let _ = child.wait();
     }

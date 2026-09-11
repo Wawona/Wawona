@@ -202,6 +202,8 @@ jobs:
         run: python3 ./.github/scripts/verify-nixpkgs-lineage.py
       - name: Verify Apple SDK warm + Xcode pin wiring
         run: python3 ./.github/scripts/verify-apple-sdk-warm.py
+      - name: Verify iOS Mode B scanner and vphone replay contract
+        run: bash ./.github/scripts/verify-ios-modeb-ci.sh
       - name: Upload Wayland ownership inventory artifact
         if: ${{ always() }}
         uses: actions/upload-artifact@v7

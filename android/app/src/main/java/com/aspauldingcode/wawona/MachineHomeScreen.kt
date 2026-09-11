@@ -100,7 +100,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -126,7 +130,11 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material3.IconButton
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.net.Uri
 import org.json.JSONObject
+import java.io.File
 
 private val compactButtonPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
 
@@ -809,12 +817,13 @@ private fun statusColorFor(status: MachineStatus): Color = when (status) {
 }
 
 private fun machineScopeLabel(type: MachineType): String = when (type) {
-    MachineType.NATIVE, MachineType.VM, MachineType.CONTAINER -> "LOCAL"
+    MachineType.NATIVE, MachineType.WASM, MachineType.VM, MachineType.CONTAINER -> "LOCAL"
     MachineType.SSH_WAYPIPE, MachineType.SSH_TERMINAL -> "REMOTE"
 }
 
 private fun typeChipLabel(profile: MachineProfile): String = when (profile.type) {
     MachineType.NATIVE -> "NATIVE"
+    MachineType.WASM -> "WASM"
     MachineType.SSH_WAYPIPE -> "SSH+WAYPIPE"
     MachineType.SSH_TERMINAL -> "SSH TERMINAL"
     MachineType.VM -> "VM"
@@ -846,6 +855,39 @@ private fun MachineEditorSheet(
     var nativeLauncher by remember { mutableStateOf(initial?.nativeLauncher ?: "weston-terminal") }
     var wasmModulePath by remember {
         mutableStateOf(initial?.runtimeOverrides?.optString("wasmModulePath", "") ?: "")
+    }
+    var wasmCommand by remember {
+        mutableStateOf(initial?.runtimeOverrides?.optString("wasmCommand", "wasm hello-wasi-gui") ?: "wasm hello-wasi-gui")
+    }
+    var wasmPackage by remember {
+        mutableStateOf(initial?.runtimeOverrides?.optString("wasmPackage", "") ?: "")
+    }
+    var wasmLaunchMode by remember {
+        mutableStateOf(initial?.runtimeOverrides?.optString("wasmLaunchMode", "command") ?: "command")
+    }
+    var wasmCatalogResults by remember { mutableStateOf<List<WasmCatalogPackage>>(emptyList()) }
+    var wasmCatalogNote by remember { mutableStateOf<String?>(null) }
+    var wasmCatalogLoading by remember { mutableStateOf(false) }
+    val editorScope = rememberCoroutineScope()
+    var localWasmFiles by remember { mutableStateOf(WasmCatalog.listLocalModules(context)) }
+    val wasmFilePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        editorScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { WasmCatalog.importUri(context, uri) }
+            }
+            result.onSuccess {
+                wasmModulePath = it.absolutePath
+                wasmCommand = "wasm ${it.absolutePath}"
+                wasmLaunchMode = "file"
+                localWasmFiles = WasmCatalog.listLocalModules(context)
+                wasmCatalogNote = "Copied ${it.name} to the Wawona folder."
+            }.onFailure {
+                wasmCatalogNote = it.message
+            }
+        }
     }
     var remoteCommand by remember { mutableStateOf(initial?.remoteCommand ?: "") }
     var vmIdentifier by remember { mutableStateOf(initial?.vmSettings?.vmIdentifier ?: "") }
@@ -964,6 +1006,15 @@ private fun MachineEditorSheet(
             )
         )
     }
+    var resizeDisplayForVirtualKeyboardOverride by remember {
+        mutableStateOf(
+            SettingsOverrides.readBool(
+                existingOverrides,
+                "resizeDisplayForVirtualKeyboard",
+                prefs.getBoolean("resizeDisplayForVirtualKeyboard", true)
+            )
+        )
+    }
     var machineEnvironment by remember {
         mutableStateOf(
             if (initial != null) EnvironmentOverrides.loadMachine(initial) else mutableMapOf()
@@ -1019,10 +1070,25 @@ private fun MachineEditorSheet(
         writeBoolOverride(settingsOverrides, "colorOperations", colorOperations, prefs.getBoolean("colorSyncSupport", false))
         writeBoolOverride(settingsOverrides, "shakeToCloseEnabled", shakeToCloseOverride, prefs.getBoolean("wawona.pref.shakeToCloseEnabled", true))
         writeBoolOverride(settingsOverrides, "swipeBackToCloseEnabled", swipeBackOverride, prefs.getBoolean("wawona.pref.swipeBackToCloseEnabled", true))
+        writeBoolOverride(
+            settingsOverrides,
+            "resizeDisplayForVirtualKeyboard",
+            resizeDisplayForVirtualKeyboardOverride,
+            prefs.getBoolean("resizeDisplayForVirtualKeyboard", true)
+        )
         val withEnv = EnvironmentOverrides.withMachineEnv(base, machineEnvironment)
         val runtimeOverrides = JSONObject(withEnv.runtimeOverrides.toString())
         val trimmedWasm = wasmModulePath.trim()
-        if (nativeLauncher == "wawona-wasm" && trimmedWasm.isNotEmpty()) {
+        if (type == MachineType.WASM) {
+            runtimeOverrides.put("bundledAppID", "wawona-wasm")
+            val cmd = wasmCommand.trim().ifEmpty { WasmCatalog.DEFAULT_COMMAND }
+            runtimeOverrides.put("wasmCommand", cmd)
+            runtimeOverrides.put("wasmLaunchMode", wasmLaunchMode.ifBlank { "command" })
+            val pkg = wasmPackage.trim()
+            if (pkg.isNotEmpty()) runtimeOverrides.put("wasmPackage", pkg) else runtimeOverrides.remove("wasmPackage")
+            if (trimmedWasm.isNotEmpty()) runtimeOverrides.put("wasmModulePath", trimmedWasm)
+            else runtimeOverrides.remove("wasmModulePath")
+        } else if (nativeLauncher == "wawona-wasm" && trimmedWasm.isNotEmpty()) {
             runtimeOverrides.put("wasmModulePath", trimmedWasm)
             runtimeOverrides.put("bundledAppID", "wawona-wasm")
         } else {
@@ -1039,7 +1105,7 @@ private fun MachineEditorSheet(
                 sshAuthMethod = sshAuthMethod.trim().ifEmpty { "password" },
                 sshKeyPath = sshKeyPath.trim(),
                 sshKeyPassphrase = sshKeyPassphrase,
-                nativeLauncher = nativeLauncher,
+                nativeLauncher = if (type == MachineType.WASM) "wawona-wasm" else nativeLauncher,
                 remoteCommand = remoteCommand.trim(),
                 settingsOverrides = settingsOverrides,
                 runtimeOverrides = runtimeOverrides,
@@ -1136,12 +1202,131 @@ private fun MachineEditorSheet(
                             onExpandedChange = { machineTypePickerExpanded = it },
                             onSelect = {
                                 type = it
+                                if (it == MachineType.WASM) {
+                                    nativeLauncher = "wawona-wasm"
+                                }
                                 machineTypePickerExpanded = false
                             }
                         )
                         HorizontalDivider()
                         ToggleRow("Show Session Thumbnail On Card", machineThumbnailEnabled) {
                             machineThumbnailEnabled = it
+                        }
+                    }
+
+                    if (type == MachineType.WASM) {
+                        EditorSectionCard(
+                            title = "Wasm",
+                            subtitle = "Same as native shell: wasm hello-wasi-gui. Pick a local file, search repo.wawona.io /wasm/v1, or type the command. Native still runs wasm from the shell."
+                        ) {
+                            OutlinedTextField(
+                                value = wasmCommand,
+                                onValueChange = {
+                                    wasmCommand = it
+                                    wasmLaunchMode = "command"
+                                },
+                                label = { Text("Command") },
+                                placeholder = { Text("wasm hello-wasi-gui") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            OutlinedTextField(
+                                value = wasmPackage,
+                                onValueChange = {
+                                    wasmPackage = it
+                                    wasmLaunchMode = "repo"
+                                },
+                                label = { Text("Package") },
+                                placeholder = { Text("hello-wasi-gui") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = {
+                                        wasmCatalogLoading = true
+                                        wasmCatalogNote = null
+                                        editorScope.launch {
+                                            val result = withContext(Dispatchers.IO) {
+                                                runCatching { WasmCatalog.search(wasmPackage) }
+                                            }
+                                            wasmCatalogLoading = false
+                                            result.onSuccess { wasmCatalogResults = it }
+                                                .onFailure { wasmCatalogNote = it.message }
+                                        }
+                                    },
+                                    enabled = !wasmCatalogLoading
+                                ) {
+                                    Text(if (wasmCatalogLoading) "Searching…" else "Search catalog")
+                                }
+                            }
+                            if (wasmCatalogResults.isNotEmpty()) {
+                                wasmCatalogResults.forEach { pkg ->
+                                    Text(
+                                        text = "${pkg.name}  ${pkg.version}  ${pkg.summary}",
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                wasmPackage = pkg.name
+                                                wasmCommand = "wasm ${pkg.name}"
+                                                wasmLaunchMode = "repo"
+                                                wasmCatalogLoading = true
+                                                editorScope.launch {
+                                                    val result = withContext(Dispatchers.IO) {
+                                                        runCatching { WasmCatalog.download(context, pkg) }
+                                                    }
+                                                    wasmCatalogLoading = false
+                                                    result.onSuccess {
+                                                        wasmModulePath = it.absolutePath
+                                                        wasmCatalogNote = "Saved ${pkg.name} to the Wawona folder."
+                                                    }.onFailure {
+                                                        wasmCatalogNote = it.message
+                                                    }
+                                                }
+                                            }
+                                            .padding(vertical = 6.dp),
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
+                            }
+                            OutlinedTextField(
+                                value = wasmModulePath,
+                                onValueChange = {
+                                    wasmModulePath = it
+                                    wasmLaunchMode = "file"
+                                },
+                                label = { Text("Local .wasm") },
+                                placeholder = { Text("/sdcard/…/hello-wasi-gui.wasm") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            OutlinedButton(
+                                onClick = { wasmFilePicker.launch(arrayOf("application/wasm", "*/*")) },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Choose file…")
+                            }
+                            if (localWasmFiles.isNotEmpty()) {
+                                Text("Wawona folder", style = MaterialTheme.typography.labelMedium)
+                                localWasmFiles.forEach { file ->
+                                    Text(
+                                        text = file.name,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                wasmModulePath = file.absolutePath
+                                                wasmCommand = "wasm ${file.absolutePath}"
+                                                wasmLaunchMode = "file"
+                                            }
+                                            .padding(vertical = 4.dp),
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
+                            }
+                            wasmCatalogNote?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                         }
                     }
 
@@ -1287,6 +1472,10 @@ private fun MachineEditorSheet(
                         )
                         ToggleRow("Swap CMD with ALT", swapCmdAlt) { swapCmdAlt = it }
                         ToggleRow("Universal Clipboard", universalClipboard) { universalClipboard = it }
+                        ToggleRow(
+                            "Resize Display for Virtual Keyboard",
+                            resizeDisplayForVirtualKeyboardOverride,
+                        ) { resizeDisplayForVirtualKeyboardOverride = it }
                         StringDropdownField(
                             label = "Vulkan Driver",
                             selected = vulkanDriver,

@@ -241,13 +241,13 @@ notes = "No direct smithay 0.7 zwlr_virtual_pointer delegate path in current run
 
 [[protocol]]
 interface = "zwp_virtual_keyboard_manager_v1"
-smithay_module = "none"
+smithay_module = "wayland::virtual_keyboard"
 exposure = "desktop-only"
 profiles = ["desktop-host", "full-dev"]
-source_module = "src/core/wayland/wlr/mod.rs"
-compile_expectation = "desktop-feature-gated"
-equivalent = "no-equivalent"
-notes = "Still registered through Wawona custom create_global path in wlr modules; retained behind desktop profile gating"
+source_module = "src/core/wayland/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "smithay"
+notes = "Smithay VirtualKeyboardManagerState with trusted-client filter. Not advertised to store apps."
 
 [[protocol]]
 interface = "zwlr_data_control_manager_v1"
@@ -331,33 +331,33 @@ notes = "Still registered through Wawona custom create_global path in ext module
 
 [[protocol]]
 interface = "zwp_text_input_manager_v3"
-smithay_module = "none"
-exposure = "desktop-only"
-profiles = ["desktop-host", "full-dev"]
-source_module = "src/core/wayland/ext/mod.rs"
+smithay_module = "wayland::text_input"
+exposure = "store-safe-core"
+profiles = ["store-safe", "store-safe-remote", "desktop-host", "full-dev"]
+source_module = "src/core/wayland/mod.rs"
 compile_expectation = "all-targets"
-equivalent = "no-equivalent"
-notes = "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions"
+equivalent = "smithay"
+notes = "Smithay TextInputManagerState on every product target. Host IME via in-process IM-v2 stand-in."
 
 [[protocol]]
 interface = "zwp_input_method_manager_v2"
-smithay_module = "none"
+smithay_module = "wayland::input_method"
 exposure = "desktop-only"
 profiles = ["desktop-host", "full-dev"]
-source_module = "src/core/wayland/ext/mod.rs"
-compile_expectation = "desktop-feature-gated"
-equivalent = "no-equivalent"
-notes = "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions"
+source_module = "src/core/wayland/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "smithay"
+notes = "Smithay InputMethodManagerState with trusted-client filter. Store apps do not see this global. Host IM stand-in binds it."
 
 [[protocol]]
 interface = "zwp_primary_selection_device_manager_v1"
-smithay_module = "none"
+smithay_module = "wayland::selection::primary_selection"
 exposure = "desktop-only"
 profiles = ["desktop-host", "full-dev"]
-source_module = "src/core/wayland/ext/mod.rs"
+source_module = "src/core/wayland/mod.rs"
 compile_expectation = "all-targets"
-equivalent = "no-equivalent"
-notes = "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions"
+equivalent = "smithay"
+notes = "Smithay PrimarySelectionState on desktop / privileged-wlr profiles. Mobile UX is explicit Copy/Paste via wl_data_device."
 
 [[protocol]]
 interface = "zwp_linux_dmabuf_v1"

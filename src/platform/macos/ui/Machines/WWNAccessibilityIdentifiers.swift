@@ -29,6 +29,9 @@ enum WWNA11y {
   static let machinesEditorContainerCommand = "wwn.machines.editor.container.command"
   static let machinesEditorContainerDesktop = "wwn.machines.editor.container.desktop"
   static let machinesEditorContainerHub = "wwn.machines.editor.container.hub"
+  static let machinesEditorWasmSource = "wwn.machines.editor.wasm.source"
+  static let machinesEditorWasmHub = "wwn.machines.editor.wasm.hub"
+  static let machinesEditorWasmCommand = "wwn.machines.editor.wasm.command"
   static let machinesContainerImages = "wwn.machines.container.images"
 
   static func machinesCard(_ machineId: String) -> String {

@@ -47,7 +47,8 @@ public struct ClientLauncher: Codable, Identifiable, Hashable, Sendable {
 
 public extension ClientLauncher {
     /// Full catalog (keep in sync with macOS `kAllBundledClients` /
-    /// Android `BundledClients.all`).
+    /// Android `BundledClients.all`). Never include modeb-tty / igetty.
+    /// Those are the Doorman console, not a Machines client.
     static let allPresets: [ClientLauncher] = [
         ClientLauncher(name: "weston-terminal", executablePath: "weston-terminal", displayName: "Weston Terminal"),
         ClientLauncher(name: "foot", executablePath: "foot", displayName: "Foot Terminal"),

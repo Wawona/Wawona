@@ -50,9 +50,6 @@ These entries map to known Smithay modules/APIs but are still registered via cus
   - `zwp_pointer_gestures_v1`
   - `zwp_relative_pointer_manager_v1`
   - `zwp_tablet_manager_v2`
-  - `zwp_text_input_manager_v3`
-  - `zwp_input_method_manager_v2`
-  - `zwp_primary_selection_device_manager_v1`
   - `zwp_linux_dmabuf_v1`
   - `wp_presentation`
   - `wp_commit_timing_manager_v1`
@@ -69,7 +66,6 @@ These entries map to known Smithay modules/APIs but are still registered via cus
   - `ext_session_lock_manager_v1`
   - `zwlr_layer_shell_v1`
   - `zwlr_data_control_manager_v1`
-  - `zwp_virtual_keyboard_manager_v1`
   - `xwayland_shell_v1`
   - `zwp_xwayland_keyboard_grab_manager_v1`
 
@@ -99,4 +95,4 @@ Every interface currently classified as `equivalent = "no-equivalent"` must reso
 - `true-no-path`: no practical Smithay runtime owner in current Wawona release, or protocol is explicitly ecosystem-specific (`KDE`, `Wawona-specific`, `legacy`).
 - `architecture-blocked`: Smithay-shaped target exists conceptually, but current runtime ownership is still custom and must remain profile-gated until cutover lands.
 
-The closure verifier enforces that all 55 no-equivalent interfaces have one of these dispositions and exports a machine-readable artifact for CI.
+The closure verifier enforces that all 51 no-equivalent interfaces have one of these dispositions and exports a machine-readable artifact for CI.

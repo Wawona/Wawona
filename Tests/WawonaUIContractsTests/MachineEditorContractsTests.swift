@@ -51,6 +51,12 @@ func vmHasNoSubtypeAndContainerShowsProfileFields() {
     let containerFields = MachineEditorValidation.visibleFields(
         for: MachineEditorState(name: "Container", typeRawValue: "container"))
     #expect(containerFields == [.name, .type, .containerRef, .entryCommand, .desktopSession])
+
+    let wasmFields = MachineEditorValidation.visibleFields(
+        for: MachineEditorState(name: "Wasm", typeRawValue: "wasm"))
+    #expect(wasmFields.contains(.wasmCommand))
+    #expect(wasmFields.contains(.wasmModulePath))
+    #expect(!wasmFields.contains(.launcher))
 }
 
 @Test

@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 struct WWNMachineCardView: View {
   let profile: WWNMachineProfile
@@ -41,7 +44,8 @@ struct WWNMachineCardView: View {
       actionButtons
     }
     .padding(16)
-    .background(
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    .background {
       RoundedRectangle(cornerRadius: 20, style: .continuous)
         #if os(macOS)
         // Solid fill: ultraThinMaterial forces expensive opaque-region
@@ -51,11 +55,12 @@ struct WWNMachineCardView: View {
         .fill(Color.white.opacity(0.05))
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         #endif
-    )
-    .overlay(
+    }
+    .overlay {
       RoundedRectangle(cornerRadius: 20, style: .continuous)
-        .stroke(Color.white.opacity(0.2), lineWidth: 1)
-    )
+        .strokeBorder(cardOutlineColor, lineWidth: 1)
+    }
+    .compositingGroup()
     #if !os(macOS)
     .shadow(color: .black.opacity(0.22), radius: 16, x: 0, y: 10)
     .animation(.spring(duration: 0.4, bounce: 0.24), value: status)
@@ -114,6 +119,7 @@ struct WWNMachineCardView: View {
           HStack(spacing: 6) {
             Text(profile.name.isEmpty ? "Unnamed Machine" : profile.name)
               .font(.title3.weight(.bold))
+              .foregroundStyle(.white)
               .lineLimit(1)
               .truncationMode(.tail)
             // Finder-style tag dots, inline with the machine name.
@@ -126,13 +132,13 @@ struct WWNMachineCardView: View {
             if tags.count > 4 {
               Text("+\(tags.count - 4)")
                 .font(.caption2.weight(.medium))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.white.opacity(0.75))
                 .accessibilityLabel("\(tags.count - 4) more tags")
             }
           }
           Text(subtitle)
             .font(.subheadline)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.white.opacity(0.85))
             .lineLimit(1)
             .truncationMode(.tail)
         }
@@ -237,12 +243,22 @@ struct WWNMachineCardView: View {
 
   // MARK: - Computed Properties
 
+  private var cardOutlineColor: Color {
+    #if os(macOS)
+    Color(nsColor: .separatorColor)
+    #else
+    Color.white.opacity(0.22)
+    #endif
+  }
+
   private var isPreparing: Bool { status == .preparing }
 
   private var iconName: String {
     switch profile.type {
     case kWWNMachineTypeNative:
       return "desktopcomputer"
+    case kWWNMachineTypeWasm:
+      return "doc.badge.gearshape"
     case kWWNMachineTypeVirtualMachine:
       return "shippingbox"
     case kWWNMachineTypeContainer:

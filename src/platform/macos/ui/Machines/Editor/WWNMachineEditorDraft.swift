@@ -28,6 +28,9 @@ final class WWNMachineEditorDraft: ObservableObject {
   @Published var selectedClientId: String
   @Published var customCommand: String
   @Published var wasmModulePath: String
+  @Published var wasmLaunchMode: String
+  @Published var wasmPackage: String
+  @Published var wasmCommand: String
 
   // MARK: Container
   @Published var containerRef: String
@@ -76,6 +79,7 @@ final class WWNMachineEditorDraft: ObservableObject {
   // MARK: Session exit + environment
   @Published var shakeToCloseEnabled: Bool
   @Published var swipeBackToCloseEnabled: Bool
+  @Published var resizeDisplayForVirtualKeyboard: Bool
   @Published var environmentOverrides: EnvironmentOverrideMap
 
   init(profile: WWNMachineProfile?, defaultType: String = kWWNMachineTypeNative) {
@@ -101,7 +105,12 @@ final class WWNMachineEditorDraft: ObservableObject {
     let prefs = WWNPreferencesManager.shared()
     let initialCustomCommand = (overrides["NativeCustomCommand"] as? String) ?? ""
     customCommand = initialCustomCommand
-    wasmModulePath = (runtimeOverrides[kRuntimeWasmModulePathKey] as? String) ?? ""
+    let initialWasmModulePath = (runtimeOverrides[kRuntimeWasmModulePathKey] as? String) ?? ""
+    wasmModulePath = initialWasmModulePath
+    wasmLaunchMode = (runtimeOverrides[kRuntimeWasmLaunchModeKey] as? String) ?? "command"
+    wasmPackage = (runtimeOverrides[kRuntimeWasmPackageKey] as? String) ?? ""
+    wasmCommand = (runtimeOverrides[kRuntimeWasmCommandKey] as? String)
+      ?? (initialWasmModulePath.isEmpty ? "wasm hello-wasi-gui" : "wasm \(initialWasmModulePath)")
     machineThumbnailEnabled = (runtimeOverrides["machineThumbnailEnabledOverride"] as? Bool)
       ?? WWNPreferencesManager.shared().machineSessionThumbnailsEnabled()
     waypipeDisplayNumber = (overrides["WaylandDisplayNumber"] as? NSNumber)?.stringValue ?? "\(prefs.waylandDisplayNumber())"
@@ -137,12 +146,15 @@ final class WWNMachineEditorDraft: ObservableObject {
       ?? (UserDefaults.standard.object(forKey: "wawona.pref.shakeToCloseEnabled") as? Bool ?? true)
     swipeBackToCloseEnabled = (runtimeOverrides["swipeBackToCloseEnabled"] as? Bool)
       ?? (UserDefaults.standard.object(forKey: "wawona.pref.swipeBackToCloseEnabled") as? Bool ?? true)
+    resizeDisplayForVirtualKeyboard =
+      (runtimeOverrides["resizeDisplayForVirtualKeyboard"] as? Bool)
+      ?? prefs.resizeDisplayForVirtualKeyboard()
     #if os(macOS)
     alwaysOnTop = (runtimeOverrides["alwaysOnTop"] as? Bool) ?? false
     #endif
     environmentOverrides = Self.decodeEnvironmentOverrides(runtimeOverrides["environment"])
 
-    let initialNativeClientId: String
+    var initialNativeClientId: String
     if let stored = runtimeOverrides["bundledAppID"] as? String, !stored.isEmpty {
       initialNativeClientId = stored
     } else if let stored = overrides["NativeClientId"] as? String, !stored.isEmpty {
@@ -156,6 +168,9 @@ final class WWNMachineEditorDraft: ObservableObject {
     } else if (overrides["FootEnabled"] as? Bool) == true {
       initialNativeClientId = "foot"
     } else {
+      initialNativeClientId = "weston-terminal"
+    }
+    if WWNMachineProfileStore.nativeClientIdIsIgettyConsole(initialNativeClientId) {
       initialNativeClientId = "weston-terminal"
     }
 
@@ -249,6 +264,9 @@ final class WWNMachineEditorDraft: ObservableObject {
 
     var overrides: [String: Any] = profile.settingsOverrides
     var runtimeOverrides: [String: Any] = profile.runtimeOverrides
+    if WWNMachineProfileStore.nativeClientIdIsIgettyConsole(selectedClientId) {
+      selectedClientId = "weston-terminal"
+    }
     overrides["NativeClientId"] = selectedClientId
     overrides["NativeCustomCommand"] = customCommand.trimmingCharacters(in: .whitespacesAndNewlines)
     overrides["WestonEnabled"] = selectedClientId == "weston"
@@ -325,18 +343,42 @@ final class WWNMachineEditorDraft: ObservableObject {
     overrides["SSHKeyPath"] = profile.sshKeyPath
     overrides["SSHKeyPassphrase"] = profile.sshKeyPassphrase
 
-    runtimeOverrides["useBundledApp"] = (type == kWWNMachineTypeNative && !selectedClientId.isEmpty)
+    let isWasmMachine = type == kWWNMachineTypeWasm
+    runtimeOverrides["useBundledApp"] =
+      ((type == kWWNMachineTypeNative || isWasmMachine) && !selectedClientId.isEmpty) ||
+      isWasmMachine
     if type == kWWNMachineTypeNative {
       runtimeOverrides["bundledAppID"] = selectedClientId
+    } else if isWasmMachine {
+      runtimeOverrides["bundledAppID"] = kNativeClientWasmId
     } else {
       runtimeOverrides.removeValue(forKey: "bundledAppID")
       runtimeOverrides.removeValue(forKey: "useBundledApp")
     }
+    let persistWasm =
+      isWasmMachine || selectedClientId == kNativeClientWasmId
     let trimmedWasm = wasmModulePath.trimmingCharacters(in: .whitespacesAndNewlines)
-    if selectedClientId == kNativeClientWasmId && !trimmedWasm.isEmpty {
+    if persistWasm && !trimmedWasm.isEmpty {
       runtimeOverrides[kRuntimeWasmModulePathKey] = trimmedWasm
     } else {
       runtimeOverrides.removeValue(forKey: kRuntimeWasmModulePathKey)
+    }
+    if persistWasm {
+      let mode = wasmLaunchMode.trimmingCharacters(in: .whitespacesAndNewlines)
+      runtimeOverrides[kRuntimeWasmLaunchModeKey] = mode.isEmpty ? "command" : mode
+      let pkg = wasmPackage.trimmingCharacters(in: .whitespacesAndNewlines)
+      if pkg.isEmpty {
+        runtimeOverrides.removeValue(forKey: kRuntimeWasmPackageKey)
+      } else {
+        runtimeOverrides[kRuntimeWasmPackageKey] = pkg
+      }
+      let cmd = wasmCommand.trimmingCharacters(in: .whitespacesAndNewlines)
+      runtimeOverrides[kRuntimeWasmCommandKey] =
+        cmd.isEmpty ? "wasm hello-wasi-gui" : cmd
+    } else {
+      runtimeOverrides.removeValue(forKey: kRuntimeWasmLaunchModeKey)
+      runtimeOverrides.removeValue(forKey: kRuntimeWasmPackageKey)
+      runtimeOverrides.removeValue(forKey: kRuntimeWasmCommandKey)
     }
     runtimeOverrides["inputProfile"] = touchInputType
     runtimeOverrides["waypipeEnabled"] = (type == kWWNMachineTypeSSHWaypipe || type == kWWNMachineTypeSSHTerminal)
@@ -358,6 +400,12 @@ final class WWNMachineEditorDraft: ObservableObject {
       runtimeOverrides["swipeBackToCloseEnabled"] = swipeBackToCloseEnabled
     } else {
       runtimeOverrides.removeValue(forKey: "swipeBackToCloseEnabled")
+    }
+    let globalResizeKeyboard = WWNPreferencesManager.shared().resizeDisplayForVirtualKeyboard()
+    if resizeDisplayForVirtualKeyboard != globalResizeKeyboard {
+      runtimeOverrides["resizeDisplayForVirtualKeyboard"] = resizeDisplayForVirtualKeyboard
+    } else {
+      runtimeOverrides.removeValue(forKey: "resizeDisplayForVirtualKeyboard")
     }
     #if os(macOS)
     if alwaysOnTop {
@@ -423,6 +471,7 @@ final class WWNMachineEditorDraft: ObservableObject {
   var machineTypeSymbol: String {
     switch type {
     case kWWNMachineTypeNative: return "display"
+    case kWWNMachineTypeWasm: return "doc.badge.gearshape"
     case kWWNMachineTypeSSHWaypipe: return "arrow.triangle.2.circlepath"
     case kWWNMachineTypeSSHTerminal: return "terminal"
     case kWWNMachineTypeVirtualMachine: return "desktopcomputer"

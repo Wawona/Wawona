@@ -4,10 +4,9 @@
 //! YAML `id`s. Dropdowns are ignored, so `platform` and `install_channel` in
 //! `.github/ISSUE_TEMPLATE/bug.yml` are text inputs.
 
-use std::ffi::{CStr, CString, c_char};
+use std::ffi::{c_char, CStr, CString};
 
-const BUG_FORM: &str =
-    "https://github.com/Wawona/Wawona/issues/new?template=bug.yml";
+const BUG_FORM: &str = "https://github.com/Wawona/Wawona/issues/new?template=bug.yml";
 /// Stay under GitHub 414 and iOS `openURL` practical limits.
 const MAX_URL_BYTES: usize = 7800;
 const TRUNCATED_NOTE: &str = "(truncated; full report is on the clipboard)\n\n";
@@ -61,9 +60,13 @@ pub fn canonical_install_channel(raw: &str) -> &'static str {
         "App Store" | "App Store (Release)" => "App Store (Release)",
         "Play Store (Beta)" | "com.android.vending" => "Play Store (Beta)",
         "Play Store (Release)" => "Play Store (Release)",
-        "Sideload" | "Sideload IPA"
+        "TrollStore" => "TrollStore",
+        "Sileo" => "Sileo",
+        "Sideload"
+        | "Sideload IPA"
+        | "Sideload IPA (Xcode, AltStore, or similar)"
         | "Sideload IPA (Xcode, AltStore, TrollStore, Sileo or similar)" => {
-            "Sideload IPA (Xcode, AltStore, TrollStore, Sileo or similar)"
+            "Sideload IPA (Xcode, AltStore, or similar)"
         }
         "Sideload APK" => "Sideload APK",
         "Simulator" => "Simulator",
@@ -90,13 +93,7 @@ pub fn github_bug_form_url(
     }
     let mut lo = 0usize;
     let mut hi = logs.len();
-    let mut best = assemble(
-        platform,
-        channel,
-        wawona_version,
-        host_os,
-        TRUNCATED_NOTE,
-    );
+    let mut best = assemble(platform, channel, wawona_version, host_os, TRUNCATED_NOTE);
     while lo < hi {
         let mid = (lo + hi + 1) / 2;
         let body = format!("{}{}", TRUNCATED_NOTE, utf8_suffix(logs, mid));
@@ -157,6 +154,20 @@ mod tests {
         assert!(url.contains("install_channel=TestFlight+%28Beta%29"));
         assert!(url.contains("wawona_version=26.8.22"));
         assert!(url.contains("logs=log+line"));
+    }
+
+    #[test]
+    fn maps_trollstore_install_channel() {
+        assert_eq!(canonical_install_channel("TrollStore"), "TrollStore");
+        assert_eq!(canonical_install_channel("Sileo"), "Sileo");
+        let url = github_bug_form_url(
+            "iOS",
+            "TrollStore",
+            "26.9.9",
+            "iOS 26.5 (iPhone17,1)",
+            "tipa",
+        );
+        assert!(url.contains("install_channel=TrollStore"));
     }
 
     #[test]

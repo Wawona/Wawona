@@ -80,7 +80,11 @@ rustPlatform.buildRustPackage rec {
     (nativeDeps.xkbcommon or null)
   ];
 
-  nativeBuildInputs = [ pkgs.pkg-config pkgs.rust-bindgen ];
+  nativeBuildInputs = [
+    pkgs.pkg-config
+    pkgs.rust-bindgen
+    (pkgs.callPackage ../generators/uniffi-bindgen.nix { })
+  ];
 
   OPENSSL_DIR = nativeDeps.openssl;
   OPENSSL_STATIC = "1";
@@ -128,6 +132,17 @@ rustPlatform.buildRustPackage rec {
       echo "No library found - checking target dir:"
       find target -name "*.a" -o -name "*.so" | head -20
       exit 1
+    fi
+    # Mobile crate-type is rlib+staticlib (workspace-src.nix). UniFFI
+    # kotlin/swift bindgen needs a cdylib. Do not fail the product APK
+    # when only libwawona.a exists. Kotlin still uses the in-tree mirror
+    # until a later cdylib slice stages $out/uniffi/kotlin.
+    mkdir -p $out/uniffi/swift $out/uniffi/kotlin
+    if [ -f $out/lib/libwawona_core.so ]; then
+      uniffi-bindgen generate --library "$out/lib/libwawona_core.so" \
+        --language kotlin --out-dir "$out/uniffi/kotlin"
+    else
+      echo "UniFFI kotlin skipped: Android backend is staticlib (no cdylib)"
     fi
   '';
 

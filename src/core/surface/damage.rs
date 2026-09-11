@@ -1,4 +1,3 @@
-
 #[derive(Debug, Clone, Default, Copy, PartialEq, Eq)]
 pub struct DamageRegion {
     pub x: i32,
@@ -9,23 +8,28 @@ pub struct DamageRegion {
 
 impl DamageRegion {
     pub fn new(x: i32, y: i32, width: i32, height: i32) -> Self {
-        Self { x, y, width, height }
+        Self {
+            x,
+            y,
+            width,
+            height,
+        }
     }
 
     /// Check if this region intersects or is adjacent to another
     pub fn intersects(&self, other: &DamageRegion) -> bool {
-        self.x < other.x + other.width &&
-        self.x + self.width > other.x &&
-        self.y < other.y + other.height &&
-        self.y + self.height > other.y
+        self.x < other.x + other.width
+            && self.x + self.width > other.x
+            && self.y < other.y + other.height
+            && self.y + self.height > other.y
     }
 
     /// Check if this region touches (intersects or shares an edge with) another
     pub fn touches(&self, other: &DamageRegion) -> bool {
-        self.x <= other.x + other.width &&
-        self.x + self.width >= other.x &&
-        self.y <= other.y + other.height &&
-        self.y + self.height >= other.y
+        self.x <= other.x + other.width
+            && self.x + self.width >= other.x
+            && self.y <= other.y + other.height
+            && self.y + self.height >= other.y
     }
 
     /// Compute the bounding box union of two regions

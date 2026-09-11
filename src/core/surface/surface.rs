@@ -1,7 +1,6 @@
-
 use super::buffer::BufferType;
-use super::role::SurfaceRole;
 use super::damage::DamageRegion;
+use super::role::SurfaceRole;
 use wayland_server::backend::ClientId;
 
 /// Represents the state of a surface at a point in time.
@@ -27,10 +26,10 @@ pub struct Surface {
     pub id: u32,
     pub client_id: Option<ClientId>,
     pub role: SurfaceRole,
-    
+
     /// The Wayland resource handle
     pub resource: Option<wayland_server::protocol::wl_surface::WlSurface>,
-    
+
     /// The state currently visible to the compositor
     pub current: SurfaceState,
     /// The state being built by client requests, to be applied on commit.
@@ -40,7 +39,11 @@ pub struct Surface {
 }
 
 impl Surface {
-    pub fn new(id: u32, client_id: Option<ClientId>, resource: Option<wayland_server::protocol::wl_surface::WlSurface>) -> Self {
+    pub fn new(
+        id: u32,
+        client_id: Option<ClientId>,
+        resource: Option<wayland_server::protocol::wl_surface::WlSurface>,
+    ) -> Self {
         Self {
             id,
             client_id,
@@ -67,15 +70,17 @@ impl Surface {
     /// Returns the ID of the buffer to release, if any.
     pub fn commit(&mut self) -> Option<u32> {
         let release_id = super::commit::apply_commit(&mut self.pending, &mut self.current);
-        
+
         tracing::debug!(
             "Surface {} committed: {}x{}, buffer={:?}",
-            self.id, self.current.width, self.current.height, self.current.buffer
+            self.id,
+            self.current.width,
+            self.current.height,
+            self.current.buffer
         );
-        
+
         release_id
     }
-
 }
 
 impl Default for SurfaceState {
@@ -88,7 +93,7 @@ impl Default for SurfaceState {
             offset: (0, 0),
             damage: Vec::new(),
             buffer_damage: Vec::new(),
-            input_region: None, // None means infinite (accept all input)
+            input_region: None,  // None means infinite (accept all input)
             opaque_region: None, // None means empty (fully transparent)
             opaque: false, // Legacy field, might be redundant with opaque_region but kept for now
             scale: 1,

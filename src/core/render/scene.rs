@@ -1,6 +1,6 @@
-use std::collections::HashMap;
 use crate::core::render::node::SceneNode;
 use crate::ffi::types::ContentRect;
+use std::collections::HashMap;
 
 /// Represents a flattened surface to be rendered.
 #[derive(Debug, Clone)]
@@ -125,9 +125,18 @@ impl Scene {
     fn dump_recursive(&self, node_id: u32, depth: usize, out: &mut String) {
         if let Some(node) = self.nodes.get(&node_id) {
             let indent = "  ".repeat(depth);
-            out.push_str(&format!("{}Node {}: pos=({},{}) size={}x{} opacity={:.2} surface={:?}\n", 
-                indent, node.id, node.x, node.y, node.width, node.height, node.opacity, node.surface_id));
-            
+            out.push_str(&format!(
+                "{}Node {}: pos=({},{}) size={}x{} opacity={:.2} surface={:?}\n",
+                indent,
+                node.id,
+                node.x,
+                node.y,
+                node.width,
+                node.height,
+                node.opacity,
+                node.surface_id
+            ));
+
             for &child_id in &node.children {
                 self.dump_recursive(child_id, depth + 1, out);
             }

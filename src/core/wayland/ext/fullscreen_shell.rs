@@ -14,13 +14,11 @@
 
 use std::sync::{Arc, RwLock};
 
-use wayland_server::{
-    Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
-};
 use wayland_protocols::wp::fullscreen_shell::zv1::server::{
-    zwp_fullscreen_shell_v1::{self, ZwpFullscreenShellV1},
     zwp_fullscreen_shell_mode_feedback_v1::{self, ZwpFullscreenShellModeFeedbackV1},
+    zwp_fullscreen_shell_v1::{self, ZwpFullscreenShellV1},
 };
+use wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource};
 
 use crate::core::state::CompositorState;
 use crate::core::window::window::Window;
@@ -61,8 +59,15 @@ impl GlobalDispatch<ZwpFullscreenShellV1, ()> for CompositorState {
     ) {
         let shell = data_init.init(resource, ());
         shell.capability(zwp_fullscreen_shell_v1::Capability::ArbitraryModes);
-        state.ext.fullscreen_shell.bound_clients.insert(_client.id());
-        tracing::debug!("Bound zwp_fullscreen_shell_v1 for client {:?}", _client.id());
+        state
+            .ext
+            .fullscreen_shell
+            .bound_clients
+            .insert(_client.id());
+        tracing::debug!(
+            "Bound zwp_fullscreen_shell_v1 for client {:?}",
+            _client.id()
+        );
     }
 }
 
@@ -77,7 +82,11 @@ impl Dispatch<ZwpFullscreenShellV1, ()> for CompositorState {
         data_init: &mut DataInit<'_, Self>,
     ) {
         match request {
-            zwp_fullscreen_shell_v1::Request::PresentSurface { surface, method: _, output: _ } => {
+            zwp_fullscreen_shell_v1::Request::PresentSurface {
+                surface,
+                method: _,
+                output: _,
+            } => {
                 let new_surface_id = surface.as_ref().map(|s| s.id().protocol_id());
 
                 // Tear down the old presented window (if any)
@@ -87,7 +96,9 @@ impl Dispatch<ZwpFullscreenShellV1, ()> for CompositorState {
                     }
                     state.windows.remove(&old_wid);
                     state.pending_compositor_events.push(
-                        crate::core::compositor::CompositorEvent::WindowDestroyed { window_id: old_wid }
+                        crate::core::compositor::CompositorEvent::WindowDestroyed {
+                            window_id: old_wid,
+                        },
                     );
                     tracing::debug!("Fullscreen shell: destroyed old window {}", old_wid);
                 }
@@ -100,16 +111,23 @@ impl Dispatch<ZwpFullscreenShellV1, ()> for CompositorState {
                     if let Some(existing_wid) = state.surface_to_window.remove(&sid) {
                         state.windows.remove(&existing_wid);
                         state.pending_compositor_events.push(
-                            crate::core::compositor::CompositorEvent::WindowDestroyed { window_id: existing_wid }
+                            crate::core::compositor::CompositorEvent::WindowDestroyed {
+                                window_id: existing_wid,
+                            },
                         );
-                        tracing::debug!("Fullscreen shell: destroyed pre-existing window {} for surface {}", existing_wid, sid);
+                        tracing::debug!(
+                            "Fullscreen shell: destroyed pre-existing window {} for surface {}",
+                            existing_wid,
+                            sid
+                        );
                     }
 
-                    let (width, height) = if let Some(output) = state.outputs.get(state.primary_output) {
-                        (output.width, output.height)
-                    } else {
-                        (800, 600)
-                    };
+                    let (width, height) =
+                        if let Some(output) = state.outputs.get(state.primary_output) {
+                            (output.width, output.height)
+                        } else {
+                            (800, 600)
+                        };
 
                     let window_id = state.next_window_id();
                     let mut window = Window::new(window_id, sid);
@@ -121,7 +139,9 @@ impl Dispatch<ZwpFullscreenShellV1, ()> for CompositorState {
                     window.title = "Fullscreen Shell".to_string();
                     window.decoration_mode = DecorationMode::ServerSide;
 
-                    state.windows.insert(window_id, Arc::new(RwLock::new(window)));
+                    state
+                        .windows
+                        .insert(window_id, Arc::new(RwLock::new(window)));
                     state.surface_to_window.insert(sid, window_id);
                     state.ext.fullscreen_shell.presented_window_id = Some(window_id);
 
@@ -137,18 +157,26 @@ impl Dispatch<ZwpFullscreenShellV1, ()> for CompositorState {
                             fullscreen_shell: true,
                             host_locked: true,
                             fills_host: false,
-                        }
+                        },
                     );
 
                     tracing::info!(
                         "Fullscreen shell: presented surface {} as window {} ({}x{})",
-                        sid, window_id, width, height
+                        sid,
+                        window_id,
+                        width,
+                        height
                     );
                 }
             }
-            zwp_fullscreen_shell_v1::Request::PresentSurfaceForMode { surface, output: _, framerate: _, feedback } => {
+            zwp_fullscreen_shell_v1::Request::PresentSurfaceForMode {
+                surface,
+                output: _,
+                framerate: _,
+                feedback,
+            } => {
                 let fb = data_init.init(feedback, ());
-                
+
                 // DEFER DESTRUCTOR: Do NOT call fb.mode_successful() here synchronously.
                 // Doing so will provoke a wayland-backend panic because the resource
                 // maps are not yet fully initialized for this object during dispatch.
@@ -163,7 +191,9 @@ impl Dispatch<ZwpFullscreenShellV1, ()> for CompositorState {
                     }
                     state.windows.remove(&old_wid);
                     state.pending_compositor_events.push(
-                        crate::core::compositor::CompositorEvent::WindowDestroyed { window_id: old_wid }
+                        crate::core::compositor::CompositorEvent::WindowDestroyed {
+                            window_id: old_wid,
+                        },
                     );
                 }
 
@@ -174,16 +204,23 @@ impl Dispatch<ZwpFullscreenShellV1, ()> for CompositorState {
                     if let Some(existing_wid) = state.surface_to_window.remove(&sid) {
                         state.windows.remove(&existing_wid);
                         state.pending_compositor_events.push(
-                            crate::core::compositor::CompositorEvent::WindowDestroyed { window_id: existing_wid }
+                            crate::core::compositor::CompositorEvent::WindowDestroyed {
+                                window_id: existing_wid,
+                            },
                         );
-                        tracing::debug!("Fullscreen shell: destroyed pre-existing window {} for surface {}", existing_wid, sid);
+                        tracing::debug!(
+                            "Fullscreen shell: destroyed pre-existing window {} for surface {}",
+                            existing_wid,
+                            sid
+                        );
                     }
 
-                    let (width, height) = if let Some(output) = state.outputs.get(state.primary_output) {
-                        (output.width, output.height)
-                    } else {
-                        (800, 600)
-                    };
+                    let (width, height) =
+                        if let Some(output) = state.outputs.get(state.primary_output) {
+                            (output.width, output.height)
+                        } else {
+                            (800, 600)
+                        };
 
                     let window_id = state.next_window_id();
                     let mut window = Window::new(window_id, sid);
@@ -193,7 +230,9 @@ impl Dispatch<ZwpFullscreenShellV1, ()> for CompositorState {
                     window.activated = true;
                     window.decoration_mode = DecorationMode::ServerSide;
 
-                    state.windows.insert(window_id, Arc::new(RwLock::new(window)));
+                    state
+                        .windows
+                        .insert(window_id, Arc::new(RwLock::new(window)));
                     state.surface_to_window.insert(sid, window_id);
                     state.ext.fullscreen_shell.presented_window_id = Some(window_id);
 
@@ -209,7 +248,7 @@ impl Dispatch<ZwpFullscreenShellV1, ()> for CompositorState {
                             fullscreen_shell: true,
                             host_locked: true,
                             fills_host: false,
-                        }
+                        },
                     );
                 }
 
@@ -223,7 +262,9 @@ impl Dispatch<ZwpFullscreenShellV1, ()> for CompositorState {
                     }
                     state.windows.remove(&old_wid);
                     state.pending_compositor_events.push(
-                        crate::core::compositor::CompositorEvent::WindowDestroyed { window_id: old_wid }
+                        crate::core::compositor::CompositorEvent::WindowDestroyed {
+                            window_id: old_wid,
+                        },
                     );
                 }
                 state.ext.fullscreen_shell.presented_surface = None;

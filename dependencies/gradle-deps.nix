@@ -22,6 +22,9 @@ let
     else
       null;
   sdkRoot = androidConfig.sdkRoot;
+  # jdk17 slot is the Android Gradle JVM. Linux Nix passes JBR 21.
+  # Darwin sandbox still receives OpenJDK because nixpkgs JBR is Linux-only.
+  # Local Studio / gradlegen pin embedded JBR 21 instead of this path.
   commonGradleFlags = [
     "-Dorg.gradle.java.home=${jdk17}"
     "-Dorg.gradle.project.android.aapt2FromMavenOverride=${sdkRoot}/build-tools/${androidConfig.buildToolsVersion}/aapt2"

@@ -2,13 +2,11 @@
 //!
 //! Provides sources for screen capture.
 
-use wayland_server::{
-    Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
-};
 use crate::core::wayland::protocol::server::ext::image_capture_source::v1::server::{
     ext_image_capture_source_v1::{self, ExtImageCaptureSourceV1},
     ext_output_image_capture_source_manager_v1::{self, ExtOutputImageCaptureSourceManagerV1},
 };
+use wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource};
 
 use crate::core::state::CompositorState;
 
@@ -43,14 +41,20 @@ impl Dispatch<ExtOutputImageCaptureSourceManagerV1, ()> for CompositorState {
         data_init: &mut DataInit<'_, Self>,
     ) {
         match request {
-            ext_output_image_capture_source_manager_v1::Request::CreateSource { source, output } => {
-                let output_id = state.output_id_by_resource
+            ext_output_image_capture_source_manager_v1::Request::CreateSource {
+                source,
+                output,
+            } => {
+                let output_id = state
+                    .output_id_by_resource
                     .get(&output.id())
                     .copied()
                     .or_else(|| state.outputs.first().map(|o| o.id))
                     .unwrap_or(0);
                 let src = data_init.init(source, ImageCaptureSourceData { output_id });
-                state.image_capture_source_output.insert(src.id(), output_id);
+                state
+                    .image_capture_source_output
+                    .insert(src.id(), output_id);
                 tracing::debug!("Created image capture source for output {}", output_id);
             }
             ext_output_image_capture_source_manager_v1::Request::Destroy => {}

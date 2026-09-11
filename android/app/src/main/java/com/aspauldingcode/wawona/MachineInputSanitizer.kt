@@ -1,5 +1,6 @@
 package com.aspauldingcode.wawona
 
+/** Frozen Kotlin fallback of rust `src/domain/validation.rs`. Do not add rules. */
 object MachineInputSanitizer {
     data class HostPort(val host: String, val port: Int)
 

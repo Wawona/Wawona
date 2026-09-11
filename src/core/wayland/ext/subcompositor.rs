@@ -9,12 +9,10 @@
 //! - Hardware cursor planes
 //! - Picture-in-picture
 
-
 use wayland_server::{
     protocol::{
         wl_subcompositor::{self, WlSubcompositor},
         wl_subsurface::{self, WlSubsurface},
-
     },
     Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
 };
@@ -67,7 +65,11 @@ impl Dispatch<WlSubcompositor, ()> for CompositorState {
             wl_subcompositor::Request::Destroy => {
                 // Client is done with subcompositor
             }
-            wl_subcompositor::Request::GetSubsurface { id, surface, parent } => {
+            wl_subcompositor::Request::GetSubsurface {
+                id,
+                surface,
+                parent,
+            } => {
                 // Validate that surface is not the parent or an ancestor
                 if surface == parent {
                     resource.post_error(
@@ -80,15 +82,17 @@ impl Dispatch<WlSubcompositor, ()> for CompositorState {
                 // Get protocol IDs first
                 let surface_protocol_id = surface.id().protocol_id();
                 let parent_protocol_id = parent.id().protocol_id();
-                
+
                 // Translate protocol IDs to internal IDs for proper lookup
                 // Scoped by client ID to prevent collisions
                 let client_id = _client.id();
-                let surface_id = state.protocol_to_internal_surface
+                let surface_id = state
+                    .protocol_to_internal_surface
                     .get(&(client_id.clone(), surface_protocol_id))
                     .copied()
                     .unwrap_or(surface_protocol_id);
-                let parent_id = state.protocol_to_internal_surface
+                let parent_id = state
+                    .protocol_to_internal_surface
                     .get(&(client_id, parent_protocol_id))
                     .copied()
                     .unwrap_or(parent_protocol_id);
@@ -129,7 +133,7 @@ impl Dispatch<WlSubcompositor, ()> for CompositorState {
                         return;
                     }
                 }
-                
+
                 let subsurface_state = SubsurfaceState {
                     surface_id,
                     parent_id,
@@ -140,16 +144,21 @@ impl Dispatch<WlSubcompositor, ()> for CompositorState {
                 };
                 // Store surface_id in user data so operations can look up the subsurface
                 let subsurface: WlSubsurface = data_init.init(id, surface_id);
-                
+
                 // Track in our state map - key by INTERNAL surface ID so commit can find it
                 state.subsurfaces.insert(surface_id, subsurface_state);
 
                 // Register the subsurface relationship in state
                 state.add_subsurface_resource(surface_id, parent_id, subsurface.clone());
-                
-                crate::wlog!(crate::util::logging::COMPOSITOR, 
+
+                crate::wlog!(
+                    crate::util::logging::COMPOSITOR,
                     "Created subsurface: surface={} (protocol={}), parent={} (protocol={})",
-                    surface_id, surface_protocol_id, parent_id, parent_protocol_id);
+                    surface_id,
+                    surface_protocol_id,
+                    parent_id,
+                    parent_protocol_id
+                );
             }
             _ => {}
         }
@@ -173,64 +182,100 @@ impl Dispatch<WlSubsurface, u32> for CompositorState {
     ) {
         // Use the internal surface ID stored in user data
         let surface_id = *data;
-        
+
         match request {
             wl_subsurface::Request::Destroy => {
                 // Remove subsurface from tracking
                 state.subsurfaces.remove(&surface_id);
-                crate::wlog!(crate::util::logging::COMPOSITOR, "Subsurface destroyed: surface_id={}", surface_id);
+                crate::wlog!(
+                    crate::util::logging::COMPOSITOR,
+                    "Subsurface destroyed: surface_id={}",
+                    surface_id
+                );
             }
             wl_subsurface::Request::SetPosition { x, y } => {
                 // Set pending position (applied on parent commit)
                 state.set_subsurface_position(surface_id, x, y);
-                
+
                 // If this subsurface has been promoted to a window (popup), assume it effectively updates immediately
                 // or at least we should notify the bridge to move the window.
                 if let Some(window_id) = state.surface_to_window.get(&surface_id).copied() {
-                    crate::wlog!(crate::util::logging::COMPOSITOR, "Repositioning promoted subsurface {} (window {}) to {},{}", surface_id, window_id, x, y);
-                    state.pending_compositor_events.push(crate::core::compositor::CompositorEvent::PopupRepositioned {
+                    crate::wlog!(
+                        crate::util::logging::COMPOSITOR,
+                        "Repositioning promoted subsurface {} (window {}) to {},{}",
+                        surface_id,
                         window_id,
                         x,
-                        y,
-                        width: 0, // Bridge ignores these for simple move
-                        height: 0,
-                    });
+                        y
+                    );
+                    state.pending_compositor_events.push(
+                        crate::core::compositor::CompositorEvent::PopupRepositioned {
+                            window_id,
+                            x,
+                            y,
+                            width: 0, // Bridge ignores these for simple move
+                            height: 0,
+                        },
+                    );
                 } else {
-                     crate::wlog!(crate::util::logging::COMPOSITOR, 
-                        "Subsurface set_position: surface_id={}, pos=({}, {})", surface_id, x, y);
+                    crate::wlog!(
+                        crate::util::logging::COMPOSITOR,
+                        "Subsurface set_position: surface_id={}, pos=({}, {})",
+                        surface_id,
+                        x,
+                        y
+                    );
                 }
             }
             wl_subsurface::Request::PlaceAbove { sibling } => {
                 // Reorder this subsurface to be above sibling
                 let sibling_protocol_id = sibling.id().protocol_id();
-                let sibling_id = state.protocol_to_internal_surface
+                let sibling_id = state
+                    .protocol_to_internal_surface
                     .get(&(_client.id(), sibling_protocol_id))
                     .copied()
                     .unwrap_or(sibling_protocol_id);
                 state.place_subsurface_above(surface_id, sibling_id);
-                crate::wlog!(crate::util::logging::COMPOSITOR, 
-                    "Subsurface place_above: {} above {}", surface_id, sibling_id);
+                crate::wlog!(
+                    crate::util::logging::COMPOSITOR,
+                    "Subsurface place_above: {} above {}",
+                    surface_id,
+                    sibling_id
+                );
             }
             wl_subsurface::Request::PlaceBelow { sibling } => {
                 // Reorder this subsurface to be below sibling
                 let sibling_protocol_id = sibling.id().protocol_id();
-                let sibling_id = state.protocol_to_internal_surface
+                let sibling_id = state
+                    .protocol_to_internal_surface
                     .get(&(_client.id(), sibling_protocol_id))
                     .copied()
                     .unwrap_or(sibling_protocol_id);
                 state.place_subsurface_below(surface_id, sibling_id);
-                crate::wlog!(crate::util::logging::COMPOSITOR, 
-                    "Subsurface place_below: {} below {}", surface_id, sibling_id);
+                crate::wlog!(
+                    crate::util::logging::COMPOSITOR,
+                    "Subsurface place_below: {} below {}",
+                    surface_id,
+                    sibling_id
+                );
             }
             wl_subsurface::Request::SetSync => {
                 // Enable synchronized mode (subsurface state applied with parent)
                 state.set_subsurface_sync(surface_id, true);
-                crate::wlog!(crate::util::logging::COMPOSITOR, "Subsurface set_sync: {}", surface_id);
+                crate::wlog!(
+                    crate::util::logging::COMPOSITOR,
+                    "Subsurface set_sync: {}",
+                    surface_id
+                );
             }
             wl_subsurface::Request::SetDesync => {
                 // Enable desynchronized mode (subsurface state applied immediately)
                 state.set_subsurface_sync(surface_id, false);
-                crate::wlog!(crate::util::logging::COMPOSITOR, "Subsurface set_desync: {}", surface_id);
+                crate::wlog!(
+                    crate::util::logging::COMPOSITOR,
+                    "Subsurface set_desync: {}",
+                    surface_id
+                );
             }
             _ => {}
         }
@@ -244,7 +289,11 @@ impl Dispatch<WlSubsurface, u32> for CompositorState {
     ) {
         let surface_id = *data;
         state.remove_subsurface(surface_id);
-        crate::wlog!(crate::util::logging::COMPOSITOR, "Subsurface resource destroyed: surface_id={}", surface_id);
+        crate::wlog!(
+            crate::util::logging::COMPOSITOR,
+            "Subsurface resource destroyed: surface_id={}",
+            surface_id
+        );
     }
 }
 

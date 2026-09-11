@@ -1,12 +1,8 @@
-
 //! Legacy compositor dispatch. Core wl_compositor/wl_surface/wl_region owned by Smithay `delegate_compositor!`.
 //!
 //! wl_buffer destroy bookkeeping remains here until fully migrated to Smithay buffer handlers.
 
-use wayland_server::{
-    protocol::wl_buffer,
-    Dispatch, DisplayHandle, Resource,
-};
+use wayland_server::{protocol::wl_buffer, Dispatch, DisplayHandle, Resource};
 
 use crate::core::state::CompositorState;
 

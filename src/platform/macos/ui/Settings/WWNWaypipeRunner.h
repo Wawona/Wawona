@@ -118,6 +118,24 @@ typedef void (^WaypipeOutputHandler)(NSString *output);
 /// `WWN_MODEB_TTY`, or Desktop Replacement enabled but not engaged.
 FOUNDATION_EXPORT BOOL WWNHostSessionUsesOwnDisplayDRM(void);
 
+#if TARGET_OS_IPHONE
+#include <stdint.h>
+/* In-process DRM weston (IOMFB Desktop). Weak until the compositor archive
+ * exports them. Coordinates are compositor-global (logical, mode/scale).
+ * inject state: 0=up, 1=down, 2=motion. */
+int wwn_weston_compositor_is_running(void) __attribute__((weak_import));
+int wwn_weston_input_ready(void) __attribute__((weak_import));
+int wwn_weston_logical_size(uint32_t *width, uint32_t *height)
+    __attribute__((weak_import));
+void wwn_weston_inject_touch(int32_t id, int state, double x, double y)
+    __attribute__((weak_import));
+void wwn_weston_inject_pointer(int state, double x, double y)
+    __attribute__((weak_import));
+void wwn_weston_inject_axis(int axis, double value)
+    __attribute__((weak_import));
+void wwn_weston_inject_touch_cancel(void) __attribute__((weak_import));
+#endif
+
 /// Resolves the display backend a bundled compositor should run against:
 /// @"wayland" to nest it inside Wawona, or @"drm" to run it against
 /// wwn-iland's userland KMS the way it would run on bare metal. Pass the

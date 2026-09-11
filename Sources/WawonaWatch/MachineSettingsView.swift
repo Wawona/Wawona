@@ -164,6 +164,7 @@ struct MachineSettingsView: View {
             Text("Global default: \(WawonaPreferences.normalizedTouchInputType(preferences.defaultInputProfile))")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+            Toggle("Resize Display for Virtual Keyboard", isOn: resizeDisplayForVirtualKeyboardBinding)
         }
     }
 
@@ -249,6 +250,7 @@ struct MachineSettingsView: View {
             Text("Log Level: \(resolved.logLevel)")
             Text("Shake to Exit: \(resolved.shakeToCloseEnabled ? "On" : "Off")")
             Text("Swipe Back to Exit: \(resolved.swipeBackToCloseEnabled ? "On" : "Off")")
+            Text("Resize Display for Virtual Keyboard: \(resolved.resizeDisplayForVirtualKeyboard ? "On" : "Off")")
         }
     }
 
@@ -491,6 +493,18 @@ struct MachineSettingsView: View {
                     ?? preferences.swipeBackToCloseEnabled
             },
             set: { value in updateDraft { $0.runtimeOverrides.swipeBackToCloseEnabled = value } }
+        )
+    }
+
+    private var resizeDisplayForVirtualKeyboardBinding: Binding<Bool> {
+        Binding(
+            get: {
+                draft?.runtimeOverrides.resizeDisplayForVirtualKeyboard
+                    ?? preferences.resizeDisplayForVirtualKeyboard
+            },
+            set: { value in
+                updateDraft { $0.runtimeOverrides.resizeDisplayForVirtualKeyboard = value }
+            }
         )
     }
 }

@@ -25,7 +25,8 @@ L2  wwn-kmscube       GL acceptance client (→ toolchain + iland)
 L3  wwn-weston        nested compositor (→ toolchain + iland + kmscube; ilandSrc=source only)
 L3′ wwn-waypipe, Wawona-Swinging-Bridge, wwn-relay, wwn-ssh,
     wwn-fastfetch, wwn-phoon-rs, wwn-neovim, wwn-foot, wwn-niri,
-    wwn-iowatchdog, wwn-vphone, wwn-iomfb-rs, doorman, wwn-igetty, …  (→ toolchain or nixpkgs-only; peers only downward)
+    wwn-iowatchdog, wwn-vphone, wwn-iomfb-rs, doorman, wwn-igetty,
+    nixpkgs2wasi, …  (→ toolchain or nixpkgs-only; peers only downward)
 L4  Wawona            merges all fragments; never an input of L0-L3
 ```
 
@@ -51,7 +52,7 @@ flowchart BT
 | **L1** | `wwn-iland` | Userland KMS/DRM/GBM/EGL/udev shims + Mode A present callback + Mode B baremetal; `iland`, `iland-baremetal`; **ANGLE and SwiftShader**; MoltenVK/KosmicKrisp packaging; `iland-cpu` CPU-present helpers; DriverSelector contract |
 | **L2** | `wwn-kmscube` | `kmscube`, `vkcube` (Wayland) + `vkcube-kms` (KMS/GBM), `gbm-es2-demo`, `opengl-cube`. Wawona pins `github:Wawona/wwn-kmscube/development` until FlakeHub rolling includes `vkcube-kms`. |
 | **L3** | `wwn-weston` | Dual-backend compositor: nested Wayland *and* DRM/KMS (`--backend=drm`) + weston-simple-egl + toytoolkit clients |
-| **L3′** | `wwn-waypipe`, `Wawona-Swinging-Bridge`, `wwn-relay`, `wwn-ssh`, `wwn-fastfetch`, `wwn-phoon-rs`, `wwn-neovim`, `wwn-foot`, `wwn-iowatchdog`, `wwn-vphone`, `wwn-iomfb-rs`, `doorman`, `wwn-igetty`, … | Proxy / Android present / in-process shell-tool ports (`*_main` C ABI); **`wwn-relay`** (`github.com/Wawona/Relay`) is the only Linux VM + OCI-in-VM + Mode A WASI engine (never QEMU/UTM); `wwn-iowatchdog` is macOS Watchdog tools for Desktop Mode B (nixpkgs-only, never Apple-mobile); `wwn-vphone` is Darwin jailbroken iOS research lab via vphone-cli (nixpkgs-only; **never** ships a prebuilt iOS VM / IPSW); `wwn-iomfb-rs` is reconstructed iOS IOMobileFramebuffer (MIT, nixpkgs-only; TrollStore + jailbreak channels; **L1 must not import this**; Wawona L4 Mode B iOS links `ios.nix`); `doorman` is macOS user auth (Linux PAM-shaped; never Apple-mobile); `wwn-igetty` is Linux-shaped VT switching + Doorman getty on iland DRM after WindowServer is gone (never the Mode B dylib; that is L1 `iland-baremetal`) |
+| **L3′** | `wwn-waypipe`, `Wawona-Swinging-Bridge`, `wwn-relay`, `wwn-ssh`, `wwn-fastfetch`, `wwn-phoon-rs`, `wwn-neovim`, `wwn-foot`, `wwn-iowatchdog`, `wwn-vphone`, `wwn-iomfb-rs`, `doorman`, `wwn-igetty`, `nixpkgs2wasi`, … | Proxy / Android present / in-process shell-tool ports (`*_main` C ABI); **`wwn-relay`** (`github.com/Wawona/Relay`) is the only Linux VM + OCI-in-VM + Mode A WASI engine (never QEMU/UTM); **`nixpkgs2wasi`** (`github.com/Wawona/nixpkgs2wasi`) is the curated nixpkgs → WASI P1/P2 / WPM producer for `repo.wawona.io/wasm` (nixpkgs-only flake; not the interpreter; not an auto-mirror of nixpkgs); `wwn-iowatchdog` is macOS Watchdog tools for Desktop Mode B (nixpkgs-only, never Apple-mobile); `wwn-vphone` is Darwin jailbroken iOS research lab via vphone-cli (nixpkgs-only; **never** ships a prebuilt iOS VM / IPSW); `wwn-iomfb-rs` is reconstructed iOS IOMobileFramebuffer (MIT, nixpkgs-only; TrollStore + jailbreak channels; **L1 must not import this**; Wawona L4 Mode B iOS links `ios.nix`); `doorman` is macOS user auth (Linux PAM-shaped; never Apple-mobile); `wwn-igetty` is Linux-shaped VT switching + Doorman getty on iland DRM after WindowServer is gone (never the Mode B dylib; that is L1 `iland-baremetal`) |
 | **L4** | `Wawona` | App integration, Settings, presenters, SIP/Desktop, Android JNI, CI, docs, `flake.lock` hub |
 
 ## Hard rules
@@ -86,6 +87,8 @@ flowchart BT
   `wwn-wasm` (`github/.../development` until FlakeHub rolling includes the
   wayland-shm example, `cd7a800`). `wwn-zsh` is `github:.../main` until
   FlakeHub rolling includes the iOS HOME physicalize fix (`0e41745`).
+  `wwn-iomfb-rs` is `github:Wawona/wwn-iomfb-rs/development` (L4 Mode B
+  `ios.nix` / `libwwn_iomfb.a`; L1 must not import it).
   See [`flakehub-registry.md`](./flakehub-registry.md).
 - `angle` and `swiftshader` recipes live in `wwn-iland/dependencies/libs/` and
   are exported by the L1 `registryFragment`. `angle.tvos` uses the same

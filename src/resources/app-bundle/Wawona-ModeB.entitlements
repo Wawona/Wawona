@@ -31,7 +31,21 @@
   <array>
     <string>IOMobileFramebufferUserClient</string>
     <string>IOSurfaceRootUserClient</string>
+    <string>IOHIDEventServiceUserClient</string>
+    <string>IOHIDLibUserClient</string>
   </array>
+  <key>task_for_pid-allow</key>
+  <true/>
+  <key>com.apple.system-task-ports</key>
+  <true/>
+  <key>com.apple.private.hid.client.event-dispatch</key>
+  <true/>
+  <key>com.apple.private.hid.client.event-filter</key>
+  <true/>
+  <key>com.apple.private.hid.client.manager</key>
+  <true/>
+  <key>com.apple.hid.manager.user-access-device</key>
+  <true/>
   <key>com.apple.private.security.storage.AppBundles</key>
   <true/>
 </dict>

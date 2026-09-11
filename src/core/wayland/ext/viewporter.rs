@@ -6,14 +6,11 @@
 //! attaching a buffer at physical pixels; destination must drive surface
 //! logical size on commit.
 
-use wayland_server::{
-    Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
-};
 use crate::core::wayland::protocol::server::wp::viewporter::server::{
-    wp_viewporter::{self, WpViewporter},
     wp_viewport::{self, WpViewport},
+    wp_viewporter::{self, WpViewporter},
 };
-
+use wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource};
 
 use crate::core::state::CompositorState;
 use crate::core::surface::surface::SurfaceState;
@@ -82,11 +79,7 @@ impl ViewporterState {
 
     /// Apply pending viewport and override surface logical size from destination.
     /// Returns true when a destination size was applied.
-    pub fn apply_on_surface_commit(
-        &mut self,
-        surface_id: u32,
-        current: &mut SurfaceState,
-    ) -> bool {
+    pub fn apply_on_surface_commit(&mut self, surface_id: u32, current: &mut SurfaceState) -> bool {
         let Some(data) = self.for_surface_mut(surface_id) else {
             return false;
         };
@@ -102,10 +95,7 @@ impl ViewporterState {
             false
         };
 
-        let (buf_w, buf_h) = current
-            .buffer
-            .dimensions()
-            .unwrap_or((0, 0));
+        let (buf_w, buf_h) = current.buffer.dimensions().unwrap_or((0, 0));
         tracing::debug!(
             "Viewport commit surface={}: buf={}x{} logical={}x{} dest={:?} source={:?} buffer_scale={}",
             surface_id,
@@ -120,7 +110,6 @@ impl ViewporterState {
         applied_dest
     }
 }
-
 
 // ============================================================================
 // wp_viewporter
@@ -160,10 +149,14 @@ impl Dispatch<WpViewporter, ()> for CompositorState {
                     tracing::warn!("GetViewport ignored: surface has no client");
                     return;
                 };
-                let surface_id =
-                    state.ensure_internal_surface_mapping(client_id, &surface);
+                let surface_id = state.ensure_internal_surface_mapping(client_id, &surface);
 
-                if state.ext.viewporter.surface_to_viewport.contains_key(&surface_id) {
+                if state
+                    .ext
+                    .viewporter
+                    .surface_to_viewport
+                    .contains_key(&surface_id)
+                {
                     // Protocol: at most one viewport per surface.
                     tracing::warn!(
                         "Viewport already exists for surface {}; replacing mapping",
@@ -216,7 +209,12 @@ impl Dispatch<WpViewport, ()> for CompositorState {
         let viewport_id = resource.id().protocol_id();
 
         match request {
-            wp_viewport::Request::SetSource { x, y, width, height } => {
+            wp_viewport::Request::SetSource {
+                x,
+                y,
+                width,
+                height,
+            } => {
                 if let Some(data) = state.ext.viewporter.viewports.get_mut(&viewport_id) {
                     // -1 means unset
                     if x == -1.0 && y == -1.0 && width == -1.0 && height == -1.0 {
@@ -234,10 +232,19 @@ impl Dispatch<WpViewport, ()> for CompositorState {
                             return;
                         }
 
-                        data.pending_source = Some(ViewportSource { x, y, width, height });
+                        data.pending_source = Some(ViewportSource {
+                            x,
+                            y,
+                            width,
+                            height,
+                        });
                         tracing::debug!(
                             "Viewport source pending for surface {}: ({}, {}) {}x{}",
-                            data.surface_id, x, y, width, height
+                            data.surface_id,
+                            x,
+                            y,
+                            width,
+                            height
                         );
                     }
                 }
@@ -263,7 +270,9 @@ impl Dispatch<WpViewport, ()> for CompositorState {
                         data.pending_destination = Some((width, height));
                         tracing::debug!(
                             "Viewport destination pending for surface {}: {}x{}",
-                            data.surface_id, width, height
+                            data.surface_id,
+                            width,
+                            height
                         );
                     }
                 }

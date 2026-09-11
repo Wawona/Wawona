@@ -4,13 +4,11 @@
 //! entire toplevels with the pointer during a wl_data_device drag.
 //! The attached toplevel follows the cursor at the specified offset.
 
-use wayland_server::{
-    Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
-};
 use wayland_protocols::xdg::toplevel_drag::v1::server::{
-    xdg_toplevel_drag_v1::{self, XdgToplevelDragV1},
     xdg_toplevel_drag_manager_v1::{self, XdgToplevelDragManagerV1},
+    xdg_toplevel_drag_v1::{self, XdgToplevelDragV1},
 };
+use wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource};
 
 use crate::core::state::CompositorState;
 
@@ -94,15 +92,20 @@ impl Dispatch<XdgToplevelDragV1, u32> for CompositorState {
         _data_init: &mut DataInit<'_, Self>,
     ) {
         match request {
-            xdg_toplevel_drag_v1::Request::Attach { toplevel, x_offset, y_offset } => {
+            xdg_toplevel_drag_v1::Request::Attach {
+                toplevel,
+                x_offset,
+                y_offset,
+            } => {
                 let toplevel_id = toplevel.id().protocol_id();
                 let client_id = _client.id();
 
                 // Resolve toplevel to window ID
-                let window_id = state.xdg.toplevels.get(&(client_id, toplevel_id))
-                    .and_then(|td| {
-                        state.surface_to_window.get(&td.surface_id).copied()
-                    });
+                let window_id = state
+                    .xdg
+                    .toplevels
+                    .get(&(client_id, toplevel_id))
+                    .and_then(|td| state.surface_to_window.get(&td.surface_id).copied());
 
                 state.xdg.toplevel_drag.active = Some(ToplevelDragAttachment {
                     toplevel_id,
@@ -113,7 +116,10 @@ impl Dispatch<XdgToplevelDragV1, u32> for CompositorState {
 
                 tracing::info!(
                     "Attached toplevel {} (window {:?}) to drag at offset ({}, {})",
-                    toplevel_id, window_id, x_offset, y_offset
+                    toplevel_id,
+                    window_id,
+                    x_offset,
+                    y_offset
                 );
             }
             xdg_toplevel_drag_v1::Request::Destroy => {

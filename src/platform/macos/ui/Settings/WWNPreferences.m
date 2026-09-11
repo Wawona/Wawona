@@ -21,9 +21,8 @@
 // #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
 // #import <HIAHKernel/HIAHKernel.h>
 // #endif
-#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
-#import "WWNSettingsSplitViewController.h"
-#endif
+// Settings chrome is SwiftUI (WWNMachinesHostingBridge). The UIKit split
+// controller is not in the iOS/Mode B compile set. Resolve by name only.
 //  #import "../../core/WWNKernel.h" // Removed
 #import <Network/Network.h>
 #import <objc/message.h>
@@ -374,6 +373,8 @@ static WImage WWNSquareFilledIcon(WImage image, CGFloat size) {
 - (void)showDesktopReplacementSipHowTo;
 - (void)showDesktopReplacementReplaceNow;
 - (void)reloadDesktopSection;
+#endif
+#if TARGET_OS_OSX || (WWN_MODE_B && TARGET_OS_IOS)
 - (BOOL)applyDesktopReplacementEnabled:(BOOL)enabled
                                 revert:(void (^_Nullable)(void))revert;
 #endif
@@ -672,6 +673,24 @@ static UIImage *WWNAboutLogo(void) {
 }
 #endif
 
+- (void)rebuildSections {
+  self.sections = [self buildSections];
+#if TARGET_OS_IPHONE
+  if (self.sections.count > 0 && self.activeSection != nil) {
+    NSString *title = self.activeSection.title;
+    for (WWNPreferencesSection *section in self.sections) {
+      if ([section.title isEqualToString:title]) {
+        self.activeSection = section;
+        break;
+      }
+    }
+  }
+  if (self.tableView) {
+    [self.tableView reloadData];
+  }
+#endif
+}
+
 - (void)defaultsChanged:(NSNotification *)notification {
   static BOOL sLastForceSSD = NO;
   static BOOL sHasCheckedForceSSD = NO;
@@ -889,6 +908,12 @@ static UIImage *WWNAboutLogo(void) {
       ITEM(@"Touch Input Type", @"TouchInputType", WSettingPopup,
            @"Multi-Touch", @"Input method for touch interactions.");
   touchInputItem.options = @[ @"Multi-Touch", @"Touchpad" ];
+  WWNSettingItem *touchPointerEmulationItem = ITEM(
+      @"Pointer Emulation for Touch", @"TouchPointerEmulation", WSettingSwitch,
+      @NO,
+      @"Also send wl_pointer for the primary finger when a client never "
+      @"bound wl_touch. Off by default. Nested weston/niri chrome already "
+      @"gets a button serial from the compositor.");
 
   WWNSettingItem *showVirtualCursorItem =
 #if TARGET_OS_IPHONE
@@ -919,11 +944,13 @@ static UIImage *WWNAboutLogo(void) {
       @[
         showVirtualCursorItem,
         touchInputItem,
+        touchPointerEmulationItem,
 #else
       @[
         showVirtualCursorItem,
         nestedCursorItem,
         touchInputItem,
+        touchPointerEmulationItem,
 #endif
     ITEM(@"Resize Display for Virtual Keyboard",
          @"resizeDisplayForVirtualKeyboard", WSettingSwitch, @YES,
@@ -1474,7 +1501,8 @@ static UIImage *WWNAboutLogo(void) {
                          @"No eligible own-display machine. Create a Native "
                          @"machine whose client is weston, niri, custom, "
                          @"kmscube, gbm-es2-demo, or vkcube, then select it "
-                         @"here. VT switching is always wwn-igetty.")];
+                         @"here. wwn-igetty is the Doorman console, not a "
+                         @"machine. Do not add it under Machines.")];
     }
 
     // ── Wawona Swinging Bridge ──────────────────────────────────────────────
@@ -1523,6 +1551,73 @@ static UIImage *WWNAboutLogo(void) {
                          @"greeter after Classic Desktop Take Over is proven.")];
     }
 
+    desktop.items = desktopItems;
+    [sects addObject:desktop];
+  }
+#endif
+
+#if WWN_MODE_B && TARGET_OS_IOS && !TARGET_OS_MACCATALYST && !TARGET_OS_TV && \
+    !TARGET_OS_WATCH && !TARGET_OS_VISION
+  {
+    WWNPreferencesSection *desktop = [[WWNPreferencesSection alloc] init];
+    desktop.title = @"Desktop";
+    desktop.accessibilityIdentifier = @"wwn.settings.desktop";
+    desktop.icon = @"macwindow.on.rectangle";
+    desktop.iconColor = [UIColor systemTealColor];
+
+    NSMutableArray *desktopItems = [NSMutableArray array];
+    [desktopItems
+        addObject:ITEM(@"Enable Desktop Replacement",
+                       @"DesktopReplacementEnabled", WSettingSwitch, @NO,
+                       @"Replace SpringBoard's display with wwn-iland "
+                       @"(IOMobileFramebuffer) plus wwn-igetty. Weston and "
+                       @"Niri then use userspace DRM/KMS. Text consoles are "
+                       @"igetty on a Wawona PTY. Off keeps Machines and "
+                       @"Settings. Enable does not take the panel. Use "
+                       @"Replace now.")];
+
+    WWNSettingItem *replaceNow =
+        ITEM(@"Replace now", @"DesktopReplacementTakeOver", WSettingButton, nil,
+             @"Take the display now and open the wwn-igetty picker. Choose "
+             @"Weston, Niri, a VM, a container, or the Wawona Console PTY. "
+             @"Turn Enable off or leave the session to return to Machines.");
+    replaceNow.actionBlock = ^{
+      [WWNSharedUserDefaults() setBool:YES
+                                forKey:kWWNPrefsDesktopReplacementEnabled];
+      [[NSNotificationCenter defaultCenter]
+          postNotificationName:kWWNModeBDesktopReplacementReplaceNowNotification
+                        object:nil];
+    };
+    [desktopItems addObject:replaceNow];
+
+    NSArray<WWNMachineProfile *> *allProfiles =
+        [WWNMachineProfileStore loadProfiles];
+    NSMutableArray<NSString *> *nativeNames = [NSMutableArray array];
+    NSMutableArray<NSString *> *nativeIds = [NSMutableArray array];
+    for (WWNMachineProfile *p in allProfiles) {
+      if (![WWNMachineProfileStore profileIndicatesModeBOwnDisplay:p]) {
+        continue;
+      }
+      NSString *label = p.name.length ? p.name : @"Unnamed Machine";
+      [nativeNames addObject:label];
+      [nativeIds addObject:p.machineId ?: @""];
+    }
+    if (nativeIds.count > 0) {
+      WWNSettingItem *machineItem =
+          ITEM(@"Desktop Machine", @"DesktopReplacementMachineId",
+               WSettingPopup, nativeIds.firstObject,
+               @"Preferred card on the wwn-igetty picker. Replace now always "
+               @"opens the picker so you can choose. Other VTs stay wwn-igetty "
+               @"text sessions on a Wawona PTY.");
+      machineItem.options = nativeNames;
+      machineItem.optionValues = nativeIds;
+      [desktopItems addObject:machineItem];
+    } else {
+      [desktopItems
+          addObject:ITEM(@"Desktop Machine", nil, WSettingInfo, @"None",
+                         @"Create a Native machine whose client is weston or "
+                         @"niri, then select it here.")];
+    }
     desktop.items = desktopItems;
     [sects addObject:desktop];
   }
@@ -1842,6 +1937,7 @@ static UIImage *WWNAboutLogo(void) {
 
   about.items = @[
     headerItem, ITEM(@"Version", nil, WSettingInfo, [self getWWNVersion], nil),
+    ITEM(@"Build", @"BuildNumber", WSettingInfo, [self getWWNBuildNumber], nil),
     ITEM(@"Platform", nil, WSettingInfo, [self wwnHostOsSummary], nil),
     ITEM(@"Install", nil, WSettingInfo, [self wwnInstallChannel], nil),
     wawonaIoItem, copyRecentLogs, copyMachineLogs, reportBug, authorItem,
@@ -1867,7 +1963,33 @@ static UIImage *WWNAboutLogo(void) {
       NSString *name = pkg[@"name"] ?: @"Package";
       NSString *version = pkg[@"version"] ?: @"";
       NSString *role = pkg[@"role"] ?: @"";
-      [depItems addObject:ITEM(name, nil, WSettingInfo, version, role)];
+      NSString *license = pkg[@"license"] ?: @"";
+      NSString *url = pkg[@"url"] ?: @"";
+      NSMutableString *desc = [NSMutableString string];
+      if (version.length > 0) {
+        [desc appendString:version];
+      }
+      if (license.length > 0) {
+        if (desc.length > 0) {
+          [desc appendString:@" · "];
+        }
+        [desc appendString:license];
+      }
+      if (role.length > 0) {
+        if (desc.length > 0) {
+          [desc appendString:@"\n"];
+        }
+        [desc appendString:role];
+      }
+      if (url.length > 0) {
+        WWNSettingItem *depItem =
+            ITEM(name, nil, WSettingLink, version, desc);
+        depItem.urlString = url;
+        depItem.buttonTitle = @"Open Website";
+        [depItems addObject:depItem];
+      } else {
+        [depItems addObject:ITEM(name, nil, WSettingInfo, version, desc)];
+      }
     }
   } else {
     [depItems addObject:ITEM(@"Dependencies", nil, WSettingInfo, @"unavailable",
@@ -2204,6 +2326,16 @@ static UIImage *WWNAboutLogo(void) {
   return version ?: @"v0.0.0";
 }
 
+/// Ship / tipa install identity (`CFBundleVersion` / CURRENT_PROJECT_VERSION).
+- (NSString *)getWWNBuildNumber {
+  NSString *build = [[NSBundle mainBundle]
+      objectForInfoDictionaryKey:@"CFBundleVersion"];
+  if (build.length == 0) {
+    return @"1";
+  }
+  return build;
+}
+
 - (NSString *)wwnHostOsSummary {
   struct utsname u;
   memset(&u, 0, sizeof(u));
@@ -2255,7 +2387,27 @@ static UIImage *WWNAboutLogo(void) {
     }
     return @"App Store";
   }
+  NSString *bundlePath = [[NSBundle mainBundle] bundlePath] ?: @"";
+  NSString *appContainer = [bundlePath stringByDeletingLastPathComponent];
+  NSFileManager *fm = [NSFileManager defaultManager];
+  // TrollStore writes `_TrollStore` next to the `.app` in the UUID container.
+  if ([fm fileExistsAtPath:[appContainer
+                               stringByAppendingPathComponent:@"_TrollStore"]]) {
+    return @"TrollStore";
+  }
+  // Sileo Mode B lives under the jailbreak root (`/var/jb`, jbroot), not tipa.
+  if ([bundlePath containsString:@"/var/jb/"] ||
+      [bundlePath hasPrefix:@"/var/jb"] ||
+      [bundlePath containsString:@"/jbroot"]) {
+    return @"Sileo";
+  }
+#if WWN_MODE_B
+  // Mode B tipa product channel is TrollStore (marker may be absent on some
+  // helpers; Sileo path already returned above).
+  return @"TrollStore";
+#else
   return @"Sideload";
+#endif
 #else
   return @"unknown";
 #endif
@@ -4381,41 +4533,28 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
   if (!vc) {
     return NO;
   }
-  if ([vc isKindOfClass:[WWNSettingsSplitViewController class]]) {
+  Class split = NSClassFromString(@"WWNSettingsSplitViewController");
+  if (split && [vc isKindOfClass:split]) {
     return YES;
   }
   if ([vc isKindOfClass:[UINavigationController class]]) {
     UINavigationController *nav = (UINavigationController *)vc;
     UIViewController *root = nav.viewControllers.firstObject;
     return [root isKindOfClass:[WWNPreferences class]] ||
-           [root isKindOfClass:[WWNSettingsSplitViewController class]];
+           (split && [root isKindOfClass:split]);
   }
   return NO;
 }
 
 - (void)presentSettingsFromRoot:(UIViewController *)root {
-  WWNSettingsSplitViewController *splitVC =
-      [[WWNSettingsSplitViewController alloc] init];
-#if TARGET_OS_TV
-  // FormSheet on tvOS is a phone-sized card in the corner. Full screen plus
-  // a wide sidebar is the 10-foot layout.
-  splitVC.modalPresentationStyle = UIModalPresentationFullScreen;
-  splitVC.preferredPrimaryColumnWidthFraction = 0.35;
-  splitVC.minimumPrimaryColumnWidth = 400;
-  splitVC.maximumPrimaryColumnWidth = 640;
-#else
-  splitVC.modalPresentationStyle = UIModalPresentationFormSheet;
-  UISheetPresentationController *sheet = splitVC.sheetPresentationController;
-  if (sheet) {
-#if !TARGET_OS_VISION
-    // Capsule at the top of the card. Swipe down on it (or the sheet) to
-    // dismiss. Hidden by default for a single large detent.
-    sheet.prefersGrabberVisible = YES;
-    sheet.prefersEdgeAttachedInCompactHeight = YES;
-#endif
+  (void)root;
+  Class bridge = NSClassFromString(@"WWNMachinesHostingBridge");
+  SEL showSel = NSSelectorFromString(@"showSettings");
+  if (bridge && [bridge respondsToSelector:showSel]) {
+    ((void (*)(id, SEL))objc_msgSend)(bridge, showSel);
+    return;
   }
-#endif
-  [root presentViewController:splitVC animated:YES completion:nil];
+  NSLog(@"[PREFS] SwiftUI settings host missing; not presenting UIKit sidebar");
 }
 
 - (void)showPreferences:(id)sender {
@@ -4958,7 +5097,7 @@ static BOOL WWNIsSettingsPresentation(UIViewController *vc) {
     return;
   }
 #endif
-#if TARGET_OS_OSX
+#if TARGET_OS_OSX || (WWN_MODE_B && TARGET_OS_IOS)
   if ([item.key isEqualToString:kWWNPrefsDesktopReplacementEnabled]) {
     [self applyDesktopReplacementEnabled:s.on
                                   revert:^{
@@ -5381,10 +5520,6 @@ static BOOL WWNRouteToUnifiedWindowWithString(NSString *selectorName,
 - (void)showSection:(NSInteger)idx {
   self.content.section = self.sections[idx];
   [self.content reloadForCurrentSection];
-}
-
-- (void)rebuildSections {
-  self.sections = [self buildSections];
 }
 
 - (void)selectSectionWithTitle:(NSString *)title {
@@ -5914,6 +6049,17 @@ static BOOL WWNRouteToUnifiedWindowWithString(NSString *selectorName,
   WWNHandoffToWawonaApp(@"Desktop");
   return YES;
 #endif
+#if WWN_MODE_B && TARGET_OS_IOS && !TARGET_OS_MACCATALYST
+  (void)revert;
+  [WWNSharedUserDefaults() setBool:enabled
+                            forKey:kWWNPrefsDesktopReplacementEnabled];
+  [[NSNotificationCenter defaultCenter]
+      postNotificationName:kWWNModeBDesktopReplacementChangedNotification
+                    object:nil
+                  userInfo:@{@"enabled" : @(enabled)}];
+  return YES;
+#endif
+#if TARGET_OS_OSX
   WWNDesktopReplacementController *desk =
       [WWNDesktopReplacementController sharedController];
   if (!enabled) {
@@ -6000,6 +6146,8 @@ static BOOL WWNRouteToUnifiedWindowWithString(NSString *selectorName,
   }
   [self reloadDesktopSection];
   return YES;
+#endif
+  return NO;
 }
 
 - (void)showDesktopReplacementSipHowTo {

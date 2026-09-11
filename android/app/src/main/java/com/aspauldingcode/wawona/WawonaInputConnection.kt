@@ -67,14 +67,10 @@ class WawonaInputConnection(
     private fun commitTextWithModifiers(text: String, newCursorPosition: Int): Boolean {
         val ts = (System.currentTimeMillis() % Int.MAX_VALUE).toInt()
 
-        val allMappable = text.all { ch ->
-            !Character.isHighSurrogate(ch) &&
-            !Character.isLowSurrogate(ch) &&
-            charToLinuxKeycode(ch) != null
-        }
+        val allControl = text.all { ch -> controlToLinuxKeycode(ch) != null }
 
-        if (!allMappable) {
-            WLog.d("INPUT", "Modifiers active but text unmappable, committing via text-input-v3")
+        if (!allControl) {
+            WLog.d("INPUT", "Committing via text-input-v3 (host-keymap-bridge)")
             WawonaNative.nativePreeditText("", 0, 0)
             WawonaNative.nativeCommitText(text)
             super.commitText(text, newCursorPosition)
@@ -94,14 +90,9 @@ class WawonaInputConnection(
             WawonaNative.nativeInjectKey(LinuxKey.LEFTMETA, true, ts)
 
         for (ch in text) {
-            val mapping = charToLinuxKeycode(ch) ?: continue
-            val extraShift = mapping.needsShift && !ModifierState.shiftActive
-            if (extraShift)
-                WawonaNative.nativeInjectKey(LinuxKey.LEFTSHIFT, true, ts)
+            val mapping = controlToLinuxKeycode(ch) ?: continue
             WawonaNative.nativeInjectKey(mapping.keycode, true, ts)
             WawonaNative.nativeInjectKey(mapping.keycode, false, ts)
-            if (extraShift)
-                WawonaNative.nativeInjectKey(LinuxKey.LEFTSHIFT, false, ts)
         }
 
         if (ModifierState.shiftActive)

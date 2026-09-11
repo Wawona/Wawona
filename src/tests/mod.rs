@@ -1,8 +1,10 @@
-pub mod wayland;
+pub mod data_device;
+pub mod harness;
+pub mod text_input;
+pub mod touch;
+pub mod integration;
+pub mod protocol_matrix;
 pub mod surface;
+pub mod wayland;
 pub mod window;
 pub mod window_management;
-pub mod harness;
-pub mod integration;
-pub mod data_device;
-pub mod protocol_matrix;

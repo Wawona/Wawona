@@ -16,12 +16,10 @@
 //! 2. Must track surface IDs correctly (not hardcode to 0)
 //! 3. Must set surface role to Layer
 
-use wayland_server::{
-    Dispatch, Resource, DisplayHandle, GlobalDispatch,
-};
 use crate::core::wayland::protocol::wlroots::wlr_layer_shell_unstable_v1::{
     zwlr_layer_shell_v1, zwlr_layer_surface_v1,
 };
+use wayland_server::{Dispatch, DisplayHandle, GlobalDispatch, Resource};
 
 use crate::core::state::{CompositorState, LayerSurface};
 use crate::core::surface::role::SurfaceRole;
@@ -86,10 +84,16 @@ impl Dispatch<zwlr_layer_shell_v1::ZwlrLayerShellV1, ()> for CompositorState {
         data_init: &mut wayland_server::DataInit<'_, Self>,
     ) {
         match request {
-            zwlr_layer_shell_v1::Request::GetLayerSurface { id, surface, output, layer, namespace } => {
+            zwlr_layer_shell_v1::Request::GetLayerSurface {
+                id,
+                surface,
+                output,
+                layer,
+                namespace,
+            } => {
                 // Get the internal surface ID from the wl_surface resource's user data
                 let surface_protocol_id = surface.id().protocol_id();
-                
+
                 // Look up the internal surface ID from our mapping
                 let client_id = _client.id();
                 let surface_id = state.protocol_to_internal_surface
@@ -100,33 +104,44 @@ impl Dispatch<zwlr_layer_shell_v1::ZwlrLayerShellV1, ()> for CompositorState {
                         tracing::warn!("Layer shell: No internal ID mapping for protocol surface {}, using protocol ID", surface_protocol_id);
                         surface_protocol_id
                     });
-                
-                let output_id = output.as_ref().map(|o| o.id().protocol_id()).unwrap_or_else(|| {
-                    state.outputs.get(state.primary_output).map(|o| o.id).unwrap_or(0)
-                });
+
+                let output_id = output
+                    .as_ref()
+                    .map(|o| o.id().protocol_id())
+                    .unwrap_or_else(|| {
+                        state
+                            .outputs
+                            .get(state.primary_output)
+                            .map(|o| o.id)
+                            .unwrap_or(0)
+                    });
                 let output_id = output
                     .as_ref()
                     .and_then(|o| state.output_id_by_resource.get(&o.id()).copied())
                     .unwrap_or(output_id);
-                
+
                 // Map the layer enum from the protocol to our u32
                 let layer_val = match layer {
                     wayland_server::backend::protocol::WEnum::Value(v) => v as u32,
                     wayland_server::backend::protocol::WEnum::Unknown(v) => v,
                 };
-                
+
                 tracing::info!(
                     "Layer shell: Creating layer surface for surface {} on output {} (layer={}, namespace={})",
                     surface_id, output_id, layer_val, namespace
                 );
-                
+
                 // Create and store the layer surface state
-                let layer_surface = LayerSurface::new(surface_id, output_id, layer_val, namespace.clone());
+                let layer_surface =
+                    LayerSurface::new(surface_id, output_id, layer_val, namespace.clone());
                 state.add_layer_surface(client_id.clone(), layer_surface);
-                
+
                 // Map surface to layer surface for buffer handling
-                state.wlr.surface_to_layer.insert((client_id.clone(), surface_id), surface_id);
-                
+                state
+                    .wlr
+                    .surface_to_layer
+                    .insert((client_id.clone(), surface_id), surface_id);
+
                 // Set the surface role to Layer
                 if let Some(surf) = state.get_surface(surface_id) {
                     let mut surf = surf.write().unwrap();
@@ -134,18 +149,15 @@ impl Dispatch<zwlr_layer_shell_v1::ZwlrLayerShellV1, ()> for CompositorState {
                         tracing::warn!("Failed to set Layer role on surface {}: {}", surface_id, e);
                     }
                 }
-                
+
                 // Create layer surface data to store with the resource
-                let layer_surface_data = LayerSurfaceData::new(
-                    surface_id,
-                    output_id,
-                    layer_val,
-                    namespace,
-                );
-                
+                let layer_surface_data =
+                    LayerSurfaceData::new(surface_id, output_id, layer_val, namespace);
+
                 // Initialize the layer surface resource with our data
-                let layer_surface_resource: zwlr_layer_surface_v1::ZwlrLayerSurfaceV1 = data_init.init(id, layer_surface_data);
-                
+                let layer_surface_resource: zwlr_layer_surface_v1::ZwlrLayerSurfaceV1 =
+                    data_init.init(id, layer_surface_data);
+
                 // CRITICAL: Send initial configure event!
                 // wlroots clients BLOCK until they receive this configure event.
                 // Get output dimensions for the configure
@@ -155,27 +167,31 @@ impl Dispatch<zwlr_layer_shell_v1::ZwlrLayerShellV1, ()> for CompositorState {
                     .find(|o| o.id == output_id)
                     .map(|o| (o.width, o.height))
                     .unwrap_or_else(|| {
-                        state.outputs
+                        state
+                            .outputs
                             .get(state.primary_output)
                             .map(|o| (o.width, o.height))
                             .unwrap_or((1920, 1080))
                     });
-                
+
                 let serial = state.next_serial();
-                
+
                 // Update layer surface state with resource and pending serial
                 if let Some(ls) = state.get_layer_surface(client_id.clone(), surface_id) {
                     let mut ls = ls.write().unwrap();
                     ls.pending_serial = serial;
                     ls.resource = Some(layer_surface_resource.clone());
                 }
-                
+
                 // Send configure event with output dimensions
                 layer_surface_resource.configure(serial, output_width, output_height);
-                
+
                 tracing::info!(
                     "Layer shell: Sent configure (serial={}) with dimensions {}x{} to surface {}",
-                    serial, output_width, output_height, surface_id
+                    serial,
+                    output_width,
+                    output_height,
+                    surface_id
                 );
             }
             zwlr_layer_shell_v1::Request::Destroy => {
@@ -203,10 +219,15 @@ impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, LayerSurfaceData> for C
         // Use the surface ID from our stored data - THIS IS THE KEY FIX
         let surface_id = data.surface_id;
         let client_id = _client.id();
-        
+
         match request {
             zwlr_layer_surface_v1::Request::SetSize { width, height } => {
-                tracing::debug!("Layer surface {}: set_size {}x{}", surface_id, width, height);
+                tracing::debug!(
+                    "Layer surface {}: set_size {}x{}",
+                    surface_id,
+                    width,
+                    height
+                );
                 if let Some(ls) = state.get_layer_surface(client_id.clone(), surface_id) {
                     let mut ls = ls.write().unwrap();
                     ls.width = width;
@@ -223,7 +244,11 @@ impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, LayerSurfaceData> for C
                     wayland_server::backend::protocol::WEnum::Value(v) => v.bits(),
                     wayland_server::backend::protocol::WEnum::Unknown(v) => v,
                 };
-                tracing::debug!("Layer surface {}: set_anchor 0x{:x}", surface_id, anchor_val);
+                tracing::debug!(
+                    "Layer surface {}: set_anchor 0x{:x}",
+                    surface_id,
+                    anchor_val
+                );
                 if let Some(ls) = state.get_layer_surface(client_id.clone(), surface_id) {
                     let mut ls = ls.write().unwrap();
                     ls.anchor = anchor_val;
@@ -246,9 +271,20 @@ impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, LayerSurfaceData> for C
                     state.configure_layer_surface(surface_id, ls.width, ls.height);
                 }
             }
-            zwlr_layer_surface_v1::Request::SetMargin { top, right, bottom, left } => {
-                tracing::debug!("Layer surface {}: set_margin t={} r={} b={} l={}", 
-                    surface_id, top, right, bottom, left);
+            zwlr_layer_surface_v1::Request::SetMargin {
+                top,
+                right,
+                bottom,
+                left,
+            } => {
+                tracing::debug!(
+                    "Layer surface {}: set_margin t={} r={} b={} l={}",
+                    surface_id,
+                    top,
+                    right,
+                    bottom,
+                    left
+                );
                 if let Some(ls) = state.get_layer_surface(client_id.clone(), surface_id) {
                     let mut ls = ls.write().unwrap();
                     ls.margin = (top, right, bottom, left);
@@ -259,12 +295,18 @@ impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, LayerSurfaceData> for C
                     state.configure_layer_surface(surface_id, ls.width, ls.height);
                 }
             }
-            zwlr_layer_surface_v1::Request::SetKeyboardInteractivity { keyboard_interactivity } => {
+            zwlr_layer_surface_v1::Request::SetKeyboardInteractivity {
+                keyboard_interactivity,
+            } => {
                 let interactivity_val = match keyboard_interactivity {
                     wayland_server::backend::protocol::WEnum::Value(v) => v as u32,
                     wayland_server::backend::protocol::WEnum::Unknown(v) => v,
                 };
-                tracing::debug!("Layer surface {}: set_keyboard_interactivity {}", surface_id, interactivity_val);
+                tracing::debug!(
+                    "Layer surface {}: set_keyboard_interactivity {}",
+                    surface_id,
+                    interactivity_val
+                );
                 if let Some(ls) = state.get_layer_surface(client_id.clone(), surface_id) {
                     let mut ls = ls.write().unwrap();
                     ls.interactivity = interactivity_val;
@@ -275,7 +317,11 @@ impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, LayerSurfaceData> for C
                 // popup is already initialized in this protocol version/implementation
             }
             zwlr_layer_surface_v1::Request::AckConfigure { serial } => {
-                tracing::info!("Layer surface {}: ack_configure serial={}", surface_id, serial);
+                tracing::info!(
+                    "Layer surface {}: ack_configure serial={}",
+                    surface_id,
+                    serial
+                );
                 if let Some(ls) = state.get_layer_surface(client_id.clone(), surface_id) {
                     let mut ls = ls.write().unwrap();
                     if serial == ls.pending_serial {
@@ -316,7 +362,10 @@ impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, LayerSurfaceData> for C
 impl CompositorState {
     /// Send a configure event to a layer surface with new dimensions
     pub fn configure_layer_surface(&mut self, surface_id: u32, width: u32, height: u32) {
-        let client_id = self.surfaces.get(&surface_id).and_then(|s| s.read().unwrap().client_id.clone());
+        let client_id = self
+            .surfaces
+            .get(&surface_id)
+            .and_then(|s| s.read().unwrap().client_id.clone());
         if let Some(cid) = client_id {
             if let Some(ls) = self.get_layer_surface(cid, surface_id) {
                 let serial = self.next_serial();
@@ -329,13 +378,15 @@ impl CompositorState {
                 }
                 tracing::debug!(
                     "Layer surface {}: sent configure serial={} {}x{}",
-                    surface_id, serial, width, height
+                    surface_id,
+                    serial,
+                    width,
+                    height
                 );
             }
         }
     }
 }
-
 
 /// Register zwlr_layer_shell_v1 global
 pub fn register_layer_shell(display: &DisplayHandle) -> wayland_server::backend::GlobalId {

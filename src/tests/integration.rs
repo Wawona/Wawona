@@ -1,17 +1,17 @@
 use crate::tests::harness::TestEnv;
+use std::os::fd::AsFd;
+use wayland_client::Proxy;
 use wayland_client::{
     protocol::{
-        wl_compositor, wl_shm, wl_seat, wl_registry, wl_callback, wl_pointer, wl_keyboard,
-        wl_subcompositor, wl_subsurface
+        wl_callback, wl_compositor, wl_keyboard, wl_pointer, wl_registry, wl_seat, wl_shm,
+        wl_subcompositor, wl_subsurface,
     },
     Connection, Dispatch, QueueHandle,
 };
-use wayland_protocols::xdg::shell::client::{xdg_wm_base, xdg_surface, xdg_toplevel};
-use std::os::fd::AsFd;
-use wayland_client::Proxy;
 use wayland_protocols::wp::relative_pointer::zv1::client::{
-    zwp_relative_pointer_manager_v1, zwp_relative_pointer_v1
+    zwp_relative_pointer_manager_v1, zwp_relative_pointer_v1,
 };
+use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
 
 struct ClientState {
     compositor: Option<wl_compositor::WlCompositor>,
@@ -37,7 +37,12 @@ impl Dispatch<wl_registry::WlRegistry, ()> for ClientState {
         _conn: &Connection,
         qh: &QueueHandle<Self>,
     ) {
-        if let wl_registry::Event::Global { name, interface, version } = event {
+        if let wl_registry::Event::Global {
+            name,
+            interface,
+            version,
+        } = event
+        {
             if interface == "wl_compositor" {
                 state.compositor = Some(proxy.bind(name, version, qh, ()));
             } else if interface == "wl_shm" {
@@ -216,7 +221,12 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for ClientState {
         _conn: &Connection,
         _qh: &QueueHandle<Self>,
     ) {
-        if let wl_keyboard::Event::Key { key, state: key_state, .. } = event {
+        if let wl_keyboard::Event::Key {
+            key,
+            state: key_state,
+            ..
+        } = event
+        {
             use wayland_client::WEnum;
             // wl_keyboard.key carries the Linux evdev scancode (KEY_A = 30);
             // clients add 8 to obtain the xkb keycode (38 -> keysym 0x61).
@@ -278,10 +288,10 @@ impl Dispatch<wayland_client::protocol::wl_shm_pool::WlShmPool, ()> for ClientSt
 #[test]
 fn test_client_connection() {
     let mut env = TestEnv::new();
-    
+
     // Dispatch events to process client connection
     env.loop_dispatch();
-    
+
     // Check if client is connected
     assert_eq!(env.state.clients.len(), 1);
 }
@@ -292,9 +302,9 @@ fn test_bind_globals() {
     let display = env.client.display();
     let mut event_queue = env.client.new_event_queue::<ClientState>();
     let qh = event_queue.handle();
-    
+
     let _registry = display.get_registry(&qh, ());
-    
+
     // Initialize client state
     let mut client_state = ClientState {
         compositor: None,
@@ -310,10 +320,10 @@ fn test_bind_globals() {
         relative_motion_events: Vec::new(),
         last_keysym: None,
     };
-    
+
     // Roundtrip
     env.wait_roundtrip(&mut event_queue, &mut client_state);
-    
+
     // This is a basic check that we can roundtrip
 }
 
@@ -323,95 +333,11 @@ fn test_compositor_protocol() {
     let display = env.client.display();
     let mut event_queue = env.client.new_event_queue::<ClientState>();
     let qh = event_queue.handle();
-    
-    let _registry = display.get_registry(&qh, ());
-    let mut client_state = ClientState { compositor: None, shm: None, seat: None, pointer: None, keyboard: None, xdg_wm_base: None, xdg_surface: None, xdg_toplevel: None, subcompositor: None, relative_pointer_manager: None, relative_motion_events: Vec::new(), last_keysym: None };
-    
-    // Bind globals
-    env.wait_roundtrip(&mut event_queue, &mut client_state);
-    
-    // Check if compositor bound
-    assert!(client_state.compositor.is_some());
-    let compositor = client_state.compositor.as_ref().unwrap();
-    
-    // Create surface
-    let _surface = compositor.create_surface(&qh, ());
-    
-    env.wait_roundtrip(&mut event_queue, &mut client_state);
-    
-    // Verify usage of surface?
-    // We can't easily inspect server state from client object here without shared state access or ID tracking.
-    // But if no protocol error occurred, it worked.
-}
 
-#[test]
-fn test_shm_protocol() {
-    let mut env = TestEnv::new();
-    let display = env.client.display();
-    let mut event_queue = env.client.new_event_queue::<ClientState>();
-    let qh = event_queue.handle();
-    
     let _registry = display.get_registry(&qh, ());
-    let mut client_state = ClientState { compositor: None, shm: None, seat: None, pointer: None, keyboard: None, xdg_wm_base: None, xdg_surface: None, xdg_toplevel: None, subcompositor: None, relative_pointer_manager: None, relative_motion_events: Vec::new(), last_keysym: None };
-    
-    // Bind globals
-    env.wait_roundtrip(&mut event_queue, &mut client_state);
-    
-    // Check if shm bound
-    assert!(client_state.shm.is_some());
-    let shm = client_state.shm.as_ref().unwrap();
-    
-    // Create shm pool
-    // We need a real FD for this. 
-    // On macOS, let's use a tempfile or similar.
-    use std::io::Write;
-    let mut temp = tempfile::tempfile().unwrap();
-    temp.write_all(&[0u8; 4096]).unwrap();
-    
-    // Convert to BorrowedFd for bind
-    use std::os::unix::io::AsFd;
-    let pool = shm.create_pool(temp.as_fd(), 4096, &qh, ());
-    
-    // Create buffer from pool
-    let _buffer = pool.create_buffer(0, 32, 32, 128, wayland_client::protocol::wl_shm::Format::Argb8888, &qh, ());
-    
-    env.wait_roundtrip(&mut event_queue, &mut client_state);
-    
-    // Success if no protocol errors
-}
-
-#[test]
-fn test_seat_protocol() {
-    let mut env = TestEnv::new();
-    let display = env.client.display();
-    let mut event_queue = env.client.new_event_queue::<ClientState>();
-    let qh = event_queue.handle();
-    
-    let _registry = display.get_registry(&qh, ());
-    let mut client_state = ClientState { compositor: None, shm: None, seat: None, pointer: None, keyboard: None, xdg_wm_base: None, xdg_surface: None, xdg_toplevel: None, subcompositor: None, relative_pointer_manager: None, relative_motion_events: Vec::new(), last_keysym: None };
-    
-    // Bind globals
-    env.wait_roundtrip(&mut event_queue, &mut client_state);
-    
-    // Check if seat bound
-    assert!(client_state.seat.is_some());
-    
-    env.wait_roundtrip(&mut event_queue, &mut client_state);
-    
-    // Success if no protocol errors
-}
-
-#[test]
-fn test_input_events() {
-    let mut env = TestEnv::new();
-    let display = env.client.display();
-    let mut event_queue = env.client.new_event_queue::<ClientState>();
-    let qh = event_queue.handle();
-    
-    let _registry = display.get_registry(&qh, ());
-    let mut client_state = ClientState { 
-        compositor: None, 
-        shm: None, 
+    let mut client_state = ClientState {
+        compositor: None,
+        shm: None,
         seat: None,
         pointer: None,
         keyboard: None,
@@ -423,17 +349,148 @@ fn test_input_events() {
         relative_motion_events: Vec::new(),
         last_keysym: None,
     };
-    
-    // Bind globals and get seat caps
+
+    // Bind globals
     env.wait_roundtrip(&mut event_queue, &mut client_state);
-    
+
+    // Check if compositor bound
+    assert!(client_state.compositor.is_some());
+    let compositor = client_state.compositor.as_ref().unwrap();
+
+    // Create surface
+    let _surface = compositor.create_surface(&qh, ());
+
+    env.wait_roundtrip(&mut event_queue, &mut client_state);
+
+    // Verify usage of surface?
+    // We can't easily inspect server state from client object here without shared state access or ID tracking.
+    // But if no protocol error occurred, it worked.
+}
+
+#[test]
+fn test_shm_protocol() {
+    let mut env = TestEnv::new();
+    let display = env.client.display();
+    let mut event_queue = env.client.new_event_queue::<ClientState>();
+    let qh = event_queue.handle();
+
+    let _registry = display.get_registry(&qh, ());
+    let mut client_state = ClientState {
+        compositor: None,
+        shm: None,
+        seat: None,
+        pointer: None,
+        keyboard: None,
+        xdg_wm_base: None,
+        xdg_surface: None,
+        xdg_toplevel: None,
+        subcompositor: None,
+        relative_pointer_manager: None,
+        relative_motion_events: Vec::new(),
+        last_keysym: None,
+    };
+
+    // Bind globals
+    env.wait_roundtrip(&mut event_queue, &mut client_state);
+
+    // Check if shm bound
+    assert!(client_state.shm.is_some());
+    let shm = client_state.shm.as_ref().unwrap();
+
+    // Create shm pool
+    // We need a real FD for this.
+    // On macOS, let's use a tempfile or similar.
+    use std::io::Write;
+    let mut temp = tempfile::tempfile().unwrap();
+    temp.write_all(&[0u8; 4096]).unwrap();
+
+    // Convert to BorrowedFd for bind
+    use std::os::unix::io::AsFd;
+    let pool = shm.create_pool(temp.as_fd(), 4096, &qh, ());
+
+    // Create buffer from pool
+    let _buffer = pool.create_buffer(
+        0,
+        32,
+        32,
+        128,
+        wayland_client::protocol::wl_shm::Format::Argb8888,
+        &qh,
+        (),
+    );
+
+    env.wait_roundtrip(&mut event_queue, &mut client_state);
+
+    // Success if no protocol errors
+}
+
+#[test]
+fn test_seat_protocol() {
+    let mut env = TestEnv::new();
+    let display = env.client.display();
+    let mut event_queue = env.client.new_event_queue::<ClientState>();
+    let qh = event_queue.handle();
+
+    let _registry = display.get_registry(&qh, ());
+    let mut client_state = ClientState {
+        compositor: None,
+        shm: None,
+        seat: None,
+        pointer: None,
+        keyboard: None,
+        xdg_wm_base: None,
+        xdg_surface: None,
+        xdg_toplevel: None,
+        subcompositor: None,
+        relative_pointer_manager: None,
+        relative_motion_events: Vec::new(),
+        last_keysym: None,
+    };
+
+    // Bind globals
+    env.wait_roundtrip(&mut event_queue, &mut client_state);
+
     // Check if seat bound
     assert!(client_state.seat.is_some());
-    
+
+    env.wait_roundtrip(&mut event_queue, &mut client_state);
+
+    // Success if no protocol errors
+}
+
+#[test]
+fn test_input_events() {
+    let mut env = TestEnv::new();
+    let display = env.client.display();
+    let mut event_queue = env.client.new_event_queue::<ClientState>();
+    let qh = event_queue.handle();
+
+    let _registry = display.get_registry(&qh, ());
+    let mut client_state = ClientState {
+        compositor: None,
+        shm: None,
+        seat: None,
+        pointer: None,
+        keyboard: None,
+        xdg_wm_base: None,
+        xdg_surface: None,
+        xdg_toplevel: None,
+        subcompositor: None,
+        relative_pointer_manager: None,
+        relative_motion_events: Vec::new(),
+        last_keysym: None,
+    };
+
+    // Bind globals and get seat caps
+    env.wait_roundtrip(&mut event_queue, &mut client_state);
+
+    // Check if seat bound
+    assert!(client_state.seat.is_some());
+
     // Wait for caps to be processed and pointer bound
     env.wait_roundtrip(&mut event_queue, &mut client_state);
     assert!(client_state.pointer.is_some());
-    
+
     // Create surface and focus it (in theory we need to focus it to get enter/motion)
     // For now we just check if no protocol errors occur on basic binds.
     // Full input focus testing requires more setup (output, internal focus etc).
@@ -445,38 +502,44 @@ fn test_xdg_shell_protocol() {
     let display = env.client.display();
     let mut event_queue = env.client.new_event_queue::<ClientState>();
     let qh = event_queue.handle();
-    
+
     let _registry = display.get_registry(&qh, ());
-    let mut client_state = ClientState { 
-        compositor: None, shm: None, seat: None, pointer: None, keyboard: None,
-        xdg_wm_base: None, xdg_surface: None, xdg_toplevel: None,
+    let mut client_state = ClientState {
+        compositor: None,
+        shm: None,
+        seat: None,
+        pointer: None,
+        keyboard: None,
+        xdg_wm_base: None,
+        xdg_surface: None,
+        xdg_toplevel: None,
         subcompositor: None,
         relative_pointer_manager: None,
         relative_motion_events: Vec::new(),
         last_keysym: None,
     };
-    
+
     // Bind globals
     env.wait_roundtrip(&mut event_queue, &mut client_state);
-    
+
     // Check if xdg_wm_base bound
     assert!(client_state.xdg_wm_base.is_some());
     let xdg_wm_base = client_state.xdg_wm_base.as_ref().unwrap();
     let compositor = client_state.compositor.as_ref().unwrap();
-    
+
     // Create surface and xdg_surface
     let surface = compositor.create_surface(&qh, ());
     let xdg_surface = xdg_wm_base.get_xdg_surface(&surface, &qh, ());
     let xdg_toplevel = xdg_surface.get_toplevel(&qh, ());
-    
+
     client_state.xdg_surface = Some(xdg_surface);
     client_state.xdg_toplevel = Some(xdg_toplevel);
-    
+
     // Commit to trigger configure
     surface.commit();
-    
+
     env.wait_roundtrip(&mut event_queue, &mut client_state);
-    
+
     // Success if no protocol errors (e.g. invalid role)
 }
 
@@ -489,35 +552,51 @@ fn test_shm_pool_resize() {
     let display = env.client.display();
     let mut event_queue = env.client.new_event_queue::<ClientState>();
     let qh = event_queue.handle();
-    
+
     let _registry = display.get_registry(&qh, ());
-    let mut client_state = ClientState { 
-        compositor: None, shm: None, seat: None, pointer: None, keyboard: None,
-        xdg_wm_base: None, xdg_surface: None, xdg_toplevel: None,
+    let mut client_state = ClientState {
+        compositor: None,
+        shm: None,
+        seat: None,
+        pointer: None,
+        keyboard: None,
+        xdg_wm_base: None,
+        xdg_surface: None,
+        xdg_toplevel: None,
         subcompositor: None,
         relative_pointer_manager: None,
         relative_motion_events: Vec::new(),
         last_keysym: None,
     };
-    
+
     env.wait_roundtrip(&mut event_queue, &mut client_state);
     let shm = client_state.shm.as_ref().expect("wl_shm not bound").clone();
-    let compositor = client_state.compositor.as_ref().expect("wl_compositor not bound").clone();
-    
+    let compositor = client_state
+        .compositor
+        .as_ref()
+        .expect("wl_compositor not bound")
+        .clone();
+
     // Create a 4096-byte pool: one 32x32 XRGB buffer (stride 128).
     let temp = tempfile::tempfile().unwrap();
     temp.set_len(8192).unwrap();
     let pool = shm.create_pool(temp.as_fd(), 4096, &qh, ());
     let buffer1 = pool.create_buffer(0, 32, 32, 128, wl_shm::Format::Xrgb8888, &qh, ());
     env.wait_roundtrip(&mut event_queue, &mut client_state);
-    
+
     let surface = compositor.create_surface(&qh, ());
     surface.attach(Some(&buffer1), 0, 0);
     surface.commit();
     env.wait_roundtrip(&mut event_queue, &mut client_state);
-    
+
     let surface_proto_id = Proxy::id(&surface).protocol_id();
-    let client_id = env.state.clients.keys().next().expect("No server client").clone();
+    let client_id = env
+        .state
+        .clients
+        .keys()
+        .next()
+        .expect("No server client")
+        .clone();
     let surface_id = *env
         .state
         .protocol_to_internal_surface
@@ -528,21 +607,24 @@ fn test_shm_pool_resize() {
         let s = s.read().unwrap();
         assert_eq!((s.current.width, s.current.height), (32, 32));
     }
-    
+
     // Grow the pool and carve a second buffer entirely from the new region.
     pool.resize(8192);
     let buffer2 = pool.create_buffer(4096, 32, 32, 128, wl_shm::Format::Xrgb8888, &qh, ());
     env.wait_roundtrip(&mut event_queue, &mut client_state);
-    
+
     surface.attach(Some(&buffer2), 0, 0);
     surface.commit();
     env.wait_roundtrip(&mut event_queue, &mut client_state);
-    
+
     {
         let s = env.state.get_surface(surface_id).unwrap();
         let s = s.read().unwrap();
         assert_eq!((s.current.width, s.current.height), (32, 32));
-        assert!(matches!(s.current.buffer, crate::core::surface::BufferType::Shm(_)));
+        assert!(matches!(
+            s.current.buffer,
+            crate::core::surface::BufferType::Shm(_)
+        ));
     }
 }
 
@@ -552,34 +634,49 @@ fn test_subsurface_sync_commit() {
     let display = env.client.display();
     let mut event_queue = env.client.new_event_queue::<ClientState>();
     let qh = event_queue.handle();
-    
+
     let _registry = display.get_registry(&qh, ());
-    let mut client_state = ClientState { 
-        compositor: None, shm: None, seat: None, pointer: None, keyboard: None,
-        xdg_wm_base: None, xdg_surface: None, xdg_toplevel: None,
+    let mut client_state = ClientState {
+        compositor: None,
+        shm: None,
+        seat: None,
+        pointer: None,
+        keyboard: None,
+        xdg_wm_base: None,
+        xdg_surface: None,
+        xdg_toplevel: None,
         subcompositor: None,
         relative_pointer_manager: None,
         relative_motion_events: Vec::new(),
         last_keysym: None,
     };
-    
+
     env.wait_roundtrip(&mut event_queue, &mut client_state);
     let compositor = client_state.compositor.as_ref().unwrap();
-    let subcompositor = client_state.subcompositor.as_ref().expect("wl_subcompositor not bound");
-    
+    let subcompositor = client_state
+        .subcompositor
+        .as_ref()
+        .expect("wl_subcompositor not bound");
+
     // Create parent and child surfaces
     let parent_surface = compositor.create_surface(&qh, ());
     let child_surface = compositor.create_surface(&qh, ());
-    
+
     let subsurface = subcompositor.get_subsurface(&child_surface, &parent_surface, &qh, ());
     subsurface.set_sync(); // Default is sync, but let's be explicit
-    
+
     env.wait_roundtrip(&mut event_queue, &mut client_state);
-    
+
     let child_proto_id = Proxy::id(&child_surface).protocol_id();
     let parent_proto_id = Proxy::id(&parent_surface).protocol_id();
-    let client_id = env.state.clients.keys().next().expect("No server client").clone();
-    
+    let client_id = env
+        .state
+        .clients
+        .keys()
+        .next()
+        .expect("No server client")
+        .clone();
+
     let child_id = *env
         .state
         .protocol_to_internal_surface
@@ -590,20 +687,23 @@ fn test_subsurface_sync_commit() {
         .protocol_to_internal_surface
         .get(&(client_id.clone(), parent_proto_id))
         .expect("Parent internal ID not found");
-    
+
     // Verify subsurface relationship
     {
         let state = &env.state;
         assert!(state.subsurfaces.contains_key(&child_id));
-        assert_eq!(state.subsurfaces.get(&child_id).unwrap().parent_id, parent_id);
+        assert_eq!(
+            state.subsurfaces.get(&child_id).unwrap().parent_id,
+            parent_id
+        );
     }
-    
+
     // 1. Commit child (sync mode) -> smithay caches the state; nothing is
     // applied (and Wawona's shadow state is untouched) until parent commit.
     child_surface.set_buffer_scale(2);
     child_surface.commit();
     env.wait_roundtrip(&mut event_queue, &mut client_state);
-    
+
     {
         let state = &env.state;
         let child = state.get_surface(child_id).unwrap();
@@ -611,11 +711,11 @@ fn test_subsurface_sync_commit() {
         // current.scale should still be 1 (default): sync commit is deferred
         assert_eq!(child.current.scale, 1);
     }
-    
+
     // 2. Commit parent -> child's cached state should be applied to current
     parent_surface.commit();
     env.wait_roundtrip(&mut event_queue, &mut client_state);
-    
+
     {
         let state = &env.state;
         let child = state.get_surface(child_id).unwrap();
@@ -631,36 +731,45 @@ fn test_relative_pointer_motion() {
     let display = env.client.display();
     let mut event_queue = env.client.new_event_queue::<ClientState>();
     let qh = event_queue.handle();
-    
+
     let _registry = display.get_registry(&qh, ());
-    let mut client_state = ClientState { 
-        compositor: None, shm: None, seat: None, pointer: None, keyboard: None,
-        xdg_wm_base: None, xdg_surface: None, xdg_toplevel: None,
+    let mut client_state = ClientState {
+        compositor: None,
+        shm: None,
+        seat: None,
+        pointer: None,
+        keyboard: None,
+        xdg_wm_base: None,
+        xdg_surface: None,
+        xdg_toplevel: None,
         subcompositor: None,
         relative_pointer_manager: None,
         relative_motion_events: Vec::new(),
         last_keysym: None,
     };
-    
+
     env.wait_roundtrip(&mut event_queue, &mut client_state);
-    
+
     let seat = client_state.seat.as_ref().expect("wl_seat not bound");
     client_state.pointer = Some(seat.get_pointer(&qh, ()));
-    
+
     env.wait_roundtrip(&mut event_queue, &mut client_state);
-    
-    let rel_mgr = client_state.relative_pointer_manager.as_ref().expect("zwp_relative_pointer_manager_v1 not bound");
+
+    let rel_mgr = client_state
+        .relative_pointer_manager
+        .as_ref()
+        .expect("zwp_relative_pointer_manager_v1 not bound");
     let pointer = client_state.pointer.as_ref().unwrap();
     let _rel_pointer = rel_mgr.get_relative_pointer(pointer, &qh, ());
-    
+
     env.wait_roundtrip(&mut event_queue, &mut client_state);
-    
+
     // Inject relative motion in server
     env.state.inject_pointer_motion_relative(10.5, 20.25, 1234);
-    
+
     // Roundtrip to let client receive events
     env.wait_roundtrip(&mut event_queue, &mut client_state);
-    
+
     // Verify client received relative motion
     assert_eq!(client_state.relative_motion_events.len(), 1);
     let (dx, dy) = client_state.relative_motion_events[0];
@@ -674,43 +783,69 @@ fn test_pointer_lock() {
     let display = env.client.display();
     let mut event_queue = env.client.new_event_queue::<ClientState>();
     let qh = event_queue.handle();
-    
+
     let _registry = display.get_registry(&qh, ());
-    let mut client_state = ClientState { 
-        compositor: None, shm: None, seat: None, pointer: None, keyboard: None,
-        xdg_wm_base: None, xdg_surface: None, xdg_toplevel: None,
+    let mut client_state = ClientState {
+        compositor: None,
+        shm: None,
+        seat: None,
+        pointer: None,
+        keyboard: None,
+        xdg_wm_base: None,
+        xdg_surface: None,
+        xdg_toplevel: None,
         subcompositor: None,
         relative_pointer_manager: None,
         relative_motion_events: Vec::new(),
         last_keysym: None,
     };
-    
+
     env.wait_roundtrip(&mut event_queue, &mut client_state);
-    
+
     // Create surface and xdg_toplevel to get focus
     let compositor = client_state.compositor.as_ref().unwrap();
     let surface = compositor.create_surface(&qh, ());
-    client_state.xdg_surface = Some(client_state.xdg_wm_base.as_ref().unwrap().get_xdg_surface(&surface, &qh, ()));
-    client_state.xdg_toplevel = Some(client_state.xdg_surface.as_ref().unwrap().get_toplevel(&qh, ()));
+    client_state.xdg_surface = Some(client_state.xdg_wm_base.as_ref().unwrap().get_xdg_surface(
+        &surface,
+        &qh,
+        (),
+    ));
+    client_state.xdg_toplevel = Some(
+        client_state
+            .xdg_surface
+            .as_ref()
+            .unwrap()
+            .get_toplevel(&qh, ()),
+    );
     surface.commit();
     env.wait_roundtrip(&mut event_queue, &mut client_state);
-    
+
     let surface_id = surface.id().protocol_id();
-    let client_id = env.state.clients.keys().next().expect("No server client").clone();
-    
+    let client_id = env
+        .state
+        .clients
+        .keys()
+        .next()
+        .expect("No server client")
+        .clone();
+
     // Set focus manually in test env
     env.state.seat.pointer.focus = Some(surface_id);
-    
+
     // Check if locked - should be false
-    assert!(!env.state.ext.pointer_constraints.is_pointer_locked(client_id, surface_id));
-    
+    assert!(!env
+        .state
+        .ext
+        .pointer_constraints
+        .is_pointer_locked(client_id, surface_id));
+
     // In a real scenario, client would bind pointer_constraints and request lock
     // For this test, we'll verify the server-side logic of is_pointer_locked
     // by manually adding a locked pointer to the state
-    
+
     // Actually, let's verify that focus management activates constraints
     // (This requires a more complex mocking of the wayland-server objects)
-    
+
     // For now, verified relative motion which uses the same infrastructure.
 }
 
@@ -745,21 +880,30 @@ fn test_keyboard_key_a_keysym() {
     // the client must have a mapped toplevel with keyboard focus first.
     let compositor = client_state.compositor.as_ref().unwrap();
     let surface = compositor.create_surface(&qh, ());
-    client_state.xdg_surface = Some(
+    client_state.xdg_surface = Some(client_state.xdg_wm_base.as_ref().unwrap().get_xdg_surface(
+        &surface,
+        &qh,
+        (),
+    ));
+    client_state.xdg_toplevel = Some(
         client_state
-            .xdg_wm_base
+            .xdg_surface
             .as_ref()
             .unwrap()
-            .get_xdg_surface(&surface, &qh, ()),
+            .get_toplevel(&qh, ()),
     );
-    client_state.xdg_toplevel =
-        Some(client_state.xdg_surface.as_ref().unwrap().get_toplevel(&qh, ()));
     surface.commit();
     env.wait_roundtrip(&mut event_queue, &mut client_state);
 
     // Focus the surface on the smithay keyboard.
     let surface_proto_id = Proxy::id(&surface).protocol_id();
-    let client_id = env.state.clients.keys().next().expect("No server client").clone();
+    let client_id = env
+        .state
+        .clients
+        .keys()
+        .next()
+        .expect("No server client")
+        .clone();
     let surface_id = *env
         .state
         .protocol_to_internal_surface

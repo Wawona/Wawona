@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 
 /**
  * Canonical bundled client list. Keep in sync with iOS kBundledClients in WWNMachinesViewModel.swift.
+ * Never add modeb-tty / igetty. Those are the Doorman console, not a machine.
  */
 data class BundledClientOption(
     val id: String,

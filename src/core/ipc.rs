@@ -28,7 +28,8 @@ impl IpcServer {
         if path_bytes >= 104 {
             tracing::warn!(
                 "IPC socket path too long ({} bytes, max 103): {:?}. IPC disabled",
-                path_bytes, socket_path
+                path_bytes,
+                socket_path
             );
             return IpcServer { socket_path: None };
         }
@@ -36,7 +37,11 @@ impl IpcServer {
         let listener = match UnixListener::bind(&socket_path) {
             Ok(l) => l,
             Err(e) => {
-                tracing::warn!("Failed to bind IPC socket {:?}: {}. IPC disabled", socket_path, e);
+                tracing::warn!(
+                    "Failed to bind IPC socket {:?}: {}. IPC disabled",
+                    socket_path,
+                    e
+                );
                 return IpcServer { socket_path: None };
             }
         };
@@ -56,7 +61,7 @@ impl IpcServer {
                                 if reader.read_line(&mut line).unwrap_or(0) == 0 {
                                     break;
                                 }
-                                
+
                                 let cmd = line.trim();
                                 let response = match cmd {
                                     "ping" => "pong\n".to_string(),
@@ -64,28 +69,37 @@ impl IpcServer {
                                     "windows" => {
                                         if let Ok(state) = state.read() {
                                             let mut out = String::new();
-                                            out.push_str(&format!("Window count: {}\n", state.windows.len()));
+                                            out.push_str(&format!(
+                                                "Window count: {}\n",
+                                                state.windows.len()
+                                            ));
                                             for (id, window) in &state.windows {
                                                 if let Ok(w) = window.read() {
-                                                    out.push_str(&format!("Window {}: \"{}\" ({}x{}) - Surface {}\n", 
-                                                        id, w.title, w.geometry().width, w.geometry().height, w.surface_id));
+                                                    out.push_str(&format!(
+                                                        "Window {}: \"{}\" ({}x{}) - Surface {}\n",
+                                                        id,
+                                                        w.title,
+                                                        w.geometry().width,
+                                                        w.geometry().height,
+                                                        w.surface_id
+                                                    ));
                                                 }
                                             }
                                             out
                                         } else {
                                             "error: lock failed\n".to_string()
                                         }
-                                    },
+                                    }
                                     "tree" => {
                                         if let Ok(state) = state.read() {
                                             state.scene.dump()
                                         } else {
                                             "error: lock failed\n".to_string()
                                         }
-                                    },
+                                    }
                                     _ => "error: unknown command\n".to_string(),
                                 };
-                                
+
                                 if let Err(e) = stream.write_all(response.as_bytes()) {
                                     tracing::error!("IPC write error: {}", e);
                                     break;
@@ -100,7 +114,9 @@ impl IpcServer {
             }
         });
 
-        IpcServer { socket_path: Some(socket_path) }
+        IpcServer {
+            socket_path: Some(socket_path),
+        }
     }
 }
 

@@ -237,6 +237,7 @@ NSString *WWNCompositorBackendCLIOverride(void) { return sCLIBackend; }
 NSString *const kWWNMachineTypeSSHWaypipe = @"ssh_waypipe";
 NSString *const kWWNMachineTypeSSHTerminal = @"ssh_terminal";
 NSString *const kWWNMachineTypeNative = @"native";
+NSString *const kWWNMachineTypeWasm = @"wasm";
 NSString *const kWWNMachineTypeVirtualMachine = @"virtual_machine";
 NSString *const kWWNMachineTypeContainer = @"container";
 
@@ -307,6 +308,14 @@ NSString *const kWWNMachineTypeContainer = @"container";
 }
 + (BOOL)resolvedSwipeBackToCloseForProfile:(WWNMachineProfile *)profile {
   (void)profile;
+  return YES;
+}
++ (BOOL)resolvedResizeDisplayForVirtualKeyboardForProfile:
+    (WWNMachineProfile *)profile {
+  (void)profile;
+  return YES;
+}
++ (BOOL)resolvedResizeDisplayForVirtualKeyboardActive {
   return YES;
 }
 + (BOOL)resolvedRenderMacOSPointerForProfile:(WWNMachineProfile *)profile {

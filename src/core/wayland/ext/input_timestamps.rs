@@ -5,13 +5,11 @@
 //! nanosecond-precision timing. The `tv_sec_hi` and `tv_sec_lo` fields
 //! represent seconds, and `tv_nsec` represents nanoseconds.
 
-use wayland_server::{
-    Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
-};
 use wayland_protocols::wp::input_timestamps::zv1::server::{
     zwp_input_timestamps_manager_v1::{self, ZwpInputTimestampsManagerV1},
     zwp_input_timestamps_v1::{self, ZwpInputTimestampsV1},
 };
+use wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource};
 
 use crate::core::state::CompositorState;
 
@@ -79,17 +77,29 @@ impl Dispatch<ZwpInputTimestampsManagerV1, ()> for CompositorState {
         match request {
             zwp_input_timestamps_manager_v1::Request::GetKeyboardTimestamps { id, keyboard: _ } => {
                 let ts = data_init.init(id, ());
-                state.ext.input_timestamps.resources.push((ts, InputTimestampKind::Keyboard));
+                state
+                    .ext
+                    .input_timestamps
+                    .resources
+                    .push((ts, InputTimestampKind::Keyboard));
                 tracing::debug!("Created keyboard timestamps subscription");
             }
             zwp_input_timestamps_manager_v1::Request::GetPointerTimestamps { id, pointer: _ } => {
                 let ts = data_init.init(id, ());
-                state.ext.input_timestamps.resources.push((ts, InputTimestampKind::Pointer));
+                state
+                    .ext
+                    .input_timestamps
+                    .resources
+                    .push((ts, InputTimestampKind::Pointer));
                 tracing::debug!("Created pointer timestamps subscription");
             }
             zwp_input_timestamps_manager_v1::Request::GetTouchTimestamps { id, touch: _ } => {
                 let ts = data_init.init(id, ());
-                state.ext.input_timestamps.resources.push((ts, InputTimestampKind::Touch));
+                state
+                    .ext
+                    .input_timestamps
+                    .resources
+                    .push((ts, InputTimestampKind::Touch));
                 tracing::debug!("Created touch timestamps subscription");
             }
             zwp_input_timestamps_manager_v1::Request::Destroy => {}
@@ -111,7 +121,11 @@ impl Dispatch<ZwpInputTimestampsV1, ()> for CompositorState {
         match request {
             zwp_input_timestamps_v1::Request::Destroy => {
                 let res_id = resource.id();
-                state.ext.input_timestamps.resources.retain(|(r, _)| r.id() != res_id);
+                state
+                    .ext
+                    .input_timestamps
+                    .resources
+                    .retain(|(r, _)| r.id() != res_id);
                 tracing::debug!("Input timestamps subscription destroyed");
             }
             _ => {}

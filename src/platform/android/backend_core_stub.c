@@ -268,3 +268,33 @@ void WWNCoreTextInputGetCursorRect(void *core, int32_t *out_x, int32_t *out_y, i
   if (out_width) *out_width = 0;
   if (out_height) *out_height = 0;
 }
+void WWNApplyHostKeyLevels(int32_t kind, const int32_t *ids, const uint32_t *levels4, size_t count) {
+  (void)kind;
+  (void)ids;
+  (void)levels4;
+  (void)count;
+}
+void WWNCoreReloadHostKeymap(void *core) { (void)core; }
+char *WWNHostKeymapXkbV1Copy(void) { return NULL; }
+void WWNHostKeymapXkbV1Free(char *s) { (void)s; }
+int WWNWriteWestonHoneycombIni(const char *path, const char *weston_data_dir,
+                               int use_pixman, const char *shell_client,
+                               const char *input_method) {
+  (void)path;
+  (void)weston_data_dir;
+  (void)use_pixman;
+  (void)shell_client;
+  (void)input_method;
+  return 0;
+}
+int WWNCoreOskShouldShow(void *core, int hardware_keyboard, int force) {
+  (void)core;
+  (void)hardware_keyboard;
+  (void)force;
+  return 0;
+}
+int32_t WWNCoreUsableOutputHeight(int32_t output_height,
+                                  int32_t keyboard_overlap) {
+  (void)keyboard_overlap;
+  return output_height;
+}

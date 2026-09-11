@@ -4,13 +4,11 @@
 //! of a surface (e.g., video, game, photo), enabling compositor optimizations.
 //! The compositor can use this hint to adjust frame scheduling and rendering.
 
-use wayland_server::{
-    Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
-};
 use wayland_protocols::wp::content_type::v1::server::{
     wp_content_type_manager_v1::{self, WpContentTypeManagerV1},
     wp_content_type_v1::{self, WpContentTypeV1},
 };
+use wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource};
 
 use crate::core::state::CompositorState;
 use std::collections::HashMap;
@@ -47,7 +45,10 @@ pub struct ContentTypeState {
 
 impl ContentTypeState {
     pub fn get(&self, surface_id: u32) -> ContentType {
-        self.surface_types.get(&surface_id).copied().unwrap_or(ContentType::None)
+        self.surface_types
+            .get(&surface_id)
+            .copied()
+            .unwrap_or(ContentType::None)
     }
 
     pub fn remove_surface(&mut self, surface_id: u32) {

@@ -166,13 +166,18 @@ pub fn bundled_client(id: &str) -> Option<&'static BundledClient> {
 
 /// Display label for a client id, falling back to the raw id when unknown.
 pub fn label_for(id: &str) -> String {
-    bundled_client(id).map(|c| c.name.to_string()).unwrap_or_else(|| id.to_string())
+    bundled_client(id)
+        .map(|c| c.name.to_string())
+        .unwrap_or_else(|| id.to_string())
 }
 
 /// Terminals and nested compositors fill the host. Demos stay client-preferred
 /// (`configure(0,0)`). Same set as macOS `WWNBundledClientFillsHost`.
 pub fn fills_host(command_or_id: &str) -> bool {
-    let token = command_or_id.split_whitespace().next().unwrap_or(command_or_id);
+    let token = command_or_id
+        .split_whitespace()
+        .next()
+        .unwrap_or(command_or_id);
     let base = std::path::Path::new(token)
         .file_name()
         .and_then(|s| s.to_str())

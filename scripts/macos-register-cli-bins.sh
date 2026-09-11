@@ -351,7 +351,12 @@ if [ "\$NAME" = weston ] && [ "\$MODEB" -eq 0 ]; then
       if [ -n "\$_wawona_kbd" ]; then
         printf 'input-method=%s\n' "\$_wawona_kbd"
       fi
-      printf '%s\n' "background-color=0xff1a1a2e" "panel-position=top"
+      printf '%s\n' "background-color=0xff1a1a2e"
+      if [ -n "\$weston_data" ] && [ -f "\$weston_data/background.png" ]; then
+        printf 'background-image=%s\n' "\$weston_data/background.png"
+        printf '%s\n' "background-type=scale"
+      fi
+      printf '%s\n' "panel-color=0xff101010" "panel-position=top" "clock-format=seconds"
     } > "\$_wawona_ini"
     export WESTON_CONFIG_FILE="\$_wawona_ini"
     unset _wawona_ini _wawona_shell _wawona_kbd _wawona_c
@@ -436,7 +441,7 @@ if [ "\$WAWONA_CLI_NAME" = weston ]; then
     fi
   else
     if [ "\$_wawona_has_backend" -eq 0 ]; then
-      set -- --backend=drm --continue-without-input "\$@"
+      set -- --backend=drm "\$@"
     fi
   fi
   # WESTON_CONFIG_FILE is a basename for XDG search, not a path. Machines

@@ -16,6 +16,15 @@ object SessionExitSettings {
         return SettingsOverrides.readBool(merged, "swipeBackToCloseEnabled", global)
     }
 
+    fun resolvedResizeDisplayForVirtualKeyboard(
+        prefs: SharedPreferences,
+        profile: MachineProfile?,
+    ): Boolean {
+        val global = prefs.getBoolean("resizeDisplayForVirtualKeyboard", true)
+        val merged = profile?.let { SettingsOverrides.merge(it) }
+        return SettingsOverrides.readBool(merged, "resizeDisplayForVirtualKeyboard", global)
+    }
+
     fun isThumbnailEnabled(prefs: SharedPreferences, profile: MachineProfile?): Boolean {
         val merged = profile?.let { SettingsOverrides.merge(it) }
         return SettingsOverrides.readBool(merged, "machineThumbnailEnabledOverride", true)

@@ -16,6 +16,7 @@
 #import "ui/Machines/WWNMachineProfileStore.h"
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
 #import "WWNWindow.h"
+#import "WWNHostKeymap.h"
 #endif
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
 #import <UIKit/UIKit.h>
@@ -30,6 +31,10 @@
 #include <stdatomic.h>
 #include <math.h>
 #include <string.h> // For strdup
+
+static BOOL WWNTouchPointerEmulationEnabled(void) {
+  return [[WWNPreferencesManager sharedManager] touchPointerEmulationEnabled];
+}
 
 static BOOL WWNForceSSDEnabled(void) {
 #if TARGET_OS_TV
@@ -111,6 +116,7 @@ extern void WWNCoreFlushClients(void *core);
 extern uint32_t WWNCoreDisconnectAllClients(void *core);
 extern void WWNCoreSetForceSSD(void *core, bool enabled);
 extern void WWNCoreSetForceSSDForClientLaunch(void *core, bool enabled);
+extern void WWNCoreSetTouchPointerEmulation(void *core, bool enabled);
 extern void WWNCoreSetFillsHostForClientLaunch(void *core, bool fills_host);
 extern void WWNCoreSetWindowHostSceneIndependent(void *core, uint64_t window_id,
                                                  bool independent);
@@ -197,6 +203,22 @@ static BOOL WWNBundledClientFillsHost(NSString *clientId) {
 }
 
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+/// wl_output mode stays in points. Scale is the window backing factor.
+/// Advertising physical pixels (points * scale) as the mode made nested
+/// weston fail later xdg configures ("Mode switch failed"). Scale 2 with
+/// a point-sized mode is Retina. Scale 1 is a 1x buffer stretched on
+/// backing-2 displays.
+static float WWNBackingScaleForWindow(NSWindow *window) {
+  CGFloat s = window.backingScaleFactor;
+  if (s < 1.0 && [NSScreen mainScreen]) {
+    s = [NSScreen mainScreen].backingScaleFactor;
+  }
+  if (s < 1.0) {
+    s = 1.0;
+  }
+  return (float)s;
+}
+
 static BOOL WWNTitleIndicatesNestedCompositor(NSString *title) {
   NSString *t = title.lowercaseString;
   if (t.length == 0) {
@@ -290,6 +312,7 @@ extern void WWNCoreTextInputDeleteSurrounding(void *core, uint32_t before,
                                               uint32_t after);
 extern int WWNCoreTextInputIsEnabled(void *core);
 extern int WWNCoreTextEntryWanted(void *core);
+extern int WWNCoreOskShouldShow(void *core, int hardware_keyboard, int force);
 extern void WWNCoreTextInputGetContentType(void *core, uint32_t *out_hint,
                                            uint32_t *out_purpose);
 extern void WWNCoreTextInputGetCursorRect(void *core, int32_t *out_x,
@@ -712,6 +735,7 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
   /// Last host-reported xdg maximized/fullscreen bits (fill-primary iOS family).
   NSMutableDictionary<NSNumber *, NSNumber *> *_iosHostMaximizedByWindowId;
   NSMutableDictionary<NSNumber *, NSNumber *> *_iosHostFullscreenByWindowId;
+  NSMutableDictionary<NSNumber *, UIImage *> *_tabPreviewCache;
   // Host compositor view for iland Metal demos (kmscube) / nested DRM when
   // no Wayland toplevel exists yet. containerView is a plain UIView.
   WWNCompositorView_ios *_ilandHostView;
@@ -824,6 +848,7 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
     _iosHostCloseDeferred = [NSMutableSet set];
     _iosHostMaximizedByWindowId = [NSMutableDictionary dictionary];
     _iosHostFullscreenByWindowId = [NSMutableDictionary dictionary];
+    _tabPreviewCache = [NSMutableDictionary dictionary];
     _hostLockedWindowIds = [NSMutableSet set];
     _iosPerWindowHostingEnabled = WWNEnablePerWindowHosting();
     WWNLog("BRIDGE", @"iOS/vision per-window hosting %@", _iosPerWindowHostingEnabled ? @"enabled" : @"disabled");
@@ -845,6 +870,7 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
     _windowsWithInitialSizeSynced = [NSMutableSet set];
     _windowsAutoShownAfterFirstBuffer = [NSMutableSet set];
     [self setForceSSD:WWNForceSSDEnabled()];
+    [self setTouchPointerEmulation:WWNTouchPointerEmulationEnabled()];
     // SwiftUI MachineSettings / WawonaPreferences write Force SSD to defaults
     // and post this notification. ObjC WWNPreferences only observes defaults
     // after its window is opened. Without this, Force SSD toggles never reach
@@ -886,6 +912,14 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
     sHasForceSSDSample = YES;
     sLastForceSSD = enabled;
     [self setForceSSD:enabled];
+  }
+  static BOOL sLastTouchPointerEmulation = NO;
+  static BOOL sHasTouchPointerEmulationSample = NO;
+  BOOL touchPointer = WWNTouchPointerEmulationEnabled();
+  if (!sHasTouchPointerEmulationSample || sLastTouchPointerEmulation != touchPointer) {
+    sHasTouchPointerEmulationSample = YES;
+    sLastTouchPointerEmulation = touchPointer;
+    [self setTouchPointerEmulation:touchPointer];
   }
 }
 
@@ -970,6 +1004,11 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
   const char *name = socketName ? [socketName UTF8String] : NULL;
   WWNLog("BRIDGE", @"Starting compositor...");
 
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+  // Fill HostKeymapBridge before seat init so the first keymap is the host.
+  WWNHostKeymapDumpAndApply(NULL);
+#endif
+
   __block bool success = false;
   if (_compositorThread) {
     // Ensure any pre-start configuration enqueued via _dispatchToRust
@@ -982,10 +1021,15 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
   }
 
   if (success) {
+#if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+    WWNHostKeymapDumpAndApply(self->_rustCore);
+    WWNHostKeymapStartObserving(self->_rustCore);
+#endif
     // Re-apply after start: init may have raced, and Swift prefs can change
     // between WWNCoreNew and WWNCoreStart. decoration_policy must match the
     // Force SSD toggle before the first client connects.
     [self setForceSSD:WWNForceSSDEnabled()];
+    [self setTouchPointerEmulation:WWNTouchPointerEmulationEnabled()];
 
     // Export WAYLAND_DISPLAY so child processes and logs can reference it
     NSString *displayName = socketName ?: @"wayland-0";
@@ -1375,6 +1419,89 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
 #endif /* !TARGET_OS_TV */
 }
 
+static const uint32_t kWWNHostEditKeyLeftCtrl = 29;
+static const uint32_t kWWNHostEditKeyLeftShift = 42;
+static const uint32_t kWWNHostEditKeyC = 46;
+static const uint32_t kWWNHostEditKeyV = 47;
+static const uint32_t kWWNHostEditModShift = (1u << 0);
+static const uint32_t kWWNHostEditModCtrl = (1u << 2);
+
+- (uint32_t)_hostEditTimestampMs {
+  return (uint32_t)llround(CACurrentMediaTime() * 1000.0);
+}
+
+- (void)_hostEditInjectChord:(uint32_t)keycode {
+  if (!_rustCore) {
+    return;
+  }
+  uint32_t ts = [self _hostEditTimestampMs];
+  uint32_t mods = kWWNHostEditModCtrl | kWWNHostEditModShift;
+  [self injectKeyWithKeycode:kWWNHostEditKeyLeftCtrl pressed:YES timestamp:ts];
+  [self injectKeyWithKeycode:kWWNHostEditKeyLeftShift pressed:YES timestamp:ts];
+  [self injectModifiersWithDepressed:mods latched:0 locked:0 group:0];
+  [self injectKeyWithKeycode:keycode pressed:YES timestamp:ts];
+  [self injectKeyWithKeycode:keycode pressed:NO timestamp:ts + 1];
+  [self injectKeyWithKeycode:kWWNHostEditKeyLeftShift pressed:NO timestamp:ts + 2];
+  [self injectKeyWithKeycode:kWWNHostEditKeyLeftCtrl pressed:NO timestamp:ts + 2];
+  [self injectModifiersWithDepressed:0 latched:0 locked:0 group:0];
+}
+
+- (BOOL)hostEditMenuEnabled {
+#if TARGET_OS_TV
+  return NO;
+#else
+  return [[WWNPreferencesManager sharedManager] universalClipboardEnabled];
+#endif
+}
+
+- (BOOL)hostEditCanPaste {
+  NSString *text = [self hostEditPasteboardString];
+  return text.length > 0;
+}
+
+- (NSString *)hostEditPasteboardString {
+  if (![self hostEditMenuEnabled]) {
+    return nil;
+  }
+#if TARGET_OS_TV
+  return nil;
+#elif TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+  return [UIPasteboard generalPasteboard].string;
+#else
+  return [[NSPasteboard generalPasteboard] stringForType:NSPasteboardTypeString];
+#endif
+}
+
+- (void)hostEditSetClientClipboard:(NSString *)text {
+  if (!_rustCore || text.length == 0) {
+    return;
+  }
+  WWNCoreSetClipboardText(_rustCore, text.UTF8String);
+}
+
+- (void)hostEditCopyFromClient {
+  if (![self hostEditMenuEnabled]) {
+    return;
+  }
+  [self _hostEditInjectChord:kWWNHostEditKeyC];
+}
+
+- (void)hostEditPasteIntoClient {
+  if (![self hostEditMenuEnabled]) {
+    return;
+  }
+  NSString *text = [self hostEditPasteboardString];
+  if (text.length == 0) {
+    return;
+  }
+  [self hostEditSetClientClipboard:text];
+  if ([self isTextInputEnabled]) {
+    [self textInputCommitString:text];
+    return;
+  }
+  [self _hostEditInjectChord:kWWNHostEditKeyV];
+}
+
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
 /// Drive host soft keyboard from `text_entry_wanted` (committed TI-v3 enable
 /// OR allowlisted terminal keyboard focus). Accessory bar stays independent.
@@ -1386,7 +1513,16 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
 #if TARGET_OS_TV
   return;
 #else
-  BOOL wanted = WWNCoreTextEntryWanted(_rustCore) != 0;
+  BOOL hardwareKeyboard = NO;
+  for (NSNumber *probeKey in self->_windows) {
+    UIView *probeView = self->_windows[probeKey];
+    if ([probeView isKindOfClass:[WWNCompositorView_ios class]]) {
+      hardwareKeyboard =
+          hardwareKeyboard ||
+          [(WWNCompositorView_ios *)probeView hardwareKeyboardActive];
+    }
+  }
+  BOOL wanted = WWNCoreOskShouldShow(_rustCore, hardwareKeyboard ? 1 : 0, 0) != 0;
   uint32_t hint = 0;
   uint32_t purpose = 0;
   WWNCoreTextInputGetContentType(_rustCore, &hint, &purpose);
@@ -3187,6 +3323,26 @@ extern void WWNCoreInject_touch_frame(void *core);
   return [NSString stringWithFormat:@"Client %llu", windowId];
 }
 
+- (UIImage *)previewImageForHostWindowId:(uint64_t)windowId {
+  NSNumber *key = @(windowId);
+  UIView *view = _windows[key];
+  UIImage *live = nil;
+  if ([view isKindOfClass:[WWNCompositorView_ios class]]) {
+    live = [(WWNCompositorView_ios *)view wwn_tabPreviewImage];
+  } else if (view && view.bounds.size.width > 1 && view.bounds.size.height > 1) {
+    UIGraphicsImageRenderer *r =
+        [[UIGraphicsImageRenderer alloc] initWithBounds:view.bounds];
+    live = [r imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
+      [view drawViewHierarchyInRect:view.bounds afterScreenUpdates:NO];
+    }];
+  }
+  if (live) {
+    _tabPreviewCache[key] = live;
+    return live;
+  }
+  return _tabPreviewCache[key];
+}
+
 - (void)focusTabbedClientWindowId:(uint64_t)windowId {
   UIView *view = _windows[@(windowId)];
   if (view.superview) {
@@ -3197,15 +3353,31 @@ extern void WWNCoreInject_touch_frame(void *core);
   // (fill-primary surfaces otherwise stack opaquely and the raise alone is not
   // enough once a client repaints). fullscreen_shell kiosk layers are display
   // surfaces, not tabs. Leave their visibility untouched.
+  //
+  // Exception: a brand-new toplevel (e.g. hello-wasi-gui from weston-terminal)
+  // has no committed buffer yet. Hiding the previous client then leaves a
+  // black plate while focus is stolen. Keep siblings visible until the
+  // selected surface paints (ClientCommit sets clientCommittedSize).
+  BOOL activeHasContent = YES;
+  if ([view isKindOfClass:[WWNCompositorView_ios class]]) {
+    CGSize cs = ((WWNCompositorView_ios *)view).clientCommittedSize;
+    activeHasContent = cs.width > 1.0 && cs.height > 1.0;
+  }
   NSArray<NSNumber *> *tabbed = [self tabbedClientWindowIds];
   NSSet<NSNumber *> *tabbedSet = [NSSet setWithArray:tabbed];
   for (NSNumber *wid in _windows.allKeys) {
     if (![tabbedSet containsObject:wid]) {
       continue;
     }
+    // Capture the frame before hide so the Safari overview still has a card.
+    (void)[self previewImageForHostWindowId:wid.unsignedLongLongValue];
     UIView *client = _windows[wid];
     BOOL active = wid.unsignedLongLongValue == windowId;
-    client.hidden = !active;
+    if (active) {
+      client.hidden = NO;
+    } else {
+      client.hidden = activeHasContent;
+    }
     [self setWindowActivated:wid.unsignedLongLongValue active:active];
   }
   [self injectKeyboardEnterForWindow:windowId keys:@[]];
@@ -3695,6 +3867,16 @@ extern void WWNCoreInject_touch_frame(void *core);
   }];
 }
 
+- (void)setTouchPointerEmulation:(BOOL)enabled {
+  if (!_rustCore) {
+    return;
+  }
+  [self _dispatchToRust:^{
+    WWNCoreSetTouchPointerEmulation(self->_rustCore, enabled);
+    WWNLog("BRIDGE", @"Touch pointer emulation set to: %d", enabled);
+  }];
+}
+
 // Force SSD per-machine (#120): stage the decoration policy for the NEXT
 // machine's client launch. Unlike -setForceSSD:, this does not touch the
 // global default or restyle any already-connected machine, so concurrent
@@ -4144,6 +4326,7 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
   contentView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
 
   [window setContentView:contentView];
+  [window setAcceptsMouseMovedEvents:YES];
   [window makeFirstResponder:contentView];
   [window applyPresentationPolicyForServerSideDecorations:useServerDecorations];
   if (!kiosk) {
@@ -4217,10 +4400,9 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
       uint32_t ow = (uint32_t)MAX(1, lround(contentSize.width));
       uint32_t oh = (uint32_t)MAX(1, lround(contentSize.height));
       // Nested compositors size from wl_output.mode and xdg in points.
-      // Advertising backingScale here created a 2x framebuffer and made
-      // later configures fail mode-switch. Direct clients still see the
-      // global HiDPI output.
-      float s = 1.0f;
+      // Scale is the Retina backing factor. Do not multiply mode by
+      // scale (that is the 3360x2100 "Mode switch failed" bug).
+      float s = WWNBackingScaleForWindow(window);
       [self _dispatchToRust:^{
         WWNCoreSetOutputGeometryForWindow(self->_rustCore, wid, ow, oh, s);
       }];
@@ -4235,8 +4417,9 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
       uint64_t wid = event->window_id;
       uint32_t ow = (uint32_t)MAX(1, lround(contentSize.width));
       uint32_t oh = (uint32_t)MAX(1, lround(contentSize.height));
+      float s = WWNBackingScaleForWindow(window);
       [self _dispatchToRust:^{
-        WWNCoreSetOutputGeometryForWindow(self->_rustCore, wid, ow, oh, 1.0f);
+        WWNCoreSetOutputGeometryForWindow(self->_rustCore, wid, ow, oh, s);
       }];
     }
   }
@@ -4692,8 +4875,9 @@ static inline NSString *WWNSizeKindString(uint8_t kind) {
         [window setFrame:frame display:NO];
         ((WWNWindow *)window).processingResize = NO;
         uint64_t wid = event->window_id;
+        float s = WWNBackingScaleForWindow(window);
         [self _dispatchToRust:^{
-          WWNCoreSetOutputGeometryForWindow(self->_rustCore, wid, ow, oh, 1.0f);
+          WWNCoreSetOutputGeometryForWindow(self->_rustCore, wid, ow, oh, s);
         }];
         [self injectWindowResize:wid width:ow height:oh];
       }
@@ -5379,8 +5563,9 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
       [window setFrame:frame display:NO];
       window.processingResize = NO;
       uint64_t wid = event->window_id;
+      float s = WWNBackingScaleForWindow(window);
       [self _dispatchToRust:^{
-        WWNCoreSetOutputGeometryForWindow(self->_rustCore, wid, ow, oh, 1.0f);
+        WWNCoreSetOutputGeometryForWindow(self->_rustCore, wid, ow, oh, s);
       }];
       [self injectWindowResize:wid width:ow height:oh];
     }
@@ -5782,9 +5967,19 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
   }
   WWNCompositorView_ios *view = [self ensureIlandPresentationView];
   if (!view) {
+    WWNLog("BRIDGE",
+           @"prepareIlandMetalPresentation: no host view (containerView=%@)",
+           self.containerView ? @"set" : @"nil");
     return NO;
   }
-  return [view prepareIlandMetalPresentation];
+  BOOL ok = [view prepareIlandMetalPresentation];
+  if (!ok) {
+    WWNLog("BRIDGE",
+           @"prepareIlandMetalPresentation failed on %@ bounds=%.0fx%.0f",
+           NSStringFromClass([view class]), view.bounds.size.width,
+           view.bounds.size.height);
+  }
+  return ok;
 }
 
 - (BOOL)prepareIlandMetalPresentationOnPrimaryViewForClientId:(NSString *)clientId {
@@ -5940,7 +6135,8 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
       // Pre-iOS 17 (no multi-scene activation API): host in the shared
       // container so the client is still visible.
       if (self.containerView) {
-        [self.containerView insertSubview:view atIndex:0];
+        [self.containerView addSubview:view];
+        [self.containerView bringSubviewToFront:view];
         WWNLog("BRIDGE",
                @"Per-window hosting unavailable; container fallback for window %llu",
                event->window_id);
@@ -5951,7 +6147,12 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
       }
     }
   } else if (self.containerView) {
-    [self.containerView insertSubview:view atIndex:0];
+    // Phone / single-scene: new toplevels must stack above the current
+    // client. insertSubview:atIndex:0 left hello-wasi-gui (and other
+    // zsh-launched clients) behind weston-terminal while keyboard focus
+    // moved to the empty plate (blank screen, no tab switcher recovery).
+    [self.containerView addSubview:view];
+    [self.containerView bringSubviewToFront:view];
     WWNLog("BRIDGE", @"Added window %llu to container (%.0fx%.0f)",
            event->window_id, frame.size.width, frame.size.height);
   } else {
@@ -6355,7 +6556,17 @@ static NSString *WWNIlandGpuClientDisplayTitle(NSString *clientId) {
 
   BOOL clientChosen = event->size_cause == 2 /* ClientCommit */;
   if (iosView && clientChosen && event->width > 0 && event->height > 0) {
+    BOOL firstPaint = iosView.clientCommittedSize.width < 1.0 ||
+                      iosView.clientCommittedSize.height < 1.0;
     iosView.clientCommittedSize = CGSizeMake(event->width, event->height);
+    if (firstPaint) {
+      // Sibling tabs stayed visible until this paint (see
+      // focusTabbedClientWindowId). Re-focus so only this surface remains.
+      dispatch_async(dispatch_get_main_queue(), ^{
+        [self focusTabbedClientWindowId:event->window_id];
+        [self _notifyHostWindowsDidChange];
+      });
+    }
     NSString *shellClient =
         [WWNWaypipeRunner sharedRunner].activeIOSBundledClientId;
     if (shellClient.length == 0) {

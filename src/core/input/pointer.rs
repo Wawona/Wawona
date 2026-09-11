@@ -1,6 +1,6 @@
-use wayland_server::Resource;
 use wayland_server::protocol::wl_pointer::{self, WlPointer};
 use wayland_server::protocol::wl_surface::WlSurface;
+use wayland_server::Resource;
 
 /// Pointer state for a seat, managing position, focus, buttons, and cursor.
 #[derive(Debug, Clone, Default)]
@@ -69,13 +69,7 @@ impl PointerState {
     }
 
     /// Send enter event to pointer resources matching the surface's client
-    pub fn broadcast_enter(
-        &self,
-        serial: u32,
-        surface: &WlSurface,
-        x: f64,
-        y: f64,
-    ) {
+    pub fn broadcast_enter(&self, serial: u32, surface: &WlSurface, x: f64, y: f64) {
         let client = surface.client();
         for ptr in &self.resources {
             if ptr.client() == client {

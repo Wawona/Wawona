@@ -64,6 +64,7 @@ public struct EnvironmentVariablesView: View {
             Section {
                 TextField("Filter", text: $filter)
                     .wawonaTextFieldNoAutocaps()
+                    .submitLabel(.search)
                     .accessibilityIdentifier("wwn.settings.environment.filter")
                 Picker("Category", selection: $categoryFilter) {
                     Text("All").tag(Optional<EnvironmentCategory>.none)
@@ -105,6 +106,9 @@ public struct EnvironmentVariablesView: View {
         }
         .navigationTitle("Environment Variables")
         .accessibilityIdentifier("wwn.settings.environment")
+        #if os(iOS) || os(visionOS)
+        .scrollDismissesKeyboard(.immediately)
+        #endif
         .sheet(isPresented: $showEditor) {
             NavigationStack {
                 Form {

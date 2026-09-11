@@ -16,6 +16,8 @@ When editing a skill, update **all** of:
 | [wawona-learn](./wawona-learn/SKILL.md) | Capture findings into skill + rule + RAG |
 | [wawona-caveman](./wawona-caveman/SKILL.md) | Token voice (lite chat, full notes) |
 | [wawona-priors](./wawona-priors/SKILL.md) | Index of existing rules (pointers only) |
+| [wawona-ios-min-os](./wawona-ios-min-os/SKILL.md) | iOS 11 min OS vs latest SDK. One ANGLE, one MoltenVK |
+| [wawona-gh](./wawona-gh/SKILL.md) | GitHub CLI via Shell. No GitHub MCP |
 
 Org rule: [`../agent-rules/wawona-agent-learn.md`](../agent-rules/wawona-agent-learn.md).
 Do not duplicate hard gates here. Pointer + delta. See `wawona-learn`.

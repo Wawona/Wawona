@@ -2,19 +2,17 @@
 //!
 //! Provides color space and HDR support for surfaces.
 
-use wayland_server::{
-    Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
-};
 use wayland_protocols::wp::color_management::v1::server::{
-    wp_color_manager_v1::{self, WpColorManagerV1},
     wp_color_management_output_v1::{self, WpColorManagementOutputV1},
+    wp_color_management_surface_feedback_v1::{self, WpColorManagementSurfaceFeedbackV1},
     wp_color_management_surface_v1::{self, WpColorManagementSurfaceV1},
-    wp_image_description_v1::{self, WpImageDescriptionV1},
-    wp_image_description_info_v1::{self, WpImageDescriptionInfoV1},
+    wp_color_manager_v1::{self, WpColorManagerV1},
     wp_image_description_creator_icc_v1::{self, WpImageDescriptionCreatorIccV1},
     wp_image_description_creator_params_v1::{self, WpImageDescriptionCreatorParamsV1},
-    wp_color_management_surface_feedback_v1::{self, WpColorManagementSurfaceFeedbackV1},
+    wp_image_description_info_v1::{self, WpImageDescriptionInfoV1},
+    wp_image_description_v1::{self, WpImageDescriptionV1},
 };
+use wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource};
 
 use crate::core::state::CompositorState;
 
@@ -76,7 +74,8 @@ impl Dispatch<WpColorManagerV1, ()> for CompositorState {
     ) {
         match request {
             wp_color_manager_v1::Request::GetOutput { id, output } => {
-                let output_id = state.output_id_by_resource
+                let output_id = state
+                    .output_id_by_resource
                     .get(&output.id())
                     .copied()
                     .or_else(|| state.outputs.first().map(|o| o.id))
@@ -105,9 +104,13 @@ impl Dispatch<WpColorManagerV1, ()> for CompositorState {
 
 impl Dispatch<WpColorManagementOutputV1, ColorOutputData> for CompositorState {
     fn request(
-        _state: &mut Self, _client: &Client, _resource: &WpColorManagementOutputV1,
-        request: wp_color_management_output_v1::Request, _data: &ColorOutputData,
-        _dhandle: &DisplayHandle, data_init: &mut DataInit<'_, Self>,
+        _state: &mut Self,
+        _client: &Client,
+        _resource: &WpColorManagementOutputV1,
+        request: wp_color_management_output_v1::Request,
+        _data: &ColorOutputData,
+        _dhandle: &DisplayHandle,
+        data_init: &mut DataInit<'_, Self>,
     ) {
         match request {
             wp_color_management_output_v1::Request::GetImageDescription { image_description } => {
@@ -122,8 +125,6 @@ impl Dispatch<WpColorManagementOutputV1, ColorOutputData> for CompositorState {
     }
 }
 
-
-
 // Rewriting Dispatch<WpColorManagementSurfaceV1> fully to include the missing request
 // Based on typical protocol: `get_color_management_surface_feedback`
 //
@@ -136,9 +137,13 @@ impl Dispatch<WpColorManagementOutputV1, ColorOutputData> for CompositorState {
 
 impl Dispatch<WpColorManagementSurfaceV1, ColorSurfaceData> for CompositorState {
     fn request(
-        _state: &mut Self, _client: &Client, _resource: &WpColorManagementSurfaceV1,
-        request: wp_color_management_surface_v1::Request, _data: &ColorSurfaceData,
-        _dhandle: &DisplayHandle, _data_init: &mut DataInit<'_, Self>,
+        _state: &mut Self,
+        _client: &Client,
+        _resource: &WpColorManagementSurfaceV1,
+        request: wp_color_management_surface_v1::Request,
+        _data: &ColorSurfaceData,
+        _dhandle: &DisplayHandle,
+        _data_init: &mut DataInit<'_, Self>,
     ) {
         match request {
             wp_color_management_surface_v1::Request::Destroy => {}
@@ -151,12 +156,18 @@ impl Dispatch<WpColorManagementSurfaceV1, ColorSurfaceData> for CompositorState 
 
 impl Dispatch<WpColorManagementSurfaceFeedbackV1, SurfaceFeedbackData> for CompositorState {
     fn request(
-        _state: &mut Self, _client: &Client, _resource: &WpColorManagementSurfaceFeedbackV1,
-        request: wp_color_management_surface_feedback_v1::Request, _data: &SurfaceFeedbackData,
-        _dhandle: &DisplayHandle, data_init: &mut DataInit<'_, Self>,
+        _state: &mut Self,
+        _client: &Client,
+        _resource: &WpColorManagementSurfaceFeedbackV1,
+        request: wp_color_management_surface_feedback_v1::Request,
+        _data: &SurfaceFeedbackData,
+        _dhandle: &DisplayHandle,
+        data_init: &mut DataInit<'_, Self>,
     ) {
         match request {
-            wp_color_management_surface_feedback_v1::Request::GetPreferred { image_description } => {
+            wp_color_management_surface_feedback_v1::Request::GetPreferred {
+                image_description,
+            } => {
                 let desc = data_init.init(image_description, ImageDescriptionData);
                 desc.ready2(0, 1);
                 tracing::debug!("Created preferred image description (sRGB/BT.1886)");
@@ -167,12 +178,15 @@ impl Dispatch<WpColorManagementSurfaceFeedbackV1, SurfaceFeedbackData> for Compo
     }
 }
 
-
 impl Dispatch<WpImageDescriptionV1, ImageDescriptionData> for CompositorState {
     fn request(
-        _state: &mut Self, _client: &Client, _resource: &WpImageDescriptionV1,
-        request: wp_image_description_v1::Request, _data: &ImageDescriptionData,
-        _dhandle: &DisplayHandle, data_init: &mut DataInit<'_, Self>,
+        _state: &mut Self,
+        _client: &Client,
+        _resource: &WpImageDescriptionV1,
+        request: wp_image_description_v1::Request,
+        _data: &ImageDescriptionData,
+        _dhandle: &DisplayHandle,
+        data_init: &mut DataInit<'_, Self>,
     ) {
         match request {
             wp_image_description_v1::Request::GetInformation { information } => {
@@ -193,9 +207,13 @@ impl Dispatch<WpImageDescriptionV1, ImageDescriptionData> for CompositorState {
 
 impl Dispatch<WpImageDescriptionCreatorIccV1, ()> for CompositorState {
     fn request(
-        _state: &mut Self, _client: &Client, _resource: &WpImageDescriptionCreatorIccV1,
-        request: wp_image_description_creator_icc_v1::Request, _data: &(),
-        _dhandle: &DisplayHandle, data_init: &mut DataInit<'_, Self>,
+        _state: &mut Self,
+        _client: &Client,
+        _resource: &WpImageDescriptionCreatorIccV1,
+        request: wp_image_description_creator_icc_v1::Request,
+        _data: &(),
+        _dhandle: &DisplayHandle,
+        data_init: &mut DataInit<'_, Self>,
     ) {
         match request {
             wp_image_description_creator_icc_v1::Request::Create { image_description } => {
@@ -208,9 +226,13 @@ impl Dispatch<WpImageDescriptionCreatorIccV1, ()> for CompositorState {
 
 impl Dispatch<WpImageDescriptionInfoV1, ()> for CompositorState {
     fn request(
-        _state: &mut Self, _client: &Client, _resource: &WpImageDescriptionInfoV1,
-        request: wp_image_description_info_v1::Request, _data: &(),
-        _dhandle: &DisplayHandle, _data_init: &mut DataInit<'_, Self>,
+        _state: &mut Self,
+        _client: &Client,
+        _resource: &WpImageDescriptionInfoV1,
+        request: wp_image_description_info_v1::Request,
+        _data: &(),
+        _dhandle: &DisplayHandle,
+        _data_init: &mut DataInit<'_, Self>,
     ) {
         match request {
             _ => {}
@@ -220,9 +242,13 @@ impl Dispatch<WpImageDescriptionInfoV1, ()> for CompositorState {
 
 impl Dispatch<WpImageDescriptionCreatorParamsV1, ()> for CompositorState {
     fn request(
-        _state: &mut Self, _client: &Client, _resource: &WpImageDescriptionCreatorParamsV1,
-        request: wp_image_description_creator_params_v1::Request, _data: &(),
-        _dhandle: &DisplayHandle, data_init: &mut DataInit<'_, Self>,
+        _state: &mut Self,
+        _client: &Client,
+        _resource: &WpImageDescriptionCreatorParamsV1,
+        request: wp_image_description_creator_params_v1::Request,
+        _data: &(),
+        _dhandle: &DisplayHandle,
+        data_init: &mut DataInit<'_, Self>,
     ) {
         match request {
             wp_image_description_creator_params_v1::Request::Create { image_description } => {

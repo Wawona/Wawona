@@ -42,7 +42,14 @@ if [[ "$mode" == "--mode-a" ]]; then
     fail "Mode A links the TrollStore session switcher"
   ! /usr/bin/strings "$executable" | /usr/bin/grep -E 'IOMobileFramebuffer|WWN_MODE_B' >/dev/null ||
     fail "Mode A contains Mode B private symbols or strings"
-  if /usr/bin/find "$app" -iname '*qemu*' | /usr/bin/grep -q .; then
+  if /usr/bin/find "$app" \( \
+      -name 'wwn-qemu-run' -o \
+      -iname 'qemu-system-*' -o \
+      -iname 'libqemu*' -o \
+      -iname 'qemu-*.framework' -o \
+      -path '*/share/qemu/*' -o \
+      -path '*/Frameworks/qemu*' \
+    \) | /usr/bin/grep -q .; then
     fail "QEMU artifacts are forbidden in Mode A"
   fi
   if /usr/bin/codesign -d "$app" >/dev/null 2>&1; then
@@ -81,19 +88,17 @@ for framework in libEGL libGLESv2; do
     "Payload/Wawona.app/Frameworks/$framework.framework/$framework" "$entries" ||
     fail "Mode B runtime dependency is missing: $framework.framework"
 done
-if /usr/bin/grep -E 'qemu-|wwn-qemu-run|share/qemu' "$entries" >/dev/null; then
-  fail "QEMU/UTM artifacts are forbidden in Mode B tipa"
+# Relay owns the CPU. Real engine files only. Do not match zsh
+# completion `_qemu` or "No QEMU" copy in path names.
+if /usr/bin/grep -E \
+  'wwn-qemu-run|qemu-system-|libqemu|qemu-[^/]*\.framework|/share/qemu/|Frameworks/qemu' \
+  "$entries" >/dev/null; then
+  fail "QEMU artifacts are forbidden in Mode B (Relay fail closed)"
 fi
-if [[ "$mode" == "--mode-b" ]]; then
-  for guest in wawona-mobile-guest wawona-container-guest; do
-    /usr/bin/grep -Fxq "Payload/Wawona.app/$guest/Image" "$entries" ||
-      fail "Mode B guest kernel is missing: $guest/Image"
-    /usr/bin/grep -Fxq "Payload/Wawona.app/$guest/rootfs.img" "$entries" ||
-      fail "Mode B guest rootfs is missing: $guest/rootfs.img"
-  done
-else
-  echo "iteration tipa: skipping guest Image/rootfs.img requirement"
-fi
+# Guest Image/rootfs are Relay NixOS prebuilts, not a QEMU ship path.
+# Embed them only after Relay boots a guest and presents Wayland into
+# iland. Until then both official and iteration tipas stay slim.
+echo "Mode B tipa: skipping leftover guest Image/rootfs (Relay frames planned)"
 [[ "$(plist_value "$app/Info.plist" CFBundleIdentifier)" == "com.aspauldingcode.Wawona.ModeB" ]] ||
   fail "Mode B bundle identifier is wrong"
 [[ -n "$(plist_value "$app/Info.plist" CFBundleVersion)" ]] ||
@@ -102,8 +107,8 @@ fi
   fail "Mode B IOMFB sink is not linked"
 /usr/bin/nm -gU "$executable" 2>/dev/null | /usr/bin/grep '_wwn_igetty_ios_initialize' >/dev/null ||
   fail "Mode B logical session switcher is not linked"
-/usr/bin/nm -gU "$executable" 2>/dev/null | /usr/bin/grep '_wwn_vm_product_accel' >/dev/null ||
-  fail "Mode B JIT VM acceleration contract is not linked"
+# VM start fail-closes in WWNMobileVmEngine. Do not require the leftover
+# QEMU wwn_vm_product_accel contract symbol.
 /usr/bin/strings "$executable" | /usr/bin/grep 'IOMobileFramebuffer' >/dev/null ||
   fail "Mode B IOMFB SPI is absent"
 

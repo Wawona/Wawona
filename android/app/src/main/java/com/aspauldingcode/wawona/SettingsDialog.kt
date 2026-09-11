@@ -1,7 +1,9 @@
 package com.aspauldingcode.wawona
 
 import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
+import android.net.Uri
 import com.aspauldingcode.wawona.anowaw.AnowawPowerController
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -39,7 +41,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.content.ClipData
 import android.content.ClipboardManager
-import android.net.Uri
 import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -51,6 +52,8 @@ import java.io.File
 import java.net.NetworkInterface
 import androidx.compose.animation.togetherWith
 
+/** Sidebar tabs. Order matches Rust `settings_catalog` for Android.
+ *  Desktop is a planned extra and stays last (not in the store catalog). */
 private enum class SettingsTab(val label: String, val icon: ImageVector, val testTag: String) {
     DISPLAY("Display", Icons.Filled.DesktopWindows, WawonaTestTags.SETTINGS_DISPLAY),
     INPUT("Input", Icons.Filled.Keyboard, WawonaTestTags.SETTINGS_INPUT),
@@ -58,13 +61,13 @@ private enum class SettingsTab(val label: String, val icon: ImageVector, val tes
     CONNECTION("Connection", Icons.Filled.Computer, WawonaTestTags.SETTINGS_CONNECTION),
     ENVIRONMENT("Env Vars", Icons.Filled.List, WawonaTestTags.SETTINGS_ENVIRONMENT),
     LOCAL_SHELL("Local Shell", Icons.Filled.Folder, WawonaTestTags.SETTINGS_LOCAL_SHELL),
-    DESKTOP("Desktop", Icons.Filled.DesktopMac, WawonaTestTags.SETTINGS_DESKTOP),
+    MACHINES("Machines", Icons.Filled.Storage, WawonaTestTags.SETTINGS_MACHINES),
     ADVANCED("Advanced", Icons.Filled.Tune, WawonaTestTags.SETTINGS_ADVANCED),
     WAYPIPE("Waypipe", Icons.Filled.Wifi, WawonaTestTags.SETTINGS_WAYPIPE),
     SSH("SSH", Icons.Filled.Lock, WawonaTestTags.SETTINGS_SSH),
-    MACHINES("Machines", Icons.Filled.Storage, WawonaTestTags.SETTINGS_MACHINES),
     ABOUT("About", Icons.Filled.Info, WawonaTestTags.SETTINGS_ABOUT),
-    DEPENDENCIES("Dependencies", Icons.Filled.Inventory, WawonaTestTags.SETTINGS_DEPENDENCIES);
+    DEPENDENCIES("Dependencies", Icons.Filled.Inventory, WawonaTestTags.SETTINGS_DEPENDENCIES),
+    DESKTOP("Desktop", Icons.Filled.DesktopMac, WawonaTestTags.SETTINGS_DESKTOP);
 
     val accentColor: Color
         get() = when (this) {
@@ -303,8 +306,8 @@ private fun MachineStubsSection(prefs: SharedPreferences, accent: Color) {
     }
     SettingsTextInputItem(
         prefs, "machineVmProvider", "VM Provider",
-        "Hypervisor lane (microvm, utm-se, qemu-jit)", Icons.Filled.Storage,
-        "utm-se", KeyboardType.Text
+        "Relay Linux VM lane (NixOS prebuilts). Never QEMU or UTM.", Icons.Filled.Storage,
+        "relay", KeyboardType.Text
     )
     SettingsTextInputItem(
         prefs, "machineVmDefaultVsockPort", "Default VSock Port",
@@ -966,6 +969,15 @@ private fun InputSection(prefs: SharedPreferences) {
             Icons.Filled.TouchApp, default = false, iconTint = SettingsTab.INPUT.accentColor)
         SettingsSwitchItem(
             prefs,
+            "touchPointerEmulation",
+            "Pointer Emulation for Touch",
+            "Also send wl_pointer for the primary finger when a client never bound wl_touch. Off by default.",
+            Icons.Filled.TouchApp,
+            default = false,
+            iconTint = SettingsTab.INPUT.accentColor,
+        )
+        SettingsSwitchItem(
+            prefs,
             "resizeDisplayForVirtualKeyboard",
             "Resize Display for Virtual Keyboard",
             "Shrink the Wayland output by host IME + Wawona extra keyboard height (issue #83)",
@@ -1396,6 +1408,19 @@ private fun AboutSection(context: Context) {
         val v = pkg.versionName ?: "1.0"
         if (v.startsWith("v")) v else "v$v"
     } catch (_: Exception) { "v1.0" }
+    val buildNumber = remember {
+        try {
+            val pkg = context.packageManager.getPackageInfo(context.packageName, 0)
+            if (Build.VERSION.SDK_INT >= 28) {
+                pkg.longVersionCode.toString()
+            } else {
+                @Suppress("DEPRECATION")
+                pkg.versionCode.toString()
+            }
+        } catch (_: Exception) {
+            "1"
+        }
+    }
 
     Column(
         Modifier.fillMaxWidth(),
@@ -1420,6 +1445,13 @@ private fun AboutSection(context: Context) {
         Text("Version $version",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(2.dp))
+        Text(
+            "Build $buildNumber",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.testTag("wwn.settings.about.build"),
+        )
         Spacer(Modifier.height(8.dp))
         OutlinedButton(
             onClick = { uriHandler.openUri("https://wawona.io") },
@@ -1518,6 +1550,13 @@ private fun AboutSection(context: Context) {
 @Composable
 private fun DependenciesSection() {
     val context = LocalContext.current
+    data class DepPkg(
+        val name: String,
+        val version: String,
+        val role: String,
+        val license: String,
+        val url: String,
+    )
     val packages = remember {
         runCatching {
             val json = context.assets.open("SettingsDependencies.json")
@@ -1525,7 +1564,13 @@ private fun DependenciesSection() {
             val arr = org.json.JSONObject(json).getJSONArray("packages")
             (0 until arr.length()).map { i ->
                 val o = arr.getJSONObject(i)
-                Triple(o.optString("name"), o.optString("version"), o.optString("role"))
+                DepPkg(
+                    o.optString("name"),
+                    o.optString("version"),
+                    o.optString("role"),
+                    o.optString("license"),
+                    o.optString("url"),
+                )
             }
         }.getOrDefault(emptyList())
     }
@@ -1537,20 +1582,102 @@ private fun DependenciesSection() {
             icon = Icons.Filled.Inventory2
         )
     } else {
-        packages.forEach { (name, version, role) ->
-            AboutDependencyRow(name, version, role)
+        packages.forEach { pkg ->
+            AboutDependencyRow(pkg.name, pkg.version, pkg.role, pkg.license, pkg.url)
         }
     }
 }
 
 @Composable
-private fun AboutDependencyRow(name: String, version: String, description: String) {
-    SettingsInfoRow(
-        title = name,
-        value = version,
-        description = description,
-        icon = Icons.Filled.Inventory2
-    )
+private fun AboutDependencyRow(
+    name: String,
+    version: String,
+    description: String,
+    license: String,
+    url: String,
+) {
+    var showDetail by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val subtitle = buildString {
+        append(version)
+        if (license.isNotBlank()) {
+            if (isNotEmpty()) append(" · ")
+            append(license)
+        }
+    }
+    val body = buildString {
+        if (description.isNotBlank()) append(description)
+        if (license.isNotBlank()) {
+            if (isNotEmpty()) append("\n\n")
+            append("License: ")
+            append(license)
+        }
+        if (url.isNotBlank()) {
+            if (isNotEmpty()) append("\n\n")
+            append(url)
+        }
+    }
+    Surface(
+        onClick = { showDetail = true },
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Filled.Inventory2,
+                null,
+                Modifier.size(20.dp),
+                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    name,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Clip
+                )
+                if (subtitle.isNotBlank()) {
+                    Text(
+                        subtitle.replace('\n', ' ').replace(Regex(" +"), " ").trim(),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        overflow = TextOverflow.Clip
+                    )
+                }
+            }
+        }
+    }
+    if (showDetail) {
+        AlertDialog(
+            onDismissRequest = { showDetail = false },
+            title = { Text(name) },
+            text = { Text(body.ifEmpty { name }) },
+            confirmButton = {
+                TextButton(onClick = { showDetail = false }) { Text("OK") }
+            },
+            dismissButton = if (url.isNotBlank()) {
+                {
+                    TextButton(
+                        onClick = {
+                            runCatching {
+                                context.startActivity(
+                                    Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                )
+                            }
+                        }
+                    ) { Text("Open Website") }
+                }
+            } else {
+                null
+            }
+        )
+    }
 }
 
 @Composable

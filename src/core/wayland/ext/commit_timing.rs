@@ -5,13 +5,11 @@
 //! frame presentation more precisely (e.g., for video playback).
 
 use std::collections::HashMap;
-use wayland_server::{
-    Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
-};
 use wayland_protocols::wp::commit_timing::v1::server::{
-    wp_commit_timing_manager_v1::{self, WpCommitTimingManagerV1},
     wp_commit_timer_v1::{self, WpCommitTimerV1},
+    wp_commit_timing_manager_v1::{self, WpCommitTimingManagerV1},
 };
+use wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource};
 
 use crate::core::state::CompositorState;
 
@@ -95,11 +93,24 @@ impl Dispatch<WpCommitTimerV1, u32> for CompositorState {
         _data_init: &mut DataInit<'_, Self>,
     ) {
         match request {
-            wp_commit_timer_v1::Request::SetTimestamp { tv_sec_hi, tv_sec_lo, tv_nsec } => {
+            wp_commit_timer_v1::Request::SetTimestamp {
+                tv_sec_hi,
+                tv_sec_lo,
+                tv_nsec,
+            } => {
                 let secs = ((tv_sec_hi as u64) << 32) | (tv_sec_lo as u64);
                 let total_ns = secs * 1_000_000_000 + tv_nsec as u64;
-                state.ext.commit_timing.target_times.insert(*surface_id, total_ns);
-                tracing::debug!("Surface {} target presentation: {}.{:09}s", surface_id, secs, tv_nsec);
+                state
+                    .ext
+                    .commit_timing
+                    .target_times
+                    .insert(*surface_id, total_ns);
+                tracing::debug!(
+                    "Surface {} target presentation: {}.{:09}s",
+                    surface_id,
+                    secs,
+                    tv_nsec
+                );
             }
             wp_commit_timer_v1::Request::Destroy => {
                 state.ext.commit_timing.target_times.remove(surface_id);

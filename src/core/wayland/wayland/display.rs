@@ -1,8 +1,51 @@
 use wayland_server::{Display, ListeningSocket};
 
 use crate::core::state::CompositorState;
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
 
+#[cfg(all(target_vendor = "apple", not(target_os = "macos")))]
+fn release_mobile_socket_lock(socket_path: &str) -> Result<()> {
+    use std::ffi::CStr;
+
+    // wayland-server keeps an exclusive flock for the listener lifetime.
+    // Apple mobile terminates an app with RunningBoard 0xdead10cc if it
+    // suspends while holding that lock. UIApplication already serializes an
+    // installed bundle's process, so retain the socket but release the
+    // advisory lock after bind.
+    let lock_path = format!("{socket_path}.lock");
+    let canonical_lock = std::fs::canonicalize(&lock_path)
+        .with_context(|| format!("Failed to resolve Wayland lock at {lock_path}"))?;
+    let canonical_lock = canonical_lock.to_string_lossy();
+    let descriptor_limit = unsafe { libc::getdtablesize() };
+
+    // ListeningSocket does not expose its lock descriptor. F_GETPATH lets the
+    // Darwin host find that exact descriptor without depending on the crate's
+    // private struct layout.
+    for descriptor in 0..descriptor_limit {
+        let mut path = [0i8; libc::PATH_MAX as usize];
+        let path_result =
+            unsafe { libc::fcntl(descriptor, libc::F_GETPATH, path.as_mut_ptr()) };
+        if path_result == -1 {
+            continue;
+        }
+        let descriptor_path = unsafe { CStr::from_ptr(path.as_ptr()) }.to_string_lossy();
+        if descriptor_path != canonical_lock {
+            continue;
+        }
+        if unsafe { libc::flock(descriptor, libc::LOCK_UN) } != 0 {
+            return Err(std::io::Error::last_os_error())
+                .with_context(|| format!("Failed to release Wayland lock at {lock_path}"));
+        }
+        crate::wlog!(
+            crate::util::logging::DISPLAY,
+            "Released Apple mobile Wayland socket lock: {}",
+            lock_path
+        );
+        return Ok(());
+    }
+
+    anyhow::bail!("Wayland lock descriptor was not found for {lock_path}")
+}
 
 pub struct WawonaDisplay {
     // The wayland display
@@ -14,36 +57,52 @@ pub struct WawonaDisplay {
 impl WawonaDisplay {
     pub fn new() -> Result<Self> {
         let mut display = Display::new()?;
-        
+
         // Get or create XDG_RUNTIME_DIR following XDG Base Directory Specification
         let runtime_dir = Self::ensure_runtime_dir()?;
-        
+
         let socket_path = format!("{}/wayland-0", runtime_dir);
-        
+
         // Remove existing socket if present
         let _ = std::fs::remove_file(&socket_path);
-        
+
         let socket = ListeningSocket::bind(&socket_path)
             .context(format!("Failed to bind socket at {}", socket_path))?;
 
-        crate::wlog!(crate::util::logging::DISPLAY, "Compositor listening on: {}", socket_path);
-        crate::wlog!(crate::util::logging::DISPLAY, "XDG_RUNTIME_DIR: {}", runtime_dir);
-        crate::wlog!(crate::util::logging::DISPLAY, "Set WAYLAND_DISPLAY=wayland-0 to connect clients");
+        #[cfg(all(target_vendor = "apple", not(target_os = "macos")))]
+        release_mobile_socket_lock(&socket_path)?;
+
+        crate::wlog!(
+            crate::util::logging::DISPLAY,
+            "Compositor listening on: {}",
+            socket_path
+        );
+        crate::wlog!(
+            crate::util::logging::DISPLAY,
+            "XDG_RUNTIME_DIR: {}",
+            runtime_dir
+        );
+        crate::wlog!(
+            crate::util::logging::DISPLAY,
+            "Set WAYLAND_DISPLAY=wayland-0 to connect clients"
+        );
         tracing::info!("Listening on {}", socket_path);
-        
+
         // Register Wayland protocol globals
         Self::register_globals(&mut display)?;
 
         Ok(Self { display, socket })
     }
-    
+
     /// Register all Wayland protocol globals
     ///
     /// NOTE: Global registration is centralized in `core::compositor::Compositor`
     /// and initialized through `smithay_runtime`. This helper is intentionally a
     /// no-op to avoid dual registration paths.
     fn register_globals(_display: &mut Display<CompositorState>) -> Result<()> {
-        tracing::debug!("WawonaDisplay::register_globals is no-op (compositor path owns registration)");
+        tracing::debug!(
+            "WawonaDisplay::register_globals is no-op (compositor path owns registration)"
+        );
         Ok(())
     }
 
@@ -51,7 +110,7 @@ impl WawonaDisplay {
     /// Following XDG Base Directory Specification
     fn ensure_runtime_dir() -> Result<String> {
         use std::os::unix::fs::PermissionsExt;
-        
+
         // Check if XDG_RUNTIME_DIR is already set
         if let Ok(dir) = std::env::var("XDG_RUNTIME_DIR") {
             // Verify it exists and has correct permissions
@@ -60,29 +119,35 @@ impl WawonaDisplay {
                 if perms.mode() & 0o777 == 0o700 {
                     return Ok(dir);
                 }
-                crate::wlog!(crate::util::logging::DISPLAY, "Warning: XDG_RUNTIME_DIR has incorrect permissions, creating new one");
+                crate::wlog!(
+                    crate::util::logging::DISPLAY,
+                    "Warning: XDG_RUNTIME_DIR has incorrect permissions, creating new one"
+                );
             }
         }
-        
+
         // Create runtime directory: /tmp/<UID>-runtime
         // This follows the XDG spec for systems without /run/user
         let uid = unsafe { libc::getuid() };
         let runtime_dir = format!("/tmp/{}-runtime", uid);
-        
+
         // Create directory if it doesn't exist
         std::fs::create_dir_all(&runtime_dir)?;
-        
+
         // Set strict permissions: 0700 (owner read/write/execute only)
         let mut perms = std::fs::metadata(&runtime_dir)?.permissions();
         perms.set_mode(0o700);
         std::fs::set_permissions(&runtime_dir, perms)?;
-        
+
         // Set XDG_RUNTIME_DIR for child processes
         std::env::set_var("XDG_RUNTIME_DIR", &runtime_dir);
-        
-        crate::wlog!(crate::util::logging::DISPLAY, "Created XDG_RUNTIME_DIR: {} (mode: 0700)", 
-            runtime_dir);
-        
+
+        crate::wlog!(
+            crate::util::logging::DISPLAY,
+            "Created XDG_RUNTIME_DIR: {} (mode: 0700)",
+            runtime_dir
+        );
+
         Ok(runtime_dir)
     }
 

@@ -5,19 +5,14 @@
 //! - CAD software with infinite panning
 //! - Any application needing raw pointer motion
 
-
-use wayland_server::{
-    Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
-};
 use wayland_protocols::wp::relative_pointer::zv1::server::{
     zwp_relative_pointer_manager_v1::{self, ZwpRelativePointerManagerV1},
     zwp_relative_pointer_v1::{self, ZwpRelativePointerV1},
 };
-
+use wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource};
 
 use crate::core::state::CompositorState;
 use std::collections::HashMap;
-
 
 // ============================================================================
 // Data Types
@@ -57,18 +52,10 @@ impl RelativePointerState {
             // In a real implementation we'd check if this relative pointer
             // corresponds to the pointer_id that moved.
             // For now we broadcast to all as we usually only have one seat/pointer.
-            rel_ptr.relative_motion(
-                time_hi,
-                time_lo,
-                dx,
-                dy,
-                dx_unaccel,
-                dy_unaccel,
-            );
+            rel_ptr.relative_motion(time_hi, time_lo, dx, dy, dx_unaccel, dy_unaccel);
         }
     }
 }
-
 
 // ============================================================================
 // zwp_relative_pointer_manager_v1
@@ -104,8 +91,12 @@ impl Dispatch<ZwpRelativePointerManagerV1, ()> for CompositorState {
                 // let rel_pointer_data = RelativePointerData::new(pointer_id);
                 let rel_pointer = data_init.init(id, ());
                 let rel_id = rel_pointer.id().protocol_id();
-                state.ext.relative_pointers.relative_pointers.insert(rel_id, rel_pointer.clone());
-                
+                state
+                    .ext
+                    .relative_pointers
+                    .relative_pointers
+                    .insert(rel_id, rel_pointer.clone());
+
                 tracing::debug!("Created relative pointer for pointer {}", pointer_id);
             }
             zwp_relative_pointer_manager_v1::Request::Destroy => {
@@ -142,7 +133,9 @@ impl Dispatch<ZwpRelativePointerV1, ()> for CompositorState {
 }
 
 /// Register zwp_relative_pointer_manager_v1 global
-pub fn register_relative_pointer_manager(display: &DisplayHandle) -> wayland_server::backend::GlobalId {
+pub fn register_relative_pointer_manager(
+    display: &DisplayHandle,
+) -> wayland_server::backend::GlobalId {
     display.create_global::<CompositorState, ZwpRelativePointerManagerV1, ()>(1, ())
 }
 

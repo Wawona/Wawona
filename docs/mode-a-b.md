@@ -27,11 +27,12 @@ Design every iOS-family and Play path as Mode A first.
 
 - In-process ports where Apple mobile forbids `fork`/`exec` of arbitrary code
   (`wwn-zsh`, dispatch, libssh2).
-- **No JIT** on Apple mobile (no `MAP_JIT`, no Hypervisor for guests).
-- **VMs / containers (iOS family):** UTM-SE-class **jitless interpreter**
-  (`wwn-vms` QEMU-TCTI). Containers = OCI image pull (`wwn-oci`) +
-  **container-in-VM** on that jitless engine (`wwn-containers`). Same idea as
-  Apple Container on macOS, without JIT.
+- **No JIT** on Apple mobile (no `MAP_JIT`).
+- **No Hypervisor.framework** in store IPA (no private hypervisor ents,
+  cargo `ios-hv` off).
+- **VMs / containers (iOS family):** Wawona Relay `StaticCpu`.
+  Planned. Fail closed until Relay boots NixOS. Containers = OCI pull
+  plus container-in-VM on that same Relay engine. Not QEMU. Not UTM.
 - **Wasm packages:** `repo.wawona.io/wasm/` + Files drop + `wpm`. Bytecode as
   **data** for Wawona Runtime (`wwn-wasm`). Not Mach-O, not `.deb`.
 - **iland:** `libiland_userland.a` present callback only (no Desktop `.dylib`).
@@ -39,7 +40,7 @@ Design every iOS-family and Play path as Mode A first.
 
 ### Never in Mode A binaries
 
-- JIT-enabled UTM / QEMU TCG JIT on iOS family.
+- QEMU, TCTI, UTM, or `wwn-qemu-run` as a VM or container CPU.
 - Sileo / Procursus APT client UI, jailbreak Desktop/LockScreen engage, “install
   Mode B IPA” prompts.
 - References to `repo.wawona.io/jailbreak/` or `.deb` tweak install from the app.
@@ -68,16 +69,20 @@ TrollStore and Sileo are separate products. The TrollStore build is
 | Desktop + LockScreen foundations | IOMobileFramebuffer own-display greeter | IOMFB plus jailbreak integration |
 | Shell sessions | Bundled Wawona zsh virtual PTYs | Procursus/host PTYs may be added |
 | Host CLI / APT | No | Yes |
-| **VMs** | **JIT-enabled** UTM / QEMU | Same JIT engine |
-| **Containers** | **JIT-enabled** container-in-VM | Same JIT engine |
+| **VMs** | Relay. `IosHv` on M1/M2/A16 ≤16.3.1 when probe passes; else StaticCpu. Planned | Same Relay engine |
+| **Containers** | container-in-VM on that same backend | Same Relay engine |
 | Wasm JIT | Deferred. Wawona Runtime remains Mode A | Deferred |
 | Wawona Swinging Bridge | No | Yes |
 | Doorman / ElleKit | No | Deferred Sileo provider |
 
-The TrollStore Desktop path uses the Rust `wwn-iland-iomfb` sink and
-`wwn-igetty` logical session switcher. UIKit remains input and lifecycle glue.
-Wayland and Metal IOSurfaces present to IOMFB without a CPU copy. `wl_shm`
-remains an explicit upload fallback.
+The TrollStore tipa launches the normal Machines and Settings UI. Desktop
+Replacement is off by default. Turning it on and using Replace now (or Start
+on Weston/Niri) takes the panel with `wwn-iland` IOMFB so those compositors
+can use DRM/KMS. Text consoles are `wwn-igetty` plus a Wawona PTY. Turning
+the toggle off restores IOMFB and returns Machines. UIKit stays input and
+lifecycle glue. There is no framebuffer machine-picker GUI. Wayland and
+Metal IOSurfaces present to IOMFB without a CPU copy. `wl_shm` remains an
+explicit upload fallback.
 
 ### Mode B IPA on `repo.wawona.io` (critical)
 
@@ -121,19 +126,21 @@ flavors select the engine; Mode B code is **absent** from store artifacts
               ┌───────────────┴───────────────┐
               ▼                               ▼
      Mode A (store IPA)              Mode B (TrollStore / Sileo)
-     UTM-SE / QEMU-TCTI              UTM / QEMU + JIT
-     jitless interpreter             JIT enablement
+     Relay StaticCpu                 Relay IosHv (window) or StaticCpu
+     planned, fail closed            planned; HV only inside OS/SoC window
               │                               │
               └──────────┬────────────────────┘
                          ▼
-              shared: OCI pull (wwn-oci), profiles, waypipe/vsock GUI
+              shared: OCI pull, profiles, waypipe/vsock GUI (iland)
 ```
+
+See [`relay-ios-hypervisor.md`](./relay-ios-hypervisor.md).
 
 | Concern | Shared | Mode A only | Mode B only |
 |---------|--------|-------------|-------------|
 | OCI pull / CAS | Yes | - |. |
 | Machine profiles UI | Yes (no jailbreak copy in A) | Store strings | May mention JIT/Sileo on website; B IPA may expose JIT settings |
-| Guest boot engine | Interface | TCTI / UTM-SE | JIT UTM |
+| Guest boot engine | Interface | Relay jitless | Relay Mode B CPU |
 | Container run | Interface | container-in-VM (jitless) | container-in-VM (JIT) |
 | Verification | - | `verify-*-mode-a` / no JIT symbols | CI for Mode B IPA + Sileo package |
 
@@ -179,8 +186,11 @@ APT ecosystem.
 1. **Never ship Mode B to the App Store / Play.** Separate artifact + CI gate.
 2. **Design A and B together** in `wwn-vms` / `wwn-containers` / Wawona. Shared
    OCI and Machines model; divergent engines behind a capability gate.
-3. **iOS Mode A VMs/containers = interpreter (UTM-SE-class) only.**
-4. **iOS Mode B VMs/containers = JIT UTM-class**; packaged via Sileo Mode B IPA.
+3. **iOS Mode A VMs/containers = Relay jitless only.** Fail closed until Relay
+   boots NixOS. No QEMU / UTM.
+4. **iOS Mode B VMs/containers = Relay plus Mode B CPU.** Fail closed until
+   Relay boots NixOS. Slim tipa until then. Official guest disks only after
+   Relay frames. Never QEMU.
 5. **Wasm packages are Mode A-safe** and remain available under Mode B; they do
    not replace jailbreak APT.
 6. **Do not conflate** iland Mode B (macOS dylib), Wawona Swinging Bridge Mode B, and iOS Mode B

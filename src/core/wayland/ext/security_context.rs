@@ -5,13 +5,11 @@
 //! security context, which can be used for access control decisions.
 
 use std::collections::HashMap;
-use wayland_server::{
-    Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
-};
 use wayland_protocols::wp::security_context::v1::server::{
     wp_security_context_manager_v1::{self, WpSecurityContextManagerV1},
     wp_security_context_v1::{self, WpSecurityContextV1},
 };
+use wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource};
 
 use crate::core::state::CompositorState;
 
@@ -56,10 +54,18 @@ impl Dispatch<WpSecurityContextManagerV1, ()> for CompositorState {
         data_init: &mut DataInit<'_, Self>,
     ) {
         match request {
-            wp_security_context_manager_v1::Request::CreateListener { id, listen_fd: _, close_fd: _ } => {
+            wp_security_context_manager_v1::Request::CreateListener {
+                id,
+                listen_fd: _,
+                close_fd: _,
+            } => {
                 let ctx = data_init.init(id, ());
                 let ctx_id = ctx.id().protocol_id();
-                state.ext.security_context.contexts.insert(ctx_id, SecurityContextData::default());
+                state
+                    .ext
+                    .security_context
+                    .contexts
+                    .insert(ctx_id, SecurityContextData::default());
                 tracing::debug!("Created security context {}", ctx_id);
             }
             wp_security_context_manager_v1::Request::Destroy => {}
@@ -83,7 +89,11 @@ impl Dispatch<WpSecurityContextV1, ()> for CompositorState {
             wp_security_context_v1::Request::SetSandboxEngine { name } => {
                 if let Some(ctx) = state.ext.security_context.contexts.get_mut(&ctx_id) {
                     ctx.sandbox_engine = name;
-                    tracing::debug!("Security context {} sandbox engine: {}", ctx_id, ctx.sandbox_engine);
+                    tracing::debug!(
+                        "Security context {} sandbox engine: {}",
+                        ctx_id,
+                        ctx.sandbox_engine
+                    );
                 }
             }
             wp_security_context_v1::Request::SetAppId { app_id } => {
@@ -95,7 +105,11 @@ impl Dispatch<WpSecurityContextV1, ()> for CompositorState {
             wp_security_context_v1::Request::SetInstanceId { instance_id } => {
                 if let Some(ctx) = state.ext.security_context.contexts.get_mut(&ctx_id) {
                     ctx.instance_id = instance_id;
-                    tracing::debug!("Security context {} instance_id: {}", ctx_id, ctx.instance_id);
+                    tracing::debug!(
+                        "Security context {} instance_id: {}",
+                        ctx_id,
+                        ctx.instance_id
+                    );
                 }
             }
             wp_security_context_v1::Request::Commit => {
@@ -103,7 +117,10 @@ impl Dispatch<WpSecurityContextV1, ()> for CompositorState {
                     ctx.committed = true;
                     tracing::info!(
                         "Security context {} committed: engine={}, app={}, instance={}",
-                        ctx_id, ctx.sandbox_engine, ctx.app_id, ctx.instance_id
+                        ctx_id,
+                        ctx.sandbox_engine,
+                        ctx.app_id,
+                        ctx.instance_id
                     );
                 }
             }

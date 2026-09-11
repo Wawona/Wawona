@@ -1,23 +1,23 @@
-pub mod xdg_wm_base;
-pub mod shell_handler;
-pub mod extension_handlers;
-pub mod xdg_surface;
-pub mod xdg_toplevel;
-pub mod xdg_popup;
-pub mod xdg_positioner;
 pub mod decoration;
-pub mod xdg_output;
-pub mod xdg_foreign;
+pub mod extension_handlers;
+pub mod shell_handler;
 pub mod xdg_activation;
 pub mod xdg_dialog;
+pub mod xdg_foreign;
+pub mod xdg_output;
+pub mod xdg_popup;
+pub mod xdg_positioner;
+pub mod xdg_surface;
+pub mod xdg_system_bell;
+pub mod xdg_toplevel;
 pub mod xdg_toplevel_drag;
 pub mod xdg_toplevel_icon;
 pub mod xdg_toplevel_tag;
-pub mod xdg_system_bell;
+pub mod xdg_wm_base;
 
-use wayland_server::DisplayHandle;
 use crate::core::state::CompositorState;
 use crate::core::wayland::policy;
+use wayland_server::DisplayHandle;
 
 /// Register XDG desktop protocols.
 ///

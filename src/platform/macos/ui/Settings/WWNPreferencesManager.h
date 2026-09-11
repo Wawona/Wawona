@@ -21,6 +21,7 @@ extern NSString *const kWWNPrefsMultipleClients;
 extern NSString *const kWWNPrefsSwapCmdAsCtrl;  // Legacy - use SwapCmdWithAlt
 extern NSString *const kWWNPrefsSwapCmdWithAlt; // New unified key
 extern NSString *const kWWNPrefsTouchInputType;
+extern NSString *const kWWNPrefsTouchPointerEmulation;
 extern NSString *const kWWNPrefsWaypipeRSSupport; // Deprecated - always enabled
 extern NSString
     *const kWWNPrefsEnableTCPListener; // Deprecated - always enabled
@@ -94,11 +95,16 @@ extern NSString *const kWWNPrefsSSHKeyPassphrase;
 extern NSString *const kWWNPrefsWaypipeUseSSHConfig;
 extern NSString *const kWWNForceSSDChangedNotification;
 extern NSString *const kWWNPrefsMachineSessionThumbnailsEnabled;
-// Desktop Replacement (wwn-iland Mode B): run Wawona as the desktop by replacing
-// SkyLight/WindowServer. macOS-only, SIP-gated, never an App Store path. The
-// chosen desktop machine MUST be a Native machine profile.
+// Desktop Replacement (wwn-iland Mode B). macOS: SIP-gated WindowServer
+// replace. iOS TrollStore tipa: IOMFB + igetty + Wawona PTY when the user
+// turns this on and starts Weston/Niri (or Replace now). Never an App Store
+// path. The chosen desktop machine MUST be a Native machine profile.
 extern NSString *const kWWNPrefsDesktopReplacementEnabled;
 extern NSString *const kWWNPrefsDesktopReplacementMachineId;
+#if WWN_MODE_B
+extern NSString *const kWWNModeBDesktopReplacementChangedNotification;
+extern NSString *const kWWNModeBDesktopReplacementReplaceNowNotification;
+#endif
 extern NSString *const kWWNPrefsLockscreenReplacementEnabled;
 extern NSString *const kWWNPrefsLockscreenReplacementMachineId;
 // Wawona Swinging Bridge (formerly anowaW): render native macOS (Cocoa/AppKit)
@@ -165,6 +171,8 @@ FOUNDATION_EXPORT NSUserDefaults *WWNSharedUserDefaults(void);
 - (void)setSwapCmdWithAlt:(BOOL)enabled;
 - (NSString *)touchInputType;
 - (void)setTouchInputType:(NSString *)type;
+- (BOOL)touchPointerEmulationEnabled;
+- (void)setTouchPointerEmulationEnabled:(BOOL)enabled;
 
 // Client Management
 - (BOOL)multipleClientsEnabled;

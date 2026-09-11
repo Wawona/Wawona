@@ -13,63 +13,58 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use crate::core::input::xkb::{XkbContext, XkbState};
 use crate::core::input::keyboard::KeyboardState;
 use crate::core::input::pointer::PointerState;
 use crate::core::input::touch::TouchState;
 
 use wayland_server::Resource;
 
-use wayland_server::protocol::wl_callback::WlCallback;
 use wayland_server::backend::{ClientData, ClientId, DisconnectReason};
-
-
+use wayland_server::protocol::wl_callback::WlCallback;
 
 use crate::core::surface::Surface;
-use crate::core::window::{Window, DecorationMode};
-use crate::core::window::tree::WindowTree;
 use crate::core::window::focus::FocusManager;
+use crate::core::window::tree::WindowTree;
+use crate::core::window::{DecorationMode, Window};
 
 use crate::core::compositor::CompositorEvent;
 
 use crate::core::wayland::protocol::server::xdg::shell::server::{
-    xdg_surface, xdg_toplevel, xdg_popup, xdg_wm_base,
+    xdg_popup, xdg_surface, xdg_toplevel, xdg_wm_base,
 };
 
-
-
 use crate::core::wayland::ext::pointer_constraints::PointerConstraintsState;
-use crate::core::wayland::ext::relative_pointer::RelativePointerState;
 use crate::core::wayland::ext::pointer_gestures::PointerGesturesState;
+use crate::core::wayland::ext::relative_pointer::RelativePointerState;
 use crate::core::wayland::ext::viewporter::{ViewportData, ViewporterState};
 use crate::core::wayland::wlr::export_dmabuf::{DmabufExportFrame, ExportDmabufState};
 
-use crate::core::wayland::ext::presentation_time::PresentationState;
-use crate::core::wayland::ext::linux_dmabuf::LinuxDmabufState;
 use crate::core::wayland::ext::idle_inhibit::IdleInhibitState;
 use crate::core::wayland::ext::keyboard_shortcuts_inhibit::KeyboardShortcutsInhibitState;
+use crate::core::wayland::ext::linux_dmabuf::LinuxDmabufState;
+use crate::core::wayland::ext::presentation_time::PresentationState;
 
 use crate::core::wayland::xdg::xdg_activation::ActivationState;
 use crate::core::wayland::xdg::xdg_foreign::WawonaForeignTracking;
 
-use crate::core::render::scene::Scene;
 use crate::core::render::damage::SceneDamage;
 use crate::core::render::node::SceneNode;
-use crate::ffi::types::ContentRect;
-use crate::core::wayland::xdg::xdg_output::XdgOutputState;
+use crate::core::render::scene::Scene;
 use crate::core::wayland::xdg::decoration::DecorationState;
+use crate::core::wayland::xdg::xdg_output::XdgOutputState;
+use crate::ffi::types::ContentRect;
 
 use crate::core::wayland::wlr::data_control::DataControlState;
 use crate::core::wayland::wlr::screencopy::PendingScreencopy;
 
-use crate::core::wayland::wlr::virtual_pointer::VirtualPointerState;
+use crate::core::wayland::policy::{resolve_profile, ProtocolProfile};
 use crate::core::wayland::wlr::virtual_keyboard::VirtualKeyboardState;
-use crate::core::wayland::policy::{ProtocolProfile, resolve_profile};
+use crate::core::wayland::wlr::virtual_pointer::VirtualPointerState;
 
 #[cfg(feature = "desktop-protocols")]
-use crate::core::wayland::ext::linux_drm_syncobj::SyncObjState;
-#[cfg(feature = "desktop-protocols")]
 use crate::core::wayland::ext::drm_lease::DrmLeaseState;
+#[cfg(feature = "desktop-protocols")]
+use crate::core::wayland::ext::linux_drm_syncobj::SyncObjState;
 
 use crate::core::traits::ProtocolState;
 
@@ -89,6 +84,8 @@ pub struct SmithayRuntimeState {
     pub seat_state: Option<smithay::input::SeatState<crate::core::state::CompositorState>>,
     pub seat: Option<smithay::input::Seat<crate::core::state::CompositorState>>,
     pub data_device: Option<smithay::wayland::selection::data_device::DataDeviceState>,
+    pub primary_selection:
+        Option<smithay::wayland::selection::primary_selection::PrimarySelectionState>,
     pub xdg_decoration: Option<smithay::wayland::shell::xdg::decoration::XdgDecorationState>,
     pub xdg_foreign: Option<smithay::wayland::xdg_foreign::XdgForeignState>,
     pub xdg_activation: Option<smithay::wayland::xdg_activation::XdgActivationState>,
@@ -96,6 +93,9 @@ pub struct SmithayRuntimeState {
     pub xdg_system_bell: Option<smithay::wayland::xdg_system_bell::XdgSystemBellState>,
     pub xdg_toplevel_icon: Option<smithay::wayland::xdg_toplevel_icon::XdgToplevelIconManager>,
     pub xdg_toplevel_tag: Option<smithay::wayland::xdg_toplevel_tag::XdgToplevelTagManager>,
+    pub text_input: Option<smithay::wayland::text_input::TextInputManagerState>,
+    pub input_method: Option<smithay::wayland::input_method::InputMethodManagerState>,
+    pub virtual_keyboard: Option<smithay::wayland::virtual_keyboard::VirtualKeyboardManagerState>,
     pub client_compositor_state: smithay::wayland::compositor::CompositorClientState,
     pub core_shell_initialized: bool,
     pub extension_wlr_initialized: bool,
@@ -113,6 +113,7 @@ impl Default for SmithayRuntimeState {
             seat_state: None,
             seat: None,
             data_device: None,
+            primary_selection: None,
             xdg_decoration: None,
             xdg_foreign: None,
             xdg_activation: None,
@@ -120,6 +121,9 @@ impl Default for SmithayRuntimeState {
             xdg_system_bell: None,
             xdg_toplevel_icon: None,
             xdg_toplevel_tag: None,
+            text_input: None,
+            input_method: None,
+            virtual_keyboard: None,
             client_compositor_state: smithay::wayland::compositor::CompositorClientState::default(),
             core_shell_initialized: false,
             extension_wlr_initialized: false,
@@ -128,11 +132,11 @@ impl Default for SmithayRuntimeState {
 }
 
 // Sub-modules containing extracted CompositorState impl blocks
-mod scene;
+mod host_lock;
 mod input;
+mod scene;
 mod surfaces;
 mod windows;
-mod host_lock;
 
 // ============================================================================
 // Subsurface State
@@ -175,18 +179,18 @@ impl ShmPool {
     /// Create a new SHM pool from file descriptor
     pub fn new(fd: OwnedFd, size: i32) -> Self {
         Self {
-            fd,  // Store the OwnedFd directly to keep it alive
+            fd, // Store the OwnedFd directly to keep it alive
             size: size as usize,
             data: None,
         }
     }
-    
+
     /// mmap the pool and return pointer to data
     pub fn map(&mut self) -> Option<*mut u8> {
         if self.data.is_some() {
             return self.data;
         }
-        
+
         // SAFETY: mmap the file descriptor (read+write for compositor read and screencopy write)
         unsafe {
             let ptr = libc::mmap(
@@ -197,12 +201,16 @@ impl ShmPool {
                 self.fd.as_raw_fd(),
                 0,
             );
-            
+
             if ptr == libc::MAP_FAILED {
-                tracing::error!("Failed to mmap SHM pool (fd={}, size={})", self.fd.as_raw_fd(), self.size);
+                tracing::error!(
+                    "Failed to mmap SHM pool (fd={}, size={})",
+                    self.fd.as_raw_fd(),
+                    self.size
+                );
                 return None;
             }
-            
+
             self.data = Some(ptr as *mut u8);
             self.data
         }
@@ -224,7 +232,7 @@ impl ShmPool {
         }
 
         self.size = new_size;
-        
+
         // We don't mmap immediately here, it will be mapped on the next map() call
         // which usually happens when the compositor tries to access pixels.
         tracing::debug!("Resized SHM pool to {} bytes", self.size);
@@ -305,7 +313,6 @@ impl LayerSurface {
         }
     }
 }
-
 
 // ============================================================================
 // XDG Shell Data Types
@@ -486,8 +493,8 @@ pub struct XdgPositionerData {
     pub width: i32,
     pub height: i32,
     pub anchor_rect: (i32, i32, i32, i32),
-    pub anchor: u32, // xdg_positioner::Anchor
-    pub gravity: u32, // xdg_positioner::Gravity
+    pub anchor: u32,                // xdg_positioner::Anchor
+    pub gravity: u32,               // xdg_positioner::Gravity
     pub constraint_adjustment: u32, // xdg_positioner::ConstraintAdjustment
     pub offset: (i32, i32),
 }
@@ -502,17 +509,21 @@ impl XdgPositionerData {
         // 1. Calculate base position from anchor
         if (self.anchor & 4) != 0 { // Left
              // x = ax
-        } else if (self.anchor & 8) != 0 { // Right
+        } else if (self.anchor & 8) != 0 {
+            // Right
             x += aw;
-        } else { // Center
+        } else {
+            // Center
             x += aw / 2;
         }
 
         if (self.anchor & 1) != 0 { // Top
-            // y = ay
-        } else if (self.anchor & 2) != 0 { // Bottom
+             // y = ay
+        } else if (self.anchor & 2) != 0 {
+            // Bottom
             y += ah;
-        } else { // Center
+        } else {
+            // Center
             y += ah / 2;
         }
 
@@ -520,68 +531,84 @@ impl XdgPositionerData {
         let mut px = x + self.offset.0;
         let mut py = y + self.offset.1;
 
-        if (self.gravity & 4) != 0 { // Left
+        if (self.gravity & 4) != 0 {
+            // Left
             px -= self.width;
         } else if (self.gravity & 8) != 0 { // Right
-            // px stays
-        } else { // Center
+             // px stays
+        } else {
+            // Center
             px -= self.width / 2;
         }
 
-        if (self.gravity & 1) != 0 { // Top
+        if (self.gravity & 1) != 0 {
+            // Top
             py -= self.height;
         } else if (self.gravity & 2) != 0 { // Bottom
-            // py stays
-        } else { // Center
+             // py stays
+        } else {
+            // Center
             py -= self.height / 2;
         }
 
         // 3. Apply constraint adjustments (basic Slide and Flip)
         // Adjustments: Slide X(1), Slide Y(2), Flip X(4), Flip Y(8)
-        
+
         // Horizontal adjustment
         if px < output_rect.x {
-            if (self.constraint_adjustment & 4) != 0 { // Flip X
+            if (self.constraint_adjustment & 4) != 0 {
+                // Flip X
                 // Simple flip: try mirroring across anchor point
                 let flipped_px = x - (px - x) - self.width;
                 if flipped_px + self.width <= (output_rect.x + output_rect.width as i32) {
                     px = flipped_px;
                 }
             }
-            if px < output_rect.x && (self.constraint_adjustment & 1) != 0 { // Slide X
+            if px < output_rect.x && (self.constraint_adjustment & 1) != 0 {
+                // Slide X
                 px = output_rect.x;
             }
         } else if px + self.width > (output_rect.x + output_rect.width as i32) {
-            if (self.constraint_adjustment & 4) != 0 { // Flip X
+            if (self.constraint_adjustment & 4) != 0 {
+                // Flip X
                 let flipped_px = x - (px - x) - self.width;
                 if flipped_px >= output_rect.x {
                     px = flipped_px;
                 }
             }
-            if px + self.width > (output_rect.x + output_rect.width as i32) && (self.constraint_adjustment & 1) != 0 { // Slide X
+            if px + self.width > (output_rect.x + output_rect.width as i32)
+                && (self.constraint_adjustment & 1) != 0
+            {
+                // Slide X
                 px = (output_rect.x + output_rect.width as i32) - self.width;
             }
         }
 
         // Vertical adjustment
         if py < output_rect.y {
-            if (self.constraint_adjustment & 8) != 0 { // Flip Y
+            if (self.constraint_adjustment & 8) != 0 {
+                // Flip Y
                 let flipped_py = y - (py - y) - self.height;
                 if flipped_py + self.height <= (output_rect.y + output_rect.height as i32) {
                     py = flipped_py;
                 }
             }
-            if py < output_rect.y && (self.constraint_adjustment & 2) != 0 { // Slide Y
+            if py < output_rect.y && (self.constraint_adjustment & 2) != 0 {
+                // Slide Y
                 py = output_rect.y;
             }
         } else if py + self.height > (output_rect.y + output_rect.height as i32) {
-             if (self.constraint_adjustment & 8) != 0 { // Flip Y
+            if (self.constraint_adjustment & 8) != 0 {
+                // Flip Y
                 let flipped_py = y - (py - y) - self.height;
                 if flipped_py >= output_rect.y {
                     py = flipped_py;
                 }
             }
-            if py + self.height > (output_rect.y + output_rect.height as i32) && (self.constraint_adjustment & 2) != 0 { // Slide Y
+            if py + self.height > (output_rect.y + output_rect.height as i32)
+                && (self.constraint_adjustment & 2) != 0
+            {
+                // Slide Y
                 py = (output_rect.y + output_rect.height as i32) - self.height;
             }
         }
@@ -632,9 +659,6 @@ impl SubsurfaceData {
     }
 }
 
-
-
-
 // ============================================================================
 // Client State
 // ============================================================================
@@ -650,7 +674,7 @@ impl ClientData for ClientState {
     fn initialized(&self, client_id: ClientId) {
         tracing::info!("Client initialized: {:?}", client_id);
     }
-    
+
     fn disconnected(&self, client_id: ClientId, reason: DisconnectReason) {
         let reason_str = match reason {
             DisconnectReason::ConnectionClosed => "connection closed",
@@ -755,7 +779,7 @@ impl OutputState {
         // 96 DPI = ~3.78 pixels/mm
         self.physical_width = (width as f32 / 3.78) as u32;
         self.physical_height = (height as f32 / 3.78) as u32;
-        
+
         // Update or add mode
         if let Some(mode) = self.modes.get_mut(0) {
             mode.width = width;
@@ -785,8 +809,7 @@ impl Default for OutputState {
 // Seat Resources Tracking
 // ============================================================================
 
-use wayland_server::protocol::{wl_pointer, wl_keyboard, wl_touch};
-
+use wayland_server::protocol::{wl_keyboard, wl_pointer, wl_touch};
 
 use crate::core::wayland::protocol::wlroots::wlr_data_control_unstable_v1::zwlr_data_control_source_v1;
 
@@ -844,7 +867,7 @@ pub struct SeatState {
     pub name: String,
     /// Current clipboard selection
     pub current_selection: Option<SelectionSource>,
-    /// Keyboard sub-state (focus, pressed keys, XKB, repeat, resources)
+    /// Keyboard sub-state (focus, pressed keys, repeat cache). Smithay owns XKB.
     pub keyboard: KeyboardState,
     /// Pointer sub-state (focus, position, buttons, cursor, resources)
     pub pointer: PointerState,
@@ -873,43 +896,73 @@ impl Default for SeatState {
 // without changing every call site at once.
 impl SeatState {
     // -- Pointer field accessors (delegate to self.pointer) --
-    pub fn get_pointer_focus(&self) -> Option<u32> { self.pointer.focus }
-    pub fn set_pointer_focus(&mut self, v: Option<u32>) { self.pointer.focus = v; }
+    pub fn get_pointer_focus(&self) -> Option<u32> {
+        self.pointer.focus
+    }
+    pub fn set_pointer_focus(&mut self, v: Option<u32>) {
+        self.pointer.focus = v;
+    }
 
-    pub fn get_pointer_x(&self) -> f64 { self.pointer.x }
-    pub fn get_pointer_y(&self) -> f64 { self.pointer.y }
-    pub fn set_pointer_pos(&mut self, x: f64, y: f64) { self.pointer.x = x; self.pointer.y = y; }
+    pub fn get_pointer_x(&self) -> f64 {
+        self.pointer.x
+    }
+    pub fn get_pointer_y(&self) -> f64 {
+        self.pointer.y
+    }
+    pub fn set_pointer_pos(&mut self, x: f64, y: f64) {
+        self.pointer.x = x;
+        self.pointer.y = y;
+    }
 
-    pub fn get_pointer_button_count(&self) -> u32 { self.pointer.button_count }
+    pub fn get_pointer_button_count(&self) -> u32 {
+        self.pointer.button_count
+    }
 
-    pub fn get_cursor_surface(&self) -> Option<u32> { self.pointer.cursor_surface }
-    pub fn get_cursor_hotspot(&self) -> (f64, f64) { (self.pointer.cursor_hotspot_x, self.pointer.cursor_hotspot_y) }
+    pub fn get_cursor_surface(&self) -> Option<u32> {
+        self.pointer.cursor_surface
+    }
+    pub fn get_cursor_hotspot(&self) -> (f64, f64) {
+        (self.pointer.cursor_hotspot_x, self.pointer.cursor_hotspot_y)
+    }
 
     // -- Keyboard field accessors (delegate to self.keyboard) --
-    pub fn get_keyboard_focus(&self) -> Option<u32> { self.keyboard.focus }
-    pub fn set_keyboard_focus_id(&mut self, v: Option<u32>) { self.keyboard.focus = v; }
-    pub fn get_pressed_keys(&self) -> &[u32] { &self.keyboard.pressed_keys }
+    pub fn get_keyboard_focus(&self) -> Option<u32> {
+        self.keyboard.focus
+    }
+    pub fn set_keyboard_focus_id(&mut self, v: Option<u32>) {
+        self.keyboard.focus = v;
+    }
+    pub fn get_pressed_keys(&self) -> &[u32] {
+        &self.keyboard.pressed_keys
+    }
     pub fn get_mods(&self) -> (u32, u32, u32, u32) {
-        (self.keyboard.mods_depressed, self.keyboard.mods_latched, self.keyboard.mods_locked, self.keyboard.mods_group)
+        (
+            self.keyboard.mods_depressed,
+            self.keyboard.mods_latched,
+            self.keyboard.mods_locked,
+            self.keyboard.mods_group,
+        )
     }
 
     // -- Resource accessors for backward compat --
-    pub fn get_pointers(&self) -> &[wl_pointer::WlPointer] { &self.pointer.resources }
-    pub fn get_keyboards(&self) -> &[wl_keyboard::WlKeyboard] { &self.keyboard.resources }
-    pub fn get_touches(&self) -> &[wl_touch::WlTouch] { &self.touch.resources }
+    pub fn get_pointers(&self) -> &[wl_pointer::WlPointer] {
+        &self.pointer.resources
+    }
+    pub fn get_keyboards(&self) -> &[wl_keyboard::WlKeyboard] {
+        &self.keyboard.resources
+    }
+    pub fn get_touches(&self) -> &[wl_touch::WlTouch] {
+        &[]
+    }
 
-    // -- XKB accessors --
-    pub fn get_xkb_context(&self) -> &Arc<XkbContext> { &self.keyboard.xkb_context }
-    pub fn get_xkb_state(&self) -> &Option<Arc<std::sync::Mutex<XkbState>>> { &self.keyboard.xkb_state }
 }
 
 impl SeatState {
     pub fn new(name: &str) -> Self {
-        let xkb_context = Arc::new(XkbContext::new());
         Self {
             name: name.to_string(),
             current_selection: None,
-            keyboard: KeyboardState::new(xkb_context),
+            keyboard: KeyboardState::new(),
             pointer: PointerState::new(),
             touch: TouchState::new(),
             popup_grab_stack: Vec::new(),
@@ -952,19 +1005,43 @@ impl SeatState {
     // Broadcast methods. Delegate to sub-state modules
     // =========================================================================
 
-    pub fn broadcast_pointer_motion(&mut self, time: u32, x: f64, y: f64, focused_client: Option<&wayland_server::Client>) {
+    pub fn broadcast_pointer_motion(
+        &mut self,
+        time: u32,
+        x: f64,
+        y: f64,
+        focused_client: Option<&wayland_server::Client>,
+    ) {
         self.pointer.broadcast_motion(time, x, y, focused_client);
     }
 
-    pub fn broadcast_pointer_button(&mut self, serial: u32, time: u32, button: u32, state: wl_pointer::ButtonState, focused_client: Option<&wayland_server::Client>) {
-        self.pointer.broadcast_button(serial, time, button, state, focused_client);
+    pub fn broadcast_pointer_button(
+        &mut self,
+        serial: u32,
+        time: u32,
+        button: u32,
+        state: wl_pointer::ButtonState,
+        focused_client: Option<&wayland_server::Client>,
+    ) {
+        self.pointer
+            .broadcast_button(serial, time, button, state, focused_client);
     }
 
-    pub fn broadcast_pointer_enter(&mut self, serial: u32, surface: &wayland_server::protocol::wl_surface::WlSurface, x: f64, y: f64) {
+    pub fn broadcast_pointer_enter(
+        &mut self,
+        serial: u32,
+        surface: &wayland_server::protocol::wl_surface::WlSurface,
+        x: f64,
+        y: f64,
+    ) {
         self.pointer.broadcast_enter(serial, surface, x, y);
     }
 
-    pub fn broadcast_pointer_leave(&mut self, serial: u32, surface: &wayland_server::protocol::wl_surface::WlSurface) {
+    pub fn broadcast_pointer_leave(
+        &mut self,
+        serial: u32,
+        surface: &wayland_server::protocol::wl_surface::WlSurface,
+    ) {
         self.pointer.broadcast_leave(serial, surface);
     }
 
@@ -980,14 +1057,31 @@ impl SeatState {
         source: wl_pointer::AxisSource,
         focused_client: Option<&wayland_server::Client>,
     ) {
-        self.pointer.broadcast_axis(time, axis, value, source, focused_client);
+        self.pointer
+            .broadcast_axis(time, axis, value, source, focused_client);
     }
 
-    pub fn broadcast_key(&mut self, serial: u32, time: u32, key: u32, state: wl_keyboard::KeyState, focused_client: Option<&wayland_server::Client>) {
-        self.keyboard.broadcast_key(serial, time, key, state, focused_client);
+    pub fn broadcast_key(
+        &mut self,
+        serial: u32,
+        time: u32,
+        key: u32,
+        state: wl_keyboard::KeyState,
+        focused_client: Option<&wayland_server::Client>,
+    ) {
+        self.keyboard
+            .broadcast_key(serial, time, key, state, focused_client);
     }
 
-    pub fn broadcast_modifiers(&mut self, serial: u32, depressed: u32, latched: u32, locked: u32, group: u32, focused_client: Option<&wayland_server::Client>) {
+    pub fn broadcast_modifiers(
+        &mut self,
+        serial: u32,
+        depressed: u32,
+        latched: u32,
+        locked: u32,
+        group: u32,
+        focused_client: Option<&wayland_server::Client>,
+    ) {
         // Update cached state in keyboard
         self.keyboard.mods_depressed = depressed;
         self.keyboard.mods_latched = latched;
@@ -996,40 +1090,61 @@ impl SeatState {
         self.keyboard.broadcast_modifiers(serial, focused_client);
     }
 
-    pub fn broadcast_keyboard_enter(&mut self, serial: u32, surface: &wayland_server::protocol::wl_surface::WlSurface, keys: &[u32]) {
+    pub fn broadcast_keyboard_enter(
+        &mut self,
+        serial: u32,
+        surface: &wayland_server::protocol::wl_surface::WlSurface,
+        keys: &[u32],
+    ) {
         self.keyboard.broadcast_enter(serial, surface, keys);
     }
 
-    pub fn broadcast_keyboard_leave(&mut self, serial: u32, surface: &wayland_server::protocol::wl_surface::WlSurface) {
+    pub fn broadcast_keyboard_leave(
+        &mut self,
+        serial: u32,
+        surface: &wayland_server::protocol::wl_surface::WlSurface,
+    ) {
         self.keyboard.broadcast_leave(serial, surface);
     }
 
-    pub fn broadcast_touch_down(&mut self, serial: u32, time: u32, surface: &wayland_server::protocol::wl_surface::WlSurface, id: i32, x: f64, y: f64) {
-        self.touch.broadcast_down(serial, time, surface, id, x, y);
+    pub fn broadcast_touch_down(
+        &mut self,
+        _serial: u32,
+        _time: u32,
+        _surface: &wayland_server::protocol::wl_surface::WlSurface,
+        _id: i32,
+        _x: f64,
+        _y: f64,
+    ) {
     }
 
-    pub fn broadcast_touch_up(&mut self, serial: u32, time: u32, id: i32, focused_client: Option<&wayland_server::Client>) {
-        self.touch.broadcast_up(serial, time, id, focused_client);
+    pub fn broadcast_touch_up(
+        &mut self,
+        _serial: u32,
+        _time: u32,
+        _id: i32,
+        _focused_client: Option<&wayland_server::Client>,
+    ) {
     }
 
-    pub fn broadcast_touch_motion(&mut self, time: u32, id: i32, x: f64, y: f64, focused_client: Option<&wayland_server::Client>) {
-        self.touch.broadcast_motion(time, id, x, y, focused_client);
+    pub fn broadcast_touch_motion(
+        &mut self,
+        _time: u32,
+        _id: i32,
+        _x: f64,
+        _y: f64,
+        _focused_client: Option<&wayland_server::Client>,
+    ) {
     }
 
-    pub fn broadcast_touch_frame(&mut self, focused_client: Option<&wayland_server::Client>) {
-        self.touch.broadcast_frame(focused_client);
-    }
+    pub fn broadcast_touch_frame(&mut self, _focused_client: Option<&wayland_server::Client>) {}
 
-    pub fn broadcast_touch_cancel(&mut self, focused_client: Option<&wayland_server::Client>) {
-        self.touch.broadcast_cancel(focused_client);
-    }
+    pub fn broadcast_touch_cancel(&mut self, _focused_client: Option<&wayland_server::Client>) {}
 }
 
 // ============================================================================
 // Focus State
 // ============================================================================
-
-
 
 // ============================================================================
 // Frame Callback State
@@ -1102,7 +1217,6 @@ pub struct XdgState {
     pub toplevel_icon: crate::core::wayland::xdg::xdg_toplevel_icon::ToplevelIconState,
 }
 
-
 impl Default for XdgState {
     fn default() -> Self {
         Self {
@@ -1117,8 +1231,10 @@ impl Default for XdgState {
             output: XdgOutputState::default(),
             decoration: DecorationState::default(),
             pending_pings: HashMap::new(),
-            toplevel_drag: crate::core::wayland::xdg::xdg_toplevel_drag::ToplevelDragState::default(),
-            toplevel_icon: crate::core::wayland::xdg::xdg_toplevel_icon::ToplevelIconState::default(),
+            toplevel_drag: crate::core::wayland::xdg::xdg_toplevel_drag::ToplevelDragState::default(
+            ),
+            toplevel_icon: crate::core::wayland::xdg::xdg_toplevel_icon::ToplevelIconState::default(
+            ),
         }
     }
 }
@@ -1177,11 +1293,8 @@ pub struct ExtProtocolState {
     pub fifo: crate::core::wayland::ext::fifo::FifoState,
     /// Commit timing (target presentation time) per surface
     pub commit_timing: crate::core::wayland::ext::commit_timing::CommitTimingState,
-    /// Text input (IME) state
+    /// Text input (IME) state (v1 weston-editor survivors only)
     pub text_input: crate::core::wayland::ext::text_input::TextInputState,
-    /// Input method v2 state (desktop-only, for IBus/Fcitx)
-    #[cfg(feature = "desktop-protocols")]
-    pub input_method: crate::core::wayland::ext::input_method::InputMethodState,
     /// Session lock state
     #[cfg(feature = "desktop-protocols")]
     pub session_lock: crate::core::wayland::ext::session_lock::SessionLockState,
@@ -1195,12 +1308,12 @@ pub struct ExtProtocolState {
     pub fullscreen_shell: crate::core::wayland::ext::fullscreen_shell::FullscreenShellState,
     /// XWayland keyboard grab state
     #[cfg(feature = "desktop-protocols")]
-    pub xwayland_keyboard_grab: crate::core::wayland::ext::xwayland_keyboard_grab::XwaylandKeyboardGrabState,
+    pub xwayland_keyboard_grab:
+        crate::core::wayland::ext::xwayland_keyboard_grab::XwaylandKeyboardGrabState,
     /// Image copy capture: session ObjectId -> (width, height) for active frame tracking
     #[cfg(feature = "desktop-protocols")]
     pub image_copy_capture_active_frame: HashMap<wayland_server::backend::ObjectId, (u32, u32)>,
 }
-
 
 impl Default for ExtProtocolState {
     fn default() -> Self {
@@ -1228,8 +1341,6 @@ impl Default for ExtProtocolState {
             commit_timing: crate::core::wayland::ext::commit_timing::CommitTimingState::default(),
             text_input: crate::core::wayland::ext::text_input::TextInputState::default(),
             #[cfg(feature = "desktop-protocols")]
-            input_method: crate::core::wayland::ext::input_method::InputMethodState::default(),
-            #[cfg(feature = "desktop-protocols")]
             session_lock: crate::core::wayland::ext::session_lock::SessionLockState::default(),
             security_context: crate::core::wayland::ext::security_context::SecurityContextState::default(),
             workspace: crate::core::wayland::ext::workspace::WorkspaceState::default(),
@@ -1242,8 +1353,6 @@ impl Default for ExtProtocolState {
         }
     }
 }
-
-
 
 // ============================================================================
 // Domain Sub-State: wlroots Protocols
@@ -1290,7 +1399,6 @@ pub struct WlrState {
     #[cfg(feature = "desktop-protocols")]
     pub next_image_copy_capture_id: u64,
 }
-
 
 impl Default for WlrState {
     fn default() -> Self {
@@ -1343,8 +1451,6 @@ pub struct GammaControlState {
     pub pending_restore: Option<u32>,
 }
 
-
-
 // ============================================================================
 // Main Compositor State
 // ============================================================================
@@ -1357,32 +1463,31 @@ pub struct CompositorState {
     // =========================================================================
     // Core State
     // =========================================================================
-    
     /// Connected clients
     pub clients: HashMap<wayland_server::backend::ClientId, ClientState>,
 
     /// All active surfaces, keyed by their Wayland object ID.
     pub surfaces: HashMap<u32, Arc<RwLock<Surface>>>,
-    
+
     /// All active windows (Toplevels), keyed by their ID.
     pub windows: HashMap<u32, Arc<RwLock<Window>>>,
-    
+
     /// Surface ID to Window ID mapping
     pub surface_to_window: HashMap<u32, u32>,
 
     /// Deferred keyboard focus when inject_keyboard_enter fires before the
     /// window's first surface is committed (becomeKeyWindow vs first xdg map).
     pub pending_keyboard_focus_window: Option<u64>,
-    
+
     /// Subsurface registry, keyed by subsurface's surface ID
     pub subsurfaces: HashMap<u32, SubsurfaceState>,
-    
+
     /// Parent to children mapping for subsurface hierarchy
     pub subsurface_children: HashMap<u32, Vec<u32>>,
-    
+
     /// Protocol surface ID to internal surface ID mapping, keyed by (ClientId, protocol_id)
     pub protocol_to_internal_surface: HashMap<(wayland_server::backend::ClientId, u32), u32>,
-    
+
     /// All active buffers, keyed by their (ClientId, protocol_id).
     pub buffers: HashMap<(ClientId, u32), Arc<RwLock<crate::core::surface::Buffer>>>,
 
@@ -1392,44 +1497,41 @@ pub struct CompositorState {
     // =========================================================================
     // Focus & Input State
     // =========================================================================
-    
     /// Focus manager
     pub focus: FocusManager,
-    
+
     /// Window tree
     pub window_tree: WindowTree,
-    
+
     /// Primary seat state
     pub seat: SeatState,
-    
+
     // =========================================================================
     // Output State
     // =========================================================================
-    
     /// Output states
     pub outputs: Vec<OutputState>,
-    
+
     /// Primary output index
     pub primary_output: usize,
-    
+
     /// Bound wl_output resources
-    pub output_resources: HashMap<wayland_server::backend::ObjectId, wayland_server::protocol::wl_output::WlOutput>,
+    pub output_resources:
+        HashMap<wayland_server::backend::ObjectId, wayland_server::protocol::wl_output::WlOutput>,
     /// wl_output ObjectId -> output_id (for image capture source resolution)
     pub output_id_by_resource: HashMap<wayland_server::backend::ObjectId, u32>,
     /// Image capture source ObjectId -> output_id (for CreateSession lookup)
     pub image_capture_source_output: HashMap<wayland_server::backend::ObjectId, u32>,
-    
+
     // =========================================================================
     // Frame Callbacks
     // =========================================================================
-    
     /// Pending frame callbacks per surface.
     pub frame_callbacks: HashMap<u32, Vec<WlCallback>>,
-    
+
     // =========================================================================
     // Configuration
     // =========================================================================
-    
     /// Global decoration policy. The **default** for clients (machines) that
     /// have no per-client override. Global Settings seed this; it must not
     /// retroactively rewrite live clients that carry an explicit override.
@@ -1458,65 +1560,68 @@ pub struct CompositorState {
 
     /// Keyboard repeat rate (Hz)
     pub keyboard_repeat_rate: i32,
-    
+
     /// Keyboard repeat delay (ms)
     pub keyboard_repeat_delay: i32,
-    
+
+    /// Pref-gated `wl_pointer` stream for clients that never bind `wl_touch`.
+    /// Default off. Nested compositor chrome uses a separate policy.
+    pub touch_pointer_emulation: bool,
+
     /// Whether to advertise zwp_fullscreen_shell_v1
     pub advertise_fullscreen_shell: bool,
     /// Runtime protocol exposure profile.
     pub protocol_profile: ProtocolProfile,
     /// Smithay runtime protocol ownership boundary.
     pub smithay_runtime: SmithayRuntimeState,
+    /// In-process IM-v2 stand-in so Smithay accepts TI-v3 from apps.
+    pub host_im: Option<crate::core::wayland::host_im::HostImRelay>,
 
     /// Bridge between the Wayland wl_data_device clipboard selection and the
-    /// native platform pasteboard (NSPasteboard / UIPasteboard /
+    /// native platform pasteboard (NSPasteboard / UIPasteboard /)
     /// ClipboardManager). See `SelectionHandler` impl in
     /// `core::wayland::mod` and `WWNCoreSetClipboardText` /
     /// `WWNCorePollClipboardText` in the FFI layer.
     pub clipboard_bridge: Arc<RwLock<ClipboardBridge>>,
     /// Bridge for external drag and drop (host to Wayland).
     pub dnd_bridge: Arc<RwLock<DndBridge>>,
-    
+
     // =========================================================================
     // ID Generators
     // =========================================================================
-    
     /// Next surface ID
     next_surface_id: u32,
-    
+
     /// Next window ID
     next_window_id: u32,
-    
+
     /// Serial counter for Wayland events
     serial: u32,
 
     /// Number of commits observed while an xdg_surface configure is still pending.
     pub commit_before_ack_count: u64,
-    
+
     // =========================================================================
     // Protocol Domain State (grouped by domain)
     // =========================================================================
-    
     /// XDG shell protocol state
     pub xdg: XdgState,
-    
+
     /// Extension protocol state (pointer constraints, viewporter, dmabuf, etc.)
     pub ext: ExtProtocolState,
-    
+
     /// wlroots protocol state (layer shell, virtual devices, data control)
     pub wlr: WlrState,
-    
+
     // =========================================================================
     // Core Protocol Resources
     // =========================================================================
-    
     /// Bound wl_seat resources
     pub seat_resources: HashMap<u32, wayland_server::protocol::wl_seat::WlSeat>,
-    
+
     /// Pending compositor events (pushed by protocol handlers)
     pub pending_compositor_events: Vec<CompositorEvent>,
-    
+
     /// SHM pools for buffer pixel access ((client_id, pool_id) -> pool)
     pub shm_pools: HashMap<(ClientId, u32), ShmPool>,
 
@@ -1526,37 +1631,37 @@ pub struct CompositorState {
     // =========================================================================
     // Scene Graph
     // =========================================================================
-    
     /// Global scene graph
     pub scene: Scene,
-    
+
     /// Global damage tracking
     pub scene_damage: SceneDamage,
-    
+
     /// Next scene node ID
     next_node_id: u32,
 }
 
 impl CompositorState {
     pub fn new(config: Option<crate::core::compositor::CompositorConfig>) -> Self {
-        let (decoration_policy, advertise_fullscreen_shell, protocol_profile) = if let Some(cfg) = config {
-             let policy = if cfg.force_ssd {
-                 DecorationPolicy::ForceServer
-             } else {
-                 DecorationPolicy::default()
-             };
-             (
-                 policy,
-                 cfg.advertise_fullscreen_shell,
-                 resolve_profile(cfg.protocol_profile),
-             )
-        } else {
-            (
-                DecorationPolicy::default(),
-                false,
-                resolve_profile(ProtocolProfile::default()),
-            )
-        };
+        let (decoration_policy, advertise_fullscreen_shell, protocol_profile) =
+            if let Some(cfg) = config {
+                let policy = if cfg.force_ssd {
+                    DecorationPolicy::ForceServer
+                } else {
+                    DecorationPolicy::default()
+                };
+                (
+                    policy,
+                    cfg.advertise_fullscreen_shell,
+                    resolve_profile(cfg.protocol_profile),
+                )
+            } else {
+                (
+                    DecorationPolicy::default(),
+                    false,
+                    resolve_profile(ProtocolProfile::default()),
+                )
+            };
 
         Self {
             clients: HashMap::new(),
@@ -1585,26 +1690,28 @@ impl CompositorState {
             client_fills_host: HashMap::new(),
             keyboard_repeat_rate: 33,
             keyboard_repeat_delay: 500,
+            touch_pointer_emulation: false,
             advertise_fullscreen_shell,
             protocol_profile,
             smithay_runtime: SmithayRuntimeState::default(),
+            host_im: None,
             clipboard_bridge: Arc::new(RwLock::new(ClipboardBridge::default())),
             dnd_bridge: Arc::new(RwLock::new(DndBridge::default())),
             next_surface_id: 1,
             next_window_id: 1,
             serial: 0,
             commit_before_ack_count: 0,
-            
+
             // Protocol domain sub-states
             xdg: XdgState::default(),
             ext: ExtProtocolState::default(),
             wlr: WlrState::default(),
             seat_resources: HashMap::new(),
-            
+
             pending_compositor_events: Vec::new(),
             shm_pools: HashMap::new(),
             regions: HashMap::new(),
-            
+
             scene: Scene::new(),
             scene_damage: SceneDamage::new(),
             next_node_id: 1,
@@ -1617,7 +1724,7 @@ impl CompositorState {
         self.next_window_id += 1;
         id
     }
-    
+
     /// Generate next serial for Wayland events
     pub fn next_serial(&mut self) -> u32 {
         let serial = self.serial;
@@ -1691,7 +1798,7 @@ impl CompositorState {
     // =========================================================================
     // Frame Callbacks
     // =========================================================================
-    
+
     /// Queue a frame callback for a surface.
     pub fn queue_frame_callback(&mut self, surface_id: u32, callback: WlCallback) {
         self.frame_callbacks
@@ -1699,37 +1806,42 @@ impl CompositorState {
             .or_insert_with(Vec::new)
             .push(callback);
     }
-    
+
     /// Flush all pending frame callbacks for a surface.
     pub fn flush_frame_callbacks(&mut self, surface_id: u32, timestamp: Option<u32>) {
         if let Some(callbacks) = self.frame_callbacks.remove(&surface_id) {
             let _count = callbacks.len();
             let timestamp = timestamp.unwrap_or_else(Self::get_timestamp_ms);
-            crate::wtrace!(crate::util::logging::STATE, "Flushing {} frame callbacks for surface {} (timestamp={})", 
-                callbacks.len(), surface_id, timestamp);
+            crate::wtrace!(
+                crate::util::logging::STATE,
+                "Flushing {} frame callbacks for surface {} (timestamp={})",
+                callbacks.len(),
+                surface_id,
+                timestamp
+            );
             for callback in callbacks {
                 callback.done(timestamp);
             }
         }
     }
-    
+
     /// Flush all pending frame callbacks for all surfaces.
     pub fn flush_all_frame_callbacks(&mut self) {
         let timestamp = Self::get_timestamp_ms();
         let mut total = 0;
-        
+
         for (_surface_id, callbacks) in self.frame_callbacks.drain() {
             total += callbacks.len();
             for callback in callbacks {
                 callback.done(timestamp);
             }
         }
-        
+
         if total > 0 {
             tracing::trace!("Flushed {} total frame callbacks", total);
         }
     }
-    
+
     /// Check if there are pending frame callbacks
     pub fn has_pending_frame_callbacks(&self) -> bool {
         self.frame_callbacks.values().any(|v| !v.is_empty())
@@ -1738,7 +1850,7 @@ impl CompositorState {
     // =========================================================================
     // Output Management (core)
     // =========================================================================
-    
+
     /// Get primary output
     pub fn primary_output(&self) -> &OutputState {
         &self.outputs[self.primary_output]
@@ -1749,15 +1861,21 @@ impl CompositorState {
         let index = self.primary_output;
         if let Some(output) = self.outputs.get_mut(index) {
             output.update(width, height, scale);
-            crate::wlog!(crate::util::logging::STATE, "Updated primary output: {}x{} @ {}x", width, height, scale);
+            crate::wlog!(
+                crate::util::logging::STATE,
+                "Updated primary output: {}x{} @ {}x",
+                width,
+                height,
+                scale
+            );
         }
     }
-    
+
     /// Get primary output mutably
     pub fn primary_output_mut(&mut self) -> &mut OutputState {
         &mut self.outputs[self.primary_output]
     }
-    
+
     /// Set output size
     pub fn set_output_size(&mut self, width: u32, height: u32, scale: f32) {
         let safe_scale = if scale < 1.0 { 1.0 } else { scale };
@@ -1765,19 +1883,32 @@ impl CompositorState {
         let safe_height = if height == 0 { 1080 } else { height };
 
         let idx = self.primary_output;
-        let (output_rect, usable_rect, phys_w, phys_h) = if let Some(output) = self.outputs.get_mut(idx) {
+        let (prev_w, prev_h, prev_usable) = self
+            .outputs
+            .get(idx)
+            .map(|output| (output.width, output.height, output.usable_area))
+            .unwrap_or((
+                safe_width,
+                safe_height,
+                crate::util::geometry::Rect::new(0, 0, safe_width, safe_height),
+            ));
+
+        let (output_rect, phys_w, phys_h) = if let Some(output) = self.outputs.get_mut(idx) {
             output.width = safe_width;
             output.height = safe_height;
             output.scale = safe_scale;
             output.physical_width = ((safe_width as f32 / safe_scale) / 96.0 * 25.4) as u32;
             output.physical_height = ((safe_height as f32 / safe_scale) / 96.0 * 25.4) as u32;
+            if let Some(mode) = output.modes.get_mut(0) {
+                mode.width = safe_width;
+                mode.height = safe_height;
+            }
             (
-                (output.x, output.y, output.width as i32, output.height as i32),
                 (
-                    output.usable_area.x,
-                    output.usable_area.y,
-                    output.usable_area.width as i32,
-                    output.usable_area.height as i32,
+                    output.x,
+                    output.y,
+                    output.width as i32,
+                    output.height as i32,
                 ),
                 output.physical_width,
                 output.physical_height,
@@ -1785,15 +1916,33 @@ impl CompositorState {
         } else {
             (
                 (0, 0, safe_width as i32, safe_height as i32),
-                (0, 0, safe_width as i32, safe_height as i32),
                 ((safe_width as f32 / safe_scale) / 96.0 * 25.4) as u32,
                 ((safe_height as f32 / safe_scale) / 96.0 * 25.4) as u32,
             )
         };
 
-        // Keep fullscreen / maximized windows aligned with the new output geometry
-        // (e.g. device rotation). Without this, scene nodes can keep stale
-        // pre-rotation dimensions until the next client-driven commit.
+        // Rebuild usable_area from the new output plus safe-area / exclusive zones.
+        // Without this, rotate keeps the pre-rotate usable rect and maximized
+        // fill-primary clients stay portrait-sized in landscape.
+        self.reposition_layer_surfaces();
+        let usable_rect = self
+            .outputs
+            .get(idx)
+            .map(|output| {
+                (
+                    output.usable_area.x,
+                    output.usable_area.y,
+                    output.usable_area.width as i32,
+                    output.usable_area.height as i32,
+                )
+            })
+            .unwrap_or((0, 0, safe_width as i32, safe_height as i32));
+
+        // Fill-primary (iOS family / Android): rotate and Split View must
+        // xdg_toplevel.configure every in-session client that already filled
+        // the host. macOS multi-window and dedicated iPad/vision scenes stay
+        // on injectWindowResize via host_scene_independent. Floating demos
+        // (flower 200x200) keep their own size.
         let mut resized_window_sizes: std::collections::HashMap<u32, (u32, u32)> =
             std::collections::HashMap::new();
         for (&wid, window_ref) in &self.windows {
@@ -1813,6 +1962,21 @@ impl CompositorState {
                 let old_h = window.height;
                 let old_x = window.x;
                 let old_y = window.y;
+                let matches_prev_output = Self::size_matches_output(
+                    window.width,
+                    window.height,
+                    prev_w,
+                    prev_h,
+                );
+                let matches_prev_usable = Self::size_matches_output(
+                    window.width,
+                    window.height,
+                    prev_usable.width,
+                    prev_usable.height,
+                );
+                let fill_primary = window.fills_host
+                    || matches_prev_output
+                    || matches_prev_usable;
 
                 if Self::is_host_locked_window_flags(
                     wid,
@@ -1824,11 +1988,16 @@ impl CompositorState {
                     window.y = output_rect.1;
                     window.width = output_rect.2;
                     window.height = output_rect.3;
-                } else if window.maximized {
+                } else if window.maximized || matches_prev_usable {
                     window.x = usable_rect.0;
                     window.y = usable_rect.1;
                     window.width = usable_rect.2.max(0);
                     window.height = usable_rect.3.max(0);
+                } else if fill_primary {
+                    window.x = output_rect.0;
+                    window.y = output_rect.1;
+                    window.width = output_rect.2;
+                    window.height = output_rect.3;
                 } else {
                     continue;
                 }
@@ -1850,21 +2019,35 @@ impl CompositorState {
             let mut pending_configures = Vec::new();
             for ((client_id, toplevel_id), data) in &self.xdg.toplevels {
                 if let Some(&(w, h)) = resized_window_sizes.get(&data.window_id) {
-                    pending_configures.push((client_id.clone(), *toplevel_id, w, h, data.window_id));
+                    pending_configures.push((
+                        client_id.clone(),
+                        *toplevel_id,
+                        w,
+                        h,
+                        data.window_id,
+                    ));
                 }
             }
             for (client_id, toplevel_id, w, h, window_id) in pending_configures {
                 let _ = self.send_toplevel_configure(client_id, toplevel_id, w, h);
-                self.pending_compositor_events.push(crate::core::compositor::CompositorEvent::WindowSizeChanged {
-                    window_id,
-                    width: w,
-                    height: h,
-                });
+                self.pending_compositor_events.push(
+                    crate::core::compositor::CompositorEvent::WindowSizeChanged {
+                        window_id,
+                        width: w,
+                        height: h,
+                    },
+                );
             }
         }
-        
-        tracing::info!("Output size set to {}x{} @ {}x (phys: {}x{}mm)", 
-            safe_width, safe_height, safe_scale, phys_w, phys_h);
+
+        tracing::info!(
+            "Output size set to {}x{} @ {}x (phys: {}x{}mm)",
+            safe_width,
+            safe_height,
+            safe_scale,
+            phys_w,
+            phys_h
+        );
     }
 
     /// Mark whether a window is hosted in its own independent OS window/scene
@@ -1888,21 +2071,24 @@ impl CompositorState {
             output.safe_area_insets = (top, right, bottom, left);
             tracing::info!(
                 "Safe area insets set: top={} right={} bottom={} left={}",
-                top, right, bottom, left
+                top,
+                right,
+                bottom,
+                left
             );
         }
         self.reposition_layer_surfaces();
     }
-    
+
     // =========================================================================
     // Utilities
     // =========================================================================
-    
+
     /// Get current timestamp in milliseconds.
     pub fn get_timestamp_ms() -> u32 {
         crate::core::Compositor::timestamp_ms()
     }
-    
+
     /// Get decoration mode for new windows (global default; used where no
     /// client is known. Kept for tests / legacy callers).
     pub fn decoration_mode_for_new_window(&self) -> DecorationMode {
@@ -1965,8 +2151,16 @@ impl CompositorState {
             return None;
         }
         let out = self.primary_output();
-        let w = if out.width > 0 { out.width as i32 } else { 1024 };
-        let h = if out.height > 0 { out.height as i32 } else { 768 };
+        let w = if out.width > 0 {
+            out.width as i32
+        } else {
+            1024
+        };
+        let h = if out.height > 0 {
+            out.height as i32
+        } else {
+            768
+        };
         Some((w, h))
     }
 
@@ -1974,7 +2168,6 @@ impl CompositorState {
     pub fn remove_client_decoration_policy(&mut self, client: &ClientId) {
         self.client_decoration_policy.remove(client);
     }
-
 }
 
 #[cfg(test)]
@@ -1997,7 +2190,7 @@ impl Default for CompositorState {
 #[cfg(test)]
 mod state_tests {
     use super::*;
-    
+
     #[test]
     fn test_compositor_state_new() {
         let state = CompositorState::new(None);
@@ -2005,7 +2198,7 @@ mod state_tests {
         assert!(state.windows.is_empty());
         assert_eq!(state.focus.keyboard_focus, None);
     }
-    
+
     #[test]
     fn test_surface_ids() {
         let mut state = CompositorState::new(None);
@@ -2013,7 +2206,7 @@ mod state_tests {
         assert_eq!(state.next_surface_id(), 2);
         assert_eq!(state.next_surface_id(), 3);
     }
-    
+
     #[test]
     fn test_window_ids() {
         let mut state = CompositorState::new(None);
@@ -2021,7 +2214,7 @@ mod state_tests {
         assert_eq!(state.next_window_id(), 2);
         assert_eq!(state.next_window_id(), 3);
     }
-    
+
     #[test]
     fn test_focus_history() {
         let mut focus = crate::core::window::focus::FocusManager::new();
@@ -2132,16 +2325,25 @@ impl CompositorState {
         self.client_fills_host.remove(&client);
 
         self.wlr.layer_surfaces.retain(|(cid, _), _| *cid != client);
-        self.wlr.surface_to_layer.retain(|(cid, _), _| *cid != client);
-        self.wlr.virtual_pointers.retain(|(cid, _), _| *cid != client);
-        self.wlr.virtual_keyboards.retain(|(cid, _), _| *cid != client);
+        self.wlr
+            .surface_to_layer
+            .retain(|(cid, _), _| *cid != client);
+        self.wlr
+            .virtual_pointers
+            .retain(|(cid, _), _| *cid != client);
+        self.wlr
+            .virtual_keyboards
+            .retain(|(cid, _), _| *cid != client);
 
         self.xdg.surfaces.retain(|(cid, _), _| *cid != client);
         self.xdg.toplevels.retain(|(cid, _), _| *cid != client);
         self.xdg.popups.retain(|(cid, _), _| *cid != client);
         self.xdg.positioners.retain(|(cid, _), _| *cid != client);
         self.xdg.pending_pings.retain(|_, (idx, _)| {
-            self.xdg.shell_clients.get(*idx).is_some_and(|sc| sc.alive())
+            self.xdg
+                .shell_clients
+                .get(*idx)
+                .is_some_and(|sc| sc.alive())
         });
     }
 }
@@ -2154,13 +2356,13 @@ impl ProtocolState for ExtProtocolState {
     fn client_disconnected(&mut self, client: wayland_server::backend::ClientId) {
         use wayland_server::Resource;
         // Clean up idle notify subscriptions owned by this client
-        self.idle_notify.notifications.retain(|n| {
-            n.resource.client().map_or(true, |c| c.id() != client)
-        });
+        self.idle_notify
+            .notifications
+            .retain(|n| n.resource.client().map_or(true, |c| c.id() != client));
         // Clean up input timestamp subscriptions
-        self.input_timestamps.resources.retain(|(r, _kind)| {
-            r.client().map_or(true, |c| c.id() != client)
-        });
+        self.input_timestamps
+            .resources
+            .retain(|(r, _kind)| r.client().map_or(true, |c| c.id() != client));
     }
 }
 
@@ -2185,9 +2387,8 @@ impl ProtocolState for XdgState {
     fn client_disconnected(&mut self, client: wayland_server::backend::ClientId) {
         use wayland_server::Resource;
         // Clean up shell resources owned by this client
-        self.shell_resources.retain(|_id, res| {
-            res.client().map_or(true, |c| c.id() != client)
-        });
+        self.shell_resources
+            .retain(|_id, res| res.client().map_or(true, |c| c.id() != client));
     }
 }
 
@@ -2212,14 +2413,10 @@ impl ProtocolState for SeatState {
             }
         });
 
-        // Cleanup touches
-        self.touch.resources.retain(|t| {
-            if let Some(c) = t.client() {
-                c.id() != client
-            } else {
-                true
-            }
-        });
+        // Smithay owns wl_touch resources. Drop compositor contact bookkeeping
+        // for this client if it had live points.
+        let _ = client;
+        self.touch.touch_cancel();
 
         // Focus surface cleanup is handled at the CompositorState level
         // in client_disconnected(), which has access to the surface map
@@ -2315,5 +2512,3 @@ impl ProtocolState for CompositorState {
         });
     }
 }
-
-

@@ -1,71 +1,34 @@
-# wwn-vms. Mode A / Mode B implementation plan
+# wwn-vms. Mode A / Mode B
 
-Canonical product split: [Wawona `docs/mode-a-b.md`](https://github.com/Wawona/Wawona/blob/development/docs/mode-a-b.md).
-Mirror: keep this file in sync with `Wawona/docs/vms-mode-a-b.md`.
+Canonical product split: [Wawona `docs/mode-a-b.md`](mode-a-b.md).
+Engine: Wawona Relay (`wwn-relay`). Not QEMU. Not UTM.
 
 ## Goal
 
-One Machines kind `virtual_machine`, **different backends per platform**, plus
-Mode A vs Mode B on the iOS family:
+One Machines kind `virtual_machine`. Linux / NixOS prebuilts only. Guest GUI
+is Wayland into Wawona (`wawona-guest-wayland-iland`).
 
 | Platform | Mode A engine | Mode B / privileged |
 |----------|---------------|---------------------|
-| **macOS** | `Virtualization.framework` (not MAS) | Same + SIP desktop-host paths |
-| **iOS / iPadOS** | UTM-SE-class **jitless** QEMU-TCTI | **JIT** UTM in Sileo Mode B IPA |
-| **Android** | QEMU TCG (± AVF/KVM when available) | Root/privileged paths as designed |
-| **Linux** | Host/QEMU profiles (TBD) | N/A |
+| **macOS** | Virtualization.framework via Relay | Same plus desktop-host paths |
+| **iOS / iPadOS** | Relay static / jitless CPU. Planned. Fail closed | Same Relay plus Mode B JIT CPU. Planned. Fail closed |
+| **Android** | Relay static CPU. Planned. Fail closed | Root / privileged Relay. Planned |
+| **Linux** | KVM via cloud-hypervisor or crosvm. Fail closed without `/dev/kvm` | N/A |
+| **tvOS / watchOS / visionOS** | Forbidden | Forbidden |
 
-Shared: Machines schema, guest artifacts, vsock + waypipe GUI, capability gates.
-**Do not** assume the iOS interpreter path on macOS/Android or vice versa.
-
-Containers are separate (`wwn-containers`): macOS Apple Containerization work is
-in flight elsewhere. Wawona integration waits on that merge; do not block VMs
-or Wasm packages on it.
-
-## Shared substrate (both modes)
-
-- Machine profile schema (`virtual_machine`)
-- Guest image selection / NixOS guest artifacts (data)
-- vsock + waypipe GUI path into Wawona
-- Capability gate API: `VmEngineKind = .interpreterJitless | .jitEnabled`
-- Unit tests against the interface, not a single binary
-
-## Mode A implementation
-
-1. Link / embed only TCTI (UTM-SE model) sources from `dependencies/vms/utm/`
-   paths used for store builds.
-2. CI: assert **no** JIT entitlements, no `MAP_JIT`, no Hypervisor on iOS store
-   schemes; symbol/string scan for jailbreak/JIT engage UI = fail.
-3. Performance: document TCTI ceiling; tune guest size (existing README levers).
-4. Optional ODR/downloadable UTM-SE payload (see Wawona #33). Still jitless data.
-
-## Mode B implementation
-
-1. Separate product flavor / scheme: `Wawona-iOS-ModeB` (name TBD) **not**
-   submitted to ASC.
-2. Enable JIT UTM path (same family as jailbreak UTM / TrollStore JIT).
-3. `repo.wawona.io` CI: build Mode B IPA → Sileo package automatically.
-4. Mode B may use unsandboxed shell alongside VMs (product Mode B shell); VM
-   engine must not be the only Mode B feature.
-5. Website documents JIT; store IPA never mentions it.
+Shared: Machines schema, NixOS guest artifacts, vsock + waypipe GUI, capability
+gates. Engine is selected by which binary was installed, not a Settings toggle.
 
 ## Never
 
-- Ship Mode B engine inside App Store IPA “behind a toggle.”
-- Pretend jitless and JIT are the same binary with an env var.
-- Enable VM machine kind on tvOS/watchOS/visionOS (forbidden).
+- QEMU, TCTI, UTM, Spice, virgl, or `wwn-qemu-run` as the product CPU
+- Ship Mode B engine inside an App Store IPA behind a toggle
+- Enable VM machine kind on tvOS / watchOS / visionOS
+- Document VM frames as done before Relay boots NixOS on that artifact
 
-## Phases
+## Success (not reached on iOS yet)
 
-| Phase | Work |
-|-------|------|
-| 1 | Engine interface + Mode A TCTI stub→real boot on device |
-| 2 | Mode B JIT engine behind Mode-B-only target |
-| 3 | repo.wawona.io auto Mode B IPA + Sileo metadata |
-| 4 | e2e: Mode A guest waypipe; Mode B JIT guest waypipe |
-
-## Success
-
-- Store IPA boots a guest **without** JIT and passes App Store review notes.
-- Sileo Mode B IPA boots the same profile class **with** JIT.
-- Single Machines UI codepath; engine selected by build flavor / capability.
+- Store IPA boots a NixOS guest through Relay without JIT
+- TrollStore Mode B tipa boots the same profile class through Relay with the
+  Mode B CPU
+- Official `.#wawona-ios-modeb-tipa` ships guests only after Relay frames

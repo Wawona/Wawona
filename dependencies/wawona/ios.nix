@@ -33,6 +33,8 @@
   # First-class Rust backend so product xcodebuild copies libwawona.a instead of
   # nested `nix build --impure` (Gate: products iOS sim was recompiling rust).
   rustBackend ? null,
+  mobileGuestArtifacts ? null,
+  mobileContainerGuestArtifacts ? null,
   companionBackends ? { },
   ...
 }:
@@ -112,6 +114,15 @@ in
       # Swift capability gates are compiled for this immutable product flavor.
       ''SWIFT_ACTIVE_COMPILATION_CONDITIONS="WWN_MODE_B"''
     ]
+    ++ lib.optionals (mobileGuestArtifacts != null) [
+      # xcodebuild does not preserve arbitrary process environment variables
+      # in Run Script phases. Pass these as build settings so the guest embed
+      # scripts receive the resolved artifact paths.
+      ''WAWONA_MOBILE_GUEST_DIR="${mobileGuestArtifacts}"''
+    ]
+    ++ lib.optionals (mobileContainerGuestArtifacts != null) [
+      ''WAWONA_MOBILE_CONTAINER_GUEST_DIR="${mobileContainerGuestArtifacts}"''
+    ]
     # Impure Ship: beta (stores): fastlane match installs App Store profiles; force
     # Manual signing so xcodebuild does not look for a Development account.
     ++ lib.optionals (releaseBuild && generateIPA) [
@@ -128,5 +139,12 @@ in
     ]
   );
 }).overrideAttrs (import ./inject-xcode-backend-env.nix {
-  inherit lib rustBackend xcodeTarget companionBackends;
+  inherit
+    lib
+    rustBackend
+    xcodeTarget
+    companionBackends
+    mobileGuestArtifacts
+    mobileContainerGuestArtifacts
+    ;
 })

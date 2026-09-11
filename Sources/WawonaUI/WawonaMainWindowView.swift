@@ -289,7 +289,17 @@ struct WawonaMainWindowView: View {
     // MARK: - Detail
 
     private var catalogSections: [GlobalSettingsSectionID] {
-        GlobalSettingsCatalog.visibleSections(for: GlobalSettingsCatalog.currentHost)
+        var sections = GlobalSettingsCatalog.visibleSections(for: GlobalSettingsCatalog.currentHost)
+        #if WWN_MODE_B && os(iOS)
+        if !sections.contains(.desktop) {
+            if let idx = sections.firstIndex(of: .advanced) {
+                sections.insert(.desktop, at: idx + 1)
+            } else {
+                sections.append(.desktop)
+            }
+        }
+        #endif
+        return sections
     }
 
     fileprivate static func objcSection(

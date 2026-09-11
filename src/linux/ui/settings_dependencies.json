@@ -1,79 +1,110 @@
 {
   "packages": [
     {
+      "license": "MIT",
       "name": "libwayland",
-      "version": "1.23.0",
-      "role": "Wayland protocol library"
+      "role": "Wayland protocol library",
+      "url": "https://gitlab.freedesktop.org/wayland/wayland",
+      "version": "1.23.0"
     },
     {
+      "license": "MIT",
       "name": "xkbcommon",
-      "version": "1.7.0",
-      "role": "Keyboard handling library"
+      "role": "Keyboard handling library",
+      "url": "https://github.com/xkbcommon/libxkbcommon",
+      "version": "1.7.0"
     },
     {
+      "license": "BSD-2-Clause",
       "name": "LZ4",
-      "version": "1.10.0",
-      "role": "Fast compression"
+      "role": "Fast compression",
+      "url": "https://github.com/lz4/lz4",
+      "version": "1.10.0"
     },
     {
+      "license": "BSD-3-Clause OR GPL-2.0-only",
       "name": "Zstd",
-      "version": "1.5.7",
-      "role": "Zstandard compression"
+      "role": "Zstandard compression",
+      "url": "https://github.com/facebook/zstd",
+      "version": "1.5.7"
     },
     {
+      "license": "MIT",
       "name": "libffi",
-      "version": "3.5.2",
-      "role": "Foreign function interface"
+      "role": "Foreign function interface",
+      "url": "https://github.com/libffi/libffi",
+      "version": "3.5.2"
     },
     {
+      "license": "MIT",
       "name": "pixman",
-      "version": "0.44.2",
-      "role": "Software 2D compositor"
+      "role": "Software 2D compositor",
+      "url": "https://gitlab.freedesktop.org/pixman/pixman",
+      "version": "0.44.2"
     },
     {
+      "license": "MIT",
       "name": "Waypipe",
-      "version": "0.11.0",
-      "role": "Remote Wayland display proxy"
+      "role": "Remote Wayland display proxy",
+      "url": "https://gitlab.freedesktop.org/mstoeckl/waypipe",
+      "version": "0.11.0"
     },
     {
+      "license": "SSH-OpenSSH",
       "name": "OpenSSH",
-      "version": "9.9p2",
-      "role": "Host SSH client"
+      "role": "Host SSH client",
+      "url": "https://www.openssh.com",
+      "version": "9.9p2"
     },
     {
+      "license": "MIT",
       "name": "Weston",
-      "version": "14",
-      "role": "Bundled nested compositor"
+      "role": "Bundled nested compositor",
+      "url": "https://gitlab.freedesktop.org/wayland/weston",
+      "version": "14"
     },
     {
+      "license": "GPL-3.0-or-later",
       "name": "Niri",
-      "version": "25",
-      "role": "Bundled nested compositor"
+      "role": "Bundled nested compositor",
+      "url": "https://github.com/YaLTeR/niri",
+      "version": "25"
     },
     {
+      "license": "MIT",
       "name": "Foot",
-      "version": "1.21",
-      "role": "Wayland terminal"
+      "role": "Wayland terminal",
+      "url": "https://codeberg.org/dnkl/foot",
+      "version": "1.21"
     },
     {
+      "license": "Zsh",
       "name": "zsh",
-      "version": "5.9",
-      "role": "Bundled local shell"
+      "role": "Bundled local shell",
+      "url": "https://www.zsh.org",
+      "version": "5.9"
     },
     {
+      "license": "MIT",
       "name": "kmscube",
-      "version": "mesa",
-      "role": "GLES/Vulkan KMS demo"
+      "role": "GLES/Vulkan KMS demo",
+      "url": "https://gitlab.freedesktop.org/mesa/kmscube",
+      "version": "mesa"
     },
     {
+      "license": "Apache-2.0",
       "name": "neovim",
-      "version": "0.11",
-      "role": "Bundled editor"
+      "role": "Bundled editor",
+      "url": "https://neovim.io",
+      "version": "0.11"
     },
     {
+      "license": "MIT",
       "name": "fastfetch",
-      "version": "2",
-      "role": "System info client"
+      "role": "System info client",
+      "url": "https://github.com/fastfetch-cli/fastfetch",
+      "version": "2"
     }
   ]
 }
+

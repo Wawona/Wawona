@@ -177,8 +177,8 @@ fill-host for flower). Use **Container command** only.
 | Kind | macOS | iOS Mode A (store) |
 |---|---|---|
 | Native weston/niri/clients | available | available (in-process) |
-| Container | Apple Containerization + prebaked OCI | container-in-VM (QEMU-TCTI); `WWN_CONTAINERS=1` until shipping |
-| VM | QEMU+HVF; `WWN_VMS=1` | QEMU-TCTI; `WWN_VMS=1`; embed guest+engine |
+| Container | Apple Containerization + prebaked OCI | container-in-VM on Relay. Planned. Fail closed |
+| VM | Virtualization.framework via Relay | Relay. Planned. Fail closed. No QEMU |
 | Wasm Runtime | available | available (interpreter; no JIT) |
 | Hyprland / Ghostty | container-only | container-in-VM only (same guests) |
 

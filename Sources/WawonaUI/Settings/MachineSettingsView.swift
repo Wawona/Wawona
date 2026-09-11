@@ -46,7 +46,7 @@ public struct MachineSettingsView: View {
                             .font(.headline)
                     } else {
                         Picker("Profile", selection: Binding(
-                            get: { selectedID ?? profileStore.profiles.first?.id ?? "" },
+                            get: { resolvedSelectedID ?? "" },
                             set: {
                                 selectedID = $0
                                 loadDraft()
@@ -60,7 +60,7 @@ public struct MachineSettingsView: View {
                     }
                     #else
                     Picker("Profile", selection: Binding(
-                        get: { selectedID ?? profileStore.profiles.first?.id ?? "" },
+                        get: { resolvedSelectedID ?? "" },
                         set: {
                             selectedID = $0
                             loadDraft()
@@ -95,8 +95,18 @@ public struct MachineSettingsView: View {
 
         .navigationTitle("Machine Settings")
         .onAppear {
-            selectedID = machineID ?? profileStore.activeMachineId ?? profileStore.profiles.first?.id
-            loadDraft()
+            syncSelectionFromStore()
+        }
+        .onChange(of: machineID) { _, _ in
+            syncSelectionFromStore()
+        }
+        .onChange(of: profileStore.profiles.map(\.id)) { _, ids in
+            if let selectedID, !ids.contains(selectedID) {
+                self.selectedID = ids.first
+                loadDraft()
+            } else if draft == nil {
+                loadDraft()
+            }
         }
     }
 
@@ -153,14 +163,42 @@ public struct MachineSettingsView: View {
                 ForEach(PlatformCapabilities.availableMachineTypes, id: \.self) { t in
                     Text(t.userFacingName).tag(t)
                 }
+                if !PlatformCapabilities.allowsMachineType(profile.type) {
+                    Text(profile.type.userFacingName).tag(profile.type)
+                }
             }
             .wwnDisclosurePicker()
+
+            if profile.type == .wasm {
+                TextField("Command", text: Binding(
+                    get: { draft?.runtimeOverrides.wasmCommand ?? "wasm hello-wasi-gui" },
+                    set: { value in updateDraft { $0.runtimeOverrides.wasmCommand = value } }
+                ))
+                .wawonaTextFieldNoAutocaps()
+                .autocorrectionDisabled()
+                TextField("Package", text: Binding(
+                    get: { draft?.runtimeOverrides.wasmPackage ?? "" },
+                    set: { value in updateDraft { $0.runtimeOverrides.wasmPackage = value } }
+                ))
+                .wawonaTextFieldNoAutocaps()
+                .autocorrectionDisabled()
+                TextField("Wasm module path", text: wasmModulePathBinding)
+                    .wawonaTextFieldNoAutocaps()
+                    .autocorrectionDisabled()
+                Text("Start is wasm <file|package>. Native still runs wasm from the shell.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
 
             if profile.type == .native {
                 #if os(macOS)
                 Picker("Wayland Client", selection: bundledAppIDSelectionBinding) {
                     ForEach(ClientLauncher.presets) { launcher in
                         Text(launcher.displayName).tag(launcher.name)
+                    }
+                    if !ClientLauncher.presets.contains(where: { $0.name == resolvedBundledAppID }) {
+                        Text(ClientLauncher.displayName(for: resolvedBundledAppID))
+                            .tag(resolvedBundledAppID)
                     }
                 }
                 .wwnDisclosurePicker()
@@ -257,6 +295,12 @@ public struct MachineSettingsView: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
             Text("Global default: \(WawonaPreferences.normalizedTouchInputType(preferences.defaultInputProfile))")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            #endif
+            #if os(iOS)
+            Toggle("Resize Display for Virtual Keyboard", isOn: resizeDisplayForVirtualKeyboardBinding)
+            Text("Shrinks the Wayland output and shifts the client above the OSK, like postmarketOS. A hardware keyboard leaves the client full size.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
             #endif
@@ -381,6 +425,7 @@ public struct MachineSettingsView: View {
             Text("Shake to Exit: \(resolved.shakeToCloseEnabled ? "Enabled" : "Disabled")")
             Text("Swipe Back to Exit: \(resolved.swipeBackToCloseEnabled ? "Enabled" : "Disabled")")
             #endif
+            Text("Resize Display for Virtual Keyboard: \(resolved.resizeDisplayForVirtualKeyboard ? "Enabled" : "Disabled")")
         }
     }
 
@@ -397,8 +442,20 @@ public struct MachineSettingsView: View {
         }
     }
 
+    private var resolvedSelectedID: String? {
+        if let selectedID, profileStore.profiles.contains(where: { $0.id == selectedID }) {
+            return selectedID
+        }
+        return profileStore.profiles.first?.id
+    }
+
+    private func syncSelectionFromStore() {
+        selectedID = machineID ?? profileStore.activeMachineId ?? profileStore.profiles.first?.id
+        loadDraft()
+    }
+
     private func loadDraft() {
-        guard var profile = profileStore.profiles.first(where: { $0.id == selectedID }) else {
+        guard var profile = profileStore.profiles.first(where: { $0.id == resolvedSelectedID }) else {
             draft = nil
             return
         }
@@ -425,7 +482,14 @@ public struct MachineSettingsView: View {
     private var typeBinding: Binding<MachineType> {
         Binding(
             get: { draft?.type ?? MachineType.native },
-            set: { value in updateDraft { $0.type = value } }
+            set: { value in
+                updateDraft { profile in
+                    profile.type = value
+                    if value == .wasm {
+                        profile.runtimeOverrides.bundledAppID = "wawona-wasm"
+                    }
+                }
+            }
         )
     }
 
@@ -608,14 +672,22 @@ public struct MachineSettingsView: View {
 
     private var logLevelBinding: Binding<String> {
         Binding(
-            get: { draft?.runtimeOverrides.logLevel ?? preferences.logLevel },
+            get: {
+                let raw = draft?.runtimeOverrides.logLevel ?? preferences.logLevel
+                let allowed = ["debug", "info", "warn", "error"]
+                return allowed.contains(raw) ? raw : "info"
+            },
             set: { value in updateDraft { $0.runtimeOverrides.logLevel = value } }
         )
     }
 
     private var compositorBackendBinding: Binding<String> {
         Binding(
-            get: { draft?.runtimeOverrides.compositorBackend ?? "" },
+            get: {
+                let raw = draft?.runtimeOverrides.compositorBackend ?? ""
+                let allowed = ["", "auto", "wayland", "drm"]
+                return allowed.contains(raw) ? raw : ""
+            },
             set: { value in
                 updateDraft {
                     let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -712,6 +784,18 @@ public struct MachineSettingsView: View {
                     ?? preferences.swipeBackToCloseEnabled
             },
             set: { value in updateDraft { $0.runtimeOverrides.swipeBackToCloseEnabled = value } }
+        )
+    }
+
+    private var resizeDisplayForVirtualKeyboardBinding: Binding<Bool> {
+        Binding(
+            get: {
+                draft?.runtimeOverrides.resizeDisplayForVirtualKeyboard
+                    ?? preferences.resizeDisplayForVirtualKeyboard
+            },
+            set: { value in
+                updateDraft { $0.runtimeOverrides.resizeDisplayForVirtualKeyboard = value }
+            }
         )
     }
 

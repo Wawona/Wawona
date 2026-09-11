@@ -277,7 +277,7 @@
     setenv("XKB_CONFIG_ROOT", root.UTF8String, 1);
   }
 
-  // weston data (terminal.png, cursors, panel, etc.).
+  // weston data (honeycomb background.png, terminal.png, cursors, panel).
   NSString *westonData = [self bundledSharePath:@"weston"];
   if (westonData.length > 0 && [fm fileExistsAtPath:westonData]) {
     setenv("WESTON_DATA_DIR", westonData.UTF8String, 1);

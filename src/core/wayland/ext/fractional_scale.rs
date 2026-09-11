@@ -3,13 +3,11 @@
 //! This protocol allows clients to receive a preferred fractional scale
 //! from the compositor, enabling smooth HiDPI rendering.
 
-use wayland_server::{
-    Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
-};
 use wayland_protocols::wp::fractional_scale::v1::server::{
     wp_fractional_scale_manager_v1::{self, WpFractionalScaleManagerV1},
     wp_fractional_scale_v1::{self, WpFractionalScaleV1},
 };
+use wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource};
 
 use crate::core::state::CompositorState;
 
@@ -56,12 +54,12 @@ impl Dispatch<WpFractionalScaleManagerV1, ()> for CompositorState {
                 let surface_id = surface.id().protocol_id();
                 // let data = FractionalScaleData { surface_id };
                 let fractional_scale = data_init.init(id, ());
-                
+
                 // Send initial preferred scale in 1/120 units, aligned with current output scale.
                 let output_scale = _state.primary_output().scale.max(1.0);
                 let preferred = (output_scale * 120.0).round().max(120.0) as u32;
                 fractional_scale.preferred_scale(preferred);
-                
+
                 tracing::debug!("Created fractional scale for surface {}", surface_id);
             }
             wp_fractional_scale_manager_v1::Request::Destroy => {

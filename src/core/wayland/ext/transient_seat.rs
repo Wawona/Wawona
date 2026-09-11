@@ -4,13 +4,11 @@
 //! On Create, a transient seat is made and the `ready` event is sent
 //! with the global seat name so the client can bind the wl_seat.
 
-use wayland_server::{
-    Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New,
-};
 use crate::core::wayland::protocol::server::ext::transient_seat::v1::server::{
     ext_transient_seat_manager_v1::{self, ExtTransientSeatManagerV1},
     ext_transient_seat_v1::{self, ExtTransientSeatV1},
 };
+use wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New};
 
 use crate::core::state::CompositorState;
 

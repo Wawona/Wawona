@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use wayland_server::protocol::wl_keyboard::WlKeyboard;
 use wayland_server::protocol::wl_pointer::WlPointer;
 use wayland_server::protocol::wl_surface::WlSurface;
@@ -7,7 +6,6 @@ use wayland_server::protocol::wl_touch::WlTouch;
 use super::keyboard::KeyboardState;
 use super::pointer::PointerState;
 use super::touch::TouchState;
-use super::xkb::XkbContext;
 
 /// A Wayland seat aggregating keyboard, pointer, and touch input devices.
 ///
@@ -31,10 +29,9 @@ pub struct Seat {
 
 impl Seat {
     pub fn new(name: &str) -> Self {
-        let xkb_context = Arc::new(XkbContext::new());
         Self {
             name: name.to_string(),
-            keyboard: KeyboardState::new(xkb_context),
+            keyboard: KeyboardState::new(),
             pointer: PointerState::new(),
             touch: TouchState::new(),
             popup_grab_stack: Vec::new(),

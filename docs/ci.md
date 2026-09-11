@@ -251,6 +251,12 @@ Summary prints `MATRIX_FAIL cells=ios/niri,android/vkcube,…`.
   starts when `product-ios-sim` is ready**. It does not wait for AppImages/macOS/Android.
 - iOS CI lane: `agent-device-smoke.sh ios-ci` (one prepare for smoke; fuzzel reuses
   warm XCTest derived data; skipped on `pull_request` via `WAWONA_SKIP_FUZZEL`).
+- iOS Mode B: Gate: packages runs
+  `.github/scripts/verify-ios-modeb-ci.sh` (scanner + vphone `.ad` contract).
+  Gate: products runs `--mode-a` on the iOS and iPadOS simulator apps. Lab
+  replay is `scripts/agent-device-smoke.sh vphone` against
+  `vphone wawona-jb`. Xcode Simulator is not IOMFB or JIT proof. Mode B
+  `.tipa` stays out of Ship: beta / TestFlight.
 - **Nested niri/fuzzel** on GHA: iOS/Android lanes are advisory; **macOS nested
   niri is skipped** in Gate: products (runners SIGTERM mid-GUI and fail the job
   even with `continue-on-error`). Run `scripts/niri-fuzzel-smoke-macos.sh` locally

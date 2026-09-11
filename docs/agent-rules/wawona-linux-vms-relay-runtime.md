@@ -1,3 +1,8 @@
+---
+description: NixOS-only VMs. Mode A uses Wawona store runtime only. Mode B adds Wawona Mode B runtime. Not UTM
+alwaysApply: true
+---
+
 # Linux VMs for Wawona (Relay runtime, NixOS prebuilts)
 
 Wawona does **not** run arbitrary VMs. Machines kind `virtual_machine` is
@@ -12,8 +17,8 @@ The engine is **Wawona Relay** (`github.com/Wawona/Relay`, flake input
 
 | Product | What may run |
 |---|---|
-| **Mode A** (App Store / TestFlight / Play / store-shaped) | **Only** Wawona’s App Store-compliant runtime: Relay static handlers, WASI via Pulley, jitless VM CPU if any. **No JIT**, no `MAP_JIT`, no HVF, no UTM |
-| **Mode B** (TrollStore / Sileo / SIP-off desktop-host / root Android) | That **same** Mode A runtime **plus** Wawona’s Mode B runtime (JIT VM CPU allowed). Never Mode B in a store IPA/AAB |
+| **Mode A** (App Store / TestFlight / Play / store-shaped) | **Only** Wawona’s App Store-compliant runtime: Relay static handlers, WASI via Pulley, jitless VM CPU if any. **No JIT**, no `MAP_JIT`, no Hypervisor.framework, no UTM |
+| **Mode B** (TrollStore / Sileo / SIP-off desktop-host / root Android) | That **same** Mode A runtime **plus** Mode B VM path. On iOS/iPadOS, `IosHv` when the probe window matches (`wawona-relay-ios-hypervisor`). Never Mode B in a store IPA/AAB |
 
 Wasm packages stay bytecode (`/wasm/`). Mode B may JIT-execute them; Mode A must not.
 Relay Wasm itself ships on **every** Wawona product target, including watchOS,
@@ -22,11 +27,23 @@ forbidden on watch/tv/vision. Wasm does not.
 
 ## Destination
 
-**Build in Relay.** No QEMU. No UTM. No TCTI reference CPU. iOS / Play
-Linux VMs stay **planned** and fail closed until Relay’s own CPU can boot
-NixOS. macOS uses Virtualization.framework. Linux uses KVM via
+**Build in Relay.** No QEMU. No UTM. No TCTI reference CPU. No HVF-via-qemu.
+iOS / Play Linux VMs stay **planned** and fail closed until Relay boots NixOS.
+Mode B iOS may select native Hypervisor.framework inside the UTM-era window
+(see `wawona-relay-ios-hypervisor`). macOS **product** VMs use
+Virtualization.framework (macOS HV is lab-only). Linux uses KVM via
 cloud-hypervisor or crosvm. Fail closed without `/dev/kvm`. Never call a
 leftover QEMU tree the Wawona runtime.
+
+## Required MicroVM and disk behavior
+
+- Relay **must support NixOS MicroVM profiles** as first-class Wawona Machines
+  on every target that permits VM machines. A MicroVM uses Relay's CPU, virtio,
+  `wwn-iland` userspace DRM/KMS/GBM, and Wawona Wayland path.
+- A virtual disk is grow-only while a machine is stopped. Relay owns the size
+  validation and resize plan; native UI exposes it as a simple discrete slider.
+- The slider never changes a running disk, shrinks a filesystem, or delegates
+  sizing logic to SwiftUI, Kotlin, or a shell command.
 
 ## Hard rejects
 
@@ -39,5 +56,5 @@ leftover QEMU tree the Wawona runtime.
 - Size-gating wasm off any product target
 
 Canonical: `wawona-guest-wayland-iland`, `wawona-mode-a-b`,
-`wawona-ios-mode-b-channels`. Cursor:
-`.cursor/rules/wawona-linux-vms-relay-runtime.mdc`.
+`wawona-ios-mode-b-channels`. Prose:
+`docs/agent-rules/wawona-linux-vms-relay-runtime.md`.

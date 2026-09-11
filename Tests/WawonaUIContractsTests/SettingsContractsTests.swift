@@ -76,6 +76,7 @@ func iosGlobalSettingsIncludeInputAndWaypipe() {
     #expect(sections.contains(.iCloudSync))
     #expect(sections.contains(.dependencies))
     #expect(!sections.contains(.desktop))
+    #expect(GlobalSettingsCatalog.visibleFields(in: .input, for: .iOS).contains(.resizeDisplayForVirtualKeyboard))
     #expect(GlobalSettingsCatalog.visibleFields(in: .display, for: .iOS).contains(.respectSafeArea))
     #expect(GlobalSettingsCatalog.visibleFields(in: .display, for: .iOS).contains(.colorOperations))
     #expect(!GlobalSettingsCatalog.visibleFields(in: .display, for: .iOS).contains(.forceSSD))
@@ -101,6 +102,7 @@ func aboutAlwaysIncludesWawonaIoAndAuthor() {
         #expect(fields.contains(.aboutWebsite))
         #expect(fields.contains(.aboutAuthor))
         #expect(fields.contains(.aboutVersion))
+        #expect(fields.contains(.aboutBuild))
         #expect(fields.contains(.aboutPlatform))
     }
 }
@@ -126,4 +128,18 @@ func tvOSOmitsICloudDriveSection() {
     #expect(!sections.contains(.iCloudSync))
     #expect(!sections.contains(.localShell))
     #expect(GlobalSettingsCatalog.visibleFields(in: .iCloudSync, for: .tvOS).isEmpty)
+}
+
+@Test
+func fallbackCatalogMatchesRustHostOrder() {
+    for host in GlobalSettingsHost.allCases {
+        #expect(
+            GlobalSettingsCatalog.visibleSections(for: host) ==
+                GlobalSettingsCatalog.fallbackVisibleSections(for: host)
+        )
+    }
+    #expect(GlobalSettingsHost.macOS.rawValue == "macOS")
+    #expect(GlobalSettingsSectionID.localShell.rawValue == "localShell")
+    #expect(GlobalSettingsSectionID.localShell.objcAccessibilityIdentifier == "wwn.settings.local.shell")
+    #expect(GlobalSettingsSectionID.display.objcAccessibilityIdentifier == "wwn.settings.display")
 }

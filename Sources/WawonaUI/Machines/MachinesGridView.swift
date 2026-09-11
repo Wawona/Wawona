@@ -21,7 +21,11 @@ struct MachinesGridView: View {
                 .frame(maxWidth: CGFloat.infinity)
                 .padding(Edge.Set.top, 40)
             } else {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 300, maximum: 500), spacing: 14)], spacing: 14) {
+                LazyVGrid(
+                    columns: [GridItem(.adaptive(minimum: 300, maximum: 500), spacing: 14)],
+                    alignment: .leading,
+                    spacing: 14
+                ) {
                     ForEach(profiles) { profile in
                         MachineCardView(
                             profile: profile,
@@ -30,6 +34,8 @@ struct MachinesGridView: View {
                             onEdit: { onEdit(profile) },
                             onDelete: { onDelete(profile) }
                         )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .id(profile.id)
                     }
                 }
             }

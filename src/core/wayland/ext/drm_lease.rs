@@ -14,5 +14,3 @@ use wayland_server::DisplayHandle;
 pub fn register_drm_lease(_display: &DisplayHandle) {
     // TODO: Register global
 }
-
-

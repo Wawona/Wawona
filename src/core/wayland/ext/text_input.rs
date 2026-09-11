@@ -1,25 +1,15 @@
-//! WP Text Input protocol implementation (`zwp_text_input_v3`).
+//! Text input helpers plus named `zwp_text_input_v1` (weston-editor).
 //!
-//! Double-buffered client state: `enable`/`disable`/`set_content_type`/
-//! surrounding/cursor updates land in pending fields and apply on `commit`.
-//! Host soft-OSK code must read committed state only.
-//!
-//! Terminal clients that never speak text-input-v3 are covered by
-//! [`terminal_text_entry_active`] synthesis (keyboard-focused allowlisted
-//! app_id), ORed into [`text_entry_wanted`].
+//! `zwp_text_input_v3` is owned by Smithay (`delegate_text_input_manager!`)
+//! plus the in-process host IM stand-in. This module keeps v1 and the
+//! OSK `text_entry_wanted` policy (committed TI / v1 / terminal synthesis).
 
 use std::collections::HashMap;
-use wayland_server::{
-    Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
-};
-use wayland_protocols::wp::text_input::zv3::server::{
-    zwp_text_input_manager_v3::{self, ZwpTextInputManagerV3},
-    zwp_text_input_v3::{self, ZwpTextInputV3},
-};
 use wayland_protocols::wp::text_input::zv1::server::{
     zwp_text_input_manager_v1::{self, ZwpTextInputManagerV1},
     zwp_text_input_v1::{self, ZwpTextInputV1},
 };
+use wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource};
 
 use crate::core::state::CompositorState;
 use crate::core::wayland::xdg::decoration::is_weston_terminal_app_id;
@@ -68,21 +58,7 @@ pub struct PendingTextInputState {
     pub cursor_rect: Option<(i32, i32, i32, i32)>,
 }
 
-/// Per-text-input state tracked by the compositor
-#[derive(Debug, Clone)]
-pub struct TextInputInstance {
-    pub resource: ZwpTextInputV3,
-    pub seat_id: u32,
-    /// Committed enabled flag (applied on `commit`).
-    pub enabled: bool,
-    pub surrounding_text: String,
-    pub surrounding_cursor: i32,
-    pub surrounding_anchor: i32,
-    pub content_type: ContentType,
-    pub cursor_rect: (i32, i32, i32, i32),
-    pub serial: u32,
-    pub pending: PendingTextInputState,
-}
+/// Legacy v3 committed fields used only by unit tests of double-buffer policy.
 
 /// Committed fields that receive pending state on `commit` (testable without a Resource).
 #[derive(Debug, Clone, Default)]
@@ -135,62 +111,6 @@ impl CommittedTextInputFields {
     }
 }
 
-impl TextInputInstance {
-    fn new(resource: ZwpTextInputV3, seat_id: u32) -> Self {
-        Self {
-            resource,
-            seat_id,
-            enabled: false,
-            surrounding_text: String::new(),
-            surrounding_cursor: 0,
-            surrounding_anchor: 0,
-            content_type: ContentType::default(),
-            cursor_rect: (0, 0, 0, 0),
-            serial: 0,
-            pending: PendingTextInputState::default(),
-        }
-    }
-
-    fn apply_commit(&mut self) -> (bool, bool) {
-        let mut committed = CommittedTextInputFields {
-            enabled: self.enabled,
-            surrounding_text: std::mem::take(&mut self.surrounding_text),
-            surrounding_cursor: self.surrounding_cursor,
-            surrounding_anchor: self.surrounding_anchor,
-            content_type: self.content_type.clone(),
-            cursor_rect: self.cursor_rect,
-            serial: self.serial,
-        };
-        let result = committed.apply_pending(&mut self.pending);
-        self.enabled = committed.enabled;
-        self.surrounding_text = committed.surrounding_text;
-        self.surrounding_cursor = committed.surrounding_cursor;
-        self.surrounding_anchor = committed.surrounding_anchor;
-        self.content_type = committed.content_type;
-        self.cursor_rect = committed.cursor_rect;
-        self.serial = committed.serial;
-        result
-    }
-
-    fn clear_committed_on_leave(&mut self) {
-        let mut committed = CommittedTextInputFields {
-            enabled: self.enabled,
-            surrounding_text: std::mem::take(&mut self.surrounding_text),
-            surrounding_cursor: self.surrounding_cursor,
-            surrounding_anchor: self.surrounding_anchor,
-            content_type: self.content_type.clone(),
-            cursor_rect: self.cursor_rect,
-            serial: self.serial,
-        };
-        committed.clear_on_leave();
-        self.enabled = committed.enabled;
-        self.surrounding_text = committed.surrounding_text;
-        self.surrounding_cursor = committed.surrounding_cursor;
-        self.surrounding_anchor = committed.surrounding_anchor;
-        self.pending = PendingTextInputState::default();
-    }
-}
-
 /// Per-`zwp_text_input_v1` state (legacy weston clients: weston-editor).
 ///
 /// v1 is the older unstable protocol weston's own toy-toolkit still speaks. It
@@ -210,19 +130,18 @@ pub struct TextInputV1Instance {
 
 impl TextInputV1Instance {
     fn new(resource: ZwpTextInputV1) -> Self {
-        Self { resource, active: false, serial: 0, surface: None }
+        Self {
+            resource,
+            active: false,
+            serial: 0,
+            surface: None,
+        }
     }
 }
 
-/// Compositor-wide text input state
+/// Compositor-wide text input state (v1 only; v3 lives on Smithay + host IM).
 #[derive(Debug, Default)]
 pub struct TextInputState {
-    /// All active text input instances, keyed by resource protocol ID
-    pub instances: HashMap<u32, TextInputInstance>,
-    /// Currently focused text input (receives enter/leave)
-    pub focused: Option<u32>,
-    /// Surface that last received text-input enter (keyboard focus surface).
-    pub focused_surface_id: Option<u32>,
     /// Legacy v1 text inputs (weston-editor), keyed by resource protocol ID.
     pub v1_instances: HashMap<u32, TextInputV1Instance>,
     /// Currently active v1 text input.
@@ -230,11 +149,6 @@ pub struct TextInputState {
 }
 
 impl TextInputState {
-    /// True when any instance has committed `enabled`.
-    pub fn committed_enabled(&self) -> bool {
-        self.instances.values().any(|i| i.enabled)
-    }
-
     /// True when any legacy v1 text input is active.
     pub fn v1_active(&self) -> bool {
         self.v1_instances.values().any(|i| i.active)
@@ -243,7 +157,12 @@ impl TextInputState {
     /// Active v1 instance, preferring `v1_focused`.
     fn v1_active_instance_mut(&mut self) -> Option<&mut TextInputV1Instance> {
         if let Some(id) = self.v1_focused {
-            if self.v1_instances.get(&id).map(|i| i.active).unwrap_or(false) {
+            if self
+                .v1_instances
+                .get(&id)
+                .map(|i| i.active)
+                .unwrap_or(false)
+            {
                 return self.v1_instances.get_mut(&id);
             }
         }
@@ -255,77 +174,19 @@ impl TextInputState {
         fallback.and_then(move |id| self.v1_instances.get_mut(&id))
     }
 
-    /// First committed-enabled instance, preferring `focused` when set.
-    pub fn focused_enabled_instance(&self) -> Option<&TextInputInstance> {
-        if let Some(id) = self.focused {
-            if let Some(inst) = self.instances.get(&id) {
-                if inst.enabled {
-                    return Some(inst);
-                }
-            }
-        }
-        self.instances.values().find(|i| i.enabled)
-    }
-
-    pub fn focused_enabled_instance_mut(&mut self) -> Option<&mut TextInputInstance> {
-        let id = if let Some(id) = self.focused {
-            if self.instances.get(&id).map(|i| i.enabled).unwrap_or(false) {
-                Some(id)
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-        if let Some(id) = id {
-            return self.instances.get_mut(&id);
-        }
-        let fallback = self
-            .instances
-            .iter()
-            .find(|(_, i)| i.enabled)
-            .map(|(id, _)| *id);
-        fallback.and_then(|id| self.instances.get_mut(&id))
-    }
-
-    /// Send enter event to all text inputs associated with the focused surface
+    /// v3 enter/leave is Smithay `KeyboardTarget`. Keep a no-op for callers.
     pub fn enter(
         &mut self,
-        surface: &wayland_server::protocol::wl_surface::WlSurface,
-        surface_id: Option<u32>,
+        _surface: &wayland_server::protocol::wl_surface::WlSurface,
+        _surface_id: Option<u32>,
     ) {
-        self.focused_surface_id = surface_id;
-        let mut last_alive: Option<u32> = None;
-        for (id, instance) in &self.instances {
-            if instance.resource.is_alive() {
-                instance.resource.enter(surface);
-                last_alive = Some(*id);
-            }
-        }
-        self.focused = last_alive;
     }
 
-    /// Send leave event and clear committed text-entry state.
-    pub fn leave(&mut self, surface: &wayland_server::protocol::wl_surface::WlSurface) {
-        for (_id, instance) in &mut self.instances {
-            if instance.resource.is_alive() {
-                instance.resource.leave(surface);
-            }
-            instance.clear_committed_on_leave();
-        }
-        self.focused = None;
-        self.focused_surface_id = None;
-    }
+    /// v3 leave is Smithay `KeyboardTarget`.
+    pub fn leave(&mut self, _surface: &wayland_server::protocol::wl_surface::WlSurface) {}
 
-    /// Forward a commit string from platform IME to the focused enabled text input.
+    /// Forward a commit string to the active v1 text input.
     pub fn commit_string(&mut self, text: &str) {
-        if let Some(instance) = self.focused_enabled_instance_mut() {
-            if instance.resource.is_alive() {
-                instance.serial = instance.serial.wrapping_add(1);
-                instance.resource.commit_string(Some(text.to_string()));
-                instance.resource.done(instance.serial);
-            }
-        }
         if let Some(v1) = self.v1_active_instance_mut() {
             if v1.resource.is_alive() {
                 v1.resource.commit_string(v1.serial, text.to_string());
@@ -333,41 +194,20 @@ impl TextInputState {
         }
     }
 
-    /// Forward preedit from platform IME
-    pub fn preedit_string(&mut self, text: &str, cursor_begin: i32, cursor_end: i32) {
-        if let Some(instance) = self.focused_enabled_instance_mut() {
-            if instance.resource.is_alive() {
-                instance.serial = instance.serial.wrapping_add(1);
-                instance
-                    .resource
-                    .preedit_string(Some(text.to_string()), cursor_begin, cursor_end);
-                instance.resource.done(instance.serial);
-            }
-        }
+    /// Forward preedit to the active v1 text input.
+    pub fn preedit_string(&mut self, text: &str, _cursor_begin: i32, _cursor_end: i32) {
         if let Some(v1) = self.v1_active_instance_mut() {
             if v1.resource.is_alive() {
-                // v1 preedit_string carries the trailing commit text; weston-editor
-                // applies the preedit then the commit on the next commit_state.
                 v1.resource
                     .preedit_string(v1.serial, text.to_string(), String::new());
             }
         }
     }
 
-    /// Forward delete_surrounding_text from platform IME
+    /// Forward delete_surrounding_text to the active v1 text input.
     pub fn delete_surrounding_text(&mut self, before_length: u32, after_length: u32) {
-        if let Some(instance) = self.focused_enabled_instance_mut() {
-            if instance.resource.is_alive() {
-                instance.serial = instance.serial.wrapping_add(1);
-                instance
-                    .resource
-                    .delete_surrounding_text(before_length, after_length);
-                instance.resource.done(instance.serial);
-            }
-        }
         if let Some(v1) = self.v1_active_instance_mut() {
             if v1.resource.is_alive() {
-                // v1 uses (index, length) relative to cursor, in bytes.
                 v1.resource
                     .delete_surrounding_text(-(before_length as i32), before_length + after_length);
             }
@@ -416,173 +256,18 @@ pub fn terminal_text_entry_active(state: &CompositorState) -> bool {
         || (window.app_id.is_empty() && is_terminal_text_entry_title(&window.title))
 }
 
-/// Soft OSK should expand: committed TI enable OR terminal synthesis.
-/// Real TI always wins when present (synthesis is ignored while TI enabled).
+/// Soft OSK should expand: Smithay IM activate, v1 activate, or terminal synthesis.
 pub fn text_entry_wanted(state: &CompositorState) -> bool {
-    if state.ext.text_input.committed_enabled() || state.ext.text_input.v1_active() {
+    if state
+        .host_im
+        .as_ref()
+        .map(|im| im.mirror().active)
+        .unwrap_or(false)
+        || state.ext.text_input.v1_active()
+    {
         return true;
     }
     terminal_text_entry_active(state)
-}
-
-// ============================================================================
-// zwp_text_input_manager_v3
-// ============================================================================
-
-impl GlobalDispatch<ZwpTextInputManagerV3, ()> for CompositorState {
-    fn bind(
-        _state: &mut Self,
-        _handle: &DisplayHandle,
-        _client: &Client,
-        resource: New<ZwpTextInputManagerV3>,
-        _global_data: &(),
-        data_init: &mut DataInit<'_, Self>,
-    ) {
-        data_init.init(resource, ());
-        tracing::debug!("Bound zwp_text_input_manager_v3");
-    }
-}
-
-impl Dispatch<ZwpTextInputManagerV3, ()> for CompositorState {
-    fn request(
-        state: &mut Self,
-        _client: &Client,
-        _resource: &ZwpTextInputManagerV3,
-        request: zwp_text_input_manager_v3::Request,
-        _data: &(),
-        _dhandle: &DisplayHandle,
-        data_init: &mut DataInit<'_, Self>,
-    ) {
-        match request {
-            zwp_text_input_manager_v3::Request::GetTextInput { id, seat } => {
-                let seat_id = seat.id().protocol_id();
-                let text_input = data_init.init(id, seat_id);
-                let ti_id = text_input.id().protocol_id();
-
-                state
-                    .ext
-                    .text_input
-                    .instances
-                    .insert(ti_id, TextInputInstance::new(text_input, seat_id));
-
-                tracing::debug!("Created text input {} for seat {}", ti_id, seat_id);
-            }
-            zwp_text_input_manager_v3::Request::Destroy => {
-                tracing::debug!("zwp_text_input_manager_v3 destroyed");
-            }
-            _ => {}
-        }
-    }
-}
-
-// ============================================================================
-// zwp_text_input_v3. User data is seat_id: u32
-// ============================================================================
-
-impl Dispatch<ZwpTextInputV3, u32> for CompositorState {
-    fn request(
-        state: &mut Self,
-        _client: &Client,
-        resource: &ZwpTextInputV3,
-        request: zwp_text_input_v3::Request,
-        _seat_id: &u32,
-        _dhandle: &DisplayHandle,
-        _data_init: &mut DataInit<'_, Self>,
-    ) {
-        let ti_id = resource.id().protocol_id();
-        match request {
-            zwp_text_input_v3::Request::Enable => {
-                if let Some(instance) = state.ext.text_input.instances.get_mut(&ti_id) {
-                    instance.pending.enabled = Some(true);
-                    tracing::debug!("Text input {} pending enable", ti_id);
-                }
-            }
-            zwp_text_input_v3::Request::Disable => {
-                if let Some(instance) = state.ext.text_input.instances.get_mut(&ti_id) {
-                    instance.pending.enabled = Some(false);
-                    tracing::debug!("Text input {} pending disable", ti_id);
-                }
-            }
-            zwp_text_input_v3::Request::SetSurroundingText { text, cursor, anchor } => {
-                if let Some(instance) = state.ext.text_input.instances.get_mut(&ti_id) {
-                    instance.pending.surrounding_text = Some(text);
-                    instance.pending.surrounding_cursor = Some(cursor);
-                    instance.pending.surrounding_anchor = Some(anchor);
-                }
-            }
-            zwp_text_input_v3::Request::SetTextChangeCause { cause: _ } => {
-                // Applies with the next commit; no discrete storage needed.
-            }
-            zwp_text_input_v3::Request::SetContentType { hint, purpose } => {
-                if let Some(instance) = state.ext.text_input.instances.get_mut(&ti_id) {
-                    instance.pending.content_type = Some(ContentType {
-                        hint: hint.into(),
-                        purpose: purpose.into(),
-                    });
-                }
-            }
-            zwp_text_input_v3::Request::SetCursorRectangle { x, y, width, height } => {
-                if let Some(instance) = state.ext.text_input.instances.get_mut(&ti_id) {
-                    instance.pending.cursor_rect = Some((x, y, width, height));
-                }
-            }
-            zwp_text_input_v3::Request::Commit => {
-                let im_data = state.ext.text_input.instances.get_mut(&ti_id).map(|instance| {
-                    let (was, now) = instance.apply_commit();
-                    tracing::debug!(
-                        "Text input {} commit (serial {}, enabled {} -> {})",
-                        ti_id,
-                        instance.serial,
-                        was,
-                        now
-                    );
-                    (
-                        now,
-                        instance.surrounding_text.clone(),
-                        instance.surrounding_cursor as u32,
-                        instance.surrounding_anchor as u32,
-                        instance.content_type.hint,
-                        instance.content_type.purpose,
-                    )
-                });
-                if im_data.is_some() {
-                    state.ext.text_input.focused = Some(ti_id);
-                }
-
-                #[cfg(feature = "desktop-protocols")]
-                if let Some((enabled, text, cursor, anchor, hint, purpose)) = im_data {
-                    if enabled {
-                        state.ext.input_method.activate();
-                        let im = &mut state.ext.input_method;
-                        if im.active {
-                            im.surrounding_text(&text, cursor, anchor);
-                            im.content_type(hint, purpose);
-                            im.done();
-                        }
-                    } else {
-                        state.ext.input_method.deactivate();
-                    }
-                }
-                #[cfg(not(feature = "desktop-protocols"))]
-                {
-                    let _ = im_data;
-                }
-            }
-            zwp_text_input_v3::Request::Destroy => {
-                state.ext.text_input.instances.remove(&ti_id);
-                if state.ext.text_input.focused == Some(ti_id) {
-                    state.ext.text_input.focused = None;
-                }
-                tracing::debug!("Text input {} destroyed", ti_id);
-            }
-            _ => {}
-        }
-    }
-}
-
-/// Register zwp_text_input_manager_v3 global
-pub fn register_text_input_manager(display: &DisplayHandle) -> wayland_server::backend::GlobalId {
-    display.create_global::<CompositorState, ZwpTextInputManagerV3, ()>(1, ())
 }
 
 // ============================================================================
@@ -656,8 +341,6 @@ impl Dispatch<ZwpTextInputV1, ()> for CompositorState {
                     }
                 }
                 state.ext.text_input.v1_focused = Some(ti_id);
-                #[cfg(feature = "desktop-protocols")]
-                state.ext.input_method.activate();
                 tracing::debug!("v1 text input {} activate", ti_id);
             }
             zwp_text_input_v1::Request::Deactivate { seat: _ } => {
@@ -669,10 +352,6 @@ impl Dispatch<ZwpTextInputV1, ()> for CompositorState {
                 }
                 if state.ext.text_input.v1_focused == Some(ti_id) {
                     state.ext.text_input.v1_focused = None;
-                }
-                #[cfg(feature = "desktop-protocols")]
-                if !state.ext.text_input.v1_active() {
-                    state.ext.input_method.deactivate();
                 }
                 tracing::debug!("v1 text input {} deactivate", ti_id);
             }
@@ -767,7 +446,9 @@ mod tests {
         assert!(!is_terminal_text_entry_app_id("weston-flower"));
         // Demos must not synthesize soft OSK.
         assert!(!is_terminal_text_entry_app_id("weston-simple-shm"));
-        assert!(!is_terminal_text_entry_app_id("org.freedesktop.weston.wayland-simple-shm"));
+        assert!(!is_terminal_text_entry_app_id(
+            "org.freedesktop.weston.wayland-simple-shm"
+        ));
         assert!(!is_terminal_text_entry_app_id("weston-smoke"));
         assert!(!is_terminal_text_entry_title("simple-shm"));
         assert!(is_terminal_text_entry_title("Wayland Terminal"));

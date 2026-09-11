@@ -6,6 +6,8 @@ use std::rc::Rc;
 
 use adw::prelude::*;
 use gtk4 as gtk;
+use gtk4::gio;
+use gtk4::glib;
 use libadwaita as adw;
 
 use crate::linux::bundled_clients::BUNDLED_CLIENTS;
@@ -107,6 +109,172 @@ pub fn show_editor(
         let icon = gtk::Image::from_icon_name(client.icon_name);
         row.add_prefix(&icon);
         client_group.add(&row);
+    }
+
+    let wasm_group = adw::PreferencesGroup::new();
+    wasm_group.set_title("Wasm");
+    wasm_group.set_description(Some(
+        "Same as native shell: wasm hello-wasi-gui. Local file, package name, or typed command. Native still runs wasm from the shell.",
+    ));
+    let wasm_cmd = gtk::Entry::builder()
+        .placeholder_text("wasm hello-wasi-gui")
+        .text(
+            profile
+                .runtime_overrides
+                .wasm_command
+                .as_deref()
+                .unwrap_or("wasm hello-wasi-gui"),
+        )
+        .build();
+    add_row(&wasm_group, "Command", &wasm_cmd);
+    let wasm_pkg = gtk::Entry::builder()
+        .placeholder_text("hello-wasi-gui")
+        .text(
+            profile
+                .runtime_overrides
+                .wasm_package
+                .as_deref()
+                .unwrap_or(""),
+        )
+        .build();
+    add_row(&wasm_group, "Package", &wasm_pkg);
+    let wasm_path = gtk::Entry::builder()
+        .placeholder_text("~/…/Wawona/wasm-modules/hello-wasi-gui.wasm")
+        .text(
+            profile
+                .runtime_overrides
+                .wasm_module_path
+                .as_deref()
+                .unwrap_or(""),
+        )
+        .build();
+    add_row(&wasm_group, "Local .wasm", &wasm_path);
+    let wasm_pick = gtk::Button::with_label("Choose file…");
+    add_row(&wasm_group, "Browse", &wasm_pick);
+    let wasm_search = gtk::Button::with_label("Search catalog");
+    add_row(&wasm_group, "Repo", &wasm_search);
+    let wasm_note = gtk::Label::new(None);
+    wasm_note.set_wrap(true);
+    wasm_note.set_xalign(0.0);
+    wasm_note.add_css_class("dim-label");
+    wasm_group.add(&wasm_note);
+    let wasm_results = gtk::ListBox::new();
+    wasm_results.set_selection_mode(gtk::SelectionMode::None);
+    wasm_group.add(&wasm_results);
+    for local in crate::linux::wasm_launch::list_local_modules() {
+        let row = adw::ActionRow::new();
+        row.set_title(
+            local
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| local.display().to_string())
+                .as_str(),
+        );
+        row.set_activatable(true);
+        let wasm_path_c = wasm_path.clone();
+        let wasm_cmd_c = wasm_cmd.clone();
+        let path_s = local.display().to_string();
+        row.connect_activated(move |_| {
+            wasm_path_c.set_text(&path_s);
+            wasm_cmd_c.set_text(&format!("wasm {path_s}"));
+        });
+        wasm_group.add(&row);
+    }
+    {
+        let win = parent.clone();
+        let wasm_path_c = wasm_path.clone();
+        wasm_pick.connect_clicked(move |_| {
+            let dialog = gtk::FileDialog::builder()
+                .title("Choose a Wasm module")
+                .modal(true)
+                .build();
+            let filter = gtk::FileFilter::new();
+            filter.set_name(Some("Wasm modules"));
+            filter.add_suffix("wasm");
+            let filters = gio::ListStore::new::<gtk::FileFilter>();
+            filters.append(&filter);
+            dialog.set_filters(Some(&filters));
+            let wasm_path_c = wasm_path_c.clone();
+            dialog.open(
+                Some(&win),
+                None::<&gio::Cancellable>,
+                move |result| {
+                    if let Ok(file) = result {
+                        if let Some(path) = file.path() {
+                            wasm_path_c.set_text(&path.to_string_lossy());
+                        }
+                    }
+                },
+            );
+        });
+    }
+    {
+        let wasm_pkg_c = wasm_pkg.clone();
+        let wasm_cmd_c = wasm_cmd.clone();
+        let wasm_path_c = wasm_path.clone();
+        let results = wasm_results.clone();
+        let note = wasm_note.clone();
+        wasm_search.connect_clicked(move |_| {
+            let q = wasm_pkg_c.text().to_string();
+            note.set_text("Searching /wasm/v1…");
+            let note = note.clone();
+            let results = results.clone();
+            let pkg_e = wasm_pkg_c.clone();
+            let cmd_e = wasm_cmd_c.clone();
+            let path_e = wasm_path_c.clone();
+            std::thread::spawn(move || {
+                let found = crate::linux::wasm_launch::search_catalog(&q);
+                glib::MainContext::default().invoke(move || {
+                    while let Some(child) = results.first_child() {
+                        results.remove(&child);
+                    }
+                    match found {
+                        Ok(pkgs) if pkgs.is_empty() => {
+                            note.set_text("No packages in /wasm/v1 match.");
+                        }
+                        Ok(pkgs) => {
+                            note.set_text("Tap a package to download from /wasm/v1.");
+                            for pkg in pkgs {
+                                let row = adw::ActionRow::new();
+                                row.set_title(&pkg.name);
+                                row.set_subtitle(&format!("{}  {}", pkg.version, pkg.summary));
+                                row.set_activatable(true);
+                                let name = pkg.name.clone();
+                                let pe = pkg_e.clone();
+                                let ce = cmd_e.clone();
+                                let pte = path_e.clone();
+                                let nte = note.clone();
+                                row.connect_activated(move |_| {
+                                    pe.set_text(&name);
+                                    ce.set_text(&format!("wasm {name}"));
+                                    nte.set_text("Downloading…");
+                                    let name2 = name.clone();
+                                    let pte2 = pte.clone();
+                                    let nte2 = nte.clone();
+                                    std::thread::spawn(move || {
+                                        let got =
+                                            crate::linux::wasm_launch::ensure_package_file(&name2);
+                                        glib::MainContext::default().invoke(move || {
+                                            match got {
+                                                Some(p) => {
+                                                    pte2.set_text(&p.to_string_lossy());
+                                                    nte2.set_text("Saved to the Wawona folder.");
+                                                }
+                                                None => nte2.set_text(
+                                                    "Download failed, or this is bundled hello-wasi-gui.",
+                                                ),
+                                            }
+                                        });
+                                    });
+                                });
+                                results.append(&row);
+                            }
+                        }
+                        Err(e) => note.set_text(&e),
+                    }
+                });
+            });
+        });
     }
 
     // MARK: SSH + Waypipe / SSH Connection (Remote)
@@ -321,6 +489,7 @@ pub fn show_editor(
     // macOS editor's conditional sections.
     let update_sections = {
         let cg = client_group.clone();
+        let wg = wasm_group.clone();
         let rg = remote_group.clone();
         let pg = preview_group.clone();
         let vg = vm_group.clone();
@@ -330,6 +499,7 @@ pub fn show_editor(
         let preview = update_preview.clone();
         move |type_id: &str| {
             cg.set_visible(type_id == "native");
+            wg.set_visible(type_id == "wasm");
             let is_ssh = type_id == "ssh_waypipe" || type_id == "ssh_terminal";
             rg.set_visible(is_ssh);
             pg.set_visible(is_ssh);
@@ -377,6 +547,7 @@ pub fn show_editor(
     let form = adw::PreferencesPage::new();
     form.add(&profile_group);
     form.add(&client_group);
+    form.add(&wasm_group);
     form.add(&remote_group);
     form.add(&preview_group);
     form.add(&dig_group);
@@ -435,9 +606,34 @@ pub fn show_editor(
             favorite: baseline.favorite,
             launchers: baseline.launchers.clone(),
             runtime_overrides: baseline.runtime_overrides.clone(),
+            ..baseline.clone()
         };
         if mt == MachineType::Native {
             updated.runtime_overrides.bundled_app_id = Some(selected_client.borrow().clone());
+        }
+        if mt == MachineType::Wasm {
+            updated.runtime_overrides.bundled_app_id = Some("wawona-wasm".into());
+            let cmd = wasm_cmd.text().trim().to_string();
+            updated.runtime_overrides.wasm_command = Some(if cmd.is_empty() {
+                "wasm hello-wasi-gui".into()
+            } else {
+                cmd
+            });
+            let pkg = wasm_pkg.text().trim().to_string();
+            updated.runtime_overrides.wasm_package = if pkg.is_empty() { None } else { Some(pkg) };
+            let path = wasm_path.text().trim().to_string();
+            updated.runtime_overrides.wasm_module_path =
+                if path.is_empty() { None } else { Some(path.clone()) };
+            updated.runtime_overrides.wasm_launch_mode = Some(
+                if !path.is_empty() {
+                    "file"
+                } else if !pkg.is_empty() {
+                    "repo"
+                } else {
+                    "command"
+                }
+                .into(),
+            );
         }
         updated.runtime_overrides.waypipe_enabled =
             Some(mt == MachineType::SshWaypipe || mt == MachineType::SshTerminal);
@@ -481,6 +677,7 @@ fn add_row(group: &adw::PreferencesGroup, title: &str, widget: &impl IsA<gtk::Wi
 fn mt_id(mt: MachineType) -> String {
     match mt {
         MachineType::Native => "native".into(),
+        MachineType::Wasm => "wasm".into(),
         MachineType::SshWaypipe => "ssh_waypipe".into(),
         MachineType::SshTerminal => "ssh_terminal".into(),
         MachineType::VirtualMachine => "virtual_machine".into(),
@@ -490,6 +687,7 @@ fn mt_id(mt: MachineType) -> String {
 
 fn parse_mt(id: &str) -> MachineType {
     match id {
+        "wasm" => MachineType::Wasm,
         "ssh_waypipe" => MachineType::SshWaypipe,
         "ssh_terminal" => MachineType::SshTerminal,
         "virtual_machine" => MachineType::VirtualMachine,

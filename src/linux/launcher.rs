@@ -36,7 +36,10 @@ pub fn launch(
 
     let mut cmd = match profile.machine_type {
         LinuxMachineType::Native => {
-            let run_cmd = rewrite_wasm_command(&profile.effective_command(), None);
+            let run_cmd = rewrite_weston_honeycomb(
+                &rewrite_wasm_command(&profile.effective_command(), None),
+                rt,
+            );
             wlog!("LAUNCHER", "Native launch command={}", run_cmd);
             let mut c = Command::new("sh");
             c.args(["-c", &run_cmd]);
@@ -152,11 +155,18 @@ pub fn launch_profile(
     );
 
     let mut cmd = match profile.machine_type {
-        MachineType::Native => {
-            let run_cmd = rewrite_wasm_command(
-                &profile.effective_command(),
-                profile.runtime_overrides.wasm_module_path.as_deref(),
-            );
+        MachineType::Native | MachineType::Wasm => {
+            let run_cmd = if profile.machine_type == MachineType::Wasm {
+                crate::linux::wasm_launch::effective_wasm_command(profile)
+            } else {
+                rewrite_weston_honeycomb(
+                    &rewrite_wasm_command(
+                        &profile.effective_command(),
+                        profile.runtime_overrides.wasm_module_path.as_deref(),
+                    ),
+                    rt,
+                )
+            };
             wlog!("LAUNCHER", "Local launch command={}", run_cmd);
             let mut c = Command::new("sh");
             c.args(["-c", &run_cmd]);
@@ -250,7 +260,16 @@ pub fn launch_profile(
 
 fn rewrite_wasm_command(command: &str, explicit_wasm: Option<&str>) -> String {
     let token = command.trim();
-    if token != "wawona-wasm" && token != "hello-wasi-gui" {
+    if token.starts_with("wasm ") || token.starts_with("wpm ") {
+        if token.starts_with("wpm ") {
+            return format!(
+                "wasm {}",
+                crate::linux::wasm_launch::wasm_arg_from_command(token)
+            );
+        }
+        return command.to_string();
+    }
+    if token != "wawona-wasm" && token != "hello-wasi-gui" && token != "wasm" {
         return command.to_string();
     }
     if let Some(path) = explicit_wasm.map(str::trim).filter(|s| !s.is_empty()) {
@@ -282,4 +301,34 @@ fn write_bundled_hello_wasi_gui() -> Result<String> {
 
 fn shell_quote(path: &str) -> String {
     format!("'{}'", path.replace('\'', "'\\''"))
+}
+
+fn rewrite_weston_honeycomb(command: &str, rt: &RuntimeState) -> String {
+    let token = command
+        .split_whitespace()
+        .next()
+        .unwrap_or(command)
+        .trim();
+    let base = std::path::Path::new(token)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or(token);
+    if base != "weston" {
+        return command.to_string();
+    }
+    let Some(data) = crate::core::weston_ini::weston_data_dir() else {
+        wlog!("LAUNCHER", "weston honeycomb skipped: no share/weston/background.png");
+        return command.to_string();
+    };
+    let ini = std::path::Path::new(&rt.xdg_runtime_dir).join("weston.ini");
+    match crate::core::weston_ini::write_honeycomb_ini(&ini, &data, false, None, None) {
+        Ok(_) => {
+            std::env::set_var("WESTON_CONFIG_FILE", &ini);
+            crate::core::weston_ini::with_config_arg(command, &ini)
+        }
+        Err(err) => {
+            wlog!("LAUNCHER", "weston honeycomb ini failed: {err}");
+            command.to_string()
+        }
+    }
 }

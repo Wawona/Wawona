@@ -1,0 +1,13 @@
+{
+  "vmName": "wawona-jb",
+  "sockPath": "/Users/8amps/.vphone/VMs/wawona-jb/vphone.sock",
+  "sshHost": "192.168.64.159",
+  "sshPort": 22222,
+  "sshUser": "root",
+  "sshPassword": "alpine",
+  "variant": "jb",
+  "vnc": "vnc://192.168.64.104:5901",
+  "vmDir": "/Users/8amps/.vphone/VMs/wawona-jb",
+  "host": "192.168.64.159",
+  "guestIp": "192.168.64.159"
+}

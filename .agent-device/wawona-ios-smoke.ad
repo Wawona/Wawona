@@ -14,11 +14,11 @@ snapshot -i
 screenshot ./.agent-device/test-artifacts/ios-first-screen.png
 is visible id="wwn.machines.root"
 is visible id="wwn.machines.start"
-press id="wwn.machines.settings"
+press id="wwn.settings.display"
 wait selector id="wwn.settings.display" --timeout-ms 15000
 is visible id="wwn.settings.display"
 screenshot ./.agent-device/test-artifacts/ios-settings-display.png
-press id="wwn.settings.done"
+press id="wwn.machines.root"
 wait selector id="wwn.machines.root" --timeout-ms 15000
 press id="wwn.machines.add"
 wait 1200

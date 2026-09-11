@@ -81,6 +81,9 @@ object WawonaSettings {
                 .takeIf { it in setOf("auto", "wayland", "drm") }
                 ?: "auto"
         
+        WawonaNative.nativeSetTouchPointerEmulation(
+            prefs.getBoolean("touchPointerEmulation", false)
+        )
         WawonaNative.nativeApplySettings(
             forceServerSideDecorations,
             autoScale,

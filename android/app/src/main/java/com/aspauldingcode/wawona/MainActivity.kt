@@ -275,6 +275,87 @@ private fun KeyboardUiMode.isPip(): Boolean =
         this == KeyboardUiMode.PIP_DOCKED_LEFT ||
         this == KeyboardUiMode.PIP_DOCKED_RIGHT
 
+private fun extractBundledHelloWasiGui(context: Context): String? {
+    val dest = File(context.filesDir, "wasm/hello-wasi-gui.wasm")
+    if (dest.isFile && dest.length() > 0) {
+        return dest.absolutePath
+    }
+    return try {
+        dest.parentFile?.mkdirs()
+        context.assets.open("wasm/hello-wasi-gui.wasm").use { input ->
+            dest.outputStream().use { output -> input.copyTo(output) }
+        }
+        dest.absolutePath
+    } catch (e: Exception) {
+        WLog.e("NATIVE", "hello-wasi-gui asset missing: ${e.message}")
+        null
+    }
+}
+
+private fun ensureAndroidWasmPackage(context: Context, name: String): String? {
+    val normalized = name.trim()
+        .removePrefix("wpm install ")
+        .removePrefix("wasm ")
+        .removeSuffix(".wasm")
+        .ifBlank { WasmCatalog.DEFAULT_PACKAGE }
+    val aliases = setOf(
+        WasmCatalog.DEFAULT_PACKAGE,
+        "wasi-hello-gui",
+        "hello-wasi"
+    )
+    if (normalized in aliases) {
+        return extractBundledHelloWasiGui(context) ?: normalized
+    }
+    val existing = File(WasmCatalog.modulesDir(context), "$normalized.wasm")
+    if (existing.isFile) {
+        return existing.absolutePath
+    }
+    return try {
+        val match = WasmCatalog.fetchIndex().firstOrNull {
+            it.name.equals(normalized, ignoreCase = true)
+        } ?: return extractBundledHelloWasiGui(context) ?: normalized
+        WasmCatalog.download(context, match).absolutePath
+    } catch (e: Exception) {
+        WLog.e("NATIVE", "wasm catalog fetch failed: ${e.message}")
+        extractBundledHelloWasiGui(context) ?: normalized
+    }
+}
+
+private fun launchRelayWasm(context: Context, profile: MachineProfile): Boolean {
+    val requested = profile.runtimeOverrides.optString("wasmModulePath", "").trim()
+    val pkg = profile.runtimeOverrides.optString("wasmPackage", "").trim()
+    val cmd = profile.runtimeOverrides.optString("wasmCommand", "").trim()
+    val path = when {
+        requested.isNotEmpty() && File(requested).isFile -> requested
+        pkg.isNotEmpty() -> ensureAndroidWasmPackage(context, pkg)
+        cmd.isNotEmpty() -> {
+            val arg = cmd.removePrefix("wpm install ").removePrefix("wasm ").trim()
+                .ifBlank { WasmCatalog.DEFAULT_PACKAGE }
+            if (File(arg).isFile) arg else ensureAndroidWasmPackage(context, arg)
+        }
+        else -> extractBundledHelloWasiGui(context) ?: WasmCatalog.DEFAULT_PACKAGE
+    }
+    if (path.isNullOrEmpty()) {
+        Toast.makeText(
+            context,
+            "Pick a .wasm, a wpm package, or type wasm hello-wasi-gui.",
+            Toast.LENGTH_LONG
+        ).show()
+        return false
+    }
+    val launched = WawonaNative.nativeRunWasm(path)
+    if (!launched) {
+        Toast.makeText(
+            context,
+            "Relay wasm failed to start. Check logcat for wawona_wasm_run.",
+            Toast.LENGTH_LONG
+        ).show()
+        return false
+    }
+    WLog.i("NATIVE", "Launched Relay wasm $path")
+    return true
+}
+
 @Composable
 fun WawonaApp(
     prefs: SharedPreferences,
@@ -366,6 +447,10 @@ fun WawonaApp(
                 else WawonaNative.nativeRunWeston()
             }
             "weston-terminal" -> WawonaNative.nativeRunWestonTerminal()
+            "wawona-wasm" -> return launchRelayWasm(
+                context,
+                MachineProfile(name = "Wasm", type = MachineType.WASM)
+            )
             else -> WawonaNative.nativeRunBundledClient(clientId)
         }
         if (!launched) {
@@ -386,6 +471,7 @@ fun WawonaApp(
             "weston-terminal" -> WawonaNative.nativeStopWestonTerminal()
             "weston-simple-shm" -> WawonaNative.nativeStopWestonSimpleSHM()
             "foot" -> WawonaNative.nativeStopFoot()
+            "wawona-wasm" -> WawonaNative.nativeStopWasm()
             else -> {
                 if (WawonaNative.nativeGetRunningBundledClientId() == clientId) {
                     WawonaNative.nativeStopBundledClient()
@@ -495,7 +581,10 @@ fun WawonaApp(
         // Prefer xdg_toplevel.close before force-stopping the session (#52).
         runCatching { WawonaNative.nativeRequestActiveWindowClose() }
         when (profile?.type) {
-            MachineType.NATIVE -> stopNativeClient(profile.nativeLauncher.ifBlank { "weston-terminal" })
+            MachineType.NATIVE, MachineType.WASM -> stopNativeClient(
+                if (profile.type == MachineType.WASM) "wawona-wasm"
+                else profile.nativeLauncher.ifBlank { "weston-terminal" }
+            )
             MachineType.SSH_WAYPIPE, MachineType.SSH_TERMINAL -> stopWaypipe()
             else -> stopWaypipe()
         }
@@ -616,10 +705,9 @@ fun WawonaApp(
         return try {
             WawonaShellRootfs.ensureInstalled(context)
             WawonaNative.nativePrepareShellEnvironment(context.filesDir.absolutePath)
-            val xkb = KeyboardLayouts.resolveSystemLayout(context)
-            WawonaNative.nativeSetXkbDefaults(xkb.layout, xkb.variant)
-            WLog.i("XKB", "follow-system layout=${xkb.layout} variant=${xkb.variant}")
+            KeyboardLayouts.applyHostKeymap()
             WawonaNative.nativeInit(cacheDirPath)
+            WawonaNative.nativeReloadHostKeymap()
             if (!WawonaNative.nativeIsCompositorReady()) {
                 throw IllegalStateException("Wayland compositor did not start")
             }
@@ -721,8 +809,9 @@ fun WawonaApp(
                     profiles.firstOrNull { it.id == active.machineId }
                 }
                 isWaypipeRunning = when (activeProfile?.type) {
-                    MachineType.NATIVE -> isNativeClientRunning(
-                        activeProfile.nativeLauncher.ifBlank { "weston-terminal" }
+                    MachineType.NATIVE, MachineType.WASM -> isNativeClientRunning(
+                        if (activeProfile.type == MachineType.WASM) "wawona-wasm"
+                        else activeProfile.nativeLauncher.ifBlank { "weston-terminal" }
                     )
                     MachineType.SSH_WAYPIPE, MachineType.SSH_TERMINAL -> WawonaNative.nativeIsWaypipeRunning()
                     else -> false
@@ -818,66 +907,18 @@ fun WawonaApp(
     }
 
     fun launchNativeMachine(profile: MachineProfile): Boolean {
-        val launcher = profile.nativeLauncher.ifBlank { "weston-terminal" }
-        if (launcher == "wawona-wasm") {
-            val requested = profile.runtimeOverrides.optString("wasmModulePath", "").trim()
-            val path = when {
-                requested.isNotEmpty() && File(requested).isFile -> requested
-                else -> extractBundledHelloWasiGui()
+        val bundled = profile.runtimeOverrides.optString("bundledAppID", "").trim()
+        val launcher = profile.nativeLauncher.ifBlank {
+            if (profile.type == MachineType.WASM || bundled == "wawona-wasm") {
+                "wawona-wasm"
+            } else {
+                "weston-terminal"
             }
-            if (path.isNullOrEmpty() || !File(path).isFile) {
-                Toast.makeText(
-                    context,
-                    "Bundled hello-wasi-gui.wasm is missing. Pick a .wasm path.",
-                    Toast.LENGTH_LONG
-                ).show()
-                return false
-            }
-            // Runtime CLI ships as a native binary beside the APK when packaged;
-            // fall back to a clear error until the Android Runtime package lands.
-            val wasmBin = listOf(
-                File(context.applicationInfo.nativeLibraryDir, "wasm"),
-                File(context.filesDir, "bin/wasm"),
-                File(context.applicationInfo.nativeLibraryDir, "libwasm.so")
-            ).firstOrNull { it.canExecute() || it.isFile }
-            if (wasmBin == null) {
-                Toast.makeText(
-                    context,
-                    "Wawona Runtime (wasm) is not bundled in this APK yet.",
-                    Toast.LENGTH_LONG
-                ).show()
-                return false
-            }
-            return try {
-                ProcessBuilder(wasmBin.absolutePath, path)
-                    .directory(File(path).parentFile)
-                    .redirectErrorStream(true)
-                    .start()
-                WLog.i("NATIVE", "Launched Runtime wasm $path")
-                true
-            } catch (e: Exception) {
-                Toast.makeText(context, "Runtime launch failed: ${e.message}", Toast.LENGTH_SHORT).show()
-                false
-            }
+        }
+        if (profile.type == MachineType.WASM || launcher == "wawona-wasm" || bundled == "wawona-wasm") {
+            return launchRelayWasm(context, profile)
         }
         return launchNativeClient(launcher)
-    }
-
-    private fun extractBundledHelloWasiGui(): String? {
-        val dest = File(filesDir, "wasm/hello-wasi-gui.wasm")
-        if (dest.isFile && dest.length() > 0) {
-            return dest.absolutePath
-        }
-        return try {
-            dest.parentFile?.mkdirs()
-            assets.open("wasm/hello-wasi-gui.wasm").use { input ->
-                dest.outputStream().use { output -> input.copyTo(output) }
-            }
-            dest.absolutePath
-        } catch (e: Exception) {
-            WLog.e("NATIVE", "hello-wasi-gui asset missing: ${e.message}")
-            null
-        }
     }
 
     fun connectMachine(profile: MachineProfile, sessionId: String? = null) {
@@ -907,7 +948,13 @@ fun WawonaApp(
             WawonaNative.nativeReserveNextHostWindow(hostId)
         }
         val launched = when (profile.type) {
-            MachineType.NATIVE -> launchNativeMachine(profile)
+            MachineType.NATIVE, MachineType.WASM -> launchNativeMachine(
+                if (profile.type == MachineType.WASM) {
+                    profile.copy(nativeLauncher = "wawona-wasm")
+                } else {
+                    profile
+                }
+            )
             MachineType.SSH_WAYPIPE -> launchWaypipe()
             MachineType.SSH_TERMINAL -> {
                 val withTerminalCommand = profile.copy(
@@ -942,7 +989,9 @@ fun WawonaApp(
             }
             /* Show startup log overlay before switching to compositor view. */
             val label = when (profile.type) {
-                MachineType.NATIVE -> profile.nativeLauncher.ifBlank { "weston-terminal" }
+                MachineType.NATIVE, MachineType.WASM ->
+                    if (profile.type == MachineType.WASM) "wawona-wasm"
+                    else profile.nativeLauncher.ifBlank { "weston-terminal" }
                 else -> profile.name.ifBlank { "Wayland client" }
             }
             startupLogClientLabel = label
@@ -983,8 +1032,10 @@ fun WawonaApp(
             }
             if (AnowawSession.isActive) AnowawSession.detach()
             when (profile.type) {
-                MachineType.NATIVE -> {
-                    val launcher = profile.nativeLauncher.ifBlank { "weston-terminal" }
+                MachineType.NATIVE, MachineType.WASM -> {
+                    val launcher =
+                        if (profile.type == MachineType.WASM) "wawona-wasm"
+                        else profile.nativeLauncher.ifBlank { "weston-terminal" }
                     // JNI stop is still client-wide; only tear down when no
                     // other connected machine is using the same launcher.
                     if (!otherConnectedNativeSessionsUse(launcher, profile.id)) {
@@ -1108,7 +1159,8 @@ fun WawonaApp(
     val systemBarBottomDp = with(density) { systemBarBottomPx.toDp() }
     val hardwareKeyboardActive = hasRealExternalKeyboard(configuration)
     val resizeDisplayForVirtualKeyboard =
-        prefs.getBoolean("resizeDisplayForVirtualKeyboard", true) && !hardwareKeyboardActive
+        SessionExitSettings.resolvedResizeDisplayForVirtualKeyboard(prefs, activeProfile()) &&
+            !hardwareKeyboardActive
     val inSessionUi = !showWelcome && !showMachinesHome
     val showAccessoryBar =
         inSessionUi && !hardwareKeyboardActive && !keyboardUiMode.isPip()
@@ -1117,12 +1169,17 @@ fun WawonaApp(
     // Accessory bar content is ~36dp keys + padding; keep in sync with ModifierAccessoryBar.
     val accessoryBarHeightDp = if (showAccessoryBar) 44.dp else 0.dp
     val imeResizePx = if (resizeDisplayForVirtualKeyboard && imeVisible) imeBottom else 0
-    val compositorBottomPadPx =
+    val keyboardOverlapPx =
         if (resizeDisplayForVirtualKeyboard) {
             imeResizePx + with(density) { accessoryBarHeightDp.roundToPx() }
         } else {
             0
         }
+    val outputHeightPx = with(density) { configuration.screenHeightDp.dp.roundToPx() }
+    val compositorBottomPadPx = (
+        outputHeightPx -
+            WawonaNative.nativeUsableOutputHeight(outputHeightPx, keyboardOverlapPx)
+        ).coerceAtLeast(0)
     val compositorBottomPadDp = with(density) { compositorBottomPadPx.toDp() }
 
     var selectedClientTabId by remember { mutableStateOf("shell") }
@@ -1205,8 +1262,8 @@ fun WawonaApp(
         }
     }
 
-    // Soft OSK follows text_entry_wanted (committed TI or terminal synthesis),
-    // same policy as iOS. Respect PIP / external-keyboard parking.
+    // Soft OSK follows Rust osk_should_show (committed TI or terminal
+    // synthesis). Respect PIP / external-keyboard parking.
     val keyboardUiModeLatest = rememberUpdatedState(keyboardUiMode)
     LaunchedEffect(inSessionUi, hardwareKeyboardActive, nativeRuntimeReady) {
         if (!inSessionUi || !nativeRuntimeReady) return@LaunchedEffect
@@ -1217,7 +1274,7 @@ fun WawonaApp(
                 continue
             }
             val wanted = try {
-                WawonaNative.nativeTextEntryWanted()
+                WawonaNative.nativeOskShouldShow(hardwareKeyboardActive, false)
             } catch (_: Exception) {
                 false
             }

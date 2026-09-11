@@ -29,12 +29,16 @@ struct WWNMachineProfileEditorSection: View {
         WWNEditorFieldRow("Type") {
           Picker("", selection: $draft.type) {
             machineTypeOption("Native", kWWNMachineTypeNative, "display")
+            machineTypeOption("Wasm", kWWNMachineTypeWasm, "doc.badge.gearshape")
             machineTypeOption("SSH + Waypipe", kWWNMachineTypeSSHWaypipe, "arrow.triangle.2.circlepath")
             machineTypeOption("SSH Terminal", kWWNMachineTypeSSHTerminal, "terminal")
             #if !os(tvOS) && !os(watchOS)
             machineTypeOption("Virtual Machine", kWWNMachineTypeVirtualMachine, "desktopcomputer")
             machineTypeOption("Container", kWWNMachineTypeContainer, "shippingbox")
             #endif
+            if !Self.selectableMachineTypes.contains(draft.type) {
+              machineTypeOption(draft.type, draft.type, "questionmark.circle")
+            }
           }
           .wwnPlatformPickerStyle()
           .labelsHidden()
@@ -53,6 +57,20 @@ struct WWNMachineProfileEditorSection: View {
 
   private func machineTypeOption(_ name: String, _ value: String, _ symbol: String) -> some View {
     Label(name, systemImage: symbol).tag(value)
+  }
+
+  private static var selectableMachineTypes: Set<String> {
+    var types: Set<String> = [
+      kWWNMachineTypeNative,
+      kWWNMachineTypeWasm,
+      kWWNMachineTypeSSHWaypipe,
+      kWWNMachineTypeSSHTerminal,
+    ]
+    #if !os(tvOS) && !os(watchOS)
+    types.insert(kWWNMachineTypeVirtualMachine)
+    types.insert(kWWNMachineTypeContainer)
+    #endif
+    return types
   }
 }
 
@@ -178,7 +196,7 @@ struct WWNNativeClientEditorSection: View {
   }
 
   /// Copy a picked `.wasm` into Application Support / Documents so the path survives.
-  private static func importWasmModule(from url: URL) -> String? {
+  static func importWasmModule(from url: URL) -> String? {
     let name = url.lastPathComponent
     guard name.lowercased().hasSuffix(".wasm") else {
       // Still allow non-suffixed picks if magic is checked at launch.
@@ -208,6 +226,167 @@ struct WWNNativeClientEditorSection: View {
       return dest.path
     } catch {
       return nil
+    }
+  }
+}
+
+// MARK: - Wasm
+
+/// Machines kind `wasm`: local file, wasm catalog, or a native-shell command.
+struct WWNWasmEditorSection: View {
+  @ObservedObject var draft: WWNMachineEditorDraft
+
+  @State private var showWasmFileImporter = false
+  @State private var showWasmCatalog = false
+  @State private var catalogNote: String?
+
+  var body: some View {
+    WWNEditorCard(
+      icon: "doc.badge.gearshape",
+      title: "Wasm",
+      tint: .purple,
+      info: "Same as native shell: wasm hello-wasi-gui. Pick a local .wasm, search repo.wawona.io /wasm/v1, or type the wpm / wasm command. Native machines still run wasm from the shell."
+    ) {
+      VStack(alignment: .leading, spacing: 12) {
+        Picker("Source", selection: $draft.wasmLaunchMode) {
+          Text("Local file").tag("file")
+          Text("Search repo").tag("repo")
+          Text("Command").tag("command")
+        }
+        .pickerStyle(.segmented)
+        .wwnA11y(WWNA11y.machinesEditorWasmSource, label: "Wasm source")
+
+        switch draft.wasmLaunchMode {
+        case "file":
+          localFileRows
+        case "repo":
+          repoRows
+        default:
+          commandRows
+        }
+
+        if let catalogNote {
+          WWNEditorCaption(text: catalogNote)
+        }
+
+        WWNEditorCaption(
+          text: "Start runs wasm <file|package>. Empty file uses bundled hello-wasi-gui."
+        )
+      }
+    }
+    .sheet(isPresented: $showWasmCatalog) {
+      WWNWasmCatalogSearchView { pkg in
+        Task { await applyCatalogPackage(pkg) }
+      }
+    }
+    #if !os(tvOS)
+    .fileImporter(
+      isPresented: $showWasmFileImporter,
+      allowedContentTypes: [UTType(filenameExtension: "wasm") ?? .data],
+      allowsMultipleSelection: false
+    ) { result in
+      guard case .success(let urls) = result, let url = urls.first else { return }
+      let accessed = url.startAccessingSecurityScopedResource()
+      defer {
+        if accessed { url.stopAccessingSecurityScopedResource() }
+      }
+      if let stable = WWNNativeClientEditorSection.importWasmModule(from: url) {
+        applyLocalFile(stable)
+      } else {
+        applyLocalFile(url.path)
+      }
+    }
+    #endif
+  }
+
+  private var localFileRows: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      WWNEditorFieldRow("Module", icon: "doc") {
+        HStack(spacing: 8) {
+          WWNEditorCodeField("hello-wasi-gui.wasm in Wawona/wasm-modules", text: $draft.wasmModulePath)
+          #if !os(tvOS)
+          Button("Choose…") { showWasmFileImporter = true }
+            .buttonStyle(.bordered)
+          #endif
+        }
+      }
+      let locals = WasmLaunch.listLocalModules()
+      let installed = WasmLaunch.listInstalledWpmPackages()
+      if !locals.isEmpty || !installed.isEmpty {
+        VStack(alignment: .leading, spacing: 6) {
+          if !locals.isEmpty {
+            Text("Wawona folder")
+              .font(.caption.weight(.semibold))
+              .foregroundStyle(.secondary)
+            ForEach(locals, id: \.path) { url in
+              Button(url.lastPathComponent) { applyLocalFile(url.path) }
+                .buttonStyle(.borderless)
+            }
+          }
+          if !installed.isEmpty {
+            Text("wpm installed")
+              .font(.caption.weight(.semibold))
+              .foregroundStyle(.secondary)
+            ForEach(installed, id: \.name) { pkg in
+              Button("\(pkg.name)  \((pkg.path as NSString).lastPathComponent)") {
+                draft.wasmPackage = pkg.name
+                draft.wasmModulePath = pkg.path
+                draft.wasmCommand = "wasm \(pkg.name)"
+              }
+              .buttonStyle(.borderless)
+            }
+          }
+        }
+      }
+    }
+  }
+
+  private var repoRows: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      WWNEditorFieldRow("Package", icon: "shippingbox") {
+        HStack(spacing: 8) {
+          WWNEditorCodeField("hello-wasi-gui", text: $draft.wasmPackage)
+          Button {
+            showWasmCatalog = true
+          } label: {
+            Label("Search catalog", systemImage: "magnifyingglass")
+          }
+          .wwnA11y(WWNA11y.machinesEditorWasmHub, label: "Search wasm catalog")
+        }
+      }
+    }
+  }
+
+  private var commandRows: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      WWNEditorFieldRow("Command", icon: "terminal") {
+        WWNEditorCodeField("wasm hello-wasi-gui", text: $draft.wasmCommand)
+          .wwnA11y(WWNA11y.machinesEditorWasmCommand, label: "Wasm command")
+      }
+      WWNEditorCaption(
+        text: "Typed as in zsh: wasm hello-wasi-gui, wasm ./app.wasm, or wpm install hello-wasi-gui."
+      )
+    }
+  }
+
+  private func applyLocalFile(_ path: String) {
+    draft.wasmModulePath = path
+    draft.wasmPackage = ""
+    draft.wasmCommand = "wasm \(path)"
+    draft.wasmLaunchMode = "file"
+  }
+
+  private func applyCatalogPackage(_ pkg: WWNWasmCatalogPackage) async {
+    draft.wasmPackage = pkg.name
+    draft.wasmCommand = "wasm \(pkg.name)"
+    draft.wasmLaunchMode = "repo"
+    do {
+      let path = try await WWNWasmCatalogClient.download(pkg)
+      draft.wasmModulePath = path
+      catalogNote = "Saved \(pkg.name) to the Wawona folder."
+    } catch {
+      draft.wasmModulePath = ""
+      catalogNote = error.localizedDescription
     }
   }
 }
@@ -678,6 +857,12 @@ struct WWNMachineInputEditorSection: View {
         }
         WWNEditorToggleRow("Swap CMD with ALT", icon: "command", isOn: $draft.swapCmdWithAlt)
         WWNEditorToggleRow("Universal Clipboard", icon: "doc.on.clipboard", isOn: $draft.universalClipboard)
+        WWNEditorToggleRow(
+          "Resize Display for Virtual Keyboard",
+          icon: "keyboard.chevron.compact.down",
+          footnote: "iOS and iPadOS shrink the Wayland output and shift the client above the OSK, like postmarketOS. A hardware keyboard leaves the client full size.",
+          isOn: $draft.resizeDisplayForVirtualKeyboard
+        )
       }
     }
   }

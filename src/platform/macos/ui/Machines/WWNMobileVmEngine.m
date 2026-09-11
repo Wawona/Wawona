@@ -41,7 +41,7 @@
                    code:1
                userInfo:@{
                  NSLocalizedDescriptionKey :
-                     @"iOS Linux VMs wait on Relay CPU. No QEMU. No UTM."
+                     @"Use WWNRelay. iOS Linux guests start on Relay static CPU. No QEMU."
                }];
   }
   return NO;

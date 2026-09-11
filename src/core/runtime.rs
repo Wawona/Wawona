@@ -12,13 +12,13 @@
 //! - iOS: CADisplayLink / CFRunLoop
 //! - Android: Choreographer / Looper
 
+use std::collections::VecDeque;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
-use std::collections::VecDeque;
 
 use crate::core::compositor::{Compositor, CompositorEvent};
-use crate::core::state::CompositorState;
 use crate::core::errors::CoreError;
+use crate::core::state::CompositorState;
 
 // ============================================================================
 // Task System
@@ -39,23 +39,23 @@ impl TaskQueue {
             tasks: Mutex::new(VecDeque::new()),
         }
     }
-    
+
     /// Queue a task for execution
     pub fn push(&self, task: Task) {
         self.tasks.lock().unwrap().push_back(task);
     }
-    
+
     /// Take all pending tasks
     pub fn take_all(&self) -> Vec<Task> {
         let mut tasks = self.tasks.lock().unwrap();
         tasks.drain(..).collect()
     }
-    
+
     /// Check if there are pending tasks
     pub fn has_tasks(&self) -> bool {
         !self.tasks.lock().unwrap().is_empty()
     }
-    
+
     /// Get number of pending tasks
     pub fn len(&self) -> usize {
         self.tasks.lock().unwrap().len()
@@ -120,7 +120,7 @@ impl FrameTiming {
             current_fps: 0.0,
         }
     }
-    
+
     /// Check if it's time for a new frame
     pub fn should_render(&self) -> bool {
         // Use a conservative render time estimate (example: 4ms)
@@ -129,25 +129,25 @@ impl FrameTiming {
         let start_time = self.clock.plan_render(render_estimate);
         Instant::now() >= start_time
     }
-    
+
     /// Mark frame as started
     pub fn begin_frame(&mut self) -> u64 {
         self.frame_count += 1;
         self.frame_count
     }
-    
+
     /// Mark frame as complete
     pub fn end_frame(&mut self) {
         let now = Instant::now();
-        
+
         // We don't have exact VBlank time here, so we effectively just log completion.
-        // The FrameClock relies on update_vblank() which should be called with 
+        // The FrameClock relies on update_vblank() which should be called with
         // Presentation feedback, but for now we can inform it of completion
         // or rely on explicit feedback calls.
         // For now, let's essentially 'tick' it? No, FrameClock is continuous.
-        
+
         self.frame_time_sum += Duration::from_micros(16667); // Placeholder
-        
+
         // Update FPS every second
         let fps_elapsed = now.duration_since(self.fps_update_time);
         if fps_elapsed >= Duration::from_secs(1) {
@@ -157,12 +157,12 @@ impl FrameTiming {
             self.fps_update_time = now;
         }
     }
-    
+
     /// Get current FPS
     pub fn fps(&self) -> f64 {
         self.current_fps
     }
-    
+
     /// Get time until next frame
     pub fn time_until_next_frame(&self) -> Duration {
         let render_estimate = Duration::from_millis(4);
@@ -174,7 +174,7 @@ impl FrameTiming {
             start_time - now
         }
     }
-    
+
     /// Get frame timestamp for Wayland (milliseconds since epoch)
     pub fn frame_timestamp_ms(&self) -> u32 {
         Compositor::timestamp_ms()
@@ -216,13 +216,13 @@ pub struct RuntimeFlags {
 pub struct Runtime {
     /// Task queue for deferred execution
     tasks: TaskQueue,
-    
+
     /// Frame timing
     frame_timing: FrameTiming,
-    
+
     /// Runtime flags
     flags: RuntimeFlags,
-    
+
     /// Pending events for platform
     events: Vec<CompositorEvent>,
 }
@@ -237,7 +237,7 @@ impl Runtime {
             events: Vec::new(),
         }
     }
-    
+
     /// Create runtime with custom frame timing
     pub fn with_frame_timing(config: FrameTimingConfig) -> Self {
         Self {
@@ -247,11 +247,11 @@ impl Runtime {
             events: Vec::new(),
         }
     }
-    
+
     // =========================================================================
     // Task Management
     // =========================================================================
-    
+
     /// Queue a task for execution
     pub fn queue_task<F>(&self, task: F)
     where
@@ -259,7 +259,7 @@ impl Runtime {
     {
         self.tasks.push(Box::new(task));
     }
-    
+
     /// Execute all pending tasks
     pub fn execute_tasks(&mut self, state: &mut CompositorState) {
         let tasks = self.tasks.take_all();
@@ -267,11 +267,11 @@ impl Runtime {
             task(state);
         }
     }
-    
+
     // =========================================================================
     // Event Loop Integration
     // =========================================================================
-    
+
     /// Poll for events (non-blocking)
     ///
     /// This processes Wayland events and returns pending compositor events.
@@ -282,21 +282,22 @@ impl Runtime {
     ) -> Result<Vec<CompositorEvent>, CoreError> {
         // Execute pending tasks
         self.execute_tasks(state);
-        
+
         // Dispatch Wayland events
-        compositor.dispatch(state)
+        compositor
+            .dispatch(state)
             .map_err(|e| CoreError::wayland_error(e.to_string()))?;
-        
+
         // Collect events from compositor
         let mut events = compositor.take_events();
         events.append(&mut self.events);
-        
+
         // Also collect events from state (pushed by protocol handlers)
         events.append(&mut state.pending_compositor_events);
-        
+
         Ok(events)
     }
-    
+
     /// Dispatch with timeout
     ///
     /// Blocks until events are available or timeout expires.
@@ -308,101 +309,103 @@ impl Runtime {
     ) -> Result<Vec<CompositorEvent>, CoreError> {
         // Execute pending tasks
         self.execute_tasks(state);
-        
+
         // Dispatch Wayland events with timeout
-        compositor.dispatch_timeout(state, timeout)
+        compositor
+            .dispatch_timeout(state, timeout)
             .map_err(|e| CoreError::wayland_error(e.to_string()))?;
-        
+
         // Collect events
         let mut events = compositor.take_events();
         events.append(&mut self.events);
-        
+
         // Also collect events from state (pushed by protocol handlers)
         events.append(&mut state.pending_compositor_events);
-        
+
         Ok(events)
     }
-    
+
     // =========================================================================
     // Frame Timing
     // =========================================================================
-    
+
     /// Check if it's time to render a new frame
     pub fn should_render(&self) -> bool {
         self.flags.needs_redraw || self.frame_timing.should_render()
     }
-    
+
     /// Begin a new frame
     pub fn begin_frame(&mut self) -> u64 {
         self.flags.needs_redraw = false;
         self.frame_timing.begin_frame()
     }
-    
+
     /// End the current frame
     pub fn end_frame(&mut self) {
         self.frame_timing.end_frame();
     }
-    
+
     /// Request a redraw
     pub fn request_redraw(&mut self) {
         self.flags.needs_redraw = true;
     }
-    
+
     /// Get current FPS
     pub fn fps(&self) -> f64 {
         self.frame_timing.fps()
     }
-    
+
     /// Get time until next frame
     pub fn time_until_next_frame(&self) -> Duration {
         self.frame_timing.time_until_next_frame()
     }
-    
+
     /// Get frame timestamp for Wayland
     pub fn frame_timestamp_ms(&self) -> u32 {
         self.frame_timing.frame_timestamp_ms()
     }
-    
+
     // =========================================================================
     // Flags
     // =========================================================================
-    
+
     /// Get runtime flags
     pub fn flags(&self) -> RuntimeFlags {
         self.flags
     }
-    
+
     /// Set needs_flush flag
     pub fn set_needs_flush(&mut self, value: bool) {
         self.flags.needs_flush = value;
     }
-    
+
     /// Set has_frame_callbacks flag
     pub fn set_has_frame_callbacks(&mut self, value: bool) {
         self.flags.has_frame_callbacks = value;
     }
-    
+
     // =========================================================================
     // Events
     // =========================================================================
-    
+
     /// Push an event
     pub fn push_event(&mut self, event: CompositorEvent) {
         self.events.push(event);
     }
-    
+
     /// Check if there are pending events
     pub fn has_events(&self) -> bool {
         !self.events.is_empty()
     }
-    
+
     // =========================================================================
     // Feedback
     // =========================================================================
 
     /// Report presentation timing feedback (e.g. from platform VBlank)
     pub fn report_presentation(&mut self, timestamp: Instant, refresh_mhz: u32) {
-        self.frame_timing.report_presentation(timestamp, refresh_mhz);
+        self.frame_timing
+            .report_presentation(timestamp, refresh_mhz);
     }
 }
 
@@ -426,22 +429,22 @@ impl Default for Runtime {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_frame_timing_config() {
         let config = FrameTimingConfig::for_refresh_rate(120);
         assert!(config.target_interval < Duration::from_millis(10));
     }
-    
+
     #[test]
     fn test_task_queue() {
         let queue = TaskQueue::new();
         assert!(!queue.has_tasks());
-        
+
         queue.push(Box::new(|_state| {}));
         assert!(queue.has_tasks());
         assert_eq!(queue.len(), 1);
-        
+
         let tasks = queue.take_all();
         assert_eq!(tasks.len(), 1);
         assert!(!queue.has_tasks());

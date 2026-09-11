@@ -128,6 +128,7 @@ extern void WWNCoreSetOutputSize(void *core, uint32_t width, uint32_t height,
 extern void WWNCoreSetSafeAreaInsets(void *core, int32_t top, int32_t right,
                                      int32_t bottom, int32_t left);
 extern void WWNCoreSetForceSSD(void *core, int enabled);
+extern void WWNCoreSetTouchPointerEmulation(void *core, int enabled);
 extern void WWNCoreSetFillsHostForClientLaunch(void *core, bool fills_host);
 extern void WWNCoreFree(void *core);
 
@@ -272,6 +273,15 @@ extern void WWNCoreTextInputDeleteSurrounding(void *core, uint32_t before,
                                               uint32_t after);
 extern int WWNCoreTextInputIsEnabled(void *core);
 extern int WWNCoreTextEntryWanted(void *core);
+extern void WWNApplyHostKeyLevels(int32_t kind, const int32_t *ids,
+                                  const uint32_t *levels4, size_t count);
+extern void WWNCoreReloadHostKeymap(void *core);
+extern int WWNCoreOskShouldShow(void *core, int hardware_keyboard, int force);
+extern int32_t WWNCoreUsableOutputHeight(int32_t output_height,
+                                         int32_t keyboard_overlap);
+extern int WWNWriteWestonHoneycombIni(const char *path, const char *weston_data_dir,
+                                      int use_pixman, const char *shell_client,
+                                      const char *input_method);
 extern void WWNCoreTextInputGetContentType(void *core, uint32_t *out_hint,
                                            uint32_t *out_purpose);
 extern void WWNCoreTextInputGetCursorRect(void *core, int32_t *out_x,
@@ -330,6 +340,12 @@ JNIEXPORT void JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_nativeSetXkbDefaults(
     JNIEnv *env, jobject thiz, jstring layout, jstring variant);
 JNIEXPORT void JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeApplyHostKeyLevels(
+    JNIEnv *env, jobject thiz, jintArray ids, jintArray levels);
+JNIEXPORT void JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeReloadHostKeymap(JNIEnv *env,
+                                                                   jobject thiz);
+JNIEXPORT void JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_nativeResizeSurface(JNIEnv *env,
                                                                 jobject thiz,
                                                                 jint width,
@@ -381,6 +397,9 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeTextInputIsEnabled(
 JNIEXPORT jboolean JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_nativeTextEntryWanted(
     JNIEnv *env, jobject thiz);
+JNIEXPORT jboolean JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeOskShouldShow(
+    JNIEnv *env, jobject thiz, jboolean hardwareKeyboard, jboolean force);
 JNIEXPORT void JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_nativeGetTextInputContentType(
     JNIEnv *env, jobject thiz, jintArray outHintPurpose);
@@ -446,6 +465,15 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeIsBundledClientRunning(
 JNIEXPORT jstring JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_nativeGetRunningBundledClientId(
     JNIEnv *env, jobject thiz);
+JNIEXPORT jboolean JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeRunWasm(
+    JNIEnv *env, jobject thiz, jstring modulePath);
+JNIEXPORT void JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeStopWasm(JNIEnv *env,
+                                                           jobject thiz);
+JNIEXPORT jboolean JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeIsWasmRunning(JNIEnv *env,
+                                                                jobject thiz);
 JNIEXPORT void JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_nativeTouchDown(
     JNIEnv *env, jobject thiz, jint id, jfloat x, jfloat y, jint timestampMs);
@@ -506,6 +534,9 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeGetFocusedWindowTitle(
 JNIEXPORT void JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_nativeSetClipboardText(
     JNIEnv *env, jobject thiz, jstring text);
+JNIEXPORT void JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeSetTouchPointerEmulation(
+    JNIEnv *env, jobject thiz, jboolean enabled);
 JNIEXPORT jstring JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_nativePollClipboardText(
     JNIEnv *env, jobject thiz);
@@ -2349,7 +2380,8 @@ JNIEXPORT void JNICALL
 Java_com_aspauldingcode_wawona_WawonaNative_nativeSetXkbDefaults(
     JNIEnv *env, jobject thiz, jstring layout, jstring variant) {
   (void)thiz;
-  /* Must run before seat keyboard init (wawona_xkb_config OnceLock). */
+  /* Unused for the Wawona seat in phase 1 (HostKeymapBridge). Nested
+   * compositors may still honor XKB_DEFAULT_* via their own RMLVO. */
   if (layout) {
     const char *utf = (*env)->GetStringUTFChars(env, layout, NULL);
     if (utf && utf[0] != '\0') {
@@ -2369,6 +2401,44 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeSetXkbDefaults(
   } else {
     setenv("XKB_DEFAULT_VARIANT", "", 1);
   }
+}
+
+enum { kWWNHostKeyKindAndroid = 2 };
+
+JNIEXPORT void JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeApplyHostKeyLevels(
+    JNIEnv *env, jobject thiz, jintArray ids, jintArray levels) {
+  (void)thiz;
+  if (!ids || !levels) {
+    return;
+  }
+  jsize n = (*env)->GetArrayLength(env, ids);
+  jsize nlev = (*env)->GetArrayLength(env, levels);
+  if (n <= 0 || nlev < n * 4) {
+    return;
+  }
+  jint *id_elems = (*env)->GetIntArrayElements(env, ids, NULL);
+  jint *lv_elems = (*env)->GetIntArrayElements(env, levels, NULL);
+  if (!id_elems || !lv_elems) {
+    if (id_elems)
+      (*env)->ReleaseIntArrayElements(env, ids, id_elems, JNI_ABORT);
+    if (lv_elems)
+      (*env)->ReleaseIntArrayElements(env, levels, lv_elems, JNI_ABORT);
+    return;
+  }
+  WWNApplyHostKeyLevels(kWWNHostKeyKindAndroid, (const int32_t *)id_elems,
+                        (const uint32_t *)lv_elems, (size_t)n);
+  (*env)->ReleaseIntArrayElements(env, ids, id_elems, JNI_ABORT);
+  (*env)->ReleaseIntArrayElements(env, levels, lv_elems, JNI_ABORT);
+}
+
+JNIEXPORT void JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeReloadHostKeymap(JNIEnv *env,
+                                                                   jobject thiz) {
+  (void)env;
+  (void)thiz;
+  if (g_core)
+    WWNCoreReloadHostKeymap(g_core);
 }
 
 JNIEXPORT void JNICALL Java_com_aspauldingcode_wawona_WawonaNative_nativeInit(
@@ -3167,22 +3237,17 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeCommitText(JNIEnv *env,
     return;
   }
 
-  /* Terminal synthesis / no TI: key inject for mappable ASCII; TI commit
-   * only as a last resort for unmappable (emoji/CJK). */
-  int all_mappable = 1;
+  /* Printable text is TI v3. Enter/Tab/Backspace stay inject_key. */
+  int all_control = 1;
   for (const char *p = utf8; *p; p++) {
-    if ((unsigned char)*p > 127) {
-      all_mappable = 0;
-      break;
-    }
     int ns;
-    if (char_to_linux_keycode(*p, &ns) == 0) {
-      all_mappable = 0;
+    if (control_to_linux_keycode(*p, &ns) == 0) {
+      all_control = 0;
       break;
     }
   }
 
-  if (!all_mappable) {
+  if (!all_control) {
     WWNCoreTextInputCommit(g_core, utf8);
     (*env)->ReleaseStringUTFChars(env, text, utf8);
     return;
@@ -3191,15 +3256,11 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeCommitText(JNIEnv *env,
   uint32_t ts = 0;
   for (const char *p = utf8; *p; p++) {
     int needs_shift = 0;
-    uint32_t kc = char_to_linux_keycode(*p, &needs_shift);
+    uint32_t kc = control_to_linux_keycode(*p, &needs_shift);
     if (kc == 0)
       continue;
-    if (needs_shift)
-      WWNCoreInjectKey(g_core, WWN_KEY_LEFTSHIFT, 1, ts);
     WWNCoreInjectKey(g_core, kc, 1, ts);
     WWNCoreInjectKey(g_core, kc, 0, ts);
-    if (needs_shift)
-      WWNCoreInjectKey(g_core, WWN_KEY_LEFTSHIFT, 0, ts);
   }
   (*env)->ReleaseStringUTFChars(env, text, utf8);
 }
@@ -3217,6 +3278,16 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeSetClipboardText(
     return;
   WWNCoreSetClipboardText(g_core, utf8);
   (*env)->ReleaseStringUTFChars(env, text, utf8);
+}
+
+JNIEXPORT void JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeSetTouchPointerEmulation(
+    JNIEnv *env, jobject thiz, jboolean enabled) {
+  (void)env;
+  (void)thiz;
+  if (!g_core)
+    return;
+  WWNCoreSetTouchPointerEmulation(g_core, enabled ? 1 : 0);
 }
 
 /* Pop the most recent text a Wayland client copied to the clipboard,
@@ -3296,6 +3367,27 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeTextEntryWanted(
   if (!g_core)
     return JNI_FALSE;
   return WWNCoreTextEntryWanted(g_core) ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeOskShouldShow(
+    JNIEnv *env, jobject thiz, jboolean hardwareKeyboard, jboolean force) {
+  (void)env;
+  (void)thiz;
+  if (!g_core)
+    return JNI_FALSE;
+  return WWNCoreOskShouldShow(g_core, hardwareKeyboard ? 1 : 0, force ? 1 : 0)
+             ? JNI_TRUE
+             : JNI_FALSE;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeUsableOutputHeight(
+    JNIEnv *env, jobject thiz, jint outputHeight, jint keyboardOverlap) {
+  (void)env;
+  (void)thiz;
+  return (jint)WWNCoreUsableOutputHeight((int32_t)outputHeight,
+                                         (int32_t)keyboardOverlap);
 }
 
 JNIEXPORT void JNICALL
@@ -4919,17 +5011,34 @@ static void *weston_thread_func(void *arg) {
 #endif
   /* DRM/KMS → wwn-iland userspace display stack; Wayland → nested client of
    * the Wawona compositor. Matches macOS Display Backend / --backend. */
+  char config_path[512] = "";
+  char config_arg[600] = "";
+  const char *weston_data = getenv("WESTON_DATA_DIR");
+  if (xdg_dir && xdg_dir[0] && weston_data && weston_data[0]) {
+    snprintf(config_path, sizeof(config_path), "%s/weston.ini", xdg_dir);
+    if (WWNWriteWestonHoneycombIni(config_path, weston_data, 0,
+                                   "weston-desktop-shell",
+                                   "weston-keyboard") != 0) {
+      snprintf(config_arg, sizeof(config_arg), "--config=%s", config_path);
+      setenv("WESTON_CONFIG_FILE", config_path, 1);
+      LOGI("weston.ini honeycomb --config=%s data=%s", config_path,
+           weston_data);
+    }
+  } else {
+    LOGE("weston.ini skipped: XDG_RUNTIME_DIR or WESTON_DATA_DIR unset");
+  }
   char *argv_drm[] = {"weston", "--backend=drm", "--renderer=gl",
                       "--socket=wawona-nested", "--shell=desktop-shell.so",
-                      NULL};
+                      config_arg[0] ? config_arg : NULL, NULL};
   char *argv_wl[] = {"weston", "--backend=wayland", "--renderer=gl",
                      "--socket=wawona-nested", "--shell=desktop-shell.so",
-                     NULL};
+                     config_arg[0] ? config_arg : NULL, NULL};
   LOGI("weston backend=%s", use_drm ? "drm (wwn-iland)" : "wayland (nested)");
   /* Panel launchers (weston-terminal icon) connect via this named socket. */
   setenv("WAWONA_NESTED_WAYLAND_DISPLAY", "wawona-nested", 1);
   setenv("WAWONA_NESTED_WAYLAND", "1", 1);
-  weston_compositor_main(5, use_drm ? argv_drm : argv_wl);
+  int argc = config_arg[0] ? 6 : 5;
+  weston_compositor_main(argc, use_drm ? argv_drm : argv_wl);
   if (saved_cwd[0])
     chdir(saved_cwd);
   g_weston_running = 0;
@@ -5788,6 +5897,77 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeGetRunningBundledClientId(
   if (!running)
     return NULL;
   return (*env)->NewStringUTF(env, id_copy);
+}
+
+extern int wawona_wasm_run(int argc, char **argv) __attribute__((weak));
+
+static _Atomic int g_wasm_running = 0;
+
+typedef struct {
+  char arg[1024];
+} wasm_thread_arg_t;
+
+static void *wwn_wasm_thread_func(void *arg) {
+  wasm_thread_arg_t *params = (wasm_thread_arg_t *)arg;
+  char *argv[] = {(char *)"wasm", params->arg, NULL};
+  if (wawona_wasm_run) {
+    LOGI("Starting Relay wasm %s", params->arg);
+    (void)wawona_wasm_run(2, argv);
+    LOGI("Relay wasm exited %s", params->arg);
+  } else {
+    LOGE("wawona_wasm_run not linked; cannot run %s", params->arg);
+  }
+  atomic_store(&g_wasm_running, 0);
+  free(params);
+  return NULL;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeRunWasm(
+    JNIEnv *env, jobject thiz, jstring modulePath) {
+  (void)thiz;
+  if (!modulePath)
+    return JNI_FALSE;
+  if (!wawona_wasm_run) {
+    LOGE("wawona_wasm_run not linked");
+    return JNI_FALSE;
+  }
+  const char *utf = (*env)->GetStringUTFChars(env, modulePath, NULL);
+  if (!utf)
+    return JNI_FALSE;
+  wasm_thread_arg_t *params = calloc(1, sizeof(*params));
+  if (!params) {
+    (*env)->ReleaseStringUTFChars(env, modulePath, utf);
+    return JNI_FALSE;
+  }
+  snprintf(params->arg, sizeof(params->arg), "%s", utf);
+  (*env)->ReleaseStringUTFChars(env, modulePath, utf);
+  android_stage_client_launch("wawona-wasm", 0);
+  atomic_store(&g_wasm_running, 1);
+  pthread_t thread = 0;
+  if (pthread_create(&thread, NULL, wwn_wasm_thread_func, params) != 0) {
+    free(params);
+    atomic_store(&g_wasm_running, 0);
+    return JNI_FALSE;
+  }
+  pthread_detach(thread);
+  return JNI_TRUE;
+}
+
+JNIEXPORT void JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeStopWasm(JNIEnv *env,
+                                                           jobject thiz) {
+  (void)env;
+  (void)thiz;
+  atomic_store(&g_wasm_running, 0);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeIsWasmRunning(JNIEnv *env,
+                                                                jobject thiz) {
+  (void)env;
+  (void)thiz;
+  return atomic_load(&g_wasm_running) ? JNI_TRUE : JNI_FALSE;
 }
 
 // ============================================================================

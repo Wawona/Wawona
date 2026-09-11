@@ -84,10 +84,7 @@ pub struct HostRequestDecision {
 }
 
 fn sizes_match(a_w: u32, a_h: u32, b_w: i32, b_h: i32) -> bool {
-    b_w > 0
-        && b_h > 0
-        && (a_w as i32 - b_w).abs() <= 1
-        && (a_h as i32 - b_h).abs() <= 1
+    b_w > 0 && b_h > 0 && (a_w as i32 - b_w).abs() <= 1 && (a_h as i32 - b_h).abs() <= 1
 }
 
 impl SizeAuthority {
@@ -262,9 +259,8 @@ mod tests {
 
     #[test]
     fn first_commit_makes_client_authoritative() {
-        let d = SizeAuthority::AwaitingFirstCommit.on_client_commit(
-            200, 200, 0, 0, 0, false, false, true,
-        );
+        let d = SizeAuthority::AwaitingFirstCommit
+            .on_client_commit(200, 200, 0, 0, 0, false, false, true);
         assert_eq!(d.authority, SizeAuthority::Client);
         assert!(d.apply_client_size);
         assert!(d.emit_size_changed);
@@ -276,9 +272,8 @@ mod tests {
     fn first_commit_applies_even_with_pending_initial_configure_serial() {
         // Mirrors surfaces.rs: initial xdg configure is 0×0 with a non-zero
         // serial; weston often commits before that serial is cleared.
-        let d = SizeAuthority::AwaitingFirstCommit.on_client_commit(
-            1024, 768, 0, 0, /*pending*/ 1, false, false, true,
-        );
+        let d = SizeAuthority::AwaitingFirstCommit
+            .on_client_commit(1024, 768, 0, 0, /*pending*/ 1, false, false, true);
         assert_eq!(d.authority, SizeAuthority::Client);
         assert!(d.apply_client_size);
         assert!(d.emit_size_changed);

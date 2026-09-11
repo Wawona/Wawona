@@ -8,11 +8,21 @@
 #import "../Machines/WWNMachineProfileStore.h"
 #import "../Machines/WWNMachineSessionBridge.h"
 #endif
+#if __has_include("_GEN-wawona-Swift.h")
+#import "_GEN-wawona-Swift.h"
+#endif
 #import "../Machines/WWNPlatformCapabilities.h"
 #if TARGET_OS_IPHONE
+#import <UIKit/UIKit.h>
+#import <Metal/Metal.h>
+#import <QuartzCore/CAMetalLayer.h>
 #import "../../platform/macos/WWNRootfsProvider.h"
+#if WWN_MODE_B
+#import "../../../ios/WWNModeBDesktop.h"
+#endif
 #endif
 #import <errno.h>
+#import <stdio.h>
 #import <stdlib.h>
 #import <dlfcn.h>
 #import <spawn.h>
@@ -242,6 +252,9 @@ static NSString *WWNPreferredHostShellPath(void) {
 #if TARGET_OS_IPHONE || (!TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR)
 - (BOOL)wwnWriteWestonIniAtPath:(const char *)configPath
                       usePixman:(BOOL)usePixman;
+- (BOOL)wwnWriteWestonIniAtPath:(const char *)configPath
+                      usePixman:(BOOL)usePixman
+                    outputScale:(unsigned)outputScale;
 #endif
 @end
 
@@ -1539,6 +1552,13 @@ static BOOL WWNAppleWindowServerIsRunning(void) {
 BOOL WWNHostSessionUsesOwnDisplayDRM(void) {
 #if TARGET_OS_OSX
   return !WWNAppleWindowServerIsRunning();
+#elif WWN_MODE_B
+  /* IOMFB Session (phase >= 2) is own-display. Greeter (1) still paints
+     through wwn_modeb_desktop_start / render_greeter, not Weston DRM. */
+  if (![WWNSharedUserDefaults() boolForKey:kWWNPrefsDesktopReplacementEnabled]) {
+    return NO;
+  }
+  return wwn_modeb_desktop_phase() >= 2;
 #else
   return NO;
 #endif
@@ -1610,6 +1630,26 @@ static BOOL WWNWaylandSocketIsLive(NSDictionary<NSString *, NSString *> *env) {
   return stat(path.UTF8String, &st) == 0 && S_ISSOCK(st.st_mode);
 }
 
+static BOOL WWNWaitForHostWaylandSocket(NSTimeInterval timeout) {
+  NSMutableDictionary *env = [NSMutableDictionary dictionary];
+  const char *display = getenv("WAYLAND_DISPLAY");
+  const char *runtime = getenv("XDG_RUNTIME_DIR");
+  if (display && display[0]) {
+    env[@"WAYLAND_DISPLAY"] = @(display);
+  }
+  if (runtime && runtime[0]) {
+    env[@"XDG_RUNTIME_DIR"] = @(runtime);
+  }
+  NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:timeout];
+  while ([deadline timeIntervalSinceNow] > 0.0) {
+    if (WWNWaylandSocketIsLive(env)) {
+      return YES;
+    }
+    usleep(50 * 1000);
+  }
+  return WWNWaylandSocketIsLive(env);
+}
+
 void WWNSetCompositorBackendCLIOverride(NSString *backend) {
   g_cliCompositorBackendOverride = backend.length > 0 ? [backend copy] : nil;
 }
@@ -1621,7 +1661,7 @@ NSString *WWNCompositorBackendCLIOverride(void) {
 NSString *WWNResolveCompositorBackend(NSString *overrideValue) {
   if (WWNHostSessionUsesOwnDisplayDRM()) {
     WWNLog("BACKEND",
-           @"own-display (WindowServer down): drm / wwn-iland, not nested");
+           @"own-display: drm / wwn-iland, not nested");
     return @"drm";
   }
 
@@ -1664,7 +1704,12 @@ static void wwnEnsureFuzzelXdgEnv(void) {
 /// configured backend rather than assuming nested.
 static void wwnConfigureNiriNestedEnv(void) {
   // niri names its DRM/KMS backend "tty" and its nested one "winit"/"nested".
+  // iOS niri_main has no tty/DRM backend. Always nest on Wawona. A leftover
+  // Settings Display Backend=drm or own-display must not pick tty.
   NSString *backend = WWNResolveCompositorBackend(nil);
+#if TARGET_OS_IPHONE
+  backend = @"wayland";
+#endif
   setenv("NIRI_BACKEND",
          [backend isEqualToString:@"drm"] ? "tty" : "nested", 1);
   NSString *kdl = WWNWawonaBundledSharePath(@"niri/default-config.kdl");
@@ -1678,6 +1723,11 @@ static void wwnConfigureNiriNestedEnv(void) {
   if ([[NSFileManager defaultManager] fileExistsAtPath:frameworksDir]) {
     setenv("DYLD_LIBRARY_PATH", frameworksDir.UTF8String, 1);
   }
+  /* In-process niri_main never inherited the NSTask ANGLE Metal pin.
+     Without it, ANGLE DEFAULT eglInitialize fails after platform select. */
+  unsetenv("WWN_DISABLE_EGL");
+  setenv("WWN_OPENGL_DRIVER", "angle", 0);
+  setenv("ANGLE_DEFAULT_PLATFORM", "metal", 1);
   const char *icd = getenv("VK_ICD_FILENAMES");
   if (!icd || !icd[0]) {
     icd = getenv("VK_DRIVER_FILES");
@@ -2101,6 +2151,46 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   return nil;
 }
 
+static NSString *WWNNormalizeWasmAlias(NSString *token) {
+  NSString *trimmed = [token stringByTrimmingCharactersInSet:
+                          [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+  if (trimmed.length == 0)
+    return @"hello-wasi-gui";
+  NSSet<NSString *> *aliases = [NSSet setWithArray:@[
+    @"hello-wasi-gui", @"hello-wasi-gui.wasm", @"wasi-hello-gui",
+    @"wasi-hello-gui.wasm", @"hello-wasi"
+  ]];
+  if ([aliases containsObject:trimmed])
+    return @"hello-wasi-gui";
+  return trimmed;
+}
+
+static NSString *WWNWasmArgFromCommand(NSString *raw) {
+  NSArray<NSString *> *parts =
+      [raw componentsSeparatedByCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+  NSMutableArray<NSString *> *tokens = [NSMutableArray array];
+  for (NSString *p in parts) {
+    if (p.length > 0)
+      [tokens addObject:p];
+  }
+  if (tokens.count == 0)
+    return @"hello-wasi-gui";
+  NSString *first = tokens[0];
+  if ([first isEqualToString:@"wasm"]) {
+    return WWNNormalizeWasmAlias(tokens.count > 1 ? tokens[1] : @"hello-wasi-gui");
+  }
+  if ([first isEqualToString:@"wpm"]) {
+    if (tokens.count >= 3) {
+      NSString *name = [[tokens[2] componentsSeparatedByString:@"@"] firstObject];
+      return WWNNormalizeWasmAlias(name);
+    }
+    if (tokens.count >= 2)
+      return WWNNormalizeWasmAlias(tokens[1]);
+    return @"hello-wasi-gui";
+  }
+  return WWNNormalizeWasmAlias(first);
+}
+
 - (NSString *)wwnResolveWasmModulePathForMachineId:(NSString *)machineId {
 #if __has_include("../Machines/WWNMachineProfileStore.h")
   if (machineId.length > 0) {
@@ -2131,7 +2221,31 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     }
   }
 #endif
-  return [self wwnBundledHelloWasiGuiPath];
+  NSString *fallback = [self wwnBundledHelloWasiGuiPath] ?: @"hello-wasi-gui";
+#if __has_include("_GEN-wawona-Swift.h")
+  if (machineId.length > 0) {
+    WWNMachineProfile *profile = [WWNMachineProfileStore profileById:machineId];
+    NSDictionary *runtime =
+        [profile.runtimeOverrides isKindOfClass:[NSDictionary class]]
+            ? profile.runtimeOverrides
+            : @{};
+    NSString *mod = [runtime[kWWNRuntimeWasmModulePath] isKindOfClass:[NSString class]]
+                        ? runtime[kWWNRuntimeWasmModulePath]
+                        : @"";
+    NSString *pkg = [runtime[@"wasmPackage"] isKindOfClass:[NSString class]]
+                        ? runtime[@"wasmPackage"]
+                        : @"";
+    NSString *cmd = [runtime[@"wasmCommand"] isKindOfClass:[NSString class]]
+                        ? runtime[@"wasmCommand"]
+                        : @"wasm hello-wasi-gui";
+    NSString *ensured =
+        [WWNWasmLaunchBridge ensureArgWithModulePath:mod package:pkg command:cmd];
+    if (ensured.length > 0) {
+      return ensured;
+    }
+  }
+#endif
+  return fallback;
 }
 
 - (void)launchWasmModuleAtPath:(NSString *)wasmModulePath
@@ -2143,17 +2257,28 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
           : [self wwnResolveWasmModulePathForMachineId:machineId];
   if (path.length == 0) {
     WWNLog(logMod,
-           @"No wasmModulePath on machine %@. Pick a .wasm in Machine Settings.",
+           @"No wasmModulePath on machine %@. Pick a .wasm or type wasm hello-wasi-gui.",
            machineId ?: @"(none)");
     return;
   }
-  if (![[NSFileManager defaultManager] fileExistsAtPath:path]) {
-    WWNLog(logMod, @"Wasm module missing at %@", path);
-    return;
+  BOOL isFile = [[NSFileManager defaultManager] fileExistsAtPath:path];
+  if (!isFile) {
+    NSString *alias = WWNNormalizeWasmAlias(path);
+    if ([alias isEqualToString:@"hello-wasi-gui"]) {
+      NSString *bundled = [self wwnBundledHelloWasiGuiPath];
+      if (bundled.length > 0) {
+        path = bundled;
+        isFile = YES;
+      }
+    }
   }
-  if (wawona_wasm_can_run != NULL && !wawona_wasm_can_run(path.UTF8String)) {
+  if (isFile && wawona_wasm_can_run != NULL &&
+      !wawona_wasm_can_run(path.UTF8String)) {
     WWNLog(logMod, @"Not a readable WASM module: %@", path);
     return;
+  }
+  if (!isFile) {
+    WWNLog(logMod, @"Launching wasm package name %@ (same as native shell)", path);
   }
 
 #if !TARGET_OS_IPHONE
@@ -2179,7 +2304,10 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
   task.arguments = @[ path ];
   NSMutableDictionary *env = [self wwnMutableHostWaylandEnvironment];
   task.environment = env;
-  task.currentDirectoryURL = [NSURL fileURLWithPath:[path stringByDeletingLastPathComponent]];
+  if (isFile) {
+    task.currentDirectoryURL =
+        [NSURL fileURLWithPath:[path stringByDeletingLastPathComponent]];
+  }
   [self _installNativeClientTerminationHandler:task kind:kWWNClientIdWasm];
   @try {
     [task launch];
@@ -2201,6 +2329,29 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
     }
     return;
   }
+#if WWN_MODE_B
+  if (WWNHostSessionUsesOwnDisplayDRM()) {
+    if (!self.westonRunning) {
+      WWNLog(logMod, @"Mode B wasm: start Weston DRM so SHM lands on IOMFB");
+      [self launchWeston];
+    }
+    NSString *sock = [WWNPreferencesManager preferredNestedSocketName];
+    const char *xdg = getenv("XDG_RUNTIME_DIR");
+    if (sock.length > 0 && xdg && xdg[0]) {
+      NSString *pathSock =
+          [@(xdg) stringByAppendingPathComponent:sock];
+      for (int i = 0; i < 40 &&
+           ![[NSFileManager defaultManager] fileExistsAtPath:pathSock];
+           i++) {
+        usleep(100000);
+      }
+    }
+    if (sock.length > 0) {
+      setenv("WAYLAND_DISPLAY", sock.UTF8String, 1);
+      WWNLog(logMod, @"Mode B wasm WAYLAND_DISPLAY=%@ (weston IOMFB)", sock);
+    }
+  }
+#endif
   NSString *boundMachineId = [machineId copy];
   NSString *boundPath = [path copy];
   dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
@@ -2517,6 +2668,8 @@ static WWNClientMainFn WWNClientMainForId(NSString *clientId) {
        * Weston drm stays in-process iland. Classic uses tty + insert. */
       WWNStripModeBSessionKeysFromEnv(env);
       env[@"NIRI_BACKEND"] = @"nested";
+      /* Never argv --session here. niri --session unsets WAYLAND_DISPLAY
+       * and the nested backend then dies ("Could not find wayland compositor"). */
       if ([backend isEqualToString:@"drm"]) {
         WWNLog("NIRI",
                @"Aqua Display Backend=drm. niri nests on Wawona; iland DRM "
@@ -2831,7 +2984,7 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
                    NSLocalizedDescriptionKey :
                        @"Desktop Replacement own-display needs weston or niri "
                        @"(DRM backend after Take Over; nested Wayland remains "
-                       @"the Mode A path), modeb-tty, or a KMS client "
+                       @"the Mode A path), or a KMS client "
                        @"(kmscube, gbm-es2-demo, vkcube-kms)."
                  }];
     }
@@ -2951,9 +3104,10 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
       [self wwnWriteWestonIniAtPath:configPath.UTF8String usePixman:NO];
     }
     NSMutableArray<NSString *> *westonArgs = [NSMutableArray arrayWithObjects:
-        /* Mode B own-display. Mode A nested still uses --backend=wayland. */
+        /* Mode B own-display. Mode A nested still uses --backend=wayland.
+           --continue-without-input is a weston *client* flag. DRM weston
+           treats unknown compositor flags as fatal after output enable. */
         @"--backend=drm",
-        @"--continue-without-input",
         [NSString stringWithFormat:@"--socket=%@",
                                    [WWNPreferencesManager preferredNestedSocketName]],
         @"--shell=desktop-shell.so",
@@ -3123,29 +3277,32 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
 
 #if TARGET_OS_IPHONE || (!TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR)
 - (BOOL)wwnWriteWestonIniAtPath:(const char *)configPath usePixman:(BOOL)usePixman {
+  return [self wwnWriteWestonIniAtPath:configPath usePixman:usePixman outputScale:0];
+}
+
+- (BOOL)wwnWriteWestonIniAtPath:(const char *)configPath
+                      usePixman:(BOOL)usePixman
+                    outputScale:(unsigned)outputScale {
   if (!configPath || !configPath[0]) {
     return NO;
   }
   NSString *terminalIcon = WWNWawonaBundledSharePath(@"weston/terminal.png");
-  // Prefer background.png (RGB). pattern.png is an indexed-color PNG that
-  // cairo often fails to load. Then only background-color shows (solid blue).
+  // Honeycomb is upstream weston data/background.png (RGB). Never fall back
+  // to pattern.png: that file is indexed-color and cairo often fails, then
+  // only background-color shows.
   NSString *backgroundImage = WWNWawonaBundledSharePath(@"weston/background.png");
   NSFileManager *fm = [NSFileManager defaultManager];
-  BOOL hasPattern = [fm fileExistsAtPath:backgroundImage];
-  if (!hasPattern) {
-    backgroundImage = WWNWawonaBundledSharePath(@"weston/pattern.png");
-    hasPattern = [fm fileExistsAtPath:backgroundImage];
-  }
+  BOOL hasHoneycomb = [fm fileExistsAtPath:backgroundImage];
   BOOL hasTerminalIcon = [fm fileExistsAtPath:terminalIcon];
-  if (!hasPattern) {
-    WWNLog("WESTON", @"background-image missing in bundle: %@",
+  if (!hasHoneycomb) {
+    WWNLog("WESTON", @"honeycomb background.png missing in bundle: %@",
            backgroundImage);
   }
   if (!hasTerminalIcon) {
     WWNLog("WESTON", @"launcher icon missing in bundle: %@", terminalIcon);
   }
   NSString *backgroundImageLine =
-      hasPattern
+      hasHoneycomb
           ? [NSString stringWithFormat:@"background-image=%@\n", backgroundImage]
           : @"";
   // desktop-shell.so spawns the weston-desktop-shell helper (panel / background
@@ -3191,6 +3348,16 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
 #else
   CGFloat fontSize = 17.0;
 #endif
+  /* DRM IOMFB is physical pixels (1290x2796). [output] scale makes
+   * compositor space logical (430x932 at 3x) so desktop-shell chrome
+   * matches retina GUI size. --scale= is wayland-backend only. */
+  NSString *outputSection = @"";
+  if (outputScale > 1u) {
+    outputSection = [NSString stringWithFormat:@"\n[output]\n"
+                                               @"name=DP-1\n"
+                                               @"scale=%u\n",
+                                               outputScale];
+  }
   NSString *ini = [NSString
       stringWithFormat:@"[core]\n"
                        @"use-pixman=%s\n"
@@ -3211,10 +3378,12 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
                        @"\n"
                        @"[terminal]\n"
                        @"font=DejaVuSansM Nerd Font Mono\n"
-                       @"font-size=%.0f\n",
+                       @"font-size=%.0f\n"
+                       @"%@",
                        usePixman ? "true" : "false", shellClientLine,
                        keyboardLine, backgroundImageLine,
-                       hasTerminalIcon ? terminalIcon : @"", fontSize];
+                       hasTerminalIcon ? terminalIcon : @"", fontSize,
+                       outputSection];
   NSError *iniErr = nil;
   BOOL wrote = [ini writeToFile:@(configPath)
                      atomically:YES
@@ -3223,7 +3392,8 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
   if (wrote) {
     setenv("WESTON_CONFIG_FILE", configPath, 1);
     WWNLog("WESTON", @"Wrote weston.ini + WESTON_CONFIG_FILE: %s", configPath);
-    WWNLog("WESTON", @"weston.ini background-image=%@", backgroundImage);
+    WWNLog("WESTON", @"weston.ini background-image=%@ output-scale=%u",
+           backgroundImage, outputScale);
   } else {
     WWNLog("WESTON", @"Failed to write weston.ini (%s): %@", configPath,
            iniErr.localizedDescription);
@@ -3273,6 +3443,13 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
         parent_display = "wayland-0";
       }
       setenv("WAYLAND_DISPLAY", parent_display, 1);
+      if (!WWNWaitForHostWaylandSocket(2.0)) {
+        WWNLog("WESTON",
+               @"Host Wayland socket not live (WAYLAND_DISPLAY=%s "
+               @"XDG_RUNTIME_DIR=%s). Nested weston will fail to connect",
+               getenv("WAYLAND_DISPLAY") ?: "(null)",
+               getenv("XDG_RUNTIME_DIR") ?: "(null)");
+      }
     }
 
     uint32_t outW = 0;
@@ -3287,11 +3464,39 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
 
     // Nested weston is a Wayland client of Wawona. Parent owns HiDPI.
     // --scale=backingScaleFactor loads a 2x cursor into a 1x framebuffer.
-    unsigned launchScale = 1u;
-    setenv("WAWONA_OUTPUT_SCALE", "1", 1);
+    // DRM own-display uses the same hostScale via weston.ini [output]
+    // (DRM treats compositor --scale= as fatal).
+#if TARGET_OS_IPHONE && WWN_MODE_B
+    if (WWNHostSessionUsesOwnDisplayDRM()) {
+      CGFloat screenScale = [UIScreen mainScreen].scale;
+      if (screenScale >= 1.5) {
+        outScale = (float)screenScale;
+      }
+    }
+#endif
+    unsigned hostScale = (unsigned)lrintf(outScale >= 1.0f ? outScale : 1.0f);
+    if (hostScale < 1u) {
+      hostScale = 1u;
+    }
+    unsigned launchScale = hostScale;
+#if TARGET_OS_IPHONE && WWN_MODE_B
+    unsigned drmOutputScale =
+        (prepareIland && WWNHostSessionUsesOwnDisplayDRM() && launchScale > 1u)
+            ? launchScale
+            : 0u;
+#else
+    unsigned drmOutputScale = 0u;
+#endif
+    if (drmOutputScale > 1u) {
+      char scaleEnv[32];
+      snprintf(scaleEnv, sizeof(scaleEnv), "%u", drmOutputScale);
+      setenv("WAWONA_OUTPUT_SCALE", scaleEnv, 1);
+    } else {
+      setenv("WAWONA_OUTPUT_SCALE", "1", 1);
+    }
     setenv("XCURSOR_SIZE", "24", 1);
     char scaleArg[32];
-    snprintf(scaleArg, sizeof(scaleArg), "--scale=%u", launchScale);
+    snprintf(scaleArg, sizeof(scaleArg), "--scale=1");
 
     char saved_cwd[512] = "";
     const char *xdg_dir = getenv("XDG_RUNTIME_DIR");
@@ -3304,12 +3509,14 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
     char configArg[600] = "";
     if (xdg_dir && xdg_dir[0]) {
       snprintf(configPath, sizeof(configPath), "%s/weston.ini", xdg_dir);
-      if ([self wwnWriteWestonIniAtPath:configPath usePixman:usePixman]) {
+      if ([self wwnWriteWestonIniAtPath:configPath
+                             usePixman:usePixman
+                           outputScale:drmOutputScale]) {
         snprintf(configArg, sizeof(configArg), "--config=%s", configPath);
       }
     }
 
-    char *argv_weston[13];
+    char *argv_weston[16];
     int argc_weston = 0;
     argv_weston[argc_weston++] = "weston";
     argv_weston[argc_weston++] = (char *)backend;
@@ -3325,8 +3532,10 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
     setenv("WAWONA_NESTED_WAYLAND_DISPLAY", nestedSocket.UTF8String, 1);
     setenv("WAWONA_NESTED_WAYLAND", "1", 1);
     argv_weston[argc_weston++] = "--shell=desktop-shell.so";
-    argv_weston[argc_weston++] = scaleArg;
+    /* --scale= and --fullscreen are wayland-backend options. DRM weston
+     * treats unknown compositor flags as fatal after output enable. */
     if (!prepareIland) {
+      argv_weston[argc_weston++] = scaleArg;
       argv_weston[argc_weston++] = "--fullscreen";
     }
     if (configArg[0]) {
@@ -3335,6 +3544,15 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
     if (usePixman) {
       argv_weston[argc_weston++] = "--use-pixman";
     }
+#if WWN_MODE_B
+    if (WWNHostSessionUsesOwnDisplayDRM()) {
+      /* Do not pass --continue-without-input. That is a client flag.
+         udev_input_init already succeeds on the Mode B DRM shim. */
+      static char westonLogArg[64];
+      snprintf(westonLogArg, sizeof(westonLogArg), "--log=/tmp/wwn-weston.log");
+      argv_weston[argc_weston++] = westonLogArg;
+    }
+#endif
     argv_weston[argc_weston] = NULL;
 
     wwn_weston_compositor_shutdown_requested = 0;
@@ -3348,9 +3566,25 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
     WWNLog("WESTON", @"Launch argv: %@", argvLog);
     WWNLog("WESTON",
            @"Launching nested weston_compositor_main (%s, output %ux%u "
-           @"host-scale %.1fx weston-scale %u, prep %.0fms)...",
-           backend, outW, outH, outScale, launchScale,
+           @"host-scale %.1fx weston-scale %u drm-output-scale %u, "
+           @"prep %.0fms)...",
+           backend, outW, outH, outScale, launchScale, drmOutputScale,
            (CFAbsoluteTimeGetCurrent() - launchStart) * 1000.0);
+#if WWN_MODE_B
+    {
+      FILE *lab = fopen("/tmp/wwn-modeb-scene.log", "a");
+      if (lab) {
+        fprintf(lab, "weston enter argv=%s\n", argvLog.UTF8String);
+        fclose(lab);
+      }
+    }
+#endif
+#if WWN_MODE_B
+    {
+      FILE *errf = freopen("/tmp/wwn-weston-stderr.log", "w", stderr);
+      (void)errf;
+    }
+#endif
     if (!weston_compositor_main) {
       WWNLog("WESTON",
              @"weston_compositor_main not linked in this build. Nested Weston "
@@ -3374,6 +3608,16 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
     int result = weston_compositor_main(argc_weston, argv_weston);
     WWNLog("WESTON", @"weston_compositor_main exit code: %d (total %.0fms)", result,
            (CFAbsoluteTimeGetCurrent() - launchStart) * 1000.0);
+#if WWN_MODE_B
+    {
+      FILE *lab = fopen("/tmp/wwn-modeb-scene.log", "a");
+      if (lab) {
+        fprintf(lab, "weston_compositor_main rc=%d ms=%.0f\n", result,
+                (CFAbsoluteTimeGetCurrent() - launchStart) * 1000.0);
+        fclose(lab);
+      }
+    }
+#endif
 
     if (saved_cwd[0]) {
       chdir(saved_cwd);
@@ -3393,18 +3637,42 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
       return;
     }
     if (ilandCopy) {
-      if (![bridge prepareIlandMetalPresentationOnPrimaryView]) {
+      BOOL ownDisplay = WWNHostSessionUsesOwnDisplayDRM();
+#if WWN_MODE_B
+      if (ownDisplay && wwn_modeb_desktop_bind_iland_present() != 0) {
         WWNLog("WESTON",
-               @"Failed to prepare iland Metal presentation for Weston DRM. "
-               @"falling back to nested --backend=wayland --use-pixman");
+               @"own-display: IOMFB iland present bind failed. "
+               @"refusing nested wayland (no parent compositor)");
         self.westonRunning = NO;
         [self wwnEndIOSNativeClientLaunch];
-        dispatch_async(dispatch_get_main_queue(), ^{
-          [self wwnLaunchWestonCompositorWithBackend:"--backend=wayland"
-                                           usePixman:YES
-                                        prepareIland:NO];
-        });
         return;
+      }
+      if (ownDisplay) {
+        WWNLog("WESTON",
+               @"own-display: skipping CAMetalLayer prepare. "
+               @"Weston DRM presents through IOMFB iland");
+        startWorker();
+        return;
+      }
+#endif
+      if (![bridge prepareIlandMetalPresentationOnPrimaryView]) {
+        if (ownDisplay) {
+          WWNLog("WESTON",
+                 @"own-display: CAMetalLayer prepare failed. "
+                 @"continuing Weston DRM via IOMFB iland present");
+        } else {
+          WWNLog("WESTON",
+                 @"Failed to prepare iland Metal presentation for Weston DRM. "
+                 @"falling back to nested --backend=wayland --use-pixman");
+          self.westonRunning = NO;
+          [self wwnEndIOSNativeClientLaunch];
+          dispatch_async(dispatch_get_main_queue(), ^{
+            [self wwnLaunchWestonCompositorWithBackend:"--backend=wayland"
+                                             usePixman:YES
+                                          prepareIland:NO];
+          });
+          return;
+        }
       }
     } else {
       // Nested pixman/SHM. Drop a leftover kmscube Metal plate so Weston
@@ -3488,23 +3756,13 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
     WWNSanitizeModeACompositorProcessEnv();
   }
   NSString *envError = [self wwnValidateNestedWestonEnv];
-  if (envError) {
-    WWNLog("WESTON", @"Refusing to launch nested weston: %@", envError);
-    dispatch_async(dispatch_get_main_queue(), ^{
-      [[NSNotificationCenter defaultCenter]
-          postNotificationName:@"WWNNativeClientLaunchFailedNotification"
-                        object:self
-                      userInfo:@{
-                        @"clientId" : @"weston",
-                        @"reason" : envError,
-                      }];
-    });
-    return;
-  }
-
   NSString *path = [self findBinaryNamed:@"weston"];
-  if (!path) {
-    WWNLog("WESTON", @"Could not find weston executable in app bundle.");
+  if (envError || path.length == 0) {
+    WWNLog("WESTON",
+           @"Nested weston NSTask unavailable (%@). In-process "
+           @"--backend=wayland",
+           envError ?: @"no weston executable in app bundle");
+    [self launchWestonMacOSInProcessWayland];
     return;
   }
 
@@ -3579,6 +3837,108 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
     WWNLog("WESTON", @"Failed to launch nested weston: %@", err);
     self.westonRunning = NO;
   }
+}
+
+/// In-process nested Weston when Resources/bin/weston is missing (skinny
+/// /Applications copy or WAWONA_SKIP_NIX_PREBUILD Debug). Not kmscube.
+- (void)launchWestonMacOSInProcessWayland {
+  if (self.westonRunning) {
+    return;
+  }
+  if (weston_compositor_main == NULL) {
+    NSString *reason =
+        @"weston_compositor_main not linked and no weston executable";
+    WWNLog("WESTON", @"%@", reason);
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [[NSNotificationCenter defaultCenter]
+          postNotificationName:@"WWNNativeClientLaunchFailedNotification"
+                        object:self
+                      userInfo:@{
+                        @"clientId" : @"weston",
+                        @"reason" : reason,
+                      }];
+    });
+    return;
+  }
+
+  WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
+  [bridge stopIlandGpuClientOnPrimaryView];
+  [bridge setFillsHostForClientLaunch:YES];
+  [WWNMachineProfileStore applyActiveMachineToRuntimePrefs];
+  if (!WWNHostSessionUsesOwnDisplayDRM()) {
+    WWNSanitizeModeACompositorProcessEnv();
+  }
+
+  uint32_t outW = 1024;
+  uint32_t outH = 768;
+  float outScale = 1.0f;
+  [bridge latestOutputWidth:&outW height:&outH scale:&outScale];
+
+  setenv("WAWONA_OUTPUT_SCALE", "1", 1);
+  setenv("WAWONA_NESTED_WAYLAND", "1", 1);
+  setenv("XCURSOR_SIZE", "24", 1);
+
+  const char *xdg_dir = getenv("XDG_RUNTIME_DIR");
+  char configPath[512] = "";
+  char configArg[600] = "";
+  if (xdg_dir && xdg_dir[0]) {
+    snprintf(configPath, sizeof(configPath), "%s/weston.ini", xdg_dir);
+    if ([self wwnWriteWestonIniAtPath:configPath usePixman:NO]) {
+      snprintf(configArg, sizeof(configArg), "--config=%s", configPath);
+    }
+  }
+
+  typedef struct {
+    char width[32];
+    char height[32];
+    char socket[48];
+    char config[600];
+  } WWNWestonWaylandLaunchArgs;
+
+  WWNWestonWaylandLaunchArgs *launchArgs =
+      calloc(1, sizeof(WWNWestonWaylandLaunchArgs));
+  if (!launchArgs) {
+    return;
+  }
+  snprintf(launchArgs->width, sizeof(launchArgs->width), "--width=%u",
+           outW > 0 ? outW : 1024u);
+  snprintf(launchArgs->height, sizeof(launchArgs->height), "--height=%u",
+           outH > 0 ? outH : 768u);
+  NSString *nestedSocket = [WWNPreferencesManager preferredNestedSocketName];
+  snprintf(launchArgs->socket, sizeof(launchArgs->socket), "--socket=%s",
+           nestedSocket.UTF8String ?: "wawona-nested");
+  if (configArg[0]) {
+    strncpy(launchArgs->config, configArg, sizeof(launchArgs->config) - 1);
+  }
+
+  self.westonRunning = YES;
+  [self wwnPumpHostCompositorAfterNativeClientLaunch];
+  WWNLog("WESTON",
+         @"Starting in-process weston_compositor_main (nested Wayland) "
+         @"output %ux%u",
+         outW, outH);
+
+  dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+    WWNWestonWaylandLaunchArgs *args = launchArgs;
+    char *argv_weston[] = {
+        (char *)"weston",
+        (char *)"--backend=wayland",
+        args->socket,
+        (char *)"--shell=desktop-shell.so",
+        (char *)"--scale=1",
+        args->width,
+        args->height,
+        args->config[0] ? args->config : NULL,
+        NULL,
+    };
+    int argc_weston = args->config[0] ? 8 : 7;
+    int rc = weston_compositor_main(argc_weston, argv_weston);
+    WWNLog("WESTON", @"In-process weston (Wayland) exited rc=%d", rc);
+    free(args);
+    dispatch_async(dispatch_get_main_queue(), ^{
+      self.westonRunning = NO;
+    });
+  });
 }
 
 - (void)launchWestonMacOSDrmInProcess {
@@ -3686,7 +4046,10 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
   // Nested GL (usePixman:NO) loads weston's gl-renderer via
   // wwn_gl_renderer_module_init, which is a -1 stub on this archive, so
   // weston_compositor_main exits immediately and Start looks like a no-op.
-  BOOL wantDrm = [WWNResolveCompositorBackend(nil) isEqualToString:@"drm"];
+  // Without own-display, always nest. drm is the IOMFB / Desktop Replacement
+  // path. A leftover Display Backend=drm must not crash Machines Start.
+  BOOL wantDrm = [WWNResolveCompositorBackend(nil) isEqualToString:@"drm"] &&
+                 WWNHostSessionUsesOwnDisplayDRM();
   if (wantDrm) {
     [self launchWestonDrm];
     return;
@@ -3702,8 +4065,11 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
 
 - (void)launchWestonDrm {
 #if TARGET_OS_IPHONE
+  // Apple-mobile gl-renderer is a -1 stub. DRM + pixman still page-flips
+  // through wwn-iland / IOMFB. Do not load the stub or weston exits rc=1
+  // in tens of milliseconds.
   [self wwnLaunchWestonCompositorWithBackend:"--backend=drm"
-                                   usePixman:NO
+                                   usePixman:YES
                                 prepareIland:YES];
 #endif
 }
@@ -3748,6 +4114,27 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
       });
       return;
     }
+#if WWN_MODE_B
+    /* vphone IOMFB session: SDK has Metal.framework, the guest device
+       is nil. niri_main then spins in ANGLE. Fail closed. Weston DRM+pixman
+       stays the own-display compositor. */
+    if (!MTLCreateSystemDefaultDevice()) {
+      WWNLog("NIRI",
+             @"MTLCreateSystemDefaultDevice is nil. Nested niri needs GLES. "
+             @"Fail closed. Do not spin ANGLE.");
+      [self wwnEndIOSNativeClientLaunch];
+      dispatch_async(dispatch_get_main_queue(), ^{
+        [[NSNotificationCenter defaultCenter]
+            postNotificationName:@"WWNNativeClientLaunchFailedNotification"
+                          object:self
+                        userInfo:@{
+                          @"clientId" : @"niri",
+                          @"reason" : @"No Metal device. Nested niri needs GLES.",
+                        }];
+      });
+      return;
+    }
+#endif
 
     // niri spawns its own clients (fuzzel, terminals) which need a coherent
     // rootfs HOME + XDG dirs. Mirror the in-process weston launch: without
@@ -3755,11 +4142,28 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
     // first, and niri's children write to an incoherent FS.
     [WWNRootfsProvider applyShellEnvironment];
 
-    const char *parent_display = getenv("WAYLAND_DISPLAY");
-    if (!parent_display || parent_display[0] == '\0') {
-      parent_display = "wayland-0";
+    BOOL ownDisplay = WWNHostSessionUsesOwnDisplayDRM();
+    /* iOS niri_main is nested-only. NIRI_BACKEND=tty unsets the parent
+       socket and exits in ~250ms: "no host Wayland display found".
+       Own-display still nests on Wawona. IOMFB present is the host. */
+    (void)ownDisplay;
+#if WWN_MODE_B
+    unsetenv("WWN_MODEB_TTY");
+#endif
+    {
+      const char *parent_display = getenv("WAYLAND_DISPLAY");
+      if (!parent_display || parent_display[0] == '\0') {
+        parent_display = "wayland-0";
+      }
+      setenv("WAYLAND_DISPLAY", parent_display, 1);
+      if (!WWNWaitForHostWaylandSocket(2.0)) {
+        WWNLog("NIRI",
+               @"Host Wayland socket not live (WAYLAND_DISPLAY=%s "
+               @"XDG_RUNTIME_DIR=%s). Nested niri will fail to connect",
+               getenv("WAYLAND_DISPLAY") ?: "(null)",
+               getenv("XDG_RUNTIME_DIR") ?: "(null)");
+      }
     }
-    setenv("WAYLAND_DISPLAY", parent_display, 1);
     wwnConfigureNiriNestedEnv();
     if (!getenv("RUST_BACKTRACE") || !getenv("RUST_BACKTRACE")[0]) {
       setenv("RUST_BACKTRACE", "1", 0);
@@ -3767,6 +4171,29 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
     if (!getenv("RUST_LOG") || !getenv("RUST_LOG")[0]) {
       setenv("RUST_LOG", "niri=debug,smithay::backend::egl=info", 0);
     }
+#if TARGET_OS_IPHONE
+    setenv("WWN_NIRI_SHM", "1", 0);
+#if WWN_MODE_B
+    /* ANGLE Metal eglGetDisplay(DEFAULT) is NULL on the IOMFB session.
+       Give iland a CAMetalLayer native display before niri_main. */
+    {
+      extern void iland_egl_set_metal_native_display(void *native);
+      static CAMetalLayer *niriMetalLayer;
+      static dispatch_once_t niriMetalOnce;
+      dispatch_once(&niriMetalOnce, ^{
+        id device = MTLCreateSystemDefaultDevice();
+        niriMetalLayer = [CAMetalLayer layer];
+        niriMetalLayer.device = device;
+        niriMetalLayer.pixelFormat = MTLPixelFormatBGRA8Unorm;
+        niriMetalLayer.framebufferOnly = NO;
+        niriMetalLayer.drawableSize = CGSizeMake(64, 64);
+        iland_egl_set_metal_native_display((__bridge void *)niriMetalLayer);
+        WWNLog("NIRI", @"ANGLE Metal native layer=%p device=%p",
+               niriMetalLayer, device);
+      });
+    }
+#endif
+#endif
 
     char saved_cwd[512] = "";
     const char *xdg_dir = getenv("XDG_RUNTIME_DIR");
@@ -3779,14 +4206,13 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
     }
 
     WWNLog("NIRI",
-           @"Launching in-process niri_main (nested) WAYLAND_DISPLAY=%s "
-           @"XDG_RUNTIME_DIR=%s NIRI_CONFIG=%s DYLD_LIBRARY_PATH=%s "
-           @"WWN_OPENGL_DRIVER=%s",
+           @"Launching in-process niri_main (%s) WAYLAND_DISPLAY=%s "
+           @"NIRI_BACKEND=%s XDG_RUNTIME_DIR=%s NIRI_CONFIG=%s",
+           ownDisplay ? "nested (own-display host)" : "nested",
            getenv("WAYLAND_DISPLAY") ?: "(null)",
+           getenv("NIRI_BACKEND") ?: "(null)",
            getenv("XDG_RUNTIME_DIR") ?: "(null)",
-           getenv("NIRI_CONFIG") ?: "(null)",
-           getenv("DYLD_LIBRARY_PATH") ?: "(null)",
-           getenv("WWN_OPENGL_DRIVER") ?: "(null)");
+           getenv("NIRI_CONFIG") ?: "(null)");
     if (!niri_main) {
       WWNLog("NIRI",
              @"niri_main not linked in this build. Nested niri unavailable");
@@ -3856,6 +4282,11 @@ static void WWNCopyGetenv(NSMutableDictionary<NSString *, NSString *> *env,
     }
 
     int result = niri_main();
+    if (result != 0 &&
+        (CFAbsoluteTimeGetCurrent() - launchStart) < 5.0) {
+      /* Fast fail: globals never reached a durable session. Allow Start again. */
+      gWwnNiriMainConsumed = NO;
+    }
     fflush(stdout);
     fflush(stderr);
     if (savedOut >= 0) {

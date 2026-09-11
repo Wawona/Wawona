@@ -6,8 +6,10 @@ public struct WawonaRootView: View {
     @StateObject var preferences: WawonaPreferences
     @StateObject var profileStore: MachineProfileStore
     @StateObject var sessions: SessionOrchestrator
+    var onConnect: (() -> Void)?
 
-    public init() {
+    public init(onConnect: (() -> Void)? = nil) {
+        self.onConnect = onConnect
         _preferences = StateObject(wrappedValue: WawonaPreferences.shared)
         _profileStore = StateObject(wrappedValue: MachineProfileStore())
         _sessions = StateObject(wrappedValue: SessionOrchestrator())
@@ -16,11 +18,19 @@ public struct WawonaRootView: View {
     public var body: some View {
         Group {
             if preferences.hasCompletedWelcome || !profileStore.profiles.isEmpty {
+                #if !SWIFT_PACKAGE && (os(macOS) || os(iOS) || os(tvOS) || os(visionOS))
+                WawonaMainWindowView(
+                    model: WWNSettingsValueModel.shared,
+                    router: WWNMainWindowRouter.shared,
+                    onConnect: onConnect
+                )
+                #else
                 ContentView(
                     preferences: preferences,
                     profileStore: profileStore,
                     sessions: sessions
                 )
+                #endif
             } else {
                 WelcomeView(preferences: preferences)
             }

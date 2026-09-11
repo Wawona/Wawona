@@ -119,6 +119,15 @@ local.properties
 Wawona.xcodeproj/
 dependencies/generators/xcodegen/output/
 
+# Nix-generated UniFFI (rust backend $out/uniffi). Never commit.
+Sources/Generated/
+**/uniffi/swift/
+**/uniffi/kotlin/
+macos-dependencies/uniffi/
+ios-dependencies/uniffi/
+android-dependencies/uniffi/
+android/app/src/main/java/uniffi/
+
 # Release secrets live in private pass (SecretSpec); never in the public tree.
 # See docs/maintainers/secrets.md. Ignore accidental local dumps:
 .envrc

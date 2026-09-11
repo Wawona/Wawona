@@ -112,10 +112,18 @@ pub mod settings_catalog {
                 Display, Input, Graphics, Connection, Environment, LocalShell, Machines,
                 ICloudSync, Advanced, Desktop, Waypipe, Ssh, About, Dependencies,
             ],
-            SettingsHost::Ios => vec![
-                Display, Input, Graphics, Connection, Environment, LocalShell, Machines,
-                ICloudSync, AppleWatch, Advanced, Waypipe, Ssh, About, Dependencies,
-            ],
+            SettingsHost::Ios => {
+                let mut sections = vec![
+                    Display, Input, Graphics, Connection, Environment, LocalShell, Machines,
+                    ICloudSync, AppleWatch, Advanced,
+                ];
+                // Store IPA must not list Desktop. TrollStore tipa and Sileo
+                // Mode B compile with profile-ios-mode-b (IOMFB + igetty).
+                #[cfg(feature = "profile-ios-mode-b")]
+                sections.push(Desktop);
+                sections.extend([Waypipe, Ssh, About, Dependencies]);
+                sections
+            }
             SettingsHost::VisionOs => vec![
                 Display, Input, Graphics, Connection, Environment, LocalShell, Machines,
                 ICloudSync, Advanced, Waypipe, Ssh, About, Dependencies,
@@ -140,11 +148,14 @@ pub mod settings_catalog {
         use super::*;
 
         #[test]
-        fn macos_has_desktop_ios_does_not() {
+        fn macos_has_desktop_ios_store_does_not() {
             let mac = visible_sections(SettingsHost::MacOs);
             let ios = visible_sections(SettingsHost::Ios);
             assert!(mac.contains(&SettingsSectionId::Desktop));
+            #[cfg(not(feature = "profile-ios-mode-b"))]
             assert!(!ios.contains(&SettingsSectionId::Desktop));
+            #[cfg(feature = "profile-ios-mode-b")]
+            assert!(ios.contains(&SettingsSectionId::Desktop));
             assert!(ios.contains(&SettingsSectionId::AppleWatch));
             assert!(!mac.contains(&SettingsSectionId::AppleWatch));
         }

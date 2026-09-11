@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(Darwin)
+import Darwin
+#endif
 
 #if canImport(UIKit)
 import UIKit
@@ -52,6 +55,9 @@ public enum PlatformCapabilities: Sendable {
     /// Policy: VM machine kinds. Planned on macOS / iOS / iPadOS; forbidden on
     /// tvOS / watchOS / visionOS. Android is gated in Compose the same way.
     public static var virtualMachineGate: CapabilityGate {
+        if let rust = rustGate("vm") {
+            return rust
+        }
         #if os(tvOS) || os(watchOS) || os(visionOS)
         return .forbidden(reason: "VM machine kinds are not offered on tvOS/watchOS/visionOS")
         #else
@@ -78,6 +84,9 @@ public enum PlatformCapabilities: Sendable {
     /// Mode B (Sileo Mode B IPA only. Never App Store): same OCI + JIT UTM.
     /// Not Wasm Runtime packages. See docs/mode-a-b.md.
     public static var containerGate: CapabilityGate {
+        if let rust = rustGate("container") {
+            return rust
+        }
         #if os(tvOS) || os(watchOS) || os(visionOS)
         return .forbidden(reason: "Container machine kinds are not offered on tvOS/watchOS/visionOS")
         #elseif os(macOS)
@@ -283,9 +292,10 @@ public enum PlatformCapabilities: Sendable {
         #endif
     }
 
-    /// In-window tab strip: one tab per Wayland client toplevel (never Shell).
-    /// Used on phone iOS + tvOS where multi-window scenes are off. watchOS is
-    /// single-client (stub WM) and Android has its own Compose tab strip.
+    /// In-window tab strip: one tab per Wayland client toplevel (never Shell),
+    /// with a Safari-style per-tab close. Used on phone iOS + tvOS where
+    /// multi-window scenes are off. watchOS is single-client (stub WM) and
+    /// Android has its own Compose tab strip.
     public static var allowsClientTabs: Bool {
         #if os(tvOS)
         return true
@@ -344,12 +354,65 @@ public enum PlatformCapabilities: Sendable {
             switch type {
             case .virtualMachine: return allowsVirtualMachine
             case .container: return allowsContainer
-            case .native, .sshWaypipe, .sshTerminal: return true
+            case .native, .wasm, .sshWaypipe, .sshTerminal: return true
             }
         }
     }
 
     public static func allowsMachineType(_ type: MachineType) -> Bool {
         availableMachineTypes.contains(type)
+    }
+
+    private static var rustPlatformSlug: String {
+        #if os(macOS)
+        "macos"
+        #elseif os(iOS)
+        "ios"
+        #elseif os(tvOS)
+        "tvos"
+        #elseif os(watchOS)
+        "watchos"
+        #elseif os(visionOS)
+        "visionos"
+        #else
+        "linux"
+        #endif
+    }
+
+    /// C trampoline in `src/domain/c_api.rs`. SPM tests without rust keep
+    /// the Swift `#if os` fallback.
+    private static func rustGate(_ feature: String) -> CapabilityGate? {
+        #if canImport(Darwin)
+        typealias GateFn = @convention(c) (UnsafePointer<CChar>?, UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+        typealias FreeFn = @convention(c) (UnsafeMutablePointer<CChar>?) -> Void
+        guard
+            let gateSym = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "wawona_capability_gate"),
+            let freeSym = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "wawona_domain_string_free")
+        else {
+            return nil
+        }
+        let gate = unsafeBitCast(gateSym, to: GateFn.self)
+        let free = unsafeBitCast(freeSym, to: FreeFn.self)
+        return rustPlatformSlug.withCString { cPlatform in
+            feature.withCString { cFeature in
+                guard let raw = gate(cPlatform, cFeature) else { return nil }
+                defer { free(raw) }
+                switch String(cString: raw) {
+                case "available":
+                    return .available
+                case "planned":
+                    return .planned(flag: feature == "vm" ? "WWN_VMS" : "WWN_CONTAINERS")
+                case "blocked":
+                    return .blocked(reason: "rust \(feature)")
+                case "forbidden":
+                    return .forbidden(reason: "rust \(feature) forbidden on \(rustPlatformSlug)")
+                default:
+                    return nil
+                }
+            }
+        }
+        #else
+        return nil
+        #endif
     }
 }

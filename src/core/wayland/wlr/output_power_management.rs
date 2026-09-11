@@ -1,19 +1,15 @@
-
-use wayland_server::{
-
-    Dispatch, DisplayHandle, GlobalDispatch,
-    WEnum,
-};
+use wayland_server::{Dispatch, DisplayHandle, GlobalDispatch, WEnum};
 
 use crate::core::state::CompositorState;
 use crate::core::wayland::protocol::wlroots::wlr_output_power_management_unstable_v1::{
-    zwlr_output_power_manager_v1,
-    zwlr_output_power_v1,
+    zwlr_output_power_manager_v1, zwlr_output_power_v1,
 };
 
 pub struct OutputPowerManagerData;
 
-impl GlobalDispatch<zwlr_output_power_manager_v1::ZwlrOutputPowerManagerV1, ()> for CompositorState {
+impl GlobalDispatch<zwlr_output_power_manager_v1::ZwlrOutputPowerManagerV1, ()>
+    for CompositorState
+{
     fn bind(
         _state: &mut Self,
         _handle: &DisplayHandle,
@@ -43,7 +39,7 @@ impl Dispatch<zwlr_output_power_manager_v1::ZwlrOutputPowerManagerV1, ()> for Co
                 let output_id = 0; // output.data::<u32>().copied().unwrap_or(0);
 
                 let power: zwlr_output_power_v1::ZwlrOutputPowerV1 = data_init.init(id, ());
-                
+
                 // Send initial mode
                 if let Some(output_state) = state.outputs.iter().find(|o| o.id == output_id) {
                     let mode = if output_state.power_mode == 0 {
@@ -84,11 +80,11 @@ impl Dispatch<zwlr_output_power_v1::ZwlrOutputPowerV1, ()> for CompositorState {
                         return;
                     }
                 };
-                
+
                 if let Some(output_state) = state.outputs.iter_mut().find(|o| o.id == output_id) {
                     output_state.power_mode = mode_val;
                     tracing::debug!("Output {} power mode set to {}", output_id, mode_val);
-                    
+
                     // Acknowledge the change
                     if let WEnum::Value(m) = mode {
                         resource.mode(m);
@@ -106,6 +102,8 @@ impl Dispatch<zwlr_output_power_v1::ZwlrOutputPowerV1, ()> for CompositorState {
 }
 
 /// Register zwlr_output_power_manager_v1 global
-pub fn register_output_power_management(display: &DisplayHandle) -> wayland_server::backend::GlobalId {
+pub fn register_output_power_management(
+    display: &DisplayHandle,
+) -> wayland_server::backend::GlobalId {
     display.create_global::<CompositorState, zwlr_output_power_manager_v1::ZwlrOutputPowerManagerV1, ()>(1, ())
 }

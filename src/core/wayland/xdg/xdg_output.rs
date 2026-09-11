@@ -3,12 +3,8 @@
 //! This protocol provides additional output information beyond wl_output,
 //! including logical position and size (accounting for scaling and transforms).
 
-
-use wayland_protocols::xdg::xdg_output::zv1::server::{
-    zxdg_output_v1::ZxdgOutputV1,
-};
+use wayland_protocols::xdg::xdg_output::zv1::server::zxdg_output_v1::ZxdgOutputV1;
 use wayland_server::Resource;
-
 
 use crate::core::state::{CompositorState, OutputState};
 use std::collections::HashMap;
@@ -32,8 +28,6 @@ pub struct XdgOutputState {
     /// Used to send updates when output configuration changes.
     pub resources: HashMap<(wayland_server::backend::ClientId, u32), ZxdgOutputV1>,
 }
-
-
 
 /// Notify all xdg_output resources about output configuration changes.
 /// Called when output geometry, mode, or scale changes.
@@ -151,4 +145,3 @@ pub fn notify_xdg_output_change_for_client_override(
         }
     }
 }
-

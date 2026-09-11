@@ -18,6 +18,10 @@ you intend to replace on guest.
 ```bash
 ./scripts/build-modeb-demo-tipa.sh
 # or: BUILD=12 ./scripts/build-modeb-demo-tipa.sh
+
+# Product Wawona Mode B (iteration, no guest rootfs):
+WAWONA_BUILD_NUMBER=10 nix build --impure .#wawona-ios-modeb-tipa-slim
+scripts/install-ios-modeb-tipa.sh --slim result-modeb-slim/Wawona-*-iOS-arm64.tipa
 ```
 
 Sign with **ldid** on the binary only (no `_CodeSignature` in the tipa). Never

@@ -49,13 +49,13 @@ impl XdgDecorationHandler for CompositorState {
         // policy so an explicit request is judged by that machine's setting,
         // not a concurrent machine's global Force SSD.
         let policy = self.window_decoration_policy(window_id);
-        let weston_family = !matches!(
-            policy,
-            crate::core::state::DecorationPolicy::ForceServer
-        ) && crate::core::wayland::xdg::decoration::is_weston_family_app(self, window_id);
+        let weston_family = !matches!(policy, crate::core::state::DecorationPolicy::ForceServer)
+            && crate::core::wayland::xdg::decoration::is_weston_family_app(self, window_id);
 
         let actual_mode = if weston_family {
-            if crate::core::wayland::xdg::decoration::weston_family_prefers_client_decorations(policy) {
+            if crate::core::wayland::xdg::decoration::weston_family_prefers_client_decorations(
+                policy,
+            ) {
                 Mode::ClientSide
             } else {
                 Mode::ServerSide
@@ -163,15 +163,14 @@ impl XdgDialogHandler for CompositorState {
 impl XdgSystemBellHandler for CompositorState {
     fn ring(&mut self, surface: Option<WlSurface>) {
         let surface_id = surface.as_ref().map(|s| s.id().protocol_id()).unwrap_or(0);
-        let client_id = surface
-            .as_ref()
-            .and_then(|s| s.client().map(|c| c.id()));
+        let client_id = surface.as_ref().and_then(|s| s.client().map(|c| c.id()));
         tracing::debug!("System bell requested (surface={:?})", surface_id);
         if let Some(client_id) = client_id {
-            self.pending_compositor_events.push(CompositorEvent::SystemBell {
-                client_id,
-                surface_id,
-            });
+            self.pending_compositor_events
+                .push(CompositorEvent::SystemBell {
+                    client_id,
+                    surface_id,
+                });
         }
     }
 }

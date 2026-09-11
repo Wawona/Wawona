@@ -246,12 +246,20 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
                 NSString *name = pkg[@"name"] ?: @"Package";
                 NSString *version = pkg[@"version"] ?: @"";
                 NSString *role = pkg[@"role"] ?: @"";
+                NSString *license = pkg[@"license"] ?: @"";
+                NSString *url = pkg[@"url"] ?: @"";
                 NSMutableArray *parts = [NSMutableArray array];
                 if (version.length > 0) {
                     [parts addObject:version];
                 }
+                if (license.length > 0) {
+                    [parts addObject:[NSString stringWithFormat:@"License: %@", license]];
+                }
                 if (role.length > 0) {
                     [parts addObject:role];
+                }
+                if (url.length > 0) {
+                    [parts addObject:url];
                 }
                 [rows addObject:[self infoRow:name
                                        detail:[parts componentsJoinedByString:@"\n\n"]]];
@@ -269,8 +277,14 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
         if (![version hasPrefix:@"v"]) {
             version = [@"v" stringByAppendingString:version];
         }
+        NSString *build = [[NSBundle mainBundle]
+            objectForInfoDictionaryKey:@"CFBundleVersion"];
+        if (build.length == 0) {
+            build = @"1";
+        }
         return @[
             [self infoRow:@"Version" detail:version],
+            [self infoRow:@"Build" detail:build],
             [self infoRow:@"Platform" detail:@"watchOS"],
             [self actionRow:@"Wawona.io"
                         key:@"OpenWawonaWebsite"

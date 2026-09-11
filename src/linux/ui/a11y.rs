@@ -4,8 +4,8 @@
 //! Contract: `gtk::Widget::set_widget_name` (AT-SPI / inspector) plus tooltip
 //! or visible label text for human-facing names.
 
-use gtk4 as gtk;
 use gtk::prelude::*;
+use gtk4 as gtk;
 
 pub mod id {
     pub const MACHINES_ROOT: &str = "wwn.machines.root";

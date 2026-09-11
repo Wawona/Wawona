@@ -1,5 +1,9 @@
 package com.aspauldingcode.wawona
 
+// Deprecated JSON mirror. Source of truth is rust `src/domain` + UniFFI
+// (`MachineProfileStoreApi`, `wawona.machineProfiles.v1`). Do not add fields
+// here. Compose should call the rust domain API in a later slice.
+
 import android.content.SharedPreferences
 import org.json.JSONArray
 import org.json.JSONObject
@@ -7,6 +11,7 @@ import java.util.UUID
 
 enum class MachineType(val value: String) {
     NATIVE("native"),
+    WASM("wasm"),
     SSH_WAYPIPE("ssh_waypipe"),
     SSH_TERMINAL("ssh_terminal"),
     VM("virtual_machine"),
@@ -15,6 +20,7 @@ enum class MachineType(val value: String) {
     val displayLabel: String
         get() = when (this) {
             NATIVE -> "Native"
+            WASM -> "Wasm"
             SSH_WAYPIPE -> "SSH + Waypipe"
             SSH_TERMINAL -> "SSH Terminal"
             VM -> "Virtual Machine"
@@ -22,7 +28,7 @@ enum class MachineType(val value: String) {
         }
 
     val isLocal: Boolean
-        get() = this == NATIVE || this == VM || this == CONTAINER
+        get() = this == NATIVE || this == WASM || this == VM || this == CONTAINER
 
     companion object {
         fun fromValue(value: String): MachineType =
@@ -54,7 +60,7 @@ data class MachineCapabilities(
 )
 
 data class VirtualMachineSettings(
-    val provider: String = "utm-se",
+    val provider: String = "relay",
     val vmIdentifier: String = "",
     val vsockPort: String = "",
     val notes: String = ""
@@ -128,11 +134,27 @@ data class MachineProfile(
     val isAppBridgeEligible: Boolean
         get() = type == MachineType.NATIVE && isNestedCompositor
 
+    /** wwn-igetty / modeb-tty / Doorman console. Not a machine. */
+    val isIgettyConsoleNotAMachine: Boolean
+        get() {
+            if (name.trim().equals("Mode B TTY", ignoreCase = true)) return true
+            val ids = setOf("modeb-tty", "modeb-ttyd", "igetty", "igettyd", "modeb-getty")
+            val cid = nativeLauncher.trim().lowercase()
+            if (cid in ids) return true
+            val bundled = runtimeOverrides.optString("bundledAppID", "").trim().lowercase()
+            return bundled in ids
+        }
+
     fun capabilities(): MachineCapabilities = when (type) {
         MachineType.NATIVE -> MachineCapabilities(
             launchSupported = true,
             isStub = false,
             label = "Local"
+        )
+        MachineType.WASM -> MachineCapabilities(
+            launchSupported = true,
+            isStub = false,
+            label = "Relay WASI"
         )
         MachineType.SSH_WAYPIPE -> MachineCapabilities(
             launchSupported = true,
@@ -170,7 +192,12 @@ object MachineProfileStore {
     fun loadProfiles(prefs: SharedPreferences): List<MachineProfile> {
         migrateFromLegacyPrefs(prefs)
         val raw = prefs.getString(KEY_PROFILES_JSON, null) ?: return emptyList()
-        return parseProfiles(raw)
+        val parsed = parseProfiles(raw)
+        val kept = parsed.filterNot { it.isIgettyConsoleNotAMachine }
+        if (kept.size != parsed.size) {
+            saveProfiles(prefs, kept)
+        }
+        return kept
     }
 
     fun saveProfiles(prefs: SharedPreferences, profiles: List<MachineProfile>) {
@@ -180,6 +207,9 @@ object MachineProfileStore {
     }
 
     fun upsertProfile(prefs: SharedPreferences, profile: MachineProfile): List<MachineProfile> {
+        if (profile.isIgettyConsoleNotAMachine) {
+            return deleteProfile(prefs, profile.id)
+        }
         val now = System.currentTimeMillis()
         val withTimestamp = profile.copy(updatedAtMs = now)
         val current = loadProfiles(prefs).toMutableList()
@@ -228,7 +258,10 @@ object MachineProfileStore {
         )
         prefs.edit()
             .putBoolean("waypipeSSHEnabled", profile.sshEnabled)
-            .putString("nativeLauncher", profile.nativeLauncher)
+            .putString(
+                "nativeLauncher",
+                if (profile.type == MachineType.WASM) "wawona-wasm" else profile.nativeLauncher
+            )
             .putString("waypipeSSHHost", sanitizedHost)
             .putString("waypipeSSHPort", normalizedPort.toString())
             .putString("waypipeSSHUser", profile.sshUser)
@@ -401,7 +434,14 @@ object MachineProfileStore {
             sshAuthMethod = obj.optString("sshAuthMethod", "password"),
             sshKeyPath = obj.optString("sshKeyPath", ""),
             sshKeyPassphrase = obj.optString("sshKeyPassphrase", ""),
-            nativeLauncher = obj.optString("nativeLauncher", "weston-terminal"),
+            nativeLauncher = run {
+                val type = MachineType.fromValue(obj.optString("type", MachineType.NATIVE.value))
+                if (type == MachineType.WASM) {
+                    "wawona-wasm"
+                } else {
+                    obj.optString("nativeLauncher", "weston-terminal")
+                }
+            },
             remoteCommand = obj.optString("remoteCommand", ""),
             customScript = obj.optString("customScript", ""),
             waypipeCompress = obj.optString("waypipeCompress", "lz4"),
@@ -416,7 +456,7 @@ object MachineProfileStore {
             settingsOverrides = obj.optJSONObject("settingsOverrides") ?: JSONObject(),
             runtimeOverrides = obj.optJSONObject("runtimeOverrides") ?: JSONObject(),
             vmSettings = VirtualMachineSettings(
-                provider = vmObj.optString("provider", "utm-se"),
+                provider = vmObj.optString("provider", "relay"),
                 vmIdentifier = vmObj.optString("vmIdentifier", ""),
                 vsockPort = vmObj.optString("vsockPort", ""),
                 notes = vmObj.optString("notes", "")

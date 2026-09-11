@@ -115,6 +115,87 @@ fn test_output_resize_updates_host_locked_window_geometry() {
 }
 
 #[test]
+fn test_output_resize_updates_fills_host_window_geometry() {
+    let mut state = CompositorState::new(None);
+    state.set_output_size(390, 844, 1.0);
+
+    let mut window = Window::new(41, 701);
+    window.fills_host = true;
+    window.width = 800;
+    window.height = 600;
+    state.windows.insert(41, Arc::new(RwLock::new(window)));
+    state.surface_to_window.insert(701, 41);
+
+    state.set_output_size(844, 390, 1.0);
+
+    let window_ref = state.get_window(41).expect("window missing");
+    let window = window_ref.read().unwrap();
+    assert_eq!(window.x, 0);
+    assert_eq!(window.y, 0);
+    assert_eq!(window.width, 844);
+    assert_eq!(window.height, 390);
+}
+
+#[test]
+fn test_output_resize_updates_fill_primary_matching_previous_output() {
+    let mut state = CompositorState::new(None);
+    state.set_output_size(390, 844, 1.0);
+
+    let mut window = Window::new(42, 702);
+    window.width = 390;
+    window.height = 844;
+    state.windows.insert(42, Arc::new(RwLock::new(window)));
+    state.surface_to_window.insert(702, 42);
+
+    state.set_output_size(844, 390, 1.0);
+
+    let window_ref = state.get_window(42).expect("window missing");
+    let window = window_ref.read().unwrap();
+    assert_eq!(window.width, 844);
+    assert_eq!(window.height, 390);
+}
+
+#[test]
+fn test_output_resize_leaves_floating_window_geometry() {
+    let mut state = CompositorState::new(None);
+    state.set_output_size(390, 844, 1.0);
+
+    let mut window = Window::new(43, 703);
+    window.width = 200;
+    window.height = 200;
+    state.windows.insert(43, Arc::new(RwLock::new(window)));
+    state.surface_to_window.insert(703, 43);
+
+    state.set_output_size(844, 390, 1.0);
+
+    let window_ref = state.get_window(43).expect("window missing");
+    let window = window_ref.read().unwrap();
+    assert_eq!(window.width, 200);
+    assert_eq!(window.height, 200);
+}
+
+#[test]
+fn test_output_resize_skips_host_scene_independent_window() {
+    let mut state = CompositorState::new(None);
+    state.set_output_size(390, 844, 1.0);
+
+    let mut window = Window::new(44, 704);
+    window.fills_host = true;
+    window.host_scene_independent = true;
+    window.width = 390;
+    window.height = 844;
+    state.windows.insert(44, Arc::new(RwLock::new(window)));
+    state.surface_to_window.insert(704, 44);
+
+    state.set_output_size(844, 390, 1.0);
+
+    let window_ref = state.get_window(44).expect("window missing");
+    let window = window_ref.read().unwrap();
+    assert_eq!(window.width, 390);
+    assert_eq!(window.height, 844);
+}
+
+#[test]
 fn test_find_surface_at_scales_weston_style_buffer_without_set_buffer_scale() {
     let mut state = CompositorState::new(None);
     state.set_output_size(390, 844, 2.0);
@@ -132,9 +213,7 @@ fn test_find_surface_at_scales_weston_style_buffer_without_set_buffer_scale() {
     state.surface_to_window.insert(101, 1);
     state.window_tree.stacking_order = vec![1];
 
-    let (sid, lx, ly) = state
-        .find_surface_at(195.0, 422.0)
-        .expect("center hit");
+    let (sid, lx, ly) = state.find_surface_at(195.0, 422.0).expect("center hit");
     assert_eq!(sid, 101);
     assert!((lx - 390.0).abs() < 0.01, "lx={lx}");
     assert!((ly - 844.0).abs() < 0.01, "ly={ly}");
@@ -162,9 +241,7 @@ fn test_find_surface_at_declared_buffer_scale_is_identity() {
     state.surface_to_window.insert(102, 2);
     state.window_tree.stacking_order = vec![2];
 
-    let (_, lx, ly) = state
-        .find_surface_at(400.0, 300.0)
-        .expect("center hit");
+    let (_, lx, ly) = state.find_surface_at(400.0, 300.0).expect("center hit");
     assert!((lx - 400.0).abs() < 0.01, "lx={lx}");
     assert!((ly - 300.0).abs() < 0.01, "ly={ly}");
 }

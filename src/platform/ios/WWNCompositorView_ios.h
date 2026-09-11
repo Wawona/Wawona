@@ -53,6 +53,9 @@ FOUNDATION_EXPORT NSNotificationName const WWNTvKeyboardFocusDidChangeNotificati
 /// Whether the keyboard is currently active for this view
 @property(nonatomic, assign, readonly) BOOL keyboardActive;
 
+/// Hardware / Bluetooth / Mac keyboard is attached (collapses native OSK).
+@property(nonatomic, assign, readonly) BOOL hardwareKeyboardActive;
+
 /// Show the iOS virtual keyboard for this view
 - (void)activateKeyboard;
 
@@ -116,6 +119,10 @@ FOUNDATION_EXPORT NSNotificationName const WWNTvKeyboardFocusDidChangeNotificati
                    bottomUpRows:(BOOL)bottomUpRows
                    presentToken:(uint64_t)presentToken;
 
+/// Last presented Wayland frame for Safari-style tab previews. Works while
+/// the view is hidden (in-window tabs keep the last buffer on the layer).
+- (nullable UIImage *)wwn_tabPreviewImage;
+
 /// Tear down presentation state before the view is removed (session close).
 - (void)prepareForSessionTeardown;
 
@@ -132,6 +139,19 @@ FOUNDATION_EXPORT NSNotificationName const WWNTvKeyboardFocusDidChangeNotificati
 - (void)clickVirtualPointerButton:(uint32_t)linuxButtonCode
                           pressed:(BOOL)pressed;
 - (void)scrollVirtualPointerByDx:(CGFloat)dx dy:(CGFloat)dy;
+
+/// IOMFB Desktop overlay: map touches from `fromView` into this host
+/// compositor seat (nested niri / Wayland clients). state: 0=up, 1=down,
+/// 2=motion, 3=cancel.
+- (void)wwnForwardOverlayTouches:(NSSet<UITouch *> *)touches
+                           state:(int)state
+                           event:(nullable UIEvent *)event
+                        fromView:(UIView *)fromView;
+
+/// IOMFB HID steal: one digitizer contact already mapped into this view.
+- (void)wwnInjectHidTouchId:(int32_t)touchId
+                      state:(int)state
+                  viewPoint:(CGPoint)viewPoint;
 
 @end
 

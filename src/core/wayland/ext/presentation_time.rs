@@ -1,10 +1,7 @@
-
-
-
-use crate::core::wayland::protocol::server::wp::presentation_time::server::{wp_presentation, wp_presentation_feedback};
-use wayland_server::{
-    Dispatch, DisplayHandle, GlobalDispatch, Resource,
+use crate::core::wayland::protocol::server::wp::presentation_time::server::{
+    wp_presentation, wp_presentation_feedback,
 };
+use wayland_server::{Dispatch, DisplayHandle, GlobalDispatch, Resource};
 
 use crate::core::state::CompositorState;
 
@@ -39,7 +36,7 @@ impl PresentationState {
         let tv_nsec = (timestamp_ns % 1_000_000_000) as u32;
         let tv_sec_hi = (tv_sec >> 32) as u32;
         let tv_sec_lo = (tv_sec & 0xFFFF_FFFF) as u32;
-        
+
         let mut i = 0;
         while i < self.feedbacks.len() {
             if self.feedbacks[i].committed {
@@ -68,8 +65,6 @@ impl Default for PresentationState {
         }
     }
 }
-
-
 
 impl GlobalDispatch<wp_presentation::WpPresentation, ()> for CompositorState {
     fn bind(
@@ -100,17 +95,19 @@ impl Dispatch<wp_presentation::WpPresentation, ()> for CompositorState {
     ) {
         match request {
             wp_presentation::Request::Feedback { surface, callback } => {
-                let surface_id = surface.data::<u32>().copied().unwrap_or_else(|| surface.id().protocol_id());
+                let surface_id = surface
+                    .data::<u32>()
+                    .copied()
+                    .unwrap_or_else(|| surface.id().protocol_id());
 
-                
-                let feedback_resource: wp_presentation_feedback::WpPresentationFeedback = data_init.init(callback, ());
-                
+                let feedback_resource: wp_presentation_feedback::WpPresentationFeedback =
+                    data_init.init(callback, ());
+
                 state.ext.presentation.feedbacks.push(PresentationFeedback {
                     surface_id,
                     callback: feedback_resource,
                     committed: false, // Will be marked true on surface commit
                 });
-
             }
             wp_presentation::Request::Destroy => {
                 let client_id = _client.id();
@@ -138,7 +135,6 @@ impl Dispatch<wp_presentation_feedback::WpPresentationFeedback, ()> for Composit
     ) {
     }
 }
-
 
 /// Register wp_presentation global
 pub fn register_presentation_time(display: &DisplayHandle) -> wayland_server::backend::GlobalId {

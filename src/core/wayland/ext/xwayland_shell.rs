@@ -2,13 +2,11 @@
 //!
 //! Provides XWayland surface integration.
 
-use wayland_server::{
-    Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
-};
 use wayland_protocols::xwayland::shell::v1::server::{
     xwayland_shell_v1::{self, XwaylandShellV1},
     xwayland_surface_v1::{self, XwaylandSurfaceV1},
 };
+use wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource};
 
 use crate::core::state::CompositorState;
 
@@ -45,7 +43,7 @@ impl Dispatch<XwaylandShellV1, ()> for CompositorState {
             xwayland_shell_v1::Request::GetXwaylandSurface { id, surface } => {
                 let surface_id = surface.id().protocol_id();
                 // We drop surface_id tracking for now to pass type checker
-                let _s = data_init.init(id, ()); 
+                let _s = data_init.init(id, ());
                 tracing::debug!("Created XWayland surface for {}", surface_id);
             }
             xwayland_shell_v1::Request::Destroy => {}

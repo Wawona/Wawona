@@ -1,60 +1,60 @@
 // --- Core protocols (always enabled) ---
-pub mod subcompositor;
-pub mod viewporter;
-pub mod linux_dmabuf;
-pub mod linux_explicit_sync;
-pub mod single_pixel_buffer;
-pub mod relative_pointer;
-pub mod pointer_constraints;
-pub mod pointer_gestures;
-pub mod tablet;
-pub mod text_input;
-pub mod keyboard_shortcuts_inhibit;
-pub mod cursor_shape;
-pub mod primary_selection;
-pub mod input_method;
-pub mod input_timestamps;
-pub mod pointer_warp;
-pub mod presentation_time;
-pub mod fractional_scale;
-pub mod fifo;
-pub mod tearing_control;
-pub mod content_type;
-pub mod commit_timing;
 pub mod alpha_modifier;
+pub mod background_effect;
 pub mod color_management;
 pub mod color_representation;
+pub mod commit_timing;
+pub mod content_type;
+pub mod cursor_shape;
+pub mod data_control;
+pub mod fifo;
+pub mod foreign_toplevel_list;
+pub mod fractional_scale;
 pub mod idle_inhibit;
 pub mod idle_notify;
+pub mod input_method;
+pub mod input_timestamps;
+pub mod keyboard_shortcuts_inhibit;
+pub mod linux_dmabuf;
+pub mod linux_explicit_sync;
+pub mod pointer_constraints;
+pub mod pointer_gestures;
+pub mod pointer_warp;
+pub mod presentation_time;
+pub mod primary_selection;
+pub mod relative_pointer;
 pub mod security_context;
+pub mod single_pixel_buffer;
+pub mod subcompositor;
+pub mod tablet;
+pub mod tearing_control;
+pub mod text_input;
 pub mod transient_seat;
-pub mod foreign_toplevel_list;
-pub mod data_control;
+pub mod viewporter;
 pub mod workspace;
-pub mod background_effect;
 
 // --- Linux/desktop-only protocols (not for App Store) ---
 // Gated behind feature flag: these are unimplemented or
 // inappropriate for iOS/macOS App Store (privacy, DRM, XWayland).
 #[cfg(feature = "desktop-protocols")]
-pub mod linux_drm_syncobj;
-#[cfg(feature = "desktop-protocols")]
 pub mod drm_lease;
-#[cfg(feature = "desktop-protocols")]
-pub mod session_lock;
 pub mod fullscreen_shell;
 #[cfg(feature = "desktop-protocols")]
 pub mod image_capture_source;
 #[cfg(feature = "desktop-protocols")]
 pub mod image_copy_capture;
 #[cfg(feature = "desktop-protocols")]
+pub mod linux_drm_syncobj;
+#[cfg(feature = "desktop-protocols")]
+pub mod session_lock;
+#[cfg(feature = "desktop-protocols")]
 pub mod xwayland_keyboard_grab;
 #[cfg(feature = "desktop-protocols")]
 pub mod xwayland_shell;
 
-use wayland_server::DisplayHandle;
 use crate::core::state::CompositorState;
 use crate::core::wayland::policy;
+use wayland_server::DisplayHandle;
 
 /// Register Wayland extension protocols.
 ///
@@ -73,7 +73,6 @@ pub fn register(_state: &mut CompositorState, dh: &DisplayHandle) {
     pointer_constraints::register_pointer_constraints(dh);
     pointer_gestures::register_pointer_gestures(dh);
     idle_inhibit::register_idle_inhibit_manager(dh);
-    text_input::register_text_input_manager(dh);
     text_input::register_text_input_manager_v1(dh);
     keyboard_shortcuts_inhibit::register_keyboard_shortcuts_inhibit_manager(dh);
     linux_dmabuf::register_linux_dmabuf(dh);
@@ -99,9 +98,14 @@ pub fn register(_state: &mut CompositorState, dh: &DisplayHandle) {
     workspace::register_workspace(dh);
     background_effect::register_background_effect(dh);
 
-    if _state.advertise_fullscreen_shell && policy::allow_desktop_extensions(_state.protocol_profile) {
+    if _state.advertise_fullscreen_shell
+        && policy::allow_desktop_extensions(_state.protocol_profile)
+    {
         fullscreen_shell::register_fullscreen_shell(dh);
-        crate::wlog!(crate::util::logging::COMPOSITOR, "Fullscreen shell advertised (user setting enabled)");
+        crate::wlog!(
+            crate::util::logging::COMPOSITOR,
+            "Fullscreen shell advertised (user setting enabled)"
+        );
     } else {
         crate::wlog!(
             crate::util::logging::COMPOSITOR,
@@ -113,7 +117,6 @@ pub fn register(_state: &mut CompositorState, dh: &DisplayHandle) {
     if policy::allow_privileged_wlr(_state.protocol_profile) {
         pointer_warp::register_pointer_warp(dh);
         tablet::register_tablet(dh);
-        primary_selection::register_primary_selection(dh);
     } else {
         crate::wlog!(
             crate::util::logging::COMPOSITOR,
@@ -122,7 +125,7 @@ pub fn register(_state: &mut CompositorState, dh: &DisplayHandle) {
         );
         crate::wlog!(
             crate::util::logging::COMPOSITOR,
-            "Skipping tablet + primary selection for profile {}",
+            "Skipping tablet for profile {}",
             _state.protocol_profile.as_str()
         );
     }
@@ -136,7 +139,6 @@ pub fn register(_state: &mut CompositorState, dh: &DisplayHandle) {
             image_copy_capture::register_image_copy_capture(dh);
             xwayland_keyboard_grab::register_xwayland_keyboard_grab(dh);
             xwayland_shell::register_xwayland_shell(dh);
-            input_method::register_input_method_manager(dh);
         } else {
             crate::wlog!(
                 crate::util::logging::COMPOSITOR,
@@ -146,5 +148,8 @@ pub fn register(_state: &mut CompositorState, dh: &DisplayHandle) {
         }
     }
 
-    crate::wlog!(crate::util::logging::COMPOSITOR, "Registered extension protocols");
+    crate::wlog!(
+        crate::util::logging::COMPOSITOR,
+        "Registered extension protocols"
+    );
 }

@@ -182,6 +182,9 @@ private struct WatchSettingsInputSection: View {
                 }
                 .pickerStyle(.navigationLink)
             }
+            if watchShows(.touchPointerEmulation, in: .input) {
+                Toggle("Pointer Emulation for Touch", isOn: $preferences.touchPointerEmulation)
+            }
             if watchShows(.resizeDisplayForVirtualKeyboard, in: .input) {
                 Toggle("Resize Display for Virtual Keyboard", isOn: $preferences.resizeDisplayForVirtualKeyboard)
             }
@@ -424,7 +427,16 @@ private struct WatchSettingsICloudSection: View {
 }
 
 private struct WatchSettingsDependenciesSection: View {
-    private var packages: [(String, String, String)] {
+    private struct DepPkg: Identifiable {
+        let id: String
+        let name: String
+        let version: String
+        let role: String
+        let license: String
+        let url: String
+    }
+
+    private var packages: [DepPkg] {
         guard let url = Bundle.main.url(forResource: "SettingsDependencies", withExtension: "json"),
               let data = try? Data(contentsOf: url),
               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -434,7 +446,14 @@ private struct WatchSettingsDependenciesSection: View {
         }
         return list.compactMap { pkg in
             guard let name = pkg["name"] as? String else { return nil }
-            return (name, pkg["version"] as? String ?? "", pkg["role"] as? String ?? "")
+            return DepPkg(
+                id: name,
+                name: name,
+                version: pkg["version"] as? String ?? "",
+                role: pkg["role"] as? String ?? "",
+                license: pkg["license"] as? String ?? "",
+                url: pkg["url"] as? String ?? ""
+            )
         }
     }
 
@@ -446,10 +465,16 @@ private struct WatchSettingsDependenciesSection: View {
                     detail: "SettingsDependencies.json missing from this watchOS build."
                 )
             } else {
-                ForEach(packages, id: \.0) { name, version, role in
+                ForEach(packages) { pkg in
+                    let lines = [
+                        pkg.version,
+                        pkg.license.isEmpty ? nil : "License: \(pkg.license)",
+                        pkg.role.isEmpty ? nil : pkg.role,
+                        pkg.url.isEmpty ? nil : pkg.url,
+                    ].compactMap { $0 }.filter { !$0.isEmpty }
                     WatchInfoRow(
-                        title: name,
-                        detail: [version, role].filter { !$0.isEmpty }.joined(separator: "\n\n")
+                        title: pkg.name,
+                        detail: lines.joined(separator: "\n\n")
                     )
                 }
             }
@@ -500,6 +525,9 @@ private struct WatchSettingsAboutSection: View {
             if watchShows(.aboutVersion, in: .about) {
                 WatchInfoRow(title: "Version", detail: watchAboutVersion)
             }
+            if watchShows(.aboutBuild, in: .about) {
+                WatchInfoRow(title: "Build", detail: watchAboutBuild)
+            }
             if watchShows(.aboutPlatform, in: .about) {
                 WatchInfoRow(title: "Platform", detail: "watchOS")
             }
@@ -542,6 +570,11 @@ private struct WatchSettingsAboutSection: View {
         let raw = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
         let version = (raw?.isEmpty == false) ? raw! : "0.0.0"
         return version.hasPrefix("v") ? version : "v\(version)"
+    }
+
+    private var watchAboutBuild: String {
+        let raw = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+        return (raw?.isEmpty == false) ? raw! : "1"
     }
 }
 

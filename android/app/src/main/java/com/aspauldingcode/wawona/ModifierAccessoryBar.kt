@@ -45,6 +45,7 @@ object LinuxKey {
     const val KEY_0 = 11
     const val GRAVE = 41
     const val TAB = 15
+    const val BACKSPACE = 14
     const val SLASH = 53
     const val MINUS = 12
     const val EQUAL = 13
@@ -122,55 +123,13 @@ private object XkbMod {
 
 private const val DOUBLE_TAP_THRESHOLD_MS = 400L
 
-private val letterKeycodes = intArrayOf(
-    30, 48, 46, 32, 18, 33, 34, 35, 23, 36, 37, 38, 50,
-    49, 24, 25, 16, 19, 31, 20, 22, 47, 17, 45, 21, 44
-)
-
-fun charToLinuxKeycode(ch: Char): LinuxKeyMapping? {
-    return when {
-        ch in 'a'..'z' -> LinuxKeyMapping(letterKeycodes[ch - 'a'])
-        ch in 'A'..'Z' -> LinuxKeyMapping(letterKeycodes[ch - 'A'], needsShift = true)
-        ch in '1'..'9' -> LinuxKeyMapping(LinuxKey.KEY_1 + (ch - '1'))
-        ch == '0' -> LinuxKeyMapping(LinuxKey.KEY_0)
-        else -> when (ch) {
-            ' ' -> LinuxKeyMapping(LinuxKey.SPACE)
-            '\n', '\r' -> LinuxKeyMapping(LinuxKey.ENTER)
-            '\t' -> LinuxKeyMapping(LinuxKey.TAB)
-            '-' -> LinuxKeyMapping(LinuxKey.MINUS)
-            '=' -> LinuxKeyMapping(LinuxKey.EQUAL)
-            '[' -> LinuxKeyMapping(LinuxKey.LEFTBRACE)
-            ']' -> LinuxKeyMapping(LinuxKey.RIGHTBRACE)
-            '\\' -> LinuxKeyMapping(LinuxKey.BACKSLASH)
-            ';' -> LinuxKeyMapping(LinuxKey.SEMICOLON)
-            '\'' -> LinuxKeyMapping(LinuxKey.APOSTROPHE)
-            '`' -> LinuxKeyMapping(LinuxKey.GRAVE)
-            ',' -> LinuxKeyMapping(LinuxKey.COMMA)
-            '.' -> LinuxKeyMapping(LinuxKey.DOT)
-            '/' -> LinuxKeyMapping(LinuxKey.SLASH)
-            '!' -> LinuxKeyMapping(LinuxKey.KEY_1, true)
-            '@' -> LinuxKeyMapping(LinuxKey.KEY_2, true)
-            '#' -> LinuxKeyMapping(LinuxKey.KEY_3, true)
-            '$' -> LinuxKeyMapping(LinuxKey.KEY_4, true)
-            '%' -> LinuxKeyMapping(LinuxKey.KEY_5, true)
-            '^' -> LinuxKeyMapping(LinuxKey.KEY_6, true)
-            '&' -> LinuxKeyMapping(LinuxKey.KEY_7, true)
-            '*' -> LinuxKeyMapping(LinuxKey.KEY_8, true)
-            '(' -> LinuxKeyMapping(LinuxKey.KEY_9, true)
-            ')' -> LinuxKeyMapping(LinuxKey.KEY_0, true)
-            '_' -> LinuxKeyMapping(LinuxKey.MINUS, true)
-            '+' -> LinuxKeyMapping(LinuxKey.EQUAL, true)
-            '{' -> LinuxKeyMapping(LinuxKey.LEFTBRACE, true)
-            '}' -> LinuxKeyMapping(LinuxKey.RIGHTBRACE, true)
-            '|' -> LinuxKeyMapping(LinuxKey.BACKSLASH, true)
-            ':' -> LinuxKeyMapping(LinuxKey.SEMICOLON, true)
-            '"' -> LinuxKeyMapping(LinuxKey.APOSTROPHE, true)
-            '~' -> LinuxKeyMapping(LinuxKey.GRAVE, true)
-            '<' -> LinuxKeyMapping(LinuxKey.COMMA, true)
-            '>' -> LinuxKeyMapping(LinuxKey.DOT, true)
-            '?' -> LinuxKeyMapping(LinuxKey.SLASH, true)
-            else -> null
-        }
+/** Terminal fallback only. Printable text is TI v3 (host-keymap-bridge). */
+fun controlToLinuxKeycode(ch: Char): LinuxKeyMapping? {
+    return when (ch) {
+        '\n', '\r' -> LinuxKeyMapping(LinuxKey.ENTER)
+        '\t' -> LinuxKeyMapping(LinuxKey.TAB)
+        '\u0008', '\u007f' -> LinuxKeyMapping(LinuxKey.BACKSPACE)
+        else -> null
     }
 }
 

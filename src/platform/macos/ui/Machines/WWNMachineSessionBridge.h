@@ -9,6 +9,7 @@ NS_ASSUME_NONNULL_BEGIN
 @interface WWNMachineSessionBridge : NSObject
 
 + (BOOL)profileRequiresWaypipeTransport:(WWNMachineProfile *)profile;
++ (BOOL)profileUsesWasmRuntime:(WWNMachineProfile *)profile;
 + (BOOL)profileUsesNativeCompositorClient:(WWNMachineProfile *)profile;
 + (nullable NSString *)nativeClientIdForProfile:(WWNMachineProfile *)profile;
 

@@ -9,8 +9,7 @@ struct MachinesRootView: View {
     @ObservedObject var profileStore: MachineProfileStore
     @ObservedObject var sessions: SessionOrchestrator
     @State var search = ""
-    @State var showingEditor = false
-    @State var editingProfile: MachineProfile?
+    @State var editorSheet: MachineEditorSheet?
     @State var showingContainerImages = false
     #if os(iOS)
     @State private var isGlassSearchPresented = false
@@ -33,7 +32,7 @@ struct MachinesRootView: View {
                 MachinesGridView(
                     profiles: filteredProfiles,
                     sessions: sessions,
-                    onEdit: { editingProfile = $0 },
+                    onEdit: { editorSheet = .edit($0) },
                     onConnect: connect,
                     onDelete: delete
                 )
@@ -46,6 +45,14 @@ struct MachinesRootView: View {
             #endif
             .toolbar {
                 #if os(macOS)
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        editorSheet = .add
+                    } label: {
+                        Label("Add Machine", systemImage: "plus")
+                    }
+                    .wwnA11y(WawonaA11y.machinesAdd, label: "Add Machine")
+                }
                 ToolbarItem(placement: .navigation) {
                     Button {
                         showingContainerImages = true
@@ -54,28 +61,14 @@ struct MachinesRootView: View {
                     }
                     .wwnA11y(WawonaA11y.machinesImages, label: "Container Images")
                 }
-                ToolbarItem(placement: .navigation) {
-                    Button {
-                        openPlatformSettings()
-                    } label: {
-                        Label("Settings", systemImage: "gearshape")
-                    }
-                    .wwnA11y(WawonaA11y.machinesSettings, label: "Settings")
-                }
                 #else
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button {
-                        showingEditor = true
+                        editorSheet = .add
                     } label: {
                         Label("Add Machine", systemImage: "plus")
                     }
                     .wwnA11y(WawonaA11y.machinesAdd, label: "Add Machine")
-                    Button {
-                        openPlatformSettings()
-                    } label: {
-                        Label("Settings", systemImage: "gearshape")
-                    }
-                    .wwnA11y(WawonaA11y.machinesSettings, label: "Settings")
                     Button {
                         withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
                             isGlassSearchPresented = true
@@ -99,14 +92,16 @@ struct MachinesRootView: View {
             }
             .animation(.spring(response: 0.32, dampingFraction: 0.86), value: isGlassSearchPresented)
             #endif
-            .sheet(isPresented: $showingEditor) {
-                MachineEditorView { profile in
-                    profileStore.upsert(profile)
-                }
-            }
-            .sheet(item: $editingProfile) { profile in
-                MachineEditorView(profile: profile) { updated in
-                    profileStore.upsert(updated)
+            .sheet(item: $editorSheet) { sheet in
+                switch sheet {
+                case .add:
+                    MachineEditorView { profile in
+                        profileStore.upsert(profile)
+                    }
+                case .edit(let profile):
+                    MachineEditorView(profile: profile) { updated in
+                        profileStore.upsert(updated)
+                    }
                 }
             }
             .sheet(isPresented: $showingContainerImages) {
@@ -147,17 +142,6 @@ struct MachinesRootView: View {
 
     private func delete(_ profile: MachineProfile) {
         profileStore.delete(id: profile.id)
-    }
-
-    private func openPlatformSettings() {
-        showingEditor = false
-        editingProfile = nil
-        #if os(iOS)
-        if isGlassSearchPresented {
-            dismissGlassSearchBar(preserveQuery: true)
-        }
-        #endif
-        PlatformGlobalSettings.open()
     }
 
     #if os(iOS)
@@ -232,4 +216,18 @@ struct MachinesRootView: View {
         }
     }
     #endif
+}
+
+enum MachineEditorSheet: Identifiable {
+    case add
+    case edit(MachineProfile)
+
+    var id: String {
+        switch self {
+        case .add:
+            return "add"
+        case .edit(let profile):
+            return profile.id
+        }
+    }
 }

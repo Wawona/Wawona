@@ -6,13 +6,11 @@
 //! enforce vsync for a given surface.
 
 use std::collections::HashMap;
-use wayland_server::{
-    Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
-};
 use wayland_protocols::wp::tearing_control::v1::server::{
     wp_tearing_control_manager_v1::{self, WpTearingControlManagerV1},
     wp_tearing_control_v1::{self, WpTearingControlV1},
 };
+use wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource};
 
 use crate::core::state::CompositorState;
 
@@ -80,7 +78,11 @@ impl Dispatch<WpTearingControlManagerV1, ()> for CompositorState {
                 let surface_id = surface.id().protocol_id();
                 let _tc = data_init.init(id, surface_id);
                 // Default to vsync
-                state.ext.tearing_control.surface_hints.insert(surface_id, PresentationHint::Vsync);
+                state
+                    .ext
+                    .tearing_control
+                    .surface_hints
+                    .insert(surface_id, PresentationHint::Vsync);
                 tracing::debug!("Created tearing control for surface {}", surface_id);
             }
             wp_tearing_control_manager_v1::Request::Destroy => {
@@ -108,12 +110,16 @@ impl Dispatch<WpTearingControlV1, u32> for CompositorState {
         match request {
             wp_tearing_control_v1::Request::SetPresentationHint { hint } => {
                 let hint_val = match hint {
-                    wayland_server::WEnum::Value(wp_tearing_control_v1::PresentationHint::Async) => {
-                        PresentationHint::Async
-                    }
+                    wayland_server::WEnum::Value(
+                        wp_tearing_control_v1::PresentationHint::Async,
+                    ) => PresentationHint::Async,
                     _ => PresentationHint::Vsync,
                 };
-                state.ext.tearing_control.surface_hints.insert(*surface_id, hint_val);
+                state
+                    .ext
+                    .tearing_control
+                    .surface_hints
+                    .insert(*surface_id, hint_val);
                 tracing::debug!("Surface {} presentation hint: {:?}", surface_id, hint_val);
             }
             wp_tearing_control_v1::Request::Destroy => {

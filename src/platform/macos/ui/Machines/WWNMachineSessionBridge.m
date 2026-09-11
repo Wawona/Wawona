@@ -27,11 +27,19 @@
   return [profile.type isEqualToString:kWWNMachineTypeContainer];
 }
 
++ (BOOL)profileUsesWasmRuntime:(WWNMachineProfile *)profile {
+  return [profile.type isEqualToString:kWWNMachineTypeWasm];
+}
+
 + (BOOL)profileUsesNativeCompositorClient:(WWNMachineProfile *)profile {
-  return [profile.type isEqualToString:kWWNMachineTypeNative];
+  return [profile.type isEqualToString:kWWNMachineTypeNative] ||
+         [self profileUsesWasmRuntime:profile];
 }
 
 + (NSString *)nativeClientIdForProfile:(WWNMachineProfile *)profile {
+  if ([self profileUsesWasmRuntime:profile]) {
+    return @"wawona-wasm";
+  }
   if (![self profileUsesNativeCompositorClient:profile]) {
     return nil;
   }
@@ -177,11 +185,20 @@
       wasmPath = [wasmPath stringByExpandingTildeInPath];
       BOOL haveExplicit = wasmPath.length > 0 &&
           [[NSFileManager defaultManager] fileExistsAtPath:wasmPath];
+      NSString *pkg =
+          [runtime[@"wasmPackage"] isKindOfClass:[NSString class]]
+              ? runtime[@"wasmPackage"]
+              : @"";
+      NSString *cmd =
+          [runtime[@"wasmCommand"] isKindOfClass:[NSString class]]
+              ? runtime[@"wasmCommand"]
+              : @"";
+      BOOL haveName = pkg.length > 0 || cmd.length > 0;
       NSString *bundled = [[NSBundle mainBundle] pathForResource:@"hello-wasi-gui"
                                                           ofType:@"wasm"];
       BOOL haveBundled = bundled.length > 0 &&
           [[NSFileManager defaultManager] fileExistsAtPath:bundled];
-      if (!haveExplicit && !haveBundled) {
+      if (!haveExplicit && !haveName && !haveBundled) {
         if (error) {
           *error = [NSError
               errorWithDomain:@"WWNMachineSessionBridge"
@@ -189,7 +206,7 @@
                      userInfo:@{
                        NSLocalizedDescriptionKey :
                            @"Bundled hello-wasi-gui.wasm is missing. Pick a "
-                           @"Wayland .wasm in Machine Settings."
+                           @"Wayland .wasm or type wasm hello-wasi-gui."
                      }];
         }
         return NO;

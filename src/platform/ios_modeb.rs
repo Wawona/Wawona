@@ -1,12 +1,21 @@
-//! Rust-owned iOS Mode B own-display desktop broker and Machines greeter.
+//! Rust-owned iOS Mode B own-display broker (Desktop Replacement only).
 //!
-//! UIKit supplies lifecycle, profile JSON, and input events. This module owns
-//! IOMFB lifecycle, recovery state, greeter selection, and pixels.
+//! IOMFB + wwn-igetty + Wawona PTY. SwiftUI Machines is the configuration UI.
+//! This module takes the panel only when Desktop Replacement is engaged.
+//!
+//! Exclusive claim (Classic analog): park SpringBoard / backboardd when we
+//! can, steal digitizer HID, and hold the last IOMFB swap so iOS cannot keep
+//! presenting over Weston. Release always resumes those processes. Never
+//! touches watchdogd.
 
 use serde::Deserialize;
 use std::ffi::{c_char, c_void, CStr, CString};
 use std::ptr;
+use std::sync::atomic::{AtomicPtr, Ordering};
 use std::sync::{Mutex, OnceLock};
+
+type PresentSessionFn = unsafe extern "C" fn(u32, u8, *const c_char) -> i32;
+static PRESENT_SESSION: AtomicPtr<()> = AtomicPtr::new(ptr::null_mut());
 
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
@@ -57,13 +66,23 @@ extern "C" {
     fn wwn_iomfb_last_error(session: *mut c_void) -> *const c_char;
     fn wwn_iomfb_restore(session: *mut c_void) -> i32;
     fn wwn_iomfb_destroy(session: *mut c_void);
+    fn wwn_iomfb_set_exclusive(session: *mut c_void, exclusive: i32) -> i32;
+    fn wwn_modeb_claim_host() -> i32;
+    fn wwn_modeb_release_host() -> i32;
 
     fn IOSurfaceLock(surface: *mut c_void, options: u32, seed: *mut u32) -> i32;
     fn IOSurfaceUnlock(surface: *mut c_void, options: u32, seed: *mut u32) -> i32;
     fn IOSurfaceGetBaseAddress(surface: *mut c_void) -> *mut c_void;
+    fn IOSurfaceGetID(surface: *mut c_void) -> u32;
 
     fn wwn_igetty_ios_initialize(callbacks: IgettyCallbacks) -> i32;
     fn wwn_igetty_ios_register_session(kind: u8, label: *const c_char) -> u32;
+    fn wwn_igetty_ios_spawn_text_session(
+        shell_path: *const c_char,
+        label: *const c_char,
+        rows: u16,
+        cols: u16,
+    ) -> u32;
     fn wwn_igetty_ios_adopt_live_text_sessions() -> u32;
     fn wwn_igetty_ios_switch_to(session_id: u32) -> i32;
     fn wwn_igetty_ios_unregister_session(session_id: u32);
@@ -115,6 +134,9 @@ struct Desktop {
     show_session_chooser: bool,
     active_machine: Option<String>,
     failed_presents: u32,
+    last_surface: usize,
+    last_surface_id: u32,
+    last_present: i32,
 }
 
 impl Default for Desktop {
@@ -130,6 +152,9 @@ impl Default for Desktop {
             show_session_chooser: false,
             active_machine: None,
             failed_presents: 0,
+            last_surface: 0,
+            last_surface_id: 0,
+            last_present: -1,
         }
     }
 }
@@ -137,6 +162,44 @@ impl Default for Desktop {
 impl Desktop {
     fn sink_ptr(&self) -> *mut c_void {
         self.sink as *mut c_void
+    }
+
+    #[allow(dead_code)]
+    fn present_blank(&mut self) -> i32 {
+        if self.sink == 0 {
+            return -1;
+        }
+        let mut surface = IomfbSurface::default();
+        let acquire = unsafe { wwn_iomfb_acquire(self.sink_ptr(), &mut surface) };
+        if acquire != 0 || surface.iosurface.is_null() {
+            return acquire;
+        }
+        self.width = surface.width;
+        self.height = surface.height;
+        let lock = unsafe { IOSurfaceLock(surface.iosurface, 0, ptr::null_mut()) };
+        if lock != 0 {
+            return lock;
+        }
+        let base = unsafe { IOSurfaceGetBaseAddress(surface.iosurface) }.cast::<u8>();
+        if base.is_null() {
+            unsafe { IOSurfaceUnlock(surface.iosurface, 0, ptr::null_mut()) };
+            return -1;
+        }
+        let mut canvas = Canvas {
+            base,
+            width: surface.width,
+            height: surface.height,
+            stride: surface.bytes_per_row,
+        };
+        canvas.clear(0xff00_0000);
+        unsafe { IOSurfaceUnlock(surface.iosurface, 0, ptr::null_mut()) };
+        let present = unsafe {
+            wwn_iomfb_present_iosurface(self.sink_ptr(), surface.iosurface, IomfbDamage::default())
+        };
+        self.last_surface = surface.iosurface as usize;
+        self.last_surface_id = surface.id;
+        self.last_present = present;
+        present
     }
 
     fn render_greeter(&mut self) -> i32 {
@@ -168,12 +231,22 @@ impl Desktop {
         canvas.clear(0xff10_1724);
         canvas.rect(0, 0, surface.width, 18, 0xff4d_c3ff);
         let title = if self.show_session_chooser {
-            "WAWONA SESSIONS"
+            "WWN-IGETTY"
         } else {
             "WAWONA MACHINES"
         };
         canvas.text(36, 48, 5, title, 0xfff4_f8ff);
-        canvas.text(38, 100, 2, "MODE B OWN DISPLAY", 0xff8f_a7c4);
+        canvas.text(
+            38,
+            100,
+            2,
+            if self.show_session_chooser {
+                "TEXT CONSOLES AND VTS"
+            } else {
+                "TAP A DESKTOP TO START"
+            },
+            0xff8f_a7c4,
+        );
 
         let card_width = surface.width.saturating_sub(64);
         if self.show_session_chooser {
@@ -213,7 +286,7 @@ impl Desktop {
             if self.show_session_chooser {
                 "MACHINES"
             } else {
-                "SESSIONS"
+                "WWN-IGETTY"
             },
             0xffff_ffff,
         );
@@ -221,6 +294,9 @@ impl Desktop {
         let present = unsafe {
             wwn_iomfb_present_iosurface(self.sink_ptr(), surface.iosurface, IomfbDamage::default())
         };
+        self.last_surface = surface.iosurface as usize;
+        self.last_surface_id = surface.id;
+        self.last_present = present;
         if present == 0 {
             self.failed_presents = 0;
             tracing::info!(
@@ -273,7 +349,7 @@ extern "C" fn present_logical_session(
     kind: u8,
     label: *const c_char,
 ) -> i32 {
-    let label = if label.is_null() {
+    let label_owned = if label.is_null() {
         String::new()
     } else {
         unsafe { CStr::from_ptr(label) }
@@ -285,9 +361,38 @@ extern "C" fn present_logical_session(
         op = "switch",
         session_id,
         kind,
-        label,
+        label = label_owned.as_str(),
         "logical session selected"
     );
+    // Called from wwn_igetty_ios_switch_to while the igetty broker is locked.
+    // Do not call switch_to or recover_to_greeter here.
+    let hook = PRESENT_SESSION.load(Ordering::SeqCst);
+    if !hook.is_null() {
+        let present: PresentSessionFn = unsafe { std::mem::transmute(hook) };
+        return unsafe { present(session_id, kind, label) };
+    }
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wwn_modeb_desktop_set_present_session(
+    fn_ptr: Option<PresentSessionFn>,
+) {
+    PRESENT_SESSION.store(
+        fn_ptr.map(|f| f as *mut ()).unwrap_or(ptr::null_mut()),
+        Ordering::SeqCst,
+    );
+}
+
+#[no_mangle]
+pub extern "C" fn wwn_modeb_desktop_enter_session() -> i32 {
+    let mut state = desktop()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if state.sink == 0 {
+        return -1;
+    }
+    state.phase = DesktopPhase::Session;
     0
 }
 
@@ -297,6 +402,8 @@ fn session_kind_for_machine(machine: &Machine) -> u8 {
         3
     } else if kind.contains("container") {
         4
+    } else if kind.contains("wasm") || kind.contains("wasi") {
+        6
     } else if machine.name.to_ascii_lowercase().contains("weston")
         || machine.name.to_ascii_lowercase().contains("niri")
     {
@@ -311,9 +418,10 @@ fn session_kind_label(kind: u8) -> &'static str {
         0 => "MACHINES GREETER",
         1 => "WAWONA ZSH PTY",
         2 => "NATIVE",
-        3 => "JIT VIRTUAL MACHINE",
-        4 => "JIT CONTAINER IN VM",
+        3 => "LINUX VM",
+        4 => "CONTAINER IN VM",
         5 => "COMPOSITOR",
+        6 => "WASM",
         _ => "SESSION",
     }
 }
@@ -328,6 +436,11 @@ pub unsafe extern "C" fn wwn_modeb_desktop_start(out_width: *mut u32, out_height
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     if state.sink != 0 {
+        let _ = wwn_iomfb_set_exclusive(state.sink_ptr(), 1);
+        if state.phase == DesktopPhase::Greeter {
+            let _ = state.render_greeter();
+        }
+        let _ = wwn_modeb_claim_host();
         if !out_width.is_null() {
             *out_width = state.width;
         }
@@ -353,9 +466,34 @@ pub unsafe extern "C" fn wwn_modeb_desktop_start(out_width: *mut u32, out_height
         *state = Desktop::default();
         return igetty;
     }
+    let shell = CString::new("/usr/bin/zsh").unwrap_or_default();
+    let console = CString::new("Wawona Console").unwrap_or_default();
+    let spawned = wwn_igetty_ios_spawn_text_session(shell.as_ptr(), console.as_ptr(), 24, 80);
+    if spawned != 0 {
+        tracing::info!(
+            target: "wwn.modeb.desktop",
+            op = "spawn-console",
+            session_id = spawned,
+            "wwn-igetty text session on wwn PTY"
+        );
+    }
     state.refresh_sessions();
     state.phase = DesktopPhase::Greeter;
+    state.show_session_chooser = false;
+    /* Paint the greeter first. Then exclusive + HID steal. Never park
+     * SpringBoard/backboardd: IOMFB present needs backboardd (build 32
+     * hung on SIGSTOP and left the last SpringBoard frame on the panel). */
+    let exclusive = wwn_iomfb_set_exclusive(sink, 1);
     let render = state.render_greeter();
+    let claim = wwn_modeb_claim_host();
+    tracing::info!(
+        target: "wwn.modeb.desktop",
+        op = "claim",
+        claim,
+        exclusive,
+        render,
+        "IOMFB exclusive host claim after greeter present"
+    );
     if !out_width.is_null() {
         *out_width = state.width;
     }
@@ -420,8 +558,13 @@ pub unsafe extern "C" fn wwn_modeb_desktop_present_iosurface(
             height,
         },
     );
+    state.last_present = result;
     if result == 0 {
         state.failed_presents = 0;
+        state.last_surface = iosurface as usize;
+        state.last_surface_id = IOSurfaceGetID(iosurface);
+        state.width = width;
+        state.height = height;
     } else {
         state.failed_presents = state.failed_presents.saturating_add(1);
         if state.failed_presents >= 3 {
@@ -432,6 +575,83 @@ pub unsafe extern "C" fn wwn_modeb_desktop_present_iosurface(
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn wwn_modeb_desktop_present_bgra(
+    pixels: *const u8,
+    src_width: u32,
+    src_height: u32,
+) -> i32 {
+    if pixels.is_null() || src_width == 0 || src_height == 0 {
+        return -1;
+    }
+    let mut state = desktop()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if state.sink == 0 {
+        return -1;
+    }
+    let mut surface = IomfbSurface::default();
+    let acquire = unsafe { wwn_iomfb_acquire(state.sink_ptr(), &mut surface) };
+    if acquire != 0 || surface.iosurface.is_null() {
+        return if acquire != 0 { acquire } else { -1 };
+    }
+    state.width = surface.width;
+    state.height = surface.height;
+    let lock = unsafe { IOSurfaceLock(surface.iosurface, 0, ptr::null_mut()) };
+    if lock != 0 {
+        return lock;
+    }
+    let base = unsafe { IOSurfaceGetBaseAddress(surface.iosurface) }.cast::<u8>();
+    if base.is_null() {
+        unsafe { IOSurfaceUnlock(surface.iosurface, 0, ptr::null_mut()) };
+        return -1;
+    }
+    let mut canvas = Canvas {
+        base,
+        width: surface.width,
+        height: surface.height,
+        stride: surface.bytes_per_row,
+    };
+    // Full-width bar so sock proof is visible on 1290x2796. Sample the Relay
+    // SHM bar color (top-left pixel) so container tint (+24 blue) shows.
+    canvas.clear(0xff1b_4332);
+    let bar_h = (src_height / 5).max(64).min(surface.height / 4);
+    let b0 = unsafe { *pixels };
+    let g0 = unsafe { *pixels.add(1) };
+    let r0 = unsafe { *pixels.add(2) };
+    let a0 = unsafe { *pixels.add(3) };
+    let bar = (a0 as u32) << 24 | (r0 as u32) << 16 | (g0 as u32) << 8 | (b0 as u32);
+    canvas.rect(0, 0, surface.width, bar_h, bar);
+    let _ = (src_width, src_height); // SHM size kept for callers / logs
+    unsafe { IOSurfaceUnlock(surface.iosurface, 0, ptr::null_mut()) };
+    let result = wwn_iomfb_present_iosurface(
+        state.sink_ptr(),
+        surface.iosurface,
+        IomfbDamage {
+            x: 0,
+            y: 0,
+            width: surface.width,
+            height: surface.height,
+        },
+    );
+    state.last_present = result;
+    if result == 0 {
+        state.failed_presents = 0;
+        state.last_surface = surface.iosurface as usize;
+        state.last_surface_id = surface.id;
+    } else {
+        state.failed_presents = state.failed_presents.saturating_add(1);
+        if state.failed_presents >= 3 {
+            state.phase = DesktopPhase::Recovering;
+        }
+    }
+    result
+}
+
+#[no_mangle]
+/// Greeter card pick only (physical IOMFB pixels). Session compositor HID
+/// stays on the full-screen IOMFB overlay in `WWNSceneDelegate`: Weston DRM
+/// goes to `wwn_weston_inject_*` (logical output coords); nested niri and
+/// other host clients go to `WWNCompositorBridge`.
 pub extern "C" fn wwn_modeb_desktop_handle_touch(x: f32, y: f32, ended: u8) -> i32 {
     if ended == 0 {
         return 0;
@@ -460,15 +680,29 @@ pub extern "C" fn wwn_modeb_desktop_handle_touch(x: f32, y: f32, ended: u8) -> i
             return 0;
         };
         let session_id = session.id;
+        let kind = session.kind;
+        if kind == 0 {
+            state.show_session_chooser = false;
+            state.phase = DesktopPhase::Greeter;
+            state.active_machine = None;
+        } else {
+            state.phase = DesktopPhase::Session;
+            state.active_machine = None;
+        }
+        drop(state);
         if unsafe { wwn_igetty_ios_switch_to(session_id) } != 0 {
+            let mut state = desktop()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            state.phase = DesktopPhase::Greeter;
             return 0;
         }
-        if session.kind == 0 {
-            state.show_session_chooser = false;
+        if kind == 0 {
+            let mut state = desktop()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
             return state.render_greeter();
         }
-        state.phase = DesktopPhase::Session;
-        state.active_machine = None;
         return 0;
     }
     if index >= state.machines.len().min(6) {
@@ -477,26 +711,38 @@ pub extern "C" fn wwn_modeb_desktop_handle_touch(x: f32, y: f32, ended: u8) -> i
     let Some(session_id) = state.machine_sessions.get(index).copied() else {
         return 0;
     };
+    let machine_id = state.machines[index].id.clone();
+    state.phase = DesktopPhase::Session;
+    state.active_machine = Some(machine_id);
+    drop(state);
     if unsafe { wwn_igetty_ios_switch_to(session_id) } != 0 {
+        let mut state = desktop()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        state.phase = DesktopPhase::Greeter;
+        state.active_machine = None;
         return 0;
     }
-    state.phase = DesktopPhase::Session;
-    state.active_machine = Some(state.machines[index].id.clone());
     (index + 1) as i32
 }
 
 #[no_mangle]
 pub extern "C" fn wwn_modeb_desktop_recover_to_greeter() -> i32 {
-    let mut state = desktop()
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    state.phase = DesktopPhase::Recovering;
-    state.active_machine = None;
-    state.show_session_chooser = false;
+    {
+        let mut state = desktop()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        state.phase = DesktopPhase::Recovering;
+        state.active_machine = None;
+        state.show_session_chooser = false;
+    }
     unsafe {
         wwn_igetty_ios_switch_to(0);
         wwn_igetty_ios_adopt_live_text_sessions();
     }
+    let mut state = desktop()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     state.refresh_sessions();
     state.phase = DesktopPhase::Greeter;
     state.render_greeter()
@@ -527,6 +773,26 @@ pub extern "C" fn wwn_modeb_desktop_phase() -> u32 {
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn wwn_modeb_desktop_size(
+    out_width: *mut u32,
+    out_height: *mut u32,
+) -> i32 {
+    let state = desktop()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if state.sink == 0 || state.width == 0 || state.height == 0 {
+        return -1;
+    }
+    if !out_width.is_null() {
+        *out_width = state.width;
+    }
+    if !out_height.is_null() {
+        *out_height = state.height;
+    }
+    0
+}
+
+#[no_mangle]
 pub extern "C" fn wwn_modeb_desktop_last_error() -> *const c_char {
     let state = desktop()
         .lock()
@@ -535,19 +801,68 @@ pub extern "C" fn wwn_modeb_desktop_last_error() -> *const c_char {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn wwn_modeb_desktop_restore() -> i32 {
+pub extern "C" fn wwn_modeb_desktop_refresh() -> i32 {
     let mut state = desktop()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    if state.sink == 0 {
-        state.phase = DesktopPhase::Inactive;
+    if state.sink == 0 || state.phase != DesktopPhase::Greeter {
         return 0;
     }
-    let sink = state.sink_ptr();
+    state.render_greeter()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wwn_modeb_desktop_front_surface(
+    out_surface: *mut *mut c_void,
+    out_id: *mut u32,
+    out_width: *mut u32,
+    out_height: *mut u32,
+) -> i32 {
+    if out_surface.is_null() || out_id.is_null() || out_width.is_null() || out_height.is_null() {
+        return -1;
+    }
+    let state = desktop()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if state.last_surface == 0 {
+        *out_surface = ptr::null_mut();
+        return -1;
+    }
+    *out_surface = state.last_surface as *mut c_void;
+    *out_id = state.last_surface_id;
+    *out_width = state.width;
+    *out_height = state.height;
+    0
+}
+
+#[no_mangle]
+pub extern "C" fn wwn_modeb_desktop_last_present() -> i32 {
+    desktop()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .last_present
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wwn_modeb_desktop_restore() -> i32 {
+    // Drop the Desktop mutex before IOMFB/igetty teardown. Holding it across
+    // restore while SpringBoard suspends us is RunningBoard 0xDEAD10CC.
+    let sink = {
+        let mut state = desktop()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if state.sink == 0 {
+            state.phase = DesktopPhase::Inactive;
+            return 0;
+        }
+        let sink = state.sink_ptr();
+        *state = Desktop::default();
+        sink
+    };
     wwn_igetty_ios_shutdown();
     let result = wwn_iomfb_restore(sink);
+    wwn_modeb_release_host();
     wwn_iomfb_destroy(sink);
-    *state = Desktop::default();
     result
 }
 

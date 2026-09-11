@@ -17,7 +17,7 @@ only macOS iland Desktop.
 
 | | Mode A (store IPA) | Mode B (Sileo Mode B IPA) |
 |---|---|---|
-| VMs | UTM-SE-class **jitless** (`wwn-vms`) | UTM/QEMU **+ JIT** |
+| VMs | Wawona store runtime **jitless** (NixOS only) | Wawona Mode A + Mode B runtime **+ JIT** |
 | Containers | container-in-VM on jitless engine | container-in-VM **+ JIT** |
 | Shell | `wwn-zsh` hatch | Unsandboxed / jailbreak shell + host APT |
 | Desktop / LockScreen | Forbidden in-app | Yes via repo |
@@ -35,6 +35,7 @@ if Mode B/JIT/jailbreak engage is linked into Mode A.
 4. Wasm package manager is Mode A-safe; jailbreak `.deb` is Mode B-only channel.
 5. tvOS / watchOS / visionOS: no VM/container machine kinds.
 
-See also: `wawona-iland-mode-b-desktop`, `wawona-swinging-bridge`, `wawona-platform-targets`,
+See also: `wawona-linux-vms-relay-runtime`, `wawona-guest-wayland-iland`,
+`wawona-iland-mode-b-desktop`, `wawona-swinging-bridge`, `wawona-platform-targets`,
 `docs/vms-mode-a-b.md`, `docs/containers-mode-a-b.md`,
 `docs/wasm-package-manager.md`.

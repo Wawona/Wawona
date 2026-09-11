@@ -14,17 +14,17 @@ impl CompositorState {
         let surface_id = window.surface_id;
         self.register_window(surface_id, window)
     }
-    
+
     /// Remove a window (Delegating to destroy_window)
     pub fn remove_window(&mut self, window_id: u32) {
         self.destroy_window(window_id);
     }
-    
+
     /// Get window for surface
     pub fn get_window_for_surface(&self, surface_id: u32) -> Option<Arc<RwLock<Window>>> {
         self.get_window_by_surface(surface_id)
     }
-    
+
     /// Re-configure a window to ensure it updates its decoration mode.
     pub fn reconfigure_window_decorations(&mut self, window_id: u32) {
         let target_toplevel = self
@@ -96,9 +96,18 @@ impl CompositorState {
         if fullscreen {
             if let Some(geo) = self.get_window(window_id).map(|window| {
                 let window = window.read().unwrap();
-                (window.x, window.y, window.width as u32, window.height as u32)
+                (
+                    window.x,
+                    window.y,
+                    window.width as u32,
+                    window.height as u32,
+                )
             }) {
-                if let Some(tl) = self.xdg.toplevels.get_mut(&(client_id.clone(), toplevel_id)) {
+                if let Some(tl) = self
+                    .xdg
+                    .toplevels
+                    .get_mut(&(client_id.clone(), toplevel_id))
+                {
                     if tl.saved_geometry.is_none() {
                         tl.saved_geometry = Some(geo);
                     }
@@ -182,9 +191,18 @@ impl CompositorState {
         if maximized {
             if let Some(geo) = self.get_window(window_id).map(|window| {
                 let window = window.read().unwrap();
-                (window.x, window.y, window.width as u32, window.height as u32)
+                (
+                    window.x,
+                    window.y,
+                    window.width as u32,
+                    window.height as u32,
+                )
             }) {
-                if let Some(tl) = self.xdg.toplevels.get_mut(&(client_id.clone(), toplevel_id)) {
+                if let Some(tl) = self
+                    .xdg
+                    .toplevels
+                    .get_mut(&(client_id.clone(), toplevel_id))
+                {
                     if tl.saved_geometry.is_none() {
                         tl.saved_geometry = Some(geo);
                     }
@@ -235,26 +253,31 @@ impl CompositorState {
     /// Register a new window for a surface
     pub fn register_window(&mut self, surface_id: u32, window: Window) -> u32 {
         let window_id = window.id;
-        self.windows.insert(window_id, Arc::new(RwLock::new(window)));
+        self.windows
+            .insert(window_id, Arc::new(RwLock::new(window)));
         self.surface_to_window.insert(surface_id, window_id);
         self.window_tree.insert(window_id);
-        
+
         self.focus.set_keyboard_focus(Some(window_id));
         if let Some(old_focus_wid) = self.focus.pointer_focus {
             if let Some(old_window) = self.windows.get(&old_focus_wid) {
                 let (sid, cid) = {
                     let w = old_window.read().unwrap();
                     let sid = w.surface_id;
-                    let cid = self.get_surface(sid).and_then(|s| s.read().unwrap().client_id.clone());
+                    let cid = self
+                        .get_surface(sid)
+                        .and_then(|s| s.read().unwrap().client_id.clone());
                     (sid, cid)
                 };
                 if let Some(cid) = cid {
-                    self.ext.pointer_constraints.deactivate_constraints(cid, sid);
+                    self.ext
+                        .pointer_constraints
+                        .deactivate_constraints(cid, sid);
                 }
             }
         }
         self.focus.set_pointer_focus(Some(window_id));
-        
+
         if let Some(pending_wid) = self.pending_keyboard_focus_window.take() {
             if pending_wid == window_id as u64 {
                 let serial = self.next_serial();
@@ -285,13 +308,17 @@ impl CompositorState {
                 self.pending_keyboard_focus_window = Some(pending_wid);
             }
         }
-        
-        let client_id = self.get_surface(surface_id).and_then(|s| s.read().unwrap().client_id.clone());
+
+        let client_id = self
+            .get_surface(surface_id)
+            .and_then(|s| s.read().unwrap().client_id.clone());
         if let Some(cid) = client_id {
-            self.ext.pointer_constraints.activate_constraints(cid, surface_id);
+            self.ext
+                .pointer_constraints
+                .activate_constraints(cid, surface_id);
         }
         self.window_tree.bring_to_front(window_id);
-        
+
         tracing::info!("Registered window {} for surface {}", window_id, surface_id);
         window_id
     }
@@ -300,7 +327,7 @@ impl CompositorState {
     pub fn get_window(&self, window_id: u32) -> Option<Arc<RwLock<Window>>> {
         self.windows.get(&window_id).cloned()
     }
-    
+
     /// Get a window by Surface ID
     pub fn get_window_by_surface(&self, surface_id: u32) -> Option<Arc<RwLock<Window>>> {
         let wid = self.surface_to_window.get(&surface_id)?;
@@ -327,7 +354,7 @@ impl CompositorState {
                 self.ext.fullscreen_shell.presented_window_id = None;
                 self.ext.fullscreen_shell.presented_surface = None;
             }
-            
+
             if self.focus.has_keyboard_focus(window_id) {
                 let next = self.focus.focus_history.first().copied();
                 self.focus.set_keyboard_focus(next);
@@ -345,31 +372,30 @@ impl CompositorState {
                                 0
                             }
                         };
-                        let cid = self.get_surface(sid).and_then(|s| {
-                            s.read()
-                                .ok()
-                                .and_then(|surf| surf.client_id.clone())
-                        });
+                        let cid = self
+                            .get_surface(sid)
+                            .and_then(|s| s.read().ok().and_then(|surf| surf.client_id.clone()));
                         (sid, cid)
                     };
                     if sid != 0 {
                         if let Some(cid) = cid {
-                        self.ext.pointer_constraints.deactivate_constraints(cid, sid);
+                            self.ext
+                                .pointer_constraints
+                                .deactivate_constraints(cid, sid);
                         }
                     }
                     self.focus.set_pointer_focus(None);
                 }
             }
-            
+
             tracing::info!("Destroyed window {}", window_id);
 
             crate::core::wayland::wlr::foreign_toplevel_management::notify_toplevel_destroyed(
                 self, window_id,
             );
-            
-            self.pending_compositor_events.push(crate::core::compositor::CompositorEvent::WindowDestroyed {
-                window_id,
-            });
+
+            self.pending_compositor_events
+                .push(crate::core::compositor::CompositorEvent::WindowDestroyed { window_id });
         }
     }
 
@@ -410,15 +436,25 @@ impl CompositorState {
     // =========================================================================
 
     /// Add a virtual pointer
-    pub fn add_virtual_pointer(&mut self, client_id: ClientId, resource_id: u32, pointer: VirtualPointerState) {
-        self.wlr.virtual_pointers.insert((client_id, resource_id), pointer);
+    pub fn add_virtual_pointer(
+        &mut self,
+        client_id: ClientId,
+        resource_id: u32,
+        pointer: VirtualPointerState,
+    ) {
+        self.wlr
+            .virtual_pointers
+            .insert((client_id, resource_id), pointer);
         tracing::debug!("Added virtual pointer device for resource {}", resource_id);
     }
 
     /// Remove a virtual pointer
     pub fn remove_virtual_pointer(&mut self, client_id: ClientId, resource_id: u32) {
         self.wlr.virtual_pointers.remove(&(client_id, resource_id));
-        tracing::debug!("Removed virtual pointer device for resource {}", resource_id);
+        tracing::debug!(
+            "Removed virtual pointer device for resource {}",
+            resource_id
+        );
     }
 
     // =========================================================================
@@ -426,21 +462,31 @@ impl CompositorState {
     // =========================================================================
 
     /// Add a virtual keyboard
-    pub fn add_virtual_keyboard(&mut self, client_id: ClientId, resource_id: u32, keyboard: VirtualKeyboardState) {
-        self.wlr.virtual_keyboards.insert((client_id, resource_id), keyboard);
+    pub fn add_virtual_keyboard(
+        &mut self,
+        client_id: ClientId,
+        resource_id: u32,
+        keyboard: VirtualKeyboardState,
+    ) {
+        self.wlr
+            .virtual_keyboards
+            .insert((client_id, resource_id), keyboard);
         tracing::debug!("Added virtual keyboard device for resource {}", resource_id);
     }
 
     /// Remove a virtual keyboard
     pub fn remove_virtual_keyboard(&mut self, client_id: ClientId, resource_id: u32) {
         self.wlr.virtual_keyboards.remove(&(client_id, resource_id));
-        tracing::debug!("Removed virtual keyboard device for resource {}", resource_id);
+        tracing::debug!(
+            "Removed virtual keyboard device for resource {}",
+            resource_id
+        );
     }
 
     // =========================================================================
     // Presentation Time
     // =========================================================================
-    
+
     /// Get next presentation sequence number
     pub fn next_presentation_seq(&mut self) -> u64 {
         let seq = self.ext.presentation.next_seq;
@@ -472,22 +518,40 @@ impl CompositorState {
         {
             let output = &mut self.outputs[idx];
             if let Some(w) = width {
-                if output.width != w { output.width = w; changed = true; }
+                if output.width != w {
+                    output.width = w;
+                    changed = true;
+                }
             }
             if let Some(h) = height {
-                if output.height != h { output.height = h; changed = true; }
+                if output.height != h {
+                    output.height = h;
+                    changed = true;
+                }
             }
             if let Some(r) = refresh {
-                if output.refresh != r { output.refresh = r; changed = true; }
+                if output.refresh != r {
+                    output.refresh = r;
+                    changed = true;
+                }
             }
             if let Some(s) = scale {
-                if (output.scale - s).abs() > 0.001 { output.scale = s; changed = true; }
+                if (output.scale - s).abs() > 0.001 {
+                    output.scale = s;
+                    changed = true;
+                }
             }
             if let Some(px) = x {
-                if output.x != px { output.x = px; changed = true; }
+                if output.x != px {
+                    output.x = px;
+                    changed = true;
+                }
             }
             if let Some(py) = y {
-                if output.y != py { output.y = py; changed = true; }
+                if output.y != py {
+                    output.y = py;
+                    changed = true;
+                }
             }
 
             if changed {
@@ -497,11 +561,18 @@ impl CompositorState {
                     mode.refresh = output.refresh;
                 }
                 output.usable_area = crate::util::geometry::Rect::new(
-                    output.x, output.y, output.width, output.height
+                    output.x,
+                    output.y,
+                    output.width,
+                    output.height,
                 );
                 tracing::info!(
                     "Output {} updated: {}x{} @ {}mHz, scale {}",
-                    output_id, output.width, output.height, output.refresh, output.scale
+                    output_id,
+                    output.width,
+                    output.height,
+                    output.refresh,
+                    output.scale
                 );
             }
         }
@@ -512,37 +583,48 @@ impl CompositorState {
 
         true
     }
-    
+
     // =========================================================================
     // Idle Inhibition
     // =========================================================================
-    
+
     // =========================================================================
     // Layer Surface Management
     // =========================================================================
-    
+
     /// Add a layer surface
     pub fn add_layer_surface(&mut self, client_id: ClientId, surface: LayerSurface) -> u32 {
         let id = surface.surface_id;
-        self.wlr.layer_surfaces.insert((client_id.clone(), id), Arc::new(RwLock::new(surface)));
+        self.wlr
+            .layer_surfaces
+            .insert((client_id.clone(), id), Arc::new(RwLock::new(surface)));
         tracing::debug!("Added layer surface {}", id);
         id
     }
-    
+
     /// Remove a layer surface
     pub fn remove_layer_surface(&mut self, client_id: ClientId, surface_id: u32) {
         self.wlr.layer_surfaces.remove(&(client_id, surface_id));
         tracing::debug!("Removed layer surface {}", surface_id);
     }
-    
+
     /// Get a layer surface
-    pub fn get_layer_surface(&self, client_id: ClientId, surface_id: u32) -> Option<Arc<RwLock<LayerSurface>>> {
-        self.wlr.layer_surfaces.get(&(client_id, surface_id)).cloned()
+    pub fn get_layer_surface(
+        &self,
+        client_id: ClientId,
+        surface_id: u32,
+    ) -> Option<Arc<RwLock<LayerSurface>>> {
+        self.wlr
+            .layer_surfaces
+            .get(&(client_id, surface_id))
+            .cloned()
     }
-    
+
     /// Get all layer surfaces for an output
     pub fn layer_surfaces_for_output(&self, output_id: u32) -> Vec<Arc<RwLock<LayerSurface>>> {
-        self.wlr.layer_surfaces.values()
+        self.wlr
+            .layer_surfaces
+            .values()
             .filter(|ls| ls.read().unwrap().output_id == output_id)
             .cloned()
             .collect()

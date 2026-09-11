@@ -16,7 +16,7 @@ final class WWNUnifiedWindowController: NSObject {
     static let shared = WWNUnifiedWindowController()
 
     private var windowController: NSWindowController?
-    private let router = WWNMainWindowRouter()
+    private let router = WWNMainWindowRouter.shared
     private let valueModel = WWNSettingsValueModel.shared
 
     // MARK: - ObjC entry points
@@ -28,8 +28,9 @@ final class WWNUnifiedWindowController: NSObject {
         present()
     }
 
-    /// ⌘, menu, gear button, `PlatformGlobalSettings.open()`: open the unified
-    /// window on the first settings section.
+    /// ⌘, menu, `PlatformGlobalSettings.open()`: open the unified window
+    /// on the first settings section. The Machines toolbar has no gear;
+    /// Settings live in the sidebar.
     @objc func showSettings() {
         router.showSettings()
         present()
@@ -45,7 +46,7 @@ final class WWNUnifiedWindowController: NSObject {
 
     private func makeWindowIfNeeded() {
         guard windowController == nil else { return }
-        let root = WawonaMainWindowView(model: valueModel, router: router)
+        let root = WawonaMainWindowView(model: valueModel, router: router, onConnect: nil)
         let hosting = NSHostingController(rootView: root)
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1280, height: 860),

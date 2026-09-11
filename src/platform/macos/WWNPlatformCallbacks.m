@@ -672,6 +672,14 @@ static void WWNConfigureBundledWestonDataIfNeeded(void) {
   if ([[NSFileManager defaultManager] fileExistsAtPath:westonBackends]) {
     setenv("WESTON_BACKEND_DIR", westonBackends.UTF8String, 1);
   }
+#if TARGET_OS_IPHONE
+  /* Always override meson LIBWESTON_MODULEDIR (/nix/store/.../drm-backend.so).
+     Static drm + desktop-shell stay linked. A leftover dlopen must stay
+     inside the bundle, even when libweston-13 is absent. */
+  NSString *iosBackends = [WWNWawonaLibRoot()
+      stringByAppendingPathComponent:@"libweston-13"];
+  setenv("WESTON_BACKEND_DIR", iosBackends.UTF8String, 1);
+#endif
 
   NSFileManager *fm = [NSFileManager defaultManager];
   NSString *bundleRoot = [[NSBundle mainBundle] bundlePath];
@@ -766,13 +774,15 @@ void WWNConfigureBundledRuntimeEnvIfNeeded(void) {
     WWNSetEnvIfUnset(@"WAWONA_APP_BUNDLE_ROOT", appRoot);
     WWNSetEnvIfUnset(@"WAWONA_LIB_ROOT", libRoot);
     WWNConfigureBundledXkbIfNeeded();
-    WWNConfigureBundledWestonDataIfNeeded();
     // Sets WAWONA_SHARE_ROOT + XDG_DATA_DIRS / XDG_DATA_HOME for fuzzel.
     WWNEnsureFuzzelXdgEnv();
     WWNLog("BUNDLE", @"App root: %s", appRoot.UTF8String);
     WWNLog("BUNDLE", @"Share root: %s", getenv("WAWONA_SHARE_ROOT") ?: "(nil)");
     WWNLog("BUNDLE", @"Lib root: %s", libRoot.UTF8String);
   });
+  /* Weston dirs: rewrite every refresh. Skinny /Applications copies and
+   * incremental Debug can grow Resources/lib after first launch. */
+  WWNConfigureBundledWestonDataIfNeeded();
   /* Fonts: rewrite every refresh so FONTCONFIG_FILE tracks the live bundle. */
   WWNConfigureBundledFontsIfNeeded();
 }

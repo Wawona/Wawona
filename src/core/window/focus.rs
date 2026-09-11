@@ -7,7 +7,7 @@ pub struct FocusManager {
     pub keyboard_focus: Option<u32>,
     /// The window that currently has pointer focus.
     pub pointer_focus: Option<u32>,
-    
+
     /// Window focus history (for alt-tab)
     pub focus_history: Vec<u32>,
     /// Grabbed surface (for drag operations)

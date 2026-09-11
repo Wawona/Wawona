@@ -8,43 +8,25 @@
 //!
 //! This is the Rust core that platform adapters interact with via FFI.
 
-use std::sync::{Arc, Mutex};
 use std::collections::{HashMap, HashSet};
 use std::os::unix::io::{AsRawFd, RawFd};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use wayland_server::{Display, DisplayHandle};
+use anyhow::{Context, Result};
 use wayland_server::backend::{ClientData, ClientId, DisconnectReason};
-use anyhow::{Result, Context};
+use wayland_server::{Display, DisplayHandle};
 
-use crate::core::state::CompositorState;
-use crate::core::window::DecorationMode;
 use crate::core::errors::CoreError;
 use crate::core::socket_manager::SocketManager;
+use crate::core::state::CompositorState;
 use crate::core::traits::ProtocolState;
 use crate::core::wayland::policy::ProtocolProfile;
+use crate::core::window::DecorationMode;
 
 // Import protocol modules to ensure trait impls are linked
 #[allow(unused_imports)]
-use crate::core::wayland::ext::subcompositor;
-#[allow(unused_imports)]
-use crate::core::wayland::xdg::decoration;
-#[allow(unused_imports)]
-use crate::core::wayland::xdg::xdg_output;
-#[allow(unused_imports)]
-use crate::core::wayland::ext::viewporter;
-#[allow(unused_imports)]
-use crate::core::wayland::ext::presentation_time;
-#[allow(unused_imports)]
-use crate::core::wayland::ext::relative_pointer;
-#[allow(unused_imports)]
-use crate::core::wayland::ext::pointer_constraints;
-#[allow(unused_imports)]
-use crate::core::wayland::ext::pointer_gestures;
-#[allow(unused_imports)]
 use crate::core::wayland::ext::idle_inhibit;
-#[allow(unused_imports)]
-use crate::core::wayland::ext::text_input;
 #[allow(unused_imports)]
 use crate::core::wayland::ext::keyboard_shortcuts_inhibit;
 #[allow(unused_imports)]
@@ -52,9 +34,30 @@ use crate::core::wayland::ext::linux_dmabuf;
 #[allow(unused_imports)]
 use crate::core::wayland::ext::linux_explicit_sync;
 #[allow(unused_imports)]
+use crate::core::wayland::ext::pointer_constraints;
+#[allow(unused_imports)]
+use crate::core::wayland::ext::pointer_gestures;
+#[allow(unused_imports)]
+use crate::core::wayland::ext::presentation_time;
+#[allow(unused_imports)]
+use crate::core::wayland::ext::relative_pointer;
+#[allow(unused_imports)]
+use crate::core::wayland::ext::subcompositor;
+#[allow(unused_imports)]
+use crate::core::wayland::ext::text_input;
+#[allow(unused_imports)]
+use crate::core::wayland::ext::viewporter;
+#[allow(unused_imports)]
+use crate::core::wayland::wlr::{
+    data_control, export_dmabuf, foreign_toplevel_management, gamma_control, layer_shell,
+    output_management, output_power_management, screencopy,
+};
+#[allow(unused_imports)]
+use crate::core::wayland::xdg::decoration;
+#[allow(unused_imports)]
 use crate::core::wayland::xdg::xdg_foreign;
 #[allow(unused_imports)]
-use crate::core::wayland::wlr::{layer_shell, output_management, output_power_management, foreign_toplevel_management, screencopy, gamma_control, data_control, export_dmabuf};
+use crate::core::wayland::xdg::xdg_output;
 
 // ============================================================================
 // Client Data
@@ -93,16 +96,24 @@ impl WawonaClientData {
 
 impl ClientData for WawonaClientData {
     fn initialized(&self, client_id: ClientId) {
-        tracing::info!("Client {} initialized (internal id: {:?})", self.id, client_id);
+        tracing::info!(
+            "Client {} initialized (internal id: {:?})",
+            self.id,
+            client_id
+        );
     }
-    
+
     fn disconnected(&self, client_id: ClientId, reason: DisconnectReason) {
         let reason_str = match reason {
             DisconnectReason::ConnectionClosed => "connection closed",
             DisconnectReason::ProtocolError(_) => "protocol error",
         };
-        tracing::info!("Client {} disconnected: {} (internal id: {:?})", 
-            self.id, reason_str, client_id);
+        tracing::info!(
+            "Client {} disconnected: {} (internal id: {:?})",
+            self.id,
+            reason_str,
+            client_id
+        );
         if let Ok(mut queue) = self.disconnected_queue.lock() {
             queue.push(client_id);
         }
@@ -204,7 +215,10 @@ impl Default for CompositorConfig {
 #[derive(Debug, Clone)]
 pub enum CompositorEvent {
     /// A new client connected
-    ClientConnected { client_id: wayland_server::backend::ClientId, pid: Option<u32> },
+    ClientConnected {
+        client_id: wayland_server::backend::ClientId,
+        pid: Option<u32>,
+    },
     /// A client disconnected
     ClientDisconnected {
         client_id: wayland_server::backend::ClientId,
@@ -225,17 +239,39 @@ pub enum CompositorEvent {
         fills_host: bool,
     },
     /// A new popup was created
-    PopupCreated { client_id: ClientId, window_id: u32, surface_id: u32, parent_id: u32, x: i32, y: i32, width: u32, height: u32 },
+    PopupCreated {
+        client_id: ClientId,
+        window_id: u32,
+        surface_id: u32,
+        parent_id: u32,
+        x: i32,
+        y: i32,
+        width: u32,
+        height: u32,
+    },
     /// A popup was repositioned
-    PopupRepositioned { window_id: u32, x: i32, y: i32, width: u32, height: u32 },
+    PopupRepositioned {
+        window_id: u32,
+        x: i32,
+        y: i32,
+        width: u32,
+        height: u32,
+    },
     /// A window was destroyed
     WindowDestroyed { window_id: u32 },
     /// Window title changed
     WindowTitleChanged { window_id: u32, title: String },
     /// Window size changed
-    WindowSizeChanged { window_id: u32, width: u32, height: u32 },
+    WindowSizeChanged {
+        window_id: u32,
+        width: u32,
+        height: u32,
+    },
     /// Window decoration mode changed (CSD/SSD)
-    DecorationModeChanged { window_id: u32, mode: DecorationMode },
+    DecorationModeChanged {
+        window_id: u32,
+        mode: DecorationMode,
+    },
     /// Window requests activation
     WindowActivationRequested { window_id: u32 },
     /// Window requests close
@@ -247,21 +283,51 @@ pub enum CompositorEvent {
     /// Window entered or left xdg fullscreen (distinct from maximize / macOS zoom).
     WindowFullscreen { window_id: u32, fullscreen: bool },
     /// Host should pin this window edge-to-edge (weston-family kiosk semantics).
-    WindowHostLocked { window_id: u32, width: u32, height: u32 },
+    WindowHostLocked {
+        window_id: u32,
+        width: u32,
+        height: u32,
+    },
     /// Window requests interactive move
-    WindowMoveRequested { window_id: u32, seat_id: u32, serial: u32 },
+    WindowMoveRequested {
+        window_id: u32,
+        seat_id: u32,
+        serial: u32,
+    },
     /// Window requests interactive resize
-    WindowResizeRequested { window_id: u32, seat_id: u32, serial: u32, edges: u32 },
+    WindowResizeRequested {
+        window_id: u32,
+        seat_id: u32,
+        serial: u32,
+        edges: u32,
+    },
     /// Surface committed with new buffer
-    SurfaceCommitted { client_id: ClientId, surface_id: u32, buffer_id: Option<u64> },
+    SurfaceCommitted {
+        client_id: ClientId,
+        surface_id: u32,
+        buffer_id: Option<u64>,
+    },
     /// Layer surface committed with new buffer (for wlr-layer-shell)
-    LayerSurfaceCommitted { client_id: ClientId, surface_id: u32, buffer_id: Option<u64> },
+    LayerSurfaceCommitted {
+        client_id: ClientId,
+        surface_id: u32,
+        buffer_id: Option<u64>,
+    },
     /// Cursor surface committed with hotspot info
-    CursorCommitted { client_id: ClientId, surface_id: u32, buffer_id: Option<u64>, hotspot_x: i32, hotspot_y: i32 },
+    CursorCommitted {
+        client_id: ClientId,
+        surface_id: u32,
+        buffer_id: Option<u64>,
+        hotspot_x: i32,
+        hotspot_y: i32,
+    },
     /// Cursor shape changed via wp_cursor_shape protocol
     CursorShapeChanged { shape: u32 },
     /// System bell / notification requested by client
-    SystemBell { client_id: ClientId, surface_id: u32 },
+    SystemBell {
+        client_id: ClientId,
+        surface_id: u32,
+    },
     /// Redraw needed
     RedrawNeeded { window_id: u32 },
 }
@@ -280,34 +346,34 @@ pub enum CompositorEvent {
 pub struct Compositor {
     /// Wayland display
     display: Display<CompositorState>,
-    
+
     /// Socket manager (handles multiple sockets)
     socket_manager: SocketManager,
-    
+
     /// Compositor configuration
     config: CompositorConfig,
-    
+
     /// Next client ID
     next_client_id: u32,
-    
+
     /// Connected clients
     clients: HashMap<u32, WawonaClientData>,
-    
+
     /// Disconnect notifications collected from ClientData callbacks
     disconnected_clients: Arc<Mutex<Vec<ClientId>>>,
-    
+
     /// Event queue for platform
     events: Vec<CompositorEvent>,
-    
+
     /// Running state
     running: bool,
-    
+
     /// Serial number generator
     serial: u32,
-    
+
     /// Last frame time
     last_frame: Instant,
-    
+
     /// Last ping time for heartbeats
     last_ping: Instant,
 }
@@ -316,20 +382,22 @@ impl Compositor {
     /// Create a new compositor with the given configuration
     pub fn new(config: CompositorConfig) -> Result<Self> {
         tracing::info!("Creating compositor with socket: {}", config.socket_name);
-        
+
         // Create the Wayland display
-        let display = Display::new()
-            .context("Failed to create Wayland display")?;
-        
+        let display = Display::new().context("Failed to create Wayland display")?;
+
         // Ensure runtime directory exists
         let runtime_dir = Self::ensure_runtime_dir()?;
-        
+
         // Create socket manager and bind primary socket
         let mut socket_manager = SocketManager::new(&runtime_dir)?;
         socket_manager.bind_primary(&config.socket_name)?;
-        
-        tracing::info!("Compositor listening on: {}", socket_manager.primary_socket_path().display());
-        
+
+        tracing::info!(
+            "Compositor listening on: {}",
+            socket_manager.primary_socket_path().display()
+        );
+
         Ok(Self {
             display,
             socket_manager,
@@ -344,110 +412,120 @@ impl Compositor {
             last_ping: Instant::now(),
         })
     }
-    
+
     /// Create compositor with default configuration
     pub fn new_default() -> Result<Self> {
         Self::new(CompositorConfig::default())
     }
-    
+
     /// Get the display handle for registering globals
     pub fn display_handle(&self) -> DisplayHandle {
         self.display.handle()
     }
-    
+
     /// Get the socket path
     pub fn socket_path(&self) -> String {
-        self.socket_manager.primary_socket_path().to_string_lossy().to_string()
+        self.socket_manager
+            .primary_socket_path()
+            .to_string_lossy()
+            .to_string()
     }
-    
+
     /// Get the socket name
     pub fn socket_name(&self) -> &str {
         self.socket_manager.primary_socket_name()
     }
-    
+
     /// Get the socket file descriptors for polling
     pub fn socket_fds(&self) -> Vec<RawFd> {
         self.socket_manager.poll_fds()
     }
-    
+
     /// Add an additional Unix socket
     pub fn add_unix_socket(&mut self, path: &str) -> Result<()> {
-        self.socket_manager.add_unix_socket(path)
+        self.socket_manager
+            .add_unix_socket(path)
             .context(format!("Failed to add Unix socket: {}", path))
     }
-    
+
     /// Add a vsock listener
     pub fn add_vsock_listener(&mut self, port: u32) -> Result<()> {
-        self.socket_manager.add_vsock_listener(port)
+        self.socket_manager
+            .add_vsock_listener(port)
             .context(format!("Failed to add vsock listener on port {}", port))
     }
-    
+
     /// Remove a socket
     pub fn remove_socket(&mut self, identifier: &str) -> Result<()> {
-        self.socket_manager.remove_socket(identifier)
+        self.socket_manager
+            .remove_socket(identifier)
             .context(format!("Failed to remove socket: {}", identifier))
     }
-    
+
     /// Get list of all socket paths
     pub fn get_socket_paths(&self) -> Vec<String> {
-        self.socket_manager.get_socket_info()
+        self.socket_manager
+            .get_socket_info()
             .iter()
             .map(|info| info.identifier.clone())
             .collect()
     }
-    
+
     /// Get the display file descriptor for polling
     pub fn display_fd(&mut self) -> RawFd {
         self.display.backend().poll_fd().as_raw_fd()
     }
-    
+
     /// Check if compositor is running
     pub fn is_running(&self) -> bool {
         self.running
     }
-    
+
     /// Get configuration
     pub fn config(&self) -> &CompositorConfig {
         &self.config
     }
-    
+
     /// Get mutable configuration
     pub fn config_mut(&mut self) -> &mut CompositorConfig {
         &mut self.config
     }
-    
+
     // =========================================================================
     // Lifecycle
     // =========================================================================
-    
+
     /// Start the compositor
-    /// 
+    ///
     /// This registers all protocol globals and prepares for client connections.
     pub fn start(&mut self, state: &mut CompositorState) -> Result<()> {
         if self.running {
             return Err(CoreError::state_error("Compositor already running").into());
         }
-        
+
         tracing::info!("Starting compositor");
-        
+
         // Register protocol globals
         self.register_globals(state)?;
-        
+
         self.running = true;
         self.last_frame = Instant::now();
-        
+
         tracing::info!("Compositor started successfully");
         Ok(())
     }
-    
+
     /// Stop the compositor
     pub fn stop(&mut self) -> Result<()> {
         if !self.running {
             return Err(CoreError::state_error("Compositor not running").into());
         }
-        
-        tracing::info!("Stopping compositor - disconnecting {} clients", self.clients.len());
-        
+
+        tracing::info!(
+            "Stopping compositor - disconnecting {} clients",
+            self.clients.len()
+        );
+
         // Properly disconnect all clients by killing their connections.
         let client_ids: Vec<u32> = self.clients.keys().copied().collect();
         let client_count = client_ids.len();
@@ -457,26 +535,26 @@ impl Compositor {
 
         // Drop remaining local bookkeeping after disconnect requests.
         self.clients.clear();
-        
+
         // Flush any pending events to clients before shutdown
         // This ensures clients receive disconnect notifications
         if let Err(e) = self.display.flush_clients() {
             tracing::warn!("Error flushing clients during shutdown: {}", e);
         }
-        
+
         // Give clients a brief moment to process disconnect
         // This helps prevent the "dispatch function returned negative value" spam
         std::thread::sleep(std::time::Duration::from_millis(50));
-        
+
         // Close all sockets
         self.socket_manager.close_all();
-        
+
         self.running = false;
-        
+
         tracing::info!("Compositor stopped ({} clients disconnected)", client_count);
         Ok(())
     }
-    
+
     /// Register all Wayland protocol globals
     fn register_globals(&mut self, state: &mut CompositorState) -> Result<()> {
         let dh = self.display.handle();
@@ -489,14 +567,15 @@ impl Compositor {
         crate::core::wayland::wlr::register(state, &dh);
         crate::core::wayland::plasma::register(state, &dh);
         crate::core::wayland::ext::register(state, &dh);
+        crate::core::wayland::host_im::attach(&mut self.display, state);
 
         Ok(())
     }
-    
+
     // =========================================================================
     // Event Processing
     // =========================================================================
-    
+
     /// Accept pending client connections
     pub fn accept_connections(&mut self, _state: &mut CompositorState) {
         let mut display_handle = self.display.handle();
@@ -504,7 +583,7 @@ impl Compositor {
         while let Some((_socket_type, stream)) = self.socket_manager.accept_any() {
             let next_id = self.next_client_id;
             self.next_client_id += 1;
-            
+
             // Install disconnect-aware client data immediately so the backend
             // callback queue remains accurate for all clients. This also carries
             // the per-client Smithay CompositorClientState (see
@@ -518,17 +597,21 @@ impl Compositor {
             match display_handle.insert_client(stream, Arc::new(client_data_for_backend)) {
                 Ok(client) => {
                     let backend_id = client.id();
-                    tracing::info!("Accepted client connection: {} (backend={:?})", next_id, backend_id);
-                    
+                    tracing::info!(
+                        "Accepted client connection: {} (backend={:?})",
+                        next_id,
+                        backend_id
+                    );
+
                     let client_data = WawonaClientData::new(
                         next_id,
                         backend_id.clone(),
                         self.disconnected_clients.clone(),
                     );
-                    
+
                     // Track the client
                     self.clients.insert(next_id, client_data.clone());
-                    
+
                     // Emit event
                     self.events.push(CompositorEvent::ClientConnected {
                         client_id: backend_id,
@@ -551,26 +634,31 @@ impl Compositor {
         }
         0
     }
-    
+
     /// Convert internal u32 back to backend ClientId
     pub fn internal_to_client_id(&self, internal_id: u32) -> Option<ClientId> {
-        self.clients.get(&internal_id).map(|data| data.backend_id.clone())
+        self.clients
+            .get(&internal_id)
+            .map(|data| data.backend_id.clone())
     }
-    
+
     /// Dispatch pending Wayland events
     pub fn dispatch(&mut self, state: &mut CompositorState) -> Result<usize> {
         if !self.running {
             return Ok(0);
         }
-        
+
         // Accept any pending connections first
         self.accept_connections(state);
-        
+
         // Dispatch events to clients.
         //
         // A nested compositor (weston, cage, etc.) exiting can race with
         // dispatch/flush and produce transient backend errors. Those should not
         // be treated as fatal for the host compositor.
+        if let Some(relay) = state.host_im.as_mut() {
+            crate::core::wayland::host_im::prepare(relay);
+        }
         let dispatched = match self.display.dispatch_clients(state) {
             Ok(count) => count,
             Err(e) => {
@@ -581,7 +669,8 @@ impl Compositor {
                 0
             }
         };
-        
+        crate::core::wayland::host_im::finish(state);
+
         // Flush client event queues. Treat disconnect-related failures as
         // non-fatal to keep the compositor alive for remaining clients.
         if let Err(e) = self.display.flush_clients() {
@@ -590,7 +679,7 @@ impl Compositor {
                 e
             );
         }
-        
+
         // Reconcile clients that disconnected during dispatch/flush.
         self.reconcile_disconnected_clients(state);
 
@@ -603,7 +692,7 @@ impl Compositor {
             self.ping_clients(state);
             self.last_ping = Instant::now();
         }
-        
+
         Ok(dispatched)
     }
 
@@ -645,14 +734,18 @@ impl Compositor {
             }
         }
     }
-    
+
     /// Dispatch with timeout (for poll-based event loops).
     /// Currently dispatches without blocking; proper epoll-based dispatch with
     /// timeout requires platform-specific `poll(2)` / `kevent()` integration.
-    pub fn dispatch_timeout(&mut self, state: &mut CompositorState, _timeout: Duration) -> Result<usize> {
+    pub fn dispatch_timeout(
+        &mut self,
+        state: &mut CompositorState,
+        _timeout: Duration,
+    ) -> Result<usize> {
         self.dispatch(state)
     }
-    
+
     /// Flush all client event queues
     pub fn flush(&mut self) -> Result<()> {
         // Client disconnects can race with flush. Do not hard-fail the main
@@ -665,57 +758,57 @@ impl Compositor {
         }
         Ok(())
     }
-    
+
     // =========================================================================
     // Serial Numbers
     // =========================================================================
-    
+
     /// Get the next serial number
     pub fn next_serial(&mut self) -> u32 {
         let serial = self.serial;
         self.serial = self.serial.wrapping_add(1);
         serial
     }
-    
+
     /// Get current serial without incrementing
     pub fn current_serial(&self) -> u32 {
         self.serial
     }
-    
+
     // =========================================================================
     // Events
     // =========================================================================
-    
+
     /// Take all pending events (clears the internal queue)
     pub fn take_events(&mut self) -> Vec<CompositorEvent> {
         std::mem::take(&mut self.events)
     }
-    
+
     /// Push an event to the queue
     pub fn push_event(&mut self, event: CompositorEvent) {
         self.events.push(event);
     }
-    
+
     /// Check if there are pending events
     pub fn has_events(&self) -> bool {
         !self.events.is_empty()
     }
-    
+
     // =========================================================================
     // Frame Timing
     // =========================================================================
-    
+
     /// Get time since last frame in milliseconds
     pub fn time_since_last_frame_ms(&self) -> u32 {
         self.last_frame.elapsed().as_millis() as u32
     }
-    
+
     /// Mark frame as complete
     pub fn mark_frame_complete(&mut self, state: &mut CompositorState) {
         self.last_frame = Instant::now();
         state.flush_buffer_releases();
     }
-    
+
     /// Get current timestamp in milliseconds (for Wayland events).
     /// Uses monotonic time since first call so values stay within u32 range.
     pub fn timestamp_ms() -> u32 {
@@ -726,16 +819,16 @@ impl Compositor {
         let start = COMPOSITOR_EPOCH.get_or_init(Instant::now);
         start.elapsed().as_millis() as u32
     }
-    
+
     // =========================================================================
     // Client Management
     // =========================================================================
-    
+
     /// Get connected client count
     pub fn client_count(&self) -> usize {
         self.clients.len()
     }
-    
+
     /// Get client IDs
     pub fn client_ids(&self) -> Vec<u32> {
         self.clients.keys().copied().collect()
@@ -773,11 +866,11 @@ impl Compositor {
             .kill_client(backend_id.clone(), DisconnectReason::ConnectionClosed);
         true
     }
-    
+
     // =========================================================================
     // Helpers
     // =========================================================================
-    
+
     /// Ensure XDG_RUNTIME_DIR exists with proper permissions
     fn ensure_runtime_dir() -> Result<String> {
         use std::os::unix::fs::PermissionsExt;
@@ -829,7 +922,10 @@ impl Compositor {
         let now = Instant::now();
 
         // Check for timed-out pings (>10 seconds without pong)
-        let timed_out: Vec<u32> = state.xdg.pending_pings.iter()
+        let timed_out: Vec<u32> = state
+            .xdg
+            .pending_pings
+            .iter()
             .filter(|(_, (_, ts))| now.duration_since(*ts).as_secs() > 10)
             .map(|(serial, _)| *serial)
             .collect();
@@ -851,11 +947,12 @@ impl Compositor {
                 .send_ping(smithay::utils::Serial::from(serial))
                 .is_ok()
             {
-                state
-                    .xdg
-                    .pending_pings
-                    .insert(serial, (idx, now));
-                tracing::trace!("Sent xdg_wm_base ping: serial={} shell_index={}", serial, idx);
+                state.xdg.pending_pings.insert(serial, (idx, now));
+                tracing::trace!(
+                    "Sent xdg_wm_base ping: serial={} shell_index={}",
+                    serial,
+                    idx
+                );
             }
         }
 
@@ -904,7 +1001,7 @@ mod tests {
             .unwrap();
         client.id()
     }
-    
+
     #[test]
     fn test_config_default() {
         let config = CompositorConfig::default();
@@ -912,7 +1009,7 @@ mod tests {
         assert_eq!(config.output_width, 1920);
         assert_eq!(config.output_height, 1080);
     }
-    
+
     #[test]
     fn test_serial_generation() {
         let mut compositor = test_compositor();

@@ -106,7 +106,9 @@ is classified as partial and **refused**. Do not use CSR_* APIs.
 | `wwn-iowatchdog` (L3′, flake input) | B | macOS Watchdog CLIs; bundled as `Contents/Library/Wawona/wwn-iowatchdog` |
 | `.#wawona-macos` | A only | Product / store-safe shaped; **must not** contain Mode B dylib |
 | `.#wawona-macos-desktop-host` | A + B dylib | Developer ID / desktop-host; dylib at `Contents/Library/Wawona/iland/libwayland-mac.dylib` |
-| iOS / Android apps | A only | Never ship Mode B dylib |
+| iOS / Android store apps | A only | Never ship Mode B dylib, IOMFB, or Mode B JIT |
+| `.#wawona-ios-modeb-tipa` | B only | TrollStore `com.aspauldingcode.Wawona.ModeB`. Slim until Relay frames. Never ASC. Never QEMU |
+| `.#wawona-ios-modeb-tipa-slim` | B only | Iteration tipa: same binary, no guest disks. Verifier `--iteration`. |
 
 Cargo features for desktop-host Rust backend: `profile-desktop-host` +
 `iland-baremetal` (gated in `src/lib.rs`). Mobile and store-safe builds must
@@ -150,6 +152,12 @@ OpenGL vs Vulkan, and the live backend (ANGLE, MoltenVK, KosmicKrisp).
 
 Do not put VT switching in iland or in L4 Wawona besides launching `igettyd`
 and passing `WWN_IGETTY_GUI_*`.
+
+**wwn-igetty is not a machine.** It replicates a Linux framebuffer/console
+TTY with Doorman PAM login (`igetty` style). Machine Configuration must
+never list, create, or pick `modeb-tty` / igetty. Desktop Machine is
+weston, niri, or a KMS proof client on an assigned VT. Other VTs stay
+igetty/Doorman.
 
 Classic already runs `framebufferd` / `inputd`. After login on a text VT,
 `niri` and `weston` use iland DRM/KMS/GBM (same as the assigned GUI VT).
@@ -289,6 +297,70 @@ repo: [`wwn-iland/docs/mode-b/baremetal-display-spi-25F80.md`](../../wwn-iland/d
 Wawona Swinging Bridge settings (`wawona.swingingBridge.*`) are **not** Desktop/LockScreen. See
 [`swinging-bridge.md`](swinging-bridge.md) and Settings Desktop / App Bridge copy when those ship.
 
+## iOS / iPadOS TrollStore Desktop (not App Store)
+
+App Store / TestFlight iOS and iPadOS stay Mode A. Desktop/LockScreen remain
+**forbidden** in those binaries.
+
+The current Mode B Desktop product is a separate TrollStore tipa:
+
+| Field | Value |
+|-------|-------|
+| Bundle | `com.aspauldingcode.Wawona.ModeB` |
+| Ship name | `Wawona-{calver}-iOS-arm64.tipa` |
+| Flake | `.#wawona-ios-modeb-tipa` |
+| Sign | `ldid` on the executable. No `_CodeSignature` |
+| Launch UI | SwiftUI Machines and Settings. Same configuration surface as Mode A |
+| Desktop Replacement | Settings toggle, default off. Enable does not take the panel |
+| Present | Replace now or Start Weston/Niri: `wwn-iomfb-rs` (`wwn_iomfb_*`) to IOMobileFramebuffer for DRM/KMS |
+| Exclusive | Last-surface hold (`wwn_iomfb_set_exclusive`) plus digitizer HID steal. Guest 26.1 Ghidra: no export disables other clients. `SwapCancelAll` is this connection only. Do not SIGSTOP SpringBoard or backboardd (build 32 hung). Never park `watchdogd` |
+| Sessions | `wwn-igetty` logical switcher + bundled Wawona zsh PTYs |
+| Machines | Relay Linux VMs and container-in-VM. Planned. Fail closed. No QEMU |
+
+The IOMFB trampoline follows the guest 26.1 ABI in `wwn-iomfb-rs`
+(`include/wwn_iomfb.h` / `docs/ABI.md`). Authority binary is the vphone
+guest DSC extract, not the host macOS cache. Ghidra agrees with the
+current crate. No trampoline patch on that pass:
+
+- `SwapSetLayer` is 6-arg. `CGRect` src/dst go in `d0-d7`. Flags `0`
+- Public `SwapEnd(fb)` is 1-arg. `_kern_SwapEnd` is userclient method 5
+- Commit is `SwapBegin` / `SwapSetLayer` / `SwapEnd`. `SwapWait(token, 0)`
+  means until displayed. Do **not** wait after every `SwapEnd` on vphone
+  paravirt (never CommandWakes; the 5s gate wedges). Physical can scan
+  out without the wait
+- Wawona paints only its own BGRA IOSurfaces. `GetLayerDefaultSurface` is
+  SpringBoard's CA surface: restore-only, never a render target
+- `SwapCancel` is per-token (selector `0x34`). No safe no-arg cancel-all
+- Layer max is 4. Wawona's 3 is a conservative subset
+- Vsync notify is type 5 / selector `0x48`, not wiki selector 9
+
+Leave Desktop restores the default surface, then releases HID. Do not
+park host UI processes to get exclusive scanout.
+
+Toggle off (or leave the session) restores IOMFB and returns Machines. Do not
+paint a framebuffer machine picker over Settings.
+
+TrollStore does **not** include Swinging Bridge, ElleKit, host APT, or Doorman.
+Wasm JIT is deferred to [#143](https://github.com/Wawona/Wawona/issues/143).
+Sileo from `repo.wawona.io` is a later jailbreak provider that may add those.
+
+UIKit stays input and lifecycle glue. Native IOSurface buffers stay zero-copy.
+`wl_shm` and non-IOSurface Metal textures use explicit fallbacks. See
+[`linux-dmabuf-zero-copy.md`](linux-dmabuf-zero-copy.md).
+
+Firewall:
+
+```text
+./.github/scripts/verify-ios-modeb-artifacts.sh --mode-a dist/ios-sim/Wawona.app
+./.github/scripts/verify-ios-modeb-artifacts.sh --mode-b Wawona-YY.M.D-iOS-arm64.tipa
+```
+
+Xcode Simulator is not IOMFB or JIT proof. `vphone wawona-jb` is the
+physical-class TrollStore proof device for install, open-JIT, and IOMFB
+takeover. Do not wait for STARDUST or a retail iPhone. TXM limits
+(MAP_JIT write+exec `EPERM`, Metal nil) are proven on that guest. Weston
+remains own-display.
+
 ## Store / distribution compliance (per target)
 
 macOS is **third-party distribution** (Developer ID / notarized), **not** Mac
@@ -299,7 +371,7 @@ Wawona Swinging Bridge Mode B.
 
 | Target | Distribution | Compliance bar for graphics / Desktop |
 |--------|--------------|----------------------------------------|
-| **iOS** | App Store | Mode A only; no Desktop/LockScreen UI; **no jailbreak mentions**; no Mode B dylib; SSH = libssh2 only |
+| **iOS** | App Store | Mode A only; no Desktop/LockScreen UI; **no jailbreak mentions**; no Mode B dylib/IOMFB/JIT; SSH = libssh2 only. TrollStore tipa is a separate non-store product |
 | **iPadOS** | App Store | Same as iOS for Desktop/Wawona Swinging Bridge store policy + multi-window required |
 | **visionOS** | App Store | Same Mode A / macOS-product GLES+Vulkan parity; no Mode B; multi-window required |
 | **tvOS** | App Store | Mode A GLES (ANGLE to Metal) + Vulkan (MoltenVK to Metal). No IOKit, no Mode B, no KosmicKrisp |

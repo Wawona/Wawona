@@ -91,11 +91,12 @@ watchOS runs the same Relay Pulley interpreter as iOS ([`wawona-relay-wasm`](age
 | Setting | Key | Type | Default | Platforms | Description |
 |---------|-----|------|---------|------------|-------------|
 | **Touch Input Type** | `TouchInputType` / runtime `inputProfile` | Dropdown | Multi-Touch | iOS, iPadOS, visionOS, Android (global + per-machine); watchOS Multi-Touch only | Multi-Touch (`wl_touch`) or Touchpad (virtual pointer). watchOS is direct finger only. No virtual/trackpad cursor. Per-machine override lives in Machine Settings → Input only (not Add/Edit). Prefer Multi-Touch for Weston panel / terminals / nested clients. |
+| **Pointer Emulation for Touch** | `TouchPointerEmulation` / `touchPointerEmulation` | Switch | Off | iOS, iPadOS, visionOS, Android, watchOS | Optional `wl_pointer` stream for clients that never bind `wl_touch`. Nested weston/niri chrome already gets `BTN_LEFT` from compositor seat policy. |
 | **Show Virtual Cursor** | `RenderMacOSPointer` | Switch | Off | All except watchOS | Host overlay or real macOS pointer. **Non-compositor clients only.** Nested niri/weston and iland DRM compositors hide and grab the host pointer (including iOS Touchpad `_cursorLayer`) and draw `wl_pointer` themselves. The switch does not unhide that overlay. |
 | **Nested Compositor Cursor** | `NestedCompositorCursor` | Dropdown | virtual | Leftover | Must not put a Wawona pointer on a compositor. Ignore for niri/weston. See `wawona-nested-compositor-cursor`. |
 | **Touchpad Mode** | `touchpadMode` | Switch | Off | Android | Same as Touchpad on iOS |
 | **Swap CMD with ALT** | `SwapCmdWithAlt` | Switch | On (macOS/iOS) | macOS, iOS | Swap Command and Alt keys |
-| **Universal Clipboard** | `universalClipboard` / `UniversalClipboard` | Switch | On | All | Sync clipboard with host platform |
+| **Universal Clipboard** | `universalClipboard` / `UniversalClipboard` | Switch | On | All except tvOS pasteboard | Sync `wl_data_device` with the host pasteboard. Enables macOS Edit menu and hardware-keyboard Copy/Paste. Multi-Touch long-press stays `wl_touch` so the client toolkit can show handles and Copy. Does **not** draw OS selection handles on Wayland client text. tvOS has no `UIPasteboard`. |
 
 ---
 
@@ -227,12 +228,23 @@ Apple mobile terminal/Settings keygen uses **libssh2 CLI** (`libwwn-ssh-cli.a`).
 
 ---
 
-## Desktop Replacement (macOS + Android planned; App Store iOS forbidden)
+## Desktop Replacement (macOS + Android planned; TrollStore iOS Mode B toggle; App Store iOS forbidden)
 
-**Coming soon.** Never ship Desktop/LockScreen UI on App Store Apple-mobile
+Never ship Desktop/LockScreen UI on App Store Apple-mobile
 targets, and never mention jailbreak in those binaries. Canonical behavior:
 [`iland-mode-a-b-desktop.md`](./iland-mode-a-b-desktop.md). Wawona Swinging Bridge is separate:
 [`swinging-bridge.md`](./swinging-bridge.md).
+
+### iOS TrollStore Mode B (`NSUserDefaults`)
+
+The Mode B tipa shows the same Machines and Settings UI as Mode A. IOMFB is
+idle until Desktop Replacement is engaged.
+
+| Setting | Key | Type | Default | Description |
+|---------|-----|------|---------|-------------|
+| Enable Desktop Replacement | `DesktopReplacementEnabled` | Switch | Off | Intent only. Does not take the panel. Off restores IOMFB and returns Machines |
+| Replace now | (button) | Button | - | Take IOMFB now and open the wwn-igetty picker (Weston, Niri, VM, container, Wawona Console PTY) |
+| Desktop Machine | `DesktopReplacementMachineId` | Popup | - | Preferred card on that picker. Replace now still lets you choose |
 
 ### macOS (`NSUserDefaults`)
 
@@ -265,7 +277,10 @@ Mode B loads bundled `libwayland-mac.dylib` only from
 AX id: `wwn.settings.dependencies`. Built from
 [`dependencies/wawona/settings-deps.nix`](../dependencies/wawona/settings-deps.nix)
 and shipped as `SettingsDependencies.json` for **this** product only. Never copy
-another platform's list. Rule: [`agent-rules/wawona-settings-dependencies.md`](agent-rules/wawona-settings-dependencies.md).
+another platform's list. Regenerate with `./scripts/regen-settings-deps.sh`.
+Each row is Okular-style: version, description (`role`), SPDX `license`, and
+`url` (source or project site; Open Website in the detail UI). Rule:
+[`agent-rules/wawona-settings-dependencies.md`](agent-rules/wawona-settings-dependencies.md).
 
 ---
 
@@ -273,7 +288,9 @@ another platform's list. Rule: [`agent-rules/wawona-settings-dependencies.md`](a
 
 | Control | Type | Platforms | Description |
 |---------|------|-----------|-------------|
-| Version / Platform / Install | Info | Apple Settings | CalVer, host OS + version + uname machine, install channel (TestFlight, Sideload, App Store, Simulator, macOS) |
+| Version | Info | All About hosts | CalVer marketing version (`CFBundleShortVersionString` / `versionName` / Cargo) |
+| Build | Info | All About hosts | Build number as its own row (`CFBundleVersion` / Android `versionCode` / `WAWONA_BUILD_NUMBER`) |
+| Platform / Install | Info | Apple Settings | Host OS + version + uname machine; install channel (TestFlight, App Store, TrollStore, Sileo, Sideload, Simulator, macOS) |
 | Copy Recent Logs | Button | Apple, Android, Linux | Copies a GitHub-ready report (version, host, install, active machine without secrets, last ~2000 log lines) |
 | Copy Active Machine Logs | Button | Apple Settings | Same header plus only lines tagged with the active machine id |
 | Report a Bug on GitHub | Button | Apple, Android, Linux, watchOS | Opens `Wawona/Wawona` issue form `bug.yml` with platform, install channel, version, host OS, and recent logs filled. Also copies the full report to the clipboard (except tvOS/watchOS) |

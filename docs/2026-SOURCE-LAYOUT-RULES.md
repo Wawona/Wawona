@@ -5,7 +5,7 @@ Wawona is organized around a strict ownership split:
 - `src/core` contains compositor logic, Wayland protocol handling, scene/state management, and other shared Rust compositor behavior.
 - `src/ffi` contains the public integration boundary that platform hosts call into.
 - `src/platform/*` contains platform glue only: native host code, platform UI, platform settings bridges, and native rendering helpers that present Rust-managed state.
-- `Sources/WawonaModel` contains shared Swift domain models and session orchestration (`bridging: true`).
+- `Sources/WawonaModel` contains the Apple-shared Swift wrapper for machine/session/preferences (`bridging: true`). Rust UniFFI is the intended schema owner (`docs/agent-rules/wawona-uniffi-domain.md`). Do not add new domain fields only in Swift. Generated UniFFI Swift/Kotlin are Nix `$out/uniffi` (`wawona-nix-generated`). Never commit them under `Sources/` or `android/`.
 - `Sources/WawonaUI` contains canonical Apple SwiftUI for machines (profiles + per-machine overrides), welcome, and settings **hosting** (`ObjCSettingsHostView` → native `WWNPreferences`).
 - `Sources/WawonaWatch` contains watchOS companion UI (status + quick actions, no compositor rendering).
 - `Darwin/` contains Apple app entrypoint (`Darwin/Sources/Main.swift`) and Xcode-facing app metadata.
@@ -23,8 +23,12 @@ Wawona is organized around a strict ownership split:
 ## Current Ownership Map
 
 - `src/platform/macos/ui` is now bridge/deprecated UI that is being replaced incrementally by `Sources/WawonaUI`.
-- `Sources/WawonaModel` is the source of truth for machine/session/preferences state.
-- `Sources/WawonaUI` is the source of truth for Machines and Welcome UI; global Wawona Settings UI lives in `src/platform/macos/ui/Settings` (ObjC + AppKit/UIKit).
+- `Sources/WawonaModel` is the Apple-shared Swift wrap for machine/session/preferences until the UniFFI lift. Rust is the intended source of truth.
+- `Sources/WawonaUI` is the source of truth for Machines and Welcome UI.
+- Global Settings + Machines share one SwiftUI sidebar (`WawonaMainWindowView`)
+  on macOS, iOS, iPadOS, tvOS, and visionOS. Watch uses `GlobalSettingsCatalog`.
+  Android Compose and Linux GTK use the same section order. ObjC
+  `WWNPreferences` remains the inventory builder and compositor glue.
 - `Sources/WawonaWatch` is the watchOS companion app source.
 - `src/platform/android/rendering` is the Android-native rendering helper path.
 - `dependencies/clients/wawona-shell` holds the first-party shell/launcher sources.

@@ -1,8 +1,6 @@
 //! FFI-safe types for cross-platform communication
 //! These types are exported via UniFFI and can be used from Kotlin, Swift, Python, etc.
 
-
-
 // Re-export for convenience
 pub use crate::util::geometry::{Point as UtilPoint, Rect as UtilRect};
 
@@ -20,11 +18,11 @@ impl WindowId {
     pub fn new(id: u64) -> Self {
         Self { id }
     }
-    
+
     pub fn null() -> Self {
         Self { id: 0 }
     }
-    
+
     pub fn is_null(&self) -> bool {
         self.id == 0
     }
@@ -46,11 +44,11 @@ impl SurfaceId {
     pub fn new(id: u32) -> Self {
         Self { id }
     }
-    
+
     pub fn null() -> Self {
         Self { id: 0 }
     }
-    
+
     pub fn is_null(&self) -> bool {
         self.id == 0
     }
@@ -72,11 +70,11 @@ impl BufferId {
     pub fn new(id: u64) -> Self {
         Self { id }
     }
-    
+
     pub fn null() -> Self {
         Self { id: 0 }
     }
-    
+
     pub fn is_null(&self) -> bool {
         self.id == 0
     }
@@ -135,11 +133,14 @@ impl TextureHandle {
     pub fn new(handle: u64, client_id: ClientId) -> Self {
         Self { handle, client_id }
     }
-    
+
     pub fn null() -> Self {
-        Self { handle: 0, client_id: ClientId::default() }
+        Self {
+            handle: 0,
+            client_id: ClientId::default(),
+        }
     }
-    
+
     pub fn is_null(&self) -> bool {
         self.handle == 0
     }
@@ -166,7 +167,7 @@ impl Point {
     pub fn new(x: f64, y: f64) -> Self {
         Self { x, y }
     }
-    
+
     pub fn zero() -> Self {
         Self { x: 0.0, y: 0.0 }
     }
@@ -195,9 +196,12 @@ impl Size {
     pub fn new(width: u32, height: u32) -> Self {
         Self { width, height }
     }
-    
+
     pub fn zero() -> Self {
-        Self { width: 0, height: 0 }
+        Self {
+            width: 0,
+            height: 0,
+        }
     }
 }
 
@@ -227,21 +231,36 @@ pub struct ContentRect {
 
 impl Default for ContentRect {
     fn default() -> Self {
-        Self { x: 0.0, y: 0.0, w: 1.0, h: 1.0 }
+        Self {
+            x: 0.0,
+            y: 0.0,
+            w: 1.0,
+            h: 1.0,
+        }
     }
 }
 
 impl Rect {
     pub fn new(x: i32, y: i32, width: u32, height: u32) -> Self {
-        Self { x, y, width, height }
+        Self {
+            x,
+            y,
+            width,
+            height,
+        }
     }
-    
+
     pub fn zero() -> Self {
-        Self { x: 0, y: 0, width: 0, height: 0 }
+        Self {
+            x: 0,
+            y: 0,
+            width: 0,
+            height: 0,
+        }
     }
-    
+
     pub fn contains_point(&self, px: i32, py: i32) -> bool {
-        px >= self.x 
+        px >= self.x
             && px < self.x + self.width as i32
             && py >= self.y
             && py < self.y + self.height as i32
@@ -275,32 +294,23 @@ impl Mat4 {
     pub fn identity() -> Self {
         Self {
             data: vec![
-                1.0, 0.0, 0.0, 0.0,
-                0.0, 1.0, 0.0, 0.0,
-                0.0, 0.0, 1.0, 0.0,
-                0.0, 0.0, 0.0, 1.0,
+                1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
             ],
         }
     }
-    
+
     pub fn translation(x: f32, y: f32, z: f32) -> Self {
         Self {
             data: vec![
-                1.0, 0.0, 0.0, 0.0,
-                0.0, 1.0, 0.0, 0.0,
-                0.0, 0.0, 1.0, 0.0,
-                x,   y,   z,   1.0,
+                1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, x, y, z, 1.0,
             ],
         }
     }
-    
+
     pub fn scale(x: f32, y: f32, z: f32) -> Self {
         Self {
             data: vec![
-                x,   0.0, 0.0, 0.0,
-                0.0, y,   0.0, 0.0,
-                0.0, 0.0, z,   0.0,
-                0.0, 0.0, 0.0, 1.0,
+                x, 0.0, 0.0, 0.0, 0.0, y, 0.0, 0.0, 0.0, 0.0, z, 0.0, 0.0, 0.0, 0.0, 1.0,
             ],
         }
     }
@@ -357,7 +367,7 @@ impl Default for OutputSubpixel {
 pub struct OutputMode {
     pub width: u32,
     pub height: u32,
-    pub refresh_mhz: u32,  // Refresh rate in millihertz
+    pub refresh_mhz: u32, // Refresh rate in millihertz
     pub preferred: bool,
     pub current: bool,
 }
@@ -417,8 +427,8 @@ impl OutputInfo {
 /// Window decoration mode
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum DecorationMode {
-    ClientSide,  // CSD - client draws decorations
-    ServerSide,  // SSD - compositor draws decorations
+    ClientSide, // CSD - client draws decorations
+    ServerSide, // SSD - compositor draws decorations
 }
 
 impl Default for DecorationMode {
@@ -628,14 +638,31 @@ impl WindowInfo {
 #[derive(Debug, Clone, uniffi::Enum)]
 pub enum WindowEvent {
     // Window lifecycle
-    Created { window_id: WindowId, config: WindowConfig },
-    Destroyed { window_id: WindowId },
-    
+    Created {
+        window_id: WindowId,
+        config: WindowConfig,
+    },
+    Destroyed {
+        window_id: WindowId,
+    },
+
     // Window state changes
-    TitleChanged { window_id: WindowId, title: String },
-    AppIdChanged { window_id: WindowId, app_id: String },
-    StateChanged { window_id: WindowId, state: WindowState },
-    DecorationModeChanged { window_id: WindowId, mode: DecorationMode },
+    TitleChanged {
+        window_id: WindowId,
+        title: String,
+    },
+    AppIdChanged {
+        window_id: WindowId,
+        app_id: String,
+    },
+    StateChanged {
+        window_id: WindowId,
+        state: WindowState,
+    },
+    DecorationModeChanged {
+        window_id: WindowId,
+        mode: DecorationMode,
+    },
     SizeChanged {
         window_id: WindowId,
         width: u32,
@@ -651,23 +678,34 @@ pub enum WindowEvent {
         width: u32,
         height: u32,
     },
-    
+
     // Focus changes
-    Activated { window_id: WindowId },
-    Deactivated { window_id: WindowId },
-    
+    Activated {
+        window_id: WindowId,
+    },
+    Deactivated {
+        window_id: WindowId,
+    },
+
     // Interactive operations
-    MoveRequested { window_id: WindowId, serial: u32 },
-    ResizeRequested { window_id: WindowId, serial: u32, edge: ResizeEdge },
-    
+    MoveRequested {
+        window_id: WindowId,
+        serial: u32,
+    },
+    ResizeRequested {
+        window_id: WindowId,
+        serial: u32,
+        edge: ResizeEdge,
+    },
+
     // Customize popup
-    PopupCreated { 
-        window_id: WindowId, 
+    PopupCreated {
+        window_id: WindowId,
         parent_id: WindowId,
         x: i32,
         y: i32,
         width: u32,
-        height: u32
+        height: u32,
     },
     PopupRepositioned {
         window_id: WindowId,
@@ -678,18 +716,34 @@ pub enum WindowEvent {
     },
 
     // Minimize/close requests
-    MinimizeRequested { window_id: WindowId },
-    MaximizeRequested { window_id: WindowId },
-    UnmaximizeRequested { window_id: WindowId },
-    FullscreenRequested { window_id: WindowId },
-    UnfullscreenRequested { window_id: WindowId },
-    CloseRequested { window_id: WindowId },
+    MinimizeRequested {
+        window_id: WindowId,
+    },
+    MaximizeRequested {
+        window_id: WindowId,
+    },
+    UnmaximizeRequested {
+        window_id: WindowId,
+    },
+    FullscreenRequested {
+        window_id: WindowId,
+    },
+    UnfullscreenRequested {
+        window_id: WindowId,
+    },
+    CloseRequested {
+        window_id: WindowId,
+    },
 
     // Cursor shape change (from wp_cursor_shape protocol)
-    CursorShapeChanged { shape: u32 },
+    CursorShapeChanged {
+        shape: u32,
+    },
 
     // System bell / notification
-    SystemBell { surface_id: u32 },
+    SystemBell {
+        surface_id: u32,
+    },
 }
 
 // ============================================================================
@@ -771,14 +825,15 @@ impl BufferFormat {
     pub fn bytes_per_pixel(&self) -> u32 {
         4 // All supported formats are 4 bytes per pixel
     }
-    
+
     /// Check if format has alpha channel
     pub fn has_alpha(&self) -> bool {
-        matches!(self, 
-            BufferFormat::Argb8888 | 
-            BufferFormat::Rgba8888 |
-            BufferFormat::Abgr8888 |
-            BufferFormat::Bgra8888
+        matches!(
+            self,
+            BufferFormat::Argb8888
+                | BufferFormat::Rgba8888
+                | BufferFormat::Abgr8888
+                | BufferFormat::Bgra8888
         )
     }
 }
@@ -822,7 +877,7 @@ impl BufferData {
             BufferData::Iosurface { width, .. } => *width,
         }
     }
-    
+
     pub fn height(&self) -> u32 {
         match self {
             BufferData::Shm { height, .. } => *height,
@@ -916,62 +971,53 @@ pub struct ScreencopyRequest {
 #[derive(Debug, Clone, uniffi::Enum)]
 pub enum InputEvent {
     /// Pointer motion (absolute or relative)
-    PointerMotion {
-        x: f64, 
-        y: f64, 
-        time_ms: u32
-    },
+    PointerMotion { x: f64, y: f64, time_ms: u32 },
     /// Pointer button press/release
     PointerButton {
-        button: u32, 
-        state: ButtonState, 
-        time_ms: u32
+        button: u32,
+        state: ButtonState,
+        time_ms: u32,
     },
     /// Pointer axis (scroll)
     PointerAxis {
         horizontal: f64,
         vertical: f64,
-        time_ms: u32
+        time_ms: u32,
     },
     /// Keyboard key press/release
     KeyboardKey {
         keycode: u32,
         state: KeyState,
-        time_ms: u32
+        time_ms: u32,
     },
     /// Keyboard modifiers update
     KeyboardModifiers {
         depressed: u32,
         latched: u32,
         locked: u32,
-        group: u32
+        group: u32,
     },
     /// Touch down
     TouchDown {
         id: i32,
         x: f64,
         y: f64,
-        time_ms: u32
+        time_ms: u32,
     },
     /// Touch up
-    TouchUp {
-        id: i32,
-        time_ms: u32
-    },
+    TouchUp { id: i32, time_ms: u32 },
     /// Touch motion
     TouchMotion {
         id: i32,
         x: f64,
         y: f64,
-        time_ms: u32
+        time_ms: u32,
     },
     /// Touch cancel
     TouchCancel,
     /// Touch frame
     TouchFrame,
 }
-
-
 
 /// Pointer button
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
@@ -995,7 +1041,7 @@ impl PointerButton {
             PointerButton::Other(_) => 0x113,
         }
     }
-    
+
     pub fn from_button_code(code: u32) -> Self {
         match code {
             0x110 => PointerButton::Left,
@@ -1032,8 +1078,6 @@ impl Default for AxisSource {
 // Re-using KeyState for ButtonState logic to align with InputEvent
 pub type ButtonState = KeyState;
 
-
-
 /// Pointer axis (scroll direction)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum PointerAxis {
@@ -1058,7 +1102,7 @@ impl KeyState {
     pub fn is_pressed(&self) -> bool {
         matches!(self, KeyState::Pressed)
     }
-    
+
     pub fn is_released(&self) -> bool {
         matches!(self, KeyState::Released)
     }
@@ -1246,11 +1290,7 @@ pub struct RenderNode {
 }
 
 impl RenderNode {
-    pub fn new(
-        window_id: WindowId,
-        surface_id: SurfaceId,
-        texture: TextureHandle,
-    ) -> Self {
+    pub fn new(window_id: WindowId, surface_id: SurfaceId, texture: TextureHandle) -> Self {
         Self {
             window_id,
             surface_id,
@@ -1293,7 +1333,7 @@ impl RenderScene {
             damage: vec![],
         }
     }
-    
+
     pub fn new(width: u32, height: u32, scale: f32) -> Self {
         Self {
             nodes: vec![],

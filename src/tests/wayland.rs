@@ -30,7 +30,10 @@ fn test_id_generation() {
 #[test]
 fn test_default_output_exists() {
     let state = CompositorState::new(None);
-    assert!(!state.outputs.is_empty(), "CompositorState must have at least one output for wl_output global registration");
+    assert!(
+        !state.outputs.is_empty(),
+        "CompositorState must have at least one output for wl_output global registration"
+    );
     let primary = &state.outputs[state.primary_output];
     assert!(primary.width > 0);
     assert!(primary.height > 0);

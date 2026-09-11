@@ -53,8 +53,11 @@ let
       };
       weston-simple-shm = buildFn "weston-simple-shm" { inherit simulator; };
       # Unified archive: Settings can switch Wayland/Pixman vs iland DRM/GL at
-      # runtime on GPU platforms only.
-      "weston-compositor" = buildFn "weston-compositor" {
+      # runtime on GPU platforms only. iOS/iPadOS use compositor-ios-drm so
+      # enableIlandDrm cannot be dropped by the unary-wrapper functionArgs hole.
+      "weston-compositor" = buildFn (
+        if variant == "mobile" then "weston-compositor-drm" else "weston-compositor"
+      ) {
         inherit simulator;
         enableIlandDrm = allowGpu;
       };

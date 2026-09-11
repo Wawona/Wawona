@@ -3,7 +3,7 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-/// One Machines entry point for `virtual_machine`, `container`, and Mode A wasm.
+/// One Machines entry point for `virtual_machine`, `container`, and wasm.
 /// Backend choice lives in Wawona Relay. Never QEMU. Never UTM.
 @interface WWNRelay : NSObject
 

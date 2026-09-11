@@ -75,6 +75,14 @@ pub fn machine_subtitle(profile: &MachineProfile) -> String {
             Some(label) => label,
             None => "No client configured".to_string(),
         },
+        MachineType::Wasm => profile
+            .runtime_overrides
+            .wasm_command
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .unwrap_or("wasm hello-wasi-gui")
+            .to_string(),
         MachineType::VirtualMachine => "VM profile (Relay KVM)".to_string(),
         MachineType::Container => "Container profile (OCI-in-VM)".to_string(),
         MachineType::SshWaypipe | MachineType::SshTerminal => {
@@ -100,6 +108,16 @@ pub fn machine_configuration_summary(profile: &MachineProfile) -> String {
             Some(label) => format!("Runs: {}", label),
             None => "No client configured. Edit to select one".to_string(),
         },
+        MachineType::Wasm => format!(
+            "Runs: {}",
+            profile
+                .runtime_overrides
+                .wasm_command
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .unwrap_or("wasm hello-wasi-gui")
+        ),
         MachineType::SshWaypipe => {
             let command = if profile.remote_command.is_empty() {
                 "weston-simple-shm"

@@ -60,11 +60,6 @@ These interfaces remain custom-owned in the current runtime and are intentionall
   - Equivalent status: `no-equivalent`
   - Exposure: `desktop-host`, `full-dev`
 
-- `zwp_virtual_keyboard_manager_v1`
-  - Module: `src/core/wayland/wlr/mod.rs`
-  - Equivalent status: `no-equivalent`
-  - Exposure: `desktop-host`, `full-dev`
-
 - `ext_foreign_toplevel_list_v1`
   - Module: `src/core/wayland/ext/mod.rs`
   - Equivalent status: `no-equivalent`
@@ -96,21 +91,6 @@ These interfaces remain custom-owned in the current runtime and are intentionall
   - Exposure: `desktop-host`, `full-dev`
 
 - `zwp_tablet_manager_v2`
-  - Module: `src/core/wayland/ext/mod.rs`
-  - Equivalent status: `no-equivalent`
-  - Exposure: `desktop-host`, `full-dev`
-
-- `zwp_text_input_manager_v3`
-  - Module: `src/core/wayland/ext/mod.rs`
-  - Equivalent status: `no-equivalent`
-  - Exposure: `desktop-host`, `full-dev`
-
-- `zwp_input_method_manager_v2`
-  - Module: `src/core/wayland/ext/mod.rs`
-  - Equivalent status: `no-equivalent`
-  - Exposure: `desktop-host`, `full-dev`
-
-- `zwp_primary_selection_device_manager_v1`
   - Module: `src/core/wayland/ext/mod.rs`
   - Equivalent status: `no-equivalent`
   - Exposure: `desktop-host`, `full-dev`

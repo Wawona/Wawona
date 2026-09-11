@@ -160,7 +160,10 @@ class SessionActivity : Activity(), SurfaceHolder.Callback {
             return
         }
         val wanted = try {
-            WawonaNative.nativeTextEntryWanted()
+            WawonaNative.nativeOskShouldShow(
+                hasRealExternalKeyboard(resources.configuration),
+                false,
+            )
         } catch (_: Exception) {
             false
         }

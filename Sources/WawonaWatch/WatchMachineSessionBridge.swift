@@ -25,14 +25,21 @@ enum WatchMachineSessionBridge {
         bridge.stopClient()
 
         switch profile.type {
-        case .native:
-            let clientId = resolvedNativeClientId(for: profile)
+        case .native, .wasm:
+            let clientId = profile.type == .wasm
+                ? "wawona-wasm"
+                : resolvedNativeClientId(for: profile)
             logger.appendLine("[LAUNCH] Starting \(clientId) …")
-            if clientId == "wawona-wasm" || clientId == "hello-wasi-gui" {
-                let path = profile.runtimeOverrides.wasmModulePath?
-                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                logger.appendLine("[LAUNCH] Relay wasm \(path.isEmpty ? "hello-wasi-gui (bundled)" : path)")
-                bridge.launchWasmModule(atPath: path.isEmpty ? nil : path)
+            if clientId == "wawona-wasm" || clientId == "hello-wasi-gui" || profile.type == .wasm {
+                let spec = WasmLaunchSpec(
+                    mode: WasmLaunchMode(rawValue: profile.runtimeOverrides.wasmLaunchMode ?? "command") ?? .command,
+                    modulePath: profile.runtimeOverrides.wasmModulePath ?? "",
+                    package: profile.runtimeOverrides.wasmPackage ?? "",
+                    command: profile.runtimeOverrides.wasmCommand ?? WasmLaunch.defaultCommand
+                )
+                let arg = WasmLaunch.ensureArg(spec: spec)
+                logger.appendLine("[LAUNCH] Relay wasm \(arg)")
+                bridge.launchWasmModule(atPath: arg)
             } else {
                 bridge.launchClient(withId: clientId)
             }

@@ -344,7 +344,25 @@ int wawona_wasm_can_run(const char *path) {
 }
 
 __attribute__((weak))
+void wawona_wasm_request_interrupt(void) {}
+
+__attribute__((weak))
+int wawona_wasm_is_running(void) {
+    return 0;
+}
+
+__attribute__((weak))
 int wpm_main(int argc, char **argv) {
     (void)argc; (void)argv;
     return 1;
+}
+
+__attribute__((weak))
+char *WWNHostKeymapXkbV1Copy(void) {
+    return NULL;
+}
+
+__attribute__((weak))
+void WWNHostKeymapXkbV1Free(char *s) {
+    (void)s;
 }

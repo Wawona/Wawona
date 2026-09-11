@@ -1,13 +1,13 @@
-pub mod surface;
 pub mod buffer;
-pub mod role;
 pub mod commit;
 pub mod damage;
+pub mod role;
+pub mod surface;
 
-pub use surface::{Surface, SurfaceState};
-pub use buffer::{Buffer, BufferType, ShmBufferData, DmaBufData};
-pub use role::SurfaceRole;
+pub use buffer::{Buffer, BufferType, DmaBufData, ShmBufferData};
 pub use damage::DamageRegion;
+pub use role::SurfaceRole;
+pub use surface::{Surface, SurfaceState};
 
 #[cfg(test)]
 pub mod tests;

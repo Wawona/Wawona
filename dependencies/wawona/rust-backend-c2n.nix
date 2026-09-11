@@ -127,6 +127,8 @@ let
   isWatchOS = platform == "watchos";
   isAndroid = platform == "android";
   isMacOS = platform == "macos";
+  # Host bindgen. Not crate2nix. Generates $out/uniffi. Never write into git.
+  uniffiBindgen = pkgs.callPackage ../generators/uniffi-bindgen.nix { };
   isCross = isIOS || isTVOS || isVisionOS || isWatchOS || isAndroid;
   isAppleCross = isIOS || isTVOS || isVisionOS || isWatchOS;
 
@@ -907,36 +909,50 @@ else
 
   dontUnpack = true;
   dontBuild = true;
-  nativeBuildInputs = lib.optional (appleHostCrates != null && isAppleCross) appleHostCrates;
+  nativeBuildInputs = lib.optional (appleHostCrates != null && isAppleCross) appleHostCrates
+    ++ [ uniffiBindgen ];
 
   installPhase = ''
-    mkdir -p $out/lib $out/include
+    mkdir -p $out/lib $out/include $out/uniffi/swift $out/uniffi/kotlin
 
     ln -s ${rootBuild} $out/rootBuild
     ln -s ${rootBuild.lib or rootBuild} $out/rootBuildLib
 
     find ${rootBuild.lib or rootBuild}/lib -name "libwawona*.a" -exec cp {} $out/lib/libwawona.a \;
     find ${rootBuild.lib or rootBuild}/lib -name "libwawona*.so" -exec cp {} $out/lib/libwawona_core.so \;
+    find ${rootBuild.lib or rootBuild}/lib -name "libwawona*.dylib" -exec cp {} $out/lib/libwawona.dylib \;
 
     if [ -d "${rootBuild}/bin" ]; then
       mkdir -p $out/bin
       cp -r ${rootBuild}/bin/* $out/bin/ || true
     fi
 
-    ${lib.optionalString isMacOS ''
-      # Swift bindings are produced from the built library's embedded UniFFI
-      # metadata (proc-macro / setup_scaffolding! mode. There is no UDL to
-      # point at anymore). Best-effort: only runs when a uniffi-bindgen binary
-      # is available in the crate output.
-      mkdir -p $out/uniffi/swift
-      WAWONA_DYLIB="$(find ${rootBuild.lib or rootBuild}/lib -name "libwawona*.dylib" 2>/dev/null | head -1)"
-      if [ -f "$out/bin/uniffi-bindgen" ] && [ -n "$WAWONA_DYLIB" ]; then
-        $out/bin/uniffi-bindgen generate \
-          --library "$WAWONA_DYLIB" \
-          --language swift \
-          --out-dir $out/uniffi/swift 2>&1 | tee $out/uniffi/generation.log || true
+    LIB=""
+    for cand in \
+      "$out/lib/libwawona.dylib" \
+      "$out/lib/libwawona_core.so" \
+      "$out/lib/libwawona.a"
+    do
+      if [ -f "$cand" ]; then
+        LIB="$cand"
+        break
       fi
-    ''}
+    done
+    if [ -z "$LIB" ]; then
+      echo "uniffi: no libwawona in $out/lib" >&2
+      ls -la "$out/lib" >&2 || true
+      exit 1
+    fi
+    # `--library` reads UniFFI metadata from the artifact. If bindgen falls
+    # back to `cargo metadata` (no cargo in this sandbox), keep empty dirs.
+    # Hosts still use `wawona_*` C trampolines until generated Swift is imported.
+    if uniffi-bindgen generate --library "$LIB" --language swift --out-dir "$out/uniffi/swift" \
+      && uniffi-bindgen generate --library "$LIB" --language kotlin --out-dir "$out/uniffi/kotlin"
+    then
+      echo "uniffi: generated Swift/Kotlin from $LIB"
+    else
+      echo "uniffi: bindgen skipped (cargo metadata unavailable). C trampolines stay the host path."
+    fi
   '';
 
   meta = {

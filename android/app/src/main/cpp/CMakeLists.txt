@@ -211,6 +211,20 @@ if(NOT _WAWONA_ILAND_LINKED)
         endif()
     endforeach()
 endif()
+# Relay wasm: force-load libwawona_wasm so JNI nativeRunWasm is not a weak no-op.
+if(NOT WAWONA_STUDIO_FALLBACK)
+    foreach(dir ${NIX_LIB_DIRS})
+        set(_wasm_archive "${dir}/libwawona_wasm.a")
+        if(EXISTS "${_wasm_archive}")
+            list(APPEND NIX_EXTRA_LINK_FLAGS
+                "-Wl,-u,wawona_wasm_run"
+                "-Wl,-u,wawona_wasm_can_run"
+                "${_wasm_archive}")
+            message(STATUS "Auto-linking Relay wasm: ${_wasm_archive}")
+            break()
+        endif()
+    endforeach()
+endif()
 # Presenter hard-refs gbm_es2_demo_main when WAWONA_ILAND_GL; pull it if only
 # iland+kmscube landed in NIX_DEP_LIBS (stale gradlegen without gbm-es2-demo).
 if(WAWONA_ILAND_GL AND NOT _WAWONA_GBM_ES2_LINKED)

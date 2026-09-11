@@ -3181,12 +3181,6 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
                                  enableWeston:NO];
 }
 
-- (WWNMachineProfile *)createModeBTtyMachine {
-  return [self createNativeDesktopMachineNamed:@"Mode B TTY"
-                                      clientId:@"modeb-tty"
-                                 enableWeston:NO];
-}
-
 - (WWNMachineProfile *)profileWithClientId:(NSString *)clientId {
   for (WWNMachineProfile *profile in [WWNMachineProfileStore loadProfiles]) {
     if ([[self nativeClientIdForProfile:profile] isEqualToString:clientId]) {
@@ -3200,7 +3194,7 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   WWNModeBCliLog(@"mode-b-machine %@", idOrName ?: @"(nil)");
   if (idOrName.length == 0) {
     WWNModeBCliLog(@"RESULT need id, name, or alias "
-                   @"(weston|niri|kmscube|gbm-es2-demo|vkcube|modeb-tty)");
+                   @"(weston|niri|kmscube|gbm-es2-demo|vkcube)");
     return 2;
   }
 
@@ -3208,10 +3202,13 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
   NSString *alias = idOrName.lowercaseString;
   if (!profile) {
     if ([alias isEqualToString:@"modeb-tty"] ||
-        [alias isEqualToString:@"modeb-ttyd"]) {
-      profile = [self profileWithClientId:@"modeb-tty"]
-                    ?: [self profileWithClientId:@"modeb-ttyd"]
-                    ?: [self createModeBTtyMachine];
+        [alias isEqualToString:@"modeb-ttyd"] ||
+        [alias isEqualToString:@"igetty"] ||
+        [alias isEqualToString:@"igettyd"]) {
+      WWNModeBCliLog(@"RESULT refused: wwn-igetty is the Doorman console "
+                     @"(Linux framebuffer/TTY + PAM), not a machine. "
+                     @"Machine Configuration never lists it.");
+      return 2;
     } else if ([alias isEqualToString:@"kmscube"]) {
       profile = [self profileWithClientId:@"kmscube"]
                     ?: [self createKmscubeProofMachine];
@@ -3241,7 +3238,7 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
     if (any &&
         ![WWNMachineProfileStore profileIndicatesModeBOwnDisplay:any]) {
       WWNModeBCliLog(@"RESULT refused: %@ is not own-display "
-                     @"(need weston/niri/custom, modeb-tty, kmscube, "
+                     @"(need weston/niri/custom, kmscube, "
                      @"gbm-es2-demo, or vkcube-kms). opengl-cube is a "
                      @"Wayland client of the GUI compositor.",
                      idOrName);
@@ -4804,9 +4801,9 @@ static void WWNModeBCliLog(NSString *fmt, ...) {
 
 - (int)cliStage {
   WWNModeBCliLog(@"sync-desktop-host-artifacts");
-  int sel = [self cliSelectDesktopMachine:@"modeb-tty"];
+  int sel = [self cliSelectDesktopMachine:@"weston"];
   if (sel != 0) {
-    WWNModeBCliLog(@"sync failed: could not select modeb-tty machine");
+    WWNModeBCliLog(@"sync failed: could not select weston Desktop machine");
     return sel;
   }
   NSError *err = nil;

@@ -24,9 +24,7 @@ pub fn thumbnail_path(machine_id: &str) -> Result<PathBuf> {
 
 /// True when a thumbnail PNG exists on disk.
 pub fn has_thumbnail(machine_id: &str) -> bool {
-    thumbnail_path(machine_id)
-        .ok()
-        .is_some_and(|p| p.is_file())
+    thumbnail_path(machine_id).ok().is_some_and(|p| p.is_file())
 }
 
 /// Write raw PNG bytes for a machine thumbnail.

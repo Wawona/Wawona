@@ -4,13 +4,11 @@
 //! active, keyboard events are exclusively delivered to the grabbed surface.
 
 use std::collections::HashMap;
-use wayland_server::{
-    Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
-};
 use wayland_protocols::xwayland::keyboard_grab::zv1::server::{
     zwp_xwayland_keyboard_grab_manager_v1::{self, ZwpXwaylandKeyboardGrabManagerV1},
     zwp_xwayland_keyboard_grab_v1::{self, ZwpXwaylandKeyboardGrabV1},
 };
+use wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource};
 
 use crate::core::state::CompositorState;
 
@@ -58,13 +56,25 @@ impl Dispatch<ZwpXwaylandKeyboardGrabManagerV1, ()> for CompositorState {
         data_init: &mut DataInit<'_, Self>,
     ) {
         match request {
-            zwp_xwayland_keyboard_grab_manager_v1::Request::GrabKeyboard { id, surface, seat: _ } => {
+            zwp_xwayland_keyboard_grab_manager_v1::Request::GrabKeyboard {
+                id,
+                surface,
+                seat: _,
+            } => {
                 let surface_id = surface.id().protocol_id();
                 let grab = data_init.init(id, surface_id);
                 let grab_id = grab.id().protocol_id();
 
-                state.ext.xwayland_keyboard_grab.grabs.insert(grab_id, surface_id);
-                tracing::info!("XWayland keyboard grab {} for surface {}", grab_id, surface_id);
+                state
+                    .ext
+                    .xwayland_keyboard_grab
+                    .grabs
+                    .insert(grab_id, surface_id);
+                tracing::info!(
+                    "XWayland keyboard grab {} for surface {}",
+                    grab_id,
+                    surface_id
+                );
             }
             zwp_xwayland_keyboard_grab_manager_v1::Request::Destroy => {}
             _ => {}
@@ -93,6 +103,8 @@ impl Dispatch<ZwpXwaylandKeyboardGrabV1, u32> for CompositorState {
     }
 }
 
-pub fn register_xwayland_keyboard_grab(display: &DisplayHandle) -> wayland_server::backend::GlobalId {
+pub fn register_xwayland_keyboard_grab(
+    display: &DisplayHandle,
+) -> wayland_server::backend::GlobalId {
     display.create_global::<CompositorState, ZwpXwaylandKeyboardGrabManagerV1, ()>(1, ())
 }

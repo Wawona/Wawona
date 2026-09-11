@@ -106,7 +106,8 @@ impl XkbState {
             variant,
             options,
             xkb::KEYMAP_COMPILE_NO_FLAGS,
-        ).ok_or(())?;
+        )
+        .ok_or(())?;
 
         let state = xkb::State::new(&keymap);
         let keymap_string = keymap.get_as_string(xkb::KEYMAP_FORMAT_TEXT_V1);
@@ -131,7 +132,8 @@ impl XkbState {
             keymap_str.to_string(),
             xkb::KEYMAP_FORMAT_TEXT_V1,
             xkb::KEYMAP_COMPILE_NO_FLAGS,
-        ).ok_or(())?;
+        )
+        .ok_or(())?;
 
         let state = xkb::State::new(&keymap);
         let keymap_string = keymap.get_as_string(xkb::KEYMAP_FORMAT_TEXT_V1);
@@ -169,7 +171,8 @@ impl XkbState {
         locked: xkb::ModMask,
         group: xkb::LayoutIndex,
     ) {
-        self.state.update_mask(depressed, latched, locked, 0, 0, group);
+        self.state
+            .update_mask(depressed, latched, locked, 0, 0, group);
     }
 
     /// Process a key event through XKB. Returns keysym, UTF-8 text, and
@@ -212,7 +215,8 @@ impl XkbState {
     /// Check if a specific modifier is active
     pub fn mod_is_active(&self, name: &str) -> bool {
         // xkbcommon mod names: "Shift", "Control", "Mod1" (Alt), "Mod4" (Super)
-        self.state.mod_name_is_active(name, xkb::STATE_MODS_EFFECTIVE)
+        self.state
+            .mod_name_is_active(name, xkb::STATE_MODS_EFFECTIVE)
     }
 }
 
@@ -277,74 +281,20 @@ pub fn ensure_xkb_data_root() {
             if c.join("rules").is_dir() {
                 if let Ok(canonical) = c.canonicalize() {
                     std::env::set_var("XKB_CONFIG_ROOT", &canonical);
-                    tracing::info!(
-                        "xkb: using bundled keymap root {}",
-                        canonical.display()
-                    );
+                    tracing::info!("xkb: using bundled keymap root {}", canonical.display());
                     return;
                 }
             }
         }
 
-        tracing::warn!(
-            "xkb: no bundled keymap root found; xkbcommon will use its default path"
-        );
+        tracing::warn!("xkb: no bundled keymap root found; xkbcommon will use its default path");
     });
 }
 
-/// The `XkbConfig` used for the seat keyboard on EVERY platform: a full
-/// RMLVO keymap (NOT the `MINIMAL_KEYMAP`). [`ensure_xkb_data_root`] is
-/// invoked first so xkbcommon can find the keymap data. If data is genuinely
-/// unavailable the Smithay `add_keyboard` call returns `Err`, and the caller
-/// falls back to `MINIMAL_KEYMAP` via `KeyboardHandle::set_keymap_from_string`.
-///
-/// Layout defaults to `us`, but honors `XKB_DEFAULT_LAYOUT` /
-/// `XKB_DEFAULT_VARIANT` / `XKB_DEFAULT_OPTIONS` when set before seat init
-/// (Android follow-system via `KeyboardLayouts` → JNI `setenv`, issue #60/#141).
-pub fn wawona_xkb_config() -> xkb_config_reexport::XkbConfig<'static> {
-    use std::sync::OnceLock;
-    ensure_xkb_data_root();
-
-    static LAYOUT: OnceLock<String> = OnceLock::new();
-    static VARIANT: OnceLock<String> = OnceLock::new();
-    static OPTIONS: OnceLock<Option<String>> = OnceLock::new();
-
-    let layout = LAYOUT.get_or_init(|| {
-        std::env::var("XKB_DEFAULT_LAYOUT")
-            .ok()
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| "us".to_string())
-    });
-    let variant = VARIANT.get_or_init(|| {
-        std::env::var("XKB_DEFAULT_VARIANT")
-            .ok()
-            .map(|s| s.trim().to_string())
-            .unwrap_or_default()
-    });
-    let options = OPTIONS.get_or_init(|| {
-        std::env::var("XKB_DEFAULT_OPTIONS")
-            .ok()
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-    });
-
-    if layout != "us" || !variant.is_empty() {
-        tracing::info!(
-            "xkb: seat keymap layout={} variant={} (from XKB_DEFAULT_*)",
-            layout,
-            variant
-        );
-    }
-
-    xkb_config_reexport::XkbConfig {
-        rules: "evdev",
-        model: "pc105",
-        layout: layout.as_str(),
-        variant: variant.as_str(),
-        options: options.clone(),
-    }
-}
+/// Nested weston/niri still compile RMLVO from [`ensure_xkb_data_root`].
+/// Wawona's own seat keymap is [`crate::core::input::host_keymap::generate_from_host`],
+/// not an `XKB_DEFAULT_*` OnceLock. Android `nativeSetXkbDefaults` is unused
+/// for the Wawona seat in phase 1.
 
 /// Re-export so callers don't need to depend on the smithay path directly.
 pub mod xkb_config_reexport {

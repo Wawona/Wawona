@@ -16,11 +16,15 @@ public struct WawonaVisionShell: Scene {
 
     public var body: some Scene {
         WindowGroup("Wawona") {
+            #if !SWIFT_PACKAGE
+            WawonaRootView()
+            #else
             ContentView(
                 preferences: preferences,
                 profileStore: profileStore,
                 sessions: sessions
             )
+            #endif
         }
         .defaultSize(width: 1100, height: 800)
     }

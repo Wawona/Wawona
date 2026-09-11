@@ -11,38 +11,38 @@ Desktop/LockScreen or Wawona Swinging Bridge.
 
 ## Mode A vs Mode B (iOS / iPadOS)
 
-| | **Mode A** (App Store IPA) | **Mode B** (Sileo Mode B IPA) |
+| | **Mode A** (App Store IPA) | **Mode B** (TrollStore / Sileo) |
 |---|---|---|
-| Engine | UTM-SE-class **jitless** interpreter | UTM/QEMU **with JIT** |
-| Containers | OCI pull + container-in-VM on jitless VM | Same OCI pull + **JIT** container-in-VM |
-| Ship | Store / TestFlight only | `repo.wawona.io` auto-packages Mode B IPA. **never** in App Store |
+| Engine | Relay `StaticCpu`. Planned. Fail closed. **No** Hypervisor.framework | Relay. `IosHv` when probe window matches (M1/M2/A16, ≤16.3.1); else `StaticCpu` |
+| Containers | OCI pull + container-in-VM on that Relay | Same OCI + same backend as the VM |
+| Ship | Store / TestFlight only | TrollStore tipa. `repo.wawona.io` Sileo. **never** in App Store |
 
-Design both in `wwn-vms` / `wwn-containers` / Wawona at all times. Mode B code
-must be compile-time absent from store artifacts.
+Design both in Relay / Wawona at all times. Mode B HV code must be compile-time
+absent from store artifacts (`ios-hv` feature off). No QEMU. No UTM-as-product.
+HV plan: [`relay-ios-hypervisor.md`](./relay-ios-hypervisor.md).
 
-**Backends differ by OS:** macOS → Virtualization / Apple Containerization;
-iOS family → UTM-SE-class (A) or JIT UTM (B); Android → QEMU±KVM/proot. Do not
-share one engine across those hosts. **Note:** active work on macOS Apple
-Container in `wwn-containers`. Leave that repo alone until it merges; VMs and
-Wasm packages proceed independently.
+**Backends differ by OS:** macOS → Virtualization / Apple Containerization
+(product). macOS HV is lab-only. iOS/iPadOS → Relay (`StaticCpu` / `IosHv`).
+Android / Linux → Relay (KVM on Linux). Do not share one hypervisor binary
+across those hosts.
 
 ## Platforms
 
 | Platform | Gate | Planned engine |
 |---|---|---|
 | macOS | planned | `Virtualization.framework` + Apple Containerization (not MAS for run) |
-| iOS / iPadOS | planned | **A:** jitless UTM-SE-class. **B:** JIT UTM via Sileo Mode B IPA |
-| Android | planned | QEMU ± KVM/AVF; Play = Mode A; root paths = Mode B |
-| Linux | planned | Machine profiles via `wwn-vms` / `wwn-containers` |
-| tvOS / watchOS / visionOS | **forbidden** | Native + remote only |
+| iOS / iPadOS | planned | Relay. Mode B may use Hypervisor.framework inside the UTM-era window |
+| Android | planned | Relay. Play = Mode A. Root = Mode B |
+| Linux | planned | KVM via cloud-hypervisor or crosvm |
+| tvOS / watchOS / visionOS | **forbidden** | Native + remote only (no VM/container kinds) |
 
 App Store / TestFlight copy must **never** pitch jailbreak, TrollStore, or JIT.
 Website and `repo.wawona.io` may.
 
 ## Machines kinds
 
-- `virtual_machine`. Guest VM (`wwn-vms`)
-- `container`. OCI container (`wwn-containers`)
+- `virtual_machine`. Linux guest via Relay
+- `container`. OCI in that same Linux VM
 
 ## Not Wasm
 
@@ -51,5 +51,6 @@ Installing `.wasm` is [Runtime package management](wasm-package-manager.md)
 
 ## Agent rules
 
-`.cursor/rules/wawona-mode-a-b.mdc` · `wawona-platform-targets.mdc` ·
+`.cursor/rules/wawona-mode-a-b.mdc` · `wawona-linux-vms-relay-runtime.mdc` ·
+`wawona-platform-targets.mdc` ·
 `Sources/WawonaModel/PlatformCapabilities.swift`.

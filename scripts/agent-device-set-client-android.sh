@@ -135,6 +135,7 @@ text = upsert_string(text, "wawona.activeMachineId.v1", active)
 text = upsert_bool(text, "hasSeenWelcome", "true")
 text = upsert_bool(text, "wawona.machineProfilesMigrated.v1", "true")
 text = upsert_bool(text, "waypipeSSHEnabled", "false")
+text = upsert_bool(text, "touchpadMode", "false")
 dst.write_text(text, encoding="utf-8")
 print(f"set nativeLauncher={client} active={active} profiles={len(profiles)}")
 PY

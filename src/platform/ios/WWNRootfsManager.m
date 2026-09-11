@@ -18,6 +18,33 @@ static NSString *const kWWNRootfsReadmeText =
     "\n"
     "Tip: Import files with Settings → Local Shell → Import File to Home.\n";
 
+/* Bundle embed strips +x (ASC treats +x rootfs files as unsigned code).
+ * Restore Unix execute bits on the Application Support copy so zsh hashcmd
+ * / command -v can see sh and zsh. The files stay comment placeholders. */
+static void
+WWNRootfsMarkInterpreterStubsExecutable(NSString *activeRoot) {
+  NSFileManager *fm = [NSFileManager defaultManager];
+  NSArray<NSString *> *names =
+      @[ @"sh", @"zsh", @"bash", @"dash", @"chmod" ];
+  for (NSString *dir in @[ @"usr/bin", @"bin" ]) {
+    for (NSString *name in names) {
+      NSString *path = [[activeRoot stringByAppendingPathComponent:dir]
+          stringByAppendingPathComponent:name];
+      if (![fm fileExistsAtPath:path]) {
+        continue;
+      }
+      NSDictionary *attrs = [fm attributesOfItemAtPath:path error:nil];
+      NSUInteger mode = [attrs filePosixPermissions];
+      if ((mode & 0111) == 0111) {
+        continue;
+      }
+      [fm setAttributes:@{NSFilePosixPermissions : @(0755)}
+           ofItemAtPath:path
+                  error:nil];
+    }
+  }
+}
+
 @implementation WWNRootfsManager
 
 + (NSString *)bundleRootfsPath {
@@ -299,6 +326,7 @@ static NSString *const kWWNRootfsReadmeText =
                  atomically:YES
                    encoding:NSUTF8StringEncoding
                       error:nil];
+  WWNRootfsMarkInterpreterStubsExecutable(activeRoot);
   return YES;
 }
 
@@ -400,6 +428,7 @@ static NSString *const kWWNRootfsReadmeText =
       ![appliedVer isEqualToString:bundleTemplateVer];
 
   if (!needSystemTreeRefresh) {
+    WWNRootfsMarkInterpreterStubsExecutable(activeRoot);
     return YES;
   }
 

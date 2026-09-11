@@ -2,13 +2,11 @@
 //!
 //! Provides color representation hints for surfaces.
 
-use wayland_server::{
-    Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
-};
 use wayland_protocols::wp::color_representation::v1::server::{
     wp_color_representation_manager_v1::{self, WpColorRepresentationManagerV1},
     wp_color_representation_surface_v1::{self, WpColorRepresentationSurfaceV1},
 };
+use wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource};
 
 use crate::core::state::CompositorState;
 

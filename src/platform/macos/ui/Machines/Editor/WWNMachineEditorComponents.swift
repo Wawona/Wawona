@@ -1,5 +1,8 @@
 import SwiftUI
 import WawonaModel
+#if os(macOS)
+import AppKit
+#endif
 
 // MARK: - Card
 
@@ -62,6 +65,18 @@ struct WWNEditorCard<Content: View>: View {
       RoundedRectangle(cornerRadius: 16, style: .continuous)
         .fill(Color.secondary.opacity(0.07))
     )
+    .overlay {
+      RoundedRectangle(cornerRadius: 16, style: .continuous)
+        .strokeBorder(editorCardOutlineColor, lineWidth: 1)
+    }
+  }
+
+  private var editorCardOutlineColor: Color {
+    #if os(macOS)
+    Color(nsColor: .separatorColor)
+    #else
+    Color.primary.opacity(0.12)
+    #endif
   }
 }
 

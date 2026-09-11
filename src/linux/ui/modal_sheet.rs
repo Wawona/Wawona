@@ -1,8 +1,8 @@
 //! Modal presentation helper mirroring `WawonaModalSheet` semantics.
 
+use adw::prelude::*;
 use gtk4 as gtk;
 use libadwaita as adw;
-use adw::prelude::*;
 
 use crate::linux::ui_model::LayoutMode;
 

@@ -259,171 +259,20 @@ uint32_t android_keycode_to_linux(uint32_t android_keycode) {
     }
 }
 
-uint32_t char_to_linux_keycode(char ch, int *needs_shift) {
-    static const uint32_t letter_keys[] = {
-        KEY_A, KEY_B, KEY_C, KEY_D, KEY_E, KEY_F, KEY_G, KEY_H, KEY_I,
-        KEY_J, KEY_K, KEY_L, KEY_M, KEY_N, KEY_O, KEY_P, KEY_Q, KEY_R,
-        KEY_S, KEY_T, KEY_U, KEY_V, KEY_W, KEY_X, KEY_Y, KEY_Z,
-    };
-
+uint32_t control_to_linux_keycode(char ch, int *needs_shift) {
+    /* Terminal fallback only. Printable text is TI v3 (host-keymap-bridge). */
     if (needs_shift != NULL) {
         *needs_shift = 0;
     }
-
-    if (ch >= 'a' && ch <= 'z') {
-        return letter_keys[(uint32_t)(ch - 'a')];
-    }
-
-    if (ch >= 'A' && ch <= 'Z') {
-        if (needs_shift != NULL) {
-            *needs_shift = 1;
-        }
-        return letter_keys[(uint32_t)(ch - 'A')];
-    }
-
-    if (ch >= '1' && ch <= '9') {
-        return KEY_1 + (uint32_t)(ch - '1');
-    }
-
-    if (ch == '0') {
-        return KEY_0;
-    }
-
     switch (ch) {
-    case ' ':
-        return KEY_SPACE;
     case '\n':
     case '\r':
         return KEY_ENTER;
     case '\t':
         return KEY_TAB;
-    case '-':
-        return KEY_MINUS;
-    case '=':
-        return KEY_EQUAL;
-    case '[':
-        return KEY_LEFTBRACE;
-    case ']':
-        return KEY_RIGHTBRACE;
-    case '\\':
-        return KEY_BACKSLASH;
-    case ';':
-        return KEY_SEMICOLON;
-    case '\'':
-        return KEY_APOSTROPHE;
-    case '`':
-        return KEY_GRAVE;
-    case ',':
-        return KEY_COMMA;
-    case '.':
-        return KEY_DOT;
-    case '/':
-        return KEY_SLASH;
-    case '!':
-        if (needs_shift != NULL) {
-            *needs_shift = 1;
-        }
-        return KEY_1;
-    case '@':
-        if (needs_shift != NULL) {
-            *needs_shift = 1;
-        }
-        return KEY_2;
-    case '#':
-        if (needs_shift != NULL) {
-            *needs_shift = 1;
-        }
-        return KEY_3;
-    case '$':
-        if (needs_shift != NULL) {
-            *needs_shift = 1;
-        }
-        return KEY_4;
-    case '%':
-        if (needs_shift != NULL) {
-            *needs_shift = 1;
-        }
-        return KEY_5;
-    case '^':
-        if (needs_shift != NULL) {
-            *needs_shift = 1;
-        }
-        return KEY_6;
-    case '&':
-        if (needs_shift != NULL) {
-            *needs_shift = 1;
-        }
-        return KEY_7;
-    case '*':
-        if (needs_shift != NULL) {
-            *needs_shift = 1;
-        }
-        return KEY_8;
-    case '(':
-        if (needs_shift != NULL) {
-            *needs_shift = 1;
-        }
-        return KEY_9;
-    case ')':
-        if (needs_shift != NULL) {
-            *needs_shift = 1;
-        }
-        return KEY_0;
-    case '_':
-        if (needs_shift != NULL) {
-            *needs_shift = 1;
-        }
-        return KEY_MINUS;
-    case '+':
-        if (needs_shift != NULL) {
-            *needs_shift = 1;
-        }
-        return KEY_EQUAL;
-    case '{':
-        if (needs_shift != NULL) {
-            *needs_shift = 1;
-        }
-        return KEY_LEFTBRACE;
-    case '}':
-        if (needs_shift != NULL) {
-            *needs_shift = 1;
-        }
-        return KEY_RIGHTBRACE;
-    case '|':
-        if (needs_shift != NULL) {
-            *needs_shift = 1;
-        }
-        return KEY_BACKSLASH;
-    case ':':
-        if (needs_shift != NULL) {
-            *needs_shift = 1;
-        }
-        return KEY_SEMICOLON;
-    case '"':
-        if (needs_shift != NULL) {
-            *needs_shift = 1;
-        }
-        return KEY_APOSTROPHE;
-    case '~':
-        if (needs_shift != NULL) {
-            *needs_shift = 1;
-        }
-        return KEY_GRAVE;
-    case '<':
-        if (needs_shift != NULL) {
-            *needs_shift = 1;
-        }
-        return KEY_COMMA;
-    case '>':
-        if (needs_shift != NULL) {
-            *needs_shift = 1;
-        }
-        return KEY_DOT;
-    case '?':
-        if (needs_shift != NULL) {
-            *needs_shift = 1;
-        }
-        return KEY_SLASH;
+    case 0x08:
+    case 0x7f:
+        return KEY_BACKSPACE;
     default:
         return 0;
     }

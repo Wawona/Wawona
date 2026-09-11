@@ -23,12 +23,7 @@ pub enum PlacementPolicy {
 ///
 /// Skips host-locked, maximized, and fullscreen windows. Surfaces that
 /// already fill (or exceed) the output stay at the origin.
-pub fn apply_placement(
-    window: &mut Window,
-    policy: PlacementPolicy,
-    output_w: i32,
-    output_h: i32,
-) {
+pub fn apply_placement(window: &mut Window, policy: PlacementPolicy, output_w: i32, output_h: i32) {
     if window.host_locked || window.maximized || window.fullscreen {
         return;
     }

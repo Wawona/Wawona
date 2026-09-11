@@ -109,6 +109,7 @@ public struct ResolvedMachineSettings: Hashable, Sendable {
     public var logLevel: String
     public var shakeToCloseEnabled: Bool
     public var swipeBackToCloseEnabled: Bool
+    public var resizeDisplayForVirtualKeyboard: Bool
     public var compositorBackend: String
     // Container (resolved machine > global; only meaningful when
     // machineType == .container).
@@ -204,6 +205,8 @@ public final class WawonaPreferences: ObservableObject {
     @Published public var nestedCompositorsSupport: Bool = true
     @Published public var multipleClients: Bool = true
     @Published public var universalClipboard: Bool = true
+    /// Pointer stream for clients that never bind `wl_touch`. Default off.
+    @Published public var touchPointerEmulation: Bool = false
     @Published public var swapCmdWithAlt: Bool = true
     @Published public var resizeDisplayForVirtualKeyboard: Bool = true
     @Published public var waypipeCompress: String = "lz4"
@@ -305,6 +308,8 @@ public final class WawonaPreferences: ObservableObject {
             ?? defaults.object(forKey: keyPrefix + "multipleClients") as? Bool ?? true
         universalClipboard = defaults.object(forKey: "UniversalClipboard") as? Bool
             ?? defaults.object(forKey: keyPrefix + "universalClipboard") as? Bool ?? true
+        touchPointerEmulation = defaults.object(forKey: "TouchPointerEmulation") as? Bool
+            ?? defaults.object(forKey: keyPrefix + "touchPointerEmulation") as? Bool ?? false
         swapCmdWithAlt = defaults.object(forKey: "SwapCmdWithAlt") as? Bool
             ?? defaults.object(forKey: keyPrefix + "swapCmdWithAlt") as? Bool ?? true
         resizeDisplayForVirtualKeyboard = defaults.object(forKey: "resizeDisplayForVirtualKeyboard") as? Bool
@@ -405,6 +410,8 @@ public final class WawonaPreferences: ObservableObject {
         defaults.set(multipleClients, forKey: keyPrefix + "multipleClients")
         defaults.set(universalClipboard, forKey: "UniversalClipboard")
         defaults.set(universalClipboard, forKey: keyPrefix + "universalClipboard")
+        defaults.set(touchPointerEmulation, forKey: "TouchPointerEmulation")
+        defaults.set(touchPointerEmulation, forKey: keyPrefix + "touchPointerEmulation")
         defaults.set(swapCmdWithAlt, forKey: "SwapCmdWithAlt")
         defaults.set(swapCmdWithAlt, forKey: keyPrefix + "swapCmdWithAlt")
         defaults.set(resizeDisplayForVirtualKeyboard, forKey: "resizeDisplayForVirtualKeyboard")
@@ -529,6 +536,8 @@ public final class WawonaPreferences: ObservableObject {
             logLevel: normalizedLogLevel.isEmpty ? logLevel : normalizedLogLevel,
             shakeToCloseEnabled: profile.runtimeOverrides.shakeToCloseEnabled ?? shakeToCloseEnabled,
             swipeBackToCloseEnabled: profile.runtimeOverrides.swipeBackToCloseEnabled ?? swipeBackToCloseEnabled,
+            resizeDisplayForVirtualKeyboard: profile.runtimeOverrides.resizeDisplayForVirtualKeyboard
+                ?? resizeDisplayForVirtualKeyboard,
             compositorBackend: {
                 let allowed = Set(["auto", "wayland", "drm"])
                 if allowed.contains(normalizedCompositorBackend.lowercased()) {

@@ -14,6 +14,8 @@
   androidToolchain ? null,
   rustBackend ? null,
   glslang ? pkgs.glslang,
+  # Linux flake passes JBR 21. Darwin Nix sandbox falls back to OpenJDK
+  # (nixpkgs jetbrains.jdk is Linux-only). Local Studio uses embedded JBR.
   jdk17 ? pkgs.jdk17,
   gradle ? pkgs.gradle,
   targetPkgs,
@@ -47,7 +49,7 @@ let
       in if v == "" then "0.0.1" else v;
   gradleSupport = pkgs.callPackage ../gradle-deps.nix {
     inherit wawonaSrc androidSDK androidConfigNix;
-    inherit (pkgs) gradle jdk17;
+    inherit gradle jdk17;
   };
 
   westonSimpleShmSrc = pkgs.callPackage westonSimpleShmPatchedSrcNix {};
@@ -75,6 +77,7 @@ let
   };
   # DejaVu (UI/CSD) + DejaVuSansM Nerd Font Mono (terminals / prompts).
   wawonaBundledFonts = pkgs.callPackage ../libs/fonts { };
+  wawonaXkbTrimmed = pkgs.callPackage ../libs/xkb-trimmed.nix { };
   # Swinging Bridge app bridge: libanowaw.so + staged Kotlin/JNI shims (share/anowaw).
   anowawAndroid = buildModule.buildForAndroid "anowaw" { };
   mobileToytoolkitDeps = import ./mobile-toytoolkit-deps.nix {
@@ -164,6 +167,24 @@ let
     else ":Wawona:assembleDebug";
   isReleaseBuild = releaseArtifact == "release-aab" || releaseArtifact == "release-apk";
 
+  # AGP 9.1.1 asks for kotlin-stdlib/reflect 2.4.0. The pinned mitm
+  # gradle-deps cache still stops at 2.2.10 / 1.6.10. Stage a file://
+  # overlay so the offline Nix APK does not fail configure.
+  kotlinMaven240 =
+    let
+      fetchK = path: hash:
+        pkgs.fetchurl {
+          url = "https://repo1.maven.org/maven2/org/jetbrains/kotlin/${path}";
+          inherit hash;
+        };
+    in {
+      stdlibPom = fetchK "kotlin-stdlib/2.4.0/kotlin-stdlib-2.4.0.pom" "sha256-gZT/eanuJKf6P3SmsXnAShhZ3ouYek8JgwVuWUUXId4=";
+      stdlibJar = fetchK "kotlin-stdlib/2.4.0/kotlin-stdlib-2.4.0.jar" "sha256-zLFP+D+ryxFFi3mNvJgkdIzN/+7HnJq6eJ5u0c2oaxw=";
+      stdlibModule = fetchK "kotlin-stdlib/2.4.0/kotlin-stdlib-2.4.0.module" "sha256-wkpH3L2Sldd29EO+Qdd6wkUwlgHtBTcR3uKwJUvgLbY=";
+      reflectPom = fetchK "kotlin-reflect/2.4.0/kotlin-reflect-2.4.0.pom" "sha256-nhge5PIdScXIVQw8/KcZnBdZCo3z0eopPjlnmOTxCEI=";
+      reflectJar = fetchK "kotlin-reflect/2.4.0/kotlin-reflect-2.4.0.jar" "sha256-8NjokIYk60R4uxMen4hzZmgNLiOXQRleVI+lyQaWO5A=";
+    };
+
   getDeps =
     platform: depNames:
     map (
@@ -221,7 +242,7 @@ let
       androidSDK.cmdlineTools
       androidSDK.androidsdk
       pkgs.util-linux
-      pkgs.jdk17
+      jdk17
       pkgs.lldb
     ]
     ++ lib.optionals androidConfig.emulatorSupported [ androidSDK.emulator ]
@@ -274,7 +295,7 @@ in
     nativeBuildInputs = (with pkgs; [
       clang
       pkg-config
-      jdk17 # Full JDK needed for Gradle
+      jdk17 # Linux: JBR 21. Darwin Nix sandbox: OpenJDK (nixpkgs JBR is Linux-only)
       gradle
       unzip
       zip
@@ -303,7 +324,7 @@ in
         exit 1
       fi
       if [ ! -f android/app/src/main/java/com/aspauldingcode/wawona/KeyboardLayouts.kt ]; then
-        echo "ERROR: Missing KeyboardLayouts.kt (follow-system XKB; #60/#141)"
+        echo "ERROR: Missing KeyboardLayouts.kt (KeyCharacterMap host dump)"
         exit 1
       fi
     '';
@@ -364,10 +385,19 @@ in
       GOOGLE_MAVEN_FS="${mitmCache}/https/dl.google.com/dl/android/maven2"
       PORTAL_MAVEN_FS="${mitmCache}/https/plugins.gradle.org/m2"
       CENTRAL_MAVEN_FS="${mitmCache}/https/repo.maven.apache.org/maven2"
+      EXTRA_MAVEN="$PWD/extra-maven"
+      mkdir -p "$EXTRA_MAVEN/org/jetbrains/kotlin/kotlin-stdlib/2.4.0"
+      mkdir -p "$EXTRA_MAVEN/org/jetbrains/kotlin/kotlin-reflect/2.4.0"
+      cp ${kotlinMaven240.stdlibPom} "$EXTRA_MAVEN/org/jetbrains/kotlin/kotlin-stdlib/2.4.0/kotlin-stdlib-2.4.0.pom"
+      cp ${kotlinMaven240.stdlibJar} "$EXTRA_MAVEN/org/jetbrains/kotlin/kotlin-stdlib/2.4.0/kotlin-stdlib-2.4.0.jar"
+      cp ${kotlinMaven240.stdlibModule} "$EXTRA_MAVEN/org/jetbrains/kotlin/kotlin-stdlib/2.4.0/kotlin-stdlib-2.4.0.module"
+      cp ${kotlinMaven240.reflectPom} "$EXTRA_MAVEN/org/jetbrains/kotlin/kotlin-reflect/2.4.0/kotlin-reflect-2.4.0.pom"
+      cp ${kotlinMaven240.reflectJar} "$EXTRA_MAVEN/org/jetbrains/kotlin/kotlin-reflect/2.4.0/kotlin-reflect-2.4.0.jar"
       if [ -d "$GOOGLE_MAVEN_FS" ] && [ -d "$CENTRAL_MAVEN_FS" ]; then
         cat > settings.gradle.kts <<EOF
 pluginManagement {
     repositories {
+        maven { url = uri("file://$EXTRA_MAVEN") }
         maven { url = uri("file://$GOOGLE_MAVEN_FS") }
         maven { url = uri("file://$PORTAL_MAVEN_FS") }
         maven { url = uri("file://$CENTRAL_MAVEN_FS") }
@@ -377,6 +407,7 @@ pluginManagement {
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
+        maven { url = uri("file://$EXTRA_MAVEN") }
         maven { url = uri("file://$GOOGLE_MAVEN_FS") }
         maven { url = uri("file://$CENTRAL_MAVEN_FS") }
     }
@@ -400,7 +431,7 @@ EOF
         echo 'org.gradle.daemon=false' >> gradle.properties
         # Include -Xms64m: the gradle launcher always sets it on the client JVM;
         # omit it from Wanted and Gradle forks a single-use daemon.
-        echo 'org.gradle.jvmargs=-Xms64m -Xmx6144m -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8' >> gradle.properties
+        echo 'org.gradle.jvmargs=-Xms64m -Xmx3072m -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8' >> gradle.properties
       fi
 
       # Bundle Nix-built shared libraries into the APK so the Android loader
@@ -484,9 +515,9 @@ EOF
       # android-shell-tools.nix.
       ${shellTools.preBuildFragment}
 
-      # xkeyboard-config: extracted from assets into wawona-rootfs by WawonaShellRootfs.
+      # Trimmed us/evdev tree. Nested compositors only. HostKeymapBridge owns the seat.
       mkdir -p app/src/main/assets/xkb
-      cp -RL ${pkgs.xkeyboard_config}/share/X11/xkb/. app/src/main/assets/xkb/
+      cp -RL ${wawonaXkbTrimmed}/share/X11/xkb/. app/src/main/assets/xkb/
       chmod -R u+w app/src/main/assets/xkb
 
       # DejaVu (UI/CSD) + DejaVuSansM Nerd Font Mono (terminals).
@@ -534,12 +565,21 @@ EOF
         cp -L "${rustBackendPath}/lib/libwawona_core.so" "$JNI_LIB_DIR/libwawona_core.so"
         RUST_BACKEND_LINK_LIB="${rustBackendPath}/lib/libwawona_core.so"
       fi
+      if [ -d "${rustBackendPath}/uniffi/kotlin" ] && [ -n "$(ls -A "${rustBackendPath}/uniffi/kotlin" 2>/dev/null)" ]; then
+        mkdir -p app/src/main/java
+        cp -R "${rustBackendPath}/uniffi/kotlin/." app/src/main/java/
+        echo "UniFFI Kotlin staged from rustBackend/uniffi/kotlin"
+      fi
 
       # Inject Nix dependencies via Environment Variables for Gradle/CMake
       export ANDROID_NDK_ROOT="$ndk_root"
       export ANDROID_NDK_HOME="$ndk_root"
       export DEP_INCLUDES="${lib.concatMapStringsSep " " (d: "-I${d}/include") (getDeps "android" androidDeps)} -I${buildModule.buildForAndroid "pixman" { }}/include/pixman-1 -I${westonAndroid}/include/weston-gen"
-      export DEP_LIBS="${lib.concatMapStringsSep " " (d: "-L${d}/lib") (getDeps "android" androidDeps)} ${lib.concatStringsSep " " (westonToytoolkitLdflags ++ westonCompositorLdflags ++ ilandGlLdflags)}"
+      # Always link Relay wasm. builtins.pathExists is eval-time: it misses
+      # an archive that this same build is about to produce, so JNI stayed
+      # weak and Start logged wawona_wasm_run not linked. The Android recipe
+      # now ships libwawona_wasm.a.
+      export DEP_LIBS="${lib.concatMapStringsSep " " (d: "-L${d}/lib") (getDeps "android" androidDeps)} ${lib.concatStringsSep " " (westonToytoolkitLdflags ++ westonCompositorLdflags ++ ilandGlLdflags)} -L${wasmAndroid}/lib -Wl,-u,wawona_wasm_run -Wl,-u,wawona_wasm_can_run -Wl,-u,wawona_wasm_request_interrupt -Wl,-u,wawona_wasm_is_running -lwawona_wasm -Wl,--allow-multiple-definition"
       export RUST_BACKEND_LIB="$RUST_BACKEND_LINK_LIB"
     '';
 
@@ -575,7 +615,7 @@ EOF
       # org.gradle.jvmargs (above) plus mitm trustStore that gradle-setup-hook
       # injects via -D flags. Do not pass -Dorg.gradle.jvmargs on the CLI
       # (that forces a mismatch/fork → DaemonConnectionException in CI).
-      GRADLE_OPTS="-Xms64m -Xmx6144m -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8"
+      GRADLE_OPTS="-Xms64m -Xmx3072m -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8"
       if [ -n "''${MITM_CACHE_KEYSTORE-}" ] && [ -n "''${MITM_CACHE_KS_PWD-}" ]; then
         GRADLE_OPTS="''${GRADLE_OPTS} -Djavax.net.ssl.trustStore=''${MITM_CACHE_KEYSTORE} -Djavax.net.ssl.trustStorePassword=''${MITM_CACHE_KS_PWD}"
       fi

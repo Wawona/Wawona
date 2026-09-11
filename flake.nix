@@ -286,10 +286,20 @@
               "/src" "/Sources" "/android" "/deps" "/protocols" "/scripts" "/include" "/VERSION" "/Cargo" "/build.rs" "/flake"
             ];
             isIgnored = pkgs.lib.any (p: pkgs.lib.hasInfix p relPath) [
-              "/.git" "/result" "/.direnv" "/target" "/.gemini" "/Inspiration" "/.idea" "/.vscode" "/.DS_Store"
+              "/.git" "/result" "/.direnv" "/target" "/.cache" "/.gemini" "/Inspiration" "/.idea" "/.vscode" "/.DS_Store"
             ];
           in (relPath == "") || (isImportant && !isIgnored);
       };
+
+    # Xcode project generation needs the complete source tree, unlike the Rust
+    # workspace filter above. Exclude local caches before Nix descends into
+    # them: they may be root-owned and are never product inputs.
+    wawonaFullSrc = builtins.path {
+      path = ./.;
+      name = "wawona-full-source";
+      filter = path: type:
+        type != "unknown" && baseNameOf path != ".cache";
+    };
 
     # Use a minimal pkgs for version lookup to avoid recursion
     bootstrapPkgs = import nixpkgs { system = "x86_64-linux"; };
@@ -435,7 +445,7 @@
           };
 
         src = srcFor pkgs;
-        wawonaSrc = ./.;
+        wawonaSrc = wawonaFullSrc;
 
         toolchains = mkWawonaToolchains {
           inherit pkgs wawonaSrc androidSDK androidAllowExperimentalFallback;

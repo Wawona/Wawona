@@ -3,9 +3,9 @@
 use std::cell::Cell;
 use std::rc::Rc;
 
+use adw::prelude::*;
 use gtk4 as gtk;
 use libadwaita as adw;
-use adw::prelude::*;
 
 use crate::linux::ui_model::LayoutMode;
 

@@ -2,8 +2,7 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-/// iOS / iPadOS Linux guests go through Wawona Relay.
-/// Mode A static CPU and Mode B JIT are planned. QEMU/TCTI is forbidden.
+/// iOS Linux VMs wait on Relay CPU. Fail closed. No QEMU in Mode A or Mode B.
 @interface WWNMobileVmEngine : NSObject
 
 + (instancetype)sharedEngine;

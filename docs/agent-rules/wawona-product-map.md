@@ -69,4 +69,5 @@ Canonical prose: `Wawona/docs/mode-a-b.md`, `swinging-bridge.md`, `iland-mode-a-
 ❌ Treat Wasm packages as containers/VMs (or vice versa)  
 ❌ Put graphics/Desktop/Swinging Bridge ownership into `wwn-toolchain` (L0 substrate only)  
 ❌ Document Runtime as needing Mode B for package install
-❌ Size-gate or stub wasm off watchOS / tvOS / visionOS / any product target  
+❌ Size-gate or stub wasm off watchOS / tvOS / visionOS / any product target
+❌ Treat wwn-igetty / Mode B TTY / Doorman console as a Machines profile

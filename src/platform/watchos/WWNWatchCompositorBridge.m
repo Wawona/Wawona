@@ -13,6 +13,7 @@
 #import <CoreGraphics/CoreGraphics.h>
 #import <pthread.h>
 #import <signal.h>
+#import <stdio.h>
 #import <stdlib.h>
 #import <string.h>
 #import <unistd.h>
@@ -594,6 +595,7 @@ static int wwn_watch_niri_entry(int argc, char **argv) {
     if ([self _isCompatShimEnabledForClient:"weston"]) {
         return;
     }
+    [WWNWatchShellEnvironment apply];
     [self stopClient];
     [self _applyMiniServerSizePolicyForClient:"weston"];
 
@@ -602,15 +604,63 @@ static int wwn_watch_niri_entry(int argc, char **argv) {
         parent_display = "wayland-0";
     setenv("WAYLAND_DISPLAY", parent_display, 1);
 
+    // Honeycomb is upstream weston data/background.png (RGB). Never
+    // pattern.png: that file is indexed-color and cairo often fails.
+    const char *xdg_dir = getenv("XDG_RUNTIME_DIR");
+    const char *weston_data = getenv("WESTON_DATA_DIR");
+    char configPath[512] = "";
+    char configArg[600] = "";
+    int argc = 3;
+    if (xdg_dir && xdg_dir[0] && weston_data && weston_data[0]) {
+        snprintf(configPath, sizeof(configPath), "%s/weston.ini", xdg_dir);
+        NSString *bg =
+            [@(weston_data) stringByAppendingPathComponent:@"background.png"];
+        NSString *icon =
+            [@(weston_data) stringByAppendingPathComponent:@"terminal.png"];
+        NSFileManager *fm = [NSFileManager defaultManager];
+        BOOL hasBg = [fm fileExistsAtPath:bg];
+        NSMutableString *ini = [NSMutableString string];
+        [ini appendString:@"[core]\nuse-pixman=true\n\n[shell]\n"];
+        [ini appendString:@"client=weston-desktop-shell\n"];
+        [ini appendString:@"input-method=weston-keyboard\n"];
+        [ini appendString:@"background-color=0xff1a1a2e\n"];
+        if (hasBg) {
+            [ini appendFormat:@"background-image=%@\nbackground-type=scale\n",
+                             bg];
+        }
+        [ini appendString:@"panel-color=0xff101010\npanel-position=top\n"];
+        [ini appendString:@"clock-format=seconds\n\n[launcher]\n"];
+        if ([fm fileExistsAtPath:icon]) {
+            [ini appendFormat:@"icon=%@\n", icon];
+        }
+        [ini appendString:@"path=weston-terminal\n"];
+        NSError *iniErr = nil;
+        if ([ini writeToFile:@(configPath)
+                  atomically:YES
+                    encoding:NSUTF8StringEncoding
+                       error:&iniErr]) {
+            snprintf(configArg, sizeof(configArg), "--config=%s", configPath);
+            setenv("WESTON_CONFIG_FILE", configPath, 1);
+            argc = 4;
+            WWNLog("WATCH", @"weston.ini honeycomb --config=%s bg=%@",
+                   configPath, hasBg ? bg : @"(missing)");
+        } else {
+            WWNLog("WATCH", @"weston.ini write failed: %@",
+                   iniErr.localizedDescription);
+        }
+    }
+
     // Heap argv: compositorThreadFunc frees these after weston_main returns.
-    char **argv = calloc(4, sizeof(char *));
+    char **argv = calloc((size_t)argc + 1, sizeof(char *));
     argv[0] = strdup("weston");
     argv[1] = strdup("--backend=wayland");
     argv[2] = strdup("--shell=desktop-shell.so");
-    argv[3] = NULL;
+    if (argc == 4) {
+        argv[3] = strdup(configArg);
+    }
 
     CompositorThreadArgs *args = malloc(sizeof(CompositorThreadArgs));
-    args->argc = 3;
+    args->argc = argc;
     args->argv = argv;
 
     wwn_weston_compositor_shutdown_requested = 0;
@@ -621,7 +671,7 @@ static int wwn_watch_niri_entry(int argc, char **argv) {
         _clientThreadValid = YES;
         WWNLog("WATCH", @"Launched nested Weston compositor (WAYLAND_DISPLAY=%s)", parent_display);
     } else {
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < argc; i++)
             free(argv[i]);
         free(argv);
         free(args);

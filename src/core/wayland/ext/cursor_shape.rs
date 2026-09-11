@@ -3,13 +3,11 @@
 //! This protocol allows clients to set the cursor shape using predefined shapes
 //! instead of providing a surface with a cursor image.
 
-use wayland_server::{
-    Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
-};
 use wayland_protocols::wp::cursor_shape::v1::server::{
-    wp_cursor_shape_manager_v1::{self, WpCursorShapeManagerV1},
     wp_cursor_shape_device_v1::{self, WpCursorShapeDeviceV1},
+    wp_cursor_shape_manager_v1::{self, WpCursorShapeManagerV1},
 };
+use wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource};
 
 use crate::core::state::CompositorState;
 
@@ -51,13 +49,19 @@ impl Dispatch<WpCursorShapeManagerV1, ()> for CompositorState {
         data_init: &mut DataInit<'_, Self>,
     ) {
         match request {
-            wp_cursor_shape_manager_v1::Request::GetPointer { cursor_shape_device, pointer } => {
+            wp_cursor_shape_manager_v1::Request::GetPointer {
+                cursor_shape_device,
+                pointer,
+            } => {
                 let pointer_id = pointer.id().protocol_id();
                 // let data = CursorShapeDeviceData { pointer_id };
                 let _device: WpCursorShapeDeviceV1 = data_init.init(cursor_shape_device, ());
                 tracing::debug!("Created cursor shape device for pointer {}", pointer_id);
             }
-            wp_cursor_shape_manager_v1::Request::GetTabletToolV2 { cursor_shape_device, tablet_tool } => {
+            wp_cursor_shape_manager_v1::Request::GetTabletToolV2 {
+                cursor_shape_device,
+                tablet_tool,
+            } => {
                 let tool_id = tablet_tool.id().protocol_id();
                 // let data = CursorShapeDeviceData { pointer_id: tool_id };
                 let _device: WpCursorShapeDeviceV1 = data_init.init(cursor_shape_device, ());
@@ -91,19 +95,24 @@ impl Dispatch<WpCursorShapeDeviceV1, ()> for CompositorState {
                     wayland_server::WEnum::Value(v) => v.into(),
                     wayland_server::WEnum::Unknown(v) => v,
                 };
-                tracing::debug!("Set cursor shape: serial={}, shape={:?} ({})", serial, shape, shape_val);
-                
+                tracing::debug!(
+                    "Set cursor shape: serial={}, shape={:?} ({})",
+                    serial,
+                    shape,
+                    shape_val
+                );
+
                 // Store current cursor shape in seat state
                 state.seat.pointer.cursor_shape = Some(shape_val);
-                
+
                 // Clear cursor surface since shape takes precedence
                 state.seat.pointer.cursor_surface = None;
-                
+
                 // Emit event for the platform to apply the cursor shape
                 state.pending_compositor_events.push(
                     crate::core::compositor::CompositorEvent::CursorShapeChanged {
                         shape: shape_val,
-                    }
+                    },
                 );
             }
             wp_cursor_shape_device_v1::Request::Destroy => {

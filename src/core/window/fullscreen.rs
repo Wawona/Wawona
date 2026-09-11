@@ -1,5 +1,3 @@
-
-
 /// Manages fullscreen state restoration.
 #[derive(Debug, Default, Clone)]
 pub struct FullscreenState {

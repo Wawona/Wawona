@@ -1,14 +1,9 @@
-
-use wayland_server::{
-
-    Dispatch, DisplayHandle, GlobalDispatch, Resource,
-};
+use wayland_server::{Dispatch, DisplayHandle, GlobalDispatch, Resource};
 
 use crate::core::state::CompositorState;
 
 use crate::core::wayland::protocol::wlroots::wlr_export_dmabuf_unstable_v1::{
-    zwlr_export_dmabuf_manager_v1,
-    zwlr_export_dmabuf_frame_v1,
+    zwlr_export_dmabuf_frame_v1, zwlr_export_dmabuf_manager_v1,
 };
 
 use std::collections::HashMap;
@@ -44,8 +39,9 @@ pub struct ExportDmabufState {
 
 pub struct ExportDmabufManagerData;
 
-
-impl GlobalDispatch<zwlr_export_dmabuf_manager_v1::ZwlrExportDmabufManagerV1, ()> for CompositorState {
+impl GlobalDispatch<zwlr_export_dmabuf_manager_v1::ZwlrExportDmabufManagerV1, ()>
+    for CompositorState
+{
     fn bind(
         _state: &mut Self,
         _handle: &DisplayHandle,
@@ -69,29 +65,38 @@ impl Dispatch<zwlr_export_dmabuf_manager_v1::ZwlrExportDmabufManagerV1, ()> for 
         data_init: &mut wayland_server::DataInit<'_, Self>,
     ) {
         match request {
-            zwlr_export_dmabuf_manager_v1::Request::CaptureOutput { frame, overlay_cursor, output } => {
+            zwlr_export_dmabuf_manager_v1::Request::CaptureOutput {
+                frame,
+                overlay_cursor,
+                output,
+            } => {
                 let output_id = output.data::<u32>().copied().unwrap_or(0);
                 let overlay_cursor = overlay_cursor != 0;
-                
+
                 // Initialize the frame resource
-                let frame_res: zwlr_export_dmabuf_frame_v1::ZwlrExportDmabufFrameV1 = data_init.init(frame, ());
+                let frame_res: zwlr_export_dmabuf_frame_v1::ZwlrExportDmabufFrameV1 =
+                    data_init.init(frame, ());
                 let resource_id = frame_res.id().protocol_id();
-                
+
                 // Create frame state
                 let frame_state = DmabufExportFrame::new(output_id, overlay_cursor);
-                state.wlr.export_dmabuf.frames.insert(resource_id, frame_state);
+                state
+                    .wlr
+                    .export_dmabuf
+                    .frames
+                    .insert(resource_id, frame_state);
 
-                
                 tracing::info!(
                     "DMABUF CaptureOutput requested: output={}, overlay_cursor={}, frame_id={}",
-                    output_id, overlay_cursor, resource_id
+                    output_id,
+                    overlay_cursor,
+                    resource_id
                 );
 
                 // For now, we immediately cancel because we don't have the DMABUF export pipeline ready.
                 // In a future phase, we would wait for the next frame and send metadata/fds.
                 frame_res.cancel(zwlr_export_dmabuf_frame_v1::CancelReason::Temporary);
                 state.wlr.export_dmabuf.frames.remove(&resource_id);
-
             }
             zwlr_export_dmabuf_manager_v1::Request::Destroy => {
                 // Destructor

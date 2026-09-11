@@ -25,6 +25,13 @@ impl super::CompositorState {
         false
     }
 
+    /// True when a toplevel already filled the previous output or usable rect
+    /// (1px slack for integer rounding). Used by fill-primary rotate so
+    /// weston-terminal follows the new bounds without host-locking flower.
+    pub fn size_matches_output(width: i32, height: i32, output_w: u32, output_h: u32) -> bool {
+        (width - output_w as i32).abs() <= 1 && (height - output_h as i32).abs() <= 1
+    }
+
     /// Host-lock check from already-known window fields (safe while holding `window.write()`).
     pub fn is_host_locked_window_flags(
         window_id: u32,
@@ -77,7 +84,11 @@ impl super::CompositorState {
             }
         }
         if let Some((client_id, toplevel_id, cw, ch)) = configure {
-            if let Some(tl) = self.xdg.toplevels.get_mut(&(client_id.clone(), toplevel_id)) {
+            if let Some(tl) = self
+                .xdg
+                .toplevels
+                .get_mut(&(client_id.clone(), toplevel_id))
+            {
                 tl.width = cw;
                 tl.height = ch;
             }
@@ -124,5 +135,12 @@ mod tests {
         assert!(!CompositorState::should_host_lock_app_id("weston-flower"));
         assert!(!CompositorState::should_host_lock_app_id("weston-smoke"));
         assert!(!CompositorState::should_host_lock_app_id("weston"));
+    }
+
+    #[test]
+    fn fill_primary_size_match_allows_one_pixel_slack() {
+        assert!(CompositorState::size_matches_output(390, 844, 390, 844));
+        assert!(CompositorState::size_matches_output(389, 845, 390, 844));
+        assert!(!CompositorState::size_matches_output(200, 200, 390, 844));
     }
 }

@@ -8,7 +8,12 @@
 #   scripts/agent-device-smoke.sh ios-foot  # Foot terminal in iOS simulator
 #   scripts/agent-device-smoke.sh android   # Android device/emulator lane
 #   scripts/agent-device-smoke.sh fuzzel    # nested niri + fuzzel (issue #78)
+#   scripts/agent-device-smoke.sh vphone    # TrollStore Mode B on vphone lab
+#   scripts/agent-device-smoke.sh xkb       # P0 xkb lanes (ios + watchos + android + macos)
+#   scripts/agent-device-smoke.sh xkb-ios|xkb-watchos|xkb-android|xkb-macos
+#   scripts/agent-device-smoke.sh xkb-ipados|xkb-tvos|xkb-visionos   # P1
 #   scripts/agent-device-smoke.sh all       # ios + android + fuzzel (default)
+# vphone is lab-only. Gate: products must not use it as IOMFB/JIT proof.
 #
 # Env:
 #   WAWONA_IOS_SIM         simulator name   (default: iPhone 17 Pro)
@@ -139,9 +144,9 @@ run_ios() {
     agent-device wait 'id="wwn.machines.root"' 8000 "${ad_common[@]}" >/dev/null 2>&1 || true
   fi
 
-  if ! agent-device press 'id="wwn.machines.settings"' "${ad_common[@]}" >/dev/null 2>&1 \
-    && ! agent-device press 'label="Settings"' "${ad_common[@]}" >/dev/null 2>&1; then
-    echo "FAIL: Settings control not found" >&2
+  if ! agent-device press 'id="wwn.settings.display"' "${ad_common[@]}" >/dev/null 2>&1 \
+    && ! agent-device press 'label="Display"' "${ad_common[@]}" >/dev/null 2>&1; then
+    echo "FAIL: Settings sidebar Display not found" >&2
     agent-device screenshot "$ARTIFACTS/ios-settings-open-fail.png" "${ad_common[@]}" || true
     agent-device snapshot -i --raw "${ad_common[@]}" || true
     exit 1
@@ -606,8 +611,188 @@ run_android_shell_ssh() {
   fi
 }
 
+run_xkb() {
+  local platform="${1:?platform}"
+  local sess="xkb-${platform}"
+  local ad="$ROOT/.agent-device/wawona-xkb-smoke.ad"
+  local device=""
+  local extra=()
+  # Replay and prepare must share one lease. Drop leftover daemons first.
+  stop_agent_device_daemons
+
+  xkb_ios_extra() {
+    # UUID/UDID goes on --udid. A name goes on --device.
+    if [[ "$device" =~ ^[0-9A-Fa-f-]{36}$ ]]; then
+      extra=(--platform ios --udid "$device" --session "$sess")
+    else
+      extra=(--platform ios --device "$device" --session "$sess")
+    fi
+  }
+
+  case "$platform" in
+    ios)
+      device="${WAWONA_IOS_SIM:-iPhone 17 Pro}"
+      xkb_ios_extra
+      echo "== xkb iOS: Multi-Touch + weston-terminal =="
+      xcrun simctl bootstatus "$device" -b || xcrun simctl boot "$device" || true
+      chmod +x "$ROOT/scripts/agent-device-set-client-ios.sh"
+      "$ROOT/scripts/agent-device-set-client-ios.sh" weston-terminal "$device" || true
+      source "$ROOT/scripts/lib/agent-device-ios-system-ui.sh"
+      ios_prepare_system_ui
+      agent-device prepare ios-runner "${extra[@]}" \
+        --timeout "${WAWONA_IOS_PREPARE_TIMEOUT_MS:-600000}" || true
+      ;;
+    ipados)
+      device="${WAWONA_IPAD_SIM:-iPad Pro 13-inch (M5)}"
+      xkb_ios_extra
+      echo "== xkb iPadOS (P1): Multi-Touch + weston-terminal =="
+      if ! xcrun simctl list devices available | grep -F "$device" >/dev/null; then
+        echo "SKIP xkb-ipados: simulator '$device' not installed" >&2
+        return 0
+      fi
+      xcrun simctl bootstatus "$device" -b || xcrun simctl boot "$device" || true
+      chmod +x "$ROOT/scripts/agent-device-set-client-ios.sh"
+      "$ROOT/scripts/agent-device-set-client-ios.sh" weston-terminal "$device" || true
+      source "$ROOT/scripts/lib/agent-device-ios-system-ui.sh"
+      ios_prepare_system_ui
+      agent-device prepare ios-runner "${extra[@]}" \
+        --timeout "${WAWONA_IOS_PREPARE_TIMEOUT_MS:-600000}" || true
+      ;;
+    watchos)
+      device="${WAWONA_WATCH_SIM:-Apple Watch Series 11 (46mm)}"
+      echo "== xkb watchOS: Start + MINIMAL_KEYMAP (no Watch blob) =="
+      if ! xcrun simctl list devices available 2>/dev/null | grep -F "Watch" >/dev/null; then
+        echo "SKIP xkb-watchos: no Watch simulator listed" >&2
+        return 0
+      fi
+      # agent-device rejects watchOS (no XCUITest runner). Prove Machines UI
+      # via simctl launch + simctl io screenshot. Not host screencapture.
+      xcrun simctl bootstatus "$device" -b || xcrun simctl boot "$device" || true
+      xcrun simctl launch "$device" "${WAWONA_WATCH_BUNDLE:-com.aspauldingcode.Wawona.watch}" || true
+      sleep 4
+      xcrun simctl io "$device" screenshot "$ARTIFACTS/xkb-watchos-term.png" || true
+      echo "xkb-watchos: agent-device has no watch runner; simctl screenshot at $ARTIFACTS/xkb-watchos-term.png"
+      return 0
+      ;;
+    tvos)
+      device="${WAWONA_TV_SIM:-Apple TV 4K (3rd generation)}"
+      xkb_ios_extra
+      echo "== xkb tvOS (P1): remote/select, no OSK =="
+      if ! xcrun simctl list devices available 2>/dev/null | grep -F "Apple TV" >/dev/null; then
+        echo "SKIP xkb-tvos: no Apple TV simulator listed" >&2
+        return 0
+      fi
+      xcrun simctl bootstatus "$device" -b || xcrun simctl boot "$device" || true
+      chmod +x "$ROOT/scripts/agent-device-set-client-ios.sh"
+      "$ROOT/scripts/agent-device-set-client-ios.sh" weston-terminal "$device" || true
+      ;;
+    visionos)
+      device="${WAWONA_VISION_SIM:-Apple Vision Pro}"
+      xkb_ios_extra
+      echo "== xkb visionOS (P1): Multi-Touch + TI =="
+      if ! xcrun simctl list devices available 2>/dev/null | grep -Fi "Vision" >/dev/null; then
+        echo "SKIP xkb-visionos: no visionOS simulator listed" >&2
+        return 0
+      fi
+      xcrun simctl bootstatus "$device" -b || xcrun simctl boot "$device" || true
+      chmod +x "$ROOT/scripts/agent-device-set-client-ios.sh"
+      "$ROOT/scripts/agent-device-set-client-ios.sh" weston-terminal "$device" || true
+      source "$ROOT/scripts/lib/agent-device-ios-system-ui.sh"
+      ios_prepare_system_ui
+      ;;
+    android)
+      extra=(--platform android --session "$sess")
+      echo "== xkb Android: Touchpad Off + OSK type =="
+      local serial="${WAWONA_ANDROID_SERIAL:-}"
+      if [[ -z "$serial" ]]; then
+        serial="$(adb devices 2>/dev/null | awk 'NR>1 && $2=="device"{print $1; exit}')"
+      fi
+      if [[ -z "$serial" ]]; then
+        echo "SKIP xkb-android: no adb device/emulator" >&2
+        return 0
+      fi
+      extra+=(--serial "$serial")
+      local chars
+      chars="$(adb -s "$serial" shell getprop ro.build.characteristics 2>/dev/null | tr -d '\r')"
+      if [[ "$chars" == *watch* ]]; then
+        echo "SKIP xkb-android: $serial is Wear OS ($chars), not a phone/emulator" >&2
+        return 0
+      fi
+      chmod +x "$ROOT/scripts/agent-device-set-client-android.sh"
+      "$ROOT/scripts/agent-device-set-client-android.sh" weston-terminal "$serial" || true
+      ;;
+    macos)
+      extra=(--platform macos --device mba --session "$sess")
+      echo "== xkb macOS Mode A: type into weston-terminal (no Take Over) =="
+      # agent-device treats mixed-case bundle ids as names. Open by display name.
+      stop_agent_device_daemons
+      agent-device open Wawona --platform macos --device mba --session "$sess" || {
+        echo "xkb-macos: open Wawona failed" >&2
+        return 1
+      }
+      agent-device wait 3000 --platform macos --device mba --session "$sess" || true
+      agent-device press 'id="wwn.machines.start"' --platform macos --device mba --session "$sess" || \
+        agent-device press 'label="Start"' --platform macos --device mba --session "$sess" || true
+      agent-device wait 6000 --platform macos --device mba --session "$sess" || true
+      if ! agent-device type "xkbhello" --platform macos --device mba --session "$sess"; then
+        echo "xkb-macos: type failed (macos-helper timeout or no session)" >&2
+        agent-device close --platform macos --device mba --session "$sess" >/dev/null 2>&1 || true
+        return 1
+      fi
+      agent-device screenshot "$ARTIFACTS/xkb-macos-term.png" --platform macos --device mba --session "$sess" || true
+      agent-device close --platform macos --device mba --session "$sess" >/dev/null 2>&1 || true
+      if [[ ! -s "$ARTIFACTS/xkb-macos-term.png" ]]; then
+        echo "xkb-macos: missing typed-terminal screenshot" >&2
+        return 1
+      fi
+      return 0
+      ;;
+    *)
+      echo "unknown xkb platform: $platform" >&2
+      return 2
+      ;;
+  esac
+
+  rm -f "$ARTIFACTS/xkb-${platform}-term.png" "$ARTIFACTS/xkb-${platform}-typed.png"
+  # prepare (if any) held the XCTest lease. Replay starts its own daemon.
+  stop_agent_device_daemons
+  agent-device replay "$ad" "${extra[@]}" || {
+    echo "xkb-$platform replay failed" >&2
+    return 1
+  }
+  agent-device screenshot "$ARTIFACTS/xkb-${platform}-term.png" "${extra[@]}" || true
+  agent-device logs "${extra[@]}" 2>/dev/null | grep -E 'xkb: using|text_input|HostKeymapBridge' || true
+  agent-device close "${extra[@]}" >/dev/null 2>&1 || true
+  stop_agent_device_daemons
+}
+
+run_xkb_p0() {
+  run_xkb ios
+  run_xkb watchos
+  run_xkb android
+  run_xkb macos
+}
+
+run_vphone() {
+  local sess=wawona-ios-vphone-smoke
+  local device="${WAWONA_VPHONE_DEVICE:-vphone wawona-jb}"
+  local ad="$ROOT/.agent-device/wawona-ios-vphone-smoke.ad"
+
+  echo "== vphone Mode B replay (research VM, not Simulator) =="
+  mkdir -p "$ARTIFACTS/modeb-ios"
+  agent-device devices --device "$device"
+  echo "== kill WawonaModeBDemo before product IOMFB =="
+  agent-device packages status --device "$device" >/dev/null || true
+  echo "== packages tipa open-jit com.aspauldingcode.Wawona.ModeB =="
+  agent-device packages tipa open-jit com.aspauldingcode.Wawona.ModeB \
+    --device "$device" --session "$sess" || true
+  agent-device replay "$ad" --device "$device" --session "$sess" \
+    --platform ios
+}
+
 case "$LANE" in
   ios) run_ios ;;
+  vphone) run_vphone ;;
   # CI: chain smoke then fuzzel in one job (shared sim boot / app install).
   # Fuzzel still uses `agent-device replay`, which starts its own daemon. The
   # fuzzel wrapper prepare→stop→replay handoff is required (KEEP only avoids a
@@ -626,6 +811,14 @@ case "$LANE" in
     ;;
   ios-foot) run_ios_foot ;;
   ios-shell-cli) run_ios_shell_cli ;;
+  xkb) run_xkb_p0 ;;
+  xkb-ios) run_xkb ios ;;
+  xkb-watchos) run_xkb watchos ;;
+  xkb-android) run_xkb android ;;
+  xkb-macos) run_xkb macos ;;
+  xkb-ipados) run_xkb ipados ;;
+  xkb-tvos) run_xkb tvos ;;
+  xkb-visionos) run_xkb visionos ;;
   android) run_android ;;
   android-shell-ssh) run_android_shell_ssh ;;
   fuzzel|android-fuzzel|ios-fuzzel|macos-fuzzel)
@@ -638,7 +831,7 @@ case "$LANE" in
     run_fuzzel
     ;;
   *)
-    echo "usage: $0 [ios|ios-ci|ios-foot|ios-shell-cli|android|android-shell-ssh|fuzzel|android-fuzzel|ios-fuzzel|macos-fuzzel|all]" >&2
+    echo "usage: $0 [ios|ios-ci|ios-foot|ios-shell-cli|xkb|xkb-ios|xkb-watchos|xkb-android|xkb-macos|xkb-ipados|xkb-tvos|xkb-visionos|android|android-shell-ssh|fuzzel|android-fuzzel|ios-fuzzel|macos-fuzzel|vphone|all]" >&2
     exit 2
     ;;
 esac
