@@ -331,7 +331,13 @@
       wwn-toolchain.lib.mkToolchains {
         inherit pkgs pkgsAndroid pkgsIos androidSDK androidAllowExperimentalFallback wawonaSrc;
         registry = mergedRegistry;
-        extraArgs = { ilandSrc = wwn-iland; };
+        # Flake crate2nix (has .tools.generatedCargoNix). Without this,
+        # callPackage fills recipes from pkgs.crate2nix (CLI drv, no .tools)
+        # and relay-crate2nix / rust-backend-c2n fail at eval.
+        extraArgs = {
+          ilandSrc = wwn-iland;
+          inherit crate2nix;
+        };
       };
     # Repointed paths into the extracted repos.
     applePath = "${wwn-toolchain}/dependencies/apple";
