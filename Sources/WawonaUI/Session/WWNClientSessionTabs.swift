@@ -226,7 +226,9 @@ private struct WWNClientSafariTabCard: View {
         .offset(y: dragY)
         .opacity(closing ? 0 : max(0.25, 1 + dragY / 220))
         .scaleEffect(closing ? 0.86 : 1)
+        #if !os(tvOS)
         .gesture(swipeToClose)
+        #endif
         .onTapGesture(perform: onSelect)
         .accessibilityIdentifier("wwn.client.tab.\(tab.id)")
         .accessibilityAddTraits(selected ? .isSelected : [])
@@ -249,6 +251,7 @@ private struct WWNClientSafariTabCard: View {
         }
     }
 
+    #if !os(tvOS)
     private var swipeToClose: some Gesture {
         DragGesture(minimumDistance: 12)
             .onChanged { value in
@@ -268,6 +271,7 @@ private struct WWNClientSafariTabCard: View {
                 }
             }
     }
+    #endif
 
     private func closeNow() {
         guard !closing else { return }
@@ -285,6 +289,16 @@ private struct WWNClientTabCardChrome: ViewModifier {
     let selected: Bool
 
     func body(content: Content) -> some View {
+        #if os(visionOS)
+        content
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay {
+                if selected {
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .strokeBorder(.tint, lineWidth: 2)
+                }
+            }
+        #else
         if #available(iOS 26.0, tvOS 26.0, *) {
             content
                 .glassEffect(.regular, in: .rect(cornerRadius: 20))
@@ -304,6 +318,7 @@ private struct WWNClientTabCardChrome: ViewModifier {
                     }
                 }
         }
+        #endif
     }
 }
 

@@ -455,12 +455,14 @@ struct WWNContainerEditorSection: View {
         draft.containerRef = selected
       }
     }
+    #if os(macOS)
     .fileImporter(
       isPresented: $showContainerArchiveImporter,
       allowedContentTypes: [.item, .directory]
     ) { result in
       handleContainerArchiveImport(result)
     }
+    #endif
   }
 
   @ViewBuilder

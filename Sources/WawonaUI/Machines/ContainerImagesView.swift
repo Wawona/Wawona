@@ -60,12 +60,14 @@ struct ContainerImagesView: View {
                 }
             }
             .task { refreshLibrary() }
+            #if !os(tvOS)
             .fileImporter(
                 isPresented: $showingFileImporter,
                 allowedContentTypes: [.item, .directory]
             ) { result in
                 handleImportResult(result)
             }
+            #endif
             .alert(item: $pendingRemove) { entry in
                 Alert(
                     title: Text("Remove image?"),
@@ -121,6 +123,7 @@ struct ContainerImagesView: View {
                 }
             }
 
+            #if !os(tvOS)
             Section {
                 Button {
                     showingFileImporter = true
@@ -128,8 +131,9 @@ struct ContainerImagesView: View {
                     Label("Import from disk…", systemImage: "square.and.arrow.down")
                 }
             } footer: {
-                Text("Imports a docker-archive (tar/tar.gz), OCI-archive, or OCI layout directory — format is detected automatically.")
+                Text("Imports a docker-archive (tar/tar.gz), OCI-archive, or OCI layout directory. Format is detected automatically.")
             }
+            #endif
 
             Section {
                 if images.isEmpty && pullingReference == nil && loadError == nil {
@@ -169,7 +173,10 @@ struct ContainerImagesView: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 ProgressView().controlSize(.small)
-                Text(pullingReference ?? "").monospaced().textSelection(.enabled)
+                Text(pullingReference ?? "").monospaced()
+                    #if !os(tvOS)
+                    .textSelection(.enabled)
+                    #endif
             }
             if let pullError {
                 Text(pullError).font(.caption).foregroundStyle(.red)
@@ -472,11 +479,13 @@ struct ContainerImagesView: View {
             ScrollView {
                 Text(inspectText ?? "Loading…")
                     .font(.system(.caption, design: .monospaced))
+                    #if !os(tvOS)
                     .textSelection(.enabled)
+                    #endif
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding()
             }
-            .navigationTitle("\(entry.canonical) — details")
+            .navigationTitle("\(entry.canonical): details")
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { inspectedEntry = nil } } }
             .task {
                 do {

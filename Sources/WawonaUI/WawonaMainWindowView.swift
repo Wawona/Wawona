@@ -250,7 +250,7 @@ struct WawonaMainWindowView: View {
         .listStyle(.sidebar)
         #endif
         .navigationTitle("Wawona")
-        #if os(iOS) || os(visionOS)
+        #if os(iOS)
         .scrollDismissesKeyboard(.immediately)
         #endif
         #if os(macOS) || os(iOS)

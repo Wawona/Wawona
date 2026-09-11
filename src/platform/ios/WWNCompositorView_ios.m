@@ -747,7 +747,9 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   }
   CGFloat scale = frameView.layer.contentsScale;
   if (scale < 1.0) {
-    scale = self.window.screen.scale;
+    // UIWindow.screen is unavailable on visionOS. Trait collections expose the
+    // effective display scale on every UIKit target.
+    scale = self.traitCollection.displayScale;
   }
   if (scale < 1.0) {
     scale = 1.0;

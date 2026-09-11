@@ -69,6 +69,7 @@ struct MachinesRootView: View {
                         Label("Add Machine", systemImage: "plus")
                     }
                     .wwnA11y(WawonaA11y.machinesAdd, label: "Add Machine")
+                    #if os(iOS)
                     Button {
                         withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
                             isGlassSearchPresented = true
@@ -79,6 +80,7 @@ struct MachinesRootView: View {
                     } label: {
                         Label("Search", systemImage: "magnifyingglass")
                     }
+                    #endif
                 }
                 #endif
             }

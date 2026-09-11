@@ -16,6 +16,7 @@ enum PlatformGlobalSettings {
         #endif
     }
 
+    @MainActor
     static func open() {
         #if !SWIFT_PACKAGE
         #if os(iOS) || os(tvOS) || os(visionOS)

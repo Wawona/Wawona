@@ -106,7 +106,7 @@ public struct EnvironmentVariablesView: View {
         }
         .navigationTitle("Environment Variables")
         .accessibilityIdentifier("wwn.settings.environment")
-        #if os(iOS) || os(visionOS)
+        #if os(iOS)
         .scrollDismissesKeyboard(.immediately)
         #endif
         .sheet(isPresented: $showEditor) {

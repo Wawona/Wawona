@@ -39,8 +39,10 @@ struct WWNSettingsSectionView: View {
             #if os(macOS)
             .formStyle(.grouped)
             #endif
-            #if os(iOS) || os(visionOS)
+            #if os(iOS)
             .scrollDismissesKeyboard(.immediately)
+            #endif
+            #if os(iOS) || os(visionOS)
             .onDisappear { WWNHostKeyboard.dismiss() }
             #endif
             .sheet(isPresented: Binding(

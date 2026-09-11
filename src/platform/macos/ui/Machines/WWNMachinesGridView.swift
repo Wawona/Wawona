@@ -196,7 +196,9 @@ struct WWNMachinesGridView: View {
     detailPane
       .navigationTitle(detailNavigationTitle)
       .navigationBarTitleDisplayMode(.inline)
+      #if os(iOS)
       .scrollDismissesKeyboard(.immediately)
+      #endif
       .modifier(WWNIosPhoneSearchable(
         enabled: isIosPhone && Self.usesNativePhoneSearchToolbar,
         text: $searchQuery
@@ -284,6 +286,10 @@ struct WWNMachinesGridView: View {
         .tint(Color.accentColor)
         .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
       }
+    }
+    #else
+    ToolbarItem(placement: .automatic) {
+      EmptyView()
     }
     #endif
   }
@@ -405,12 +411,14 @@ struct WWNMachinesGridView: View {
       }
       .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
     }
+    #elseif os(tvOS)
+    ToolbarItem(placement: .automatic) {
+      EmptyView()
+    }
     #else
-    #if !os(tvOS)
     ToolbarItem(placement: .topBarTrailing) {
       sortMenu
     }
-    #endif
     #endif
   }
 

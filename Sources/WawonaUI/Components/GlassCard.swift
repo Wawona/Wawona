@@ -23,10 +23,12 @@ struct GlassCard<Content: View>: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                         .fill(.ultraThinMaterial)
+                    #if !os(visionOS)
                     if #available(macOS 26, iOS 26, *) {
                         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                             .glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
                     }
+                    #endif
                 }
             }
             .overlay {

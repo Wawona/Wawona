@@ -237,13 +237,17 @@ struct WWNTagEditorSheet: View {
       HStack {
         Spacer()
         Button("Cancel") { dismiss() }
+          #if !os(tvOS)
           .keyboardShortcut(.cancelAction)
+          #endif
         Button("Save") {
           guard !trimmedName.isEmpty else { return }
           onSave(trimmedName, colorHex)
           dismiss()
         }
+        #if !os(tvOS)
         .keyboardShortcut(.defaultAction)
+        #endif
         .buttonStyle(.borderedProminent)
         .disabled(trimmedName.isEmpty)
       }

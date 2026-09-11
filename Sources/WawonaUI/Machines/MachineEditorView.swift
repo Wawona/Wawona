@@ -350,6 +350,7 @@ struct MachineEditorView: View {
                     containerRef = ref
                 }
             }
+            #if !os(tvOS)
             .fileImporter(
                 isPresented: fileImporterPresented,
                 allowedContentTypes: fileImportKind == .wasm
@@ -370,6 +371,7 @@ struct MachineEditorView: View {
                     break
                 }
             }
+            #endif
         }
     }
 
