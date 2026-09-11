@@ -957,18 +957,18 @@
         ]
       },
       "locked": {
-        "lastModified": 1788591710,
-        "narHash": "sha256-FgocLf2cw3YqYILGHc6NvSkCdCQrY1kdMRB5A5ic7bk=",
-        "owner": "Wawona",
-        "repo": "wwn-iomfb-rs",
-        "rev": "07b1dd88df716c3e6e7e49be683821476fabbf20",
-        "type": "github"
+        "lastModified": 1789107804,
+        "narHash": "sha256-gbkJC5BYZGsLNfR5GNgDdlKcdsVj+AiAcddIQh8yw3M=",
+        "ref": "development",
+        "rev": "d8d0dce0a9f28431a9aafd964f6a9d3e19b7bb37",
+        "revCount": 16,
+        "type": "git",
+        "url": "ssh://git@github.com/Wawona/wwn-iomfb-rs"
       },
       "original": {
-        "owner": "Wawona",
         "ref": "development",
-        "repo": "wwn-iomfb-rs",
-        "type": "github"
+        "type": "git",
+        "url": "ssh://git@github.com/Wawona/wwn-iomfb-rs"
       }
     },
     "wwn-iowatchdog": {

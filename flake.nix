@@ -127,7 +127,8 @@
     wwn-vphone.inputs.nixpkgs.follows = "nixpkgs";
     # Reconstructed iOS IOMFB. L3' nixpkgs-only. Mode B tipa only.
     # Cited: docs/wwn-repo-dag.md. L1 must not import this.
-    wwn-iomfb.url = "github:Wawona/wwn-iomfb-rs/development";
+    # Private org repo: HTTPS archive fetch 404s under CAP; SSH works.
+    wwn-iomfb.url = "git+ssh://git@github.com/Wawona/wwn-iomfb-rs?ref=development";
     wwn-iomfb.inputs.nixpkgs.follows = "nixpkgs";
     # Linux-shaped VTs + Doorman login after Mode B own-display. L3'.
     # Cited: docs/wwn-repo-dag.md. github: until FlakeHub rolling exists.
@@ -952,12 +953,10 @@
             "wawona-wasm" = toolchains.buildForMacOS "wawona-wasm" { };
             "wawona-relay" = toolchains.buildForMacOS "wawona-relay" { };
           } // macosToytoolkitDeps;
-          # Locked github Relay (flake.lock) may still ship host-only
-          # recipes/relay-staticlib.nix. buildForWatchOS then links a macOS
-          # libwawona_relay.a into WawonaWatch ("building for watchOS-simulator,
-          # but linking in object file built for macOS"). L4 cross-builds the
-          # same L3' source for every Apple-mobile dep set. Cited:
-          # dependencies/libs/wawona-relay-ios.nix, wawona-relay-wasm.
+          # Cross-build Relay C ABI for every Apple-mobile dep set. Prefer
+          # Relay's own recipes/relay-staticlib.nix (keeps import/wasm for the
+          # relay-wasm → wpm path). L4 only wraps iosToolchain per platform.
+          # Cited: wawona-relay-wasm, Relay recipes/relay-staticlib.nix.
           mkWawonaRelayApple =
             {
               simulator ? false,
@@ -1017,9 +1016,8 @@
                 else
                   baseTc;
             in
-            pkgs.callPackage ./dependencies/libs/wawona-relay-ios.nix {
+            pkgs.callPackage "${wwn-relay}/recipes/relay-staticlib.nix" {
               inherit iosToolchain simulator;
-              src = wwn-relay;
             };
           iosDeps = mobilePlatformDeps {
             buildFn = toolchains.buildForIOS;
