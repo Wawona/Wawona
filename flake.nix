@@ -106,6 +106,9 @@
     wwn-relay.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-relay.inputs.rust-overlay.follows = "rust-overlay";
     wwn-relay.inputs.microvm.follows = "microvm";
+    # Relay follows wwn-toolchain/crate2nix; L4 toolchain lock may omit that
+    # nested input after follows rewrite. Pin to the top-level crate2nix.
+    wwn-relay.inputs.crate2nix.follows = "crate2nix";
     # niri: nested Mode A on every target; macOS Mode B DRM/KMS tty (iland).
     # github/development until FlakeHub rolling includes the tty recipe.
     # docs/wwn-repo-dag.md (L3' may merge iland for GPU).

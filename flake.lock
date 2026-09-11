@@ -1100,6 +1100,9 @@
     },
     "wwn-relay": {
       "inputs": {
+        "crate2nix": [
+          "crate2nix"
+        ],
         "microvm": [
           "microvm"
         ],
@@ -1114,11 +1117,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1788822638,
-        "narHash": "sha256-49TqnCEEW4mKPuCY5gU9PQM/K0o2aHrrnWH8TVxGB7M=",
+        "lastModified": 1789140888,
+        "narHash": "sha256-M162x25MRf2B2tUs+ziAYM9wmtpluQwkgsoOoVRxUJM=",
         "owner": "Wawona",
         "repo": "Relay",
-        "rev": "311d7db2f91a877eb16bbf0996b4967c4f2c4656",
+        "rev": "1f8b286830e18a80cd8641fb29d3b00c3329acd2",
         "type": "github"
       },
       "original": {
@@ -1271,11 +1274,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1788589002,
-        "narHash": "sha256-+XD4+0aAr95g4AYIU9p8e8Bp7ONRnZMjP2ZX8s4zhMQ=",
+        "lastModified": 1789140878,
+        "narHash": "sha256-m5rjuhbENtHqG+7B0KCf22tayQIFnVYubZc03SWEkfg=",
         "owner": "Wawona",
         "repo": "wwn-weston",
-        "rev": "a04074629a099ee54af290dd7de139905620333b",
+        "rev": "a2aba7756c7951c680ae3978551c62707f0de6a9",
         "type": "github"
       },
       "original": {
