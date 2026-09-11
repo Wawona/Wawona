@@ -1117,18 +1117,18 @@
         ]
       },
       "locked": {
-        "lastModified": 1789141332,
-        "narHash": "sha256-SnA8JPBygiRkZnyOEflhditVQmcZrsVTxGhUKZGsq8g=",
-        "owner": "Wawona",
-        "repo": "Relay",
-        "rev": "7085d5ef5b26db8a2cc31b9c850c4de92855ead1",
-        "type": "github"
+        "lastModified": 1789148048,
+        "narHash": "sha256-LdQ25JEQdFFGbKPLNXCPOSI5XAZtXqVrG10gAO/Alyk=",
+        "ref": "development",
+        "rev": "82b01cda64432e71ef2a00d5fa24222af0e96773",
+        "revCount": 134,
+        "type": "git",
+        "url": "ssh://git@github.com/Wawona/Relay"
       },
       "original": {
-        "owner": "Wawona",
         "ref": "development",
-        "repo": "Relay",
-        "type": "github"
+        "type": "git",
+        "url": "ssh://git@github.com/Wawona/Relay"
       }
     },
     "wwn-ssh": {

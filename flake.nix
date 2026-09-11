@@ -101,7 +101,9 @@
     wwn-neovim.inputs.wwn-toolchain.follows = "wwn-toolchain";
     # Wawona Relay: Linux VMs, OCI-in-VM, Mode A WASI. L3′. Never QEMU/UTM.
     # Replaces wwn-wasm + wwn-vms + wwn-containers. Cited: docs/wwn-repo-dag.md.
-    wwn-relay.url = "github:Wawona/Relay/development";
+    # HTTPS github: hits org CAP 403 locally (fine-grained PAT lifetime).
+    # Same SSH fetch as wwn-iomfb. CI needs deploy key or short-lived token.
+    wwn-relay.url = "git+ssh://git@github.com/Wawona/Relay?ref=development";
     wwn-relay.inputs.nixpkgs.follows = "nixpkgs";
     wwn-relay.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-relay.inputs.rust-overlay.follows = "rust-overlay";
