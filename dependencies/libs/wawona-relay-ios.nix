@@ -35,9 +35,26 @@ let
     rustc = rustToolchain;
   };
 
-  srcFilter = path: type:
-    let b = baseNameOf path;
-    in !(b == "target" || b == ".git" || b == "import" || b == ".direnv");
+  # Keep import/wasm/crates (relay-wasm → wpm). Drop vms/containers and the
+  # rest of the vendored wasm tree so Apple-mobile staticlib src stays small.
+  srcFilter =
+    path: type:
+    let
+      b = baseNameOf path;
+      pathStr = toString path;
+      underImport = b == "import" || lib.hasInfix "/import/" pathStr;
+      keepWasmCrates =
+        b == "import"
+        || lib.hasSuffix "/import" pathStr
+        || lib.hasSuffix "/import/wasm" pathStr
+        || lib.hasSuffix "/import/wasm/crates" pathStr
+        || lib.hasInfix "/import/wasm/crates/" pathStr;
+    in
+    !(b == "target"
+      || b == ".git"
+      || b == ".direnv"
+      || (underImport && !keepWasmCrates)
+    );
 in
 rustPlatform.buildRustPackage {
   pname = "wawona-relay";
