@@ -1,8 +1,34 @@
-{ pkgs, systemPackages, xcodeUtils }:
+{ pkgs, systemPackages, xcodeUtils
+, modebScripts ? ../../scripts
+}:
 
 let
   shellWrappers = import ./shell-wrappers.nix;
   lldb = shellWrappers.mkLldbHelpers pkgs;
+  # Mode B on vphone (aarch64-darwin). Not the Xcode Simulator (wawona-ios).
+  # Tipa / deb built at run time so flake eval does not realize the Mode B
+  # device graph. Channels: TrollStore (.tipa) vs Sileo (.deb).
+  # modebScripts is the whole scripts/ tree so the runner can source
+  # lib/vphone-ensure-guest.sh and call the install helpers.
+  mkWawonaIosModeb = name: channel: "${pkgs.writeShellScriptBin name ''
+    set -euo pipefail
+    # Host nix stays on PATH. Do not add pkgs.nix: that realizes nix-2.34
+    # plus manual/tests (~4 G) before the tipa/deb build even starts.
+    extra_path="${pkgs.sshpass}/bin:${pkgs.openssh}/bin:${pkgs.python3}/bin"
+    ${if systemPackages ? vphone-cli then ''
+    extra_path="${systemPackages.vphone-cli}/bin:$extra_path"
+    export WAWONA_VPHONE_CLI="''${WAWONA_VPHONE_CLI:-${systemPackages.vphone-cli}/bin/vphone-cli}"
+    '' else ""}
+    export PATH="$extra_path:$PATH"
+    export WAWONA_MODEB_CHANNEL="''${WAWONA_MODEB_CHANNEL:-${channel}}"
+    export WAWONA_MODEB_KIND="''${WAWONA_MODEB_KIND:-slim}"
+    export WAWONA_MODEB_SCHEME="''${WAWONA_MODEB_SCHEME:-rootless}"
+    export WAWONA_MODEB_SCRIPTS="${modebScripts}"
+    export WAWONA_MODEB_INSTALL="${modebScripts}/install-ios-modeb-tipa.sh"
+    export WAWONA_MODEB_DEB_INSTALL="${modebScripts}/install-ios-modeb-deb.sh"
+    export WAWONA_MODEB_FLAKE="''${WAWONA_MODEB_FLAKE:-.}"
+    exec ${pkgs.bash}/bin/bash "${modebScripts}/run-ios-modeb-vphone.sh" --${channel} "$@"
+  ''}/bin/${name}";
 in
 {
   wawonaIos = "${pkgs.writeShellScriptBin "wawona-ios" ''
@@ -422,5 +448,11 @@ in
       exec ${pkg}/bin/weston "$@"
     '';
   in "${wrapper}/bin/weston-run";
+
+  wawonaIosModeb = mkWawonaIosModeb "wawona-ios-modeb" "trollstore";
+  wawonaIosTrollstore = mkWawonaIosModeb "wawona-ios-trollstore" "trollstore";
+  wawonaIosTs = mkWawonaIosModeb "wawona-ios-ts" "trollstore";
+  wawonaIosJailbreak = mkWawonaIosModeb "wawona-ios-jailbreak" "jailbreak";
+  wawonaIosJb = mkWawonaIosModeb "wawona-ios-jb" "jailbreak";
 
 }

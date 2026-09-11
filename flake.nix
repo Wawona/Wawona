@@ -122,6 +122,10 @@
     # a prebuilt iOS VM / IPSW. Cited: docs/wwn-repo-dag.md.
     wwn-vphone.url = "github:Wawona/wwn-vphone/development";
     wwn-vphone.inputs.nixpkgs.follows = "nixpkgs";
+    # Reconstructed iOS IOMFB. L3' nixpkgs-only. Mode B tipa only.
+    # Cited: docs/wwn-repo-dag.md. L1 must not import this.
+    wwn-iomfb.url = "github:Wawona/wwn-iomfb-rs/development";
+    wwn-iomfb.inputs.nixpkgs.follows = "nixpkgs";
     # Linux-shaped VTs + Doorman login after Mode B own-display. L3'.
     # Cited: docs/wwn-repo-dag.md. github: until FlakeHub rolling exists.
     wwn-igetty.url = "github:Wawona/wwn-igetty/development";
@@ -137,7 +141,7 @@
     doorman.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = inputs@{ self, nixpkgs, android-nixpkgs, rust-overlay, crate2nix, nix-appimage, wwn-toolchain, wwn-iland, wwn-kmscube, wwn-weston, wwn-zsh, wwn-ssh, wwn-waypipe, wwn-swinging-bridge, wwn-coreutils, wwn-foot, wwn-fastfetch, wwn-phoon-rs, wwn-neovim, wwn-relay, wwn-niri, wwn-iowatchdog, wwn-vphone, wwn-igetty, doorman, ... }:
+  outputs = inputs@{ self, nixpkgs, android-nixpkgs, rust-overlay, crate2nix, nix-appimage, wwn-toolchain, wwn-iland, wwn-kmscube, wwn-weston, wwn-zsh, wwn-ssh, wwn-waypipe, wwn-swinging-bridge, wwn-coreutils, wwn-foot, wwn-fastfetch, wwn-phoon-rs, wwn-neovim, wwn-relay, wwn-niri, wwn-iowatchdog, wwn-vphone, wwn-iomfb, wwn-igetty, doorman, ... }:
   let
     linuxSystems = [ "x86_64-linux" "aarch64-linux" ];
     # Nixpkgs 26.11 throws on x86_64-darwin eval; flakehub-push runs
@@ -279,7 +283,7 @@
           let 
             relPath = pkgs.lib.removePrefix (toString ./.) (toString path);
             isImportant = pkgs.lib.any (p: pkgs.lib.hasPrefix p relPath) [
-              "/src" "/android" "/deps" "/protocols" "/scripts" "/include" "/VERSION" "/Cargo" "/build.rs" "/flake"
+              "/src" "/Sources" "/android" "/deps" "/protocols" "/scripts" "/include" "/VERSION" "/Cargo" "/build.rs" "/flake"
             ];
             isIgnored = pkgs.lib.any (p: pkgs.lib.hasInfix p relPath) [
               "/.git" "/result" "/.direnv" "/target" "/.gemini" "/Inspiration" "/.idea" "/.vscode" "/.DS_Store"
@@ -442,8 +446,14 @@
           inherit (pkgs) lib pkgs;
           nixXcodeenvtests = inputs."nix-xcodeenvtests";
         };
-        jdk17 = androidPkgs.jdk17;
-        gradle = pkgs.gradle_9.override { java = jdk17; };
+        # Android Gradle JVM. Linux Nix: JBR 21 (no JCEF). Darwin Nix
+        # sandbox cannot use nixpkgs JBR (Linux-only platforms). Local
+        # Android Studio / gradlegen pin the embedded Studio JBR 21.
+        androidJdk =
+          if isLinuxHost then androidPkgs.jetbrains.jdk-no-jcef-21
+          else androidPkgs.jdk17;
+        jdk17 = androidJdk;
+        gradle = pkgs.gradle_9.override { java = androidJdk; };
         
         # On Linux, create a separate toolchains instance using the overlay-free
         # androidPkgs to prevent rust-overlay from triggering recursive evaluation
@@ -732,6 +742,11 @@
           # wwn-igetty: Linux-shaped VTs + Doorman (Classic own-display).
           modeb-tty = wwn-igetty.packages.${system}.wwn-igetty;
           wwn-igetty = wwn-igetty.packages.${system}.wwn-igetty;
+          # L3' reconstructed IOMFB. Mode B tipa only. Cited: docs/wwn-repo-dag.md.
+          iomfb-ios = pkgs.callPackage "${wwn-iomfb}/ios.nix" {
+            inherit (pkgs) iosToolchain;
+            simulator = false;
+          };
         };
 
         packages = commonPackages
@@ -754,6 +769,7 @@
                 wawonaSrc = if isLinuxHost then ./. else src;
                 inherit androidSDK;
                 inherit gradle;
+                jdk17 = androidJdk;
               }).mitmCache.passthru.updateScript;
             in pkgs.writeShellScriptBin "gradle-deps-update" ''
               exec ${updateScript} "$@"
@@ -922,12 +938,25 @@
             inherit toolchains;
             extras = {
               # Device-only and linked exclusively by Wawona-iOS-ModeB.
-              "iland-iomfb" = toolchains.buildForIOS "iland-iomfb" { };
+              # L3' reconstructed IOMFB. Not L1 iland-iomfb.
+              # Cited: docs/wwn-repo-dag.md.
+              "iomfb-ios" = pkgs.callPackage "${wwn-iomfb}/ios.nix" {
+                inherit (pkgs) iosToolchain;
+                simulator = false;
+              };
               "vm-engine-contract" = toolchains.buildForIOS "vm-engine-contract" { };
               "vm-engine-contract-modeb" =
                 toolchains.buildForIOS "vm-engine-contract-modeb" { };
               "igetty-ios" =
                 wwn-igetty.packages.${system}.wwn-igetty-ios;
+              # Locked github Relay recipe is host rustPlatform (macOS dylib).
+              # Cross-compile the same L3' source until Relay ships the iOS
+              # staticlib. Cited: dependencies/libs/wawona-relay-ios.nix.
+              "wawona-relay" = pkgs.callPackage ./dependencies/libs/wawona-relay-ios.nix {
+                inherit (pkgs) iosToolchain;
+                src = wwn-relay;
+                simulator = false;
+              };
             };
           };
           iosSimDeps = mobilePlatformDeps {
@@ -964,6 +993,7 @@
             nativeDeps = iosDeps;
             cargoNixDrv = sharedIosCargoNix;
           };
+          uniffi-bindgen = pkgs.callPackage ./dependencies/generators/uniffi-bindgen.nix { };
           backend-macos = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
             inherit crate2nix wawonaVersion toolchains nixpkgs;
             workspaceSrc = workspace-src-macos; platform = "macos"; nativeDeps = macosDeps;
@@ -1060,6 +1090,7 @@
             in
             pkgs.callPackage ./dependencies/generators/xcodegen.nix {
               inherit wawonaVersion wawonaSrc platformFilter simulatorOnly mobileGuestArtifacts mobileVmEngine;
+              includeModeB = includeModeBEngine;
               mobileVmEngineModeB = if includeModeBEngine then mobileVmEngineModeB else null;
               iosDeps = if want "ios" || want "ipados" then (if simulatorOnly then empty else iosDeps) else empty;
               iosSimDeps = if want "ios" || want "ipados" then iosSimDeps else empty;
@@ -1231,12 +1262,131 @@
             rm -rf "$stage/Payload/Wawona.app/_CodeSignature"
             ldid -S"${wawonaSrc}/src/resources/app-bundle/Wawona-ModeB.entitlements" \
               "$stage/Payload/Wawona.app/Wawona"
+            if [ -x "$stage/Payload/Wawona.app/wwn-vsock-peer" ]; then
+              ldid -S"${wawonaSrc}/src/resources/app-bundle/Wawona-ModeB.entitlements" \
+                "$stage/Payload/Wawona.app/wwn-vsock-peer"
+            fi
+            # Relay owns VMs, containers, and wasm. Do not zip leftover QEMU
+            # or unused guest disks. Embed Relay NixOS Image/rootfs only after
+            # Relay frames. Cited: docs/wwn-repo-dag.md (L4 product only).
+            rm -rf "$stage/Payload/Wawona.app/wwn-qemu-run"
+            rm -rf "$stage/Payload/Wawona.app/Frameworks/"qemu*
+            rm -rf "$stage/Payload/Wawona.app/share/qemu"
+            rm -f "$stage/Payload/Wawona.app/wawona-rootfs/usr/share/zsh/Completion/Unix/Command/_qemu"
+            rm -rf "$stage/Payload/Wawona.app/wawona-mobile-guest"
+            rm -rf "$stage/Payload/Wawona.app/wawona-container-guest"
             rm -rf "$stage/Payload/Wawona.app/_CodeSignature"
             artifact="$out/Wawona-${wawonaVersion}-iOS-arm64.tipa"
             (cd "$stage" && zip -qry "$artifact" Payload)
             bash "${wawonaSrc}/.github/scripts/verify-ios-modeb-artifacts.sh" \
               --mode-b "$artifact"
           '';
+          # Slim iteration tipa: same Mode B binary, no guest disks. Same
+          # Relay rule as official until Relay boots NixOS on this artifact.
+          wawona-ios-modeb-tipa-slim = pkgs.runCommand "wawona-ios-modeb-tipa-slim-${wawonaVersion}" {
+            nativeBuildInputs = [
+              pkgs.ldid
+              pkgs.unzip
+              pkgs.zip
+            ];
+          } ''
+            set -euo pipefail
+            stage="$TMPDIR/wawona-modeb-tipa-slim"
+            mkdir -p "$stage/Payload" "$out"
+            cp -R "${wawona-ios-modeb-app-device}/Wawona.app" "$stage/Payload/Wawona.app"
+            chmod -R u+w "$stage/Payload/Wawona.app"
+            rm -rf "$stage/Payload/Wawona.app/_CodeSignature"
+            rm -rf "$stage/Payload/Wawona.app/wawona-mobile-guest/rootfs.img"
+            rm -rf "$stage/Payload/Wawona.app/wawona-container-guest/rootfs.img"
+            ldid -S"${wawonaSrc}/src/resources/app-bundle/Wawona-ModeB.entitlements" \
+              "$stage/Payload/Wawona.app/Wawona"
+            if [ -x "$stage/Payload/Wawona.app/wwn-vsock-peer" ]; then
+              ldid -S"${wawonaSrc}/src/resources/app-bundle/Wawona-ModeB.entitlements" \
+                "$stage/Payload/Wawona.app/wwn-vsock-peer"
+            fi
+            # Relay owns VMs, containers, and wasm. No leftover QEMU. No
+            # unused guest disks until Relay frames exist.
+            rm -rf "$stage/Payload/Wawona.app/wwn-qemu-run"
+            rm -rf "$stage/Payload/Wawona.app/Frameworks/"qemu*
+            rm -rf "$stage/Payload/Wawona.app/share/qemu"
+            rm -f "$stage/Payload/Wawona.app/wawona-rootfs/usr/share/zsh/Completion/Unix/Command/_qemu"
+            rm -rf "$stage/Payload/Wawona.app/wawona-mobile-guest"
+            rm -rf "$stage/Payload/Wawona.app/wawona-container-guest"
+            rm -rf "$stage/Payload/Wawona.app/_CodeSignature"
+            artifact="$out/Wawona-${wawonaVersion}-iOS-arm64.tipa"
+            (cd "$stage" && zip -qry "$artifact" Payload)
+            bash "${wawonaSrc}/.github/scripts/verify-ios-modeb-artifacts.sh" \
+              --iteration "$artifact"
+          '';
+          # Sileo / Procursus Mode B .deb wrappers. Separate DESTDIR from tipa.
+          # Rootless = iphoneos-arm64 under /var/jb (vphone lab). Rootful =
+          # iphoneos-arm under /. Never one .deb claiming both schemes.
+          mkModebDeb = { scheme, slim ? false }:
+            let
+              arch = if scheme == "rootful" then "iphoneos-arm" else "iphoneos-arm64";
+              appPrefix = if scheme == "rootful" then "Applications" else "var/jb/Applications";
+              suffix = if scheme == "rootful" then "rootful" else "rootless";
+              slimTag = if slim then "-slim" else "";
+            in pkgs.runCommand "wawona-ios-modeb-deb-${suffix}${slimTag}-${wawonaVersion}" {
+              nativeBuildInputs = [ pkgs.ldid pkgs.dpkg ];
+            } ''
+              set -euo pipefail
+              stage="$TMPDIR/wawona-modeb-deb-${suffix}"
+              mkdir -p "$stage/${appPrefix}" "$stage/DEBIAN" "$out"
+              cp -R "${wawona-ios-modeb-app-device}/Wawona.app" "$stage/${appPrefix}/Wawona.app"
+              chmod -R u+w "$stage/${appPrefix}/Wawona.app"
+              rm -rf "$stage/${appPrefix}/Wawona.app/_CodeSignature"
+              rm -rf "$stage/${appPrefix}/Wawona.app/wwn-qemu-run"
+              rm -rf "$stage/${appPrefix}/Wawona.app/Frameworks/"qemu*
+              rm -rf "$stage/${appPrefix}/Wawona.app/share/qemu"
+              rm -f "$stage/${appPrefix}/Wawona.app/wawona-rootfs/usr/share/zsh/Completion/Unix/Command/_qemu"
+              ${if slim then ''
+              rm -rf "$stage/${appPrefix}/Wawona.app/wawona-mobile-guest"
+              rm -rf "$stage/${appPrefix}/Wawona.app/wawona-container-guest"
+              '' else ''
+              # Official stays guest-free until Relay frames (same tipa rule).
+              rm -rf "$stage/${appPrefix}/Wawona.app/wawona-mobile-guest"
+              rm -rf "$stage/${appPrefix}/Wawona.app/wawona-container-guest"
+              ''}
+              ldid -S"${wawonaSrc}/src/resources/app-bundle/Wawona-ModeB.entitlements" \
+                "$stage/${appPrefix}/Wawona.app/Wawona"
+              if [ -x "$stage/${appPrefix}/Wawona.app/wwn-vsock-peer" ]; then
+                ldid -S"${wawonaSrc}/src/resources/app-bundle/Wawona-ModeB.entitlements" \
+                  "$stage/${appPrefix}/Wawona.app/wwn-vsock-peer"
+              fi
+              cat > "$stage/DEBIAN/control" <<EOF
+Package: com.aspauldingcode.wawona.modeb
+Name: Wawona
+Version: ${wawonaVersion}
+Architecture: ${arch}
+Maintainer: Wawona <hello@wawona.io>
+Description: Wawona Mode B (${suffix}). JIT + IOMFB Desktop. Not App Store.
+Section: Applications
+Priority: optional
+Depends: firmware (>= 15.0)
+Homepage: https://wawona.io
+EOF
+              cat > "$stage/DEBIAN/postinst" <<'EOF'
+#!/bin/sh
+set -e
+APP=""
+if [ -d /var/jb/Applications/Wawona.app ]; then
+  APP=/var/jb/Applications/Wawona.app
+elif [ -d /Applications/Wawona.app ]; then
+  APP=/Applications/Wawona.app
+fi
+if [ -n "$APP" ] && command -v uicache >/dev/null 2>&1; then
+  uicache -p "$APP" || true
+fi
+exit 0
+EOF
+              chmod 755 "$stage/DEBIAN/postinst"
+              artifact="$out/Wawona-${wawonaVersion}-iOS-arm64-${suffix}.deb"
+              dpkg-deb -Zxz -b "$stage" "$artifact"
+            '';
+          wawona-ios-modeb-deb-rootless = mkModebDeb { scheme = "rootless"; slim = false; };
+          wawona-ios-modeb-deb-rootless-slim = mkModebDeb { scheme = "rootless"; slim = true; };
+          wawona-ios-modeb-deb-rootful = mkModebDeb { scheme = "rootful"; slim = true; };
           wawona-ipados-app-sim = pkgs.callPackage ./dependencies/wawona/ipados.nix {
             inherit wawonaSrc wawonaVersion teamId;
             TEAM_ID = teamId;
@@ -1722,6 +1872,14 @@ APPLESCRIPT
           wawona-ios-app-device = wawona-ios-app-device;
           wawona-ios-modeb-app-device = wawona-ios-modeb-app-device;
           wawona-ios-modeb-tipa = wawona-ios-modeb-tipa;
+          wawona-ios-modeb-tipa-slim = wawona-ios-modeb-tipa-slim;
+          wawona-ios-modeb-deb-rootless = wawona-ios-modeb-deb-rootless;
+          wawona-ios-modeb-deb-rootless-slim = wawona-ios-modeb-deb-rootless-slim;
+          wawona-ios-modeb-deb-rootful = wawona-ios-modeb-deb-rootful;
+          # L3' vphone lab. Defined in the Darwin let above; must be exported
+          # or `nix run .#vphone-jb-lab` / Mode B runners cannot find the CLI.
+          vphone-cli = vphone-cli;
+          vphone-jb-lab = vphone-jb-lab;
           wawona-ipados-app-device = wawona-ipados-app-device;
           wawona-tvos-app-device = wawona-tvos-app-device;
           wawona-watchos-app-device = wawona-watchos-app-device;
@@ -1736,6 +1894,7 @@ APPLESCRIPT
           wawona-macos-backend = backend-macos;
           wawona-macos-backend-desktop-host = backend-macos;
 
+          uniffi-bindgen = uniffi-bindgen;
           wawona-macos-xcode-env = backend-macos;
           wawona-ios-backend = backend-ios;
           wawona-ios-modeb-backend = backend-ios-modeb;
@@ -2025,6 +2184,7 @@ APPLESCRIPT
       let
         appPrograms = import ./dependencies/wawona/app-programs.nix {
           inherit pkgs systemPackages;
+          modebScripts = ./scripts;
           xcodeUtils = import applePath { inherit (pkgs) lib pkgs; nixXcodeenvtests = inputs."nix-xcodeenvtests"; };
         };
         hasAndroidCts = builtins.pathExists ./dependencies/libs/vulkan-cts/android.nix
@@ -2089,7 +2249,15 @@ APPLESCRIPT
         xcodegen-apple = { type = "app"; program = "${systemPackages.xcodegen-apple}/bin/xcodegen"; };
         xcodegen-novision = { type = "app"; program = "${systemPackages.xcodegen-novision}/bin/xcodegen"; };
         wawona-ios-provision = { type = "app"; program = "${systemPackages.wawona-ios-provision}/bin/provision-xcode"; };
-      } // (pkgs.lib.optionalAttrs (systemPackages ? vphone-jb-lab) {
+      } // (pkgs.lib.optionalAttrs (pkgs.stdenv.hostPlatform.isDarwin && pkgs.stdenv.hostPlatform.isAarch64) {
+        # Mode B on vphone (Apple Silicon only). Not the Xcode Simulator.
+        # TrollStore tipa vs Sileo/Procursus deb. Both start vphone-cli when SSH is down.
+        wawona-ios-modeb = { type = "app"; program = appPrograms.wawonaIosModeb; };
+        wawona-ios-trollstore = { type = "app"; program = appPrograms.wawonaIosTrollstore; };
+        wawona-ios-ts = { type = "app"; program = appPrograms.wawonaIosTs; };
+        wawona-ios-jailbreak = { type = "app"; program = appPrograms.wawonaIosJailbreak; };
+        wawona-ios-jb = { type = "app"; program = appPrograms.wawonaIosJb; };
+      }) // (pkgs.lib.optionalAttrs (systemPackages ? vphone-jb-lab) {
         # Jailbroken iOS research lab (L3' wwn-vphone). No prebuilt VM.
         vphone-jb-lab = { type = "app"; program = "${systemPackages.vphone-jb-lab}/bin/vphone-jb-lab"; };
         vphone-cli = { type = "app"; program = "${systemPackages.vphone-cli}/bin/vphone-cli"; };

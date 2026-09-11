@@ -36,7 +36,7 @@ In-app `virtual_machine` / `container` profiles (coming soon):
 | Platform | Planned engine |
 |----------|----------------|
 | macOS | `Virtualization.framework` + Containerization |
-| iOS / iPadOS | UTM-SE (store-shaped); JIT UTM / TrollStore for sideload & jailbreak |
+| iOS / iPadOS | Relay. Planned. Fail closed. No QEMU / UTM |
 | Android | `wwn-vms` / `wwn-containers` |
 | Linux | `wwn-vms` / `wwn-containers` |
 
@@ -45,6 +45,8 @@ In-app `virtual_machine` / `container` profiles (coming soon):
 | Host | How |
 |------|-----|
 | iOS Simulator | `nix run .#wawona-ios` |
+| iOS TrollStore vphone (Mode B) | `nix run .#wawona-ios-trollstore` (short: `.#wawona-ios-ts`) |
+| iOS Sileo / jailbreak vphone (Mode B) | `nix run .#wawona-ios-jailbreak` (short: `.#wawona-ios-jb`) |
 | Android emulator | `nix run .#wawona-android` |
 | Linux QEMU NixOS | `nix run .#wawona-linux-vm` |
 

@@ -43,6 +43,8 @@
   mobileGuestArtifacts ? null,
   mobileVmEngine ? null,
   mobileVmEngineModeB ? null,
+  # Mode B iOS scheme. Independent of a VM engine drv. Relay fail-closes.
+  includeModeB ? false,
   # Prefer SDK-gated construction: only emit matching app targets (+ shared libs).
   # Combined with flake `mkXcodegen` passing empty unused platform deps, filtered
   # targets do not realize device/macOS/tvOS closures for ios-sim CI.
@@ -199,8 +201,15 @@ let
         inherit lib deps;
         forceLoadCompositor = false;
       };
+      lazy = map (x: if x == "-Wl,-u,weston_compositor_main" then "-Wl,-u,_weston_compositor_main" else x) flags;
+      # Lazy compositor archive drops drm-backend. tipa 56 then dlopened
+      # meson LIBWESTON_MODULEDIR (a nix store path) and went black.
+      drmKeep = lib.optionals (deps.iland or null != null) [
+        "-Wl,-u,_wwn_weston_drm_backend_init"
+        "-Wl,-u,_wwn_wet_desktop_shell_init"
+      ];
     in
-      map (x: if x == "-Wl,-u,weston_compositor_main" then "-Wl,-u,_weston_compositor_main" else x) flags;
+      lazy ++ drmKeep;
   mobileBaseLdflags = deps: import mobileBaseLdflagsNix { inherit lib deps; };
   ilandGlLdflags = { deps, simulator ? false }: import ilandGlLdflagsNix {
     inherit lib deps simulator;
@@ -303,15 +312,19 @@ let
           "-L${strip w}/lib"
           "-Wl,-u,_wawona_wasm_run"
           "-Wl,-u,_wawona_wasm_can_run"
+          "-Wl,-u,_wawona_wasm_request_interrupt"
+          "-Wl,-u,_wawona_wasm_is_running"
           "-Wl,-u,_wpm_main"
           "-lwawona_wasm"
         ];
+      # Pass the static archive by path. ld prefers a same-dir
+      # libwawona_relay.dylib (host macOS) over the .a.
       relay =
         if r == null then [] else [
-          "-L${strip r}/lib"
           "-Wl,-u,_relay_resolve_backend"
           "-Wl,-u,_relay_start"
-          "-lwawona_relay"
+          "-Wl,-u,_relay_copy_frame"
+          "${strip r}/lib/libwawona_relay.a"
         ];
     in wasm ++ relay;
   neovimLdflags = deps:
@@ -408,15 +421,17 @@ let
     # -L: dereference symlinks. Preserving xorg→base links makes
     # `simctl install` fail with NSPOSIXErrorDomain/13 (copyfile EPERM)
     # on modern iOS Simulator installd.
-    cp -RL "${pkgs.xkeyboard_config}/share/X11/xkb/." "$DEST/"
+    cp -RL "${wawonaXkbTrimmed}/share/X11/xkb/." "$DEST/"
     chmod -R u+w "$DEST" 2>/dev/null || true
     find "$DEST" -type l -delete 2>/dev/null || true
-    echo "Embedded xkeyboard-config into $DEST"
+    echo "Embedded trimmed xkb (us/evdev) into $DEST"
   '';
   # DejaVu (UI/CSD) + DejaVuSansM Nerd Font Mono (terminals / prompts).
   # See dependencies/libs/fonts. Without any font, desktop-shell aborts during
   # init and the nested compositor shows only a solid clear color.
   wawonaBundledFonts = pkgs.callPackage ../libs/fonts { };
+  # Nested weston/niri only. Wawona seat uses HostKeymapBridge (not this tree).
+  wawonaXkbTrimmed = pkgs.callPackage ../libs/xkb-trimmed.nix { };
   fontIosEmbedScript = pkgs.writeShellScript "embed-fonts-ios.sh" ''
     case "''${PLATFORM_NAME:-}" in
       iphoneos|iphonesimulator|appletvos|appletvsimulator|xros|xrsimulator|watchos|watchsimulator)
@@ -687,7 +702,7 @@ let
 
   xkbEmbedPhase = {
     path = xkbIosEmbedScript;
-    name = "Embed xkeyboard-config";
+    name = "Embed trimmed xkb (us/evdev)";
     basedOnDependencyAnalysis = true;
     outputFiles = xkbEmbedOutputs;
   };
@@ -1261,8 +1276,19 @@ ICDJSON
     if [ ! -d "$BUNDLE" ]; then
       exit 0
     fi
-    if /usr/bin/find "$BUNDLE" \( -iname '*qemu*' -o -path '*/share/qemu/*' \) | /usr/bin/grep -q .; then
-      echo "QEMU/UTM artifacts are forbidden in Wawona bundles" >&2
+    # Real engine files only. Do not match leftover WWNQemuSystem.[hm]
+    # source names if a header ever lands in the bundle.
+    hits=$(/usr/bin/find "$BUNDLE" \( \
+      -name 'wwn-qemu-run' -o \
+      -iname 'qemu-system-*' -o \
+      -iname 'libqemu*' -o \
+      -iname 'qemu-*.framework' -o \
+      -path '*/share/qemu/*' -o \
+      -path '*/Frameworks/qemu*' \
+    \) 2>/dev/null || true)
+    if [ -n "$hits" ]; then
+      echo "QEMU/UTM artifacts are forbidden in Wawona bundles:" >&2
+      echo "$hits" >&2
       exit 1
     fi
   '';
@@ -1273,6 +1299,7 @@ ICDJSON
     basedOnDependencyAnalysis = false;
   };
 
+  # Mode B tipa: same refuse. Relay owns the CPU. Cited: docs/wwn-repo-dag.md.
   iosModeBVmEngineEmbedPhase = {
     path = refuseQemuBundleScript;
     name = "Refuse QEMU engine (Mode B)";
@@ -1401,12 +1428,11 @@ ICDJSON
   # resolve the types (and ObjC can NSClassFromString the presenter). Do not add
   # these to macOS (already covered by Sources/WawonaUI) or watchOS (no those
   # Machines views).
+  # Shared SwiftUI product shell. Same tree macOS already compiles. Do not
+  # list individual files here: that left WawonaMainWindowView only in
+  # macos/ui and the unused MachinesRootView as a second app.
   appleMobileEnvUISources = [
-    { path = "Sources/WawonaUI/Settings/EnvironmentVariablesView.swift"; type = "file"; }
-    { path = "Sources/WawonaUI/Settings/WWNEnvironmentSettingsPresenter.swift"; type = "file"; }
-    { path = "Sources/WawonaUI/View+WawonaTextField.swift"; type = "file"; }
-    { path = "Sources/WawonaUI/MachineRuntimeSettingsApplicator.swift"; type = "file"; }
-    { path = "Sources/WawonaUI/Machines/MachineActionBar.swift"; type = "file"; }
+    { path = "Sources/WawonaUI"; excludes = [ "Skip/**" ]; }
   ];
 
   # Xcode “Update to recommended settings” for framework targets with Swift/ObjC clients.
@@ -1516,11 +1542,19 @@ ICDJSON
             excludes = commonExcludes ++ [
               "WWNSwingingBridgeController.m" "WWNSwingingBridgeController.h"
               "WWNDesktopReplacementController.m" "WWNDesktopReplacementController.h"
+              "WWNQemuSystem.m" "WWNQemuSystem.h"
             ];
           }
           {
             path = "src/platform/macos/ui/Settings";
-            excludes = commonExcludes ++ [ "WWNSipStatus.m" "WWNSipStatus.h" ];
+            excludes = commonExcludes ++ [
+              "WWNSipStatus.m"
+              "WWNSipStatus.h"
+              "WWNSettingsSidebarViewController.m"
+              "WWNSettingsSidebarViewController.h"
+              "WWNSettingsSplitViewController.m"
+              "WWNSettingsSplitViewController.h"
+            ];
           }
           { path = "src/platform/macos/ui/Helpers"; excludes = commonExcludes; }
           { path = "src/resources/Assets.xcassets"; }
@@ -1720,12 +1754,16 @@ ICDJSON
             CODE_SIGN_STYLE = "Manual";
             CODE_SIGNING_ALLOWED = "NO";
             CODE_SIGNING_REQUIRED = "NO";
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS = [ "$(inherited)" "WWN_MODE_B" ];
             GCC_PREPROCESSOR_DEFINITIONS = [
               "$(inherited)"
               "TARGET_OS_IPHONE=1"
               "WWN_MODE_B=1"
               "PRODUCT_BUNDLE_IDENTIFIER=\\\"com.aspauldingcode.Wawona.ModeB\\\""
             ] ++ versionDefs;
+            # Relay CPU is planned. WWNMobileVmEngine fail-closes in ObjC.
+            # Do not link vm-engine-contract-modeb: that key is a host
+            # runCommand (bin/ + README), not libwwn_vms_engine.a. No QEMU.
             "OTHER_LDFLAGS[sdk=iphoneos*]" =
               lib.filter
                 (flag:
@@ -1734,12 +1772,9 @@ ICDJSON
                   && flag != "-lwwn_vms_engine")
                 Wawona-iOS.settings.base."OTHER_LDFLAGS[sdk=iphoneos*]" ++ [
                 "-Wl,-u,_wwn_modeb_desktop_start"
-                "-Wl,-u,_wwn_vm_product_accel"
-                "-L${strip (iosDeps."vm-engine-contract-modeb" or null)}/lib"
-                "-lwwn_vms_engine"
                 "-Wl,-u,_wwn_iomfb_open"
-                "-L${strip (iosDeps."iland-iomfb" or null)}/lib"
-                "-lwwn_iland_iomfb"
+                "-L${strip (iosDeps."iomfb-ios" or null)}/lib"
+                "-lwwn_iomfb"
                 "-Wl,-u,_wwn_igetty_ios_initialize"
                 "-L${strip (iosDeps."igetty-ios" or null)}/lib"
                 "-lwwn_igetty_ios"
@@ -1748,8 +1783,7 @@ ICDJSON
               lib.filter
                 (path: path != "${strip (iosDeps."vm-engine-contract" or null)}/include")
                 Wawona-iOS.settings.base."HEADER_SEARCH_PATHS[sdk=iphoneos*]" ++ [
-                "${strip (iosDeps."vm-engine-contract-modeb" or null)}/include"
-                "${strip (iosDeps."iland-iomfb" or null)}/include"
+                "${strip (iosDeps."iomfb-ios" or null)}/include"
                 "${strip (iosDeps."igetty-ios" or null)}/include"
               ];
           };
@@ -1777,11 +1811,19 @@ ICDJSON
             excludes = commonExcludes ++ [
               "WWNSwingingBridgeController.m" "WWNSwingingBridgeController.h"
               "WWNDesktopReplacementController.m" "WWNDesktopReplacementController.h"
+              "WWNQemuSystem.m" "WWNQemuSystem.h"
             ];
           }
           {
             path = "src/platform/macos/ui/Settings";
-            excludes = commonExcludes ++ [ "WWNSipStatus.m" "WWNSipStatus.h" ];
+            excludes = commonExcludes ++ [
+              "WWNSipStatus.m"
+              "WWNSipStatus.h"
+              "WWNSettingsSidebarViewController.m"
+              "WWNSettingsSidebarViewController.h"
+              "WWNSettingsSplitViewController.m"
+              "WWNSettingsSplitViewController.h"
+            ];
           }
           { path = "src/platform/macos/ui/Helpers"; excludes = commonExcludes; }
           { path = "src/resources/Assets.xcassets"; }
@@ -1983,11 +2025,19 @@ ICDJSON
             excludes = commonExcludes ++ [
               "WWNSwingingBridgeController.m" "WWNSwingingBridgeController.h"
               "WWNDesktopReplacementController.m" "WWNDesktopReplacementController.h"
+              "WWNQemuSystem.m" "WWNQemuSystem.h"
             ];
           }
           {
             path = "src/platform/macos/ui/Settings";
-            excludes = commonExcludes ++ [ "WWNSipStatus.m" "WWNSipStatus.h" ];
+            excludes = commonExcludes ++ [
+              "WWNSipStatus.m"
+              "WWNSipStatus.h"
+              "WWNSettingsSidebarViewController.m"
+              "WWNSettingsSidebarViewController.h"
+              "WWNSettingsSplitViewController.m"
+              "WWNSettingsSplitViewController.h"
+            ];
           }
           { path = "src/platform/macos/ui/Helpers"; excludes = commonExcludes; }
           { path = "src/resources/Assets.xcassets"; }
@@ -2551,8 +2601,13 @@ ICDJSON
               # install_name). Relocator skips @rpath and skips the main
               # executable, so stage the shim + ANGLE here before the copy
               # loop walks Frameworks/*.dylib for wayland-client deps.
-              ILAND_EGL="${strip (macosDeps.iland or null)}/lib/libEGL.dylib"
-              ANGLE_EGL="${strip (macosDeps.angle or null)}/lib/libEGL.dylib"
+              # Keep /lib off the Nix store path so the xcodegen remapper does
+              # not rewrite this shell snippet to $(SRCROOT)/.nix-deps (make
+              # syntax). /bin/sh treats that as an empty command substitution.
+              ILAND_DIR="${strip (macosDeps.iland or null)}"
+              ANGLE_DIR="${strip (macosDeps.angle or null)}"
+              ILAND_EGL="$ILAND_DIR/lib/libEGL.dylib"
+              ANGLE_EGL="$ANGLE_DIR/lib/libEGL.dylib"
               if [ ! -f "$ILAND_EGL" ]; then
                 echo "error: iland Wayland-EGL shim missing: $ILAND_EGL" >&2
                 exit 1
@@ -2811,6 +2866,8 @@ ICDJSON
               "WWNSwingingBridgeController.h"
               "WWNDesktopReplacementController.m"
               "WWNDesktopReplacementController.h"
+              "WWNQemuSystem.m"
+              "WWNQemuSystem.h"
             ];
           }
           {
@@ -2818,6 +2875,10 @@ ICDJSON
             excludes = commonExcludes ++ [
               "WWNSipStatus.m"
               "WWNSipStatus.h"
+              "WWNSettingsSidebarViewController.m"
+              "WWNSettingsSidebarViewController.h"
+              "WWNSettingsSplitViewController.m"
+              "WWNSettingsSplitViewController.h"
             ];
           }
           { path = "src/platform/macos/ui/Helpers"; excludes = commonExcludes; }
@@ -3027,7 +3088,11 @@ ICDJSON
             CODE_SIGNING_REQUIRED = "NO";
           };
         };
-        dependencies = [ ];
+        # MachineProfileDomain.swift calls MachineEditorState / Validation
+        # fallbacks. Contracts do not import Model. Do not invert that.
+        dependencies = [
+          { target = "WawonaUIContracts"; embed = false; }
+        ];
       };
       WawonaUIContracts = {
         type = "framework";
@@ -3395,7 +3460,7 @@ ICDJSON
   targetPlatformKeys = {
     Wawona-iOS = "ios";
     Wawona-iOS-ModeB =
-      if mobileVmEngineModeB != null then "ios" else "modeb-disabled";
+      if includeModeB then "ios" else "modeb-disabled";
     # UITest bundle lives/dies with the iOS app target (ci-l3-apple-xcuitest).
     Wawona-iOSUITests = "ios";
     Wawona-iPadOS = "ipados";

@@ -377,7 +377,8 @@ The final derivation (`stdenvNoCC.mkDerivation`) assembles:
 - `$out/lib/libwawona.a`. Static library (iOS, macOS)
 - `$out/lib/libwawona_core.so`. Shared library (Android, macOS)
 - `$out/bin/`. CLI tools (macOS only)
-- `$out/uniffi/`. Generated Swift bindings (macOS only)
+- `$out/uniffi/{swift,kotlin}`. UniFFI bindings from host `uniffi-bindgen`
+  (every backend). Store output only. Never commit.
 
 ---
 
@@ -445,6 +446,9 @@ The Darwin workflow (`.github/workflows/nix.yml`) now treats host Xcode as expli
 |--------------------------------------|--------------------------------------------|
 | `nix run .#wawona`                   | macOS app (build + launch)                 |
 | `nix run .#wawona-ios`               | iOS Simulator app (xcodegen + build + run) |
+| `nix run .#wawona-ios-trollstore` / `.#wawona-ios-ts` | TrollStore Mode B tipa on vphone (slim, install + launch) |
+| `nix run .#wawona-ios-jailbreak` / `.#wawona-ios-jb` | Sileo rootless Mode B `.deb` on vphone (install + launch) |
+| `nix run .#wawona-ios-modeb`         | Alias of `wawona-ios-trollstore` |
 | `nix run .#wawona-android`           | Android app                                |
 | `nix build .#wawona-macos-backend`   | Just the macOS Rust static library         |
 | `nix build .#wawona-ios-backend`     | Just the iOS device Rust static library    |

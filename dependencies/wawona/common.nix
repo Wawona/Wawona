@@ -46,6 +46,8 @@ rec {
     "Sources/WawonaUI/Settings/MachineSettingsView.swift"
     "Sources/WawonaUI/View+WawonaTextField.swift"
     "Sources/WawonaUI/VisionOS/WawonaVisionShell.swift"
+    # Phone + tvOS Safari-style Wayland client tabs (#84).
+    "Sources/WawonaUI/Session/WWNClientSessionTabs.swift"
     "Sources/WawonaWatch/WawonaWatchApp.swift"
     "Sources/WawonaWatch/MachineStatusView.swift"
     "Sources/WawonaWatch/QuickConnectView.swift"
@@ -82,6 +84,8 @@ rec {
     "src/platform/macos/ui/Machines/WWNRelay.m"
     "src/platform/macos/ui/Machines/WWNRelay.h"
     "src/platform/macos/ui/Machines/wawona_relay.h"
+    # Weak stub until flake wwn-relay exports relay_copy_frame on iOS.
+    "src/platform/macos/ui/Machines/wawona_relay_copy_frame_stub.c"
     "src/platform/macos/ui/Machines/WWNVirtualMachineRunner.m"
     "src/platform/macos/ui/Machines/WWNVirtualMachineRunner.h"
     "src/platform/macos/ui/Machines/WWNContainerRunner.m"
