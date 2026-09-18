@@ -1,6 +1,6 @@
 import SwiftUI
 import WawonaModel
-#if !os(tvOS)
+#if os(macOS) || os(iOS) || os(visionOS)
 import UniformTypeIdentifiers
 #endif
 
@@ -13,6 +13,9 @@ public struct MachineSettingsView: View {
     @State var selectedID: String?
     @State var draft: MachineProfile?
     @State private var fileImportTarget: MachineSettingsFileImport?
+    @State private var showingFileImporter = false
+    @State private var fileImportError: String?
+    @State private var containerMemoryText = ""
 
     public init(
         preferences: WawonaPreferences,
@@ -110,29 +113,38 @@ public struct MachineSettingsView: View {
                 loadDraft()
             }
         }
-        #if !os(tvOS)
+        #if os(macOS) || os(iOS) || os(visionOS)
         .fileImporter(
-            isPresented: Binding(
-                get: { fileImportTarget != nil },
-                set: { if !$0 { fileImportTarget = nil } }
-            ),
+            isPresented: $showingFileImporter,
             allowedContentTypes: fileImportTarget == .wasm
                 ? [UTType(filenameExtension: "wasm") ?? .data]
                 : [.item]
         ) { result in
             let target = fileImportTarget
             fileImportTarget = nil
-            guard case .success(let url) = result else { return }
-            switch target {
-            case .wasm:
-                wasmModulePathBinding.wrappedValue = url.path
-            case .containerKernel:
-                containerKernelPathBinding.wrappedValue = url.path
-            case .containerInitfs:
-                containerInitfsPathBinding.wrappedValue = url.path
-            case .none:
-                break
+            guard let target else { return }
+            do {
+                let url = try result.get()
+                let importedPath = try copyImportedFile(url, target: target)
+                switch target {
+                case .wasm:
+                    wasmModulePathBinding.wrappedValue = importedPath
+                case .containerKernel:
+                    containerKernelPathBinding.wrappedValue = importedPath
+                case .containerInitfs:
+                    containerInitfsPathBinding.wrappedValue = importedPath
+                }
+            } catch {
+                fileImportError = error.localizedDescription
             }
+        }
+        .alert("Could Not Import File", isPresented: Binding(
+            get: { fileImportError != nil },
+            set: { if !$0 { fileImportError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(fileImportError ?? "")
         }
         #endif
     }
@@ -161,12 +173,23 @@ public struct MachineSettingsView: View {
             ) {
                 TextField(
                     "",
-                    value: containerMemoryMiBBinding,
-                    format: .number,
+                    text: $containerMemoryText,
                     prompt: Text("Inherit")
                 )
                 .labelsHidden()
                 .multilineTextAlignment(.trailing)
+                .onChange(of: containerMemoryText) { _, newValue in
+                    let digits = newValue.filter(\.isNumber)
+                    guard let parsed = Int(digits) else {
+                        if containerMemoryText != digits { containerMemoryText = digits }
+                        return
+                    }
+                    let normalized = String(min(parsed, 1_048_576))
+                    if containerMemoryText != normalized {
+                        containerMemoryText = normalized
+                    }
+                }
+                .onSubmit { commitContainerMemory() }
             }
             NativeSettingsRow("Read-Only Rootfs") {
                 Toggle("", isOn: containerReadOnlyBinding).labelsHidden()
@@ -177,14 +200,22 @@ public struct MachineSettingsView: View {
             ) {
                 Toggle("", isOn: containerInitProcessBinding).labelsHidden()
             }
-            #if !os(tvOS)
+            #if os(macOS) || os(iOS) || os(visionOS)
             NativeSettingsRow(
                 "Kernel",
                 summary: containerKernelSummary,
                 help: "Choose a local kernel image. If unset, Wawona discovers the configured global kernel."
             ) {
-                Button("Choose", systemImage: "folder") {
-                    fileImportTarget = .containerKernel
+                HStack {
+                    Button("Choose", systemImage: "folder") {
+                        presentImporter(.containerKernel)
+                    }
+                    if !containerKernelPathBinding.wrappedValue.isEmpty {
+                        Button("Clear", systemImage: "xmark") {
+                            containerKernelPathBinding.wrappedValue = ""
+                        }
+                        .accessibilityLabel("Inherit global kernel")
+                    }
                 }
             }
             NativeSettingsRow(
@@ -192,8 +223,16 @@ public struct MachineSettingsView: View {
                 summary: containerInitfsSummary,
                 help: "Choose a local init filesystem. If unset, Wawona uses the configured global initfs."
             ) {
-                Button("Choose", systemImage: "folder") {
-                    fileImportTarget = .containerInitfs
+                HStack {
+                    Button("Choose", systemImage: "folder") {
+                        presentImporter(.containerInitfs)
+                    }
+                    if !containerInitfsPathBinding.wrappedValue.isEmpty {
+                        Button("Clear", systemImage: "xmark") {
+                            containerInitfsPathBinding.wrappedValue = ""
+                        }
+                        .accessibilityLabel("Inherit global initfs")
+                    }
                 }
             }
             #endif
@@ -275,14 +314,22 @@ public struct MachineSettingsView: View {
                     .autocorrectionDisabled()
                     .multilineTextAlignment(.trailing)
                 }
-                #if !os(tvOS)
+                #if os(macOS) || os(iOS) || os(visionOS)
                 NativeSettingsRow(
                     "Wasm Module",
                     summary: wasmModuleSummary,
                     help: "Choose a local .wasm module. If unset, Wawona runs the bundled hello-wasi-gui module."
                 ) {
-                    Button("Choose", systemImage: "doc.badge.gearshape") {
-                        fileImportTarget = .wasm
+                    HStack {
+                        Button("Choose", systemImage: "doc.badge.gearshape") {
+                            presentImporter(.wasm)
+                        }
+                        if !wasmModulePathBinding.wrappedValue.isEmpty {
+                            Button("Clear", systemImage: "xmark") {
+                                wasmModulePathBinding.wrappedValue = ""
+                            }
+                            .accessibilityLabel("Use bundled Wasm module")
+                        }
                     }
                 }
                 #endif
@@ -317,14 +364,22 @@ public struct MachineSettingsView: View {
                 }
                 #endif
                 if resolvedBundledAppID == "wawona-wasm" {
-                    #if !os(tvOS)
+                    #if os(macOS) || os(iOS) || os(visionOS)
                     NativeSettingsRow(
                         "Wasm Module",
                         summary: wasmModuleSummary,
                         help: "Choose a local .wasm module. If unset, Wawona runs bundled hello-wasi-gui."
                     ) {
-                        Button("Choose", systemImage: "doc.badge.gearshape") {
-                            fileImportTarget = .wasm
+                        HStack {
+                            Button("Choose", systemImage: "doc.badge.gearshape") {
+                                presentImporter(.wasm)
+                            }
+                            if !wasmModulePathBinding.wrappedValue.isEmpty {
+                                Button("Clear", systemImage: "xmark") {
+                                    wasmModulePathBinding.wrappedValue = ""
+                                }
+                                .accessibilityLabel("Use bundled Wasm module")
+                            }
                         }
                     }
                     #endif
@@ -361,10 +416,11 @@ public struct MachineSettingsView: View {
                 summary: "1 through 65,535",
                 help: "The SSH TCP port. Wawona clamps this value to the valid port range."
             ) {
-                Stepper(value: sshPortBinding, in: 1...65_535) {
-                    Text(sshPortBinding.wrappedValue, format: .number)
-                        .monospacedDigit()
-                }
+                NativeBoundedIntegerField(
+                    title: "Port",
+                    value: sshPortBinding,
+                    range: 1...65_535
+                )
             }
             NativeSettingsRow("Password") {
                 SecureField("", text: sshPasswordBinding)
@@ -432,7 +488,7 @@ public struct MachineSettingsView: View {
             #else
             NativeSettingsRow(
                 "Touch Input",
-                help: "Multi-Touch sends native Wayland touch events. Touchpad uses a virtual pointer."
+                help: "Multi-Touch sends native Wayland touch events and is required for many Wayland clients, including Weston panels and terminals. Touchpad uses a virtual pointer."
             ) {
                 Picker("", selection: touchInputTypeBinding) {
                     Text("Multi-Touch").tag("Multi-Touch")
@@ -457,7 +513,8 @@ public struct MachineSettingsView: View {
     private func graphicsSection() -> some View {
         Section("Graphics") {
             NativeSettingsRow("Renderer") {
-                Picker("", selection: rendererBinding) {
+                Picker("", selection: rendererSelectionBinding) {
+                    Text("Inherit (\(preferences.renderer))").tag("")
                     Text("Metal").tag("metal")
                     Text("Software").tag("software")
                 }
@@ -466,7 +523,8 @@ public struct MachineSettingsView: View {
             }
             if PlatformCapabilities.allowsGpuStack {
                 NativeSettingsRow("Vulkan Driver") {
-                    Picker("", selection: vulkanDriverBinding) {
+                    Picker("", selection: vulkanDriverSelectionBinding) {
+                        Text("Inherit (\(preferences.vulkanDriver))").tag("")
                         ForEach(vulkanDriverOptions, id: \.self) { value in
                             Text(vulkanDriverTitle(value)).tag(value)
                         }
@@ -475,7 +533,8 @@ public struct MachineSettingsView: View {
                     .nativeSettingsPickerStyle()
                 }
                 NativeSettingsRow("OpenGL Driver") {
-                    Picker("", selection: openGLDriverBinding) {
+                    Picker("", selection: openGLDriverSelectionBinding) {
+                        Text("Inherit (\(preferences.openGLDriver))").tag("")
                         Text("None").tag("none")
                         Text("ANGLE").tag("angle")
                     }
@@ -616,6 +675,7 @@ public struct MachineSettingsView: View {
     private func actionsSection() -> some View {
         Section {
             Button("Save Machine Settings", systemImage: "checkmark") {
+                commitContainerMemory()
                 guard let latestDraft = draft else { return }
                 profileStore.upsert(latestDraft)
                 profileStore.activeMachineId = latestDraft.id
@@ -652,7 +712,12 @@ public struct MachineSettingsView: View {
         }
         #endif
         #endif
+        if !PlatformCapabilities.allowsMachineType(profile.type) {
+            profile.type = .native
+        }
         draft = profile
+        let rawMemory = profile.containerSettings?.memory ?? ""
+        containerMemoryText = parseMemoryMiB(rawMemory).map(String.init) ?? ""
     }
 
     private var nameBinding: Binding<String> {
@@ -825,33 +890,36 @@ public struct MachineSettingsView: View {
         )
     }
 
-    private var rendererBinding: Binding<String> {
+    private var rendererSelectionBinding: Binding<String> {
         Binding(
-            get: {
-                let value = draft?.runtimeOverrides.renderer ?? preferences.renderer
-                return ["metal", "software"].contains(value) ? value : "metal"
-            },
-            set: { value in updateDraft { $0.runtimeOverrides.renderer = value } }
+            get: { draft?.runtimeOverrides.renderer ?? "" },
+            set: { value in
+                updateDraft {
+                    $0.runtimeOverrides.renderer = value.isEmpty ? nil : value
+                }
+            }
         )
     }
 
-    private var vulkanDriverBinding: Binding<String> {
+    private var vulkanDriverSelectionBinding: Binding<String> {
         Binding(
-            get: {
-                let value = draft?.runtimeOverrides.vulkanDriver ?? preferences.vulkanDriver
-                return vulkanDriverOptions.contains(value) ? value : vulkanDriverOptions[0]
-            },
-            set: { value in updateDraft { $0.runtimeOverrides.vulkanDriver = value } }
+            get: { draft?.runtimeOverrides.vulkanDriver ?? "" },
+            set: { value in
+                updateDraft {
+                    $0.runtimeOverrides.vulkanDriver = value.isEmpty ? nil : value
+                }
+            }
         )
     }
 
-    private var openGLDriverBinding: Binding<String> {
+    private var openGLDriverSelectionBinding: Binding<String> {
         Binding(
-            get: {
-                let value = draft?.runtimeOverrides.openGLDriver ?? "angle"
-                return ["none", "angle"].contains(value) ? value : "angle"
-            },
-            set: { value in updateDraft { $0.runtimeOverrides.openGLDriver = value } }
+            get: { draft?.runtimeOverrides.openGLDriver ?? "" },
+            set: { value in
+                updateDraft {
+                    $0.runtimeOverrides.openGLDriver = value.isEmpty ? nil : value
+                }
+            }
         )
     }
 
@@ -960,24 +1028,49 @@ public struct MachineSettingsView: View {
         )
     }
 
-    private var containerMemoryMiBBinding: Binding<Int?> {
-        Binding(
-            get: {
-                let raw = draft?.containerSettings?.memory?
-                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                guard !raw.isEmpty else { return nil }
-                return Int(raw)
-            },
-            set: { value in
-                updateContainerSettings {
-                    guard let value else {
-                        $0.memory = nil
-                        return
-                    }
-                    $0.memory = String(min(max(value, 64), 1_048_576))
-                }
-            }
-        )
+    private func commitContainerMemory() {
+        let digits = containerMemoryText.filter(\.isNumber)
+        guard let parsed = Int(digits) else {
+            updateContainerSettings { $0.memory = nil }
+            return
+        }
+        let clamped = min(max(parsed, 64), 1_048_576)
+        containerMemoryText = String(clamped)
+        updateContainerSettings { $0.memory = String(clamped) }
+    }
+
+    private func parseMemoryMiB(_ raw: String) -> Int? {
+        let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        guard !normalized.isEmpty else { return nil }
+        let suffix = normalized.last
+        let multiplier: Int
+        let digits: Substring
+        switch suffix {
+        case "K":
+            multiplier = 1
+            digits = normalized.dropLast()
+        case "M":
+            multiplier = 1
+            digits = normalized.dropLast()
+        case "G":
+            multiplier = 1_024
+            digits = normalized.dropLast()
+        case "T":
+            multiplier = 1_048_576
+            digits = normalized.dropLast()
+        case "P":
+            multiplier = 1_073_741_824
+            digits = normalized.dropLast()
+        default:
+            multiplier = 1
+            digits = Substring(normalized)
+        }
+        guard let amount = Int(digits), amount >= 0 else { return nil }
+        if suffix == "K" {
+            return max(1, amount / 1_024)
+        }
+        let (value, overflow) = amount.multipliedReportingOverflow(by: multiplier)
+        return overflow ? 1_048_576 : min(max(value, 64), 1_048_576)
     }
 
     private var containerReadOnlyBinding: Binding<Bool> {
@@ -1059,12 +1152,57 @@ public struct MachineSettingsView: View {
         mutate(&copy)
         draft = copy
     }
+
+    #if os(macOS) || os(iOS) || os(visionOS)
+    private func presentImporter(_ target: MachineSettingsFileImport) {
+        fileImportTarget = target
+        showingFileImporter = true
+    }
+
+    private func copyImportedFile(
+        _ source: URL,
+        target: MachineSettingsFileImport
+    ) throws -> String {
+        let hasSecurityScope = source.startAccessingSecurityScopedResource()
+        defer {
+            if hasSecurityScope {
+                source.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        let fileManager = FileManager.default
+        let root = try fileManager.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        let directory = root
+            .appendingPathComponent("Wawona", isDirectory: true)
+            .appendingPathComponent("ImportedSettings", isDirectory: true)
+            .appendingPathComponent(target.directoryName, isDirectory: true)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        let destination = directory.appendingPathComponent(
+            "\(UUID().uuidString)-\(source.lastPathComponent)"
+        )
+        try fileManager.copyItem(at: source, to: destination)
+        return destination.path
+    }
+    #endif
 }
 
 private enum MachineSettingsFileImport {
     case wasm
     case containerKernel
     case containerInitfs
+
+    var directoryName: String {
+        switch self {
+        case .wasm: return "Wasm"
+        case .containerKernel: return "Kernels"
+        case .containerInitfs: return "Initfs"
+        }
+    }
 }
 
 private extension View {

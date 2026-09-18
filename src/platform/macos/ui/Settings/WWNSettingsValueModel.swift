@@ -24,6 +24,7 @@ final class WWNSettingsValueModel: ObservableObject {
     @Published private(set) var sections: [WWNPreferencesSection] = []
 
     private let defaults = UserDefaults.standard
+    private let globalSnapshotKey = "wawona.globalSettingsSnapshot.v1"
     private var observers: [NSObjectProtocol] = []
 
     /// Keys whose change rebuilds `WWNPreferences.sections` (matching the
@@ -36,6 +37,7 @@ final class WWNSettingsValueModel: ObservableObject {
 
     init() {
         reloadSections()
+        seedGlobalSnapshotIfNeeded()
         observers = [
             NotificationCenter.default.addObserver(
                 forName: UserDefaults.didChangeNotification,
@@ -166,6 +168,7 @@ final class WWNSettingsValueModel: ObservableObject {
         let key = itemKey(item)
         guard !key.isEmpty else { return }
         defaults.set(value, forKey: key)
+        recordGlobalValue(value, forKey: key)
         commit(rebuild: false)
     }
 
@@ -185,7 +188,20 @@ final class WWNSettingsValueModel: ObservableObject {
         } else {
             defaults.set(clamped, forKey: key)
         }
+        recordGlobalValue(clamped, forKey: key)
         commit(rebuild: false)
+    }
+
+    func setNumberText(_ text: String, for item: WWNSettingItem) {
+        let spec = numberSpec(for: item)
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty && spec.allowsEmpty {
+            defaults.removeObject(forKey: itemKey(item))
+            recordGlobalValue("", forKey: itemKey(item))
+            commit(rebuild: false)
+            return
+        }
+        setInteger(Int(trimmed) ?? spec.defaultValue, for: item)
     }
 
     func setBool(_ value: Bool, for item: WWNSettingItem) {
@@ -210,6 +226,7 @@ final class WWNSettingsValueModel: ObservableObject {
         }
         #endif
         defaults.set(value, forKey: key)
+        recordGlobalValue(value, forKey: key)
         if key == "ForceServerSideDecorations" {
             // Live compositor reaction (same notification WawonaPreferences
             // save() posts for the SwiftUI machine settings).
@@ -228,10 +245,12 @@ final class WWNSettingsValueModel: ObservableObject {
         guard index >= 0 && index < opts.count else { return }
         if isAuthMethodKey(key) {
             defaults.set(index, forKey: key)
+            recordGlobalValue(index, forKey: key)
         } else {
             let vals = optionValues(item)
             let value = vals.isEmpty ? opts[index] : vals[index]
             defaults.set(value, forKey: key)
+            recordGlobalValue(value, forKey: key)
         }
         commit(rebuild: sectionRebuildKeys.contains(key))
     }
@@ -252,6 +271,7 @@ final class WWNSettingsValueModel: ObservableObject {
         default:
             break
         }
+        recordGlobalValue(password, forKey: itemKey(item))
         commit(rebuild: false)
     }
 
@@ -273,6 +293,29 @@ final class WWNSettingsValueModel: ObservableObject {
         NotificationCenter.default.post(name: .wawonaPreferencesDidSave, object: nil)
     }
 
+    private func recordGlobalValue(_ value: Any, forKey key: String) {
+        var snapshot = defaults.dictionary(forKey: globalSnapshotKey) ?? [:]
+        snapshot[key] = value
+        defaults.set(snapshot, forKey: globalSnapshotKey)
+    }
+
+    private func seedGlobalSnapshotIfNeeded() {
+        guard defaults.dictionary(forKey: globalSnapshotKey) == nil else { return }
+        var snapshot: [String: Any] = [:]
+        for section in sections {
+            for item in section.items {
+                let key = itemKey(item)
+                guard !key.isEmpty else { continue }
+                if let stored = defaults.object(forKey: key) {
+                    snapshot[key] = stored
+                } else if let defaultValue = itemDefault(item) {
+                    snapshot[key] = defaultValue
+                }
+            }
+        }
+        defaults.set(snapshot, forKey: globalSnapshotKey)
+    }
+
     // MARK: - Row helpers
 
     func placeholder(for item: WWNSettingItem) -> String? {
@@ -286,24 +329,32 @@ final class WWNSettingsValueModel: ObservableObject {
 
     struct NumberSpec {
         let range: ClosedRange<Int>
-        let step: Int
         let defaultValue: Int
+        let allowsEmpty: Bool
     }
 
     func numberSpec(for item: WWNSettingItem) -> NumberSpec {
         switch itemKey(item) {
         case "SSHPort", "MachineVMVsockPort", "ContainerVsockPort":
-            return NumberSpec(range: 1...65535, step: 1, defaultValue: itemKey(item) == "SSHPort" ? 22 : 1024)
+            return NumberSpec(
+                range: 1...65535,
+                defaultValue: itemKey(item) == "SSHPort" ? 22 : 1024,
+                allowsEmpty: false
+            )
         case "WaylandDisplayNumber":
-            return NumberSpec(range: 0...255, step: 1, defaultValue: 0)
+            return NumberSpec(range: 0...255, defaultValue: 0, allowsEmpty: false)
         case "WaypipeCompressLevel":
-            return NumberSpec(range: 1...22, step: 1, defaultValue: 7)
+            return NumberSpec(range: 1...22, defaultValue: 7, allowsEmpty: false)
         case "WaypipeThreads":
-            return NumberSpec(range: 0...64, step: 1, defaultValue: 0)
+            return NumberSpec(range: 0...64, defaultValue: 0, allowsEmpty: false)
         case "WaypipeVideoBpf":
-            return NumberSpec(range: 1_000...100_000, step: 1_000, defaultValue: 5_000)
+            return NumberSpec(
+                range: 1_000...100_000,
+                defaultValue: 5_000,
+                allowsEmpty: true
+            )
         default:
-            return NumberSpec(range: 0...65_535, step: 1, defaultValue: 0)
+            return NumberSpec(range: 0...65_535, defaultValue: 0, allowsEmpty: false)
         }
     }
 

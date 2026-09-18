@@ -188,8 +188,6 @@ struct WWNNativeClientEditorSection: View {
       // Prefer copying into Documents/Wawona so sandboxed relaunches keep the file.
       if let stable = Self.importWasmModule(from: url) {
         draft.wasmModulePath = stable
-      } else {
-        draft.wasmModulePath = url.path
       }
     }
     #endif
@@ -293,7 +291,7 @@ struct WWNWasmEditorSection: View {
       if let stable = WWNNativeClientEditorSection.importWasmModule(from: url) {
         applyLocalFile(stable)
       } else {
-        applyLocalFile(url.path)
+        catalogNote = "Could not copy the selected module into Wawona."
       }
     }
     #endif
@@ -511,11 +509,11 @@ struct WWNContainerEditorSection: View {
         containerImportNote = "import failed: permission denied"
         return
       }
-      defer { url.stopAccessingSecurityScopedResource() }
       let path = url.path
       containerImporting = true
       containerImportNote = nil
       Task {
+        defer { url.stopAccessingSecurityScopedResource() }
         do {
           let imported = try await ContainerImageManager.importFromDiskResolved(path) { _ in }
           draft.containerRef = imported.canonical
@@ -555,7 +553,7 @@ struct WWNRemoteSSHEditorSection: View {
           WWNEditorCodeField("username", text: $draft.sshUser)
         }
         WWNEditorFieldRow("Port", icon: "number") {
-          WWNEditorNumberStepper(text: $draft.sshPort, range: 1...65_535, step: 1)
+          WWNEditorNumberField(text: $draft.sshPort, range: 1...65_535)
         }
         WWNEditorFieldRow("SSH Key Path", icon: "key") {
           WWNEditorCodeField("~/.ssh/id_ed25519", text: $draft.sshKeyPath)
@@ -621,7 +619,7 @@ struct WWNWaypipeEditorSection: View {
     ) {
       VStack(alignment: .leading, spacing: 12) {
         WWNEditorFieldRow("Display Number", icon: "number") {
-          WWNEditorNumberStepper(text: $draft.waypipeDisplayNumber, range: 0...255, step: 1)
+          WWNEditorNumberField(text: $draft.waypipeDisplayNumber, range: 0...255)
         }
         WWNEditorFieldRow("Compression", icon: "arrow.left.arrow.right") {
           Picker("", selection: $draft.waypipeCompress) {
@@ -633,10 +631,10 @@ struct WWNWaypipeEditorSection: View {
           .labelsHidden()
         }
         WWNEditorFieldRow("Compression Level", icon: "slider.horizontal.3") {
-          WWNEditorNumberStepper(text: $draft.waypipeCompressLevel, range: 1...22, step: 1)
+          WWNEditorNumberField(text: $draft.waypipeCompressLevel, range: 1...22)
         }
         WWNEditorFieldRow("Threads", icon: "cpu") {
-          WWNEditorNumberStepper(text: $draft.waypipeThreads, range: 0...64, step: 1)
+          WWNEditorNumberField(text: $draft.waypipeThreads, range: 0...64)
         }
         WWNEditorFieldRow("Video Codec", icon: "film") {
           Picker("", selection: $draft.waypipeVideo) {
@@ -669,10 +667,9 @@ struct WWNWaypipeEditorSection: View {
           .labelsHidden()
         }
         WWNEditorFieldRow("Bits Per Frame", icon: "gauge") {
-          WWNEditorNumberStepper(
+          WWNEditorNumberField(
             text: $draft.waypipeVideoBpf,
             range: 1_000...100_000,
-            step: 1_000,
             automaticWhenEmpty: true
           )
         }

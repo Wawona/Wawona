@@ -329,20 +329,14 @@ private struct WatchSettingsSSHSection: View {
                     .autocorrectionDisabled()
             }
             if watchShows(.sshPort, in: .ssh) {
-                Stepper(
+                TextField(
+                    "Port",
                     value: Binding(
                         get: { min(max(preferences.sshPort, 1), 65_535) },
                         set: { preferences.sshPort = min(max($0, 1), 65_535) }
                     ),
-                    in: 1...65_535
-                ) {
-                    HStack {
-                        Text("Port")
-                        Spacer()
-                        Text(preferences.sshPort, format: .number)
-                            .monospacedDigit()
-                    }
-                }
+                    format: .number
+                )
             }
             if watchShows(.sshAuthMethod, in: .ssh) {
                 Picker("Auth", selection: $preferences.sshAuthMethod) {

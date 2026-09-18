@@ -81,7 +81,7 @@ struct WWNEditorInfoButton: View {
   @State private var showsInfo = false
 
   var body: some View {
-    Button {
+    let button = Button {
       showsInfo.toggle()
     } label: {
       Image(systemName: "info.circle")
@@ -89,27 +89,39 @@ struct WWNEditorInfoButton: View {
     }
     .buttonStyle(.plain)
     .foregroundStyle(.tertiary)
-    #if os(macOS)
-    .help(text)
-    #endif
     .accessibilityLabel("More information")
-    .popover(isPresented: $showsInfo, arrowEdge: .trailing) {
+
+    #if os(tvOS)
+    button.alert("More Information", isPresented: $showsInfo) {
+      Button("OK", role: .cancel) {}
+    } message: {
       Text(text)
-        .font(.system(size: 12))
-        .foregroundStyle(.primary)
-        .padding(14)
-        .frame(width: 280, alignment: .leading)
-        .fixedSize(horizontal: false, vertical: true)
     }
+    #else
+    button
+      #if os(macOS)
+      .help(text)
+      #endif
+      .popover(isPresented: $showsInfo, arrowEdge: .trailing) {
+        Text(text)
+          .font(.system(size: 12))
+          .foregroundStyle(.primary)
+          .padding(14)
+          .frame(width: 280, alignment: .leading)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+    #endif
   }
 }
 
-/// Compatibility placeholder. Detailed help now lives in info popovers.
+/// Short operational status or concise secondary text.
 struct WWNEditorCaption: View {
   let text: String
 
   var body: some View {
-    EmptyView()
+    Text(text)
+      .font(.caption)
+      .foregroundStyle(.secondary)
   }
 }
 
@@ -143,15 +155,14 @@ struct WWNEditorFieldRow<Content: View>: View {
           Spacer(minLength: 12)
           content()
             .frame(width: controlWidth, alignment: .trailing)
+            .accessibilityLabel(label)
         }
         VStack(alignment: .leading, spacing: 6) {
           labelColumn
           content()
             .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityLabel(label)
         }
-      }
-      if let footnote {
-        EmptyView()
       }
     }
   }
@@ -249,29 +260,39 @@ struct WWNEditorToggleRow: View {
 }
 
 /// Bounded numeric storage for legacy string-backed machine fields.
-struct WWNEditorNumberStepper: View {
+struct WWNEditorNumberField: View {
   @Binding var text: String
   let range: ClosedRange<Int>
-  let step: Int
   var automaticWhenEmpty = false
 
   var body: some View {
-    Stepper(value: value, in: range, step: step) {
-      Text(automaticWhenEmpty && text.isEmpty ? "Auto" : value.wrappedValue.formatted())
-        .monospacedDigit()
-    }
+    TextField(automaticWhenEmpty ? "Auto" : "", text: sanitizedText)
+      .textFieldStyle(.roundedBorder)
+      .multilineTextAlignment(.trailing)
+      .onSubmit { normalizeFinalValue() }
+      .onDisappear { normalizeFinalValue() }
   }
 
-  private var value: Binding<Int> {
+  private var sanitizedText: Binding<String> {
     Binding(
-      get: {
-        guard let parsed = Int(text) else { return range.lowerBound }
-        return min(max(parsed, range.lowerBound), range.upperBound)
-      },
+      get: { text },
       set: { newValue in
-        text = String(min(max(newValue, range.lowerBound), range.upperBound))
+        let digits = newValue.filter(\.isNumber)
+        guard let parsed = Int(digits) else {
+          text = ""
+          return
+        }
+        text = String(min(parsed, range.upperBound))
       }
     )
+  }
+
+  private func normalizeFinalValue() {
+    if automaticWhenEmpty && text.isEmpty {
+      return
+    }
+    let parsed = Int(text) ?? range.lowerBound
+    text = String(min(max(parsed, range.lowerBound), range.upperBound))
   }
 }
 

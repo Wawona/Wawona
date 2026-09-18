@@ -23,42 +23,73 @@ struct NativeSettingsRow<Control: View>: View {
     }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            HStack(alignment: .top, spacing: 6) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                    if let summary, !summary.isEmpty {
-                        Text(summary)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-                }
-                if let help, !help.isEmpty {
-                    Button {
-                        showingHelp = true
-                    } label: {
-                        Image(systemName: "info.circle")
-                    }
-                    .buttonStyle(.borderless)
-                    .accessibilityLabel("Help for \(title)")
-                    #if os(macOS)
-                    .help("More information")
-                    #endif
-                    .popover(isPresented: $showingHelp) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text(title).font(.headline)
-                            Text(help)
-                        }
-                        .padding()
-                        .frame(idealWidth: 320)
-                    }
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: 12) {
+                labelColumn
+                Spacer(minLength: 12)
+                trailingControl
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                labelColumn
+                trailingControl
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+        }
+    }
+
+    private var labelColumn: some View {
+        HStack(alignment: .top, spacing: 6) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                if let summary, !summary.isEmpty {
+                    Text(summary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
             }
-            Spacer(minLength: 12)
-            control()
-                .frame(width: controlWidth, alignment: .trailing)
+            if let help, !help.isEmpty {
+                helpButton(help)
+            }
         }
+    }
+
+    private var trailingControl: some View {
+        control()
+            .accessibilityLabel(title)
+            .frame(width: controlWidth, alignment: .trailing)
+    }
+
+    @ViewBuilder
+    private func helpButton(_ help: String) -> some View {
+        let button = Button {
+            showingHelp = true
+        } label: {
+            Image(systemName: "info.circle")
+        }
+        .buttonStyle(.borderless)
+        .accessibilityLabel("Help for \(title)")
+
+        #if os(tvOS) || os(watchOS)
+        button.alert(title, isPresented: $showingHelp) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(help)
+        }
+        #else
+        button
+            #if os(macOS)
+            .help("More information")
+            #endif
+            .popover(isPresented: $showingHelp) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(title).font(.headline)
+                    Text(help)
+                }
+                .padding()
+                .frame(idealWidth: 320)
+            }
+        #endif
     }
 
     private var controlWidth: CGFloat {
@@ -80,5 +111,25 @@ extension View {
         #else
         self.pickerStyle(.navigationLink)
         #endif
+    }
+}
+
+struct NativeBoundedIntegerField: View {
+    let title: String
+    @Binding var value: Int
+    let range: ClosedRange<Int>
+
+    var body: some View {
+        TextField("", value: boundedValue, format: .number)
+            .textFieldStyle(.roundedBorder)
+            .multilineTextAlignment(.trailing)
+            .accessibilityLabel(title)
+    }
+
+    private var boundedValue: Binding<Int> {
+        Binding(
+            get: { min(max(value, range.lowerBound), range.upperBound) },
+            set: { value = min(max($0, range.lowerBound), range.upperBound) }
+        )
     }
 }

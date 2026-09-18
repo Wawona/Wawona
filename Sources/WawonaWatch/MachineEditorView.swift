@@ -184,14 +184,14 @@ struct MachineEditorView: View {
                                 .autocorrectionDisabled()
                         }
                         if shows(.sshPort) {
-                            Stepper(value: $sshPort, in: 1...65_535) {
-                                HStack {
-                                    Text(MachineEditorValidation.metadata(for: .sshPort).label)
-                                    Spacer()
-                                    Text(sshPort, format: .number)
-                                        .monospacedDigit()
-                                }
-                            }
+                            TextField(
+                                MachineEditorValidation.metadata(for: .sshPort).label,
+                                value: Binding(
+                                    get: { min(max(sshPort, 1), 65_535) },
+                                    set: { sshPort = min(max($0, 1), 65_535) }
+                                ),
+                                format: .number
+                            )
                         }
                         if shows(.sshAuthMethod) {
                             Picker(MachineEditorValidation.metadata(for: .sshAuthMethod).label, selection: $sshAuthMethod) {

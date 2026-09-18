@@ -238,6 +238,9 @@ public final class WawonaPreferences: ObservableObject {
 
     public init() {
         load()
+        if defaults.dictionary(forKey: "wawona.globalSettingsSnapshot.v1") == nil {
+            recordGlobalSettingsSnapshot()
+        }
     }
 
     public func load() {
@@ -275,13 +278,20 @@ public final class WawonaPreferences: ObservableObject {
         colorOperations = defaults.object(forKey: "ColorOperations") as? Bool
             ?? defaults.object(forKey: keyPrefix + "colorOperations") as? Bool ?? true
         waylandDisplay = defaults.string(forKey: keyPrefix + "waylandDisplay") ?? "wayland-0"
-        sshHost = defaults.string(forKey: keyPrefix + "sshHost") ?? ""
-        sshUser = defaults.string(forKey: keyPrefix + "sshUser") ?? ""
+        sshHost = defaults.string(forKey: "SSHHost")
+            ?? defaults.string(forKey: keyPrefix + "sshHost") ?? ""
+        sshUser = defaults.string(forKey: "SSHUser")
+            ?? defaults.string(forKey: keyPrefix + "sshUser") ?? ""
         sshPort = MachineProfileDomain.normalizeSSHPort(
-            String(defaults.object(forKey: keyPrefix + "sshPort") as? Int ?? 22),
+            String(
+                defaults.object(forKey: "SSHPort") as? Int
+                    ?? defaults.object(forKey: keyPrefix + "sshPort") as? Int
+                    ?? 22
+            ),
             fallback: 22
         )
-        sshPassword = defaults.string(forKey: keyPrefix + "sshPassword") ?? ""
+        sshPassword = defaults.string(forKey: "SSHPassword")
+            ?? defaults.string(forKey: keyPrefix + "sshPassword") ?? ""
         if defaults.object(forKey: "SSHAuthMethod") != nil {
             sshAuthMethod = defaults.integer(forKey: "SSHAuthMethod")
         } else {
@@ -378,12 +388,17 @@ public final class WawonaPreferences: ObservableObject {
             forKey: "NestedCompositorCursor"
         )
         defaults.set(autoScale, forKey: keyPrefix + "autoScale")
+        defaults.set(autoScale, forKey: "AutoScale")
         defaults.set(colorOperations, forKey: "ColorOperations")
         defaults.set(colorOperations, forKey: keyPrefix + "colorOperations")
         defaults.set(waylandDisplay, forKey: keyPrefix + "waylandDisplay")
+        defaults.set(sshHost, forKey: "SSHHost")
         defaults.set(sshHost, forKey: keyPrefix + "sshHost")
+        defaults.set(sshUser, forKey: "SSHUser")
         defaults.set(sshUser, forKey: keyPrefix + "sshUser")
+        defaults.set(sshPort, forKey: "SSHPort")
         defaults.set(sshPort, forKey: keyPrefix + "sshPort")
+        defaults.set(sshPassword, forKey: "SSHPassword")
         defaults.set(sshPassword, forKey: keyPrefix + "sshPassword")
         defaults.set(sshAuthMethod, forKey: keyPrefix + "sshAuthMethod")
         defaults.set(sshKeyPath, forKey: keyPrefix + "sshKeyPath")
@@ -452,7 +467,42 @@ public final class WawonaPreferences: ObservableObject {
         } else {
             defaults.removeObject(forKey: EnvironmentCatalog.storageKey)
         }
+        recordGlobalSettingsSnapshot()
         NotificationCenter.default.post(name: .wawonaPreferencesDidSave, object: self)
+    }
+
+    private func recordGlobalSettingsSnapshot() {
+        let snapshotKey = "wawona.globalSettingsSnapshot.v1"
+        var snapshot = defaults.dictionary(forKey: snapshotKey) ?? [:]
+        snapshot.merge([
+            "ForceServerSideDecorations": forceSSD,
+            "AutoScale": autoScale,
+            "ColorOperations": colorOperations,
+            "RenderMacOSPointer": renderMacOSPointer,
+            "NestedCompositorCursor": nestedCompositorCursor,
+            "TouchInputType": defaultInputProfile,
+            "SwapCmdWithAlt": swapCmdWithAlt,
+            "UniversalClipboard": universalClipboard,
+            "VulkanDriver": vulkanDriver,
+            "OpenGLDriver": openGLDriver,
+            "CompositorBackend": compositorBackend,
+            "WaypipeCompress": waypipeCompress,
+            "WaypipeVideo": waypipeVideo,
+            "WaypipeRemoteCommand": waypipeRemoteCommand,
+            "WaypipeDebug": waypipeDebug,
+            "WaypipeNoGpu": waypipeNoGpu,
+            "WaypipeXwls": xwaylandSupport,
+            "SSHHost": sshHost,
+            "SSHUser": sshUser,
+            "SSHPort": sshPort,
+            "SSHAuthMethod": sshAuthMethod,
+            "SSHPassword": sshPassword,
+            "SSHKeyPath": sshKeyPath,
+            "SSHKeyPassphrase": sshKeyPassphrase,
+            "WaypipeSSHPassword": waypipeSSHPassword,
+            "MachineSessionThumbnailsEnabled": machineSessionThumbnailsEnabled,
+        ]) { _, new in new }
+        defaults.set(snapshot, forKey: snapshotKey)
     }
 
     public func resolvedSettings(for profile: MachineProfile) -> ResolvedMachineSettings {

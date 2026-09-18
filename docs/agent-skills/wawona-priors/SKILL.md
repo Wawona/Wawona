@@ -217,6 +217,11 @@ skill, add one row. Capture flow: `wawona-learn`.
   no offset. Do not overlay UIKit selection handles on client glyphs.
 - Upstream SwiftUI QoL is PR #168 (`swiftui-redesign`, merged 2026-09-05).
   `development` already contains it. No further open SwiftUI PRs.
+- Apple machine runtime apply stages legacy transport keys in `NSUserDefaults`.
+  Never recapture those staged values as global defaults for another machine.
+  Global settings update `wawona.globalSettingsSnapshot.v1`; runtime resolution
+  merges explicit machine overrides over that canonical snapshot. Knowledge:
+  `docs/settings.md`.
 - Host Copy/Paste is macOS Edit menu / hardware keyboard through
   `wl_data_device`. Multi-Touch long-press is `wl_touch`; the client
   toolkit owns handles and the Copy menu. Never overlay UIKit or

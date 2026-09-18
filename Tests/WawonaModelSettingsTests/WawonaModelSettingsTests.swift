@@ -58,6 +58,41 @@ func globalFallbackUsedWhenMachineValuesUnset() {
 
 @MainActor
 @Test
+func machinePortOutsideTCPRangeFallsBackToValidGlobalPort() {
+    let preferences = WawonaPreferences()
+    preferences.sshPort = 2_222
+    let tooHigh = MachineProfile(
+        name: "Invalid Port",
+        type: .sshTerminal,
+        sshPort: 70_000
+    )
+    let zero = MachineProfile(
+        name: "Unset Port",
+        type: .sshTerminal,
+        sshPort: 0
+    )
+
+    #expect(preferences.resolvedSettings(for: tooHigh).sshPort == 2_222)
+    #expect(preferences.resolvedSettings(for: zero).sshPort == 2_222)
+}
+
+@MainActor
+@Test
+func savingGlobalSettingsUpdatesCanonicalRuntimeSnapshot() {
+    let preferences = WawonaPreferences()
+    preferences.sshPort = 2_202
+    preferences.waypipeCompress = "zstd"
+    preferences.save()
+
+    let snapshot = UserDefaults.standard.dictionary(
+        forKey: "wawona.globalSettingsSnapshot.v1"
+    )
+    #expect(snapshot?["SSHPort"] as? Int == 2_202)
+    #expect(snapshot?["WaypipeCompress"] as? String == "zstd")
+}
+
+@MainActor
+@Test
 func diagnosticsAreRecordedForTests() {
     let preferences = WawonaPreferences()
     let sshResult = preferences.testSSHConnection(

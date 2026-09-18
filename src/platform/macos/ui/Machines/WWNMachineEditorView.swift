@@ -130,22 +130,12 @@ struct WWNMachineEditorView: View {
           Section("Remote SSH") {
             WWNTvFormTextField("Host", text: $draft.sshHost)
             WWNTvFormTextField("User", text: $draft.sshUser)
-            Stepper(
-              value: Binding(
-                get: {
-                  min(max(Int(draft.sshPort) ?? 22, 1), 65_535)
-                },
-                set: {
-                  draft.sshPort = String(min(max($0, 1), 65_535))
-                }
-              ),
-              in: 1...65_535
-            ) {
-              LabeledContent("Port") {
-                Text(Int(draft.sshPort) ?? 22, format: .number)
-                  .monospacedDigit()
-              }
-            }
+            WWNTvFormTextField(
+              "Port",
+              text: $draft.sshPort,
+              prompt: "22",
+              numericRange: 1...65_535
+            )
             Picker("Auth", selection: $draft.sshAuthMethod) {
               Text("Password").tag(0)
               Text("Public Key").tag(1)
@@ -611,15 +601,23 @@ private struct WWNTvFormTextField: View {
   @Binding var text: String
   var prompt: String = ""
   var secure: Bool = false
+  var numericRange: ClosedRange<Int>?
 
   @State private var showEditor = false
   @State private var draft = ""
 
-  init(_ title: String, text: Binding<String>, prompt: String = "", secure: Bool = false) {
+  init(
+    _ title: String,
+    text: Binding<String>,
+    prompt: String = "",
+    secure: Bool = false,
+    numericRange: ClosedRange<Int>? = nil
+  ) {
     self.title = title
     self._text = text
     self.prompt = prompt
     self.secure = secure
+    self.numericRange = numericRange
   }
 
   var body: some View {
@@ -640,7 +638,15 @@ private struct WWNTvFormTextField: View {
       } else {
         TextField(prompt.isEmpty ? title : prompt, text: $draft)
       }
-      Button("OK") { text = draft }
+      Button("OK") {
+        if let numericRange {
+          let fallback = min(max(Int(text) ?? numericRange.lowerBound, numericRange.lowerBound), numericRange.upperBound)
+          let parsed = Int(draft) ?? fallback
+          text = String(min(max(parsed, numericRange.lowerBound), numericRange.upperBound))
+        } else {
+          text = draft
+        }
+      }
       Button("Cancel", role: .cancel) {}
     }
   }

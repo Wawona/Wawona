@@ -296,11 +296,13 @@ struct MachineEditorView: View {
                             .autocorrectionDisabled()
                         SecureField("Password", text: $sshPassword)
                             .textContentType(.password)
-                        Stepper(value: $sshPort, in: 1...65_535) {
-                            LabeledContent("Port") {
-                                Text(sshPort, format: .number)
-                                    .monospacedDigit()
-                            }
+                        LabeledContent("Port") {
+                            NativeBoundedIntegerField(
+                                title: "Port",
+                                value: $sshPort,
+                                range: 1...65_535
+                            )
+                            .frame(width: 140)
                         }
                         Picker("Auth", selection: $sshAuthMethod) {
                             Text("Password").tag(0)

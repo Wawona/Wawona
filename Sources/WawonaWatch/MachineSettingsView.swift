@@ -113,14 +113,7 @@ struct MachineSettingsView: View {
             TextField("User", text: sshUserBinding)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
-            Stepper(value: sshPortBinding, in: 1...65_535) {
-                HStack {
-                    Text("Port")
-                    Spacer()
-                    Text(sshPortBinding.wrappedValue, format: .number)
-                        .monospacedDigit()
-                }
-            }
+            TextField("Port", value: sshPortBinding, format: .number)
             SecureField("Password", text: sshPasswordBinding)
             SecureField("Waypipe Password (optional override)", text: waypipeSSHPasswordBinding)
             TextField("Remote Command", text: remoteCommandBinding)
@@ -148,18 +141,29 @@ struct MachineSettingsView: View {
     @ViewBuilder
     private func inputSection() -> some View {
         Section("Input") {
-            Toggle("Show Virtual Cursor", isOn: renderMacOSPointerBinding)
-            Picker("Nested Compositor Cursor", selection: nestedCompositorCursorBinding) {
-                Text("Virtual Pointer").tag("virtual")
-                Text("Host Cursor").tag("host")
+            if draft?.nestedCompositorDrawsOwnCursor == true {
+                WatchMachineHelpRow(
+                    title: "Cursor: Drawn by Compositor",
+                    detail: "Nested compositors draw their own cursor. Wawona keeps the host cursor overlay hidden."
+                )
+            } else {
+                Toggle("Show Virtual Cursor", isOn: renderMacOSPointerBinding)
+                Picker("Nested Compositor Cursor", selection: nestedCompositorCursorBinding) {
+                    Text("Virtual Pointer").tag("virtual")
+                    Text("Host Cursor").tag("host")
+                }
+                .pickerStyle(.navigationLink)
+                .disabled(!(draft?.runtimeOverrides.renderMacOSPointer ?? preferences.renderMacOSPointer))
             }
-            .pickerStyle(.navigationLink)
-            .disabled(!(draft?.runtimeOverrides.renderMacOSPointer ?? preferences.renderMacOSPointer))
             Picker("Touch Input Type", selection: touchInputTypeBinding) {
                 Text("Multi-Touch").tag("Multi-Touch")
                 Text("Touchpad").tag("Touchpad")
             }
             .pickerStyle(.navigationLink)
+            WatchMachineHelpRow(
+                title: "Touch Input Help",
+                detail: "Multi-Touch is required for many Wayland clients, including Weston panels and terminals. Touchpad uses a virtual pointer."
+            )
             Toggle("Resize Display for Virtual Keyboard", isOn: resizeDisplayForVirtualKeyboardBinding)
         }
     }
@@ -509,6 +513,23 @@ struct MachineSettingsView: View {
                 updateDraft { $0.runtimeOverrides.resizeDisplayForVirtualKeyboard = value }
             }
         )
+    }
+}
+
+private struct WatchMachineHelpRow: View {
+    let title: String
+    let detail: String
+    @State private var showingHelp = false
+
+    var body: some View {
+        Button(title, systemImage: "info.circle") {
+            showingHelp = true
+        }
+        .alert(title, isPresented: $showingHelp) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(detail)
+        }
     }
 }
 #endif
