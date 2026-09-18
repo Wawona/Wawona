@@ -77,7 +77,7 @@ struct WWNMachineEditorView: View {
               WWNTvFormTextField("Wasm module path", text: $draft.wasmModulePath)
             } else if draft.wasmLaunchMode == "repo" {
               WWNTvFormTextField("Package", text: $draft.wasmPackage, prompt: "hello-wasi-gui")
-              NavigationLink("Search catalog") {
+              NavigationLink {
                 WWNWasmCatalogSearchView { pkg in
                   Task {
                     draft.wasmPackage = pkg.name
@@ -88,6 +88,8 @@ struct WWNMachineEditorView: View {
                     }
                   }
                 }
+              } label: {
+                Label("Search Catalog", systemImage: "magnifyingglass")
               }
             } else {
               WWNTvFormTextField("Command", text: $draft.wasmCommand, prompt: "wasm hello-wasi-gui")
@@ -128,7 +130,22 @@ struct WWNMachineEditorView: View {
           Section("Remote SSH") {
             WWNTvFormTextField("Host", text: $draft.sshHost)
             WWNTvFormTextField("User", text: $draft.sshUser)
-            WWNTvFormTextField("Port", text: $draft.sshPort)
+            Stepper(
+              value: Binding(
+                get: {
+                  min(max(Int(draft.sshPort) ?? 22, 1), 65_535)
+                },
+                set: {
+                  draft.sshPort = String(min(max($0, 1), 65_535))
+                }
+              ),
+              in: 1...65_535
+            ) {
+              LabeledContent("Port") {
+                Text(Int(draft.sshPort) ?? 22, format: .number)
+                  .monospacedDigit()
+              }
+            }
             Picker("Auth", selection: $draft.sshAuthMethod) {
               Text("Password").tag(0)
               Text("Public Key").tag(1)
@@ -171,7 +188,7 @@ struct WWNMachineEditorView: View {
             Text("DRM/KMS (wwn-iland)").tag("drm")
           }
           .pickerStyle(.navigationLink)
-          Button("Open Wawona Settings…") {
+          Button("Open Wawona Settings", systemImage: "gearshape") {
             WWNPreferences.shared().show(nil)
           }
         } header: {

@@ -16,15 +16,10 @@ struct MachineSettingsView: View {
     var body: some View {
         Form {
             Section {
-                Button("Open Wawona Settings…") {
+                Button("Open Wawona Settings", systemImage: "gearshape") {
                     WatchKitGlobalSettings.registerHost()
                     showingGlobalSettings = true
                 }
-                Text(draft?.type.isSSH == true
-                     ? "Global defaults (Display, Input, Graphics, Waypipe, SSH). Values below override those settings for this machine only."
-                     : "Global defaults (Display, Input, Graphics). Values below override those settings for this machine only.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
             }
 
             Section("Machine") {
@@ -118,7 +113,14 @@ struct MachineSettingsView: View {
             TextField("User", text: sshUserBinding)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
-            TextField("Port", text: sshPortBinding)
+            Stepper(value: sshPortBinding, in: 1...65_535) {
+                HStack {
+                    Text("Port")
+                    Spacer()
+                    Text(sshPortBinding.wrappedValue, format: .number)
+                        .monospacedDigit()
+                }
+            }
             SecureField("Password", text: sshPasswordBinding)
             SecureField("Waypipe Password (optional override)", text: waypipeSSHPasswordBinding)
             TextField("Remote Command", text: remoteCommandBinding)
@@ -158,12 +160,6 @@ struct MachineSettingsView: View {
                 Text("Touchpad").tag("Touchpad")
             }
             .pickerStyle(.navigationLink)
-            Text("Overrides global Settings → Input. Multi-Touch is finger→wl_touch; Touchpad is the iOS virtual pointer.")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-            Text("Global default: \(WawonaPreferences.normalizedTouchInputType(preferences.defaultInputProfile))")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
             Toggle("Resize Display for Virtual Keyboard", isOn: resizeDisplayForVirtualKeyboardBinding)
         }
     }
@@ -218,20 +214,18 @@ struct MachineSettingsView: View {
             Text(count == 0 ? "Inherit global" : "\(count) override(s)")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
-            Button("Clear Machine Env Overrides") {
+            Button("Clear Overrides", systemImage: "arrow.counterclockwise") {
                 updateDraft { $0.runtimeOverrides.environment = nil }
             }
             .accessibilityIdentifier("wwn.settings.environment.machine.clear")
-            Text("Edit global Environment in Wawona Settings. Per-machine key edits use the same catalog on iPhone/iPad/macOS.")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
         }
     }
 
     @ViewBuilder
     private func resolvedPreviewSection(for profile: MachineProfile) -> some View {
         let resolved = preferences.resolvedSettings(for: profile)
-        Section("Resolved Runtime (Machine > Global)") {
+        Section("Runtime") {
+            DisclosureGroup("Resolved Values") {
             Text("Renderer: \(resolved.renderer)")
             Text("Force SSD: \(resolved.forceSSD ? "On" : "Off")")
             Text("Virtual Cursor: \(resolved.renderMacOSPointer ? "On" : "Off")")
@@ -251,13 +245,14 @@ struct MachineSettingsView: View {
             Text("Shake to Exit: \(resolved.shakeToCloseEnabled ? "On" : "Off")")
             Text("Swipe Back to Exit: \(resolved.swipeBackToCloseEnabled ? "On" : "Off")")
             Text("Resize Display for Virtual Keyboard: \(resolved.resizeDisplayForVirtualKeyboard ? "On" : "Off")")
+            }
         }
     }
 
     @ViewBuilder
     private func actionsSection() -> some View {
         Section {
-            Button("Save Machine Settings") {
+            Button("Save Machine Settings", systemImage: "checkmark") {
                 guard var latest = draft else { return }
                 if latest.type == .native {
                     let client = latest.runtimeOverrides.bundledAppID?
@@ -323,12 +318,20 @@ struct MachineSettingsView: View {
         )
     }
 
-    private var sshPortBinding: Binding<String> {
+    private var sshPortBinding: Binding<Int> {
         Binding(
-            get: { String(draft?.sshPort ?? 22) },
+            get: {
+                MachineProfileDomain.normalizeSSHPort(
+                    String(draft?.sshPort ?? 22),
+                    fallback: 22
+                )
+            },
             set: { value in
                 updateDraft { profile in
-                    profile.sshPort = Int(value) ?? profile.sshPort
+                    profile.sshPort = MachineProfileDomain.normalizeSSHPort(
+                        String(value),
+                        fallback: 22
+                    )
                 }
             }
         )

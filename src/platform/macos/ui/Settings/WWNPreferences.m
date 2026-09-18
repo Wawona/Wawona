@@ -1780,7 +1780,7 @@ static UIImage *WWNAboutLogo(void) {
                            @"Remote host address.")];
   [sshItems addObject:ITEM(@"SSH User", @"SSHUser", WSettingText, @"",
                            @"SSH username.")];
-  [sshItems addObject:ITEM(@"SSH Port", @"SSHPort", WSettingText, @"22",
+  [sshItems addObject:ITEM(@"SSH Port", @"SSHPort", WSettingNumber, @22,
                            @"SSH port (1-65535).")];
   [sshItems addObject:sshAuthMethodItem];
 

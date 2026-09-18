@@ -6,8 +6,8 @@ import AppKit
 
 // MARK: - Card
 
-/// A titled content card with an SF Symbol header. Long explanatory copy goes
-/// into a macOS info popover; iOS/tvOS render it inline as a caption instead.
+/// A titled content card with an SF Symbol header. Long explanatory copy stays
+/// behind a native info popover on every platform.
 struct WWNEditorCard<Content: View>: View {
   let icon: String
   let title: String
@@ -46,16 +46,7 @@ struct WWNEditorCard<Content: View>: View {
           .font(.headline)
         Spacer(minLength: 8)
         if let info {
-          #if os(macOS)
           WWNEditorInfoButton(text: info)
-          #else
-          Text(info)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .multilineTextAlignment(.trailing)
-            .lineLimit(3)
-            .frame(maxWidth: 220, alignment: .trailing)
-          #endif
         }
       }
       content()
@@ -82,16 +73,14 @@ struct WWNEditorCard<Content: View>: View {
 
 // MARK: - Info presentation
 
-/// macOS: `info.circle` button that opens a popover with explanatory copy.
-/// iOS/tvOS: renders nothing (rows show inline captions via
-/// `WWNEditorCaption`).
+/// Native `info.circle` button that opens explanatory copy without expanding
+/// the main settings surface.
 struct WWNEditorInfoButton: View {
   let text: String
 
   @State private var showsInfo = false
 
   var body: some View {
-    #if os(macOS)
     Button {
       showsInfo.toggle()
     } label: {
@@ -100,7 +89,9 @@ struct WWNEditorInfoButton: View {
     }
     .buttonStyle(.plain)
     .foregroundStyle(.tertiary)
+    #if os(macOS)
     .help(text)
+    #endif
     .accessibilityLabel("More information")
     .popover(isPresented: $showsInfo, arrowEdge: .trailing) {
       Text(text)
@@ -110,25 +101,15 @@ struct WWNEditorInfoButton: View {
         .frame(width: 280, alignment: .leading)
         .fixedSize(horizontal: false, vertical: true)
     }
-    #else
-    EmptyView()
-    #endif
   }
 }
 
-/// Inline caption for explanatory copy on iOS/tvOS (the pre-redesign look);
-/// empty on macOS, where the same copy lives in a popover.
+/// Compatibility placeholder. Detailed help now lives in info popovers.
 struct WWNEditorCaption: View {
   let text: String
 
   var body: some View {
-    #if os(macOS)
     EmptyView()
-    #else
-    Text(text)
-      .font(.caption)
-      .foregroundStyle(.secondary)
-    #endif
   }
 }
 
@@ -159,8 +140,9 @@ struct WWNEditorFieldRow<Content: View>: View {
       ViewThatFits(in: .horizontal) {
         HStack(alignment: .center, spacing: 10) {
           labelColumn
+          Spacer(minLength: 12)
           content()
-          Spacer(minLength: 0)
+            .frame(width: controlWidth, alignment: .trailing)
         }
         VStack(alignment: .leading, spacing: 6) {
           labelColumn
@@ -169,7 +151,7 @@ struct WWNEditorFieldRow<Content: View>: View {
         }
       }
       if let footnote {
-        WWNEditorCaption(text: footnote)
+        EmptyView()
       }
     }
   }
@@ -185,14 +167,20 @@ struct WWNEditorFieldRow<Content: View>: View {
       Text(label)
         .font(.subheadline.weight(.semibold))
       if let footnote {
-        #if os(macOS)
         WWNEditorInfoButton(text: footnote)
-        #else
-        EmptyView()
-        #endif
       }
     }
-    .frame(width: icon == nil && footnote == nil ? 150 : 178, alignment: .leading)
+    .frame(width: 178, alignment: .leading)
+  }
+
+  private var controlWidth: CGFloat {
+    #if os(macOS)
+    300
+    #elseif os(tvOS)
+    320
+    #else
+    220
+    #endif
   }
 }
 
@@ -221,8 +209,6 @@ struct WWNEditorToggleRow: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 4) {
-      #if os(macOS)
-      // macOS: title left, switch knob right-aligned to the trailing edge.
       HStack(spacing: 8) {
         titleBar
         Spacer(minLength: 12)
@@ -232,29 +218,13 @@ struct WWNEditorToggleRow: View {
           .toggleStyle(.switch)
           .fixedSize()
       }
+      #if os(macOS)
       .contentShape(Rectangle())
       .onTapGesture {
         guard !disabled else { return }
         isOn.toggle()
       }
-      #else
-      // iOS/tvOS: native switch row (title + knob) with a leading icon.
-      HStack(spacing: 8) {
-        if let icon {
-          Image(systemName: icon)
-            .font(.system(size: 12))
-            .foregroundStyle(.secondary)
-            .frame(width: 18)
-        }
-        Toggle(isOn: $isOn) {
-          Text(title)
-        }
-        .toggleStyle(.switch)
-      }
       #endif
-      if let footnote {
-        WWNEditorCaption(text: footnote)
-      }
     }
     .disabled(disabled)
   }
@@ -271,12 +241,37 @@ struct WWNEditorToggleRow: View {
       Text(title)
         .font(.body)
       if let footnote {
-        #if os(macOS)
         WWNEditorInfoButton(text: footnote)
-        #endif
       }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
+  }
+}
+
+/// Bounded numeric storage for legacy string-backed machine fields.
+struct WWNEditorNumberStepper: View {
+  @Binding var text: String
+  let range: ClosedRange<Int>
+  let step: Int
+  var automaticWhenEmpty = false
+
+  var body: some View {
+    Stepper(value: value, in: range, step: step) {
+      Text(automaticWhenEmpty && text.isEmpty ? "Auto" : value.wrappedValue.formatted())
+        .monospacedDigit()
+    }
+  }
+
+  private var value: Binding<Int> {
+    Binding(
+      get: {
+        guard let parsed = Int(text) else { return range.lowerBound }
+        return min(max(parsed, range.lowerBound), range.upperBound)
+      },
+      set: { newValue in
+        text = String(min(max(newValue, range.lowerBound), range.upperBound))
+      }
+    )
   }
 }
 

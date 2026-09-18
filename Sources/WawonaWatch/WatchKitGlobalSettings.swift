@@ -329,10 +329,20 @@ private struct WatchSettingsSSHSection: View {
                     .autocorrectionDisabled()
             }
             if watchShows(.sshPort, in: .ssh) {
-                TextField("Port", text: Binding(
-                    get: { String(preferences.sshPort) },
-                    set: { preferences.sshPort = Int($0) ?? preferences.sshPort }
-                ))
+                Stepper(
+                    value: Binding(
+                        get: { min(max(preferences.sshPort, 1), 65_535) },
+                        set: { preferences.sshPort = min(max($0, 1), 65_535) }
+                    ),
+                    in: 1...65_535
+                ) {
+                    HStack {
+                        Text("Port")
+                        Spacer()
+                        Text(preferences.sshPort, format: .number)
+                            .monospacedDigit()
+                    }
+                }
             }
             if watchShows(.sshAuthMethod, in: .ssh) {
                 Picker("Auth", selection: $preferences.sshAuthMethod) {
@@ -363,7 +373,7 @@ private struct WatchSettingsSSHSection: View {
                     SecureField("Key Passphrase", text: $preferences.sshKeyPassphrase)
                 }
                 if watchShows(.sshGenerateKey, in: .ssh) {
-                    Button("Generate Key") {
+                    Button("Generate Key", systemImage: "key") {
                         do {
                             let path = try WWNSSHKeygen.generateKeyType(
                                 preferences.sshKeyType,
@@ -531,7 +541,7 @@ private struct WatchSettingsAboutSection: View {
             if watchShows(.aboutPlatform, in: .about) {
                 WatchInfoRow(title: "Platform", detail: "watchOS")
             }
-            Button("Report a Bug on GitHub") {
+            Button("Report a Bug", systemImage: "ladybug") {
                 let raw = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
                 var ver = (raw?.isEmpty == false) ? raw! : "0.0.0"
                 if ver.hasPrefix("v") { ver.removeFirst() }
@@ -604,11 +614,11 @@ private struct WatchEnvironmentVariablesSection: View {
                 .accessibilityIdentifier("wwn.settings.environment.row.\(row.name)")
             }
             Section {
-                Button("Reset Wawona-managed") {
+                Button("Reset Wawona-managed", systemImage: "arrow.counterclockwise") {
                     preferences.resetEnvironmentManaged()
                 }
                 .accessibilityIdentifier("wwn.settings.environment.resetManaged")
-                Button("Reset All", role: .destructive) {
+                Button("Reset All", systemImage: "trash", role: .destructive) {
                     confirmReset = true
                 }
                 .accessibilityIdentifier("wwn.settings.environment.resetAll")

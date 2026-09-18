@@ -184,7 +184,14 @@ struct MachineEditorView: View {
                                 .autocorrectionDisabled()
                         }
                         if shows(.sshPort) {
-                            TextField(MachineEditorValidation.metadata(for: .sshPort).label, text: sshPortText)
+                            Stepper(value: $sshPort, in: 1...65_535) {
+                                HStack {
+                                    Text(MachineEditorValidation.metadata(for: .sshPort).label)
+                                    Spacer()
+                                    Text(sshPort, format: .number)
+                                        .monospacedDigit()
+                                }
+                            }
                         }
                         if shows(.sshAuthMethod) {
                             Picker(MachineEditorValidation.metadata(for: .sshAuthMethod).label, selection: $sshAuthMethod) {
@@ -259,13 +266,6 @@ struct MachineEditorView: View {
                 }
             }
         }
-    }
-
-    private var sshPortText: Binding<String> {
-        Binding(
-            get: { String(sshPort) },
-            set: { sshPort = MachineProfileDomain.normalizeSSHPort($0, fallback: sshPort) }
-        )
     }
 
     private func persistableEditorState() -> MachineEditorState {

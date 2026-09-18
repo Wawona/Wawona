@@ -87,18 +87,18 @@ public struct EnvironmentVariablesView: View {
             }
 
             Section {
-                Button("New…") {
+                Button("New Variable", systemImage: "plus") {
                     isNew = true
                     editingName = ""
                     editingValue = ""
                     showEditor = true
                 }
                 .accessibilityIdentifier("wwn.settings.environment.new")
-                Button("Reset Wawona-managed") {
+                Button("Reset Wawona-managed", systemImage: "arrow.counterclockwise") {
                     resetManaged()
                 }
                 .accessibilityIdentifier("wwn.settings.environment.resetManaged")
-                Button("Reset All Overrides", role: .destructive) {
+                Button("Reset All Overrides", systemImage: "trash", role: .destructive) {
                     confirmResetAll = true
                 }
                 .accessibilityIdentifier("wwn.settings.environment.resetAll")
@@ -168,17 +168,25 @@ public struct EnvironmentVariablesView: View {
                     .foregroundStyle(.tertiary)
             }
             Spacer(minLength: 8)
-            Button("Edit") {
+            Button {
                 isNew = false
                 editingName = row.name
                 editingValue = row.value ?? ""
                 showEditor = true
+            } label: {
+                Image(systemName: "pencil")
             }
+            .buttonStyle(.borderless)
+            .accessibilityLabel("Edit \(row.name)")
             .accessibilityIdentifier("wwn.settings.environment.edit.\(row.name)")
             if row.mutability != .secret {
-                Button("Reset") {
+                Button {
                     resetOne(row.name)
+                } label: {
+                    Image(systemName: "arrow.counterclockwise")
                 }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Reset \(row.name)")
                 .accessibilityIdentifier("wwn.settings.environment.reset.\(row.name)")
             }
         }

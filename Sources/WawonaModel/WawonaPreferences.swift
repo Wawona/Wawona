@@ -277,7 +277,10 @@ public final class WawonaPreferences: ObservableObject {
         waylandDisplay = defaults.string(forKey: keyPrefix + "waylandDisplay") ?? "wayland-0"
         sshHost = defaults.string(forKey: keyPrefix + "sshHost") ?? ""
         sshUser = defaults.string(forKey: keyPrefix + "sshUser") ?? ""
-        sshPort = defaults.object(forKey: keyPrefix + "sshPort") as? Int ?? 22
+        sshPort = MachineProfileDomain.normalizeSSHPort(
+            String(defaults.object(forKey: keyPrefix + "sshPort") as? Int ?? 22),
+            fallback: 22
+        )
         sshPassword = defaults.string(forKey: keyPrefix + "sshPassword") ?? ""
         if defaults.object(forKey: "SSHAuthMethod") != nil {
             sshAuthMethod = defaults.integer(forKey: "SSHAuthMethod")
@@ -526,7 +529,10 @@ public final class WawonaPreferences: ObservableObject {
             waylandDisplay: normalizedWaylandDisplay.isEmpty ? waylandDisplay : normalizedWaylandDisplay,
             sshHost: normalizedSSHHost.isEmpty ? sshHost : normalizedSSHHost,
             sshUser: normalizedSSHUser.isEmpty ? sshUser : normalizedSSHUser,
-            sshPort: profile.sshPort > 0 ? profile.sshPort : sshPort,
+            sshPort: MachineProfileDomain.normalizeSSHPort(
+                String(profile.sshPort),
+                fallback: sshPort
+            ),
             sshPassword: profile.sshPassword.isEmpty ? sshPassword : profile.sshPassword,
             waypipeSSHPassword: normalizedWaypipePassword.isEmpty ? waypipeSSHPassword : normalizedWaypipePassword,
             remoteCommand: normalizedCommand.isEmpty ? "weston-simple-shm" : normalizedCommand,

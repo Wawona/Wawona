@@ -124,13 +124,6 @@ struct MachineEditorView: View {
     private var hasValidationIssues: Bool {
         !MachineProfileDomain.validate(contractState).isEmpty
     }
-    private var sshPortText: Binding<String> {
-        Binding(
-            get: { String(sshPort) },
-            set: { sshPort = MachineProfileDomain.normalizeSSHPort($0, fallback: sshPort) }
-        )
-    }
-
     var body: some View {
         NavigationStack {
             Form {
@@ -156,7 +149,10 @@ struct MachineEditorView: View {
                         TextField("Package", text: $wasmPackage, prompt: Text("hello-wasi-gui"))
                             .wawonaTextFieldNoAutocaps()
                             .autocorrectionDisabled()
-                        Button(wasmCatalogLoading ? "Searching…" : "Search catalog") {
+                        Button(
+                            wasmCatalogLoading ? "Searching…" : "Search Catalog",
+                            systemImage: "magnifyingglass"
+                        ) {
                             searchWasmCatalog()
                         }
                         .disabled(wasmCatalogLoading)
@@ -180,12 +176,12 @@ struct MachineEditorView: View {
                             .wawonaTextFieldNoAutocaps()
                             .autocorrectionDisabled()
                         #if !os(tvOS)
-                        Button("Choose file…") {
+                        Button("Choose File", systemImage: "folder") {
                             fileImportKind = .wasm
                         }
                         #endif
                         ForEach(WasmLaunch.listLocalModules(), id: \.path) { url in
-                            Button(url.lastPathComponent) {
+                            Button(url.lastPathComponent, systemImage: "doc.badge.gearshape") {
                                 wasmModulePath = url.path
                                 wasmCommand = "wasm \(url.path)"
                             }
@@ -300,9 +296,12 @@ struct MachineEditorView: View {
                             .autocorrectionDisabled()
                         SecureField("Password", text: $sshPassword)
                             .textContentType(.password)
-                        TextField("Port", text: sshPortText)
-                            .wawonaTextFieldNoAutocaps()
-                            .autocorrectionDisabled()
+                        Stepper(value: $sshPort, in: 1...65_535) {
+                            LabeledContent("Port") {
+                                Text(sshPort, format: .number)
+                                    .monospacedDigit()
+                            }
+                        }
                         Picker("Auth", selection: $sshAuthMethod) {
                             Text("Password").tag(0)
                             Text("Public Key").tag(1)

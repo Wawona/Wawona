@@ -93,8 +93,13 @@ final class WWNSettingsValueModel: ObservableObject {
 
     func stringValue(for item: WWNSettingItem) -> String {
         let key = itemKey(item)
-        if !key.isEmpty, let stored = defaults.string(forKey: key) {
-            return stored
+        if !key.isEmpty, let stored = defaults.object(forKey: key) {
+            if let string = stored as? String {
+                return string
+            }
+            if let number = stored as? NSNumber {
+                return number.stringValue
+            }
         }
         if let def = itemDefault(item) {
             return String(describing: def)
@@ -103,7 +108,11 @@ final class WWNSettingsValueModel: ObservableObject {
     }
 
     func boolValue(for item: WWNSettingItem) -> Bool {
-        defaults.bool(forKey: itemKey(item))
+        let key = itemKey(item)
+        if defaults.object(forKey: key) != nil {
+            return defaults.bool(forKey: key)
+        }
+        return (itemDefault(item) as? NSNumber)?.boolValue ?? false
     }
 
     func popupOptions(for item: WWNSettingItem) -> [String] {
@@ -157,6 +166,25 @@ final class WWNSettingsValueModel: ObservableObject {
         let key = itemKey(item)
         guard !key.isEmpty else { return }
         defaults.set(value, forKey: key)
+        commit(rebuild: false)
+    }
+
+    func integerValue(for item: WWNSettingItem) -> Int {
+        let spec = numberSpec(for: item)
+        let parsed = Int(stringValue(for: item)) ?? spec.defaultValue
+        return min(max(parsed, spec.range.lowerBound), spec.range.upperBound)
+    }
+
+    func setInteger(_ value: Int, for item: WWNSettingItem) {
+        let key = itemKey(item)
+        guard !key.isEmpty else { return }
+        let spec = numberSpec(for: item)
+        let clamped = min(max(value, spec.range.lowerBound), spec.range.upperBound)
+        if key == "SSHPort" {
+            WWNPreferencesManager.shared().setSshPort(clamped)
+        } else {
+            defaults.set(clamped, forKey: key)
+        }
         commit(rebuild: false)
     }
 
@@ -256,6 +284,54 @@ final class WWNSettingsValueModel: ObservableObject {
         return nil
     }
 
+    struct NumberSpec {
+        let range: ClosedRange<Int>
+        let step: Int
+        let defaultValue: Int
+    }
+
+    func numberSpec(for item: WWNSettingItem) -> NumberSpec {
+        switch itemKey(item) {
+        case "SSHPort", "MachineVMVsockPort", "ContainerVsockPort":
+            return NumberSpec(range: 1...65535, step: 1, defaultValue: itemKey(item) == "SSHPort" ? 22 : 1024)
+        case "WaylandDisplayNumber":
+            return NumberSpec(range: 0...255, step: 1, defaultValue: 0)
+        case "WaypipeCompressLevel":
+            return NumberSpec(range: 1...22, step: 1, defaultValue: 7)
+        case "WaypipeThreads":
+            return NumberSpec(range: 0...64, step: 1, defaultValue: 0)
+        case "WaypipeVideoBpf":
+            return NumberSpec(range: 1_000...100_000, step: 1_000, defaultValue: 5_000)
+        default:
+            return NumberSpec(range: 0...65_535, step: 1, defaultValue: 0)
+        }
+    }
+
+    func actionPresentation(for item: WWNSettingItem) -> (title: String, systemImage: String) {
+        switch itemKey(item) {
+        case "EnvironmentManage": return ("Open", "list.bullet.rectangle")
+        case "RootfsResetDotfiles": return ("Reset", "arrow.counterclockwise")
+        case "RootfsReinstallSystem": return ("Reset", "arrow.counterclockwise")
+        case "RootfsImportFile": return ("Import", "square.and.arrow.down")
+        case "WatchCompanionSend": return ("Choose File", "applewatch.and.arrow.forward")
+        case "DesktopReplacementSipHowTo": return ("Learn More", "info.circle")
+        case "DesktopReplacementTakeOver": return ("Replace Now", "rectangle.inset.filled")
+        case "WaypipePreview": return ("Preview", "terminal")
+        case "SSHPingHost": return ("Ping", "network")
+        case "SSHTestConnection": return ("Test", "checkmark.shield")
+        case "SSHGenerateKey": return ("Generate", "key")
+        case "SSHImportGPGKey": return ("Import", "square.and.arrow.down")
+        case "CopyRecentLogs", "CopyMachineLogs": return ("Copy", "doc.on.doc")
+        case "ReportGitHubIssue": return ("Report", "ladybug")
+        default: return ("Run", "play")
+        }
+    }
+
+    func linkPresentation(for item: WWNSettingItem) -> (title: String, systemImage: String) {
+        let configured = item.value(forKey: "buttonTitle") as? String
+        return (configured?.isEmpty == false ? configured! : "Open", "arrow.up.right.square")
+    }
+
     func copyValueToPasteboard(_ item: WWNSettingItem) {
         let value = stringValue(for: item)
         #if os(macOS)
@@ -279,6 +355,13 @@ final class WWNSettingsValueModel: ObservableObject {
         Binding(
             get: { [weak self] in self?.stringValue(for: item) ?? "" },
             set: { [weak self] newValue in self?.setString(newValue, for: item) }
+        )
+    }
+
+    func integerBinding(for item: WWNSettingItem) -> Binding<Int> {
+        Binding(
+            get: { [weak self] in self?.integerValue(for: item) ?? 0 },
+            set: { [weak self] newValue in self?.setInteger(newValue, for: item) }
         )
     }
 
