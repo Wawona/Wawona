@@ -344,7 +344,7 @@ private struct WWNSettingsRowView: View {
 
     private var buttonRow: some View {
         let presentation = model.actionPresentation(for: item)
-        rowLayout {
+        return rowLayout {
             Button(presentation.title, systemImage: presentation.systemImage) {
                 item.actionBlock?()
             }

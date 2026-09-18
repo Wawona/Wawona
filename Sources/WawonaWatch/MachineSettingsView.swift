@@ -228,8 +228,7 @@ struct MachineSettingsView: View {
     @ViewBuilder
     private func resolvedPreviewSection(for profile: MachineProfile) -> some View {
         let resolved = preferences.resolvedSettings(for: profile)
-        Section("Runtime") {
-            DisclosureGroup("Resolved Values") {
+        Section("Resolved Values") {
             Text("Renderer: \(resolved.renderer)")
             Text("Force SSD: \(resolved.forceSSD ? "On" : "Off")")
             Text("Virtual Cursor: \(resolved.renderMacOSPointer ? "On" : "Off")")
@@ -249,7 +248,6 @@ struct MachineSettingsView: View {
             Text("Shake to Exit: \(resolved.shakeToCloseEnabled ? "On" : "Off")")
             Text("Swipe Back to Exit: \(resolved.swipeBackToCloseEnabled ? "On" : "Off")")
             Text("Resize Display for Virtual Keyboard: \(resolved.resizeDisplayForVirtualKeyboard ? "On" : "Off")")
-            }
         }
     }
 
