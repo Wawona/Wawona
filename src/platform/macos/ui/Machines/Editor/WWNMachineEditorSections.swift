@@ -188,8 +188,6 @@ struct WWNNativeClientEditorSection: View {
       // Prefer copying into Documents/Wawona so sandboxed relaunches keep the file.
       if let stable = Self.importWasmModule(from: url) {
         draft.wasmModulePath = stable
-      } else {
-        draft.wasmModulePath = url.path
       }
     }
     #endif
@@ -293,7 +291,7 @@ struct WWNWasmEditorSection: View {
       if let stable = WWNNativeClientEditorSection.importWasmModule(from: url) {
         applyLocalFile(stable)
       } else {
-        applyLocalFile(url.path)
+        catalogNote = "Could not copy the selected module into Wawona."
       }
     }
     #endif
@@ -511,11 +509,11 @@ struct WWNContainerEditorSection: View {
         containerImportNote = "import failed: permission denied"
         return
       }
-      defer { url.stopAccessingSecurityScopedResource() }
       let path = url.path
       containerImporting = true
       containerImportNote = nil
       Task {
+        defer { url.stopAccessingSecurityScopedResource() }
         do {
           let imported = try await ContainerImageManager.importFromDiskResolved(path) { _ in }
           draft.containerRef = imported.canonical
@@ -555,7 +553,7 @@ struct WWNRemoteSSHEditorSection: View {
           WWNEditorCodeField("username", text: $draft.sshUser)
         }
         WWNEditorFieldRow("Port", icon: "number") {
-          WWNEditorCodeField("22", text: $draft.sshPort)
+          WWNEditorNumberField(text: $draft.sshPort, range: 1...65_535)
         }
         WWNEditorFieldRow("SSH Key Path", icon: "key") {
           WWNEditorCodeField("~/.ssh/id_ed25519", text: $draft.sshKeyPath)
@@ -578,7 +576,7 @@ struct WWNRemoteSSHEditorSection: View {
             WWNEditorSecureField("Optional", text: $draft.sshKeyPassphrase)
           }
           HStack(spacing: 8) {
-            Button("Generate Key (ed25519)") {
+            Button("Generate Key", systemImage: "key") {
               if let path = try? WWNSSHKeygen.generateKeyType(
                 "ed25519", passphrase: draft.sshKeyPassphrase
               ) {
@@ -621,7 +619,7 @@ struct WWNWaypipeEditorSection: View {
     ) {
       VStack(alignment: .leading, spacing: 12) {
         WWNEditorFieldRow("Display Number", icon: "number") {
-          WWNEditorCodeField("0", text: $draft.waypipeDisplayNumber)
+          WWNEditorNumberField(text: $draft.waypipeDisplayNumber, range: 0...255)
         }
         WWNEditorFieldRow("Compression", icon: "arrow.left.arrow.right") {
           Picker("", selection: $draft.waypipeCompress) {
@@ -633,10 +631,10 @@ struct WWNWaypipeEditorSection: View {
           .labelsHidden()
         }
         WWNEditorFieldRow("Compression Level", icon: "slider.horizontal.3") {
-          WWNEditorCodeField("7", text: $draft.waypipeCompressLevel)
+          WWNEditorNumberField(text: $draft.waypipeCompressLevel, range: 1...22)
         }
         WWNEditorFieldRow("Threads", icon: "cpu") {
-          WWNEditorCodeField("0 = auto", text: $draft.waypipeThreads)
+          WWNEditorNumberField(text: $draft.waypipeThreads, range: 0...64)
         }
         WWNEditorFieldRow("Video Codec", icon: "film") {
           Picker("", selection: $draft.waypipeVideo) {
@@ -669,7 +667,11 @@ struct WWNWaypipeEditorSection: View {
           .labelsHidden()
         }
         WWNEditorFieldRow("Bits Per Frame", icon: "gauge") {
-          WWNEditorCodeField("Optional", text: $draft.waypipeVideoBpf)
+          WWNEditorNumberField(
+            text: $draft.waypipeVideoBpf,
+            range: 1_000...100_000,
+            automaticWhenEmpty: true
+          )
         }
         WWNEditorFieldRow("Title Prefix", icon: "textformat") {
           WWNEditorCodeField("Optional", text: $draft.waypipeTitlePrefix)
@@ -731,14 +733,12 @@ struct WWNMachineOverridesHeader: View {
         Text("Per-Machine Overrides")
           .font(.subheadline.weight(.semibold))
           .foregroundStyle(.secondary)
-        #if os(macOS)
         WWNEditorInfoButton(
           text: "Each card overrides the matching global default from Wawona Settings. Leave a control untouched to keep inheriting the global value."
         )
-        #endif
         Spacer()
         Button(action: onOpenSettings) {
-          Label("Open Wawona Settings…", systemImage: "gearshape")
+          Label("Open Wawona Settings", systemImage: "gearshape")
         }
         .buttonStyle(.bordered)
         .controlSize(.small)
@@ -954,7 +954,7 @@ struct WWNEnvironmentVariablesEditorSection: View {
             }
             .font(.caption)
           }
-          Button("Clear machine overrides") {
+          Button("Clear Machine Overrides", systemImage: "arrow.counterclockwise") {
             draft.environmentOverrides = [:]
           }
           .foregroundStyle(.red)

@@ -12,6 +12,10 @@
 - Canonical global preferences namespace: `wawona.pref.*`.
 - Machine resolution precedence is **machine overrides > global defaults > hardcoded defaults**.
 - Effective runtime settings must be derived from `resolvedSettings(for:)` semantics.
+- Apple keeps a canonical global transport snapshot in
+  `wawona.globalSettingsSnapshot.v1`. Applying one machine may stage legacy
+  runtime keys in `NSUserDefaults`, but those staged values must never become
+  the defaults inherited by the next machine.
 - Diagnostics are persisted as typed entries with category + mode (`configLint` or `runtimeProbe`).
 
 ## UI surfaces (Apple / Android)

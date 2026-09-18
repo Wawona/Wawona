@@ -9,6 +9,11 @@ import WawonaModel
 /// stored. Pure helpers (`previewCommand`, host/port sanitizers) moved here so
 /// section views stay declarative.
 final class WWNMachineEditorDraft: ObservableObject {
+  private var initialSettingsOverrideKeys: Set<String> = []
+  private var initialRuntimeOverrideKeys: Set<String> = []
+  private var inheritedSettingsBaselines: [String: AnyHashable] = [:]
+  private var inheritedRuntimeBaselines: [String: AnyHashable] = [:]
+
   // MARK: Profile identity
   @Published var name: String
   @Published var type: String
@@ -203,6 +208,55 @@ final class WWNMachineEditorDraft: ObservableObject {
       ?? (overrides["nestedCompositorCursor"] as? String)
       ?? prefs.nestedCompositorCursor()
     nestedCompositorCursor = (nestedCursorRaw == "host") ? "host" : "virtual"
+
+    initialSettingsOverrideKeys = Set(overrides.keys)
+    initialRuntimeOverrideKeys = Set(runtimeOverrides.keys)
+    inheritedSettingsBaselines = [
+      "WaylandDisplayNumber": AnyHashable(Int(waypipeDisplayNumber) ?? 0),
+      "WaypipeCompress": AnyHashable(waypipeCompress),
+      "WaypipeCompressLevel": AnyHashable(Int(waypipeCompressLevel) ?? 7),
+      "WaypipeThreads": AnyHashable(Int(waypipeThreads) ?? 0),
+      "WaypipeVideo": AnyHashable(waypipeVideo),
+      "WaypipeVideoEncoding": AnyHashable(waypipeVideoEncoding),
+      "WaypipeVideoDecoding": AnyHashable(waypipeVideoDecoding),
+      "WaypipeVideoBpf": AnyHashable(waypipeVideoBpf),
+      "WaypipeUseSSHConfig": AnyHashable(waypipeUseSSHConfig),
+      "WaypipeDebug": AnyHashable(waypipeDebug),
+      "WaypipeNoGpu": AnyHashable(waypipeNoGpu),
+      "WaypipeOneshot": AnyHashable(waypipeOneshot),
+      "WaypipeUnlinkSocket": AnyHashable(waypipeUnlinkSocket),
+      "WaypipeLoginShell": AnyHashable(waypipeLoginShell),
+      "WaypipeVsock": AnyHashable(waypipeVsock),
+      "WaypipeXwls": AnyHashable(waypipeXwls),
+      "WaypipeTitlePrefix": AnyHashable(waypipeTitlePrefix),
+      "WaypipeSecCtx": AnyHashable(waypipeSecCtx),
+      "ForceServerSideDecorations": AnyHashable(forceServerSideDecorations),
+      "AutoScale": AnyHashable(autoScale),
+      "RespectSafeArea": AnyHashable(respectSafeArea),
+      "TouchInputType": AnyHashable(touchInputType),
+      "SwapCmdWithAlt": AnyHashable(swapCmdWithAlt),
+      "UniversalClipboard": AnyHashable(universalClipboard),
+      "VulkanDriver": AnyHashable(vulkanDriver),
+      "OpenGLDriver": AnyHashable(openGLDriver),
+      "DmabufEnabled": AnyHashable(dmabufEnabled),
+      "ColorOperations": AnyHashable(colorOperations),
+      "CompositorBackend": AnyHashable(compositorBackend),
+      "NestedCompositorCursor": AnyHashable(nestedCompositorCursor),
+      "SSHHost": AnyHashable(sshHost),
+      "SSHUser": AnyHashable(sshUser),
+      "SSHPort": AnyHashable(normalizeSSHPort(sshPort)),
+      "SSHAuthMethod": AnyHashable(sshAuthMethod),
+      "SSHPassword": AnyHashable(sshPassword),
+      "SSHKeyPath": AnyHashable(sshKeyPath),
+      "SSHKeyPassphrase": AnyHashable(sshKeyPassphrase),
+    ]
+    inheritedRuntimeBaselines = [
+      "inputProfile": AnyHashable(touchInputType),
+      "machineThumbnailEnabledOverride": AnyHashable(machineThumbnailEnabled),
+      "shakeToCloseEnabled": AnyHashable(shakeToCloseEnabled),
+      "swipeBackToCloseEnabled": AnyHashable(swipeBackToCloseEnabled),
+      "resizeDisplayForVirtualKeyboard": AnyHashable(resizeDisplayForVirtualKeyboard),
+    ]
   }
 
   // MARK: - Persistence (verbatim `save()` mapping)
@@ -220,7 +274,13 @@ final class WWNMachineEditorDraft: ObservableObject {
     profile.sshAuthMethod = sshAuthMethod
     profile.remoteCommand = remoteCommand.trimmingCharacters(in: .whitespacesAndNewlines)
     profile.waypipeCompress = waypipeCompress
-    profile.waypipeThreads = waypipeThreads
+    let normalizedDisplayNumber = boundedInteger(waypipeDisplayNumber, range: 0...255, fallback: 0)
+    let normalizedCompressLevel = boundedInteger(waypipeCompressLevel, range: 1...22, fallback: 7)
+    let normalizedThreads = boundedInteger(waypipeThreads, range: 0...64, fallback: 0)
+    let normalizedVideoBpf = waypipeVideoBpf.isEmpty
+      ? ""
+      : String(boundedInteger(waypipeVideoBpf, range: 1_000...100_000, fallback: 5_000))
+    profile.waypipeThreads = String(normalizedThreads)
     profile.waypipeVideo = waypipeVideo
     profile.waypipeDebug = waypipeDebug
     profile.waypipeOneshot = waypipeOneshot
@@ -316,14 +376,14 @@ final class WWNMachineEditorDraft: ObservableObject {
     #endif
     overrides["SwapCmdWithAlt"] = swapCmdWithAlt
     overrides["UniversalClipboard"] = universalClipboard
-    overrides["WaylandDisplayNumber"] = Int(waypipeDisplayNumber) ?? 0
+    overrides["WaylandDisplayNumber"] = normalizedDisplayNumber
     overrides["WaypipeCompress"] = waypipeCompress
-    overrides["WaypipeCompressLevel"] = Int(waypipeCompressLevel) ?? 7
-    overrides["WaypipeThreads"] = Int(waypipeThreads) ?? 0
+    overrides["WaypipeCompressLevel"] = normalizedCompressLevel
+    overrides["WaypipeThreads"] = normalizedThreads
     overrides["WaypipeVideo"] = waypipeVideo
     overrides["WaypipeVideoEncoding"] = waypipeVideoEncoding
     overrides["WaypipeVideoDecoding"] = waypipeVideoDecoding
-    overrides["WaypipeVideoBpf"] = waypipeVideoBpf
+    overrides["WaypipeVideoBpf"] = normalizedVideoBpf
     overrides["WaypipeUseSSHConfig"] = waypipeUseSSHConfig
     overrides["WaypipeRemoteCommand"] = profile.remoteCommand
     overrides["WaypipeDebug"] = waypipeDebug
@@ -414,16 +474,39 @@ final class WWNMachineEditorDraft: ObservableObject {
       runtimeOverrides.removeValue(forKey: "alwaysOnTop")
     }
     #endif
-    runtimeOverrides["legacySettingsOverrides"] = overrides
     if environmentOverrides.isEmpty {
       runtimeOverrides.removeValue(forKey: "environment")
     } else if let encoded = Self.encodeEnvironmentOverrides(environmentOverrides) {
       runtimeOverrides["environment"] = encoded
     }
 
+    Self.removeUnchangedInheritedValues(
+      from: &overrides,
+      initiallyOverridden: initialSettingsOverrideKeys,
+      baselines: inheritedSettingsBaselines
+    )
+    runtimeOverrides["legacySettingsOverrides"] = overrides
+    Self.removeUnchangedInheritedValues(
+      from: &runtimeOverrides,
+      initiallyOverridden: initialRuntimeOverrideKeys,
+      baselines: inheritedRuntimeBaselines
+    )
+
     profile.settingsOverrides = overrides
     profile.runtimeOverrides = runtimeOverrides
     return profile
+  }
+
+  private static func removeUnchangedInheritedValues(
+    from values: inout [String: Any],
+    initiallyOverridden: Set<String>,
+    baselines: [String: AnyHashable]
+  ) {
+    for (key, baseline) in baselines where !initiallyOverridden.contains(key) {
+      if let current = values[key] as? AnyHashable, current == baseline {
+        values.removeValue(forKey: key)
+      }
+    }
   }
 
   private static func decodeEnvironmentOverrides(_ raw: Any?) -> EnvironmentOverrideMap {
@@ -610,5 +693,16 @@ final class WWNMachineEditorDraft: ObservableObject {
     let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
     guard let parsed = Int(trimmed), (1...65535).contains(parsed) else { return 22 }
     return parsed
+  }
+
+  func boundedInteger(
+    _ raw: String,
+    range: ClosedRange<Int>,
+    fallback: Int
+  ) -> Int {
+    guard let parsed = Int(raw.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+      return fallback
+    }
+    return min(max(parsed, range.lowerBound), range.upperBound)
   }
 }

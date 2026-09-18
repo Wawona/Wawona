@@ -6,8 +6,8 @@ import AppKit
 
 // MARK: - Card
 
-/// A titled content card with an SF Symbol header. Long explanatory copy goes
-/// into a macOS info popover; iOS/tvOS render it inline as a caption instead.
+/// A titled content card with an SF Symbol header. Long explanatory copy stays
+/// behind a native info popover on every platform.
 struct WWNEditorCard<Content: View>: View {
   let icon: String
   let title: String
@@ -46,16 +46,7 @@ struct WWNEditorCard<Content: View>: View {
           .font(.headline)
         Spacer(minLength: 8)
         if let info {
-          #if os(macOS)
           WWNEditorInfoButton(text: info)
-          #else
-          Text(info)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .multilineTextAlignment(.trailing)
-            .lineLimit(3)
-            .frame(maxWidth: 220, alignment: .trailing)
-          #endif
         }
       }
       content()
@@ -82,17 +73,15 @@ struct WWNEditorCard<Content: View>: View {
 
 // MARK: - Info presentation
 
-/// macOS: `info.circle` button that opens a popover with explanatory copy.
-/// iOS/tvOS: renders nothing (rows show inline captions via
-/// `WWNEditorCaption`).
+/// Native `info.circle` button that opens explanatory copy without expanding
+/// the main settings surface.
 struct WWNEditorInfoButton: View {
   let text: String
 
   @State private var showsInfo = false
 
   var body: some View {
-    #if os(macOS)
-    Button {
+    let button = Button {
       showsInfo.toggle()
     } label: {
       Image(systemName: "info.circle")
@@ -100,35 +89,39 @@ struct WWNEditorInfoButton: View {
     }
     .buttonStyle(.plain)
     .foregroundStyle(.tertiary)
-    .help(text)
     .accessibilityLabel("More information")
-    .popover(isPresented: $showsInfo, arrowEdge: .trailing) {
+
+    #if os(tvOS)
+    button.alert("More Information", isPresented: $showsInfo) {
+      Button("OK", role: .cancel) {}
+    } message: {
       Text(text)
-        .font(.system(size: 12))
-        .foregroundStyle(.primary)
-        .padding(14)
-        .frame(width: 280, alignment: .leading)
-        .fixedSize(horizontal: false, vertical: true)
     }
     #else
-    EmptyView()
+    button
+      #if os(macOS)
+      .help(text)
+      #endif
+      .popover(isPresented: $showsInfo, arrowEdge: .trailing) {
+        Text(text)
+          .font(.system(size: 12))
+          .foregroundStyle(.primary)
+          .padding(14)
+          .frame(width: 280, alignment: .leading)
+          .fixedSize(horizontal: false, vertical: true)
+      }
     #endif
   }
 }
 
-/// Inline caption for explanatory copy on iOS/tvOS (the pre-redesign look);
-/// empty on macOS, where the same copy lives in a popover.
+/// Short operational status or concise secondary text.
 struct WWNEditorCaption: View {
   let text: String
 
   var body: some View {
-    #if os(macOS)
-    EmptyView()
-    #else
     Text(text)
       .font(.caption)
       .foregroundStyle(.secondary)
-    #endif
   }
 }
 
@@ -159,17 +152,17 @@ struct WWNEditorFieldRow<Content: View>: View {
       ViewThatFits(in: .horizontal) {
         HStack(alignment: .center, spacing: 10) {
           labelColumn
+          Spacer(minLength: 12)
           content()
-          Spacer(minLength: 0)
+            .frame(width: controlWidth, alignment: .trailing)
+            .accessibilityLabel(label)
         }
         VStack(alignment: .leading, spacing: 6) {
           labelColumn
           content()
             .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityLabel(label)
         }
-      }
-      if let footnote {
-        WWNEditorCaption(text: footnote)
       }
     }
   }
@@ -185,14 +178,20 @@ struct WWNEditorFieldRow<Content: View>: View {
       Text(label)
         .font(.subheadline.weight(.semibold))
       if let footnote {
-        #if os(macOS)
         WWNEditorInfoButton(text: footnote)
-        #else
-        EmptyView()
-        #endif
       }
     }
-    .frame(width: icon == nil && footnote == nil ? 150 : 178, alignment: .leading)
+    .frame(width: 178, alignment: .leading)
+  }
+
+  private var controlWidth: CGFloat {
+    #if os(macOS)
+    300
+    #elseif os(tvOS)
+    320
+    #else
+    220
+    #endif
   }
 }
 
@@ -221,8 +220,6 @@ struct WWNEditorToggleRow: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 4) {
-      #if os(macOS)
-      // macOS: title left, switch knob right-aligned to the trailing edge.
       HStack(spacing: 8) {
         titleBar
         Spacer(minLength: 12)
@@ -232,29 +229,13 @@ struct WWNEditorToggleRow: View {
           .toggleStyle(.switch)
           .fixedSize()
       }
+      #if os(macOS)
       .contentShape(Rectangle())
       .onTapGesture {
         guard !disabled else { return }
         isOn.toggle()
       }
-      #else
-      // iOS/tvOS: native switch row (title + knob) with a leading icon.
-      HStack(spacing: 8) {
-        if let icon {
-          Image(systemName: icon)
-            .font(.system(size: 12))
-            .foregroundStyle(.secondary)
-            .frame(width: 18)
-        }
-        Toggle(isOn: $isOn) {
-          Text(title)
-        }
-        .toggleStyle(.switch)
-      }
       #endif
-      if let footnote {
-        WWNEditorCaption(text: footnote)
-      }
     }
     .disabled(disabled)
   }
@@ -271,12 +252,47 @@ struct WWNEditorToggleRow: View {
       Text(title)
         .font(.body)
       if let footnote {
-        #if os(macOS)
         WWNEditorInfoButton(text: footnote)
-        #endif
       }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
+  }
+}
+
+/// Bounded numeric storage for legacy string-backed machine fields.
+struct WWNEditorNumberField: View {
+  @Binding var text: String
+  let range: ClosedRange<Int>
+  var automaticWhenEmpty = false
+
+  var body: some View {
+    TextField(automaticWhenEmpty ? "Auto" : "", text: sanitizedText)
+      .textFieldStyle(.roundedBorder)
+      .multilineTextAlignment(.trailing)
+      .onSubmit { normalizeFinalValue() }
+      .onDisappear { normalizeFinalValue() }
+  }
+
+  private var sanitizedText: Binding<String> {
+    Binding(
+      get: { text },
+      set: { newValue in
+        let digits = newValue.filter(\.isNumber)
+        guard let parsed = Int(digits) else {
+          text = ""
+          return
+        }
+        text = String(min(parsed, range.upperBound))
+      }
+    )
+  }
+
+  private func normalizeFinalValue() {
+    if automaticWhenEmpty && text.isEmpty {
+      return
+    }
+    let parsed = Int(text) ?? range.lowerBound
+    text = String(min(max(parsed, range.lowerBound), range.upperBound))
   }
 }
 

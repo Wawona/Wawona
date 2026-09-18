@@ -117,16 +117,49 @@ private struct WWNSettingsRowView: View {
     let item: WWNSettingItem
     @ObservedObject var model: WWNSettingsValueModel
     var onPasswordEdit: (WWNSettingItem) -> Void = { _ in }
+    @State private var showingHelp = false
+    @State private var numberText = ""
 
     private var title: String { model.itemTitle(item) }
     private var desc: String { model.itemDescription(item) }
+    private var detailedHelp: String {
+        if item.type == .WSettingInfo {
+            return [model.stringValue(for: item), desc]
+                .filter { !$0.isEmpty }
+                .joined(separator: "\n\n")
+        }
+        return desc
+    }
+    private var compactDescription: String {
+        let normalized = desc.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        guard normalized.count <= 88 else { return "" }
+        return normalized
+    }
+    private var hasDetailedHelp: Bool {
+        if item.type == .WSettingInfo {
+            return !detailedHelp.isEmpty
+        }
+        let normalized = desc.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        return !desc.isEmpty && compactDescription != normalized
+    }
+    private var controlWidth: CGFloat {
+        #if os(macOS)
+        240
+        #elseif os(tvOS)
+        300
+        #else
+        180
+        #endif
+    }
 
     var body: some View {
         switch item.type {
         case .WSettingSwitch:
             switchRow
-        case .WSettingText, .WSettingNumber:
+        case .WSettingText:
             textRow
+        case .WSettingNumber:
+            numberRow
         case .WSettingPassword:
             passwordRow
         case .WSettingPopup:
@@ -147,33 +180,71 @@ private struct WWNSettingsRowView: View {
     // MARK: Row layouts
 
     private var titleStack: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-            if !desc.isEmpty {
-                Text(desc)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        HStack(alignment: .top, spacing: 6) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                if !compactDescription.isEmpty {
+                    Text(compactDescription)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            if hasDetailedHelp {
+                helpButton
             }
         }
     }
 
+    @ViewBuilder
+    private var helpButton: some View {
+        let button = Button {
+            showingHelp = true
+        } label: {
+            Image(systemName: "info.circle")
+        }
+        .buttonStyle(.borderless)
+        .accessibilityLabel("Help for \(title)")
+
+        #if os(tvOS)
+        button.alert(title, isPresented: $showingHelp) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(detailedHelp)
+        }
+        #else
+        button
+            #if os(macOS)
+            .help("More information")
+            #endif
+            .popover(isPresented: $showingHelp) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(title).font(.headline)
+                    Text(detailedHelp)
+                }
+                .padding()
+                .frame(idealWidth: 320)
+            }
+        #endif
+    }
+
     private var switchRow: some View {
-        Toggle(isOn: model.boolBinding(for: item)) {
-            titleStack
+        rowLayout {
+            Toggle("", isOn: model.boolBinding(for: item))
+                .labelsHidden()
+                .accessibilityLabel(title)
         }
         .disabled(!item.interactive)
         .accessibilityIdentifier(item.accessibilityIdentifier ?? "")
     }
 
     private var textRow: some View {
-        HStack(spacing: 12) {
-            titleStack
-            Spacer(minLength: 12)
+        rowLayout {
             TextField("", text: model.stringBinding(for: item))
                 .textFieldStyle(.roundedBorder)
-                .frame(maxWidth: 280)
                 .multilineTextAlignment(.trailing)
                 .submitLabel(.done)
+                .accessibilityLabel(title)
                 .accessibilityIdentifier(item.accessibilityIdentifier ?? "")
                 #if os(macOS)
                 .help(desc)
@@ -182,10 +253,67 @@ private struct WWNSettingsRowView: View {
         .accessibilityIdentifier(item.accessibilityIdentifier ?? "")
     }
 
+    private var numberRow: some View {
+        let spec = model.numberSpec(for: item)
+        return rowLayout {
+            TextField(
+                "",
+                text: $numberText,
+                prompt: Text(spec.allowsEmpty ? "Auto" : "\(spec.defaultValue)")
+            )
+            .textFieldStyle(.roundedBorder)
+            .multilineTextAlignment(.trailing)
+            .submitLabel(.done)
+            .accessibilityLabel(title)
+            .onAppear {
+                let stored = model.stringValue(for: item)
+                numberText = spec.allowsEmpty && stored.isEmpty
+                    ? ""
+                    : String(model.integerValue(for: item))
+            }
+            .onChange(of: numberText) { _, newValue in
+                let digits = newValue.filter(\.isNumber)
+                guard let parsed = Int(digits) else {
+                    if numberText != digits { numberText = digits }
+                    if spec.allowsEmpty && model.stringValue(for: item) != "" {
+                        model.setNumberText("", for: item)
+                    }
+                    return
+                }
+                let clamped = min(parsed, spec.range.upperBound)
+                let normalized = String(clamped)
+                if numberText != normalized {
+                    numberText = normalized
+                }
+                if clamped >= spec.range.lowerBound {
+                    commitNumberIfChanged(spec)
+                }
+            }
+            .onSubmit {
+                commitNumberIfChanged(spec)
+                numberText = spec.allowsEmpty && numberText.isEmpty
+                    ? ""
+                    : String(model.integerValue(for: item))
+            }
+        }
+        .disabled(!item.interactive)
+        .accessibilityIdentifier(item.accessibilityIdentifier ?? "")
+        .onDisappear {
+            commitNumberIfChanged(spec)
+        }
+    }
+
+    private func commitNumberIfChanged(_ spec: WWNSettingsValueModel.NumberSpec) {
+        let stored = model.stringValue(for: item)
+        let displayedStored = spec.allowsEmpty && stored.isEmpty
+            ? ""
+            : String(model.integerValue(for: item))
+        guard numberText != displayedStored else { return }
+        model.setNumberText(numberText, for: item)
+    }
+
     private var passwordRow: some View {
-        HStack(spacing: 12) {
-            titleStack
-            Spacer(minLength: 12)
+        rowLayout {
             Button(model.hasPassword(for: item) ? "Change…" : "Set…") {
                 onPasswordEdit(item)
             }
@@ -195,9 +323,7 @@ private struct WWNSettingsRowView: View {
     }
 
     private var popupRow: some View {
-        HStack(spacing: 12) {
-            titleStack
-            Spacer(minLength: 12)
+        rowLayout {
             Picker("", selection: model.popupBinding(for: item)) {
                 ForEach(Array(model.popupOptions(for: item).enumerated()), id: \.offset) { index, option in
                     Text(option).tag(index)
@@ -209,18 +335,17 @@ private struct WWNSettingsRowView: View {
             #else
             .pickerStyle(.menu)
             #endif
-            .frame(maxWidth: 240)
             .disabled(!item.interactive)
+            .accessibilityLabel(title)
             .accessibilityIdentifier(item.accessibilityIdentifier ?? "")
         }
         .accessibilityIdentifier(item.accessibilityIdentifier ?? "")
     }
 
     private var buttonRow: some View {
-        HStack(spacing: 12) {
-            titleStack
-            Spacer(minLength: 12)
-            Button(item.value(forKey: "key") as? String == "WaypipePreview" ? "Preview" : "Run") {
+        let presentation = model.actionPresentation(for: item)
+        rowLayout {
+            Button(presentation.title, systemImage: presentation.systemImage) {
                 item.actionBlock?()
             }
             .buttonStyle(.bordered)
@@ -230,18 +355,17 @@ private struct WWNSettingsRowView: View {
     }
 
     private var infoRow: some View {
-        HStack(alignment: .top, spacing: 12) {
-            titleStack
-            Spacer(minLength: 12)
-            Text(model.stringValue(for: item))
+        rowLayout {
+            HStack(alignment: .top, spacing: 8) {
+                Text(model.stringValue(for: item))
+                    #if !os(tvOS)
+                    .textSelection(.enabled)
+                    #endif
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.trailing)
+                    .lineLimit(2)
+                    .accessibilityIdentifier(item.accessibilityIdentifier ?? "")
                 #if !os(tvOS)
-                .textSelection(.enabled)
-                #endif
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: 320, alignment: .trailing)
-                .multilineTextAlignment(.trailing)
-                .lineLimit(nil)
-                .accessibilityIdentifier(item.accessibilityIdentifier ?? "")
             Button {
                 model.copyValueToPasteboard(item)
             } label: {
@@ -251,12 +375,15 @@ private struct WWNSettingsRowView: View {
             #if os(macOS)
             .help("Copy to clipboard")
             #endif
+                #endif
+            }
         }
         .accessibilityIdentifier(item.accessibilityIdentifier ?? "")
     }
 
     private var linkRow: some View {
-        HStack(spacing: 12) {
+        let presentation = model.linkPresentation(for: item)
+        return HStack(spacing: 12) {
             if let iconURL = item.iconURL, let url = URL(string: iconURL) {
                 WWNSettingsLinkIcon(url: url)
             }
@@ -264,7 +391,7 @@ private struct WWNSettingsRowView: View {
             Spacer(minLength: 12)
             if let urlString = item.urlString, let url = URL(string: urlString) {
                 Link(destination: url) {
-                    Label("Open", systemImage: "arrow.up.right.square")
+                    Label(presentation.title, systemImage: presentation.systemImage)
                 }
                 .accessibilityIdentifier(item.accessibilityIdentifier ?? "")
             }
@@ -289,6 +416,25 @@ private struct WWNSettingsRowView: View {
         }
         .padding(.vertical, 4)
         .accessibilityIdentifier(item.accessibilityIdentifier ?? "")
+    }
+
+    @ViewBuilder
+    private func rowLayout<Control: View>(
+        @ViewBuilder control: () -> Control
+    ) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                titleStack
+                Spacer(minLength: 12)
+                control()
+                    .frame(width: controlWidth, alignment: .trailing)
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                titleStack
+                control()
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+        }
     }
 }
 

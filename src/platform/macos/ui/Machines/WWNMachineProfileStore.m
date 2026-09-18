@@ -247,9 +247,11 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
 
 + (NSDictionary<NSString *, id> *)captureSettingsSnapshot {
   NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+  NSDictionary<NSString *, id> *canonical =
+      [defaults dictionaryForKey:@"wawona.globalSettingsSnapshot.v1"] ?: @{};
   NSMutableDictionary<NSString *, id> *snapshot = [NSMutableDictionary dictionary];
   for (NSString *key in [self machineScopedSettingsKeys]) {
-    id value = [defaults objectForKey:key];
+    id value = canonical[key] ?: [defaults objectForKey:key];
     if (value != nil) {
       snapshot[key] = value;
     }
@@ -631,7 +633,12 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
   if (profile.machineId.length == 0) {
     profile.machineId = [NSUUID UUID].UUIDString;
   }
-  profile.settingsOverrides = [self normalizedSettingsOverridesForProfile:profile];
+  // Persist only explicit per-machine values. Global defaults are merged at
+  // runtime by normalizedSettingsOverridesForProfile:. Storing the merged
+  // snapshot here freezes current globals and breaks inheritance.
+  if (![profile.settingsOverrides isKindOfClass:[NSDictionary class]]) {
+    profile.settingsOverrides = @{};
+  }
 
   NSMutableArray<WWNMachineProfile *> *profiles = [[self loadProfiles] mutableCopy];
   NSUInteger idx = [profiles indexOfObjectPassingTest:^BOOL(WWNMachineProfile *obj, NSUInteger idx, BOOL *stop) {
@@ -943,6 +950,8 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
   [self ensureObserverRegistered];
   NSDictionary<NSString *, id> *resolved = [self resolvedRuntimeSettingsForProfile:profile];
   WWNPreferencesManager *prefs = [WWNPreferencesManager sharedManager];
+  NSDictionary<NSString *, id> *overrides =
+      [self normalizedSettingsOverridesForProfile:profile];
 
   if ([profile.type isEqualToString:kWWNMachineTypeNative] ||
       [profile.type isEqualToString:kWWNMachineTypeWasm]) {
@@ -955,27 +964,60 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
     [prefs setSshPort:[resolved[@"sshPort"] respondsToSelector:@selector(integerValue)] ? [resolved[@"sshPort"] integerValue] : 22];
     [prefs setWaypipeSSHPassword:[resolved[@"sshPassword"] isKindOfClass:[NSString class]] ? resolved[@"sshPassword"] : @""];
     [prefs setWaypipeRemoteCommand:[resolved[@"remoteCommand"] isKindOfClass:[NSString class]] ? resolved[@"remoteCommand"] : @""];
-    [prefs setWaypipeSSHAuthMethod:profile.sshAuthMethod];
-    [prefs setWaypipeSSHKeyPath:profile.sshKeyPath ?: @""];
-    [prefs setWaypipeSSHKeyPassphrase:profile.sshKeyPassphrase ?: @""];
+    [prefs setWaypipeSSHAuthMethod:
+               [overrides[kWWNPrefsSSHAuthMethod]
+                       respondsToSelector:@selector(integerValue)]
+                   ? [overrides[kWWNPrefsSSHAuthMethod] integerValue]
+                   : 0];
+    [prefs setWaypipeSSHKeyPath:
+               [overrides[kWWNPrefsSSHKeyPath] isKindOfClass:[NSString class]]
+                   ? overrides[kWWNPrefsSSHKeyPath]
+                   : @""];
+    [prefs setWaypipeSSHKeyPassphrase:
+               [overrides[kWWNPrefsSSHKeyPassphrase]
+                       isKindOfClass:[NSString class]]
+                   ? overrides[kWWNPrefsSSHKeyPassphrase]
+                   : @""];
   }
 
-  [prefs setWaypipeCompress:profile.waypipeCompress ?: @"lz4"];
-  [prefs setWaypipeThreads:profile.waypipeThreads ?: @"0"];
-  [prefs setWaypipeVideo:profile.waypipeVideo ?: @"none"];
-  [prefs setWaypipeDebug:profile.waypipeDebug];
+  [prefs setWaypipeCompress:
+             [overrides[kWWNPrefsWaypipeCompress] isKindOfClass:[NSString class]]
+                 ? overrides[kWWNPrefsWaypipeCompress]
+                 : @"lz4"];
+  [prefs setWaypipeThreads:
+             [overrides[kWWNPrefsWaypipeThreads] isKindOfClass:[NSString class]]
+                 ? overrides[kWWNPrefsWaypipeThreads]
+                 : [overrides[kWWNPrefsWaypipeThreads] stringValue] ?: @"0"];
+  [prefs setWaypipeVideo:
+             [overrides[kWWNPrefsWaypipeVideo] isKindOfClass:[NSString class]]
+                 ? overrides[kWWNPrefsWaypipeVideo]
+                 : @"none"];
+  [prefs setWaypipeDebug:
+             [overrides[kWWNPrefsWaypipeDebug] respondsToSelector:@selector(boolValue)]
+                 ? [overrides[kWWNPrefsWaypipeDebug] boolValue]
+                 : NO];
   // Session apply: WWNWaypipeRunner still reads prefs.waypipeNoGpu. Always take
   // this machine's resolved Disable GPU (not a stale global merge) so GPU
   // clients keep dmabuf and only explicit Disable GPU gets SHM/--no-gpu.
   BOOL disableGpu = [self resolvedWaypipeDisableGpuForProfile:profile];
   profile.waypipeDisableGpu = disableGpu;
   [prefs setWaypipeNoGpu:disableGpu];
-  [prefs setWaypipeOneshot:profile.waypipeOneshot];
-  [prefs setWaypipeLoginShell:profile.waypipeLoginShell];
-  [prefs setWaypipeTitlePrefix:profile.waypipeTitlePrefix ?: @""];
-  [prefs setWaypipeSecCtx:profile.waypipeSecCtx ?: @""];
-  NSDictionary<NSString *, id> *overrides =
-      [self normalizedSettingsOverridesForProfile:profile];
+  [prefs setWaypipeOneshot:
+             [overrides[kWWNPrefsWaypipeOneshot] respondsToSelector:@selector(boolValue)]
+                 ? [overrides[kWWNPrefsWaypipeOneshot] boolValue]
+                 : NO];
+  [prefs setWaypipeLoginShell:
+             [overrides[kWWNPrefsWaypipeLoginShell] respondsToSelector:@selector(boolValue)]
+                 ? [overrides[kWWNPrefsWaypipeLoginShell] boolValue]
+                 : NO];
+  [prefs setWaypipeTitlePrefix:
+             [overrides[kWWNPrefsWaypipeTitlePrefix] isKindOfClass:[NSString class]]
+                 ? overrides[kWWNPrefsWaypipeTitlePrefix]
+                 : @""];
+  [prefs setWaypipeSecCtx:
+             [overrides[kWWNPrefsWaypipeSecCtx] isKindOfClass:[NSString class]]
+                 ? overrides[kWWNPrefsWaypipeSecCtx]
+                 : @""];
   NSMutableDictionary<NSString *, id> *transportSnapshot =
       [NSMutableDictionary dictionary];
   for (NSString *key in [self machineScopedSettingsKeys]) {
@@ -1139,11 +1181,50 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
       [profile.runtimeOverrides isKindOfClass:[NSDictionary class]]
           ? profile.runtimeOverrides
           : @{};
-  NSString *resolvedSSHHost = profile.sshHost.length > 0 ? profile.sshHost : [prefs waypipeSSHHost];
-  NSString *resolvedSSHUser = profile.sshUser.length > 0 ? profile.sshUser : [prefs waypipeSSHUser];
-  NSInteger resolvedSSHPort = profile.sshPort > 0 ? profile.sshPort : [prefs sshPort];
+  NSDictionary<NSString *, id> *explicitSettings =
+      [profile.settingsOverrides isKindOfClass:[NSDictionary class]]
+          ? profile.settingsOverrides
+          : @{};
+  NSDictionary<NSString *, id> *global = [self captureSettingsSnapshot];
+  NSString *globalSSHHost =
+      [global[kWWNPrefsSSHHost] isKindOfClass:[NSString class]]
+          ? global[kWWNPrefsSSHHost]
+          : [prefs waypipeSSHHost];
+  NSString *globalSSHUser =
+      [global[kWWNPrefsSSHUser] isKindOfClass:[NSString class]]
+          ? global[kWWNPrefsSSHUser]
+          : [prefs waypipeSSHUser];
+  NSInteger globalSSHPort =
+      [global[kWWNPrefsSSHPort] respondsToSelector:@selector(integerValue)]
+          ? [global[kWWNPrefsSSHPort] integerValue]
+          : [prefs sshPort];
+  NSString *explicitSSHHost =
+      [explicitSettings[kWWNPrefsSSHHost] isKindOfClass:[NSString class]]
+          ? explicitSettings[kWWNPrefsSSHHost]
+          : nil;
+  NSString *explicitSSHUser =
+      [explicitSettings[kWWNPrefsSSHUser] isKindOfClass:[NSString class]]
+          ? explicitSettings[kWWNPrefsSSHUser]
+          : nil;
+  id explicitSSHPort = explicitSettings[kWWNPrefsSSHPort];
+  NSString *resolvedSSHHost =
+      explicitSSHHost ?: (profile.sshHost.length > 0 ? profile.sshHost : globalSSHHost);
+  NSString *resolvedSSHUser =
+      explicitSSHUser ?: (profile.sshUser.length > 0 ? profile.sshUser : globalSSHUser);
+  NSInteger resolvedSSHPort =
+      [explicitSSHPort respondsToSelector:@selector(integerValue)]
+          ? [explicitSSHPort integerValue]
+          : ((profile.sshPort > 0 && profile.sshPort != 22)
+                 ? profile.sshPort
+                 : globalSSHPort);
   NSString *resolvedSSHPassword =
-      profile.sshPassword.length > 0 ? profile.sshPassword : [prefs waypipeSSHPassword];
+      [explicitSettings[kWWNPrefsSSHPassword] isKindOfClass:[NSString class]]
+          ? explicitSettings[kWWNPrefsSSHPassword]
+          : (profile.sshPassword.length > 0
+          ? profile.sshPassword
+          : ([global[kWWNPrefsSSHPassword] isKindOfClass:[NSString class]]
+                 ? global[kWWNPrefsSSHPassword]
+                 : [prefs waypipeSSHPassword]));
   NSString *resolvedCommand =
       profile.remoteCommand.length > 0 ? profile.remoteCommand : @"weston-simple-shm";
 
@@ -1359,7 +1440,8 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
   if ([noGpu respondsToSelector:@selector(boolValue)]) {
     return [noGpu boolValue];
   }
-  return NO;
+  id global = [self captureSettingsSnapshot][kWWNPrefsWaypipeNoGpu];
+  return [global respondsToSelector:@selector(boolValue)] ? [global boolValue] : NO;
 }
 
 + (BOOL)resolvedShowHostCursorActive {
