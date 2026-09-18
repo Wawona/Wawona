@@ -50,6 +50,13 @@
       "version": "0.11.0"
     },
     {
+      "license": "MIT",
+      "name": "Wawona Relay",
+      "role": "Bundled WASI and VM/container runtime",
+      "url": "https://github.com/Wawona/Relay",
+      "version": "0.1.0"
+    },
+    {
       "license": "SSH-OpenSSH",
       "name": "OpenSSH",
       "role": "SSH client (portable jniLibs)",
@@ -107,4 +114,3 @@
     }
   ]
 }
-

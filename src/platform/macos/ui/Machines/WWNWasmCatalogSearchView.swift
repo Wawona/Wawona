@@ -69,6 +69,7 @@ struct WWNWasmCatalogSearchView: View {
       .toolbar {
         ToolbarItem(placement: .cancellationAction) {
           Button("Close") { dismiss() }
+            .backport.glassToolbarButton()
         }
       }
       #if os(macOS)

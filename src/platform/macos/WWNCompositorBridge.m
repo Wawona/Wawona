@@ -597,6 +597,8 @@ NSNotificationName const WWNClientFocusRequestedNotification =
     @"WWNClientFocusRequestedNotification";
 NSNotificationName const WWNHostWindowsDidChangeNotification =
     @"WWNHostWindowsDidChangeNotification";
+NSNotificationName const WWNClientSelectionDidChangeNotification =
+    @"WWNClientSelectionDidChangeNotification";
 
 static uint32_t WWNBridgeFrameTimestampMs(void *core) {
   if (core) {
@@ -1367,13 +1369,23 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
       UIPasteboard *pasteboard = [UIPasteboard generalPasteboard];
       pasteboard.string = text;
+      _lastPasteboardChangeCount = pasteboard.changeCount;
+      _pasteboardChangeCountInitialized = YES;
+      // Notify the active compositor view so it can present the native iOS
+      // edit menu (UIEditMenuInteraction / UIMenuController) showing Copy and
+      // Paste with the system Liquid Glass appearance. Posted on main queue
+      // (we are already on it) so the view can call -becomeFirstResponder and
+      // then show the menu synchronously in the same runloop pass.
+      [[NSNotificationCenter defaultCenter]
+          postNotificationName:WWNClientSelectionDidChangeNotification
+                        object:self];
 #else
       NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
       [pasteboard clearContents];
       [pasteboard setString:text forType:NSPasteboardTypeString];
-#endif
       _lastPasteboardChangeCount = pasteboard.changeCount;
       _pasteboardChangeCountInitialized = YES;
+#endif
       return;
     }
   }
@@ -1421,6 +1433,7 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
 
 static const uint32_t kWWNHostEditKeyLeftCtrl = 29;
 static const uint32_t kWWNHostEditKeyLeftShift = 42;
+static const uint32_t kWWNHostEditKeyA = 30;
 static const uint32_t kWWNHostEditKeyC = 46;
 static const uint32_t kWWNHostEditKeyV = 47;
 static const uint32_t kWWNHostEditModShift = (1u << 0);
@@ -1450,7 +1463,7 @@ static const uint32_t kWWNHostEditModCtrl = (1u << 2);
 #if TARGET_OS_TV
   return NO;
 #else
-  return [[WWNPreferencesManager sharedManager] universalClipboardEnabled];
+  return YES;
 #endif
 }
 
@@ -1502,10 +1515,18 @@ static const uint32_t kWWNHostEditModCtrl = (1u << 2);
   [self _hostEditInjectChord:kWWNHostEditKeyV];
 }
 
+- (void)hostEditSelectAllInClient {
+  if (![self hostEditMenuEnabled]) {
+    return;
+  }
+  [self _hostEditInjectChord:kWWNHostEditKeyA];
+}
+
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
-/// Drive host soft keyboard from `text_entry_wanted` (committed TI-v3 enable
-/// OR allowlisted terminal keyboard focus). Accessory bar stays independent.
-/// tvOS: manual toggle only. Do not auto-Expand from synthesis/TI.
+/// Drive the iOS soft keyboard from the committed `zwp_text_input_v3.enable`
+/// state.  Keyboard-focused terminals are deliberately not enough: UIKit must
+/// only become first responder when a Wayland client has requested text input.
+/// tvOS remains manual because there is no iOS software keyboard there.
 - (void)_syncHostKeyboardWithTextInput {
   if (!_rustCore) {
     return;
@@ -1513,16 +1534,7 @@ static const uint32_t kWWNHostEditModCtrl = (1u << 2);
 #if TARGET_OS_TV
   return;
 #else
-  BOOL hardwareKeyboard = NO;
-  for (NSNumber *probeKey in self->_windows) {
-    UIView *probeView = self->_windows[probeKey];
-    if ([probeView isKindOfClass:[WWNCompositorView_ios class]]) {
-      hardwareKeyboard =
-          hardwareKeyboard ||
-          [(WWNCompositorView_ios *)probeView hardwareKeyboardActive];
-    }
-  }
-  BOOL wanted = WWNCoreOskShouldShow(_rustCore, hardwareKeyboard ? 1 : 0, 0) != 0;
+  BOOL wanted = WWNCoreTextInputIsEnabled(_rustCore) != 0;
   uint32_t hint = 0;
   uint32_t purpose = 0;
   WWNCoreTextInputGetContentType(_rustCore, &hint, &purpose);

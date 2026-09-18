@@ -21,6 +21,12 @@ struct MachineEditorView: View {
     @State var entryCommand: String
     @State var desktopSession: Bool
     @State var imageArchivePath: String
+    @State var vmIdentifier: String
+    @State var vmVsockPort: String
+    @State var vmGuestVariant: String
+    @State var vmMemoryMB: Int
+    @State var vmDiskGiB: Int
+    @State var vmNotes: String
     @State var wasmCommand: String
     @State var wasmModulePath: String
     @State var wasmPackage: String
@@ -43,12 +49,7 @@ struct MachineEditorView: View {
         self.onSave = onSave
         let state = MachineEditorDomain.machineEditorState(from: profile)
         _name = State(initialValue: state.name)
-        #if os(iOS)
-        let parsed = MachineType(rawValue: state.typeRawValue) ?? .native
-        _type = State(initialValue: parsed == .container ? .native : parsed)
-        #else
         _type = State(initialValue: MachineType(rawValue: state.typeRawValue) ?? .native)
-        #endif
         _selectedLauncherName = State(initialValue: state.selectedLauncherName)
         _sshHost = State(initialValue: state.sshHost)
         _sshUser = State(initialValue: state.sshUser)
@@ -62,6 +63,12 @@ struct MachineEditorView: View {
         _entryCommand = State(initialValue: state.entryCommand)
         _desktopSession = State(initialValue: state.desktopSession)
         _imageArchivePath = State(initialValue: state.imageArchivePath)
+        _vmIdentifier = State(initialValue: state.vmIdentifier)
+        _vmVsockPort = State(initialValue: state.vmVsockPort)
+        _vmGuestVariant = State(initialValue: state.vmGuestVariant)
+        _vmMemoryMB = State(initialValue: state.vmMemoryMB)
+        _vmDiskGiB = State(initialValue: state.vmDiskGiB)
+        _vmNotes = State(initialValue: state.vmNotes)
         _wasmCommand = State(initialValue: state.wasmCommand)
         _wasmModulePath = State(initialValue: state.wasmModulePath)
         _wasmPackage = State(initialValue: state.wasmPackage)
@@ -109,6 +116,12 @@ struct MachineEditorView: View {
             entryCommand: entryCommand,
             desktopSession: desktopSession,
             imageArchivePath: imageArchivePath,
+            vmIdentifier: vmIdentifier,
+            vmVsockPort: vmVsockPort,
+            vmGuestVariant: vmGuestVariant,
+            vmMemoryMB: vmMemoryMB,
+            vmDiskGiB: vmDiskGiB,
+            vmNotes: vmNotes,
             wasmCommand: wasmCommand,
             wasmModulePath: wasmModulePath,
             wasmPackage: wasmPackage
@@ -132,14 +145,14 @@ struct MachineEditorView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        WawonaBackport<Any>.navigation {
             Form {
                 // MARK: Identity + type in one compact section
                 Section("Profile") {
                     TextField("Name", text: $name)
                         .wwnA11y(WawonaA11y.machinesEditorName, label: "Name")
                     Picker("Type", selection: $type) {
-                        ForEach(PlatformCapabilities.availableMachineTypes, id: \.self) { t in
+                        ForEach(PlatformCapabilities.creatableMachineTypes, id: \.self) { t in
                             Text(t.userFacingName).tag(t)
                         }
                     }
@@ -283,9 +296,69 @@ struct MachineEditorView: View {
                         Text("Empty fields inherit the global Settings → Containers defaults. "
                              + "Memory, mounts, ports and kernel paths are configured in Machine Settings.")
                             + Text("\n")
-                            + Text("Desktop session attaches the container's Wayland session to Wawona via the waypipe vsock bridge — apps appear as windows (a nested desktop like GNOME/KDE shows as one window).")
+                            + Text("Desktop session attaches the container's Wayland session to Wawona via the waypipe vsock bridge: apps appear as windows (a nested desktop like GNOME/KDE shows as one window).")
                             + Text("\n")
-                            + Text("Import image archive… adds a local image (docker-archive tar/tar.gz, OCI-archive, or OCI layout directory — format detected automatically) and runs the machine from it without a registry pull.")
+                            + Text("Import image archive… adds a local image (docker-archive tar/tar.gz, OCI-archive, or OCI layout directory; format detected automatically) and runs the machine from it without a registry pull.")
+                    }
+                }
+
+                if type == .virtualMachine {
+                    Section {
+                        HStack {
+                            Text("Backend")
+                            Spacer()
+                            Text("Wawona Relay")
+                                .foregroundStyle(.secondary)
+                        }
+                        TextField("VM Identifier", text: $vmIdentifier, prompt: Text("e.g. studio-linux"))
+                            .wawonaTextFieldNoAutocaps()
+                            .autocorrectionDisabled()
+                        Picker("NixOS guest", selection: $vmGuestVariant) {
+                            Text("NixOS 4K pages").tag("4k")
+                            Text("NixOS 16K pages").tag("16k")
+                        }
+                        .wwnMachineChoicePicker()
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text("Memory")
+                                Spacer()
+                                Text("\(vmMemoryMB) MiB")
+                                    .foregroundStyle(.secondary)
+                            }
+                            Slider(
+                                value: Binding(
+                                    get: { Double(vmMemoryMB) },
+                                    set: { vmMemoryMB = Int($0.rounded()) }
+                                ),
+                                in: 256...4096,
+                                step: 256
+                            )
+                        }
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text("Disk Size")
+                                Spacer()
+                                Text("\(vmDiskGiB) GiB")
+                                    .foregroundStyle(.secondary)
+                            }
+                            Slider(
+                                value: Binding(
+                                    get: { Double(vmDiskGiB) },
+                                    set: { vmDiskGiB = Int($0.rounded()) }
+                                ),
+                                in: 4...64,
+                                step: 1
+                            )
+                        }
+                        TextField("VSock Port", text: $vmVsockPort, prompt: Text("Runtime default"))
+                            #if os(iOS)
+                            .keyboardType(.numberPad)
+                            #endif
+                        TextField("Notes", text: $vmNotes)
+                    } header: {
+                        Text("Virtual Machine")
+                    } footer: {
+                        Text("The selected NixOS image is bundled and signed with Wawona. Relay verifies its manifest, memory and page size before start. The Wayland session is required to arrive through vsock and waypipe.")
                     }
                 }
 
@@ -333,14 +406,19 @@ struct MachineEditorView: View {
                 }
             }
             .navigationTitle(editorNavigationTitle)
+            #if os(iOS)
+            .scrollDismissesKeyboard(.immediately)
+            #endif
             .wwnA11y(WawonaA11y.machinesEditor, label: editorNavigationTitle)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                        .backport.glassToolbarButton()
                         .wwnA11y(WawonaA11y.machinesEditorCancel, label: "Cancel")
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save", action: save)
+                        .backport.glassProminentToolbarButton()
                         .disabled(hasValidationIssues)
                         .wwnA11y(WawonaA11y.machinesEditorSave, label: "Save")
                 }

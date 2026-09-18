@@ -60,11 +60,13 @@ and [FlakeHub Cache](docs/flakehub-cache.md).
 
 ### Environment Configuration
 
-This project uses a simple `.envrc` file to manage your Apple Development Team ID.
+This project uses a pinned Nix flake through direnv. `.envrc` loads the flake;
+local signing values live in ignored `.envrc.local`.
 
-1.  **Create or edit `.envrc`**:
+1.  **Create `.envrc.local` from the example**:
     ```bash
-    echo 'export TEAM_ID="your_apple_team_id_here"' > .envrc
+    cp .envrc.local.example .envrc.local
+    # Edit TEAM_ID and, for signed IPA exports, the signing inputs.
     ```
     
     Replace `your_apple_team_id_here` with your actual Apple Development Team ID.

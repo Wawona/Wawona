@@ -59,7 +59,6 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
         @"SSH",
         @"Machines",
         @"iCloud Sync",
-        @"Advanced",
         @"About",
         @"Dependencies",
     ];
@@ -83,7 +82,6 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
         @"SSH",
         @"Machines",
         @"iCloud Sync",
-        @"Advanced",
         @"About",
         @"Dependencies",
     ];
@@ -158,6 +156,9 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
     if ([section isEqualToString:@"Display"]) {
         return @[
             [self toggleRow:@"Enable HDR" key:@"colorOperations" value:bridge.colorOperations],
+            [self toggleRow:@"Nested Compositors" key:@"nestedCompositorsSupport" value:bridge.nestedCompositorsSupport],
+            [self actionRow:@"Display Backend" key:@"compositorBackend" value:bridge.compositorBackend],
+            [self toggleRow:@"Multiple Clients" key:@"multipleClients" value:bridge.multipleClients],
         ];
     }
     if ([section isEqualToString:@"Input"]) {
@@ -223,14 +224,6 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
                    detail:@"Not available on watchOS. iCloud Drive Documents for shell HOME ships on iPhone, iPad, Mac, and Vision Pro."],
         ];
     }
-    if ([section isEqualToString:@"Advanced"]) {
-        return @[
-            [self toggleRow:@"Nested Compositors" key:@"nestedCompositorsSupport" value:bridge.nestedCompositorsSupport],
-            [self actionRow:@"Display Backend" key:@"compositorBackend" value:bridge.compositorBackend],
-            [self toggleRow:@"Multiple Clients" key:@"multipleClients" value:bridge.multipleClients],
-            [self actionRow:@"Log Level" key:@"logLevel" value:bridge.logLevel],
-        ];
-    }
     if ([section isEqualToString:@"Dependencies"]) {
         NSString *path = [[NSBundle mainBundle] pathForResource:@"SettingsDependencies"
                                                         ofType:@"json"];
@@ -286,6 +279,7 @@ typedef NS_ENUM(NSInteger, WWNWatchSettingsRowKind) {
             [self infoRow:@"Version" detail:version],
             [self infoRow:@"Build" detail:build],
             [self infoRow:@"Platform" detail:@"watchOS"],
+            [self actionRow:@"Log Level" key:@"logLevel" value:bridge.logLevel],
             [self actionRow:@"Wawona.io"
                         key:@"OpenWawonaWebsite"
                       value:@"wawona.io"],

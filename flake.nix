@@ -1155,13 +1155,26 @@
             inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
             workspaceSrc = workspace-src-ios; platform = "ios"; nativeDeps = iosDeps;
             cargoNixDrv = sharedIosCargoNix;
+            iosDeploymentTarget = "11.0";
           };
-          backend-ios-modeb = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
+          # Sileo is the jailbroken iOS 11+ product.  TrollStore is a separate
+          # iOS 14+ product; never let a .tipa silently inherit this floor.
+          backend-ios-modeb-sileo = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
             inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
             workspaceSrc = workspace-src-ios; platform = "ios"; nativeDeps = iosDeps;
             cargoNixDrv = sharedIosCargoNix;
             iosModeB = true;
+            iosDeploymentTarget = "11.0";
           };
+          backend-ios-modeb-tipa = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
+            inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
+            workspaceSrc = workspace-src-ios; platform = "ios"; nativeDeps = iosDeps;
+            cargoNixDrv = sharedIosCargoNix;
+            iosModeB = true;
+            iosDeploymentTarget = "14.0";
+          };
+          # Compatibility alias: Mode B backend means the Sileo iOS 11+ lane.
+          backend-ios-modeb = backend-ios-modeb-sileo;
           backend-ios-sim = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
             inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
             workspaceSrc = workspace-src-ios; platform = "ios"; simulator = true; nativeDeps = iosSimDeps;
@@ -1208,7 +1221,11 @@
           };
           mobileGuestArtifacts =
             if builtins.pathExists "${wwn-relay}/import/vms/dependencies/vms/mobile/guest-artifacts.nix" then
-              wwn-relay.packages.aarch64-linux.wawona-mobile-guest-artifacts or null
+              wwn-relay.packages.aarch64-linux.wawona-nixos-guest-4k or null
+            else null;
+          mobileGuestArtifacts16k =
+            if builtins.pathExists "${wwn-relay}/import/vms/dependencies/vms/mobile/guest-artifacts.nix" then
+              wwn-relay.packages.aarch64-linux.wawona-nixos-guest-16k or null
             else null;
           mobileVmEngine = null;
           mobileVmEngineModeB = null;
@@ -1240,7 +1257,7 @@
                 else watchosSimDeps;
             in
             pkgs.callPackage ./dependencies/generators/xcodegen.nix {
-              inherit wawonaVersion wawonaSrc platformFilter simulatorOnly mobileGuestArtifacts mobileVmEngine;
+              inherit wawonaVersion wawonaSrc platformFilter simulatorOnly mobileGuestArtifacts mobileGuestArtifacts16k mobileVmEngine;
               includeModeB = includeModeBEngine;
               mobileVmEngineModeB = if includeModeBEngine then mobileVmEngineModeB else null;
               iosDeps = if want "ios" || want "ipados" then (if simulatorOnly then empty else iosDeps) else empty;
@@ -1383,10 +1400,12 @@
             TEAM_ID = teamId;
             xcodeProject = xcodegenOutputs.project;
             simulator = false;
+            deploymentTarget = "11.0";
             rustBackend = backend-ios;
+            inherit mobileGuestArtifacts mobileGuestArtifacts16k;
             companionBackends = { "Wawona-watchOS" = backend-watchos; };
           };
-          wawona-ios-modeb-app-device = pkgs.callPackage ./dependencies/wawona/ios.nix {
+          wawona-ios-modeb-sileo-app-device = pkgs.callPackage ./dependencies/wawona/ios.nix {
             inherit wawonaSrc wawonaVersion;
             TEAM_ID = null;
             xcodeProject = xcodegenIosModeBOutputs.project;
@@ -1395,9 +1414,26 @@
             simulator = false;
             release = true;
             modeB = true;
-            rustBackend = backend-ios-modeb;
+            deploymentTarget = "11.0";
+            rustBackend = backend-ios-modeb-sileo;
             companionBackends = { };
           };
+          wawona-ios-modeb-tipa-app-device = pkgs.callPackage ./dependencies/wawona/ios.nix {
+            inherit wawonaSrc wawonaVersion;
+            TEAM_ID = null;
+            xcodeProject = xcodegenIosModeBOutputs.project;
+            xcodeTarget = "Wawona-iOS-ModeB";
+            bundleId = "com.aspauldingcode.Wawona.ModeB";
+            simulator = false;
+            release = true;
+            modeB = true;
+            deploymentTarget = "14.0";
+            rustBackend = backend-ios-modeb-tipa;
+            companionBackends = { };
+          };
+          # Historical name remains the Sileo iOS 11+ app.  New callers must
+          # choose the explicit channel output above.
+          wawona-ios-modeb-app-device = wawona-ios-modeb-sileo-app-device;
           wawona-ios-modeb-tipa = pkgs.runCommand "wawona-ios-modeb-tipa-${wawonaVersion}" {
             nativeBuildInputs = [
               pkgs.ldid
@@ -1408,7 +1444,7 @@
             set -euo pipefail
             stage="$TMPDIR/wawona-modeb-tipa"
             mkdir -p "$stage/Payload" "$out"
-            cp -R "${wawona-ios-modeb-app-device}/Wawona.app" "$stage/Payload/Wawona.app"
+            cp -R "${wawona-ios-modeb-tipa-app-device}/Wawona.app" "$stage/Payload/Wawona.app"
             chmod -R u+w "$stage/Payload/Wawona.app"
             rm -rf "$stage/Payload/Wawona.app/_CodeSignature"
             ldid -S"${wawonaSrc}/src/resources/app-bundle/Wawona-ModeB.entitlements" \
@@ -1444,7 +1480,7 @@
             set -euo pipefail
             stage="$TMPDIR/wawona-modeb-tipa-slim"
             mkdir -p "$stage/Payload" "$out"
-            cp -R "${wawona-ios-modeb-app-device}/Wawona.app" "$stage/Payload/Wawona.app"
+            cp -R "${wawona-ios-modeb-tipa-app-device}/Wawona.app" "$stage/Payload/Wawona.app"
             chmod -R u+w "$stage/Payload/Wawona.app"
             rm -rf "$stage/Payload/Wawona.app/_CodeSignature"
             rm -rf "$stage/Payload/Wawona.app/wawona-mobile-guest/rootfs.img"
@@ -1484,7 +1520,7 @@
               set -euo pipefail
               stage="$TMPDIR/wawona-modeb-deb-${suffix}"
               mkdir -p "$stage/${appPrefix}" "$stage/DEBIAN" "$out"
-              cp -R "${wawona-ios-modeb-app-device}/Wawona.app" "$stage/${appPrefix}/Wawona.app"
+              cp -R "${wawona-ios-modeb-sileo-app-device}/Wawona.app" "$stage/${appPrefix}/Wawona.app"
               chmod -R u+w "$stage/${appPrefix}/Wawona.app"
               rm -rf "$stage/${appPrefix}/Wawona.app/_CodeSignature"
               rm -rf "$stage/${appPrefix}/Wawona.app/wwn-qemu-run"
@@ -1505,6 +1541,8 @@
                 ldid -S"${wawonaSrc}/src/resources/app-bundle/Wawona-ModeB.entitlements" \
                   "$stage/${appPrefix}/Wawona.app/wwn-vsock-peer"
               fi
+              bash "${wawonaSrc}/.github/scripts/verify-ios-modeb-artifacts.sh" \
+                --sileo "$stage/${appPrefix}/Wawona.app"
               cat > "$stage/DEBIAN/control" <<EOF
 Package: com.aspauldingcode.wawona.modeb
 Name: Wawona
@@ -1514,7 +1552,7 @@ Maintainer: Wawona <hello@wawona.io>
 Description: Wawona Mode B (${suffix}). JIT + IOMFB Desktop. Not App Store.
 Section: Applications
 Priority: optional
-Depends: firmware (>= 15.0)
+Depends: firmware (>= 11.0)
 Homepage: https://wawona.io
 EOF
               cat > "$stage/DEBIAN/postinst" <<'EOF'
@@ -1543,6 +1581,8 @@ EOF
             TEAM_ID = teamId;
             xcodeProject = xcodegenOutputs.project;
             simulator = true;
+            # iPadOS began at 13. iPads on 11-12 run the shared iOS product.
+            deploymentTarget = "13.0";
             rustBackend = backend-ios-sim;
             companionBackends = { "Wawona-watchOS" = backend-watchos-sim; };
           };
@@ -1551,6 +1591,7 @@ EOF
             TEAM_ID = teamId;
             xcodeProject = xcodegenOutputs.project;
             simulator = false;
+            deploymentTarget = "13.0";
             rustBackend = backend-ios;
             companionBackends = { "Wawona-watchOS" = backend-watchos; };
           };
@@ -1588,6 +1629,7 @@ EOF
             xcodeProject = xcodegenOutputs.project;
             simulator = false;
             generateIPA = true;
+            deploymentTarget = "11.0";
             rustBackend = backend-ios;
             companionBackends = { "Wawona-watchOS" = backend-watchos; };
           } else missingTeamRelease "wawona-ios-ipa";
@@ -1597,6 +1639,7 @@ EOF
             xcodeProject = xcodegenOutputs.project;
             simulator = false;
             generateXCArchive = true;
+            deploymentTarget = "11.0";
             rustBackend = backend-ios;
             companionBackends = { "Wawona-watchOS" = backend-watchos; };
           } else missingTeamRelease "wawona-ios-xcarchive";
@@ -1608,6 +1651,7 @@ EOF
             generateIPA = true;
           }) else missingTeamRelease name;
           wawona-ipados-ipa = mkPlatformIpa "wawona-ipados-ipa" ./dependencies/wawona/ipados.nix {
+            deploymentTarget = "13.0";
             rustBackend = backend-ios;
             companionBackends = { "Wawona-watchOS" = backend-watchos; };
           };
@@ -2022,6 +2066,8 @@ APPLESCRIPT
           wawona-visionos-app-sim = wawona-visionos-app-sim;
           wawona-ios-app-device = wawona-ios-app-device;
           wawona-ios-modeb-app-device = wawona-ios-modeb-app-device;
+          wawona-ios-modeb-sileo-app-device = wawona-ios-modeb-sileo-app-device;
+          wawona-ios-modeb-tipa-app-device = wawona-ios-modeb-tipa-app-device;
           wawona-ios-modeb-tipa = wawona-ios-modeb-tipa;
           wawona-ios-modeb-tipa-slim = wawona-ios-modeb-tipa-slim;
           wawona-ios-modeb-deb-rootless = wawona-ios-modeb-deb-rootless;
@@ -2049,6 +2095,8 @@ APPLESCRIPT
           wawona-macos-xcode-env = backend-macos;
           wawona-ios-backend = backend-ios;
           wawona-ios-modeb-backend = backend-ios-modeb;
+          wawona-ios-modeb-sileo-backend = backend-ios-modeb-sileo;
+          wawona-ios-modeb-tipa-backend = backend-ios-modeb-tipa;
           wwn-vms-engine-contract-ios = iosDeps."vm-engine-contract";
           wwn-vms-engine-contract-ios-modeb = iosDeps."vm-engine-contract-modeb";
           wawona-ios-xcode-env = backend-ios;

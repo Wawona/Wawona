@@ -27,7 +27,7 @@ send-side only. Not a watchOS Settings twin). Catalog sections include Display
 (Enable HDR), Machines (shake / swipe / tvOS Menu), iCloud Sync (Apple; omit on
 tvOS, iCloud Drive is unavailable), Local Shell (three buttons), Dependencies
 (this product's linked packages only), plus the existing Input / Graphics /
-Env Vars / Advanced / Waypipe / SSH / About pages. watchOS omits Desktop
+Env Vars / Waypipe / SSH / About pages. watchOS omits Desktop
 (forbidden), Local Shell, and Apple Watch. SwiftUI
 on watch is the in-process host (WatchKit present from `@main` is unreliable);
 both hosts must render that catalog and the same `wawona.pref.*` keys.
@@ -167,7 +167,7 @@ Settings fields. Hidden on tvOS / watchOS when those capabilities are absent.
 
 ---
 
-## Advanced
+## Display and About
 
 | Setting | Key | Type | Default | Platforms | Description |
 |---------|-----|------|---------|------------|-------------|
@@ -176,7 +176,7 @@ Settings fields. Hidden on tvOS / watchOS when those capabilities are absent.
 | **Dictation** | `enableDictation` | Switch | Off | Android | Android dictation toggle (paired with Text Assist). |
 | **Nested Compositors** | `nestedCompositorsSupport` / `NestedCompositorsSupport` | Switch | On | All | Nested Weston and Niri. Both ship on every product target. |
 | **Multiple Clients** | `multipleClients` / `MultipleClients` | Switch | On | All | Allow multiple Wayland clients simultaneously |
-| **Log Level** | `wawona.pref.logLevel` | Popup | info | All | Minimum log severity for the in-app log ring |
+| **Log Level** | `wawona.pref.logLevel` | Popup | info | About, all | Minimum log severity for the in-app log ring |
 
 ---
 

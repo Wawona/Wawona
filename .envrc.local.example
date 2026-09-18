@@ -1,0 +1,8 @@
+# Copy to .envrc.local, then run `direnv allow`.
+# Do not commit local signing identities, passwords, or profiles.
+export TEAM_ID="YOUR_APPLE_DEVELOPER_TEAM_ID"
+# export CERTIFICATE_FILE="$HOME/.config/wawona/signing/distribution.p12"
+# export CERTIFICATE_PASSWORD="$(pass show wawona/apple/certificate-password)"
+# export PROVISIONING_PROFILE="$HOME/.config/wawona/signing/Wawona.mobileprovision"
+# export CODE_SIGN_IDENTITY="Apple Distribution: Your Organization (TEAMID)"
+# export SIGN_METHOD="app-store-connect"

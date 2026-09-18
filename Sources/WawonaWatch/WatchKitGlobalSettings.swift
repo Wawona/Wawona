@@ -88,10 +88,8 @@ private struct WatchGlobalSettingsSectionHost: View {
                 WatchSettingsMachinesSection(preferences: preferences)
             case .iCloudSync:
                 WatchSettingsICloudSection()
-            case .advanced:
-                WatchSettingsAdvancedSection(preferences: preferences)
             case .about:
-                WatchSettingsAboutSection()
+                WatchSettingsAboutSection(preferences: preferences)
             case .dependencies:
                 WatchSettingsDependenciesSection()
             case .localShell, .desktop, .appleWatch:
@@ -152,6 +150,19 @@ private struct WatchSettingsDisplaySection: View {
                     title: "Respect Safe Area",
                     detail: "Respect Safe Area is iPhone-only."
                 )
+            }
+            if watchShows(.nestedCompositors, in: .display) {
+                Toggle("Nested Compositors", isOn: $preferences.nestedCompositorsSupport)
+            }
+            if watchShows(.compositorBackend, in: .display) {
+                Picker("Display Backend", selection: $preferences.compositorBackend) {
+                    Text("Auto").tag("auto")
+                    Text("Wayland (nested)").tag("wayland")
+                    Text("DRM/KMS (wwn-iland)").tag("drm")
+                }.pickerStyle(.navigationLink)
+            }
+            if watchShows(.multipleClients, in: .display) {
+                Toggle("Multiple Clients", isOn: $preferences.multipleClients)
             }
         }
         .navigationTitle(GlobalSettingsSectionID.display.title)
@@ -483,45 +494,16 @@ private struct WatchSettingsDependenciesSection: View {
     }
 }
 
-private struct WatchSettingsAdvancedSection: View {
-    @ObservedObject var preferences: WawonaPreferences
-
-    var body: some View {
-        Form {
-            if watchShows(.nestedCompositors, in: .advanced) {
-                Toggle("Nested Compositors", isOn: $preferences.nestedCompositorsSupport)
-                    .lineLimit(1)
-            }
-            if watchShows(.compositorBackend, in: .advanced) {
-                Picker("Display Backend", selection: $preferences.compositorBackend) {
-                    Text("Auto").tag("auto")
-                    Text("Wayland (nested)").tag("wayland")
-                    Text("DRM/KMS (wwn-iland)").tag("drm")
-                }
-                .pickerStyle(.navigationLink)
-            }
-            if watchShows(.multipleClients, in: .advanced) {
-                Toggle("Multiple Clients", isOn: $preferences.multipleClients)
-                    .lineLimit(1)
-            }
-            if watchShows(.logLevel, in: .advanced) {
-                Picker("Log Level", selection: $preferences.logLevel) {
-                    Text("Debug").tag("debug")
-                    Text("Info").tag("info")
-                    Text("Warn").tag("warn")
-                    Text("Error").tag("error")
-                }
-                .pickerStyle(.navigationLink)
-            }
-        }
-        .navigationTitle(GlobalSettingsSectionID.advanced.title)
-        .onDisappear { preferences.save() }
-    }
-}
-
 private struct WatchSettingsAboutSection: View {
+    @ObservedObject var preferences: WawonaPreferences
     var body: some View {
         Form {
+            if watchShows(.logLevel, in: .about) {
+                Picker("Log Level", selection: $preferences.logLevel) {
+                    Text("Debug").tag("debug"); Text("Info").tag("info")
+                    Text("Warn").tag("warn"); Text("Error").tag("error")
+                }.pickerStyle(.navigationLink)
+            }
             if watchShows(.aboutVersion, in: .about) {
                 WatchInfoRow(title: "Version", detail: watchAboutVersion)
             }
@@ -564,6 +546,7 @@ private struct WatchSettingsAboutSection: View {
             }
         }
         .navigationTitle(GlobalSettingsSectionID.about.title)
+        .onDisappear { preferences.save() }
     }
 
     private var watchAboutVersion: String {

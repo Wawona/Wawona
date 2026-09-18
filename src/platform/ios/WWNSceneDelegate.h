@@ -13,4 +13,10 @@
 /// Respect Safe Area preference.  Called on init and on toggle.
 - (void)applyRespectSafeAreaPreference;
 
+/// iOS 11/12 have no UIScene.  The app delegate supplies a classic UIWindow
+/// and this delegate installs the same UIKit compositor/Machines host.
+- (void)connectLegacyWindow:(UIWindow *)window;
+- (void)legacyApplicationDidBecomeActive;
+- (void)legacyApplicationDidEnterBackground;
+
 @end

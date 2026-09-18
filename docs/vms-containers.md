@@ -31,10 +31,10 @@ across those hosts.
 | Platform | Gate | Planned engine |
 |---|---|---|
 | macOS | planned | `Virtualization.framework` + Apple Containerization (not MAS for run) |
-| iOS / iPadOS | planned | Relay. Mode B may use Hypervisor.framework inside the UTM-era window |
+| iOS / iPadOS / visionOS | planned | Relay. Mode B may use Hypervisor.framework inside the UTM-era window where permitted |
 | Android | planned | Relay. Play = Mode A. Root = Mode B |
 | Linux | planned | KVM via cloud-hypervisor or crosvm |
-| tvOS / watchOS / visionOS | **forbidden** | Native + remote only (no VM/container kinds) |
+| tvOS / watchOS | **forbidden** | Native + remote only (no VM/container kinds) |
 
 App Store / TestFlight copy must **never** pitch jailbreak, TrollStore, or JIT.
 Website and `repo.wawona.io` may.

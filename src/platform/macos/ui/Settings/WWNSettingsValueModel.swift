@@ -25,6 +25,12 @@ final class WWNSettingsValueModel: ObservableObject {
 
     private let defaults = UserDefaults.standard
     private var observers: [NSObjectProtocol] = []
+    /// UIKit may synchronously send defaults notifications while SwiftUI is
+    /// reconciling a control's binding. Coalesce redraw requests onto the next
+    /// main-loop turn so a setting write never publishes during a view update.
+    private var objectChangeQueued = false
+    private var commitQueued = false
+    private var sectionReloadQueued = false
 
     /// Keys whose change rebuilds `WWNPreferences.sections` (matching the
     /// AppKit `act:` behavior).
@@ -42,14 +48,14 @@ final class WWNSettingsValueModel: ObservableObject {
                 object: nil,
                 queue: .main
             ) { [weak self] _ in
-                self?.objectWillChange.send()
+                self?.queueObjectChange()
             },
             NotificationCenter.default.addObserver(
                 forName: .wawonaPreferencesDidSave,
                 object: nil,
                 queue: .main
             ) { [weak self] _ in
-                self?.objectWillChange.send()
+                self?.queueObjectChange()
             },
         ]
     }
@@ -231,18 +237,49 @@ final class WWNSettingsValueModel: ObservableObject {
     /// `WawonaPreferences` in-memory model (per-machine editors read it) and
     /// post the same notifications the AppKit window posted.
     private func commit(rebuild: Bool) {
-        if rebuild {
-            WWNPreferences.shared().rebuildSections()
-            reloadSections()
+        queueCommit(rebuild: rebuild)
+    }
+
+    private func queueObjectChange() {
+        if !Thread.isMainThread {
+            DispatchQueue.main.async { [weak self] in self?.queueObjectChange() }
+            return
         }
-        Task { @MainActor in
+        guard !objectChangeQueued else { return }
+        objectChangeQueued = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.objectChangeQueued = false
+            self.objectWillChange.send()
+        }
+    }
+
+    private func queueCommit(rebuild: Bool) {
+        if !Thread.isMainThread {
+            DispatchQueue.main.async { [weak self] in self?.queueCommit(rebuild: rebuild) }
+            return
+        }
+        sectionReloadQueued = sectionReloadQueued || rebuild
+        guard !commitQueued else { return }
+        commitQueued = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.commitQueued = false
+            let shouldReloadSections = self.sectionReloadQueued
+            self.sectionReloadQueued = false
+
+            if shouldReloadSections {
+                WWNPreferences.shared().rebuildSections()
+                self.reloadSections()
+            }
             WawonaPreferences.shared.load()
+            NotificationCenter.default.post(
+                name: Notification.Name("WWNPreferencesChanged"),
+                object: nil
+            )
+            NotificationCenter.default.post(name: .wawonaPreferencesDidSave, object: nil)
+            self.queueObjectChange()
         }
-        NotificationCenter.default.post(
-            name: Notification.Name("WWNPreferencesChanged"),
-            object: nil
-        )
-        NotificationCenter.default.post(name: .wawonaPreferencesDidSave, object: nil)
     }
 
     // MARK: - Row helpers
@@ -271,21 +308,33 @@ final class WWNSettingsValueModel: ObservableObject {
     func boolBinding(for item: WWNSettingItem) -> Binding<Bool> {
         Binding(
             get: { [weak self] in self?.boolValue(for: item) ?? false },
-            set: { [weak self] newValue in self?.setBool(newValue, for: item) }
+            set: { [weak self] newValue in
+                DispatchQueue.main.async {
+                    self?.setBool(newValue, for: item)
+                }
+            }
         )
     }
 
     func stringBinding(for item: WWNSettingItem) -> Binding<String> {
         Binding(
             get: { [weak self] in self?.stringValue(for: item) ?? "" },
-            set: { [weak self] newValue in self?.setString(newValue, for: item) }
+            set: { [weak self] newValue in
+                DispatchQueue.main.async {
+                    self?.setString(newValue, for: item)
+                }
+            }
         )
     }
 
     func popupBinding(for item: WWNSettingItem) -> Binding<Int> {
         Binding(
             get: { [weak self] in self?.popupIndex(for: item) ?? 0 },
-            set: { [weak self] newIndex in self?.setPopupIndex(newIndex, for: item) }
+            set: { [weak self] newIndex in
+                DispatchQueue.main.async {
+                    self?.setPopupIndex(newIndex, for: item)
+                }
+            }
         )
     }
 }

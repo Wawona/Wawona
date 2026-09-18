@@ -106,7 +106,8 @@ impl TouchState {
 }
 
 /// Whether Multi-Touch should also hold `wl_pointer` + BTN_LEFT.
-/// Nested compositor chrome needs a button serial. Apps must not get it.
+/// Nested compositor chrome needs a button serial. Terminal selection is a
+/// separate narrow compatibility path in `CompositorState`; apps do not get it.
 pub fn should_mirror_pointer_for_chrome(nested_compositor: bool) -> bool {
     nested_compositor
 }

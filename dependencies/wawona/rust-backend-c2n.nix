@@ -43,6 +43,9 @@
 , desktopHost ? false
   # Separate TrollStore iOS/iPadOS backend. Never enable for store products.
 , iosModeB ? false
+  # iOS product channel floor.  App Store and Sileo use 11.0; the separate
+  # TrollStore .tipa product uses 14.0.  SDK selection remains latest-only.
+, iosDeploymentTarget ? null
   # Extracted-repo toolchain handles (default to legacy in-tree copies; Wawona's
   # flake injects wwn-toolchain store paths via the pkgs overlay).
 , applePath
@@ -80,8 +83,9 @@ let
     else if platform == "visionos" then (if simulator then "xrsimulator" else "xros")
     else if platform == "watchos" then (if simulator then "watchsimulator" else "watchos")
     else (if simulator then "iphonesimulator" else "iphoneos");
+  effectiveIosDeploymentTarget = if iosDeploymentTarget != null then iosDeploymentTarget else "11.0";
   linkerTarget =
-    if platform == "ios" || platform == "ipados" then (if simulator then "arm64-apple-ios17.0-simulator" else "arm64-apple-ios17.0")
+    if platform == "ios" || platform == "ipados" then (if simulator then "arm64-apple-ios${effectiveIosDeploymentTarget}-simulator" else "arm64-apple-ios${effectiveIosDeploymentTarget}")
     else if platform == "tvos" then (if simulator then "arm64-apple-tvos17.0-simulator" else "arm64-apple-tvos17.0")
     else if platform == "visionos" then (if simulator then "arm64-apple-xros26.0-simulator" else "arm64-apple-xros26.0")
     else if platform == "watchos" then (if simulator then "arm64-apple-watchos10.0-simulator" else "arm64-apple-watchos10.0")
@@ -94,7 +98,7 @@ let
     else if platform == "tvos" then
       "17.0"
     else if platform == "ios" || platform == "ipados" then
-      "17.0"
+      effectiveIosDeploymentTarget
     else
       "26.0";
   deploymentFlag =
@@ -107,7 +111,7 @@ let
     else if platform == "watchos" then
       (if simulator then "-mwatchos-simulator-version-min=10.0" else "-mwatchos-version-min=10.0")
     else if platform == "ios" || platform == "ipados" then
-      (if simulator then "-mios-simulator-version-min=17.0" else "-miphoneos-version-min=17.0")
+      (if simulator then "-mios-simulator-version-min=${effectiveIosDeploymentTarget}" else "-miphoneos-version-min=${effectiveIosDeploymentTarget}")
     else
       (if simulator then "-mios-simulator-version-min=26.0" else "-miphoneos-version-min=26.0");
   macosDeploymentTarget = "14.0";
@@ -392,7 +396,7 @@ let
           platform = "tvos";
         }}
       '' else ''
-        export IPHONEOS_DEPLOYMENT_TARGET="${ensureIosSDKHelpers.deploymentTarget}"
+        export IPHONEOS_DEPLOYMENT_TARGET="${deploymentTarget}"
         ${ensureIosSDKHelpers.mkIOSBuildEnv { inherit simulator; }}
       ''}
 

@@ -1,8 +1,11 @@
 #import "WWNPreferencesManager.h"
 #import <Foundation/Foundation.h>
 #import <TargetConditionals.h>
+#include <stdint.h>
 
 @class WWNMachineProfile;
+
+NS_ASSUME_NONNULL_BEGIN
 
 typedef void (^WaypipeOutputHandler)(NSString *output);
 
@@ -26,7 +29,7 @@ typedef void (^WaypipeOutputHandler)(NSString *output);
 /// YES while at least one foot terminal instance is running.
 @property(nonatomic, readonly) BOOL footRunning;
 
-+ (instancetype)sharedRunner NS_SWIFT_NAME(shared());
++ (nullable instancetype)sharedRunner NS_SWIFT_NAME(shared());
 
 // Logic Helpers
 - (NSString *)findWaypipeBinary;
@@ -119,13 +122,12 @@ typedef void (^WaypipeOutputHandler)(NSString *output);
 FOUNDATION_EXPORT BOOL WWNHostSessionUsesOwnDisplayDRM(void);
 
 #if TARGET_OS_IPHONE
-#include <stdint.h>
 /* In-process DRM weston (IOMFB Desktop). Weak until the compositor archive
  * exports them. Coordinates are compositor-global (logical, mode/scale).
  * inject state: 0=up, 1=down, 2=motion. */
 int wwn_weston_compositor_is_running(void) __attribute__((weak_import));
 int wwn_weston_input_ready(void) __attribute__((weak_import));
-int wwn_weston_logical_size(uint32_t *width, uint32_t *height)
+int wwn_weston_logical_size(uint32_t *_Nullable width, uint32_t *_Nullable height)
     __attribute__((weak_import));
 void wwn_weston_inject_touch(int32_t id, int state, double x, double y)
     __attribute__((weak_import));
@@ -153,4 +155,6 @@ FOUNDATION_EXPORT void WWNSetCompositorBackendCLIOverride(
 
 /// Current CLI `--backend` override, or nil if unset.
 FOUNDATION_EXPORT NSString *_Nullable WWNCompositorBackendCLIOverride(void);
+
+NS_ASSUME_NONNULL_END
 

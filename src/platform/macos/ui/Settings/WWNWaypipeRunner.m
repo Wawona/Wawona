@@ -1578,6 +1578,15 @@ static void WWNStripModeBInsertFromEnv(NSMutableDictionary<NSString *, NSString 
         [part containsString:@"/libwayland-mac.dylib"]) {
       continue;
     }
+    // Xcode developer injection must not leak into Wayland clients or nested compositors.
+    // GPUToolsCapture pulls in Apple OpenGL.framework (libGL.dylib) which crashes GLES.
+    if ([part containsString:@"libViewDebuggerSupport"] ||
+        [part containsString:@"GPUToolsCapture"] ||
+        [part containsString:@"RealityKitInspection"] ||
+        [part containsString:@"DebugHierarchyFoundation"] ||
+        [part containsString:@"SpatialInspectorFoundation"]) {
+      continue;
+    }
     [keep addObject:part];
   }
   if (keep.count == 0) {
@@ -2609,10 +2618,9 @@ static NSString *WWNWasmArgFromCommand(NSString *raw) {
     // gl-renderer.so is built with -undefined dynamic_lookup (Mode B DRM).
     // Load the iland EGL shim so nested weston gets Wayland-EGL. Do not
     // override a Mode B insert. ANGLE is libEGL_angle.dylib inside the shim.
-    if (!env[@"DYLD_INSERT_LIBRARIES"] &&
-        ([name isEqualToString:@"weston"] ||
-         [name isEqualToString:@"weston-desktop-shell"] ||
-         [name isEqualToString:@"weston-keyboard"])) {
+    if ([name isEqualToString:@"weston"] ||
+        [name isEqualToString:@"weston-desktop-shell"] ||
+        [name isEqualToString:@"weston-keyboard"]) {
       NSFileManager *fm = [NSFileManager defaultManager];
       NSString *egl =
           [frameworksDir stringByAppendingPathComponent:@"libEGL.dylib"];
@@ -2624,6 +2632,14 @@ static NSString *WWNWasmArgFromCommand(NSString *raw) {
       }
       if ([fm fileExistsAtPath:gles]) {
         [insert addObject:gles];
+      }
+      NSString *existing = env[@"DYLD_INSERT_LIBRARIES"];
+      if (existing.length > 0) {
+        for (NSString *part in [existing componentsSeparatedByString:@":"]) {
+          if (part.length > 0 && ![insert containsObject:part]) {
+            [insert addObject:part];
+          }
+        }
       }
       if (insert.count > 0) {
         env[@"DYLD_INSERT_LIBRARIES"] = [insert componentsJoinedByString:@":"];

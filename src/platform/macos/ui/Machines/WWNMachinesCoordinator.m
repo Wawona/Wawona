@@ -4,6 +4,9 @@
 #endif
 #import <objc/message.h>
 #import <objc/runtime.h>
+#if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+#import "../../../ios/WWNLegacyMachinesViewController.h"
+#endif
 
 static Class WWNFindMachinesHostingBridgeClass(void) {
   NSMutableOrderedSet<NSString *> *candidateNames = [NSMutableOrderedSet orderedSetWithArray:@[
@@ -76,7 +79,12 @@ static Class WWNFindMachinesHostingBridgeClass(void) {
 #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
 - (UIViewController *)buildMachinesViewControllerWithOnConnect:
     (dispatch_block_t)onConnect {
-  return [self buildSwiftUIMachinesController:onConnect];
+  // SwiftUI does not exist before iOS 13.  Keep this test in the UIKit host,
+  // before any Swift bridge lookup, so iOS 11/12 never load SwiftUI.
+  if (@available(iOS 13.0, *)) {
+    return [self buildSwiftUIMachinesController:onConnect];
+  }
+  return [[WWNLegacyMachinesViewController alloc] initWithOnConnect:onConnect];
 }
 
 - (UIViewController *)buildSwiftUIMachinesController:(dispatch_block_t)onConnect {

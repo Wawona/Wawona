@@ -83,6 +83,9 @@ public struct MachineSettingsView: View {
                 if draft.type == .container {
                     containerSection()
                 }
+                if draft.type == .virtualMachine {
+                    virtualMachineSection()
+                }
                 displaySection()
                 inputSection()
                 graphicsSection()
@@ -140,6 +143,45 @@ public struct MachineSettingsView: View {
     }
 
     @ViewBuilder
+    private func virtualMachineSection() -> some View {
+        Section {
+            LabeledContent("Runtime", value: "Wawona Relay")
+                .foregroundStyle(.secondary)
+            TextField("VM Identifier", text: vmIdentifierBinding)
+                .wawonaTextFieldNoAutocaps()
+                .autocorrectionDisabled()
+            Picker("NixOS guest", selection: vmGuestVariantBinding) {
+                Text("NixOS 4K pages").tag("4k")
+                Text("NixOS 16K pages").tag("16k")
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                LabeledContent("Memory", value: "\(Int(vmMemoryMBBinding.wrappedValue)) MiB")
+                Slider(value: vmMemoryMBBinding, in: 256...4096, step: 256)
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                LabeledContent("Disk Size", value: "\(Int(vmDiskGiBBinding.wrappedValue)) GiB")
+                Slider(value: vmDiskGiBBinding, in: 4...64, step: 1)
+            }
+            TextField("Wayland VSock Port", text: vmVsockPortBinding)
+                .wawonaTextFieldNoAutocaps()
+                .autocorrectionDisabled()
+                #if os(iOS)
+                .keyboardType(.numberPad)
+                #endif
+            TextField("Notes", text: vmNotesBinding, axis: .vertical)
+                .lineLimit(2...5)
+        } header: {
+            Text("Virtual Machine")
+        } footer: {
+            #if os(macOS)
+            Text("Relay VZ boots the signed, bundled NixOS guest. The identifier selects its persistent writable disk. VSock defaults to 1024 when empty.")
+            #else
+            Text("Relay validates the selected signed, bundled NixOS guest before launch. The identifier reserves its persistent writable-disk identity. Wayland is carried only over vsock and waypipe. VSock defaults to 1024 when empty.")
+            #endif
+        }
+    }
+
+    @ViewBuilder
     private func displaySection() -> some View {
         Section("Display") {
             // Force SSD is macOS-only: CSD only renders on macOS Wawona, so
@@ -160,7 +202,7 @@ public struct MachineSettingsView: View {
         Section("Machine Configuration") {
             TextField("Name", text: nameBinding)
             Picker("Type", selection: typeBinding) {
-                ForEach(PlatformCapabilities.availableMachineTypes, id: \.self) { t in
+                ForEach(PlatformCapabilities.creatableMachineTypes, id: \.self) { t in
                     Text(t.userFacingName).tag(t)
                 }
                 if !PlatformCapabilities.allowsMachineType(profile.type) {
@@ -767,6 +809,63 @@ public struct MachineSettingsView: View {
             var cs = profile.containerSettings ?? ContainerMachineSettings()
             mutate(&cs)
             profile.containerSettings = cs
+        }
+    }
+
+    // MARK: Virtual machine bindings
+
+    private var vmIdentifierBinding: Binding<String> {
+        Binding(
+            get: { draft?.vmSettings?.vmIdentifier ?? "" },
+            set: { value in updateVMSettings { $0.vmIdentifier = value } }
+        )
+    }
+
+    private var vmVsockPortBinding: Binding<String> {
+        Binding(
+            get: { draft?.vmSettings?.vsockPort ?? "" },
+            set: { value in updateVMSettings { $0.vsockPort = value } }
+        )
+    }
+
+    private var vmGuestVariantBinding: Binding<String> {
+        Binding(
+            get: { draft?.vmSettings?.guestVariant == "16k" ? "16k" : "4k" },
+            set: { value in updateVMSettings { $0.guestVariant = value == "16k" ? "16k" : "4k" } }
+        )
+    }
+
+    private var vmMemoryMBBinding: Binding<Double> {
+        Binding(
+            get: { Double(draft?.vmSettings?.memoryMB ?? 2048) },
+            set: { value in updateVMSettings { $0.memoryMB = max(256, min(Int(value.rounded()), 4096)) } }
+        )
+    }
+
+    private var vmDiskGiBBinding: Binding<Double> {
+        Binding(
+            get: { Double(draft?.vmSettings?.diskGiB ?? 8) },
+            set: { value in
+                updateVMSettings {
+                    $0.diskGiB = max(4, min(Int(value.rounded()), 64))
+                    $0.maxDiskGiB = 64
+                }
+            }
+        )
+    }
+
+    private var vmNotesBinding: Binding<String> {
+        Binding(
+            get: { draft?.vmSettings?.notes ?? "" },
+            set: { value in updateVMSettings { $0.notes = value } }
+        )
+    }
+
+    private func updateVMSettings(_ mutate: (inout VirtualMachineSettings) -> Void) {
+        updateDraft { profile in
+            var settings = profile.vmSettings ?? VirtualMachineSettings(provider: "relay")
+            mutate(&settings)
+            profile.vmSettings = settings
         }
     }
 

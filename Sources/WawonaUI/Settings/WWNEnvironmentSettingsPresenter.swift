@@ -66,7 +66,7 @@ public final class WWNEnvironmentSettingsPresenter: NSObject {
             )
         )
         let window = NSWindow(contentViewController: hosting)
-        window.title = "Environment Variables"
+        window.title = "Env Vars"
         window.styleMask = [.titled, .closable, .resizable]
         window.setContentSize(NSSize(width: 560, height: 680))
         window.center()
@@ -142,27 +142,11 @@ private final class WWNEnvironmentInventoryHostingController:
                 perMachine: false
             )
         )
-        title = "Environment Variables"
+        title = "Env Vars"
         #if !os(tvOS)
         navigationItem.largeTitleDisplayMode = .never
         #endif
         view.accessibilityIdentifier = "wwn.settings.environment"
-        #if os(tvOS)
-        navigationItem.rightBarButtonItem = UIBarButtonItem(
-            title: "Done",
-            style: .plain,
-            target: self,
-            action: #selector(dismissSettingsRoot)
-        )
-        #else
-        navigationItem.rightBarButtonItem = UIBarButtonItem(
-            barButtonSystemItem: .done,
-            target: self,
-            action: #selector(dismissSettingsRoot)
-        )
-        #endif
-        navigationItem.rightBarButtonItem?.accessibilityIdentifier = "wwn.settings.done"
-        navigationItem.rightBarButtonItem?.accessibilityLabel = "Done"
     }
 
     @objc private func dismissSettingsRoot() {

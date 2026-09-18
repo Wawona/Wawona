@@ -74,7 +74,7 @@ Or add `home.sessionPath = [ "$HOME/.local/bin" ];` and rebuild home-manager.
 | `--machine <id>` | Connect a saved Machines profile (implies `--headless` unless `--gui`) |
 | `--backend <mode>` | `auto` \| `wayland` \| `drm` (session-only; does not rewrite Settings) |
 
-`--backend` is the same choice as **Settings → Advanced → Display Backend**:
+`--backend` is the same choice as **Settings → Display → Display Backend**:
 
 - **wayland**. Nest Weston / Niri as a Wayland client of Wawona
 - **drm**. Drive **wwn-iland** userspace DRM/KMS/GBM (needs OpenGL driver ≠ none)

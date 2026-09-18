@@ -131,6 +131,7 @@ android/app/src/main/java/uniffi/
 # Release secrets live in private pass (SecretSpec); never in the public tree.
 # See docs/maintainers/secrets.md. Ignore accidental local dumps:
 .envrc
+.envrc.local
 .release-secrets.env
 .secrets/
 secrets/

@@ -52,14 +52,14 @@ public enum PlatformCapabilities: Sendable {
         return value == "1" || value.lowercased() == "true"
     }
 
-    /// Policy: VM machine kinds. Planned on macOS / iOS / iPadOS; forbidden on
-    /// tvOS / watchOS / visionOS. Android is gated in Compose the same way.
+    /// Policy: VM machine kinds are offered on macOS, iOS, iPadOS, visionOS,
+    /// and Android; only tvOS and watchOS are forbidden.
     public static var virtualMachineGate: CapabilityGate {
         if let rust = rustGate("vm") {
             return rust
         }
-        #if os(tvOS) || os(watchOS) || os(visionOS)
-        return .forbidden(reason: "VM machine kinds are not offered on tvOS/watchOS/visionOS")
+        #if os(tvOS) || os(watchOS)
+        return .forbidden(reason: "VM machine kinds are not offered on tvOS/watchOS")
         #else
         return .planned(flag: "WWN_VMS")
         #endif
@@ -87,8 +87,8 @@ public enum PlatformCapabilities: Sendable {
         if let rust = rustGate("container") {
             return rust
         }
-        #if os(tvOS) || os(watchOS) || os(visionOS)
-        return .forbidden(reason: "Container machine kinds are not offered on tvOS/watchOS/visionOS")
+        #if os(tvOS) || os(watchOS)
+        return .forbidden(reason: "Container machine kinds are not offered on tvOS/watchOS")
         #elseif os(macOS)
         return .available
         #else
@@ -355,6 +355,25 @@ public enum PlatformCapabilities: Sendable {
             case .virtualMachine: return allowsVirtualMachine
             case .container: return allowsContainer
             case .native, .wasm, .sshWaypipe, .sshTerminal: return true
+            }
+        }
+    }
+
+    /// Types a user may configure. Planned VM/container backends remain
+    /// selectable so a profile can be prepared and synced before its runtime
+    /// bundle becomes available; forbidden targets never expose them.
+    public static var creatableMachineTypes: [MachineType] {
+        MachineType.allCases.filter { type in
+            let gate: CapabilityGate?
+            switch type {
+            case .virtualMachine: gate = virtualMachineGate
+            case .container: gate = containerGate
+            case .native, .wasm, .sshWaypipe, .sshTerminal: gate = nil
+            }
+            guard let gate else { return true }
+            switch gate {
+            case .forbidden, .blocked: return false
+            case .available, .planned: return true
             }
         }
     }

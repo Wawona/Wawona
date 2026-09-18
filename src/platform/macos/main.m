@@ -57,6 +57,8 @@ extern void wawona_window_info_free(CWindowInfo *info);
 #import "../ios/WWNSceneDelegate.h"
 
 @interface WWNAppDelegate : NSObject <UIApplicationDelegate>
+@property(nonatomic, strong) UIWindow *legacyWindow;
+@property(nonatomic, strong) WWNSceneDelegate *legacySceneDelegate;
 @end
 
 @implementation WWNAppDelegate
@@ -126,6 +128,13 @@ extern void wawona_window_info_free(CWindowInfo *info);
 
   WWNLog("MAIN", @"WWN iOS initialization complete (waiting for Scene "
                  @"connection)");
+  if (@available(iOS 13.0, *)) {
+    // UIScene owns the window on iOS 13 and newer.
+  } else {
+    self.legacyWindow = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
+    self.legacySceneDelegate = [[WWNSceneDelegate alloc] init];
+    [self.legacySceneDelegate connectLegacyWindow:self.legacyWindow];
+  }
   return YES;
 }
 
@@ -153,6 +162,20 @@ extern void wawona_window_info_free(CWindowInfo *info);
                                      sessionRole:connectingSceneSession.role];
   config.delegateClass = [WWNSceneDelegate class];
   return config;
+}
+
+- (void)applicationDidBecomeActive:(UIApplication *)application {
+  (void)application;
+  if (self.legacySceneDelegate) {
+    [self.legacySceneDelegate legacyApplicationDidBecomeActive];
+  }
+}
+
+- (void)applicationDidEnterBackground:(UIApplication *)application {
+  (void)application;
+  if (self.legacySceneDelegate) {
+    [self.legacySceneDelegate legacyApplicationDidEnterBackground];
+  }
 }
 
 - (void)applicationWillTerminate:(UIApplication *)application {
@@ -296,7 +319,7 @@ static void wwn_print_cli_help(void) {
       "  Logs: /tmp/wawona-modeb-cli.log and /tmp/wawona-modeb.log\n"
       "\n"
       "Socket: WAYLAND_DISPLAY=wayland-0 under /tmp/wawona-$UID/\n"
-      "Prefs:  Settings → Advanced → Display Backend (same as --backend)\n");
+      "Prefs:  Settings → Display → Display Backend (same as --backend)\n");
 }
 
 static void wwn_print_list_clients(void) {

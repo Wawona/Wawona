@@ -246,9 +246,11 @@ struct WWNMachineEditorView: View {
       .toolbar {
         ToolbarItem(placement: .cancellationAction) {
           Button("Cancel") { dismiss() }
+            .backport.glassToolbarButton()
         }
         ToolbarItem(placement: .confirmationAction) {
           Button("Save", action: save)
+            .backport.glassProminentToolbarButton()
         }
       }
       .fullScreenCover(isPresented: $showEnvironmentEditor) {
@@ -259,8 +261,14 @@ struct WWNMachineEditorView: View {
             draftMachineOverrides: $draft.environmentOverrides
           )
           .toolbar {
-            ToolbarItem(placement: .confirmationAction) {
-              Button("Done") { showEnvironmentEditor = false }
+            ToolbarItem(placement: .navigation) {
+              Button {
+                showEnvironmentEditor = false
+              } label: {
+                Image(systemName: "chevron.left")
+              }
+              .backport.glassToolbarButton()
+              .accessibilityLabel("Back")
             }
           }
         }
@@ -338,10 +346,12 @@ struct WWNMachineEditorView: View {
         if editorPath.isEmpty {
           ToolbarItem(placement: .cancellationAction) {
             Button("Cancel") { dismiss() }
+              .backport.glassToolbarButton()
               .wwnA11y(WWNA11y.machinesEditorCancel, label: "Cancel")
           }
           ToolbarItem(placement: .confirmationAction) {
             Button("Save", action: save)
+              .backport.glassProminentToolbarButton()
               .wwnA11y(WWNA11y.machinesEditorSave, label: "Save")
           }
         }
@@ -370,8 +380,14 @@ struct WWNMachineEditorView: View {
             draftMachineOverrides: $draft.environmentOverrides
           )
           .toolbar {
-            ToolbarItem(placement: .confirmationAction) {
-              Button("Done") { showEnvironmentEditor = false }
+            ToolbarItem(placement: .navigation) {
+              Button {
+                showEnvironmentEditor = false
+              } label: {
+                Image(systemName: "chevron.left")
+              }
+              .backport.glassToolbarButton()
+              .accessibilityLabel("Back")
             }
           }
         }

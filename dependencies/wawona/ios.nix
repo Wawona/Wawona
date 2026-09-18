@@ -26,6 +26,8 @@
   # e.g. "iOS", "watchOS"
   platformName ? "iOS",
   bundleId ? "com.aspauldingcode.Wawona",
+  # Product minimum OS.  This is deliberately separate from the newest SDK.
+  deploymentTarget ? null,
   # Path to the Apple cross-compile toolchain (xcode-wrapper). Defaults to the
   # legacy in-tree copy; Wawona's flake overrides this with the wwn-toolchain
   # input store path so the moved dir can be deleted.
@@ -34,6 +36,7 @@
   # nested `nix build --impure` (Gate: products iOS sim was recompiling rust).
   rustBackend ? null,
   mobileGuestArtifacts ? null,
+  mobileGuestArtifacts16k ? null,
   mobileContainerGuestArtifacts ? null,
   companionBackends ? { },
   ...
@@ -114,11 +117,17 @@ in
       # Swift capability gates are compiled for this immutable product flavor.
       ''SWIFT_ACTIVE_COMPILATION_CONDITIONS="WWN_MODE_B"''
     ]
+    ++ lib.optionals (deploymentTarget != null) [
+      ''IPHONEOS_DEPLOYMENT_TARGET=${deploymentTarget}''
+    ]
     ++ lib.optionals (mobileGuestArtifacts != null) [
       # xcodebuild does not preserve arbitrary process environment variables
       # in Run Script phases. Pass these as build settings so the guest embed
       # scripts receive the resolved artifact paths.
       ''WAWONA_MOBILE_GUEST_DIR="${mobileGuestArtifacts}"''
+    ]
+    ++ lib.optionals (mobileGuestArtifacts16k != null) [
+      ''WAWONA_MOBILE_GUEST_16K_DIR="${mobileGuestArtifacts16k}"''
     ]
     ++ lib.optionals (mobileContainerGuestArtifacts != null) [
       ''WAWONA_MOBILE_CONTAINER_GUEST_DIR="${mobileContainerGuestArtifacts}"''
@@ -145,6 +154,7 @@ in
     xcodeTarget
     companionBackends
     mobileGuestArtifacts
+    mobileGuestArtifacts16k
     mobileContainerGuestArtifacts
     ;
 })

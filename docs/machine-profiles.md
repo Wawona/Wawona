@@ -39,7 +39,7 @@ Machine `type` values:
 ## VM / container status
 
 `virtual_machine` and `container` are **planned** on macOS, iOS, iPadOS,
-Android, and Linux. They are **forbidden** on tvOS, watchOS, and visionOS.
+visionOS, Android, and Linux. They are **forbidden** on tvOS and watchOS.
 See [`vms-containers.md`](vms-containers.md).
 
 ## Deprecated / removed fields

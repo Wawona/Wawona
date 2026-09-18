@@ -3,7 +3,7 @@
 # Tracking: https://github.com/Wawona/Wawona/issues/157
 #
 # mutability:
-#   computed . Session-derived; override is Advanced
+#   computed . Session-derived; override is Display
 #   managed. Owned by a first-class setting (ownedBy)
 #   defaulted. Wawona default; fully editable; Reset restores default
 #   user. User extras only (not listed here; free-form)

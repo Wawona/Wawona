@@ -48,22 +48,22 @@ func settingsNormalizationParsesPort() {
 func watchGlobalSettingsMatchShippedCatalog() {
     let sections = GlobalSettingsCatalog.visibleSections(for: .watchOS)
     #expect(sections == [
-        .display, .input, .graphics, .connection, .environment,
-        .machines, .iCloudSync, .waypipe, .ssh, .advanced, .about,
+        .display, .input, .graphics, .environment,
+        .iCloudSync, .waypipe, .ssh, .about,
         .dependencies,
     ])
     #expect(!sections.contains(.desktop))
-    #expect(GlobalSettingsCatalog.visibleFields(in: .display, for: .watchOS) == [.colorOperations])
+    #expect(GlobalSettingsCatalog.visibleFields(in: .display, for: .watchOS) == [
+        .colorOperations, .nestedCompositors, .compositorBackend, .multipleClients,
+    ])
     #expect(!GlobalSettingsCatalog.visibleFields(in: .display, for: .watchOS).contains(.forceSSD))
     let input = GlobalSettingsCatalog.visibleFields(in: .input, for: .watchOS)
     #expect(input.contains(.touchInputType))
     #expect(input.contains(.virtualCursor))
     #expect(input.contains(.nestedCompositorCursor))
     #expect(input.contains(.universalClipboard))
-    let connection = GlobalSettingsCatalog.visibleFields(in: .connection, for: .watchOS)
-    #expect(connection == [.waylandDisplay, .defaultWaylandClient])
     #expect(GlobalSettingsCatalog.visibleFields(in: .waypipe, for: .watchOS).contains(.waypipeByDefault))
-    #expect(GlobalSettingsCatalog.visibleFields(in: .advanced, for: .watchOS).contains(.compositorBackend))
+    #expect(GlobalSettingsCatalog.visibleFields(in: .display, for: .watchOS).contains(.compositorBackend))
 }
 
 @Test
@@ -72,7 +72,7 @@ func iosGlobalSettingsIncludeInputAndWaypipe() {
     #expect(sections.contains(.input))
     #expect(sections.contains(.waypipe))
     #expect(sections.contains(.appleWatch))
-    #expect(sections.contains(.machines))
+    #expect(!sections.contains(.machines))
     #expect(sections.contains(.iCloudSync))
     #expect(sections.contains(.dependencies))
     #expect(!sections.contains(.desktop))
@@ -81,16 +81,15 @@ func iosGlobalSettingsIncludeInputAndWaypipe() {
     #expect(GlobalSettingsCatalog.visibleFields(in: .display, for: .iOS).contains(.colorOperations))
     #expect(!GlobalSettingsCatalog.visibleFields(in: .display, for: .iOS).contains(.forceSSD))
     #expect(GlobalSettingsCatalog.visibleFields(in: .graphics, for: .iOS) == [
-        .vulkanDriver, .openGLDriver,
+        .vulkanDriver, .openGLDriver, .sessionThumbnails,
     ])
     #expect(GlobalSettingsCatalog.visibleFields(in: .machines, for: .iOS).contains(.shakeToClose))
     #expect(GlobalSettingsCatalog.visibleFields(in: .machines, for: .iOS).contains(.sessionThumbnails))
     #expect(GlobalSettingsCatalog.visibleFields(in: .machines, for: .iOS).contains(.vmEngine))
     #expect(!GlobalSettingsCatalog.visibleFields(in: .machines, for: .watchOS).contains(.vmEngine))
     #expect(GlobalSettingsCatalog.visibleFields(in: .machines, for: .watchOS).contains(.sessionThumbnails))
-    #expect(GlobalSettingsCatalog.visibleFields(in: .advanced, for: .iOS) == [
-        .nestedCompositors, .compositorBackend, .multipleClients, .logLevel,
-    ])
+    #expect(GlobalSettingsCatalog.visibleFields(in: .display, for: .iOS).contains(.nestedCompositors))
+    #expect(GlobalSettingsCatalog.visibleFields(in: .about, for: .iOS).contains(.logLevel))
     let watchFields = GlobalSettingsCatalog.visibleFields(in: .appleWatch, for: .iOS)
     #expect(watchFields == [.watchCompanionStatus, .watchSendDocument, .watchOpenDocumentsHint])
 }
@@ -119,7 +118,8 @@ func watchGlobalSettingsOmitAppleWatchCompanionSection() {
 func visionOSOmitsAppleWatchCompanionSection() {
     let sections = GlobalSettingsCatalog.visibleSections(for: .visionOS)
     #expect(!sections.contains(.appleWatch))
-    #expect(sections.contains(.localShell))
+    #expect(!sections.contains(.localShell))
+    #expect(sections.contains(.environment))
 }
 
 @Test

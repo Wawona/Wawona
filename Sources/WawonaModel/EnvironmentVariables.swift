@@ -78,6 +78,35 @@ public struct EnvironmentCatalogEntry: Hashable, Sendable, Identifiable {
         self.resettable = resettable
         self.help = help
     }
+
+    public var documentation: EnvironmentVariableDoc {
+        EnvironmentCatalog.documentation(for: name)
+    }
+}
+
+// MARK: - Documentation Catalog
+
+/// Structured documentation for an environment variable.
+public struct EnvironmentVariableDoc: Sendable, Hashable, Codable {
+    public var summary: String
+    /// Comprehensive description explaining exactly what the variable does.
+    public var details: String
+    /// Typical default value.
+    public var typicalDefault: String
+    /// Realistic override examples.
+    public var examples: [String]
+
+    public init(
+        summary: String,
+        details: String,
+        typicalDefault: String,
+        examples: [String] = []
+    ) {
+        self.summary = summary
+        self.details = details
+        self.typicalDefault = typicalDefault
+        self.examples = examples
+    }
 }
 
 /// Keep in sync with `contracts/environment-catalog.yaml` (#157 / #158).
@@ -161,6 +190,371 @@ public enum EnvironmentCatalog {
     public static var uiEntries: [EnvironmentCatalogEntry] {
         entries.filter { $0.mutability != .secret }
     }
+
+    /// Comprehensive documentation catalog. Contains zero emdashes.
+    public static func documentation(for name: String) -> EnvironmentVariableDoc {
+        if let doc = documentedEntries[name] {
+            return doc
+        }
+        return EnvironmentVariableDoc(
+            summary: "Custom user-defined environment variable.",
+            details: "Custom environment variable configured by the user. Passed directly to launched Wayland clients, compositor instances, and shell environments.",
+            typicalDefault: "(none, user defined)",
+            examples: ["1", "true", "/custom/path", "debug"]
+        )
+    }
+
+    private static let documentedEntries: [String: EnvironmentVariableDoc] = [
+        // MARK: Session / Compositor
+        "XDG_RUNTIME_DIR": EnvironmentVariableDoc(
+            summary: "Runtime directory for Wayland sockets and IPC.",
+            details: "Base directory path where user-specific runtime files, UNIX domain sockets, and IPC endpoints reside. Wayland compositors such as Wawona, Weston, and Niri bind their listening sockets in this directory. Client applications inspect this variable to discover and connect to the active Wayland compositor socket.",
+            typicalDefault: "App sandboxed temporary directory (for example /tmp or container tmp)",
+            examples: ["/tmp", "/var/run/user/501", "/tmp/wawona-runtime"]
+        ),
+        "WAYLAND_DISPLAY": EnvironmentVariableDoc(
+            summary: "Wayland compositor socket filename.",
+            details: "Name of the Wayland socket file that client applications connect to inside XDG_RUNTIME_DIR. When a Wayland client initializes its display connection, it connects to XDG_RUNTIME_DIR/WAYLAND_DISPLAY. If multiple compositors run concurrently, each uses a distinct socket name.",
+            typicalDefault: "wayland-0",
+            examples: ["wayland-0", "wayland-1", "wayland-wawona"]
+        ),
+        "WAYLAND_SOCKET": EnvironmentVariableDoc(
+            summary: "Pre-opened file descriptor for inherited Wayland connections.",
+            details: "File descriptor number representing an existing open Wayland connection passed directly from a parent process. When present, Wayland clients connect over this file descriptor instead of looking up WAYLAND_DISPLAY in XDG_RUNTIME_DIR. Wawona clears this variable by default when launching independent multi-client sessions.",
+            typicalDefault: "(unset)",
+            examples: ["3", "4", "5"]
+        ),
+        "WAWONA_NESTED_WAYLAND_DISPLAY": EnvironmentVariableDoc(
+            summary: "Socket name for nested compositor instances.",
+            details: "Designates the Wayland socket name created and managed by an inner nested compositor instance (such as nested Weston or Niri) running inside Wawona. Applications targeted to run within the nested workspace connect to this socket.",
+            typicalDefault: "wayland-1",
+            examples: ["wayland-1", "wayland-nested", "wayland-2"]
+        ),
+        "WAWONA_NESTED_WAYLAND": EnvironmentVariableDoc(
+            summary: "Enables nested Wayland geometry negotiation.",
+            details: "Boolean flag enabling nested Wayland mode. When set to 1, nested Weston computes its surface sizing from the parent xdg_toplevel geometry rather than the raw physical wl_output display mode, preventing incorrect display scaling in nested windows.",
+            typicalDefault: "1",
+            examples: ["1", "0"]
+        ),
+        "WAWONA_OUTPUT_SCALE": EnvironmentVariableDoc(
+            summary: "Display scale factor for Wayland clients.",
+            details: "Integer or fractional scale factor advertised to Wayland client surfaces through wl_output events. A value of 1 corresponds to standard 72/96 DPI rendering, while 2 or 3 enables high-DPI Retina and Super Retina rendering for sharp text and UI assets.",
+            typicalDefault: "1 (or matching host display scale, such as 2 or 3)",
+            examples: ["1", "2", "3", "1.5"]
+        ),
+        "NIRI_BACKEND": EnvironmentVariableDoc(
+            summary: "Hardware and display backend for Niri.",
+            details: "Selects the rendering and input backend for the Niri scrollable-tiling Wayland compositor. Mapped from the Wawona Display Backend setting. Use 'nested' when Niri runs inside an existing window, or 'tty' when running under userspace DRM/KMS.",
+            typicalDefault: "nested (or tty for DRM mode)",
+            examples: ["nested", "tty", "drm"]
+        ),
+        "NIRI_CONFIG": EnvironmentVariableDoc(
+            summary: "Filesystem path to Niri configuration file.",
+            details: "Path to the configuration file (config.kdl) read by the Niri compositor on startup. Controls workspace keybindings, layout dimensions, border colors, window animations, and touch gestures.",
+            typicalDefault: "Generated path in Application Support or bundle",
+            examples: ["/path/to/custom-config.kdl", "$XDG_CONFIG_HOME/niri/config.kdl"]
+        ),
+        "WESTON_CONFIG_FILE": EnvironmentVariableDoc(
+            summary: "Filesystem path to Weston configuration file.",
+            details: "Path to the configuration file (weston.ini) loaded by the Weston compositor. Configures desktop panels, taskbar launchers, keyboard repeat rates, background color, shell plugins, and idle timeout periods.",
+            typicalDefault: "Generated weston.ini in Application Support or bundle",
+            examples: ["/path/to/weston.ini", "$HOME/.config/weston.ini"]
+        ),
+        "WESTON_DATA_DIR": EnvironmentVariableDoc(
+            summary: "Directory path for Weston static assets.",
+            details: "Path where Weston looks for shared assets, including icon images, sound themes, default wallpapers, and pattern files used by the desktop shell.",
+            typicalDefault: "App bundle share/weston directory",
+            examples: ["/usr/share/weston", "/var/containers/Bundle/.../share/weston"]
+        ),
+        "WESTON_MODULE_DIR": EnvironmentVariableDoc(
+            summary: "Directory path for Weston plugin modules.",
+            details: "Path where Weston looks for installable shell and extension modules, such as desktop-shell.so, fullscreen-shell.so, and color management dynamic libraries.",
+            typicalDefault: "App bundle lib/weston directory",
+            examples: ["/usr/lib/weston", "/var/containers/Bundle/.../lib/weston"]
+        ),
+        "WESTON_BACKEND_DIR": EnvironmentVariableDoc(
+            summary: "Directory path for Weston backend dynamic libraries.",
+            details: "Path where Weston loads output rendering backend plugins, such as wayland-backend.so, drm-backend.so, and headless-backend.so.",
+            typicalDefault: "App bundle lib/weston directory",
+            examples: ["/usr/lib/weston", "/var/containers/Bundle/.../lib/weston"]
+        ),
+
+        // MARK: Graphics / Drivers
+        "VK_DRIVER_FILES": EnvironmentVariableDoc(
+            summary: "Manifest paths for the Vulkan loader.",
+            details: "Colon-separated list of JSON manifest file paths used by modern Vulkan loaders to discover and initialize Installable Client Drivers (ICD), such as MoltenVK or SwiftShader.",
+            typicalDefault: "Path to bundled MoltenVK ICD manifest",
+            examples: ["/path/to/MoltenVK_icd.json", "/usr/share/vulkan/icd.d/moltenvk.json"]
+        ),
+        "VK_ICD_FILENAMES": EnvironmentVariableDoc(
+            summary: "Legacy Vulkan ICD manifest paths.",
+            details: "Legacy environment variable used by older versions of the Khronos Vulkan loader to locate ICD manifest files. Maintained alongside VK_DRIVER_FILES for backward compatibility with older client builds.",
+            typicalDefault: "Path to bundled MoltenVK ICD manifest",
+            examples: ["/path/to/MoltenVK_icd.json"]
+        ),
+        "WWN_VULKAN_LIBRARY": EnvironmentVariableDoc(
+            summary: "Primary Vulkan implementation library path.",
+            details: "Absolute path to the active Vulkan dynamic library (such as libMoltenVK.dylib or libvulkan.so) loaded directly by in-process graphics clients in Wawona.",
+            typicalDefault: "App bundle lib/libMoltenVK.dylib",
+            examples: ["/path/to/libMoltenVK.dylib", "/path/to/libvk_swiftshader.dylib"]
+        ),
+        "WWN_VULKAN_LIBRARY_FALLBACKS": EnvironmentVariableDoc(
+            summary: "Fallback Vulkan library search paths.",
+            details: "Colon-separated list of alternative Vulkan dynamic library paths attempted if WWN_VULKAN_LIBRARY fails to load or does not export required symbols.",
+            typicalDefault: "Fallback paths in app bundle lib directory",
+            examples: ["/path/to/fallback1.dylib:/path/to/fallback2.dylib"]
+        ),
+        "WWN_VULKAN_DRIVER": EnvironmentVariableDoc(
+            summary: "Active Vulkan driver identifier token.",
+            details: "Specifies which Vulkan driver pipeline is selected. Owned and synchronized by the Wawona Vulkan Driver setting in preferences.",
+            typicalDefault: "moltenvk",
+            examples: ["moltenvk", "swiftshader", "none"]
+        ),
+        "WWN_OPENGL_DRIVER": EnvironmentVariableDoc(
+            summary: "Active OpenGL/GLES driver identifier token.",
+            details: "Specifies which OpenGL ES implementation is used for client surfaces and compositor rendering. Owned and synchronized by the Wawona OpenGL Driver setting in preferences.",
+            typicalDefault: "angle",
+            examples: ["angle", "mesa", "none"]
+        ),
+        "WWN_DISABLE_VULKAN": EnvironmentVariableDoc(
+            summary: "Force disable Vulkan graphics pipeline.",
+            details: "When set to 1, completely disables Vulkan loader initialization and driver queries across Wawona and child clients, forcing fallbacks to OpenGL ES or software rasterization.",
+            typicalDefault: "(unset)",
+            examples: ["1", "0"]
+        ),
+        "WWN_DISABLE_EGL": EnvironmentVariableDoc(
+            summary: "Force disable EGL graphics pipeline.",
+            details: "When set to 1, prevents EGL display initialization and context creation, forcing applications to rely on pure software rendering or alternative display protocols.",
+            typicalDefault: "(unset)",
+            examples: ["1", "0"]
+        ),
+        "ANGLE_DEFAULT_PLATFORM": EnvironmentVariableDoc(
+            summary: "Underlying rendering backend for ANGLE.",
+            details: "Controls which native hardware API the Google ANGLE library uses to translate OpenGL ES commands into hardware draw calls. Typically uses Metal on Apple platforms and Vulkan on Android or Linux.",
+            typicalDefault: "metal (on Apple) or vulkan (on Android/Linux)",
+            examples: ["metal", "vulkan", "opengl", "swiftshader"]
+        ),
+        "WWN_SWIFTSHADER_LIBRARY": EnvironmentVariableDoc(
+            summary: "Path to Google SwiftShader software rasterizer.",
+            details: "Filesystem path to the Google SwiftShader CPU software rasterizer library, used when hardware GPU acceleration is unavailable or intentionally bypassed for debugging.",
+            typicalDefault: "App bundle lib/libvk_swiftshader.dylib (if bundled)",
+            examples: ["/path/to/libvk_swiftshader.dylib", "/path/to/libvk_swiftshader.so"]
+        ),
+
+        // MARK: Shell / Runtime Environment
+        "HOME": EnvironmentVariableDoc(
+            summary: "User home directory path.",
+            details: "Standard UNIX home directory for user accounts. Shell configuration files (.zshrc, .profile), dotfiles, application cache directories, and personal documents are located relative to this path.",
+            typicalDefault: "App sandbox Documents or user home directory",
+            examples: ["/var/mobile/Containers/Data/Application/.../Documents", "/Users/username", "/home/mobile"]
+        ),
+        "USER": EnvironmentVariableDoc(
+            summary: "Current UNIX username.",
+            details: "Username of the active user account for shell sessions, process credentials, file ownership checks, and command prompt expansions.",
+            typicalDefault: "mobile",
+            examples: ["mobile", "root", "wawona", "user"]
+        ),
+        "LOGNAME": EnvironmentVariableDoc(
+            summary: "Login name of the active user.",
+            details: "System login name recorded for accounting, session managers, and logging utilities. Generally matches the value of USER.",
+            typicalDefault: "mobile",
+            examples: ["mobile", "root", "user"]
+        ),
+        "SHELL": EnvironmentVariableDoc(
+            summary: "Default interactive command shell binary.",
+            details: "Path to the preferred interactive command interpreter executed when launching terminal windows, subshells, or automated scripts.",
+            typicalDefault: "/bin/zsh (or bundled zsh binary)",
+            examples: ["/bin/zsh", "/bin/bash", "/bin/sh"]
+        ),
+        "WAWONA_SHELL": EnvironmentVariableDoc(
+            summary: "Executable path for Wawona built-in shell.",
+            details: "Direct filesystem path to the shell binary selected to run inside Wawona terminal emulators and embedded machine consoles.",
+            typicalDefault: "Bundled zsh or sh executable",
+            examples: ["/bin/zsh", "/var/containers/Bundle/.../bin/zsh"]
+        ),
+        "WAWONA_ZSH_IN_PROCESS": EnvironmentVariableDoc(
+            summary: "Controls whether Zsh runs in-process.",
+            details: "Boolean flag enabling in-process Zsh execution. Essential on iOS and sandboxed environments where posix_spawn and fork are restricted by system sandbox policies.",
+            typicalDefault: "1",
+            examples: ["1", "0"]
+        ),
+        "TERM": EnvironmentVariableDoc(
+            summary: "Terminal capabilities identifier string.",
+            details: "Identifies the terminal emulation standard and capability entry in the terminfo database. Informs text editors, pagers, and ncurses applications about color depth, cursor movement, and key escape sequences.",
+            typicalDefault: "xterm-256color",
+            examples: ["xterm-256color", "xterm-color", "vt100", "screen-256color"]
+        ),
+        "PATH": EnvironmentVariableDoc(
+            summary: "Search path list for executable binaries.",
+            details: "Colon-separated list of directory paths that the shell searches in order when a command is executed without an explicit directory path prefix.",
+            typicalDefault: "/usr/bin:/bin:/usr/sbin:/sbin (including bundled tool paths)",
+            examples: ["/usr/local/bin:/usr/bin:/bin", "/bin:/usr/bin:$HOME/bin"]
+        ),
+        "ZDOTDIR": EnvironmentVariableDoc(
+            summary: "Zsh configuration directory path.",
+            details: "Directory where Zsh searches for startup scripts (.zshenv, .zprofile, .zshrc, .zlogin, .zlogout) instead of defaulting to HOME.",
+            typicalDefault: "Same as HOME",
+            examples: ["$HOME", "$HOME/.config/zsh", "/etc/zsh"]
+        ),
+        "WAWONA_ROOTFS": EnvironmentVariableDoc(
+            summary: "Active writable root filesystem path.",
+            details: "Root directory path of the active machine container or sandbox, containing the Linux or UNIX directory tree hierarchy (bin, etc, lib, usr, var).",
+            typicalDefault: "App sandboxed writable rootfs directory",
+            examples: ["/var/mobile/Containers/Data/.../Documents/rootfs", "/tmp/rootfs"]
+        ),
+        "WAWONA_BUNDLE_ROOTFS": EnvironmentVariableDoc(
+            summary: "Bundled read-only rootfs template path.",
+            details: "Path to the read-only template root filesystem included inside the Wawona application bundle, used to populate new machine environments.",
+            typicalDefault: "App bundle rootfs directory",
+            examples: ["/var/containers/Bundle/.../Wawona.app/rootfs"]
+        ),
+        "WAWONA_FILES_DIR": EnvironmentVariableDoc(
+            summary: "Internal data storage directory path.",
+            details: "Internal files directory on Android and embedded platforms where Wawona stores persistent database files, machine state, and dynamic assets.",
+            typicalDefault: "Android app internal files directory",
+            examples: ["/data/user/0/io.wawona.app/files"]
+        ),
+        "PROMPT": EnvironmentVariableDoc(
+            summary: "Primary prompt string format for Zsh.",
+            details: "Formatted string defining the prompt displayed by Zsh before each interactive command entry. Supports color codes, current directory (%~), and privilege markers (%#).",
+            typicalDefault: "%F{cyan}%~%f %# ",
+            examples: ["%F{cyan}%~%f %# ", "%n@%m %~ %# ", "> "]
+        ),
+        "PS1": EnvironmentVariableDoc(
+            summary: "POSIX standard primary prompt string.",
+            details: "Standard command prompt format used by Bourne-compatible shells like sh and bash, as well as fallback prompt for Zsh sessions.",
+            typicalDefault: "%F{cyan}%~%f %# ",
+            examples: ["\\u@\\h:\\w$ ", "$ ", "%F{green}%n%f$ "]
+        ),
+
+        // MARK: XDG Base Directories
+        "XDG_CONFIG_HOME": EnvironmentVariableDoc(
+            summary: "User configuration files base directory.",
+            details: "Defines the base directory relative to which user-specific configuration files are written and loaded, following the XDG Base Directory Specification.",
+            typicalDefault: "$HOME/.config",
+            examples: ["$HOME/.config", "/tmp/config"]
+        ),
+        "XDG_CACHE_HOME": EnvironmentVariableDoc(
+            summary: "User non-essential cache base directory.",
+            details: "Defines the base directory for non-essential user-specific cache data files that can be recreated or deleted without loss of essential state.",
+            typicalDefault: "$HOME/.cache",
+            examples: ["$HOME/.cache", "/tmp/cache"]
+        ),
+        "XDG_DATA_HOME": EnvironmentVariableDoc(
+            summary: "User data files base directory.",
+            details: "Defines the base directory for user-specific data files such as locally installed plugins, themes, and application state databases.",
+            typicalDefault: "$HOME/.local/share",
+            examples: ["$HOME/.local/share", "/tmp/share"]
+        ),
+        "XDG_STATE_HOME": EnvironmentVariableDoc(
+            summary: "User state files base directory.",
+            details: "Defines the base directory for state data that should persist across restarts (such as application window geometry, command history, and session logs).",
+            typicalDefault: "$HOME/.local/state",
+            examples: ["$HOME/.local/state", "/tmp/state"]
+        ),
+        "XDG_DATA_DIRS": EnvironmentVariableDoc(
+            summary: "System data search paths.",
+            details: "Colon-separated list of system directories searched in order for shared desktop entries, mime definitions, application icons, and sound files.",
+            typicalDefault: "App bundle share directory (for example /usr/local/share:/usr/share)",
+            examples: ["/usr/local/share:/usr/share", "$HOME/.local/share:/usr/share"]
+        ),
+
+        // MARK: Fonts and Input
+        "FONTCONFIG_FILE": EnvironmentVariableDoc(
+            summary: "Main Fontconfig configuration file path.",
+            details: "Direct filesystem path to the XML configuration file (fonts.conf) loaded by fontconfig. Governs font matching algorithms, aliases, antialiasing rules, and hinting parameters.",
+            typicalDefault: "App bundle share/fontconfig/fonts.conf",
+            examples: ["/etc/fonts/fonts.conf", "/path/to/custom-fonts.conf"]
+        ),
+        "FONTCONFIG_PATH": EnvironmentVariableDoc(
+            summary: "Fontconfig configuration search directory.",
+            details: "Directory path where fontconfig searches for configuration files and modular rule directories (such as conf.d).",
+            typicalDefault: "App bundle share/fontconfig",
+            examples: ["/etc/fonts", "/usr/share/fontconfig"]
+        ),
+        "WAWONA_MONO_FONT": EnvironmentVariableDoc(
+            summary: "Default monospaced font family or PostScript name.",
+            details: "Font name used when rendering monospaced text in terminal emulators, code viewers, and status displays.",
+            typicalDefault: "SF Mono (or bundled monospaced font like Menlo / DejaVu Sans Mono)",
+            examples: ["SF Mono", "Menlo", "Courier New", "DejaVu Sans Mono"]
+        ),
+        "WAWONA_SANS_FONT": EnvironmentVariableDoc(
+            summary: "Default sans-serif font family or PostScript name.",
+            details: "Font name used for proportional text in menus, buttons, title bars, and user interface dialogs.",
+            typicalDefault: "System Sans font (for example SF Pro Text / Helvetica / DejaVu Sans)",
+            examples: ["SF Pro", "Helvetica", "Arial", "DejaVu Sans"]
+        ),
+        "WAWONA_TERMINAL_FONT_SIZE": EnvironmentVariableDoc(
+            summary: "Terminal font size in points.",
+            details: "Point size used by the terminal emulator font rasterizer for cell dimensions and character glyph rendering.",
+            typicalDefault: "12",
+            examples: ["10", "12", "14", "16"]
+        ),
+        "XKB_CONFIG_ROOT": EnvironmentVariableDoc(
+            summary: "XKB keyboard rules and keymap root directory.",
+            details: "Root directory path containing XKB configuration databases, including symbols, rules, types, and geometry descriptions used by xkbcommon to translate raw scan codes into characters.",
+            typicalDefault: "App bundle share/X11/xkb directory",
+            examples: ["/usr/share/X11/xkb", "/var/containers/Bundle/.../share/X11/xkb"]
+        ),
+        "XKB_DEFAULT_LAYOUT": EnvironmentVariableDoc(
+            summary: "Default keyboard layout code.",
+            details: "Standard two-letter country or layout code (such as us, gb, de, fr, es, jp) used to configure the default keyboard keymap.",
+            typicalDefault: "us",
+            examples: ["us", "gb", "de", "fr", "es", "jp"]
+        ),
+        "XKB_DEFAULT_VARIANT": EnvironmentVariableDoc(
+            summary: "Default keyboard layout variant.",
+            details: "Sub-variant modifier for the active keyboard layout (such as dvorak, colemak, or altgr-intl).",
+            typicalDefault: "(empty / standard)",
+            examples: ["dvorak", "colemak", "intl", "altgr-intl"]
+        ),
+        "XCURSOR_PATH": EnvironmentVariableDoc(
+            summary: "Cursor theme directory search paths.",
+            details: "Colon-separated list of directories searched by libwayland-cursor and X11 libraries when loading mouse cursor graphics.",
+            typicalDefault: "App bundle share/icons directory",
+            examples: ["/usr/share/icons:~/.icons", "$HOME/.icons:/usr/share/icons"]
+        ),
+        "XCURSOR_THEME": EnvironmentVariableDoc(
+            summary: "Active cursor theme name.",
+            details: "Name of the cursor icon set used for pointer rendering (such as Adwaita, default, or breeze_cursors).",
+            typicalDefault: "Adwaita",
+            examples: ["Adwaita", "default", "breeze_cursors"]
+        ),
+
+        // MARK: Debug and Diagnostics
+        "RUST_LOG": EnvironmentVariableDoc(
+            summary: "Logging filter for Rust components.",
+            details: "Directs log output filtering for compiled Rust modules in Wawona, Niri, Relay, and Smithay. Supports log levels (error, warn, info, debug, trace) as well as per-module target filters. Synchronized with the Wawona Log Level setting unless overridden.",
+            typicalDefault: "info",
+            examples: ["debug", "trace", "warn", "error", "wawona=debug,smithay=info"]
+        ),
+        "RUST_BACKTRACE": EnvironmentVariableDoc(
+            summary: "Rust panic backtrace verbosity.",
+            details: "Controls whether Rust runtime panics generate detailed call stack traces in log output. Set to 1 for standard backtraces or 'full' for verbose symbol details.",
+            typicalDefault: "1",
+            examples: ["1", "full", "0"]
+        ),
+        "WAWONA_AUTO_CMD": EnvironmentVariableDoc(
+            summary: "Automatic command executed on shell startup.",
+            details: "Command string or script automatically sent to the shell session or terminal immediately upon startup (for example launching phoon, htop, or neofetch).",
+            typicalDefault: "(unset)",
+            examples: ["phoon", "neofetch", "htop", "uname -a"]
+        ),
+
+        // MARK: Secrets
+        "SSHPASS": EnvironmentVariableDoc(
+            summary: "SSH password for non-interactive logins.",
+            details: "Password stored in memory for non-interactive SSH authentication with sshpass. Managed by Machine SSH Settings and hidden in the user interface for privacy.",
+            typicalDefault: "(set by Machine SSH Settings)",
+            examples: ["(configured via Machine Settings -> SSH)"]
+        ),
+        "WAYPIPE_SSH_PASSWORD": EnvironmentVariableDoc(
+            summary: "SSH password for Waypipe remote sessions.",
+            details: "Password passed to waypipe when initiating remote Wayland display forwarding over SSH. Managed by Machine SSH Settings and hidden in the user interface for privacy.",
+            typicalDefault: "(set by Machine SSH Settings)",
+            examples: ["(configured via Machine Settings -> SSH)"]
+        ),
+    ]
 }
 
 // MARK: - Resolved row
@@ -218,6 +612,10 @@ public struct ResolvedEnvironmentEntry: Hashable, Sendable, Identifiable {
         if isSecret { return "(set by SSH Settings)" }
         if isUnset { return "(unset)" }
         return value ?? ""
+    }
+
+    public var documentation: EnvironmentVariableDoc {
+        EnvironmentCatalog.documentation(for: name)
     }
 }
 

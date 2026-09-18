@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import WawonaModel
 
@@ -159,6 +160,28 @@ func environmentNiriBackendAndRustLogMapping() {
     #expect(EnvironmentResolver.rustLog(for: "info") == "info")
 }
 
+@Test
+func environmentCatalogDocumentationHasNoEmdashesAndHasDefaultsAndExamples() {
+    for entry in EnvironmentCatalog.entries {
+        let doc = entry.documentation
+        #expect(!doc.details.isEmpty)
+        #expect(!doc.details.contains("\u{2014}"))
+        #expect(!doc.typicalDefault.contains("\u{2014}"))
+        for example in doc.examples {
+            #expect(!example.contains("\u{2014}"))
+        }
+    }
+
+    let wayland = EnvironmentCatalog.documentation(for: "WAYLAND_DISPLAY")
+    #expect(wayland.typicalDefault == "wayland-0")
+    #expect(wayland.examples.contains("wayland-0"))
+    #expect(!wayland.details.contains("\u{2014}"))
+
+    let userDoc = EnvironmentCatalog.documentation(for: "CUSTOM_UNKNOWN_VAR")
+    #expect(!userDoc.details.isEmpty)
+    #expect(!userDoc.details.contains("\u{2014}"))
+}
+
 @MainActor
 @Test
 func environmentPersistsOnPreferences() {
@@ -235,4 +258,25 @@ func sshWaypipeSettingsAreRemoteTypesOnly() {
     #expect(!MachineType.container.isSSH)
     #expect(MachineType.sshWaypipe.isSSH)
     #expect(MachineType.sshTerminal.isSSH)
+}
+
+@Test
+func virtualMachineProfileRoundTripsGuestConfiguration() throws {
+    let profile = MachineProfile(
+        name: "Studio Linux",
+        type: .virtualMachine,
+        vmSettings: VirtualMachineSettings(
+            provider: "relay",
+            vmIdentifier: "studio-linux",
+            vsockPort: "1024",
+            notes: "Wayland development guest"
+        )
+    )
+    let restored = try JSONDecoder().decode(
+        MachineProfile.self,
+        from: JSONEncoder().encode(profile)
+    )
+    #expect(restored.type == .virtualMachine)
+    #expect(restored.vmSettings?.vmIdentifier == "studio-linux")
+    #expect(restored.vmSettings?.vsockPort == "1024")
 }

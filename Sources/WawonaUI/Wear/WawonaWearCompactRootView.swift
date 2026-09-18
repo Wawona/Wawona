@@ -21,7 +21,7 @@ public struct WawonaWearCompactRootView: View {
     }
 
     public var body: some View {
-        NavigationStack {
+        WawonaBackport<Any>.navigation {
             if profileStore.profiles.isEmpty {
                 ContentUnavailableView(
                     "No Machines",

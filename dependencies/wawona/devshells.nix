@@ -125,13 +125,6 @@ builtins.listToAttrs (map (system: let
         export SSL_CERT_FILE="/etc/ssl/cert.pem"
       fi
 
-      if [ -f .envrc ]; then
-        _TEAM_FROM_ENVRC=$(grep '^export TEAM_ID=' .envrc | cut -d'=' -f2 | tr -d '"')
-        if [ -n "$_TEAM_FROM_ENVRC" ]; then
-          export TEAM_ID="$_TEAM_FROM_ENVRC"
-          echo "Loaded TEAM_ID from .envrc."
-        fi
-      fi
       if [ -n "''${TEAM_ID:-}" ]; then
         export DEVELOPMENT_TEAM="$TEAM_ID"
       fi

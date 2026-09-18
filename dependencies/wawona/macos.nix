@@ -760,6 +760,7 @@ in
       SWIFT_SOURCES=(
         # Shared View.wwnA11y(_:). Must stay unique with WWNAccessibilityIdentifiers.swift
         "Sources/WawonaUI/AccessibilityIdentifiers.swift"
+        "Sources/WawonaUI/Compatibility/WawonaBackport.swift"
         "src/platform/macos/ui/Machines/WWNAccessibilityIdentifiers.swift"
         "src/platform/macos/ui/Machines/WWNMachineCardView.swift"
         "src/platform/macos/ui/Machines/WWNMachineEditorView.swift"

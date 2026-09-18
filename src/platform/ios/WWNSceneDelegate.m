@@ -38,6 +38,8 @@ extern void iland_egl_set_metal_native_display(void *native);
 @protocol WWNClientTabChromeHosting <NSObject>
 @property(nonatomic, copy, nullable) void (^onSelectId)(uint64_t);
 @property(nonatomic, copy, nullable) void (^onCloseId)(uint64_t);
+@property(nonatomic, copy, nullable) dispatch_block_t onNewTab;
+@property(nonatomic, copy, nullable) dispatch_block_t onRequestRefreshPreviews;
 @property(nonatomic, readonly, nullable) UIView *hostView;
 @property(nonatomic, readonly) uint64_t selectedId;
 - (void)attachTo:(UIView *)parentView;
@@ -49,6 +51,11 @@ extern void iland_egl_set_metal_native_display(void *native);
                titles:(NSArray<NSString *> *)titles
            selectedId:(NSNumber *)selectedId
         previewImages:(NSDictionary<NSNumber *, UIImage *> *)previewImages;
+- (void)selectNextTab;
+- (void)selectPreviousTab;
+- (void)selectTabAtIndex:(NSInteger)index;
+- (void)toggleTabExpose;
+- (void)createNewTab;
 @end
 static inline Class WWNClientTabChromeControllerClass(void) {
   return NSClassFromString(@"WWNClientTabChromeController");
@@ -1160,6 +1167,47 @@ static const NSTimeInterval kWWNTvMenuLongPressDuration = 0.85;
 
 @implementation WWNSceneDelegate
 
+- (void)connectLegacyWindow:(UIWindow *)window {
+  self.window = window;
+  self.window.backgroundColor = UIColor.blackColor;
+  WWNCompositorHostViewController *root = [[WWNCompositorHostViewController alloc] init];
+  root.defersSystemGesturesForCompositor = NO;
+  root.view = [[UIView alloc] initWithFrame:window.bounds];
+  root.view.backgroundColor = UIColor.blackColor;
+  self.window.rootViewController = root;
+
+  self.compositorContainer = [[UIView alloc] initWithFrame:root.view.bounds];
+  self.compositorContainer.autoresizingMask = UIViewAutoresizingFlexibleWidth |
+      UIViewAutoresizingFlexibleHeight;
+  self.compositorContainer.backgroundColor = UIColor.blackColor;
+  self.compositorContainer.clipsToBounds = YES;
+  self.compositorContainer.hidden = YES;
+  [root.view addSubview:self.compositorContainer];
+  [WWNCompositorBridge sharedBridge].containerView = self.compositorContainer;
+  [self.window makeKeyAndVisible];
+  [self updateOutputSizeFromRect:self.compositorContainer.bounds forced:YES];
+
+  [[NSNotificationCenter defaultCenter] addObserver:self
+                                           selector:@selector(handleNativeClientWillLaunch:)
+                                               name:WWNNativeClientWillLaunchNotification object:nil];
+  [[NSNotificationCenter defaultCenter] addObserver:self
+                                           selector:@selector(handleNativeClientDidTerminate:)
+                                               name:@"WWNNativeClientProcessDidTerminateNotification" object:nil];
+  [[NSNotificationCenter defaultCenter] addObserver:self
+                                           selector:@selector(handleHostWindowsDidChange:)
+                                               name:WWNHostWindowsDidChangeNotification object:nil];
+  [self showMachinesUI];
+  WWNLog("SCENE", @"iOS 11/12 legacy UIKit window connected");
+}
+
+- (void)legacyApplicationDidBecomeActive {
+  [self sceneDidBecomeActive:nil];
+}
+
+- (void)legacyApplicationDidEnterBackground {
+  [self sceneDidEnterBackground:nil];
+}
+
 #if WWN_MODE_B
 static __weak WWNSceneDelegate *sModeBDesktopScene = nil;
 
@@ -1675,6 +1723,32 @@ static int32_t WWNModeBPresentLogicalSession(uint32_t sessionId, uint8_t kind,
              name:kWWNModeBDesktopReplacementReplaceNowNotification
            object:nil];
 #endif
+
+  NSNotificationCenter *tabNC = [NSNotificationCenter defaultCenter];
+  [tabNC addObserver:self
+            selector:@selector(handleSelectTabNotification:)
+                name:WWNRequestSelectTabAtIndexNotification
+              object:nil];
+  [tabNC addObserver:self
+            selector:@selector(handleNewTabNotification:)
+                name:WWNRequestNewTabNotification
+              object:nil];
+  [tabNC addObserver:self
+            selector:@selector(handleCloseTabNotification:)
+                name:WWNRequestCloseActiveTabNotification
+              object:nil];
+  [tabNC addObserver:self
+            selector:@selector(handlePrevTabNotification:)
+                name:WWNRequestSelectPreviousTabNotification
+              object:nil];
+  [tabNC addObserver:self
+            selector:@selector(handleNextTabNotification:)
+                name:WWNRequestSelectNextTabNotification
+              object:nil];
+  [tabNC addObserver:self
+            selector:@selector(handleToggleExposeNotification:)
+                name:WWNRequestToggleTabExposeNotification
+              object:nil];
 
   WWNLog("SCENE", @"Wawona Scene connected and window created.");
 #if WWN_MODE_B
@@ -2412,16 +2486,8 @@ static int32_t WWNModeBPresentLogicalSession(uint32_t sessionId, uint8_t kind,
   BOOL autoScale = [[WWNPreferencesManager sharedManager] autoScale];
   float wlScale = autoScale ? (float)screenScale : 1.0f;
 
-  BOOL resizeForKeyboard =
-      [WWNMachineProfileStore resolvedResizeDisplayForVirtualKeyboardActive] &&
-      !self.hostHardwareKeyboardActive;
-  if (resizeForKeyboard) {
-    CGFloat reserved =
-        self.hostKeyboardOverlap + self.hostKeyboardAccessoryHeight;
-    if (reserved > 0.0) {
-      sz.height = MAX(120.0, sz.height - reserved);
-    }
-  }
+  // WWNCompositorView owns the OSK exclusive-zone calculation. Subtracting
+  // here as well double-applies the reserve and vertically squashes clients.
 
   if (!forced && CGSizeEqualToSize(sz, self.lastOutputSize) &&
       fabsf(self.lastOutputScale - wlScale) < 0.001f) {
@@ -2674,6 +2740,7 @@ static int32_t WWNModeBPresentLogicalSession(uint32_t sessionId, uint8_t kind,
 
 - (void)sceneWillResignActive:(UIScene *)scene {
   WWNLog("SCENE", @"Scene will resign active");
+  [self.window endEditing:YES];
 #if WWN_MODE_B
   // Desktop Replacement IOMFB looks like resign. Restoring then is
   // RunningBoard 0xDEAD10CC. Only restore on toggle off or leave.
@@ -3075,16 +3142,17 @@ static const uint32_t kWWNTvMenuEscapeKeycode = 1;
   });
 }
 
-/// Phone + tvOS: in-window tabs for Wayland clients (#84).
-/// iPadOS / visionOS use one UIWindowScene per client (no Shell tab strip).
+/// Phone + tvOS + iPadOS: in-window tabs for Wayland clients (#84).
 - (BOOL)usesClientTabChrome {
 #if TARGET_OS_VISION
   return NO;
 #elif TARGET_OS_TV
   return YES;
 #elif TARGET_OS_IPHONE
-  // Phone only. IPadOS uses one UIWindowScene per Wayland client.
-  return UIDevice.currentDevice.userInterfaceIdiom != UIUserInterfaceIdiomPad;
+  if (self.hostedClientWindowId != 0) {
+    return NO;
+  }
+  return YES;
 #else
   return NO;
 #endif
@@ -3151,16 +3219,9 @@ static const uint32_t kWWNTvMenuEscapeKeycode = 1;
     return;
   }
 
-  // Phone chrome is for switching. One live client needs no square.on.square.
-  if (titles.count < 2) {
-    [self.clientTabsControl setHidden:YES];
-    if (selectId != nil) {
-      [bridge focusTabbedClientWindowId:selectId.unsignedLongLongValue];
-    }
-    WWNLog("TABS", @"single Wayland client; tab chrome hidden (%@)",
-           titles.firstObject ?: @"(nil)");
-    return;
-  }
+  // Keep the native top-right tab control visible from the first client. It
+  // establishes where a subsequently mapped client will appear and exposes
+  // the same Safari-style overview without inventing a second client UI.
 
   if (!self.clientTabsControl) {
     Class cls = WWNClientTabChromeControllerClass();
@@ -3177,6 +3238,12 @@ static const uint32_t kWWNTvMenuEscapeKeycode = 1;
     };
     self.clientTabsControl.onCloseId = ^(uint64_t wid) {
       [weakSelf clientTabCloseWindowId:wid];
+    };
+    self.clientTabsControl.onNewTab = ^{
+      [weakSelf handleNewTabRequested];
+    };
+    self.clientTabsControl.onRequestRefreshPreviews = ^{
+      [weakSelf refreshClientTabs];
     };
     // UIWindow (not root VC): Mode B IOMFB HID overlay is also a window
     // subview and used to cover tabs attached only under rootViewController.
@@ -3278,6 +3345,75 @@ static const uint32_t kWWNTvMenuEscapeKeycode = 1;
                    }
                  });
 }
+
+- (void)handleNewTabRequested {
+  WWNLog("TABS", @"new tab requested from client tab bar");
+  [self showMachinesUI];
+}
+
+- (void)selectNextClientTab {
+  if (self.clientTabsControl && [self.clientTabsControl respondsToSelector:@selector(selectNextTab)]) {
+    [self.clientTabsControl selectNextTab];
+  }
+}
+
+- (void)selectPreviousClientTab {
+  if (self.clientTabsControl && [self.clientTabsControl respondsToSelector:@selector(selectPreviousTab)]) {
+    [self.clientTabsControl selectPreviousTab];
+  }
+}
+
+- (void)selectClientTabAtIndex:(NSInteger)index {
+  if (self.clientTabsControl && [self.clientTabsControl respondsToSelector:@selector(selectTabAtIndex:)]) {
+    [self.clientTabsControl selectTabAtIndex:index];
+  }
+}
+
+- (void)toggleClientTabExpose {
+  [self refreshClientTabs];
+  if (self.clientTabsControl && [self.clientTabsControl respondsToSelector:@selector(toggleTabExpose)]) {
+    [self.clientTabsControl toggleTabExpose];
+  }
+}
+
+- (void)handleSelectTabNotification:(NSNotification *)note {
+  NSNumber *idx = note.userInfo[@"index"];
+  if (idx) {
+    [self selectClientTabAtIndex:idx.integerValue];
+  }
+}
+
+- (void)handleNewTabNotification:(NSNotification *)note {
+  (void)note;
+  [self handleNewTabRequested];
+}
+
+- (void)handleCloseTabNotification:(NSNotification *)note {
+  (void)note;
+  if (self.clientTabsControl) {
+    uint64_t target = self.clientTabsControl.selectedId;
+    if (target != 0) {
+      [self clientTabCloseWindowId:target];
+    }
+  }
+}
+
+- (void)handlePrevTabNotification:(NSNotification *)note {
+  (void)note;
+  [self selectPreviousClientTab];
+}
+
+- (void)handleNextTabNotification:(NSNotification *)note {
+  (void)note;
+  [self selectNextClientTab];
+}
+
+- (void)handleToggleExposeNotification:(NSNotification *)note {
+  (void)note;
+  [self toggleClientTabExpose];
+}
+
+
 
 // ---------------------------------------------------------------------------
 // Startup log overlay
@@ -3600,6 +3736,7 @@ static const uint32_t kWWNTvMenuEscapeKeycode = 1;
 
 - (void)hideMachinesUIAndRevealCompositor {
   if (self.machinesViewController) {
+    [self.machinesViewController.view endEditing:YES];
     self.machinesViewController.view.hidden = YES;
   }
   self.showingMachinesUI = NO;

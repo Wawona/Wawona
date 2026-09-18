@@ -211,7 +211,7 @@ static NSInteger WWNSettingsPopupSelectedIndex(WWNSettingItem *item) {
   return 0;
 }
 
-static NSString *WWNSettingsPopupDisplayTitle(WWNSettingItem *item) {
+static inline __attribute__((unused)) NSString *WWNSettingsPopupDisplayTitle(WWNSettingItem *item) {
   NSInteger i = WWNSettingsPopupSelectedIndex(item);
   if (i >= 0 && i < (NSInteger)item.options.count) {
     return item.options[i];
@@ -386,6 +386,8 @@ static WImage WWNSquareFilledIcon(WImage image, CGFloat size) {
 #endif
 #if !TARGET_OS_TV
 - (void)importFileToShellHome;
+#endif
+#if TARGET_OS_IOS && !TARGET_OS_MACCATALYST && !TARGET_OS_TV && !TARGET_OS_WATCH && !TARGET_OS_VISION
 - (void)sendDocumentToAppleWatch;
 - (void)sendPickedFileToAppleWatch:(NSArray<NSURL *> *)urls;
 #endif
@@ -890,6 +892,19 @@ static UIImage *WWNAboutLogo(void) {
   [displayItems addObject:ITEM(@"Respect Safe Area", @"RespectSafeArea",
                                WSettingSwitch, @YES, @"Avoids notch areas.")];
 #endif
+  WWNSettingItem *displayBackendItem =
+      ITEM(@"Display Backend", @"CompositorBackend", WSettingPopup, @"auto",
+           @"How bundled clients and nested compositors present: nested Wayland "
+           @"or wwn-iland's userspace DRM/KMS stack.");
+  displayBackendItem.options = @[ @"Auto", @"Wayland (nested)", @"DRM/KMS (wwn-iland)" ];
+  displayBackendItem.optionValues = @[ @"auto", @"wayland", @"drm" ];
+  [displayItems addObjectsFromArray:@[
+    ITEM(@"Nested Compositors", @"NestedCompositorsSupport", WSettingSwitch, @YES,
+         @"Support nested Weston and Niri compositors."),
+    displayBackendItem,
+    ITEM(@"Multiple Clients", @"MultipleClients", WSettingSwitch, @YES,
+         @"Allow multiple Wayland clients to connect simultaneously."),
+  ]];
 
   display.items = displayItems;
   [sects addObject:display];
@@ -986,7 +1001,7 @@ static UIImage *WWNAboutLogo(void) {
 #endif
 #else
       ITEM(@"Vulkan Driver", @"VulkanDriver", WSettingPopup, @"moltenvk",
-           @"Select the Vulkan ICD used by newly launched machine sessions.");
+           @"MoltenVK is the default hardware Vulkan driver. SwiftShader is software rendering.");
 #endif
 #if TARGET_OS_OSX
   vulkanDriverItem.options = @[ @"None", @"MoltenVK", @"KosmicKrisp", @"SwiftShader" ];
@@ -997,8 +1012,8 @@ static UIImage *WWNAboutLogo(void) {
   vulkanDriverItem.optionValues = @[ @"none" ];
 #elif TARGET_OS_TV
 #if defined(WWN_TVOS_GPU_BUNDLED) && WWN_TVOS_GPU_BUNDLED
-  vulkanDriverItem.options = @[ @"None", @"MoltenVK" ];
-  vulkanDriverItem.optionValues = @[ @"none", @"moltenvk" ];
+  vulkanDriverItem.options = @[ @"None", @"MoltenVK", @"SwiftShader (Software)" ];
+  vulkanDriverItem.optionValues = @[ @"none", @"moltenvk", @"swiftshader" ];
 #else
   vulkanDriverItem.options = @[ @"None" ];
   vulkanDriverItem.optionValues = @[ @"none" ];
@@ -1022,7 +1037,7 @@ static UIImage *WWNAboutLogo(void) {
 #endif
 #else
       ITEM(@"OpenGL Driver", @"OpenGLDriver", WSettingPopup, @"angle",
-           @"Select the OpenGL ES implementation used by newly launched machine sessions.");
+           @"ANGLE is the default OpenGL ES driver (OpenGL ES to Metal).");
 #endif
 #if TARGET_OS_WATCH
   openGLDriverItem.options = @[ @"None" ];
@@ -1297,47 +1312,6 @@ static UIImage *WWNAboutLogo(void) {
     [sects addObject:appleWatch];
   }
 #endif
-
-  // ADVANCED
-  WWNPreferencesSection *advanced = [[WWNPreferencesSection alloc] init];
-  advanced.title = @"Advanced";
-  advanced.accessibilityIdentifier = @"wwn.settings.advanced";
-  advanced.icon = @"gearshape.2";
-#if TARGET_OS_IPHONE
-  advanced.iconColor = [UIColor systemGrayColor];
-#else
-  advanced.iconColor = [NSColor systemGrayColor];
-#endif
-  // General per-client backend choice. niri and weston both have real DRM
-  // backends; pinning them to nested Wayland discards the userspace DRM/KMS/GBM
-  // path wwn-iland exists to provide. Per-machine profiles override this.
-  WWNSettingItem *compositorBackendItem =
-      ITEM(@"Display Backend", @"CompositorBackend", WSettingPopup, @"auto",
-           @"How bundled clients and nested compositors present. Wayland runs "
-           @"them nested inside Wawona; DRM/KMS runs them against wwn-iland's "
-           @"userspace display stack, as they would on bare metal.");
-  compositorBackendItem.options =
-      @[ @"Auto", @"Wayland (nested)", @"DRM/KMS (wwn-iland)" ];
-  compositorBackendItem.optionValues = @[ @"auto", @"wayland", @"drm" ];
-
-  WWNSettingItem *logLevelItem =
-      ITEM(@"Log Level", @"wawona.pref.logLevel", WSettingPopup, @"info",
-           @"Minimum log severity written to the in-app log ring.");
-  logLevelItem.options = @[ @"Debug", @"Info", @"Warn", @"Error" ];
-  logLevelItem.optionValues = @[ @"debug", @"info", @"warn", @"error" ];
-
-  NSMutableArray *advancedItems = [NSMutableArray arrayWithArray:@[
-    ITEM(@"Nested Compositors", @"NestedCompositorsSupport", WSettingSwitch,
-         @YES, @"Support for nested compositors."),
-  ]];
-  [advancedItems addObject:compositorBackendItem];
-  [advancedItems addObject:ITEM(@"Multiple Clients", @"MultipleClients",
-                                WSettingSwitch, @YES,
-                                @"Allow multiple Wayland clients to connect "
-                                @"simultaneously.")];
-  [advancedItems addObject:logLevelItem];
-  advanced.items = advancedItems;
-  [sects addObject:advanced];
 
 #if TARGET_OS_OSX
   // DESKTOP REPLACEMENT (macOS only; wwn-iland Mode B; SIP-gated stretch).
@@ -1935,12 +1909,17 @@ static UIImage *WWNAboutLogo(void) {
     [[WWNPreferences sharedPreferences] wwnOpenGitHubBugReport];
   };
 
+  WWNSettingItem *logLevelItem =
+      ITEM(@"Log Level", @"wawona.pref.logLevel", WSettingPopup, @"info",
+           @"Minimum log severity written to the in-app log ring.");
+  logLevelItem.options = @[ @"Debug", @"Info", @"Warn", @"Error" ];
+  logLevelItem.optionValues = @[ @"debug", @"info", @"warn", @"error" ];
   about.items = @[
     headerItem, ITEM(@"Version", nil, WSettingInfo, [self getWWNVersion], nil),
     ITEM(@"Build", @"BuildNumber", WSettingInfo, [self getWWNBuildNumber], nil),
     ITEM(@"Platform", nil, WSettingInfo, [self wwnHostOsSummary], nil),
     ITEM(@"Install", nil, WSettingInfo, [self wwnInstallChannel], nil),
-    wawonaIoItem, copyRecentLogs, copyMachineLogs, reportBug, authorItem,
+    logLevelItem, wawonaIoItem, copyRecentLogs, copyMachineLogs, reportBug, authorItem,
     githubItem, xItem, linkedinItem, kofiItem, donateItem, sourceItem
   ];
   [sects addObject:about];
@@ -2465,12 +2444,10 @@ static UIImage *WWNAboutLogo(void) {
     }
     filter = mid.UTF8String;
   }
-  char *dump = wwn_log_ring_dump ? wwn_log_ring_dump(filter) : NULL;
+  char *dump = wwn_log_ring_dump(filter);
   if (dump) {
     [out appendFormat:@"%s", dump];
-    if (WWNStringFree) {
-      WWNStringFree(dump);
-    }
+    WWNStringFree(dump);
   } else {
     [out appendString:@"(log ring unavailable)"];
   }
@@ -2553,19 +2530,15 @@ static UIImage *WWNAboutLogo(void) {
   NSString *channel = [self wwnInstallChannel];
   NSString *version = [self wwnBugReportVersion];
   NSString *host = [self wwnHostOsSummary];
-  char *raw = wwn_github_bug_report_url
-                  ? wwn_github_bug_report_url(platform.UTF8String,
-                                              channel.UTF8String,
-                                              version.UTF8String,
-                                              host.UTF8String,
-                                              report.UTF8String)
-                  : NULL;
+  char *raw = wwn_github_bug_report_url(platform.UTF8String,
+                                        channel.UTF8String,
+                                        version.UTF8String,
+                                        host.UTF8String,
+                                        report.UTF8String);
   NSString *urlString = nil;
   if (raw) {
     urlString = [NSString stringWithUTF8String:raw];
-    if (WWNStringFree) {
-      WWNStringFree(raw);
-    }
+    WWNStringFree(raw);
   }
   if (urlString.length == 0) {
     urlString =
@@ -2646,8 +2619,9 @@ static UIImage *WWNAboutLogo(void) {
 #ifdef WWN_PREFPANE
   WWNHandoffToWawonaApp(@"Waypipe");
   return;
-#endif
+#else
   // Save any pending text field changes first (macOS only - iOS uses alerts)
+
 #if !TARGET_OS_IPHONE
   // On macOS, text fields might have unsaved changes
   // Force end editing to commit any pending changes
@@ -2733,13 +2707,13 @@ static UIImage *WWNAboutLogo(void) {
 
   // Launch waypipe
   WWNLog("UI", @"Launching Waypipe...");
-  [[WWNWaypipeRunner sharedRunner]
-      launchWaypipe:[WWNPreferencesManager sharedManager]];
+  [runner launchWaypipe:[WWNPreferencesManager sharedManager]];
 
   // Note: We do NOT automatically dismiss the settings view here.
   // Waypipe launch might require user interaction (e.g., password prompt)
   // or show errors that the user needs to see.
   // The user can manually dismiss the settings when they are ready.
+#endif
 }
 
 #if !TARGET_OS_IPHONE
@@ -5553,11 +5527,12 @@ static BOOL WWNRouteToUnifiedWindowWithString(NSString *selectorName,
 #ifdef WWN_PREFPANE
   WWNHandoffToWawonaApp(@"Machines");
   return;
-#endif
+#else
   if (WWNRouteToUnifiedWindow(@"showMachines")) {
     return;
   }
   [[WWNMachinesCoordinator sharedCoordinator] showMachinesWindowAndActivate:YES];
+#endif
 }
 
 - (NSArray<NSToolbarItemIdentifier> *)toolbarDefaultItemIdentifiers:
@@ -5887,10 +5862,11 @@ static BOOL WWNRouteToUnifiedWindowWithString(NSString *selectorName,
   // SwiftUI Environment Variables GUI (#157). macOS Settings embeds the table
   // in the detail pane; this window is the fallback if embed is unavailable.
   Class presenter = NSClassFromString(@"WWNEnvironmentSettingsPresenter");
-  if (presenter && [presenter respondsToSelector:@selector(presentFromHost:)]) {
+  SEL sel = NSSelectorFromString(@"presentFromHost:");
+  if (presenter && [presenter respondsToSelector:sel]) {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
-    [presenter performSelector:@selector(presentFromHost:) withObject:self];
+    [presenter performSelector:sel withObject:self];
 #pragma clang diagnostic pop
     return;
   }
@@ -6048,8 +6024,7 @@ static BOOL WWNRouteToUnifiedWindowWithString(NSString *selectorName,
   (void)revert;
   WWNHandoffToWawonaApp(@"Desktop");
   return YES;
-#endif
-#if WWN_MODE_B && TARGET_OS_IOS && !TARGET_OS_MACCATALYST
+#elif WWN_MODE_B && TARGET_OS_IOS && !TARGET_OS_MACCATALYST
   (void)revert;
   [WWNSharedUserDefaults() setBool:enabled
                             forKey:kWWNPrefsDesktopReplacementEnabled];
@@ -6058,8 +6033,7 @@ static BOOL WWNRouteToUnifiedWindowWithString(NSString *selectorName,
                     object:nil
                   userInfo:@{@"enabled" : @(enabled)}];
   return YES;
-#endif
-#if TARGET_OS_OSX
+#elif TARGET_OS_OSX
   WWNDesktopReplacementController *desk =
       [WWNDesktopReplacementController sharedController];
   if (!enabled) {
@@ -6174,9 +6148,10 @@ static BOOL WWNRouteToUnifiedWindowWithString(NSString *selectorName,
 #ifdef WWN_PREFPANE
   WWNHandoffToWawonaApp(@"Desktop");
   return;
-#endif
+#else
   [[WWNDesktopReplacementController sharedController] presentReplaceNowFlow];
   [self reloadDesktopSection];
+#endif
 }
 
 - (void)reloadDesktopSection {
@@ -7018,14 +6993,12 @@ static BOOL WWNRouteToUnifiedWindowWithString(NSString *selectorName,
   self.pickingItem = item;
   self.pickerTitleLabel.stringValue = item.title ?: @"";
   [self.view setNeedsLayout:YES];
-  [self.view layoutSubtreeIfNeeded];
   [self.tableView reloadData];
 }
 
 - (void)exitOptionPicker {
   self.pickingItem = nil;
   [self.view setNeedsLayout:YES];
-  [self.view layoutSubtreeIfNeeded];
   [self.tableView reloadData];
 }
 
@@ -7060,13 +7033,14 @@ static BOOL WWNRouteToUnifiedWindowWithString(NSString *selectorName,
     return;
   }
   Class presenter = NSClassFromString(@"WWNEnvironmentSettingsPresenter");
-  if (!presenter || ![presenter respondsToSelector:@selector(macOSHostingView)]) {
+  SEL hostViewSel = NSSelectorFromString(@"macOSHostingView");
+  if (!presenter || ![presenter respondsToSelector:hostViewSel]) {
     NSLog(@"[WWNPreferences] Env Vars embed unavailable (presenter missing)");
     return;
   }
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
-  NSView *host = [presenter performSelector:@selector(macOSHostingView)];
+  NSView *host = [presenter performSelector:hostViewSel];
 #pragma clang diagnostic pop
   if (![host isKindOfClass:[NSView class]]) {
     NSLog(@"[WWNPreferences] Env Vars embed failed (hosting view nil)");

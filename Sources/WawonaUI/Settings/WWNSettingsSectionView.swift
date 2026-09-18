@@ -33,6 +33,9 @@ struct WWNSettingsSectionView: View {
                             model: model,
                             onPasswordEdit: { passwordItem = $0 }
                         )
+                        // Keep a separator after every row, including after
+                        // an iOS split-detail restoration.
+                        .backport.visibleRowSeparator()
                     }
                 }
             }
@@ -254,6 +257,9 @@ private struct WWNSettingsRowView: View {
 
     private var linkRow: some View {
         HStack(spacing: 12) {
+            if let iconURL = item.iconURL, let url = URL(string: iconURL) {
+                WWNSettingsLinkIcon(url: url)
+            }
             titleStack
             Spacer(minLength: 12)
             if let urlString = item.urlString, let url = URL(string: urlString) {
@@ -283,6 +289,62 @@ private struct WWNSettingsRowView: View {
         }
         .padding(.vertical, 4)
         .accessibilityIdentifier(item.accessibilityIdentifier ?? "")
+    }
+}
+
+/// The iOS settings table retains the same leading identity icons as its
+/// UIKit counterpart.  A symbol placeholder reserves the row geometry while
+/// a remote avatar or service mark is loading (or unavailable).
+private struct WWNSettingsLinkIcon: View {
+    let url: URL
+    // `StateObject` starts at iOS 14; this view must also compile for iOS 13.
+    @ObservedObject private var loader: WWNSettingsRemoteImageLoader
+
+    init(url: URL) {
+        self.url = url
+        loader = WWNSettingsRemoteImageLoader(url: url)
+    }
+
+    var body: some View {
+        Group {
+            if let image = loader.image {
+                image
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                Image(systemName: "link.circle.fill")
+                    .resizable()
+                    .scaledToFit()
+                    .foregroundStyle(.secondary)
+                    .padding(2)
+            }
+        }
+        .frame(width: 28, height: 28)
+        .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .accessibilityHidden(true)
+    }
+}
+
+/// `AsyncImage` is unavailable on iOS 13–14.  This native UI adapter keeps
+/// the About links visually equivalent without raising Wawona's SwiftUI floor.
+private final class WWNSettingsRemoteImageLoader: ObservableObject {
+    @Published private(set) var image: Image?
+
+    init(url: URL) {
+        URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
+            guard let data else { return }
+            #if os(macOS)
+            guard let platformImage = NSImage(data: data) else { return }
+            let image = Image(nsImage: platformImage)
+            #else
+            guard let platformImage = UIImage(data: data) else { return }
+            let image = Image(uiImage: platformImage)
+            #endif
+            DispatchQueue.main.async {
+                self?.image = image
+            }
+        }.resume()
     }
 }
 

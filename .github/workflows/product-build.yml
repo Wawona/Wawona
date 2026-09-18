@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       only:
-        description: "Product subset: all | ios-sim | apple-family | android-apk | macos-app | appimage"
+        description: "Product subset: all | ios-sim | ios-modeb | apple-family | android-apk | macos-app | appimage"
         type: string
         required: false
         default: "all"
@@ -34,7 +34,7 @@ on:
         required: false
         default: ""
       only:
-        description: "Product subset: all | ios-sim | apple-family | android-apk | macos-app | appimage"
+        description: "Product subset: all | ios-sim | ios-modeb | apple-family | android-apk | macos-app | appimage"
         type: string
         required: false
         default: "all"
@@ -121,6 +121,52 @@ jobs:
           # Bundle ships hidden Mach-Os (e.g. bin/.foot-wrapped); upload-artifact
           # excludes dotfiles by default, which broke foot in the matrix gate.
           include-hidden-files: true
+          compression-level: 0
+          retention-days: 14
+
+  ios-modeb:
+    name: "iOS Mode B channel artifacts"
+    if: ${{ (inputs.only || 'all') == 'all' || (inputs.only || 'all') == 'ios-modeb' }}
+    runs-on: macos-26
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
+
+      - name: Select Xcode
+        run: ./.github/scripts/select-xcode.sh
+
+      - uses: DeterminateSystems/nix-installer-action@v22
+        with:
+          determinate: true
+          extra-conf: |
+            sandbox = relaxed
+            allow-import-from-derivation = true
+            max-jobs = auto
+            cores = 0
+      - uses: DeterminateSystems/flakehub-cache-action@v3
+
+      - name: Build TrollStore iOS 14+ and Sileo iOS 11+ products
+        run: |
+          ./.github/scripts/nix-retry.sh nix build ".#wawona-ios-modeb-tipa-slim" --print-build-logs --out-link result-tipa
+          ./.github/scripts/nix-retry.sh nix build ".#wawona-ios-modeb-deb-rootless-slim" --print-build-logs --out-link result-sileo
+
+      - name: Verify channel floors and stage artifacts
+        run: |
+          mkdir -p dist/ios-modeb
+          cp -L result-tipa/*.tipa dist/ios-modeb/
+          cp -L result-sileo/*.deb dist/ios-modeb/
+          bash ./.github/scripts/verify-ios-modeb-artifacts.sh --mode-b dist/ios-modeb/*.tipa
+          dpkg-deb -f dist/ios-modeb/*.deb Depends | grep -Fx 'firmware (>= 11.0)'
+          printf '{"tipa_min_ios":"14.0","sileo_min_ios":"11.0","sha":"%s"}\n' "${{ github.sha }}" \
+            > dist/ios-modeb/product-manifest.json
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: product-ios-modeb
+          path: dist/ios-modeb/
+          if-no-files-found: error
           compression-level: 0
           retention-days: 14
 

@@ -29,6 +29,13 @@ FOUNDATION_EXPORT NSNotificationName const WWNClientFocusRequestedNotification;
 /// Tabs map 1:1 to Wayland client toplevels. Never Shell / Machines chrome.
 FOUNDATION_EXPORT NSNotificationName const WWNHostWindowsDidChangeNotification;
 
+/// Posted on the main queue when a Wayland client sets the clipboard selection
+/// (e.g. user selects text in weston-terminal). The active compositor view
+/// should present the native iOS edit menu (Copy / Paste) at the most recent
+/// touch point. Carries no userInfo; the text is already in UIPasteboard.
+/// Not posted on tvOS (no UIPasteboard).
+FOUNDATION_EXPORT NSNotificationName const WWNClientSelectionDidChangeNotification;
+
 /// Weston demos that keep a preferred square (flower/smoke 200x200, simple-shm
 /// and simple-egl 250x250). Matches catalog ids, xdg app_ids, and titles
 /// (`Weston Simple EGL`). Host must not inject fill-to-output configures.
@@ -303,6 +310,8 @@ extern NSString *const WWNClientWindowSceneWindowIdKey;
 - (void)hostEditCopyFromClient;
 /// Push host pasteboard into `wl_data_device`, then TI commit or Ctrl+Shift+V.
 - (void)hostEditPasteIntoClient;
+/// Ask the focused client to select all (Ctrl+Shift+A).
+- (void)hostEditSelectAllInClient;
 - (void)hostEditSetClientClipboard:(NSString *)text;
 
 // MARK: - Configuration

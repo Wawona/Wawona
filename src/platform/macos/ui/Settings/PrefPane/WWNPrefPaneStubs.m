@@ -14,6 +14,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wincomplete-implementation"
+
 void (*wwn_startup_log_sink)(const char *module, const char *msg) = NULL;
 int wwn_log_quiet = 0;
 
@@ -273,6 +276,18 @@ NSString *const kWWNMachineTypeContainer = @"container";
   (void)machineId;
   return @[];
 }
++ (BOOL)resolvedWaypipeDisableGpuForProfile:(WWNMachineProfile *)profile {
+  (void)profile;
+  return NO;
+}
++ (BOOL)nativeClientIdIsIgettyConsole:(NSString *)clientId {
+  (void)clientId;
+  return NO;
+}
++ (BOOL)profileIsIgettyConsoleNotAMachine:(WWNMachineProfile *)profile {
+  (void)profile;
+  return NO;
+}
 + (NSArray<WWNMachineProfile *> *)deleteAllProfiles {
   return @[];
 }
@@ -410,6 +425,16 @@ NSString *const kWWNMachineTypeContainer = @"container";
   return NO;
 }
 - (BOOL)isDesktopMachine:(WWNMachineProfile *)profile {
+  (void)profile;
+  return NO;
+}
+- (BOOL)syncDesktopHostInstallArtifactsIfNeeded:(NSError **)error {
+  if (error) {
+    *error = nil;
+  }
+  return YES;
+}
+- (BOOL)installedHelperMatchesCurrentBuildForProfile:(WWNMachineProfile *)profile {
   (void)profile;
   return NO;
 }
@@ -663,3 +688,6 @@ NSString *const WWNRootfsICloudSyncPreferenceKey =
   (void)passphrase;
 }
 @end
+
+#pragma clang diagnostic pop
+

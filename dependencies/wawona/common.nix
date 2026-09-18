@@ -48,6 +48,8 @@ rec {
     "Sources/WawonaUI/VisionOS/WawonaVisionShell.swift"
     # Phone + tvOS Safari-style Wayland client tabs (#84).
     "Sources/WawonaUI/Session/WWNClientSessionTabs.swift"
+    # Native Rootshell-style extended keyboard toolbar and accessory (#85).
+    "Sources/WawonaUI/Keyboard/WWNKeyboardToolbar.swift"
     "Sources/WawonaWatch/WawonaWatchApp.swift"
     "Sources/WawonaWatch/MachineStatusView.swift"
     "Sources/WawonaWatch/QuickConnectView.swift"

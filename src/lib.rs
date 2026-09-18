@@ -65,7 +65,7 @@ pub use ffi::types::*;
 pub use domain::error::DomainError;
 pub use domain::machine_profile::{
     ClientLauncher, ContainerMachineSettings, DomainEnvironmentOverride, MachineProfile,
-    MachineRuntimeOverrides, MachineStatus, MachineType,
+    MachineRuntimeOverrides, MachineStatus, MachineType, VirtualMachineSettings,
 };
 pub use domain::uniffi_api::{
     machine_profiles_decode_v1, machine_profiles_encode_v1, normalize_ssh_port_uniffi,

@@ -17,6 +17,12 @@ public enum MachineEditorIntent: Sendable {
     case updateWaypipeEnabled(Bool)
     case updateContainerRef(String)
     case updateEntryCommand(String)
+    case updateVMIdentifier(String)
+    case updateVMVsockPort(String)
+    case updateVMGuestVariant(String)
+    case updateVMMemoryMB(Int)
+    case updateVMDiskGiB(Int)
+    case updateVMNotes(String)
 }
 
 public enum MachineEditorFieldID: String, Sendable, CaseIterable {
@@ -37,6 +43,12 @@ public enum MachineEditorFieldID: String, Sendable, CaseIterable {
     case containerRef
     case entryCommand
     case desktopSession
+    case vmIdentifier
+    case vmVsockPort
+    case vmGuestVariant
+    case vmMemoryMB
+    case vmDiskGiB
+    case vmNotes
     case wasmCommand
     case wasmModulePath
     case wasmPackage
@@ -89,6 +101,12 @@ public struct MachineEditorState: Sendable, Hashable {
     /// Local OCI layout directory to run from instead of a registry image
     /// (`--image-archive`). Set by the editor's "Import image archive…" flow.
     public var imageArchivePath: String
+    public var vmIdentifier: String
+    public var vmVsockPort: String
+    public var vmGuestVariant: String
+    public var vmMemoryMB: Int
+    public var vmDiskGiB: Int
+    public var vmNotes: String
     public var wasmCommand: String
     public var wasmModulePath: String
     public var wasmPackage: String
@@ -113,6 +131,12 @@ public struct MachineEditorState: Sendable, Hashable {
         entryCommand: String = "",
         desktopSession: Bool = false,
         imageArchivePath: String = "",
+        vmIdentifier: String = "",
+        vmVsockPort: String = "",
+        vmGuestVariant: String = "4k",
+        vmMemoryMB: Int = 2048,
+        vmDiskGiB: Int = 8,
+        vmNotes: String = "",
         wasmCommand: String = "wasm hello-wasi-gui",
         wasmModulePath: String = "",
         wasmPackage: String = ""
@@ -136,6 +160,12 @@ public struct MachineEditorState: Sendable, Hashable {
         self.entryCommand = entryCommand
         self.desktopSession = desktopSession
         self.imageArchivePath = imageArchivePath
+        self.vmIdentifier = vmIdentifier
+        self.vmVsockPort = vmVsockPort
+        self.vmGuestVariant = vmGuestVariant
+        self.vmMemoryMB = vmMemoryMB
+        self.vmDiskGiB = vmDiskGiB
+        self.vmNotes = vmNotes
         self.wasmCommand = wasmCommand
         self.wasmModulePath = wasmModulePath
         self.wasmPackage = wasmPackage
@@ -242,6 +272,15 @@ public struct MachineEditorValidation: Sendable {
                 MachineEditorFieldID.entryCommand,
                 MachineEditorFieldID.desktopSession,
             ])
+        } else if state.isVirtualMachine {
+            fields.append(contentsOf: [
+                MachineEditorFieldID.vmIdentifier,
+                MachineEditorFieldID.vmVsockPort,
+                MachineEditorFieldID.vmGuestVariant,
+                MachineEditorFieldID.vmMemoryMB,
+                MachineEditorFieldID.vmDiskGiB,
+                MachineEditorFieldID.vmNotes,
+            ])
         } else if state.isWasm {
             fields.append(contentsOf: [
                 MachineEditorFieldID.wasmCommand,
@@ -292,6 +331,18 @@ public struct MachineEditorValidation: Sendable {
             return MachineEditorFieldMetadata(id: .entryCommand, label: "Command", helperText: "Command to run in the container. Empty inherits the global default command.")
         case .desktopSession:
             return MachineEditorFieldMetadata(id: .desktopSession, label: "Desktop Session", helperText: "Attach the container's Wayland session to Wawona (windows appear via the waypipe vsock bridge).")
+        case .vmIdentifier:
+            return MachineEditorFieldMetadata(id: .vmIdentifier, label: "VM Identifier", helperText: "A stable name for this guest on the selected target backend.")
+        case .vmVsockPort:
+            return MachineEditorFieldMetadata(id: .vmVsockPort, label: "VSock Port", helperText: "Guest waypipe bridge port. Empty inherits the runtime default.")
+        case .vmGuestVariant:
+            return MachineEditorFieldMetadata(id: .vmGuestVariant, label: "NixOS Guest", helperText: "Signed, bundled 4K or 16K-page NixOS image.", required: true)
+        case .vmMemoryMB:
+            return MachineEditorFieldMetadata(id: .vmMemoryMB, label: "Memory", helperText: "Guest RAM in MiB. Relay verifies this against the guest manifest.", required: true)
+        case .vmDiskGiB:
+            return MachineEditorFieldMetadata(id: .vmDiskGiB, label: "Disk Size", helperText: "Writable virtio disk capacity. It can only grow after the machine exists.", required: true)
+        case .vmNotes:
+            return MachineEditorFieldMetadata(id: .vmNotes, label: "Notes", helperText: "Optional notes for this virtual machine.")
         case .wasmCommand:
             return MachineEditorFieldMetadata(id: .wasmCommand, label: "Command", helperText: "Same as zsh: wasm hello-wasi-gui or wpm install hello-wasi-gui.")
         case .wasmModulePath:

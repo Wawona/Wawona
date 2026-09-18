@@ -365,9 +365,23 @@ if [ "\$NAME" = weston ] && [ "\$MODEB" -eq 0 ]; then
   # (Frameworks/libEGL.dylib) so nested weston gets Wayland-EGL + dmabuf.
   # ANGLE is libEGL_angle.dylib, opened by the shim. Never export DYLD_INSERT
   # for Apple /bin/* (arm64e).
-  if [ -z "\${DYLD_INSERT_LIBRARIES:-}" ] && [ -d "\$APP/Contents/Frameworks" ]; then
+  if [ -d "\$APP/Contents/Frameworks" ]; then
     _wawona_egl="\$APP/Contents/Frameworks/libEGL.dylib"
     _wawona_gles="\$APP/Contents/Frameworks/libGLESv2.dylib"
+    _wawona_clean_insert=""
+    if [ -n "\${DYLD_INSERT_LIBRARIES:-}" ]; then
+      _wawona_oifs="\$IFS"
+      IFS=':'
+      for _p in \$DYLD_INSERT_LIBRARIES; do
+        case "\$_p" in
+          *libViewDebuggerSupport*|*GPUToolsCapture*|*RealityKitInspection*|*DebugHierarchyFoundation*|*SpatialInspectorFoundation*) ;;
+          "") ;;
+          *) _wawona_clean_insert="\${_wawona_clean_insert:+\$_wawona_clean_insert:}\$_p" ;;
+        esac
+      done
+      IFS="\$_wawona_oifs"
+      unset _wawona_oifs _p
+    fi
     _wawona_insert=""
     if [ -f "\$_wawona_egl" ]; then
       _wawona_insert="\$_wawona_egl"
@@ -375,10 +389,13 @@ if [ "\$NAME" = weston ] && [ "\$MODEB" -eq 0 ]; then
     if [ -f "\$_wawona_gles" ]; then
       _wawona_insert="\${_wawona_insert:+\$_wawona_insert:}\$_wawona_gles"
     fi
+    if [ -n "\$_wawona_clean_insert" ]; then
+      _wawona_insert="\${_wawona_insert:+\$_wawona_insert:}\$_wawona_clean_insert"
+    fi
     if [ -n "\$_wawona_insert" ]; then
       export DYLD_INSERT_LIBRARIES="\$_wawona_insert"
     fi
-    unset _wawona_egl _wawona_gles _wawona_insert
+    unset _wawona_egl _wawona_gles _wawona_clean_insert _wawona_insert
   fi
 fi
 

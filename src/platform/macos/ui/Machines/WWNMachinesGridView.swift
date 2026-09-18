@@ -4,6 +4,9 @@ import AppKit
 #elseif os(iOS)
 import UIKit
 #endif
+#if canImport(WawonaUI)
+import WawonaUI
+#endif
 
 struct WWNMachinesGridView: View {
   let onConnect: (() -> Void)?
@@ -17,8 +20,7 @@ struct WWNMachinesGridView: View {
   @State private var searchQuery = ""
   #if os(iOS) || os(visionOS)
   /// iPad / visionOS: overlay search (not `.searchable` on the split detail).
-  /// iPhone iOS 26: system `.searchable` + `DefaultToolbarItem(kind: .search)`
-  /// in the bottom bar with `ToolbarSpacer` before the compose +.
+  /// iPhone: system `.searchable` in the owning navigation item.
   @State private var isSearchPresented = false
   @FocusState private var isSearchFocused: Bool
   #endif
@@ -218,7 +220,7 @@ struct WWNMachinesGridView: View {
       .modifier(WWNIosPhoneLegacyBottomChrome(
         enabled: isIosPhone && !Self.usesNativePhoneSearchToolbar
       ) {
-        iosPhoneLegacyMessagesBottomChrome
+        iosPhoneMessagesBottomChrome
       })
       .overlay(alignment: .top) {
         if !isIosPhone && isSearchPresented {
@@ -233,7 +235,12 @@ struct WWNMachinesGridView: View {
         }
       }
       .onDisappear {
-        dismissIosSearch(preserveQuery: true)
+        // The iOS 26 search field is vended by the owning navigation item.
+        // Do not mutate its state while NavigationSplitView swaps a Settings
+        // detail in and out, or UIKit restores a detached bottom toolbar.
+        if !isIosPhone || !Self.usesNativePhoneSearchToolbar {
+          dismissIosSearch(preserveQuery: true)
+        }
       }
   }
 
@@ -247,10 +254,7 @@ struct WWNMachinesGridView: View {
   }
 
   private static var usesNativePhoneSearchToolbar: Bool {
-    #if os(iOS)
-    if #available(iOS 26.0, *) { return true }
-    #endif
-    return false
+    false
   }
 
   @ToolbarContentBuilder
@@ -264,17 +268,20 @@ struct WWNMachinesGridView: View {
       } label: {
         Label("Search", systemImage: "magnifyingglass")
       }
+      .backport.glassToolbarButton()
       .accessibilityIdentifier("wwn.machines.search")
     }
   }
 
-  /// iOS 26 Messages / Mail row: system search field + spacer + compose +.
-  /// Do not invent a custom capsule or a fixed 44/56pt +. The system sizes
-  /// both controls to the same bottom search chrome.
+  /// The split-detail host owns the bottom search row. In a NavigationSplitView
+  /// detail pane, UIKit lacks a UINavigationController-owned UIToolbar, so
+  /// DefaultToolbarItem(.bottomBar) attempts to insert a UIKitToolbar as a subview
+  /// of UIHostingController.view causing an infinite layout loop.
+  /// Keep usesNativePhoneSearchToolbar disabled so iosPhoneLegacyMessagesBottomChrome is used.
   @ToolbarContentBuilder
   private var iosPhoneMessagesBottomToolbar: some ToolbarContent {
     #if os(iOS)
-    if #available(iOS 26.0, *) {
+    if Self.usesNativePhoneSearchToolbar, #available(iOS 26.0, *) {
       DefaultToolbarItem(kind: .search, placement: .bottomBar)
       ToolbarSpacer(.flexible, placement: .bottomBar)
       ToolbarItem(placement: .bottomBar) {
@@ -283,8 +290,13 @@ struct WWNMachinesGridView: View {
         } label: {
           Label("Add Machine", systemImage: "plus")
         }
+        .backport.glassProminentToolbarButton()
         .tint(Color.accentColor)
         .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
+      }
+    } else {
+      ToolbarItem(placement: .automatic) {
+        EmptyView()
       }
     }
     #else
@@ -294,51 +306,84 @@ struct WWNMachinesGridView: View {
     #endif
   }
 
-  /// Pre-iOS 26 fallback only. Match search capsule height (~36), not FAB.
-  private var iosPhoneLegacyMessagesBottomChrome: some View {
-    HStack(alignment: .center, spacing: 8) {
-      HStack(spacing: 6) {
-        Image(systemName: "magnifyingglass")
-          .font(.body)
-          .foregroundStyle(.secondary)
-        TextField("Search", text: $searchQuery, prompt: Text("Search"))
-          .textFieldStyle(.plain)
-          .font(.body)
-          .focused($isSearchFocused)
-          .submitLabel(.search)
-          .accessibilityLabel("Search machines")
-          .accessibilityIdentifier("wwn.machines.search")
-        if !searchQuery.isEmpty {
-          Button {
-            searchQuery = ""
-          } label: {
-            Image(systemName: "xmark.circle.fill")
-              .font(.body)
+  /// Bottom search and action chrome with native Liquid Glass and WawonaBackport fallback.
+  /// Matches iOS 26 Messages / Notes design: fullwidth Liquid Glass searchbar
+  /// with prominent blue circular Add Machine button sharing exact identical sizing and unified glass lensing.
+  private var iosPhoneMessagesBottomChrome: some View {
+    let controlHeight: CGFloat = 46
+
+    return WawonaBackport<Any>.glassContainer(spacing: 10) {
+      HStack(alignment: .center, spacing: 10) {
+        // Fullwidth Liquid Glass Searchbar
+        HStack(spacing: 8) {
+          Image(systemName: "magnifyingglass")
+            .font(.system(size: 17, weight: .medium))
+            .foregroundStyle(.secondary)
+          TextField("Search", text: $searchQuery, prompt: Text("Search"))
+            .textFieldStyle(.plain)
+            .font(.system(size: 16))
+            .focused($isSearchFocused)
+            .submitLabel(.search)
+            .accessibilityLabel("Search machines")
+            .accessibilityIdentifier("wwn.machines.search")
+          if !searchQuery.isEmpty {
+            Button {
+              searchQuery = ""
+            } label: {
+              Image(systemName: "xmark.circle.fill")
+                .font(.system(size: 16))
+                .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+          } else {
+            Image(systemName: "mic.fill")
+              .font(.system(size: 16))
               .foregroundStyle(.secondary)
           }
-          .buttonStyle(.plain)
         }
+        .padding(.horizontal, 14)
+        .frame(maxWidth: .infinity)
+        .frame(height: controlHeight)
+        .backport.liquidGlassCapsule()
+        .shadow(color: Color.black.opacity(0.10), radius: 6, x: 0, y: 2)
+
+        // Add Machine Button - exact same size (height / diameter) as the searchbar
+        Button {
+          editorDestination = .add
+        } label: {
+          Image(systemName: "plus")
+            .font(.system(size: 20, weight: .bold))
+            .foregroundStyle(.white)
+        }
+        .backport.blueGlassCircleButton(size: controlHeight)
+        .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
       }
-      .padding(.horizontal, 12)
-      .padding(.vertical, 8)
-      .frame(maxWidth: .infinity)
-      .frame(height: 36)
-      .background(.ultraThinMaterial, in: Capsule())
-      Button {
-        editorDestination = .add
-      } label: {
-        Image(systemName: "plus")
-          .font(.body.weight(.semibold))
-          .frame(width: 36, height: 36)
-      }
-      .buttonStyle(.borderedProminent)
-      .buttonBorderShape(.circle)
-      .tint(Color.accentColor)
-      .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
     }
     .padding(.horizontal, 16)
-    .padding(.vertical, 4)
+    .padding(.top, 4)
+    .padding(.bottom, 6)
+    .background {
+      LinearGradient(
+        stops: [
+          .init(color: Color.clear, location: 0.0),
+          .init(color: systemChromeBackgroundColor.opacity(0.18), location: 0.35),
+          .init(color: systemChromeBackgroundColor.opacity(0.70), location: 1.0)
+        ],
+        startPoint: .top,
+        endPoint: .bottom
+      )
+      .ignoresSafeArea(edges: .bottom)
+      .allowsHitTesting(false)
+    }
     .accessibilityElement(children: .contain)
+  }
+
+  private var systemChromeBackgroundColor: Color {
+    #if canImport(UIKit)
+    Color(uiColor: .systemBackground)
+    #else
+    Color(nsColor: .windowBackgroundColor)
+    #endif
   }
 
   private var iosSearchOverlay: some View {
@@ -373,7 +418,7 @@ struct WWNMachinesGridView: View {
       }
       .padding(.horizontal, 14)
       .padding(.vertical, 11)
-      .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+      .backport.liquidGlass(cornerRadius: 18)
       .padding(.horizontal, 16)
       .padding(.top, 6)
     }
@@ -402,6 +447,7 @@ struct WWNMachinesGridView: View {
     #if os(macOS)
     ToolbarItem(placement: .primaryAction) {
       sortMenu
+        .backport.glassToolbarButton()
     }
     ToolbarItemGroup(placement: .primaryAction) {
       Button {
@@ -409,6 +455,7 @@ struct WWNMachinesGridView: View {
       } label: {
         Label("Add Machine", systemImage: "plus")
       }
+      .backport.glassToolbarButton()
       .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
     }
     #elseif os(tvOS)
@@ -418,6 +465,7 @@ struct WWNMachinesGridView: View {
     #else
     ToolbarItem(placement: .topBarTrailing) {
       sortMenu
+        .backport.glassToolbarButton()
     }
     #endif
   }
@@ -843,29 +891,7 @@ struct WWNMachinesGridView: View {
   }
 
   #if os(iOS) || os(visionOS)
-  @ViewBuilder
   private var iosAddMachineButton: some View {
-    #if os(iOS)
-    if #available(iOS 26, *) {
-      Button {
-        editorDestination = .add
-      } label: {
-        Image(systemName: "plus")
-          .font(.title2.weight(.semibold))
-          .frame(width: 56, height: 56)
-      }
-      .buttonStyle(.glassProminent)
-      .buttonBorderShape(.circle)
-      .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
-    } else {
-      addMachineCircleButton
-    }
-    #else
-    addMachineCircleButton
-    #endif
-  }
-
-  private var addMachineCircleButton: some View {
     Button {
       editorDestination = .add
     } label: {
@@ -873,7 +899,7 @@ struct WWNMachinesGridView: View {
         .font(.title2.weight(.semibold))
         .frame(width: 56, height: 56)
     }
-    .buttonStyle(.borderedProminent)
+    .backport.glassProminentButtonStyle()
     .buttonBorderShape(.circle)
     .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
   }
@@ -882,7 +908,7 @@ struct WWNMachinesGridView: View {
 }
 
 #if os(iOS) || os(visionOS)
-/// iPhone: system `.searchable` so iOS 26 can dock the field in the bottom bar.
+/// iPhone: system `.searchable` owned by the split-detail navigation item.
 /// Keep dismissing via `WWNHostKeyboard` when the split column changes.
 private struct WWNIosPhoneSearchable: ViewModifier {
   let enabled: Bool
@@ -890,6 +916,10 @@ private struct WWNIosPhoneSearchable: ViewModifier {
 
   func body(content: Content) -> some View {
     if enabled {
+      // On iOS 26 the bottom search slot is owned by
+      // `DefaultToolbarItem(kind: .search)`. Supplying a second explicit
+      // placement vends the search controller from a different navigation
+      // item, which UIKit rejects while restoring a split-detail view.
       content.searchable(text: $text, prompt: "Search")
     } else {
       content
@@ -897,7 +927,7 @@ private struct WWNIosPhoneSearchable: ViewModifier {
   }
 }
 
-/// Pre-iOS 26 only. Native bottom search + ToolbarSpacer is iOS 26+.
+/// Pre-iOS 26 only. Older systems use a safe-area search row.
 private struct WWNIosPhoneLegacyBottomChrome<Chrome: View>: ViewModifier {
   let enabled: Bool
   @ViewBuilder var chrome: () -> Chrome

@@ -42,6 +42,10 @@ extern NSString *const kWWNMachineTypeContainer;
 /// platform, readOnly, remove, kernelPath, initfsPath, vsockPort, desktopSession,
 /// imageArchivePath.
 @property(nonatomic, copy) NSDictionary<NSString *, id> *containerSettings;
+/// Virtual-machine settings mirror the cross-platform `vmSettings` JSON:
+/// provider, vmIdentifier, vsockPort, notes. Relay consumes the identifier
+/// only as a stable persistent-disk key; guest artifacts stay bundle-owned.
+@property(nonatomic, copy) NSDictionary<NSString *, id> *vmSettings;
 @property(nonatomic, assign) BOOL favorite;
 @property(nonatomic, assign) long long createdAtMs;
 @property(nonatomic, assign) long long updatedAtMs;

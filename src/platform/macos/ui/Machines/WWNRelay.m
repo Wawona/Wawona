@@ -110,28 +110,51 @@
     @"artifact" : [self artifactClass],
     @"image" : image ?: @"",
   } mutableCopy];
-  if (profile.machineId.length > 0) {
-    obj[@"machine_id"] = profile.machineId;
+  NSString *machineId = profile.machineId;
+  NSDictionary *vmSettings = [profile.vmSettings isKindOfClass:[NSDictionary class]]
+                                ? profile.vmSettings
+                                : @{};
+  id configuredId = vmSettings[@"vmIdentifier"];
+  if ([configuredId isKindOfClass:[NSString class]] &&
+      [(NSString *)configuredId length] > 0) {
+    machineId = (NSString *)configuredId;
   }
+  if (machineId.length > 0) {
+    obj[@"machine_id"] = machineId;
+  }
+  // Native packaging owns the guest bytes. The profile only selects a stable
+  // writable-disk identity; it never accepts a kernel, rootfs, or manifest
+  // path from UI text fields. This exact bundle contract is shared by macOS
+  // VZ and iOS Relay static CPU.
+  NSBundle *bundle = [NSBundle mainBundle];
+  NSString *resourcesRoot = bundle.resourcePath ?: @"";
+  NSString *binDir = [resourcesRoot stringByAppendingPathComponent:@"bin"];
 #if TARGET_OS_OSX
   // Relay VZ owns the guest when the app bundle ships launcher + guest.
-  NSBundle *bundle = [NSBundle mainBundle];
-  NSString *resources = bundle.resourcePath ?: @"";
-  NSString *binDir = [resources stringByAppendingPathComponent:@"bin"];
   NSString *launcher =
       [binDir stringByAppendingPathComponent:@"wawona-vz-run"];
-  NSString *guestDir =
-      [bundle pathForResource:@"wawona-macos-guest" ofType:nil];
-  if (guestDir.length == 0) {
-    guestDir = [bundle pathForResource:@"wawona-mobile-guest" ofType:nil];
+#else
+  NSString *launcher = @"";
+#endif
+  NSString *guestVariant = [vmSettings[@"guestVariant"] isKindOfClass:[NSString class]]
+                              ? vmSettings[@"guestVariant"]
+                              : @"4k";
+  if (![guestVariant isEqualToString:@"4k"] && ![guestVariant isEqualToString:@"16k"]) {
+    guestVariant = @"4k";
   }
-  id guestOverride = profile.runtimeOverrides[@"guestDir"];
-  if ([guestOverride isKindOfClass:[NSString class]] &&
-      [(NSString *)guestOverride length] > 0) {
-    guestDir = (NSString *)guestOverride;
-  }
-  NSString *stateDir = [NSString
-      stringWithFormat:@"/tmp/wawona-%d/relay-state", getuid()];
+  // The UI may select only a signed guest packaged in this IPA. Never accept
+  // a profile-provided filesystem path for kernel, rootfs, or manifest bytes.
+  NSString *guestResource = [NSString stringWithFormat:@"wawona-nixos-guest-%@", guestVariant];
+  NSString *guestDir = [bundle pathForResource:guestResource ofType:nil];
+  NSURL *appSupport = [[NSFileManager defaultManager]
+      URLsForDirectory:NSApplicationSupportDirectory
+             inDomains:NSUserDomainMask].firstObject;
+  NSString *stateDir = [[appSupport.path ?: NSTemporaryDirectory()
+      stringByAppendingPathComponent:@"Wawona/relay-state"] copy];
+  [[NSFileManager defaultManager] createDirectoryAtPath:stateDir
+                            withIntermediateDirectories:YES
+                                             attributes:nil
+                                                  error:nil];
   NSString *manifestPath =
       [guestDir stringByAppendingPathComponent:@"manifest.json"];
   NSData *manifestData =
@@ -143,8 +166,7 @@
                                               error:nil]
           : nil;
   if ([kind isEqualToString:@"vm"] || [kind isEqualToString:@"container"]) {
-    if ([[NSFileManager defaultManager] isExecutableFileAtPath:launcher] &&
-        [manifestJSON isKindOfClass:[NSDictionary class]]) {
+    if ([manifestJSON isKindOfClass:[NSDictionary class]]) {
       obj[@"guest"] = manifestJSON;
       obj[@"resources"] = @{
         @"launcher" : launcher,
@@ -153,14 +175,25 @@
         @"allow_unsigned_guest" : @YES,
       };
       unsigned memoryMB = 2048;
-      id memOverride = profile.runtimeOverrides[@"memoryMB"];
+      id memOverride = vmSettings[@"memoryMB"];
       if ([memOverride respondsToSelector:@selector(unsignedIntegerValue)]) {
         memoryMB = (unsigned)[memOverride unsignedIntegerValue];
       }
       obj[@"memory_mb"] = @(memoryMB);
+      unsigned diskGiB = 8;
+      id diskOverride = vmSettings[@"diskGiB"];
+      if ([diskOverride respondsToSelector:@selector(unsignedIntegerValue)]) {
+        diskGiB = (unsigned)[diskOverride unsignedIntegerValue];
+      }
+      unsigned maxDiskGiB = 64;
+      id maxDiskOverride = vmSettings[@"maxDiskGiB"];
+      if ([maxDiskOverride respondsToSelector:@selector(unsignedIntegerValue)]) {
+        maxDiskGiB = (unsigned)[maxDiskOverride unsignedIntegerValue];
+      }
+      obj[@"disk_gib"] = @(diskGiB);
+      obj[@"max_disk_gib"] = @(maxDiskGiB);
     }
   }
-#endif
   NSData *data = [NSJSONSerialization dataWithJSONObject:obj options:0 error:nil];
   return data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding]
               : @"{}";
@@ -262,11 +295,8 @@
     if ([backend isEqualToString:@"vz"] ||
         [backend isEqualToString:@"kvm-ch"] ||
         [backend isEqualToString:@"kvm-crosvm"] ||
-        [backend isEqualToString:@"static-cpu"] ||
-        [backend isEqualToString:@"mode-b-jit"] ||
-        [backend isEqualToString:@"ios-hv"]) {
-      if ([backend isEqualToString:@"static-cpu"] ||
-          [backend isEqualToString:@"mode-b-jit"]) {
+        [backend isEqualToString:@"static-cpu"]) {
+      if ([backend isEqualToString:@"static-cpu"]) {
 #if TARGET_OS_IPHONE && defined(WWN_MODE_B) && WWN_MODE_B
         NSString *hid = profile.machineId.length > 0
                             ? self.handlesByMachineId[profile.machineId]

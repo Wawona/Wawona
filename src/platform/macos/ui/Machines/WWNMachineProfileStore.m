@@ -67,6 +67,7 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
     _waypipeSecCtx = @"";
     _runtimeOverrides = @{};
     _containerSettings = @{};
+    _vmSettings = @{};
     _favorite = NO;
     _createdAtMs = now;
     _updatedAtMs = now;
@@ -113,6 +114,7 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
     @"launchers" : @[],
     kWWNMachineRuntimeOverrides : runtimeOverrides,
     @"containerSettings" : self.containerSettings ?: @{},
+    @"vmSettings" : self.vmSettings ?: @{},
     @"favorite" : @(self.favorite),
   };
 }
@@ -380,6 +382,9 @@ static NSString *const kWWNPrefSwipeBackToCloseEnabled = @"wawona.pref.swipeBack
       [obj[@"containerSettings"] isKindOfClass:[NSDictionary class]]
           ? obj[@"containerSettings"]
           : @{};
+  profile.vmSettings = [obj[@"vmSettings"] isKindOfClass:[NSDictionary class]]
+                           ? obj[@"vmSettings"]
+                           : @{};
   if ([runtimeOverrides[kWWNRuntimeWaypipeEnabled]
           respondsToSelector:@selector(boolValue)]) {
     profile.sshEnabled = [runtimeOverrides[kWWNRuntimeWaypipeEnabled] boolValue];

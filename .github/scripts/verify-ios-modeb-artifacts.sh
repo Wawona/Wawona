@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: $0 --mode-a Wawona.app | --mode-b|--iteration Wawona-YY.M.D-iOS-arm64.tipa" >&2
+  echo "usage: $0 --mode-a Wawona.app | --mode-b|--iteration Wawona-YY.M.D-iOS-arm64.tipa | --sileo Wawona.app" >&2
   exit 2
 }
 
@@ -27,6 +27,24 @@ check_forbidden_entitlements() {
   local entitlements="$1"
   ! /usr/bin/grep -Eq 'iowatchdog|ElleKit|ellekit' "$entitlements" ||
     fail "forbidden jailbreak or watchdog entitlement found"
+}
+
+macho_ios_minimum() {
+  /usr/bin/otool -l "$1" | /usr/bin/awk '
+    /cmd LC_BUILD_VERSION/ { build = 1; next }
+    /cmd LC_VERSION_MIN_IPHONEOS/ { legacy = 1; next }
+    build && $1 == "minos" { print $2; exit }
+    legacy && $1 == "version" { print $2; exit }
+  '
+}
+
+require_ios_minimum() {
+  local executable="$1"
+  local expected="$2"
+  local actual
+  actual="$(macho_ios_minimum "$executable")"
+  [[ "$actual" == "$expected" ]] ||
+    fail "expected iOS minimum $expected, got ${actual:-missing}"
 }
 
 if [[ "$mode" == "--mode-a" ]]; then
@@ -60,6 +78,18 @@ if [[ "$mode" == "--mode-a" ]]; then
       fail "Mode A contains Mode B entitlements"
   fi
   echo "Mode A firewall OK: $app"
+  exit 0
+fi
+
+if [[ "$mode" == "--sileo" ]]; then
+  app="$artifact"
+  [[ -d "$app" ]] || fail "Sileo input is not an app bundle"
+  executable="$app/Wawona"
+  [[ -x "$executable" ]] || fail "Sileo executable is missing"
+  [[ "$(plist_value "$app/Info.plist" CFBundleIdentifier)" == "com.aspauldingcode.Wawona.ModeB" ]] ||
+    fail "Sileo bundle identifier is wrong"
+  require_ios_minimum "$executable" "11.0"
+  echo "Sileo iOS 11+ artifact gate OK: $app"
   exit 0
 fi
 
@@ -103,6 +133,7 @@ echo "Mode B tipa: skipping leftover guest Image/rootfs (Relay frames planned)"
   fail "Mode B bundle identifier is wrong"
 [[ -n "$(plist_value "$app/Info.plist" CFBundleVersion)" ]] ||
   fail "Mode B build number is missing"
+require_ios_minimum "$executable" "14.0"
 /usr/bin/nm -gU "$executable" 2>/dev/null | /usr/bin/grep '_wwn_iomfb_open' >/dev/null ||
   fail "Mode B IOMFB sink is not linked"
 /usr/bin/nm -gU "$executable" 2>/dev/null | /usr/bin/grep '_wwn_igetty_ios_initialize' >/dev/null ||

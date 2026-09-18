@@ -274,6 +274,32 @@ pub struct ContainerMachineSettings {
     pub image_archive_path: Option<String>,
 }
 
+/// Per-machine virtual-machine configuration.  The backend is selected by the
+/// target build; these are user-owned guest identity and connection settings.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, uniffi::Record)]
+pub struct VirtualMachineSettings {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "vmIdentifier")]
+    pub vm_identifier: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "vsockPort")]
+    pub vsock_port: Option<String>,
+    /// Bundled, signed NixOS guest image variant: `4k` or `16k`.
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "guestVariant")]
+    pub guest_variant: Option<String>,
+    /// Guest RAM selected in the machine editor. The Relay spec verifies this
+    /// against the selected manifest before allocating its one RAM arena.
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "memoryMB")]
+    pub memory_mb: Option<i32>,
+    /// Writable virtio-block capacity and its user-approved growth ceiling.
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "diskGiB")]
+    pub disk_gib: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "maxDiskGiB")]
+    pub max_disk_gib: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notes: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, uniffi::Record)]
 pub struct ClientLauncher {
     #[serde(default = "new_uuid")]
@@ -341,6 +367,8 @@ pub struct MachineProfile {
         rename = "containerSettings"
     )]
     pub container_settings: Option<ContainerMachineSettings>,
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "vmSettings")]
+    pub vm_settings: Option<VirtualMachineSettings>,
 }
 
 impl Default for MachineProfile {
@@ -367,6 +395,7 @@ impl MachineProfile {
             favorite: false,
             runtime_overrides: MachineRuntimeOverrides::default(),
             container_settings: None,
+            vm_settings: None,
         }
     }
 
@@ -548,6 +577,26 @@ mod tests {
 
         let decoded: MachineProfile = serde_json::from_str(&json).unwrap();
         assert_eq!(decoded, p);
+    }
+
+    #[test]
+    fn virtual_machine_settings_round_trip_with_swift_keys() {
+        let settings = VirtualMachineSettings {
+            provider: Some("relay".into()),
+            vm_identifier: Some("stardust-nixos".into()),
+            vsock_port: Some("1024".into()),
+            guest_variant: Some("4k".into()),
+            memory_mb: Some(2048),
+            disk_gib: Some(16),
+            max_disk_gib: Some(64),
+            notes: None,
+        };
+        let json = serde_json::to_string(&settings).unwrap();
+        assert!(json.contains("\"guestVariant\":\"4k\""), "{json}");
+        assert!(json.contains("\"memoryMB\":2048"), "{json}");
+        assert!(json.contains("\"diskGiB\":16"), "{json}");
+        assert!(json.contains("\"maxDiskGiB\":64"), "{json}");
+        assert_eq!(serde_json::from_str::<VirtualMachineSettings>(&json).unwrap(), settings);
     }
 
     #[test]

@@ -42,8 +42,10 @@ struct WWNContainerHubSearchView: View {
               tags = []
               tagsError = nil
             }
+            .backport.glassToolbarButton()
           } else {
             Button("Close") { dismiss() }
+              .backport.glassToolbarButton()
           }
         }
       }

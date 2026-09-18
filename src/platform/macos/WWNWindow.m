@@ -1070,6 +1070,9 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
   if (action == @selector(paste:)) {
     return [bridge hostEditCanPaste];
   }
+  if (action == @selector(selectAll:)) {
+    return [bridge hostEditMenuEnabled];
+  }
   if ([super respondsToSelector:@selector(validateMenuItem:)]) {
     return [super validateMenuItem:menuItem];
   }
@@ -1084,6 +1087,11 @@ static uint32_t MacosToXkbKeycode(unsigned short macCode) {
 - (void)paste:(id)sender {
   (void)sender;
   [[WWNCompositorBridge sharedBridge] hostEditPasteIntoClient];
+}
+
+- (void)selectAll:(id)sender {
+  (void)sender;
+  [[WWNCompositorBridge sharedBridge] hostEditSelectAllInClient];
 }
 
 @end

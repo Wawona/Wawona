@@ -38,7 +38,6 @@ pub mod settings_catalog {
         Machines,
         ICloudSync,
         AppleWatch,
-        Advanced,
         Desktop,
         Waypipe,
         Ssh,
@@ -58,7 +57,6 @@ pub mod settings_catalog {
                 Self::Machines => "Machines",
                 Self::ICloudSync => "iCloud Sync",
                 Self::AppleWatch => "Apple Watch",
-                Self::Advanced => "Advanced",
                 Self::Desktop => "Desktop",
                 Self::Waypipe => "Waypipe",
                 Self::Ssh => "SSH",
@@ -78,7 +76,6 @@ pub mod settings_catalog {
                 Self::Machines => "machines",
                 Self::ICloudSync => "iCloudSync",
                 Self::AppleWatch => "appleWatch",
-                Self::Advanced => "advanced",
                 Self::Desktop => "desktop",
                 Self::Waypipe => "waypipe",
                 Self::Ssh => "ssh",
@@ -109,13 +106,13 @@ pub mod settings_catalog {
         use SettingsSectionId::*;
         match host {
             SettingsHost::MacOs => vec![
-                Display, Input, Graphics, Connection, Environment, LocalShell, Machines,
-                ICloudSync, Advanced, Desktop, Waypipe, Ssh, About, Dependencies,
+                Display, Input, Graphics, Environment,
+                ICloudSync, Desktop, Waypipe, Ssh, About, Dependencies,
             ],
             SettingsHost::Ios => {
                 let mut sections = vec![
-                    Display, Input, Graphics, Connection, Environment, LocalShell, Machines,
-                    ICloudSync, AppleWatch, Advanced,
+                    Display, Input, Graphics, Environment,
+                    ICloudSync, AppleWatch,
                 ];
                 // Store IPA must not list Desktop. TrollStore tipa and Sileo
                 // Mode B compile with profile-ios-mode-b (IOMFB + igetty).
@@ -125,20 +122,20 @@ pub mod settings_catalog {
                 sections
             }
             SettingsHost::VisionOs => vec![
-                Display, Input, Graphics, Connection, Environment, LocalShell, Machines,
-                ICloudSync, Advanced, Waypipe, Ssh, About, Dependencies,
+                Display, Input, Graphics, Environment,
+                ICloudSync, Waypipe, Ssh, About, Dependencies,
             ],
             SettingsHost::Android | SettingsHost::Linux => vec![
-                Display, Input, Graphics, Connection, Environment, LocalShell, Machines,
-                Advanced, Waypipe, Ssh, About, Dependencies,
+                Display, Input, Graphics, Environment,
+                Waypipe, Ssh, About, Dependencies,
             ],
             SettingsHost::TvOs => vec![
-                Display, Input, Graphics, Connection, Environment, Machines, Advanced,
+                Display, Input, Graphics, Environment,
                 Waypipe, Ssh, About, Dependencies,
             ],
             SettingsHost::WatchOs => vec![
-                Display, Input, Graphics, Connection, Environment, Machines, ICloudSync,
-                Waypipe, Ssh, Advanced, About, Dependencies,
+                Display, Input, Graphics, Environment, ICloudSync,
+                Waypipe, Ssh, About, Dependencies,
             ],
         }
     }

@@ -253,6 +253,10 @@ Summary prints `MATRIX_FAIL cells=ios/niri,android/vkcube,…`.
   warm XCTest derived data; skipped on `pull_request` via `WAWONA_SKIP_FUZZEL`).
 - iOS Mode B: Gate: packages runs
   `.github/scripts/verify-ios-modeb-ci.sh` (scanner + vphone `.ad` contract).
+  Gate: products' `ios-modeb` job builds both channel artifacts on macOS:
+  TrollStore `.tipa` is checked at Mach-O iOS **14.0**, and Sileo `.deb` is
+  checked at iOS **11.0** (including its `firmware (>= 11.0)` package gate).
+  This is a product build, not merely an archive repack.
   Gate: products runs `--mode-a` on the iOS and iPadOS simulator apps. Lab
   replay is `scripts/agent-device-smoke.sh vphone` against
   `vphone wawona-jb`. Xcode Simulator is not IOMFB or JIT proof. Mode B

@@ -41,6 +41,7 @@
   macosFuzzel ? null,
   # Bundled mobile VM guest (kernel + rootfs.img). Never a QEMU sysroot.
   mobileGuestArtifacts ? null,
+  mobileGuestArtifacts16k ? null,
   mobileVmEngine ? null,
   mobileVmEngineModeB ? null,
   # Mode B iOS scheme. Independent of a VM engine drv. Relay fail-closes.
@@ -221,6 +222,23 @@ let
       archive = "${strip mvk}/lib/libMoltenVK.a";
     in
       if mvk == null || !builtins.pathExists archive then [ ] else [
+        "-force_load" archive
+        "-framework" "Metal"
+        "-framework" "Foundation"
+        "-framework" "QuartzCore"
+        "-framework" "CoreGraphics"
+        "-framework" "IOSurface"
+        "-framework" "UIKit"
+      ];
+  # Apple-mobile packages are static-only. SwiftShader is the CPU Vulkan
+  # fallback after MoltenVK and must be linked into the app, never copied as a
+  # simulator dylib plus ICD manifest.
+  swiftshaderLdflags = deps:
+    let
+      swiftshader = deps.swiftshader or null;
+      archive = "${strip swiftshader}/lib/libvk_swiftshader.a";
+    in
+      if swiftshader == null || !builtins.pathExists archive then [ ] else [
         "-force_load" archive
         "-framework" "Metal"
         "-framework" "Foundation"
@@ -867,64 +885,6 @@ PLIST
     basedOnDependencyAnalysis = false;
   };
 
-  # SwiftShader CPU Vulkan ICD. IOS Simulator ONLY. On the headless CI simulator
-  # MoltenVK's Metal pipeline bring-up kills the app (Metal domain 102), so vkcube
-  # needs a pure-CPU Vulkan device to fall back to. Loaded at runtime by vkcube's
-  # dlopen dispatch (WWN_VULKAN_LIBRARY), so a flat Frameworks/*.dylib is fine. And
-  # this only ever runs for *simulator (the same TN2435 loose-dylib rule that keeps
-  # ANGLE flat copies off device also keeps SwiftShader off device; device store
-  # builds must not contain it at all, enforced by verify-iland-graphics-bundle).
-  swiftshaderSimLib = iosSimDeps.swiftshader or null;
-  swiftshaderSimEmbedScript =
-    if swiftshaderSimLib != null then
-      pkgs.writeShellScript "embed-swiftshader-sim.sh" ''
-        case "''${PLATFORM_NAME:-}" in
-          *simulator*) ;;
-          *) exit 0 ;;
-        esac
-        BUNDLE="$BUILT_PRODUCTS_DIR/$FULL_PRODUCT_NAME"
-        DEST="$BUNDLE/Frameworks"
-        ICD_DEST="$BUNDLE/vulkan/icd.d"
-        SS_SRC="${strip swiftshaderSimLib}/lib/libvk_swiftshader.dylib"
-        if [ ! -f "$SS_SRC" ]; then
-          HASH=$(basename "${strip swiftshaderSimLib}")
-          FALLBACK_DIR="$SRCROOT/.nix-deps/lib/$HASH"
-          if [ -f "$FALLBACK_DIR/lib/libvk_swiftshader.dylib" ]; then
-            SS_SRC="$FALLBACK_DIR/lib/libvk_swiftshader.dylib"
-          fi
-        fi
-        if [ ! -f "$SS_SRC" ]; then
-          echo "warning: SwiftShader ICD missing at $SS_SRC" >&2
-          exit 0
-        fi
-        mkdir -p "$DEST" "$ICD_DEST"
-        cp -f "$SS_SRC" "$DEST/libvk_swiftshader.dylib"
-        cat > "$ICD_DEST/vk_swiftshader_icd.json" <<'ICDJSON'
-{
-  "file_format_version": "1.0.0",
-  "ICD": {
-    "library_path": "../../Frameworks/libvk_swiftshader.dylib",
-    "api_version": "1.3.0"
-  }
-}
-ICDJSON
-        chmod -R u+w "$DEST/libvk_swiftshader.dylib" "$ICD_DEST" 2>/dev/null || true
-        if [ -n "''${EXPANDED_CODE_SIGN_IDENTITY:-}" ] && [ "''${EXPANDED_CODE_SIGN_IDENTITY}" != "-" ]; then
-          /usr/bin/codesign --force --sign "''${EXPANDED_CODE_SIGN_IDENTITY}" \
-            --preserve-metadata=identifier,entitlements,flags \
-            "$DEST/libvk_swiftshader.dylib"
-        fi
-        echo "Embedded SwiftShader CPU Vulkan ICD into $DEST (simulator only)"
-      ''
-    else
-      pkgs.writeShellScript "embed-swiftshader-sim-noop.sh" "exit 0";
-
-  swiftshaderSimEmbedPhase = {
-    path = swiftshaderSimEmbedScript;
-    name = "Embed SwiftShader (Simulator CPU Vulkan ICD)";
-    basedOnDependencyAnalysis = false;
-  };
-
   mobileVmEmbedPhases =
     lib.optionals (mobileGuestArtifacts != null) [ iosMobileGuestEmbedPhase ]
     ++ lib.optionals (mobileVmEngine != null) [ iosMobileVmEngineEmbedPhase ];
@@ -1009,7 +969,6 @@ ICDJSON
     ++ lib.optionals withVm mobileVmEmbedPhases
     ++ lib.optionals (angleSimDylib != null) [ angleSimEmbedPhase ]
     ++ lib.optionals (angleDeviceDylib != null) [ angleDeviceEmbedPhase ]
-    ++ lib.optionals (swiftshaderSimLib != null) [ swiftshaderSimEmbedPhase ]
     ++ [ simInstallWritableBundlePhase ];
 
   iosPostBuildPhases = mkAppleGpuPostBuildPhases {
@@ -1252,34 +1211,43 @@ ICDJSON
   # path from the environment at xcodebuild time (like WAWONA_UTM_SYSROOT for the
   # engine) rather than baking a store path in, so generating the Xcode project
   # never forces building the (heavy, cross-arch) guest. A device build that wants
-  # the bundled VM sets WAWONA_MOBILE_GUEST_DIR to the built artifacts.
+  # the bundled VM sets the 4K/16K paths to independently verified artifacts.
   mobileGuestIosEmbedScript = _guestArtifacts: pkgs.writeShellScript "embed-mobile-guest-ios.sh" ''
     case "''${PLATFORM_NAME:-}" in
       iphoneos|iphonesimulator|appletvos|appletvsimulator|xros|xrsimulator)
-        guestSrc="''${WAWONA_MOBILE_GUEST_DIR:-}"
+        guest4k="''${WAWONA_MOBILE_GUEST_DIR:-}"
+        guest16k="''${WAWONA_MOBILE_GUEST_16K_DIR:-}"
         ;;
       *)
         exit 0
         ;;
     esac
-    if [ -z "$guestSrc" ] || [ ! -d "$guestSrc" ]; then
-      echo "note: wawona-mobile-guest-artifacts not provided; set WAWONA_MOBILE_GUEST_DIR to embed the bundled VM guest" >&2
+    BUNDLE="$BUILT_PRODUCTS_DIR/$FULL_PRODUCT_NAME"
+    if [ -z "$guest4k" ] && [ -z "$guest16k" ]; then
+      echo "note: no Relay NixOS guests requested for this product flavor" >&2
       exit 0
     fi
-    BUNDLE="$BUILT_PRODUCTS_DIR/$FULL_PRODUCT_NAME"
-    DEST="$BUNDLE/wawona-mobile-guest"
-    rm -rf "$DEST"
-    mkdir -p "$DEST"
-    cp -f "$guestSrc"/* "$DEST/" 2>/dev/null || true
-    for k in Image zImage vmlinuz vmlinux; do
-      if [ -f "$guestSrc/$k" ]; then
-        cp -f "$guestSrc/$k" "$DEST/$k"
+    embed_guest() {
+      guestSrc="$1"
+      destination="$2"
+      if [ -z "$guestSrc" ] || [ ! -d "$guestSrc" ]; then
+        echo "error: signed Relay $destination guest was not provided" >&2
+        exit 1
       fi
-    done
-    if [ -f "$guestSrc/rootfs.img" ]; then
-      cp -f "$guestSrc/rootfs.img" "$DEST/rootfs.img"
-    fi
-    echo "Embedded wawona-mobile-guest into $DEST"
+      for artifact in Image initrd rootfs.img manifest.json; do
+        if [ ! -f "$guestSrc/$artifact" ]; then
+          echo "error: Relay $destination guest is incomplete; missing $artifact" >&2
+          exit 1
+        fi
+      done
+      DEST="$BUNDLE/$destination"
+      rm -rf "$DEST"
+      mkdir -p "$DEST"
+      cp -f "$guestSrc"/* "$DEST/" 2>/dev/null || true
+      echo "Embedded signed Relay guest $destination"
+    }
+    embed_guest "$guest4k" "wawona-nixos-guest-4k"
+    embed_guest "$guest16k" "wawona-nixos-guest-16k"
   '';
 
   # No declared outputFiles: Xcode pre-creates declared output paths inside the
@@ -1287,7 +1255,7 @@ ICDJSON
   # that installd rejects (e.g. a Frameworks/*.framework with no Info.plist).
   iosMobileGuestEmbedPhase = {
     path = mobileGuestIosEmbedScript mobileGuestArtifacts;
-    name = "Embed wawona-mobile-guest (VM kernel + rootfs)";
+    name = "Embed signed NixOS VM guests (4K + 16K)";
     basedOnDependencyAnalysis = false;
   };
 
@@ -1657,7 +1625,7 @@ ICDJSON
               "-lcrypto"
                "-lepoll-shim"
              ] ++ westonToytoolkitLdflagsAppleMobile iosSimDeps ++ westonCompositorLdflagsAppleMobile iosSimDeps
-             ++ (ilandGlLdflags { deps = iosSimDeps; simulator = true; }) ++ moltenvkLdflags iosSimDeps ++ footLdflags iosSimDeps ++ fastfetchLdflags iosSimDeps ++ phoonLdflags iosSimDeps ++ wasmLdflags iosSimDeps ++ neovimLdflags iosSimDeps ++ niriLdflags iosSimDeps ++ fuzzelLdflags iosSimDeps
+             ++ (ilandGlLdflags { deps = iosSimDeps; simulator = true; }) ++ moltenvkLdflags iosSimDeps ++ swiftshaderLdflags iosSimDeps ++ footLdflags iosSimDeps ++ fastfetchLdflags iosSimDeps ++ phoonLdflags iosSimDeps ++ wasmLdflags iosSimDeps ++ neovimLdflags iosSimDeps ++ niriLdflags iosSimDeps ++ fuzzelLdflags iosSimDeps
              ++ sshCliLdflags iosSimDeps
              ++ appleMobileResolvLdflags
              ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [
@@ -1707,7 +1675,7 @@ ICDJSON
                "-lcrypto"
                "-lepoll-shim"
              ] ++ westonToytoolkitLdflagsAppleMobile iosDeps ++ westonCompositorLdflagsAppleMobile iosDeps
-             ++ (ilandGlLdflags { deps = iosDeps; simulator = false; }) ++ moltenvkLdflags iosDeps ++ footLdflags iosDeps ++ fastfetchLdflags iosDeps ++ phoonLdflags iosDeps ++ wasmLdflags iosDeps ++ neovimLdflags iosDeps ++ niriLdflags iosDeps ++ fuzzelLdflags iosDeps
+             ++ (ilandGlLdflags { deps = iosDeps; simulator = false; }) ++ moltenvkLdflags iosDeps ++ swiftshaderLdflags iosDeps ++ footLdflags iosDeps ++ fastfetchLdflags iosDeps ++ phoonLdflags iosDeps ++ wasmLdflags iosDeps ++ neovimLdflags iosDeps ++ niriLdflags iosDeps ++ fuzzelLdflags iosDeps
              ++ sshCliLdflags iosDeps
              ++ appleMobileResolvLdflags
              ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [
@@ -1729,7 +1697,9 @@ ICDJSON
           # app-store export on Xcode 26). Do not also embed into iPadOS.
           { target = "Wawona-watchOS"; embed = true; codeSign = true; }
           { sdk = "UIKit.framework"; }
-          { sdk = "SwiftUI.framework"; }
+          # The iOS 11/12 UIKit shell must start without SwiftUI.  iOS 13+
+          # resolves this optional framework for the SwiftUI Machines bridge.
+          { sdk = "SwiftUI.framework"; weak = true; }
           { sdk = "Foundation.framework"; }
           { sdk = "CoreGraphics.framework"; }
           { sdk = "QuartzCore.framework"; }
@@ -1911,7 +1881,7 @@ ICDJSON
               "-lcrypto"
               "-lepoll-shim"
             ] ++ westonToytoolkitLdflagsAppleMobile ipadosDeps ++ westonCompositorLdflagsAppleMobile ipadosDeps
-            ++ (ilandGlLdflags { deps = ipadosDeps; simulator = false; }) ++ moltenvkLdflags ipadosDeps ++ footLdflags ipadosDeps ++ fastfetchLdflags ipadosDeps ++ phoonLdflags ipadosDeps ++ wasmLdflags ipadosDeps ++ neovimLdflags ipadosDeps ++ niriLdflags ipadosDeps ++ fuzzelLdflags ipadosDeps
+            ++ (ilandGlLdflags { deps = ipadosDeps; simulator = false; }) ++ moltenvkLdflags ipadosDeps ++ swiftshaderLdflags ipadosDeps ++ footLdflags ipadosDeps ++ fastfetchLdflags ipadosDeps ++ phoonLdflags ipadosDeps ++ wasmLdflags ipadosDeps ++ neovimLdflags ipadosDeps ++ niriLdflags ipadosDeps ++ fuzzelLdflags ipadosDeps
             ++ sshCliLdflags ipadosDeps
              ++ appleMobileResolvLdflags
             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [
@@ -1945,7 +1915,7 @@ ICDJSON
               "-lcrypto"
               "-lepoll-shim"
             ] ++ westonToytoolkitLdflagsAppleMobile ipadosSimDeps ++ westonCompositorLdflagsAppleMobile ipadosSimDeps
-            ++ (ilandGlLdflags { deps = ipadosSimDeps; simulator = true; }) ++ moltenvkLdflags ipadosSimDeps ++ footLdflags ipadosSimDeps ++ fastfetchLdflags ipadosSimDeps ++ phoonLdflags ipadosSimDeps ++ wasmLdflags ipadosSimDeps ++ neovimLdflags ipadosSimDeps ++ niriLdflags ipadosSimDeps ++ fuzzelLdflags ipadosSimDeps
+            ++ (ilandGlLdflags { deps = ipadosSimDeps; simulator = true; }) ++ moltenvkLdflags ipadosSimDeps ++ swiftshaderLdflags ipadosSimDeps ++ footLdflags ipadosSimDeps ++ fastfetchLdflags ipadosSimDeps ++ phoonLdflags ipadosSimDeps ++ wasmLdflags ipadosSimDeps ++ neovimLdflags ipadosSimDeps ++ niriLdflags ipadosSimDeps ++ fuzzelLdflags ipadosSimDeps
             ++ sshCliLdflags ipadosSimDeps
              ++ appleMobileResolvLdflags
             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [

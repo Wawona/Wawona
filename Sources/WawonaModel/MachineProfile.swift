@@ -176,6 +176,40 @@ public struct ContainerMachineSettings: Codable, Hashable, Sendable {
     }
 }
 
+/// Per-machine virtual-machine configuration. The actual VM backend is chosen
+/// by the product target; this preserves the user's guest identity and vsock
+/// bridge configuration across Apple and Android.
+public struct VirtualMachineSettings: Codable, Hashable, Sendable {
+    public var provider: String?
+    public var vmIdentifier: String?
+    public var vsockPort: String?
+    public var guestVariant: String?
+    public var memoryMB: Int?
+    public var diskGiB: Int?
+    public var maxDiskGiB: Int?
+    public var notes: String?
+
+    public init(
+        provider: String? = nil,
+        vmIdentifier: String? = nil,
+        vsockPort: String? = nil,
+        guestVariant: String? = nil,
+        memoryMB: Int? = nil,
+        diskGiB: Int? = nil,
+        maxDiskGiB: Int? = nil,
+        notes: String? = nil
+    ) {
+        self.provider = provider
+        self.vmIdentifier = vmIdentifier
+        self.vsockPort = vsockPort
+        self.guestVariant = guestVariant
+        self.memoryMB = memoryMB
+        self.diskGiB = diskGiB
+        self.maxDiskGiB = maxDiskGiB
+        self.notes = notes
+    }
+}
+
 public struct MachineRuntimeOverrides: Codable, Hashable, Sendable {
     public var renderer: String?
     public var vulkanDriver: String?
@@ -281,6 +315,8 @@ public struct MachineProfile: Codable, Identifiable, Hashable, Sendable {
     public var runtimeOverrides: MachineRuntimeOverrides
     /// Container machine configuration (nil = inherit all global defaults).
     public var containerSettings: ContainerMachineSettings?
+    /// Virtual-machine configuration (nil until a VM profile is configured).
+    public var vmSettings: VirtualMachineSettings?
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -298,6 +334,7 @@ public struct MachineProfile: Codable, Identifiable, Hashable, Sendable {
         case favorite
         case runtimeOverrides
         case containerSettings
+        case vmSettings
     }
 
     public init(
@@ -315,7 +352,8 @@ public struct MachineProfile: Codable, Identifiable, Hashable, Sendable {
         launchers: [ClientLauncher] = [],
         favorite: Bool = false,
         runtimeOverrides: MachineRuntimeOverrides = MachineRuntimeOverrides(),
-        containerSettings: ContainerMachineSettings? = nil
+        containerSettings: ContainerMachineSettings? = nil,
+        vmSettings: VirtualMachineSettings? = nil
     ) {
         self.id = id
         self.name = name
@@ -332,6 +370,7 @@ public struct MachineProfile: Codable, Identifiable, Hashable, Sendable {
         self.favorite = favorite
         self.runtimeOverrides = runtimeOverrides
         self.containerSettings = containerSettings
+        self.vmSettings = vmSettings
     }
 
     public init(from decoder: any Decoder) throws {
@@ -354,6 +393,7 @@ public struct MachineProfile: Codable, Identifiable, Hashable, Sendable {
         favorite = try container.decodeIfPresent(Bool.self, forKey: .favorite) ?? false
         runtimeOverrides = try container.decodeIfPresent(MachineRuntimeOverrides.self, forKey: .runtimeOverrides) ?? MachineRuntimeOverrides()
         containerSettings = try container.decodeIfPresent(ContainerMachineSettings.self, forKey: .containerSettings)
+        vmSettings = try container.decodeIfPresent(VirtualMachineSettings.self, forKey: .vmSettings)
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -373,6 +413,7 @@ public struct MachineProfile: Codable, Identifiable, Hashable, Sendable {
         try container.encode(favorite, forKey: .favorite)
         try container.encode(runtimeOverrides, forKey: .runtimeOverrides)
         try container.encodeIfPresent(containerSettings, forKey: .containerSettings)
+        try container.encodeIfPresent(vmSettings, forKey: .vmSettings)
     }
 }
 

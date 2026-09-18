@@ -420,7 +420,20 @@ impl CompositorState {
 
     fn should_mirror_pointer_for_touch(&self, surface_id: u32) -> bool {
         let nested = self.surface_is_nested_compositor(surface_id);
-        crate::core::input::touch::should_mirror_pointer_for_chrome(nested)
+        // Weston Terminal and foot implement drag selection through their
+        // wl_pointer path.  Preserve the real wl_touch sequence, then provide
+        // the matching Wayland pointer drag solely for those terminal clients.
+        // This is a client-compatibility bridge, not a host text-selection UI.
+        let terminal_selection = self
+            .get_window_by_surface(surface_id)
+            .and_then(|window| window.read().ok().map(|window| {
+                crate::core::wayland::ext::text_input::is_terminal_text_entry_app_id(
+                    &window.app_id,
+                )
+            }))
+            .unwrap_or(false);
+        terminal_selection
+            || crate::core::input::touch::should_mirror_pointer_for_chrome(nested)
             || crate::core::input::touch::should_emulate_pointer(
                 self.touch_pointer_emulation,
                 nested,

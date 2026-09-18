@@ -145,10 +145,14 @@ struct WawonaMainWindowView: View {
             .onAppear { syncSplitColumns() }
             .onChange(of: router.selection) { _, _ in handleSelectionChange() }
             .onChange(of: model.sections) { _, newValue in
-                router.validate(sections: newValue)
+                DispatchQueue.main.async {
+                    router.validate(sections: newValue)
+                }
             }
             .onChange(of: tagStore.tags) { _, newValue in
-                router.validateTags(newValue)
+                DispatchQueue.main.async {
+                    router.validateTags(newValue)
+                }
             }
             #if os(iOS) || os(visionOS)
             .onChange(of: horizontalSizeClass) { _, _ in syncSplitColumns() }
@@ -198,7 +202,7 @@ struct WawonaMainWindowView: View {
             Section("Machines") {
                 sidebarRow(
                     destination: .machines,
-                    title: "Machine Configuration",
+                    title: "Machines",
                     systemImage: "desktopcomputer",
                     accessibilityID: WWNA11y.machinesRoot
                 )
@@ -292,11 +296,9 @@ struct WawonaMainWindowView: View {
         var sections = GlobalSettingsCatalog.visibleSections(for: GlobalSettingsCatalog.currentHost)
         #if WWN_MODE_B && os(iOS)
         if !sections.contains(.desktop) {
-            if let idx = sections.firstIndex(of: .advanced) {
+            if let idx = sections.firstIndex(of: .iCloudSync) {
                 sections.insert(.desktop, at: idx + 1)
-            } else {
-                sections.append(.desktop)
-            }
+            } else { sections.append(.desktop) }
         }
         #endif
         return sections

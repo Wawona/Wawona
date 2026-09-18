@@ -1,16 +1,18 @@
 # iOS min OS vs latest SDK (11.0, SDK never downgrades)
 
-Wawona iOS (phone and iPad) must run on **iOS 11 through current**, compiled
-**only** against the **latest** iPhoneOS SDK. Today that SDK is **26**. When
-iOS 27 ships, the SDK becomes 27. The SDK is never pinned backward to match
-an old OS.
+Wawona's iOS product must run on **iOS 11 through current**, compiled **only**
+against the **latest** iPhoneOS SDK. iPadOS begins at 13. iPads on iOS 11 or
+12 run the shared iOS UIKit product, not an iPadOS product. Today that SDK is
+**26**. When iOS 27 ships, the SDK becomes 27. The SDK is never pinned backward
+to match an old OS.
 
-Apple skipped iOS 19-25. Versions in full consideration: 11, 12, 13, 14, 15,
-16, 17, 18, 26, and 27 when that SDK exists.
+Versions in full consideration: 11, 12, 13, 14, 15, 16, 17, 18, 26, and 27
+when that SDK exists.
 
-This applies to **App Store Mode A**, **TrollStore `.tipa`**, and **Sileo
-jailbreak** products. Mode B engines still never enter the store IPA
-(`wawona-ios-mode-b-channels`).
+The source and static renderers span iOS 11+. Product floors are deliberately
+different: **App Store Mode A is iOS 11+**, **TrollStore `.tipa` is iOS 14+**,
+and **Sileo jailbroken `.deb` is iOS 11+**. Mode B engines still never enter
+the store IPA (`wawona-ios-mode-b-channels`).
 
 Current product: iOS 26 only. Older iOS is unfinished work (`planned`), not
 unsupported.
@@ -27,14 +29,14 @@ Tracker: [`#178`](https://github.com/Wawona/Wawona/issues/178). Product issues l
 | Knob | Value | Where |
 |---|---|---|
 | SDK / sysroot | Latest only (`iPhoneOS26.sdk` now) | Nix Apple toolchain, xcodebuild, ANGLE GN, MoltenVK |
-| Deployment target / min OS | **11.0** | One Wawona-owned `deploymentTarget`. Mach-O minos |
+| Deployment target / min OS | Mode A + Sileo **11.0**; TrollStore **14.0** | Explicit product output. Mach-O minos |
 
 Wawona chooses the min OS. ANGLE, MoltenVK, and other deps do not.
 
-## One binary, one ANGLE, one MoltenVK
+## One renderer set, channel-specific binaries
 
 ```text
-ONE Wawona iOS build
+ONE source/static-renderer set
   ├── ONE ANGLE (Metal). iOS 11 compatibility is a Wawona patch
   └── ONE MoltenVK (Metal). iOS 11-14 compatibility is a Wawona patch
 
@@ -90,11 +92,36 @@ or Sileo, and not a reason to compile against an old SDK.
 
 ## Channels
 
-Same min-OS source for:
+| Product | Runtime floor | Build output |
+|---|---:|---|
+| App Store / TestFlight Mode A | iOS 11 | `wawona-ios-app-device` / `wawona-ios-ipa` |
+| TrollStore Mode B | iOS 14 | `wawona-ios-modeb-tipa[-slim]` |
+| Sileo Mode B, rootless/rootful | iOS 11 | `wawona-ios-modeb-deb-*` |
 
-- App Store / TestFlight Mode A
-- TrollStore `.tipa`
-- Sileo rootless/rootful
+TrollStore's supported permanent-signing releases are iOS 14.0 beta 2 through
+16.6.1, 16.7 RC, and 17.0. TrollStore Lite on a jailbroken lab device is a
+lab installer, not a broader `.tipa` support promise. iOS 11–13 Mode B is
+therefore Sileo-only.
+
+iOS 11 and 12 cannot load SwiftUI. They use the UIKit Machines host and the
+classic `UIWindow` lifecycle; iOS 13+ may use the SwiftUI Machines host. Both
+hosts call the same Objective-C ABI bridge into Rust, which owns compositor
+and business policy.
+
+## Wayland text input and the iOS OSK
+
+The iOS system keyboard and Wawona's extended key card are presentation for a
+focused Wayland text field, never permanent compositor chrome. Drive them from
+the committed active state of `zwp_text_input_v3` (and corresponding legacy
+text-input activation): a client commits `enable` to request input, and
+`disable` removes that request. Do not become first responder, vend
+`inputAccessoryView`, or reserve an OSK exclusive zone merely because a
+terminal is running or the first frame arrived.
+
+`zwp_virtual_keyboard_v1` injects key events. It is not the protocol that asks
+the compositor to show an on-screen keyboard. An actual external OSK is an
+input method (`zwp_input_method_v2`); Wawona's UIKit keyboard is the host-side
+input method and must mirror the text-input lifecycle.
 
 Store IPA still has no JIT, no IOMFB SPI, no jailbreak copy.
 
@@ -120,5 +147,6 @@ rule (those keep their own mins).
 - Replacing Nix with a CMake/Xcode-only dependency forest
 - Putting Metal/Vulkan cap policy in ObjC when Rust can own it
 - Shipping Mode B / JIT / IOMFB in the store IPA
-- Treating iOS 11-14 as out of scope for TrollStore or Sileo because ASC
-  upload range is 15+
+- Treating iOS 11-13 as TrollStore `.tipa` targets
+- Loading SwiftUI or relying on `UIScene` on iOS 11/12
+- Showing the iOS OSK or extended accessory before committed Wayland text input

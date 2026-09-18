@@ -212,8 +212,8 @@ in different states despite usually being lumped together:
   `CAMetalLayer` `API_UNAVAILABLE(watchos)`. ANGLE and MoltenVK both bottom out
   in Metal, so there is no floor. We want it; Apple offers nothing to build it
   on. SHM/CPU is the current ceiling, not a preference.
-- **VM/containers on tvOS, watchOS, and visionOS. Forbidden.** Policy, not a
-  gap. On macOS, iOS, iPadOS, Android, and Linux they are **planned** (UTM-SE /
+- **VM/containers on tvOS and watchOS. Forbidden.** Policy, not a
+  gap. On macOS, iOS, iPadOS, visionOS, Android, and Linux they are **planned** (UTM-SE /
   Virtualization / Containerization / `wwn-vms`. See `docs/vms-containers.md`).
   The on-device shell is separate.
 

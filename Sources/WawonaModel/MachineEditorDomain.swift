@@ -36,6 +36,12 @@ public enum MachineEditorDomain {
             entryCommand: profile.containerSettings?.entryCommand ?? "",
             desktopSession: profile.containerSettings?.desktopSession ?? (profile.type == .container),
             imageArchivePath: profile.containerSettings?.imageArchivePath ?? "",
+            vmIdentifier: profile.vmSettings?.vmIdentifier ?? "",
+            vmVsockPort: profile.vmSettings?.vsockPort ?? "",
+            vmGuestVariant: profile.vmSettings?.guestVariant ?? "4k",
+            vmMemoryMB: profile.vmSettings?.memoryMB ?? 2048,
+            vmDiskGiB: profile.vmSettings?.diskGiB ?? 8,
+            vmNotes: profile.vmSettings?.notes ?? "",
             wasmCommand: profile.runtimeOverrides.wasmCommand ?? "wasm hello-wasi-gui",
             wasmModulePath: profile.runtimeOverrides.wasmModulePath ?? "",
             wasmPackage: profile.runtimeOverrides.wasmPackage ?? ""
@@ -88,6 +94,19 @@ public enum MachineEditorDomain {
                 imageArchivePath: state.imageArchivePath.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines).isEmpty
                     ? nil
                     : state.imageArchivePath.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+            )
+        }
+
+        if state.isVirtualMachine {
+            profile.vmSettings = VirtualMachineSettings(
+                provider: "relay",
+                vmIdentifier: state.vmIdentifier.trimmingCharacters(in: .whitespacesAndNewlines),
+                vsockPort: state.vmVsockPort.trimmingCharacters(in: .whitespacesAndNewlines),
+                guestVariant: state.vmGuestVariant == "16k" ? "16k" : "4k",
+                memoryMB: max(256, min(state.vmMemoryMB, 4096)),
+                diskGiB: max(4, min(state.vmDiskGiB, 64)),
+                maxDiskGiB: 64,
+                notes: state.vmNotes.trimmingCharacters(in: .whitespacesAndNewlines)
             )
         }
 

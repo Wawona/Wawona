@@ -917,7 +917,7 @@ NSUserDefaults *WWNSharedUserDefaults(void) {
   }
   NSString *driver =
       [WWNSharedUserDefaults() stringForKey:kWWNPrefsVulkanDriver];
-  NSSet *allowed = [NSSet setWithArray:@[ @"none", @"moltenvk" ]];
+  NSSet *allowed = [NSSet setWithArray:@[ @"none", @"moltenvk", @"swiftshader" ]];
   return [allowed containsObject:driver]
              ? driver
              : [WWNPreferencesManager defaultVulkanDriverForHardware];

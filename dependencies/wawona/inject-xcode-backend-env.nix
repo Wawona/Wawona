@@ -7,6 +7,7 @@
   xcodeTarget,
   companionBackends ? { },
   mobileGuestArtifacts ? null,
+  mobileGuestArtifacts16k ? null,
   mobileContainerGuestArtifacts ? null,
 }:
 old:
@@ -24,6 +25,9 @@ let
     )
     + lib.optionalString (mobileGuestArtifacts != null) ''
       export WAWONA_MOBILE_GUEST_DIR="${mobileGuestArtifacts}"
+    ''
+    + lib.optionalString (mobileGuestArtifacts16k != null) ''
+      export WAWONA_MOBILE_GUEST_16K_DIR="${mobileGuestArtifacts16k}"
     ''
     + lib.optionalString (mobileContainerGuestArtifacts != null) ''
       export WAWONA_MOBILE_CONTAINER_GUEST_DIR="${mobileContainerGuestArtifacts}"

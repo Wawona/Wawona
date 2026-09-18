@@ -38,7 +38,7 @@ struct ContainerImagesView: View {
     enum Mode { case library, search }
 
     var body: some View {
-        NavigationStack {
+        WawonaBackport<Any>.navigation {
             Group {
                 switch mode {
                 case .library: libraryView
@@ -49,6 +49,7 @@ struct ContainerImagesView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }
+                        .backport.glassToolbarButton()
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Picker("", selection: $mode) {
@@ -369,7 +370,7 @@ struct ContainerImagesView: View {
         @State private var isLoading = true
 
         var body: some View {
-            NavigationStack {
+            WawonaBackport<Any>.navigation {
                 List {
                     if let tagError {
                         Text(tagError).foregroundStyle(.red)
@@ -405,7 +406,10 @@ struct ContainerImagesView: View {
                 }
                 .navigationTitle("Tags · \(repository)")
                 .toolbar {
-                    ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { dismiss() }
+                            .backport.glassToolbarButton()
+                    }
                 }
                 .task {
                     do {
@@ -475,7 +479,7 @@ struct ContainerImagesView: View {
     }
 
     private func inspectSheet(_ entry: ContainerImageEntry) -> some View {
-        NavigationStack {
+        WawonaBackport<Any>.navigation {
             ScrollView {
                 Text(inspectText ?? "Loading…")
                     .font(.system(.caption, design: .monospaced))
@@ -486,7 +490,12 @@ struct ContainerImagesView: View {
                     .padding()
             }
             .navigationTitle("\(entry.canonical): details")
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { inspectedEntry = nil } } }
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { inspectedEntry = nil }
+                        .backport.glassToolbarButton()
+                }
+            }
             .task {
                 do {
                     inspectText = try ContainerImageManager.inspect(entry.canonical)

@@ -36,7 +36,9 @@ Design every iOS-family and Play path as Mode A first.
 - **Wasm packages:** `repo.wawona.io/wasm/` + Files drop + `wpm`. Bytecode as
   **data** for Wawona Runtime (`wwn-wasm`). Not Mach-O, not `.deb`.
 - **iland:** `libiland_userland.a` present callback only (no Desktop `.dylib`).
-- tvOS / watchOS / visionOS: **no** VM/container machine kinds (policy).
+- tvOS / watchOS: **no** VM/container machine kinds (policy). visionOS shares
+  the iOS-family Relay VM/container profile UI and remains planned until its
+  runtime bundle is ready.
 
 ### Never in Mode A binaries
 
@@ -60,6 +62,20 @@ Mode B is **privileged host** access. Platforms:
 
 ### iOS / iPadOS Mode B channels
 
+iPadOS products start at iPadOS 13. An iPad on iOS 11 or 12 uses the shared
+iOS UIKit IPA or Sileo package below; it is not a separate iPadOS artifact.
+
+| iOS version | Mode A normal IPA | Mode B TrollStore `.tipa` | Mode B Sileo `.deb` |
+|---:|---|---|---|
+| 11-13 | iOS 11+ binary | Not available | iOS 11+ binary |
+| 14-16 | iOS 11+ binary | iOS 14+ binary | iOS 11+ binary |
+| 17 | iOS 11+ binary | 17.0 only | iOS 11+ binary where jailbroken |
+| 18 | iOS 11+ binary | Not a permanent-signing target | iOS 11+ binary where jailbroken |
+| 26 | iOS 11+ binary | TrollStore Lite lab only on jailbroken iOS | iOS 11+ binary where jailbroken |
+
+The artifact floor is enforced in Nix and CI: Mode A normal IPA = 11.0,
+TrollStore `.tipa` = 14.0, Sileo `.deb` = 11.0. Latest SDK is used for all.
+
 TrollStore and Sileo are separate products. The TrollStore build is
 `com.aspauldingcode.Wawona.ModeB`, packaged as
 `Wawona-{calver}-iOS-arm64.tipa` and signed with `ldid`.
@@ -75,6 +91,15 @@ TrollStore and Sileo are separate products. The TrollStore build is
 | Wawona Swinging Bridge | No | Yes |
 | Doorman / ElleKit | No | Deferred Sileo provider |
 
+| Product gate | TrollStore `.tipa` | Sileo full Mode B |
+|---|---|---|
+| Minimum iOS | **14.0** | **11.0** |
+| iOS 11–13 availability | Not installable | Jailbroken `.deb` only |
+
+TrollStore permanent-signing support is iOS 14.0 beta 2 through 16.6.1,
+16.7 RC, and 17.0. TrollStore Lite in the jailbroken vphone lab is an
+installer for that lab, not an expanded public `.tipa` compatibility claim.
+
 The TrollStore tipa launches the normal Machines and Settings UI. Desktop
 Replacement is off by default. Turning it on and using Replace now (or Start
 on Weston/Niri) takes the panel with `wwn-iland` IOMFB so those compositors
@@ -84,19 +109,20 @@ lifecycle glue. There is no framebuffer machine-picker GUI. Wayland and
 Metal IOSurfaces present to IOMFB without a CPU copy. `wl_shm` remains an
 explicit upload fallback.
 
-### Mode B IPA on `repo.wawona.io` (critical)
+### Mode B `.deb` on `repo.wawona.io` (critical)
 
 `repo.wawona.io` must **automatically package and publish** a **Wawona iOS Mode B
-IPA** (Sileo-installable), distinct from the App Store IPA.
+`.deb`** (Sileo-installable), distinct from the App Store IPA and the
+TrollStore `.tipa`.
 
-When a user installs that Mode B build via Sileo they get:
+When a user installs that Mode B `.deb` via Sileo they get:
 
 1. Containers with **JIT** enablement  
 2. Virtual machines with **JIT** enablement  
 3. Access to **jailbroken iOS APT tooling** already on device (and repo `.deb`s)
 
 App Store / TestFlight builds remain Mode A only and **must never** embed or
-switch into this IPA’s JIT backends.
+switch into this jailbroken product’s JIT backends.
 
 ### macOS Mode B (summary)
 

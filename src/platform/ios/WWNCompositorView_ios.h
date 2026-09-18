@@ -16,6 +16,14 @@ FOUNDATION_EXPORT NSNotificationName const WWNTvRequestSessionExitNotification;
 /// tvOS software keyboard first-responder changed (Menu must reach the OSK).
 FOUNDATION_EXPORT NSNotificationName const WWNTvKeyboardFocusDidChangeNotification;
 
+/// Native tab shortcuts
+FOUNDATION_EXPORT NSNotificationName const WWNRequestSelectTabAtIndexNotification;
+FOUNDATION_EXPORT NSNotificationName const WWNRequestSelectNextTabNotification;
+FOUNDATION_EXPORT NSNotificationName const WWNRequestSelectPreviousTabNotification;
+FOUNDATION_EXPORT NSNotificationName const WWNRequestToggleTabExposeNotification;
+FOUNDATION_EXPORT NSNotificationName const WWNRequestNewTabNotification;
+FOUNDATION_EXPORT NSNotificationName const WWNRequestCloseActiveTabNotification;
+
 /**
  * WWNCompositorView_ios
  *
@@ -66,18 +74,18 @@ FOUNDATION_EXPORT NSNotificationName const WWNTvKeyboardFocusDidChangeNotificati
 /// On tvOS this is the manual ⌨ control when auto text-input detection misses.
 - (void)toggleKeyboard;
 
-/// Apply host OSK mode from `text_entry_wanted` (Expand vs AccessoryOnly).
+/// Apply host OSK mode from committed Wayland `zwp_text_input_v3.enable`.
 /// Soft Expand is deferred until the first Wayland frame (see
 /// `armHostKeyboardAfterFirstFrame`) so UIKit keyboard animation cannot
 /// stall configure/buffer delivery for weston-terminal.
-/// Terminals keep the extended accessory bar (Esc/Ctrl/⌨↓) even with a
-/// hardware keyboard; user ⌨↓ dismiss is sticky against terminal synthesis.
+/// A client text field is the only automatic iOS OSK trigger. A user dismiss
+/// stays in effect until the client disables and enables text input again.
 - (void)applyHostKeyboardForTextInputEnabled:(BOOL)enabled;
 
 /// True after the first client buffer was presented into this view.
 - (BOOL)isHostKeyboardReady;
 
-/// Become first responder / apply pending text_entry_wanted after first frame.
+/// Become first responder / apply pending text-input state after first frame.
 - (void)armHostKeyboardAfterFirstFrame;
 
 /// Map committed `zwp_text_input_v3.content_purpose` onto UIKeyboardType.

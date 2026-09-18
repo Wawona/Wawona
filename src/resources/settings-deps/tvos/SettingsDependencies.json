@@ -50,6 +50,13 @@
       "version": "0.11.0"
     },
     {
+      "license": "MIT",
+      "name": "Wawona Relay",
+      "role": "Bundled WASI and VM/container runtime",
+      "url": "https://github.com/Wawona/Relay",
+      "version": "0.1.0"
+    },
+    {
       "license": "BSD-3-Clause",
       "name": "libssh2",
       "role": "In-process SSH (Apple mobile)",
@@ -114,4 +121,3 @@
     }
   ]
 }
-

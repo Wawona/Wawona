@@ -28,6 +28,19 @@ NSNotificationName const WWNTvRequestSessionExitNotification =
 NSNotificationName const WWNTvKeyboardFocusDidChangeNotification =
     @"WWNTvKeyboardFocusDidChangeNotification";
 
+NSNotificationName const WWNRequestSelectTabAtIndexNotification =
+    @"WWNRequestSelectTabAtIndexNotification";
+NSNotificationName const WWNRequestSelectNextTabNotification =
+    @"WWNRequestSelectNextTabNotification";
+NSNotificationName const WWNRequestSelectPreviousTabNotification =
+    @"WWNRequestSelectPreviousTabNotification";
+NSNotificationName const WWNRequestToggleTabExposeNotification =
+    @"WWNRequestToggleTabExposeNotification";
+NSNotificationName const WWNRequestNewTabNotification =
+    @"WWNRequestNewTabNotification";
+NSNotificationName const WWNRequestCloseActiveTabNotification =
+    @"WWNRequestCloseActiveTabNotification";
+
 // ===========================================================================
 // UITextPosition / UITextRange subclasses for UITextInput
 // ===========================================================================
@@ -401,8 +414,39 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 - (void)handleTerminalCtrlKey:(UIKeyCommand *)command;
 @end
 
+#if !TARGET_OS_VISION
+@protocol WWNKeyboardAccessoryDelegate <NSObject>
+@optional
+- (void)keyboardAccessoryDidSendKey:(NSString *)name keycode:(uint32_t)keycode character:(NSString *)character;
+- (void)keyboardAccessoryModifierChanged:(NSString *)modifier active:(BOOL)active locked:(BOOL)locked;
+- (void)keyboardAccessoryDidRequestDismiss;
+- (void)keyboardAccessoryDidRequestTabOverview;
+- (void)keyboardAccessoryDidRequestNewTab;
+- (void)keyboardAccessoryDidRequestPaste;
+- (void)keyboardAccessoryGeometryDidChange;
+@end
+
+@protocol WWNKeyboardAccessoryHosting <NSObject>
+@property(nonatomic, weak, nullable) id<WWNKeyboardAccessoryDelegate> delegate;
+- (void)clearOneShotModifiers;
+- (void)resetAllModifiers;
+- (void)toggleDrawer;
+- (void)setKeyboardUiModeAccessoryOnly:(BOOL)accessoryOnly;
+@end
+#endif
+
 #if !TARGET_OS_TV
-@interface WWNCompositorView_ios () <UIPointerInteractionDelegate>
+// UIEditMenuInteractionDelegate (iOS 16+): provides the target rect for the
+// native Liquid Glass copy/paste popover. Conformance is declared here
+// unconditionally; the actual delegate method is guarded by
+// API_AVAILABLE(ios(16.0)) at the implementation site.
+API_AVAILABLE(ios(16.0))
+@interface WWNCompositorView_ios (WWNEditMenuDelegate) <UIEditMenuInteractionDelegate>
+@end
+
+@interface WWNCompositorView_ios () <UIPointerInteractionDelegate,
+                                    UIGestureRecognizerDelegate,
+                                    WWNKeyboardAccessoryDelegate>
 @end
 #endif
 
@@ -534,6 +578,14 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   /// User collapsed soft OSK via ⌨↓. Sticky until they expand again.
   /// Prevents terminal text_entry synthesis from immediately re-Expanding.
   BOOL _userCollapsedSoftOsk;
+
+  // Native iOS edit menu (Copy / Paste popover with Liquid Glass style).
+  // Tracks the most recent touch so the menu anchors near the selection.
+  CGPoint _lastTouchPoint;
+  /// UIEditMenuInteraction is available iOS 16+. On older OS we fall back to
+  /// the deprecated UIMenuController path.  Stored here so we can hide/show
+  /// it without re-creating it each time.
+  id _editMenuInteraction API_AVAILABLE(ios(16.0));
 }
 
 @synthesize keyboardActive = _keyboardActive;
@@ -626,9 +678,10 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
     _keyboardUiMode = WWNKeyboardUiModeAccessoryOnly;
     _keyboardUiModeBeforeExternal = WWNKeyboardUiModeAccessoryOnly;
 #else
-    // Soft OSK starts collapsed; tick sync expands via text_entry_wanted.
-    _keyboardUiMode = WWNKeyboardUiModeAccessoryOnly;
-    _keyboardUiModeBeforeExternal = WWNKeyboardUiModeAccessoryOnly;
+    // Do not claim first-responder status at launch.  The host keyboard and
+    // the extended key card are owned by committed Wayland text-input focus.
+    _keyboardUiMode = WWNKeyboardUiModeHiddenExternal;
+    _keyboardUiModeBeforeExternal = WWNKeyboardUiModeHiddenExternal;
 #endif
     _hostKeyboardType = UIKeyboardTypeDefault;
     _hostSecureTextEntry = NO;
@@ -665,6 +718,13 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
                   action:@selector(_indirectHoverChanged:)];
       [self addGestureRecognizer:hover];
     }
+    UILongPressGestureRecognizer *editMenuLongPress =
+        [[UILongPressGestureRecognizer alloc] initWithTarget:self
+                                                      action:@selector(_handleEditMenuLongPress:)];
+    editMenuLongPress.cancelsTouchesInView = NO;
+    editMenuLongPress.delaysTouchesBegan = NO;
+    editMenuLongPress.delegate = self;
+    [self addGestureRecognizer:editMenuLongPress];
 #endif
 
     [[NSNotificationCenter defaultCenter]
@@ -683,6 +743,13 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
            selector:@selector(_keyboardWillHide:)
                name:UIKeyboardWillHideNotification
              object:nil];
+    // Present the native iOS Copy/Paste edit menu when a Wayland client
+    // (e.g. weston-terminal) sets the clipboard selection.  The notification
+    // is posted by _syncClipboardWithPasteboard after writing to UIPasteboard.
+    [nc addObserver:self
+           selector:@selector(_clientSelectionDidChange:)
+               name:WWNClientSelectionDidChangeNotification
+             object:nil];
     [self _refreshHardwareKeyboardState];
 #endif
 
@@ -694,6 +761,10 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 - (void)dealloc {
   [[NSNotificationCenter defaultCenter] removeObserver:self];
   [_ilandPresenter invalidate];
+  if (_lastPresentedWaylandImage != NULL) {
+    CGImageRelease(_lastPresentedWaylandImage);
+    _lastPresentedWaylandImage = NULL;
+  }
 }
 
 - (void)_ensureMetalPresentationLayer {
@@ -736,6 +807,38 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 }
 
 - (UIImage *)wwn_tabPreviewImage {
+  if (_lastPresentedWaylandImage != NULL) {
+    CGFloat scale = _lastContentsScale > 0.5 ? _lastContentsScale : self.traitCollection.displayScale;
+    if (scale < 1.0) {
+      scale = 1.0;
+    }
+    return [UIImage imageWithCGImage:_lastPresentedWaylandImage
+                               scale:scale
+                         orientation:UIImageOrientationUp];
+  }
+  if (_lastPresentedWaylandIOSurface != NULL) {
+    CIImage *ci = [CIImage imageWithIOSurface:_lastPresentedWaylandIOSurface];
+    if (ci) {
+      static CIContext *sCtx;
+      static dispatch_once_t once;
+      dispatch_once(&once, ^{
+        sCtx = [CIContext context];
+      });
+      CGImageRef cg = [sCtx createCGImage:ci fromRect:ci.extent];
+      if (cg) {
+        CGFloat scale = self.traitCollection.displayScale;
+        if (scale < 1.0) {
+          scale = 1.0;
+        }
+        UIImage *img = [UIImage imageWithCGImage:cg
+                                           scale:scale
+                                     orientation:UIImageOrientationUp];
+        CGImageRelease(cg);
+        return img;
+      }
+    }
+  }
+
   UIView *frameView = _waylandFrameView ?: self;
   CGRect bounds = frameView.bounds;
   if (bounds.size.width < 2.0 || bounds.size.height < 2.0) {
@@ -747,8 +850,6 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   }
   CGFloat scale = frameView.layer.contentsScale;
   if (scale < 1.0) {
-    // UIWindow.screen is unavailable on visionOS. Trait collections expose the
-    // effective display scale on every UIKit target.
     scale = self.traitCollection.displayScale;
   }
   if (scale < 1.0) {
@@ -846,7 +947,10 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   _waylandFrameView.layer.contents = nil;
   _waylandLayer.hidden = NO;
   _lastPresentToken = 0;
-  _lastPresentedWaylandImage = NULL;
+  if (_lastPresentedWaylandImage != NULL) {
+    CGImageRelease(_lastPresentedWaylandImage);
+    _lastPresentedWaylandImage = NULL;
+  }
   _lastContentsScale = 0;
   _lastWaylandLayoutSize = CGSizeZero;
 }
@@ -868,7 +972,10 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
     _waylandFrameView.layer.contents = nil;
     _waylandFrameView.hidden = YES;
     _lastPresentToken = 0;
-    _lastPresentedWaylandImage = NULL;
+    if (_lastPresentedWaylandImage != NULL) {
+      CGImageRelease(_lastPresentedWaylandImage);
+      _lastPresentedWaylandImage = NULL;
+    }
     _lastContentsScale = 0;
     [self _mirrorFrameToExternalDisplay:NULL contentRect:CGRectZero];
     return;
@@ -1019,7 +1126,12 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   BOOL wasEmpty = (_lastPresentedWaylandImage == NULL);
 
   _lastPresentToken = presentToken;
-  _lastPresentedWaylandImage = image;
+  if (_lastPresentedWaylandImage != image) {
+    if (_lastPresentedWaylandImage != NULL) {
+      CGImageRelease(_lastPresentedWaylandImage);
+    }
+    _lastPresentedWaylandImage = image ? CGImageRetain(image) : NULL;
+  }
   _lastContentsScale = contentsScale;
 
   [CATransaction begin];
@@ -1087,7 +1199,10 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 
   BOOL firstFrame = _lastPresentedWaylandIOSurface == NULL;
   _lastPresentToken = presentToken;
-  _lastPresentedWaylandImage = NULL;
+  if (_lastPresentedWaylandImage != NULL) {
+    CGImageRelease(_lastPresentedWaylandImage);
+    _lastPresentedWaylandImage = NULL;
+  }
   _lastPresentedWaylandIOSurface = surface;
   if (firstFrame) {
     [self armHostKeyboardAfterFirstFrame];
@@ -1384,36 +1499,32 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   return NO;
 }
 
-/// Terminals / foot need the extended accessory bar (Esc/Ctrl/⌘/⌨↓) even when
-/// a hardware keyboard is attached. HiddenExternal would strip inputAccessoryView.
+/// Extended keyboard chrome is temporarily disabled while the simplified iOS
+/// keyboard interaction ships. Input routing remains entirely unchanged.
 - (BOOL)_wantsExtendedKeyboardBar {
-#if TARGET_OS_VISION
   return NO;
-#else
-  if (wwn_ios_terminal_is_active() != 0) {
-    return YES;
+}
+
+/// A real pointer-axis delivery means the user is scrolling the focused
+/// Wayland client, not scrolling native SwiftUI. Collapse the OSK first while
+/// preserving the axis event that follows.
+- (void)_dismissKeyboardForWaylandScrollIfNeeded {
+  if (_keyboardUiMode == WWNKeyboardUiModeExpanded) {
+    _userCollapsedSoftOsk = YES;
+    [self _setKeyboardUiMode:WWNKeyboardUiModeHiddenExternal];
+    [self resignFirstResponder];
   }
-  NSString *client =
-      [WWNWaypipeRunner sharedRunner].activeIOSBundledClientId;
-  return [client isEqualToString:@"weston-terminal"] ||
-         [client isEqualToString:@"wayland-terminal"] ||
-         [client isEqualToString:@"foot"];
-#endif
 }
 
 - (void)_setHardwareKeyboardActive:(BOOL)active {
   if ([self _wantsExtendedKeyboardBar]) {
-    // Collapse soft OSK when a HW keyboard appears, but keep AccessoryOnly so
-    // dismiss / modifiers stay available (simulator Mac keyboard + phones).
+    // A hardware keyboard may collapse an already-requested soft OSK, but it
+    // must never manufacture an accessory card for an unfocused client.
     _hardwareKeyboardActive = active;
     if (active) {
-      if (_keyboardUiMode == WWNKeyboardUiModeExpanded ||
-          _keyboardUiMode == WWNKeyboardUiModeHiddenExternal ||
-          _keyboardUiMode == WWNKeyboardUiModePip) {
+      if (_keyboardUiMode == WWNKeyboardUiModeExpanded) {
         _userCollapsedSoftOsk = YES;
         [self _setKeyboardUiMode:WWNKeyboardUiModeAccessoryOnly];
-      } else if (!self.isFirstResponder && _hostKeyboardReady) {
-        [self activateKeyboard];
       }
     }
     return;
@@ -1502,10 +1613,16 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
       _keyboardUiMode == WWNKeyboardUiModeHiddenExternal) {
     return 0.0;
   }
+  if (_accessoryBar) {
+    CGFloat h = _accessoryBar.intrinsicContentSize.height;
+    if (h > 0.0) {
+      return h;
+    }
+  }
   if (_accessoryBarHeightConstraint) {
     return _accessoryBarHeightConstraint.constant;
   }
-  return 80.0;
+  return 52.0;
 #endif
 }
 
@@ -1515,6 +1632,9 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 #else
   if (_hardwareKeyboardActive) {
     return NO;
+  }
+  if (wwn_ios_terminal_is_active() != 0) {
+    return YES;
   }
   return [WWNMachineProfileStore resolvedResizeDisplayForVirtualKeyboardActive];
 #endif
@@ -1527,8 +1647,10 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   if (![self _resizeDisplayForVirtualKeyboard]) {
     return bounds;
   }
-  CGFloat reserved =
-      _hostKeyboardOverlap + [self _accessoryHeightForOutputResize];
+  CGFloat reserved = _hostKeyboardOverlap;
+  if (reserved <= 0.0 && _keyboardUiMode == WWNKeyboardUiModeAccessoryOnly && [self isFirstResponder]) {
+    reserved = [self _accessoryHeightForOutputResize];
+  }
   if (reserved <= 0.0) {
     return bounds;
   }
@@ -1550,20 +1672,14 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
                     object:self
                   userInfo:info];
   [self setNeedsLayout];
+  [self layoutIfNeeded];
 }
 
 #if !TARGET_OS_VISION
 - (UIView *)inputAccessoryView {
-  if ([self _wantsExtendedKeyboardBar]) {
-    // Do not let GCKeyboard (always present on Simulator) force HiddenExternal
-    // mid-query. That returned nil and hid Esc/Ctrl/⌨↓ for weston-terminal.
-    _hardwareKeyboardActive = [self _hardwareKeyboardConnected];
-    if (_keyboardUiMode == WWNKeyboardUiModeHiddenExternal) {
-      _keyboardUiMode = WWNKeyboardUiModeAccessoryOnly;
-    }
-  } else {
-    [self _refreshHardwareKeyboardState];
-  }
+  // UIKit can query this while no Wayland text field is active.  Never change
+  // keyboard state from this accessor: doing so made the terminal card appear
+  // at launch merely because a bundled terminal was the selected client.
   if (_keyboardUiMode == WWNKeyboardUiModePip ||
       _keyboardUiMode == WWNKeyboardUiModeHiddenExternal) {
     return nil;
@@ -1585,161 +1701,92 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
   return nil;
 }
 
-/// Build the two-row special key toolbar that sits above the iOS keyboard.
-///
-/// Row 1: ESC  `  TAB  / .  ↑  HOME  PGUP  END
-/// Row 2: ⇧  CTRL  ALT  ⌘  ←  ↓  →  PGDN  ⌨↑/⌨↓
+/// Build the extended keyboard toolbar that sits above the iOS keyboard.
+/// Completely replaced legacy button grid with Rootshell's native toolbar keys implementation.
 - (UIView *)_buildAccessoryBar {
-  CGFloat contentHeight = 80;
-  CGFloat rowHeight = 38;
-  CGFloat vPad = 2;
-
-  UIView *bar =
-      [[UIView alloc] initWithFrame:CGRectMake(0, 0, 400, contentHeight)];
-  bar.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-  UIPanGestureRecognizer *barPan = [[UIPanGestureRecognizer alloc]
-      initWithTarget:self
-              action:@selector(_handleAccessoryBarPan:)];
-  barPan.cancelsTouchesInView = NO;
-  [bar addGestureRecognizer:barPan];
-
-  // Background: Liquid Glass on iOS 26+, dark chrome blur on older versions.
-  // The effect view is edge-to-edge (no corner radius) so it blends
-  // seamlessly with the native iOS virtual keyboard beneath.
-  if (@available(iOS 26, *)) {
-#if !TARGET_OS_TV && !TARGET_OS_VISION
-    // UIGlassEffect is unavailable on some Apple platforms; resolve at runtime.
-    Class glassClass = NSClassFromString(@"UIGlassEffect");
-    UIVisualEffect *glass =
-        glassClass ? [[glassClass alloc] init] : nil;
-    if (glass) {
-      UIVisualEffectView *glassView =
-          [[UIVisualEffectView alloc] initWithEffect:glass];
-      glassView.frame = bar.bounds;
-      glassView.autoresizingMask =
-          UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-      [bar addSubview:glassView];
-    } else {
-      UIBlurEffect *blur =
-          [UIBlurEffect effectWithStyle:UIBlurEffectStyleDark];
-      UIVisualEffectView *blurView =
-          [[UIVisualEffectView alloc] initWithEffect:blur];
-      blurView.frame = bar.bounds;
-      blurView.autoresizingMask =
-          UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-      [bar addSubview:blurView];
+  Class accessoryClass = NSClassFromString(@"WWNKeyboardAccessoryView");
+  if (accessoryClass) {
+    UIView<WWNKeyboardAccessoryHosting> *bar = [[accessoryClass alloc] init];
+    if ([bar respondsToSelector:@selector(setDelegate:)]) {
+      [bar setDelegate:(id<WWNKeyboardAccessoryDelegate>)self];
     }
-#else
-    UIBlurEffect *blur =
-        [UIBlurEffect effectWithStyle:UIBlurEffectStyleDark];
-    UIVisualEffectView *blurView =
-        [[UIVisualEffectView alloc] initWithEffect:blur];
-    blurView.frame = bar.bounds;
-    blurView.autoresizingMask =
-        UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    [bar addSubview:blurView];
-#endif
-  } else {
-#if TARGET_OS_TV
-    UIBlurEffect *blur =
-        [UIBlurEffect effectWithStyle:UIBlurEffectStyleDark];
-#else
-    UIBlurEffect *blur = [UIBlurEffect
-        effectWithStyle:UIBlurEffectStyleSystemChromeMaterialDark];
-#endif
-    UIVisualEffectView *blurView =
-        [[UIVisualEffectView alloc] initWithEffect:blur];
-    blurView.frame = bar.bounds;
-    blurView.autoresizingMask =
-        UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    [bar addSubview:blurView];
+    if ([bar respondsToSelector:@selector(setKeyboardUiModeAccessoryOnly:)]) {
+      [bar setKeyboardUiModeAccessoryOnly:(_keyboardUiMode == WWNKeyboardUiModeAccessoryOnly)];
+    }
+
+    UIPanGestureRecognizer *barPan = [[UIPanGestureRecognizer alloc]
+        initWithTarget:self
+                action:@selector(_handleAccessoryBarPan:)];
+    barPan.cancelsTouchesInView = NO;
+    [bar addGestureRecognizer:barPan];
+
+    [self _updateKeyboardModeButtonTitle];
+    [self _updateAccessoryBarHeightForMode];
+    return bar;
   }
 
-  UIStackView *row1 = [self _makeRowStack];
-  UIStackView *row2 = [self _makeRowStack];
-
-  row1.translatesAutoresizingMaskIntoConstraints = NO;
-  row2.translatesAutoresizingMaskIntoConstraints = NO;
-  [bar addSubview:row1];
-  [bar addSubview:row2];
-
-  UILayoutGuide *safe = bar.safeAreaLayoutGuide;
-  [NSLayoutConstraint activateConstraints:@[
-    [row1.topAnchor constraintEqualToAnchor:bar.topAnchor constant:vPad],
-    [row1.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor constant:4],
-    [row1.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor
-                                        constant:-4],
-    [row1.heightAnchor constraintEqualToConstant:rowHeight],
-
-    [row2.topAnchor constraintEqualToAnchor:row1.bottomAnchor constant:vPad],
-    [row2.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor constant:4],
-    [row2.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor
-                                        constant:-4],
-    [row2.heightAnchor constraintEqualToConstant:rowHeight],
-  ]];
-  _accessoryBarHeightConstraint =
-      [bar.heightAnchor constraintEqualToConstant:contentHeight];
-  _accessoryBarHeightConstraint.active = YES;
-
-  // Row 1
-  [row1 addArrangedSubview:[self _keyButton:@"ESC" action:@selector(_tapESC)]];
-  UIButton *graveBtn = [self _keyButton:@"`" action:@selector(_tapGrave)];
-  graveBtn.tag = kTagKeyGrave;
-  [row1 addArrangedSubview:graveBtn];
-  [row1 addArrangedSubview:[self _keyButton:@"TAB" action:@selector(_tapTab)]];
-  UIButton *slashBtn = [self _keyButton:@"/" action:@selector(_tapSlash)];
-  slashBtn.tag = kTagKeySlash;
-  [row1 addArrangedSubview:slashBtn];
-  UIButton *minusBtn = [self _keyButton:@"-" action:@selector(_tapMinus)];
-  minusBtn.tag = kTagKeyMinus;
-  [row1 addArrangedSubview:minusBtn];
-  [row1
-      addArrangedSubview:[self _keyButton:@"↑" action:@selector(_tapArrowUp)]];
-  [row1
-      addArrangedSubview:[self _keyButton:@"HOME" action:@selector(_tapHome)]];
-  [row1 addArrangedSubview:[self _keyButton:@"PGUP"
-                                     action:@selector(_tapPageUp)]];
-  [row1 addArrangedSubview:[self _keyButton:@"END" action:@selector(_tapEnd)]];
-
-  // Row 2
-  UIButton *shiftBtn = [self _keyButton:@"⇧" action:@selector(_tapModShift:)];
-  shiftBtn.tag = kTagModShift;
-  [row2 addArrangedSubview:shiftBtn];
-
-  UIButton *ctrlBtn = [self _keyButton:@"CTRL" action:@selector(_tapModCtrl:)];
-  ctrlBtn.tag = kTagModCtrl;
-  [row2 addArrangedSubview:ctrlBtn];
-
-  UIButton *altBtn = [self _keyButton:@"ALT" action:@selector(_tapModAlt:)];
-  altBtn.tag = kTagModAlt;
-  [row2 addArrangedSubview:altBtn];
-
-  UIButton *superBtn = [self _keyButton:@"⌘" action:@selector(_tapModSuper:)];
-  superBtn.tag = kTagModSuper;
-  [row2 addArrangedSubview:superBtn];
-
-  [row2 addArrangedSubview:[self _keyButton:@"←"
-                                     action:@selector(_tapArrowLeft)]];
-  [row2 addArrangedSubview:[self _keyButton:@"↓"
-                                     action:@selector(_tapArrowDown)]];
-  [row2 addArrangedSubview:[self _keyButton:@"→"
-                                     action:@selector(_tapArrowRight)]];
-  [row2 addArrangedSubview:[self _keyButton:@"PGDN"
-                                     action:@selector(_tapPageDown)]];
-
-  _keyboardModeButton =
-      [self _keyButton:@"⌨↓" action:@selector(_tapDismissKeyboard)];
-  UIPanGestureRecognizer *modePan = [[UIPanGestureRecognizer alloc]
-      initWithTarget:self
-              action:@selector(_handleKeyboardModeButtonPan:)];
-  [_keyboardModeButton addGestureRecognizer:modePan];
-  [row2 addArrangedSubview:_keyboardModeButton];
-
-  [self _updateShiftSensitiveKeyLabels];
-  [self _updateKeyboardModeButtonTitle];
-  [self _updateAccessoryBarHeightForMode];
-
+  UIView *bar =
+      [[UIView alloc] initWithFrame:CGRectMake(0, 0, 400, 44)];
+  bar.autoresizingMask = UIViewAutoresizingFlexibleWidth;
   return bar;
+}
+
+#pragma mark - WWNKeyboardAccessoryDelegate
+
+- (void)keyboardAccessoryDidSendKey:(NSString *)name
+                            keycode:(uint32_t)keycode
+                          character:(NSString *)character {
+  if (keycode != 0) {
+    [self _sendAccessoryKey:keycode];
+  } else if (character && character.length > 0) {
+    if (wwn_ios_terminal_is_active()) {
+      wwn_ios_terminal_inject([character UTF8String],
+                              (int)[character lengthOfBytesUsingEncoding:NSUTF8StringEncoding]);
+    } else {
+      [self insertText:character];
+    }
+    [self _clearStickyModifiers];
+  }
+}
+
+- (void)keyboardAccessoryModifierChanged:(NSString *)modifier
+                                  active:(BOOL)active
+                                  locked:(BOOL)locked {
+  if ([modifier isEqualToString:@"shift"]) {
+    _modShiftActive = active;
+    _modShiftLocked = locked;
+    [self _setVirtualShiftAppearanceActive:active];
+    [self _updateShiftSensitiveKeyLabels];
+  } else if ([modifier isEqualToString:@"ctrl"]) {
+    _modCtrlActive = active;
+    _modCtrlLocked = locked;
+  } else if ([modifier isEqualToString:@"alt"]) {
+    _modAltActive = active;
+    _modAltLocked = locked;
+  } else if ([modifier isEqualToString:@"cmd"]) {
+    _modSuperActive = active;
+    _modSuperLocked = locked;
+  }
+}
+
+- (void)keyboardAccessoryDidRequestDismiss {
+  [self _tapDismissKeyboard];
+}
+
+- (void)keyboardAccessoryDidRequestTabOverview {
+  [self handleToggleExposeKeyCommand:nil];
+}
+
+- (void)keyboardAccessoryDidRequestNewTab {
+  [self handleNewTabKeyCommand:nil];
+}
+
+- (void)keyboardAccessoryDidRequestPaste {
+  [self paste:nil];
+}
+
+- (void)keyboardAccessoryGeometryDidChange {
+  [self _notifyHostKeyboardGeometryChanged];
 }
 #endif // !TARGET_OS_VISION
 
@@ -1854,9 +1901,15 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
     // without this flag the next sync would immediately re-Expand soft OSK.
     _userCollapsedSoftOsk = YES;
     [self _setKeyboardUiMode:WWNKeyboardUiModeAccessoryOnly];
+    [self reloadInputViews];
+  } else if (_keyboardUiMode == WWNKeyboardUiModeAccessoryOnly) {
+    _userCollapsedSoftOsk = YES;
+    [self _setKeyboardUiMode:WWNKeyboardUiModeHiddenExternal];
+    [self resignFirstResponder];
   } else {
     _userCollapsedSoftOsk = NO;
     [self _setKeyboardUiMode:WWNKeyboardUiModeExpanded];
+    [self becomeFirstResponder];
   }
 }
 
@@ -1873,8 +1926,12 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
       _draggedModeButton = YES;
     }
   } else if (gesture.state == UIGestureRecognizerStateEnded) {
-    if (_draggedModeButton) {
-      [self _setKeyboardUiMode:WWNKeyboardUiModePip];
+    // Dragging the keyboard affordance never dismisses it into a floating PiP.
+    // An upward gesture opens the normal system keyboard; otherwise the
+    // persistent accessory card remains immediately above it.
+    if (_draggedModeButton && translation.y < -kKeyboardModeDragThreshold) {
+      _userCollapsedSoftOsk = NO;
+      [self _setKeyboardUiMode:WWNKeyboardUiModeExpanded];
     }
     _draggedModeButton = NO;
   } else if (gesture.state == UIGestureRecognizerStateCancelled ||
@@ -1884,8 +1941,7 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
 }
 
 - (void)_handleAccessoryBarPan:(UIPanGestureRecognizer *)gesture {
-  if (_keyboardUiMode == WWNKeyboardUiModeHiddenExternal ||
-      _keyboardUiMode == WWNKeyboardUiModePip) {
+  if (_keyboardUiMode == WWNKeyboardUiModeHiddenExternal) {
     return;
   }
   CGPoint translation = [gesture translationInView:self];
@@ -1898,7 +1954,13 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
     }
   } else if (gesture.state == UIGestureRecognizerStateEnded) {
     if (_draggedAccessoryBar) {
-      [self _setKeyboardUiMode:WWNKeyboardUiModePip];
+      if (translation.y < -kKeyboardModeDragThreshold) {
+        _userCollapsedSoftOsk = NO;
+        [self _setKeyboardUiMode:WWNKeyboardUiModeExpanded];
+      } else if (translation.y > kKeyboardModeDragThreshold) {
+        _userCollapsedSoftOsk = YES;
+        [self _setKeyboardUiMode:WWNKeyboardUiModeAccessoryOnly];
+      }
     }
     _draggedAccessoryBar = NO;
   } else if (gesture.state == UIGestureRecognizerStateCancelled ||
@@ -2149,8 +2211,10 @@ typedef NS_ENUM(NSInteger, WWNTouchInputMode) {
       _keyboardPipButton.hidden = YES;
     }
     _keyboardPipDockSide = WWNKeyboardPipDockSideNone;
-    if (!self.isFirstResponder) {
-      [self becomeFirstResponder];
+    // Hidden means there is no committed text-input target.  Resigning avoids
+    // UIKit vending either the software keyboard or inputAccessoryView.
+    if (self.isFirstResponder) {
+      [self resignFirstResponder];
     }
     [self reloadInputViews];
     [self _notifyHostKeyboardGeometryChanged];
@@ -2495,6 +2559,9 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
                                               active:NO
                                               locked:NO];
   }
+  if (_accessoryBar && [_accessoryBar respondsToSelector:@selector(clearOneShotModifiers)]) {
+    [((id<WWNKeyboardAccessoryHosting>)_accessoryBar) clearOneShotModifiers];
+  }
   if (shiftChanged) {
     [self _updateShiftSensitiveKeyLabels];
   }
@@ -2526,6 +2593,9 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
   [self _queueModifierButtonAppearanceUpdateForTag:kTagModSuper
                                             active:NO
                                             locked:NO];
+  if (_accessoryBar && [_accessoryBar respondsToSelector:@selector(resetAllModifiers)]) {
+    [((id<WWNKeyboardAccessoryHosting>)_accessoryBar) resetAllModifiers];
+  }
   if (shiftChanged) {
     [self _updateShiftSensitiveKeyLabels];
   }
@@ -2541,39 +2611,71 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
 
 #if !TARGET_OS_TV
 - (BOOL)canPerformAction:(SEL)action withSender:(id)sender {
-  WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
-  if (![bridge hostEditMenuEnabled]) {
-    return [super canPerformAction:action withSender:sender];
-  }
+  // Copy: allowed whenever the Wayland client has placed text in UIPasteboard
+  // (posted via WWNClientSelectionDidChangeNotification). Do NOT gate on
+  // universalClipboardEnabled: the user always expects copy to work after
+  // selecting text in a terminal.
   if (action == @selector(copy:)) {
+    return [UIPasteboard generalPasteboard].string.length > 0;
+  }
+  // Paste: allowed when the pasteboard has a string to offer.
+  if (action == @selector(paste:)) {
+    return [UIPasteboard generalPasteboard].hasStrings ||
+           [UIPasteboard generalPasteboard].string.length > 0;
+  }
+  // Select All: allowed in Wayland clients and terminal.
+  if (action == @selector(selectAll:)) {
     return YES;
   }
-  if (action == @selector(paste:)) {
-    return [bridge hostEditCanPaste];
+  if (@available(iOS 15.0, *)) {
+    if (action == @selector(captureTextFromCamera:)) {
+      return YES;
+    }
   }
-  if (action == @selector(cut:) || action == @selector(selectAll:) ||
-      action == @selector(delete:)) {
+  if (action == @selector(cut:) || action == @selector(delete:)) {
     return NO;
   }
   return [super canPerformAction:action withSender:sender];
 }
 
+- (void)selectAll:(id)sender {
+  (void)sender;
+  [[WWNCompositorBridge sharedBridge] hostEditSelectAllInClient];
+}
+
+- (void)captureTextFromCamera:(id)sender API_AVAILABLE(ios(15.0)) {
+  [super captureTextFromCamera:sender];
+}
+
 - (void)copy:(id)sender {
   /*
-   * iOS maps hardware Ctrl+C to copy:. That used to inject Ctrl+Shift+C
-   * (client clipboard). A focused weston-terminal PTY needs VINTR (0x03)
-   * so the in-process command stops. Cmd+C stays host/client Copy.
+   * iOS maps hardware Ctrl+C to copy:. That sends VINTR (0x03) to the PTY so
+   * the running command is interrupted. Cmd+C on a hardware keyboard is a
+   * "clipboard copy" intent and uses the host-edit path below.
+   *
+   * When called from the native edit menu (UIEditMenuInteraction /
+   * UIMenuController) the sender is nil or a non-UIKeyCommand object. In that
+   * case the user tapped "Copy" to take text the client already placed in
+   * UIPasteboard. Do NOT send VINTR; the pasteboard is already populated.
    */
   if (wwn_ios_terminal_is_active()) {
-    BOOL commandCopy = NO;
     if ([sender isKindOfClass:[UIKeyCommand class]]) {
-      commandCopy = ([(UIKeyCommand *)sender modifierFlags] &
-                     UIKeyModifierCommand) != 0;
-    }
-    if (!commandCopy) {
-      unsigned char vintr = 3;
-      WWNLog("IOS_VIEW", @"copy: -> VINTR for window %llu", self.wwnWindowId);
-      (void)wwn_ios_terminal_inject(&vintr, 1);
+      // Hardware keyboard shortcut.
+      UIKeyCommand *cmd = (UIKeyCommand *)sender;
+      BOOL isCommandCopy = (cmd.modifierFlags & UIKeyModifierCommand) != 0;
+      if (!isCommandCopy) {
+        // Ctrl+C from hardware keyboard -> VINTR.
+        unsigned char vintr = 3;
+        WWNLog("IOS_VIEW", @"copy: -> VINTR for window %llu", self.wwnWindowId);
+        (void)wwn_ios_terminal_inject(&vintr, 1);
+        return;
+      }
+      // Cmd+C -> fall through to host-edit copy below.
+    } else {
+      // Native menu tap: text is already in UIPasteboard from the Wayland
+      // selection. Nothing additional to do for copy.
+      WWNLog("IOS_VIEW", @"copy: from native menu: text already in pasteboard, window %llu",
+             self.wwnWindowId);
       return;
     }
   }
@@ -2582,13 +2684,18 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
 
 - (void)paste:(id)sender {
   (void)sender;
-  WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
-  NSString *text = [bridge hostEditPasteboardString];
+  // Read directly from UIPasteboard so Paste works regardless of the
+  // universalClipboardEnabled setting. The user always expects to paste after
+  // the native edit menu appears.
+  NSString *text = [UIPasteboard generalPasteboard].string;
   if (text.length == 0) {
     return;
   }
+  WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
+  // Always push the pasted text into the Wayland clipboard so clients that
+  // request a selection offer get it.
+  [bridge hostEditSetClientClipboard:text];
   if (wwn_ios_terminal_is_active()) {
-    [bridge hostEditSetClientClipboard:text];
     const char *utf8 = text.UTF8String;
     if (utf8) {
       wwn_ios_terminal_inject(utf8, strlen(utf8));
@@ -2598,7 +2705,161 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
   [bridge hostEditPasteIntoClient];
 }
 
-#endif
+#endif // !TARGET_OS_TV: copy:/paste:
+
+// ---------------------------------------------------------------------------
+#pragma mark - Native iOS Edit Menu (Copy / Paste / Select All / AutoFill)
+// ---------------------------------------------------------------------------
+// Flow: client selects text -> wl_data_device selection -> Rust
+// SelectionHandler::new_selection -> ClipboardBridge.pending_from_client ->
+// compositor tick _syncClipboardWithPasteboard writes UIPasteboard -> posts
+// WWNClientSelectionDidChangeNotification -> _clientSelectionDidChange: ->
+// _showNativeEditMenuAtPoint: -> UIEditMenuInteraction (iOS 16+ Liquid Glass)
+// or UIMenuController (< iOS 16 fallback).
+
+#if !TARGET_OS_TV
+
+- (void)_handleEditMenuLongPress:(UILongPressGestureRecognizer *)gesture {
+  if (gesture.state == UIGestureRecognizerStateBegan) {
+    CGPoint point = [gesture locationInView:self];
+    _lastTouchPoint = point;
+    [self _showNativeEditMenuAtPoint:point];
+  }
+}
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer
+    shouldRecognizeSimultaneouslyWithGestureRecognizer:
+        (UIGestureRecognizer *)otherGestureRecognizer {
+  return YES;
+}
+
+/// Present the native iOS edit menu popover anchored near point (view coords).
+/// Uses transient UIEditMenuInteraction on iOS 16+ matching Rootshell;
+/// falls back to UIMenuController on iOS 11-15.
+- (void)_showNativeEditMenuAtPoint:(CGPoint)point {
+  // Ensure first-responder so canPerformAction: is consulted.
+  if (![self isFirstResponder]) {
+    [self becomeFirstResponder];
+  }
+
+  if (@available(iOS 16.0, *)) {
+    // UIEditMenuInteraction: recreate transiently to avoid state conflicts
+    if (_editMenuInteraction) {
+      [self removeInteraction:_editMenuInteraction];
+      _editMenuInteraction = nil;
+    }
+    UIEditMenuInteraction *interaction =
+        [[UIEditMenuInteraction alloc] initWithDelegate:self];
+    _editMenuInteraction = interaction;
+    [self addInteraction:interaction];
+
+    UIEditMenuConfiguration *config =
+        [UIEditMenuConfiguration configurationWithIdentifier:nil
+                                                 sourcePoint:point];
+    [interaction presentEditMenuWithConfiguration:config];
+  } else {
+    // UIMenuController: iOS 11-15 fallback.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    UIMenuController *menu = [UIMenuController sharedMenuController];
+    CGRect targetRect = CGRectMake(point.x - 1.0, point.y - 1.0, 2.0, 2.0);
+    [menu showMenuFromView:self rect:targetRect];
+#pragma clang diagnostic pop
+  }
+}
+
+/// Called when a Wayland client sets the clipboard selection (text selected in
+/// e.g. weston-terminal). Text is already in UIPasteboard. Show the native
+/// iOS edit menu so the user can tap Copy, Paste, Select All, or AutoFill.
+- (void)_clientSelectionDidChange:(NSNotification *)note {
+  (void)note;
+  if (!_sessionActive) {
+    return;
+  }
+  CGPoint anchor = _lastTouchPoint;
+  if (CGPointEqualToPoint(anchor, CGPointZero)) {
+    anchor = CGPointMake(self.bounds.size.width / 2.0, 44.0);
+  }
+  [self _showNativeEditMenuAtPoint:anchor];
+}
+
+/// UIEditMenuInteractionDelegate: supply the target rect so the popover
+/// anchors just above the last touch/selection point.
+- (CGRect)editMenuInteraction:(UIEditMenuInteraction *)interaction
+    targetRectForConfiguration:(UIEditMenuConfiguration *)configuration
+    API_AVAILABLE(ios(16.0)) {
+  (void)interaction;
+  (void)configuration;
+  CGFloat y = MAX(_lastTouchPoint.y - 48.0, 4.0);
+  return CGRectMake(_lastTouchPoint.x - 1.0, y, 2.0, 2.0);
+}
+
+/// UIEditMenuInteractionDelegate: provide the menu elements. Includes suggested
+/// actions from UIKit (Copy, Paste, Select All, AutoFill / Scan Text, etc.) and
+/// ensures fallbacks if suggestedActions is empty.
+- (nullable UIMenu *)editMenuInteraction:(UIEditMenuInteraction *)interaction
+                      menuForConfiguration:(UIEditMenuConfiguration *)configuration
+                           suggestedActions:(NSArray<UIMenuElement *> *)suggestedActions
+    API_AVAILABLE(ios(16.0)) {
+  (void)interaction;
+  (void)configuration;
+
+  NSMutableArray<UIMenuElement *> *items = [NSMutableArray array];
+
+  // UIKit suggested commands carry system verified edit-menu intent
+  // (Copy, Paste, Select All, AutoFill / Scan Text, etc.) based on canPerformAction:.
+  [items addObjectsFromArray:suggestedActions];
+
+  // If suggestedActions was empty for any reason, provide fallbacks.
+  if (items.count == 0) {
+    if ([UIPasteboard generalPasteboard].string.length > 0) {
+      [items addObject:[UIAction actionWithTitle:NSLocalizedString(@"Copy", nil)
+                                           image:nil
+                                      identifier:nil
+                                         handler:^(__kindof UIAction * _Nonnull action) {
+        (void)action;
+        [self copy:nil];
+      }]];
+    }
+    if ([UIPasteboard generalPasteboard].hasStrings ||
+        [UIPasteboard generalPasteboard].string.length > 0) {
+      [items addObject:[UIAction actionWithTitle:NSLocalizedString(@"Paste", nil)
+                                           image:nil
+                                      identifier:nil
+                                         handler:^(__kindof UIAction * _Nonnull action) {
+        (void)action;
+        [self paste:nil];
+      }]];
+    }
+    [items addObject:[UIAction actionWithTitle:NSLocalizedString(@"Select All", nil)
+                                         image:nil
+                                    identifier:nil
+                                       handler:^(__kindof UIAction * _Nonnull action) {
+      (void)action;
+      [self selectAll:nil];
+    }]];
+  }
+
+  return items.count > 0 ? [UIMenu menuWithChildren:items] : nil;
+}
+
+/// UIEditMenuInteractionDelegate: clean up transient interaction on dismissal.
+- (void)editMenuInteraction:(UIEditMenuInteraction *)interaction
+    willDismissMenuForConfiguration:(UIEditMenuConfiguration *)configuration
+                           animator:(id<UIEditMenuInteractionAnimating>)animator
+    API_AVAILABLE(ios(16.0)) {
+  (void)configuration;
+  __weak typeof(self) weakSelf = self;
+  [animator addCompletion:^{
+    __strong typeof(weakSelf) strongSelf = weakSelf;
+    if (strongSelf && strongSelf->_editMenuInteraction == interaction) {
+      [strongSelf removeInteraction:interaction];
+      strongSelf->_editMenuInteraction = nil;
+    }
+  }];
+}
+
+#endif // !TARGET_OS_TV: native edit menu
 
 #if TARGET_OS_TV
 - (BOOL)canBecomeFocused {
@@ -3380,24 +3641,13 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
     return;
   }
   _hostKeyboardReady = YES;
-  // Accessory bar first; soft Expand applied from pending text_entry_wanted.
-  // Terminals always arm AccessoryOnly (+ FR) so Esc/Ctrl/⌨↓ appear even when
-  // a Mac/hardware keyboard would otherwise force HiddenExternal.
-  if (_keyboardUiMode != WWNKeyboardUiModePip &&
-      _keyboardUiMode != WWNKeyboardUiModeExpanded) {
-    _keyboardUiMode = WWNKeyboardUiModeAccessoryOnly;
-  }
-  if ([self _wantsExtendedKeyboardBar] &&
-      _keyboardUiMode == WWNKeyboardUiModeHiddenExternal) {
-    _keyboardUiMode = WWNKeyboardUiModeAccessoryOnly;
-  }
-  [self activateKeyboard];
-  if (_pendingTextEntryWantedValid) {
+  if (wwn_ios_terminal_is_active() != 0) {
+    [self _setKeyboardUiMode:WWNKeyboardUiModeExpanded];
+    [self becomeFirstResponder];
+  } else if (_pendingTextEntryWantedValid) {
     BOOL wanted = _pendingTextEntryWanted;
     _pendingTextEntryWantedValid = NO;
     [self applyHostKeyboardForTextInputEnabled:wanted];
-  } else if ([self _wantsExtendedKeyboardBar] && !self.isFirstResponder) {
-    [self activateKeyboard];
   }
   WWNLog("IOS_VIEW",
          @"armHostKeyboardAfterFirstFrame extendedBar=%d mode=%ld fr=%d",
@@ -3407,7 +3657,7 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
 }
 
 - (void)applyHostKeyboardForTextInputEnabled:(BOOL)enabled {
-  // Soft Expand/collapse from text_entry_wanted. Do NOT becomeFirstResponder
+  // Soft Expand/collapse from committed Wayland text-input. Do NOT becomeFirstResponder
   // via `_setKeyboardUiMode`. That stalls configure/buffer delivery.
 #if TARGET_OS_TV
   if (enabled) {
@@ -3422,46 +3672,36 @@ static const NSTimeInterval kDoubleTapThreshold = 0.4;
   [self _tvosNotifyKeyboardFocusChange];
   return;
 #else
-  if (_keyboardUiMode == WWNKeyboardUiModePip) {
-    return;
-  }
-  // Terminals: recover from HiddenExternal so accessory can show.
-  if (_keyboardUiMode == WWNKeyboardUiModeHiddenExternal) {
-    if (![self _wantsExtendedKeyboardBar]) {
-      return;
-    }
-    _keyboardUiMode = WWNKeyboardUiModeAccessoryOnly;
-  }
   if (!_hostKeyboardReady) {
     // Stash until first Wayland frame. Expand/FR before that leaves
     // weston-terminal stuck under the startup log with no buffer.
     _pendingTextEntryWanted = enabled;
     _pendingTextEntryWantedValid = YES;
-    // Prefer accessory until armed; soft Expand applied after first frame
-    // (unless user already collapsed).
-    _keyboardUiMode = WWNKeyboardUiModeAccessoryOnly;
     [self _updateKeyboardModeButtonTitle];
     return;
   }
   if (!enabled) {
     _userCollapsedSoftOsk = NO;
+    [self _setKeyboardUiMode:WWNKeyboardUiModeHiddenExternal];
+    return;
   }
   // Re-probe HW keyboard every time. WillShow used to clear the flag and
   // soft-expand incorrectly while a Mac/Bluetooth keyboard stayed attached.
   _hardwareKeyboardActive = [self _hardwareKeyboardConnected];
-  // Soft OSK only when no hardware keyboard. Terminals keep AccessoryOnly
-  // (Esc/Ctrl/⌨↓) with HW attached; other clients use HiddenExternal.
+  // A committed text-input request is the sole implicit OSK trigger.  With a
+  // hardware keyboard UIKit will keep the soft keyboard hidden, while the
+  // extended card remains available for the focused text field.
   BOOL expandSoft =
       enabled && !_userCollapsedSoftOsk && !_hardwareKeyboardActive;
   WWNKeyboardUiMode mode;
   if (expandSoft) {
     mode = WWNKeyboardUiModeExpanded;
-  } else if ([self _wantsExtendedKeyboardBar] || !enabled) {
+  } else if (_hardwareKeyboardActive && [self _wantsExtendedKeyboardBar]) {
     mode = WWNKeyboardUiModeAccessoryOnly;
   } else if (_hardwareKeyboardActive) {
     mode = WWNKeyboardUiModeHiddenExternal;
   } else {
-    mode = WWNKeyboardUiModeAccessoryOnly;
+    mode = WWNKeyboardUiModeExpanded;
   }
   if (_keyboardUiMode == mode) {
     if (!self.isFirstResponder &&
@@ -3636,6 +3876,12 @@ static BOOL WWNWestonDrmInputLive(void) {
 }
 
 - (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+  // Track most recent touch so the native edit menu anchors near the selection.
+  UITouch *anyTouch = touches.anyObject;
+  if (anyTouch) {
+    _lastTouchPoint = [anyTouch locationInView:self];
+  }
+
   // Snapshot the input mode at gesture start (don't switch mid-gesture)
   if (_activeTouchCount == 0) {
     _currentInputMode = [self _readInputMode];
@@ -3666,6 +3912,10 @@ static BOOL WWNWestonDrmInputLive(void) {
 }
 
 - (void)touchesMoved:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+  UITouch *anyTouch = touches.anyObject;
+  if (anyTouch) {
+    _lastTouchPoint = [anyTouch locationInView:self];
+  }
   _activeTouchCount = (NSInteger)[[event touchesForView:self] count];
   if (WWNWestonDrmInputLive()) {
     if (_activeTouchCount >= 2 && wwn_weston_inject_axis) {
@@ -3678,9 +3928,11 @@ static BOOL WWNWestonDrmInputLive(void) {
       } else {
         _prevScrollCenter = center;
         if (fabs(dy) > 0.5) {
+          [self _dismissKeyboardForWaylandScrollIfNeeded];
           wwn_weston_inject_axis(0, (double)-dy);
         }
         if (fabs(dx) > 0.5) {
+          [self _dismissKeyboardForWaylandScrollIfNeeded];
           wwn_weston_inject_axis(1, (double)-dx);
         }
       }
@@ -3697,6 +3949,10 @@ static BOOL WWNWestonDrmInputLive(void) {
 }
 
 - (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+  UITouch *anyTouch = touches.anyObject;
+  if (anyTouch) {
+    _lastTouchPoint = [anyTouch locationInView:self];
+  }
   if (WWNWestonDrmInputLive()) {
     [self _ownDisplay_injectTouches:touches state:0 event:event];
     _activeTouchCount =
@@ -3721,9 +3977,20 @@ static BOOL WWNWestonDrmInputLive(void) {
       (NSInteger)[[event touchesForView:self] count] - (NSInteger)touches.count;
   if (_activeTouchCount < 0)
     _activeTouchCount = 0;
-  if (_activeTouchCount == 0 && _currentInputMode == WWNTouchInputModeTouchpad) {
-    _touchpadPointerEntered = NO;
-    _touchpadPointerWindowId = 0;
+  if (_activeTouchCount == 0) {
+    if (_currentInputMode == WWNTouchInputModeTouchpad) {
+      _touchpadPointerEntered = NO;
+      _touchpadPointerWindowId = 0;
+    }
+    // Single tap on compositor view opens virtual keyboard and extended toolbar
+    if (_touchTotalMovement < kTapMovementThreshold && !_hardwareKeyboardActive) {
+      if (_keyboardUiMode != WWNKeyboardUiModeExpanded) {
+        [self _setKeyboardUiMode:WWNKeyboardUiModeExpanded];
+      }
+      if (!self.isFirstResponder) {
+        [self becomeFirstResponder];
+      }
+    }
   }
 }
 
@@ -3782,6 +4049,14 @@ static BOOL WWNWestonDrmInputLive(void) {
     _activeTouchCount = allCount - (NSInteger)touches.count;
     if (_activeTouchCount < 0) {
       _activeTouchCount = 0;
+    }
+    if (_activeTouchCount == 0 && !_hardwareKeyboardActive) {
+      if (_keyboardUiMode != WWNKeyboardUiModeExpanded) {
+        [self _setKeyboardUiMode:WWNKeyboardUiModeExpanded];
+      }
+      if (!self.isFirstResponder) {
+        [self becomeFirstResponder];
+      }
     }
     return;
   }
@@ -4072,6 +4347,7 @@ static BOOL WWNWestonDrmInputLive(void) {
     uint64_t axisWindowId =
         _touchpadPointerWindowId != 0 ? _touchpadPointerWindowId : self.wwnWindowId;
     if (fabs(dy) > 0.5) {
+      [self _dismissKeyboardForWaylandScrollIfNeeded];
       [bridge injectPointerAxisForWindow:axisWindowId
                                     axis:0 // vertical
                                    value:-dy
@@ -4079,6 +4355,7 @@ static BOOL WWNWestonDrmInputLive(void) {
                                timestamp:ts];
     }
     if (fabs(dx) > 0.5) {
+      [self _dismissKeyboardForWaylandScrollIfNeeded];
       [bridge injectPointerAxisForWindow:axisWindowId
                                     axis:1 // horizontal
                                    value:-dx
@@ -4387,6 +4664,7 @@ static BOOL WWNWestonDrmInputLive(void) {
       _touchpadPointerWindowId != 0 ? _touchpadPointerWindowId : self.wwnWindowId;
   WWNCompositorBridge *bridge = [WWNCompositorBridge sharedBridge];
   if (fabs(dy) > 0.01) {
+    [self _dismissKeyboardForWaylandScrollIfNeeded];
     [bridge injectPointerAxisForWindow:axisWindowId
                                   axis:0 // vertical
                                  value:-dy
@@ -4394,6 +4672,7 @@ static BOOL WWNWestonDrmInputLive(void) {
                              timestamp:ts];
   }
   if (fabs(dx) > 0.01) {
+    [self _dismissKeyboardForWaylandScrollIfNeeded];
     [bridge injectPointerAxisForWindow:axisWindowId
                                   axis:1 // horizontal
                                  value:-dx
@@ -4583,7 +4862,97 @@ static BOOL WWNWestonDrmInputLive(void) {
       [commands addObject:cmd];
     }
   }
+
+  // Native tab shortcuts (Rootshell keybinds)
+  for (NSUInteger i = 1; i <= 9; i++) {
+    NSString *input = [NSString stringWithFormat:@"%lu", (unsigned long)i];
+    UIKeyCommand *tabCmd =
+        [UIKeyCommand keyCommandWithInput:input
+                            modifierFlags:UIKeyModifierCommand
+                                   action:@selector(handleTabSelectKeyCommand:)];
+    if (@available(iOS 15.0, tvOS 15.0, *)) {
+      tabCmd.wantsPriorityOverSystemBehavior = YES;
+    }
+    [commands addObject:tabCmd];
+  }
+
+  UIKeyCommand *newTabCmd =
+      [UIKeyCommand keyCommandWithInput:@"t"
+                          modifierFlags:UIKeyModifierCommand
+                                 action:@selector(handleNewTabKeyCommand:)];
+  UIKeyCommand *closeTabCmd =
+      [UIKeyCommand keyCommandWithInput:@"w"
+                          modifierFlags:UIKeyModifierCommand
+                                 action:@selector(handleCloseTabKeyCommand:)];
+  UIKeyCommand *prevTabCmd =
+      [UIKeyCommand keyCommandWithInput:@"["
+                          modifierFlags:UIKeyModifierCommand
+                                 action:@selector(handlePrevTabKeyCommand:)];
+  UIKeyCommand *nextTabCmd =
+      [UIKeyCommand keyCommandWithInput:@"]"
+                          modifierFlags:UIKeyModifierCommand
+                                 action:@selector(handleNextTabKeyCommand:)];
+  UIKeyCommand *exposeCmd =
+      [UIKeyCommand keyCommandWithInput:@"e"
+                          modifierFlags:UIKeyModifierCommand | UIKeyModifierShift
+                                 action:@selector(handleToggleExposeKeyCommand:)];
+  if (@available(iOS 15.0, tvOS 15.0, *)) {
+    newTabCmd.wantsPriorityOverSystemBehavior = YES;
+    closeTabCmd.wantsPriorityOverSystemBehavior = YES;
+    prevTabCmd.wantsPriorityOverSystemBehavior = YES;
+    nextTabCmd.wantsPriorityOverSystemBehavior = YES;
+    exposeCmd.wantsPriorityOverSystemBehavior = YES;
+  }
+  [commands addObject:newTabCmd];
+  [commands addObject:closeTabCmd];
+  [commands addObject:prevTabCmd];
+  [commands addObject:nextTabCmd];
+  [commands addObject:exposeCmd];
+
   return commands;
+}
+
+- (void)handleTabSelectKeyCommand:(UIKeyCommand *)command {
+  NSInteger idx = [command.input integerValue] - 1;
+  [[NSNotificationCenter defaultCenter]
+      postNotificationName:WWNRequestSelectTabAtIndexNotification
+                    object:self
+                  userInfo:@{@"index": @(idx)}];
+}
+
+- (void)handleNewTabKeyCommand:(UIKeyCommand *)command {
+  (void)command;
+  [[NSNotificationCenter defaultCenter]
+      postNotificationName:WWNRequestNewTabNotification
+                    object:self];
+}
+
+- (void)handleCloseTabKeyCommand:(UIKeyCommand *)command {
+  (void)command;
+  [[NSNotificationCenter defaultCenter]
+      postNotificationName:WWNRequestCloseActiveTabNotification
+                    object:self];
+}
+
+- (void)handlePrevTabKeyCommand:(UIKeyCommand *)command {
+  (void)command;
+  [[NSNotificationCenter defaultCenter]
+      postNotificationName:WWNRequestSelectPreviousTabNotification
+                    object:self];
+}
+
+- (void)handleNextTabKeyCommand:(UIKeyCommand *)command {
+  (void)command;
+  [[NSNotificationCenter defaultCenter]
+      postNotificationName:WWNRequestSelectNextTabNotification
+                    object:self];
+}
+
+- (void)handleToggleExposeKeyCommand:(UIKeyCommand *)command {
+  (void)command;
+  [[NSNotificationCenter defaultCenter]
+      postNotificationName:WWNRequestToggleTabExposeNotification
+                    object:self];
 }
 
 - (void)handleEscape:(UIKeyCommand *)command {

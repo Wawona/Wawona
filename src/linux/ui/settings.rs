@@ -51,7 +51,6 @@ pub fn show_settings(parent: &adw::ApplicationWindow, state: &SharedAppState, la
         "Env Vars",
         "Local Shell",
         "Machines",
-        "Advanced",
         "SSH and Waypipe",
         "About",
         "Dependencies",
@@ -385,20 +384,6 @@ pub fn show_settings(parent: &adw::ApplicationWindow, state: &SharedAppState, la
     deps_page.add(&deps_group);
     stack.add_named(&deps_page, Some("Dependencies"));
 
-    // Advanced
-    let advanced_page = adw::PreferencesPage::new();
-    let advanced_group = adw::PreferencesGroup::new();
-    advanced_group.set_title("Advanced");
-    add_choice_row(
-        &advanced_group,
-        "Log Level",
-        &["debug", "info", "warn", "error"],
-        log_level_value.clone(),
-        open_choice.clone(),
-    );
-    advanced_page.add(&advanced_group);
-    stack.add_named(&advanced_page, Some("Advanced"));
-
     // Launch Agent
     let agent_page = adw::PreferencesPage::new();
     let agent_group = adw::PreferencesGroup::new();
@@ -474,6 +459,13 @@ pub fn show_settings(parent: &adw::ApplicationWindow, state: &SharedAppState, la
         &about_group,
         "Description",
         "Multi-platform compositor control plane.",
+    );
+    add_choice_row(
+        &about_group,
+        "Log Level",
+        &["debug", "info", "warn", "error"],
+        log_level_value.clone(),
+        open_choice.clone(),
     );
     let copy_logs = gtk::Button::with_label("Copy Recent Logs");
     crate::linux::ui::a11y::set_wwn_a11y(

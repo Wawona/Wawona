@@ -41,12 +41,12 @@ func validationFlagsMissingAndInvalidFields() {
 }
 
 @Test
-func vmHasNoSubtypeAndContainerShowsProfileFields() {
-    // Backend engines are fixed per build target (wwn-vms / wwn-containers) and
-    // are never user-editable, so VM/container editors expose no subtype field.
+func vmAndContainerShowProfileFieldsWithoutBackendChoice() {
+    // Backend engines are fixed per build target. The editor exposes guest
+    // configuration, never a user-selectable backend subtype.
     let vmFields = MachineEditorValidation.visibleFields(
         for: MachineEditorState(name: "VM", typeRawValue: "virtual_machine"))
-    #expect(vmFields == [.name, .type])
+    #expect(vmFields == [.name, .type, .vmIdentifier, .vmVsockPort, .vmNotes])
 
     let containerFields = MachineEditorValidation.visibleFields(
         for: MachineEditorState(name: "Container", typeRawValue: "container"))

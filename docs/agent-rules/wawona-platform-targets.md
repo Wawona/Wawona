@@ -158,8 +158,8 @@ forbidden while iPhone is planned for those features.
    (`repo.wawona.io` / jailbreak). **forbidden** in the App Store IPA.
    **Not** Desktop/LockScreen. **Not** MediaProjection-as-desktop.
    Full rule: `wawona-swinging-bridge`.
-9. **VM / containers**. ⏳ planned for macOS, iOS, iPadOS, Android, Linux via
-   Machines profiles. ❌ on tvOS, watchOS, visionOS. Do not document as shipping
+9. **VM / containers**. ⏳ planned for macOS, iOS, iPadOS, visionOS, Android, Linux via
+   Machines profiles. ❌ on tvOS, watchOS. Do not document as shipping
    until gates flip. Local shell is not a substitute for a VM.
 10. **Host window manager**. MacOS = AppKit zoom/fullscreen/miniaturize.
     iOS/iPadOS/tvOS/visionOS/Android = **fill-primary**: maximize and
