@@ -65,6 +65,7 @@ containerization-build/
 
 # Dependencies (cloned git repos - scripts will generate these from scratch)
 # Note: dependencies/ is now tracked (Nix dependency management system)
+/deps/
 macos-dependencies/
 ios-dependencies/
 android-dependencies/

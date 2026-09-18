@@ -46,7 +46,7 @@ func vmAndContainerShowProfileFieldsWithoutBackendChoice() {
     // configuration, never a user-selectable backend subtype.
     let vmFields = MachineEditorValidation.visibleFields(
         for: MachineEditorState(name: "VM", typeRawValue: "virtual_machine"))
-    #expect(vmFields == [.name, .type, .vmIdentifier, .vmVsockPort, .vmNotes])
+    #expect(vmFields == [.name, .type, .vmIdentifier, .vmVsockPort, .vmGuestVariant, .vmMemoryMB, .vmDiskGiB, .vmNotes])
 
     let containerFields = MachineEditorValidation.visibleFields(
         for: MachineEditorState(name: "Container", typeRawValue: "container"))

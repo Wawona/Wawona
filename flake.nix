@@ -289,7 +289,7 @@
           let 
             relPath = pkgs.lib.removePrefix (toString ./.) (toString path);
             isImportant = pkgs.lib.any (p: pkgs.lib.hasPrefix p relPath) [
-              "/src" "/Sources" "/android" "/deps" "/protocols" "/scripts" "/include" "/VERSION" "/Cargo" "/build.rs" "/flake"
+              "/src" "/Sources" "/android" "/protocols" "/scripts" "/include" "/VERSION" "/Cargo" "/build.rs" "/flake"
             ];
             isIgnored = pkgs.lib.any (p: pkgs.lib.hasInfix p relPath) [
               "/.git" "/result" "/.direnv" "/target" "/.cache" "/.gemini" "/Inspiration" "/.idea" "/.vscode" "/.DS_Store"
