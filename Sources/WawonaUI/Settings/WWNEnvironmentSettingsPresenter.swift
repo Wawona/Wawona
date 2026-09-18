@@ -38,10 +38,12 @@ public final class WWNEnvironmentSettingsPresenter: NSObject {
     }
 
     private static func makeMacOSHostingView() -> NSView {
-        let root = EnvironmentVariablesView(
-            preferences: WawonaPreferences.shared,
-            perMachine: false
-        )
+        let root = NavigationStack {
+            EnvironmentVariablesView(
+                preferences: WawonaPreferences.shared,
+                perMachine: false
+            )
+        }
         .frame(minWidth: 280, minHeight: 200)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         // Use autoresizing (not Auto Layout flags alone) so ObjC can size the
@@ -60,13 +62,15 @@ public final class WWNEnvironmentSettingsPresenter: NSObject {
     private static func presentMac(from host: AnyObject?) {
         _ = host
         let hosting = NSHostingController(
-            rootView: EnvironmentVariablesView(
-                preferences: WawonaPreferences.shared,
-                perMachine: false
-            )
+            rootView: NavigationStack {
+                EnvironmentVariablesView(
+                    preferences: WawonaPreferences.shared,
+                    perMachine: false
+                )
+            }
         )
         let window = NSWindow(contentViewController: hosting)
-        window.title = "Env Vars"
+        window.title = "Environment Variables"
         window.styleMask = [.titled, .closable, .resizable]
         window.setContentSize(NSSize(width: 560, height: 680))
         window.center()

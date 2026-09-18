@@ -440,14 +440,14 @@ public struct MachineSettingsView: View {
     private func sshWaypipeSection() -> some View {
         Section("SSH / Waypipe") {
             NativeSettingsRow("Host", summary: "Remote address") {
-                TextField("", text: sshHostBinding)
+                TextField("", text: sshHostBinding, prompt: Text("e.g. 192.168.1.100 or host.local"))
                     .labelsHidden()
                     .wawonaTextFieldNoAutocaps()
                     .autocorrectionDisabled()
                     .multilineTextAlignment(.trailing)
             }
             NativeSettingsRow("User", summary: "SSH username") {
-                TextField("", text: sshUserBinding)
+                TextField("", text: sshUserBinding, prompt: Text("e.g. user or root"))
                     .labelsHidden()
                     .wawonaTextFieldNoAutocaps()
                     .autocorrectionDisabled()
@@ -461,11 +461,13 @@ public struct MachineSettingsView: View {
                 NativeBoundedIntegerField(
                     title: "Port",
                     value: sshPortBinding,
-                    range: 1...65_535
+                    range: 1...65_535,
+                    step: 1,
+                    prompt: "22"
                 )
             }
             NativeSettingsRow("Password") {
-                SecureField("", text: sshPasswordBinding)
+                SecureField("", text: sshPasswordBinding, prompt: Text("Password"))
                     .labelsHidden()
                     .textContentType(.password)
             }
@@ -474,12 +476,12 @@ public struct MachineSettingsView: View {
                 summary: "Optional override",
                 help: "Leave empty to use the global Waypipe password."
             ) {
-                SecureField("", text: waypipeSSHPasswordBinding)
+                SecureField("", text: waypipeSSHPasswordBinding, prompt: Text("Optional override"))
                     .labelsHidden()
                     .textContentType(.password)
             }
             NativeSettingsRow("Remote Command") {
-                TextField("", text: remoteCommandBinding)
+                TextField("", text: remoteCommandBinding, prompt: Text("e.g. weston-simple-shm"))
                     .labelsHidden()
                     .wawonaTextFieldNoAutocaps()
                     .autocorrectionDisabled()
@@ -719,6 +721,8 @@ public struct MachineSettingsView: View {
             Button("Save Machine Settings", systemImage: "checkmark") {
                 commitContainerMemory()
                 guard let latestDraft = draft else { return }
+                WWNKeychain.shared.setSSHPassword(latestDraft.sshPassword, for: latestDraft.id)
+                WWNKeychain.shared.setSSHKeyPassphrase(latestDraft.sshKeyPassphrase, for: latestDraft.id)
                 profileStore.upsert(latestDraft)
                 profileStore.activeMachineId = latestDraft.id
                 profileStore.save()
@@ -743,6 +747,12 @@ public struct MachineSettingsView: View {
         guard var profile = profileStore.profiles.first(where: { $0.id == resolvedSelectedID }) else {
             draft = nil
             return
+        }
+        if let keychainPass = WWNKeychain.shared.sshPassword(for: profile.id), !keychainPass.isEmpty {
+            profile.sshPassword = keychainPass
+        }
+        if let keychainPhrase = WWNKeychain.shared.sshKeyPassphrase(for: profile.id), !keychainPhrase.isEmpty {
+            profile.sshKeyPassphrase = keychainPhrase
         }
         #if os(iOS) || os(watchOS)
         if profile.type == .container {

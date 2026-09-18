@@ -361,31 +361,33 @@ struct MachineEditorView: View {
                 // MARK: SSH - remote machine via network
                 if isSSH {
                     Section("Remote Host") {
-                        TextField("Host", text: $sshHost)
+                        TextField("Host", text: $sshHost, prompt: Text("e.g. 192.168.1.100 or host.local"))
                             .wawonaTextFieldNoAutocaps()
                             .autocorrectionDisabled()
-                        TextField("Username", text: $sshUser)
+                        TextField("Username", text: $sshUser, prompt: Text("e.g. user or root"))
                             .wawonaTextFieldNoAutocaps()
                             .autocorrectionDisabled()
-                        SecureField("Password", text: $sshPassword)
+                        SecureField("Password", text: $sshPassword, prompt: Text("Password"))
                             .textContentType(.password)
                         LabeledContent("Port") {
                             NativeBoundedIntegerField(
                                 title: "Port",
                                 value: $sshPort,
-                                range: 1...65_535
+                                range: 1...65_535,
+                                step: 1,
+                                prompt: "22"
                             )
-                            .frame(width: 140)
+                            .frame(width: 170)
                         }
                         Picker("Auth", selection: $sshAuthMethod) {
                             Text("Password").tag(0)
                             Text("Public Key").tag(1)
                         }
                         .wwnMachineChoicePicker()
-                        TextField("Key Path", text: $sshKeyPath)
+                        TextField("Key Path", text: $sshKeyPath, prompt: Text("e.g. ~/.ssh/id_ed25519"))
                             .wawonaTextFieldNoAutocaps()
                             .autocorrectionDisabled()
-                        SecureField("Key Passphrase", text: $sshKeyPassphrase)
+                        SecureField("Key Passphrase", text: $sshKeyPassphrase, prompt: Text("Passphrase"))
                             .wawonaTextFieldNoAutocaps()
                             .autocorrectionDisabled()
                     }

@@ -445,17 +445,13 @@ struct WWNMachinesGridView: View {
   @ToolbarContentBuilder
   private var detailToolbarContent: some ToolbarContent {
     #if os(macOS)
-    ToolbarItem(placement: .primaryAction) {
-      sortMenu
-        .backport.glassToolbarButton()
-    }
     ToolbarItemGroup(placement: .primaryAction) {
+      sortMenu
       Button {
         editorDestination = .add
       } label: {
         Label("Add Machine", systemImage: "plus")
       }
-      .backport.glassToolbarButton()
       .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
     }
     #elseif os(tvOS)

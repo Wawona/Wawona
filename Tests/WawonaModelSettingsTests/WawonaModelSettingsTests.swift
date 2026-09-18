@@ -315,3 +315,42 @@ func virtualMachineProfileRoundTripsGuestConfiguration() throws {
     #expect(restored.vmSettings?.vmIdentifier == "studio-linux")
     #expect(restored.vmSettings?.vsockPort == "1024")
 }
+
+@Test
+func keychainSavesAndLoadsSSHPasswordAndKeyPassphrase() {
+    let testMachineId = "test-machine-" + UUID().uuidString
+    let samplePassword = "test-secret-password-42"
+    let samplePassphrase = "test-secret-passphrase-84"
+
+    #if canImport(Security)
+    defer {
+        WWNKeychain.shared.deleteSSHPassword(for: testMachineId)
+        WWNKeychain.shared.deleteSSHKeyPassphrase(for: testMachineId)
+    }
+
+    _ = WWNKeychain.shared.setSSHPassword(samplePassword, for: testMachineId)
+    _ = WWNKeychain.shared.setSSHKeyPassphrase(samplePassphrase, for: testMachineId)
+
+    let loadedPassword = WWNKeychain.shared.sshPassword(for: testMachineId)
+    let loadedPassphrase = WWNKeychain.shared.sshKeyPassphrase(for: testMachineId)
+
+    #expect(loadedPassword == samplePassword)
+    #expect(loadedPassphrase == samplePassphrase)
+    #endif
+}
+
+@Test
+func keychainSavesAndLoadsSSHPublicKey() {
+    let testMachineId = "test-machine-pub-" + UUID().uuidString
+    let sampleKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITestKeyWawona2026 test@wawona.local"
+
+    #if canImport(Security)
+    defer {
+        WWNKeychain.shared.deleteSSHPublicKey(for: testMachineId)
+    }
+
+    _ = WWNKeychain.shared.setSSHPublicKey(sampleKey, for: testMachineId)
+    let loadedKey = WWNKeychain.shared.sshPublicKey(for: testMachineId)
+    #expect(loadedKey == sampleKey)
+    #endif
+}

@@ -368,30 +368,81 @@ final class WWNSettingsValueModel: ObservableObject {
         let range: ClosedRange<Int>
         let defaultValue: Int
         let allowsEmpty: Bool
+        let step: Int
+        let promptText: String
     }
 
     func numberSpec(for item: WWNSettingItem) -> NumberSpec {
         switch itemKey(item) {
-        case "SSHPort", "MachineVMVsockPort", "ContainerVsockPort":
+        case "SSHPort":
             return NumberSpec(
                 range: 1...65535,
-                defaultValue: itemKey(item) == "SSHPort" ? 22 : 1024,
-                allowsEmpty: false
+                defaultValue: 22,
+                allowsEmpty: false,
+                step: 1,
+                promptText: "22"
+            )
+        case "MachineVMVsockPort", "ContainerVsockPort":
+            return NumberSpec(
+                range: 1...65535,
+                defaultValue: 1024,
+                allowsEmpty: false,
+                step: 1,
+                promptText: "1024"
             )
         case "WaylandDisplayNumber":
-            return NumberSpec(range: 0...255, defaultValue: 0, allowsEmpty: false)
+            return NumberSpec(
+                range: 0...255,
+                defaultValue: 0,
+                allowsEmpty: false,
+                step: 1,
+                promptText: "0"
+            )
         case "WaypipeCompressLevel":
-            return NumberSpec(range: 1...22, defaultValue: 7, allowsEmpty: false)
+            return NumberSpec(
+                range: 1...22,
+                defaultValue: 7,
+                allowsEmpty: false,
+                step: 1,
+                promptText: "7"
+            )
         case "WaypipeThreads":
-            return NumberSpec(range: 0...64, defaultValue: 0, allowsEmpty: false)
+            return NumberSpec(
+                range: 0...64,
+                defaultValue: 0,
+                allowsEmpty: false,
+                step: 1,
+                promptText: "Auto (0)"
+            )
         case "WaypipeVideoBpf":
             return NumberSpec(
                 range: 1_000...100_000,
                 defaultValue: 5_000,
-                allowsEmpty: true
+                allowsEmpty: true,
+                step: 1_000,
+                promptText: "Auto (5000)"
             )
         default:
-            return NumberSpec(range: 0...65_535, defaultValue: 0, allowsEmpty: false)
+            return NumberSpec(
+                range: 0...65_535,
+                defaultValue: 0,
+                allowsEmpty: false,
+                step: 1,
+                promptText: "0"
+            )
+        }
+    }
+
+    func textPrompt(for item: WWNSettingItem) -> String {
+        switch itemKey(item) {
+        case "SSHHost": return "e.g. 192.168.1.100 or host.local"
+        case "SSHUser": return "e.g. user or root"
+        case "SSHKeyPath", "WaypipeSSHKeyPath": return "e.g. ~/.ssh/id_ed25519"
+        case "SSHKeyPassphrase", "WaypipeSSHKeyPassphrase": return "Passphrase"
+        case "WaypipeTitlePrefix": return "e.g. Remote:"
+        case "WaypipeSecCtx": return "e.g. default"
+        case "RemoteCommand", "SSHCommand": return "e.g. weston-simple-shm"
+        default: return ""
         }
     }
 

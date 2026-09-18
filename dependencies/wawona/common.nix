@@ -20,6 +20,7 @@ rec {
     "Sources/WawonaModel/ContainerHubModels.swift"
     "Sources/WawonaModel/SessionOrchestrator.swift"
     "Sources/WawonaModel/WawonaPreferences.swift"
+    "Sources/WawonaModel/WWNKeychain.swift"
     "Sources/WawonaUIContracts/MachineEditorContracts.swift"
     "Sources/WawonaUIContracts/SettingsContracts.swift"
     "Sources/WawonaUI/WawonaApp.swift"

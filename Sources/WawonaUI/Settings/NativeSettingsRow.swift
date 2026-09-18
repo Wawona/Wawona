@@ -82,12 +82,26 @@ struct NativeSettingsRow<Control: View>: View {
             .help("More information")
             #endif
             .popover(isPresented: $showingHelp) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(title).font(.headline)
-                    Text(help)
+                ScrollView(.vertical) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(title)
+                            .font(.headline)
+                            .lineLimit(nil)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text(help)
+                            .font(.body)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(nil)
+                            .fixedSize(horizontal: false, vertical: true)
+                            #if !os(tvOS) && !os(watchOS)
+                            .textSelection(.enabled)
+                            #endif
+                    }
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .padding()
-                .frame(idealWidth: 320)
+                .frame(minWidth: 280, idealWidth: 360, maxWidth: 400)
+                .frame(maxHeight: 320)
             }
         #endif
     }
@@ -118,12 +132,32 @@ struct NativeBoundedIntegerField: View {
     let title: String
     @Binding var value: Int
     let range: ClosedRange<Int>
+    var step: Int = 1
+    var prompt: String? = nil
 
     var body: some View {
-        TextField("", value: boundedValue, format: .number)
+        HStack(spacing: 6) {
+            TextField(
+                "",
+                value: boundedValue,
+                format: .number,
+                prompt: prompt.map { Text($0) }
+            )
             .textFieldStyle(.roundedBorder)
             .multilineTextAlignment(.trailing)
             .accessibilityLabel(title)
+
+            #if !os(tvOS)
+            Stepper(
+                "",
+                value: boundedValue,
+                in: range,
+                step: step
+            )
+            .labelsHidden()
+            .accessibilityLabel("\(title) stepper")
+            #endif
+        }
     }
 
     private var boundedValue: Binding<Int> {

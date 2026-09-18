@@ -93,9 +93,14 @@ final class WWNMachineEditorDraft: ObservableObject {
     sshHost = profile?.sshHost ?? ""
     sshUser = profile?.sshUser ?? ""
     sshPort = "\(max(1, profile?.sshPort ?? 22))"
-    sshPassword = profile?.sshPassword ?? ""
+    if let machineId = profile?.machineId, !machineId.isEmpty {
+      sshPassword = WWNKeychain.shared.sshPassword(for: machineId) ?? profile?.sshPassword ?? ""
+      sshKeyPassphrase = WWNKeychain.shared.sshKeyPassphrase(for: machineId) ?? profile?.sshKeyPassphrase ?? ""
+    } else {
+      sshPassword = profile?.sshPassword ?? ""
+      sshKeyPassphrase = profile?.sshKeyPassphrase ?? ""
+    }
     sshKeyPath = profile?.sshKeyPath ?? ""
-    sshKeyPassphrase = profile?.sshKeyPassphrase ?? ""
     sshAuthMethod = profile?.sshAuthMethod ?? 0
     remoteCommand = profile?.remoteCommand ?? ""
     let containerSettings = profile?.containerSettings ?? [:]
@@ -271,6 +276,10 @@ final class WWNMachineEditorDraft: ObservableObject {
     profile.sshPassword = sshPassword
     profile.sshKeyPath = sshKeyPath.trimmingCharacters(in: .whitespacesAndNewlines)
     profile.sshKeyPassphrase = sshKeyPassphrase
+    if !profile.machineId.isEmpty {
+      WWNKeychain.shared.setSSHPassword(sshPassword, for: profile.machineId)
+      WWNKeychain.shared.setSSHKeyPassphrase(sshKeyPassphrase, for: profile.machineId)
+    }
     profile.sshAuthMethod = sshAuthMethod
     profile.remoteCommand = remoteCommand.trimmingCharacters(in: .whitespacesAndNewlines)
     profile.waypipeCompress = waypipeCompress

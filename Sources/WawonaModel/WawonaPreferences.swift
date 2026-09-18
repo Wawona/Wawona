@@ -290,8 +290,15 @@ public final class WawonaPreferences: ObservableObject {
             ),
             fallback: 22
         )
-        sshPassword = defaults.string(forKey: "SSHPassword")
-            ?? defaults.string(forKey: keyPrefix + "sshPassword") ?? ""
+        if let keychainPass = WWNKeychain.shared.sshPassword(), !keychainPass.isEmpty {
+            sshPassword = keychainPass
+        } else {
+            sshPassword = defaults.string(forKey: "SSHPassword")
+                ?? defaults.string(forKey: keyPrefix + "sshPassword") ?? ""
+            if !sshPassword.isEmpty {
+                WWNKeychain.shared.setSSHPassword(sshPassword)
+            }
+        }
         if defaults.object(forKey: "SSHAuthMethod") != nil {
             sshAuthMethod = defaults.integer(forKey: "SSHAuthMethod")
         } else {
@@ -299,11 +306,25 @@ public final class WawonaPreferences: ObservableObject {
         }
         sshKeyPath = defaults.string(forKey: "SSHKeyPath")
             ?? defaults.string(forKey: keyPrefix + "sshKeyPath") ?? ""
-        sshKeyPassphrase = defaults.string(forKey: "SSHKeyPassphrase")
-            ?? defaults.string(forKey: keyPrefix + "sshKeyPassphrase") ?? ""
+        if let keychainPhrase = WWNKeychain.shared.sshKeyPassphrase(), !keychainPhrase.isEmpty {
+            sshKeyPassphrase = keychainPhrase
+        } else {
+            sshKeyPassphrase = defaults.string(forKey: "SSHKeyPassphrase")
+                ?? defaults.string(forKey: keyPrefix + "sshKeyPassphrase") ?? ""
+            if !sshKeyPassphrase.isEmpty {
+                WWNKeychain.shared.setSSHKeyPassphrase(sshKeyPassphrase)
+            }
+        }
         sshKeyType = defaults.string(forKey: "SSHKeyType")
             ?? defaults.string(forKey: keyPrefix + "sshKeyType") ?? "ed25519"
-        waypipeSSHPassword = defaults.string(forKey: keyPrefix + "waypipeSSHPassword") ?? ""
+        if let keychainWaypipe = WWNKeychain.shared.string(forKey: WWNKeychain.globalWaypipeSSHPasswordKey), !keychainWaypipe.isEmpty {
+            waypipeSSHPassword = keychainWaypipe
+        } else {
+            waypipeSSHPassword = defaults.string(forKey: keyPrefix + "waypipeSSHPassword") ?? ""
+            if !waypipeSSHPassword.isEmpty {
+                WWNKeychain.shared.setString(waypipeSSHPassword, forKey: WWNKeychain.globalWaypipeSSHPasswordKey)
+            }
+        }
         logLevel = defaults.string(forKey: keyPrefix + "logLevel") ?? "info"
         let loadedInput = defaults.string(forKey: keyPrefix + "defaultInputProfile")
             ?? defaults.string(forKey: "TouchInputType")
@@ -400,6 +421,7 @@ public final class WawonaPreferences: ObservableObject {
         defaults.set(sshPort, forKey: keyPrefix + "sshPort")
         defaults.set(sshPassword, forKey: "SSHPassword")
         defaults.set(sshPassword, forKey: keyPrefix + "sshPassword")
+        WWNKeychain.shared.setSSHPassword(sshPassword)
         defaults.set(sshAuthMethod, forKey: keyPrefix + "sshAuthMethod")
         defaults.set(sshKeyPath, forKey: keyPrefix + "sshKeyPath")
         defaults.set(sshKeyPassphrase, forKey: keyPrefix + "sshKeyPassphrase")
@@ -413,6 +435,8 @@ public final class WawonaPreferences: ObservableObject {
         defaults.set(sshKeyPath, forKey: "WaypipeSSHKeyPath")
         defaults.set(sshKeyPassphrase, forKey: "WaypipeSSHKeyPassphrase")
         defaults.set(waypipeSSHPassword, forKey: keyPrefix + "waypipeSSHPassword")
+        WWNKeychain.shared.setSSHKeyPassphrase(sshKeyPassphrase)
+        WWNKeychain.shared.setString(waypipeSSHPassword, forKey: WWNKeychain.globalWaypipeSSHPasswordKey)
         defaults.set(logLevel, forKey: keyPrefix + "logLevel")
         defaults.set(defaultInputProfile, forKey: keyPrefix + "defaultInputProfile")
         defaults.set(defaultInputProfile, forKey: "TouchInputType")

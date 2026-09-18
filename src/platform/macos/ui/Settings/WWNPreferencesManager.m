@@ -2,6 +2,9 @@
 #import "../Machines/WWNPlatformCapabilities.h"
 #import "../Machines/WWNMachineProfileStore.h"
 #import <sys/sysctl.h>
+#if TARGET_OS_OSX || TARGET_OS_IOS || TARGET_OS_TV || TARGET_OS_VISION || TARGET_OS_WATCH
+#import <Security/Security.h>
+#endif
 
 static NSString *const kWWNTvosOpenGLDriverMigrated =
     @"wawona.tvosOpenGLDriverMigrated.v1";
@@ -1686,16 +1689,66 @@ NSUserDefaults *WWNSharedUserDefaults(void) {
 
 // Helper methods for preference storage
 - (NSString *)getSecureValueForKey:(NSString *)key {
+#if TARGET_OS_OSX || TARGET_OS_IOS || TARGET_OS_TV || TARGET_OS_VISION || TARGET_OS_WATCH
+  NSDictionary *query = @{
+    (id)kSecClass: (id)kSecClassGenericPassword,
+    (id)kSecAttrService: @"io.wawona.ssh",
+    (id)kSecAttrAccount: key,
+    (id)kSecAttrSynchronizable: (id)kSecAttrSynchronizableAny,
+    (id)kSecReturnData: @YES,
+    (id)kSecMatchLimit: (id)kSecMatchLimitOne
+  };
+  CFTypeRef item = NULL;
+  OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef)query, &item);
+  if (status == errSecSuccess && item) {
+    NSData *data = (__bridge_transfer NSData *)item;
+    NSString *val = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+    if (val && val.length > 0) {
+      return val;
+    }
+  }
+#endif
   NSString *value = [WWNSharedUserDefaults() stringForKey:key];
   return value ?: @"";
 }
 
 - (void)setSecureValue:(NSString *)value forKey:(NSString *)key {
+#if TARGET_OS_OSX || TARGET_OS_IOS || TARGET_OS_TV || TARGET_OS_VISION || TARGET_OS_WATCH
+  NSDictionary *deleteQuery = @{
+    (id)kSecClass: (id)kSecClassGenericPassword,
+    (id)kSecAttrService: @"io.wawona.ssh",
+    (id)kSecAttrAccount: key,
+    (id)kSecAttrSynchronizable: (id)kSecAttrSynchronizableAny
+  };
+  SecItemDelete((__bridge CFDictionaryRef)deleteQuery);
+
+  if (value && value.length > 0) {
+    NSData *data = [value dataUsingEncoding:NSUTF8StringEncoding];
+    if (data) {
+      NSMutableDictionary *addQuery = [@{
+        (id)kSecClass: (id)kSecClassGenericPassword,
+        (id)kSecAttrService: @"io.wawona.ssh",
+        (id)kSecAttrAccount: key,
+        (id)kSecValueData: data,
+        (id)kSecAttrSynchronizable: @YES
+      } mutableCopy];
+      OSStatus status = SecItemAdd((__bridge CFDictionaryRef)addQuery, NULL);
+      if (status != errSecSuccess) {
+        [addQuery removeObjectForKey:(id)kSecAttrSynchronizable];
+        SecItemAdd((__bridge CFDictionaryRef)addQuery, NULL);
+      }
+    }
+    [WWNSharedUserDefaults() setObject:value forKey:key];
+  } else {
+    [WWNSharedUserDefaults() removeObjectForKey:key];
+  }
+#else
   if (value && value.length > 0) {
     [WWNSharedUserDefaults() setObject:value forKey:key];
   } else {
     [WWNSharedUserDefaults() removeObjectForKey:key];
   }
+#endif
 }
 
 - (NSString *)sshPassword {

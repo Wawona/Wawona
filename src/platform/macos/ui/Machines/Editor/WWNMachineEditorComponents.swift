@@ -103,12 +103,20 @@ struct WWNEditorInfoButton: View {
       .help(text)
       #endif
       .popover(isPresented: $showsInfo, arrowEdge: .trailing) {
-        Text(text)
-          .font(.system(size: 12))
-          .foregroundStyle(.primary)
-          .padding(14)
-          .frame(width: 280, alignment: .leading)
-          .fixedSize(horizontal: false, vertical: true)
+        ScrollView(.vertical) {
+          Text(text)
+            .font(.system(size: 12))
+            .foregroundStyle(.primary)
+            .lineLimit(nil)
+            .fixedSize(horizontal: false, vertical: true)
+            #if !os(tvOS) && !os(watchOS)
+            .textSelection(.enabled)
+            #endif
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(minWidth: 280, idealWidth: 320, maxWidth: 380)
+        .frame(maxHeight: 300)
       }
     #endif
   }
@@ -263,14 +271,35 @@ struct WWNEditorToggleRow: View {
 struct WWNEditorNumberField: View {
   @Binding var text: String
   let range: ClosedRange<Int>
+  var step: Int = 1
   var automaticWhenEmpty = false
 
   var body: some View {
-    TextField(automaticWhenEmpty ? "Auto" : "", text: sanitizedText)
-      .textFieldStyle(.roundedBorder)
-      .multilineTextAlignment(.trailing)
-      .onSubmit { normalizeFinalValue() }
-      .onDisappear { normalizeFinalValue() }
+    HStack(spacing: 6) {
+      TextField(automaticWhenEmpty ? "Auto" : "\(range.lowerBound)", text: sanitizedText)
+        .textFieldStyle(.roundedBorder)
+        .multilineTextAlignment(.trailing)
+        .onSubmit { normalizeFinalValue() }
+        .onDisappear { normalizeFinalValue() }
+
+      #if !os(tvOS)
+      Stepper(
+        "",
+        value: Binding(
+          get: {
+            let parsed = Int(text) ?? range.lowerBound
+            return min(max(parsed, range.lowerBound), range.upperBound)
+          },
+          set: {
+            text = String(min(max($0, range.lowerBound), range.upperBound))
+          }
+        ),
+        in: range,
+        step: step
+      )
+      .labelsHidden()
+      #endif
+    }
   }
 
   private var sanitizedText: Binding<String> {

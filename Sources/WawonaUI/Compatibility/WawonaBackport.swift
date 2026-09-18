@@ -88,12 +88,15 @@ public extension WawonaBackport where Content: View {
         #endif
     }
 
-    /// Native liquid glass toolbar button on modern OS (macOS 26+, iOS 26+), with standard toolbar button fallback.
+    /// Native liquid glass toolbar button on modern OS, with standard toolbar button fallback.
+    /// On macOS, toolbar items use native toolbar styling to avoid glass-on-glass over window material.
     @ViewBuilder
     @MainActor
     func glassToolbarButton() -> some View {
-        #if !os(visionOS)
-        if #available(iOS 26.0, tvOS 26.0, macOS 26.0, *) {
+        #if os(macOS)
+        content.buttonStyle(.automatic)
+        #elseif !os(visionOS)
+        if #available(iOS 26.0, tvOS 26.0, *) {
             content.buttonStyle(.glass)
         } else {
             content.buttonStyle(.automatic)
@@ -118,12 +121,15 @@ public extension WawonaBackport where Content: View {
         #endif
     }
 
-    /// Native prominent liquid glass toolbar button on modern OS (macOS 26+, iOS 26+), with prominent fallback.
+    /// Native prominent liquid glass toolbar button on modern OS, with prominent fallback.
+    /// On macOS, toolbar items use native borderedProminent to avoid glass-on-glass.
     @ViewBuilder
     @MainActor
     func glassProminentToolbarButton() -> some View {
-        #if !os(visionOS)
-        if #available(iOS 26.0, tvOS 26.0, macOS 26.0, *) {
+        #if os(macOS)
+        content.buttonStyle(.borderedProminent)
+        #elseif !os(visionOS)
+        if #available(iOS 26.0, tvOS 26.0, *) {
             content.buttonStyle(.glassProminent)
         } else {
             content.buttonStyle(.borderedProminent)

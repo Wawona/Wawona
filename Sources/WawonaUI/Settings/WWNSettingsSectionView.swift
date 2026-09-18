@@ -20,10 +20,10 @@ struct WWNSettingsSectionView: View {
 
     var body: some View {
         if section.accessibilityIdentifier == "wwn.settings.environment" {
-            // Env Vars (#157): embed the full SwiftUI inventory table instead
-            // of the old "Open Environment Variables…" button row.
-            EnvironmentVariablesView(preferences: WawonaPreferences.shared, perMachine: false)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            NavigationStack {
+                EnvironmentVariablesView(preferences: WawonaPreferences.shared, perMachine: false)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             Form {
                 Section {
@@ -218,12 +218,26 @@ private struct WWNSettingsRowView: View {
             .help("More information")
             #endif
             .popover(isPresented: $showingHelp) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(title).font(.headline)
-                    Text(detailedHelp)
+                ScrollView(.vertical) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(title)
+                            .font(.headline)
+                            .lineLimit(nil)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text(detailedHelp)
+                            .font(.body)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(nil)
+                            .fixedSize(horizontal: false, vertical: true)
+                            #if !os(tvOS) && !os(watchOS)
+                            .textSelection(.enabled)
+                            #endif
+                    }
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .padding()
-                .frame(idealWidth: 320)
+                .frame(minWidth: 280, idealWidth: 360, maxWidth: 400)
+                .frame(maxHeight: 320)
             }
         #endif
     }
@@ -239,16 +253,21 @@ private struct WWNSettingsRowView: View {
     }
 
     private var textRow: some View {
-        rowLayout {
-            TextField("", text: model.stringBinding(for: item))
-                .textFieldStyle(.roundedBorder)
-                .multilineTextAlignment(.trailing)
-                .submitLabel(.done)
-                .accessibilityLabel(title)
-                .accessibilityIdentifier(item.accessibilityIdentifier ?? "")
-                #if os(macOS)
-                .help(desc)
-                #endif
+        let prompt = model.textPrompt(for: item)
+        return rowLayout {
+            TextField(
+                "",
+                text: model.stringBinding(for: item),
+                prompt: prompt.isEmpty ? nil : Text(prompt)
+            )
+            .textFieldStyle(.roundedBorder)
+            .multilineTextAlignment(.trailing)
+            .submitLabel(.done)
+            .accessibilityLabel(title)
+            .accessibilityIdentifier(item.accessibilityIdentifier ?? "")
+            #if os(macOS)
+            .help(desc)
+            #endif
         }
         .accessibilityIdentifier(item.accessibilityIdentifier ?? "")
     }
@@ -256,15 +275,38 @@ private struct WWNSettingsRowView: View {
     private var numberRow: some View {
         let spec = model.numberSpec(for: item)
         return rowLayout {
-            TextField(
-                "",
-                text: $numberText,
-                prompt: Text(spec.allowsEmpty ? "Auto" : "\(spec.defaultValue)")
-            )
-            .textFieldStyle(.roundedBorder)
-            .multilineTextAlignment(.trailing)
-            .submitLabel(.done)
-            .accessibilityLabel(title)
+            HStack(spacing: 6) {
+                TextField(
+                    "",
+                    text: $numberText,
+                    prompt: Text(spec.promptText)
+                )
+                .textFieldStyle(.roundedBorder)
+                .multilineTextAlignment(.trailing)
+                .submitLabel(.done)
+                .accessibilityLabel(title)
+
+                #if !os(tvOS)
+                Stepper(
+                    "",
+                    value: Binding(
+                        get: {
+                            let val = model.integerValue(for: item)
+                            return min(max(val, spec.range.lowerBound), spec.range.upperBound)
+                        },
+                        set: {
+                            let clamped = min(max($0, spec.range.lowerBound), spec.range.upperBound)
+                            numberText = String(clamped)
+                            model.setNumberText(String(clamped), for: item)
+                        }
+                    ),
+                    in: spec.range,
+                    step: spec.step
+                )
+                .labelsHidden()
+                .accessibilityLabel("\(title) stepper")
+                #endif
+            }
             .onAppear {
                 let stored = model.stringValue(for: item)
                 numberText = spec.allowsEmpty && stored.isEmpty
