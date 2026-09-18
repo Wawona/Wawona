@@ -435,11 +435,7 @@ struct WWNMachinesGridView: View {
   #endif
 
   private var detailNavigationTitle: String {
-    #if os(macOS)
-    return "Machines"
-    #else
     return "Machine Configuration"
-    #endif
   }
 
   @ToolbarContentBuilder
