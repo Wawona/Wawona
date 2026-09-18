@@ -181,7 +181,7 @@ public struct EnvironmentVariablesView: View {
 
     private var categoryPicker: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(spacing: 8) {
+            HStack(spacing: 8) {
                 categoryChip(title: "All", category: nil)
                 ForEach(EnvironmentCategory.allCases.filter { $0 != .secrets }, id: \.self) { cat in
                     categoryChip(title: cat.rawValue.capitalized, category: cat)
