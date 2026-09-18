@@ -29,6 +29,20 @@ extension EnvironmentCategory {
         case .user: return .mint
         }
     }
+
+    var displayName: String {
+        switch self {
+        case .session: return "Session"
+        case .graphics: return "Graphics"
+        case .shell: return "Shell"
+        case .xdg: return "XDG"
+        case .fonts: return "Fonts"
+        case .input: return "Input"
+        case .debug: return "Debug"
+        case .secrets: return "Secrets"
+        case .user: return "User"
+        }
+    }
 }
 
 /// Native SwiftUI environment variables settings view.
@@ -97,56 +111,69 @@ public struct EnvironmentVariablesView: View {
         return EnvironmentCategory.allCases.filter { cats.contains($0) && $0 != .secrets }
     }
 
-    public var body: some View {
-        List {
-            Section {
-                categoryPicker
-                    .listRowInsets(EdgeInsets())
-                    .listRowBackground(Color.clear)
-            }
+    /// Max content width that matches what `.formStyle(.grouped)` uses on macOS,
+    /// keeping env vars visually consistent with all other Wawona Settings sections.
+    private static let settingsMaxWidth: CGFloat = 680
 
-            if filteredRows.isEmpty {
-                ContentUnavailableView(
-                    "No Variables Found",
-                    systemImage: "magnifyingglass",
-                    description: Text("No environment variables match your search or filter.")
-                )
-            } else if selectedCategory == nil && searchText.isEmpty {
-                ForEach(activeCategories, id: \.self) { category in
-                    let categoryRows = filteredRows.filter { $0.category == category }
-                    if !categoryRows.isEmpty {
+    public var body: some View {
+        GeometryReader { proxy in
+            let horizontalPad = max((proxy.size.width - Self.settingsMaxWidth) / 2, 0)
+            VStack(spacing: 0) {
+                categoryPicker
+
+                Divider()
+
+                List {
+                    if filteredRows.isEmpty {
+                        ContentUnavailableView(
+                            "No Variables Found",
+                            systemImage: "magnifyingglass",
+                            description: Text("No environment variables match your search or filter.")
+                        )
+                    } else if selectedCategory == nil && searchText.isEmpty {
+                        ForEach(activeCategories, id: \.self) { category in
+                            let categoryRows = filteredRows.filter { $0.category == category }
+                            if !categoryRows.isEmpty {
+                                Section {
+                                    ForEach(categoryRows) { row in
+                                        rowView(for: row)
+                                    }
+                                } header: {
+                                    Label(category.displayName, systemImage: category.iconName)
+                                }
+                            }
+                        }
+                    } else {
                         Section {
-                            ForEach(categoryRows) { row in
+                            ForEach(filteredRows) { row in
                                 rowView(for: row)
                             }
-                        } header: {
-                            Label(category.rawValue.capitalized, systemImage: category.iconName)
                         }
                     }
-                }
-            } else {
-                Section {
-                    ForEach(filteredRows) { row in
-                        rowView(for: row)
+
+                    Section {
+                        Button("Reset Wawona Defaults") {
+                            resetManaged()
+                        }
+                        .accessibilityIdentifier("wwn.settings.environment.resetManaged")
+
+                        Button("Reset All Overrides", role: .destructive) {
+                            confirmResetAll = true
+                        }
+                        .accessibilityIdentifier("wwn.settings.environment.resetAll")
+                    } footer: {
+                        Text(perMachine
+                            ? "Machine overrides take precedence over global environment variables."
+                            : "Wawona manages core Wayland and graphics environment variables automatically.")
                     }
                 }
+                #if os(iOS) || os(visionOS)
+                .listStyle(.insetGrouped)
+                #else
+                .listStyle(.inset)
+                #endif
             }
-
-            Section {
-                Button("Reset Wawona Defaults") {
-                    resetManaged()
-                }
-                .accessibilityIdentifier("wwn.settings.environment.resetManaged")
-
-                Button("Reset All Overrides", role: .destructive) {
-                    confirmResetAll = true
-                }
-                .accessibilityIdentifier("wwn.settings.environment.resetAll")
-            } footer: {
-                Text(perMachine
-                    ? "Machine overrides take precedence over global environment variables."
-                    : "Wawona manages core Wayland and graphics environment variables automatically.")
-            }
+            .padding(.horizontal, horizontalPad)
         }
         .searchable(text: $searchText, prompt: "Search variables")
         .navigationTitle("Environment Variables")
@@ -180,40 +207,23 @@ public struct EnvironmentVariablesView: View {
     }
 
     private var categoryPicker: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                categoryChip(title: "All", category: nil)
-                ForEach(EnvironmentCategory.allCases.filter { $0 != .secrets }, id: \.self) { cat in
-                    categoryChip(title: cat.rawValue.capitalized, category: cat)
+        HStack {
+            Spacer(minLength: 0)
+            Picker("Category", selection: $selectedCategory) {
+                Label("All", systemImage: "square.grid.2x2")
+                    .tag(Optional<EnvironmentCategory>.none)
+                ForEach(activeCategories, id: \.self) { cat in
+                    Label(cat.displayName, systemImage: cat.iconName)
+                        .tag(Optional(cat))
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
+            .labelsHidden()
+            .pickerStyle(.segmented)
+            .fixedSize()
+            .accessibilityIdentifier("wwn.settings.environment.category")
+            Spacer(minLength: 0)
         }
-    }
-
-    private func categoryChip(title: String, category: EnvironmentCategory?) -> some View {
-        let isSelected = selectedCategory == category
-        return Button {
-            selectedCategory = category
-        } label: {
-            HStack(spacing: 5) {
-                if let category {
-                    Image(systemName: category.iconName)
-                        .font(.caption.weight(.medium))
-                }
-                Text(title)
-                    .font(.subheadline.weight(isSelected ? .semibold : .regular))
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(
-                isSelected ? Color.accentColor : Color.secondary.opacity(0.12),
-                in: Capsule()
-            )
-            .foregroundStyle(isSelected ? Color.white : Color.primary)
-        }
-        .buttonStyle(.plain)
+        .padding(.vertical, 10)
     }
 
     private func rowView(for row: ResolvedEnvironmentEntry) -> some View {
@@ -737,3 +747,5 @@ struct NewEnvironmentVariableSheet: View {
         }
     }
 }
+
+// TODO: Replace .segmented with .tabs when TabsPickerStyle ships in a stable SwiftUI SDK.

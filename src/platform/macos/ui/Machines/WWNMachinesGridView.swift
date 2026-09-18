@@ -435,8 +435,8 @@ struct WWNMachinesGridView: View {
   #endif
 
   private var detailNavigationTitle: String {
-    #if os(macOS)
-    return "Machines"
+    #if os(tvOS)
+    return "Machine"
     #else
     return "Machine Configuration"
     #endif
@@ -1378,3 +1378,4 @@ final class WWNMachinesHostingBridge: NSObject {
   }
 }
 #endif
+

@@ -18,10 +18,16 @@ struct AppMain: App {
         WindowGroup {
             AppRootView()
         }
+        #if os(macOS)
+        .windowToolbarStyle(.unified(showsTitle: true))
+        #endif
         if #available(iOS 17, macOS 14, *) {
             WindowGroup("Session", id: "session", for: MachineSession.ID.self) { _ in
                 CompositorBridge()
             }
+            #if os(macOS)
+            .windowToolbarStyle(.unified(showsTitle: true))
+            #endif
         }
         .onChange(of: scenePhase) { _, newPhase in
             switch newPhase {
