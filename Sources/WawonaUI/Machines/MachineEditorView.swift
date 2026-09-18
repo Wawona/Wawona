@@ -234,7 +234,7 @@ struct MachineEditorView: View {
                     }
                 }
 
-                // MARK: Container — OCI image run via wwn-containers
+                // MARK: Container - OCI image run via wwn-containers
                 if type == .container {
                     Section {
                         TextField("Image", text: $containerRef, prompt: Text("e.g. alpine:3.20"))
@@ -358,7 +358,7 @@ struct MachineEditorView: View {
                     }
                 }
 
-                // MARK: SSH — remote machine via network
+                // MARK: SSH - remote machine via network
                 if isSSH {
                     Section("Remote Host") {
                         TextField("Host", text: $sshHost)

@@ -14,7 +14,7 @@ import UIKit
 
 // MARK: - KeyID
 
-/// Identifies a built-in toolbar key. Raw values are stable — never rename or remove a shipped case.
+/// Identifies a built-in toolbar key. Raw values are stable - never rename or remove a shipped case.
 public enum KeyID: String, Codable, CaseIterable, Hashable, Sendable {
     // Modifiers (5)
     case esc
@@ -304,7 +304,7 @@ public enum KeyID: String, Codable, CaseIterable, Hashable, Sendable {
 
 // MARK: - KeySlot
 
-/// A slot in the toolbar layout — either a built-in key or a reference to a custom key.
+/// A slot in the toolbar layout - either a built-in key or a reference to a custom key.
 public enum KeySlot: Codable, Hashable, Sendable {
     case builtIn(KeyID)
     case custom(UUID)
@@ -343,7 +343,7 @@ public enum DrawerToggleMode: String, Codable, CaseIterable, Sendable {
 public struct ToolbarLayoutConfig: Equatable, Sendable {
     public var version: Int
     public var mainRow: [KeySlot]
-    /// One or more drawer rows. Invariant: never empty — always at least one row (possibly `[]`).
+    /// One or more drawer rows. Invariant: never empty - always at least one row (possibly `[]`).
     public var drawerRows: [[KeySlot]]
     public var hiddenKeys: Set<KeyID>
 
@@ -633,7 +633,7 @@ public struct CustomKey: Identifiable, Codable, Hashable, Sendable {
 
 // MARK: - SequenceStep
 
-/// One step in a custom key's sequence — either a key combination or raw text.
+/// One step in a custom key's sequence - either a key combination or raw text.
 public enum SequenceStep: Codable, Hashable, Sendable {
     case keyCombo(KeyCombo)
     case text(String)
