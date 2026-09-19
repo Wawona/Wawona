@@ -4,7 +4,8 @@
 # derivations. Each Rust crate becomes its own Nix derivation, so changing
 # one crate (e.g., waypipe) only rebuilds that crate and its dependents.
 #
-# Supports: macOS, iOS (device + simulator), visionOS (device + simulator), Android
+# Supports: Linux, macOS, iOS (device + simulator), visionOS
+# (device + simulator), Android
 #
 # Cross-compilation strategy (iOS/Android):
 #   We override stdenv.hostPlatform in the cross buildRustCrate so that
@@ -24,7 +25,7 @@
 , crate2nix
 , wawonaVersion
 , workspaceSrc
-, platform          # "macos" | "ios" | "ipados" | "tvos" | "visionos" | "watchos" | "android"
+, platform          # "linux" | "macos" | "ios" | "ipados" | "tvos" | "visionos" | "watchos" | "android"
 , simulator ? false # iOS/watchOS only: build for simulator
 , toolchains ? null # cross-compilation toolchains
 , nativeDeps ? {}   # platform-specific native library derivations
@@ -131,6 +132,7 @@ let
   isWatchOS = platform == "watchos";
   isAndroid = platform == "android";
   isMacOS = platform == "macos";
+  isLinux = platform == "linux";
   # Host bindgen. Not crate2nix. Generates $out/uniffi. Never write into git.
   uniffiBindgen = pkgs.callPackage ../generators/uniffi-bindgen.nix { };
   isCross = isIOS || isTVOS || isVisionOS || isWatchOS || isAndroid;
@@ -634,6 +636,14 @@ let
           (nativeDeps.libffi or null)
           (nativeDeps.expat or null)
           (nativeDeps.libxml2 or null)
+          pkgs.vulkan-loader
+        ]
+        else if isLinux then [
+          (nativeDeps.xkbcommon or pkgs.libxkbcommon)
+          (nativeDeps.libffi or pkgs.libffi)
+          (nativeDeps.openssl or pkgs.openssl)
+          (nativeDeps.libwayland or pkgs.wayland)
+          (nativeDeps.pixman or pkgs.pixman)
           pkgs.vulkan-loader
         ]
         else []);

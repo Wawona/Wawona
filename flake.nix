@@ -772,11 +772,12 @@
         };
 
         packages = commonPackages
-          # WLCS conformance runner (ci-l2-wlcs). Linux-only, skeleton
-          # integration; runtime battery is a CI lane. Guarded so darwin eval is
-          # unaffected.
+          # WLCS conformance runner (ci-l2-wlcs). Linux-only and linked to the
+          # same production WWNCore C ABI used by native hosts.
           // (pkgs.lib.optionalAttrs (isLinuxHost && builtins.pathExists ./dependencies/tests/wlcs.nix) {
-            wawona-wlcs-run = pkgs.callPackage ./dependencies/tests/wlcs.nix { };
+            wawona-wlcs-run = pkgs.callPackage ./dependencies/tests/wlcs.nix {
+              wawonaBackend = backend-linux;
+            };
           })
           // (pkgs.lib.optionalAttrs (isLinuxHost || androidSDK != null) {
           wawona-android = wawonaAndroidPkg;
@@ -924,6 +925,9 @@
           };
           workspace-src-macos = pkgs.callPackage ./dependencies/wawona/workspace-src.nix {
             wawonaSrc = src; waypipeSrc = waypipe-patched-macos; coreutilsSrc = coreutils-patched-macos; platform = "macos"; inherit wawonaVersion;
+          };
+          workspace-src-linux = pkgs.callPackage ./dependencies/wawona/workspace-src.nix {
+            wawonaSrc = src; waypipeSrc = waypipe-src; coreutilsSrc = coreutils-src; platform = "linux"; inherit wawonaVersion;
           };
           workspace-src-ios = pkgs.callPackage ./dependencies/wawona/workspace-src.nix {
             wawonaSrc = src; waypipeSrc = waypipe-patched-ios; coreutilsSrc = coreutils-patched-ios; platform = "ios"; inherit wawonaVersion;
@@ -1134,6 +1138,10 @@
             name = "wawona-macos-workspace";
             src = workspace-src-macos;
           };
+          sharedLinuxCargoNix = crate2nix.tools.${pkgs.stdenv.hostPlatform.system}.generatedCargoNix {
+            name = "wawona-linux-workspace";
+            src = workspace-src-linux;
+          };
           sharedWatchosCargoNix = crate2nix.tools.${pkgs.stdenv.hostPlatform.system}.generatedCargoNix {
             name = "wawona-watchos-workspace";
             src = workspace-src-watchos;
@@ -1150,6 +1158,19 @@
             workspaceSrc = workspace-src-macos; platform = "macos"; nativeDeps = macosDeps;
             cargoNixDrv = sharedMacosCargoNix;
             desktopHost = true;
+          };
+          backend-linux = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
+            inherit crate2nix wawonaVersion toolchains nixpkgs;
+            workspaceSrc = workspace-src-linux;
+            platform = "linux";
+            cargoNixDrv = sharedLinuxCargoNix;
+            nativeDeps = {
+              libwayland = pkgs.wayland;
+              xkbcommon = pkgs.libxkbcommon;
+              pixman = pkgs.pixman;
+              libffi = pkgs.libffi;
+              openssl = pkgs.openssl;
+            };
           };
           backend-ios = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
             inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
