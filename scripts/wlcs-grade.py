@@ -70,7 +70,10 @@ def main() -> int:
         and scored > 0
         and pass_rate >= args.minimum_pass_rate
         and failed <= args.maximum_failures
-        and args.wlcs_exit_code == 0
+        # GoogleTest uses 1 for ordinary test failures. Threshold policy above
+        # decides whether those are accepted for a diagnostic run; any other
+        # non-zero status is an infrastructure failure.
+        and args.wlcs_exit_code in (0, 1)
     )
     report = {
         "schema_version": 1,
