@@ -18,7 +18,8 @@ SwiftUI. This follows Dave DeLong's
 2. **Every backport has an honest fallback.** Newer OSes call the native API;
    older supported OSes receive a project-owned implementation that preserves
    the feature's essential behavior. A no-op is acceptable only for optional
-   decoration and must be documented in the shim.
+   decoration and must be documented in the shim. Backports own presentation
+   compatibility only; behavior or policy decisions belong in Rust.
 3. **Match system API names and shapes.** Backported modifiers should use the
    system modifier's name where practical. Backported types should use a nested
    type or static `@ViewBuilder` factory. This keeps call sites searchable and
@@ -90,3 +91,4 @@ nested `View` or a static `@ViewBuilder` factory.
 - Rebuild every Apple target that compiles the shared source.
 - Do not alter Wawona's production `WWNCore*` C polling FFI while introducing
   UI compatibility shims.
+- Do not put business logic in a backport shim.

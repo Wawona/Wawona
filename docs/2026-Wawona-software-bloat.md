@@ -18,15 +18,19 @@ From `docs/goals.md`, `docs/2026-ARCHITECTURE-STRUCTURE.md`, and `docs/2026-SOUR
 - Rust compositor core + FFI as the runtime foundation.
 - Native compositor surfaces stay native per host platform (ObjC/AppKit/UIKit/JNI).
 - Apple and Android use native UI stacks that mirror machine/settings behavior.
-- `Sources/WawonaUI` and `Sources/WawonaModel` are intended as the canonical feature layer.
+- `Sources/WawonaUI` is the Apple presentation layer. Rust is the canonical
+  business/domain layer; `Sources/WawonaModel` is migration debt.
 - `src/platform/macos/ui` is transitional and should not continue growing for new feature ownership.
 
-This architecture is sound. Drift occurred in execution and migration pacing.
+The native presentation split is sound, but treating Swift as a domain layer is
+architecture drift. All business logic must move to Rust.
 
 ## Executive Findings
 
 1. **Dual machine/profile stacks remain active.**
-   - Canonical Swift model exists: `MachineProfile` and `MachineProfileStore` in `Sources/WawonaModel/MachineProfile.swift`.
+   - Legacy Swift model exists: `MachineProfile` and `MachineProfileStore` in
+     `Sources/WawonaModel/MachineProfile.swift`; it must be replaced by
+     Rust-owned snapshots and intents.
    - Legacy ObjC path remains active: `WWNMachineProfileStore` in `src/platform/macos/ui/Machines/WWNMachineProfileStore.h`.
    - Native bridge still depends on legacy store: `src/platform/macos/WWNCompositorBridge.m` references `WWNMachineProfileStore` for active machine and thumbnail decisions.
 

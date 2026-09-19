@@ -5,7 +5,8 @@ Wawona is organized around a strict ownership split:
 - `src/core` contains compositor logic, Wayland protocol handling, scene/state management, and other shared Rust compositor behavior.
 - `src/ffi` contains the public integration boundary that platform hosts call into.
 - `src/platform/*` contains platform glue only: native host code, platform UI, platform settings bridges, and native rendering helpers that present Rust-managed state.
-- `Sources/WawonaModel` contains shared Swift domain models and session orchestration (`bridging: true`).
+- `Sources/WawonaModel` is a legacy migration seam whose domain models and
+  session orchestration must move into Rust. Do not add business logic there.
 - `Sources/WawonaUI` contains canonical Apple SwiftUI for machines (profiles + per-machine overrides), welcome, and settings **hosting** (`ObjCSettingsHostView` → native `WWNPreferences`).
 - `Sources/WawonaWatch` contains watchOS companion UI (status + quick actions, no compositor rendering).
 - `Darwin/` contains Apple app entrypoint (`Darwin/Sources/Main.swift`) and Xcode-facing app metadata.
@@ -14,7 +15,9 @@ Wawona is organized around a strict ownership split:
 
 ## Guardrails
 
-- Do not add new compositor logic in C, Objective-C, or Kotlin outside `src/platform/*`.
+- Do not add business or compositor logic in Swift, C, Objective-C, Kotlin, or
+  Java. Native code under `src/platform/*` is presentation and platform glue
+  only.
 - Do not reintroduce `src/bin` or `src/launcher`; first-party tools and shell/client code belong under `dependencies/clients`.
 - Do not reintroduce duplicate top-level folders that mirror `src/core` concepts. If code is native glue, place it under the relevant `src/platform/*` subtree.
 - Keep build manifests that are genuinely required by Nix-backed builds, but remove dead standalone build files when they stop being authoritative.
@@ -23,7 +26,9 @@ Wawona is organized around a strict ownership split:
 ## Current Ownership Map
 
 - `src/platform/macos/ui` is now bridge/deprecated UI that is being replaced incrementally by `Sources/WawonaUI`.
-- `Sources/WawonaModel` is the source of truth for machine/session/preferences state.
+- Rust is the source of truth for machine/session/preferences state.
+  `Sources/WawonaModel` is migration debt and may only adapt Rust-owned
+  snapshots while it is being removed.
 - `Sources/WawonaUI` is the source of truth for Machines and Welcome UI; global Wawona Settings UI lives in `src/platform/macos/ui/Settings` (ObjC + AppKit/UIKit).
 - `Sources/WawonaWatch` is the watchOS companion app source.
 - `src/platform/android/rendering` is the Android-native rendering helper path.

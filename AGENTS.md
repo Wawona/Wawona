@@ -42,6 +42,16 @@ and **GitHub Actions** (`project=github-actions`) via wwn-mcp for upstream synta
 - **FFI**: production bridge is hand-written C `WWNCore*` (`src/ffi/c_api.rs`)
   wrapped by ObjC (`WWNCompositorBridge.m`) / JNI (`android_jni.c`), polling
   model. Do NOT use `objc2`/`cocoa`/`jni`/`ndk` Rust crates or UniFFI callbacks.
+- **All business logic stays in Rust (all Wawona org repos):** Rust owns domain
+  models, durable state, defaults, validation, persistence semantics,
+  capabilities and feature policy, session orchestration, launch/recovery
+  decisions, search/ranking, driver selection, and behavioral compatibility.
+  Swift/ObjC/Kotlin/Java/C UI adapters, SwiftUI, Compose, and GTK may only render
+  Rust-owned snapshots, send typed intents, hold ephemeral presentation state,
+  and mechanically invoke OS APIs selected by Rust. Existing native domain
+  logic is migration debt, not precedent; do not expand it. Canonical rule:
+  `.cursor/rules/wawona-rust-business-logic.mdc`; tracked mirror:
+  `docs/agent-rules/wawona-rust-business-logic.md`.
 - **Swift / SwiftUI compatibility (all Wawona org repos):** use Dave DeLong's
   `Backport<Content>` namespace. Keep presentational `#available` checks out of
   feature views; add native-new-OS plus honest older-OS fallback implementations

@@ -16,7 +16,8 @@ https://davedelong.com/blog/2021/10/09/simplifying-backwards-compatibility-in-sw
    `.backport` or `Backport<Any>` at call sites.
 2. Every shim must call the native API on newer OSes and provide an honest
    Wawona-owned fallback on every older supported OS. No-op is allowed only for
-   optional decoration and must be documented.
+   optional decoration and must be documented. Backports own presentation
+   compatibility only; behavior or policy decisions belong in Rust.
 3. Match system API names and call shapes where practical so usages stay
    searchable and deleting `.backport` is mechanical when support advances.
 4. Extend the shared compatibility source
@@ -50,6 +51,7 @@ public extension View {
 Review all changed feature views for `#available` and audit unguarded newer
 types (`App`, `StateObject`, `NavigationStack`, environment values, scene APIs).
 Do not change Wawona's production `WWNCore*` C polling FFI for UI backports.
+Do not put business logic in a backport shim.
 
 Tracked agent mirror:
 `docs/agent-rules/wawona-swiftui-backports.md`.

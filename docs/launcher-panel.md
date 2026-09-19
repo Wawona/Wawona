@@ -11,17 +11,14 @@ first-class launcher: users open Wawona, see their saved machines, discover new
 ones on the LAN, and start a session in one or two taps — without treating
 Settings as the primary connection surface.
 
-## Model reuse (no schema change)
+## Rust model ownership (no schema change)
 
-The launcher operates entirely on the existing
-[`MachineProfile`](../Sources/WawonaModel/MachineProfile.swift) model
-(`id`, `name`, `type`, `sshHost`, `sshUser`, `sshPort`, …) and
-[`MachineProfileStore`](../Sources/WawonaModel/MachineProfile.swift). Discovery
-does not persist anything on its own: a discovered host is a transient candidate
-that, when the user picks it, pre-fills a new `MachineProfile` (type
-`remote`/SSH, `sshHost`/`sshPort` from the resolved service) which the store
-then owns like any other. This keeps discovery additive and reversible, and
-avoids a parallel persistence path.
+The launcher consumes Rust-owned machine profile snapshots through the
+production C ABI. Discovery does not persist anything on its own: a discovered
+host is reported to Rust as a transient candidate. Selecting it sends a typed
+intent that asks Rust to pre-fill and validate a new remote/SSH profile. Rust
+then owns persistence and active-profile state. This keeps discovery additive
+and reversible and avoids a parallel platform persistence path.
 
 ## Bonjour / mDNS discovery
 
@@ -45,10 +42,10 @@ Resolution yields host + port + TXT metadata, which maps directly onto
 
 ## Panel UX
 
-- Two sections: **Saved** (from `MachineProfileStore`, favorites first) and
+- Two sections: **Saved** (from Rust snapshots, favorites first) and
   **Discovered on this network** (live `NWBrowser`/`NsdManager` results not
   already matching a saved host by host:port).
-- Selecting a saved machine activates it (`activeMachineId`) and launches.
+- Selecting a saved machine sends an activate-and-launch intent to Rust.
 - Selecting a discovered host opens the editor pre-filled from the resolved
   service, so the user only supplies credentials.
 - The panel is the default post-launch surface; Settings stays available but is
@@ -56,9 +53,9 @@ Resolution yields host + port + TXT metadata, which maps directly onto
 
 ## Status and scope
 
-- [x] Design recorded (this doc); model reuse confirmed — no new persisted schema.
-- [ ] Apple `NWBrowser` discovery service in `WawonaModel` (publishes an
-      observable list of `DiscoveredHost`), unit-testable in isolation.
+- [x] Design recorded (this doc); no new persisted schema.
+- [ ] Apple `NWBrowser` platform adapter that reports discovered endpoints to
+      Rust; Rust publishes `DiscoveredHost` snapshots through the C ABI.
 - [ ] Info.plist `NSBonjourServices` + `NSLocalNetworkUsageDescription` wiring.
 - [ ] SwiftUI launcher panel consuming saved + discovered lists.
 - [ ] AppKit (`WWNMachines*`) parity entry point.

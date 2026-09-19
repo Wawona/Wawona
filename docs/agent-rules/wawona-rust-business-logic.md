@@ -1,0 +1,70 @@
+---
+description: Keep all Wawona business and domain logic in Rust
+alwaysApply: true
+---
+
+# Rust owns all Wawona business logic
+
+Organization-wide rule for every Wawona repository and every frontend.
+
+## Absolute boundary
+
+All business, domain, policy, and durable state logic belongs in Rust.
+Swift, Objective-C, Kotlin, Java, C UI adapters, SwiftUI, Compose, and GTK are
+presentation/platform shells only.
+
+### Rust owns
+
+- machine profiles and domain models
+- defaults, validation, normalization, migration, and serialization
+- settings semantics and precedence
+- persistence and synchronization policy
+- capability and feature-gate decisions
+- session state machines and orchestration
+- connect, launch, stop, focus, and recovery decisions
+- client catalogs, filtering, search, sorting, and ranking
+- graphics-driver selection and fallback policy
+- compatibility behavior that changes product semantics
+- error classification and user-action recommendations
+- Wayland/compositor/window/input semantics
+
+### Native frontends may own
+
+- declarative view composition and rendering
+- ephemeral presentation state such as sheet visibility, focus, hover, and
+  animation progress
+- OS lifecycle/delegate forwarding
+- native framework handles and resources
+- accessibility labels and platform presentation metadata
+- mechanical translation of native events and geometry into stable Rust API
+  inputs
+- invocation of platform APIs after Rust has made the policy decision
+
+## Enforcement
+
+1. Frontends render immutable Rust-owned snapshots and send typed intents back
+   to Rust. They do not independently mutate domain state.
+2. Do not add domain models, validators, profile stores, settings precedence,
+   launch decisions, search algorithms, or session orchestrators in Swift,
+   Objective-C, Kotlin, Java, Compose, SwiftUI, or GTK code.
+3. Platform differences are reported to Rust as capabilities or events. Rust
+   chooses product behavior; the frontend performs the selected native action.
+4. Keep Wawona's production hand-written `WWNCore*` C ABI and polling model.
+   Add snapshot/intent APIs there when a frontend needs new behavior. Do not use
+   UniFFI callbacks or move policy into the bridge to avoid an FFI addition.
+5. SwiftUI `Backport` shims may choose visual implementations for an API, but
+   any fallback that changes behavior or policy must be selected by Rust.
+6. Existing `Sources/WawonaModel` domain logic, ObjC session policy, and
+   platform-side profile/settings stores are migration debt. Do not use them as
+   precedent and do not expand them. Move behavior to Rust before or while
+   changing the affected feature.
+7. Tests for business behavior are Rust tests. Native tests cover rendering,
+   bindings, event translation, framework integration, and accessibility.
+
+## Review test
+
+Ask: “Would this code produce the same decision without SwiftUI, Compose, or
+GTK?” If yes, it belongs in Rust.
+
+Ask: “Is this only how the already-made decision is displayed or executed by
+this OS?” If yes, it may remain in the native adapter.

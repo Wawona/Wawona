@@ -25,12 +25,12 @@ Status source of truth: [`2026-SOURCE-OF-TRUTH.md`](./2026-SOURCE-OF-TRUTH.md).
 
 - **Goal**: adaptive layouts + a shared machine-config model + a11y ids across
   AppKit/SwiftUI, UIKit, GTK4, Compose.
-- **Entry points**: `WWNMachineProfileStore` (macOS), `MachineProfiles.kt`
-  (Android), linux-ui model; a11y ids already added on iOS compositor view +
-  Android testTags.
-- **Plan**: extract one canonical machine-config schema (already partially
-  shared via `WawonaModel`), generate platform bindings, add a11y ids to every
-  interactive control, wire `ui_parity_diff.py` golden pairs.
+- **Entry points**: existing platform profile stores are migration inputs;
+  a11y ids already exist on the iOS compositor view and Android testTags.
+- **Plan**: move the canonical machine-config schema, validation, and state into
+  Rust; expose snapshots and typed intents through the production C ABI; keep
+  AppKit/SwiftUI, UIKit, GTK4, and Compose presentation-only; add a11y ids to
+  every interactive control; wire `ui_parity_diff.py` golden pairs.
 - **Gate**: nightly UI parity job (`nightly-full-matrix.yml`).
 
 ## p25-macos-containers — containerization.framework + vsock waypipe (macOS 26+)

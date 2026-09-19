@@ -11,7 +11,8 @@
 
 Wawona now uses native UI layers per platform while keeping the compositor bridge native:
 
-- `Sources/WawonaModel`: shared model/state (`MachineProfile`, `SessionOrchestrator`, `WawonaPreferences`) with `bridging: true`.
+- `Sources/WawonaModel`: legacy Swift model/state migration seam. Its domain
+  behavior must move into Rust; it is not an ownership layer for new logic.
 - `Sources/WawonaUI`: SwiftUI UI surfaces currently compiled into the macOS app.
 - iOS embeds SwiftUI Machines views from `src/platform/macos/ui/Machines`
   inside its UIKit scene host.
@@ -25,18 +26,21 @@ Wawona now uses native UI layers per platform while keeping the compositor bridg
 
 ```mermaid
 flowchart LR
-    WawonaModel[WawonaModel]
+    RustCore[RustCore snapshots + intents]
     WawonaUI[WawonaUI]
     AppleBridge[ObjCBridge]
     AndroidBridge[JNIandSurfaceView]
-    RustCore[RustCore]
 
-    WawonaModel --> WawonaUI
+    RustCore --> AppleBridge
+    RustCore --> AndroidBridge
+    AppleBridge --> WawonaUI
     WawonaUI --> AppleBridge
-    WawonaUI --> AndroidBridge
-    AppleBridge --> RustCore
-    AndroidBridge --> RustCore
+    AndroidBridge --> AndroidUI[Compose UI]
+    AndroidUI --> AndroidBridge
 ```
+
+Rust owns all business logic and durable state. Native layers render snapshots,
+send typed intents, and perform platform API calls selected by Rust.
 
 ### Compatibility tiers
 
