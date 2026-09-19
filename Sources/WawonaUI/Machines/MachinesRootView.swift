@@ -183,13 +183,7 @@ struct MachinesRootView: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 11)
                 .background {
-                    if #available(iOS 26, *) {
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .glassEffect(.regular, in: .rect(cornerRadius: 18))
-                    } else {
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .fill(.ultraThinMaterial)
-                    }
+                    Backport<Any>.glassRoundedRectangle(cornerRadius: 18)
                 }
                 .overlay(
                     RoundedRectangle(cornerRadius: 18, style: .continuous)

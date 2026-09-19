@@ -1322,6 +1322,9 @@ ICDJSON
   # that xcodegen cannot compile.
   iosUtilSources = [
     { path = "src/util/WWNStartupLogger.m"; type = "file"; }
+    # Shared SwiftUI availability namespace. The macOS target receives this
+    # through its Sources/WawonaUI glob; Apple-mobile app targets list it here.
+    { path = "Sources/WawonaUI/Backport.swift"; type = "file"; }
   ];
 
   # Xcode “Update to recommended settings” for framework targets with Swift/ObjC clients.

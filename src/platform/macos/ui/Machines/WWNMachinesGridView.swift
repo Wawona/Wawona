@@ -172,14 +172,14 @@ struct WWNMachinesGridView: View {
   private var macRoot: some View {
     NavigationStack {
       detailPane
-        .modifier(MacDetailTopInsetForTransparentTitlebar())
+        .backport.macDetailTopInsetForTransparentTitlebar()
         .navigationTitle(detailNavigationTitle)
         .toolbarTitleDisplayMode(.inline)
         .searchable(text: $searchQuery, placement: .toolbar, prompt: "Search machines")
         .toolbar {
           detailToolbarContent
         }
-        .modifier(MacUnifiedToolbarMaterial())
+        .backport.macUnifiedToolbarMaterial()
     }
   }
   #else
@@ -453,20 +453,16 @@ struct WWNMachinesGridView: View {
   @ViewBuilder
   private var iosAddMachineButton: some View {
     #if os(iOS)
-    if #available(iOS 26, *) {
-      Button {
-        isCreating = true
-      } label: {
-        Image(systemName: "plus")
-          .font(.title2.weight(.semibold))
-          .frame(width: 56, height: 56)
-      }
-      .buttonStyle(.glassProminent)
-      .buttonBorderShape(.circle)
-      .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
-    } else {
-      addMachineCircleButton
+    Button {
+      isCreating = true
+    } label: {
+      Image(systemName: "plus")
+        .font(.title2.weight(.semibold))
+        .frame(width: 56, height: 56)
     }
+    .backport.glassProminentButtonStyle()
+    .buttonBorderShape(.circle)
+    .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
     #else
     addMachineCircleButton
     #endif
@@ -743,37 +739,6 @@ private final class WWNMachinesTVHostingController<Content: View>: UIHostingCont
 // MARK: - macOS Hosting Bridge
 
 #if os(macOS)
-private struct MacDetailTopInsetForTransparentTitlebar: ViewModifier {
-  func body(content: Content) -> some View {
-    if #available(macOS 26.0, *) {
-      // Keep primary content below Tahoe-style transparent titlebar while
-      // allowing sidebar to visually extend to the top with traffic lights.
-      content.safeAreaPadding(.top, 28)
-    } else {
-      content
-    }
-  }
-}
-
-/// Restores the Tahoe-style unified toolbar blur. The window opts into a
-/// transparent titlebar + full-size content view for sidebar-to-top
-/// integration, which otherwise removes the toolbar's material; this puts the
-/// frosted material back so detail content blurs under the toolbar like modern
-/// macOS 26 apps.
-private struct MacUnifiedToolbarMaterial: ViewModifier {
-  func body(content: Content) -> some View {
-    if #available(macOS 26.0, *) {
-      // Opaque toolbar fill avoids continuous material sampling while the
-      // Machines window is dragged (cheaper than ultraThinMaterial).
-      content
-        .toolbarBackground(.regularMaterial, for: .windowToolbar)
-        .toolbarBackgroundVisibility(.visible, for: .windowToolbar)
-    } else {
-      content
-    }
-  }
-}
-
 private struct WWNMachineKeyboardInputGate: NSViewRepresentable {
   func makeCoordinator() -> Coordinator { Coordinator() }
 

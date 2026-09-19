@@ -11,13 +11,7 @@ struct GlassCard<Content: View>: View {
 
     var body: some View {
         ZStack {
-            if #available(macOS 26, iOS 26, *) {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
-            } else {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(.ultraThinMaterial)
-            }
+            Backport<Any>.glassRoundedRectangle(cornerRadius: cornerRadius)
             content.padding(14)
         }
             .overlay(
