@@ -166,6 +166,8 @@ private struct RustPreferencesSnapshot: Codable {
     var shakeToCloseEnabled: Bool
     var swipeBackToCloseEnabled: Bool
     var hasCompletedWelcome: Bool
+    var globalClientLaunchers: [ClientLauncher]
+    var diagnostics: [SettingsDiagnosticEntry]
 }
 
 @MainActor
@@ -253,6 +255,8 @@ public final class WawonaPreferences: ObservableObject {
         shakeToCloseEnabled = value.shakeToCloseEnabled
         swipeBackToCloseEnabled = value.swipeBackToCloseEnabled
         hasCompletedWelcome = value.hasCompletedWelcome
+        globalClientLaunchers = value.globalClientLaunchers
+        diagnostics = value.diagnostics
     }
 
     public func save() {
@@ -284,7 +288,9 @@ public final class WawonaPreferences: ObservableObject {
             xwaylandSupport: xwaylandSupport,
             shakeToCloseEnabled: shakeToCloseEnabled,
             swipeBackToCloseEnabled: swipeBackToCloseEnabled,
-            hasCompletedWelcome: hasCompletedWelcome
+            hasCompletedWelcome: hasCompletedWelcome,
+            globalClientLaunchers: globalClientLaunchers,
+            diagnostics: diagnostics
         )
         guard let data = try? JSONEncoder().encode(value),
               let object = try? JSONSerialization.jsonObject(with: data),
@@ -310,12 +316,6 @@ public final class WawonaPreferences: ObservableObject {
         defaults.set(sshAuthMethod, forKey: "WaypipeSSHAuthMethod")
         defaults.set(sshKeyPath, forKey: "WaypipeSSHKeyPath")
         defaults.set(sshKeyPassphrase, forKey: "WaypipeSSHKeyPassphrase")
-        if let data = try? JSONEncoder().encode(globalClientLaunchers) {
-            defaults.set(data, forKey: keyPrefix + "globalClientLaunchers")
-        }
-        if let diagnosticsData = try? JSONEncoder().encode(diagnostics) {
-            defaults.set(diagnosticsData, forKey: keyPrefix + "diagnostics")
-        }
         if previousForceSSD != forceSSD {
             NotificationCenter.default.post(
                 name: Notification.Name("WWNForceSSDChangedNotification"),
@@ -344,21 +344,19 @@ public final class WawonaPreferences: ObservableObject {
         message: String,
         details: [String: String] = [:]
     ) -> SettingsDiagnosticEntry {
-        let entry = SettingsDiagnosticEntry(
-            category: category,
-            mode: mode,
-            target: target,
-            success: success,
-            message: message,
-            details: details
-        )
-        var next = diagnostics
-        next.insert(entry, at: 0)
-        if next.count > 100 {
-            next = Array(next.prefix(100))
+        let accepted = RustDomainClient.dispatch([
+            "type": "record_diagnostic",
+            "category": category.rawValue,
+            "mode": mode == .runtimeProbe ? "runtime_probe" : "config_lint",
+            "target": target,
+            "success": success,
+            "message": message,
+            "details": details,
+        ])
+        load()
+        guard accepted, let entry = diagnostics.first else {
+            preconditionFailure("Rust rejected diagnostic intent")
         }
-        diagnostics = next
-        save()
         return entry
     }
 
@@ -369,95 +367,63 @@ public final class WawonaPreferences: ObservableObject {
         port: Int,
         runtimeProbe: Bool = false
     ) -> SettingsDiagnosticEntry {
-        let normalizedHost = host.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
-        let normalizedUser = user.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
-        let validPort = (1...65535).contains(port)
-        let configOK = !normalizedHost.isEmpty && !normalizedUser.isEmpty && validPort
-
-        var runtimeOK = configOK
-        var runtimeMessage = "SSH settings are valid for connection attempt."
-        if runtimeProbe {
-            let transport = Self.runtimeSSHTransport()
-            switch transport {
-            case .externalBinary:
-                let hasSSH = Self.probeCommandAvailable("ssh")
-                runtimeOK = configOK && hasSSH
-                runtimeMessage = runtimeOK
-                    ? "Runtime probe: ssh binary is available and settings are valid."
-                    : "Runtime probe failed: ssh binary is unavailable or host/user/port are invalid."
-            case .inProcessLibssh2:
-                runtimeOK = configOK
-                runtimeMessage = runtimeOK
-                    ? "Runtime probe: in-process libssh2 transport is active and settings are valid."
-                    : "Runtime probe failed: host/user/port are invalid for libssh2 transport."
-            }
+        let transportAvailable: Bool
+        switch Self.runtimeSSHTransport() {
+        case .externalBinary:
+            transportAvailable = Self.probeCommandAvailable("ssh")
+        case .inProcessLibssh2:
+            transportAvailable = true
         }
-        return recordDiagnostic(
-            category: .ssh,
-            mode: runtimeProbe ? .runtimeProbe : .configLint,
-            target: "\(normalizedUser)@\(normalizedHost):\(port)",
-            success: runtimeOK,
-            message: runtimeMessage,
-            details: [
-                "runtimeProbe": runtimeProbe ? "true" : "false",
-                "host": normalizedHost,
-                "user": normalizedUser,
-                "port": String(port),
-                "passwordProvided": password.isEmpty ? "false" : "true",
-            ]
-        )
+        let runtimeAvailable = !runtimeProbe || transportAvailable
+        let accepted = RustDomainClient.dispatch([
+            "type": "run_ssh_diagnostic",
+            "host": host,
+            "user": user,
+            "port": port,
+            "password_provided": !password.isEmpty,
+            "runtime_probe": runtimeProbe,
+            "runtime_available": runtimeAvailable,
+        ])
+        load()
+        guard accepted, let entry = diagnostics.first else {
+            preconditionFailure("Rust rejected SSH diagnostic intent")
+        }
+        return entry
     }
 
     public func testWaypipeCommand(_ command: String, runtimeProbe: Bool = false) -> SettingsDiagnosticEntry {
-        let normalized = command.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
-        let configOK = !normalized.isEmpty
-        let binary = normalized.split(separator: " ").first.map { String($0) } ?? ""
-
-        var success = configOK
-        var message = configOK ? "Waypipe command is configured." : "Waypipe command is empty."
-        if runtimeProbe {
-            let hasBinary = !binary.isEmpty && Self.probeCommandAvailable(binary)
-            success = configOK && hasBinary
-            message = success
-                ? "Runtime probe: command binary is available."
-                : "Runtime probe failed: command is empty or binary was not found."
+        let binary = command.split(separator: " ").first.map(String.init) ?? ""
+        let accepted = RustDomainClient.dispatch([
+            "type": "run_waypipe_diagnostic",
+            "command": command,
+            "runtime_probe": runtimeProbe,
+            "binary_available": !runtimeProbe
+                || (!binary.isEmpty && Self.probeCommandAvailable(binary)),
+        ])
+        load()
+        guard accepted, let entry = diagnostics.first else {
+            preconditionFailure("Rust rejected waypipe diagnostic intent")
         }
-        return recordDiagnostic(
-            category: .waypipe,
-            mode: runtimeProbe ? .runtimeProbe : .configLint,
-            target: normalized.isEmpty ? "waypipe" : normalized,
-            success: success,
-            message: message,
-            details: [
-                "runtimeProbe": runtimeProbe ? "true" : "false",
-                "binary": binary,
-            ]
-        )
+        return entry
     }
 
     public func runDependencyDiagnostics(runtimeProbe: Bool = false) -> SettingsDiagnosticEntry {
         let deps = Self.runtimeDependencyTargets()
-        var status = true
-        var details: [String: String] = [:]
-        if runtimeProbe {
-            for dep in deps {
-                let available = Self.probeDependencyAvailable(dep)
-                details[dep] = available ? "present" : "missing"
-                if !available {
-                    status = false
-                }
-            }
+        var availability: [String: Bool] = [:]
+        for dependency in deps {
+            availability[dependency] = !runtimeProbe
+                || Self.probeDependencyAvailable(dependency)
         }
-        return recordDiagnostic(
-            category: .dependency,
-            mode: runtimeProbe ? .runtimeProbe : .configLint,
-            target: "global-dependencies",
-            success: status,
-            message: runtimeProbe
-                ? "Runtime dependency probe completed for: \(deps.joined(separator: ", "))"
-                : "Configured dependencies: \(deps.joined(separator: ", "))",
-            details: details
-        )
+        let accepted = RustDomainClient.dispatch([
+            "type": "run_dependency_diagnostic",
+            "runtime_probe": runtimeProbe,
+            "availability": availability,
+        ])
+        load()
+        guard accepted, let entry = diagnostics.first else {
+            preconditionFailure("Rust rejected dependency diagnostic intent")
+        }
+        return entry
     }
 
     private enum RuntimeSSHTransport {

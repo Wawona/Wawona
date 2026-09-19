@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use super::{MachineProfile, MachineType};
+use super::{new_uuid, ClientLauncher, MachineProfile, MachineType};
 
 /// Runtime capabilities reported mechanically by the platform adapter.
 /// Product behavior is derived from these values in Rust.
@@ -88,7 +88,7 @@ pub enum PlatformKind {
     Other,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Preferences {
     pub renderer: String,
@@ -117,6 +117,8 @@ pub struct Preferences {
     pub shake_to_close_enabled: bool,
     pub swipe_back_to_close_enabled: bool,
     pub has_completed_welcome: bool,
+    pub global_client_launchers: Vec<ClientLauncher>,
+    pub diagnostics: Vec<SettingsDiagnosticEntry>,
 }
 
 impl Default for Preferences {
@@ -148,8 +150,39 @@ impl Default for Preferences {
             shake_to_close_enabled: true,
             swipe_back_to_close_enabled: true,
             has_completed_welcome: false,
+            global_client_launchers: default_client_launchers(),
+            diagnostics: Vec::new(),
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SettingsDiagnosticCategory {
+    Ssh,
+    Waypipe,
+    Dependency,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SettingsDiagnosticMode {
+    ConfigLint,
+    RuntimeProbe,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SettingsDiagnosticEntry {
+    pub id: String,
+    /// Foundation's default Codable representation: seconds since 2001-01-01.
+    pub timestamp: f64,
+    pub category: SettingsDiagnosticCategory,
+    pub mode: SettingsDiagnosticMode,
+    pub target: String,
+    pub success: bool,
+    pub message: String,
+    pub details: HashMap<String, String>,
 }
 
 impl Preferences {
@@ -426,6 +459,25 @@ fn optional_nonempty(value: Option<&str>) -> Option<String> {
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_owned)
+}
+
+fn default_client_launchers() -> Vec<ClientLauncher> {
+    [
+        ("weston-terminal", "Weston Terminal"),
+        ("weston-simple-shm", "Weston Simple SHM"),
+        ("foot", "Foot Terminal"),
+        ("weston", "Weston"),
+    ]
+    .into_iter()
+    .map(|(name, display_name)| ClientLauncher {
+        id: new_uuid(),
+        name: name.into(),
+        executable_path: name.into(),
+        arguments: Vec::new(),
+        auto_launch: false,
+        display_name: display_name.into(),
+    })
+    .collect()
 }
 
 fn set_string(values: &HashMap<String, serde_json::Value>, key: &str, output: &mut String) {

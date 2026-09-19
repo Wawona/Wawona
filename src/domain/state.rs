@@ -3,12 +3,13 @@ use std::collections::HashMap;
 
 use super::{
     new_uuid, MachineProfile, MachineStatus, PlatformCapabilities, Preferences,
-    ResolvedMachineSettings,
+    ResolvedMachineSettings, SettingsDiagnosticCategory, SettingsDiagnosticEntry,
+    SettingsDiagnosticMode,
 };
 
 pub const DOMAIN_SCHEMA_VERSION: u32 = 1;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct DurableState {
     pub schema_version: u32,
@@ -39,7 +40,7 @@ pub struct MachineSession {
     pub failure_reason: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSnapshot {
     pub schema_version: u32,
@@ -53,7 +54,7 @@ pub struct AppSnapshot {
     pub connected_client_count: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AppState {
     durable: DurableState,
     capabilities: PlatformCapabilities,
@@ -81,7 +82,7 @@ impl Default for AppState {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AppIntent {
     ImportDurableState { state: DurableState },
@@ -93,6 +94,31 @@ pub enum AppIntent {
     DeleteProfile { id: String },
     SetActiveMachine { id: Option<String> },
     UpdatePreferences { preferences: Preferences },
+    RecordDiagnostic {
+        category: SettingsDiagnosticCategory,
+        mode: SettingsDiagnosticMode,
+        target: String,
+        success: bool,
+        message: String,
+        details: HashMap<String, String>,
+    },
+    RunSshDiagnostic {
+        host: String,
+        user: String,
+        port: i32,
+        password_provided: bool,
+        runtime_probe: bool,
+        runtime_available: bool,
+    },
+    RunWaypipeDiagnostic {
+        command: String,
+        runtime_probe: bool,
+        binary_available: bool,
+    },
+    RunDependencyDiagnostic {
+        runtime_probe: bool,
+        availability: HashMap<String, bool>,
+    },
     Connect { machine_id: String },
     ConnectionFailed { machine_id: String, reason: String },
     SetSessionStatus {
@@ -249,6 +275,133 @@ impl AppState {
                 preferences.normalize(&self.capabilities);
                 self.durable.preferences = preferences;
             }
+            AppIntent::RecordDiagnostic {
+                category,
+                mode,
+                target,
+                success,
+                message,
+                details,
+            } => {
+                self.record_diagnostic(
+                    category, mode, target, success, message, details,
+                );
+            }
+            AppIntent::RunSshDiagnostic {
+                host,
+                user,
+                port,
+                password_provided,
+                runtime_probe,
+                runtime_available,
+            } => {
+                let host = host.trim().to_owned();
+                let user = user.trim().to_owned();
+                let valid = !host.is_empty()
+                    && !user.is_empty()
+                    && (1..=65535).contains(&port);
+                let success = valid && (!runtime_probe || runtime_available);
+                let message = if runtime_probe {
+                    if success {
+                        "Runtime transport is available and SSH settings are valid."
+                    } else {
+                        "Runtime probe failed: transport is unavailable or host/user/port are invalid."
+                    }
+                } else if success {
+                    "SSH settings are valid for connection attempt."
+                } else {
+                    "SSH settings require a host, user, and port from 1 through 65535."
+                };
+                self.record_diagnostic(
+                    SettingsDiagnosticCategory::Ssh,
+                    if runtime_probe {
+                        SettingsDiagnosticMode::RuntimeProbe
+                    } else {
+                        SettingsDiagnosticMode::ConfigLint
+                    },
+                    format!("{user}@{host}:{port}"),
+                    success,
+                    message.into(),
+                    HashMap::from([
+                        ("runtimeProbe".into(), runtime_probe.to_string()),
+                        ("host".into(), host),
+                        ("user".into(), user),
+                        ("port".into(), port.to_string()),
+                        ("passwordProvided".into(), password_provided.to_string()),
+                    ]),
+                );
+            }
+            AppIntent::RunWaypipeDiagnostic {
+                command,
+                runtime_probe,
+                binary_available,
+            } => {
+                let command = command.trim().to_owned();
+                let binary = command.split_whitespace().next().unwrap_or("").to_owned();
+                let configured = !binary.is_empty();
+                let success = configured && (!runtime_probe || binary_available);
+                let message = if runtime_probe {
+                    if success {
+                        "Runtime probe: command binary is available."
+                    } else {
+                        "Runtime probe failed: command is empty or binary was not found."
+                    }
+                } else if success {
+                    "Waypipe command is configured."
+                } else {
+                    "Waypipe command is empty."
+                };
+                self.record_diagnostic(
+                    SettingsDiagnosticCategory::Waypipe,
+                    if runtime_probe {
+                        SettingsDiagnosticMode::RuntimeProbe
+                    } else {
+                        SettingsDiagnosticMode::ConfigLint
+                    },
+                    if command.is_empty() {
+                        "waypipe".into()
+                    } else {
+                        command
+                    },
+                    success,
+                    message.into(),
+                    HashMap::from([
+                        ("runtimeProbe".into(), runtime_probe.to_string()),
+                        ("binary".into(), binary),
+                    ]),
+                );
+            }
+            AppIntent::RunDependencyDiagnostic {
+                runtime_probe,
+                availability,
+            } => {
+                let mut names = availability.keys().cloned().collect::<Vec<_>>();
+                names.sort();
+                let success = !runtime_probe || availability.values().all(|available| *available);
+                let details = availability
+                    .into_iter()
+                    .map(|(name, available)| {
+                        (name, if available { "present" } else { "missing" }.into())
+                    })
+                    .collect();
+                let message = if runtime_probe {
+                    format!("Runtime dependency probe completed for: {}", names.join(", "))
+                } else {
+                    format!("Configured dependencies: {}", names.join(", "))
+                };
+                self.record_diagnostic(
+                    SettingsDiagnosticCategory::Dependency,
+                    if runtime_probe {
+                        SettingsDiagnosticMode::RuntimeProbe
+                    } else {
+                        SettingsDiagnosticMode::ConfigLint
+                    },
+                    "global-dependencies".into(),
+                    success,
+                    message,
+                    details,
+                );
+            }
             AppIntent::Connect { machine_id } => {
                 if !self
                     .durable
@@ -334,6 +487,35 @@ impl AppState {
         }
         self.revision = self.revision.wrapping_add(1).max(1);
         Ok(())
+    }
+
+    fn record_diagnostic(
+        &mut self,
+        category: SettingsDiagnosticCategory,
+        mode: SettingsDiagnosticMode,
+        target: String,
+        success: bool,
+        message: String,
+        details: HashMap<String, String>,
+    ) {
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_secs_f64() - 978_307_200.0)
+            .unwrap_or(0.0);
+        self.durable.preferences.diagnostics.insert(
+            0,
+            SettingsDiagnosticEntry {
+                id: new_uuid(),
+                timestamp,
+                category,
+                mode,
+                target,
+                success,
+                message,
+                details,
+            },
+        );
+        self.durable.preferences.diagnostics.truncate(100);
     }
 }
 

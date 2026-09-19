@@ -32,10 +32,20 @@ enum RustDomainClient {
         } else {
             profiles = []
         }
+        var legacyPreferences: [String: Any] = [:]
+        if let data = defaults.data(forKey: "wawona.pref.globalClientLaunchers"),
+           let decoded = try? JSONSerialization.jsonObject(with: data) {
+            legacyPreferences["globalClientLaunchers"] = decoded
+        }
+        if let data = defaults.data(forKey: "wawona.pref.diagnostics"),
+           let decoded = try? JSONSerialization.jsonObject(with: data) {
+            legacyPreferences["diagnostics"] = decoded
+        }
+
         var state: [String: Any] = [
             "schemaVersion": 1,
             "profiles": profiles,
-            "preferences": [String: Any](),
+            "preferences": legacyPreferences,
         ]
         if let active = defaults.string(forKey: MachineProfileStore.activeMachineIdKey) {
             state["activeMachineId"] = active
