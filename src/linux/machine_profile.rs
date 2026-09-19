@@ -1,9 +1,8 @@
-//! Canonical cross-platform machine-profile model for Linux.
+//! Canonical cross-platform machine-profile model.
 //!
-//! This is the Rust mirror of the shared `wawona.machineProfiles.v1` schema
-//! defined in `Sources/WawonaModel/MachineProfile.swift` (Apple) and
-//! `android/app/.../MachineProfiles.kt` (Android). The serde field names match
-//! the Swift `Codable` JSON keys byte-for-byte (including acronym casing such
+//! This Rust type owns the shared `wawona.machineProfiles.v1` schema. Legacy
+//! Apple and Android models are migration adapters only. The serde field names
+//! match their persisted JSON keys byte-for-byte (including acronym casing such
 //! as `openGLDriver`, `bundledAppID`, `forceSSD`, `renderMacOSPointer`,
 //! `waypipeSSHPassword`) so a profile written by any platform decodes on the
 //! others. Linux persistence + migration lives in `profile_store.rs`.
@@ -116,6 +115,8 @@ pub struct MachineRuntimeOverrides {
     pub force_ssd: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none", rename = "renderMacOSPointer")]
     pub render_macos_pointer: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "nestedCompositorCursor")]
+    pub nested_compositor_cursor: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none", rename = "autoScale")]
     pub auto_scale: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none", rename = "waylandDisplay")]
@@ -182,6 +183,12 @@ pub struct MachineProfile {
     pub ssh_port: i32,
     #[serde(rename = "sshPassword", default)]
     pub ssh_password: String,
+    #[serde(rename = "sshAuthMethod", default)]
+    pub ssh_auth_method: i32,
+    #[serde(rename = "sshKeyPath", default)]
+    pub ssh_key_path: String,
+    #[serde(rename = "sshKeyPassphrase", default)]
+    pub ssh_key_passphrase: String,
     #[serde(rename = "remoteCommand", default = "default_remote_command")]
     pub remote_command: String,
     // vmSubtype / containerSubtype were removed (Residual E): backend selection
@@ -206,6 +213,9 @@ impl MachineProfile {
             ssh_user: String::new(),
             ssh_port: 22,
             ssh_password: String::new(),
+            ssh_auth_method: 0,
+            ssh_key_path: String::new(),
+            ssh_key_passphrase: String::new(),
             remote_command: default_remote_command(),
             launchers: Vec::new(),
             favorite: false,

@@ -9,6 +9,7 @@ pub mod core;
 pub mod platform;
 pub mod ffi;
 pub mod config;
+pub mod domain;
 pub mod util;
 pub mod prelude;
 pub mod version;

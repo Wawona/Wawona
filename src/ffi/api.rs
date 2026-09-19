@@ -159,6 +159,9 @@ pub struct WawonaCore {
     /// Scene fingerprint used for redraw gating.
     last_scene_fingerprint: RwLock<u64>,
 
+    /// Rust-owned product/domain state consumed by native presentation shells.
+    domain: RwLock<crate::domain::AppState>,
+
 }
 
 /// Translate AppKit/GTK view-local coordinates to wl_surface-local coordinates.
@@ -406,6 +409,29 @@ impl WawonaCore {
     pub fn pop_pending_gamma_apply(&self) -> Option<crate::core::state::GammaRampApply> {
         None
     }
+
+    pub fn domain_revision(&self) -> u64 {
+        self.domain.read_recover().revision()
+    }
+
+    pub fn domain_snapshot_json(&self) -> Result<String, crate::domain::DomainError> {
+        self.domain.read_recover().snapshot_json()
+    }
+
+    pub fn domain_durable_json(&self) -> Result<String, crate::domain::DomainError> {
+        self.domain.read_recover().durable_json()
+    }
+
+    pub fn domain_dispatch_json(&self, json: &str) -> Result<(), crate::domain::DomainError> {
+        self.domain.write_recover().apply_json(json)
+    }
+
+    pub fn domain_resolved_settings_json(
+        &self,
+        machine_id: &str,
+    ) -> Result<String, crate::domain::DomainError> {
+        self.domain.read_recover().resolved_settings_json(machine_id)
+    }
 }
 
 #[uniffi::export]
@@ -445,6 +471,7 @@ impl WawonaCore {
             pending_redraws: RwLock::new(Vec::new()),
             ipc_server: Mutex::new(None),
             last_scene_fingerprint: RwLock::new(0),
+            domain: RwLock::new(crate::domain::AppState::default()),
         })
     }
     

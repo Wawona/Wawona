@@ -1,7 +1,7 @@
 pub mod bundled_clients;
 pub mod config;
 pub mod launcher;
-pub mod machine_profile;
+pub use crate::domain::machine_profile;
 pub mod profile_store;
 pub mod runtime;
 pub mod service;
