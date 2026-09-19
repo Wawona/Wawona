@@ -10,9 +10,9 @@ from [`product-build.yml`](../../.github/workflows/product-build.yml).
 
 | Artifact | Script platform | Mode B dylib / daemons | GPU drivers expected |
 |----------|-----------------|------------------------|----------------------|
-| iOS sim / device IPA shape | `ios` | **absent** (hard fail on Dobby / private frameworks / Mode B daemons) | ANGLE + MoltenVK (static markers) |
+| iOS sim / device IPA shape | `ios` | **absent** (hard fail on Dobby / private frameworks / Mode B daemons) | ANGLE + MoltenVK; Simulator also requires SwiftShader |
 | iPadOS | `ipados` | absent | same |
-| visionOS | `visionos` | absent | same |
+| visionOS | `visionos` | absent | same, using target-native xrsimulator slices |
 | tvOS | `tvos` | absent | **none** (no ANGLE/MVK/IOKit link) |
 | watchOS | `watchos` | absent | **none** |
 | Android Play APK | `android` | **absent** (+ no Turnip/KGSL; requires ANGLE + SwiftShader `.so` + ICD JSON) | ANGLE + SwiftShader |

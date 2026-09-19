@@ -12,9 +12,13 @@
 Wawona now uses native UI layers per platform while keeping the compositor bridge native:
 
 - `Sources/WawonaModel`: shared model/state (`MachineProfile`, `SessionOrchestrator`, `WawonaPreferences`) with `bridging: true`.
-- `Sources/WawonaUI`: SwiftUI UI surfaces (`WelcomeView`, `Machines*`, `Settings*`) for Apple platforms.
+- `Sources/WawonaUI`: SwiftUI UI surfaces currently compiled into the macOS app.
+- iOS embeds SwiftUI Machines views from `src/platform/macos/ui/Machines`
+  inside its UIKit scene host.
 - `Sources/WawonaWatch`: watchOS status companion.
-- `Darwin/Sources/Main.swift`: app entrypoint for Apple platforms.
+- `Darwin/Sources/Main.swift`: non-shipping SwiftUI lifecycle prototype.
+- Production Apple apps enter through `src/platform/macos/main.m`; Apple calls
+  the Rust core through the hand-written `WWNCore*` C ABI and polling bridge.
 - `src/platform/macos/*` and `android_jni.c` remain the compositor/native bridge seam.
 
 ### UI/Runtime data flow
@@ -36,7 +40,7 @@ flowchart LR
 
 ### Compatibility tiers
 
-- Baseline: iOS 16+, macOS 14+, Android API 28+, watchOS 10+.
+- Baseline: iOS/iPadOS 17+, macOS 14+, Android API 28+, watchOS 10+.
 - Liquid Glass: iOS 26+/macOS 26+ behind `@available` checks.
 - Multi-window: iPadOS 17+ and Android API 36+ (additive).
 
@@ -129,7 +133,7 @@ src/
 │           ├── mod.rs           # register_plasma_globals()
 │           └── ...
 │
-├── ffi/                         # 🔗 Stable FFI boundary (UniFFI)
+├── ffi/                         # 🔗 Stable FFI boundary (production C ABI)
 │   ├── mod.rs
 │   ├── api.rs                   # WawonaCore — main FFI object (1816 lines)
 │   ├── types.rs                 # FFI-safe structs/enums (24KB)
@@ -235,7 +239,7 @@ This architecture is designed to work the same way on local Macs and on GitHub-h
 flowchart TD
     OS[Native OS Events\n'NSEvent / UIEvent / MotionEvent']
     Frontend[Native Frontend\n'Objective-C / Swift / Kotlin']
-    FFI[FFI Layer\n'src/ffi/*'\nUniFFI-generated bindings]
+    FFI[FFI Layer\n'src/ffi/c_api.rs'\nWWNCore C ABI + polling]
     Core[Rust Core Compositor\n'src/core/*'\nWayland, Surfaces, Windows,\nInput, Scene Graph]
     Scene[RenderScene\n'from get_render_scene']
     Renderer[Native Renderer\n'Metal / Vulkan / Canvas']
@@ -297,7 +301,9 @@ flowchart TB
 
 * **Core**: All shared logic; OS-agnostic; fully testable in isolation
 * **Platform**: Thin adapter; translates native events, renders buffers via Metal/Vulkan
-* **FFI**: UniFFI boundary; safe memory & threading; no Wayland types leak across
+* **FFI**: Production platforms use the hand-written `WWNCore*` C ABI with
+  polling; no Wayland types leak across. UniFFI metadata remains non-production
+  scaffolding and is not the Apple/Android callback path.
 * **Protocol modules**: Each protocol owns its state + handler logic (Smithay pattern)
 * **Output**: Native GPU/Canvas rendering consuming `RenderScene` from Rust
 

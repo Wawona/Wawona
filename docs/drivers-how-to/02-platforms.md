@@ -8,7 +8,7 @@ Summary of how to approach graphics drivers and Vulkan for Wawona on each platfo
 |-----------|----------------|----------------------|
 | **Android** | Yes | Use Vulkan native drivers + Android NDK/SDK. |
 | **macOS**  | No  | Use **MoltenVK** or **KosmicKrisp** (Vulkan → Metal). |
-| **iOS**    | No  | Use **MoltenVK** (Vulkan → Metal); KosmicKrisp when available. |
+| **iOS**    | No  | Use **MoltenVK** (Vulkan → Metal); SwiftShader is Simulator/CI-only. |
 | **Windows**| Yes | Use native Vulkan drivers from GPU vendor. |
 | **Linux**  | Yes | Use native Vulkan (Mesa or proprietary drivers). |
 
@@ -21,8 +21,10 @@ Summary of how to approach graphics drivers and Vulkan for Wawona on each platfo
 ## macOS and iOS
 
 - No native Vulkan; use Metal or a Vulkan-over-Metal layer.
-- **MoltenVK**: well-supported, included in Vulkan SDK, good for shipping.
-- **KosmicKrisp**: Mesa-based, more experimental; follow Mesa and LunarG notes for status.
+- **MoltenVK**: the on-device iOS/iPadOS/visionOS Vulkan provider.
+- **SwiftShader**: CPU fallback for Apple GPU-target Simulators and CI only;
+  never ship it in an Apple-mobile device bundle.
+- **KosmicKrisp**: experimental macOS-only provider in Wawona today.
 - Request **VK_KHR_portability_enumeration** when using MoltenVK (see [Integration workflow](05-integration-workflow.md)).
 
 ## Linux

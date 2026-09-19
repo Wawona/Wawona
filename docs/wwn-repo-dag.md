@@ -76,8 +76,10 @@ flowchart BT
 - `angle` and `swiftshader` recipes live in `wwn-iland/dependencies/libs/` and
   are exported by the L1 `registryFragment`. Their old L0 recipes are removed;
   consumers must merge L1 before requesting either key.
-- `moltenvk` = `pkgs.moltenvk` (nixpkgs, wired in Wawona); `kosmickrisp` has no
-  recipe. Both become L1-owned/wired in P2.
+- `moltenvk` and `kosmickrisp` are L1-owned registry recipes in `wwn-iland`.
+  Apple mobile consumes the pinned MoltenVK static slices; macOS packages
+  MoltenVK and KosmicKrisp ICD dylibs. Consumers merge the L1 fragment rather
+  than reaching for `pkgs.moltenvk` directly.
 - `pixman` correctly L0 (cairo depends on it). **Do not move to iland** — would
   force cairo→iland cycle.
 

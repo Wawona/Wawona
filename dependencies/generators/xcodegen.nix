@@ -750,39 +750,39 @@ PLIST
     basedOnDependencyAnalysis = false;
   };
 
-  # SwiftShader CPU Vulkan ICD — iOS Simulator ONLY. On the headless CI simulator
-  # MoltenVK's Metal pipeline bring-up kills the app (Metal domain 102), so vkcube
-  # needs a pure-CPU Vulkan device to fall back to. Loaded at runtime by vkcube's
-  # dlopen dispatch (WWN_VULKAN_LIBRARY), so a flat Frameworks/*.dylib is fine — and
-  # this only ever runs for *simulator (the same TN2435 loose-dylib rule that keeps
-  # ANGLE flat copies off device also keeps SwiftShader off device; device store
-  # builds must not contain it at all, enforced by verify-iland-graphics-bundle).
-  swiftshaderSimLib = iosSimDeps.swiftshader or null;
-  swiftshaderSimEmbedScript =
-    if swiftshaderSimLib != null then
-      pkgs.writeShellScript "embed-swiftshader-sim.sh" ''
-        case "''${PLATFORM_NAME:-}" in
-          *simulator*) ;;
-          *) exit 0 ;;
-        esac
-        BUNDLE="$BUILT_PRODUCTS_DIR/$FULL_PRODUCT_NAME"
-        DEST="$BUNDLE/Frameworks"
-        ICD_DEST="$BUNDLE/vulkan/icd.d"
-        SS_SRC="${strip swiftshaderSimLib}/lib/libvk_swiftshader.dylib"
-        if [ ! -f "$SS_SRC" ]; then
-          HASH=$(basename "${strip swiftshaderSimLib}")
-          FALLBACK_DIR="$SRCROOT/.nix-deps/lib/$HASH"
-          if [ -f "$FALLBACK_DIR/lib/libvk_swiftshader.dylib" ]; then
-            SS_SRC="$FALLBACK_DIR/lib/libvk_swiftshader.dylib"
-          fi
-        fi
-        if [ ! -f "$SS_SRC" ]; then
-          echo "warning: SwiftShader ICD missing at $SS_SRC" >&2
-          exit 0
-        fi
-        mkdir -p "$DEST" "$ICD_DEST"
-        cp -f "$SS_SRC" "$DEST/libvk_swiftshader.dylib"
-        cat > "$ICD_DEST/vk_swiftshader_icd.json" <<'ICDJSON'
+  # SwiftShader CPU Vulkan ICD — Apple GPU-target Simulators / CI only. On
+  # headless CI, MoltenVK's Metal pipeline bring-up can kill the app (Metal
+  # domain 102), so vkcube needs a pure-CPU fallback. Each target must embed
+  # the slice from its own dependency set: an iOS-simulator Mach-O cannot run
+  # in visionOS Simulator. Device store builds must never contain SwiftShader.
+  mkSwiftshaderSimEmbedPhases = { deps, platformGlob }:
+    let
+      swiftshader = deps.swiftshader or null;
+      script =
+        if swiftshader != null then
+          pkgs.writeShellScript "embed-swiftshader-${platformGlob}.sh" ''
+            case "''${PLATFORM_NAME:-}" in
+              ${platformGlob}) ;;
+              *) exit 0 ;;
+            esac
+            BUNDLE="$BUILT_PRODUCTS_DIR/$FULL_PRODUCT_NAME"
+            DEST="$BUNDLE/Frameworks"
+            ICD_DEST="$BUNDLE/vulkan/icd.d"
+            SS_SRC="${strip swiftshader}/lib/libvk_swiftshader.dylib"
+            if [ ! -f "$SS_SRC" ]; then
+              HASH=$(basename "${strip swiftshader}")
+              FALLBACK_DIR="$SRCROOT/.nix-deps/lib/$HASH"
+              if [ -f "$FALLBACK_DIR/lib/libvk_swiftshader.dylib" ]; then
+                SS_SRC="$FALLBACK_DIR/lib/libvk_swiftshader.dylib"
+              fi
+            fi
+            if [ ! -f "$SS_SRC" ]; then
+              echo "error: SwiftShader ICD missing at $SS_SRC" >&2
+              exit 1
+            fi
+            mkdir -p "$DEST" "$ICD_DEST"
+            cp -f "$SS_SRC" "$DEST/libvk_swiftshader.dylib"
+            cat > "$ICD_DEST/vk_swiftshader_icd.json" <<'ICDJSON'
 {
   "file_format_version": "1.0.0",
   "ICD": {
@@ -791,22 +791,22 @@ PLIST
   }
 }
 ICDJSON
-        chmod -R u+w "$DEST/libvk_swiftshader.dylib" "$ICD_DEST" 2>/dev/null || true
-        if [ -n "''${EXPANDED_CODE_SIGN_IDENTITY:-}" ] && [ "''${EXPANDED_CODE_SIGN_IDENTITY}" != "-" ]; then
-          /usr/bin/codesign --force --sign "''${EXPANDED_CODE_SIGN_IDENTITY}" \
-            --preserve-metadata=identifier,entitlements,flags \
-            "$DEST/libvk_swiftshader.dylib"
-        fi
-        echo "Embedded SwiftShader CPU Vulkan ICD into $DEST (simulator only)"
-      ''
-    else
-      pkgs.writeShellScript "embed-swiftshader-sim-noop.sh" "exit 0";
-
-  swiftshaderSimEmbedPhase = {
-    path = swiftshaderSimEmbedScript;
-    name = "Embed SwiftShader (Simulator CPU Vulkan ICD)";
-    basedOnDependencyAnalysis = false;
-  };
+            chmod -R u+w "$DEST/libvk_swiftshader.dylib" "$ICD_DEST" 2>/dev/null || true
+            if [ -n "''${EXPANDED_CODE_SIGN_IDENTITY:-}" ] && [ "''${EXPANDED_CODE_SIGN_IDENTITY}" != "-" ]; then
+              /usr/bin/codesign --force --sign "''${EXPANDED_CODE_SIGN_IDENTITY}" \
+                --preserve-metadata=identifier,entitlements,flags \
+                "$DEST/libvk_swiftshader.dylib"
+            fi
+            echo "Embedded SwiftShader CPU Vulkan ICD into $DEST (${platformGlob})"
+          ''
+        else
+          null;
+    in
+      lib.optional (script != null) {
+        path = script;
+        name = "Embed SwiftShader (Simulator CPU Vulkan ICD)";
+        basedOnDependencyAnalysis = false;
+      };
 
   mobileVmEmbedPhases =
     lib.optionals (mobileGuestArtifacts != null) [ iosMobileGuestEmbedPhase ]
@@ -887,17 +887,27 @@ ICDJSON
   # without libEGL/libGLESv2 (dyld "Library not loaded: @rpath/libEGL...").
   # tvOS/watchOS intentionally do NOT call this — they must never get
   # ANGLE/Vulkan/OpenGL or VM/container embeds (native + remote only).
-  mkAppleGpuPostBuildPhases = { rootfsEmbedPhase, neovimRootfsEmbedPhase }:
+  mkAppleGpuPostBuildPhases = {
+    rootfsEmbedPhase,
+    neovimRootfsEmbedPhase,
+    swiftshaderDeps,
+    swiftshaderPlatformGlob,
+  }:
     [ xkbEmbedPhase fontEmbedPhase westonDataEmbedPhase niriDataEmbedPhase appsCatalogEmbedPhase rootfsEmbedPhase neovimRootfsEmbedPhase ]
     ++ mobileVmEmbedPhases
     ++ lib.optionals (angleSimDylib != null) [ angleSimEmbedPhase ]
     ++ lib.optionals (angleDeviceDylib != null) [ angleDeviceEmbedPhase ]
-    ++ lib.optionals (swiftshaderSimLib != null) [ swiftshaderSimEmbedPhase ]
+    ++ mkSwiftshaderSimEmbedPhases {
+      deps = swiftshaderDeps;
+      platformGlob = swiftshaderPlatformGlob;
+    }
     ++ [ simInstallWritableBundlePhase ];
 
   iosPostBuildPhases = mkAppleGpuPostBuildPhases {
     rootfsEmbedPhase = iosRootfsEmbedPhase;
     neovimRootfsEmbedPhase = iosNeovimRootfsEmbedPhase;
+    swiftshaderDeps = iosSimDeps;
+    swiftshaderPlatformGlob = "iphonesimulator";
   };
 
   # #138 root cause: src/resources/app-bundle/Info.plist is shared verbatim
@@ -1637,6 +1647,8 @@ ICDJSON
         postBuildScripts = mkAppleGpuPostBuildPhases {
           rootfsEmbedPhase = ipadosRootfsEmbedPhase;
           neovimRootfsEmbedPhase = ipadosNeovimRootfsEmbedPhase;
+          swiftshaderDeps = ipadosSimDeps;
+          swiftshaderPlatformGlob = "iphonesimulator";
         };
 
         settings = {
@@ -2472,6 +2484,8 @@ ICDJSON
         postBuildScripts = mkAppleGpuPostBuildPhases {
           rootfsEmbedPhase = visionosRootfsEmbedPhase;
           neovimRootfsEmbedPhase = visionosNeovimRootfsEmbedPhase;
+          swiftshaderDeps = visionosSimDeps;
+          swiftshaderPlatformGlob = "xrsimulator";
         } ++ [ stripIOSOnlyInfoPlistKeysPhase ];
         settings = {
           base = {
