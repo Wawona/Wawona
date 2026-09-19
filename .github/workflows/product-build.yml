@@ -167,7 +167,7 @@ jobs:
           test -n "$APP"
           ditto "$APP" "$OUT_DIR/Wawona.app"
           ./.github/scripts/verify-iland-graphics-bundle.sh \
-            --platform "${{ matrix.target }}" "$OUT_DIR/Wawona.app"
+            --platform "${{ matrix.target }}" --simulator "$OUT_DIR/Wawona.app"
           printf '{"attr":"%s","sha":"%s","artifact":"product-%s-sim"}\n' \
             "${{ matrix.attr }}" "${{ github.sha }}" "${{ matrix.target }}" \
             > "$OUT_DIR/product-manifest.json"

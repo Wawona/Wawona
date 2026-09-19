@@ -19,7 +19,7 @@ struct ObjCSettingsHostView: View {
     var body: some View {
         VStack(spacing: 12) {
             Text("Settings open in native Preferences window.")
-                .foregroundStyle(.secondary)
+                .backport.foregroundStyle(.secondary)
             Button("Open Settings") {
                 WWNPreferences.shared().show(NSApp)
             }
@@ -36,7 +36,7 @@ struct ObjCSettingsHostView: View {
 struct ObjCSettingsHostView: View {
     var body: some View {
         Text("Settings unavailable on this platform.")
-            .foregroundStyle(.secondary)
+            .backport.foregroundStyle(.secondary)
     }
 }
 #endif

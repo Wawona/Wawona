@@ -11,7 +11,7 @@ struct MachineDetailView: View {
             SectionHeader(profile.name, subtitle: profile.type.rawValue)
             if let onOpenSettings {
                 Button("Open Machine Settings", action: onOpenSettings)
-                    .buttonStyle(.borderedProminent)
+                    .backport.glassProminentButtonStyle()
             }
             ForEach(sessions.sessions.filter { $0.machineId == profile.id }) { session in
                 GlassCard {

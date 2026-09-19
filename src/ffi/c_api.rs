@@ -111,6 +111,144 @@ pub extern "C" fn WWNStringFree(s: *mut c_char) {
     }
 }
 
+/// Normalize legacy/native touch-input labels in Rust.
+#[no_mangle]
+pub extern "C" fn WWNDomainNormalizeTouchInput(raw: *const c_char) -> *mut c_char {
+    let raw = if raw.is_null() {
+        ""
+    } else {
+        unsafe { CStr::from_ptr(raw) }.to_str().unwrap_or("")
+    };
+    CString::new(crate::domain::normalize_touch_input(raw))
+        .map(CString::into_raw)
+        .unwrap_or(std::ptr::null_mut())
+}
+
+// ----------------------------------------------------------------------------
+// Rust-owned product domain (JSON snapshots + typed intents)
+// ----------------------------------------------------------------------------
+
+/// Monotonic revision for the Rust-owned app snapshot. Native presentation
+/// layers poll this and only decode a new snapshot when it changes.
+#[no_mangle]
+pub extern "C" fn WWNCoreDomainRevision(core: *const WWNCore) -> u64 {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if core.is_null() {
+            return 0;
+        }
+        unsafe { &*core }.domain_revision()
+    }))
+    .unwrap_or(0)
+}
+
+/// Return the complete presentation snapshot as UTF-8 JSON.
+/// Caller owns the string and must release it with `WWNStringFree`.
+#[no_mangle]
+pub extern "C" fn WWNCoreDomainSnapshotJSON(core: *const WWNCore) -> *mut c_char {
+    domain_json(core, |core| core.domain_snapshot_json())
+}
+
+/// Return only durable Rust-owned state for mechanical platform persistence.
+/// Caller owns the string and must release it with `WWNStringFree`.
+#[no_mangle]
+pub extern "C" fn WWNCoreDomainDurableJSON(core: *const WWNCore) -> *mut c_char {
+    domain_json(core, |core| core.domain_durable_json())
+}
+
+/// Resolve one profile against global settings and platform policy in Rust.
+/// Caller owns the returned JSON string and must use `WWNStringFree`.
+#[no_mangle]
+pub extern "C" fn WWNCoreDomainResolvedSettingsJSON(
+    core: *const WWNCore,
+    machine_id: *const c_char,
+) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if core.is_null() || machine_id.is_null() {
+            return std::ptr::null_mut();
+        }
+        let Ok(machine_id) = unsafe { CStr::from_ptr(machine_id) }.to_str() else {
+            return std::ptr::null_mut();
+        };
+        unsafe { &*core }
+            .domain_resolved_settings_json(machine_id)
+            .ok()
+            .and_then(|json| CString::new(json).ok())
+            .map(CString::into_raw)
+            .unwrap_or(std::ptr::null_mut())
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Resolve an arbitrary profile JSON object without mutating durable state.
+/// Used by editors to preview effective settings for unsaved drafts.
+#[no_mangle]
+pub extern "C" fn WWNCoreDomainResolveProfileJSON(
+    core: *const WWNCore,
+    profile_json: *const c_char,
+) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if core.is_null() || profile_json.is_null() {
+            return std::ptr::null_mut();
+        }
+        let Ok(profile_json) = unsafe { CStr::from_ptr(profile_json) }.to_str() else {
+            return std::ptr::null_mut();
+        };
+        unsafe { &*core }
+            .domain_resolve_profile_json(profile_json)
+            .ok()
+            .and_then(|json| CString::new(json).ok())
+            .map(CString::into_raw)
+            .unwrap_or(std::ptr::null_mut())
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Apply a tagged JSON intent. Returns false for malformed input, failed
+/// validation, unknown ids, or a null pointer. Input is copied synchronously.
+#[no_mangle]
+pub extern "C" fn WWNCoreDomainDispatchJSON(
+    core: *mut WWNCore,
+    intent_json: *const c_char,
+) -> bool {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if core.is_null() || intent_json.is_null() {
+            return false;
+        }
+        let Ok(json) = unsafe { CStr::from_ptr(intent_json) }.to_str() else {
+            return false;
+        };
+        match unsafe { &*core }.domain_dispatch_json(json) {
+            Ok(()) => true,
+            Err(error) => {
+                crate::wlog!(
+                    crate::util::logging::C_API,
+                    "Rejected domain intent: {}",
+                    error
+                );
+                false
+            }
+        }
+    }))
+    .unwrap_or(false)
+}
+
+fn domain_json(
+    core: *const WWNCore,
+    make_json: impl FnOnce(&WWNCore) -> Result<String, crate::domain::DomainError>,
+) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if core.is_null() {
+            return std::ptr::null_mut();
+        }
+        make_json(unsafe { &*core })
+            .ok()
+            .and_then(|json| CString::new(json).ok())
+            .map(CString::into_raw)
+            .unwrap_or(std::ptr::null_mut())
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
 /// Process events
 #[no_mangle]
 pub extern "C" fn WWNCoreProcessEvents(core: *mut WWNCore) -> bool {

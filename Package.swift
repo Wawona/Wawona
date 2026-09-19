@@ -5,7 +5,7 @@ let package = Package(
     name: "Wawona",
     defaultLocalization: "en",
     platforms: [
-        .iOS(.v17),
+        .iOS(.v13),
         .macOS(.v14),
         .watchOS(.v10),
         .visionOS(.v2)

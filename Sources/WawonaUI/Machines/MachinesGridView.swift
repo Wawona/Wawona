@@ -14,7 +14,7 @@ struct MachinesGridView: View {
                 VStack(spacing: 8) {
                     Image(systemName: "server.rack")
                         .font(.title2)
-                        .foregroundStyle(.secondary)
+                        .backport.foregroundStyle(.secondary)
                     Text("No Machines")
                         .font(.headline)
                 }

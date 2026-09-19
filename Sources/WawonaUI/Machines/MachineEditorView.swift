@@ -3,7 +3,7 @@ import WawonaModel
 import WawonaUIContracts
 
 struct MachineEditorView: View {
-    @Environment(\.dismiss) var dismiss
+    @Environment(\.presentationMode) private var presentationMode
 
     @State var name: String
     @State var type: MachineType
@@ -91,7 +91,7 @@ struct MachineEditorView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        Backport<Any>.NavigationContainer {
             Form {
                 // MARK: Identity + type in one compact section
                 Section("Profile") {
@@ -101,7 +101,7 @@ struct MachineEditorView: View {
                             Text(t.userFacingName).tag(t)
                         }
                     }
-                    .pickerStyle(.menu)
+                    .backport.menuPickerStyle()
                 }
 
                 // MARK: Native — local Wayland socket, no network
@@ -114,7 +114,7 @@ struct MachineEditorView: View {
                                 Text("Wayland Client")
                                 Spacer()
                                 Text(ClientLauncher.displayName(for: selectedLauncherName))
-                                    .foregroundStyle(.secondary)
+                                    .backport.foregroundStyle(.secondary)
                                     .lineLimit(1)
                             }
                         }
@@ -128,25 +128,25 @@ struct MachineEditorView: View {
                     Section("Remote Host") {
                         TextField("Host", text: $sshHost)
                             .wawonaTextFieldNoAutocaps()
-                            .autocorrectionDisabled()
+                            .disableAutocorrection(true)
                         TextField("Username", text: $sshUser)
                             .wawonaTextFieldNoAutocaps()
-                            .autocorrectionDisabled()
+                            .disableAutocorrection(true)
                         SecureField("Password", text: $sshPassword)
                             .textContentType(.password)
                         TextField("Port", text: sshPortText)
                             .wawonaTextFieldNoAutocaps()
-                            .autocorrectionDisabled()
+                            .disableAutocorrection(true)
                         Picker("Auth", selection: $sshAuthMethod) {
                             Text("Password").tag(0)
                             Text("Public Key").tag(1)
                         }
                         TextField("Key Path", text: $sshKeyPath)
                             .wawonaTextFieldNoAutocaps()
-                            .autocorrectionDisabled()
+                            .disableAutocorrection(true)
                         SecureField("Key Passphrase", text: $sshKeyPassphrase)
                             .wawonaTextFieldNoAutocaps()
-                            .autocorrectionDisabled()
+                            .disableAutocorrection(true)
                     }
 
                     Section {
@@ -155,7 +155,7 @@ struct MachineEditorView: View {
                             text: $remoteCommand
                         )
                         .wawonaTextFieldNoAutocaps()
-                        .autocorrectionDisabled()
+                        .disableAutocorrection(true)
                     } header: {
                         Text(type == .sshWaypipe ? "Waypipe Remote Command" : "SSH Command")
                     } footer: {
@@ -165,16 +165,24 @@ struct MachineEditorView: View {
                     }
                 }
             }
-            .navigationTitle(editorNavigationTitle)
+            .backport.navigationTitle(editorNavigationTitle)
+            #if os(iOS)
+            .navigationBarItems(
+                leading: Button("Cancel") { presentationMode.wrappedValue.dismiss() },
+                trailing: Button("Save", action: save)
+                    .disabled(hasValidationIssues)
+            )
+            #else
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button("Cancel") { presentationMode.wrappedValue.dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save", action: save)
                         .disabled(hasValidationIssues)
                 }
             }
+            #endif
         }
     }
 
@@ -192,6 +200,6 @@ struct MachineEditorView: View {
             profile.runtimeOverrides.renderer = baseline.runtimeOverrides.renderer
         }
         onSave(profile)
-        dismiss()
+        presentationMode.wrappedValue.dismiss()
     }
 }

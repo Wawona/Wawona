@@ -29,14 +29,14 @@ public struct MachineSettingsView: View {
                     }
                     Text("Global defaults (Display, Input, Graphics, Waypipe, SSH). Values below override those settings for this machine only.")
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .backport.foregroundStyle(.secondary)
                 }
             }
 
             Section("Machine") {
                 if profileStore.profiles.isEmpty {
                     Text("No machine profiles available.")
-                        .foregroundStyle(.secondary)
+                        .backport.foregroundStyle(.secondary)
                 } else {
                     #if os(watchOS)
                     if let mid = machineID, let pick = profileStore.profiles.first(where: { $0.id == mid }) {
@@ -83,7 +83,7 @@ public struct MachineSettingsView: View {
             }
         }
 
-        .navigationTitle("Machine Settings")
+        .backport.navigationTitle("Machine Settings")
         .onAppear {
             selectedID = machineID ?? profileStore.activeMachineId ?? profileStore.profiles.first?.id
             loadDraft()
@@ -102,7 +102,7 @@ public struct MachineSettingsView: View {
             Toggle("Auto Scale", isOn: autoScaleBinding)
             TextField("Wayland Display", text: waylandDisplayBinding)
                 .wawonaTextFieldNoAutocaps()
-                .autocorrectionDisabled()
+                .disableAutocorrection(true)
         }
     }
 
@@ -124,15 +124,15 @@ public struct MachineSettingsView: View {
                         Text("Wayland Client")
                         Spacer()
                         Text(ClientLauncher.displayName(for: resolvedBundledAppID))
-                            .foregroundStyle(.secondary)
+                            .backport.foregroundStyle(.secondary)
                             .lineLimit(1)
                     }
                 }
             }
 
             if let backend = profile.type.backendEngineLabel {
-                LabeledContent("Backend", value: backend)
-                    .foregroundStyle(.secondary)
+                Backport<Any>.LabeledContent("Backend", value: backend)
+                    .backport.foregroundStyle(.secondary)
             }
         }
     }
@@ -142,10 +142,10 @@ public struct MachineSettingsView: View {
         Section("SSH / Waypipe") {
             TextField("Host", text: sshHostBinding)
                 .wawonaTextFieldNoAutocaps()
-                .autocorrectionDisabled()
+                .disableAutocorrection(true)
             TextField("User", text: sshUserBinding)
                 .wawonaTextFieldNoAutocaps()
-                .autocorrectionDisabled()
+                .disableAutocorrection(true)
             TextField("Port", text: Binding(
                 get: { String(draft?.sshPort ?? 22) },
                 set: { value in
@@ -153,14 +153,14 @@ public struct MachineSettingsView: View {
                 }
             ))
             .wawonaTextFieldNoAutocaps()
-            .autocorrectionDisabled()
+            .disableAutocorrection(true)
             SecureField("Password", text: sshPasswordBinding)
                 .textContentType(.password)
             SecureField("Waypipe Password (optional override)", text: waypipeSSHPasswordBinding)
                 .textContentType(.password)
             TextField("Remote Command", text: remoteCommandBinding)
                 .wawonaTextFieldNoAutocaps()
-                .autocorrectionDisabled()
+                .disableAutocorrection(true)
 
             Toggle("Enable Waypipe", isOn: waypipeEnabledBinding)
                 .disabled(draft?.type == .native)
@@ -182,7 +182,7 @@ public struct MachineSettingsView: View {
             .disabled(!(draft?.runtimeOverrides.renderMacOSPointer ?? preferences.renderMacOSPointer))
             #if os(tvOS)
             Text("Touch Input Type: Touchpad (tvOS)")
-                .foregroundStyle(.secondary)
+                .backport.foregroundStyle(.secondary)
             #else
             Picker("Touch Input Type", selection: touchInputTypeBinding) {
                 Text("Multi-Touch").tag("Multi-Touch")
@@ -190,10 +190,10 @@ public struct MachineSettingsView: View {
             }
             Text("Overrides global Settings → Input. Multi-Touch is required for many Wayland clients (Weston panel, terminals); Touchpad uses a virtual pointer.")
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .backport.foregroundStyle(.secondary)
             Text("Global default: \(WawonaPreferences.normalizedTouchInputType(preferences.defaultInputProfile))")
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .backport.foregroundStyle(.secondary)
             #endif
         }
     }
@@ -203,19 +203,19 @@ public struct MachineSettingsView: View {
         Section("Graphics") {
             TextField("Renderer", text: rendererBinding)
                 .wawonaTextFieldNoAutocaps()
-                .autocorrectionDisabled()
+                .disableAutocorrection(true)
             if PlatformCapabilities.allowsGpuStack {
                 TextField("Vulkan Driver", text: vulkanDriverBinding)
                     .wawonaTextFieldNoAutocaps()
-                    .autocorrectionDisabled()
+                    .disableAutocorrection(true)
                 TextField("OpenGL Driver", text: openGLDriverBinding)
                     .wawonaTextFieldNoAutocaps()
-                    .autocorrectionDisabled()
+                    .disableAutocorrection(true)
                 Toggle("Enable DMABUF", isOn: dmabufEnabledBinding)
             } else {
                 Text("GPU stack unavailable on this platform.")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .backport.foregroundStyle(.secondary)
             }
             Toggle("HDR / Color Operations", isOn: colorOperationsBinding)
         }

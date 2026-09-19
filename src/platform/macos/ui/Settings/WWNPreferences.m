@@ -408,17 +408,29 @@ static UIImage *WWNAboutLogo(void) {
   self.tableView.tableHeaderView =
       [[UIView alloc] initWithFrame:CGRectMake(0, 0, 1.0, 1.0)];
 
-  __weak typeof(self) weakSelf = self;
-  [self registerForTraitChanges:@[ UITraitUserInterfaceStyle.class ]
-                    withHandler:^(
-                        id<UITraitEnvironment> _Nonnull traitEnvironment,
-                        UITraitCollection *_Nonnull previousCollection) {
+  if (@available(iOS 17.0, tvOS 17.0, *)) {
+    __weak typeof(self) weakSelf = self;
+    [self registerForTraitChanges:@[ UITraitUserInterfaceStyle.class ]
+                      withHandler:^(
+                          id<UITraitEnvironment> _Nonnull traitEnvironment,
+                          UITraitCollection *_Nonnull previousCollection) {
+                        __strong typeof(weakSelf) strongSelf = weakSelf;
+                        if (!strongSelf)
+                          return;
+                        [strongSelf.tableView reloadData];
+                      }];
+  }
+}
 
-                      __strong typeof(weakSelf) strongSelf = weakSelf;
-                      if (!strongSelf) return;
-
-                      [strongSelf.tableView reloadData];
-                    }];
+- (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
+  [super traitCollectionDidChange:previousTraitCollection];
+  if (@available(iOS 17.0, tvOS 17.0, *)) {
+    return;
+  }
+  if (previousTraitCollection.userInterfaceStyle !=
+      self.traitCollection.userInterfaceStyle) {
+    [self.tableView reloadData];
+  }
 }
 
 #endif
@@ -2630,9 +2642,16 @@ static UIImage *WWNAboutLogo(void) {
                                   @"OpenSSH-format private key under "
                                   @"Documents/ssh (gpg --export-ssh-key)."];
 #elif TARGET_OS_IPHONE
-  UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController
-      alloc] initForOpeningContentTypes:@[ UTTypeData, UTTypeItem ]
-                                 asCopy:YES];
+  UIDocumentPickerViewController *picker;
+  if (@available(iOS 14.0, *)) {
+    picker = [[UIDocumentPickerViewController alloc]
+        initForOpeningContentTypes:@[ UTTypeData, UTTypeItem ]
+                           asCopy:YES];
+  } else {
+    picker = [[UIDocumentPickerViewController alloc]
+        initWithDocumentTypes:@[ @"public.data", @"public.item" ]
+                       inMode:UIDocumentPickerModeImport];
+  }
   picker.allowsMultipleSelection = NO;
   picker.delegate = (id)self;
   self.documentPickerImportsSSHKey = YES;
@@ -4739,9 +4758,16 @@ static UIImage *WWNAboutLogo(void) {
 
 #if !TARGET_OS_TV
 - (void)importFileToShellHome {
-  UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc]
-      initForOpeningContentTypes:@[ UTTypeItem ]
-                      asCopy:YES];
+  UIDocumentPickerViewController *picker;
+  if (@available(iOS 14.0, *)) {
+    picker = [[UIDocumentPickerViewController alloc]
+        initForOpeningContentTypes:@[ UTTypeItem ]
+                           asCopy:YES];
+  } else {
+    picker = [[UIDocumentPickerViewController alloc]
+        initWithDocumentTypes:@[ @"public.item" ]
+                       inMode:UIDocumentPickerModeImport];
+  }
   picker.delegate = self;
   picker.allowsMultipleSelection = NO;
   self.documentPickerImportsSSHKey = NO;

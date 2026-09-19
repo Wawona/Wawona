@@ -168,8 +168,10 @@ relaxations separately.
 
 "Unsupported" is the most dangerous word in this codebase, because it hides four
 situations that demand opposite responses. Every capability gate must say which
-one it is — in the rules, in `CapabilityGate`
-(`Sources/WawonaModel/PlatformCapabilities.swift`), and in the Nix registry.
+one it is — in the rules, in the Rust-owned capability model exposed to native
+frontends, and in the Nix registry. The existing
+`Sources/WawonaModel/PlatformCapabilities.swift` implementation is migration
+debt and must not gain new policy.
 
 | State | Meaning | Correct response |
 |---|---|---|

@@ -83,7 +83,7 @@ public struct SettingsDiagnosticEntry: Codable, Identifiable, Hashable, Sendable
     }
 }
 
-public struct ResolvedMachineSettings: Hashable, Sendable {
+public struct ResolvedMachineSettings: Codable, Hashable, Sendable {
     public var machineID: String
     public var machineName: String
     public var machineType: MachineType
@@ -109,27 +109,73 @@ public struct ResolvedMachineSettings: Hashable, Sendable {
     public var logLevel: String
     public var shakeToCloseEnabled: Bool
     public var swipeBackToCloseEnabled: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case machineID = "machineId"
+        case machineName
+        case machineType
+        case renderer
+        case vulkanDriver
+        case openGLDriver = "openGlDriver"
+        case dmabufEnabled
+        case forceSSD = "forceSsd"
+        case renderMacOSPointer = "renderMacosPointer"
+        case nestedCompositorCursor
+        case autoScale
+        case colorOperations
+        case waylandDisplay
+        case sshHost
+        case sshUser
+        case sshPort
+        case sshPassword
+        case waypipeSSHPassword = "waypipeSshPassword"
+        case remoteCommand
+        case waypipeEnabled
+        case bundledAppID = "bundledAppId"
+        case inputProfile
+        case logLevel
+        case shakeToCloseEnabled
+        case swipeBackToCloseEnabled
+    }
+}
+
+private struct RustPreferencesSnapshot: Codable {
+    var renderer: String
+    var vulkanDriver: String
+    var openGLDriver: String
+    var forceSSD: Bool
+    var renderMacosPointer: Bool
+    var nestedCompositorCursor: String
+    var autoScale: Bool
+    var colorOperations: Bool
+    var waylandDisplay: String
+    var sshHost: String
+    var sshUser: String
+    var sshPort: Int
+    var sshPassword: String
+    var sshAuthMethod: Int
+    var sshKeyPath: String
+    var sshKeyPassphrase: String
+    var sshKeyType: String
+    var waypipeSshPassword: String
+    var logLevel: String
+    var defaultInputProfile: String
+    var defaultBundledAppId: String
+    var defaultWaypipeEnabled: Bool
+    var xwaylandSupport: Bool
+    var shakeToCloseEnabled: Bool
+    var swipeBackToCloseEnabled: Bool
+    var hasCompletedWelcome: Bool
+    var globalClientLaunchers: [ClientLauncher]
+    var diagnostics: [SettingsDiagnosticEntry]
 }
 
 @MainActor
 public final class WawonaPreferences: ObservableObject {
     public static let shared = WawonaPreferences()
 
-    private static var defaultVulkanDriver: String {
-        #if os(tvOS) || os(watchOS)
-        return "none"
-        #elseif os(macOS) && arch(arm64)
-        if #available(macOS 26.0, *) {
-            return "kosmickrisp"
-        }
-        return "moltenvk"
-        #else
-        return "moltenvk"
-        #endif
-    }
-
     @Published public var renderer: String = "metal"
-    @Published public var vulkanDriver: String = WawonaPreferences.defaultVulkanDriver
+    @Published public var vulkanDriver: String = ""
     @Published public var openGLDriver: String = "angle"
     @Published public var forceSSD: Bool = false
     @Published public var renderMacOSPointer: Bool = false
@@ -154,15 +200,7 @@ public final class WawonaPreferences: ObservableObject {
 
     /// Map legacy labels ("direct", "multitouch", …) onto TouchInputType.
     public static func normalizedTouchInputType(_ raw: String?) -> String {
-        let trimmed = (raw ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty { return "Multi-Touch" }
-        switch trimmed.lowercased() {
-        case "touchpad", "pointer", "virtual", "virtual-pointer", "trackpad":
-            return "Touchpad"
-        default:
-            // "Multi-Touch", "multi-touch", "direct", "multitouch", …
-            return "Multi-Touch"
-        }
+        RustDomainTransport.normalizeTouchInput(raw)
     }
     @Published public var defaultBundledAppID: String = ""
     @Published public var defaultWaypipeEnabled: Bool = true
@@ -182,93 +220,95 @@ public final class WawonaPreferences: ObservableObject {
     }
 
     public func load() {
-        renderer = defaults.string(forKey: keyPrefix + "renderer") ?? "metal"
-        vulkanDriver = defaults.string(forKey: "VulkanDriver") ?? WawonaPreferences.defaultVulkanDriver
-        openGLDriver = defaults.string(forKey: "OpenGLDriver") ?? "angle"
-        if defaults.object(forKey: "ForceServerSideDecorations") != nil {
-            forceSSD = defaults.bool(forKey: "ForceServerSideDecorations")
-        } else {
-            forceSSD = defaults.bool(forKey: keyPrefix + "forceSSD")
+        RustDomainClient.bootstrapIfNeeded()
+        guard let snapshot = RustDomainClient.snapshot(),
+              let raw = snapshot["preferences"],
+              JSONSerialization.isValidJSONObject(raw),
+              let data = try? JSONSerialization.data(withJSONObject: raw),
+              let value = try? JSONDecoder().decode(RustPreferencesSnapshot.self, from: data)
+        else {
+            return
         }
-        renderMacOSPointer = defaults.bool(forKey: "RenderMacOSPointer")
-        let nestedCursor = defaults.string(forKey: "NestedCompositorCursor") ?? "virtual"
-        nestedCompositorCursor =
-            (nestedCursor == "host" || nestedCursor == "virtual") ? nestedCursor : "virtual"
-        autoScale = defaults.object(forKey: keyPrefix + "autoScale") as? Bool ?? true
-        colorOperations = defaults.object(forKey: keyPrefix + "colorOperations") as? Bool ?? false
-        waylandDisplay = defaults.string(forKey: keyPrefix + "waylandDisplay") ?? "wayland-0"
-        sshHost = defaults.string(forKey: keyPrefix + "sshHost") ?? ""
-        sshUser = defaults.string(forKey: keyPrefix + "sshUser") ?? ""
-        sshPort = defaults.object(forKey: keyPrefix + "sshPort") as? Int ?? 22
-        sshPassword = defaults.string(forKey: keyPrefix + "sshPassword") ?? ""
-        if defaults.object(forKey: "SSHAuthMethod") != nil {
-            sshAuthMethod = defaults.integer(forKey: "SSHAuthMethod")
-        } else {
-            sshAuthMethod = defaults.object(forKey: keyPrefix + "sshAuthMethod") as? Int ?? 0
-        }
-        sshKeyPath = defaults.string(forKey: "SSHKeyPath")
-            ?? defaults.string(forKey: keyPrefix + "sshKeyPath") ?? ""
-        sshKeyPassphrase = defaults.string(forKey: "SSHKeyPassphrase")
-            ?? defaults.string(forKey: keyPrefix + "sshKeyPassphrase") ?? ""
-        sshKeyType = defaults.string(forKey: "SSHKeyType")
-            ?? defaults.string(forKey: keyPrefix + "sshKeyType") ?? "ed25519"
-        waypipeSSHPassword = defaults.string(forKey: keyPrefix + "waypipeSSHPassword") ?? ""
-        logLevel = defaults.string(forKey: keyPrefix + "logLevel") ?? "info"
-        let loadedInput = defaults.string(forKey: keyPrefix + "defaultInputProfile")
-            ?? defaults.string(forKey: "TouchInputType")
-            ?? "Multi-Touch"
-        defaultInputProfile = Self.normalizedTouchInputType(loadedInput)
-        defaultBundledAppID = defaults.string(forKey: keyPrefix + "defaultBundledAppID") ?? "weston-terminal"
-        defaultWaypipeEnabled = defaults.object(forKey: keyPrefix + "defaultWaypipeEnabled") as? Bool ?? true
-        xwaylandSupport = defaults.object(forKey: keyPrefix + "xwaylandSupport") as? Bool ?? false
-        shakeToCloseEnabled = defaults.object(forKey: keyPrefix + "shakeToCloseEnabled") as? Bool ?? true
-        swipeBackToCloseEnabled = defaults.object(forKey: keyPrefix + "swipeBackToCloseEnabled") as? Bool ?? true
-        hasCompletedWelcome = defaults.bool(forKey: keyPrefix + "hasCompletedWelcome")
-
-        if let launchersData = defaults.data(forKey: keyPrefix + "globalClientLaunchers"),
-           let launchers = try? JSONDecoder().decode([ClientLauncher].self, from: launchersData) {
-            globalClientLaunchers = launchers
-        }
-        if let diagnosticsData = defaults.data(forKey: keyPrefix + "diagnostics"),
-           let decoded = try? JSONDecoder().decode([SettingsDiagnosticEntry].self, from: diagnosticsData) {
-            diagnostics = decoded
-        }
+        renderer = value.renderer
+        vulkanDriver = value.vulkanDriver
+        openGLDriver = value.openGLDriver
+        forceSSD = value.forceSSD
+        renderMacOSPointer = value.renderMacosPointer
+        nestedCompositorCursor = value.nestedCompositorCursor
+        autoScale = value.autoScale
+        colorOperations = value.colorOperations
+        waylandDisplay = value.waylandDisplay
+        sshHost = value.sshHost
+        sshUser = value.sshUser
+        sshPort = value.sshPort
+        sshPassword = value.sshPassword
+        sshAuthMethod = value.sshAuthMethod
+        sshKeyPath = value.sshKeyPath
+        sshKeyPassphrase = value.sshKeyPassphrase
+        sshKeyType = value.sshKeyType
+        waypipeSSHPassword = value.waypipeSshPassword
+        logLevel = value.logLevel
+        defaultInputProfile = value.defaultInputProfile
+        defaultBundledAppID = value.defaultBundledAppId
+        defaultWaypipeEnabled = value.defaultWaypipeEnabled
+        xwaylandSupport = value.xwaylandSupport
+        shakeToCloseEnabled = value.shakeToCloseEnabled
+        swipeBackToCloseEnabled = value.swipeBackToCloseEnabled
+        hasCompletedWelcome = value.hasCompletedWelcome
+        globalClientLaunchers = value.globalClientLaunchers
+        diagnostics = value.diagnostics
     }
 
     public func save() {
-        defaults.set(renderer, forKey: keyPrefix + "renderer")
+        let previousForceSSD = (RustDomainClient.snapshot()?["preferences"]
+            as? [String: Any])?["forceSSD"] as? Bool
+        let value = RustPreferencesSnapshot(
+            renderer: renderer,
+            vulkanDriver: vulkanDriver,
+            openGLDriver: openGLDriver,
+            forceSSD: forceSSD,
+            renderMacosPointer: renderMacOSPointer,
+            nestedCompositorCursor: nestedCompositorCursor,
+            autoScale: autoScale,
+            colorOperations: colorOperations,
+            waylandDisplay: waylandDisplay,
+            sshHost: sshHost,
+            sshUser: sshUser,
+            sshPort: sshPort,
+            sshPassword: sshPassword,
+            sshAuthMethod: sshAuthMethod,
+            sshKeyPath: sshKeyPath,
+            sshKeyPassphrase: sshKeyPassphrase,
+            sshKeyType: sshKeyType,
+            waypipeSshPassword: waypipeSSHPassword,
+            logLevel: logLevel,
+            defaultInputProfile: defaultInputProfile,
+            defaultBundledAppId: defaultBundledAppID,
+            defaultWaypipeEnabled: defaultWaypipeEnabled,
+            xwaylandSupport: xwaylandSupport,
+            shakeToCloseEnabled: shakeToCloseEnabled,
+            swipeBackToCloseEnabled: swipeBackToCloseEnabled,
+            hasCompletedWelcome: hasCompletedWelcome,
+            globalClientLaunchers: globalClientLaunchers,
+            diagnostics: diagnostics
+        )
+        guard let data = try? JSONEncoder().encode(value),
+              let object = try? JSONSerialization.jsonObject(with: data),
+              RustDomainClient.dispatch([
+                "type": "update_preferences",
+                "preferences": object,
+              ]) else {
+            return
+        }
+        load()
+
+        // Mechanical compatibility mirrors for ObjC platform adapters that
+        // have not yet moved to snapshot polling.
+        defaults.set(forceSSD, forKey: "ForceServerSideDecorations")
         defaults.set(vulkanDriver, forKey: "VulkanDriver")
         defaults.set(openGLDriver, forKey: "OpenGLDriver")
-        let previousForceSSD = defaults.object(forKey: "ForceServerSideDecorations") as? Bool
-            ?? defaults.bool(forKey: keyPrefix + "forceSSD")
-        defaults.set(forceSSD, forKey: "ForceServerSideDecorations")
-        defaults.set(forceSSD, forKey: keyPrefix + "forceSSD")
-        // Bridge listens for this; without it, SwiftUI toggles only write
-        // defaults and the Rust decoration policy never updates (weston stays
-        // borderless even with Force SSD "on").
-        if previousForceSSD != forceSSD {
-            NotificationCenter.default.post(
-                name: Notification.Name("WWNForceSSDChangedNotification"),
-                object: nil
-            )
-        }
         defaults.set(renderMacOSPointer, forKey: "RenderMacOSPointer")
-        defaults.set(
-            (nestedCompositorCursor == "host") ? "host" : "virtual",
-            forKey: "NestedCompositorCursor"
-        )
-        defaults.set(autoScale, forKey: keyPrefix + "autoScale")
-        defaults.set(colorOperations, forKey: keyPrefix + "colorOperations")
-        defaults.set(waylandDisplay, forKey: keyPrefix + "waylandDisplay")
-        defaults.set(sshHost, forKey: keyPrefix + "sshHost")
-        defaults.set(sshUser, forKey: keyPrefix + "sshUser")
-        defaults.set(sshPort, forKey: keyPrefix + "sshPort")
-        defaults.set(sshPassword, forKey: keyPrefix + "sshPassword")
-        defaults.set(sshAuthMethod, forKey: keyPrefix + "sshAuthMethod")
-        defaults.set(sshKeyPath, forKey: keyPrefix + "sshKeyPath")
-        defaults.set(sshKeyPassphrase, forKey: keyPrefix + "sshKeyPassphrase")
-        defaults.set(sshKeyType, forKey: keyPrefix + "sshKeyType")
-        // Dual-sync ObjC Settings / waypipe keys so Machines + PTY share state.
+        defaults.set(nestedCompositorCursor, forKey: "NestedCompositorCursor")
         defaults.set(sshAuthMethod, forKey: "SSHAuthMethod")
         defaults.set(sshKeyPath, forKey: "SSHKeyPath")
         defaults.set(sshKeyPassphrase, forKey: "SSHKeyPassphrase")
@@ -276,96 +316,24 @@ public final class WawonaPreferences: ObservableObject {
         defaults.set(sshAuthMethod, forKey: "WaypipeSSHAuthMethod")
         defaults.set(sshKeyPath, forKey: "WaypipeSSHKeyPath")
         defaults.set(sshKeyPassphrase, forKey: "WaypipeSSHKeyPassphrase")
-        defaults.set(waypipeSSHPassword, forKey: keyPrefix + "waypipeSSHPassword")
-        defaults.set(logLevel, forKey: keyPrefix + "logLevel")
-        defaults.set(defaultInputProfile, forKey: keyPrefix + "defaultInputProfile")
-        defaults.set(defaultBundledAppID, forKey: keyPrefix + "defaultBundledAppID")
-        defaults.set(defaultWaypipeEnabled, forKey: keyPrefix + "defaultWaypipeEnabled")
-        defaults.set(xwaylandSupport, forKey: keyPrefix + "xwaylandSupport")
-        defaults.set(shakeToCloseEnabled, forKey: keyPrefix + "shakeToCloseEnabled")
-        defaults.set(swipeBackToCloseEnabled, forKey: keyPrefix + "swipeBackToCloseEnabled")
-        defaults.set(hasCompletedWelcome, forKey: keyPrefix + "hasCompletedWelcome")
-        if let data = try? JSONEncoder().encode(globalClientLaunchers) {
-            defaults.set(data, forKey: keyPrefix + "globalClientLaunchers")
-        }
-        if let diagnosticsData = try? JSONEncoder().encode(diagnostics) {
-            defaults.set(diagnosticsData, forKey: keyPrefix + "diagnostics")
+        if previousForceSSD != forceSSD {
+            NotificationCenter.default.post(
+                name: Notification.Name("WWNForceSSDChangedNotification"),
+                object: nil
+            )
         }
         NotificationCenter.default.post(name: .wawonaPreferencesDidSave, object: self)
     }
 
     public func resolvedSettings(for profile: MachineProfile) -> ResolvedMachineSettings {
-        let normalizedSSHHost = profile.sshHost.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
-        let normalizedSSHUser = profile.sshUser.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
-        let normalizedCommand = profile.remoteCommand.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
-        let normalizedBundledApp = profile.runtimeOverrides.bundledAppID?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
-        let normalizedRenderer = profile.runtimeOverrides.renderer?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
-        let normalizedVulkanDriver = profile.runtimeOverrides.vulkanDriver?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
-        let normalizedOpenGLDriver = profile.runtimeOverrides.openGLDriver?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
-        // Empty/nil machine override → global default (then normalize legacy labels).
-        let rawMachineInput = profile.runtimeOverrides.inputProfile?
-            .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
-        let normalizedInputProfile = Self.normalizedTouchInputType(
-            rawMachineInput.isEmpty ? defaultInputProfile : rawMachineInput
-        )
-        let normalizedWaylandDisplay = profile.runtimeOverrides.waylandDisplay?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
-        let normalizedWaypipePassword = profile.runtimeOverrides.waypipeSSHPassword ?? ""
-        let normalizedLogLevel = profile.runtimeOverrides.logLevel?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
-
-        let resolvedWaypipeEnabled: Bool = {
-            if profile.type == .native {
-                return false
-            }
-            if profile.type == .sshWaypipe || profile.type == .sshTerminal {
-                return profile.runtimeOverrides.waypipeEnabled ?? defaultWaypipeEnabled
-            }
-            return false
-        }()
-
-        return ResolvedMachineSettings(
-            machineID: profile.id,
-            machineName: profile.name,
-            machineType: profile.type,
-            renderer: normalizedRenderer.isEmpty ? renderer : normalizedRenderer,
-            vulkanDriver: PlatformCapabilities.allowsGpuStack
-                ? (normalizedVulkanDriver.isEmpty ? vulkanDriver : normalizedVulkanDriver)
-                : "none",
-            openGLDriver: PlatformCapabilities.allowsGpuStack
-                ? (normalizedOpenGLDriver.isEmpty ? openGLDriver : normalizedOpenGLDriver)
-                : "none",
-            dmabufEnabled: PlatformCapabilities.allowsGpuStack
-                ? (profile.runtimeOverrides.dmabufEnabled ?? true)
-                : false,
-            // Force SSD is macOS-only (#120): CSD only renders on macOS Wawona.
-            // Everywhere else the resolved value is unconditionally SSD, so a
-            // stored per-machine/global override can never yield a broken CSD
-            // client on iOS/iPadOS/tvOS/watchOS/visionOS/Android.
-            forceSSD: PlatformCapabilities.supportsClientSideDecorations
-                ? (profile.runtimeOverrides.forceSSD ?? forceSSD)
-                : true,
-            renderMacOSPointer: profile.runtimeOverrides.renderMacOSPointer ?? renderMacOSPointer,
-            nestedCompositorCursor: {
-                let override = profile.runtimeOverrides.nestedCompositorCursor?
-                    .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
-                if override == "host" || override == "virtual" { return override }
-                return nestedCompositorCursor
-            }(),
-            autoScale: profile.runtimeOverrides.autoScale ?? autoScale,
-            colorOperations: profile.runtimeOverrides.colorOperations ?? colorOperations,
-            waylandDisplay: normalizedWaylandDisplay.isEmpty ? waylandDisplay : normalizedWaylandDisplay,
-            sshHost: normalizedSSHHost.isEmpty ? sshHost : normalizedSSHHost,
-            sshUser: normalizedSSHUser.isEmpty ? sshUser : normalizedSSHUser,
-            sshPort: profile.sshPort > 0 ? profile.sshPort : sshPort,
-            sshPassword: profile.sshPassword.isEmpty ? sshPassword : profile.sshPassword,
-            waypipeSSHPassword: normalizedWaypipePassword.isEmpty ? waypipeSSHPassword : normalizedWaypipePassword,
-            remoteCommand: normalizedCommand.isEmpty ? "weston-simple-shm" : normalizedCommand,
-            waypipeEnabled: resolvedWaypipeEnabled,
-            bundledAppID: normalizedBundledApp.isEmpty ? defaultBundledAppID : normalizedBundledApp,
-            inputProfile: normalizedInputProfile,
-            logLevel: normalizedLogLevel.isEmpty ? logLevel : normalizedLogLevel,
-            shakeToCloseEnabled: profile.runtimeOverrides.shakeToCloseEnabled ?? shakeToCloseEnabled,
-            swipeBackToCloseEnabled: profile.runtimeOverrides.swipeBackToCloseEnabled ?? swipeBackToCloseEnabled
-        )
+        guard let data = RustDomainClient.resolvedSettingsData(profile: profile),
+              let resolved = try? JSONDecoder().decode(
+                ResolvedMachineSettings.self,
+                from: data
+              ) else {
+            preconditionFailure("Rust rejected a Swift profile DTO")
+        }
+        return resolved
     }
 
     public func recordDiagnostic(
@@ -376,21 +344,19 @@ public final class WawonaPreferences: ObservableObject {
         message: String,
         details: [String: String] = [:]
     ) -> SettingsDiagnosticEntry {
-        let entry = SettingsDiagnosticEntry(
-            category: category,
-            mode: mode,
-            target: target,
-            success: success,
-            message: message,
-            details: details
-        )
-        var next = diagnostics
-        next.insert(entry, at: 0)
-        if next.count > 100 {
-            next = Array(next.prefix(100))
+        let accepted = RustDomainClient.dispatch([
+            "type": "record_diagnostic",
+            "category": category.rawValue,
+            "mode": mode == .runtimeProbe ? "runtime_probe" : "config_lint",
+            "target": target,
+            "success": success,
+            "message": message,
+            "details": details,
+        ])
+        load()
+        guard accepted, let entry = diagnostics.first else {
+            preconditionFailure("Rust rejected diagnostic intent")
         }
-        diagnostics = next
-        save()
         return entry
     }
 
@@ -401,95 +367,63 @@ public final class WawonaPreferences: ObservableObject {
         port: Int,
         runtimeProbe: Bool = false
     ) -> SettingsDiagnosticEntry {
-        let normalizedHost = host.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
-        let normalizedUser = user.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
-        let validPort = (1...65535).contains(port)
-        let configOK = !normalizedHost.isEmpty && !normalizedUser.isEmpty && validPort
-
-        var runtimeOK = configOK
-        var runtimeMessage = "SSH settings are valid for connection attempt."
-        if runtimeProbe {
-            let transport = Self.runtimeSSHTransport()
-            switch transport {
-            case .externalBinary:
-                let hasSSH = Self.probeCommandAvailable("ssh")
-                runtimeOK = configOK && hasSSH
-                runtimeMessage = runtimeOK
-                    ? "Runtime probe: ssh binary is available and settings are valid."
-                    : "Runtime probe failed: ssh binary is unavailable or host/user/port are invalid."
-            case .inProcessLibssh2:
-                runtimeOK = configOK
-                runtimeMessage = runtimeOK
-                    ? "Runtime probe: in-process libssh2 transport is active and settings are valid."
-                    : "Runtime probe failed: host/user/port are invalid for libssh2 transport."
-            }
+        let transportAvailable: Bool
+        switch Self.runtimeSSHTransport() {
+        case .externalBinary:
+            transportAvailable = Self.probeCommandAvailable("ssh")
+        case .inProcessLibssh2:
+            transportAvailable = true
         }
-        return recordDiagnostic(
-            category: .ssh,
-            mode: runtimeProbe ? .runtimeProbe : .configLint,
-            target: "\(normalizedUser)@\(normalizedHost):\(port)",
-            success: runtimeOK,
-            message: runtimeMessage,
-            details: [
-                "runtimeProbe": runtimeProbe ? "true" : "false",
-                "host": normalizedHost,
-                "user": normalizedUser,
-                "port": String(port),
-                "passwordProvided": password.isEmpty ? "false" : "true",
-            ]
-        )
+        let runtimeAvailable = !runtimeProbe || transportAvailable
+        let accepted = RustDomainClient.dispatch([
+            "type": "run_ssh_diagnostic",
+            "host": host,
+            "user": user,
+            "port": port,
+            "password_provided": !password.isEmpty,
+            "runtime_probe": runtimeProbe,
+            "runtime_available": runtimeAvailable,
+        ])
+        load()
+        guard accepted, let entry = diagnostics.first else {
+            preconditionFailure("Rust rejected SSH diagnostic intent")
+        }
+        return entry
     }
 
     public func testWaypipeCommand(_ command: String, runtimeProbe: Bool = false) -> SettingsDiagnosticEntry {
-        let normalized = command.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
-        let configOK = !normalized.isEmpty
-        let binary = normalized.split(separator: " ").first.map { String($0) } ?? ""
-
-        var success = configOK
-        var message = configOK ? "Waypipe command is configured." : "Waypipe command is empty."
-        if runtimeProbe {
-            let hasBinary = !binary.isEmpty && Self.probeCommandAvailable(binary)
-            success = configOK && hasBinary
-            message = success
-                ? "Runtime probe: command binary is available."
-                : "Runtime probe failed: command is empty or binary was not found."
+        let binary = command.split(separator: " ").first.map(String.init) ?? ""
+        let accepted = RustDomainClient.dispatch([
+            "type": "run_waypipe_diagnostic",
+            "command": command,
+            "runtime_probe": runtimeProbe,
+            "binary_available": !runtimeProbe
+                || (!binary.isEmpty && Self.probeCommandAvailable(binary)),
+        ])
+        load()
+        guard accepted, let entry = diagnostics.first else {
+            preconditionFailure("Rust rejected waypipe diagnostic intent")
         }
-        return recordDiagnostic(
-            category: .waypipe,
-            mode: runtimeProbe ? .runtimeProbe : .configLint,
-            target: normalized.isEmpty ? "waypipe" : normalized,
-            success: success,
-            message: message,
-            details: [
-                "runtimeProbe": runtimeProbe ? "true" : "false",
-                "binary": binary,
-            ]
-        )
+        return entry
     }
 
     public func runDependencyDiagnostics(runtimeProbe: Bool = false) -> SettingsDiagnosticEntry {
         let deps = Self.runtimeDependencyTargets()
-        var status = true
-        var details: [String: String] = [:]
-        if runtimeProbe {
-            for dep in deps {
-                let available = Self.probeDependencyAvailable(dep)
-                details[dep] = available ? "present" : "missing"
-                if !available {
-                    status = false
-                }
-            }
+        var availability: [String: Bool] = [:]
+        for dependency in deps {
+            availability[dependency] = !runtimeProbe
+                || Self.probeDependencyAvailable(dependency)
         }
-        return recordDiagnostic(
-            category: .dependency,
-            mode: runtimeProbe ? .runtimeProbe : .configLint,
-            target: "global-dependencies",
-            success: status,
-            message: runtimeProbe
-                ? "Runtime dependency probe completed for: \(deps.joined(separator: ", "))"
-                : "Configured dependencies: \(deps.joined(separator: ", "))",
-            details: details
-        )
+        let accepted = RustDomainClient.dispatch([
+            "type": "run_dependency_diagnostic",
+            "runtime_probe": runtimeProbe,
+            "availability": availability,
+        ])
+        load()
+        guard accepted, let entry = diagnostics.first else {
+            preconditionFailure("Rust rejected dependency diagnostic intent")
+        }
+        return entry
     }
 
     private enum RuntimeSSHTransport {

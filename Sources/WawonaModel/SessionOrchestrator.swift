@@ -30,30 +30,44 @@ public final class SessionOrchestrator: ObservableObject {
     @Published public private(set) var framePresentedCount: Int = 0
     @Published public private(set) var connectedClientCount: Int = 0
 
-    public init() {}
+    public init() {
+        RustDomainClient.bootstrapIfNeeded()
+        refreshFromRust()
+    }
 
     public func connect(machineId: String) -> MachineSession {
-        var session = MachineSession(machineId: machineId, status: .connecting)
-        session.status = .connected
-        sessions = sessions + [session]
-        activeSessionId = session.id
-        return session
+        let previousIDs = Set(sessions.map(\.id))
+        guard RustDomainClient.dispatch([
+            "type": "connect",
+            "machine_id": machineId,
+        ]) else {
+            return MachineSession(machineId: machineId, status: .error)
+        }
+        refreshFromRust()
+        return sessions.first(where: { !previousIDs.contains($0.id) })
+            ?? MachineSession(machineId: machineId, status: .error)
     }
 
     public func markFailed(machineId: String, reason: String = "Connect failed") -> MachineSession {
-        let session = MachineSession(machineId: machineId, status: .error)
-        sessions = sessions + [session]
-        _ = reason
-        return session
+        let previousIDs = Set(sessions.map(\.id))
+        guard RustDomainClient.dispatch([
+            "type": "connection_failed",
+            "machine_id": machineId,
+            "reason": reason,
+        ]) else {
+            return MachineSession(machineId: machineId, status: .error)
+        }
+        refreshFromRust()
+        return sessions.first(where: { !previousIDs.contains($0.id) })
+            ?? MachineSession(machineId: machineId, status: .error)
     }
 
     public func disconnect(sessionId: UUID) {
-        guard let idx = sessions.firstIndex(where: { $0.id == sessionId }) else { return }
-        var next = sessions
-        next[idx].status = .disconnected
-        sessions = next
-        if activeSessionId == sessionId {
-            activeSessionId = sessions.first(where: { $0.status == .connected })?.id
+        if RustDomainClient.dispatch([
+            "type": "disconnect",
+            "session_id": sessionId.uuidString.lowercased(),
+        ], persistDurable: false) {
+            refreshFromRust()
         }
     }
 
@@ -63,12 +77,35 @@ public final class SessionOrchestrator: ObservableObject {
     }
 
     public func notifyFramePresented(sessionId: UUID) {
-        _ = sessionId
-        framePresentedCount += 1
+        if RustDomainClient.dispatch([
+            "type": "frame_presented",
+            "session_id": sessionId.uuidString.lowercased(),
+        ], persistDurable: false) {
+            refreshFromRust()
+        }
     }
 
     public func notifyClientConnected(sessionId: UUID) {
-        _ = sessionId
-        connectedClientCount += 1
+        if RustDomainClient.dispatch([
+            "type": "client_connected",
+            "session_id": sessionId.uuidString.lowercased(),
+        ], persistDurable: false) {
+            refreshFromRust()
+        }
+    }
+
+    private func refreshFromRust() {
+        guard let snapshot = RustDomainClient.snapshot(),
+              let rawSessions = snapshot["sessions"],
+              JSONSerialization.isValidJSONObject(rawSessions),
+              let data = try? JSONSerialization.data(withJSONObject: rawSessions),
+              let decoded = try? JSONDecoder().decode([MachineSession].self, from: data)
+        else {
+            return
+        }
+        sessions = decoded
+        activeSessionId = (snapshot["activeSessionId"] as? String).flatMap(UUID.init(uuidString:))
+        framePresentedCount = snapshot["framePresentedCount"] as? Int ?? 0
+        connectedClientCount = snapshot["connectedClientCount"] as? Int ?? 0
     }
 }

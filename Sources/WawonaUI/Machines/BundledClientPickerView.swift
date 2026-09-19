@@ -18,20 +18,20 @@ struct BundledClientPickerView: View {
             } label: {
                 HStack(spacing: 10) {
                     Image(systemName: selection == launcher.name ? "checkmark.circle.fill" : "circle")
-                        .foregroundStyle(selection == launcher.name ? Color.accentColor : .secondary)
+                        .backport.foregroundStyle(selection == launcher.name ? Color.accentColor : .secondary)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(launcher.displayName)
-                            .foregroundStyle(.primary)
+                            .backport.foregroundStyle(.primary)
                         Text(launcher.name)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .backport.foregroundStyle(.secondary)
                     }
                     Spacer()
                 }
             }
             .buttonStyle(.plain)
         }
-        .navigationTitle("Wayland Client")
+        .backport.navigationTitle("Wayland Client")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
