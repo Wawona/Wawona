@@ -8,10 +8,6 @@ enum RustDomainClient {
     static let durableStateKey = "wawona.rustDomain.v1"
     private static var bootstrapped = false
 
-    private static var bridge: WWNCompositorBridge {
-        WWNCompositorBridge.shared()
-    }
-
     static func bootstrapIfNeeded() {
         guard !bootstrapped else { return }
         bootstrapped = true
@@ -66,7 +62,7 @@ enum RustDomainClient {
     }
 
     static func snapshot() -> [String: Any]? {
-        guard let json = bridge.domainSnapshotJSON(),
+        guard let json = RustDomainTransport.snapshotJSON(),
               let data = json.data(using: .utf8),
               let object = try? JSONSerialization.jsonObject(with: data)
                 as? [String: Any] else {
@@ -80,7 +76,7 @@ enum RustDomainClient {
         guard JSONSerialization.isValidJSONObject(intent),
               let data = try? JSONSerialization.data(withJSONObject: intent),
               let json = String(data: data, encoding: .utf8),
-              bridge.dispatchDomainIntentJSON(json) else {
+              RustDomainTransport.dispatch(json) else {
             return false
         }
         if persistDurable {
@@ -90,7 +86,7 @@ enum RustDomainClient {
     }
 
     static func resolvedSettingsData(machineID: String) -> Data? {
-        bridge.domainResolvedSettingsJSON(forMachineId: machineID)?
+        RustDomainTransport.resolvedMachineJSON(machineID)?
             .data(using: .utf8)
     }
 
@@ -99,11 +95,11 @@ enum RustDomainClient {
               let json = String(data: data, encoding: .utf8) else {
             return nil
         }
-        return bridge.domainResolveProfileJSON(json)?.data(using: .utf8)
+        return RustDomainTransport.resolvedProfileJSON(json)?.data(using: .utf8)
     }
 
     static func persist() {
-        guard let json = bridge.domainDurableJSON(),
+        guard let json = RustDomainTransport.durableJSON(),
               let data = json.data(using: .utf8) else {
             return
         }

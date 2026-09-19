@@ -693,6 +693,15 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
       return nil;
     }
 
+    Class installer = NSClassFromString(@"WWNRustDomainTransportInstaller");
+    SEL installSelector = NSSelectorFromString(@"install");
+    if ([installer respondsToSelector:installSelector]) {
+      IMP implementation = [installer methodForSelector:installSelector];
+      ((void (*)(id, SEL))implementation)(installer, installSelector);
+    } else {
+      WWNLog("BRIDGE", @"Rust domain transport installer is unavailable");
+    }
+
     // High-priority serial queue for all Rust compositor FFI work.
     // USER_INTERACTIVE QoS ensures low-latency event processing while
     // keeping the main thread free for UI.

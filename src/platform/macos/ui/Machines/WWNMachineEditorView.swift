@@ -300,7 +300,7 @@ struct WWNMachineEditorView: View {
   #endif
 
   private var desktopMobileEditorBody: some View {
-    NavigationStack {
+    NavigationView {
       ScrollView {
         VStack(alignment: .leading, spacing: 16) {
           sectionCard("Connection Profile", subtitle: "Name and type for this machine profile.") {
@@ -349,6 +349,13 @@ struct WWNMachineEditorView: View {
         .frame(maxWidth: 880, alignment: .leading)
         .frame(maxWidth: .infinity, alignment: .center)
       }
+      #if os(iOS)
+      .navigationBarTitle(title, displayMode: .inline)
+      .navigationBarItems(
+        leading: Button("Cancel") { dismiss() },
+        trailing: Button("Save", action: save)
+      )
+      #else
       .navigationTitle(title)
       .toolbar {
         ToolbarItem(placement: .cancellationAction) {
@@ -358,7 +365,11 @@ struct WWNMachineEditorView: View {
           Button("Save", action: save)
         }
       }
+      #endif
     }
+    #if os(iOS)
+    .navigationViewStyle(StackNavigationViewStyle())
+    #endif
     #if os(macOS)
     .frame(minWidth: 640, idealWidth: 760, maxWidth: 920, minHeight: 560, idealHeight: 760)
     #endif

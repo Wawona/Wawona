@@ -76,11 +76,11 @@ let
     else if platform == "watchos" then (if simulator then "watchsimulator" else "watchos")
     else (if simulator then "iphonesimulator" else "iphoneos");
   linkerTarget =
-    if platform == "ios" || platform == "ipados" then (if simulator then "arm64-apple-ios17.0-simulator" else "arm64-apple-ios17.0")
+    if platform == "ios" || platform == "ipados" then (if simulator then "arm64-apple-ios13.0-simulator" else "arm64-apple-ios13.0")
     else if platform == "tvos" then (if simulator then "arm64-apple-tvos17.0-simulator" else "arm64-apple-tvos17.0")
     else if platform == "visionos" then (if simulator then "arm64-apple-xros26.0-simulator" else "arm64-apple-xros26.0")
     else if platform == "watchos" then (if simulator then "arm64-apple-watchos10.0-simulator" else "arm64-apple-watchos10.0")
-    else "arm64-apple-ios17.0";
+    else "arm64-apple-ios13.0";
   deploymentTarget =
     if platform == "watchos" then
       "10.0"
@@ -89,7 +89,7 @@ let
     else if platform == "tvos" then
       "17.0"
     else if platform == "ios" || platform == "ipados" then
-      "17.0"
+      "13.0"
     else
       "26.0";
   deploymentFlag =
@@ -102,7 +102,7 @@ let
     else if platform == "watchos" then
       (if simulator then "-mwatchos-simulator-version-min=10.0" else "-mwatchos-version-min=10.0")
     else if platform == "ios" || platform == "ipados" then
-      (if simulator then "-mios-simulator-version-min=17.0" else "-miphoneos-version-min=17.0")
+      (if simulator then "-mios-simulator-version-min=13.0" else "-miphoneos-version-min=13.0")
     else
       (if simulator then "-mios-simulator-version-min=26.0" else "-miphoneos-version-min=26.0");
   macosDeploymentTarget = "14.0";

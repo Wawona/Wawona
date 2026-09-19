@@ -198,7 +198,7 @@ public final class WawonaPreferences: ObservableObject {
 
     /// Map legacy labels ("direct", "multitouch", …) onto TouchInputType.
     public static func normalizedTouchInputType(_ raw: String?) -> String {
-        WWNCompositorBridge.normalizedTouchInputType(raw)
+        RustDomainTransport.normalizeTouchInput(raw)
     }
     @Published public var defaultBundledAppID: String = ""
     @Published public var defaultWaypipeEnabled: Bool = true

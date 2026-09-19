@@ -669,7 +669,7 @@ let
       local fw="$1" exe="$2"
       # App Store Connect (altool 90360) requires MinimumOSVersion on embedded
       # frameworks; match the app deployment target for the active platform.
-      local min_os="''${IPHONEOS_DEPLOYMENT_TARGET:-17.0}"
+      local min_os="''${IPHONEOS_DEPLOYMENT_TARGET:-13.0}"
       case "''${PLATFORM_NAME:-}" in
         appletvos|appletvsimulator)
           min_os="''${TVOS_DEPLOYMENT_TARGET:-''${min_os}}"
@@ -678,7 +678,7 @@ let
           min_os="''${XROS_DEPLOYMENT_TARGET:-1.0}"
           ;;
         iphonesimulator|iphoneos)
-          min_os="''${IPHONEOS_DEPLOYMENT_TARGET:-17.0}"
+          min_os="''${IPHONEOS_DEPLOYMENT_TARGET:-13.0}"
           ;;
       esac
       cat > "$DEST/$fw.framework/Info.plist" <<PLIST
@@ -1325,6 +1325,7 @@ ICDJSON
     # Shared SwiftUI availability namespace. The macOS target receives this
     # through its Sources/WawonaUI glob; Apple-mobile app targets list it here.
     { path = "Sources/WawonaUI/Backport.swift"; type = "file"; }
+    { path = "Sources/WawonaUI/RustDomainTransportInstaller.swift"; type = "file"; }
   ];
 
   # Xcode “Update to recommended settings” for framework targets with Swift/ObjC clients.
@@ -1343,7 +1344,7 @@ ICDJSON
     options = {
       bundleIdPrefix = "com.aspauldingcode";
       deploymentTarget = {
-        iOS = "17.0";
+        iOS = "13.0";
         macOS = "14.0";
       };
       generateEmptyDirectories = true;

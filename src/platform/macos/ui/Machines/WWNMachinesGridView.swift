@@ -7,15 +7,27 @@ struct WWNMachinesGridView: View {
   let onConnect: (() -> Void)?
   let onOpenSettings: (() -> Void)?
 
-  @StateObject private var model = WWNMachinesViewModel()
+  @ObservedObject private var model: WWNMachinesViewModel
   @State private var editingProfile: WWNMachineProfile?
   @State private var isCreating = false
   @State private var searchQuery = ""
 
+  init(
+    onConnect: (() -> Void)?,
+    onOpenSettings: (() -> Void)?,
+    model: WWNMachinesViewModel = WWNMachinesViewModel()
+  ) {
+    self.onConnect = onConnect
+    self.onOpenSettings = onOpenSettings
+    _model = ObservedObject(wrappedValue: model)
+  }
+
   var body: some View {
     Group {
-      #if os(iOS) || os(visionOS)
+      #if os(iOS)
       iosRoot
+      #elseif os(visionOS)
+      visionRoot
       #elseif os(tvOS)
       tvosRoot
       #elseif os(macOS)
@@ -184,30 +196,49 @@ struct WWNMachinesGridView: View {
   }
   #else
   private var macRoot: some View {
-    NavigationStack {
-      detailPane
-        .navigationTitle(detailNavigationTitle)
-        .toolbar {
-          detailToolbarContent
-        }
+    NavigationView {
+      detailPane.navigationBarTitle(detailNavigationTitle)
     }
   }
   #endif
 
-  #if os(iOS) || os(visionOS)
+  #if os(iOS)
   private var iosRoot: some View {
+    Backport<Any>.NavigationContainer {
+      ZStack(alignment: .bottomTrailing) {
+        VStack(spacing: 0) {
+          if let onOpenSettings {
+            HStack {
+              Spacer()
+              Button(action: onOpenSettings) {
+                Image(systemName: "gearshape")
+              }
+              .wwnA11y(WWNA11y.machinesSettings, label: "Settings")
+              .padding(.horizontal)
+              .padding(.top, 8)
+            }
+          }
+          detailPane
+        }
+        iosAddMachineButton
+          .padding(.trailing, 20)
+          .padding(.bottom, 20)
+      }
+      .navigationBarTitle(detailNavigationTitle, displayMode: .inline)
+      .backport.searchable(text: $searchQuery, prompt: "Search machines")
+    }
+  }
+  #elseif os(visionOS)
+  private var visionRoot: some View {
     NavigationStack {
       detailPane
         .navigationTitle(detailNavigationTitle)
-        .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $searchQuery, placement: .toolbar, prompt: "Search machines")
         .toolbar {
           detailToolbarContent
         }
         .overlay(alignment: .bottomTrailing) {
-          iosAddMachineButton
-            .padding(.trailing, 20)
-            .padding(.bottom, 20)
+          iosAddMachineButton.padding(20)
         }
     }
   }
@@ -221,6 +252,7 @@ struct WWNMachinesGridView: View {
     #endif
   }
 
+  #if !os(iOS)
   @ToolbarContentBuilder
   private var detailToolbarContent: some ToolbarContent {
     #if os(macOS)
@@ -251,6 +283,7 @@ struct WWNMachinesGridView: View {
     }
     #endif
   }
+  #endif
 
   // MARK: - Detail
 
