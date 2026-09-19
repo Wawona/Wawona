@@ -42,6 +42,15 @@ and **GitHub Actions** (`project=github-actions`) via wwn-mcp for upstream synta
 - **FFI**: production bridge is hand-written C `WWNCore*` (`src/ffi/c_api.rs`)
   wrapped by ObjC (`WWNCompositorBridge.m`) / JNI (`android_jni.c`), polling
   model. Do NOT use `objc2`/`cocoa`/`jni`/`ndk` Rust crates or UniFFI callbacks.
+- **Swift / SwiftUI compatibility (all Wawona org repos):** use Dave DeLong's
+  `Backport<Content>` namespace. Keep presentational `#available` checks out of
+  feature views; add native-new-OS plus honest older-OS fallback implementations
+  in the shared backport source and call them through `.backport` /
+  `Backport<Any>`. Backports do not lower native dependency requirements:
+  separately align and test XcodeGen, SwiftPM, Rust target triples, Nix recipes,
+  embedded frameworks, and the oldest claimed runtime. Canonical rule:
+  `.cursor/rules/wawona-swiftui-backports.mdc`; tracked mirror:
+  `docs/agent-rules/wawona-swiftui-backports.md`.
 - **Smithay** `0.7`, `wayland_frontend` only.
 - **iland (wwn-iland) — two modes** (do not conflate):
   - **Mode A (default, App Store–safe):** static `libiland_userland.a`, in-window

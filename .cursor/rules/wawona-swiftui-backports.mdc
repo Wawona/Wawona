@@ -1,0 +1,55 @@
+---
+description: Centralize Swift and SwiftUI backwards compatibility through Backport shims
+alwaysApply: true
+---
+
+# Wawona Swift / SwiftUI backports
+
+Apply this rule to every Wawona organization repository that ships Swift or
+SwiftUI. Follow Dave DeLong's Backport technique:
+https://davedelong.com/blog/2021/10/09/simplifying-backwards-compatibility-in-swift/
+
+## Non-negotiable rules
+
+1. Do not scatter `if #available` through SwiftUI feature views. Put
+   availability checks in the shared `Backport<Content>` namespace and use
+   `.backport` or `Backport<Any>` at call sites.
+2. Every shim must call the native API on newer OSes and provide an honest
+   Wawona-owned fallback on every older supported OS. No-op is allowed only for
+   optional decoration and must be documented.
+3. Match system API names and call shapes where practical so usages stay
+   searchable and deleting `.backport` is mechanical when support advances.
+4. Extend the shared compatibility source
+   (`Sources/WawonaUI/Backport.swift` in Wawona); do not create feature-local
+   wrappers.
+5. Backport new types with a nested type or static `@ViewBuilder` factory.
+   When environment/property-wrapper types differ, define one stable
+   Wawona-owned abstraction; never force-cast to fake compatibility.
+6. Lifecycle, UIKit/AppKit, Metal, scene, and delegate availability belongs in
+   centralized platform adapters when it is not a SwiftUI concern.
+7. Backport does not lower a binary's OS requirement. Keep XcodeGen, SwiftPM,
+   Rust target triples, Nix recipes, embedded frameworks, and transitive native
+   dependencies aligned with the claimed deployment floor.
+8. Prove both paths: compile at the oldest supported target, run its fallback,
+   and run the native path on the newest OS. Without oldest-runtime evidence,
+   the path is wired, not supported.
+
+Required base:
+
+```swift
+public struct Backport<Content> {
+    public let content: Content
+    public init(_ content: Content) { self.content = content }
+}
+
+public extension View {
+    var backport: Backport<Self> { Backport(self) }
+}
+```
+
+Review all changed feature views for `#available` and audit unguarded newer
+types (`App`, `StateObject`, `NavigationStack`, environment values, scene APIs).
+Do not change Wawona's production `WWNCore*` C polling FFI for UI backports.
+
+Tracked agent mirror:
+`docs/agent-rules/wawona-swiftui-backports.md`.
