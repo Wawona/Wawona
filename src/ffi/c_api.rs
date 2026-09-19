@@ -111,6 +111,19 @@ pub extern "C" fn WWNStringFree(s: *mut c_char) {
     }
 }
 
+/// Normalize legacy/native touch-input labels in Rust.
+#[no_mangle]
+pub extern "C" fn WWNDomainNormalizeTouchInput(raw: *const c_char) -> *mut c_char {
+    let raw = if raw.is_null() {
+        ""
+    } else {
+        unsafe { CStr::from_ptr(raw) }.to_str().unwrap_or("")
+    };
+    CString::new(crate::domain::normalize_touch_input(raw))
+        .map(CString::into_raw)
+        .unwrap_or(std::ptr::null_mut())
+}
+
 // ----------------------------------------------------------------------------
 // Rust-owned product domain (JSON snapshots + typed intents)
 // ----------------------------------------------------------------------------
@@ -158,6 +171,30 @@ pub extern "C" fn WWNCoreDomainResolvedSettingsJSON(
         };
         unsafe { &*core }
             .domain_resolved_settings_json(machine_id)
+            .ok()
+            .and_then(|json| CString::new(json).ok())
+            .map(CString::into_raw)
+            .unwrap_or(std::ptr::null_mut())
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Resolve an arbitrary profile JSON object without mutating durable state.
+/// Used by editors to preview effective settings for unsaved drafts.
+#[no_mangle]
+pub extern "C" fn WWNCoreDomainResolveProfileJSON(
+    core: *const WWNCore,
+    profile_json: *const c_char,
+) -> *mut c_char {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if core.is_null() || profile_json.is_null() {
+            return std::ptr::null_mut();
+        }
+        let Ok(profile_json) = unsafe { CStr::from_ptr(profile_json) }.to_str() else {
+            return std::ptr::null_mut();
+        };
+        unsafe { &*core }
+            .domain_resolve_profile_json(profile_json)
             .ok()
             .and_then(|json| CString::new(json).ok())
             .map(CString::into_raw)

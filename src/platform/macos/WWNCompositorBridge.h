@@ -60,6 +60,9 @@ typedef struct {
 /// Shared singleton instance
 + (instancetype)sharedBridge;
 
+/// Rust-owned normalization for legacy touch-input labels.
++ (NSString *)normalizedTouchInputType:(nullable NSString *)rawValue;
+
 // MARK: - Lifecycle
 
 /// Initialize and start the Rust compositor
@@ -78,6 +81,26 @@ typedef struct {
 
 /// Get the Wayland socket name
 - (NSString *)socketName;
+
+// MARK: - Rust-owned application domain
+
+/// Monotonic snapshot revision. Presentation layers poll this value.
+- (uint64_t)domainRevision;
+
+/// Immutable Rust-owned presentation snapshot.
+- (nullable NSString *)domainSnapshotJSON;
+
+/// Durable Rust-owned state for mechanical platform persistence.
+- (nullable NSString *)domainDurableJSON;
+
+/// Rust-resolved runtime settings for a machine profile.
+- (nullable NSString *)domainResolvedSettingsJSONForMachineId:(NSString *)machineId;
+
+/// Resolve an unsaved profile JSON object without mutating durable state.
+- (nullable NSString *)domainResolveProfileJSON:(NSString *)profileJSON;
+
+/// Submit one tagged JSON intent to the Rust domain.
+- (BOOL)dispatchDomainIntentJSON:(NSString *)intentJSON;
 
 // MARK: - Event Processing
 

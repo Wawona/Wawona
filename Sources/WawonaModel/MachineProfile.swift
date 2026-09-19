@@ -280,63 +280,70 @@ public final class MachineProfileStore: ObservableObject {
     public static let activeMachineIdKey = "wawona.activeMachineId.v1"
 
     @Published public private(set) var profiles: [MachineProfile] = []
-    @Published public var activeMachineId: String?
+    @Published public var activeMachineId: String? {
+        didSet {
+            guard !applyingRustSnapshot, activeMachineId != oldValue else { return }
+            var intent: [String: Any] = ["type": "set_active_machine"]
+            intent["id"] = activeMachineId ?? NSNull()
+            if !RustDomainClient.dispatch(intent) {
+                refreshFromRust()
+            }
+        }
+    }
+    private var applyingRustSnapshot = false
 
     public init() {
         load()
     }
 
     public func load() {
-        let defaults = UserDefaults.standard
-        activeMachineId = defaults.string(forKey: Self.activeMachineIdKey)
-        var payload: Data?
-        if let data = defaults.data(forKey: Self.profilesKey) {
-            payload = data
-        } else if let legacyString = defaults.string(forKey: Self.profilesKey) {
-            payload = legacyString.data(using: .utf8)
-        }
-        guard let data = payload else {
-            profiles = []
-            return
-        }
-        do {
-            profiles = try JSONDecoder().decode([MachineProfile].self, from: data)
-            // Canonicalize persisted representation to data payload.
-            save()
-        } catch {
-            profiles = []
-        }
+        RustDomainClient.bootstrapIfNeeded()
+        refreshFromRust()
     }
 
     public func save() {
-        let defaults = UserDefaults.standard
-        if let data = try? JSONEncoder().encode(profiles) {
-            defaults.set(data, forKey: Self.profilesKey)
-        }
-        defaults.set(activeMachineId, forKey: Self.activeMachineIdKey)
+        RustDomainClient.persist()
     }
 
     public func upsert(_ profile: MachineProfile) {
-        if let idx = profiles.firstIndex(where: { $0.id == profile.id }) {
-            var next = profiles
-            next[idx] = profile
-            profiles = next
-        } else {
-            profiles = profiles + [profile]
+        guard let data = try? JSONEncoder().encode(profile),
+              let object = try? JSONSerialization.jsonObject(with: data),
+              RustDomainClient.dispatch([
+                "type": "upsert_profile",
+                "profile": object,
+              ]) else {
+            return
         }
-        save()
+        refreshFromRust()
     }
 
     public func delete(id: String) {
-        profiles = profiles.filter { $0.id != id }
-        if activeMachineId == id {
-            activeMachineId = nil
+        guard RustDomainClient.dispatch([
+            "type": "delete_profile",
+            "id": id,
+        ]) else {
+            return
         }
-        save()
+        refreshFromRust()
     }
 
     public func profile(for id: String?) -> MachineProfile? {
         guard let id else { return nil }
         return profiles.first { $0.id == id }
+    }
+
+    private func refreshFromRust() {
+        guard let snapshot = RustDomainClient.snapshot(),
+              let rawProfiles = snapshot["profiles"],
+              JSONSerialization.isValidJSONObject(rawProfiles),
+              let data = try? JSONSerialization.data(withJSONObject: rawProfiles),
+              let decoded = try? JSONDecoder().decode([MachineProfile].self, from: data)
+        else {
+            return
+        }
+        applyingRustSnapshot = true
+        profiles = decoded
+        activeMachineId = snapshot["activeMachineId"] as? String
+        applyingRustSnapshot = false
     }
 }

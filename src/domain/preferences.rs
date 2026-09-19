@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 use super::{MachineProfile, MachineType};
 
@@ -152,6 +153,104 @@ impl Default for Preferences {
 }
 
 impl Preferences {
+    pub fn import_legacy_values(
+        &mut self,
+        values: &HashMap<String, serde_json::Value>,
+        capabilities: &PlatformCapabilities,
+    ) {
+        set_string(values, "wawona.pref.renderer", &mut self.renderer);
+        set_string(values, "VulkanDriver", &mut self.vulkan_driver);
+        set_string(values, "OpenGLDriver", &mut self.open_gl_driver);
+        set_bool_alias(
+            values,
+            &["ForceServerSideDecorations", "wawona.pref.forceSSD"],
+            &mut self.force_ssd,
+        );
+        set_bool(values, "RenderMacOSPointer", &mut self.render_macos_pointer);
+        set_string(
+            values,
+            "NestedCompositorCursor",
+            &mut self.nested_compositor_cursor,
+        );
+        set_bool(values, "wawona.pref.autoScale", &mut self.auto_scale);
+        set_bool(
+            values,
+            "wawona.pref.colorOperations",
+            &mut self.color_operations,
+        );
+        set_string(
+            values,
+            "wawona.pref.waylandDisplay",
+            &mut self.wayland_display,
+        );
+        set_string(values, "wawona.pref.sshHost", &mut self.ssh_host);
+        set_string(values, "wawona.pref.sshUser", &mut self.ssh_user);
+        set_i32(values, "wawona.pref.sshPort", &mut self.ssh_port);
+        set_string(values, "wawona.pref.sshPassword", &mut self.ssh_password);
+        set_i32_alias(
+            values,
+            &["SSHAuthMethod", "wawona.pref.sshAuthMethod"],
+            &mut self.ssh_auth_method,
+        );
+        set_string_alias(
+            values,
+            &["SSHKeyPath", "wawona.pref.sshKeyPath"],
+            &mut self.ssh_key_path,
+        );
+        set_string_alias(
+            values,
+            &["SSHKeyPassphrase", "wawona.pref.sshKeyPassphrase"],
+            &mut self.ssh_key_passphrase,
+        );
+        set_string_alias(
+            values,
+            &["SSHKeyType", "wawona.pref.sshKeyType"],
+            &mut self.ssh_key_type,
+        );
+        set_string(
+            values,
+            "wawona.pref.waypipeSSHPassword",
+            &mut self.waypipe_ssh_password,
+        );
+        set_string(values, "wawona.pref.logLevel", &mut self.log_level);
+        set_string_alias(
+            values,
+            &["wawona.pref.defaultInputProfile", "TouchInputType"],
+            &mut self.default_input_profile,
+        );
+        set_string(
+            values,
+            "wawona.pref.defaultBundledAppID",
+            &mut self.default_bundled_app_id,
+        );
+        set_bool(
+            values,
+            "wawona.pref.defaultWaypipeEnabled",
+            &mut self.default_waypipe_enabled,
+        );
+        set_bool(
+            values,
+            "wawona.pref.xwaylandSupport",
+            &mut self.xwayland_support,
+        );
+        set_bool(
+            values,
+            "wawona.pref.shakeToCloseEnabled",
+            &mut self.shake_to_close_enabled,
+        );
+        set_bool(
+            values,
+            "wawona.pref.swipeBackToCloseEnabled",
+            &mut self.swipe_back_to_close_enabled,
+        );
+        set_bool(
+            values,
+            "wawona.pref.hasCompletedWelcome",
+            &mut self.has_completed_welcome,
+        );
+        self.normalize(capabilities);
+    }
+
     pub fn normalize(&mut self, capabilities: &PlatformCapabilities) {
         self.renderer = nonempty(&self.renderer, "metal");
         self.vulkan_driver = if capabilities.gpu_stack {
@@ -327,6 +426,67 @@ fn optional_nonempty(value: Option<&str>) -> Option<String> {
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_owned)
+}
+
+fn set_string(values: &HashMap<String, serde_json::Value>, key: &str, output: &mut String) {
+    if let Some(value) = values.get(key).and_then(serde_json::Value::as_str) {
+        *output = value.into();
+    }
+}
+
+fn set_string_alias(
+    values: &HashMap<String, serde_json::Value>,
+    keys: &[&str],
+    output: &mut String,
+) {
+    for key in keys {
+        if values.get(*key).and_then(serde_json::Value::as_str).is_some() {
+            set_string(values, key, output);
+            break;
+        }
+    }
+}
+
+fn set_bool(values: &HashMap<String, serde_json::Value>, key: &str, output: &mut bool) {
+    if let Some(value) = values.get(key).and_then(serde_json::Value::as_bool) {
+        *output = value;
+    }
+}
+
+fn set_bool_alias(
+    values: &HashMap<String, serde_json::Value>,
+    keys: &[&str],
+    output: &mut bool,
+) {
+    for key in keys {
+        if values.get(*key).and_then(serde_json::Value::as_bool).is_some() {
+            set_bool(values, key, output);
+            break;
+        }
+    }
+}
+
+fn set_i32(values: &HashMap<String, serde_json::Value>, key: &str, output: &mut i32) {
+    if let Some(value) = values
+        .get(key)
+        .and_then(serde_json::Value::as_i64)
+        .and_then(|value| i32::try_from(value).ok())
+    {
+        *output = value;
+    }
+}
+
+fn set_i32_alias(
+    values: &HashMap<String, serde_json::Value>,
+    keys: &[&str],
+    output: &mut i32,
+) {
+    for key in keys {
+        if values.get(*key).and_then(serde_json::Value::as_i64).is_some() {
+            set_i32(values, key, output);
+            break;
+        }
+    }
 }
 
 #[cfg(test)]

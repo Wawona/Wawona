@@ -75,6 +75,15 @@ extern bool WWNCoreIsRunning(const void *core);
 extern char *WWNCoreGetSocketPath(const void *core);
 extern char *WWNCoreGetSocketName(const void *core);
 extern void WWNStringFree(char *s);
+extern char *WWNDomainNormalizeTouchInput(const char *raw);
+extern uint64_t WWNCoreDomainRevision(const void *core);
+extern char *WWNCoreDomainSnapshotJSON(const void *core);
+extern char *WWNCoreDomainDurableJSON(const void *core);
+extern char *WWNCoreDomainResolvedSettingsJSON(const void *core,
+                                               const char *machine_id);
+extern char *WWNCoreDomainResolveProfileJSON(const void *core,
+                                             const char *profile_json);
+extern bool WWNCoreDomainDispatchJSON(void *core, const char *intent_json);
 extern bool WWNCoreProcessEvents(void *core);
 extern void WWNCoreSetOutputSize(void *core, uint32_t w, uint32_t h, float s);
 extern void WWNCoreSetOutputGeometryForWindow(void *core, uint64_t window_id,
@@ -660,6 +669,16 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
     sharedInstance = [[WWNCompositorBridge alloc] init];
   });
   return sharedInstance;
+}
+
++ (NSString *)normalizedTouchInputType:(nullable NSString *)rawValue {
+  char *normalized = WWNDomainNormalizeTouchInput(rawValue.UTF8String);
+  if (!normalized) {
+    return @"Multi-Touch";
+  }
+  NSString *value = [NSString stringWithUTF8String:normalized];
+  WWNStringFree(normalized);
+  return value ?: @"Multi-Touch";
 }
 
 - (instancetype)init {
@@ -1544,6 +1563,116 @@ static void WWNCloseHostWindowSafely(NSWindow *window) {
   }
 #endif
   [self _compositorTick];
+}
+
+// MARK: - Rust-owned application domain
+
+- (uint64_t)domainRevision {
+  if (!_rustCore) {
+    return 0;
+  }
+  __block uint64_t revision = 0;
+  dispatch_block_t work = ^{
+    revision = WWNCoreDomainRevision(self->_rustCore);
+  };
+  if (_compositorQueue && !dispatch_get_specific(kWWNCompositorQueueKey)) {
+    dispatch_sync(_compositorQueue, work);
+  } else {
+    work();
+  }
+  return revision;
+}
+
+- (nullable NSString *)_domainStringFromFunction:
+    (char *(*)(const void *))function {
+  if (!_rustCore || !function) {
+    return nil;
+  }
+  __block char *raw = NULL;
+  dispatch_block_t work = ^{
+    raw = function(self->_rustCore);
+  };
+  if (_compositorQueue && !dispatch_get_specific(kWWNCompositorQueueKey)) {
+    dispatch_sync(_compositorQueue, work);
+  } else {
+    work();
+  }
+  if (!raw) {
+    return nil;
+  }
+  NSString *value = [NSString stringWithUTF8String:raw];
+  WWNStringFree(raw);
+  return value;
+}
+
+- (nullable NSString *)domainSnapshotJSON {
+  return [self _domainStringFromFunction:WWNCoreDomainSnapshotJSON];
+}
+
+- (nullable NSString *)domainDurableJSON {
+  return [self _domainStringFromFunction:WWNCoreDomainDurableJSON];
+}
+
+- (nullable NSString *)domainResolvedSettingsJSONForMachineId:
+    (NSString *)machineId {
+  if (!_rustCore || machineId.length == 0) {
+    return nil;
+  }
+  __block char *raw = NULL;
+  dispatch_block_t work = ^{
+    raw = WWNCoreDomainResolvedSettingsJSON(self->_rustCore,
+                                            machineId.UTF8String);
+  };
+  if (_compositorQueue && !dispatch_get_specific(kWWNCompositorQueueKey)) {
+    dispatch_sync(_compositorQueue, work);
+  } else {
+    work();
+  }
+  if (!raw) {
+    return nil;
+  }
+  NSString *value = [NSString stringWithUTF8String:raw];
+  WWNStringFree(raw);
+  return value;
+}
+
+- (nullable NSString *)domainResolveProfileJSON:(NSString *)profileJSON {
+  if (!_rustCore || profileJSON.length == 0) {
+    return nil;
+  }
+  __block char *raw = NULL;
+  dispatch_block_t work = ^{
+    raw = WWNCoreDomainResolveProfileJSON(self->_rustCore,
+                                          profileJSON.UTF8String);
+  };
+  if (_compositorQueue && !dispatch_get_specific(kWWNCompositorQueueKey)) {
+    dispatch_sync(_compositorQueue, work);
+  } else {
+    work();
+  }
+  if (!raw) {
+    return nil;
+  }
+  NSString *value = [NSString stringWithUTF8String:raw];
+  WWNStringFree(raw);
+  return value;
+}
+
+- (BOOL)dispatchDomainIntentJSON:(NSString *)intentJSON {
+  if (!_rustCore || intentJSON.length == 0) {
+    return NO;
+  }
+  __block bool accepted = false;
+  dispatch_block_t work = ^{
+    accepted = WWNCoreDomainDispatchJSON(self->_rustCore,
+                                         intentJSON.UTF8String);
+  };
+  if (_compositorQueue && !dispatch_get_specific(kWWNCompositorQueueKey)) {
+    dispatch_sync(_compositorQueue, work);
+  } else {
+    work();
+  }
+  return accepted ? YES : NO;
 }
 
 #if !TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR

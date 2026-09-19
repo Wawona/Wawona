@@ -432,6 +432,13 @@ impl WawonaCore {
     ) -> Result<String, crate::domain::DomainError> {
         self.domain.read_recover().resolved_settings_json(machine_id)
     }
+
+    pub fn domain_resolve_profile_json(
+        &self,
+        profile_json: &str,
+    ) -> Result<String, crate::domain::DomainError> {
+        self.domain.read_recover().resolve_profile_json(profile_json)
+    }
 }
 
 #[uniffi::export]

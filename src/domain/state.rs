@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 use super::{
     new_uuid, MachineProfile, MachineStatus, PlatformCapabilities, Preferences,
@@ -85,11 +86,15 @@ impl Default for AppState {
 pub enum AppIntent {
     ImportDurableState { state: DurableState },
     SetCapabilities { capabilities: PlatformCapabilities },
+    ImportLegacyPreferences {
+        values: HashMap<String, serde_json::Value>,
+    },
     UpsertProfile { profile: MachineProfile },
     DeleteProfile { id: String },
     SetActiveMachine { id: Option<String> },
     UpdatePreferences { preferences: Preferences },
     Connect { machine_id: String },
+    ConnectionFailed { machine_id: String, reason: String },
     SetSessionStatus {
         session_id: String,
         status: MachineStatus,
@@ -168,6 +173,19 @@ impl AppState {
         serde_json::to_string(&self.resolved_settings(machine_id)?).map_err(json_error)
     }
 
+    pub fn resolve_profile_json(&self, profile_json: &str) -> Result<String, DomainError> {
+        let mut profile: MachineProfile =
+            serde_json::from_str(profile_json).map_err(json_error)?;
+        normalize_profile(&mut profile)?;
+        serde_json::to_string(
+            &self
+                .durable
+                .preferences
+                .resolve(&profile, &self.capabilities),
+        )
+        .map_err(json_error)
+    }
+
     pub fn apply(&mut self, intent: AppIntent) -> Result<(), DomainError> {
         match intent {
             AppIntent::ImportDurableState { mut state } => {
@@ -187,6 +205,11 @@ impl AppState {
             AppIntent::SetCapabilities { capabilities } => {
                 self.capabilities = capabilities;
                 self.durable.preferences.normalize(&self.capabilities);
+            }
+            AppIntent::ImportLegacyPreferences { values } => {
+                self.durable
+                    .preferences
+                    .import_legacy_values(&values, &self.capabilities);
             }
             AppIntent::UpsertProfile { mut profile } => {
                 normalize_profile(&mut profile)?;
@@ -239,13 +262,31 @@ impl AppState {
                 self.sessions.push(MachineSession {
                     id: id.clone(),
                     machine_id: machine_id.clone(),
-                    status: MachineStatus::Connecting,
+                    status: MachineStatus::Connected,
                     bytes_sent: 0,
                     bytes_received: 0,
                     failure_reason: None,
                 });
                 self.active_session_id = Some(id);
                 self.durable.active_machine_id = Some(machine_id);
+            }
+            AppIntent::ConnectionFailed { machine_id, reason } => {
+                if !self
+                    .durable
+                    .profiles
+                    .iter()
+                    .any(|profile| profile.id == machine_id)
+                {
+                    return Err(DomainError::UnknownMachine(machine_id));
+                }
+                self.sessions.push(MachineSession {
+                    id: new_uuid(),
+                    machine_id,
+                    status: MachineStatus::Error,
+                    bytes_sent: 0,
+                    bytes_received: 0,
+                    failure_reason: Some(reason),
+                });
             }
             AppIntent::SetSessionStatus {
                 session_id,
@@ -365,7 +406,7 @@ mod tests {
         let snapshot = state.snapshot();
         assert_eq!(snapshot.active_machine_id.as_deref(), Some(id.as_str()));
         assert_eq!(snapshot.sessions.len(), 1);
-        assert_eq!(snapshot.sessions[0].status, MachineStatus::Connecting);
+        assert_eq!(snapshot.sessions[0].status, MachineStatus::Connected);
         assert!(snapshot.revision > 1);
     }
 
