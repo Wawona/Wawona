@@ -103,9 +103,42 @@ public extension Backport where Content == Any {
         )
         #endif
     }
+
+    /// `LabeledContent` on iOS 16+, equivalent label/value row on iOS 13–15.
+    @ViewBuilder
+    static func LabeledContent(_ label: String, value: String) -> some View {
+        #if os(iOS)
+        if #available(iOS 16.0, *) {
+            SwiftUI.LabeledContent(label, value: value)
+        } else {
+            HStack {
+                Text(label)
+                Spacer()
+                Text(value).foregroundColor(.secondary)
+            }
+        }
+        #else
+        SwiftUI.LabeledContent(label, value: value)
+        #endif
+    }
 }
 
 public extension Backport where Content: View {
+    /// Modern inline title API on iOS 14+, legacy navigation-bar title on
+    /// iOS 13.
+    @ViewBuilder
+    func navigationTitle(_ title: String) -> some View {
+        #if os(iOS)
+        if #available(iOS 14.0, *) {
+            content.navigationTitle(title)
+        } else {
+            content.navigationBarTitle(title)
+        }
+        #else
+        content.navigationTitle(title)
+        #endif
+    }
+
     /// Liquid Glass prominent button on iOS 26+, standard prominent button
     /// elsewhere. The fallback preserves action, label, shape, and accessibility.
     @ViewBuilder

@@ -7,7 +7,7 @@ struct StatusBadge: View {
     var body: some View {
         Label(status.rawValue.capitalized, systemImage: icon)
             .font(.caption.weight(.semibold))
-            .foregroundStyle(color)
+            .backport.foregroundStyle(color)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(color.opacity(0.14), in: Capsule())

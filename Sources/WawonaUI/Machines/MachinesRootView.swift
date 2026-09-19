@@ -13,7 +13,6 @@ struct MachinesRootView: View {
     @State var editingProfile: MachineProfile?
     #if os(iOS)
     @State private var isGlassSearchPresented = false
-    @FocusState private var isGlassSearchFocused: Bool
     #endif
 
     init(
@@ -27,7 +26,7 @@ struct MachinesRootView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        Backport<Any>.NavigationContainer {
             ScrollView {
                 MachinesGridView(
                     profiles: filteredProfiles,
@@ -38,13 +37,11 @@ struct MachinesRootView: View {
                 )
                 .padding()
             }
-            .navigationTitle("Machines")
+            .backport.navigationTitle("Machines")
             .wwnA11y(WawonaA11y.machinesRoot, label: "Machines")
             #if os(macOS)
             .searchable(text: $search, placement: .toolbar, prompt: "Search machines")
-            #endif
             .toolbar {
-                #if os(macOS)
                 ToolbarItem(placement: .navigation) {
                     Button {
                         openPlatformSettings()
@@ -53,8 +50,10 @@ struct MachinesRootView: View {
                     }
                     .wwnA11y(WawonaA11y.machinesSettings, label: "Settings")
                 }
-                #else
-                ToolbarItemGroup(placement: .topBarTrailing) {
+            }
+            #else
+            .navigationBarItems(
+                trailing: HStack {
                     Button {
                         showingEditor = true
                     } label: {
@@ -71,24 +70,27 @@ struct MachinesRootView: View {
                         withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
                             isGlassSearchPresented = true
                         }
-                        DispatchQueue.main.async {
-                            isGlassSearchFocused = true
-                        }
                     } label: {
                         Label("Search", systemImage: "magnifyingglass")
                     }
                 }
-                #endif
-            }
+            )
+            #endif
             #if os(iOS)
-            .overlay(alignment: .top) {
+            .overlay(
+                Group {
                 if isGlassSearchPresented {
                     glassSearchOverlay
                         .transition(.move(edge: .top).combined(with: .opacity))
                         .zIndex(1)
                 }
-            }
-            .animation(.spring(response: 0.32, dampingFraction: 0.86), value: isGlassSearchPresented)
+                },
+                alignment: .top
+            )
+            .backport.animation(
+                .spring(response: 0.32, dampingFraction: 0.86),
+                value: isGlassSearchPresented
+            )
             #endif
             .sheet(isPresented: $showingEditor) {
                 MachineEditorView { profile in
@@ -147,7 +149,7 @@ struct MachinesRootView: View {
     private var glassSearchOverlay: some View {
         ZStack(alignment: .top) {
             Color.black.opacity(0.12)
-                .ignoresSafeArea()
+                .edgesIgnoringSafeArea(.all)
                 .onTapGesture {
                     dismissGlassSearchBar(preserveQuery: true)
                 }
@@ -156,12 +158,10 @@ struct MachinesRootView: View {
                 HStack(spacing: 10) {
                     Image(systemName: "magnifyingglass")
                         .font(.body.weight(.medium))
-                        .foregroundStyle(.secondary)
+                        .backport.foregroundStyle(.secondary)
 
                     TextField("Search machines", text: $search)
                         .textFieldStyle(.plain)
-                        .focused($isGlassSearchFocused)
-                        .submitLabel(.search)
 
                     if !search.isEmpty {
                         Button {
@@ -169,7 +169,7 @@ struct MachinesRootView: View {
                         } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .font(.body)
-                                .foregroundStyle(.secondary)
+                                .backport.foregroundStyle(.secondary)
                         }
                         .buttonStyle(.plain)
                     }
@@ -178,13 +178,11 @@ struct MachinesRootView: View {
                         dismissGlassSearchBar(preserveQuery: false)
                     }
                     .font(.body.weight(.medium))
-                    .foregroundStyle(Color.accentColor)
+                    .backport.foregroundStyle(Color.accentColor)
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 11)
-                .background {
-                    Backport<Any>.glassRoundedRectangle(cornerRadius: 18)
-                }
+                .background(Backport<Any>.glassRoundedRectangle(cornerRadius: 18))
                 .overlay(
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
                         .stroke(Color.white.opacity(0.18), lineWidth: 1)
@@ -201,7 +199,6 @@ struct MachinesRootView: View {
         if !preserveQuery {
             search = ""
         }
-        isGlassSearchFocused = false
         withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
             isGlassSearchPresented = false
         }

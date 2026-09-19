@@ -6,7 +6,7 @@ struct WWNMachineEditorView: View {
   let defaultType: String
   let onSave: (WWNMachineProfile) -> Void
 
-  @Environment(\.dismiss) private var dismiss
+  @Environment(\.presentationMode) private var presentationMode
   @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
   @State private var name: String
@@ -287,7 +287,7 @@ struct WWNMachineEditorView: View {
       .navigationTitle(title)
       .toolbar {
         ToolbarItem(placement: .cancellationAction) {
-          Button("Cancel") { dismiss() }
+          Button("Cancel") { presentationMode.wrappedValue.dismiss() }
         }
         ToolbarItem(placement: .confirmationAction) {
           Button("Save", action: save)
@@ -352,14 +352,14 @@ struct WWNMachineEditorView: View {
       #if os(iOS)
       .navigationBarTitle(title, displayMode: .inline)
       .navigationBarItems(
-        leading: Button("Cancel") { dismiss() },
+        leading: Button("Cancel") { presentationMode.wrappedValue.dismiss() },
         trailing: Button("Save", action: save)
       )
       #else
       .navigationTitle(title)
       .toolbar {
         ToolbarItem(placement: .cancellationAction) {
-          Button("Cancel") { dismiss() }
+          Button("Cancel") { presentationMode.wrappedValue.dismiss() }
         }
         ToolbarItem(placement: .confirmationAction) {
           Button("Save", action: save)
@@ -1044,12 +1044,12 @@ struct WWNMachineEditorView: View {
     profile.runtimeOverrides = runtimeOverrides
 
     onSave(profile)
-    dismiss()
+    presentationMode.wrappedValue.dismiss()
   }
 }
 
 private struct WWNNativeClientPickerView: View {
-  @Environment(\.dismiss) private var dismiss
+  @Environment(\.presentationMode) private var presentationMode
   @Binding var selectedClientId: String
   @Binding var customCommand: String
 
@@ -1079,7 +1079,7 @@ private struct WWNNativeClientPickerView: View {
     Button {
       selectedClientId = client.id
       // Match Android/iOS: choosing a bundled client pops the picker immediately.
-      dismiss()
+      presentationMode.wrappedValue.dismiss()
     } label: {
       HStack(spacing: 12) {
         Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")

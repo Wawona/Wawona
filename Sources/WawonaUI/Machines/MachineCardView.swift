@@ -20,7 +20,7 @@ struct MachineCardView: View {
 
                 Text(subtitle)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .backport.foregroundStyle(.secondary)
 
                 if !profile.launchers.isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
