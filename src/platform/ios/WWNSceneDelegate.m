@@ -333,12 +333,22 @@ static const NSTimeInterval kWWNTvMenuLongPressDuration = 0.85;
   bodyLabel.isAccessibilityElement = YES;
   continueButton.isAccessibilityElement = YES;
   self.view.accessibilityViewIsModal = YES;
-  UIButtonConfiguration *continueConfig = [UIButtonConfiguration filledButtonConfiguration];
-  continueConfig.baseBackgroundColor = [UIColor systemBlueColor];
-  continueConfig.baseForegroundColor = [UIColor whiteColor];
-  continueConfig.cornerStyle = UIButtonConfigurationCornerStyleMedium;
-  continueConfig.contentInsets = NSDirectionalEdgeInsetsMake(12.0, 20.0, 12.0, 20.0);
-  continueButton.configuration = continueConfig;
+  if (@available(iOS 15.0, tvOS 15.0, *)) {
+    UIButtonConfiguration *continueConfig =
+        [UIButtonConfiguration filledButtonConfiguration];
+    continueConfig.baseBackgroundColor = [UIColor systemBlueColor];
+    continueConfig.baseForegroundColor = [UIColor whiteColor];
+    continueConfig.cornerStyle = UIButtonConfigurationCornerStyleMedium;
+    continueConfig.contentInsets =
+        NSDirectionalEdgeInsetsMake(12.0, 20.0, 12.0, 20.0);
+    continueButton.configuration = continueConfig;
+  } else {
+    continueButton.backgroundColor = [UIColor systemBlueColor];
+    [continueButton setTitleColor:[UIColor whiteColor]
+                         forState:UIControlStateNormal];
+    continueButton.contentEdgeInsets = UIEdgeInsetsMake(12.0, 20.0, 12.0, 20.0);
+    continueButton.layer.cornerRadius = 10.0;
+  }
   [continueButton addTarget:self
                      action:@selector(handleContinueTapped)
            forControlEvents:UIControlEventTouchUpInside];

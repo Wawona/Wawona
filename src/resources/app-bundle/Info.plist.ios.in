@@ -21,7 +21,7 @@
     <key>NSHumanReadableCopyright</key>
     <string>Copyright © 2025 Alex Spaulding. All rights reserved.</string>
     <key>MinimumOSVersion</key>
-    <string>26.0</string>
+    <string>13.0</string>
     <key>UIDeviceFamily</key>
     <array>
         <integer>1</integer>

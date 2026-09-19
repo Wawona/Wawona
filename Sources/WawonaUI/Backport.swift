@@ -66,6 +66,43 @@ public extension Backport where Content == Any {
         content()
         #endif
     }
+
+    /// `ContentUnavailableView` on iOS 17+, equivalent empty-state stack on
+    /// iOS 13–16.
+    @ViewBuilder
+    static func ContentUnavailable(
+        _ title: String,
+        systemImage: String,
+        description: String
+    ) -> some View {
+        #if os(iOS)
+        if #available(iOS 17.0, *) {
+            ContentUnavailableView(
+                title,
+                systemImage: systemImage,
+                description: Text(description)
+            )
+        } else {
+            VStack(spacing: 10) {
+                Image(systemName: systemImage)
+                    .font(.largeTitle)
+                    .foregroundColor(.secondary)
+                Text(title).font(.headline)
+                Text(description)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding()
+        }
+        #else
+        ContentUnavailableView(
+            title,
+            systemImage: systemImage,
+            description: Text(description)
+        )
+        #endif
+    }
 }
 
 public extension Backport where Content: View {
@@ -132,6 +169,43 @@ public extension Backport where Content: View {
         }
         #else
         content.pickerStyle(MenuPickerStyle())
+        #endif
+    }
+
+    /// Medium/large sheet sizing where available; default iOS 13–15 sheet
+    /// behavior otherwise.
+    @ViewBuilder
+    func machineEditorSheetSizing() -> some View {
+        #if os(iOS)
+        if #available(iOS 16.4, *) {
+            content
+                .presentationDetents([.medium, .large])
+                .presentationContentInteraction(.scrolls)
+        } else if #available(iOS 16.0, *) {
+            content.presentationDetents([.medium, .large])
+        } else {
+            content
+        }
+        #else
+        content
+        #endif
+    }
+
+    /// Value-scoped animation on iOS 15+, legacy implicit animation on
+    /// iOS 13–14.
+    @ViewBuilder
+    func animation<Value: Equatable>(
+        _ animation: Animation?,
+        value: Value
+    ) -> some View {
+        #if os(iOS)
+        if #available(iOS 15.0, *) {
+            content.animation(animation, value: value)
+        } else {
+            content.animation(animation)
+        }
+        #else
+        content.animation(animation, value: value)
         #endif
     }
 

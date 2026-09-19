@@ -242,7 +242,7 @@ privatize_lib() {
 # ---------------------------------------------------------------------------
 _arch="arm64"
 _ld_platform="ios"
-_min_ver="17.0"
+_min_ver="13.0"
 case "$_sdk" in
   iphonesimulator*)
     _ld_platform="ios-simulator"
@@ -252,9 +252,11 @@ case "$_sdk" in
     ;;
   appletvsimulator*)
     _ld_platform="tvos-simulator"
+    _min_ver="17.0"
     ;;
   appletvos*)
     _ld_platform="tvos"
+    _min_ver="17.0"
     ;;
   watchsimulator*)
     _ld_platform="watchos-simulator"

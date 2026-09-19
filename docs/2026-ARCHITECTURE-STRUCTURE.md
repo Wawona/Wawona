@@ -44,7 +44,9 @@ send typed intents, and perform platform API calls selected by Rust.
 
 ### Compatibility tiers
 
-- Baseline: iOS/iPadOS 17+, macOS 14+, Android API 28+, watchOS 10+.
+- Target baseline: iOS/iPadOS 13+, macOS 14+, Android API 28+, watchOS 10+.
+  iOS 13 support is complete only when the oldest-device compatibility and
+  minimum-load-command gates pass; a lowered project setting alone is not proof.
 - Liquid Glass: iOS 26+/macOS 26+ behind `@available` checks.
 - Multi-window: iPadOS 17+ and Android API 36+ (additive).
 

@@ -48,8 +48,7 @@ struct WWNMachinesGridView: View {
           model.upsert(profile)
         }
         #if os(iOS)
-        .presentationDetents([.medium, .large])
-        .presentationContentInteraction(.scrolls)
+        .backport.machineEditorSheetSizing()
         #endif
       }
       .sheet(item: $editingProfile) { profile in
@@ -57,13 +56,15 @@ struct WWNMachinesGridView: View {
           model.upsert(updated)
         }
         #if os(iOS)
-        .presentationDetents([.medium, .large])
-        .presentationContentInteraction(.scrolls)
+        .backport.machineEditorSheetSizing()
         #endif
       }
     #endif
     #if !os(macOS)
-      .animation(.spring(duration: 0.42, bounce: 0.26), value: visibleProfiles.count)
+      .backport.animation(
+        .spring(response: 0.42, dampingFraction: 0.74, blendDuration: 0),
+        value: visibleProfiles.count
+      )
     #endif
   }
 
@@ -319,10 +320,10 @@ struct WWNMachinesGridView: View {
   @ViewBuilder
   private func machinesGrid(columns: [GridItem]) -> some View {
     if visibleProfiles.isEmpty {
-      ContentUnavailableView(
+      Backport<Any>.ContentUnavailable(
         "No Matching Machines",
         systemImage: "magnifyingglass",
-        description: Text("Adjust search or add a new machine profile.")
+        description: "Adjust search or add a new machine profile."
       )
       .frame(maxWidth: .infinity)
       .padding(.top, 30)
