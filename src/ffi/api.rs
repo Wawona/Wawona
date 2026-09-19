@@ -414,29 +414,36 @@ impl WawonaCore {
         self.domain.read_recover().revision()
     }
 
-    pub fn domain_snapshot_json(&self) -> Result<String, crate::domain::DomainError> {
+    pub fn domain_snapshot_json(
+        &self,
+    ) -> std::result::Result<String, crate::domain::DomainError> {
         self.domain.read_recover().snapshot_json()
     }
 
-    pub fn domain_durable_json(&self) -> Result<String, crate::domain::DomainError> {
+    pub fn domain_durable_json(
+        &self,
+    ) -> std::result::Result<String, crate::domain::DomainError> {
         self.domain.read_recover().durable_json()
     }
 
-    pub fn domain_dispatch_json(&self, json: &str) -> Result<(), crate::domain::DomainError> {
+    pub fn domain_dispatch_json(
+        &self,
+        json: &str,
+    ) -> std::result::Result<(), crate::domain::DomainError> {
         self.domain.write_recover().apply_json(json)
     }
 
     pub fn domain_resolved_settings_json(
         &self,
         machine_id: &str,
-    ) -> Result<String, crate::domain::DomainError> {
+    ) -> std::result::Result<String, crate::domain::DomainError> {
         self.domain.read_recover().resolved_settings_json(machine_id)
     }
 
     pub fn domain_resolve_profile_json(
         &self,
         profile_json: &str,
-    ) -> Result<String, crate::domain::DomainError> {
+    ) -> std::result::Result<String, crate::domain::DomainError> {
         self.domain.read_recover().resolve_profile_json(profile_json)
     }
 }
