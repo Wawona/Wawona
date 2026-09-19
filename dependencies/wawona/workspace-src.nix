@@ -28,7 +28,7 @@ pkgs.stdenvNoCC.mkDerivation {
     chmod -R u+w $out
     
     # Mobile platforms do not ship the standalone root binary entrypoint.
-    if [ "${platform}" != "macos" ]; then
+    if [ "${platform}" != "macos" ] && [ "${platform}" != "linux" ]; then
       echo "⚠️  Removing root binary entrypoint for mobile platform: ${platform}"
       rm -f $out/src/main.rs
       rm -rf $out/src/bin
@@ -74,8 +74,8 @@ p = Path("Cargo.toml")
 if p.exists():
     s = p.read_text()
     
-    # Only restrict root binary auto-discovery for mobile platforms
-    if platform != "macos":
+    # Only restrict root binary auto-discovery for mobile platforms.
+    if platform not in ("macos", "linux"):
         print(f"⚠️  Disabling root binaries/autobins for mobile platform: {platform}")
         # Mobile backends link static libraries only.
         s = re.sub(r'^crate-type = .*$', 'crate-type = ["rlib", "staticlib"]', s, flags=re.MULTILINE)

@@ -880,6 +880,55 @@ impl WawonaCore {
             .unwrap_or_default()
     }
 
+    /// Create a connected Wayland client fd for an in-process conformance
+    /// harness. The returned internal client id scopes protocol object ids,
+    /// which are only unique per client.
+    pub fn create_test_client_socket(&self) -> Result<(i32, u32)> {
+        let mut compositor_guard = self.compositor.lock_recover();
+        let compositor = compositor_guard
+            .as_mut()
+            .ok_or(CompositorError::NotStarted)?;
+        compositor
+            .create_test_client_socket()
+            .map_err(|e| CompositorError::socket_error(e.to_string()).into())
+    }
+
+    /// Position a mapped toplevel identified by a client's wl_surface object.
+    ///
+    /// This is intentionally a test/host control hook, not a Wayland request:
+    /// WLCS needs deterministic placement to validate pointer crossings.
+    pub fn position_window_for_protocol_surface(
+        &self,
+        internal_client_id: u32,
+        protocol_surface_id: u32,
+        x: i32,
+        y: i32,
+    ) -> bool {
+        let compositor_guard = self.compositor.lock_recover();
+        let Some(compositor) = compositor_guard.as_ref() else {
+            return false;
+        };
+        let Some(backend_client_id) = compositor.internal_to_client_id(internal_client_id) else {
+            return false;
+        };
+
+        let state = self.state.write_recover();
+        let Some(internal_surface_id) = state
+            .protocol_to_internal_surface
+            .get(&(backend_client_id, protocol_surface_id))
+            .copied()
+        else {
+            return false;
+        };
+        let Some(window) = state.get_window_by_surface(internal_surface_id) else {
+            return false;
+        };
+        let mut window = window.write_recover();
+        window.x = x;
+        window.y = y;
+        true
+    }
+
     // =========================================================================
     // Input Injection
     // =========================================================================

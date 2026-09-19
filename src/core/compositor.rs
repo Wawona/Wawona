@@ -9,7 +9,8 @@
 //! This is the Rust core that platform adapters interact with via FFI.
 
 use std::collections::{HashMap, HashSet};
-use std::os::unix::io::{AsRawFd, RawFd};
+use std::os::unix::io::{AsRawFd, IntoRawFd, RawFd};
+use std::os::unix::net::UnixStream;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -623,6 +624,37 @@ impl Compositor {
                 }
             }
         }
+    }
+
+    /// Create an already-connected client socket for in-process protocol tests.
+    ///
+    /// WLCS requires a client fd rather than a socket name. Registering one end
+    /// of a socketpair directly also gives the harness the stable internal
+    /// client id needed to disambiguate equal Wayland object ids from different
+    /// clients.
+    pub fn create_test_client_socket(&mut self) -> Result<(RawFd, u32)> {
+        let (server_stream, client_stream) =
+            UnixStream::pair().context("Failed to create Wayland test socketpair")?;
+        let internal_id = self.next_client_id;
+        self.next_client_id += 1;
+
+        let client_data_for_backend = WawonaBackendClientData {
+            internal_id,
+            disconnected_queue: self.disconnected_clients.clone(),
+            compositor_state: smithay::wayland::compositor::CompositorClientState::default(),
+        };
+        let client = self
+            .display
+            .handle()
+            .insert_client(server_stream, Arc::new(client_data_for_backend))
+            .context("Failed to register Wayland test client")?;
+        let backend_id = client.id();
+        self.clients.insert(
+            internal_id,
+            WawonaClientData::new(internal_id, backend_id, self.disconnected_clients.clone()),
+        );
+
+        Ok((client_stream.into_raw_fd(), internal_id))
     }
 
     /// Convert backend ClientId to internal u32 (as used in FFI)
