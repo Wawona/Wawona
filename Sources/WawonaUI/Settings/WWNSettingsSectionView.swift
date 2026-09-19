@@ -297,7 +297,7 @@ private struct WWNSettingsRowView: View {
                         set: {
                             let clamped = min(max($0, spec.range.lowerBound), spec.range.upperBound)
                             numberText = String(clamped)
-                            model.setNumberText(String(clamped), for: item)
+                            DispatchQueue.main.async { model.setNumberText(String(clamped), for: item) }
                         }
                     ),
                     in: spec.range,
@@ -318,7 +318,7 @@ private struct WWNSettingsRowView: View {
                 guard let parsed = Int(digits) else {
                     if numberText != digits { numberText = digits }
                     if spec.allowsEmpty && model.stringValue(for: item) != "" {
-                        model.setNumberText("", for: item)
+                        DispatchQueue.main.async { model.setNumberText("", for: item) }
                     }
                     return
                 }
@@ -341,7 +341,7 @@ private struct WWNSettingsRowView: View {
         .disabled(!item.interactive)
         .accessibilityIdentifier(item.accessibilityIdentifier ?? "")
         .onDisappear {
-            commitNumberIfChanged(spec)
+            DispatchQueue.main.async { commitNumberIfChanged(spec) }
         }
     }
 
@@ -351,7 +351,7 @@ private struct WWNSettingsRowView: View {
             ? ""
             : String(model.integerValue(for: item))
         guard numberText != displayedStored else { return }
-        model.setNumberText(numberText, for: item)
+        DispatchQueue.main.async { model.setNumberText(numberText, for: item) }
     }
 
     private var passwordRow: some View {
@@ -388,7 +388,7 @@ private struct WWNSettingsRowView: View {
         let presentation = model.actionPresentation(for: item)
         return rowLayout {
             Button(presentation.title, systemImage: presentation.systemImage) {
-                item.actionBlock?()
+                DispatchQueue.main.async { item.actionBlock?() }
             }
             .buttonStyle(.bordered)
             .accessibilityIdentifier(item.accessibilityIdentifier ?? "")
@@ -574,3 +574,4 @@ private struct WawonaAboutIconView: View {
     }
 }
 #endif
+
