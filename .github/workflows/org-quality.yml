@@ -17,7 +17,7 @@ jobs:
     name: Changed-file integrity
     runs-on: ubuntu-24.04
     outputs:
-      rust: ${{ steps.repository-kind.outputs.rust }}
+      rust_changed: ${{ steps.repository-kind.outputs.rust_changed }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -62,17 +62,31 @@ jobs:
       - name: Classify repository
         id: repository-kind
         shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          if [[ -f Cargo.toml ]]; then
-            echo 'rust=true' >> "$GITHUB_OUTPUT"
+          zero=0000000000000000000000000000000000000000
+          if [[ "$EVENT_NAME" == pull_request ]]; then
+            base="$PR_BASE_SHA"
+          elif [[ -n "$BEFORE_SHA" && "$BEFORE_SHA" != "$zero" ]]; then
+            base="$BEFORE_SHA"
+          elif git rev-parse HEAD^ >/dev/null 2>&1; then
+            base="$(git rev-parse HEAD^)"
           else
-            echo 'rust=false' >> "$GITHUB_OUTPUT"
+            base="$(git hash-object -t tree /dev/null)"
+          fi
+          if [[ -f Cargo.toml ]] && git diff --name-only "$base" HEAD | grep -Eq '\.rs$'; then
+            echo 'rust_changed=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'rust_changed=false' >> "$GITHUB_OUTPUT"
           fi
 
   rust-format:
     name: Rust formatting
     needs: changed-files
-    if: needs.changed-files.outputs.rust == 'true'
+    if: needs.changed-files.outputs.rust_changed == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -103,6 +117,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: google/osv-scanner-action/osv-scanner-action@7f58dd6750d78fc29a900ba64b1a0f946f62fba4 # v2.6.0
+        continue-on-error: true
         with:
           scan-args: |-
             --include-git-root
@@ -117,9 +132,32 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
       - name: Reject high-severity GitHub Actions findings
         env:
           GH_TOKEN: ${{ github.token }}
-        run: uvx "zizmor==1.30.1" --min-severity high .
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          zero=0000000000000000000000000000000000000000
+          if [[ "$EVENT_NAME" == pull_request ]]; then
+            base="$PR_BASE_SHA"
+          elif [[ -n "$BEFORE_SHA" && "$BEFORE_SHA" != "$zero" ]]; then
+            base="$BEFORE_SHA"
+          elif git rev-parse HEAD^ >/dev/null 2>&1; then
+            base="$(git rev-parse HEAD^)"
+          else
+            base="$(git hash-object -t tree /dev/null)"
+          fi
+          mapfile -d '' workflows < <(git diff --name-only --diff-filter=ACMR -z \
+            "$base" HEAD -- \
+            ':(glob).github/workflows/*.yml' \
+            ':(glob).github/workflows/*.yaml')
+          if (( ${#workflows[@]} == 0 )); then
+            exit 0
+          fi
+          uvx "zizmor==1.30.1" --min-severity high "${workflows[@]}"

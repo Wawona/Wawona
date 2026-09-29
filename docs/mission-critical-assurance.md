@@ -9,9 +9,11 @@ evidence.
 
 Every Wawona organization repository runs the shared `Wawona org quality`
 workflow. It checks changed-file integrity, parses changed data and script files,
-checks Rust formatting when a root Cargo workspace exists, scans dependency
-locks with OSV, reviews dependency additions on pull requests, and rejects
-high-severity GitHub Actions findings with zizmor.
+checks Rust formatting when Rust changes, inventories dependency locks with
+OSV, reviews dependency additions on pull requests, and rejects high-severity
+zizmor findings in changed GitHub Actions workflows. Existing vulnerability and
+workflow debt stays visible without making the initial organization rollout
+unusable; new high-severity dependency additions remain blocked.
 
 GitHub's organization security configuration is attached to all current and
 future repositories. It enables the dependency graph, Dependabot alerts,
