@@ -22,6 +22,8 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-nixpkgs2wasi` | Curated nixpkgs → WASI / WPM (`n2w`). Not Relay. Not an auto-mirror. |
 | `wawona-relay-ios-hypervisor` | Mode B iOS Hypervisor.framework via Relay. Not QEMU HVF. |
 | `wawona-relay` | Linux VMs / OCI / Mode A wasm. Mode A bench + PageTranslate. |
+| `wawona-formal-verification` | Mandatory Kani + Verus gate for Relay VM Rust. |
+| `wawona-mission-critical` | Risk tiers, AI parity, proof obligations, security baseline, release evidence. |
 
 ## Rules (hard gates)
 
@@ -30,6 +32,7 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-mission` | Ambiguous product call |
 | `wawona-context` | Stack priors + MCP tool map |
 | `wawona-agent-learn` | This learn loop |
+| `wawona-mission-critical-assurance` | Risk-tiered evidence for critical and AI-authored changes |
 | `wawona-rust-first` | New Wawona-owned logic |
 | `wawona-uniffi-domain` | Product domain vs `WWNCore*`; no JFFI fork |
 | `wawona-nix-generated` | Generated files are Nix outputs; never git-track UniFFI |

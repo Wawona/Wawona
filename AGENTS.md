@@ -75,6 +75,12 @@ not MCP. Skill `wawona-gh`. Rule `wawona-gh`.
   constructors, `WWNCore*` trampolines). Do not write a new Wawona program in C.
   Upstream ports stay in their upstream language. See
   `.cursor/rules/wawona-rust-first.mdc` and `docs/agent-rules/wawona-rust-first.md`.
+- **Mission-critical assurance.** AI-authored code has the same gates as human
+  code. Risk decides the tier. VM memory, MMU, CPU, virtio, privilege, watchdog,
+  and display ownership changes require named laws tied to production Rust,
+  bounded proof, an unbounded model when tractable, negative tests, and an
+  explicit unproved list. Do not add Bend-2-generated C product logic. See
+  `docs/mission-critical-assurance.md` and skill `wawona-mission-critical`.
 - **FFI**: production compositor bridge is hand-written C `WWNCore*` (`src/ffi/c_api.rs`)
   wrapped by ObjC (`WWNCompositorBridge.m`) / JNI (`android_jni.c`), polling
   model. Do NOT use `objc2`/`cocoa`/`jni`/`ndk` Rust crates or UniFFI callbacks.
