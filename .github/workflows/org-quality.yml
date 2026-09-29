@@ -97,16 +97,17 @@ jobs:
 
   vulnerable-dependencies:
     name: OSV dependency scan
-    permissions:
-      contents: read
-    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@a345acffa64b0eaede81a3d9aae6141214d9c8fc # v2.6.0
-    with:
-      scan-args: |-
-        --include-git-root
-        --recursive
-        ./
-      upload-sarif: false
-      fail-on-vuln: true
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: google/osv-scanner-action/osv-scanner-action@7f58dd6750d78fc29a900ba64b1a0f946f62fba4 # v2.6.0
+        with:
+          scan-args: |-
+            --include-git-root
+            --recursive
+            ./
 
   workflow-security:
     name: Workflow security
