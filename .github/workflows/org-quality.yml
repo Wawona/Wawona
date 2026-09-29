@@ -1,0 +1,124 @@
+name: Wawona org quality
+
+on:
+  workflow_call:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: org-quality-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changed-files:
+    name: Changed-file integrity
+    runs-on: ubuntu-24.04
+    outputs:
+      rust: ${{ steps.repository-kind.outputs.rust }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Reject whitespace errors and malformed data files
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          zero=0000000000000000000000000000000000000000
+          if [[ "$EVENT_NAME" == pull_request ]]; then
+            base="$PR_BASE_SHA"
+          elif [[ -n "$BEFORE_SHA" && "$BEFORE_SHA" != "$zero" ]]; then
+            base="$BEFORE_SHA"
+          elif git rev-parse HEAD^ >/dev/null 2>&1; then
+            base="$(git rev-parse HEAD^)"
+          else
+            base="$(git hash-object -t tree /dev/null)"
+          fi
+
+          git diff --check "$base" HEAD
+
+          while IFS= read -r -d '' path; do
+            [[ -f "$path" ]] || continue
+            case "$path" in
+              *.json) jq empty "$path" ;;
+              *.py) python3 -m py_compile "$path" ;;
+              *.sh)
+                if head -n 1 "$path" | grep -q 'bash'; then
+                  bash -n "$path"
+                else
+                  sh -n "$path"
+                fi
+                ;;
+              *.yaml|*.yml) ruby -e "require 'yaml'; YAML.parse_file(ARGV.fetch(0))" "$path" ;;
+            esac
+          done < <(git diff --name-only --diff-filter=ACMR -z "$base" HEAD)
+      - name: Classify repository
+        id: repository-kind
+        shell: bash
+        run: |
+          if [[ -f Cargo.toml ]]; then
+            echo 'rust=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'rust=false' >> "$GITHUB_OUTPUT"
+          fi
+
+  rust-format:
+    name: Rust formatting
+    needs: changed-files
+    if: needs.changed-files.outputs.rust == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup component add rustfmt
+      - run: cargo fmt --all -- --check
+
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+
+  vulnerable-dependencies:
+    name: OSV dependency scan
+    permissions:
+      contents: read
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@a345acffa64b0eaede81a3d9aae6141214d9c8fc # v2.6.0
+    with:
+      scan-args: |-
+        --include-git-root
+        --recursive
+        ./
+      upload-sarif: false
+      fail-on-vuln: true
+
+  workflow-security:
+    name: Workflow security
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - name: Reject high-severity GitHub Actions findings
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: uvx "zizmor==1.30.1" --min-severity high .
