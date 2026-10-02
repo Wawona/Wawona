@@ -545,6 +545,31 @@
             ffmpeg = toolchainsAndroid.buildForAndroid "ffmpeg" {};
           };
         };
+        workspace-src-linux = pkgs.callPackage ./dependencies/wawona/workspace-src.nix {
+          wawonaSrc = src;
+          waypipeSrc = waypipe-src;
+          coreutilsSrc = coreutils-src;
+          platform = "linux";
+          inherit wawonaVersion;
+        };
+        sharedLinuxCargoNix =
+          crate2nix.tools.${pkgs.stdenv.hostPlatform.system}.generatedCargoNix {
+            name = "wawona-linux-workspace";
+            src = workspace-src-linux;
+          };
+        backend-linux = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
+          inherit crate2nix wawonaVersion toolchains nixpkgs;
+          workspaceSrc = workspace-src-linux;
+          platform = "linux";
+          cargoNixDrv = sharedLinuxCargoNix;
+          nativeDeps = {
+            libwayland = pkgs.wayland;
+            xkbcommon = pkgs.libxkbcommon;
+            pixman = pkgs.pixman;
+            libffi = pkgs.libffi;
+            openssl = pkgs.openssl;
+          };
+        };
         wawonaAndroidPkg = import ./dependencies/wawona/android.nix {
           pkgs = androidPkgs;
           buildModule = toolchainsAndroid;
@@ -772,11 +797,12 @@
         };
 
         packages = commonPackages
-          # WLCS conformance runner (ci-l2-wlcs). Linux-only, skeleton
-          # integration; runtime battery is a CI lane. Guarded so darwin eval is
-          # unaffected.
+          # WLCS conformance runner (ci-l2-wlcs). Linux-only and linked to the
+          # same production WWNCore C ABI used by native hosts.
           // (pkgs.lib.optionalAttrs (isLinuxHost && builtins.pathExists ./dependencies/tests/wlcs.nix) {
-            wawona-wlcs-run = pkgs.callPackage ./dependencies/tests/wlcs.nix { };
+            wawona-wlcs-run = pkgs.callPackage ./dependencies/tests/wlcs.nix {
+              wawonaBackend = backend-linux;
+            };
           })
           // (pkgs.lib.optionalAttrs (isLinuxHost || androidSDK != null) {
           wawona-android = wawonaAndroidPkg;
