@@ -1,0 +1,251 @@
+From 2322764548b49fc7e6adfa0efcfcc0cf852c7829 Mon Sep 17 00:00:00 2001
+From: Cursor Agent <cursoragent@cursor.com>
+Date: Fri, 2 Oct 2026 21:43:38 +0000
+Subject: [PATCH] fix(guest): settle Multi-User via linger and stable init
+
+Stop racing getty session scopes with a mkdir'd XDG runtime on 16 KiB
+boots: linger user@1000, order wawona-session after the user runtime,
+and bound session restarts. Prioritize udev coldplug for block/tty/net.
+Seed system-1-link + /init so cmdline uses init=/init across generations.
+---
+ docs/static-cpu-completion-plan.md            | 63 +++++++++++++++++++
+ docs/vsock-checkpoint.md                      | 25 ++++++++
+ .../vms/mobile/guest-artifacts.nix            |  9 ++-
+ import/vms/dependencies/vms/mobile/guest.nix  | 49 +++++++++++++--
+ 4 files changed, 140 insertions(+), 6 deletions(-)
+ create mode 100644 docs/static-cpu-completion-plan.md
+ create mode 100644 docs/vsock-checkpoint.md
+
+diff --git a/docs/static-cpu-completion-plan.md b/docs/static-cpu-completion-plan.md
+new file mode 100644
+index 0000000..3a0fe62
+--- /dev/null
++++ b/docs/static-cpu-completion-plan.md
+@@ -0,0 +1,63 @@
++# Static CPU / mobile guest completion plan
++
++Engineering judgment checkpoint for Wawona Relay VM support. Not measured
++coverage. Do not claim 100% VM support.
++
++## Immediate critical path
++
++1. Reliable boot → required systemd target on **4 KiB and 16 KiB**
++2. Authenticated guest frame (vsock + host waypipe)
++3. Persistent machine lifecycle (create/save/reopen/boot/stop/grow/restart)
++4. Exact signed-device verification
++
++## Current measured boot evidence (host Mac probes)
++
++Prior 1200s priority-image probes (exit 0, liveness only):
++
++- Both complete coldplug, reach Basic System, start serial getty on `hvc0`
++  and the real Wayland session.
++- Both send real 16-byte waypipe vsock payloads to host port 1024.
++- Neither proves required Multi-User target.
++- Optional OCI mounts fail when the diagnostic supplies no OCI share
++  (expected with `nofail`).
++- 16 KiB additionally reports failed `session-1.scope` /
++  `session-2.scope`.
++- No authenticated readiness or imported guest frame.
++
++## Guest fixes in this branch
++
++Evidence-driven guest changes (not acceptance weakening):
++
++1. **`users.users.wawona.linger = true`** + fixed `uid = 1000` so
++   `user@1000` / `user-runtime-dir@1000` create `/run/user/1000` before
++   `wawona-session`. Removes the race where the service `mkdir`d the
++   runtime dir while getty autologin owned session scopes (16 KiB).
++2. **`wawona-session` / `wawona-container`** order after user runtime;
++   require the runtime directory to exist; `Restart=on-failure` with start
++   limits so restart loops cannot hide Multi-User settling.
++3. **`systemd-udev-trigger`** ExecStart drop-in:
++   `--type=all --action=add --prioritized-subsystem=block,tty,net,input,module,tpmrm`
++   (upstream deadlines/dependencies retained).
++4. **Stable init seed** in `guest-artifacts.nix`:
++   - `/nix/var/nix/profiles/system-1-link` → toplevel
++   - `system` → `system-1-link`
++   - `/init` → `/nix/var/nix/profiles/system/init`
++   - cmdline `init=/init` so existing disks are not pinned to a newer
++     bundled store path for `/init`.
++
++## Still open
++
++- Prove Multi-User with console traces on both page sizes after rebuild.
++- Authenticated vsock readiness + real guest frame import.
++- Legacy disk migration preserving data when adopting `init=/init`.
++- Bundled kernel/initrd compatibility with future guest generations.
++- Nix editor guest apply / flake.lock / rebuild / rollback.
++- OCI-in-VM full lifecycle, devices, signed-device matrix.
++
++## Verification notes
++
++- Diagnostic smoke exit 0 means **liveness only**.
++- Do not attribute improvement solely to udev priority order when probe
++  duration also changed (600s → 1200s).
++- Formal gate: `scripts/verified-cargo.sh` (Kani/Verus). Prefer
++  `scripts/verified-runner.sh` once a proof stamp exists.
+diff --git a/docs/vsock-checkpoint.md b/docs/vsock-checkpoint.md
+new file mode 100644
+index 0000000..1a19695
+--- /dev/null
++++ b/docs/vsock-checkpoint.md
+@@ -0,0 +1,25 @@
++# Vsock / waypipe checkpoint
++
++Status captured from measured mobile StaticCpu / guest probes.
++
++## Proven
++
++- Guest binds waypipe server on vsock port **1024**.
++- Host receives real **16-byte** waypipe payloads (transport smoke).
++- Console path prints `WAWONA_RELAY_READY=1` from session `postStart`
++  after a short delay (readiness string, not authenticated frame proof).
++
++## Not proven
++
++- Authenticated readiness bound to the current machine/session.
++- Import and display of a **real guest-rendered frame**.
++- Disconnect / reconnect / reset with bounded host resource use.
++- Host native waypipe client lifecycle matching the session.
++
++## Next engineering steps
++
++1. Host dials vsock 1024 only after matching machine id + generation.
++2. Reject frames when session token / generation mismatches.
++3. Decode one SHM/waypipe frame into the Machines surface and assert
++   non-placeholder pixels.
++4. Keep OCI-absent probes from counting as graphics acceptance.
+diff --git a/import/vms/dependencies/vms/mobile/guest-artifacts.nix b/import/vms/dependencies/vms/mobile/guest-artifacts.nix
+index 40cf8f9..670f6f8 100644
+--- a/import/vms/dependencies/vms/mobile/guest-artifacts.nix
++++ b/import/vms/dependencies/vms/mobile/guest-artifacts.nix
+@@ -19,9 +19,16 @@ let
+   rawRootfs = pkgs.callPackage (pkgs.path + "/nixos/lib/make-ext4-fs.nix") {
+     storePaths = [ toplevel ];
+     volumeLabel = "nixos";
++    # Stable boot entry: existing writable disks must not hard-depend on a
++    # newer store path for /init. Seed generation 1 under NixOS profiles and
++    # point /init at the selected generation (manifest uses init=/init).
+     populateImageCommands = ''
+       mkdir -p ./files
+       mkdir -p ./files/{proc,sys,dev,run,tmp,var,root,etc,bin}
++      mkdir -p ./files/nix/var/nix/profiles
++      ln -sfn ${toplevel} ./files/nix/var/nix/profiles/system-1-link
++      ln -sfn system-1-link ./files/nix/var/nix/profiles/system
++      ln -sfn /nix/var/nix/profiles/system/init ./files/init
+     '';
+   };
+   rootfs = rawRootfs.overrideAttrs (old: {
+@@ -61,7 +68,7 @@ let
+       fi
+     '';
+   });
+-  commandLine = "init=${toplevel}/init console=hvc0 root=/dev/vda rw loglevel=4";
++  commandLine = "init=/init console=hvc0 root=/dev/vda rw loglevel=4";
+   expectedPageConfig =
+     if pageSize == 4096 then "CONFIG_ARM64_4K_PAGES=y" else "CONFIG_ARM64_16K_PAGES=y";
+ in
+diff --git a/import/vms/dependencies/vms/mobile/guest.nix b/import/vms/dependencies/vms/mobile/guest.nix
+index 8deeb90..b6d6859 100644
+--- a/import/vms/dependencies/vms/mobile/guest.nix
++++ b/import/vms/dependencies/vms/mobile/guest.nix
+@@ -270,7 +270,13 @@ nixpkgs.lib.nixosSystem {
+ 
+         users.users.wawona = {
+           isNormalUser = true;
++          uid = 1000;
+           initialPassword = "wawona";
++          # Linger starts user@1000 at boot so /run/user/1000 exists before
++          # wawona-session. Without it, getty autologin and the system service
++          # race on session scopes (observed as session-1/2.scope failures on
++          # the slower 16 KiB guest) and Multi-User never settles cleanly.
++          linger = true;
+           extraGroups = [
+             "wheel"
+             "video"
+@@ -280,6 +286,14 @@ nixpkgs.lib.nixosSystem {
+         services.getty.autologinUser = "wawona";
+         security.sudo.wheelNeedsPassword = false;
+ 
++        # Full coldplug with block/tty/net first. Keep upstream
++        # systemd-udev-trigger deadlines and dependencies; only replace the
++        # trigger command so virtio disks/consoles appear before late probes.
++        systemd.services.systemd-udev-trigger.serviceConfig.ExecStart = lib.mkForce [
++          ""
++          "-${config.systemd.package}/bin/udevadm trigger --type=all --action=add --prioritized-subsystem=block,tty,net,input,module,tpmrm"
++        ];
++
+         # Software rendering only. Relay presents guest Wayland SHM through
+         # Wawona's userspace display path; no guest GPU passthrough.
+         environment.variables = {
+@@ -300,13 +314,28 @@ nixpkgs.lib.nixosSystem {
+         systemd.services.wawona-session = {
+           description = "Wawona mobile Wayland session forwarded over vsock";
+           wantedBy = [ "multi-user.target" ];
+-          after = [ "systemd-user-sessions.service" ];
+-          unitConfig.ConditionPathExists = "!/run/wawona/oci-bundle/config.json";
++          after = [
++            "systemd-user-sessions.service"
++            "user-runtime-dir@1000.service"
++            "user@1000.service"
++          ];
++          wants = [
++            "user-runtime-dir@1000.service"
++            "user@1000.service"
++          ];
++          unitConfig = {
++            ConditionPathExists = "!/run/wawona/oci-bundle/config.json";
++            # Bound readiness: always-restart hid Multi-User settling failures.
++            StartLimitIntervalSec = 60;
++            StartLimitBurst = 10;
++          };
+           serviceConfig = {
+             User = "wawona";
+             WorkingDirectory = "/home/wawona";
+-            Restart = "always";
++            Restart = "on-failure";
+             RestartSec = "2s";
++            StandardOutput = "journal+console";
++            StandardError = "journal+console";
+           };
+           environment = {
+             XDG_RUNTIME_DIR = "/run/user/1000";
+@@ -315,7 +344,10 @@ nixpkgs.lib.nixosSystem {
+             WLR_NO_HARDWARE_CURSORS = "1";
+           };
+           script = ''
+-            mkdir -p "$XDG_RUNTIME_DIR"
++            set -euo pipefail
++            # Runtime dir must already exist from linger/user@1000. Refuse to
++            # mkdir as a fallback: that raced getty sessions on 16 KiB boots.
++            test -d "$XDG_RUNTIME_DIR"
+             exec ${pkgs.waypipe}/bin/waypipe --vsock -s ${toString vsockPort} server -- \
+               ${pkgs.cage}/bin/cage -- ${pkgs.foot}/bin/foot
+           '';
+@@ -331,6 +363,12 @@ nixpkgs.lib.nixosSystem {
+           after = [
+             "local-fs.target"
+             "systemd-user-sessions.service"
++            "user-runtime-dir@1000.service"
++            "user@1000.service"
++          ];
++          wants = [
++            "user-runtime-dir@1000.service"
++            "user@1000.service"
+           ];
+           unitConfig = {
+             ConditionPathExists = "/run/wawona/oci-bundle/config.json";
+@@ -352,7 +390,8 @@ nixpkgs.lib.nixosSystem {
+             work=/run/wawona-container/bundle
+             upper=/run/wawona-container/upper
+             overlay_work=/run/wawona-container/overlay-work
+-            mkdir -p "$work/rootfs" "$upper" "$overlay_work" "$XDG_RUNTIME_DIR"
++            test -d "$XDG_RUNTIME_DIR"
++            mkdir -p "$work/rootfs" "$upper" "$overlay_work"
+             cp "$bundle/config.json" "$work/config.json"
+             if ! ${pkgs.util-linux}/bin/mount -t overlay overlay \
+               -o "lowerdir=$bundle/rootfs,upperdir=$upper,workdir=$overlay_work" \
+-- 
+2.43.0
+
