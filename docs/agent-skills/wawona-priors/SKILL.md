@@ -16,8 +16,9 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-write` | Editing Wawona / wwn-* software |
 | `wawona-learn` | Durable finding this session |
 | `wawona-caveman` | Token voice |
+| `wawona-carplay-lab` | Playport physical-iPhone CarPlay lab; private runtime identity and pairing. |
 | `wawona-vphone-lab-recover` | Dead / stale vphone lab. Sock refused. Stuck SSH wait. |
-| `wawona-ios-min-os` | iOS 11-27 min OS vs latest SDK. One ANGLE, one MoltenVK. Never downgrade SDK. |
+| `wawona-ios-min-os` | iOS 13-27+ min OS vs latest SDK. One ANGLE, one MoltenVK. Never downgrade SDK. |
 | `wawona-gh` | GitHub issues/milestones/PRs/`gh run`. Shell + local `gh`. No GitHub MCP. |
 | `wawona-nixpkgs2wasi` | Curated nixpkgs → WASI / WPM (`n2w`). Not Relay. Not an auto-mirror. |
 | `wawona-relay-ios-hypervisor` | Mode B iOS Hypervisor.framework via Relay. Not QEMU HVF. |
@@ -50,8 +51,8 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-relay` | One L3′ engine: Linux VMs, OCI-in-VM, Mode A wasm. Never QEMU/UTM |
 | `wawona-relay-ios-hypervisor` | Mode B iOS/iPadOS Hypervisor.framework window (not HVF-via-qemu) |
 | `wawona-linux-vms-relay-runtime` | NixOS VMs; Mode A/B engines; no QEMU/UTM |
-| `wawona-platform-targets` | Four-state gates |
-| `wawona-ios-min-os` | iOS 11.0 min OS; latest iPhoneOS SDK only; one ANGLE + one MoltenVK |
+| `wawona-platform-targets` | Four-state gates. Ghostty grid is `Wawona/Ghostty` (Zig). Toolbar keys are `Wawona/ToolbarKeys`. |
+| `wawona-ios-min-os` | iOS 13.0 min OS; latest iPhoneOS SDK only; one ANGLE + one MoltenVK |
 | `wawona-swinging-bridge` | Not Desktop, not LockScreen |
 | `wawona-test-control` / `wawona-agent-device` | UI / vphone |
 | `wawona-agent-device-multitouch` | Wayland client taps |
@@ -131,7 +132,7 @@ skill, add one row. Capture flow: `wawona-learn`.
   (current Android package is header-only).
 - Port = substitute platform, not client. Waypipe Linux build is the reference.
 - Graphics keys live in L1 `wwn-iland`. Never L0 toolchain. Never invert DAG.
-- iOS min OS is **11.0** against the **latest** iPhoneOS SDK only (26 now, 27
+- iOS min OS is **13.0** against the **latest** iPhoneOS SDK only (26 now, 27
   next). Never downgrade the SDK. One ANGLE, one MoltenVK, Wawona patches.
   App Store / TrollStore / Sileo share that min. ASC upload range is a
   separate investigation. Rule `wawona-ios-min-os`.

@@ -75,6 +75,11 @@ not MCP. Skill `wawona-gh`. Rule `wawona-gh`.
   constructors, `WWNCore*` trampolines). Do not write a new Wawona program in C.
   Upstream ports stay in their upstream language. See
   `.cursor/rules/wawona-rust-first.mdc` and `docs/agent-rules/wawona-rust-first.md`.
+- **Ghostty and toolbar keys are separate repos.** Terminal grid:
+  `github.com/Wawona/Ghostty` (Zig, every product target, iOS 13 static
+  archive, no product dylib). Toolbar keys: `github.com/Wawona/ToolbarKeys`
+  (Rust + UniFFI). Wawona draws. It does not own those libraries. Relay stays
+  the VM engine. Do not rewrite libghostty to Rust while Zig can target the OS.
 - **Mission-critical assurance.** AI-authored code has the same gates as human
   code. Risk decides the tier. VM memory, MMU, CPU, virtio, privilege, watchdog,
   and display ownership changes require named laws tied to production Rust,
@@ -114,10 +119,7 @@ not MCP. Skill `wawona-gh`. Rule `wawona-gh`.
   for isolated/incremental rebuilds. Not a monolithic `buildRustPackage`. Query
   `project=crate2nix` for `tools.nix`/`defaultCrateOverrides`/strategy questions.
 - **Apple = OS 26 / Liquid Glass**; **Material 3 Expressive = Android 16+ only**.
-- **iOS min OS vs SDK.** Mach-O min is iOS **11.0**. Compile only against the
-  **latest** iPhoneOS SDK (26 now; 27 when it ships). Never downgrade the SDK.
-  One ANGLE, one MoltenVK, Wawona patches. App Store / TrollStore / Sileo.
-  See `docs/agent-rules/wawona-ios-min-os.md`.
+- **iOS min OS vs SDK.** Mach-O min is iOS **13.0** through the latest iOS (26 now, 27 when the SDK ships). Never raise that floor to match a dependency (GhosttyKit 17 stays unlinked). Never downgrade the SDK. App Store IPAs do not ship a product `.dylib` (static archives; Apple `libswift*` is the exception). One ANGLE, one MoltenVK, Wawona patches. App Store / TrollStore / Sileo. See `docs/agent-rules/wawona-ios-min-os.md`.
 - **Patched software lives in `wwn-*` repos** (Wawona org): the cross-compile
   framework + common libraries + `wawona-pty` are in `wwn-toolchain`; the patched
   apps are in `wwn-zsh`, `wwn-weston` (+ `weston-simple-shm`), `wwn-iland`,
@@ -275,7 +277,7 @@ is on (`wawona-nested-compositor-cursor`). Full rule:
 - **Relay Wasm**. Mandatory on every product target including watchOS / tvOS /
   visionOS / Linux. Pulley on Apple mobile store artifacts. See
   `docs/agent-rules/wawona-relay-wasm.md`.
-- **iOS min OS**. Phone and iPad min OS is **11.0** against the **latest**
+- **iOS min OS**. Phone and iPad min OS is **13.0** against the **latest**
   iPhoneOS SDK only (26 now; 27 when it ships). Never downgrade the SDK. One
   ANGLE, one MoltenVK, Wawona patches. App Store / TrollStore / Sileo. See
   `docs/agent-rules/wawona-ios-min-os.md` and rule `wawona-ios-min-os`.
