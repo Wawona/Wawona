@@ -49,8 +49,11 @@ rec {
     "Sources/WawonaUI/VisionOS/WawonaVisionShell.swift"
     # Phone + tvOS Safari-style Wayland client tabs (#84).
     "Sources/WawonaUI/Session/WWNClientSessionTabs.swift"
-    # Native Rootshell-style extended keyboard toolbar and accessory (#85).
-    "Sources/WawonaUI/Keyboard/WWNKeyboardToolbar.swift"
+    # Toolbar drawing is github:Wawona/ToolbarKeys apple/Keyboard.
+    # That implementation starts from Rootshell
+    # (Copyright (c) 2026 Rootshell LLC, Kit Knox).
+    # The Wayland bridge, WWNKeyboardAccessoryView.swift, is compiled
+    # with Sources/WawonaUI by xcodegen. Do not list a second toolbar here.
     "Sources/WawonaWatch/WawonaWatchApp.swift"
     "Sources/WawonaWatch/MachineStatusView.swift"
     "Sources/WawonaWatch/QuickConnectView.swift"

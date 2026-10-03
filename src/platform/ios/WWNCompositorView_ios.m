@@ -1702,7 +1702,8 @@ API_AVAILABLE(ios(16.0))
 }
 
 /// Build the extended keyboard toolbar that sits above the iOS keyboard.
-/// Completely replaced legacy button grid with Rootshell's native toolbar keys implementation.
+/// The toolbar is ToolbarKeys (Rootshell's implementation,
+/// Copyright (c) 2026 Rootshell LLC, Kit Knox). This method only hosts it.
 - (UIView *)_buildAccessoryBar {
   Class accessoryClass = NSClassFromString(@"WWNKeyboardAccessoryView");
   if (accessoryClass) {
