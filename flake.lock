@@ -799,11 +799,11 @@
     "toolbar-keys": {
       "flake": false,
       "locked": {
-        "lastModified": 1791060597,
-        "narHash": "sha256-rqAE1YUVjt8lOJdATtTREq4XbEFPksztT+wThVjLtmc=",
+        "lastModified": 1791061537,
+        "narHash": "sha256-YsuZJ9OmoyPMiHcH+r5gl+KS6tIss6EtlTLWgUYpaak=",
         "ref": "development",
-        "rev": "f9f563cb62e9688b4e4e6e19809e35947e4ae81f",
-        "revCount": 2,
+        "rev": "713d580083658d540f8ab136dd3805a69523bbf0",
+        "revCount": 3,
         "type": "git",
         "url": "ssh://git@github.com/Wawona/ToolbarKeys"
       },
