@@ -145,6 +145,11 @@
     # Cited: docs/wwn-repo-dag.md.
     doorman.url = "github:Wawona/doorman";
     doorman.inputs.nixpkgs.follows = "nixpkgs";
+    # Keyboard toolbar (Rust model + UIKit views). L3'. Not a flake.
+    # Wawona compiles apple/Keyboard from this tree. Cited: docs/wwn-repo-dag.md.
+    # HTTPS github: hits org CAP 403 locally. Same SSH fetch as wwn-relay.
+    toolbar-keys.url = "git+ssh://git@github.com/Wawona/ToolbarKeys?ref=development";
+    toolbar-keys.flake = false;
   };
 
   outputs = inputs@{ self, nixpkgs, android-nixpkgs, rust-overlay, crate2nix, nix-appimage, wwn-toolchain, wwn-iland, wwn-kmscube, wwn-weston, wwn-zsh, wwn-ssh, wwn-waypipe, wwn-swinging-bridge, wwn-coreutils, wwn-foot, wwn-fastfetch, wwn-phoon-rs, wwn-neovim, wwn-relay, wwn-niri, wwn-iowatchdog, wwn-vphone, wwn-iomfb, wwn-igetty, doorman, ... }:
@@ -739,6 +744,7 @@
                 };
                 xcodeProject = (pkgs.callPackage ./dependencies/generators/xcodegen.nix {
                    inherit wawonaVersion wawonaSrc;
+                   toolbarKeysSrc = inputs."toolbar-keys";
                    macosBackend = null;
                    iosBackend = null;
                    iosSimBackend = null;
@@ -1258,6 +1264,7 @@
             in
             pkgs.callPackage ./dependencies/generators/xcodegen.nix {
               inherit wawonaVersion wawonaSrc platformFilter simulatorOnly mobileGuestArtifacts mobileGuestArtifacts16k mobileVmEngine;
+              toolbarKeysSrc = inputs."toolbar-keys";
               includeModeB = includeModeBEngine;
               mobileVmEngineModeB = if includeModeBEngine then mobileVmEngineModeB else null;
               iosDeps = if want "ios" || want "ipados" then (if simulatorOnly then empty else iosDeps) else empty;

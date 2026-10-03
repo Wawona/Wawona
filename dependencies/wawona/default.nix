@@ -1,4 +1,4 @@
-{ lib, pkgs, buildModule, wawonaSrc, wawonaVersion, pkgsAndroid, pkgsIos, rustBackendMacOS ? null, rustBackendIOS ? null, rustBackendIOSSim ? null, rustBackendAndroid ? null, weston ? null, waypipe ? null, androidSDK ? null, androidSrc ? null, ... }:
+{ lib, pkgs, buildModule, wawonaSrc, wawonaVersion, pkgsAndroid, pkgsIos, toolbarKeysSrc, rustBackendMacOS ? null, rustBackendIOS ? null, rustBackendIOSSim ? null, rustBackendAndroid ? null, weston ? null, waypipe ? null, androidSDK ? null, androidSrc ? null, ... }:
 
 # Central entry point for Wawona applications.
 # Returns: { ios, ipados, macos, watchos, android, linux, linux-vm, visionos, common, generators }
@@ -62,7 +62,7 @@ let
 
     generators = {
       xcodegen = pkgs.callPackage ../generators/xcodegen.nix {
-         inherit wawonaVersion rustBackendIOS rustBackendIOSSim rustBackendMacOS wawonaSrc buildModule;
+         inherit wawonaVersion rustBackendIOS rustBackendIOSSim rustBackendMacOS wawonaSrc buildModule toolbarKeysSrc;
          targetPkgs = pkgs;
          rustPlatform = pkgs.rustPlatform;
          libwaylandIOS = buildModule.buildForIOS "libwayland" { };

@@ -77,9 +77,12 @@ not MCP. Skill `wawona-gh`. Rule `wawona-gh`.
   `.cursor/rules/wawona-rust-first.mdc` and `docs/agent-rules/wawona-rust-first.md`.
 - **Ghostty and toolbar keys are separate repos.** Terminal grid:
   `github.com/Wawona/Ghostty` (Zig, every product target, iOS 13 static
-  archive, no product dylib). Toolbar keys: `github.com/Wawona/ToolbarKeys`
-  (Rust + UniFFI). Wawona draws. It does not own those libraries. Relay stays
-  the VM engine. Do not rewrite libghostty to Rust while Zig can target the OS.
+  archive, no product dylib, no vendored GhosttyKit header). Toolbar keys:
+  `github.com/Wawona/ToolbarKeys` (Rust + UniFFI, UIKit views in
+  `apple/Keyboard`). Wawona compiles that directory from the `toolbar-keys`
+  input. The Wayland accessory bridge stays here. Do not copy the Swift
+  toolbar back into `Sources/WawonaUI`. Relay stays the VM engine. Do not
+  rewrite libghostty to Rust while Zig can target the OS.
 - **Mission-critical assurance.** AI-authored code has the same gates as human
   code. Risk decides the tier. VM memory, MMU, CPU, virtio, privilege, watchdog,
   and display ownership changes require named laws tied to production Rust,

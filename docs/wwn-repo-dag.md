@@ -73,6 +73,11 @@ flowchart BT
 
 ## Current reality
 
+- `toolbar-keys` (`github:Wawona/ToolbarKeys`, `flake = false`) supplies
+  the keyboard toolbar. Wawona compiles `apple/Keyboard` from that input.
+  The Wayland accessory bridge stays in Wawona. Do not copy the Swift
+  toolbar back into `Sources/WawonaUI`. GhosttyKit headers stay out of
+  Wawona. The terminal grid is `github.com/Wawona/Ghostty`.
 - Flake-input edges are **already acyclic** L0→L4. No inversions (verified:
   toolchain has no wwn-* inputs; iland → toolchain only; weston → toolchain +
   iland + kmscube; waypipe/swinging-bridge/relay → toolchain (+ iland when GPU);

@@ -2,6 +2,8 @@
   pkgs,
   wawonaVersion,
   wawonaSrc,
+  # github:Wawona/ToolbarKeys (flake = false). UIKit toolbar views.
+  toolbarKeysSrc,
   macosBackend ? null,
   iosBackend ? null,
   iosSimBackend ? null,
@@ -1422,6 +1424,9 @@ PLIST
   # macos/ui and the unused MachinesRootView as a second app.
   appleMobileEnvUISources = [
     { path = "Sources/WawonaUI"; excludes = [ "Skip/**" ]; }
+    # Toolbar drawing lives in ToolbarKeys. The Wayland accessory bridge
+    # stays under Sources/WawonaUI/Keyboard.
+    { path = "${toolbarKeysSrc}/apple/Keyboard"; }
   ];
 
   # Xcode “Update to recommended settings” for framework targets with Swift/ObjC clients.

@@ -504,6 +504,7 @@
         "nix-xcodeenvtests": "nix-xcodeenvtests",
         "nixpkgs": "nixpkgs_2",
         "rust-overlay": "rust-overlay",
+        "toolbar-keys": "toolbar-keys",
         "wwn-coreutils": "wwn-coreutils",
         "wwn-fastfetch": "wwn-fastfetch",
         "wwn-foot": "wwn-foot",
@@ -793,6 +794,23 @@
         "owner": "nix-systems",
         "repo": "default",
         "type": "github"
+      }
+    },
+    "toolbar-keys": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1791060597,
+        "narHash": "sha256-rqAE1YUVjt8lOJdATtTREq4XbEFPksztT+wThVjLtmc=",
+        "ref": "development",
+        "rev": "f9f563cb62e9688b4e4e6e19809e35947e4ae81f",
+        "revCount": 2,
+        "type": "git",
+        "url": "ssh://git@github.com/Wawona/ToolbarKeys"
+      },
+      "original": {
+        "ref": "development",
+        "type": "git",
+        "url": "ssh://git@github.com/Wawona/ToolbarKeys"
       }
     },
     "wwn-coreutils": {
