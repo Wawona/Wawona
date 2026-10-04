@@ -8,7 +8,7 @@ that treated “Mode B” as macOS-iland-only.
 |---|---|---|
 | **Who** | App Store / TestFlight / Play / store-shaped macOS | TrollStore or Sileo on iOS/iPadOS, SIP fully disabled for macOS Desktop/LockScreen (`csrutil disable`), rooted/privileged Android |
 | **Distribution** | Apple / Google store binaries; notarized `.#wawona-macos` | TrollStore `.tipa`, `repo.wawona.io` Sileo packages, desktop-host macOS flavor |
-| **In store IPA/AAB** | Only Mode A | **Never**. No Mode B engines, no jailbreak strings, no JIT |
+| **In store IPA/AAB** | Only Mode A. No Cranelift, no `MAP_JIT`, no Hypervisor. iOS 27+ Wasm may use WebKit JIT through WasmerSDK | **Never**. No Mode B engines, no jailbreak strings |
 
 Related: [`iland-mode-a-b-desktop.md`](./iland-mode-a-b-desktop.md) (macOS iland
 Desktop dylib), [`swinging-bridge.md`](./swinging-bridge.md), [`vms-containers.md`](./vms-containers.md),

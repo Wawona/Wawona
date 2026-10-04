@@ -188,6 +188,9 @@ public struct VirtualMachineSettings: Codable, Hashable, Sendable {
     public var diskGiB: Int?
     public var maxDiskGiB: Int?
     public var notes: String?
+    public var nixFiles: [String: String]?
+    /// NixOS system generation for the next start. Nil boots the disk's current profile.
+    public var nixosGeneration: Int?
 
     public init(
         provider: String? = nil,
@@ -197,7 +200,9 @@ public struct VirtualMachineSettings: Codable, Hashable, Sendable {
         memoryMB: Int? = nil,
         diskGiB: Int? = nil,
         maxDiskGiB: Int? = nil,
-        notes: String? = nil
+        notes: String? = nil,
+        nixFiles: [String: String]? = nil,
+        nixosGeneration: Int? = nil
     ) {
         self.provider = provider
         self.vmIdentifier = vmIdentifier
@@ -207,6 +212,8 @@ public struct VirtualMachineSettings: Codable, Hashable, Sendable {
         self.diskGiB = diskGiB
         self.maxDiskGiB = maxDiskGiB
         self.notes = notes
+        self.nixFiles = nixFiles
+        self.nixosGeneration = nixosGeneration
     }
 }
 

@@ -281,7 +281,9 @@ is on (`wawona-nested-compositor-cursor`). Full rule:
 - **VM / containers**. Planned on macOS / iOS / iPadOS / Android / Linux;
   forbidden on tvOS / watchOS / visionOS. See `docs/vms-containers.md`.
 - **Relay Wasm**. Mandatory on every product target including watchOS / tvOS /
-  visionOS / Linux. Pulley on Apple mobile store artifacts. See
+  visionOS / Linux. Pulley on Apple mobile through iOS 26. iOS and iPadOS 27
+  Mode A uses Wasmer WASIX in a hidden WKWebView (WebKit JIT and JSPI) when
+  WasmerSDK is linked. No Cranelift or MAP_JIT in the store IPA. See
   `docs/agent-rules/wawona-relay-wasm.md`.
 - **iOS min OS**. Phone and iPad min OS is **13.0** against the **latest**
   iPhoneOS SDK only (26 now; 27 when it ships). Never downgrade the SDK. One

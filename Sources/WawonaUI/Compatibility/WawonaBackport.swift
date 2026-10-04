@@ -3,7 +3,7 @@ import SwiftUI
 /// Wawona's single availability namespace for SwiftUI APIs newer than iOS 13.
 /// Keep runtime checks here, never at feature call sites.
 public struct WawonaBackport<Content> {
-    fileprivate let content: Content
+    let content: Content
 
     fileprivate init(content: Content) {
         self.content = content
@@ -15,6 +15,23 @@ public extension View {
 }
 
 public extension WawonaBackport where Content: View {
+    func navigationTitle(_ title: LocalizedStringKey, inline: Bool = false) -> some View {
+        navigationTitleText(Text(title), inline: inline)
+    }
+
+    func navigationTitle<S: StringProtocol>(_ title: S, inline: Bool = false) -> some View {
+        navigationTitleText(Text(title), inline: inline)
+    }
+
+    @ViewBuilder
+    private func navigationTitleText(_ title: Text, inline: Bool) -> some View {
+        #if os(iOS)
+        content.navigationBarTitle(title, displayMode: inline ? .inline : .automatic)
+        #else
+        content.navigationTitle(title)
+        #endif
+    }
+
     /// Keeps Settings rows visibly separated on every supported SwiftUI host.
     /// iOS 15 adds a native row-separator API; iOS 13–14 get the same visual
     /// boundary without changing the app's deployment target.
@@ -24,9 +41,7 @@ public extension WawonaBackport where Content: View {
         if #available(iOS 15.0, tvOS 15.0, *) {
             content.listRowSeparator(.visible, edges: .bottom)
         } else {
-            content.overlay(alignment: .bottom) {
-                Divider()
-            }
+            content.overlay(Divider(), alignment: .bottom)
         }
         #else
         content
@@ -113,8 +128,10 @@ public extension WawonaBackport where Content: View {
         #if !os(visionOS)
         if #available(iOS 26.0, tvOS 26.0, macOS 26.0, *) {
             content.buttonStyle(.glassProminent)
-        } else {
+        } else if #available(iOS 15.0, tvOS 15.0, macOS 12.0, *) {
             content.buttonStyle(.borderedProminent)
+        } else {
+            content.buttonStyle(DefaultButtonStyle())
         }
         #else
         content.buttonStyle(.borderedProminent)
@@ -131,8 +148,10 @@ public extension WawonaBackport where Content: View {
         #elseif !os(visionOS)
         if #available(iOS 26.0, tvOS 26.0, *) {
             content.buttonStyle(.glassProminent)
-        } else {
+        } else if #available(iOS 15.0, tvOS 15.0, macOS 12.0, *) {
             content.buttonStyle(.borderedProminent)
+        } else {
+            content.buttonStyle(DefaultButtonStyle())
         }
         #else
         content.buttonStyle(.borderedProminent)
@@ -152,8 +171,7 @@ public extension WawonaBackport where Content: View {
             content
                 .buttonStyle(DefaultButtonStyle())
                 .background(
-                    Circle()
-                        .fill(.ultraThinMaterial)
+                    WawonaBackport<Any>.frosted(Circle())
                         .overlay(Circle().strokeBorder(Color.white.opacity(0.25), lineWidth: 0.5))
                         .shadow(color: Color.black.opacity(0.18), radius: 4, x: 0, y: 2)
                 )
@@ -220,8 +238,7 @@ public extension WawonaBackport where Content: View {
 
     private func fallbackGlassCapsule() -> some View {
         content.background(
-            Capsule()
-                .fill(.ultraThinMaterial)
+            WawonaBackport<Any>.frosted(Capsule())
                 .overlay(
                     Capsule()
                         .strokeBorder(
@@ -243,6 +260,15 @@ public extension WawonaBackport where Content: View {
 }
 
 public extension WawonaBackport where Content == Any {
+    @ViewBuilder
+    static func frosted<S: Shape>(_ shape: S) -> some View {
+        if #available(iOS 15.0, tvOS 15.0, macOS 12.0, watchOS 8.0, *) {
+            shape.fill(.ultraThinMaterial)
+        } else {
+            shape.fill(Color.primary.opacity(0.08))
+        }
+    }
+
     /// `NavigationStack` on iOS 16+, with `NavigationView` as the iOS 13-15 host.
     @ViewBuilder
     @MainActor

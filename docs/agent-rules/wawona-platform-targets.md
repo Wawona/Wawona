@@ -22,7 +22,7 @@ fallback) instead of removing it from the product surface.
 |---|---|---|---|---|---|---|---|
 | Native machines | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Remote (SSH/waypipe) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| VM / containers | ⏳ planned | ⏳ planned | ⏳ planned | ❌ | ⏳ planned | ❌ | ❌ |
+| VM / containers | ⏳ planned | ⏳ planned | ⏳ planned | ⏳ planned | ⏳ planned | ❌ | ❌ |
 | Multi-window (1 window per Wayland client) | ✅ | ✅ (if OS allows) | ✅ **required** | ✅ **required** | ⚠️ single primary | ❌ | ❌ |
 | Nested compositors + bundled clients | ✅ | ✅ | ✅ | ✅ **macOS parity** | ✅ | ✅ | ⚠️ limited |
 | Vulkan / OpenGL / ANGLE bundle | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⛔ blocked |
@@ -66,8 +66,8 @@ forbidden while iPhone is planned for those features.
   Not a VM and not a container. Separate from `virtual_machine` / `container`
   machine kinds.
 - **VM / containers**. Machines GUI kinds `virtual_machine` / `container`,
-  configured per-machine. ⏳ on **macOS, iOS, iPadOS, Android, Linux**. ❌ on
-  **tvOS, watchOS, visionOS**. Design **Mode A and Mode B** together
+  configured per-machine. ⏳ on **macOS, iOS, iPadOS, visionOS, Android, Linux**. ❌ on
+  **tvOS and watchOS**. Design **Mode A and Mode B** together
   (`wawona-mode-a-b`, `docs/mode-a-b.md`); never ship Mode B to App Store/Play.
   Engines (planned): NixOS prebuilts only. Guest GUI is Wayland into Wawona
   (iland), not UTM. See `wawona-linux-vms-relay-runtime`.
@@ -124,9 +124,8 @@ forbidden while iPhone is planned for those features.
    host multiple app windows.
 3. **visionOS ≈ macOS product parity** for bundled software, nested
    compositors/clients, Vulkan/OpenGL, and Machines UX (including Add New
-   Machine). **except VM/container machine kinds**, which are **❌ forbidden**
-   on visionOS (same class as tvOS/watchOS). Do not leave visionOS on a reduced
-   iOS-phone feature set for everything else.
+   Machine). VM/container machine kinds follow the iOS/iPadOS Relay static-CPU
+   path. Do not leave visionOS on a reduced iOS-phone feature set.
 4. **Desktop / LockScreen replacement**. **macOS + Android** (⏳ planned),
    plus **iOS and iPadOS** jailbreak tweaks documented only on the website /
    `repo.wawona.io` (Sileo). **Forbidden** on Linux and on App Store builds of
@@ -176,7 +175,11 @@ forbidden while iPhone is planned for those features.
     bundles. Fix each target's recipe/link/package/runtime path; never exclude
     either compositor to make the matrix green.
     **Relay Wasm** is the same class of mandatory bundle on every row including
-    Linux (`wawona-relay-wasm`). Do not size-gate watchOS off.
+    Linux (`wawona-relay-wasm`). Do not size-gate watchOS off. iOS and iPadOS
+    through OS 26 execute with Pulley. OS 27 Mode A executes the same bytecode
+    with Wasmer WASIX in a hidden WKWebView when WasmerSDK is linked. Cranelift
+    and MAP_JIT stay out of the store IPA. tvOS, watchOS, and visionOS stay
+    on Pulley.
 12. **Runtime-only graphics**. Iland DRM/KMS/GBM is userland emulation.
     Wawona code must never open real `/dev/dri` or `/dev/kgsl` nodes, forward
     real DRM/KMS/KGSL ioctls, ship kernel code, or require kernel patches.
@@ -189,6 +192,27 @@ forbidden while iPhone is planned for those features.
     Settings stub. Omit the iCloud section on tvOS. watchOS may show a status
     page that says Drive is unavailable. Do not add a fake toggle. CloudKit/KVS
     exist on tvOS; they are not this section. Re-check on SDK bumps.
+14. **Ghostty console on every product target.** Relay VM boot, SSH terminal,
+    and a native shell with no Wayland client use one Ghostty console.
+    The terminal grid is required on macOS, iOS, iPadOS, tvOS, watchOS,
+    visionOS, Android, and Linux. The renderer follows the GPU gate:
+
+    | Target | Renderer |
+    |---|---|
+    | iOS, iPadOS | Metal. Static `libghostty` rebuilt at deployment target 13.0. No product `.dylib`. Do not link published GhosttyKit (minimum OS 17). |
+    | tvOS, visionOS | Metal. Static archive for that OS. tvOS has Metal. |
+    | macOS | Metal. Static archive. macOS is not an App Store sandbox, and it still does not import an iOS `.dylib`. |
+    | Android, Linux | OpenGL inside libghostty (`renderer=opengl`). Not Metal. |
+    | watchOS | Software grid, presented with SpriteKit. Metal is blocked. Do not link Metal, ANGLE, or MoltenVK. |
+
+    An iOS-only host is not the feature. Each UI kit owns its view
+    (UIKit, AppKit, WatchKit/SwiftUI, Jetpack). Byte copy stays off the
+    UI thread. VM and container kinds stay forbidden on tvOS, watchOS,
+    and visionOS. The console on those targets is the native shell and
+    SSH, not a Linux VM. libghostty is Ghostty (Copyright (c) 2024
+    Mitchell Hashimoto, Ghostty contributors). The iOS embed that Wawona
+    starts from is Rootshell (Copyright (c) 2026 Rootshell LLC, Kit Knox).
+    Toolbar keys are the same Rootshell implementation, in ToolbarKeys.
 
 ## Implementation checkpoints
 
@@ -199,5 +223,5 @@ forbidden while iPhone is planned for those features.
   MoltenVK when `WWN_TVOS_GPU=1`.
 - When adding a Machines feature: classify it (native / remote / VM /
   container) and refuse it on targets that forbid that class.
-- iOS / iPadOS Mach-O min OS is 11.0 against the latest iPhoneOS SDK only.
+- iOS / iPadOS Mach-O min OS is 13.0 against the latest iPhoneOS SDK only.
   Never downgrade the SDK. One ANGLE, one MoltenVK. See `wawona-ios-min-os`.

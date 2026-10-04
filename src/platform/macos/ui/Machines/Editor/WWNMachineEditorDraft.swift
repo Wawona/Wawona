@@ -43,6 +43,11 @@ final class WWNMachineEditorDraft: ObservableObject {
   @Published var desktopSession: Bool
   @Published var imageArchivePath: String
 
+  // Native UI snapshot of the shared VM settings dictionary.
+  @Published var vmSettings: [String: Any]
+  let initialVMDiskGiB: Int
+  let relayMachineId: String
+
   // MARK: Waypipe transport
   @Published var waypipeDisplayNumber: String
   @Published var waypipeCompress: String
@@ -103,6 +108,11 @@ final class WWNMachineEditorDraft: ObservableObject {
     sshKeyPath = profile?.sshKeyPath ?? ""
     sshAuthMethod = profile?.sshAuthMethod ?? 0
     remoteCommand = profile?.remoteCommand ?? ""
+    relayMachineId = profile?.machineId ?? ""
+    let initialVMSettings = profile?.vmSettings ?? [:]
+    vmSettings = initialVMSettings
+    initialVMDiskGiB = profile == nil
+      ? 4 : ((initialVMSettings["diskGiB"] as? NSNumber)?.intValue ?? 8)
     let containerSettings = profile?.containerSettings ?? [:]
     containerRef = (containerSettings["containerRef"] as? String) ?? ""
     entryCommand = (containerSettings["entryCommand"] as? String) ?? ""
@@ -270,6 +280,9 @@ final class WWNMachineEditorDraft: ObservableObject {
     let profile = initial ?? WWNMachineProfile.default()
     profile.name = name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Unnamed Machine" : name
     profile.type = type
+    if type == kWWNMachineTypeVirtualMachine {
+      profile.vmSettings = vmSettings
+    }
     profile.sshHost = sanitizeSSHHost(sshHost)
     profile.sshUser = sshUser.trimmingCharacters(in: .whitespacesAndNewlines)
     profile.sshPort = normalizeSSHPort(sshPort)

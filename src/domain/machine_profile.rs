@@ -296,6 +296,12 @@ pub struct VirtualMachineSettings {
     pub disk_gib: Option<i32>,
     #[serde(default, skip_serializing_if = "Option::is_none", rename = "maxDiskGiB")]
     pub max_disk_gib: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "nixFiles")]
+    pub nix_files: Option<std::collections::HashMap<String, String>>,
+    /// NixOS system generation to select on the next start. Absent boots the
+    /// disk's current `system` profile.
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "nixosGeneration")]
+    pub nixos_generation: Option<i32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
 }
@@ -589,6 +595,10 @@ mod tests {
             memory_mb: Some(2048),
             disk_gib: Some(16),
             max_disk_gib: Some(64),
+            nix_files: Some(std::collections::HashMap::from([(
+                "configuration.nix".into(), "{ imports = [ ./relay.nix ]; }".into(),
+            )])),
+            nixos_generation: Some(2),
             notes: None,
         };
         let json = serde_json::to_string(&settings).unwrap();
@@ -596,6 +606,7 @@ mod tests {
         assert!(json.contains("\"memoryMB\":2048"), "{json}");
         assert!(json.contains("\"diskGiB\":16"), "{json}");
         assert!(json.contains("\"maxDiskGiB\":64"), "{json}");
+        assert!(json.contains("\"nixosGeneration\":2"), "{json}");
         assert_eq!(serde_json::from_str::<VirtualMachineSettings>(&json).unwrap(), settings);
     }
 

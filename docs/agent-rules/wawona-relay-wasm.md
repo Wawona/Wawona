@@ -13,13 +13,16 @@ Packages stay bytecode (`/wasm/v1`, `.wasm` documents). The engine that
 
 | Target | Mode A execute | Forbidden in that artifact |
 |---|---|---|
-| Apple mobile (iOS / iPadOS / tvOS / watchOS / visionOS) | Pulley / static | Cranelift native, `MAP_JIT` |
+| iOS / iPadOS through OS 26, plus tvOS / watchOS / visionOS | Pulley / static | Cranelift native, `MAP_JIT`, Wasmer, WKWebView JSPI |
+| iOS / iPadOS 27+ | Wasmer WASIX Swift SDK: hidden WKWebView, WebKit JIT, JSPI. Same `/wasm/v1` bytecode. Only when the build defines `WWN_WASMER_IOS27` and links WasmerSDK. Otherwise Pulley. | Cranelift native, `MAP_JIT`, a second wasm catalog, raising the deployment target above 13.0 |
 | Android Play / unrooted sideload | Pulley or store-safe Cranelift | Mode B JIT, AVF as a wasm path |
-| macOS / Linux | Wasmtime Cranelift | None of the mobile store JIT bans |
-| Mode B tipa / Sileo / desktop-host / root Android | Same packages; JIT execute allowed | A second wasm product, ElleKit-in-tipa |
+| macOS / Linux | Wasmtime Cranelift | A second Wasmer engine beside Cranelift |
+| Mode B tipa / Sileo / desktop-host / root Android | Same packages. Mode B iOS stays Pulley until `MAP_JIT`. Wasmer WebKit is the Mode A iOS 27 path, not the tipa path. | A second wasm product, ElleKit-in-tipa |
 
 There is **no** Mode B flavor of the Runtime catalog. Mode B may JIT-execute
-the same bytecode. Store IPA/AAB must not.
+the same bytecode where that artifact already allows it. Store IPA/AAB must
+not contain Cranelift or `MAP_JIT`. iOS 27+ Mode A may use WebKit's JIT
+through WasmerSDK.
 
 ## hello-wasi-gui must run on every target
 
@@ -54,6 +57,8 @@ KosmicKrisp) follow the platform GPU gate:
 - Treating tvOS / watchOS / visionOS wasm as optional or "transfer only"
 - Hiding `wawona-wasm` from Watch Machines so Start cannot run hello-wasi-gui
 - Cranelift native / `MAP_JIT` in App Store Apple-mobile
+- Wasmer, WKWebView, or JSPI Wasm execute on iOS 13-26
+- Linking WasmerSDK by raising the iOS deployment target above 13.0
 - Calling wasm a VM or a container
 - Claiming Metal / GLES / Vulkan wasm on watchOS (SDK has no public GPU)
 

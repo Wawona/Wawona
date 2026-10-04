@@ -99,7 +99,7 @@ channel).
 | Allowed | Forbidden |
 |---|---|
 | User `.wasm` as a **document** (Files / File Sharing / `scp`) | Downloading or `exec` of unsigned **Mach-O** |
-| Pulley **interpreter** on iOS / iPadOS / tvOS / watchOS / visionOS | Cranelift native / `MAP_JIT` on Apple mobile |
+| Pulley **interpreter** on iOS / iPadOS through OS 26, and on tvOS / watchOS / visionOS. iOS / iPadOS 27+ Mode A: Wasmer WASIX in a hidden WKWebView (WebKit JIT and JSPI) when WasmerSDK is linked | Cranelift native / `MAP_JIT` on Apple mobile. Wasmer or WKWebView Wasm on iOS 13-26 |
 | Sandbox FS preopen (HOME / Documents) | `..` escape, `dlopen` of `.wasm` |
 | POSIX sockets + host Wayland fd-bridge | Shipping WASM as the only way to run a port we already have natively |
 | Registry packages as Wasm **data** for the Runtime | Creating a storefront for other iOS apps |

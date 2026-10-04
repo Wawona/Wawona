@@ -20,7 +20,7 @@ The engine is **Wawona Relay** (`github.com/Wawona/Relay`, flake input
 | **Mode A** (App Store / TestFlight / Play / store-shaped) | **Only** Wawona’s App Store-compliant runtime: Relay static handlers, WASI via Pulley, jitless VM CPU if any. **No JIT**, no `MAP_JIT`, no Hypervisor.framework, no UTM |
 | **Mode B** (TrollStore / Sileo / SIP-off desktop-host / root Android) | That **same** Mode A runtime **plus** Mode B VM path. On iOS/iPadOS, `IosHv` when the probe window matches (`wawona-relay-ios-hypervisor`). Never Mode B in a store IPA/AAB |
 
-Wasm packages stay bytecode (`/wasm/`). Mode B may JIT-execute them; Mode A must not.
+Wasm packages stay bytecode (`/wasm/`). Mode B may JIT-execute them where that artifact already allows JIT. Mode A iOS 13-26 must not. Mode A iOS and iPadOS 27+ execute the same bytecode with Wasmer WASIX in a hidden WKWebView (WebKit JIT and JSPI) when WasmerSDK is linked. Mode A must not use Cranelift or MAP_JIT.
 Relay Wasm itself ships on **every** Wawona product target, including watchOS,
 tvOS, visionOS, and Linux (`wawona-relay-wasm`). VM/container kinds stay
 forbidden on watch/tv/vision. Wasm does not.

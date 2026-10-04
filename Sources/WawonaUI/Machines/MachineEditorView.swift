@@ -4,7 +4,8 @@ import WawonaUIContracts
 import UniformTypeIdentifiers
 
 struct MachineEditorView: View {
-    @Environment(\.dismiss) var dismiss
+    @Environment(\.presentationMode) private var presentationMode
+    private func dismiss() { presentationMode.wrappedValue.dismiss() }
 
     @State var name: String
     @State var type: MachineType
@@ -27,6 +28,8 @@ struct MachineEditorView: View {
     @State var vmMemoryMB: Int
     @State var vmDiskGiB: Int
     @State var vmNotes: String
+    @State var vmNixFiles: [String: String]
+    @State var vmNixosGeneration: Int?
     @State var wasmCommand: String
     @State var wasmModulePath: String
     @State var wasmPackage: String
@@ -69,6 +72,8 @@ struct MachineEditorView: View {
         _vmMemoryMB = State(initialValue: state.vmMemoryMB)
         _vmDiskGiB = State(initialValue: state.vmDiskGiB)
         _vmNotes = State(initialValue: state.vmNotes)
+        _vmNixFiles = State(initialValue: profile?.vmSettings?.nixFiles ?? [:])
+        _vmNixosGeneration = State(initialValue: profile?.vmSettings?.nixosGeneration)
         _wasmCommand = State(initialValue: state.wasmCommand)
         _wasmModulePath = State(initialValue: state.wasmModulePath)
         _wasmPackage = State(initialValue: state.wasmPackage)
@@ -141,8 +146,8 @@ struct MachineEditorView: View {
         WawonaBackport<Any>.navigation {
             Form {
                 // MARK: Identity + type in one compact section
-                Section("Profile") {
-                    TextField("Name", text: $name)
+                Section(header: Text("Profile")) {
+                    WawonaTextField("Name", text: $name)
                         .wwnA11y(WawonaA11y.machinesEditorName, label: "Name")
                     Picker("Type", selection: $type) {
                         ForEach(PlatformCapabilities.creatableMachineTypes, id: \.self) { t in
@@ -156,13 +161,13 @@ struct MachineEditorView: View {
                 // MARK: Native. Local Wayland socket, no network
                 if isWasm {
                     Section {
-                        TextField("Command", text: $wasmCommand, prompt: Text("wasm hello-wasi-gui"))
+                        WawonaTextField("Command", text: $wasmCommand, prompt: Text("wasm hello-wasi-gui"))
                             .wawonaTextFieldNoAutocaps()
                             .autocorrectionDisabled()
-                        TextField("Package", text: $wasmPackage, prompt: Text("hello-wasi-gui"))
+                        WawonaTextField("Package", text: $wasmPackage, prompt: Text("hello-wasi-gui"))
                             .wawonaTextFieldNoAutocaps()
                             .autocorrectionDisabled()
-                        Button(
+                        WawonaButton(
                             wasmCatalogLoading ? "Searching…" : "Search Catalog",
                             systemImage: "magnifyingglass"
                         ) {
@@ -170,7 +175,7 @@ struct MachineEditorView: View {
                         }
                         .disabled(wasmCatalogLoading)
                         ForEach(wasmCatalogResults) { pkg in
-                            Button {
+                            WawonaButton {
                                 wasmPackage = pkg.name
                                 wasmCommand = "wasm \(pkg.name)"
                                 downloadWasmPackage(pkg)
@@ -180,21 +185,21 @@ struct MachineEditorView: View {
                                     if !pkg.summary.isEmpty {
                                         Text(pkg.summary)
                                             .font(.caption)
-                                            .foregroundStyle(.secondary)
+                                            .foregroundColor(.secondary)
                                     }
                                 }
                             }
                         }
-                        TextField("Local .wasm", text: $wasmModulePath)
+                        WawonaTextField("Local .wasm", text: $wasmModulePath)
                             .wawonaTextFieldNoAutocaps()
                             .autocorrectionDisabled()
                         #if !os(tvOS)
-                        Button("Choose File", systemImage: "folder") {
+                        WawonaButton("Choose File", systemImage: "folder") {
                             fileImportKind = .wasm
                         }
                         #endif
                         ForEach(WasmLaunch.listLocalModules(), id: \.path) { url in
-                            Button(url.lastPathComponent, systemImage: "doc.badge.gearshape") {
+                            WawonaButton(url.lastPathComponent, systemImage: "doc.badge.gearshape") {
                                 wasmModulePath = url.path
                                 wasmCommand = "wasm \(url.path)"
                             }
@@ -224,7 +229,7 @@ struct MachineEditorView: View {
                                 Text("Wayland Client")
                                 Spacer()
                                 Text(ClientLauncher.displayName(for: selectedLauncherName))
-                                    .foregroundStyle(.secondary)
+                                    .foregroundColor(.secondary)
                                     .lineLimit(1)
                             }
                         }
@@ -237,50 +242,50 @@ struct MachineEditorView: View {
                 // MARK: Container - OCI image run via wwn-containers
                 if type == .container {
                     Section {
-                        TextField("Image", text: $containerRef, prompt: Text("e.g. alpine:3.20"))
+                        WawonaTextField("Image", text: $containerRef, prompt: Text("e.g. alpine:3.20"))
                             .wawonaTextFieldNoAutocaps()
                             .autocorrectionDisabled()
                             .wwnA11y(WawonaA11y.machinesEditorContainerRef, label: "Image")
-                        Button {
+                        WawonaButton {
                             showingImageBrowser = true
                         } label: {
-                            Label("Choose from library…", systemImage: "shippingbox")
+                            WawonaLabel("Choose from library…", systemImage: "shippingbox")
                         }
                         .wwnA11y(WawonaA11y.machinesEditorContainerHub, label: "Choose from library")
-                        Button {
+                        WawonaButton {
                             fileImportKind = .archive
                         } label: {
-                            Label("Import image archive…", systemImage: "square.and.arrow.down")
+                            WawonaLabel("Import image archive…", systemImage: "square.and.arrow.down")
                         }
                         .disabled(importingArchive)
 
                         if importingArchive {
                             HStack(spacing: 6) {
-                                ProgressView().controlSize(.small)
-                                Text("Importing…").font(.caption).foregroundStyle(.secondary)
+                                WawonaProgressView().backport.controlSize(.small)
+                                Text("Importing…").font(.caption).foregroundColor(.secondary)
                             }
                         }
                         if let importNote {
                             Text(importNote)
                                 .font(.caption)
-                                .foregroundStyle(importNote.hasPrefix("imported") ? .green : .red)
+                                .foregroundColor(importNote.hasPrefix("imported") ? .green : .red)
                         }
                         if !imageArchivePath.isEmpty {
                             HStack {
                                 Image(systemName: "internaldrive")
-                                    .foregroundStyle(.secondary)
+                                    .foregroundColor(.secondary)
                                 Text("Archive: \(displayArchivePath)")
                                     .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundColor(.secondary)
                                     .lineLimit(1)
                                     .truncationMode(.middle)
                                 Spacer()
-                                Button("Clear") { imageArchivePath = ""; containerRef = ""; importNote = nil }
+                                WawonaButton("Clear") { imageArchivePath = ""; containerRef = ""; importNote = nil }
                                     .buttonStyle(.borderless)
-                                    .controlSize(.small)
+                                    .backport.controlSize(.small)
                             }
                         }
-                        TextField("Command", text: $entryCommand, prompt: Text("e.g. /bin/sh"))
+                        WawonaTextField("Command", text: $entryCommand, prompt: Text("e.g. /bin/sh"))
                             .wawonaTextFieldNoAutocaps()
                             .autocorrectionDisabled()
                             .wwnA11y(WawonaA11y.machinesEditorContainerCommand, label: "Command")
@@ -304,9 +309,9 @@ struct MachineEditorView: View {
                             Text("Backend")
                             Spacer()
                             Text("Wawona Relay")
-                                .foregroundStyle(.secondary)
+                                .foregroundColor(.secondary)
                         }
-                        TextField("VM Identifier", text: $vmIdentifier, prompt: Text("e.g. studio-linux"))
+                        WawonaTextField("VM Identifier", text: $vmIdentifier, prompt: Text("e.g. studio-linux"))
                             .wawonaTextFieldNoAutocaps()
                             .autocorrectionDisabled()
                         Picker("NixOS guest", selection: $vmGuestVariant) {
@@ -314,12 +319,17 @@ struct MachineEditorView: View {
                             Text("NixOS 16K pages").tag("16k")
                         }
                         .wwnMachineChoicePicker()
+                        NixGenerationPicker(
+                            machineId: existingProfileId ?? "",
+                            vmIdentifier: vmIdentifier,
+                            generation: $vmNixosGeneration
+                        )
                         VStack(alignment: .leading, spacing: 6) {
                             HStack {
                                 Text("Memory")
                                 Spacer()
                                 Text("\(vmMemoryMB) MiB")
-                                    .foregroundStyle(.secondary)
+                                    .foregroundColor(.secondary)
                             }
                             Slider(
                                 value: Binding(
@@ -329,47 +339,56 @@ struct MachineEditorView: View {
                                 in: 256...4096,
                                 step: 256
                             )
+                            .accessibility(label: Text("Virtual machine memory"))
+                            .accessibility(identifier: "wwn.vm.memory")
                         }
                         VStack(alignment: .leading, spacing: 6) {
                             HStack {
-                                Text("Disk Size")
+                                Text("Storage")
                                 Spacer()
                                 Text("\(vmDiskGiB) GiB")
-                                    .foregroundStyle(.secondary)
+                                    .foregroundColor(.secondary)
                             }
                             Slider(
                                 value: Binding(
                                     get: { Double(vmDiskGiB) },
                                     set: { vmDiskGiB = Int($0.rounded()) }
                                 ),
-                                in: 4...64,
+                                in: Double(max(4, min(editingBaseline?.vmSettings?.diskGiB ?? 4, 64)))...64,
                                 step: 1
                             )
+                            .accessibility(label: Text("Virtual machine storage"))
+                            .accessibility(identifier: "wwn.vm.storage")
+                            HStack {
+                                Text("\(max(4, min(editingBaseline?.vmSettings?.diskGiB ?? 4, 64))) GiB")
+                                Spacer()
+                                Text("64 GiB")
+                            }
+                            .font(.caption)
+                            .foregroundColor(.secondary)
                         }
-                        TextField("VSock Port", text: $vmVsockPort, prompt: Text("Runtime default"))
-                            #if os(iOS)
-                            .keyboardType(.numberPad)
-                            #endif
-                        TextField("Notes", text: $vmNotes)
+                        WawonaLabeledContent("Connection", value: "Automatic")
+                        NixConfigurationEditor(files: $vmNixFiles)
+                        WawonaTextField("Notes", text: $vmNotes)
                     } header: {
                         Text("Virtual Machine")
                     } footer: {
-                        Text("The selected NixOS image is bundled and signed with Wawona. Relay verifies its manifest, memory and page size before start. The Wayland session is required to arrive through vsock and waypipe.")
+                        Text("Memory and storage changes apply after stopping and starting the machine. Storage can grow but cannot shrink. Changing the VM Identifier selects a different disk.")
                     }
                 }
 
                 // MARK: SSH - remote machine via network
                 if isSSH {
-                    Section("Remote Host") {
-                        TextField("Host", text: $sshHost, prompt: Text("e.g. 192.168.1.100 or host.local"))
+                    Section(header: Text("Remote Host")) {
+                        WawonaTextField("Host", text: $sshHost, prompt: Text("e.g. 192.168.1.100 or host.local"))
                             .wawonaTextFieldNoAutocaps()
                             .autocorrectionDisabled()
-                        TextField("Username", text: $sshUser, prompt: Text("e.g. user or root"))
+                        WawonaTextField("Username", text: $sshUser, prompt: Text("e.g. user or root"))
                             .wawonaTextFieldNoAutocaps()
                             .autocorrectionDisabled()
-                        SecureField("Password", text: $sshPassword, prompt: Text("Password"))
+                        SecureField("Password", text: $sshPassword)
                             .textContentType(.password)
-                        LabeledContent("Port") {
+                        WawonaLabeledContent("Port") {
                             NativeBoundedIntegerField(
                                 title: "Port",
                                 value: $sshPort,
@@ -384,16 +403,16 @@ struct MachineEditorView: View {
                             Text("Public Key").tag(1)
                         }
                         .wwnMachineChoicePicker()
-                        TextField("Key Path", text: $sshKeyPath, prompt: Text("e.g. ~/.ssh/id_ed25519"))
+                        WawonaTextField("Key Path", text: $sshKeyPath, prompt: Text("e.g. ~/.ssh/id_ed25519"))
                             .wawonaTextFieldNoAutocaps()
                             .autocorrectionDisabled()
-                        SecureField("Key Passphrase", text: $sshKeyPassphrase, prompt: Text("Passphrase"))
+                        SecureField("Key Passphrase", text: $sshKeyPassphrase)
                             .wawonaTextFieldNoAutocaps()
                             .autocorrectionDisabled()
                     }
 
                     Section {
-                        TextField(
+                        WawonaTextField(
                             type == .sshWaypipe ? "e.g. weston-simple-shm" : "e.g. bash -l",
                             text: $remoteCommand
                         )
@@ -408,34 +427,36 @@ struct MachineEditorView: View {
                     }
                 }
             }
-            .navigationTitle(editorNavigationTitle)
+            .backport.navigationTitle(editorNavigationTitle)
             #if os(iOS)
-            .scrollDismissesKeyboard(.immediately)
+            .backport.dismissKeyboardOnScroll()
             #endif
             .wwnA11y(WawonaA11y.machinesEditor, label: editorNavigationTitle)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+            .backport.navigationActions(trailingIsPrimary: false, leading: {
+                    WawonaButton { dismiss() } label: {
+                        Image(systemName: "xmark").font(.body.weight(.semibold))
+                            .frame(width: 44, height: 44)
+                    }
                         .backport.glassToolbarButton()
                         .wwnA11y(WawonaA11y.machinesEditorCancel, label: "Cancel")
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save", action: save)
-                        .backport.glassProminentToolbarButton()
+                }, trailing: {
+                    WawonaButton(action: save) {
+                        Image(systemName: "checkmark").font(.body.weight(.semibold))
+                    }
+                        .backport.blueGlassCircleButton(size: 44)
                         .disabled(hasValidationIssues)
                         .wwnA11y(WawonaA11y.machinesEditorSave, label: "Save")
-                }
-            }
+                })
             .sheet(isPresented: $showingImageBrowser) {
                 ContainerImagesView { ref in
                     containerRef = ref
                 }
             }
             #if !os(tvOS)
-            .fileImporter(
+            .backport.fileImporter(
                 isPresented: fileImporterPresented,
                 allowedContentTypes: fileImportKind == .wasm
-                    ? [UTType(filenameExtension: "wasm") ?? .data]
+                    ? [.filenameExtension("wasm")]
                     : [.item, .directory]
             ) { result in
                 let kind = fileImportKind
@@ -558,6 +579,10 @@ struct MachineEditorView: View {
                 )
             }
         }
+        if type == .virtualMachine {
+            profile.vmSettings?.nixFiles = vmNixFiles
+            profile.vmSettings?.nixosGeneration = vmNixosGeneration
+        }
         onSave(profile)
         dismiss()
     }
@@ -574,7 +599,11 @@ private extension View {
         #if os(macOS)
         self.pickerStyle(.menu)
         #else
-        self.pickerStyle(.navigationLink)
+        if #available(iOS 16.0, tvOS 16.0, watchOS 9.0, *) {
+            self.pickerStyle(.navigationLink)
+        } else {
+            self.pickerStyle(DefaultPickerStyle())
+        }
         #endif
     }
 }

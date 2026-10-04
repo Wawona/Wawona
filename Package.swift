@@ -5,7 +5,7 @@ let package = Package(
     name: "Wawona",
     defaultLocalization: "en",
     platforms: [
-        .iOS(.v17),
+        .iOS(.v13),
         .macOS(.v14),
         .watchOS(.v10),
         .visionOS(.v2)
@@ -54,5 +54,7 @@ let package = Package(
                 "WawonaModel"
             ]
         )
-    ]
+    ],
+    // Match the generated product projects while compiling with the latest SDK.
+    swiftLanguageModes: [.v5]
 )

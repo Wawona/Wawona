@@ -5,6 +5,7 @@
 #import "WWNWaypipeRunner.h"
 
 #import <TargetConditionals.h>
+#import <stdlib.h>
 #import <string.h>
 #import <unistd.h>
 #if TARGET_OS_IPHONE && defined(WWN_MODE_B) && WWN_MODE_B
@@ -18,6 +19,44 @@
 #else
 #define WWN_RELAY_ABI 0
 #endif
+
+#if WWN_RELAY_ABI && (TARGET_OS_IOS || TARGET_OS_OSX)
+// Native Rust waypipe duplicates this borrowed channel and runs its real client.
+extern int wwn_waypipe_client_fd(int fd);
+#endif
+
+// iOS/iPadOS 27+ Mode A Wasm. WasmerSDK (WasmerWKSDK) runs WASIX inside a
+// hidden WKWebView using WebKit's JIT and JSPI. This symbol stays in the
+// 13.0 binary. It reports linked only when the build defined
+// WWN_WASMER_IOS27 (iPhoneOS SDK 27 or newer, WasmerSDK package present).
+// iOS 13-26 and any binary without that SDK stay on Pulley.
+int wwn_wasmer_webkit_available(void) {
+#if defined(WWN_WASMER_IOS27) && WWN_WASMER_IOS27
+  NSOperatingSystemVersion version =
+      [[NSProcessInfo processInfo] operatingSystemVersion];
+  return version.majorVersion >= 27 ? 1 : 0;
+#else
+  return 0;
+#endif
+}
+
+int wwn_wasmer_webkit_start(const char *module_or_package, char **message_out) {
+  const char *message =
+      "iOS 27 Mode A Wasm needs WasmerSDK (hidden WKWebView, JSPI). "
+      "This binary was built without WWN_WASMER_IOS27, so Relay stays on Pulley.";
+  (void)module_or_package;
+  if (wwn_wasmer_webkit_available()) {
+    message = "Wasmer WASIX WKWebView host is linked but the sandbox start "
+              "is not wired in this build.";
+  }
+  if (message_out) {
+    *message_out = strdup(message ? message : "");
+  }
+  return -2;
+}
+
+NSNotificationName const WWNRelayGuestConsoleNeededNotification =
+    @"WWNRelayGuestConsoleNeededNotification";
 
 @interface WWNRelay ()
 @property(nonatomic, strong)
@@ -36,6 +75,15 @@
 @end
 
 @implementation WWNRelay
+
++ (NSString *)nixEditorDocument:(NSString *)name source:(NSString *)source {
+  char *output = NULL;
+  if (relay_nix_editor(name.UTF8String, source ? source.UTF8String : NULL, &output) != 0 || !output) return nil;
+  NSString *document = [NSString stringWithUTF8String:output];
+  relay_string_free(output);
+  return document;
+}
+
 
 + (instancetype)sharedRelay {
   static WWNRelay *shared;
@@ -110,6 +158,12 @@
     @"artifact" : [self artifactClass],
     @"image" : image ?: @"",
   } mutableCopy];
+  NSOperatingSystemVersion osVersion =
+      [[NSProcessInfo processInfo] operatingSystemVersion];
+  obj[@"apple_os_major"] = @((NSInteger)osVersion.majorVersion);
+  if (wwn_wasmer_webkit_available()) {
+    obj[@"wasmer_webkit_linked"] = @YES;
+  }
   NSString *machineId = profile.machineId;
   NSDictionary *vmSettings = [profile.vmSettings isKindOfClass:[NSDictionary class]]
                                 ? profile.vmSettings
@@ -192,6 +246,13 @@
       }
       obj[@"disk_gib"] = @(diskGiB);
       obj[@"max_disk_gib"] = @(maxDiskGiB);
+      id generation = vmSettings[@"nixosGeneration"];
+      if ([generation respondsToSelector:@selector(integerValue)]) {
+        NSInteger number = [generation integerValue];
+        if (number > 0 && number <= 1000000) {
+          obj[@"nixos_generation"] = @(number);
+        }
+      }
     }
   }
   NSData *data = [NSJSONSerialization dataWithJSONObject:obj options:0 error:nil];
@@ -286,7 +347,9 @@
   }
   if (rc == 0) {
     if (profile.machineId.length > 0 && handleOrError.length > 0) {
-      self.handlesByMachineId[profile.machineId] = handleOrError;
+      @synchronized(self) {
+        self.handlesByMachineId[profile.machineId] = handleOrError;
+      }
     }
     // Relay owns the live session. Never fall through to QEMU / legacy runners.
     if ([kind isEqualToString:@"wasm"]) {
@@ -297,16 +360,48 @@
         [backend isEqualToString:@"kvm-crosvm"] ||
         [backend isEqualToString:@"static-cpu"]) {
       if ([backend isEqualToString:@"static-cpu"]) {
+#if TARGET_OS_IOS || TARGET_OS_OSX
+        int transportRc = relay_start_host_waypipe(handleOrError.UTF8String,
+                                                  wwn_waypipe_client_fd);
+        if (transportRc != 0) {
+          if (relay_stop(handleOrError.UTF8String) == 0) {
+            @synchronized(self) {
+              [self.handlesByMachineId removeObjectForKey:profile.machineId];
+              [self.backendsByMachineId removeObjectForKey:profile.machineId];
+            }
+          }
+          if (error) {
+            *error = [NSError errorWithDomain:@"WWNRelay" code:6
+                                    userInfo:@{NSLocalizedDescriptionKey :
+                                      @"Relay could not attach native guest graphics."}];
+          }
+          return NO;
+        }
+#endif
 #if TARGET_OS_IPHONE && defined(WWN_MODE_B) && WWN_MODE_B
-        NSString *hid = profile.machineId.length > 0
-                            ? self.handlesByMachineId[profile.machineId]
-                            : nil;
+        NSString *hid = nil;
+        if (profile.machineId.length > 0) {
+          @synchronized(self) {
+            hid = [self.handlesByMachineId[profile.machineId] copy];
+          }
+        }
         [self startPresentingHandle:hid];
         dispatch_async(dispatch_get_main_queue(), ^{
           if (self.framePresents == 0) {
             [self startPresentingHandle:hid];
           }
         });
+#endif
+#if TARGET_OS_IPHONE
+        {
+          NSString *machineId = profile.machineId ?: @"";
+          dispatch_async(dispatch_get_main_queue(), ^{
+            [[NSNotificationCenter defaultCenter]
+                postNotificationName:WWNRelayGuestConsoleNeededNotification
+                              object:nil
+                            userInfo:@{@"machineId" : machineId, @"source" : @"relay"}];
+          });
+        }
 #endif
       }
       return YES;
@@ -492,18 +587,52 @@
 }
 #endif
 
+- (NSData *)consoleLogForMachineId:(NSString *)machineId {
+#if WWN_RELAY_ABI
+  NSString *handle = nil;
+  @synchronized(self) {
+    handle = [self.handlesByMachineId[machineId] copy];
+  }
+  if (handle.length == 0) {
+    return nil;
+  }
+  size_t length = 0;
+  if (relay_copy_log(handle.UTF8String, NULL, 0, &length) != 0) {
+    return nil;
+  }
+  if (length == 0) {
+    return [NSData data];
+  }
+  NSMutableData *bytes = [NSMutableData dataWithLength:length];
+  if (relay_copy_log(handle.UTF8String, bytes.mutableBytes, length, &length) != 0) {
+    return nil;
+  }
+  return bytes;
+#else
+  (void)machineId;
+  return nil;
+#endif
+}
+
 - (void)stopProfileWithMachineId:(NSString *)machineId {
 #if TARGET_OS_IPHONE && defined(WWN_MODE_B) && WWN_MODE_B
   [self stopFrameSource];
   self.frameHandle = nil;
 #endif
 #if WWN_RELAY_ABI
-  NSString *handle = self.handlesByMachineId[machineId];
-  if (handle.length > 0)
-    relay_stop(handle.UTF8String);
+  NSString *handle = nil;
+  @synchronized(self) {
+    handle = [self.handlesByMachineId[machineId] copy];
+  }
+  if (handle.length > 0 && relay_stop(handle.UTF8String) != 0) {
+    // Rust retains a delayed native worker. Preserve the handle for Stop retry.
+    return;
+  }
 #endif
-  [self.handlesByMachineId removeObjectForKey:machineId];
-  [self.backendsByMachineId removeObjectForKey:machineId];
+  @synchronized(self) {
+    [self.handlesByMachineId removeObjectForKey:machineId];
+    [self.backendsByMachineId removeObjectForKey:machineId];
+  }
   [[WWNVirtualMachineRunner sharedRunner] stopProfileWithMachineId:machineId];
   [[WWNContainerRunner sharedRunner] stopProfileWithMachineId:machineId];
 }
@@ -514,15 +643,39 @@
   self.frameHandle = nil;
 #endif
 #if WWN_RELAY_ABI
-  for (NSString *handle in self.handlesByMachineId.allValues) {
-    if (handle.length > 0)
-      relay_stop(handle.UTF8String);
+  NSDictionary<NSString *, NSString *> *snapshot = nil;
+  @synchronized(self) {
+    snapshot = [self.handlesByMachineId copy];
+  }
+  for (NSString *machineId in snapshot) {
+    NSString *handle = snapshot[machineId];
+    if (handle.length > 0 && relay_stop(handle.UTF8String) != 0)
+      continue;
+    @synchronized(self) {
+      [self.handlesByMachineId removeObjectForKey:machineId];
+      [self.backendsByMachineId removeObjectForKey:machineId];
+    }
+  }
+#else
+  @synchronized(self) {
+    [self.handlesByMachineId removeAllObjects];
+    [self.backendsByMachineId removeAllObjects];
   }
 #endif
-  [self.handlesByMachineId removeAllObjects];
-  [self.backendsByMachineId removeAllObjects];
   [[WWNVirtualMachineRunner sharedRunner] stopAll];
   [[WWNContainerRunner sharedRunner] stopAll];
+}
+
+- (BOOL)hasOwnedSessions {
+  @synchronized(self) {
+    return self.handlesByMachineId.count > 0;
+  }
+}
+
+- (BOOL)hasOwnedSessionForMachineId:(NSString *)machineId {
+  @synchronized(self) {
+    return machineId.length > 0 && self.handlesByMachineId[machineId].length > 0;
+  }
 }
 
 - (NSString *)resolvedBackendForMachineId:(NSString *)machineId {

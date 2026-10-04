@@ -31,16 +31,16 @@ public struct MachineSettingsView: View {
         Form {
             if PlatformGlobalSettings.isAvailable {
                 Section {
-                    Button("Open Wawona Settings", systemImage: "gearshape") {
+                    WawonaButton("Open Wawona Settings", systemImage: "gearshape") {
                         PlatformGlobalSettings.open()
                     }
                 }
             }
 
-            Section("Machine") {
+            Section(header: Text("Machine")) {
                 if profileStore.profiles.isEmpty {
                     Text("No machine profiles available.")
-                        .foregroundStyle(.secondary)
+                        .foregroundColor(.secondary)
                 } else {
                     #if os(watchOS)
                     if let mid = machineID, let pick = profileStore.profiles.first(where: { $0.id == mid }) {
@@ -101,14 +101,14 @@ public struct MachineSettingsView: View {
             }
         }
 
-        .navigationTitle("Machine Settings")
+        .backport.navigationTitle("Machine Settings")
         .onAppear {
             syncSelectionFromStore()
         }
-        .onChange(of: machineID) { _, _ in
+        .backport.onChange(of: machineID) { _, _ in
             syncSelectionFromStore()
         }
-        .onChange(of: profileStore.profiles.map(\.id)) { _, ids in
+        .backport.onChange(of: profileStore.profiles.map(\.id)) { _, ids in
             if let selectedID, !ids.contains(selectedID) {
                 self.selectedID = ids.first
                 loadDraft()
@@ -117,10 +117,10 @@ public struct MachineSettingsView: View {
             }
         }
         #if os(macOS) || os(iOS) || os(visionOS)
-        .fileImporter(
+        .backport.fileImporter(
             isPresented: $showingFileImporter,
             allowedContentTypes: fileImportTarget == .wasm
-                ? [UTType(filenameExtension: "wasm") ?? .data]
+                ? [.filenameExtension("wasm")]
                 : [.item]
         ) { result in
             let target = fileImportTarget
@@ -141,13 +141,12 @@ public struct MachineSettingsView: View {
                 fileImportError = error.localizedDescription
             }
         }
-        .alert("Could Not Import File", isPresented: Binding(
+        .alert(isPresented: Binding(
             get: { fileImportError != nil },
             set: { if !$0 { fileImportError = nil } }
         )) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(fileImportError ?? "")
+            Alert(title: Text("Could Not Import File"), message: Text(fileImportError ?? ""),
+                  dismissButton: .default(Text("OK")))
         }
         #endif
     }
@@ -156,14 +155,14 @@ public struct MachineSettingsView: View {
     private func containerSection() -> some View {
         Section {
             NativeSettingsRow("Image", summary: "OCI image reference") {
-                TextField("", text: containerImageRefBinding)
+                WawonaTextField("", text: containerImageRefBinding)
                     .labelsHidden()
                     .wawonaTextFieldNoAutocaps()
                     .autocorrectionDisabled()
                     .multilineTextAlignment(.trailing)
             }
             NativeSettingsRow("Command", summary: "Process and arguments") {
-                TextField("", text: containerCommandBinding)
+                WawonaTextField("", text: containerCommandBinding)
                     .labelsHidden()
                     .wawonaTextFieldNoAutocaps()
                     .autocorrectionDisabled()
@@ -174,14 +173,14 @@ public struct MachineSettingsView: View {
                 summary: "MiB, or inherit",
                 help: "Sets a bounded memory limit from 64 MiB through 1,048,576 MiB. Clear the field to inherit the global default."
             ) {
-                TextField(
+                WawonaTextField(
                     "",
                     text: $containerMemoryText,
                     prompt: Text("Inherit")
                 )
                 .labelsHidden()
                 .multilineTextAlignment(.trailing)
-                .onChange(of: containerMemoryText) { _, newValue in
+                .backport.onChange(of: containerMemoryText) { _, newValue in
                     let digits = newValue.filter(\.isNumber)
                     guard let parsed = Int(digits) else {
                         if containerMemoryText != digits { containerMemoryText = digits }
@@ -192,7 +191,7 @@ public struct MachineSettingsView: View {
                         containerMemoryText = normalized
                     }
                 }
-                .onSubmit { commitContainerMemory() }
+                .backport.onSubmit { commitContainerMemory() }
             }
             NativeSettingsRow("Read-Only Rootfs") {
                 Toggle("", isOn: containerReadOnlyBinding).labelsHidden()
@@ -210,14 +209,14 @@ public struct MachineSettingsView: View {
                 help: "Choose a local kernel image. If unset, Wawona discovers the configured global kernel."
             ) {
                 HStack {
-                    Button("Choose", systemImage: "folder") {
+                    WawonaButton("Choose", systemImage: "folder") {
                         presentImporter(.containerKernel)
                     }
                     if !containerKernelPathBinding.wrappedValue.isEmpty {
-                        Button("Clear", systemImage: "xmark") {
+                        WawonaButton("Clear", systemImage: "xmark") {
                             containerKernelPathBinding.wrappedValue = ""
                         }
-                        .accessibilityLabel("Inherit global kernel")
+                        .accessibility(label: Text("Inherit global kernel"))
                     }
                 }
             }
@@ -227,14 +226,14 @@ public struct MachineSettingsView: View {
                 help: "Choose a local init filesystem. If unset, Wawona uses the configured global initfs."
             ) {
                 HStack {
-                    Button("Choose", systemImage: "folder") {
+                    WawonaButton("Choose", systemImage: "folder") {
                         presentImporter(.containerInitfs)
                     }
                     if !containerInitfsPathBinding.wrappedValue.isEmpty {
-                        Button("Clear", systemImage: "xmark") {
+                        WawonaButton("Clear", systemImage: "xmark") {
                             containerInitfsPathBinding.wrappedValue = ""
                         }
-                        .accessibilityLabel("Inherit global initfs")
+                        .accessibility(label: Text("Inherit global initfs"))
                     }
                 }
             }
@@ -247,45 +246,47 @@ public struct MachineSettingsView: View {
     @ViewBuilder
     private func virtualMachineSection() -> some View {
         Section {
-            LabeledContent("Runtime", value: "Wawona Relay")
-                .foregroundStyle(.secondary)
-            TextField("VM Identifier", text: vmIdentifierBinding)
+            WawonaLabeledContent("Runtime", value: "Wawona Relay")
+                .foregroundColor(.secondary)
+            WawonaTextField("VM Identifier", text: vmIdentifierBinding)
                 .wawonaTextFieldNoAutocaps()
                 .autocorrectionDisabled()
             Picker("NixOS guest", selection: vmGuestVariantBinding) {
                 Text("NixOS 4K pages").tag("4k")
                 Text("NixOS 16K pages").tag("16k")
             }
+            if let draft {
+                NixGenerationPicker(
+                    machineId: draft.id,
+                    vmIdentifier: draft.vmSettings?.vmIdentifier ?? "",
+                    generation: vmNixosGenerationBinding
+                )
+            }
             VStack(alignment: .leading, spacing: 6) {
-                LabeledContent("Memory", value: "\(Int(vmMemoryMBBinding.wrappedValue)) MiB")
+                WawonaLabeledContent("Memory", value: "\(Int(vmMemoryMBBinding.wrappedValue)) MiB")
                 Slider(value: vmMemoryMBBinding, in: 256...4096, step: 256)
+                    .accessibility(label: Text("Virtual machine memory"))
+                    .accessibility(identifier: "wwn.vm.memory")
             }
             VStack(alignment: .leading, spacing: 6) {
-                LabeledContent("Disk Size", value: "\(Int(vmDiskGiBBinding.wrappedValue)) GiB")
-                Slider(value: vmDiskGiBBinding, in: 4...64, step: 1)
+                WawonaLabeledContent("Storage", value: "\(Int(vmDiskGiBBinding.wrappedValue)) GiB")
+                Slider(value: vmDiskGiBBinding, in: vmMinimumDiskGiB...64, step: 1)
+                    .accessibility(label: Text("Virtual machine storage"))
+                    .accessibility(identifier: "wwn.vm.storage")
             }
-            TextField("Wayland VSock Port", text: vmVsockPortBinding)
-                .wawonaTextFieldNoAutocaps()
-                .autocorrectionDisabled()
-                #if os(iOS)
-                .keyboardType(.numberPad)
-                #endif
-            TextField("Notes", text: vmNotesBinding, axis: .vertical)
-                .lineLimit(2...5)
+            WawonaLabeledContent("Connection", value: "Automatic")
+            WawonaTextField("Notes", text: vmNotesBinding, axis: .vertical)
+                .lineLimit(5)
         } header: {
             Text("Virtual Machine")
         } footer: {
-            #if os(macOS)
-            Text("Relay VZ boots the signed, bundled NixOS guest. The identifier selects its persistent writable disk. VSock defaults to 1024 when empty.")
-            #else
-            Text("Relay validates the selected signed, bundled NixOS guest before launch. The identifier reserves its persistent writable-disk identity. Wayland is carried only over vsock and waypipe. VSock defaults to 1024 when empty.")
-            #endif
+            Text("Memory and storage changes apply after stopping and starting the machine. Storage can grow but cannot shrink. Changing the VM Identifier selects a different disk.")
         }
     }
 
     @ViewBuilder
     private func displaySection() -> some View {
-        Section("Display") {
+        Section(header: Text("Display")) {
             // Force SSD is macOS-only: CSD only renders on macOS Wawona, so
             // every other target is effectively always SSD (#120). Hiding the
             // toggle elsewhere avoids a control that cannot change anything.
@@ -305,7 +306,7 @@ public struct MachineSettingsView: View {
                 summary: "Socket name",
                 help: "The Wayland display socket name used by clients, such as wayland-0."
             ) {
-                TextField("", text: waylandDisplayBinding)
+                WawonaTextField("", text: waylandDisplayBinding)
                     .labelsHidden()
                     .wawonaTextFieldNoAutocaps()
                     .autocorrectionDisabled()
@@ -316,9 +317,9 @@ public struct MachineSettingsView: View {
 
     @ViewBuilder
     private func machineConfigurationSection(for profile: MachineProfile) -> some View {
-        Section("Machine Configuration") {
+        Section(header: Text("Machine Configuration")) {
             NativeSettingsRow("Name") {
-                TextField("", text: nameBinding)
+                WawonaTextField("", text: nameBinding)
                     .labelsHidden()
                     .multilineTextAlignment(.trailing)
             }
@@ -337,7 +338,7 @@ public struct MachineSettingsView: View {
 
             if profile.type == .wasm {
                 NativeSettingsRow("Command", summary: "Wasm launch command") {
-                    TextField("", text: Binding(
+                    WawonaTextField("", text: Binding(
                         get: { draft?.runtimeOverrides.wasmCommand ?? "wasm hello-wasi-gui" },
                         set: { value in updateDraft { $0.runtimeOverrides.wasmCommand = value } }
                     ))
@@ -347,7 +348,7 @@ public struct MachineSettingsView: View {
                     .multilineTextAlignment(.trailing)
                 }
                 NativeSettingsRow("Package", summary: "Installed package name") {
-                    TextField("", text: Binding(
+                    WawonaTextField("", text: Binding(
                         get: { draft?.runtimeOverrides.wasmPackage ?? "" },
                         set: { value in updateDraft { $0.runtimeOverrides.wasmPackage = value } }
                     ))
@@ -363,14 +364,14 @@ public struct MachineSettingsView: View {
                     help: "Choose a local .wasm module. If unset, Wawona runs the bundled hello-wasi-gui module."
                 ) {
                     HStack {
-                        Button("Choose", systemImage: "doc.badge.gearshape") {
+                        WawonaButton("Choose", systemImage: "doc.badge.gearshape") {
                             presentImporter(.wasm)
                         }
                         if !wasmModulePathBinding.wrappedValue.isEmpty {
-                            Button("Clear", systemImage: "xmark") {
+                            WawonaButton("Clear", systemImage: "xmark") {
                                 wasmModulePathBinding.wrappedValue = ""
                             }
-                            .accessibilityLabel("Use bundled Wasm module")
+                            .accessibility(label: Text("Use bundled Wasm module"))
                         }
                     }
                 }
@@ -400,7 +401,7 @@ public struct MachineSettingsView: View {
                         Text("Wayland Client")
                         Spacer()
                         Text(wasmClientSummary)
-                            .foregroundStyle(.secondary)
+                            .foregroundColor(.secondary)
                             .lineLimit(1)
                     }
                 }
@@ -413,14 +414,14 @@ public struct MachineSettingsView: View {
                         help: "Choose a local .wasm module. If unset, Wawona runs bundled hello-wasi-gui."
                     ) {
                         HStack {
-                            Button("Choose", systemImage: "doc.badge.gearshape") {
+                            WawonaButton("Choose", systemImage: "doc.badge.gearshape") {
                                 presentImporter(.wasm)
                             }
                             if !wasmModulePathBinding.wrappedValue.isEmpty {
-                                Button("Clear", systemImage: "xmark") {
+                                WawonaButton("Clear", systemImage: "xmark") {
                                     wasmModulePathBinding.wrappedValue = ""
                                 }
-                                .accessibilityLabel("Use bundled Wasm module")
+                                .accessibility(label: Text("Use bundled Wasm module"))
                             }
                         }
                     }
@@ -430,7 +431,7 @@ public struct MachineSettingsView: View {
 
             if let backend = profile.type.backendEngineLabel {
                 NativeSettingsRow("Backend") {
-                    Text(backend).foregroundStyle(.secondary)
+                    Text(backend).foregroundColor(.secondary)
                 }
             }
         }
@@ -438,16 +439,16 @@ public struct MachineSettingsView: View {
 
     @ViewBuilder
     private func sshWaypipeSection() -> some View {
-        Section("SSH / Waypipe") {
+        Section(header: Text("SSH / Waypipe")) {
             NativeSettingsRow("Host", summary: "Remote address") {
-                TextField("", text: sshHostBinding, prompt: Text("e.g. 192.168.1.100 or host.local"))
+                WawonaTextField("", text: sshHostBinding, prompt: Text("e.g. 192.168.1.100 or host.local"))
                     .labelsHidden()
                     .wawonaTextFieldNoAutocaps()
                     .autocorrectionDisabled()
                     .multilineTextAlignment(.trailing)
             }
             NativeSettingsRow("User", summary: "SSH username") {
-                TextField("", text: sshUserBinding, prompt: Text("e.g. user or root"))
+                WawonaTextField("", text: sshUserBinding, prompt: Text("e.g. user or root"))
                     .labelsHidden()
                     .wawonaTextFieldNoAutocaps()
                     .autocorrectionDisabled()
@@ -467,7 +468,7 @@ public struct MachineSettingsView: View {
                 )
             }
             NativeSettingsRow("Password") {
-                SecureField("", text: sshPasswordBinding, prompt: Text("Password"))
+                SecureField("", text: sshPasswordBinding)
                     .labelsHidden()
                     .textContentType(.password)
             }
@@ -476,12 +477,12 @@ public struct MachineSettingsView: View {
                 summary: "Optional override",
                 help: "Leave empty to use the global Waypipe password."
             ) {
-                SecureField("", text: waypipeSSHPasswordBinding, prompt: Text("Optional override"))
+                SecureField("", text: waypipeSSHPasswordBinding)
                     .labelsHidden()
                     .textContentType(.password)
             }
             NativeSettingsRow("Remote Command") {
-                TextField("", text: remoteCommandBinding, prompt: Text("e.g. weston-simple-shm"))
+                WawonaTextField("", text: remoteCommandBinding, prompt: Text("e.g. weston-simple-shm"))
                     .labelsHidden()
                     .wawonaTextFieldNoAutocaps()
                     .autocorrectionDisabled()
@@ -495,7 +496,7 @@ public struct MachineSettingsView: View {
 
     @ViewBuilder
     private func inputSection() -> some View {
-        Section("Input") {
+        Section(header: Text("Input")) {
             if draft?.nestedCompositorDrawsOwnCursor == true {
                 NativeSettingsRow(
                     "Cursor",
@@ -503,8 +504,8 @@ public struct MachineSettingsView: View {
                     help: "Nested compositors draw their own cursor. Wawona hides the host overlay in both Multi-Touch and Touchpad modes."
                 ) {
                     Image(systemName: "cursorarrow")
-                        .foregroundStyle(.secondary)
-                        .accessibilityLabel("Drawn by compositor")
+                        .foregroundColor(.secondary)
+                        .accessibility(label: Text("Drawn by compositor"))
                 }
             } else {
                 NativeSettingsRow(
@@ -527,7 +528,7 @@ public struct MachineSettingsView: View {
             }
             #if os(tvOS)
             NativeSettingsRow("Touch Input") {
-                Text("Touchpad").foregroundStyle(.secondary)
+                Text("Touchpad").foregroundColor(.secondary)
             }
             #else
             NativeSettingsRow(
@@ -555,7 +556,7 @@ public struct MachineSettingsView: View {
 
     @ViewBuilder
     private func graphicsSection() -> some View {
-        Section("Graphics") {
+        Section(header: Text("Graphics")) {
             NativeSettingsRow("Renderer") {
                 Picker("", selection: rendererSelectionBinding) {
                     Text("Inherit (\(preferences.renderer))").tag("")
@@ -590,7 +591,7 @@ public struct MachineSettingsView: View {
                 }
             } else {
                 NativeSettingsRow("GPU Stack") {
-                    Text("Unavailable").foregroundStyle(.secondary)
+                    Text("Unavailable").foregroundColor(.secondary)
                 }
             }
             NativeSettingsRow("Enable HDR") {
@@ -601,7 +602,7 @@ public struct MachineSettingsView: View {
 
     @ViewBuilder
     private func advancedSection() -> some View {
-        Section("Advanced") {
+        Section(header: Text("Advanced")) {
             NativeSettingsRow("Log Level") {
                 Picker("", selection: logLevelBinding) {
                     Text("Debug").tag("debug")
@@ -644,7 +645,7 @@ public struct MachineSettingsView: View {
 
     @ViewBuilder
     private func environmentSection() -> some View {
-        Section("Environment Variables") {
+        Section(header: Text("Environment Variables")) {
             if let draft {
                 NavigationLink {
                     EnvironmentVariablesView(
@@ -659,10 +660,10 @@ public struct MachineSettingsView: View {
                         Spacer()
                         let count = draft.runtimeOverrides.environment?.count ?? 0
                         Text(count == 0 ? "Inherit global" : "\(count) override(s)")
-                            .foregroundStyle(.secondary)
+                            .foregroundColor(.secondary)
                     }
                 }
-                .accessibilityIdentifier("wwn.settings.environment.machine")
+                .accessibility(identifier: "wwn.settings.environment.machine")
             }
         }
     }
@@ -670,8 +671,8 @@ public struct MachineSettingsView: View {
     @ViewBuilder
     private func resolvedPreviewSection(for profile: MachineProfile) -> some View {
         let resolved = preferences.resolvedSettings(for: profile)
-        Section("Runtime") {
-            DisclosureGroup("Resolved Values") {
+        Section(header: Text("Runtime")) {
+            WawonaDisclosureGroup("Resolved Values") {
             Text("Renderer: \(resolved.renderer)")
             Text("Vulkan Driver: \(resolved.vulkanDriver)")
             Text("OpenGL Driver: \(resolved.openGLDriver)")
@@ -718,7 +719,7 @@ public struct MachineSettingsView: View {
     @ViewBuilder
     private func actionsSection() -> some View {
         Section {
-            Button("Save Machine Settings", systemImage: "checkmark") {
+            WawonaButton("Save Machine Settings", systemImage: "checkmark") {
                 commitContainerMemory()
                 guard let latestDraft = draft else { return }
                 WWNKeychain.shared.setSSHPassword(latestDraft.sshPassword, for: latestDraft.id)
@@ -1199,13 +1200,36 @@ public struct MachineSettingsView: View {
         )
     }
 
+    private var vmMinimumDiskGiB: Double {
+        let saved = profileStore.profiles.first { $0.id == draft?.id }
+        return Double(max(4, min(saved?.vmSettings?.diskGiB ?? 4, 64)))
+    }
+
     private var vmDiskGiBBinding: Binding<Double> {
         Binding(
             get: { Double(draft?.vmSettings?.diskGiB ?? 8) },
             set: { value in
                 updateVMSettings {
-                    $0.diskGiB = max(4, min(Int(value.rounded()), 64))
+                    $0.diskGiB = max(Int(vmMinimumDiskGiB), min(Int(value.rounded()), 64))
                     $0.maxDiskGiB = 64
+                }
+            }
+        )
+    }
+
+    private var vmNixosGenerationBinding: Binding<Int?> {
+        Binding(
+            get: {
+                let number = draft?.vmSettings?.nixosGeneration ?? 0
+                return number > 0 ? number : nil
+            },
+            set: { value in
+                updateVMSettings { settings in
+                    if let value, value > 0 {
+                        settings.nixosGeneration = value
+                    } else {
+                        settings.nixosGeneration = nil
+                    }
                 }
             }
         )
@@ -1320,7 +1344,11 @@ private extension View {
         #if os(macOS)
         self.pickerStyle(.menu)
         #else
-        self.pickerStyle(.navigationLink)
+        if #available(iOS 16.0, tvOS 16.0, watchOS 9.0, *) {
+            self.pickerStyle(.navigationLink)
+        } else {
+            self.pickerStyle(DefaultPickerStyle())
+        }
         #endif
     }
 }
