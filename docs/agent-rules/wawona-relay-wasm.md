@@ -60,6 +60,10 @@ KosmicKrisp) follow the platform GPU gate:
 - Wasmer, WKWebView, or JSPI Wasm execute on iOS 13-26
 - Linking WasmerSDK by raising the iOS deployment target above 13.0
 - Calling wasm a VM or a container
+- A wasm fuel burst that cannot cover one Wayland SHM frame. `chess-wawona`
+  trapped `all fuel consumed` after `toplevel configure 0x0` on a 25_000_000
+  budget. Keep the burst at 2_000_000_000, refill it after a `socket_recv`
+  that returns bytes, and do not turn fuel off (a pure wasm spin must still trap)
 - Claiming Metal / GLES / Vulkan wasm on watchOS (SDK has no public GPU)
 
 Canonical: [`../wasm-wasi.md`](../wasm-wasi.md), `wawona-native-compositors`,
