@@ -110,6 +110,46 @@ pub extern "C" fn WWNCoreGetSocketName(core: *const WWNCore) -> *mut c_char {
         .unwrap_or(std::ptr::null_mut())
 }
 
+/// Create a connected Wayland client socket for an in-process test harness.
+/// The caller owns the returned fd. Returns -1 on failure.
+#[no_mangle]
+pub extern "C" fn WWNCoreCreateTestClientSocket(
+    core: *mut WWNCore,
+    out_client_id: *mut u32,
+) -> i32 {
+    if core.is_null() {
+        return -1;
+    }
+    let core = unsafe { &*core };
+    match core.create_test_client_socket() {
+        Ok((fd, client_id)) => {
+            if !out_client_id.is_null() {
+                unsafe {
+                    *out_client_id = client_id;
+                }
+            }
+            fd
+        }
+        Err(_) => -1,
+    }
+}
+
+/// Move a mapped toplevel by its client-scoped wl_surface object id.
+#[no_mangle]
+pub extern "C" fn WWNCorePositionWindowForProtocolSurface(
+    core: *mut WWNCore,
+    client_id: u32,
+    protocol_surface_id: u32,
+    x: i32,
+    y: i32,
+) -> bool {
+    if core.is_null() {
+        return false;
+    }
+    let core = unsafe { &*core };
+    core.position_window_for_protocol_surface(client_id, protocol_surface_id, x, y)
+}
+
 /// Free a string returned by this API
 #[no_mangle]
 pub extern "C" fn WWNStringFree(s: *mut c_char) {
@@ -1023,6 +1063,48 @@ pub extern "C" fn WWNCoreNotifyFramePresented(
 // Input Injection API
 // ----------------------------------------------------------------------------
 
+/// Inject absolute pointer motion in compositor-global coordinates.
+#[no_mangle]
+pub extern "C" fn WWNCoreInjectPointerMotionGlobal(
+    core: *mut WWNCore,
+    x: f64,
+    y: f64,
+    timestamp_ms: u32,
+) {
+    if core.is_null() {
+        return;
+    }
+    let core = unsafe { &*core };
+    core.inject_input_event(super::types::InputEvent::PointerMotion {
+        x,
+        y,
+        time_ms: timestamp_ms,
+    });
+}
+
+/// Inject a pointer button using the seat's current global pointer focus.
+#[no_mangle]
+pub extern "C" fn WWNCoreInjectPointerButtonGlobal(
+    core: *mut WWNCore,
+    button_code: u32,
+    state: u32,
+    timestamp_ms: u32,
+) {
+    if core.is_null() {
+        return;
+    }
+    let core = unsafe { &*core };
+    core.inject_input_event(super::types::InputEvent::PointerButton {
+        button: button_code,
+        state: if state == 1 {
+            ButtonState::Pressed
+        } else {
+            ButtonState::Released
+        },
+        time_ms: timestamp_ms,
+    });
+}
+
 /// Resolve topmost window id at compositor-global coordinates.
 /// Returns 0 when no surface/window exists at that location.
 #[no_mangle]
@@ -1361,10 +1443,7 @@ pub extern "C" fn WWNCoreReloadHostKeymap(core: *mut WWNCore) {
 ///
 /// macOS / Linux (`OskHost::Never`) return `output_height` unchanged.
 #[no_mangle]
-pub extern "C" fn WWNCoreUsableOutputHeight(
-    output_height: i32,
-    keyboard_overlap: i32,
-) -> i32 {
+pub extern "C" fn WWNCoreUsableOutputHeight(output_height: i32, keyboard_overlap: i32) -> i32 {
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         crate::core::input::work_area::usable_output_height(
             output_height,
@@ -2160,12 +2239,20 @@ pub extern "C" fn WWNWriteWestonHoneycombIni(
         let client = if shell_client.is_null() {
             None
         } else {
-            Some(unsafe { CStr::from_ptr(shell_client) }.to_string_lossy().into_owned())
+            Some(
+                unsafe { CStr::from_ptr(shell_client) }
+                    .to_string_lossy()
+                    .into_owned(),
+            )
         };
         let im = if input_method.is_null() {
             None
         } else {
-            Some(unsafe { CStr::from_ptr(input_method) }.to_string_lossy().into_owned())
+            Some(
+                unsafe { CStr::from_ptr(input_method) }
+                    .to_string_lossy()
+                    .into_owned(),
+            )
         };
         match crate::core::weston_ini::write_honeycomb_ini(
             std::path::Path::new(path.as_ref()),
