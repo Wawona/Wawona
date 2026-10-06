@@ -24,6 +24,27 @@ the same bytecode where that artifact already allows it. Store IPA/AAB must
 not contain Cranelift or `MAP_JIT`. iOS 27+ Mode A may use WebKit's JIT
 through WasmerSDK.
 
+## Later WASIX registry (planned)
+
+Catalog ABI and publish path:
+[`repo.wawona.io/docs/wasm-abi.md`](https://github.com/Wawona/repo.wawona.io/blob/development/docs/wasm-abi.md).
+WebC / wasinix / WASIX packages are **not shipping**. The execute table above
+stays in force.
+
+Before any WASIX package is treated as runnable everywhere, the **same
+commit** must update this rule and product docs for:
+
+1. Store iOS / iPadOS through OS 26: Pulley only. A WASIX package does **not**
+   run on store Pulley.
+2. macOS / Linux: today Wasmtime Cranelift only (no second Wasmer engine).
+   WASIX-as-Wasmer-only **changes** that row. Do not link Wasmer into those
+   products in a docs-only or registry tip.
+3. `wpm install` stays Wasm package data. Never `docker pull`. Containers stay
+   Machines kind `container`.
+
+Hard reject until that gate: claim WASIX runs on Pulley or on store iOS /
+iPadOS ≤ 26 Mode A.
+
 ## hello-wasi-gui must run on every target
 
 `examples/hello-wasi-gui` (bundled `hello-wasi-gui.wasm`) is the required
@@ -65,6 +86,9 @@ KosmicKrisp) follow the platform GPU gate:
   budget. Keep the burst at 2_000_000_000, refill it after a `socket_recv`
   that returns bytes, and do not turn fuel off (a pure wasm spin must still trap)
 - Claiming Metal / GLES / Vulkan wasm on watchOS (SDK has no public GPU)
+- Claiming WASIX / WebC / wasinix packages are runnable on store Pulley or on
+  iOS / iPadOS ≤ 26 Mode A before the Later WASIX registry same-commit gate
 
 Canonical: [`../wasm-wasi.md`](../wasm-wasi.md), `wawona-native-compositors`,
 `wawona-linux-vms-relay-runtime`. Cursor: `.cursor/rules/wawona-relay-wasm.mdc`.
+Registry ABI: `repo.wawona.io/docs/wasm-abi.md`.

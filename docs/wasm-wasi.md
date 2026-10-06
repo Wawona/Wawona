@@ -17,7 +17,9 @@ What you get instead is a **portable Wawona Runtime** (`wwn-wasm`) that
 developers and users can target once and run across Wawona with **full App
 Store / Play compliance**:
 
-- Compile to **WASI P1 or P2** (`.wasm` bytecode as a document / package)
+- Compile to **WASI P1 or P2** (`.wasm` bytecode as a document / package).
+  **WASIX** and Wasmer/WebC publish via wasinix are **planned** (not shipping);
+  ABI rules: [`repo.wawona.io/docs/wasm-abi.md`](https://github.com/Wawona/repo.wawona.io/blob/development/docs/wasm-abi.md)
 - Install with **`wpm`** (Wawona Runtime’s dedicated package manager) or drop
   into Files from the Mode A registry. Browse packages at
   [`repo.wawona.io/search/?channel=wasm`](https://repo.wawona.io/search/?channel=wasm)

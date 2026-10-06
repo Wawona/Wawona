@@ -19,14 +19,14 @@ jailbreak.
 
 | Deb audience | Client | Architecture | Jailbreak? | Store/Play? |
 |--------------|--------|--------------|------------|-------------|
-| Jailbroken iOS / iPadOS | Sileo / Zebra | `iphoneos-arm64` rootless, `iphoneos-arm` rootful, optional `iphoneos-arm64e` RootHide | Yes | No |
+| Jailbroken iOS / iPadOS | Sileo, then Irisin, then Zebra, then Cydia | `iphoneos-arm64` rootless, `iphoneos-arm` rootful (Sileo, Zebra, Cydia), `iphoneos-arm64e` RootHide. Irisin is iOS 16+ rootless and roothide. Cydia is last, for older jailbreaks such as iOS 13. | Yes | No |
 | Sideloaded Android | Termux `apt` | `aarch64` (and `arm`) | **No** | **No** |
 
 `/search/` is a chooser, not a mixed All channel. HTML landings:
 
 - `/wasm/` → wasm catalog
 - `/deb/` → deb catalog (both APT audiences)
-- `/jailbreak/` → iOS Sileo bookmark. Not Termux. Not APT root.
+- `/jailbreak/` → iOS bookmark. Order: Sileo, Irisin, Zebra, Cydia. Not Termux. Not APT root.
 - `/termux/` → Termux Android sideload bookmark. Not jailbreak. Not Play.
 
 ## Firewall
@@ -34,13 +34,16 @@ jailbreak.
 | Consumer | `/wasm/v1` | APT `/` (`Packages`) |
 |----------|------------|----------------------|
 | App Store / Play `wpm` | Yes | **Never** |
-| Sileo (jailbroken iOS) | Optional | Yes |
+| Sileo, Irisin, Zebra, or Cydia (jailbroken iOS) | Optional | Yes |
 | Termux (sideloaded Android) | Optional | Yes |
 
 Store `wpm` default registry: `https://repo.wawona.io/wasm/v1` (client fetches
 `/index.json`). Never fetch `/jailbreak/`, `/termux/`, `/Packages`, or `.deb`.
 
-This host publishes `/wasm/v1`. Do not auto-mirror nixpkgs here.
+This host publishes `/wasm/v1` today. Do not auto-mirror nixpkgs here.
+Later Wasmer/WebC publish (wasinix, ABI P1/P2/WASIX): `docs/wasm-abi.md`.
+Not shipping yet. Do not claim wasinix/WebC is live. Do not revive
+`nixpkgs2wasi` / `n2w`.
 
 ## Never
 
@@ -51,6 +54,9 @@ This host publishes `/wasm/v1`. Do not auto-mirror nixpkgs here.
 - Call Termux debs jailbreak, or lump "Sileo / Termux" as one jailbreak product
 - Put `.deb` install paths in App Store / Play binaries (wasm only for stores)
 - Claim this host is jailbreak-only. `/wasm/v1` is the store-safe exception.
+- Claim WASIX / WebC / wasinix packages are shipping before `docs/wasm-abi.md`
+  phase work lands
+- Revive `nixpkgs2wasi` / `n2w` as the wasm producer
 - Route `where_to_edit("repo.wawona.io …")` to the `wawona.io` website
 - Mention retired `wwn-apt` in `setup.sh`
 - Drop `hello-wasi` from `wasm/v1/index.json`
@@ -71,3 +77,34 @@ python3 scripts/check-packages.py --offline --root .
 ## Out of scope unless asked
 
 Mode B IPA auto-publish to Sileo. In-app Packages GUI. OCI `/wasm/v2`.
+
+## Procursus launchctl (Mode B APT)
+
+Procursus did **not** port `launchd`. Apple's daemon still owns LaunchAgents
+and LaunchDaemons plists. `ProcursusTeam/launchctl` `v1.2.0` is an XPC client
+(`bootstrap` / `bootout` / `load` / `unload` / `list` / `kickstart`).
+
+Recipe: `pkgs/systems/launchctl`. Flake: `nix build .#launchctl` (rootless
+`iphoneos-arm64`) and `.#launchctl-rootful` (`iphoneos-arm`). Package id
+`wawona-launch-tools` Provides/Conflicts/Replaces `launchctl`.
+
+Build on **host Darwin stdenv + Xcode `xcrun` iphoneos**, not the iOS-cross
+stdenv (that rebuilds a Darwin bootstrap for a clang you replace). Unset
+nixpkgs `DEVELOPER_DIR` before `xcrun`. Sign with `ldid-procursus` (AGPL
+nativeBuildInput, never linked into the App Store app). Never ship this
+binary in Mode A / TestFlight IPA. `dpkg-deb -b` must not nest `$out/deb`
+inside `data.tar`.
+
+vphone lab writes this source for you:
+`/var/jb/etc/apt/sources.list.d/wawona.list` plus the Irisin add URL.
+Do not HID-type `https://repo.wawona.io/` into Irisin Search.
+
+## Third-party wasm submissions
+
+- A generated upstream `index.json` may be a single-package fragment. Merge
+  its rows into the existing `packages` array; preserve the current catalog.
+- Match the shipped blob's SHA-256 against the submitted `digest`. Pin the
+  source URL to the commit used to build it, and include dependency licenses.
+- `wasi: p1` packages can use the conventional filename `component.wasm`
+  while remaining core modules. Do not relabel them as WASI P2 components.
+- Host ABI tests on Linux are not Apple/Android Wawona device validation.

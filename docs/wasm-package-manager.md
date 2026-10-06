@@ -295,6 +295,47 @@ DAG: package client stays L3′ → `wwn-toolchain` only; no weston/iland flake 
 - Third-party Wasm registries (user-added; still Wasm-only URL allowlist).
 - watchOS Runtime if size gate lifts.
 
+### Later registry (planned). Wasmer / WebC / wasinix
+
+Not started. Does **not** replace today’s `/wasm/v1` `index.json` client until
+publish and `wpm` are updated together. Canonical ABI and phase order:
+[`repo.wawona.io/docs/wasm-abi.md`](https://github.com/Wawona/repo.wawona.io/blob/development/docs/wasm-abi.md).
+
+```text
+nixpkgs userspace (curated)
+        ↓
+wasinix (upstream; later Wawona fork + wawona publish profile)
+        ↓
+.webc via wasmer publish → repo.wawona.io/wasm
+        ↓
+wpm install (still Wasm package data, never docker pull)
+        ↓
+Relay execute (P1/P2 on current engines; WASIX only where Wasmer is linked)
+```
+
+- **Distribution unit:** WebC (`.webc`). Orchestration: `wasix-org/wasinix`,
+  not a Wawona-written nixpkgs converter (`nixpkgs2wasi` retired).
+- **Names:** `wawona/wasi-p1-grep`, `wawona/wasix-ripgrep`, …
+- **ABI labels:** WASI P1 (`wasm32-wasip1`), WASI P2 (`wasm32-wasip2`),
+  WASIX (`wasm32-wasix`, Wasmer only). One label from syscalls actually used.
+- **Metadata:** `wasmer.toml` `[package.metadata]` carries `abi`, `abi-target`,
+  `runtime`, `posix`, `wayland`, plus source revision and rebuild command.
+- **CI (when packaging starts):** build declared target, smoke-test, reject a
+  P1 package that calls `fork`, emit `.webc`, then wasinix publish.
+- **Phase order:** (1) fork wasinix → publication at `repo.wawona.io/wasm`,
+  (2) P1 CLI set (coreutils, busybox, grep, sed, awk, gzip, curl, wget, jq,
+  git, make, cmake, CPython core, lua, sqlite3, openssl CLI),
+  (3) five WASIX tools including bash and nix,
+  (4) Wayland proof (Weston terminal client) then a small GTK client
+  (open: libwayland-client / Mesa on `wasm32-wasix`, WASIX socket → Wawona).
+- **Coverage:** large P1 CLI set; WASIX for POSIX CLI and language runtimes;
+  Wayland / desktops wait on Mesa + socket bridge.
+- **Same-commit product gate** before any WASIX blob is treated as runnable
+  everywhere: update `wawona-relay-wasm` (WASIX-as-Wasmer-only may allow a
+  Wasmer engine on macOS/Linux later; do not link Wasmer there in a docs-only
+  tip). Store iOS/iPadOS through OS 26 stays Pulley; WASIX does not run on
+  that path. `wpm` stays bytecode, never `docker pull`.
+
 ### Parallel track. Jailbreak channel (unchanged intent)
 
 - Keep Procursus/Sileo flat APT at the **repo root** (`https://repo.wawona.io/`).
@@ -309,7 +350,7 @@ DAG: package client stays L3′ → `wwn-toolchain` only; no weston/iland flake 
 |------|--------|-----|
 | `wayland-shm-demo` | `wwn-wasm/examples/wayland-shm` | Proves GUI path: Wasm → Wayland → compositor |
 | `hello-wasi` | tiny P1 CLI | Install/search smoke |
-| (later) community ports | external | Long-tail; native ports stay preferred when we have them |
+| (later) wasinix P1/P2/WASIX set | curated via wasinix → WebC | See `repo.wawona.io/docs/wasm-abi.md`. Native ports stay preferred when we have them |
 
 ## Success criteria
 
