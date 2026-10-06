@@ -20,7 +20,6 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-vphone-lab-recover` | Dead / stale vphone lab. Sock refused. Stuck SSH wait. |
 | `wawona-ios-min-os` | iOS 13-27+ min OS vs latest SDK. One ANGLE, one MoltenVK. Never downgrade SDK. |
 | `wawona-gh` | GitHub issues/milestones/PRs/`gh run`. Shell + local `gh`. No GitHub MCP. |
-| `wawona-nixpkgs2wasi` | Curated nixpkgs → WASI / WPM (`n2w`). Not Relay. Not an auto-mirror. |
 | `wawona-relay-ios-hypervisor` | Mode B iOS Hypervisor.framework via Relay. Not QEMU HVF. |
 | `wawona-relay` | Linux VMs / OCI / Mode A wasm. Mode A bench + PageTranslate. |
 | `wawona-formal-verification` | Mandatory Kani + Verus gate for Relay VM Rust. |
@@ -122,9 +121,6 @@ skill, add one row. Capture flow: `wawona-learn`.
 - Prove `ld` locally. Do not burn Gate: products to discover duplicates.
 - Relay Wasm ships on every target. Do not size-gate watchOS off.
 - hello-wasi-gui (`wl_shm`) must run on Watch Machines Start. Transfer is not run.
-- **nixpkgs2wasi** (`n2w`) is the curated nixpkgs → WASI/WPM producer. Not an
-  auto-mirror. Not the interpreter (Relay). `n2w verify` is the runtime
-  profile, not App Review. Native `wwn-foot` stays. North star is `foot.wasm`.
 - Machines kind `wasm` is first-class on every target. Native still runs wasm
   via `wawona-wasm` / `wasm` / `wpm`. Do not strip `bundledAppID` on wasm load.
   Catalog is `repo.wawona.io/wasm/v1` only. Android Start uses JNI

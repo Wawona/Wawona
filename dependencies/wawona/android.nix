@@ -63,7 +63,6 @@ let
   # phoon (wwn-phoon-rs): clean-room Rust moon-phase utility; PIE libphoon_bin.so.
   phoonAndroid = buildModule.buildForAndroid "phoon" { };
   wasmAndroid = buildModule.buildForAndroid "wawona-wasm" { };
-  neovimAndroid = buildModule.buildForAndroid "neovim" { };
   waypipeAndroid = buildModule.buildForAndroid "waypipe" { };
   # niri (wwn-niri): nested scrollable-tiling compositor (Wayland client of
   # the Wawona compositor); ships as lib/libniri_bin.so (exec'd, waypipe pattern).
@@ -133,7 +132,7 @@ let
   androidQuadFrag = ../../src/platform/android/rendering/shaders/android_quad.frag;
 
   shellTools = import ./android-shell-tools.nix {
-    inherit lib zshAndroid fastfetchAndroid coreutilsAndroid phoonAndroid wasmAndroid neovimAndroid waypipeAndroid niriAndroid fuzzelAndroid footAndroid applicationsCatalog;
+    inherit lib zshAndroid fastfetchAndroid coreutilsAndroid phoonAndroid wasmAndroid waypipeAndroid niriAndroid fuzzelAndroid footAndroid applicationsCatalog;
   };
   westonData = import ./android-weston-data.nix { inherit lib pkgs; };
   bundledClients = import ./android-bundled-clients.nix {
@@ -511,7 +510,7 @@ EOF
         echo "WARNING: Missing Android sshpass binary at ${sshpassBin}/bin/sshpass"
       fi
 
-      # Bundled interactive shell tools (zsh, fastfetch, neovim); see
+      # Bundled interactive shell tools (zsh, fastfetch); see
       # android-shell-tools.nix.
       ${shellTools.preBuildFragment}
 

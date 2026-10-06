@@ -7,7 +7,7 @@
  * allow-missing the way ELF does when the referencing .o is -force_load'd.
  * Provide empty definitions so platforms without those archives still link.
  *
- * tvOS omits neovim and fuzzel (no fork/exec launcher). GPU clients
+ * tvOS omits fuzzel (no fork/exec launcher). GPU clients
  * (ANGLE, kmscube, weston-simple-egl) are linked for real; do not stub
  * those entry points or they collide with the archives.
  */
@@ -20,11 +20,6 @@
 
 #if defined(__APPLE__) && TARGET_OS_TV
 
-int wawona_nvim_main(int argc, char *argv[]) {
-  (void)argc;
-  (void)argv;
-  return 127;
-}
 /* NOTE: no fastfetch_main stub. Wwn-fastfetch (libfastfetch.a) is now
  * -force_load'd on tvOS too (fastfetchLdflags tvosDeps), so the real
  * fastfetch_main wrapper is always pulled. A strong stub here would be a

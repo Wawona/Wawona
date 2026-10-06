@@ -1,4 +1,4 @@
-# Bundled interactive shell tools (zsh, fastfetch, neovim, waypipe, niri, fuzzel, foot)
+# Bundled interactive shell tools (zsh, fastfetch, waypipe, niri, fuzzel, foot)
 # for the Android APK.
 #
 # Extracted from android.nix to keep that file under its maintainability budget.
@@ -13,7 +13,6 @@
   coreutilsAndroid ? null,
   phoonAndroid ? null,
   wasmAndroid ? null,
-  neovimAndroid ? null,
   waypipeAndroid ? null,
   niriAndroid ? null,
   fuzzelAndroid ? null,
@@ -78,22 +77,6 @@
     fi
     ''}
 
-    ${lib.optionalString (neovimAndroid != null) ''
-    if [ -f "${neovimAndroid}/bin/nvim" ]; then
-      cp -L "${neovimAndroid}/bin/nvim" "$JNI_LIB_DIR/libnvim_bin.so"
-      chmod +x "$JNI_LIB_DIR/libnvim_bin.so"
-      # Runtime tree for VIMRUNTIME (issue #81); extracted by WawonaShellRootfs.
-      if [ -d "${neovimAndroid}/share/nvim/runtime" ]; then
-        mkdir -p app/src/main/assets/nvim/runtime
-        cp -RL "${neovimAndroid}/share/nvim/runtime/." app/src/main/assets/nvim/runtime/
-        chmod -R u+w app/src/main/assets/nvim
-      else
-        echo "WARNING: Missing Android neovim runtime at ${neovimAndroid}/share/nvim/runtime"
-      fi
-    else
-      echo "WARNING: Missing Android neovim binary at ${neovimAndroid}/bin/nvim"
-    fi
-    ''}
 
     ${lib.optionalString (waypipeAndroid != null) ''
     # Use the real ELF binary (not the Vulkan wrapper script in $out/bin/waypipe).

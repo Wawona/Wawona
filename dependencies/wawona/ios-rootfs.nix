@@ -110,7 +110,7 @@ let
     typeset -gaU WAWONA_INPROC_CLIENTS
     WAWONA_INPROC_CLIENTS=(
       help wawona wasm sh zsh bash dash
-      fastfetch phoon nvim vi vim waypipe waypipe-rs ssh ssh-keygen scp
+      fastfetch phoon waypipe waypipe-rs ssh ssh-keygen scp
       fuzzel foot weston-terminal
       weston-simple-shm weston-simple-egl weston-flower weston-clickdot weston-smoke
       weston-eventdemo weston-resizor weston-cliptest weston-transformed
@@ -184,7 +184,7 @@ EOF
       ls cat cp mv rm mkdir rmdir ln touch echo pwd head tail wc sort cut tr \
       seq basename dirname stat du df date env printenv uname whoami yes tee \
       nl tac fold expand unexpand truncate \
-      fastfetch phoon nvim vi vim waypipe waypipe-rs ssh ssh-keygen scp \
+      fastfetch phoon waypipe waypipe-rs ssh ssh-keygen scp \
       fuzzel foot weston-terminal \
       weston-simple-shm weston-simple-egl weston-flower weston-clickdot weston-smoke \
       weston-eventdemo weston-resizor weston-cliptest weston-transformed \

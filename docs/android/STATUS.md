@@ -46,7 +46,6 @@ Apple uses **Liquid Glass (OS 26)**; Android uses **M3 Expressive (API 36+)** pe
 | `.#wawona-android-backend` | `libwawona.a` for NDK |
 | `.#weston-android` | Weston clients (optional link) |
 | `.#weston-compositor-android` | Nested Weston compositor archive |
-| `.#zsh-android` / `.#foot-android` / `.#fastfetch-android` / `.#neovim-android` | Bundled shell/tools |
 | `.#iland-android` | iland userland (DRM path; optional) |
 | `.#gradlegen` | Android Studio project with Nix backend |
 
@@ -62,7 +61,6 @@ Studio fallback: `WAWONA_STUDIO_FALLBACK=1` in CMake → stub renderer/core for 
 | weston-simple-shm | Real archive (not smoke stub) | Full |
 | Nested Weston compositor | `weston-compositor-android` wired | Full |
 | Local zsh + weston-terminal | zsh + assets + PTY spawn | In-process only |
-| foot / fastfetch / neovim | jniLibs `.so` launchers | In-process / linked |
 | waypipe SSH | OpenSSH `--ssh-bin` + `-i` | libssh2 in-process CLI + streamlocal |
 | iland DRM nested compositor | Buildable; optional toggle pending | Full |
 | Settings | Compose bottom sheet | SwiftUI navigation |

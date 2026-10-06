@@ -96,9 +96,6 @@
     wwn-phoon-rs.inputs.nixpkgs.follows = "nixpkgs";
     wwn-phoon-rs.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-phoon-rs.inputs.rust-overlay.follows = "rust-overlay";
-    wwn-neovim.url = "https://flakehub.com/f/Wawona/wwn-neovim/*";
-    wwn-neovim.inputs.nixpkgs.follows = "nixpkgs";
-    wwn-neovim.inputs.wwn-toolchain.follows = "wwn-toolchain";
     # Wawona Relay: Linux VMs, OCI-in-VM, Mode A WASI. L3′. Never QEMU/UTM.
     # Replaces wwn-wasm + wwn-vms + wwn-containers. Cited: docs/wwn-repo-dag.md.
     # HTTPS github: hits org CAP 403 locally (fine-grained PAT lifetime).
@@ -152,7 +149,7 @@
     toolbar-keys.flake = false;
   };
 
-  outputs = inputs@{ self, nixpkgs, android-nixpkgs, rust-overlay, crate2nix, nix-appimage, wwn-toolchain, wwn-iland, wwn-kmscube, wwn-weston, wwn-zsh, wwn-ssh, wwn-waypipe, wwn-swinging-bridge, wwn-coreutils, wwn-foot, wwn-fastfetch, wwn-phoon-rs, wwn-neovim, wwn-relay, wwn-niri, wwn-iowatchdog, wwn-vphone, wwn-iomfb, wwn-igetty, doorman, ... }:
+  outputs = inputs@{ self, nixpkgs, android-nixpkgs, rust-overlay, crate2nix, nix-appimage, wwn-toolchain, wwn-iland, wwn-kmscube, wwn-weston, wwn-zsh, wwn-ssh, wwn-waypipe, wwn-swinging-bridge, wwn-coreutils, wwn-foot, wwn-fastfetch, wwn-phoon-rs, wwn-relay, wwn-niri, wwn-iowatchdog, wwn-vphone, wwn-iomfb, wwn-igetty, doorman, ... }:
   let
     linuxSystems = [ "x86_64-linux" "aarch64-linux" ];
     # Nixpkgs 26.11 throws on x86_64-darwin eval; flakehub-push runs
@@ -277,7 +274,6 @@
         inherit applePath toolchainsDir androidToolchainNix androidConfigNix androidWrapperNix
           westonSimpleShmPatchedSrcNix westonSimpleShmLinuxNix kmscubeMacosNix kmscubeIosNix
           fastfetchMacosNix fastfetchIosNix fastfetchLdflagsNix
-          neovimMacosNix neovimIosNix neovimLdflagsNix
           westonToytoolkitLdflagsNix westonCompositorLdflagsNix mobileBaseLdflagsNix ilandGlLdflagsNix
           ilandGlAndroidLdflagsNix westonAndroidSignalPolyfill;
         # The Apple toolchain (xcode-wrapper) used to live in-tree; wwn-iland's
@@ -332,7 +328,6 @@
       // wwn-foot.registryFragment
       // wwn-fastfetch.registryFragment
       // wwn-phoon-rs.registryFragment
-      // wwn-neovim.registryFragment
       // wwn-relay.registryFragment
       // wwn-niri.registryFragment;
     mkWawonaToolchains = { pkgs, pkgsAndroid ? null, pkgsIos ? null, androidSDK ? null, androidAllowExperimentalFallback ? false, wawonaSrc ? null }:
@@ -367,9 +362,6 @@
     fastfetchMacosNix = "${wwn-fastfetch}/dependencies/clients/fastfetch/macos.nix";
     fastfetchIosNix = "${wwn-fastfetch}/dependencies/clients/fastfetch/apple-mobile.nix";
     fastfetchLdflagsNix = "${wwn-fastfetch}/dependencies/generators/fastfetch-ldflags.nix";
-    neovimMacosNix = "${wwn-neovim}/dependencies/libs/neovim/macos.nix";
-    neovimIosNix = "${wwn-neovim}/dependencies/libs/neovim/apple-mobile.nix";
-    neovimLdflagsNix = "${wwn-neovim}/dependencies/generators/neovim-ldflags.nix";
     westonPtySpikeIosNix = "${wwn-weston}/dependencies/clients/weston/ios-pty-spike/ios.nix";
     westonToytoolkitLdflagsNix = "${wwn-weston}/dependencies/generators/weston-toytoolkit-ldflags.nix";
     westonCompositorLdflagsNix = "${wwn-weston}/dependencies/generators/weston-compositor-ldflags.nix";
@@ -651,7 +643,6 @@
         studioZshShare = "${studioZshPkg}/share/zsh";
         studioFastfetchBin = "${toolchainsAndroid.buildForAndroid "fastfetch" { }}/bin/fastfetch";
         studioPhoonBin = "${toolchainsAndroid.buildForAndroid "phoon" { }}/bin/phoon";
-        studioNeovimBin = "${toolchainsAndroid.buildForAndroid "neovim" { }}/bin/nvim";
         # waypipe ships a real ELF binary as `waypipe.real` plus a Vulkan-wrapper
         # script named `waypipe`; gradlegen.nix picks whichever exists at build
         # time (same fallback android-shell-tools.nix uses for the release APK).
@@ -676,7 +667,6 @@
           zshSharePath = studioZshShare;
           fastfetchBinaryPath = studioFastfetchBin;
           phoonBinaryPath = studioPhoonBin;
-          neovimBinaryPath = studioNeovimBin;
           waypipeBinaryPath = studioWaypipeBin;
           waypipeBinaryPathFallback = studioWaypipeBinFallback;
           anowawAndroid = toolchainsAndroid.buildForAndroid "anowaw" {};
@@ -699,7 +689,6 @@
             else pkgs.callPackage westonSimpleShmLinuxNix {};
           foot = if pkgs.stdenv.hostPlatform.isDarwin then toolchains.buildForMacOS "foot" {} else pkgs.foot;
           fastfetch = if pkgs.stdenv.hostPlatform.isDarwin then toolchains.buildForMacOS "fastfetch" { } else pkgs.fastfetch;
-          neovim = if pkgs.stdenv.hostPlatform.isDarwin then toolchains.buildForMacOS "neovim" { } else pkgs.neovim;
           waypipe = if pkgs.stdenv.hostPlatform.isDarwin then toolchains.buildForMacOS "waypipe" { } else pkgs.waypipe;
 
           # ANGLE (OpenGL ES over Metal) + iland userland graphics core
@@ -1295,7 +1284,6 @@
               # ImageMagick, which pulls libtiff docs → Sphinx → mypy pytest.
               macosFastfetch = if want "macos" then toolchains.buildForMacOS "fastfetch" { } else null;
               macosPhoon = if want "macos" then toolchains.buildForMacOS "phoon" { } else null;
-              macosNeovim = null;
               macosZsh = if want "macos" then pkgs.zsh else null;
               macosKmscube =
                 if want "macos" then pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; } else null;
@@ -1362,7 +1350,6 @@
               (pkgsFor "aarch64-linux").closureInfo {
                 rootPaths = [ (pkgsFor "aarch64-linux").waypipe ];
               };
-            neovim = null;
             zsh = pkgs.zsh;
             kmscube = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };
             modebTty = wwn-igetty.packages.${system}.wwn-igetty;
@@ -2171,11 +2158,6 @@ APPLESCRIPT
           fastfetch-watchos = toolchains.buildForWatchOS "fastfetch" { simulator = false; };
           fastfetch-watchos-sim = toolchains.buildForWatchOS "fastfetch" { simulator = true; };
           fastfetch-macos = toolchains.buildForMacOS "fastfetch" { };
-          neovim-ios = toolchains.buildForIOS "neovim" { simulator = true; };
-          neovim-ios-device = toolchains.buildForIOS "neovim" { simulator = false; };
-          neovim-macos = toolchains.buildForMacOS "neovim" { };
-          "neovim-rootfs-ios" = toolchains.buildForIOS "neovim-rootfs" { };
-          "neovim-rootfs-ios-sim" = toolchains.buildForIOS "neovim-rootfs" { simulator = true; };
           iland-gl-clients-ios = toolchains.buildForIOS "kmscube" { simulator = true; };
           iland-gl-clients-ios-device = toolchains.buildForIOS "kmscube" { simulator = false; };
           weston-ios-gl = toolchains.buildForIOS "weston" { enableGlClients = true; };
@@ -2209,7 +2191,7 @@ APPLESCRIPT
           # foot (Wayland client): privatized in xcode-prebuild.sh so its embedded
           # generated-protocol symbols stay local and never collide with weston /
           # fuzzel. Linked on every Apple-mobile target, hence platform-matched
-          # builds (iOS attrs are reused for iPadOS/visionOS, mirroring neovim).
+          # builds (iOS attrs are reused for iPadOS/visionOS).
           foot-ios = toolchains.buildForIOS "foot" { };
           foot-ios-sim = toolchains.buildForIOS "foot" { simulator = true; };
           foot-tvos = toolchains.buildForTVOS "foot" { };
@@ -2281,7 +2263,6 @@ APPLESCRIPT
           fastfetch-android = toolchainsAndroid.buildForAndroid "fastfetch" { };
           phoon-android = toolchainsAndroid.buildForAndroid "phoon" { };
           wawona-wasm-android = toolchainsAndroid.buildForAndroid "wawona-wasm" { };
-          neovim-android = toolchainsAndroid.buildForAndroid "neovim" { };
           waypipe-android = toolchainsAndroid.buildForAndroid "waypipe" { };
           # anowaW app bridge: native lib (libanowaw.so) linked into the Android
           # app; the Kotlin/JNI shims are staged into the generated project.

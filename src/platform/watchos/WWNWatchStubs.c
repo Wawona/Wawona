@@ -147,12 +147,6 @@ int fuzzel_main(int argc, char **argv) {
     return 1;
 }
 
-__attribute__((weak))
-int wawona_nvim_main(int argc, char **argv) {
-    (void)argc; (void)argv;
-    return 1;
-}
-
 /* wawona_coreutils_main lives in libwawona.a (uutils feature enabled on
  * watchOS) and is pulled via -Wl,-u,_wawona_coreutils_main. Same rule as
  * phoon_main above: a weak stub here would satisfy the -u and STOP the real

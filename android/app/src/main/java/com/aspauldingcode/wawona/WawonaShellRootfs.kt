@@ -10,9 +10,8 @@ import java.io.FileOutputStream
  * (CSD frame PNGs), and DejaVu fonts (fontconfig text rendering).
  */
 object WawonaShellRootfs {
-    // Bumped v6 -> v7: ship neovim runtime (VIMRUNTIME) for Android nvim
-    // (issue #81). Prior: applications catalog for fuzzel (v6).
-    private const val MARKER = ".installed-v7"
+    // Bumped v7 -> v8: drop neovim runtime assets (native nvim removed).
+    private const val MARKER = ".installed-v8"
 
     fun ensureInstalled(context: Context): File {
         val root = File(context.filesDir, "wawona-rootfs")
@@ -46,11 +45,6 @@ object WawonaShellRootfs {
             val shareIcons = File(root, "usr/share/icons")
             shareIcons.mkdirs()
             copyAssetDir(context, "icons", shareIcons)
-
-            // neovim runtime for VIMRUNTIME (issue #81)
-            val nvimRuntime = File(root, "usr/share/nvim/runtime")
-            nvimRuntime.mkdirs()
-            copyAssetDir(context, "nvim/runtime", nvimRuntime)
 
             File(root, "home").mkdirs()
             File(root, "home/.local/share").mkdirs()

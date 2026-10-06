@@ -177,7 +177,7 @@ for p in sorted(root.glob("*.desktop")):
         if line.startswith("Name="):
             names.append(line.split("=", 1)[1].strip())
             break
-need = {"Foot Terminal", "Neovim"}
+need = {"Foot Terminal", "Fastfetch"}
 missing = need - set(names)
 if missing:
     raise SystemExit(f"missing desktop Names: {sorted(missing)}; have={names[:12]}")

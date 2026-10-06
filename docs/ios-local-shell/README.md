@@ -55,14 +55,13 @@ macOS is **out of scope** for this track. It already uses Meson `weston/macos.ni
 | [../testing/everywhere-matrix.md](../testing/everywhere-matrix.md) | CI targets + manual smoke for terminal/zsh |
 | `wwn-weston/dependencies/clients/weston/ios.nix` | Real `terminal.c` → `libweston-terminal.a` |
 | `wwn-weston/dependencies/clients/weston/compositor-apple-mobile.nix` | Compositor `fork()` stub. **not** used for shell spawn |
-| [../../src/platform/macos/ui/Settings/WWNWaypipeRunner.m](../../src/platform/macos/ui/Settings/WWNWaypipeRunner.m) | In-process client launch + env wiring |
+| [../../src/platform/macos/ui/Settings/Sources/WawonaApple/Runners/WaypipeRunner.swift](../../src/platform/macos/ui/Settings/Sources/WawonaApple/Runners/WaypipeRunner.swift) | In-process client launch + env wiring |
 
 ---
 
 ## Flake outputs (shipping)
 
 See [STATUS.md](STATUS.md) for the full matrix. Key outputs: `.#zsh-ios`, `.#wawona-rootfs-ios`,
-`.#wawona-pty-ios`, `.#fastfetch-ios`, `.#neovim-ios`, `.#weston-ios`, `.#wawona-ios-app-sim`.
 
 ---
 
@@ -83,6 +82,5 @@ See [STATUS.md](STATUS.md) for the full matrix. Key outputs: `.#zsh-ios`, `.#waw
 | Layer | Status |
 |-------|--------|
 | Real `terminal.c` + in-process zsh | **Implemented** (Nix + Xcode link) |
-| uutils, fastfetch, neovim, waypipe from zsh | **Implemented** (dispatch shim) |
 | libssh2 SSH (no openssh binary) | **Implemented** (Settings + shell `waypipe`) |
 | Physical device validation | **Pending** (spike checklist) |

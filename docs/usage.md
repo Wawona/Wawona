@@ -27,7 +27,6 @@ on a native machine, not a guest.
 nix run .#wawona-linux
 ```
 
-Uses GTK4 with Wayland or X11 GDK fallback. Runtime includes weston, weston-terminal, foot, fastfetch, neovim, zsh, kmscube, and waypipe on PATH.
 
 ## Guest Machines (planned)
 

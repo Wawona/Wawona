@@ -34,8 +34,6 @@ Runtime’s dedicated package manager **`wpm`**. Native in-process ports remain
 first-class whenever we ship one. The Runtime itself has **no Mode B flavor**.
 
 ```text
-nixpkgs2wasi / n2w  (curated nixpkgs#foo → foo.wpm)
-        ↓
 Developer builds foo.wasm (wasm32-wasip1 / wasip2)
         ↓
 Publish to repo.wawona.io  (/wasm/ …)
@@ -46,10 +44,6 @@ Sandbox package store
         ↓
 Wawona Relay → host WIT → Wayland / shell
 ```
-
-`nixpkgs2wasi` is the curated producer. Relay is the interpreter. `repo.wawona.io`
-is the host. Do not auto-mirror nixpkgs. `n2w verify` is the App Store runtime
-profile, not App Review.
 
 Analogy: iSH’s `apk` installs Alpine packages into an emulated Linux userspace.
 Wawona’s client installs **Wasm components into the Runtime store**; the
@@ -63,7 +57,6 @@ Wawona’s client installs **Wasm components into the Runtime store**; the
 | Debian `.deb` for App Store Wawona | Never |
 | OCI Linux container images / Docker Hub run | `wwn-containers` + Machines kind `container` |
 | Full VMs | `Relay` (`wwn-relay`). Not UTM. Not QEMU. |
-| Auto-mirror of nixpkgs onto `/wasm` | Never. Curated `nixpkgs2wasi` only |
 | Jailbreak Desktop / Wawona Swinging Bridge Mode B tweaks | Still **`.deb` / Sileo** on `repo.wawona.io` (separate channel) |
 
 ## Dual-channel `repo.wawona.io` (hard firewall)

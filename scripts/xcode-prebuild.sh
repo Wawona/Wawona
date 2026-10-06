@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Realize Nix Rust (and optional zsh) archives for the active Xcode target/SDK.
 # Copies into $DERIVED_FILE_DIR so OTHER_LDFLAGS paths exist before linking.
-# Static archives that carry colliding internal symbols (zsh, neovim, openssh)
+# Static archives that carry colliding internal symbols (zsh, openssh)
 # are privatised via nmedit so only the public dispatch entry points remain
 # globally visible.  This avoids duplicate-symbol linker errors without
 # resorting to -multiply_defined,suppress (unsupported by ld-prime) or dylibs
@@ -229,7 +229,7 @@ fi
 # privatize_lib. Merge a static archive into a single relocatable .o, strip
 # all global symbols except the listed exports, and repackage as .a.
 # This prevents duplicate-symbol collisions when linking multiple UNIX
-# toolchains (zsh, neovim, openssh) into a single iOS binary.
+# toolchains (zsh, openssh) into a single iOS binary.
 #
 # Usage: privatize_lib <src.a> <dst.a> <arch> <platform> <min_ver> <export_sym> [<export_sym> ...]
 # ---------------------------------------------------------------------------
@@ -325,25 +325,6 @@ if [ "$_with_zsh" = "1" ]; then
     echo "Privatized $derived/libwawona-zsh.a (from $zsh_out)"
   fi
 
-  # neovim: linked on iOS/iPadOS/visionOS only (size + fork/exec editor). Skip
-  # on tvOS/watchOS. Mobile-platform-deps does not ship it there.
-  case "${TARGET_NAME:-}" in
-    Wawona-iOS|Wawona-iOS-ModeB|Wawona-iPadOS|Wawona-visionOS)
-      _nvim_attr="neovim-ios-device"
-      case "$_sdk" in
-        *simulator*) _nvim_attr="neovim-ios" ;;
-      esac
-      nvim_out="$("$NIX" build --no-link --print-out-paths "${_nix_flags[@]}" "$FLAKE_REF#$_nvim_attr")"
-      privatize_lib "$nvim_out/lib/libwawona-neovim.a" "$derived/libwawona-neovim.a" \
-        "$_arch" "$_ld_platform" "$_min_ver" \
-        _wawona_nvim_main
-      echo "Privatized $derived/libwawona-neovim.a (from $nvim_out)"
-      ;;
-    *)
-      echo "Skipping neovim privatize for ${TARGET_NAME:-unknown}"
-      ;;
-  esac
-
   # fastfetch: in-process system-info tool (no fork/exec, no GPU dep) shipped on
   # the WHOLE Apple family (#139). iOS/iPadOS/visionOS share the iOS archive
   # (fastfetch-ios sim / fastfetch-ios-device); tvOS/watchOS use their own
@@ -370,7 +351,7 @@ if [ "$_with_zsh" = "1" ]; then
   # foot + fuzzel: Wayland client archives that each embed their own copy of the
   # generated protocol marshalling (xdg_toplevel_interface, …). Force-loaded raw,
   # those symbols collide with weston's (and each other's). Privatize like
-  # neovim/zsh. Merge to one .o, keep only the *_main entry global. So the
+  # zsh. Merge to one .o, keep only the *_main entry global. So the
   # protocol symbols become local and weston's copies stay authoritative.
   # foot is linked on every Apple-mobile target; fuzzel on iOS/iPadOS/visionOS.
   _foot_dev_attr="foot-ios"; _foot_sim_attr="foot-ios-sim"

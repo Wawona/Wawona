@@ -513,7 +513,6 @@
         "wwn-iomfb": "wwn-iomfb",
         "wwn-iowatchdog": "wwn-iowatchdog",
         "wwn-kmscube": "wwn-kmscube",
-        "wwn-neovim": "wwn-neovim",
         "wwn-niri": "wwn-niri",
         "wwn-phoon-rs": "wwn-phoon-rs",
         "wwn-relay": "wwn-relay",
@@ -655,27 +654,6 @@
       "inputs": {
         "nixpkgs": [
           "wwn-kmscube",
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1782530211,
-        "narHash": "sha256-Zn5H2VVMaP79C+bvaUQD+SBXSKoTnURMZGiUrG00zII=",
-        "owner": "oxalica",
-        "repo": "rust-overlay",
-        "rev": "06ba695dfefc4afc513b49dfc41c4bf0dd2eaeb1",
-        "type": "github"
-      },
-      "original": {
-        "owner": "oxalica",
-        "repo": "rust-overlay",
-        "type": "github"
-      }
-    },
-    "rust-overlay_7": {
-      "inputs": {
-        "nixpkgs": [
-          "wwn-neovim",
           "nixpkgs"
         ]
       },
@@ -1036,29 +1014,6 @@
         "ref": "development",
         "repo": "wwn-kmscube",
         "type": "github"
-      }
-    },
-    "wwn-neovim": {
-      "inputs": {
-        "nixpkgs": [
-          "nixpkgs"
-        ],
-        "rust-overlay": "rust-overlay_7",
-        "wwn-toolchain": [
-          "wwn-toolchain"
-        ]
-      },
-      "locked": {
-        "lastModified": 1787430343,
-        "narHash": "sha256-4nqVKLrZuS4f6Y/8hqFUfEMRliRoEETad6/33I3z2ko=",
-        "rev": "69b324c59435a560b1c79219f58cc49ccb5d51c8",
-        "revCount": 12,
-        "type": "tarball",
-        "url": "https://api.flakehub.com/f/pinned/Wawona/wwn-neovim/0.1.12%2Brev-69b324c59435a560b1c79219f58cc49ccb5d51c8/01a02b27-4f6f-7af2-ac18-3d704387bea4/source.tar.gz"
-      },
-      "original": {
-        "type": "tarball",
-        "url": "https://flakehub.com/f/Wawona/wwn-neovim/%2A"
       }
     },
     "wwn-niri": {

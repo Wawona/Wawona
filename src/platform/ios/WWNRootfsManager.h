@@ -16,15 +16,6 @@ NS_ASSUME_NONNULL_BEGIN
 /// Bundled zsh function/share tree (`…/wawona-rootfs/usr/share/zsh`).
 + (NSString *)bundledZshSharePath;
 
-/// Path to read-only Neovim runtime prefix inside the app bundle (`…/neovim-rootfs`).
-+ (NSString *)bundleNeovimRootfsPath;
-
-/// Writable Neovim config dir under Application Support (`…/neovim-rootfs/home/.config`).
-+ (NSString *)activeNeovimConfigPath;
-
-/// Bundled Neovim runtime tree (`…/neovim-rootfs/usr/share/nvim/runtime`).
-+ (NSString *)bundledNeovimRuntimePath;
-
 /// Writable system tree under Application Support (`…/wawona-rootfs`, etc/ + usr/).
 + (NSString *)activeRootfsPath;
 

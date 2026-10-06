@@ -128,8 +128,6 @@ let
         "wawona-relay" = buildFn "wawona-relay" { inherit simulator; };
       }
     // lib.optionalAttrs (variant == "mobile" || variant == "vision") {
-        neovim = buildFn "neovim" { inherit simulator; };
-        "neovim-rootfs" = buildFn "neovim-rootfs" { inherit simulator; };
         # wwn-niri fuzzel stack (Mod+D launcher spawned in-process).
         # fuzzel uses fork/exec. Not available on tvOS; keep off tv/watch.
         fuzzel = buildFn "fuzzel" { inherit simulator; };

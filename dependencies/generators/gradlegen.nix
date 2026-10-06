@@ -19,7 +19,6 @@
 , zshSharePath ? ""
 , fastfetchBinaryPath ? ""
 , phoonBinaryPath ? ""
-, neovimBinaryPath ? ""
 , waypipeBinaryPath ? ""
 , waypipeBinaryPathFallback ? ""
 , anowawAndroid ? null
@@ -73,7 +72,6 @@ let
   zshSharePathEscaped = lib.escapeShellArg zshSharePath;
   fastfetchBinaryPathEscaped = lib.escapeShellArg fastfetchBinaryPath;
   phoonBinaryPathEscaped = lib.escapeShellArg phoonBinaryPath;
-  neovimBinaryPathEscaped = lib.escapeShellArg neovimBinaryPath;
   waypipeBinaryPathEscaped = lib.escapeShellArg waypipeBinaryPath;
   waypipeBinaryPathFallbackEscaped = lib.escapeShellArg waypipeBinaryPathFallback;
   westonShmPath = if westonSimpleShmSrc != null then toString westonSimpleShmSrc else "";
@@ -330,10 +328,9 @@ let
     ZSH_SHARE=${zshSharePathEscaped}
     FASTFETCH_BIN=${fastfetchBinaryPathEscaped}
     PHOON_BIN=${phoonBinaryPathEscaped}
-    NEOVIM_BIN=${neovimBinaryPathEscaped}
     WAYPIPE_BIN=${waypipeBinaryPathEscaped}
     WAYPIPE_BIN_FALLBACK=${waypipeBinaryPathFallbackEscaped}
-    if [ -n "$RUNTIME_LIB_DIRS" ] || [ -n "$RUST_BACKEND_SO" ] || [ -n "$OPENSSH_BIN" ] || [ -n "$SSHPASS_BIN" ] || [ -n "$ZSH_BIN" ] || [ -n "$ZSH_SHARE" ] || [ -n "$FASTFETCH_BIN" ] || [ -n "$PHOON_BIN" ] || [ -n "$NEOVIM_BIN" ] || [ -n "$WAYPIPE_BIN" ] || [ -n "$WAYPIPE_BIN_FALLBACK" ]; then
+    if [ -n "$RUNTIME_LIB_DIRS" ] || [ -n "$RUST_BACKEND_SO" ] || [ -n "$OPENSSH_BIN" ] || [ -n "$SSHPASS_BIN" ] || [ -n "$ZSH_BIN" ] || [ -n "$ZSH_SHARE" ] || [ -n "$FASTFETCH_BIN" ] || [ -n "$PHOON_BIN" ] || [ -n "$WAYPIPE_BIN" ] || [ -n "$WAYPIPE_BIN_FALLBACK" ]; then
       JNI_LIB_DIR="$OUT/app/src/main/jniLibs/arm64-v8a"
       mkdir -p "$JNI_LIB_DIR"
       if [ -n "$RUNTIME_LIB_DIRS" ]; then
@@ -395,10 +392,6 @@ let
       if [ -n "$PHOON_BIN" ] && [ -f "$PHOON_BIN" ]; then
         cp -L "$PHOON_BIN" "$JNI_LIB_DIR/libphoon_bin.so"
         chmod +x "$JNI_LIB_DIR/libphoon_bin.so"
-      fi
-      if [ -n "$NEOVIM_BIN" ] && [ -f "$NEOVIM_BIN" ]; then
-        cp -L "$NEOVIM_BIN" "$JNI_LIB_DIR/libnvim_bin.so"
-        chmod +x "$JNI_LIB_DIR/libnvim_bin.so"
       fi
       if [ -n "$WAYPIPE_BIN" ] && [ -f "$WAYPIPE_BIN" ]; then
         cp -L "$WAYPIPE_BIN" "$JNI_LIB_DIR/libwaypipe_bin.so"

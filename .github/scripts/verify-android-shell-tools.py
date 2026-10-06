@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify Android packaging for bundled zsh, fastfetch, neovim, and waypipe."""
+"""Verify Android packaging for bundled zsh, fastfetch, and waypipe."""
 
 from __future__ import annotations
 
@@ -16,18 +16,16 @@ ANDROID_NIX_FILES = (
 FLAKE = ROOT / "flake.nix"
 ANDROID_JNI = ROOT / "src/platform/android/android_jni.c"
 
-REQUIRED_FLAKE_OUTPUTS = ("zsh-android", "fastfetch-android", "phoon-android", "neovim-android", "waypipe-android")
+REQUIRED_FLAKE_OUTPUTS = ("zsh-android", "fastfetch-android", "phoon-android", "waypipe-android")
 
 REQUIRED_ANDROID_NIX = (
     "zshAndroid",
     "fastfetchAndroid",
     "phoonAndroid",
-    "neovimAndroid",
     "waypipeAndroid",
     "libzsh_bin.so",
     "libfastfetch_bin.so",
     "libphoon_bin.so",
-    "libnvim_bin.so",
     "libwaypipe_bin.so",
     "libssh_bin.so",
     "libssh_keygen_bin.so",

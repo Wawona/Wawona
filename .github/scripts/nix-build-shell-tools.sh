@@ -12,14 +12,11 @@ targets=(
   ".#phoon-tvos"
   ".#phoon-watchos"
   ".#phoon-visionos"
-  ".#neovim-ios"
-  ".#neovim-rootfs-ios-sim"
   ".#wawona-pty-ios-sim"
   ".#wawona-rootfs-ios-sim"
   ".#zsh-android"
   ".#fastfetch-android"
   ".#phoon-android"
-  ".#neovim-android"
 )
 
 echo "[wawona] Building bundled shell-tool Nix outputs..."

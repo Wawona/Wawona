@@ -455,40 +455,8 @@ WWNRootfsMarkInterpreterStubsExecutable(NSString *activeRoot) {
   return YES;
 }
 
-+ (NSString *)bundleNeovimRootfsPath {
-  NSFileManager *fm = [NSFileManager defaultManager];
-  NSString *appRoot = WWNWawonaAppBundleRoot();
-  NSString *atBundleRoot = [appRoot stringByAppendingPathComponent:@"neovim-rootfs"];
-  if ([fm fileExistsAtPath:atBundleRoot]) {
-    return atBundleRoot;
-  }
-  NSString *resource = WWNWawonaResourcesRoot();
-  if (resource.length == 0) {
-    return @"";
-  }
-  return [resource stringByAppendingPathComponent:@"neovim-rootfs"];
-}
 
-+ (NSString *)activeNeovimConfigPath {
-  NSURL *base = [[[NSFileManager defaultManager]
-      URLsForDirectory:NSApplicationSupportDirectory
-             inDomains:NSUserDomainMask] firstObject];
-  if (!base) {
-    return [[NSTemporaryDirectory() stringByAppendingPathComponent:@"neovim-rootfs"]
-        stringByAppendingPathComponent:@"home/.config"];
-  }
-  NSURL *configURL =
-      [[[[base URLByAppendingPathComponent:@"Wawona" isDirectory:YES]
-          URLByAppendingPathComponent:@"neovim-rootfs" isDirectory:YES]
-         URLByAppendingPathComponent:@"home" isDirectory:YES]
-        URLByAppendingPathComponent:@".config" isDirectory:YES];
-  return configURL.path;
-}
 
-+ (NSString *)bundledNeovimRuntimePath {
-  return [[self bundleNeovimRootfsPath]
-      stringByAppendingPathComponent:@"usr/share/nvim/runtime"];
-}
 
 + (NSString *)bundledShellPath {
   return @"/usr/bin/zsh";
@@ -605,13 +573,6 @@ WWNRootfsMarkInterpreterStubsExecutable(NSString *activeRoot) {
   setenv("XDG_STATE_HOME", xdgState.UTF8String, 1);
 
   [self migrateFastfetchConfigFromBundle:bundleRoot configHome:xdgConfig];
-
-  NSString *nvimRuntime = [self bundledNeovimRuntimePath];
-  if (nvimRuntime.length > 0 && [fm fileExistsAtPath:nvimRuntime]) {
-    setenv("VIMRUNTIME", nvimRuntime.UTF8String, 1);
-    NSLog(@"WWNRootfs: in-process nvim; VIMRUNTIME=%@ XDG_CONFIG_HOME=%@",
-          nvimRuntime, xdgConfig);
-  }
 
   NSLog(@"WWNRootfs: in-process zsh; HOME=%@ (Files: %@) WAWONA_ROOTFS=%@",
         home, [self filesAppRootPath], activeRoot);

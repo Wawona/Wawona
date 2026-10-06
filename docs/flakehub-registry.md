@@ -46,7 +46,6 @@ Each GitHub-hosted flake runs [`.github/workflows/flakehub-publish.yml`](../.git
 
 - **Branches:** `development` where consumers historically pinned that branch
   (`wwn-toolchain`, `wwn-iland`, `wwn-kmscube`, `wwn-weston`, `wwn-waypipe`,
-  `wwn-phoon-rs`, `wwn-neovim`, `wwn-niri`, `Wawona`); `main` otherwise.
 - **Tags (Wawona):** `vYY.M.D` publishes SemVer `YY.M.D` (`rolling: false`).
   Tags that predate this workflow are backfilled with **workflow_dispatch**
   `tag=` (the workflow file comes from `development`; checkout is the tagged

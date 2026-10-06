@@ -40,8 +40,7 @@ jailbreak.
 Store `wpm` default registry: `https://repo.wawona.io/wasm/v1` (client fetches
 `/index.json`). Never fetch `/jailbreak/`, `/termux/`, `/Packages`, or `.deb`.
 
-Curated package **builds** live in `github.com/Wawona/nixpkgs2wasi` (`n2w`).
-This host only publishes `/wasm/v1`. Do not auto-mirror nixpkgs here.
+This host publishes `/wasm/v1`. Do not auto-mirror nixpkgs here.
 
 ## Never
 

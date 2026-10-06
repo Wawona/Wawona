@@ -99,13 +99,6 @@
       "version": "mesa"
     },
     {
-      "license": "Apache-2.0",
-      "name": "neovim",
-      "role": "Bundled editor",
-      "url": "https://neovim.io",
-      "version": "0.11"
-    },
-    {
       "license": "MIT",
       "name": "fastfetch",
       "role": "System info client",

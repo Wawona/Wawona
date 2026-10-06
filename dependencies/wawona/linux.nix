@@ -42,7 +42,6 @@ pkgs.writeShellApplication {
     (pkgs.callPackage westonSimpleShmLinuxNix {})
     pkgs.foot
     pkgs.fastfetch
-    pkgs.neovim
     pkgs.zsh
     pkgs.kmscube
     pkgs.systemd

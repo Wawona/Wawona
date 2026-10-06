@@ -53,7 +53,6 @@ Current flake inputs (see `flake.nix`; do not invent extra `wwn-*` edges):
 | `wwn-kmscube` | L2 GLES/KMS client |
 | `wwn-weston` | L3 nested compositor |
 | `wwn-niri` | L3′ nested compositor |
-| `wwn-zsh`, `wwn-coreutils`, `wwn-foot`, `wwn-neovim`, `wwn-fastfetch`, `wwn-phoon-rs` | Bundled on-device clients |
 | `wwn-ssh` | OpenSSH (macOS), libssh2 (Apple mobile), OpenSSH portable (Android) |
 | `wwn-waypipe` | Remote Wayland |
 | `wwn-Wawona Swinging Bridge` | Android Desktop / LockScreen bridge |

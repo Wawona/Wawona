@@ -50,7 +50,6 @@ let
     openssh = "9.9p2";
     epollShim = "0.0.20240608";
     iland = if ilandVersionFromSibling != null then ilandVersionFromSibling else "26.9.9";
-    neovim = "0.11";
     fastfetch = "2";
     kmscube = "mesa";
   };
@@ -172,11 +171,6 @@ let
       license = "MIT";
       role = "GLES/Vulkan KMS demo";
     };
-    neovim = {
-      url = "https://neovim.io";
-      license = "Apache-2.0";
-      role = "Bundled editor";
-    };
     fastfetch = {
       url = "https://github.com/fastfetch-cli/fastfetch";
       license = "MIT";
@@ -279,7 +273,6 @@ let
       (pkgDef "Foot" v.foot)
       (pkg "zsh" v.zsh "Bundled local shell")
       (pkgDef "kmscube" v.kmscube)
-      (pkgDef "neovim" v.neovim)
       (pkgDef "fastfetch" v.fastfetch)
     ];
   };

@@ -54,13 +54,6 @@ let
       icon = "foot";
     }
     {
-      id = "nvim";
-      name = "Neovim";
-      comment = "Hyperextensible Vim-based text editor";
-      categories = "Utility;TextEditor;";
-      icon = "nvim";
-    }
-    {
       id = "fastfetch";
       name = "Fastfetch";
       comment = "System information tool";
@@ -178,7 +171,6 @@ let
   iconSources = {
     weston-terminal = iconTerminalPng;
     foot = terminalPng;
-    nvim = iconEditorPng;
     fastfetch = waylandPng;
     phoon = iconWindowPng;
     weston-simple-shm = iconWindowPng;

@@ -3,7 +3,7 @@
 
 The Linux run wrapper (`dependencies/wawona/linux.nix`) must carry the same
 launchable tools as the other platforms: the shell stack (zsh, fastfetch,
-neovim) plus the bundled Wayland client runtimes (weston, foot, kmscube,
+) plus the bundled Wayland client runtimes (weston, foot, kmscube,
 waypipe, openssh) that the launcher can spawn.
 """
 
@@ -17,7 +17,6 @@ REQUIRED_RUNTIME_INPUTS = (
     # Shell tools (installable on Linux, surfaced as launchers).
     "pkgs.zsh",
     "pkgs.fastfetch",
-    "pkgs.neovim",
     # Bundled Wayland client runtimes + transport.
     "pkgs.weston",
     "pkgs.foot",

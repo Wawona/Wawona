@@ -3920,7 +3920,7 @@ static int wwn_android_native_lib_dir(char *out, size_t out_len) {
  * (files/cache. SELinux execute_no_trans / W^X), which is exactly where
  * wawona-rootfs/usr/bin lives, so a byte-for-byte copy there (the old
  * behavior, still used for e.g. weston asset trees) silently produces a
- * dead, "Permission denied" binary for fastfetch/waypipe/ssh/nvim/zsh.
+ * dead, "Permission denied" binary for fastfetch/waypipe/ssh/zsh.
  * The native lib dir (native_lib_dir, extracted from the APK's jniLibs with
  * extractNativeLibs=true) is always exec()-able by design, and exec()
  * permission checks follow the *resolved* target of a symlink. So a
@@ -4045,7 +4045,7 @@ static void wwn_android_write_zsh_defaults(const char *home,
       "if [[ -z \"${WAWONA_ZSH_BANNER_SHOWN:-}\" ]]; then\n"
       "  export WAWONA_ZSH_BANNER_SHOWN=1\n"
       "  print -P \"%F{green}Wawona%f zsh ${ZSH_VERSION} - bundled Android userland.\"\n"
-      "  print -P \"%F{blue}Bundled:%f uutils coreutils, fastfetch, neovim, waypipe, ssh/ssh-keygen, niri, fuzzel.\"\n"
+      "  print -P \"%F{blue}Bundled:%f uutils coreutils, fastfetch, waypipe, ssh/ssh-keygen, niri, fuzzel.\"\n"
       "  print -P \"%F{yellow}Note:%f weston demos launch from Machines (not PATH) until multi-client tabs land.\"\n"
       "  print -P \"%F{yellow}Note:%f ssh is OpenSSH portable (wwn-ssh). Try ssh -V / ssh-keygen -t ed25519.\"\n"
       "fi\n");
@@ -4057,7 +4057,7 @@ static void wwn_android_write_zsh_defaults(const char *home,
       "if [[ -z \"${WAWONA_ZSH_BANNER_SHOWN:-}\" ]]; then\n"
       "  export WAWONA_ZSH_BANNER_SHOWN=1\n"
       "  print -P \"%F{green}Wawona%f zsh ${ZSH_VERSION} - bundled Android userland.\"\n"
-      "  print -P \"%F{blue}Bundled:%f uutils coreutils, fastfetch, neovim, waypipe, ssh/ssh-keygen, niri, fuzzel.\"\n"
+      "  print -P \"%F{blue}Bundled:%f uutils coreutils, fastfetch, waypipe, ssh/ssh-keygen, niri, fuzzel.\"\n"
       "  print -P \"%F{yellow}Note:%f weston demos launch from Machines (not PATH) until multi-client tabs land.\"\n"
       "  print -P \"%F{yellow}Note:%f ssh is OpenSSH portable (wwn-ssh). Try ssh -V / ssh-keygen -t ed25519.\"\n"
       "fi\n");
@@ -4251,7 +4251,6 @@ static void wwn_android_prepare_shell_environment(const char *files_dir) {
       /* phoon (wwn-phoon-rs): clean-room Rust moon-phase utility. */
       wwn_android_install_shell_tool(native_lib_dir, usr_bin, "libphoon_bin.so",
                                      "phoon");
-      wwn_android_install_shell_tool(native_lib_dir, usr_bin, "libnvim_bin.so", "nvim");
       wwn_android_install_shell_tool(native_lib_dir, usr_bin, "libwaypipe_bin.so",
                                      "waypipe");
       wwn_android_install_shell_tool(native_lib_dir, usr_bin, "libwaypipe_bin.so",
@@ -4288,19 +4287,6 @@ static void wwn_android_prepare_shell_environment(const char *files_dir) {
                                          "libwawona_wl_bin.so", wl_execs[wi]);
         }
       }
-    }
-  }
-
-  /* Neovim runtime from APK assets → rootfs (issue #81). */
-  {
-    char vimruntime[768];
-    snprintf(vimruntime, sizeof(vimruntime), "%s/usr/share/nvim/runtime", rootfs);
-    if (access(vimruntime, R_OK) == 0) {
-      setenv("VIMRUNTIME", vimruntime, 1);
-      LOGI("Shell env: VIMRUNTIME=%s", vimruntime);
-    } else {
-      LOGI("Shell env: VIMRUNTIME missing at %s (nvim may FORTIFY-abort)",
-           vimruntime);
     }
   }
 

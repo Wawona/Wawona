@@ -39,11 +39,6 @@ REQUIRED_FLAKE_OUTPUTS = (
     "phoon-android",
     "phoon-macos",
     "phoon",
-    "neovim-ios",
-    "neovim-ios-device",
-    "neovim-android",
-    "neovim-rootfs-ios",
-    "neovim-rootfs-ios-sim",
     "wawona-pty-ios",
     "wawona-pty-ios-sim",
     "wawona-rootfs-ios",
@@ -58,9 +53,6 @@ FORBIDDEN_FLAKE_OUTPUTS = (
 REQUIRED_INPROC_CLIENTS = {
     "fastfetch",
     "phoon",
-    "nvim",
-    "vi",
-    "vim",
     "waypipe",
     "waypipe-rs",
     "ssh",
@@ -100,10 +92,8 @@ def verify_xcodegen(text: str) -> list[str]:
         "libwawona-zsh.a",
         "libfastfetch.a",
         "libphoon_rs.a",
-        "libwawona-neovim.a",
         "fastfetchLdflags",
         "phoonLdflags",
-        "neovimLdflags",
         "sshCliLdflags",
         "libwwn-ssh-cli.a",
     ):
@@ -135,10 +125,8 @@ def verify_prebuild(text: str) -> list[str]:
     errors = []
     for needle in (
         "libwawona-zsh.a",
-        "libwawona-neovim.a",
         "libfastfetch.a",
-        "neovim-ios",
-        "fastfetch-ios",
+            "fastfetch-ios",
     ):
         if needle not in text:
             errors.append(f"xcode-prebuild.sh missing: {needle}")

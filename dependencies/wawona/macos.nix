@@ -37,7 +37,6 @@
   containerWaypipeGuestRoot ? null,
   # Fallback: closureInfo store-paths list for dynamic linker mounts.
   containerWaypipeGuestClosure ? null,
-  neovim ? null,
   zsh ? null,
   kmscube ? null,
   modebTty ? null,
@@ -1676,28 +1675,6 @@ exec /bin/sh -c "$cmd"
 SHELL_EOF
             chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/wawona-container-shell
 
-            # Bundle neovim
-            ${if neovim != null then ''
-            if [ -f "${neovim}/bin/nvim" ]; then
-              cp "${neovim}/bin/nvim" $out/Applications/Wawona.app/Contents/Resources/bin/
-              cp "${neovim}/bin/nvim" $out/Applications/Wawona.app/Contents/MacOS/
-              cp "${neovim}/bin/nvim" $out/Applications/Wawona.app/Contents/Resources/bin/vi
-              cp "${neovim}/bin/nvim" $out/Applications/Wawona.app/Contents/MacOS/vi
-              cp "${neovim}/bin/nvim" $out/Applications/Wawona.app/Contents/Resources/bin/vim
-              cp "${neovim}/bin/nvim" $out/Applications/Wawona.app/Contents/MacOS/vim
-              chmod +x $out/Applications/Wawona.app/Contents/Resources/bin/nvim \
-                $out/Applications/Wawona.app/Contents/MacOS/nvim \
-                $out/Applications/Wawona.app/Contents/Resources/bin/vi \
-                $out/Applications/Wawona.app/Contents/MacOS/vi \
-                $out/Applications/Wawona.app/Contents/Resources/bin/vim \
-                $out/Applications/Wawona.app/Contents/MacOS/vim
-              echo "DEBUG: Bundled neovim (nvim/vi/vim)"
-            else
-              echo "Warning: neovim binary not found at ${neovim}/bin/nvim"
-            fi
-            '' else ''
-            echo "Warning: neovim not provided, skipping neovim bundling"
-            ''}
 
             ${if zsh != null then ''
             if [ -f "${zsh}/bin/zsh" ]; then
