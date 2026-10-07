@@ -1,7 +1,3 @@
----
-description: Two-lane law for porting CLIs to WASI P1/P2 vs WASIX (no nixpkgs scrape, no stubs)
-alwaysApply: true
----
 
 # Wasm CLI ports (two lanes)
 
@@ -63,6 +59,16 @@ nix build .#wasmer.grep
 - Port `version` = upstream release. Never invent `0.1.0` for “just ported”.
 - `source` = port / packaging tree.
 
+## Runtime tests (hard)
+
+| ABI | Smoke runtime | Repo |
+|-----|---------------|------|
+| WASI P1 / P2 | Wasmtime | `wasm-packages` (`smoke-package.sh`) |
+| WASIX | Wasmer | `wasinix` (`smokes.toml` + `smoke-wasix-package.sh`) |
+
+Every active package must produce a pass/fail result. Do not claim green without
+a Wasmtime (P1/P2) or Wasmer (WASIX) smoke. Do not smoke WASIX with Wasmtime.
+
 ## Hard rejects
 
 - Revive `nixpkgs2wasi` / `n2w` / auto-mirror nixpkgs
@@ -71,6 +77,8 @@ nix build .#wasmer.grep
 - Laptop-built blobs as production catalog source
 - Wasm twin of a native-all-targets CLI
 - Routing “nixpkgs → wasi” edits to a dead converter repo
+- Publishing without a runtime smoke for that ABI
+- Using Wasmtime as the WASIX gate (or Wasmer as the store P1/P2 gate)
 
 ## Where to edit
 

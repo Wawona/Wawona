@@ -61,7 +61,17 @@ nix build .#wasmer.foo   # WebC / wasmer.toml, owner=wawona
 - Publish laptop blobs as production
 - Route “cross-compile nixpkgs to wasi” to a dead converter repo
 
+## Runtime tests (required)
+
+| ABI | Runtime under test | Where |
+|-----|--------------------|-------|
+| WASI P1 / P2 | **Wasmtime** | `wasm-packages` `smoke-package.sh` + `build-wasm.yml` |
+| WASIX | **Wasmer** | `wasinix` `smokes.toml` + `smoke-wasix-package.sh` + CI matrix |
+
+Each package must pass or fail explicitly (`smoke-result.json` / `out/smoke/*.json`).
+Skipped rows need a reason. Empty pass set is red.
+
 ## Prove
 
-- P1: green `build-wasm.yml` + `check-packages.py --offline` on catalog host
-- WASIX: `nix build .#wasix.<name>` and `.#wasmer.<name>` on x86_64-linux
+- P1/P2: green `build-wasm.yml` (Wasmtime smoke + summary) + catalog `check-packages.py`
+- WASIX: green wasinix CI matrix (build `.#wasmer.<name>` + Wasmer smoke)
