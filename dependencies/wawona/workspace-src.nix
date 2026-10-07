@@ -10,7 +10,9 @@
 # Since those paths only appear after injecting waypipe, we must regenerate
 # the lock file to satisfy `cargo metadata --locked` in crate2nix.
 #
-{ pkgs, wawonaSrc, waypipeSrc, wawonaVersion, platform ? "ios", coreutilsSrc ? null, terminalSrc ? null }:
+{ pkgs, wawonaSrc, waypipeSrc, wawonaVersion, platform ? "ios", coreutilsSrc ? null, terminalSrc ? null
+, expandUutilsScript ? ../../scripts/lib/expand_uutils_workspace_deps.py
+}:
 
 pkgs.stdenvNoCC.mkDerivation {
   name = "wawona-workspace-src";
@@ -18,6 +20,10 @@ pkgs.stdenvNoCC.mkDerivation {
   src = wawonaSrc;
 
   nativeBuildInputs = [ pkgs.python3 ];
+  # Keep the expand helper out of the filtered wawonaSrc so AppImage / crate2nix
+  # always see the same script as scripts/prepare-cargo-path-deps.sh.
+  passAsFile = [ ];
+  expandUutilsScript = expandUutilsScript;
 
   dontBuild = true;
   dontFixup = true;
@@ -95,9 +101,7 @@ PY
       # Expand those pins in-place and strip nested [workspace*] so the Wawona
       # root Cargo.toml / Cargo.lock stay unchanged (CI --locked + AppImage
       # vendor). Same helper as scripts/prepare-cargo-path-deps.sh.
-      ${pkgs.python3}/bin/python3 \
-        $out/scripts/lib/expand_uutils_workspace_deps.py \
-        $out/coreutils
+      ${pkgs.python3}/bin/python3 ${expandUutilsScript} $out/coreutils
 
       echo "✓ coreutils source injected (uutils workspace pins expanded)"
     fi
