@@ -30,9 +30,13 @@ jobs:
         with:
           kani-version: "0.68.0"
           # helpers-check only. Full `nix develop` pulls libsecret and fails GHA DBus tests.
-          command: cargo kani --manifest-path verification/helpers-check/Cargo.toml --harness clamped_rect_stays_inside_nonnegative_bounds
-      - name: Kani sanitize harness
-        run: cargo kani --manifest-path verification/helpers-check/Cargo.toml --harness sanitize_ascii_has_no_shell_metacharacters
+          # Run both harnesses inside the action so PATH/kani stay wired (a follow-up
+          # `cargo kani` step has hung for 10+ minutes on GHA without that env).
+          command: >
+            cargo kani --manifest-path verification/helpers-check/Cargo.toml
+            --harness clamped_rect_stays_inside_nonnegative_bounds
+            && cargo kani --manifest-path verification/helpers-check/Cargo.toml
+            --harness sanitize_ascii_has_no_shell_metacharacters
       - name: Install pinned Verus
         run: |
           rustup toolchain install 1.98.1-x86_64-unknown-linux-gnu --profile minimal
