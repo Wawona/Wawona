@@ -58,6 +58,7 @@ jobs:
         run: |
           ./scripts/ensure-waypipe.sh
           ./scripts/ensure-coreutils.sh
+          ./scripts/ensure-terminal.sh
       - name: Regenerate + assert protocol-status.md is current
         run: |
           WWN_WRITE_PROTOCOL_STATUS=1 nix develop -c cargo test --lib \

@@ -262,9 +262,10 @@ jobs:
       - name: Ensure Cargo path dependencies
         run: |
           chmod +x ./scripts/ensure-waypipe.sh ./scripts/ensure-coreutils.sh \
-            ./scripts/prepare-cargo-path-deps.sh
+            ./scripts/ensure-terminal.sh ./scripts/prepare-cargo-path-deps.sh
           ./scripts/ensure-waypipe.sh
           ./scripts/ensure-coreutils.sh
+          ./scripts/ensure-terminal.sh
 
       - name: Run Rust tests
         run: nix develop -c cargo test --lib --tests --locked
@@ -305,9 +306,10 @@ jobs:
       - name: Ensure Cargo path dependencies
         run: |
           chmod +x ./scripts/ensure-waypipe.sh ./scripts/ensure-coreutils.sh \
-            ./scripts/prepare-cargo-path-deps.sh
+            ./scripts/ensure-terminal.sh ./scripts/prepare-cargo-path-deps.sh
           ./scripts/ensure-waypipe.sh
           ./scripts/ensure-coreutils.sh
+          ./scripts/ensure-terminal.sh
       - name: Run Rust tests (native aarch64-darwin)
         run: nix develop -c cargo test --lib --tests --locked
 
