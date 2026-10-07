@@ -135,14 +135,13 @@ See `scripts/enable-verification-ruleset.sh` (OrganizationAdmin bypass allowed).
 
 ## Miri callers
 
-Miri is requested for: `wwn-phoon-rs`, `ToolbarKeys`, `Terminal`, `nixpkgs2wasi`.
+Miri is requested for: `wwn-phoon-rs`, `ToolbarKeys`, `Terminal`.
 
 | Repo | Status |
 |---|---|
 | `wwn-phoon-rs` | Miri on via `rust-floor.yml`. First CI red names the blocker here. |
 | `ToolbarKeys` | Same. |
 | `Terminal` | Same. |
-| `nixpkgs2wasi` | Same. |
 
 A silent skip is forbidden. If Miri cannot load a crate, add the exact error
 string to this table and keep the job red until fixed or the row is written.

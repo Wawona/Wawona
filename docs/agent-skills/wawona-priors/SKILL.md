@@ -24,7 +24,8 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-relay` | Linux VMs / OCI / Mode A wasm. Mode A bench + PageTranslate. |
 | `wawona-formal-verification` | Verification report + Relay Kani/Verus. Matrix navigation, helpers, severity. |
 | `wawona-mission-critical` | Risk tiers, AI parity, proof obligations, security baseline, release evidence. |
-| `wasm-packages-gha` | WASI package builds on GHA (`Wawona/wasm-packages`). Not laptop publish. |
+| `wasm-packages-gha` | Store WASI P1 builds on GHA (`Wawona/wasm-packages`). Not laptop publish. |
+| `wawona-wasm-cli-ports` | Port CLI to WASI P1 vs WASIX: wasm-packages vs wasinix. No stubs / nixpkgs2wasi. |
 | `repo-wawona-io-catalogs` | Dual wasm/deb catalogs; GHA build vs catalog host split. |
 | `wawona-machine-types` | Machines UI: Native Shell / VM / Container. Sessions under Native Shell. |
 
@@ -43,6 +44,7 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-product-map` | Which product you are touching |
 | `wawona-mode-a-b` / `wawona-ios-mode-b-channels` | Store vs TrollStore vs Sileo |
 | `wawona-macos-mode-a` / `wawona-macos-no-appstore` | macOS in-window vs SIP |
+| `wawona-macos-prefpane` | System Settings PrefPane Auto Layout width + in-pane Back |
 | `wawona-iland-mode-b-desktop` | Desktop dylib / Take Over |
 | `wawona-mode-b-watchdog-safety` | `watchdogd` / IOWatchdog |
 | `wawona-compositor-backend` | Aqua nested vs Classic DRM |
@@ -62,13 +64,15 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-local-before-ci` | Link/eval before push |
 | `wawona-branch-workflow` | `development` vs `master` |
 | `wawona-asc-swift-support` | ITMS-90426 |
-| `wawona-release-assets` | Ship filenames |
+| `wawona-release-assets` | Ship filenames; macOS DMG pkg-only |
 | `wawona-no-em-dash` | Copy |
 | `wawona-host-keymap-bridge` | Keyboard / IME. Bridge host TIS / KeyCharacterMap. No Settings layout. |
 | `wawona-gh` | `gh` via Shell. No GitHub MCP. Authorship ban is not a `gh` ban. |
 | `wawona-github-funding` / `wawona-discord-github-webhook` | New org repos |
 | `wawona-vphone-*` / `wawona-trollstore-*` | Mode B lab / tipa |
 | `repo-wawona-io-*` | Dual wasm/deb catalog host (`repo.wawona.io`) |
+| `wawona-wasm-cli-ports` | Two lanes for CLI→wasm (P1 GHA vs wasinix). No nixpkgs scrape. |
+| `wawona-native-over-wasm` | No wasm twin of native-all-targets CLIs |
 | `wawona-machine-types` | Three Machines kinds. SSH/wasm/waypipe are Native Shell sessions. |
 
 ## Hard-won (do not re-learn)
@@ -255,3 +259,4 @@ skill, add one row. Capture flow: `wawona-learn`.
 Canonical prose: `Wawona/docs/` and `wwn-mcp/knowledge/wawona/`.
 
 - Native over wasm (no uutils twin in `/wasm/v1`): rule `wawona-native-over-wasm`, list `wasm-packages/scripts/native-all-targets.txt`.
+- CLI→wasm: two lanes only. Store P1 = `wasm-packages` GHA. Nixpkgs→WASIX = `wasinix`. Never `nixpkgs2wasi` stubs. Skill/rule `wawona-wasm-cli-ports`.
