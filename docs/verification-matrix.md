@@ -73,6 +73,7 @@ Do not leave enforcement disabled after bootstrap.
 | Pinned tools that must run (Kani, Verus, Miri, cargo-fuzz ASan, SSH vector, Gradle test/detekt/lint, nix parse, flake metadata, cproof ASan/CBMC/tidy) | `error` | Yes |
 | Unpinned research installs (Rudra, MIRAI, Prusti, Creusot, Flux, Aeneas, Haybale) | `warning` | No (until a pinned GHA path exists) |
 | Not on Ubuntu 24.04 apt (Frama-C, KLEE, CPA) | `warning` | No |
+| CDSChecker missing until a pinned GHA install | `warning` | No |
 | SpotBugs on AGP 9 (BaseExtension removed) | `warning` | No |
 | JBMC / JPF missing on runner | `warning` | No |
 | flake.nix statix/deadnix style debt (repeated follows keys) | `warning` | No |
@@ -102,8 +103,8 @@ Push and PR on `development` / `master`. Final job name **Verification report**
 |---|---|
 | `scripts/verify-formal.sh` | clippy, deny, proptest, Kani, Miri, Loom, Verus (rect + sanitize) |
 | `scripts/verify-heavy.sh` | cargo-fuzz ASan 60s (helpers-check); research installs warn |
-| `scripts/verify-c.sh` | cproof ASan/UBSan, clang-tidy (cert/bugprone on cproof TU), scan-build, CBMC, Valgrind, MSan, CDSChecker, TSan; Frama-C/KLEE/CPA warn if missing |
-| `scripts/verify-swift.sh` | SSH vector, SwiftCheck, strict concurrency, ASan/UBSan/TSan |
+| `scripts/verify-c.sh` | cproof ASan/UBSan, clang-tidy (cert/bugprone on cproof TU), scan-build, CBMC, Valgrind, MSan, CDSChecker harness when installed, TSan; Frama-C/KLEE/CPA/CDSChecker warn if missing |
+| `scripts/verify-swift.sh` | SSH vector (Swift Testing), strict concurrency, ASan/UBSan/TSan |
 | `scripts/verify-kotlin.sh` | Kotest, detekt, lint; SpotBugs/JBMC/JPF warn if unwired/missing |
 | `scripts/verify-nix.sh` | parse all `.nix`, alejandra on `flake.nix`, flake metadata; full-tree format and `nix flake check` stay in Gate: packages |
 

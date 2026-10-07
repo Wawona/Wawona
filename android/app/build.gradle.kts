@@ -105,6 +105,8 @@ android {
     // from the offline mitm gradle deps cache used by nix builds.
     lint {
         checkReleaseBuilds = false
+        // Existing Android UI debt. Fail only on new findings after this baseline.
+        baseline = file("lint-baseline.xml")
     }
 
     buildFeatures {
@@ -222,6 +224,13 @@ dependencies {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+}
+
+detekt {
+    buildUponDefaultConfig = true
+    // Existing Android UI debt. Fail only on new findings after this baseline.
+    baseline = file("detekt-baseline.xml")
+    parallel = true
 }
 
 configurations.configureEach {

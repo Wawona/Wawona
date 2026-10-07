@@ -12,8 +12,13 @@ INC="-I src/platform/cproof -I src/platform/macos -I src/platform/android"
 
 emit() {
   python3 "$REPORT" emit --out "$OUT" --tool "$1" --file "$2" --line "${3:-1}" \
-    --rule "$4" --failure "$5" --fix "$6"
+    --rule "$4" --failure "$5" --fix "$6" --severity error
   fail=1
+}
+
+emit_warn() {
+  python3 "$REPORT" emit --out "$OUT" --tool "$1" --file "$2" --line "${3:-1}" \
+    --rule "$4" --failure "$5" --fix "$6" --severity warning
 }
 
 # ASan + UBSan harness
@@ -136,26 +141,24 @@ else
   emit msan "verification/c/test_cproof.c" 1 "missing-tool" "clang missing for MSan" "install clang"
 fi
 
-# CDSChecker on atomic helpers
-if command -v cdschecker >/dev/null 2>&1 || command -v test-cdschecker >/dev/null 2>&1; then
-  emit cdschecker "src/platform/cproof/wawona_cproof.h" 1 "manual" \
-    "CDSChecker binary present; wire a harness on wawona_count_*" \
-    "run CDSChecker on verification/c/cds_counters.c"
+# CDSChecker on atomic helpers (missing tool is warning until a pinned GHA install).
+CDS_BIN=""
+if command -v cdschecker >/dev/null 2>&1; then
+  CDS_BIN=cdschecker
+elif command -v test-cdschecker >/dev/null 2>&1; then
+  CDS_BIN=test-cdschecker
+fi
+if [[ -n "$CDS_BIN" ]]; then
+  if ! "$CDS_BIN" ${INC} verification/c/cds_counters.c \
+      >verification-out/c/cdschecker.log 2>&1; then
+    emit cdschecker "verification/c/cds_counters.c" 1 "cdschecker" \
+      "CDSChecker rejected wawona_count_* harness" \
+      "$CDS_BIN verification/c/cds_counters.c"
+  fi
 else
-  # Ship a tiny model file and record missing tool
-  cat > verification/c/cds_counters.c <<'EOF'
-#include "wawona_cproof.h"
-/* CDSChecker target: concurrent inc/dec on one counter. */
-int user_main(int argc, char **argv) {
-  (void)argc; (void)argv;
-  atomic_int n = 0;
-  wawona_count_inc(&n);
-  wawona_count_dec(&n);
-  return wawona_count_load(&n);
-}
-EOF
-  emit cdschecker "verification/c/cds_counters.c" 1 "missing-tool" \
-    "CDSChecker is not installed" "install CDSChecker and run it on verification/c/cds_counters.c"
+  emit_warn cdschecker "verification/c/cds_counters.c" 1 "missing-tool" \
+    "CDSChecker is not installed" \
+    "install CDSChecker and run it on verification/c/cds_counters.c"
 fi
 
 # TSan on iland presenter mutex (compile TU when headers allow; else record)

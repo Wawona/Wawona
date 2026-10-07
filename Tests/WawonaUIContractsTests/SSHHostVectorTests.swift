@@ -1,15 +1,19 @@
 import Foundation
 import Testing
 import WawonaUIContracts
-import SwiftCheck
-import XCTest
 
 private func vectorURL() -> URL {
-    URL(fileURLWithPath: #filePath)
+    var url = URL(fileURLWithPath: #filePath)
+    for _ in 0..<10 {
+        url.deleteLastPathComponent()
+        let candidate = url.appendingPathComponent("verification/ssh_host_vector.tsv")
+        if FileManager.default.fileExists(atPath: candidate.path) {
+            return candidate
+        }
+    }
+    return URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent()
-        .deletingLastPathComponent()
-        .deletingLastPathComponent()
-        .appendingPathComponent("verification/ssh_host_vector.tsv")
+        .appendingPathComponent("ssh_host_vector.tsv")
 }
 
 private func vectorRows() throws -> [(String, String)] {
@@ -22,30 +26,33 @@ private func vectorRows() throws -> [(String, String)] {
     }
 }
 
-private let sshHostRows: [(String, String)] = {
-    (try? vectorRows()) ?? []
-}()
-
-@Test(arguments: sshHostRows)
-func swiftFallbackMatchesRustVector(row: (String, String)) {
-    #expect(MachineEditorValidation.sanitizeSSHHost(row.0) == row.1)
-}
-
-struct HostChars: Arbitrary {
-    let value: String
-    static var arbitrary: Gen<HostChars> {
-        Gen<Character>.fromElements(of: Array("abcXYZ.-:[]/ ")).proliferate(withSize: 12)
-            .map { HostChars(value: String($0)) }
+@Test
+func swiftFallbackMatchesRustVector() throws {
+    let rows = try vectorRows()
+    #expect(!rows.isEmpty)
+    for row in rows {
+        #expect(MachineEditorValidation.sanitizeSSHHost(row.0) == row.1)
     }
 }
 
-final class SanitizeProperties: XCTestCase {
-    func testNoShellMetacharacters() {
-        property("sanitize drops shell metacharacters") <- forAll { (sample: HostChars) in
-            let out = MachineEditorValidation.sanitizeSSHHost(sample.value)
-            return out.allSatisfy { ch in
-                !ch.isWhitespace && !"\"'`$;&|<>\\".contains(ch)
-            }
+@Test
+func sanitizeDropsShellMetacharactersFromSamples() {
+    let alphabet = Array("abcXYZ.-:[]/ \"$`'&|;<>\\")
+    var seed: UInt64 = 0xC0FFEE
+    for _ in 0..<64 {
+        seed = seed &* 6364136223846793005 &+ 1
+        let len = Int(seed % 13)
+        var chars: [Character] = []
+        chars.reserveCapacity(len)
+        var s = seed
+        for _ in 0..<len {
+            s = s &* 6364136223846793005 &+ 1
+            chars.append(alphabet[Int(s % UInt64(alphabet.count))])
         }
+        let sample = String(chars)
+        let out = MachineEditorValidation.sanitizeSSHHost(sample)
+        #expect(out.allSatisfy { ch in
+            !ch.isWhitespace && !"\"'`$;&|<>\\".contains(ch)
+        })
     }
 }

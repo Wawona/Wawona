@@ -9,6 +9,7 @@ pub mod c_api;
 pub mod error;
 pub mod machine_profile;
 pub mod profile_store;
+pub mod sanitize_ssh_host;
 pub mod uniffi_api;
 pub mod validation;
 

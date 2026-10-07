@@ -57,17 +57,19 @@ if ! run_cargo test --locked --lib -- sanitize_ 2>/dev/null; then
   fi
 fi
 
+# Kani on helpers-check only. Never `nix develop` here (libsecret DBus fails in GHA).
 if command -v cargo-kani >/dev/null 2>&1 || cargo kani --version >/dev/null 2>&1; then
-  if ! run_cargo kani -p wawona --harness clamped_rect_stays_inside_nonnegative_bounds \
-     && ! cargo kani --manifest-path verification/helpers-check/Cargo.toml --harness clamped_rect_stays_inside_nonnegative_bounds; then
+  if ! cargo kani --manifest-path verification/helpers-check/Cargo.toml \
+      --harness clamped_rect_stays_inside_nonnegative_bounds; then
     emit kani "src/core/invariants.rs" 32 "clamped_rect_stays_inside_nonnegative_bounds" \
       "Kani failed the rect harness" \
-      "cargo kani -p wawona --harness clamped_rect_stays_inside_nonnegative_bounds"
+      "cargo kani --manifest-path verification/helpers-check/Cargo.toml --harness clamped_rect_stays_inside_nonnegative_bounds"
   fi
-  if ! run_cargo kani -p wawona --harness sanitize_ascii_has_no_shell_metacharacters; then
-    emit kani "src/domain/validation.rs" 1 "sanitize_ascii_has_no_shell_metacharacters" \
+  if ! cargo kani --manifest-path verification/helpers-check/Cargo.toml \
+      --harness sanitize_ascii_has_no_shell_metacharacters; then
+    emit kani "src/domain/sanitize_ssh_host.rs" 1 "sanitize_ascii_has_no_shell_metacharacters" \
       "Kani failed the SSH host harness" \
-      "cargo kani -p wawona --harness sanitize_ascii_has_no_shell_metacharacters"
+      "cargo kani --manifest-path verification/helpers-check/Cargo.toml --harness sanitize_ascii_has_no_shell_metacharacters"
   fi
 else
   emit kani "scripts/verify-formal.sh" 1 "missing-tool" \

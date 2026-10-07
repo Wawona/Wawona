@@ -948,25 +948,7 @@ fun WawonaApp(
         return prefs.getString("defaultStartType", "prompt") == "newWindow"
     }
 
-    fun beginMachineStart(profile: MachineProfile) {
-        if (!SessionActivity.supportsHostTask()) {
-            val session = sessionOrchestrator.startSession(profile)
-            connectMachine(profile, session.sessionId, newWindow = false)
-            return
-        }
-        when (prefs.getString("defaultStartType", "prompt")) {
-            "newWindow" -> {
-                val session = sessionOrchestrator.startSession(profile)
-                connectMachine(profile, session.sessionId, newWindow = true)
-            }
-            "newTab" -> {
-                val session = sessionOrchestrator.startSession(profile)
-                connectMachine(profile, session.sessionId, newWindow = false)
-            }
-            else -> pendingStartProfile = profile
-        }
-    }
-
+    // Local funs must be declared before callers (Kotlin sibling visibility).
     fun connectMachine(profile: MachineProfile, sessionId: String? = null, newWindow: Boolean = false) {
         val targetSession = sessionId ?: sessionOrchestrator.startSession(profile).sessionId
         MachineProfileStore.applyMachineToPrefs(prefs, profile)
@@ -1091,6 +1073,25 @@ fun WawonaApp(
             MachineType.VM, MachineType.CONTAINER -> false
         }
         finishConnect(launched)
+    }
+
+    fun beginMachineStart(profile: MachineProfile) {
+        if (!SessionActivity.supportsHostTask()) {
+            val session = sessionOrchestrator.startSession(profile)
+            connectMachine(profile, session.sessionId, newWindow = false)
+            return
+        }
+        when (prefs.getString("defaultStartType", "prompt")) {
+            "newWindow" -> {
+                val session = sessionOrchestrator.startSession(profile)
+                connectMachine(profile, session.sessionId, newWindow = true)
+            }
+            "newTab" -> {
+                val session = sessionOrchestrator.startSession(profile)
+                connectMachine(profile, session.sessionId, newWindow = false)
+            }
+            else -> pendingStartProfile = profile
+        }
     }
 
     fun disconnectMachine(profile: MachineProfile) {
