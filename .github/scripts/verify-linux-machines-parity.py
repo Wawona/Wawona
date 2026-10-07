@@ -14,7 +14,9 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-MODEL = ROOT / "src/linux/machine_profile.rs"
+# Linux path re-exports domain. Schema lives in UniFFI domain.
+LINUX_MIRROR = ROOT / "src/linux/machine_profile.rs"
+MODEL = ROOT / "src/domain/machine_profile.rs"
 STORE = ROOT / "src/linux/profile_store.rs"
 
 # Canonical machine-type rawValues (snake_case) shared across platforms.
@@ -44,6 +46,12 @@ def main() -> int:
 
     if not MODEL.is_file():
         errors.append(f"missing canonical model: {MODEL}")
+    if not LINUX_MIRROR.is_file():
+        errors.append(f"missing Linux re-export mirror: {LINUX_MIRROR}")
+    elif "crate::domain::machine_profile" not in LINUX_MIRROR.read_text(encoding="utf-8"):
+        errors.append(
+            "src/linux/machine_profile.rs must re-export crate::domain::machine_profile"
+        )
     if not STORE.is_file():
         errors.append(f"missing profile store: {STORE}")
     if errors:
