@@ -52,14 +52,14 @@ PROOF_C=(
 if command -v clang-tidy >/dev/null 2>&1; then
   for f in "${PROOF_C[@]}"; do
     [[ -f "$f" ]] || continue
-    # Keep Wawona C snake_case. Do not enable readability-identifier-naming.
+    # Narrow check set: cert + bugprone only. No readability / cppcoreguidelines.
     if ! clang-tidy "$f" \
-        --checks='cert-*,bugprone-*,-readability-identifier-naming' \
+        --checks='-*,cert-*,bugprone-*' \
         --warnings-as-errors='cert-*,bugprone-*' \
         -- ${INC} -std=c11 >/tmp/tidy.out 2>&1; then
       emit clang-tidy "$f" 1 "cert-bugprone" \
         "$(tail -n 5 /tmp/tidy.out | tr '\n' ' ')" \
-        "clang-tidy $f --checks=cert-*,bugprone-*"
+        "clang-tidy $f --checks=-*,cert-*,bugprone-*"
     fi
   done
 else
