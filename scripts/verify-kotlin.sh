@@ -26,9 +26,10 @@ if ! ./gradlew "${GRADLE_TASKS[@]}" --offline; then
   fi
 fi
 
-emit spotbugs "android/app/build.gradle.kts" "missing-tool" \
-  "SpotBugs is not wired on AGP 9 (BaseExtension removed). Blocker until a SpotBugs Android path exists." \
-  "restore SpotBugs when AGP-compatible plugin supports ApplicationExtension"
+python3 "$REPORT" emit --out "$OUT" --tool spotbugs --file android/app/build.gradle.kts \
+  --line 1 --rule missing-tool --severity warning \
+  --failure "SpotBugs is not wired on AGP 9 (BaseExtension removed)." \
+  --fix "restore SpotBugs when AGP-compatible plugin supports ApplicationExtension"
 
 HARNESS="$ROOT/verification/kotlin/SanitizeHarness.java"
 mkdir -p "$ROOT/verification-out/kotlin"
@@ -44,9 +45,11 @@ else
         "jbmc --classpath verification-out/kotlin SanitizeHarness --unwind 8"
     fi
   else
-    emit jbmc "verification/kotlin/SanitizeHarness.java" "missing-tool" \
-      "JBMC is not installed. ESBMC Java is the listed fallback and was not selected." \
-      "install CBMC's jbmc and run it on SanitizeHarness"
+    python3 "$REPORT" emit --out "$OUT" --tool jbmc \
+      --file verification/kotlin/SanitizeHarness.java --line 1 \
+      --rule missing-tool --severity warning \
+      --failure "JBMC is not installed on this runner." \
+      --fix "install CBMC's jbmc and run it on SanitizeHarness"
   fi
 
   if command -v jpf >/dev/null 2>&1 || [[ -n "${JPF_HOME:-}" ]]; then
@@ -58,9 +61,11 @@ else
         "jpf +cg.max_depth=20 SanitizeHarness"
     fi
   else
-    emit jpf "verification/kotlin/SanitizeHarness.java" "missing-tool" \
-      "Java PathFinder is not installed" \
-      "install JPF and depth-cap SanitizeHarness"
+    python3 "$REPORT" emit --out "$OUT" --tool jpf \
+      --file verification/kotlin/SanitizeHarness.java --line 1 \
+      --rule missing-tool --severity warning \
+      --failure "Java PathFinder is not installed on this runner." \
+      --fix "install JPF and depth-cap SanitizeHarness"
   fi
 fi
 

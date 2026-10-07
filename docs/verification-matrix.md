@@ -20,7 +20,7 @@ Canonical status lives here. Skills and rules point at this file.
 - Clippy correctness/suspicious, cargo-deny, locked tests, ARM64 corpus.
 - proptest on `ram_span_ok`.
 - Loom lifecycle in `verification/loom-lifecycle` (`RUSTFLAGS=--cfg loom`).
-- Heavy tools: install attempt then NDJSON blocker (fail closed).
+- Heavy tools: cargo-fuzz ASan fail-closed; research prover installs warn until pinned.
 
 ### Wawona Gate: packages (`verify-all.yml`)
 
