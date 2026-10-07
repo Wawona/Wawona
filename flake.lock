@@ -780,32 +780,33 @@
       "locked": {
         "lastModified": 1791390995,
         "narHash": "sha256-BgXD3gK+7mOM2yf9nhNmmSmFOuZxNLrOIYa8N27uByc=",
-        "ref": "refs/heads/development",
+        "owner": "Wawona",
+        "repo": "Terminal",
         "rev": "b225d2fadade0b6e56679361066adfb27dbfadcb",
-        "revCount": 2,
-        "type": "git",
-        "url": "file:///Users/8amps/Wawona/Terminal"
+        "type": "github"
       },
       "original": {
-        "type": "git",
-        "url": "file:///Users/8amps/Wawona/Terminal"
+        "owner": "Wawona",
+        "ref": "development",
+        "repo": "Terminal",
+        "type": "github"
       }
     },
     "toolbar-keys": {
       "flake": false,
       "locked": {
-        "lastModified": 1791061537,
-        "narHash": "sha256-YsuZJ9OmoyPMiHcH+r5gl+KS6tIss6EtlTLWgUYpaak=",
-        "ref": "development",
-        "rev": "713d580083658d540f8ab136dd3805a69523bbf0",
-        "revCount": 3,
-        "type": "git",
-        "url": "ssh://git@github.com/Wawona/ToolbarKeys"
+        "lastModified": 1791390997,
+        "narHash": "sha256-iJa48BdmmSkYshSiCnTMPTkcjPfVZviuX918D1FE71s=",
+        "owner": "Wawona",
+        "repo": "ToolbarKeys",
+        "rev": "36324cc1561d89ec475d9ac1d6a318ece91f1ac7",
+        "type": "github"
       },
       "original": {
+        "owner": "Wawona",
         "ref": "development",
-        "type": "git",
-        "url": "ssh://git@github.com/Wawona/ToolbarKeys"
+        "repo": "ToolbarKeys",
+        "type": "github"
       }
     },
     "wwn-coreutils": {
@@ -970,18 +971,18 @@
         ]
       },
       "locked": {
-        "lastModified": 1789107804,
-        "narHash": "sha256-gbkJC5BYZGsLNfR5GNgDdlKcdsVj+AiAcddIQh8yw3M=",
-        "ref": "development",
-        "rev": "d8d0dce0a9f28431a9aafd964f6a9d3e19b7bb37",
-        "revCount": 16,
-        "type": "git",
-        "url": "ssh://git@github.com/Wawona/wwn-iomfb-rs"
+        "lastModified": 1791391018,
+        "narHash": "sha256-koFgPPDWEoi9Yc+jryjzkNta4C1yxv4stCH1ewifpWA=",
+        "owner": "Wawona",
+        "repo": "wwn-iomfb-rs",
+        "rev": "c66cd977446f10183caadc2cba7ff1f30e8ce39f",
+        "type": "github"
       },
       "original": {
+        "owner": "Wawona",
         "ref": "development",
-        "type": "git",
-        "url": "ssh://git@github.com/Wawona/wwn-iomfb-rs"
+        "repo": "wwn-iomfb-rs",
+        "type": "github"
       }
     },
     "wwn-iowatchdog": {
@@ -1109,16 +1110,16 @@
       "locked": {
         "lastModified": 1791390957,
         "narHash": "sha256-suJOGsZHTu9X3IXFbF8/Fzo2e9KHHGXyKY5H0nWdLMA=",
-        "ref": "development",
+        "owner": "Wawona",
+        "repo": "Relay",
         "rev": "79786104c52affd623010cf03ebab3cf626ac9db",
-        "revCount": 193,
-        "type": "git",
-        "url": "ssh://git@github.com/Wawona/Relay"
+        "type": "github"
       },
       "original": {
+        "owner": "Wawona",
         "ref": "development",
-        "type": "git",
-        "url": "ssh://git@github.com/Wawona/Relay"
+        "repo": "Relay",
+        "type": "github"
       }
     },
     "wwn-ssh": {

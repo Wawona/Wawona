@@ -98,9 +98,8 @@
     wwn-phoon-rs.inputs.rust-overlay.follows = "rust-overlay";
     # Wawona Relay: Linux VMs, OCI-in-VM, Mode A WASI. L3′. Never QEMU/UTM.
     # Replaces wwn-wasm + wwn-vms + wwn-containers. Cited: docs/wwn-repo-dag.md.
-    # HTTPS github: hits org CAP 403 locally (fine-grained PAT lifetime).
-    # Same SSH fetch as wwn-iomfb. CI needs deploy key or short-lived token.
-    wwn-relay.url = "git+ssh://git@github.com/Wawona/Relay?ref=development";
+    # Public repo: github: so GHA runners can fetch (git+ssh needs a deploy key).
+    wwn-relay.url = "github:Wawona/Relay/development";
     wwn-relay.inputs.nixpkgs.follows = "nixpkgs";
     wwn-relay.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-relay.inputs.rust-overlay.follows = "rust-overlay";
@@ -126,8 +125,8 @@
     wwn-vphone.inputs.nixpkgs.follows = "nixpkgs";
     # Reconstructed iOS IOMFB. L3' nixpkgs-only. Mode B tipa only.
     # Cited: docs/wwn-repo-dag.md. L1 must not import this.
-    # Private org repo: HTTPS archive fetch 404s under CAP; SSH works.
-    wwn-iomfb.url = "git+ssh://git@github.com/Wawona/wwn-iomfb-rs?ref=development";
+    # Public MIT tree: github: for CI and local (no SSH deploy key).
+    wwn-iomfb.url = "github:Wawona/wwn-iomfb-rs/development";
     wwn-iomfb.inputs.nixpkgs.follows = "nixpkgs";
     # Linux-shaped VTs + Doorman login after Mode B own-display. L3'.
     # Cited: docs/wwn-repo-dag.md. github: until FlakeHub rolling exists.
@@ -144,12 +143,11 @@
     doorman.inputs.nixpkgs.follows = "nixpkgs";
     # Keyboard toolbar (Rust model + UIKit views). L3'. Not a flake.
     # Wawona compiles apple/Keyboard from this tree. Cited: docs/wwn-repo-dag.md.
-    # HTTPS github: hits org CAP 403 locally. Same SSH fetch as wwn-relay.
-    toolbar-keys.url = "git+ssh://git@github.com/Wawona/ToolbarKeys?ref=development";
+    toolbar-keys.url = "github:Wawona/ToolbarKeys/development";
     toolbar-keys.flake = false;
-    # VT screen for src/term/screen.rs (symlink target). Flake input so the
-    # sandbox never follows the sibling symlink.
-    terminal.url = "git+file:///Users/8amps/Wawona/Terminal";
+    # VT screen for src/term/screen.rs. Flake input so the sandbox never
+    # follows a host-only sibling symlink (file:// breaks GHA).
+    terminal.url = "github:Wawona/Terminal/development";
     terminal.flake = false;
   };
 
