@@ -9,12 +9,9 @@ mkdir -p "$(dirname "$OUT")"
 : > "$OUT"
 REPORT="$ROOT/scripts/verification-report.py"
 fail=0
-CARGO=(cargo)
-if command -v nix >/dev/null 2>&1 && [[ -f flake.nix ]]; then
-  if nix develop -c true >/dev/null 2>&1; then
-    CARGO=(nix develop -c cargo)
-  fi
-fi
+# Never `nix develop` here. The default flake shell builds libsecret; its DBus
+# tests abort on GHA and can hang Formal scripts for tens of minutes. Use plain
+# cargo, with helpers-check as the clippy/proptest fallback.
 
 emit() {
   python3 "$REPORT" emit --out "$OUT" --tool "$1" --file "$2" --line "${3:-1}" \
@@ -22,11 +19,7 @@ emit() {
   fail=1
 }
 
-run_cargo() {
-  "${CARGO[@]}" "$@"
-}
-
-if ! run_cargo clippy --locked --all-targets -- -D clippy::correctness -D clippy::suspicious; then
+if ! cargo clippy --locked --all-targets -- -D clippy::correctness -D clippy::suspicious; then
   # Fallback: helpers only
   if ! cargo clippy --manifest-path verification/helpers-check/Cargo.toml -- -D clippy::correctness -D clippy::suspicious; then
     emit clippy "Cargo.toml" 1 "clippy::correctness" \
@@ -35,7 +28,7 @@ if ! run_cargo clippy --locked --all-targets -- -D clippy::correctness -D clippy
   fi
 fi
 
-if ! run_cargo deny check && ! cargo deny check; then
+if ! cargo deny check; then
   emit cargo-deny "deny.toml" 1 "deny" \
     "cargo-deny reported an advisory, ban, or license failure" \
     "cargo deny check"
