@@ -108,12 +108,26 @@ jobs:
           distribution: temurin
           java-version: "21"
       # Full app native link needs Nix deps. This floor is JVM + detekt + lint.
-      - uses: android-actions/setup-android@v3
-      - name: Install Android platform and build-tools
+      # Use the runner image SDK (android-actions/setup-android fails on
+      # sdkmanager "tools" with cmdline-tools 16).
+      - name: Configure Android SDK from the runner image
         run: |
           set -euo pipefail
-          sdkmanager --install "platforms;android-36" "build-tools;36.1.0"
-          echo "sdk.dir=$ANDROID_HOME" > android/local.properties
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          test -d "$SDK_ROOT"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "sdk.dir=$SDK_ROOT" > android/local.properties
+          SM=""
+          for cand in \
+            "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \
+            "$SDK_ROOT/cmdline-tools/16.0/bin/sdkmanager" \
+            "$SDK_ROOT/cmdline-tools/bin/sdkmanager"; do
+            if [[ -x "$cand" ]]; then SM="$cand"; break; fi
+          done
+          test -n "$SM"
+          yes | "$SM" --licenses >/dev/null || true
+          "$SM" --install "platforms;android-36" "build-tools;36.1.0"
       - run: bash scripts/verify-kotlin.sh verification-out/kotlin.ndjson
         env:
           WAWONA_VERIFICATION_KOTLIN: "1"
