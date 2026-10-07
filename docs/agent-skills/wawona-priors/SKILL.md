@@ -241,3 +241,5 @@ skill, add one row. Capture flow: `wawona-learn`.
   hostname as the `wawona.io` website.
 
 Canonical prose: `Wawona/docs/` and `wwn-mcp/knowledge/wawona/`.
+
+- Native over wasm (no uutils twin in `/wasm/v1`): rule `wawona-native-over-wasm`, list `wasm-packages/scripts/native-all-targets.txt`.

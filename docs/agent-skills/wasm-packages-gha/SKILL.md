@@ -40,3 +40,5 @@ Org catalogs skill: `repo-wawona-io-catalogs`.
 - Claim WASIX runs on store Pulley
 - Put build recipes only in `repo.wawona.io` (catalog host stays thin)
 - Ship empty stubs for `blocked` allowlist rows
+
+Never package names in `scripts/native-all-targets.txt` (native uutils on all targets).

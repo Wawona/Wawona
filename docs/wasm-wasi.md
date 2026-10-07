@@ -4,6 +4,8 @@ Milestone: [Support WASI P1 P2 WASM!](https://github.com/Wawona/Wawona/milestone
 
 ## Tradeoff: not platform-native
 
+Do not also ship `/wasm/v1` twins of CLIs that are already native on every target (`wasm-packages/scripts/native-all-targets.txt`, rule `wawona-native-over-wasm`).
+
 Wawona prefers **native in-process ports** when we can ship them (zsh, uutils,
 weston-terminal, foot, …). Those are real platform binaries inside the reviewed
 app.
