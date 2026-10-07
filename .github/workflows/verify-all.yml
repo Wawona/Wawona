@@ -107,7 +107,16 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
+      # Full app native link needs Nix deps. This floor is JVM + detekt + lint.
+      - uses: android-actions/setup-android@v3
+      - name: Install Android platform and build-tools
+        run: |
+          set -euo pipefail
+          sdkmanager --install "platforms;android-36" "build-tools;36.1.0"
+          echo "sdk.dir=$ANDROID_HOME" > android/local.properties
       - run: bash scripts/verify-kotlin.sh verification-out/kotlin.ndjson
+        env:
+          WAWONA_VERIFICATION_KOTLIN: "1"
       - if: always()
         uses: actions/upload-artifact@v4
         with:

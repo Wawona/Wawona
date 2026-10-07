@@ -233,6 +233,19 @@ detekt {
     parallel = true
 }
 
+// Verification report (scripts/verify-kotlin.sh) runs unit tests / detekt / lint
+// without the Nix Android native dependency graph. Skip cmake/NDK there.
+if (System.getenv("WAWONA_VERIFICATION_KOTLIN") == "1") {
+    tasks.matching {
+        val n = it.name
+        n.contains("externalNativeBuild", ignoreCase = true) ||
+            n.contains("cmake", ignoreCase = true) ||
+            n.contains("NdkBuild", ignoreCase = true)
+    }.configureEach {
+        enabled = false
+    }
+}
+
 configurations.configureEach {
     exclude(mapOf("group" to "androidx.lifecycle", "module" to "lifecycle-common-java8"))
     exclude(mapOf("group" to "androidx.resourceinspection", "module" to "resourceinspection-annotation"))

@@ -2,8 +2,13 @@
 # Android host checks. JBMC or Java PathFinder must run. Lincheck is absent on purpose.
 set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-cd "$ROOT/android"
-OUT="${1:-$ROOT/verification-out/kotlin.ndjson}"
+OUT_ARG="${1:-$ROOT/verification-out/kotlin.ndjson}"
+# Keep NDJSON at repo root even after we cd into android/.
+if [[ "$OUT_ARG" = /* ]]; then
+  OUT="$OUT_ARG"
+else
+  OUT="$ROOT/$OUT_ARG"
+fi
 mkdir -p "$(dirname "$OUT")"
 : > "$OUT"
 REPORT="$ROOT/scripts/verification-report.py"
@@ -14,6 +19,11 @@ emit() {
     --rule "$3" --failure "$4" --fix "$5"
   fail=1
 }
+
+cd "$ROOT/android"
+
+# Verification floor is JVM + detekt + lint. Skip NDK/cmake (needs Nix deps).
+export WAWONA_VERIFICATION_KOTLIN="${WAWONA_VERIFICATION_KOTLIN:-1}"
 
 # Module path is :Wawona (settings.gradle maps it to app/).
 GRADLE_TASKS=(:Wawona:testDebugUnitTest :Wawona:detekt :Wawona:lintDebug)
