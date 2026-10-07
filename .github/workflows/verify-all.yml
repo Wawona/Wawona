@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   tip:
-    name: Tip gate
+    name: "Check: is this the latest commit?"
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
@@ -34,7 +34,7 @@ jobs:
         run: bash .github/scripts/ci-require-branch-tip.sh
 
   formal:
-    name: Rust floor
+    name: "Check: Rust proofs (Kani / Verus / Miri)"
     needs: tip
     if: needs.tip.outputs.is_tip == 'true'
     runs-on: ubuntu-24.04
@@ -75,7 +75,7 @@ jobs:
           path: verification-out/formal.ndjson
 
   heavy:
-    name: Rust heavy
+    name: "Check: Rust fuzz"
     needs: tip
     if: needs.tip.outputs.is_tip == 'true'
     runs-on: ubuntu-24.04
@@ -94,7 +94,7 @@ jobs:
           path: verification-out/heavy.ndjson
 
   c-owned:
-    name: C helpers
+    name: "Check: C helpers"
     needs: tip
     if: needs.tip.outputs.is_tip == 'true'
     runs-on: ubuntu-24.04
@@ -116,7 +116,7 @@ jobs:
           path: verification-out/c.ndjson
 
   swift:
-    name: Swift differential
+    name: "Check: Swift matches Rust policy"
     needs: tip
     if: needs.tip.outputs.is_tip == 'true'
     runs-on: macos-latest
@@ -131,7 +131,7 @@ jobs:
           path: verification-out/swift.ndjson
 
   kotlin:
-    name: Kotlin differential
+    name: "Check: Kotlin / Android lint"
     needs: tip
     if: needs.tip.outputs.is_tip == 'true'
     runs-on: ubuntu-24.04
@@ -179,7 +179,7 @@ jobs:
           path: verification-out/kotlin.ndjson
 
   nix:
-    name: Nix floor
+    name: "Check: Nix files parse"
     needs: tip
     if: needs.tip.outputs.is_tip == 'true'
     runs-on: ubuntu-24.04
@@ -198,20 +198,23 @@ jobs:
           path: verification-out/nix.ndjson
 
   report:
+    # Job name is a GitHub ruleset check. Keep exact: Verification report
     name: Verification report
     if: always() && !cancelled()
     needs: [tip, formal, heavy, c-owned, swift, kotlin, nix]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - name: Superseded tip
+      - name: Not the latest commit
         if: needs.tip.outputs.is_tip != 'true'
         run: |
-          echo "::notice::Verification superseded (${{ needs.tip.outputs.reason }}). Not a proof failure."
+          echo "::notice::Skipped. A newer commit exists. This is OK."
           {
-            echo "### Verification report"
-            echo "- result: superseded"
-            echo "- reason: \`${{ needs.tip.outputs.reason }}\`"
+            echo "# Verification"
+            echo ""
+            echo "**SKIP:** Not the latest commit. Look at the newer run."
+            echo ""
+            echo "Safe to ignore this run."
           } >>"$GITHUB_STEP_SUMMARY"
 
       - uses: actions/checkout@v5
@@ -225,19 +228,70 @@ jobs:
       - name: Write the report
         if: needs.tip.outputs.is_tip == 'true'
         run: python3 scripts/verification-report.py summarize verification-out --markdown verification-out/verification-report.md
-      - name: Fail closed when a needed job failed
+      - name: Scorecard
         if: needs.tip.outputs.is_tip == 'true'
-        run: |
-          python3 - <<'PY'
-          import os, sys
-          need = os.environ["NEEDS"]
-          bad = [part for part in need.split() if part.endswith(":failure") or part.endswith(":cancelled")]
-          if bad:
-              print("failed jobs:", " ".join(bad))
-              sys.exit(1)
-          PY
         env:
-          NEEDS: "formal:${{ needs.formal.result }} heavy:${{ needs.heavy.result }} c:${{ needs.c-owned.result }} swift:${{ needs.swift.result }} kotlin:${{ needs.kotlin.result }} nix:${{ needs.nix.result }}"
+          FORMAL: ${{ needs.formal.result }}
+          HEAVY: ${{ needs.heavy.result }}
+          C: ${{ needs.c-owned.result }}
+          SWIFT: ${{ needs.swift.result }}
+          KOTLIN: ${{ needs.kotlin.result }}
+          NIX: ${{ needs.nix.result }}
+        run: |
+          set -euo pipefail
+          word() {
+            case "$1" in
+              success) echo PASS ;;
+              failure|cancelled) echo FAIL ;;
+              skipped) echo SKIP ;;
+              *) echo "$1" ;;
+            esac
+          }
+          fail=0
+          {
+            echo "# Verification"
+            echo ""
+            echo "These are safety checks on shared helpers (not the full app installers)."
+            echo ""
+            echo "| Check | Result |"
+            echo "|---|---|"
+            echo "| Rust proofs | $(word "$FORMAL") |"
+            echo "| Rust fuzz | $(word "$HEAVY") |"
+            echo "| C helpers | $(word "$C") |"
+            echo "| Swift policy | $(word "$SWIFT") |"
+            echo "| Kotlin / Android lint | $(word "$KOTLIN") |"
+            echo "| Nix files parse | $(word "$NIX") |"
+            echo ""
+          } >>"$GITHUB_STEP_SUMMARY"
+          for pair in \
+            "Rust proofs:$FORMAL" \
+            "Rust fuzz:$HEAVY" \
+            "C helpers:$C" \
+            "Swift:$SWIFT" \
+            "Kotlin:$KOTLIN" \
+            "Nix:$NIX"; do
+            name="${pair%%:*}"
+            result="${pair#*:}"
+            echo "$name → $(word "$result")"
+            if [[ "$result" == "failure" || "$result" == "cancelled" ]]; then
+              echo "::error::$name failed."
+              fail=1
+            fi
+          done
+          if [[ "$fail" -eq 0 ]]; then
+            {
+              echo "## Verdict"
+              echo ""
+              echo "**PASS:** Verification OK for this tip."
+            } >>"$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "## Verdict"
+              echo ""
+              echo "**FAIL:** Fix the red row(s) above before promoting."
+            } >>"$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
       - if: always() && needs.tip.outputs.is_tip == 'true'
         uses: actions/upload-artifact@v4
         with:

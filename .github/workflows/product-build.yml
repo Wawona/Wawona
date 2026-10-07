@@ -75,6 +75,17 @@ jobs:
       - name: Build wawona-ios
         run: ./.github/scripts/nix-retry.sh nix build ".#wawona-ios" --print-build-logs --out-link result-ios
 
+      - name: Plain summary
+        if: success()
+        run: |
+          {
+            echo "# Build: iOS"
+            echo ""
+            echo "**PASS:** iOS simulator app built."
+            echo ""
+            echo "Next: smoke test downloads this artifact."
+          } >>"$GITHUB_STEP_SUMMARY"
+
       - name: Stage + manifest
         run: |
           mkdir -p dist/ios-sim
@@ -92,7 +103,11 @@ jobs:
           } > dist/ios-sim/product-manifest.json
           # Note whether path looks cache-backed (best-effort).
           if nix path-info --json "$OUT" 2>/dev/null | grep -q cache.flakehub.com; then
-            echo "flakehub_substitute=likely" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >>"$GITHUB_STEP_SUMMARY"
+            echo "Cache: reused a matching Nix build from FlakeHub (faster)." >>"$GITHUB_STEP_SUMMARY"
+          else
+            echo "" >>"$GITHUB_STEP_SUMMARY"
+            echo "Cache: built on this runner (or cache probe unclear)." >>"$GITHUB_STEP_SUMMARY"
           fi
           ls -la dist/ios-sim/
 
@@ -220,6 +235,11 @@ jobs:
           printf '{"attr":"%s","sha":"%s","artifact":"product-%s-sim"}\n' \
             "${{ matrix.attr }}" "${{ github.sha }}" "${{ matrix.target }}" \
             > "$OUT_DIR/product-manifest.json"
+          {
+            echo "# Build: ${{ matrix.label }}"
+            echo ""
+            echo "**PASS:** ${{ matrix.label }} simulator app built and audited."
+          } >>"$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v7
         with:

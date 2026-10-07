@@ -18,6 +18,23 @@ Marketing version is **`YY.M.D`** (year · month · day), Apple-style year major
 bump **build number** (`WAWONA_BUILD_NUMBER` / `CURRENT_PROJECT_VERSION`) only.
 Do not use semver majors for product releases.
 
+## How to read CI (10 seconds)
+
+Open the run → open the job whose name starts with **RESULT** or **Verification report** → read the **Summary** tab.
+
+| You see… | Means… |
+|---|---|
+| **PASS** | That check is good |
+| **FAIL** | That platform/check is broken. Fix it. Do not promote |
+| **SKIP** (latest commit?) | A newer commit exists. Ignore this run; open the newest one |
+| Green workflow, red child | Open the red job. The Summary table names the platform |
+
+Before `development` → `master`, you need three greens on the **same tip**:
+
+1. Workflow **Verification** (job **Verification report**)
+2. Workflow **Gate: packages**
+3. Workflow **Gate: products** (job **RESULT: all products OK?**)
+
 ## When to beta vs release
 
 | You do… | Runs… | Ships… |

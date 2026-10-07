@@ -33,7 +33,7 @@ env:
 
 jobs:
   gate-ok:
-    name: Require green Gate products
+    name: "Check: products already green?"
     if: >-
       github.event_name == 'workflow_dispatch'
       || (
@@ -51,14 +51,17 @@ jobs:
           set -euo pipefail
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "sha=${{ github.sha }}" >>"$GITHUB_OUTPUT"
+            note="Manual ship. Operator chose this commit."
           else
             echo "sha=${{ github.event.workflow_run.head_sha }}" >>"$GITHUB_OUTPUT"
+            note="Gate: products was green on master. Safe to upload to stores."
           fi
           {
-            echo "### Ship: beta gate"
-            echo "- event: \`${{ github.event_name }}\`"
-            echo "- sha: \`${{ github.event.workflow_run.head_sha || github.sha }}\`"
-            echo "- gate_conclusion: \`${{ github.event.workflow_run.conclusion || 'dispatch' }}\`"
+            echo "# Ship to stores?"
+            echo ""
+            echo "**YES.** ${note}"
+            echo ""
+            echo "- Commit: \`${{ github.event.workflow_run.head_sha || github.sha }}\`"
           } >>"$GITHUB_STEP_SUMMARY"
 
   apple-beta:

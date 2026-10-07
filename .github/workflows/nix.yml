@@ -26,7 +26,7 @@ env:
 
 jobs:
   tip:
-    name: Tip gate
+    name: "Check: is this the latest commit?"
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
@@ -44,7 +44,7 @@ jobs:
 
   # Always-on scope probe so docs-only tips skip Darwin minutes but keep L0.
   ci-scope:
-    name: "CI scope"
+    name: "Check: which packages to build"
     needs: tip
     if: needs.tip.outputs.is_tip == 'true'
     runs-on: ubuntu-latest

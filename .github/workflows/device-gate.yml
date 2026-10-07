@@ -68,7 +68,7 @@ permissions:
 
 jobs:
   tip:
-    name: Tip gate
+    name: "Check: is this the latest commit?"
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
@@ -86,7 +86,7 @@ jobs:
         run: bash .github/scripts/ci-require-branch-tip.sh
 
   product-ios:
-    name: Product iOS sim
+    name: "Build: iOS"
     needs: tip
     if: needs.tip.outputs.is_tip == 'true'
     uses: ./.github/workflows/product-build.yml
@@ -99,7 +99,7 @@ jobs:
       id-token: write
 
   product-apple-family:
-    name: Product Apple family
+    name: "Build: iPadOS + tvOS + watchOS + visionOS"
     needs: tip
     if: needs.tip.outputs.is_tip == 'true'
     uses: ./.github/workflows/product-build.yml
@@ -112,7 +112,7 @@ jobs:
       id-token: write
 
   product-android:
-    name: Product Android APK
+    name: "Build: Android"
     needs: tip
     if: needs.tip.outputs.is_tip == 'true'
     uses: ./.github/workflows/product-build.yml
@@ -125,7 +125,7 @@ jobs:
       id-token: write
 
   product-macos:
-    name: Product macOS app
+    name: "Build: macOS"
     needs: tip
     if: needs.tip.outputs.is_tip == 'true'
     uses: ./.github/workflows/product-build.yml
@@ -138,7 +138,7 @@ jobs:
       id-token: write
 
   product-appimage:
-    name: Product AppImages
+    name: "Build: Linux AppImages"
     needs: tip
     if: needs.tip.outputs.is_tip == 'true'
     uses: ./.github/workflows/product-build.yml
@@ -151,7 +151,7 @@ jobs:
       id-token: write
 
   e2e-ios:
-    name: "Build: GUI smoke iOS"
+    name: "Test: iOS opens and runs"
     needs: [tip, product-ios]
     if: needs.tip.outputs.is_tip == 'true'
     uses: ./.github/workflows/device-e2e.yml
@@ -166,7 +166,7 @@ jobs:
       actions: read
 
   e2e-android:
-    name: "Build: GUI smoke Android"
+    name: "Test: Android opens and runs"
     needs: [tip, product-android]
     if: needs.tip.outputs.is_tip == 'true'
     uses: ./.github/workflows/device-e2e.yml
@@ -181,7 +181,7 @@ jobs:
       actions: read
 
   e2e-macos:
-    name: "Build: GUI smoke macOS"
+    name: "Test: macOS opens and runs"
     needs: [tip, product-macos]
     if: needs.tip.outputs.is_tip == 'true'
     uses: ./.github/workflows/device-e2e.yml
@@ -196,7 +196,7 @@ jobs:
       actions: read
 
   e2e-linux:
-    name: "Build: GUI smoke Linux catalog"
+    name: "Test: Linux catalog"
     needs: tip
     if: needs.tip.outputs.is_tip == 'true'
     uses: ./.github/workflows/device-e2e.yml
@@ -211,7 +211,7 @@ jobs:
       actions: read
 
   leak-idle:
-    name: "Watch: idle memory"
+    name: "Watch: memory after idle (advisory)"
     needs: [tip, product-ios, product-android, product-macos]
     if: >-
       always()
@@ -231,10 +231,9 @@ jobs:
       id-token: write
       actions: read
 
-  # Rollup: full product matrix + GUI smoke. apple-family is required (iPadOS /
-  # tvOS / watchOS / visionOS). leak-idle stays advisory (not needed here).
+  # Final yes/no for humans. leak-idle is advisory (not required here).
   gate:
-    name: "Gate: products"
+    name: "RESULT: all products OK?"
     needs:
       - tip
       - e2e-ios
@@ -247,17 +246,19 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Superseded tip
+      - name: Not the latest commit
         if: needs.tip.outputs.is_tip != 'true'
         run: |
-          echo "::notice::Gate: products superseded (${{ needs.tip.outputs.reason }}). Not a product failure."
+          echo "::notice::Skipped. A newer commit exists. This is OK, not a product failure."
           {
-            echo "### Gate: products"
-            echo "- result: superseded"
-            echo "- reason: \`${{ needs.tip.outputs.reason }}\`"
+            echo "# Products"
+            echo ""
+            echo "**SKIP:** Not the latest commit. Look at the newer run."
+            echo ""
+            echo "Safe to ignore this run."
           } >>"$GITHUB_STEP_SUMMARY"
 
-      - name: Require full product matrix
+      - name: Scorecard
         if: needs.tip.outputs.is_tip == 'true'
         env:
           E2E_IOS: ${{ needs.e2e-ios.result }}
@@ -268,29 +269,58 @@ jobs:
           APPLE_FAMILY: ${{ needs.product-apple-family.result }}
         run: |
           set -euo pipefail
+          word() {
+            case "$1" in
+              success) echo PASS ;;
+              failure|cancelled) echo FAIL ;;
+              skipped) echo SKIP ;;
+              *) echo "$1" ;;
+            esac
+          }
           fail=0
+          {
+            echo "# Products"
+            echo ""
+            echo "Green means Wawona built and basic smoke passed on that platform."
+            echo ""
+            echo "| Platform | Result |"
+            echo "|---|---|"
+            echo "| iOS (build + smoke) | $(word "$E2E_IOS") |"
+            echo "| Android (build + smoke) | $(word "$E2E_ANDROID") |"
+            echo "| macOS (build + smoke) | $(word "$E2E_MACOS") |"
+            echo "| Linux catalog smoke | $(word "$E2E_LINUX") |"
+            echo "| Linux AppImages | $(word "$APPIMAGE") |"
+            echo "| iPadOS + tvOS + watchOS + visionOS | $(word "$APPLE_FAMILY") |"
+            echo ""
+          } >>"$GITHUB_STEP_SUMMARY"
           for pair in \
-            "e2e-ios:${E2E_IOS}" \
-            "e2e-android:${E2E_ANDROID}" \
-            "e2e-macos:${E2E_MACOS}" \
-            "e2e-linux:${E2E_LINUX}" \
-            "product-appimage:${APPIMAGE}" \
-            "product-apple-family:${APPLE_FAMILY}"; do
+            "iOS:$E2E_IOS" \
+            "Android:$E2E_ANDROID" \
+            "macOS:$E2E_MACOS" \
+            "Linux catalog:$E2E_LINUX" \
+            "Linux AppImages:$APPIMAGE" \
+            "Apple family:$APPLE_FAMILY"; do
             name="${pair%%:*}"
             result="${pair#*:}"
-            echo "$name=$result"
+            echo "$name → $(word "$result")"
             if [[ "$result" != "success" ]]; then
-              echo "::error::$name required for Gate: products (got $result)"
+              echo "::error::$name failed (got $result). Fix that platform before promoting."
               fail=1
             fi
           done
-          {
-            echo "### Gate: products"
-            echo "- e2e-ios: \`${E2E_IOS}\`"
-            echo "- e2e-android: \`${E2E_ANDROID}\`"
-            echo "- e2e-macos: \`${E2E_MACOS}\`"
-            echo "- e2e-linux: \`${E2E_LINUX}\`"
-            echo "- product-appimage: \`${APPIMAGE}\`"
-            echo "- product-apple-family: \`${APPLE_FAMILY}\`"
-          } >>"$GITHUB_STEP_SUMMARY"
+          if [[ "$fail" -eq 0 ]]; then
+            {
+              echo "## Verdict"
+              echo ""
+              echo "**PASS:** All products OK. This tip can promote to master (with Verification + Gate: packages also green)."
+            } >>"$GITHUB_STEP_SUMMARY"
+            echo "RESULT: PASS. All products OK."
+          else
+            {
+              echo "## Verdict"
+              echo ""
+              echo "**FAIL:** Something above is red. Do not promote to master until every row is PASS."
+            } >>"$GITHUB_STEP_SUMMARY"
+            echo "RESULT: FAIL. See table above."
+          fi
           exit "$fail"
