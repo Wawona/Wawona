@@ -1,0 +1,13 @@
+[package]
+name = "wawona-helpers-check"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dev-dependencies]
+proptest = "1.6"
+
+[lints.rust]
+unexpected_cfgs = { level = "allow", check-cfg = ["cfg(kani)", "cfg(loom)"] }

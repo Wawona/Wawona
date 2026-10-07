@@ -10,6 +10,7 @@
 
 #include "renderer_android.h"
 #include "shader_spv.h"
+#include "../cproof/wawona_cproof.h"
 #include <android/log.h>
 #include <stdlib.h>
 #include <string.h>
@@ -496,7 +497,7 @@ void renderer_android_destroy_all(void) {
   renderer_android_destroy_pipeline();
 
   VkDevice dev = s_renderer->device;
-  for (int i = 0; i < MAX_CACHED_BUFFERS; i++)
+  for (int i = 0; wawona_texture_cache_index_ok(i); i++)
     free_cached_texture(dev, &s_renderer->cache[i]);
 
   free(s_renderer);
@@ -509,7 +510,7 @@ void renderer_android_prune_surface(uint32_t surface_id,
   if (!s_renderer || surface_id == 0)
     return;
   VkDevice dev = s_renderer->device;
-  for (int i = 0; i < MAX_CACHED_BUFFERS; i++) {
+  for (int i = 0; wawona_texture_cache_index_ok(i); i++) {
     CachedTexture *t = &s_renderer->cache[i];
     if (t->surface_id == surface_id && t->buffer_id != keep_buffer_id)
       free_cached_texture(dev, t);
@@ -534,7 +535,7 @@ int renderer_android_cache_buffer(VkCommandBuffer cmd_buf, uint32_t surface_id,
   CachedTexture *slot = NULL;
   CachedTexture *empty = NULL;
   CachedTexture *unused = NULL;
-  for (int i = 0; i < MAX_CACHED_BUFFERS; i++) {
+  for (int i = 0; wawona_texture_cache_index_ok(i); i++) {
     if (s_renderer->cache[i].buffer_id == buffer_id) {
       slot = &s_renderer->cache[i];
       break;
@@ -787,7 +788,7 @@ int renderer_android_cache_buffer(VkCommandBuffer cmd_buf, uint32_t surface_id,
 VkImageView renderer_android_get_texture(uint64_t buffer_id) {
   if (!s_renderer)
     return VK_NULL_HANDLE;
-  for (int i = 0; i < MAX_CACHED_BUFFERS; i++) {
+  for (int i = 0; wawona_texture_cache_index_ok(i); i++) {
     if (s_renderer->cache[i].buffer_id == buffer_id &&
         s_renderer->cache[i].image_view != VK_NULL_HANDLE)
       return s_renderer->cache[i].image_view;
@@ -802,7 +803,7 @@ static void get_texture_size(uint64_t buffer_id, uint32_t *width,
   *height = 0;
   if (!s_renderer)
     return;
-  for (int i = 0; i < MAX_CACHED_BUFFERS; i++) {
+  for (int i = 0; wawona_texture_cache_index_ok(i); i++) {
     if (s_renderer->cache[i].buffer_id == buffer_id &&
         s_renderer->cache[i].image_view != VK_NULL_HANDLE) {
       *width = s_renderer->cache[i].width;
@@ -817,7 +818,7 @@ void renderer_android_evict_buffer(uint64_t buffer_id) {
   if (!s_renderer || buffer_id == 0)
     return;
   VkDevice dev = s_renderer->device;
-  for (int i = 0; i < MAX_CACHED_BUFFERS; i++) {
+  for (int i = 0; wawona_texture_cache_index_ok(i); i++) {
     if (s_renderer->cache[i].buffer_id == buffer_id) {
       free_cached_texture(dev, &s_renderer->cache[i]);
       break;

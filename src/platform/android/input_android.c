@@ -6,6 +6,7 @@
  */
 
 #include "input_android.h"
+#include "../cproof/wawona_cproof.h"
 #include <stdint.h>
 
 /* Linux evdev key codes (from input-event-codes.h) */
@@ -180,83 +181,87 @@
 #define AKEYCODE_META_RIGHT     118
 
 uint32_t android_keycode_to_linux(uint32_t android_keycode) {
+    uint32_t code;
     switch (android_keycode) {
-    case AKEYCODE_A: return KEY_A;
-    case AKEYCODE_B: return KEY_B;
-    case AKEYCODE_C: return KEY_C;
-    case AKEYCODE_D: return KEY_D;
-    case AKEYCODE_E: return KEY_E;
-    case AKEYCODE_F: return KEY_F;
-    case AKEYCODE_G: return KEY_G;
-    case AKEYCODE_H: return KEY_H;
-    case AKEYCODE_I: return KEY_I;
-    case AKEYCODE_J: return KEY_J;
-    case AKEYCODE_K: return KEY_K;
-    case AKEYCODE_L: return KEY_L;
-    case AKEYCODE_M: return KEY_M;
-    case AKEYCODE_N: return KEY_N;
-    case AKEYCODE_O: return KEY_O;
-    case AKEYCODE_P: return KEY_P;
-    case AKEYCODE_Q: return KEY_Q;
-    case AKEYCODE_R: return KEY_R;
-    case AKEYCODE_S: return KEY_S;
-    case AKEYCODE_T: return KEY_T;
-    case AKEYCODE_U: return KEY_U;
-    case AKEYCODE_V: return KEY_V;
-    case AKEYCODE_W: return KEY_W;
-    case AKEYCODE_X: return KEY_X;
-    case AKEYCODE_Y: return KEY_Y;
-    case AKEYCODE_Z: return KEY_Z;
-    case AKEYCODE_0: return KEY_0;
-    case AKEYCODE_1: return KEY_1;
-    case AKEYCODE_2: return KEY_2;
-    case AKEYCODE_3: return KEY_3;
-    case AKEYCODE_4: return KEY_4;
-    case AKEYCODE_5: return KEY_5;
-    case AKEYCODE_6: return KEY_6;
-    case AKEYCODE_7: return KEY_7;
-    case AKEYCODE_8: return KEY_8;
-    case AKEYCODE_9: return KEY_9;
-    case AKEYCODE_CTRL_LEFT:  return KEY_LEFTCTRL;
-    case AKEYCODE_CTRL_RIGHT: return KEY_RIGHTCTRL;
-    case AKEYCODE_SHIFT_LEFT: return KEY_LEFTSHIFT;
-    case AKEYCODE_SHIFT_RIGHT: return KEY_RIGHTSHIFT;
-    case AKEYCODE_ALT_LEFT:   return KEY_LEFTALT;
-    case AKEYCODE_ALT_RIGHT:  return KEY_RIGHTALT;
-    case AKEYCODE_META_LEFT:  return KEY_LEFTMETA;
-    case AKEYCODE_META_RIGHT: return KEY_RIGHTMETA;
+    case AKEYCODE_A: code = KEY_A; break;
+    case AKEYCODE_B: code = KEY_B; break;
+    case AKEYCODE_C: code = KEY_C; break;
+    case AKEYCODE_D: code = KEY_D; break;
+    case AKEYCODE_E: code = KEY_E; break;
+    case AKEYCODE_F: code = KEY_F; break;
+    case AKEYCODE_G: code = KEY_G; break;
+    case AKEYCODE_H: code = KEY_H; break;
+    case AKEYCODE_I: code = KEY_I; break;
+    case AKEYCODE_J: code = KEY_J; break;
+    case AKEYCODE_K: code = KEY_K; break;
+    case AKEYCODE_L: code = KEY_L; break;
+    case AKEYCODE_M: code = KEY_M; break;
+    case AKEYCODE_N: code = KEY_N; break;
+    case AKEYCODE_O: code = KEY_O; break;
+    case AKEYCODE_P: code = KEY_P; break;
+    case AKEYCODE_Q: code = KEY_Q; break;
+    case AKEYCODE_R: code = KEY_R; break;
+    case AKEYCODE_S: code = KEY_S; break;
+    case AKEYCODE_T: code = KEY_T; break;
+    case AKEYCODE_U: code = KEY_U; break;
+    case AKEYCODE_V: code = KEY_V; break;
+    case AKEYCODE_W: code = KEY_W; break;
+    case AKEYCODE_X: code = KEY_X; break;
+    case AKEYCODE_Y: code = KEY_Y; break;
+    case AKEYCODE_Z: code = KEY_Z; break;
+    case AKEYCODE_0: code = KEY_0; break;
+    case AKEYCODE_1: code = KEY_1; break;
+    case AKEYCODE_2: code = KEY_2; break;
+    case AKEYCODE_3: code = KEY_3; break;
+    case AKEYCODE_4: code = KEY_4; break;
+    case AKEYCODE_5: code = KEY_5; break;
+    case AKEYCODE_6: code = KEY_6; break;
+    case AKEYCODE_7: code = KEY_7; break;
+    case AKEYCODE_8: code = KEY_8; break;
+    case AKEYCODE_9: code = KEY_9; break;
+    case AKEYCODE_CTRL_LEFT:  code = KEY_LEFTCTRL; break;
+    case AKEYCODE_CTRL_RIGHT: code = KEY_RIGHTCTRL; break;
+    case AKEYCODE_SHIFT_LEFT: code = KEY_LEFTSHIFT; break;
+    case AKEYCODE_SHIFT_RIGHT: code = KEY_RIGHTSHIFT; break;
+    case AKEYCODE_ALT_LEFT:   code = KEY_LEFTALT; break;
+    case AKEYCODE_ALT_RIGHT:  code = KEY_RIGHTALT; break;
+    case AKEYCODE_META_LEFT:  code = KEY_LEFTMETA; break;
+    case AKEYCODE_META_RIGHT: code = KEY_RIGHTMETA; break;
     case AKEYCODE_DPAD_UP:
-    case AKEYCODE_DPAD_UP_2:  return KEY_UP;
+    case AKEYCODE_DPAD_UP_2:  code = KEY_UP; break;
     case AKEYCODE_DPAD_DOWN:
-    case AKEYCODE_DPAD_DOWN_2: return KEY_DOWN;
+    case AKEYCODE_DPAD_DOWN_2: code = KEY_DOWN; break;
     case AKEYCODE_DPAD_LEFT:
-    case AKEYCODE_DPAD_LEFT_2: return KEY_LEFT;
+    case AKEYCODE_DPAD_LEFT_2: code = KEY_LEFT; break;
     case AKEYCODE_DPAD_RIGHT:
-    case AKEYCODE_DPAD_RIGHT_2: return KEY_RIGHT;
+    case AKEYCODE_DPAD_RIGHT_2: code = KEY_RIGHT; break;
     case AKEYCODE_ENTER:
     case AKEYCODE_DPAD_CENTER:
-    case AKEYCODE_DPAD_CENTER_2: return KEY_ENTER;
-    case AKEYCODE_TAB:  return KEY_TAB;
-    case AKEYCODE_SPACE: return KEY_SPACE;
-    case AKEYCODE_ESCAPE: return KEY_ESC;
-    case AKEYCODE_DEL: return KEY_BACKSPACE;
-    case AKEYCODE_FORWARD_DEL: return KEY_DELETE;
-    case AKEYCODE_HOME: return KEY_HOME;
-    case AKEYCODE_ENDCALL: return KEY_END;
-    case AKEYCODE_COMMA: return KEY_COMMA;
-    case AKEYCODE_PERIOD: return KEY_DOT;
-    case AKEYCODE_SLASH: return KEY_SLASH;
-    case AKEYCODE_MINUS: return KEY_MINUS;
-    case AKEYCODE_EQUALS: return KEY_EQUAL;
-    case AKEYCODE_LEFT_BRACKET: return KEY_LEFTBRACE;
-    case AKEYCODE_RIGHT_BRACKET: return KEY_RIGHTBRACE;
-    case AKEYCODE_BACKSLASH: return KEY_BACKSLASH;
-    case AKEYCODE_SEMICOLON: return KEY_SEMICOLON;
-    case AKEYCODE_APOSTROPHE: return KEY_APOSTROPHE;
-    case AKEYCODE_GRAVE: return KEY_GRAVE;
-    default:
-        return android_keycode;
+    case AKEYCODE_DPAD_CENTER_2: code = KEY_ENTER; break;
+    case AKEYCODE_TAB:  code = KEY_TAB; break;
+    case AKEYCODE_SPACE: code = KEY_SPACE; break;
+    case AKEYCODE_ESCAPE: code = KEY_ESC; break;
+    case AKEYCODE_DEL: code = KEY_BACKSPACE; break;
+    case AKEYCODE_FORWARD_DEL: code = KEY_DELETE; break;
+    case AKEYCODE_HOME: code = KEY_HOME; break;
+    case AKEYCODE_ENDCALL: code = KEY_END; break;
+    case AKEYCODE_COMMA: code = KEY_COMMA; break;
+    case AKEYCODE_PERIOD: code = KEY_DOT; break;
+    case AKEYCODE_SLASH: code = KEY_SLASH; break;
+    case AKEYCODE_MINUS: code = KEY_MINUS; break;
+    case AKEYCODE_EQUALS: code = KEY_EQUAL; break;
+    case AKEYCODE_LEFT_BRACKET: code = KEY_LEFTBRACE; break;
+    case AKEYCODE_RIGHT_BRACKET: code = KEY_RIGHTBRACE; break;
+    case AKEYCODE_BACKSLASH: code = KEY_BACKSLASH; break;
+    case AKEYCODE_SEMICOLON: code = KEY_SEMICOLON; break;
+    case AKEYCODE_APOSTROPHE: code = KEY_APOSTROPHE; break;
+    case AKEYCODE_GRAVE: code = KEY_GRAVE; break;
+    default: code = KEY_RESERVED; break;
     }
+    if (!wawona_linux_keycode_ok(code)) {
+        return KEY_RESERVED;
+    }
+    return code;
 }
 
 uint32_t control_to_linux_keycode(char ch, int *needs_shift) {

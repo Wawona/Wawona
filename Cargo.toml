@@ -1,3 +1,4 @@
+[workspace]
 members = ["."]
 
 [package]
@@ -6,6 +7,11 @@ version = "26.9.9"
 edition = "2021"
 
 [lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)", "cfg(loom)"] }
+
+[dev-dependencies]
+proptest = "1.6"
+loom = "0.7"
 
 [lib]
 crate-type = ["rlib", "staticlib", "cdylib"]

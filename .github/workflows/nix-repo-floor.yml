@@ -1,0 +1,40 @@
+name: Nix repo floor
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  nix:
+    name: Nix floor
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: DeterminateSystems/nix-installer-action@v22
+        with:
+          determinate: true
+      - uses: DeterminateSystems/flakehub-cache-action@v3
+      - name: Nix floor
+        run: |
+          set -euo pipefail
+          if [[ -f scripts/verify-nix.sh ]]; then
+            bash scripts/verify-nix.sh verification-out/nix.ndjson
+          else
+            # Caller without Wawona scripts: inline floor
+            mkdir -p verification-out
+            : > verification-out/nix.ndjson
+            fail=0
+            while IFS= read -r -d '' f; do
+              nix-instantiate --parse "$f" >/dev/null || fail=1
+            done < <(find . -name '*.nix' -not -path './.git/*' -not -path './result*' -print0)
+            nix shell nixpkgs#alejandra -c alejandra --check . || fail=1
+            nix shell nixpkgs#statix -c statix check . || fail=1
+            nix shell nixpkgs#deadnix -c deadnix -f . || fail=1
+            if [[ -f flake.nix ]]; then
+              nix flake metadata --json >/dev/null || fail=1
+              nix flake check --print-build-logs || fail=1
+            fi
+            exit "$fail"
+          fi

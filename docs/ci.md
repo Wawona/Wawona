@@ -26,7 +26,7 @@ Do not use semver majors for product releases.
 | Promote green tip → **`master`** (push) | **Ship: beta (stores)** + **Ship: beta AppImages** (after Gate: products) | TestFlight + Play internal + Linux AppImage workflow artifacts (reused from Gate: products) |
 | Tag **`v*`** on a release commit | **Ship: beta (stores)** *and* **Ship: GitHub assets** | Store betas + GitHub Release assets |
 
-**Promote rule:** `development` → `master` only when **Gate: packages** + **Gate: products** are green on that tip.
+**Promote rule:** `development` → `master` only when **Gate: packages**, the **Verification report** check, and **Gate: products** are green on that tip.
 
 Workflow display names use a role prefix (`Gate` / `Build` / `Watch` / `Ship`). Filenames stay as before (`nix.yml`, `device-gate.yml`, …).
 
@@ -163,6 +163,7 @@ Push/PR **Gate: packages** builds only [`.github/ci-package-matrix.json`](../.gi
 | `build` (matrix) | L2 | Curated attrs + FlakeHub (Darwin cells skip when `native=false`) |
 | `frontend-syntax-check` | L2-lite | Xcode syntax without full Nix backend (skipped when docs-only) |
 | `android-gradle-gate` | L2 (path filter) | Gradle `assembleDebug` + meson/shell |
+| `verification` | L1 | Calls `verify-all.yml`. The check name is **Verification report**. Rust, Swift, Kotlin, and owned C. A missing tool is a finding. |
 
 `workflow_dispatch` always runs the full Darwin surface.
 
@@ -255,7 +256,7 @@ Summary prints `MATRIX_FAIL cells=ios/niri,android/vkcube,…`.
   `.github/scripts/verify-ios-modeb-ci.sh` (scanner + vphone `.ad` contract).
   Gate: products' `ios-modeb` job builds both channel artifacts on macOS:
   TrollStore `.tipa` is checked at Mach-O iOS **14.0**, and Sileo `.deb` is
-  checked at iOS **11.0** (including its `firmware (>= 11.0)` package gate).
+  checked at iOS **13.0** (including its `firmware (>= 13.0)` package gate).
   This is a product build, not merely an archive repack.
   Gate: products runs `--mode-a` on the iOS and iPadOS simulator apps. Lab
   replay is `scripts/agent-device-smoke.sh vphone` against

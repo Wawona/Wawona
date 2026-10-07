@@ -1,0 +1,33 @@
+name: Rust repo floor
+
+on:
+  workflow_call:
+    inputs:
+      miri:
+        description: Run Miri on nightly-2026-09-29
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  floor:
+    name: Rust floor
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo install cargo-deny --locked
+      - name: Clippy deny and tests
+        run: |
+          set -euo pipefail
+          cargo clippy --locked --all-targets -- -D clippy::correctness -D clippy::suspicious
+          cargo deny check
+          cargo test --locked
+      - name: Miri
+        if: inputs.miri
+        run: |
+          rustup toolchain install nightly-2026-09-29 --profile minimal --component miri
+          cargo +nightly-2026-09-29 miri test --locked

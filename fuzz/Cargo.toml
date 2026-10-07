@@ -1,0 +1,21 @@
+[package]
+name = "wawona-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+wawona = { path = ".." }
+
+[[bin]]
+name = "clamp_rect"
+path = "fuzz_targets/clamp_rect.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]

@@ -1,0 +1,156 @@
+name: Verification
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  push:
+    branches: [development, master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  formal:
+    name: Rust floor
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: DeterminateSystems/nix-installer-action@v22
+        with:
+          determinate: true
+          extra-conf: |
+            sandbox = relaxed
+            allow-import-from-derivation = true
+      - uses: DeterminateSystems/flakehub-cache-action@v3
+      - uses: dtolnay/rust-toolchain@stable
+      - run: ./scripts/ensure-waypipe.sh; ./scripts/ensure-coreutils.sh
+      - run: cargo install cargo-deny --locked
+      - uses: model-checking/kani-github-action@f838096619a707b0f6b2118cf435eaccfa33e51f # v1.1
+        with:
+          kani-version: "0.68.0"
+          command: nix develop -c cargo kani -p wawona --harness clamped_rect_stays_inside_nonnegative_bounds
+      - name: Kani sanitize harness
+        run: nix develop -c cargo kani -p wawona --harness sanitize_ascii_has_no_shell_metacharacters
+      - name: Install pinned Verus
+        run: |
+          rustup toolchain install 1.98.1-x86_64-unknown-linux-gnu --profile minimal
+          curl --fail --location --output /tmp/verus.zip \
+            https://github.com/verus-lang/verus/releases/download/release%2F0.2026.09.27.3cf1832/verus-0.2026.09.27.3cf1832-x86-linux.zip
+          echo "43814031e10df043221d83c7fa842e3ebd662cb7b0090fc1eb4d7a8673226978  /tmp/verus.zip" | sha256sum --check --strict
+          unzip -q /tmp/verus.zip -d "$RUNNER_TEMP/verus"
+          echo "VERUS_BIN=$RUNNER_TEMP/verus/verus-x86-linux/verus" >> "$GITHUB_ENV"
+      - name: Install Miri nightly
+        run: rustup toolchain install nightly-2026-09-29 --profile minimal --component miri
+      - name: Formal scripts
+        run: bash scripts/verify-formal.sh verification-out/formal.ndjson
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ndjson-formal
+          path: verification-out/formal.ndjson
+
+  heavy:
+    name: Rust heavy
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - run: rustup toolchain install nightly --profile minimal
+      - run: cargo +nightly install cargo-fuzz --version 0.13.2 --locked
+      - name: Heavy scripts and ASan fuzz
+        run: bash scripts/verify-heavy.sh verification-out/heavy.ndjson
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ndjson-heavy
+          path: verification-out/heavy.ndjson
+
+  c-owned:
+    name: C helpers
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - run: sudo apt-get update && sudo apt-get install -y clang-tidy clang-tools valgrind cbmc frama-c
+      - run: bash scripts/verify-c.sh verification-out/c.ndjson
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ndjson-c
+          path: verification-out/c.ndjson
+
+  swift:
+    name: Swift differential
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: bash scripts/verify-swift.sh verification-out/swift.ndjson
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ndjson-swift
+          path: verification-out/swift.ndjson
+
+  kotlin:
+    name: Kotlin differential
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - run: bash scripts/verify-kotlin.sh verification-out/kotlin.ndjson
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ndjson-kotlin
+          path: verification-out/kotlin.ndjson
+
+  nix:
+    name: Nix floor
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: DeterminateSystems/nix-installer-action@v22
+        with:
+          determinate: true
+      - uses: DeterminateSystems/flakehub-cache-action@v3
+      - run: bash scripts/verify-nix.sh verification-out/nix.ndjson
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ndjson-nix
+          path: verification-out/nix.ndjson
+
+  report:
+    name: Verification report
+    if: always()
+    needs: [formal, heavy, c-owned, swift, kotlin, nix]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: ndjson-*
+          merge-multiple: true
+          path: verification-out
+      - name: Write the report
+        run: python3 scripts/verification-report.py summarize verification-out --markdown verification-out/verification-report.md
+      - name: Fail closed when a needed job failed
+        run: |
+          python3 - <<'PY'
+          import os, sys
+          need = os.environ["NEEDS"]
+          bad = [part for part in need.split() if part.endswith(":failure") or part.endswith(":cancelled")]
+          if bad:
+              print("failed jobs:", " ".join(bad))
+              sys.exit(1)
+          PY
+        env:
+          NEEDS: "formal:${{ needs.formal.result }} heavy:${{ needs.heavy.result }} c:${{ needs.c-owned.result }} swift:${{ needs.swift.result }} kotlin:${{ needs.kotlin.result }} nix:${{ needs.nix.result }}"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verification-report
+          path: verification-out

@@ -1,0 +1,13 @@
+[package]
+name = "wawona-loom-counter"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+loom = "0.7"
+
+[lints.rust]
+unexpected_cfgs = { level = "allow", check-cfg = ["cfg(loom)"] }

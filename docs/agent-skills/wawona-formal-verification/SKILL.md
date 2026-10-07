@@ -1,6 +1,6 @@
 ---
 name: wawona-formal-verification
-description: Mandatory Kani and Verus gate for Wawona Relay VM Rust. Use before building, testing, or executing Relay VM code and when changing page, virtio, MMU, CPU, or FFI invariants.
+description: Relay Kani and Verus gate, plus the org verification matrix for Rust, Swift, Kotlin, C, and Nix. Use before VM, compositor, JNI, Nix, or proof-tool changes.
 ---
 
 # Wawona Relay formal verification
@@ -27,5 +27,21 @@ Relay VM Rust uses both tools. Neither substitutes for tests.
 - Miri and sanitizers are independent dynamic checks. Miri does not execute
   linked C, and neither is a mathematical proof.
 
-Initial coverage: 4/16 KiB arena round-up, virtio block request bounds, and
-split virtio MMIO 64-bit queue address assembly.
+## Org matrix
+
+Read `Wawona/docs/verification-matrix.md` before adding a prover or claiming
+one runs. Gate: packages calls `verify-all.yml`. The check name is
+**Verification report**.
+
+- One law: `sanitize_ssh_host`. Swift and Kotlin copies stay frozen.
+- No Dafny, F*, KeY, JML, or Lean product code. No CompCert. No seL4 rewrite.
+- Creusot, Prusti, and Flux do not prove `unsafe` or JNI.
+- Wawona-owned `.c` is in the matrix. Objective-C is not. Stubs are analyzer-only.
+- SHM pool buffers must use `wawona_shm_rect_in_pool` before pointer math.
+- CDSChecker is for the `_Atomic` counters via `wawona_count_*`. TSan is for the
+  iland presenter mutex.
+- Nix floor: parse, alejandra, statix, deadnix, flake metadata + check on every
+  org flake (`nix-repo-floor.yml`). Not a product matrix build.
+- Failures go through one NDJSON report (`tool`, `file`, `line`, `rule`,
+  `failure`, `fix`). Do not leave the developer in raw logs.
+- Org-quality OSV has no `continue-on-error`. High and critical advisories fail.

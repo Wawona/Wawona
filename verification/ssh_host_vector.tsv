@@ -1,0 +1,8 @@
+# input<TAB>sanitize_ssh_host output. Rust, Swift, and Kotlin read this file.
+ ssh://host.example:2222/path 	host.example
+[::1]:22	[::1]
+10.0.0.1	10.0.0.1
+host.example	host.example
+user@host	user@host
+bad host	badhost
+a"b	ab

@@ -1,6 +1,8 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("io.gitlab.arturbosch.detekt")
+    id("com.github.spotbugs")
 }
 
 android {
@@ -118,6 +120,10 @@ android {
     sourceSets {
         getByName("main") {
             kotlin.directories += "src/main/kotlin"
+            val terminalUi = file("../../../Terminal/android")
+            if (terminalUi.isDirectory) {
+                kotlin.directories += terminalUi.path
+            }
         }
     }
 }
@@ -206,6 +212,23 @@ dependencies {
     androidTestImplementation(platform("androidx.compose:compose-bom-alpha:$composeBom"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4-android")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("io.kotest:kotest-runner-junit5:5.9.1")
+    testImplementation("io.kotest:kotest-assertions-core:5.9.1")
+    testImplementation("io.kotest:kotest-property:5.9.1")
+}
+
+tasks.withType<Test> {
+    useJUnitPlatform()
+}
+
+spotbugs {
+    ignoreFailures.set(false)
+}
+
+tasks.matching { it.name.startsWith("spotbugs") }.configureEach {
+    dependsOn("compileDebugKotlin")
 }
 
 configurations.configureEach {
