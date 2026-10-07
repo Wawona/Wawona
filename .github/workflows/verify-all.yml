@@ -26,24 +26,75 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: ./scripts/ensure-waypipe.sh; ./scripts/ensure-coreutils.sh
       - run: cargo install cargo-deny --locked
-      # Prebuilt Kani. The kani-github-action `cargo install` path has taken 30+
-      # minutes on GHA and a follow-up `cargo kani` step hung without PATH.
+      # Prebuilt release bundle under ~/.kani (same layout as `cargo kani setup`).
+      # Do not invoke kani-driver with `setup`: that is a kani-verifier proxy
+      # subcommand; the driver treats it as a file input and fails.
+      # Avoid `cargo install kani-verifier` here: it has sat 30+ minutes on GHA.
       - name: Install Kani 0.68.0 (release tarball)
         run: |
           set -euo pipefail
           VER=0.68.0
           ARCH=x86_64-unknown-linux-gnu
+          KANI_ROOT="${HOME}/.kani"
+          KANI_HOME="${KANI_ROOT}/kani-${VER}"
           curl --fail --location --output /tmp/kani.tgz \
             "https://github.com/model-checking/kani/releases/download/kani-${VER}/kani-${VER}-${ARCH}.tar.gz"
-          mkdir -p "$HOME/.local"
-          tar -xzf /tmp/kani.tgz -C "$HOME/.local"
-          KANI_HOME="$HOME/.local/kani-${VER}"
-          mkdir -p "$HOME/.cargo/bin"
-          ln -sfn "$KANI_HOME/bin/kani-driver" "$HOME/.cargo/bin/kani"
-          ln -sfn "$KANI_HOME/bin/kani-driver" "$HOME/.cargo/bin/cargo-kani"
-          echo "$KANI_HOME/bin" >> "$GITHUB_PATH"
-          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-          "$KANI_HOME/bin/kani-driver" setup
+          mkdir -p "${KANI_ROOT}"
+          rm -rf "${KANI_HOME}"
+          tar -xzf /tmp/kani.tgz -C "${KANI_ROOT}"
+          TOOLCHAIN="$(tr -d '[:space:]' < "${KANI_HOME}/rust-toolchain-version")"
+          rustup toolchain install "${TOOLCHAIN}" --profile minimal \
+            --component llvm-tools --component rustc-dev \
+            --component rust-src --component rustfmt
+          ln -sfn "${HOME}/.rustup/toolchains/${TOOLCHAIN}" "${KANI_HOME}/toolchain"
+          mkdir -p "${HOME}/.cargo/bin"
+          export KANI_HOME
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          kani_home = Path(os.environ["KANI_HOME"]).resolve()
+          cargo_bin = Path.home() / ".cargo" / "bin"
+          cargo_bin.mkdir(parents=True, exist_ok=True)
+          for name in ("kani", "cargo-kani"):
+              path = cargo_bin / name
+              path.write_text(
+                  "\n".join(
+                      [
+                          "#!/usr/bin/env bash",
+                          "set -euo pipefail",
+                          f"KANI_HOME={kani_home}",
+                          'export PATH="${KANI_HOME}/bin:${PATH:-}"',
+                          'export RUSTUP_TOOLCHAIN="$(tr -d \'[:space:]\' < "${KANI_HOME}/rust-toolchain-version")"',
+                          'if [[ -n "${LD_LIBRARY_PATH:-}" ]]; then',
+                          '  _filtered=""',
+                          '  IFS=\':\' read -r -a _parts <<< "${LD_LIBRARY_PATH}"',
+                          '  for _p in "${_parts[@]}"; do',
+                          '    case "${_p}" in',
+                          '      */toolchains/*/lib|*/toolchains/*/lib/) ;;',
+                          '      *)',
+                          '        if [[ -n "${_filtered}" ]]; then',
+                          '          _filtered="${_filtered}:${_p}"',
+                          '        else',
+                          '          _filtered="${_p}"',
+                          '        fi',
+                          '        ;;',
+                          '    esac',
+                          '  done',
+                          '  export LD_LIBRARY_PATH="${_filtered}"',
+                          'fi',
+                          f'exec -a {name} "${{KANI_HOME}}/bin/kani-driver" "$@"',
+                          "",
+                      ]
+                  ),
+                  encoding="utf-8",
+              )
+              path.chmod(0o755)
+          print(f"wrote wrappers under {cargo_bin} for {kani_home}")
+          PY
+          echo "${HOME}/.cargo/bin" >> "${GITHUB_PATH}"
+          echo "${KANI_HOME}/bin" >> "${GITHUB_PATH}"
+          cargo kani --version
       - name: Kani helpers-check harnesses
         run: |
           set -euo pipefail
