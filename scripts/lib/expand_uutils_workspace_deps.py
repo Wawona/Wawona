@@ -95,9 +95,15 @@ def _merge_table(concrete: str, extra_fields: str) -> str:
             parts.append(part)
             have.add(k)
         return "{ " + ", ".join(parts) + " }"
-    # Bare version / pin string.
-    ver = concrete.strip().strip('"')
-    ver_expr = ver if ver.startswith("=") else f'"{ver}"'
+    # Bare version / pin string: `"1.0"`, `= 0.5.0`, or `"=0.5.0"`.
+    # Never emit `version = = 0.5.0` (invalid TOML). Quote caret/exact pins.
+    ver = concrete.strip()
+    if (ver.startswith('"') and ver.endswith('"')) or (
+        ver.startswith("'") and ver.endswith("'")
+    ):
+        ver_expr = ver
+    else:
+        ver_expr = f'"{ver}"'
     parts = [f"version = {ver_expr}"]
     for part in _split_fields(extra_fields):
         part = part.strip()
@@ -190,7 +196,12 @@ def expand_workspace_true(text: str, deps: dict[str, str]) -> str:
             if p.strip() and not p.strip().startswith("workspace")
         ]
         extra = ", ".join(fields)
-        out.append(f"{indent}{name} = {_merge_table(deps[name], extra)}\n")
+        concrete = deps[name]
+        if not extra and not concrete.strip().startswith("{"):
+            # Keep bare pins as-is: selinux = "= 0.5.0"
+            out.append(f"{indent}{name} = {concrete}\n")
+        else:
+            out.append(f"{indent}{name} = {_merge_table(concrete, extra)}\n")
         i += 1
     return "".join(out)
 
