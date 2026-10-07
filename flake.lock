@@ -504,6 +504,7 @@
         "nix-xcodeenvtests": "nix-xcodeenvtests",
         "nixpkgs": "nixpkgs_2",
         "rust-overlay": "rust-overlay",
+        "terminal": "terminal",
         "toolbar-keys": "toolbar-keys",
         "wwn-coreutils": "wwn-coreutils",
         "wwn-fastfetch": "wwn-fastfetch",
@@ -772,6 +773,22 @@
         "owner": "nix-systems",
         "repo": "default",
         "type": "github"
+      }
+    },
+    "terminal": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1791390995,
+        "narHash": "sha256-BgXD3gK+7mOM2yf9nhNmmSmFOuZxNLrOIYa8N27uByc=",
+        "ref": "refs/heads/development",
+        "rev": "b225d2fadade0b6e56679361066adfb27dbfadcb",
+        "revCount": 2,
+        "type": "git",
+        "url": "file:///Users/8amps/Wawona/Terminal"
+      },
+      "original": {
+        "type": "git",
+        "url": "file:///Users/8amps/Wawona/Terminal"
       }
     },
     "toolbar-keys": {
@@ -1090,11 +1107,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1789148048,
-        "narHash": "sha256-LdQ25JEQdFFGbKPLNXCPOSI5XAZtXqVrG10gAO/Alyk=",
+        "lastModified": 1791390957,
+        "narHash": "sha256-suJOGsZHTu9X3IXFbF8/Fzo2e9KHHGXyKY5H0nWdLMA=",
         "ref": "development",
-        "rev": "82b01cda64432e71ef2a00d5fa24222af0e96773",
-        "revCount": 134,
+        "rev": "79786104c52affd623010cf03ebab3cf626ac9db",
+        "revCount": 193,
         "type": "git",
         "url": "ssh://git@github.com/Wawona/Relay"
       },
