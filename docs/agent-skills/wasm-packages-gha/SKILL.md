@@ -10,10 +10,15 @@ Production path: **GitHub Actions** on `ubuntu-24.04`. Not a laptop.
 | Piece | Path |
 |-------|------|
 | Allowlist | `allowlist.toml` (curated; `blocked` skips; no nixpkgs mirror) |
+| Freshness | `version_policy` + `check-upstream-versions.py` / `bump-outdated.py` |
 | Recipes | `recipes.json` via `scripts/sync-recipes-from-allowlist.py` + `packages/<name>/` |
-| Build | `build-wasm.yml` (push, dispatch, cron `0 6 * * *` stale select, `wasm-out`) |
+| Build | `build-wasm.yml` (push, dispatch, cron; nightly freshness; `wasm-out`) |
 | Publish | `publish-to-repo.yml` (`workflow_run` + dispatch; `WAWONA_REPO_TOKEN`) |
 | Catalog | `repo.wawona.io` `/wasm/v1` on **development** (Pages deploys that branch) |
+
+`version_policy`: `local` \| `cargo-deps` \| `crates-io` \| `git-tag`. Nightly
+runners compare catalog + upstream (crates.io / git tags / lockfile deps),
+bump allowlist + Cargo when ahead, rebuild, then bot-commit `[skip ci]`.
 
 ```bash
 gh secret set WAWONA_REPO_TOKEN --repo Wawona/wasm-packages   # bot/App preferred
