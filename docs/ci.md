@@ -22,11 +22,13 @@ Do not use semver majors for product releases.
 
 | You do… | Runs… | Ships… |
 |---------|-------|--------|
-| Work / PR on **`development`** | **Gate: packages** + **Gate: products** (build products → GUI smoke) | Nothing to stores or GitHub Releases |
-| Promote green tip → **`master`** (push) | **Ship: beta (stores)** + **Ship: beta AppImages** (after Gate: products) | TestFlight + Play internal + Linux AppImage workflow artifacts (reused from Gate: products) |
-| Tag **`v*`** on a release commit | **Ship: beta (stores)** *and* **Ship: GitHub assets** | Store betas + GitHub Release assets |
+| Work / PR on **`development`** | **Verification** + **Gate: packages** + **Gate: products** (full product matrix + GUI smoke) | Nothing to stores or GitHub Releases |
+| Promote green tip → **`master`** (push) | **Gate: products** (full matrix); then **Ship: beta (stores)** + **Ship: beta AppImages** via `workflow_run` | TestFlight + Play internal + Linux AppImage workflow artifacts (reused from Gate: products) |
+| Tag **`v*`** on a release commit | **Ship: GitHub assets**; store beta via **Ship: beta** `workflow_dispatch` if needed | GitHub Release assets (+ optional store dispatch) |
 
-**Promote rule:** `development` → `master` only when **Gate: packages**, the **Verification report** check, and **Gate: products** are green on that tip.
+**Promote rule (repo law):** `development` → `master` only when the tip is green on **Verification report**, **Gate: packages**, and **Gate: products**. Gate: products is green only when **every** product cell succeeds: iOS, iPadOS, tvOS, watchOS, visionOS, macOS, Android, Linux AppImages (plus wired GUI smoke). Do not promote on a partial matrix.
+
+**Soft supersede:** WIP workflows use `cancel-in-progress: false` and [`.github/scripts/ci-require-branch-tip.sh`](../.github/scripts/ci-require-branch-tip.sh). Obsolete SHAs exit success as `superseded` (not Cancelled). The live tip runs the full gates. Agents must never `gh run cancel` to clear the queue.
 
 Workflow display names use a role prefix (`Gate` / `Build` / `Watch` / `Ship`). Filenames stay as before (`nix.yml`, `device-gate.yml`, …).
 
@@ -36,15 +38,16 @@ Workflow display names use a role prefix (`Gate` / `Build` / `Watch` / `Ship`). 
 |----------|:-------------:|:--------:|-----|
 | **Gate: packages** (`nix.yml`) | push + PR | push + PR | L0-L2: verify, cargo/swift tests, curated backends; **native path filter** skips Darwin matrix on docs-only tips; Android Gradle/meson path-filtered |
 | **Gate: wasm-wayland** (`wasm-wayland.yml`) | path filter push/PR | path filter push/PR | Wawona Runtime wiring + Weston headless SHM smoke against locked `wwn-wasm` (not a promote blocker) |
-| **Gate: products** (`device-gate.yml`) | path filter push | path filter push | Fans out **Build: products** by product (`only:`); GUI smoke lanes start per-product (iOS does not wait on AppImages) |
-| **Build: products** (`product-build.yml`) | via Gate: products / Ship | via gate / Ship: beta (`only: appimage`) / Ship: GitHub assets | Sole pure producer: iOS sim `.app`, debug APK, macOS `.app`, AppImages (callable only) |
+| **Verification** (`verify-all.yml`) | push + PR | push + PR | Helpers / formal / vectors. Required ruleset check **Verification report**. Soft supersede on non-tip |
+| **Gate: products** (`device-gate.yml`) | path filter push | path filter push | Full matrix: iOS + **apple-family** (iPadOS/tvOS/watchOS/visionOS) + macOS + Android + AppImages + GUI smoke. Soft supersede on non-tip |
+| **Build: products** (`product-build.yml`) | via Gate: products / Ship | via gate / Ship: GitHub assets | Sole pure producer (callable only). Uses [setup-nix-flakehub](../.github/actions/setup-nix-flakehub/action.yml) |
 | **Build: GUI smoke** (`device-e2e.yml`) | via Gate: products (`products_ready`) | via gate | Smoke + fuzzel (fuzzel skipped on `pull_request` only); callable only |
 | **Watch: graphics nightly** (`nightly-full-matrix.yml`) | schedule / dispatch | - | Graphics + protocol drift + Weston/XWayland capability (does **not** re-run Gate: products) |
 | **Watch: TestFlight feedback** (`testflight-feedback.yml`) | schedule / dispatch | schedule / dispatch | Poll ASC TestFlight screenshot/crash feedback → GitHub issues (PII stripped). `release-beta` secrets. Not a promote gate |
 | **Watch: idle memory** (`leak-idle-gate.yml`) | via Gate: products (`products_ready`) + schedule + dispatch | via Gate: products | Start→60s footprint/PSS plateau on product iOS/Android/macOS; fails with `LEAK_GATE_FAIL targets=…` ([docs/testing/leak-idle-gate.md](./testing/leak-idle-gate.md)). Reuses Gate: products `product-*` artifacts (no duplicate product-build). **Not** a promote blocker (`continue-on-error` on idle-memory jobs inside the reusable workflow; invalid on `uses:` callers) |
-| **FlakeHub publish** (`flakehub-publish.yml`) | push (`development`) + tags `vYY.M.D` + dispatch | - | Rolling `0.1.N` on development; CalVer SemVer on tags ([`flakehub-registry.md`](./flakehub-registry.md)); not a promote gate |
-| **Ship: beta (stores)** (`release-beta.yml`) | - | push + tags `v*` | Fastlane stores (match+gym). **Does not build AppImages**. See Ship: beta AppImages below |
-| **Ship: beta AppImages** (`ship-beta-appimage.yml`) | - | after a green master **Gate: products** (`workflow_run`) | Re-publishes that run's same-SHA `product-appimage-*` as 30-day `wawona-beta-appimage-*` via cross-run `download-artifact`. **no rebuild, no fallback**. Deletes the old master-push double AppImage build (Gate: products + Ship: beta). Keyed on the Gate run's `head_sha` so it never shares release-beta's concurrency group |
+| **FlakeHub publish** (`flakehub-publish.yml`) | tags `vYY.M.D` + dispatch | - | Registry only ([`flakehub-registry.md`](./flakehub-registry.md)). **Not** every development push. Binary cache is separate ([`flakehub-cache.md`](./flakehub-cache.md)) |
+| **Ship: beta (stores)** (`release-beta.yml`) | - | after green master **Gate: products** (`workflow_run`) + dispatch | Fastlane TestFlight / Play. **Never** uploads without a green full Gate: products for that SHA (dispatch is the operator escape) |
+| **Ship: beta AppImages** (`ship-beta-appimage.yml`) | - | after a green master **Gate: products** (`workflow_run`) | Re-publishes that run's same-SHA `product-appimage-*` as 30-day `wawona-beta-appimage-*` via cross-run `download-artifact`. **no rebuild, no fallback** |
 | **Ship: GitHub assets** (`release.yml`) | - | tags `v*` (+ `workflow_dispatch`) | GitHub Release: DMG/APK/AppImage from product-build (`macos-app` / `android-apk` / `appimage` only; tip_key `ship-assets-<tag>`); IPA via Fastlane `ios github_ipa` (match+gym, same as Ship: beta). macOS DMG is **Developer ID signed + notarized** |
 
 ### Binary filenames (three channels)
@@ -82,15 +85,26 @@ Public developer doc: [wawona.io/docs/prebuilt-naming/](https://wawona.io/docs/p
 
 Removed: **publish-ios** (use Ship: beta `workflow_dispatch`) and standalone **Android parity** (Gradle/meson folded into Gate: packages).
 
-### Gate: products concurrency (tip-only)
+### Soft supersede (no Cancelled spam)
 
-Gate: products, Build: products, and Build: GUI smoke share a **branch tip** concurrency key (`development` / `master`), not per-SHA:
+Gate: products / packages / Verification / Build: products share tip concurrency groups with **`cancel-in-progress: false`**. A tip gate job runs [`.github/scripts/ci-require-branch-tip.sh`](../.github/scripts/ci-require-branch-tip.sh):
 
-- One in-flight Gate: products **per tip**. A newer push cancels the older gate **and** its product + smoke children.
-- Cancelled jobs on a superseded SHA are expected. They are not product failures. Promote only cares about a **success** tip Gate: products.
-- Skipped product jobs from `only:` filters remain **Skipped** (not Cancelled).
+- **Tip SHA:** full matrix runs to real green or red.
+- **Obsolete SHA:** jobs skip; rollup exits success as `superseded` (not Cancelled).
+- **Ship / release** may still cancel-on-newer (rare tag races only).
 
-### Why Actions shows dozens of Skipped jobs (and Cancelled ≠ failed)
+Promote only cares about a **success** tip Gate: products (full matrix), Gate: packages, and Verification report. Never `gh run cancel` to “make room” for Verification.
+
+### Professional runner contract
+
+1. Least privilege (`contents: read`; `id-token: write` only for FlakeHub Cache / publish).
+2. `timeout-minutes` on every job.
+3. Nix builds use [`.github/actions/setup-nix-flakehub`](../.github/actions/setup-nix-flakehub/action.yml) (Determinate + FlakeHub Cache).
+4. One producer per product artifact (`product-build.yml`).
+5. Path filters skip Darwin on docs-only tips; product-path tips rebuild the **full** product matrix.
+6. FlakeHub **Cache** on build jobs; FlakeHub **registry publish** is tags/dispatch only.
+
+### Why Actions shows dozens of Skipped jobs (superseded ≠ failed)
 
 A green **Gate: products** run lists ~34 **Skipped** jobs. Almost all are the
 reusable-workflow fan-out. **intentional**, not races. Do not treat them as

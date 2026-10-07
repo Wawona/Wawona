@@ -16,7 +16,7 @@ permissions:
 
 concurrency:
   group: nix-ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   NIXPKGS_ALLOW_UNFREE: '1'
@@ -25,10 +25,30 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
 jobs:
+  tip:
+    name: Tip gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      is_tip: ${{ steps.tip.outputs.is_tip }}
+      reason: ${{ steps.tip.outputs.reason }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - id: tip
+        env:
+          WAWONA_CI_FORCE_TIP: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}
+        run: bash .github/scripts/ci-require-branch-tip.sh
+
   # Always-on scope probe so docs-only tips skip Darwin minutes but keep L0.
   ci-scope:
     name: "CI scope"
+    needs: tip
+    if: needs.tip.outputs.is_tip == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       native: ${{ steps.filter.outputs.native }}
     steps:
@@ -57,7 +77,9 @@ jobs:
   prepare-matrix:
     name: "Prepare Unified Matrix"
     runs-on: ubuntu-latest
-    needs: [ci-scope]
+    timeout-minutes: 15
+    needs: [tip, ci-scope]
+    if: needs.tip.outputs.is_tip == 'true'
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
@@ -224,17 +246,14 @@ jobs:
 
   cargo-test-linux:
     name: "Linux (x86_64): cargo test"
+    needs: tip
+    if: needs.tip.outputs.is_tip == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
-      - name: Install Nix (for ensure-waypipe.sh; GitLab blocks anonymous cargo git fetch)
-        uses: DeterminateSystems/nix-installer-action@v22
-        with:
-          determinate: true
-          extra-conf: |
-            sandbox = relaxed
-            allow-import-from-derivation = true
-      - uses: DeterminateSystems/flakehub-cache-action@v3
+      - uses: ./.github/actions/setup-nix-flakehub
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Cache cargo artifacts
@@ -467,7 +486,10 @@ jobs:
   # tips skip this job.
   android-path-filter:
     name: "Android path filter"
+    needs: tip
+    if: needs.tip.outputs.is_tip == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       android: ${{ steps.filter.outputs.android }}
     steps:

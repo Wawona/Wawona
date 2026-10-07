@@ -3,14 +3,14 @@ name: Wawona org quality
 on:
   workflow_call:
   pull_request:
-  push:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
   group: org-quality-${{ github.repository }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   changed-files:

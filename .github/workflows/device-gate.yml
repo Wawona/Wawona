@@ -1,8 +1,8 @@
 name: "Gate: products"
 
 # Single scheduler for product binaries + Build: GUI smoke on development/master.
-# Product jobs are called separately so iOS e2e can start when ios-sim is ready
-# (without waiting for AppImages / macOS / Android).
+# Full product matrix must green before promote / Ship: beta (ASC). Soft supersede
+# skips obsolete SHAs without Cancelled. Docs: docs/ci.md.
 
 on:
   workflow_dispatch: {}
@@ -24,7 +24,6 @@ on:
       - "flake.lock"
       - ".agent-device/**"
       - "scripts/agent-device-smoke.sh"
-      # SSH stack (libssh2 CLI / OpenSSH Android / Settings). Sparse shell-cli replay
       - "src/platform/android/android_jni.c"
       - "src/platform/macos/ui/Settings/WWNPreferencesSectionsBuilder.m"
       - "Sources/WawonaApple/Settings/**"
@@ -40,14 +39,10 @@ on:
       - "scripts/niri-smoke-macos.sh"
       - "scripts/niri-fuzzel-smoke-macos.sh"
       - "scripts/applications-catalog-smoke.sh"
-      # Leak-idle + bundled-clients harness: Gate: products calls leak-idle with
-      # products_ready, so harness-only edits must re-run the gate (else they
-      # green Gate: packages and leave Gate: products on the previous SHA).
       - "scripts/leak-idle-gate.sh"
       - "scripts/lib/leak-idle-measure.sh"
       - "scripts/bundled-clients-matrix-gate.sh"
       - "scripts/lib/bundled-clients-catalog.sh"
-      # Shared harness libs both gate scripts (and agent-device-smoke) source.
       - "scripts/lib/android-ad-scale.sh"
       - "scripts/lib/agent-device-ios-system-ui.sh"
       - ".github/workflows/leak-idle-gate.yml"
@@ -58,13 +53,13 @@ on:
       - ".github/scripts/resolve-product-artifacts.sh"
       - ".github/scripts/select-xcode.sh"
       - ".github/scripts/warm-ios-simulator-sdk.sh"
+      - ".github/scripts/ci-require-branch-tip.sh"
       - ".github/ci-package-matrix.json"
 
-# Tip-only: one in-flight gate per branch tip (development/master). Nightly
-# passes checkout_ref=development so it shares the development tip group.
+# Serialize per tip. Do not cancel: soft supersede skips obsolete SHAs.
 concurrency:
   group: device-gate-${{ inputs.checkout_ref || github.ref_name }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -72,8 +67,28 @@ permissions:
   actions: read
 
 jobs:
+  tip:
+    name: Tip gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      is_tip: ${{ steps.tip.outputs.is_tip }}
+      reason: ${{ steps.tip.outputs.reason }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - id: tip
+        env:
+          WAWONA_CI_FORCE_TIP: ${{ github.event_name == 'workflow_dispatch' && '1' || (inputs.checkout_ref != '' && inputs.checkout_ref != github.sha && '1' || '') }}
+          WAWONA_CI_INTENDED_REF: ${{ inputs.checkout_ref }}
+        run: bash .github/scripts/ci-require-branch-tip.sh
+
   product-ios:
     name: Product iOS sim
+    needs: tip
+    if: needs.tip.outputs.is_tip == 'true'
     uses: ./.github/workflows/product-build.yml
     with:
       checkout_ref: ${{ inputs.checkout_ref || github.sha }}
@@ -83,8 +98,23 @@ jobs:
       contents: read
       id-token: write
 
+  product-apple-family:
+    name: Product Apple family
+    needs: tip
+    if: needs.tip.outputs.is_tip == 'true'
+    uses: ./.github/workflows/product-build.yml
+    with:
+      checkout_ref: ${{ inputs.checkout_ref || github.sha }}
+      tip_key: ${{ inputs.checkout_ref || github.ref_name }}
+      only: apple-family
+    permissions:
+      contents: read
+      id-token: write
+
   product-android:
     name: Product Android APK
+    needs: tip
+    if: needs.tip.outputs.is_tip == 'true'
     uses: ./.github/workflows/product-build.yml
     with:
       checkout_ref: ${{ inputs.checkout_ref || github.sha }}
@@ -96,6 +126,8 @@ jobs:
 
   product-macos:
     name: Product macOS app
+    needs: tip
+    if: needs.tip.outputs.is_tip == 'true'
     uses: ./.github/workflows/product-build.yml
     with:
       checkout_ref: ${{ inputs.checkout_ref || github.sha }}
@@ -107,6 +139,8 @@ jobs:
 
   product-appimage:
     name: Product AppImages
+    needs: tip
+    if: needs.tip.outputs.is_tip == 'true'
     uses: ./.github/workflows/product-build.yml
     with:
       checkout_ref: ${{ inputs.checkout_ref || github.sha }}
@@ -118,7 +152,8 @@ jobs:
 
   e2e-ios:
     name: "Build: GUI smoke iOS"
-    needs: product-ios
+    needs: [tip, product-ios]
+    if: needs.tip.outputs.is_tip == 'true'
     uses: ./.github/workflows/device-e2e.yml
     with:
       checkout_ref: ${{ inputs.checkout_ref || github.sha }}
@@ -132,7 +167,8 @@ jobs:
 
   e2e-android:
     name: "Build: GUI smoke Android"
-    needs: product-android
+    needs: [tip, product-android]
+    if: needs.tip.outputs.is_tip == 'true'
     uses: ./.github/workflows/device-e2e.yml
     with:
       checkout_ref: ${{ inputs.checkout_ref || github.sha }}
@@ -146,7 +182,8 @@ jobs:
 
   e2e-macos:
     name: "Build: GUI smoke macOS"
-    needs: product-macos
+    needs: [tip, product-macos]
+    if: needs.tip.outputs.is_tip == 'true'
     uses: ./.github/workflows/device-e2e.yml
     with:
       checkout_ref: ${{ inputs.checkout_ref || github.sha }}
@@ -160,6 +197,8 @@ jobs:
 
   e2e-linux:
     name: "Build: GUI smoke Linux catalog"
+    needs: tip
+    if: needs.tip.outputs.is_tip == 'true'
     uses: ./.github/workflows/device-e2e.yml
     with:
       checkout_ref: ${{ inputs.checkout_ref || github.sha }}
@@ -171,12 +210,16 @@ jobs:
       id-token: write
       actions: read
 
-  # Advisory memory plateau. Reuses product-* artifacts (no second product-build).
-  # Soft-fail lives inside leak-idle-gate.yml (continue-on-error is invalid on uses: callers).
   leak-idle:
     name: "Watch: idle memory"
-    needs: [product-ios, product-android, product-macos]
-    if: ${{ always() && !cancelled() && needs.product-ios.result == 'success' && needs.product-android.result == 'success' && needs.product-macos.result == 'success' }}
+    needs: [tip, product-ios, product-android, product-macos]
+    if: >-
+      always()
+      && !cancelled()
+      && needs.tip.outputs.is_tip == 'true'
+      && needs.product-ios.result == 'success'
+      && needs.product-android.result == 'success'
+      && needs.product-macos.result == 'success'
     uses: ./.github/workflows/leak-idle-gate.yml
     with:
       checkout_ref: ${{ inputs.checkout_ref || github.sha }}
@@ -188,17 +231,66 @@ jobs:
       id-token: write
       actions: read
 
-  # Single rollup so AppImage product failures still fail the gate (no e2e consumer).
-  # Intentionally does not need leak-idle (advisory; continue-on-error above).
+  # Rollup: full product matrix + GUI smoke. apple-family is required (iPadOS /
+  # tvOS / watchOS / visionOS). leak-idle stays advisory (not needed here).
   gate:
     name: "Gate: products"
     needs:
+      - tip
       - e2e-ios
       - e2e-android
       - e2e-macos
       - e2e-linux
       - product-appimage
-    runs-on: ubuntu-latest
+      - product-apple-family
+    if: always() && !cancelled()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
-      - run: |
-          echo "Gate: products green (Build: products + Build: GUI smoke)"
+      - name: Superseded tip
+        if: needs.tip.outputs.is_tip != 'true'
+        run: |
+          echo "::notice::Gate: products superseded (${{ needs.tip.outputs.reason }}). Not a product failure."
+          {
+            echo "### Gate: products"
+            echo "- result: superseded"
+            echo "- reason: \`${{ needs.tip.outputs.reason }}\`"
+          } >>"$GITHUB_STEP_SUMMARY"
+
+      - name: Require full product matrix
+        if: needs.tip.outputs.is_tip == 'true'
+        env:
+          E2E_IOS: ${{ needs.e2e-ios.result }}
+          E2E_ANDROID: ${{ needs.e2e-android.result }}
+          E2E_MACOS: ${{ needs.e2e-macos.result }}
+          E2E_LINUX: ${{ needs.e2e-linux.result }}
+          APPIMAGE: ${{ needs.product-appimage.result }}
+          APPLE_FAMILY: ${{ needs.product-apple-family.result }}
+        run: |
+          set -euo pipefail
+          fail=0
+          for pair in \
+            "e2e-ios:${E2E_IOS}" \
+            "e2e-android:${E2E_ANDROID}" \
+            "e2e-macos:${E2E_MACOS}" \
+            "e2e-linux:${E2E_LINUX}" \
+            "product-appimage:${APPIMAGE}" \
+            "product-apple-family:${APPLE_FAMILY}"; do
+            name="${pair%%:*}"
+            result="${pair#*:}"
+            echo "$name=$result"
+            if [[ "$result" != "success" ]]; then
+              echo "::error::$name required for Gate: products (got $result)"
+              fail=1
+            fi
+          done
+          {
+            echo "### Gate: products"
+            echo "- e2e-ios: \`${E2E_IOS}\`"
+            echo "- e2e-android: \`${E2E_ANDROID}\`"
+            echo "- e2e-macos: \`${E2E_MACOS}\`"
+            echo "- e2e-linux: \`${E2E_LINUX}\`"
+            echo "- product-appimage: \`${APPIMAGE}\`"
+            echo "- product-apple-family: \`${APPLE_FAMILY}\`"
+          } >>"$GITHUB_STEP_SUMMARY"
+          exit "$fail"

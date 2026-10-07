@@ -1,0 +1,26 @@
+name: Setup Nix + FlakeHub Cache
+description: >-
+  Determinate Nix with FlakeHub Cache (OIDC). Use on every Nix-building job.
+  Does not replace Apple SDK warm / select-xcode.
+
+inputs:
+  extra-conf:
+    description: Extra nix.conf lines merged into the installer defaults
+    required: false
+    default: |
+      sandbox = relaxed
+      allow-import-from-derivation = true
+      max-jobs = auto
+      cores = 0
+
+runs:
+  using: composite
+  steps:
+    - name: Install Determinate Nix
+      uses: DeterminateSystems/nix-installer-action@v22
+      with:
+        determinate: true
+        extra-conf: ${{ inputs.extra-conf }}
+
+    - name: FlakeHub Cache
+      uses: DeterminateSystems/flakehub-cache-action@v3

@@ -44,12 +44,13 @@ unchanged; see [`wwn-repo-dag.md`](./wwn-repo-dag.md).
 
 Each GitHub-hosted flake runs [`.github/workflows/flakehub-publish.yml`](../.github/workflows/flakehub-publish.yml):
 
-- **Branches:** `development` where consumers historically pinned that branch
-  (`wwn-toolchain`, `wwn-iland`, `wwn-kmscube`, `wwn-weston`, `wwn-waypipe`,
+- **Wawona:** tags `vYY.M.D` and **`workflow_dispatch` only** (no every-push
+  rolling on `development`). Cache hits still come from FlakeHub Cache on build
+  jobs ([`flakehub-cache.md`](./flakehub-cache.md)).
+- **`wwn-*`:** may still publish rolling from their tracked branch
+  (`wwn-toolchain`, `wwn-iland`, …) until they adopt tags/dispatch.
 - **Tags (Wawona):** `vYY.M.D` publishes SemVer `YY.M.D` (`rolling: false`).
-  Tags that predate this workflow are backfilled with **workflow_dispatch**
-  `tag=` (the workflow file comes from `development`; checkout is the tagged
-  tree). `wwn-*` stay rolling-only until they grow CalVer tags.
+  Older tags are backfilled with **workflow_dispatch** `tag=`.
 - **Visibility:** `public`.
 - **`include-output-paths`:** `false`. Inspecting every output on
   `ubuntu-latest` fails without the Android SDK / on Darwin-only attrs.

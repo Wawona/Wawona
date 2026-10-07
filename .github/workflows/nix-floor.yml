@@ -1,22 +1,9 @@
-# Nix-only floor for path-filtered pushes. The required development check is the
-# "Verification report" job in verify-all.yml (full matrix). Do not reuse that
-# check name here.
+# Nix-only floor for other flakes / manual dispatch. On Wawona, Verification
+# already runs scripts/verify-nix.sh. Do not fire on every push (Actions noise).
+# Required development check remains "Verification report" in verify-all.yml.
 name: Nix floor
 
 on:
-  push:
-    branches: [development, master, main]
-    paths:
-      - "flake.nix"
-      - "flake.lock"
-      - "**/*.nix"
-      - ".github/workflows/nix-floor.yml"
-  pull_request:
-    paths:
-      - "flake.nix"
-      - "flake.lock"
-      - "**/*.nix"
-      - ".github/workflows/nix-floor.yml"
   workflow_dispatch:
 
 permissions:

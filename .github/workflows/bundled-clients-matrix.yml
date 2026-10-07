@@ -22,7 +22,7 @@ on:
 
 concurrency:
   group: bundled-clients-matrix-${{ github.ref_name }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read

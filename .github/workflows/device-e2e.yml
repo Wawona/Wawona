@@ -55,7 +55,7 @@ permissions:
 # cancels with the parent tip, and nightly/push targeting the same tip align.
 concurrency:
   group: device-e2e-${{ inputs.tip_key || github.ref_name }}-${{ inputs.products_ready && 'products' || 'standalone' }}-${{ inputs.lanes || 'all' }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   AGENT_DEVICE_VERSION: "0.18.3"

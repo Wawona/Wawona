@@ -1,9 +1,8 @@
 name: "Ship: beta (stores)"
 
-# Every push to master → TestFlight (Apple), Play internal (Android), and Linux
-# AppImage prebuilts (workflow artifacts, not GitHub Releases).
-# Manual dispatch can target ios beta, android beta, or both (lane: beta).
-# Tag push v* also triggers Apple TestFlight (legacy); prefer master for betas.
+# TestFlight (Apple), Play internal (Android) only after a green master
+# Gate: products (full product matrix). Same pattern as Ship: beta AppImages.
+# Manual dispatch remains for operators (force tip). Docs: docs/ci.md.
 
 on:
   workflow_dispatch:
@@ -16,14 +15,12 @@ on:
         description: "WAWONA_DEBUG_SCHEME for lane=ios debug_export (e.g. Wawona-iOS, Wawona-tvOS, Wawona-visionOS)"
         required: false
         default: ""
-  push:
-    branches:
-      - master
-    tags:
-      - "v*"
+  workflow_run:
+    workflows: ["Gate: products"]
+    types: [completed]
 
 concurrency:
-  group: release-beta-${{ github.ref }}
+  group: release-beta-${{ github.event.workflow_run.head_sha || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -35,20 +32,52 @@ env:
   NIXPKGS_ALLOW_UNFREE: "1"
 
 jobs:
+  gate-ok:
+    name: Require green Gate products
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || (
+        github.event.workflow_run.event == 'push'
+        && github.event.workflow_run.head_branch == 'master'
+        && github.event.workflow_run.conclusion == 'success'
+      )
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.meta.outputs.sha }}
+    steps:
+      - id: meta
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "sha=${{ github.sha }}" >>"$GITHUB_OUTPUT"
+          else
+            echo "sha=${{ github.event.workflow_run.head_sha }}" >>"$GITHUB_OUTPUT"
+          fi
+          {
+            echo "### Ship: beta gate"
+            echo "- event: \`${{ github.event_name }}\`"
+            echo "- sha: \`${{ github.event.workflow_run.head_sha || github.sha }}\`"
+            echo "- gate_conclusion: \`${{ github.event.workflow_run.conclusion || 'dispatch' }}\`"
+          } >>"$GITHUB_STEP_SUMMARY"
+
   apple-beta:
     name: "TestFlight (Apple platforms)"
+    needs: gate-ok
     if: >-
-      github.event_name == 'push' ||
-      (github.event_name == 'workflow_dispatch' &&
-       !contains(github.event.inputs.lane, 'android'))
+      always()
+      && needs.gate-ok.result == 'success'
+      && (
+        github.event_name == 'workflow_run'
+        || (github.event_name == 'workflow_dispatch' && !contains(github.event.inputs.lane, 'android'))
+      )
     runs-on: macos-26
     environment: release-beta
-    # Safety net: a codesign keychain-ACL hang (missing setup_ci. See #138)
-    # burned 2h+ of runner time silently before this existed. A healthy run
-    # is ~15-25 min; 90 covers cold Nix/Rust cross-compiles with headroom.
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.gate-ok.outputs.sha }}
 
       - name: Resolve release version
         run: |
@@ -59,14 +88,13 @@ jobs:
       - name: Select Active Xcode
         run: ./.github/scripts/select-xcode.sh
 
-      - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v22
+      - uses: ./.github/actions/setup-nix-flakehub
         with:
-          determinate: true
           extra-conf: |
             allow-import-from-derivation = true
             trusted-users = runner root
-      - uses: DeterminateSystems/flakehub-cache-action@v3
+            max-jobs = auto
+            cores = 0
 
       - name: Run Fastlane iOS beta
         env:
@@ -102,19 +130,23 @@ jobs:
 
   android-beta:
     name: "Play internal track (Android)"
+    needs: gate-ok
     if: >-
-      (github.event_name == 'push' && github.ref == 'refs/heads/master') ||
-      (github.event_name == 'workflow_dispatch' &&
-       (github.event.inputs.lane == 'beta' ||
-        contains(github.event.inputs.lane, 'android')))
-    # macOS (not ubuntu): Android cross deps (e.g. zsh-android) fail configure on
-    # ubuntu ("C compiler cannot create executables"). Runner OS version is
-    # irrelevant (Nix supplies NDK); aligned to macos-26 with product-build.
+      always()
+      && needs.gate-ok.result == 'success'
+      && (
+        github.event_name == 'workflow_run'
+        || (github.event_name == 'workflow_dispatch'
+            && (github.event.inputs.lane == 'beta'
+                || contains(github.event.inputs.lane, 'android')))
+      )
     runs-on: macos-26
     environment: release-beta
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.gate-ok.outputs.sha }}
 
       - name: Resolve release version
         run: |
@@ -122,15 +154,14 @@ jobs:
             echo "WAWONA_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
           fi
 
-      - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v22
+      - uses: ./.github/actions/setup-nix-flakehub
         with:
-          determinate: true
           extra-conf: |
             sandbox = relaxed
             allow-import-from-derivation = true
             trusted-users = runner root
-      - uses: DeterminateSystems/flakehub-cache-action@v3
+            max-jobs = auto
+            cores = 0
 
       - name: Prepare Android signing keystore
         env:
@@ -156,8 +187,4 @@ jobs:
           nix develop .#release --command bash -lc \
             './scripts/release-env.sh fastlane '"$LANE"
 
-  # Beta Linux AppImages moved to the "Ship: beta AppImages" workflow
-  # (.github/workflows/ship-beta-appimage.yml), which consumes Gate: products'
-  # same-SHA product-appimage-* via workflow_run instead of rebuilding them here.
-  # This eliminated the master-push double AppImage build (Gate: products +
-  # Ship: beta). Do not reintroduce a product-build appimage call in this file.
+  # Beta Linux AppImages: Ship: beta AppImages (workflow_run on Gate: products).

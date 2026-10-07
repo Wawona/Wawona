@@ -9,20 +9,39 @@ on:
 
 permissions:
   contents: read
+  id-token: write
+
+concurrency:
+  group: verification-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  formal:
-    name: Rust floor
+  tip:
+    name: Tip gate
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      is_tip: ${{ steps.tip.outputs.is_tip }}
+      reason: ${{ steps.tip.outputs.reason }}
     steps:
       - uses: actions/checkout@v5
-      - uses: DeterminateSystems/nix-installer-action@v22
         with:
-          determinate: true
-          extra-conf: |
-            sandbox = relaxed
-            allow-import-from-derivation = true
-      - uses: DeterminateSystems/flakehub-cache-action@v3
+          fetch-depth: 1
+          persist-credentials: false
+      - id: tip
+        env:
+          WAWONA_CI_FORCE_TIP: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}
+        run: bash .github/scripts/ci-require-branch-tip.sh
+
+  formal:
+    name: Rust floor
+    needs: tip
+    if: needs.tip.outputs.is_tip == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup-nix-flakehub
       - uses: dtolnay/rust-toolchain@stable
       - run: ./scripts/ensure-waypipe.sh; ./scripts/ensure-coreutils.sh
       - run: cargo install cargo-deny --locked
@@ -57,7 +76,10 @@ jobs:
 
   heavy:
     name: Rust heavy
+    needs: tip
+    if: needs.tip.outputs.is_tip == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -73,7 +95,10 @@ jobs:
 
   c-owned:
     name: C helpers
+    needs: tip
+    if: needs.tip.outputs.is_tip == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
       - name: Install C analyzers
@@ -92,7 +117,10 @@ jobs:
 
   swift:
     name: Swift differential
+    needs: tip
+    if: needs.tip.outputs.is_tip == 'true'
     runs-on: macos-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
       - run: bash scripts/verify-swift.sh verification-out/swift.ndjson
@@ -104,7 +132,10 @@ jobs:
 
   kotlin:
     name: Kotlin differential
+    needs: tip
+    if: needs.tip.outputs.is_tip == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
       # MainActivity Compose terminal face lives in Wawona/Terminal (not this repo).
@@ -149,12 +180,15 @@ jobs:
 
   nix:
     name: Nix floor
+    needs: tip
+    if: needs.tip.outputs.is_tip == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
       - uses: DeterminateSystems/nix-installer-action@v22
         with:
-          # cache.nixos.org only. FlakeHub auth is not required for this floor.
+          # Parse / format floor. FlakeHub Cache not required here.
           determinate: false
       - run: bash scripts/verify-nix.sh verification-out/nix.ndjson
       - if: always()
@@ -165,19 +199,34 @@ jobs:
 
   report:
     name: Verification report
-    if: always()
-    needs: [formal, heavy, c-owned, swift, kotlin, nix]
+    if: always() && !cancelled()
+    needs: [tip, formal, heavy, c-owned, swift, kotlin, nix]
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
+      - name: Superseded tip
+        if: needs.tip.outputs.is_tip != 'true'
+        run: |
+          echo "::notice::Verification superseded (${{ needs.tip.outputs.reason }}). Not a proof failure."
+          {
+            echo "### Verification report"
+            echo "- result: superseded"
+            echo "- reason: \`${{ needs.tip.outputs.reason }}\`"
+          } >>"$GITHUB_STEP_SUMMARY"
+
       - uses: actions/checkout@v5
+        if: needs.tip.outputs.is_tip == 'true'
       - uses: actions/download-artifact@v4
+        if: needs.tip.outputs.is_tip == 'true'
         with:
           pattern: ndjson-*
           merge-multiple: true
           path: verification-out
       - name: Write the report
+        if: needs.tip.outputs.is_tip == 'true'
         run: python3 scripts/verification-report.py summarize verification-out --markdown verification-out/verification-report.md
       - name: Fail closed when a needed job failed
+        if: needs.tip.outputs.is_tip == 'true'
         run: |
           python3 - <<'PY'
           import os, sys
@@ -189,7 +238,7 @@ jobs:
           PY
         env:
           NEEDS: "formal:${{ needs.formal.result }} heavy:${{ needs.heavy.result }} c:${{ needs.c-owned.result }} swift:${{ needs.swift.result }} kotlin:${{ needs.kotlin.result }} nix:${{ needs.nix.result }}"
-      - if: always()
+      - if: always() && needs.tip.outputs.is_tip == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: verification-report

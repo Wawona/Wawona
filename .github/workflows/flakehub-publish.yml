@@ -1,13 +1,12 @@
 name: FlakeHub publish
 
 # Registry releases (not the binary cache).
-# - development push: rolling 0.1.<commit-count> (DAG tips)
 # - vYY.M.D tags / dispatch: CalVer SemVer matching VERSION / GitHub Releases
-# Docs: docs/flakehub-registry.md
+# - Rolling development publish is dispatch-only (not every push).
+# Docs: docs/flakehub-registry.md. Cache: docs/flakehub-cache.md.
 
 on:
   push:
-    branches: [development]
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
       - "v[0-9]+.[0-9]+.[0-9]+-*"

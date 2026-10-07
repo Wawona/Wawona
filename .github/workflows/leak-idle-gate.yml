@@ -47,7 +47,7 @@ concurrency:
   # Include event_name so schedule/dispatch never cancel Gate: products's call
   # (both would otherwise share tip_key=master on the default branch).
   group: leak-idle-gate-${{ github.event_name }}-${{ inputs.tip_key || inputs.checkout_ref || github.ref_name }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read

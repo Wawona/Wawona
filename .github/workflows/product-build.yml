@@ -39,10 +39,10 @@ on:
         required: false
         default: "all"
 
-# Tip-only: cancel obsolete product builds when a newer tip gate supersedes.
+# Serialize per tip+only. Soft supersede lives in Gate: products; do not cancel.
 concurrency:
   group: product-build-${{ inputs.tip_key || github.ref_name }}-${{ inputs.only || 'all' }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -70,15 +70,7 @@ jobs:
       - name: Ensure iOS Simulator SDK (skip platform download when present)
         run: ./.github/scripts/warm-ios-simulator-sdk.sh ios
 
-      - uses: DeterminateSystems/nix-installer-action@v22
-        with:
-          determinate: true
-          extra-conf: |
-            sandbox = relaxed
-            allow-import-from-derivation = true
-            max-jobs = auto
-            cores = 0
-      - uses: DeterminateSystems/flakehub-cache-action@v3
+      - uses: ./.github/actions/setup-nix-flakehub
 
       - name: Build wawona-ios
         run: ./.github/scripts/nix-retry.sh nix build ".#wawona-ios" --print-build-logs --out-link result-ios
@@ -137,15 +129,7 @@ jobs:
       - name: Select Xcode
         run: ./.github/scripts/select-xcode.sh
 
-      - uses: DeterminateSystems/nix-installer-action@v22
-        with:
-          determinate: true
-          extra-conf: |
-            sandbox = relaxed
-            allow-import-from-derivation = true
-            max-jobs = auto
-            cores = 0
-      - uses: DeterminateSystems/flakehub-cache-action@v3
+      - uses: ./.github/actions/setup-nix-flakehub
 
       - name: Build TrollStore iOS 14+ and Sileo iOS 13+ products
         run: |
@@ -204,15 +188,7 @@ jobs:
       - name: Ensure Apple simulator SDK (skip platform download when present)
         run: ./.github/scripts/warm-ios-simulator-sdk.sh ${{ matrix.target }}
 
-      - uses: DeterminateSystems/nix-installer-action@v22
-        with:
-          determinate: true
-          extra-conf: |
-            sandbox = relaxed
-            allow-import-from-derivation = true
-            max-jobs = auto
-            cores = 0
-      - uses: DeterminateSystems/flakehub-cache-action@v3
+      - uses: ./.github/actions/setup-nix-flakehub
 
       - name: Build ${{ matrix.label }} simulator app
         run: >-
@@ -268,15 +244,7 @@ jobs:
         with:
           ref: ${{ inputs.checkout_ref || github.sha }}
 
-      - uses: DeterminateSystems/nix-installer-action@v22
-        with:
-          determinate: true
-          extra-conf: |
-            sandbox = relaxed
-            allow-import-from-derivation = true
-            max-jobs = auto
-            cores = 0
-      - uses: DeterminateSystems/flakehub-cache-action@v3
+      - uses: ./.github/actions/setup-nix-flakehub
 
       - name: Build wawona-android
         run: ./.github/scripts/nix-retry.sh nix build ".#wawona-android" --print-build-logs --out-link result-android
@@ -326,15 +294,7 @@ jobs:
       - name: Select Xcode
         run: ./.github/scripts/select-xcode.sh
 
-      - uses: DeterminateSystems/nix-installer-action@v22
-        with:
-          determinate: true
-          extra-conf: |
-            sandbox = relaxed
-            allow-import-from-derivation = true
-            max-jobs = auto
-            cores = 0
-      - uses: DeterminateSystems/flakehub-cache-action@v3
+      - uses: ./.github/actions/setup-nix-flakehub
 
       - name: Build wawona-macos
         run: ./.github/scripts/nix-retry.sh nix build ".#wawona-macos" --print-build-logs --out-link result-macos
@@ -442,9 +402,8 @@ jobs:
             /usr/local/share/boost "${AGENT_TOOLSDIRECTORY:-}" || true
           docker image prune -af || true
 
-      - uses: DeterminateSystems/nix-installer-action@v22
+      - uses: ./.github/actions/setup-nix-flakehub
         with:
-          determinate: true
           extra-conf: |
             build-dir = /nix/build
             sandbox = relaxed
@@ -452,7 +411,6 @@ jobs:
             max-jobs = auto
             cores = 0
             trusted-users = runner root
-      - uses: DeterminateSystems/flakehub-cache-action@v3
 
       - name: Build AppImage
         run: |

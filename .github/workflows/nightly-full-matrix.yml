@@ -15,7 +15,7 @@ permissions:
 
 concurrency:
   group: nightly-full-matrix-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   WAWONA_NIGHTLY_REF: development
