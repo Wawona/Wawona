@@ -21,7 +21,9 @@ jq -n '{
       }
     }
   ],
-  bypass_actors: []
+  bypass_actors: [
+    { actor_id: 1, actor_type: "OrganizationAdmin", bypass_mode: "always" }
+  ]
 }' >"$tmp"
 if id=$(gh api "repos/$REPO/rulesets" --jq '.[] | select(.name=="Verification report required") | .id' | head -1); then
   if [[ -n "$id" ]]; then
