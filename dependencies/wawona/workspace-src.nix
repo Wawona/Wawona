@@ -82,9 +82,12 @@ PY
 
       rm -f $out/waypipe/Cargo.lock
       rm -rf $out/waypipe/.git
-      strip_nested_workspace "$out/waypipe/Cargo.toml"
+      # Same as scripts/prepare-cargo-path-deps.sh: strip nested workspace and
+      # drop gbmfallback (Wawona enables lz4/zstd/video only; unused optional
+      # path deps churn Cargo.lock on modern cargo).
+      ${pkgs.python3}/bin/python3 ${expandUutilsScript} --waypipe $out/waypipe
 
-      echo "✓ Waypipe source injected (nested lockfile + [workspace*] removed)"
+      echo "✓ Waypipe source injected (nested workspace stripped; no gbmfallback)"
     fi
 
     # Inject pre-patched uutils coreutils source (in-process ls/cat/cp/...).
