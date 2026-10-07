@@ -136,7 +136,7 @@ pub fn show_editor(
         for client in clients {
             let row = adw::ActionRow::new();
             row.set_title(client.name);
-            row.set_subtitle(Some(client.description));
+            row.set_subtitle(client.description);
             row.set_title_lines(1);
             row.set_activatable(false);
             let radio = gtk::CheckButton::new();
@@ -242,7 +242,7 @@ pub fn show_editor(
                 .build();
             let filter = gtk::FileFilter::new();
             filter.set_name(Some("Wasm modules"));
-            filter.add_suffix("wasm");
+            filter.add_pattern("*.wasm");
             let filters = gio::ListStore::new::<gtk::FileFilter>();
             filters.append(&filter);
             dialog.set_filters(Some(&filters));
