@@ -32,4 +32,6 @@ proof fn clamp_nonnegative_box(x: int, y: int, width: int, height: int, max_widt
 {
 }
 
+fn main() {}
+
 } // verus!

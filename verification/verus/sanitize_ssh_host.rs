@@ -39,4 +39,6 @@ proof fn filtered_ascii_is_ok(raw: Seq<char>)
 {
 }
 
+fn main() {}
+
 } // verus!
