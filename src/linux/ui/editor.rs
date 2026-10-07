@@ -274,9 +274,30 @@ pub fn show_editor(
             let pkg_e = wasm_pkg_c.clone();
             let cmd_e = wasm_cmd_c.clone();
             let path_e = wasm_path_c.clone();
+            // gtk4 0.9 widgets are !Send. Cross-thread UI updates use WeakRef.
+            let results_w = results.downgrade();
+            let note_w = note.downgrade();
+            let pkg_w = pkg_e.downgrade();
+            let cmd_w = cmd_e.downgrade();
+            let path_w = path_e.downgrade();
             std::thread::spawn(move || {
                 let found = crate::linux::wasm_launch::search_catalog(&q);
                 glib::MainContext::default().invoke(move || {
+                    let Some(results) = results_w.upgrade() else {
+                        return;
+                    };
+                    let Some(note) = note_w.upgrade() else {
+                        return;
+                    };
+                    let Some(pkg_e) = pkg_w.upgrade() else {
+                        return;
+                    };
+                    let Some(cmd_e) = cmd_w.upgrade() else {
+                        return;
+                    };
+                    let Some(path_e) = path_w.upgrade() else {
+                        return;
+                    };
                     while let Some(child) = results.first_child() {
                         results.remove(&child);
                     }
@@ -301,12 +322,18 @@ pub fn show_editor(
                                     ce.set_text(&format!("wasm {name}"));
                                     nte.set_text("Downloading…");
                                     let name2 = name.clone();
-                                    let pte2 = pte.clone();
-                                    let nte2 = nte.clone();
+                                    let pte_w = pte.downgrade();
+                                    let nte_w = nte.downgrade();
                                     std::thread::spawn(move || {
                                         let got =
                                             crate::linux::wasm_launch::ensure_package_file(&name2);
                                         glib::MainContext::default().invoke(move || {
+                                            let Some(pte2) = pte_w.upgrade() else {
+                                                return;
+                                            };
+                                            let Some(nte2) = nte_w.upgrade() else {
+                                                return;
+                                            };
                                             match got {
                                                 Some(p) => {
                                                     pte2.set_text(&p.to_string_lossy());
