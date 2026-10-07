@@ -24,6 +24,8 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-relay` | Linux VMs / OCI / Mode A wasm. Mode A bench + PageTranslate. |
 | `wawona-formal-verification` | Mandatory Kani + Verus gate for Relay VM Rust. |
 | `wawona-mission-critical` | Risk tiers, AI parity, proof obligations, security baseline, release evidence. |
+| `wasm-packages-gha` | WASI package builds on GHA (`Wawona/wasm-packages`). Not laptop publish. |
+| `repo-wawona-io-catalogs` | Dual wasm/deb catalogs; GHA build vs catalog host split. |
 
 ## Rules (hard gates)
 
@@ -123,7 +125,9 @@ skill, add one row. Capture flow: `wawona-learn`.
 - hello-wasi-gui (`wl_shm`) must run on Watch Machines Start. Transfer is not run.
 - Machines kind `wasm` is first-class on every target. Native still runs wasm
   via `wawona-wasm` / `wasm` / `wpm`. Do not strip `bundledAppID` on wasm load.
-  Catalog is `repo.wawona.io/wasm/v1` only. Android Start uses JNI
+  Catalog is `repo.wawona.io/wasm/v1` only. Package **builds** are
+  `Wawona/wasm-packages` GHA (`ubuntu-24.04`), not laptop blobs. Skill
+  `wasm-packages-gha`. Android Start uses JNI
   `nativeRunWasm`. Do not `-lwawona_wasm` until `libwawona_wasm.a` exists
   (current Android package is header-only).
 - Port = substitute platform, not client. Waypipe Linux build is the reference.
