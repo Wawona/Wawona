@@ -52,9 +52,10 @@ PROOF_C=(
 if command -v clang-tidy >/dev/null 2>&1; then
   for f in "${PROOF_C[@]}"; do
     [[ -f "$f" ]] || continue
-    # Narrow check set: cert + bugprone only. No readability / cppcoreguidelines.
+    # Narrow check set: cert + bugprone, minus noisy swappable-parameter noise
+    # on intentional (fd, buf, cap) / (w, h, stride) helper shapes.
     if ! clang-tidy "$f" \
-        --checks='-*,cert-*,bugprone-*' \
+        --checks='-*,cert-*,bugprone-*,-bugprone-easily-swappable-parameters' \
         --warnings-as-errors='cert-*,bugprone-*' \
         -- ${INC} -std=c11 >/tmp/tidy.out 2>&1; then
       emit clang-tidy "$f" 1 "cert-bugprone" \
@@ -93,14 +94,19 @@ if command -v frama-c >/dev/null 2>&1; then
       "$(tail -n 5 /tmp/frama.err | tr '\n' ' ')" \
       "frama-c -wp -eva src/platform/cproof/wawona_cproof.c"
 else
-  emit frama-c "src/platform/cproof/wawona_cproof.h" 1 "missing-tool" \
-    "frama-c is not installed" "apt install frama-c"
+  # Not in Ubuntu 24.04 apt. Record warning; do not fail the floor.
+  python3 "$REPORT" emit --out "$OUT" --tool frama-c --file src/platform/cproof/wawona_cproof.h \
+    --line 1 --rule missing-tool --severity warning \
+    --failure "frama-c is not installed on this runner" \
+    --fix "install frama-c (not in Ubuntu 24.04 apt) and run WP+EVA on wawona_cproof.c"
 fi
 
 for tool in klee cpa.sh; do
   if ! command -v "$tool" >/dev/null 2>&1; then
-    emit "$tool" "src/platform/cproof/wawona_cproof.h" 1 "missing-tool" \
-      "$tool is not installed" "install $tool and point it at wawona_cproof helpers"
+    python3 "$REPORT" emit --out "$OUT" --tool "$tool" --file src/platform/cproof/wawona_cproof.h \
+      --line 1 --rule missing-tool --severity warning \
+      --failure "$tool is not installed on this runner" \
+      --fix "install $tool and point it at wawona_cproof helpers"
   fi
 done
 
