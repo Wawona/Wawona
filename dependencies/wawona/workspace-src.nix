@@ -172,8 +172,20 @@ def ensure_workspace_deps_table(text: str, deps_body: str) -> str:
             i += 1
     return text + "\n[workspace.dependencies]\n" + deps_body + "\n"
 
+def rewrite_coreutils_paths(deps_body: str) -> str:
+    # uutils pins path crates in [workspace.dependencies] as path = "src/…".
+    # After merge those paths are resolved from the *Wawona* workspace root, so
+    # rewrite to coreutils/src/… (same tree we inject under $out/coreutils).
+    import re
+    def repl(m: re.Match) -> str:
+        p = m.group(1)
+        if p.startswith("coreutils/"):
+            return m.group(0)
+        return f'path = "coreutils/{p}"'
+    return re.sub(r'path\s*=\s*"([^"]+)"', repl, deps_body)
+
 nested = nested_path.read_text()
-deps = extract_workspace_deps(nested)
+deps = rewrite_coreutils_paths(extract_workspace_deps(nested))
 if deps.strip():
     root = root_path.read_text()
     root_path.write_text(ensure_workspace_deps_table(root, deps))

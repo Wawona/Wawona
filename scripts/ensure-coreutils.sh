@@ -7,11 +7,12 @@
 # util_map. macOS/Android use the same source for a normal multicall binary.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-if [[ -f "$ROOT/coreutils/Cargo.toml" ]]; then
-  exit 0
+if [[ ! -f "$ROOT/coreutils/Cargo.toml" ]]; then
+  echo "Populating $ROOT/coreutils from Nix fetchFromGitHub (uutils/coreutils 0.0.30)..." >&2
+  SRC="$(nix build --no-link --print-out-paths --impure --accept-flake-config \
+    --expr "with import (builtins.getFlake \"$ROOT\").inputs.nixpkgs { system = builtins.currentSystem; }; fetchFromGitHub { owner = \"uutils\"; repo = \"coreutils\"; rev = \"0.0.30\"; sha256 = \"sha256-OZ9AsCJmQmn271OzEmqSZtt1OPn7zHTScQiiqvPhqB0=\"; }")"
+  cp -rL "$SRC" "$ROOT/coreutils"
+  chmod -R u+w "$ROOT/coreutils"
 fi
-echo "Populating $ROOT/coreutils from Nix fetchFromGitHub (uutils/coreutils 0.0.30)..." >&2
-SRC="$(nix build --no-link --print-out-paths --impure --accept-flake-config \
-  --expr "with import (builtins.getFlake \"$ROOT\").inputs.nixpkgs { system = builtins.currentSystem; }; fetchFromGitHub { owner = \"uutils\"; repo = \"coreutils\"; rev = \"0.0.30\"; sha256 = \"sha256-OZ9AsCJmQmn271OzEmqSZtt1OPn7zHTScQiiqvPhqB0=\"; }")"
-cp -rL "$SRC" "$ROOT/coreutils"
-chmod -R u+w "$ROOT/coreutils"
+# Strip nested [workspace*] + merge workspace.dependencies into root.
+"$ROOT/scripts/prepare-cargo-path-deps.sh"

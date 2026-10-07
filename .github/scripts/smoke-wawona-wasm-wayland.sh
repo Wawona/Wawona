@@ -4,8 +4,8 @@
 #
 # Steps:
 #   1. Build .#wawona-wasm (host CLI + staticlib)
-#   2. Clone wwn-wasm @ flake.lock rev
-#   3. Run wwn-wasm's smoke-wayland-shm.sh with WASM_BIN from the Nix build
+#   2. Clone Relay @ flake.lock rev (import/wasm owns the smoke guest)
+#   3. Run import/wasm smoke-wayland-shm.sh with WASM_BIN from the Nix build
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -21,14 +21,15 @@ need nix
 need jq
 need git
 
-REV="$(jq -r '.nodes["wwn-wasm"].locked.rev // empty' flake.lock)"
+# Relay replaced the standalone wwn-wasm flake input (Mode A WASI).
+REV="$(jq -r '.nodes["wwn-relay"].locked.rev // empty' flake.lock)"
 if [[ -z "$REV" ]]; then
-  echo "error: flake.lock has no wwn-wasm rev" >&2
+  echo "error: flake.lock has no wwn-relay rev" >&2
   exit 1
 fi
 
-OWNER="$(jq -r '.nodes["wwn-wasm"].locked.owner // "Wawona"' flake.lock)"
-REPO="$(jq -r '.nodes["wwn-wasm"].locked.repo // "wwn-wasm"' flake.lock)"
+OWNER="$(jq -r '.nodes["wwn-relay"].locked.owner // "Wawona"' flake.lock)"
+REPO="$(jq -r '.nodes["wwn-relay"].locked.repo // "Relay"' flake.lock)"
 
 echo "==> nix build .#wawona-wasm (host runtime)"
 nix build .#wawona-wasm -o result-wawona-wasm -L
@@ -39,7 +40,7 @@ if [[ ! -x "$WASM_BIN" ]]; then
   exit 1
 fi
 
-WORKDIR="${TMPDIR:-/tmp}/wawona-wasm-src-$$"
+WORKDIR="${TMPDIR:-/tmp}/wawona-relay-wasm-src-$$"
 cleanup() { rm -rf "$WORKDIR"; }
 trap cleanup EXIT
 
@@ -47,8 +48,10 @@ echo "==> clone $OWNER/$REPO @ $REV"
 git clone --filter=blob:none "https://github.com/${OWNER}/${REPO}.git" "$WORKDIR"
 git -C "$WORKDIR" checkout --quiet "$REV"
 
-if [[ ! -x "$WORKDIR/.github/scripts/smoke-wayland-shm.sh" ]]; then
-  echo "error: locked wwn-wasm @$REV has no smoke-wayland-shm.sh. Bump the flake input" >&2
+SMOKE_DIR="$WORKDIR/import/wasm"
+SMOKE_SH="$SMOKE_DIR/.github/scripts/smoke-wayland-shm.sh"
+if [[ ! -x "$SMOKE_SH" && ! -f "$SMOKE_SH" ]]; then
+  echo "error: locked Relay @$REV has no import/wasm smoke-wayland-shm.sh. Bump wwn-relay" >&2
   exit 1
 fi
 
@@ -61,6 +64,6 @@ need cargo
 need rustup
 rustup target add wasm32-wasip1 >/dev/null
 nix shell nixpkgs#weston --command \
-  bash -c "cd '$WORKDIR' && chmod +x ./.github/scripts/smoke-wayland-shm.sh && ./.github/scripts/smoke-wayland-shm.sh"
+  bash -c "cd '$SMOKE_DIR' && chmod +x ./.github/scripts/smoke-wayland-shm.sh && ./.github/scripts/smoke-wayland-shm.sh"
 
 echo "OK Gate: wasm-wayland"
