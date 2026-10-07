@@ -3,6 +3,7 @@ package com.aspauldingcode.wawona
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Rule
 import org.junit.Test
@@ -11,10 +12,9 @@ import org.junit.runner.RunWith
 /**
  * Layer-3 Compose UI smoke (ci-l3-android-espresso).
  *
- * Verifies the app boots to a composited surface and the primary launch control
- * is reachable, using the stable [WawonaTestTags] contract. Deliberately does
- * not assert compositor pixel content (that is covered by agent-device replays);
- * this is the fast "UI wired up correctly" gate.
+ * Industry-standard Android instrumentation. Asserts Machines (or Welcome)
+ * testTags after launch. Gate: products runs this via
+ * `connectedDebugAndroidTest` / adb; not agent-device CLI.
  */
 @RunWith(AndroidJUnit4::class)
 class LaunchAndSettingsUiTest {
@@ -23,8 +23,16 @@ class LaunchAndSettingsUiTest {
     val composeRule = createAndroidComposeRule<MainActivity>()
 
     @Test
-    fun compositorSurfaceIsPresentOnLaunch() {
+    fun machinesUiIsPresentOnLaunch() {
         composeRule.waitForIdle()
-        composeRule.onNodeWithTag(WawonaTestTags.COMPOSITOR_SURFACE).assertIsDisplayed()
+        // Welcome may appear once; dismiss if the Continue tag is present.
+        try {
+            composeRule.onNodeWithTag(WawonaTestTags.WELCOME_CONTINUE).assertIsDisplayed()
+            composeRule.onNodeWithTag(WawonaTestTags.WELCOME_CONTINUE).performClick()
+            composeRule.waitForIdle()
+        } catch (_: Throwable) {
+            // Already past welcome.
+        }
+        composeRule.onNodeWithTag(WawonaTestTags.MACHINES_ROOT).assertIsDisplayed()
     }
 }

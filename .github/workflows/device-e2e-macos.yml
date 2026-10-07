@@ -1,7 +1,7 @@
 name: "Test: macOS opens"
 
-# GUI smoke for one platform. Called by Gate: products. No lane filter: every
-# job here always runs (no skip spam in the Actions UI).
+# Gate: products macOS runtime. Catalog smoke + compositor-host client smoke.
+# No agent-device CLI on runners.
 
 on:
   workflow_dispatch:
@@ -38,12 +38,9 @@ concurrency:
   group: device-e2e-macos-${{ github.sha }}-${{ inputs.products_ready && 'products' || 'standalone' }}
   cancel-in-progress: false
 
-env:
-  AGENT_DEVICE_VERSION: "0.18.3"
-
 jobs:
   catalog-and-macos-fuzzel:
-    name: "Catalog + macOS nested niri/fuzzel"
+    name: "macOS: catalog + compositor-host smoke"
     # Must match product-build macos-app runner: macos-26 builds are
     # min-version 26 and abort on macos-15 ("newer than running OS").
     runs-on: macos-26
@@ -97,24 +94,18 @@ jobs:
           test -x "$APP/Contents/Resources/bin/niri" \
             || { echo "FAIL: niri missing/not executable in product-macos-app"; ls -la "$APP/Contents/Resources/bin" || true; exit 1; }
 
-      # Nested niri/fuzzel omitted from Gate: products. GHA macos runners often
-      # SIGTERM the job mid-GUI (exit 143) even with continue-on-error, which
-      # still fails the reusable workflow. Catalog smoke above is the hard check.
-      # Re-enable via Watch: graphics nightly / local scripts/niri-fuzzel-smoke-macos.sh.
-      - name: Nested niri + fuzzel smoke (macOS)
-        if: ${{ false }}
+      - name: macOS compositor-host runtime smoke
         env:
-          WAWONA_MACOS_APP: result-macos/Applications/Wawona.app
-          WAWONA_FUZZEL_REQUIRE_MACOS: "1"
+          WAWONA_APP_BIN: result-macos/Applications/Wawona.app/Contents/MacOS/Wawona
         run: |
-          chmod +x ./scripts/niri-fuzzel-smoke-macos.sh ./scripts/niri-smoke-macos.sh
-          ./scripts/niri-fuzzel-smoke-macos.sh "$WAWONA_MACOS_APP"
+          chmod +x ./scripts/ci-macos-compat-smoke.sh
+          ./scripts/ci-macos-compat-smoke.sh
 
-      - name: Upload macOS fuzzel artifacts
+      - name: Upload macOS runtime artifacts
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: device-e2e-macos-fuzzel
-          path: .agent-device/test-artifacts/
+          name: device-e2e-macos
+          path: /tmp/wawona-smoke-host.log
           if-no-files-found: warn
 

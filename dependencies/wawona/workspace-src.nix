@@ -90,9 +90,101 @@ PY
 
       rm -f $out/coreutils/Cargo.lock
       rm -rf $out/coreutils/.git
+
+      # uutils members use `clap.workspace = true`. After we strip nested
+      # `[workspace.*]`, those keys must live on the *root* workspace or
+      # `cargo build` fails with "`workspace.dependencies` was not defined"
+      # (AppImage / wawona-linux-ui on aarch64-linux). Merge first, then strip.
+      ${pkgs.python3}/bin/python3 - "$out/Cargo.toml" "$out/coreutils/Cargo.toml" <<'PY'
+from pathlib import Path
+import sys
+
+root_path = Path(sys.argv[1])
+nested_path = Path(sys.argv[2])
+
+def extract_workspace_deps(text: str) -> str:
+    lines = text.splitlines(True)
+    out, grab = [], False
+    for line in lines:
+        s = line.strip()
+        if s == "[workspace.dependencies]":
+            grab = True
+            continue
+        if grab:
+            if s.startswith("[") and not s.startswith("[workspace.dependencies]"):
+                break
+            if s and not s.startswith("#"):
+                out.append(line if line.endswith("\n") else line + "\n")
+    return "".join(out)
+
+def ensure_workspace_deps_table(text: str, deps_body: str) -> str:
+    if not deps_body.strip():
+        return text
+    marker = "[workspace.dependencies]"
+    if marker in text:
+        # Append missing keys only (keep existing root pins).
+        existing = set()
+        grab = False
+        for line in text.splitlines():
+            s = line.strip()
+            if s == marker:
+                grab = True
+                continue
+            if grab:
+                if s.startswith("["):
+                    break
+                if "=" in s:
+                    existing.add(s.split("=", 1)[0].strip())
+        extra = []
+        for line in deps_body.splitlines(True):
+            s = line.strip()
+            if not s or s.startswith("#") or "=" not in s:
+                continue
+            key = s.split("=", 1)[0].strip()
+            if key not in existing:
+                extra.append(line if line.endswith("\n") else line + "\n")
+        if not extra:
+            return text
+        # Insert after the marker line.
+        lines = text.splitlines(True)
+        out = []
+        for i, line in enumerate(lines):
+            out.append(line)
+            if line.strip() == marker:
+                out.extend(extra)
+        return "".join(out)
+    # Prefer after [workspace] block.
+    if "[workspace]" in text:
+        lines = text.splitlines(True)
+        out, i = [], 0
+        while i < len(lines):
+            out.append(lines[i])
+            if lines[i].strip() == "[workspace]":
+                i += 1
+                while i < len(lines) and not lines[i].strip().startswith("["):
+                    out.append(lines[i])
+                    i += 1
+                out.append("\n[workspace.dependencies]\n")
+                out.append(deps_body if deps_body.endswith("\n") else deps_body + "\n")
+                out.append("\n")
+                out.extend(lines[i:])
+                return "".join(out)
+            i += 1
+    return text + "\n[workspace.dependencies]\n" + deps_body + "\n"
+
+nested = nested_path.read_text()
+deps = extract_workspace_deps(nested)
+if deps.strip():
+    root = root_path.read_text()
+    root_path.write_text(ensure_workspace_deps_table(root, deps))
+    print(f"Merged coreutils workspace.dependencies into root ({len(deps.splitlines())} lines)")
+else:
+    print("note: coreutils had no [workspace.dependencies] to merge")
+PY
+
       strip_nested_workspace "$out/coreutils/Cargo.toml"
 
-      echo "✓ coreutils source injected (nested lockfile + [workspace*] removed)"
+      echo "✓ coreutils source injected (workspace.deps merged; nested [workspace*] removed)"
     fi
 
     # Terminal screen. The committed path is a symlink to the sibling repo.
