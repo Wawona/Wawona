@@ -1014,6 +1014,8 @@
             inherit wawonaVersion;
             waypipeSrc = waypipe-src;
             coreutilsSrc = coreutils-src;
+            # Sandbox cannot follow the gitignored Terminal symlink; inject.
+            terminalSrc = inputs.terminal;
           };
           # Self-contained, glibc-portable AppImage of the GTK UI. The bundled
           # binary auto-selects the GDK x11/wayland backend at startup based on

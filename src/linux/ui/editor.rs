@@ -274,84 +274,95 @@ pub fn show_editor(
             let pkg_e = wasm_pkg_c.clone();
             let cmd_e = wasm_cmd_c.clone();
             let path_e = wasm_path_c.clone();
-            // gtk4 0.9 widgets are !Send. Cross-thread UI updates use WeakRef.
-            let results_w = results.downgrade();
-            let note_w = note.downgrade();
-            let pkg_w = pkg_e.downgrade();
-            let cmd_w = cmd_e.downgrade();
-            let path_w = path_e.downgrade();
-            std::thread::spawn(move || {
-                let found = crate::linux::wasm_launch::search_catalog(&q);
-                glib::MainContext::default().invoke(move || {
-                    let Some(results) = results_w.upgrade() else {
-                        return;
-                    };
-                    let Some(note) = note_w.upgrade() else {
-                        return;
-                    };
-                    let Some(pkg_e) = pkg_w.upgrade() else {
-                        return;
-                    };
-                    let Some(cmd_e) = cmd_w.upgrade() else {
-                        return;
-                    };
-                    let Some(path_e) = path_w.upgrade() else {
-                        return;
-                    };
-                    while let Some(child) = results.first_child() {
-                        results.remove(&child);
-                    }
-                    match found {
-                        Ok(pkgs) if pkgs.is_empty() => {
-                            note.set_text("No packages in /wasm/v1 match.");
+            // gtk4 0.9 widgets (and WeakRef<Widget>) are !Send. Background work
+            // returns Send data over mpsc; the main loop applies it with
+            // timeout_add_local (no Send bound on the UI closure).
+            type SearchMsg = Result<Vec<crate::linux::wasm_launch::CatalogPackage>, String>;
+            let (tx, rx) = std::sync::mpsc::sync_channel::<SearchMsg>(1);
+            let note_poll = note.clone();
+            let results_poll = results.clone();
+            let pkg_poll = pkg_e.clone();
+            let cmd_poll = cmd_e.clone();
+            let path_poll = path_e.clone();
+            glib::timeout_add_local(std::time::Duration::from_millis(16), move || {
+                match rx.try_recv() {
+                    Ok(found) => {
+                        while let Some(child) = results_poll.first_child() {
+                            results_poll.remove(&child);
                         }
-                        Ok(pkgs) => {
-                            note.set_text("Tap a package to download from /wasm/v1.");
-                            for pkg in pkgs {
-                                let row = adw::ActionRow::new();
-                                row.set_title(&pkg.name);
-                                row.set_subtitle(&format!("{}  {}", pkg.version, pkg.summary));
-                                row.set_activatable(true);
-                                let name = pkg.name.clone();
-                                let pe = pkg_e.clone();
-                                let ce = cmd_e.clone();
-                                let pte = path_e.clone();
-                                let nte = note.clone();
-                                row.connect_activated(move |_| {
-                                    pe.set_text(&name);
-                                    ce.set_text(&format!("wasm {name}"));
-                                    nte.set_text("Downloading…");
-                                    let name2 = name.clone();
-                                    let pte_w = pte.downgrade();
-                                    let nte_w = nte.downgrade();
-                                    std::thread::spawn(move || {
-                                        let got =
-                                            crate::linux::wasm_launch::ensure_package_file(&name2);
-                                        glib::MainContext::default().invoke(move || {
-                                            let Some(pte2) = pte_w.upgrade() else {
-                                                return;
-                                            };
-                                            let Some(nte2) = nte_w.upgrade() else {
-                                                return;
-                                            };
-                                            match got {
-                                                Some(p) => {
-                                                    pte2.set_text(&p.to_string_lossy());
+                        match found {
+                            Ok(pkgs) if pkgs.is_empty() => {
+                                note_poll.set_text("No packages in /wasm/v1 match.");
+                            }
+                            Ok(pkgs) => {
+                                note_poll.set_text("Tap a package to download from /wasm/v1.");
+                                for pkg in pkgs {
+                                    let row = adw::ActionRow::new();
+                                    row.set_title(&pkg.name);
+                                    row.set_subtitle(&format!(
+                                        "{}  {}",
+                                        pkg.version, pkg.summary
+                                    ));
+                                    row.set_activatable(true);
+                                    let name = pkg.name.clone();
+                                    let pe = pkg_poll.clone();
+                                    let ce = cmd_poll.clone();
+                                    let pte = path_poll.clone();
+                                    let nte = note_poll.clone();
+                                    row.connect_activated(move |_| {
+                                        pe.set_text(&name);
+                                        ce.set_text(&format!("wasm {name}"));
+                                        nte.set_text("Downloading…");
+                                        let name2 = name.clone();
+                                        let (dtx, drx) =
+                                            std::sync::mpsc::sync_channel::<Option<String>>(1);
+                                        let pte2 = pte.clone();
+                                        let nte2 = nte.clone();
+                                        glib::timeout_add_local(
+                                            std::time::Duration::from_millis(16),
+                                            move || match drx.try_recv() {
+                                                Ok(Some(path)) => {
+                                                    pte2.set_text(&path);
                                                     nte2.set_text("Saved to the Wawona folder.");
+                                                    glib::ControlFlow::Break
                                                 }
-                                                None => nte2.set_text(
-                                                    "Download failed, or this is bundled hello-wasi-gui.",
-                                                ),
-                                            }
+                                                Ok(None) => {
+                                                    nte2.set_text(
+                                                        "Download failed, or this is bundled hello-wasi-gui.",
+                                                    );
+                                                    glib::ControlFlow::Break
+                                                }
+                                                Err(std::sync::mpsc::TryRecvError::Empty) => {
+                                                    glib::ControlFlow::Continue
+                                                }
+                                                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                                                    glib::ControlFlow::Break
+                                                }
+                                            },
+                                        );
+                                        std::thread::spawn(move || {
+                                            let got = crate::linux::wasm_launch::ensure_package_file(
+                                                &name2,
+                                            );
+                                            let msg = got
+                                                .map(|p| p.to_string_lossy().into_owned());
+                                            let _ = dtx.send(msg);
                                         });
                                     });
-                                });
-                                results.append(&row);
+                                    results_poll.append(&row);
+                                }
                             }
+                            Err(e) => note_poll.set_text(&e),
                         }
-                        Err(e) => note.set_text(&e),
+                        glib::ControlFlow::Break
                     }
-                });
+                    Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
+                    Err(std::sync::mpsc::TryRecvError::Disconnected) => glib::ControlFlow::Break,
+                }
+            });
+            std::thread::spawn(move || {
+                let found = crate::linux::wasm_launch::search_catalog(&q);
+                let _ = tx.send(found);
             });
         });
     }
