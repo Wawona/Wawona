@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-"""Verify Wawona wires the Wawona Runtime (wwn-wasm) for Apple mobile + docs.
+"""Verify Wawona wires the Wawona Runtime (Relay / wawona-wasm) for Apple mobile + docs.
 
 Static checks only (no Wasmtime build). Runtime Wayland smoke is
 `.github/scripts/smoke-wawona-wasm-wayland.sh` / Gate: wasm-wayland.
+
+Relay (`wwn-relay`) owns Mode A WASI execute. Packages stay `wawona-wasm`
+archives linked into every product target.
 """
 
 from __future__ import annotations
@@ -32,8 +35,7 @@ def main() -> None:
     errors: list[str] = []
     flake = read(FLAKE)
     for needle in (
-        "wwn-wasm.url",
-        "wwn-wasm.registryFragment",
+        "wwn-relay.url",
         "wawona-wasm-ios",
         "wawona-wasm-macos",
         "wawona-wasm-android",
@@ -44,13 +46,13 @@ def main() -> None:
             errors.append(f"flake.nix missing {needle}")
 
     lock = json.loads(read(FLAKE_LOCK))
-    node = lock.get("nodes", {}).get("wwn-wasm")
+    node = lock.get("nodes", {}).get("wwn-relay")
     if not node:
-        errors.append("flake.lock missing wwn-wasm input")
+        errors.append("flake.lock missing wwn-relay input (owns Mode A WASI)")
     else:
         locked = node.get("locked", {})
         if locked.get("type") not in ("github", "tarball", "indirect"):
-            errors.append(f"wwn-wasm lock type unexpected: {locked.get('type')}")
+            errors.append(f"wwn-relay lock type unexpected: {locked.get('type')}")
 
     xg = read(XCODEGEN)
     for needle in ("wasmLdflags", "-lwawona_wasm", "_wawona_wasm_run"):
@@ -66,15 +68,13 @@ def main() -> None:
         errors.append("mobile-platform-deps.nix must include watch in the wawona-wasm optionalAttrs")
 
     rootfs = read(IOS_ROOTFS)
-    for needle in ("help wawona wasm", "help()", 'echo "21"'):
+    for needle in ("help wawona wasm", "help()", "wawona-dispatch"):
         if needle not in rootfs:
             errors.append(f"ios-rootfs.nix missing catalog/stub marker: {needle}")
-    if "wawona-dispatch" not in rootfs and "in-process" not in rootfs:
-        errors.append("ios-rootfs.nix must mention in-process / wawona-dispatch stubs")
 
     dag = read(DAG)
-    if "wwn-wasm" not in dag:
-        errors.append("docs/wwn-repo-dag.md must cite wwn-wasm (L3′)")
+    if "wwn-relay" not in dag:
+        errors.append("docs/wwn-repo-dag.md must cite wwn-relay (L3′ Mode A WASI)")
 
     if not WASM_DOC.is_file():
         errors.append("docs/wasm-wasi.md missing")
@@ -92,15 +92,21 @@ def main() -> None:
     if "#if os(watchOS)" in launchers and "wawona-wasm" in launchers:
         errors.append("ClientLauncher must not special-case watchOS off for wasm")
 
-    watch_bridge = read(ROOT / "Sources/WawonaApple/Present/Watch/WWNWatchCompositorBridge.m")
-    if "launchWasmModuleAtPath" not in watch_bridge or "hello-wasi-gui" not in watch_bridge:
-        errors.append("watch compositor must launch hello-wasi-gui via wawona_wasm_run")
+    # Swift glue (zero ObjC product classes). Present path used to live under
+    # Sources/WawonaApple/Present/Watch/*.m; that is retired.
+    watch_bridge = read(ROOT / "Sources/WawonaApple/Watch/WatchCompositorBridge.swift")
+    if "launchWasmModuleAtPath" not in watch_bridge:
+        errors.append("watch compositor must expose launchWasmModuleAtPath")
+    if "hello-wasi-gui" not in watch_bridge:
+        errors.append("watch compositor must resolve bundled hello-wasi-gui")
+    if "wawona_wasm_run" not in watch_bridge:
+        errors.append("watch compositor must call wawona_wasm_run (Relay Pulley)")
 
     if errors:
         for e in errors:
             print(f"FAIL {e}", file=sys.stderr)
         sys.exit(1)
-    print("OK Wawona Runtime (wwn-wasm) wiring")
+    print("OK Wawona Runtime (Relay / wawona-wasm) wiring")
 
 
 if __name__ == "__main__":

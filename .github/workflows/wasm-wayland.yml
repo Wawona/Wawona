@@ -18,6 +18,7 @@ on:
       - ".github/workflows/wasm-wayland.yml"
       - ".github/scripts/verify-wawona-wasm.py"
       - ".github/scripts/smoke-wawona-wasm-wayland.sh"
+      - "Sources/WawonaApple/Watch/WatchCompositorBridge.swift"
   pull_request:
     branches: [development, master, main]
     paths:
@@ -31,6 +32,7 @@ on:
       - ".github/workflows/wasm-wayland.yml"
       - ".github/scripts/verify-wawona-wasm.py"
       - ".github/scripts/smoke-wawona-wasm-wayland.sh"
+      - "Sources/WawonaApple/Watch/WatchCompositorBridge.swift"
   workflow_dispatch:
 
 permissions:

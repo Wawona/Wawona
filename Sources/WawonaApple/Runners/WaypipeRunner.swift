@@ -11,7 +11,10 @@ private func weston_compositor_main(
 @_silgen_name("wwn_weston_compositor_shutdown_requested")
 private var wwn_weston_compositor_shutdown_requested: Int32
 @_silgen_name("wawona_wasm_run")
-private func wawona_wasm_run(_ path: UnsafePointer<CChar>?) -> Int32
+private func wawona_wasm_run(
+    _ argc: Int32,
+    _ argv: UnsafePointer<UnsafePointer<CChar>?>?
+) -> Int32
 @_silgen_name("weston_simple_shm_main")
 private func weston_simple_shm_main(
     _ argc: Int32,
@@ -194,7 +197,14 @@ public final class WWNWaypipeRunner: NSObject {
     public func launchWasmModule(atPath path: String, machineId: String?) {
         if let machineId { machineClients[machineId] = "wawona-wasm" }
         DispatchQueue.global(qos: .userInitiated).async {
-            let rc = path.withCString { wawona_wasm_run($0) }
+            let rc: Int32 = path.withCString { pathC in
+                "wasm".withCString { nameC in
+                    var argv: [UnsafePointer<CChar>?] = [nameC, pathC, nil]
+                    return argv.withUnsafeMutableBufferPointer { buf in
+                        wawona_wasm_run(2, buf.baseAddress)
+                    }
+                }
+            }
             if rc != 0 {
                 DispatchQueue.main.async {
                     self.delegate?.runnerDidReceiveError?("wasm exited \(rc) for \(path)")
