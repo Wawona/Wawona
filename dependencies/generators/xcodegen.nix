@@ -333,6 +333,10 @@ let
     let
       w = deps.wawona-wasm or null;
       r = deps.wawona-relay or null;
+      # Prefer standalone libwpm.a when present so -u,_wpm_main does not also
+      # pull wpm from libwawona_relay.a (Xcode 26 ld: duplicate _wpm_main /
+      # _rust_eh_personality). Fall back to the object inside libwawona_wasm.a.
+      hasWpm = w != null && builtins.pathExists "${strip w}/lib/libwpm.a";
       wasm =
         if w == null then [] else [
           "-L${strip w}/lib"
@@ -341,10 +345,12 @@ let
           "-Wl,-u,_wawona_wasm_request_interrupt"
           "-Wl,-u,_wawona_wasm_is_running"
           "-Wl,-u,_wpm_main"
+        ] ++ (if hasWpm then [ "-lwpm" ] else []) ++ [
           "-lwawona_wasm"
         ];
-      # Pass the static archive by path. ld prefers a same-dir
-      # libwawona_relay.dylib (host macOS) over the .a.
+      # Lazy -L/-l, not a bare archive path: Apple ld treats a full .a path
+      # like -force_load, which pulls relay's embedded wpm + Rust std and
+      # collides with wasm. Prefer .a over a same-dir .dylib via -search_paths_first.
       # Do not -u _relay_copy_frame: flake-pinned Relay often lacks that
       # export; Watch has no WWNRelay.m / stub object, so -u fails link.
       # Host apps that call it keep wawona_relay_copy_frame_stub.c (weak).
@@ -352,9 +358,11 @@ let
       # earlier; macOS did not until crate2nix Relay. Link zstd after the .a.
       relay =
         if r == null then [] else [
+          "-L${strip r}/lib"
+          "-Wl,-search_paths_first"
           "-Wl,-u,_relay_resolve_backend"
           "-Wl,-u,_relay_start"
-          "${strip r}/lib/libwawona_relay.a"
+          "-lwawona_relay"
         ] ++ (
           let
             z = deps.zstd or null;
@@ -1297,6 +1305,22 @@ PLIST
     basedOnDependencyAnalysis = false;
   };
 
+  tvosRootfsEmbedPhase = {
+    path = rootfsIosEmbedScript
+      (tvosDeps."wawona-rootfs" or iosDeps."wawona-rootfs" or null)
+      (tvosSimDeps."wawona-rootfs" or iosSimDeps."wawona-rootfs" or null);
+    name = "Embed wawona-rootfs (shell templates)";
+    basedOnDependencyAnalysis = false;
+  };
+
+  visionosRootfsEmbedPhase = {
+    path = rootfsIosEmbedScript
+      (visionosDeps."wawona-rootfs" or iosDeps."wawona-rootfs" or null)
+      (visionosSimDeps."wawona-rootfs" or iosSimDeps."wawona-rootfs" or null);
+    name = "Embed wawona-rootfs (shell templates)";
+    basedOnDependencyAnalysis = false;
+  };
+
   # src/core is entirely Rust (0 C/ObjC files). Excluded entirely
   # src/stubs depend on system headers (wayland, vulkan) that are only
   # available from the Nix build environment, so they stay out of Xcode.
@@ -2149,11 +2173,9 @@ PLIST
           { path = "Sources/WawonaUI"; excludes = [ "Skip/**" "VisionOS/**" ]; }
           { path = "src/platform/macos"; excludes = commonExcludes; }
           { path = "src/platform/macos/WWNIlandPresenter.m"; type = "file"; }
-          # Re-include WWNSettings.c (excluded from the glob via commonExcludes):
-          # on macOS its `#if !TARGET_OS_IPHONE` block provides the NULL
-          # wwn_startup_log_sink definition that WWNLog.h references. The config
-          # functions are `#ifndef __APPLE__` so nothing else compiles here.
-          { path = "src/platform/macos/WWNSettings.c"; type = "file"; }
+          # Sink lives in wawona_compositor_host_glue.c. Do not also compile
+          # WWNSettings.c for it (duplicate symbol under Xcode 26 ld).
+
           { path = "src/platform/macos/ui"; excludes = commonExcludes; }
           { path = "src/resources/Assets.xcassets"; }
           # Required-reason API manifest (UserDefaults / boot time / file timestamps).

@@ -9,7 +9,6 @@ pluginManagement {
         mavenCentral()
     }
     plugins {
-        id("com.github.spotbugs") version "6.1.7"
         id("io.gitlab.arturbosch.detekt") version "1.23.8"
     }
 }

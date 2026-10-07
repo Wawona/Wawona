@@ -71,7 +71,13 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
-      - run: sudo apt-get update && sudo apt-get install -y clang-tidy clang-tools valgrind cbmc frama-c
+      - name: Install C analyzers
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          # frama-c is not in Ubuntu 24.04 apt; verify-c records a missing-tool finding.
+          sudo apt-get install -y clang-tidy clang-tools valgrind || true
+          sudo apt-get install -y cbmc || true
       - run: bash scripts/verify-c.sh verification-out/c.ndjson
       - if: always()
         uses: actions/upload-artifact@v4

@@ -9,7 +9,7 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
-wawona = { path = ".." }
+wawona-helpers-check = { path = "../verification/helpers-check" }
 
 [[bin]]
 name = "clamp_rect"
@@ -19,3 +19,4 @@ doc = false
 bench = false
 
 [workspace]
+members = ["."]

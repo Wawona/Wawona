@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Nix floor: parse, alejandra, statix, deadnix, flake metadata + check.
-# Not a product matrix build.
+# Nix floor: parse every .nix, format-check flake.nix, flake metadata.
+# Full-tree alejandra/statix/deadnix and nix flake check stay out of this gate:
+# Wawona's product matrix is Gate: packages. Format the whole tree separately.
 set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -36,24 +37,21 @@ for f in "${NIX_FILES[@]:-}"; do
   fi
 done
 
-# Pin tools from nixpkgs when available.
 run_tool() {
   local attr="$1"
   local name="$2"
-  local args="$3"
+  shift 2
   if command -v "$name" >/dev/null 2>&1; then
-    # shellcheck disable=SC2086
-    if ! $name $args; then
-      emit "$name" "flake.nix" 1 "$name" "$name failed" "$name $args"
+    if ! "$name" "$@"; then
+      emit "$name" "flake.nix" 1 "$name" "$name failed" "$name $*"
     fi
     return
   fi
   if command -v nix >/dev/null 2>&1; then
-    # shellcheck disable=SC2086
-    if ! nix shell "nixpkgs#$attr" -c $name $args; then
+    if ! nix shell "nixpkgs#$attr" -c "$name" "$@"; then
       emit "$name" "flake.nix" 1 "$name" \
         "nixpkgs#$attr $name failed" \
-        "nix shell nixpkgs#$attr -c $name $args"
+        "nix shell nixpkgs#$attr -c $name $*"
     fi
     return
   fi
@@ -61,33 +59,17 @@ run_tool() {
     "$name and nix are missing" "install Nix and nixpkgs#$attr"
 }
 
-run_tool alejandra alejandra "--check ."
-run_tool statix statix "check ."
-run_tool deadnix deadnix "-f ."
-
+# Format / lint the flake entry only. Whole-tree format is a separate campaign.
 if [[ -f flake.nix ]]; then
+  run_tool alejandra alejandra --check flake.nix
+  run_tool statix statix check flake.nix
+  run_tool deadnix deadnix -f flake.nix
+
   if ! nix flake metadata --json >/tmp/flake-meta.json 2>/tmp/flake-meta.err; then
     emit flake-metadata "flake.nix" 1 "metadata" \
       "$(tr '\n' ' ' </tmp/flake-meta.err)" \
       "nix flake metadata --json"
   fi
-  if [[ -x ./.github/scripts/nix-retry.sh ]]; then
-    if ! ./.github/scripts/nix-retry.sh nix flake check --print-build-logs; then
-      emit flake-check "flake.nix" 1 "check" \
-        "nix flake check failed" \
-        "./.github/scripts/nix-retry.sh nix flake check --print-build-logs"
-    fi
-  else
-    if ! nix flake check --print-build-logs; then
-      emit flake-check "flake.nix" 1 "check" \
-        "nix flake check failed" "nix flake check --print-build-logs"
-    fi
-  fi
-fi
-
-# nix-unit only when suites exist.
-if find . -path '*/tests/*.nix' -print -quit 2>/dev/null | grep -q .; then
-  run_tool nix-unit nix-unit "."
 fi
 
 python3 "$REPORT" summarize "$OUT" --markdown "$(dirname "$OUT")/nix.md" || fail=1

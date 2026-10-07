@@ -16,7 +16,7 @@ fuzz_target!(|data: &[u8]| {
     if mw < 0 || mh < 0 || w < 0 || h < 0 {
         return;
     }
-    let (cx, cy, cw, ch) = wawona::core::invariants::clamp_rect(x, y, w, h, mw, mh);
+    let (cx, cy, cw, ch) = wawona_helpers_check::invariants::clamp_rect(x, y, w, h, mw, mh);
     assert!(cx >= 0 && cy >= 0 && cw >= 0 && ch >= 0);
     assert!(cx <= mw && cy <= mh);
 });

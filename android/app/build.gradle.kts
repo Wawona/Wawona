@@ -2,7 +2,8 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
     id("io.gitlab.arturbosch.detekt")
-    id("com.github.spotbugs")
+    // SpotBugs is not applied: AGP 9 dropped BaseExtension and spotbugs 6.1.7
+    // fails at configuration. verify-kotlin.sh records that blocker in NDJSON.
 }
 
 android {
@@ -221,14 +222,6 @@ dependencies {
 
 tasks.withType<Test> {
     useJUnitPlatform()
-}
-
-spotbugs {
-    ignoreFailures.set(false)
-}
-
-tasks.matching { it.name.startsWith("spotbugs") }.configureEach {
-    dependsOn("compileDebugKotlin")
 }
 
 configurations.configureEach {

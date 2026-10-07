@@ -15,14 +15,20 @@ emit() {
   fail=1
 }
 
-if ! ./gradlew :Wawona:testDebugUnitTest :Wawona:detekt :Wawona:lintDebug :Wawona:spotbugsDebug --offline; then
-  if ! ./gradlew :Wawona:testDebugUnitTest :Wawona:detekt :Wawona:lintDebug :Wawona:spotbugsDebug; then
+# Module path is :Wawona (settings.gradle maps it to app/).
+GRADLE_TASKS=(:Wawona:testDebugUnitTest :Wawona:detekt :Wawona:lintDebug)
+if ! ./gradlew "${GRADLE_TASKS[@]}" --offline; then
+  if ! ./gradlew "${GRADLE_TASKS[@]}"; then
     emit gradle "android/app/src/test/java/com/aspauldingcode/wawona/MachineInputSanitizerTest.kt" \
-      "kotest-detekt-lint-spotbugs" \
-      "unit test, detekt, lint, or SpotBugs failed" \
-      "./gradlew :Wawona:testDebugUnitTest :Wawona:detekt :Wawona:lintDebug :Wawona:spotbugsDebug"
+      "kotest-detekt-lint" \
+      "unit test, detekt, or lint failed" \
+      "./gradlew ${GRADLE_TASKS[*]}"
   fi
 fi
+
+emit spotbugs "android/app/build.gradle.kts" "missing-tool" \
+  "SpotBugs is not wired on AGP 9 (BaseExtension removed). Blocker until a SpotBugs Android path exists." \
+  "restore SpotBugs when AGP-compatible plugin supports ApplicationExtension"
 
 HARNESS="$ROOT/verification/kotlin/SanitizeHarness.java"
 mkdir -p "$ROOT/verification-out/kotlin"

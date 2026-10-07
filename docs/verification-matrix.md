@@ -33,7 +33,7 @@ Job display name **Verification report**. Scripts:
 | `scripts/verify-c.sh` | cproof ASan/UBSan, clang-tidy, scan-build, CBMC, Frama-C, Valgrind, MSan, CDSChecker, TSan |
 | `scripts/verify-swift.sh` | differential vector, SwiftCheck, strict concurrency, ASan/UBSan/TSan |
 | `scripts/verify-kotlin.sh` | Kotest, detekt, lint, SpotBugs, JBMC, JPF |
-| `scripts/verify-nix.sh` | parse, alejandra, statix, deadnix, flake metadata + check |
+| `scripts/verify-nix.sh` | parse all `.nix`, alejandra/statix/deadnix on `flake.nix`, flake metadata (full-tree format and `nix flake check` stay in Gate: packages) |
 
 Helpers: `src/core/invariants.rs`, `src/core/generation_counter.rs`,
 `src/platform/cproof/wawona_cproof.h`, `verification/ssh_host_vector.tsv`.
