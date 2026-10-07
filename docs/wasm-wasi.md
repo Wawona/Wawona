@@ -176,14 +176,16 @@ Other demos: `examples/rust`, `go`, `swift`, `wasip2`.
 
 ## Host ABI (P1 extras)
 
-WASI P1 has no sockets. Import module `wawona_socket` (Rust may use `env`):
+Canonical developer docs are on **wawona.io**:
 
-- `wawona_socket_socket` / `connect_host` / `send` / `recv` / `close`
-- `wawona_wayland_connect` / `shm_create` / `shm_write` / `sendmsg`
-  (protocol bytes + optional `SCM_RIGHTS` into the existing compositor -
-  same `WAYLAND_DISPLAY`, not a custom draw API)
+- [Host ABI](https://wawona.io/docs/contributor/wasm-host-abi/)
+- [Wayland wasm](https://wawona.io/docs/contributor/wayland-wasm/)
 
-Terminal: `wawona_terminal_set_raw` / `is_tty` (module `wawona_terminal`).
+Short summary: WASI P1 has no sockets. Import module `wawona_socket` (Rust may
+use `env`). Wayland guests speak real protocol into `WAYLAND_DISPLAY`; the host
+only bridges unix connect + SHM + `SCM_RIGHTS`. Terminal:
+`wawona_terminal_set_raw` / `is_tty`. Implementation:
+`Relay/import/wasm/src/host.rs`.
 
 P2 guests use `wasi:cli` / `filesystem` / `sockets` / `clocks` / `random`.
 `wasi:http` is not linked yet (size); use `wasi:sockets` or a native port.
