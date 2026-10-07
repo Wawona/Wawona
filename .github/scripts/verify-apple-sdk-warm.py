@@ -70,27 +70,25 @@ def main() -> int:
     if NEWEST_XCODE.search(select_text):
         errors.append("select-xcode.sh: reintroduced newest-Xcode selection")
 
-    product = (WORKFLOWS / "product-build.yml").read_text(encoding="utf-8")
-    ios_sim = job_block(product, "ios-sim")
-    apple_family = job_block(product, "apple-family")
-    if WARM_REF not in ios_sim:
-        errors.append("product-build.yml job ios-sim: missing warm-ios-simulator-sdk.sh")
-    if WARM_REF not in apple_family:
+    ios_sim_wf = (WORKFLOWS / "product-ios-sim.yml").read_text(encoding="utf-8")
+    apple_family_wf = (WORKFLOWS / "product-apple-family.yml").read_text(encoding="utf-8")
+    if WARM_REF not in ios_sim_wf:
+        errors.append("product-ios-sim.yml: missing warm-ios-simulator-sdk.sh")
+    if WARM_REF not in apple_family_wf:
         errors.append(
-            "product-build.yml job apple-family: missing warm-ios-simulator-sdk.sh "
+            "product-apple-family.yml: missing warm-ios-simulator-sdk.sh "
             "(watch/tv/vision sim builds still hit -downloadPlatform iOS without the skip flag)"
         )
-    if "${{ matrix.target }}" not in apple_family or WARM_REF not in apple_family:
-        # matrix.target is how apple-family selects ios/tvos/watchos/visionos.
-        if WARM_REF in apple_family and "matrix.target" not in apple_family:
+    for plat in ("ipados", "tvos", "watchos", "visionos"):
+        if f"warm-ios-simulator-sdk.sh {plat}" not in apple_family_wf:
             errors.append(
-                "product-build.yml job apple-family: warm script must be passed "
-                "${{ matrix.target }} (ios|ipados|tvos|watchos|visionos)"
+                f"product-apple-family.yml: warm script must be passed {plat} "
+                "(ios|ipados|tvos|watchos|visionos)"
             )
 
-    e2e = (WORKFLOWS / "device-e2e.yml").read_text(encoding="utf-8")
-    if WARM_REF not in e2e:
-        errors.append("device-e2e.yml: missing warm-ios-simulator-sdk.sh")
+    e2e_ios = (WORKFLOWS / "device-e2e-ios.yml").read_text(encoding="utf-8")
+    if WARM_REF not in e2e_ios:
+        errors.append("device-e2e-ios.yml: missing warm-ios-simulator-sdk.sh")
 
     nix = (WORKFLOWS / "nix.yml").read_text(encoding="utf-8")
     frontend = job_block(nix, "frontend-syntax-check")
@@ -105,8 +103,12 @@ def main() -> int:
         )
 
     for wf_name in (
-        "product-build.yml",
-        "device-e2e.yml",
+        "product-ios-sim.yml",
+        "product-apple-family.yml",
+        "product-macos-app.yml",
+        "product-ios-modeb.yml",
+        "device-e2e-ios.yml",
+        "device-e2e-macos.yml",
         "device-gate.yml",
         "nix.yml",
         "release.yml",
@@ -121,7 +123,15 @@ def main() -> int:
         if NEWEST_XCODE.search(text):
             errors.append(f"{wf_name}: reintroduced newest-Xcode selection (sort -V | tail -1)")
         # Apple product / syntax lanes that select Xcode should keep using the pin script.
-        if wf_name in ("product-build.yml", "device-e2e.yml", "nix.yml", "release.yml", "release-beta.yml"):
+        if wf_name in (
+            "product-ios-sim.yml",
+            "product-apple-family.yml",
+            "product-macos-app.yml",
+            "product-ios-modeb.yml",
+            "device-e2e-ios.yml",
+            "nix.yml",
+            "release-beta.yml",
+        ):
             if SELECT_REF not in text:
                 errors.append(f"{wf_name}: missing select-xcode.sh")
 

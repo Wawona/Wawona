@@ -1,0 +1,134 @@
+name: "Build: macOS app"
+
+# Thin product producer (one platform slice). Called by Gate: products / Ship.
+# No `only` filter: every job here always runs. Keeps Actions UI free of skip spam.
+
+on:
+  workflow_dispatch:
+    inputs:
+      checkout_ref:
+        description: "Git ref to build (empty = this SHA)"
+        type: string
+        required: false
+        default: ""
+  workflow_call:
+    inputs:
+      checkout_ref:
+        description: "Git ref to build (empty = caller sha)"
+        type: string
+        required: false
+        default: ""
+      tip_key:
+        description: "Unused; kept for caller compatibility"
+        type: string
+        required: false
+        default: ""
+
+concurrency:
+  group: product-macos-app-${{ github.sha }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  NIXPKGS_ALLOW_UNFREE: "1"
+
+jobs:
+  macos-app:
+    name: "macOS .app"
+    runs-on: macos-26
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
+
+      - name: Select Xcode
+        run: ./.github/scripts/select-xcode.sh
+
+      - uses: ./.github/actions/setup-nix-flakehub
+
+      - name: Build wawona-macos
+        run: ./.github/scripts/nix-retry.sh nix build ".#wawona-macos" --print-build-logs --out-link result-macos
+
+      - name: Build wawona-macos-desktop-host
+        run: ./.github/scripts/nix-retry.sh nix build ".#wawona-macos-desktop-host" --print-build-logs --out-link result-macos-desktop-host
+
+      - name: Stage app
+        run: |
+          mkdir -p dist/macos-app
+          # Nix .app trees keep store symlinks (niri/fuzzel under Resources/bin).
+          # GHA artifacts must be self-contained. Dereference before upload.
+          ditto result-macos/Applications/Wawona.app dist/macos-app/Wawona.app
+          # Artifact zip can drop +x; restore exec bits on launcher + tools.
+          APP=dist/macos-app/Wawona.app
+          chmod -R u+w "$APP"
+          find "$APP/Contents/MacOS" -type f -exec chmod +x {} + 2>/dev/null || true
+          find "$APP/Contents/Resources/bin" -type f -exec chmod +x {} + 2>/dev/null || true
+          find "$APP" \( -name '*.dylib' -o -name '*.so' \) -type f -exec chmod +x {} + 2>/dev/null || true
+          NIRI="$APP/Contents/Resources/bin/niri"
+          FUZZEL="$APP/Contents/Resources/bin/fuzzel"
+          MAIN="$APP/Contents/MacOS/Wawona"
+          test -f "$NIRI" || { echo "FAIL: staged niri missing at $NIRI"; ls -laR "$APP/Contents/Resources/bin" || true; exit 1; }
+          test -f "$FUZZEL" || { echo "FAIL: staged fuzzel missing at $FUZZEL"; exit 1; }
+          test -f "$MAIN" || { echo "FAIL: staged MacOS/Wawona missing"; exit 1; }
+          chmod +x "$NIRI" "$FUZZEL" "$MAIN"
+          test -x "$NIRI" && test -x "$FUZZEL" && test -x "$MAIN"
+          # Bundle XKB data so nested niri works after artifact download (no nix store).
+          XKB_OUT="$(nix build --no-link --print-out-paths nixpkgs#xkeyboard_config)"
+          mkdir -p "$APP/Contents/Resources/share/X11"
+          ditto "$XKB_OUT/share/X11/xkb" "$APP/Contents/Resources/share/X11/xkb"
+          test -d "$APP/Contents/Resources/share/X11/xkb/rules"
+          OUT="$(readlink -f result-macos)"
+          {
+            echo "{"
+            echo "  \"attr\": \"wawona-macos\","
+            echo "  \"sha\": \"${{ github.sha }}\","
+            echo "  \"outPath\": \"$OUT\","
+            echo "  \"artifact\": \"product-macos-app\""
+            echo "}"
+          } > dist/macos-app/product-manifest.json
+          ls -la dist/macos-app/
+          ls -la dist/macos-app/Wawona.app/Contents/Resources/bin/ | head -40
+
+      - name: Verify macOS Mode B bundles
+        run: |
+          ./.github/scripts/verify-iland-graphics-bundle.sh --platform macos dist/macos-app/Wawona.app
+          mkdir -p dist/macos-desktop-host
+          ditto result-macos-desktop-host/Applications/Wawona.app \
+            dist/macos-desktop-host/Wawona.app
+          ./.github/scripts/verify-iland-graphics-bundle.sh --platform macos-desktop \
+            dist/macos-desktop-host/Wawona.app
+          OUT="$(readlink -f result-macos-desktop-host)"
+          {
+            echo "{"
+            echo "  \"attr\": \"wawona-macos-desktop-host\","
+            echo "  \"sha\": \"${{ github.sha }}\","
+            echo "  \"outPath\": \"$OUT\","
+            echo "  \"artifact\": \"product-macos-desktop-host\""
+            echo "}"
+          } > dist/macos-desktop-host/product-manifest.json
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: product-macos-app
+          path: dist/macos-app/
+          if-no-files-found: error
+          # Preserve hidden Mach-Os (e.g. bin/.foot-wrapped) in the bundle;
+          # upload-artifact drops dotfiles by default, which broke foot.
+          include-hidden-files: true
+          compression-level: 0
+          retention-days: 14
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: product-macos-desktop-host
+          path: dist/macos-desktop-host/
+          if-no-files-found: error
+          # Preserve hidden Mach-Os (e.g. bin/.foot-wrapped) in the bundle.
+          include-hidden-files: true
+          compression-level: 0
+          retention-days: 14
+

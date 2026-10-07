@@ -1,0 +1,150 @@
+name: "Build: Linux AppImages"
+
+# Thin product producer (one platform slice). Called by Gate: products / Ship.
+# No `only` filter: every job here always runs. Keeps Actions UI free of skip spam.
+
+on:
+  workflow_dispatch:
+    inputs:
+      checkout_ref:
+        description: "Git ref to build (empty = this SHA)"
+        type: string
+        required: false
+        default: ""
+  workflow_call:
+    inputs:
+      checkout_ref:
+        description: "Git ref to build (empty = caller sha)"
+        type: string
+        required: false
+        default: ""
+      tip_key:
+        description: "Unused; kept for caller compatibility"
+        type: string
+        required: false
+        default: ""
+
+concurrency:
+  group: product-appimage-${{ github.sha }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  NIXPKGS_ALLOW_UNFREE: "1"
+
+jobs:
+  appimage-x86_64:
+    name: "Linux AppImage (x86_64)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+            /usr/local/share/boost "${AGENT_TOOLSDIRECTORY:-}" || true
+          docker image prune -af || true
+
+      - uses: ./.github/actions/setup-nix-flakehub
+        with:
+          extra-conf: |
+            build-dir = /nix/build
+            sandbox = relaxed
+            allow-import-from-derivation = true
+            max-jobs = auto
+            cores = 0
+            trusted-users = runner root
+
+      - name: Build AppImage
+        run: |
+          ./.github/scripts/nix-retry.sh \
+            nix build ".#packages.x86_64-linux.wawona-appimage" --print-build-logs --out-link result
+
+      - name: Smoke-test and stage AppImage
+        run: ./.github/scripts/appimage-smoke.sh result "x86_64-linux"
+
+      - name: Manifest
+        run: |
+          mkdir -p dist
+          OUT="$(readlink -f result)"
+          {
+            echo "{"
+            echo "  \"attr\": \"wawona-appimage\","
+            echo "  \"system\": \"x86_64-linux\","
+            echo "  \"sha\": \"${{ github.sha }}\","
+            echo "  \"outPath\": \"$OUT\","
+            echo "  \"artifact\": \"product-appimage-x86_64-linux\""
+            echo "}"
+          } > dist/product-manifest.json
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: product-appimage-x86_64-linux
+          path: |
+            dist/*.AppImage
+            dist/product-manifest.json
+          if-no-files-found: error
+          retention-days: 14
+
+  appimage-aarch64:
+    name: "Linux AppImage (arm64)"
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+            /usr/local/share/boost "${AGENT_TOOLSDIRECTORY:-}" || true
+          docker image prune -af || true
+
+      - uses: ./.github/actions/setup-nix-flakehub
+        with:
+          extra-conf: |
+            build-dir = /nix/build
+            sandbox = relaxed
+            allow-import-from-derivation = true
+            max-jobs = auto
+            cores = 0
+            trusted-users = runner root
+
+      - name: Build AppImage
+        run: |
+          ./.github/scripts/nix-retry.sh \
+            nix build ".#packages.aarch64-linux.wawona-appimage" --print-build-logs --out-link result
+
+      - name: Smoke-test and stage AppImage
+        run: ./.github/scripts/appimage-smoke.sh result "aarch64-linux"
+
+      - name: Manifest
+        run: |
+          mkdir -p dist
+          OUT="$(readlink -f result)"
+          {
+            echo "{"
+            echo "  \"attr\": \"wawona-appimage\","
+            echo "  \"system\": \"aarch64-linux\","
+            echo "  \"sha\": \"${{ github.sha }}\","
+            echo "  \"outPath\": \"$OUT\","
+            echo "  \"artifact\": \"product-appimage-aarch64-linux\""
+            echo "}"
+          } > dist/product-manifest.json
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: product-appimage-aarch64-linux
+          path: |
+            dist/*.AppImage
+            dist/product-manifest.json
+          if-no-files-found: error
+          retention-days: 14
+

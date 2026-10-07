@@ -20,20 +20,23 @@ Do not use semver majors for product releases.
 
 ## How to read CI (10 seconds)
 
-Open the run → open the job whose name starts with **RESULT** or **Verification report** → read the **Summary** tab.
+1. Open the run.
+2. Click the job named **RESULT: PASS or FAIL?** or **Verification report**.
+3. Read the **Summary** tab table.
 
-| You see… | Means… |
+| You see | Means |
 |---|---|
-| **PASS** | That check is good |
-| **FAIL** | That platform/check is broken. Fix it. Do not promote |
-| **SKIP** (latest commit?) | A newer commit exists. Ignore this run; open the newest one |
-| Green workflow, red child | Open the red job. The Summary table names the platform |
+| **PASS** | Good |
+| **FAIL** | Broken. Fix that row. Do not promote |
+| **SKIP** | Newer commit exists. Ignore this run |
+
+Job names are plain English (`Build: iOS`, `Test: Android opens`). Each Gate: products call only lists jobs that actually run (no skip spam from other platforms).
 
 Before `development` → `master`, you need three greens on the **same tip**:
 
 1. Workflow **Verification** (job **Verification report**)
 2. Workflow **Gate: packages**
-3. Workflow **Gate: products** (job **RESULT: all products OK?**)
+3. Workflow **Gate: products** (job **RESULT: PASS or FAIL?**)
 
 ## When to beta vs release
 
@@ -57,8 +60,8 @@ Workflow display names use a role prefix (`Gate` / `Build` / `Watch` / `Ship`). 
 | **Gate: wasm-wayland** (`wasm-wayland.yml`) | path filter push/PR | path filter push/PR | Wawona Runtime wiring + Weston headless SHM smoke against locked `wwn-wasm` (not a promote blocker) |
 | **Verification** (`verify-all.yml`) | push + PR | push + PR | Helpers / formal / vectors. Required ruleset check **Verification report**. Soft supersede on non-tip |
 | **Gate: products** (`device-gate.yml`) | path filter push | path filter push | Full matrix: iOS + **apple-family** (iPadOS/tvOS/watchOS/visionOS) + macOS + Android + AppImages + GUI smoke. Soft supersede on non-tip |
-| **Build: products** (`product-build.yml`) | via Gate: products / Ship | via gate / Ship: GitHub assets | Sole pure producer (callable only). Uses [setup-nix-flakehub](../.github/actions/setup-nix-flakehub/action.yml) |
-| **Build: GUI smoke** (`device-e2e.yml`) | via Gate: products (`products_ready`) | via gate | Smoke + fuzzel (fuzzel skipped on `pull_request` only); callable only |
+| **Build: products** (`product-*.yml` / `product-build.yml`) | via Gate: products / Ship | via gate / Ship: GitHub assets | Thin per-platform producers (`product-ios-sim.yml`, …). `product-build.yml` dispatches slices for manual runs. Uses [setup-nix-flakehub](../.github/actions/setup-nix-flakehub/action.yml) |
+| **Build: GUI smoke** (`device-e2e-*.yml`) | via Gate: products (`products_ready`) | via gate | Thin per-platform smoke (`device-e2e-ios.yml`, …). `device-e2e.yml` dispatches lanes for manual runs |
 | **Watch: graphics nightly** (`nightly-full-matrix.yml`) | schedule / dispatch | - | Graphics + protocol drift + Weston/XWayland capability (does **not** re-run Gate: products) |
 | **Watch: TestFlight feedback** (`testflight-feedback.yml`) | schedule / dispatch | schedule / dispatch | Poll ASC TestFlight screenshot/crash feedback → GitHub issues (PII stripped). `release-beta` secrets. Not a promote gate |
 | **Watch: idle memory** (`leak-idle-gate.yml`) | via Gate: products (`products_ready`) + schedule + dispatch | via Gate: products | Start→60s footprint/PSS plateau on product iOS/Android/macOS; fails with `LEAK_GATE_FAIL targets=…` ([docs/testing/leak-idle-gate.md](./testing/leak-idle-gate.md)). Reuses Gate: products `product-*` artifacts (no duplicate product-build). **Not** a promote blocker (`continue-on-error` on idle-memory jobs inside the reusable workflow; invalid on `uses:` callers) |
@@ -117,21 +120,24 @@ Promote only cares about a **success** tip Gate: products (full matrix), Gate: p
 1. Least privilege (`contents: read`; `id-token: write` only for FlakeHub Cache / publish).
 2. `timeout-minutes` on every job.
 3. Nix builds use [`.github/actions/setup-nix-flakehub`](../.github/actions/setup-nix-flakehub/action.yml) (Determinate + FlakeHub Cache).
-4. One producer per product artifact (`product-build.yml`).
+4. One producer per product artifact (thin `product-*.yml` slices; `product-build.yml` is a dispatcher for manual/legacy callers).
 5. Path filters skip Darwin on docs-only tips; product-path tips rebuild the **full** product matrix.
 6. FlakeHub **Cache** on build jobs; FlakeHub **registry publish** is tags/dispatch only.
 
-### Why Actions shows dozens of Skipped jobs (superseded ≠ failed)
+### Skipped jobs (what is still OK)
 
-A green **Gate: products** run lists ~34 **Skipped** jobs. Almost all are the
-reusable-workflow fan-out. **intentional**, not races. Do not treat them as
-failures or flakiness in review.
+Gate: products calls **one thin workflow per platform** (`product-ios-sim.yml`,
+`device-e2e-android.yml`, …). Those files only contain jobs that run for that
+platform. You should **not** see dozens of `Build: Android / macOS .app` skips
+or raw `${{ matrix.label }}` names.
 
-| Class | Where | What is skipped | Why |
-|-------|-------|-----------------|-----|
-| **A1. `only:` cross-skips** | [`product-build.yml`](../.github/workflows/product-build.yml) | Each of Gate's four product calls (`only: ios-sim\|android-apk\|macos-app\|appimage`) defines all product jobs but runs one family; the other 3-4 families show Skipped (incl. matrix placeholders like `… / ${{ matrix.label }} sim .app`) | Jobs gate on `if: only == 'all' \|\| only == '<job>'` |
-| **A2. `lanes:` cross-skips** | [`device-e2e.yml`](../.github/workflows/device-e2e.yml) | Each GUI-smoke caller (`lanes: ios\|android\|macos\|linux`) skips the other lanes; macOS nested niri/fuzzel is hard-`if: false` (SIGTERM avoidance) | Jobs gate on `inputs.lanes` |
-| **A3. Leak `products_ready`** | [`leak-idle-gate.yml`](../.github/workflows/leak-idle-gate.yml) | `Watch: idle memory / Product iOS sim\|Android APK\|macOS app` | Gate passes `products_ready: true`; leak cells download Gate's `product-*` instead of rebuilding. **this is the reuse you want** |
+Expected skips that remain:
+
+| Class | Where | Why |
+|-------|-------|-----|
+| Soft supersede | tip check / RESULT | Newer commit exists. Ignore the run |
+| Leak `products_ready` | [`leak-idle-gate.yml`](../.github/workflows/leak-idle-gate.yml) | Gate already built products; leak downloads artifacts instead of rebuilding |
+| Android APK inside e2e | [`device-e2e-android.yml`](../.github/workflows/device-e2e-android.yml) | When `products_ready=true`, the in-smoke APK rebuild is skipped |
 
 **UI trap:** soft-fail leak cells (`continue-on-error`) can show **red children**
 while `Gate: products` is still **success**. The GitHub job conclusion (green after

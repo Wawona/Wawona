@@ -251,9 +251,9 @@ jobs:
           }
           fail=0
           {
-            echo "# Verification"
+            echo "# RESULT"
             echo ""
-            echo "These are safety checks on shared helpers (not the full app installers)."
+            echo "Safety checks on shared helpers. Not the full app installers."
             echo ""
             echo "| Check | Result |"
             echo "|---|---|"

@@ -1,0 +1,149 @@
+name: "Test: Android opens"
+
+# GUI smoke for one platform. Called by Gate: products. No lane filter: every
+# job here always runs (no skip spam in the Actions UI).
+
+on:
+  workflow_dispatch:
+    inputs:
+      checkout_ref:
+        type: string
+        required: false
+        default: ""
+      products_ready:
+        type: boolean
+        required: false
+        default: false
+  workflow_call:
+    inputs:
+      checkout_ref:
+        type: string
+        required: false
+        default: ""
+      tip_key:
+        type: string
+        required: false
+        default: ""
+      products_ready:
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+  actions: read
+
+concurrency:
+  group: device-e2e-android-${{ github.sha }}-${{ inputs.products_ready && 'products' || 'standalone' }}
+  cancel-in-progress: false
+
+env:
+  AGENT_DEVICE_VERSION: "0.18.3"
+
+jobs:
+  android-apk:
+    name: "Android: Wawona.apk"
+    if: ${{ !inputs.products_ready }}
+    runs-on: macos-26
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v22
+        with:
+          determinate: true
+          extra-conf: |
+            sandbox = relaxed
+            allow-import-from-derivation = true
+
+      - uses: DeterminateSystems/flakehub-cache-action@v3
+
+      - name: Build Wawona.apk
+        run: ./.github/scripts/nix-retry.sh nix build ".#wawona-android" --print-build-logs --out-link result-android
+
+      - name: Stage APK
+        run: |
+          mkdir -p dist
+          cp -L result-android/bin/Wawona.apk dist/Wawona.apk
+          ls -lh dist/Wawona.apk
+
+      # Same artifact name Gate: products uses, so the emu job has one download
+      # path for both the build (this job) and the products_ready reuse path.
+      - name: Upload product-android-apk
+        uses: actions/upload-artifact@v7
+        with:
+          name: product-android-apk
+          path: dist/Wawona.apk
+          if-no-files-found: error
+          compression-level: 0
+
+  android-emu-e2e:
+    name: "Android emulator: GUI smoke (agent-device replay)"
+    needs: android-apk
+    # Runs on the Gate path (products_ready, android-apk skipped) and on the
+    # standalone build path (android-apk succeeded). !cancelled() lets it proceed
+    # past the skipped android-apk dependency under products_ready.
+    if: ${{ !cancelled() && (inputs.products_ready || needs.android-apk.result == 'success') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
+
+      - name: Enable KVM group perms
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Download product-android-apk
+        uses: actions/download-artifact@v8
+        with:
+          name: product-android-apk
+          path: dist/
+
+      - name: Normalize APK path
+        run: |
+          if [[ ! -f dist/Wawona.apk ]]; then
+            found="$(find dist -name 'Wawona.apk' -type f | head -1)"
+            [[ -n "$found" ]] || { echo "Wawona.apk missing in product-android-apk"; exit 1; }
+            cp -L "$found" dist/Wawona.apk
+          fi
+          ls -lh dist/Wawona.apk
+
+      - name: Install agent-device
+        run: npm install -g "agent-device@${AGENT_DEVICE_VERSION}"
+
+      - name: Run Android GUI smoke (deterministic replay)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot-save
+          disable-animations: true
+          # Folded one-liner for /usr/bin/sh. Nested fuzzel is advisory on GHA.
+          script: >-
+            adb shell settings put secure immersive_mode_confirmations confirmed
+            && export WAWONA_ANDROID_APK="$GITHUB_WORKSPACE/dist/Wawona.apk"
+            && echo "== Android smoke (single attempt) =="
+            && ./scripts/agent-device-smoke.sh android
+            && echo "== Android shell SSH (OpenSSH jniLibs) =="
+            && ./scripts/agent-device-smoke.sh android-shell-ssh
+            && if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then echo "== Android fuzzel skipped on pull_request =="; else echo "== Android fuzzel (advisory) ==" && ./scripts/agent-device-smoke.sh android-fuzzel || echo "::warning::Android nested fuzzel failed (advisory; smoke+OpenSSH already green)"; fi
+
+      - name: Upload Android screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: device-e2e-android
+          path: .agent-device/test-artifacts/
+          if-no-files-found: warn
+

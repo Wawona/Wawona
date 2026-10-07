@@ -37,37 +37,36 @@ env:
 
 jobs:
   product-ios:
+    name: "Build: iOS"
     if: contains(inputs.platforms || 'ios android macos', 'ios')
-    uses: ./.github/workflows/product-build.yml
+    uses: ./.github/workflows/product-ios-sim.yml
     with:
       checkout_ref: ${{ github.sha }}
-      # Isolate from Gate: products' product-build-<tip>-* concurrency group so a
-      # scheduled/dispatched matrix run cannot cancel an in-flight Gate product
-      # build (docs/ci.md CI anti-pattern #7).
+      # Isolate from Gate: products tip concurrency so a scheduled/dispatched
+      # matrix run cannot cancel an in-flight Gate product build.
       tip_key: bundled-clients-${{ github.ref_name }}
-      only: ios-sim
     permissions:
       contents: read
       id-token: write
 
   product-android:
+    name: "Build: Android"
     if: contains(inputs.platforms || 'ios android macos', 'android')
-    uses: ./.github/workflows/product-build.yml
+    uses: ./.github/workflows/product-android-apk.yml
     with:
       checkout_ref: ${{ github.sha }}
       tip_key: bundled-clients-${{ github.ref_name }}
-      only: android-apk
     permissions:
       contents: read
       id-token: write
 
   product-macos:
+    name: "Build: macOS"
     if: contains(inputs.platforms || 'ios android macos', 'macos')
-    uses: ./.github/workflows/product-build.yml
+    uses: ./.github/workflows/product-macos-app.yml
     with:
       checkout_ref: ${{ github.sha }}
       tip_key: bundled-clients-${{ github.ref_name }}
-      only: macos-app
     permissions:
       contents: read
       id-token: write

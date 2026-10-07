@@ -1,0 +1,185 @@
+name: "Test: iOS opens"
+
+# GUI smoke for one platform. Called by Gate: products. No lane filter: every
+# job here always runs (no skip spam in the Actions UI).
+
+on:
+  workflow_dispatch:
+    inputs:
+      checkout_ref:
+        type: string
+        required: false
+        default: ""
+      products_ready:
+        type: boolean
+        required: false
+        default: false
+  workflow_call:
+    inputs:
+      checkout_ref:
+        type: string
+        required: false
+        default: ""
+      tip_key:
+        type: string
+        required: false
+        default: ""
+      products_ready:
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+  actions: read
+
+concurrency:
+  group: device-e2e-ios-${{ github.sha }}-${{ inputs.products_ready && 'products' || 'standalone' }}
+  cancel-in-progress: false
+
+env:
+  AGENT_DEVICE_VERSION: "0.18.3"
+
+jobs:
+  ios-sim-e2e:
+    name: "iOS simulator: GUI smoke (agent-device replay)"
+    runs-on: macos-26
+    timeout-minutes: 135
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
+
+      - name: Select Xcode
+        id: xcode
+        run: ./.github/scripts/select-xcode.sh
+
+      - name: Install Nix
+        if: ${{ !inputs.products_ready }}
+        uses: DeterminateSystems/nix-installer-action@v22
+        with:
+          determinate: true
+          extra-conf: |
+            sandbox = relaxed
+            allow-import-from-derivation = true
+      - uses: DeterminateSystems/flakehub-cache-action@v3
+        if: ${{ !inputs.products_ready }}
+
+      - name: Ensure iOS Simulator SDK before nix build
+        if: ${{ !inputs.products_ready }}
+        run: ./.github/scripts/warm-ios-simulator-sdk.sh ios
+
+      - name: Build Wawona.app (iOS simulator slice)
+        if: ${{ !inputs.products_ready }}
+        run: ./.github/scripts/nix-retry.sh nix build ".#wawona-ios" --print-build-logs --out-link result-ios
+
+      - name: Download product-ios-sim
+        if: ${{ inputs.products_ready }}
+        uses: actions/download-artifact@v8
+        with:
+          name: product-ios-sim
+          path: product-ios-sim/
+
+      - name: Stage iOS app from product artifact
+        if: ${{ inputs.products_ready }}
+        run: |
+          mkdir -p result-ios
+          # Artifact layout: product-ios-sim/Wawona.app
+          if [[ -d product-ios-sim/Wawona.app ]]; then
+            cp -R product-ios-sim/Wawona.app result-ios/
+          else
+            # Nested download path variants
+            find product-ios-sim -name 'Wawona.app' -type d | head -1 | while read -r p; do
+              cp -R "$p" result-ios/
+            done
+          fi
+          test -d result-ios/Wawona.app
+          ls -la result-ios/
+
+      - name: Install agent-device
+        run: npm install -g "agent-device@${AGENT_DEVICE_VERSION}"
+
+      - name: Cache agent-device XCTest runner
+        id: ad-runner-cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.agent-device/apple-runner/derived
+          key: agent-device-runner-${{ env.AGENT_DEVICE_VERSION }}-${{ runner.os }}-xcode-${{ steps.xcode.outputs.version }}
+          restore-keys: |
+            agent-device-runner-${{ env.AGENT_DEVICE_VERSION }}-${{ runner.os }}-xcode-
+
+      - name: Log XCTest runner cache
+        run: |
+          if [[ "${{ steps.ad-runner-cache.outputs.cache-hit }}" == "true" ]]; then
+            echo "XCTest runner cache HIT (key xcode-${{ steps.xcode.outputs.version }})"
+          else
+            echo "XCTest runner cache MISS (will build runner on prepare)"
+          fi
+
+      - name: Ensure simulator device exists
+        run: |
+          SIM_NAME="${WAWONA_IOS_SIM:-iPhone 17 Pro}"
+          if ! xcrun simctl list devices available | grep -q "$SIM_NAME ("; then
+            echo "Creating simulator '$SIM_NAME'"
+            DEVTYPE=$(xcrun simctl list devicetypes | grep -F "$SIM_NAME (" | sed -E 's/.*\((com[^)]*)\).*/\1/' | head -1)
+            RUNTIME=$(xcrun simctl list runtimes | grep -E "^iOS" | tail -1 | sed -E 's/.*(com\.apple\.CoreSimulator\.SimRuntime\.[A-Za-z0-9._-]+).*/\1/')
+            xcrun simctl create "$SIM_NAME" "$DEVTYPE" "$RUNTIME"
+          fi
+          xcrun simctl list devices available | grep "$SIM_NAME" || true
+
+      # Smoke is the Gate: products hard check. Nested niri/fuzzel has been
+      # flaky on GHA since mid-July (EGL / Continue / nested socket); keep it
+      # as an advisory Watch-tier step until those runners are green again.
+      - name: Run iOS GUI smoke
+        env:
+          WAWONA_IOS_APP: result-ios/Wawona.app
+          WAWONA_IOS_PREPARE_TIMEOUT_MS: "600000"
+          WAWONA_SKIP_FUZZEL: "1"
+        run: |
+          SIM_NAME="${WAWONA_IOS_SIM:-iPhone 17 Pro}"
+          echo "== iOS smoke (nested fuzzel is a separate advisory step) =="
+          pkill -f "agent-device/dist/src/internal/daemon.js" 2>/dev/null || true
+          sleep 1
+          xcrun simctl bootstatus "$SIM_NAME" -b || xcrun simctl boot "$SIM_NAME" || true
+          xcrun simctl bootstatus "$SIM_NAME"
+          ./scripts/agent-device-smoke.sh ios-ci
+          echo "== iOS shell CLI (ssh -V / ssh-keygen, advisory) =="
+          ./scripts/agent-device-smoke.sh ios-shell-cli \
+            || echo "::warning::iOS shell CLI replay failed (advisory; GUI smoke already green)"
+
+      - name: Nested niri + fuzzel (iOS, advisory)
+        if: ${{ github.event_name != 'pull_request' }}
+        continue-on-error: true
+        env:
+          WAWONA_IOS_APP: result-ios/Wawona.app
+          WAWONA_IOS_PREPARE_TIMEOUT_MS: "600000"
+          WAWONA_FUZZEL_REQUIRE_IOS: "1"
+        run: |
+          SIM_NAME="${WAWONA_IOS_SIM:-iPhone 17 Pro}"
+          xcrun simctl bootstatus "$SIM_NAME" -b || xcrun simctl boot "$SIM_NAME" || true
+          ./scripts/agent-device-smoke.sh ios-fuzzel
+
+      - name: Foot terminal (iOS, advisory)
+        if: ${{ github.event_name != 'pull_request' }}
+        continue-on-error: true
+        env:
+          WAWONA_IOS_APP: result-ios/Wawona.app
+          WAWONA_IOS_PREPARE_TIMEOUT_MS: "600000"
+        run: |
+          SIM_NAME="${WAWONA_IOS_SIM:-iPhone 17 Pro}"
+          xcrun simctl bootstatus "$SIM_NAME" -b || xcrun simctl boot "$SIM_NAME" || true
+          ./scripts/agent-device-smoke.sh ios-foot
+
+      - name: Upload iOS screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: device-e2e-ios
+          path: .agent-device/test-artifacts/
+          if-no-files-found: warn
+
+  # Build the APK only when Gate: products has NOT already produced
+  # product-android-apk (products_ready). On the Gate path this job is skipped
+  # and android-emu-e2e consumes the same-run product-android-apk directly. No
+  # intermediate wawona-apk re-upload hop.

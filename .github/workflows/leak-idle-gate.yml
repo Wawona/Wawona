@@ -66,37 +66,34 @@ jobs:
   # Standalone schedule/dispatch only. Never share Gate: products's tip_key
   # (product-build-development-ios-sim). That cancelled this gate on every push.
   product-ios:
-    name: Product iOS sim
+    name: "Build: iOS"
     if: ${{ !inputs.products_ready && ((inputs.lanes || 'all') == 'all' || (inputs.lanes || 'all') == 'ios' || github.event_name == 'schedule') }}
-    uses: ./.github/workflows/product-build.yml
+    uses: ./.github/workflows/product-ios-sim.yml
     with:
       checkout_ref: ${{ inputs.checkout_ref || github.sha }}
       tip_key: leak-idle-${{ inputs.tip_key || inputs.checkout_ref || github.ref_name }}
-      only: ios-sim
     permissions:
       contents: read
       id-token: write
 
   product-android:
-    name: Product Android APK
+    name: "Build: Android"
     if: ${{ !inputs.products_ready && ((inputs.lanes || 'all') == 'all' || (inputs.lanes || 'all') == 'android' || github.event_name == 'schedule') }}
-    uses: ./.github/workflows/product-build.yml
+    uses: ./.github/workflows/product-android-apk.yml
     with:
       checkout_ref: ${{ inputs.checkout_ref || github.sha }}
       tip_key: leak-idle-${{ inputs.tip_key || inputs.checkout_ref || github.ref_name }}
-      only: android-apk
     permissions:
       contents: read
       id-token: write
 
   product-macos:
-    name: Product macOS app
+    name: "Build: macOS"
     if: ${{ !inputs.products_ready && ((inputs.lanes || 'all') == 'all' || (inputs.lanes || 'all') == 'macos' || github.event_name == 'schedule') }}
-    uses: ./.github/workflows/product-build.yml
+    uses: ./.github/workflows/product-macos-app.yml
     with:
       checkout_ref: ${{ inputs.checkout_ref || github.sha }}
       tip_key: leak-idle-${{ inputs.tip_key || inputs.checkout_ref || github.ref_name }}
-      only: macos-app
     permissions:
       contents: read
       id-token: write

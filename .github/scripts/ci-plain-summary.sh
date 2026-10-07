@@ -26,7 +26,7 @@ ci_summary_line() {
     SKIP) mark="SKIP" ;;
     *) mark="$status" ;;
   esac
-  echo "- **${mark}** — ${text}" >>"${GITHUB_STEP_SUMMARY:-/dev/null}"
+  echo "- **${mark}:** ${text}" >>"${GITHUB_STEP_SUMMARY:-/dev/null}"
 }
 
 ci_summary_verdict() {

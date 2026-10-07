@@ -1,8 +1,8 @@
 name: "Gate: products"
 
-# Single scheduler for product binaries + Build: GUI smoke on development/master.
-# Full product matrix must green before promote / Ship: beta (ASC). Soft supersede
-# skips obsolete SHAs without Cancelled. Docs: docs/ci.md.
+# Builds every product, runs smoke, then one RESULT job.
+# Open RESULT first. PASS = tip can promote (with Verification + Gate: packages).
+# Soft supersede skips obsolete SHAs without Cancelled. Docs: docs/ci.md.
 
 on:
   workflow_dispatch: {}
@@ -48,16 +48,24 @@ on:
       - ".github/workflows/leak-idle-gate.yml"
       - ".github/workflows/bundled-clients-matrix.yml"
       - ".github/workflows/device-e2e.yml"
+      - ".github/workflows/device-e2e-ios.yml"
+      - ".github/workflows/device-e2e-android.yml"
+      - ".github/workflows/device-e2e-macos.yml"
+      - ".github/workflows/device-e2e-linux.yml"
       - ".github/workflows/device-gate.yml"
       - ".github/workflows/product-build.yml"
+      - ".github/workflows/product-ios-sim.yml"
+      - ".github/workflows/product-ios-modeb.yml"
+      - ".github/workflows/product-apple-family.yml"
+      - ".github/workflows/product-android-apk.yml"
+      - ".github/workflows/product-macos-app.yml"
+      - ".github/workflows/product-appimage.yml"
       - ".github/scripts/resolve-product-artifacts.sh"
       - ".github/scripts/select-xcode.sh"
       - ".github/scripts/warm-ios-simulator-sdk.sh"
       - ".github/scripts/ci-require-branch-tip.sh"
       - ".github/ci-package-matrix.json"
 
-# Per-commit: live tip must not wait behind an older SHA. Soft supersede skips
-# work when this SHA is no longer tip. Do not cancel (no grey Cancelled spam).
 concurrency:
   group: device-gate-${{ inputs.checkout_ref || github.sha }}
   cancel-in-progress: false
@@ -90,24 +98,22 @@ jobs:
     name: "Build: iOS"
     needs: tip
     if: needs.tip.outputs.is_tip == 'true'
-    uses: ./.github/workflows/product-build.yml
+    uses: ./.github/workflows/product-ios-sim.yml
     with:
       checkout_ref: ${{ inputs.checkout_ref || github.sha }}
       tip_key: ${{ inputs.checkout_ref || github.ref_name }}
-      only: ios-sim
     permissions:
       contents: read
       id-token: write
 
   product-apple-family:
-    name: "Build: iPadOS + tvOS + watchOS + visionOS"
+    name: "Build: iPadOS tvOS watchOS visionOS"
     needs: tip
     if: needs.tip.outputs.is_tip == 'true'
-    uses: ./.github/workflows/product-build.yml
+    uses: ./.github/workflows/product-apple-family.yml
     with:
       checkout_ref: ${{ inputs.checkout_ref || github.sha }}
       tip_key: ${{ inputs.checkout_ref || github.ref_name }}
-      only: apple-family
     permissions:
       contents: read
       id-token: write
@@ -116,11 +122,10 @@ jobs:
     name: "Build: Android"
     needs: tip
     if: needs.tip.outputs.is_tip == 'true'
-    uses: ./.github/workflows/product-build.yml
+    uses: ./.github/workflows/product-android-apk.yml
     with:
       checkout_ref: ${{ inputs.checkout_ref || github.sha }}
       tip_key: ${{ inputs.checkout_ref || github.ref_name }}
-      only: android-apk
     permissions:
       contents: read
       id-token: write
@@ -129,11 +134,10 @@ jobs:
     name: "Build: macOS"
     needs: tip
     if: needs.tip.outputs.is_tip == 'true'
-    uses: ./.github/workflows/product-build.yml
+    uses: ./.github/workflows/product-macos-app.yml
     with:
       checkout_ref: ${{ inputs.checkout_ref || github.sha }}
       tip_key: ${{ inputs.checkout_ref || github.ref_name }}
-      only: macos-app
     permissions:
       contents: read
       id-token: write
@@ -142,55 +146,51 @@ jobs:
     name: "Build: Linux AppImages"
     needs: tip
     if: needs.tip.outputs.is_tip == 'true'
-    uses: ./.github/workflows/product-build.yml
+    uses: ./.github/workflows/product-appimage.yml
     with:
       checkout_ref: ${{ inputs.checkout_ref || github.sha }}
       tip_key: ${{ inputs.checkout_ref || github.ref_name }}
-      only: appimage
     permissions:
       contents: read
       id-token: write
 
   e2e-ios:
-    name: "Test: iOS opens and runs"
+    name: "Test: iOS opens"
     needs: [tip, product-ios]
     if: needs.tip.outputs.is_tip == 'true'
-    uses: ./.github/workflows/device-e2e.yml
+    uses: ./.github/workflows/device-e2e-ios.yml
     with:
       checkout_ref: ${{ inputs.checkout_ref || github.sha }}
       tip_key: ${{ inputs.checkout_ref || github.ref_name }}
       products_ready: true
-      lanes: ios
     permissions:
       contents: read
       id-token: write
       actions: read
 
   e2e-android:
-    name: "Test: Android opens and runs"
+    name: "Test: Android opens"
     needs: [tip, product-android]
     if: needs.tip.outputs.is_tip == 'true'
-    uses: ./.github/workflows/device-e2e.yml
+    uses: ./.github/workflows/device-e2e-android.yml
     with:
       checkout_ref: ${{ inputs.checkout_ref || github.sha }}
       tip_key: ${{ inputs.checkout_ref || github.ref_name }}
       products_ready: true
-      lanes: android
     permissions:
       contents: read
       id-token: write
       actions: read
 
   e2e-macos:
-    name: "Test: macOS opens and runs"
+    name: "Test: macOS opens"
     needs: [tip, product-macos]
     if: needs.tip.outputs.is_tip == 'true'
-    uses: ./.github/workflows/device-e2e.yml
+    uses: ./.github/workflows/device-e2e-macos.yml
     with:
       checkout_ref: ${{ inputs.checkout_ref || github.sha }}
       tip_key: ${{ inputs.checkout_ref || github.ref_name }}
       products_ready: true
-      lanes: macos
     permissions:
       contents: read
       id-token: write
@@ -200,12 +200,11 @@ jobs:
     name: "Test: Linux catalog"
     needs: tip
     if: needs.tip.outputs.is_tip == 'true'
-    uses: ./.github/workflows/device-e2e.yml
+    uses: ./.github/workflows/device-e2e-linux.yml
     with:
       checkout_ref: ${{ inputs.checkout_ref || github.sha }}
       tip_key: ${{ inputs.checkout_ref || github.ref_name }}
       products_ready: true
-      lanes: linux
     permissions:
       contents: read
       id-token: write
@@ -232,9 +231,8 @@ jobs:
       id-token: write
       actions: read
 
-  # Final yes/no for humans. leak-idle is advisory (not required here).
   gate:
-    name: "RESULT: all products OK?"
+    name: "RESULT: PASS or FAIL?"
     needs:
       - tip
       - e2e-ios
@@ -250,13 +248,13 @@ jobs:
       - name: Not the latest commit
         if: needs.tip.outputs.is_tip != 'true'
         run: |
-          echo "::notice::Skipped. A newer commit exists. This is OK, not a product failure."
+          echo "::notice::SKIP. Newer commit exists. Ignore this run."
           {
-            echo "# Products"
+            echo "# RESULT"
             echo ""
-            echo "**SKIP:** Not the latest commit. Look at the newer run."
+            echo "**SKIP** - not the latest commit."
             echo ""
-            echo "Safe to ignore this run."
+            echo "Open the newest Gate: products run instead."
           } >>"$GITHUB_STEP_SUMMARY"
 
       - name: Scorecard
@@ -280,16 +278,16 @@ jobs:
           }
           fail=0
           {
-            echo "# Products"
+            echo "# RESULT"
             echo ""
-            echo "Green means Wawona built and basic smoke passed on that platform."
+            echo "Read this table. Green tip needs every row PASS."
             echo ""
-            echo "| Platform | Result |"
+            echo "| What | Result |"
             echo "|---|---|"
-            echo "| iOS (build + smoke) | $(word "$E2E_IOS") |"
-            echo "| Android (build + smoke) | $(word "$E2E_ANDROID") |"
-            echo "| macOS (build + smoke) | $(word "$E2E_MACOS") |"
-            echo "| Linux catalog smoke | $(word "$E2E_LINUX") |"
+            echo "| iOS build + opens | $(word "$E2E_IOS") |"
+            echo "| Android build + opens | $(word "$E2E_ANDROID") |"
+            echo "| macOS build + opens | $(word "$E2E_MACOS") |"
+            echo "| Linux catalog | $(word "$E2E_LINUX") |"
             echo "| Linux AppImages | $(word "$APPIMAGE") |"
             echo "| iPadOS + tvOS + watchOS + visionOS | $(word "$APPLE_FAMILY") |"
             echo ""
@@ -303,9 +301,9 @@ jobs:
             "Apple family:$APPLE_FAMILY"; do
             name="${pair%%:*}"
             result="${pair#*:}"
-            echo "$name → $(word "$result")"
+            echo "$name -> $(word "$result")"
             if [[ "$result" != "success" ]]; then
-              echo "::error::$name failed (got $result). Fix that platform before promoting."
+              echo "::error::$name failed (got $result). Fix that before promoting."
               fail=1
             fi
           done
@@ -313,15 +311,15 @@ jobs:
             {
               echo "## Verdict"
               echo ""
-              echo "**PASS:** All products OK. This tip can promote to master (with Verification + Gate: packages also green)."
+              echo "**PASS** - all products OK. Tip can promote when Verification and Gate: packages are also green."
             } >>"$GITHUB_STEP_SUMMARY"
-            echo "RESULT: PASS. All products OK."
+            echo "RESULT: PASS"
           else
             {
               echo "## Verdict"
               echo ""
-              echo "**FAIL:** Something above is red. Do not promote to master until every row is PASS."
+              echo "**FAIL** - fix the red row(s). Do not promote."
             } >>"$GITHUB_STEP_SUMMARY"
-            echo "RESULT: FAIL. See table above."
+            echo "RESULT: FAIL"
           fi
           exit "$fail"

@@ -1,0 +1,64 @@
+name: "Test: Linux catalog"
+
+# GUI smoke for one platform. Called by Gate: products. No lane filter: every
+# job here always runs (no skip spam in the Actions UI).
+
+on:
+  workflow_dispatch:
+    inputs:
+      checkout_ref:
+        type: string
+        required: false
+        default: ""
+      products_ready:
+        type: boolean
+        required: false
+        default: false
+  workflow_call:
+    inputs:
+      checkout_ref:
+        type: string
+        required: false
+        default: ""
+      tip_key:
+        type: string
+        required: false
+        default: ""
+      products_ready:
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+  actions: read
+
+concurrency:
+  group: device-e2e-linux-${{ github.sha }}-${{ inputs.products_ready && 'products' || 'standalone' }}
+  cancel-in-progress: false
+
+env:
+  AGENT_DEVICE_VERSION: "0.18.3"
+
+jobs:
+  linux-catalog:
+    name: "Linux: applications catalog smoke"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v22
+        with:
+          determinate: true
+          extra-conf: |
+            sandbox = relaxed
+            allow-import-from-derivation = true
+      - uses: DeterminateSystems/flakehub-cache-action@v3
+
+      - name: Applications catalog smoke
+        run: chmod +x ./scripts/applications-catalog-smoke.sh && ./scripts/applications-catalog-smoke.sh

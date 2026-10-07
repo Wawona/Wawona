@@ -1,14 +1,7 @@
 name: "Build: GUI smoke"
 
-# Deterministic GUI smoke tests on real simulator/emulator instances.
-# Prefer scheduling via device-gate.yml (product-build → this workflow).
-# Local reproduction:
-#   scripts/agent-device-smoke.sh [ios|ios-foot|android|fuzzel|android-fuzzel|ios-fuzzel]
-#
-# Fail-fast: iOS/Android GUI smoke and fuzzel lanes run once. No suite retries.
-#
-# products_ready=true: download product-* artifacts (no nix product builds).
-# products_ready=false: build in-job (workflow_dispatch / legacy callers).
+# Dispatcher for manual / legacy callers. Gate: products calls the thin
+# per-platform smoke workflows directly (no skip spam).
 
 on:
   workflow_dispatch:
@@ -23,20 +16,25 @@ on:
         type: string
         required: false
         default: "all"
+      products_ready:
+        description: "When true, consume product-build artifacts"
+        type: boolean
+        required: false
+        default: false
   workflow_call:
     inputs:
       checkout_ref:
-        description: "Git ref to test (nightly/device-gate pass tip)"
+        description: "Git ref to test"
         type: string
         required: false
         default: ""
       tip_key:
-        description: "Tip concurrency key (branch tip; empty = github.ref_name)"
+        description: "Tip concurrency key"
         type: string
         required: false
         default: ""
       products_ready:
-        description: "When true, consume product-build artifacts (skip nix product builds)"
+        description: "When true, consume product-build artifacts"
         type: boolean
         required: false
         default: false
@@ -51,358 +49,59 @@ permissions:
   id-token: write
   actions: read
 
-# Tip-only: share group with Gate: products tip (not per-SHA) so obsolete e2e
-# cancels with the parent tip, and nightly/push targeting the same tip align.
 concurrency:
   group: device-e2e-${{ github.sha }}-${{ inputs.products_ready && 'products' || 'standalone' }}-${{ inputs.lanes || 'all' }}
   cancel-in-progress: false
 
-env:
-  AGENT_DEVICE_VERSION: "0.18.3"
-
 jobs:
-  ios-sim-e2e:
-    name: "iOS simulator: GUI smoke (agent-device replay)"
+  ios:
+    name: "iOS"
     if: ${{ (inputs.lanes || 'all') == 'all' || (inputs.lanes || 'all') == 'ios' }}
-    runs-on: macos-26
-    timeout-minutes: 135
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ inputs.checkout_ref || github.sha }}
+    uses: ./.github/workflows/device-e2e-ios.yml
+    with:
+      checkout_ref: ${{ inputs.checkout_ref || github.sha }}
+      tip_key: ${{ inputs.tip_key }}
+      products_ready: ${{ inputs.products_ready }}
+    permissions:
+      contents: read
+      id-token: write
+      actions: read
 
-      - name: Select Xcode
-        id: xcode
-        run: ./.github/scripts/select-xcode.sh
+  android:
+    name: "Android"
+    if: ${{ (inputs.lanes || 'all') == 'all' || (inputs.lanes || 'all') == 'android' }}
+    uses: ./.github/workflows/device-e2e-android.yml
+    with:
+      checkout_ref: ${{ inputs.checkout_ref || github.sha }}
+      tip_key: ${{ inputs.tip_key }}
+      products_ready: ${{ inputs.products_ready }}
+    permissions:
+      contents: read
+      id-token: write
+      actions: read
 
-      - name: Install Nix
-        if: ${{ !inputs.products_ready }}
-        uses: DeterminateSystems/nix-installer-action@v22
-        with:
-          determinate: true
-          extra-conf: |
-            sandbox = relaxed
-            allow-import-from-derivation = true
-      - uses: DeterminateSystems/flakehub-cache-action@v3
-        if: ${{ !inputs.products_ready }}
-
-      - name: Ensure iOS Simulator SDK before nix build
-        if: ${{ !inputs.products_ready }}
-        run: ./.github/scripts/warm-ios-simulator-sdk.sh ios
-
-      - name: Build Wawona.app (iOS simulator slice)
-        if: ${{ !inputs.products_ready }}
-        run: ./.github/scripts/nix-retry.sh nix build ".#wawona-ios" --print-build-logs --out-link result-ios
-
-      - name: Download product-ios-sim
-        if: ${{ inputs.products_ready }}
-        uses: actions/download-artifact@v8
-        with:
-          name: product-ios-sim
-          path: product-ios-sim/
-
-      - name: Stage iOS app from product artifact
-        if: ${{ inputs.products_ready }}
-        run: |
-          mkdir -p result-ios
-          # Artifact layout: product-ios-sim/Wawona.app
-          if [[ -d product-ios-sim/Wawona.app ]]; then
-            cp -R product-ios-sim/Wawona.app result-ios/
-          else
-            # Nested download path variants
-            find product-ios-sim -name 'Wawona.app' -type d | head -1 | while read -r p; do
-              cp -R "$p" result-ios/
-            done
-          fi
-          test -d result-ios/Wawona.app
-          ls -la result-ios/
-
-      - name: Install agent-device
-        run: npm install -g "agent-device@${AGENT_DEVICE_VERSION}"
-
-      - name: Cache agent-device XCTest runner
-        id: ad-runner-cache
-        uses: actions/cache@v5
-        with:
-          path: ~/.agent-device/apple-runner/derived
-          key: agent-device-runner-${{ env.AGENT_DEVICE_VERSION }}-${{ runner.os }}-xcode-${{ steps.xcode.outputs.version }}
-          restore-keys: |
-            agent-device-runner-${{ env.AGENT_DEVICE_VERSION }}-${{ runner.os }}-xcode-
-
-      - name: Log XCTest runner cache
-        run: |
-          if [[ "${{ steps.ad-runner-cache.outputs.cache-hit }}" == "true" ]]; then
-            echo "XCTest runner cache HIT (key xcode-${{ steps.xcode.outputs.version }})"
-          else
-            echo "XCTest runner cache MISS (will build runner on prepare)"
-          fi
-
-      - name: Ensure simulator device exists
-        run: |
-          SIM_NAME="${WAWONA_IOS_SIM:-iPhone 17 Pro}"
-          if ! xcrun simctl list devices available | grep -q "$SIM_NAME ("; then
-            echo "Creating simulator '$SIM_NAME'"
-            DEVTYPE=$(xcrun simctl list devicetypes | grep -F "$SIM_NAME (" | sed -E 's/.*\((com[^)]*)\).*/\1/' | head -1)
-            RUNTIME=$(xcrun simctl list runtimes | grep -E "^iOS" | tail -1 | sed -E 's/.*(com\.apple\.CoreSimulator\.SimRuntime\.[A-Za-z0-9._-]+).*/\1/')
-            xcrun simctl create "$SIM_NAME" "$DEVTYPE" "$RUNTIME"
-          fi
-          xcrun simctl list devices available | grep "$SIM_NAME" || true
-
-      # Smoke is the Gate: products hard check. Nested niri/fuzzel has been
-      # flaky on GHA since mid-July (EGL / Continue / nested socket); keep it
-      # as an advisory Watch-tier step until those runners are green again.
-      - name: Run iOS GUI smoke
-        env:
-          WAWONA_IOS_APP: result-ios/Wawona.app
-          WAWONA_IOS_PREPARE_TIMEOUT_MS: "600000"
-          WAWONA_SKIP_FUZZEL: "1"
-        run: |
-          SIM_NAME="${WAWONA_IOS_SIM:-iPhone 17 Pro}"
-          echo "== iOS smoke (nested fuzzel is a separate advisory step) =="
-          pkill -f "agent-device/dist/src/internal/daemon.js" 2>/dev/null || true
-          sleep 1
-          xcrun simctl bootstatus "$SIM_NAME" -b || xcrun simctl boot "$SIM_NAME" || true
-          xcrun simctl bootstatus "$SIM_NAME"
-          ./scripts/agent-device-smoke.sh ios-ci
-          echo "== iOS shell CLI (ssh -V / ssh-keygen, advisory) =="
-          ./scripts/agent-device-smoke.sh ios-shell-cli \
-            || echo "::warning::iOS shell CLI replay failed (advisory; GUI smoke already green)"
-
-      - name: Nested niri + fuzzel (iOS, advisory)
-        if: ${{ github.event_name != 'pull_request' }}
-        continue-on-error: true
-        env:
-          WAWONA_IOS_APP: result-ios/Wawona.app
-          WAWONA_IOS_PREPARE_TIMEOUT_MS: "600000"
-          WAWONA_FUZZEL_REQUIRE_IOS: "1"
-        run: |
-          SIM_NAME="${WAWONA_IOS_SIM:-iPhone 17 Pro}"
-          xcrun simctl bootstatus "$SIM_NAME" -b || xcrun simctl boot "$SIM_NAME" || true
-          ./scripts/agent-device-smoke.sh ios-fuzzel
-
-      - name: Foot terminal (iOS, advisory)
-        if: ${{ github.event_name != 'pull_request' }}
-        continue-on-error: true
-        env:
-          WAWONA_IOS_APP: result-ios/Wawona.app
-          WAWONA_IOS_PREPARE_TIMEOUT_MS: "600000"
-        run: |
-          SIM_NAME="${WAWONA_IOS_SIM:-iPhone 17 Pro}"
-          xcrun simctl bootstatus "$SIM_NAME" -b || xcrun simctl boot "$SIM_NAME" || true
-          ./scripts/agent-device-smoke.sh ios-foot
-
-      - name: Upload iOS screenshots
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: device-e2e-ios
-          path: .agent-device/test-artifacts/
-          if-no-files-found: warn
-
-  # Build the APK only when Gate: products has NOT already produced
-  # product-android-apk (products_ready). On the Gate path this job is skipped
-  # and android-emu-e2e consumes the same-run product-android-apk directly. No
-  # intermediate wawona-apk re-upload hop.
-  android-apk:
-    name: "Android: Wawona.apk"
-    if: ${{ !inputs.products_ready && ((inputs.lanes || 'all') == 'all' || (inputs.lanes || 'all') == 'android') }}
-    runs-on: macos-26
-    timeout-minutes: 120
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ inputs.checkout_ref || github.sha }}
-
-      - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v22
-        with:
-          determinate: true
-          extra-conf: |
-            sandbox = relaxed
-            allow-import-from-derivation = true
-
-      - uses: DeterminateSystems/flakehub-cache-action@v3
-
-      - name: Build Wawona.apk
-        run: ./.github/scripts/nix-retry.sh nix build ".#wawona-android" --print-build-logs --out-link result-android
-
-      - name: Stage APK
-        run: |
-          mkdir -p dist
-          cp -L result-android/bin/Wawona.apk dist/Wawona.apk
-          ls -lh dist/Wawona.apk
-
-      # Same artifact name Gate: products uses, so the emu job has one download
-      # path for both the build (this job) and the products_ready reuse path.
-      - name: Upload product-android-apk
-        uses: actions/upload-artifact@v7
-        with:
-          name: product-android-apk
-          path: dist/Wawona.apk
-          if-no-files-found: error
-          compression-level: 0
-
-  android-emu-e2e:
-    name: "Android emulator: GUI smoke (agent-device replay)"
-    needs: android-apk
-    # Runs on the Gate path (products_ready, android-apk skipped) and on the
-    # standalone build path (android-apk succeeded). !cancelled() lets it proceed
-    # past the skipped android-apk dependency under products_ready.
-    if: ${{ !cancelled() && ((inputs.lanes || 'all') == 'all' || (inputs.lanes || 'all') == 'android') && (inputs.products_ready || needs.android-apk.result == 'success') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ inputs.checkout_ref || github.sha }}
-
-      - name: Enable KVM group perms
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
-            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-
-      - name: Download product-android-apk
-        uses: actions/download-artifact@v8
-        with:
-          name: product-android-apk
-          path: dist/
-
-      - name: Normalize APK path
-        run: |
-          if [[ ! -f dist/Wawona.apk ]]; then
-            found="$(find dist -name 'Wawona.apk' -type f | head -1)"
-            [[ -n "$found" ]] || { echo "Wawona.apk missing in product-android-apk"; exit 1; }
-            cp -L "$found" dist/Wawona.apk
-          fi
-          ls -lh dist/Wawona.apk
-
-      - name: Install agent-device
-        run: npm install -g "agent-device@${AGENT_DEVICE_VERSION}"
-
-      - name: Run Android GUI smoke (deterministic replay)
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 34
-          target: google_apis
-          arch: x86_64
-          profile: pixel_7
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot-save
-          disable-animations: true
-          # Folded one-liner for /usr/bin/sh. Nested fuzzel is advisory on GHA.
-          script: >-
-            adb shell settings put secure immersive_mode_confirmations confirmed
-            && export WAWONA_ANDROID_APK="$GITHUB_WORKSPACE/dist/Wawona.apk"
-            && echo "== Android smoke (single attempt) =="
-            && ./scripts/agent-device-smoke.sh android
-            && echo "== Android shell SSH (OpenSSH jniLibs) =="
-            && ./scripts/agent-device-smoke.sh android-shell-ssh
-            && if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then echo "== Android fuzzel skipped on pull_request =="; else echo "== Android fuzzel (advisory) ==" && ./scripts/agent-device-smoke.sh android-fuzzel || echo "::warning::Android nested fuzzel failed (advisory; smoke+OpenSSH already green)"; fi
-
-      - name: Upload Android screenshots
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: device-e2e-android
-          path: .agent-device/test-artifacts/
-          if-no-files-found: warn
-
-  catalog-and-macos-fuzzel:
-    name: "Catalog + macOS nested niri/fuzzel"
+  macos:
+    name: "macOS"
     if: ${{ (inputs.lanes || 'all') == 'all' || (inputs.lanes || 'all') == 'macos' }}
-    # Must match product-build macos-app runner: macos-26 builds are
-    # min-version 26 and abort on macos-15 ("newer than running OS").
-    runs-on: macos-26
-    timeout-minutes: 90
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ inputs.checkout_ref || github.sha }}
+    uses: ./.github/workflows/device-e2e-macos.yml
+    with:
+      checkout_ref: ${{ inputs.checkout_ref || github.sha }}
+      tip_key: ${{ inputs.tip_key }}
+      products_ready: ${{ inputs.products_ready }}
+    permissions:
+      contents: read
+      id-token: write
+      actions: read
 
-      - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v22
-        with:
-          determinate: true
-          extra-conf: |
-            sandbox = relaxed
-            allow-import-from-derivation = true
-      - uses: DeterminateSystems/flakehub-cache-action@v3
-
-      - name: Applications catalog smoke (headless)
-        run: chmod +x ./scripts/applications-catalog-smoke.sh && ./scripts/applications-catalog-smoke.sh
-
-      - name: Build Wawona.app (macOS)
-        if: ${{ !inputs.products_ready }}
-        run: ./.github/scripts/nix-retry.sh nix build ".#wawona-macos" --print-build-logs --out-link result-macos
-
-      - name: Download product-macos-app
-        if: ${{ inputs.products_ready }}
-        uses: actions/download-artifact@v8
-        with:
-          name: product-macos-app
-          path: product-macos-app/
-
-      - name: Stage macOS app from product artifact
-        if: ${{ inputs.products_ready }}
-        run: |
-          mkdir -p result-macos/Applications
-          if [[ -d product-macos-app/Wawona.app ]]; then
-            ditto product-macos-app/Wawona.app result-macos/Applications/Wawona.app
-          else
-            found="$(find product-macos-app -name 'Wawona.app' -type d | head -1)"
-            [[ -n "$found" ]] || { echo "Wawona.app missing"; exit 1; }
-            ditto "$found" result-macos/Applications/Wawona.app
-          fi
-          APP=result-macos/Applications/Wawona.app
-          chmod -R u+w "$APP"
-          find "$APP/Contents/MacOS" -type f -exec chmod +x {} + 2>/dev/null || true
-          find "$APP/Contents/Resources/bin" -type f -exec chmod +x {} + 2>/dev/null || true
-          find "$APP" \( -name '*.dylib' -o -name '*.so' \) -type f -exec chmod +x {} + 2>/dev/null || true
-          test -x "$APP/Contents/MacOS/Wawona" \
-            || { echo "FAIL: MacOS/Wawona not executable"; ls -la "$APP/Contents/MacOS" || true; exit 1; }
-          test -x "$APP/Contents/Resources/bin/niri" \
-            || { echo "FAIL: niri missing/not executable in product-macos-app"; ls -la "$APP/Contents/Resources/bin" || true; exit 1; }
-
-      # Nested niri/fuzzel omitted from Gate: products. GHA macos runners often
-      # SIGTERM the job mid-GUI (exit 143) even with continue-on-error, which
-      # still fails the reusable workflow. Catalog smoke above is the hard check.
-      # Re-enable via Watch: graphics nightly / local scripts/niri-fuzzel-smoke-macos.sh.
-      - name: Nested niri + fuzzel smoke (macOS)
-        if: ${{ false }}
-        env:
-          WAWONA_MACOS_APP: result-macos/Applications/Wawona.app
-          WAWONA_FUZZEL_REQUIRE_MACOS: "1"
-        run: |
-          chmod +x ./scripts/niri-fuzzel-smoke-macos.sh ./scripts/niri-smoke-macos.sh
-          ./scripts/niri-fuzzel-smoke-macos.sh "$WAWONA_MACOS_APP"
-
-      - name: Upload macOS fuzzel artifacts
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: device-e2e-macos-fuzzel
-          path: .agent-device/test-artifacts/
-          if-no-files-found: warn
-
-  linux-catalog:
-    name: "Linux: applications catalog smoke"
+  linux:
+    name: "Linux"
     if: ${{ (inputs.lanes || 'all') == 'all' || (inputs.lanes || 'all') == 'linux' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ inputs.checkout_ref || github.sha }}
-
-      - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v22
-        with:
-          determinate: true
-          extra-conf: |
-            sandbox = relaxed
-            allow-import-from-derivation = true
-      - uses: DeterminateSystems/flakehub-cache-action@v3
-
-      - name: Applications catalog smoke
-        run: chmod +x ./scripts/applications-catalog-smoke.sh && ./scripts/applications-catalog-smoke.sh
+    uses: ./.github/workflows/device-e2e-linux.yml
+    with:
+      checkout_ref: ${{ inputs.checkout_ref || github.sha }}
+      tip_key: ${{ inputs.tip_key }}
+      products_ready: ${{ inputs.products_ready }}
+    permissions:
+      contents: read
+      id-token: write
+      actions: read

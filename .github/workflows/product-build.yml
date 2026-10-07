@@ -1,12 +1,8 @@
 name: "Build: products"
 
-# Sole pure producer for ship/test binaries. Consumers (device-e2e, Release,
-# Ship: beta (stores)) download GHA artifacts; FlakeHub Cache substitutes store paths.
-# Do not schedule this on push directly. Device-gate / Release call it once
-# per SHA via workflow_call.
-#
-# `only` lets device-gate fan out product jobs so iOS e2e can start when
-# ios-sim finishes (without waiting for AppImages/macOS/Android).
+# Dispatcher for Ship / leak / bundled-clients / manual runs.
+# Gate: products calls the thin per-platform workflows directly (no skip spam).
+# `only` selects which slice workflows to run.
 
 on:
   workflow_dispatch:
@@ -39,7 +35,6 @@ on:
         required: false
         default: "all"
 
-# Per-commit + product slice. Do not serialize the whole branch (blocks tip).
 concurrency:
   group: product-build-${{ github.sha }}-${{ inputs.only || 'all' }}
   cancel-in-progress: false
@@ -48,416 +43,69 @@ permissions:
   contents: read
   id-token: write
 
-env:
-  NIXPKGS_ALLOW_UNFREE: "1"
-
 jobs:
   ios-sim:
-    name: "iOS sim .app"
+    name: "iOS"
     if: ${{ (inputs.only || 'all') == 'all' || (inputs.only || 'all') == 'ios-sim' }}
-    runs-on: macos-26
-    timeout-minutes: 120
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ inputs.checkout_ref || github.sha }}
-
-      - name: Select Xcode
-        id: xcode
-        run: ./.github/scripts/select-xcode.sh
-
-      # SDK check is cheap; set skip before Nix so build-app.nix never hits CDN.
-      - name: Ensure iOS Simulator SDK (skip platform download when present)
-        run: ./.github/scripts/warm-ios-simulator-sdk.sh ios
-
-      - uses: ./.github/actions/setup-nix-flakehub
-
-      - name: Build wawona-ios
-        run: ./.github/scripts/nix-retry.sh nix build ".#wawona-ios" --print-build-logs --out-link result-ios
-
-      - name: Plain summary
-        if: success()
-        run: |
-          {
-            echo "# Build: iOS"
-            echo ""
-            echo "**PASS:** iOS simulator app built."
-            echo ""
-            echo "Next: smoke test downloads this artifact."
-          } >>"$GITHUB_STEP_SUMMARY"
-
-      - name: Stage + manifest
-        run: |
-          mkdir -p dist/ios-sim
-          # Dereference store symlinks so the GHA artifact is self-contained.
-          ditto result-ios/Wawona.app dist/ios-sim/Wawona.app
-          test -d dist/ios-sim/Wawona.app
-          OUT="$(readlink -f result-ios)"
-          {
-            echo "{"
-            echo "  \"attr\": \"wawona-ios\","
-            echo "  \"sha\": \"${{ github.sha }}\","
-            echo "  \"outPath\": \"$OUT\","
-            echo "  \"artifact\": \"product-ios-sim\""
-            echo "}"
-          } > dist/ios-sim/product-manifest.json
-          # Note whether path looks cache-backed (best-effort).
-          if nix path-info --json "$OUT" 2>/dev/null | grep -q cache.flakehub.com; then
-            echo "" >>"$GITHUB_STEP_SUMMARY"
-            echo "Cache: reused a matching Nix build from FlakeHub (faster)." >>"$GITHUB_STEP_SUMMARY"
-          else
-            echo "" >>"$GITHUB_STEP_SUMMARY"
-            echo "Cache: built on this runner (or cache probe unclear)." >>"$GITHUB_STEP_SUMMARY"
-          fi
-          ls -la dist/ios-sim/
-
-      - name: Verify store-safe iOS graphics bundle
-        run: ./.github/scripts/verify-iland-graphics-bundle.sh --platform ios --simulator dist/ios-sim/Wawona.app
-
-      - name: Verify iOS Mode A firewall
-        run: bash ./.github/scripts/verify-ios-modeb-artifacts.sh --mode-a dist/ios-sim/Wawona.app
-
-      - name: Verify iOS Mode B replay contract
-        run: bash ./.github/scripts/verify-ios-modeb-ci.sh
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: product-ios-sim
-          path: dist/ios-sim/
-          if-no-files-found: error
-          # Bundle ships hidden Mach-Os (e.g. bin/.foot-wrapped); upload-artifact
-          # excludes dotfiles by default, which broke foot in the matrix gate.
-          include-hidden-files: true
-          compression-level: 0
-          retention-days: 14
+    uses: ./.github/workflows/product-ios-sim.yml
+    with:
+      checkout_ref: ${{ inputs.checkout_ref || github.sha }}
+      tip_key: ${{ inputs.tip_key }}
+    permissions:
+      contents: read
+      id-token: write
 
   ios-modeb:
-    name: "iOS Mode B channel artifacts"
+    name: "iOS Mode B"
     if: ${{ (inputs.only || 'all') == 'all' || (inputs.only || 'all') == 'ios-modeb' }}
-    runs-on: macos-26
-    timeout-minutes: 180
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ inputs.checkout_ref || github.sha }}
-
-      - name: Select Xcode
-        run: ./.github/scripts/select-xcode.sh
-
-      - uses: ./.github/actions/setup-nix-flakehub
-
-      - name: Build TrollStore iOS 14+ and Sileo iOS 13+ products
-        run: |
-          ./.github/scripts/nix-retry.sh nix build ".#wawona-ios-modeb-tipa-slim" --print-build-logs --out-link result-tipa
-          ./.github/scripts/nix-retry.sh nix build ".#wawona-ios-modeb-deb-rootless-slim" --print-build-logs --out-link result-sileo
-
-      - name: Verify channel floors and stage artifacts
-        run: |
-          mkdir -p dist/ios-modeb
-          cp -L result-tipa/*.tipa dist/ios-modeb/
-          cp -L result-sileo/*.deb dist/ios-modeb/
-          bash ./.github/scripts/verify-ios-modeb-artifacts.sh --mode-b dist/ios-modeb/*.tipa
-          dpkg-deb -f dist/ios-modeb/*.deb Depends | grep -Fx 'firmware (>= 13.0)'
-          printf '{"tipa_min_ios":"14.0","sileo_min_ios":"13.0","sha":"%s"}\n' "${{ github.sha }}" \
-            > dist/ios-modeb/product-manifest.json
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: product-ios-modeb
-          path: dist/ios-modeb/
-          if-no-files-found: error
-          compression-level: 0
-          retention-days: 14
+    uses: ./.github/workflows/product-ios-modeb.yml
+    with:
+      checkout_ref: ${{ inputs.checkout_ref || github.sha }}
+      tip_key: ${{ inputs.tip_key }}
+    permissions:
+      contents: read
+      id-token: write
 
   apple-family:
-    name: "${{ matrix.label }} sim .app"
+    name: "iPadOS + tvOS + watchOS + visionOS"
     if: ${{ (inputs.only || 'all') == 'all' || (inputs.only || 'all') == 'apple-family' }}
-    runs-on: macos-26
-    timeout-minutes: 180
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: ipados
-            label: iPadOS
-            attr: wawona-ipados
-          - target: visionos
-            label: visionOS
-            attr: wawona-visionos
-          - target: tvos
-            label: tvOS
-            attr: wawona-tvos
-          - target: watchos
-            label: watchOS
-            attr: wawona-watchos
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ inputs.checkout_ref || github.sha }}
-
-      - name: Select Xcode
-        run: ./.github/scripts/select-xcode.sh
-
-      # Same skip-flag as ios-sim: build-app.nix still runs -downloadPlatform iOS
-      # for any *simulator SDK (watch/tv/vision included). Warm the cell's SDK.
-      - name: Ensure Apple simulator SDK (skip platform download when present)
-        run: ./.github/scripts/warm-ios-simulator-sdk.sh ${{ matrix.target }}
-
-      - uses: ./.github/actions/setup-nix-flakehub
-
-      - name: Build ${{ matrix.label }} simulator app
-        run: >-
-          ./.github/scripts/nix-retry.sh nix build
-          ".#${{ matrix.attr }}" --print-build-logs
-          --out-link "result-${{ matrix.target }}"
-
-      - name: Stage and audit ${{ matrix.label }}
-        run: |
-          OUT_DIR="dist/${{ matrix.target }}-sim"
-          mkdir -p "$OUT_DIR"
-          APP="$(find -L "result-${{ matrix.target }}" -type d -name '*.app' -print -quit)"
-          test -n "$APP"
-          ditto "$APP" "$OUT_DIR/Wawona.app"
-          if [ "${{ matrix.target }}" = "tvos" ]; then
-            export WWN_TVOS_GPU=1
-          fi
-          ./.github/scripts/verify-iland-graphics-bundle.sh \
-            --platform "${{ matrix.target }}" "$OUT_DIR/Wawona.app"
-          if [ "${{ matrix.target }}" = "ipados" ]; then
-            bash ./.github/scripts/verify-ios-modeb-artifacts.sh --mode-a "$OUT_DIR/Wawona.app"
-          fi
-          if [ -x "$OUT_DIR/Wawona.app/Wawona" ]; then
-            if /usr/bin/strings "$OUT_DIR/Wawona.app/Wawona" | /usr/bin/grep -E 'IOMobileFramebuffer|WWN_MODE_B'; then
-              echo "Mode B private strings leaked into ${{ matrix.label }} store-shaped app" >&2
-              exit 1
-            fi
-          fi
-          printf '{"attr":"%s","sha":"%s","artifact":"product-%s-sim"}\n' \
-            "${{ matrix.attr }}" "${{ github.sha }}" "${{ matrix.target }}" \
-            > "$OUT_DIR/product-manifest.json"
-          {
-            echo "# Build: ${{ matrix.label }}"
-            echo ""
-            echo "**PASS:** ${{ matrix.label }} simulator app built and audited."
-          } >>"$GITHUB_STEP_SUMMARY"
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: product-${{ matrix.target }}-sim
-          path: dist/${{ matrix.target }}-sim/
-          if-no-files-found: error
-          # Preserve hidden Mach-Os (e.g. bin/.foot-wrapped) in the bundle.
-          include-hidden-files: true
-          compression-level: 0
-          retention-days: 14
+    uses: ./.github/workflows/product-apple-family.yml
+    with:
+      checkout_ref: ${{ inputs.checkout_ref || github.sha }}
+      tip_key: ${{ inputs.tip_key }}
+    permissions:
+      contents: read
+      id-token: write
 
   android-apk:
-    name: "Android debug APK"
+    name: "Android"
     if: ${{ (inputs.only || 'all') == 'all' || (inputs.only || 'all') == 'android-apk' }}
-    # macOS (not ubuntu): Android cross deps (e.g. zsh-android) fail configure on
-    # linux; runner OS version is irrelevant (Nix supplies NDK). Aligned to
-    # macos-26 with the Apple product jobs.
-    runs-on: macos-26
-    timeout-minutes: 120
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ inputs.checkout_ref || github.sha }}
-
-      - uses: ./.github/actions/setup-nix-flakehub
-
-      - name: Build wawona-android
-        run: ./.github/scripts/nix-retry.sh nix build ".#wawona-android" --print-build-logs --out-link result-android
-
-      - name: Stage APK
-        run: |
-          mkdir -p dist
-          cp -L result-android/bin/Wawona.apk dist/Wawona.apk
-          OUT="$(readlink -f result-android)"
-          {
-            echo "{"
-            echo "  \"attr\": \"wawona-android\","
-            echo "  \"sha\": \"${{ github.sha }}\","
-            echo "  \"outPath\": \"$OUT\","
-            echo "  \"artifact\": \"product-android-apk\""
-            echo "}"
-          } > dist/product-manifest.json
-          ls -lh dist/Wawona.apk
-
-      - name: Verify Play-safe Android graphics bundle
-        run: |
-          rm -rf dist/apk-unpacked
-          mkdir -p dist/apk-unpacked
-          unzip -q dist/Wawona.apk -d dist/apk-unpacked
-          ./.github/scripts/verify-iland-graphics-bundle.sh --platform android dist/apk-unpacked
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: product-android-apk
-          path: |
-            dist/Wawona.apk
-            dist/product-manifest.json
-          if-no-files-found: error
-          compression-level: 0
-          retention-days: 14
+    uses: ./.github/workflows/product-android-apk.yml
+    with:
+      checkout_ref: ${{ inputs.checkout_ref || github.sha }}
+      tip_key: ${{ inputs.tip_key }}
+    permissions:
+      contents: read
+      id-token: write
 
   macos-app:
-    name: "macOS .app"
+    name: "macOS"
     if: ${{ (inputs.only || 'all') == 'all' || (inputs.only || 'all') == 'macos-app' }}
-    runs-on: macos-26
-    timeout-minutes: 90
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ inputs.checkout_ref || github.sha }}
-
-      - name: Select Xcode
-        run: ./.github/scripts/select-xcode.sh
-
-      - uses: ./.github/actions/setup-nix-flakehub
-
-      - name: Build wawona-macos
-        run: ./.github/scripts/nix-retry.sh nix build ".#wawona-macos" --print-build-logs --out-link result-macos
-
-      - name: Build wawona-macos-desktop-host
-        run: ./.github/scripts/nix-retry.sh nix build ".#wawona-macos-desktop-host" --print-build-logs --out-link result-macos-desktop-host
-
-      - name: Stage app
-        run: |
-          mkdir -p dist/macos-app
-          # Nix .app trees keep store symlinks (niri/fuzzel under Resources/bin).
-          # GHA artifacts must be self-contained. Dereference before upload.
-          ditto result-macos/Applications/Wawona.app dist/macos-app/Wawona.app
-          # Artifact zip can drop +x; restore exec bits on launcher + tools.
-          APP=dist/macos-app/Wawona.app
-          chmod -R u+w "$APP"
-          find "$APP/Contents/MacOS" -type f -exec chmod +x {} + 2>/dev/null || true
-          find "$APP/Contents/Resources/bin" -type f -exec chmod +x {} + 2>/dev/null || true
-          find "$APP" \( -name '*.dylib' -o -name '*.so' \) -type f -exec chmod +x {} + 2>/dev/null || true
-          NIRI="$APP/Contents/Resources/bin/niri"
-          FUZZEL="$APP/Contents/Resources/bin/fuzzel"
-          MAIN="$APP/Contents/MacOS/Wawona"
-          test -f "$NIRI" || { echo "FAIL: staged niri missing at $NIRI"; ls -laR "$APP/Contents/Resources/bin" || true; exit 1; }
-          test -f "$FUZZEL" || { echo "FAIL: staged fuzzel missing at $FUZZEL"; exit 1; }
-          test -f "$MAIN" || { echo "FAIL: staged MacOS/Wawona missing"; exit 1; }
-          chmod +x "$NIRI" "$FUZZEL" "$MAIN"
-          test -x "$NIRI" && test -x "$FUZZEL" && test -x "$MAIN"
-          # Bundle XKB data so nested niri works after artifact download (no nix store).
-          XKB_OUT="$(nix build --no-link --print-out-paths nixpkgs#xkeyboard_config)"
-          mkdir -p "$APP/Contents/Resources/share/X11"
-          ditto "$XKB_OUT/share/X11/xkb" "$APP/Contents/Resources/share/X11/xkb"
-          test -d "$APP/Contents/Resources/share/X11/xkb/rules"
-          OUT="$(readlink -f result-macos)"
-          {
-            echo "{"
-            echo "  \"attr\": \"wawona-macos\","
-            echo "  \"sha\": \"${{ github.sha }}\","
-            echo "  \"outPath\": \"$OUT\","
-            echo "  \"artifact\": \"product-macos-app\""
-            echo "}"
-          } > dist/macos-app/product-manifest.json
-          ls -la dist/macos-app/
-          ls -la dist/macos-app/Wawona.app/Contents/Resources/bin/ | head -40
-
-      - name: Verify macOS Mode B bundles
-        run: |
-          ./.github/scripts/verify-iland-graphics-bundle.sh --platform macos dist/macos-app/Wawona.app
-          mkdir -p dist/macos-desktop-host
-          ditto result-macos-desktop-host/Applications/Wawona.app \
-            dist/macos-desktop-host/Wawona.app
-          ./.github/scripts/verify-iland-graphics-bundle.sh --platform macos-desktop \
-            dist/macos-desktop-host/Wawona.app
-          OUT="$(readlink -f result-macos-desktop-host)"
-          {
-            echo "{"
-            echo "  \"attr\": \"wawona-macos-desktop-host\","
-            echo "  \"sha\": \"${{ github.sha }}\","
-            echo "  \"outPath\": \"$OUT\","
-            echo "  \"artifact\": \"product-macos-desktop-host\""
-            echo "}"
-          } > dist/macos-desktop-host/product-manifest.json
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: product-macos-app
-          path: dist/macos-app/
-          if-no-files-found: error
-          # Preserve hidden Mach-Os (e.g. bin/.foot-wrapped) in the bundle;
-          # upload-artifact drops dotfiles by default, which broke foot.
-          include-hidden-files: true
-          compression-level: 0
-          retention-days: 14
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: product-macos-desktop-host
-          path: dist/macos-desktop-host/
-          if-no-files-found: error
-          # Preserve hidden Mach-Os (e.g. bin/.foot-wrapped) in the bundle.
-          include-hidden-files: true
-          compression-level: 0
-          retention-days: 14
+    uses: ./.github/workflows/product-macos-app.yml
+    with:
+      checkout_ref: ${{ inputs.checkout_ref || github.sha }}
+      tip_key: ${{ inputs.tip_key }}
+    permissions:
+      contents: read
+      id-token: write
 
   appimage:
-    name: "Linux AppImage (${{ matrix.system }})"
+    name: "Linux AppImages"
     if: ${{ (inputs.only || 'all') == 'all' || (inputs.only || 'all') == 'appimage' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: ubuntu-latest
-            system: x86_64-linux
-          - runner: ubuntu-24.04-arm
-            system: aarch64-linux
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 90
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ inputs.checkout_ref || github.sha }}
-
-      - name: Free disk space
-        run: |
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
-            /usr/local/share/boost "${AGENT_TOOLSDIRECTORY:-}" || true
-          docker image prune -af || true
-
-      - uses: ./.github/actions/setup-nix-flakehub
-        with:
-          extra-conf: |
-            build-dir = /nix/build
-            sandbox = relaxed
-            allow-import-from-derivation = true
-            max-jobs = auto
-            cores = 0
-            trusted-users = runner root
-
-      - name: Build AppImage
-        run: |
-          ./.github/scripts/nix-retry.sh \
-            nix build ".#packages.${{ matrix.system }}.wawona-appimage" --print-build-logs --out-link result
-
-      - name: Smoke-test and stage AppImage
-        run: ./.github/scripts/appimage-smoke.sh result "${{ matrix.system }}"
-
-      - name: Manifest
-        run: |
-          OUT="$(readlink -f result)"
-          {
-            echo "{"
-            echo "  \"attr\": \"wawona-appimage\","
-            echo "  \"system\": \"${{ matrix.system }}\","
-            echo "  \"sha\": \"${{ github.sha }}\","
-            echo "  \"outPath\": \"$OUT\","
-            echo "  \"artifact\": \"product-appimage-${{ matrix.system }}\""
-            echo "}"
-          } > dist/product-manifest.json
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: product-appimage-${{ matrix.system }}
-          path: |
-            dist/*.AppImage
-            dist/product-manifest.json
-          if-no-files-found: error
-          retention-days: 14
+    uses: ./.github/workflows/product-appimage.yml
+    with:
+      checkout_ref: ${{ inputs.checkout_ref || github.sha }}
+      tip_key: ${{ inputs.tip_key }}
+    permissions:
+      contents: read
+      id-token: write
