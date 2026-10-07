@@ -30,7 +30,6 @@ permissions:
   actions: read
 
 env:
-  AGENT_DEVICE_VERSION: "0.18.3"
   WAWONA_MATRIX_STRICT: "1"
   WAWONA_MATRIX_CLIENT_HOLD_SEC: "12"
   WAWONA_MATRIX_NESTED_HOLD_SEC: "20"
@@ -93,13 +92,13 @@ jobs:
           else find product-ios-sim -name Wawona.app -type d | head -1 | while read -r p; do cp -R "$p" result-ios/; done
           fi
           test -d result-ios/Wawona.app
-      - name: Install agent-device
-        run: npm install -g "agent-device@${AGENT_DEVICE_VERSION}"
       - name: Run matrix (iOS)
         env:
           WAWONA_IOS_APP: result-ios/Wawona.app
           WAWONA_MATRIX_CLIENTS: ${{ inputs.clients }}
-        run: ./scripts/bundled-clients-matrix-gate.sh ios
+        run: |
+          # Default: simctl + WAWONA_AUTO_CLIENT (no agent-device).
+          ./scripts/bundled-clients-matrix-gate.sh ios
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -132,8 +131,6 @@ jobs:
             [[ -n "$found" ]] || exit 1
             cp -L "$found" dist/Wawona.apk
           fi
-      - name: Install agent-device
-        run: npm install -g "agent-device@${AGENT_DEVICE_VERSION}"
       - name: Run matrix (Android emu)
         uses: reactivecircus/android-emulator-runner@v2
         with:

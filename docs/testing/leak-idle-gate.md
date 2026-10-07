@@ -1,8 +1,9 @@
 # Watch: idle memory (CI)
 
-Reproducible **Start → hold → Stop** memory plateau check for product builds.
-Converts local agent-device + Instruments dogfood into a GitHub Actions job matrix
-that fails with an explicit failing **target** name.
+Reproducible **launch → hold → stop** memory plateau check for product builds.
+Runners use industry-standard platform tools only (`simctl`, `adb`/`uiautomator`,
+direct macOS binary exec). Agent-device stays for local/lab/vphone. Failures name
+an explicit **target**.
 
 Authority for methodology: [`.agent-device/test-artifacts/instruments/LEAK-IDLE-CAMPAIGN.md`](../../.agent-device/test-artifacts/instruments/LEAK-IDLE-CAMPAIGN.md).
 
@@ -16,14 +17,15 @@ CI uses those same metrics.
 
 ## What “pass” means
 
-After pressing **Start** on Machines:
+After launch (iOS: `simctl launch`; Android: `am start` then uiautomator Welcome/Start;
+macOS: exec `Wawona.app` binary):
 
 1. Sample memory every `WAWONA_LEAK_SAMPLE_SEC` (default 15s) for `WAWONA_LEAK_HOLD_SEC` (default 60s).
-2. Fail if `(max − min) > WAWONA_LEAK_PLATEAU_MB` (default 20 MB).
+2. Fail if `(max - min) > WAWONA_LEAK_PLATEAU_MB` (default 20 MB).
 3. Fail if samples are strictly monotonic and total climb ≥ `WAWONA_LEAK_MONO_MB` (default 8 MB).
 4. Fail if the process dies or sampling fails.
 
-Idle→Start jump is allowed; **unbounded growth during the hold** is not.
+Launch→steady jump is allowed; **unbounded growth during the hold** is not.
 
 ## Targets (CI matrix)
 

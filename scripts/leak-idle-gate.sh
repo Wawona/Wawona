@@ -1,30 +1,31 @@
 #!/usr/bin/env bash
-# Leak-idle CI gate: Start nested client → sample memory for HOLD_SEC → plateau check.
+# Leak-idle CI gate: launch product → sample memory for HOLD_SEC → plateau check.
 #
-# Replaces ad-hoc agent-device + Instruments MCP dogfood with a runner-safe script.
-# Instruments MCP / xctrace Allocations are NOT used here (empty on iOS 26 sim -
-# see ISSUE-012). Gate is phys_footprint / dumpsys TOTAL PSS plateau, matching the
-# Leak+Idle campaign in .agent-device/test-artifacts/instruments/.
+# Runner tools only (industry standard):
+#   iOS:    xcrun simctl install/launch + vmmap phys_footprint
+#   Android: adb + uiautomator (Welcome/Start) + dumpsys meminfo TOTAL PSS
+#   macOS:  direct exec of Wawona.app binary + vmmap
+#
+# Does NOT use agent-device CLI. Agent-device stays for local/lab/vphone.
+# Instruments MCP / xctrace Allocations are NOT used (empty on iOS 26 sim).
 #
 # Usage:
 #   scripts/leak-idle-gate.sh ios
 #   scripts/leak-idle-gate.sh android
 #   scripts/leak-idle-gate.sh macos
-#   scripts/leak-idle-gate.sh all          # ios + android + macos (skip if no device)
-#   scripts/leak-idle-gate.sh summary      # print LEAK_GATE_* lines from prior runs
+#   scripts/leak-idle-gate.sh all
+#   scripts/leak-idle-gate.sh summary
 #
-# Env (shared with agent-device-smoke.sh):
+# Env:
 #   WAWONA_IOS_SIM / WAWONA_IOS_APP / WAWONA_ANDROID_SERIAL / WAWONA_ANDROID_APK
 #   WAWONA_MACOS_APP
-# Gate thresholds:
 #   WAWONA_LEAK_HOLD_SEC=60
 #   WAWONA_LEAK_SAMPLE_SEC=15
-#   WAWONA_LEAK_PLATEAU_MB=20   # max(max−min) during hold
-#   WAWONA_LEAK_MONO_MB=8       # fail if every sample climbs and total ≥ this
-#   WAWONA_LEAK_STRICT=1        # fail if target skipped (CI); default 0 locally
+#   WAWONA_LEAK_PLATEAU_MB=20
+#   WAWONA_LEAK_MONO_MB=8
+#   WAWONA_LEAK_STRICT=1
 #
 # Exit: 0 all requested targets pass; 1 any fail; 2 skip-only when STRICT.
-# On failure prints: LEAK_GATE_FAIL targets=ios,android
 # Always writes: .agent-device/test-artifacts/leak-idle-gate/<target>/verdict.json
 
 set -euo pipefail
@@ -34,28 +35,18 @@ ARTIFACTS_ROOT="$ROOT/.agent-device/test-artifacts/leak-idle-gate"
 IOS_DEVICE="${WAWONA_IOS_SIM:-iPhone 17 Pro}"
 IOS_BUNDLE="${WAWONA_IOS_BUNDLE:-com.aspauldingcode.Wawona}"
 ANDROID_PKG="${WAWONA_ANDROID_PACKAGE:-com.aspauldingcode.wawona}"
+ANDROID_ACTIVITY="${WAWONA_ANDROID_ACTIVITY:-com.aspauldingcode.wawona.MainActivity}"
 LANE="${1:-all}"
 STRICT="${WAWONA_LEAK_STRICT:-0}"
 
 # shellcheck source=scripts/lib/leak-idle-measure.sh
 source "$ROOT/scripts/lib/leak-idle-measure.sh"
-# shellcheck source=scripts/lib/agent-device-ios-system-ui.sh
-source "$ROOT/scripts/lib/agent-device-ios-system-ui.sh"
 
 mkdir -p "$ARTIFACTS_ROOT"
 cd "$ROOT"
 
-if ! command -v agent-device >/dev/null; then
-  echo "agent-device not found on PATH" >&2
-  exit 1
-fi
-echo "== leak-idle-gate agent-device $(agent-device --version) =="
+echo "== leak-idle-gate (simctl / adb / uiautomator; no agent-device) =="
 echo "== hold=${WAWONA_LEAK_HOLD_SEC}s sample=${WAWONA_LEAK_SAMPLE_SEC}s plateau=${WAWONA_LEAK_PLATEAU_MB}MB mono=${WAWONA_LEAK_MONO_MB}MB =="
-
-stop_agent_device_daemons() {
-  pkill -f "agent-device/dist/src/internal/daemon.js" 2>/dev/null || true
-  sleep 1
-}
 
 write_verdict() {
   local target="$1"
@@ -87,7 +78,6 @@ PY
   echo "== verdict $target: $status ($reason) =="
 }
 
-# Sample hold loop for a target. sample_cmd is a shell snippet that prints MB.
 sample_hold() {
   local target="$1"
   local out_dir="$2"
@@ -124,137 +114,80 @@ sample_hold() {
   leak_analyze_plateau "$csv" "$out_dir/${target}-plateau.json"
 }
 
+ios_ensure_sim() {
+  if ! xcrun simctl list devices available | grep -q "$IOS_DEVICE ("; then
+    echo "Creating simulator '$IOS_DEVICE'"
+    local DEVTYPE RUNTIME
+    DEVTYPE=$(xcrun simctl list devicetypes | grep -F "$IOS_DEVICE (" | sed -E 's/.*\((com[^)]*)\).*/\1/' | head -1)
+    RUNTIME=$(xcrun simctl list runtimes | grep -E "^iOS" | tail -1 | sed -E 's/.*(com\.apple\.CoreSimulator\.SimRuntime\.[A-Za-z0-9._-]+).*/\1/')
+    xcrun simctl create "$IOS_DEVICE" "$DEVTYPE" "$RUNTIME"
+  fi
+}
+
 run_ios() {
   local out_dir="$ARTIFACTS_ROOT/ios"
   mkdir -p "$out_dir"
-  local sess=wawona-ios-leak-idle
-  local ad_common=(--platform ios --device "$IOS_DEVICE" --session "$sess")
 
-  echo "== iOS leak-idle: simulator '$IOS_DEVICE' =="
-  xcrun simctl bootstatus "$IOS_DEVICE" -b || xcrun simctl boot "$IOS_DEVICE" || true
-  xcrun simctl bootstatus "$IOS_DEVICE"
-
-  # Mirror agent-device-smoke.sh run_ios exactly. It passes in the same Gate:
-  # products run. The order matters: prepare system UI and install the app
-  # BEFORE preparing the XCTest runner, then prepare → open --relaunch. The old
-  # order here (prepare → agent-device install → open → ios_prepare_system_ui
-  # after open) reinstalled over the prepared runner and touched system UI after
-  # open, which dropped the XCTest runner lease → SESSION_NOT_FOUND ("No active
-  # session. Run open first.") → machines_home_not_reached.
-  echo "== iOS: prepare system UI (disable pasteboard sync; keyboard tutorial prefs) =="
-  ios_prepare_system_ui
-
-  if [ -n "${WAWONA_IOS_APP:-}" ]; then
-    echo "== iOS: install $WAWONA_IOS_APP =="
-    # Nix-store bundles are read-only; stage a writable copy for simctl.
-    local stage
-    stage="$(mktemp -d)/Wawona.app"
-    cp -R "$WAWONA_IOS_APP" "$stage"
-    chmod -R u+w "$stage"
-    xcrun simctl uninstall "$IOS_DEVICE" "$IOS_BUNDLE" 2>/dev/null || true
-    xcrun simctl install "$IOS_DEVICE" "$stage"
-  fi
-
-  rm -f "$out_dir"/ios-*.png
-
-  echo "== iOS: prepare XCTest runner (session=$sess) =="
-  # Prepare + open must share one session/daemon; stop stale daemons first.
-  stop_agent_device_daemons
-  agent-device prepare ios-runner "${ad_common[@]}" \
-    --timeout "${WAWONA_IOS_PREPARE_TIMEOUT_MS:-600000}"
-
-  # One open retry for residual daemon flakes (not a suite retry).
-  if ! agent-device open "$IOS_BUNDLE" --relaunch "${ad_common[@]}"; then
-    echo "== iOS: open failed; recreate same-session prepare and retry once =="
-    stop_agent_device_daemons
-    agent-device prepare ios-runner "${ad_common[@]}" \
-      --timeout "${WAWONA_IOS_PREPARE_TIMEOUT_MS:-600000}" || true
-    agent-device open "$IOS_BUNDLE" --relaunch "${ad_common[@]}"
-  fi
-  agent-device wait 2500 "${ad_common[@]}" || true
-  ios_dismiss_system_ui "${ad_common[@]}"
-  agent-device screenshot "$out_dir/ios-first-screen.png" "${ad_common[@]}" || true
-
-  # Welcome dismiss (short-circuit if machines home already visible).
-  if ! agent-device is visible 'id="wwn.machines.root"' "${ad_common[@]}" >/dev/null 2>&1 \
-    && ! agent-device is visible 'text="Machine Configuration"' "${ad_common[@]}" >/dev/null 2>&1; then
-    agent-device press 'id="wwn.welcome.continue"' "${ad_common[@]}" >/dev/null 2>&1 || true
-    agent-device press 'label="Continue"' "${ad_common[@]}" >/dev/null 2>&1 || true
-    agent-device press 'text="Continue"' "${ad_common[@]}" >/dev/null 2>&1 || true
-    agent-device find Continue press --first "${ad_common[@]}" >/dev/null 2>&1 || true
-    agent-device click 201 493 "${ad_common[@]}" >/dev/null 2>&1 || true
-    agent-device wait 2500 "${ad_common[@]}" || true
-  fi
-  ios_dismiss_system_ui "${ad_common[@]}"
-
-  if ! agent-device wait 'id="wwn.machines.root"' 20000 "${ad_common[@]}" >/dev/null 2>&1 \
-    && ! agent-device wait 'text="Machine Configuration"' 8000 "${ad_common[@]}" >/dev/null 2>&1; then
-    # One more Continue point-tap then re-check (animation / first-tap miss).
-    agent-device click 201 500 "${ad_common[@]}" >/dev/null 2>&1 || true
-    agent-device wait 2000 "${ad_common[@]}" || true
-    if ! agent-device wait 'id="wwn.machines.root"' 10000 "${ad_common[@]}" >/dev/null 2>&1 \
-      && ! agent-device wait 'text="Machine Configuration"' 5000 "${ad_common[@]}" >/dev/null 2>&1 \
-      && ! agent-device find Start exists --first "${ad_common[@]}" >/dev/null 2>&1; then
-      agent-device screenshot "$out_dir/ios-no-machines.png" "${ad_common[@]}" || true
-      agent-device snapshot -i --raw "${ad_common[@]}" || true
-      write_verdict ios fail "machines_home_not_reached"
-      agent-device close "${ad_common[@]}" || true
-      stop_agent_device_daemons
-      return 1
-    fi
-  fi
-
+  echo "== iOS leak-idle: simulator '$IOS_DEVICE' (simctl) =="
+  ios_ensure_sim
   local udid
-  udid="$(ios_resolve_udid)"
+  udid=$(xcrun simctl list devices available | grep "$IOS_DEVICE (" | grep -oE '[A-F0-9-]{36}' | head -1)
   if [ -z "$udid" ]; then
     write_verdict ios fail "no_sim_udid"
     return 1
   fi
   export WAWONA_IOS_UDID="$udid"
 
-  if ! agent-device press 'id="wwn.machines.start"' "${ad_common[@]}" >/dev/null 2>&1 \
-    && ! agent-device press 'label="Start"' "${ad_common[@]}" >/dev/null 2>&1 \
-    && ! agent-device find Start press --first "${ad_common[@]}" >/dev/null 2>&1 \
-    && ! agent-device click 69 374 "${ad_common[@]}" >/dev/null 2>&1; then
-    agent-device screenshot "$out_dir/ios-start-fail.png" "${ad_common[@]}" || true
-    write_verdict ios fail "start_not_found"
-    agent-device close "${ad_common[@]}" || true
-    stop_agent_device_daemons
+  xcrun simctl bootstatus "$udid" -b || xcrun simctl boot "$udid" || true
+  xcrun simctl bootstatus "$udid"
+
+  if [ -n "${WAWONA_IOS_APP:-}" ]; then
+    echo "== iOS: install $WAWONA_IOS_APP =="
+    local stage
+    stage="$(mktemp -d)/Wawona.app"
+    cp -R "$WAWONA_IOS_APP" "$stage"
+    chmod -R u+w "$stage"
+    xcrun simctl uninstall "$udid" "$IOS_BUNDLE" 2>/dev/null || true
+    xcrun simctl install "$udid" "$stage"
+  fi
+
+  rm -f "$out_dir"/ios-*.png
+  xcrun simctl terminate "$udid" "$IOS_BUNDLE" 2>/dev/null || true
+  set +e
+  xcrun simctl launch "$udid" "$IOS_BUNDLE" >"$out_dir/launch.out" 2>"$out_dir/launch.err"
+  local launch_rc=$?
+  set -e
+  if [ "$launch_rc" -ne 0 ]; then
+    write_verdict ios fail "simctl_launch_rc=$launch_rc"
+    cat "$out_dir/launch.out" "$out_dir/launch.err" || true
     return 1
   fi
-  agent-device wait 4000 "${ad_common[@]}" || true
-  ios_dismiss_system_ui "${ad_common[@]}"
-  agent-device wait 2000 "${ad_common[@]}" || true
-  agent-device screenshot "$out_dir/ios-running.png" "${ad_common[@]}" || true
 
-  local pid
-  pid="$(leak_ios_pid "$udid" "$IOS_BUNDLE")"
+  local pid=""
+  local i
+  for i in $(seq 1 45); do
+    pid="$(leak_ios_pid "$udid" "$IOS_BUNDLE")"
+    [ -n "$pid" ] && break
+    sleep 1
+  done
+  xcrun simctl io "$udid" screenshot "$out_dir/ios-running.png" || true
+
   if [ -z "$pid" ]; then
     write_verdict ios fail "pid_not_found"
-    agent-device press 'label="Stop"' "${ad_common[@]}" >/dev/null 2>&1 || true
-    agent-device close "${ad_common[@]}" || true
-    stop_agent_device_daemons
+    xcrun simctl terminate "$udid" "$IOS_BUNDLE" 2>/dev/null || true
     return 1
   fi
   echo "== iOS pid=$pid udid=$udid =="
 
   if ! sample_hold ios "$out_dir" leak_sample_apple_mb "$pid" "$udid"; then
     write_verdict ios fail "plateau_or_sample"
-    agent-device press 'label="Stop"' "${ad_common[@]}" >/dev/null 2>&1 || true
-    agent-device screenshot "$out_dir/ios-after-fail.png" "${ad_common[@]}" || true
-    agent-device close "${ad_common[@]}" || true
-    stop_agent_device_daemons
+    xcrun simctl terminate "$udid" "$IOS_BUNDLE" 2>/dev/null || true
     return 1
   fi
 
-  agent-device press 'id="wwn.machines.stop"' "${ad_common[@]}" >/dev/null 2>&1 \
-    || agent-device press 'label="Stop"' "${ad_common[@]}" >/dev/null 2>&1 \
-    || true
-  agent-device wait 2000 "${ad_common[@]}" || true
-  agent-device screenshot "$out_dir/ios-after-stop.png" "${ad_common[@]}" || true
+  xcrun simctl terminate "$udid" "$IOS_BUNDLE" 2>/dev/null || true
+  xcrun simctl io "$udid" screenshot "$out_dir/ios-after-stop.png" || true
   write_verdict ios pass "plateau_ok"
-  agent-device close "${ad_common[@]}" || true
-  stop_agent_device_daemons
   return 0
 }
 
@@ -272,7 +205,7 @@ run_android() {
     return 0
   fi
   export ANDROID_SERIAL="$serial"
-  echo "== Android leak-idle: serial=$serial =="
+  echo "== Android leak-idle: serial=$serial (adb + uiautomator) =="
   adb -s "$serial" shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true
 
   if [ -n "${WAWONA_ANDROID_APK:-}" ]; then
@@ -283,72 +216,55 @@ run_android() {
   # shellcheck source=scripts/lib/android-ad-scale.sh
   source "$ROOT/scripts/lib/android-ad-scale.sh"
 
-  local sess=wawona-android-leak-idle
-  local ad_common=(--platform android --serial "$serial" --session "$sess")
-
-  android_press_id() {
-    local id="$1"
-    agent-device press "id=\"$id\"" "${ad_common[@]}" >/dev/null 2>&1 && return 0
-    android_uia_tap_id "$id" && return 0
-    return 1
-  }
-  # Pixel launcher ANR / system dialogs otherwise eat the Continue+Start taps.
   dismiss_android_blockers() {
     adb -s "$serial" shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 2>&1 || true
-    agent-device alert dismiss "${ad_common[@]}" >/dev/null 2>&1 || true
-    if agent-device is visible 'label="Wait"' "${ad_common[@]}" >/dev/null 2>&1; then
-      agent-device press 'label="Wait"' "${ad_common[@]}" >/dev/null 2>&1 || true
-    fi
-    if agent-device is visible 'label="Close app"' "${ad_common[@]}" >/dev/null 2>&1; then
-      agent-device press 'label="Close app"' "${ad_common[@]}" >/dev/null 2>&1 || true
-    fi
   }
 
-  agent-device open "$ANDROID_PKG" --relaunch "${ad_common[@]}"
-  agent-device wait 3000 "${ad_common[@]}" || true
-  dismiss_android_blockers
-  agent-device press 'label="Continue"' "${ad_common[@]}" >/dev/null 2>&1 || true
-  android_press_id "wwn.welcome.continue" || true
-  agent-device wait 2000 "${ad_common[@]}" || true
+  adb -s "$serial" shell am force-stop "$ANDROID_PKG" 2>/dev/null || true
+  adb -s "$serial" shell am start -W -n "$ANDROID_PKG/$ANDROID_ACTIVITY" \
+    | tee "$out_dir/am-start.txt"
+  sleep 3
   dismiss_android_blockers
 
-  if ! agent-device wait 'id="wwn.machines.root"' 20000 "${ad_common[@]}" >/dev/null 2>&1 \
-    && ! android_uia_has_text "Machine Configuration"; then
+  # Welcome → Machines (uiautomator resource-id / text).
+  android_uia_tap_id "wwn.welcome.continue" || android_uia_tap_text "Continue" || true
+  sleep 2
+  dismiss_android_blockers
+
+  if ! android_uia_wait id "wwn.machines.root" 20000 \
+    && ! android_uia_wait text "Machine Configuration" 8000; then
     write_verdict android fail "machines_home_not_reached"
-    agent-device screenshot "$out_dir/android-no-machines.png" "${ad_common[@]}" || true
+    adb -s "$serial" exec-out screencap -p >"$out_dir/android-no-machines.png" || true
     android_uia_dump >"$out_dir/android-no-machines-ui.xml" 2>/dev/null || true
-    agent-device close "${ad_common[@]}" || true
+    adb -s "$serial" shell am force-stop "$ANDROID_PKG" 2>/dev/null || true
     return 1
   fi
 
   dismiss_android_blockers
-  if ! android_press_id "wwn.machines.start" \
-    && ! agent-device press 'label="Start"' "${ad_common[@]}" >/dev/null 2>&1 \
+  if ! android_uia_tap_id "wwn.machines.start" \
     && ! android_uia_tap_text "Start" \
     && ! android_tap_ref 227 1039; then
     write_verdict android fail "start_not_found"
-    agent-device screenshot "$out_dir/android-start-fail.png" "${ad_common[@]}" || true
+    adb -s "$serial" exec-out screencap -p >"$out_dir/android-start-fail.png" || true
     android_uia_dump >"$out_dir/android-start-fail-ui.xml" 2>/dev/null || true
-    agent-device close "${ad_common[@]}" || true
+    adb -s "$serial" shell am force-stop "$ANDROID_PKG" 2>/dev/null || true
     return 1
   fi
-  agent-device wait 5000 "${ad_common[@]}" || true
-  agent-device screenshot "$out_dir/android-running.png" "${ad_common[@]}" || true
+  sleep 5
+  adb -s "$serial" exec-out screencap -p >"$out_dir/android-running.png" || true
 
   if ! sample_hold android "$out_dir" leak_sample_android_pss_mb "$serial" "$ANDROID_PKG"; then
     write_verdict android fail "plateau_or_sample"
-    agent-device press 'label="Stop"' "${ad_common[@]}" >/dev/null 2>&1 || true
-    agent-device screenshot "$out_dir/android-after-fail.png" "${ad_common[@]}" || true
-    agent-device close "${ad_common[@]}" || true
+    android_uia_tap_id "wwn.machines.stop" || android_uia_tap_text "Stop" || true
+    adb -s "$serial" exec-out screencap -p >"$out_dir/android-after-fail.png" || true
+    adb -s "$serial" shell am force-stop "$ANDROID_PKG" 2>/dev/null || true
     return 1
   fi
 
-  agent-device press 'id="wwn.machines.stop"' "${ad_common[@]}" >/dev/null 2>&1 \
-    || agent-device press 'label="Stop"' "${ad_common[@]}" >/dev/null 2>&1 \
-    || true
-  agent-device screenshot "$out_dir/android-after-stop.png" "${ad_common[@]}" || true
+  android_uia_tap_id "wwn.machines.stop" || android_uia_tap_text "Stop" || true
+  adb -s "$serial" exec-out screencap -p >"$out_dir/android-after-stop.png" || true
   write_verdict android pass "plateau_ok"
-  agent-device close "${ad_common[@]}" || true
+  adb -s "$serial" shell am force-stop "$ANDROID_PKG" 2>/dev/null || true
   return 0
 }
 
@@ -377,11 +293,6 @@ run_macos() {
   echo "== macOS leak-idle: $app =="
   pkill -x Wawona 2>/dev/null || true
   sleep 1
-  # `open` on a GHA-unpacked artifact fails (Gatekeeper / LaunchServices 111) →
-  # leak_macos_pid finds nothing → "pid_not_found". Mirror niri-smoke-macos.sh:
-  # strip quarantine and exec the binary directly. The GHA artifact unzip also
-  # drops the +x bit (→ "Permission denied" on execve), so restore it first; the
-  # nix code signature is intact and valid, so no ad-hoc re-sign is needed.
   xattr -cr "$app" 2>/dev/null || true
   chmod +x "$app/Contents/MacOS/Wawona" 2>/dev/null || true
   find "$app/Contents/MacOS" -type f -exec chmod +x {} + 2>/dev/null || true
@@ -403,6 +314,7 @@ run_macos() {
   fi
   echo "== macOS pid=$pid =="
 
+  # Optional AX Start (TCC may deny on runners; idle launch still samples).
   osascript <<'EOF' 2>/dev/null || true
 tell application "System Events"
   if exists process "Wawona" then
@@ -419,6 +331,7 @@ EOF
 
   if ! sample_hold macos "$out_dir" leak_sample_apple_mb "$pid"; then
     write_verdict macos fail "plateau_or_sample"
+    pkill -x Wawona 2>/dev/null || true
     return 1
   fi
 

@@ -55,7 +55,6 @@ permissions:
   actions: read
 
 env:
-  AGENT_DEVICE_VERSION: "0.18.3"
   WAWONA_LEAK_STRICT: "1"
   WAWONA_LEAK_HOLD_SEC: "60"
   WAWONA_LEAK_SAMPLE_SEC: "15"
@@ -133,17 +132,6 @@ jobs:
           fi
           test -d result-ios/Wawona.app
 
-      - name: Install agent-device
-        run: npm install -g "agent-device@${AGENT_DEVICE_VERSION}"
-
-      - name: Cache agent-device XCTest runner
-        uses: actions/cache@v5
-        with:
-          path: ~/.agent-device/apple-runner/derived
-          key: agent-device-runner-${{ env.AGENT_DEVICE_VERSION }}-${{ runner.os }}-xcode-${{ steps.xcode.outputs.version }}
-          restore-keys: |
-            agent-device-runner-${{ env.AGENT_DEVICE_VERSION }}-${{ runner.os }}-xcode-
-
       - name: Ensure simulator device exists
         run: |
           SIM_NAME="${WAWONA_IOS_SIM:-iPhone 17 Pro}"
@@ -156,14 +144,9 @@ jobs:
       - name: Run iOS leak-idle gate
         env:
           WAWONA_IOS_APP: result-ios/Wawona.app
-          WAWONA_IOS_PREPARE_TIMEOUT_MS: "600000"
           WAWONA_LEAK_STRICT: "1"
         run: |
-          SIM_NAME="${WAWONA_IOS_SIM:-iPhone 17 Pro}"
-          pkill -f "agent-device/dist/src/internal/daemon.js" 2>/dev/null || true
-          sleep 1
-          xcrun simctl bootstatus "$SIM_NAME" -b || xcrun simctl boot "$SIM_NAME" || true
-          xcrun simctl bootstatus "$SIM_NAME"
+          # Platform tools only: simctl install/launch + vmmap (no agent-device).
           ./scripts/leak-idle-gate.sh ios
 
       - name: Upload iOS leak artifacts
@@ -207,9 +190,6 @@ jobs:
             cp -L "$found" dist/Wawona.apk
           fi
           test -f dist/Wawona.apk
-
-      - name: Install agent-device
-        run: npm install -g "agent-device@${AGENT_DEVICE_VERSION}"
 
       - name: Run Android leak-idle gate
         uses: reactivecircus/android-emulator-runner@v2
@@ -263,9 +243,6 @@ jobs:
           fi
           echo "WAWONA_MACOS_APP=$WAWONA_MACOS_APP" >> "$GITHUB_ENV"
           test -d "$WAWONA_MACOS_APP"
-
-      - name: Install agent-device
-        run: npm install -g "agent-device@${AGENT_DEVICE_VERSION}"
 
       - name: Run macOS leak-idle gate
         env:

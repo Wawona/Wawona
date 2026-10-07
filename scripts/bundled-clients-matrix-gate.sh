@@ -524,40 +524,19 @@ run_android_cell() {
   adb -s "$serial" logcat -c >/dev/null 2>&1 || true
   adb -s "$serial" shell am force-stop "$ANDROID_PKG" >/dev/null 2>&1 || true
 
-  if ! command -v agent-device >/dev/null; then
-    record android "$client" FAIL "agent-device not on PATH" "$hold" "$cell"
-    return 1
-  fi
-
+  # Runner path: adb + uiautomator only (no agent-device CLI).
   # shellcheck source=scripts/lib/android-ad-scale.sh
   source "$ROOT/scripts/lib/android-ad-scale.sh"
-  local sess="wawona-android-matrix-${client}"
-  local ad_common=(--platform android --serial "$serial" --session "$sess")
+  local activity="${WAWONA_ANDROID_ACTIVITY:-com.aspauldingcode.wawona.MainActivity}"
 
-  # Robust launch + Welcome + Start flow ported from agent-device-smoke.sh: the
-  # Pixel launcher ANR / system dialogs and the Compose Welcome sheet otherwise
-  # eat the Start tap and the cell fails with "Start control not pressed".
   dismiss_android_blockers() {
     adb -s "$serial" shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 2>&1 || true
-    agent-device alert dismiss "${ad_common[@]}" >/dev/null 2>&1 || true
-    if agent-device is visible 'label="Wait"' "${ad_common[@]}" >/dev/null 2>&1; then
-      agent-device press 'label="Wait"' "${ad_common[@]}" >/dev/null 2>&1 || true
-    fi
-    if agent-device is visible 'label="Close app"' "${ad_common[@]}" >/dev/null 2>&1; then
-      agent-device press 'label="Close app"' "${ad_common[@]}" >/dev/null 2>&1 || true
-    fi
   }
   android_press_id() {
-    agent-device press "id=\"$1\"" "${ad_common[@]}" >/dev/null 2>&1 && return 0
-    android_uia_tap_id "$1" && return 0
-    return 1
+    android_uia_tap_id "$1"
   }
   android_press_text() {
-    android_uia_tap_text "$1" && return 0
-    agent-device find "$1" press --first "${ad_common[@]}" >/dev/null 2>&1 && return 0
-    agent-device press "label=\"$1\"" "${ad_common[@]}" >/dev/null 2>&1 && return 0
-    agent-device press "text=\"$1\"" "${ad_common[@]}" >/dev/null 2>&1 && return 0
-    return 1
+    android_uia_tap_text "$1"
   }
   android_machines_markers_present() {
     android_uia_has_id "wwn.machines.root" && return 0
@@ -571,10 +550,9 @@ run_android_cell() {
     android_machines_markers_present && return 0
     android_press_id "wwn.welcome.continue" || true
     android_press_text "Continue" || true
-    agent-device press 'label="Continue"' "${ad_common[@]}" >/dev/null 2>&1 || true
     android_tap_ref 540 1390 || true
     adb -s "$serial" shell input tap 540 1390 >/dev/null 2>&1 || true
-    agent-device wait 2500 "${ad_common[@]}" || true
+    sleep 2
     dismiss_android_blockers
   }
   android_wait_machines_home() {
@@ -599,9 +577,8 @@ run_android_cell() {
       || android_uia_has_id "wwn.machines.editor"; then
       android_press_text "Cancel" || true
       android_press_id "wwn.settings.done" || android_press_text "Done" || true
-      agent-device back "${ad_common[@]}" >/dev/null 2>&1 || true
       adb -s "$serial" shell input keyevent 4 >/dev/null 2>&1 || true
-      agent-device wait 800 "${ad_common[@]}" || true
+      sleep 1
     fi
   }
   android_press_start() {
@@ -612,18 +589,19 @@ run_android_cell() {
     return 1
   }
   matrix_android_start_fail() {
-    agent-device screenshot "$cell/start-fail.png" "${ad_common[@]}" || true
+    adb -s "$serial" exec-out screencap -p >"$cell/start-fail.png" || true
     android_uia_dump >"$cell/start-fail-ui.xml" 2>/dev/null || true
-    agent-device snapshot -i --raw "${ad_common[@]}" >"$cell/start-fail-snapshot.txt" 2>&1 || true
     record android "$client" FAIL "Start control not pressed (see start-fail-ui.xml)" "$hold" "$cell"
-    agent-device close "${ad_common[@]}" || true
+    adb -s "$serial" shell am force-stop "$ANDROID_PKG" >/dev/null 2>&1 || true
   }
 
-  agent-device open "$ANDROID_PKG" --relaunch "${ad_common[@]}" >/dev/null 2>&1 || true
-  agent-device wait 4000 "${ad_common[@]}" || true
+  adb -s "$serial" shell am force-stop "$ANDROID_PKG" >/dev/null 2>&1 || true
+  adb -s "$serial" shell am start -W -n "$ANDROID_PKG/$activity" \
+    >"$cell/am-start.txt" 2>&1 || true
+  sleep 4
   dismiss_android_blockers
   android_dismiss_welcome
-  agent-device wait 2000 "${ad_common[@]}" || true
+  sleep 2
   dismiss_android_blockers
   if ! android_wait_machines_home; then
     matrix_android_start_fail
@@ -635,7 +613,7 @@ run_android_cell() {
     matrix_android_start_fail
     return 1
   fi
-  agent-device wait 6000 "${ad_common[@]}" || true
+  sleep 6
   dismiss_android_blockers
 
   adb -s "$serial" logcat -d >"$cell/logcat-pre.txt" 2>&1 || true
@@ -643,11 +621,6 @@ run_android_cell() {
   while [[ "$t" -lt "$hold" ]]; do
     if ! adb -s "$serial" shell pidof "$ANDROID_PKG" >/dev/null 2>&1; then
       adb -s "$serial" logcat -d >"$cell/logcat.txt" 2>&1 || true
-      # A crashed in-process client takes the host down with it. Release the
-      # agent-device/uiautomator session and force-stop so the NEXT cell starts
-      # from a clean launch. Otherwise a stuck UiAutomation ("already
-      # registered") cascades this one failure into every later client.
-      agent-device close "${ad_common[@]}" >/dev/null 2>&1 || true
       adb -s "$serial" shell am force-stop "$ANDROID_PKG" >/dev/null 2>&1 || true
       record android "$client" FAIL "process died during hold" "$hold" "$cell"
       return 1
@@ -656,20 +629,18 @@ run_android_cell() {
     t=$((t + 2))
   done
   adb -s "$serial" logcat -d >"$cell/logcat.txt" 2>&1 || true
-  agent-device screenshot "$cell/running.png" "${ad_common[@]}" || true
+  adb -s "$serial" exec-out screencap -p >"$cell/running.png" || true
 
   local failpat
   if failpat="$(scan_fail "$cell/logcat.txt")"; then
     record android "$client" FAIL "logcat matched: $failpat" "$hold" "$cell"
-    agent-device press 'label="Stop"' "${ad_common[@]}" >/dev/null 2>&1 || true
-    agent-device close "${ad_common[@]}" || true
+    android_uia_tap_text "Stop" || true
+    adb -s "$serial" shell am force-stop "$ANDROID_PKG" >/dev/null 2>&1 || true
     return 1
   fi
 
-  agent-device press 'id="wwn.machines.stop"' "${ad_common[@]}" >/dev/null 2>&1 \
-    || agent-device press 'label="Stop"' "${ad_common[@]}" >/dev/null 2>&1 \
-    || true
-  agent-device close "${ad_common[@]}" || true
+  android_uia_tap_id "wwn.machines.stop" || android_uia_tap_text "Stop" || true
+  adb -s "$serial" shell am force-stop "$ANDROID_PKG" >/dev/null 2>&1 || true
   record android "$client" PASS "alive ${hold}s after Start; no fail markers" "$hold" "$cell"
   return 0
 }
