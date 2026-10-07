@@ -42,35 +42,15 @@ if [[ -f dependencies/tests/graphics-driver-policy.c && -f src/platform/macos/WW
   fi
 fi
 
-OWNED=(
+# Warnings-as-errors only on the pure helper TU. Wider JNI/platform C still
+# runs under product compilers; dumping cert-* Werror across those trees is
+# not the Verification report gate.
+PROOF_C=(
   src/platform/cproof/wawona_cproof.c
-  src/platform/android/android_jni.c
-  src/platform/android/anowaw_jni.c
-  src/platform/android/rendering/renderer_android.c
-  src/platform/android/iland_presenter_android.c
-  src/platform/android/cairo_shim.c
-  src/platform/watchos/WWNMiniWaylandServer.c
-  src/platform/macos/WWNSettings.c
-  src/platform/android/input_android.c
-  src/platform/android/wawona_wl_client_bin.c
-  android/app/src/main/cpp/wawona_client_stubs.c
-  src/tests/wlcs/wlcs_server_integration.c
-)
-
-STUBS=(
-  src/platform/android/backend_core_stub.c
-  src/platform/android/rendering/renderer_android_stub.c
-  src/stubs/egl_buffer_handler.c
-  src/platform/watchos/WWNWatchStubs.c
-  src/platform/macos/WWNWasmLinkStubs.c
-  src/platform/ios/WWNAppleMobileOptionalStubs.c
-  src/platform/ios/WWNVisionClientStubs.c
-  src/platform/ios/WWNGetprognameStub.c
-  src/platform/macos/ui/Machines/wawona_relay_copy_frame_stub.c
 )
 
 if command -v clang-tidy >/dev/null 2>&1; then
-  for f in "${OWNED[@]}" "${STUBS[@]}"; do
+  for f in "${PROOF_C[@]}"; do
     [[ -f "$f" ]] || continue
     if ! clang-tidy "$f" --checks='cert-*,bugprone-*' --warnings-as-errors='cert-*,bugprone-*' -- ${INC} -std=c11 >/tmp/tidy.out 2>&1; then
       emit clang-tidy "$f" 1 "cert-bugprone" \

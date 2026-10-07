@@ -120,8 +120,8 @@ jobs:
       - uses: actions/checkout@v5
       - uses: DeterminateSystems/nix-installer-action@v22
         with:
-          determinate: true
-      - uses: DeterminateSystems/flakehub-cache-action@v3
+          # cache.nixos.org only. FlakeHub auth is not required for this floor.
+          determinate: false
       - run: bash scripts/verify-nix.sh verification-out/nix.ndjson
       - if: always()
         uses: actions/upload-artifact@v4
