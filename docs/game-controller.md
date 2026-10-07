@@ -5,12 +5,12 @@ Status of `GameController.framework` support on Apple (UIKit) platforms.
 ## Summary
 
 Implemented. Hardware gamepads, `GCMouse`, and `GCKeyboard` presence are handled
-by [`WWNGameControllerManager`](../src/platform/ios/WWNGameControllerManager.m),
+by [`GameControllerBridge`](../Sources/WawonaApple/Input/GameControllerBridge.swift),
 which maps controller input onto the compositor's virtual pointer through
-[`WWNCompositorView_ios`](../src/platform/ios/WWNCompositorView_ios.m). The
+[`CompositorView`](../Sources/WawonaApple/Present/CompositorView.swift). The
 manager is started once at app init in
-[`main.m`](../src/platform/macos/main.m) (the shared UIKit app delegate used by
-the iOS / tvOS / Mac Catalyst targets).
+[`Darwin/Sources/Main.swift`](../Darwin/Sources/Main.swift) (Swift `@main`
+entry for Apple products).
 
 ## Input mapping
 

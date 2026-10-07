@@ -47,7 +47,8 @@ Clients that require a real pointer should run through the virtual-pointer path.
 Prefer nested/waypipe delivery.
 
 ### GPU vs SHM (all platforms)
-`waypipe` and dmabuf import need a working Vulkan ICD. `main.m` resolves the
+`waypipe` and dmabuf import need a working Vulkan ICD. App launch
+(`Darwin/Sources/Main.swift` + graphics prefs) resolves the
 bundled ICD (KosmicKrisp/MoltenVK) into `VK_DRIVER_FILES`; `WWNWaypipeRunner`
 forces `--no-gpu` when `VK_DRIVER_FILES` is unset so sessions never stall on a
 missing GPU transport. See [`drivers-how-to`](./drivers-how-to/) and

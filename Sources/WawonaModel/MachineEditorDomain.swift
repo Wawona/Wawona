@@ -15,11 +15,25 @@ public enum MachineEditorDomain {
             )
         }
 
+        var session = NativeShellSession.from(profile: profile)
+        let uiType = profile.type.selectablePivot
+        var launcher = resolvedLauncherName(for: profile)
+        var remote = profile.remoteCommand
+        // Legacy Wayland "custom" launcher → Terminal Custom Command.
+        if launcher == "custom" {
+            session = NativeShellSession(kind: .terminal, useSSH: session.useSSH)
+            if remote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                remote = ""
+            }
+            launcher = ClientLauncher.presets.first?.name ?? "weston-simple-shm"
+        }
         return MachineEditorState(
             id: profile.id,
             name: profile.name,
-            typeRawValue: profile.type.rawValue,
-            selectedLauncherName: resolvedLauncherName(for: profile),
+            typeRawValue: uiType.rawValue,
+            nativeShellKindRawValue: session.kind.rawValue,
+            nativeShellUseSSH: session.useSSH,
+            selectedLauncherName: launcher,
             sshHost: profile.sshHost,
             sshUser: profile.sshUser,
             sshPortText: String(profile.sshPort),
@@ -27,11 +41,11 @@ public enum MachineEditorDomain {
             sshAuthMethod: profile.sshAuthMethod,
             sshKeyPath: profile.sshKeyPath,
             sshKeyPassphrase: profile.sshKeyPassphrase,
-            remoteCommand: profile.remoteCommand,
+            remoteCommand: remote,
             inputProfile: profile.runtimeOverrides.inputProfile
                 ?? WawonaPreferences.normalizedTouchInputType(nil),
             bundledAppID: profile.runtimeOverrides.bundledAppID ?? "",
-            waypipeEnabled: profile.runtimeOverrides.waypipeEnabled ?? true,
+            waypipeEnabled: profile.runtimeOverrides.waypipeEnabled ?? session.waypipeEnabled,
             containerRef: profile.containerSettings?.containerRef ?? "",
             entryCommand: profile.containerSettings?.entryCommand ?? "",
             desktopSession: profile.containerSettings?.desktopSession ?? (profile.type == .container),
@@ -49,33 +63,56 @@ public enum MachineEditorDomain {
     }
 
     public static func profile(from state: MachineEditorState) -> MachineProfile {
-        let type = MachineType(rawValue: state.typeRawValue) ?? .native
+        let session = NativeShellSession(
+            kind: NativeShellKind(rawValue: state.nativeShellKindRawValue) ?? .terminal,
+            useSSH: state.nativeShellUseSSH
+        )
+        let uiType = MachineType(rawValue: state.typeRawValue) ?? .native
+        let storageType: MachineType
+        if uiType == .native {
+            storageType = session.storageType
+        } else {
+            storageType = uiType
+        }
+
+        let bundled = uiType == .native
+            ? session.resolvedBundledAppID(selectedLauncher: state.selectedLauncherName)
+            : nil
+        let isWasm = storageType == .wasm || session.kind == .wasm
+
         var profile = MachineProfile(
             id: state.id ?? UUID().uuidString,
             name: state.name.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines),
-            type: type,
+            type: storageType,
             runtimeOverrides: MachineRuntimeOverrides(
                 inputProfile: state.inputProfile.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines),
-                bundledAppID: state.isWasm
-                    ? "wawona-wasm"
-                    : (state.isNative
-                        ? state.bundledAppID.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
-                        : nil),
-                waypipeEnabled: state.waypipeEnabled,
-                wasmModulePath: state.wasmModulePath.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines).isEmpty
-                    ? nil : state.wasmModulePath.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines),
-                wasmLaunchMode: state.isWasm ? "command" : nil,
-                wasmPackage: state.wasmPackage.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines).isEmpty
-                    ? nil : state.wasmPackage.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines),
-                wasmCommand: state.wasmCommand.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines).isEmpty
-                    ? nil : state.wasmCommand.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+                bundledAppID: bundled,
+                waypipeEnabled: uiType == .native ? session.waypipeEnabled : state.waypipeEnabled,
+                wasmModulePath: isWasm
+                    && !state.wasmModulePath.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines).isEmpty
+                    ? state.wasmModulePath.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+                    : nil,
+                wasmLaunchMode: isWasm ? "command" : nil,
+                wasmPackage: isWasm
+                    && !state.wasmPackage.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines).isEmpty
+                    ? state.wasmPackage.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+                    : nil,
+                wasmCommand: isWasm
+                    ? (state.wasmCommand.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines).isEmpty
+                        ? "wasm hello-wasi-gui"
+                        : state.wasmCommand.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines))
+                    : nil
             )
         )
 
-        if state.isNative {
-            profile.launchers = ClientLauncher.presets.filter { $0.name == state.selectedLauncherName }
+        if uiType == .native && session.kind == .wayland, let bundled {
+            profile.launchers = ClientLauncher.presets.filter { $0.name == bundled }
         } else {
             profile.launchers = []
+        }
+
+        let trimmedRemote = state.remoteCommand.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+        if uiType == .native && session.needsSSHFields {
             profile.sshHost = MachineProfileDomain.sanitizeSSHHost(state.sshHost)
             profile.sshUser = state.sshUser.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
             profile.sshPort = MachineProfileDomain.normalizeSSHPort(state.sshPortText)
@@ -83,7 +120,23 @@ public enum MachineEditorDomain {
             profile.sshAuthMethod = state.sshAuthMethod
             profile.sshKeyPath = state.sshKeyPath.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
             profile.sshKeyPassphrase = state.sshKeyPassphrase
-            profile.remoteCommand = state.remoteCommand.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+            profile.remoteCommand = trimmedRemote
+        } else if uiType == .native {
+            profile.sshHost = ""
+            profile.sshUser = ""
+            profile.sshPort = 22
+            profile.sshPassword = ""
+            profile.sshAuthMethod = 0
+            profile.sshKeyPath = ""
+            profile.sshKeyPassphrase = ""
+            // Terminal Custom Command (local) and Waypipe default command share remoteCommand.
+            if session.kind == .terminal {
+                profile.remoteCommand = trimmedRemote
+            } else if session.kind == .waypipe {
+                profile.remoteCommand = trimmedRemote.isEmpty ? "weston-simple-shm" : trimmedRemote
+            } else {
+                profile.remoteCommand = ""
+            }
         }
 
         if state.isContainer {
@@ -106,7 +159,8 @@ public enum MachineEditorDomain {
                 memoryMB: max(256, min(state.vmMemoryMB, 4096)),
                 diskGiB: max(4, min(state.vmDiskGiB, 64)),
                 maxDiskGiB: 64,
-                notes: state.vmNotes.trimmingCharacters(in: .whitespacesAndNewlines)
+                notes: state.vmNotes.trimmingCharacters(in: .whitespacesAndNewlines),
+                nixFiles: profile.vmSettings?.nixFiles
             )
         }
 
@@ -120,6 +174,8 @@ public enum MachineEditorDomain {
         let bundled = profile.runtimeOverrides.bundledAppID?
             .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) ?? ""
         if !bundled.isEmpty,
+           bundled != "wawona-shell",
+           bundled != "wawona-wasm",
            ClientLauncher.presets.contains(where: { $0.name == bundled }) {
             return bundled
         }

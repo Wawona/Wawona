@@ -1568,10 +1568,17 @@ pub struct CompositorState {
     /// Default off. Nested compositor chrome uses a separate policy.
     pub touch_pointer_emulation: bool,
 
+    /// CarPlay / Android Auto / external-display controller. See `HostSeatMode`.
+    pub host_seat_mode: u32,
+
     /// Whether to advertise zwp_fullscreen_shell_v1
     pub advertise_fullscreen_shell: bool,
     /// Runtime protocol exposure profile.
     pub protocol_profile: ProtocolProfile,
+
+    /// Host resize generation. Loom checks the atomic bump. The first bump is 0.
+    /// Callers that want a 1-based id add one.
+    size_generation: crate::core::invariants::GenerationCounter,
     /// Smithay runtime protocol ownership boundary.
     pub smithay_runtime: SmithayRuntimeState,
     /// In-process IM-v2 stand-in so Smithay accepts TI-v3 from apps.
@@ -1691,6 +1698,7 @@ impl CompositorState {
             keyboard_repeat_rate: 33,
             keyboard_repeat_delay: 500,
             touch_pointer_emulation: false,
+            host_seat_mode: 0,
             advertise_fullscreen_shell,
             protocol_profile,
             smithay_runtime: SmithayRuntimeState::default(),
@@ -1699,6 +1707,7 @@ impl CompositorState {
             dnd_bridge: Arc::new(RwLock::new(DndBridge::default())),
             next_surface_id: 1,
             next_window_id: 1,
+            size_generation: crate::core::invariants::GenerationCounter::new(),
             serial: 0,
             commit_before_ack_count: 0,
 
@@ -1719,6 +1728,11 @@ impl CompositorState {
     }
 
     /// Generate next window ID
+    /// Next 1-based size-authority generation. Distinct across concurrent bumps.
+    pub fn next_size_generation(&self) -> u64 {
+        self.size_generation.bump().wrapping_add(1)
+    }
+
     pub fn next_window_id(&mut self) -> u32 {
         let id = self.next_window_id;
         self.next_window_id += 1;

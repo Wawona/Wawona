@@ -25,3 +25,8 @@ Hard rejects:
 Before claiming one Mode A IPA is proven across its supported OS range, migrate
 every post-13 SwiftUI API into named shims and run both forced compatibility
 paths. Physical iOS 11/12 devices remain the final UIKit proof.
+
+Machine settings use `backport.editorSheet()` in both editor hosts. iPadOS 18+
+uses `.presentationSizing(.page)` with the large detent so the system adapts to
+the current window. iPadOS 16/17 opens large; older hosts retain native sheets.
+Phone keeps medium/large. Do not apply the default medium phone detent to iPad.

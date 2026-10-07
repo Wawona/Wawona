@@ -10,8 +10,8 @@ struct MachineDetailView: View {
         VStack(alignment: .leading, spacing: 12) {
             SectionHeader(profile.name, subtitle: profile.type.rawValue)
             if let onOpenSettings {
-                Button("Open Machine Settings", action: onOpenSettings)
-                    .buttonStyle(.borderedProminent)
+                WawonaButton("Open Machine Settings", action: onOpenSettings)
+                    .backport.borderedButton(prominent: true)
             }
             ForEach(sessions.sessions.filter { $0.machineId == profile.id }) { session in
                 GlassCard {

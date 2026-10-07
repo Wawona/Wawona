@@ -4808,6 +4808,11 @@ impl WawonaCore {
         state.set_touch_pointer_emulation(enabled);
     }
 
+    pub fn set_host_seat_mode(&self, mode: u32) {
+        let mut state = self.state.write_recover();
+        state.set_host_seat_mode(mode);
+    }
+
     // =========================================================================
     // Text Input (IME / Emoji)
     // =========================================================================

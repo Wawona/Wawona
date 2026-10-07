@@ -36,13 +36,11 @@ enum WawonaA11y {
   static let settingsDisplay = "wwn.settings.display"
 }
 
-#if SWIFT_PACKAGE
 extension View {
-  /// SPM-only. App targets compile `WWNAccessibilityIdentifiers.swift` instead.
+  /// Stable a11y id + label for agent-device / XCUITest.
   func wwnA11y(_ id: String, label: String? = nil) -> some View {
     self
-      .accessibilityIdentifier(id)
-      .accessibilityLabel(label ?? id)
+      .accessibility(identifier: id)
+      .accessibility(label: Text(label ?? id))
   }
 }
-#endif

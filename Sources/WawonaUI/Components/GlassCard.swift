@@ -19,14 +19,14 @@ struct GlassCard<Content: View>: View {
         content
             .padding(14)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background {
+            .background(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .backport.liquidGlass(cornerRadius: cornerRadius)
-            }
-            .overlay {
+            )
+            .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .strokeBorder(outlineColor, lineWidth: 1)
-            }
+            )
     }
 
     private var outlineColor: Color {

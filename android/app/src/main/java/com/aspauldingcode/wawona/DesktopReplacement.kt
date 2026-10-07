@@ -165,3 +165,16 @@ object HomeIntentBus {
         homeTick.intValue += 1
     }
 }
+
+/**
+ * App Info → Preferences (`ACTION_APPLICATION_PREFERENCES`) opens the same
+ * in-app Global Settings host. Play/sideload does not get a second system
+ * Settings inject surface (`wawona-global-settings-exclusive`).
+ */
+object PreferencesIntentBus {
+    val openTick = mutableIntStateOf(0)
+
+    fun signalOpen() {
+        openTick.intValue += 1
+    }
+}

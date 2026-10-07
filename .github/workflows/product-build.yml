@@ -147,7 +147,7 @@ jobs:
             cores = 0
       - uses: DeterminateSystems/flakehub-cache-action@v3
 
-      - name: Build TrollStore iOS 14+ and Sileo iOS 11+ products
+      - name: Build TrollStore iOS 14+ and Sileo iOS 13+ products
         run: |
           ./.github/scripts/nix-retry.sh nix build ".#wawona-ios-modeb-tipa-slim" --print-build-logs --out-link result-tipa
           ./.github/scripts/nix-retry.sh nix build ".#wawona-ios-modeb-deb-rootless-slim" --print-build-logs --out-link result-sileo
@@ -158,8 +158,8 @@ jobs:
           cp -L result-tipa/*.tipa dist/ios-modeb/
           cp -L result-sileo/*.deb dist/ios-modeb/
           bash ./.github/scripts/verify-ios-modeb-artifacts.sh --mode-b dist/ios-modeb/*.tipa
-          dpkg-deb -f dist/ios-modeb/*.deb Depends | grep -Fx 'firmware (>= 11.0)'
-          printf '{"tipa_min_ios":"14.0","sileo_min_ios":"11.0","sha":"%s"}\n' "${{ github.sha }}" \
+          dpkg-deb -f dist/ios-modeb/*.deb Depends | grep -Fx 'firmware (>= 13.0)'
+          printf '{"tipa_min_ios":"14.0","sileo_min_ios":"13.0","sha":"%s"}\n' "${{ github.sha }}" \
             > dist/ios-modeb/product-manifest.json
 
       - uses: actions/upload-artifact@v7

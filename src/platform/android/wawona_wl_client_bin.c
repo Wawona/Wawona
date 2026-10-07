@@ -18,6 +18,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "../cproof/wawona_cproof.h"
+
 #define TAG "WawonaWlBin"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
@@ -51,9 +53,10 @@ static const struct client_map k_clients[] = {
 
 static const struct client_map *lookup_client(const char *name) {
   size_t i;
+  const size_t n = sizeof(k_clients) / sizeof(k_clients[0]);
   if (!name || !name[0])
     return NULL;
-  for (i = 0; i < sizeof(k_clients) / sizeof(k_clients[0]); i++) {
+  for (i = 0; wawona_client_map_index_ok(i, n); i++) {
     if (strcmp(name, k_clients[i].exec_name) == 0)
       return &k_clients[i];
   }

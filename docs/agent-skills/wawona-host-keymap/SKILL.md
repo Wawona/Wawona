@@ -27,5 +27,7 @@ OSK inject, Watch keymap, or `xkeyboard-config` packaging.
 - Do not synthesize `wl_pointer.axis` from Multi-Touch one-finger or two-finger
   drag. Apps get `wl_touch.motion`. Pointer + `BTN_LEFT` only for nested
   weston/niri chrome (or the off-by-default pointer-emulation pref)
+- Locale `C` compose data is `share/X11/locale` plus `XLOCALEDIR`. Do not
+  map `C` at `iso8859-1/Compose` (not valid UTF-8).
 
 Query `wwn-mcp` first.

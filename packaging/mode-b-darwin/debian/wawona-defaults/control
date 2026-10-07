@@ -1,0 +1,9 @@
+Package: wawona-defaults
+Version: 26.10.6
+Section: utils
+Priority: optional
+Architecture: iphoneos-arm64
+Maintainer: Wawona <hello@wawona.io>
+Depends: firmware (>= 13.0)
+Description: Procursus defaults for jailbreak domains
+ Mode B only. Distinct from the in-app container defaults command.

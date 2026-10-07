@@ -10,7 +10,7 @@
 			<key>Type</key>
 			<string>PSGroupSpecifier</string>
 			<key>FooterText</key>
-			<string>Toggles here use the same keys as in-app Settings. Copy logs, Import file, Send to Watch, and the Env Vars editor stay in the Wawona app.</string>
+			<string>This is the only Global Wawona Settings host on iPhone and iPad. Machine editors, Desktop (Mode B builds), About, and one-shot actions (Send to Watch, Import) stay in the app and do not duplicate these toggles.</string>
 		</dict>
 		<dict>
 			<key>Type</key>

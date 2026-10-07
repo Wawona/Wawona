@@ -150,7 +150,7 @@ Version bump policy: merge user `home/` on upgrade except replace `.zshrc` if us
 
 ## Environment wiring
 
-Set in `WWNWaypipeRunner.m` before launching `weston_terminal_main` or nested Weston:
+Set in `Sources/WawonaApple/Runners/WaypipeRunner.swift` before launching `weston_terminal_main` or nested Weston:
 
 ```objc
 NSString *rootfs = [[WWNRootfsManager sharedManager] rootfsPath];

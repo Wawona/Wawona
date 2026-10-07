@@ -126,7 +126,7 @@ Details: [ROOTFS-AND-ZSH.md](ROOTFS-AND-ZSH.md)
 |-----------|------|
 | `xcodegen.nix` | Copy `wawona-rootfs` into Resources |
 | `WWNRootfsManager` (new) | First-launch extract to Application Support |
-| `WWNWaypipeRunner.m` | Set `HOME`, `PATH`, `WAWONA_SHELL`, … |
+| `Sources/WawonaApple/Runners/WaypipeRunner.swift` | Set `HOME`, `PATH`, `WAWONA_SHELL`, … |
 | Link | `libwwn-pty.a` + `libweston-terminal.a` |
 
 ### 2d. Patch `terminal.c` spawn sites

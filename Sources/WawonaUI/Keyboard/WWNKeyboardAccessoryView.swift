@@ -6,6 +6,7 @@
 //  Objective-C bridge and host coordinator for KeyboardAccessoryView.
 //
 
+import SwiftUI
 import UIKit
 
 // MARK: - Keycodes Constants (evdev/XKB keycodes for Wayland injection)
@@ -156,6 +157,7 @@ public final class WWNKeyboardAccessoryView: KeyboardAccessoryView, WWNKeyboardA
         }
         onToolbarSettingsRequested = { [weak self] in
             self?.wwnDelegate?.keyboardAccessoryDidRequestToolbarSettings?()
+            self?.presentToolbarSettings()
         }
         onModifiersChanged = { [weak self] mods in
             guard let self = self, let del = self.wwnDelegate else { return }
@@ -182,6 +184,34 @@ public final class WWNKeyboardAccessoryView: KeyboardAccessoryView, WWNKeyboardA
     @objc public func toggleDrawer() {
         // Toggle the drawer through the toolbar's extra keys handler
         toolbarView.rebuildForCurrentWidth()
+    }
+
+    private func presentToolbarSettings() {
+        let root = NavigationView {
+            KeyboardToolbarSettingsView()
+        }
+        .navigationViewStyle(StackNavigationViewStyle())
+        let host = UIHostingController(rootView: root)
+        host.modalPresentationStyle = .pageSheet
+        guard let presenter = nearestPresenter() else { return }
+        presenter.present(host, animated: true)
+    }
+
+    private func nearestPresenter() -> UIViewController? {
+        var responder: UIResponder? = self
+        var found: UIViewController?
+        while let next = responder {
+            if let controller = next as? UIViewController {
+                found = controller
+                break
+            }
+            responder = next.next
+        }
+        var top = found ?? window?.rootViewController
+        while let presented = top?.presentedViewController {
+            top = presented
+        }
+        return top
     }
 
     @objc public func setKeyboardUiModeAccessoryOnly(_ accessoryOnly: Bool) {

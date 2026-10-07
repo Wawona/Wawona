@@ -1,22 +1,28 @@
 package com.aspauldingcode.wawona
 
-import androidx.compose.foundation.border
+import android.content.ClipboardManager
+import android.content.Context
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
@@ -220,6 +226,12 @@ fun ModifierAccessoryBar(
         ModifierState.clearStickyModifiers()
     }
 
+    val context = LocalContext.current
+    val layout = remember { ToolbarLayoutStore(context.applicationContext) }
+    var showSettings by remember { mutableStateOf(false) }
+    var arrowsOpen by remember { mutableStateOf(false) }
+    var revealedDrawers by remember { mutableStateOf(if (layout.drawerOpenByDefault) 1 else 0) }
+    var cycleIndex by remember { mutableStateOf(0) }
     val scheme = MaterialTheme.colorScheme
     val barBg = scheme.surfaceContainer
     val keyInactive = scheme.surfaceVariant
@@ -264,138 +276,283 @@ fun ModifierAccessoryBar(
             .padding(horizontal = 4.dp, vertical = 2.dp)
             .height(36.dp)
 
-        Column(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = rowMod,
-            horizontalArrangement = Arrangement.spacedBy(3.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            listOf(
-                "ESC" to { sendAccessoryKey(LinuxKey.ESC) },
-                (if (ModifierState.shiftActive) "~" else "`") to { sendAccessoryKey(LinuxKey.GRAVE) },
-                "TAB" to { sendAccessoryKey(LinuxKey.TAB) },
-                (if (ModifierState.shiftActive) "?" else "/") to { sendAccessoryKey(LinuxKey.SLASH) },
-                (if (ModifierState.shiftActive) "_" else "-") to { sendAccessoryKey(LinuxKey.MINUS) },
-                "↑" to { sendAccessoryKey(LinuxKey.UP) },
-                "HOME" to { sendAccessoryKey(LinuxKey.HOME) },
-                "PGUP" to { sendAccessoryKey(LinuxKey.PAGEUP) },
-                "END" to { sendAccessoryKey(LinuxKey.END) }
-            ).forEach { (label, action) ->
-                AccessoryKey(
-                    label, keyInactive, keyText,
-                    onClick = { action() },
-                    modifier = Modifier.weight(1f)
-                )
+        fun pressId(id: String) {
+            val custom = layout.custom(id)
+            if (custom != null) {
+                WawonaNative.nativeCommitText(custom.text)
+                return
+            }
+            val spec = ToolbarCatalog.spec(id)
+            when (spec.kind) {
+                ToolbarKeyKind.KEY -> sendAccessoryKey(spec.keycode)
+                ToolbarKeyKind.SHIFTED -> {
+                    val wasShift = ModifierState.shiftActive
+                    ModifierState.shiftActive = true
+                    sendAccessoryKey(spec.keycode)
+                    if (!wasShift && !ModifierState.shiftLocked) ModifierState.shiftActive = false
+                }
+                ToolbarKeyKind.MOD -> when (spec.mod) {
+                    "shift" -> handleModifierTap(
+                        ModifierState.shiftActive, ModifierState.shiftLocked, lastModShiftTap,
+                        { ModifierState.shiftActive = it },
+                        { ModifierState.shiftLocked = it },
+                        { lastModShiftTap = it }
+                    )
+                    "ctrl" -> handleModifierTap(
+                        ModifierState.ctrlActive, ModifierState.ctrlLocked, lastModCtrlTap,
+                        { ModifierState.ctrlActive = it },
+                        { ModifierState.ctrlLocked = it },
+                        { lastModCtrlTap = it }
+                    )
+                    "alt" -> handleModifierTap(
+                        ModifierState.altActive, ModifierState.altLocked, lastModAltTap,
+                        { ModifierState.altActive = it },
+                        { ModifierState.altLocked = it },
+                        { lastModAltTap = it }
+                    )
+                    "super" -> handleModifierTap(
+                        ModifierState.superActive, ModifierState.superLocked, lastModSuperTap,
+                        { ModifierState.superActive = it },
+                        { ModifierState.superLocked = it },
+                        { lastModSuperTap = it }
+                    )
+                }
+                ToolbarKeyKind.ACTION -> when (id) {
+                    "dismiss" -> if (keyboardExpanded) onToggleKeyboardExpanded()
+                    "toolbarSettings" -> showSettings = true
+                    "arrowDrawerToggle" -> arrowsOpen = !arrowsOpen
+                    "drawerToggle" -> {
+                        val count = layout.drawers.size
+                        if (layout.drawerToggleMode == "cycle" && count > 1) {
+                            if (revealedDrawers == 0) {
+                                revealedDrawers = 1
+                                cycleIndex = 0
+                            } else {
+                                cycleIndex = (cycleIndex + 1) % count
+                                if (cycleIndex == 0) revealedDrawers = 0
+                            }
+                        } else if (revealedDrawers >= count) {
+                            revealedDrawers = 0
+                        } else {
+                            revealedDrawers += 1
+                        }
+                    }
+                    "paste" -> {
+                        val clip = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                        val data = clip?.primaryClip
+                        val text = if (data != null && data.itemCount > 0) {
+                            data.getItemAt(0).coerceToText(context)?.toString()
+                        } else {
+                            null
+                        }
+                        if (!text.isNullOrEmpty()) WawonaNative.nativeCommitText(text)
+                    }
+                }
             }
         }
 
-        Row(
-            modifier = rowMod,
-            horizontalArrangement = Arrangement.spacedBy(3.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            AccessoryModKey(
-                label = "⇧",
-                active = ModifierState.shiftActive,
-                locked = ModifierState.shiftLocked,
-                inactiveColor = keyInactive,
-                stickyColor = keySticky,
-                lockedColor = keyLocked
-            ) {
-                handleModifierTap(
-                    ModifierState.shiftActive, ModifierState.shiftLocked, lastModShiftTap,
-                    { ModifierState.shiftActive = it },
-                    { ModifierState.shiftLocked = it },
-                    { lastModShiftTap = it }
-                )
-            }
-            AccessoryModKey(
-                label = "CTRL",
-                active = ModifierState.ctrlActive,
-                locked = ModifierState.ctrlLocked,
-                inactiveColor = keyInactive,
-                stickyColor = keySticky,
-                lockedColor = keyLocked
-            ) {
-                handleModifierTap(
-                    ModifierState.ctrlActive, ModifierState.ctrlLocked, lastModCtrlTap,
-                    { ModifierState.ctrlActive = it },
-                    { ModifierState.ctrlLocked = it },
-                    { lastModCtrlTap = it }
-                )
-            }
-            AccessoryModKey(
-                label = "ALT",
-                active = ModifierState.altActive,
-                locked = ModifierState.altLocked,
-                inactiveColor = keyInactive,
-                stickyColor = keySticky,
-                lockedColor = keyLocked
-            ) {
-                handleModifierTap(
-                    ModifierState.altActive, ModifierState.altLocked, lastModAltTap,
-                    { ModifierState.altActive = it },
-                    { ModifierState.altLocked = it },
-                    { lastModAltTap = it }
-                )
-            }
-            AccessoryModKey(
-                label = "⌘",
-                active = ModifierState.superActive,
-                locked = ModifierState.superLocked,
-                inactiveColor = keyInactive,
-                stickyColor = keySticky,
-                lockedColor = keyLocked
-            ) {
-                handleModifierTap(
-                    ModifierState.superActive, ModifierState.superLocked, lastModSuperTap,
-                    { ModifierState.superActive = it },
-                    { ModifierState.superLocked = it },
-                    { lastModSuperTap = it }
-                )
-            }
-            listOf(
-                "←" to LinuxKey.LEFT,
-                "↓" to LinuxKey.DOWN,
-                "→" to LinuxKey.RIGHT,
-                "PGDN" to LinuxKey.PAGEDOWN
-            ).forEach { (label, keycode) ->
-                AccessoryKey(
-                    label, keyInactive, keyText,
-                    onClick = { sendAccessoryKey(keycode) },
-                    modifier = Modifier.weight(1f)
-                )
-            }
-            AccessoryKey(
-                if (keyboardExpanded) "⌨↓" else "⌨↑",
-                keyInactive,
-                keyText,
-                onClick = onToggleKeyboardExpanded,
-                modifier = Modifier
-                    .weight(1f)
-                    .pointerInput(keyboardExpanded) {
-                        var dragDistanceY = 0f
-                        detectDragGestures(
-                            onDragStart = {
-                                dragDistanceY = 0f
-                            },
-                            onDrag = { change, dragAmount ->
-                                change.consume()
-                                dragDistanceY += dragAmount.y
-                            },
-                            onDragEnd = {
-                                if (!keyboardExpanded && abs(dragDistanceY) > 28f) {
-                                    onCollapseToPipByDrag()
-                                }
-                            },
-                            onDragCancel = {
-                                dragDistanceY = 0f
-                            }
-                        )
-                    }
+        if (showSettings) {
+            ToolbarCustomizeDialog(
+                layout = layout,
+                onDismiss = { showSettings = false },
             )
         }
+
+        Column(modifier = Modifier.fillMaxWidth()) {
+            if (arrowsOpen) {
+                ToolbarKeyRow(
+                    listOf("arrowLeft", "arrowDown", "arrowUp", "arrowRight"),
+                    rowMod, keyInactive, keySticky, keyLocked, keyText, layout,
+                ) { pressId(it) }
+            }
+            val drawerRows = if (layout.drawerToggleMode == "cycle" && revealedDrawers > 0) {
+                listOf(layout.drawers.getOrElse(cycleIndex) { emptyList() })
+            } else {
+                layout.drawers.take(revealedDrawers)
+            }
+            drawerRows.forEach { row ->
+                ToolbarKeyRow(row, rowMod, keyInactive, keySticky, keyLocked, keyText, layout) {
+                    pressId(it)
+                }
+            }
+            ToolbarKeyRow(
+                layout.main, rowMod, keyInactive, keySticky, keyLocked, keyText, layout,
+                trailing = {
+                    AccessoryKey(
+                        if (keyboardExpanded) "IME" else "IME",
+                        keyInactive,
+                        keyText,
+                        onClick = onToggleKeyboardExpanded,
+                        modifier = Modifier
+                            .width(48.dp)
+                            .pointerInput(keyboardExpanded) {
+                                var dragDistanceY = 0f
+                                detectDragGestures(
+                                    onDragStart = { dragDistanceY = 0f },
+                                    onDrag = { change, dragAmount ->
+                                        change.consume()
+                                        dragDistanceY += dragAmount.y
+                                    },
+                                    onDragEnd = {
+                                        if (!keyboardExpanded && abs(dragDistanceY) > 28f) {
+                                            onCollapseToPipByDrag()
+                                        }
+                                    },
+                                    onDragCancel = { dragDistanceY = 0f }
+                                )
+                            },
+                    )
+                },
+            ) { pressId(it) }
         }
+    }
+}
+
+@Composable
+private fun ToolbarKeyRow(
+    ids: List<String>,
+    rowMod: Modifier,
+    inactive: Color,
+    sticky: Color,
+    locked: Color,
+    textColor: Color,
+    layout: ToolbarLayoutStore,
+    trailing: (@Composable () -> Unit)? = null,
+    onPress: (String) -> Unit,
+) {
+    Row(
+        modifier = rowMod.horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ids.forEach { id ->
+            val custom = layout.custom(id)
+            val spec = ToolbarCatalog.spec(id)
+            val label = custom?.label ?: spec.label
+            val active = when (spec.mod) {
+                "shift" -> ModifierState.shiftActive
+                "ctrl" -> ModifierState.ctrlActive
+                "alt" -> ModifierState.altActive
+                "super" -> ModifierState.superActive
+                else -> false
+            }
+            val isLocked = when (spec.mod) {
+                "shift" -> ModifierState.shiftLocked
+                "ctrl" -> ModifierState.ctrlLocked
+                "alt" -> ModifierState.altLocked
+                "super" -> ModifierState.superLocked
+                else -> false
+            }
+            val bg = when {
+                isLocked -> locked
+                active -> sticky
+                else -> inactive
+            }
+            AccessoryKey(
+                label, bg, textColor,
+                onClick = { onPress(id) },
+                modifier = Modifier.width(52.dp),
+            )
+        }
+        trailing?.invoke()
+    }
+}
+
+@Composable
+private fun ToolbarCustomizeDialog(
+    layout: ToolbarLayoutStore,
+    onDismiss: () -> Unit,
+) {
+    var label by remember { mutableStateOf("") }
+    var text by remember { mutableStateOf("") }
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Surface(shape = RoundedCornerShape(12.dp)) {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 520.dp)
+                    .verticalScroll(rememberScrollState())
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text("Toolbar Keys", style = MaterialTheme.typography.titleMedium)
+                Text("Main row", style = MaterialTheme.typography.labelLarge)
+                layout.main.forEach { id ->
+                    ToolbarEditLine(
+                        title = layout.custom(id)?.label ?: ToolbarCatalog.spec(id).label,
+                        onUp = { layout.move(id, "main", -1) },
+                        onDown = { layout.move(id, "main", 1) },
+                        onMove = { layout.moveTo(id, "main", "drawer0") },
+                        moveLabel = "Drawer",
+                        onHide = { layout.hide(id) },
+                    )
+                }
+                layout.drawers.forEachIndexed { index, row ->
+                    Text("Drawer ${index + 1}", style = MaterialTheme.typography.labelLarge)
+                    row.forEach { id ->
+                        ToolbarEditLine(
+                            title = layout.custom(id)?.label ?: ToolbarCatalog.spec(id).label,
+                            onUp = { layout.move(id, "drawer$index", -1) },
+                            onDown = { layout.move(id, "drawer$index", 1) },
+                            onMove = { layout.moveTo(id, "drawer$index", "main") },
+                            moveLabel = "Main",
+                            onHide = { layout.hide(id) },
+                        )
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = { layout.setDrawerRowCount(layout.drawers.size - 1) }) {
+                        Text("Fewer rows")
+                    }
+                    Text("${layout.drawers.size}")
+                    TextButton(onClick = { layout.setDrawerRowCount(layout.drawers.size + 1) }) {
+                        Text("More rows")
+                    }
+                }
+                TextButton(onClick = { layout.updateDrawerOpenByDefault(!layout.drawerOpenByDefault) }) {
+                    Text(if (layout.drawerOpenByDefault) "Drawer starts open" else "Drawer starts closed")
+                }
+                TextButton(onClick = {
+                    layout.updateDrawerToggleMode(if (layout.drawerToggleMode == "cycle") "stack" else "cycle")
+                }) {
+                    Text(if (layout.drawerToggleMode == "cycle") "More button: cycle" else "More button: stack")
+                }
+                OutlinedTextField(value = label, onValueChange = { label = it }, label = { Text("Custom label") })
+                OutlinedTextField(value = text, onValueChange = { text = it }, label = { Text("Text to send") })
+                TextButton(onClick = {
+                    layout.addCustom(label, text)
+                    label = ""
+                    text = ""
+                }) { Text("Add custom key") }
+                if (layout.hidden.isNotEmpty()) {
+                    Text("Hidden", style = MaterialTheme.typography.labelLarge)
+                    layout.hidden.forEach { id ->
+                        TextButton(onClick = { layout.unhide(id) }) {
+                            Text("Show ${layout.custom(id)?.label ?: ToolbarCatalog.spec(id).label}")
+                        }
+                    }
+                }
+                TextButton(onClick = { layout.reset() }) { Text("Reset to defaults") }
+                TextButton(onClick = onDismiss) { Text("Done") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ToolbarEditLine(
+    title: String,
+    onUp: () -> Unit,
+    onDown: () -> Unit,
+    onMove: () -> Unit,
+    moveLabel: String,
+    onHide: () -> Unit,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(title, modifier = Modifier.weight(1f), maxLines = 1)
+        TextButton(onClick = onUp) { Text("Up") }
+        TextButton(onClick = onDown) { Text("Down") }
+        TextButton(onClick = onMove) { Text(moveLabel) }
+        TextButton(onClick = onHide) { Text("Hide") }
     }
 }
 
@@ -421,35 +578,6 @@ private fun AccessoryKey(
             text = label,
             fontSize = 12.sp,
             maxLines = 1
-        )
-    }
-}
-
-@Composable
-private fun RowScope.AccessoryModKey(
-    label: String,
-    active: Boolean,
-    locked: Boolean,
-    inactiveColor: Color,
-    stickyColor: Color,
-    lockedColor: Color,
-    onClick: () -> Unit
-) {
-    val bg = when {
-        locked -> lockedColor
-        active -> stickyColor
-        else -> inactiveColor
-    }
-    val borderMod = if (locked) {
-        Modifier.border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(6.dp))
-    } else {
-        Modifier
-    }
-    Box(modifier = Modifier.weight(1f).then(borderMod)) {
-        AccessoryKey(
-            label, bg, MaterialTheme.colorScheme.onSurface,
-            onClick = onClick,
-            modifier = Modifier.fillMaxWidth()
         )
     }
 }

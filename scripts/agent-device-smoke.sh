@@ -538,7 +538,20 @@ PY
   stop_agent_device_daemons
 }
 
-run_ios_shell_cli() {
+run_ios_darwin_cli() {
+  echo "== iOS Darwin CLI: agent-device replay wawona-ios-darwin-cli.ad =="
+  mkdir -p "$ARTIFACTS/darwin-cli/mode-a"
+  stop_agent_device_daemons
+  source "$ROOT/scripts/lib/agent-device-ios-system-ui.sh"
+  ios_prepare_system_ui || true
+  agent-device prepare ios-runner || true
+  agent-device replay "$ROOT/.agent-device/wawona-ios-darwin-cli.ad" \
+    --platform ios \
+    --device "${WAWONA_IOS_DEVICE:-iPhone 17 Pro}" \
+    --session wawona-ios-darwin-cli
+  stop_agent_device_daemons
+}
+
   # Sparse Device-gate replay: libssh2 CLI in PTY (ssh -V / ssh-keygen).
   # Prefer headless wwn-ssh matrix for routine CI; this proves dispatch in-app.
   echo "== iOS shell CLI: agent-device replay wawona-ios-shell-cli.ad =="
@@ -811,6 +824,7 @@ case "$LANE" in
     ;;
   ios-foot) run_ios_foot ;;
   ios-shell-cli) run_ios_shell_cli ;;
+  darwin-cli|ios-darwin-cli) run_ios_darwin_cli ;;
   xkb) run_xkb_p0 ;;
   xkb-ios) run_xkb ios ;;
   xkb-watchos) run_xkb watchos ;;
@@ -831,7 +845,7 @@ case "$LANE" in
     run_fuzzel
     ;;
   *)
-    echo "usage: $0 [ios|ios-ci|ios-foot|ios-shell-cli|xkb|xkb-ios|xkb-watchos|xkb-android|xkb-macos|xkb-ipados|xkb-tvos|xkb-visionos|android|android-shell-ssh|fuzzel|android-fuzzel|ios-fuzzel|macos-fuzzel|vphone|all]" >&2
+    echo "usage: $0 [ios|ios-ci|ios-foot|ios-shell-cli|ios-darwin-cli|xkb|xkb-ios|xkb-watchos|xkb-android|xkb-macos|xkb-ipados|xkb-tvos|xkb-visionos|android|android-shell-ssh|fuzzel|android-fuzzel|ios-fuzzel|macos-fuzzel|vphone|all]" >&2
     exit 2
     ;;
 esac

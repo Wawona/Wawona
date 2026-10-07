@@ -246,6 +246,20 @@ func compositorBackendMachineOverride() {
 }
 
 @Test
+func bundledWaylandSoftwareKindGroupsCompositorsAndClientTypes() {
+    #expect(BundledWaylandSoftwareKind.kind(forClientId: "weston") == .compositor)
+    #expect(BundledWaylandSoftwareKind.kind(forClientId: "niri") == .compositor)
+    #expect(BundledWaylandSoftwareKind.kind(forClientId: "weston-terminal") == .terminal)
+    #expect(BundledWaylandSoftwareKind.kind(forClientId: "foot") == .terminal)
+    #expect(BundledWaylandSoftwareKind.kind(forClientId: "kmscube") == .graphics)
+    #expect(BundledWaylandSoftwareKind.kind(forClientId: "weston-flower") == .demo)
+    #expect(BundledWaylandSoftwareKind.kind(forClientId: "weston-simple-shm") == .other)
+    let grouped = ClientLauncher.presets.waylandPickerGrouped()
+    #expect(grouped.first?.kind == .compositor)
+    #expect(!(grouped.flatMap(\.clients).contains { $0.name == "wawona-wasm" }))
+}
+
+@Test
 func nestedCompositorDrawsOwnCursorForWestonAndNiri() {
     let weston = MachineProfile(
         name: "Weston",

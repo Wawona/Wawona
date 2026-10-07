@@ -11,6 +11,7 @@
 // all public functions return NULL/0 silently.
 
 #include "WWNMiniWaylandServer.h"
+#include "../cproof/wawona_cproof.h"
 
 // Compile the real implementation only when wayland-server.h is reachable.
 #if __has_include(<wayland/wayland-server.h>)
@@ -188,6 +189,12 @@ static void pool_create_buffer(struct wl_client *client,
                                 uint32_t format)
 {
     WWNPool *pool = wl_resource_get_user_data(pool_res);
+
+    if (!wawona_shm_rect_in_pool(offset, width, height, stride, pool->size)) {
+        wl_resource_post_error(pool_res, WL_SHM_ERROR_INVALID_STRIDE,
+                               "buffer rectangle is outside the pool");
+        return;
+    }
 
     pool->refcount++;   // buffer holds a reference to the pool
 

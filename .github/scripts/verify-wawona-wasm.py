@@ -92,7 +92,7 @@ def main() -> None:
     if "#if os(watchOS)" in launchers and "wawona-wasm" in launchers:
         errors.append("ClientLauncher must not special-case watchOS off for wasm")
 
-    watch_bridge = read(ROOT / "src/platform/watchos/WWNWatchCompositorBridge.m")
+    watch_bridge = read(ROOT / "Sources/WawonaApple/Present/Watch/WWNWatchCompositorBridge.m")
     if "launchWasmModuleAtPath" not in watch_bridge or "hello-wasi-gui" not in watch_bridge:
         errors.append("watch compositor must launch hello-wasi-gui via wawona_wasm_run")
 

@@ -5,17 +5,16 @@ struct StatusBadge: View {
     let status: MachineStatus
 
     var body: some View {
-        Label {
+        HStack(spacing: 4) {
+            Image(systemName: icon)
             MachineFittingLabel(
                 text: status.rawValue.capitalized,
                 font: .caption.weight(.semibold),
                 alignment: .leading
             )
-        } icon: {
-            Image(systemName: icon)
         }
             .font(.caption.weight(.semibold))
-            .foregroundStyle(color)
+            .foregroundColor(color)
             .lineLimit(1)
             .minimumScaleFactor(0.35)
             .allowsTightening(true)
@@ -23,7 +22,7 @@ struct StatusBadge: View {
             .frame(minWidth: 0)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
-            .background(color.opacity(0.14), in: Capsule())
+            .background(Capsule().fill(color.opacity(0.14)))
     }
 
     private var icon: String {

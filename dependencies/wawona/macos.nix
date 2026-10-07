@@ -215,38 +215,17 @@ let
   ];
 
   macosSources = common.commonSources ++ [
-    # macOS-only window management (WWN prefix)
-    "src/platform/macos/WWNWindow.m"
-    "src/platform/macos/WWNWindow.h"
-    "src/platform/macos/WWNWindowDelegate_macos.h"
-    "src/platform/macos/WWNPopupHost.h"
-    "src/platform/macos/WWNPopupWindow.m"
-    "src/platform/macos/WWNPopupWindow.h"
-    "src/platform/macos/WWNIlandPresenter.m"
-    "src/platform/macos/WWNIlandPresenter.h"
-    # Rootfs / iCloud sync. Referenced by WWNPreferences.m on all Apple targets.
-    "src/platform/macos/WWNRootfsProvider.m"
-    "src/platform/macos/WWNRootfsProvider.h"
-    "src/platform/macos/WWNRootfsICloudSync.m"
-    "src/platform/macos/WWNRootfsICloudSync.h"
-    # CLI run/machines recipes (auto-create Machines cards; macOS main.m only).
-    "src/platform/macos/ui/Machines/WWNCLIMachineRecipes.m"
-    "src/platform/macos/ui/Machines/WWNCLIMachineRecipes.h"
-    # Desktop Replacement / Swinging Bridge. MacOS + Android only (matrix).
-    "src/platform/macos/ui/Machines/WWNSwingingBridgeController.m"
-    "src/platform/macos/ui/Machines/WWNSwingingBridgeController.h"
-    "src/platform/macos/ui/Machines/WWNDesktopReplacementController.m"
-    "src/platform/macos/ui/Machines/WWNDesktopReplacementController.h"
-    "src/platform/macos/ui/Settings/WWNSipStatus.m"
-    "src/platform/macos/ui/Settings/WWNSipStatus.h"
+    # Zero-ObjC: Swift in Sources/WawonaApple. Thin C/constants under ui/Machines.
+    "src/platform/macos/ui/Machines/WWNCLIMachineRecipesConstants.c"
+    "src/platform/macos/ui/Machines/wawona_relay.h"
+    "src/platform/macos/ui/Machines/wawona_relay_copy_frame_stub.c"
+    "src/platform/macos/ui/Machines/wawona_relay_optional_stubs.c"
+    "src/platform/macos/ui/Settings/WWNSettingsDefines.h"
   ];
 
   # Use full list: filterSources can empty the list when wawonaSrc is cleanSourceWith
   # (path doesn't exist at eval time). We skip missing files at build time instead.
-  macosSourcesAll = lib.unique (macosSources ++ [
-    "src/platform/macos/WWNPopupWindow.m"
-    "src/platform/macos/WWNPopupWindow.h"
-  ]);
+  macosSourcesAll = macosSources;
 
   # Mirror iOS Wawona icon installation: same sources (AppIcon.appiconset,
   # Wawona.icon, About PNGs). macOS uses Contents/Resources; iOS uses app root.
@@ -751,22 +730,16 @@ in
       else
       # Build timestamp: 2026-01-17-09:00 - Added Swift compiler!
 
-      # PHASE 1: Compile Swift bindings and SwiftUI machines views when present.
-      # Some flake source snapshots can omit untracked Swift files; in that case
-      # we keep building with the legacy Objective-C machines UI.
+      # PHASE 1: Compile Swift bindings when the manual fallback path runs.
+      # Product Machines UI is Sources/WawonaUI (xcodegen). No ObjC Machines UI.
       echo "📦 Phase 1: Compiling Swift sources..."
       SWIFT_OBJ=""
       SWIFT_SOURCES=(
-        # Shared View.wwnA11y(_:). Must stay unique with WWNAccessibilityIdentifiers.swift
         "Sources/WawonaUI/AccessibilityIdentifiers.swift"
         "Sources/WawonaUI/Compatibility/WawonaBackport.swift"
-        "src/platform/macos/ui/Machines/WWNAccessibilityIdentifiers.swift"
-        "src/platform/macos/ui/Machines/WWNMachineCardView.swift"
-        "src/platform/macos/ui/Machines/WWNMachineEditorView.swift"
-        "src/platform/macos/ui/Machines/WWNContainerHubClient.swift"
-        "src/platform/macos/ui/Machines/WWNContainerHubSearchView.swift"
-        "src/platform/macos/ui/Machines/WWNMachinesViewModel.swift"
-        "src/platform/macos/ui/Machines/WWNMachinesGridView.swift"
+        "Sources/WawonaUI/Machines/MachineCardView.swift"
+        "Sources/WawonaUI/Machines/MachineEditorView.swift"
+        "Sources/WawonaUI/Machines/MachinesGridView.swift"
       )
       EXISTING_SWIFT_SOURCES=()
       for swift_src in "''${SWIFT_SOURCES[@]}"; do
@@ -885,7 +858,6 @@ GEN_HEADER
                -Isrc -Isrc/util -Isrc/platform/macos \
                -Isrc/platform/macos/ui -Isrc/platform/macos/ui/Helpers \
                -Isrc/platform/macos/ui/Machines -Isrc/platform/macos/ui/Settings \
-               -Idependencies/clients/wawona-shell/src \
                -Imacos-dependencies/include \
                -Imacos-dependencies/uniffi \
                ${lib.optionalString (anowaw != null) "-I${anowaw}/include"} \
@@ -910,7 +882,6 @@ GEN_HEADER
             $CC -c "$src_file" \
                -Isrc -Isrc/util -Isrc/platform/macos \
                -Isrc/platform/macos/ui -Isrc/platform/macos/ui/Helpers \
-               -Idependencies/clients/wawona-shell/src \
                -Imacos-dependencies/include \
                -Imacos-dependencies/uniffi \
                -I${rustBackend}/include \

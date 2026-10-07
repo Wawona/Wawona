@@ -333,10 +333,6 @@ let
     let
       w = deps.wawona-wasm or null;
       r = deps.wawona-relay or null;
-      # Prefer standalone libwpm.a when present so -u,_wpm_main does not also
-      # pull wpm from libwawona_relay.a (Xcode 26 ld: duplicate _wpm_main /
-      # _rust_eh_personality). Fall back to the object inside libwawona_wasm.a.
-      hasWpm = w != null && builtins.pathExists "${strip w}/lib/libwpm.a";
       wasm =
         if w == null then [] else [
           "-L${strip w}/lib"
@@ -345,12 +341,10 @@ let
           "-Wl,-u,_wawona_wasm_request_interrupt"
           "-Wl,-u,_wawona_wasm_is_running"
           "-Wl,-u,_wpm_main"
-        ] ++ (if hasWpm then [ "-lwpm" ] else []) ++ [
           "-lwawona_wasm"
         ];
-      # Lazy -L/-l, not a bare archive path: Apple ld treats a full .a path
-      # like -force_load, which pulls relay's embedded wpm + Rust std and
-      # collides with wasm. Prefer .a over a same-dir .dylib via -search_paths_first.
+      # Pass the static archive by path. ld prefers a same-dir
+      # libwawona_relay.dylib (host macOS) over the .a.
       # Do not -u _relay_copy_frame: flake-pinned Relay often lacks that
       # export; Watch has no WWNRelay.m / stub object, so -u fails link.
       # Host apps that call it keep wawona_relay_copy_frame_stub.c (weak).
@@ -358,11 +352,9 @@ let
       # earlier; macOS did not until crate2nix Relay. Link zstd after the .a.
       relay =
         if r == null then [] else [
-          "-L${strip r}/lib"
-          "-Wl,-search_paths_first"
           "-Wl,-u,_relay_resolve_backend"
           "-Wl,-u,_relay_start"
-          "-lwawona_relay"
+          "${strip r}/lib/libwawona_relay.a"
         ] ++ (
           let
             z = deps.zstd or null;
@@ -1329,34 +1321,27 @@ PLIST
   # wwn-iowatchdog (bundled in macos.nix). Never link a Watchdog main() into
   # any app target.
   commonExcludes = ["**/*.rs" "**/*.toml" "**/*.md" "**/Cargo.lock" "**/.DS_Store" "**/renderer_android.*" "**/WWNSettings.c" "**/Skip/**" "modeb/**" "**/PrefPane/**"];
-  # Mobile targets ship src/platform/ios/WWNIlandPresenter.*; omit macOS copies.
+  # Mobile targets share thin C under src/platform/macos; never pull macOS-only
+  # window / Mode B UI from that tree.
   mobileMacPlatformExcludes = commonExcludes ++ [
-    "WWNIlandPresenter.m"
-    "WWNIlandPresenter.h"
+    "*Window*"
+    "*MacOS*"
+    "*Popup*"
+    "ui/**"
   ];
 
-  # Utility ObjC source files that live outside the usual platform directories.
-  # These must be listed explicitly because src/util also contains Rust sources
-  # that xcodegen cannot compile.
-  iosUtilSources = [
-    { path = "src/util/WWNStartupLogger.m"; type = "file"; }
+  # Zero-ObjC Apple glue: Swift present/input/lifecycle/shell/settings.
+  wawonaAppleSources = [
+    { path = "Sources/WawonaApple"; excludes = commonExcludes; }
   ];
 
-  # Shared SwiftUI under Sources/WawonaUI. macOS embeds that tree; Apple-mobile
-  # app targets do not. Compile the pieces WWNMachineEditorView /
-  # WWNMachineCardView / WWNMachinesGridView need so iOS/iPadOS/tvOS/visionOS
-  # resolve the types (and ObjC can NSClassFromString the presenter). Do not add
-  # these to macOS (already covered by Sources/WawonaUI) or watchOS (no those
-  # Machines views).
-  # Shared SwiftUI product shell. Same tree macOS already compiles. Do not
-  # list individual files here: that left WawonaMainWindowView only in
-  # macos/ui and the unused MachinesRootView as a second app.
+  # Shared SwiftUI product shell for Apple-mobile. Same tree macOS compiles.
+  # Toolbar drawing lives in ToolbarKeys; the Wayland accessory bridge stays
+  # under Sources/WawonaUI/Keyboard.
   appleMobileEnvUISources = [
     { path = "Sources/WawonaUI"; excludes = [ "Skip/**" ]; }
-    # Toolbar drawing lives in ToolbarKeys. The Wayland accessory bridge
-    # stays under Sources/WawonaUI/Keyboard.
     { path = "${toolbarKeysSrc}/apple/Keyboard"; }
-  ];
+  ] ++ wawonaAppleSources;
 
   # Xcode “Update to recommended settings” for framework targets with Swift/ObjC clients.
   moduleVerifierFrameworkSettings = {
@@ -1449,35 +1434,17 @@ PLIST
         sources = [
           {
             path = "src/platform/macos";
-            excludes = mobileMacPlatformExcludes ++ [
-              "*Window*"
-              "*MacOS*"
-              "*Popup*"
-              "WWNLaunchAgentManager.h"
-              "WWNLaunchAgentManager.m"
-              "ui/**"
-            ];
+            excludes = mobileMacPlatformExcludes;
           }
           # WWNGetprognameStub.c is force-loaded via prebuild archive (not compiled here).
-          { path = "src/platform/ios"; excludes = commonExcludes ++ [ "WWNWaypipeRunnerVisionStub.m" "WWNGetprognameStub.c" ]; }
+          { path = "src/platform/ios"; excludes = commonExcludes ++ [ "WWNGetprognameStub.c" ]; }
           {
             path = "src/platform/macos/ui/Machines";
-            excludes = commonExcludes ++ [
-              "WWNSwingingBridgeController.m" "WWNSwingingBridgeController.h"
-              "WWNDesktopReplacementController.m" "WWNDesktopReplacementController.h"
-              "WWNQemuSystem.m" "WWNQemuSystem.h"
-            ];
+            excludes = commonExcludes;
           }
           {
             path = "src/platform/macos/ui/Settings";
-            excludes = commonExcludes ++ [
-              "WWNSipStatus.m"
-              "WWNSipStatus.h"
-              "WWNSettingsSidebarViewController.m"
-              "WWNSettingsSidebarViewController.h"
-              "WWNSettingsSplitViewController.m"
-              "WWNSettingsSplitViewController.h"
-            ];
+            excludes = commonExcludes;
           }
           { path = "src/platform/macos/ui/Helpers"; excludes = commonExcludes; }
           { path = "src/resources/Assets.xcassets"; }
@@ -1490,7 +1457,7 @@ PLIST
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
-        ] ++ iosUtilSources ++ appleMobileEnvUISources;
+        ] ++ appleMobileEnvUISources;
         preBuildScripts = [ stampBuildNumberPhase iosPreBuild ];
         postBuildScripts = iosPostBuildPhases;
 
@@ -1704,35 +1671,17 @@ PLIST
         sources = [
           {
             path = "src/platform/macos";
-            excludes = mobileMacPlatformExcludes ++ [
-              "*Window*"
-              "*MacOS*"
-              "*Popup*"
-              "WWNLaunchAgentManager.h"
-              "WWNLaunchAgentManager.m"
-              "ui/**"
-            ];
+            excludes = mobileMacPlatformExcludes;
           }
           # WWNGetprognameStub.c is force-loaded via prebuild archive (not compiled here).
-          { path = "src/platform/ios"; excludes = commonExcludes ++ [ "WWNWaypipeRunnerVisionStub.m" "WWNGetprognameStub.c" ]; }
+          { path = "src/platform/ios"; excludes = commonExcludes ++ [ "WWNGetprognameStub.c" ]; }
           {
             path = "src/platform/macos/ui/Machines";
-            excludes = commonExcludes ++ [
-              "WWNSwingingBridgeController.m" "WWNSwingingBridgeController.h"
-              "WWNDesktopReplacementController.m" "WWNDesktopReplacementController.h"
-              "WWNQemuSystem.m" "WWNQemuSystem.h"
-            ];
+            excludes = commonExcludes;
           }
           {
             path = "src/platform/macos/ui/Settings";
-            excludes = commonExcludes ++ [
-              "WWNSipStatus.m"
-              "WWNSipStatus.h"
-              "WWNSettingsSidebarViewController.m"
-              "WWNSettingsSidebarViewController.h"
-              "WWNSettingsSplitViewController.m"
-              "WWNSettingsSplitViewController.h"
-            ];
+            excludes = commonExcludes;
           }
           { path = "src/platform/macos/ui/Helpers"; excludes = commonExcludes; }
           { path = "src/resources/Assets.xcassets"; }
@@ -1745,7 +1694,7 @@ PLIST
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
-        ] ++ iosUtilSources ++ appleMobileEnvUISources;
+        ] ++ appleMobileEnvUISources;
         preBuildScripts = [ stampBuildNumberPhase ipadosPreBuild ];
         # mkAppleGpuPostBuildPhases keeps this permanently in sync with
         # Wawona-iOS/Wawona-visionOS (niri data / fuzzel apps catalog / VM
@@ -1905,39 +1854,18 @@ PLIST
         sources = [
           {
             path = "src/platform/macos";
-            excludes = mobileMacPlatformExcludes ++ [
-              "*Window*"
-              "*MacOS*"
-              "*Popup*"
-              "WWNLaunchAgentManager.h"
-              "WWNLaunchAgentManager.m"
-              "ui/**"
-            ];
+            excludes = mobileMacPlatformExcludes;
           }
-          # Real WWNIlandPresenter.m: Vulkan/MoltenVK present. Stub is watchOS-only.
           { path = "src/platform/ios"; excludes = commonExcludes ++ [
-            "WWNWaypipeRunnerVisionStub.m"
             "WWNGetprognameStub.c"
-            "WWNIlandPresenterStub.m"
           ]; }
           {
             path = "src/platform/macos/ui/Machines";
-            excludes = commonExcludes ++ [
-              "WWNSwingingBridgeController.m" "WWNSwingingBridgeController.h"
-              "WWNDesktopReplacementController.m" "WWNDesktopReplacementController.h"
-              "WWNQemuSystem.m" "WWNQemuSystem.h"
-            ];
+            excludes = commonExcludes;
           }
           {
             path = "src/platform/macos/ui/Settings";
-            excludes = commonExcludes ++ [
-              "WWNSipStatus.m"
-              "WWNSipStatus.h"
-              "WWNSettingsSidebarViewController.m"
-              "WWNSettingsSidebarViewController.h"
-              "WWNSettingsSplitViewController.m"
-              "WWNSettingsSplitViewController.h"
-            ];
+            excludes = commonExcludes;
           }
           { path = "src/platform/macos/ui/Helpers"; excludes = commonExcludes; }
           { path = "src/resources/Assets.xcassets"; }
@@ -1949,7 +1877,7 @@ PLIST
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
-        ] ++ iosUtilSources ++ appleMobileEnvUISources;
+        ] ++ appleMobileEnvUISources;
         preBuildScripts = [ stampBuildNumberPhase tvosPreBuild ];
         # ANGLE is statically linked (libEGL.a / libGLESv2.a), not embedded as
         # dylibs. tvOS GPU is Mode A GLES+Vulkan. VM/container machines stay forbidden.
@@ -2106,51 +2034,45 @@ PLIST
         type = "bundle";
         platform = "macOS";
         sources = [
-          { path = "src/platform/macos/ui/Settings/PrefPane/WWNPreferencePane.m"; type = "file"; }
-          { path = "src/platform/macos/ui/Settings/PrefPane/WWNPreferencePane.h"; type = "file"; }
-          { path = "src/platform/macos/ui/Settings/PrefPane/WWNPrefPaneHandoff.m"; type = "file"; }
-          { path = "src/platform/macos/ui/Settings/PrefPane/WWNPrefPaneHandoff.h"; type = "file"; }
-          { path = "src/platform/macos/ui/Settings/PrefPane/WWNPrefPaneStubs.m"; type = "file"; }
-          # Keep Info.plist in the project group without copying it into Resources.
+          # Flattened System Settings panel (mirrors global Settings catalog).
+          { path = "Sources/WawonaApple/Lifecycle/WawonaSystemPreferencePane.swift"; type = "file"; }
+          { path = "Sources/WawonaApple/Lifecycle/WawonaPrefPaneRootView.swift"; type = "file"; }
+          { path = "Sources/WawonaApple/Lifecycle/PrefPaneEnvironmentVariablesView.swift"; type = "file"; }
+          { path = "Sources/WawonaApple/Lifecycle/WawonaPrefPaneStubs.swift"; type = "file"; }
+          { path = "Sources/WawonaApple/Settings/PreferencesSectionsBuilder.swift"; type = "file"; }
+          { path = "Sources/WawonaApple/Settings/WWNSettingsModel.swift"; type = "file"; }
+          { path = "Sources/WawonaApple/Settings/WWNPreferenceKeys.swift"; type = "file"; }
           { path = "src/platform/macos/ui/Settings/PrefPane/Info.plist"; type = "file"; buildPhase = "none"; }
-          { path = "src/platform/macos/ui/Settings/WWNPreferences.m"; type = "file"; }
-          { path = "src/platform/macos/ui/Settings/WWNPreferences.h"; type = "file"; }
-          { path = "src/platform/macos/ui/Settings/WWNPreferencesManager.m"; type = "file"; }
-          { path = "src/platform/macos/ui/Settings/WWNPreferencesManager.h"; type = "file"; }
-          { path = "src/platform/macos/ui/Settings/WWNSettingsModel.m"; type = "file"; }
-          { path = "src/platform/macos/ui/Settings/WWNSettingsModel.h"; type = "file"; }
-          { path = "src/platform/macos/ui/Settings/WWNSettingsDefines.h"; type = "file"; }
-          { path = "src/platform/macos/ui/Settings/WWNSipStatus.m"; type = "file"; }
-          { path = "src/platform/macos/ui/Settings/WWNSipStatus.h"; type = "file"; }
-          { path = "src/platform/macos/ui/Helpers/WWNImageLoader.m"; type = "file"; }
-          { path = "src/platform/macos/ui/Helpers/WWNImageLoader.h"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; buildPhase = "resources"; }
         ];
         settings = {
           base = {
             INFOPLIST_FILE = "src/platform/macos/ui/Settings/PrefPane/Info.plist";
             GENERATE_INFOPLIST_FILE = "NO";
+            # Bundle display name stays Wawona (Info.plist CFBundleName). Module
+            # must not collide with the macOS app's Wawona.swiftmodule.
             PRODUCT_NAME = "Wawona";
+            PRODUCT_MODULE_NAME = "WawonaPrefPane";
             PRODUCT_BUNDLE_IDENTIFIER = "com.aspauldingcode.Wawona.prefPane";
             WRAPPER_EXTENSION = "prefPane";
             MACH_O_TYPE = "mh_bundle";
             SUPPORTED_PLATFORMS = "macosx";
-            SWIFT_OBJC_BRIDGING_HEADER = "";
+            SWIFT_OBJC_BRIDGING_HEADER = "src/platform/macos/ui/Settings/PrefPane/PrefPane-Bridging-Header.h";
             SWIFT_INSTALL_OBJC_HEADER = "NO";
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS = "WWN_PREFPANE";
             CLANG_ENABLE_MODULES = "YES";
             CODE_SIGNING_ALLOWED = "NO";
             CODE_SIGNING_REQUIRED = "NO";
             CODE_SIGN_STYLE = "Automatic";
             COMBINE_HIDPI_IMAGES = "YES";
+            # PrefPane is dlopen'd by System Settings. @executable_path is
+            # System Settings.app, not this bundle. Always @loader_path.
+            LD_RUNPATH_SEARCH_PATHS = [
+              "@loader_path/../Frameworks"
+            ];
             HEADER_SEARCH_PATHS = [
               "$(inherited)"
               "$(SRCROOT)/src"
-              "$(SRCROOT)/src/util"
-              "$(SRCROOT)/src/platform/macos"
-              "$(SRCROOT)/src/platform/macos/ui"
-              "$(SRCROOT)/src/platform/macos/ui/Machines"
-              "$(SRCROOT)/src/platform/macos/ui/Helpers"
-              "$(SRCROOT)/src/platform/macos/ui/Settings"
             ];
             GCC_PREPROCESSOR_DEFINITIONS = [
               "$(inherited)"
@@ -2159,23 +2081,64 @@ PLIST
           };
         };
         dependencies = [
+          # System Settings loads this bundle alone (ViewBridge). Link +
+          # postCompile embed. xcodegen's embed=true does not create an
+          # Embed Frameworks phase for product-type bundle / prefPane.
+          { target = "WawonaUIContracts"; embed = false; }
+          { target = "WawonaModel"; embed = false; }
           { sdk = "Cocoa.framework"; }
           { sdk = "PreferencePanes.framework"; }
+          { sdk = "SwiftUI.framework"; }
           { sdk = "Foundation.framework"; }
           { sdk = "Network.framework"; }
           { sdk = "Security.framework"; }
+        ];
+        # ViewBridge error 14 without Contents/Frameworks/{UIContracts,Model}.
+        postCompileScripts = [
+          {
+            name = "Embed PrefPane frameworks";
+            basedOnDependencyAnalysis = false;
+            script = ''
+              set -euo pipefail
+              BUNDLE="$BUILT_PRODUCTS_DIR/$FULL_PRODUCT_NAME"
+              FW_DST="$BUNDLE/Contents/Frameworks"
+              BIN="$BUNDLE/Contents/MacOS/Wawona"
+              mkdir -p "$FW_DST"
+              for fw in WawonaUIContracts WawonaModel; do
+                FW_SRC="$BUILT_PRODUCTS_DIR/$fw.framework"
+                if [ ! -d "$FW_SRC" ]; then
+                  echo "error: missing $FW_SRC (build $fw first)" >&2
+                  exit 1
+                fi
+                rm -rf "$FW_DST/$fw.framework"
+                ditto "$FW_SRC" "$FW_DST/$fw.framework"
+              done
+              if [ -f "$BIN" ]; then
+                if ! otool -l "$BIN" | grep -q '@loader_path/../Frameworks'; then
+                  install_name_tool -add_rpath '@loader_path/../Frameworks' "$BIN"
+                fi
+              fi
+              echo "Embedded WawonaUIContracts + WawonaModel into PrefPane"
+            '';
+          }
         ];
       };
       Wawona-macOS = {
         type = "application";
         platform = "macOS";
         sources = [
+          # Process @main (SwiftUI App). Without this, libgbm_es2_demo.a's
+          # _main steals the entry and the app exits after ES2Cube init.
+          { path = "Darwin/Sources/Main.swift"; type = "file"; }
           { path = "Sources/WawonaUI"; excludes = [ "Skip/**" "VisionOS/**" ]; }
-          { path = "src/platform/macos"; excludes = commonExcludes; }
-          { path = "src/platform/macos/WWNIlandPresenter.m"; type = "file"; }
-          # Sink lives in wawona_compositor_host_glue.c. Do not also compile
-          # WWNSettings.c for it (duplicate symbol under Xcode 26 ld).
-
+          { path = "Sources/WawonaApple"; excludes = commonExcludes; }
+          # main.m retired: Darwin/Sources/Main.swift owns @main + launch modes.
+          { path = "src/platform/macos"; excludes = commonExcludes ++ [ "**/main.m" ]; }
+          # Darwin CLI setters live in libwawona; weak stubs so skip-nix /
+          # stale archives still link (Swift DarwinCli @_silgen_name).
+          { path = "src/platform/ios/WWNDarwinCliWeakStubs.c"; type = "file"; }
+          # Sink: wawona_compositor_host_glue.c. Do not also compile
+          # WWNSettings.c for it (Xcode 26 ld duplicate-symbol errors).
           { path = "src/platform/macos/ui"; excludes = commonExcludes; }
           { path = "src/resources/Assets.xcassets"; }
           # Required-reason API manifest (UserDefaults / boot time / file timestamps).
@@ -2742,38 +2705,17 @@ PLIST
         sources = [
           {
             path = "src/platform/macos";
-            excludes = mobileMacPlatformExcludes ++ [
-              "ui/**"
-              "*Window*"
-              "*Popup*"
-              "*MacOS*"
-              "WWNLaunchAgentManager.h"
-              "WWNLaunchAgentManager.m"
-            ];
+            excludes = mobileMacPlatformExcludes;
           }
           # Real waypipe runner (not VisionStub). VisionOS macOS-parity remote.
-          { path = "src/platform/ios"; excludes = commonExcludes ++ [ "WWNGetprognameStub.c" "WWNWaypipeRunnerVisionStub.m" ]; }
+          { path = "src/platform/ios"; excludes = commonExcludes ++ [ "WWNGetprognameStub.c" ]; }
           {
             path = "src/platform/macos/ui/Machines";
-            excludes = commonExcludes ++ [
-              "WWNSwingingBridgeController.m"
-              "WWNSwingingBridgeController.h"
-              "WWNDesktopReplacementController.m"
-              "WWNDesktopReplacementController.h"
-              "WWNQemuSystem.m"
-              "WWNQemuSystem.h"
-            ];
+            excludes = commonExcludes;
           }
           {
             path = "src/platform/macos/ui/Settings";
-            excludes = commonExcludes ++ [
-              "WWNSipStatus.m"
-              "WWNSipStatus.h"
-              "WWNSettingsSidebarViewController.m"
-              "WWNSettingsSidebarViewController.h"
-              "WWNSettingsSplitViewController.m"
-              "WWNSettingsSplitViewController.h"
-            ];
+            excludes = commonExcludes;
           }
           { path = "src/platform/macos/ui/Helpers"; excludes = commonExcludes; }
           { path = "src/resources/Assets.xcassets"; }
@@ -2785,7 +2727,7 @@ PLIST
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
-        ] ++ iosUtilSources ++ appleMobileEnvUISources;
+        ] ++ appleMobileEnvUISources;
         preBuildScripts = [ stampBuildNumberPhase visionosPreBuild ];
         # mkAppleGpuPostBuildPhases. See Wawona-iOS/-iPadOS. This also fixes
         # visionOS previously missing niri data / fuzzel apps catalog, which
@@ -3028,17 +2970,17 @@ PLIST
         platform = "watchOS";
         sources = [
           { path = "Sources/WawonaWatch"; excludes = commonExcludes; }
+          { path = "Sources/WawonaApple"; excludes = commonExcludes; }
           { path = "src/platform/watchos"; excludes = commonExcludes; }
-          # Shared SSH keygen / GPG-SSH import (libwwn-ssh-cli).
-          { path = "src/platform/macos/ui/Helpers/WWNSSHKeygen.m"; type = "file"; }
-          { path = "src/platform/macos/ui/Helpers/WWNSSHKeygen.h"; type = "file"; }
-          # Startup log sink (same as iOS/tvOS). SwiftUI overlay on watch.
-        ] ++ iosUtilSources ++ [
+          # SSH keygen is Sources/WawonaApple/Helpers/SSHKeygen.swift.
+        ] ++ [
           { path = "src/platform/watchos/ui/Settings/WWNWatchSettings.storyboard"; }
           { path = "src/resources/Assets.xcassets"; }
           # Required-reason API manifest (UserDefaults / boot time / file timestamps).
           # Missing this makes ASC accept the IPA then discard the build (never listed).
           { path = "src/resources/app-bundle/PrivacyInfo.xcprivacy"; type = "file"; buildPhase = "resources"; }
+          # Sole Watch Global Settings host (iPhone Watch app). Not an on-wrist UI.
+          { path = "src/resources/Settings-Watch.bundle"; type = "folder"; buildPhase = "resources"; }
           (settingsDepsResource "watchos")
           helloWasiGuiResource
           { path = "src/resources/Wawona.icon"; type = "folder"; }

@@ -6,6 +6,42 @@
 //! descriptions in sync across all platforms; the Linux CI gate
 //! `verify-linux-bundled-clients.py` enforces this parity.
 
+/// Picker section for native Wayland software (mirrors Apple
+/// `BundledWaylandSoftwareKind`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum SoftwareKind {
+    Compositor,
+    Terminal,
+    Graphics,
+    Demo,
+    Other,
+}
+
+impl SoftwareKind {
+    pub fn section_title(self) -> &'static str {
+        match self {
+            Self::Compositor => "Compositors",
+            Self::Terminal => "Terminals",
+            Self::Graphics => "Graphics",
+            Self::Demo => "Demos",
+            Self::Other => "Other",
+        }
+    }
+
+    pub fn for_client_id(id: &str) -> Self {
+        match id {
+            "weston" | "niri" => Self::Compositor,
+            "weston-terminal" | "foot" | "wayland-terminal" => Self::Terminal,
+            "kmscube" | "gbm-es2-demo" | "opengl-cube" | "vkcube" | "weston-simple-egl" => {
+                Self::Graphics
+            }
+            "weston-simple-shm" | "wawona-shell" | "wawona-wasm" | "custom" => Self::Other,
+            other if other.starts_with("weston-") => Self::Demo,
+            _ => Self::Other,
+        }
+    }
+}
+
 /// A selectable bundled client (id + presentation metadata). `icon_name` is a
 /// freedesktop/Adwaita symbolic icon used by the GTK picker.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -14,6 +50,39 @@ pub struct BundledClient {
     pub name: &'static str,
     pub description: &'static str,
     pub icon_name: &'static str,
+}
+
+impl BundledClient {
+    pub fn software_kind(self) -> SoftwareKind {
+        SoftwareKind::for_client_id(self.id)
+    }
+}
+
+/// Clients for the Wayland picker, grouped like the Apple editor (Compositors,
+/// Terminals, Graphics, Demos, Other). Skips shell/wasm session entries.
+pub fn wayland_picker_groups() -> Vec<(SoftwareKind, Vec<&'static BundledClient>)> {
+    let kinds = [
+        SoftwareKind::Compositor,
+        SoftwareKind::Terminal,
+        SoftwareKind::Graphics,
+        SoftwareKind::Demo,
+        SoftwareKind::Other,
+    ];
+    kinds
+        .into_iter()
+        .filter_map(|kind| {
+            let mut group: Vec<&'static BundledClient> = BUNDLED_CLIENTS
+                .iter()
+                .filter(|c| c.id != "wawona-shell" && c.id != "wawona-wasm")
+                .filter(|c| c.software_kind() == kind)
+                .collect();
+            if group.is_empty() {
+                return None;
+            }
+            group.sort_by(|a, b| a.name.cmp(b.name));
+            Some((kind, group))
+        })
+        .collect()
 }
 
 /// The 23 canonical bundled clients, in the same order as the Apple/Android
@@ -210,5 +279,23 @@ mod tests {
         assert!(fills_host("/usr/bin/weston --backend=wayland"));
         assert!(!fills_host("weston-flower"));
         assert!(!fills_host("weston-simple-egl"));
+    }
+
+    #[test]
+    fn picker_groups_compositors_then_client_types() {
+        let groups = wayland_picker_groups();
+        assert_eq!(groups[0].0, SoftwareKind::Compositor);
+        let compositor_ids: Vec<&str> = groups[0].1.iter().map(|c| c.id).collect();
+        assert!(compositor_ids.contains(&"weston"));
+        assert!(compositor_ids.contains(&"niri"));
+        assert!(!groups.iter().any(|(_, cs)| cs.iter().any(|c| c.id == "wawona-wasm")));
+        assert_eq!(
+            SoftwareKind::for_client_id("weston-flower"),
+            SoftwareKind::Demo
+        );
+        assert_eq!(
+            SoftwareKind::for_client_id("kmscube"),
+            SoftwareKind::Graphics
+        );
     }
 }

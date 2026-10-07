@@ -10,7 +10,7 @@
 # Since those paths only appear after injecting waypipe, we must regenerate
 # the lock file to satisfy `cargo metadata --locked` in crate2nix.
 #
-{ pkgs, wawonaSrc, waypipeSrc, wawonaVersion, platform ? "ios", coreutilsSrc ? null }:
+{ pkgs, wawonaSrc, waypipeSrc, wawonaVersion, platform ? "ios", coreutilsSrc ? null, terminalSrc ? null }:
 
 pkgs.stdenvNoCC.mkDerivation {
   name = "wawona-workspace-src";
@@ -35,22 +35,54 @@ pkgs.stdenvNoCC.mkDerivation {
     fi
 
 
+    # Nested path crates must not define a Cargo workspace. crate2nix /
+    # `cargo metadata` fails with "multiple workspace roots" if they do.
+    # Strip bare `[workspace]` and every `[workspace.*]` table (uutils uses
+    # `[workspace.package]` / `[workspace.dependencies]` without a bare
+    # `[workspace]` header). Path deps and member manifests still resolve.
+    strip_nested_workspace() {
+      ${pkgs.python3}/bin/python3 - "$1" <<'PY'
+from pathlib import Path
+import sys
+p = Path(sys.argv[1])
+if not p.exists():
+    raise SystemExit(0)
+lines = p.read_text().splitlines(True)
+out, skip = [], False
+for line in lines:
+    s = line.strip()
+    if s == "[workspace]" or s.startswith("[workspace."):
+        skip = True
+        continue
+    if skip:
+        if s.startswith("[") and not s.startswith("[workspace"):
+            skip = False
+        else:
+            continue
+    if not skip:
+        out.append(line)
+p.write_text("".join(out))
+PY
+    }
+
+    # Drop any local / leftover trees before inject (gitignored checkouts).
+    rm -rf $out/waypipe $out/coreutils
+
     # Inject pre-patched waypipe source
     if [ -n "${toString waypipeSrc}" ]; then
       mkdir -p $out/waypipe
       cp -r ${waypipeSrc}/* $out/waypipe/
       chmod -R u+w $out/waypipe
 
-      # Remove nested Cargo.lock and any stray .git to avoid workspace confusion
       rm -f $out/waypipe/Cargo.lock
       rm -rf $out/waypipe/.git
+      strip_nested_workspace "$out/waypipe/Cargo.toml"
 
-      echo "✓ Waypipe source injected (nested lockfile removed)"
+      echo "✓ Waypipe source injected (nested lockfile + [workspace*] removed)"
     fi
 
     # Inject pre-patched uutils coreutils source (in-process ls/cat/cp/...).
-    # Like waypipe it keeps its own [workspace] (so uu_* sub-crate field
-    # inheritance resolves); we only drop the nested lockfile + .git.
+    # Subcrates keep their own manifests for uu_* field inheritance.
     if [ -n "${toString coreutilsSrc}" ]; then
       mkdir -p $out/coreutils
       cp -r ${coreutilsSrc}/* $out/coreutils/
@@ -58,9 +90,24 @@ pkgs.stdenvNoCC.mkDerivation {
 
       rm -f $out/coreutils/Cargo.lock
       rm -rf $out/coreutils/.git
+      strip_nested_workspace "$out/coreutils/Cargo.toml"
 
-      echo "✓ coreutils source injected (nested lockfile removed)"
+      echo "✓ coreutils source injected (nested lockfile + [workspace*] removed)"
     fi
+
+    # Terminal screen. The committed path is a symlink to the sibling repo.
+    # Replace it with the flake input so the sandbox does not follow the link.
+    # installPhase is a Nix string: a null terminalSrc must not appear in path
+    # interpolation (cannot coerce null to a string).
+    ${if terminalSrc != null then ''
+    mkdir -p $out/src/term
+    rm -f $out/src/term/screen.rs
+    cp ${terminalSrc}/src/screen.rs $out/src/term/screen.rs
+    chmod u+w $out/src/term/screen.rs
+    echo "✓ Terminal screen injected"
+    '' else ''
+    echo "note: terminalSrc unset; keeping workspace term screen as packaged"
+    ''}
 
     # Patch root Cargo.toml version and Cargo.lock consistency
     cd $out

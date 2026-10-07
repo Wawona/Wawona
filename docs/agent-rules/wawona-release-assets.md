@@ -15,12 +15,24 @@ Examples (`VERSION=26.8.12`, build `142`):
 
 Platform tokens: GitHub `macOS` \| `iOS` \| `Android` \| `Linux`; stores also `tvOS` \| `visionOS`. Arch: `arm64` \| `x86_64` (Linux filename maps `aarch64` → `arm64`).
 
+## macOS GitHub DMG contents
+
+Volume root is **pkg-only**:
+
+| On the DMG | Not on the DMG |
+|---|---|
+| `WawonaAgent.pkg` | Loose `Wawona.app` |
+| `README.txt` (thank-you + install notes) | `/Applications` symlink |
+
+`Wawona.app` is signed in `sign-staging/` and embedded in the pkg payload. Users install only via the pkg (LaunchAgents, System Settings pane, app, helpers).
+
 ## Hard rejects
 
 - Unversioned GitHub/store ship names: `Wawona.apk`, `Wawona.aab`, `Wawona-macOS-arm64.dmg`, `Wawona-x86_64.AppImage` on a Release
 - Scheme-first store IPAs: `Wawona-iOS-{calver}-{build}.ipa`
 - Missing platform or arch on a ship basename
 - Passing a product-build short name straight to `gh release upload`, `upload_to_testflight`, or `upload_to_play_store` without renaming
+- Shipping a loose `Wawona.app` (or Applications symlink) on the GitHub Release DMG
 
 product-build short names are fine **inside** Gate artifacts only.
 

@@ -77,6 +77,10 @@ public struct MachineEditorState: Sendable, Hashable {
     public var id: String?
     public var name: String
     public var typeRawValue: String
+    /// Native Shell session mode (`terminal` / `wayland` / `wasm` / `waypipe`).
+    public var nativeShellKindRawValue: String
+    /// SSH for Terminal or Waypipe sessions.
+    public var nativeShellUseSSH: Bool
     public var selectedLauncherName: String
     public var sshHost: String
     public var sshUser: String
@@ -115,6 +119,8 @@ public struct MachineEditorState: Sendable, Hashable {
         id: String? = nil,
         name: String = "",
         typeRawValue: String = "native",
+        nativeShellKindRawValue: String = "terminal",
+        nativeShellUseSSH: Bool = false,
         selectedLauncherName: String = "weston-terminal",
         sshHost: String = "",
         sshUser: String = "",
@@ -144,6 +150,8 @@ public struct MachineEditorState: Sendable, Hashable {
         self.id = id
         self.name = name
         self.typeRawValue = typeRawValue
+        self.nativeShellKindRawValue = nativeShellKindRawValue
+        self.nativeShellUseSSH = nativeShellUseSSH
         self.selectedLauncherName = selectedLauncherName
         self.sshHost = sshHost
         self.sshUser = sshUser
@@ -171,11 +179,24 @@ public struct MachineEditorState: Sendable, Hashable {
         self.wasmPackage = wasmPackage
     }
 
+    /// Picker type is Native Shell (session modes live underneath).
     public var isNative: Bool { typeRawValue == "native" }
-    public var isSSH: Bool { typeRawValue == "ssh_waypipe" || typeRawValue == "ssh_terminal" }
     public var isVirtualMachine: Bool { typeRawValue == "virtual_machine" }
     public var isContainer: Bool { typeRawValue == "container" }
-    public var isWasm: Bool { typeRawValue == "wasm" }
+
+    public var nativeShellKind: String { nativeShellKindRawValue }
+    public var isTerminalSession: Bool { isNative && nativeShellKindRawValue == "terminal" }
+    public var isWaylandSession: Bool { isNative && nativeShellKindRawValue == "wayland" }
+    public var isWasmSession: Bool { isNative && nativeShellKindRawValue == "wasm" }
+    public var isWaypipeSession: Bool { isNative && nativeShellKindRawValue == "waypipe" }
+    public var isWasm: Bool { isWasmSession || typeRawValue == "wasm" }
+    public var isSSH: Bool {
+        if isNative {
+            return nativeShellUseSSH
+                && (nativeShellKindRawValue == "terminal" || nativeShellKindRawValue == "waypipe")
+        }
+        return typeRawValue == "ssh_waypipe" || typeRawValue == "ssh_terminal"
+    }
 }
 
 public enum MachineEditorValidationIssue: String, Sendable {
@@ -252,20 +273,32 @@ public struct MachineEditorValidation: Sendable {
     public static func visibleFields(for state: MachineEditorState) -> [MachineEditorFieldID] {
         var fields: [MachineEditorFieldID] = [MachineEditorFieldID.name, MachineEditorFieldID.type]
         if state.isNative {
-            fields.append(MachineEditorFieldID.launcher)
-            fields.append(MachineEditorFieldID.bundledAppID)
-        } else if state.isSSH {
-            fields.append(contentsOf: [
-                MachineEditorFieldID.sshHost,
-                MachineEditorFieldID.sshUser,
-                MachineEditorFieldID.sshPort,
-                MachineEditorFieldID.sshPassword,
-                MachineEditorFieldID.sshAuthMethod,
-                MachineEditorFieldID.sshKeyPath,
-                MachineEditorFieldID.sshKeyPassphrase,
-                MachineEditorFieldID.remoteCommand,
-                MachineEditorFieldID.waypipeEnabled,
-            ])
+            if state.isWaylandSession {
+                fields.append(MachineEditorFieldID.launcher)
+                fields.append(MachineEditorFieldID.bundledAppID)
+            }
+            if state.isWasmSession {
+                fields.append(contentsOf: [
+                    MachineEditorFieldID.wasmCommand,
+                    MachineEditorFieldID.wasmModulePath,
+                    MachineEditorFieldID.wasmPackage,
+                ])
+            }
+            if state.isWaypipeSession {
+                fields.append(MachineEditorFieldID.waypipeEnabled)
+            }
+            if state.isSSH {
+                fields.append(contentsOf: [
+                    MachineEditorFieldID.sshHost,
+                    MachineEditorFieldID.sshUser,
+                    MachineEditorFieldID.sshPort,
+                    MachineEditorFieldID.sshPassword,
+                    MachineEditorFieldID.sshAuthMethod,
+                    MachineEditorFieldID.sshKeyPath,
+                    MachineEditorFieldID.sshKeyPassphrase,
+                    MachineEditorFieldID.remoteCommand,
+                ])
+            }
         } else if state.isContainer {
             fields.append(contentsOf: [
                 MachineEditorFieldID.containerRef,
@@ -281,12 +314,6 @@ public struct MachineEditorValidation: Sendable {
                 MachineEditorFieldID.vmDiskGiB,
                 MachineEditorFieldID.vmNotes,
             ])
-        } else if state.isWasm {
-            fields.append(contentsOf: [
-                MachineEditorFieldID.wasmCommand,
-                MachineEditorFieldID.wasmModulePath,
-                MachineEditorFieldID.wasmPackage,
-            ])
         }
         // Input profile (Touch Input Type) lives in Machine Settings, not Add/Edit.
         // Virtual-machine and container backends are selected automatically per
@@ -300,7 +327,12 @@ public struct MachineEditorValidation: Sendable {
         case .name:
             return MachineEditorFieldMetadata(id: .name, label: "Name", helperText: "Display name for this machine profile.", required: true)
         case .type:
-            return MachineEditorFieldMetadata(id: .type, label: "Type", helperText: "Select native or remote session mode.", required: true)
+            return MachineEditorFieldMetadata(
+                id: .type,
+                label: "Type",
+                helperText: "Native Shell, Virtual Machine, or Container. Session modes live under Native Shell.",
+                required: true
+            )
         case .launcher:
             return MachineEditorFieldMetadata(id: .launcher, label: "Wayland Client", helperText: "Launcher used for local native sessions.")
         case .sshHost:

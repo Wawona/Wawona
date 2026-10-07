@@ -26,8 +26,8 @@ on:
       - "scripts/agent-device-smoke.sh"
       # SSH stack (libssh2 CLI / OpenSSH Android / Settings). Sparse shell-cli replay
       - "src/platform/android/android_jni.c"
-      - "src/platform/macos/ui/Settings/WWNPreferences.m"
-      - "src/platform/macos/ui/Settings/WWNPreferencesManager.m"
+      - "src/platform/macos/ui/Settings/WWNPreferencesSectionsBuilder.m"
+      - "Sources/WawonaApple/Settings/**"
       - "src/platform/watchos/WWNWatchStubs.c"
       - "src/platform/ios/WWNAppleMobileOptionalStubs.c"
       - ".github/scripts/verify-ios-shell-tools.py"

@@ -741,7 +741,7 @@ PY
 
   # Start the client the same way the Machines "Start" button does. The macOS
   # matrix runner has no agent-device and osascript AX clicks need TCC, so drive
-  # the app's supported WAWONA_AUTO_CLIENT hook (main.m → launchBundledClientWithId).
+  # the app's supported WAWONA_AUTO_CLIENT hook (WaypipeRunner launchBundledClient(withId:)).
   # LLDB connectProfile is retired here: on Release product builds the ObjC expr
   # parser rejects the injected message sends ("unknown return type" / "no known
   # method"), so every macOS cell went red on the harness, not the client. Keep

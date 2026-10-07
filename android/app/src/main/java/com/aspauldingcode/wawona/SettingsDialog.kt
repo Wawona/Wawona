@@ -100,6 +100,12 @@ private val LocalOpenSettingsChoice = staticCompositionLocalOf<(SettingsChoiceSp
     {}
 }
 
+/**
+ * Sole Global Settings host on Android Play / typical sideload.
+ * App Info → Preferences opens this same dialog. Do not also ship a
+ * SettingsPreferenceService Global Settings surface until OS inject is
+ * product-usable for the shipping artifact (`wawona-global-settings-exclusive`).
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsDialog(
@@ -339,6 +345,23 @@ private fun DisplaySection(prefs: SharedPreferences) {
             iconTint = SettingsTab.DISPLAY.accentColor)
         SettingsSwitchItem(prefs, "respectSafeArea", "Respect Safe Area",
             "Avoid system UI and notches", Icons.Filled.Security, default = true, iconTint = SettingsTab.DISPLAY.accentColor)
+        if (SessionActivity.supportsHostTask()) {
+            SettingsDropdownItem(
+                prefs,
+                "defaultStartType",
+                "Default Start Type",
+                "How Start opens a machine. Prompt asks each time. New Tab keeps the client in this window. New Window opens another window.",
+                Icons.Filled.OpenInNew,
+                "prompt",
+                listOf("prompt", "newTab", "newWindow"),
+                iconTint = SettingsTab.DISPLAY.accentColor,
+                optionLabels = mapOf(
+                    "prompt" to "Prompt",
+                    "newTab" to "New Tab",
+                    "newWindow" to "New Window",
+                ),
+            )
+        }
     }
 }
 

@@ -13,32 +13,40 @@ struct MachinesGridView: View {
             if profiles.isEmpty {
                 VStack(spacing: 8) {
                     Image(systemName: "server.rack")
-                        .font(.title2)
-                        .foregroundStyle(.secondary)
+                        .font(.title)
+                        .foregroundColor(.secondary)
                     Text("No Machines")
                         .font(.headline)
                 }
                 .frame(maxWidth: CGFloat.infinity)
                 .padding(Edge.Set.top, 40)
             } else {
-                LazyVGrid(
-                    columns: [GridItem(.adaptive(minimum: 300, maximum: 500), spacing: 14)],
-                    alignment: .leading,
-                    spacing: 14
-                ) {
-                    ForEach(profiles) { profile in
-                        MachineCardView(
-                            profile: profile,
-                            status: status(for: profile.id),
-                            onConnect: { onConnect(profile) },
-                            onEdit: { onEdit(profile) },
-                            onDelete: { onDelete(profile) }
-                        )
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                        .id(profile.id)
+                if #available(iOS 14, tvOS 14, watchOS 7, *) {
+                    LazyVGrid(
+                        columns: [GridItem(.adaptive(minimum: 300, maximum: 500), spacing: 14)],
+                        alignment: .leading,
+                        spacing: 14
+                    ) {
+                        cards
                     }
+                } else {
+                    VStack(spacing: 14) { cards }
                 }
             }
+        }
+    }
+
+    private var cards: some View {
+        ForEach(profiles) { profile in
+            MachineCardView(
+                profile: profile,
+                status: status(for: profile.id),
+                onConnect: { onConnect(profile) },
+                onEdit: { onEdit(profile) },
+                onDelete: { onDelete(profile) }
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .id(profile.id)
         }
     }
 

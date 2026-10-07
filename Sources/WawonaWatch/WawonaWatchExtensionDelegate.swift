@@ -6,7 +6,6 @@ import WatchKit
 /// based process" and is the wrong adaptor here.
 final class WawonaWatchAppDelegate: NSObject, WKApplicationDelegate {
     func applicationDidBecomeActive() {
-        WatchKitGlobalSettings.registerHost()
         // Auto-connect lives in WawonaWatch.onAppear (deferred). Do not start
         // the compositor from didBecomeActive (can race dyld / first layout).
     }

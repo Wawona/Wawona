@@ -5,9 +5,17 @@ public struct CompositorBridge: View {
 
     public var body: some View {
         #if os(macOS)
-        MacCompositorView()
+        #if SWIFT_PACKAGE
+        MacCompositorPlaceholder()
+        #else
+        CompositorHostView()
+        #endif
         #elseif os(iOS)
-        IOSCompositorView()
+        #if SWIFT_PACKAGE
+        IOSCompositorPlaceholder()
+        #else
+        CompositorHostView()
+        #endif
         #elseif os(Android)
         AndroidCompositorView()
         #else
@@ -19,10 +27,8 @@ public struct CompositorBridge: View {
 #if os(macOS)
 import AppKit
 
-private struct MacCompositorView: NSViewRepresentable {
+private struct MacCompositorPlaceholder: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView {
-        // The ObjC compositor host is injected by the app target at runtime.
-        // During SwiftPM-only previews/tests, use a placeholder view.
         let view = NSView()
         view.wantsLayer = true
         view.layer?.backgroundColor = NSColor.black.cgColor
@@ -39,7 +45,7 @@ private struct MacCompositorView: NSViewRepresentable {
 #if os(iOS)
 import UIKit
 
-private struct IOSCompositorView: UIViewRepresentable {
+private struct IOSCompositorPlaceholder: UIViewRepresentable {
     func makeUIView(context: Context) -> UIView {
         let view = UIView()
         view.backgroundColor = .black

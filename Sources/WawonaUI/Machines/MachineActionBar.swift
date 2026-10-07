@@ -7,7 +7,7 @@ struct MachineActionItem: Identifiable {
   let id: String
   var title: String
   var systemImage: String
-  var role: ButtonRole?
+  var role: WawonaButtonRole?
   var prominent: Bool
   var enabled: Bool
   var tint: Color?
@@ -18,7 +18,7 @@ struct MachineActionItem: Identifiable {
   init(
     title: String,
     systemImage: String,
-    role: ButtonRole? = nil,
+    role: WawonaButtonRole? = nil,
     prominent: Bool = false,
     enabled: Bool = true,
     tint: Color? = nil,
@@ -50,7 +50,7 @@ struct MachineActionBar: View {
   let items: [MachineActionItem]
   var layout: MachineActionBarLayout = MachineActionBar.defaultLayout
 
-  @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+  @Environment(\.sizeCategory) private var sizeCategory
 
   var body: some View {
     Group {
@@ -63,6 +63,7 @@ struct MachineActionBar: View {
         }
         .frame(maxWidth: .infinity)
       case .flow:
+        if #available(iOS 16.0, tvOS 16.0, watchOS 9.0, macOS 13.0, *) {
         ViewThatFits(in: .horizontal) {
           HStack(spacing: chipSpacing) {
             ForEach(items) { item in
@@ -76,6 +77,11 @@ struct MachineActionBar: View {
           }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+          VStack(spacing: stackSpacing) {
+            ForEach(items) { item in MachineActionChip(item: item, expands: true) }
+          }
+        }
       }
     }
   }
@@ -88,15 +94,23 @@ struct MachineActionBar: View {
     #endif
   }
 
+  private var accessibleSize: Bool {
+    switch sizeCategory {
+    case .accessibilityMedium, .accessibilityLarge, .accessibilityExtraLarge,
+         .accessibilityExtraExtraLarge, .accessibilityExtraExtraExtraLarge: return true
+    default: return false
+    }
+  }
+
   private var chipSpacing: CGFloat {
-    dynamicTypeSize.isAccessibilitySize ? 10 : 8
+    accessibleSize ? 10 : 8
   }
 
   private var stackSpacing: CGFloat {
     #if os(tvOS)
     22
     #else
-    dynamicTypeSize.isAccessibilitySize ? 10 : 8
+    accessibleSize ? 10 : 8
     #endif
   }
 }
@@ -108,21 +122,21 @@ private struct MachineActionChip: View {
   var body: some View {
     Group {
       if item.prominent {
-        Button(role: item.role, action: item.action) { label }
-          .buttonStyle(.borderedProminent)
-          .tint(item.tint)
+        WawonaButton(role: item.role, action: item.action) { label }
+          .backport.borderedButton(prominent: true)
+          .accentColor(item.tint)
       } else {
-        Button(role: item.role, action: item.action) { label }
-          .buttonStyle(.bordered)
-          .tint(item.tint)
+        WawonaButton(role: item.role, action: item.action) { label }
+          .backport.borderedButton()
+          .accentColor(item.tint)
       }
     }
     .disabled(!item.enabled)
-    .controlSize(controlSize)
+    .backport.controlSize(controlSize)
     .fixedSize(horizontal: !expands, vertical: true)
     .frame(maxWidth: expands ? .infinity : nil)
-    .accessibilityIdentifier(item.accessibilityID)
-    .accessibilityLabel(item.accessibilityLabel)
+    .accessibility(identifier: item.accessibilityID)
+    .accessibility(label: Text(item.accessibilityLabel))
   }
 
   private var label: some View {
@@ -146,7 +160,7 @@ private struct MachineActionChip: View {
     #endif
   }
 
-  private var controlSize: ControlSize {
+  private var controlSize: WawonaControlSize {
     #if os(tvOS)
     .large
     #elseif os(watchOS)
@@ -181,20 +195,21 @@ struct MachineFittingLabel: View {
 /// module.
 struct MachineStatusChip: View {
   let text: String
-  var font: Font = .caption2.weight(.bold)
+  var font: Font = .caption.weight(.bold)
 
   var body: some View {
     MachineFittingLabel(text: text, font: font)
       .padding(.horizontal, 8)
       .padding(.vertical, 5)
       .frame(minWidth: 0)
-      .background(Color.secondary.opacity(0.16), in: Capsule())
+      .background(Capsule().fill(Color.secondary.opacity(0.16)))
       .layoutPriority(1)
   }
 }
 
 /// Wraps child views onto additional rows. Each child keeps its intrinsic
 /// width, so a button title cannot be squeezed into multiple lines.
+@available(iOS 16.0, tvOS 16.0, watchOS 9.0, macOS 13.0, *)
 struct MachineActionFlow: Layout {
   var spacing: CGFloat = 8
   var lineSpacing: CGFloat = 8

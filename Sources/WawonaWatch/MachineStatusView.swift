@@ -59,9 +59,6 @@ struct MachineStatusView: View {
             }
         }
         .navigationTitle("Machines")
-        .onAppear {
-            WatchKitGlobalSettings.registerHost()
-        }
         .onReceive(NotificationCenter.default.publisher(
             for: WatchKitGlobalSettings.fallbackPresentationNeeded
         )) { _ in
@@ -73,11 +70,6 @@ struct MachineStatusView: View {
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button {
-                    // Always show settings in-process. WatchKit storyboard present
-                    // from SwiftUI `@main` is unreliable (host may claim success
-                    // while nothing appears). Sheet uses the same `wawona.pref.*`
-                    // keys as `WWNWatchSettingsBridge` / WatchKit controllers.
-                    WatchKitGlobalSettings.registerHost()
                     showingGlobalSettings = true
                 } label: {
                     Image(systemName: "gear")

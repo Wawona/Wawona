@@ -35,6 +35,8 @@ object WawonaNative {
     /** Smithay `set_keymap_from_string` after a host dump. */
     external fun nativeReloadHostKeymap()
     external fun nativeIsCompositorReady(): Boolean
+    /** `0` multi-touch, `1` single-touch, `2` touchpad. */
+    external fun nativeSetHostSeatMode(mode: Int)
     external fun nativeSetSurface(surface: Surface)
     /**
      * Tear down the Vulkan surface. Pass the dying [Surface] so a stale
@@ -218,4 +220,7 @@ object WawonaNative {
         hostOs: String,
         logs: String
     ): String
+
+    /** ANSI screen packed as little-endian cells. Null if the parser is absent. */
+    external fun nativeTermSnapshot(bytes: ByteArray, cols: Int, rows: Int): ByteArray?
 }

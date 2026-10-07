@@ -21,12 +21,12 @@ extension EnvironmentCategory {
         case .session: return .blue
         case .graphics: return .purple
         case .shell: return .orange
-        case .xdg: return .indigo
-        case .fonts: return .teal
+        case .xdg: return Color(red: 0.35, green: 0.34, blue: 0.84)
+        case .fonts: return Color(red: 0.19, green: 0.69, blue: 0.78)
         case .input: return .green
         case .debug: return .red
         case .secrets: return .yellow
-        case .user: return .mint
+        case .user: return Color(red: 0, green: 0.78, blue: 0.75)
         }
     }
 
@@ -119,7 +119,7 @@ public struct EnvironmentVariablesView: View {
 
             List {
                 if filteredRows.isEmpty {
-                    ContentUnavailableView(
+                    WawonaEmptyState(
                         "No Variables Found",
                         systemImage: "magnifyingglass",
                         description: Text("No environment variables match your search or filter.")
@@ -133,7 +133,7 @@ public struct EnvironmentVariablesView: View {
                                     rowView(for: row)
                                 }
                             } header: {
-                                Label(category.displayName, systemImage: category.iconName)
+                                WawonaLabel(category.displayName, systemImage: category.iconName)
                             }
                         }
                     }
@@ -146,15 +146,15 @@ public struct EnvironmentVariablesView: View {
                 }
 
                 Section {
-                    Button("Reset Wawona Defaults") {
+                    WawonaButton("Reset Wawona Defaults") {
                         resetManaged()
                     }
-                    .accessibilityIdentifier("wwn.settings.environment.resetManaged")
+                    .accessibility(identifier: "wwn.settings.environment.resetManaged")
 
-                    Button("Reset All Overrides", role: .destructive) {
+                    WawonaButton("Reset All Overrides", role: .destructive) {
                         confirmResetAll = true
                     }
-                    .accessibilityIdentifier("wwn.settings.environment.resetAll")
+                    .accessibility(identifier: "wwn.settings.environment.resetAll")
                 } footer: {
                     Text(perMachine
                         ? "Machine overrides take precedence over global environment variables."
@@ -162,56 +162,51 @@ public struct EnvironmentVariablesView: View {
                 }
             }
             #if os(iOS) || os(visionOS)
-            .listStyle(.insetGrouped)
+            .backport.insetGroupedList()
             #else
             .listStyle(.inset)
             #endif
         }
-        .searchable(text: $searchText, prompt: "Search variables")
-        .navigationTitle("Environment Variables")
-        #if os(iOS)
-        .navigationBarTitleDisplayMode(.inline)
-        #endif
-        .accessibilityIdentifier("wwn.settings.environment")
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
+        .backport.searchable(text: $searchText, prompt: "Search variables")
+        .backport.navigationTitle("Environment Variables", inline: true)
+        .accessibility(identifier: "wwn.settings.environment")
+        .backport.navigationActions(trailingIsPrimary: true, leading: { EmptyView() }, trailing: {
+                WawonaButton {
                     isPresentingNewSheet = true
                 } label: {
-                    Label("Add Variable", systemImage: "plus")
+                    WawonaLabel("Add Variable", systemImage: "plus")
                 }
-                .accessibilityIdentifier("wwn.settings.environment.new")
-            }
-        }
+                .accessibility(identifier: "wwn.settings.environment.new")
+            })
         .sheet(isPresented: $isPresentingNewSheet) {
             NewEnvironmentVariableSheet { name, value in
                 saveNew(name: name, value: value)
             }
         }
-        .confirmationDialog("Reset all environment overrides?", isPresented: $confirmResetAll) {
-            Button("Reset All", role: .destructive) { resetAll() }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text(perMachine
-                ? "Clears this machine's overrides so it inherits global defaults."
-                : "Clears global overrides. Catalog defaults still apply.")
+        .alert(isPresented: $confirmResetAll) {
+            Alert(title: Text("Reset all environment overrides?"),
+                  message: Text(perMachine
+                    ? "Clears this machine's overrides so it inherits global defaults."
+                    : "Clears global overrides. Catalog defaults still apply."),
+                  primaryButton: .destructive(Text("Reset All")) { resetAll() },
+                  secondaryButton: .cancel())
         }
     }
 
     private var categoryPicker: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             Picker("Category", selection: $selectedCategory) {
-                Label("All", systemImage: "square.grid.2x2")
+                WawonaLabel("All", systemImage: "square.grid.2x2")
                     .tag(Optional<EnvironmentCategory>.none)
                 ForEach(activeCategories, id: \.self) { cat in
-                    Label(cat.displayName, systemImage: cat.iconName)
+                    WawonaLabel(cat.displayName, systemImage: cat.iconName)
                         .tag(Optional(cat))
                 }
             }
             .labelsHidden()
             .pickerStyle(.segmented)
             .fixedSize(horizontal: true, vertical: false)
-            .accessibilityIdentifier("wwn.settings.environment.category")
+            .accessibility(identifier: "wwn.settings.environment.category")
             .padding(.vertical, 10)
         }
     }
@@ -235,28 +230,28 @@ public struct EnvironmentVariablesView: View {
                         .frame(width: 32, height: 32)
                     Image(systemName: row.category.iconName)
                         .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(row.category.accentColor)
+                        .foregroundColor(row.category.accentColor)
                 }
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(row.name)
                         .font(.system(.body, design: .monospaced).weight(.semibold))
-                        .foregroundStyle(.primary)
+                        .foregroundColor(.primary)
                         .lineLimit(1)
 
                     if row.isUnset {
                         Text("(Unset)")
                             .font(.caption)
-                            .foregroundStyle(.red)
+                            .foregroundColor(.red)
                     } else if row.isOverridden {
                         Text(row.displayValue.isEmpty ? "(Empty)" : row.displayValue)
                             .font(.caption)
-                            .foregroundStyle(.primary)
+                            .foregroundColor(.primary)
                             .lineLimit(1)
                     } else {
                         Text(row.displayValue.isEmpty ? "(Default)" : row.displayValue)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundColor(.secondary)
                             .lineLimit(1)
                     }
                 }
@@ -265,34 +260,34 @@ public struct EnvironmentVariablesView: View {
 
                 if row.isOverridden {
                     Text("Custom")
-                        .font(.caption2.weight(.medium))
+                        .font(.caption.weight(.medium))
                         .padding(.horizontal, 7)
                         .padding(.vertical, 2)
-                        .background(Color.orange.opacity(0.15), in: Capsule())
-                        .foregroundStyle(.orange)
+                        .background(Capsule().fill(Color.orange.opacity(0.15)))
+                        .foregroundColor(.orange)
                 } else if row.isUnset {
                     Text("Unset")
-                        .font(.caption2.weight(.medium))
+                        .font(.caption.weight(.medium))
                         .padding(.horizontal, 7)
                         .padding(.vertical, 2)
-                        .background(Color.red.opacity(0.15), in: Capsule())
-                        .foregroundStyle(.red)
+                        .background(Capsule().fill(Color.red.opacity(0.15)))
+                        .foregroundColor(.red)
                 }
             }
             .padding(.vertical, 2)
             .contentShape(Rectangle())
         }
-        .accessibilityIdentifier("wwn.settings.environment.row.\(row.name)")
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+        .accessibility(identifier: "wwn.settings.environment.row.\(row.name)")
+        .backport.supplementarySwipeActions {
             if row.isOverridden || row.isUnset {
-                Button("Reset") {
+                WawonaButton("Reset") {
                     resetOne(row.name)
                 }
-                .tint(.orange)
+                .accentColor(.orange)
             }
         }
         .contextMenu {
-            Button {
+            WawonaButton {
                 #if os(macOS)
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(row.name, forType: .string)
@@ -300,11 +295,11 @@ public struct EnvironmentVariablesView: View {
                 UIPasteboard.general.string = row.name
                 #endif
             } label: {
-                Label("Copy Name", systemImage: "doc.on.doc")
+                WawonaLabel("Copy Name", systemImage: "doc.on.doc")
             }
 
             if !row.displayValue.isEmpty {
-                Button {
+                WawonaButton {
                     #if os(macOS)
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(row.displayValue, forType: .string)
@@ -312,15 +307,15 @@ public struct EnvironmentVariablesView: View {
                     UIPasteboard.general.string = row.displayValue
                     #endif
                 } label: {
-                    Label("Copy Value", systemImage: "doc.on.clipboard")
+                    WawonaLabel("Copy Value", systemImage: "doc.on.clipboard")
                 }
             }
 
             if row.isOverridden || row.isUnset {
-                Button(role: .destructive) {
+                WawonaButton(role: .destructive) {
                     resetOne(row.name)
                 } label: {
-                    Label("Reset to Default", systemImage: "arrow.counterclockwise")
+                    WawonaLabel("Reset to Default", systemImage: "arrow.counterclockwise")
                 }
             }
         }
@@ -417,7 +412,8 @@ public struct EnvironmentVariableDetailView: View {
     public var draftMachineOverrides: Binding<EnvironmentOverrideMap>?
     public var onBack: (() -> Void)?
 
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.presentationMode) private var presentationMode
+    private func dismiss() { presentationMode.wrappedValue.dismiss() }
     @State private var currentValue: String
     @State private var showSaveSuccess: Bool = false
 
@@ -496,39 +492,39 @@ public struct EnvironmentVariableDetailView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 8) {
                         if let cat = currentEntry?.category {
-                            Label(cat.rawValue.capitalized, systemImage: cat.iconName)
+                            WawonaLabel(cat.rawValue.capitalized, systemImage: cat.iconName)
                                 .font(.caption.weight(.medium))
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 4)
-                                .background(cat.accentColor.opacity(0.15), in: Capsule())
-                                .foregroundStyle(cat.accentColor)
+                                .background(Capsule().fill(cat.accentColor.opacity(0.15)))
+                                .foregroundColor(cat.accentColor)
                         }
                         if currentEntry?.isOverridden == true {
                             Text("Custom Override")
                                 .font(.caption.weight(.medium))
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 4)
-                                .background(Color.orange.opacity(0.15), in: Capsule())
-                                .foregroundStyle(.orange)
+                                .background(Capsule().fill(Color.orange.opacity(0.15)))
+                                .foregroundColor(.orange)
                         } else if currentEntry?.isUnset == true {
                             Text("Unset")
                                 .font(.caption.weight(.medium))
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 4)
-                                .background(Color.red.opacity(0.15), in: Capsule())
-                                .foregroundStyle(.red)
+                                .background(Capsule().fill(Color.red.opacity(0.15)))
+                                .foregroundColor(.red)
                         } else {
                             Text("Default")
                                 .font(.caption.weight(.medium))
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 4)
-                                .background(Color.secondary.opacity(0.15), in: Capsule())
-                                .foregroundStyle(.secondary)
+                                .background(Capsule().fill(Color.secondary.opacity(0.15)))
+                                .foregroundColor(.secondary)
                         }
                     }
 
                     HStack {
-                        TextField(
+                        WawonaTextField(
                             "Value",
                             text: $currentValue,
                             prompt: Text(doc.typicalDefault.isEmpty ? "Enter value" : doc.typicalDefault)
@@ -537,23 +533,23 @@ public struct EnvironmentVariableDetailView: View {
                         .wawonaTextFieldNoAutocaps()
                         .autocorrectionDisabled()
                         .textFieldStyle(.roundedBorder)
-                        .onSubmit { applySave() }
-                        .accessibilityIdentifier("wwn.settings.environment.edit.value")
+                        .backport.onSubmit { applySave() }
+                        .accessibility(identifier: "wwn.settings.environment.edit.value")
 
-                        Button("Save") {
+                        WawonaButton("Save") {
                             applySave()
                         }
-                        .buttonStyle(.borderedProminent)
-                        .accessibilityIdentifier("wwn.settings.environment.detail.save")
+                        .backport.borderedButton(prominent: true)
+                        .accessibility(identifier: "wwn.settings.environment.detail.save")
                     }
 
                     if showSaveSuccess {
                         HStack(spacing: 5) {
                             Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
+                                .foregroundColor(.green)
                             Text("Saved")
                                 .font(.caption)
-                                .foregroundStyle(.green)
+                                .foregroundColor(.green)
                         }
                     }
                 }
@@ -562,7 +558,7 @@ public struct EnvironmentVariableDetailView: View {
                 Text("Value")
             } footer: {
                 if currentEntry?.isOverridden == true {
-                    Button("Revert to Default", role: .destructive) {
+                    WawonaButton("Revert to Default", role: .destructive) {
                         revertToDefault()
                     }
                     .font(.caption)
@@ -570,79 +566,76 @@ public struct EnvironmentVariableDetailView: View {
             }
 
             if !doc.summary.isEmpty || !doc.details.isEmpty {
-                Section("Documentation") {
+                Section(header: Text("Documentation")) {
                     if !doc.summary.isEmpty {
                         Text(doc.summary)
                             .font(.subheadline.weight(.medium))
-                            .foregroundStyle(.primary)
+                            .foregroundColor(.primary)
                     }
                     if !doc.details.isEmpty {
                         Text(doc.details)
                             .font(.callout)
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
+                            .foregroundColor(.secondary)
+                            .backport.selectableText()
                     }
                 }
             }
 
             if !doc.typicalDefault.isEmpty {
-                Section("Typical Default") {
+                Section(header: Text("Typical Default")) {
                     HStack {
                         Text(doc.typicalDefault)
                             .font(.system(.body, design: .monospaced))
-                            .textSelection(.enabled)
+                            .backport.selectableText()
                         Spacer()
-                        Button("Use Default") {
+                        WawonaButton("Use Default") {
                             currentValue = doc.typicalDefault
                             applySave()
                         }
                         .font(.caption.weight(.medium))
-                        .buttonStyle(.bordered)
+                        .backport.borderedButton()
                     }
                 }
             }
 
             if !doc.examples.isEmpty {
-                Section("Examples") {
+                Section(header: Text("Examples")) {
                     ForEach(doc.examples, id: \.self) { example in
                         HStack {
                             Text(example)
                                 .font(.system(.caption, design: .monospaced))
-                                .foregroundStyle(.primary)
-                                .textSelection(.enabled)
+                                .foregroundColor(.primary)
+                                .backport.selectableText()
                             Spacer()
-                            Button("Use") {
+                            WawonaButton("Use") {
                                 currentValue = example
                                 applySave()
                             }
-                            .font(.caption2)
-                            .buttonStyle(.bordered)
+                            .font(.caption)
+                            .backport.borderedButton()
                         }
                         .padding(.vertical, 2)
                     }
                 }
             }
 
-            Section("Details") {
-                LabeledContent("Variable Name", value: variableName)
+            Section(header: Text("Details")) {
+                WawonaLabeledContent("Variable Name", value: variableName)
                 if let cat = currentEntry?.category {
-                    LabeledContent("Category", value: cat.rawValue.capitalized)
+                    WawonaLabeledContent("Category", value: cat.rawValue.capitalized)
                 }
                 if let mut = currentEntry?.mutability {
-                    LabeledContent("Mutability", value: mut.rawValue.capitalized)
+                    WawonaLabeledContent("Mutability", value: mut.rawValue.capitalized)
                 }
                 if let ownedBy = currentEntry?.ownedBy, !ownedBy.isEmpty {
-                    LabeledContent("Managed By", value: ownedBy)
+                    WawonaLabeledContent("Managed By", value: ownedBy)
                 }
-                LabeledContent("Scope", value: perMachine ? "Per-Machine Override" : "Global Preference")
+                WawonaLabeledContent("Scope", value: perMachine ? "Per-Machine Override" : "Global Preference")
             }
         }
-        .formStyle(.grouped)
-        .navigationTitle(variableName)
-        #if os(iOS)
-        .navigationBarTitleDisplayMode(.inline)
-        #endif
-        .accessibilityIdentifier("wwn.settings.environment.detail")
+        .backport.groupedForm()
+        .backport.navigationTitle(variableName, inline: true)
+        .accessibility(identifier: "wwn.settings.environment.detail")
     }
 
     private func applySave() {
@@ -690,40 +683,36 @@ public struct EnvironmentVariableDetailView: View {
 // MARK: - New Variable Modal Sheet
 
 struct NewEnvironmentVariableSheet: View {
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.presentationMode) private var presentationMode
+    private func dismiss() { presentationMode.wrappedValue.dismiss() }
     @State private var name: String = ""
     @State private var value: String = ""
     var onAdd: (String, String) -> Void
 
     var body: some View {
-        NavigationStack {
+        WawonaBackport<Any>.navigation {
             Form {
-                Section("Variable Identity") {
-                    TextField("VARIABLE_NAME", text: $name, prompt: Text("e.g. MOZ_ENABLE_WAYLAND"))
+                Section(header: Text("Variable Identity")) {
+                    WawonaTextField("VARIABLE_NAME", text: $name, prompt: Text("e.g. MOZ_ENABLE_WAYLAND"))
                         .font(.system(.body, design: .monospaced))
                         .wawonaTextFieldNoAutocaps()
                         .autocorrectionDisabled()
-                        .accessibilityIdentifier("wwn.settings.environment.new.name")
+                        .accessibility(identifier: "wwn.settings.environment.new.name")
                 }
-                Section("Initial Value") {
-                    TextField("Value", text: $value, prompt: Text("e.g. 1"))
+                Section(header: Text("Initial Value")) {
+                    WawonaTextField("Value", text: $value, prompt: Text("e.g. 1"))
                         .font(.system(.body, design: .monospaced))
                         .wawonaTextFieldNoAutocaps()
                         .autocorrectionDisabled()
-                        .accessibilityIdentifier("wwn.settings.environment.new.value")
+                        .accessibility(identifier: "wwn.settings.environment.new.value")
                 }
             }
-            .formStyle(.grouped)
-            .navigationTitle("New Variable")
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            #endif
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel", role: .cancel) { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Add") {
+            .backport.groupedForm()
+            .backport.navigationTitle("New Variable", inline: true)
+            .backport.navigationActions(trailingIsPrimary: false, leading: {
+                    WawonaButton("Cancel", role: .cancel) { dismiss() }
+                }, trailing: {
+                    WawonaButton("Add") {
                         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
                         if !trimmed.isEmpty {
                             onAdd(trimmed, value)
@@ -731,9 +720,8 @@ struct NewEnvironmentVariableSheet: View {
                         }
                     }
                     .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .accessibilityIdentifier("wwn.settings.environment.new.confirm")
-                }
-            }
+                    .accessibility(identifier: "wwn.settings.environment.new.confirm")
+                })
         }
     }
 }

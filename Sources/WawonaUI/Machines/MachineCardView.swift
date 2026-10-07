@@ -21,7 +21,7 @@ struct MachineCardView: View {
 
                 Text(subtitle)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundColor(.secondary)
                     .lineLimit(1)
 
                 if !profile.launchers.isEmpty {
@@ -32,7 +32,7 @@ struct MachineCardView: View {
                                     .font(.caption)
                                     .padding(.horizontal, 8)
                                     .padding(.vertical, 4)
-                                    .background(Color.secondary.opacity(0.2), in: Capsule())
+                                    .background(Capsule().fill(Color.secondary.opacity(0.2)))
                             }
                         }
                     }

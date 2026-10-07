@@ -18,23 +18,46 @@
   the defaults inherited by the next machine.
 - Diagnostics are persisted as typed entries with category + mode (`configLint` or `runtimeProbe`).
 
+## Global Settings exclusivity (one place per platform)
+
+Hard rule: `docs/agent-rules/wawona-global-settings-exclusive.md`. Exactly
+**one** Global Settings host per target. Prefer OS when product-usable. Never
+ship OS integration **and** an in-app Global Settings hub for the same catalog.
+
+| Target / band | Sole Global Settings host |
+|---|---|
+| **macOS** | System Settings PrefPane only (`Wawona.prefPane`, suite `com.aspauldingcode.Wawona`) |
+| **iOS / iPadOS** | Settings.bundle only (`Settings > Apps > Wawona`) |
+| **watchOS prefs** | iPhone Watch app `Settings-Watch.bundle` (no on-watch Global Settings UI) |
+| **tvOS / visionOS** | In-app Global Settings only (no Settings.bundle / PrefPane) |
+| **Android** (Play / typical sideload) | In-app Compose only; App Info → Preferences via `APPLICATION_PREFERENCES` |
+| **Android** when OS inject is product-usable | System Settings only; remove Compose hub on that band |
+
+Schema authority: Rust `settings_catalog` + Swift `GlobalSettingsCatalog` +
+`wawona.pref.*`. Reject invented keys (`wawona_sync_interval`, …) and
+`group.com.wawona.global`.
+
+Not Global Settings (may stay in-app): Machines editors; sidebar **Desktop** /
+**About** / **Dependencies**; one-shot actions (Watch send, import, log copy).
+Those must not re-host Display / Input / Graphics catalog toggles.
+
 ## UI surfaces (Apple / Android)
 
 | Layer | UI | Entry points |
 |-------|-----|--------------|
-| **Global Wawona Settings** | ObjC + AppKit (macOS) / UIKit (iOS, iPadOS, tvOS, visionOS) / WatchKit + SwiftUI catalog (watchOS); Kotlin on Android | App menu **Settings…**, Settings tab (`ObjCSettingsHostView`), Machines window gear icon, watch gear → `WatchGlobalSettingsView` (same `GlobalSettingsCatalog` as WatchKit `WWNWatchSettings`). **macOS System Settings:** Wawona pane (Wawona icon; under Other on macOS 13+). Installed by `nix run .#install` and the GitHub DMG `WawonaAgent.pkg`. **iOS Settings:** Settings → Apps → Wawona → Wawona Settings (`Settings.bundle`; toggles share `NSUserDefaults` with the app. Buttons such as Copy logs stay in-app.) |
+| **Global Wawona Settings** | **One host per platform** (table above). Catalog from `GlobalSettingsCatalog` / Rust `settings_catalog`. macOS PrefPane uses SwiftUI Form + `WawonaSettingsHubChrome`. iOS Settings.bundle uses Apple plist chrome. Android Compose `SettingsDialog`. tvOS/visionOS in-app panel only | macOS: `x-apple.systempreferences:com.aspauldingcode.Wawona.prefPane`. iOS: Settings.app. Android: in-app or App Info Preferences. Watch: iPhone Watch app. tvOS/visionOS: in-app |
 | **Machine profiles + overrides** | SwiftUI (`MachineEditorView` via `MachineEditorValidation`, `MachineSettingsView`) | Add / swipe **Edit** = identity editor; **Machine Settings** = per-machine overrides |
 
 Global Settings sections are declared in `WawonaUIContracts.GlobalSettingsCatalog`.
-iOS includes **Apple Watch** (companion document transfer via WatchConnectivity;
-send-side only. Not a watchOS Settings twin). Catalog sections include Display
+iOS includes **Apple Watch** companion document transfer keys in Settings.bundle
+where possible (WatchConnectivity send-side). Catalog sections include Display
 (Enable HDR), Machines (shake / swipe / tvOS Menu), iCloud Sync (Apple; omit on
-tvOS, iCloud Drive is unavailable), Local Shell (three buttons), Dependencies
-(this product's linked packages only), plus the existing Input / Graphics /
-Env Vars / Waypipe / SSH / About pages. watchOS omits Desktop
-(forbidden), Local Shell, and Apple Watch. SwiftUI
-on watch is the in-process host (WatchKit present from `@main` is unreliable);
-both hosts must render that catalog and the same `wawona.pref.*` keys.
+tvOS, iCloud Drive is unavailable), Local Shell (three buttons; PrefPane /
+in-app actions only where plist cannot host), Dependencies (sidebar / PrefPane
+About path), plus Input / Graphics / Env Vars / Waypipe / SSH / About.
+watchOS omits Desktop (forbidden), Local Shell, and Apple Watch send UI.
+Watch globals live in Settings-Watch.bundle on the iPhone companion. Same
+`wawona.pref.*` keys.
 
 ### Settings row layout
 
@@ -65,6 +88,9 @@ Auto Scale (`AutoScale`) and DMABUF (`DmabufEnabled`) stay on internally. They h
 ---
 
 ## Apple Watch (iOS send-side)
+
+Watch **Global Settings** live in `Settings-Watch.bundle` (iPhone Watch app →
+My Watch → Wawona). The wrist app shows a redirect only. Not a second catalog.
 
 Companion documents for the paired Watch ([#151](https://github.com/Wawona/Wawona/issues/151)).
 Transport is **WatchConnectivity** (`WCSession.transferFile`). Not SFTP on the
@@ -248,7 +274,7 @@ idle until Desktop Replacement is engaged.
 |---------|-----|------|---------|-------------|
 | Enable Desktop Replacement | `DesktopReplacementEnabled` | Switch | Off | Intent only. Does not take the panel. Off restores IOMFB and returns Machines |
 | Replace now | (button) | Button | - | Take IOMFB now and open the wwn-igetty picker (Weston, Niri, VM, container, Wawona Console PTY) |
-| Desktop Machine | `DesktopReplacementMachineId` | Popup | - | Preferred card on that picker. Replace now still lets you choose |
+| Desktop Machine | `DesktopReplacementMachineId` | Popup | None | Native Shell Wayland compositor machines only (Weston / Niri). Not a free-text machine id |
 
 ### macOS (`NSUserDefaults`)
 
@@ -256,7 +282,7 @@ idle until Desktop Replacement is engaged.
 |---------|-----|------|---------|-------------|
 | SIP status (info) | (runtime `WWNSipStatus`) | Info | - | Value is **Fully Disabled** only when `csrutil disable` took. Partial (`enable --without debug`) shows Partially Disabled and Mode B is refused |
 | Enable Desktop Replacement | `DesktopReplacementEnabled` | Switch | Off | Mode B intent when SIP allows; refused/cleared if SIP blocks or Mode B dylib missing. Enable checks watchdog coverage, heals if stale, and installs sudoers NOPASSWD plus Path B. Does not take over the screen. **Replace now** disables IOWatchdog, then unloads watchdogd and WindowServer. Login and `--compositor-host` do not unload WindowServer. Restart keeps this switch on. |
-| Desktop Machine | `DesktopReplacementMachineId` | Popup | - | Nested compositor native profiles only (weston, niri, custom compositor) |
+| Desktop Machine | `DesktopReplacementMachineId` | Popup | None | Picker of Native Shell Wayland compositor machines (Weston / Niri). Terminal, Wasm, Waypipe, and SSH sessions are omitted |
 | Enable Lockscreen Replacement | `LockscreenReplacementEnabled` | Switch | Off | Greeter / machine picker before Desktop |
 | Lockscreen Machine | `LockscreenReplacementMachineId` | Popup | - | Native-port greeter machine |
 | Wawona Swinging Bridge | `AnowaWEnabled` | Switch | Off | **Not** Desktop. See [`swinging-bridge.md`](./swinging-bridge.md) |

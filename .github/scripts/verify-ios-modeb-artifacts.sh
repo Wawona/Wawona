@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: $0 --mode-a Wawona.app | --mode-b|--iteration Wawona-YY.M.D-iOS-arm64.tipa | --sileo Wawona.app" >&2
+  echo "usage: $0 --mode-a|--mode-a-simulator Wawona.app | --mode-b|--iteration Wawona-YY.M.D-iOS-arm64.tipa | --sileo Wawona.app" >&2
   exit 2
 }
 
@@ -33,8 +33,9 @@ macho_ios_minimum() {
   /usr/bin/otool -l "$1" | /usr/bin/awk '
     /cmd LC_BUILD_VERSION/ { build = 1; next }
     /cmd LC_VERSION_MIN_IPHONEOS/ { legacy = 1; next }
-    build && $1 == "minos" { print $2; exit }
-    legacy && $1 == "version" { print $2; exit }
+    build && $1 == "minos" && result == "" { result = $2; build = 0 }
+    legacy && $1 == "version" && result == "" { result = $2; legacy = 0 }
+    END { if (result != "") print result }
   '
 }
 
@@ -47,7 +48,42 @@ require_ios_minimum() {
     fail "expected iOS minimum $expected, got ${actual:-missing}"
 }
 
-if [[ "$mode" == "--mode-a" ]]; then
+# Info.plist can advertise 13.0 while an embedded Mach-O requires a newer OS.
+# Check every iOS slice; watchOS companion slices retain their own floor.
+require_ios_dependency_minima() {
+  local app="$1" expected_platform="$2" maximum="$3" binary platform minimum
+  # A failed Swift runtime copy can leave a zero-byte dylib. otool emits no
+  # load commands for that file, so the deployment-floor loop alone misses it.
+  while IFS= read -r binary; do
+    [[ -s "$binary" ]] || fail "empty embedded dylib: $binary"
+    /usr/bin/file -b "$binary" | /usr/bin/grep -q 'Mach-O' ||
+      fail "embedded dylib is not Mach-O: $binary"
+  done < <(/usr/bin/find "$app" -type f -name '*.dylib' -print)
+  while IFS= read -r binary; do
+    while read -r platform minimum; do
+      [[ -n "$minimum" ]] || continue
+      [[ "$platform" == "$expected_platform" ]] ||
+        fail "wrong embedded iOS platform $platform (expected $expected_platform): $binary"
+      /usr/bin/awk -v actual="$minimum" -v maximum="$maximum" 'BEGIN {
+        split(actual, version, ".")
+        split(maximum, limit, ".")
+        exit !(version[1] < limit[1] || (version[1] == limit[1] && version[2] <= limit[2]))
+      }' || fail "dependency requires iOS $minimum (maximum $maximum): $binary"
+    done < <(/usr/bin/otool -l "$binary" 2>/dev/null | /usr/bin/awk '
+      /cmd LC_BUILD_VERSION/ { build = 1; platform = 0; next }
+      /cmd LC_VERSION_MIN_IPHONEOS/ { legacy = 1; next }
+      build && $1 == "platform" { platform = $2; next }
+      build && $1 == "minos" {
+        if (platform == 2 || platform == 7) print platform, $2
+        build = 0
+      }
+      legacy && $1 == "version" { print 2, $2; legacy = 0 }
+    ')
+  done < <(/usr/bin/find "$app" -type f \( -perm -111 -o -name '*.dylib' -o -path '*/Frameworks/*' \) \
+    ! -path '*/share/*' ! -name '*.sh' ! -name '*.py' -print)
+}
+
+if [[ "$mode" == "--mode-a" || "$mode" == "--mode-a-simulator" ]]; then
   app="$artifact"
   [[ -d "$app" ]] || fail "Mode A input is not an app bundle"
   executable="$app/Wawona"
@@ -77,7 +113,26 @@ if [[ "$mode" == "--mode-a" ]]; then
     ! /usr/bin/grep -Eq 'IOMobileFramebuffer|platform-application|no-sandbox|get-task-allow' "$entitlements" ||
       fail "Mode A contains Mode B entitlements"
   fi
-  echo "Mode A firewall OK: $app"
+  expected_platform=2
+  expected_minimum=13.0
+  if [[ "$mode" == "--mode-a-simulator" ]]; then
+    # SDK 26.5's arm64 Simulator linker stamps 14.0 even for a 13.0
+    # deployment target. A minimal clang link reproduces this platform floor.
+    expected_platform=7
+    expected_minimum=14.0
+    [[ "$(/usr/bin/lipo -archs "$executable")" == "arm64" ]] ||
+      fail "Simulator floor check requires the native arm64 artifact"
+  fi
+  actual_platform="$(/usr/bin/otool -l "$executable" | /usr/bin/awk '
+    /cmd LC_BUILD_VERSION/ { build = 1; next }
+    build && $1 == "platform" { print $2; build = 0 }
+    /cmd LC_VERSION_MIN_IPHONEOS/ { print 2 }
+  ')"
+  [[ "$actual_platform" == "$expected_platform" ]] ||
+    fail "wrong main platform ${actual_platform:-missing} (expected $expected_platform)"
+  require_ios_minimum "$executable" "$expected_minimum"
+  require_ios_dependency_minima "$app" "$expected_platform" "$expected_minimum"
+  echo "Mode A firewall and platform $expected_platform dependency floors $expected_minimum OK: $app"
   exit 0
 fi
 
@@ -88,8 +143,8 @@ if [[ "$mode" == "--sileo" ]]; then
   [[ -x "$executable" ]] || fail "Sileo executable is missing"
   [[ "$(plist_value "$app/Info.plist" CFBundleIdentifier)" == "com.aspauldingcode.Wawona.ModeB" ]] ||
     fail "Sileo bundle identifier is wrong"
-  require_ios_minimum "$executable" "11.0"
-  echo "Sileo iOS 11+ artifact gate OK: $app"
+  require_ios_minimum "$executable" "13.0"
+  echo "Sileo iOS 13+ artifact gate OK: $app"
   exit 0
 fi
 

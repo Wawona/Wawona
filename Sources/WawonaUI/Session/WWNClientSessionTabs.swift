@@ -279,7 +279,30 @@ struct WWNClientSessionTabBarRootView: View {
                 .allowsHitTesting(false)
 
             if !model.tabs.isEmpty && !model.overviewOpen {
-                WWNClientTabBar(model: model)
+                Group {
+                    if #available(iOS 14, tvOS 14, *) {
+                        WWNClientTabBar(model: model)
+                    } else {
+                        HStack {
+                            WawonaButton(action: model.createNewTab) {
+                                Image(systemName: "plus")
+                            }
+                            .accessibility(label: Text("New Tab"))
+                            .accessibility(identifier: "wwn.client.tab.new")
+                            Spacer()
+                            Text(model.tabs.first(where: { $0.id == model.selectedId })?.title ?? "Client")
+                                .lineLimit(1)
+                            Spacer()
+                            WawonaButton(action: model.toggleExpose) {
+                                Image(systemName: "square.on.square")
+                            }
+                            .accessibility(label: Text("Tab Overview"))
+                            .accessibility(identifier: "wwn.client.tabs.overview")
+                        }
+                        .padding(12)
+                        .background(Color(UIColor.secondarySystemBackground))
+                    }
+                }
                     .padding(.top, topSafeAreaInset)
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
@@ -290,7 +313,7 @@ struct WWNClientSessionTabBarRootView: View {
                     .zIndex(100)
             }
         }
-        .accessibilityIdentifier("wwn.client.tabs")
+        .accessibility(identifier: "wwn.client.tabs")
     }
 
     private var topSafeAreaInset: CGFloat {
@@ -311,9 +334,7 @@ struct WWNGlassedCapsule: View {
     var isLightTheme: Bool = false
 
     var body: some View {
-        Capsule()
-            // Base blur material
-            .fill(.ultraThinMaterial)
+        WawonaBackport<Any>.frosted(Capsule())
             // Tint overlay
             .overlay(
                 Capsule()
@@ -373,7 +394,7 @@ struct WWNTroughWellBackground: View {
     var body: some View {
         ZStack(alignment: .leading) {
             Capsule()
-                .fill(Color(uiColor: .tertiarySystemBackground).opacity(0.60))
+                .fill(Color(UIColor.tertiarySystemBackground).opacity(0.60))
                 .overlay(Capsule().strokeBorder(hairline, lineWidth: 0.5))
 
             ForEach(1..<max(segmentCount, 1), id: \.self) { index in
@@ -387,12 +408,13 @@ struct WWNTroughWellBackground: View {
         }
         .frame(height: 32)
         .allowsHitTesting(false)
-        .accessibilityHidden(true)
+        .accessibility(hidden: true)
     }
 }
 
 // MARK: - Top Tab Bar View (Rootshell TabBar.swift ported to Wawona)
 
+@available(iOS 14, tvOS 14, *)
 struct WWNClientTabBar: View {
     @ObservedObject var model: WWNClientTabChromeModel
     @Namespace private var tabAnimationNamespace
@@ -418,8 +440,7 @@ struct WWNClientTabBar: View {
             .padding(.horizontal, 8)
             .frame(height: WWNTabBarSizingPolicy.barHeight)
             .background(
-                Capsule()
-                    .fill(.ultraThinMaterial)
+                WawonaBackport<Any>.frosted(Capsule())
                     .overlay(
                         Capsule()
                             .fill(Color.black.opacity(0.20))
@@ -450,32 +471,31 @@ struct WWNClientTabBar: View {
     // MARK: - Add Tab Button
 
     private var addButton: some View {
-        Button {
+        WawonaButton {
             withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
                 model.createNewTab()
             }
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.primary)
+                .foregroundColor(.primary)
                 .frame(width: 32, height: 32)
                 .background(
-                    Circle()
-                        .fill(.ultraThinMaterial)
+                    WawonaBackport<Any>.frosted(Circle())
                         .overlay(Circle().fill(Color.white.opacity(0.08)))
                         .overlay(Circle().strokeBorder(Color.white.opacity(0.20), lineWidth: 0.5))
                         .shadow(color: Color.black.opacity(0.18), radius: 4, x: 0, y: 2)
                 )
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("New Tab")
-        .accessibilityIdentifier("wwn.client.tab.new")
+        .accessibility(label: Text("New Tab"))
+        .accessibility(identifier: "wwn.client.tab.new")
     }
 
     // MARK: - Exposé Toggle Button
 
     private var exposeButton: some View {
-        Button {
+        WawonaButton {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                 model.toggleExpose()
             }
@@ -483,7 +503,7 @@ struct WWNClientTabBar: View {
             ZStack {
                 Image(systemName: "square.on.square")
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.primary)
+                    .foregroundColor(.primary)
 
                 if model.tabs.count > 1 {
                     Text("\(model.tabs.count)")
@@ -505,8 +525,8 @@ struct WWNClientTabBar: View {
             )
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Tab Overview")
-        .accessibilityIdentifier("wwn.client.tabs.overview")
+        .accessibility(label: Text("Tab Overview"))
+        .accessibility(identifier: "wwn.client.tabs.overview")
     }
 
     // MARK: - Tab Track Content
@@ -545,27 +565,27 @@ struct WWNClientTabBar: View {
         .pickerStyle(.segmented)
         .contextMenu {
             if let activeTab = model.tabs.first(where: { $0.id == model.selectedId }) {
-                Button(role: .destructive) {
+                WawonaButton(role: .destructive) {
                     model.close(activeTab.id)
                 } label: {
-                    Label("Close \(activeTab.segmentedTitle)", systemImage: "xmark")
+                    WawonaLabel("Close \(activeTab.segmentedTitle)", systemImage: "xmark")
                 }
             }
             if model.tabs.count > 1 {
-                Button {
+                WawonaButton {
                     model.closeOthers(except: model.selectedId)
                 } label: {
-                    Label("Close Other Tabs", systemImage: "xmark.circle")
+                    WawonaLabel("Close Other Tabs", systemImage: "xmark.circle")
                 }
             }
             Divider()
-            Button {
+            WawonaButton {
                 model.toggleExpose()
             } label: {
-                Label("Tab Overview", systemImage: "square.on.square")
+                WawonaLabel("Tab Overview", systemImage: "square.on.square")
             }
         }
-        .accessibilityIdentifier("wwn.client.tabs.segmented")
+        .accessibility(identifier: "wwn.client.tabs.segmented")
     }
 
     // MARK: - Single Tab Layout
@@ -615,13 +635,13 @@ struct WWNClientTabBar: View {
                 .frame(width: width)
             }
         }
-        .background {
+        .background(
             WWNTroughWellBackground(
                 segmentCount: model.tabs.count,
                 selectedSegment: model.tabs.firstIndex(where: { $0.id == model.selectedId }),
                 segmentWidth: width + 4
             )
-        }
+        )
     }
 
     // MARK: - Scrolling Layout
@@ -653,7 +673,7 @@ struct WWNClientTabBar: View {
                 }
                 .padding(.horizontal, 2)
             }
-            .onChange(of: model.selectedId) { newId in
+            .backport.onChange(of: model.selectedId) { newId in
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                     proxy.scrollTo(newId, anchor: .center)
                 }
@@ -664,6 +684,7 @@ struct WWNClientTabBar: View {
 
 // MARK: - Tab Item Pill (Rootshell TabButton ported to Wawona)
 
+@available(iOS 14, tvOS 14, *)
 struct WWNClientTabItemView: View {
     let tab: WWNClientTabItem
     let index: Int
@@ -684,28 +705,28 @@ struct WWNClientTabItemView: View {
     }
 
     var body: some View {
-        Button(action: onSelect) {
+        WawonaButton(action: onSelect) {
             HStack(spacing: 6) {
                 // Shortcut badge (⌘1 - ⌘9)
                 if index < 9 {
                     Text("⌘\(index + 1)")
                         .font(.system(size: 10, weight: .medium, design: .monospaced))
-                        .foregroundStyle(isSelected ? Color.primary.opacity(0.85) : Color.secondary)
+                        .foregroundColor(isSelected ? Color.primary.opacity(0.85) : Color.secondary)
                 }
 
                 // Title
                 Text(titleText)
                     .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
-                    .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+                    .foregroundColor(isSelected ? Color.primary : Color.secondary)
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 // Close Button (xmark)
-                Button(action: onClose) {
+                WawonaButton(action: onClose) {
                     Image(systemName: "xmark")
                         .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(isSelected ? Color.primary.opacity(0.85) : Color.secondary)
+                        .foregroundColor(isSelected ? Color.primary.opacity(0.85) : Color.secondary)
                         .frame(width: 18, height: 18)
                         .background(
                             Circle()
@@ -714,13 +735,13 @@ struct WWNClientTabItemView: View {
                 }
                 .buttonStyle(.plain)
                 .contentShape(Circle())
-                .accessibilityLabel("Close \(titleText)")
-                .accessibilityIdentifier("wwn.client.tab.close.\(tab.id)")
+                .accessibility(label: Text("Close \(titleText)"))
+                .accessibility(identifier: "wwn.client.tab.close.\(tab.id)")
             }
             .transaction { $0.animation = nil }
             .padding(.horizontal, 8)
             .frame(height: 32)
-            .background {
+            .background(Group {
                 if isSelected {
                     WWNGlassedCapsule(tintColor: Color.accentColor)
                         .matchedGeometryEffect(id: "selectedTabKnob", in: namespace)
@@ -728,43 +749,43 @@ struct WWNClientTabItemView: View {
                     Capsule()
                         .fill(Color.white.opacity(0.03))
                 }
-            }
+            })
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .contextMenu {
             if let onMoveLeft {
-                Button {
+                WawonaButton {
                     onMoveLeft()
                 } label: {
-                    Label("Move Left", systemImage: "arrow.left")
+                    WawonaLabel("Move Left", systemImage: "arrow.left")
                 }
             }
             if let onMoveRight {
-                Button {
+                WawonaButton {
                     onMoveRight()
                 } label: {
-                    Label("Move Right", systemImage: "arrow.right")
+                    WawonaLabel("Move Right", systemImage: "arrow.right")
                 }
             }
             Divider()
-            Button {
+            WawonaButton {
                 onCloseOthers()
             } label: {
-                Label("Close Other Tabs", systemImage: "xmark.circle")
+                WawonaLabel("Close Other Tabs", systemImage: "xmark.circle")
             }
-            Button {
+            WawonaButton {
                 onToggleExpose()
             } label: {
-                Label("Exposé Overview", systemImage: "square.on.square")
+                WawonaLabel("Exposé Overview", systemImage: "square.on.square")
             }
             Divider()
-            Button(role: .destructive, action: onClose) {
-                Label("Close Tab", systemImage: "xmark")
+            WawonaButton(role: .destructive, action: onClose) {
+                WawonaLabel("Close Tab", systemImage: "xmark")
             }
         }
-        .accessibilityIdentifier("wwn.client.tab.\(tab.id)")
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibility(identifier: "wwn.client.tab.\(tab.id)")
+        .accessibility(addTraits: isSelected ? .isSelected : [])
     }
 }
 
@@ -773,6 +794,7 @@ struct WWNClientTabItemView: View {
 struct WWNClientTabExposeView: View {
     @ObservedObject var model: WWNClientTabChromeModel
 
+    @available(iOS 14, tvOS 14, *)
     private var columns: [GridItem] {
         #if os(iOS)
         if UIDevice.current.userInterfaceIdiom == .pad {
@@ -789,6 +811,34 @@ struct WWNClientTabExposeView: View {
         ]
     }
 
+    private var cards: some View {
+        ForEach(Array(model.tabs.enumerated()), id: \.element.id) { index, tab in
+            WWNClientTabExposeCard(
+                tab: tab,
+                index: index,
+                isSelected: tab.id == model.selectedId,
+                onSelect: {
+                    model.select(tab.id)
+                    withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                        model.overviewOpen = false
+                    }
+                },
+                onClose: {
+                    model.close(tab.id)
+                }
+            )
+            .contextMenu {
+                if index > 0 {
+                    WawonaButton("Move Left") { model.moveTab(from: index, to: index - 1) }
+                }
+                if index + 1 < model.tabs.count {
+                    WawonaButton("Move Right") { model.moveTab(from: index, to: index + 1) }
+                }
+                WawonaButton("Close Other Tabs") { model.closeOthers(except: tab.id) }
+            }
+        }
+    }
+
     private var tabCountString: String {
         model.tabs.count == 1 ? "1 Tab" : "\(model.tabs.count) Tabs"
     }
@@ -797,8 +847,8 @@ struct WWNClientTabExposeView: View {
         ZStack {
             // Safari dark blurred backdrop; tap dismisses overview
             Color.black.opacity(0.85)
-                .background(.ultraThinMaterial)
-                .ignoresSafeArea()
+                .background(WawonaBackport<Any>.frosted(Rectangle()))
+                .edgesIgnoringSafeArea(.all)
                 .onTapGesture {
                     withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
                         model.overviewOpen = false
@@ -814,18 +864,18 @@ struct WWNClientTabExposeView: View {
                         Text(tabCountString)
                             .font(.system(size: 17, weight: .bold))
                     }
-                    .foregroundStyle(.primary)
+                    .foregroundColor(.primary)
 
                     Spacer()
 
-                    Button {
+                    WawonaButton {
                         withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
                             model.overviewOpen = false
                         }
                     } label: {
                         Text("Done")
                             .font(.system(size: 16, weight: .bold))
-                            .foregroundStyle(Color.accentColor)
+                            .foregroundColor(Color.accentColor)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 8)
                             .background(Capsule().fill(Color.primary.opacity(0.12)))
@@ -838,22 +888,11 @@ struct WWNClientTabExposeView: View {
 
                 // Safari 2-Column Tabs Grid
                 ScrollView(showsIndicators: true) {
-                    LazyVGrid(columns: columns, spacing: 16) {
-                        ForEach(Array(model.tabs.enumerated()), id: \.element.id) { index, tab in
-                            WWNClientTabExposeCard(
-                                tab: tab,
-                                index: index,
-                                isSelected: tab.id == model.selectedId,
-                                onSelect: {
-                                    model.select(tab.id)
-                                    withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
-                                        model.overviewOpen = false
-                                    }
-                                },
-                                onClose: {
-                                    model.close(tab.id)
-                                }
-                            )
+                    Group {
+                        if #available(iOS 14, tvOS 14, *) {
+                            LazyVGrid(columns: columns, spacing: 16) { cards }
+                        } else {
+                            VStack(spacing: 16) { cards }
                         }
                     }
                     .padding(.horizontal, 16)
@@ -868,7 +907,7 @@ struct WWNClientTabExposeView: View {
 
                 HStack {
                     // New Tab Button (+)
-                    Button {
+                    WawonaButton {
                         withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
                             model.createNewTab()
                             model.overviewOpen = false
@@ -876,41 +915,39 @@ struct WWNClientTabExposeView: View {
                     } label: {
                         Image(systemName: "plus")
                             .font(.system(size: 18, weight: .bold))
-                            .foregroundStyle(Color.accentColor)
+                            .foregroundColor(Color.accentColor)
                             .frame(width: 44, height: 44)
                             .background(
-                                Circle()
-                                    .fill(.ultraThinMaterial)
+                                WawonaBackport<Any>.frosted(Circle())
                                     .overlay(Circle().stroke(Color.white.opacity(0.18), lineWidth: 1))
                                     .shadow(color: Color.black.opacity(0.25), radius: 6, x: 0, y: 3)
                             )
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("New Tab")
+                    .accessibility(label: Text("New Tab"))
 
                     Spacer()
 
                     // Center Tab Counter
                     Text(tabCountString)
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundColor(.secondary)
 
                     Spacer()
 
                     // Trailing Done Button
-                    Button {
+                    WawonaButton {
                         withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
                             model.overviewOpen = false
                         }
                     } label: {
                         Text("Done")
                             .font(.system(size: 15, weight: .bold))
-                            .foregroundStyle(Color.accentColor)
+                            .foregroundColor(Color.accentColor)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 10)
                             .background(
-                                Capsule()
-                                    .fill(.ultraThinMaterial)
+                                WawonaBackport<Any>.frosted(Capsule())
                                     .overlay(Capsule().stroke(Color.white.opacity(0.18), lineWidth: 1))
                                     .shadow(color: Color.black.opacity(0.25), radius: 6, x: 0, y: 3)
                             )
@@ -921,7 +958,7 @@ struct WWNClientTabExposeView: View {
                 .padding(.bottom, 16)
             }
         }
-        .accessibilityIdentifier("wwn.client.tabs.expose")
+        .accessibility(identifier: "wwn.client.tabs.expose")
     }
 }
 
@@ -954,28 +991,28 @@ struct WWNClientTabExposeCard: View {
             HStack(spacing: 6) {
                 Image(systemName: iconName)
                     .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+                    .foregroundColor(isSelected ? Color.accentColor : Color.secondary)
 
                 Text(titleText)
                     .font(.system(size: 12, weight: isSelected ? .bold : .medium))
-                    .foregroundStyle(.primary)
+                    .foregroundColor(.primary)
                     .lineLimit(1)
                     .truncationMode(.tail)
 
                 Spacer(minLength: 0)
 
-                Button {
+                WawonaButton {
                     onClose()
                 } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.85))
+                        .foregroundColor(.white.opacity(0.85))
                         .frame(width: 22, height: 22)
                         .background(Circle().fill(Color.black.opacity(0.45)))
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Close \(titleText)")
-                .accessibilityIdentifier("wwn.client.tab.close.\(tab.id)")
+                .accessibility(label: Text("Close \(titleText)"))
+                .accessibility(identifier: "wwn.client.tab.close.\(tab.id)")
             }
             .padding(.horizontal, 10)
             .padding(.top, 8)
@@ -994,10 +1031,10 @@ struct WWNClientTabExposeCard: View {
                     VStack(spacing: 8) {
                         Image(systemName: iconName)
                             .font(.system(size: 28))
-                            .foregroundStyle(Color.secondary.opacity(0.5))
+                            .foregroundColor(Color.secondary.opacity(0.5))
                         Text(titleText)
                             .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(Color.secondary)
+                            .foregroundColor(Color.secondary)
                             .lineLimit(1)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1028,8 +1065,8 @@ struct WWNClientTabExposeCard: View {
         )
         .contentShape(Rectangle())
         .onTapGesture(perform: onSelect)
-        .accessibilityIdentifier("wwn.client.tab.\(tab.id)")
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibility(identifier: "wwn.client.tab.\(tab.id)")
+        .accessibility(addTraits: isSelected ? .isSelected : [])
     }
 }
 
@@ -1122,6 +1159,16 @@ public final class WWNClientTabChromeController: NSObject {
     @objc public var isAttached: Bool { passThrough != nil || host != nil }
 
     @objc public var selectedId: UInt64 { model.selectedId }
+
+    /// Height under the notch/status bar occupied by the client tab bar.
+    /// Matches the pass-through hit band so Wayland pixels start below it.
+    @objc public var contentTopReserve: CGFloat {
+        let hidden = passThrough?.isHidden ?? true
+        if hidden || model.tabs.isEmpty {
+            return 0
+        }
+        return WWNTabBarSizingPolicy.barHeight + 16
+    }
 
     @objc public func selectNextTab() {
         model.selectNext()

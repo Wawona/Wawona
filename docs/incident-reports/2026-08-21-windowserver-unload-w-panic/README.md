@@ -53,7 +53,7 @@ Mach registration, not a successful cube present.
 
 ## Fix
 
-`WWNDesktopReplacementController.m` `stop_window_server`: bootout + kill only
+`Sources/WawonaApple/ModeB/DesktopReplacementController.swift` `stop_window_server`: bootout + kill only
 (no disable / unload -w). Incident logged here.
 
 ## Aftermath on this host

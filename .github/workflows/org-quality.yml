@@ -117,7 +117,6 @@ jobs:
         with:
           persist-credentials: false
       - uses: google/osv-scanner-action/osv-scanner-action@7f58dd6750d78fc29a900ba64b1a0f946f62fba4 # v2.6.0
-        continue-on-error: true
         with:
           scan-args: |-
             --include-git-root

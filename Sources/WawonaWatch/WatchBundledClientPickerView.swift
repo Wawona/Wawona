@@ -3,7 +3,7 @@ import SwiftUI
 import WawonaModel
 
 /// Full-screen client list for native machine profiles / global defaults.
-/// Shows platform-available clients; GPU demos appear as unavailable on watchOS.
+/// Groups Compositors, then client types. GPU demos land under Requires GPU.
 struct WatchBundledClientPickerView: View {
     @Binding var selection: String
     let clients: [ClientLauncher]
@@ -19,15 +19,18 @@ struct WatchBundledClientPickerView: View {
         self.unavailableGpu = unavailableGpu
     }
 
+    private var grouped: [(kind: BundledWaylandSoftwareKind, clients: [ClientLauncher])] {
+        clients.waylandPickerGrouped()
+    }
+
     var body: some View {
         List {
-            Section {
-                ForEach(clients) { launcher in
-                    clientRow(launcher, enabled: true)
+            ForEach(grouped, id: \.kind) { group in
+                Section(group.kind.sectionTitle) {
+                    ForEach(group.clients) { launcher in
+                        clientRow(launcher, enabled: true)
+                    }
                 }
-            } footer: {
-                Text("Wawona Runtime runs bundled hello-wasi-gui over wl_shm on this Watch.")
-                    .font(.caption2)
             }
 
             if !unavailableGpu.isEmpty {
@@ -38,7 +41,7 @@ struct WatchBundledClientPickerView: View {
                 }
             }
         }
-        .navigationTitle("Wayland Client")
+        .navigationTitle("Wayland Software")
     }
 
     @ViewBuilder

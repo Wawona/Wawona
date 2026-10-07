@@ -192,27 +192,21 @@ forbidden while iPhone is planned for those features.
     Settings stub. Omit the iCloud section on tvOS. watchOS may show a status
     page that says Drive is unavailable. Do not add a fake toggle. CloudKit/KVS
     exist on tvOS; they are not this section. Re-check on SDK bumps.
-14. **Ghostty console on every product target.** Relay VM boot, SSH terminal,
-    and a native shell with no Wayland client use one Ghostty console.
-    The terminal grid is required on macOS, iOS, iPadOS, tvOS, watchOS,
-    visionOS, Android, and Linux. The renderer follows the GPU gate:
-
-    | Target | Renderer |
-    |---|---|
-    | iOS, iPadOS | Metal. Static `libghostty` rebuilt at deployment target 13.0. No product `.dylib`. Do not link published GhosttyKit (minimum OS 17). |
-    | tvOS, visionOS | Metal. Static archive for that OS. tvOS has Metal. |
-    | macOS | Metal. Static archive. macOS is not an App Store sandbox, and it still does not import an iOS `.dylib`. |
-    | Android, Linux | OpenGL inside libghostty (`renderer=opengl`). Not Metal. |
-    | watchOS | Software grid, presented with SpriteKit. Metal is blocked. Do not link Metal, ANGLE, or MoltenVK. |
-
-    An iOS-only host is not the feature. Each UI kit owns its view
-    (UIKit, AppKit, WatchKit/SwiftUI, Jetpack). Byte copy stays off the
-    UI thread. VM and container kinds stay forbidden on tvOS, watchOS,
-    and visionOS. The console on those targets is the native shell and
-    SSH, not a Linux VM. libghostty is Ghostty (Copyright (c) 2024
-    Mitchell Hashimoto, Ghostty contributors). The iOS embed that Wawona
-    starts from is Rootshell (Copyright (c) 2026 Rootshell LLC, Kit Knox).
-    Toolbar keys are the same Rootshell implementation, in ToolbarKeys.
+14. **No Ghostty.** Do not port, vendor, or link libghostty. Do not add a
+    `wwn-ghostty` flake input or a GhosttyKit embed. Relay boot, SSH, and the
+    native shell use Wawona Terminal (`github.com/Wawona/Terminal`, flake
+    input `terminal`, `flake = false`). Rust owns the VT screen. UniFFI
+    hands styled lines to the host. iOS, iPadOS, tvOS, visionOS, and macOS
+    draw `apple/Terminal` (SwiftUI text scroll). Android draws Compose.
+    Linux draws GTK. watchOS uses the same SwiftUI text and does not link
+    Metal. The face is bundled DejaVuSansM Nerd Font Mono. Apple system
+    fonts do not include those icons. The iOS native shell is this
+    terminal. It is not foot and not weston-terminal. Those remain Wayland
+    clients. Phone client tabs are the Rootshell-inspired overview. Toolbar
+    keys above the software keyboard are `github.com/Wawona/ToolbarKeys`
+    (Rust + UniFFI). Wawona draws the slots and does not own the layout
+    rules. VM and container kinds stay forbidden on tvOS, watchOS, and
+    visionOS. The console on those targets is the native shell and SSH.
 
 ## Implementation checkpoints
 

@@ -7,8 +7,10 @@
 
 pub mod config;
 pub mod core;
+pub mod darwin_cli;
 pub mod domain;
 pub mod ffi;
+pub mod term;
 pub mod platform;
 pub mod prelude;
 pub mod util;

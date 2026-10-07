@@ -147,98 +147,73 @@
     # HTTPS github: hits org CAP 403 locally. Same SSH fetch as wwn-relay.
     toolbar-keys.url = "git+ssh://git@github.com/Wawona/ToolbarKeys?ref=development";
     toolbar-keys.flake = false;
+    # VT screen for src/term/screen.rs (symlink target). Flake input so the
+    # sandbox never follows the sibling symlink.
+    terminal.url = "git+file:///Users/8amps/Wawona/Terminal";
+    terminal.flake = false;
   };
 
-  outputs = inputs @ {
-    self,
-    nixpkgs,
-    android-nixpkgs,
-    rust-overlay,
-    crate2nix,
-    nix-appimage,
-    wwn-toolchain,
-    wwn-iland,
-    wwn-kmscube,
-    wwn-weston,
-    wwn-zsh,
-    wwn-ssh,
-    wwn-waypipe,
-    wwn-swinging-bridge,
-    wwn-coreutils,
-    wwn-foot,
-    wwn-fastfetch,
-    wwn-phoon-rs,
-    wwn-relay,
-    wwn-niri,
-    wwn-iowatchdog,
-    wwn-vphone,
-    wwn-iomfb,
-    wwn-igetty,
-    doorman,
-    ...
-  }: let
-    linuxSystems = ["x86_64-linux" "aarch64-linux"];
+  outputs = inputs@{ self, nixpkgs, android-nixpkgs, rust-overlay, crate2nix, nix-appimage, wwn-toolchain, wwn-iland, wwn-kmscube, wwn-weston, wwn-zsh, wwn-ssh, wwn-waypipe, wwn-swinging-bridge, wwn-coreutils, wwn-foot, wwn-fastfetch, wwn-phoon-rs, wwn-relay, wwn-niri, wwn-iowatchdog, wwn-vphone, wwn-iomfb, wwn-igetty, doorman, ... }:
+  let
+    linuxSystems = [ "x86_64-linux" "aarch64-linux" ];
     # Nixpkgs 26.11 throws on x86_64-darwin eval; flakehub-push runs
     # `nix flake show --all-systems`. Intel Mac is gone from this flake's
     # packages/apps surface; aarch64-darwin remains the Darwin target.
-    darwinSystems = ["aarch64-darwin"];
+    darwinSystems = [ "aarch64-darwin" ];
     systemsList = linuxSystems ++ darwinSystems;
 
-    pkgsFor = system: let
-      isDarwin = system == "x86_64-darwin" || system == "aarch64-darwin";
-      customOverlays =
-        [
-          (import rust-overlay)
-          (self: super: {
-            # charset-normalizer mypyc-compiles with mypy. mypy's pytest suite
-            # is ~45 minutes on a cold Darwin laptop. cargo-auditable's vendor
-            # helper (niri) and any requests stack would otherwise rebuild it.
-            pythonPackagesExtensions =
-              (super.pythonPackagesExtensions or [])
-              ++ [
+    pkgsFor = system:
+      let
+        isDarwin = (system == "x86_64-darwin" || system == "aarch64-darwin");
+        customOverlays =
+          [ (import rust-overlay)
+            (self: super: {
+              # charset-normalizer mypyc-compiles with mypy. mypy's pytest suite
+              # is ~45 minutes on a cold Darwin laptop. cargo-auditable's vendor
+              # helper (niri) and any requests stack would otherwise rebuild it.
+              pythonPackagesExtensions = (super.pythonPackagesExtensions or [ ]) ++ [
                 (pyfinal: pyprev: {
-                  charset-normalizer = pyprev.charset-normalizer.override {withMypyc = false;};
+                  charset-normalizer = pyprev.charset-normalizer.override { withMypyc = false; };
                 })
               ];
-            # fontconfig (fuzzel) defaults to dejavu-fonts-minimal, which
-            # nixpkgs builds from SFD via fontforge → libtiff docs → Sphinx.
-            # Ship the upstream TTF tarball instead.
-            dejavu-fonts = let
-              src = super.fetchurl {
-                url = "https://github.com/dejavu-fonts/dejavu-fonts/releases/download/version_2_37/dejavu-fonts-ttf-2.37.tar.bz2";
-                sha256 = "1mqpds24wfs5cmfhj57fsfs07mji2z8812i5c4pi5pbi738s977s";
-              };
-              ttf = super.stdenvNoCC.mkDerivation {
-                pname = "dejavu-fonts";
-                version = "2.37";
-                inherit src;
-                dontConfigure = true;
-                dontBuild = true;
-                installPhase = ''
-                  runHook preInstall
-                  mkdir -p $out/share/fonts/truetype
-                  cp ttf/*.ttf $out/share/fonts/truetype/
-                  runHook postInstall
-                '';
-                meta = super.dejavu-fonts.meta or {};
-              };
-            in
-              ttf
-              // {
-                minimal = ttf;
-                full = ttf;
-              };
-            dejavu_fonts = self.dejavu-fonts;
-            dejavu-fonts-minimal = self.dejavu-fonts.minimal;
-            dejavu-fonts-full = self.dejavu-fonts.full;
-          })
-        ]
-        ++ (
-          if isDarwin
-          then [
+              # fontconfig (fuzzel) defaults to dejavu-fonts-minimal, which
+              # nixpkgs builds from SFD via fontforge → libtiff docs → Sphinx.
+              # Ship the upstream TTF tarball instead.
+              dejavu-fonts =
+                let
+                  src = super.fetchurl {
+                    url = "https://github.com/dejavu-fonts/dejavu-fonts/releases/download/version_2_37/dejavu-fonts-ttf-2.37.tar.bz2";
+                    sha256 = "1mqpds24wfs5cmfhj57fsfs07mji2z8812i5c4pi5pbi738s977s";
+                  };
+                  ttf = super.stdenvNoCC.mkDerivation {
+                    pname = "dejavu-fonts";
+                    version = "2.37";
+                    inherit src;
+                    dontConfigure = true;
+                    dontBuild = true;
+                    installPhase = ''
+                      runHook preInstall
+                      mkdir -p $out/share/fonts/truetype
+                      cp ttf/*.ttf $out/share/fonts/truetype/
+                      runHook postInstall
+                    '';
+                    meta = (super.dejavu-fonts.meta or { });
+                  };
+                in
+                ttf
+                // {
+                  minimal = ttf;
+                  full = ttf;
+                };
+              dejavu_fonts = self.dejavu-fonts;
+              dejavu-fonts-minimal = self.dejavu-fonts.minimal;
+              dejavu-fonts-full = self.dejavu-fonts.full;
+            })
+          ]
+          ++ (if isDarwin then [
             (self: super: {
               rustToolchain = super.rust-bin.nightly.latest.default.override {
-                extensions = ["rust-src"];
+                extensions = [ "rust-src" ];
                 targets = [
                   "aarch64-apple-ios"
                   "aarch64-apple-ios-sim"
@@ -251,7 +226,7 @@
                 ];
               };
               rustToolchainAndroid = super.rust-bin.stable.latest.default.override {
-                targets = ["aarch64-linux-android"];
+                targets = [ "aarch64-linux-android" ];
               };
               rustPlatformAndroid = super.makeRustPlatform {
                 cargo = self.rustToolchainAndroid;
@@ -264,43 +239,30 @@
             })
             (self: super: {
               linuxHeaders = super.linuxHeaders.overrideAttrs (old: {
-                makeFlags = (old.makeFlags or []) ++ ["HOSTCC=cc"];
+                makeFlags = (old.makeFlags or []) ++ [ "HOSTCC=cc" ];
               });
-              makeLinuxHeaders = args:
-                (super.makeLinuxHeaders args).overrideAttrs (old: {
-                  preConfigure =
-                    (old.preConfigure or "")
-                    + ''
-                      mkdir -p $TMPDIR/gcc-shim
-                      ln -s $(command -v cc) $TMPDIR/gcc-shim/gcc
-                      ln -s $(command -v c++) $TMPDIR/gcc-shim/g++
-                      export PATH=$TMPDIR/gcc-shim:$PATH
-                    '';
+              makeLinuxHeaders = args: (super.makeLinuxHeaders args).overrideAttrs (old: {
+                preConfigure = (old.preConfigure or "") + ''
+                  mkdir -p $TMPDIR/gcc-shim
+                  ln -s $(command -v cc) $TMPDIR/gcc-shim/gcc
+                  ln -s $(command -v c++) $TMPDIR/gcc-shim/g++
+                  export PATH=$TMPDIR/gcc-shim:$PATH
+                '';
+              });
+              llvmPackages_21 = if super.stdenv.targetPlatform.isAndroid then super.llvmPackages_21 // {
+                compiler-rt = super.llvmPackages_21.compiler-rt.overrideAttrs (old: {
+                  postPatch = (old.postPatch or "") + ''
+                    sed -i 's|#include <pthread.h>|typedef int pthread_once_t; int pthread_once(pthread_once_t *, void (*)(void));|' lib/builtins/os_version_check.c || true
+                  '';
                 });
-              llvmPackages_21 =
-                if super.stdenv.targetPlatform.isAndroid
-                then
-                  super.llvmPackages_21
-                  // {
-                    compiler-rt = super.llvmPackages_21.compiler-rt.overrideAttrs (old: {
-                      postPatch =
-                        (old.postPatch or "")
-                        + ''
-                          sed -i 's|#include <pthread.h>|typedef int pthread_once_t; int pthread_once(pthread_once_t *, void (*)(void));|' lib/builtins/os_version_check.c || true
-                        '';
-                    });
-                  }
-                else super.llvmPackages_21;
+              } else super.llvmPackages_21;
             })
-          ]
-          else [
+          ] else [
             (self: super: {
               rustToolchain = super.rust-bin.stable.latest.default;
             })
-          ]
-        );
-    in
-      (import nixpkgs {
+          ]);
+      in (import nixpkgs {
         inherit system;
         overlays = customOverlays;
         config = {
@@ -313,67 +275,31 @@
         # `pkgs.callPackage`-based Wawona integration recipes (ios/ipados/macos/
         # watchos, rust-backend-c2n, linux) auto-resolve them through their
         # function signatures instead of via now-deleted in-tree relative paths.
-        inherit
-          applePath
-          toolchainsDir
-          androidToolchainNix
-          androidConfigNix
-          androidWrapperNix
-          westonSimpleShmPatchedSrcNix
-          westonSimpleShmLinuxNix
-          kmscubeMacosNix
-          kmscubeIosNix
-          fastfetchMacosNix
-          fastfetchIosNix
-          fastfetchLdflagsNix
-          westonToytoolkitLdflagsNix
-          westonCompositorLdflagsNix
-          mobileBaseLdflagsNix
-          ilandGlLdflagsNix
-          ilandGlAndroidLdflagsNix
-          westonAndroidSignalPolyfill
-          ;
+        inherit applePath toolchainsDir androidToolchainNix androidConfigNix androidWrapperNix
+          westonSimpleShmPatchedSrcNix westonSimpleShmLinuxNix kmscubeMacosNix kmscubeIosNix
+          fastfetchMacosNix fastfetchIosNix fastfetchLdflagsNix
+          westonToytoolkitLdflagsNix westonCompositorLdflagsNix mobileBaseLdflagsNix ilandGlLdflagsNix
+          ilandGlAndroidLdflagsNix westonAndroidSignalPolyfill;
         # The Apple toolchain (xcode-wrapper) used to live in-tree; wwn-iland's
         # gl-clients recipes accept it as `xcodeUtils`/`iosToolchain`. Resolve it
         # from the wwn-toolchain input so callPackage can auto-fill those formals.
-        iosToolchain = import applePath {
-          lib = _final.lib;
-          pkgs = _final;
-        };
+        iosToolchain = import applePath { lib = _final.lib; pkgs = _final; };
         xcodeUtils = _final.iosToolchain;
       });
 
     srcFor = pkgs:
       pkgs.lib.cleanSourceWith {
         src = ./.;
-        filter = path: type: let
-          relPath = pkgs.lib.removePrefix (toString ./.) (toString path);
-          isImportant = pkgs.lib.any (p: pkgs.lib.hasPrefix p relPath) [
-            "/src"
-            "/Sources"
-            "/android"
-            "/protocols"
-            "/scripts"
-            "/include"
-            "/VERSION"
-            "/Cargo"
-            "/build.rs"
-            "/flake"
-          ];
-          isIgnored = pkgs.lib.any (p: pkgs.lib.hasInfix p relPath) [
-            "/.git"
-            "/result"
-            "/.direnv"
-            "/target"
-            "/.cache"
-            "/.gemini"
-            "/Inspiration"
-            "/.idea"
-            "/.vscode"
-            "/.DS_Store"
-          ];
-        in
-          (relPath == "") || (isImportant && !isIgnored);
+        filter = path: type:
+          let 
+            relPath = pkgs.lib.removePrefix (toString ./.) (toString path);
+            isImportant = pkgs.lib.any (p: pkgs.lib.hasPrefix p relPath) [
+              "/src" "/Sources" "/Darwin" "/android" "/protocols" "/scripts" "/include" "/VERSION" "/Cargo" "/build.rs" "/flake"
+            ];
+            isIgnored = pkgs.lib.any (p: pkgs.lib.hasInfix p relPath) [
+              "/.git" "/result" "/.direnv" "/target" "/.cache" "/.gemini" "/Inspiration" "/.idea" "/.vscode" "/.DS_Store"
+            ];
+          in (relPath == "") || (isImportant && !isIgnored);
       };
 
     # Xcode project generation needs the complete source tree, unlike the Rust
@@ -387,7 +313,7 @@
     };
 
     # Use a minimal pkgs for version lookup to avoid recursion
-    bootstrapPkgs = import nixpkgs {system = "x86_64-linux";};
+    bootstrapPkgs = import nixpkgs { system = "x86_64-linux"; };
     wawonaVersion = bootstrapPkgs.lib.removeSuffix "\n" (builtins.readFile (./. + "/VERSION"));
 
     # --- wwn-* extracted-repo wiring ------------------------------------------
@@ -395,8 +321,7 @@
     # former in-tree ./dependencies/... paths at the input store paths. The
     # cross-compile toolchain + library substrate comes from wwn-toolchain via
     # mkToolchains; the merged registry overlays each app repo's fragment.
-    mergedRegistry =
-      wwn-toolchain.lib.baseRegistry
+    mergedRegistry = wwn-toolchain.lib.baseRegistry
       // wwn-ssh.registryFragment
       // wwn-iland.registryFragment
       // wwn-kmscube.registryFragment
@@ -409,14 +334,7 @@
       // wwn-phoon-rs.registryFragment
       // wwn-relay.registryFragment
       // wwn-niri.registryFragment;
-    mkWawonaToolchains = {
-      pkgs,
-      pkgsAndroid ? null,
-      pkgsIos ? null,
-      androidSDK ? null,
-      androidAllowExperimentalFallback ? false,
-      wawonaSrc ? null,
-    }:
+    mkWawonaToolchains = { pkgs, pkgsAndroid ? null, pkgsIos ? null, androidSDK ? null, androidAllowExperimentalFallback ? false, wawonaSrc ? null }:
       wwn-toolchain.lib.mkToolchains {
         inherit pkgs pkgsAndroid pkgsIos androidSDK androidAllowExperimentalFallback wawonaSrc;
         registry = mergedRegistry;
@@ -458,418 +376,342 @@
     androidWrapperNix = "${wwn-toolchain}/dependencies/utils/android-wrapper.nix";
     # --------------------------------------------------------------------------
     waypipe-src = bootstrapPkgs.fetchFromGitLab {
-      owner = "mstoeckl";
-      repo = "waypipe";
-      rev = "v0.11.0";
+      owner = "mstoeckl"; repo = "waypipe"; rev = "v0.11.0";
       sha256 = "sha256-Tbd/yY90yb2+/ODYVL3SudHaJCGJKatZ9FuGM2uAX+8=";
     };
     # uutils coreutils umbrella crate. Vendored for in-process ls/cat/cp/...
     # on the App-Store-compliant build (no fork/exec). See scripts/ensure-coreutils.sh.
     coreutils-src = bootstrapPkgs.fetchFromGitHub {
-      owner = "uutils";
-      repo = "coreutils";
-      rev = "0.0.30";
+      owner = "uutils"; repo = "coreutils"; rev = "0.0.30";
       sha256 = "sha256-OZ9AsCJmQmn271OzEmqSZtt1OPn7zHTScQiiqvPhqB0=";
     };
 
-    getPackagesForSystem = system: pkgs: let
-      isLinuxHost = builtins.elem system linuxSystems;
+    getPackagesForSystem = system: pkgs:
+      let
+        isLinuxHost = builtins.elem system linuxSystems;
 
-      # Clean package set for Android. Only the rust-overlay is included
-      # to provide pkgs.rust-bin for waypipe/android.nix. The second and third
-      # host overlays are excluded to prevent cargo → libsecret → gjs →
-      # spidermonkey → cbindgen recursive evaluation chains.
-      androidPkgs =
-        if isLinuxHost
-        then
-          (import nixpkgs {
-            inherit system;
-            config = {
-              allowUnfree = true;
-              android_sdk.accept_license = true;
-            };
-            overlays = [
-              (import rust-overlay)
-              (self: super: {
-                rustToolchainAndroid = super.rust-bin.stable.latest.default.override {
-                  targets = ["aarch64-linux-android"];
-                };
-                rustPlatformAndroid = super.makeRustPlatform {
-                  cargo = self.rustToolchainAndroid;
-                  rustc = self.rustToolchainAndroid;
-                };
-              })
-            ];
-          })
-        else pkgs;
+        # Clean package set for Android. Only the rust-overlay is included
+        # to provide pkgs.rust-bin for waypipe/android.nix. The second and third
+        # host overlays are excluded to prevent cargo → libsecret → gjs → 
+        # spidermonkey → cbindgen recursive evaluation chains.
+        androidPkgs = if isLinuxHost then (import nixpkgs {
+          inherit system;
+          config = { allowUnfree = true; android_sdk.accept_license = true; };
+          overlays = [
+            (import rust-overlay)
+            (self: super: {
+              rustToolchainAndroid = super.rust-bin.stable.latest.default.override {
+                targets = [ "aarch64-linux-android" ];
+              };
+              rustPlatformAndroid = super.makeRustPlatform {
+                cargo = self.rustToolchainAndroid;
+                rustc = self.rustToolchainAndroid;
+              };
+            })
+          ];
+        }) else pkgs;
 
-      androidConfig = import androidConfigNix {
-        inherit system;
-        lib = androidPkgs.lib;
-      };
-      androidAllowExperimentalFallback =
-        # In pure flake eval, getEnv is empty, so allow fallback explicitly on
-        # arm64 hosts where native NDK host prebuilts are not currently shipped.
-        ((builtins.getEnv "WAWONA_ANDROID_EXPERIMENTAL_FALLBACK") == "1")
-        || (builtins.elem system ["aarch64-linux" "aarch64-darwin"]);
-
-      pkgsIos =
-        if !isLinuxHost
-        then pkgs.pkgsCross.iphone64
-        else null;
-
-      # Define a clean cross-set
-      pkgsAndroidCross = androidPkgs.pkgsCross.aarch64-android;
-      androidSDK = let
-        androidComposition = androidPkgs.androidenv.composeAndroidPackages {
-          cmdLineToolsVersion = "latest";
-          platformToolsVersion = "latest";
-          buildToolsVersions = [androidConfig.buildToolsVersion];
-          platformVersions = [(toString androidConfig.compileSdk)];
-          abiVersions = [androidConfig.hostEmulatorAbi];
-          systemImageTypes = ["google_apis_playstore"];
-          includeEmulator = androidConfig.emulatorSupported;
-          includeSystemImages = androidConfig.emulatorSupported;
-          includeNDK = true;
-          includeCmake = true;
-          ndkVersions = [androidConfig.ndkVersion];
-          cmakeVersions = [androidConfig.cmakeVersion];
-          useGoogleAPIs = false;
+        androidConfig = import androidConfigNix {
+          inherit system;
+          lib = androidPkgs.lib;
         };
-        sdkRoot = "${androidComposition.androidsdk}/libexec/android-sdk";
-      in {
-        androidsdk = androidComposition.androidsdk;
-        inherit sdkRoot;
-        platformTools = androidComposition.platform-tools;
-        cmdlineTools = androidComposition.androidsdk;
-        buildTools = "${sdkRoot}/build-tools/${androidConfig.buildToolsVersion}";
-        cmake = "${sdkRoot}/cmake/${androidConfig.cmakeVersion}";
-        ndk = "${sdkRoot}/ndk/${androidConfig.ndkVersion}";
-        emulator =
-          if androidConfig.emulatorSupported
-          then androidComposition.emulator
-          else androidComposition.androidsdk;
-        systemImage = "${sdkRoot}/system-images/android-${toString androidConfig.compileSdk}/google_apis_playstore/${androidConfig.hostEmulatorAbi}";
-        androidSdkPackages = {};
-        inherit androidConfig;
-      };
+        androidAllowExperimentalFallback =
+          # In pure flake eval, getEnv is empty, so allow fallback explicitly on
+          # arm64 hosts where native NDK host prebuilts are not currently shipped.
+          ((builtins.getEnv "WAWONA_ANDROID_EXPERIMENTAL_FALLBACK") == "1")
+          || (builtins.elem system [ "aarch64-linux" "aarch64-darwin" ]);
 
-      src = srcFor pkgs;
-      wawonaSrc = wawonaFullSrc;
+        pkgsIos = if !isLinuxHost then pkgs.pkgsCross.iphone64 else null;
+        
+        # Define a clean cross-set
+        pkgsAndroidCross = androidPkgs.pkgsCross.aarch64-android;
+        androidSDK =
+          let
+            androidComposition = androidPkgs.androidenv.composeAndroidPackages {
+              cmdLineToolsVersion = "latest";
+              platformToolsVersion = "latest";
+              buildToolsVersions = [ androidConfig.buildToolsVersion ];
+              platformVersions = [ (toString androidConfig.compileSdk) ];
+              abiVersions = [ androidConfig.hostEmulatorAbi ];
+              systemImageTypes = [ "google_apis_playstore" ];
+              includeEmulator = androidConfig.emulatorSupported;
+              includeSystemImages = androidConfig.emulatorSupported;
+              includeNDK = true;
+              includeCmake = true;
+              ndkVersions = [ androidConfig.ndkVersion ];
+              cmakeVersions = [ androidConfig.cmakeVersion ];
+              useGoogleAPIs = false;
+            };
+            sdkRoot = "${androidComposition.androidsdk}/libexec/android-sdk";
+          in {
+            androidsdk = androidComposition.androidsdk;
+            inherit sdkRoot;
+            platformTools = androidComposition.platform-tools;
+            cmdlineTools = androidComposition.androidsdk;
+            buildTools = "${sdkRoot}/build-tools/${androidConfig.buildToolsVersion}";
+            cmake = "${sdkRoot}/cmake/${androidConfig.cmakeVersion}";
+            ndk = "${sdkRoot}/ndk/${androidConfig.ndkVersion}";
+            emulator = if androidConfig.emulatorSupported then androidComposition.emulator else androidComposition.androidsdk;
+            systemImage = "${sdkRoot}/system-images/android-${toString androidConfig.compileSdk}/google_apis_playstore/${androidConfig.hostEmulatorAbi}";
+            androidSdkPackages = { };
+            inherit androidConfig;
+          };
 
-      toolchains = mkWawonaToolchains {
-        inherit pkgs wawonaSrc androidSDK androidAllowExperimentalFallback;
-        pkgsAndroid = pkgsAndroidCross;
-        pkgsIos = pkgsIos;
-      };
-      appleToolchain = import applePath {
-        inherit (pkgs) lib pkgs;
-        nixXcodeenvtests = inputs."nix-xcodeenvtests";
-      };
-      # Android Gradle JVM. Linux Nix: JBR 21 (no JCEF). Darwin Nix
-      # sandbox cannot use nixpkgs JBR (Linux-only platforms). Local
-      # Android Studio / gradlegen pin the embedded Studio JBR 21.
-      androidJdk =
-        if isLinuxHost
-        then androidPkgs.jetbrains.jdk-no-jcef-21
-        else androidPkgs.jdk17;
-      jdk17 = androidJdk;
-      gradle = pkgs.gradle_9.override {java = androidJdk;};
+        src = srcFor pkgs;
+        wawonaSrc = wawonaFullSrc;
 
-      # On Linux, create a separate toolchains instance using the overlay-free
-      # androidPkgs to prevent rust-overlay from triggering recursive evaluation
-      # chains through cargo → libsecret → gjs → spidermonkey → cbindgen.
-      toolchainsAndroid =
-        if isLinuxHost
-        then
-          mkWawonaToolchains {
-            pkgs = androidPkgs;
-            inherit wawonaSrc androidSDK androidAllowExperimentalFallback;
-            pkgsAndroid = pkgsAndroidCross;
-            pkgsIos = null;
-          }
-        else toolchains;
+        toolchains = mkWawonaToolchains {
+          inherit pkgs wawonaSrc androidSDK androidAllowExperimentalFallback;
+          pkgsAndroid = pkgsAndroidCross;
+          pkgsIos = pkgsIos;
+        };
+        appleToolchain = import applePath {
+          inherit (pkgs) lib pkgs;
+          nixXcodeenvtests = inputs."nix-xcodeenvtests";
+        };
+        # Android Gradle JVM. Linux Nix: JBR 21 (no JCEF). Darwin Nix
+        # sandbox cannot use nixpkgs JBR (Linux-only platforms). Local
+        # Android Studio / gradlegen pin the embedded Studio JBR 21.
+        androidJdk =
+          if isLinuxHost then androidPkgs.jetbrains.jdk-no-jcef-21
+          else androidPkgs.jdk17;
+        jdk17 = androidJdk;
+        gradle = pkgs.gradle_9.override { java = androidJdk; };
+        
+        # On Linux, create a separate toolchains instance using the overlay-free
+        # androidPkgs to prevent rust-overlay from triggering recursive evaluation
+        # chains through cargo → libsecret → gjs → spidermonkey → cbindgen.
+        toolchainsAndroid = if isLinuxHost then mkWawonaToolchains {
+          pkgs = androidPkgs;
+          inherit wawonaSrc androidSDK androidAllowExperimentalFallback;
+          pkgsAndroid = pkgsAndroidCross;
+          pkgsIos = null;
+        } else toolchains;
 
-      androidUtils = import androidWrapperNix {
-        lib = androidPkgs.lib;
-        pkgs = androidPkgs;
-        inherit androidSDK;
-      };
+        androidUtils = import androidWrapperNix {
+          lib = androidPkgs.lib; pkgs = androidPkgs; inherit androidSDK; 
+        };
 
-      hasGraphicsValidate = builtins.pathExists ./dependencies/tests/graphics-validate.nix;
-      hasAndroidCts =
-        builtins.pathExists ./dependencies/libs/vulkan-cts/android.nix
-        && builtins.pathExists ./dependencies/libs/vulkan-cts/gl-cts-android.nix;
-      vulkan-cts-android =
-        if hasAndroidCts
-        then
-          import ./dependencies/libs/vulkan-cts/android.nix {
-            inherit (pkgs) lib buildPackages stdenv;
-            pkgs = androidPkgs;
-            inherit androidSDK;
+        hasGraphicsValidate = builtins.pathExists ./dependencies/tests/graphics-validate.nix;
+        hasAndroidCts = builtins.pathExists ./dependencies/libs/vulkan-cts/android.nix
+          && builtins.pathExists ./dependencies/libs/vulkan-cts/gl-cts-android.nix;
+        vulkan-cts-android = if hasAndroidCts then import ./dependencies/libs/vulkan-cts/android.nix {
+          inherit (pkgs) lib buildPackages stdenv;
+          pkgs = androidPkgs;
+          inherit androidSDK;
+          androidToolchain = toolchainsAndroid.androidToolchain;
+        } else null;
+        gl-cts-android = if hasAndroidCts then import ./dependencies/libs/vulkan-cts/gl-cts-android.nix {
+          inherit (pkgs) lib buildPackages stdenv;
+          pkgs = androidPkgs;
+          inherit androidSDK;
+          androidToolchain = toolchainsAndroid.androidToolchain;
+        } else null;
+
+        waypipe-patched-android = import waypipePatchedSrcNix {
+          pkgs = androidPkgs;
+          inherit waypipe-src; patchScript = waypipePatchAndroidSh; platform = "android";
+        };
+
+        coreutils-patched-android = androidPkgs.callPackage coreutilsPatchedSrcNix {
+          inherit coreutils-src; patchScript = coreutilsPatchSourceSh; platform = "android";
+        };
+        # Android PATH multicall (libcoreutils_bin.so); same safe subset as
+        # in-process / macOS multicall. Requires rust-overlay on androidPkgs.
+        coreutils-multicall-android = androidPkgs.callPackage
+          "${wwn-coreutils}/dependencies/libs/coreutils/multicall-android.nix" {
+            coreutils-src = coreutils-patched-android;
             androidToolchain = toolchainsAndroid.androidToolchain;
-          }
-        else null;
-      gl-cts-android =
-        if hasAndroidCts
-        then
-          import ./dependencies/libs/vulkan-cts/gl-cts-android.nix {
-            inherit (pkgs) lib buildPackages stdenv;
-            pkgs = androidPkgs;
-            inherit androidSDK;
-            androidToolchain = toolchainsAndroid.androidToolchain;
-          }
-        else null;
+          };
 
-      waypipe-patched-android = import waypipePatchedSrcNix {
-        pkgs = androidPkgs;
-        inherit waypipe-src;
-        patchScript = waypipePatchAndroidSh;
-        platform = "android";
-      };
+        workspace-src-android = androidPkgs.callPackage ./dependencies/wawona/workspace-src.nix {
+          wawonaSrc = src; waypipeSrc = waypipe-patched-android; coreutilsSrc = coreutils-patched-android; platform = "android"; inherit wawonaVersion;
+        };
 
-      coreutils-patched-android = androidPkgs.callPackage coreutilsPatchedSrcNix {
-        inherit coreutils-src;
-        patchScript = coreutilsPatchSourceSh;
-        platform = "android";
-      };
-      # Android PATH multicall (libcoreutils_bin.so); same safe subset as
-      # in-process / macOS multicall. Requires rust-overlay on androidPkgs.
-      coreutils-multicall-android =
-        androidPkgs.callPackage
-        "${wwn-coreutils}/dependencies/libs/coreutils/multicall-android.nix" {
-          coreutils-src = coreutils-patched-android;
+        backend-android = androidPkgs.callPackage ./dependencies/wawona/rust-backend-android-brp.nix {
+          inherit wawonaVersion androidSDK androidToolchainNix;
+          backendName = "wawona-android-backend";
+          androidToolchain = if isLinuxHost then toolchainsAndroid.androidToolchain else toolchains.androidToolchain;
+          workspaceSrc = workspace-src-android;
+          nativeDeps = {
+            xkbcommon = toolchainsAndroid.buildForAndroid "xkbcommon" {};
+            libwayland = toolchainsAndroid.buildForAndroid "libwayland" {};
+            zstd = toolchainsAndroid.buildForAndroid "zstd" {};
+            lz4 = toolchainsAndroid.buildForAndroid "lz4" {};
+            pixman = toolchainsAndroid.buildForAndroid "pixman" {};
+            openssl = toolchainsAndroid.buildForAndroid "openssl" {};
+            libffi = toolchainsAndroid.buildForAndroid "libffi" {};
+            expat = toolchainsAndroid.buildForAndroid "expat" {};
+            libxml2 = toolchainsAndroid.buildForAndroid "libxml2" {};
+            ffmpeg = toolchainsAndroid.buildForAndroid "ffmpeg" {};
+          };
+        };
+        wawonaAndroidPkg = import ./dependencies/wawona/android.nix {
+          pkgs = androidPkgs;
+          buildModule = toolchainsAndroid;
+          inherit (androidPkgs) lib stdenv clang pkg-config unzip zip patchelf file util-linux glslang mesa;
+          inherit gradle jdk17 wawonaSrc androidSDK androidUtils;
+          srcFiltered = src;
+          androidToolchain = toolchainsAndroid.androidToolchain;
+          rustBackend = backend-android;
+          coreutilsAndroid = coreutils-multicall-android;
+          targetPkgs = pkgsAndroidCross;
+          waypipe = toolchainsAndroid.buildForAndroid "waypipe" { };
+          inherit androidToolchainNix westonSimpleShmPatchedSrcNix westonAndroidSignalPolyfill
+            androidConfigNix westonToytoolkitLdflagsNix westonCompositorLdflagsNix ilandGlAndroidLdflagsNix;
+        };
+
+        androidToolchainSanity = import androidToolchainSanityNix {
+          pkgs = androidPkgs;
           androidToolchain = toolchainsAndroid.androidToolchain;
         };
 
-      workspace-src-android = androidPkgs.callPackage ./dependencies/wawona/workspace-src.nix {
-        wawonaSrc = src;
-        waypipeSrc = waypipe-patched-android;
-        coreutilsSrc = coreutils-patched-android;
-        platform = "android";
-        inherit wawonaVersion;
-      };
-
-      backend-android = androidPkgs.callPackage ./dependencies/wawona/rust-backend-android-brp.nix {
-        inherit wawonaVersion androidSDK androidToolchainNix;
-        backendName = "wawona-android-backend";
-        androidToolchain =
-          if isLinuxHost
-          then toolchainsAndroid.androidToolchain
-          else toolchains.androidToolchain;
-        workspaceSrc = workspace-src-android;
-        nativeDeps = {
-          xkbcommon = toolchainsAndroid.buildForAndroid "xkbcommon" {};
-          libwayland = toolchainsAndroid.buildForAndroid "libwayland" {};
-          zstd = toolchainsAndroid.buildForAndroid "zstd" {};
-          lz4 = toolchainsAndroid.buildForAndroid "lz4" {};
-          pixman = toolchainsAndroid.buildForAndroid "pixman" {};
-          openssl = toolchainsAndroid.buildForAndroid "openssl" {};
-          libffi = toolchainsAndroid.buildForAndroid "libffi" {};
-          expat = toolchainsAndroid.buildForAndroid "expat" {};
-          libxml2 = toolchainsAndroid.buildForAndroid "libxml2" {};
-          ffmpeg = toolchainsAndroid.buildForAndroid "ffmpeg" {};
-        };
-      };
-      wawonaAndroidPkg = import ./dependencies/wawona/android.nix {
-        pkgs = androidPkgs;
-        buildModule = toolchainsAndroid;
-        inherit (androidPkgs) lib stdenv clang pkg-config unzip zip patchelf file util-linux glslang mesa;
-        inherit gradle jdk17 wawonaSrc androidSDK androidUtils;
-        srcFiltered = src;
-        androidToolchain = toolchainsAndroid.androidToolchain;
-        rustBackend = backend-android;
-        coreutilsAndroid = coreutils-multicall-android;
-        targetPkgs = pkgsAndroidCross;
-        waypipe = toolchainsAndroid.buildForAndroid "waypipe" {};
-        inherit
-          androidToolchainNix
-          westonSimpleShmPatchedSrcNix
-          westonAndroidSignalPolyfill
-          androidConfigNix
-          westonToytoolkitLdflagsNix
-          westonCompositorLdflagsNix
-          ilandGlAndroidLdflagsNix
-          ;
-      };
-
-      androidToolchainSanity = import androidToolchainSanityNix {
-        pkgs = androidPkgs;
-        androidToolchain = toolchainsAndroid.androidToolchain;
-      };
-
-      westonSimpleShmPatched = androidPkgs.callPackage westonSimpleShmPatchedSrcNix {};
-      # weston toytoolkit (cairo/pango) closure cross-compiled via the NDK; feeds
-      # the APK native build so libweston-13.a and demo *_main symbols can link.
-      mobileToytoolkitDepsAndroid = import ./dependencies/wawona/mobile-toytoolkit-deps.nix {
-        buildFn = toolchainsAndroid.buildForAndroid;
-      };
-      studioAndroidDeps =
-        [
-          (toolchainsAndroid.buildForAndroid "swiftshader" {})
-          (toolchainsAndroid.buildForAndroid "pixman" {})
-          (toolchainsAndroid.buildForAndroid "libwayland" {})
-          (toolchainsAndroid.buildForAndroid "expat" {})
-          (toolchainsAndroid.buildForAndroid "libffi" {})
-          (toolchainsAndroid.buildForAndroid "libxml2" {})
-          (toolchainsAndroid.buildForAndroid "xkbcommon" {})
-          (toolchainsAndroid.buildForAndroid "openssl" {})
-          (toolchainsAndroid.buildForAndroid "zstd" {})
-          (toolchainsAndroid.buildForAndroid "lz4" {})
-          # anowaW C ABI header + libanowaw.so for Gradle/CMake parity builds
-          (toolchainsAndroid.buildForAndroid "anowaw" {})
-        ]
-        ++ (pkgs.lib.attrValues mobileToytoolkitDepsAndroid)
-        ++ [
-          (toolchainsAndroid.buildForAndroid "weston" {enableGlClients = true;})
-          (toolchainsAndroid.buildForAndroid "weston-compositor" {})
-          (toolchainsAndroid.buildForAndroid "libintl" {})
-          (toolchainsAndroid.buildForAndroid "iland" {})
-          (toolchainsAndroid.buildForAndroid "angle" {})
-          (toolchainsAndroid.buildForAndroid "kmscube" {})
-          (toolchainsAndroid.buildForAndroid "gbm-es2-demo" {})
-          (toolchainsAndroid.buildForAndroid "opengl-cube" {})
-          (toolchainsAndroid.buildForAndroid "vkcube" {})
-        ];
-      studioIlandGlLdflags = import ilandGlAndroidLdflagsNix {
-        inherit (pkgs) lib;
-        deps = {
-          iland = toolchainsAndroid.buildForAndroid "iland" {};
-          angle = toolchainsAndroid.buildForAndroid "angle" {};
-          kmscube = toolchainsAndroid.buildForAndroid "kmscube" {};
-          "iland-gl-clients" = toolchainsAndroid.buildForAndroid "kmscube" {};
-          "gbm-es2-demo" = toolchainsAndroid.buildForAndroid "gbm-es2-demo" {};
-          "opengl-cube" = toolchainsAndroid.buildForAndroid "opengl-cube" {};
-          vkcube = toolchainsAndroid.buildForAndroid "vkcube" {};
-        };
-      };
-      studioWestonToytoolkitLdflags = import westonToytoolkitLdflagsNix {
-        inherit (pkgs) lib;
-        deps =
-          mobileToytoolkitDepsAndroid
-          // {
-            weston = toolchainsAndroid.buildForAndroid "weston" {};
-            libintl = toolchainsAndroid.buildForAndroid "libintl" {};
+        westonSimpleShmPatched = androidPkgs.callPackage westonSimpleShmPatchedSrcNix { };
+        # weston toytoolkit (cairo/pango) closure cross-compiled via the NDK; feeds
+        # the APK native build so libweston-13.a and demo *_main symbols can link.
+        mobileToytoolkitDepsAndroid =
+          import ./dependencies/wawona/mobile-toytoolkit-deps.nix {
+            buildFn = toolchainsAndroid.buildForAndroid;
           };
-        forceLoadWeston = true;
-        linkMode = "whole_archive";
-      };
-      studioWestonCompositorLdflags = import westonCompositorLdflagsNix {
-        inherit (pkgs) lib;
-        deps = {
-          weston-compositor = toolchainsAndroid.buildForAndroid "weston-compositor" {};
-          libwayland = toolchainsAndroid.buildForAndroid "libwayland" {};
-          expat = toolchainsAndroid.buildForAndroid "expat" {};
+        studioAndroidDeps = [
+          (toolchainsAndroid.buildForAndroid "swiftshader" { })
+          (toolchainsAndroid.buildForAndroid "pixman" { })
+          (toolchainsAndroid.buildForAndroid "libwayland" { })
+          (toolchainsAndroid.buildForAndroid "expat" { })
+          (toolchainsAndroid.buildForAndroid "libffi" { })
+          (toolchainsAndroid.buildForAndroid "libxml2" { })
+          (toolchainsAndroid.buildForAndroid "xkbcommon" { })
+          (toolchainsAndroid.buildForAndroid "openssl" { })
+          (toolchainsAndroid.buildForAndroid "zstd" { })
+          (toolchainsAndroid.buildForAndroid "lz4" { })
+          # anowaW C ABI header + libanowaw.so for Gradle/CMake parity builds
+          (toolchainsAndroid.buildForAndroid "anowaw" { })
+        ] ++ (pkgs.lib.attrValues mobileToytoolkitDepsAndroid)
+          ++ [
+            (toolchainsAndroid.buildForAndroid "weston" { enableGlClients = true; })
+            (toolchainsAndroid.buildForAndroid "weston-compositor" { })
+            (toolchainsAndroid.buildForAndroid "libintl" { })
+            (toolchainsAndroid.buildForAndroid "iland" { })
+            (toolchainsAndroid.buildForAndroid "angle" { })
+            (toolchainsAndroid.buildForAndroid "kmscube" { })
+            (toolchainsAndroid.buildForAndroid "gbm-es2-demo" { })
+            (toolchainsAndroid.buildForAndroid "opengl-cube" { })
+            (toolchainsAndroid.buildForAndroid "vkcube" { })
+          ];
+        studioIlandGlLdflags = import ilandGlAndroidLdflagsNix {
+          inherit (pkgs) lib;
+          deps = {
+            iland = toolchainsAndroid.buildForAndroid "iland" { };
+            angle = toolchainsAndroid.buildForAndroid "angle" { };
+            kmscube = toolchainsAndroid.buildForAndroid "kmscube" { };
+            "iland-gl-clients" = toolchainsAndroid.buildForAndroid "kmscube" { };
+            "gbm-es2-demo" = toolchainsAndroid.buildForAndroid "gbm-es2-demo" { };
+            "opengl-cube" = toolchainsAndroid.buildForAndroid "opengl-cube" { };
+            vkcube = toolchainsAndroid.buildForAndroid "vkcube" { };
+          };
         };
-        forceLoadCompositor = false;
-        linkMode = "whole_archive";
-      };
-      studioNixDepIncludes =
-        (pkgs.lib.concatMapStringsSep " " (d: "-I${d}/include") studioAndroidDeps)
-        + " -I${toolchainsAndroid.buildForAndroid "pixman" {}}/include/pixman-1"
-        + " -I${toolchainsAndroid.buildForAndroid "weston" {}}/include/weston-gen";
-      studioNixDepLibs =
-        (pkgs.lib.concatMapStringsSep " " (d: "-L${d}/lib") studioAndroidDeps)
-        + " ${pkgs.lib.concatStringsSep " " (studioWestonToytoolkitLdflags ++ studioWestonCompositorLdflags ++ studioIlandGlLdflags)}";
-      studioRuntimeLibDirs =
-        pkgs.lib.concatMapStringsSep ":" (d: "${d}/lib") studioAndroidDeps;
-      studioRustBackendLib = "${backend-android}/lib/libwawona.a";
-      studioRustBackendSharedLib = "${backend-android}/lib/libwawona_core.so";
-      studioOpenSSHBin = "${toolchainsAndroid.buildForAndroid "openssh" {}}/bin/ssh";
-      studioSshpassBin = "${toolchainsAndroid.buildForAndroid "sshpass" {}}/bin/sshpass";
-      studioZshPkg = toolchainsAndroid.buildForAndroid "zsh" {};
-      studioZshBin = "${studioZshPkg}/bin/zsh";
-      studioZshShare = "${studioZshPkg}/share/zsh";
-      studioFastfetchBin = "${toolchainsAndroid.buildForAndroid "fastfetch" {}}/bin/fastfetch";
-      studioPhoonBin = "${toolchainsAndroid.buildForAndroid "phoon" {}}/bin/phoon";
-      # waypipe ships a real ELF binary as `waypipe.real` plus a Vulkan-wrapper
-      # script named `waypipe`; gradlegen.nix picks whichever exists at build
-      # time (same fallback android-shell-tools.nix uses for the release APK).
-      studioWaypipePkg = toolchainsAndroid.buildForAndroid "waypipe" {};
-      studioWaypipeBin = "${studioWaypipePkg}/bin/waypipe.real";
-      studioWaypipeBinFallback = "${studioWaypipePkg}/bin/waypipe";
+        studioWestonToytoolkitLdflags = import westonToytoolkitLdflagsNix {
+          inherit (pkgs) lib;
+          deps = mobileToytoolkitDepsAndroid // {
+            weston = toolchainsAndroid.buildForAndroid "weston" { };
+            libintl = toolchainsAndroid.buildForAndroid "libintl" { };
+          };
+          forceLoadWeston = true;
+          linkMode = "whole_archive";
+        };
+        studioWestonCompositorLdflags = import westonCompositorLdflagsNix {
+          inherit (pkgs) lib;
+          deps = {
+            weston-compositor = toolchainsAndroid.buildForAndroid "weston-compositor" { };
+            libwayland = toolchainsAndroid.buildForAndroid "libwayland" { };
+            expat = toolchainsAndroid.buildForAndroid "expat" { };
+          };
+          forceLoadCompositor = false;
+          linkMode = "whole_archive";
+        };
+        studioNixDepIncludes =
+          (pkgs.lib.concatMapStringsSep " " (d: "-I${d}/include") studioAndroidDeps)
+          + " -I${toolchainsAndroid.buildForAndroid "pixman" { }}/include/pixman-1"
+          + " -I${toolchainsAndroid.buildForAndroid "weston" { }}/include/weston-gen";
+        studioNixDepLibs =
+          (pkgs.lib.concatMapStringsSep " " (d: "-L${d}/lib") studioAndroidDeps)
+          + " ${pkgs.lib.concatStringsSep " " (studioWestonToytoolkitLdflags ++ studioWestonCompositorLdflags ++ studioIlandGlLdflags)}";
+        studioRuntimeLibDirs =
+          pkgs.lib.concatMapStringsSep ":" (d: "${d}/lib") studioAndroidDeps;
+        studioRustBackendLib = "${backend-android}/lib/libwawona.a";
+        studioRustBackendSharedLib = "${backend-android}/lib/libwawona_core.so";
+        studioOpenSSHBin = "${toolchainsAndroid.buildForAndroid "openssh" { }}/bin/ssh";
+        studioSshpassBin = "${toolchainsAndroid.buildForAndroid "sshpass" { }}/bin/sshpass";
+        studioZshPkg = toolchainsAndroid.buildForAndroid "zsh" { };
+        studioZshBin = "${studioZshPkg}/bin/zsh";
+        studioZshShare = "${studioZshPkg}/share/zsh";
+        studioFastfetchBin = "${toolchainsAndroid.buildForAndroid "fastfetch" { }}/bin/fastfetch";
+        studioPhoonBin = "${toolchainsAndroid.buildForAndroid "phoon" { }}/bin/phoon";
+        # waypipe ships a real ELF binary as `waypipe.real` plus a Vulkan-wrapper
+        # script named `waypipe`; gradlegen.nix picks whichever exists at build
+        # time (same fallback android-shell-tools.nix uses for the release APK).
+        studioWaypipePkg = toolchainsAndroid.buildForAndroid "waypipe" { };
+        studioWaypipeBin = "${studioWaypipePkg}/bin/waypipe.real";
+        studioWaypipeBinFallback = "${studioWaypipePkg}/bin/waypipe";
 
-      gradlegenPkg = pkgs.callPackage ./dependencies/generators/gradlegen.nix {
-        wawonaSrc =
-          if isLinuxHost
-          then ./.
-          else src;
-        inherit wawonaVersion westonAndroidSignalPolyfill;
-        androidSdkRoot = androidSDK.sdkRoot;
-        westonSimpleShmSrc = westonSimpleShmPatched;
-        iconAssets = "AUTO";
-        nixDepIncludes = studioNixDepIncludes;
-        nixDepLibs = studioNixDepLibs;
-        rustBackendLib = studioRustBackendLib;
-        rustBackendSharedLib = studioRustBackendSharedLib;
-        runtimeLibDirs = studioRuntimeLibDirs;
-        opensshBinaryPath = studioOpenSSHBin;
-        sshpassBinaryPath = studioSshpassBin;
-        zshBinaryPath = studioZshBin;
-        zshSharePath = studioZshShare;
-        fastfetchBinaryPath = studioFastfetchBin;
-        phoonBinaryPath = studioPhoonBin;
-        waypipeBinaryPath = studioWaypipeBin;
-        waypipeBinaryPathFallback = studioWaypipeBinFallback;
-        anowawAndroid = toolchainsAndroid.buildForAndroid "anowaw" {};
-      };
+        gradlegenPkg = pkgs.callPackage ./dependencies/generators/gradlegen.nix {
+          wawonaSrc = if isLinuxHost then ./. else src;
+          inherit wawonaVersion westonAndroidSignalPolyfill;
+          androidSdkRoot = androidSDK.sdkRoot;
+          westonSimpleShmSrc = westonSimpleShmPatched;
+          iconAssets = "AUTO";
+          nixDepIncludes = studioNixDepIncludes;
+          nixDepLibs = studioNixDepLibs;
+          rustBackendLib = studioRustBackendLib;
+          rustBackendSharedLib = studioRustBackendSharedLib;
+          runtimeLibDirs = studioRuntimeLibDirs;
+          opensshBinaryPath = studioOpenSSHBin;
+          sshpassBinaryPath = studioSshpassBin;
+          zshBinaryPath = studioZshBin;
+          zshSharePath = studioZshShare;
+          fastfetchBinaryPath = studioFastfetchBin;
+          phoonBinaryPath = studioPhoonBin;
+          waypipeBinaryPath = studioWaypipeBin;
+          waypipeBinaryPathFallback = studioWaypipeBinFallback;
+          anowawAndroid = toolchainsAndroid.buildForAndroid "anowaw" {};
+        };
 
-      # ── Cross-Platform Packages ───────────────────────────────────────
-      commonPackages =
-        rec {
+        # ── Cross-Platform Packages ───────────────────────────────────────
+        commonPackages = rec {
           nom = pkgs.nix-output-monitor;
-          local-runner = pkgs.callPackage ./scripts/local-runner.nix {};
-          wawona-shell = pkgs.callPackage ./dependencies/clients/wawona-shell {};
-          wawona-tools = pkgs.callPackage ./dependencies/clients/wawona-tools {};
+          local-runner = pkgs.callPackage ./scripts/local-runner.nix { };
+          wawona-shell = pkgs.callPackage ./dependencies/clients/wawona-shell { };
+          wawona-tools = pkgs.callPackage ./dependencies/clients/wawona-tools { };
           # DejaVu (UI/CSD) + DejaVuSansM Nerd Font Mono (terminals).
-          wawona-bundled-fonts = pkgs.callPackage ./dependencies/libs/fonts {};
+          wawona-bundled-fonts = pkgs.callPackage ./dependencies/libs/fonts { };
 
           # Weston and Waypipe (Native on Linux, Cross-wrapped on Darwin)
-          weston =
-            if pkgs.stdenv.hostPlatform.isDarwin
-            then toolchains.buildForMacOS "weston" {}
-            else pkgs.weston;
+          weston = if pkgs.stdenv.hostPlatform.isDarwin then toolchains.buildForMacOS "weston" {} else pkgs.weston;
           weston-simple-shm =
             if pkgs.stdenv.hostPlatform.isDarwin
             then toolchains.buildForMacOS "weston-simple-shm" {}
             else pkgs.callPackage westonSimpleShmLinuxNix {};
-          foot =
-            if pkgs.stdenv.hostPlatform.isDarwin
-            then toolchains.buildForMacOS "foot" {}
-            else pkgs.foot;
-          fastfetch =
-            if pkgs.stdenv.hostPlatform.isDarwin
-            then toolchains.buildForMacOS "fastfetch" {}
-            else pkgs.fastfetch;
-          waypipe =
-            if pkgs.stdenv.hostPlatform.isDarwin
-            then toolchains.buildForMacOS "waypipe" {}
-            else pkgs.waypipe;
+          foot = if pkgs.stdenv.hostPlatform.isDarwin then toolchains.buildForMacOS "foot" {} else pkgs.foot;
+          fastfetch = if pkgs.stdenv.hostPlatform.isDarwin then toolchains.buildForMacOS "fastfetch" { } else pkgs.fastfetch;
+          waypipe = if pkgs.stdenv.hostPlatform.isDarwin then toolchains.buildForMacOS "waypipe" { } else pkgs.waypipe;
 
           # ANGLE (OpenGL ES over Metal) + iland userland graphics core
           # (GBM/EGL/DRM over IOSurface) for nested GL clients (kmscube, es2gears,
           # weston-simple-egl). macOS-first; mobile cross builds are WIP.
-          angle =
-            if pkgs.stdenv.hostPlatform.isDarwin
-            then toolchains.buildForMacOS "angle" {}
-            else pkgs.angle;
+          angle = if pkgs.stdenv.hostPlatform.isDarwin then toolchains.buildForMacOS "angle" { } else pkgs.angle;
 
           # Wawona (Native on Linux, Cross-wrapped on Darwin)
-          wawona =
-            if pkgs.stdenv.hostPlatform.isDarwin
-            then
-              (import ./dependencies/wawona/shell-wrappers.nix).macosWrapper pkgs
+          wawona = if pkgs.stdenv.hostPlatform.isDarwin 
+            then (import ./dependencies/wawona/shell-wrappers.nix).macosWrapper pkgs 
               (pkgs.callPackage ./dependencies/wawona/macos.nix {
-                buildModule = toolchains;
-                inherit wawonaSrc wawonaVersion;
-                waypipe = toolchains.buildForMacOS "waypipe" {};
-                weston = toolchains.buildForMacOS "weston" {};
-                moltenvk = toolchains.buildForMacOS "moltenvk" {};
-                kosmickrisp = toolchains.buildForMacOS "kosmickrisp" {};
-                foot = toolchains.buildForMacOS "foot" {};
-                niri = toolchains.buildForMacOS "niri" {};
-                fuzzel = toolchains.buildForMacOS "fuzzel" {};
-                fastfetch = toolchains.buildForMacOS "fastfetch" {};
+                buildModule = toolchains; inherit wawonaSrc wawonaVersion;
+                waypipe = toolchains.buildForMacOS "waypipe" { }; weston = toolchains.buildForMacOS "weston" { };
+                moltenvk = toolchains.buildForMacOS "moltenvk" { };
+                kosmickrisp = toolchains.buildForMacOS "kosmickrisp" { };
+                foot = toolchains.buildForMacOS "foot" { };
+                niri = toolchains.buildForMacOS "niri" { };
+                fuzzel = toolchains.buildForMacOS "fuzzel" { };
+                fastfetch = toolchains.buildForMacOS "fastfetch" { };
                 # Legacy commonPackages.wawona path (apps use wawona-macos +
                 # sharedMacosCargoNix). Keep a self-contained backend here so this
                 # attrset does not forward-ref the later packages let-binding.
@@ -878,55 +720,46 @@
                   workspaceSrc = pkgs.callPackage ./dependencies/wawona/workspace-src.nix {
                     wawonaSrc = src;
                     waypipeSrc = pkgs.callPackage waypipePatchedSrcNix {
-                      inherit waypipe-src;
-                      patchScript = waypipePatchSourceSh;
-                      platform = "macos";
+                      inherit waypipe-src; patchScript = waypipePatchSourceSh; platform = "macos";
                     };
                     coreutilsSrc = pkgs.callPackage coreutilsPatchedSrcNix {
-                      inherit coreutils-src;
-                      patchScript = coreutilsPatchSourceSh;
-                      platform = "macos";
+                      inherit coreutils-src; patchScript = coreutilsPatchSourceSh; platform = "macos";
                     };
-                    platform = "macos";
-                    inherit wawonaVersion;
+                    platform = "macos"; inherit wawonaVersion;
                   };
-                  platform = "macos";
-                  nativeDeps = {
-                    libwayland = toolchains.buildForMacOS "libwayland" {};
-                    xkbcommon = toolchains.buildForMacOS "xkbcommon" {};
-                    pixman = toolchains.buildForMacOS "pixman" {};
-                    waypipe = toolchains.buildForMacOS "waypipe" {};
-                    sshpass = toolchains.buildForMacOS "sshpass" {};
+                  platform = "macos"; nativeDeps = {
+                    libwayland = toolchains.buildForMacOS "libwayland" { };
+                    xkbcommon = toolchains.buildForMacOS "xkbcommon" { };
+                    pixman = toolchains.buildForMacOS "pixman" { };
+                    waypipe = toolchains.buildForMacOS "waypipe" { };
+                    sshpass = toolchains.buildForMacOS "sshpass" { };
                   };
                 };
-                xcodeProject =
-                  (pkgs.callPackage ./dependencies/generators/xcodegen.nix {
-                    inherit wawonaVersion wawonaSrc;
-                    toolbarKeysSrc = inputs."toolbar-keys";
-                    macosBackend = null;
-                    iosBackend = null;
-                    iosSimBackend = null;
-                    macosDeps = {};
-                    iosDeps = {};
-                    iosSimDeps = {};
-                    macosWeston = toolchains.buildForMacOS "weston" {};
-                  }).project;
+                xcodeProject = (pkgs.callPackage ./dependencies/generators/xcodegen.nix {
+                   inherit wawonaVersion wawonaSrc;
+                   toolbarKeysSrc = inputs."toolbar-keys";
+                   macosBackend = null;
+                   iosBackend = null;
+                   iosSimBackend = null;
+                   macosDeps = {};
+                   iosDeps = {};
+                   iosSimDeps = {};
+                   macosWeston = toolchains.buildForMacOS "weston" { };
+                }).project;
               })
-            else
-              pkgs.callPackage ./dependencies/wawona/linux.nix {
-                inherit wawonaVersion;
-                waypipeSrc = waypipe-src;
-                coreutilsSrc = coreutils-src;
-              };
-        }
-        // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin {
+            else pkgs.callPackage ./dependencies/wawona/linux.nix {
+              inherit wawonaVersion;
+              waypipeSrc = waypipe-src;
+              coreutilsSrc = coreutils-src;
+            };
+        } // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin {
           # ANGLE companion: iland userland graphics core (GBM/EGL/DRM over IOSurface).
-          iland = toolchains.buildForMacOS "iland" {};
+          iland = toolchains.buildForMacOS "iland" { };
           # GL smoke test (kmscube) over iland+ANGLE. Nested inside Wawona
           # via the Mode A present-redirect. macOS only.
-          kmscube = pkgs.callPackage kmscubeMacosNix {buildModule = toolchains;};
-          "iland-gl-clients" = pkgs.callPackage kmscubeMacosNix {buildModule = toolchains;};
-          "gbm-es2-demo" = toolchains.buildForMacOS "gbm-es2-demo" {};
+          kmscube = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };
+          "iland-gl-clients" = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };
+          "gbm-es2-demo" = toolchains.buildForMacOS "gbm-es2-demo" { };
           # wwn-igetty: Linux-shaped VTs + Doorman (Classic own-display).
           modeb-tty = wwn-igetty.packages.${system}.wwn-igetty;
           wwn-igetty = wwn-igetty.packages.${system}.wwn-igetty;
@@ -937,34 +770,29 @@
           };
         };
 
-      packages =
-        commonPackages
-        # WLCS conformance runner (ci-l2-wlcs). Linux-only, skeleton
-        # integration; runtime battery is a CI lane. Guarded so darwin eval is
-        # unaffected.
-        // (pkgs.lib.optionalAttrs (isLinuxHost && builtins.pathExists ./dependencies/tests/wlcs.nix) {
-          wawona-wlcs-run = pkgs.callPackage ./dependencies/tests/wlcs.nix {};
-        })
-        // (pkgs.lib.optionalAttrs (isLinuxHost || androidSDK != null) {
+        packages = commonPackages
+          # WLCS conformance runner (ci-l2-wlcs). Linux-only, skeleton
+          # integration; runtime battery is a CI lane. Guarded so darwin eval is
+          # unaffected.
+          // (pkgs.lib.optionalAttrs (isLinuxHost && builtins.pathExists ./dependencies/tests/wlcs.nix) {
+            wawona-wlcs-run = pkgs.callPackage ./dependencies/tests/wlcs.nix { };
+          })
+          // (pkgs.lib.optionalAttrs (isLinuxHost || androidSDK != null) {
           wawona-android = wawonaAndroidPkg;
           wawona-android-backend = backend-android;
           # Exposed so the CI reproducibility gate (repro-rebuild) can --rebuild
           # the filtered-source assembly and byte-compare it across hosts.
           wawona-workspace-src-android = workspace-src-android;
           android-toolchain-sanity = androidToolchainSanity;
-          gradle-deps-update = let
-            updateScript =
-              (pkgs.callPackage ./dependencies/gradle-deps.nix {
-                wawonaSrc =
-                  if isLinuxHost
-                  then ./.
-                  else src;
+          gradle-deps-update =
+            let
+              updateScript = (pkgs.callPackage ./dependencies/gradle-deps.nix {
+                wawonaSrc = if isLinuxHost then ./. else src;
                 inherit androidSDK;
                 inherit gradle;
                 jdk17 = androidJdk;
               }).mitmCache.passthru.updateScript;
-          in
-            pkgs.writeShellScriptBin "gradle-deps-update" ''
+            in pkgs.writeShellScriptBin "gradle-deps-update" ''
               exec ${updateScript} "$@"
             '';
           gradlegen = gradlegenPkg.generateScript;
@@ -975,33 +803,24 @@
             buildModule = toolchainsAndroid;
             inherit (androidPkgs) lib stdenv clang pkg-config unzip zip patchelf file util-linux glslang mesa;
             inherit gradle jdk17 wawonaSrc androidSDK androidUtils;
-            srcFiltered = src;
+          srcFiltered = src;
             androidToolchain = toolchainsAndroid.androidToolchain;
             rustBackend = backend-android;
             coreutilsAndroid = coreutils-multicall-android;
             targetPkgs = pkgsAndroidCross;
-            waypipe = toolchainsAndroid.buildForAndroid "waypipe" {};
-            inherit
-              androidToolchainNix
-              westonSimpleShmPatchedSrcNix
-              westonAndroidSignalPolyfill
-              androidConfigNix
-              westonToytoolkitLdflagsNix
-              westonCompositorLdflagsNix
-              ilandGlAndroidLdflagsNix
-              ;
+            waypipe = toolchainsAndroid.buildForAndroid "waypipe" { };
+            inherit androidToolchainNix westonSimpleShmPatchedSrcNix westonAndroidSignalPolyfill
+            androidConfigNix westonToytoolkitLdflagsNix westonCompositorLdflagsNix ilandGlAndroidLdflagsNix;
             releaseArtifact = "release-aab";
           };
           coreutils-multicall-android = coreutils-multicall-android;
-          angle-android = toolchainsAndroid.buildForAndroid "angle" {};
-          weston-android = toolchainsAndroid.buildForAndroid "weston" {};
-          weston-compositor-android = toolchainsAndroid.buildForAndroid "weston-compositor" {};
-        })
-        // (pkgs.lib.optionalAttrs hasAndroidCts {
+          angle-android = toolchainsAndroid.buildForAndroid "angle" { };
+          weston-android = toolchainsAndroid.buildForAndroid "weston" { };
+          weston-compositor-android = toolchainsAndroid.buildForAndroid "weston-compositor" { };
+        }) // (pkgs.lib.optionalAttrs hasAndroidCts {
           vulkan-cts-android = vulkan-cts-android;
           gl-cts-android = gl-cts-android;
-        })
-        // (pkgs.lib.optionalAttrs isLinuxHost {
+        }) // (pkgs.lib.optionalAttrs isLinuxHost {
           wawona-linux = pkgs.callPackage ./dependencies/wawona/linux.nix {
             inherit wawonaVersion;
             waypipeSrc = waypipe-src;
@@ -1062,54 +881,37 @@
             coreutilsSrc = coreutils-src;
           };
           # Host-native phoon CLI for Linux (`nix run .#phoon`).
-          phoon-linux = toolchains.buildForLinux "phoon" {};
-          phoon = toolchains.buildForLinux "phoon" {};
-          wawona-wasm-linux = toolchains.buildForLinux "wawona-wasm" {};
-          wawona-wasm = toolchains.buildForLinux "wawona-wasm" {};
-        })
-        // (pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin (let
-          teamId = let
-            value = builtins.getEnv "TEAM_ID";
-          in
-            if value == ""
-            then null
-            else value;
+          phoon-linux = toolchains.buildForLinux "phoon" { };
+          phoon = toolchains.buildForLinux "phoon" { };
+          wawona-wasm-linux = toolchains.buildForLinux "wawona-wasm" { };
+          wawona-wasm = toolchains.buildForLinux "wawona-wasm" { };
+        }) // (pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin (let
+          teamId = let value = builtins.getEnv "TEAM_ID"; in if value == "" then null else value;
           apple = import applePath {
             inherit (pkgs) lib pkgs;
             TEAM_ID = teamId;
             nixXcodeenvtests = inputs."nix-xcodeenvtests";
           };
-          missingTeamRelease = name:
-            pkgs.runCommand name {} ''
-              echo "Set TEAM_ID and build with --impure to produce signed iOS release artifacts." >&2
-              exit 1
-            '';
+          missingTeamRelease = name: pkgs.runCommand name { } ''
+            echo "Set TEAM_ID and build with --impure to produce signed iOS release artifacts." >&2
+            exit 1
+          '';
           waypipe-patched-macos = pkgs.callPackage waypipePatchedSrcNix {
-            inherit waypipe-src;
-            patchScript = waypipePatchSourceSh;
-            platform = "macos";
+            inherit waypipe-src; patchScript = waypipePatchSourceSh; platform = "macos";
           };
           coreutils-patched-macos = pkgs.callPackage coreutilsPatchedSrcNix {
-            inherit coreutils-src;
-            patchScript = coreutilsPatchSourceSh;
-            platform = "macos";
+            inherit coreutils-src; patchScript = coreutilsPatchSourceSh; platform = "macos";
           };
           waypipe-patched-ios = pkgs.callPackage waypipePatchedSrcNix {
-            inherit waypipe-src;
-            patchScript = waypipePatchSourceSh;
-            platform = "ios";
+            inherit waypipe-src; patchScript = waypipePatchSourceSh; platform = "ios";
           };
           waypipe-patched-watchos = pkgs.callPackage waypipePatchedSrcNix {
-            inherit waypipe-src;
-            patchScript = waypipePatchSourceSh;
-            platform = "watchos";
+            inherit waypipe-src; patchScript = waypipePatchSourceSh; platform = "watchos";
           };
           coreutils-patched-ios = pkgs.callPackage coreutilsPatchedSrcNix {
-            inherit coreutils-src;
-            patchScript = coreutilsPatchSourceSh;
-            platform = "ios";
+            inherit coreutils-src; patchScript = coreutilsPatchSourceSh; platform = "ios";
           };
-          weston-terminal-pkg = pkgs.runCommand "weston-terminal" {} ''
+          weston-terminal-pkg = pkgs.runCommand "weston-terminal" { } ''
             mkdir -p "$out/bin"
             ln -s "${commonPackages.weston}/bin/weston-terminal" "$out/bin/weston-terminal"
           '';
@@ -1120,124 +922,104 @@
             inherit coreutils-src;
           };
           workspace-src-macos = pkgs.callPackage ./dependencies/wawona/workspace-src.nix {
-            wawonaSrc = src;
-            waypipeSrc = waypipe-patched-macos;
-            coreutilsSrc = coreutils-patched-macos;
-            platform = "macos";
-            inherit wawonaVersion;
+            wawonaSrc = src; waypipeSrc = waypipe-patched-macos; coreutilsSrc = coreutils-patched-macos;
+            terminalSrc = inputs.terminal; platform = "macos"; inherit wawonaVersion;
           };
           workspace-src-ios = pkgs.callPackage ./dependencies/wawona/workspace-src.nix {
-            wawonaSrc = src;
-            waypipeSrc = waypipe-patched-ios;
-            coreutilsSrc = coreutils-patched-ios;
-            platform = "ios";
-            inherit wawonaVersion;
+            wawonaSrc = src; waypipeSrc = waypipe-patched-ios; coreutilsSrc = coreutils-patched-ios;
+            terminalSrc = inputs.terminal; platform = "ios"; inherit wawonaVersion;
           };
           workspace-src-watchos = pkgs.callPackage ./dependencies/wawona/workspace-src.nix {
-            wawonaSrc = src;
-            waypipeSrc = waypipe-patched-watchos;
-            coreutilsSrc = coreutils-patched-ios;
-            platform = "watchos";
-            inherit wawonaVersion;
+            wawonaSrc = src; waypipeSrc = waypipe-patched-watchos; coreutilsSrc = coreutils-patched-ios;
+            terminalSrc = inputs.terminal; platform = "watchos"; inherit wawonaVersion;
           };
-          mobilePlatformDeps = import ./dependencies/wawona/mobile-platform-deps.nix {
-            lib = pkgs.lib;
-            inherit pkgs;
-          };
-          macosToytoolkitDeps = import ./dependencies/wawona/macos-toytoolkit-deps.nix {inherit pkgs;};
-          macosDeps =
-            {
-              libwayland = toolchains.buildForMacOS "libwayland" {};
-              xkbcommon = toolchains.buildForMacOS "xkbcommon" {};
-              pixman = toolchains.buildForMacOS "pixman" {};
-              "epoll-shim" = toolchains.buildForMacOS "epoll-shim" {};
-              waypipe = toolchains.buildForMacOS "waypipe" {};
-              sshpass = toolchains.buildForMacOS "sshpass" {};
-              # wwn-ssh macOS backend: regular OpenSSH (ssh, ssh-keygen, scp, ...)
-              # bundled into Resources/bin for the in-app terminal.
-              openssh = toolchains.buildForMacOS "openssh" {};
-              iland = toolchains.buildForMacOS "iland" {};
-              angle = toolchains.buildForMacOS "angle" {};
-              kmscube = pkgs.callPackage kmscubeMacosNix {buildModule = toolchains;};
-              "iland-gl-clients" = pkgs.callPackage kmscubeMacosNix {buildModule = toolchains;};
-              "gbm-es2-demo" = toolchains.buildForMacOS "gbm-es2-demo" {};
-              vkcube = toolchains.buildForMacOS "vkcube" {};
-              "opengl-cube" = toolchains.buildForMacOS "opengl-cube" {};
-              weston = toolchains.buildForMacOS "weston" {};
-              "weston-compositor" = toolchains.buildForMacOS "weston-compositor-drm" {};
-              "wawona-wasm" = toolchains.buildForMacOS "wawona-wasm" {};
-              "wawona-relay" = toolchains.buildForMacOS "wawona-relay" {};
-            }
-            // macosToytoolkitDeps;
+          mobilePlatformDeps = import ./dependencies/wawona/mobile-platform-deps.nix { lib = pkgs.lib; inherit pkgs; };
+          macosToytoolkitDeps = import ./dependencies/wawona/macos-toytoolkit-deps.nix { inherit pkgs; };
+          macosDeps = {
+            libwayland = toolchains.buildForMacOS "libwayland" { };
+            xkbcommon = toolchains.buildForMacOS "xkbcommon" { };
+            pixman = toolchains.buildForMacOS "pixman" { };
+            "epoll-shim" = toolchains.buildForMacOS "epoll-shim" { };
+            waypipe = toolchains.buildForMacOS "waypipe" { };
+            sshpass = toolchains.buildForMacOS "sshpass" { };
+            # wwn-ssh macOS backend: regular OpenSSH (ssh, ssh-keygen, scp, ...)
+            # bundled into Resources/bin for the in-app terminal.
+            openssh = toolchains.buildForMacOS "openssh" { };
+            iland = toolchains.buildForMacOS "iland" { };
+            angle = toolchains.buildForMacOS "angle" { };
+            kmscube = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };
+            "iland-gl-clients" = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };
+            "gbm-es2-demo" = toolchains.buildForMacOS "gbm-es2-demo" { };
+            vkcube = toolchains.buildForMacOS "vkcube" { };
+            "opengl-cube" = toolchains.buildForMacOS "opengl-cube" { };
+            weston = toolchains.buildForMacOS "weston" { };
+            "weston-compositor" = toolchains.buildForMacOS "weston-compositor-drm" { };
+            "wawona-wasm" = toolchains.buildForMacOS "wawona-wasm" { };
+            "wawona-relay" = toolchains.buildForMacOS "wawona-relay" { };
+          } // macosToytoolkitDeps;
           # Cross-build Relay C ABI for every Apple-mobile dep set. Prefer
           # Relay's own recipes/relay-staticlib.nix (keeps import/wasm for the
           # relay-wasm → wpm path). L4 only wraps iosToolchain per platform.
           # Cited: wawona-relay-wasm, Relay recipes/relay-staticlib.nix.
-          mkWawonaRelayApple = {
-            simulator ? false,
-            platform ? "ios",
-          }: let
-            baseTc = pkgs.iosToolchain;
-            iosToolchain =
-              if platform == "watch"
-              then
-                baseTc
-                // {
-                  isWatchOSToolchain = true;
-                  deploymentTarget = "10.0";
-                  mkIOSBuildEnv = {
-                    simulator ? false,
-                    minVersion ? "10.0",
-                  }:
-                    baseTc.mkAppleEnv {
-                      sdkName =
-                        if simulator
-                        then "watchsimulator"
-                        else "watchos";
-                      platform = "watchos";
-                      inherit simulator minVersion;
-                    };
-                }
-              else if platform == "tv"
-              then
-                baseTc
-                // {
-                  isTVOSToolchain = true;
-                  deploymentTarget = "11.0";
-                  mkIOSBuildEnv = {
-                    simulator ? false,
-                    minVersion ? "11.0",
-                  }:
-                    baseTc.mkAppleEnv {
-                      sdkName =
-                        if simulator
-                        then "appletvsimulator"
-                        else "appletvos";
-                      platform = "tvos";
-                      inherit simulator minVersion;
-                    };
-                }
-              else if platform == "vision"
-              then
-                baseTc
-                // {
-                  isVisionOSToolchain = true;
-                  deploymentTarget = "26.0";
-                  mkIOSBuildEnv = {
-                    simulator ? false,
-                    minVersion ? "26.0",
-                  }:
-                    baseTc.mkAppleEnv {
-                      sdkName =
-                        if simulator
-                        then "xrsimulator"
-                        else "xros";
-                      platform = "visionos";
-                      inherit simulator minVersion;
-                    };
-                }
-              else baseTc;
-          in
+          mkWawonaRelayApple =
+            {
+              simulator ? false,
+              platform ? "ios",
+            }:
+            let
+              baseTc = pkgs.iosToolchain;
+              iosToolchain =
+                if platform == "watch" then
+                  baseTc
+                  // {
+                    isWatchOSToolchain = true;
+                    deploymentTarget = "10.0";
+                    mkIOSBuildEnv =
+                      {
+                        simulator ? false,
+                        minVersion ? "10.0",
+                      }:
+                      baseTc.mkAppleEnv {
+                        sdkName = if simulator then "watchsimulator" else "watchos";
+                        platform = "watchos";
+                        inherit simulator minVersion;
+                      };
+                  }
+                else if platform == "tv" then
+                  baseTc
+                  // {
+                    isTVOSToolchain = true;
+                    deploymentTarget = "11.0";
+                    mkIOSBuildEnv =
+                      {
+                        simulator ? false,
+                        minVersion ? "11.0",
+                      }:
+                      baseTc.mkAppleEnv {
+                        sdkName = if simulator then "appletvsimulator" else "appletvos";
+                        platform = "tvos";
+                        inherit simulator minVersion;
+                      };
+                  }
+                else if platform == "vision" then
+                  baseTc
+                  // {
+                    isVisionOSToolchain = true;
+                    deploymentTarget = "26.0";
+                    mkIOSBuildEnv =
+                      {
+                        simulator ? false,
+                        minVersion ? "26.0",
+                      }:
+                      baseTc.mkAppleEnv {
+                        sdkName = if simulator then "xrsimulator" else "xros";
+                        platform = "visionos";
+                        inherit simulator minVersion;
+                      };
+                  }
+                else
+                  baseTc;
+            in
             pkgs.callPackage "${wwn-relay}/recipes/relay-staticlib.nix" {
               inherit iosToolchain simulator;
             };
@@ -1252,9 +1034,9 @@
                 inherit (pkgs) iosToolchain;
                 simulator = false;
               };
-              "vm-engine-contract" = toolchains.buildForIOS "vm-engine-contract" {};
+              "vm-engine-contract" = toolchains.buildForIOS "vm-engine-contract" { };
               "vm-engine-contract-modeb" =
-                toolchains.buildForIOS "vm-engine-contract-modeb" {};
+                toolchains.buildForIOS "vm-engine-contract-modeb" { };
               "igetty-ios" =
                 wwn-igetty.packages.${system}.wwn-igetty-ios;
               "wawona-relay" = mkWawonaRelayApple {
@@ -1269,7 +1051,7 @@
             simulator = true;
             extras = {
               "vm-engine-contract" =
-                toolchains.buildForIOS "vm-engine-contract" {simulator = true;};
+                toolchains.buildForIOS "vm-engine-contract" { simulator = true; };
               "wawona-relay" = mkWawonaRelayApple {
                 simulator = true;
                 platform = "ios";
@@ -1364,20 +1146,16 @@
             nativeDeps = iosDeps;
             cargoNixDrv = sharedIosCargoNix;
           };
-          uniffi-bindgen = pkgs.callPackage ./dependencies/generators/uniffi-bindgen.nix {};
+          uniffi-bindgen = pkgs.callPackage ./dependencies/generators/uniffi-bindgen.nix { };
           backend-macos = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
             inherit crate2nix wawonaVersion toolchains nixpkgs;
-            workspaceSrc = workspace-src-macos;
-            platform = "macos";
-            nativeDeps = macosDeps;
+            workspaceSrc = workspace-src-macos; platform = "macos"; nativeDeps = macosDeps;
             cargoNixDrv = sharedMacosCargoNix;
             desktopHost = true;
           };
           backend-ios = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
             inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
-            workspaceSrc = workspace-src-ios;
-            platform = "ios";
-            nativeDeps = iosDeps;
+            workspaceSrc = workspace-src-ios; platform = "ios"; nativeDeps = iosDeps;
             cargoNixDrv = sharedIosCargoNix;
             iosDeploymentTarget = "11.0";
           };
@@ -1385,18 +1163,14 @@
           # iOS 14+ product; never let a .tipa silently inherit this floor.
           backend-ios-modeb-sileo = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
             inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
-            workspaceSrc = workspace-src-ios;
-            platform = "ios";
-            nativeDeps = iosDeps;
+            workspaceSrc = workspace-src-ios; platform = "ios"; nativeDeps = iosDeps;
             cargoNixDrv = sharedIosCargoNix;
             iosModeB = true;
             iosDeploymentTarget = "11.0";
           };
           backend-ios-modeb-tipa = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
             inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
-            workspaceSrc = workspace-src-ios;
-            platform = "ios";
-            nativeDeps = iosDeps;
+            workspaceSrc = workspace-src-ios; platform = "ios"; nativeDeps = iosDeps;
             cargoNixDrv = sharedIosCargoNix;
             iosModeB = true;
             iosDeploymentTarget = "14.0";
@@ -1405,10 +1179,7 @@
           backend-ios-modeb = backend-ios-modeb-sileo;
           backend-ios-sim = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
             inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
-            workspaceSrc = workspace-src-ios;
-            platform = "ios";
-            simulator = true;
-            nativeDeps = iosSimDeps;
+            workspaceSrc = workspace-src-ios; platform = "ios"; simulator = true; nativeDeps = iosSimDeps;
             cargoNixDrv = sharedIosCargoNix;
             # Product-sim CI: skip thin LTO / O3 on the Rust backend (Xcode stays Debug).
             release = false;
@@ -1416,62 +1187,47 @@
 
           backend-tvos = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
             inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
-            workspaceSrc = workspace-src-ios;
-            platform = "tvos";
-            nativeDeps = tvosDeps;
+            workspaceSrc = workspace-src-ios; platform = "tvos"; nativeDeps = tvosDeps;
             cargoNixDrv = sharedIosCargoNix;
           };
           backend-tvos-sim = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
             inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
-            workspaceSrc = workspace-src-ios;
-            platform = "tvos";
-            simulator = true;
-            nativeDeps = tvosSimDeps;
+            workspaceSrc = workspace-src-ios; platform = "tvos"; simulator = true; nativeDeps = tvosSimDeps;
             cargoNixDrv = sharedIosCargoNix;
             # Product-sim CI: skip thin LTO / O3 on the Rust backend (Xcode stays Debug).
             release = false;
           };
           backend-visionos = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
             inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
-            workspaceSrc = workspace-src-ios;
-            platform = "visionos";
-            nativeDeps = visionosDeps;
+            workspaceSrc = workspace-src-ios; platform = "visionos"; nativeDeps = visionosDeps;
             cargoNixDrv = sharedIosCargoNix;
           };
           backend-visionos-sim = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
             inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
-            workspaceSrc = workspace-src-ios;
-            platform = "visionos";
-            simulator = true;
-            nativeDeps = visionosSimDeps;
+            workspaceSrc = workspace-src-ios; platform = "visionos"; simulator = true; nativeDeps = visionosSimDeps;
             cargoNixDrv = sharedIosCargoNix;
             # Product-sim CI: skip thin LTO / O3 (Xcode stays Debug).
             release = false;
           };
           backend-watchos = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
             inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
-            workspaceSrc = workspace-src-watchos;
-            platform = "watchos";
-            nativeDeps = watchosDeps;
+            workspaceSrc = workspace-src-watchos; platform = "watchos"; nativeDeps = watchosDeps;
             cargoNixDrv = sharedWatchosCargoNix;
           };
           backend-watchos-sim = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
             inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
-            workspaceSrc = workspace-src-watchos;
-            platform = "watchos";
-            simulator = true;
-            nativeDeps = watchosSimDeps;
+            workspaceSrc = workspace-src-watchos; platform = "watchos"; simulator = true; nativeDeps = watchosSimDeps;
             cargoNixDrv = sharedWatchosCargoNix;
             # Product-sim + iOS-embedded watch companion: skip thin LTO / O3.
             release = false;
           };
           mobileGuestArtifacts =
-            if builtins.pathExists "${wwn-relay}/import/vms/dependencies/vms/mobile/guest-artifacts.nix"
-            then wwn-relay.packages.aarch64-linux.wawona-nixos-guest-4k or null
+            if builtins.pathExists "${wwn-relay}/import/vms/dependencies/vms/mobile/guest-artifacts.nix" then
+              wwn-relay.packages.aarch64-linux.wawona-nixos-guest-4k or null
             else null;
           mobileGuestArtifacts16k =
-            if builtins.pathExists "${wwn-relay}/import/vms/dependencies/vms/mobile/guest-artifacts.nix"
-            then wwn-relay.packages.aarch64-linux.wawona-nixos-guest-16k or null
+            if builtins.pathExists "${wwn-relay}/import/vms/dependencies/vms/mobile/guest-artifacts.nix" then
+              wwn-relay.packages.aarch64-linux.wawona-nixos-guest-16k or null
             else null;
           mobileVmEngine = null;
           mobileVmEngineModeB = null;
@@ -1483,228 +1239,106 @@
             # -m*-simulator-version-min clash). Drop it so project.yml can still
             # emit Wawona-watchOS; LDFLAGS already treat waypipe as optional.
             dropWatchWaypipe ? false,
-          }: let
-            want = p: platformFilter == null || builtins.elem p platformFilter;
-            # Empty unused platform deps so filterAttrs-forced targets do not
-            # realize heavy closures (eval may still walk attrs; builds do not).
-            empty = {};
-            # Wawona-iOS embeds the watch companion for App Store / TF (#136),
-            # so ios-filtered projects must still realize watch deps.
-            wantWatch = want "watchos" || want "ios";
-            watchDepsForXcodegen =
-              if !wantWatch
-              then empty
-              else if simulatorOnly
-              then empty
-              else if dropWatchWaypipe
-              then (watchosDeps // {waypipe = null;})
-              else watchosDeps;
-            watchSimDepsForXcodegen =
-              if !wantWatch
-              then empty
-              else if dropWatchWaypipe
-              then (watchosSimDeps // {waypipe = null;})
-              else watchosSimDeps;
-          in
+          }:
+            let
+              want = p: platformFilter == null || builtins.elem p platformFilter;
+              # Empty unused platform deps so filterAttrs-forced targets do not
+              # realize heavy closures (eval may still walk attrs; builds do not).
+              empty = { };
+              # Wawona-iOS embeds the watch companion for App Store / TF (#136),
+              # so ios-filtered projects must still realize watch deps.
+              wantWatch = want "watchos" || want "ios";
+              watchDepsForXcodegen =
+                if !wantWatch then empty
+                else if simulatorOnly then empty
+                else if dropWatchWaypipe then (watchosDeps // { waypipe = null; })
+                else watchosDeps;
+              watchSimDepsForXcodegen =
+                if !wantWatch then empty
+                else if dropWatchWaypipe then (watchosSimDeps // { waypipe = null; })
+                else watchosSimDeps;
+            in
             pkgs.callPackage ./dependencies/generators/xcodegen.nix {
               inherit wawonaVersion wawonaSrc platformFilter simulatorOnly mobileGuestArtifacts mobileGuestArtifacts16k mobileVmEngine;
               toolbarKeysSrc = inputs."toolbar-keys";
               includeModeB = includeModeBEngine;
-              mobileVmEngineModeB =
-                if includeModeBEngine
-                then mobileVmEngineModeB
-                else null;
-              iosDeps =
-                if want "ios" || want "ipados"
-                then
-                  (
-                    if simulatorOnly
-                    then empty
-                    else iosDeps
-                  )
-                else empty;
-              iosSimDeps =
-                if want "ios" || want "ipados"
-                then iosSimDeps
-                else empty;
-              ipadosDeps =
-                if want "ipados"
-                then
-                  (
-                    if simulatorOnly
-                    then empty
-                    else iosDeps
-                  )
-                else empty;
-              ipadosSimDeps =
-                if want "ipados"
-                then iosSimDeps
-                else empty;
-              tvosDeps =
-                if want "tvos"
-                then
-                  (
-                    if simulatorOnly
-                    then empty
-                    else tvosDeps
-                  )
-                else empty;
-              tvosSimDeps =
-                if want "tvos"
-                then tvosSimDeps
-                else empty;
-              visionosDeps =
-                if want "visionos"
-                then
-                  (
-                    if simulatorOnly
-                    then empty
-                    else visionosDeps
-                  )
-                else empty;
-              visionosSimDeps =
-                if want "visionos"
-                then visionosSimDeps
-                else empty;
+              mobileVmEngineModeB = if includeModeBEngine then mobileVmEngineModeB else null;
+              iosDeps = if want "ios" || want "ipados" then (if simulatorOnly then empty else iosDeps) else empty;
+              iosSimDeps = if want "ios" || want "ipados" then iosSimDeps else empty;
+              ipadosDeps = if want "ipados" then (if simulatorOnly then empty else iosDeps) else empty;
+              ipadosSimDeps = if want "ipados" then iosSimDeps else empty;
+              tvosDeps = if want "tvos" then (if simulatorOnly then empty else tvosDeps) else empty;
+              tvosSimDeps = if want "tvos" then tvosSimDeps else empty;
+              visionosDeps = if want "visionos" then (if simulatorOnly then empty else visionosDeps) else empty;
+              visionosSimDeps = if want "visionos" then visionosSimDeps else empty;
               watchosDeps = watchDepsForXcodegen;
               watchosSimDeps = watchSimDepsForXcodegen;
-              macosDeps =
-                if want "macos"
-                then macosDeps
-                else empty;
-              macosBackend =
-                if want "macos"
-                then backend-macos
-                else null;
-              iosBackend =
-                if (want "ios" || want "ipados") && !simulatorOnly
-                then backend-ios
-                else null;
-              iosSimBackend =
-                if want "ios" || want "ipados"
-                then backend-ios-sim
-                else null;
-              ipadosBackend =
-                if want "ipados" && !simulatorOnly
-                then backend-ios
-                else null;
-              ipadosSimBackend =
-                if want "ipados"
-                then backend-ios-sim
-                else null;
-              tvosBackend =
-                if want "tvos" && !simulatorOnly
-                then backend-tvos
-                else null;
-              tvosSimBackend =
-                if want "tvos"
-                then backend-tvos-sim
-                else null;
-              visionosBackend =
-                if want "visionos" && !simulatorOnly
-                then backend-visionos
-                else null;
-              visionosSimBackend =
-                if want "visionos"
-                then backend-visionos-sim
-                else null;
-              watchosBackend =
-                if wantWatch && !simulatorOnly
-                then backend-watchos
-                else null;
-              watchosSimBackend =
-                if wantWatch
-                then backend-watchos-sim
-                else null;
-              macosWeston =
-                if want "macos"
-                then toolchains.buildForMacOS "weston" {}
-                else null;
-              macosFoot =
-                if want "macos"
-                then toolchains.buildForMacOS "foot" {}
-                else null;
+              macosDeps = if want "macos" then macosDeps else empty;
+              macosBackend = if want "macos" then backend-macos else null;
+              iosBackend = if (want "ios" || want "ipados") && !simulatorOnly then backend-ios else null;
+              iosSimBackend = if want "ios" || want "ipados" then backend-ios-sim else null;
+              ipadosBackend = if want "ipados" && !simulatorOnly then backend-ios else null;
+              ipadosSimBackend = if want "ipados" then backend-ios-sim else null;
+              tvosBackend = if want "tvos" && !simulatorOnly then backend-tvos else null;
+              tvosSimBackend = if want "tvos" then backend-tvos-sim else null;
+              visionosBackend = if want "visionos" && !simulatorOnly then backend-visionos else null;
+              visionosSimBackend = if want "visionos" then backend-visionos-sim else null;
+              watchosBackend = if wantWatch && !simulatorOnly then backend-watchos else null;
+              watchosSimBackend = if wantWatch then backend-watchos-sim else null;
+              macosWeston = if want "macos" then toolchains.buildForMacOS "weston" { } else null;
+              macosFoot = if want "macos" then toolchains.buildForMacOS "foot" { } else null;
               # wwn-fastfetch, not pkgs.fastfetch. nixpkgs fastfetch enables
               # ImageMagick, which pulls libtiff docs → Sphinx → mypy pytest.
-              macosFastfetch =
-                if want "macos"
-                then toolchains.buildForMacOS "fastfetch" {}
-                else null;
-              macosPhoon =
-                if want "macos"
-                then toolchains.buildForMacOS "phoon" {}
-                else null;
-              macosZsh =
-                if want "macos"
-                then pkgs.zsh
-                else null;
+              macosFastfetch = if want "macos" then toolchains.buildForMacOS "fastfetch" { } else null;
+              macosPhoon = if want "macos" then toolchains.buildForMacOS "phoon" { } else null;
+              macosZsh = if want "macos" then pkgs.zsh else null;
               macosKmscube =
-                if want "macos"
-                then pkgs.callPackage kmscubeMacosNix {buildModule = toolchains;}
-                else null;
+                if want "macos" then pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; } else null;
               macosModebTty =
-                if want "macos"
-                then wwn-igetty.packages.${system}.wwn-igetty
-                else null;
+                if want "macos" then wwn-igetty.packages.${system}.wwn-igetty else null;
               macosOpenglCube =
-                if want "macos"
-                then toolchains.buildForMacOS "opengl-cube" {}
-                else null;
+                if want "macos" then toolchains.buildForMacOS "opengl-cube" { } else null;
               macosVkcube =
-                if want "macos"
-                then toolchains.buildForMacOS "vkcube" {}
-                else null;
+                if want "macos" then toolchains.buildForMacOS "vkcube" { } else null;
               macosGbmEs2Demo =
-                if want "macos"
-                then toolchains.buildForMacOS "gbm-es2-demo" {}
-                else null;
+                if want "macos" then toolchains.buildForMacOS "gbm-es2-demo" { } else null;
               macosWestonSimpleEgl =
-                if want "macos"
-                then toolchains.buildForMacOS "weston-simple-egl" {}
-                else null;
-              macosNiri =
-                if want "macos"
-                then toolchains.buildForMacOS "niri" {}
-                else null;
-              macosFuzzel =
-                if want "macos"
-                then toolchains.buildForMacOS "fuzzel" {}
-                else null;
+                if want "macos" then toolchains.buildForMacOS "weston-simple-egl" { } else null;
+              macosNiri = if want "macos" then toolchains.buildForMacOS "niri" { } else null;
+              macosFuzzel = if want "macos" then toolchains.buildForMacOS "fuzzel" { } else null;
             };
-          xcodegenOutputs = mkXcodegen {};
-          xcodegenIosOutputs = mkXcodegen {platformFilter = ["ios" "ipados"];};
+          xcodegenOutputs = mkXcodegen { };
+          xcodegenIosOutputs = mkXcodegen { platformFilter = [ "ios" "ipados" ]; };
           xcodegenIosModeBOutputs = mkXcodegen {
-            platformFilter = ["ios"];
+            platformFilter = [ "ios" ];
             includeModeBEngine = true;
           };
           xcodegenIosSimOutputs = mkXcodegen {
-            platformFilter = ["ios"];
+            platformFilter = [ "ios" ];
             simulatorOnly = true;
           };
-          xcodegenMacosOutputs = mkXcodegen {platformFilter = ["macos"];};
-          xcodegenAppleOutputs = mkXcodegen {platformFilter = ["ios" "ipados" "macos"];};
+          xcodegenMacosOutputs = mkXcodegen { platformFilter = [ "macos" ]; };
+          xcodegenAppleOutputs = mkXcodegen { platformFilter = [ "ios" "ipados" "macos" ]; };
           # Full Apple matrix minus visionOS. Used when vision deps fail to
           # configure (e.g. lz4 -mvisionos-simulator-version-min clang gap).
           xcodegenNoVisionOutputs = mkXcodegen {
-            platformFilter = ["ios" "ipados" "macos" "tvos" "watchos"];
+            platformFilter = [ "ios" "ipados" "macos" "tvos" "watchos" ];
             dropWatchWaypipe = true;
           };
           wawona-macos = pkgs.callPackage ./dependencies/wawona/macos.nix {
-            buildModule = toolchains;
-            inherit wawonaSrc wawonaVersion;
-            waypipe = toolchains.buildForMacOS "waypipe" {};
-            weston = toolchains.buildForMacOS "weston" {};
-            moltenvk = toolchains.buildForMacOS "moltenvk" {};
-            kosmickrisp = toolchains.buildForMacOS "kosmickrisp" {};
-            foot = toolchains.buildForMacOS "foot" {};
-            niri = toolchains.buildForMacOS "niri" {};
-            fuzzel = toolchains.buildForMacOS "fuzzel" {};
+            buildModule = toolchains; inherit wawonaSrc wawonaVersion;
+            waypipe = toolchains.buildForMacOS "waypipe" { }; weston = toolchains.buildForMacOS "weston" { };
+            moltenvk = toolchains.buildForMacOS "moltenvk" { };
+            kosmickrisp = toolchains.buildForMacOS "kosmickrisp" { };
+            foot = toolchains.buildForMacOS "foot" { };
+            niri = toolchains.buildForMacOS "niri" { };
+            fuzzel = toolchains.buildForMacOS "fuzzel" { };
             # anowaW app bridge (libanowaw.a + anowaw_mac_shim.o + headers).
-            anowaw = toolchains.buildForMacOS "anowaw" {};
+            anowaw = toolchains.buildForMacOS "anowaw" { };
             # wwn-fastfetch. nixpkgs fastfetch pulls ImageMagick → mypy pytest.
-            fastfetch = toolchains.buildForMacOS "fastfetch" {};
-            phoon = toolchains.buildForMacOS "phoon" {};
-            wawonaWasm = toolchains.buildForMacOS "wawona-wasm" {};
+            fastfetch = toolchains.buildForMacOS "fastfetch" { };
+            phoon = toolchains.buildForMacOS "phoon" { };
+            wawonaWasm = toolchains.buildForMacOS "wawona-wasm" { };
             # Relay `container` CLI + prebuilt wwn-containerd for
             # the Machines GUI + in-app terminal.
             containerCli = wwn-relay.packages.${system}.container-cli or null;
@@ -1712,20 +1346,19 @@
             # Container Wayland bridge: host waypipe with SplitFD (--socket-fds)
             # and IOSurface dmabuf (wwn-waypipe macos.nix). Prefer the full
             # macOS waypipe over the SHM-only waypipe-splitfd spike.
-            containerWaypipeFds = let
-              wp = toolchains.buildForMacOS "waypipe" {};
-            in
-              if wp != null
-              then wp
+            containerWaypipeFds =
+              let wp = toolchains.buildForMacOS "waypipe" { };
+              in if wp != null then wp
               else (wwn-relay.packages.${system}.waypipe-splitfd or null);
             containerWaypipeGuestLinux = (pkgsFor "aarch64-linux").waypipe;
             containerWaypipeGuestRoot =
               wwn-relay.packages.${system}.waypipe-guest-root or null;
-            containerWaypipeGuestClosure = (pkgsFor "aarch64-linux").closureInfo {
-              rootPaths = [(pkgsFor "aarch64-linux").waypipe];
-            };
+            containerWaypipeGuestClosure =
+              (pkgsFor "aarch64-linux").closureInfo {
+                rootPaths = [ (pkgsFor "aarch64-linux").waypipe ];
+              };
             zsh = pkgs.zsh;
-            kmscube = pkgs.callPackage kmscubeMacosNix {buildModule = toolchains;};
+            kmscube = pkgs.callPackage kmscubeMacosNix { buildModule = toolchains; };
             modebTty = wwn-igetty.packages.${system}.wwn-igetty;
             # macOS-only xcodegen project (platformFilter = ["macos"]) so product
             # builds use the same Wawona-macOS scheme as local xcodebuild, without
@@ -1733,7 +1366,7 @@
             rustBackend = backend-macos;
             xcodeProject = xcodegenMacosOutputs.project;
             # Mode B dylib enabled for all macOS builds (Wawona macOS is non-App Store).
-            ilandBaremetal = toolchains.buildForMacOS "iland-baremetal" {};
+            ilandBaremetal = toolchains.buildForMacOS "iland-baremetal" { };
             # L3' Watchdog tools (github.com/Wawona/wwn-iowatchdog).
             iowatchdog = wwn-iowatchdog.packages.${system}.wwn-iowatchdog;
           };
@@ -1747,7 +1380,7 @@
             xcodeProject = xcodegenIosSimOutputs.project;
             simulator = true;
             rustBackend = backend-ios-sim;
-            companionBackends = {"Wawona-watchOS" = backend-watchos-sim;};
+            companionBackends = { "Wawona-watchOS" = backend-watchos-sim; };
           };
           wawona-watchos-app-sim = pkgs.callPackage ./dependencies/wawona/watchos.nix {
             inherit wawonaSrc wawonaVersion teamId;
@@ -1771,7 +1404,7 @@
             deploymentTarget = "11.0";
             rustBackend = backend-ios;
             inherit mobileGuestArtifacts mobileGuestArtifacts16k;
-            companionBackends = {"Wawona-watchOS" = backend-watchos;};
+            companionBackends = { "Wawona-watchOS" = backend-watchos; };
           };
           wawona-ios-modeb-sileo-app-device = pkgs.callPackage ./dependencies/wawona/ios.nix {
             inherit wawonaSrc wawonaVersion;
@@ -1784,7 +1417,7 @@
             modeB = true;
             deploymentTarget = "11.0";
             rustBackend = backend-ios-modeb-sileo;
-            companionBackends = {};
+            companionBackends = { };
           };
           wawona-ios-modeb-tipa-app-device = pkgs.callPackage ./dependencies/wawona/ios.nix {
             inherit wawonaSrc wawonaVersion;
@@ -1797,183 +1430,153 @@
             modeB = true;
             deploymentTarget = "14.0";
             rustBackend = backend-ios-modeb-tipa;
-            companionBackends = {};
+            companionBackends = { };
           };
           # Historical name remains the Sileo iOS 11+ app.  New callers must
           # choose the explicit channel output above.
           wawona-ios-modeb-app-device = wawona-ios-modeb-sileo-app-device;
-          wawona-ios-modeb-tipa =
-            pkgs.runCommand "wawona-ios-modeb-tipa-${wawonaVersion}" {
-              nativeBuildInputs = [
-                pkgs.ldid
-                pkgs.unzip
-                pkgs.zip
-              ];
-            } ''
-              set -euo pipefail
-              stage="$TMPDIR/wawona-modeb-tipa"
-              mkdir -p "$stage/Payload" "$out"
-              cp -R "${wawona-ios-modeb-tipa-app-device}/Wawona.app" "$stage/Payload/Wawona.app"
-              chmod -R u+w "$stage/Payload/Wawona.app"
-              rm -rf "$stage/Payload/Wawona.app/_CodeSignature"
+          wawona-ios-modeb-tipa = pkgs.runCommand "wawona-ios-modeb-tipa-${wawonaVersion}" {
+            nativeBuildInputs = [
+              pkgs.ldid
+              pkgs.unzip
+              pkgs.zip
+            ];
+          } ''
+            set -euo pipefail
+            stage="$TMPDIR/wawona-modeb-tipa"
+            mkdir -p "$stage/Payload" "$out"
+            cp -R "${wawona-ios-modeb-tipa-app-device}/Wawona.app" "$stage/Payload/Wawona.app"
+            chmod -R u+w "$stage/Payload/Wawona.app"
+            rm -rf "$stage/Payload/Wawona.app/_CodeSignature"
+            ldid -S"${wawonaSrc}/src/resources/app-bundle/Wawona-ModeB.entitlements" \
+              "$stage/Payload/Wawona.app/Wawona"
+            if [ -x "$stage/Payload/Wawona.app/wwn-vsock-peer" ]; then
               ldid -S"${wawonaSrc}/src/resources/app-bundle/Wawona-ModeB.entitlements" \
-                "$stage/Payload/Wawona.app/Wawona"
-              if [ -x "$stage/Payload/Wawona.app/wwn-vsock-peer" ]; then
-                ldid -S"${wawonaSrc}/src/resources/app-bundle/Wawona-ModeB.entitlements" \
-                  "$stage/Payload/Wawona.app/wwn-vsock-peer"
-              fi
-              # Relay owns VMs, containers, and wasm. Do not zip leftover QEMU
-              # or unused guest disks. Embed Relay NixOS Image/rootfs only after
-              # Relay frames. Cited: docs/wwn-repo-dag.md (L4 product only).
-              rm -rf "$stage/Payload/Wawona.app/wwn-qemu-run"
-              rm -rf "$stage/Payload/Wawona.app/Frameworks/"qemu*
-              rm -rf "$stage/Payload/Wawona.app/share/qemu"
-              rm -f "$stage/Payload/Wawona.app/wawona-rootfs/usr/share/zsh/Completion/Unix/Command/_qemu"
-              rm -rf "$stage/Payload/Wawona.app/wawona-mobile-guest"
-              rm -rf "$stage/Payload/Wawona.app/wawona-container-guest"
-              rm -rf "$stage/Payload/Wawona.app/_CodeSignature"
-              artifact="$out/Wawona-${wawonaVersion}-iOS-arm64.tipa"
-              (cd "$stage" && zip -qry "$artifact" Payload)
-              bash "${wawonaSrc}/.github/scripts/verify-ios-modeb-artifacts.sh" \
-                --mode-b "$artifact"
-            '';
+                "$stage/Payload/Wawona.app/wwn-vsock-peer"
+            fi
+            # Relay owns VMs, containers, and wasm. Do not zip leftover QEMU
+            # or unused guest disks. Embed Relay NixOS Image/rootfs only after
+            # Relay frames. Cited: docs/wwn-repo-dag.md (L4 product only).
+            rm -rf "$stage/Payload/Wawona.app/wwn-qemu-run"
+            rm -rf "$stage/Payload/Wawona.app/Frameworks/"qemu*
+            rm -rf "$stage/Payload/Wawona.app/share/qemu"
+            rm -f "$stage/Payload/Wawona.app/wawona-rootfs/usr/share/zsh/Completion/Unix/Command/_qemu"
+            rm -rf "$stage/Payload/Wawona.app/wawona-mobile-guest"
+            rm -rf "$stage/Payload/Wawona.app/wawona-container-guest"
+            rm -rf "$stage/Payload/Wawona.app/_CodeSignature"
+            artifact="$out/Wawona-${wawonaVersion}-iOS-arm64.tipa"
+            (cd "$stage" && zip -qry "$artifact" Payload)
+            bash "${wawonaSrc}/.github/scripts/verify-ios-modeb-artifacts.sh" \
+              --mode-b "$artifact"
+          '';
           # Slim iteration tipa: same Mode B binary, no guest disks. Same
           # Relay rule as official until Relay boots NixOS on this artifact.
-          wawona-ios-modeb-tipa-slim =
-            pkgs.runCommand "wawona-ios-modeb-tipa-slim-${wawonaVersion}" {
-              nativeBuildInputs = [
-                pkgs.ldid
-                pkgs.unzip
-                pkgs.zip
-              ];
-            } ''
-              set -euo pipefail
-              stage="$TMPDIR/wawona-modeb-tipa-slim"
-              mkdir -p "$stage/Payload" "$out"
-              cp -R "${wawona-ios-modeb-tipa-app-device}/Wawona.app" "$stage/Payload/Wawona.app"
-              chmod -R u+w "$stage/Payload/Wawona.app"
-              rm -rf "$stage/Payload/Wawona.app/_CodeSignature"
-              rm -rf "$stage/Payload/Wawona.app/wawona-mobile-guest/rootfs.img"
-              rm -rf "$stage/Payload/Wawona.app/wawona-container-guest/rootfs.img"
+          wawona-ios-modeb-tipa-slim = pkgs.runCommand "wawona-ios-modeb-tipa-slim-${wawonaVersion}" {
+            nativeBuildInputs = [
+              pkgs.ldid
+              pkgs.unzip
+              pkgs.zip
+            ];
+          } ''
+            set -euo pipefail
+            stage="$TMPDIR/wawona-modeb-tipa-slim"
+            mkdir -p "$stage/Payload" "$out"
+            cp -R "${wawona-ios-modeb-tipa-app-device}/Wawona.app" "$stage/Payload/Wawona.app"
+            chmod -R u+w "$stage/Payload/Wawona.app"
+            rm -rf "$stage/Payload/Wawona.app/_CodeSignature"
+            rm -rf "$stage/Payload/Wawona.app/wawona-mobile-guest/rootfs.img"
+            rm -rf "$stage/Payload/Wawona.app/wawona-container-guest/rootfs.img"
+            ldid -S"${wawonaSrc}/src/resources/app-bundle/Wawona-ModeB.entitlements" \
+              "$stage/Payload/Wawona.app/Wawona"
+            if [ -x "$stage/Payload/Wawona.app/wwn-vsock-peer" ]; then
               ldid -S"${wawonaSrc}/src/resources/app-bundle/Wawona-ModeB.entitlements" \
-                "$stage/Payload/Wawona.app/Wawona"
-              if [ -x "$stage/Payload/Wawona.app/wwn-vsock-peer" ]; then
-                ldid -S"${wawonaSrc}/src/resources/app-bundle/Wawona-ModeB.entitlements" \
-                  "$stage/Payload/Wawona.app/wwn-vsock-peer"
-              fi
-              # Relay owns VMs, containers, and wasm. No leftover QEMU. No
-              # unused guest disks until Relay frames exist.
-              rm -rf "$stage/Payload/Wawona.app/wwn-qemu-run"
-              rm -rf "$stage/Payload/Wawona.app/Frameworks/"qemu*
-              rm -rf "$stage/Payload/Wawona.app/share/qemu"
-              rm -f "$stage/Payload/Wawona.app/wawona-rootfs/usr/share/zsh/Completion/Unix/Command/_qemu"
-              rm -rf "$stage/Payload/Wawona.app/wawona-mobile-guest"
-              rm -rf "$stage/Payload/Wawona.app/wawona-container-guest"
-              rm -rf "$stage/Payload/Wawona.app/_CodeSignature"
-              artifact="$out/Wawona-${wawonaVersion}-iOS-arm64.tipa"
-              (cd "$stage" && zip -qry "$artifact" Payload)
-              bash "${wawonaSrc}/.github/scripts/verify-ios-modeb-artifacts.sh" \
-                --iteration "$artifact"
-            '';
+                "$stage/Payload/Wawona.app/wwn-vsock-peer"
+            fi
+            # Relay owns VMs, containers, and wasm. No leftover QEMU. No
+            # unused guest disks until Relay frames exist.
+            rm -rf "$stage/Payload/Wawona.app/wwn-qemu-run"
+            rm -rf "$stage/Payload/Wawona.app/Frameworks/"qemu*
+            rm -rf "$stage/Payload/Wawona.app/share/qemu"
+            rm -f "$stage/Payload/Wawona.app/wawona-rootfs/usr/share/zsh/Completion/Unix/Command/_qemu"
+            rm -rf "$stage/Payload/Wawona.app/wawona-mobile-guest"
+            rm -rf "$stage/Payload/Wawona.app/wawona-container-guest"
+            rm -rf "$stage/Payload/Wawona.app/_CodeSignature"
+            artifact="$out/Wawona-${wawonaVersion}-iOS-arm64.tipa"
+            (cd "$stage" && zip -qry "$artifact" Payload)
+            bash "${wawonaSrc}/.github/scripts/verify-ios-modeb-artifacts.sh" \
+              --iteration "$artifact"
+          '';
           # Sileo / Procursus Mode B .deb wrappers. Separate DESTDIR from tipa.
           # Rootless = iphoneos-arm64 under /var/jb (vphone lab). Rootful =
           # iphoneos-arm under /. Never one .deb claiming both schemes.
-          mkModebDeb = {
-            scheme,
-            slim ? false,
-          }: let
-            arch =
-              if scheme == "rootful"
-              then "iphoneos-arm"
-              else "iphoneos-arm64";
-            appPrefix =
-              if scheme == "rootful"
-              then "Applications"
-              else "var/jb/Applications";
-            suffix =
-              if scheme == "rootful"
-              then "rootful"
-              else "rootless";
-            slimTag =
-              if slim
-              then "-slim"
-              else "";
-          in
-            pkgs.runCommand "wawona-ios-modeb-deb-${suffix}${slimTag}-${wawonaVersion}" {
-              nativeBuildInputs = [pkgs.ldid pkgs.dpkg];
+          mkModebDeb = { scheme, slim ? false }:
+            let
+              arch = if scheme == "rootful" then "iphoneos-arm" else "iphoneos-arm64";
+              appPrefix = if scheme == "rootful" then "Applications" else "var/jb/Applications";
+              suffix = if scheme == "rootful" then "rootful" else "rootless";
+              slimTag = if slim then "-slim" else "";
+            in pkgs.runCommand "wawona-ios-modeb-deb-${suffix}${slimTag}-${wawonaVersion}" {
+              nativeBuildInputs = [ pkgs.ldid pkgs.dpkg ];
             } ''
-                            set -euo pipefail
-                            stage="$TMPDIR/wawona-modeb-deb-${suffix}"
-                            mkdir -p "$stage/${appPrefix}" "$stage/DEBIAN" "$out"
-                            cp -R "${wawona-ios-modeb-sileo-app-device}/Wawona.app" "$stage/${appPrefix}/Wawona.app"
-                            chmod -R u+w "$stage/${appPrefix}/Wawona.app"
-                            rm -rf "$stage/${appPrefix}/Wawona.app/_CodeSignature"
-                            rm -rf "$stage/${appPrefix}/Wawona.app/wwn-qemu-run"
-                            rm -rf "$stage/${appPrefix}/Wawona.app/Frameworks/"qemu*
-                            rm -rf "$stage/${appPrefix}/Wawona.app/share/qemu"
-                            rm -f "$stage/${appPrefix}/Wawona.app/wawona-rootfs/usr/share/zsh/Completion/Unix/Command/_qemu"
-                            ${
-                if slim
-                then ''
-                  rm -rf "$stage/${appPrefix}/Wawona.app/wawona-mobile-guest"
-                  rm -rf "$stage/${appPrefix}/Wawona.app/wawona-container-guest"
-                ''
-                else ''
-                  # Official stays guest-free until Relay frames (same tipa rule).
-                  rm -rf "$stage/${appPrefix}/Wawona.app/wawona-mobile-guest"
-                  rm -rf "$stage/${appPrefix}/Wawona.app/wawona-container-guest"
-                ''
-              }
-                            ldid -S"${wawonaSrc}/src/resources/app-bundle/Wawona-ModeB.entitlements" \
-                              "$stage/${appPrefix}/Wawona.app/Wawona"
-                            if [ -x "$stage/${appPrefix}/Wawona.app/wwn-vsock-peer" ]; then
-                              ldid -S"${wawonaSrc}/src/resources/app-bundle/Wawona-ModeB.entitlements" \
-                                "$stage/${appPrefix}/Wawona.app/wwn-vsock-peer"
-                            fi
-                            bash "${wawonaSrc}/.github/scripts/verify-ios-modeb-artifacts.sh" \
-                              --sileo "$stage/${appPrefix}/Wawona.app"
-                            cat > "$stage/DEBIAN/control" <<EOF
-              Package: com.aspauldingcode.wawona.modeb
-              Name: Wawona
-              Version: ${wawonaVersion}
-              Architecture: ${arch}
-              Maintainer: Wawona <hello@wawona.io>
-              Description: Wawona Mode B (${suffix}). JIT + IOMFB Desktop. Not App Store.
-              Section: Applications
-              Priority: optional
-              Depends: firmware (>= 11.0)
-              Homepage: https://wawona.io
-              EOF
-                            cat > "$stage/DEBIAN/postinst" <<'EOF'
-              #!/bin/sh
-              set -e
-              APP=""
-              if [ -d /var/jb/Applications/Wawona.app ]; then
-                APP=/var/jb/Applications/Wawona.app
-              elif [ -d /Applications/Wawona.app ]; then
-                APP=/Applications/Wawona.app
+              set -euo pipefail
+              stage="$TMPDIR/wawona-modeb-deb-${suffix}"
+              mkdir -p "$stage/${appPrefix}" "$stage/DEBIAN" "$out"
+              cp -R "${wawona-ios-modeb-sileo-app-device}/Wawona.app" "$stage/${appPrefix}/Wawona.app"
+              chmod -R u+w "$stage/${appPrefix}/Wawona.app"
+              rm -rf "$stage/${appPrefix}/Wawona.app/_CodeSignature"
+              rm -rf "$stage/${appPrefix}/Wawona.app/wwn-qemu-run"
+              rm -rf "$stage/${appPrefix}/Wawona.app/Frameworks/"qemu*
+              rm -rf "$stage/${appPrefix}/Wawona.app/share/qemu"
+              rm -f "$stage/${appPrefix}/Wawona.app/wawona-rootfs/usr/share/zsh/Completion/Unix/Command/_qemu"
+              ${if slim then ''
+              rm -rf "$stage/${appPrefix}/Wawona.app/wawona-mobile-guest"
+              rm -rf "$stage/${appPrefix}/Wawona.app/wawona-container-guest"
+              '' else ''
+              # Official stays guest-free until Relay frames (same tipa rule).
+              rm -rf "$stage/${appPrefix}/Wawona.app/wawona-mobile-guest"
+              rm -rf "$stage/${appPrefix}/Wawona.app/wawona-container-guest"
+              ''}
+              ldid -S"${wawonaSrc}/src/resources/app-bundle/Wawona-ModeB.entitlements" \
+                "$stage/${appPrefix}/Wawona.app/Wawona"
+              if [ -x "$stage/${appPrefix}/Wawona.app/wwn-vsock-peer" ]; then
+                ldid -S"${wawonaSrc}/src/resources/app-bundle/Wawona-ModeB.entitlements" \
+                  "$stage/${appPrefix}/Wawona.app/wwn-vsock-peer"
               fi
-              if [ -n "$APP" ] && command -v uicache >/dev/null 2>&1; then
-                uicache -p "$APP" || true
-              fi
-              exit 0
-              EOF
-                            chmod 755 "$stage/DEBIAN/postinst"
-                            artifact="$out/Wawona-${wawonaVersion}-iOS-arm64-${suffix}.deb"
-                            dpkg-deb -Zxz -b "$stage" "$artifact"
+              bash "${wawonaSrc}/.github/scripts/verify-ios-modeb-artifacts.sh" \
+                --sileo "$stage/${appPrefix}/Wawona.app"
+              cat > "$stage/DEBIAN/control" <<EOF
+Package: com.aspauldingcode.wawona.modeb
+Name: Wawona
+Version: ${wawonaVersion}
+Architecture: ${arch}
+Maintainer: Wawona <hello@wawona.io>
+Description: Wawona Mode B (${suffix}). JIT + IOMFB Desktop. Not App Store.
+Section: Applications
+Priority: optional
+Depends: firmware (>= 11.0)
+Homepage: https://wawona.io
+EOF
+              cat > "$stage/DEBIAN/postinst" <<'EOF'
+#!/bin/sh
+set -e
+APP=""
+if [ -d /var/jb/Applications/Wawona.app ]; then
+  APP=/var/jb/Applications/Wawona.app
+elif [ -d /Applications/Wawona.app ]; then
+  APP=/Applications/Wawona.app
+fi
+if [ -n "$APP" ] && command -v uicache >/dev/null 2>&1; then
+  uicache -p "$APP" || true
+fi
+exit 0
+EOF
+              chmod 755 "$stage/DEBIAN/postinst"
+              artifact="$out/Wawona-${wawonaVersion}-iOS-arm64-${suffix}.deb"
+              dpkg-deb -Zxz -b "$stage" "$artifact"
             '';
-          wawona-ios-modeb-deb-rootless = mkModebDeb {
-            scheme = "rootless";
-            slim = false;
-          };
-          wawona-ios-modeb-deb-rootless-slim = mkModebDeb {
-            scheme = "rootless";
-            slim = true;
-          };
-          wawona-ios-modeb-deb-rootful = mkModebDeb {
-            scheme = "rootful";
-            slim = true;
-          };
+          wawona-ios-modeb-deb-rootless = mkModebDeb { scheme = "rootless"; slim = false; };
+          wawona-ios-modeb-deb-rootless-slim = mkModebDeb { scheme = "rootless"; slim = true; };
+          wawona-ios-modeb-deb-rootful = mkModebDeb { scheme = "rootful"; slim = true; };
           wawona-ipados-app-sim = pkgs.callPackage ./dependencies/wawona/ipados.nix {
             inherit wawonaSrc wawonaVersion teamId;
             TEAM_ID = teamId;
@@ -1982,7 +1585,7 @@
             # iPadOS began at 13. iPads on 11-12 run the shared iOS product.
             deploymentTarget = "13.0";
             rustBackend = backend-ios-sim;
-            companionBackends = {"Wawona-watchOS" = backend-watchos-sim;};
+            companionBackends = { "Wawona-watchOS" = backend-watchos-sim; };
           };
           wawona-ipados-app-device = pkgs.callPackage ./dependencies/wawona/ipados.nix {
             inherit wawonaSrc wawonaVersion;
@@ -1991,7 +1594,7 @@
             simulator = false;
             deploymentTarget = "13.0";
             rustBackend = backend-ios;
-            companionBackends = {"Wawona-watchOS" = backend-watchos;};
+            companionBackends = { "Wawona-watchOS" = backend-watchos; };
           };
           wawona-tvos-app-sim = pkgs.callPackage ./dependencies/wawona/tvos.nix {
             inherit wawonaSrc wawonaVersion teamId;
@@ -2021,50 +1624,37 @@
             simulator = false;
             rustBackend = backend-visionos;
           };
-          wawona-ios-ipa =
-            if teamId != null
-            then
-              pkgs.callPackage ./dependencies/wawona/ios.nix {
-                inherit wawonaSrc wawonaVersion;
-                TEAM_ID = teamId;
-                xcodeProject = xcodegenOutputs.project;
-                simulator = false;
-                generateIPA = true;
-                deploymentTarget = "11.0";
-                rustBackend = backend-ios;
-                companionBackends = {"Wawona-watchOS" = backend-watchos;};
-              }
-            else missingTeamRelease "wawona-ios-ipa";
-          wawona-ios-xcarchive =
-            if teamId != null
-            then
-              pkgs.callPackage ./dependencies/wawona/ios.nix {
-                inherit wawonaSrc wawonaVersion;
-                TEAM_ID = teamId;
-                xcodeProject = xcodegenOutputs.project;
-                simulator = false;
-                generateXCArchive = true;
-                deploymentTarget = "11.0";
-                rustBackend = backend-ios;
-                companionBackends = {"Wawona-watchOS" = backend-watchos;};
-              }
-            else missingTeamRelease "wawona-ios-xcarchive";
-          mkPlatformIpa = name: file: args:
-            if teamId != null
-            then
-              pkgs.callPackage file (args
-                // {
-                  inherit wawonaSrc wawonaVersion;
-                  TEAM_ID = teamId;
-                  xcodeProject = xcodegenOutputs.project;
-                  simulator = false;
-                  generateIPA = true;
-                })
-            else missingTeamRelease name;
+          wawona-ios-ipa = if teamId != null then pkgs.callPackage ./dependencies/wawona/ios.nix {
+            inherit wawonaSrc wawonaVersion;
+            TEAM_ID = teamId;
+            xcodeProject = xcodegenOutputs.project;
+            simulator = false;
+            generateIPA = true;
+            deploymentTarget = "11.0";
+            rustBackend = backend-ios;
+            companionBackends = { "Wawona-watchOS" = backend-watchos; };
+          } else missingTeamRelease "wawona-ios-ipa";
+          wawona-ios-xcarchive = if teamId != null then pkgs.callPackage ./dependencies/wawona/ios.nix {
+            inherit wawonaSrc wawonaVersion;
+            TEAM_ID = teamId;
+            xcodeProject = xcodegenOutputs.project;
+            simulator = false;
+            generateXCArchive = true;
+            deploymentTarget = "11.0";
+            rustBackend = backend-ios;
+            companionBackends = { "Wawona-watchOS" = backend-watchos; };
+          } else missingTeamRelease "wawona-ios-xcarchive";
+          mkPlatformIpa = name: file: args: if teamId != null then pkgs.callPackage file (args // {
+            inherit wawonaSrc wawonaVersion;
+            TEAM_ID = teamId;
+            xcodeProject = xcodegenOutputs.project;
+            simulator = false;
+            generateIPA = true;
+          }) else missingTeamRelease name;
           wawona-ipados-ipa = mkPlatformIpa "wawona-ipados-ipa" ./dependencies/wawona/ipados.nix {
             deploymentTarget = "13.0";
             rustBackend = backend-ios;
-            companionBackends = {"Wawona-watchOS" = backend-watchos;};
+            companionBackends = { "Wawona-watchOS" = backend-watchos; };
           };
           wawona-tvos-ipa = mkPlatformIpa "wawona-tvos-ipa" ./dependencies/wawona/tvos.nix {
             rustBackend = backend-tvos;
@@ -2080,970 +1670,806 @@
             app = wawona-ios-app-sim;
             bundleId = "com.aspauldingcode.Wawona";
           };
-          cliBinsScript =
-            pkgs.writeShellScript "wawona-macos-cli-bins"
+          cliBinsScript = pkgs.writeShellScript "wawona-macos-cli-bins"
             (builtins.readFile ./scripts/macos-register-cli-bins.sh);
-        in
-          {
-            install = pkgs.writeShellScriptBin "install" ''
-                          set -eu
-                          uid="$(id -u)"
-                          domain="gui/$uid"
-                          launch_agents_dir="$HOME/Library/LaunchAgents"
-                          compositor_label="com.aspauldingcode.wawona.compositorhost"
-                          menubar_label="com.aspauldingcode.wawona.menubar"
-                          applaunch_label="com.aspauldingcode.wawona.applaunch"
-                          runtime_dir="/tmp/wawona-$uid"
-                          store_app="${wawona-macos}/Applications/Wawona.app"
-                          app_dst="/Applications/Wawona.app"
-                          exec_path="$app_dst/Contents/MacOS/Wawona"
-                          dylib_path="$app_dst/Contents/Library/Wawona/iland/libwayland-mac.dylib"
+        in {
+          install = pkgs.writeShellScriptBin "install" ''
+            set -eu
+            uid="$(id -u)"
+            domain="gui/$uid"
+            launch_agents_dir="$HOME/Library/LaunchAgents"
+            compositor_label="com.aspauldingcode.wawona.compositorhost"
+            menubar_label="com.aspauldingcode.wawona.menubar"
+            applaunch_label="com.aspauldingcode.wawona.applaunch"
+            runtime_dir="/tmp/wawona-$uid"
+            store_app="${wawona-macos}/Applications/Wawona.app"
+            app_dst="/Applications/Wawona.app"
+            exec_path="$app_dst/Contents/MacOS/Wawona"
+            dylib_path="$app_dst/Contents/Library/Wawona/iland/libwayland-mac.dylib"
 
-                          mkdir -p "$launch_agents_dir"
-                          mkdir -p "$runtime_dir"
-                          chmod 700 "$runtime_dir" || true
+            mkdir -p "$launch_agents_dir"
+            mkdir -p "$runtime_dir"
+            chmod 700 "$runtime_dir" || true
 
-                          write_agent() {
-                            label="$1"
-                            mode="$2"
-                            log_prefix="$3"
-                            plist_path="$launch_agents_dir/$label.plist"
-                            cat > "$plist_path" <<EOF
-              <?xml version="1.0" encoding="UTF-8"?>
-              <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-              <plist version="1.0">
-              <dict>
-                <key>Label</key>
-                <string>$label</string>
-                <key>ProgramArguments</key>
-                <array>
-                  <string>$exec_path</string>
-                  <string>$mode</string>
-                </array>
-                <key>RunAtLoad</key>
-                <true/>
-                <key>KeepAlive</key>
-                <true/>
-                <key>ThrottleInterval</key>
-                <integer>5</integer>
-                <key>StandardOutPath</key>
-                <string>/tmp/$log_prefix-$uid.log</string>
-                <key>StandardErrorPath</key>
-                <string>/tmp/$log_prefix-$uid.error.log</string>
-                <key>EnvironmentVariables</key>
-                <dict>
-                  <key>PATH</key>
-                  <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
-                  <key>XDG_RUNTIME_DIR</key>
-                  <string>$runtime_dir</string>
-                  <key>WAYLAND_DISPLAY</key>
-                  <string>wayland-0</string>
-                  <key>WAWONA_SKIP_LAUNCH_AGENT_BOOTSTRAP</key>
-                  <string>1</string>
-                </dict>
-              </dict>
-              </plist>
-              EOF
-                          }
+            write_agent() {
+              label="$1"
+              mode="$2"
+              log_prefix="$3"
+              plist_path="$launch_agents_dir/$label.plist"
+              cat > "$plist_path" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>$label</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>$exec_path</string>
+    <string>$mode</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>5</integer>
+  <key>StandardOutPath</key>
+  <string>/tmp/$log_prefix-$uid.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/$log_prefix-$uid.error.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>XDG_RUNTIME_DIR</key>
+    <string>$runtime_dir</string>
+    <key>WAYLAND_DISPLAY</key>
+    <string>wayland-0</string>
+    <key>WAWONA_SKIP_LAUNCH_AGENT_BOOTSTRAP</key>
+    <string>1</string>
+  </dict>
+</dict>
+</plist>
+EOF
+            }
 
-                          wait_unloaded() {
-                            target="$1"
-                            i=0
-                            while [ $i -lt 20 ]; do
-                              if ! launchctl print "$target" >/dev/null 2>&1; then
-                                return 0
-                              fi
-                              sleep 0.25
-                              i=$((i + 1))
-                            done
-                            return 1
-                          }
+            wait_unloaded() {
+              target="$1"
+              i=0
+              while [ $i -lt 20 ]; do
+                if ! launchctl print "$target" >/dev/null 2>&1; then
+                  return 0
+                fi
+                sleep 0.25
+                i=$((i + 1))
+              done
+              return 1
+            }
 
-                          graceful_quit_wawona() {
-                            if command -v osascript >/dev/null 2>&1; then
-                              osascript <<'APPLESCRIPT' 2>/dev/null || true
-              tell application id "com.aspauldingcode.Wawona"
-                quit
-              end tell
-              APPLESCRIPT
-                              sleep 1
-                            fi
-                          }
+            graceful_quit_wawona() {
+              if command -v osascript >/dev/null 2>&1; then
+                osascript <<'APPLESCRIPT' 2>/dev/null || true
+tell application id "com.aspauldingcode.Wawona"
+  quit
+end tell
+APPLESCRIPT
+                sleep 1
+              fi
+            }
 
-                          kill_matching_wawona() {
-                            # TERM leftover MacOS/Wawona processes so a stale flock lock
-                            # cannot make the new compositor-host exit as "already running".
-                            ps -axo pid=,args= | while read -r pid args; do
-                              case "$args" in
-                                *"/Contents/MacOS/Wawona"*)
-                                  kill -TERM "$pid" >/dev/null 2>&1 || true
-                                  ;;
-                              esac
-                            done
-                            sleep 0.4
-                            ps -axo pid=,args= | while read -r pid args; do
-                              case "$args" in
-                                *"/Contents/MacOS/Wawona"*)
-                                  kill -KILL "$pid" >/dev/null 2>&1 || true
-                                  ;;
-                              esac
-                            done
-                          }
+            kill_matching_wawona() {
+              # TERM leftover MacOS/Wawona processes so a stale flock lock
+              # cannot make the new compositor-host exit as "already running".
+              ps -axo pid=,args= | while read -r pid args; do
+                case "$args" in
+                  *"/Contents/MacOS/Wawona"*)
+                    kill -TERM "$pid" >/dev/null 2>&1 || true
+                    ;;
+                esac
+              done
+              sleep 0.4
+              ps -axo pid=,args= | while read -r pid args; do
+                case "$args" in
+                  *"/Contents/MacOS/Wawona"*)
+                    kill -KILL "$pid" >/dev/null 2>&1 || true
+                    ;;
+                esac
+              done
+            }
 
-                          stop_wawona_runtime() {
-                            echo "Stopping running Wawona instances for clean reinstall..."
-                            # Stop launch agents first so they cannot respawn during copy.
-                            launchctl bootout "$domain/$compositor_label" >/dev/null 2>&1 || true
-                            launchctl bootout "$domain/$menubar_label" >/dev/null 2>&1 || true
-                            launchctl bootout "$domain/$applaunch_label" >/dev/null 2>&1 || true
-                            launchctl remove "$applaunch_label" >/dev/null 2>&1 || true
-                            rm -f "$launch_agents_dir/$applaunch_label.plist"
-                            wait_unloaded "$domain/$compositor_label" || true
-                            wait_unloaded "$domain/$menubar_label" || true
-                            graceful_quit_wawona
-                            kill_matching_wawona
-                            rm -f "$runtime_dir/compositor-host.lock" "$runtime_dir/menubar.lock" "$runtime_dir/instance.lock"
-                          }
+            stop_wawona_runtime() {
+              echo "Stopping running Wawona instances for clean reinstall..."
+              # Stop launch agents first so they cannot respawn during copy.
+              launchctl bootout "$domain/$compositor_label" >/dev/null 2>&1 || true
+              launchctl bootout "$domain/$menubar_label" >/dev/null 2>&1 || true
+              launchctl bootout "$domain/$applaunch_label" >/dev/null 2>&1 || true
+              launchctl remove "$applaunch_label" >/dev/null 2>&1 || true
+              rm -f "$launch_agents_dir/$applaunch_label.plist"
+              wait_unloaded "$domain/$compositor_label" || true
+              wait_unloaded "$domain/$menubar_label" || true
+              graceful_quit_wawona
+              kill_matching_wawona
+              rm -f "$runtime_dir/compositor-host.lock" "$runtime_dir/menubar.lock" "$runtime_dir/instance.lock"
+            }
 
-                          ensure_loaded() {
-                            label="$1"
-                            plist_path="$launch_agents_dir/$label.plist"
-                            target="$domain/$label"
-                            # kickstart on an already-loaded job keeps the old ProgramArguments
-                            # path. Boot out and wait until launchd actually drops the job.
-                            launchctl bootout "$target" >/dev/null 2>&1 || true
-                            launchctl remove "$label" >/dev/null 2>&1 || true
-                            wait_unloaded "$target" || true
-                            i=0
-                            while [ $i -lt 10 ]; do
-                              # After bootout, launchd often returns EIO (5) for a few
-                              # hundred ms. Swallow stderr until a retry succeeds.
-                              if launchctl bootstrap "$domain" "$plist_path" >/dev/null 2>&1; then
-                                launchctl kickstart -k "$target" >/dev/null 2>&1 || true
-                                return 0
-                              fi
-                              sleep 0.5
-                              i=$((i + 1))
-                            done
-                            echo "Error: launchctl bootstrap failed for $target" >&2
-                            launchctl bootstrap "$domain" "$plist_path"
-                          }
+            ensure_loaded() {
+              label="$1"
+              plist_path="$launch_agents_dir/$label.plist"
+              target="$domain/$label"
+              # kickstart on an already-loaded job keeps the old ProgramArguments
+              # path. Boot out and wait until launchd actually drops the job.
+              launchctl bootout "$target" >/dev/null 2>&1 || true
+              launchctl remove "$label" >/dev/null 2>&1 || true
+              wait_unloaded "$target" || true
+              i=0
+              while [ $i -lt 10 ]; do
+                # After bootout, launchd often returns EIO (5) for a few
+                # hundred ms. Swallow stderr until a retry succeeds.
+                if launchctl bootstrap "$domain" "$plist_path" >/dev/null 2>&1; then
+                  launchctl kickstart -k "$target" >/dev/null 2>&1 || true
+                  return 0
+                fi
+                sleep 0.5
+                i=$((i + 1))
+              done
+              echo "Error: launchctl bootstrap failed for $target" >&2
+              launchctl bootstrap "$domain" "$plist_path"
+            }
 
-                          verify_running() {
-                            label="$1"
-                            target="$domain/$label"
-                            i=0
-                            while [ $i -lt 20 ]; do
-                              prog="$(launchctl print "$target" 2>/dev/null | sed -n 's/^[[:space:]]*program = //p' | head -1)"
-                              pid="$(launchctl print "$target" 2>/dev/null | awk '/^[[:space:]]*pid = / { print $3; exit }')"
-                              if [ "$prog" = "$exec_path" ] && [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-                                echo "  $label pid=$pid"
-                                return 0
-                              fi
-                              sleep 0.25
-                              i=$((i + 1))
-                            done
-                            echo "Error: $label is not running this build" >&2
-                            echo "  want: $exec_path" >&2
-                            echo "  launchd program: $prog" >&2
-                            echo "  launchd pid: $pid" >&2
-                            exit 1
-                          }
+            verify_running() {
+              label="$1"
+              target="$domain/$label"
+              i=0
+              while [ $i -lt 20 ]; do
+                prog="$(launchctl print "$target" 2>/dev/null | sed -n 's/^[[:space:]]*program = //p' | head -1)"
+                pid="$(launchctl print "$target" 2>/dev/null | awk '/^[[:space:]]*pid = / { print $3; exit }')"
+                if [ "$prog" = "$exec_path" ] && [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+                  echo "  $label pid=$pid"
+                  return 0
+                fi
+                sleep 0.25
+                i=$((i + 1))
+              done
+              echo "Error: $label is not running this build" >&2
+              echo "  want: $exec_path" >&2
+              echo "  launchd program: $prog" >&2
+              echo "  launchd pid: $pid" >&2
+              exit 1
+            }
 
-                          if [ ! -x "$store_app/Contents/MacOS/Wawona" ]; then
-                            echo "Error: Wawona executable not found at $store_app" >&2
-                            exit 1
-                          fi
-                          if [ ! -f "$store_app/Contents/Library/Wawona/iland/libwayland-mac.dylib" ]; then
-                            echo "Error: Mode B dylib missing at $store_app" >&2
-                            echo "macOS Desktop Replacement needs libwayland-mac.dylib." >&2
-                            exit 1
-                          fi
-                          stop_wawona_runtime
-                          echo "Installing Wawona.app to $app_dst"
-                          rm -rf "$app_dst"
-                          /usr/bin/ditto "$store_app" "$app_dst"
-                          chmod -R u+w "$app_dst" || true
-                          if [ ! -x "$exec_path" ]; then
-                            echo "Error: Wawona executable missing after copy to $app_dst" >&2
-                            exit 1
-                          fi
+            if [ ! -x "$store_app/Contents/MacOS/Wawona" ]; then
+              echo "Error: Wawona executable not found at $store_app" >&2
+              exit 1
+            fi
+            if [ ! -f "$store_app/Contents/Library/Wawona/iland/libwayland-mac.dylib" ]; then
+              echo "Error: Mode B dylib missing at $store_app" >&2
+              echo "macOS Desktop Replacement needs libwayland-mac.dylib." >&2
+              exit 1
+            fi
+            stop_wawona_runtime
+            echo "Installing Wawona.app to $app_dst"
+            rm -rf "$app_dst"
+            /usr/bin/ditto "$store_app" "$app_dst"
+            chmod -R u+w "$app_dst" || true
+            if [ ! -x "$exec_path" ]; then
+              echo "Error: Wawona executable missing after copy to $app_dst" >&2
+              exit 1
+            fi
 
-                          pane_src="$app_dst/Contents/Resources/PreferencePanes/Wawona.prefPane"
-                          if [ ! -d "$pane_src" ]; then
-                            echo "Error: Wawona.prefPane missing in $app_dst" >&2
-                            exit 1
-                          fi
-                          mkdir -p "$HOME/Library/PreferencePanes"
-                          rm -rf "$HOME/Library/PreferencePanes/Wawona.prefPane"
-                          /usr/bin/ditto "$pane_src" "$HOME/Library/PreferencePanes/Wawona.prefPane"
-                          echo "Installed System Settings pane: $HOME/Library/PreferencePanes/Wawona.prefPane"
-                          if [ -w /Library/PreferencePanes ] || [ "$(id -u)" -eq 0 ]; then
-                            rm -rf /Library/PreferencePanes/Wawona.prefPane
-                            /usr/bin/ditto "$pane_src" /Library/PreferencePanes/Wawona.prefPane
-                            echo "Installed system-wide pane: /Library/PreferencePanes/Wawona.prefPane"
-                          fi
+            pane_src="$app_dst/Contents/Resources/PreferencePanes/Wawona.prefPane"
+            if [ ! -d "$pane_src" ]; then
+              echo "Error: Wawona.prefPane missing in $app_dst" >&2
+              exit 1
+            fi
+            mkdir -p "$HOME/Library/PreferencePanes"
+            rm -rf "$HOME/Library/PreferencePanes/Wawona.prefPane"
+            /usr/bin/ditto "$pane_src" "$HOME/Library/PreferencePanes/Wawona.prefPane"
+            echo "Installed System Settings pane: $HOME/Library/PreferencePanes/Wawona.prefPane"
+            if [ -w /Library/PreferencePanes ] || [ "$(id -u)" -eq 0 ]; then
+              rm -rf /Library/PreferencePanes/Wawona.prefPane
+              /usr/bin/ditto "$pane_src" /Library/PreferencePanes/Wawona.prefPane
+              echo "Installed system-wide pane: /Library/PreferencePanes/Wawona.prefPane"
+            fi
 
-                          # Launch Services must not resolve `open -a Wawona` to a stale
-                          # copy. Documents/ahaha 0.2.2 still linked pixman to a vanished
-                          # /Volumes or GC'd nix store (2026-08-19 and 2026-08-22 crashes).
-                          lsregister="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
-                          if [ -x "$lsregister" ]; then
-                            /usr/bin/mdfind 'kMDItemCFBundleIdentifier == "com.aspauldingcode.Wawona"' 2>/dev/null | while IFS= read -r p; do
-                              [ -n "$p" ] || continue
-                              case "$p" in
-                                "$app_dst") continue ;;
-                              esac
-                              if [ -x "$p/Contents/MacOS/Wawona" ]; then
-                                echo "Unregistering stale Launch Services copy: $p"
-                                "$lsregister" -u "$p" >/dev/null 2>&1 || true
-                              fi
-                            done
-                            # mdfind usually skips /nix/store. Drop those registrations so
-                            # LS does not prefer a path GC can delete.
-                            for store_copy in /nix/store/*-wawona-macos/Applications/Wawona.app; do
-                              [ -x "$store_copy/Contents/MacOS/Wawona" ] || continue
-                              echo "Unregistering nix-store Launch Services copy: $store_copy"
-                              "$lsregister" -u "$store_copy" >/dev/null 2>&1 || true
-                            done
-                            "$lsregister" -f "$app_dst" >/dev/null 2>&1 || true
-                          fi
+            # Launch Services must not resolve `open -a Wawona` to a stale
+            # copy. Documents/ahaha 0.2.2 still linked pixman to a vanished
+            # /Volumes or GC'd nix store (2026-08-19 and 2026-08-22 crashes).
+            lsregister="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+            if [ -x "$lsregister" ]; then
+              /usr/bin/mdfind 'kMDItemCFBundleIdentifier == "com.aspauldingcode.Wawona"' 2>/dev/null | while IFS= read -r p; do
+                [ -n "$p" ] || continue
+                case "$p" in
+                  "$app_dst") continue ;;
+                esac
+                if [ -x "$p/Contents/MacOS/Wawona" ]; then
+                  echo "Unregistering stale Launch Services copy: $p"
+                  "$lsregister" -u "$p" >/dev/null 2>&1 || true
+                fi
+              done
+              # mdfind usually skips /nix/store. Drop those registrations so
+              # LS does not prefer a path GC can delete.
+              for store_copy in /nix/store/*-wawona-macos/Applications/Wawona.app; do
+                [ -x "$store_copy/Contents/MacOS/Wawona" ] || continue
+                echo "Unregistering nix-store Launch Services copy: $store_copy"
+                "$lsregister" -u "$store_copy" >/dev/null 2>&1 || true
+              done
+              "$lsregister" -f "$app_dst" >/dev/null 2>&1 || true
+            fi
 
-                          helper_path="/Library/Application Support/Wawona/run-modeb.sh"
-                          # Classic Take Over needs sticky claim-ok (Path B). Always restage
-                          # helper + dylib so install matches this build (no stale nix store).
-                          echo "Installing Desktop Replacement helper (iowatchdog-then-unload)."
-                          echo "Administrator authorization may be required once."
-                          if ! "$exec_path" --mode-b-stage; then
-                            echo "Error: failed to install Desktop Replacement helper." >&2
-                            echo "  want helper pointing at $app_dst" >&2
-                            exit 1
-                          fi
-                          # Stage runs the copied app, so WWN_WAWONA_STORE is $app_dst,
-                          # not the pre-ditto nix store path.
-                          if [ ! -f "$helper_path" ] || ! grep -Fq "$app_dst" "$helper_path" \
-                            || ! grep -Fq "WWN_MODEB_INSERT=compositor-only" "$helper_path" \
-                            || ! grep -Fq "WWN_MODEB_LOCK=helper-argv-only" "$helper_path" \
-                            || ! grep -Fq "WWN_MODEB_WD=iowatchdog-then-unload" "$helper_path" \
-                            || ! grep -Fq "WWN_MODEB_GATE=live-fb-before-ws-unload" "$helper_path"; then
-                            echo "Error: Desktop Replacement helper does not match this install." >&2
-                            echo "  helper: $helper_path" >&2
-                            echo "  want: $app_dst + iowatchdog-then-unload + live-fb-before-ws-unload" >&2
-                            exit 1
-                          fi
-                          echo "Mode B helper installed (iowatchdog-then-unload): $helper_path"
+            helper_path="/Library/Application Support/Wawona/run-modeb.sh"
+            # Classic Take Over needs sticky claim-ok (Path B). Always restage
+            # helper + dylib so install matches this build (no stale nix store).
+            echo "Installing Desktop Replacement helper (iowatchdog-then-unload)."
+            echo "Administrator authorization may be required once."
+            if ! "$exec_path" --mode-b-stage; then
+              echo "Error: failed to install Desktop Replacement helper." >&2
+              echo "  want helper pointing at $app_dst" >&2
+              exit 1
+            fi
+            # Stage runs the copied app, so WWN_WAWONA_STORE is $app_dst,
+            # not the pre-ditto nix store path.
+            if [ ! -f "$helper_path" ] || ! grep -Fq "$app_dst" "$helper_path" \
+              || ! grep -Fq "WWN_MODEB_INSERT=compositor-only" "$helper_path" \
+              || ! grep -Fq "WWN_MODEB_LOCK=helper-argv-only" "$helper_path" \
+              || ! grep -Fq "WWN_MODEB_WD=iowatchdog-then-unload" "$helper_path" \
+              || ! grep -Fq "WWN_MODEB_GATE=live-fb-before-ws-unload" "$helper_path"; then
+              echo "Error: Desktop Replacement helper does not match this install." >&2
+              echo "  helper: $helper_path" >&2
+              echo "  want: $app_dst + iowatchdog-then-unload + live-fb-before-ws-unload" >&2
+              exit 1
+            fi
+            echo "Mode B helper installed (iowatchdog-then-unload): $helper_path"
 
-                          # mode-b-stage may have spawned the new binary; stop again before
-                          # rewriting launch agents so they bind to this install.
-                          stop_wawona_runtime
+            # mode-b-stage may have spawned the new binary; stop again before
+            # rewriting launch agents so they bind to this install.
+            stop_wawona_runtime
 
-                          write_agent "$compositor_label" "--compositor-host" "wawona-compositor"
-                          write_agent "$menubar_label" "--menubar" "wawona-menubar"
-                          ensure_loaded "$compositor_label"
-                          ensure_loaded "$menubar_label"
-                          echo "Wawona launch agents installed and running this build:"
-                          echo "  $exec_path"
-                          verify_running "$compositor_label"
-                          verify_running "$menubar_label"
-                          echo "Mode B dylib: $dylib_path"
-                          file "$dylib_path" || true
+            write_agent "$compositor_label" "--compositor-host" "wawona-compositor"
+            write_agent "$menubar_label" "--menubar" "wawona-menubar"
+            ensure_loaded "$compositor_label"
+            ensure_loaded "$menubar_label"
+            echo "Wawona launch agents installed and running this build:"
+            echo "  $exec_path"
+            verify_running "$compositor_label"
+            verify_running "$menubar_label"
+            echo "Mode B dylib: $dylib_path"
+            file "$dylib_path" || true
 
-                          echo "Registering bundled software on PATH..."
-                          "${cliBinsScript}" register "$app_dst"
+            echo "Registering bundled software on PATH..."
+            "${cliBinsScript}" register "$app_dst"
+          '';
+          uninstall = let
+            privileged = pkgs.writeShellScript "wawona-uninstall-privileged" ''
+              set +e
+              HELPER="/Library/Application Support/Wawona/run-modeb.sh"
+              if [ -x "$HELPER" ]; then
+                "$HELPER" --restore-aqua >/dev/null 2>&1
+              fi
+              /bin/launchctl bootout system/com.aspauldingcode.wawona.modeb >/dev/null 2>&1
+              /bin/launchctl bootout system/com.aspauldingcode.wawona.ws-guard >/dev/null 2>&1
+              /usr/bin/pkill -u 0 -x niri >/dev/null 2>&1
+              /usr/bin/pkill -u 0 -x weston >/dev/null 2>&1
+              /usr/bin/pkill -u 0 -x framebufferd >/dev/null 2>&1
+              /usr/bin/pkill -u 0 -x inputd >/dev/null 2>&1
+              /bin/rm -rf /Applications/Wawona.app
+              /bin/rm -rf /Library/PreferencePanes/Wawona.prefPane
+              /bin/rm -rf "/Library/Application Support/Wawona"
+              /bin/rm -f /etc/sudoers.d/wawona-modeb
+              /bin/rm -f /Library/LaunchDaemons/com.aspauldingcode.wawona.modeb.plist
+              /bin/rm -f /Library/LaunchDaemons/com.aspauldingcode.wawona.ws-guard.plist
+              /bin/rm -f /tmp/libwayland-support/modeb-compositor.pid
+              /bin/rm -rf /tmp/libwayland-support/modeb.lock
+              /bin/launchctl enable system/com.apple.WindowServer >/dev/null 2>&1
+              /bin/launchctl load -w /System/Library/LaunchDaemons/com.apple.WindowServer.plist >/dev/null 2>&1
+              if ! /usr/bin/pgrep -x WindowServer >/dev/null 2>&1; then
+                /bin/launchctl kickstart -k system/com.apple.WindowServer >/dev/null 2>&1
+              fi
+              exit 0
             '';
-            uninstall = let
-              privileged = pkgs.writeShellScript "wawona-uninstall-privileged" ''
-                set +e
-                HELPER="/Library/Application Support/Wawona/run-modeb.sh"
-                if [ -x "$HELPER" ]; then
-                  "$HELPER" --restore-aqua >/dev/null 2>&1
-                fi
-                /bin/launchctl bootout system/com.aspauldingcode.wawona.modeb >/dev/null 2>&1
-                /bin/launchctl bootout system/com.aspauldingcode.wawona.ws-guard >/dev/null 2>&1
-                /usr/bin/pkill -u 0 -x niri >/dev/null 2>&1
-                /usr/bin/pkill -u 0 -x weston >/dev/null 2>&1
-                /usr/bin/pkill -u 0 -x framebufferd >/dev/null 2>&1
-                /usr/bin/pkill -u 0 -x inputd >/dev/null 2>&1
-                /bin/rm -rf /Applications/Wawona.app
-                /bin/rm -rf /Library/PreferencePanes/Wawona.prefPane
-                /bin/rm -rf "/Library/Application Support/Wawona"
-                /bin/rm -f /etc/sudoers.d/wawona-modeb
-                /bin/rm -f /Library/LaunchDaemons/com.aspauldingcode.wawona.modeb.plist
-                /bin/rm -f /Library/LaunchDaemons/com.aspauldingcode.wawona.ws-guard.plist
-                /bin/rm -f /tmp/libwayland-support/modeb-compositor.pid
-                /bin/rm -rf /tmp/libwayland-support/modeb.lock
-                /bin/launchctl enable system/com.apple.WindowServer >/dev/null 2>&1
-                /bin/launchctl load -w /System/Library/LaunchDaemons/com.apple.WindowServer.plist >/dev/null 2>&1
-                if ! /usr/bin/pgrep -x WindowServer >/dev/null 2>&1; then
-                  /bin/launchctl kickstart -k system/com.apple.WindowServer >/dev/null 2>&1
-                fi
-                exit 0
+          in pkgs.writeShellScriptBin "uninstall" ''
+            set -eu
+            uid="$(id -u)"
+            domain="gui/$uid"
+            launch_agents_dir="$HOME/Library/LaunchAgents"
+            compositor_label="com.aspauldingcode.wawona.compositorhost"
+            menubar_label="com.aspauldingcode.wawona.menubar"
+            applaunch_label="com.aspauldingcode.wawona.applaunch"
+            modeb_login_label="com.aspauldingcode.wawona.modeb-login"
+            app_path="/Applications/Wawona.app"
+            modeb_helper="/Library/Application Support/Wawona/run-modeb.sh"
+
+            unload_agent() {
+              label="$1"
+              target="$domain/$label"
+              plist_path="$launch_agents_dir/$label.plist"
+              launchctl bootout "$target" >/dev/null 2>&1 || true
+              launchctl remove "$label" >/dev/null 2>&1 || true
+              rm -f "$plist_path"
+            }
+
+            kill_wawona_app() {
+              ps -axo pid=,args= | while read -r pid args; do
+                case "$args" in
+                  *"/Contents/MacOS/Wawona"*)
+                    kill -TERM "$pid" >/dev/null 2>&1 || true
+                    ;;
+                esac
+              done
+              sleep 0.3
+              ps -axo pid=,args= | while read -r pid args; do
+                case "$args" in
+                  *"/Contents/MacOS/Wawona"*)
+                    kill -KILL "$pid" >/dev/null 2>&1 || true
+                    ;;
+                esac
+              done
+            }
+
+            unload_agent "$compositor_label"
+            unload_agent "$menubar_label"
+            unload_agent "$applaunch_label"
+            unload_agent "$modeb_login_label"
+            kill_wawona_app
+            "${cliBinsScript}" unregister || true
+            rm -rf "$HOME/Library/PreferencePanes/Wawona.prefPane"
+
+            if [ -x "$modeb_helper" ]; then
+              /usr/bin/sudo -n "$modeb_helper" --restore-aqua >/dev/null 2>&1 || true
+            fi
+
+            need_admin=0
+            if [ -e "$app_path" ]; then
+              if /bin/rm -rf "$app_path" 2>/dev/null; then
+                echo "Removed $app_path"
+              else
+                need_admin=1
+              fi
+            fi
+            if [ -e "/Library/Application Support/Wawona" ] || \
+               [ -e /etc/sudoers.d/wawona-modeb ] || \
+               [ -e /Library/LaunchDaemons/com.aspauldingcode.wawona.ws-guard.plist ]; then
+              need_admin=1
+            fi
+            if [ "$need_admin" -eq 1 ]; then
+              echo "Requesting administrator privileges to finish uninstall..."
+              if ! /usr/bin/osascript -e "do shell script \"${privileged}\" with administrator privileges"; then
+                echo "Error: administrator authorization is required to remove a root-owned Wawona.app (pkg or sudo copy) and Mode B files." >&2
+                exit 1
+              fi
+            fi
+
+            if [ -e "$app_path" ]; then
+              echo "Error: $app_path is still present." >&2
+              exit 1
+            fi
+
+            echo "Wawona launch agents removed:"
+            echo "  - $compositor_label"
+            echo "  - $menubar_label"
+            echo "  - $applaunch_label"
+            echo "Wawona.app and Mode B install files removed."
+          '';
+          wawona-macos = wawona-macos;
+          # 3rd-party macOS ships Mode B. Same drv as default wawona-macos.
+          wawona-macos-desktop-host = wawona-macos;
+
+          coreutils-multicall-macos = coreutils-multicall-macos;
+          wawona-ios = wawona-ios-app-sim;
+          wawona-ipados = wawona-ipados-app-sim;
+          wawona-tvos = wawona-tvos-app-sim;
+          wawona-watchos = wawona-watchos-app-sim;
+          wawona-visionos = wawona-visionos-app-sim;
+          wawona-ios-app-sim = wawona-ios-app-sim;
+          wawona-ipados-app-sim = wawona-ipados-app-sim;
+          wawona-tvos-app-sim = wawona-tvos-app-sim;
+          wawona-watchos-app-sim = wawona-watchos-app-sim;
+          wawona-visionos-app-sim = wawona-visionos-app-sim;
+          wawona-ios-app-device = wawona-ios-app-device;
+          wawona-ios-modeb-app-device = wawona-ios-modeb-app-device;
+          wawona-ios-modeb-sileo-app-device = wawona-ios-modeb-sileo-app-device;
+          wawona-ios-modeb-tipa-app-device = wawona-ios-modeb-tipa-app-device;
+          wawona-ios-modeb-tipa = wawona-ios-modeb-tipa;
+          wawona-ios-modeb-tipa-slim = wawona-ios-modeb-tipa-slim;
+          wawona-ios-modeb-deb-rootless = wawona-ios-modeb-deb-rootless;
+          wawona-ios-modeb-deb-rootless-slim = wawona-ios-modeb-deb-rootless-slim;
+          wawona-ios-modeb-deb-rootful = wawona-ios-modeb-deb-rootful;
+          # L3' vphone lab. Defined in the Darwin let above; must be exported
+          # or `nix run .#vphone-jb-lab` / Mode B runners cannot find the CLI.
+          vphone-cli = vphone-cli;
+          vphone-jb-lab = vphone-jb-lab;
+          wawona-ipados-app-device = wawona-ipados-app-device;
+          wawona-tvos-app-device = wawona-tvos-app-device;
+          wawona-watchos-app-device = wawona-watchos-app-device;
+          wawona-visionos-app-device = wawona-visionos-app-device;
+          wawona-ios-ipa = wawona-ios-ipa;
+          wawona-ipados-ipa = wawona-ipados-ipa;
+          wawona-tvos-ipa = wawona-tvos-ipa;
+          wawona-visionos-ipa = wawona-visionos-ipa;
+          wawona-watchos-ipa = wawona-watchos-ipa;
+          wawona-ios-xcarchive = wawona-ios-xcarchive;
+          wawona-ios-simulator = wawona-ios-simulator;
+          wawona-macos-backend = backend-macos;
+          wawona-macos-backend-desktop-host = backend-macos;
+
+          uniffi-bindgen = uniffi-bindgen;
+          wawona-macos-xcode-env = backend-macos;
+          wawona-ios-backend = backend-ios;
+          wawona-ios-modeb-backend = backend-ios-modeb;
+          wawona-ios-modeb-sileo-backend = backend-ios-modeb-sileo;
+          wawona-ios-modeb-tipa-backend = backend-ios-modeb-tipa;
+          wwn-vms-engine-contract-ios = iosDeps."vm-engine-contract";
+          wwn-vms-engine-contract-ios-modeb = iosDeps."vm-engine-contract-modeb";
+          wawona-ios-xcode-env = backend-ios;
+          wawona-ios-sim-backend = backend-ios-sim;
+          wawona-ios-sim-xcode-env = backend-ios-sim;
+          wawona-ipados-backend = backend-ios;
+          wawona-ipados-sim-backend = backend-ios-sim;
+          wawona-tvos-backend = backend-tvos;
+          wawona-tvos-sim-backend = backend-tvos-sim;
+          wawona-visionos-backend = backend-visionos;
+          wawona-visionos-sim-backend = backend-visionos-sim;
+          wawona-watchos-backend = backend-watchos;
+          wawona-watchos-sim-backend = backend-watchos-sim;
+          wawona-macos-project = xcodegenOutputs.app;
+          wawona-ios-project = xcodegenOutputs.app;
+          wawona-ios-provision = apple.provisionXcodeScript;
+          wawona-ios-xcode-wrapper = apple.xcodeWrapperDrv;
+          xcodegen = xcodegenOutputs.app;
+          xcodegen-ios = xcodegenIosOutputs.app;
+          xcodegen-ios-sim = xcodegenIosSimOutputs.app;
+          xcodegen-macos = xcodegenMacosOutputs.app;
+          xcodegen-apple = xcodegenAppleOutputs.app;
+          xcodegen-fast = xcodegenAppleOutputs.app;
+          xcodegen-novision = xcodegenNoVisionOutputs.app;
+          xcodegenProject = xcodegenOutputs.project;
+          weston-debug = toolchains.buildForMacOS "weston" { debug = true; };
+          weston-simple-shm = toolchains.buildForMacOS "weston-simple-shm" {};
+          weston-terminal = weston-terminal-pkg;
+          foot = (import ./dependencies/wawona/shell-wrappers.nix).footWrapper pkgs (toolchains.buildForMacOS "foot" {}) wawona-macos;
+          waypipe-ios = toolchains.buildForIOS "waypipe" { };
+          waypipe-ios-sim = toolchains.buildForIOS "waypipe" { simulator = true; };
+          # anowaW app bridge. MacOS (+ Android) only (platform-targets matrix).
+          anowaw-macos = toolchains.buildForMacOS "anowaw" { };
+          # weston toytoolkit (cairo/pango) cross-compile stack for Apple mobile,
+          # exposed individually for incremental build verification.
+          freetype-ios = toolchains.buildForIOS "freetype" { };
+          fribidi-ios = toolchains.buildForIOS "fribidi" { };
+          pcre2-ios = toolchains.buildForIOS "pcre2" { };
+          fontconfig-ios = toolchains.buildForIOS "fontconfig" { };
+          glib-ios = toolchains.buildForIOS "glib" { };
+          harfbuzz-ios = toolchains.buildForIOS "harfbuzz" { };
+          cairo-ios = toolchains.buildForIOS "cairo" { };
+          pango-ios = toolchains.buildForIOS "pango" { };
+          libpng-ios = toolchains.buildForIOS "libpng" { };
+          weston-ios = toolchains.buildForIOS "weston" { };
+          weston-compositor-ios = toolchains.buildForIOS "weston-compositor" { };
+          weston-compositor-ios-drm = toolchains.buildForIOS "weston-compositor-drm" { };
+          weston-compositor-ios-drm-sim = toolchains.buildForIOS "weston-compositor-drm" { simulator = true; };
+          angle-ios = toolchains.buildForIOS "angle" { };
+          angle-ios-sim = toolchains.buildForIOS "angle" { simulator = true; };
+          angle-android = toolchainsAndroid.buildForAndroid "angle" { };
+          iland-ios = toolchains.buildForIOS "iland" { };
+          iland-ios-sim = toolchains.buildForIOS "iland" { simulator = true; };
+          iland-visionos = toolchains.buildForVisionOS "iland" { };
+          iland-visionos-sim = toolchains.buildForVisionOS "iland" { simulator = true; };
+          kmscube-ios = toolchains.buildForIOS "kmscube" { simulator = true; };
+          kmscube-ios-device = toolchains.buildForIOS "kmscube" { simulator = false; };
+          fastfetch-ios = toolchains.buildForIOS "fastfetch" { simulator = true; };
+          fastfetch-ios-device = toolchains.buildForIOS "fastfetch" { simulator = false; };
+          # fastfetch on the whole Apple family (#139). tvOS/watchOS follow the
+          # zsh naming (plain = device, -sim = simulator); watchOS drops
+          # Metal/VideoToolbox via wwn-fastfetch's per-platform framework list.
+          fastfetch-tvos = toolchains.buildForTVOS "fastfetch" { simulator = false; };
+          fastfetch-tvos-sim = toolchains.buildForTVOS "fastfetch" { simulator = true; };
+          fastfetch-watchos = toolchains.buildForWatchOS "fastfetch" { simulator = false; };
+          fastfetch-watchos-sim = toolchains.buildForWatchOS "fastfetch" { simulator = true; };
+          fastfetch-macos = toolchains.buildForMacOS "fastfetch" { };
+          iland-gl-clients-ios = toolchains.buildForIOS "kmscube" { simulator = true; };
+          iland-gl-clients-ios-device = toolchains.buildForIOS "kmscube" { simulator = false; };
+          weston-ios-gl = toolchains.buildForIOS "weston" { enableGlClients = true; };
+          weston-ios-gl-sim = toolchains.buildForIOS "weston" { simulator = true; enableGlClients = true; };
+          weston-tvos-sim = toolchains.buildForTVOS "weston" { simulator = true; enableGlClients = true; };
+          "wawona-pty-ios" = toolchains.buildForIOS "wawona-pty" { };
+          "wawona-pty-ios-sim" = toolchains.buildForIOS "wawona-pty" { simulator = true; };
+          # Platform-matched PTY for Apple family (same ios.nix recipe; SDK from apple-mobile).
+          "wawona-pty-tvos" = toolchains.buildForTVOS "wawona-pty" { };
+          "wawona-pty-tvos-sim" = toolchains.buildForTVOS "wawona-pty" { simulator = true; };
+          "wawona-pty-watchos" = toolchains.buildForWatchOS "wawona-pty" { };
+          "wawona-pty-watchos-sim" = toolchains.buildForWatchOS "wawona-pty" { simulator = true; };
+          "wawona-pty-visionos" = toolchains.buildForVisionOS "wawona-pty" { };
+          "wawona-pty-visionos-sim" = toolchains.buildForVisionOS "wawona-pty" { simulator = true; };
+          zsh-ios = toolchains.buildForIOS "zsh" { };
+          zsh-ios-sim = toolchains.buildForIOS "zsh" { simulator = true; };
+          # Platform-matched zsh for Apple family (ios.nix is apple-mobile-aware).
+          zsh-tvos = toolchains.buildForTVOS "zsh" { };
+          zsh-tvos-sim = toolchains.buildForTVOS "zsh" { simulator = true; };
+          zsh-watchos = toolchains.buildForWatchOS "zsh" { };
+          zsh-watchos-sim = toolchains.buildForWatchOS "zsh" { simulator = true; };
+          zsh-visionos = toolchains.buildForVisionOS "zsh" { };
+          zsh-visionos-sim = toolchains.buildForVisionOS "zsh" { simulator = true; };
+          # Apple mobile: never ship OpenSSH / libssh-inprocess.a (libssh2 only).
+          libssh2-ios = toolchains.buildForIOS "libssh2" { };
+          libssh2-ios-sim = toolchains.buildForIOS "libssh2" { simulator = true; };
+          niri-ios = toolchains.buildForIOS "niri" { };
+          niri-ios-sim = toolchains.buildForIOS "niri" { simulator = true; };
+          fuzzel-ios = toolchains.buildForIOS "fuzzel" { };
+          fuzzel-ios-sim = toolchains.buildForIOS "fuzzel" { simulator = true; };
+          # foot (Wayland client): privatized in xcode-prebuild.sh so its embedded
+          # generated-protocol symbols stay local and never collide with weston /
+          # fuzzel. Linked on every Apple-mobile target, hence platform-matched
+          # builds (iOS attrs are reused for iPadOS/visionOS).
+          foot-ios = toolchains.buildForIOS "foot" { };
+          foot-ios-sim = toolchains.buildForIOS "foot" { simulator = true; };
+          foot-tvos = toolchains.buildForTVOS "foot" { };
+          foot-tvos-sim = toolchains.buildForTVOS "foot" { simulator = true; };
+          foot-watchos = toolchains.buildForWatchOS "foot" { };
+          foot-watchos-sim = toolchains.buildForWatchOS "foot" { simulator = true; };
+          # phoon (clean-room Rust moon-phase utility, in-process shell tool).
+          # Bundled on EVERY Apple target like foot/niri: rust-overlay stable
+          # ships std for the tier-3 tvOS/watchOS/visionOS triples, so phoon
+          # builds natively for each (iOS attrs reused for iPadOS/visionOS in
+          # prebuild, matching foot). Pure Rust. No GPU/framework deps.
+          phoon-ios = toolchains.buildForIOS "phoon" { };
+          phoon-ios-sim = toolchains.buildForIOS "phoon" { simulator = true; };
+          phoon-ios-device = toolchains.buildForIOS "phoon" { simulator = false; };
+          phoon-tvos = toolchains.buildForTVOS "phoon" { };
+          phoon-tvos-sim = toolchains.buildForTVOS "phoon" { simulator = true; };
+          phoon-watchos = toolchains.buildForWatchOS "phoon" { };
+          phoon-watchos-sim = toolchains.buildForWatchOS "phoon" { simulator = true; };
+          phoon-visionos = toolchains.buildForVisionOS "phoon" { };
+          phoon-visionos-sim = toolchains.buildForVisionOS "phoon" { simulator = true; };
+          phoon-macos = toolchains.buildForMacOS "phoon" { };
+          # Host-native alias: `nix run .#phoon` on Darwin → macOS CLI.
+          # (Linux hosts get the same attr from the isLinuxHost block.)
+          phoon = toolchains.buildForMacOS "phoon" { };
+          # wwn-wasm: WASI P1/P2 interpreter (Pulley on mobile; Cranelift on macOS).
+          # Cited: docs/wwn-repo-dag.md (L3′). Mandatory on every target including watchOS.
+          wawona-wasm-ios = toolchains.buildForIOS "wawona-wasm" { };
+          wawona-wasm-ios-sim = toolchains.buildForIOS "wawona-wasm" { simulator = true; };
+          wawona-wasm-tvos = toolchains.buildForTVOS "wawona-wasm" { };
+          wawona-wasm-tvos-sim = toolchains.buildForTVOS "wawona-wasm" { simulator = true; };
+          wawona-wasm-visionos = toolchains.buildForVisionOS "wawona-wasm" { };
+          wawona-wasm-visionos-sim = toolchains.buildForVisionOS "wawona-wasm" { simulator = true; };
+          wawona-wasm-watchos = toolchains.buildForWatchOS "wawona-wasm" { };
+          wawona-wasm-watchos-sim = toolchains.buildForWatchOS "wawona-wasm" { simulator = true; };
+          wawona-wasm-macos = toolchains.buildForMacOS "wawona-wasm" { };
+          wawona-wasm = toolchains.buildForMacOS "wawona-wasm" { };
+          "zsh-framework-ios" = toolchains.buildForIOS "zsh-framework" { };
+          "zsh-framework-ios-sim" = toolchains.buildForIOS "zsh-framework" { simulator = true; };
+          "wawona-rootfs-ios" = toolchains.buildForIOS "wawona-rootfs" { };
+          "wawona-rootfs-ios-sim" = toolchains.buildForIOS "wawona-rootfs" { simulator = true; };
+          "wawona-pty-spike-ios" = pkgs.callPackage westonPtySpikeIosNix {
+            buildModule = toolchains;
+            iosToolchain = import applePath { inherit (pkgs) lib pkgs; };
+            simulator = false;
+          };
+          "wawona-pty-spike-ios-sim" = pkgs.callPackage westonPtySpikeIosNix {
+            buildModule = toolchains;
+            iosToolchain = import applePath { inherit (pkgs) lib pkgs; };
+            simulator = true;
+          };
+          # weston toytoolkit (cairo/pango) cross-compile stack for Android (NDK),
+          # exposed individually for incremental build verification.
+          freetype-android = toolchainsAndroid.buildForAndroid "freetype" { };
+          fribidi-android = toolchainsAndroid.buildForAndroid "fribidi" { };
+          pcre2-android = toolchainsAndroid.buildForAndroid "pcre2" { };
+          fontconfig-android = toolchainsAndroid.buildForAndroid "fontconfig" { };
+          pixman-android = toolchainsAndroid.buildForAndroid "pixman" { };
+          glib-android = toolchainsAndroid.buildForAndroid "glib" { };
+          harfbuzz-android = toolchainsAndroid.buildForAndroid "harfbuzz" { };
+          cairo-android = toolchainsAndroid.buildForAndroid "cairo" { };
+          pango-android = toolchainsAndroid.buildForAndroid "pango" { };
+          libpng-android = toolchainsAndroid.buildForAndroid "libpng" { };
+          weston-android = toolchainsAndroid.buildForAndroid "weston" { };
+          weston-compositor-android = toolchainsAndroid.buildForAndroid "weston-compositor" { };
+          weston-compositor-android-drm = toolchainsAndroid.buildForAndroid "weston-compositor-drm" { };
+          iland-android = toolchainsAndroid.buildForAndroid "iland" { };
+          zsh-android = toolchainsAndroid.buildForAndroid "zsh" { };
+          foot-android = toolchainsAndroid.buildForAndroid "foot" { };
+          fastfetch-android = toolchainsAndroid.buildForAndroid "fastfetch" { };
+          phoon-android = toolchainsAndroid.buildForAndroid "phoon" { };
+          wawona-wasm-android = toolchainsAndroid.buildForAndroid "wawona-wasm" { };
+          waypipe-android = toolchainsAndroid.buildForAndroid "waypipe" { };
+          # anowaW app bridge: native lib (libanowaw.so) linked into the Android
+          # app; the Kotlin/JNI shims are staged into the generated project.
+          anowaw-android = toolchainsAndroid.buildForAndroid "anowaw" { };
+          # niri (wwn-niri): nested scrollable-tiling compositor; ships
+          # bin/niri + lib/libniri_bin.so (jniLibs exec pattern).
+          niri-android = toolchainsAndroid.buildForAndroid "niri" { };
+          fuzzel-android = toolchainsAndroid.buildForAndroid "fuzzel" { };
+          default = (import ./dependencies/wawona/shell-wrappers.nix).macosWrapper pkgs wawona-macos;
+          # Consumer-facing package name for use as a flake input or overlay,
+          # matching the nixpkgs convention of installing `pkgs.wawona`.
+          wawona = (import ./dependencies/wawona/shell-wrappers.nix).macosWrapper pkgs wawona-macos;
+        } // (pkgs.lib.optionalAttrs (builtins.pathExists ./dependencies/libs/vulkan-cts) {
+          # Optional local graphics test packages (present in some trees only).
+          vulkan-cts = toolchains.buildForMacOS "vulkan-cts" { };
+          vulkan-cts-ios = toolchains.buildForIOS "vulkan-cts" { };
+        }) // (pkgs.lib.optionalAttrs (builtins.pathExists ./dependencies/libs/gl-cts) {
+          gl-cts = toolchains.buildForMacOS "gl-cts" { };
+          gl-cts-ios = toolchains.buildForIOS "gl-cts" { };
+        }) // (pkgs.lib.optionalAttrs hasGraphicsValidate {
+          graphics-validate-macos = pkgs.callPackage ./dependencies/tests/graphics-validate.nix { };
+        }) // (pkgs.lib.optionalAttrs (builtins.pathExists "${wwn-relay}/import/vms/dependencies/vms/vz-launcher.nix") {
+          # Native Virtualization.framework launcher (vsock+waypipe into Wawona).
+          # Sourced from Wawona Relay (imported VZ recipes). Never QEMU.
+          wawona-vz = pkgs.callPackage "${wwn-relay}/import/vms/dependencies/vms/vz-launcher.nix" { inherit wawonaVersion; };
+        }) // (pkgs.lib.optionalAttrs (builtins.pathExists "${wwn-relay}/import/vms/dependencies/vms/microvm-guest.nix") (
+          # microvm.nix + vfkit developer track. Guest definition lives in Relay.
+          let
+            microvmGuest = import "${wwn-relay}/import/vms/dependencies/vms/microvm-guest.nix" {
+              inherit nixpkgs;
+              microvm = inputs.microvm;
+              hostSystem = system;
+            };
+            vfkitRunner = microvmGuest.config.microvm.runner.vfkit;
+          in {
+            wawona-microvm = pkgs.writeShellApplication {
+              name = "wawona-microvm";
+              runtimeInputs = [ pkgs.coreutils pkgs.python3 ];
+              text = ''
+                # vfkit creates the overlay disk + restful socket in CWD; anchor
+                # them in a stable per-user state dir. The guest vsock lands on the
+                # host-side unix socket (vsockSocketPath in microvm-guest.nix),
+                # which the bridge listens on. Default /tmp/wawona-guest-vsock.sock.
+                STATEDIR="''${XDG_STATE_HOME:-$HOME/.local/state}/wawona-microvm"
+                mkdir -p "$STATEDIR"
+                cd "$STATEDIR"
+                echo "[wawona-microvm] state dir: $STATEDIR" >&2
+                echo "[wawona-microvm] guest vsock -> host unix socket: /tmp/wawona-guest-vsock.sock (the bridge listens here)" >&2
+                # microvm.nix's vfkit runner attaches the guest console via
+                # `--device virtio-serial,stdio`, which fails with "operation not
+                # supported on socket" whenever stdio is not a real TTY. Exactly
+                # the case when Wawona launches this via NSTask (no controlling
+                # terminal). Allocate a pty with Python's pty.spawn (works even
+                # with no parent TTY) so the stdio console has a terminal.
+                exec python3 -c 'import pty,sys; sys.exit(pty.spawn(sys.argv[1:]) or 0)' \
+                  ${vfkitRunner}/bin/microvm-run "$@"
               '';
-            in
-              pkgs.writeShellScriptBin "uninstall" ''
-                set -eu
-                uid="$(id -u)"
-                domain="gui/$uid"
-                launch_agents_dir="$HOME/Library/LaunchAgents"
-                compositor_label="com.aspauldingcode.wawona.compositorhost"
-                menubar_label="com.aspauldingcode.wawona.menubar"
-                applaunch_label="com.aspauldingcode.wawona.applaunch"
-                modeb_login_label="com.aspauldingcode.wawona.modeb-login"
-                app_path="/Applications/Wawona.app"
-                modeb_helper="/Library/Application Support/Wawona/run-modeb.sh"
+            };
+            wawona-vm-bridge = pkgs.writeShellApplication {
+              name = "wawona-vm-bridge";
+              runtimeInputs = [ pkgs.coreutils pkgs.socat commonPackages.waypipe ];
+              text = ''
+                # Relay the guest's vsock Wayland stream into Wawona. vfkit runs in
+                # default "listen" mode (guest->host): when the guest waypipe server
+                # connects to host CID 2:1024, vfkit connects to the host-side unix
+                # socket, which THIS bridge must be LISTENING on. So:
+                #   guest waypipe server --vsock -s 1024  ->  vfkit  ->
+                #   socat UNIX-LISTEN:<vsock sock>  ->  waypipe client  ->  wayland-0
+                # Must match microvm-guest.nix `vsockSocketPath`.
+                VSOCK_SOCKET="''${WAWONA_VSOCK_SOCKET:-/tmp/wawona-guest-vsock.sock}"
+                # Wawona's XDG_RUNTIME_DIR (where it advertises wayland-0). Override
+                # via WAWONA_RUNTIME if Wawona uses a different dir.
+                WAWONA_RUNTIME="''${WAWONA_RUNTIME:-/tmp/wawona-$(id -u)}"
+                WAYPIPE_SOCKET="''${WAYPIPE_SOCKET:-/tmp/waypipe-wawona.sock}"
 
-                unload_agent() {
-                  label="$1"
-                  target="$domain/$label"
-                  plist_path="$launch_agents_dir/$label.plist"
-                  launchctl bootout "$target" >/dev/null 2>&1 || true
-                  launchctl remove "$label" >/dev/null 2>&1 || true
-                  rm -f "$plist_path"
-                }
-
-                kill_wawona_app() {
-                  ps -axo pid=,args= | while read -r pid args; do
-                    case "$args" in
-                      *"/Contents/MacOS/Wawona"*)
-                        kill -TERM "$pid" >/dev/null 2>&1 || true
-                        ;;
-                    esac
-                  done
-                  sleep 0.3
-                  ps -axo pid=,args= | while read -r pid args; do
-                    case "$args" in
-                      *"/Contents/MacOS/Wawona"*)
-                        kill -KILL "$pid" >/dev/null 2>&1 || true
-                        ;;
-                    esac
-                  done
-                }
-
-                unload_agent "$compositor_label"
-                unload_agent "$menubar_label"
-                unload_agent "$applaunch_label"
-                unload_agent "$modeb_login_label"
-                kill_wawona_app
-                "${cliBinsScript}" unregister || true
-                rm -rf "$HOME/Library/PreferencePanes/Wawona.prefPane"
-
-                if [ -x "$modeb_helper" ]; then
-                  /usr/bin/sudo -n "$modeb_helper" --restore-aqua >/dev/null 2>&1 || true
-                fi
-
-                need_admin=0
-                if [ -e "$app_path" ]; then
-                  if /bin/rm -rf "$app_path" 2>/dev/null; then
-                    echo "Removed $app_path"
-                  else
-                    need_admin=1
-                  fi
-                fi
-                if [ -e "/Library/Application Support/Wawona" ] || \
-                   [ -e /etc/sudoers.d/wawona-modeb ] || \
-                   [ -e /Library/LaunchDaemons/com.aspauldingcode.wawona.ws-guard.plist ]; then
-                  need_admin=1
-                fi
-                if [ "$need_admin" -eq 1 ]; then
-                  echo "Requesting administrator privileges to finish uninstall..."
-                  if ! /usr/bin/osascript -e "do shell script \"${privileged}\" with administrator privileges"; then
-                    echo "Error: administrator authorization is required to remove a root-owned Wawona.app (pkg or sudo copy) and Mode B files." >&2
-                    exit 1
-                  fi
-                fi
-
-                if [ -e "$app_path" ]; then
-                  echo "Error: $app_path is still present." >&2
+                if [ ! -d "$WAWONA_RUNTIME" ]; then
+                  echo "wawona-vm-bridge: runtime dir $WAWONA_RUNTIME not found. Is Wawona running?" >&2
+                  echo "  set WAWONA_RUNTIME=/path/to/wawona/xdg-runtime and retry." >&2
                   exit 1
                 fi
 
-                echo "Wawona launch agents removed:"
-                echo "  - $compositor_label"
-                echo "  - $menubar_label"
-                echo "  - $applaunch_label"
-                echo "Wawona.app and Mode B install files removed."
+                rm -f "$WAYPIPE_SOCKET" "$VSOCK_SOCKET"
+                export XDG_RUNTIME_DIR="$WAWONA_RUNTIME"
+                export WAYLAND_DISPLAY="wayland-0"
+                echo "[wawona-vm-bridge] starting waypipe client on $WAYPIPE_SOCKET (-> $WAWONA_RUNTIME/wayland-0)" >&2
+                waypipe --socket "$WAYPIPE_SOCKET" client &
+                WAYPIPE_PID=$!
+                trap 'kill "$WAYPIPE_PID" 2>/dev/null || true' EXIT
+
+                # Wait for waypipe's client socket to come up, then listen on the
+                # vfkit-facing socket. vfkit connects here when the guest dials out;
+                # ,fork lets the guest session reconnect (waypipe/systemd restarts).
+                for _ in $(seq 1 30); do
+                  [ -S "$WAYPIPE_SOCKET" ] && break
+                  sleep 1
+                done
+                echo "[wawona-vm-bridge] listening on $VSOCK_SOCKET, forwarding to $WAYPIPE_SOCKET" >&2
+                exec socat "UNIX-LISTEN:$VSOCK_SOCKET,fork" "UNIX-CONNECT:$WAYPIPE_SOCKET"
               '';
-            wawona-macos = wawona-macos;
-            # 3rd-party macOS ships Mode B. Same drv as default wawona-macos.
-            wawona-macos-desktop-host = wawona-macos;
-
-            coreutils-multicall-macos = coreutils-multicall-macos;
-            wawona-ios = wawona-ios-app-sim;
-            wawona-ipados = wawona-ipados-app-sim;
-            wawona-tvos = wawona-tvos-app-sim;
-            wawona-watchos = wawona-watchos-app-sim;
-            wawona-visionos = wawona-visionos-app-sim;
-            wawona-ios-app-sim = wawona-ios-app-sim;
-            wawona-ipados-app-sim = wawona-ipados-app-sim;
-            wawona-tvos-app-sim = wawona-tvos-app-sim;
-            wawona-watchos-app-sim = wawona-watchos-app-sim;
-            wawona-visionos-app-sim = wawona-visionos-app-sim;
-            wawona-ios-app-device = wawona-ios-app-device;
-            wawona-ios-modeb-app-device = wawona-ios-modeb-app-device;
-            wawona-ios-modeb-sileo-app-device = wawona-ios-modeb-sileo-app-device;
-            wawona-ios-modeb-tipa-app-device = wawona-ios-modeb-tipa-app-device;
-            wawona-ios-modeb-tipa = wawona-ios-modeb-tipa;
-            wawona-ios-modeb-tipa-slim = wawona-ios-modeb-tipa-slim;
-            wawona-ios-modeb-deb-rootless = wawona-ios-modeb-deb-rootless;
-            wawona-ios-modeb-deb-rootless-slim = wawona-ios-modeb-deb-rootless-slim;
-            wawona-ios-modeb-deb-rootful = wawona-ios-modeb-deb-rootful;
-            # L3' vphone lab. Defined in the Darwin let above; must be exported
-            # or `nix run .#vphone-jb-lab` / Mode B runners cannot find the CLI.
-            vphone-cli = vphone-cli;
-            vphone-jb-lab = vphone-jb-lab;
-            wawona-ipados-app-device = wawona-ipados-app-device;
-            wawona-tvos-app-device = wawona-tvos-app-device;
-            wawona-watchos-app-device = wawona-watchos-app-device;
-            wawona-visionos-app-device = wawona-visionos-app-device;
-            wawona-ios-ipa = wawona-ios-ipa;
-            wawona-ipados-ipa = wawona-ipados-ipa;
-            wawona-tvos-ipa = wawona-tvos-ipa;
-            wawona-visionos-ipa = wawona-visionos-ipa;
-            wawona-watchos-ipa = wawona-watchos-ipa;
-            wawona-ios-xcarchive = wawona-ios-xcarchive;
-            wawona-ios-simulator = wawona-ios-simulator;
-            wawona-macos-backend = backend-macos;
-            wawona-macos-backend-desktop-host = backend-macos;
-
-            uniffi-bindgen = uniffi-bindgen;
-            wawona-macos-xcode-env = backend-macos;
-            wawona-ios-backend = backend-ios;
-            wawona-ios-modeb-backend = backend-ios-modeb;
-            wawona-ios-modeb-sileo-backend = backend-ios-modeb-sileo;
-            wawona-ios-modeb-tipa-backend = backend-ios-modeb-tipa;
-            wwn-vms-engine-contract-ios = iosDeps."vm-engine-contract";
-            wwn-vms-engine-contract-ios-modeb = iosDeps."vm-engine-contract-modeb";
-            wawona-ios-xcode-env = backend-ios;
-            wawona-ios-sim-backend = backend-ios-sim;
-            wawona-ios-sim-xcode-env = backend-ios-sim;
-            wawona-ipados-backend = backend-ios;
-            wawona-ipados-sim-backend = backend-ios-sim;
-            wawona-tvos-backend = backend-tvos;
-            wawona-tvos-sim-backend = backend-tvos-sim;
-            wawona-visionos-backend = backend-visionos;
-            wawona-visionos-sim-backend = backend-visionos-sim;
-            wawona-watchos-backend = backend-watchos;
-            wawona-watchos-sim-backend = backend-watchos-sim;
-            wawona-macos-project = xcodegenOutputs.app;
-            wawona-ios-project = xcodegenOutputs.app;
-            wawona-ios-provision = apple.provisionXcodeScript;
-            wawona-ios-xcode-wrapper = apple.xcodeWrapperDrv;
-            xcodegen = xcodegenOutputs.app;
-            xcodegen-ios = xcodegenIosOutputs.app;
-            xcodegen-ios-sim = xcodegenIosSimOutputs.app;
-            xcodegen-macos = xcodegenMacosOutputs.app;
-            xcodegen-apple = xcodegenAppleOutputs.app;
-            xcodegen-fast = xcodegenAppleOutputs.app;
-            xcodegen-novision = xcodegenNoVisionOutputs.app;
-            xcodegenProject = xcodegenOutputs.project;
-            weston-debug = toolchains.buildForMacOS "weston" {debug = true;};
-            weston-simple-shm = toolchains.buildForMacOS "weston-simple-shm" {};
-            weston-terminal = weston-terminal-pkg;
-            foot = (import ./dependencies/wawona/shell-wrappers.nix).footWrapper pkgs (toolchains.buildForMacOS "foot" {}) wawona-macos;
-            waypipe-ios = toolchains.buildForIOS "waypipe" {};
-            waypipe-ios-sim = toolchains.buildForIOS "waypipe" {simulator = true;};
-            # anowaW app bridge. MacOS (+ Android) only (platform-targets matrix).
-            anowaw-macos = toolchains.buildForMacOS "anowaw" {};
-            # weston toytoolkit (cairo/pango) cross-compile stack for Apple mobile,
-            # exposed individually for incremental build verification.
-            freetype-ios = toolchains.buildForIOS "freetype" {};
-            fribidi-ios = toolchains.buildForIOS "fribidi" {};
-            pcre2-ios = toolchains.buildForIOS "pcre2" {};
-            fontconfig-ios = toolchains.buildForIOS "fontconfig" {};
-            glib-ios = toolchains.buildForIOS "glib" {};
-            harfbuzz-ios = toolchains.buildForIOS "harfbuzz" {};
-            cairo-ios = toolchains.buildForIOS "cairo" {};
-            pango-ios = toolchains.buildForIOS "pango" {};
-            libpng-ios = toolchains.buildForIOS "libpng" {};
-            weston-ios = toolchains.buildForIOS "weston" {};
-            weston-compositor-ios = toolchains.buildForIOS "weston-compositor" {};
-            weston-compositor-ios-drm = toolchains.buildForIOS "weston-compositor-drm" {};
-            weston-compositor-ios-drm-sim = toolchains.buildForIOS "weston-compositor-drm" {simulator = true;};
-            angle-ios = toolchains.buildForIOS "angle" {};
-            angle-ios-sim = toolchains.buildForIOS "angle" {simulator = true;};
-            angle-android = toolchainsAndroid.buildForAndroid "angle" {};
-            iland-ios = toolchains.buildForIOS "iland" {};
-            iland-ios-sim = toolchains.buildForIOS "iland" {simulator = true;};
-            iland-visionos = toolchains.buildForVisionOS "iland" {};
-            iland-visionos-sim = toolchains.buildForVisionOS "iland" {simulator = true;};
-            kmscube-ios = toolchains.buildForIOS "kmscube" {simulator = true;};
-            kmscube-ios-device = toolchains.buildForIOS "kmscube" {simulator = false;};
-            fastfetch-ios = toolchains.buildForIOS "fastfetch" {simulator = true;};
-            fastfetch-ios-device = toolchains.buildForIOS "fastfetch" {simulator = false;};
-            # fastfetch on the whole Apple family (#139). tvOS/watchOS follow the
-            # zsh naming (plain = device, -sim = simulator); watchOS drops
-            # Metal/VideoToolbox via wwn-fastfetch's per-platform framework list.
-            fastfetch-tvos = toolchains.buildForTVOS "fastfetch" {simulator = false;};
-            fastfetch-tvos-sim = toolchains.buildForTVOS "fastfetch" {simulator = true;};
-            fastfetch-watchos = toolchains.buildForWatchOS "fastfetch" {simulator = false;};
-            fastfetch-watchos-sim = toolchains.buildForWatchOS "fastfetch" {simulator = true;};
-            fastfetch-macos = toolchains.buildForMacOS "fastfetch" {};
-            iland-gl-clients-ios = toolchains.buildForIOS "kmscube" {simulator = true;};
-            iland-gl-clients-ios-device = toolchains.buildForIOS "kmscube" {simulator = false;};
-            weston-ios-gl = toolchains.buildForIOS "weston" {enableGlClients = true;};
-            weston-ios-gl-sim = toolchains.buildForIOS "weston" {
-              simulator = true;
-              enableGlClients = true;
             };
-            weston-tvos-sim = toolchains.buildForTVOS "weston" {
-              simulator = true;
-              enableGlClients = true;
-            };
-            "wawona-pty-ios" = toolchains.buildForIOS "wawona-pty" {};
-            "wawona-pty-ios-sim" = toolchains.buildForIOS "wawona-pty" {simulator = true;};
-            # Platform-matched PTY for Apple family (same ios.nix recipe; SDK from apple-mobile).
-            "wawona-pty-tvos" = toolchains.buildForTVOS "wawona-pty" {};
-            "wawona-pty-tvos-sim" = toolchains.buildForTVOS "wawona-pty" {simulator = true;};
-            "wawona-pty-watchos" = toolchains.buildForWatchOS "wawona-pty" {};
-            "wawona-pty-watchos-sim" = toolchains.buildForWatchOS "wawona-pty" {simulator = true;};
-            "wawona-pty-visionos" = toolchains.buildForVisionOS "wawona-pty" {};
-            "wawona-pty-visionos-sim" = toolchains.buildForVisionOS "wawona-pty" {simulator = true;};
-            zsh-ios = toolchains.buildForIOS "zsh" {};
-            zsh-ios-sim = toolchains.buildForIOS "zsh" {simulator = true;};
-            # Platform-matched zsh for Apple family (ios.nix is apple-mobile-aware).
-            zsh-tvos = toolchains.buildForTVOS "zsh" {};
-            zsh-tvos-sim = toolchains.buildForTVOS "zsh" {simulator = true;};
-            zsh-watchos = toolchains.buildForWatchOS "zsh" {};
-            zsh-watchos-sim = toolchains.buildForWatchOS "zsh" {simulator = true;};
-            zsh-visionos = toolchains.buildForVisionOS "zsh" {};
-            zsh-visionos-sim = toolchains.buildForVisionOS "zsh" {simulator = true;};
-            # Apple mobile: never ship OpenSSH / libssh-inprocess.a (libssh2 only).
-            libssh2-ios = toolchains.buildForIOS "libssh2" {};
-            libssh2-ios-sim = toolchains.buildForIOS "libssh2" {simulator = true;};
-            niri-ios = toolchains.buildForIOS "niri" {};
-            niri-ios-sim = toolchains.buildForIOS "niri" {simulator = true;};
-            fuzzel-ios = toolchains.buildForIOS "fuzzel" {};
-            fuzzel-ios-sim = toolchains.buildForIOS "fuzzel" {simulator = true;};
-            # foot (Wayland client): privatized in xcode-prebuild.sh so its embedded
-            # generated-protocol symbols stay local and never collide with weston /
-            # fuzzel. Linked on every Apple-mobile target, hence platform-matched
-            # builds (iOS attrs are reused for iPadOS/visionOS).
-            foot-ios = toolchains.buildForIOS "foot" {};
-            foot-ios-sim = toolchains.buildForIOS "foot" {simulator = true;};
-            foot-tvos = toolchains.buildForTVOS "foot" {};
-            foot-tvos-sim = toolchains.buildForTVOS "foot" {simulator = true;};
-            foot-watchos = toolchains.buildForWatchOS "foot" {};
-            foot-watchos-sim = toolchains.buildForWatchOS "foot" {simulator = true;};
-            # phoon (clean-room Rust moon-phase utility, in-process shell tool).
-            # Bundled on EVERY Apple target like foot/niri: rust-overlay stable
-            # ships std for the tier-3 tvOS/watchOS/visionOS triples, so phoon
-            # builds natively for each (iOS attrs reused for iPadOS/visionOS in
-            # prebuild, matching foot). Pure Rust. No GPU/framework deps.
-            phoon-ios = toolchains.buildForIOS "phoon" {};
-            phoon-ios-sim = toolchains.buildForIOS "phoon" {simulator = true;};
-            phoon-ios-device = toolchains.buildForIOS "phoon" {simulator = false;};
-            phoon-tvos = toolchains.buildForTVOS "phoon" {};
-            phoon-tvos-sim = toolchains.buildForTVOS "phoon" {simulator = true;};
-            phoon-watchos = toolchains.buildForWatchOS "phoon" {};
-            phoon-watchos-sim = toolchains.buildForWatchOS "phoon" {simulator = true;};
-            phoon-visionos = toolchains.buildForVisionOS "phoon" {};
-            phoon-visionos-sim = toolchains.buildForVisionOS "phoon" {simulator = true;};
-            phoon-macos = toolchains.buildForMacOS "phoon" {};
-            # Host-native alias: `nix run .#phoon` on Darwin → macOS CLI.
-            # (Linux hosts get the same attr from the isLinuxHost block.)
-            phoon = toolchains.buildForMacOS "phoon" {};
-            # wwn-wasm: WASI P1/P2 interpreter (Pulley on mobile; Cranelift on macOS).
-            # Cited: docs/wwn-repo-dag.md (L3′). Mandatory on every target including watchOS.
-            wawona-wasm-ios = toolchains.buildForIOS "wawona-wasm" {};
-            wawona-wasm-ios-sim = toolchains.buildForIOS "wawona-wasm" {simulator = true;};
-            wawona-wasm-tvos = toolchains.buildForTVOS "wawona-wasm" {};
-            wawona-wasm-tvos-sim = toolchains.buildForTVOS "wawona-wasm" {simulator = true;};
-            wawona-wasm-visionos = toolchains.buildForVisionOS "wawona-wasm" {};
-            wawona-wasm-visionos-sim = toolchains.buildForVisionOS "wawona-wasm" {simulator = true;};
-            wawona-wasm-watchos = toolchains.buildForWatchOS "wawona-wasm" {};
-            wawona-wasm-watchos-sim = toolchains.buildForWatchOS "wawona-wasm" {simulator = true;};
-            wawona-wasm-macos = toolchains.buildForMacOS "wawona-wasm" {};
-            wawona-wasm = toolchains.buildForMacOS "wawona-wasm" {};
-            "zsh-framework-ios" = toolchains.buildForIOS "zsh-framework" {};
-            "zsh-framework-ios-sim" = toolchains.buildForIOS "zsh-framework" {simulator = true;};
-            "wawona-rootfs-ios" = toolchains.buildForIOS "wawona-rootfs" {};
-            "wawona-rootfs-ios-sim" = toolchains.buildForIOS "wawona-rootfs" {simulator = true;};
-            "wawona-pty-spike-ios" = pkgs.callPackage westonPtySpikeIosNix {
-              buildModule = toolchains;
-              iosToolchain = import applePath {inherit (pkgs) lib pkgs;};
-              simulator = false;
-            };
-            "wawona-pty-spike-ios-sim" = pkgs.callPackage westonPtySpikeIosNix {
-              buildModule = toolchains;
-              iosToolchain = import applePath {inherit (pkgs) lib pkgs;};
-              simulator = true;
-            };
-            # weston toytoolkit (cairo/pango) cross-compile stack for Android (NDK),
-            # exposed individually for incremental build verification.
-            freetype-android = toolchainsAndroid.buildForAndroid "freetype" {};
-            fribidi-android = toolchainsAndroid.buildForAndroid "fribidi" {};
-            pcre2-android = toolchainsAndroid.buildForAndroid "pcre2" {};
-            fontconfig-android = toolchainsAndroid.buildForAndroid "fontconfig" {};
-            pixman-android = toolchainsAndroid.buildForAndroid "pixman" {};
-            glib-android = toolchainsAndroid.buildForAndroid "glib" {};
-            harfbuzz-android = toolchainsAndroid.buildForAndroid "harfbuzz" {};
-            cairo-android = toolchainsAndroid.buildForAndroid "cairo" {};
-            pango-android = toolchainsAndroid.buildForAndroid "pango" {};
-            libpng-android = toolchainsAndroid.buildForAndroid "libpng" {};
-            weston-android = toolchainsAndroid.buildForAndroid "weston" {};
-            weston-compositor-android = toolchainsAndroid.buildForAndroid "weston-compositor" {};
-            weston-compositor-android-drm = toolchainsAndroid.buildForAndroid "weston-compositor-drm" {};
-            iland-android = toolchainsAndroid.buildForAndroid "iland" {};
-            zsh-android = toolchainsAndroid.buildForAndroid "zsh" {};
-            foot-android = toolchainsAndroid.buildForAndroid "foot" {};
-            fastfetch-android = toolchainsAndroid.buildForAndroid "fastfetch" {};
-            phoon-android = toolchainsAndroid.buildForAndroid "phoon" {};
-            wawona-wasm-android = toolchainsAndroid.buildForAndroid "wawona-wasm" {};
-            waypipe-android = toolchainsAndroid.buildForAndroid "waypipe" {};
-            # anowaW app bridge: native lib (libanowaw.so) linked into the Android
-            # app; the Kotlin/JNI shims are staged into the generated project.
-            anowaw-android = toolchainsAndroid.buildForAndroid "anowaw" {};
-            # niri (wwn-niri): nested scrollable-tiling compositor; ships
-            # bin/niri + lib/libniri_bin.so (jniLibs exec pattern).
-            niri-android = toolchainsAndroid.buildForAndroid "niri" {};
-            fuzzel-android = toolchainsAndroid.buildForAndroid "fuzzel" {};
-            default = (import ./dependencies/wawona/shell-wrappers.nix).macosWrapper pkgs wawona-macos;
-            # Consumer-facing package name for use as a flake input or overlay,
-            # matching the nixpkgs convention of installing `pkgs.wawona`.
-            wawona = (import ./dependencies/wawona/shell-wrappers.nix).macosWrapper pkgs wawona-macos;
           }
-          // (pkgs.lib.optionalAttrs (builtins.pathExists ./dependencies/libs/vulkan-cts) {
-            # Optional local graphics test packages (present in some trees only).
-            vulkan-cts = toolchains.buildForMacOS "vulkan-cts" {};
-            vulkan-cts-ios = toolchains.buildForIOS "vulkan-cts" {};
-          })
-          // (pkgs.lib.optionalAttrs (builtins.pathExists ./dependencies/libs/gl-cts) {
-            gl-cts = toolchains.buildForMacOS "gl-cts" {};
-            gl-cts-ios = toolchains.buildForIOS "gl-cts" {};
-          })
-          // (pkgs.lib.optionalAttrs hasGraphicsValidate {
-            graphics-validate-macos = pkgs.callPackage ./dependencies/tests/graphics-validate.nix {};
-          })
-          // (pkgs.lib.optionalAttrs (builtins.pathExists "${wwn-relay}/import/vms/dependencies/vms/vz-launcher.nix") {
-            # Native Virtualization.framework launcher (vsock+waypipe into Wawona).
-            # Sourced from Wawona Relay (imported VZ recipes). Never QEMU.
-            wawona-vz = pkgs.callPackage "${wwn-relay}/import/vms/dependencies/vms/vz-launcher.nix" {inherit wawonaVersion;};
-          })
-          // (pkgs.lib.optionalAttrs (builtins.pathExists "${wwn-relay}/import/vms/dependencies/vms/microvm-guest.nix") (
-            # microvm.nix + vfkit developer track. Guest definition lives in Relay.
-            let
-              microvmGuest = import "${wwn-relay}/import/vms/dependencies/vms/microvm-guest.nix" {
-                inherit nixpkgs;
-                microvm = inputs.microvm;
-                hostSystem = system;
-              };
-              vfkitRunner = microvmGuest.config.microvm.runner.vfkit;
-            in {
-              wawona-microvm = pkgs.writeShellApplication {
-                name = "wawona-microvm";
-                runtimeInputs = [pkgs.coreutils pkgs.python3];
-                text = ''
-                  # vfkit creates the overlay disk + restful socket in CWD; anchor
-                  # them in a stable per-user state dir. The guest vsock lands on the
-                  # host-side unix socket (vsockSocketPath in microvm-guest.nix),
-                  # which the bridge listens on. Default /tmp/wawona-guest-vsock.sock.
-                  STATEDIR="''${XDG_STATE_HOME:-$HOME/.local/state}/wawona-microvm"
-                  mkdir -p "$STATEDIR"
-                  cd "$STATEDIR"
-                  echo "[wawona-microvm] state dir: $STATEDIR" >&2
-                  echo "[wawona-microvm] guest vsock -> host unix socket: /tmp/wawona-guest-vsock.sock (the bridge listens here)" >&2
-                  # microvm.nix's vfkit runner attaches the guest console via
-                  # `--device virtio-serial,stdio`, which fails with "operation not
-                  # supported on socket" whenever stdio is not a real TTY. Exactly
-                  # the case when Wawona launches this via NSTask (no controlling
-                  # terminal). Allocate a pty with Python's pty.spawn (works even
-                  # with no parent TTY) so the stdio console has a terminal.
-                  exec python3 -c 'import pty,sys; sys.exit(pty.spawn(sys.argv[1:]) or 0)' \
-                    ${vfkitRunner}/bin/microvm-run "$@"
-                '';
-              };
-              wawona-vm-bridge = pkgs.writeShellApplication {
-                name = "wawona-vm-bridge";
-                runtimeInputs = [pkgs.coreutils pkgs.socat commonPackages.waypipe];
-                text = ''
-                  # Relay the guest's vsock Wayland stream into Wawona. vfkit runs in
-                  # default "listen" mode (guest->host): when the guest waypipe server
-                  # connects to host CID 2:1024, vfkit connects to the host-side unix
-                  # socket, which THIS bridge must be LISTENING on. So:
-                  #   guest waypipe server --vsock -s 1024  ->  vfkit  ->
-                  #   socat UNIX-LISTEN:<vsock sock>  ->  waypipe client  ->  wayland-0
-                  # Must match microvm-guest.nix `vsockSocketPath`.
-                  VSOCK_SOCKET="''${WAWONA_VSOCK_SOCKET:-/tmp/wawona-guest-vsock.sock}"
-                  # Wawona's XDG_RUNTIME_DIR (where it advertises wayland-0). Override
-                  # via WAWONA_RUNTIME if Wawona uses a different dir.
-                  WAWONA_RUNTIME="''${WAWONA_RUNTIME:-/tmp/wawona-$(id -u)}"
-                  WAYPIPE_SOCKET="''${WAYPIPE_SOCKET:-/tmp/waypipe-wawona.sock}"
+        ))));
+      in packages;
 
-                  if [ ! -d "$WAWONA_RUNTIME" ]; then
-                    echo "wawona-vm-bridge: runtime dir $WAWONA_RUNTIME not found. Is Wawona running?" >&2
-                    echo "  set WAWONA_RUNTIME=/path/to/wawona/xdg-runtime and retry." >&2
-                    exit 1
-                  fi
-
-                  rm -f "$WAYPIPE_SOCKET" "$VSOCK_SOCKET"
-                  export XDG_RUNTIME_DIR="$WAWONA_RUNTIME"
-                  export WAYLAND_DISPLAY="wayland-0"
-                  echo "[wawona-vm-bridge] starting waypipe client on $WAYPIPE_SOCKET (-> $WAWONA_RUNTIME/wayland-0)" >&2
-                  waypipe --socket "$WAYPIPE_SOCKET" client &
-                  WAYPIPE_PID=$!
-                  trap 'kill "$WAYPIPE_PID" 2>/dev/null || true' EXIT
-
-                  # Wait for waypipe's client socket to come up, then listen on the
-                  # vfkit-facing socket. vfkit connects here when the guest dials out;
-                  # ,fork lets the guest session reconnect (waypipe/systemd restarts).
-                  for _ in $(seq 1 30); do
-                    [ -S "$WAYPIPE_SOCKET" ] && break
-                    sleep 1
-                  done
-                  echo "[wawona-vm-bridge] listening on $VSOCK_SOCKET, forwarding to $WAYPIPE_SOCKET" >&2
-                  exec socat "UNIX-LISTEN:$VSOCK_SOCKET,fork" "UNIX-CONNECT:$WAYPIPE_SOCKET"
-                '';
-              };
-            }
-          ))));
-    in
-      packages;
-
-    getAppsForSystem = system: pkgs: systemPackages: let
-      appPrograms = import ./dependencies/wawona/app-programs.nix {
-        inherit pkgs systemPackages;
-        modebScripts = ./scripts;
-        xcodeUtils = import applePath {
-          inherit (pkgs) lib pkgs;
-          nixXcodeenvtests = inputs."nix-xcodeenvtests";
+    getAppsForSystem = system: pkgs: systemPackages:
+      let
+        appPrograms = import ./dependencies/wawona/app-programs.nix {
+          inherit pkgs systemPackages;
+          modebScripts = ./scripts;
+          xcodeUtils = import applePath { inherit (pkgs) lib pkgs; nixXcodeenvtests = inputs."nix-xcodeenvtests"; };
         };
-      };
-      hasAndroidCts =
-        builtins.pathExists ./dependencies/libs/vulkan-cts/android.nix
-        && builtins.pathExists ./dependencies/libs/vulkan-cts/gl-cts-android.nix;
-    in
-      {
-        nom = {
-          type = "app";
-          program = "${pkgs.nix-output-monitor}/bin/nom";
-        };
-        local-runner = {
-          type = "app";
-          program = "${systemPackages.local-runner}/bin/local-runner";
-        };
-      }
-      // (pkgs.lib.optionalAttrs (systemPackages ? wawona-android) {
+        hasAndroidCts = builtins.pathExists ./dependencies/libs/vulkan-cts/android.nix
+          && builtins.pathExists ./dependencies/libs/vulkan-cts/gl-cts-android.nix;
+      in {
+        nom = { type = "app"; program = "${pkgs.nix-output-monitor}/bin/nom"; };
+        local-runner = { type = "app"; program = "${systemPackages.local-runner}/bin/local-runner"; };
+      } // (pkgs.lib.optionalAttrs (systemPackages ? wawona-android) {
         # Android apps are host-cross packages; only expose when the package set
         # actually provides them (avoids flake check forcing angle-android on
         # unsupported hostPlatform meta).
-        wawona-android-provision = {
-          type = "app";
-          program = "${systemPackages.wawona-android-provision}/bin/provision-android";
-        };
-        wawona-android-project = {
-          type = "app";
-          program = "${systemPackages.gradlegen}/bin/gradlegen";
-        };
-        wawona-android = {
-          type = "app";
-          program = "${systemPackages.wawona-android}/bin/wawona-android-run";
-        };
-      })
-      // (pkgs.lib.optionalAttrs (hasAndroidCts && systemPackages ? vulkan-cts-android) {
-        vulkan-cts-android = {
-          type = "app";
-          program = "${systemPackages.vulkan-cts-android}/bin/vulkan-cts-android-run";
-        };
-        gl-cts-android = {
-          type = "app";
-          program = "${systemPackages.gl-cts-android}/bin/gl-cts-android-run";
-        };
-      })
-      // (pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
-        default = {
-          type = "app";
-          program = "${systemPackages.wawona-linux}/bin/wawona-linux-run";
-        };
-        install = {
-          type = "app";
-          program = "${systemPackages.install}/bin/install";
-        };
-        wawona = {
-          type = "app";
-          program = "${systemPackages.wawona}/bin/wawona-linux-run";
-        };
-        wawona-linux = {
-          type = "app";
-          program = "${systemPackages.wawona-linux}/bin/wawona-linux-run";
-        };
-        wawona-linux-compositor-host = {
-          type = "app";
-          program = "${systemPackages.wawona-linux-compositor-host}/bin/wawona-linux-compositor-host-run";
-        };
-        wawona-linux-tray = {
-          type = "app";
-          program = "${systemPackages.wawona-linux-tray}/bin/wawona-linux-tray-run";
-        };
-        weston-simple-shm = {
-          type = "app";
-          program = "${systemPackages.weston-simple-shm}/bin/weston-simple-shm";
-        };
-        wawona-linux-vm = {
-          type = "app";
-          program = "${systemPackages.wawona-linux-vm}/bin/wawona-linux-vm-run";
-        };
-      })
-      // (pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin (
+        wawona-android-provision = { type = "app"; program = "${systemPackages.wawona-android-provision}/bin/provision-android"; };
+        wawona-android-project = { type = "app"; program = "${systemPackages.gradlegen}/bin/gradlegen"; };
+        wawona-android = { type = "app"; program = "${systemPackages.wawona-android}/bin/wawona-android-run"; };
+      }) // (pkgs.lib.optionalAttrs (hasAndroidCts && systemPackages ? vulkan-cts-android) {
+        vulkan-cts-android = { type = "app"; program = "${systemPackages.vulkan-cts-android}/bin/vulkan-cts-android-run"; };
+        gl-cts-android = { type = "app"; program = "${systemPackages.gl-cts-android}/bin/gl-cts-android-run"; };
+      }) // (pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+        default = { type = "app"; program = "${systemPackages.wawona-linux}/bin/wawona-linux-run"; };
+        install = { type = "app"; program = "${systemPackages.install}/bin/install"; };
+        wawona = { type = "app"; program = "${systemPackages.wawona}/bin/wawona-linux-run"; };
+        wawona-linux = { type = "app"; program = "${systemPackages.wawona-linux}/bin/wawona-linux-run"; };
+        wawona-linux-compositor-host = { type = "app"; program = "${systemPackages.wawona-linux-compositor-host}/bin/wawona-linux-compositor-host-run"; };
+        wawona-linux-tray = { type = "app"; program = "${systemPackages.wawona-linux-tray}/bin/wawona-linux-tray-run"; };
+        weston-simple-shm = { type = "app"; program = "${systemPackages.weston-simple-shm}/bin/weston-simple-shm"; };
+        wawona-linux-vm = { type = "app"; program = "${systemPackages.wawona-linux-vm}/bin/wawona-linux-vm-run"; };
+      }) // (pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin (
         # Parenthesize the // chain: function application binds tighter than //,
         # so without parens graphics-validate leaked onto linux flake check.
         {
-          weston = {
-            type = "app";
-            program = "${(import ./dependencies/wawona/shell-wrappers.nix).westonAppWrapper pkgs systemPackages.weston systemPackages.wawona-macos "weston"}/bin/weston";
-          };
-          weston-terminal = {
-            type = "app";
-            program = "${(import ./dependencies/wawona/shell-wrappers.nix).westonAppWrapper pkgs systemPackages.weston systemPackages.wawona-macos "weston-terminal"}/bin/weston-terminal";
-          };
-          weston-simple-shm = {
-            type = "app";
-            program = "${(import ./dependencies/wawona/shell-wrappers.nix).westonAppWrapper pkgs systemPackages.weston systemPackages.wawona-macos "weston-simple-shm"}/bin/weston-simple-shm";
-          };
-          waypipe = {
-            type = "app";
-            program = "${(import ./dependencies/wawona/shell-wrappers.nix).waypipeWrapper pkgs systemPackages.waypipe systemPackages.wawona-macos}/bin/waypipe";
-          };
-          foot = {
-            type = "app";
-            program = "${systemPackages.foot}/bin/foot";
-          };
-          install = {
-            type = "app";
-            program = "${systemPackages.install}/bin/install";
-          };
-          wawona = {
-            type = "app";
-            program = "${systemPackages.wawona}/bin/wawona";
-          };
-          uninstall = {
-            type = "app";
-            program = "${systemPackages.uninstall}/bin/uninstall";
-          };
-          wawona-uninstall = {
-            type = "app";
-            program = "${systemPackages.uninstall}/bin/uninstall";
-          };
-          wawona-macos = {
-            type = "app";
-            program = "${systemPackages.wawona}/bin/wawona";
-          };
-          wawona-macos-project = {
-            type = "app";
-            program = "${systemPackages.wawona-macos-project}/bin/xcodegen";
-          };
-          wawona-ios = {
-            type = "app";
-            program = appPrograms.wawonaIos;
-          };
-          wawona-ipados = {
-            type = "app";
-            program = appPrograms.wawonaIpad;
-          };
-          wawona-tvos = {
-            type = "app";
-            program = appPrograms.wawonaTvos;
-          };
-          wawona-watchos = {
-            type = "app";
-            program = appPrograms.wawonaWatchos;
-          };
-          wawona-visionos = {
-            type = "app";
-            program = appPrograms.wawonaVisionos;
-          };
-          wawona-ios-project = {
-            type = "app";
-            program = "${systemPackages.wawona-ios-project}/bin/xcodegen";
-          };
-          xcodegen-ios = {
-            type = "app";
-            program = "${systemPackages.xcodegen-ios}/bin/xcodegen";
-          };
-          xcodegen-macos = {
-            type = "app";
-            program = "${systemPackages.xcodegen-macos}/bin/xcodegen";
-          };
-          xcodegen-apple = {
-            type = "app";
-            program = "${systemPackages.xcodegen-apple}/bin/xcodegen";
-          };
-          xcodegen-novision = {
-            type = "app";
-            program = "${systemPackages.xcodegen-novision}/bin/xcodegen";
-          };
-          wawona-ios-provision = {
-            type = "app";
-            program = "${systemPackages.wawona-ios-provision}/bin/provision-xcode";
-          };
-        }
-        // (pkgs.lib.optionalAttrs (pkgs.stdenv.hostPlatform.isDarwin && pkgs.stdenv.hostPlatform.isAarch64) {
-          # Mode B on vphone (Apple Silicon only). Not the Xcode Simulator.
-          # TrollStore tipa vs Sileo/Procursus deb. Both start vphone-cli when SSH is down.
-          wawona-ios-modeb = {
-            type = "app";
-            program = appPrograms.wawonaIosModeb;
-          };
-          wawona-ios-trollstore = {
-            type = "app";
-            program = appPrograms.wawonaIosTrollstore;
-          };
-          wawona-ios-ts = {
-            type = "app";
-            program = appPrograms.wawonaIosTs;
-          };
-          wawona-ios-jailbreak = {
-            type = "app";
-            program = appPrograms.wawonaIosJailbreak;
-          };
-          wawona-ios-jb = {
-            type = "app";
-            program = appPrograms.wawonaIosJb;
-          };
-        })
-        // (pkgs.lib.optionalAttrs (systemPackages ? vphone-jb-lab) {
-          # Jailbroken iOS research lab (L3' wwn-vphone). No prebuilt VM.
-          vphone-jb-lab = {
-            type = "app";
-            program = "${systemPackages.vphone-jb-lab}/bin/vphone-jb-lab";
-          };
-          vphone-cli = {
-            type = "app";
-            program = "${systemPackages.vphone-cli}/bin/vphone-cli";
-          };
-        })
-        // (pkgs.lib.optionalAttrs (systemPackages ? graphics-validate-macos) {
-          graphics-validate-macos = {
-            type = "app";
-            program = "${systemPackages.graphics-validate-macos}/bin/graphics-validate-macos";
-          };
-          # Fast graphics driver-sanity smoke, runnable as `nix run .#graphics-smoke`.
-          graphics-smoke = {
-            type = "app";
-            program = "${systemPackages.graphics-validate-macos}/bin/graphics-validate-macos";
-          };
-        })
-        // (pkgs.lib.optionalAttrs (systemPackages ? wawona-vz) {
-          # p26-vm-nixos: `nix run .#wawona-vz -- --kernel ... --initrd ... --disk ...`
-          wawona-vz = {
-            type = "app";
-            program = "${systemPackages.wawona-vz}/bin/wawona-vz-run";
-          };
-        })
-        // (pkgs.lib.optionalAttrs (systemPackages ? wawona-microvm) {
-          # p26-vm-nixos (developer track): boot the NixOS guest under vfkit
-          # (Virtualization.framework), then bridge its Wayland session into Wawona.
-          #   term 1:  nix run .#wawona-microvm
-          #   term 2:  nix run .#wawona-vm-bridge
-          wawona-microvm = {
-            type = "app";
-            program = "${systemPackages.wawona-microvm}/bin/wawona-microvm";
-          };
-          wawona-vm-bridge = {
-            type = "app";
-            program = "${systemPackages.wawona-vm-bridge}/bin/wawona-vm-bridge";
-          };
-        })
-      ));
+        weston = {
+          type = "app";
+          program = "${(import ./dependencies/wawona/shell-wrappers.nix).westonAppWrapper pkgs systemPackages.weston systemPackages.wawona-macos "weston"}/bin/weston";
+        };
+        weston-terminal = {
+          type = "app";
+          program = "${(import ./dependencies/wawona/shell-wrappers.nix).westonAppWrapper pkgs systemPackages.weston systemPackages.wawona-macos "weston-terminal"}/bin/weston-terminal";
+        };
+        weston-simple-shm = {
+          type = "app";
+          program = "${(import ./dependencies/wawona/shell-wrappers.nix).westonAppWrapper pkgs systemPackages.weston systemPackages.wawona-macos "weston-simple-shm"}/bin/weston-simple-shm";
+        };
+        waypipe = {
+          type = "app";
+          program = "${(import ./dependencies/wawona/shell-wrappers.nix).waypipeWrapper pkgs systemPackages.waypipe systemPackages.wawona-macos}/bin/waypipe";
+        };
+        foot = { type = "app"; program = "${systemPackages.foot}/bin/foot"; };
+        install = { type = "app"; program = "${systemPackages.install}/bin/install"; };
+        wawona = { type = "app"; program = "${systemPackages.wawona}/bin/wawona"; };
+        uninstall = { type = "app"; program = "${systemPackages.uninstall}/bin/uninstall"; };
+        wawona-uninstall = { type = "app"; program = "${systemPackages.uninstall}/bin/uninstall"; };
+        wawona-macos = { type = "app"; program = "${systemPackages.wawona}/bin/wawona"; };
+        wawona-macos-project = { type = "app"; program = "${systemPackages.wawona-macos-project}/bin/xcodegen"; };
+        wawona-ios = { type = "app"; program = appPrograms.wawonaIos; };
+        wawona-ipados = { type = "app"; program = appPrograms.wawonaIpad; };
+        wawona-tvos = { type = "app"; program = appPrograms.wawonaTvos; };
+        wawona-watchos = { type = "app"; program = appPrograms.wawonaWatchos; };
+        wawona-visionos = { type = "app"; program = appPrograms.wawonaVisionos; };
+        wawona-ios-project = { type = "app"; program = "${systemPackages.wawona-ios-project}/bin/xcodegen"; };
+        xcodegen-ios = { type = "app"; program = "${systemPackages.xcodegen-ios}/bin/xcodegen"; };
+        xcodegen-macos = { type = "app"; program = "${systemPackages.xcodegen-macos}/bin/xcodegen"; };
+        xcodegen-apple = { type = "app"; program = "${systemPackages.xcodegen-apple}/bin/xcodegen"; };
+        xcodegen-novision = { type = "app"; program = "${systemPackages.xcodegen-novision}/bin/xcodegen"; };
+        wawona-ios-provision = { type = "app"; program = "${systemPackages.wawona-ios-provision}/bin/provision-xcode"; };
+      } // (pkgs.lib.optionalAttrs (pkgs.stdenv.hostPlatform.isDarwin && pkgs.stdenv.hostPlatform.isAarch64) {
+        # Mode B on vphone (Apple Silicon only). Not the Xcode Simulator.
+        # TrollStore tipa vs Sileo/Procursus deb. Both start vphone-cli when SSH is down.
+        wawona-ios-modeb = { type = "app"; program = appPrograms.wawonaIosModeb; };
+        wawona-ios-trollstore = { type = "app"; program = appPrograms.wawonaIosTrollstore; };
+        wawona-ios-ts = { type = "app"; program = appPrograms.wawonaIosTs; };
+        wawona-ios-jailbreak = { type = "app"; program = appPrograms.wawonaIosJailbreak; };
+        wawona-ios-jb = { type = "app"; program = appPrograms.wawonaIosJb; };
+      }) // (pkgs.lib.optionalAttrs (systemPackages ? vphone-jb-lab) {
+        # Jailbroken iOS research lab (L3' wwn-vphone). No prebuilt VM.
+        vphone-jb-lab = { type = "app"; program = "${systemPackages.vphone-jb-lab}/bin/vphone-jb-lab"; };
+        vphone-cli = { type = "app"; program = "${systemPackages.vphone-cli}/bin/vphone-cli"; };
+      }) // (pkgs.lib.optionalAttrs (systemPackages ? graphics-validate-macos) {
+        graphics-validate-macos = { type = "app"; program = "${systemPackages.graphics-validate-macos}/bin/graphics-validate-macos"; };
+        # Fast graphics driver-sanity smoke, runnable as `nix run .#graphics-smoke`.
+        graphics-smoke = { type = "app"; program = "${systemPackages.graphics-validate-macos}/bin/graphics-validate-macos"; };
+      }) // (pkgs.lib.optionalAttrs (systemPackages ? wawona-vz) {
+        # p26-vm-nixos: `nix run .#wawona-vz -- --kernel ... --initrd ... --disk ...`
+        wawona-vz = { type = "app"; program = "${systemPackages.wawona-vz}/bin/wawona-vz-run"; };
+      }) // (pkgs.lib.optionalAttrs (systemPackages ? wawona-microvm) {
+        # p26-vm-nixos (developer track): boot the NixOS guest under vfkit
+        # (Virtualization.framework), then bridge its Wayland session into Wawona.
+        #   term 1:  nix run .#wawona-microvm
+        #   term 2:  nix run .#wawona-vm-bridge
+        wawona-microvm = { type = "app"; program = "${systemPackages.wawona-microvm}/bin/wawona-microvm"; };
+        wawona-vm-bridge = { type = "app"; program = "${systemPackages.wawona-vm-bridge}/bin/wawona-vm-bridge"; };
+      })));
 
     allSystemPackages = nixpkgs.lib.genAttrs systemsList (system: getPackagesForSystem system (pkgsFor system));
     # p26-vm-nixos: the NixOS guest as a first-class flake output, so it can be
@@ -3061,49 +2487,38 @@
     overlays.default = final: prev: {
       wawona = self.packages.${prev.stdenv.hostPlatform.system}.wawona;
     };
-    devShells = nixpkgs.lib.genAttrs systemsList (
-      system:
-        (import ./dependencies/wawona/devshells.nix {
-          systems = [system];
+    devShells = nixpkgs.lib.genAttrs systemsList (system:
+      (import ./dependencies/wawona/devshells.nix {
+        systems = [ system ];
+        pkgsFor = pkgsFor;
+      }).${system}
+      // {
+        # Legacy alias; prefer `nix develop` default from devshells.nix.
+        wawona = (import ./dependencies/wawona/devshells.nix {
+          systems = [ system ];
           pkgsFor = pkgsFor;
-        }).${
-          system
-        }
-        // {
-          # Legacy alias; prefer `nix develop` default from devshells.nix.
-          wawona =
-            (import ./dependencies/wawona/devshells.nix {
-              systems = [system];
-              pkgsFor = pkgsFor;
-            }).${
-              system
-            }.default;
-        }
+        }).${system}.default;
+      }
     );
-    checks = nixpkgs.lib.genAttrs systemsList (
-      system: let
-        pkgs = pkgsFor system;
-      in
-        pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin ({
-            graphics-driver-policy = pkgs.runCommand "graphics-driver-policy" {} ''
-              ${pkgs.clang}/bin/clang -U__APPLE__ -DTARGET_OS_IPHONE=0 \
-                -I${./src/platform/macos} \
-                ${./src/platform/macos/WWNSettings.c} \
-                ${./dependencies/tests/graphics-driver-policy.c} \
-                -o graphics-driver-policy
-              ./graphics-driver-policy
-              touch $out
-            '';
-          }
-          // (pkgs.lib.optionalAttrs (builtins.pathExists ./dependencies/tests/graphics-validate.nix) {
-            # Fast graphics driver-sanity gate (ci-graphics-cts). Runs the validator
-            # produced by graphics-validate.nix; passes in the sandbox even without a
-            # bundled ICD (software/SHM path) so it is a stable PR gate.
-            graphics-validate-smoke = pkgs.runCommand "graphics-validate-smoke" {} ''
-              ${allSystemPackages.${system}.graphics-validate-macos}/bin/graphics-validate-macos
-              touch $out
-            '';
-          }))
+    checks = nixpkgs.lib.genAttrs systemsList (system: let pkgs = pkgsFor system; in pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin ({
+      graphics-driver-policy = pkgs.runCommand "graphics-driver-policy" { } ''
+        ${pkgs.clang}/bin/clang -U__APPLE__ -DTARGET_OS_IPHONE=0 \
+          -I${./src/platform/macos} \
+          ${./src/platform/macos/WWNSettings.c} \
+          ${./dependencies/tests/graphics-driver-policy.c} \
+          -o graphics-driver-policy
+        ./graphics-driver-policy
+        touch $out
+      '';
+    } // (pkgs.lib.optionalAttrs (builtins.pathExists ./dependencies/tests/graphics-validate.nix) {
+        # Fast graphics driver-sanity gate (ci-graphics-cts). Runs the validator
+        # produced by graphics-validate.nix; passes in the sandbox even without a
+        # bundled ICD (software/SHM path) so it is a stable PR gate.
+        graphics-validate-smoke = pkgs.runCommand "graphics-validate-smoke" { } ''
+          ${allSystemPackages.${system}.graphics-validate-macos}/bin/graphics-validate-macos
+          touch $out
+        '';
+      }))
     );
   };
 }

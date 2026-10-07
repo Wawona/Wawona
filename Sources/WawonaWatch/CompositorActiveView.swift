@@ -12,7 +12,12 @@ struct CompositorActiveView: View {
     @StateObject private var startupLog = WatchStartupLogModel()
     @State private var showStopConfirmation = false
     @State private var draftText = ""
+    @State private var consoleText = "Guest console\n"
     @FocusState private var keyboardFocused: Bool
+
+    private var showsHostShellConsole: Bool {
+        startupClientLabel == "wawona-shell"
+    }
 
     private var requiresExitConfirmation: Bool {
         let resolved = preferences.resolvedSettings(for: profile)
@@ -36,7 +41,13 @@ struct CompositorActiveView: View {
             })
                 .ignoresSafeArea()
 
-            if startupLog.isPresented {
+            if showsHostShellConsole {
+                WatchGuestConsoleOverlay(text: consoleText)
+                    .ignoresSafeArea()
+                    .zIndex(3)
+            }
+
+            if startupLog.isPresented && !showsHostShellConsole {
                 WatchStartupLogOverlay(
                     model: startupLog,
                     clientLabel: startupClientLabel
@@ -61,6 +72,16 @@ struct CompositorActiveView: View {
                 .onChange(of: keyboardFocused) { _, focused in
                     if !focused {
                         commitDraftToWayland()
+                    }
+                }
+                .onReceive(NotificationCenter.default.publisher(
+                    for: Notification.Name("WWNGuestConsoleOutputNotification")
+                )) { note in
+                    if let chunk = note.userInfo?["text"] as? String {
+                        consoleText += chunk
+                        if consoleText.count > 16_384 {
+                            consoleText = String(consoleText.suffix(16_384))
+                        }
                     }
                 }
         }
@@ -161,6 +182,10 @@ struct CompositorActiveView: View {
         let text = draftText
         guard !text.isEmpty else { return }
         draftText = ""
+        if showsHostShellConsole {
+            WWNWatchCompositorBridge.shared().writeHostShell(text)
+            return
+        }
         // Append Return so shell commands execute (weston-terminal → zsh).
         WWNWatchCompositorBridge.shared().sendText(text.hasSuffix("\n") ? text : text + "\n")
     }
@@ -170,6 +195,23 @@ struct CompositorActiveView: View {
         WatchMachineSessionBridge.disconnect(profile: profile)
         sessions.disconnect(sessionId: session.id)
         dismiss()
+    }
+}
+
+/// Host shell text on watchOS. SpriteKit presents Wayland frames.
+/// This view is the shell log. Metal is not linked.
+struct WatchGuestConsoleOverlay: View {
+    let text: String
+
+    var body: some View {
+        ScrollView {
+            Text(AttributedString(WWNWatchCompositorBridge.styledTerminalText(text)))
+                .lineLimit(nil)
+                .fixedSize(horizontal: true, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(6)
+        }
+        .background(Color.black)
     }
 }
 

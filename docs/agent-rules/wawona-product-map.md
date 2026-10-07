@@ -43,6 +43,13 @@ Canonical prose: `Wawona/docs/mode-a-b.md`, `swinging-bridge.md`, `iland-mode-a-
   into Wawona (`wawona-guest-wayland-iland`, `wawona-linux-vms-relay-runtime`).
 - Not the same as on-device `wwn-zsh` shell or Wasm packages.
 
+### Machines UI kinds (do not expand the picker)
+
+Add/Edit exposes **three** kinds only: **Native Shell**, **Virtual Machine**,
+**Container**. Terminal (Wawona Terminal), Wayland clients, Wasm, and Waypipe
+(with optional SSH) are **Native Shell sessions**. Rule/skill:
+`wawona-machine-types`. Legacy storage `wasm` / `ssh_*` still loads.
+
 ### Wawona Runtime packages (`wpm` / WASI). Mode A forever
 
 - **Wasm is not platform-native** (tradeoff vs a true Mach-O port). Payoff: one
@@ -71,3 +78,4 @@ Canonical prose: `Wawona/docs/mode-a-b.md`, `swinging-bridge.md`, `iland-mode-a-
 ❌ Document Runtime as needing Mode B for package install
 ❌ Size-gate or stub wasm off watchOS / tvOS / visionOS / any product target
 ❌ Treat wwn-igetty / Mode B TTY / Doorman console as a Machines profile
+❌ Re-add SSH / Wasm / Waypipe as top-level Machines type-picker kinds

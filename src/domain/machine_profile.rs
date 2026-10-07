@@ -32,13 +32,16 @@ impl Default for MachineType {
 impl MachineType {
     pub fn user_facing_name(&self) -> &'static str {
         match self {
-            Self::Native => "Native",
-            Self::Wasm => "Wasm",
-            Self::SshWaypipe => "SSH + Waypipe",
-            Self::SshTerminal => "SSH Terminal",
+            // Wasm / SSH / Waypipe are Native Shell session modes in the UI.
+            Self::Native | Self::Wasm | Self::SshWaypipe | Self::SshTerminal => "Native Shell",
             Self::VirtualMachine => "Virtual Machine",
             Self::Container => "Container",
         }
+    }
+
+    /// Add/Edit Machine picker. Session modes live under Native Shell.
+    pub fn selectable_for_ui() -> &'static [MachineType] {
+        &[Self::Native, Self::VirtualMachine, Self::Container]
     }
 
     /// Freedesktop icon name (Linux GTK).

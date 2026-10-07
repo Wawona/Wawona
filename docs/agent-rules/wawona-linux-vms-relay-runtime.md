@@ -25,6 +25,13 @@ Relay Wasm itself ships on **every** Wawona product target, including watchOS,
 tvOS, visionOS, and Linux (`wawona-relay-wasm`). VM/container kinds stay
 forbidden on watch/tv/vision. Wasm does not.
 
+Mode A speed design, not shipped: offline multi-threaded AOT of the bundled
+guest, calling the same StaticCpu helpers, proved by Kani and Verus
+refinement (`Relay/docs/ios13-aot-assessment.md`). StaticCpu is the oracle
+and the fallback. One semantics. The translator does not ship in the app.
+No JIT, no `MAP_JIT`, no Hypervisor.framework. No fastest or cleanest claim
+until that doc's measurements exist.
+
 ## Destination
 
 **Build in Relay.** No QEMU. No UTM. No TCTI reference CPU. No HVF-via-qemu.
@@ -52,7 +59,8 @@ leftover QEMU tree the Wawona runtime.
 - QEMU / TCTI as a product or temporary VM CPU
 - Mode B runtime, JIT, or UTM in App Store / Play artifacts
 - One binary with a hidden “enable JIT” toggle for stores
-- Claiming App Store approval or “world’s fastest” without evidence
+- Claiming App Store approval or "world's fastest" without evidence
+- A second Mode A guest CPU. Offline AOT must refine StaticCpu's helpers. No runtime compiler in the store IPA.
 - Size-gating wasm off any product target
 
 Canonical: `wawona-guest-wayland-iland`, `wawona-mode-a-b`,

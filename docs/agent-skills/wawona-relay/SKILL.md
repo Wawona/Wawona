@@ -7,9 +7,9 @@ description: Wawona Relay is the only VM, container-in-VM, and Mode A WASI engin
 
 Repo: `github.com/Wawona/Relay` (`development`). Flake input: **`wwn-relay`**. Layer **L3′**. Wawona calls one API (`wawona_relay.h`) for:
 
-- `virtual_machine`: Linux / NixOS prebuilts only
+- `virtual_machine`: Linux / NixOS prebuilts only. Mode A speed design is offline multi-threaded AOT of the bundled guest, one StaticCpu semantics, Kani/Verus refinement. Not shipped. StaticCpu is the oracle and the fallback. No JIT, no `MAP_JIT`, no Hypervisor.framework in the store IPA. No fastest or cleanest claim until `Relay/docs/ios13-aot-assessment.md` is measured.
 - `container`: OCI unpack, then the **same** Linux VM backend
-- WASI / `wpm`: Mode A bytecode (`/wasm/v1`) only. iOS and iPadOS through OS 26 execute with Pulley. OS 27 Mode A uses Wasmer WASIX in a hidden WKWebView when `WWN_WASMER_IOS27` links WasmerSDK. Otherwise Pulley. No Cranelift or MAP_JIT in the store IPA. macOS and Linux stay Wasmtime Cranelift.
+- WASI / `wpm`: Mode A bytecode (`/wasm/v1`) only. iOS and iPadOS through OS 26 execute with Pulley. OS 27 Mode A uses Wasmer WASIX in a hidden WKWebView when `WWN_WASMER_IOS27` links WasmerSDK. Otherwise Pulley. No Cranelift or MAP_JIT in the store IPA. macOS and Linux stay Wasmtime Cranelift. Fuel stays on. One burst is 2e9 instructions (`fuel_budget`), refilled after a Wayland `socket_recv` that returns bytes. 25e6 traps `chess-wawona` during the first SHM frame after `toplevel configure 0x0`. Do not turn fuel off.
 - Machines kind `wasm`: Start is `wasm <file|package>` (same as native shell).
   Native machines keep the `wawona-wasm` client. Do not strip `bundledAppID`
   when loading a `wasm` profile.
@@ -28,6 +28,11 @@ Repo: `github.com/Wawona/Relay` (`development`). Flake input: **`wwn-relay`**. L
 - `wawona-mode-a-b` / `wawona-ios-mode-b-channels`
 
 Canonical prose: `Wawona/docs/agent-rules/wawona-linux-vms-relay-runtime.md`, `Relay/README.md`.
+Completion scorecard (not harness counts): `Relay/docs/static-cpu-completion-plan.md`
+2026-10-06. Completely complete iOS Mode A VM is **0%**. Twelve-gate ~48%.
+iOS `vm` stays planned. Remaining work follows **Shortest calendar path** in
+that file: 4 KiB SHM import first, no second smoke, no guest rebuild, no
+16 KiB/AOT/ISA/STARDUST until the frame hash.
 
 ## Rust + crate2nix (required)
 
@@ -396,14 +401,19 @@ layer buffer. Concurrent filesystem replacement and atomic publication remain
 unproven; internal symlink ancestors currently reject conservatively.
 The active shared Sources/WawonaUI settings already contain memory/storage
 sliders and guest-page selection; WWNVirtualMachineEditorSection is legacy.
-WWNRelay.m sends memory_mb/disk_gib/max_disk_gib. RelaySpec now retains these;
+Sources/WawonaApple/Runners/RelayRunner.swift sends memory_mb/disk_gib/max_disk_gib. RelaySpec now retains these;
 StaticCpu and VZ apply RAM and disk limits. App-owned machine disks publish
 without replacement, hold an exclusive advisory lock, grow only, and flush
 writes before virtio completion. This is not a crash-consistency or race proof.
 Shared UI labels storage, prevents configured-size shrink, and shows automatic
 connection instead of a nonfunctional port field. Swift package WawonaUI builds;
-actual iOS app/device settings validation remains open. Guest root autoResize
-is already on. The legacy iOS 11 UI path still needs separate coverage.
+actual iOS app/device settings validation remains open. Guest root stays
+ext4 on whole-disk /dev/vda. autoResize is set, but scripted stage 1 never
+applies x-systemd.growfs to that already-mounted root. wawona-grow-root runs
+resize2fs after remount. Do not convert the disk to btrfs or Disko. Disks
+stay grow-only while stopped. RAM (256 MiB through 64 GiB) is independent of
+the disk file and may go up or down between boots. The legacy iOS 11 UI path
+still needs separate coverage.
 
 ## 2026-09-30 conditional FP and persistence validation
 

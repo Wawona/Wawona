@@ -144,7 +144,7 @@ iland pin also predated `libiland_wayland_egl`). Dropped a rebuilt binary into
 the running app. Separate Start bug: GPU refusal ran *before* machine
 `OpenGLDriver`/`VulkanDriver` were applied, so a leftover global
 `VulkanDriver=none` (or stale GL) could refuse ANGLE clients the machine
-profile enables. Fixed in `WWNWaypipeRunner.m` (apply machine prefs +
+profile enables. Fixed in `Sources/WawonaApple/Runners/WaypipeRunner.swift` (apply machine prefs +
 `WWNSettings_ApplyGraphicsDriverSelection` before refusal). Needs rebuild to
 take effect in-app.
 
@@ -175,7 +175,7 @@ not as a store-cell blocker.
 **2026-07-26 IOSurface dmabuf zero-copy (#86). Apple GPU path PROPER on
 macOS.** The Wayland-EGL winsys posts IOSurface-backed `wl_buffer`s through
 `zwp_linux_dmabuf_v1` under the high-bit IOSurface-id modifier; the compositor
-imports via `IOSurfaceLookup` (`WWNCompositorBridge.m`). Proven end-to-end by
+imports via `IOSurfaceLookup` (`Sources/WawonaApple/Present/WWNCompositorBridge.swift`). Proven end-to-end by
 `opengl-cube` and `weston-simple-egl` (posted-buffer sample non-zero, ~62 fps,
 depth-correct). waypipe-rs already carries the matching Apple IOSurface /
 Android AHB transport (`wwn-waypipe` patches + README); SHM remains the
@@ -976,9 +976,9 @@ fakes (`init_modes()` `98-197`). Mode source priority: (1)
 
 **Every GPU target publishes a preferred mode, so the 1920×1080 fallback is
 unreachable in practice.** macOS sets it from the layer at presenter init and
-again on every `hostGeometryDidChange` (`WWNIlandPresenter.m:158`, `:174`); iOS /
+again on every `hostGeometryDidChange` (`Sources/WawonaApple/Present/IlandPresenter.swift:158`, `:174`); iOS /
 iPadOS / visionOS at presenter init, before launch, and once `drawableSize` is
-final (`ios/WWNIlandPresenter.m:161`, `WWNCompositorView_ios.m:1101`, `:1146`);
+final (`ios/Sources/WawonaApple/Present/IlandPresenter.swift:161`, `Sources/WawonaApple/Present/CompositorView.swift:1101`, `:1146`);
 Android at presenter init and on every surface-size change
 (`iland_presenter_android.c:92`, `:130`). Android's init refuses a 0×0 surface,
 because publishing zero silently reverts to the 1920×1080 fallback and is
@@ -1033,12 +1033,12 @@ that wants an overlay gets one plane and must composite itself; and
 
 Engage path is **real and gated** but not a CI-proven finished product.
 
-- SIP detect `WWNSipStatus.m:6-38`; allow-gate `:55-57`; toggle hard-reject when
-  SIP blocks `WWNPreferences.m:4041-4049`; toggle also requires bundled dylib
+- SIP detect `Sources/WawonaApple/ModeB/SipStatus.swift`; allow-gate `:55-57`; toggle hard-reject when
+  SIP blocks `Sources/WawonaApple/Settings/WWNPreferencesManager.swift`; toggle also requires bundled dylib
   `:4051-4067` (store-safe builds cannot arm Mode B).. REAL
-- `shouldEngageModeB` `WWNDesktopReplacementController.m:53-62`; dylib discovery
+- `shouldEngageModeB` `Sources/WawonaApple/ModeB/DesktopReplacementController.swift:53-62`; dylib discovery
   `:77-94`; privileged insert + `weston --backend=drm` `:187-258`; connect hook
-  `WWNMachineSessionBridge.m:150-168`.. REAL
+  `Sources/WawonaApple/Runners/WWNMachineSessionBridge.swift:150-168`.. REAL
 - Dylib constructor (root-gated, Dobby hooks, extracts framebufferd/inputd)
   `wayland-mac.c:259-337`; framebufferd CAWindowServer present
   `framebufferd/src/main.m:267-303`.. REAL (upstream-derived)
@@ -1110,8 +1110,8 @@ or vblank-correct flips. Grade remains **WIRED**, not PROPER.
 
 | Pref | Saved | Applied on connect? | Grade |
 |------|-------|---------------------|-------|
-| VulkanDriver (macOS) | global `WWNPreferencesManager.m:32,782-788` + per-machine keys `WWNMachineProfileStore.m:131-134` | ICD `setenv` **launch-time only** `main.m:1119-1162`; connect (`applyMachineToRuntimePrefs` `WWNMachineSessionBridge.m:114`) rewrites defaults but **does not re-`setenv`** | PARTIAL |
-| OpenGLDriver (macOS) | global `:33,791-799` | read by `WWNSettings_GetOpenGLDriver` `WWNSettings.m:87-94` but **no `setenv`/ANGLE selection site** | STUB |
+| VulkanDriver (macOS) | global `Sources/WawonaApple/Settings/WWNPreferencesManager.swift` + per-machine keys `Sources/WawonaApple/Machines/MachineProfileStore.swift:131-134` | ICD `setenv` **launch-time only** `Darwin/Sources/Main.swift`; connect (`applyMachineToRuntimePrefs` `Sources/WawonaApple/Runners/WWNMachineSessionBridge.swift:114`) rewrites defaults but **does not re-`setenv`** | PARTIAL |
+| OpenGLDriver (macOS) | global `:33,791-799` | read by `WWNSettings_GetOpenGLDriver` `Sources/WawonaApple/Settings/` + `src/platform/macos/WWNSettings.c` but **no `setenv`/ANGLE selection site** | STUB |
 | VulkanDriver (Android) | `WawonaSettings.kt:62-81`→JNI | REAL at instance create `android_jni.c:1022-1047` (`VK_ICD_FILENAMES`) | PARTIAL (global real; per-machine ad-hoc) |
 | OpenGLDriver (Android) | same | stored `android_jni.c:2428-2430`, **no consumer** | STUB |
 | DriverSelector abstraction | - |. | **MISSING** |
@@ -1136,8 +1136,8 @@ change the already-created host Vulkan instance per machine without renderer
 recreation; that lifecycle remains an acceptance item rather than pretending
 an environment rewrite hot-switches Vulkan.
 
-**Hook point:** a `machine>global>default` resolver called from both `main.m`
-launch and after `applyMachineToRuntimePrefs` (`WWNMachineSessionBridge.m:114`),
+**Hook point:** a `machine>global>default` resolver called from both `Darwin/Sources/Main.swift`
+launch and after `applyMachineToRuntimePrefs` (`Sources/WawonaApple/Runners/WWNMachineSessionBridge.swift:114`),
 before Mode B engage / WaypipeRunner launch, that re-`setenv`s ICD/ANGLE. Swift
 `resolvedSettings` also hardcodes `"moltenvk"` fallback instead of global
 (`WawonaPreferences.swift:289`). Inconsistent, fix in P2.

@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# Build WawonaAgent.pkg for the macOS DMG.
+# Build WawonaAgent.pkg for the macOS DMG (the only install path on the disk).
 #
 # Hybrid installer: the pkg PAYLOAD installs /Applications/Wawona.app AND the
-# postinstall writes + loads the compositor + menubar LaunchAgents and publishes
-# XDG_RUNTIME_DIR / WAYLAND_DISPLAY into the user launchd domain so Wayland
-# clients can connect without the Wawona UI being open.
+# postinstall writes + loads the compositor + menubar LaunchAgents, registers
+# the System Settings preference pane, syncs Desktop Replacement helper bits,
+# and publishes XDG_RUNTIME_DIR / WAYLAND_DISPLAY into the user launchd domain
+# so Wayland clients can connect without the Wawona UI being open.
 #
-# A user can either drag Wawona.app to /Applications (classic) OR just open this
-# pkg for a complete install (app + agents). Both are supported; the DMG ships
-# both the loose app and this pkg.
+# The GitHub Release DMG ships this pkg + README only (no loose Wawona.app).
+# Drag-to-Applications is not a supported release path.
 #
 # Usage:
 #   WAWONA_APP_SRC=/path/to/Wawona.app WAWONA_VERSION=26.8.8 \
@@ -43,7 +43,7 @@ PAYLOAD="$WORKDIR/payload"
 SCRIPTS="$WORKDIR/scripts"
 mkdir -p "$PAYLOAD/Applications" "$SCRIPTS"
 
-# Payload installs the app to /Applications. Same bits the DMG offers for drag.
+# Payload installs the app to /Applications (DMG does not ship a loose .app).
 ditto "$APP_SRC" "$PAYLOAD/Applications/Wawona.app"
 # GHA artifact zip can drop +x; restore before packaging.
 chmod -R u+w "$PAYLOAD/Applications/Wawona.app"

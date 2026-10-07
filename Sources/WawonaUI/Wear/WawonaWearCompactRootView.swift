@@ -23,7 +23,7 @@ public struct WawonaWearCompactRootView: View {
     public var body: some View {
         WawonaBackport<Any>.navigation {
             if profileStore.profiles.isEmpty {
-                ContentUnavailableView(
+                WawonaEmptyState(
                     "No Machines",
                     systemImage: "server.rack",
                     description: Text("Add machine on phone to continue.")
@@ -58,17 +58,17 @@ struct WawonaWearMachineQuickView: View {
     var body: some View {
         VStack(spacing: 10) {
             Image(systemName: "display.2")
-                .font(.title3)
-                .foregroundStyle(isConnected ? .green : .secondary)
+                .font(.headline)
+                .foregroundColor(isConnected ? .green : .secondary)
             Text(profile.name)
                 .font(.headline)
                 .lineLimit(1)
 
             Text(statusLabel)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundColor(.secondary)
 
-            Button {
+            WawonaButton {
                 if let session = activeSession {
                     sessions.disconnect(sessionId: session.id)
                 } else {
@@ -80,11 +80,11 @@ struct WawonaWearMachineQuickView: View {
                     .truncationMode(.tail)
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
+            .backport.borderedButton(prominent: true)
             .disabled(isConnecting)
         }
         .padding()
-        .navigationTitle("Machine")
+        .backport.navigationTitle("Machine")
     }
 
     private var buttonLabel: String {

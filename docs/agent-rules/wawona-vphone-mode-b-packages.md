@@ -10,4 +10,5 @@ Indexed mirror of `.cursor/rules/wawona-vphone-mode-b-packages.mdc`.
 
 Lab: `nix run github:Wawona/wwn-vphone#vphone-jb-lab` (installs Procursus
 debugserver). Tipa rebuilds: `wawona-trollstore-tipa-iteration`. Control:
-`wawona-vphone-control`.
+`wawona-vphone-control`. Sock playbook: `wawona-vphone-cli`. `packages apt`
+needs SSH. Without it, `vphone-sock` writes files and Irisin add-url.

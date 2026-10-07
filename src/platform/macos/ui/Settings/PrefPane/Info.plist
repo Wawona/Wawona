@@ -28,5 +28,8 @@
 	<string>Wawona-iOS-Dark-1024x1024@1x.png</string>
 	<key>NSPrefPaneIconLabel</key>
 	<string>Wawona</string>
+	<!-- Match Network / Dock: System Settings sizes mainView to the content column. -->
+	<key>NSPrefPaneSupportsAutoLayout</key>
+	<true/>
 </dict>
 </plist>

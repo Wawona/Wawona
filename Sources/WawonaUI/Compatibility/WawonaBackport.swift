@@ -26,7 +26,17 @@ public extension WawonaBackport where Content: View {
     @ViewBuilder
     private func navigationTitleText(_ title: Text, inline: Bool) -> some View {
         #if os(iOS)
-        content.navigationBarTitle(title, displayMode: inline ? .inline : .automatic)
+        if inline {
+            if #available(iOS 17.0, *) {
+                content
+                    .navigationBarTitle(title, displayMode: .inline)
+                    .toolbarTitleDisplayMode(.inline)
+            } else {
+                content.navigationBarTitle(title, displayMode: .inline)
+            }
+        } else {
+            content.navigationBarTitle(title, displayMode: .automatic)
+        }
         #else
         content.navigationTitle(title)
         #endif

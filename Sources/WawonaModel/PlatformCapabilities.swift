@@ -293,9 +293,9 @@ public enum PlatformCapabilities: Sendable {
     }
 
     /// In-window tab strip: one tab per Wayland client toplevel (never Shell),
-    /// with a Safari-style per-tab close. Used on phone iOS + tvOS where
-    /// multi-window scenes are off. watchOS is single-client (stub WM) and
-    /// Android has its own Compose tab strip.
+    /// with a Safari-style per-tab close. Phone, tvOS, and the iPad primary
+    /// scene. A dedicated iPad scene does not use this strip. watchOS is
+    /// single-client (stub WM). Android has its own Compose tab strip.
     public static var allowsClientTabs: Bool {
         #if os(tvOS)
         return true
@@ -304,7 +304,7 @@ public enum PlatformCapabilities: Sendable {
         // native + remote only per wawona-platform-targets. No tab consumer.
         return false
         #elseif os(iOS)
-        return !allowsMultiWindowScenes
+        return true
         #else
         return false
         #endif
@@ -350,11 +350,12 @@ public enum PlatformCapabilities: Sendable {
     }
 
     public static var availableMachineTypes: [MachineType] {
-        MachineType.allCases.filter { type in
+        MachineType.selectableCases.filter { type in
             switch type {
             case .virtualMachine: return allowsVirtualMachine
             case .container: return allowsContainer
-            case .native, .wasm, .sshWaypipe, .sshTerminal: return true
+            case .native: return true
+            case .wasm, .sshWaypipe, .sshTerminal: return false
             }
         }
     }
@@ -362,13 +363,15 @@ public enum PlatformCapabilities: Sendable {
     /// Types a user may configure. Planned VM/container backends remain
     /// selectable so a profile can be prepared and synced before its runtime
     /// bundle becomes available; forbidden targets never expose them.
+    /// Only Native Shell / Virtual Machine / Container appear in the picker.
     public static var creatableMachineTypes: [MachineType] {
-        MachineType.allCases.filter { type in
+        MachineType.selectableCases.filter { type in
             let gate: CapabilityGate?
             switch type {
             case .virtualMachine: gate = virtualMachineGate
             case .container: gate = containerGate
-            case .native, .wasm, .sshWaypipe, .sshTerminal: gate = nil
+            case .native: gate = nil
+            case .wasm, .sshWaypipe, .sshTerminal: return false
             }
             guard let gate else { return true }
             switch gate {

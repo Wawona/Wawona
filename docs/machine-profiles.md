@@ -28,11 +28,34 @@ Optional fields; nil/empty inherits global Settings:
 - session: `bundledAppID`, `waypipeEnabled`, `waypipeSSHPassword`, `logLevel`, `shakeToCloseEnabled`, `swipeBackToCloseEnabled`
 - **`environment`**: map of env overrides (`{ "TERM": { "action": "set", "value": "xterm" } }`). See [#157](https://github.com/Wawona/Wawona/issues/157) / [`issues/environment-variables-gui.md`](issues/environment-variables-gui.md). Never stash env in `settingsOverrides` (Swift Codable drops unknown keys).
 
-Machine `type` values:
+### User-facing kinds (Add/Edit picker)
 
-- `native` (local host compositor)
-- `ssh_waypipe`
-- `ssh_terminal`
+Only three kinds appear in Machines UI:
+
+| Label | Usual storage `type` |
+|-------|----------------------|
+| **Native Shell** | `native` (plus session overrides) |
+| **Virtual Machine** | `virtual_machine` |
+| **Container** | `container` |
+
+Native Shell **sessions** (not separate type picker rows):
+
+| Session | Meaning |
+|---------|---------|
+| Terminal | Wawona Terminal (`wawona-shell`), local or SSH |
+| Wayland | Bundled Wayland client on the local compositor |
+| Wasm | Relay WASI / `wpm` / `/wasm/v1` |
+| Waypipe | waypipe, with or without SSH |
+
+WWN session keys: `NativeShellKind`, `NativeShellUseSSH` in `settingsOverrides`.
+See agent rule `wawona-machine-types` and skill `wawona-machine-types`.
+
+### Storage `type` values (wire / legacy)
+
+- `native` (Native Shell; prefer this plus session overrides)
+- `wasm` (legacy; folds to Native Shell / Wasm session)
+- `ssh_waypipe` (legacy; folds to Native Shell / Waypipe + SSH)
+- `ssh_terminal` (legacy; folds to Native Shell / Terminal + SSH)
 - `virtual_machine`
 - `container`
 
@@ -60,7 +83,11 @@ Transient (non-persisted) UI/runtime status values used by machine grid cards:
 
 Notes:
 
-- **Transport routing:** `native` profiles launch bundled/in-process Wayland clients on the **local compositor** (iOS: `launchBundledClientWithId`, Android: `launchNativeMachine`, Linux: direct `sh -c`). **Waypipe is only used for `ssh_waypipe` and `ssh_terminal`** (remote/networked machines). Native profiles must never start waypipe; enforced in `WWNMachineSessionBridge` and `WWNWaypipeRunner`.
+- **Transport routing:** resolve Native Shell **session** via
+  `WWNNativeShellConfiguration` / `WWNMachineSessionBridge` (not type alone).
+  Wayland / local Terminal / Wasm use the local compositor path. Waypipe
+  sessions (and Terminal + Use SSH) use waypipe / SSH transport. Legacy
+  `ssh_waypipe` / `ssh_terminal` storage still connects.
 - Apple and Android both migrate from legacy flat `waypipe*` preferences
   into one initial machine profile when no profile list exists.
 - Runtime launch remains backward-compatible by applying the selected machine

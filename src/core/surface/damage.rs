@@ -58,15 +58,19 @@ impl DamageRegion {
 
     /// Clamp this region to the given bounds (0,0,max_w,max_h)
     pub fn clamp(&self, max_width: i32, max_height: i32) -> DamageRegion {
-        let x = self.x.max(0);
-        let y = self.y.max(0);
-        let right = (self.x + self.width).min(max_width);
-        let bottom = (self.y + self.height).min(max_height);
+        let (x, y, width, height) = crate::core::invariants::clamp_rect(
+            self.x,
+            self.y,
+            self.width,
+            self.height,
+            max_width,
+            max_height,
+        );
         DamageRegion {
             x,
             y,
-            width: (right - x).max(0),
-            height: (bottom - y).max(0),
+            width,
+            height,
         }
     }
 }

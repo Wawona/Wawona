@@ -27,12 +27,33 @@ import androidx.compose.ui.graphics.vector.ImageVector
  * Canonical bundled client list. Keep in sync with iOS kBundledClients in WWNMachinesViewModel.swift.
  * Never add modeb-tty / igetty. Those are the Doorman console, not a machine.
  */
+enum class BundledWaylandSoftwareKind(val sectionTitle: String) {
+    COMPOSITOR("Compositors"),
+    TERMINAL("Terminals"),
+    GRAPHICS("Graphics"),
+    DEMO("Demos"),
+    OTHER("Other");
+
+    companion object {
+        fun forClientId(id: String): BundledWaylandSoftwareKind = when (id) {
+            "weston", "niri" -> COMPOSITOR
+            "weston-terminal", "foot", "wayland-terminal" -> TERMINAL
+            "kmscube", "gbm-es2-demo", "opengl-cube", "vkcube", "weston-simple-egl" -> GRAPHICS
+            "weston-simple-shm", "wawona-shell", "wawona-wasm", "custom" -> OTHER
+            else -> if (id.startsWith("weston-")) DEMO else OTHER
+        }
+    }
+}
+
 data class BundledClientOption(
     val id: String,
     val name: String,
     val description: String,
     val icon: ImageVector,
-)
+) {
+    val softwareKind: BundledWaylandSoftwareKind
+        get() = BundledWaylandSoftwareKind.forClientId(id)
+}
 
 object BundledClients {
     val all: List<BundledClientOption> = listOf(
@@ -61,5 +82,18 @@ object BundledClients {
         BundledClientOption("weston-constraints", "Weston Constraints", "Pointer constraints demo", Icons.Filled.StackedBarChart),
     )
 
-    fun labelFor(id: String): String = all.firstOrNull { it.id == id }?.name ?: id
+    fun labelFor(id: String): String = when (id) {
+        "custom" -> "Custom Command (use Terminal)"
+        else -> all.firstOrNull { it.id == id }?.name ?: id
+    }
+
+    /** Wayland picker groups: Compositors, then client types. Skips shell/wasm. */
+    fun waylandPickerGroups(): List<Pair<BundledWaylandSoftwareKind, List<BundledClientOption>>> =
+        BundledWaylandSoftwareKind.entries.mapNotNull { kind ->
+            val group = all
+                .filter { it.id != "wawona-shell" && it.id != "wawona-wasm" }
+                .filter { it.softwareKind == kind }
+                .sortedBy { it.name.lowercase() }
+            if (group.isEmpty()) null else kind to group
+        }
 }

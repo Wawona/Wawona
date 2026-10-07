@@ -18,6 +18,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "../../../../src/platform/cproof/wawona_cproof.h"
+
 #define TAG "WawonaWlBin"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
@@ -51,9 +53,10 @@ static const struct client_map k_clients[] = {
 
 static const struct client_map *lookup_client(const char *name) {
   size_t i;
+  const size_t n = sizeof(k_clients) / sizeof(k_clients[0]);
   if (!name || !name[0])
     return NULL;
-  for (i = 0; i < sizeof(k_clients) / sizeof(k_clients[0]); i++) {
+  for (i = 0; wawona_client_map_index_ok(i, n); i++) {
     if (strcmp(name, k_clients[i].exec_name) == 0)
       return &k_clients[i];
   }
@@ -68,6 +71,15 @@ static const char *basename_of(const char *path) {
 int main(int argc, char **argv) {
   const char *argv0 = (argc > 0 && argv[0]) ? argv[0] : "wawona-wl-client";
   const char *name = basename_of(argv0);
+  /* Berberis-safe execs pass the real path as argv[0] (libwawona_wl_bin.so).
+   * Allow `libwawona_wl_bin.so weston-simple-shm` and WAWONA_WL_EXEC=… */
+  if (lookup_client(name) == NULL) {
+    const char *env_exec = getenv("WAWONA_WL_EXEC");
+    if (env_exec && env_exec[0])
+      name = env_exec;
+    else if (argc > 1 && argv[1] && argv[1][0])
+      name = basename_of(argv[1]);
+  }
   const struct client_map *entry = lookup_client(name);
   void *handle;
   client_main_fn fn;

@@ -236,7 +236,7 @@ impl XdgShellHandler for CompositorState {
                 requested_w: initial_width.max(1),
                 requested_h: initial_height.max(1),
                 configure_serial: 0,
-                generation: 1,
+                generation: self.next_size_generation(),
             }
         } else {
             crate::core::window::SizeAuthority::AwaitingFirstCommit

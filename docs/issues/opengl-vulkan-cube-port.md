@@ -176,8 +176,8 @@ iland virtual DRM + present (Metal / Android overlay)
    - `wwn-iland/dependencies/generators/iland-gl-ldflags.nix`
    - `wwn-iland/dependencies/generators/iland-gl-android-ldflags.nix`
    - `Wawona/dependencies/wawona/mobile-platform-deps.nix` (`allowGpu` block)
-   - `Wawona/src/platform/macos/WWNIlandPresenter.m` (`launchNestedKmscubeWithWidth:`)
-   - `Wawona/src/platform/macos/ui/Settings/WWNWaypipeRunner.m` (`kmscube` special-case)
+   - `Wawona/src/platform/macos/Sources/WawonaApple/Present/IlandPresenter.swift` (`launchNestedKmscubeWithWidth:`)
+   - `Wawona/src/platform/macos/ui/Settings/Sources/WawonaApple/Runners/WaypipeRunner.swift` (`kmscube` special-case)
    - `Wawona/src/platform/android/android_jni.c` (`kmscube_stub_main` vs cube stubs)
 3. Confirm catalog ids already exist (do not rename):
    - `opengl-cube`, `vkcube` in `WWNMachinesViewModel.swift`, `BundledClients.kt`,
@@ -407,7 +407,7 @@ Suggested API shape:
 Weak-import all three symbols. Prepare virtual DRM fd once (existing
 `wwn_prepare_iland_virtual_drm_fd`). For `vkcube`, argv must select KMS mode.
 
-In `WWNWaypipeRunner.m`, for both iOS and macOS GPU branches:
+In `Sources/WawonaApple/Runners/WaypipeRunner.swift`, for both iOS and macOS GPU branches:
 
 ```objc
 if ([clientId isEqualToString:@"kmscube"] ||

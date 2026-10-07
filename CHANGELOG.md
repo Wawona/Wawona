@@ -16,6 +16,11 @@ as history.
 
 ## [Unreleased]
 
+- **macOS GitHub DMG is pkg-only.** Volume ships `WawonaAgent.pkg` +
+  `README.txt` (thank-you install notes). No loose `Wawona.app` and no
+  Applications symlink. The pkg installs the app, LaunchAgents, System
+  Settings pane, and helpers. See `docs/ci.md` and
+  `docs/agent-rules/wawona-release-assets.md`.
 - **macOS weston/niri Aqua vs Classic.** Machines Start in Aqua nests on
   Wawona (`--backend=wayland`, `NIRI_BACKEND=nested`) or runs weston
   in-process on wwn-iland when Display Backend is drm. Classic Take Over

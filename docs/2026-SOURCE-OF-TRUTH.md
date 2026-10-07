@@ -57,7 +57,7 @@ remote/nested Xwayland can attach. Details: [`2026-x11-strategy.md`](./2026-x11-
 - Machine engine keys (`MachineVMProvider`, `MachineVMVsockPort`,
   `MachineContainerRuntime`, `MachineContainerImageStore`) are backed by the
   `wwn-vms` (VM engine) and `wwn-containers` (OCI) dependencies and consumed by
-  `WWNMachineProfileStore.m` + the VM/container runners. They are
+  `Sources/WawonaApple/Machines/MachineProfileStore.swift` + the VM/container runners. They are
   capability-driven per target (see each dep's `COMPLIANCE.md`), not stubs.
 - Graphics driver default is capability-tiered:
   `+[WWNPreferencesManager defaultVulkanDriverForHardware]` → KosmicKrisp on

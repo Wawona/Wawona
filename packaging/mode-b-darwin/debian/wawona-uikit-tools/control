@@ -1,0 +1,9 @@
+Package: wawona-uikit-tools
+Version: 26.10.6
+Section: utils
+Priority: optional
+Architecture: iphoneos-arm64
+Maintainer: Wawona <hello@wawona.io>
+Depends: firmware (>= 13.0)
+Description: UIKit jailbreak CLI from uikittools-ng
+ Mode B only. Not for the App Store app.

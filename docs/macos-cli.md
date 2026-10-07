@@ -83,7 +83,7 @@ Or add `home.sessionPath = [ "$HOME/.local/bin" ];` and rebuild home-manager.
 ## Examples
 
 ```bash
-# Nested sway with wallpaper + Alt+Enter (Ghostty, else foot). Creates a card.
+# Nested sway with wallpaper + Alt+Enter (foot). Creates a card.
 Wawona run sway
 
 # Flower in a container (auto-creates card; visible in Machines)

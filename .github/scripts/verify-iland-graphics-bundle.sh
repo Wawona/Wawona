@@ -81,6 +81,18 @@ bundle_has_exact_marker() {
   return 1
 }
 
+# Driver-owned runtime identifiers survive stripping. Shared environment help
+# also names SwiftShader, so its prose is not evidence of a linked ICD.
+bundle_has_swiftshader() {
+  local marker
+  for marker in 'SwiftShader Device' 'SwiftShader driver' 'SwiftShaderUUID'; do
+    if bundle_has_exact_marker "$marker"; then
+      return 0
+    fi
+  done
+  return 1
+}
+
 # Count defined Vulkan/EGL entry points. Strings alone are ambiguous: shared
 # driver-selection code embeds literals like "vulkan/icd.d/MoltenVK_icd.json",
 # and Rust's ash crate embeds enum names such as IOSSurfaceCreateFlagsMVK, on
@@ -165,14 +177,32 @@ if [[ "$platform" == "ios" || "$platform" == "ipados" || "$platform" == "visiono
     # iOS/iPadOS/visionOS *Simulator* / CI: MoltenVK's Metal pipeline bring-up
     # fatally aborts the app on the headless CI simulator, so the bundled
     # SwiftShader CPU Vulkan ICD is REQUIRED here for vkcube to fall back to. It
-    # is a loose Frameworks/*.dylib (simulator-only, same policy as the flat
-    # ANGLE sim dylibs) and is never shipped on device.
+    # may be a loose dylib or the namespaced static source provider. Static
+    # acceptance requires its actual public entry points and driver identifiers,
+    # not shared UI prose. Neither form is permitted in device artifacts.
     ss_dylib="$(find "$root" -type f -name 'libvk_swiftshader.dylib' -print -quit 2>/dev/null || true)"
-    if [[ -z "$ss_dylib" ]]; then
-      echo "FAIL: $platform simulator bundle is missing the SwiftShader CPU Vulkan ICD (libvk_swiftshader.dylib)" >&2
-      exit 1
+    if [[ -n "$ss_dylib" ]]; then
+      echo "OK: $platform simulator SwiftShader CPU fallback ICD present ($ss_dylib)"
+    else
+      ss_static=""
+      while IFS= read -r binary; do
+        count="$(nm -gU "$binary" 2>/dev/null | awk '
+          $2 == "T" && ($3 == "_wwn_swiftshader_vkGetInstanceProcAddr" ||
+            $3 == "_wwn_swiftshader_vkCreateInstance" ||
+            $3 == "_wwn_swiftshader_vkDestroyInstance") { entries[$3] = 1 }
+          END { print length(entries) }
+        ')"
+        if [[ "$count" == "3" ]]; then
+          ss_static="$binary"
+          break
+        fi
+      done < <(mach_o_files)
+      if [[ -z "$ss_static" ]] || ! bundle_has_swiftshader; then
+        echo "FAIL: $platform simulator bundle is missing a real SwiftShader CPU Vulkan ICD" >&2
+        exit 1
+      fi
+      echo "OK: $platform simulator static SwiftShader provider linked ($ss_static)"
     fi
-    echo "OK: $platform simulator SwiftShader CPU fallback ICD present ($ss_dylib)"
   else
     # On-device Apple store builds are MoltenVK-only: the SwiftShader CPU ICD is a
     # macOS + iOS-Simulator/CI fallback and must never ship in a reviewed device
@@ -183,7 +213,7 @@ if [[ "$platform" == "ios" || "$platform" == "ipados" || "$platform" == "visiono
       echo "$ss_files" >&2
       exit 1
     fi
-    if carrier="$(bundle_has_marker 'SwiftShader')"; then
+    if carrier="$(bundle_has_swiftshader)"; then
       echo "FAIL: $platform on-device bundle statically embeds SwiftShader (device is MoltenVK-only): $carrier" >&2
       exit 1
     fi
@@ -236,12 +266,17 @@ fi
 # asserted after this block. WWN_WATCHOS_METAL=1 is research-only weak-link
 # Metal and never a store IPA. See docs/iland-graphics-progress.md.
 if [[ ( "$platform" == "tvos" && "${WWN_TVOS_GPU:-0}" != "1" ) || "$platform" == "watchos" ]]; then
-  for marker in 'MoltenVK version' 'SwiftShader'; do
+  for marker in 'MoltenVK version'; do
     if carrier="$(bundle_has_marker "$marker")"; then
       echo "FAIL: $platform bundle statically embeds forbidden driver '$marker': $carrier" >&2
       exit 1
     fi
   done
+
+  if carrier="$(bundle_has_swiftshader)"; then
+    echo "FAIL: $platform bundle statically embeds forbidden driver 'SwiftShader': $carrier" >&2
+    exit 1
+  fi
 
   if carrier="$(bundle_has_exact_marker 'ANGLE (')"; then
     echo "FAIL: $platform bundle statically embeds forbidden driver 'ANGLE': $carrier" >&2

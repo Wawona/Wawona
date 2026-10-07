@@ -62,19 +62,18 @@ Mode B is **privileged host** access. Platforms:
 
 ### iOS / iPadOS Mode B channels
 
-iPadOS products start at iPadOS 13. An iPad on iOS 11 or 12 uses the shared
-iOS UIKit IPA or Sileo package below; it is not a separate iPadOS artifact.
+iPadOS products start at iPadOS 13. iOS 11 and 12 are not supported.
 
 | iOS version | Mode A normal IPA | Mode B TrollStore `.tipa` | Mode B Sileo `.deb` |
 |---:|---|---|---|
-| 11-13 | iOS 11+ binary | Not available | iOS 11+ binary |
-| 14-16 | iOS 11+ binary | iOS 14+ binary | iOS 11+ binary |
-| 17 | iOS 11+ binary | 17.0 only | iOS 11+ binary where jailbroken |
-| 18 | iOS 11+ binary | Not a permanent-signing target | iOS 11+ binary where jailbroken |
-| 26 | iOS 11+ binary | TrollStore Lite lab only on jailbroken iOS | iOS 11+ binary where jailbroken |
+| 13 | iOS 13+ binary | Not available | iOS 13+ binary |
+| 14-16 | iOS 13+ binary | iOS 14+ binary | iOS 13+ binary |
+| 17 | iOS 13+ binary | 17.0 only | iOS 13+ binary where jailbroken |
+| 18 | iOS 13+ binary | Not a permanent-signing target | iOS 13+ binary where jailbroken |
+| 26 | iOS 13+ binary | TrollStore Lite lab only on jailbroken iOS | iOS 13+ binary where jailbroken |
 
-The artifact floor is enforced in Nix and CI: Mode A normal IPA = 11.0,
-TrollStore `.tipa` = 14.0, Sileo `.deb` = 11.0. Latest SDK is used for all.
+The artifact floor is enforced in Nix and CI: Mode A normal IPA = 13.0,
+TrollStore `.tipa` = 14.0, Sileo `.deb` = 13.0. Latest SDK is used for all.
 
 TrollStore and Sileo are separate products. The TrollStore build is
 `com.aspauldingcode.Wawona.ModeB`, packaged as
@@ -93,8 +92,8 @@ TrollStore and Sileo are separate products. The TrollStore build is
 
 | Product gate | TrollStore `.tipa` | Sileo full Mode B |
 |---|---|---|
-| Minimum iOS | **14.0** | **11.0** |
-| iOS 11–13 availability | Not installable | Jailbroken `.deb` only |
+| Minimum iOS | **14.0** | **13.0** |
+| iOS 13 availability | Not installable | Jailbroken `.deb` only |
 
 TrollStore permanent-signing support is iOS 14.0 beta 2 through 16.6.1,
 16.7 RC, and 17.0. TrollStore Lite in the jailbroken vphone lab is an

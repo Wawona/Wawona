@@ -44,12 +44,9 @@ public enum MachineSessionBridge {
         profileStore.activeMachineId = profile.id
         profileStore.save()
         #if !SWIFT_PACKAGE
-        guard let objc = WWNMachineProfileStore.profile(byId: profile.id) else {
-            throw ConnectError.missingProfile
-        }
+        let objc = WWNMachineProfileBridge.makeObjC(from: profile)
+        _ = WWNMachineProfileStore.upsertProfile(objc)
         do {
-            // ObjC `+ (BOOL)connectProfile:error:` bridges to Swift as the
-            // throwing method `connect(_:)` (error-peeling + trailing-noun drop).
             try WWNMachineSessionBridge.connect(objc)
         } catch {
             throw ConnectError.backendFailed(error.localizedDescription)
@@ -60,7 +57,7 @@ public enum MachineSessionBridge {
 
     public static func disconnect(profile: MachineProfile) {
         #if !SWIFT_PACKAGE
-        guard let objc = WWNMachineProfileStore.profile(byId: profile.id) else { return }
+        let objc = WWNMachineProfileBridge.makeObjC(from: profile)
         WWNMachineSessionBridge.disconnectProfile(objc)
         #else
         _ = profile
@@ -83,3 +80,63 @@ public enum MachineSessionBridge {
     }
     #endif
 }
+
+#if !SWIFT_PACKAGE && (os(macOS) || os(iOS) || os(tvOS) || os(visionOS))
+/// Convert domain `MachineProfile` into the Apple glue `WWNMachineProfile`.
+enum WWNMachineProfileBridge {
+    static func makeObjC(from profile: MachineProfile) -> WWNMachineProfile {
+        let p = WWNMachineProfile()
+        p.machineId = profile.id
+        p.name = profile.name
+        p.type = profile.type.rawValue
+        p.sshHost = profile.sshHost
+        p.sshUser = profile.sshUser
+        p.sshPort = profile.sshPort
+        p.sshPassword = profile.sshPassword
+        p.sshAuthMethod = profile.sshAuthMethod
+        p.sshKeyPath = profile.sshKeyPath
+        p.sshKeyPassphrase = profile.sshKeyPassphrase
+        p.remoteCommand = profile.remoteCommand
+        p.favorite = profile.favorite
+        var runtime: [String: Any] = [:]
+        if let bundled = profile.runtimeOverrides.bundledAppID, !bundled.isEmpty {
+            runtime["bundledAppID"] = bundled
+        }
+        if let wasmPath = profile.runtimeOverrides.wasmModulePath, !wasmPath.isEmpty {
+            runtime["wasmModulePath"] = wasmPath
+        }
+        if let pkg = profile.runtimeOverrides.wasmPackage, !pkg.isEmpty {
+            runtime["wasmPackage"] = pkg
+        }
+        if let cmd = profile.runtimeOverrides.wasmCommand, !cmd.isEmpty {
+            runtime["wasmCommand"] = cmd
+        }
+        if let env = profile.runtimeOverrides.environment, !env.isEmpty {
+            var flat: [String: String] = [:]
+            for (key, override) in env {
+                if override.action == .set, let value = override.value, !value.isEmpty {
+                    flat[key] = value
+                }
+            }
+            if !flat.isEmpty {
+                runtime["environment"] = flat
+            }
+        }
+        p.runtimeOverrides = runtime
+        var settings: [String: Any] = [:]
+        let session = NativeShellSession.from(profile: profile)
+        if profile.type.selectablePivot == .native
+            || profile.type == .wasm
+            || profile.type.isSSH {
+            settings["NativeShellKind"] = session.kind.rawValue
+            settings["NativeShellUseSSH"] = session.useSSH
+        }
+        let native = profile.resolvedNativeClientId
+        if !native.isEmpty {
+            settings["NativeClientId"] = native
+        }
+        p.settingsOverrides = settings
+        return p
+    }
+}
+#endif

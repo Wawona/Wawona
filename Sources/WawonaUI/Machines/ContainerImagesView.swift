@@ -45,24 +45,21 @@ struct ContainerImagesView: View {
                 case .search: searchView
                 }
             }
-            .navigationTitle(navigationTitle)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
+            .backport.navigationTitle(navigationTitle)
+            .backport.navigationActions(trailingIsPrimary: true, leading: {
+                    WawonaButton("Done") { dismiss() }
                         .backport.glassToolbarButton()
-                }
-                ToolbarItem(placement: .primaryAction) {
+                }, trailing: {
                     Picker("", selection: $mode) {
-                        Label("Library", systemImage: "shippingbox").tag(Mode.library)
-                        Label("Discover", systemImage: "magnifyingglass").tag(Mode.search)
+                        WawonaLabel("Library", systemImage: "shippingbox").tag(Mode.library)
+                        WawonaLabel("Discover", systemImage: "magnifyingglass").tag(Mode.search)
                     }
                     .pickerStyle(.segmented)
                     .frame(width: 220)
-                }
-            }
-            .task { refreshLibrary() }
+                })
+            .backport.task { refreshLibrary() }
             #if !os(tvOS)
-            .fileImporter(
+            .backport.fileImporter(
                 isPresented: $showingFileImporter,
                 allowedContentTypes: [.item, .directory]
             ) { result in
@@ -84,10 +81,8 @@ struct ContainerImagesView: View {
                     secondaryButton: .cancel()
                 )
             }
-            .alert("Error", isPresented: Binding(get: { removeError != nil }, set: { if !$0 { removeError = nil } })) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(removeError ?? "")
+            .alert(isPresented: Binding(get: { removeError != nil }, set: { if !$0 { removeError = nil } })) {
+                Alert(title: Text("Error"), message: Text(removeError ?? ""), dismissButton: .default(Text("OK")))
             }
             .sheet(item: $inspectedEntry) { entry in
                 inspectSheet(entry)
@@ -119,17 +114,17 @@ struct ContainerImagesView: View {
             }
 
             if pullingReference != nil {
-                Section("Pulling") {
+                Section(header: Text("Pulling")) {
                     pullingRow
                 }
             }
 
             #if !os(tvOS)
             Section {
-                Button {
+                WawonaButton {
                     showingFileImporter = true
                 } label: {
-                    Label("Import from disk…", systemImage: "square.and.arrow.down")
+                    WawonaLabel("Import from disk…", systemImage: "square.and.arrow.down")
                 }
             } footer: {
                 Text("Imports a docker-archive (tar/tar.gz), OCI-archive, or OCI layout directory. Format is detected automatically.")
@@ -149,7 +144,7 @@ struct ContainerImagesView: View {
                 }
             }
         }
-        .refreshable { refreshLibrary() }
+        .backport.refreshable { refreshLibrary() }
     }
 
     private var emptyLibraryRow: some View {
@@ -157,13 +152,13 @@ struct ContainerImagesView: View {
             Spacer()
             VStack(spacing: 8) {
                 Image(systemName: "shippingbox")
-                    .font(.title2)
-                    .foregroundStyle(.secondary)
+                    .font(.title)
+                    .foregroundColor(.secondary)
                 Text("No images pulled")
-                    .foregroundStyle(.secondary)
+                    .foregroundColor(.secondary)
                 Text("Use Discover to find an image, then pull it.")
                     .font(.caption)
-                    .foregroundStyle(.tertiary)
+                    .foregroundColor(Color.secondary.opacity(0.7))
             }
             .padding(.vertical, 24)
             Spacer()
@@ -173,18 +168,18 @@ struct ContainerImagesView: View {
     private var pullingRow: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                ProgressView().controlSize(.small)
-                Text(pullingReference ?? "").monospaced()
+                WawonaProgressView().backport.controlSize(.small)
+                Text(pullingReference ?? "").font(.system(.body, design: .monospaced))
                     #if !os(tvOS)
-                    .textSelection(.enabled)
+                    .backport.selectableText()
                     #endif
             }
             if let pullError {
-                Text(pullError).font(.caption).foregroundStyle(.red)
+                Text(pullError).font(.caption).foregroundColor(.red)
             } else {
                 Text(pullLog.last ?? "Downloading…")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundColor(.secondary)
                     .lineLimit(1)
             }
         }
@@ -199,20 +194,20 @@ struct ContainerImagesView: View {
                     .lineLimit(1)
                 Spacer()
                 Text(entry.shortDigest)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(.secondary)
             }
             HStack {
                 Text(pulledDate(entry.pulledAtUnix))
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundColor(.secondary)
                 Spacer()
-                Button("Info") { inspectedEntry = entry }
-                Button("Remove", role: .destructive) { pendingRemove = entry }
+                WawonaButton("Info") { inspectedEntry = entry }
+                WawonaButton("Remove", role: .destructive) { pendingRemove = entry }
                 if let onSelect {
-                    Button("Use") { onSelect(entry.canonical); dismiss() }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
+                    WawonaButton("Use") { onSelect(entry.canonical); dismiss() }
+                        .backport.borderedButton(prominent: true)
+                        .backport.controlSize(.small)
                 }
             }
             .buttonStyle(.borderless)
@@ -222,7 +217,7 @@ struct ContainerImagesView: View {
 
     private func pulledDate(_ unix: UInt64) -> String {
         let date = Date(timeIntervalSince1970: TimeInterval(unix))
-        return date.formatted(date: .abbreviated, time: .shortened)
+        return DateFormatter.localizedString(from: date, dateStyle: .medium, timeStyle: .short)
     }
 
     private func refreshLibrary() {
@@ -240,32 +235,32 @@ struct ContainerImagesView: View {
         List {
             Section {
                 HStack {
-                    TextField("Search Docker Hub", text: $searchQuery)
+                    WawonaTextField("Search Docker Hub", text: $searchQuery)
                         .textFieldStyle(.roundedBorder)
-                        .onSubmit { Task { await runSearch() } }
-                    Button {
+                        .backport.onSubmit { Task { await runSearch() } }
+                    WawonaButton {
                         Task { await runSearch() }
                     } label: {
-                        Label("Search", systemImage: "arrow.right")
+                        WawonaLabel("Search", systemImage: "arrow.right")
                     }
                     .disabled(searchQuery.trimmingCharacters(in: .whitespaces).isEmpty || isSearching)
                 }
             }
 
-            Section("Search tags of a repository") {
-                TextField("Repository (e.g. linuxserver/webtop)", text: $tagRepo)
+            Section(header: Text("Search tags of a repository")) {
+                WawonaTextField("Repository (e.g. linuxserver/webtop)", text: $tagRepo)
                     .textFieldStyle(.roundedBorder)
                     .wawonaTextFieldNoAutocaps()
                     .autocorrectionDisabled()
                 HStack {
-                    TextField("Tag filter (optional)", text: $tagFilter)
+                    WawonaTextField("Tag filter (optional)", text: $tagFilter)
                         .textFieldStyle(.roundedBorder)
                         .wawonaTextFieldNoAutocaps()
                         .autocorrectionDisabled()
-                    Button {
+                    WawonaButton {
                         tagBrowser = TagBrowserRequest(repo: tagRepo, filter: tagFilter)
                     } label: {
-                        Label("List Tags", systemImage: "tag")
+                        WawonaLabel("List Tags", systemImage: "tag")
                     }
                     .disabled(tagRepo.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
@@ -273,20 +268,20 @@ struct ContainerImagesView: View {
 
             if isSearching {
                 HStack {
-                    ProgressView().controlSize(.small)
-                    Text("Searching…").foregroundStyle(.secondary)
+                    WawonaProgressView().backport.controlSize(.small)
+                    Text("Searching…").foregroundColor(.secondary)
                 }
                 .padding(.vertical, 4)
             }
 
             if !searchResults.isEmpty {
-                Section("Results (\(searchResults.count) of \(searchTotal))") {
+                Section(header: Text("Results (\(searchResults.count) of \(searchTotal))")) {
                     ForEach(searchResults, id: \.pullableRef) { result in
                         searchRow(result)
                     }
                 }
             } else if !searchQuery.isEmpty && !isSearching {
-                Text("No results.").foregroundStyle(.secondary)
+                Text("No results.").foregroundColor(.secondary)
             }
         }
     }
@@ -299,25 +294,25 @@ struct ContainerImagesView: View {
                     .lineLimit(1)
                 if result.isOfficial {
                     Image(systemName: "checkmark.seal.fill")
-                        .foregroundStyle(.blue)
+                        .foregroundColor(.blue)
                 }
                 Spacer()
-                Label("\(result.starCount)", systemImage: "star")
+                WawonaLabel("\(result.starCount)", systemImage: "star")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundColor(.secondary)
             }
             if !result.shortDescription.isEmpty {
                 Text(result.shortDescription)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundColor(.secondary)
                     .lineLimit(2)
             }
             HStack {
                 Text(pullCountString(result.pullCount))
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                    .font(.caption)
+                    .foregroundColor(Color.secondary.opacity(0.7))
                 Spacer()
-                Button("Pull…") { tagBrowser = TagBrowserRequest(repo: result.pullableRef, filter: "") }
+                WawonaButton("Pull…") { tagBrowser = TagBrowserRequest(repo: result.pullableRef, filter: "") }
                     .buttonStyle(.borderless)
             }
         }
@@ -364,7 +359,8 @@ struct ContainerImagesView: View {
         let repository: String
         let filter: String
         let onPull: (String) -> Void
-        @Environment(\.dismiss) private var dismiss
+        @Environment(\.presentationMode) private var presentationMode
+    private func dismiss() { presentationMode.wrappedValue.dismiss() }
         @State private var tags: [ContainerTagHit] = []
         @State private var tagError: String?
         @State private var isLoading = true
@@ -373,45 +369,43 @@ struct ContainerImagesView: View {
             WawonaBackport<Any>.navigation {
                 List {
                     if let tagError {
-                        Text(tagError).foregroundStyle(.red)
+                        Text(tagError).foregroundColor(.red)
                     }
                     if isLoading && tags.isEmpty && tagError == nil {
                         HStack {
                             Spacer()
-                            ProgressView()
+                            WawonaProgressView()
                             Spacer()
                         }
                         .padding(.vertical, 12)
                     }
                     if !isLoading && tags.isEmpty {
                         Text(filter.isEmpty ? "No tags found." : "No tags match \"\(filter)\".")
-                            .foregroundStyle(.secondary)
+                            .foregroundColor(.secondary)
                     }
                     ForEach(tags, id: \.name) { tag in
-                        Button {
+                        WawonaButton {
                             let ref = tag.name == "latest"
                                 ? repository
                                 : "\(repository):\(tag.name)"
                             onPull(ref)
                         } label: {
                             HStack {
-                                Text(tag.name).monospaced()
+                                Text(tag.name).font(.system(.body, design: .monospaced))
                                 Spacer()
                                 Text(tag.architectures.joined(separator: ", "))
                                     .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundColor(.secondary)
                             }
                         }
                     }
                 }
-                .navigationTitle("Tags · \(repository)")
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancel") { dismiss() }
+                .backport.navigationTitle("Tags · \(repository)")
+                .backport.navigationActions(trailingIsPrimary: false, leading: {
+                        WawonaButton("Cancel") { dismiss() }
                             .backport.glassToolbarButton()
-                    }
-                }
-                .task {
+                    }, trailing: { EmptyView() })
+                .backport.task {
                     do {
                         if filter.trimmingCharacters(in: .whitespaces).isEmpty {
                             tags = try await ContainerImageManager.tags(repository, limit: 100).results
@@ -484,19 +478,17 @@ struct ContainerImagesView: View {
                 Text(inspectText ?? "Loading…")
                     .font(.system(.caption, design: .monospaced))
                     #if !os(tvOS)
-                    .textSelection(.enabled)
+                    .backport.selectableText()
                     #endif
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding()
             }
-            .navigationTitle("\(entry.canonical): details")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { inspectedEntry = nil }
+            .backport.navigationTitle("\(entry.canonical): details")
+            .backport.navigationActions(trailingIsPrimary: false, leading: {
+                    WawonaButton("Done") { inspectedEntry = nil }
                         .backport.glassToolbarButton()
-                }
-            }
-            .task {
+                }, trailing: { EmptyView() })
+            .backport.task {
                 do {
                     inspectText = try ContainerImageManager.inspect(entry.canonical)
                 } catch {
@@ -509,12 +501,13 @@ struct ContainerImagesView: View {
     private func errorRow(_ message: String) -> some View {
         HStack {
             Image(systemName: "exclamationmark.triangle")
-                .foregroundStyle(.orange)
-            Text(message).font(.caption).foregroundStyle(.secondary)
+                .foregroundColor(.orange)
+            Text(message).font(.caption).foregroundColor(.secondary)
         }
     }
 
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.presentationMode) private var presentationMode
+    private func dismiss() { presentationMode.wrappedValue.dismiss() }
 }
 
 extension ContainerSearchHit: Identifiable {

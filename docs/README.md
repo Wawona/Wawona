@@ -18,7 +18,7 @@ onto the site. Everything else stays in GitHub.
 | [settings.md](settings.md) | Preference keys and Machines overrides |
 | [usage.md](usage.md) | Nested Weston/Niri, bundled clients |
 | [reporting-bugs.md](reporting-bugs.md) | How users copy logs and file GitHub issues |
-| [machine-profiles.md](machine-profiles.md) | Machine kinds: native, ssh_waypipe, ssh_terminal, VM, container |
+| [machine-profiles.md](machine-profiles.md) | Machine kinds: Native Shell (sessions), VM, container |
 | [vms-containers.md](vms-containers.md) | Planned VM/container Machines (Mode A jitless / Mode B JIT) |
 | [mode-a-b.md](mode-a-b.md) | Product-wide Mode A (store) vs Mode B (jailbreak/SIP/root) |
 | [vms-mode-a-b.md](vms-mode-a-b.md) / [containers-mode-a-b.md](containers-mode-a-b.md) | Engine plans for `wwn-vms` / `wwn-containers` |
@@ -86,3 +86,7 @@ packages ([`wasm-wasi.md`](./wasm-wasi.md)), not StoreKit/`apt` Mach-O modules.
 | [agent-rules/](agent-rules/) | Tracked mirrors (`/.cursor/` is gitignored) |
 | [agent-skills/](agent-skills/) | Tracked Cursor skills (RAG + write + learn + caveman + priors) |
 | [../AGENTS.md](../AGENTS.md) | Agent entrypoint |
+
+## Developer labs
+
+- [Physical-iPhone CarPlay lab](carplay-lab.md): `nix run .#carplay` with Playport.

@@ -70,7 +70,9 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.outlined.CenterFocusStrong
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -1333,7 +1335,7 @@ private fun MachineEditorSheet(
                     if (type == MachineType.NATIVE) {
                         EditorSectionCard(
                             title = "Wayland Client",
-                            subtitle = "Choose a bundled client to connect directly to the compositor via Wayland socket. No SSH or network required."
+                            subtitle = "Choose a bundled client on the local compositor socket. Custom commands belong under SSH Terminal (Remote Shell Command)."
                         ) {
                             Row(
                                 modifier = Modifier
@@ -1658,41 +1660,68 @@ private fun BundledClientPicker(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        BundledClients.all.forEach { client ->
-            val isSelected = client.id == selectedId
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(
-                        if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
-                        else Color.Transparent
-                    )
-                    .clickable { onSelect(client.id) }
-                    .padding(horizontal = 8.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Icon(
-                    if (isSelected) Icons.Filled.CheckCircle else Icons.Filled.RadioButtonUnchecked,
-                    contentDescription = null,
-                    tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+        BundledClients.waylandPickerGroups().forEach { (kind, clients) ->
+            Text(
+                kind.sectionTitle,
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(top = 12.dp, bottom = 2.dp),
+            )
+            clients.forEach { client ->
+                BundledClientPickerRow(
+                    id = client.id,
+                    name = client.name,
+                    description = client.description,
+                    icon = client.icon,
+                    selectedId = selectedId,
+                    onSelect = onSelect,
                 )
-                Icon(
-                    client.icon,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
-                    modifier = Modifier.size(22.dp),
-                )
-                Column(Modifier.weight(1f)) {
-                    Text(client.name, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        client.description,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
             }
+        }
+    }
+}
+
+@Composable
+private fun BundledClientPickerRow(
+    id: String,
+    name: String,
+    description: String,
+    icon: ImageVector,
+    selectedId: String,
+    onSelect: (String) -> Unit,
+) {
+    val isSelected = id == selectedId
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(
+                if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+                else Color.Transparent
+            )
+            .clickable { onSelect(id) }
+            .padding(horizontal = 8.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Icon(
+            if (isSelected) Icons.Filled.CheckCircle else Icons.Filled.RadioButtonUnchecked,
+            contentDescription = null,
+            tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+            modifier = Modifier.size(22.dp),
+        )
+        Column(Modifier.weight(1f)) {
+            Text(name, fontWeight = FontWeight.SemiBold)
+            Text(
+                description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

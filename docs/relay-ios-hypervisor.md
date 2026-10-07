@@ -108,7 +108,7 @@ Forbidden in Mode A IPA:
 - Any Settings or in-app Mode A→B HV switch
 
 Compile against the **latest** iPhoneOS SDK. Weak-link / runtime probe.
-Min OS remains 11.0 (`wawona-ios-min-os`). HV availability is a **runtime**
+Min OS remains 13.0 (`wawona-ios-min-os`). HV availability is a **runtime**
 window, not a deployment-target floor.
 
 ---

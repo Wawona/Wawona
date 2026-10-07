@@ -16,3 +16,14 @@ must use its default placement. `DefaultToolbarItem(kind: .search, placement:
 .bottomBar)` is the sole owner of the search slot. Do not add
 `placement: .toolbar`, which vends a conflicting navigation item during
 split-detail restoration.
+
+## Machine editor sheets
+
+Use `backport.editorSheet()` for both machine editors. iPad gets system page
+sizing and a large detent; phone keeps medium/large. iPadOS 13 remains supported.
+The actual iPad Simulator page presentation was verified on 2026-10-02.
+
+Selected machine configuration goes immediately after identity/type, before
+Display/Input/Graphics. Native and shared editors use X Cancel and a blue
+checkmark Save. Actual iPad Simulator verified all six type selections, VM
+slider endpoints, wide sheet, Nix token colors, and Cancel/reopen reset.

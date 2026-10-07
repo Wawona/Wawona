@@ -1,0 +1,12 @@
+# iOS Simulator Mode A Darwin CLI.
+# Types into weston-terminal after Start. Proof is screenshot plus logs.
+context session=wawona-ios-darwin-cli
+open com.aspauldingcode.Wawona --relaunch
+wait 2500
+screenshot ./.agent-device/test-artifacts/darwin-cli/mode-a/launch.png
+wait 1500
+screenshot ./.agent-device/test-artifacts/darwin-cli/mode-a/after-start.png
+wait 800
+# plutil / defaults / sw_vers / kmutil capability. Coordinates depend on the live snapshot.
+screenshot ./.agent-device/test-artifacts/darwin-cli/mode-a/cli.png
+close

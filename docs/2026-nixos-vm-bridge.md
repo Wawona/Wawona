@@ -237,7 +237,7 @@ GTK runtime, dEQP).
   `autoResize`; not yet tuned.
 - **No Machines-UI wiring yet**: this slice is CLI (`nix run .#wawona-vz`). The
   `virtual_machine` machine type + `Machine*Stub` prefs
-  ([WWNMachineProfileStore](../src/platform/macos/ui/Machines/WWNMachineProfileStore.m))
+  ([WWNMachineProfileStore](../src/platform/macos/ui/Machines/Sources/WawonaApple/Machines/MachineProfileStore.swift))
   are the next hook to launch this from the app.
 - **Not App Store viable** (spawns VMs). Ships in the direct (non-MAS) macOS
   channel, like Mode B.

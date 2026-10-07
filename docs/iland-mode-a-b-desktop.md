@@ -119,11 +119,11 @@ not enable `iland-baremetal`.
 | Concern | Location |
 |---------|----------|
 | SIP classify | `src/platform/macos/ui/Settings/WWNSipStatus.{h,m}` |
-| Desktop prefs UI + hard enforce | `WWNPreferences.m` (Desktop section), keys in `WWNPreferencesManager` |
+| Desktop prefs UI + hard enforce | `Sources/WawonaApple/Settings/WWNPreferences.swift` (Desktop section), keys in `WWNPreferencesManager` |
 | Mode B engage / disengage | `WWNDesktopReplacementController.{h,m}` |
 | Mode B compositor argv/env | `WWNWaypipeRunner` `baremetalCompositorLaunchSpecForProfile:` |
-| Connect / lockscreen handoff | `WWNMachineSessionBridge.m` |
-| Mode A present | `WWNIlandPresenter.m` + `iland_present.h` |
+| Connect / lockscreen handoff | `Sources/WawonaApple/Runners/MachineSessionBridge.swift` |
+| Mode A present | `Sources/WawonaApple/Present/IlandPresenter.swift` + `iland_present.h` |
 | Bundle verify | `.github/scripts/verify-iland-mode-b-bundle.sh` |
 
 Prefs (macOS `NSUserDefaults`):

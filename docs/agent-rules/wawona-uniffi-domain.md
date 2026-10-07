@@ -21,7 +21,8 @@ watchOS, visionOS) plus Android and Linux.
 
 1. **UniFFI** = product domain: machine profiles, prefs, launch, validation,
    session policy.
-2. **`WWNCore*`** C + ObjC/JNI poll = compositor ABI (`src/ffi/c_api.rs`).
+2. **`WWNCore*`** C + Swift/JNI poll = compositor ABI (`src/ffi/c_api.rs`).
+   Apple callers are Swift (`Sources/WawonaApple`). Android remains JNI.
    Do not replace with UniFFI callbacks unless a later product change says so
    (`wawona-rust-first`).
 
@@ -33,7 +34,9 @@ watchOS, visionOS) plus Android and Linux.
   `src/linux/machine_profile.rs`.
 - New feature SwiftUI under `src/platform/macos/ui/*`.
 - Per-OS forks of domain types (`WWN*` copies of `WawonaModel`).
-- Policy or validation in ObjC trampolines or generated bindings.
+- Policy or validation in Swift trampolines, ObjC leftovers, or generated bindings.
+- New Apple `.m` / `.mm` product glue. CI `scripts/verify-no-objc-glue.py` ratchets
+  the allowlist to empty.
 
 A bindgen + Apple-triples helper in Wawona or `wwn-toolchain` is fine. A JFFI
 clone is not. Host bindgen is `dependencies/generators/uniffi-bindgen.nix`.

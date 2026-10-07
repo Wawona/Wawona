@@ -267,6 +267,36 @@ public final class WCSessionWatchCompanionTransport: NSObject, WatchCompanionTra
         let name = file.metadata?["name"] as? String
         _ = WatchCompanionController.ingestReceivedFile(at: file.fileURL, preferredName: name)
     }
+
+    public func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
+        guard (message["kind"] as? String) == "display-frame",
+              let data = message["jpeg"] as? Data else { return }
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(
+                name: Notification.Name("WWNWatchDisplayFrameNotification"),
+                object: nil,
+                userInfo: ["jpeg": data]
+            )
+        }
+    }
+    #endif
+
+    #if os(iOS)
+    public func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
+        guard (message["kind"] as? String) == "display-touch" else { return }
+        let info: [String: Any] = [
+            "phase": message["phase"] ?? "",
+            "x": message["x"] ?? 0,
+            "y": message["y"] ?? 0,
+        ]
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(
+                name: Notification.Name("WWNWatchDisplayTouchNotification"),
+                object: nil,
+                userInfo: info
+            )
+        }
+    }
     #endif
 }
 #endif

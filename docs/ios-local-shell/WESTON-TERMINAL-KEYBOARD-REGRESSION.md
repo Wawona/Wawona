@@ -139,7 +139,7 @@ over the wait spam alone.
      exact xdg configure pixels** (no floating cell-snap gutters).
    - Font metric fallbacks when fontconfig fails.
 
-2. **Host (`WWNCompositorBridge.m` iOS)**
+2. **Host (`Sources/WawonaApple/Present/WWNCompositorBridge.swift` iOS)**
    - Bundled shells (`weston-terminal` / `wayland-terminal` / `foot`): inject
      fill configure to container bounds; `followHostSize = YES`; optional
      `syncHostMaximized` so stock weston skips floating snap.
@@ -148,7 +148,7 @@ over the wait spam alone.
    - ClientCommit must **not** clear an already-set `followHostSize`.
    - Demos still client-preferred 0×0 (no fill inject).
 
-3. **Present (`WWNCompositorView_ios.m`)**
+3. **Present (`Sources/WawonaApple/Present/CompositorView.swift`)**
    - When `hostLocked || followHostSize`, presentation frame is full container
      (CSD crop must not leave gutters).
 
@@ -171,11 +171,11 @@ over the wait spam alone.
 |---|---|
 | Toytoolkit configure | weston `clients/window.c` `xdg_toplevel_handle_configure` |
 | Terminal patches | `wwn-weston/.../terminal-patches/patch-terminal.py` |
-| iOS map / fill | `WWNCompositorBridge.m` `handleWindowCreated` (iOS) |
-| ClientCommit followHost | `WWNCompositorBridge.m` `handleWindowSizeChanged` (iOS) |
-| Present full-bleed | `WWNCompositorView_ios.m` present path (`hostOwnsPresent`) |
+| iOS map / fill | `Sources/WawonaApple/Present/WWNCompositorBridge.swift` `handleWindowCreated` (iOS) |
+| ClientCommit followHost | `Sources/WawonaApple/Present/WWNCompositorBridge.swift` `handleWindowSizeChanged` (iOS) |
+| Present full-bleed | `Sources/WawonaApple/Present/CompositorView.swift` present path (`hostOwnsPresent`) |
 | Size SM | `src/core/window/size_authority.rs`, rule `wawona-host-client-size-sync` |
-| Soft OSK | `WWNCompositorView_ios.m` `applyHostKeyboard*` / `armHostKeyboardAfterFirstFrame` |
+| Soft OSK | `Sources/WawonaApple/Present/CompositorView.swift` `applyHostKeyboard*` / `armHostKeyboardAfterFirstFrame` |
 | TI brain | `src/core/wayland/ext/text_input.rs` |
 
 ## Quick verification

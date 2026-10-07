@@ -1,0 +1,17 @@
+Origin: Wawona
+Label: Wawona Mode B Darwin CLI
+Suite: stable
+Codename: wawona
+Architectures: iphoneos-arm64 iphoneos-arm
+Components: main
+Date: Thu, 01 Jan 1970 00:00:00 UTC
+Description: Mode B Darwin CLI packages. Not for the App Store app.
+MD5Sum:
+ 1128bfde49ed4ab291e9f0ceea19f12e     1930 Packages
+ 2096022ec1002e699ca6193b66757a4a      837 Packages.gz
+SHA1:
+ 5763bd8f591d98b66d308f08f32f477d01ef06ff     1930 Packages
+ cda8a3f4079b5fdde8d07e69ae198fc6d88dced4      837 Packages.gz
+SHA256:
+ 0d1c050ec39ac008dfb72c7f5fb2dc22c68d2095c0d4ff075a13d72c29b92c5c     1930 Packages
+ 73fce96bcbc8405218af6505a553240e98a5e0394397849f0f4e0174c68ba2c0      837 Packages.gz

@@ -2,6 +2,9 @@ import Foundation
 #if canImport(Darwin)
 import Darwin
 #endif
+#if os(iOS)
+import UIKit
+#endif
 
 public enum ConnectionSettingsIntent: Sendable {
     case updateWaylandDisplay(String)
@@ -258,6 +261,9 @@ public enum GlobalSettingsFieldID: String, Sendable, CaseIterable {
     case nestedCompositors
     case compositorBackend
     case multipleClients
+    /// Prompt, New Tab, or New Window. Hidden where the app cannot open
+    /// another window (iPhone, tvOS, watchOS, Linux).
+    case defaultStartType
     case logLevel
     case shakeToClose
     case swipeBackToClose
@@ -308,11 +314,33 @@ public struct GlobalSettingsCatalog: Sendable {
         #endif
     }
 
+    /// Sections that stay in the in-app Machines sidebar (not the System
+    /// Settings / flattened global panel).
+    public static let appSidebarSectionIDs: Set<GlobalSettingsSectionID> = [
+        .desktop, .about, .dependencies,
+    ]
+
     public static func visibleSections(for host: GlobalSettingsHost) -> [GlobalSettingsSectionID] {
         if let rust = rustVisibleSections(for: host), !rust.isEmpty {
             return rust
         }
         return fallbackVisibleSections(for: host)
+    }
+
+    /// Desktop / About / Dependencies only (in-app sidebar).
+    public static func appSidebarSections(for host: GlobalSettingsHost) -> [GlobalSettingsSectionID] {
+        visibleSections(for: host).filter { appSidebarSectionIDs.contains($0) }
+    }
+
+    /// In-app / toolbar sheet (excludes Desktop / About / Dependencies).
+    public static func systemPanelSections(for host: GlobalSettingsHost) -> [GlobalSettingsSectionID] {
+        visibleSections(for: host).filter { !appSidebarSectionIDs.contains($0) }
+    }
+
+    /// System Settings → Wawona PrefPane root list. Full visible catalog
+    /// (includes Desktop / About / Dependencies). Same Rust section order.
+    public static func systemSettingsPaneSections(for host: GlobalSettingsHost) -> [GlobalSettingsSectionID] {
+        visibleSections(for: host)
     }
 
     /// Frozen mirror of `settings_catalog::visible_sections`. Used when the
@@ -367,6 +395,23 @@ public struct GlobalSettingsCatalog: Sendable {
         }
     }
 
+    /// Another window of this app. iPhone, tvOS, watchOS, and the Linux
+    /// single-window host do not offer it.
+    public static func allowsWindowedMachineStart(_ host: GlobalSettingsHost) -> Bool {
+        switch host {
+        case .macOS, .visionOS, .android:
+            return true
+        case .iOS:
+            #if os(iOS)
+            return UIDevice.current.userInterfaceIdiom == .pad
+            #else
+            return false
+            #endif
+        case .tvOS, .watchOS, .linux:
+            return false
+        }
+    }
+
     /// C trampoline in `src/domain/c_api.rs`. dlsym so SPM tests that do
     /// not link `libwawona.a` still compile. Watch 32-bit stays on fallback.
     private static func rustVisibleSections(for host: GlobalSettingsHost) -> [GlobalSettingsSectionID]? {
@@ -410,6 +455,9 @@ public struct GlobalSettingsCatalog: Sendable {
                 fields.append(.respectSafeArea)
             }
             fields.append(contentsOf: [.nestedCompositors, .compositorBackend, .multipleClients])
+            if allowsWindowedMachineStart(host) {
+                fields.append(.defaultStartType)
+            }
             return fields
         case .input:
             var fields: [GlobalSettingsFieldID] = [

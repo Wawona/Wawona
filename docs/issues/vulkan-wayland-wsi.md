@@ -48,7 +48,7 @@ iland and everything else falls through to the ICD.
 |-------|--------|
 | IOSurface dmabuf modifier + post | `iland_wl_winsys.h` / `egl_wayland.c` |
 | `wl_egl_window` geometry | extend with surface-only swapchain create |
-| Compositor import | `WWNCompositorBridge.m` `IOSurfaceLookup` |
+| Compositor import | `Sources/WawonaApple/Present/WWNCompositorBridge.swift` `IOSurfaceLookup` |
 | ICD selection | `WWNSettings_ApplyGraphicsDriverSelection` / Android `apply_graphics_driver_selection` |
 | Cube packaging | `wwn-kmscube` vkcube recipes (today KMS/GBM) |
 

@@ -29,8 +29,8 @@ public struct ThemedListStyle: ViewModifier {
     public func body(content: Content) -> some View {
         if let sheetThemeColors {
             content
-                .scrollContentBackground(.hidden)
-                .background(sheetThemeColors.background.ignoresSafeArea())
+                .backport.hideScrollBackground()
+                .background(sheetThemeColors.background.edgesIgnoringSafeArea(.all))
         } else {
             content
         }

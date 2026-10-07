@@ -41,6 +41,45 @@ pub fn default_touch_max_concurrent() -> usize {
     }
 }
 
+/// How the host screen feeds `wl_touch` and `wl_pointer`.
+///
+/// CarPlay and Android Auto are one-contact screens: `wl_touch` keeps a
+/// single slot, and that contact is also `wl_pointer` so clients that never
+/// bind touch still receive a point. A TV with no touch (AirPlay, wired,
+/// DeX-style) is a touchpad: the phone sends `wl_pointer` and
+/// `zwp_relative_pointer_v1`, and `wl_touch` accepts no contacts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u32)]
+pub enum HostSeatMode {
+    MultiTouch = 0,
+    SingleTouch = 1,
+    Touchpad = 2,
+}
+
+impl HostSeatMode {
+    pub fn from_u32(raw: u32) -> Self {
+        match raw {
+            1 => Self::SingleTouch,
+            2 => Self::Touchpad,
+            _ => Self::MultiTouch,
+        }
+    }
+
+    /// Concurrent `wl_touch` downs. Zero means the seat does not accept touch.
+    pub fn max_concurrent(self) -> usize {
+        match self {
+            Self::MultiTouch => default_touch_max_concurrent(),
+            Self::SingleTouch => 1,
+            Self::Touchpad => 0,
+        }
+    }
+
+    /// One-contact screens also drive `wl_pointer` for clients without touch.
+    pub fn force_pointer_emulation(self) -> bool {
+        matches!(self, Self::SingleTouch)
+    }
+}
+
 impl TouchState {
     pub fn new() -> Self {
         Self::default()
@@ -50,7 +89,10 @@ impl TouchState {
         if self.active_points.contains_key(&id) {
             return true;
         }
-        self.active_points.len() < self.max_concurrent.max(1)
+        if self.max_concurrent == 0 {
+            return false;
+        }
+        self.active_points.len() < self.max_concurrent
     }
 
     pub fn touch_down(&mut self, id: i32, surface_id: u32, x: f64, y: f64) {
@@ -124,11 +166,21 @@ mod tests {
     #[test]
     fn single_touch_cap_rejects_second_id() {
         let mut t = TouchState::new();
-        t.max_concurrent = 1;
+        t.max_concurrent = HostSeatMode::SingleTouch.max_concurrent();
         assert!(t.can_accept_down(1));
         t.touch_down(1, 10, 0.0, 0.0);
         assert!(!t.can_accept_down(2));
         assert!(t.can_accept_down(1));
+    }
+
+    #[test]
+    fn touchpad_seat_accepts_no_contacts() {
+        let mut t = TouchState::new();
+        t.max_concurrent = HostSeatMode::Touchpad.max_concurrent();
+        assert!(!t.can_accept_down(1));
+        assert!(HostSeatMode::SingleTouch.force_pointer_emulation());
+        assert!(!HostSeatMode::Touchpad.force_pointer_emulation());
+        assert!(!HostSeatMode::MultiTouch.force_pointer_emulation());
     }
 
     #[test]

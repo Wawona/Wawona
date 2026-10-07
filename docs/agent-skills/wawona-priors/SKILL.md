@@ -45,6 +45,7 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-mode-a-b` / `wawona-ios-mode-b-channels` | Store vs TrollStore vs Sileo |
 | `wawona-macos-mode-a` / `wawona-macos-no-appstore` | macOS in-window vs SIP |
 | `wawona-macos-prefpane` | System Settings PrefPane Auto Layout width + in-pane Back |
+| `wawona-global-settings-exclusive` | One Global Settings host per platform. Never OS + in-app dual |
 | `wawona-iland-mode-b-desktop` | Desktop dylib / Take Over |
 | `wawona-mode-b-watchdog-safety` | `watchdogd` / IOWatchdog |
 | `wawona-compositor-backend` | Aqua nested vs Classic DRM |
@@ -186,8 +187,10 @@ skill, add one row. Capture flow: `wawona-learn`.
   `DefaultToolbarItem(kind: .search)` + `ToolbarSpacer` + bottomBar
   plus. No custom capsule. No 44/56pt +. Do not put `.searchable` on
   the phone split detail without the spacer. Watch stays the compact
-  catalog (`WatchGlobalSettingsView`). Do not restore
+  redirect to iPhone Watch app Settings (`WatchGlobalSettingsView`).
+  Watch globals: `Settings-Watch.bundle`. Do not restore
   `WatchUIContractAdapters`. Section *order* is Rust `settings_catalog`.
+  Global Settings exclusivity: `wawona-global-settings-exclusive`.
   Swift `GlobalSettingsCatalog` is frozen Label/symbol + field visibility.
   ObjC `WWNPreferences` still builds leftover inventory rows. Do not add
   rows. UIKit settings sidebar is not compiled on Apple mobile. `WWNCore*`

@@ -143,7 +143,7 @@ impl Dispatch<WpViewporter, ()> for CompositorState {
             wp_viewporter::Request::GetViewport { id, surface } => {
                 // Must use the compositor's internal surface id. Protocol object
                 // ids diverge from next_surface_id(); keying by protocol_id made
-                // apply_on_surface_commit / scene lookups miss, so GTK/Ghostty
+                // apply_on_surface_commit / scene lookups miss, so GTK
                 // viewport destinations never applied (Retina quadrant bug).
                 let Some(client_id) = surface.client().map(|c| c.id()) else {
                     tracing::warn!("GetViewport ignored: surface has no client");

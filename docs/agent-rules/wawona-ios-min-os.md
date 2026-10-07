@@ -25,7 +25,8 @@ proof that untested or future systems work.
 Use one native static ANGLE/Metal and one native static MoltenVK/Metal set.
 Keep compatibility required by iOS 13/14; remove 11/12-only branches only after
 checking they are not also needed by supported systems. Runtime Metal feature
-policy stays in Rust. ObjC fills capabilities and bridges native APIs.
+policy stays in Rust. Swift in `Sources/WawonaApple` fills capabilities and
+bridges native APIs. No Objective-C product classes.
 
 SwiftUI exists at the new floor, but APIs added after iOS 13 still need guarded
 use or a functional backport. Lowering Package.swift or Xcode settings alone
@@ -59,13 +60,12 @@ Reference: `Wawona/docs/agent-rules/wawona-ios-min-os.md`.
 
 The floor stays **13.0** on the latest iPhoneOS SDK (26 now, 27 when that SDK
 is installed). A dependency built for a newer minimum does not raise Wawona.
-Published GhosttyKit is iOS 17. Do not link those objects, and do not rewrite
-`LC_BUILD_VERSION` to pretend they are 13.0.
+Do not link a published kit whose minimum OS is newer than 13.0, and do not rewrite
+`LC_BUILD_VERSION` to pretend it is 13.0.
 
 App Store and TestFlight IPAs do not ship a product `.dylib`. Link static
 archives. Apple's `libswift*` / SwiftSupport is the store exception. macOS
 Desktop Mode B `libwayland-mac.dylib` stays in `.#wawona-macos-desktop-host`
 only.
 
-libghostty on iOS is a static archive rebuilt at deployment target 13.0,
-exporting `ghostty_*` only. The published xcframework is not a Wawona input.
+Ghostty is not a Wawona input. Do not link libghostty or GhosttyKit.

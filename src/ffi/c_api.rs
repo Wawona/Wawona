@@ -205,6 +205,18 @@ pub extern "C" fn WWNCoreSetForceSSD(core: *mut WWNCore, enabled: bool) {
     }));
 }
 
+/// `0` multi-touch, `1` single-touch, `2` touchpad. See `HostSeatMode`.
+#[no_mangle]
+pub extern "C" fn WWNCoreSetHostSeatMode(core: *mut WWNCore, mode: u32) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if core.is_null() {
+            return;
+        }
+        let core = unsafe { &*core };
+        core.set_host_seat_mode(mode);
+    }));
+}
+
 /// Pref-gated pointer stream for clients that never bind `wl_touch`.
 /// Default off. Nested compositor chrome is a separate Rust seat policy.
 #[no_mangle]

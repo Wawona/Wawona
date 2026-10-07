@@ -17,7 +17,6 @@ struct MachineSettingsView: View {
         Form {
             Section {
                 Button("Open Wawona Settings", systemImage: "gearshape") {
-                    WatchKitGlobalSettings.registerHost()
                     showingGlobalSettings = true
                 }
             }

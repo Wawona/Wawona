@@ -5,7 +5,11 @@ public extension View {
     @ViewBuilder
     func wawonaTextFieldNoAutocaps() -> some View {
         #if !os(macOS)
-        self.textInputAutocapitalization(.never)
+        if #available(iOS 15.0, tvOS 15.0, watchOS 8.0, *) {
+            self.textInputAutocapitalization(.never)
+        } else {
+            self.autocapitalization(.none)
+        }
         #else
         self
         #endif

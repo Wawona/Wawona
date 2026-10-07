@@ -107,7 +107,7 @@ weston, weston inside niri) is the in-process path.
 ## Code
 
 - Resolver: `WWNResolveCompositorBackend`, `WWNHostSessionUsesOwnDisplayDRM`
-  in `src/platform/macos/ui/Settings/WWNWaypipeRunner.m`
+  in `src/platform/macos/ui/Settings/WaypipeRunner.swift / CompositorBackend.swift`
 - CLI wrappers: `scripts/macos-register-cli-bins.sh`
 - Doorman session: `wwn-igetty` `libexec/wwn-modeb-session/`
 

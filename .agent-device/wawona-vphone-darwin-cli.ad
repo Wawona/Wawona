@@ -1,0 +1,6 @@
+# vphone Mode B Darwin CLI packages. Disposable guest only.
+context platform=ios
+context session=wawona-vphone-darwin-cli
+context device=vphone wawona-jb
+screenshot ./.agent-device/test-artifacts/darwin-cli/mode-b/before.png
+close

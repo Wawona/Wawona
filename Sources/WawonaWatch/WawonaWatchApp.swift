@@ -1,6 +1,7 @@
 #if os(watchOS)
 import SwiftUI
 import WawonaModel
+import WatchConnectivity
 
 public struct WawonaWatchRootView: View {
     @StateObject private var profileStore = MachineProfileStore()
@@ -8,12 +9,27 @@ public struct WawonaWatchRootView: View {
     @State private var didAutoConnect = false
     @State private var autoProfile: MachineProfile?
     @State private var autoSession: MachineSession?
+    @State private var phoneFrame: UIImage?
+    @State private var phoneTouchDown = false
 
     public init() {}
 
     public var body: some View {
         NavigationStack {
-            MachineStatusView(profileStore: profileStore, sessions: sessions)
+            VStack(spacing: 4) {
+                if let phoneFrame {
+                    GeometryReader { geo in
+                        Image(uiImage: phoneFrame)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .contentShape(Rectangle())
+                            .gesture(phoneTouch(in: geo.size))
+                    }
+                    .frame(height: 80)
+                }
+                MachineStatusView(profileStore: profileStore, sessions: sessions)
+            }
         }
         .fullScreenCover(item: $autoSession) { session in
             if let autoProfile {
@@ -32,6 +48,40 @@ public struct WawonaWatchRootView: View {
                 maybeAutoConnectNestedClient()
             }
         }
+        .onReceive(NotificationCenter.default.publisher(
+            for: Notification.Name("WWNWatchDisplayFrameNotification")
+        )) { note in
+            if let data = note.userInfo?["jpeg"] as? Data {
+                phoneFrame = UIImage(data: data)
+            }
+        }
+    }
+
+    /// One finger on the phone frame. The phone seat is single-touch for this contact.
+    private func phoneTouch(in size: CGSize) -> some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { value in
+                let phase = phoneTouchDown ? "move" : "down"
+                phoneTouchDown = true
+                sendPhoneTouch(phase: phase, at: value.location, in: size)
+            }
+            .onEnded { value in
+                phoneTouchDown = false
+                sendPhoneTouch(phase: "up", at: value.location, in: size)
+            }
+    }
+
+    private func sendPhoneTouch(phase: String, at location: CGPoint, in size: CGSize) {
+        guard WCSession.isSupported(), WCSession.default.isReachable else { return }
+        let x = min(1, max(0, location.x / max(size.width, 1)))
+        let y = min(1, max(0, location.y / max(size.height, 1)))
+        let message: [String: Any] = [
+            "kind": "display-touch",
+            "phase": phase,
+            "x": x,
+            "y": y,
+        ]
+        WCSession.default.sendMessage(message, replyHandler: nil, errorHandler: nil)
     }
 
     /// Automation: `SIMCTL_CHILD_WAWONA_WATCH_AUTO_CLIENT=weston-simple-shm`

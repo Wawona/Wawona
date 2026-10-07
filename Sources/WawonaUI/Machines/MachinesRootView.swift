@@ -34,54 +34,57 @@ struct MachinesRootView: View {
                 )
                 .padding()
             }
-            .navigationTitle("Machines")
+            .backport.navigationTitle("Machines")
             .wwnA11y(WawonaA11y.machinesRoot, label: "Machines")
             #if os(macOS)
             .searchable(text: $search, placement: .toolbar, prompt: "Search machines")
             #endif
+            #if os(macOS)
             .toolbar {
-                #if os(macOS)
                 ToolbarItem(placement: .primaryAction) {
-                    Button {
+                    WawonaButton {
                         editorSheet = .add
                     } label: {
-                        Label("Add Machine", systemImage: "plus")
+                        WawonaLabel("Add Machine", systemImage: "plus")
                     }
                     .backport.glassToolbarButton()
                     .wwnA11y(WawonaA11y.machinesAdd, label: "Add Machine")
                 }
                 ToolbarItem(placement: .navigation) {
-                    Button {
+                    WawonaButton {
                         showingContainerImages = true
                     } label: {
-                        Label("Images", systemImage: "shippingbox")
+                        WawonaLabel("Images", systemImage: "shippingbox")
                     }
                     .backport.glassToolbarButton()
                     .wwnA11y(WawonaA11y.machinesImages, label: "Container Images")
                 }
-                #else
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button {
+            }
+            #else
+            .backport.navigationActions(trailingIsPrimary: true, leading: { EmptyView() }, trailing: {
+                    WawonaButton {
                         editorSheet = .add
                     } label: {
-                        Label("Add Machine", systemImage: "plus")
+                        WawonaLabel("Add Machine", systemImage: "plus")
                     }
                     .backport.glassToolbarButton()
                     .wwnA11y(WawonaA11y.machinesAdd, label: "Add Machine")
-                }
-                #endif
-            }
+            })
+            #endif
             .sheet(item: $editorSheet) { sheet in
-                switch sheet {
-                case .add:
-                    MachineEditorView { profile in
-                        profileStore.upsert(profile)
-                    }
-                case .edit(let profile):
-                    MachineEditorView(profile: profile) { updated in
-                        profileStore.upsert(updated)
+                Group {
+                    switch sheet {
+                    case .add:
+                        MachineEditorView { profile in
+                            profileStore.upsert(profile)
+                        }
+                    case .edit(let profile):
+                        MachineEditorView(profile: profile) { updated in
+                            profileStore.upsert(updated)
+                        }
                     }
                 }
+                .backport.editorSheet()
             }
             .sheet(isPresented: $showingContainerImages) {
                 ContainerImagesView(onSelect: nil)
@@ -107,15 +110,27 @@ struct MachinesRootView: View {
     }
 
     private func connect(_ profile: MachineProfile) {
-        do {
-            try MachineSessionBridge.connect(
-                profile: profile,
-                preferences: preferences,
-                profileStore: profileStore
-            )
-            _ = sessions.connect(machineId: profile.id)
-        } catch {
-            _ = sessions.markFailed(machineId: profile.id, reason: error.localizedDescription)
+        let preferences = preferences
+        let profileStore = profileStore
+        let sessions = sessions
+        // relay_start opens the disk and builds the CPU on the caller. Leave
+        // the SwiftUI thread before that work.
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try MachineSessionBridge.connect(
+                    profile: profile,
+                    preferences: preferences,
+                    profileStore: profileStore
+                )
+                DispatchQueue.main.async {
+                    _ = sessions.connect(machineId: profile.id)
+                }
+            } catch {
+                let reason = error.localizedDescription
+                DispatchQueue.main.async {
+                    _ = sessions.markFailed(machineId: profile.id, reason: reason)
+                }
+            }
         }
     }
 

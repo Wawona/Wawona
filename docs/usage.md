@@ -8,8 +8,10 @@
 ## Machines
 
 Start and focus sessions from the Machines window, not from env vars. Profile
-kinds: `native`, `ssh_waypipe`, `ssh_terminal`, `virtual_machine`, `container`.
-See [`machine-profiles.md`](./machine-profiles.md).
+kinds in the UI: **Native Shell**, **Virtual Machine**, **Container**. Native
+Shell sessions cover Terminal (Wawona Terminal), Wayland clients, Wasm, and
+Waypipe (optional SSH). See [`machine-profiles.md`](./machine-profiles.md) and
+rule `wawona-machine-types`.
 
 Weston and Niri both ship on every product target. Display backend is
 `CompositorBackend`: `auto` | `wayland` | `drm`.

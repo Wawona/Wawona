@@ -1,0 +1,27 @@
+Package: wawona-defaults
+Version: 26.10.6
+Architecture: iphoneos-arm64
+Maintainer: Wawona <hello@wawona.io>
+Filename: pool/main/w/wawona-defaults/wawona-defaults_26.10.6_iphoneos-arm64.deb
+Description: Procursus defaults for jailbreak domains (Mode B)
+
+Package: wawona-launch-tools
+Version: 26.10.6
+Architecture: iphoneos-arm64
+Maintainer: Wawona <hello@wawona.io>
+Filename: pool/main/w/wawona-launch-tools/wawona-launch-tools_26.10.6_iphoneos-arm64.deb
+Description: launchctl for guest launchd (Mode B)
+
+Package: wawona-uikit-tools
+Version: 26.10.6
+Architecture: iphoneos-arm64
+Maintainer: Wawona <hello@wawona.io>
+Filename: pool/main/w/wawona-uikit-tools/wawona-uikit-tools_26.10.6_iphoneos-arm64.deb
+Description: UIKit jailbreak CLI (Mode B)
+
+Package: wawona-security-tools
+Version: 26.10.6
+Architecture: iphoneos-arm64
+Maintainer: Wawona <hello@wawona.io>
+Filename: pool/main/w/wawona-security-tools/wawona-security-tools_26.10.6_iphoneos-arm64.deb
+Description: ldid AGPL-3.0 (Mode B)

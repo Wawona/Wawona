@@ -61,8 +61,8 @@ so niri GLES stays fail-closed and Weston remains own-display.
 
 - Protocol import: `src/core/wayland/ext/linux_dmabuf.rs`
 - Buffer lifetime: `src/core/surface/buffer.rs`
-- Mode A presenter: `src/platform/ios/WWNIlandPresenter.m`
-- iOS compositor route: `src/platform/ios/WWNCompositorView_ios.m`
+- Mode A presenter: `src/platform/ios/Sources/WawonaApple/Present/IlandPresenter.swift`
+- iOS compositor route: `src/platform/ios/Sources/WawonaApple/Present/CompositorView.swift`
 - Mode B broker: `src/platform/ios_modeb.rs`
 - IOMFB present (Mode B): `wwn-iomfb-rs` `ios.nix` (`libwwn_iomfb.a`).
   Frozen `wwn-iland-iomfb` must not grow.

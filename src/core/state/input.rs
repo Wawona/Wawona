@@ -683,6 +683,21 @@ impl CompositorState {
         self.touch_pointer_emulation = enabled;
     }
 
+    /// `0` multi-touch, `1` single-touch (`wl_touch` + `wl_pointer`),
+    /// `2` touchpad (`wl_pointer` and `zwp_relative_pointer_v1` only).
+    pub fn set_host_seat_mode(&mut self, mode: u32) {
+        use crate::core::input::touch::HostSeatMode;
+        let mode = HostSeatMode::from_u32(mode);
+        self.host_seat_mode = mode as u32;
+        self.seat.touch.max_concurrent = mode.max_concurrent();
+        if mode.force_pointer_emulation() {
+            self.touch_pointer_emulation = true;
+        }
+        if mode.max_concurrent() == 0 && self.seat.touch.has_active_touches() {
+            self.inject_touch_cancel();
+        }
+    }
+
     // =========================================================================
     // Focus Management
     // =========================================================================

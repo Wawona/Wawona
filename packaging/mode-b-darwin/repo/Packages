@@ -1,0 +1,48 @@
+Package: wawona-uikit-tools
+Version: 26.10.6
+Architecture: iphoneos-arm64
+Maintainer: Wawona <hello@wawona.io>
+Filename: pool/main/w/wawona-uikit-tools/wawona-uikit-tools_26.10.6_iphoneos-arm64.deb
+Size: 806
+MD5sum: 7442bf8c9f99656befabbd3b41a8f951
+SHA1: ae5e909eb6f1a69bb17e3dc4b4cd5679793dc2f2
+SHA256: a9d18912eab85b05c861f5d14db5ae7f2e30ac4b35b1fdab883d8b19e8e271c6
+Description: UIKit jailbreak CLI from uikittools-ng
+ Mode B only. Not for the App Store app.
+
+Package: wawona-launch-tools
+Version: 26.10.6
+Architecture: iphoneos-arm64
+Maintainer: Wawona <hello@wawona.io>
+Filename: pool/main/w/wawona-launch-tools/wawona-launch-tools_26.10.6_iphoneos-arm64.deb
+Size: 806
+MD5sum: a11438e29b1cc9e71541267566ed31ff
+SHA1: dbcb338e76a166b38587a6f0a7de73e2ad703f98
+SHA256: f1547b69257dd5c129e04bca8749384d136daf87f07e79d7e247306232d28c5e
+Description: launchctl for guest launchd
+ Mode B only. Procursus launchctl. Not the Mode A Wawona service manager.
+
+Package: wawona-defaults
+Version: 26.10.6
+Architecture: iphoneos-arm64
+Maintainer: Wawona <hello@wawona.io>
+Filename: pool/main/w/wawona-defaults/wawona-defaults_26.10.6_iphoneos-arm64.deb
+Size: 812
+MD5sum: 362384590d008fffc50d992c030d3df3
+SHA1: 5619ee0a7bcd3e7f764ba699686bd84548b1fae6
+SHA256: 6997aafa2527d9f25c4e421703f56ebb85d7ca93a201b69f9f726c9e636883dc
+Description: Procursus defaults for jailbreak domains
+ Mode B only. Distinct from the in-app container defaults command.
+
+Package: wawona-security-tools
+Version: 26.10.6
+Architecture: iphoneos-arm64
+Maintainer: Wawona <hello@wawona.io>
+Filename: pool/main/w/wawona-security-tools/wawona-security-tools_26.10.6_iphoneos-arm64.deb
+Size: 868
+MD5sum: a0fe7f9e01a87897bcc2ed6e24a96c7c
+SHA1: b1015f40e2573b858d9b55693097e6ac8610b2bf
+SHA256: edab8657f00b45e6f61e434661f43c3231318d5cf8a7a8096f1d04b5196e69b9
+Description: ldid (AGPL-3.0)
+ Mode B only. Source is ProcursusTeam/ldid. The package must ship the AGPL source offer.
+

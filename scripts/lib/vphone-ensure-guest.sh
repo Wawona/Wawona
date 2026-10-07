@@ -307,3 +307,16 @@ vphone_ssh_put() {
     "export PATH=/var/jb/usr/bin:/var/jb/bin:/usr/bin:/bin:/sbin:/usr/sbin; mkdir -p \"$(dirname "$remote")\" && cat > \"$remote\"" \
     <"$local_file"
 }
+
+# Procursus/apt source used by Sileo, Irisin, Zebra, Cydia. Same list the
+# vphone-jb-lab sock path writes. Call after guest SSH exists.
+vphone_ensure_wawona_apt() {
+  local host="$1"
+  vphone_ssh "$host" 'export PATH="/var/jb/usr/bin:/var/jb/bin:/usr/bin:/bin:$PATH"
+    list=/var/jb/etc/apt/sources.list.d/wawona.list
+    echo alpine | sudo -S -p "" mkdir -p /var/jb/etc/apt/sources.list.d
+    echo alpine | sudo -S -p "" sh -c "printf \"deb https://repo.wawona.io/ ./\\n\" > $list"
+    echo alpine | sudo -S -p "" apt-get update -qq || apt-get update -qq || true
+    grep -q repo.wawona.io "$list"
+  '
+}

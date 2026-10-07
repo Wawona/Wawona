@@ -7,7 +7,8 @@ Canonical automation lives in **L3′ [`wwn-vphone`](https://github.com/Wawona/w
 
 **Never** commit or GitHub-release a prebuilt iOS VM / `Disk.img` / IPSW.
 The lab follows upstream [vphone-cli](https://github.com/Lakr233/vphone-cli):
-download IPSWs at runtime, create VM, CFW `jb`, launch, SSH smoke.
+download IPSWs at runtime, create VM, CFW `jb`, launch, skip Setup Assistant,
+write the Wawona APT source, SSH smoke.
 
 ## One command (any developer)
 
@@ -52,13 +53,30 @@ agent-device shutdown --device "vphone wawona-jb"
 
 Profile JSON is written by the lab (`vphone-wawona-jb.json`: sock, SSH, VNC).
 Prefer device name `vphone wawona-jb`. Guest SSH: `mobile` / `alpine`, port
-`22222`. No sftp; file push is `ssh cat`. Guest IPv4 drifts on every
-`vphone-cli` relaunch. Rewrite `guest-ip.txt` and the profile `sshHost`,
-then close the existing agent-device session (it caches the old host).
-Compact sock JPEGs can freeze (clock stops). Focus the visible vphone-cli
-window and prefer `screen:false` PNG. Cold `uiopen --bundleid` starts
-nothing on this iOS 26 guest. `uicache -p` the container `.app`, then
-`uiopen --bundleid` once a live pid exists. Do not `kill -9` Wawona.
+`22222`. No sftp; file push is `ssh cat` or sock `files.write`. Guest IPv4
+drifts on every `vphone-cli` relaunch. Rewrite `guest-ip.txt` and the
+profile `sshHost`, then close the existing agent-device session (it caches
+the old host). Compact sock JPEGs can freeze (clock stops). Focus the
+visible vphone-cli window and prefer `screen:false` PNG. Cold
+`uiopen --bundleid` starts nothing on this iOS 26 guest. `uicache -p` the
+container `.app`, then `uiopen --bundleid` once a live pid exists. Do not
+`kill -9` Wawona.
+
+`packages status` and `packages apt` need `:22222`. A 2.6 standard guest
+often has no sshd until OwnGoal. Until then, use `vphone-sock` (skill
+`wawona-vphone-cli`):
+
+```bash
+python3 wwn-vphone/scripts/vphone-sock.py ping
+python3 wwn-vphone/scripts/vphone-sock.py unlock
+python3 wwn-vphone/scripts/vphone-sock.py ls /var/jb/etc/apt/sources.list.d
+python3 wwn-vphone/scripts/vphone-sock.py open-url \
+  'irisin://repository/add?url=https%3A%2F%2Frepo.wawona.io%2F'
+```
+
+Do not HID-type `repo.wawona.io` in Irisin Search. Tipa without TrollStore
+SSH: sock `files.write` then `apps.install`. Never copy a tipa app under
+`/var/jb/Applications` (helper 179).
 
 ### snapshot -i / @eN
 

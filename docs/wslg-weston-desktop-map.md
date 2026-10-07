@@ -115,8 +115,8 @@ Research trees: `vendor-research/{owl,wslg,weston-upstream,weston-mirror}`
 
 | Concern | Path |
 |---------|------|
-| CSD live resize | `WWNCompositorBridge.m` `handleWindowResizeRequested` → `injectWindowResize` each tick |
-| SSD live resize | `WWNWindow.m` `windowWillResize` + `inLiveResize` debounce 0 |
+| CSD live resize | `Sources/WawonaApple/Present/CompositorBridge.swift` `handleWindowResizeRequested` → `injectWindowResize` each tick |
+| SSD live resize | `Sources/WawonaApple/Present/WWNWindow.swift` `windowWillResize` + `inLiveResize` debounce 0 |
 | Host↔client size | `shell_handler` 0×0 seed; `surfaces.rs` OWL accept; macOS `handleWindowSizeChanged` |
 | Live-resize authority | `Window.size_authority_host` + scene stretch only while set (#111) |
 | SSD/CSD policy | `decoration.rs`, `applyPresentationPolicyForServerSideDecorations` |

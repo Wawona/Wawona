@@ -24,9 +24,9 @@ rec {
     "Sources/WawonaUIContracts/MachineEditorContracts.swift"
     "Sources/WawonaUIContracts/SettingsContracts.swift"
     "Sources/WawonaUI/WawonaApp.swift"
-    "Sources/WawonaUI/UIContractAdapters.swift"
     "Sources/WawonaUI/MachineRuntimeSettingsApplicator.swift"
     "Sources/WawonaUI/MachineSessionBridge.swift"
+    # Sources/WawonaApple is compiled via xcodegen wawonaAppleSources (full tree).
     "Sources/WawonaUI/CompositorBridge.swift"
     "Sources/WawonaUI/WelcomeView.swift"
     "Sources/WawonaUI/ContentView.swift"
@@ -42,7 +42,6 @@ rec {
     "Sources/WawonaUI/Machines/BundledClientPickerView.swift"
     "Sources/WawonaUI/Machines/MachineFuzzySearch.swift"
     "Sources/WawonaUI/Machines/MachineDetailView.swift"
-    "Sources/WawonaUI/Settings/ObjCSettingsHostView.swift"
     "Sources/WawonaUI/Settings/PlatformGlobalSettings.swift"
     "Sources/WawonaUI/Settings/MachineSettingsView.swift"
     "Sources/WawonaUI/View+WawonaTextField.swift"
@@ -58,67 +57,14 @@ rec {
     "Sources/WawonaWatch/MachineStatusView.swift"
     "Sources/WawonaWatch/QuickConnectView.swift"
     "Sources/WawonaWatch/SessionGlanceView.swift"
-    # Platform bridge (shared between macOS and iOS)
-    "src/platform/macos/main.m"
-    "src/platform/macos/WWNCompositorBridge.m"
-    "src/platform/macos/WWNCompositorBridge.h"
-    "src/platform/macos/WWNLaunchAgentManager.m"
-    "src/platform/macos/WWNLaunchAgentManager.h"
+    # Platform bridge headers / C stubs (no .m). Swift lives in Sources/WawonaApple.
     "src/platform/macos/WWNSettings.h"
-    "src/platform/macos/WWNSettings.m"
     "src/platform/macos/WWNSettings.c"
-    "src/platform/macos/WWNPlatformCallbacks.m"
-    "src/platform/macos/WWNPlatformCallbacks.h"
-    "src/platform/macos/WWNRustBridge.h"
-    # Apple platform UI
-    "src/platform/macos/ui/Helpers/WWNImageLoader.m"
-    "src/platform/macos/ui/Helpers/WWNImageLoader.h"
-    # Shared SSH keygen / GPG-SSH import (libwwn-ssh-cli on Apple mobile).
-    "src/platform/macos/ui/Helpers/WWNSSHKeygen.m"
-    "src/platform/macos/ui/Helpers/WWNSSHKeygen.h"
-    "src/platform/macos/ui/Machines/WWNMachineProfileStore.m"
-    "src/platform/macos/ui/Machines/WWNMachineProfileStore.h"
-    "src/platform/macos/ui/Machines/WWNMachinesCoordinator.m"
-    "src/platform/macos/ui/Machines/WWNMachinesCoordinator.h"
-    "src/platform/macos/ui/Machines/WWNMachineSessionBridge.m"
-    "src/platform/macos/ui/Machines/WWNMachineSessionBridge.h"
-    # Header-only platform gates used by WWNMachineSessionBridge.m (must be in
-    # the staged source list. Nix copies only explicitly listed paths).
-    "src/platform/macos/ui/Machines/WWNPlatformCapabilities.h"
-    # Swinging Bridge App Bridge. MacOS-only (added in macos.nix sources, not shared).
-    # Relay runner (vm / container / wasm). Never QEMU.
-    "src/platform/macos/ui/Machines/WWNRelay.m"
-    "src/platform/macos/ui/Machines/WWNRelay.h"
+    "src/util/wwn_startup_log_sink.c"
+    "src/platform/ios/WWNWatchCompanionBridgeConstants.c"
     "src/platform/macos/ui/Machines/wawona_relay.h"
-    # Weak stub until flake wwn-relay exports relay_copy_frame on iOS.
     "src/platform/macos/ui/Machines/wawona_relay_copy_frame_stub.c"
-    "src/platform/macos/ui/Machines/WWNVirtualMachineRunner.m"
-    "src/platform/macos/ui/Machines/WWNVirtualMachineRunner.h"
-    "src/platform/macos/ui/Machines/WWNContainerRunner.m"
-    "src/platform/macos/ui/Machines/WWNContainerRunner.h"
-    "src/platform/macos/ui/Machines/WWNMobileVmEngine.m"
-    "src/platform/macos/ui/Machines/WWNMobileVmEngine.h"
-    # Machine session thumbnails (referenced by WWNCompositorBridge.m + view model).
-    "src/platform/macos/ui/Machines/WWNMachineThumbnailStore.m"
-    "src/platform/macos/ui/Machines/WWNMachineThumbnailStore.h"
-    "src/platform/macos/ui/Settings/WWNPreferences.m"
-    "src/platform/macos/ui/Settings/WWNPreferences.h"
-    "src/platform/macos/ui/Settings/WWNPreferencesManager.m"
-    "src/platform/macos/ui/Settings/WWNPreferencesManager.h"
-    "src/platform/macos/ui/Settings/WWNEnvironmentOverrides.m"
-    "src/platform/macos/ui/Settings/WWNEnvironmentOverrides.h"
-    # WWNSipStatus. MacOS-only (Desktop Replacement SIP helper; see macos.nix).
-    "src/platform/macos/ui/About/WWNAboutPanel.m"
-    "src/platform/macos/ui/About/WWNAboutPanel.h"
     "src/platform/macos/ui/Settings/WWNSettingsDefines.h"
-    "src/platform/macos/ui/Settings/WWNSettingsModel.m"
-    "src/platform/macos/ui/Settings/WWNSettingsModel.h"
-    "src/platform/macos/ui/Settings/WWNWaypipeRunner.m"
-    "src/platform/macos/ui/Settings/WWNWaypipeRunner.h"
-    "src/platform/macos/ui/Settings/WWNSettingsSplitViewController.m"
-    "src/platform/macos/ui/Settings/WWNSettingsSplitViewController.h"
-    "src/platform/macos/ui/Settings/WWNSettingsSidebarViewController.m"
-    "src/platform/macos/ui/Settings/WWNSettingsSidebarViewController.h"
   ];
 
 

@@ -23,16 +23,23 @@ struct NativeSettingsRow<Control: View>: View {
     }
 
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .center, spacing: 12) {
-                labelColumn
-                Spacer(minLength: 12)
-                trailingControl
+        if #available(iOS 16, macOS 13, tvOS 16, watchOS 9, *) {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: 12) {
+                    labelColumn
+                    Spacer(minLength: 12)
+                    trailingControl
+                }
+                VStack(alignment: .leading, spacing: 8) {
+                    labelColumn
+                    trailingControl
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                }
             }
+        } else {
             VStack(alignment: .leading, spacing: 8) {
                 labelColumn
-                trailingControl
-                    .frame(maxWidth: .infinity, alignment: .trailing)
+                trailingControl.frame(maxWidth: .infinity, alignment: .trailing)
             }
         }
     }
@@ -44,7 +51,7 @@ struct NativeSettingsRow<Control: View>: View {
                 if let summary, !summary.isEmpty {
                     Text(summary)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundColor(.secondary)
                         .lineLimit(1)
                 }
             }
@@ -56,23 +63,23 @@ struct NativeSettingsRow<Control: View>: View {
 
     private var trailingControl: some View {
         control()
-            .accessibilityLabel(title)
+            .accessibility(label: Text(title))
             .frame(width: controlWidth, alignment: .trailing)
     }
 
     @ViewBuilder
     private func helpButton(_ help: String) -> some View {
-        let button = Button {
+        let button = WawonaButton {
             showingHelp = true
         } label: {
             Image(systemName: "info.circle")
         }
         .buttonStyle(.borderless)
-        .accessibilityLabel("Help for \(title)")
+        .accessibility(label: Text("Help for \(title)"))
 
         #if os(tvOS) || os(watchOS)
         button.alert(title, isPresented: $showingHelp) {
-            Button("OK", role: .cancel) {}
+            WawonaButton("OK", role: .cancel) {}
         } message: {
             Text(help)
         }
@@ -90,11 +97,11 @@ struct NativeSettingsRow<Control: View>: View {
                             .fixedSize(horizontal: false, vertical: true)
                         Text(help)
                             .font(.body)
-                            .foregroundStyle(.secondary)
+                            .foregroundColor(.secondary)
                             .lineLimit(nil)
                             .fixedSize(horizontal: false, vertical: true)
                             #if !os(tvOS) && !os(watchOS)
-                            .textSelection(.enabled)
+                            .backport.selectableText()
                             #endif
                     }
                     .padding(16)
@@ -123,7 +130,11 @@ extension View {
         #if os(macOS)
         self.pickerStyle(.menu)
         #else
-        self.pickerStyle(.navigationLink)
+        if #available(iOS 16.0, tvOS 16.0, watchOS 9.0, *) {
+            self.pickerStyle(.navigationLink)
+        } else {
+            self.pickerStyle(DefaultPickerStyle())
+        }
         #endif
     }
 }
@@ -135,17 +146,19 @@ struct NativeBoundedIntegerField: View {
     var step: Int = 1
     var prompt: String? = nil
 
+    private var integerFormatter: NumberFormatter {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.allowsFloats = false
+        return formatter
+    }
+
     var body: some View {
         HStack(spacing: 6) {
-            TextField(
-                "",
-                value: boundedValue,
-                format: .number,
-                prompt: prompt.map { Text($0) }
-            )
+            TextField("", value: boundedValue, formatter: integerFormatter)
             .textFieldStyle(.roundedBorder)
             .multilineTextAlignment(.trailing)
-            .accessibilityLabel(title)
+            .accessibility(label: Text(title))
 
             #if !os(tvOS)
             Stepper(
@@ -155,7 +168,7 @@ struct NativeBoundedIntegerField: View {
                 step: step
             )
             .labelsHidden()
-            .accessibilityLabel("\(title) stepper")
+            .accessibility(label: Text("\(title) stepper"))
             #endif
         }
     }

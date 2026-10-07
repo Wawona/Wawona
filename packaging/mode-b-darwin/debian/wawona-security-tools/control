@@ -1,0 +1,9 @@
+Package: wawona-security-tools
+Version: 26.10.6
+Section: utils
+Priority: optional
+Architecture: iphoneos-arm64
+Maintainer: Wawona <hello@wawona.io>
+Depends: firmware (>= 13.0)
+Description: ldid (AGPL-3.0)
+ Mode B only. Source is ProcursusTeam/ldid. The package must ship the AGPL source offer.

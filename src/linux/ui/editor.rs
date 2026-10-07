@@ -10,7 +10,6 @@ use gtk4::gio;
 use gtk4::glib;
 use libadwaita as adw;
 
-use crate::linux::bundled_clients::BUNDLED_CLIENTS;
 use crate::linux::machine_profile::{MachineProfile, MachineType};
 use crate::linux::session_exit;
 use crate::linux::ui::home::{rebuild_home, HomeShell, MachineSessions, RebuildHome};
@@ -62,53 +61,106 @@ pub fn show_editor(
     add_row(&profile_group, "Display Name", &name_entry);
 
     let type_combo = gtk::ComboBoxText::new();
-    for mt in MachineType::all() {
+    for mt in MachineType::selectable_for_ui() {
         let id = mt_id(*mt);
         type_combo.append(Some(&id), mt.user_facing_name());
     }
-    type_combo.set_active_id(Some(&mt_id(profile.machine_type)));
+    let ui_type = match profile.machine_type {
+        MachineType::Wasm | MachineType::SshWaypipe | MachineType::SshTerminal => {
+            MachineType::Native
+        }
+        other => other,
+    };
+    type_combo.set_active_id(Some(&mt_id(ui_type)));
     add_row(&profile_group, "Type", &type_combo);
 
-    // MARK: Wayland Client (Native)
-    let client_group = adw::PreferencesGroup::new();
-    client_group.set_title("Wayland Client");
-    client_group.set_description(Some(
-        "Choose a bundled client to connect directly to the compositor via Wayland socket. No SSH or network required.",
+    let (initial_session, initial_use_ssh) = native_shell_session_from(&profile);
+    let session_group = adw::PreferencesGroup::new();
+    session_group.set_title("Native Shell Session");
+    session_group.set_description(Some(
+        "Terminal is Wawona Terminal (local or SSH). Wayland and Wasm run as clients. Waypipe streams with optional SSH.",
     ));
-    let selected_client = Rc::new(RefCell::new(
-        profile
-            .runtime_overrides
-            .bundled_app_id
-            .clone()
-            .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| "weston-terminal".to_string()),
-    ));
+    let session_combo = gtk::ComboBoxText::new();
+    for (id, label) in [
+        ("terminal", "Terminal"),
+        ("wayland", "Wayland"),
+        ("wasm", "Wasm"),
+        ("waypipe", "Waypipe"),
+    ] {
+        session_combo.append(Some(id), label);
+    }
+    session_combo.set_active_id(Some(initial_session));
+    add_row(&session_group, "Session", &session_combo);
+    let use_ssh_switch = gtk::Switch::builder()
+        .active(initial_use_ssh)
+        .valign(gtk::Align::Center)
+        .build();
+    add_row(&session_group, "Use SSH", &use_ssh_switch);
+    let terminal_custom_entry = gtk::Entry::builder()
+        .placeholder_text("e.g. bash -l (empty = interactive shell)")
+        .text(&profile.remote_command)
+        .build();
+    let terminal_custom_row = adw::ActionRow::new();
+    terminal_custom_row.set_title("Custom Command");
+    terminal_custom_row.set_title_lines(1);
+    terminal_custom_row.set_activatable(false);
+    terminal_custom_row.add_suffix(&terminal_custom_entry);
+    session_group.add(&terminal_custom_row);
+
+    // MARK: Wayland Software (Native): Compositors, then client types.
+    // Custom commands belong under Terminal, not the Wayland picker.
+    use crate::linux::bundled_clients::{wayland_picker_groups, SoftwareKind};
+    let mut initial_client = profile
+        .runtime_overrides
+        .bundled_app_id
+        .clone()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "weston-terminal".to_string());
+    // Legacy Wayland "custom" → Terminal Custom Command (command stays in remote_command).
+    if initial_client == "custom" {
+        session_combo.set_active_id(Some("terminal"));
+        initial_client = "weston-simple-shm".to_string();
+    }
+    let selected_client = Rc::new(RefCell::new(initial_client));
     let mut first_radio: Option<gtk::CheckButton> = None;
-    for client in BUNDLED_CLIENTS {
-        let row = adw::ActionRow::new();
-        row.set_title(client.name);
-        row.set_title_lines(1);
-        row.set_activatable(false);
-        let radio = gtk::CheckButton::new();
-        if let Some(ref first) = first_radio {
-            radio.set_group(Some(first));
-        } else {
-            first_radio = Some(radio.clone());
+    let mut client_groups: Vec<adw::PreferencesGroup> = Vec::new();
+
+    for (kind, clients) in wayland_picker_groups() {
+        let group = adw::PreferencesGroup::new();
+        group.set_title(kind.section_title());
+        if kind == SoftwareKind::Compositor {
+            group.set_description(Some(
+                "Nested compositors. Then Terminals, Graphics, Demos, and Other. Custom commands are under Terminal.",
+            ));
         }
-        if *selected_client.borrow() == client.id {
-            radio.set_active(true);
-        }
-        let sel = selected_client.clone();
-        let id = client.id.to_string();
-        radio.connect_toggled(move |btn| {
-            if btn.is_active() {
-                *sel.borrow_mut() = id.clone();
+        for client in clients {
+            let row = adw::ActionRow::new();
+            row.set_title(client.name);
+            row.set_subtitle(Some(client.description));
+            row.set_title_lines(1);
+            row.set_activatable(false);
+            let radio = gtk::CheckButton::new();
+            if let Some(ref first) = first_radio {
+                radio.set_group(Some(first));
+            } else {
+                first_radio = Some(radio.clone());
             }
-        });
-        row.add_prefix(&radio);
-        let icon = gtk::Image::from_icon_name(client.icon_name);
-        row.add_prefix(&icon);
-        client_group.add(&row);
+            if *selected_client.borrow() == client.id {
+                radio.set_active(true);
+            }
+            let sel = selected_client.clone();
+            let id = client.id.to_string();
+            radio.connect_toggled(move |btn| {
+                if btn.is_active() {
+                    *sel.borrow_mut() = id.clone();
+                }
+            });
+            row.add_prefix(&radio);
+            let icon = gtk::Image::from_icon_name(client.icon_name);
+            row.add_prefix(&icon);
+            group.add(&row);
+        }
+        client_groups.push(group);
     }
 
     let wasm_group = adw::PreferencesGroup::new();
@@ -441,15 +493,16 @@ pub fn show_editor(
         let user = user_entry.clone();
         let port = port_entry.clone();
         let cmd = cmd_entry.clone();
-        let combo = type_combo.clone();
+        let terminal_cmd = terminal_custom_entry.clone();
+        let session = session_combo.clone();
         let lbl = preview_lbl.clone();
         let settings = state.borrow().settings.clone();
         Rc::new(move || {
-            let type_id = combo
+            let kind = session
                 .active_id()
                 .map(|s| s.to_string())
-                .unwrap_or_else(|| "native".into());
-            let is_waypipe = type_id == "ssh_waypipe";
+                .unwrap_or_else(|| "terminal".into());
+            let is_waypipe = kind == "waypipe";
             let host = host.text().trim().to_string();
             if host.is_empty() {
                 lbl.set_text("Preview unavailable: SSH host is empty");
@@ -462,7 +515,11 @@ pub fn show_editor(
                 format!("{user}@{host}")
             };
             let port = port.text().trim().parse::<i32>().unwrap_or(22);
-            let command = cmd.text().trim().to_string();
+            let command = if is_waypipe {
+                cmd.text().trim().to_string()
+            } else {
+                terminal_cmd.text().trim().to_string()
+            };
             let effective = if command.is_empty() {
                 if is_waypipe {
                     "weston-simple-shm"
@@ -488,46 +545,62 @@ pub fn show_editor(
     // Show/hide type-specific sections + relabel command field, mirroring the
     // macOS editor's conditional sections.
     let update_sections = {
-        let cg = client_group.clone();
+        let cgs = client_groups.clone();
         let wg = wasm_group.clone();
+        let sg = session_group.clone();
         let rg = remote_group.clone();
         let pg = preview_group.clone();
         let vg = vm_group.clone();
         let ctg = container_group.clone();
         let cmd_row = cmd_row.clone();
         let cmd = cmd_entry.clone();
+        let terminal_custom_row = terminal_custom_row.clone();
+        let terminal_custom_entry = terminal_custom_entry.clone();
+        let session = session_combo.clone();
+        let use_ssh = use_ssh_switch.clone();
         let preview = update_preview.clone();
         move |type_id: &str| {
-            cg.set_visible(type_id == "native");
-            wg.set_visible(type_id == "wasm");
-            let is_ssh = type_id == "ssh_waypipe" || type_id == "ssh_terminal";
-            rg.set_visible(is_ssh);
-            pg.set_visible(is_ssh);
+            let is_native = type_id == "native";
+            sg.set_visible(is_native);
+            let kind = session
+                .active_id()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "terminal".into());
+            let ssh_on = use_ssh.is_active() && (kind == "terminal" || kind == "waypipe");
+            let show_wayland = is_native && kind == "wayland";
+            for g in &cgs {
+                g.set_visible(show_wayland);
+            }
+            wg.set_visible(is_native && kind == "wasm");
+            rg.set_visible(is_native && ssh_on);
+            pg.set_visible(is_native && ssh_on);
             vg.set_visible(type_id == "virtual_machine");
             ctg.set_visible(type_id == "container");
-            match type_id {
-                "ssh_waypipe" => {
-                    rg.set_title("SSH + Waypipe");
-                    rg.set_description(Some(
-                        "Connects to a remote host via SSH and proxies the Wayland protocol using waypipe.",
-                    ));
-                    cmd_row.set_title("Remote Command");
-                    cmd.set_placeholder_text(Some("weston-simple-shm"));
-                }
-                "ssh_terminal" => {
-                    rg.set_title("SSH Connection");
-                    rg.set_description(Some(
-                        "Connects to a remote host via SSH and opens a terminal session.",
-                    ));
-                    cmd_row.set_title("SSH Command");
-                    cmd.set_placeholder_text(Some("bash -l"));
-                }
-                _ => {}
+            use_ssh.set_sensitive(kind == "terminal" || kind == "waypipe");
+            terminal_custom_row.set_visible(is_native && kind == "terminal");
+            // Terminal Custom Command lives under Native Shell Session; Waypipe keeps Remote Command here.
+            cmd_row.set_visible(kind == "waypipe" && ssh_on);
+            if kind == "waypipe" && ssh_on {
+                rg.set_title("SSH + Waypipe");
+                rg.set_description(Some(
+                    "Connects to a remote host via SSH and proxies the Wayland protocol using waypipe.",
+                ));
+                cmd_row.set_title("Remote Command");
+                cmd.set_placeholder_text(Some("weston-simple-shm"));
+            } else if kind == "terminal" && ssh_on {
+                rg.set_title("SSH Connection");
+                rg.set_description(Some(
+                    "Connects to a remote host via SSH and opens a terminal session.",
+                ));
+                terminal_custom_entry.set_placeholder_text(Some("e.g. bash -l"));
+            } else if kind == "terminal" {
+                terminal_custom_entry
+                    .set_placeholder_text(Some("e.g. htop (empty = interactive shell)"));
             }
             preview();
         }
     };
-    update_sections(&mt_id(profile.machine_type));
+    update_sections(&mt_id(ui_type));
     {
         let u = update_sections.clone();
         type_combo.connect_changed(move |c| {
@@ -538,7 +611,35 @@ pub fn show_editor(
             u(&id);
         });
     }
-    for entry in [&host_entry, &user_entry, &port_entry, &cmd_entry] {
+    {
+        let u = update_sections.clone();
+        let type_combo = type_combo.clone();
+        session_combo.connect_changed(move |_| {
+            let id = type_combo
+                .active_id()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "native".into());
+            u(&id);
+        });
+    }
+    {
+        let u = update_sections.clone();
+        let type_combo = type_combo.clone();
+        use_ssh_switch.connect_active_notify(move |_| {
+            let id = type_combo
+                .active_id()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "native".into());
+            u(&id);
+        });
+    }
+    for entry in [
+        &host_entry,
+        &user_entry,
+        &port_entry,
+        &cmd_entry,
+        &terminal_custom_entry,
+    ] {
         let preview = update_preview.clone();
         entry.connect_changed(move |_| preview());
     }
@@ -546,7 +647,10 @@ pub fn show_editor(
     // Section order matches WWNMachineEditorView.body.
     let form = adw::PreferencesPage::new();
     form.add(&profile_group);
-    form.add(&client_group);
+    form.add(&session_group);
+    for g in &client_groups {
+        form.add(g);
+    }
     form.add(&wasm_group);
     form.add(&remote_group);
     form.add(&preview_group);
@@ -581,9 +685,20 @@ pub fn show_editor(
             .active_id()
             .map(|s| s.to_string())
             .unwrap_or_else(|| "native".into());
-        let mt = parse_mt(&tid);
+        let kind = session_combo
+            .active_id()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| "terminal".into());
+        let use_ssh = use_ssh_switch.is_active() && (kind == "terminal" || kind == "waypipe");
+        let mt = if tid == "native" {
+            storage_type_for_native_shell(&kind, use_ssh)
+        } else {
+            parse_mt(&tid)
+        };
         let remote_command = if mt == MachineType::Container {
             container_cmd.text().trim().to_string()
+        } else if kind == "terminal" {
+            terminal_custom_entry.text().trim().to_string()
         } else {
             cmd_entry.text().trim().to_string()
         };
@@ -598,20 +713,37 @@ pub fn show_editor(
                 }
             },
             machine_type: mt,
-            ssh_host: host_entry.text().trim().to_string(),
-            ssh_user: user_entry.text().trim().to_string(),
-            ssh_port: port_entry.text().trim().parse::<i32>().unwrap_or(22),
-            ssh_password: password_entry.text().to_string(),
+            ssh_host: if use_ssh {
+                host_entry.text().trim().to_string()
+            } else {
+                String::new()
+            },
+            ssh_user: if use_ssh {
+                user_entry.text().trim().to_string()
+            } else {
+                String::new()
+            },
+            ssh_port: if use_ssh {
+                port_entry.text().trim().parse::<i32>().unwrap_or(22)
+            } else {
+                22
+            },
+            ssh_password: if use_ssh {
+                password_entry.text().to_string()
+            } else {
+                String::new()
+            },
             remote_command,
             favorite: baseline.favorite,
             launchers: baseline.launchers.clone(),
             runtime_overrides: baseline.runtime_overrides.clone(),
             ..baseline.clone()
         };
-        if mt == MachineType::Native {
+        if tid == "native" && kind == "wayland" {
             updated.runtime_overrides.bundled_app_id = Some(selected_client.borrow().clone());
-        }
-        if mt == MachineType::Wasm {
+        } else if tid == "native" && kind == "terminal" && !use_ssh {
+            updated.runtime_overrides.bundled_app_id = Some("wawona-shell".into());
+        } else if tid == "native" && kind == "wasm" {
             updated.runtime_overrides.bundled_app_id = Some("wawona-wasm".into());
             let cmd = wasm_cmd.text().trim().to_string();
             updated.runtime_overrides.wasm_command = Some(if cmd.is_empty() {
@@ -634,9 +766,11 @@ pub fn show_editor(
                 }
                 .into(),
             );
+        } else if tid == "native" && kind == "waypipe" {
+            updated.runtime_overrides.bundled_app_id = None;
         }
         updated.runtime_overrides.waypipe_enabled =
-            Some(mt == MachineType::SshWaypipe || mt == MachineType::SshTerminal);
+            Some(kind == "waypipe" || (kind == "terminal" && use_ssh));
         updated.runtime_overrides.force_ssd = Some(force_ssd.is_active());
         updated.runtime_overrides.auto_scale = Some(auto_scale.is_active());
         updated.runtime_overrides.vulkan_driver = vulkan_driver.active_id().map(|s| s.to_string());
@@ -693,5 +827,42 @@ fn parse_mt(id: &str) -> MachineType {
         "virtual_machine" => MachineType::VirtualMachine,
         "container" => MachineType::Container,
         _ => MachineType::Native,
+    }
+}
+
+fn storage_type_for_native_shell(kind: &str, use_ssh: bool) -> MachineType {
+    match kind {
+        "wasm" => MachineType::Wasm,
+        "terminal" if use_ssh => MachineType::SshTerminal,
+        "waypipe" if use_ssh => MachineType::SshWaypipe,
+        _ => MachineType::Native,
+    }
+}
+
+fn native_shell_session_from(profile: &MachineProfile) -> (&'static str, bool) {
+    match profile.machine_type {
+        MachineType::Wasm => ("wasm", false),
+        MachineType::SshTerminal => ("terminal", true),
+        MachineType::SshWaypipe => ("waypipe", true),
+        MachineType::Native => {
+            let bundled = profile
+                .runtime_overrides
+                .bundled_app_id
+                .as_deref()
+                .unwrap_or("")
+                .trim();
+            if profile.runtime_overrides.waypipe_enabled == Some(true)
+                && (bundled.is_empty() || bundled == "wawona-shell")
+            {
+                ("waypipe", false)
+            } else if bundled == "wawona-wasm" {
+                ("wasm", false)
+            } else if bundled.is_empty() || bundled == "wawona-shell" {
+                ("terminal", false)
+            } else {
+                ("wayland", false)
+            }
+        }
+        MachineType::VirtualMachine | MachineType::Container => ("terminal", false),
     }
 }

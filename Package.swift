@@ -16,7 +16,9 @@ let package = Package(
         .library(name: "WawonaUIContracts", type: .dynamic, targets: ["WawonaUIContracts"]),
         .library(name: "WawonaWatch", type: .dynamic, targets: ["WawonaWatch"])
     ],
-    dependencies: [],
+    dependencies: [
+        .package(url: "https://github.com/typelift/SwiftCheck.git", from: "0.12.0")
+    ],
     targets: [
         .target(
             name: "WawonaUIContracts",
@@ -45,7 +47,8 @@ let package = Package(
         .testTarget(
             name: "WawonaUIContractsTests",
             dependencies: [
-                "WawonaUIContracts"
+                "WawonaUIContracts",
+                .product(name: "SwiftCheck", package: "SwiftCheck"),
             ]
         ),
         .testTarget(

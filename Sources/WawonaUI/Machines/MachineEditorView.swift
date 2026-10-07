@@ -9,6 +9,8 @@ struct MachineEditorView: View {
 
     @State var name: String
     @State var type: MachineType
+    @State var nativeShellKind: NativeShellKind
+    @State var nativeShellUseSSH: Bool
     @State var selectedLauncherName: String
     @State var sshHost: String
     @State var sshUser: String
@@ -53,6 +55,10 @@ struct MachineEditorView: View {
         let state = MachineEditorDomain.machineEditorState(from: profile)
         _name = State(initialValue: state.name)
         _type = State(initialValue: MachineType(rawValue: state.typeRawValue) ?? .native)
+        _nativeShellKind = State(
+            initialValue: NativeShellKind(rawValue: state.nativeShellKindRawValue) ?? .terminal
+        )
+        _nativeShellUseSSH = State(initialValue: state.nativeShellUseSSH)
         _selectedLauncherName = State(initialValue: state.selectedLauncherName)
         _sshHost = State(initialValue: state.sshHost)
         _sshUser = State(initialValue: state.sshUser)
@@ -91,8 +97,11 @@ struct MachineEditorView: View {
     }
 
     private var isNative: Bool { type == .native }
-    private var isWasm: Bool { type == .wasm }
-    private var isSSH:    Bool { type.isSSH }
+    private var session: NativeShellSession {
+        NativeShellSession(kind: nativeShellKind, useSSH: nativeShellUseSSH)
+    }
+    private var isWasm: Bool { isNative && nativeShellKind == .wasm }
+    private var isSSH: Bool { isNative && session.needsSSHFields }
     private var contractState: MachineEditorState {
         persistableEditorState()
     }
@@ -101,10 +110,13 @@ struct MachineEditorView: View {
         let base = MachineEditorDomain.machineEditorState(from: editingBaseline)
         let sanitizedHost = MachineProfileDomain.sanitizeSSHHost(sshHost)
         let normalizedPort = MachineProfileDomain.normalizeSSHPort(String(sshPort))
+        let bundled = session.resolvedBundledAppID(selectedLauncher: selectedLauncherName) ?? ""
         return MachineEditorState(
             id: existingProfileId ?? base.id,
             name: name,
             typeRawValue: type.rawValue,
+            nativeShellKindRawValue: nativeShellKind.rawValue,
+            nativeShellUseSSH: nativeShellUseSSH,
             selectedLauncherName: selectedLauncherName,
             sshHost: sanitizedHost,
             sshUser: sshUser,
@@ -115,8 +127,8 @@ struct MachineEditorView: View {
             sshKeyPassphrase: sshKeyPassphrase,
             remoteCommand: remoteCommand,
             inputProfile: base.inputProfile,
-            bundledAppID: isNative ? selectedLauncherName : (isWasm ? "wawona-wasm" : base.bundledAppID),
-            waypipeEnabled: base.waypipeEnabled,
+            bundledAppID: isNative ? bundled : base.bundledAppID,
+            waypipeEnabled: isNative ? session.waypipeEnabled : base.waypipeEnabled,
             containerRef: containerRef,
             entryCommand: entryCommand,
             desktopSession: desktopSession,
@@ -158,84 +170,132 @@ struct MachineEditorView: View {
                     .wwnA11y(WawonaA11y.machinesEditorType, label: "Type")
                 }
 
-                // MARK: Native. Local Wayland socket, no network
-                if isWasm {
-                    Section {
-                        WawonaTextField("Command", text: $wasmCommand, prompt: Text("wasm hello-wasi-gui"))
-                            .wawonaTextFieldNoAutocaps()
-                            .autocorrectionDisabled()
-                        WawonaTextField("Package", text: $wasmPackage, prompt: Text("hello-wasi-gui"))
-                            .wawonaTextFieldNoAutocaps()
-                            .autocorrectionDisabled()
-                        WawonaButton(
-                            wasmCatalogLoading ? "Searching…" : "Search Catalog",
-                            systemImage: "magnifyingglass"
-                        ) {
-                            searchWasmCatalog()
-                        }
-                        .disabled(wasmCatalogLoading)
-                        ForEach(wasmCatalogResults) { pkg in
-                            WawonaButton {
-                                wasmPackage = pkg.name
-                                wasmCommand = "wasm \(pkg.name)"
-                                downloadWasmPackage(pkg)
-                            } label: {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(pkg.name)
-                                    if !pkg.summary.isEmpty {
-                                        Text(pkg.summary)
-                                            .font(.caption)
-                                            .foregroundColor(.secondary)
-                                    }
-                                }
-                            }
-                        }
-                        WawonaTextField("Local .wasm", text: $wasmModulePath)
-                            .wawonaTextFieldNoAutocaps()
-                            .autocorrectionDisabled()
-                        #if !os(tvOS)
-                        WawonaButton("Choose File", systemImage: "folder") {
-                            fileImportKind = .wasm
-                        }
-                        #endif
-                        ForEach(WasmLaunch.listLocalModules(), id: \.path) { url in
-                            WawonaButton(url.lastPathComponent, systemImage: "doc.badge.gearshape") {
-                                wasmModulePath = url.path
-                                wasmCommand = "wasm \(url.path)"
-                            }
-                        }
-                        if let wasmCatalogNote {
-                            Text(wasmCatalogNote).font(.caption)
-                        }
-                    } footer: {
-                        Text("Same as native shell: wasm hello-wasi-gui. Search /wasm/v1, pick a local module, or type the command. Native still runs wasm from the shell.")
-                    }
-                }
-
                 if isNative {
                     Section {
-                        #if os(macOS)
-                        Picker("Wayland Client", selection: $selectedLauncherName) {
-                            ForEach(ClientLauncher.presets) { launcher in
-                                Text(launcher.displayName).tag(launcher.name)
+                        Picker("Session", selection: $nativeShellKind) {
+                            ForEach(NativeShellKind.allCases, id: \.self) { kind in
+                                Text(kind.userFacingName).tag(kind)
                             }
                         }
                         .wwnMachineChoicePicker()
-                        #else
-                        NavigationLink {
-                            BundledClientPickerView(selection: $selectedLauncherName)
-                        } label: {
-                            HStack {
-                                Text("Wayland Client")
-                                Spacer()
-                                Text(ClientLauncher.displayName(for: selectedLauncherName))
-                                    .foregroundColor(.secondary)
-                                    .lineLimit(1)
-                            }
+                        .wwnA11y("wwn.machines.editor.nativeShell.kind", label: "Native Shell Session")
+                        if nativeShellKind.allowsSSH {
+                            Toggle("Use SSH", isOn: $nativeShellUseSSH)
                         }
-                        #endif
+                        if nativeShellKind == .terminal {
+                            WawonaTextField(
+                                "Custom Command",
+                                text: $remoteCommand,
+                                prompt: Text(
+                                    nativeShellUseSSH
+                                        ? "e.g. bash -l"
+                                        : "e.g. htop (empty = interactive shell)"
+                                )
+                            )
+                            .wawonaTextFieldNoAutocaps()
+                            .autocorrectionDisabled()
+                        }
+                    } header: {
+                        Text("Native Shell Session")
                     } footer: {
-                        Text("Connects to the compositor via local Wayland socket. No network or SSH required.")
+                        Text(
+                            nativeShellKind == .terminal
+                                ? (nativeShellUseSSH
+                                    ? "Custom Command runs in the remote SSH session. Empty defaults to bash -l."
+                                    : "Optional Custom Command for Wawona Terminal. Empty opens an interactive shell.")
+                                : nativeShellKind == .wayland
+                                    ? "Bundled Wayland client on the local compositor socket."
+                                    : nativeShellKind == .wasm
+                                        ? "Relay WASI package (same bytecode as /wasm/v1)."
+                                        : "Waypipe stream, with optional SSH to a remote host."
+                        )
+                    }
+
+                    if nativeShellKind == .wasm {
+                        Section {
+                            WawonaTextField("Command", text: $wasmCommand, prompt: Text("wasm hello-wasi-gui"))
+                                .wawonaTextFieldNoAutocaps()
+                                .autocorrectionDisabled()
+                            WawonaTextField("Package", text: $wasmPackage, prompt: Text("hello-wasi-gui"))
+                                .wawonaTextFieldNoAutocaps()
+                                .autocorrectionDisabled()
+                            WawonaButton(
+                                wasmCatalogLoading ? "Searching…" : "Search Catalog",
+                                systemImage: "magnifyingglass"
+                            ) {
+                                searchWasmCatalog()
+                            }
+                            .disabled(wasmCatalogLoading)
+                            ForEach(wasmCatalogResults) { pkg in
+                                WawonaButton {
+                                    wasmPackage = pkg.name
+                                    wasmCommand = "wasm \(pkg.name)"
+                                    downloadWasmPackage(pkg)
+                                } label: {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(pkg.name)
+                                        if !pkg.summary.isEmpty {
+                                            Text(pkg.summary)
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
+                                        }
+                                    }
+                                }
+                            }
+                            WawonaTextField("Local .wasm", text: $wasmModulePath)
+                                .wawonaTextFieldNoAutocaps()
+                                .autocorrectionDisabled()
+                            #if !os(tvOS)
+                            WawonaButton("Choose File", systemImage: "folder") {
+                                fileImportKind = .wasm
+                            }
+                            #endif
+                            ForEach(WasmLaunch.listLocalModules(), id: \.path) { url in
+                                WawonaButton(url.lastPathComponent, systemImage: "doc.badge.gearshape") {
+                                    wasmModulePath = url.path
+                                    wasmCommand = "wasm \(url.path)"
+                                }
+                            }
+                            if let wasmCatalogNote {
+                                Text(wasmCatalogNote).font(.caption)
+                            }
+                        } footer: {
+                            Text("Search /wasm/v1, pick a local module, or type wasm hello-wasi-gui.")
+                        }
+                    }
+
+                    if nativeShellKind == .wayland {
+                        Section {
+                            #if os(macOS)
+                            Picker("Wayland Software", selection: $selectedLauncherName) {
+                                ForEach(
+                                    ClientLauncher.presets.waylandPickerGrouped(),
+                                    id: \.kind
+                                ) { group in
+                                    Section(group.kind.sectionTitle) {
+                                        ForEach(group.clients) { launcher in
+                                            Text(launcher.displayName).tag(launcher.name)
+                                        }
+                                    }
+                                }
+                            }
+                            .wwnMachineChoicePicker()
+                            #else
+                            NavigationLink {
+                                BundledClientPickerView(selection: $selectedLauncherName)
+                            } label: {
+                                HStack {
+                                    Text("Wayland Software")
+                                    Spacer()
+                                    Text(ClientLauncher.displayName(for: selectedLauncherName))
+                                        .foregroundColor(.secondary)
+                                        .lineLimit(1)
+                                }
+                            }
+                            #endif
+                        } footer: {
+                            Text("Compositors, then clients by type. Custom commands belong under Terminal. Connects on the local Wayland socket.")
+                        }
                     }
                 }
 
@@ -377,7 +437,7 @@ struct MachineEditorView: View {
                     }
                 }
 
-                // MARK: SSH - remote machine via network
+                // MARK: SSH - Terminal or Waypipe with Use SSH
                 if isSSH {
                     Section(header: Text("Remote Host")) {
                         WawonaTextField("Host", text: $sshHost, prompt: Text("e.g. 192.168.1.100 or host.local"))
@@ -411,19 +471,19 @@ struct MachineEditorView: View {
                             .autocorrectionDisabled()
                     }
 
-                    Section {
-                        WawonaTextField(
-                            type == .sshWaypipe ? "e.g. weston-simple-shm" : "e.g. bash -l",
-                            text: $remoteCommand
-                        )
-                        .wawonaTextFieldNoAutocaps()
-                        .autocorrectionDisabled()
-                    } header: {
-                        Text(type == .sshWaypipe ? "Waypipe Remote Command" : "SSH Command")
-                    } footer: {
-                        Text(type == .sshWaypipe
-                             ? "Command to run on the remote host via waypipe."
-                             : "Command to run in the remote SSH session.")
+                    if nativeShellKind == .waypipe {
+                        Section {
+                            WawonaTextField(
+                                "e.g. weston-simple-shm",
+                                text: $remoteCommand
+                            )
+                            .wawonaTextFieldNoAutocaps()
+                            .autocorrectionDisabled()
+                        } header: {
+                            Text("Waypipe Remote Command")
+                        } footer: {
+                            Text("Command to run on the remote host via waypipe.")
+                        }
                     }
                 }
             }

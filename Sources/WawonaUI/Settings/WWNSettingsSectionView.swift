@@ -20,7 +20,7 @@ struct WWNSettingsSectionView: View {
 
     var body: some View {
         if section.accessibilityIdentifier == "wwn.settings.environment" {
-            NavigationStack {
+            WawonaBackport<Any>.navigation {
                 EnvironmentVariablesView(preferences: WawonaPreferences.shared, perMachine: false)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -40,10 +40,10 @@ struct WWNSettingsSectionView: View {
                 }
             }
             #if os(macOS)
-            .formStyle(.grouped)
+            .backport.groupedForm()
             #endif
             #if os(iOS)
-            .scrollDismissesKeyboard(.immediately)
+            .backport.dismissKeyboardOnScroll()
             #endif
             #if os(iOS) || os(visionOS)
             .onDisappear { WWNHostKeyboard.dismiss() }
@@ -66,17 +66,17 @@ struct WWNSettingsSectionView: View {
             if !model.itemDescription(item).isEmpty {
                 Text(model.itemDescription(item))
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundColor(.secondary)
             }
             HStack {
                 if passwordRevealed {
-                    TextField("Enter a Password...", text: $passwordText)
+                    WawonaTextField("Enter a Password...", text: $passwordText)
                         .textFieldStyle(.roundedBorder)
                 } else {
                     SecureField("Enter a Password...", text: $passwordText)
                         .textFieldStyle(.roundedBorder)
                 }
-                Button {
+                WawonaButton {
                     passwordRevealed.toggle()
                 } label: {
                     Image(systemName: passwordRevealed ? "eye.slash" : "eye")
@@ -88,20 +88,20 @@ struct WWNSettingsSectionView: View {
             }
             HStack {
                 Spacer()
-                Button("Cancel") {
+                WawonaButton("Cancel") {
                     passwordItem = nil
                 }
                 #if !os(tvOS)
-                .keyboardShortcut(.cancelAction)
+                .backport.cancelShortcut()
                 #endif
-                Button("Save") {
+                WawonaButton("Save") {
                     model.setPassword(passwordText, for: item)
                     passwordItem = nil
                 }
                 #if !os(tvOS)
-                .keyboardShortcut(.defaultAction)
+                .backport.defaultShortcut()
                 #endif
-                .buttonStyle(.borderedProminent)
+                .backport.borderedButton(prominent: true)
             }
         }
         .padding(20)
@@ -186,7 +186,7 @@ private struct WWNSettingsRowView: View {
                 if !compactDescription.isEmpty {
                     Text(compactDescription)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundColor(.secondary)
                         .lineLimit(1)
                 }
             }
@@ -198,17 +198,17 @@ private struct WWNSettingsRowView: View {
 
     @ViewBuilder
     private var helpButton: some View {
-        let button = Button {
+        let button = WawonaButton {
             showingHelp = true
         } label: {
             Image(systemName: "info.circle")
         }
         .buttonStyle(.borderless)
-        .accessibilityLabel("Help for \(title)")
+        .accessibility(label: Text("Help for \(title)"))
 
         #if os(tvOS)
         button.alert(title, isPresented: $showingHelp) {
-            Button("OK", role: .cancel) {}
+            WawonaButton("OK", role: .cancel) {}
         } message: {
             Text(detailedHelp)
         }
@@ -226,11 +226,11 @@ private struct WWNSettingsRowView: View {
                             .fixedSize(horizontal: false, vertical: true)
                         Text(detailedHelp)
                             .font(.body)
-                            .foregroundStyle(.secondary)
+                            .foregroundColor(.secondary)
                             .lineLimit(nil)
                             .fixedSize(horizontal: false, vertical: true)
                             #if !os(tvOS) && !os(watchOS)
-                            .textSelection(.enabled)
+                            .backport.selectableText()
                             #endif
                     }
                     .padding(16)
@@ -246,45 +246,45 @@ private struct WWNSettingsRowView: View {
         rowLayout {
             Toggle("", isOn: model.boolBinding(for: item))
                 .labelsHidden()
-                .accessibilityLabel(title)
+                .accessibility(label: Text(title))
         }
         .disabled(!item.interactive)
-        .accessibilityIdentifier(item.accessibilityIdentifier ?? "")
+        .accessibility(identifier: item.accessibilityIdentifier ?? "")
     }
 
     private var textRow: some View {
         let prompt = model.textPrompt(for: item)
         return rowLayout {
-            TextField(
+            WawonaTextField(
                 "",
                 text: model.stringBinding(for: item),
                 prompt: prompt.isEmpty ? nil : Text(prompt)
             )
             .textFieldStyle(.roundedBorder)
             .multilineTextAlignment(.trailing)
-            .submitLabel(.done)
-            .accessibilityLabel(title)
-            .accessibilityIdentifier(item.accessibilityIdentifier ?? "")
+            .backport.doneSubmitLabel()
+            .accessibility(label: Text(title))
+            .accessibility(identifier: item.accessibilityIdentifier ?? "")
             #if os(macOS)
             .help(desc)
             #endif
         }
-        .accessibilityIdentifier(item.accessibilityIdentifier ?? "")
+        .accessibility(identifier: item.accessibilityIdentifier ?? "")
     }
 
     private var numberRow: some View {
         let spec = model.numberSpec(for: item)
         return rowLayout {
             HStack(spacing: 6) {
-                TextField(
+                WawonaTextField(
                     "",
                     text: $numberText,
                     prompt: Text(spec.promptText)
                 )
                 .textFieldStyle(.roundedBorder)
                 .multilineTextAlignment(.trailing)
-                .submitLabel(.done)
-                .accessibilityLabel(title)
+                .backport.doneSubmitLabel()
+                .accessibility(label: Text(title))
 
                 #if !os(tvOS)
                 Stepper(
@@ -304,7 +304,7 @@ private struct WWNSettingsRowView: View {
                     step: spec.step
                 )
                 .labelsHidden()
-                .accessibilityLabel("\(title) stepper")
+                .accessibility(label: Text("\(title) stepper"))
                 #endif
             }
             .onAppear {
@@ -313,7 +313,7 @@ private struct WWNSettingsRowView: View {
                     ? ""
                     : String(model.integerValue(for: item))
             }
-            .onChange(of: numberText) { _, newValue in
+            .backport.onChange(of: numberText) { _, newValue in
                 let digits = newValue.filter(\.isNumber)
                 guard let parsed = Int(digits) else {
                     if numberText != digits { numberText = digits }
@@ -331,7 +331,7 @@ private struct WWNSettingsRowView: View {
                     commitNumberIfChanged(spec)
                 }
             }
-            .onSubmit {
+            .backport.onSubmit {
                 commitNumberIfChanged(spec)
                 numberText = spec.allowsEmpty && numberText.isEmpty
                     ? ""
@@ -339,7 +339,7 @@ private struct WWNSettingsRowView: View {
             }
         }
         .disabled(!item.interactive)
-        .accessibilityIdentifier(item.accessibilityIdentifier ?? "")
+        .accessibility(identifier: item.accessibilityIdentifier ?? "")
         .onDisappear {
             DispatchQueue.main.async { commitNumberIfChanged(spec) }
         }
@@ -356,11 +356,11 @@ private struct WWNSettingsRowView: View {
 
     private var passwordRow: some View {
         rowLayout {
-            Button(model.hasPassword(for: item) ? "Change…" : "Set…") {
+            WawonaButton(model.hasPassword(for: item) ? "Change…" : "Set…") {
                 onPasswordEdit(item)
             }
-            .buttonStyle(.bordered)
-            .accessibilityIdentifier(item.accessibilityIdentifier ?? "")
+            .backport.borderedButton()
+            .accessibility(identifier: item.accessibilityIdentifier ?? "")
         }
     }
 
@@ -375,25 +375,25 @@ private struct WWNSettingsRowView: View {
             #if os(tvOS)
             .pickerStyle(.navigationLink)
             #else
-            .pickerStyle(.menu)
+            .backport.menuPicker()
             #endif
             .disabled(!item.interactive)
-            .accessibilityLabel(title)
-            .accessibilityIdentifier(item.accessibilityIdentifier ?? "")
+            .accessibility(label: Text(title))
+            .accessibility(identifier: item.accessibilityIdentifier ?? "")
         }
-        .accessibilityIdentifier(item.accessibilityIdentifier ?? "")
+        .accessibility(identifier: item.accessibilityIdentifier ?? "")
     }
 
     private var buttonRow: some View {
         let presentation = model.actionPresentation(for: item)
         return rowLayout {
-            Button(presentation.title, systemImage: presentation.systemImage) {
+            WawonaButton(presentation.title, systemImage: presentation.systemImage) {
                 DispatchQueue.main.async { item.actionBlock?() }
             }
-            .buttonStyle(.bordered)
-            .accessibilityIdentifier(item.accessibilityIdentifier ?? "")
+            .backport.borderedButton()
+            .accessibility(identifier: item.accessibilityIdentifier ?? "")
         }
-        .accessibilityIdentifier(item.accessibilityIdentifier ?? "")
+        .accessibility(identifier: item.accessibilityIdentifier ?? "")
     }
 
     private var infoRow: some View {
@@ -401,14 +401,14 @@ private struct WWNSettingsRowView: View {
             HStack(alignment: .top, spacing: 8) {
                 Text(model.stringValue(for: item))
                     #if !os(tvOS)
-                    .textSelection(.enabled)
+                    .backport.selectableText()
                     #endif
-                    .foregroundStyle(.secondary)
+                    .foregroundColor(.secondary)
                     .multilineTextAlignment(.trailing)
                     .lineLimit(2)
-                    .accessibilityIdentifier(item.accessibilityIdentifier ?? "")
+                    .accessibility(identifier: item.accessibilityIdentifier ?? "")
                 #if !os(tvOS)
-            Button {
+            WawonaButton {
                 model.copyValueToPasteboard(item)
             } label: {
                 Image(systemName: "doc.on.doc")
@@ -420,25 +420,25 @@ private struct WWNSettingsRowView: View {
                 #endif
             }
         }
-        .accessibilityIdentifier(item.accessibilityIdentifier ?? "")
+        .accessibility(identifier: item.accessibilityIdentifier ?? "")
     }
 
     private var linkRow: some View {
         let presentation = model.linkPresentation(for: item)
         return HStack(spacing: 12) {
-            if let iconURL = item.iconURL, let url = URL(string: iconURL) {
+            if !item.iconURL.isEmpty, let url = URL(string: item.iconURL) {
                 WWNSettingsLinkIcon(url: url)
             }
             titleStack
             Spacer(minLength: 12)
-            if let urlString = item.urlString, let url = URL(string: urlString) {
-                Link(destination: url) {
-                    Label(presentation.title, systemImage: presentation.systemImage)
+            if !item.urlString.isEmpty, let url = URL(string: item.urlString) {
+                WawonaLink(destination: url) {
+                    WawonaLabel(presentation.title, systemImage: presentation.systemImage)
                 }
-                .accessibilityIdentifier(item.accessibilityIdentifier ?? "")
+                .accessibility(identifier: item.accessibilityIdentifier ?? "")
             }
         }
-        .accessibilityIdentifier(item.accessibilityIdentifier ?? "")
+        .accessibility(identifier: item.accessibilityIdentifier ?? "")
     }
 
     private var headerRow: some View {
@@ -447,30 +447,31 @@ private struct WWNSettingsRowView: View {
                 .frame(width: 56, height: 56)
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
-                    .font(.title3.weight(.semibold))
+                    .font(.system(size: 20).weight(.semibold))
                 if !desc.isEmpty {
                     Text(desc)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundColor(.secondary)
                 }
             }
             Spacer()
         }
         .padding(.vertical, 4)
-        .accessibilityIdentifier(item.accessibilityIdentifier ?? "")
+        .accessibility(identifier: item.accessibilityIdentifier ?? "")
     }
 
     @ViewBuilder
     private func rowLayout<Control: View>(
         @ViewBuilder control: () -> Control
     ) -> some View {
-        ViewThatFits(in: .horizontal) {
+        WawonaFittingRow {
             HStack(spacing: 12) {
                 titleStack
                 Spacer(minLength: 12)
                 control()
                     .frame(width: controlWidth, alignment: .trailing)
             }
+        } vertical: {
             VStack(alignment: .leading, spacing: 8) {
                 titleStack
                 control()
@@ -503,14 +504,14 @@ private struct WWNSettingsLinkIcon: View {
                 Image(systemName: "link.circle.fill")
                     .resizable()
                     .scaledToFit()
-                    .foregroundStyle(.secondary)
+                    .foregroundColor(.secondary)
                     .padding(2)
             }
         }
         .frame(width: 28, height: 28)
-        .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .backport.background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
         .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-        .accessibilityHidden(true)
+        .accessibility(hidden: true)
     }
 }
 
@@ -547,7 +548,7 @@ private struct WawonaAboutIconView: View {
         } else {
             Image(systemName: "display")
                 .font(.system(size: 28))
-                .foregroundStyle(.secondary)
+                .foregroundColor(.secondary)
         }
     }
 

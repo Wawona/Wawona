@@ -67,7 +67,7 @@ On-device terminal connected to the kernel with real shell features.
   These native ports were the fallback for running sway/niri nested if the
   Waypipe remote path proved insufficient. With the Waypipe remote-sway launch
   fixed ([#54](https://github.com/Wawona/Wawona/issues/54), the `env`-prefix fix
-  in `WWNWaypipeRunner.m`), remote nesting works over Waypipe, so the native
+  in `Sources/WawonaApple/Runners/WaypipeRunner.swift`), remote nesting works over Waypipe, so the native
   ports are not required right now. Revisit only if a concrete Waypipe
   limitation blocks a target compositor.
 

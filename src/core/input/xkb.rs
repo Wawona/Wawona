@@ -289,6 +289,60 @@ pub fn ensure_xkb_data_root() {
 
         tracing::warn!("xkb: no bundled keymap root found; xkbcommon will use its default path");
     });
+    ensure_xkb_locale_root();
+}
+
+/// Weston clients load a compose table for the process locale. iOS uses "C"
+/// and has no system X11 locale directory. Point libxkbcommon at the bundled
+/// UTF-8 Compose table when `compose.dir` is present.
+fn ensure_xkb_locale_root() {
+    use std::path::PathBuf;
+    use std::sync::Once;
+    static ONCE: Once = Once::new();
+    ONCE.call_once(|| {
+        if std::env::var_os("XLOCALEDIR").is_some() {
+            return;
+        }
+        let mut candidates: Vec<PathBuf> = Vec::new();
+        if let Some(xkb) = std::env::var_os("XKB_CONFIG_ROOT") {
+            candidates.push(PathBuf::from(xkb).join("../locale"));
+        }
+        if let Ok(share) = std::env::var("WAWONA_SHARE_ROOT") {
+            if !share.is_empty() {
+                candidates.push(PathBuf::from(share).join("X11/locale"));
+            }
+        }
+        if let Ok(app) = std::env::var("WAWONA_APP_BUNDLE_ROOT") {
+            if !app.is_empty() {
+                let root = PathBuf::from(app);
+                candidates.push(root.join("share/X11/locale"));
+                candidates.push(root.join("Contents/Resources/share/X11/locale"));
+            }
+        }
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(dir) = exe.parent() {
+                let exe_str = exe.to_string_lossy();
+                if let Some(idx) = exe_str.find(".app/") {
+                    let app = PathBuf::from(&exe_str[..idx + 4]);
+                    candidates.push(app.join("share/X11/locale"));
+                }
+                candidates.push(dir.join("../Resources/share/X11/locale"));
+                candidates.push(dir.join("share/X11/locale"));
+            }
+        }
+        for candidate in candidates {
+            if candidate.join("compose.dir").is_file() {
+                if let Ok(canonical) = candidate.canonicalize() {
+                    std::env::set_var("XLOCALEDIR", &canonical);
+                    tracing::info!(
+                        "xkb: using bundled compose locale {}",
+                        canonical.display()
+                    );
+                    return;
+                }
+            }
+        }
+    });
 }
 
 /// Nested weston/niri still compile RMLVO from [`ensure_xkb_data_root`].

@@ -147,7 +147,9 @@ in
       ''EXCLUDED_ARCHS="x86_64 i386"''
     ]
   );
-}).overrideAttrs (import ./inject-xcode-backend-env.nix {
+}).overrideAttrs (old:
+let
+  injected = (import ./inject-xcode-backend-env.nix {
   inherit
     lib
     rustBackend
@@ -157,4 +159,37 @@ in
     mobileGuestArtifacts16k
     mobileContainerGuestArtifacts
     ;
+  }) old;
+in injected // {
+  # Validate the final bundle after all Xcode and stdenv packaging phases.
+  postFixup = (old.postFixup or "") + lib.optionalString
+    (nativeSdk == "iphoneos" && !releaseBuild) ''
+      # Unsigned Nix products have contained an empty back-deployment runtime.
+      # Copy the real Apple library and retain the native arm64 slice in the
+      # final unsigned bundle. Signed/archive products are never modified here.
+      wawona_sim_app="$out/Wawona.app"
+      wawona_sim_runtime="$wawona_sim_app/Frameworks/libswift_Concurrency.dylib"
+      echo "Restoring final unsigned Swift runtime: $wawona_sim_runtime"
+      /usr/bin/xcrun swift-stdlib-tool --copy --verbose \
+        --platform ${if simulator then "iphonesimulator" else "iphoneos"} \
+        --source-libraries "$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.5/${if simulator then "iphonesimulator" else "iphoneos"}" \
+        --scan-executable "$wawona_sim_app/Wawona" \
+        --scan-folder "$wawona_sim_app/Frameworks" \
+        --destination "$wawona_sim_app/Frameworks"
+      # Device copies may already be thin; lipo -thin rejects a thin input.
+      /usr/bin/lipo "$wawona_sim_runtime" -verify_arch arm64
+      if [ "$(/usr/bin/lipo -archs "$wawona_sim_runtime")" != arm64 ]; then
+        /usr/bin/lipo "$wawona_sim_runtime" -thin arm64 -output "$wawona_sim_runtime.arm64"
+      else
+        # swift-stdlib-tool creates an HFS-compressed copy. Nix's final
+        # metadata normalization can lose its compressed flag and expose an
+        # empty data fork. Rewrite the decoded bytes into a fresh plain file.
+        /bin/cat "$wawona_sim_runtime" > "$wawona_sim_runtime.arm64"
+      fi
+      mv "$wawona_sim_runtime.arm64" "$wawona_sim_runtime"
+      [ -s "$wawona_sim_runtime" ] || { echo "Empty final Swift runtime" >&2; exit 1; }
+      /usr/bin/file -b "$wawona_sim_runtime" | grep -q 'Mach-O' || {
+        echo "Invalid final Swift runtime" >&2; exit 1;
+      }
+    '';
 })

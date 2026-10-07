@@ -12,12 +12,13 @@
   wawonaSrc ? ../..,
   waypipeSrc,
   coreutilsSrc,
+  terminalSrc ? null,
   westonSimpleShmLinuxNix,
 }:
 
 let
   workspaceSrc = pkgs.callPackage ./workspace-src.nix {
-    inherit wawonaSrc waypipeSrc wawonaVersion coreutilsSrc;
+    inherit wawonaSrc waypipeSrc wawonaVersion coreutilsSrc terminalSrc;
     platform = "macos"; # keep the [[bin]] targets + lib crate-types
   };
 

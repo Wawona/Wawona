@@ -2,6 +2,10 @@
 # Deep-sign Wawona.app (Developer ID Application), productsign WawonaAgent.pkg
 # (Developer ID Installer), build a UDZO DMG, submit to notarytool, staple.
 #
+# The release DMG is pkg-only: WawonaAgent.pkg + README.txt. Wawona.app is
+# signed here and embedded in the pkg payload; it must not appear on the DMG
+# volume (no drag-to-Applications). --app may live outside --staging.
+#
 # Intended for Ship: GitHub assets (release.yml). Secrets from GitHub Environment
 # release-beta / SecretSpec (see docs/maintainers/secrets.md).
 #
@@ -16,7 +20,7 @@
 #   APP_STORE_CONNECT_KEY_ID=… \
 #   APP_STORE_CONNECT_ISSUER_ID=… \
 #   ./scripts/macos-sign-and-notarize-dmg.sh \
-#     --app dmg-staging/Wawona.app \
+#     --app sign-staging/Wawona.app \
 #     --pkg dmg-staging/WawonaAgent.pkg \
 #     --dmg Wawona-26.8.9-macOS-arm64.dmg \
 #     --staging dmg-staging
@@ -63,9 +67,6 @@ fi
 if [[ -z "$DMG" ]]; then
   DMG="$ROOT/Wawona-${VERSION}-macOS-arm64.dmg"
 fi
-if [[ -z "$STAGING" ]]; then
-  STAGING="$(dirname "$APP")"
-fi
 
 : "${DEVELOPER_ID_APPLICATION_P12_BASE64:?Set DEVELOPER_ID_APPLICATION_P12_BASE64}"
 : "${DEVELOPER_ID_INSTALLER_P12_BASE64:?Set DEVELOPER_ID_INSTALLER_P12_BASE64}"
@@ -98,6 +99,13 @@ cleanup() {
   rm -rf "$WORKDIR"
 }
 trap cleanup EXIT
+
+# Staging is the DMG volume root (pkg + README). Never default to the
+# directory that holds --app (that would delete the sealed .app).
+if [[ -z "$STAGING" ]]; then
+  STAGING="$WORKDIR/dmg-staging"
+  mkdir -p "$STAGING"
+fi
 
 printf '%s' "$DEVELOPER_ID_APPLICATION_P12_BASE64" | base64 -d >"$APP_P12"
 printf '%s' "$DEVELOPER_ID_INSTALLER_P12_BASE64" | base64 -d >"$INST_P12"
@@ -290,20 +298,36 @@ if [[ -n "$PKG" ]]; then
   pkgutil --check-signature "$PKG" || true
 fi
 
-# Ensure staging has Applications symlink + README if we own the folder.
+# DMG volume is pkg + README only. Never ship a loose Wawona.app or
+# Applications symlink (drag-install skips LaunchAgents / PrefPane / helper).
 if [[ -d "$STAGING" ]]; then
-  [[ -e "$STAGING/Applications" ]] || ln -s /Applications "$STAGING/Applications"
+  rm -rf "$STAGING/Wawona.app" "$STAGING/Applications"
   if [[ ! -f "$STAGING/README.txt" ]]; then
     {
-      echo 'Wawona macOS install'
-      echo '===================='
-      echo 'Option A (app only): drag Wawona.app into Applications.'
-      echo 'Option B (recommended): double-click WawonaAgent.pkg to install'
-      echo '  Wawona.app plus the compositor + menubar LaunchAgents.'
+      echo 'Thank you for installing Wawona'
+      echo '==============================='
+      echo ''
+      echo 'I am grateful you chose Wawona. Double-click WawonaAgent.pkg.'
+      echo 'That installer places Wawona.app, LaunchAgents, System Settings,'
+      echo 'and related helpers for you. There is no drag-to-Applications step.'
+      echo ''
+      echo 'This DMG is Developer ID signed and notarized (Gatekeeper-clean).'
     } >"$STAGING/README.txt"
   fi
-  [[ -d "$STAGING/Wawona.app" ]] || { echo "error: $STAGING/Wawona.app missing" >&2; exit 1; }
-  echo "Building DMG from $STAGING → $DMG"
+  if [[ -n "$PKG" && -f "$PKG" ]]; then
+    # Keep the sealed pkg on the volume root (may already be there).
+    if [[ "$(cd "$(dirname "$PKG")" && pwd)/$(basename "$PKG")" \
+        != "$(cd "$STAGING" && pwd)/$(basename "$PKG")" ]]; then
+      cp -f "$PKG" "$STAGING/$(basename "$PKG")"
+    fi
+  fi
+  [[ -f "$STAGING/WawonaAgent.pkg" ]] \
+    || { echo "error: $STAGING missing WawonaAgent.pkg" >&2; exit 1; }
+  if [[ -e "$STAGING/Wawona.app" || -e "$STAGING/Applications" ]]; then
+    echo "error: DMG staging must not contain Wawona.app or Applications" >&2
+    exit 1
+  fi
+  echo "Building pkg-only DMG from $STAGING → $DMG"
   rm -f "$DMG"
   hdiutil create -volname "Wawona" -srcfolder "$STAGING" \
     -ov -format UDZO "$DMG"

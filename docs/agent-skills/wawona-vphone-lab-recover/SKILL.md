@@ -14,7 +14,7 @@ Open the rule: `wawona-vphone-control`. Lab script:
 
 | Signal | Meaning |
 |---|---|
-| `pgrep -lf 'vphone-cli --config .*/wawona-jb/config.plist'` | Live. Do not relaunch. |
+| `pgrep -lf 'vphone-vm.*machines/wawona-jb/config.plist'` | Live. Do not relaunch. |
 | Sock accepts JSON | Live. |
 | Sock file exists + `Connection refused` + no matching process | **Stale sock. VM is off.** |
 | `agent-device devices` `booted=true` | **Not proof.** Profile is stale. |
@@ -24,10 +24,15 @@ Open the rule: `wawona-vphone-control`. Lab script:
 Real live argv:
 
 ```text
-vphone-cli --config /Users/8amps/.vphone/VMs/wawona-jb/config.plist --variant jb
+vphone-vm … /Users/8amps/.vphone/machines/wawona-jb/config.plist
 ```
 
-Sock: `/Users/8amps/.vphone/VMs/wawona-jb/vphone.sock`.
+Sock: `/Users/8amps/.vphone/machines/wawona-jb/vphone.sock`.
+iPadOS lab is a second guest: `wawona-ipad`, sock
+`~/.vphone/machines/wawona-ipad/vphone.sock`, API `127.0.0.1:8766`.
+Relaunch that one with `vm launch wawona-ipad`. Do not stop `wawona-jb`.
+vphone-cli 2.6.0 keeps 1.x disks under `~/.vphone/VMs` from booting
+(`schemaVersion` 2 lives in `~/.vphone/machines`).
 
 ## Recover (automatic)
 
@@ -40,16 +45,24 @@ Sock: `/Users/8amps/.vphone/VMs/wawona-jb/vphone.sock`.
    `vm launch` to a cancellable foreground agent Shell.
 
 ```bash
-VPHONE=/Users/8amps/.vphone/src/vphone-cli/.build/vphone-cli.app/Contents/MacOS/vphone-cli
-LOG=/Users/8amps/.vphone/VMs/wawona-jb/launch.recover.serial
+VPHONE=/Users/8amps/.vphone/bundles/2.6.0/VPhone.bundle/Contents/MacOS/vphone-cli
+LOG=/Users/8amps/.vphone/artifacts/vphone-jb/launch.recover.serial
 caffeinate -dims -t 7200 >/dev/null 2>&1 &
-nohup "$VPHONE" vm launch wawona-jb -V jb -p /Users/8amps/.vphone/src/vphone-cli -v \
+nohup "$VPHONE" vm launch wawona-jb --api-listen 127.0.0.1:8765 -v \
   >"$LOG" 2>&1 &
 disown
 ```
 
+Do not pass 1.x `-V jb` or `-p`. 2.6.0 rejects them. Guest AX is
+`{"t":"rpc","method":"ui.tree"}` on that sock. Frames are points;
+`device.screen` `scale` makes them sock-tap pixels.
+
 4. **Prove sock.** Prefer `{"t":"screenshot","path":"…png","screen":false}`.
    Compact JPEG `screen:true` freezes. Keep the window visible.
+   If `setup.status` says `pending` or `running`, call `setup.skip`
+   with `force: true`, then `screen.unlock` when `device.screen` is
+   locked. Do not tap the Setup language list. `ui.tree` on the Home
+   Screen fails until `apps.launch` puts a real app in front.
 5. **SSH later.** Guest IPv4 drifts. Do not scan every dhcp `iPhone` lease
    with `nc -G 1` in a 900s agent loop. Probe `guest-ip.txt` / profile
    `sshHost` first. Rewrite both when a new IP answers `:22222`.
@@ -58,6 +71,9 @@ disown
 Optional cold start when the bundle exists: from `wwn-vphone`,
 `nix run .#vphone-jb-lab`. Let that script `nohup` the VM. Do not wait
 on its `wait_ssh` from an agent Shell.
+
+Live guest after recover: skill `wawona-vphone-cli` (`vphone-sock ping`,
+then sock files / Irisin URL / agent-device packages).
 
 ## Hard rejects
 

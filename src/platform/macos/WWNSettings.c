@@ -1,16 +1,9 @@
 #include "WWNSettings.h"
 #include <string.h>
 
-/*
- * wwn_startup_log_sink. Default NULL definition for non-iOS builds.
- * On iOS/tvOS/visionOS/watchOS, WWNStartupLogger.m provides the real
- * function pointer. On macOS there is no startup log overlay so the sink
- * stays NULL and all WWNLog() calls fall through to dprintf only.
- */
-#if !TARGET_OS_IPHONE
-void (*wwn_startup_log_sink)(const char *module, const char *msg) = NULL;
-int wwn_log_quiet = 0;
-#endif
+/* wwn_startup_log_sink / wwn_log_quiet: single definition in
+ * wawona_compositor_host_glue.c (macOS) or WWNIosHostGlue.c /
+ * wwn_startup_log_sink.c. Do not redefine here (Xcode 26 ld errors). */
 
 #ifndef __APPLE__
 

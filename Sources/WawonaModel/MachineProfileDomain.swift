@@ -162,8 +162,16 @@ private func callString2(_ name: String, _ a: String, _ b: String) -> String? {
 private func callEditorValidate(_ state: MachineEditorState) -> String? {
     guard let sym = domainSymbol("wawona_editor_validate") else { return nil }
     let fn = unsafeBitCast(sym, to: EditorFn.self)
+    // Rust still keys SSH checks on legacy type raw values. Map Native Shell
+    // + Use SSH to ssh_terminal / ssh_waypipe for validation only.
+    let validateType: String
+    if state.isSSH {
+        validateType = state.nativeShellKindRawValue == "waypipe" ? "ssh_waypipe" : "ssh_terminal"
+    } else {
+        validateType = state.typeRawValue
+    }
     return state.name.withCString { cName in
-        state.typeRawValue.withCString { cType in
+        validateType.withCString { cType in
             state.sshHost.withCString { cHost in
                 state.sshUser.withCString { cUser in
                     state.sshPortText.withCString { cPort in

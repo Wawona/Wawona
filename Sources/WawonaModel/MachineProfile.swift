@@ -17,12 +17,24 @@ extension MachineType {
     /// Human-readable type name for pickers and lists (matches macOS editor wording; not the storage `rawValue`).
     public var userFacingName: String {
         switch self {
-        case .native: return "Native"
-        case .wasm: return "Wasm"
-        case .sshWaypipe: return "SSH + Waypipe"
-        case .sshTerminal: return "SSH Terminal"
+        case .native, .wasm, .sshWaypipe, .sshTerminal:
+            return "Native Shell"
         case .virtualMachine: return "Virtual Machine"
         case .container: return "Container"
+        }
+    }
+
+    /// Types offered in the Add/Edit Machine picker. Wasm, SSH, and Waypipe
+    /// are Native Shell session modes, not separate machine kinds.
+    public static var selectableCases: [MachineType] {
+        [.native, .virtualMachine, .container]
+    }
+
+    /// Fold legacy wasm / SSH storage kinds into the Native Shell picker value.
+    public var selectablePivot: MachineType {
+        switch self {
+        case .wasm, .sshWaypipe, .sshTerminal: return .native
+        default: return self
         }
     }
 
@@ -53,7 +65,7 @@ extension MachineType {
         }
     }
 
-    /// Remote SSH session types. Native, VM, and container do not use SSH/Waypipe fields.
+    /// Legacy remote SSH storage kinds (also covered by Native Shell + Use SSH).
     public var isSSH: Bool {
         switch self {
         case .sshWaypipe, .sshTerminal: return true
@@ -64,12 +76,112 @@ extension MachineType {
     /// SF Symbol name for this machine type (shared across iOS and watchOS).
     public var symbolName: String {
         switch self {
-        case .native: return "desktopcomputer"
+        case .native: return "terminal"
         case .wasm: return "doc.badge.gearshape"
-        case .sshWaypipe: return "network"
+        case .sshWaypipe: return "arrow.triangle.2.circlepath"
         case .sshTerminal: return "terminal"
-        case .virtualMachine: return "cube"
+        case .virtualMachine: return "desktopcomputer"
         case .container: return "shippingbox"
+        }
+    }
+}
+
+/// Native Shell session mode. UI-facing; storage may still use legacy
+/// `MachineType` values (`wasm`, `ssh_terminal`, `ssh_waypipe`) for connect.
+public enum NativeShellKind: String, Codable, CaseIterable, Sendable {
+    case terminal
+    case wayland
+    case wasm
+    case waypipe
+
+    public var userFacingName: String {
+        switch self {
+        case .terminal: return "Terminal"
+        case .wayland: return "Wayland"
+        case .wasm: return "Wasm"
+        case .waypipe: return "Waypipe"
+        }
+    }
+
+    public var symbolName: String {
+        switch self {
+        case .terminal: return "terminal"
+        case .wayland: return "display"
+        case .wasm: return "doc.badge.gearshape"
+        case .waypipe: return "arrow.triangle.2.circlepath"
+        }
+    }
+
+    public var allowsSSH: Bool {
+        self == .terminal || self == .waypipe
+    }
+}
+
+public struct NativeShellSession: Hashable, Sendable {
+    public var kind: NativeShellKind
+    public var useSSH: Bool
+
+    public init(kind: NativeShellKind = .terminal, useSSH: Bool = false) {
+        self.kind = kind
+        self.useSSH = kind.allowsSSH ? useSSH : false
+    }
+
+    public static func from(profile: MachineProfile) -> NativeShellSession {
+        switch profile.type {
+        case .wasm:
+            return NativeShellSession(kind: .wasm, useSSH: false)
+        case .sshTerminal:
+            return NativeShellSession(kind: .terminal, useSSH: true)
+        case .sshWaypipe:
+            return NativeShellSession(kind: .waypipe, useSSH: true)
+        case .native:
+            let bundled = profile.runtimeOverrides.bundledAppID?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if profile.runtimeOverrides.waypipeEnabled == true
+                && (bundled.isEmpty || bundled == "wawona-shell") {
+                return NativeShellSession(kind: .waypipe, useSSH: false)
+            }
+            if bundled == "wawona-wasm" {
+                return NativeShellSession(kind: .wasm, useSSH: false)
+            }
+            if bundled.isEmpty || bundled == "wawona-shell" {
+                return NativeShellSession(kind: .terminal, useSSH: false)
+            }
+            return NativeShellSession(kind: .wayland, useSSH: false)
+        case .virtualMachine, .container:
+            return NativeShellSession(kind: .terminal, useSSH: false)
+        }
+    }
+
+    /// Persistable `MachineType` for this session (legacy kinds kept for connect).
+    public var storageType: MachineType {
+        switch kind {
+        case .wasm: return .wasm
+        case .terminal: return useSSH ? .sshTerminal : .native
+        case .waypipe: return useSSH ? .sshWaypipe : .native
+        case .wayland: return .native
+        }
+    }
+
+    public var needsSSHFields: Bool {
+        kind.allowsSSH && useSSH
+    }
+
+    public var waypipeEnabled: Bool {
+        kind == .waypipe || (kind == .terminal && useSSH)
+    }
+
+    public func resolvedBundledAppID(selectedLauncher: String) -> String? {
+        switch kind {
+        case .terminal:
+            return useSSH ? nil : "wawona-shell"
+        case .wasm:
+            return "wawona-wasm"
+        case .wayland:
+            let trimmed = selectedLauncher.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? "weston-simple-shm" : trimmed
+        case .waypipe:
+            return nil
         }
     }
 }

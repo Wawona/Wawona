@@ -233,7 +233,16 @@ public final class WawonaPreferences: ObservableObject {
     /// Global environment overrides (`wawona.pref.environment.v1`). Absence of a key = inherit catalog/session default.
     @Published public var environmentOverrides: EnvironmentOverrideMap = [:]
 
-    private let defaults = UserDefaults.standard
+    /// macOS System Settings PrefPane and the app share this suite. PrefPane
+    /// bundle id is `com.aspauldingcode.Wawona.prefPane`, so `.standard` alone
+    /// would not see app writes (and Env Vars edits in the pane would vanish).
+    private let defaults: UserDefaults = {
+        #if os(macOS)
+        return UserDefaults(suiteName: "com.aspauldingcode.Wawona") ?? .standard
+        #else
+        return .standard
+        #endif
+    }()
     private let keyPrefix = "wawona.pref."
 
     public init() {

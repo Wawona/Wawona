@@ -17,6 +17,7 @@ import android.view.inputmethod.InputMethodManager
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.WindowInsetsController
+import android.graphics.Typeface
 import android.widget.Toast
 import java.io.File
 import androidx.activity.ComponentActivity
@@ -70,6 +71,9 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -90,8 +94,6 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Surface
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
@@ -185,6 +187,9 @@ class MainActivity : ComponentActivity(), SurfaceHolder.Callback {
             intent.categories?.contains(android.content.Intent.CATEGORY_HOME) == true
         if (isHomeIntent) {
             HomeIntentBus.signalHome()
+        }
+        if (intent.action == android.content.Intent.ACTION_APPLICATION_PREFERENCES) {
+            PreferencesIntentBus.signalOpen()
         }
         handleNestedWlClientIntent(intent)
     }
@@ -369,12 +374,15 @@ fun WawonaApp(
     var profiles by remember { mutableStateOf(MachineProfileStore.loadProfiles(prefs)) }
     val sessionOrchestrator = remember { SessionOrchestrator() }
     var showMachinesHome by remember { mutableStateOf(true) }
+    var pendingStartProfile by remember { mutableStateOf<MachineProfile?>(null) }
     var showWelcome by remember { mutableStateOf(!prefs.getBoolean("hasSeenWelcome", false)) }
     var isWaypipeRunning by remember { mutableStateOf(false) }
     /* Startup log overlay. */
     var showStartupLog by remember { mutableStateOf(false) }
     var startupLogClientLabel by remember { mutableStateOf("") }
     val startupLogLines = remember { mutableStateOf(listOf<String>()) }
+    var showGuestConsole by remember { mutableStateOf(false) }
+    var guestConsoleText by remember { mutableStateOf("Guest console\n") }
     var windowTitle by remember { mutableStateOf("") }
     val clipboardManager = remember {
         context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -387,7 +395,18 @@ fun WawonaApp(
     // by the listener once it sees the matching change.
     var suppressNextClipboardChange by remember { mutableStateOf(false) }
     var nativeRuntimeReady by remember { mutableStateOf(false) }
-    var showSettingsDialog by remember { mutableStateOf(false) }
+    var showSettingsDialog by remember {
+        mutableStateOf(
+            (surfaceCallback as? MainActivity)?.intent?.action ==
+                android.content.Intent.ACTION_APPLICATION_PREFERENCES
+        )
+    }
+    val preferencesTick by PreferencesIntentBus.openTick
+    LaunchedEffect(preferencesTick) {
+        if (preferencesTick > 0) {
+            showSettingsDialog = true
+        }
+    }
     var thumbnailRevision by remember { mutableIntStateOf(0) }
     var surfaceViewRef by remember { mutableStateOf<WawonaSurfaceView?>(null) }
     var keyboardUiMode by remember { mutableStateOf(KeyboardUiMode.ACCESSORY_ONLY) }
@@ -491,7 +510,7 @@ fun WawonaApp(
                 profiles.firstOrNull { it.id == session.machineId }
                     ?.takeIf { it.type == MachineType.NATIVE }
                     ?.nativeLauncher
-                    ?.ifBlank { "weston-terminal" } == clientId
+                    ?.ifBlank { "wawona-shell" } == clientId
         }
     }
 
@@ -583,7 +602,7 @@ fun WawonaApp(
         when (profile?.type) {
             MachineType.NATIVE, MachineType.WASM -> stopNativeClient(
                 if (profile.type == MachineType.WASM) "wawona-wasm"
-                else profile.nativeLauncher.ifBlank { "weston-terminal" }
+                else profile.nativeLauncher.ifBlank { "wawona-shell" }
             )
             MachineType.SSH_WAYPIPE, MachineType.SSH_TERMINAL -> stopWaypipe()
             else -> stopWaypipe()
@@ -811,7 +830,7 @@ fun WawonaApp(
                 isWaypipeRunning = when (activeProfile?.type) {
                     MachineType.NATIVE, MachineType.WASM -> isNativeClientRunning(
                         if (activeProfile.type == MachineType.WASM) "wawona-wasm"
-                        else activeProfile.nativeLauncher.ifBlank { "weston-terminal" }
+                        else activeProfile.nativeLauncher.ifBlank { "wawona-shell" }
                     )
                     MachineType.SSH_WAYPIPE, MachineType.SSH_TERMINAL -> WawonaNative.nativeIsWaypipeRunning()
                     else -> false
@@ -912,8 +931,11 @@ fun WawonaApp(
             if (profile.type == MachineType.WASM || bundled == "wawona-wasm") {
                 "wawona-wasm"
             } else {
-                "weston-terminal"
+                "wawona-shell"
             }
+        }
+        if (bundled == "wawona-shell" || launcher == "wawona-shell") {
+            return true
         }
         if (profile.type == MachineType.WASM || launcher == "wawona-wasm" || bundled == "wawona-wasm") {
             return launchRelayWasm(context, profile)
@@ -921,7 +943,31 @@ fun WawonaApp(
         return launchNativeClient(launcher)
     }
 
-    fun connectMachine(profile: MachineProfile, sessionId: String? = null) {
+    fun savedStartUsesNewWindow(): Boolean {
+        if (!SessionActivity.supportsHostTask()) return false
+        return prefs.getString("defaultStartType", "prompt") == "newWindow"
+    }
+
+    fun beginMachineStart(profile: MachineProfile) {
+        if (!SessionActivity.supportsHostTask()) {
+            val session = sessionOrchestrator.startSession(profile)
+            connectMachine(profile, session.sessionId, newWindow = false)
+            return
+        }
+        when (prefs.getString("defaultStartType", "prompt")) {
+            "newWindow" -> {
+                val session = sessionOrchestrator.startSession(profile)
+                connectMachine(profile, session.sessionId, newWindow = true)
+            }
+            "newTab" -> {
+                val session = sessionOrchestrator.startSession(profile)
+                connectMachine(profile, session.sessionId, newWindow = false)
+            }
+            else -> pendingStartProfile = profile
+        }
+    }
+
+    fun connectMachine(profile: MachineProfile, sessionId: String? = null, newWindow: Boolean = false) {
         val targetSession = sessionId ?: sessionOrchestrator.startSession(profile).sessionId
         MachineProfileStore.applyMachineToPrefs(prefs, profile)
         MachineProfileStore.setActiveMachineId(prefs, profile.id)
@@ -935,17 +981,95 @@ fun WawonaApp(
             sessionOrchestrator.markDegraded(targetSession, "Failed to initialize compositor runtime")
             return
         }
-        // Start is the Android multi-window entry point. Always give a machine
-        // its own task on Android 7+; the OS chooses fullscreen/split/freeform.
-        // The C claim map consumes the reservation exactly once on Created.
+        // New Window gives the machine its own task on Android 7+. New Tab
+        // stays in this activity, same as the iPhone client tabs. The C claim
+        // map consumes a reservation exactly once on Created.
         // Finish any leftover host task first so its surfaceDestroyed cannot
         // race-destroy the new swapchain (#141).
+        val wantsNewWindow = newWindow && SessionActivity.supportsHostTask()
         SessionActivityRegistry.finishSession(targetSession)
-        val hostId =
-            if (SessionActivity.supportsHostTask()) SessionActivity.newHostId() else 0L
+        val hostId = if (wantsNewWindow) SessionActivity.newHostId() else 0L
         if (hostId != 0L) {
             SessionActivityRegistry.reserve(targetSession, hostId)
             WawonaNative.nativeReserveNextHostWindow(hostId)
+        }
+        fun wantsGuestConsole(profile: MachineProfile): Boolean {
+            return when (profile.type) {
+                MachineType.VM, MachineType.CONTAINER, MachineType.SSH_TERMINAL -> true
+                MachineType.NATIVE -> {
+                    val bundled = profile.runtimeOverrides.optString("bundledAppID", "").trim()
+                    bundled == "wawona-shell" || profile.nativeLauncher == "wawona-shell"
+                }
+                else -> false
+            }
+        }
+
+        fun finishConnect(launched: Boolean) {
+            if (launched) {
+                if (hostId != 0L && !wantsGuestConsole(profile)) {
+                    context.startActivity(
+                        SessionActivity.createIntent(
+                            context = context,
+                            hostId = hostId,
+                            title = profile.name.ifBlank { "Wayland client" },
+                        ),
+                    )
+                }
+                sessionOrchestrator.markConnected(targetSession)
+                sessionOrchestrator.setActiveSession(targetSession)
+                if (profile.isAppBridgeEligible &&
+                    DesktopReplacement.isAppBridgeEnabled(prefs)) {
+                    appScope.launch { AnowawSession.attach(context, prefs) }
+                }
+                if (wantsGuestConsole(profile)) {
+                    showGuestConsole = true
+                    showStartupLog = false
+                    showMachinesHome = false
+                } else {
+                    val label = when (profile.type) {
+                        MachineType.NATIVE, MachineType.WASM ->
+                            if (profile.type == MachineType.WASM) "wawona-wasm"
+                            else profile.nativeLauncher.ifBlank { "wawona-shell" }
+                        else -> profile.name.ifBlank { "Wayland client" }
+                    }
+                    startupLogClientLabel = label
+                    showStartupLog = true
+                    showMachinesHome = hostId != 0L
+                }
+                if (!hasRealExternalKeyboard(context.resources.configuration)) {
+                    keyboardUiMode = KeyboardUiMode.ACCESSORY_ONLY
+                }
+            } else {
+                if (hostId != 0L) {
+                    WawonaNative.nativeReleaseHostWindow(hostId)
+                    SessionActivityRegistry.release(targetSession)
+                }
+                sessionOrchestrator.markDegraded(
+                    targetSession,
+                    "Launch unsupported or failed for ${profile.type.value}"
+                )
+            }
+        }
+
+        if (wantsGuestConsole(profile)) {
+            guestConsoleText = if (profile.type == MachineType.SSH_TERMINAL) {
+                "SSH session starting.\n"
+            } else {
+                "Guest console\n"
+            }
+            showGuestConsole = true
+            showMachinesHome = false
+        }
+        if (profile.type == MachineType.VM || profile.type == MachineType.CONTAINER) {
+            Thread {
+                val ok = try {
+                    AndroidMobileVmRunner.launch(context, profile)
+                } catch (_: Exception) {
+                    false
+                }
+                Handler(Looper.getMainLooper()).post { finishConnect(ok) }
+            }.start()
+            return
         }
         val launched = when (profile.type) {
             MachineType.NATIVE, MachineType.WASM -> launchNativeMachine(
@@ -964,62 +1088,13 @@ fun WawonaApp(
                 WawonaSettings.apply(prefs)
                 launchWaypipe()
             }
-            MachineType.VM, MachineType.CONTAINER -> AndroidMobileVmRunner.launch(context, profile)
+            MachineType.VM, MachineType.CONTAINER -> false
         }
-
-        if (launched) {
-            if (hostId != 0L) {
-                context.startActivity(
-                    SessionActivity.createIntent(
-                        context = context,
-                        hostId = hostId,
-                        title = profile.name.ifBlank { "Wayland client" },
-                    ),
-                )
-            }
-            sessionOrchestrator.markConnected(targetSession)
-            sessionOrchestrator.setActiveSession(targetSession)
-            /* Wawona Swinging Bridge: once the nested-Weston desktop machine is up,
-             * attach the bridge so Android apps can be embedded as Wayland
-             * windows. Only fires for an eligible desktop machine with the
-             * feature enabled; no-op otherwise. */
-            if (profile.isAppBridgeEligible &&
-                DesktopReplacement.isAppBridgeEnabled(prefs)) {
-                appScope.launch { AnowawSession.attach(context, prefs) }
-            }
-            /* Show startup log overlay before switching to compositor view. */
-            val label = when (profile.type) {
-                MachineType.NATIVE, MachineType.WASM ->
-                    if (profile.type == MachineType.WASM) "wawona-wasm"
-                    else profile.nativeLauncher.ifBlank { "weston-terminal" }
-                else -> profile.name.ifBlank { "Wayland client" }
-            }
-            startupLogClientLabel = label
-            showStartupLog = true
-            // A SessionActivity owns this client's surface. Keep MainActivity
-            // on Machines so returning/back/minimize never steals that surface.
-            showMachinesHome = hostId != 0L
-            // Reset accessory mode on session entry so a prior false-positive
-            // HIDDEN_EXTERNAL (issue #82) does not stick.
-            if (!hasRealExternalKeyboard(
-                    context.resources.configuration
-                )
-            ) {
-                keyboardUiMode = KeyboardUiMode.ACCESSORY_ONLY
-            }
-        } else {
-            if (hostId != 0L) {
-                WawonaNative.nativeReleaseHostWindow(hostId)
-                SessionActivityRegistry.release(targetSession)
-            }
-            sessionOrchestrator.markDegraded(
-                targetSession,
-                "Launch unsupported or failed for ${profile.type.value}"
-            )
-        }
+        finishConnect(launched)
     }
 
     fun disconnectMachine(profile: MachineProfile) {
+        showGuestConsole = false
         val session = sessionOrchestrator.sessions.firstOrNull {
             it.machineId == profile.id &&
                 (it.state == MachineSessionState.CONNECTED || it.state == MachineSessionState.CONNECTING)
@@ -1035,7 +1110,7 @@ fun WawonaApp(
                 MachineType.NATIVE, MachineType.WASM -> {
                     val launcher =
                         if (profile.type == MachineType.WASM) "wawona-wasm"
-                        else profile.nativeLauncher.ifBlank { "weston-terminal" }
+                        else profile.nativeLauncher.ifBlank { "wawona-shell" }
                     // JNI stop is still client-wide; only tear down when no
                     // other connected machine is using the same launcher.
                     if (!otherConnectedNativeSessionsUse(launcher, profile.id)) {
@@ -1089,7 +1164,7 @@ fun WawonaApp(
             focusMachine(desktop)
         } else {
             val session = sessionOrchestrator.startSession(desktop)
-            connectMachine(desktop, session.sessionId)
+            connectMachine(desktop, session.sessionId, newWindow = savedStartUsesNewWindow())
         }
         return true
     }
@@ -1103,7 +1178,7 @@ fun WawonaApp(
             focusMachine(profile)
         } else {
             val session = sessionOrchestrator.startSession(profile)
-            connectMachine(profile, session.sessionId)
+            connectMachine(profile, session.sessionId, newWindow = savedStartUsesNewWindow())
         }
     }
 
@@ -1337,8 +1412,7 @@ fun WawonaApp(
                     .forEach { sessionOrchestrator.removeSession(it.sessionId) }
             },
             onConnect = { profile ->
-                val session = sessionOrchestrator.startSession(profile)
-                connectMachine(profile, session.sessionId)
+                beginMachineStart(profile)
             },
             onFocus = { profile -> focusMachine(profile) },
             onStop = { profile -> disconnectMachine(profile) },
@@ -1548,6 +1622,14 @@ fun WawonaApp(
                 }
             }
 
+            if (showGuestConsole) {
+                GuestConsoleOverlay(
+                    text = guestConsoleText,
+                    onDismiss = { showGuestConsole = false },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+
             if (showStartupLog) {
                 StartupLogOverlay(
                     clientLabel = startupLogClientLabel,
@@ -1577,6 +1659,43 @@ fun WawonaApp(
             onLaunchWaylandMachine = { launchWaylandMachineFromDrawer(it) },
             onLaunchAndroidApp = { launchAndroidAppFromDrawer(it) },
             onDismiss = { showAppDrawer = false },
+        )
+    }
+
+    pendingStartProfile?.let { profile ->
+        AlertDialog(
+            onDismissRequest = { pendingStartProfile = null },
+            title = { Text("Start") },
+            text = { Text("Open this machine in a tab or in a new window?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingStartProfile = null
+                        val session = sessionOrchestrator.startSession(profile)
+                        connectMachine(profile, session.sessionId, newWindow = false)
+                    },
+                    modifier = Modifier.testTag("wwn.machines.start.tab"),
+                ) {
+                    Text("New Tab")
+                }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(
+                        onClick = {
+                            pendingStartProfile = null
+                            val session = sessionOrchestrator.startSession(profile)
+                            connectMachine(profile, session.sessionId, newWindow = true)
+                        },
+                        modifier = Modifier.testTag("wwn.machines.start.window"),
+                    ) {
+                        Text("New Window")
+                    }
+                    TextButton(onClick = { pendingStartProfile = null }) {
+                        Text("Cancel")
+                    }
+                }
+            },
         )
     }
 
@@ -1610,6 +1729,87 @@ fun WawonaApp(
             }
         }
     }
+}
+
+/**
+ * Guest console for Android. Relay boot, SSH, and a native shell show
+ * here until a Wayland client is on screen. ANSI color and bold come
+ * from the shared Rust screen. The face is DejaVuSansM Nerd Font Mono.
+ * HWUI presents the text on the GPU (Vulkan or OpenGL ES).
+ */
+@Composable
+private fun GuestConsoleOverlay(
+    text: String,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val family = remember(context) { nerdMonoFamily(context) }
+    Surface(
+        modifier = modifier,
+        color = Color.Black,
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Wawona Terminal", color = Color.White, fontFamily = family)
+                TextButton(onClick = onDismiss) {
+                    Text("Close", color = Color.White)
+                }
+            }
+            BoxWithConstraints(modifier = Modifier.weight(1f)) {
+                val density = LocalDensity.current
+                val charPx = with(density) { 13.sp.toPx() } * 0.6f
+                val rowPx = with(density) { 16.sp.toPx() }
+                val padPx = with(density) { 24.dp.toPx() }
+                val cols = with(density) {
+                    ((maxWidth.toPx() - padPx) / charPx).toInt()
+                }.coerceIn(20, 512)
+                val rows = with(density) { (maxHeight.toPx() / rowPx).toInt() }.coerceIn(8, 256)
+                val fitted = remember(text, cols, rows) { terminalLines(text, cols, rows) }
+                WawonaTerminalText(
+                    lines = fitted,
+                    fontFamily = family,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+        }
+    }
+}
+
+private fun nerdMonoFamily(context: android.content.Context): FontFamily {
+    return try {
+        val face = Typeface.createFromAsset(
+            context.assets,
+            "fonts/truetype/DejaVuSansMNerdFontMono-Regular.ttf",
+        )
+        FontFamily(face)
+    } catch (_: RuntimeException) {
+        FontFamily.Monospace
+    }
+}
+
+private fun terminalLines(raw: String, cols: Int, rows: Int): List<AnnotatedString> {
+    val cooked = StringBuilder(raw.length + 8)
+    for (ch in raw) {
+        if (ch == '\n' && (cooked.isEmpty() || cooked.last() != '\r')) {
+            cooked.append('\r')
+        }
+        cooked.append(ch)
+    }
+    val packed = try {
+        WawonaNative.nativeTermSnapshot(
+            cooked.toString().toByteArray(Charsets.UTF_8),
+            cols,
+            rows,
+        )
+    } catch (_: UnsatisfiedLinkError) {
+        null
+    } ?: return listOf(AnnotatedString(raw))
+    return wawonaTerminalLines(packed)
 }
 
 /**

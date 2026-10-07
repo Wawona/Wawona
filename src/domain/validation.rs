@@ -107,6 +107,8 @@ pub fn validate_editor(state: EditorStateView<'_>) -> Vec<EditorIssue> {
     if state.name.trim().is_empty() {
         issues.push(EditorIssue::MissingName);
     }
+    // Legacy storage kinds, or Native Shell session mapped by Apple
+    // `callEditorValidate` to ssh_terminal / ssh_waypipe when Use SSH is on.
     let is_ssh = state.type_raw == "ssh_waypipe" || state.type_raw == "ssh_terminal";
     if is_ssh {
         if sanitize_ssh_host(state.ssh_host).is_empty() {
@@ -177,6 +179,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn sanitize_vector_matches_file() {
+        let raw = include_str!("../../verification/ssh_host_vector.tsv");
+        for line in raw.lines() {
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            let (input, expected) = line.split_once('\t').unwrap();
+            assert_eq!(sanitize_ssh_host(input), expected, "input {input}");
+        }
+    }
+
+    #[test]
     fn sanitize_strips_scheme_and_port() {
         assert_eq!(sanitize_ssh_host(" ssh://host.example:2222/path "), "host.example");
         assert_eq!(sanitize_ssh_host("[::1]:22"), "[::1]");
@@ -196,5 +210,39 @@ mod tests {
         assert!(is_forbidden_machines_client_id("igettyd"));
         assert!(is_forbidden_machines_client_id(" ModeB-TTY "));
         assert!(!is_forbidden_machines_client_id("weston-terminal"));
+    }
+}
+
+#[cfg(all(test, not(loom)))]
+mod sanitize_proptest {
+    use super::sanitize_ssh_host;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn sanitize_drops_shell_metacharacters(raw in "[ -~]{0,24}") {
+            let out = sanitize_ssh_host(&raw);
+            for ch in out.chars() {
+                prop_assert!(!ch.is_whitespace());
+                prop_assert!(!"\"'`$;&|<>\\".contains(ch));
+            }
+        }
+    }
+}
+
+#[cfg(kani)]
+#[kani::proof]
+fn sanitize_ascii_has_no_shell_metacharacters() {
+    let mut bytes = [0u8; 6];
+    for slot in &mut bytes {
+        let b: u8 = kani::any();
+        kani::assume((32..127).contains(&b));
+        *slot = b;
+    }
+    let raw = std::str::from_utf8(&bytes).unwrap();
+    let out = sanitize_ssh_host(raw);
+    for ch in out.chars() {
+        assert!(!ch.is_whitespace());
+        assert!(!"\"'`$;&|<>\\".contains(ch));
     }
 }
