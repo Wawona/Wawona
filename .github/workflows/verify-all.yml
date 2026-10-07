@@ -103,6 +103,12 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
+      # MainActivity Compose terminal face lives in Wawona/Terminal (not this repo).
+      - uses: actions/checkout@v5
+        with:
+          repository: Wawona/Terminal
+          ref: development
+          path: Terminal
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

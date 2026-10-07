@@ -123,8 +123,12 @@ android {
     sourceSets {
         getByName("main") {
             kotlin.directories += "src/main/kotlin"
-            val terminalUi = file("../../../Terminal/android")
-            if (terminalUi.isDirectory) {
+            // Local monorepo: <workspace>/Terminal. CI: checkout into repo as Terminal/.
+            val terminalUi = listOf(
+                file("../../../Terminal/android"),
+                file("../../Terminal/android"),
+            ).firstOrNull { it.isDirectory }
+            if (terminalUi != null) {
                 kotlin.directories += terminalUi.path
             }
         }
