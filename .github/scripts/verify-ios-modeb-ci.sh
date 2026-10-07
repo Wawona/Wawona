@@ -19,14 +19,15 @@ fail() {
 
 grep -q 'context device=vphone wawona-jb' "$REPLAY" ||
   fail "replay must pin device vphone wawona-jb"
-grep -q 'packages tipa open-jit com.aspauldingcode.Wawona.ModeB' "$REPLAY" ||
-  fail "replay must open-jit the Mode B bundle first"
 grep -q 'open com.aspauldingcode.Wawona.ModeB' "$REPLAY" ||
   fail "replay must open the Mode B bundle"
 grep -q 'test-artifacts/modeb-ios/' "$REPLAY" ||
   fail "replay must store screenshots under modeb-ios/"
 grep -q 'vphone)' "$SMOKE" ||
   fail "agent-device-smoke.sh must expose a vphone lane"
+# open-jit is owned by the smoke driver (replay alone cannot enable JIT).
+grep -q 'packages tipa open-jit com.aspauldingcode.Wawona.ModeB' "$SMOKE" ||
+  fail "agent-device-smoke.sh vphone lane must open-jit the Mode B bundle first"
 
 usage="$(bash "$SCANNER" 2>&1 || true)"
 grep -q -- '--mode-a' <<<"$usage" || fail "scanner usage must mention --mode-a"
