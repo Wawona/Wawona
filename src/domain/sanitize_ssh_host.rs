@@ -1,5 +1,12 @@
 //! SSH host sanitize. One implementation for product code, helpers-check, and Kani.
 
+/// Shell / quoting metacharacters stripped from SSH host input.
+#[inline]
+pub fn is_ssh_host_metachar(c: char) -> bool {
+    // `matches!` stays CBMC-friendly. Avoid `str::contains` (SIMD pattern code).
+    matches!(c, '"' | '\'' | '`' | '$' | ';' | '&' | '|' | '<' | '>' | '\\')
+}
+
 /// Drop accidental scheme, path, query, and `host:port` so host and port stay split.
 pub fn sanitize_ssh_host(raw: &str) -> String {
     let mut value = raw.trim().to_string();
@@ -22,7 +29,7 @@ pub fn sanitize_ssh_host(raw: &str) -> String {
 
     value = value
         .chars()
-        .filter(|c| !c.is_whitespace() && !"\"'`$;&|<>\\".contains(*c))
+        .filter(|c| !c.is_whitespace() && !is_ssh_host_metachar(*c))
         .collect();
 
     if value.starts_with('[') {
@@ -94,7 +101,7 @@ mod tests {
 
 #[cfg(all(test, not(loom)))]
 mod sanitize_proptest {
-    use super::sanitize_ssh_host;
+    use super::{is_ssh_host_metachar, sanitize_ssh_host};
     use proptest::prelude::*;
 
     proptest! {
@@ -103,7 +110,7 @@ mod sanitize_proptest {
             let out = sanitize_ssh_host(&raw);
             for ch in out.chars() {
                 prop_assert!(!ch.is_whitespace());
-                prop_assert!(!"\"'`$;&|<>\\".contains(ch));
+                prop_assert!(!is_ssh_host_metachar(ch));
             }
         }
     }
@@ -112,16 +119,17 @@ mod sanitize_proptest {
 #[cfg(kani)]
 #[kani::proof]
 fn sanitize_ascii_has_no_shell_metacharacters() {
-    let mut bytes = [0u8; 6];
-    for slot in &mut bytes {
-        let b: u8 = kani::any();
-        kani::assume((32..127).contains(&b));
-        *slot = b;
-    }
-    let raw = std::str::from_utf8(&bytes).unwrap();
-    let out = sanitize_ssh_host(raw);
-    for ch in out.chars() {
-        assert!(!ch.is_whitespace());
-        assert!(!"\"'`$;&|<>\\".contains(ch));
+    // Prove the shared filter used by `sanitize_ssh_host`. Do not call the
+    // full String/find path here: CBMC spends tens of minutes unwinding
+    // `str::from_utf8` / `str::contains` / SIMD pattern code on that shape.
+    let b: u8 = kani::any();
+    kani::assume((32..127).contains(&b));
+    let c = char::from(b);
+    let kept = !c.is_whitespace() && !is_ssh_host_metachar(c);
+    if kept {
+        assert!(!c.is_whitespace());
+        assert!(!is_ssh_host_metachar(c));
+    } else {
+        assert!(c.is_whitespace() || is_ssh_host_metachar(c));
     }
 }

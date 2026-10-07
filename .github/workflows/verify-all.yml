@@ -34,9 +34,9 @@ jobs:
         run: |
           set -euo pipefail
           cargo kani --manifest-path verification/helpers-check/Cargo.toml \
-            --harness clamped_rect_stays_inside_nonnegative_bounds
-          cargo kani --manifest-path verification/helpers-check/Cargo.toml \
-            --harness sanitize_ascii_has_no_shell_metacharacters
+            --harness clamped_rect_stays_inside_nonnegative_bounds \
+            --harness sanitize_ascii_has_no_shell_metacharacters \
+            --output-format terse
       - name: Install pinned Verus
         run: |
           rustup toolchain install 1.98.1-x86_64-unknown-linux-gnu --profile minimal
