@@ -1,47 +1,82 @@
 ---
 name: wawona-formal-verification
-description: Relay Kani and Verus gate, plus the org verification matrix for Rust, Swift, Kotlin, C, and Nix. Use before VM, compositor, JNI, Nix, or proof-tool changes.
+description: Org Verification report and Relay Kani/Verus. Navigate matrix, run scripts, keep one helper implementation, reduce fragility. Use before VM, compositor, JNI, Nix, or proof-tool changes.
 ---
 
-# Wawona Relay formal verification
+# Formal verification and Verification report
 
-Relay VM Rust uses both tools. Neither substitutes for tests.
+Canonical status and navigation: `Wawona/docs/verification-matrix.md`.
+Rule: `wawona-mission-critical-assurance`. Do not claim whole-product proof.
 
-- Kani 0.68.0 checks actual production Rust helpers with bit-precise bounded
-  model checking. Harnesses live beside code under `#[cfg(kani)]`.
-- Verus 0.2026.09.27.3cf1832 proves unbounded mathematical models in
-  `Relay/verification/verus/`.
-- Run `Relay/scripts/verify-formal.sh`. Both must pass.
-- Execute Cargo tests/examples/binaries only after current proof stamp exists.
-  `Relay/.cargo/config.toml` routes execution through
-  `scripts/verified-runner.sh`, rejecting missing or stale source digest.
-- Prefer `Relay/scripts/verified-cargo.sh <cargo args...>`.
-- CI has separate mandatory Kani and Verus jobs.
-- Host verifiers never enter mobile app artifacts. Product Rust checked by
-  Kani remains exact code linked there.
-- No duplicate verified implementation. Factor pure production helpers, point
-  Kani at them, and pair Verus mathematical model by named invariant.
-- Do not claim whole-VM proof. State exact harnesses and proof obligations.
-- Treat LAWs as named Rust preconditions and postconditions tied to production
-  helpers. Do not add a Bend-2-to-C product implementation.
-- Miri and sanitizers are independent dynamic checks. Miri does not execute
-  linked C, and neither is a mathematical proof.
+## Navigate in one minute
 
-## Org matrix
+```text
+Matrix (what runs / severity)     → docs/verification-matrix.md
+Relay Tier-3 obligations          → Relay/verification/PROOF_OBLIGATIONS.md
+CI check name                     → Verification report (verify-all.yml)
+Local surface                     → bash scripts/verify-<name>.sh out.ndjson
+Findings                          → NDJSON via scripts/verification-report.py
+```
 
-Read `Wawona/docs/verification-matrix.md` before adding a prover or claiming
-one runs. Gate: packages calls `verify-all.yml`. The check name is
-**Verification report**.
+| Change | Helper / vector | Script |
+|---|---|---|
+| Rect clamp, generation counter | `src/core/invariants.rs` | `verify-formal.sh`, `verify-heavy.sh` |
+| SSH host policy | `src/domain/validation.rs` + `verification/ssh_host_vector.tsv` | `verify-swift.sh`, `verify-kotlin.sh` |
+| C bounds / atomics | `src/platform/cproof/wawona_cproof.h` | `verify-c.sh` |
+| Relay VM / MMU | production helpers + Verus models | `Relay/scripts/verify-formal.sh` |
+| Flake parse | all `*.nix` | `verify-nix.sh` |
 
-- One law: `sanitize_ssh_host`. Swift and Kotlin copies stay frozen.
-- No Dafny, F*, KeY, JML, or Lean product code. No CompCert. No seL4 rewrite.
-- Creusot, Prusti, and Flux do not prove `unsafe` or JNI.
-- Wawona-owned `.c` is in the matrix. Objective-C is not. Stubs are analyzer-only.
-- SHM pool buffers must use `wawona_shm_rect_in_pool` before pointer math.
-- CDSChecker is for the `_Atomic` counters via `wawona_count_*`. TSan is for the
-  iland presenter mutex.
-- Nix floor: parse, alejandra, statix, deadnix, flake metadata + check on every
-  org flake (`nix-repo-floor.yml`). Not a product matrix build.
-- Failures go through one NDJSON report (`tool`, `file`, `line`, `rule`,
-  `failure`, `fix`). Do not leave the developer in raw logs.
-- Org-quality OSV has no `continue-on-error`. High and critical advisories fail.
+## Fragility and optimization
+
+- **One implementation.** Factor pure helpers. Point Kani, fuzz, CBMC, and
+  differentials at those helpers. Do not "optimize" by deleting checks or
+  forking a second Swift/Kotlin/C policy.
+- **Pinned vs warn.** Error severity fails the job. Warnings (unpinned research
+  provers, Frama-C on Ubuntu 24.04, AGP 9 SpotBugs) stay visible in the report
+  but do not pretend to be green proofs.
+- **Host only.** Verifiers never ship in store IPA/AAB.
+- **NDJSON.** Every failure is `tool`, `file`, `line`, `rule`, `failure`,
+  `fix` (+ `severity`). Do not leave agents in raw log soup.
+
+## Relay (Tier 3)
+
+- Kani 0.68.0 on production Rust helpers (`#[cfg(kani)]`).
+- Verus 0.2026.09.27.3cf1832 models in `Relay/verification/verus/`.
+- Run `Relay/scripts/verify-formal.sh`. Both must pass for the stamp.
+- Prefer `Relay/scripts/verified-cargo.sh`. Runner rejects stale digests.
+- Loom lifecycle: `verification/loom-lifecycle` with `RUSTFLAGS=--cfg loom`.
+- Miri and sanitizers are dynamic checks, not mathematical proof.
+
+## Wawona Verification report
+
+Workflow: `.github/workflows/verify-all.yml` (name Verification).
+Required check: job **Verification report**.
+
+```bash
+bash scripts/verify-formal.sh verification-out/formal.ndjson
+bash scripts/verify-heavy.sh verification-out/heavy.ndjson
+bash scripts/verify-c.sh verification-out/c.ndjson
+bash scripts/verify-swift.sh verification-out/swift.ndjson
+bash scripts/verify-kotlin.sh verification-out/kotlin.ndjson
+bash scripts/verify-nix.sh verification-out/nix.ndjson
+python3 scripts/verification-report.py summarize verification-out --markdown verification-out/report.md
+```
+
+Fuzz targets live under `fuzz/` and depend on `verification/helpers-check`
+(not the full compositor link).
+
+Ruleset enable (pass-wrapped `gh`; unset stale `GH_TOKEN`):
+
+```bash
+scripts/enable-verification-ruleset.sh Wawona/Wawona
+```
+
+## Hard rejects
+
+- Whole-VM or whole-app "proved" claims
+- Soft-skip of a pinned required tool
+- Second sanitize/clamp/keycode implementation
+- Bend-2-generated C product logic
+- Dafny, F*, KeY, JML, Lean, CompCert, seL4 rewrite as product code
+- ACSL that certifies a stub as the compositor
+- Calling research-prover warnings a completed proof

@@ -66,12 +66,15 @@ Relay is the first Tier 3 implementation. Its page geometry, virtio block span,
 and split MMIO address laws are checked by production-code Kani harnesses and
 paired Verus models. See `Relay/verification/README.md`.
 
-The org verification contract for Rust, Swift, Kotlin, and Wawona-owned C is
-`docs/verification-matrix.md`. That file lists what already runs and what is
-required but not wired. Do not describe an unwired tool as a green gate.
-Swift and Kotlin mirrors of `sanitize_ssh_host` stay frozen. Owned C gets the
-tools that can see that file. Stubs are not proved correct by returning zero.
-Objective-C is outside the C prover set.
+The org verification contract for Rust, Swift, Kotlin, Nix, and Wawona-owned C
+is `docs/verification-matrix.md`. That file is the navigation map: which script
+to run, which helper owns a law, pinned error vs warning severity, and how the
+gates reduce fragility (one implementation, no deleted bounds checks, NDJSON
+findings). The CI check name is **Verification report**. Do not describe a
+warning-only research prover as a green gate. Swift and Kotlin mirrors of
+`sanitize_ssh_host` stay frozen. Owned C uses `wawona_cproof` helpers. Stubs
+are not proved correct by returning zero. Objective-C is outside the C prover
+set. Skill: `wawona-formal-verification`.
 
 ## Release evidence
 

@@ -1,6 +1,8 @@
 # Mission-critical assurance
 
 Canonical policy: `Wawona/docs/mission-critical-assurance.md`.
+Tool matrix and navigation: `Wawona/docs/verification-matrix.md`.
+Skill: `wawona-formal-verification`.
 
 AI-authored changes have the same review, proof, test, security, and provenance
 requirements as human changes. Model confidence is not evidence.
@@ -13,18 +15,19 @@ explicit statement of what remains unproved.
 Do not introduce Bend-2-generated C product logic. It violates Rust-first and
 creates a second semantics that Kani, Verus, and Miri do not jointly cover.
 
-Org verification contract: `Wawona/docs/verification-matrix.md`. Relay Kani,
-Verus, Miri, and the `page_translate` fuzz job run today. The rest of that
-matrix is required and not wired. Do not claim a tool runs until its workflow
-exists.
+Org verification contract: `docs/verification-matrix.md`. The CI check name is
+**Verification report** (`verify-all.yml`). Pinned tools fail closed (`severity:
+error`). Unpinned research provers and Ubuntu-missing analyzers warn until a
+pinned path exists. Do not claim a warning row is a completed proof.
 
 `sanitize_ssh_host` owns SSH host rules. Swift and Kotlin mirrors stay frozen.
+Factor clamp / keycode / SHM bounds into `invariants` / `wawona_cproof` helpers.
 Do not ship Dafny, F*, KeY, JML, or Lean as product code. CompCert is not the
 product compiler. A seL4-style rewrite is not this product. Objective-C is
 outside the C prover set. Stubs are analyzer-only. `pool_create_buffer` needs
-a pool-bounds check before any proof calls it safe. CDSChecker is for the
+`wawona_shm_rect_in_pool` before any proof calls it safe. CDSChecker is for the
 `_Atomic` counters in `android_jni.c`. ThreadSanitizer is for the iland
 presenter mutex.
 
 A green verifier covers the named function only. Findings use one record:
-tool, file, line, rule, failure, fix.
+tool, file, line, rule, failure, fix (and severity).

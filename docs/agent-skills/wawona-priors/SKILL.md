@@ -22,10 +22,11 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-gh` | GitHub issues/milestones/PRs/`gh run`. Shell + local `gh`. No GitHub MCP. |
 | `wawona-relay-ios-hypervisor` | Mode B iOS Hypervisor.framework via Relay. Not QEMU HVF. |
 | `wawona-relay` | Linux VMs / OCI / Mode A wasm. Mode A bench + PageTranslate. |
-| `wawona-formal-verification` | Mandatory Kani + Verus gate for Relay VM Rust. |
+| `wawona-formal-verification` | Verification report + Relay Kani/Verus. Matrix navigation, helpers, severity. |
 | `wawona-mission-critical` | Risk tiers, AI parity, proof obligations, security baseline, release evidence. |
 | `wasm-packages-gha` | WASI package builds on GHA (`Wawona/wasm-packages`). Not laptop publish. |
 | `repo-wawona-io-catalogs` | Dual wasm/deb catalogs; GHA build vs catalog host split. |
+| `wawona-machine-types` | Machines UI: Native Shell / VM / Container. Sessions under Native Shell. |
 
 ## Rules (hard gates)
 
@@ -68,9 +69,14 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-github-funding` / `wawona-discord-github-webhook` | New org repos |
 | `wawona-vphone-*` / `wawona-trollstore-*` | Mode B lab / tipa |
 | `repo-wawona-io-*` | Dual wasm/deb catalog host (`repo.wawona.io`) |
+| `wawona-machine-types` | Three Machines kinds. SSH/wasm/waypipe are Native Shell sessions. |
 
 ## Hard-won (do not re-learn)
 
+- Verification report: navigate `docs/verification-matrix.md`, run
+  `scripts/verify-*.sh`, keep one helper implementation. Pinned tools error;
+  unpinned research provers warn. Ruleset needs pass-wrapped `gh` (unset stale
+  `GH_TOKEN`). Skill `wawona-formal-verification`.
 - GitHub mutations are `gh` via Shell. No GitHub MCP. WebFetch GET cannot
   create issues or milestones. `Wawona/issues` is 404. Use `Wawona/Wawona`.
   A git-authorship ban is not a `gh` ban. Skill `wawona-gh`.
@@ -123,13 +129,19 @@ skill, add one row. Capture flow: `wawona-learn`.
 - Prove `ld` locally. Do not burn Gate: products to discover duplicates.
 - Relay Wasm ships on every target. Do not size-gate watchOS off.
 - hello-wasi-gui (`wl_shm`) must run on Watch Machines Start. Transfer is not run.
-- Machines kind `wasm` is first-class on every target. Native still runs wasm
-  via `wawona-wasm` / `wasm` / `wpm`. Do not strip `bundledAppID` on wasm load.
-  Catalog is `repo.wawona.io/wasm/v1` only. Package **builds** are
-  `Wawona/wasm-packages` GHA (`ubuntu-24.04`), not laptop blobs. Skill
-  `wasm-packages-gha`. Android Start uses JNI
+- Machines UI kinds are only Native Shell / VM / Container. Wasm, SSH, and
+  Waypipe are **Native Shell sessions** (Terminal / Wayland / Wasm / Waypipe),
+  not type-picker rows. Wawona Terminal is `wawona-shell`. Skill
+  `wawona-machine-types`. Legacy `type=wasm|ssh_*` still loads. Do not strip
+  `bundledAppID` on wasm session load. Catalog is `repo.wawona.io/wasm/v1`
+  only. Package **builds** are `Wawona/wasm-packages` GHA (`ubuntu-24.04`),
+  not laptop blobs. Skill `wasm-packages-gha`. Android Start uses JNI
   `nativeRunWasm`. Do not `-lwawona_wasm` until `libwawona_wasm.a` exists
   (current Android package is header-only).
+- nixpkgs Swift rewrite: STEP 0 must show Swift **6.2.x** and
+  `swiftPackages.stdlib` before migrating recipes. Wawona flake.lock measured
+  2026-10-06 still had Swift **5.10.1** (no stdlib). Stop and bump nixpkgs.
+  Knowledge: `nixpkgs-swift-packaging.md`.
 - Port = substitute platform, not client. Waypipe Linux build is the reference.
 - Graphics keys live in L1 `wwn-iland`. Never L0 toolchain. Never invert DAG.
 - iOS min OS is **13.0** against the **latest** iPhoneOS SDK only (26 now, 27

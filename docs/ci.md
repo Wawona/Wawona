@@ -163,7 +163,7 @@ Push/PR **Gate: packages** builds only [`.github/ci-package-matrix.json`](../.gi
 | `build` (matrix) | L2 | Curated attrs + FlakeHub (Darwin cells skip when `native=false`) |
 | `frontend-syntax-check` | L2-lite | Xcode syntax without full Nix backend (skipped when docs-only) |
 | `android-gradle-gate` | L2 (path filter) | Gradle `assembleDebug` + meson/shell |
-| `verification` | L1 | Calls `verify-all.yml`. The check name is **Verification report**. Rust, Swift, Kotlin, and owned C. A missing tool is a finding. |
+| `verification` / workflow **Verification** | L1 | `verify-all.yml` on push/PR. Required check name **Verification report**. Surfaces: formal, heavy fuzz, cproof, Swift/Kotlin differentials, nix parse. Navigate: `docs/verification-matrix.md`. Pinned tools fail closed; unpinned research provers warn. |
 
 `workflow_dispatch` always runs the full Darwin surface.
 

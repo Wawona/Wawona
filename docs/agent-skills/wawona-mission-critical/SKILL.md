@@ -20,6 +20,7 @@ release gates.
   production implementation. Adopt LAWs as Rust contracts and proof obligations.
 - Every repo keeps the shared org-quality workflow. Product-specific gates add
   coverage; they do not replace the baseline.
-- Language tools and what is actually wired: `docs/verification-matrix.md`.
-  Do not claim a missing-tool red as a completed proof. Org-quality OSV already
-  fails closed (no `continue-on-error`).
+- Language tools, navigation, and severity: `docs/verification-matrix.md`.
+  Skill `wawona-formal-verification`. CI check **Verification report**.
+  Do not claim a warning-only research prover as a completed proof.
+  Org-quality OSV already fails closed (no `continue-on-error`).

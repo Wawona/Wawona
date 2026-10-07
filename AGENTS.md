@@ -90,8 +90,11 @@ not MCP. Skill `wawona-gh`. Rule `wawona-gh`.
   code. Risk decides the tier. VM memory, MMU, CPU, virtio, privilege, watchdog,
   and display ownership changes require named laws tied to production Rust,
   bounded proof, an unbounded model when tractable, negative tests, and an
-  explicit unproved list. Do not add Bend-2-generated C product logic. See
-  `docs/mission-critical-assurance.md` and skill `wawona-mission-critical`.
+  explicit unproved list. Do not add Bend-2-generated C product logic. Org
+  tool map and navigation: `docs/verification-matrix.md`. CI check
+  **Verification report** (`verify-all.yml`). Skill `wawona-formal-verification`
+  plus `wawona-mission-critical`. Factor clamp/sanitize/SHM bounds into named
+  helpers; do not fork a second policy to "optimize".
 - **FFI**: production compositor bridge is hand-written C `WWNCore*` (`src/ffi/c_api.rs`)
   wrapped by ObjC (`WWNCompositorBridge.m`) / JNI (`android_jni.c`), polling
   model. Do NOT use `objc2`/`cocoa`/`jni`/`ndk` Rust crates or UniFFI callbacks.
@@ -278,6 +281,9 @@ is on (`wawona-nested-compositor-cursor`). Full rule:
   `docs/iland-mode-a-b-desktop.md`.
 - **Wawona Swinging Bridge**. MacOS/Android Mode A+B planned; iOS/iPadOS Mode B
   only (forbidden in store IPA). See `wawona-swinging-bridge`, `docs/swinging-bridge.md`.
+- **Machines UI kinds**. Native Shell / Virtual Machine / Container only.
+  Terminal, Wayland, Wasm, and Waypipe (optional SSH) are Native Shell
+  sessions. Rule/skill `wawona-machine-types`. See `docs/machine-profiles.md`.
 - **VM / containers**. Planned on macOS / iOS / iPadOS / Android / Linux;
   forbidden on tvOS / watchOS / visionOS. See `docs/vms-containers.md`.
 - **Relay Wasm**. Mandatory on every product target including watchOS / tvOS /
