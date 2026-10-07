@@ -26,16 +26,30 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: ./scripts/ensure-waypipe.sh; ./scripts/ensure-coreutils.sh
       - run: cargo install cargo-deny --locked
-      - uses: model-checking/kani-github-action@f838096619a707b0f6b2118cf435eaccfa33e51f # v1.1
-        with:
-          kani-version: "0.68.0"
-          # helpers-check only. Full `nix develop` pulls libsecret and fails GHA DBus tests.
-          # Run both harnesses inside the action so PATH/kani stay wired (a follow-up
-          # `cargo kani` step has hung for 10+ minutes on GHA without that env).
-          command: >
-            cargo kani --manifest-path verification/helpers-check/Cargo.toml
+      # Prebuilt Kani. The kani-github-action `cargo install` path has taken 30+
+      # minutes on GHA and a follow-up `cargo kani` step hung without PATH.
+      - name: Install Kani 0.68.0 (release tarball)
+        run: |
+          set -euo pipefail
+          VER=0.68.0
+          ARCH=x86_64-unknown-linux-gnu
+          curl --fail --location --output /tmp/kani.tgz \
+            "https://github.com/model-checking/kani/releases/download/kani-${VER}/kani-${VER}-${ARCH}.tar.gz"
+          mkdir -p "$HOME/.local"
+          tar -xzf /tmp/kani.tgz -C "$HOME/.local"
+          KANI_HOME="$HOME/.local/kani-${VER}"
+          mkdir -p "$HOME/.cargo/bin"
+          ln -sfn "$KANI_HOME/bin/kani-driver" "$HOME/.cargo/bin/kani"
+          ln -sfn "$KANI_HOME/bin/kani-driver" "$HOME/.cargo/bin/cargo-kani"
+          echo "$KANI_HOME/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          "$KANI_HOME/bin/kani-driver" setup
+      - name: Kani helpers-check harnesses
+        run: |
+          set -euo pipefail
+          cargo kani --manifest-path verification/helpers-check/Cargo.toml \
             --harness clamped_rect_stays_inside_nonnegative_bounds
-            && cargo kani --manifest-path verification/helpers-check/Cargo.toml
+          cargo kani --manifest-path verification/helpers-check/Cargo.toml \
             --harness sanitize_ascii_has_no_shell_metacharacters
       - name: Install pinned Verus
         run: |
