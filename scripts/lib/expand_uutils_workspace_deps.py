@@ -7,6 +7,7 @@ root Cargo.toml / Cargo.lock stay unchanged (CI `--locked` stays valid).
 
 from __future__ import annotations
 
+import os
 import re
 import sys
 from pathlib import Path
@@ -156,7 +157,34 @@ def expand_package_workspace(text: str, pkg: dict[str, str]) -> str:
     return "".join(out)
 
 
-def expand_workspace_true(text: str, deps: dict[str, str]) -> str:
+_PATH_FIELD = re.compile(r'path\s*=\s*"([^"]+)"')
+
+
+def relativize_dep_paths(concrete: str, crate_toml: Path, coreutils_root: Path) -> str:
+    """Rewrite path = "src/…" (rooted at coreutils) for a nested crate manifest."""
+    crate_dir = crate_toml.parent.resolve()
+    root = coreutils_root.resolve()
+
+    def repl(m: re.Match) -> str:
+        rel_from_root = m.group(1)
+        if os.path.isabs(rel_from_root):
+            return m.group(0)
+        target = (root / rel_from_root).resolve()
+        rel = os.path.relpath(target, crate_dir)
+        if os.sep != "/":
+            rel = rel.replace(os.sep, "/")
+        return f'path = "{rel}"'
+
+    return _PATH_FIELD.sub(repl, concrete)
+
+
+def expand_workspace_true(
+    text: str,
+    deps: dict[str, str],
+    *,
+    crate_toml: Path,
+    coreutils_root: Path,
+) -> str:
     lines = text.splitlines(True)
     out: list[str] = []
     i = 0
@@ -175,9 +203,6 @@ def expand_workspace_true(text: str, deps: dict[str, str]) -> str:
             continue
         # Collect full `{ ... }` value (may span lines).
         buf = ["{ " + rest]
-        if rest.count("{") + 1 > rest.count("}"):  # opening brace already counted in rest? 
-            # line was `name = { ...` so brace depth starts at 1 for the value.
-            pass
         depth = buf[0].count("{") - buf[0].count("}")
         while depth > 0 and i + 1 < len(lines):
             i += 1
@@ -196,7 +221,7 @@ def expand_workspace_true(text: str, deps: dict[str, str]) -> str:
             if p.strip() and not p.strip().startswith("workspace")
         ]
         extra = ", ".join(fields)
-        concrete = deps[name]
+        concrete = relativize_dep_paths(deps[name], crate_toml, coreutils_root)
         if not extra and not concrete.strip().startswith("{"):
             # Keep bare pins as-is: selinux = "= 0.5.0"
             out.append(f"{indent}{name} = {concrete}\n")
@@ -226,7 +251,9 @@ def process_coreutils_tree(coreutils_root: Path) -> None:
         text = toml.read_text()
         # Expand before strip so we still see [workspace.*] tables on the root.
         if deps:
-            text = expand_workspace_true(text, deps)
+            text = expand_workspace_true(
+                text, deps, crate_toml=toml, coreutils_root=coreutils_root
+            )
         if pkg:
             text = expand_package_workspace(text, pkg)
         text = strip_nested_workspace(text)
