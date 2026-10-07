@@ -10,27 +10,48 @@ use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub fn sysctl_string(name: &str) -> Option<String> {
-    let c_name = CString::new(name).ok()?;
-    let mut buf = [0u8; 256];
-    let mut len = buf.len();
-    let rc = unsafe {
-        libc::sysctlbyname(
-            c_name.as_ptr(),
-            buf.as_mut_ptr() as *mut libc::c_void,
-            &mut len,
-            std::ptr::null_mut(),
-            0,
-        )
-    };
-    if rc != 0 || len == 0 {
-        return None;
+    // sysctlbyname is Darwin/BSD. Linux libc has no such symbol.
+    #[cfg(any(
+        target_os = "macos",
+        target_os = "ios",
+        target_os = "tvos",
+        target_os = "watchos",
+        target_os = "visionos"
+    ))]
+    {
+        let c_name = CString::new(name).ok()?;
+        let mut buf = [0u8; 256];
+        let mut len = buf.len();
+        let rc = unsafe {
+            libc::sysctlbyname(
+                c_name.as_ptr(),
+                buf.as_mut_ptr() as *mut libc::c_void,
+                &mut len,
+                std::ptr::null_mut(),
+                0,
+            )
+        };
+        if rc != 0 || len == 0 {
+            return None;
+        }
+        let end = if buf[len.saturating_sub(1)] == 0 {
+            len - 1
+        } else {
+            len
+        };
+        Some(String::from_utf8_lossy(&buf[..end]).into_owned())
     }
-    let end = if buf[len.saturating_sub(1)] == 0 {
-        len - 1
-    } else {
-        len
-    };
-    Some(String::from_utf8_lossy(&buf[..end]).into_owned())
+    #[cfg(not(any(
+        target_os = "macos",
+        target_os = "ios",
+        target_os = "tvos",
+        target_os = "watchos",
+        target_os = "visionos"
+    )))]
+    {
+        let _ = name;
+        None
+    }
 }
 
 pub fn sw_vers_block(product: &str, version: &str, build: &str) -> String {
