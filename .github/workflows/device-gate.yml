@@ -56,9 +56,10 @@ on:
       - ".github/scripts/ci-require-branch-tip.sh"
       - ".github/ci-package-matrix.json"
 
-# Serialize per tip. Do not cancel: soft supersede skips obsolete SHAs.
+# Per-commit: live tip must not wait behind an older SHA. Soft supersede skips
+# work when this SHA is no longer tip. Do not cancel (no grey Cancelled spam).
 concurrency:
-  group: device-gate-${{ inputs.checkout_ref || github.ref_name }}
+  group: device-gate-${{ inputs.checkout_ref || github.sha }}
   cancel-in-progress: false
 
 permissions:

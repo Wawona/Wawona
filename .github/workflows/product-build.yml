@@ -39,9 +39,9 @@ on:
         required: false
         default: "all"
 
-# Serialize per tip+only. Soft supersede lives in Gate: products; do not cancel.
+# Per-commit + product slice. Do not serialize the whole branch (blocks tip).
 concurrency:
-  group: product-build-${{ inputs.tip_key || github.ref_name }}-${{ inputs.only || 'all' }}
+  group: product-build-${{ github.sha }}-${{ inputs.only || 'all' }}
   cancel-in-progress: false
 
 permissions:

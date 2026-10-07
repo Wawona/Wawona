@@ -11,8 +11,10 @@ permissions:
   contents: read
   id-token: write
 
+# Per-commit group so a new tip is not stuck pending behind an older SHA.
+# Soft supersede skips work when this SHA is no longer tip.
 concurrency:
-  group: verification-${{ github.ref }}
+  group: verification-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:

@@ -54,7 +54,7 @@ permissions:
 # Tip-only: share group with Gate: products tip (not per-SHA) so obsolete e2e
 # cancels with the parent tip, and nightly/push targeting the same tip align.
 concurrency:
-  group: device-e2e-${{ inputs.tip_key || github.ref_name }}-${{ inputs.products_ready && 'products' || 'standalone' }}-${{ inputs.lanes || 'all' }}
+  group: device-e2e-${{ github.sha }}-${{ inputs.products_ready && 'products' || 'standalone' }}-${{ inputs.lanes || 'all' }}
   cancel-in-progress: false
 
 env:

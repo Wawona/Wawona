@@ -14,8 +14,9 @@ permissions:
   contents: read
   id-token: write
 
+# Per-commit: do not queue the live tip behind an obsolete SHA.
 concurrency:
-  group: nix-ci-${{ github.ref }}
+  group: nix-ci-${{ github.sha }}
   cancel-in-progress: false
 
 env:
