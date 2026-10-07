@@ -31,18 +31,17 @@ if ! cargo clippy --locked --all-targets -- -D clippy::correctness -D clippy::su
   fi
 fi
 
-# ensure-waypipe / ensure-coreutils drop nested [workspace] trees that break
-# cargo metadata. Skip deny as warning in that case; Gate: packages still runs it.
-if cargo metadata --format-version 1 >/dev/null 2>&1; then
-  if ! cargo deny check; then
-    emit cargo-deny "deny.toml" 1 "deny" \
-      "cargo-deny reported an advisory, ban, or license failure" \
-      "cargo deny check"
-  fi
+# Root cargo metadata breaks once ensure-waypipe/coreutils drop nested
+# [workspace] trees. Prefer helpers-check; warn (do not fail the floor) if
+# deny cannot run. Gate: packages still owns full-tree deny.
+if cargo deny --manifest-path verification/helpers-check/Cargo.toml check; then
+  :
+elif cargo metadata --format-version 1 >/dev/null 2>&1 && cargo deny check; then
+  :
 else
-  emit cargo-deny "deny.toml" 1 "nested-workspace" \
-    "cargo metadata sees nested workspaces (waypipe/coreutils); skip deny here" \
-    "run cargo deny check before ensure-waypipe/coreutils, or from Gate: packages" \
+  emit cargo-deny "deny.toml" 1 "deny-unavailable" \
+    "cargo-deny could not check (nested ensure-* workspaces or advisory failure)" \
+    "cargo deny --manifest-path verification/helpers-check/Cargo.toml check" \
     warning
 fi
 

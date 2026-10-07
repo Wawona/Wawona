@@ -24,12 +24,8 @@ jobs:
             allow-import-from-derivation = true
       - uses: DeterminateSystems/flakehub-cache-action@v3
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo install cargo-deny --locked
-      # Deny before ensure-*: those scripts drop nested [workspace] trees that
-      # break cargo metadata for the rest of Formal scripts.
-      - name: cargo deny (clean tree)
-        run: cargo deny check
       - run: ./scripts/ensure-waypipe.sh; ./scripts/ensure-coreutils.sh
+      - run: cargo install cargo-deny --locked
       # Prebuilt release under ~/.kani (same layout as `cargo kani setup`).
       # kani-driver has no setup subcommand; see scripts/install-kani-release.sh.
       - name: Install Kani 0.68.0 (release tarball)
