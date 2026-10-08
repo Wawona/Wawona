@@ -71,6 +71,16 @@ public final class WawonaAppDelegate: Sendable {
         #if !SWIFT_PACKAGE && (os(macOS) || os(iOS) || os(tvOS) || os(visionOS))
         // Host compositor must be up before Machines Start can attach clients.
         // SwiftUI WindowGroup already owns the Machines UI; do not open a second window.
+        #if os(iOS) || os(tvOS) || os(visionOS)
+        // iOS sandbox cannot bind /tmp/wawona-<uid>. Use the app runtime dir.
+        let runtime = WWNPreferencesManager.preferredSharedRuntimeDir()
+        try? FileManager.default.createDirectory(
+            atPath: runtime,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        setenv("XDG_RUNTIME_DIR", runtime, 1)
+        #endif
         let bridge = WWNCompositorBridge.sharedBridge
         if bridge.start(withSocketName: "wayland-0") {
             setenv("WAYLAND_DISPLAY", bridge.socketName(), 1)

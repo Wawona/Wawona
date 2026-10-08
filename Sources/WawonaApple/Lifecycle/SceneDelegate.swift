@@ -32,16 +32,37 @@ public final class WWNSceneDelegate: UIResponder, UIWindowSceneDelegate {
         compositorContainer = container
         window.makeKeyAndVisible()
         applyRespectSafeAreaPreference()
+        // Ensure host Wayland is up before any lab auto-start (AppDelegate may
+        // race scene connection on cold launch).
+        let runtime = WWNPreferencesManager.preferredSharedRuntimeDir()
+        try? FileManager.default.createDirectory(
+            atPath: runtime,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        setenv("XDG_RUNTIME_DIR", runtime, 1)
+        let bridge = WWNCompositorBridge.sharedBridge
+        if bridge.start(withSocketName: "wayland-0") {
+            setenv("WAYLAND_DISPLAY", bridge.socketName(), 1)
+        }
         Self.autoStartMachineIfRequested()
     }
 
-    /// Lab / simctl: `xcrun simctl launch … -e WWN_AUTO_START_MACHINE=<id>`.
+    /// Lab / simctl: `SIMCTL_CHILD_WWN_AUTO_START_MACHINE=<id> xcrun simctl launch …`.
     /// Starts the named profile without XCUITest (Xcode 26 agent-device runner gap).
     private static func autoStartMachineIfRequested() {
         let mid = ProcessInfo.processInfo.environment["WWN_AUTO_START_MACHINE"]?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !mid.isEmpty else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            let bridge = WWNCompositorBridge.sharedBridge
+            if !bridge.isRunning() {
+                if bridge.start(withSocketName: "wayland-0") {
+                    setenv("WAYLAND_DISPLAY", bridge.socketName(), 1)
+                } else {
+                    NSLog("WWN_AUTO_START_MACHINE: host compositor still down")
+                }
+            }
             guard let profile = WWNMachineProfileStore.profile(byId: mid) else {
                 NSLog("WWN_AUTO_START_MACHINE: no profile %@", mid)
                 return
