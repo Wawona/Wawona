@@ -1392,7 +1392,6 @@ PLIST
           "$(SRCROOT)/src/util"
           "$(SRCROOT)/src/platform/macos/ui"
           "$(SRCROOT)/src/platform/macos/ui/Machines"
-          "$(SRCROOT)/src/platform/macos/ui/Helpers"
           "$(SRCROOT)/src/platform/macos/ui/Settings"
           "$(SRCROOT)/src/extensions"
           "$(SRCROOT)/src/platform/macos"
@@ -1446,7 +1445,6 @@ PLIST
             path = "src/platform/macos/ui/Settings";
             excludes = commonExcludes;
           }
-          { path = "src/platform/macos/ui/Helpers"; excludes = commonExcludes; }
           { path = "src/resources/Assets.xcassets"; }
           # Required-reason API manifest (UserDefaults / boot time / file timestamps).
           # Missing this makes ASC accept the IPA then discard the build (never listed).
@@ -1683,7 +1681,6 @@ PLIST
             path = "src/platform/macos/ui/Settings";
             excludes = commonExcludes;
           }
-          { path = "src/platform/macos/ui/Helpers"; excludes = commonExcludes; }
           { path = "src/resources/Assets.xcassets"; }
           # Required-reason API manifest (UserDefaults / boot time / file timestamps).
           # Missing this makes ASC accept the IPA then discard the build (never listed).
@@ -1867,7 +1864,6 @@ PLIST
             path = "src/platform/macos/ui/Settings";
             excludes = commonExcludes;
           }
-          { path = "src/platform/macos/ui/Helpers"; excludes = commonExcludes; }
           { path = "src/resources/Assets.xcassets"; }
           # Required-reason API manifest (UserDefaults / boot time / file timestamps).
           # Missing this makes ASC accept the IPA then discard the build (never listed).
@@ -2634,7 +2630,6 @@ PLIST
               "$(SRCROOT)/src"
               "$(SRCROOT)/src/platform/macos/ui"
               "$(SRCROOT)/src/platform/macos/ui/Machines"
-              "$(SRCROOT)/src/platform/macos/ui/Helpers"
               "$(SRCROOT)/src/platform/macos/ui/Settings"
               "$(SRCROOT)/src/platform/macos"
             ] ++ (pixmanHeaderPaths macosDeps) ++ (ilandGlHeaderPaths macosDeps);
@@ -2717,7 +2712,6 @@ PLIST
             path = "src/platform/macos/ui/Settings";
             excludes = commonExcludes;
           }
-          { path = "src/platform/macos/ui/Helpers"; excludes = commonExcludes; }
           { path = "src/resources/Assets.xcassets"; }
           # Required-reason API manifest (UserDefaults / boot time / file timestamps).
           # Missing this makes ASC accept the IPA then discard the build (never listed).
@@ -3122,7 +3116,6 @@ PLIST
               "${strip (watchosDeps.libwayland or null)}/include/wayland"
               "${strip (watchosDeps.libssh2 or null)}/include"
               "$(SRCROOT)/src/platform/watchos"
-              "$(SRCROOT)/src/platform/macos/ui/Helpers"
               "$(SRCROOT)/src/util"
             ] ++ (pixmanHeaderPaths watchosDeps);
             "HEADER_SEARCH_PATHS[sdk=watchsimulator*]" = [
@@ -3132,7 +3125,6 @@ PLIST
               "${strip (watchosSimDeps.libwayland or null)}/include/wayland"
               "${strip (watchosSimDeps.libssh2 or iosSimDeps.libssh2 or null)}/include"
               "$(SRCROOT)/src/platform/watchos"
-              "$(SRCROOT)/src/platform/macos/ui/Helpers"
               "$(SRCROOT)/src/util"
             ] ++ (pixmanHeaderPaths watchosSimDeps);
             # WawonaModel/WawonaUIContracts are embed=false, link=false above

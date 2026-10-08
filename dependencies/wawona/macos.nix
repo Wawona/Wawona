@@ -856,8 +856,8 @@ GEN_HEADER
           if [[ "$src_file" == *.m ]]; then
             $CC -c "$src_file" \
                -Isrc -Isrc/util -Isrc/platform/macos \
-               -Isrc/platform/macos/ui -Isrc/platform/macos/ui/Helpers \
-               -Isrc/platform/macos/ui/Machines -Isrc/platform/macos/ui/Settings \
+               -Isrc/platform/macos/ui \
+                -Isrc/platform/macos/ui/Machines -Isrc/platform/macos/ui/Settings \
                -Imacos-dependencies/include \
                -Imacos-dependencies/uniffi \
                ${lib.optionalString (anowaw != null) "-I${anowaw}/include"} \
@@ -881,8 +881,8 @@ GEN_HEADER
           else
             $CC -c "$src_file" \
                -Isrc -Isrc/util -Isrc/platform/macos \
-               -Isrc/platform/macos/ui -Isrc/platform/macos/ui/Helpers \
-               -Imacos-dependencies/include \
+               -Isrc/platform/macos/ui \
+                -Imacos-dependencies/include \
                -Imacos-dependencies/uniffi \
                -I${rustBackend}/include \
                -fPIC \

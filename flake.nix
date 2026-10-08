@@ -1731,9 +1731,16 @@
             containerWaypipeGuestLinux = (pkgsFor "aarch64-linux").waypipe;
             containerWaypipeGuestRoot =
               wwn-relay.packages.${system}.waypipe-guest-root or null;
-            containerWaypipeGuestClosure = (pkgsFor "aarch64-linux").closureInfo {
-              rootPaths = [(pkgsFor "aarch64-linux").waypipe];
-            };
+            # closureInfo is an aarch64-linux derivation. Darwin product builders
+            # cannot realize it when the path is absent from cache (platform
+            # mismatch). Prefer waypipe-guest-root; fall back to nix-store -qR
+            # in macos.nix when this is null.
+            containerWaypipeGuestClosure =
+              if pkgs.stdenv.buildPlatform.isLinux then
+                (pkgsFor "aarch64-linux").closureInfo {
+                  rootPaths = [(pkgsFor "aarch64-linux").waypipe];
+                }
+              else null;
             zsh = pkgs.zsh;
             kmscube = pkgs.callPackage kmscubeMacosNix {buildModule = toolchains;};
             modebTty = wwn-igetty.packages.${system}.wwn-igetty;
