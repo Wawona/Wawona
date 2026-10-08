@@ -2968,10 +2968,14 @@ PLIST
         sources = [
           { path = "Sources/WawonaWatch"; excludes = commonExcludes; }
           { path = "Sources/WawonaApple"; excludes = commonExcludes; }
-          { path = "src/platform/watchos"; excludes = commonExcludes; }
+          {
+            path = "src/platform/watchos";
+            # Empty legacy storyboard: Xcode 26 ibtool rejects it (IB error -1).
+            # Watch Global Settings are Settings-Watch.bundle only.
+            excludes = commonExcludes ++ [ "**/WWNWatchSettings.storyboard" ];
+          }
           # SSH keygen is Sources/WawonaApple/Helpers/SSHKeygen.swift.
         ] ++ [
-          { path = "src/platform/watchos/ui/Settings/WWNWatchSettings.storyboard"; }
           { path = "src/resources/Assets.xcassets"; }
           # Required-reason API manifest (UserDefaults / boot time / file timestamps).
           # Missing this makes ASC accept the IPA then discard the build (never listed).
