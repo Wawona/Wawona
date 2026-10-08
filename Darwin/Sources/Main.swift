@@ -1,6 +1,16 @@
 import SwiftUI
+import Foundation
+#if canImport(Darwin)
+    import Darwin
+#endif
+#if canImport(UIKit)
+    import UIKit
+#endif
 #if canImport(AppKit)
     import AppKit
+#endif
+#if canImport(CarPlay)
+    import CarPlay
 #endif
 #if canImport(WawonaUI)
     import WawonaUI
@@ -13,6 +23,10 @@ private typealias SharedAppDelegate = WawonaAppDelegate
 
 /// Process entry. Branches LaunchAgent roles before SwiftUI App.main so
 /// `--compositor-host` / `--menubar` never open a Regular Machines UI.
+///
+/// Apple mobile compiles with an iOS 13.0 floor: SwiftUI `App` / `Scene` /
+/// `UIApplicationDelegateAdaptor` are iOS 14+. Those targets use
+/// `UIApplicationMain` + `WWNSceneDelegate` (Info.plist) instead.
 @main
 enum WawonaProcessEntry {
     static func main() {
@@ -47,6 +61,17 @@ enum WawonaProcessEntry {
             }
             AppMain.main()
         }
+        #elseif os(iOS) || os(tvOS) || os(visionOS)
+        // Ignore SIGPIPE so broken waypipe/SSH pipes do not kill the process.
+        signal(SIGPIPE, SIG_IGN)
+        setbuf(stdout, nil)
+        setbuf(stderr, nil)
+        UIApplicationMain(
+            CommandLine.argc,
+            CommandLine.unsafeArgv,
+            nil,
+            NSStringFromClass(AppMainDelegate.self)
+        )
         #else
         AppMain.main()
         #endif
@@ -62,8 +87,9 @@ enum WawonaProcessEntry {
     #endif
 }
 
+#if os(macOS)
 struct AppMain: App {
-    @AppDelegateAdaptor(AppMainDelegate.self) var appDelegate
+    @NSApplicationDelegateAdaptor(AppMainDelegate.self) var appDelegate
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
@@ -73,7 +99,6 @@ struct AppMain: App {
                     handleScenePhase(newPhase)
                 }
         }
-        #if os(macOS)
         .windowToolbarStyle(.unified(showsTitle: true))
         .commands {
             CommandGroup(replacing: .appSettings) {
@@ -87,7 +112,6 @@ struct AppMain: App {
                 .keyboardShortcut(",", modifiers: .command)
             }
         }
-        #endif
     }
 
     private func handleScenePhase(_ newPhase: ScenePhase) {
@@ -103,15 +127,12 @@ struct AppMain: App {
         }
     }
 }
+#endif
 
 #if canImport(UIKit)
-    typealias AppDelegateAdaptor = UIApplicationDelegateAdaptor
     typealias AppMainDelegateBase = UIApplicationDelegate
-    typealias AppType = UIApplication
 #elseif canImport(AppKit)
-    typealias AppDelegateAdaptor = NSApplicationDelegateAdaptor
     typealias AppMainDelegateBase = NSApplicationDelegate
-    typealias AppType = NSApplication
 #endif
 
 @MainActor
@@ -119,7 +140,7 @@ final class AppMainDelegate: NSObject, AppMainDelegateBase {
     #if canImport(UIKit)
         func application(
             _ application: UIApplication,
-            willFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil,
+            willFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
         ) -> Bool {
             _ = application
             _ = launchOptions
@@ -129,12 +150,59 @@ final class AppMainDelegate: NSObject, AppMainDelegateBase {
 
         func application(
             _ application: UIApplication,
-            didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil,
+            didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
         ) -> Bool {
             _ = application
             _ = launchOptions
             SharedAppDelegate.shared.onLaunch()
             return true
+        }
+
+        func application(
+            _ application: UIApplication,
+            configurationForConnecting connectingSceneSession: UISceneSession,
+            options: UIScene.ConnectionOptions
+        ) -> UISceneConfiguration {
+            _ = application
+            _ = options
+            #if canImport(CarPlay) && !os(tvOS) && !os(visionOS)
+            if connectingSceneSession.role == .carTemplateApplication {
+                let carPlay = UISceneConfiguration(
+                    name: "CarPlay Configuration",
+                    sessionRole: connectingSceneSession.role
+                )
+                carPlay.delegateClass = CarPlaySceneDelegate.self
+                return carPlay
+            }
+            #endif
+            #if !os(tvOS) && !os(visionOS)
+            if #available(iOS 16.0, *),
+               connectingSceneSession.role == .windowExternalDisplayNonInteractive
+            {
+                let external = UISceneConfiguration(
+                    name: "External Display",
+                    sessionRole: connectingSceneSession.role
+                )
+                external.delegateClass = ExternalSceneDelegate.self
+                return external
+            }
+            #endif
+            let config = UISceneConfiguration(
+                name: "Default Configuration",
+                sessionRole: connectingSceneSession.role
+            )
+            config.delegateClass = WWNSceneDelegate.self
+            return config
+        }
+
+        func applicationDidBecomeActive(_ application: UIApplication) {
+            _ = application
+            SharedAppDelegate.shared.onResume()
+        }
+
+        func applicationDidEnterBackground(_ application: UIApplication) {
+            _ = application
+            SharedAppDelegate.shared.onStop()
         }
 
         func applicationWillTerminate(_ application: UIApplication) {

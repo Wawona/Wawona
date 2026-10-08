@@ -1,7 +1,10 @@
 #if os(iOS) || os(tvOS) || os(visionOS)
+import SwiftUI
 import UIKit
 
-/// Scene entry. Replaces WWNSceneDelegate.m. Host chrome stays SwiftUI.
+/// Scene entry. Hosts Machines / Welcome SwiftUI chrome. Replaces
+/// `WWNSceneDelegate.m`. Process entry is `Darwin/Sources/Main.swift`
+/// (`UIApplicationMain`); Info.plist names this class.
 @objc(WWNSceneDelegate)
 public final class WWNSceneDelegate: UIResponder, UIWindowSceneDelegate {
     @objc public var window: UIWindow?
@@ -12,22 +15,23 @@ public final class WWNSceneDelegate: UIResponder, UIWindowSceneDelegate {
         willConnectTo session: UISceneSession,
         options connectionOptions: UIScene.ConnectionOptions
     ) {
+        _ = session
+        _ = connectionOptions
         guard let windowScene = scene as? UIWindowScene else { return }
         let window = UIWindow(windowScene: windowScene)
         self.window = window
+        let hosting = UIHostingController(rootView: WawonaRootView())
+        window.rootViewController = hosting
+        // Keep a full-bleed container for DRM present / nested clients that
+        // attach under the root (Machines Focus path).
         let container = UIView(frame: window.bounds)
         container.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        container.backgroundColor = .black
+        container.isUserInteractionEnabled = false
+        container.backgroundColor = .clear
+        hosting.view.insertSubview(container, at: 0)
         compositorContainer = container
-        // SwiftUI root lives in WawonaUI (WawonaRootView). Scene owns the window shell.
-        let root = UIViewController()
-        root.view.backgroundColor = .black
-        container.frame = root.view.bounds
-        root.view.addSubview(container)
-        window.rootViewController = root
         window.makeKeyAndVisible()
         applyRespectSafeAreaPreference()
-        _ = WWNCompositorBridge.sharedBridge.start(withSocketName: "wayland-0")
     }
 
     @objc public func applyRespectSafeAreaPreference() {
