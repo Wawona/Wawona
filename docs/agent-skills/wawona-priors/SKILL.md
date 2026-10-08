@@ -19,6 +19,8 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-carplay-lab` | Playport physical-iPhone CarPlay lab; private runtime identity and pairing. |
 | `wawona-vphone-lab-recover` | Dead / stale vphone lab. Sock refused. Stuck SSH wait. |
 | `wawona-ios-min-os` | iOS 13-27+ min OS vs latest SDK. One ANGLE, one MoltenVK. Never downgrade SDK. |
+| `wawona-ios-sim-runtime` | iOS Simulator dogfood: profiles import, SIMCTL_CHILD AUTO_START, XCUITest gap. |
+| `wawona-ios-link-contract` | Fail before compile when Sources membership or C symbol missing. |
 | `wawona-gh` | GitHub issues/milestones/PRs/`gh run`. Shell + local `gh`. No GitHub MCP. |
 | `wawona-relay-ios-hypervisor` | Mode B iOS Hypervisor.framework via Relay. Not QEMU HVF. |
 | `wawona-relay` | Linux VMs / OCI / Mode A wasm. Mode A bench + PageTranslate. |
@@ -60,6 +62,8 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-linux-vms-relay-runtime` | NixOS VMs; Mode A/B engines; no QEMU/UTM |
 | `wawona-platform-targets` | Four-state gates. Ghostty grid is `Wawona/Ghostty` (Zig). Toolbar keys are `Wawona/ToolbarKeys`. |
 | `wawona-ios-min-os` | iOS 13.0 min OS; latest iPhoneOS SDK only; one ANGLE + one MoltenVK |
+| `wawona-ios-app-entry` | Mobile `@main` / no client C `_main` / XDG_RUNTIME_DIR before compositor |
+| `wawona-ios-link-contract` | Membership + called C symbols before Apple app compile |
 | `wawona-swinging-bridge` | Not Desktop, not LockScreen |
 | `wawona-test-control` / `wawona-agent-device` | UI / vphone |
 | `wawona-agent-device-multitouch` | Wayland client taps |
@@ -124,6 +128,17 @@ skill, add one row. Capture flow: `wawona-learn`.
 - `launchctl disable` WindowServer is sticky. Missed restore panics login.
 - Wayland client taps need Multi-Touch. Touchpad "success" is often a no-op.
 - Tipa: bump `CFBundleVersion`. Never install under `/var/jb/Applications` (179).
+- Apple-mobile LC_MAIN: `Darwin/Sources/Main.swift` on iOS/iPadOS/tvOS/visionOS
+  xcodegen targets. Mobile entry is `UIApplicationMain` (iOS 13 floor). Never
+  leave process entry to `libgbm_es2_demo.a` C `_main`. Archive rename is
+  `-Dmain=gbm_es2_demo_cli_main` only; product ABI stays
+  `extern C gbm_es2_demo_main`. Do not `-Dmain=gbm_es2_demo_main`
+  (redefinition). Set `XDG_RUNTIME_DIR` to `preferredSharedRuntimeDir`
+  (`/tmp/wawona_sim_<uid>`) before host compositor start. Simulator profile
+  inject: `defaults import`, not raw plist rewrite. Env into guest:
+  `SIMCTL_CHILD_WWN_AUTO_START_MACHINE=<id>` (plain `launch -e` is argv).
+  AUTO_START may leave Connected=0; trust stderr. Rule
+  `wawona-ios-app-entry`. Skill `wawona-ios-sim-runtime`.
 - Mode B TrollStore proof device is `vphone wawona-jb`. Do not wait for
   STARDUST. TXM MAP_JIT `EPERM` and Metal nil are proven on that guest.
   iOS VMs wait on Relay. Fail closed. No QEMU product path. Linux guests

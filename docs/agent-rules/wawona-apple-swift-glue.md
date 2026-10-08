@@ -32,11 +32,16 @@ file is not an ObjC class (`@interface` / `@implementation` forbidden).
 | `Sources/WawonaUI` | Machines, Welcome, Settings SwiftUI |
 | `Sources/WawonaWatch` | Watch screens |
 | `Sources/WawonaApple` | Present, Input, Lifecycle, Shell, ModeB, Runners, Settings glue |
-| `Darwin/` | `@main` process entry |
+| `Darwin/` | `@main` process entry on **macOS and Apple-mobile** app targets |
 | `src/platform/{macos,ios,watchos}` | Thin `.h` / plain `.c` stubs only |
+
+`Darwin/Sources/Main.swift` must be in `xcodegen` sources for iOS / iPadOS /
+tvOS / visionOS as well as macOS. Mobile uses `UIApplicationMain` (iOS 13
+floor). Never leave LC_MAIN to a bundled client archive. Full gate:
+`wawona-ios-app-entry`.
 
 Android Kotlin/Compose and Linux GTK are unchanged. Upstream C ports
 (Weston, Niri, cairo, …) stay C. `chess-for-linux` is out of this gate.
 
 Canonical rules: `wawona-rust-first`, `wawona-uniffi-domain`,
-`docs/2026-SOURCE-LAYOUT-RULES.md`.
+`wawona-ios-app-entry`, `docs/2026-SOURCE-LAYOUT-RULES.md`.

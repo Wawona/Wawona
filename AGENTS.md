@@ -129,6 +129,7 @@ not MCP. Skill `wawona-gh`. Rule `wawona-gh`.
   `project=crate2nix` for `tools.nix`/`defaultCrateOverrides`/strategy questions.
 - **Apple = OS 26 / Liquid Glass**; **Material 3 Expressive = Android 16+ only**.
 - **iOS min OS vs SDK.** Mach-O min is iOS **13.0** through the latest iOS (26 now, 27 when the SDK ships). Never raise that floor to match a dependency (GhosttyKit 17 stays unlinked). Never downgrade the SDK. App Store IPAs do not ship a product `.dylib` (static archives; Apple `libswift*` is the exception). One ANGLE, one MoltenVK, Wawona patches. App Store / TrollStore / Sileo. See `docs/agent-rules/wawona-ios-min-os.md`.
+- **Apple-mobile process entry.** `Darwin/Sources/Main.swift` on iOS/iPadOS/tvOS/visionOS (and macOS). Mobile uses `UIApplicationMain` (iOS 13 floor). Never leave LC_MAIN to a bundled client's C `_main` (`gbm_es2_demo`). Set `XDG_RUNTIME_DIR` to `preferredSharedRuntimeDir` before host compositor start. See `docs/agent-rules/wawona-ios-app-entry.md` and skill `wawona-ios-sim-runtime`.
 - **Patched software lives in `wwn-*` repos** (Wawona org): the cross-compile
   framework + common libraries + `wawona-pty` are in `wwn-toolchain`; the patched
   apps are in `wwn-zsh`, `wwn-weston` (+ `weston-simple-shm`), `wwn-iland`,
