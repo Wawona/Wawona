@@ -22,7 +22,7 @@ struct BundledClientPickerView: View {
     var body: some View {
         List {
             ForEach(grouped, id: \.kind) { group in
-                Section(group.kind.sectionTitle) {
+                Section(header: Text(group.kind.sectionTitle)) {
                     ForEach(group.clients) { launcher in
                         row(
                             id: launcher.name,

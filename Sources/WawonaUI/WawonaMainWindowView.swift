@@ -44,7 +44,11 @@ private struct WWNIgnoreTrailingContainerSafeArea: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
         if active {
-            content.ignoresSafeArea(.container, edges: .trailing)
+            if #available(iOS 14.0, tvOS 14.0, macOS 11.0, visionOS 1.0, *) {
+                content.ignoresSafeArea(.container, edges: .trailing)
+            } else {
+                content.edgesIgnoringSafeArea(.trailing)
+            }
         } else {
             content
         }
@@ -402,7 +406,7 @@ struct WawonaMainWindowView: View {
                     destination: .machines,
                     title: "Machines",
                     systemImage: "desktopcomputer",
-                    color: .indigo,
+                    color: Color(red: 0.35, green: 0.34, blue: 0.84),
                     accessibilityID: WWNA11y.machinesRoot
                 )
             }

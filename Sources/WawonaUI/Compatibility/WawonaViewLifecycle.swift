@@ -79,3 +79,46 @@ private struct WawonaViewTask: ViewModifier {
         }
     }
 }
+
+/// iOS 13-safe stand-in for `@StateObject` (iOS 14+).
+///
+/// Holds the observable once in `@State` and forwards `objectWillChange` so
+/// feature views do not need an availability-gated property wrapper.
+/// Used by Machines UI wrappers that must stay visible on the product floor.
+@propertyWrapper
+public struct WawonaStateObject<ObjectType: ObservableObject>: DynamicProperty {
+    @State private var box: Box
+    @ObservedObject private var observed: Box
+
+    public init(wrappedValue: @autoclosure @escaping () -> ObjectType) {
+        let box = Box(wrappedValue())
+        _box = State(wrappedValue: box)
+        _observed = ObservedObject(wrappedValue: box)
+    }
+
+    public var wrappedValue: ObjectType {
+        observed.object
+    }
+
+    public var projectedValue: ObservedObject<ObjectType>.Wrapper {
+        ObservedObject(wrappedValue: observed.object).projectedValue
+    }
+
+    public mutating func update() {
+        if observed !== box {
+            _observed = ObservedObject(wrappedValue: box)
+        }
+    }
+
+    private final class Box: ObservableObject {
+        let object: ObjectType
+        private var cancellable: AnyCancellable?
+
+        init(_ object: ObjectType) {
+            self.object = object
+            cancellable = object.objectWillChange.sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+        }
+    }
+}

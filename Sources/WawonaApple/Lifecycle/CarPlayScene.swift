@@ -13,7 +13,11 @@ public final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationScene
     ) {
         self.interfaceController = interfaceController
         let list = CPListTemplate(title: "Wawona", sections: [])
-        interfaceController.setRootTemplate(list, animated: true) { _, _ in }
+        if #available(iOS 14.0, *) {
+            interfaceController.setRootTemplate(list, animated: true) { _, _ in }
+        } else {
+            interfaceController.setRootTemplate(list, animated: true)
+        }
     }
 
     public func templateApplicationScene(

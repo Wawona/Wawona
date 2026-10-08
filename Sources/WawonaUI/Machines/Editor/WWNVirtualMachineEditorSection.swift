@@ -5,6 +5,9 @@ import WawonaUI
 #endif
 
 /// Native controls bridge the existing profile schema to Relay's Rust validation.
+#if os(iOS)
+@available(iOS 16.0, *)
+#endif
 struct WWNVirtualMachineEditorSection: View {
   @ObservedObject var draft: WWNMachineEditorDraft
 

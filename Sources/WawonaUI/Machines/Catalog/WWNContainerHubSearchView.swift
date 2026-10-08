@@ -5,6 +5,9 @@ import WawonaModel
 /// repo search results, then a per-repo tag drill-in. Selecting a tag hands
 /// back a fully qualified reference built by the CLI (`pullableRef:tag`),
 /// so the GUI and `container run` share one resolution rule.
+#if os(iOS)
+@available(iOS 16.0, *)
+#endif
 struct WWNContainerHubSearchView: View {
   /// Called with the chosen image reference, e.g.
   /// `docker.io/library/python:3.12-slim`.

@@ -7,6 +7,10 @@
  * allow-missing the way ELF does when the referencing .o is -force_load'd.
  * Provide empty definitions so platforms without those archives still link.
  *
+ * wwn-neovim is not currently merged into the Wawona registry, but
+ * libwwn-pty still references wawona_nvim_main. Stub until that archive
+ * is force-loaded again. Watch uses WWNWatchStubs.c instead.
+ *
  * tvOS omits fuzzel (no fork/exec launcher). GPU clients
  * (ANGLE, kmscube, weston-simple-egl) are linked for real; do not stub
  * those entry points or they collide with the archives.
@@ -16,6 +20,16 @@
 
 #if defined(__APPLE__)
 #include <TargetConditionals.h>
+#endif
+
+#if defined(__APPLE__) && (TARGET_OS_IOS || TARGET_OS_TV || TARGET_OS_VISION)
+
+int wawona_nvim_main(int argc, char *argv[]) {
+  (void)argc;
+  (void)argv;
+  return 127;
+}
+
 #endif
 
 #if defined(__APPLE__) && TARGET_OS_TV

@@ -61,7 +61,7 @@ rec {
     "src/platform/macos/WWNSettings.h"
     "src/platform/macos/WWNSettings.c"
     "src/util/wwn_startup_log_sink.c"
-    "src/platform/ios/WWNWatchCompanionBridgeConstants.c"
+    "src/platform/ios/WWNWatchCompanionBridgeConstants.m"
     "src/platform/macos/ui/Machines/wawona_relay.h"
     "src/platform/macos/ui/Machines/wawona_relay_copy_frame_stub.c"
     "src/platform/macos/ui/Settings/WWNSettingsDefines.h"

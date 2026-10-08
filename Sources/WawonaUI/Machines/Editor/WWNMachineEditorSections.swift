@@ -10,6 +10,9 @@ enum WWNMachineEditorRoute: Hashable {
 // MARK: - Machine Profile
 
 /// Identity card: display name, machine type, session thumbnail.
+#if os(iOS)
+@available(iOS 16.0, *)
+#endif
 struct WWNMachineProfileEditorSection: View {
   @ObservedObject var draft: WWNMachineEditorDraft
 
@@ -55,6 +58,9 @@ struct WWNMachineProfileEditorSection: View {
 }
 
 /// Native Shell session mode: Terminal, Wayland, Wasm, or Waypipe.
+#if os(iOS)
+@available(iOS 16.0, *)
+#endif
 struct WWNNativeShellSessionEditorSection: View {
   @ObservedObject var draft: WWNMachineEditorDraft
 
@@ -108,6 +114,9 @@ struct WWNNativeShellSessionEditorSection: View {
 // MARK: - Native client
 
 /// Native machines: bundled Wayland client or WASM module.
+#if os(iOS)
+@available(iOS 16.0, *)
+#endif
 struct WWNNativeClientEditorSection: View {
   @ObservedObject var draft: WWNMachineEditorDraft
 
@@ -241,6 +250,9 @@ struct WWNNativeClientEditorSection: View {
 // MARK: - Wasm
 
 /// Machines kind `wasm`: local file, wasm catalog, or a native-shell command.
+#if os(iOS)
+@available(iOS 16.0, *)
+#endif
 struct WWNWasmEditorSection: View {
   @ObservedObject var draft: WWNMachineEditorDraft
 
@@ -403,6 +415,9 @@ struct WWNWasmEditorSection: View {
 /// Container machines: image + command + (macOS) archive import / desktop
 /// session. Advanced settings (memory, mounts, ports) live in Machine
 /// Settings; empty fields inherit global Settings → Containers.
+#if os(iOS)
+@available(iOS 16.0, *)
+#endif
 struct WWNContainerEditorSection: View {
   @ObservedObject var draft: WWNMachineEditorDraft
 
@@ -542,6 +557,9 @@ struct WWNContainerEditorSection: View {
 // MARK: - Remote SSH
 
 /// SSH connection card for remote machines (SSH + Waypipe / SSH Terminal).
+#if os(iOS)
+@available(iOS 16.0, *)
+#endif
 struct WWNRemoteSSHEditorSection: View {
   @ObservedObject var draft: WWNMachineEditorDraft
 
@@ -619,6 +637,9 @@ struct WWNRemoteSSHEditorSection: View {
 // MARK: - Waypipe transport
 
 /// Per-machine Waypipe overrides.
+#if os(iOS)
+@available(iOS 16.0, *)
+#endif
 struct WWNWaypipeEditorSection: View {
   @ObservedObject var draft: WWNMachineEditorDraft
 
@@ -714,6 +735,9 @@ struct WWNWaypipeEditorSection: View {
 
 // MARK: - Launch command preview
 
+#if os(iOS)
+@available(iOS 16.0, *)
+#endif
 struct WWNLaunchCommandEditorSection: View {
   let command: String
 
@@ -733,6 +757,9 @@ struct WWNLaunchCommandEditorSection: View {
 
 /// Header above the Display / Input / Graphics override cards, with the
 /// shortcut to global Settings.
+#if os(iOS)
+@available(iOS 16.0, *)
+#endif
 struct WWNMachineOverridesHeader: View {
   var onOpenSettings: () -> Void
 
@@ -764,6 +791,9 @@ struct WWNMachineOverridesHeader: View {
   }
 }
 
+#if os(iOS)
+@available(iOS 16.0, *)
+#endif
 struct WWNMachineDisplayEditorSection: View {
   @ObservedObject var draft: WWNMachineEditorDraft
 
@@ -819,6 +849,9 @@ struct WWNMachineDisplayEditorSection: View {
   }
 }
 
+#if os(iOS)
+@available(iOS 16.0, *)
+#endif
 struct WWNMachineInputEditorSection: View {
   @ObservedObject var draft: WWNMachineEditorDraft
 
@@ -882,6 +915,9 @@ struct WWNMachineInputEditorSection: View {
   }
 }
 
+#if os(iOS)
+@available(iOS 16.0, *)
+#endif
 struct WWNMachineGraphicsEditorSection: View {
   @ObservedObject var draft: WWNMachineEditorDraft
 
@@ -928,6 +964,9 @@ struct WWNMachineGraphicsEditorSection: View {
 
 // MARK: - Environment Variables
 
+#if os(iOS)
+@available(iOS 16.0, *)
+#endif
 struct WWNEnvironmentVariablesEditorSection: View {
   @ObservedObject var draft: WWNMachineEditorDraft
   var onEdit: () -> Void
@@ -978,6 +1017,9 @@ struct WWNEnvironmentVariablesEditorSection: View {
 
 // MARK: - Session Exit
 
+#if os(iOS)
+@available(iOS 16.0, *)
+#endif
 struct WWNSessionExitEditorSection: View {
   @ObservedObject var draft: WWNMachineEditorDraft
 

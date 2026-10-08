@@ -410,7 +410,8 @@ public final class WWNPreferencesSectionsBuilder: NSObject {
         case .environment: return .systemTeal
         case .localShell: return .systemGreen
         case .machines: return .systemIndigo
-        case .iCloudSync: return .systemCyan
+        // systemCyan is iOS 15+; keep a distinct cyan for iCloud on older hosts.
+        case .iCloudSync: return NSColor(calibratedRed: 0.20, green: 0.68, blue: 0.90, alpha: 1)
         case .appleWatch: return .systemPink
         case .desktop: return .systemTeal
         case .waypipe: return .systemGreen
@@ -429,7 +430,8 @@ public final class WWNPreferencesSectionsBuilder: NSObject {
         case .environment: return .systemTeal
         case .localShell: return .systemGreen
         case .machines: return .systemIndigo
-        case .iCloudSync: return .systemCyan
+        // systemCyan is iOS 15+; keep a distinct cyan for iCloud on older hosts.
+        case .iCloudSync: return UIColor(red: 0.20, green: 0.68, blue: 0.90, alpha: 1)
         case .appleWatch: return .systemPink
         case .desktop: return .systemTeal
         case .waypipe: return .systemGreen

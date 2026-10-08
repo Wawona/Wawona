@@ -8,6 +8,9 @@ import AppKit
 
 /// A titled content card with an SF Symbol header. Long explanatory copy stays
 /// behind a native info popover on every platform.
+#if os(iOS)
+@available(iOS 16.0, *)
+#endif
 struct WWNEditorCard<Content: View>: View {
   let icon: String
   let title: String
@@ -75,6 +78,9 @@ struct WWNEditorCard<Content: View>: View {
 
 /// Native `info.circle` button that opens explanatory copy without expanding
 /// the main settings surface.
+#if os(iOS)
+@available(iOS 16.0, *)
+#endif
 struct WWNEditorInfoButton: View {
   let text: String
 
@@ -123,6 +129,9 @@ struct WWNEditorInfoButton: View {
 }
 
 /// Short operational status or concise secondary text.
+#if os(iOS)
+@available(iOS 16.0, *)
+#endif
 struct WWNEditorCaption: View {
   let text: String
 
@@ -137,6 +146,9 @@ struct WWNEditorCaption: View {
 
 /// Labeled field row: optional leading icon + optional info popover (macOS) /
 /// inline caption (iOS/tvOS). Adapts to compact widths by stacking.
+#if os(iOS)
+@available(iOS 16.0, *)
+#endif
 struct WWNEditorFieldRow<Content: View>: View {
   let label: String
   var icon: String? = nil
@@ -206,6 +218,9 @@ struct WWNEditorFieldRow<Content: View>: View {
 
 /// Toggle row with optional leading icon and explanatory copy (popover on
 /// macOS, inline caption elsewhere).
+#if os(iOS)
+@available(iOS 16.0, *)
+#endif
 struct WWNEditorToggleRow: View {
   let title: String
   var icon: String? = nil
@@ -269,6 +284,9 @@ struct WWNEditorToggleRow: View {
 }
 
 /// Bounded numeric storage for legacy string-backed machine fields.
+#if os(iOS)
+@available(iOS 16.0, *)
+#endif
 struct WWNEditorNumberField: View {
   @Binding var text: String
   let range: ClosedRange<Int>
@@ -328,6 +346,9 @@ struct WWNEditorNumberField: View {
 
 /// Text field for code-like input (hosts, paths, commands): rounded border,
 /// no autocapitalization or autocorrection.
+#if os(iOS)
+@available(iOS 16.0, *)
+#endif
 struct WWNEditorCodeField: View {
   let prompt: String
   @Binding var text: String
@@ -346,6 +367,9 @@ struct WWNEditorCodeField: View {
 }
 
 /// Secure field with a macOS-style reveal toggle.
+#if os(iOS)
+@available(iOS 16.0, *)
+#endif
 struct WWNEditorSecureField: View {
   let prompt: String
   @Binding var text: String
@@ -382,6 +406,9 @@ struct WWNEditorSecureField: View {
 }
 
 /// Monospaced command preview block with a copy button.
+#if os(iOS)
+@available(iOS 16.0, *)
+#endif
 struct WWNEditorCommandBlock: View {
   let command: String
 

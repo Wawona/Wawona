@@ -80,7 +80,7 @@ public final class GameControllerBridge: NSObject {
                 name: .GCKeyboardDidDisconnect,
                 object: nil
             )
-            keyboardConnected = GCKeyboard.coalescedKeyboard != nil
+            keyboardConnected = GCKeyboard.coalesced != nil
         }
         NSLog("[GAMEPAD] GameController manager started (\(GCController.controllers().count))")
     }
@@ -124,7 +124,7 @@ public final class GameControllerBridge: NSObject {
     @objc private func keyboardChanged(_ note: Notification) {
         guard #available(iOS 14.0, tvOS 14.0, *) else { return }
         _ = note
-        keyboardConnected = GCKeyboard.coalescedKeyboard != nil
+        keyboardConnected = GCKeyboard.coalesced != nil
     }
 
     private func configureController(_ controller: GCController) {
@@ -147,14 +147,18 @@ public final class GameControllerBridge: NSObject {
 
     private func configureExtendedGamepad(_ pad: GCExtendedGamepad) {
         pad.buttonA.pressedChangedHandler = { [weak self] _, _, pressed in
-            self?.targetView()?.clickVirtualPointerButton(self?.btnLeft ?? 0, pressed: pressed)
+            guard let self else { return }
+            self.targetView()?.clickVirtualPointerButton(self.btnLeft, pressed: pressed)
         }
         pad.buttonB.pressedChangedHandler = { [weak self] _, _, pressed in
-            self?.targetView()?.clickVirtualPointerButton(self?.btnRight ?? 0, pressed: pressed)
+            guard let self else { return }
+            self.targetView()?.clickVirtualPointerButton(self.btnRight, pressed: pressed)
         }
         pad.dpad.valueChangedHandler = { [weak self] _, x, y in
             guard abs(x) > 0.5 || abs(y) > 0.5 else { return }
-            self?.targetView()?.moveVirtualPointerByDx(x * 10, dy: -y * 10)
+            let dx = CGFloat(x) * 10
+            let dy = -CGFloat(y) * 10
+            self?.targetView()?.moveVirtualPointerByDx(dx, dy: dy)
         }
         if #available(iOS 14.0, tvOS 14.0, *) {
             #if os(tvOS)
@@ -238,25 +242,26 @@ public final class GameControllerBridge: NSObject {
         let dt = lastStickTick > 0 ? now - lastStickTick : 0
         lastStickTick = now
         guard dt > 0, dt <= 0.25, let view = targetView() else { return }
+        let dtCg = CGFloat(dt)
         for controller in GCController.controllers() {
             if let pad = controller.extendedGamepad {
-                let lx = pad.leftThumbstick.xAxis.value
-                let ly = pad.leftThumbstick.yAxis.value
-                if abs(lx) > stickDeadzone || abs(ly) > stickDeadzone {
-                    view.moveVirtualPointerByDx(lx * stickCursorSpeed * dt, dy: -ly * stickCursorSpeed * dt)
+                let lx = CGFloat(pad.leftThumbstick.xAxis.value)
+                let ly = CGFloat(pad.leftThumbstick.yAxis.value)
+                if abs(lx) > CGFloat(stickDeadzone) || abs(ly) > CGFloat(stickDeadzone) {
+                    view.moveVirtualPointerByDx(lx * stickCursorSpeed * dtCg, dy: -ly * stickCursorSpeed * dtCg)
                 }
-                let rx = pad.rightThumbstick.xAxis.value
-                let ry = pad.rightThumbstick.yAxis.value
-                if abs(rx) > stickDeadzone || abs(ry) > stickDeadzone {
-                    view.scrollVirtualPointerByDx(rx * stickScrollSpeed * dt, dy: -ry * stickScrollSpeed * dt)
+                let rx = CGFloat(pad.rightThumbstick.xAxis.value)
+                let ry = CGFloat(pad.rightThumbstick.yAxis.value)
+                if abs(rx) > CGFloat(stickDeadzone) || abs(ry) > CGFloat(stickDeadzone) {
+                    view.scrollVirtualPointerByDx(rx * stickScrollSpeed * dtCg, dy: -ry * stickScrollSpeed * dtCg)
                 }
                 continue
             }
             if let micro = controller.microGamepad {
-                let x = micro.dpad.xAxis.value
-                let y = micro.dpad.yAxis.value
-                if abs(x) > stickDeadzone || abs(y) > stickDeadzone {
-                    view.moveVirtualPointerByDx(x * siriTouchpadSpeed * dt, dy: -y * siriTouchpadSpeed * dt)
+                let x = CGFloat(micro.dpad.xAxis.value)
+                let y = CGFloat(micro.dpad.yAxis.value)
+                if abs(x) > CGFloat(stickDeadzone) || abs(y) > CGFloat(stickDeadzone) {
+                    view.moveVirtualPointerByDx(x * siriTouchpadSpeed * dtCg, dy: -y * siriTouchpadSpeed * dtCg)
                 }
             }
         }
@@ -268,27 +273,34 @@ public final class GameControllerBridge: NSObject {
         mouseConnected = true
         input.mouseMovedHandler = { [weak self] _, dx, dy in
             DispatchQueue.main.async {
-                self?.targetView()?.moveVirtualPointerByDx(dx, dy: -dy)
+                self?.targetView()?.moveVirtualPointerByDx(CGFloat(dx), dy: -CGFloat(dy))
             }
         }
         input.leftButton.pressedChangedHandler = { [weak self] _, _, pressed in
             DispatchQueue.main.async {
-                self?.targetView()?.clickVirtualPointerButton(self?.btnLeft ?? 0, pressed: pressed)
+                guard let self else { return }
+                self.targetView()?.clickVirtualPointerButton(self.btnLeft, pressed: pressed)
             }
         }
-        input.rightButton.pressedChangedHandler = { [weak self] _, _, pressed in
-            DispatchQueue.main.async {
-                self?.targetView()?.clickVirtualPointerButton(self?.btnRight ?? 0, pressed: pressed)
+        if let right = input.rightButton {
+            right.pressedChangedHandler = { [weak self] _, _, pressed in
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    self.targetView()?.clickVirtualPointerButton(self.btnRight, pressed: pressed)
+                }
             }
         }
-        input.middleButton.pressedChangedHandler = { [weak self] _, _, pressed in
-            DispatchQueue.main.async {
-                self?.targetView()?.clickVirtualPointerButton(self?.btnMiddle ?? 0, pressed: pressed)
+        if let middle = input.middleButton {
+            middle.pressedChangedHandler = { [weak self] _, _, pressed in
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    self.targetView()?.clickVirtualPointerButton(self.btnMiddle, pressed: pressed)
+                }
             }
         }
         input.scroll.valueChangedHandler = { [weak self] _, x, y in
             DispatchQueue.main.async {
-                self?.targetView()?.scrollVirtualPointerByDx(x * 10, dy: y * 10)
+                self?.targetView()?.scrollVirtualPointerByDx(CGFloat(x) * 10, dy: CGFloat(y) * 10)
             }
         }
     }

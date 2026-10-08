@@ -15,6 +15,9 @@ public final class WWNCompositorView_ios: UIView, UITextInput {
     @objc public private(set) var hardwareKeyboardActive = false
     private var metal = MetalPresenter()
     private var hostKeyboardReady = false
+    /// Soft cursor for gamepad / GCMouse injection (Touchpad mode).
+    private var virtualPointer = CGPoint.zero
+    private var virtualPointerSeeded = false
 
     public override init(frame: CGRect) {
         super.init(frame: frame)
@@ -138,6 +141,75 @@ public final class WWNCompositorView_ios: UIView, UITextInput {
                 y: p.y,
                 phase: phase,
                 timestampMs: UInt32(t.timestamp * 1000)
+            )
+        }
+    }
+
+    private func ensureVirtualPointerSeeded() {
+        guard !virtualPointerSeeded else { return }
+        virtualPointer = CGPoint(x: bounds.midX, y: bounds.midY)
+        virtualPointerSeeded = true
+    }
+
+    private var seatTimestampMs: UInt32 {
+        UInt32(CACurrentMediaTime() * 1000.0)
+    }
+
+    @objc(moveVirtualPointerByDx:dy:)
+    public func moveVirtualPointerByDx(_ dx: CGFloat, dy: CGFloat) {
+        ensureVirtualPointerSeeded()
+        let next = CGPoint(
+            x: min(max(virtualPointer.x + dx, 0), max(bounds.width - 1, 0)),
+            y: min(max(virtualPointer.y + dy, 0), max(bounds.height - 1, 0))
+        )
+        virtualPointer = next
+        let t = seatTimestampMs
+        WWNCompositorBridge.sharedBridge.injectPointerMotion(
+            forWindow: wwnWindowId,
+            x: Double(next.x),
+            y: Double(next.y),
+            timestamp: t
+        )
+    }
+
+    @objc(clickVirtualPointerButton:pressed:)
+    public func clickVirtualPointerButton(_ button: UInt32, pressed: Bool) {
+        ensureVirtualPointerSeeded()
+        let t = seatTimestampMs
+        WWNCompositorBridge.sharedBridge.injectPointerMotion(
+            forWindow: wwnWindowId,
+            x: Double(virtualPointer.x),
+            y: Double(virtualPointer.y),
+            timestamp: t
+        )
+        WWNCompositorBridge.sharedBridge.injectPointerButton(
+            forWindow: wwnWindowId,
+            button: button,
+            pressed: pressed,
+            timestamp: t
+        )
+    }
+
+    @objc(scrollVirtualPointerByDx:dy:)
+    public func scrollVirtualPointerByDx(_ dx: CGFloat, dy: CGFloat) {
+        ensureVirtualPointerSeeded()
+        let t = seatTimestampMs
+        if abs(dx) > 0.001 {
+            WWNCompositorBridge.sharedBridge.injectPointerAxis(
+                forWindow: wwnWindowId,
+                axis: 1,
+                value: Double(dx),
+                discrete: 0,
+                timestamp: t
+            )
+        }
+        if abs(dy) > 0.001 {
+            WWNCompositorBridge.sharedBridge.injectPointerAxis(
+                forWindow: wwnWindowId,
+                axis: 0,
+                value: Double(dy),
+                discrete: 0,
+                timestamp: t
             )
         }
     }

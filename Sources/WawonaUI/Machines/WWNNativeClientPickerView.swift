@@ -4,11 +4,18 @@ import WawonaModel
 /// Bundled Wayland software picker for the native machine editor.
 /// Order: Compositors, then client types (Terminals, Graphics, Demos), then Other.
 /// Custom commands belong under Native Shell → Terminal, not here.
+#if os(iOS)
+@available(iOS 16.0, *)
+#endif
 struct WWNNativeClientPickerView: View {
-  @Environment(\.dismiss) private var dismiss
+  @Environment(\.presentationMode) private var presentationMode
   @Binding var selectedClientId: String
   var onPicked: (() -> Void)? = nil
   @State private var draftId: String = ""
+
+  private func dismiss() {
+    presentationMode.wrappedValue.dismiss()
+  }
 
   private var shownId: String {
     draftId.isEmpty ? selectedClientId : draftId
@@ -21,7 +28,7 @@ struct WWNNativeClientPickerView: View {
   var body: some View {
     List {
       ForEach(groupedClients, id: \.kind) { group in
-        Section(group.kind.sectionTitle) {
+        Section(header: Text(group.kind.sectionTitle)) {
           ForEach(group.clients) { client in
             clientOption(client)
           }

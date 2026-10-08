@@ -3,6 +3,9 @@ import SwiftUI
 import AppKit
 #endif
 
+#if os(iOS)
+@available(iOS 16.0, *)
+#endif
 struct WWNMachineCardView: View {
   let profile: WWNMachineProfile
   let status: WWNMachineTransientStatus
@@ -98,7 +101,7 @@ struct WWNMachineCardView: View {
         RoundedRectangle(cornerRadius: 16, style: .continuous)
           .fill(
             LinearGradient(
-              colors: [statusColor.opacity(0.32), Color.indigo.opacity(0.18)],
+              colors: [statusColor.opacity(0.32), WWNTagPalette.indigo.opacity(0.18)],
               startPoint: .topLeading,
               endPoint: .bottomTrailing
             )
@@ -328,29 +331,29 @@ struct WWNMachineCardView: View {
     if query.isEmpty {
       Text(display)
     } else {
-      Text(Self.highlightedAttributedName(display, query: query))
+      Self.highlightedNameText(display, query: query)
     }
   }
 
-  /// Marks fuzzy-matched characters from `query` inside `name`.
-  private static func highlightedAttributedName(_ name: String, query: String) -> AttributedString {
-    var result = AttributedString()
+  /// Marks fuzzy-matched characters from `query` inside `name` via `Text` concat
+  /// (iOS 13; `AttributedString` is iOS 15+).
+  private static func highlightedNameText(_ name: String, query: String) -> Text {
     let terms = query.lowercased().split(whereSeparator: { $0.isWhitespace }).map(String.init)
-    // Highlight the first term's fuzzy subsequence in the display name.
     guard let term = terms.first, !term.isEmpty else {
-      return AttributedString(name)
+      return Text(name)
     }
     let needle = Array(term)
     var needleIndex = 0
+    var result = Text("")
     for character in name {
-      var run = AttributedString(String(character))
+      let piece = Text(String(character))
       if needleIndex < needle.count,
          String(character).lowercased() == String(needle[needleIndex]) {
-        run.backgroundColor = Color.yellow.opacity(0.55)
-        run.foregroundColor = .black
+        result = result + piece.bold().foregroundColor(.black)
         needleIndex += 1
+      } else {
+        result = result + piece
       }
-      result.append(run)
     }
     return result
   }

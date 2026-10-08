@@ -251,7 +251,7 @@ struct WWNTagEditorSheet: View {
       Text("Color")
         .font(.subheadline.weight(.semibold))
 
-      if #available(iOS 14.0, *) {
+      if #available(iOS 14.0, macOS 11.0, tvOS 14.0, visionOS 1.0, *) {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 30), spacing: 10)], spacing: 10) {
           colorButtons(WWNTagPalette.colors)
         }

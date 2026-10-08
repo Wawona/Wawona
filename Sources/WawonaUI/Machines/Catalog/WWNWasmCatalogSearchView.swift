@@ -2,6 +2,9 @@ import SwiftUI
 import WawonaModel
 
 /// Search `https://repo.wawona.io/wasm/v1`. Never APT / jailbreak / Termux.
+#if os(iOS)
+@available(iOS 16.0, *)
+#endif
 struct WWNWasmCatalogSearchView: View {
   let onSelect: (WWNWasmCatalogPackage) -> Void
 

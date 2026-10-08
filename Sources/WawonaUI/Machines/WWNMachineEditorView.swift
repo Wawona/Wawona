@@ -17,11 +17,59 @@ struct WWNMachineEditorView: View {
   let defaultType: String
   let onSave: (WWNMachineProfile) -> Void
 
-  @Environment(\.dismiss) private var dismiss
+  init(
+    title: String,
+    initial: WWNMachineProfile?,
+    defaultType: String = kWWNMachineTypeNative,
+    onSave: @escaping (WWNMachineProfile) -> Void
+  ) {
+    self.title = title
+    self.initial = initial
+    self.defaultType = defaultType
+    self.onSave = onSave
+  }
 
-  @StateObject private var draft: WWNMachineEditorDraft
+  var body: some View {
+    #if os(iOS)
+    if #available(iOS 16.0, *) {
+      WWNMachineEditorViewModern(
+        title: title,
+        initial: initial,
+        defaultType: defaultType,
+        onSave: onSave
+      )
+    } else {
+      WWNMachineEditorViewLegacy(
+        title: title,
+        initial: initial,
+        defaultType: defaultType,
+        onSave: onSave
+      )
+    }
+    #else
+    WWNMachineEditorViewModern(
+      title: title,
+      initial: initial,
+      defaultType: defaultType,
+      onSave: onSave
+    )
+    #endif
+  }
+}
+
+#if os(iOS)
+@available(iOS 16.0, *)
+#endif
+struct WWNMachineEditorViewModern: View {
+  let title: String
+  let initial: WWNMachineProfile?
+  let defaultType: String
+  let onSave: (WWNMachineProfile) -> Void
+
+  @Environment(\.presentationMode) private var presentationMode
+
+  @WawonaStateObject private var draft: WWNMachineEditorDraft
   @State private var showEnvironmentEditor = false
-  @State private var editorPath = NavigationPath()
 
   init(
     title: String,
@@ -33,9 +81,13 @@ struct WWNMachineEditorView: View {
     self.initial = initial
     self.defaultType = defaultType
     self.onSave = onSave
-    _draft = StateObject(
+    _draft = WawonaStateObject(
       wrappedValue: WWNMachineEditorDraft(profile: initial, defaultType: defaultType)
     )
+  }
+
+  private func dismiss() {
+    presentationMode.wrappedValue.dismiss()
   }
 
   var body: some View {
@@ -313,7 +365,7 @@ struct WWNMachineEditorView: View {
   // MARK: - macOS / iOS card layout
 
   private var desktopMobileEditorBody: some View {
-    NavigationStack(path: $editorPath) {
+    WawonaBackport<Any>.navigation {
       ScrollView {
         VStack(alignment: .leading, spacing: 16) {
           WWNMachineProfileEditorSection(draft: draft)
@@ -369,47 +421,15 @@ struct WWNMachineEditorView: View {
       }
       .navigationTitle(title)
       .wwnA11y(WWNA11y.machinesEditor, label: title)
-      .toolbar {
-        if editorPath.isEmpty {
-          ToolbarItem(placement: .cancellationAction) {
-            Button("Cancel") { dismiss() }
-              .backport.glassToolbarButton()
-              .wwnA11y(WWNA11y.machinesEditorCancel, label: "Cancel")
-          }
-          ToolbarItem(placement: .confirmationAction) {
-            Button("Save", action: save)
-              .backport.glassProminentToolbarButton()
-              .wwnA11y(WWNA11y.machinesEditorSave, label: "Save")
-          }
-        }
-      }
-      .navigationDestination(for: WWNMachineEditorRoute.self) { route in
-        switch route {
-        case .bundledClient:
-          WWNNativeClientPickerView(
-            selectedClientId: $draft.selectedClientId,
-            onPicked: popEditorRoute
-          )
-        }
-      }
+      .modifier(WWNEditorChromeToolbar(onCancel: dismiss, onSave: save))
       .sheet(isPresented: $showEnvironmentEditor) {
-        NavigationStack {
+        WawonaBackport<Any>.navigation {
           EnvironmentVariablesView(
             preferences: WawonaPreferences.shared,
             perMachine: true,
             draftMachineOverrides: $draft.environmentOverrides
           )
-          .toolbar {
-            ToolbarItem(placement: .navigation) {
-              Button {
-                showEnvironmentEditor = false
-              } label: {
-                Image(systemName: "chevron.left")
-              }
-              .backport.glassToolbarButton()
-              .accessibilityLabel("Back")
-            }
-          }
+          .modifier(WWNEditorEnvBackToolbar(onBack: { showEnvironmentEditor = false }))
         }
         #if os(macOS)
         .frame(minWidth: 520, minHeight: 560)
@@ -437,18 +457,71 @@ struct WWNMachineEditorView: View {
     #endif
   }
 
-  private func popEditorRoute() {
-    if !editorPath.isEmpty {
-      editorPath.removeLast()
-    }
-  }
-
   // MARK: - Save
 
   private func save() {
     let profile = draft.makeProfile(initial: initial)
     onSave(profile)
     dismiss()
+  }
+}
+
+// MARK: - Editor chrome (iOS 13: navigationBarItems; iOS 14+: toolbar)
+
+private struct WWNEditorChromeToolbar: ViewModifier {
+  let onCancel: () -> Void
+  let onSave: () -> Void
+
+  @ViewBuilder
+  func body(content: Content) -> some View {
+    if #available(iOS 14.0, tvOS 14.0, macOS 11.0, *) {
+      content.toolbar {
+        ToolbarItem(placement: .cancellationAction) {
+          Button("Cancel", action: onCancel)
+            .backport.glassToolbarButton()
+            .wwnA11y(WWNA11y.machinesEditorCancel, label: "Cancel")
+        }
+        ToolbarItem(placement: .confirmationAction) {
+          Button("Save", action: onSave)
+            .backport.glassProminentToolbarButton()
+            .wwnA11y(WWNA11y.machinesEditorSave, label: "Save")
+        }
+      }
+    } else {
+      #if os(iOS)
+      content.navigationBarItems(
+        leading: Button("Cancel", action: onCancel),
+        trailing: Button("Save", action: onSave)
+      )
+      #else
+      content
+      #endif
+    }
+  }
+}
+
+private struct WWNEditorEnvBackToolbar: ViewModifier {
+  let onBack: () -> Void
+
+  @ViewBuilder
+  func body(content: Content) -> some View {
+    if #available(iOS 14.0, tvOS 14.0, macOS 11.0, *) {
+      content.toolbar {
+        ToolbarItem(placement: .navigation) {
+          Button(action: onBack) {
+            Image(systemName: "chevron.left")
+          }
+          .backport.glassToolbarButton()
+          .accessibilityLabel("Back")
+        }
+      }
+    } else {
+      #if os(iOS)
+      content.navigationBarItems(leading: Button("Back", action: onBack))
+      #else
+      content
+      #endif
+    }
   }
 }
 
@@ -461,6 +534,9 @@ extension TextFieldStyle where Self == PlainTextFieldStyle {
 /// One Form row, matching Picker/Toggle. A bare `TextField` in a tvOS Form
 /// draws its own capsule inside the row's capsule (a double button).
 /// Selecting the row opens the system keyboard in an alert instead.
+#if os(iOS)
+@available(iOS 16.0, *)
+#endif
 private struct WWNTvFormTextField: View {
   let title: String
   @Binding var text: String
@@ -524,6 +600,69 @@ private struct WWNTvFormTextField: View {
       return String(repeating: "•", count: min(text.count, 8))
     }
     return text
+  }
+}
+#endif
+
+#if os(iOS)
+/// Minimal Add/Edit form for iOS 13–14 hosts.
+struct WWNMachineEditorViewLegacy: View {
+  let title: String
+  let initial: WWNMachineProfile?
+  let defaultType: String
+  let onSave: (WWNMachineProfile) -> Void
+
+  @Environment(\.presentationMode) private var presentationMode
+  @WawonaStateObject private var draft: WWNMachineEditorDraft
+
+  init(
+    title: String,
+    initial: WWNMachineProfile?,
+    defaultType: String = kWWNMachineTypeNative,
+    onSave: @escaping (WWNMachineProfile) -> Void
+  ) {
+    self.title = title
+    self.initial = initial
+    self.defaultType = defaultType
+    self.onSave = onSave
+    _draft = WawonaStateObject(
+      wrappedValue: WWNMachineEditorDraft(profile: initial, defaultType: defaultType)
+    )
+  }
+
+  var body: some View {
+    NavigationView {
+      Form {
+        Section(header: Text("Machine Profile")) {
+          TextField("Display Name", text: $draft.name)
+          Picker("Type", selection: $draft.type) {
+            Text("Native Shell").tag(kWWNMachineTypeNative)
+            Text("Virtual Machine").tag(kWWNMachineTypeVirtualMachine)
+            Text("Container").tag(kWWNMachineTypeContainer)
+          }
+        }
+        if draft.type == kWWNMachineTypeNative {
+          Section(header: Text("Native Shell Session")) {
+            Picker("Session", selection: $draft.nativeShellKind) {
+              Text("Terminal").tag(kWWNNativeShellKindTerminal)
+              Text("Wayland").tag(kWWNNativeShellKindWayland)
+              Text("Wasm").tag(kWWNNativeShellKindWasm)
+              Text("Waypipe").tag(kWWNNativeShellKindWaypipe)
+            }
+            .pickerStyle(SegmentedPickerStyle())
+          }
+        }
+      }
+      .navigationBarTitle(Text(title), displayMode: .inline)
+      .navigationBarItems(
+        leading: Button("Cancel") { presentationMode.wrappedValue.dismiss() },
+        trailing: Button("Save") {
+          onSave(draft.makeProfile(initial: initial))
+          presentationMode.wrappedValue.dismiss()
+        }
+      )
+    }
+    .navigationViewStyle(StackNavigationViewStyle())
   }
 }
 #endif

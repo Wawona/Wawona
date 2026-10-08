@@ -450,7 +450,17 @@ final class WWNMachinesViewModel: ObservableObject {
     // rewrite. Machines UI on tvOS never created WawonaPreferences otherwise.
     _ = WawonaPreferences.shared
     _ = WWNPreferencesManager.sharedManager()
-    importDomainProfilesIfNeeded()
+    #if !SWIFT_PACKAGE
+    // One-shot bridge: SwiftUI rewrite wrote `wawona.machineProfiles.v1` while
+    // this catalog still uses `WWNMachineProfiles`. Import when empty.
+    if WWNMachineProfileStore.loadProfiles().isEmpty {
+      let domain = MachineProfileStore()
+      for profile in domain.profiles {
+        let objc = WWNMachineProfileBridge.makeObjC(from: profile)
+        _ = WWNMachineProfileStore.upsertProfile(objc)
+      }
+    }
+    #endif
     profiles = WWNMachineProfileStore.loadProfiles()
     for profile in profiles {
       if statusByMachineId[profile.machineId] == nil {
@@ -880,22 +890,6 @@ final class WWNMachinesViewModel: ObservableObject {
     WWNMachineThumbnailStore.deleteThumbnail(forMachineId: machineId)
     #else
     _ = machineId
-    #endif
-  }
-
-  /// One-shot bridge: the thin SwiftUI rewrite wrote `wawona.machineProfiles.v1`
-  /// while this catalog still uses `WWNMachineProfiles`. Import when the catalog
-  /// store is empty so existing cards are not lost.
-  private func importDomainProfilesIfNeeded() {
-    #if !SWIFT_PACKAGE
-    let existing = WWNMachineProfileStore.loadProfiles()
-    guard existing.isEmpty else { return }
-    let domain = MachineProfileStore()
-    guard !domain.profiles.isEmpty else { return }
-    for profile in domain.profiles {
-      let objc = WWNMachineProfileBridge.makeObjC(from: profile)
-      _ = WWNMachineProfileStore.upsertProfile(objc)
-    }
     #endif
   }
 
