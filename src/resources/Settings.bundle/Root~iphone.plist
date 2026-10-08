@@ -2,24 +2,536 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>StringsTable</key>
-	<string>Root</string>
 	<key>PreferenceSpecifiers</key>
 	<array>
 		<dict>
+			<key>FooterText</key>
+			<string>This is the only Global Wawona Settings host on iPhone and iPad. Machine editors, Desktop (Mode B builds), About, and one-shot actions (Send to Watch, Import) stay in the app and do not duplicate these toggles.</string>
 			<key>Type</key>
 			<string>PSGroupSpecifier</string>
-			<key>FooterText</key>
-			<string>Toggles here use the same keys as in-app Settings. Copy logs, Import file, Send to Watch, and the Env Vars editor stay in the Wawona app.</string>
 		</dict>
 		<dict>
+			<key>Title</key>
+			<string>Display</string>
+			<key>Type</key>
+			<string>PSGroupSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<false/>
+			<key>Key</key>
+			<string>ForceServerSideDecorations</string>
+			<key>Title</key>
+			<string>Force Server-Side Decorations</string>
+			<key>Type</key>
+			<string>PSToggleSwitchSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<false/>
+			<key>Key</key>
+			<string>AutoScale</string>
+			<key>Title</key>
+			<string>Auto Scale</string>
+			<key>Type</key>
+			<string>PSToggleSwitchSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<false/>
+			<key>Key</key>
+			<string>RespectSafeArea</string>
+			<key>Title</key>
+			<string>Respect Safe Area</string>
+			<key>Type</key>
+			<string>PSToggleSwitchSpecifier</string>
+		</dict>
+		<dict>
+			<key>Title</key>
+			<string>Input</string>
+			<key>Type</key>
+			<string>PSGroupSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<string>Multi-Touch</string>
+			<key>Key</key>
+			<string>TouchInputType</string>
+			<key>Title</key>
+			<string>Touch Input Type</string>
+			<key>Titles</key>
+			<array>
+				<string>Multi-Touch</string>
+				<string>Touchpad</string>
+			</array>
+			<key>Type</key>
+			<string>PSMultiValueSpecifier</string>
+			<key>Values</key>
+			<array>
+				<string>Multi-Touch</string>
+				<string>Touchpad</string>
+			</array>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<false/>
+			<key>Key</key>
+			<string>SwapCmdWithAlt</string>
+			<key>Title</key>
+			<string>Swap CMD with ALT</string>
+			<key>Type</key>
+			<string>PSToggleSwitchSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<true/>
+			<key>Key</key>
+			<string>UniversalClipboard</string>
+			<key>Title</key>
+			<string>Universal Clipboard</string>
+			<key>Type</key>
+			<string>PSToggleSwitchSpecifier</string>
+		</dict>
+		<dict>
+			<key>FooterText</key>
+			<string>Driver selection takes effect after restarting Wawona.</string>
+			<key>Title</key>
+			<string>Graphics</string>
+			<key>Type</key>
+			<string>PSGroupSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<string>moltenvk</string>
+			<key>Key</key>
+			<string>VulkanDriver</string>
+			<key>Title</key>
+			<string>Vulkan Driver</string>
+			<key>Titles</key>
+			<array>
+				<string>None</string>
+				<string>MoltenVK</string>
+			</array>
+			<key>Type</key>
+			<string>PSMultiValueSpecifier</string>
+			<key>Values</key>
+			<array>
+				<string>none</string>
+				<string>moltenvk</string>
+			</array>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<string>angle</string>
+			<key>Key</key>
+			<string>OpenGLDriver</string>
+			<key>Title</key>
+			<string>OpenGL Driver</string>
+			<key>Titles</key>
+			<array>
+				<string>None</string>
+				<string>ANGLE</string>
+			</array>
+			<key>Type</key>
+			<string>PSMultiValueSpecifier</string>
+			<key>Values</key>
+			<array>
+				<string>none</string>
+				<string>angle</string>
+			</array>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<true/>
+			<key>Key</key>
+			<string>DmabufEnabled</string>
+			<key>Title</key>
+			<string>Enable DMABUF</string>
+			<key>Type</key>
+			<string>PSToggleSwitchSpecifier</string>
+		</dict>
+		<dict>
+			<key>Title</key>
+			<string>Connection</string>
+			<key>Type</key>
+			<string>PSGroupSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<integer>6000</integer>
+			<key>Key</key>
+			<string>TCPListenerPort</string>
+			<key>KeyboardType</key>
+			<string>NumberPad</string>
+			<key>Title</key>
+			<string>TCP Port</string>
+			<key>Type</key>
+			<string>PSTextFieldSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<string>/tmp</string>
+			<key>Key</key>
+			<string>WaylandSocketDir</string>
+			<key>Title</key>
+			<string>Socket Directory</string>
+			<key>Type</key>
+			<string>PSTitleValueSpecifier</string>
+		</dict>
+		<dict>
+			<key>Title</key>
+			<string>Advanced</string>
+			<key>Type</key>
+			<string>PSGroupSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<string>auto</string>
+			<key>Key</key>
+			<string>CompositorBackend</string>
+			<key>Title</key>
+			<string>Display Backend</string>
+			<key>Titles</key>
+			<array>
+				<string>Auto</string>
+				<string>Wayland (nested)</string>
+				<string>DRM/KMS (wwn-iland)</string>
+			</array>
+			<key>Type</key>
+			<string>PSMultiValueSpecifier</string>
+			<key>Values</key>
+			<array>
+				<string>auto</string>
+				<string>wayland</string>
+				<string>drm</string>
+			</array>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<false/>
+			<key>Key</key>
+			<string>ColorOperations</string>
+			<key>Title</key>
+			<string>Color Operations</string>
+			<key>Type</key>
+			<string>PSToggleSwitchSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<true/>
+			<key>Key</key>
+			<string>NestedCompositorsSupport</string>
+			<key>Title</key>
+			<string>Nested Compositors</string>
+			<key>Type</key>
+			<string>PSToggleSwitchSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<false/>
+			<key>Key</key>
+			<string>MultipleClients</string>
+			<key>Title</key>
+			<string>Multiple Clients</string>
+			<key>Type</key>
+			<string>PSToggleSwitchSpecifier</string>
+		</dict>
+		<dict>
+			<key>Title</key>
+			<string>Machines</string>
+			<key>Type</key>
+			<string>PSGroupSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<true/>
+			<key>Key</key>
+			<string>wawona.pref.shakeToCloseEnabled</string>
+			<key>Title</key>
+			<string>Shake to Exit Machine</string>
+			<key>Type</key>
+			<string>PSToggleSwitchSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<true/>
+			<key>Key</key>
+			<string>wawona.pref.swipeBackToCloseEnabled</string>
+			<key>Title</key>
+			<string>Swipe Back to Exit Machine</string>
+			<key>Type</key>
+			<string>PSToggleSwitchSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<true/>
+			<key>Key</key>
+			<string>MachineSessionThumbnailsEnabled</string>
+			<key>Title</key>
+			<string>Session Thumbnails</string>
+			<key>Type</key>
+			<string>PSToggleSwitchSpecifier</string>
+		</dict>
+		<dict>
+			<key>FooterText</key>
+			<string>Optional. Syncs shell HOME via iCloud Drive. Requires iCloud sign-in. Open Wawona if enable fails.</string>
+			<key>Title</key>
+			<string>iCloud Sync</string>
+			<key>Type</key>
+			<string>PSGroupSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<false/>
+			<key>Key</key>
+			<string>wawona.pref.localShellICloudSyncEnabled</string>
+			<key>Title</key>
+			<string>Sync Shell HOME via iCloud</string>
+			<key>Type</key>
+			<string>PSToggleSwitchSpecifier</string>
+		</dict>
+		<dict>
+			<key>Title</key>
+			<string>SSH</string>
+			<key>Type</key>
+			<string>PSGroupSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<string></string>
+			<key>Key</key>
+			<string>SSHHost</string>
+			<key>KeyboardType</key>
+			<string>URL</string>
+			<key>Placeholder</key>
+			<string>Remote host address</string>
+			<key>Title</key>
+			<string>SSH Host</string>
+			<key>Type</key>
+			<string>PSTextFieldSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<string></string>
+			<key>Key</key>
+			<string>SSHUser</string>
+			<key>KeyboardType</key>
+			<string>Alphabet</string>
+			<key>Placeholder</key>
+			<string>SSH username</string>
+			<key>Title</key>
+			<string>SSH User</string>
+			<key>Type</key>
+			<string>PSTextFieldSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<integer>0</integer>
+			<key>Key</key>
+			<string>SSHAuthMethod</string>
+			<key>Title</key>
+			<string>Auth Method</string>
+			<key>Titles</key>
+			<array>
+				<string>Password</string>
+				<string>Public Key</string>
+			</array>
+			<key>Type</key>
+			<string>PSMultiValueSpecifier</string>
+			<key>Values</key>
+			<array>
+				<integer>0</integer>
+				<integer>1</integer>
+			</array>
+		</dict>
+		<dict>
+			<key>FooterText</key>
+			<string>Password or SSH Key options are shown in the Wawona app based on your Auth Method selection.</string>
+			<key>Type</key>
+			<string>PSGroupSpecifier</string>
+		</dict>
+		<dict>
+			<key>Title</key>
+			<string>Waypipe</string>
+			<key>Type</key>
+			<string>PSGroupSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<integer>0</integer>
+			<key>Key</key>
+			<string>WaylandDisplayNumber</string>
+			<key>KeyboardType</key>
+			<string>NumberPad</string>
+			<key>Title</key>
+			<string>Display Number</string>
+			<key>Type</key>
+			<string>PSTextFieldSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<string>lz4</string>
+			<key>Key</key>
+			<string>WaypipeCompress</string>
+			<key>Title</key>
+			<string>Compression</string>
+			<key>Titles</key>
+			<array>
+				<string>None</string>
+				<string>LZ4</string>
+				<string>ZSTD</string>
+			</array>
+			<key>Type</key>
+			<string>PSMultiValueSpecifier</string>
+			<key>Values</key>
+			<array>
+				<string>none</string>
+				<string>lz4</string>
+				<string>zstd</string>
+			</array>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<integer>7</integer>
+			<key>Key</key>
+			<string>WaypipeCompressLevel</string>
+			<key>KeyboardType</key>
+			<string>NumberPad</string>
+			<key>Title</key>
+			<string>Comp. Level</string>
+			<key>Type</key>
+			<string>PSTextFieldSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<integer>0</integer>
+			<key>Key</key>
+			<string>WaypipeThreads</string>
+			<key>KeyboardType</key>
+			<string>NumberPad</string>
+			<key>Title</key>
+			<string>Threads</string>
+			<key>Type</key>
+			<string>PSTextFieldSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<string>none</string>
+			<key>Key</key>
+			<string>WaypipeVideo</string>
+			<key>Title</key>
+			<string>Video Codec</string>
+			<key>Titles</key>
+			<array>
+				<string>None</string>
+				<string>H.264</string>
+				<string>VP9</string>
+				<string>AV1</string>
+			</array>
+			<key>Type</key>
+			<string>PSMultiValueSpecifier</string>
+			<key>Values</key>
+			<array>
+				<string>none</string>
+				<string>h264</string>
+				<string>vp9</string>
+				<string>av1</string>
+			</array>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<string>hw</string>
+			<key>Key</key>
+			<string>WaypipeVideoEncoding</string>
+			<key>Title</key>
+			<string>Encoding</string>
+			<key>Titles</key>
+			<array>
+				<string>Hardware</string>
+				<string>Software</string>
+				<string>Hardware Encode</string>
+				<string>Software Encode</string>
+			</array>
+			<key>Type</key>
+			<string>PSMultiValueSpecifier</string>
+			<key>Values</key>
+			<array>
+				<string>hw</string>
+				<string>sw</string>
+				<string>hwenc</string>
+				<string>swenc</string>
+			</array>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<string>hw</string>
+			<key>Key</key>
+			<string>WaypipeVideoDecoding</string>
+			<key>Title</key>
+			<string>Decoding</string>
+			<key>Titles</key>
+			<array>
+				<string>Hardware</string>
+				<string>Software</string>
+				<string>Hardware Decode</string>
+				<string>Software Decode</string>
+			</array>
+			<key>Type</key>
+			<string>PSMultiValueSpecifier</string>
+			<key>Values</key>
+			<array>
+				<string>hw</string>
+				<string>sw</string>
+				<string>hwdec</string>
+				<string>swdec</string>
+			</array>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<string></string>
+			<key>Key</key>
+			<string>WaypipeVideoBpf</string>
+			<key>KeyboardType</key>
+			<string>NumberPad</string>
+			<key>Title</key>
+			<string>Bits Per Frame</string>
+			<key>Type</key>
+			<string>PSTextFieldSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<true/>
+			<key>Key</key>
+			<string>WaypipeUseSSHConfig</string>
+			<key>Title</key>
+			<string>Use SSH Config</string>
+			<key>Type</key>
+			<string>PSToggleSwitchSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<string></string>
+			<key>Key</key>
+			<string>WaypipeRemoteCommand</string>
+			<key>KeyboardType</key>
+			<string>Alphabet</string>
+			<key>Placeholder</key>
+			<string>e.g. weston-simple-shm</string>
+			<key>Title</key>
+			<string>Remote Command</string>
+			<key>Type</key>
+			<string>PSTextFieldSpecifier</string>
+		</dict>
+		<dict>
+			<key>File</key>
+			<string>WaypipeAdvanced</string>
+			<key>Title</key>
+			<string>Advanced Options</string>
 			<key>Type</key>
 			<string>PSChildPaneSpecifier</string>
-			<key>Title</key>
-			<string>Wawona Settings</string>
-			<key>File</key>
-			<string>WawonaSettings</string>
 		</dict>
 	</array>
+	<key>StringsTable</key>
+	<string>Root</string>
 </dict>
 </plist>

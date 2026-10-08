@@ -251,6 +251,7 @@ struct WWNEditorToggleRow: View {
         Toggle(isOn: $isOn) { Text(title) }
           .labelsHidden()
           .toggleStyle(.switch)
+          .backport.controlSize(.regular)
           .fixedSize()
       }
       #if os(macOS)

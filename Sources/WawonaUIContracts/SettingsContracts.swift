@@ -171,6 +171,7 @@ public enum GlobalSettingsSectionID: String, Sendable, CaseIterable, Hashable {
     case about
     case dependencies
 
+    /// Sidebar / list label. Keep short; detail chrome may use `detailTitle`.
     public var title: String {
         switch self {
         case .display: return "Display"
@@ -187,6 +188,14 @@ public enum GlobalSettingsSectionID: String, Sendable, CaseIterable, Hashable {
         case .ssh: return "SSH"
         case .about: return "About"
         case .dependencies: return "Dependencies"
+        }
+    }
+
+    /// Navigation / PrefPane section title. Sidebar stays on `title`.
+    public var detailTitle: String {
+        switch self {
+        case .desktop: return "Desktop Replacement"
+        default: return title
         }
     }
 

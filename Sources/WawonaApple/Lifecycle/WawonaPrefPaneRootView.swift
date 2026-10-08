@@ -141,6 +141,39 @@ private struct PrefPaneFlatSettingsForm: View {
                     } header: {
                         Text(section.title)
                     }
+                } else if section.accessibilityIdentifier == "wwn.settings.desktop" {
+                    let desktopItems = section.items.filter { !Self.isLockScreenItem($0) }
+                    let lockItems = section.items.filter { Self.isLockScreenItem($0) }
+                    if !desktopItems.isEmpty {
+                        Section {
+                            ForEach(Array(desktopItems.enumerated()), id: \.offset) { _, item in
+                                PrefPaneInlineRow(
+                                    item: item,
+                                    defaults: defaults,
+                                    sectionID: section.accessibilityIdentifier,
+                                    path: $path,
+                                    onCommit: onCommit
+                                )
+                            }
+                        } header: {
+                            Text("Desktop")
+                        }
+                    }
+                    if !lockItems.isEmpty {
+                        Section {
+                            ForEach(Array(lockItems.enumerated()), id: \.offset) { _, item in
+                                PrefPaneInlineRow(
+                                    item: item,
+                                    defaults: defaults,
+                                    sectionID: section.accessibilityIdentifier,
+                                    path: $path,
+                                    onCommit: onCommit
+                                )
+                            }
+                        } header: {
+                            Text("Lock Screen")
+                        }
+                    }
                 } else {
                     Section {
                         ForEach(Array(section.items.enumerated()), id: \.offset) { _, item in
@@ -182,6 +215,12 @@ private struct PrefPaneFlatSettingsForm: View {
         }
         return first
     }
+
+    private static func isLockScreenItem(_ item: WWNSettingItem) -> Bool {
+        let key = item.key.lowercased()
+        let title = item.title.lowercased()
+        return key.contains("lockscreen") || title.contains("lock screen")
+    }
 }
 
 /// Inline row: Settings.bundle PSToggle / PSMultiValue / PSTextField shape.
@@ -199,6 +238,8 @@ private struct PrefPaneInlineRow: View {
                 Text(item.title)
                     .lineLimit(1)
             }
+            .toggleStyle(.switch)
+            .controlSize(.regular)
             .disabled(!item.interactive)
 
         case .WSettingPopup:

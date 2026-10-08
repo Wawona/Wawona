@@ -26,16 +26,20 @@ struct WWNSettingsSectionView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             Form {
-                Section {
-                    ForEach(Array(section.items.enumerated()), id: \.offset) { _, item in
-                        WWNSettingsRowView(
-                            item: item,
-                            model: model,
-                            onPasswordEdit: { passwordItem = $0 }
-                        )
-                        // Keep a separator after every row, including after
-                        // an iOS split-detail restoration.
-                        .backport.visibleRowSeparator()
+                if section.accessibilityIdentifier == "wwn.settings.desktop" {
+                    desktopFormSections
+                } else {
+                    Section {
+                        ForEach(Array(section.items.enumerated()), id: \.offset) { _, item in
+                            WWNSettingsRowView(
+                                item: item,
+                                model: model,
+                                onPasswordEdit: { passwordItem = $0 }
+                            )
+                            // Keep a separator after every row, including after
+                            // an iOS split-detail restoration.
+                            .backport.visibleRowSeparator()
+                        }
                     }
                 }
             }
@@ -57,6 +61,47 @@ struct WWNSettingsSectionView: View {
                 }
             }
         }
+    }
+
+    /// Desktop Replacement detail: labelled Desktop vs Lock Screen groups.
+    @ViewBuilder
+    private var desktopFormSections: some View {
+        let desktopItems = section.items.filter { !Self.isLockScreenItem($0) }
+        let lockItems = section.items.filter { Self.isLockScreenItem($0) }
+        if !desktopItems.isEmpty {
+            Section {
+                ForEach(Array(desktopItems.enumerated()), id: \.offset) { _, item in
+                    WWNSettingsRowView(
+                        item: item,
+                        model: model,
+                        onPasswordEdit: { passwordItem = $0 }
+                    )
+                    .backport.visibleRowSeparator()
+                }
+            } header: {
+                Text("Desktop")
+            }
+        }
+        if !lockItems.isEmpty {
+            Section {
+                ForEach(Array(lockItems.enumerated()), id: \.offset) { _, item in
+                    WWNSettingsRowView(
+                        item: item,
+                        model: model,
+                        onPasswordEdit: { passwordItem = $0 }
+                    )
+                    .backport.visibleRowSeparator()
+                }
+            } header: {
+                Text("Lock Screen")
+            }
+        }
+    }
+
+    private static func isLockScreenItem(_ item: WWNSettingItem) -> Bool {
+        let key = item.key.lowercased()
+        let title = item.title.lowercased()
+        return key.contains("lockscreen") || title.contains("lock screen")
     }
 
     private func passwordSheet(for item: WWNSettingItem) -> some View {
@@ -246,6 +291,8 @@ private struct WWNSettingsRowView: View {
         rowLayout {
             Toggle("", isOn: model.boolBinding(for: item))
                 .labelsHidden()
+                .toggleStyle(.switch)
+                .backport.controlSize(.regular)
                 .accessibility(label: Text(title))
         }
         .disabled(!item.interactive)

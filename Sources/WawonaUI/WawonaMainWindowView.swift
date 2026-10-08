@@ -221,9 +221,7 @@ final class WWNMainWindowRouter: ObservableObject {
         #if os(macOS)
         WawonaSystemSettings.openPreferencePane()
         #elseif os(iOS)
-        if let url = URL(string: UIApplication.openSettingsURLString) {
-            UIApplication.shared.open(url, options: [:], completionHandler: nil)
-        }
+        PlatformGlobalSettings.openAppSettingsBundle()
         #else
         // tvOS / visionOS only: in-app Global Settings.
         showGlobalSettingsPanel = true
@@ -533,7 +531,9 @@ struct WawonaMainWindowView: View {
         if let match = sections.first(where: { $0.accessibilityIdentifier == a11y }) {
             return match
         }
-        return sections.first(where: { $0.title == id.title })
+        return sections.first(where: {
+            $0.title == id.title || $0.title == id.detailTitle
+        })
     }
 
     private var detail: some View {
@@ -544,7 +544,7 @@ struct WawonaMainWindowView: View {
             } else if case .settings(let id)? = router.selection {
                 if let section = Self.objcSection(id, in: model.sections) {
                     WWNSettingsSectionView(section: section, model: model)
-                        .backport.navigationTitle(id.title)
+                        .backport.navigationTitle(id.detailTitle)
                 } else {
                     WawonaEmptyState(
                         "Section Unavailable",

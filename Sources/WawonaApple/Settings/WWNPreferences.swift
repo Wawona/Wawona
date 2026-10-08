@@ -77,7 +77,10 @@ public final class WWNPreferences: NSObject {
         _ = sender
         #if os(iOS)
         // Settings.bundle is the sole Global Settings host on iPhone / iPad.
-        if let url = URL(string: UIApplication.openSettingsURLString) {
+        // UIApplication.openSettingsURLString opens Settings > Apps > Wawona
+        // when Settings.bundle is present (inlined Root.plist). Never App-Prefs.
+        if let url = URL(string: UIApplication.openSettingsURLString),
+           UIApplication.shared.canOpenURL(url) {
             UIApplication.shared.open(url, options: [:], completionHandler: nil)
         }
         #else

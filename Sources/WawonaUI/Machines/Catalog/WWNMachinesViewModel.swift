@@ -293,9 +293,11 @@ final class WWNMachinesViewModel: ObservableObject {
   @Published var connectionError: String?
   @Published private(set) var statusByMachineId: [String: WWNMachineTransientStatus] = [:]
   /// Machine ids the user pinned via the card context menu. Pinned machines
-  /// sort first in the grid. Persisted per app in UserDefaults.
+  /// occupy a prioritized grid section. Hard cap: `maxPinnedMachines`.
   @Published private(set) var pinnedMachineIds: Set<String> = []
   private static let pinnedDefaultsKey = "wawona.machines.pinnedMachineIds"
+  /// Product limit: at most six pinned machines in the Machines grid.
+  static let maxPinnedMachines = 6
 
   // MARK: Sorting
 
@@ -347,7 +349,13 @@ final class WWNMachinesViewModel: ObservableObject {
   private var pendingContainerConnectCallbacks: [String: () -> Void] = [:]
 
   init() {
-    pinnedMachineIds = Set(UserDefaults.standard.stringArray(forKey: Self.pinnedDefaultsKey) ?? [])
+    let storedPins = UserDefaults.standard.stringArray(forKey: Self.pinnedDefaultsKey) ?? []
+    // Enforce the hard pin cap even if older builds stored more than six.
+    let cappedPins = Array(storedPins.prefix(Self.maxPinnedMachines))
+    pinnedMachineIds = Set(cappedPins)
+    if storedPins.count > Self.maxPinnedMachines {
+      UserDefaults.standard.set(cappedPins, forKey: Self.pinnedDefaultsKey)
+    }
     sortKey = SortKey(rawValue: UserDefaults.standard.string(forKey: Self.sortKeyDefaultsKey) ?? "")
       ?? .dateCreated
     sortAscending = UserDefaults.standard.object(forKey: Self.sortAscendingDefaultsKey) == nil
@@ -536,13 +544,20 @@ final class WWNMachinesViewModel: ObservableObject {
     pinnedMachineIds.contains(machineId)
   }
 
-  func togglePinned(_ machineId: String) {
+  /// Returns `false` when pin was refused (already at `maxPinnedMachines`).
+  @discardableResult
+  func togglePinned(_ machineId: String) -> Bool {
     if pinnedMachineIds.contains(machineId) {
       pinnedMachineIds.remove(machineId)
-    } else {
-      pinnedMachineIds.insert(machineId)
+      persistPinnedIds()
+      return true
     }
+    guard pinnedMachineIds.count < Self.maxPinnedMachines else {
+      return false
+    }
+    pinnedMachineIds.insert(machineId)
     persistPinnedIds()
+    return true
   }
 
   private func removePinned(_ machineId: String) {

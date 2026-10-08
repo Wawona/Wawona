@@ -264,11 +264,13 @@ struct WWNMachinesGridViewModern: View {
       iosRootChrome
         .navigationBarItems(trailing:
           HStack(spacing: 12) {
-            sortMenu
-            Button(action: { editorDestination = .add }) {
-              Image(systemName: "plus")
+            if !isIosPhone {
+              Button(action: { editorDestination = .add }) {
+                Image(systemName: "plus")
+              }
+              .accessibilityLabel("Add Machine")
             }
-            .accessibilityLabel("Add Machine")
+            sortMenu
             Button(action: { WWNMainWindowRouter.shared.showSettings() }) {
               Image(systemName: "gearshape")
             }
@@ -378,33 +380,12 @@ struct WWNMachinesGridViewModern: View {
     #endif
   }
 
-  /// Bottom chrome: Add | Settings | Search (Settings left of Search, right of Add).
+  /// Bottom chrome (iPhone): Search + primary Add Machine. Settings stays top-trailing.
   private var iosPhoneMessagesBottomChrome: some View {
     let controlHeight: CGFloat = 46
 
     return WawonaBackport<Any>.glassContainer(spacing: 10) {
       HStack(alignment: .center, spacing: 10) {
-        Button {
-          editorDestination = .add
-        } label: {
-          Image(systemName: "plus")
-            .font(.system(size: 20, weight: .bold))
-            .foregroundStyle(.white)
-        }
-        .backport.blueGlassCircleButton(size: controlHeight)
-        .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
-
-        Button {
-          WWNMainWindowRouter.shared.showSettings()
-        } label: {
-          Image(systemName: "gearshape")
-            .font(.system(size: 18, weight: .semibold))
-            .foregroundStyle(.primary)
-        }
-        .frame(width: controlHeight, height: controlHeight)
-        .backport.liquidGlassCapsule()
-        .wwnA11y(WWNA11y.machinesSettings, label: "Settings")
-
         HStack(spacing: 8) {
           Image(systemName: "magnifyingglass")
             .font(.system(size: 17, weight: .medium))
@@ -424,17 +405,22 @@ struct WWNMachinesGridViewModern: View {
                 .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
-          } else {
-            Image(systemName: "mic.fill")
-              .font(.system(size: 16))
-              .foregroundStyle(.secondary)
           }
         }
         .padding(.horizontal, 14)
         .frame(maxWidth: .infinity)
         .frame(height: controlHeight)
         .backport.liquidGlassCapsule()
-        .shadow(color: Color.black.opacity(0.10), radius: 6, x: 0, y: 2)
+
+        Button {
+          editorDestination = .add
+        } label: {
+          Image(systemName: "plus")
+            .font(.system(size: 20, weight: .bold))
+            .foregroundStyle(.white)
+        }
+        .backport.blueGlassCircleButton(size: controlHeight)
+        .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
       }
     }
     .padding(.horizontal, 16)
@@ -522,14 +508,15 @@ struct WWNMachinesGridViewModern: View {
   @ToolbarContentBuilder
   private var detailToolbarContent: some ToolbarContent {
     #if os(macOS)
+    // Trailing: Add, filter/sort, Settings. Search is `.searchable` in the toolbar.
     ToolbarItemGroup(placement: .primaryAction) {
-      sortMenu
       Button {
         editorDestination = .add
       } label: {
         Label("Add Machine", systemImage: "plus")
       }
       .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
+      sortMenu
       Button {
         WWNMainWindowRouter.shared.showSettings()
       } label: {
@@ -542,10 +529,21 @@ struct WWNMachinesGridViewModern: View {
       EmptyView()
     }
     #else
-    ToolbarItem(placement: .topBarTrailing) {
-      sortMenu
+    // iPhone: filter/sort + Settings only (Add lives in the bottom chrome).
+    // iPad / visionOS: Add + filter/sort + Settings; iPad search is separate.
+    #if os(iOS)
+    if !isIosPhone {
+      ToolbarItem(placement: .topBarTrailing) {
+        Button {
+          editorDestination = .add
+        } label: {
+          Label("Add Machine", systemImage: "plus")
+        }
         .backport.glassToolbarButton()
+        .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
+      }
     }
+    #elseif os(visionOS)
     ToolbarItem(placement: .topBarTrailing) {
       Button {
         editorDestination = .add
@@ -554,6 +552,11 @@ struct WWNMachinesGridViewModern: View {
       }
       .backport.glassToolbarButton()
       .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
+    }
+    #endif
+    ToolbarItem(placement: .topBarTrailing) {
+      sortMenu
+        .backport.glassToolbarButton()
     }
     ToolbarItem(placement: .topBarTrailing) {
       Button {
@@ -722,14 +725,48 @@ struct WWNMachinesGridViewModern: View {
       .map(\.profile)
   }
 
+  private var pinnedVisibleProfiles: [WWNMachineProfile] {
+    visibleProfiles.filter { model.isPinned($0.machineId) }
+  }
+
+  private var unpinnedVisibleProfiles: [WWNMachineProfile] {
+    visibleProfiles.filter { !model.isPinned($0.machineId) }
+  }
+
   @ViewBuilder
   private func machinesGrid(forWidth width: CGFloat) -> some View {
     if visibleProfiles.isEmpty {
       machinesEmptyState
     } else if #available(iOS 14.0, tvOS 14.0, macOS 11.0, visionOS 1.0, *) {
-      LazyVGrid(columns: gridColumns(for: width), alignment: .leading, spacing: 14) {
-        ForEach(visibleProfiles, id: \.machineId) { profile in
-          machineCard(for: profile)
+      let columns = gridColumns(for: width)
+      VStack(alignment: .leading, spacing: 20) {
+        if !pinnedVisibleProfiles.isEmpty {
+          VStack(alignment: .leading, spacing: 10) {
+            Text("Pinned")
+              .font(.headline)
+              .foregroundStyle(.secondary)
+              .accessibility(addTraits: .isHeader)
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 14) {
+              ForEach(pinnedVisibleProfiles, id: \.machineId) { profile in
+                machineCard(for: profile)
+              }
+            }
+          }
+        }
+        if !unpinnedVisibleProfiles.isEmpty {
+          VStack(alignment: .leading, spacing: 10) {
+            if !pinnedVisibleProfiles.isEmpty {
+              Text("Machines")
+                .font(.headline)
+                .foregroundStyle(.secondary)
+                .accessibility(addTraits: .isHeader)
+            }
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 14) {
+              ForEach(unpinnedVisibleProfiles, id: \.machineId) { profile in
+                machineCard(for: profile)
+              }
+            }
+          }
         }
       }
     } else {
@@ -894,11 +931,13 @@ struct WWNMachinesGridViewModern: View {
     #endif
 
     let pinned = model.isPinned(profile.machineId)
+    let pinLimitReached = !pinned && model.pinnedMachineIds.count >= WWNMachinesViewModel.maxPinnedMachines
     Button {
-      model.togglePinned(profile.machineId)
+      _ = model.togglePinned(profile.machineId)
     } label: {
       Label(pinned ? "Unpin" : "Pin", systemImage: pinned ? "pin.slash" : "pin")
     }
+    .disabled(pinLimitReached)
   }
 
   /// Finder-style tag assignment submenu (colored dots + checkmarks) with a

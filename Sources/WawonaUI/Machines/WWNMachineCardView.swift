@@ -50,24 +50,13 @@ struct WWNMachineCardView: View {
     }
     .padding(16)
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    .background {
-      RoundedRectangle(cornerRadius: 20, style: .continuous)
-        #if os(macOS)
-        // Solid fill: ultraThinMaterial forces expensive opaque-region
-        // recalculation on every NSWindow move (drag lag on Machines).
-        .fill(Color(nsColor: .controlBackgroundColor))
-        #else
-        .fill(Color.white.opacity(0.05))
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        #endif
-    }
+    .modifier(WWNMachineCardMaterial(cornerRadius: 20))
     .overlay {
       RoundedRectangle(cornerRadius: 20, style: .continuous)
         .strokeBorder(cardOutlineColor, lineWidth: 1)
     }
-    .compositingGroup()
+    // No drop shadow: native material / liquid glass provides depth.
     #if !os(macOS)
-    .shadow(color: .black.opacity(0.22), radius: 16, x: 0, y: 10)
     .animation(.spring(duration: 0.4, bounce: 0.24), value: status)
     #endif
     .wwnA11yContainer(WWNA11y.machinesCard(profile.machineId), label: descriptor)
@@ -335,6 +324,53 @@ struct WWNMachineCardView: View {
     }
   }
 
+}
+
+/// Machine card chrome: liquid glass on macOS / iOS 26+, native material elsewhere.
+/// No drop shadows (depth comes from the material).
+#if os(iOS)
+@available(iOS 16.0, *)
+#endif
+private struct WWNMachineCardMaterial: ViewModifier {
+  let cornerRadius: CGFloat
+
+  func body(content: Content) -> some View {
+    let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+    #if os(macOS)
+    if #available(macOS 26.0, *) {
+      content
+        .background { shape.fill(.clear) }
+        .glassEffect(.regular, in: shape)
+    } else {
+      // Solid fill: ultraThinMaterial forces expensive opaque-region
+      // recalculation on every NSWindow move (drag lag on Machines).
+      content.background {
+        shape.fill(Color(nsColor: .controlBackgroundColor))
+      }
+    }
+    #elseif os(iOS) || os(tvOS) || os(visionOS)
+    if #available(iOS 26.0, tvOS 26.0, *) {
+      content
+        .background { shape.fill(.clear) }
+        .glassEffect(.regular, in: shape)
+    } else {
+      content.background {
+        shape.fill(Color.white.opacity(0.05))
+          .background(.ultraThinMaterial, in: shape)
+      }
+    }
+    #else
+    content.background {
+      shape.fill(Color.secondary.opacity(0.12))
+    }
+    #endif
+  }
+}
+
+#if os(iOS)
+@available(iOS 16.0, *)
+#endif
+extension WWNMachineCardView {
   /// Marks fuzzy-matched characters from `query` inside `name` via `Text` concat
   /// (iOS 13; `AttributedString` is iOS 15+).
   private static func highlightedNameText(_ name: String, query: String) -> Text {
@@ -357,5 +393,4 @@ struct WWNMachineCardView: View {
     }
     return result
   }
-
 }

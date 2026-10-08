@@ -14,7 +14,9 @@ public final class WWNPreferencesSectionsBuilder: NSObject {
         let host = GlobalSettingsCatalog.currentHost
         return GlobalSettingsCatalog.visibleSections(for: host).map { id in
             let section = WWNPreferencesSection()
-            section.title = id.title
+            // Sidebar lists use GlobalSettingsSectionID.title ("Desktop").
+            // The detail / PrefPane chrome uses detailTitle ("Desktop Replacement").
+            section.title = id.detailTitle
             section.accessibilityIdentifier = id.objcAccessibilityIdentifier
             section.icon = id.systemImage
             section.iconColor = Self.iconColor(for: id)
@@ -287,6 +289,8 @@ public final class WWNPreferencesSectionsBuilder: NSObject {
                 "Preferred Native Shell Wayland compositor (Weston or Niri) for "
                 + "Desktop Replacement. Terminal, Wasm, and Waypipe machines are omitted."
         }
+        // Order: Desktop block first, then Lock Screen. Detail views split on
+        // Lock Screen Replacement / lockscreen keys into labelled Form sections.
         return [
             sw("Enable Desktop Replacement", kWWNPrefsDesktopReplacementEnabled, false,
                "Arm Mode B Desktop Replacement when SIP is fully disabled."),
@@ -294,8 +298,6 @@ public final class WWNPreferencesSectionsBuilder: NSObject {
                    "Take over the display for this login session."),
             button("SIP How-To", "DesktopReplacementSipHowTo",
                    "How to fully disable SIP for Desktop Replacement."),
-            sw("Lock Screen Replacement", kWWNPrefsLockscreenReplacementEnabled, false,
-               "Replace the lock screen greeter when Desktop Replacement is available."),
             popup(
                 "Desktop Machine",
                 kWWNPrefsDesktopReplacementMachineId,
@@ -304,6 +306,8 @@ public final class WWNPreferencesSectionsBuilder: NSObject {
                 picker.values,
                 desktopMachineDesc
             ),
+            sw("Lock Screen Replacement", kWWNPrefsLockscreenReplacementEnabled, false,
+               "Replace the lock screen greeter when Desktop Replacement is available."),
         ]
         #else
         return []
