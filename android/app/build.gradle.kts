@@ -1,7 +1,9 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
-    id("io.gitlab.arturbosch.detekt") version "1.23.8"
+    // Version comes from settings.gradle.kts pluginManagement. Nix offline
+    // assemble strips this line (detekt is not in the MITM lockfile).
+    id("io.gitlab.arturbosch.detekt")
     // SpotBugs is not applied: AGP 9 dropped BaseExtension and spotbugs 6.1.7
     // fails at configuration. verify-kotlin.sh records that blocker in NDJSON.
 }

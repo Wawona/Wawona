@@ -419,6 +419,34 @@ EOF
         echo "Rewrote settings.gradle.kts to offline file:// maven mirrors"
       fi
 
+      # detekt is not in gradle-deps.json / MITM lockfile. Product assemble
+      # does not need it; Verification runs :detekt online via verify-kotlin.sh.
+      if [ -f app/build.gradle.kts ]; then
+        python3 - <<'PY'
+from pathlib import Path
+p = Path("app/build.gradle.kts")
+text = p.read_text()
+out = []
+skip = False
+depth = 0
+for line in text.splitlines(True):
+    if 'id("io.gitlab.arturbosch.detekt")' in line:
+        continue
+    if not skip and line.lstrip().startswith("detekt {"):
+        skip = True
+        depth = line.count("{") - line.count("}")
+        continue
+    if skip:
+        depth += line.count("{") - line.count("}")
+        if depth <= 0:
+            skip = False
+        continue
+    out.append(line)
+p.write_text("".join(out))
+print("Stripped detekt plugin from app/build.gradle.kts for offline assemble")
+PY
+      fi
+
       # Normalize daemon/jvmargs so --no-daemon stays in-process. A mismatched
       # jvmargs profile forks a single-use daemon that needs localhost TCP and
       # fails in the Nix sandbox (DaemonConnectionException / Operation not permitted).
