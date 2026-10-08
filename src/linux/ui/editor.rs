@@ -790,10 +790,7 @@ pub fn show_editor(
                 cmd
             });
             let pkg = wasm_pkg.text().trim().to_string();
-            updated.runtime_overrides.wasm_package = if pkg.is_empty() { None } else { Some(pkg) };
             let path = wasm_path.text().trim().to_string();
-            updated.runtime_overrides.wasm_module_path =
-                if path.is_empty() { None } else { Some(path.clone()) };
             updated.runtime_overrides.wasm_launch_mode = Some(
                 if !path.is_empty() {
                     "file"
@@ -804,6 +801,10 @@ pub fn show_editor(
                 }
                 .into(),
             );
+            updated.runtime_overrides.wasm_package =
+                if pkg.is_empty() { None } else { Some(pkg) };
+            updated.runtime_overrides.wasm_module_path =
+                if path.is_empty() { None } else { Some(path) };
         } else if tid == "native" && kind == "waypipe" {
             updated.runtime_overrides.bundled_app_id = None;
         }

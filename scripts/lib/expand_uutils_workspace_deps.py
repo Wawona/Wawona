@@ -309,7 +309,7 @@ DROP_OPTIONAL_CRATES = frozenset(
         "utmp-classic",
         "utmp-classic-raw",
         "dns-lookup",
-        "uuhelp_parser",
+        # Keep uuhelp_parser: uucore_procs links it for help macros.
     }
 )
 
@@ -539,7 +539,6 @@ def prune_dropped_optional_deps(text: str, *, package_name: str | None = None) -
                         "exacl",
                         "utmp-classic",
                         "dns-lookup",
-                        "uuhelp_parser",
                     )
                 ) or (package_name == "uucore" and any(
                     tok in joined for tok in ("memchr", "thiserror", '"time"', "regex")

@@ -1,6 +1,6 @@
 //! Command implementations. Rust owns decisions. Apple effects go through host callbacks.
 
-use std::ffi::CString;
+use std::ffi::{c_char, CString};
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -215,7 +215,7 @@ fn plutil(args: &[String]) -> i32 {
 fn load_plist(path: &str) -> Result<serde_json::Value, String> {
     let host_json = if let Some(read) = host::with_host(|h| h.plist_read_json) {
         let c = CString::new(path).unwrap_or_default();
-        let mut out: *mut i8 = std::ptr::null_mut();
+        let mut out: *mut c_char = std::ptr::null_mut();
         let rc = read(c.as_ptr(), &mut out);
         if rc == 0 && !out.is_null() {
             let s = from_c(out).unwrap_or("").to_string();
@@ -469,7 +469,7 @@ fn xattr_list(path: &str, long: bool) -> i32 {
     let n = unsafe {
         libc::listxattr(
             c_path.as_ptr(),
-            buf.as_mut_ptr() as *mut i8,
+            buf.as_mut_ptr() as *mut c_char,
             buf.len(),
             libc::XATTR_NOFOLLOW,
         )
@@ -612,7 +612,7 @@ fn xattr_clear(path: &str) -> i32 {
     let n = unsafe {
         libc::listxattr(
             c_path.as_ptr(),
-            buf.as_mut_ptr() as *mut i8,
+            buf.as_mut_ptr() as *mut c_char,
             buf.len(),
             libc::XATTR_NOFOLLOW,
         )
@@ -689,7 +689,7 @@ fn sips(args: &[String]) -> i32 {
                 return unavailable("sips", Capability::MissingBackend);
             };
             let c = CString::new(file.as_str()).unwrap_or_default();
-            let mut fmt = [0i8; 64];
+            let mut fmt = [0 as c_char; 64];
             let mut w = 0;
             let mut h = 0;
             if info(c.as_ptr(), fmt.as_mut_ptr(), fmt.len(), &mut w, &mut h) != 0 {
@@ -785,7 +785,7 @@ fn product_version() -> String {
         }
     }
     if let Some(fn_) = host::with_host(|h| h.product_version) {
-        let mut buf = [0i8; 64];
+        let mut buf = [0 as c_char; 64];
         if fn_(buf.as_mut_ptr(), buf.len()) == 0 {
             if let Some(s) = from_c(buf.as_ptr()) {
                 if !s.is_empty() {
@@ -844,7 +844,7 @@ fn pbpaste(args: &[String]) -> i32 {
     let Some(fn_) = host::with_host(|h| h.pasteboard_paste) else {
         return unavailable("pbpaste", Capability::MissingBackend);
     };
-    let mut out: *mut i8 = std::ptr::null_mut();
+    let mut out: *mut c_char = std::ptr::null_mut();
     let rc = fn_(&mut out);
     if rc != 0 {
         return rc;
@@ -1079,7 +1079,7 @@ fn security(args: &[String]) -> i32 {
         println!("keychains: this app (SupportedRestricted)");
         return 0;
     };
-    let mut out: *mut i8 = std::ptr::null_mut();
+    let mut out: *mut c_char = std::ptr::null_mut();
     if fn_(&mut out) != 0 {
         return 1;
     }
@@ -1176,7 +1176,7 @@ fn scutil(args: &[String]) -> i32 {
         return unavailable("scutil", Capability::UnsupportedSandbox);
     }
     if let Some(fn_) = host::with_host(|h| h.path_status) {
-        let mut out: *mut i8 = std::ptr::null_mut();
+        let mut out: *mut c_char = std::ptr::null_mut();
         if fn_(&mut out) == 0 {
             if let Some(s) = from_c(out) {
                 println!("{s}");
