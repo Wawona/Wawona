@@ -20,16 +20,11 @@ public final class WWNSceneDelegate: UIResponder, UIWindowSceneDelegate {
         guard let windowScene = scene as? UIWindowScene else { return }
         let window = UIWindow(windowScene: windowScene)
         self.window = window
+        // Host chrome is SwiftUI. Do not insert UIKit subviews under
+        // UIHostingController.view (SwiftUI runtime warning / broken hierarchy).
         let hosting = UIHostingController(rootView: WawonaRootView())
         window.rootViewController = hosting
-        // Keep a full-bleed container for DRM present / nested clients that
-        // attach under the root (Machines Focus path).
-        let container = UIView(frame: window.bounds)
-        container.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        container.isUserInteractionEnabled = false
-        container.backgroundColor = .clear
-        hosting.view.insertSubview(container, at: 0)
-        compositorContainer = container
+        compositorContainer = hosting.view
         window.makeKeyAndVisible()
         applyRespectSafeAreaPreference()
         // Ensure host Wayland is up before any lab auto-start (AppDelegate may
