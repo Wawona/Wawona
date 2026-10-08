@@ -563,6 +563,7 @@ dependencies = [
  "uu_whoami",
  "uu_yes",
  "uucore",
+ "uuhelp_parser",
 ]
 
 [[package]]
