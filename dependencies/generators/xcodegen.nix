@@ -1479,6 +1479,9 @@ PLIST
         type = "application";
         platform = "iOS";
         sources = [
+          # Process @main. Required after libgbm_es2_demo.a stopped exporting
+          # C _main (that symbol stole LC_MAIN and exited in the cube demo).
+          { path = "Darwin/Sources/Main.swift"; type = "file"; }
           {
             path = "src/platform/macos";
             excludes = mobileMacPlatformExcludes;
@@ -1719,6 +1722,7 @@ PLIST
         type = "application";
         platform = "iOS";
         sources = [
+          { path = "Darwin/Sources/Main.swift"; type = "file"; }
           {
             path = "src/platform/macos";
             excludes = mobileMacPlatformExcludes;
@@ -1901,6 +1905,7 @@ PLIST
         type = "application";
         platform = "tvOS";
         sources = [
+          { path = "Darwin/Sources/Main.swift"; type = "file"; }
           {
             path = "src/platform/macos";
             excludes = mobileMacPlatformExcludes;
@@ -2175,8 +2180,7 @@ PLIST
         type = "application";
         platform = "macOS";
         sources = [
-          # Process @main (SwiftUI App). Without this, libgbm_es2_demo.a's
-          # _main steals the entry and the app exits after ES2Cube init.
+          # Process @main (SwiftUI App). Same entry as Apple-mobile targets.
           { path = "Darwin/Sources/Main.swift"; type = "file"; }
           { path = "Sources/WawonaUI"; excludes = [ "Skip/**" "VisionOS/**" ]; }
           { path = "Sources/WawonaApple"; excludes = commonExcludes; }
@@ -2750,6 +2754,7 @@ PLIST
         type = "application";
         platform = "visionOS";
         sources = [
+          { path = "Darwin/Sources/Main.swift"; type = "file"; }
           {
             path = "src/platform/macos";
             excludes = mobileMacPlatformExcludes;

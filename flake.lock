@@ -1020,11 +1020,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1791469829,
-        "narHash": "sha256-UJldYbWi8gzpLLRYnqnobejOC1LZVLPywhDwDkLfeks=",
+        "lastModified": 1791472079,
+        "narHash": "sha256-81xmXEI2T4IBEbNLoOyc7z60+x3H1VFCzlbLUZy7rCs=",
         "owner": "Wawona",
         "repo": "wwn-kmscube",
-        "rev": "9fcc6ad623ca318492591907a866db176ca7785f",
+        "rev": "790b12b3aa381fd0628d3748a5738a484298a467",
         "type": "github"
       },
       "original": {
