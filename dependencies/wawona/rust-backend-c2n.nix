@@ -372,6 +372,15 @@ let
   crossPreConfigure =
     if isAppleCross then ''
       unset MACOSX_DEPLOYMENT_TARGET
+      # Darwin stdenv cc-wrapper injects -mmacos-version-min. That clashes with
+      # -mwatchos/-mios/-mtvos version-min on the same rustc link line
+      # (uu_* / coreutils link fails: "not allowed with -mwatchos-simulator...").
+      strip_macos_min() {
+        printf '%s' "$1" | sed -E 's/ -?mmacosx?-version-min=[^ ]+//g'
+      }
+      export NIX_CFLAGS_COMPILE="$(strip_macos_min "''${NIX_CFLAGS_COMPILE-}")"
+      export NIX_LDFLAGS="$(strip_macos_min "''${NIX_LDFLAGS-}")"
+      export NIX_CFLAGS_LINK="$(strip_macos_min "''${NIX_CFLAGS_LINK-}")"
       ${if isWatchOS then ''
         # Locate the watchOS SDK manually (xcrun may not have a watch-specific helper)
         XCODE_APP=$(${(import applePath { inherit (pkgs) lib; inherit pkgs; }).findXcodeScript}/bin/find-xcode || true)
@@ -381,6 +390,10 @@ let
         export DEVELOPER_DIR="$XCODE_DEVELOPER_DIR"
         export XCODE_CLANG="$XCODE_DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"
         export APPLE_DEPLOYMENT_FLAG="${deploymentFlag}"
+        # watchOS: drop residual host Darwin flags entirely for cc-rs / rustc link.
+        export NIX_CFLAGS_COMPILE=""
+        export NIX_LDFLAGS=""
+        export NIX_CFLAGS_LINK=""
       '' else if isVisionOS then ''
         ${ensureIosSDKHelpers.mkAppleEnv {
           sdkName = if simulator then "xrsimulator" else "xros";
