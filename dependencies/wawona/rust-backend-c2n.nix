@@ -442,7 +442,10 @@ let
 
           hostFromShared =
             if appleHostCrates != null then
-              appleHostCrates.findHostBuild appleHostCrates.cargoNix.rootCrate crateAttrs
+              appleHostCrates.findHostBuild
+                (appleHostCrates.cargoNix.rootCrate
+                  or appleHostCrates.cargoNix.workspaceMembers.wawona)
+                crateAttrs
             else null;
 
           hostBuild =
@@ -509,6 +512,14 @@ let
     pkgs = cargoNixPkgs;
     buildRustCrateForPkgs = buildRustCrateForTarget;
   };
+
+  # crate2nix 0.15 emits rootCrate only when it can match cargo's resolve.root
+  # against workspace_members. With injected path crates (coreutils / waypipe
+  # and their subcrates) that match often fails ("root missing from
+  # workspace_members") even though workspaceMembers.wawona is present.
+  rootCrateMember =
+    cargoNix.rootCrate or cargoNix.workspaceMembers.wawona or
+    (throw "crate2nix output missing rootCrate and workspaceMembers.wawona");
 
   # ── Features to enable ─────────────────────────────────────────────
   features =
@@ -863,7 +874,7 @@ let
   };
 
   # ── Build the root crate ───────────────────────────────────────────
-  rootBuild = cargoNix.rootCrate.build.override ({
+  rootBuild = rootCrateMember.build.override ({
     inherit crateOverrides;
     runTests = false;
   } // lib.optionalAttrs (features != []) {
