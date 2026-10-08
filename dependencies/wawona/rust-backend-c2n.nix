@@ -353,11 +353,27 @@ let
     ]
     else [];
 
+  # Drop Darwin host -mmacos-version-min that the stdenv cc-wrapper injects.
+  # WWN_APPLE_CLANG is set in crossPreConfigure to the Xcode clang.
+  appleLdWrap = pkgs.writeShellScript "wwn-apple-ld-wrap" ''
+    set -euo pipefail
+    clang_bin="''${WWN_APPLE_CLANG:?WWN_APPLE_CLANG unset}"
+    args=()
+    for a in "$@"; do
+      case "$a" in
+        -mmacos-version-min=*|-mmacosx-version-min=*) ;;
+        *) args+=("$a") ;;
+      esac
+    done
+    exec "$clang_bin" "''${args[@]}"
+  '';
+
   appleLinkerOverrides =
     if isAppleCross then [
       # buildRustCrate drives rustc directly (not cargo), so target-specific
       # CARGO_TARGET_*_RUSTFLAGS are ignored. Force final linker target/min
       # version here to avoid rustc defaulting to tvOS 10.0.
+      "-C" "linker=${appleLdWrap}"
       "-C" "link-arg=-target"
       "-C" "link-arg=${linkerTarget}"
     ] ++ lib.optionals (!isVisionOS) [
@@ -418,9 +434,11 @@ let
       export CFLAGS_${cargoTargetUnderscore}="-target ${linkerTarget} -isysroot $SDKROOT${lib.optionalString (!isVisionOS) " $APPLE_DEPLOYMENT_FLAG"} -fPIC"
       export CRATE_CC_NO_DEFAULTS="1"
 
-      # Linker for cargo/rustc
-      export CARGO_TARGET_${lib.toUpper cargoTargetUnderscore}_LINKER="$XCODE_CLANG"
-      export CARGO_TARGET_${lib.toUpper cargoTargetUnderscore}_RUSTFLAGS="-C linker=$XCODE_CLANG -C link-arg=-target -C link-arg=${linkerTarget} -C link-arg=-isysroot -C link-arg=$SDKROOT${lib.optionalString (!isVisionOS) " -C link-arg=$APPLE_DEPLOYMENT_FLAG"}"
+      # Darwin stdenv `cc` still injects -mmacos-version-min on the rustc link
+      # line. appleLdWrap (store script) drops those host flags.
+      export WWN_APPLE_CLANG="$XCODE_CLANG"
+      export CARGO_TARGET_${lib.toUpper cargoTargetUnderscore}_LINKER="${appleLdWrap}"
+      export CARGO_TARGET_${lib.toUpper cargoTargetUnderscore}_RUSTFLAGS="-C linker=${appleLdWrap} -C link-arg=-target -C link-arg=${linkerTarget} -C link-arg=-isysroot -C link-arg=$SDKROOT${lib.optionalString (!isVisionOS) " -C link-arg=$APPLE_DEPLOYMENT_FLAG"}"
 
       unset SDKROOT
       unset DEVELOPER_DIR

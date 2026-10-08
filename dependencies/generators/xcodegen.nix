@@ -3336,12 +3336,13 @@ PLIST
 
     # Repo keeps src/term/screen.rs as a sibling symlink. Sandbox/store
     # copies leave it dangling (/nix/store/Terminal/...), which fails
-    # noBrokenSymlinks. Replace with the Terminal flake input file.
-    postUnpack = lib.optionalString (terminalSrc != null) ''
-      mkdir -p "$sourceRoot/src/term"
-      rm -f "$sourceRoot/src/term/screen.rs"
-      cp ${terminalSrc}/src/screen.rs "$sourceRoot/src/term/screen.rs"
-      chmod u+w "$sourceRoot/src/term/screen.rs"
+    # noBrokenSymlinks and breaks later `cp` into product $project outputs.
+    # Replace with the Terminal flake input file after unpack.
+    postPatch = lib.optionalString (terminalSrc != null) ''
+      mkdir -p src/term
+      rm -f src/term/screen.rs
+      cp ${terminalSrc}/src/screen.rs src/term/screen.rs
+      chmod u+w src/term/screen.rs
     '';
 
     buildPhase = ''

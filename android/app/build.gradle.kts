@@ -1,7 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
-    id("io.gitlab.arturbosch.detekt")
+    id("io.gitlab.arturbosch.detekt") version "1.23.8"
     // SpotBugs is not applied: AGP 9 dropped BaseExtension and spotbugs 6.1.7
     // fails at configuration. verify-kotlin.sh records that blocker in NDJSON.
 }

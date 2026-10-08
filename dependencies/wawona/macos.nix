@@ -635,7 +635,19 @@ in
       fi
     '';
 
-    postPatch = "";
+    # Repo keeps src/term/screen.rs as a sibling symlink; nix src copies leave
+    # it dangling. Materialize from the Xcode project tree when present, else
+    # drop the link so later cp into $project does not refuse to overwrite.
+    postPatch = ''
+      if [ -L src/term/screen.rs ] || [ ! -e src/term/screen.rs ]; then
+        rm -f src/term/screen.rs
+        if [ -n "${toString xcodeProject}" ] && [ -f "${xcodeProject}/src/term/screen.rs" ]; then
+          mkdir -p src/term
+          cp -L "${xcodeProject}/src/term/screen.rs" src/term/screen.rs
+          chmod u+w src/term/screen.rs
+        fi
+      fi
+    '';
 
     preBuild = ''
       ${xcodeEnv "macos"}
@@ -1239,6 +1251,7 @@ SHELL_EOF
               chmod -R u+w $project
               rm -rf "$project/_xcode_project/DerivedData" "$project/DerivedData"
               if [ -n "${toString xcodeProject}" ]; then
+                rm -f "$project/src/term/screen.rs"
                 cp -r ${xcodeProject}/* "$project/"
                 chmod -R u+w $project
               fi
@@ -1263,6 +1276,7 @@ SHELL_EOF
             chmod -R u+w $project
             rm -rf "$project/_xcode_project/DerivedData" "$project/DerivedData"
             if [ -n "${toString xcodeProject}" ]; then
+              rm -f "$project/src/term/screen.rs"
               cp -r ${xcodeProject}/* "$project/"
               chmod -R u+w $project
             fi
