@@ -70,9 +70,9 @@ struct WawonaGlobalSettingsPanelView: View {
     private func globalSettingsHubRow(_ section: WWNPreferencesSection) -> some View {
         WawonaSettingsHubChrome.hubRow(
             title: section.title,
-            systemImage: section.systemImageName.isEmpty
+            systemImage: section.icon.isEmpty
                 ? WawonaSettingsHubChrome.systemImage(forSectionTitle: section.title)
-                : section.systemImageName,
+                : section.icon,
             iconColor: section.swiftUIIconColor
         )
     }

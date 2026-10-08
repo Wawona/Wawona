@@ -220,10 +220,10 @@ final class WWNSettingsValueModel: ObservableObject {
     func setBool(_ value: Bool, for item: WWNSettingItem) {
         let key = itemKey(item)
         guard !key.isEmpty else { return }
-        #if !os(tvOS)
+        #if (os(iOS) || os(macOS) || os(visionOS)) && !os(tvOS) && !os(watchOS)
         if key == WWNRootfsICloudSyncPreferenceKey {
             // iCloud sync is routed through the rootfs provider (it can fail).
-            // ObjC `NSError **` imports as `throws` in Swift. tvOS has no Drive.
+            // ObjC `NSError **` imports as `throws` in Swift. tvOS/watchOS: no Drive.
             do {
                 try WWNRootfsProvider.setICloudSyncEnabled(value)
             } catch {

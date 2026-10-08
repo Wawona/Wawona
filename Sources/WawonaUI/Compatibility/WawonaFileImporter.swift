@@ -34,21 +34,44 @@ extension WawonaBackport where Content: View {
     @ViewBuilder
     func fileImporter(isPresented: Binding<Bool>, allowedContentTypes: [WawonaFileType],
                       onCompletion: @escaping (Result<URL, Error>) -> Void) -> some View {
-        if #available(iOS 14.0, tvOS 14.0, watchOS 7.0, macOS 11.0, *) {
+        #if os(tvOS)
+        // UIDocumentPicker / fileImporter are unavailable on tvOS.
+        fileImporterUnavailable(
+            isPresented: isPresented,
+            allowedContentTypes: allowedContentTypes,
+            onCompletion: onCompletion
+        )
+        #elseif os(iOS)
+        if #available(iOS 14.0, *) {
             content.fileImporter(isPresented: isPresented,
                 allowedContentTypes: allowedContentTypes.map(\.native), onCompletion: onCompletion)
         } else {
-            #if os(iOS)
             // A separate presentation node avoids the pre-14.5 multiple-sheet limitation.
             content.background(Color.clear.sheet(isPresented: isPresented) {
                 WawonaDocumentPicker(isPresented: isPresented,
                     identifiers: allowedContentTypes.map(\.legacy), completion: onCompletion)
             })
-            #else
-            content
-            #endif
         }
+        #else
+        if #available(macOS 11.0, watchOS 7.0, visionOS 1.0, *) {
+            content.fileImporter(isPresented: isPresented,
+                allowedContentTypes: allowedContentTypes.map(\.native), onCompletion: onCompletion)
+        } else {
+            content
+        }
+        #endif
     }
+
+    #if os(tvOS)
+    @ViewBuilder
+    private func fileImporterUnavailable(
+        isPresented _: Binding<Bool>,
+        allowedContentTypes _: [WawonaFileType],
+        onCompletion _: @escaping (Result<URL, Error>) -> Void
+    ) -> some View {
+        content
+    }
+    #endif
 }
 
 #if os(iOS)

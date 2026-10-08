@@ -29,7 +29,9 @@ public final class WWNCompositorView_ios: UIView, UITextInput {
         }
         waylandLayer.frame = bounds
         layer.addSublayer(waylandLayer)
+        #if !os(tvOS)
         isMultipleTouchEnabled = true
+        #endif
     }
 
     @available(*, unavailable)

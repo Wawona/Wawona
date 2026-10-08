@@ -264,13 +264,13 @@ public struct MachineSettingsView: View {
             }
             VStack(alignment: .leading, spacing: 6) {
                 WawonaLabeledContent("Memory", value: "\(Int(vmMemoryMBBinding.wrappedValue)) MiB")
-                Slider(value: vmMemoryMBBinding, in: 256...4096, step: 256)
+                WawonaSlider(value: vmMemoryMBBinding, range: 256...4096, step: 256)
                     .accessibility(label: Text("Virtual machine memory"))
                     .accessibility(identifier: "wwn.vm.memory")
             }
             VStack(alignment: .leading, spacing: 6) {
                 WawonaLabeledContent("Storage", value: "\(Int(vmDiskGiBBinding.wrappedValue)) GiB")
-                Slider(value: vmDiskGiBBinding, in: vmMinimumDiskGiB...64, step: 1)
+                WawonaSlider(value: vmDiskGiBBinding, range: vmMinimumDiskGiB...64, step: 1)
                     .accessibility(label: Text("Virtual machine storage"))
                     .accessibility(identifier: "wwn.vm.storage")
             }

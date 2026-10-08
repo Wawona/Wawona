@@ -217,7 +217,7 @@ final class IlandPresentEngine {
     }
 
     private func configureEDR(on layer: CAMetalLayer) {
-        #if !SWIFT_PACKAGE
+        #if !SWIFT_PACKAGE && !os(tvOS)
         let hdr = WWNPreferencesManager.sharedManager().colorOperations()
         if hdr {
             if #available(iOS 16.0, macOS 14.0, visionOS 1.0, *) {

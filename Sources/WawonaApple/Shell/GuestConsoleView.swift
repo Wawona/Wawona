@@ -16,7 +16,9 @@ public final class WWNGuestConsoleView: UIView {
         self.machineId = machineId
         super.init(frame: .zero)
         _ = source
+        #if !os(tvOS)
         textView.isEditable = false
+        #endif
         textView.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
         textView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(textView)

@@ -14,7 +14,7 @@ public enum Pasteboard {
         let pb = NSPasteboard.general
         pb.clearContents()
         return pb.setString(text, forType: .string)
-        #elseif canImport(UIKit) && !os(watchOS)
+        #elseif canImport(UIKit) && !os(watchOS) && !os(tvOS)
         UIPasteboard.general.string = text
         return true
         #else
@@ -26,7 +26,7 @@ public enum Pasteboard {
     public static func paste() -> String? {
         #if os(macOS)
         return NSPasteboard.general.string(forType: .string)
-        #elseif canImport(UIKit) && !os(watchOS)
+        #elseif canImport(UIKit) && !os(watchOS) && !os(tvOS)
         return UIPasteboard.general.string
         #else
         return nil

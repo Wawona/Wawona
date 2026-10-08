@@ -184,7 +184,9 @@ public final class GameControllerBridge: NSObject {
     }
 
     private func postTvMenuPressed(_ pressed: Bool) {
-        let name = pressed ? WWNTvRemoteMenuBeganNotification : WWNTvRemoteMenuEndedNotification
+        let name: NSNotification.Name = pressed
+            ? .WWNTvRemoteMenuBeganNotification
+            : .WWNTvRemoteMenuEndedNotification
         DispatchQueue.main.async {
             NotificationCenter.default.post(name: name, object: nil)
         }
@@ -219,7 +221,7 @@ public final class GameControllerBridge: NSObject {
         guard now - lastRemoteShakeTime >= remoteShakeCooldown else { return }
         lastRemoteShakeTime = now
         DispatchQueue.main.async {
-            NotificationCenter.default.post(name: WWNTvRemoteShakeNotification, object: nil)
+            NotificationCenter.default.post(name: .WWNTvRemoteShakeNotification, object: nil)
         }
     }
     #endif

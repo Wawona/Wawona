@@ -151,7 +151,9 @@ public final class WWNRootfsProvider: NSObject {
         #endif
     }
 
-    #if (os(iOS) || os(macOS)) && !os(tvOS)
+    // iCloud Drive shell HOME: macOS / iOS / iPadOS / visionOS. Blocked on
+    // tvOS and watchOS (platform-targets matrix).
+    #if (os(iOS) || os(macOS) || os(visionOS)) && !os(tvOS) && !os(watchOS)
     @objc public static func isICloudSyncSupported() -> Bool {
         WWNRootfsICloudSync.isSupported()
     }

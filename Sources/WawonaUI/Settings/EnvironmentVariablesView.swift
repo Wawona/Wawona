@@ -163,6 +163,8 @@ public struct EnvironmentVariablesView: View {
             }
             #if os(iOS) || os(visionOS)
             .backport.insetGroupedList()
+            #elseif os(tvOS)
+            .listStyle(.grouped)
             #else
             .listStyle(.inset)
             #endif

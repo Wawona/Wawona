@@ -5,9 +5,13 @@ import UIKit
 
 extension WawonaBackport where Content: View {
     @ViewBuilder func selectableText() -> some View {
-        if #available(iOS 15.0, tvOS 15.0, watchOS 8.0, macOS 12.0, *) {
+        #if os(tvOS)
+        content
+        #else
+        if #available(iOS 15.0, watchOS 8.0, macOS 12.0, *) {
             content.textSelection(.enabled)
         } else { content }
+        #endif
     }
 
     @ViewBuilder func groupedForm() -> some View {
@@ -26,9 +30,13 @@ extension WawonaBackport where Content: View {
     }
 
     @ViewBuilder func hideScrollBackground() -> some View {
-        if #available(iOS 16.0, tvOS 16.0, watchOS 9.0, macOS 13.0, *) {
+        #if os(tvOS)
+        content
+        #else
+        if #available(iOS 16.0, watchOS 9.0, macOS 13.0, *) {
             content.scrollContentBackground(.hidden)
         } else { content }
+        #endif
     }
 
     @ViewBuilder func dismissKeyboardOnScroll() -> some View {
@@ -124,7 +132,19 @@ struct WawonaDisclosureGroup<Content: View>: View {
         self.content = content()
     }
     @ViewBuilder var body: some View {
-        if #available(iOS 14.0, tvOS 14.0, watchOS 7.0, macOS 11.0, *) {
+        #if os(tvOS)
+        VStack(alignment: .leading) {
+            Button(action: { expanded.toggle() }) {
+                HStack {
+                    Text(title)
+                    Spacer()
+                    Image(systemName: expanded ? "chevron.down" : "chevron.right")
+                }
+            }
+            if expanded { content }
+        }
+        #else
+        if #available(iOS 14.0, watchOS 7.0, macOS 11.0, *) {
             DisclosureGroup(title, isExpanded: $expanded) { content }
         } else {
             VStack(alignment: .leading) {
@@ -138,6 +158,7 @@ struct WawonaDisclosureGroup<Content: View>: View {
                 if expanded { content }
             }
         }
+        #endif
     }
 }
 
@@ -171,11 +192,15 @@ extension WawonaBackport where Content: View {
 extension WawonaBackport where Content: View {
     @ViewBuilder
     func supplementarySwipeActions<Actions: View>(@ViewBuilder content actions: () -> Actions) -> some View {
-        if #available(iOS 15, macOS 12, tvOS 15, watchOS 8, *) {
+        #if os(tvOS)
+        content
+        #else
+        if #available(iOS 15, macOS 12, watchOS 8, *) {
             content.swipeActions(edge: .trailing, allowsFullSwipe: false, content: actions)
         } else {
             content
         }
+        #endif
     }
 }
 

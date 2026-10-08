@@ -34,6 +34,34 @@ public enum WawonaSettingsHubChrome {
             .accessibility(hidden: true)
     }
 
+    /// Hub list row: colored SF Symbol tile + section title.
+    @ViewBuilder
+    public static func hubRow(
+        title: String,
+        systemImage: String,
+        iconColor: Color
+    ) -> some View {
+        Label {
+            Text(title)
+        } icon: {
+            iconTile(systemName: systemImage, color: iconColor)
+        }
+    }
+
+    /// Fallback glyph when a preferences section has no `icon` set.
+    public static func systemImage(forSectionTitle title: String) -> String {
+        switch title.lowercased() {
+        case let t where t.contains("display"): return "display"
+        case let t where t.contains("input") || t.contains("keyboard"):
+            return "keyboard"
+        case let t where t.contains("graphics"): return "cube"
+        case let t where t.contains("environment"): return "terminal"
+        case let t where t.contains("desktop"): return "desktopcomputer"
+        case let t where t.contains("about"): return "info.circle"
+        default: return "gearshape.fill"
+        }
+    }
+
     #if os(macOS)
     public static func color(nsColor: NSColor) -> Color { Color(nsColor: nsColor) }
     #elseif canImport(UIKit)

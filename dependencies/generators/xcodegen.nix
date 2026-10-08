@@ -1372,10 +1372,22 @@ PLIST
 
   # Shared SwiftUI product shell for Apple-mobile. Same tree macOS compiles.
   # Toolbar drawing lives in ToolbarKeys; the Wayland accessory bridge stays
-  # under Sources/WawonaUI/Keyboard.
-  appleMobileEnvUISources = [
+  # under Sources/WawonaUI/Keyboard. tvOS omits ToolbarKeys UIKit views:
+  # haptic generators and ultraThinMaterial are unavailable on tvOS.
+  appleMobileEnvUISourcesBase = [
     { path = "Sources/WawonaUI"; excludes = [ "Skip/**" ]; }
+  ] ++ wawonaAppleSources;
+  # Phone / iPad get ToolbarKeys. tvOS and visionOS omit it: haptics /
+  # ultraThinMaterial / UIScreen are unavailable on those SDKs.
+  appleMobileEnvUISourcesWithToolbar = appleMobileEnvUISourcesBase ++ [
     { path = "${toolbarKeysSrc}/apple/Keyboard"; }
+  ];
+  appleMobileEnvUISources = appleMobileEnvUISourcesWithToolbar;
+  appleTvEnvUISources = [
+    { path = "Sources/WawonaUI"; excludes = [ "Skip/**" "Keyboard/**" ]; }
+  ] ++ wawonaAppleSources;
+  appleVisionEnvUISources = [
+    { path = "Sources/WawonaUI"; excludes = [ "Skip/**" "Keyboard/**" ]; }
   ] ++ wawonaAppleSources;
 
   # Xcode “Update to recommended settings” for framework targets with Swift/ObjC clients.
@@ -1913,7 +1925,7 @@ PLIST
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
-        ] ++ appleMobileEnvUISources;
+        ] ++ appleTvEnvUISources;
         preBuildScripts = [ stampBuildNumberPhase tvosPreBuild ];
         # ANGLE is statically linked (libEGL.a / libGLESv2.a), not embedded as
         # dylibs. tvOS GPU is Mode A GLES+Vulkan. VM/container machines stay forbidden.
@@ -2761,7 +2773,7 @@ PLIST
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
-        ] ++ appleMobileEnvUISources;
+        ] ++ appleVisionEnvUISources;
         preBuildScripts = [ stampBuildNumberPhase visionosPreBuild ];
         # mkAppleGpuPostBuildPhases. See Wawona-iOS/-iPadOS. This also fixes
         # visionOS previously missing niri data / fuzzel apps catalog, which

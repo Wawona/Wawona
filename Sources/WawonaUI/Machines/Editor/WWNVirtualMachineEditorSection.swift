@@ -88,12 +88,12 @@ struct WWNVirtualMachineEditorSection: View {
           Text("\(integer("diskGiB", fallback: 8).wrappedValue) GiB")
             .foregroundColor(.secondary)
         }
-        Slider(
+        WawonaSlider(
           value: Binding(
             get: { Double(integer("diskGiB", fallback: 8).wrappedValue) },
             set: { integer("diskGiB", fallback: 8).wrappedValue = Int($0.rounded()) }
           ),
-          in: Double(max(4, min(draft.initialVMDiskGiB, 64)))...64,
+          range: Double(max(4, min(draft.initialVMDiskGiB, 64)))...64,
           step: 1
         )
         .accessibility(label: Text("Virtual machine storage"))

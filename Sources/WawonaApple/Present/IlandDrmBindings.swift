@@ -42,8 +42,9 @@ enum IlandDrmBindings {
         let fps = UIScreen.main.maximumFramesPerSecond
         return fps > 0 ? UInt32(fps) * 1000 : 0
     }
-    #elseif os(iOS)
-    static func refreshMillihz() -> UInt32 { 0 }
+    #elseif os(visionOS) || os(tvOS)
+    // No UIScreen.main refresh query on these SDKs.
+    static func refreshMillihz() -> UInt32 { 60_000 }
     #elseif os(macOS)
     static func refreshMillihz(for layer: CAMetalLayer) -> UInt32 {
         var screen: NSScreen?

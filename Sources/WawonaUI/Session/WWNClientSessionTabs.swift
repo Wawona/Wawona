@@ -300,7 +300,11 @@ struct WWNClientSessionTabBarRootView: View {
                             .accessibility(identifier: "wwn.client.tabs.overview")
                         }
                         .padding(12)
+                        #if os(tvOS)
+                        .background(Color.secondary.opacity(0.25))
+                        #else
                         .background(Color(UIColor.secondarySystemBackground))
+                        #endif
                     }
                 }
                     .padding(.top, topSafeAreaInset)
@@ -394,7 +398,11 @@ struct WWNTroughWellBackground: View {
     var body: some View {
         ZStack(alignment: .leading) {
             Capsule()
+                #if os(tvOS)
+                .fill(Color.secondary.opacity(0.20))
+                #else
                 .fill(Color(UIColor.tertiarySystemBackground).opacity(0.60))
+                #endif
                 .overlay(Capsule().strokeBorder(hairline, lineWidth: 0.5))
 
             ForEach(1..<max(segmentCount, 1), id: \.self) { index in

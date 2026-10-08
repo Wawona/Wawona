@@ -47,8 +47,11 @@ public extension WawonaBackport where Content: View {
     /// boundary without changing the app's deployment target.
     @ViewBuilder
     func visibleRowSeparator() -> some View {
-        #if os(iOS) || os(tvOS) || os(visionOS)
-        if #available(iOS 15.0, tvOS 15.0, *) {
+        #if os(tvOS)
+        // listRowSeparator is unavailable on tvOS.
+        content.overlay(Divider(), alignment: .bottom)
+        #elseif os(iOS) || os(visionOS)
+        if #available(iOS 15.0, *) {
             content.listRowSeparator(.visible, edges: .bottom)
         } else {
             content.overlay(Divider(), alignment: .bottom)

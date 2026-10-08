@@ -37,6 +37,8 @@ struct WWNNativeClientPickerView: View {
     }
     #if os(macOS)
     .listStyle(.inset)
+    #elseif os(tvOS)
+    .listStyle(.grouped)
     #else
     .listStyle(.insetGrouped)
     #endif

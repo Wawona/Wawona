@@ -245,7 +245,7 @@ struct WWNMachineEditorViewModern: View {
           }
           .pickerStyle(.navigationLink)
           Button("Open Wawona Settings", systemImage: "gearshape") {
-            WWNPreferences.shared().show(nil)
+            openGlobalSettings()
           }
         } header: {
           Text("Display")

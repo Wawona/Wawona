@@ -391,12 +391,12 @@ struct MachineEditorView: View {
                                 Text("\(vmMemoryMB) MiB")
                                     .foregroundColor(.secondary)
                             }
-                            Slider(
+                            WawonaSlider(
                                 value: Binding(
                                     get: { Double(vmMemoryMB) },
                                     set: { vmMemoryMB = Int($0.rounded()) }
                                 ),
-                                in: 256...4096,
+                                range: 256...4096,
                                 step: 256
                             )
                             .accessibility(label: Text("Virtual machine memory"))
@@ -409,12 +409,12 @@ struct MachineEditorView: View {
                                 Text("\(vmDiskGiB) GiB")
                                     .foregroundColor(.secondary)
                             }
-                            Slider(
+                            WawonaSlider(
                                 value: Binding(
                                     get: { Double(vmDiskGiB) },
                                     set: { vmDiskGiB = Int($0.rounded()) }
                                 ),
-                                in: Double(max(4, min(editingBaseline?.vmSettings?.diskGiB ?? 4, 64)))...64,
+                                range: Double(max(4, min(editingBaseline?.vmSettings?.diskGiB ?? 4, 64)))...64,
                                 step: 1
                             )
                             .accessibility(label: Text("Virtual machine storage"))
