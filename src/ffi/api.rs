@@ -477,8 +477,21 @@ impl WawonaCore {
     pub fn start(&self, socket_name: Option<String>) -> Result<()> {
         let mut compositor_guard = self.compositor.lock_recover();
 
-        if compositor_guard.is_some() {
-            return Err(CompositorError::AlreadyStarted);
+        if let Some(existing) = compositor_guard.as_ref() {
+            let path = existing.socket_path();
+            if !path.is_empty() && std::path::Path::new(&path).exists() {
+                return Err(CompositorError::AlreadyStarted);
+            }
+            // Listen fd may still be alive after an unlinked socket inode.
+            // Tear down so Start can rebind a connectable path.
+            crate::wlog!(
+                crate::util::logging::FFI,
+                "Restarting compositor: socket path missing ({})",
+                path
+            );
+            if let Some(mut stale) = compositor_guard.take() {
+                let _ = stale.stop();
+            }
         }
 
         let socket = socket_name.unwrap_or_else(|| "wayland-0".to_string());

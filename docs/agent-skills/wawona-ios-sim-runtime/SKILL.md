@@ -66,6 +66,23 @@ session logs, not the pill alone.
 If Start fails with `Host compositor failed to start`, check
 `XDG_RUNTIME_DIR` (rule `wawona-ios-app-entry`).
 
+## Host Start: socket path + wasm (macOS too)
+
+`WWNCoreIsRunning` alone is not enough. An unlinked `wayland-0` can leave the
+listen fd alive while clients get `ENOENT`. `isRunning()` / `ensureRunning`
+must require a connectable path under `XDG_RUNTIME_DIR` and rebind when the
+inode is gone. Heal:
+
+```bash
+pkill -9 -f '/Applications/Wawona.app/' || true
+rm -f /tmp/wawona-$UID/wayland-* /tmp/wawona-$UID/*.lock
+open -n /Applications/Wawona.app
+# prove: python connect to /tmp/wawona-$UID/wayland-0
+```
+
+Wasm Start must call `launchWasmModule` (bundled `hello-wasi-gui.wasm` or
+`wasmModulePath`). `launchBundledClient("wawona-wasm")` must not no-op.
+
 ## Evidence
 
 ```bash

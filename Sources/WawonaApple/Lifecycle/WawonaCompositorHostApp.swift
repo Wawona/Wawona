@@ -34,7 +34,7 @@ enum WawonaCompositorHostApp {
         _ = WWNLaunchAgentManager.sharedManager.ensureMenuBarAgent(&agentError)
 
         let bridge = WWNCompositorBridge.sharedBridge
-        guard bridge.start(withSocketName: "wayland-0") else {
+        guard bridge.ensureRunning(withSocketName: "wayland-0") else {
             writeRuntimeState(healthy: false, error: "failed to start compositor")
             WawonaLaunchLockState.releaseAll()
             exit(1)

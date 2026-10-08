@@ -476,9 +476,14 @@ impl Compositor {
         self.display.backend().poll_fd().as_raw_fd()
     }
 
-    /// Check if compositor is running
+    /// Check if compositor is running with a connectable socket path.
+    /// An unlinked socket can leave the listen fd alive while clients get ENOENT.
     pub fn is_running(&self) -> bool {
-        self.running
+        if !self.running {
+            return false;
+        }
+        let path = self.socket_path();
+        !path.is_empty() && std::path::Path::new(&path).exists()
     }
 
     /// Get configuration

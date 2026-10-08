@@ -94,16 +94,41 @@ public final class WWNCompositorBridge: NSObject {
 
     @objc public func isRunning() -> Bool {
         guard let core else { return false }
-        return WWNCoreIsRunning(core)
+        guard WWNCoreIsRunning(core) else { return false }
+        // Unlinked socket files leave the listen fd alive while clients get ENOENT.
+        // Treat a missing path as not running so Start can rebind.
+        return hasConnectableSocketPath()
+    }
+
+    /// True when the Wayland socket path exists on disk (connectable by name).
+    @objc public func hasConnectableSocketPath() -> Bool {
+        let path = socketPath()
+        guard !path.isEmpty else { return false }
+        return FileManager.default.fileExists(atPath: path)
+    }
+
+    /// Ensure a live host compositor with a connectable socket path.
+    @objc(ensureRunningWithSocketName:)
+    @discardableResult
+    public func ensureRunning(withSocketName socketName: String?) -> Bool {
+        if isRunning() { return true }
+        // Path gone or never started: tear down so Start can rebind.
+        // WWNCoreStart refuses AlreadyStarted while the compositor object lives,
+        // even when the socket inode was unlinked.
+        if core != nil {
+            stop()
+        }
+        return start(withSocketName: socketName)
     }
 
     @objc public func socketPath() -> String {
         if let core, let p = WWNCoreGetSocketPath(core) {
             let s = String(cString: p)
             WWNStringFree(p)
-            return s
+            if !s.isEmpty { return s }
         }
-        return "/tmp/wawona-\(getuid())/\(name)"
+        let runtime = WWNPreferencesManager.preferredSharedRuntimeDir()
+        return (runtime as NSString).appendingPathComponent(name)
     }
 
     @objc public func socketName() -> String { name }

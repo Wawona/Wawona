@@ -102,14 +102,19 @@ public final class WWNMachineSessionBridge: NSObject {
 
         WWNPreferencesManager.sharedManager().syncFromCanonicalWawonaPreferences()
         // Start must always have a live host compositor before launching clients.
+        // isRunning() also requires a connectable socket path (unlinked fds fail clients).
         let bridge = WWNCompositorBridge.sharedBridge
-        if !bridge.isRunning() {
-            guard bridge.start(withSocketName: "wayland-0") else {
-                throw NSError(
-                    domain: "WWNMachineSessionBridge", code: 1,
-                    userInfo: [NSLocalizedDescriptionKey: "Host compositor failed to start."]
-                )
-            }
+        let runtime = WWNPreferencesManager.preferredSharedRuntimeDir()
+        try? FileManager.default.createDirectory(
+            atPath: runtime, withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        setenv("XDG_RUNTIME_DIR", runtime, 1)
+        guard bridge.ensureRunning(withSocketName: "wayland-0") else {
+            throw NSError(
+                domain: "WWNMachineSessionBridge", code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Host compositor failed to start."]
+            )
         }
         setenv("WAYLAND_DISPLAY", bridge.socketName(), 1)
 
@@ -200,6 +205,9 @@ public final class WWNMachineSessionBridge: NSObject {
         }
         if clientId == "wawona-wasm" {
             try validateWasmBundle(profile: profile)
+            let path = resolveWasmModulePath(profile: profile)
+            WWNWaypipeRunner.shared.launchWasmModule(atPath: path, machineId: profile.machineId)
+            return
         }
         if clientId == "wawona-shell" { return }
 
@@ -212,21 +220,27 @@ public final class WWNMachineSessionBridge: NSObject {
     }
 
     private static func validateWasmBundle(profile: WWNMachineProfile) throws {
-        let runtime = profile.runtimeOverrides as? [String: Any] ?? [:]
-        let wasmPath = (((runtime["wasmModulePath"] as? String) ?? "") as NSString).expandingTildeInPath
-        let haveExplicit = !wasmPath.isEmpty && FileManager.default.fileExists(atPath: wasmPath)
-        let pkg = runtime["wasmPackage"] as? String ?? ""
-        let cmd = runtime["wasmCommand"] as? String ?? ""
-        let haveName = !pkg.isEmpty || !cmd.isEmpty
-        let bundled = Bundle.main.path(forResource: "hello-wasi-gui", ofType: "wasm") ?? ""
-        let haveBundled = !bundled.isEmpty && FileManager.default.fileExists(atPath: bundled)
-        if !haveExplicit, !haveName, !haveBundled {
+        if resolveWasmModulePath(profile: profile).isEmpty {
             throw NSError(
                 domain: "WWNMachineSessionBridge", code: 6,
                 userInfo: [NSLocalizedDescriptionKey:
                     "Bundled hello-wasi-gui.wasm is missing. Pick a Wayland .wasm or type wasm hello-wasi-gui."]
             )
         }
+    }
+
+    /// Prefer an explicit module path; otherwise the bundled hello-wasi-gui smoke.
+    private static func resolveWasmModulePath(profile: WWNMachineProfile) -> String {
+        let runtime = profile.runtimeOverrides as? [String: Any] ?? [:]
+        let wasmPath = (((runtime["wasmModulePath"] as? String) ?? "") as NSString).expandingTildeInPath
+        if !wasmPath.isEmpty, FileManager.default.fileExists(atPath: wasmPath) {
+            return wasmPath
+        }
+        if let bundled = Bundle.main.path(forResource: "hello-wasi-gui", ofType: "wasm"),
+           FileManager.default.fileExists(atPath: bundled) {
+            return bundled
+        }
+        return ""
     }
 
     private static func connectRelayBacked(profile: WWNMachineProfile, forbidden: String, code: Int) throws {

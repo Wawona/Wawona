@@ -37,7 +37,7 @@ public final class WWNSceneDelegate: UIResponder, UIWindowSceneDelegate {
         )
         setenv("XDG_RUNTIME_DIR", runtime, 1)
         let bridge = WWNCompositorBridge.sharedBridge
-        if bridge.start(withSocketName: "wayland-0") {
+        if bridge.ensureRunning(withSocketName: "wayland-0") {
             setenv("WAYLAND_DISPLAY", bridge.socketName(), 1)
         }
         Self.autoStartMachineIfRequested()
@@ -51,12 +51,10 @@ public final class WWNSceneDelegate: UIResponder, UIWindowSceneDelegate {
         guard !mid.isEmpty else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
             let bridge = WWNCompositorBridge.sharedBridge
-            if !bridge.isRunning() {
-                if bridge.start(withSocketName: "wayland-0") {
-                    setenv("WAYLAND_DISPLAY", bridge.socketName(), 1)
-                } else {
-                    NSLog("WWN_AUTO_START_MACHINE: host compositor still down")
-                }
+            if !bridge.ensureRunning(withSocketName: "wayland-0") {
+                NSLog("WWN_AUTO_START_MACHINE: host compositor still down")
+            } else {
+                setenv("WAYLAND_DISPLAY", bridge.socketName(), 1)
             }
             guard let profile = WWNMachineProfileStore.profile(byId: mid) else {
                 NSLog("WWN_AUTO_START_MACHINE: no profile %@", mid)

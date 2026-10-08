@@ -187,8 +187,13 @@ public final class WWNWaypipeRunner: NSObject {
             launchFoot()
         case "weston-simple-shm":
             launchWestonSimpleSHM()
-        case "wawona-wasm":
-            break
+        case "wawona-wasm", "hello-wasi-gui":
+            let bundled = Bundle.main.path(forResource: "hello-wasi-gui", ofType: "wasm") ?? ""
+            if !bundled.isEmpty {
+                launchWasmModule(atPath: bundled, machineId: machineId)
+            } else {
+                delegate?.runnerDidReceiveError?("Bundled hello-wasi-gui.wasm is missing.")
+            }
         default:
             _ = launchBundledExecutable(names: [clientId], clientKey: clientId)
         }
