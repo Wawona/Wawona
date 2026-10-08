@@ -35,16 +35,17 @@ public enum WawonaSettingsHubChrome {
     }
 
     /// Hub list row: colored SF Symbol tile + section title.
+    /// iOS 13 floor: avoid `Label { } icon:` (iOS 14+).
     @ViewBuilder
     public static func hubRow(
         title: String,
         systemImage: String,
         iconColor: Color
     ) -> some View {
-        Label {
-            Text(title)
-        } icon: {
+        HStack(spacing: 12) {
             iconTile(systemName: systemImage, color: iconColor)
+            Text(title)
+            Spacer(minLength: 0)
         }
     }
 
