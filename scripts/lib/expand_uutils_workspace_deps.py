@@ -628,6 +628,87 @@ def prune_umbrella_for_wawona(text: str) -> str:
     return "".join(out)
 
 
+def dependency_names_from_manifest(text: str) -> list[str]:
+    """Cargo.lock package names for top-level [dependencies].
+
+    Prefer `package = "..."` when present (uutils keys like `ls` map to
+    `uu_ls` in the lockfile). Skip target-specific dependency tables.
+    """
+    names: list[str] = []
+    section: str | None = None
+    lines = text.splitlines(True)
+    i = 0
+    while i < len(lines):
+        s = lines[i].strip()
+        if s.startswith("[") and s.endswith("]") and not s.startswith("[["):
+            section = s
+            i += 1
+            continue
+        if section != "[dependencies]":
+            i += 1
+            continue
+        m = re.match(r"^([A-Za-z0-9_-]+)\s*=", s)
+        if not m:
+            i += 1
+            continue
+        key = m.group(1)
+        buf, nxt = _read_assignment(lines, i)
+        joined = "".join(buf)
+        pkg_m = re.search(r'package\s*=\s*"([^"]+)"', joined)
+        names.append(pkg_m.group(1) if pkg_m else key)
+        i = nxt
+    return sorted(set(names))
+
+
+def sync_lock_package_deps(lock_path: Path, package_name: str, dep_names: list[str]) -> bool:
+    """Rewrite Cargo.lock [[package]] dependencies for a path crate after prune/expand.
+
+    cargo metadata --locked fails when the lock's dependency list for coreutils /
+    waypipe no longer matches the pruned manifests. Keep package rows; only sync
+    the named package's dependencies array. Preserve existing version suffixes
+    (`"phf 0.11.3"`) when the package name still applies.
+    """
+    if not lock_path.is_file():
+        return False
+    text = lock_path.read_text()
+    pat = re.compile(
+        rf'(name = "{re.escape(package_name)}"\n'
+        rf'version = [^\n]+\n'
+        rf'(?:source = [^\n]+\n)?'
+        rf'(?:checksum = [^\n]+\n)?'
+        rf')dependencies = \[([\s\S]*?)\]\n',
+        re.M,
+    )
+    m = pat.search(text)
+    if not m:
+        pat = re.compile(
+            rf'(name = "{re.escape(package_name)}"\nversion = [^\n]+\n)'
+            rf'dependencies = \[([\s\S]*?)\]\n',
+            re.M,
+        )
+        m = pat.search(text)
+    if not m:
+        print(f"note: no lock package {package_name} to sync in {lock_path}", file=sys.stderr)
+        return False
+    old_entries = re.findall(r'"([^"]+)"', m.group(2))
+    # Map bare package name -> preferred lock entry (keep version suffix).
+    by_name: dict[str, str] = {}
+    for ent in old_entries:
+        bare = ent.split()[0]
+        by_name.setdefault(bare, ent)
+    merged: list[str] = []
+    for name in dep_names:
+        merged.append(by_name.get(name, name))
+    body = "".join(f' "{n}",\n' for n in merged)
+    replacement = m.group(1) + "dependencies = [\n" + body + "]\n"
+    new_text = text[: m.start()] + replacement + text[m.end() :]
+    if new_text == text:
+        return False
+    lock_path.write_text(new_text)
+    print(f"synced Cargo.lock deps for {package_name} ({len(merged)} entries)")
+    return True
+
+
 def process_coreutils_tree(coreutils_root: Path) -> None:
     root_toml = coreutils_root / "Cargo.toml"
     if not root_toml.is_file():
@@ -637,8 +718,12 @@ def process_coreutils_tree(coreutils_root: Path) -> None:
     deps = extract_workspace_deps(original)
     pkg = extract_workspace_package(original)
     if not deps and "[workspace.dependencies]" not in original:
-        # Already expanded by a prior ensure/prepare pass.
-        print(f"note: coreutils already expanded under {coreutils_root}; skipping")
+        # Already expanded by a prior ensure/prepare pass. Still sync lock.
+        lock = coreutils_root.parent / "Cargo.lock"
+        sync_lock_package_deps(
+            lock, "coreutils", dependency_names_from_manifest(root_toml.read_text())
+        )
+        print(f"note: coreutils already expanded under {coreutils_root}; skipping expand")
         return
     count = 0
     for toml in coreutils_tree_tomls(coreutils_root):
@@ -657,6 +742,10 @@ def process_coreutils_tree(coreutils_root: Path) -> None:
             text = prune_umbrella_for_wawona(text)
         toml.write_text(text)
         count += 1
+    lock = coreutils_root.parent / "Cargo.lock"
+    sync_lock_package_deps(
+        lock, "coreutils", dependency_names_from_manifest(root_toml.read_text())
+    )
     print(
         f"Expanded uutils workspace pins under {coreutils_root} "
         f"({len(deps)} deps, {len(pkg)} package fields, {count} manifests; "
@@ -684,6 +773,8 @@ def prepare_waypipe_manifest(waypipe_root: Path) -> None:
     text = re.sub(r"\"gbmfallback\",\s*", "", text)
     text = re.sub(r'^waypipe-gbm-wrapper\s*=\s*.*\n', "", text, flags=re.M)
     toml.write_text(text)
+    lock = waypipe_root.parent / "Cargo.lock"
+    sync_lock_package_deps(lock, "waypipe", dependency_names_from_manifest(text))
     print(f"prepared waypipe manifest (no gbmfallback): {toml}")
 
 
