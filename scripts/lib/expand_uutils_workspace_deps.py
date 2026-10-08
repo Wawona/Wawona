@@ -718,11 +718,7 @@ def sync_lock_package_deps(lock_path: Path, package_name: str, dep_names: list[s
 
 
 def strip_uudoc_bin(text: str) -> str:
-    """Drop the uudoc binary target.
-
-    crate2nix builds every [[bin]] and ignores required-features. uudoc needs
-    zip / uuhelp_parser, which the Wawona safe subset does not ship.
-    """
+    """Drop the uudoc [[bin]] table from the umbrella Cargo.toml."""
     lines = text.splitlines(True)
     out: list[str] = []
     i = 0
@@ -749,6 +745,37 @@ def strip_uudoc_bin(text: str) -> str:
     return "".join(out)
 
 
+def disable_autobins(text: str) -> str:
+    """Cargo auto-discovers src/bin/*.rs; disable that so only explicit bins build."""
+    if re.search(r"(?m)^autobins\s*=", text):
+        text = re.sub(r"(?m)^autobins\s*=\s*\S+", "autobins = false", text, count=1)
+    else:
+        text = re.sub(
+            r"(?m)^(\[package\]\s*\n)",
+            r"\1autobins = false\n",
+            text,
+            count=1,
+        )
+    # With autobins=false, keep an explicit multicall bin if none remains.
+    if not re.search(r'(?m)^name\s*=\s*"coreutils"\s*$', text) or "[[bin]]" not in text:
+        if "[[bin]]" not in text:
+            text = text.rstrip() + (
+                "\n\n[[bin]]\n"
+                'name = "coreutils"\n'
+                'path = "src/bin/coreutils.rs"\n'
+            )
+    return text
+
+
+def remove_uudoc_sources(coreutils_root: Path) -> None:
+    """Delete uudoc sources so cargo/crate2nix cannot auto-discover the bin."""
+    for rel in ("src/bin/uudoc.rs",):
+        path = coreutils_root / rel
+        if path.is_file():
+            path.unlink()
+            print(f"removed {path}")
+
+
 def process_coreutils_tree(coreutils_root: Path) -> None:
     root_toml = coreutils_root / "Cargo.toml"
     if not root_toml.is_file():
@@ -758,12 +785,13 @@ def process_coreutils_tree(coreutils_root: Path) -> None:
     deps = extract_workspace_deps(original)
     pkg = extract_workspace_package(original)
     if not deps and "[workspace.dependencies]" not in original:
-        # Already expanded by a prior ensure/prepare pass. Still strip uudoc
-        # (crate2nix ignores required-features) and sync lock.
-        text = strip_uudoc_bin(original)
+        # Already expanded by a prior ensure/prepare pass. Still drop uudoc:
+        # cargo autobins + crate2nix ignore required-features.
+        text = disable_autobins(strip_uudoc_bin(original))
         if text != original:
             root_toml.write_text(text)
-            print(f"stripped [[bin]] uudoc under {coreutils_root}")
+            print(f"stripped uudoc bin / autobins under {coreutils_root}")
+        remove_uudoc_sources(coreutils_root)
         lock = coreutils_root.parent / "Cargo.lock"
         sync_lock_package_deps(
             lock, "coreutils", dependency_names_from_manifest(root_toml.read_text())
@@ -786,8 +814,10 @@ def process_coreutils_tree(coreutils_root: Path) -> None:
         if toml.resolve() == root_toml.resolve():
             text = prune_umbrella_for_wawona(text)
             text = strip_uudoc_bin(text)
+            text = disable_autobins(text)
         toml.write_text(text)
         count += 1
+    remove_uudoc_sources(coreutils_root)
     lock = coreutils_root.parent / "Cargo.lock"
     sync_lock_package_deps(
         lock, "coreutils", dependency_names_from_manifest(root_toml.read_text())
