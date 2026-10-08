@@ -291,6 +291,10 @@ is on (`wawona-nested-compositor-cursor`). Full rule:
   Mode A uses Wasmer WASIX in a hidden WKWebView (WebKit JIT and JSPI) when
   WasmerSDK is linked. No Cranelift or MAP_JIT in the store IPA. See
   `docs/agent-rules/wawona-relay-wasm.md`.
+- **Closed wontfix.** Do not revive `nixpkgs2wasi` / `n2w` (#172-#177). Do not
+  bundle UTM-SE (#33). Do not size-gate watchOS wasm (#156). Store P1 is
+  `wasm-packages`. WASIX is `wasinix`. VM engine is Relay. A live
+  `Wawona/nixpkgs2wasi` GitHub repo is not a flake input.
 - **iOS min OS**. Phone and iPad min OS is **13.0** against the **latest**
   iPhoneOS SDK only (26 now; 27 when it ships). Never downgrade the SDK. One
   ANGLE, one MoltenVK, Wawona patches. App Store / TrollStore / Sileo. See

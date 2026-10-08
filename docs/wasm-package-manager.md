@@ -293,7 +293,7 @@ DAG: package client stays L3′ → `wwn-toolchain` only; no weston/iland flake 
 - WIT worlds for Wayland GUI apps beyond shm demo.
 - Capability prompts in UI when a package requests network/Wayland.
 - Third-party Wasm registries (user-added; still Wasm-only URL allowlist).
-- watchOS Runtime if size gate lifts.
+- watchOS Runtime is required. Do not size-gate it off (GitHub #156 closed wontfix).
 
 ### Package builds (live). GHA + later Wasmer / WebC
 

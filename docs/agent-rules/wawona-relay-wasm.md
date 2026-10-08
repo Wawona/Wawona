@@ -74,7 +74,7 @@ KosmicKrisp) follow the platform GPU gate:
   `libwawona_wasm.a` exists. Fix the Relay Android recipe. Do not toast
   ProcessBuilder "not bundled" as a substitute
 - Dropping wasm from a scheme, `mobile-platform-deps`, or `wasmLdflags` to
-  make CI or size look green
+  make CI or size look green. GitHub #156 (watchOS size gate) closed wontfix
 - Treating tvOS / watchOS / visionOS wasm as optional or "transfer only"
 - Hiding `wawona-wasm` from Watch Machines so Start cannot run hello-wasi-gui
 - Cranelift native / `MAP_JIT` in App Store Apple-mobile

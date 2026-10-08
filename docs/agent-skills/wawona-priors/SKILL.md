@@ -29,6 +29,8 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `repo-wawona-io-catalogs` | Dual wasm/deb catalogs; GHA build vs catalog host split. |
 | `wawona-machine-types` | Machines UI: Native Shell / VM / Container. Sessions under Native Shell. |
 
+| `wawona-icon-composer` | Layered icon drafts, native rendering, shared IDE tooling. |
+
 ## Rules (hard gates)
 
 | Rule | When |
@@ -262,4 +264,6 @@ skill, add one row. Capture flow: `wawona-learn`.
 Canonical prose: `Wawona/docs/` and `wwn-mcp/knowledge/wawona/`.
 
 - Native over wasm (no uutils twin in `/wasm/v1`): rule `wawona-native-over-wasm`, list `wasm-packages/scripts/native-all-targets.txt`.
-- CLI→wasm: two lanes only. Store P1 = `wasm-packages` GHA. Nixpkgs→WASIX = `wasinix`. Never `nixpkgs2wasi` stubs. Skill/rule `wawona-wasm-cli-ports`.
+- CLI→wasm: two lanes only. Store P1 = `wasm-packages` GHA. Nixpkgs→WASIX = `wasinix`. Never `nixpkgs2wasi` stubs. Skill/rule `wawona-wasm-cli-ports`. GitHub #172-#177 closed wontfix.
+- Do not bundle UTM-SE (GitHub #33 closed wontfix). VM engine is Relay.
+- Do not size-gate watchOS wasm (GitHub #156 closed wontfix). Relay wasm is required.

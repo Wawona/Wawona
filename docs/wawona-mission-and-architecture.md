@@ -43,8 +43,9 @@ whichever of these fits the platform:
    Linux (`wwn-containers` / Containerization.framework on macOS). Forbidden on
    tvOS, watchOS, visionOS.
 3. **VM or remote machine**. Planned in-GUI VMs on the same platform set as
-   containers (`wwn-vms`; UTM-SE on iOS/iPadOS; Virtualization.framework on
-   macOS), plus remote guests over patched `waypipe-rs`.
+   containers (Wawona Relay; macOS product VMs use Virtualization.framework),
+   plus remote guests over patched `waypipe-rs`. Not UTM (GitHub #33 closed
+   wontfix).
 
 Every Machines feature must be classified as native / remote / VM / container and
 refused on targets that forbid that class. See `wawona-platform-targets` and
@@ -213,8 +214,10 @@ in different states despite usually being lumped together:
   in Metal, so there is no floor. We want it; Apple offers nothing to build it
   on. SHM/CPU is the current ceiling, not a preference.
 - **VM/containers on tvOS and watchOS. Forbidden.** Policy, not a
-  gap. On macOS, iOS, iPadOS, visionOS, Android, and Linux they are **planned** (UTM-SE /
-  Virtualization / Containerization / `wwn-vms`. See `docs/vms-containers.md`).
+  gap. On macOS, iOS, iPadOS, Android, and Linux they are **planned** (Wawona
+  Relay. macOS product VMs use Virtualization.framework. See
+  `docs/vms-containers.md`). visionOS, tvOS, and watchOS stay forbidden.
+  Not UTM (GitHub #33 closed wontfix).
   The on-device shell is separate.
 
 Two obligations follow. Never downgrade a `planned` gate into a permanent

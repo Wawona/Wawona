@@ -17,7 +17,8 @@ Hard gate: `.cursor/rules/wawona-wasm-cli-ports.mdc`. Catalog identity:
 4. Component Model only? → P2 wrap of a P1 module when needed.
 
 Never invent a stub named `sed` / `jq` / `grep` at `0.1.0`. Never revive
-`nixpkgs2wasi` / `n2w`. Never auto-mirror nixpkgs.
+`nixpkgs2wasi` / `n2w`. Never auto-mirror nixpkgs. GitHub #172-#177 closed
+wontfix. A live `Wawona/nixpkgs2wasi` checkout is not the producer.
 
 ## Lane A: store P1 (`Wawona/wasm-packages`)
 

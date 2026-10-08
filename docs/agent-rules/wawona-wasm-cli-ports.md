@@ -71,7 +71,7 @@ a Wasmtime (P1/P2) or Wasmer (WASIX) smoke. Do not smoke WASIX with Wasmtime.
 
 ## Hard rejects
 
-- Revive `nixpkgs2wasi` / `n2w` / auto-mirror nixpkgs
+- Revive `nixpkgs2wasi` / `n2w` / auto-mirror nixpkgs. GitHub #172-#177 closed wontfix. A live `Wawona/nixpkgs2wasi` clone is not a flake input and not the producer. Foot-on-iPhone stays on #143 via `wasm-packages` or `wasinix`
 - Stub CLI under an upstream name at fake `0.1.0`
 - WASIX labeled or shipped as store Pulley P1
 - Laptop-built blobs as production catalog source

@@ -55,7 +55,7 @@ leftover QEMU tree the Wawona runtime.
 ## Hard rejects
 
 - Windows / macOS / BSD / “any ISO” guests as product Machines
-- UTM as the product VM (Spice, CocoaSpice, virgl, UTM ANGLE)
+- UTM as the product VM (Spice, CocoaSpice, virgl, UTM ANGLE). GitHub #33 (bundle UTM-SE) closed wontfix
 - QEMU / TCTI as a product or temporary VM CPU
 - Mode B runtime, JIT, or UTM in App Store / Play artifacts
 - One binary with a hidden “enable JIT” toggle for stores
