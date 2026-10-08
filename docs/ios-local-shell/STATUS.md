@@ -16,7 +16,7 @@ Settings / Machines → weston-terminal
        → ssh_main / ssh_keygen_main / scp_main (libwwn-ssh-cli.a, libssh2)
 ```
 
-Keyboard: `WWNCompositorView_ios` → `wwn_ios_terminal_inject` → zsh stdin.
+Keyboard: `Sources/WawonaApple/Present/CompositorView.swift` → `wwn_ios_terminal_inject` → zsh stdin.
 
 ## Component matrix
 

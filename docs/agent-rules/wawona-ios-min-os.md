@@ -27,8 +27,9 @@ proof that untested or future systems work.
 ## Renderer and UI
 
 Use one native static ANGLE/Metal and one native static MoltenVK/Metal set.
-Keep compatibility required by iOS 13/14; remove 11/12-only branches only after
-checking they are not also needed by supported systems. Runtime Metal feature
+EGL and GLES go through ANGLE to Metal. Vulkan goes through MoltenVK to Metal.
+Compatibility patches start at iOS 13 and 14. Do not restore iOS 11 or 12
+patches for ANGLE, EGL, GLES, Vulkan, or MoltenVK. Runtime Metal feature
 policy stays in Rust. Swift in `Sources/WawonaApple` fills capabilities and
 bridges native APIs. No Objective-C product classes.
 

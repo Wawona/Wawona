@@ -20,8 +20,10 @@ validation and ownership path. Destroying protocol parameters closes unused
 file descriptors, while a successfully imported buffer retains the IOSurface
 until the Wayland buffer is released.
 
-On iOS Mode A, `WWNCompositorBridge` keeps an IOSurface in the node cache and
-routes it through `WWNCompositorView_ios` and `WWNIlandPresenter`. It does not
+On iOS Mode A, `Sources/WawonaApple/Present/WWNCompositorBridge.swift` keeps an
+IOSurface in the node cache and routes it through
+`Sources/WawonaApple/Present/CompositorView.swift` and
+`Sources/WawonaApple/Present/IlandPresenter.swift`. It does not
 create a copied `CGImage`. `wl_shm` buffers retain the CPU upload path.
 
 On iOS Mode B, the same IOSurface must reach IOMFB unchanged. Authority

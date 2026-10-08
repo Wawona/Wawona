@@ -96,7 +96,7 @@ not MCP. Skill `wawona-gh`. Rule `wawona-gh`.
   plus `wawona-mission-critical`. Factor clamp/sanitize/SHM bounds into named
   helpers; do not fork a second policy to "optimize".
 - **FFI**: production compositor bridge is hand-written C `WWNCore*` (`src/ffi/c_api.rs`)
-  wrapped by ObjC (`WWNCompositorBridge.m`) / JNI (`android_jni.c`), polling
+  wrapped by Swift (`Sources/WawonaApple/Present/WWNCompositorBridge.swift`) / JNI (`android_jni.c`), polling
   model. Do NOT use `objc2`/`cocoa`/`jni`/`ndk` Rust crates or UniFFI callbacks.
 - **Product domain vs compositor ABI.** UniFFI owns machines, prefs, launch,
   validation. SwiftUI stays views (`Sources/WawonaUI`, `Sources/WawonaWatch`).

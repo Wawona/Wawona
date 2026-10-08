@@ -36,7 +36,8 @@ Analog sticks use a `kStickDeadzone` and are sampled every frame because
   clients benefit immediately without needing gamepad-aware apps.
 - `GCMouse` handlers hop to the main queue before touching the view, since the
   framework may deliver on a background queue.
-- The target view is the topmost visible `WWNCompositorView_ios`, so input
+- The target view is the topmost visible
+  `Sources/WawonaApple/Present/CompositorView.swift`, so input
   follows the focused client window.
 
 ## Remaining gaps / follow-ups
@@ -44,9 +45,10 @@ Analog sticks use a `kStickDeadzone` and are sampled every frame because
 - **Native gamepad protocol.** No Wayland gamepad/joystick protocol is exposed;
   games that expect a real controller (rather than pointer emulation) are not
   yet served. Track separately if a concrete client needs it.
-- **AppKit-only macOS.** The manager depends on `WWNCompositorView_ios`
-  (`UIView`). It covers the UIKit/Catalyst path; a hypothetical pure-AppKit
-  macOS variant would need an `NSView` bridge for the same mappings.
+- **AppKit-only macOS.** The manager depends on `CompositorView`
+  (`UIView` in `Sources/WawonaApple/Present/CompositorView.swift`). It covers
+  the UIKit path; a hypothetical pure-AppKit macOS variant would need an
+  `NSView` bridge for the same mappings.
 - **Button remapping UI.** Mapping is fixed; no user-facing rebind surface.
 
 ## Verification

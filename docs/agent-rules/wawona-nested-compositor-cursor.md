@@ -66,10 +66,11 @@ wait for the next pointer image.
 - Nested compositors: `resolvedShowHostCursorActive` /
   `resolvedShowVirtualPointerActive` are **NO**, even if Show Virtual Cursor
   is on. `WWNView resetCursorRects` takes the hide+grab path.
-- iOS family: `_syncHostCursorOverlay` / `_ensureTouchpadCursorVisible` /
-  `updateCursorImage` in `src/platform/ios/Sources/WawonaApple/Present/CompositorView.swift`. Observe
-  `NSUserDefaultsDidChangeNotification`. Do not leave `_cursorLayer` visible
-  after a toggle or after leaving Touchpad.
+- iOS family: host cursor overlay in
+  `Sources/WawonaApple/Lifecycle/ExternalDisplaySupport.swift`
+  (`cursorLayer`). Hide immediately on pref/machine change. Do not leave
+  `cursorLayer` visible after a toggle. Present view is
+  `Sources/WawonaApple/Present/CompositorView.swift`.
 - Do not apply bitmap/`wp_cursor_shape` host cursors from
   `WWNCompositorBridge` `_applyBitmapCursorFromScene` /
   `handleCursorShapeChanged` onto a compositor toplevel.

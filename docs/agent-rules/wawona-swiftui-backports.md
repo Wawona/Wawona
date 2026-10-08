@@ -11,9 +11,9 @@ button.backport.glassButtonStyle()
 The compatibility namespace owns every `#available` check and its fallback.
 Do not scatter availability branches through feature views. Add a named shim to
 `WawonaBackport` when adopting a newer SwiftUI API, preserve the nearest older
-system behavior as the fallback, and test both paths. UIKit remains mandatory
-for iOS 11 and 12 and must not load SwiftUI. Business and graphics policy stay
-in Rust; this rule covers presentation APIs only.
+system behavior as the fallback, and test both paths. The product floor is
+iOS 13, so SwiftUI is the UI. There is no iOS 11 or 12 UIKit-only product.
+Business and graphics policy stay in Rust; this rule covers presentation APIs only.
 
 Hard rejects:
 
@@ -24,7 +24,7 @@ Hard rejects:
 
 Before claiming one Mode A IPA is proven across its supported OS range, migrate
 every post-13 SwiftUI API into named shims and run both forced compatibility
-paths. Physical iOS 11/12 devices remain the final UIKit proof.
+paths. Physical proof starts at iOS 13 devices.
 
 Machine settings use `backport.editorSheet()` in both editor hosts. iPadOS 18+
 uses `.presentationSizing(.page)` with the large detent so the system adapts to

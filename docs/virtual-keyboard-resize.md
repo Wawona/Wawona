@@ -29,7 +29,7 @@ When the option is **off**: keep full output size. The OSK overlays the client.
 
 | Platform | Status |
 |----------|--------|
-| **iOS / iPadOS** | Implemented. `WWNCompositorView_ios` reports IME overlap + accessory reserve; `WWNSceneDelegate` subtracts from output height (clamp ≥ 120) using the **per-machine** override when set. Present layers (`_waylandLayer`, `_contentLayer`, `_waylandFrameView`) use the same usable bounds so the UI moves with the OSK. Machine Settings / editor: Input → “Resize Display for Virtual Keyboard”. |
+| **iOS / iPadOS** | Implemented. `Sources/WawonaApple/Present/CompositorView.swift` reports IME overlap + accessory reserve. The scene host subtracts from output height (clamp ≥ 120) using the **per-machine** override when set. Present layer `waylandLayer` uses the same usable bounds so the UI moves with the OSK. Machine Settings / editor: Input → “Resize Display for Virtual Keyboard”. |
 | **Android** | Implemented. Compositor bottom padding = IME inset + accessory bar. Per-machine override via `SettingsOverrides` / `SessionExitSettings.resolvedResizeDisplayForVirtualKeyboard` (machine editor Input toggle). |
 | **Linux mobile** | Deferred. Stub/doc only (see below). |
 

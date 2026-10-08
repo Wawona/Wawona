@@ -28,7 +28,7 @@ Terminal **UI** (VT parsing, scrollback, cairo rendering, keyboard input) comes 
 │  │ (terminal.c) │   wwn_pty      └─────────────────────────┘   │
 │  └──────────────┘                                               │
 │         ▲                                                       │
-│         │ touch / keyboard (WWNCompositorView_ios)              │
+│         │ touch / keyboard (CompositorView.swift)                  │
 └─────────┴───────────────────────────────────────────────────────┘
 ```
 
@@ -109,8 +109,8 @@ The Settings UI uses the same entry point with captured stdout/stderr.
 
 ```
 UITouch / UIKeyCommand
-  → WWNCompositorView_ios
-  → WWNCompositorBridge injectKey*
+  → Sources/WawonaApple/Present/CompositorView.swift
+  → Sources/WawonaApple/Present/WWNCompositorBridge.swift injectKey*
   → Smithay wl_keyboard
   → weston-terminal (toytoolkit seat)
   → terminal.c input handler

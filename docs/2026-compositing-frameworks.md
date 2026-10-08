@@ -37,8 +37,8 @@ The frontend must:
 Buffer/node size match → `contentsGravity = resize`, `contentsScale = 1`.
 Mismatch (Weston-style HiDPI where the client omits `set_buffer_scale`) → infer
 scale, set `contentsGravity = topLeft` and the inferred `contentsScale`. macOS
-(`WWNCompositorBridge.draw_quads_with_nodes`) and iOS
-(`WWNCompositorView_ios.presentWaylandFrame`) implement identical logic; the Rust
+(`Sources/WawonaApple/Present/WWNCompositorBridge.swift`) and iOS
+(`Sources/WawonaApple/Present/CompositorView.swift`) implement identical logic; the Rust
 side is unit-tested (`view_to_surface_coords`, `view_to_surface_scale`).
 
 ## Threading

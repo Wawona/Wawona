@@ -95,10 +95,10 @@ Never invent CSR_* syscalls; stay on `csrutil status` string matching.
 - Mode B Watchdog tools: `wwn-iowatchdog` (L3′ flake; not in-tree C).
 - **macOS 26 watchdog safety:** `wawona-mode-b-watchdog-safety` (never Take
   Over / never LLDB MCP on `watchdogd`).
-- SIP + prefs UI: `WWNSipStatus.*`, `Sources/WawonaApple/Settings/WWNPreferences.swift` Desktop section
+- SIP + prefs UI: `Sources/WawonaApple/ModeB/SipStatus.swift`, `Sources/WawonaApple/Settings/WWNPreferences.swift` Desktop section
   (**Enable Desktop Replacement** runs doctor / heal / Path B; Replace now stays gated).
-- Engage/disengage: `WWNDesktopReplacementController.*`,
-   `WWNMachineSessionBridge.swift`. `nix run .#install` syncs helper + dylib +
+- Engage/disengage: `Sources/WawonaApple/ModeB/DesktopReplacementController.swift`,
+   `Sources/WawonaApple/Runners/WWNMachineSessionBridge.swift`. `nix run .#install` syncs helper + dylib +
    `wwn-iowatchdog` + sudoers for this store (administrator once) and
   copies helper + dylib for this store (no take-over; never `wwn-iowatchdog`
   disable/enable or lldb on `watchdogd` during stage).

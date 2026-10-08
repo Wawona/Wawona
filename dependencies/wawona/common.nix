@@ -9,9 +9,9 @@ rec {
   ];
 
   # Source files shared across macOS AND iOS builds.
-  # All ObjC filenames use the WWN prefix (global rename from Wawona* in 2026).
-  # macOS-only files (WWNWindow*, WWNMacOS*, WWNPopupHost*) live in macos.nix.
-  # iOS-only files (WWNCompositorView_ios*, WWNSceneDelegate*) live in ios.nix.
+  # Apple product UI is Swift under Sources/WawonaApple, Sources/WawonaUI,
+  # and Darwin/Sources. The @objc class WWNCompositorView_ios lives in
+  # Sources/WawonaApple/Present/CompositorView.swift.
   commonSources = [
     # New Skip SwiftPM sources
     "Darwin/Sources/Main.swift"

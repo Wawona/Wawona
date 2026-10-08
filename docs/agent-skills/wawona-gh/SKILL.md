@@ -46,7 +46,7 @@ server env.
 ```bash
 # Milestone
 gh api --method POST repos/Wawona/Wawona/milestones --input - <<'EOF'
-{"title":"iOS 11-27 (latest SDK, ANGLE + MoltenVK)","state":"open","description":"..."}
+{"title":"iOS 13-27 (latest SDK, ANGLE + MoltenVK)","state":"open","description":"..."}
 EOF
 
 # Issue

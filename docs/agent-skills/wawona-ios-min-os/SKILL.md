@@ -21,7 +21,8 @@ MoltenVK iOS, `xcodegen.nix` iOS min, or `@available` / weak-link on iOS.
 - Do not ship four ANGLE or four MoltenVK versions
 - Do not let a dep recipe pick its own min OS. xcodegen iOS floor and the ANGLE plist fallback are 13.0, not 17.0. Tipa call site stays 14.0
 - Do not replace Nix with a UTM-style CMake product root
-- Do not put Metal/Vulkan cap policy in ObjC when Rust can own it
+- Do not put Metal/Vulkan cap policy in Swift when Rust can own it
+- Do not restore iOS 11 or 12 ANGLE, EGL, GLES, Vulkan, or MoltenVK patches. Floor is 13.0. EGL is ANGLE(Metal). Vulkan is MoltenVK(Metal)
 - Do not drop TrollStore / Sileo iOS 13-14 because ASC upload range is 15+
 - Do not add extra GLES translation hops on iOS (ANGLE Metal is the path)
 - Do not raise the iOS floor above 13.0 to link a newer dependency, and do not ship a product `.dylib` in an App Store IPA (static `.a` only; Apple `libswift*` is the exception)

@@ -6,8 +6,9 @@ description: Central SwiftUI availability shims for Apple products.
 # SwiftUI backports
 
 Read `docs/agent-rules/wawona-swiftui-backports.md` before changing SwiftUI
-availability. Use `WawonaBackport` for iOS/iPadOS 13+ APIs. iOS 11 and 12 are
-UIKit-only. After a new durable shim, update this rule and Wawona RAG.
+availability. Use `WawonaBackport` for iOS/iPadOS 13+ APIs. The product floor
+is iOS 13, so SwiftUI is the UI. There is no iOS 11 or 12 UIKit-only product.
+After a new durable shim, update this rule and Wawona RAG.
 
 ## iOS 26 bottom search
 
