@@ -354,17 +354,32 @@ let
     else [];
 
   # Drop Darwin host -mmacos-version-min that the stdenv cc-wrapper injects.
-  # WWN_APPLE_CLANG is set in crossPreConfigure to the Xcode clang.
+  # Call Xcode clang with the Apple SDK sysroot (rustc passes -nodefaultlibs
+  # + -liconv; without -isysroot, ld cannot find SDK libs).
+  # WWN_APPLE_CLANG / WWN_APPLE_SDKROOT are set in crossPreConfigure.
   appleLdWrap = pkgs.writeShellScript "wwn-apple-ld-wrap" ''
     set -euo pipefail
     clang_bin="''${WWN_APPLE_CLANG:?WWN_APPLE_CLANG unset}"
+    sdkroot="''${WWN_APPLE_SDKROOT:?WWN_APPLE_SDKROOT unset}"
     args=()
+    has_sysroot=0
+    prev_isysroot=0
     for a in "$@"; do
+      if [ "$prev_isysroot" -eq 1 ]; then
+        args+=("$a")
+        has_sysroot=1
+        prev_isysroot=0
+        continue
+      fi
       case "$a" in
         -mmacos-version-min=*|-mmacosx-version-min=*) ;;
+        -isysroot) args+=("$a"); prev_isysroot=1 ;;
         *) args+=("$a") ;;
       esac
     done
+    if [ "$has_sysroot" -eq 0 ]; then
+      args+=("-isysroot" "$sdkroot")
+    fi
     exec "$clang_bin" "''${args[@]}"
   '';
 
@@ -435,8 +450,9 @@ let
       export CRATE_CC_NO_DEFAULTS="1"
 
       # Darwin stdenv `cc` still injects -mmacos-version-min on the rustc link
-      # line. appleLdWrap (store script) drops those host flags.
+      # line. appleLdWrap drops those host flags and injects -isysroot.
       export WWN_APPLE_CLANG="$XCODE_CLANG"
+      export WWN_APPLE_SDKROOT="$SDKROOT"
       export CARGO_TARGET_${lib.toUpper cargoTargetUnderscore}_LINKER="${appleLdWrap}"
       export CARGO_TARGET_${lib.toUpper cargoTargetUnderscore}_RUSTFLAGS="-C linker=${appleLdWrap} -C link-arg=-target -C link-arg=${linkerTarget} -C link-arg=-isysroot -C link-arg=$SDKROOT${lib.optionalString (!isVisionOS) " -C link-arg=$APPLE_DEPLOYMENT_FLAG"}"
 
