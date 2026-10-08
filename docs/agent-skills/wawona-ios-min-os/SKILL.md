@@ -19,7 +19,7 @@ MoltenVK iOS, `xcodegen.nix` iOS min, or `@available` / weak-link on iOS.
 
 - Do not pin or downgrade the iPhoneOS SDK to match iOS 13
 - Do not ship four ANGLE or four MoltenVK versions
-- Do not let a dep recipe pick its own min OS
+- Do not let a dep recipe pick its own min OS. xcodegen iOS floor and the ANGLE plist fallback are 13.0, not 17.0. Tipa call site stays 14.0
 - Do not replace Nix with a UTM-style CMake product root
 - Do not put Metal/Vulkan cap policy in ObjC when Rust can own it
 - Do not drop TrollStore / Sileo iOS 13-14 because ASC upload range is 15+

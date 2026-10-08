@@ -14,6 +14,10 @@ proof that untested or future systems work.
 - L0 `wwn-toolchain/dependencies/apple/default.nix` owns the default floor.
 - Its xcode environment and shared Apple-mobile recipes inherit 13.0.
 - Wawona's product overlay explicitly passes 13.0 when using a pinned L0 input.
+- `xcodegen` `deploymentTarget.iOS` and the ANGLE embed
+  `IPHONEOS_DEPLOYMENT_TARGET` fallback are **13.0**. Do not fall back to
+  17.0. Store IPA and Sileo `.deb` pass 13.0. TrollStore `.tipa` passes 14.0
+  at the call site.
 - Rust backends, generated Xcode projects, Swift packages, app archives and
   embedded frameworks must agree. Inspect Mach-O minos in final artifacts.
 - tvOS, watchOS, visionOS and macOS retain their own deployment targets.

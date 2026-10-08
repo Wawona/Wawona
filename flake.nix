@@ -1390,9 +1390,9 @@
             platform = "ios";
             nativeDeps = iosDeps;
             cargoNixDrv = sharedIosCargoNix;
-            iosDeploymentTarget = "11.0";
+            iosDeploymentTarget = "13.0";
           };
-          # Sileo is the jailbroken iOS 11+ product.  TrollStore is a separate
+          # Sileo is the jailbroken iOS 13+ product.  TrollStore is a separate
           # iOS 14+ product; never let a .tipa silently inherit this floor.
           backend-ios-modeb-sileo = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
             inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
@@ -1401,7 +1401,7 @@
             nativeDeps = iosDeps;
             cargoNixDrv = sharedIosCargoNix;
             iosModeB = true;
-            iosDeploymentTarget = "11.0";
+            iosDeploymentTarget = "13.0";
           };
           backend-ios-modeb-tipa = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
             inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
@@ -1412,7 +1412,7 @@
             iosModeB = true;
             iosDeploymentTarget = "14.0";
           };
-          # Compatibility alias: Mode B backend means the Sileo iOS 11+ lane.
+          # Compatibility alias: Mode B backend means the Sileo iOS 13+ lane.
           backend-ios-modeb = backend-ios-modeb-sileo;
           backend-ios-sim = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
             inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
@@ -1788,7 +1788,7 @@
             TEAM_ID = teamId;
             xcodeProject = xcodegenOutputs.project;
             simulator = false;
-            deploymentTarget = "11.0";
+            deploymentTarget = "13.0";
             rustBackend = backend-ios;
             inherit mobileGuestArtifacts mobileGuestArtifacts16k;
             companionBackends = {"Wawona-watchOS" = backend-watchos;};
@@ -1802,7 +1802,7 @@
             simulator = false;
             release = true;
             modeB = true;
-            deploymentTarget = "11.0";
+            deploymentTarget = "13.0";
             rustBackend = backend-ios-modeb-sileo;
             companionBackends = {};
           };
@@ -1819,7 +1819,7 @@
             rustBackend = backend-ios-modeb-tipa;
             companionBackends = {};
           };
-          # Historical name remains the Sileo iOS 11+ app.  New callers must
+          # Historical name remains the Sileo iOS 13+ app.  New callers must
           # choose the explicit channel output above.
           wawona-ios-modeb-app-device = wawona-ios-modeb-sileo-app-device;
           wawona-ios-modeb-tipa =
@@ -1961,7 +1961,7 @@
               Description: Wawona Mode B (${suffix}). JIT + IOMFB Desktop. Not App Store.
               Section: Applications
               Priority: optional
-              Depends: firmware (>= 11.0)
+              Depends: firmware (>= 13.0)
               Homepage: https://wawona.io
               EOF
                             cat > "$stage/DEBIAN/postinst" <<'EOF'
@@ -2050,7 +2050,7 @@
                 xcodeProject = xcodegenOutputs.project;
                 simulator = false;
                 generateIPA = true;
-                deploymentTarget = "11.0";
+                deploymentTarget = "13.0";
                 rustBackend = backend-ios;
                 companionBackends = {"Wawona-watchOS" = backend-watchos;};
               }
@@ -2064,7 +2064,7 @@
                 xcodeProject = xcodegenOutputs.project;
                 simulator = false;
                 generateXCArchive = true;
-                deploymentTarget = "11.0";
+                deploymentTarget = "13.0";
                 rustBackend = backend-ios;
                 companionBackends = {"Wawona-watchOS" = backend-watchos;};
               }

@@ -799,7 +799,9 @@ let
       local fw="$1" exe="$2"
       # App Store Connect (altool 90360) requires MinimumOSVersion on embedded
       # frameworks; match the app deployment target for the active platform.
-      local min_os="''${IPHONEOS_DEPLOYMENT_TARGET:-17.0}"
+      # iOS/iPadOS product floor is 13.0. Tipa passes 14.0 via
+      # IPHONEOS_DEPLOYMENT_TARGET. Do not fall back to 17.0.
+      local min_os="''${IPHONEOS_DEPLOYMENT_TARGET:-13.0}"
       case "''${PLATFORM_NAME:-}" in
         appletvos|appletvsimulator)
           min_os="''${TVOS_DEPLOYMENT_TARGET:-''${min_os}}"
@@ -808,7 +810,7 @@ let
           min_os="''${XROS_DEPLOYMENT_TARGET:-1.0}"
           ;;
         iphonesimulator|iphoneos)
-          min_os="''${IPHONEOS_DEPLOYMENT_TARGET:-17.0}"
+          min_os="''${IPHONEOS_DEPLOYMENT_TARGET:-13.0}"
           ;;
       esac
       cat > "$DEST/$fw.framework/Info.plist" <<PLIST
@@ -1338,6 +1340,18 @@ PLIST
     { path = "Sources/WawonaApple"; excludes = commonExcludes; }
   ];
 
+  # watchOS must not compile phone/mac UIKit glue (UIViewController / UIView /
+  # UIColor.systemBlue are unavailable). Only Watch present, shell env, SSH
+  # keygen, and startup log. WawonaWatch owns SpriteKit blit UI.
+  watchAppleSources = [
+    { path = "Sources/WawonaApple/Watch"; excludes = commonExcludes; }
+    { path = "Sources/WawonaApple/Present/Watch"; excludes = commonExcludes; }
+    { path = "Sources/WawonaApple/Shell/WatchShellEnvironment.swift"; type = "file"; }
+    { path = "Sources/WawonaApple/Shell/WatchShellEnvironment+BundleShare.swift"; type = "file"; }
+    { path = "Sources/WawonaApple/Util/StartupLogger.swift"; type = "file"; }
+    { path = "Sources/WawonaApple/Helpers/SSHKeygen.swift"; type = "file"; }
+  ];
+
   # Shared SwiftUI product shell for Apple-mobile. Same tree macOS compiles.
   # Toolbar drawing lives in ToolbarKeys; the Wayland accessory bridge stays
   # under Sources/WawonaUI/Keyboard.
@@ -1362,7 +1376,8 @@ PLIST
     options = {
       bundleIdPrefix = "com.aspauldingcode";
       deploymentTarget = {
-        iOS = "17.0";
+        # iOS/iPadOS Mach-O floor. Tipa overrides to 14.0 at xcodebuild.
+        iOS = "13.0";
         macOS = "14.0";
       };
       generateEmptyDirectories = true;
