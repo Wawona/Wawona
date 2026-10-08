@@ -1736,7 +1736,8 @@
             # mismatch). Prefer waypipe-guest-root; fall back to nix-store -qR
             # in macos.nix when this is null.
             containerWaypipeGuestClosure =
-              if pkgs.stdenv.buildPlatform.isLinux then
+              if pkgs.stdenv.buildPlatform.isLinux
+              then
                 (pkgsFor "aarch64-linux").closureInfo {
                   rootPaths = [(pkgsFor "aarch64-linux").waypipe];
                 }
