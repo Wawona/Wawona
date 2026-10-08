@@ -24,13 +24,14 @@ public enum WawonaSettingsHubChrome {
     public static func iconTile(systemName: String, color: Color) -> some View {
         Image(systemName: systemName.isEmpty ? "gearshape.fill" : systemName)
             .font(.body.weight(.semibold))
-            .foregroundStyle(.white)
+            // iOS 13 floor: avoid foregroundStyle (15+) / accessibilityHidden (14+).
+            .foregroundColor(.white)
             .frame(width: iconTileSize, height: iconTileSize)
             .background(
                 RoundedRectangle(cornerRadius: iconTileCorner, style: .continuous)
                     .fill(color)
             )
-            .accessibilityHidden(true)
+            .accessibility(hidden: true)
     }
 
     #if os(macOS)
