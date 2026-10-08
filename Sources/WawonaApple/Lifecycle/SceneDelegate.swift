@@ -32,6 +32,31 @@ public final class WWNSceneDelegate: UIResponder, UIWindowSceneDelegate {
         compositorContainer = container
         window.makeKeyAndVisible()
         applyRespectSafeAreaPreference()
+        Self.autoStartMachineIfRequested()
+    }
+
+    /// Lab / simctl: `xcrun simctl launch … -e WWN_AUTO_START_MACHINE=<id>`.
+    /// Starts the named profile without XCUITest (Xcode 26 agent-device runner gap).
+    private static func autoStartMachineIfRequested() {
+        let mid = ProcessInfo.processInfo.environment["WWN_AUTO_START_MACHINE"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !mid.isEmpty else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            guard let profile = WWNMachineProfileStore.profile(byId: mid) else {
+                NSLog("WWN_AUTO_START_MACHINE: no profile %@", mid)
+                return
+            }
+            do {
+                try WWNMachineSessionBridge.connect(profile)
+                NSLog("WWN_AUTO_START_MACHINE: started %@", mid)
+            } catch {
+                NSLog(
+                    "WWN_AUTO_START_MACHINE: failed %@: %@",
+                    mid,
+                    error.localizedDescription
+                )
+            }
+        }
     }
 
     @objc public func applyRespectSafeAreaPreference() {
