@@ -5,12 +5,12 @@ import WawonaModel
 /// watchOS machine connect: native → local compositor + bundled client; remote → waypipe only.
 enum WatchMachineSessionBridge {
     static func connect(profile: MachineProfile) -> Bool {
-        let logger = WWNStartupLogger.shared()
+        let logger = WWNStartupLogger.shared
         // Capture before compositor/client start so early lines aren't missed
         // (same contract as iOS showStartupLogForClient:).
         logger.beginCapture()
 
-        let bridge = WWNWatchCompositorBridge.shared()
+        let bridge = WWNWatchCompositorBridge.shared
         applyScreenOutputSize(bridge)
         if !bridge.isRunning {
             guard bridge.start(withSocketName: "wayland-0") else {
@@ -71,11 +71,11 @@ enum WatchMachineSessionBridge {
 
     static func disconnect(profile: MachineProfile) {
         _ = profile
-        WWNStartupLogger.shared().endCapture()
+        WWNStartupLogger.shared.endCapture()
         // Full compositor teardown. stopClient() alone leaves the mini
         // server with a pthread_cancel'd Wayland connection; the next
         // Start reconnects to a half-dead display and stays black.
-        WWNWatchCompositorBridge.shared().stop()
+        WWNWatchCompositorBridge.shared.stop()
     }
 
     /// Mini server advertises this as wl_output.mode and xdg_toplevel configure.

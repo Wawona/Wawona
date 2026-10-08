@@ -1663,8 +1663,11 @@ PLIST
             ] ++ versionDefs;
             # Mode A already skips vm-engine-contract (fail-closed runCommand).
             # Mode B adds IOMFB + igetty only. No QEMU. No libwwn_vms_engine.a.
+            # Gate store paths on includeModeB so Mode A / watch / sim project.yml
+            # does not realize wwn-iomfb (filterAttrs forces every target attr).
             "OTHER_LDFLAGS[sdk=iphoneos*]" =
-              Wawona-iOS.settings.base."OTHER_LDFLAGS[sdk=iphoneos*]" ++ [
+              Wawona-iOS.settings.base."OTHER_LDFLAGS[sdk=iphoneos*]"
+              ++ lib.optionals includeModeB [
                 "-Wl,-u,_wwn_modeb_desktop_start"
                 "-Wl,-u,_wwn_iomfb_open"
                 "-L${strip (iosDeps."iomfb-ios" or null)}/lib"
@@ -1674,7 +1677,8 @@ PLIST
                 "-lwwn_igetty_ios"
               ];
             "HEADER_SEARCH_PATHS[sdk=iphoneos*]" =
-              Wawona-iOS.settings.base."HEADER_SEARCH_PATHS[sdk=iphoneos*]" ++ [
+              Wawona-iOS.settings.base."HEADER_SEARCH_PATHS[sdk=iphoneos*]"
+              ++ lib.optionals includeModeB [
                 "${strip (iosDeps."iomfb-ios" or null)}/include"
                 "${strip (iosDeps."igetty-ios" or null)}/include"
               ];
@@ -2982,14 +2986,16 @@ PLIST
         platform = "watchOS";
         sources = [
           { path = "Sources/WawonaWatch"; excludes = commonExcludes; }
-          { path = "Sources/WawonaApple"; excludes = commonExcludes; }
+        ] ++ watchAppleSources ++ [
           {
             path = "src/platform/watchos";
             # Empty legacy storyboard: Xcode 26 ibtool rejects it (IB error -1).
             # Watch Global Settings are Settings-Watch.bundle only.
             excludes = commonExcludes ++ [ "**/WWNWatchSettings.storyboard" ];
           }
-          # SSH keygen is Sources/WawonaApple/Helpers/SSHKeygen.swift.
+          # StartupLogger.swift assigns this function pointer (iOS host glue
+          # defines it for the phone target; watch needs the util definition).
+          { path = "src/util/wwn_startup_log_sink.c"; type = "file"; }
         ] ++ [
           { path = "src/resources/Assets.xcassets"; }
           # Required-reason API manifest (UserDefaults / boot time / file timestamps).

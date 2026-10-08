@@ -300,6 +300,8 @@ WWN_WATCH_CLIENT_STUB(image_main)
 WWN_WATCH_CLIENT_STUB(scaler_main)
 WWN_WATCH_CLIENT_STUB(editor_main)
 WWN_WATCH_CLIENT_STUB(constraints_main)
+/* libwwn-pty dispatch table references nvim; watch does not ship nvim. */
+WWN_WATCH_CLIENT_STUB(wawona_nvim_main)
 #undef WWN_WATCH_CLIENT_STUB
 
 /* Weak fallback only. xcodegen -force_load's libwawona-zsh.a so the real

@@ -29,6 +29,8 @@
   releaseArtifact ? "debug",
   # uutils multicall PIE (optional until wired from flake).
   coreutilsAndroid ? null,
+  # github:Wawona/Terminal (flake = false). Compose terminal text face.
+  terminalSrc ? null,
   ...
 }:
 
@@ -301,6 +303,7 @@ in
       file
       util-linux # Provides setsid for creating new process groups
       glslang # For compiling Vulkan shaders to SPIR-V
+      python3 # Offline detekt strip in preBuild (MITM has no detekt plugin)
     ]) ++ lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.patchelf ];
 
     buildInputs = (getDeps "android" androidDeps) ++ [
@@ -378,6 +381,22 @@ in
       ${gradleSupport.prepareProject}
       ${gradleSupport.prepareEnvironment}
 
+      # Wawona Terminal Compose face (Rust VT → styled lines). Lives in the
+      # Terminal flake input, not under android/app until overlay.
+      ${lib.optionalString (terminalSrc != null) ''
+        TERM_KT_SRC="${terminalSrc}/android/com/aspauldingcode/wawona"
+        TERM_KT_DST="app/src/main/java/com/aspauldingcode/wawona"
+        if [ -d "$TERM_KT_SRC" ]; then
+          mkdir -p "$TERM_KT_DST"
+          cp -f "$TERM_KT_SRC"/*.kt "$TERM_KT_DST/"
+          chmod -R u+w "$TERM_KT_DST"
+          echo "Overlayed Terminal Android Compose sources into $TERM_KT_DST"
+        else
+          echo "ERROR: Terminal Android sources missing at $TERM_KT_SRC"
+          exit 1
+        fi
+      ''}
+
       # Offline-only Maven: HTTPS through MITM still SocketExceptions in the
       # Darwin sandbox and disables repos mid-resolve (kotlin via mavenCentral
       # after AGP already resolved). Rewrite settings to file:// mirrors only.
@@ -421,31 +440,38 @@ EOF
 
       # detekt is not in gradle-deps.json / MITM lockfile. Product assemble
       # does not need it; Verification runs :detekt online via verify-kotlin.sh.
-      if [ -f app/build.gradle.kts ]; then
-        python3 - <<'PY'
+      # Strip from every build.gradle.kts under the flattened project (app/ and
+      # any copy prepareProject leaves). settings.gradle.kts is already rewritten
+      # without the pluginManagement detekt pin above.
+      python3 - <<'PY'
 from pathlib import Path
-p = Path("app/build.gradle.kts")
-text = p.read_text()
-out = []
-skip = False
-depth = 0
-for line in text.splitlines(True):
-    if 'id("io.gitlab.arturbosch.detekt")' in line:
+stripped = 0
+for p in Path(".").rglob("build.gradle.kts"):
+    text = p.read_text()
+    if "arturbosch.detekt" not in text and "detekt {" not in text:
         continue
-    if not skip and line.lstrip().startswith("detekt {"):
-        skip = True
-        depth = line.count("{") - line.count("}")
-        continue
-    if skip:
-        depth += line.count("{") - line.count("}")
-        if depth <= 0:
-            skip = False
-        continue
-    out.append(line)
-p.write_text("".join(out))
-print("Stripped detekt plugin from app/build.gradle.kts for offline assemble")
+    out = []
+    skip = False
+    depth = 0
+    for line in text.splitlines(True):
+        if "arturbosch.detekt" in line:
+            continue
+        if not skip and line.lstrip().startswith("detekt {"):
+            skip = True
+            depth = line.count("{") - line.count("}")
+            continue
+        if skip:
+            depth += line.count("{") - line.count("}")
+            if depth <= 0:
+                skip = False
+            continue
+        out.append(line)
+    p.write_text("".join(out))
+    stripped += 1
+    print(f"Stripped detekt from {p} for offline assemble")
+if stripped == 0:
+    print("WARNING: no build.gradle.kts contained detekt (unexpected)")
 PY
-      fi
 
       # Normalize daemon/jvmargs so --no-daemon stays in-process. A mismatched
       # jvmargs profile forks a single-use daemon that needs localhost TCP and

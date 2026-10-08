@@ -13,9 +13,9 @@ final class WatchStartupLogModel: NSObject, ObservableObject, WWNStartupLoggerDe
     private var frameObserver: NSObjectProtocol?
 
     func attach() {
-        let logger = WWNStartupLogger.shared()
+        let logger = WWNStartupLogger.shared
         logger.delegate = self
-        lines = logger.capturedLines as? [String] ?? []
+        lines = logger.capturedLines()
         isPresented = true
         didScheduleDismiss = false
         timeoutWorkItem?.cancel()
@@ -36,7 +36,7 @@ final class WatchStartupLogModel: NSObject, ObservableObject, WWNStartupLoggerDe
             }
         }
         let hasLoggedFrame = lines.contains { $0.contains("First frame") }
-        let hasImage = WWNWatchCompositorBridge.shared().latestFrame != nil
+        let hasImage = WWNWatchCompositorBridge.shared.latestFrame != nil
         if hasLoggedFrame || hasImage {
             // Frame already landed during connect(), before this cover appeared.
             // Skip the overlay so SpriteKit present is visible immediately.
@@ -54,7 +54,7 @@ final class WatchStartupLogModel: NSObject, ObservableObject, WWNStartupLoggerDe
             NotificationCenter.default.removeObserver(frameObserver)
             self.frameObserver = nil
         }
-        let logger = WWNStartupLogger.shared()
+        let logger = WWNStartupLogger.shared
         if logger.delegate === self {
             logger.delegate = nil
         }
@@ -70,7 +70,7 @@ final class WatchStartupLogModel: NSObject, ObservableObject, WWNStartupLoggerDe
         }
     }
 
-    func startupLogger(_ logger: Any, didAppendLine line: String) {
+    func startupLogger(_ logger: WWNStartupLogger, didAppendLine line: String) {
         lines.append(line)
         if line.contains("First frame") {
             scheduleDismissAfterFirstFrame()

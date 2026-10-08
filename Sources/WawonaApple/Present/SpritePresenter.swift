@@ -1,10 +1,9 @@
 #if os(watchOS)
 import Foundation
 import SpriteKit
-import UIKit
 
 /// SpriteKit blit of Wayland SHM frames. Replaces watchOS Metal stub path.
-/// No Metal import. Replaces `WWNIlandPresenterStub.m` for Watch present.
+/// No Metal / UIKit. Replaces `WWNIlandPresenterStub.m` for Watch present.
 @MainActor
 public final class SpritePresenter {
     public let scene: SKScene
@@ -13,7 +12,7 @@ public final class SpritePresenter {
     public init(size: CGSize) {
         scene = SKScene(size: size)
         scene.scaleMode = .resizeFill
-        scene.backgroundColor = .black
+        scene.backgroundColor = SKColor.black
     }
 
     public func present(cgImage: CGImage, size: CGSize) {

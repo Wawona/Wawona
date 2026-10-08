@@ -183,11 +183,11 @@ struct CompositorActiveView: View {
         guard !text.isEmpty else { return }
         draftText = ""
         if showsHostShellConsole {
-            WWNWatchCompositorBridge.shared().writeHostShell(text)
+            WWNWatchCompositorBridge.shared.writeHostShell(text)
             return
         }
         // Append Return so shell commands execute (weston-terminal → zsh).
-        WWNWatchCompositorBridge.shared().sendText(text.hasSuffix("\n") ? text : text + "\n")
+        WWNWatchCompositorBridge.shared.sendText(text.hasSuffix("\n") ? text : text + "\n")
     }
 
     private func disconnectActiveSession() {
@@ -235,7 +235,7 @@ struct WatchCompositorSurfaceView: View {
         GeometryReader { geo in
             ZStack {
                 Color.black
-                if let image = WWNWatchCompositorBridge.shared().latestFrame {
+                if let image = WWNWatchCompositorBridge.shared.latestFrame {
                     let iw = CGFloat(image.width)
                     let ih = CGFloat(image.height)
                     let scale = min(
@@ -259,7 +259,7 @@ struct WatchCompositorSurfaceView: View {
         .accessibilityIdentifier("wwn.watch.compositorSurface")
         .accessibilityLabel("Wayland Surface")
         .onAppear {
-            if WWNWatchCompositorBridge.shared().latestFrame != nil {
+            if WWNWatchCompositorBridge.shared.latestFrame != nil {
                 notifyFirstFrameIfNeeded()
             }
         }

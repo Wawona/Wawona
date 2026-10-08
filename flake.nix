@@ -684,6 +684,7 @@
         androidToolchain = toolchainsAndroid.androidToolchain;
         rustBackend = backend-android;
         coreutilsAndroid = coreutils-multicall-android;
+        terminalSrc = inputs.terminal;
         targetPkgs = pkgsAndroidCross;
         waypipe = toolchainsAndroid.buildForAndroid "waypipe" {};
         inherit
@@ -816,6 +817,7 @@
         waypipeBinaryPath = studioWaypipeBin;
         waypipeBinaryPathFallback = studioWaypipeBinFallback;
         anowawAndroid = toolchainsAndroid.buildForAndroid "anowaw" {};
+        terminalSrc = inputs.terminal;
       };
 
       # ── Cross-Platform Packages ───────────────────────────────────────
@@ -1693,6 +1695,15 @@
             platformFilter = ["ios"];
             simulatorOnly = true;
           };
+          # Standalone watch sim/device apps: do not realize the full Apple
+          # matrix or Mode B iomfb just to emit Wawona-watchOS.
+          xcodegenWatchosSimOutputs = mkXcodegen {
+            platformFilter = ["watchos"];
+            simulatorOnly = true;
+          };
+          xcodegenWatchosOutputs = mkXcodegen {
+            platformFilter = ["watchos"];
+          };
           xcodegenMacosOutputs = mkXcodegen {platformFilter = ["macos"];};
           xcodegenAppleOutputs = mkXcodegen {platformFilter = ["ios" "ipados" "macos"];};
           # Full Apple matrix minus visionOS. Used when vision deps fail to
@@ -1772,14 +1783,14 @@
           wawona-watchos-app-sim = pkgs.callPackage ./dependencies/wawona/watchos.nix {
             inherit wawonaSrc wawonaVersion teamId;
             TEAM_ID = teamId;
-            xcodeProject = xcodegenOutputs.project;
+            xcodeProject = xcodegenWatchosSimOutputs.project;
             simulator = true;
             rustBackend = backend-watchos-sim;
           };
           wawona-watchos-app-device = pkgs.callPackage ./dependencies/wawona/watchos.nix {
             inherit wawonaSrc wawonaVersion;
             TEAM_ID = teamId;
-            xcodeProject = xcodegenOutputs.project;
+            xcodeProject = xcodegenWatchosOutputs.project;
             simulator = false;
             rustBackend = backend-watchos;
           };

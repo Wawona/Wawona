@@ -22,6 +22,7 @@
 , waypipeBinaryPath ? ""
 , waypipeBinaryPathFallback ? ""
 , anowawAndroid ? null
+, terminalSrc ? null
 }:
 
 let
@@ -191,6 +192,16 @@ let
         cp -r "$ANDROID_SRC/app/src/main/java" "$OUT/app/src/main/"
         chmod -R u+w "$OUT/app/src/main/java" 2>/dev/null || true
       fi
+      ${if terminalSrc != null then ''
+        TERM_KT_SRC="${toString terminalSrc}/android/com/aspauldingcode/wawona"
+        TERM_KT_DST="$OUT/app/src/main/java/com/aspauldingcode/wawona"
+        if [ -d "$TERM_KT_SRC" ]; then
+          mkdir -p "$TERM_KT_DST"
+          cp -f "$TERM_KT_SRC"/*.kt "$TERM_KT_DST/"
+          chmod -R u+w "$TERM_KT_DST"
+          echo "Overlayed Terminal Android Compose sources"
+        fi
+      '' else ""}
       echo ""
       echo "Project ready at $OUT"
       echo "Open $OUT in Android Studio and select device/emulator."

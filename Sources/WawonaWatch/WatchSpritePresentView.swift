@@ -1,10 +1,11 @@
 #if os(watchOS)
+import CoreGraphics
 import SpriteKit
 import SwiftUI
-import UIKit
 
 // Track A present path. GPU-composites Wayland SHM frames via SpriteKit.
-// Never import Metal. Never SKShader. Clients stay software.
+// Never import Metal. Never SKShader. Clients stay software. No UIKit
+// (UIImage / UIView unavailable on watchOS).
 
 /// One SKScene + SKSpriteNode, reused every frame. Do not wrap this in `.id`
 /// per commit; that would rebuild SpriteView.
@@ -30,8 +31,7 @@ final class WatchSpritePresentScene: SKScene {
         if size.width < 1 || size.height < 1 {
             size = CGSize(width: CGFloat(image.width), height: CGFloat(image.height))
         }
-        let uiImage = UIImage(cgImage: image)
-        let texture = SKTexture(image: uiImage)
+        let texture = SKTexture(cgImage: image)
         texture.filteringMode = .linear
         sprite.texture = texture
         layoutSprite()
@@ -123,7 +123,7 @@ struct WatchSpritePresentView: View {
     }
 
     private func applyLatestFrame() {
-        guard let image = WWNWatchCompositorBridge.shared().latestFrame else {
+        guard let image = WWNWatchCompositorBridge.shared.latestFrame else {
             return
         }
         presenter.apply(image)
