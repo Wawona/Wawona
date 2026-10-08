@@ -757,13 +757,12 @@ def disable_autobins(text: str) -> str:
             count=1,
         )
     # With autobins=false, keep an explicit multicall bin if none remains.
-    if not re.search(r'(?m)^name\s*=\s*"coreutils"\s*$', text) or "[[bin]]" not in text:
-        if "[[bin]]" not in text:
-            text = text.rstrip() + (
-                "\n\n[[bin]]\n"
-                'name = "coreutils"\n'
-                'path = "src/bin/coreutils.rs"\n'
-            )
+    if not re.search(r"\[\[bin\]\][^\[]*name\s*=\s*\"coreutils\"", text, re.S):
+        text = text.rstrip() + (
+            "\n\n[[bin]]\n"
+            'name = "coreutils"\n'
+            'path = "src/bin/coreutils.rs"\n'
+        )
     return text
 
 
