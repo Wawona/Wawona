@@ -908,6 +908,7 @@
                   (pkgs.callPackage ./dependencies/generators/xcodegen.nix {
                     inherit wawonaVersion wawonaSrc;
                     toolbarKeysSrc = inputs."toolbar-keys";
+                    terminalSrc = inputs.terminal;
                     macosBackend = null;
                     iosBackend = null;
                     iosSimBackend = null;
@@ -1519,6 +1520,7 @@
             pkgs.callPackage ./dependencies/generators/xcodegen.nix {
               inherit wawonaVersion wawonaSrc platformFilter simulatorOnly mobileGuestArtifacts mobileGuestArtifacts16k mobileVmEngine;
               toolbarKeysSrc = inputs."toolbar-keys";
+              terminalSrc = inputs.terminal;
               includeModeB = includeModeBEngine;
               mobileVmEngineModeB =
                 if includeModeBEngine
