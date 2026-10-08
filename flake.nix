@@ -649,6 +649,7 @@
         wawonaSrc = src;
         waypipeSrc = waypipe-patched-android;
         coreutilsSrc = coreutils-patched-android;
+        terminalSrc = inputs.terminal;
         platform = "android";
         inherit wawonaVersion;
       };
@@ -890,6 +891,7 @@
                       patchScript = coreutilsPatchSourceSh;
                       platform = "macos";
                     };
+                    terminalSrc = inputs.terminal;
                     platform = "macos";
                     inherit wawonaVersion;
                   };
