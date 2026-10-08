@@ -629,22 +629,30 @@ def prune_umbrella_for_wawona(text: str) -> str:
 
 
 def dependency_names_from_manifest(text: str) -> list[str]:
-    """Cargo.lock package names for top-level [dependencies].
+    """Cargo.lock package names for [dependencies] and [build-dependencies].
 
     Prefer `package = "..."` when present (uutils keys like `ls` map to
-    `uu_ls` in the lockfile). Skip target-specific dependency tables.
+    `uu_ls` in the lockfile). Skip target-specific / dev dependency tables.
+    Build-deps belong in the lock package's dependencies list too.
     """
     names: list[str] = []
     section: str | None = None
+    keep = {"[dependencies]", "[build-dependencies]"}
     lines = text.splitlines(True)
     i = 0
     while i < len(lines):
         s = lines[i].strip()
+        # Array tables ([[bin]], [[example]]) are not section headers for deps.
+        # Clear the section so trailing name=/path= keys are not treated as crates.
+        if s.startswith("[[") and s.endswith("]]"):
+            section = None
+            i += 1
+            continue
         if s.startswith("[") and s.endswith("]") and not s.startswith("[["):
             section = s
             i += 1
             continue
-        if section != "[dependencies]":
+        if section not in keep:
             i += 1
             continue
         m = re.match(r"^([A-Za-z0-9_-]+)\s*=", s)
