@@ -717,6 +717,38 @@ def sync_lock_package_deps(lock_path: Path, package_name: str, dep_names: list[s
     return True
 
 
+def strip_uudoc_bin(text: str) -> str:
+    """Drop the uudoc binary target.
+
+    crate2nix builds every [[bin]] and ignores required-features. uudoc needs
+    zip / uuhelp_parser, which the Wawona safe subset does not ship.
+    """
+    lines = text.splitlines(True)
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        if lines[i].strip() == "[[bin]]":
+            block = [lines[i]]
+            j = i + 1
+            while j < len(lines):
+                s = lines[j].strip()
+                if s.startswith("[[") or (
+                    s.startswith("[") and s.endswith("]") and not s.startswith("[[")
+                ):
+                    break
+                block.append(lines[j])
+                j += 1
+            if re.search(r'name\s*=\s*"uudoc"', "".join(block)):
+                i = j
+                continue
+            out.extend(block)
+            i = j
+            continue
+        out.append(lines[i])
+        i += 1
+    return "".join(out)
+
+
 def process_coreutils_tree(coreutils_root: Path) -> None:
     root_toml = coreutils_root / "Cargo.toml"
     if not root_toml.is_file():
@@ -726,7 +758,12 @@ def process_coreutils_tree(coreutils_root: Path) -> None:
     deps = extract_workspace_deps(original)
     pkg = extract_workspace_package(original)
     if not deps and "[workspace.dependencies]" not in original:
-        # Already expanded by a prior ensure/prepare pass. Still sync lock.
+        # Already expanded by a prior ensure/prepare pass. Still strip uudoc
+        # (crate2nix ignores required-features) and sync lock.
+        text = strip_uudoc_bin(original)
+        if text != original:
+            root_toml.write_text(text)
+            print(f"stripped [[bin]] uudoc under {coreutils_root}")
         lock = coreutils_root.parent / "Cargo.lock"
         sync_lock_package_deps(
             lock, "coreutils", dependency_names_from_manifest(root_toml.read_text())
@@ -748,6 +785,7 @@ def process_coreutils_tree(coreutils_root: Path) -> None:
         text = prune_dropped_optional_deps(text, package_name=_package_name(text))
         if toml.resolve() == root_toml.resolve():
             text = prune_umbrella_for_wawona(text)
+            text = strip_uudoc_bin(text)
         toml.write_text(text)
         count += 1
     lock = coreutils_root.parent / "Cargo.lock"
