@@ -197,3 +197,77 @@ pub extern "C" fn wawona_session_is_forbidden_client_id(id: *const c_char) -> i3
     };
     i32::from(super::validation::is_forbidden_machines_client_id(id))
 }
+
+/// Parse Darwin argv (NUL-separated list in one C string, or JSON string array).
+/// When `argc` > 0, `argv` is a classic C argv (argv[0] skipped).
+/// Caller frees with `wawona_domain_string_free`.
+#[no_mangle]
+pub extern "C" fn wawona_darwin_cli_parse(
+    argc: i32,
+    argv: *const *const c_char,
+) -> *mut c_char {
+    if argc <= 1 || argv.is_null() {
+        return to_cstring(super::darwin_cli::parse_to_json(&[]));
+    }
+    let mut args = Vec::new();
+    for i in 1..argc as isize {
+        let ptr = unsafe { *argv.offset(i) };
+        if let Some(s) = cstr_to_str(ptr) {
+            args.push(s.to_string());
+        }
+    }
+    to_cstring(super::darwin_cli::parse_to_json(&args))
+}
+
+/// Full Darwin CLI help. Caller frees with `wawona_domain_string_free`.
+#[no_mangle]
+pub extern "C" fn wawona_darwin_cli_help() -> *mut c_char {
+    to_cstring(super::darwin_cli::help_text().to_string())
+}
+
+/// Bundled client catalog JSON. Caller frees with `wawona_domain_string_free`.
+#[no_mangle]
+pub extern "C" fn wawona_client_catalog_json() -> *mut c_char {
+    to_cstring(super::client_catalog::catalog_json())
+}
+
+/// Pref key defaults JSON. Caller frees with `wawona_domain_string_free`.
+#[no_mangle]
+pub extern "C" fn wawona_prefs_defaults_json() -> *mut c_char {
+    to_cstring(super::prefs_keys::defaults_json())
+}
+
+/// Comma-separated pref keys. Caller frees with `wawona_domain_string_free`.
+#[no_mangle]
+pub extern "C" fn wawona_prefs_keys_csv() -> *mut c_char {
+    to_cstring(super::prefs_keys::all_keys_csv())
+}
+
+/// Resolve compositor backend JSON `{"backend":"wayland"|"drm"|"auto"}`.
+/// Caller frees with `wawona_domain_string_free`.
+#[no_mangle]
+pub extern "C" fn wawona_launch_resolve_backend(
+    pref: *const c_char,
+    classic_own_display: i32,
+    cli_override: *const c_char,
+) -> *mut c_char {
+    let pref = cstr_to_str(pref).unwrap_or("auto");
+    let cli = cstr_to_str(cli_override);
+    to_cstring(super::launch_resolve::resolve_backend_json(
+        pref,
+        classic_own_display != 0,
+        cli,
+    ))
+}
+
+/// Nested cursor policy JSON. Caller frees with `wawona_domain_string_free`.
+#[no_mangle]
+pub extern "C" fn wawona_launch_nested_cursor_policy(
+    is_nested_compositor: i32,
+    show_virtual_cursor: i32,
+) -> *mut c_char {
+    to_cstring(super::launch_resolve::nested_cursor_json(
+        is_nested_compositor != 0,
+        show_virtual_cursor != 0,
+    ))
+}

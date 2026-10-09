@@ -31,6 +31,18 @@ private typealias SharedAppDelegate = WawonaAppDelegate
 enum WawonaProcessEntry {
     static func main() {
         #if os(macOS)
+        // Rust darwin_cli owns argv policy. Exit early for help/list/Mode B.
+        if let code = WawonaDarwinCLI.dispatchEarlyExit() {
+            exit(code)
+        }
+        let hints = WawonaDarwinCLI.launchHints
+        if hints.headless && !CommandLine.arguments.contains("--compositor-host")
+            && !CommandLine.arguments.contains("--menubar")
+        {
+            // --client / --machine / run --headless: compositor host, no Machines UI.
+            WawonaCompositorHostApp.run()
+            return
+        }
         switch WawonaLaunchMode.parse() {
         case .help:
             WawonaLaunchMode.printHelp()

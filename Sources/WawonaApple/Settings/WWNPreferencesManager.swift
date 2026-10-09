@@ -21,6 +21,8 @@ public final class WWNPreferencesManager: NSObject {
 
     private override init() {
         super.init()
+        // Rust prefs_keys owns defaults; UserDefaults is I/O only.
+        _ = PrefsDomain.registerRustDefaults(in: WWNSharedUserDefaults())
         setDefaultsIfNeeded()
         syncFromCanonicalWawonaPreferences()
         NotificationCenter.default.addObserver(

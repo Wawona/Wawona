@@ -1,6 +1,9 @@
 #if os(macOS)
 import AppKit
 import Foundation
+#if canImport(Darwin)
+import Darwin
+#endif
 
 /// macOS process role for the single Wawona.app Mach-O.
 ///
@@ -87,6 +90,8 @@ enum WawonaLaunchMode: Equatable {
                 panel = "settings"
             } else if arguments.contains("--show-about") {
                 panel = "about"
+            } else if arguments.contains("--show-machines") {
+                panel = "machines"
             } else {
                 panel = "machines"
             }
@@ -104,11 +109,27 @@ enum WawonaLaunchMode: Equatable {
     }
 
     static func printHelp() {
+        // Prefer Rust help (full CLI). Fallback is the short LaunchAgent set.
+        typealias Fn = @convention(c) () -> UnsafeMutablePointer<CChar>?
+        typealias FreeFn = @convention(c) (UnsafeMutablePointer<CChar>?) -> Void
+        if let sym = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "wawona_darwin_cli_help"),
+           let freeSym = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "wawona_domain_string_free")
+        {
+            let fn = unsafeBitCast(sym, to: Fn.self)
+            let freeFn = unsafeBitCast(freeSym, to: FreeFn.self)
+            if let raw = fn() {
+                defer { freeFn(raw) }
+                print(String(cString: raw), terminator: "")
+                return
+            }
+        }
         print(
             """
             Wawona. Wayland compositor for macOS
 
             Usage:
+              Wawona run <recipe>
+              Wawona machines list|show <id>
               Wawona [options]
 
             Service modes (LaunchAgents):
@@ -123,6 +144,8 @@ enum WawonaLaunchMode: Equatable {
             Other:
               -h, --help              Show this help
               -v, --version           Print version
+              --list-clients          Bundled client ids
+              --list-machines         Saved Machines profiles
             """
         )
     }

@@ -6,10 +6,20 @@ import Foundation
 /// Never opens a second Regular UI via `open -n` / NSTask of this Mach-O.
 @MainActor
 final class WawonaMenuBarController: NSObject, NSMenuDelegate {
-    private var statusItem: NSStatusItem?
-    private var statusLabel: NSTextField?
-    private var pollTimer: Timer?
-    private var loginSwitch: NSSwitch?
+    var statusItem: NSStatusItem?
+    var statusLabel: NSTextField?
+    var desktopStatusLabel: NSTextField?
+    var desktopTakeOverButton: NSButton?
+    var desktopRestoreButton: NSButton?
+    var desktopRestartButton: NSButton?
+    var compositorRow: NSView?
+    var desktopRow: NSView?
+    var startButton: NSButton?
+    var stopButton: NSButton?
+    var restartButton: NSButton?
+    var pollTimer: Timer?
+    var loginSwitch: NSSwitch?
+    var loginRow: NSView?
 
     func start() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -29,15 +39,19 @@ final class WawonaMenuBarController: NSObject, NSMenuDelegate {
         let compositorRow = NSView(frame: NSRect(x: 0, y: 0, width: 268, height: 32))
         let label = NSTextField(labelWithString: "")
         label.font = NSFont.menuFont(ofSize: NSFont.systemFontSize)
-        label.frame = NSRect(x: 14, y: 6, width: 180, height: 20)
+        label.frame = NSRect(x: 14, y: 6, width: 150, height: 20)
         label.autoresizingMask = [.width, .minYMargin, .maxYMargin]
         compositorRow.addSubview(label)
         statusLabel = label
+        self.compositorRow = compositorRow
         updateCompositorStatus(running: false)
 
         let startBtn = symbolButton("play.fill", "Start Compositor", #selector(startCompositor))
         let stopBtn = symbolButton("stop.fill", "Stop Compositor", #selector(stopCompositor))
         let restartBtn = symbolButton("arrow.clockwise", "Restart Compositor", #selector(restartCompositor))
+        startButton = startBtn
+        stopButton = stopBtn
+        restartButton = restartBtn
         for (idx, btn) in [restartBtn, stopBtn, startBtn].enumerated() {
             btn.frame.origin = CGPoint(x: 268 - 26 - CGFloat(idx) * 26, y: 5)
             compositorRow.addSubview(btn)
@@ -46,6 +60,33 @@ final class WawonaMenuBarController: NSObject, NSMenuDelegate {
         let compositorItem = NSMenuItem()
         compositorItem.view = compositorRow
         menu.addItem(compositorItem)
+        menu.addItem(.separator())
+
+        // Desktop Replacement row (Mode B). Policy via DesktopReplacementController.
+        let desktopRow = NSView(frame: NSRect(x: 0, y: 0, width: 268, height: 32))
+        let deskLabel = NSTextField(labelWithString: "")
+        deskLabel.font = NSFont.menuFont(ofSize: NSFont.systemFontSize)
+        deskLabel.frame = NSRect(x: 14, y: 6, width: 150, height: 20)
+        deskLabel.autoresizingMask = [.width, .minYMargin, .maxYMargin]
+        desktopRow.addSubview(deskLabel)
+        desktopStatusLabel = deskLabel
+        self.desktopRow = desktopRow
+
+        let deskRestart = symbolButton(
+            "arrow.clockwise", "Restart Mac (Path B reboot)", #selector(restartMacForDesktop)
+        )
+        let deskRestore = symbolButton("stop.fill", "Restore Aqua", #selector(restoreDesktop))
+        let deskTakeOver = symbolButton("play.fill", "Replace now", #selector(takeOverDesktop))
+        desktopRestartButton = deskRestart
+        desktopRestoreButton = deskRestore
+        desktopTakeOverButton = deskTakeOver
+        for (idx, btn) in [deskRestart, deskRestore, deskTakeOver].enumerated() {
+            btn.frame.origin = CGPoint(x: 268 - 26 - CGFloat(idx) * 26, y: 5)
+            desktopRow.addSubview(btn)
+        }
+        let desktopItem = NSMenuItem()
+        desktopItem.view = desktopRow
+        menu.addItem(desktopItem)
         menu.addItem(.separator())
 
         let settings = NSMenuItem(
@@ -63,6 +104,14 @@ final class WawonaMenuBarController: NSObject, NSMenuDelegate {
         )
         machines.target = self
         menu.addItem(machines)
+
+        let about = NSMenuItem(
+            title: "About Wawona",
+            action: #selector(openAbout),
+            keyEquivalent: ""
+        )
+        about.target = self
+        menu.addItem(about)
         menu.addItem(.separator())
 
         let loginRow = NSView(frame: NSRect(x: 0, y: 0, width: 268, height: 32))
@@ -78,6 +127,7 @@ final class WawonaMenuBarController: NSObject, NSMenuDelegate {
         sw.state = WWNLaunchAgentManager.sharedManager.isAppLaunchAgentLoaded() ? .on : .off
         loginRow.addSubview(sw)
         loginSwitch = sw
+        self.loginRow = loginRow
         let loginItem = NSMenuItem()
         loginItem.view = loginRow
         menu.addItem(loginItem)
@@ -95,9 +145,9 @@ final class WawonaMenuBarController: NSObject, NSMenuDelegate {
         statusItem = item
 
         pollTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.refreshStatus() }
+            Task { @MainActor in self?.refreshStatus(fromTimer: true) }
         }
-        refreshStatus()
+        refreshStatus(fromTimer: false)
     }
 
     func stop() {
@@ -110,121 +160,140 @@ final class WawonaMenuBarController: NSObject, NSMenuDelegate {
     }
 
     func menuWillOpen(_ menu: NSMenu) {
-        _ = menu
-        refreshStatus()
+        syncCustomMenuItemWidths(menu)
+        refreshStatus(fromTimer: false)
         loginSwitch?.state =
             WWNLaunchAgentManager.sharedManager.isAppLaunchAgentLoaded() ? .on : .off
     }
 
-    private func refreshStatus() {
+    private func syncCustomMenuItemWidths(_ menu: NSMenu) {
+        var width: CGFloat = 268
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.menuFont(ofSize: NSFont.systemFontSize)
+        ]
+        for item in menu.items where item.view == nil && !item.isSeparatorItem && !item.title.isEmpty {
+            width = max(width, (item.title as NSString).size(withAttributes: attrs).width + 48)
+        }
+        let trailing: CGFloat = 12
+        let btn: CGFloat = 22
+        let gap: CGFloat = 4
+        if let row = compositorRow {
+            var frame = row.frame
+            frame.size.width = width
+            row.frame = frame
+            var x = width - trailing
+            startButton?.frame = NSRect(x: x - btn, y: 5, width: btn, height: btn)
+            x -= btn + gap
+            stopButton?.frame = NSRect(x: x - btn, y: 5, width: btn, height: btn)
+            x -= btn + gap
+            restartButton?.frame = NSRect(x: x - btn, y: 5, width: btn, height: btn)
+            if var status = statusLabel?.frame {
+                status.size.width = max(80, x - btn - 8 - 14)
+                statusLabel?.frame = status
+            }
+        }
+        if let row = desktopRow {
+            var frame = row.frame
+            frame.size.width = width
+            row.frame = frame
+            var x = width - trailing
+            desktopTakeOverButton?.frame = NSRect(x: x - btn, y: 5, width: btn, height: btn)
+            x -= btn + gap
+            desktopRestoreButton?.frame = NSRect(x: x - btn, y: 5, width: btn, height: btn)
+            x -= btn + gap
+            desktopRestartButton?.frame = NSRect(x: x - btn, y: 5, width: btn, height: btn)
+            if var status = desktopStatusLabel?.frame {
+                status.size.width = max(80, x - btn - 8 - 14)
+                desktopStatusLabel?.frame = status
+            }
+        }
+        if let row = loginRow, let sw = loginSwitch {
+            var frame = row.frame
+            frame.size.width = width
+            row.frame = frame
+            sw.sizeToFit()
+            let swSize = sw.frame.size
+            let y = (frame.size.height - swSize.height) / 2
+            sw.frame = NSRect(
+                x: width - trailing - swSize.width, y: y,
+                width: swSize.width, height: swSize.height
+            )
+        }
+    }
+
+    func refreshStatus(fromTimer: Bool) {
         let running = WWNLaunchAgentManager.sharedManager.isCompositorAgentLoaded()
             && Self.compositorSocketReady()
         updateCompositorStatus(running: running)
+
+        let refreshGate = !fromTimer
+        let desk = WWNDesktopReplacementController.sharedController
+            .menuBarDesktopStatus(refreshingGate: refreshGate)
+        updateDesktopStatus(desk)
     }
 
-    private func updateCompositorStatus(running: Bool) {
+    func updateCompositorStatus(running: Bool) {
+        statusLabel?.attributedStringValue = statusAttributed(
+            prefix: "Compositor",
+            state: running ? "running" : "stopped",
+            color: running ? .systemGreen : .systemRed
+        )
+        startButton?.isEnabled = !running
+        stopButton?.isEnabled = running
+        restartButton?.isEnabled = running
+    }
+
+    func updateDesktopStatus(_ desk: WWNModeBMenuBarStatus) {
+        let state = desk.state
+        let color: NSColor
+        if state == "ready" || state == "takeover" || state == "Armed" {
+            color = .systemGreen
+        } else if state == "reboot" {
+            color = .systemPurple
+        } else {
+            color = .systemRed
+        }
+        desktopStatusLabel?.attributedStringValue = statusAttributed(
+            prefix: "Desktop",
+            state: state,
+            color: color
+        )
+        desktopStatusLabel?.toolTip = desk.tooltip.isEmpty ? "Desktop: \(state)" : desk.tooltip
+        desktopTakeOverButton?.isEnabled = desk.canTakeOver || desk.canPrepare
+        desktopRestoreButton?.isEnabled = desk.canRestore
+        desktopRestartButton?.isEnabled = desk.canRestartMac
+        desktopTakeOverButton?.toolTip = "Replace now"
+    }
+
+    func statusAttributed(prefix: String, state: String, color: NSColor) -> NSAttributedString {
         let font = NSFont.menuFont(ofSize: NSFont.systemFontSize)
-        let prefix = NSAttributedString(
-            string: "Compositor: ",
+        let text = NSMutableAttributedString(
+            string: "\(prefix): ",
             attributes: [.font: font, .foregroundColor: NSColor.labelColor]
         )
-        let state = NSAttributedString(
-            string: running ? "running" : "stopped",
-            attributes: [
-                .font: font,
-                .foregroundColor: running ? NSColor.systemGreen : NSColor.systemRed,
-            ]
-        )
-        let text = NSMutableAttributedString(attributedString: prefix)
-        text.append(state)
-        statusLabel?.attributedStringValue = text
+        text.append(NSAttributedString(
+            string: state,
+            attributes: [.font: font, .foregroundColor: color]
+        ))
+        return text
     }
 
     @objc private func startCompositor() {
         _ = WWNLaunchAgentManager.sharedManager.startCompositorAgent()
-        refreshStatus()
+        refreshStatus(fromTimer: false)
     }
 
     @objc private func stopCompositor() {
         _ = WWNLaunchAgentManager.sharedManager.stopCompositorAgent()
-        refreshStatus()
+        refreshStatus(fromTimer: false)
     }
 
     @objc private func restartCompositor() {
         _ = WWNLaunchAgentManager.sharedManager.restartCompositorAgent()
-        refreshStatus()
-    }
-
-    @objc private func openSettings() {
-        // Activate Regular UI on the in-app Global Settings catalog.
-        WawonaLaunchMode.openOrActivateUI(arguments: ["--show-settings"])
-    }
-
-    @objc private func openMachines() {
-        WawonaLaunchMode.openOrActivateUI(arguments: [])
-    }
-
-    @objc private func toggleLaunchAtLogin(_ sender: NSSwitch) {
-        if sender.state == .on {
-            _ = WWNLaunchAgentManager.sharedManager.enableAppLaunchAtLogin()
-        } else {
-            _ = WWNLaunchAgentManager.sharedManager.disableAppLaunchAtLogin()
-        }
-    }
-
-    @objc private func quitMenuBar() {
-        // Boot out this agent only. Compositor-host stays up.
-        _ = WWNLaunchAgentManager.sharedManager.stopMenuBarAgent()
-        NSApp.terminate(nil)
-    }
-
-    private func symbolButton(_ symbol: String, _ label: String, _ sel: Selector) -> NSButton {
-        let image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
-        let btn = NSButton(image: image ?? NSImage(), target: self, action: sel)
-        btn.isBordered = false
-        btn.imagePosition = .imageOnly
-        btn.toolTip = label
-        btn.setFrameSize(NSSize(width: 22, height: 22))
-        return btn
-    }
-
-    private static func templateIcon() -> NSImage? {
-        let names = [
-            "Wawona-menubar-silhouette",
-            "Wawona-iOS-Dark-1024x1024@1x",
-            "Wawona",
-        ]
-        let bundle = Bundle.main
-        for name in names {
-            if let img = bundle.image(forResource: name) {
-                img.isTemplate = true
-                img.size = NSSize(width: 18, height: 18)
-                return img
-            }
-            if let path = bundle.path(forResource: name, ofType: "png"),
-               let img = NSImage(contentsOfFile: path) {
-                img.isTemplate = true
-                img.size = NSSize(width: 18, height: 18)
-                return img
-            }
-        }
-        return nil
-    }
-
-    private static func compositorSocketReady() -> Bool {
-        let dir = WawonaProcessLock.runtimeDirectory()
-        let statePath = (dir as NSString).appendingPathComponent("wawona-runtime-state.plist")
-        guard let state = NSDictionary(contentsOfFile: statePath) as? [String: Any],
-              (state["healthy"] as? Bool) == true else {
-            return false
-        }
-        let socketPath = (state["socketPath"] as? String)
-            ?? (dir as NSString).appendingPathComponent("wayland-0")
-        return FileManager.default.fileExists(atPath: socketPath)
+        refreshStatus(fromTimer: false)
     }
 }
 
-/// Runs the menubar agent event loop (no SwiftUI WindowGroup).
 enum WawonaMenuBarApp {
     static func run() {
         if !Thread.isMainThread {
@@ -237,7 +306,6 @@ enum WawonaMenuBarApp {
     @MainActor
     private static func runOnMain() {
         if !WawonaLaunchLockState.acquireMenuBar() {
-            // Another menubar agent already holds the lock.
             return
         }
         atexit {
@@ -253,7 +321,6 @@ enum WawonaMenuBarApp {
 
         let controller = WawonaMenuBarController()
         controller.start()
-        // Keep controller alive for the run loop.
         objc_setAssociatedObject(
             app,
             "wawona.menubar.controller",

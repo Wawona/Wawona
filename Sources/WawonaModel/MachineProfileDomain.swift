@@ -6,10 +6,10 @@ import WawonaUIContracts
 
 /// Thin Apple wrap around the rust product domain (`src/domain`).
 ///
-/// Generated UniFFI Swift is the long-term import. Until bindgen output is
-/// wired into every Apple target, this process looks up the C trampoline
-/// (`wawona_profiles_v1_*`) from the linked rust staticlib. SPM tests have
-/// no rust: they fall back to the frozen Swift Codable path.
+/// Prefer Nix-staged UniFFI (`import wawona`, `scripts/stage-uniffi-swift.sh`,
+/// `SWIFT_INCLUDE_PATHS` → `.nix-deps/uniffi`). When that module is absent,
+/// look up C trampolines (`wawona_profiles_v1_*`) via `WawonaDomainBridge`.
+/// SPM tests without rust fall back to the frozen Swift Codable path.
 ///
 /// Do not add schema fields here. Do not hand-edit generated UniFFI files.
 public enum MachineProfileDomain {

@@ -6,8 +6,12 @@
 //! still ships the module. Nix `git+file` copies tracked files only.
 
 pub mod c_api;
+pub mod client_catalog;
+pub mod darwin_cli;
 pub mod error;
+pub mod launch_resolve;
 pub mod machine_profile;
+pub mod prefs_keys;
 pub mod profile_store;
 pub mod sanitize_ssh_host;
 pub mod uniffi_api;
@@ -195,6 +199,16 @@ mod capability_tests {
         assert_eq!(gate("macos", "vm"), "planned");
         assert_eq!(gate("ios", "container"), "planned");
     }
+
+    #[test]
+    fn watchos_gpu_blocked_wasm_available() {
+        assert_eq!(gate("watchos", "gpu"), "blocked");
+        assert_eq!(gate("watchos", "wasm"), "available");
+        assert_eq!(gate("watchos", "watch_present"), "available");
+        assert_eq!(gate("macos", "watch_present"), "forbidden");
+        assert_eq!(gate("ios", "apple_containerization"), "forbidden");
+        assert_eq!(gate("macos", "apple_containerization"), "available");
+    }
 }
 
 /// Four-state product gates. Swift `PlatformCapabilities` reads this when
@@ -210,9 +224,23 @@ pub mod capabilities {
             ("macos", "container") => "available",
             (_, "vm" | "virtual_machine" | "container") => "planned",
             (_, "desktop") if matches!(p.as_str(), "macos" | "android") => "planned",
+            // Mode B iOS Desktop is a separate compile profile; store iOS stays forbidden.
+            ("ios" | "ipados", "desktop") => "forbidden",
             (_, "desktop") => "forbidden",
             (_, "swinging_bridge") if matches!(p.as_str(), "macos" | "android") => "planned",
             (_, "swinging_bridge") => "forbidden",
+            // GPU stack: watchOS blocked (no Metal). tvOS planned until bundled.
+            ("watchos", "gpu" | "gpu_stack" | "gles" | "vulkan") => "blocked",
+            ("tvos", "gpu" | "gpu_stack") => "planned",
+            (_, "gpu" | "gpu_stack" | "gles" | "vulkan") => "available",
+            // Relay Wasm is mandatory on every product target.
+            (_, "wasm" | "wasm_runtime") => "available",
+            // SpriteKit Wayland SHM present is watchOS-only.
+            ("watchos", "watch_present" | "watch_present_accelerator") => "available",
+            (_, "watch_present" | "watch_present_accelerator") => "forbidden",
+            // Apple Containerization.framework is macOS-only.
+            ("macos", "apple_containerization") => "available",
+            (_, "apple_containerization") => "forbidden",
             _ => "available",
         }
     }

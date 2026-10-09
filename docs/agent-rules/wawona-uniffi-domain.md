@@ -35,12 +35,16 @@ watchOS, visionOS) plus Android and Linux.
 - New feature SwiftUI under `src/platform/macos/ui/*`.
 - Per-OS forks of domain types (`WWN*` copies of `WawonaModel`).
 - Policy or validation in Swift trampolines, ObjC leftovers, or generated bindings.
-- New Apple `.m` / `.mm` product glue. CI `scripts/verify-no-objc-glue.py` ratchets
-  the allowlist to empty.
+- New Apple `.m` / `.mm` product glue. CI `scripts/verify-no-objc-glue.py` must
+  pass with an empty allowlist and **zero scanned `.m`**. Do not claim UniFFI
+  cutover done while product `.m` remain.
 
 A bindgen + Apple-triples helper in Wawona or `wwn-toolchain` is fine. A JFFI
 clone is not. Host bindgen is `dependencies/generators/uniffi-bindgen.nix`.
-Generated Swift/Kotlin live in the Nix store (`wawona-nix-generated`).
+Generated Swift/Kotlin live in the Nix store (`wawona-nix-generated`). Stage
+locally with `scripts/stage-uniffi-swift.sh` into `.nix-deps/uniffi` (xcodegen
+`SWIFT_INCLUDE_PATHS`). Prefer `import wawona` when staged; else
+`WawonaDomainBridge` C trampolines.
 
 ## Where code lives
 

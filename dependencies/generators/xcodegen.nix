@@ -1329,8 +1329,8 @@ PLIST
   commonExcludes = ["**/*.rs" "**/*.toml" "**/*.md" "**/Cargo.lock" "**/.DS_Store" "**/renderer_android.*" "**/WWNSettings.c" "**/Skip/**" "modeb/**" "**/PrefPane/**"];
   # Mobile targets share thin C under src/platform/macos; never pull macOS-only
   # window / Mode B UI from that tree.
-  # main.m is retired (Darwin/Sources/Main.swift owns @main). Exclude it on
-  # every Apple-mobile path that still pulls thin C from src/platform/macos.
+  # main.m deleted (Darwin/Sources/Main.swift owns @main). Keep **/main.m
+  # excluded so a stale tree cannot reintroduce ObjC process entry.
   # wawona_compositor_host_glue.c is macOS-only: Apple mobile uses
   # WWNIosHostGlue.c, and the host glue stubs collide with force-loaded
   # weston (weston_simple_shm_main) plus the iOS startup log sink.
@@ -2842,6 +2842,11 @@ PLIST
             DEFINES_MODULE = "YES";
             SKIP_INSTALL = "YES";
             BUILD_LIBRARY_FOR_DISTRIBUTION = "NO";
+            # Nix stages UniFFI Swift under .nix-deps/uniffi or
+            # macos-dependencies/uniffi. Prefer `import wawona` when present;
+            # MachineProfileDomain still falls back to C trampolines.
+            SWIFT_INCLUDE_PATHS = "$(inherited) $(SRCROOT)/.nix-deps/uniffi $(SRCROOT)/macos-dependencies/uniffi";
+            HEADER_SEARCH_PATHS = "$(inherited) $(SRCROOT)/.nix-deps/uniffi $(SRCROOT)/macos-dependencies/uniffi";
             "SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=appletvos*]" = [ "$(inherited)" "WWN_TVOS_GPU_BUNDLED" ];
             "SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=appletvsimulator*]" = [ "$(inherited)" "WWN_TVOS_GPU_BUNDLED" ];
             # Never on framework targets (ASC ITMS-90429/90427): only the app

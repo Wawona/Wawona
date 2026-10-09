@@ -115,6 +115,9 @@ public enum PlatformCapabilities: Sendable {
     /// container *machine kinds* use container-in-VM (`wwn-relay`), never this
     /// engine. Distinct from `containerGate`.
     public static var appleContainerizationGate: CapabilityGate {
+        if let rust = rustGate("apple_containerization") {
+            return rust
+        }
         #if os(macOS)
         return .available
         #else
@@ -143,6 +146,17 @@ public enum PlatformCapabilities: Sendable {
     /// Watch *present* of SHM frames is a separate gate
     /// (`watchPresentAcceleratorGate`): SpriteKit blit, not GLES/Vulkan.
     public static var gpuStackGate: CapabilityGate {
+        if let rust = rustGate("gpu") {
+            #if os(tvOS) && WWN_TVOS_GPU_BUNDLED
+            if case .planned = rust { return .available }
+            #endif
+            #if os(watchOS)
+            if case .blocked = rust {
+                return .blocked(reason: "watchOS SDK exposes no Metal.framework and CAMetalLayer is API_UNAVAILABLE(watchos)")
+            }
+            #endif
+            return rust
+        }
         #if os(tvOS)
         #if WWN_TVOS_GPU_BUNDLED
         return .available
@@ -163,6 +177,9 @@ public enum PlatformCapabilities: Sendable {
     /// forces the CPU `Image` path for A/B. Research weak-link Metal is
     /// `WWN_WATCHOS_METAL` and never ships in the store Watch IPA.
     public static var watchPresentAcceleratorGate: CapabilityGate {
+        if let rust = rustGate("watch_present") {
+            return rust
+        }
         #if os(watchOS)
         return .available
         #else
@@ -173,6 +190,9 @@ public enum PlatformCapabilities: Sendable {
     /// Relay WASI Runtime (`wwn-wasm` / later `wwn-relay`). Mandatory on every
     /// product target including watchOS. Apple mobile store execute is Pulley.
     public static var wasmRuntimeGate: CapabilityGate {
+        if let rust = rustGate("wasm") {
+            return rust
+        }
         return .available
     }
 
@@ -225,6 +245,14 @@ public enum PlatformCapabilities: Sendable {
     /// gated in Compose). App Store Apple-mobile builds keep this forbidden and
     /// must never mention alternate distribution paths in UI or strings.
     public static var desktopReplacementGate: CapabilityGate {
+        if let rust = rustGate("desktop") {
+            #if WWN_MODE_B && os(iOS)
+            // Mode B tipa/Sileo compiles may still plan Desktop while store Rust says forbidden.
+            return .planned(flag: "WWN_MODE_B_DESKTOP")
+            #else
+            return rust
+            #endif
+        }
         #if os(macOS)
         return .planned(flag: "WWN_DESKTOP_REPLACEMENT")
         #elseif WWN_MODE_B && os(iOS)
@@ -423,7 +451,16 @@ public enum PlatformCapabilities: Sendable {
                 case "available":
                     return .available
                 case "planned":
-                    return .planned(flag: feature == "vm" ? "WWN_VMS" : "WWN_CONTAINERS")
+                    let flag: String
+                    switch feature {
+                    case "vm", "virtual_machine": flag = "WWN_VMS"
+                    case "container": flag = "WWN_CONTAINERS"
+                    case "desktop": flag = "WWN_DESKTOP_REPLACEMENT"
+                    case "swinging_bridge": flag = "WWN_SWINGING_BRIDGE"
+                    case "gpu", "gpu_stack": flag = "WWN_TVOS_GPU"
+                    default: flag = "WWN_\(feature.uppercased())"
+                    }
+                    return .planned(flag: flag)
                 case "blocked":
                     return .blocked(reason: "rust \(feature)")
                 case "forbidden":

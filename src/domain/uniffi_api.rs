@@ -136,3 +136,49 @@ pub fn capability_gate(platform: String, feature: String) -> String {
 pub fn session_is_forbidden_client_id(id: String) -> bool {
     super::validation::is_forbidden_machines_client_id(&id)
 }
+
+#[uniffi::export]
+pub fn darwin_cli_parse_json(args: Vec<String>) -> String {
+    super::darwin_cli::parse_to_json(&args)
+}
+
+#[uniffi::export]
+pub fn darwin_cli_help_text() -> String {
+    super::darwin_cli::help_text().to_string()
+}
+
+#[uniffi::export]
+pub fn client_catalog_json() -> String {
+    super::client_catalog::catalog_json()
+}
+
+#[uniffi::export]
+pub fn prefs_defaults_json() -> String {
+    super::prefs_keys::defaults_json()
+}
+
+#[uniffi::export]
+pub fn prefs_keys_csv() -> String {
+    super::prefs_keys::all_keys_csv()
+}
+
+#[uniffi::export]
+pub fn launch_resolve_backend_json(
+    pref: String,
+    classic_own_display: bool,
+    cli_override: Option<String>,
+) -> String {
+    super::launch_resolve::resolve_backend_json(
+        &pref,
+        classic_own_display,
+        cli_override.as_deref(),
+    )
+}
+
+#[uniffi::export]
+pub fn launch_nested_cursor_policy_json(
+    is_nested_compositor: bool,
+    show_virtual_cursor: bool,
+) -> String {
+    super::launch_resolve::nested_cursor_json(is_nested_compositor, show_virtual_cursor)
+}

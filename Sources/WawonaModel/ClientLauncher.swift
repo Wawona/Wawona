@@ -46,10 +46,38 @@ public struct ClientLauncher: Codable, Identifiable, Hashable, Sendable {
 }
 
 public extension ClientLauncher {
-    /// Full catalog (keep in sync with macOS `kAllBundledClients` /
-    /// Android `BundledClients.all`). Never include modeb-tty / igetty.
-    /// Those are the Doorman console, not a Machines client.
-    static let allPresets: [ClientLauncher] = [
+    /// Rust `client_catalog` when linked; else the frozen Swift table below.
+    static var rustCatalogPresets: [ClientLauncher]? {
+        guard let json = WawonaDomainBridge.clientCatalogJSON(),
+              let data = json.data(using: .utf8),
+              let rows = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]
+        else {
+            return nil
+        }
+        return rows.compactMap { row in
+            guard let id = row["id"] as? String,
+                  let display = row["display_name"] as? String,
+                  let exe = row["executable"] as? String
+            else {
+                return nil
+            }
+            return ClientLauncher(
+                name: id,
+                executablePath: exe,
+                displayName: display,
+                requiresGpuStack: (row["requires_gpu"] as? Bool) ?? false
+            )
+        }
+    }
+
+    /// Full catalog (Rust `client_catalog` owns the list when linked).
+    /// Never include modeb-tty / igetty.
+    static var allPresets: [ClientLauncher] {
+        if let rust = rustCatalogPresets, !rust.isEmpty { return rust }
+        return fallbackPresets
+    }
+
+    static let fallbackPresets: [ClientLauncher] = [
         ClientLauncher(name: "weston-terminal", executablePath: "weston-terminal", displayName: "Weston Terminal"),
         ClientLauncher(name: "foot", executablePath: "foot", displayName: "Foot Terminal"),
         ClientLauncher(name: "weston-simple-shm", executablePath: "weston-simple-shm", displayName: "Weston Simple SHM"),

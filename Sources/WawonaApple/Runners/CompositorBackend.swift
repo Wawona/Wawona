@@ -2,9 +2,12 @@ import Foundation
 #if canImport(AppKit)
 import AppKit
 #endif
+#if canImport(WawonaModel)
+import WawonaModel
+#endif
 
 /// Aqua vs Classic / own-display backend resolution.
-/// Replaces C helpers formerly in `WWNWaypipeRunner.m`.
+/// Policy: Rust `launch_resolve`. Swift applies the string to env/argv.
 
 #if os(macOS)
 private func appleWindowServerIsRunning() -> Bool {
@@ -55,15 +58,31 @@ public func WWNCompositorBackendCLIOverride() -> NSString? {
 /// Resolves `auto`|`wayland`|`drm`. Own-display always returns `drm`.
 @_cdecl("WWNResolveCompositorBackend")
 public func WWNResolveCompositorBackend(_ overrideValue: NSString?) -> NSString {
-    if WWNHostSessionUsesOwnDisplayDRM() {
+    let classic = WWNHostSessionUsesOwnDisplayDRM()
+    var pref = UserDefaults.standard.string(forKey: "CompositorBackend") ?? "auto"
+    var cli = overrideValue as String?
+    if cli?.isEmpty != false {
+        cli = cliCompositorBackendOverride
+    }
+    #if canImport(WawonaModel)
+    if let json = WawonaDomainBridge.resolveBackend(
+        pref: pref,
+        classicOwnDisplay: classic,
+        cliOverride: cli
+    ),
+       let data = json.data(using: .utf8),
+       let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+       let backend = obj["backend"] as? String
+    {
+        return backend as NSString
+    }
+    #endif
+    if classic {
         return "drm" as NSString
     }
-    var choice = overrideValue as String?
+    var choice = cli
     if choice?.isEmpty != false {
-        choice = cliCompositorBackendOverride
-    }
-    if choice?.isEmpty != false {
-        choice = UserDefaults.standard.string(forKey: "CompositorBackend")
+        choice = pref
     }
     switch choice {
     case "drm":

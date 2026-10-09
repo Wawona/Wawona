@@ -4,6 +4,10 @@ import Foundation
 import WatchConnectivity
 #endif
 
+/// Typed constant (replaces deleted ObjC `WWNWatchDisplayTouchNotification`).
+public let WWNWatchDisplayTouchNotification =
+    Notification.Name("WWNWatchDisplayTouchNotification")
+
 /// Preference keys + status for iOS → Apple Watch document transfer (#151).
 public enum WatchCompanionPrefs {
     public static let lastTransferNameKey = "wawona.pref.watchCompanionLastTransferName"
@@ -291,7 +295,7 @@ public final class WCSessionWatchCompanionTransport: NSObject, WatchCompanionTra
         ]
         DispatchQueue.main.async {
             NotificationCenter.default.post(
-                name: Notification.Name("WWNWatchDisplayTouchNotification"),
+                name: WWNWatchDisplayTouchNotification,
                 object: nil,
                 userInfo: info
             )
