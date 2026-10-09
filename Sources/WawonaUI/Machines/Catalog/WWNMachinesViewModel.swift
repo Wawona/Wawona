@@ -785,9 +785,14 @@ final class WWNMachinesViewModel: ObservableObject {
     }
   }
 
-  /// Native Wayland / wasm clients draw into the host compositor surface.
+  /// Native Wayland / wasm clients and macOS MicroVM waypipe clients draw into
+  /// the host compositor surface.
   private func revealSessionSurfaceIfNeeded(_ profile: WWNMachineProfile) {
     #if os(macOS) || os(iOS) || os(tvOS) || os(visionOS)
+    if WWNMachineSessionBridge.profileUsesVirtualMachineBackend(profile) {
+      WWNMainWindowRouter.shared.showSessionSurface()
+      return
+    }
     guard WWNMachineSessionBridge.profileUsesNativeCompositorClient(profile) else { return }
     let client = WWNMachineSessionBridge.nativeClientId(forProfile: profile) ?? ""
     if client == "wawona-shell" { return }

@@ -207,6 +207,18 @@ final class WWNMainWindowRouter: ObservableObject {
     /// stack page, so nil (sidebar-as-root) is never used.
     @Published var selection: WWNMainDestination? = .machines
 
+    private var sessionSurfaceObserver: NSObjectProtocol?
+
+    private init() {
+        sessionSurfaceObserver = NotificationCenter.default.addObserver(
+            forName: Notification.Name("WWNShowSessionSurfaceNotification"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.showSessionSurface()
+        }
+    }
+
     func showMachines() {
         selection = .machines
     }

@@ -2808,20 +2808,58 @@
                   rm -f "$WAYPIPE_SOCKET" "$VSOCK_SOCKET"
                   export XDG_RUNTIME_DIR="$WAWONA_RUNTIME"
                   export WAYLAND_DISPLAY="wayland-0"
-                  echo "[wawona-vm-bridge] starting waypipe client on $WAYPIPE_SOCKET (-> $WAWONA_RUNTIME/wayland-0)" >&2
-                  waypipe --socket "$WAYPIPE_SOCKET" client &
-                  WAYPIPE_PID=$!
-                  trap 'kill "$WAYPIPE_PID" 2>/dev/null || true' EXIT
 
-                  # Wait for waypipe's client socket to come up, then listen on the
-                  # vfkit-facing socket. vfkit connects here when the guest dials out;
-                  # ,fork lets the guest session reconnect (waypipe/systemd restarts).
-                  for _ in $(seq 1 30); do
-                    [ -S "$WAYPIPE_SOCKET" ] && break
+                  WAYPIPE_PID=""
+                  SOCAT_PID=""
+                  cleanup_bridge() {
+                    [ -n "$SOCAT_PID" ] && kill "$SOCAT_PID" 2>/dev/null || true
+                    [ -n "$WAYPIPE_PID" ] && kill "$WAYPIPE_PID" 2>/dev/null || true
+                    pkill -P "$WAYPIPE_PID" 2>/dev/null || true
+                    wait "$SOCAT_PID" 2>/dev/null || true
+                    wait "$WAYPIPE_PID" 2>/dev/null || true
+                  }
+                  trap cleanup_bridge EXIT INT TERM
+
+                  start_waypipe() {
+                    rm -f "$WAYPIPE_SOCKET"
+                    echo "[wawona-vm-bridge] starting waypipe client on $WAYPIPE_SOCKET (-> $WAWONA_RUNTIME/wayland-0)" >&2
+                    waypipe --socket "$WAYPIPE_SOCKET" client &
+                    WAYPIPE_PID=$!
+                    for _ in $(seq 1 30); do
+                      [ -S "$WAYPIPE_SOCKET" ] && return 0
+                      kill -0 "$WAYPIPE_PID" 2>/dev/null || return 1
+                      sleep 1
+                    done
+                    return 1
+                  }
+
+                  if ! start_waypipe; then
+                    echo "wawona-vm-bridge: waypipe client socket never appeared" >&2
+                    exit 1
+                  fi
+
+                  # fork+reuseaddr: guest waypipe may reconnect; keep the listen
+                  # socket stable so vfkit does not see connection refused gaps.
+                  echo "[wawona-vm-bridge] listening on $VSOCK_SOCKET, forwarding to $WAYPIPE_SOCKET" >&2
+                  socat "UNIX-LISTEN:$VSOCK_SOCKET,fork,reuseaddr" "UNIX-CONNECT:$WAYPIPE_SOCKET" &
+                  SOCAT_PID=$!
+
+                  while true; do
+                    if [ ! -S "$WAWONA_RUNTIME/wayland-0" ]; then
+                      echo "wawona-vm-bridge: lost $WAWONA_RUNTIME/wayland-0" >&2
+                      exit 1
+                    fi
+                    if ! kill -0 "$WAYPIPE_PID" 2>/dev/null; then
+                      echo "[wawona-vm-bridge] waypipe client died; restarting" >&2
+                      start_waypipe || sleep 2
+                    fi
+                    if ! kill -0 "$SOCAT_PID" 2>/dev/null; then
+                      echo "[wawona-vm-bridge] socat died; restarting listen" >&2
+                      socat "UNIX-LISTEN:$VSOCK_SOCKET,fork,reuseaddr" "UNIX-CONNECT:$WAYPIPE_SOCKET" &
+                      SOCAT_PID=$!
+                    fi
                     sleep 1
                   done
-                  echo "[wawona-vm-bridge] listening on $VSOCK_SOCKET, forwarding to $WAYPIPE_SOCKET" >&2
-                  exec socat "UNIX-LISTEN:$VSOCK_SOCKET,fork" "UNIX-CONNECT:$WAYPIPE_SOCKET"
                 '';
               };
               # One supervised command: bridge + vfkit microvm. Agents and Machines

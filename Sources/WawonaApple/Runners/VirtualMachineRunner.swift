@@ -130,6 +130,14 @@ public final class WWNVirtualMachineRunner: NSObject {
             "[WWNVirtualMachineRunner] started microvm session machine=%@ pid=%d",
             machineId, task.processIdentifier
         )
+        // Guest pixels arrive as host Wayland clients; reveal the compositor surface.
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(
+                name: Notification.Name("WWNShowSessionSurfaceNotification"),
+                object: nil,
+                userInfo: ["machineId": machineId, "source": "microvm-session"]
+            )
+        }
         return true
         #else
         _ = profile
