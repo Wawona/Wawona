@@ -27,6 +27,8 @@ sizing and a large detent; phone keeps medium/large. iPadOS 13 remains supported
 The actual iPad Simulator page presentation was verified on 2026-10-02.
 
 Selected machine configuration goes immediately after identity/type, before
-Display/Input/Graphics. Native and shared editors use X Cancel and a blue
-checkmark Save. Actual iPad Simulator verified all six type selections, VM
-slider endpoints, wide sheet, Nix token colors, and Cancel/reopen reset.
+Display/Input/Graphics. Native and shared editors use
+`backport.editorChromeActions` (one X, one blue checkmark on
+`.topBarLeading` / `.topBarTrailing`). Never put custom SF Symbol buttons in
+`.cancellationAction` / `.confirmationAction` on iOS 26 (Liquid Glass doubles
+close/done).

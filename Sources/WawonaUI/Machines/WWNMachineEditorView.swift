@@ -421,7 +421,7 @@ struct WWNMachineEditorViewModern: View {
       }
       .navigationTitle(title)
       .wwnA11y(WWNA11y.machinesEditor, label: title)
-      .modifier(WWNEditorChromeToolbar(onCancel: dismiss, onSave: save))
+      .backport.editorChromeActions(onCancel: dismiss, onSave: save)
       .sheet(isPresented: $showEnvironmentEditor) {
         WawonaBackport<Any>.navigation {
           EnvironmentVariablesView(
@@ -466,39 +466,7 @@ struct WWNMachineEditorViewModern: View {
   }
 }
 
-// MARK: - Editor chrome (iOS 13: navigationBarItems; iOS 14+: toolbar)
-
-private struct WWNEditorChromeToolbar: ViewModifier {
-  let onCancel: () -> Void
-  let onSave: () -> Void
-
-  @ViewBuilder
-  func body(content: Content) -> some View {
-    if #available(iOS 14.0, tvOS 14.0, macOS 11.0, *) {
-      content.toolbar {
-        ToolbarItem(placement: .cancellationAction) {
-          Button("Cancel", action: onCancel)
-            .backport.glassToolbarButton()
-            .wwnA11y(WWNA11y.machinesEditorCancel, label: "Cancel")
-        }
-        ToolbarItem(placement: .confirmationAction) {
-          Button("Save", action: onSave)
-            .backport.glassProminentToolbarButton()
-            .wwnA11y(WWNA11y.machinesEditorSave, label: "Save")
-        }
-      }
-    } else {
-      #if os(iOS)
-      content.navigationBarItems(
-        leading: Button("Cancel", action: onCancel),
-        trailing: Button("Save", action: onSave)
-      )
-      #else
-      content
-      #endif
-    }
-  }
-}
+// MARK: - Nested env editor back (editor Cancel/Save: backport.editorChromeActions)
 
 private struct WWNEditorEnvBackToolbar: ViewModifier {
   let onBack: () -> Void

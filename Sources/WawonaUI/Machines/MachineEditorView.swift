@@ -492,21 +492,11 @@ struct MachineEditorView: View {
             .backport.dismissKeyboardOnScroll()
             #endif
             .wwnA11y(WawonaA11y.machinesEditor, label: editorNavigationTitle)
-            .backport.navigationActions(trailingIsPrimary: false, leading: {
-                    WawonaButton { dismiss() } label: {
-                        Image(systemName: "xmark").font(.body.weight(.semibold))
-                            .frame(width: 44, height: 44)
-                    }
-                        .backport.glassToolbarButton()
-                        .wwnA11y(WawonaA11y.machinesEditorCancel, label: "Cancel")
-                }, trailing: {
-                    WawonaButton(action: save) {
-                        Image(systemName: "checkmark").font(.body.weight(.semibold))
-                    }
-                        .backport.blueGlassCircleButton(size: 44)
-                        .disabled(hasValidationIssues)
-                        .wwnA11y(WawonaA11y.machinesEditorSave, label: "Save")
-                })
+            .backport.editorChromeActions(
+                saveDisabled: hasValidationIssues,
+                onCancel: dismiss,
+                onSave: save
+            )
             .sheet(isPresented: $showingImageBrowser) {
                 ContainerImagesView { ref in
                     containerRef = ref

@@ -24,6 +24,8 @@ Hard rejects:
 - `.buttonStyle(.glass)` on iOS 26 navigation toolbar items (glass-on-glass)
 - Custom glass search capsule on iPhone Machines when iOS 26 system
   `DefaultToolbarItem(kind: .search)` is available
+- Custom SF Symbol Cancel/Save in `.cancellationAction` /
+  `.confirmationAction` on iOS 26 (system also vends close/done)
 
 iPhone Machines bottom search: see skill `wawona-swiftui-backports` and
 `wwn-mcp/knowledge/wawona/ios-iphone-machines-messages-chrome.md`.

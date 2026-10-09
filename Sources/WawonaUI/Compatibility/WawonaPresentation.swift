@@ -99,6 +99,89 @@ extension WawonaBackport where Content: View {
             #endif
         }
     }
+
+    /// Per-machine Add/Edit sheet chrome. One leading X, one trailing checkmark.
+    /// Do **not** use `.cancellationAction` / `.confirmationAction` with custom
+    /// SF Symbols on iOS 26: Liquid Glass also vends system close/done there,
+    /// which doubles the buttons.
+    @ViewBuilder
+    @MainActor
+    func editorChromeActions(
+        saveDisabled: Bool = false,
+        onCancel: @escaping () -> Void,
+        onSave: @escaping () -> Void
+    ) -> some View {
+        if #available(iOS 14.0, tvOS 14.0, watchOS 7.0, macOS 11.0, *) {
+            #if os(macOS) || os(tvOS)
+            content.toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel", action: onCancel)
+                        .accessibility(identifier: "wwn.machines.editor.cancel")
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save", action: onSave)
+                        .disabled(saveDisabled)
+                        .accessibility(identifier: "wwn.machines.editor.save")
+                }
+            }
+            #elseif os(iOS) || os(visionOS)
+            content.toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(action: onCancel) {
+                        Image(systemName: "xmark")
+                            .font(.body.weight(.semibold))
+                    }
+                    .accessibilityLabel("Cancel")
+                    .accessibility(identifier: "wwn.machines.editor.cancel")
+                }
+                if #available(iOS 26.0, visionOS 26.0, *) {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button(action: onSave) {
+                            Image(systemName: "checkmark")
+                                .font(.body.weight(.semibold))
+                        }
+                        .buttonStyle(.glassProminent)
+                        .tint(Color.accentColor)
+                        .disabled(saveDisabled)
+                        .accessibilityLabel("Save")
+                        .accessibility(identifier: "wwn.machines.editor.save")
+                    }
+                    .sharedBackgroundVisibility(.hidden)
+                } else {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button(action: onSave) {
+                            Image(systemName: "checkmark")
+                                .font(.body.weight(.semibold))
+                        }
+                        .backport.glassProminentToolbarButton()
+                        .tint(Color.accentColor)
+                        .disabled(saveDisabled)
+                        .accessibilityLabel("Save")
+                        .accessibility(identifier: "wwn.machines.editor.save")
+                    }
+                }
+            }
+            #else
+            content
+            #endif
+        } else {
+            #if os(iOS)
+            content.navigationBarItems(
+                leading: Button(action: onCancel) {
+                    Image(systemName: "xmark")
+                }
+                .accessibilityLabel("Cancel"),
+                trailing: Button(action: onSave) {
+                    Image(systemName: "checkmark")
+                }
+                .disabled(saveDisabled)
+                .accessibilityLabel("Save")
+            )
+            #else
+            content
+            #endif
+        }
+    }
 }
 
 struct WawonaEmptyState: View {
