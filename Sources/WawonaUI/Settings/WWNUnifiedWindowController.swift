@@ -32,8 +32,7 @@ final class WWNUnifiedWindowController: NSObject {
         present()
     }
 
-    /// ⌘, / toolbar Settings: System Settings → Wawona (flattened panel).
-    /// Falls back to in-app sheet when the preference pane is missing.
+    /// ⌘, / toolbar Settings: in-app Global Settings sidebar catalog.
     @objc func showSettings() {
         router.showSettings()
         present()

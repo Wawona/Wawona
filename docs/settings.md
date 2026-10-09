@@ -21,43 +21,41 @@
 ## Global Settings exclusivity (one place per platform)
 
 Hard rule: `docs/agent-rules/wawona-global-settings-exclusive.md`. Exactly
-**one** Global Settings host per target. Prefer OS when product-usable. Never
-ship OS integration **and** an in-app Global Settings hub for the same catalog.
+**one** Global Settings host per target. That host is **inside the Wawona app**.
+Never PrefPane, Settings.bundle, Settings-Watch.bundle, or App Info Preferences.
 
 | Target / band | Sole Global Settings host |
 |---|---|
-| **macOS** | System Settings PrefPane only (`Wawona.prefPane`, suite `com.aspauldingcode.Wawona`) |
-| **iOS / iPadOS** | Settings.bundle only (`Settings > Apps > Wawona`) |
-| **watchOS prefs** | iPhone Watch app `Settings-Watch.bundle` (no on-watch Global Settings UI) |
-| **tvOS / visionOS** | In-app Global Settings only (no Settings.bundle / PrefPane) |
-| **Android** (Play / typical sideload) | In-app Compose only; App Info → Preferences via `APPLICATION_PREFERENCES` |
-| **Android** when OS inject is product-usable | System Settings only; remove Compose hub on that band |
+| **macOS** | In-app Machines sidebar catalog |
+| **iOS / iPadOS** | In-app Machines sidebar catalog |
+| **watchOS prefs** | In-app `WatchGlobalSettingsView` on the wrist |
+| **tvOS / visionOS** | In-app Machines sidebar catalog |
+| **Android** | In-app Compose `SettingsDialog` |
+| **Linux** | In-app libadwaita settings dialog |
 
 Schema authority: Rust `settings_catalog` + Swift `GlobalSettingsCatalog` +
-`wawona.pref.*`. Reject invented keys (`wawona_sync_interval`, …) and
-`group.com.wawona.global`.
+`wawona.pref.*`. Storage is the app container (`UserDefaults.standard` /
+SharedPreferences). Reject invented keys (`wawona_sync_interval`, …) and
+`group.com.wawona.global`. Never a PrefPane suite.
 
-Not Global Settings (may stay in-app): Machines editors; sidebar **Desktop** /
-**About** / **Dependencies**; one-shot actions (Watch send, import, log copy).
-Those must not re-host Display / Input / Graphics catalog toggles.
+Not a second Global Settings hub: Machines editors; one-shot actions (Watch
+send, import, log copy). Desktop / About / Dependencies stay in the same
+in-app catalog via `visibleSections`.
 
 ## UI surfaces (Apple / Android)
 
 | Layer | UI | Entry points |
 |-------|-----|--------------|
-| **Global Wawona Settings** | **One host per platform** (table above). Catalog from `GlobalSettingsCatalog` / Rust `settings_catalog`. macOS PrefPane uses SwiftUI Form + `WawonaSettingsHubChrome`. iOS Settings.bundle uses Apple plist chrome. Android Compose `SettingsDialog`. tvOS/visionOS in-app panel only | macOS: `x-apple.systempreferences:com.aspauldingcode.Wawona.prefPane`. iOS: Settings.app. Android: in-app or App Info Preferences. Watch: iPhone Watch app. tvOS/visionOS: in-app |
+| **Global Wawona Settings** | **One in-app host per platform** (table above). Catalog from `GlobalSettingsCatalog` / Rust `settings_catalog`. Apple: Machines sidebar + `WWNSettingsSectionView`. Android: Compose `SettingsDialog`. Linux: libadwaita dialog | macOS `⌘,` / menubar / toolbar Settings. iOS toolbar Settings. Watch sheet from Machines. Android in-app gear. Never System Settings or Settings.app |
 | **Machine profiles + overrides** | SwiftUI (`MachineEditorView` via `MachineEditorValidation`, `MachineSettingsView`) | Add / swipe **Edit** = identity editor; **Machine Settings** = per-machine overrides |
 
 Global Settings sections are declared in `WawonaUIContracts.GlobalSettingsCatalog`.
-iOS includes **Apple Watch** companion document transfer keys in Settings.bundle
-where possible (WatchConnectivity send-side). Catalog sections include Display
-(Enable HDR), Machines (shake / swipe / tvOS Menu), iCloud Sync (Apple; omit on
-tvOS, iCloud Drive is unavailable), Local Shell (three buttons; PrefPane /
-in-app actions only where plist cannot host), Dependencies (sidebar / PrefPane
-About path), plus Input / Graphics / Env Vars / Waypipe / SSH / About.
-watchOS omits Desktop (forbidden), Local Shell, and Apple Watch send UI.
-Watch globals live in Settings-Watch.bundle on the iPhone companion. Same
-`wawona.pref.*` keys.
+iOS includes **Apple Watch** companion document transfer actions (WatchConnectivity
+send-side) in the in-app catalog. Catalog sections include Display (Enable HDR),
+Machines (shake / swipe / tvOS Menu), iCloud Sync (Apple; omit on tvOS), Local
+Shell, Dependencies, plus Input / Graphics / Env Vars / Waypipe / SSH / About.
+watchOS omits Desktop (forbidden), Local Shell, and Apple Watch send UI. Watch
+globals are edited on the wrist. Same `wawona.pref.*` keys.
 
 ### Settings row layout
 
@@ -87,10 +85,11 @@ Auto Scale (`AutoScale`) and DMABUF (`DmabufEnabled`) stay on internally. They h
 
 ---
 
-## Apple Watch (iOS send-side)
+## Apple Watch
 
-Watch **Global Settings** live in `Settings-Watch.bundle` (iPhone Watch app →
-My Watch → Wawona). The wrist app shows a redirect only. Not a second catalog.
+Watch **Global Settings** live in the wrist app (`WatchGlobalSettingsView`).
+iPhone **Apple Watch** catalog section is companion document transfer only
+(WatchConnectivity send-side), not a second Watch prefs host.
 
 Companion documents for the paired Watch ([#151](https://github.com/Wawona/Wawona/issues/151)).
 Transport is **WatchConnectivity** (`WCSession.transferFile`). Not SFTP on the

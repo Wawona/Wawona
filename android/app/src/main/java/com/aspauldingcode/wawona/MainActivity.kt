@@ -187,9 +187,6 @@ class MainActivity : ComponentActivity(), SurfaceHolder.Callback {
         if (isHomeIntent) {
             HomeIntentBus.signalHome()
         }
-        if (intent.action == android.content.Intent.ACTION_APPLICATION_PREFERENCES) {
-            PreferencesIntentBus.signalOpen()
-        }
         handleNestedWlClientIntent(intent)
     }
 
@@ -394,18 +391,7 @@ fun WawonaApp(
     // by the listener once it sees the matching change.
     var suppressNextClipboardChange by remember { mutableStateOf(false) }
     var nativeRuntimeReady by remember { mutableStateOf(false) }
-    var showSettingsDialog by remember {
-        mutableStateOf(
-            (surfaceCallback as? MainActivity)?.intent?.action ==
-                android.content.Intent.ACTION_APPLICATION_PREFERENCES
-        )
-    }
-    val preferencesTick by PreferencesIntentBus.openTick
-    LaunchedEffect(preferencesTick) {
-        if (preferencesTick > 0) {
-            showSettingsDialog = true
-        }
-    }
+    var showSettingsDialog by remember { mutableStateOf(false) }
     var thumbnailRevision by remember { mutableIntStateOf(0) }
     var surfaceViewRef by remember { mutableStateOf<WawonaSurfaceView?>(null) }
     var keyboardUiMode by remember { mutableStateOf(KeyboardUiMode.ACCESSORY_ONLY) }

@@ -156,10 +156,8 @@ final class WawonaMenuBarController: NSObject, NSMenuDelegate {
     }
 
     @objc private func openSettings() {
-        // PrefPane only. Never spawn Regular UI as a Settings duplicate.
-        if let url = URL(string: "x-apple.systempreferences:com.aspauldingcode.Wawona.prefPane") {
-            _ = NSWorkspace.shared.open(url)
-        }
+        // Activate Regular UI on the in-app Global Settings catalog.
+        WawonaLaunchMode.openOrActivateUI(arguments: ["--show-settings"])
     }
 
     @objc private func openMachines() {

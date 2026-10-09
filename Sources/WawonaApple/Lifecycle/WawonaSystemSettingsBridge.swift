@@ -2,14 +2,16 @@
 import AppKit
 import Foundation
 
-/// ObjC trampoline into System Settings → Wawona PrefPane.
-/// PrefPane is the sole Global Settings host (no in-app catalog fallback).
+/// ObjC trampoline into in-app Global Settings (Machines sidebar catalog).
 @objc(WawonaSystemSettings)
 public final class WawonaSystemSettingsBridge: NSObject {
     @objc public static func openPreferencePane() {
-        if let url = URL(string: "x-apple.systempreferences:com.aspauldingcode.Wawona.prefPane") {
-            _ = NSWorkspace.shared.open(url)
+        if let controller = NSClassFromString("WWNUnifiedWindowController") as AnyObject?,
+           controller.responds(to: Selector(("showSettings"))) {
+            _ = controller.perform(Selector(("showSettings")))
+            return
         }
+        WawonaLaunchMode.openOrActivateUI(arguments: ["--show-settings"])
     }
 }
 #endif

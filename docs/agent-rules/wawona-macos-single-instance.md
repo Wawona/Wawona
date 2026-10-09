@@ -16,12 +16,14 @@ Locks live under `/tmp/wawona-$UID/`. A second Regular UI launch must
 `createsNewApplicationInstance = false`) and exit. Never `open -n`, never
 `NSTask`/`Process` of `Contents/MacOS/Wawona` for Settings.
 
-Agents must not open Machines `WindowGroup`. Settings from the menubar opens
-System Settings → Wawona (`x-apple.systempreferences:com.aspauldingcode.Wawona.prefPane`).
+Agents must not open Machines `WindowGroup`. Settings from the menubar
+activates the existing Regular UI on the in-app Global Settings catalog
+(`--show-settings` / `WWNReopenUINotification` panel `settings`).
 
 ## Hard rejects
 
 - Ignoring `--compositor-host` / `--menubar` (full UI per LaunchAgent)
-- PrefPane or menubar spawning a second Regular UI with argv
+- Menubar spawning a second Regular UI with `open -n` / NSTask
 - Unlinking `instance.lock` while a GUI may still be alive (new inode)
 - Restoring ObjC `src/platform/macos/main.m` as a second `@main`
+- Opening System Settings PrefPane for Global Settings

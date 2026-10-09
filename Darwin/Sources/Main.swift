@@ -48,15 +48,12 @@ enum WawonaProcessEntry {
             if !WawonaLaunchLockState.acquireUIInstance() {
                 let panel = showSettings ? "settings" : "machines"
                 WawonaLaunchMode.activateExistingUI(panel: panel)
-                if showSettings {
-                    openSystemSettingsPane(section: settingsSection)
-                }
                 return
             }
             if showSettings {
                 // Defer until after AppKit is up; still only one UI instance.
                 DispatchQueue.main.async {
-                    openSystemSettingsPane(section: settingsSection)
+                    openInAppSettings(section: settingsSection)
                 }
             }
             AppMain.main()
@@ -78,10 +75,16 @@ enum WawonaProcessEntry {
     }
 
     #if os(macOS)
-    private static func openSystemSettingsPane(section: String?) {
-        _ = section
-        if let url = URL(string: "x-apple.systempreferences:com.aspauldingcode.Wawona.prefPane") {
-            NSWorkspace.shared.open(url)
+    static func openInAppSettings(section: String?) {
+        if let section, !section.isEmpty,
+           let controller = NSClassFromString("WWNUnifiedWindowController") as AnyObject?,
+           controller.responds(to: Selector(("selectSectionWithTitle:"))) {
+            _ = controller.perform(Selector(("selectSectionWithTitle:")), with: section)
+            return
+        }
+        if let controller = NSClassFromString("WWNUnifiedWindowController") as AnyObject?,
+           controller.responds(to: Selector(("showSettings"))) {
+            _ = controller.perform(Selector(("showSettings")))
         }
     }
     #endif
@@ -103,11 +106,7 @@ struct AppMain: App {
         .commands {
             CommandGroup(replacing: .appSettings) {
                 Button("Settings…") {
-                    if let url = URL(
-                        string: "x-apple.systempreferences:com.aspauldingcode.Wawona.prefPane"
-                    ) {
-                        _ = NSWorkspace.shared.open(url)
-                    }
+                    WawonaProcessEntry.openInAppSettings(section: nil)
                 }
                 .keyboardShortcut(",", modifiers: .command)
             }
@@ -254,11 +253,7 @@ final class AppMainDelegate: NSObject, AppMainDelegateBase {
             let panel = (note.userInfo?["panel"] as? String) ?? "machines"
             NSApp.activate(ignoringOtherApps: true)
             if panel == "settings" {
-                if let url = URL(
-                    string: "x-apple.systempreferences:com.aspauldingcode.Wawona.prefPane"
-                ) {
-                    NSWorkspace.shared.open(url)
-                }
+                WawonaProcessEntry.openInAppSettings(section: nil)
             }
             for window in NSApp.windows where window.isVisible == false {
                 window.makeKeyAndOrderFront(nil)

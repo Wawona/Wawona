@@ -103,14 +103,5 @@ enum WWNPreferencesInternal {
 }
 
 public func WWNSharedUserDefaults() -> UserDefaults {
-    #if WWN_PREFPANE
-    struct Suite {
-        static let instance: UserDefaults = {
-            UserDefaults(suiteName: "com.aspauldingcode.Wawona") ?? .standard
-        }()
-    }
-    return Suite.instance
-    #else
-    return .standard
-    #endif
+    .standard
 }

@@ -175,15 +175,10 @@ install_for_user() {
   as_user launchctl setenv XDG_RUNTIME_DIR "$runtime_dir" || true
   as_user launchctl setenv WAYLAND_DISPLAY wayland-0 || true
 
-  PANE_SRC="/Applications/Wawona.app/Contents/Resources/PreferencePanes/Wawona.prefPane"
-  if [[ -d "$PANE_SRC" ]]; then
-    home="$(dscl . -read "/Users/$user" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
-    if [[ -n "$home" ]]; then
-      mkdir -p "$home/Library/PreferencePanes"
-      rm -rf "$home/Library/PreferencePanes/Wawona.prefPane"
-      ditto "$PANE_SRC" "$home/Library/PreferencePanes/Wawona.prefPane"
-      chown -R "$user" "$home/Library/PreferencePanes/Wawona.prefPane" || true
-    fi
+  # Global Settings are in-app only. Remove stale PrefPane from prior installs.
+  home="$(dscl . -read "/Users/$user" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
+  if [[ -n "$home" ]]; then
+    rm -rf "$home/Library/PreferencePanes/Wawona.prefPane"
   fi
 
   echo "Wawona LaunchAgents installed for $user:"
@@ -192,15 +187,8 @@ install_for_user() {
   echo "  Published: XDG_RUNTIME_DIR=$runtime_dir WAYLAND_DISPLAY=wayland-0"
 }
 
-PANE_SRC="/Applications/Wawona.app/Contents/Resources/PreferencePanes/Wawona.prefPane"
-if [[ -d "$PANE_SRC" ]]; then
-  mkdir -p /Library/PreferencePanes
-  rm -rf /Library/PreferencePanes/Wawona.prefPane
-  ditto "$PANE_SRC" /Library/PreferencePanes/Wawona.prefPane
-  echo "Installed System Settings pane: /Library/PreferencePanes/Wawona.prefPane"
-else
-  echo "warning: Wawona.prefPane missing in app bundle" >&2
-fi
+rm -rf /Library/PreferencePanes/Wawona.prefPane
+rm -rf /Applications/Wawona.app/Contents/Resources/PreferencePanes
 
 if [[ -x "$APP_EXEC" ]]; then
   echo "Staging Desktop Replacement helper (no Take Over)..."

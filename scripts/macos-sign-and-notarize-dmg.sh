@@ -299,7 +299,7 @@ if [[ -n "$PKG" ]]; then
 fi
 
 # DMG volume is pkg + README only. Never ship a loose Wawona.app or
-# Applications symlink (drag-install skips LaunchAgents / PrefPane / helper).
+# Applications symlink (drag-install skips LaunchAgents / helper).
 if [[ -d "$STAGING" ]]; then
   rm -rf "$STAGING/Wawona.app" "$STAGING/Applications"
   if [[ ! -f "$STAGING/README.txt" ]]; then

@@ -1,6 +1,6 @@
 ---
 name: wawona-global-settings-exclusive
-description: Exactly one Global Wawona Settings host per platform. Prefer OS Settings when product-usable. Never dual OS + in-app hubs.
+description: Exactly one Global Wawona Settings host per platform. In-app only. Never OS PrefPane / Settings.bundle / App Info Preferences.
 ---
 
 # Global Settings exclusivity
@@ -10,14 +10,15 @@ Open the rule: `wawona-global-settings-exclusive` /
 
 ## Do
 
-- macOS → PrefPane only
-- iOS / iPadOS → Settings.bundle only
-- Watch prefs → Settings-Watch.bundle on iPhone Watch app
-- tvOS / visionOS → in-app only
-- Android Play → Compose + `APPLICATION_PREFERENCES` only (until OS inject is product-usable)
+- macOS / iOS / iPadOS / tvOS / visionOS → in-app Machines sidebar catalog
+- watchOS → in-app `WatchGlobalSettingsView`
+- Android → Compose `SettingsDialog` only
+- Linux → in-app libadwaita dialog
+- Store prefs in the app container (`UserDefaults.standard` / SharedPreferences)
 
 ## Hard rejects
 
-- In-app Global Settings **and** PrefPane / Settings.bundle on same target
-- PrefPane missing → full in-app duplicate catalog
+- PrefPane / Settings.bundle / Settings-Watch.bundle
+- System Settings or Settings.app as the Settings entry
+- `APPLICATION_PREFERENCES` as a second host
 - Gemini toy keys / `group.com.wawona.global`

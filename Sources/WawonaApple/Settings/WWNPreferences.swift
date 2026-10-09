@@ -36,9 +36,10 @@ public final class WWNPreferences: NSObject {
     public func showPreferences(_ sender: Any?) {
         _ = sender
         NSApp.activate(ignoringOtherApps: true)
-        // PrefPane is the sole Global Settings host. No in-app catalog fallback.
-        if let url = URL(string: "x-apple.systempreferences:com.aspauldingcode.Wawona.prefPane") {
-            _ = NSWorkspace.shared.open(url)
+        // In-app sidebar is the sole Global Settings host.
+        if let controller = NSClassFromString("WWNUnifiedWindowController") as AnyObject?,
+           controller.responds(to: Selector(("showSettings"))) {
+            _ = controller.perform(Selector(("showSettings")))
         }
     }
 
@@ -75,21 +76,11 @@ public final class WWNPreferences: NSObject {
     @objc(showPreferences:)
     public func showPreferences(_ sender: Any?) {
         _ = sender
-        #if os(iOS)
-        // Settings.bundle is the sole Global Settings host on iPhone / iPad.
-        // UIApplication.openSettingsURLString opens Settings > Apps > Wawona
-        // when Settings.bundle is present (inlined Root.plist). Never App-Prefs.
-        if let url = URL(string: UIApplication.openSettingsURLString),
-           UIApplication.shared.canOpenURL(url) {
-            UIApplication.shared.open(url, options: [:], completionHandler: nil)
-        }
-        #else
-        // tvOS / visionOS: in-app Global Settings only (no Settings.bundle).
+        // In-app sidebar / panel is the sole Global Settings host.
         NotificationCenter.default.post(
             name: Notification.Name("wawonaOpenInAppGlobalSettingsPanel"),
             object: nil
         )
-        #endif
     }
 
     @objc public func selectSectionWithTitle(_ title: String) {

@@ -5,16 +5,11 @@ import AppKit
 import UIKit
 #endif
 
-/// Shared System Settings look for Wawona Global Settings hubs.
+/// Shared Settings look for Wawona Global Settings hubs.
 ///
-/// Targets the same visual language as:
-/// - iOS Settings.app rows (colored rounded icon tile + title + caption)
-/// - macOS System Settings → General hub (`GeneralSettings.appex` subpane list)
-///
-/// Used by the macOS PrefPane and the tvOS/visionOS in-app Global Settings
-/// panel. iOS/iPadOS Global Settings use Settings.bundle (Apple plist chrome).
-/// Never ship PrefPane or Settings.bundle beside a second in-app Global
-/// Settings hub (`wawona-global-settings-exclusive`).
+/// Targets the same visual language as Settings.app rows (colored rounded
+/// icon tile + title). Used by in-app Global Settings chrome. OS PrefPane /
+/// Settings.bundle hosts are retired (`wawona-global-settings-exclusive`).
 public enum WawonaSettingsHubChrome {
     public static let iconTileSize: CGFloat = 29
     public static let iconTileCorner: CGFloat = 7

@@ -1,80 +1,98 @@
 #!/usr/bin/env python3
-"""Assert Settings.bundle Keys stay in Wawona namespaces (not Gemini toys).
+"""Assert Global Settings stay in-app only (no OS Settings hosts).
 
-Also asserts WawonaGlobalSettingsPanelView is tvOS/visionOS-only so macOS/iOS
-do not ship a second Global Settings host beside PrefPane / Settings.bundle.
+Fails if Settings.bundle, Settings-Watch.bundle, PrefPane sources, or
+System Settings / Settings.app openers remain as the settings entry.
 """
 from __future__ import annotations
 
-import plistlib
 import re
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-BUNDLE = ROOT / "src" / "resources" / "Settings.bundle"
-WATCH_BUNDLE = ROOT / "src" / "resources" / "Settings-Watch.bundle"
 
-FORBIDDEN_PREFIXES = (
-    "wawona_sync_",
-    "wawona_dark_",
-    "wawona_api_",
-    "group.com.wawona",
-)
+FORBIDDEN_PATHS = [
+    ROOT / "src" / "resources" / "Settings.bundle",
+    ROOT / "src" / "resources" / "Settings-Watch.bundle",
+    ROOT / "Sources" / "WawonaApple" / "Lifecycle" / "WawonaPrefPaneRootView.swift",
+    ROOT / "Sources" / "WawonaApple" / "Lifecycle" / "WawonaSystemPreferencePane.swift",
+    ROOT / "Sources" / "WawonaApple" / "Lifecycle" / "PrefPaneEnvironmentVariablesView.swift",
+    ROOT / "Sources" / "WawonaApple" / "Lifecycle" / "WawonaPrefPaneStubs.swift",
+    ROOT / "src" / "platform" / "macos" / "ui" / "Settings" / "PrefPane",
+]
 
-# Legacy camelCase or dotted wawona.pref.* / wawona.*
-KEY_RE = re.compile(r"^(?:[A-Za-z][A-Za-z0-9]*|wawona(?:\.[A-Za-z0-9_]+)+)$")
+# Product entry points must not hand Global Settings to OS Settings.
+SCAN_FILES = [
+    ROOT / "Sources" / "WawonaUI" / "Settings" / "PlatformGlobalSettings.swift",
+    ROOT / "Sources" / "WawonaUI" / "Settings" / "WawonaSystemSettings.swift",
+    ROOT / "Sources" / "WawonaApple" / "Settings" / "WWNPreferences.swift",
+    ROOT / "Sources" / "WawonaApple" / "Lifecycle" / "WawonaMenuBarController.swift",
+    ROOT / "Sources" / "WawonaApple" / "Lifecycle" / "WawonaSystemSettingsBridge.swift",
+    ROOT / "Darwin" / "Sources" / "Main.swift",
+    ROOT / "android" / "app" / "src" / "main" / "AndroidManifest.xml",
+]
 
-
-def collect_keys(plist_path: Path) -> list[str]:
-    with plist_path.open("rb") as fh:
-        data = plistlib.load(fh)
-    keys: list[str] = []
-    for spec in data.get("PreferenceSpecifiers", []):
-        key = spec.get("Key")
-        if key:
-            keys.append(str(key))
-        child = spec.get("File")
-        if child:
-            child_path = plist_path.parent / f"{child}.plist"
-            if child_path.is_file():
-                keys.extend(collect_keys(child_path))
-    return keys
-
-
-def key_ok(key: str) -> bool:
-    if any(key.startswith(p) for p in FORBIDDEN_PREFIXES):
-        return False
-    return bool(KEY_RE.match(key))
+FORBIDDEN_SNIPPETS = [
+    "x-apple.systempreferences:com.aspauldingcode.Wawona.prefPane",
+    "UIApplication.openSettingsURLString",
+    "ACTION_APPLICATION_PREFERENCES",
+    "WWN_PREFPANE",
+]
 
 
 def main() -> int:
     errors: list[str] = []
-    for bundle in (BUNDLE, WATCH_BUNDLE):
-        root = bundle / "Root.plist"
-        if not root.is_file():
-            if bundle == BUNDLE:
-                errors.append(f"missing {root}")
-            continue
-        keys = collect_keys(root)
-        if bundle == BUNDLE and not keys:
-            errors.append(f"no Keys in {bundle}")
-        for key in keys:
-            if not key_ok(key):
-                errors.append(f"{bundle.name}: unknown or forbidden Key {key!r}")
 
-    panel = ROOT / "Sources" / "WawonaUI" / "Settings" / "WawonaGlobalSettingsPanelView.swift"
-    text = panel.read_text(encoding="utf-8")
-    if "#if !SWIFT_PACKAGE && (os(tvOS) || os(visionOS))" not in text:
+    for path in FORBIDDEN_PATHS:
+        if path.exists():
+            errors.append(f"retired OS Settings host still present: {path.relative_to(ROOT)}")
+
+    xcodegen = ROOT / "dependencies" / "generators" / "xcodegen.nix"
+    xtext = xcodegen.read_text(encoding="utf-8")
+    for needle in (
+        "Wawona-PrefPane",
+        "Settings.bundle",
+        "Settings-Watch.bundle",
+        "WWN_PREFPANE",
+        "Bundle Preference Pane",
+    ):
+        if needle in xtext:
+            errors.append(f"xcodegen.nix still references {needle!r}")
+
+    for path in SCAN_FILES:
+        if not path.is_file():
+            errors.append(f"missing scan target {path.relative_to(ROOT)}")
+            continue
+        text = path.read_text(encoding="utf-8")
+        for snippet in FORBIDDEN_SNIPPETS:
+            if snippet in text:
+                errors.append(f"{path.relative_to(ROOT)}: forbidden {snippet!r}")
+
+    # Sidebar must host the full catalog, not the three-row About subset.
+    main_window = (
+        ROOT / "Sources" / "WawonaUI" / "WawonaMainWindowView.swift"
+    ).read_text(encoding="utf-8")
+    if "GlobalSettingsCatalog.visibleSections" not in main_window:
         errors.append(
-            "WawonaGlobalSettingsPanelView.swift must open with "
-            "#if !SWIFT_PACKAGE && (os(tvOS) || os(visionOS))"
+            "WawonaMainWindowView.swift must use GlobalSettingsCatalog.visibleSections "
+            "for in-app Global Settings"
         )
-    if "wawonaOpenInAppGlobalSettingsPanel" in (
-        ROOT / "Sources" / "WawonaUI" / "Settings" / "WawonaSystemSettings.swift"
-    ).read_text(encoding="utf-8"):
+    if re.search(
+        r"catalogSections:.*appSidebarSections",
+        main_window,
+        re.DOTALL,
+    ):
         errors.append(
-            "WawonaSystemSettings.swift must not post in-app Global Settings fallback"
+            "WawonaMainWindowView catalogSections must not use appSidebarSections"
+        )
+
+    watch = (
+        ROOT / "Sources" / "WawonaWatch" / "WatchKitGlobalSettings.swift"
+    ).read_text(encoding="utf-8")
+    if "iPhone Watch app" in watch and "Toggle(" not in watch:
+        errors.append(
+            "WatchKitGlobalSettings.swift must host an in-app catalog, not a redirect"
         )
 
     if errors:
@@ -82,7 +100,7 @@ def main() -> int:
         for err in errors:
             print(f"  {err}", file=sys.stderr)
         return 1
-    print(f"verify-settings-bundle-keys: OK ({len(collect_keys(BUNDLE / 'Root.plist'))} iOS keys)")
+    print("verify-settings-bundle-keys: OK (in-app Global Settings only)")
     return 0
 
 

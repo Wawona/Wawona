@@ -35,16 +35,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
             <!--
-              App Info → Preferences. Sole Global Settings entry from system UI
-              while Compose SettingsDialog remains the only Global Settings host
-              (Play/sideload: SettingsPreferenceService discovery is not
-              product-usable). Never dual OS Settings inject + Compose hub.
-            -->
-            <intent-filter>
-                <action android:name="android.intent.action.APPLICATION_PREFERENCES" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-            <!--
               Desktop Replacement: lets the user choose Wawona as the device HOME
               app (Android Launcher). Wawona then presents a Wayland desktop plus
               an app drawer of Android apps and configured Wayland clients.

@@ -1,53 +1,56 @@
 # Global Settings exclusivity
 
-Exactly **one** Global Wawona Settings interface per platform target
-(further split by OS version only when the out-of-app API is
-**product-usable** on that version and install channel).
+Exactly **one** Global Wawona Settings interface per platform target. That host
+is **inside the Wawona app**. The user never leaves the app for Global Settings.
 
-Prefer OS System Settings / PrefPane / Settings.bundle / Watch app Settings
-whenever that path can host the global catalog. In-app Global Settings exists
-**only** when the OS path is unavailable or not product-usable.
-
-**Product-usable** means the user can open and edit Wawona globals in the OS
-Settings UI for that artifact. An SDK class existing is not enough (Android 16
-`SettingsPreferenceService` discovery is system-app-only for Play/sideload).
+OS System Settings, PrefPane, Settings.bundle, Settings-Watch.bundle, and
+Android App Info Preferences are **retired** as Global Settings hosts. Do not
+rebuild them.
 
 ## Matrix
 
 | Target / band | Sole Global Settings host |
 |---|---|
-| macOS | System Settings PrefPane (`com.aspauldingcode.Wawona.prefPane`) |
-| iOS / iPadOS | Settings.bundle (`Settings > Apps > Wawona`) |
-| watchOS prefs | iPhone Watch app `Settings-Watch.bundle` |
-| tvOS / visionOS | In-app only |
-| Android (Play / typical sideload today) | In-app Compose + `APPLICATION_PREFERENCES` |
-| Android when OS inject is product-usable | System Settings only; remove Compose hub on that band |
+| macOS | In-app Machines sidebar catalog (`WWNSettingsSectionView`) |
+| iOS / iPadOS | In-app Machines sidebar catalog |
+| watchOS | In-app `WatchGlobalSettingsView` on the wrist |
+| tvOS / visionOS | In-app Machines sidebar catalog |
+| Android | In-app Compose `SettingsDialog` |
+| Linux | In-app libadwaita settings dialog |
+
+Storage is the **app container**: `UserDefaults.standard` on Apple,
+app `SharedPreferences` on Android. Never a PrefPane suite
+(`com.aspauldingcode.Wawona`) and never `group.com.wawona.global`.
 
 ## Schema
 
 Rust `settings_catalog` + Swift `GlobalSettingsCatalog` + `wawona.pref.*`.
-Suite for PrefPane sync: `com.aspauldingcode.Wawona`. Never invent Gemini toy
-keys or `group.com.wawona.global`.
+Never invent Gemini toy keys.
 
-## Not Global Settings (may stay in-app)
+## Not Global Settings (may stay separate)
 
-Machine editors, sidebar Desktop / About / Dependencies, and one-shot actions
-(Watch send, import, log copy). They must **not** re-host Display / Input /
-Graphics / Env Vars catalog toggles under a second "Wawona Settings" hub.
+Machine editors, one-shot actions (Watch send, import, log copy). They must
+**not** become a second Global Settings hub with a different Display / Input
+catalog.
 
-Env Vars: macOS PrefPane hosts the editor. iOS: Settings.bundle for simple
-keys; complex table editors are Machines/About actions, not a second Global
-Settings hub.
+Sidebar Destinations may still list Desktop / About / Dependencies as part of
+the same in-app catalog (`visibleSections`).
 
 ## Hard rejects
 
-- In-app Global Settings panel **and** PrefPane / Settings.bundle / system
-  Settings inject on the same target
-- PrefPane missing → fall back to a full in-app duplicate catalog
-- `SettingsPreferenceService` **and** Compose Settings hub as dual Global
-  Settings for the same API band
-- On-watch Global Settings UI when Settings-Watch.bundle owns Watch prefs
-- Desktop / Mode B / jailbreak copy in App Store Settings.bundle
+- PrefPane / `Settings.bundle` / `Settings-Watch.bundle` as a Global Settings host
+- `x-apple.systempreferences:…Wawona.prefPane` or `UIApplication.openSettingsURLString`
+  as the Settings entry
+- `ACTION_APPLICATION_PREFERENCES` / `SettingsPreferenceService` as a second host
+- Dual OS Settings inject **and** in-app Global Settings for the same catalog
+- Desktop / Mode B / jailbreak copy in any retired Settings.bundle
 
 Cursor rule: `.cursor/rules/wawona-global-settings-exclusive.mdc`.
 Product: `docs/settings.md`. RAG: `wwn-mcp/knowledge/wawona/global-settings-exclusive.md`.
+Verify: `Wawona/scripts/verify-settings-bundle-keys.py`.
+
+## History (do not revive)
+
+Introducing OS hosts: `8f2335a` (macOS PrefPane + iOS Settings.bundle),
+later Watch redirect / Settings-Watch.bundle, Android App Info Preferences.
+Superseded by in-app-only Global Settings.

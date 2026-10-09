@@ -117,7 +117,7 @@ enum WawonaLaunchMode: Equatable {
 
             UI:
               (default)               Machines window (single instance)
-              --show-settings         Open System Settings → Wawona
+              --show-settings         Open in-app Global Settings
               --settings-section=NAME Prefer a Settings section title
 
             Other:

@@ -191,7 +191,7 @@ public enum GlobalSettingsSectionID: String, Sendable, CaseIterable, Hashable {
         }
     }
 
-    /// Navigation / PrefPane section title. Sidebar stays on `title`.
+    /// Navigation / detail section title. Sidebar stays on `title`.
     public var detailTitle: String {
         switch self {
         case .desktop: return "Desktop Replacement"
@@ -323,8 +323,8 @@ public struct GlobalSettingsCatalog: Sendable {
         #endif
     }
 
-    /// Sections that stay in the in-app Machines sidebar (not the System
-    /// Settings / flattened global panel).
+    /// Legacy filter for Desktop / About / Dependencies only. Prefer
+    /// `visibleSections` for the sole in-app Global Settings host.
     public static let appSidebarSectionIDs: Set<GlobalSettingsSectionID> = [
         .desktop, .about, .dependencies,
     ]
@@ -336,18 +336,19 @@ public struct GlobalSettingsCatalog: Sendable {
         return fallbackVisibleSections(for: host)
     }
 
-    /// Desktop / About / Dependencies only (in-app sidebar).
+    /// Desktop / About / Dependencies subset. Global Settings uses
+    /// `visibleSections` in the Machines sidebar instead.
     public static func appSidebarSections(for host: GlobalSettingsHost) -> [GlobalSettingsSectionID] {
         visibleSections(for: host).filter { appSidebarSectionIDs.contains($0) }
     }
 
-    /// In-app / toolbar sheet (excludes Desktop / About / Dependencies).
+    /// Full catalog without Desktop / About / Dependencies. Prefer
+    /// `visibleSections` for the in-app host.
     public static func systemPanelSections(for host: GlobalSettingsHost) -> [GlobalSettingsSectionID] {
         visibleSections(for: host).filter { !appSidebarSectionIDs.contains($0) }
     }
 
-    /// System Settings → Wawona PrefPane root list. Full visible catalog
-    /// (includes Desktop / About / Dependencies). Same Rust section order.
+    /// Alias of `visibleSections` (retired PrefPane root list name).
     public static func systemSettingsPaneSections(for host: GlobalSettingsHost) -> [GlobalSettingsSectionID] {
         visibleSections(for: host)
     }

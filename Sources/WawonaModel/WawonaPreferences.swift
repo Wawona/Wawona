@@ -233,23 +233,37 @@ public final class WawonaPreferences: ObservableObject {
     /// Global environment overrides (`wawona.pref.environment.v1`). Absence of a key = inherit catalog/session default.
     @Published public var environmentOverrides: EnvironmentOverrideMap = [:]
 
-    /// macOS System Settings PrefPane and the app share this suite. PrefPane
-    /// bundle id is `com.aspauldingcode.Wawona.prefPane`, so `.standard` alone
-    /// would not see app writes (and Env Vars edits in the pane would vanish).
-    private let defaults: UserDefaults = {
-        #if os(macOS)
-        return UserDefaults(suiteName: "com.aspauldingcode.Wawona") ?? .standard
-        #else
-        return .standard
-        #endif
-    }()
+    /// App-container defaults only. PrefPane suite is retired; see
+    /// `migrateLegacySuiteDefaultsIfNeeded`.
+    private let defaults: UserDefaults = .standard
     private let keyPrefix = "wawona.pref."
+    private static let suiteMigratedKey = "wawona.pref.suiteMigratedToStandard.v1"
+    private static let legacySuiteName = "com.aspauldingcode.Wawona"
 
     public init() {
+        Self.migrateLegacySuiteDefaultsIfNeeded()
         load()
         if defaults.dictionary(forKey: "wawona.globalSettingsSnapshot.v1") == nil {
             recordGlobalSettingsSnapshot()
         }
+    }
+
+    /// One-shot copy from the old PrefPane suite into the app container when
+    /// the destination key is still unset. Idempotent via `suiteMigratedKey`.
+    private static func migrateLegacySuiteDefaultsIfNeeded() {
+        #if os(macOS)
+        let standard = UserDefaults.standard
+        guard !standard.bool(forKey: suiteMigratedKey) else { return }
+        defer { standard.set(true, forKey: suiteMigratedKey) }
+        guard let suite = UserDefaults(suiteName: legacySuiteName),
+              let domain = suite.persistentDomain(forName: legacySuiteName)
+        else { return }
+        for (key, value) in domain {
+            if standard.object(forKey: key) == nil {
+                standard.set(value, forKey: key)
+            }
+        }
+        #endif
     }
 
     public func load() {

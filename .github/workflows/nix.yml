@@ -205,7 +205,7 @@ jobs:
         run: python3 ./.github/scripts/verify-ssh-backends.py
       - name: Verify Wayland protocol manifest
         run: python3 ./.github/scripts/verify-wayland-protocol-manifest.py
-      - name: Verify Global Settings exclusivity / Settings.bundle keys
+      - name: Verify Global Settings exclusivity (in-app only)
         run: python3 ./scripts/verify-settings-bundle-keys.py
       - name: Verify Smithay coverage contract
         run: python3 ./.github/scripts/verify-smithay-coverage-contract.py

@@ -2300,20 +2300,13 @@
                             exit 1
                           fi
 
-                          pane_src="$app_dst/Contents/Resources/PreferencePanes/Wawona.prefPane"
-                          if [ ! -d "$pane_src" ]; then
-                            echo "Error: Wawona.prefPane missing in $app_dst" >&2
-                            exit 1
-                          fi
-                          mkdir -p "$HOME/Library/PreferencePanes"
+                          # Global Settings are in-app only. Drop any stale PrefPane
+                          # left by older installs so System Settings has no Wawona page.
                           rm -rf "$HOME/Library/PreferencePanes/Wawona.prefPane"
-                          /usr/bin/ditto "$pane_src" "$HOME/Library/PreferencePanes/Wawona.prefPane"
-                          echo "Installed System Settings pane: $HOME/Library/PreferencePanes/Wawona.prefPane"
                           if [ -w /Library/PreferencePanes ] || [ "$(id -u)" -eq 0 ]; then
                             rm -rf /Library/PreferencePanes/Wawona.prefPane
-                            /usr/bin/ditto "$pane_src" /Library/PreferencePanes/Wawona.prefPane
-                            echo "Installed system-wide pane: /Library/PreferencePanes/Wawona.prefPane"
                           fi
+                          rm -rf "$app_dst/Contents/Resources/PreferencePanes"
 
                           # Launch Services must not resolve `open -a Wawona` to a stale
                           # copy. Documents/ahaha 0.2.2 still linked pixman to a vanished
@@ -2979,6 +2972,17 @@
                     echo "wawona-microvm-session: timed out waiting for guest ready (''${READY_TIMEOUT}s)" >&2
                     exit 1
                   fi
+
+                  # Ask tip Wawona to mount the session Metal surface. Local NC
+                  # cannot cross process boundaries; flag + DistributedNotification
+                  # can. In-process client-count auto-reveal is the primary path
+                  # when Regular UI owns wayland-0.
+                  date +%s >"$WAWONA_RUNTIME/show-session-surface" || true
+                  if [ -x /usr/bin/swift ]; then
+                    /usr/bin/swift -e 'import Foundation; DistributedNotificationCenter.default().post(name: Notification.Name("WWNShowSessionSurfaceNotification"), object: nil, userInfo: ["source": "microvm-session-cli"])' \
+                      >/dev/null 2>&1 || true
+                  fi
+                  echo "[wawona-microvm-session] requested host session surface reveal" >&2
 
                   echo "[wawona-microvm-session] supervising (Ctrl-C or SIGTERM to stop)" >&2
                   # Block until either child exits; cleanup trap tears the other down.

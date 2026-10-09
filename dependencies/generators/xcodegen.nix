@@ -628,15 +628,7 @@ let
     "Wawona-visionOS"
   ];
 
-  schemesConfig = (lib.genAttrs appSchemeNames mkAppScheme) // {
-    Wawona-PrefPane = {
-      build = {
-        targets = {
-          Wawona-PrefPane = "all";
-        };
-      };
-    };
-  };
+  schemesConfig = lib.genAttrs appSchemeNames mkAppScheme;
 
   # Shared helper for iOS-family application targets (iOS, iPadOS, tvOS).
   mkAppleMobileTarget =
@@ -1502,7 +1494,6 @@ PLIST
           { path = "src/resources/app-bundle/PrivacyInfo.xcprivacy"; type = "file"; buildPhase = "resources"; }
           (settingsDepsResource "ios")
           helloWasiGuiResource
-          { path = "src/resources/Settings.bundle"; type = "folder"; buildPhase = "resources"; }
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
@@ -1743,7 +1734,6 @@ PLIST
           { path = "src/resources/app-bundle/PrivacyInfo.xcprivacy"; type = "file"; buildPhase = "resources"; }
           (settingsDepsResource "ipados")
           helloWasiGuiResource
-          { path = "src/resources/Settings.bundle"; type = "folder"; buildPhase = "resources"; }
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
@@ -2083,99 +2073,6 @@ PLIST
           { sdk = "GameController.framework"; }
         ];
       };
-      Wawona-PrefPane = {
-        type = "bundle";
-        platform = "macOS";
-        sources = [
-          # Flattened System Settings panel (mirrors global Settings catalog).
-          { path = "Sources/WawonaApple/Lifecycle/WawonaSystemPreferencePane.swift"; type = "file"; }
-          { path = "Sources/WawonaApple/Lifecycle/WawonaPrefPaneRootView.swift"; type = "file"; }
-          { path = "Sources/WawonaApple/Lifecycle/PrefPaneEnvironmentVariablesView.swift"; type = "file"; }
-          { path = "Sources/WawonaApple/Lifecycle/WawonaPrefPaneStubs.swift"; type = "file"; }
-          { path = "Sources/WawonaApple/Settings/PreferencesSectionsBuilder.swift"; type = "file"; }
-          { path = "Sources/WawonaApple/Settings/WWNSettingsModel.swift"; type = "file"; }
-          { path = "Sources/WawonaApple/Settings/WWNPreferenceKeys.swift"; type = "file"; }
-          { path = "src/platform/macos/ui/Settings/PrefPane/Info.plist"; type = "file"; buildPhase = "none"; }
-          { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; buildPhase = "resources"; }
-        ];
-        settings = {
-          base = {
-            INFOPLIST_FILE = "src/platform/macos/ui/Settings/PrefPane/Info.plist";
-            GENERATE_INFOPLIST_FILE = "NO";
-            # Bundle display name stays Wawona (Info.plist CFBundleName). Module
-            # must not collide with the macOS app's Wawona.swiftmodule.
-            PRODUCT_NAME = "Wawona";
-            PRODUCT_MODULE_NAME = "WawonaPrefPane";
-            PRODUCT_BUNDLE_IDENTIFIER = "com.aspauldingcode.Wawona.prefPane";
-            WRAPPER_EXTENSION = "prefPane";
-            MACH_O_TYPE = "mh_bundle";
-            SUPPORTED_PLATFORMS = "macosx";
-            SWIFT_OBJC_BRIDGING_HEADER = "src/platform/macos/ui/Settings/PrefPane/PrefPane-Bridging-Header.h";
-            SWIFT_INSTALL_OBJC_HEADER = "NO";
-            SWIFT_ACTIVE_COMPILATION_CONDITIONS = "WWN_PREFPANE";
-            CLANG_ENABLE_MODULES = "YES";
-            CODE_SIGNING_ALLOWED = "NO";
-            CODE_SIGNING_REQUIRED = "NO";
-            CODE_SIGN_STYLE = "Automatic";
-            COMBINE_HIDPI_IMAGES = "YES";
-            # PrefPane is dlopen'd by System Settings. @executable_path is
-            # System Settings.app, not this bundle. Always @loader_path.
-            LD_RUNPATH_SEARCH_PATHS = [
-              "@loader_path/../Frameworks"
-            ];
-            HEADER_SEARCH_PATHS = [
-              "$(inherited)"
-              "$(SRCROOT)/src"
-            ];
-            GCC_PREPROCESSOR_DEFINITIONS = [
-              "$(inherited)"
-              "WWN_PREFPANE=1"
-            ] ++ versionDefs;
-          };
-        };
-        dependencies = [
-          # System Settings loads this bundle alone (ViewBridge). Link +
-          # postCompile embed. xcodegen's embed=true does not create an
-          # Embed Frameworks phase for product-type bundle / prefPane.
-          { target = "WawonaUIContracts"; embed = false; }
-          { target = "WawonaModel"; embed = false; }
-          { sdk = "Cocoa.framework"; }
-          { sdk = "PreferencePanes.framework"; }
-          { sdk = "SwiftUI.framework"; }
-          { sdk = "Foundation.framework"; }
-          { sdk = "Network.framework"; }
-          { sdk = "Security.framework"; }
-        ];
-        # ViewBridge error 14 without Contents/Frameworks/{UIContracts,Model}.
-        postCompileScripts = [
-          {
-            name = "Embed PrefPane frameworks";
-            basedOnDependencyAnalysis = false;
-            script = ''
-              set -euo pipefail
-              BUNDLE="$BUILT_PRODUCTS_DIR/$FULL_PRODUCT_NAME"
-              FW_DST="$BUNDLE/Contents/Frameworks"
-              BIN="$BUNDLE/Contents/MacOS/Wawona"
-              mkdir -p "$FW_DST"
-              for fw in WawonaUIContracts WawonaModel; do
-                FW_SRC="$BUILT_PRODUCTS_DIR/$fw.framework"
-                if [ ! -d "$FW_SRC" ]; then
-                  echo "error: missing $FW_SRC (build $fw first)" >&2
-                  exit 1
-                fi
-                rm -rf "$FW_DST/$fw.framework"
-                ditto "$FW_SRC" "$FW_DST/$fw.framework"
-              done
-              if [ -f "$BIN" ]; then
-                if ! otool -l "$BIN" | grep -q '@loader_path/../Frameworks'; then
-                  install_name_tool -add_rpath '@loader_path/../Frameworks' "$BIN"
-                fi
-              fi
-              echo "Embedded WawonaUIContracts + WawonaModel into PrefPane"
-            '';
-          }
-        ];
-      };
       Wawona-macOS = {
         type = "application";
         platform = "macOS";
@@ -2206,23 +2103,6 @@ PLIST
         ];
         preBuildScripts = [ stampBuildNumberPhase macosPreBuild ];
         postBuildScripts = [
-          {
-            name = "Bundle Preference Pane";
-            basedOnDependencyAnalysis = false;
-            script = ''
-              PREF_SRC="$BUILT_PRODUCTS_DIR/Wawona.prefPane"
-              PREF_DST="$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/Resources/PreferencePanes/Wawona.prefPane"
-              if [ -d "$PREF_SRC" ]; then
-                mkdir -p "$(dirname "$PREF_DST")"
-                rm -rf "$PREF_DST"
-                ditto "$PREF_SRC" "$PREF_DST"
-                echo "Bundled Wawona.prefPane"
-              else
-                echo "error: Wawona.prefPane missing at $PREF_SRC" >&2
-                exit 1
-              fi
-            '';
-          }
           {
             name = "Bundle Executables";
             basedOnDependencyAnalysis = false;
@@ -2728,7 +2608,6 @@ PLIST
           };
         };
         dependencies = [
-          { target = "Wawona-PrefPane"; embed = false; }
           { target = "WawonaModel"; embed = true; codeSign = true; }
           { target = "WawonaUIContracts"; embed = true; codeSign = true; }
           { sdk = "Cocoa.framework"; }
@@ -3025,7 +2904,7 @@ PLIST
           {
             path = "src/platform/watchos";
             # Empty legacy storyboard: Xcode 26 ibtool rejects it (IB error -1).
-            # Watch Global Settings are Settings-Watch.bundle only.
+            # Watch Global Settings are in-app (`WatchGlobalSettingsView`).
             excludes = commonExcludes ++ [ "**/WWNWatchSettings.storyboard" ];
           }
           # StartupLogger.swift assigns this function pointer (iOS host glue
@@ -3036,8 +2915,6 @@ PLIST
           # Required-reason API manifest (UserDefaults / boot time / file timestamps).
           # Missing this makes ASC accept the IPA then discard the build (never listed).
           { path = "src/resources/app-bundle/PrivacyInfo.xcprivacy"; type = "file"; buildPhase = "resources"; }
-          # Sole Watch Global Settings host (iPhone Watch app). Not an on-wrist UI.
-          { path = "src/resources/Settings-Watch.bundle"; type = "folder"; buildPhase = "resources"; }
           (settingsDepsResource "watchos")
           helloWasiGuiResource
           { path = "src/resources/Wawona.icon"; type = "folder"; }
@@ -3358,7 +3235,6 @@ PLIST
     Wawona-watchOS = "watchos";
     Wawona-visionOS = "visionos";
     Wawona-macOS = "macos";
-    Wawona-PrefPane = "macos";
   };
 
   sharedXcodeTargets = [ "WawonaModel" "WawonaUIContracts" ];

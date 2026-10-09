@@ -208,6 +208,10 @@ final class WWNMainWindowRouter: ObservableObject {
     @Published var selection: WWNMainDestination? = .machines
 
     private var sessionSurfaceObserver: NSObjectProtocol?
+    #if os(macOS)
+    private var distributedSessionSurfaceObserver: NSObjectProtocol?
+    private var sessionSurfaceFlagTimer: Timer?
+    #endif
 
     private init() {
         sessionSurfaceObserver = NotificationCenter.default.addObserver(
@@ -217,17 +221,40 @@ final class WWNMainWindowRouter: ObservableObject {
         ) { [weak self] _ in
             self?.showSessionSurface()
         }
+        #if os(macOS)
+        // CLI `nix run .#wawona-microvm-session` is out-of-process; local NC
+        // never reaches Regular UI. Distributed + runtime flag cover that path.
+        distributedSessionSurfaceObserver = DistributedNotificationCenter.default()
+            .addObserver(
+                forName: Notification.Name("WWNShowSessionSurfaceNotification"),
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.showSessionSurface()
+            }
+        sessionSurfaceFlagTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) {
+            [weak self] _ in
+            self?.consumeSessionSurfaceFlagIfPresent()
+        }
+        if let sessionSurfaceFlagTimer {
+            RunLoop.main.add(sessionSurfaceFlagTimer, forMode: .common)
+        }
+        #endif
     }
+
+    #if os(macOS)
+    private func consumeSessionSurfaceFlagIfPresent() {
+        let runtime = WWNPreferencesManager.preferredSharedRuntimeDir()
+        let flag = (runtime as NSString).appendingPathComponent("show-session-surface")
+        guard FileManager.default.fileExists(atPath: flag) else { return }
+        try? FileManager.default.removeItem(atPath: flag)
+        showSessionSurface()
+    }
+    #endif
 
     func showMachines() {
         selection = .machines
     }
-
-    /// Opens Global Settings via the sole host for this platform
-    /// (`wawona-global-settings-exclusive`). Sidebar Destinations stay
-    /// Desktop / About / Dependencies only (not Global Settings).
-    /// tvOS / visionOS: in-app panel. macOS PrefPane. iOS Settings.app.
-    @Published var showGlobalSettingsPanel = false
 
     /// When true, the Wayland compositor Metal surface fills the detail column
     /// (Machines Start / Focus for native Wayland clients).
@@ -242,20 +269,16 @@ final class WWNMainWindowRouter: ObservableObject {
         selection = .machines
     }
 
+    /// Opens Global Settings in-app (`wawona-global-settings-exclusive`).
+    /// Sole host is the Machines sidebar catalog. Never System Settings,
+    /// Settings.app, or a second sheet beside that list.
     func showSettings() {
-        #if os(macOS)
-        WawonaSystemSettings.openPreferencePane()
-        #elseif os(iOS)
-        PlatformGlobalSettings.openAppSettingsBundle()
-        #else
-        // tvOS / visionOS only: in-app Global Settings.
-        showGlobalSettingsPanel = true
-        #endif
+        showSidebarSettings()
     }
 
-    /// In-app sidebar Settings destination (Desktop / About / Dependencies).
+    /// In-app sidebar Global Settings (full `visibleSections` catalog).
     func showSidebarSettings() {
-        if let first = GlobalSettingsCatalog.appSidebarSections(
+        if let first = GlobalSettingsCatalog.visibleSections(
             for: GlobalSettingsCatalog.currentHost
         ).first {
             selection = .settings(first)
@@ -365,21 +388,11 @@ struct WawonaMainWindowView: View {
                 }
             }
             #endif
-            #if os(tvOS) || os(visionOS)
-            .sheet(isPresented: $router.showGlobalSettingsPanel) {
-                WawonaBackport<Any>.navigation {
-                    WawonaGlobalSettingsPanelView(
-                        model: model,
-                        onDismiss: { router.showGlobalSettingsPanel = false }
-                    )
-                }
-            }
             .onReceive(NotificationCenter.default.publisher(
                 for: Notification.Name("wawonaOpenInAppGlobalSettingsPanel")
             )) { _ in
-                router.showGlobalSettingsPanel = true
+                router.showSettings()
             }
-            #endif
     }
 
     @ViewBuilder
@@ -535,17 +548,9 @@ struct WawonaMainWindowView: View {
 
     // MARK: - Detail
 
-    /// In-app sidebar: Desktop, About, Dependencies only.
+    /// Full in-app Global Settings catalog (sole host on every Apple target).
     private var catalogSections: [GlobalSettingsSectionID] {
-        var sections = GlobalSettingsCatalog.appSidebarSections(
-            for: GlobalSettingsCatalog.currentHost
-        )
-        #if WWN_MODE_B && os(iOS)
-        if !sections.contains(.desktop) {
-            sections.insert(.desktop, at: 0)
-        }
-        #endif
-        return sections
+        GlobalSettingsCatalog.visibleSections(for: GlobalSettingsCatalog.currentHost)
     }
 
     static func objcSection(
