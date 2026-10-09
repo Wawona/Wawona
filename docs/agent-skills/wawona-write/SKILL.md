@@ -12,6 +12,9 @@ re-open a closed incident or invert a gate.
 
 1. **RAG.** Skill `wawona-rag`. `where_to_edit` + `get_capability` before edits.
 2. **Skill/rule.** Read `wawona-priors` row for the topic. Open that rule/skill.
+   Apple Swift/SwiftUI (`Sources/WawonaApple`, `WawonaUI`, `WawonaWatch`,
+   `Darwin/`): skill `wawona-apple-swift` first, then `swiftui-pro` and
+   `swiftui-expert-skill` (plus concurrency/testing skills when relevant).
 3. **Improve.** Cite what this change supersedes (issue, incident, rule clause).
    If the prior already forbids it, stop.
 4. **Prove.** Link/eval/package failures: local `nix build` of the failing cell

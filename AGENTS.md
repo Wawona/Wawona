@@ -104,6 +104,11 @@ not MCP. Skill `wawona-gh`. Rule `wawona-gh`.
   Swift/Kotlin are Nix `$out/uniffi` only (`wawona-nix-generated`). See
   `.cursor/rules/wawona-uniffi-domain.mdc` and
   `docs/agent-rules/wawona-uniffi-domain.md`.
+- **Apple Swift/SwiftUI skills (mandatory).** Before editing Apple host UI,
+  load `swiftui-pro` and `swiftui-expert-skill` (plus concurrency/testing
+  skills when relevant). Skill `wawona-apple-swift`; rule
+  `wawona-apple-swift-skills`. iOS 13 + `WawonaBackport` wins over upstream
+  modernization advice.
 - **Smithay** `0.7`, `wayland_frontend` only.
 - **iland (wwn-iland). Two modes** (do not conflate):
   - **Mode A (default, App Store-safe):** static `libiland_userland.a`, in-window

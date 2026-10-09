@@ -30,7 +30,8 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-wasm-cli-ports` | Port CLI to WASI P1 vs WASIX: wasm-packages vs wasinix. No stubs / nixpkgs2wasi. |
 | `repo-wawona-io-catalogs` | Dual wasm/deb catalogs; GHA build vs catalog host split. |
 | `wawona-machine-types` | Machines UI: Native Shell / VM / Container. Sessions under Native Shell. |
-
+| `wawona-apple-swift` | Apple compositor Swift/SwiftUI. Always load `swiftui-pro` + `swiftui-expert-skill` first. |
+| `wawona-swiftui-backports` | iOS 13 `WawonaBackport` shims. Wins over upstream SwiftUI skill modernization. |
 | `wawona-icon-composer` | Layered icon drafts, native rendering, shared IDE tooling. |
 
 ## Rules (hard gates)
@@ -64,6 +65,8 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-ios-min-os` | iOS 13.0 min OS; latest iPhoneOS SDK only; one ANGLE + one MoltenVK |
 | `wawona-ios-app-entry` | Mobile `@main` / no client C `_main` / XDG_RUNTIME_DIR before compositor |
 | `wawona-ios-link-contract` | Membership + called C symbols before Apple app compile |
+| `wawona-apple-swift-skills` | Must install/use SwiftUI + Swift concurrency/testing skills for Apple UI |
+| `wawona-apple-swift-glue` | Rust + Swift only; zero ObjC product classes |
 | `wawona-swinging-bridge` | Not Desktop, not LockScreen |
 | `wawona-test-control` / `wawona-agent-device` | UI / vphone |
 | `wawona-agent-device-multitouch` | Wayland client taps |
