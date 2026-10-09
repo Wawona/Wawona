@@ -37,9 +37,9 @@ New incident, hard reject, recipe, gate flip, or "never do X":
 
 ## Token voice
 
-Skill `wawona-caveman`. User chat: **lite** (full sentences, no filler).
-Agent notes: **full**. Code, commits, PRs: normal English. Never em dash
-(`wawona-no-em-dash`).
+Skill `wawona-caveman` + upstream `caveman`. User chat: **full** (forced;
+rule `wawona-caveman-full`). Code, commits, PRs: normal English. Never em
+dash (`wawona-no-em-dash`).
 
 ## Integrate (do not replace)
 

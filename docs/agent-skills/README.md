@@ -14,7 +14,7 @@ When editing a skill, update **all** of:
 | [wawona-rag](./wawona-rag/SKILL.md) | Always query wwn-mcp; how to reindex |
 | [wawona-write](./wawona-write/SKILL.md) | Software must improve on prior knowledge |
 | [wawona-learn](./wawona-learn/SKILL.md) | Capture findings into skill + rule + RAG |
-| [wawona-caveman](./wawona-caveman/SKILL.md) | Token voice (lite chat, full notes) |
+| [wawona-caveman](./wawona-caveman/SKILL.md) | Forced caveman-full voice (+ upstream `caveman`) |
 | [wawona-priors](./wawona-priors/SKILL.md) | Index of existing rules (pointers only) |
 | [wawona-ios-min-os](./wawona-ios-min-os/SKILL.md) | iOS 11 min OS vs latest SDK. One ANGLE, one MoltenVK |
 | [wawona-gh](./wawona-gh/SKILL.md) | GitHub CLI via Shell. No GitHub MCP |

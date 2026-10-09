@@ -37,4 +37,4 @@ re-open a closed incident or invert a gate.
 - Take Over / LLDB `watchdogd` without Path B ACK
 - Leave the new fact in chat only
 
-Voice: `wawona-caveman`. Product map: `wawona-product-map`.
+Voice: `wawona-caveman` full (forced). Product map: `wawona-product-map`.

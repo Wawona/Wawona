@@ -40,8 +40,9 @@ gates, incidents, or recipes from model priors.
    `repo.wawona.io/.cursor/skills/repo-wawona-io-priors/SKILL.md`.
 3. After a durable finding: skill `wawona-learn` (skill + rule mirrors +
    `wwn-mcp/knowledge/wawona/` + reindex). Do not leave it in chat.
-4. User chat: caveman-lite (skill `wawona-caveman`). Code/commits stay normal
-   English. No em dash.
+4. User chat: caveman-**full** (forced; skill `wawona-caveman` + upstream
+   `caveman`; rule `wawona-caveman-full`). Code/commits stay normal English.
+   No em dash.
 
 Rule: `wawona-agent-learn`. Knowledge: `wwn-mcp/knowledge/wawona/agent-learn.md`.
 

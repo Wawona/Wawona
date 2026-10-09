@@ -15,7 +15,7 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-rag` | Any fact, repo, gate, patch, protocol |
 | `wawona-write` | Editing Wawona / wwn-* software |
 | `wawona-learn` | Durable finding this session |
-| `wawona-caveman` | Token voice |
+| `wawona-caveman` | Forced caveman-full voice (+ upstream `caveman` skill) |
 | `wawona-carplay-lab` | Playport physical-iPhone CarPlay lab; private runtime identity and pairing. |
 | `wawona-vphone-lab-recover` | Dead / stale vphone lab. Sock refused. Stuck SSH wait. |
 | `wawona-ios-min-os` | iOS 13-27+ min OS vs latest SDK. One ANGLE, one MoltenVK. Never downgrade SDK. |
@@ -41,6 +41,7 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-mission` | Ambiguous product call |
 | `wawona-context` | Stack priors + MCP tool map |
 | `wawona-agent-learn` | This learn loop |
+| `wawona-caveman-full` | AlwaysApply: caveman full, not lite |
 | `wawona-mission-critical-assurance` | Risk-tiered evidence for critical and AI-authored changes |
 | `wawona-rust-first` | New Wawona-owned logic |
 | `wawona-uniffi-domain` | Product domain vs `WWNCore*`; no JFFI fork |
