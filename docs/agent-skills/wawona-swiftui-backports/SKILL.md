@@ -5,10 +5,10 @@ description: Central SwiftUI availability shims for Apple products.
 
 # SwiftUI backports
 
-Read `docs/agent-rules/wawona-swiftui-backports.md` before changing SwiftUI
-availability. Use `WawonaBackport` for iOS/iPadOS 13+ APIs. The product floor
-is iOS 13, so SwiftUI is the UI. There is no iOS 11 or 12 UIKit-only product.
-After a new durable shim, update this rule and Wawona RAG.
+Read `Wawona/docs/agent-rules/wawona-swiftui-backports.md` before changing
+SwiftUI availability. Use `WawonaBackport` for iOS/iPadOS 13+ APIs. The product
+floor is iOS 13, so SwiftUI is the UI. There is no iOS 11 or 12 UIKit-only
+product. After a new durable shim, update this rule and Wawona RAG.
 
 ## iOS 26 bottom search
 
@@ -16,7 +16,9 @@ For the iPhone Machines Messages-style bottom search row, `.searchable(text:)`
 must use its default placement. `DefaultToolbarItem(kind: .search, placement:
 .bottomBar)` is the sole owner of the search slot. Do not add
 `placement: .toolbar`, which vends a conflicting navigation item during
-split-detail restoration.
+split-detail restoration. Keep `usesNativePhoneSearchToolbar` true on iOS 26+.
+Top-trailing toolbar buttons use `.automatic`, not `.glass` (glass-on-glass).
+Add Machine: plain `Label` + accent tint + `sharedBackgroundVisibility(.hidden)`.
 
 ## Machine editor sheets
 

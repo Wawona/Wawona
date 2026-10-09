@@ -116,22 +116,13 @@ public extension WawonaBackport where Content: View {
         #endif
     }
 
-    /// Native liquid glass toolbar button on modern OS, with standard toolbar button fallback.
-    /// On macOS, toolbar items use native toolbar styling to avoid glass-on-glass over window material.
+    /// Toolbar trailing controls. Prefer system automatic styling. On iOS 26+
+    /// Liquid Glass already owns the bar; `.buttonStyle(.glass)` is glass-on-glass
+    /// and breaks the top-trailing cluster.
     @ViewBuilder
     @MainActor
     func glassToolbarButton() -> some View {
-        #if os(macOS)
         content.buttonStyle(.automatic)
-        #elseif !os(visionOS)
-        if #available(iOS 26.0, tvOS 26.0, *) {
-            content.buttonStyle(.glass)
-        } else {
-            content.buttonStyle(.automatic)
-        }
-        #else
-        content.buttonStyle(.automatic)
-        #endif
     }
 
     /// Keeps the modern prominent glass button on new systems without raising the app floor.

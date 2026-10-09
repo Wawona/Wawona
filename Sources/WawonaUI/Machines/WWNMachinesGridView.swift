@@ -326,8 +326,13 @@ struct WWNMachinesGridViewModern: View {
     #endif
   }
 
+  /// iOS 26+: system Messages-style bottom search + compose +. Pre-26 keeps
+  /// the compact safeAreaInset chrome. Never custom Liquid Glass capsule on 26+.
   private static var usesNativePhoneSearchToolbar: Bool {
-    false
+    #if os(iOS)
+    if #available(iOS 26.0, *) { return true }
+    #endif
+    return false
   }
 
   @ToolbarContentBuilder
@@ -347,11 +352,9 @@ struct WWNMachinesGridViewModern: View {
     }
   }
 
-  /// The split-detail host owns the bottom search row. In a NavigationSplitView
-  /// detail pane, UIKit lacks a UINavigationController-owned UIToolbar, so
-  /// DefaultToolbarItem(.bottomBar) attempts to insert a UIKitToolbar as a subview
-  /// of UIHostingController.view causing an infinite layout loop.
-  /// Keep usesNativePhoneSearchToolbar disabled so iosPhoneLegacyMessagesBottomChrome is used.
+  /// iOS 26 phone: system bottom search + compose +. ToolbarSpacer is required
+  /// so search does not eat the full width and overlap Add. Keep Add off the
+  /// shared glass blob (`sharedBackgroundVisibility(.hidden)`).
   @ToolbarContentBuilder
   private var iosPhoneMessagesBottomToolbar: some ToolbarContent {
     #if os(iOS)
@@ -364,10 +367,10 @@ struct WWNMachinesGridViewModern: View {
         } label: {
           Label("Add Machine", systemImage: "plus")
         }
-        .backport.glassProminentToolbarButton()
         .tint(Color.accentColor)
         .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
       }
+      .sharedBackgroundVisibility(.hidden)
     } else {
       ToolbarItem(placement: .automatic) {
         EmptyView()
@@ -380,48 +383,46 @@ struct WWNMachinesGridViewModern: View {
     #endif
   }
 
-  /// Bottom chrome (iPhone): Search + primary Add Machine. Settings stays top-trailing.
+  /// Pre-iOS 26 phone fallback only. Compact 36pt row. Not used on iOS 26+.
   private var iosPhoneMessagesBottomChrome: some View {
-    let controlHeight: CGFloat = 46
+    let controlHeight: CGFloat = 36
 
-    return WawonaBackport<Any>.glassContainer(spacing: 10) {
-      HStack(alignment: .center, spacing: 10) {
-        HStack(spacing: 8) {
-          Image(systemName: "magnifyingglass")
-            .font(.system(size: 17, weight: .medium))
-            .foregroundStyle(.secondary)
-          TextField("Search", text: $searchQuery, prompt: Text("Search"))
-            .textFieldStyle(.plain)
-            .font(.system(size: 16))
-            .modifier(WWNSearchFieldFocus(isFocused: $isSearchFocused))
-            .accessibilityLabel("Search machines")
-            .accessibilityIdentifier("wwn.machines.search")
-          if !searchQuery.isEmpty {
-            Button {
-              searchQuery = ""
-            } label: {
-              Image(systemName: "xmark.circle.fill")
-                .font(.system(size: 16))
-                .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
+    return HStack(alignment: .center, spacing: 10) {
+      HStack(spacing: 8) {
+        Image(systemName: "magnifyingglass")
+          .font(.system(size: 15, weight: .medium))
+          .foregroundStyle(.secondary)
+        TextField("Search", text: $searchQuery, prompt: Text("Search"))
+          .textFieldStyle(.plain)
+          .font(.system(size: 15))
+          .modifier(WWNSearchFieldFocus(isFocused: $isSearchFocused))
+          .accessibilityLabel("Search machines")
+          .accessibilityIdentifier("wwn.machines.search")
+        if !searchQuery.isEmpty {
+          Button {
+            searchQuery = ""
+          } label: {
+            Image(systemName: "xmark.circle.fill")
+              .font(.system(size: 14))
+              .foregroundStyle(.secondary)
           }
+          .buttonStyle(.plain)
         }
-        .padding(.horizontal, 14)
-        .frame(maxWidth: .infinity)
-        .frame(height: controlHeight)
-        .backport.liquidGlassCapsule()
-
-        Button {
-          editorDestination = .add
-        } label: {
-          Image(systemName: "plus")
-            .font(.system(size: 20, weight: .bold))
-            .foregroundStyle(.white)
-        }
-        .backport.blueGlassCircleButton(size: controlHeight)
-        .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
       }
+      .padding(.horizontal, 12)
+      .frame(maxWidth: .infinity)
+      .frame(height: controlHeight)
+      .backport.liquidGlassCapsule()
+
+      Button {
+        editorDestination = .add
+      } label: {
+        Image(systemName: "plus")
+          .font(.system(size: 17, weight: .semibold))
+          .foregroundStyle(.white)
+      }
+      .backport.blueGlassCircleButton(size: controlHeight)
+      .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
     }
     .padding(.horizontal, 16)
     .padding(.top, 4)

@@ -21,6 +21,12 @@ Hard rejects:
 - Raising the app deployment target to adopt a SwiftUI modifier
 - Using an imitation of Liquid Glass as a substitute for the system effect
 - Moving availability or compositor capability policy into SwiftUI
+- `.buttonStyle(.glass)` on iOS 26 navigation toolbar items (glass-on-glass)
+- Custom glass search capsule on iPhone Machines when iOS 26 system
+  `DefaultToolbarItem(kind: .search)` is available
+
+iPhone Machines bottom search: see skill `wawona-swiftui-backports` and
+`wwn-mcp/knowledge/wawona/ios-iphone-machines-messages-chrome.md`.
 
 Before claiming one Mode A IPA is proven across its supported OS range, migrate
 every post-13 SwiftUI API into named shims and run both forced compatibility
