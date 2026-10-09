@@ -444,7 +444,12 @@ private struct WWNSettingsRowView: View {
     }
 
     private var infoRow: some View {
-        rowLayout {
+        HStack(spacing: 12) {
+            if !item.iconURL.isEmpty, let url = URL(string: item.iconURL) {
+                WWNSettingsLinkIcon(url: url)
+            }
+            titleStack
+            Spacer(minLength: 12)
             HStack(alignment: .top, spacing: 8) {
                 Text(model.stringValue(for: item))
                     #if !os(tvOS)
@@ -455,15 +460,15 @@ private struct WWNSettingsRowView: View {
                     .lineLimit(2)
                     .accessibility(identifier: item.accessibilityIdentifier ?? "")
                 #if !os(tvOS)
-            WawonaButton {
-                model.copyValueToPasteboard(item)
-            } label: {
-                Image(systemName: "doc.on.doc")
-            }
-            .buttonStyle(.borderless)
-            #if os(macOS)
-            .help("Copy to clipboard")
-            #endif
+                WawonaButton {
+                    model.copyValueToPasteboard(item)
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                }
+                .buttonStyle(.borderless)
+                #if os(macOS)
+                .help("Copy to clipboard")
+                #endif
                 #endif
             }
         }

@@ -25,6 +25,10 @@ public final class WWNPreferencesSectionsBuilder: NSObject {
                 section.items = []
             } else if id == .desktop {
                 section.items = desktopItems()
+            } else if id == .about {
+                section.items = aboutItems(for: host)
+            } else if id == .dependencies {
+                section.items = dependencyItems()
             } else {
                 section.items = GlobalSettingsCatalog.visibleFields(in: id, for: host).compactMap {
                     item(for: $0)
@@ -34,8 +38,20 @@ public final class WWNPreferencesSectionsBuilder: NSObject {
         }
     }
 
+    /// Bundled Okular-style inventory from `SettingsDependencies.json`
+    /// (`settings-deps.nix` / `settingsDepsResource` in xcodegen).
     @objc public static func loadSettingsDependenciesInventory() -> [[AnyHashable: Any]] {
-        []
+        guard let url = Bundle.main.url(
+            forResource: "SettingsDependencies",
+            withExtension: "json"
+        ),
+        let data = try? Data(contentsOf: url),
+        let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        let packages = json["packages"] as? [[AnyHashable: Any]]
+        else {
+            return []
+        }
+        return packages
     }
 
     @objc public static func findWaypipeBinary() -> String {
@@ -247,14 +263,34 @@ public final class WWNPreferencesSectionsBuilder: NSObject {
             return info("Platform", "AboutPlatform", platformLabel(),
                         "Host product target.")
         case .aboutWebsite:
-            return link("Website", "https://wawona.io", "Open wawona.io")
+            return link(
+                "Website",
+                "https://wawona.io",
+                "Open wawona.io",
+                iconURL: "https://wawona.io/favicon.ico"
+            )
         case .aboutAuthor:
-            return info("Author", "AboutAuthor", "aspauldingcode",
-                        "Project author.")
+            return info(
+                "Author",
+                "AboutAuthor",
+                "Alex Spaulding",
+                "Project author.",
+                iconURL: "https://github.com/aspauldingcode.png?size=160"
+            )
         case .aboutSource:
-            return link("Source", "https://github.com/Wawona/Wawona", "Open on GitHub")
+            return link(
+                "Source Code",
+                "https://github.com/Wawona/Wawona",
+                "View on GitHub",
+                iconURL: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
+            )
         case .aboutSponsors:
-            return link("Sponsors", "https://github.com/sponsors/aspauldingcode", "Sponsor")
+            return link(
+                "GitHub Sponsors",
+                "https://github.com/sponsors/aspauldingcode",
+                "Sponsor on GitHub",
+                iconURL: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
+            )
         case .watchCompanionStatus:
             return info("Watch Companion", "WatchCompanionStatus", "See Apple Watch section",
                         "WatchConnectivity companion status.")
@@ -266,10 +302,144 @@ public final class WWNPreferencesSectionsBuilder: NSObject {
                         "Open received documents from the Watch app.",
                         "Hint for Watch document transfer.")
         case .dependenciesInventory:
-            return info("Dependencies", "DependenciesInventory",
-                        "Bundled native ports and archives.",
-                        "Inventory is filled by the packaging gate.")
+            // Expanded by `dependencyItems()`; keep a fallback for callers that
+            // ask for this field alone.
+            return info(
+                "Dependencies",
+                "DependenciesInventory",
+                "Bundled native ports and archives.",
+                "Inventory is filled by SettingsDependencies.json."
+            )
         }
+    }
+
+    /// About detail: header logo plus link rows with service marks (pre-SwiftUI
+    /// `WWNPreferences` inventory). Catalog field IDs still gate visibility.
+    private static func aboutItems(for host: GlobalSettingsHost) -> [WWNSettingItem] {
+        let fields = Set(GlobalSettingsCatalog.visibleFields(in: .about, for: host))
+        var items: [WWNSettingItem] = []
+
+        let header = WWNSettingItem.item(
+            title: "Wawona",
+            key: "AboutHeader",
+            type: .WSettingHeader,
+            default: nil,
+            desc: "A Wayland Compositor for macOS, iOS & Android"
+        )
+        items.append(header)
+
+        if fields.contains(.aboutVersion), let row = item(for: .aboutVersion) {
+            items.append(row)
+        }
+        if fields.contains(.aboutBuild), let row = item(for: .aboutBuild) {
+            items.append(row)
+        }
+        if fields.contains(.aboutPlatform), let row = item(for: .aboutPlatform) {
+            items.append(row)
+        }
+        if fields.contains(.aboutWebsite), let row = item(for: .aboutWebsite) {
+            items.append(row)
+        }
+        if fields.contains(.aboutAuthor), let row = item(for: .aboutAuthor) {
+            items.append(row)
+        }
+
+        // Social / portfolio rows (same URLs and marks as the ObjC About table).
+        if fields.contains(.aboutAuthor) {
+            items.append(contentsOf: [
+                link(
+                    "Portfolio",
+                    "https://aspauldingcode.com",
+                    "Visit Website",
+                    iconURL: "https://aspauldingcode.com/favicon.ico"
+                ),
+                link(
+                    "GitHub",
+                    "https://github.com/aspauldingcode",
+                    "View GitHub Profile",
+                    iconURL: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
+                ),
+                link(
+                    "X",
+                    "https://x.com/aspauldingcode",
+                    "Follow on X",
+                    iconURL: "https://x.com/favicon.ico"
+                ),
+                link(
+                    "LinkedIn",
+                    "https://www.linkedin.com/in/aspauldingcode/",
+                    "Connect on LinkedIn",
+                    iconURL: "https://upload.wikimedia.org/wikipedia/commons/c/ca/LinkedIn_logo_initials.png"
+                ),
+                link(
+                    "Ko-fi",
+                    "https://ko-fi.com/aspauldingcode",
+                    "Buy me a coffee",
+                    iconURL: "https://ko-fi.com/android-icon-192x192.png"
+                ),
+            ])
+        }
+
+        if fields.contains(.aboutSponsors), let row = item(for: .aboutSponsors) {
+            items.append(row)
+        }
+        if fields.contains(.aboutSource), let row = item(for: .aboutSource) {
+            items.append(row)
+        }
+        if fields.contains(.logLevel), let row = item(for: .logLevel) {
+            items.append(row)
+        }
+        return items
+    }
+
+    /// One info row per package in the product `SettingsDependencies.json`.
+    private static func dependencyItems() -> [WWNSettingItem] {
+        let inventory = loadSettingsDependenciesInventory()
+        if inventory.isEmpty {
+            return [
+                info(
+                    "Dependencies",
+                    "DependenciesInventory",
+                    "unavailable",
+                    "SettingsDependencies.json missing from this build. "
+                        + "Rebuild so the product inventory is embedded."
+                ),
+            ]
+        }
+        return inventory.enumerated().map { index, pkg in
+            let name = (pkg["name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "Package"
+            let version = pkg["version"] as? String ?? ""
+            let role = pkg["role"] as? String ?? ""
+            let url = pkg["url"] as? String ?? ""
+            let license = pkg["license"] as? String ?? ""
+            var desc = role
+            if !license.isEmpty {
+                desc = desc.isEmpty ? "License: \(license)" : "\(desc)\nLicense: \(license)"
+            }
+            if !url.isEmpty {
+                desc = desc.isEmpty ? url : "\(desc)\n\(url)"
+            }
+            let key = "Dependency.\(index).\(name)"
+            return info(
+                name,
+                key,
+                version,
+                desc,
+                iconURL: url.isEmpty ? "" : faviconURL(for: url)
+            )
+        }
+    }
+
+    /// Best-effort site mark for dependency / About link rows.
+    private static func faviconURL(for pageURL: String) -> String {
+        guard let host = URL(string: pageURL)?.host, !host.isEmpty else { return "" }
+        if host.contains("github.com") || host.contains("githubassets.com") {
+            return "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
+        }
+        if host.contains("gitlab.freedesktop.org") || host.contains("freedesktop.org") {
+            return "https://www.freedesktop.org/favicon.ico"
+        }
+        return "https://\(host)/favicon.ico"
     }
 
     private static func desktopItems() -> [WWNSettingItem] {
@@ -392,8 +562,22 @@ public final class WWNPreferencesSectionsBuilder: NSObject {
         WWNSettingItem.item(title: title, key: key, type: .WSettingPassword, default: "", desc: desc)
     }
 
-    private static func info(_ title: String, _ key: String, _ value: String, _ desc: String) -> WWNSettingItem {
-        WWNSettingItem.item(title: title, key: key, type: .WSettingInfo, default: value, desc: desc)
+    private static func info(
+        _ title: String,
+        _ key: String,
+        _ value: String,
+        _ desc: String,
+        iconURL: String = ""
+    ) -> WWNSettingItem {
+        let item = WWNSettingItem.item(
+            title: title,
+            key: key,
+            type: .WSettingInfo,
+            default: value,
+            desc: desc
+        )
+        item.iconURL = iconURL
+        return item
     }
 
     private static func button(_ title: String, _ key: String, _ desc: String) -> WWNSettingItem {
@@ -402,10 +586,16 @@ public final class WWNPreferencesSectionsBuilder: NSObject {
         return item
     }
 
-    private static func link(_ title: String, _ url: String, _ button: String) -> WWNSettingItem {
+    private static func link(
+        _ title: String,
+        _ url: String,
+        _ button: String,
+        iconURL: String = ""
+    ) -> WWNSettingItem {
         let item = WWNSettingItem.item(title: title, key: "", type: .WSettingLink, default: nil, desc: "")
         item.urlString = url
         item.buttonTitle = button
+        item.iconURL = iconURL
         return item
     }
 
