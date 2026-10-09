@@ -110,6 +110,11 @@ not MCP. Skill `wawona-gh`. Rule `wawona-gh`.
   skills when relevant). Skill `wawona-apple-swift`; rule
   `wawona-apple-swift-skills`. iOS 13 + `WawonaBackport` wins over upstream
   modernization advice.
+- **Android Compose skills (mandatory).** Before editing Kotlin/Compose host
+  UI, load `compose-agent` and `modern-jetpack-compose` (plus Android topic
+  skills when relevant). Skill `wawona-android-compose`; rule
+  `wawona-android-compose-skills`. Material 3 Expressive is Android 16+ only.
+  In-app `SettingsDialog` only.
 - **Smithay** `0.7`, `wayland_frontend` only.
 - **iland (wwn-iland). Two modes** (do not conflate):
   - **Mode A (default, App Store-safe):** static `libiland_userland.a`, in-window

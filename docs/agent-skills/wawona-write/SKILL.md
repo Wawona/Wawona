@@ -15,6 +15,8 @@ re-open a closed incident or invert a gate.
    Apple Swift/SwiftUI (`Sources/WawonaApple`, `WawonaUI`, `WawonaWatch`,
    `Darwin/`): skill `wawona-apple-swift` first, then `swiftui-pro` and
    `swiftui-expert-skill` (plus concurrency/testing skills when relevant).
+   Android Compose (`android/app`, Kotlin UI): skill `wawona-android-compose`
+   first, then `compose-agent` and `modern-jetpack-compose`.
 3. **Improve.** Cite what this change supersedes (issue, incident, rule clause).
    If the prior already forbids it, stop.
 4. **Prove.** Link/eval/package failures: local `nix build` of the failing cell
