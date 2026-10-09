@@ -26,11 +26,14 @@ private struct CompositorHostNSViewRepresentable: NSViewRepresentable {
     let core: UnsafeMutableRawPointer?
 
     func makeNSView(context: Context) -> CompositorHostPlatformView {
-        CompositorHostPlatformView(core: core)
+        let view = CompositorHostPlatformView(core: core ?? WWNCompositorBridge.sharedBridge.core)
+        WWNCompositorBridge.sharedBridge.containerView = view
+        return view
     }
 
     func updateNSView(_ nsView: CompositorHostPlatformView, context: Context) {
-        nsView.core = core
+        nsView.core = core ?? WWNCompositorBridge.sharedBridge.core
+        WWNCompositorBridge.sharedBridge.containerView = nsView
     }
 }
 #endif
@@ -42,11 +45,14 @@ private struct CompositorHostUIViewRepresentable: UIViewRepresentable {
     let core: UnsafeMutableRawPointer?
 
     func makeUIView(context: Context) -> CompositorHostPlatformView {
-        CompositorHostPlatformView(core: core)
+        let view = CompositorHostPlatformView(core: core ?? WWNCompositorBridge.sharedBridge.core)
+        WWNCompositorBridge.sharedBridge.containerView = view
+        return view
     }
 
     func updateUIView(_ uiView: CompositorHostPlatformView, context: Context) {
-        uiView.core = core
+        uiView.core = core ?? WWNCompositorBridge.sharedBridge.core
+        WWNCompositorBridge.sharedBridge.containerView = uiView
     }
 }
 #endif
@@ -62,7 +68,7 @@ typealias PlatformColor = UIColor
 #if os(macOS) || os(iOS)
 final class CompositorHostPlatformView: PlatformView {
     var core: UnsafeMutableRawPointer?
-    private let metalPresenter = MetalPresenter()
+    private var metalPresenter: MetalPresenter?
     private var ilandPresenter: IlandPresenterObjC?
     #if os(macOS)
     private var trackingArea: NSTrackingArea?
@@ -78,14 +84,17 @@ final class CompositorHostPlatformView: PlatformView {
         super.init(frame: .zero)
         backgroundColor = .black
         #endif
-        if let metalLayer = metalPresenter.layer {
+        // Build Metal after super.init so a presenter failure cannot abort NSView.
+        let presenter = MetalPresenter()
+        metalPresenter = presenter
+        if let metalLayer = presenter.layer {
             metalLayer.frame = bounds
             #if os(macOS)
             layer?.addSublayer(metalLayer)
             #else
             layer.addSublayer(metalLayer)
             #endif
-            ilandPresenter = IlandPresenterObjC(layer: metalLayer, device: metalPresenter.device)
+            ilandPresenter = IlandPresenterObjC(layer: metalLayer, device: presenter.device)
         }
     }
 
@@ -122,7 +131,7 @@ final class CompositorHostPlatformView: PlatformView {
     #endif
 
     private func syncMetalLayerGeometry() {
-        metalPresenter.layer?.frame = bounds
+        metalPresenter?.layer?.frame = bounds
         #if os(macOS)
         ilandPresenter?.hostGeometryDidChange()
         #else

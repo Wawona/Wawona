@@ -8,23 +8,8 @@ import simd
 enum IlandMetalPipeline {
     static let textureCacheMax = 16
 
-    #if os(macOS)
-    static let shaderSource = """
-    #include <metal_stdlib>
-    using namespace metal;
-    struct VOut { float4 pos [[position]]; float2 uv; };
-    vertex VOut wwn_vs(uint vid [[vertex_id]]) {
-      float2 p[4] = { float2(-1,-1), float2(1,-1), float2(-1,1), float2(1,1) };
-      float2 t[4] = { float2(0,1),  float2(1,1),  float2(0,0), float2(1,0) };
-      VOut o; o.pos = float4(p[vid], 0, 1); o.uv = t[vid]; return o;
-    }
-    fragment float4 wwn_fs(VOut in [[stage_in]],
-                           texture2d<float> tex [[texture(0)]]) {
-      constexpr sampler s(filter::linear, address::clamp_to_edge);
-      return tex.sample(s, in.uv);
-    }
-    """
-    #else
+    // Mode A SHM / IOSurface: same Y-flip + content-rect uniforms on every
+    // Metal host (macOS used to ignore bottomUp and looked empty/wrong).
     static let shaderSource = """
     #include <metal_stdlib>
     using namespace metal;
@@ -43,7 +28,6 @@ enum IlandMetalPipeline {
       return tex.sample(s, rect.xy + in.uv * rect.zw);
     }
     """
-    #endif
 
     private static func fourCC(_ s: String) -> UInt32 {
         var value: UInt32 = 0

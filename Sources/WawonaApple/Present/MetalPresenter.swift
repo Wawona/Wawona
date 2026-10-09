@@ -4,7 +4,8 @@ import Metal
 import QuartzCore
 
 /// Metal present helpers for iland DRM. Full ObjC API lives in `WWNIlandPresenter` (Swift).
-@MainActor
+/// Not `@MainActor`: `CompositorHostPlatformView` constructs this from `NSView` init
+/// (must not trap SwiftUI WindowGroup creation).
 public final class MetalPresenter {
     public private(set) var device: MTLDevice?
     public private(set) var layer: CAMetalLayer?
@@ -49,7 +50,6 @@ public final class MetalPresenter {
 #else
 import Foundation
 
-@MainActor
 public final class MetalPresenter {
     public init() {}
     public func setPreferredMode(width: Int, height: Int, refreshMillihz: UInt32 = 60_000) {

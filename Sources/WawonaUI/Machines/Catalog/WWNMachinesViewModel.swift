@@ -749,6 +749,10 @@ final class WWNMachinesViewModel: ObservableObject {
       pendingContainerConnectCallbacks[machineId] = onConnected
     }
 
+    // Mount Metal host on the main actor before the session queue launches the
+    // Wayland client so the first SHM commits have an active presenter.
+    revealSessionSurfaceIfNeeded(profile)
+
     wwnMachineSessionQueue.async {
       for other in toStop {
         WWNMachineSessionBridge.disconnectProfile(other)
@@ -779,6 +783,16 @@ final class WWNMachinesViewModel: ObservableObject {
         onConnected?()
       }
     }
+  }
+
+  /// Native Wayland / wasm clients draw into the host compositor surface.
+  private func revealSessionSurfaceIfNeeded(_ profile: WWNMachineProfile) {
+    #if os(macOS) || os(iOS) || os(tvOS) || os(visionOS)
+    guard WWNMachineSessionBridge.profileUsesNativeCompositorClient(profile) else { return }
+    let client = WWNMachineSessionBridge.nativeClientId(forProfile: profile) ?? ""
+    if client == "wawona-shell" { return }
+    WWNMainWindowRouter.shared.showSessionSurface()
+    #endif
   }
 
   private func bumpSessionGeneration(_ machineId: String) -> Int {
@@ -813,6 +827,17 @@ final class WWNMachinesViewModel: ObservableObject {
     let machineId = profile.machineId ?? ""
     statusByMachineId[machineId] = .disconnected
     _ = bumpSessionGeneration(machineId)
+    #if os(macOS) || os(iOS) || os(tvOS) || os(visionOS)
+    // Leave the compositor surface when the focused native client stops.
+    let stillNative = profiles.contains {
+      $0.machineId != machineId
+        && status(for: $0.machineId) == .connected
+        && WWNMachineSessionBridge.profileUsesNativeCompositorClient($0)
+    }
+    if !stillNative {
+      WWNMainWindowRouter.shared.hideSessionSurface()
+    }
+    #endif
     #if os(iOS) || os(tvOS) || os(visionOS)
     if !machineId.isEmpty {
       NotificationCenter.default.post(
@@ -835,6 +860,7 @@ final class WWNMachinesViewModel: ObservableObject {
     }
     touchLastUsed(profile.machineId)
     WWNMachineProfileStore.setActiveMachineId(profile.machineId)
+    revealSessionSurfaceIfNeeded(profile)
     #if os(macOS)
     _ = WWNCompositorBridge.sharedBridge.focusClientWindows(forMachineId: profile.machineId)
     #elseif os(iOS) || os(tvOS) || os(visionOS)

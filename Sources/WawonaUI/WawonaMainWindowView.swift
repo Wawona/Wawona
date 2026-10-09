@@ -217,6 +217,19 @@ final class WWNMainWindowRouter: ObservableObject {
     /// tvOS / visionOS: in-app panel. macOS PrefPane. iOS Settings.app.
     @Published var showGlobalSettingsPanel = false
 
+    /// When true, the Wayland compositor Metal surface fills the detail column
+    /// (Machines Start / Focus for native Wayland clients).
+    @Published var sessionSurfaceVisible = false
+
+    func showSessionSurface() {
+        sessionSurfaceVisible = true
+    }
+
+    func hideSessionSurface() {
+        sessionSurfaceVisible = false
+        selection = .machines
+    }
+
     func showSettings() {
         #if os(macOS)
         WawonaSystemSettings.openPreferencePane()
@@ -566,11 +579,37 @@ struct WawonaMainWindowView: View {
     }
 
     private var machinesPane: some View {
-        WWNMachinesGridView(
-            onConnect: onConnect,
-            filterTagID: activeTagFilterID,
-            onClearTagFilter: { router.showMachines() }
-        )
+        // Mount Metal host only while the session surface is shown. Keeping it
+        // always-mounted under the Machines grid can abort WindowGroup creation
+        // (NSView + Metal init during first body eval). Pending SHM buffers wait
+        // in the core queue until the presenter appears, then the 60 Hz pump drains.
+        ZStack {
+            if router.sessionSurfaceVisible {
+                #if !SWIFT_PACKAGE && (os(macOS) || os(iOS) || os(visionOS))
+                CompositorBridge()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                #endif
+                Color.clear
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .allowsHitTesting(false)
+                    .overlay(alignment: .topLeading) {
+                        Button {
+                            router.hideSessionSurface()
+                        } label: {
+                            Label("Machines", systemImage: "sidebar.left")
+                        }
+                        .buttonStyle(.bordered)
+                        .padding(12)
+                        .allowsHitTesting(true)
+                    }
+            } else {
+                WWNMachinesGridView(
+                    onConnect: onConnect,
+                    filterTagID: activeTagFilterID,
+                    onClearTagFilter: { router.showMachines() }
+                )
+            }
+        }
     }
 
     private var activeTagFilterID: String? {

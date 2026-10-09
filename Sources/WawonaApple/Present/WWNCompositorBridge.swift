@@ -139,7 +139,21 @@ public final class WWNCompositorBridge: NSObject {
 
     @objc public func pollAndHandleWindowEvents() {
         _ = WWNCoreProcessEvents(core)
+        // SHM / IOSurface clients need PopPendingBuffer → Metal. Without this,
+        // Start connects weston-terminal and the window stays empty.
+        #if canImport(Metal) && !os(watchOS)
+        if let presenter = activeIlandPresenterRef() {
+            presenter.drainPendingBuffers(fromCore: core)
+        }
+        #endif
     }
+
+    #if canImport(Metal) && !os(watchOS)
+    private func activeIlandPresenterRef() -> IlandPresenterObjC? {
+        // Same process-global as IlandPresenterObjC.init (Mode A present owner).
+        return IlandPresenterObjC.activePresenterForDrain()
+    }
+    #endif
 
     @objc(injectPointerMotionForWindow:x:y:timestamp:)
     public func injectPointerMotion(forWindow windowId: UInt64, x: Double, y: Double, timestamp timestampMs: UInt32) {

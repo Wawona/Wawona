@@ -86,7 +86,6 @@ final class IlandPresentEngine {
         }
     }
 
-    #if os(iOS)
     func presentCompositorIOSurface(
         _ surface: IOSurface,
         bottomUpRows: Bool,
@@ -127,7 +126,53 @@ final class IlandPresentEngine {
         draw(source: source, drawable: drawable, bottomUp: bottomUpRows, contentRect: rect, onComplete: nil)
         return true
     }
-    #endif
+
+    /// CPU SHM path (`wl_shm`). Wayland ARGB8888 on LE is BGRA bytes.
+    func presentBGRAPixels(
+        width: Int,
+        height: Int,
+        stride: Int,
+        pixels: UnsafeMutablePointer<UInt8>,
+        bottomUp: Bool
+    ) -> Bool {
+        if !Thread.isMainThread {
+            let byteCount = stride * height
+            let copy = UnsafeMutablePointer<UInt8>.allocate(capacity: byteCount)
+            copy.update(from: pixels, count: byteCount)
+            DispatchQueue.main.async { [weak self] in
+                _ = self?.presentBGRAPixels(
+                    width: width, height: height, stride: stride, pixels: copy, bottomUp: bottomUp)
+                copy.deallocate()
+            }
+            return true
+        }
+        guard width > 0, height > 0, stride >= width * 4 else { return false }
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .bgra8Unorm,
+            width: width,
+            height: height,
+            mipmapped: false
+        )
+        descriptor.usage = .shaderRead
+        descriptor.storageMode = .shared
+        guard let source = device.makeTexture(descriptor: descriptor),
+              let drawable = layer.nextDrawable()
+        else { return false }
+        source.replace(
+            region: MTLRegionMake2D(0, 0, width, height),
+            mipmapLevel: 0,
+            withBytes: pixels,
+            bytesPerRow: stride
+        )
+        draw(
+            source: source,
+            drawable: drawable,
+            bottomUp: bottomUp,
+            contentRect: vector_float4(0, 0, 1, 1),
+            onComplete: nil
+        )
+        return true
+    }
 
     private func draw(
         source: MTLTexture,
@@ -150,12 +195,11 @@ final class IlandPresentEngine {
         }
 
         encoder.setRenderPipelineState(pipeline)
-        #if !os(macOS)
+        // Same uniforms on macOS Mode A: SHM clients (weston-terminal) need Y-flip.
         var bottomUpFlag: UInt32 = bottomUp ? 1 : 0
         encoder.setVertexBytes(&bottomUpFlag, length: MemoryLayout<UInt32>.size, index: 0)
         var rect = contentRect
         encoder.setFragmentBytes(&rect, length: MemoryLayout<vector_float4>.size, index: 0)
-        #endif
 
         let tw = drawable.texture.width
         let th = drawable.texture.height
