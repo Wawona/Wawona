@@ -12,9 +12,9 @@ import org.junit.runner.RunWith
 /**
  * Layer-3 Compose UI smoke (ci-l3-android-espresso).
  *
- * Industry-standard Android instrumentation. Asserts Machines (or Welcome)
- * testTags after launch. Gate: products runs this via
- * `connectedDebugAndroidTest` / adb; not agent-device CLI.
+ * Industry-standard Android instrumentation. Asserts Machines (and optional
+ * first-launch AlertDialog Continue) testTags after launch. Gate: products
+ * runs this via `connectedDebugAndroidTest` / adb; not agent-device CLI.
  */
 @RunWith(AndroidJUnit4::class)
 class LaunchAndSettingsUiTest {

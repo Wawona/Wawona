@@ -15,12 +15,10 @@ final class WawonaUITests: XCTestCase {
         let app = XCUIApplication(bundleIdentifier: "com.aspauldingcode.Wawona")
         app.launch()
 
-        let welcome = app.otherElements["wwn.welcome.root"]
         let machines = app.otherElements["wwn.machines.root"]
+        // Native alert Continue (not a full-screen Welcome page).
         let welcomeContinue = app.buttons["wwn.welcome.continue"]
-
-        let sawWelcome = welcome.waitForExistence(timeout: 12)
-        if sawWelcome, welcomeContinue.waitForExistence(timeout: 5) {
+        if welcomeContinue.waitForExistence(timeout: 12) {
             welcomeContinue.tap()
         }
 

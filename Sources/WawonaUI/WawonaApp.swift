@@ -33,30 +33,48 @@ private struct WawonaRootContent: View {
     @ObservedObject var profileStore: MachineProfileStore
     @ObservedObject var sessions: SessionOrchestrator
     let onConnect: (() -> Void)?
+    /// Native alert over Machines. Never a full-screen Welcome page.
+    @State private var showWelcomeAlert = false
+
+    private var needsWelcome: Bool {
+        !preferences.hasCompletedWelcome && profileStore.profiles.isEmpty
+    }
+
+    @ViewBuilder
+    private var mainShell: some View {
+        #if !SWIFT_PACKAGE && (os(macOS) || os(iOS) || os(tvOS) || os(visionOS))
+        WawonaMainWindowView(
+            model: WWNSettingsValueModel.shared,
+            router: WWNMainWindowRouter.shared,
+            preferences: preferences,
+            profileStore: profileStore,
+            sessions: sessions,
+            onConnect: onConnect
+        )
+        #else
+        ContentView(
+            preferences: preferences,
+            profileStore: profileStore,
+            sessions: sessions
+        )
+        #endif
+    }
 
     var body: some View {
-        Group {
-            if preferences.hasCompletedWelcome || !profileStore.profiles.isEmpty {
-                #if !SWIFT_PACKAGE && (os(macOS) || os(iOS) || os(tvOS) || os(visionOS))
-                WawonaMainWindowView(
-                    model: WWNSettingsValueModel.shared,
-                    router: WWNMainWindowRouter.shared,
-                    preferences: preferences,
-                    profileStore: profileStore,
-                    sessions: sessions,
-                    onConnect: onConnect
-                )
-                #else
-                ContentView(
-                    preferences: preferences,
-                    profileStore: profileStore,
-                    sessions: sessions
-                )
-                #endif
-            } else {
-                WelcomeView(preferences: preferences)
+        mainShell
+            .onAppear {
+                if needsWelcome {
+                    showWelcomeAlert = true
+                }
             }
-        }
+            .backport.onChange(of: needsWelcome) { _, needed in
+                if needed {
+                    showWelcomeAlert = true
+                } else if preferences.hasCompletedWelcome {
+                    showWelcomeAlert = false
+                }
+            }
+            .wawonaWelcomeAlert(preferences: preferences, isPresented: $showWelcomeAlert)
     }
 }
 

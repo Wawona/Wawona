@@ -2,9 +2,10 @@
 import SwiftUI
 import UIKit
 
-/// Scene entry. Hosts Machines / Welcome SwiftUI chrome. Replaces
-/// `WWNSceneDelegate.m`. Process entry is `Darwin/Sources/Main.swift`
-/// (`UIApplicationMain`); Info.plist names this class.
+/// Scene entry. Hosts Machines SwiftUI chrome (first-launch welcome is a
+/// native SwiftUI alert, not a page). Replaces `WWNSceneDelegate.m`.
+/// Process entry is `Darwin/Sources/Main.swift` (`UIApplicationMain`);
+/// Info.plist names this class.
 @objc(WWNSceneDelegate)
 public final class WWNSceneDelegate: UIResponder, UIWindowSceneDelegate {
     @objc public var window: UIWindow?

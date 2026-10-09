@@ -6,13 +6,21 @@ import WatchConnectivity
 public struct WawonaWatchRootView: View {
     @StateObject private var profileStore = MachineProfileStore()
     @StateObject private var sessions = SessionOrchestrator()
+    @ObservedObject private var preferences = WawonaPreferences.shared
     @State private var didAutoConnect = false
     @State private var autoProfile: MachineProfile?
     @State private var autoSession: MachineSession?
     @State private var phoneFrame: UIImage?
     @State private var phoneTouchDown = false
+    /// Native SwiftUI alert (not a full-screen Welcome page). Same first-launch
+    /// gate as phone/macOS/Android (`hasCompletedWelcome`).
+    @State private var showWelcomeAlert = false
 
     public init() {}
+
+    private var needsWelcome: Bool {
+        !preferences.hasCompletedWelcome && profileStore.profiles.isEmpty
+    }
 
     public var body: some View {
         NavigationStack {
@@ -42,10 +50,30 @@ public struct WawonaWatchRootView: View {
                 }
             }
         }
+        .alert("Welcome to Wawona", isPresented: $showWelcomeAlert) {
+            Button("Continue") {
+                preferences.hasCompletedWelcome = true
+                preferences.save()
+                showWelcomeAlert = false
+            }
+            .accessibilityIdentifier("wwn.welcome.continue")
+        } message: {
+            Text("Machines on your wrist. Add one when you are ready.")
+        }
         .onAppear {
+            if needsWelcome {
+                showWelcomeAlert = true
+            }
             WatchCompanionController.shared.activate()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 maybeAutoConnectNestedClient()
+            }
+        }
+        .onChange(of: needsWelcome) { _, needed in
+            if needed {
+                showWelcomeAlert = true
+            } else if preferences.hasCompletedWelcome {
+                showWelcomeAlert = false
             }
         }
         .onReceive(NotificationCenter.default.publisher(

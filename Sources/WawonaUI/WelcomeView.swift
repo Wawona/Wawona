@@ -1,43 +1,38 @@
 import SwiftUI
 import WawonaModel
 
-struct WelcomeView: View {
+/// First-launch welcome as a **native alert**, not a full-screen page.
+///
+/// macOS: SwiftUI `.alert` (AppKit `NSAlert` under the hood).
+/// iOS / iPadOS / tvOS / visionOS: the same SwiftUI alert chrome.
+/// watchOS: same pattern in `WawonaWatchRootView` (Watch does not link WawonaUI).
+struct WelcomeAlertModifier: ViewModifier {
     @ObservedObject var preferences: WawonaPreferences
-    @State var pulse = false
+    @Binding var isPresented: Bool
 
-    var body: some View {
-        ZStack {
-            LinearGradient(colors: [.black, .blue.opacity(0.45)], startPoint: .top, endPoint: .bottom)
-                .edgesIgnoringSafeArea(.all)
-
-            GlassCard(cornerRadius: 28) {
-                VStack(spacing: 16) {
-                    Image(systemName: "wand.and.stars")
-                        .font(.system(size: 64))
-                        .foregroundColor(.white)
-                        .scaleEffect(pulse ? 1.12 : 1.0)
-                    Text("Welcome to Wawona")
-                        .font(.largeTitle.bold())
-                    Text("One SwiftUI control surface for macOS, iOS, iPadOS, watchOS, and Android.")
-                        .multilineTextAlignment(.center)
-                        .foregroundColor(.secondary)
-                    WawonaButton("Add Your First Machine") {
-                        preferences.hasCompletedWelcome = true
-                        preferences.save()
-                    }
-                    .backport.borderedButton(prominent: true)
-                    .wwnA11y(WawonaA11y.welcomeAddFirst, label: "Add Your First Machine")
+    func body(content: Content) -> some View {
+        content
+            .alert("Welcome to Wawona", isPresented: $isPresented) {
+                Button("Continue") {
+                    preferences.hasCompletedWelcome = true
+                    preferences.save()
+                    isPresented = false
                 }
-                .padding(20)
+                .accessibilityIdentifier(WawonaA11y.welcomeContinue)
+            } message: {
+                Text(
+                    "One control surface for macOS, iOS, iPadOS, tvOS, visionOS, watchOS, and Android. Add a machine when you are ready."
+                )
             }
-            .frame(maxWidth: 520)
-            .padding()
-        }
-        .wwnA11y(WawonaA11y.welcomeRoot, label: "Welcome to Wawona")
-        .backport.task {
-            withAnimation(.easeInOut(duration: 1.2).repeatForever()) {
-                pulse = true
-            }
-        }
+    }
+}
+
+extension View {
+    /// Present the first-launch welcome as a system alert over Machines.
+    func wawonaWelcomeAlert(
+        preferences: WawonaPreferences,
+        isPresented: Binding<Bool>
+    ) -> some View {
+        modifier(WelcomeAlertModifier(preferences: preferences, isPresented: isPresented))
     }
 }

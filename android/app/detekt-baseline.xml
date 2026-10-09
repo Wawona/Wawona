@@ -39,7 +39,6 @@
     <ID>FunctionNaming:MachineHomeScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable private fun MachineTypeDropdown( selected: MachineType, expanded: Boolean, onExpandedChange: (Boolean) -&gt; Unit, onSelect: (MachineType) -&gt; Unit )</ID>
     <ID>FunctionNaming:MachineHomeScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable private fun StringDropdownField( label: String, selected: String, options: List&lt;String&gt;, expanded: Boolean, onExpandedChange: (Boolean) -&gt; Unit, onSelect: (String) -&gt; Unit, enabled: Boolean = true, )</ID>
     <ID>FunctionNaming:MainActivity.kt$@Composable fun WawonaApp( prefs: SharedPreferences, surfaceCallback: SurfaceHolder.Callback, cacheDirPath: String, displayDensity: Float )</ID>
-    <ID>FunctionNaming:MainActivity.kt$@Composable private fun AppWelcomeScreen(onContinue: () -&gt; Unit)</ID>
     <ID>FunctionNaming:MainActivity.kt$@Composable private fun GuestConsoleOverlay( text: String, onDismiss: () -&gt; Unit, modifier: Modifier = Modifier, )</ID>
     <ID>FunctionNaming:MainActivity.kt$@Composable private fun StartupLogOverlay( clientLabel: String, lines: List&lt;String&gt;, onDismiss: () -&gt; Unit, modifier: Modifier = Modifier, )</ID>
     <ID>FunctionNaming:ModifierAccessoryBar.kt$@Composable fun ModifierAccessoryBar( modifier: Modifier = Modifier, keyboardExpanded: Boolean, onToggleKeyboardExpanded: () -&gt; Unit, onCollapseToPipByDrag: () -&gt; Unit )</ID>

@@ -80,7 +80,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Apps
-import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.MaterialTheme
@@ -1385,14 +1384,7 @@ fun WawonaApp(
         profiles = MachineProfileStore.loadProfiles(prefs)
     }
 
-    if (showWelcome) {
-        AppWelcomeScreen(
-            onContinue = {
-                prefs.edit().putBoolean("hasSeenWelcome", true).apply()
-                showWelcome = false
-            }
-        )
-    } else if (showMachinesHome) {
+    if (showWelcome || showMachinesHome) {
         MachineWelcomeScreen(
             profiles = profiles,
             thumbnailRevision = thumbnailRevision,
@@ -1419,6 +1411,31 @@ fun WawonaApp(
             onStop = { profile -> disconnectMachine(profile) },
             onOpenSettings = { showSettingsDialog = true }
         )
+        // Material AlertDialog is the Compose native first-launch host.
+        // Not a full-screen Welcome page (`wawona-global-settings-exclusive` style: one chrome).
+        if (showWelcome) {
+            AlertDialog(
+                onDismissRequest = { /* require Continue */ },
+                modifier = Modifier.testTag(WawonaTestTags.WELCOME_ROOT),
+                title = { Text("Welcome to Wawona") },
+                text = {
+                    Text(
+                        "A clean Wayland compositor experience. Add a machine when you are ready."
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            prefs.edit().putBoolean("hasSeenWelcome", true).apply()
+                            showWelcome = false
+                        },
+                        modifier = Modifier.testTag(WawonaTestTags.WELCOME_CONTINUE),
+                    ) {
+                        Text("Continue")
+                    }
+                },
+            )
+        }
     } else {
         // In desktop mode, Back is a launcher gesture: open the app drawer instead
         // of tearing down the desktop session.
@@ -1924,43 +1941,6 @@ private fun StartupLogOverlay(
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
             )
-        }
-    }
-}
-
-@Composable
-private fun AppWelcomeScreen(onContinue: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .statusBarsPadding()
-            .padding(horizontal = 28.dp, vertical = 24.dp)
-            .testTag(WawonaTestTags.WELCOME_ROOT)
-    ) {
-        Column(
-            modifier = Modifier.align(Alignment.Center),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            Text(
-                text = "Welcome to Wawona",
-                style = MaterialTheme.typography.headlineSmall,
-                color = MaterialTheme.colorScheme.onBackground,
-                fontWeight = FontWeight.SemiBold
-            )
-            Text(
-                text = "A clean Wayland compositor experience.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.78f)
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-            Button(
-                onClick = onContinue,
-                modifier = Modifier.testTag(WawonaTestTags.WELCOME_CONTINUE),
-            ) {
-                Text("Continue")
-            }
         }
     }
 }
