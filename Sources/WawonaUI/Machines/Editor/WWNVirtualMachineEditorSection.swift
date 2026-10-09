@@ -38,10 +38,14 @@ struct WWNVirtualMachineEditorSection: View {
       icon: "desktopcomputer.and.macbook",
       title: "Virtual Machine",
       tint: WWNTagPalette.indigo,
-      info: "Wawona Relay runs the guest. Memory and storage changes apply after stopping and starting. Storage can grow but cannot shrink. Changing the VM Identifier selects a different disk."
+      info: "On macOS, Start boots a NixOS MicroVM (vfkit) and forwards Wayland over vsock+waypipe into Wawona. Memory and storage changes apply after stopping and starting. Storage can grow but cannot shrink. Changing the VM Identifier selects a different disk. Mobile targets use Wawona Relay."
     ) {
       WWNEditorFieldRow("Backend", icon: "cpu") {
+        #if os(macOS)
+        Text("MicroVM + waypipe").foregroundColor(.secondary)
+        #else
         Text("Relay").foregroundColor(.secondary)
+        #endif
       }
       WWNEditorFieldRow("VM Identifier") {
         WawonaTextField("Automatic", text: text("vmIdentifier"))

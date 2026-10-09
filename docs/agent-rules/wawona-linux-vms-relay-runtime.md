@@ -52,6 +52,16 @@ leftover QEMU tree the Wawona runtime.
 - The slider never changes a running disk, shrinks a filesystem, or delegates
   sizing logic to SwiftUI, Kotlin, or a shell command.
 
+## macOS dogfood (microvm.nix + vfkit)
+
+Linux-first breadth without a native port of every app: on macOS, Machines
+`virtual_machine` Start may run the supervised flake app
+`wawona-microvm-session` (vfkit + vsock waypipe into Wawona). Guest module:
+`Relay/import/vms/dependencies/vms/microvm-guest.nix`. That path proves the
+Wayland contract; it does **not** replace Relay as the product engine on
+iOS/Android/Linux, and it must never be documented as QEMU/UTM. Prose:
+`docs/2026-nixos-vm-bridge.md`.
+
 ## Hard rejects
 
 - Windows / macOS / BSD / “any ISO” guests as product Machines

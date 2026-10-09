@@ -89,6 +89,9 @@ public final class WWNMachineSessionBridge: NSObject {
         #endif
         runner.stopAllNativeClients()
         if runner.isRunning { runner.stopWaypipe() }
+        #if os(macOS)
+        WWNVirtualMachineRunner.sharedRunner.stopAll()
+        #endif
         WWNRelay.sharedRelay.stopAll()
     }
 
@@ -138,7 +141,13 @@ public final class WWNMachineSessionBridge: NSObject {
             return
         }
         if profileUsesVirtualMachineBackend(profile) {
+            #if os(macOS)
+            // macOS dogfood: supervised microvm.nix + waypipe session (vfkit).
+            // Product Relay VZ/StaticCpu remains the mobile / long-term engine.
+            try connectMicrovmSession(profile: profile)
+            #else
             try connectRelayBacked(profile: profile, forbidden: "Virtual machines are not available on this platform.", code: 4)
+            #endif
             return
         }
         if profileUsesContainerBackend(profile) {
@@ -166,7 +175,16 @@ public final class WWNMachineSessionBridge: NSObject {
             disconnectNative(profile: profile)
         } else if profileRequiresWaypipeTransport(profile) {
             WWNWaypipeRunner.shared.stopWaypipe()
-        } else if profileUsesVirtualMachineBackend(profile) || profileUsesContainerBackend(profile) {
+        } else if profileUsesVirtualMachineBackend(profile) {
+            #if os(macOS)
+            WWNVirtualMachineRunner.sharedRunner.stopProfile(withMachineId: profile.machineId ?? "")
+            #else
+            WWNRelay.sharedRelay.stopProfile(withMachineId: profile.machineId ?? "")
+            if WWNRelay.sharedRelay.hasOwnedSession(forMachineId: profile.machineId ?? "") {
+                return
+            }
+            #endif
+        } else if profileUsesContainerBackend(profile) {
             WWNRelay.sharedRelay.stopProfile(withMachineId: profile.machineId ?? "")
             if WWNRelay.sharedRelay.hasOwnedSession(forMachineId: profile.machineId ?? "") {
                 return
@@ -258,6 +276,25 @@ public final class WWNMachineSessionBridge: NSObject {
         let ok = WWNRelay.sharedRelay.startProfile(profile, error: &err)
         if !ok { throw err ?? NSError(domain: "WWNMachineSessionBridge", code: code, userInfo: nil) }
     }
+
+    #if os(macOS)
+    private static func connectMicrovmSession(profile: WWNMachineProfile) throws {
+        guard WWNPlatformAllowsVirtualMachine() else {
+            throw NSError(
+                domain: "WWNMachineSessionBridge", code: 4,
+                userInfo: [NSLocalizedDescriptionKey: "Virtual machines are not available on this platform."]
+            )
+        }
+        var err: NSError?
+        let ok = WWNVirtualMachineRunner.sharedRunner.launchProfile(profile, error: &err)
+        if !ok {
+            throw err ?? NSError(
+                domain: "WWNMachineSessionBridge", code: 4,
+                userInfo: [NSLocalizedDescriptionKey: "MicroVM session failed to start."]
+            )
+        }
+    }
+    #endif
 
     private static func disconnectNative(profile: WWNMachineProfile) {
         let runner = WWNWaypipeRunner.shared

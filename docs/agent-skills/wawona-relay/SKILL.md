@@ -28,6 +28,22 @@ Repo: `github.com/Wawona/Relay` (`development`). Flake input: **`wwn-relay`**. L
 - `wawona-mode-a-b` / `wawona-ios-mode-b-channels`
 
 Canonical prose: `Wawona/docs/agent-rules/wawona-linux-vms-relay-runtime.md`, `Relay/README.md`.
+
+## macOS MicroVM dogfood (not the product engine)
+
+Linux-first breadth path on the Mac: microvm.nix + vfkit + vsock waypipe into
+Wawona. Guest module:
+`Relay/import/vms/dependencies/vms/microvm-guest.nix`. One host command:
+`nix run .#wawona-microvm-session` (Wawona must already expose `wayland-0`).
+Machines `virtual_machine` Start on macOS launches that session via
+`WWNVirtualMachineRunner`. Smoke: `scripts/microvm-waypipe-session-smoke.sh`.
+Docs: `Wawona/docs/2026-nixos-vm-bridge.md`.
+
+Hard rejects:
+
+- Document QEMU or UTM as Machines Start
+- Treat vfkit MicroVM as replacing Relay on iOS/Android
+- Two-terminal bridge+microvm as the default agent path (use the session app)
 Completion scorecard (not harness counts): `Relay/docs/static-cpu-completion-plan.md`
 2026-10-06. Completely complete iOS Mode A VM is **0%**. Twelve-gate ~48%.
 iOS `vm` stays planned. Remaining work follows **Shortest calendar path** in
@@ -401,7 +417,7 @@ layer buffer. Concurrent filesystem replacement and atomic publication remain
 unproven; internal symlink ancestors currently reject conservatively.
 The active shared Sources/WawonaUI settings already contain memory/storage
 sliders and guest-page selection; WWNVirtualMachineEditorSection is legacy.
-Sources/WawonaApple/Runners/RelayRunner.swift sends memory_mb/disk_gib/max_disk_gib. RelaySpec now retains these;
+WWNRelay.m sends memory_mb/disk_gib/max_disk_gib. RelaySpec now retains these;
 StaticCpu and VZ apply RAM and disk limits. App-owned machine disks publish
 without replacement, hold an exclusive advisory lock, grow only, and flush
 writes before virtio completion. This is not a crash-consistency or race proof.

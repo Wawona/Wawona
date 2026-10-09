@@ -57,9 +57,9 @@ Status source of truth: [`2026-SOURCE-OF-TRUTH.md`](./2026-SOURCE-OF-TRUTH.md).
   [2026-nixos-vm-bridge.md](./2026-nixos-vm-bridge.md).
 - **Two macOS tracks** (both on Virtualization.framework), relocated into wwn-vms:
   - **Developer track (working): `microvm.nix` + `vfkit`** -
-    `wwn-vms/dependencies/vms/microvm-guest.nix`. `nix run .#wawona-microvm`
-    boots the guest; `nix run .#wawona-vm-bridge` relays its Wayland session into
-    Wawona. `writableStoreOverlay` + virtiofs ro `/nix/store` → **no
+    `Relay/import/vms/dependencies/vms/microvm-guest.nix`. Prefer
+    `nix run .#wawona-microvm-session` (bridge + vfkit supervised). Thin
+    internals: `wawona-microvm` / `wawona-vm-bridge`. `writableStoreOverlay` + virtiofs ro `/nix/store` → **no
     make-disk-image/KVM**; stays on upstream microvm.nix via `vfkit.extraArgs`.
   - **In-app track: native Swift `wawona-vz`** -
     `wwn-vms/dependencies/vms/{WawonaLinuxVZ.swift,vz-launcher.nix}`. Embeddable,

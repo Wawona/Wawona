@@ -2759,7 +2759,6 @@
                 hostSystem = system;
               };
               vfkitRunner = microvmGuest.config.microvm.runner.vfkit;
-            in {
               wawona-microvm = pkgs.writeShellApplication {
                 name = "wawona-microvm";
                 runtimeInputs = [pkgs.coreutils pkgs.python3];
@@ -2800,9 +2799,9 @@
                   WAWONA_RUNTIME="''${WAWONA_RUNTIME:-/tmp/wawona-$(id -u)}"
                   WAYPIPE_SOCKET="''${WAYPIPE_SOCKET:-/tmp/waypipe-wawona.sock}"
 
-                  if [ ! -d "$WAWONA_RUNTIME" ]; then
-                    echo "wawona-vm-bridge: runtime dir $WAWONA_RUNTIME not found. Is Wawona running?" >&2
-                    echo "  set WAWONA_RUNTIME=/path/to/wawona/xdg-runtime and retry." >&2
+                  if [ ! -S "$WAWONA_RUNTIME/wayland-0" ]; then
+                    echo "wawona-vm-bridge: missing $WAWONA_RUNTIME/wayland-0. Is Wawona running?" >&2
+                    echo "  open -a Wawona  (or LaunchAgent), then set WAWONA_RUNTIME if needed." >&2
                     exit 1
                   fi
 
@@ -2825,6 +2824,139 @@
                   exec socat "UNIX-LISTEN:$VSOCK_SOCKET,fork" "UNIX-CONNECT:$WAYPIPE_SOCKET"
                 '';
               };
+              # One supervised command: bridge + vfkit microvm. Agents and Machines
+              # Start use this; wawona-microvm / wawona-vm-bridge stay thin internals.
+              wawona-microvm-session = pkgs.writeShellApplication {
+                name = "wawona-microvm-session";
+                runtimeInputs = [
+                  pkgs.coreutils
+                  pkgs.gnugrep
+                  pkgs.procps
+                  pkgs.socat
+                  wawona-microvm
+                  wawona-vm-bridge
+                ];
+                # cleanup is invoked via trap; shellcheck SC2329 is a false positive.
+                excludeShellChecks = ["SC2329"];
+                text = ''
+                  set -euo pipefail
+                  WAWONA_RUNTIME="''${WAWONA_RUNTIME:-/tmp/wawona-$(id -u)}"
+                  VSOCK_SOCKET="''${WAWONA_VSOCK_SOCKET:-/tmp/wawona-guest-vsock.sock}"
+                  STATEDIR="''${XDG_STATE_HOME:-$HOME/.local/state}/wawona-microvm"
+                  READY_TIMEOUT="''${WAWONA_MICROVM_READY_TIMEOUT:-180}"
+                  mkdir -p "$STATEDIR"
+                  BRIDGE_LOG="$STATEDIR/bridge.log"
+                  MICROVM_LOG="$STATEDIR/microvm.log"
+                  SESSION_PIDFILE="$STATEDIR/session.pids"
+
+                  if [ ! -S "$WAWONA_RUNTIME/wayland-0" ]; then
+                    echo "wawona-microvm-session: missing $WAWONA_RUNTIME/wayland-0." >&2
+                    echo "  Start Wawona first: open -a Wawona  (or the LaunchAgent)." >&2
+                    echo "  Override with WAWONA_RUNTIME=/path/to/xdg-runtime if needed." >&2
+                    exit 1
+                  fi
+
+                  BRIDGE_PID=""
+                  MICROVM_PID=""
+                  cleanup() {
+                    echo "[wawona-microvm-session] tearing down (bridge=$BRIDGE_PID microvm=$MICROVM_PID)" >&2
+                    if [ -n "$MICROVM_PID" ] && kill -0 "$MICROVM_PID" 2>/dev/null; then
+                      # Prefer restful Stop when the vfkit socket is up.
+                      if [ -S "$STATEDIR/wawona-microvm.sock" ]; then
+                        printf '%s' '{"state":"Stop"}' | \
+                          socat - UNIX-CONNECT:"$STATEDIR/wawona-microvm.sock" \
+                          >/dev/null 2>&1 || true
+                        sleep 1
+                      fi
+                      kill "$MICROVM_PID" 2>/dev/null || true
+                      wait "$MICROVM_PID" 2>/dev/null || true
+                    fi
+                    if [ -n "$BRIDGE_PID" ] && kill -0 "$BRIDGE_PID" 2>/dev/null; then
+                      kill "$BRIDGE_PID" 2>/dev/null || true
+                      # waypipe client is a child of the bridge script until socat exec.
+                      pkill -P "$BRIDGE_PID" 2>/dev/null || true
+                      wait "$BRIDGE_PID" 2>/dev/null || true
+                    fi
+                    rm -f "$SESSION_PIDFILE"
+                  }
+                  trap cleanup EXIT INT TERM
+
+                  echo "[wawona-microvm-session] WAWONA_RUNTIME=$WAWONA_RUNTIME" >&2
+                  echo "[wawona-microvm-session] vsock unix=$VSOCK_SOCKET state=$STATEDIR" >&2
+                  export WAWONA_RUNTIME VSOCK_SOCKET WAWONA_VSOCK_SOCKET="$VSOCK_SOCKET"
+
+                  echo "[wawona-microvm-session] starting bridge" >&2
+                  wawona-vm-bridge >"$BRIDGE_LOG" 2>&1 &
+                  BRIDGE_PID=$!
+                  echo "[wawona-microvm-session] bridge pid=$BRIDGE_PID log=$BRIDGE_LOG" >&2
+
+                  for _bridge_wait in $(seq 1 60); do
+                    if ! kill -0 "$BRIDGE_PID" 2>/dev/null; then
+                      echo "wawona-microvm-session: bridge exited early; see $BRIDGE_LOG" >&2
+                      exit 1
+                    fi
+                    [ -S "$VSOCK_SOCKET" ] && break
+                    sleep 1
+                  done
+                  if [ ! -S "$VSOCK_SOCKET" ]; then
+                    echo "wawona-microvm-session: bridge never listened on $VSOCK_SOCKET" >&2
+                    exit 1
+                  fi
+                  echo "[wawona-microvm-session] bridge listening on $VSOCK_SOCKET" >&2
+
+                  echo "[wawona-microvm-session] starting microvm" >&2
+                  wawona-microvm >"$MICROVM_LOG" 2>&1 &
+                  MICROVM_PID=$!
+                  echo "[wawona-microvm-session] microvm pid=$MICROVM_PID log=$MICROVM_LOG" >&2
+                  printf 'bridge=%s\nmicrovm=%s\n' "$BRIDGE_PID" "$MICROVM_PID" >"$SESSION_PIDFILE"
+
+                  # Wait for guest ready marker on the vfkit console scrape, or for
+                  # the vsock unix socket to accept (guest dialed out).
+                  ready=0
+                  for ready_i in $(seq 1 "$READY_TIMEOUT"); do
+                    if ! kill -0 "$MICROVM_PID" 2>/dev/null; then
+                      echo "wawona-microvm-session: microvm exited early; see $MICROVM_LOG" >&2
+                      exit 1
+                    fi
+                    if ! kill -0 "$BRIDGE_PID" 2>/dev/null; then
+                      echo "wawona-microvm-session: bridge exited; see $BRIDGE_LOG" >&2
+                      exit 1
+                    fi
+                    if grep -q 'WAWONA_RELAY_READY=1' "$MICROVM_LOG" 2>/dev/null; then
+                      ready=1
+                      echo "[wawona-microvm-session] guest ready (WAWONA_RELAY_READY=1)" >&2
+                      break
+                    fi
+                    # Fallback: console scrape can lag behind pty buffering. After
+                    # 90s with bridge still listening, supervise anyway (waypipe
+                    # retries vsock dial-out).
+                    if [ "$ready_i" -ge 90 ] && [ -S "$VSOCK_SOCKET" ]; then
+                      ready=1
+                      echo "[wawona-microvm-session] proceeding (vsock listen up; ready scrape optional)" >&2
+                      break
+                    fi
+                    sleep 1
+                  done
+                  if [ "$ready" -ne 1 ]; then
+                    echo "wawona-microvm-session: timed out waiting for guest ready (''${READY_TIMEOUT}s)" >&2
+                    exit 1
+                  fi
+
+                  echo "[wawona-microvm-session] supervising (Ctrl-C or SIGTERM to stop)" >&2
+                  # Block until either child exits; cleanup trap tears the other down.
+                  while kill -0 "$BRIDGE_PID" 2>/dev/null && kill -0 "$MICROVM_PID" 2>/dev/null; do
+                    sleep 2
+                  done
+                  if ! kill -0 "$BRIDGE_PID" 2>/dev/null; then
+                    echo "wawona-microvm-session: bridge exited; see $BRIDGE_LOG" >&2
+                    exit 1
+                  fi
+                  echo "wawona-microvm-session: microvm exited; see $MICROVM_LOG" >&2
+                  exit 1
+                '';
+              };
+            in {
+              inherit wawona-microvm wawona-vm-bridge wawona-microvm-session;
             }
           ))));
     in
@@ -3060,11 +3192,14 @@
             program = "${systemPackages.wawona-vz}/bin/wawona-vz-run";
           };
         })
-        // (pkgs.lib.optionalAttrs (systemPackages ? wawona-microvm) {
-          # p26-vm-nixos (developer track): boot the NixOS guest under vfkit
-          # (Virtualization.framework), then bridge its Wayland session into Wawona.
-          #   term 1:  nix run .#wawona-microvm
-          #   term 2:  nix run .#wawona-vm-bridge
+        // (pkgs.lib.optionalAttrs (systemPackages ? wawona-microvm-session) {
+          # Linux-first MicroVM dogfood: one supervised host command.
+          # Wawona must already be up (wayland-0). Prefer this over the two
+          # thin internals below.
+          wawona-microvm-session = {
+            type = "app";
+            program = "${systemPackages.wawona-microvm-session}/bin/wawona-microvm-session";
+          };
           wawona-microvm = {
             type = "app";
             program = "${systemPackages.wawona-microvm}/bin/wawona-microvm";

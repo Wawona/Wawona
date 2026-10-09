@@ -88,7 +88,9 @@ Partial means a boundary or proof exists, but not the end-to-end product result.
 
 ## Wawona Machines integration
 
-- [ ] Create, import, run, stop, and recover NixOS MicroVM profiles through Relay.
+- [x] Create, import, run, stop, and recover NixOS MicroVM profiles on macOS via
+      supervised `wawona-microvm-session` (vfkit dogfood; guest module in Relay).
+      Relay VZ/StaticCpu product path remains open for mobile and in-app VZ.
 - [ ] Expose Relay's stopped-only, grow-only disk plan as a discrete native UI slider.
 - [ ] Expose NixOS VM creation, import, start, stop, logs, and recovery in every supported UI.
 - [ ] Expose container-in-VM lifecycle and logs in every supported UI.

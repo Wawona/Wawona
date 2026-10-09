@@ -1010,7 +1010,11 @@ final class WWNMachinesViewModel: ObservableObject {
 
   func machineSubtitle(for profile: WWNMachineProfile) -> String {
     if profile.type == kWWNMachineTypeVirtualMachine {
+      #if os(macOS)
+      return "VM profile (MicroVM + waypipe)"
+      #else
       return "VM profile (Wawona Relay)"
+      #endif
     }
     if profile.type == kWWNMachineTypeContainer {
       return "Container profile (Wawona Relay)"
