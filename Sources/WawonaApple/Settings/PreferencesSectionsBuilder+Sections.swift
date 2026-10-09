@@ -114,26 +114,8 @@ extension WWNPreferencesSectionsBuilder {
                 desc = desc.isEmpty ? url : "\(desc)\n\(url)"
             }
             let key = "Dependency.\(index).\(name)"
-            return info(
-                name,
-                key,
-                version,
-                desc,
-                iconURL: url.isEmpty ? "" : faviconURL(for: url)
-            )
+            return info(name, key, version, desc)
         }
-    }
-
-    /// Best-effort site mark for dependency / About link rows.
-    static func faviconURL(for pageURL: String) -> String {
-        guard let host = URL(string: pageURL)?.host, !host.isEmpty else { return "" }
-        if host.contains("github.com") || host.contains("githubassets.com") {
-            return "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
-        }
-        if host.contains("gitlab.freedesktop.org") || host.contains("freedesktop.org") {
-            return "https://www.freedesktop.org/favicon.ico"
-        }
-        return "https://\(host)/favicon.ico"
     }
 
     static func desktopItems() -> [WWNSettingItem] {
