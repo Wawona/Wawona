@@ -8,6 +8,14 @@
 # (App Store non-compliant).
 set -euo pipefail
 
+# CalVer must be today's date (YY.M.D). Fail closed unless
+# WAWONA_ALLOW_STALE_CALVER=1. See docs/agent-rules/wawona-calver-today.md.
+if [[ -n "${SRCROOT:-}" && -x "${SRCROOT}/.github/scripts/verify-calver-today.sh" ]]; then
+  bash "${SRCROOT}/.github/scripts/verify-calver-today.sh"
+elif [[ -x "$(cd "$(dirname "$0")/.." && pwd)/.github/scripts/verify-calver-today.sh" ]]; then
+  bash "$(cd "$(dirname "$0")/.." && pwd)/.github/scripts/verify-calver-today.sh"
+fi
+
 # xcodebuild script phases reset HOME to the build user's pw_dir (/var/empty for
 # nixbld). Nested `nix` then dies creating /var/empty/.cache. Relocate early.
 if [ -z "${HOME:-}" ] || [ "$HOME" = "/var/empty" ] || [ ! -w "$HOME" ]; then

@@ -247,7 +247,9 @@ missing patch anchors, meson version floors, or `Cargo.lock` skew.
 - nixpkgs / `pkgs.*.src` / anchor patches → build the drifted package on the
   tip (`.#zsh-ios`, `.#fontconfig-android`, …).
 - CalVer bumps → sync `Cargo.lock` (and any linux-ui `cargoLock` consumers)
-  before push.
+  before push. Product builds fail closed unless `VERSION` is **today's**
+  `YY.M.D` (`wawona-calver-today`, `.github/scripts/verify-calver-today.sh`).
+  Escape: `WAWONA_ALLOW_STALE_CALVER=1`.
 
 Full rule: workspace `.cursor/rules/wawona-local-before-ci.mdc`.
 

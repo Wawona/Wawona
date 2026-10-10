@@ -78,6 +78,7 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-android-jbr` | Android Gradle / Studio JBR 21 |
 | `wawona-local-before-ci` | Link/eval before push |
 | `wawona-branch-workflow` | `development` vs `master` |
+| `wawona-calver-today` | Product builds: VERSION must be today's YY.M.D (fail closed) |
 | `wawona-asc-swift-support` | ITMS-90426 |
 | `wawona-release-assets` | Ship filenames; macOS DMG pkg-only |
 | `wawona-no-em-dash` | Copy |

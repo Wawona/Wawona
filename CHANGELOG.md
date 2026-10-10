@@ -8,6 +8,12 @@ Versioning is **CalVer** `YY.M.D` (year · month · day), Apple-style year major
 bump **build number** only. Historical `0.2.x` / mistaken `2.5.0` tags remain
 as history.
 
+## [26.10.10] - 2026-10-10
+
+### Changed
+- CalVer bump to 26.10.10.
+- Fail-closed today-CalVer gate for product builds (`verify-calver-today.sh`).
+
 ## [26.9.9] - 2026-09-09
 
 ### Changed

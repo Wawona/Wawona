@@ -3368,7 +3368,7 @@ dependencies = [
 
 [[package]]
 name = "wawona"
-version = "26.9.9"
+version = "26.10.10"
 dependencies = [
  "anyhow",
  "ash",
