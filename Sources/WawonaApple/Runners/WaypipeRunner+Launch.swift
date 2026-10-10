@@ -38,7 +38,10 @@ extension WWNWaypipeRunner {
         #else
         WWNRootfsProvider.applyShellEnvironment()
         #endif
-        DispatchQueue.global(qos: .userInitiated).async {
+        // Match epoll-shim / wl_event_loop worker QoS (.utility). A
+        // .userInitiated DispatchQueue waiting on those threads trips
+        // Thread Performance Checker priority-inversion Hang Risk.
+        let thread = Thread { [weak self] in
             var name = strdup("weston")
             var backend = strdup(useDrm ? "--backend=drm" : "--backend=wayland")
             defer { free(name); free(backend) }
@@ -47,6 +50,7 @@ extension WWNWaypipeRunner {
                 weston_compositor_main(2, buf.baseAddress)
             }
             DispatchQueue.main.async {
+                guard let self else { return }
                 self.westonRunning = false
                 if rc != 0 {
                     self.delegate?.runnerDidReceiveError?("weston_compositor_main exited \(rc)")
@@ -58,6 +62,9 @@ extension WWNWaypipeRunner {
                 }
             }
         }
+        thread.name = "wawona.inprocess-weston"
+        thread.qualityOfService = .utility
+        thread.start()
     }
     @discardableResult
     func launchBundledExecutable(names: [String], clientKey: String) -> Bool {

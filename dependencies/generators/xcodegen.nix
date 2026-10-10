@@ -84,7 +84,14 @@ let
     if bn != "" then bn
     else if gh != "" then gh
     else "1";
+  # Path form of a static archive is treated like -force_load by Apple ld.
+  # After niri's -force_load that doubles Rust std (rust_eh_personality).
+  # Lazy -lwawona pulls only WWNCore* objects; std comes from niri.
   derivedRustLib = "$(DERIVED_FILE_DIR)/libwawona.a";
+  derivedRustLdflags = [
+    "-L$(DERIVED_FILE_DIR)"
+    "-lwawona"
+  ];
   # Cursor files only. Do not use pkgs.adwaita-icon-theme (librsvg + mypy).
   adwaitaCursors = pkgs.callPackage ../wawona/adwaita-cursors.nix { };
 
@@ -702,7 +709,7 @@ let
             "-lepoll-shim"
           ] ++ (mobileBaseLdflags simDeps) ++ westonToytoolkitLdflagsAppleMobile simDeps ++ westonCompositorLdflagsAppleMobile simDeps
           ++ (ilandGlLdflags { deps = simDeps; simulator = true; }) ++ moltenvkLdflags simDeps ++ footLdflags simDeps ++ extraSimLdflags
-          ++ [ derivedRustLib ] ++ finalCxxLdflags;
+          ++ derivedRustLdflags ++ finalCxxLdflags;
           GCC_PREPROCESSOR_DEFINITIONS = [ "$(inherited)" ] ++ extraDefines ++ versionDefs;
         } // lib.optionalAttrs (!simulatorOnly) {
           "OTHER_CFLAGS[sdk=${deviceSdk}*]" = [ "$(inherited)" ] ++ ios26ObjcAutolinkOff;
@@ -727,7 +734,7 @@ let
             "-lepoll-shim"
           ] ++ (mobileBaseLdflags deps) ++ westonToytoolkitLdflagsAppleMobile deps ++ westonCompositorLdflagsAppleMobile deps
           ++ (ilandGlLdflags { inherit deps; simulator = false; }) ++ moltenvkLdflags deps ++ footLdflags deps ++ extraDeviceLdflags
-          ++ [ derivedRustLib ] ++ finalCxxLdflags;
+          ++ derivedRustLdflags ++ finalCxxLdflags;
         };
       };
     };
@@ -1571,7 +1578,8 @@ PLIST
              ++ sshCliLdflags iosSimDeps
              ++ appleMobileResolvLdflags
              ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [
-               derivedRustLib
+               "-L$(DERIVED_FILE_DIR)"
+               "-lwawona"
              ] ++ vmEngineContractLdflags iosSimDeps ++ finalCxxLdflags;
             GCC_PREPROCESSOR_DEFINITIONS = [
               "$(inherited)"
@@ -1621,7 +1629,8 @@ PLIST
              ++ sshCliLdflags iosDeps
              ++ appleMobileResolvLdflags
              ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [
-               derivedRustLib
+               "-L$(DERIVED_FILE_DIR)"
+               "-lwawona"
              ] ++ vmEngineContractLdflags iosDeps ++ finalCxxLdflags;
             "HEADER_SEARCH_PATHS[sdk=iphoneos*]" = [
               "$(inherited)"
@@ -1811,7 +1820,8 @@ PLIST
             ++ sshCliLdflags ipadosDeps
              ++ appleMobileResolvLdflags
             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [
-              derivedRustLib
+              "-L$(DERIVED_FILE_DIR)"
+              "-lwawona"
             ] ++ vmEngineContractLdflags ipadosDeps ++ finalCxxLdflags;
             "OTHER_LDFLAGS[sdk=iphonesimulator*]" = [
               "$(inherited)"
@@ -1845,7 +1855,8 @@ PLIST
             ++ sshCliLdflags ipadosSimDeps
              ++ appleMobileResolvLdflags
             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [
-              derivedRustLib
+              "-L$(DERIVED_FILE_DIR)"
+              "-lwawona"
             ] ++ vmEngineContractLdflags ipadosSimDeps ++ finalCxxLdflags;
             GCC_PREPROCESSOR_DEFINITIONS = [
               "$(inherited)"
@@ -1993,7 +2004,7 @@ PLIST
             ++ sshCliLdflags tvosDeps
              ++ appleMobileResolvLdflags
             ++ (ilandGlLdflags { deps = tvosDeps; simulator = false; }) ++ moltenvkLdflags tvosDeps
-            ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ "-liconv" derivedRustLib ] ++ finalCxxLdflagsNoIokit;
+            ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ "-liconv" ] ++ derivedRustLdflags ++ finalCxxLdflagsNoIokit;
             "OTHER_LDFLAGS[sdk=appletvsimulator*]" = [
               "$(inherited)"
             ] ++ ios26SwiftUiClientLdflags ++ [
@@ -2027,7 +2038,7 @@ PLIST
             ++ sshCliLdflags tvosSimDeps
              ++ appleMobileResolvLdflags
             ++ (ilandGlLdflags { deps = tvosSimDeps; simulator = true; }) ++ moltenvkLdflags tvosSimDeps
-            ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ "-liconv" derivedRustLib ] ++ finalCxxLdflagsNoIokit;
+            ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ "-liconv" ] ++ derivedRustLdflags ++ finalCxxLdflagsNoIokit;
             GCC_PREPROCESSOR_DEFINITIONS = [
               "$(inherited)"
               "TARGET_OS_IPHONE=1"
@@ -2586,7 +2597,8 @@ PLIST
               "-lssl"
               "-lcrypto"
               "-lz"
-              derivedRustLib
+              "-L$(DERIVED_FILE_DIR)"
+              "-lwawona"
             ] ++ (ilandGlLdflags { deps = macosDeps; simulator = false; })
               ++ (westonToytoolkitLdflagsMacos macosDeps)
               ++ (westonCompositorLdflags macosDeps)
@@ -2733,7 +2745,7 @@ PLIST
             ++ (ilandGlLdflags { deps = visionosDeps; simulator = false; }) ++ moltenvkLdflags visionosDeps ++ footLdflags visionosDeps ++ fastfetchLdflags visionosDeps ++ phoonLdflags visionosDeps ++ wasmLdflags visionosDeps ++ niriLdflags visionosDeps ++ fuzzelLdflags visionosDeps ++ waypipeLdflags visionosDeps
             ++ sshCliLdflags visionosDeps
              ++ appleMobileResolvLdflags
-            ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
+            ++ mobileZshLdflags ++ mobileDispatchLdflags ++ derivedRustLdflags ++ finalCxxLdflags;
             "OTHER_LDFLAGS[sdk=xrsimulator*]" = [
               "$(inherited)"
             ] ++ ios26SwiftUiClientLdflags ++ [
@@ -2766,7 +2778,7 @@ PLIST
             ++ (ilandGlLdflags { deps = visionosSimDeps; simulator = true; }) ++ moltenvkLdflags visionosSimDeps ++ footLdflags visionosSimDeps ++ fastfetchLdflags visionosSimDeps ++ phoonLdflags visionosSimDeps ++ wasmLdflags visionosSimDeps ++ niriLdflags visionosSimDeps ++ fuzzelLdflags visionosSimDeps ++ waypipeLdflags visionosSimDeps
             ++ sshCliLdflags visionosSimDeps
              ++ appleMobileResolvLdflags
-            ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ derivedRustLib ] ++ finalCxxLdflags;
+            ++ mobileZshLdflags ++ mobileDispatchLdflags ++ derivedRustLdflags ++ finalCxxLdflags;
             GCC_PREPROCESSOR_DEFINITIONS = [
               "$(inherited)"
               "TARGET_OS_IPHONE=1"
@@ -3122,7 +3134,7 @@ PLIST
               "-lwayland-client"
               "-lepoll-shim"
               "-lpixman-1"
-              "-lzstd"
+              # -lzstd comes from wasmLdflags (relay); do not duplicate.
               "-llz4"
               "-lz"
               "-lssh2"
@@ -3139,9 +3151,8 @@ PLIST
             # lazy link just below: niri is force-loaded, so -lphoon_rs after it
             # dedupes std/core (no 2134 duplicate symbols) while keeping phoon
             # bundled on watchOS.
-            ] ++ westonToytoolkitLdflagsAppleMobile watchosDeps ++ westonCompositorLdflagsAppleMobile watchosDeps ++ niriLdflags watchosDeps ++ footLdflags watchosDeps ++ fastfetchLdflags watchosDeps ++ phoonLdflags watchosDeps ++ wasmLdflags watchosDeps ++ [
-              "-lwayland-server"
-            ] ++ lib.optionals (watchosDeps ? waypipe && watchosDeps.waypipe != null) [
+            ] ++ westonToytoolkitLdflagsAppleMobile watchosDeps ++ westonCompositorLdflagsAppleMobile watchosDeps ++ niriLdflags watchosDeps ++ footLdflags watchosDeps ++ fastfetchLdflags watchosDeps ++ phoonLdflags watchosDeps ++ wasmLdflags watchosDeps
+            ++ lib.optionals (watchosDeps ? waypipe && watchosDeps.waypipe != null) [
               # Lazy archive link, not -force_load: niri is already force-loaded
               # and both are Rust staticlibs bundling std/core, so forcing both
               # yields thousands of duplicate symbols. _waypipe_main is kept
@@ -3150,7 +3161,8 @@ PLIST
               "-lwaypipe"
             ] ++ sshCliLdflags watchosDeps
             ++ appleMobileResolvLdflags ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ "-liconv" ] ++ lib.optionals (watchosBackend != null) [
-              derivedRustLib
+              "-L$(DERIVED_FILE_DIR)"
+              "-lwawona"
             ] ++ finalCxxLdflagsNoIokit;
             "OTHER_LDFLAGS[sdk=watchos*][arch=arm64_32]" = [
               "$(inherited)"
@@ -3173,7 +3185,7 @@ PLIST
               "-lwayland-client"
               "-lepoll-shim"
               "-lpixman-1"
-              "-lzstd"
+              # -lzstd comes from wasmLdflags (relay); do not duplicate.
               "-llz4"
               "-lz"
               "-lssh2"
@@ -3185,14 +3197,14 @@ PLIST
               "-lxkbcommon"
               "-lwayland-egl"
             # phoon lazy-linked on watchOS sim too (see watchOS device block).
-            ] ++ westonToytoolkitLdflagsAppleMobile watchosSimDeps ++ westonCompositorLdflagsAppleMobile watchosSimDeps ++ niriLdflags watchosSimDeps ++ footLdflags watchosSimDeps ++ fastfetchLdflags watchosSimDeps ++ phoonLdflags watchosSimDeps ++ wasmLdflags watchosSimDeps ++ [
-              "-lwayland-server"
-            ] ++ lib.optionals (watchosSimDeps ? waypipe && watchosSimDeps.waypipe != null) [
+            ] ++ westonToytoolkitLdflagsAppleMobile watchosSimDeps ++ westonCompositorLdflagsAppleMobile watchosSimDeps ++ niriLdflags watchosSimDeps ++ footLdflags watchosSimDeps ++ fastfetchLdflags watchosSimDeps ++ phoonLdflags watchosSimDeps ++ wasmLdflags watchosSimDeps
+            ++ lib.optionals (watchosSimDeps ? waypipe && watchosSimDeps.waypipe != null) [
               "-L${strip watchosSimDeps.waypipe}/lib"
               "-lwaypipe"
             ] ++ sshCliLdflags watchosSimDeps
             ++ appleMobileResolvLdflags ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ "-liconv" ] ++ lib.optionals (watchosSimBackend != null) [
-              derivedRustLib
+              "-L$(DERIVED_FILE_DIR)"
+              "-lwawona"
             ] ++ finalCxxLdflagsNoIokit;
           };
         };

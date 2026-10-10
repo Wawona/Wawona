@@ -22,6 +22,8 @@ private func WWNStringFree(_ s: UnsafeMutablePointer<CChar>?)
 private func WWNCoreFlushClients(_ core: UnsafeMutableRawPointer?)
 @_silgen_name("WWNCoreProcessEvents")
 private func WWNCoreProcessEvents(_ core: UnsafeMutableRawPointer?) -> Bool
+@_silgen_name("WWNCoreGetClientCount")
+private func WWNCoreGetClientCount(_ core: UnsafeMutableRawPointer?) -> UInt32
 
 @objc(WWNCompositorBridge)
 public final class WWNCompositorBridge: NSObject {
@@ -31,6 +33,20 @@ public final class WWNCompositorBridge: NSObject {
     private var name = "wayland-0"
     public var core: UnsafeMutableRawPointer?
     private var eventPump: Timer?
+    private static let eventQueueKey = DispatchSpecificKey<UInt8>()
+    /// Compositor event work matches Rust worker QoS (.utility). Never call
+    /// WWNCoreProcessEvents on the main/.userInteractive thread or Thread
+    /// Performance Checker reports Hang Risk priority inversions.
+    private let eventQueue: DispatchQueue = {
+        let q = DispatchQueue(
+            label: "com.aspauldingcode.wawona.compositor-events",
+            qos: .utility
+        )
+        q.setSpecific(key: WWNCompositorBridge.eventQueueKey, value: 1)
+        return q
+    }()
+    /// One-shot gate so waypipe/MicroVM clients reveal the session surface once.
+    private var didRequestSessionSurfaceForClients = false
     #if canImport(AppKit)
     @objc public weak var containerView: NSView?
     @objc public weak var externalMirrorView: NSView?
@@ -76,12 +92,16 @@ public final class WWNCompositorBridge: NSObject {
         if let core {
             _ = WWNCoreStop(core)
         }
+        didRequestSessionSurfaceForClients = false
     }
 
     private func startEventPumpIfNeeded() {
         guard eventPump == nil else { return }
         let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
-            self?.pollAndHandleWindowEvents()
+            guard let self else { return }
+            self.eventQueue.async {
+                self.pollAndHandleWindowEvents()
+            }
         }
         RunLoop.main.add(timer, forMode: .common)
         eventPump = timer
@@ -138,14 +158,50 @@ public final class WWNCompositorBridge: NSObject {
     }
 
     @objc public func pollAndHandleWindowEvents() {
-        _ = WWNCoreProcessEvents(core)
-        // SHM / IOSurface clients need PopPendingBuffer → Metal. Without this,
-        // Start connects weston-terminal and the window stays empty.
-        #if canImport(Metal) && !os(watchOS)
-        if let presenter = activeIlandPresenterRef() {
-            presenter.drainPendingBuffers(fromCore: core)
+        // May run on eventQueue (timer) or an external caller. Keep Smithay
+        // ProcessEvents off the main thread; hop to main for UI / Metal.
+        let process: () -> Void = { [weak self] in
+            guard let self else { return }
+            _ = WWNCoreProcessEvents(self.core)
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.requestSessionSurfaceIfClientsAttached()
+                // SHM / IOSurface clients need PopPendingBuffer → Metal.
+                #if canImport(Metal) && !os(watchOS)
+                if let presenter = self.activeIlandPresenterRef() {
+                    presenter.drainPendingBuffers(fromCore: self.core)
+                }
+                #endif
+            }
         }
+        if DispatchQueue.getSpecific(key: Self.eventQueueKey) != nil {
+            process()
+        } else {
+            eventQueue.async(execute: process)
+        }
+    }
+
+    /// CLI MicroVM / external waypipe never hit Machines Start. When the first
+    /// client attaches to this process's compositor, reveal the Metal host so
+    /// pending SHM buffers can drain (CompositorBridge mounts only then).
+    private func requestSessionSurfaceIfClientsAttached() {
+        guard !didRequestSessionSurfaceForClients, let core else { return }
+        guard WWNCoreGetClientCount(core) > 0 else { return }
+        didRequestSessionSurfaceForClients = true
+        let userInfo: [AnyHashable: Any] = ["source": "compositor-client-attach"]
+        NotificationCenter.default.post(
+            name: Notification.Name("WWNShowSessionSurfaceNotification"),
+            object: nil,
+            userInfo: userInfo
+        )
+        #if os(macOS)
+        DistributedNotificationCenter.default().post(
+            name: Notification.Name("WWNShowSessionSurfaceNotification"),
+            object: nil,
+            userInfo: userInfo
+        )
         #endif
+        NSLog("[WWNCompositorBridge] requested session surface (Wayland clients attached)")
     }
 
     #if canImport(Metal) && !os(watchOS)
