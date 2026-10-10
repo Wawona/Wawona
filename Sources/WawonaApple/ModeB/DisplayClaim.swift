@@ -4,22 +4,23 @@ import UIKit
 
 /// IOMFB host claim: digitizer steal and idle timer. Replaces `WWNModeBDisplayClaim.m`.
 public enum ModeBDisplayClaim {
+    /// touchId, state, x, y, force (0 when unknown).
     public typealias HidSink = @convention(c) (Int32, Int32, Double, Double, Double) -> Void
 
-    private static var hidSink: HidSink?
+    fileprivate static var hidSink: HidSink?
     private static var hidClient: UnsafeMutableRawPointer?
     private static var iokitHandle: UnsafeMutableRawPointer?
     private static var claimed = false
 
-    private static var hidFloat: (@convention(c) (UnsafeMutableRawPointer?, UInt32) -> Double)?
-    private static var hidInt: (@convention(c) (UnsafeMutableRawPointer?, UInt32) -> CFIndex)?
-    private static var hidType: (@convention(c) (UnsafeMutableRawPointer?) -> UInt32)?
-    private static var hidChildren: (@convention(c) (UnsafeMutableRawPointer?) -> CFArray?)?
+    fileprivate static var hidFloat: (@convention(c) (UnsafeMutableRawPointer?, UInt32) -> Double)?
+    fileprivate static var hidInt: (@convention(c) (UnsafeMutableRawPointer?, UInt32) -> CFIndex)?
+    fileprivate static var hidType: (@convention(c) (UnsafeMutableRawPointer?) -> UInt32)?
+    fileprivate static var hidChildren: (@convention(c) (UnsafeMutableRawPointer?) -> CFArray?)?
     private static var hidUnschedule: (
         @convention(c) (UnsafeMutableRawPointer?, CFRunLoop?, CFString?) -> Void
     )?
 
-    private enum Hid {
+    fileprivate enum Hid {
         static let digitizer: UInt32 = 11
         static let fieldX: UInt32 = 0x000B0000
         static let fieldY: UInt32 = 0x000B0001
@@ -55,7 +56,7 @@ public enum ModeBDisplayClaim {
         return 0
     }
 
-    private static func modebLog(_ message: String) {
+    fileprivate static func modebLog(_ message: String) {
         message.withCString { ptr in
             wwn_log_ring_append("MODEB", ptr)
         }
@@ -83,7 +84,13 @@ public enum ModeBDisplayClaim {
     private static var touchDown = [UInt8](repeating: 0, count: 16)
     private static var hidLogCount = 0
 
-    private static func emitHid(touchId: Int32, state: Int32, rawX: Double, rawY: Double) {
+    private static func emitHid(
+        touchId: Int32,
+        state: Int32,
+        rawX: Double,
+        rawY: Double,
+        force: Double
+    ) {
         let mapped = mapHidPoint(rawX: rawX, rawY: rawY)
         if hidLogCount < 8 {
             hidLogCount += 1
@@ -91,59 +98,17 @@ public enum ModeBDisplayClaim {
                 "hid steal id=\(touchId) state=\(state) raw=\(rawX),\(rawY) view=\(mapped.0),\(mapped.1)"
             )
         }
-        hidSink?(touchId, state, mapped.0, mapped.1)
+        hidSink?(touchId, state, mapped.0, mapped.1, force)
     }
 
-    private static func hidHandle(
-        _ target: UnsafeMutableRawPointer?,
-        _ refcon: UnsafeMutableRawPointer?,
-        _ client: UnsafeMutableRawPointer?,
-        _ event: UnsafeMutableRawPointer?
-    ) {
-        _ = target
-        _ = refcon
-        _ = client
-        guard let event else { return }
-        handleHidEvent(event)
-    }
-
-    private static func hidFilterFn(
-        _ target: UnsafeMutableRawPointer?,
-        _ refcon: UnsafeMutableRawPointer?,
-        _ service: UnsafeMutableRawPointer?,
-        _ event: UnsafeMutableRawPointer?
-    ) -> DarwinBoolean {
-        _ = target
-        _ = refcon
-        _ = service
-        guard let event, let hidType else { return false }
-        let type = hidType(event)
-        var digitizer = type == Hid.digitizer
-        if !digitizer, let kids = hidChildren?(event) {
-            let n = CFArrayGetCount(kids)
-            for i in 0..<n {
-                let child = CFArrayGetValueAtIndex(kids, i)
-                if hidType(UnsafeMutableRawPointer(mutating: child)) == Hid.digitizer {
-                    digitizer = true
-                    break
-                }
-            }
-        }
-        if digitizer {
-            handleHidEvent(event)
-            return true
-        }
-        return false
-    }
-
-    private static func handleHidEvent(_ event: UnsafeMutableRawPointer) {
+    fileprivate static func handleHidEvent(_ event: UnsafeMutableRawPointer) {
         guard let hidType, let hidFloat else { return }
         let type = hidType(event)
         if type != Hid.digitizer {
             if let kids = hidChildren?(event) {
                 let n = CFArrayGetCount(kids)
                 for i in 0..<n {
-                    let child = CFArrayGetValueAtIndex(kids, i)
+                    guard let child = CFArrayGetValueAtIndex(kids, i) else { continue }
                     handleHidEvent(UnsafeMutableRawPointer(mutating: child))
                 }
             }
@@ -171,7 +136,13 @@ public enum ModeBDisplayClaim {
         } else if !touching {
             return
         }
-        emitHid(touchId: touchId, state: state, rawX: x, rawY: y)
+        emitHid(
+            touchId: touchId,
+            state: state,
+            rawX: x,
+            rawY: y,
+            force: touching ? 1.0 : 0.0
+        )
     }
 
     private static func startHid() -> Int32 {
@@ -193,7 +164,12 @@ public enum ModeBDisplayClaim {
         ) -> Void
         typealias RegisterFilter = @convention(c) (
             UnsafeMutableRawPointer?,
-            (@convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?, UnsafeMutableRawPointer?, UnsafeMutableRawPointer?) -> DarwinBoolean)?,
+            (@convention(c) (
+                UnsafeMutableRawPointer?,
+                UnsafeMutableRawPointer?,
+                UnsafeMutableRawPointer?,
+                UnsafeMutableRawPointer?
+            ) -> DarwinBoolean)?,
             UnsafeMutableRawPointer?,
             UnsafeMutableRawPointer?
         ) -> Void
@@ -252,25 +228,35 @@ public enum ModeBDisplayClaim {
             to: RegisterFilter?.self
         )
 
-        let eventCb: @convention(c) (
-            UnsafeMutableRawPointer?,
-            UnsafeMutableRawPointer?,
-            UnsafeMutableRawPointer?,
-            UnsafeMutableRawPointer?
-        ) -> Void = hidHandle
-        registerCb(client, unsafeBitCast(eventCb, to: UnsafeMutableRawPointer.self), nil, nil)
+        // Free @convention(c) entry points only (not nested enum methods).
+        registerCb(
+            client,
+            unsafeBitCast(
+                modebHidEventCallback as @convention(c) (
+                    UnsafeMutableRawPointer?,
+                    UnsafeMutableRawPointer?,
+                    UnsafeMutableRawPointer?,
+                    UnsafeMutableRawPointer?
+                ) -> Void,
+                to: UnsafeMutableRawPointer.self
+            ),
+            nil,
+            nil
+        )
         if let registerFilter {
-            registerFilter(client, hidFilterFn, nil, nil)
+            registerFilter(client, modebHidEventFilter, nil, nil)
         }
-        schedule(client, CFRunLoopGetMain(), kCFRunLoopCommonModes)
+        let mode = CFRunLoopMode.commonModes.rawValue as CFString
+        schedule(client, CFRunLoopGetMain(), mode)
         modebLog("claim HID: digitizer steal armed filter=\(registerFilter != nil ? 1 : 0)")
         return 0
     }
 
     private static func stopHid() {
         guard let client = hidClient else { return }
-        hidUnschedule?(client, CFRunLoopGetMain(), kCFRunLoopCommonModes)
-        CFRelease(client)
+        let mode = CFRunLoopMode.commonModes.rawValue as CFString
+        hidUnschedule?(client, CFRunLoopGetMain(), mode)
+        Unmanaged<AnyObject>.fromOpaque(client).release()
         hidClient = nil
         modebLog("claim HID: released")
     }
@@ -283,6 +269,48 @@ public enum ModeBDisplayClaim {
 
     @_silgen_name("wwn_log_ring_append")
     private static func wwn_log_ring_append(_ module: UnsafePointer<CChar>, _ msg: UnsafePointer<CChar>)
+}
+
+private func modebHidEventCallback(
+    _ target: UnsafeMutableRawPointer?,
+    _ refcon: UnsafeMutableRawPointer?,
+    _ client: UnsafeMutableRawPointer?,
+    _ event: UnsafeMutableRawPointer?
+) {
+    _ = target
+    _ = refcon
+    _ = client
+    guard let event else { return }
+    ModeBDisplayClaim.handleHidEvent(event)
+}
+
+private func modebHidEventFilter(
+    _ target: UnsafeMutableRawPointer?,
+    _ refcon: UnsafeMutableRawPointer?,
+    _ service: UnsafeMutableRawPointer?,
+    _ event: UnsafeMutableRawPointer?
+) -> DarwinBoolean {
+    _ = target
+    _ = refcon
+    _ = service
+    guard let event, let hidType = ModeBDisplayClaim.hidType else { return false }
+    let type = hidType(event)
+    var digitizer = type == ModeBDisplayClaim.Hid.digitizer
+    if !digitizer, let kids = ModeBDisplayClaim.hidChildren?(event) {
+        let n = CFArrayGetCount(kids)
+        for i in 0..<n {
+            guard let child = CFArrayGetValueAtIndex(kids, i) else { continue }
+            if hidType(UnsafeMutableRawPointer(mutating: child)) == ModeBDisplayClaim.Hid.digitizer {
+                digitizer = true
+                break
+            }
+        }
+    }
+    if digitizer {
+        ModeBDisplayClaim.handleHidEvent(event)
+        return true
+    }
+    return false
 }
 
 @_cdecl("wwn_modeb_set_hid_sink")
