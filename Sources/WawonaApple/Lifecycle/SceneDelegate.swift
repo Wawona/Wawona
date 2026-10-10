@@ -43,6 +43,7 @@ public final class WWNSceneDelegate: UIResponder, UIWindowSceneDelegate {
             attributes: [.posixPermissions: 0o700]
         )
         setenv("XDG_RUNTIME_DIR", runtime, 1)
+        WWNRootfsProvider.applyShellEnvironment()
         let bridge = WWNCompositorBridge.sharedBridge
         if bridge.ensureRunning(withSocketName: "wayland-0") {
             setenv("WAYLAND_DISPLAY", bridge.socketName(), 1)

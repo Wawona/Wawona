@@ -66,6 +66,7 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-platform-targets` | Four-state gates. Ghostty grid is `Wawona/Ghostty` (Zig). Toolbar keys are `Wawona/ToolbarKeys`. |
 | `wawona-ios-min-os` | iOS 13.0 min OS; latest iPhoneOS SDK only; one ANGLE + one MoltenVK |
 | `wawona-ios-app-entry` | Mobile `@main` / no client C `_main` / XDG_RUNTIME_DIR before compositor |
+| `wawona-apple-mobile-bundle-share-env` | FONTCONFIG + WESTON_DATA_DIR from bundle share before in-process weston |
 | `wawona-ios-link-contract` | Membership + called C symbols before Apple app compile |
 | `wawona-apple-swift-skills` | Must install/use SwiftUI + Swift concurrency/testing skills for Apple UI |
 | `wawona-android-compose-skills` | Must install/use Compose + Android skills for Kotlin UI |

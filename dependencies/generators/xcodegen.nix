@@ -1356,6 +1356,7 @@ PLIST
   watchAppleSources = [
     { path = "Sources/WawonaApple/Watch"; excludes = commonExcludes; }
     { path = "Sources/WawonaApple/Present/Watch"; excludes = commonExcludes; }
+    { path = "Sources/WawonaApple/Shell/BundleShareEnvironment.swift"; type = "file"; }
     { path = "Sources/WawonaApple/Shell/WatchShellEnvironment.swift"; type = "file"; }
     { path = "Sources/WawonaApple/Shell/WatchShellEnvironment+BundleShare.swift"; type = "file"; }
     { path = "Sources/WawonaApple/Util/StartupLogger.swift"; type = "file"; }

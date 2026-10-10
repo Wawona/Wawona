@@ -31,6 +31,13 @@ extension WWNWaypipeRunner {
         wwn_weston_compositor_shutdown_requested = 0
         let useDrm = drm || WWNHostSessionUsesOwnDisplayDRM()
             || (WWNResolveCompositorBackend(nil) as String) == "drm"
+        // Clients inherit process env; must set before weston spawns
+        // desktop-shell / keyboard in-process.
+        #if os(macOS)
+        WWNBundleShareEnvironment.apply()
+        #else
+        WWNRootfsProvider.applyShellEnvironment()
+        #endif
         DispatchQueue.global(qos: .userInitiated).async {
             var name = strdup("weston")
             var backend = strdup(useDrm ? "--backend=drm" : "--backend=wayland")

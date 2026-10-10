@@ -113,6 +113,12 @@ public final class WWNMachineSessionBridge: NSObject {
             attributes: [.posixPermissions: 0o700]
         )
         setenv("XDG_RUNTIME_DIR", runtime, 1)
+        #if os(macOS)
+        WWNBundleShareEnvironment.apply()
+        #else
+        // HOME + FONTCONFIG + WESTON_DATA_DIR for in-process weston clients.
+        WWNRootfsProvider.applyShellEnvironment()
+        #endif
         guard bridge.ensureRunning(withSocketName: "wayland-0") else {
             throw NSError(
                 domain: "WWNMachineSessionBridge", code: 1,

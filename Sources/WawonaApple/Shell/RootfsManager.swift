@@ -75,10 +75,23 @@ public final class WWNRootfsManager: NSObject {
 
     @objc public static func applyShellEnvironment() {
         let home = activeHomePath()
+        let fm = FileManager.default
+        try? fm.createDirectory(atPath: home, withIntermediateDirectories: true)
+        for rel in [".config", ".cache", ".local/share", ".local/state"] {
+            try? fm.createDirectory(
+                atPath: (home as NSString).appendingPathComponent(rel),
+                withIntermediateDirectories: true
+            )
+        }
         setenv("HOME", home, 1)
         setenv("ZDOTDIR", home, 1)
         setenv("WAWONA_ROOTFS", activeRootfsPath(), 1)
         let path = "/usr/bin:/bin:/usr/sbin:/sbin:" + activeRootfsPath() + "/usr/bin"
         setenv("PATH", path, 1)
+        setenv("XDG_CONFIG_HOME", (home as NSString).appendingPathComponent(".config"), 1)
+        setenv("XDG_CACHE_HOME", (home as NSString).appendingPathComponent(".cache"), 1)
+        setenv("XDG_DATA_HOME", (home as NSString).appendingPathComponent(".local/share"), 1)
+        setenv("XDG_STATE_HOME", (home as NSString).appendingPathComponent(".local/state"), 1)
+        WWNBundleShareEnvironment.apply()
     }
 }
