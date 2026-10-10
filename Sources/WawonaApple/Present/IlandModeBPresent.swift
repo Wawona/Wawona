@@ -6,14 +6,8 @@ enum IlandModeBPresent {
     @_silgen_name("wwn_modeb_desktop_present_iosurface")
     static func presentIOSurface(_ surface: IOSurface?, _ width: UInt32, _ height: UInt32) -> Int32
 
-    @_silgen_name("wwn_modeb_desktop_size")
-    static func desktopSize(_ width: UnsafeMutablePointer<UInt32>?, _ height: UnsafeMutablePointer<UInt32>?) -> Int32
-
-    @_silgen_name("wwn_modeb_desktop_phase")
-    static func desktopPhase() -> UInt32
-
     static func routeIfActive(surface: IOSurface, crtcID: UInt32, framebufferID: UInt32) -> Bool {
-        guard desktopPhase() != 0 else { return false }
+        guard DesktopSession.phase() != 0 else { return false }
         let width = UInt32(IOSurfaceGetWidth(surface))
         let height = UInt32(IOSurfaceGetHeight(surface))
         _ = presentIOSurface(surface, width, height)
@@ -22,7 +16,7 @@ enum IlandModeBPresent {
     }
 
     static func presentCompositorOnly(surface: IOSurface) -> Bool {
-        guard desktopPhase() != 0 else { return false }
+        guard DesktopSession.phase() != 0 else { return false }
         let width = UInt32(IOSurfaceGetWidth(surface))
         let height = UInt32(IOSurfaceGetHeight(surface))
         return presentIOSurface(surface, width, height) == 0
@@ -33,7 +27,7 @@ enum IlandModeBPresent {
 public func wwn_modeb_desktop_bind_iland_present() -> Int32 {
     var width: UInt32 = 0
     var height: UInt32 = 0
-    guard IlandModeBPresent.desktopSize(&width, &height) == 0 else { return -1 }
+    guard DesktopSession.fillSize(&width, &height) == 0 else { return -1 }
     IlandDrmBindings.setPreferredMode(width, height, IlandDrmBindings.refreshMillihz())
     guard IlandDrmBindings.prepareVirtualFd() == 0 else { return -1 }
     IlandDrmBindings.setPresentCallback(modeBPresentTrampoline, nil)

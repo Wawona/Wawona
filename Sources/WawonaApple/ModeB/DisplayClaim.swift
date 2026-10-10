@@ -72,11 +72,12 @@ public enum ModeBDisplayClaim {
         if rawX >= 0, rawX <= 1.5, rawY >= 0, rawY <= 1.5 {
             return (rawX * bw, rawY * bh)
         }
-        var dw: Int32 = 0
-        var dh: Int32 = 0
-        wwn_modeb_desktop_size(&dw, &dh)
-        if dw > 0, dh > 0, rawX > bw * 1.5 || rawY > bh * 1.5 {
-            return (rawX * bw / Double(dw), rawY * bh / Double(dh))
+        let desktop = DesktopSession.size()
+        if desktop.width > 0, desktop.height > 0, rawX > bw * 1.5 || rawY > bh * 1.5 {
+            return (
+                rawX * bw / Double(desktop.width),
+                rawY * bh / Double(desktop.height)
+            )
         }
         return (rawX, rawY)
     }
@@ -260,12 +261,6 @@ public enum ModeBDisplayClaim {
         hidClient = nil
         modebLog("claim HID: released")
     }
-
-    @_silgen_name("wwn_modeb_desktop_size")
-    private static func wwn_modeb_desktop_size(
-        _ width: UnsafeMutablePointer<Int32>?,
-        _ height: UnsafeMutablePointer<Int32>?
-    )
 
     @_silgen_name("wwn_log_ring_append")
     private static func wwn_log_ring_append(_ module: UnsafePointer<CChar>, _ msg: UnsafePointer<CChar>)
