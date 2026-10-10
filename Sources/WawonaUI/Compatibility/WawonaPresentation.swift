@@ -104,6 +104,10 @@ extension WawonaBackport where Content: View {
     /// Do **not** use `.cancellationAction` / `.confirmationAction` with custom
     /// SF Symbols on iOS 26: Liquid Glass also vends system close/done there,
     /// which doubles the buttons.
+    ///
+    /// Availability is split into separate `@available` toolbar builders so
+    /// `ToolbarContentBuilder.buildEither` (iOS 16+) is never required at the
+    /// iOS 13 deployment floor (Dave DeLong Backport style).
     @ViewBuilder
     @MainActor
     func editorChromeActions(
@@ -111,8 +115,8 @@ extension WawonaBackport where Content: View {
         onCancel: @escaping () -> Void,
         onSave: @escaping () -> Void
     ) -> some View {
-        if #available(iOS 14.0, tvOS 14.0, watchOS 7.0, macOS 11.0, *) {
-            #if os(macOS) || os(tvOS)
+        #if os(macOS) || os(tvOS)
+        if #available(macOS 11.0, tvOS 14.0, *) {
             content.toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel", action: onCancel)
@@ -124,65 +128,105 @@ extension WawonaBackport where Content: View {
                         .accessibility(identifier: "wwn.machines.editor.save")
                 }
             }
-            #elseif os(iOS) || os(visionOS)
-            content.toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button(action: onCancel) {
-                        Image(systemName: "xmark")
-                            .font(.body.weight(.semibold))
-                    }
-                    .accessibilityLabel("Cancel")
-                    .accessibility(identifier: "wwn.machines.editor.cancel")
-                }
-                if #available(iOS 26.0, visionOS 26.0, *) {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button(action: onSave) {
-                            Image(systemName: "checkmark")
-                                .font(.body.weight(.semibold))
-                        }
-                        .buttonStyle(.glassProminent)
-                        .tint(Color.accentColor)
-                        .disabled(saveDisabled)
-                        .accessibilityLabel("Save")
-                        .accessibility(identifier: "wwn.machines.editor.save")
-                    }
-                    .sharedBackgroundVisibility(.hidden)
-                } else {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button(action: onSave) {
-                            Image(systemName: "checkmark")
-                                .font(.body.weight(.semibold))
-                        }
-                        .backport.glassProminentToolbarButton()
-                        .tint(Color.accentColor)
-                        .disabled(saveDisabled)
-                        .accessibilityLabel("Save")
-                        .accessibility(identifier: "wwn.machines.editor.save")
-                    }
-                }
-            }
-            #else
-            content
-            #endif
         } else {
-            #if os(iOS)
+            content
+        }
+        #elseif os(iOS) || os(visionOS)
+        if #available(iOS 26.0, visionOS 26.0, *) {
+            content.toolbar {
+                EditorChromeToolbarIOS26(
+                    saveDisabled: saveDisabled,
+                    onCancel: onCancel,
+                    onSave: onSave
+                )
+            }
+        } else if #available(iOS 14.0, *) {
+            content.toolbar {
+                EditorChromeToolbarIOS14(
+                    saveDisabled: saveDisabled,
+                    onCancel: onCancel,
+                    onSave: onSave
+                )
+            }
+        } else {
             content.navigationBarItems(
                 leading: Button(action: onCancel) {
                     Image(systemName: "xmark")
                 }
-                .accessibilityLabel("Cancel"),
+                .accessibility(label: Text("Cancel"))
+                .accessibility(identifier: "wwn.machines.editor.cancel"),
                 trailing: Button(action: onSave) {
                     Image(systemName: "checkmark")
                 }
                 .disabled(saveDisabled)
-                .accessibilityLabel("Save")
+                .accessibility(label: Text("Save"))
+                .accessibility(identifier: "wwn.machines.editor.save")
             )
-            #else
-            content
-            #endif
+        }
+        #else
+        content
+        #endif
+    }
+}
+
+#if os(iOS) || os(visionOS)
+@available(iOS 26.0, visionOS 26.0, *)
+private struct EditorChromeToolbarIOS26: ToolbarContent {
+    let saveDisabled: Bool
+    let onCancel: () -> Void
+    let onSave: () -> Void
+
+    var body: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            Button(action: onCancel) {
+                Image(systemName: "xmark")
+                    .font(.body.weight(.semibold))
+            }
+            .accessibility(label: Text("Cancel"))
+            .accessibility(identifier: "wwn.machines.editor.cancel")
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            Button(action: onSave) {
+                Image(systemName: "checkmark")
+                    .font(.body.weight(.semibold))
+            }
+            .backport.composeCircleButton()
+            .disabled(saveDisabled)
+            .accessibility(label: Text("Save"))
+            .accessibility(identifier: "wwn.machines.editor.save")
+        }
+        .sharedBackgroundVisibility(.hidden)
+    }
+}
+
+@available(iOS 14.0, *)
+private struct EditorChromeToolbarIOS14: ToolbarContent {
+    let saveDisabled: Bool
+    let onCancel: () -> Void
+    let onSave: () -> Void
+
+    var body: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            Button(action: onCancel) {
+                Image(systemName: "xmark")
+                    .font(.body.weight(.semibold))
+            }
+            .accessibility(label: Text("Cancel"))
+            .accessibility(identifier: "wwn.machines.editor.cancel")
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            Button(action: onSave) {
+                Image(systemName: "checkmark")
+                    .font(.body.weight(.semibold))
+            }
+            .backport.composeCircleButton()
+            .disabled(saveDisabled)
+            .accessibility(label: Text("Save"))
+            .accessibility(identifier: "wwn.machines.editor.save")
         }
     }
 }
+#endif
 
 struct WawonaEmptyState: View {
     let title: LocalizedStringKey

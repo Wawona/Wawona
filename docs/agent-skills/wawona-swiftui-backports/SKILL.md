@@ -6,9 +6,10 @@ description: Central SwiftUI availability shims for Apple products.
 # SwiftUI backports
 
 Read `Wawona/docs/agent-rules/wawona-swiftui-backports.md` before changing
-SwiftUI availability. Use `WawonaBackport` for iOS/iPadOS 13+ APIs. The product
-floor is iOS 13, so SwiftUI is the UI. There is no iOS 11 or 12 UIKit-only
-product. After a new durable shim, update this rule and Wawona RAG.
+SwiftUI availability. Use `WawonaBackport` for iOS/iPadOS 13+ APIs (Dave
+DeLong namespace pattern: availability only inside `.backport.*` shims). The
+product floor is iOS 13, so SwiftUI is the UI. There is no iOS 11 or 12
+UIKit-only product. After a new durable shim, update this rule and Wawona RAG.
 
 ## iOS 26 bottom search
 
@@ -18,8 +19,13 @@ must use its default placement. `DefaultToolbarItem(kind: .search, placement:
 `placement: .toolbar`, which vends a conflicting navigation item during
 split-detail restoration. Keep `usesNativePhoneSearchToolbar` true on iOS 26+.
 Top-trailing toolbar buttons use `.automatic`, not `.glass` (glass-on-glass).
-Add Machine: `Label` + `.glassProminent` + `.buttonBorderShape(.circle)` +
-accent tint + `sharedBackgroundVisibility(.hidden)` (blue fill, not glyph-only).
+Add Machine / editor Save checkmark: `Image(systemName:)` +
+`.backport.composeCircleButton()` (`.iconOnly` + `.borderedProminent` +
+`.circle` + accent tint) + `sharedBackgroundVisibility(.hidden)`. iOS 26
+`.glassProminent` on toolbar/sheet icon buttons often paints a bare glyph
+with no fill. Toolbar `Label` also drops the bubble. Keep Add in
+top-trailing on phone: the split forces `.regular` width and the bottom
+compose slot can collapse, which made + vanish.
 
 ## Machine editor sheets
 

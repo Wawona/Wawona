@@ -192,15 +192,23 @@ public extension WawonaBackport where Content: View {
         #endif
     }
 
-    /// Prominent blue circular glass button (matching iOS 26 Messages compose / Notes new button).
+    /// Prominent blue circular button (Messages compose / Notes new). Opaque
+    /// fill: iOS 26 toolbar `.glassProminent` often drops the bubble.
     @ViewBuilder
     @MainActor
     func blueGlassCircleButton(size: CGFloat = 46) -> some View {
         #if !os(visionOS)
-        if #available(iOS 26.0, tvOS 26.0, macOS 26.0, *) {
+        if #available(iOS 17.0, tvOS 17.0, macOS 14.0, *) {
             content
-                .buttonStyle(.glassProminent)
+                .buttonStyle(.borderedProminent)
                 .buttonBorderShape(.circle)
+                .tint(Color.accentColor)
+                .frame(width: size, height: size)
+                .shadow(color: Color.accentColor.opacity(0.35), radius: 6, x: 0, y: 2)
+        } else if #available(iOS 15.0, tvOS 15.0, macOS 12.0, *) {
+            content
+                .buttonStyle(.borderedProminent)
+                .clipShape(Circle())
                 .tint(Color.accentColor)
                 .frame(width: size, height: size)
                 .shadow(color: Color.accentColor.opacity(0.35), radius: 6, x: 0, y: 2)
@@ -232,6 +240,52 @@ public extension WawonaBackport where Content: View {
     func blueGlassCircleButton(diameter: CGFloat) -> some View {
         blueGlassCircleButton(size: diameter)
     }
+
+    /// Filled blue circle for primary icon actions (Add +, editor Save checkmark).
+    /// Availability lives here (Dave DeLong `Backport` namespace).
+    ///
+    /// iOS 26 `.glassProminent` on toolbar/sheet `Image` buttons often paints a
+    /// bare accent glyph with no bubble. Use `.borderedProminent` + `.circle` +
+    /// accent tint for an opaque blue fill. Pair with
+    /// `sharedBackgroundVisibility(.hidden)` on the `ToolbarItem`. Prefer
+    /// `Image(systemName:)` over `Label` (Label drops the circle). Force
+    /// `.iconOnly`. `ButtonBorderShape.circle` is iOS 17+; older hosts clip.
+    @ViewBuilder
+    @MainActor
+    func composeCircleButton() -> some View {
+        #if os(iOS) || os(tvOS) || os(visionOS)
+        if #available(iOS 17.0, tvOS 17.0, *) {
+            content
+                .labelStyle(.iconOnly)
+                .buttonStyle(.borderedProminent)
+                .buttonBorderShape(.circle)
+                .tint(Color.accentColor)
+        } else if #available(iOS 15.0, tvOS 15.0, *) {
+            content
+                .labelStyle(.iconOnly)
+                .buttonStyle(.borderedProminent)
+                .clipShape(Circle())
+                .accentColor(Color.accentColor)
+        } else {
+            content
+                .buttonStyle(.plain)
+                .foregroundColor(.white)
+                .padding(10)
+                .background(Circle().fill(Color.accentColor))
+        }
+        #elseif os(macOS)
+        if #available(macOS 12.0, *) {
+            content
+                .buttonStyle(.borderedProminent)
+                .tint(Color.accentColor)
+        } else {
+            content.buttonStyle(.borderedProminent)
+        }
+        #else
+        content
+        #endif
+    }
+
 
     private func fallbackGlass(cornerRadius: CGFloat) -> some View {
         content.background(

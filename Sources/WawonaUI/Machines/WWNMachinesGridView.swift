@@ -356,7 +356,9 @@ struct WWNMachinesGridViewModern: View {
   /// iOS 26 phone: system bottom search + compose +. ToolbarSpacer is required
   /// so search does not eat the full width and overlap Add. Keep Add off the
   /// shared glass blob (`sharedBackgroundVisibility(.hidden)`). Messages-style
-  /// compose uses prominent glass fill (blue background), not accent glyph only.
+  /// compose uses prominent glass fill (blue bubble), not a bare + glyph.
+  /// Prefer `Image` over `Label` here: bottom-bar `Label` often drops the circle.
+  /// Top-trailing Add remains as failsafe when this bottom slot collapses.
   @ToolbarContentBuilder
   private var iosPhoneMessagesBottomToolbar: some ToolbarContent {
     #if os(iOS)
@@ -364,15 +366,7 @@ struct WWNMachinesGridViewModern: View {
       DefaultToolbarItem(kind: .search, placement: .bottomBar)
       ToolbarSpacer(.flexible, placement: .bottomBar)
       ToolbarItem(placement: .bottomBar) {
-        Button {
-          editorDestination = .add
-        } label: {
-          Label("Add Machine", systemImage: "plus")
-        }
-        .buttonStyle(.glassProminent)
-        .buttonBorderShape(.circle)
-        .tint(Color.accentColor)
-        .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
+        iosAddMachineToolbarButton
       }
       .sharedBackgroundVisibility(.hidden)
     } else {
@@ -385,6 +379,18 @@ struct WWNMachinesGridViewModern: View {
       EmptyView()
     }
     #endif
+  }
+
+  /// Shared Add control for top-trailing and iOS 26 bottom compose.
+  private var iosAddMachineToolbarButton: some View {
+    Button {
+      editorDestination = .add
+    } label: {
+      Image(systemName: "plus")
+        .font(.body.weight(.semibold))
+    }
+    .backport.composeCircleButton()
+    .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
   }
 
   /// Pre-iOS 26 phone fallback only. Compact 36pt row. Not used on iOS 26+.
@@ -534,35 +540,19 @@ struct WWNMachinesGridViewModern: View {
       EmptyView()
     }
     #else
-    // iPhone: filter/sort + Settings only (Add lives in the bottom chrome).
-    // iPad / visionOS: Add + filter/sort + Settings; iPad search is separate.
+    // iPhone + iPad: top-trailing Add. Phone also keeps Messages bottom
+    // compose next to search. The split forces `.regular` width so List
+    // selection works; that can collapse the iOS 26 bottom compose slot, so
+    // top-trailing is the failsafe (otherwise Add vanishes entirely).
     #if os(iOS)
-    if !isIosPhone {
-      if #available(iOS 26.0, *) {
-        ToolbarItem(placement: .topBarTrailing) {
-          Button {
-            editorDestination = .add
-          } label: {
-            Label("Add Machine", systemImage: "plus")
-          }
-          .buttonStyle(.glassProminent)
-          .buttonBorderShape(.circle)
-          .tint(Color.accentColor)
-          .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
-        }
-        .sharedBackgroundVisibility(.hidden)
-      } else {
-        ToolbarItem(placement: .topBarTrailing) {
-          Button {
-            editorDestination = .add
-          } label: {
-            Label("Add Machine", systemImage: "plus")
-          }
-          .backport.glassProminentToolbarButton()
-          .modifier(WWNCircularBorderShape())
-          .tint(Color.accentColor)
-          .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
-        }
+    if #available(iOS 26.0, *) {
+      ToolbarItem(placement: .topBarTrailing) {
+        iosAddMachineToolbarButton
+      }
+      .sharedBackgroundVisibility(.hidden)
+    } else {
+      ToolbarItem(placement: .topBarTrailing) {
+        iosAddMachineToolbarButton
       }
     }
     #elseif os(visionOS)
