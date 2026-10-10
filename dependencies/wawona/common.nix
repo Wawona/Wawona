@@ -23,6 +23,7 @@ rec {
     "Sources/WawonaModel/WWNKeychain.swift"
     "Sources/WawonaUIContracts/MachineEditorContracts.swift"
     "Sources/WawonaUIContracts/SettingsContracts.swift"
+    "Sources/WawonaUIContracts/MachineStartPlacement.swift"
     "Sources/WawonaUI/WawonaApp.swift"
     "Sources/WawonaUI/MachineRuntimeSettingsApplicator.swift"
     "Sources/WawonaUI/MachineSessionBridge.swift"

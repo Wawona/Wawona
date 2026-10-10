@@ -77,6 +77,7 @@ struct WWNMachinesGridViewModern: View {
       #endif
     }
     .wwnA11y(WWNA11y.machinesRoot, label: detailNavigationTitle)
+    .modifier(WWNMachineStartPlacementPrompt(model: model))
     #if !os(tvOS)
     .sheet(item: $editorDestination) { destination in
         machineEditor(for: destination)

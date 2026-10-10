@@ -92,8 +92,8 @@ public final class WWNPreferencesSectionsBuilder: NSObject {
             return popup(
                 "Default Start Type", kWWNPrefsDefaultStartType, "prompt",
                 ["Prompt", "New Tab", "New Window"],
-                ["prompt", "tab", "window"],
-                "What Start does when the app can open another window.")
+                ["prompt", "newTab", "newWindow"],
+                "What Start does when the app can open another window. Hidden on hosts that only support tabs.")
 
         case .virtualCursor:
             return sw("Show Virtual Cursor", kWWNPrefsRenderMacOSPointer, false,

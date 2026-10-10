@@ -69,6 +69,7 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-ios-link-contract` | Membership + called C symbols before Apple app compile |
 | `wawona-apple-swift-skills` | Must install/use SwiftUI + Swift concurrency/testing skills for Apple UI |
 | `wawona-android-compose-skills` | Must install/use Compose + Android skills for Kotlin UI |
+| `wawona-machine-start-placement` | Start Prompt / New Tab / New Window; gate on windowing |
 | `wawona-apple-swift-glue` | Rust + Swift only; zero ObjC product classes |
 | `wawona-swinging-bridge` | Not Desktop, not LockScreen |
 | `wawona-test-control` / `wawona-agent-device` | UI / vphone |

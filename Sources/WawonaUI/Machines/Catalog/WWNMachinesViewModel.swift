@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import WawonaModel
+import WawonaUIContracts
 #if os(macOS)
 import AppKit
 #elseif os(iOS) || os(tvOS) || os(visionOS)
@@ -291,6 +292,8 @@ private let wwnMachineSessionQueue = DispatchQueue(
 final class WWNMachinesViewModel: ObservableObject {
   @Published private(set) var profiles: [WWNMachineProfile] = []
   @Published var connectionError: String?
+  /// When Default Start Type is Prompt and windowing is available.
+  @Published var pendingStartProfile: WWNMachineProfile?
   @Published private(set) var statusByMachineId: [String: WWNMachineTransientStatus] = [:]
   /// Machine ids the user pinned via the card context menu. Pinned machines
   /// occupy a prioritized grid section. Hard cap: `maxPinnedMachines`.
@@ -709,7 +712,54 @@ final class WWNMachinesViewModel: ObservableObject {
     #endif
   }
 
+  /// Start entry: honour Default Start Type (Prompt / New Tab / New Window)
+  /// when the host can open another window. Otherwise always tabbed.
   func connect(_ profile: WWNMachineProfile, onConnected: (() -> Void)? = nil) {
+    beginStart(profile, onConnected: onConnected)
+  }
+
+  func beginStart(_ profile: WWNMachineProfile, onConnected: (() -> Void)? = nil) {
+    let pref = WWNPreferencesManager.sharedManager().defaultStartType()
+    let placement = MachineStartPlacement.resolve(preference: pref)
+    switch placement {
+    case .prompt:
+      pendingStartCallback = onConnected
+      pendingStartProfile = profile
+    case .newTab:
+      performConnect(profile, openInNewWindow: false, onConnected: onConnected)
+    case .newWindow:
+      performConnect(profile, openInNewWindow: true, onConnected: onConnected)
+    }
+  }
+
+  func confirmStartInNewTab() {
+    guard let profile = pendingStartProfile else { return }
+    let callback = pendingStartCallback
+    pendingStartProfile = nil
+    pendingStartCallback = nil
+    performConnect(profile, openInNewWindow: false, onConnected: callback)
+  }
+
+  func confirmStartInNewWindow() {
+    guard let profile = pendingStartProfile else { return }
+    let callback = pendingStartCallback
+    pendingStartProfile = nil
+    pendingStartCallback = nil
+    performConnect(profile, openInNewWindow: true, onConnected: callback)
+  }
+
+  func cancelPendingStart() {
+    pendingStartProfile = nil
+    pendingStartCallback = nil
+  }
+
+  private var pendingStartCallback: (() -> Void)?
+
+  func performConnect(
+    _ profile: WWNMachineProfile,
+    openInNewWindow: Bool,
+    onConnected: (() -> Void)? = nil
+  ) {
     connectionError = nil
     let machineId = profile.machineId ?? ""
     let isContainer = profile.type == kWWNMachineTypeContainer
@@ -749,9 +799,8 @@ final class WWNMachinesViewModel: ObservableObject {
       pendingContainerConnectCallbacks[machineId] = onConnected
     }
 
-    // Mount Metal host on the main actor before the session queue launches the
-    // Wayland client so the first SHM commits have an active presenter.
-    revealSessionSurfaceIfNeeded(profile)
+    // Mount Metal host before the session queue launches the Wayland client.
+    revealSessionSurfaceIfNeeded(profile, openInNewWindow: openInNewWindow)
 
     wwnMachineSessionQueue.async {
       for other in toStop {
@@ -786,16 +835,33 @@ final class WWNMachinesViewModel: ObservableObject {
   }
 
   /// Native Wayland / wasm clients and macOS MicroVM waypipe clients draw into
-  /// the host compositor surface.
-  private func revealSessionSurfaceIfNeeded(_ profile: WWNMachineProfile) {
+  /// the host compositor surface (tab) or a dedicated window/scene.
+  private func revealSessionSurfaceIfNeeded(
+    _ profile: WWNMachineProfile,
+    openInNewWindow: Bool
+  ) {
     #if os(macOS) || os(iOS) || os(tvOS) || os(visionOS)
-    if WWNMachineSessionBridge.profileUsesVirtualMachineBackend(profile) {
-      WWNMainWindowRouter.shared.showSessionSurface()
+    let usesSurface: Bool = {
+      if WWNMachineSessionBridge.profileUsesVirtualMachineBackend(profile) {
+        return true
+      }
+      guard WWNMachineSessionBridge.profileUsesNativeCompositorClient(profile) else {
+        return false
+      }
+      let client = WWNMachineSessionBridge.nativeClientId(forProfile: profile) ?? ""
+      return client != "wawona-shell"
+    }()
+    guard usesSurface else { return }
+    if openInNewWindow,
+       MachineStartPlacement.allowsWindowedStart(for: GlobalSettingsCatalog.currentHost) {
+      #if os(macOS) || os(iOS) || os(visionOS)
+      let title = profile.name.trimmingCharacters(in: .whitespacesAndNewlines)
+      WWNSessionWindowPresenter.presentSessionWindow(
+        title: title.isEmpty ? "Session" : title
+      )
       return
+      #endif
     }
-    guard WWNMachineSessionBridge.profileUsesNativeCompositorClient(profile) else { return }
-    let client = WWNMachineSessionBridge.nativeClientId(forProfile: profile) ?? ""
-    if client == "wawona-shell" { return }
     WWNMainWindowRouter.shared.showSessionSurface()
     #endif
   }
@@ -865,7 +931,8 @@ final class WWNMachinesViewModel: ObservableObject {
     }
     touchLastUsed(profile.machineId)
     WWNMachineProfileStore.setActiveMachineId(profile.machineId)
-    revealSessionSurfaceIfNeeded(profile)
+    // Focus always reveals the in-window tab surface (not a new Start prompt).
+    revealSessionSurfaceIfNeeded(profile, openInNewWindow: false)
     #if os(macOS)
     _ = WWNCompositorBridge.sharedBridge.focusClientWindows(forMachineId: profile.machineId)
     #elseif os(iOS) || os(tvOS) || os(visionOS)

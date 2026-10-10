@@ -406,7 +406,9 @@ public struct GlobalSettingsCatalog: Sendable {
     }
 
     /// Another window of this app. iPhone, tvOS, watchOS, and the Linux
-    /// single-window host do not offer it.
+    /// single-window host do not offer it. iPad uses multi-scene windowing
+    /// (`UIApplicationSupportsMultipleScenes`); that API is older than
+    /// iPadOS 26 (26 adds window control chrome only).
     public static func allowsWindowedMachineStart(_ host: GlobalSettingsHost) -> Bool {
         switch host {
         case .macOS, .visionOS, .android:

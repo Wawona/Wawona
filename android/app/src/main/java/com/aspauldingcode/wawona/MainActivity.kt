@@ -930,7 +930,20 @@ fun WawonaApp(
 
     fun savedStartUsesNewWindow(): Boolean {
         if (!SessionActivity.supportsHostTask()) return false
-        return prefs.getString("defaultStartType", "prompt") == "newWindow"
+        return when (prefs.getString("defaultStartType", "prompt")) {
+            "newWindow", "window" -> true
+            else -> false
+        }
+    }
+
+    /** Canonical: prompt | newTab | newWindow. Legacy tab/window accepted. */
+    fun resolvedStartType(): String {
+        if (!SessionActivity.supportsHostTask()) return "newTab"
+        return when (prefs.getString("defaultStartType", "prompt")) {
+            "newWindow", "window" -> "newWindow"
+            "newTab", "tab" -> "newTab"
+            else -> "prompt"
+        }
     }
 
     // Local funs must be declared before callers (Kotlin sibling visibility).
@@ -1061,12 +1074,7 @@ fun WawonaApp(
     }
 
     fun beginMachineStart(profile: MachineProfile) {
-        if (!SessionActivity.supportsHostTask()) {
-            val session = sessionOrchestrator.startSession(profile)
-            connectMachine(profile, session.sessionId, newWindow = false)
-            return
-        }
-        when (prefs.getString("defaultStartType", "prompt")) {
+        when (resolvedStartType()) {
             "newWindow" -> {
                 val session = sessionOrchestrator.startSession(profile)
                 connectMachine(profile, session.sessionId, newWindow = true)

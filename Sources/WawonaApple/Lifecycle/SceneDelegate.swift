@@ -17,13 +17,19 @@ public final class WWNSceneDelegate: UIResponder, UIWindowSceneDelegate {
         options connectionOptions: UIScene.ConnectionOptions
     ) {
         _ = session
-        _ = connectionOptions
         guard let windowScene = scene as? UIWindowScene else { return }
         let window = UIWindow(windowScene: windowScene)
         self.window = window
         // Host chrome is SwiftUI. Do not insert UIKit subviews under
         // UIHostingController.view (SwiftUI runtime warning / broken hierarchy).
-        let hosting = UIHostingController(rootView: WawonaRootView())
+        // New Window Start opens a session-only scene (no Machines chrome).
+        let sessionOnly = WWNSessionWindowPresenter.isSessionScene(options: connectionOptions)
+        let hosting: UIHostingController<AnyView>
+        if sessionOnly {
+            hosting = UIHostingController(rootView: AnyView(WWNSessionSurfaceRootView()))
+        } else {
+            hosting = UIHostingController(rootView: AnyView(WawonaRootView()))
+        }
         window.rootViewController = hosting
         compositorContainer = hosting.view
         window.makeKeyAndVisible()
@@ -41,7 +47,9 @@ public final class WWNSceneDelegate: UIResponder, UIWindowSceneDelegate {
         if bridge.ensureRunning(withSocketName: "wayland-0") {
             setenv("WAYLAND_DISPLAY", bridge.socketName(), 1)
         }
-        Self.autoStartMachineIfRequested()
+        if !sessionOnly {
+            Self.autoStartMachineIfRequested()
+        }
     }
 
     /// Lab / simctl: `SIMCTL_CHILD_WWN_AUTO_START_MACHINE=<id> xcrun simctl launch …`.

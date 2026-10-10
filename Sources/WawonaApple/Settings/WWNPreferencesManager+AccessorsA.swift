@@ -146,8 +146,13 @@ extension WWNPreferencesManager {
 
     @objc public func defaultStartType() -> String {
         let raw = defs.string(forKey: kWWNPrefsDefaultStartType) ?? ""
-        if raw == "newTab" || raw == "newWindow" || raw == "prompt" { return raw }
-        return "prompt"
+        // Canonical: prompt | newTab | newWindow. Legacy tab/window accepted.
+        switch raw {
+        case "newTab", "tab": return "newTab"
+        case "newWindow", "window": return "newWindow"
+        case "prompt": return "prompt"
+        default: return "prompt"
+        }
     }
 
     @objc public func machineSessionThumbnailsEnabled() -> Bool {

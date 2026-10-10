@@ -189,6 +189,9 @@ extension EnvironmentValues {
 /// Destinations in the unified window sidebar.
 enum WWNMainDestination: Hashable {
     case machines
+    /// In-window Wayland session surface (tabbed Start). Sidebar Machines
+    /// returns here to the grid; no floating overlay button on the client.
+    case session
     case projectStatus
     /// Rust `settings_catalog` slug (`display`, `input`, …).
     case settings(GlobalSettingsSectionID)
@@ -253,6 +256,7 @@ final class WWNMainWindowRouter: ObservableObject {
     #endif
 
     func showMachines() {
+        sessionSurfaceVisible = false
         selection = .machines
     }
 
@@ -262,6 +266,7 @@ final class WWNMainWindowRouter: ObservableObject {
 
     func showSessionSurface() {
         sessionSurfaceVisible = true
+        selection = .session
     }
 
     func hideSessionSurface() {
@@ -590,7 +595,7 @@ struct WawonaMainWindowView: View {
 
     private var isMachinesDestination: Bool {
         switch router.selection {
-        case .machines?, .machinesTag?, nil: return true
+        case .machines?, .session?, .machinesTag?, nil: return true
         default: return false
         }
     }
@@ -606,25 +611,23 @@ struct WawonaMainWindowView: View {
                 CompositorBridge()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 #endif
-                Color.clear
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .allowsHitTesting(false)
-                    .overlay(alignment: .topLeading) {
-                        Button {
-                            router.hideSessionSurface()
-                        } label: {
-                            Label("Machines", systemImage: "sidebar.left")
-                        }
-                        .buttonStyle(.bordered)
-                        .padding(12)
-                        .allowsHitTesting(true)
-                    }
             } else {
                 WWNMachinesGridView(
                     onConnect: onConnect,
                     filterTagID: activeTagFilterID,
                     onClearTagFilter: { router.showMachines() }
                 )
+            }
+        }
+        // Sidebar Machines / tag parks the in-window session (no floating overlay).
+        .backport.onChange(of: router.selection) { _, newValue in
+            switch newValue {
+            case .machines?, .machinesTag?:
+                if router.sessionSurfaceVisible {
+                    router.hideSessionSurface()
+                }
+            default:
+                break
             }
         }
     }

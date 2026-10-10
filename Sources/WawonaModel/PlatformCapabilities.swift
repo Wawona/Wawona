@@ -303,7 +303,9 @@ public enum PlatformCapabilities: Sendable {
     }
 
     /// One host window/scene per Wayland client (macOS NSWindow parity).
-    /// Required on iPadOS + visionOS; optional elsewhere.
+    /// Required on iPadOS + visionOS; optional elsewhere. iPad uses
+    /// `UIApplicationSupportsMultipleScenes` (not iPadOS 26; 26 only adds
+    /// window control chrome). Gates Default Start Type Prompt / New Window.
     public static var allowsMultiWindowScenes: Bool {
         #if os(visionOS)
         return true

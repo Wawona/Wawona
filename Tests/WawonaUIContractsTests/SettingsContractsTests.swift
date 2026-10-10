@@ -149,3 +149,22 @@ func fallbackCatalogMatchesRustHostOrder() {
     #expect(GlobalSettingsSectionID.localShell.objcAccessibilityIdentifier == "wwn.settings.local.shell")
     #expect(GlobalSettingsSectionID.display.objcAccessibilityIdentifier == "wwn.settings.display")
 }
+
+@Test
+func machineStartPlacementNormalizesAndGatesWindowing() {
+    #expect(MachineStartPlacement.normalize("tab") == .newTab)
+    #expect(MachineStartPlacement.normalize("window") == .newWindow)
+    #expect(MachineStartPlacement.normalize("prompt") == .prompt)
+    #expect(MachineStartPlacement.resolve(preference: "prompt", host: .tvOS) == .newTab)
+    #expect(MachineStartPlacement.resolve(preference: "prompt", host: .watchOS) == .newTab)
+    #expect(MachineStartPlacement.resolve(preference: "prompt", host: .linux) == .newTab)
+    #expect(MachineStartPlacement.resolve(preference: "prompt", host: .macOS) == .prompt)
+    #expect(MachineStartPlacement.resolve(preference: "newWindow", host: .macOS) == .newWindow)
+    #expect(
+        MachineStartPlacement.resolve(
+            preference: "prompt",
+            host: .macOS,
+            windowingAvailable: false
+        ) == .newTab
+    )
+}
