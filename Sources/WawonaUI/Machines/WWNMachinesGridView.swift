@@ -354,7 +354,8 @@ struct WWNMachinesGridViewModern: View {
 
   /// iOS 26 phone: system bottom search + compose +. ToolbarSpacer is required
   /// so search does not eat the full width and overlap Add. Keep Add off the
-  /// shared glass blob (`sharedBackgroundVisibility(.hidden)`).
+  /// shared glass blob (`sharedBackgroundVisibility(.hidden)`). Messages-style
+  /// compose uses prominent glass fill (blue background), not accent glyph only.
   @ToolbarContentBuilder
   private var iosPhoneMessagesBottomToolbar: some ToolbarContent {
     #if os(iOS)
@@ -367,6 +368,8 @@ struct WWNMachinesGridViewModern: View {
         } label: {
           Label("Add Machine", systemImage: "plus")
         }
+        .buttonStyle(.glassProminent)
+        .buttonBorderShape(.circle)
         .tint(Color.accentColor)
         .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
       }
@@ -534,14 +537,31 @@ struct WWNMachinesGridViewModern: View {
     // iPad / visionOS: Add + filter/sort + Settings; iPad search is separate.
     #if os(iOS)
     if !isIosPhone {
-      ToolbarItem(placement: .topBarTrailing) {
-        Button {
-          editorDestination = .add
-        } label: {
-          Label("Add Machine", systemImage: "plus")
+      if #available(iOS 26.0, *) {
+        ToolbarItem(placement: .topBarTrailing) {
+          Button {
+            editorDestination = .add
+          } label: {
+            Label("Add Machine", systemImage: "plus")
+          }
+          .buttonStyle(.glassProminent)
+          .buttonBorderShape(.circle)
+          .tint(Color.accentColor)
+          .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
         }
-        .backport.glassToolbarButton()
-        .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
+        .sharedBackgroundVisibility(.hidden)
+      } else {
+        ToolbarItem(placement: .topBarTrailing) {
+          Button {
+            editorDestination = .add
+          } label: {
+            Label("Add Machine", systemImage: "plus")
+          }
+          .backport.glassProminentToolbarButton()
+          .modifier(WWNCircularBorderShape())
+          .tint(Color.accentColor)
+          .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
+        }
       }
     }
     #elseif os(visionOS)

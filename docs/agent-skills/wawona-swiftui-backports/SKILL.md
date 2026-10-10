@@ -18,7 +18,8 @@ must use its default placement. `DefaultToolbarItem(kind: .search, placement:
 `placement: .toolbar`, which vends a conflicting navigation item during
 split-detail restoration. Keep `usesNativePhoneSearchToolbar` true on iOS 26+.
 Top-trailing toolbar buttons use `.automatic`, not `.glass` (glass-on-glass).
-Add Machine: plain `Label` + accent tint + `sharedBackgroundVisibility(.hidden)`.
+Add Machine: `Label` + `.glassProminent` + `.buttonBorderShape(.circle)` +
+accent tint + `sharedBackgroundVisibility(.hidden)` (blue fill, not glyph-only).
 
 ## Machine editor sheets
 
