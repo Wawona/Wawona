@@ -971,11 +971,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1791425856,
-        "narHash": "sha256-V0mi8d0IVOGeUHdP7HrHAzQ1fNSXBU6mbHm3TN2PgYw=",
+        "lastModified": 1791665902,
+        "narHash": "sha256-GpS5B4QQnjUSsoNsb5b4UfKbl7BIjXDlEzFeXYootjM=",
         "owner": "Wawona",
         "repo": "wwn-iomfb-rs",
-        "rev": "e79814979a9aa882be2bc1f341789d1dbf9bb210",
+        "rev": "26e3fa02762aeb9cba229ce9f83f3e61ab0eebce",
         "type": "github"
       },
       "original": {
