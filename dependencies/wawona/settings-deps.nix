@@ -36,10 +36,10 @@ let
     openssl = "3.4.1";
     pixman = "0.44.2";
     # Per-target ANGLE pins (wwn-iland angle recipes). Not a single "chromium".
-    angleIos = "3100009"; # prebuilt iosUniversal (device + sim dylibs)
+    angleIos = "7258"; # GN source static archives (minos 14 sim / 13 device floor)
     angleMacos = "7258"; # nixpkgs.angle / GN source builds (tvOS/visionOS)
     angleAndroid = "chromium-7151";
-    moltenvk = "1.4.1";
+    moltenvk = "1.4.2";
     swiftshader = "436722b";
     kosmickrisp = "26.1.3"; # Mesa driver tree used for KK
     weston = "14";
