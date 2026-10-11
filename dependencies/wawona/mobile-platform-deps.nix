@@ -138,14 +138,31 @@ let
 
           with tempfile.TemporaryDirectory() as td:
               objs = []
+              # Darwin TMPDIR is case-insensitive. keep-N-Pass.cpp.o and
+              # keep-M-pass.cpp.o collide on disk and drop LLVM RTTI (Pass
+              # vtable). Use keep-%d.o only; never embed the original basename.
               for i, (name, data) in enumerate(sorted(best.items())):
-                  path = os.path.join(td, "keep-%d-%s" % (i, os.path.basename(name)))
+                  path = os.path.join(td, "keep-%d.o" % i)
                   with open(path, "wb") as out:
                       out.write(data)
                   objs.append(path)
               if len(objs) < 2:
                   raise SystemExit("too few unique .o members: %d" % len(objs))
               subprocess.check_call([ar, "rcs", dst] + objs)
+              # Fail closed if case-fold pairs were collapsed somehow.
+              folded = {}
+              for name in best:
+                  key = name.lower()
+                  folded.setdefault(key, []).append(name)
+              lost = [v for v in folded.values() if len(v) > 1]
+              # Both case variants must remain in `best` (different objects).
+              # Count members written == len(best).
+              if len(objs) != len(best):
+                  raise SystemExit("dedupe write lost members: %d vs %d" % (len(objs), len(best)))
+              print(
+                  "swiftshader-dedupe: %d case-variant basename groups kept as separate members"
+                  % len(lost)
+              )
 
           dups = subprocess.check_output([ar, "t", dst], text=True).splitlines()
           repeated = [n for n, c in Counter(dups).items() if c > 1]
