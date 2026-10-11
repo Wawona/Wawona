@@ -50,15 +50,15 @@ public struct WawonaWatchRootView: View {
                 }
             }
         }
-        .alert("Welcome to Wawona", isPresented: $showWelcomeAlert) {
-            Button("Continue") {
+        .alert(WelcomeCopy.title, isPresented: $showWelcomeAlert) {
+            Button(WelcomeCopy.continueLabel) {
                 preferences.hasCompletedWelcome = true
                 preferences.save()
                 showWelcomeAlert = false
             }
             .accessibilityIdentifier("wwn.welcome.continue")
         } message: {
-            Text("Machines on your wrist. Add one when you are ready.")
+            Text(WelcomeCopy.message)
         }
         .onAppear {
             if needsWelcome {

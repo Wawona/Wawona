@@ -80,6 +80,18 @@ public enum WawonaDomainBridge {
         callNoArg("wawona_prefs_keys_csv")
     }
 
+    public static func welcomeTitle() -> String? {
+        callNoArg("wawona_welcome_title")
+    }
+
+    public static func welcomeMessage() -> String? {
+        callNoArg("wawona_welcome_message")
+    }
+
+    public static func welcomeContinue() -> String? {
+        callNoArg("wawona_welcome_continue")
+    }
+
     public static func resolveBackend(
         pref: String,
         classicOwnDisplay: Bool,

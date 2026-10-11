@@ -11,19 +11,20 @@ struct WelcomeAlertModifier: ViewModifier {
     @Binding var isPresented: Bool
 
     func body(content: Content) -> some View {
-        content
-            .alert("Welcome to Wawona", isPresented: $isPresented) {
-                Button("Continue") {
+        // iOS 13 Alert API (not the iOS 15+ ViewBuilder alert). Button title
+        // "Continue" remains the agent-device press target; WawonaA11y.welcomeContinue
+        // cannot attach to Alert actions below iOS 14.
+        content.alert(isPresented: $isPresented) {
+            Alert(
+                title: Text(WelcomeCopy.title),
+                message: Text(WelcomeCopy.message),
+                dismissButton: .default(Text(WelcomeCopy.continueLabel)) {
                     preferences.hasCompletedWelcome = true
                     preferences.save()
                     isPresented = false
                 }
-                .accessibilityIdentifier(WawonaA11y.welcomeContinue)
-            } message: {
-                Text(
-                    "One control surface for macOS, iOS, iPadOS, tvOS, visionOS, watchOS, and Android. Add a machine when you are ready."
-                )
-            }
+            )
+        }
     }
 }
 
