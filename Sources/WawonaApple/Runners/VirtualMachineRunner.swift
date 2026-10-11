@@ -13,7 +13,9 @@ public final class WWNVirtualMachineRunner: NSObject {
     @objc(sharedRunner) public static let sharedRunner = WWNVirtualMachineRunner()
 
     private let lock = NSLock()
+    #if os(macOS)
     private var tasksByMachineId: [String: Process] = [:]
+    #endif
 
     private override init() {
         super.init()
@@ -118,8 +120,8 @@ public final class WWNVirtualMachineRunner: NSObject {
 
         do {
             try task.run()
-        } catch {
-            error?.pointee = error as NSError
+        } catch let runError {
+            error?.pointee = runError as NSError
             return false
         }
 
@@ -132,11 +134,23 @@ public final class WWNVirtualMachineRunner: NSObject {
         )
         // Guest pixels arrive as host Wayland clients; reveal the compositor surface.
         DispatchQueue.main.async {
+            let userInfo: [AnyHashable: Any] = [
+                "machineId": machineId,
+                "source": "microvm-session",
+            ]
             NotificationCenter.default.post(
                 name: Notification.Name("WWNShowSessionSurfaceNotification"),
                 object: nil,
-                userInfo: ["machineId": machineId, "source": "microvm-session"]
+                userInfo: userInfo
             )
+            DistributedNotificationCenter.default().post(
+                name: Notification.Name("WWNShowSessionSurfaceNotification"),
+                object: nil,
+                userInfo: userInfo
+            )
+            let runtime = WWNPreferencesManager.preferredSharedRuntimeDir()
+            let flag = (runtime as NSString).appendingPathComponent("show-session-surface")
+            FileManager.default.createFile(atPath: flag, contents: Data())
         }
         return true
         #else

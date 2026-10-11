@@ -95,11 +95,13 @@ public enum WWNSessionWindowPresenter {
 public struct WWNSessionSurfaceRootView: View {
     public init() {}
 
-    var body: some View {
+    public var body: some View {
         #if !SWIFT_PACKAGE && (os(macOS) || os(iOS) || os(visionOS))
+        // edgesIgnoringSafeArea stays valid on iOS 13; avoids ViewBuilder
+        // buildEither (iOS 16+) around ignoresSafeArea().
         CompositorBridge()
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .ignoresSafeArea()
+            .edgesIgnoringSafeArea(.all)
         #else
         Color.black
         #endif
