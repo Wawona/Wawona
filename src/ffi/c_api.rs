@@ -474,6 +474,27 @@ pub extern "C" fn WWNCoreFlushClients(core: *mut WWNCore) {
     }));
 }
 
+/// Connected Wayland client count (host compositor). Used by the macOS UI to
+/// auto-reveal the session Metal surface when waypipe / MicroVM clients attach
+/// without an in-process Machines Start.
+#[no_mangle]
+pub extern "C" fn WWNCoreGetClientCount(core: *const WWNCore) -> u32 {
+    if core.is_null() {
+        return 0;
+    }
+    let core = unsafe { &*core };
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| core.get_client_count())) {
+        Ok(count) => count,
+        Err(_) => {
+            crate::wlog!(
+                crate::util::logging::C_API,
+                "WWNCoreGetClientCount panicked; returning 0"
+            );
+            0
+        }
+    }
+}
+
 /// Free WWNCore instance
 #[no_mangle]
 pub extern "C" fn WWNCoreFree(core: *mut WWNCore) {
