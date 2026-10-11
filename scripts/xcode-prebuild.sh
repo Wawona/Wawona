@@ -275,7 +275,10 @@ privatize_lib() {
 # ---------------------------------------------------------------------------
 _arch="arm64"
 _ld_platform="ios"
-_min_ver="17.0"
+# iOS/iPadOS product floor. Tipa xcodebuild may export 14.0. Never 17.0.
+# SDK-default Objective-C emits _objc_release_xN (iOS 16+). dyld aborts on
+# iOS 13-15. Stamping the merged object at 17.0 also lies about the floor.
+_min_ver="${IPHONEOS_DEPLOYMENT_TARGET:-13.0}"
 case "$_sdk" in
   iphonesimulator*)
     _ld_platform="ios-simulator"
@@ -285,25 +288,27 @@ case "$_sdk" in
     ;;
   appletvsimulator*)
     _ld_platform="tvos-simulator"
+    _min_ver="${TVOS_DEPLOYMENT_TARGET:-17.0}"
     ;;
   appletvos*)
     _ld_platform="tvos"
+    _min_ver="${TVOS_DEPLOYMENT_TARGET:-17.0}"
     ;;
   watchsimulator*)
     _ld_platform="watchos-simulator"
-    _min_ver="10.0"
+    _min_ver="${WATCHOS_DEPLOYMENT_TARGET:-10.0}"
     ;;
   watchos*)
     _ld_platform="watchos"
-    _min_ver="10.0"
+    _min_ver="${WATCHOS_DEPLOYMENT_TARGET:-10.0}"
     ;;
   xrsimulator*)
     _ld_platform="xros-simulator"
-    _min_ver="26.0"
+    _min_ver="${XROS_DEPLOYMENT_TARGET:-26.0}"
     ;;
   xros*)
     _ld_platform="xros"
-    _min_ver="26.0"
+    _min_ver="${XROS_DEPLOYMENT_TARGET:-26.0}"
     ;;
   *)
     _ld_platform="ios"
