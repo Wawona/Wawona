@@ -88,7 +88,10 @@ let
           raw = buildFn "swiftshader" { inherit simulator; };
         in
         pkgs.runCommand "${raw.name or "swiftshader"}-deduped" {
-          nativeBuildInputs = [ pkgs.python3 ];
+          nativeBuildInputs = [
+            pkgs.python3
+            pkgs.llvmPackages.bintools
+          ];
           meta = raw.meta or { };
         } ''
           mkdir -p "$out/lib"
@@ -98,7 +101,8 @@ let
           import os, subprocess, sys, tempfile
 
           src, dst = sys.argv[1], sys.argv[2]
-          members = subprocess.check_output(["ar", "t", src], text=True).splitlines()
+          ar = "llvm-ar"
+          members = subprocess.check_output([ar, "t", src], text=True).splitlines()
           seen = set()
           objs = []
           with tempfile.TemporaryDirectory() as td:
@@ -106,7 +110,7 @@ let
                   if not name.endswith(".o") or name in seen:
                       continue
                   seen.add(name)
-                  subprocess.check_call(["ar", "x", src, name], cwd=td)
+                  subprocess.check_call([ar, "x", src, name], cwd=td)
                   path = os.path.join(td, name)
                   if not os.path.isfile(path):
                       raise SystemExit(f"missing member after ar x: {name}")
@@ -115,12 +119,14 @@ let
                   objs.append(dest)
               if len(objs) < 2:
                   raise SystemExit(f"too few unique .o members: {len(objs)}")
-              subprocess.check_call(["libtool", "-static", "-o", dst] + objs)
+              subprocess.check_call([ar, "rcs", dst] + objs)
           dups = subprocess.check_output(
-              "ar t %s | sort | uniq -d" % dst, shell=True, text=True
-          ).strip()
-          if dups:
-              raise SystemExit("dedupe left duplicate members:\n" + dups)
+              [ar, "t", dst], text=True
+          ).splitlines()
+          from collections import Counter
+          repeated = [n for n, c in Counter(dups).items() if c > 1]
+          if repeated:
+              raise SystemExit("dedupe left duplicate members:\n" + "\n".join(repeated[:20]))
           print("swiftshader-dedupe: %d unique .o members" % len(objs))
           PY
           if [ -d "${raw}/lib/vulkan" ]; then
