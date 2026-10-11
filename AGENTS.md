@@ -139,7 +139,7 @@ not MCP. Skill `wawona-gh`. Rule `wawona-gh`.
   for isolated/incremental rebuilds. Not a monolithic `buildRustPackage`. Query
   `project=crate2nix` for `tools.nix`/`defaultCrateOverrides`/strategy questions.
 - **Apple = OS 26 / Liquid Glass**; **Material 3 Expressive = Android 16+ only**.
-- **iOS min OS vs SDK.** Mach-O min is iOS **13.0** through the latest iOS (26 now, 27 when the SDK ships). Never raise that floor to match a dependency (GhosttyKit 17 stays unlinked). Never downgrade the SDK. App Store IPAs do not ship a product `.dylib` (static archives; Apple `libswift*` is the exception). One ANGLE, one MoltenVK, Wawona patches. App Store / TrollStore / Sileo. See `docs/agent-rules/wawona-ios-min-os.md`.
+- **iOS min OS vs SDK.** Mach-O min is iOS **13.0** through the latest iOS (26 now, 27 when the SDK ships). Never raise that floor to match a dependency (GhosttyKit 17 stays unlinked). Never downgrade the SDK. App Store IPAs do not ship a product `.dylib` (static archives; Apple `libswift*` is the exception). One ANGLE, one MoltenVK, Wawona patches. App Store / TrollStore / Sileo. Bundled clients (fastfetch, weston, and every other in-process archive) compile at that same 13.0 floor. CMake `CMAKE_C_FLAGS` and Meson `c_args` do not apply to `.m`. Set `CMAKE_OBJC_FLAGS` and `objc_args` or clang emits `_objc_release_xN` and dyld aborts on iOS 13-15. See `docs/agent-rules/wawona-ios-min-os.md`.
 - **Apple-mobile process entry.** `Darwin/Sources/Main.swift` on iOS/iPadOS/tvOS/visionOS (and macOS). Mobile uses `UIApplicationMain` (iOS 13 floor). Never leave LC_MAIN to a bundled client's C `_main` (`gbm_es2_demo`). Set `XDG_RUNTIME_DIR` to `preferredSharedRuntimeDir` before host compositor start. See `docs/agent-rules/wawona-ios-app-entry.md` and skill `wawona-ios-sim-runtime`.
 - **Patched software lives in `wwn-*` repos** (Wawona org): the cross-compile
   framework + common libraries + `wawona-pty` are in `wwn-toolchain`; the patched
@@ -311,7 +311,9 @@ is on (`wawona-nested-compositor-cursor`). Full rule:
   `Wawona/nixpkgs2wasi` GitHub repo is not a flake input.
 - **iOS min OS**. Phone and iPad min OS is **13.0** against the **latest**
   iPhoneOS SDK only (26 now; 27 when it ships). Never downgrade the SDK. One
-  ANGLE, one MoltenVK, Wawona patches. App Store / TrollStore / Sileo. See
+  ANGLE, one MoltenVK, Wawona patches. App Store / TrollStore / Sileo.
+  Bundled archives use that floor too. Objective-C needs its own deployment
+  flag (`CMAKE_OBJC_FLAGS`, Meson `objc_args`). See
   `docs/agent-rules/wawona-ios-min-os.md` and rule `wawona-ios-min-os`.
 - **Binary filenames**. GitHub Release
   `Wawona-{calver}-{platform}-{arch}.{ext}`; store uploads add `-{build}` before

@@ -24,14 +24,20 @@ proof that untested or future systems work.
 - Local dependency changes require an updated published pin or explicit local
   input override before a consumer can claim to have built those changes.
 
-Bundled clients (fastfetch, weston, zsh, foot, and the other in-process
-archives) use this same iOS 13.0 floor. CMake must set `CMAKE_OBJC_FLAGS`
-with the same `-miphoneos-version-min` as C. Objective-C otherwise targets
-the iPhoneOS SDK version. Clang then emits `_objc_release_xN`, which
-`libobjc` does not provide before iOS 16, and dyld aborts on iOS 13, 14,
-and 15. `scripts/xcode-prebuild.sh` `ld -r` takes
-`IPHONEOS_DEPLOYMENT_TARGET` (default 13.0). Do not hardcode 17.0. Weston
-already passes that deployment flag on its Meson `c_args`.
+Bundled clients use this same iOS 13.0 floor. That includes fastfetch,
+weston, foot, fuzzel, niri, zsh, waypipe, phoon, kmscube, iland, ANGLE,
+MoltenVK, and the substrate archives they link (epoll-shim, xkbcommon,
+fcft, lz4, zstd, mbedtls, spirv-tools, libssh2). A tipa Mach-O min of 14.0
+does not allow those archives to compile at iOS 16 or the SDK version.
+
+C flags and Meson `c_args` do not apply to `.m` / `.mm`. CMake must set
+`CMAKE_OBJC_FLAGS` / `CMAKE_OBJCXX_FLAGS` with the same
+`-miphoneos-version-min` as C. Meson cross files must set `objc_args` /
+`objcpp_args` the same way. Without that, clang targets the iPhoneOS SDK.
+It emits `_objc_release_xN`, which `libobjc` does not provide before iOS
+16, and dyld aborts on iOS 13, 14, and 15. `scripts/xcode-prebuild.sh`
+`ld -r` takes `IPHONEOS_DEPLOYMENT_TARGET` (default 13.0). Do not hardcode
+17.0. Check: `wwn-toolchain/.github/scripts/verify-apple-objc-deployment.py`.
 
 ## Renderer and UI
 

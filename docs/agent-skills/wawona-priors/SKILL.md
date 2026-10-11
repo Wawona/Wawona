@@ -18,7 +18,7 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-caveman` | Forced caveman-full voice (+ upstream `caveman` skill) |
 | `wawona-carplay-lab` | Playport physical-iPhone CarPlay lab; private runtime identity and pairing. |
 | `wawona-vphone-lab-recover` | Dead / stale vphone lab. Sock refused. Stuck SSH wait. |
-| `wawona-ios-min-os` | iOS 13-27+ min OS vs latest SDK. One ANGLE, one MoltenVK. Never downgrade SDK. |
+| `wawona-ios-min-os` | iOS 13-27+ min OS vs latest SDK, including bundled archives. ObjC needs its own deployment flag. One ANGLE, one MoltenVK. Never downgrade SDK. |
 | `wawona-ios-sim-runtime` | iOS Simulator dogfood: profiles import, SIMCTL_CHILD AUTO_START, XCUITest gap. |
 | `wawona-ios-link-contract` | Fail before compile when Sources membership or C symbol missing. |
 | `wawona-gh` | GitHub issues/milestones/PRs/`gh run`. Shell + local `gh`. No GitHub MCP. |
@@ -53,6 +53,7 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-macos-mode-a` / `wawona-macos-no-appstore` | macOS in-window vs SIP |
 | `wawona-macos-prefpane` | PrefPane retired. In-app Global Settings only |
 | `wawona-global-settings-exclusive` | One Global Settings host per platform. In-app only |
+| `wawona-welcome-alert` | First-launch Welcome alert copy identical on Apple, Android, Linux |
 | `wawona-iland-mode-b-desktop` | Desktop dylib / Take Over |
 | `wawona-mode-b-watchdog-safety` | `watchdogd` / IOWatchdog |
 | `wawona-compositor-backend` | Aqua nested vs Classic DRM |
@@ -64,7 +65,7 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-relay-ios-hypervisor` | Mode B iOS/iPadOS Hypervisor.framework window (not HVF-via-qemu) |
 | `wawona-linux-vms-relay-runtime` | NixOS VMs; Mode A/B engines; no QEMU/UTM |
 | `wawona-platform-targets` | Four-state gates. Ghostty grid is `Wawona/Ghostty` (Zig). Toolbar keys are `Wawona/ToolbarKeys`. |
-| `wawona-ios-min-os` | iOS 13.0 min OS; latest iPhoneOS SDK only; one ANGLE + one MoltenVK |
+| `wawona-ios-min-os` | iOS 13.0 min OS for the app and every bundled archive; latest iPhoneOS SDK only; one ANGLE + one MoltenVK |
 | `wawona-ios-app-entry` | Mobile `@main` / no client C `_main` / XDG_RUNTIME_DIR before compositor |
 | `wawona-apple-mobile-bundle-share-env` | FONTCONFIG + WESTON_DATA_DIR from bundle share before in-process weston |
 | `wawona-ios-link-contract` | Membership + called C symbols before Apple app compile |

@@ -89,7 +89,7 @@ let
     else if platform == "tvos" then (if simulator then "arm64-apple-tvos17.0-simulator" else "arm64-apple-tvos17.0")
     else if platform == "visionos" then (if simulator then "arm64-apple-xros26.0-simulator" else "arm64-apple-xros26.0")
     else if platform == "watchos" then (if simulator then "arm64-apple-watchos10.0-simulator" else "arm64-apple-watchos10.0")
-    else "arm64-apple-ios17.0";
+    else "arm64-apple-ios${effectiveIosDeploymentTarget}";
   deploymentTarget =
     if platform == "watchos" then
       "10.0"
@@ -100,7 +100,7 @@ let
     else if platform == "ios" || platform == "ipados" then
       effectiveIosDeploymentTarget
     else
-      "26.0";
+      effectiveIosDeploymentTarget;
   deploymentFlag =
     if platform == "visionos" then
       # The xros deployment version belongs in the -target triple. Apple clang
@@ -113,7 +113,7 @@ let
     else if platform == "ios" || platform == "ipados" then
       (if simulator then "-mios-simulator-version-min=${effectiveIosDeploymentTarget}" else "-miphoneos-version-min=${effectiveIosDeploymentTarget}")
     else
-      (if simulator then "-mios-simulator-version-min=26.0" else "-miphoneos-version-min=26.0");
+      (if simulator then "-mios-simulator-version-min=${effectiveIosDeploymentTarget}" else "-miphoneos-version-min=${effectiveIosDeploymentTarget}");
   macosDeploymentTarget = "14.0";
   cargoEnvPrefix =
     if platform == "visionos" then

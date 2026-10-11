@@ -13,14 +13,16 @@ Tracker: https://github.com/Wawona/Wawona/milestone/4 (meta #178).
 ## When
 
 Editing `IPHONEOS_DEPLOYMENT_TARGET`, Apple `deploymentTarget`, ANGLE iOS,
-MoltenVK iOS, `xcodegen.nix` iOS min, or `@available` / weak-link on iOS.
+MoltenVK iOS, `xcodegen.nix` iOS min, `@available` / weak-link on iOS, or
+any bundled client recipe (`ios.nix`, `apple-mobile.nix`, CMake toolchain,
+Meson cross file, `xcode-prebuild.sh` privatize).
 
 ## Hard rejects (one line)
 
 - Do not pin or downgrade the iPhoneOS SDK to match iOS 13
 - Do not ship four ANGLE or four MoltenVK versions
 - Do not let a dep recipe pick its own min OS. xcodegen iOS floor and the ANGLE plist fallback are 13.0, not 17.0. Tipa call site stays 14.0
-- Do not compile Apple-mobile ObjC without the iOS 13 `-miphoneos-version-min`. SDK-default `.m` emits `_objc_release_xN` and dyld aborts on iOS 13-15. `ld -r` for iOS archives uses `IPHONEOS_DEPLOYMENT_TARGET`, never 17.0
+- Do not compile Apple-mobile ObjC without the iOS 13 `-miphoneos-version-min`. `CMAKE_C_FLAGS` and Meson `c_args` do not apply to `.m`. Set `CMAKE_OBJC_FLAGS` and `objc_args`. SDK-default `.m` emits `_objc_release_xN` and dyld aborts on iOS 13-15. `ld -r` for iOS archives uses `IPHONEOS_DEPLOYMENT_TARGET`, never 17.0. Tipa min 14.0 does not allow archives to compile at iOS 16+. Run `wwn-toolchain/.github/scripts/verify-apple-objc-deployment.py` on the toolchain and sibling client repos.
 - Do not replace Nix with a UTM-style CMake product root
 - Do not put Metal/Vulkan cap policy in Swift when Rust can own it
 - Do not restore iOS 11 or 12 ANGLE, EGL, GLES, Vulkan, or MoltenVK patches. Floor is 13.0. EGL is ANGLE(Metal). Vulkan is MoltenVK(Metal)

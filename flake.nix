@@ -1216,10 +1216,10 @@
                 baseTc
                 // {
                   isTVOSToolchain = true;
-                  deploymentTarget = "11.0";
+                  deploymentTarget = "17.0";
                   mkIOSBuildEnv = {
                     simulator ? false,
-                    minVersion ? "11.0",
+                    minVersion ? "17.0",
                   }:
                     baseTc.mkAppleEnv {
                       sdkName =
