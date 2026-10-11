@@ -3,18 +3,24 @@
 
 Apple mobile SSH policy: libssh2 + ssh-cli (libwwn-ssh-cli.a). Never OpenSSH /
 libssh-inprocess.a / openssh-ios.
+
+uutils safe subset: authority is wwn-coreutils/.../safe-subset.txt (must match
+Cargo.toml coreutils features).
 """
 
 from __future__ import annotations
 
 import json
+import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 FLAKE = ROOT / "flake.nix"
 FLAKE_LOCK = ROOT / "flake.lock"
+CARGO_TOML = ROOT / "Cargo.toml"
 XCODEGEN = ROOT / "dependencies/generators/xcodegen.nix"
 PREBUILD = ROOT / "scripts/xcode-prebuild.sh"
 IOS_ROOTFS = ROOT / "dependencies/wawona/ios-rootfs.nix"
@@ -231,6 +237,125 @@ def verify_no_ssh_stubs() -> list[str]:
     return errors
 
 
+def resolve_safe_subset_file() -> Path | None:
+    """wwn-coreutils owns safe-subset.txt. Prefer sibling, env, then flake input."""
+    env = os.environ.get("WWN_COREUTILS", "").strip()
+    candidates = []
+    if env:
+        candidates.append(Path(env) / "dependencies/libs/coreutils/safe-subset.txt")
+    candidates.append(
+        ROOT.parent / "wwn-coreutils/dependencies/libs/coreutils/safe-subset.txt"
+    )
+    for c in candidates:
+        if c.is_file():
+            return c
+    try:
+        r = subprocess.run(
+            [
+                "nix",
+                "eval",
+                "--raw",
+                "--impure",
+                "--expr",
+                f'(builtins.getFlake "{ROOT}").inputs.wwn-coreutils.outPath',
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if r.returncode == 0 and r.stdout.strip():
+            p = Path(r.stdout.strip()) / "dependencies/libs/coreutils/safe-subset.txt"
+            if p.is_file():
+                return p
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        pass
+    return None
+
+
+def parse_safe_subset(text: str) -> list[str]:
+    names = []
+    for line in text.splitlines():
+        s = line.strip()
+        if not s or s.startswith("#"):
+            continue
+        names.append(s)
+    return names
+
+
+def parse_cargo_coreutils_features(text: str) -> list[str] | None:
+    m = re.search(
+        r'^coreutils\s*=\s*\{[^}]*features\s*=\s*\[([^\]]*)\]',
+        text,
+        re.M | re.S,
+    )
+    if not m:
+        return None
+    return re.findall(r'"([a-z][a-z0-9-]*)"', m.group(1))
+
+
+def verify_coreutils_safe_subset() -> list[str]:
+    errors: list[str] = []
+    subset_path = resolve_safe_subset_file()
+    if subset_path is None:
+        return [
+            "cannot resolve wwn-coreutils/.../safe-subset.txt "
+            "(set WWN_COREUTILS, keep sibling checkout, or ensure nix flake input)"
+        ]
+    authority = parse_safe_subset(read(subset_path))
+    if not authority:
+        return [f"safe-subset.txt empty: {subset_path}"]
+    cargo_feats = parse_cargo_coreutils_features(read(CARGO_TOML))
+    if cargo_feats is None:
+        return ["Cargo.toml: missing optional coreutils features = [...]"]
+    if cargo_feats != authority:
+        errors.append(
+            "Cargo.toml coreutils features must match "
+            f"wwn-coreutils safe-subset.txt ({subset_path}): "
+            f"cargo={cargo_feats} authority={authority}"
+        )
+    # flake must not re-pin uutils with a local fetchFromGitHub for coreutils
+    flake = read(FLAKE)
+    if re.search(
+        r'coreutils-src\s*=\s*[^\n]*fetchFromGitHub',
+        flake,
+    ):
+        errors.append(
+            "flake.nix must use wwn-coreutils.lib.coreutilsSrc "
+            "(not a local fetchFromGitHub for coreutils-src)"
+        )
+    if "wwn-coreutils.lib.coreutilsSrc" not in flake:
+        errors.append("flake.nix missing wwn-coreutils.lib.coreutilsSrc for coreutils-src")
+    return errors
+
+
+def verify_no_swift_shell_backends() -> list[str]:
+    """Hard reject: SSH/zsh/system must not move into Swift product backends."""
+    errors = []
+    for rel in (
+        "Sources/WawonaApple",
+        "Sources/WawonaUI",
+        "Darwin",
+    ):
+        base = ROOT / rel
+        if not base.is_dir():
+            continue
+        for p in base.rglob("*.swift"):
+            text = p.read_text(encoding="utf-8", errors="replace")
+            # NIOSSH / ios_system as product shell backends
+            for bad in (
+                "import NIOSSH",
+                "import IOSSystem",
+                "ios_system/",
+                "NIOSSHHandler",
+            ):
+                if bad in text:
+                    errors.append(
+                        f"{p.relative_to(ROOT)}: forbidden Swift shell backend ({bad})"
+                    )
+    return errors
+
+
 def main() -> int:
     errors: list[str] = []
     errors.extend(verify_flake_outputs(read(FLAKE)))
@@ -239,6 +364,8 @@ def main() -> int:
     errors.extend(verify_prebuild(read(PREBUILD)))
     errors.extend(verify_fastfetch_lock())
     errors.extend(verify_no_ssh_stubs())
+    errors.extend(verify_coreutils_safe_subset())
+    errors.extend(verify_no_swift_shell_backends())
     if IOS_ROOTFS.is_file():
         rootfs = read(IOS_ROOTFS)
         errors.extend(verify_inproc_clients(rootfs))
@@ -252,7 +379,10 @@ def main() -> int:
             print(f"- {err}")
         return 1
 
-    print("iOS shell-tools wiring check OK (libssh2 + ssh-cli; no OpenSSH-inprocess)")
+    print(
+        "iOS shell-tools wiring check OK "
+        "(libssh2 + ssh-cli; wwn-coreutils safe-subset; no Swift shell backends)"
+    )
     return 0
 
 

@@ -1070,16 +1070,18 @@
         ]
       },
       "locked": {
-        "lastModified": 1787430327,
-        "narHash": "sha256-340ZZE5F9wWQYERVKeZAxp34rniJIiF/WRwdLyHEu0E=",
-        "rev": "730a4fecdb26992d1edf428208d60756d953f921",
-        "revCount": 11,
-        "type": "tarball",
-        "url": "https://api.flakehub.com/f/pinned/Wawona/wwn-coreutils/0.1.11%2Brev-730a4fecdb26992d1edf428208d60756d953f921/01a02b27-0986-7ac2-aeda-8c3c5e294134/source.tar.gz"
+        "lastModified": 1791691354,
+        "narHash": "sha256-L2xo0VYSxK+B9w3XQYiGrUwo6xRUPmE6NnCAhikRzpI=",
+        "owner": "Wawona",
+        "repo": "wwn-coreutils",
+        "rev": "6368776f17aa4eb4afdf4ee0d6b42d56b10a9c4a",
+        "type": "github"
       },
       "original": {
-        "type": "tarball",
-        "url": "https://flakehub.com/f/Wawona/wwn-coreutils/%2A"
+        "owner": "Wawona",
+        "ref": "development",
+        "repo": "wwn-coreutils",
+        "type": "github"
       }
     },
     "wwn-fastfetch": {
@@ -1435,11 +1437,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1791681181,
-        "narHash": "sha256-r7Xh2x8LWuY4nz5Q2qDJMP4Ms8F7KFC7jEk94DJD+Rw=",
+        "lastModified": 1791691361,
+        "narHash": "sha256-Hmpvsjge+3atWo2+AjuxymorKPN4Pn8jrTBqmLXVP4Q=",
         "owner": "Wawona",
         "repo": "wwn-toolchain",
-        "rev": "00293bf8927c06bb5d20a19deba8f52ce43ce8d3",
+        "rev": "9a04e32b288952f923f2e0b9420dc786c4f06469",
         "type": "github"
       },
       "original": {

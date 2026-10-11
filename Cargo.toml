@@ -76,10 +76,10 @@ tempfile = "3.25.0"
 waypipe = { path = "./waypipe", optional = true, default-features = false, features = ["lz4", "zstd", "video"] }
 
 # uutils coreutils umbrella: in-process ls/cat/cp/... dispatched from zsh on the
-# App-Store-compliant build (no fork/exec). Run scripts/ensure-coreutils.sh if
-# ./coreutils is missing. default-features = false + an explicit safe subset
-# keeps binary size bounded (see the in-process safe subset in the dispatch
-# shim). exit-prone / sandbox-meaningless utils are deliberately excluded.
+# App-Store-compliant build (no fork/exec). Ownership: wwn-coreutils (pin, patch,
+# safe-subset.txt). Run scripts/ensure-coreutils.sh if ./coreutils is missing
+# (stages wwn-coreutils.lib.mkPatchedSrc). Feature list MUST match
+# wwn-coreutils/.../safe-subset.txt (verify-ios-shell-tools.py).
 coreutils = { path = "./coreutils", optional = true, default-features = false, features = [
   "ls", "cat", "cp", "mv", "rm", "mkdir", "rmdir", "ln", "touch", "echo",
   "pwd", "head", "tail", "wc", "sort", "cut", "tr", "seq", "basename",

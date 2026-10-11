@@ -83,6 +83,12 @@ Rust profile: `profile-store-safe` on iOS release builds. Local shell feature fl
 | Spawning `/bin/sh` from host filesystem | Outside sandbox; not in bundle |
 | Spawning from `/tmp` or cache after extract | Effectively post-review if content is mutable |
 | Enabling compositor `fork()` for clients | Breaks mobile stub model; use client-side spawn only |
+| Swift NIOSSH / ios_system as product SSH or shell | Second stack; use `wwn-ssh` libssh2 + `wwn-zsh` + dispatch |
+| Real POSIX `system()` / OpenSSH on Apple-mobile store | Fork-exec; use `wawona_dispatch_inprocess` |
+
+Backend ownership and patch budget:
+[`../agent-rules/wawona-apple-mobile-mode-a-backends.md`](../agent-rules/wawona-apple-mobile-mode-a-backends.md).
+uutils pin/subset: **wwn-coreutils** (`safe-subset.txt`).
 
 ---
 

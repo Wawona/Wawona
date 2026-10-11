@@ -75,10 +75,14 @@ The patch runs **at zsh's fork-decision point**, so a handled command neither fo
 nor takes the fake-exec path; it behaves like a builtin (`lastval` set, fds restored
 via `fixfds`, `goto done`). User shell scripts are **interpreted** by that same
 signed zsh (`source`). They are not `execve`'d. A panic is caught so the host app
-survives. The safe subset is fixed in three places kept in sync: `Cargo.toml`
-`coreutils` feature, `wwn_safe_subset[]` in `wawona-dispatch.c`, and
-`WAWONA_INPROC_TOOLS` in the `.zshrc` template (`chmod` is in the subset).
-`watchOS` size-gates the coreutils feature off (builtins and scripts still run).
+survives. The safe subset is owned by **`wwn-coreutils/.../safe-subset.txt`**.
+Consumers stay in sync: `Cargo.toml` `coreutils` features,
+`wwn_safe_subset[]` in `wawona-dispatch.c`, and rootfs `WAWONA_INPROC_TOOLS`
+(`chmod` is in the subset). `verify-ios-shell-tools.py` checks Cargo vs that
+file. Wawona does not re-pin uutils (`wwn-coreutils.lib.coreutilsSrc` /
+`mkPatchedSrc`). See `docs/agent-rules/wawona-apple-mobile-mode-a-backends.md`.
+`watchOS` keeps the same in-process uutils safe subset as iOS (arm64). Only the
+arm64_32 Watch slice lacks `libwawona.a` and falls back to a weak stub.
 
 On **macOS/Android** the identical utilities ship as an ordinary uutils **multicall
 binary** on `PATH` (`coreutils` + per-util symlinks); there zsh exec()s it normally

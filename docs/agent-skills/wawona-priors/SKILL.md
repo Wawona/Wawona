@@ -67,7 +67,6 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-platform-targets` | Four-state gates. Ghostty grid is `Wawona/Ghostty` (Zig). Toolbar keys are `Wawona/ToolbarKeys`. |
 | `wawona-ios-min-os` | iOS 13.0 min OS for the app and every bundled archive; latest iPhoneOS SDK only; one ANGLE + one MoltenVK |
 | `wawona-ios-app-entry` | Mobile `@main` / no client C `_main` / XDG_RUNTIME_DIR before compositor |
-| `wawona-apple-mobile-bundle-share-env` | FONTCONFIG + WESTON_DATA_DIR from bundle share before in-process weston |
 | `wawona-ios-link-contract` | Membership + called C symbols before Apple app compile |
 | `wawona-apple-swift-skills` | Must install/use SwiftUI + Swift concurrency/testing skills for Apple UI |
 | `wawona-android-compose-skills` | Must install/use Compose + Android skills for Kotlin UI |
@@ -79,7 +78,6 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-android-jbr` | Android Gradle / Studio JBR 21 |
 | `wawona-local-before-ci` | Link/eval before push |
 | `wawona-branch-workflow` | `development` vs `master` |
-| `wawona-calver-today` | Product builds: VERSION must be today's YY.M.D (fail closed) |
 | `wawona-asc-swift-support` | ITMS-90426 |
 | `wawona-release-assets` | Ship filenames; macOS DMG pkg-only |
 | `wawona-no-em-dash` | Copy |
@@ -91,9 +89,18 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-wasm-cli-ports` | Two lanes for CLI→wasm (P1 GHA vs wasinix). No nixpkgs scrape. |
 | `wawona-native-over-wasm` | No wasm twin of native-all-targets CLIs |
 | `wawona-machine-types` | Three Machines kinds. SSH/wasm/waypipe are Native Shell sessions. |
+| `wawona-apple-mobile-mode-a-backends` | Mode A SSH/zsh/uutils/`system()`: wwn-* owners, no Swift backends, patch budget, iOS 13 |
 
 ## Hard-won (do not re-learn)
 
+- Apple-mobile Mode A shell backends stay in **wwn-coreutils** (uutils pin +
+  `safe-subset.txt`), **wwn-ssh** (libssh2), **wwn-zsh**, **wawona-pty**
+  dispatch. Wawona links only. No NIOSSH / ios_system product path. Rule:
+  `wawona-apple-mobile-mode-a-backends`.
+- watchOS **always** enables Cargo `coreutils` (in-process uutils safe
+  subset), same as iOS. Do not size-gate it off. Weak `wawona_coreutils_main`
+  stub only on arm64_32 (`!__LP64__`); never on arm64. Stale WATCHOS-SCOPE
+  "coreutils excluded" prose is superseded. RAG: `watchos-coreutils.md`.
 - Verification report: navigate `docs/verification-matrix.md`, run
   `scripts/verify-*.sh`, keep one helper implementation. Pinned tools error;
   unpinned research provers warn. Ruleset needs pass-wrapped `gh` (unset stale

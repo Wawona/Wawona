@@ -82,7 +82,9 @@
     wwn-swinging-bridge.inputs.nixpkgs.follows = "nixpkgs";
     wwn-swinging-bridge.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-swinging-bridge.inputs.rust-overlay.follows = "rust-overlay";
-    wwn-coreutils.url = "https://flakehub.com/f/Wawona/wwn-coreutils/*";
+    # GitHub tip (same class as wwn-toolchain / wwn-zsh). Owns uutils pin,
+    # patch, and safe-subset.txt for Mode A in-process coreutils.
+    wwn-coreutils.url = "github:Wawona/wwn-coreutils/development";
     wwn-coreutils.inputs.nixpkgs.follows = "nixpkgs";
     wwn-coreutils.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-foot.url = "https://flakehub.com/f/Wawona/wwn-foot/*";
@@ -466,14 +468,10 @@
       rev = "v0.11.0";
       sha256 = "sha256-Tbd/yY90yb2+/ODYVL3SudHaJCGJKatZ9FuGM2uAX+8=";
     };
-    # uutils coreutils umbrella crate. Vendored for in-process ls/cat/cp/...
-    # on the App-Store-compliant build (no fork/exec). See scripts/ensure-coreutils.sh.
-    coreutils-src = bootstrapPkgs.fetchFromGitHub {
-      owner = "uutils";
-      repo = "coreutils";
-      rev = "0.0.30";
-      sha256 = "sha256-OZ9AsCJmQmn271OzEmqSZtt1OPn7zHTScQiiqvPhqB0=";
-    };
+    # uutils pin owned by wwn-coreutils (do not re-fetch here). See
+    # wwn-coreutils/dependencies/libs/coreutils/coreutils-src.nix and
+    # scripts/ensure-coreutils.sh (mkPatchedSrc).
+    coreutils-src = wwn-coreutils.lib.coreutilsSrc bootstrapPkgs;
 
     getPackagesForSystem = system: pkgs: let
       isLinuxHost = builtins.elem system linuxSystems;
@@ -1842,6 +1840,7 @@
                 pkgs.ldid
                 pkgs.unzip
                 pkgs.zip
+                pkgs.python3
               ];
             } ''
               set -euo pipefail
@@ -1881,6 +1880,7 @@
                 pkgs.ldid
                 pkgs.unzip
                 pkgs.zip
+                pkgs.python3
               ];
             } ''
               set -euo pipefail

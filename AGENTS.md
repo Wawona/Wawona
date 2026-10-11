@@ -184,10 +184,13 @@ not MCP. Skill `wawona-gh`. Rule `wawona-gh`.
   Wayland/Android maintainability checks under `.github/scripts/`.
 - **zsh on iOS**: static `libwawona-zsh.a` (`wawona_zsh_main`) run **in-process
   on a pthread**, NO fork/exec/posix_spawn/dlopen; external commands dispatched
-  in-process to uutils coreutils (safe subset). NOT ios_system; multicall
-  coreutils is macOS/Android-only. Filesystem = `wawona-rootfs` (sandbox +
-  Application Support, no chroot); "iOS containers" = app sandbox, not
-  Containerization.framework. Query `project=ios-shell`.
+  in-process to uutils coreutils (safe subset owned by **wwn-coreutils**
+  `safe-subset.txt`). NOT ios_system; multicall coreutils is macOS/Android-only.
+  Apple-mobile SSH = **wwn-ssh** libssh2 (never OpenSSH / NIOSSH as product).
+  Store-safe `system()` = `wawona_dispatch_inprocess`. Swift is UI only for
+  these backends. Rule: `wawona-apple-mobile-mode-a-backends`. Filesystem =
+  `wawona-rootfs` (sandbox + Application Support, no chroot); "iOS containers" =
+  app sandbox, not Containerization.framework. Query `project=ios-shell`.
 - **Android Gradle JVM is JBR 21**: Android Studio and local `./gradlew` use
   the embedded JetBrains Runtime (JDK table `21`), not nixpkgs OpenJDK.
   Linux Nix uses `jetbrains.jdk-no-jcef-21`. Darwin Nix sandbox cannot
