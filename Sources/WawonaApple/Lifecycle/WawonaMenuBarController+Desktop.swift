@@ -125,7 +125,4 @@ extension WawonaMenuBarController {
         return FileManager.default.fileExists(atPath: socketPath)
     }
 }
-
-/// Runs the menubar agent event loop (no SwiftUI WindowGroup).
-}
 #endif
