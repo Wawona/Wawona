@@ -98,15 +98,15 @@ let
           src="${raw}/lib/libvk_swiftshader.a"
           test -f "$src"
           python3 - "$src" "$out/lib/libvk_swiftshader.a" <<'PY'
-          import os, subprocess, sys, tempfile
+          import hashlib, os, subprocess, sys, tempfile
           from collections import Counter
 
           src, dst = sys.argv[1], sys.argv[2]
           ar = "llvm-ar"
 
-          # Parse the archive ourselves so duplicate basenames are all visible.
-          # First-wins dropped the larger LLVM/Reactor objects and left
-          # undefined ConstantInt / Error / Timer / sw::CPUID symbols at Ld.
+          # Parse ar bytes (no extract). Dedupe by content hash so Reactor
+          # Debug.cpp.o survives beside a larger LLVM Debug.cpp.o. Stage as
+          # keep-%d.o only (Darwin TMPDIR case-fold safe).
           def iter_members(path):
               with open(path, "rb") as f:
                   if f.read(8) != b"!<arch>\n":
@@ -128,20 +128,18 @@ let
                           name = name[:-1]
                       yield name, data
 
-          best = {}
+          by_hash = {}
           for name, data in iter_members(src):
               if not name.endswith(".o"):
                   continue
-              prev = best.get(name)
-              if prev is None or len(data) > len(prev):
-                  best[name] = data
+              digest = hashlib.sha256(data).digest()
+              if digest not in by_hash:
+                  by_hash[digest] = (name, data)
 
+          members = sorted(by_hash.values(), key=lambda t: t[0])
           with tempfile.TemporaryDirectory() as td:
               objs = []
-              # Darwin TMPDIR is case-insensitive. keep-N-Pass.cpp.o and
-              # keep-M-pass.cpp.o collide on disk and drop LLVM RTTI (Pass
-              # vtable). Use keep-%d.o only; never embed the original basename.
-              for i, (name, data) in enumerate(sorted(best.items())):
+              for i, (_name, data) in enumerate(members):
                   path = os.path.join(td, "keep-%d.o" % i)
                   with open(path, "wb") as out:
                       out.write(data)
@@ -149,28 +147,23 @@ let
               if len(objs) < 2:
                   raise SystemExit("too few unique .o members: %d" % len(objs))
               subprocess.check_call([ar, "rcs", dst] + objs)
-              # Fail closed if case-fold pairs were collapsed somehow.
-              folded = {}
-              for name in best:
-                  key = name.lower()
-                  folded.setdefault(key, []).append(name)
-              lost = [v for v in folded.values() if len(v) > 1]
-              # Both case variants must remain in `best` (different objects).
-              # Count members written == len(best).
-              if len(objs) != len(best):
-                  raise SystemExit("dedupe write lost members: %d vs %d" % (len(objs), len(best)))
-              print(
-                  "swiftshader-dedupe: %d case-variant basename groups kept as separate members"
-                  % len(lost)
-              )
 
           dups = subprocess.check_output([ar, "t", dst], text=True).splitlines()
           repeated = [n for n, c in Counter(dups).items() if c > 1]
           if repeated:
               raise SystemExit("dedupe left duplicate members:\n" + "\n".join(repeated[:20]))
+          # Fail closed if Reactor / Pass symbols already missing upstream.
+          syms = subprocess.check_output(["nm", "-gU", dst], text=True, errors="replace")
+          for needle, label in (
+              ("__ZTVN4llvm4PassE", "llvm::Pass vtable"),
+              ("__ZN2rr4warn", "rr::warn"),
+              ("__ZN2sw10freeMemory", "sw::freeMemory"),
+          ):
+              if needle not in syms:
+                  raise SystemExit("dedupe input missing %s (%s)" % (label, needle))
           print(
-              "swiftshader-dedupe: %d unique .o members (keep-largest)"
-              % len(best)
+              "swiftshader-dedupe: %d unique .o members (content-hash)"
+              % len(members)
           )
           PY
           if [ -d "${raw}/lib/vulkan" ]; then
