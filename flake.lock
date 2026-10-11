@@ -1174,11 +1174,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1791755639,
-        "narHash": "sha256-Y8TATJWxkuy89KLaRaXSVkMZt907EL3tPsIvoj6MJNk=",
+        "lastModified": 1791759471,
+        "narHash": "sha256-u7JV1bmRMyz7V4M5sSrylu6oOvJxry5x+5ajDoD9iKk=",
         "owner": "Wawona",
         "repo": "wwn-iland",
-        "rev": "c2a3e9dad5a56409c1fe8ee491b316c10909435b",
+        "rev": "7e364d2f901594e9ab33d8bd4e85ebd3a491bae0",
         "type": "github"
       },
       "original": {
