@@ -99,35 +99,62 @@ let
           test -f "$src"
           python3 - "$src" "$out/lib/libvk_swiftshader.a" <<'PY'
           import os, subprocess, sys, tempfile
+          from collections import Counter
 
           src, dst = sys.argv[1], sys.argv[2]
           ar = "llvm-ar"
-          members = subprocess.check_output([ar, "t", src], text=True).splitlines()
-          seen = set()
-          objs = []
+
+          # Parse the archive ourselves so duplicate basenames are all visible.
+          # First-wins dropped the larger LLVM/Reactor objects and left
+          # undefined ConstantInt / Error / Timer / sw::CPUID symbols at Ld.
+          def iter_members(path):
+              with open(path, "rb") as f:
+                  if f.read(8) != b"!<arch>\n":
+                      raise SystemExit("not a System V / BSD ar archive")
+                  while True:
+                      header = f.read(60)
+                      if len(header) < 60:
+                          break
+                      name = header[0:16].decode("ascii", "replace").strip()
+                      size = int(header[48:58])
+                      data = f.read(size)
+                      if size % 2:
+                          f.read(1)
+                      if name.startswith("#1/"):
+                          nlen = int(name[3:])
+                          name = data[:nlen].split(b"\0", 1)[0].decode("ascii", "replace")
+                          data = data[nlen:]
+                      if name.endswith("/"):
+                          name = name[:-1]
+                      yield name, data
+
+          best = {}
+          for name, data in iter_members(src):
+              if not name.endswith(".o"):
+                  continue
+              prev = best.get(name)
+              if prev is None or len(data) > len(prev):
+                  best[name] = data
+
           with tempfile.TemporaryDirectory() as td:
-              for name in members:
-                  if not name.endswith(".o") or name in seen:
-                      continue
-                  seen.add(name)
-                  subprocess.check_call([ar, "x", src, name], cwd=td)
-                  path = os.path.join(td, name)
-                  if not os.path.isfile(path):
-                      raise SystemExit(f"missing member after ar x: {name}")
-                  dest = os.path.join(td, f"keep-{len(objs)}-{os.path.basename(name)}")
-                  os.rename(path, dest)
-                  objs.append(dest)
+              objs = []
+              for i, (name, data) in enumerate(sorted(best.items())):
+                  path = os.path.join(td, "keep-%d-%s" % (i, os.path.basename(name)))
+                  with open(path, "wb") as out:
+                      out.write(data)
+                  objs.append(path)
               if len(objs) < 2:
-                  raise SystemExit(f"too few unique .o members: {len(objs)}")
+                  raise SystemExit("too few unique .o members: %d" % len(objs))
               subprocess.check_call([ar, "rcs", dst] + objs)
-          dups = subprocess.check_output(
-              [ar, "t", dst], text=True
-          ).splitlines()
-          from collections import Counter
+
+          dups = subprocess.check_output([ar, "t", dst], text=True).splitlines()
           repeated = [n for n, c in Counter(dups).items() if c > 1]
           if repeated:
               raise SystemExit("dedupe left duplicate members:\n" + "\n".join(repeated[:20]))
-          print("swiftshader-dedupe: %d unique .o members" % len(objs))
+          print(
+              "swiftshader-dedupe: %d unique .o members (keep-largest)"
+              % len(best)
+          )
           PY
           if [ -d "${raw}/lib/vulkan" ]; then
             cp -a "${raw}/lib/vulkan" "$out/lib/"
