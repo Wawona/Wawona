@@ -80,7 +80,53 @@ let
     # on headless CI (the app is killed with Metal domain 102), so vkcube needs a
     # pure-CPU device to fall back to.
     // lib.optionalAttrs allowSwiftShaderSim {
-      swiftshader = buildFn "swiftshader" { inherit simulator; };
+      # wwn-iland merge historically concatenated .a members with duplicate
+      # basenames; -force_load then fails (~900 duplicate Vulkan symbols).
+      # Deduplicate by member basename (first wins) without rebuilding SS.
+      swiftshader =
+        let
+          raw = buildFn "swiftshader" { inherit simulator; };
+        in
+        pkgs.runCommand "${raw.name or "swiftshader"}-deduped" {
+          nativeBuildInputs = [ pkgs.python3 ];
+          meta = raw.meta or { };
+        } ''
+          mkdir -p "$out/lib"
+          src="${raw}/lib/libvk_swiftshader.a"
+          test -f "$src"
+          python3 - "$src" "$out/lib/libvk_swiftshader.a" <<'PY'
+          import os, subprocess, sys, tempfile
+
+          src, dst = sys.argv[1], sys.argv[2]
+          members = subprocess.check_output(["ar", "t", src], text=True).splitlines()
+          seen = set()
+          objs = []
+          with tempfile.TemporaryDirectory() as td:
+              for name in members:
+                  if not name.endswith(".o") or name in seen:
+                      continue
+                  seen.add(name)
+                  subprocess.check_call(["ar", "x", src, name], cwd=td)
+                  path = os.path.join(td, name)
+                  if not os.path.isfile(path):
+                      raise SystemExit(f"missing member after ar x: {name}")
+                  dest = os.path.join(td, f"keep-{len(objs)}-{os.path.basename(name)}")
+                  os.rename(path, dest)
+                  objs.append(dest)
+              if len(objs) < 2:
+                  raise SystemExit(f"too few unique .o members: {len(objs)}")
+              subprocess.check_call(["libtool", "-static", "-o", dst] + objs)
+          dups = subprocess.check_output(
+              "ar t %s | sort | uniq -d" % dst, shell=True, text=True
+          ).strip()
+          if dups:
+              raise SystemExit("dedupe left duplicate members:\n" + dups)
+          print("swiftshader-dedupe: %d unique .o members" % len(objs))
+          PY
+          if [ -d "${raw}/lib/vulkan" ]; then
+            cp -a "${raw}/lib/vulkan" "$out/lib/"
+          fi
+        '';
     }
     // lib.optionalAttrs allowGpu {
       kmscube = buildFn "kmscube" { inherit simulator; };
