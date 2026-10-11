@@ -16,6 +16,7 @@ pub mod profile_store;
 pub mod sanitize_ssh_host;
 pub mod uniffi_api;
 pub mod validation;
+pub mod welcome_copy;
 
 pub mod settings_catalog {
     //! Global Settings sidebar catalog. One list for every host UI

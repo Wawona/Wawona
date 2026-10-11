@@ -182,3 +182,18 @@ pub fn launch_nested_cursor_policy_json(
 ) -> String {
     super::launch_resolve::nested_cursor_json(is_nested_compositor, show_virtual_cursor)
 }
+
+#[uniffi::export]
+pub fn welcome_title() -> String {
+    super::welcome_copy::TITLE.to_string()
+}
+
+#[uniffi::export]
+pub fn welcome_message() -> String {
+    super::welcome_copy::MESSAGE.to_string()
+}
+
+#[uniffi::export]
+pub fn welcome_continue_label() -> String {
+    super::welcome_copy::CONTINUE.to_string()
+}

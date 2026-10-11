@@ -237,6 +237,24 @@ pub extern "C" fn wawona_prefs_defaults_json() -> *mut c_char {
     to_cstring(super::prefs_keys::defaults_json())
 }
 
+/// First-launch welcome title. Caller frees with `wawona_domain_string_free`.
+#[no_mangle]
+pub extern "C" fn wawona_welcome_title() -> *mut c_char {
+    to_cstring(super::welcome_copy::TITLE.to_string())
+}
+
+/// First-launch welcome message. Caller frees with `wawona_domain_string_free`.
+#[no_mangle]
+pub extern "C" fn wawona_welcome_message() -> *mut c_char {
+    to_cstring(super::welcome_copy::MESSAGE.to_string())
+}
+
+/// First-launch welcome dismiss button. Caller frees with `wawona_domain_string_free`.
+#[no_mangle]
+pub extern "C" fn wawona_welcome_continue() -> *mut c_char {
+    to_cstring(super::welcome_copy::CONTINUE.to_string())
+}
+
 /// Comma-separated pref keys. Caller frees with `wawona_domain_string_free`.
 #[no_mangle]
 pub extern "C" fn wawona_prefs_keys_csv() -> *mut c_char {
