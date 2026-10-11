@@ -1,8 +1,9 @@
 import SwiftUI
 import WawonaModel
 
-/// Full-screen Wayland software list for native machine profiles.
-/// Compositors first, then client types. Custom commands belong under Terminal.
+/// Wayland software list for native machine profiles.
+/// Installed debs + wpm wasm first. In-app keep-set clients follow while unlink
+/// is incomplete. Store builds never list APT. See `wawona-optional-software`.
 struct BundledClientPickerView: View {
     @Binding var selection: String
     let clients: [ClientLauncher]
@@ -15,12 +16,32 @@ struct BundledClientPickerView: View {
         self.clients = clients
     }
 
+    private var installed: [InstalledOptionalSoftware.Entry] {
+        InstalledOptionalSoftware.allInstalled()
+    }
+
     private var grouped: [(kind: BundledWaylandSoftwareKind, clients: [ClientLauncher])] {
         clients.waylandPickerGrouped()
     }
 
     var body: some View {
         List {
+            Section(header: Text("Installed")) {
+                if installed.isEmpty {
+                    Text("Install Wayland clients with wpm (store) or apt debs (jailbreak / Termux / Linux). Default session is Native Shell.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                } else {
+                    ForEach(installed, id: \.id) { entry in
+                        row(
+                            id: entry.id,
+                            title: entry.displayName,
+                            subtitle: "\(entry.source.rawValue): \(entry.executablePath)"
+                        )
+                    }
+                }
+            }
+
             ForEach(grouped, id: \.kind) { group in
                 Section(header: Text(group.kind.sectionTitle)) {
                     ForEach(group.clients) { launcher in
@@ -35,8 +56,8 @@ struct BundledClientPickerView: View {
         }
         .backport.navigationTitle("Wayland Software", inline: true)
         .onAppear {
-            if selection == "custom" {
-                selection = "weston-simple-shm"
+            if selection == "custom" || selection == "weston-terminal" {
+                selection = "wawona-shell"
             }
         }
     }

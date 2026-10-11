@@ -1,4 +1,5 @@
 import Foundation
+import WawonaModel
 #if canImport(AppKit)
 import AppKit
 #endif
@@ -160,7 +161,22 @@ public final class WWNWaypipeRunner: NSObject {
         activeIOSBundledClientId = clientId
         #endif
         NotificationCenter.default.post(name: .WWNNativeClientWillLaunch, object: clientId)
+
+        // Prefer installed deb / process binary (optional software). Store Mode A
+        // has no APT; scan is empty there. See wawona-optional-software.
+        if clientId != "wawona-shell",
+           clientId != "wawona-wasm",
+           clientId != "hello-wasi-gui",
+           let installed = InstalledOptionalSoftware.scanDebClients()
+            .first(where: { $0.id == clientId })
+        {
+            _ = launchBundledExecutable(names: [installed.executablePath], clientKey: clientId)
+            return
+        }
+
         switch clientId {
+        case "wawona-shell":
+            break
         case "weston":
             launchWeston()
         case "weston-terminal":
