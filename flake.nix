@@ -923,11 +923,10 @@
               platform = "linux";
               inherit wawonaVersion;
             };
-            sharedLinuxCargoNixWlcs =
-              crate2nix.tools.${pkgs.stdenv.hostPlatform.system}.generatedCargoNix {
-                name = "wawona-linux-workspace-wlcs";
-                src = workspace-src-linux-wlcs;
-              };
+            sharedLinuxCargoNixWlcs = crate2nix.tools.${pkgs.stdenv.hostPlatform.system}.generatedCargoNix {
+              name = "wawona-linux-workspace-wlcs";
+              src = workspace-src-linux-wlcs;
+            };
             backend-linux-wlcs = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
               inherit crate2nix wawonaVersion toolchains nixpkgs;
               workspaceSrc = workspace-src-linux-wlcs;
@@ -1135,7 +1134,11 @@
             inherit wawonaVersion;
           };
           workspace-src-linux = pkgs.callPackage ./dependencies/wawona/workspace-src.nix {
-            wawonaSrc = src; waypipeSrc = waypipe-src; coreutilsSrc = coreutils-src; platform = "linux"; inherit wawonaVersion;
+            wawonaSrc = src;
+            waypipeSrc = waypipe-src;
+            coreutilsSrc = coreutils-src;
+            platform = "linux";
+            inherit wawonaVersion;
           };
           workspace-src-ios = pkgs.callPackage ./dependencies/wawona/workspace-src.nix {
             wawonaSrc = src;
