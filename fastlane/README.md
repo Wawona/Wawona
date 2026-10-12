@@ -101,7 +101,23 @@ Submit iOS builds for App Store review
 [bundle exec] fastlane android beta
 ```
 
-Upload Android AAB to Play internal track
+Upload Android AAB to Play internal track (CI smoke)
+
+### android beta_open
+
+```sh
+[bundle exec] fastlane android beta_open
+```
+
+Upload Android AAB to Play open testing track (needs production access)
+
+### android beta_closed
+
+```sh
+[bundle exec] fastlane android beta_closed
+```
+
+Upload Android AAB to Play closed testing Alpha (or promote internal→alpha)
 
 ----
 

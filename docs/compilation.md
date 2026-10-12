@@ -186,7 +186,13 @@ CalVer is `VERSION` (`YY.M.D`). Fastlane lives in this repo. Contributor CI:
 nix develop .#release
 secretspec check -P local
 ./scripts/release-env.sh fastlane ios beta              # match + gym + TestFlight
-./scripts/release-env.sh fastlane android beta          # Play internal
+./scripts/release-env.sh fastlane android beta          # Play internal (CI smoke)
+# Closed Alpha / Open: Draft apps need draft status. Reuse internal versionCode via promote:
+PLAY_PROMOTE_INTERNAL=1 PLAY_RELEASE_STATUS=draft \
+  ./scripts/release-env.sh fastlane android beta_closed   # → alpha
+PLAY_PROMOTE_INTERNAL=1 PLAY_RELEASE_STATUS=draft \
+  ./scripts/release-env.sh fastlane android beta_open     # → open (needs production access)
+# Fresh AAB: omit PLAY_PROMOTE_INTERNAL (or set WAWONA_AAB_PATH=/path/to.aab)
 ```
 
 Signed IPAs: `TEAM_ID=… nix build .#wawona-ios-ipa --impure` (also ipados/tvos/watchos/visionos variants).

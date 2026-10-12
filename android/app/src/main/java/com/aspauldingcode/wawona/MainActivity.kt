@@ -925,6 +925,10 @@ fun WawonaApp(
             }
         }
         if (bundled == "wawona-shell" || launcher == "wawona-shell") {
+            // GuestConsole hosts the product shell UI. PTY + in-process zsh
+            // attach for Android is still the Native Shell Start path to finish;
+            // do not pretend a Wayland client launched.
+            WLog.i("NATIVE", "Native Shell Start: GuestConsole (no Wayland client)")
             return true
         }
         if (profile.type == MachineType.WASM || launcher == "wawona-wasm" || bundled == "wawona-wasm") {
@@ -1040,7 +1044,7 @@ fun WawonaApp(
             guestConsoleText = if (profile.type == MachineType.SSH_TERMINAL) {
                 "SSH session starting.\n"
             } else {
-                "Guest console\n"
+                "Wawona Terminal\n\nNative Shell session ready.\nType is not wired to a live PTY on Android yet.\nUse a Wayland client Machine for compositor paint.\n"
             }
             showGuestConsole = true
             showMachinesHome = false

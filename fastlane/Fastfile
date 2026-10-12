@@ -1409,22 +1409,94 @@ platform :ios do
 end
 
 platform :android do
-  desc "Upload Android AAB to Play internal track"
-  lane :beta do
-    src = nix_aab_path
+  def android_stage_aab!
+    # Optional: WAWONA_AAB_PATH=/path/to.aab skips nix rebuild (promote same
+    # internal AAB to Closed Alpha / Open without a second product build).
+    src = if ENV["WAWONA_AAB_PATH"].to_s.strip != ""
+      File.expand_path(ENV.fetch("WAWONA_AAB_PATH"))
+    else
+      nix_aab_path
+    end
+    UI.user_error!("AAB missing: #{src}") unless File.file?(src)
     out = File.expand_path("../dist/#{store_aab_basename}.aab", __dir__)
     FileUtils.mkdir_p(File.dirname(out))
-    FileUtils.cp(src, out)
+    FileUtils.cp(src, out) unless File.expand_path(src) == out
     UI.message("Staged Play upload AAB at #{out}")
+    out
+  end
+
+  def android_upload_track!(track)
+    out = android_stage_aab!
+    # Draft apps reject completed releases on non-internal tracks.
+    status = ENV.fetch("PLAY_RELEASE_STATUS", track == "internal" ? "completed" : "draft")
     upload_to_play_store(
       package_name: ENV.fetch("ANDROID_PACKAGE_NAME", "com.aspauldingcode.wawona"),
-      track: "internal",
+      track: track,
       aab: out,
       json_key_data: ENV.fetch("PLAY_STORE_JSON_KEY"),
+      release_status: status,
       skip_upload_metadata: true,
       skip_upload_images: true,
       skip_upload_screenshots: true
     )
+  end
+
+  desc "Upload Android AAB to Play internal track (CI smoke)"
+  lane :beta do
+    # PLAY_TRACK overrides for one-off dispatch (internal|alpha|beta|production).
+    # Default stays internal. Open testing is lane :beta_open (needs production access).
+    track = ENV.fetch("PLAY_TRACK", "internal")
+    UI.user_error!("PLAY_TRACK=open is not a Play API track; use lane android beta_open") if track == "open"
+    android_upload_track!(track)
+  end
+
+  desc "Upload Android AAB to Play open testing (beta track; needs production access)"
+  lane :beta_open do
+    # Same helpers as Closed: PLAY_PROMOTE_INTERNAL=1 promotes internal→beta as draft
+    # on Draft apps. Fresh upload needs a new versionCode and production access.
+    if ENV["PLAY_PROMOTE_INTERNAL"].to_s == "1"
+      status = ENV.fetch("PLAY_RELEASE_STATUS", "draft")
+      upload_to_play_store(
+        package_name: ENV.fetch("ANDROID_PACKAGE_NAME", "com.aspauldingcode.wawona"),
+        track: "internal",
+        track_promote_to: "beta",
+        track_promote_release_status: status,
+        json_key_data: ENV.fetch("PLAY_STORE_JSON_KEY"),
+        skip_upload_apk: true,
+        skip_upload_aab: true,
+        skip_upload_metadata: true,
+        skip_upload_images: true,
+        skip_upload_screenshots: true,
+        skip_upload_changelogs: true
+      )
+    else
+      android_upload_track!("beta")
+    end
+  end
+
+  desc "Upload Android AAB to Play closed testing Alpha (or promote internal→alpha)"
+  lane :beta_closed do
+    closed = ENV.fetch("PLAY_CLOSED_TRACK", "alpha")
+    if ENV["PLAY_PROMOTE_INTERNAL"].to_s == "1"
+      # Same versionCode cannot re-upload. Promote the live internal release.
+      # Draft apps require draft status on Closed / Open tracks.
+      status = ENV.fetch("PLAY_RELEASE_STATUS", "draft")
+      upload_to_play_store(
+        package_name: ENV.fetch("ANDROID_PACKAGE_NAME", "com.aspauldingcode.wawona"),
+        track: "internal",
+        track_promote_to: closed,
+        track_promote_release_status: status,
+        json_key_data: ENV.fetch("PLAY_STORE_JSON_KEY"),
+        skip_upload_apk: true,
+        skip_upload_aab: true,
+        skip_upload_metadata: true,
+        skip_upload_images: true,
+        skip_upload_screenshots: true,
+        skip_upload_changelogs: true
+      )
+    else
+      android_upload_track!(closed)
+    end
   end
 end
 
