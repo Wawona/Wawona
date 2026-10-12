@@ -1508,6 +1508,7 @@ PLIST
           # Required-reason API manifest (UserDefaults / boot time / file timestamps).
           # Missing this makes ASC accept the IPA then discard the build (never listed).
           { path = "src/resources/app-bundle/PrivacyInfo.xcprivacy"; type = "file"; buildPhase = "resources"; }
+          { path = "src/resources/app-bundle/LaunchScreen.storyboard"; type = "file"; buildPhase = "resources"; }
           (settingsDepsResource "ios")
           helloWasiGuiResource
           { path = "src/resources/Wawona.icon"; type = "folder"; }
@@ -1751,6 +1752,7 @@ PLIST
           # Required-reason API manifest (UserDefaults / boot time / file timestamps).
           # Missing this makes ASC accept the IPA then discard the build (never listed).
           { path = "src/resources/app-bundle/PrivacyInfo.xcprivacy"; type = "file"; buildPhase = "resources"; }
+          { path = "src/resources/app-bundle/LaunchScreen.storyboard"; type = "file"; buildPhase = "resources"; }
           (settingsDepsResource "ipados")
           helloWasiGuiResource
           { path = "src/resources/Wawona.icon"; type = "folder"; }
@@ -1936,6 +1938,7 @@ PLIST
           # Required-reason API manifest (UserDefaults / boot time / file timestamps).
           # Missing this makes ASC accept the IPA then discard the build (never listed).
           { path = "src/resources/app-bundle/PrivacyInfo.xcprivacy"; type = "file"; buildPhase = "resources"; }
+          { path = "src/resources/app-bundle/LaunchScreen.storyboard"; type = "file"; buildPhase = "resources"; }
           (settingsDepsResource "tvos")
           helloWasiGuiResource
           { path = "src/resources/Wawona.icon"; type = "folder"; }
@@ -2674,6 +2677,7 @@ PLIST
           # Required-reason API manifest (UserDefaults / boot time / file timestamps).
           # Missing this makes ASC accept the IPA then discard the build (never listed).
           { path = "src/resources/app-bundle/PrivacyInfo.xcprivacy"; type = "file"; buildPhase = "resources"; }
+          { path = "src/resources/app-bundle/LaunchScreen.storyboard"; type = "file"; buildPhase = "resources"; }
           (settingsDepsResource "visionos")
           helloWasiGuiResource
           { path = "src/resources/Wawona.icon"; type = "folder"; }

@@ -57,7 +57,10 @@
 			</array>
 		</dict>
 	</dict>
-	<!-- No LaunchScreen.storyboard in-tree; UILaunchScreen satisfies iPad multitasking (ITMS-90476). -->
+	<!-- iOS 13 floor: ASC ITMS-90475 requires a storyboard when MinimumOSVersion < 14. -->
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
+	<!-- iOS 14+ also accepts UILaunchScreen; keep both for multitasking checks. -->
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>
