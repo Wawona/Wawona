@@ -57,6 +57,7 @@ Workflow display names use a role prefix (`Gate` / `Build` / `Watch` / `Ship`). 
 | Workflow | `development` | `master` | Why |
 |----------|:-------------:|:--------:|-----|
 | **Gate: packages** (`nix.yml`) | push + PR | push + PR | L0-L2: verify, cargo/swift tests, curated backends; **native path filter** skips Darwin matrix on docs-only tips; Android Gradle/meson path-filtered |
+| **Gate: Wayland conformance** (`wayland-conformance.yml`) | relevant push + PR, nightly | relevant push + PR | Full nixpkgs WLCS battery on x86_64/aarch64 Linux; strict verdict plus XML/JSON/Markdown reports ([details](./testing/wlcs-conformance.md)) |
 | **Gate: wasm-wayland** (`wasm-wayland.yml`) | path filter push/PR | path filter push/PR | Wawona Runtime wiring + Weston headless SHM smoke against locked `wwn-wasm` (not a promote blocker) |
 | **Verification** (`verify-all.yml`) | push + PR | push + PR | Helpers / formal / vectors. Required ruleset check **Verification report**. Soft supersede on non-tip |
 | **Gate: products** (`device-gate.yml`) | path filter push | path filter push | Full matrix: iOS + **apple-family** (iPadOS/tvOS/watchOS/visionOS) + macOS + Android + AppImages + GUI smoke. Soft supersede on non-tip |

@@ -1,0 +1,84 @@
+name: "Gate: Wayland conformance"
+
+on:
+  pull_request:
+    branches: [development, master, main]
+    paths:
+      - "src/core/**"
+      - "src/ffi/**"
+      - "src/tests/wlcs/**"
+      - "dependencies/tests/wlcs.nix"
+      - "dependencies/wawona/rust-backend-c2n.nix"
+      - "dependencies/wawona/workspace-src.nix"
+      - "scripts/wlcs-grade.py"
+      - "flake.nix"
+      - "flake.lock"
+      - ".github/workflows/wayland-conformance.yml"
+  push:
+    branches: [development, master, main]
+    paths:
+      - "src/core/**"
+      - "src/ffi/**"
+      - "src/tests/wlcs/**"
+      - "dependencies/tests/wlcs.nix"
+      - "dependencies/wawona/rust-backend-c2n.nix"
+      - "dependencies/wawona/workspace-src.nix"
+      - "scripts/wlcs-grade.py"
+      - "flake.nix"
+      - "flake.lock"
+      - ".github/workflows/wayland-conformance.yml"
+  schedule:
+    - cron: "30 8 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: wayland-conformance-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  wlcs:
+    name: "WLCS (${{ matrix.system }})"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - system: x86_64-linux
+            os: ubuntu-latest
+          - system: aarch64-linux
+            os: ubuntu-24.04-arm
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'schedule' && 'development' || github.ref }}
+      - uses: DeterminateSystems/nix-installer-action@v22
+        with:
+          determinate: true
+          extra-conf: |
+            sandbox = relaxed
+            allow-import-from-derivation = true
+            max-jobs = auto
+            cores = 0
+      - uses: DeterminateSystems/flakehub-cache-action@v3
+
+      - name: Run full WLCS battery
+        run: |
+          nix run ".#packages.${{ matrix.system }}.wawona-wlcs-run" -- \
+            --output-dir wlcs-results
+
+      - name: Publish conformance summary
+        if: ${{ always() && hashFiles('wlcs-results/summary.md') != '' }}
+        run: cat wlcs-results/summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload WLCS reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: wlcs-${{ matrix.system }}
+          path: wlcs-results/
+          if-no-files-found: error
