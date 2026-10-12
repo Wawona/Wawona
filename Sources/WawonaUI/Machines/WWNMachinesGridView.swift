@@ -1649,7 +1649,9 @@ struct WWNMachinesGridViewLegacy: View {
       )
     }
     .navigationViewStyle(StackNavigationViewStyle())
-    .sheet(item: $editorDestination) { destination in
+    // Same as Modern: sheet on NavigationView often never presents on iOS
+    // (tap succeeds, editorDestination flips, UI stuck). fullScreenCover works.
+    .fullScreenCover(item: $editorDestination) { destination in
       switch destination {
       case .add:
         WWNMachineEditorView(

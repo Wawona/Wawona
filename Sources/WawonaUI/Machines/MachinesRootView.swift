@@ -71,6 +71,22 @@ struct MachinesRootView: View {
                     .wwnA11y(WawonaA11y.machinesAdd, label: "Add Machine")
             })
             #endif
+            #if os(iOS) || os(visionOS)
+            .fullScreenCover(item: $editorSheet) { sheet in
+                Group {
+                    switch sheet {
+                    case .add:
+                        MachineEditorView { profile in
+                            profileStore.upsert(profile)
+                        }
+                    case .edit(let profile):
+                        MachineEditorView(profile: profile) { updated in
+                            profileStore.upsert(updated)
+                        }
+                    }
+                }
+            }
+            #else
             .sheet(item: $editorSheet) { sheet in
                 Group {
                     switch sheet {
@@ -86,6 +102,7 @@ struct MachinesRootView: View {
                 }
                 .backport.editorSheet()
             }
+            #endif
             .sheet(isPresented: $showingContainerImages) {
                 ContainerImagesView(onSelect: nil)
             }
