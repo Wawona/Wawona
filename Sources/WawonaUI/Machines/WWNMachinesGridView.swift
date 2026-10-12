@@ -353,10 +353,9 @@ struct WWNMachinesGridViewModern: View {
     }
   }
 
-  /// iOS 26 phone: sole Add Machine control (Messages compose). Never pair
-  /// with top-trailing Add. ToolbarSpacer keeps search from eating the +.
-  /// `sharedBackgroundVisibility(.hidden)` + `composeCircleButton` (opaque
-  /// accent circle). Prefer `Image` over `Label` (Label drops the circle).
+  /// iOS 26 phone: sole Add Machine control. System bottom toolbar only:
+  /// search + spacer + default `ToolbarItem` with `plus`. No custom circle /
+  /// glassProminent / opaque fill. Never also top-trailing Add.
   @ToolbarContentBuilder
   private var iosPhoneMessagesBottomToolbar: some ToolbarContent {
     #if os(iOS)
@@ -366,7 +365,6 @@ struct WWNMachinesGridViewModern: View {
       ToolbarItem(placement: .bottomBar) {
         iosAddMachineToolbarButton
       }
-      .sharedBackgroundVisibility(.hidden)
     } else {
       ToolbarItem(placement: .automatic) {
         EmptyView()
@@ -379,16 +377,14 @@ struct WWNMachinesGridViewModern: View {
     #endif
   }
 
-  /// Shared Add control: iPad/vision top-trailing, or iPhone bottom compose.
-  /// Call sites must not mount this twice on the same host.
+  /// Shared Add: iPhone bottom bar, or iPad/vision top-trailing.
+  /// Plain toolbar `Button` + SF Symbol. Call sites must not mount twice.
   private var iosAddMachineToolbarButton: some View {
     Button {
       editorDestination = .add
     } label: {
       Image(systemName: "plus")
-        .font(.body.weight(.semibold))
     }
-    .backport.composeCircleButton()
     .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
   }
 
@@ -546,27 +542,13 @@ struct WWNMachinesGridViewModern: View {
     // Top bar on phone is sort + Settings only.
     #if os(iOS)
     if !isIosPhone {
-      if #available(iOS 26.0, *) {
-        ToolbarItem(placement: .topBarTrailing) {
-          iosAddMachineToolbarButton
-        }
-        .sharedBackgroundVisibility(.hidden)
-      } else {
-        ToolbarItem(placement: .topBarTrailing) {
-          iosAddMachineToolbarButton
-        }
+      ToolbarItem(placement: .topBarTrailing) {
+        iosAddMachineToolbarButton
       }
     }
     #elseif os(visionOS)
     ToolbarItem(placement: .topBarTrailing) {
-      Button {
-        editorDestination = .add
-      } label: {
-        Image(systemName: "plus")
-          .font(.body.weight(.semibold))
-      }
-      .backport.composeCircleButton()
-      .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
+      iosAddMachineToolbarButton
     }
     #endif
     ToolbarItem(placement: .topBarTrailing) {

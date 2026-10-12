@@ -9,18 +9,18 @@ For Apple SwiftUI UI that runs on iOS or iPadOS 13 through current, use
 
 ```swift
 card.backport.liquidGlass(cornerRadius: 20)
-button.backport.composeCircleButton()
+button.backport.glassToolbarButton() // .automatic on Liquid Glass bars
 ```
 
-iPhone Machines Add and editor Save checkmark: use `Image(systemName:)`
-plus `.backport.composeCircleButton()` and
-`sharedBackgroundVisibility(.hidden)`. The shim paints an opaque accent
-circle + white glyph (iOS 26 toolbar/sheet glass-on-glass makes
-`.glassProminent` / extra `.glassEffect` invisible). A toolbar `Label`
-drops the circle.
+iPhone Machines Add and machine-editor Cancel/Save are **plain toolbar
+buttons**: `ToolbarItem` + `Button` + `Image(systemName:)` (`plus`,
+`xmark`, `checkmark`). Default system size and spacing. No custom circle
+fill, glassProminent compose shim, fixed frame, font weight, or
+`sharedBackgroundVisibility` hacks on those items. iPhone bottom Add sits
+next to `DefaultToolbarItem(kind: .search)` with a `ToolbarSpacer`.
 
-**Exactly one Add Machine control.** iPhone: bottom compose only (iOS 26
-Messages toolbar, or pre-26 `safeAreaInset` chrome). iPad / visionOS:
+**Exactly one Add Machine control.** iPhone: bottom toolbar only (iOS 26
+Messages search bar, or pre-26 `safeAreaInset` chrome). iPad / visionOS:
 top-trailing only. Never mount Add in both top-trailing and bottom on
 phone.
 
@@ -46,6 +46,8 @@ Hard rejects:
 - `.buttonStyle(.glass)` on iOS 26 navigation toolbar items (glass-on-glass)
 - Custom glass search capsule on iPhone Machines when iOS 26 system
   `DefaultToolbarItem(kind: .search)` is available
+- Custom opaque / glassProminent / fixed-frame styling on iPhone toolbar Add
+  or editor sheet xmark/checkmark (use default toolbar `Button` + SF Symbol)
 - Custom SF Symbol Cancel/Save in `.cancellationAction` /
   `.confirmationAction` on iOS 26 (system also vends close/done)
 

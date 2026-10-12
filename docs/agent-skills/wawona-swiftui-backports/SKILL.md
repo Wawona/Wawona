@@ -19,11 +19,11 @@ must use its default placement. `DefaultToolbarItem(kind: .search, placement:
 `placement: .toolbar`, which vends a conflicting navigation item during
 split-detail restoration. Keep `usesNativePhoneSearchToolbar` true on iOS 26+.
 Top-trailing toolbar buttons use `.automatic`, not `.glass` (glass-on-glass).
-Add Machine / editor Save checkmark: `Image(systemName:)` +
-`.backport.composeCircleButton()` + `sharedBackgroundVisibility(.hidden)`.
-Opaque accent circle (no glass-on-glass). Toolbar `Label` drops the bubble.
-**One Add only:** phone = bottom compose; iPad/vision = top-trailing.
-Never a second top-trailing Add on phone.
+iPhone bottom Add and editor Cancel/Save: plain `ToolbarItem` + `Button` +
+`Image(systemName:)` (`plus` / `xmark` / `checkmark`). Default toolbar
+styling only. No custom circles, glassProminent, fixed frames, or
+`sharedBackgroundVisibility` hacks. **One Add only:** phone = bottom;
+iPad/vision = top-trailing.
 
 ## Machine editor sheets
 
@@ -33,7 +33,7 @@ The actual iPad Simulator page presentation was verified on 2026-10-02.
 
 Selected machine configuration goes immediately after identity/type, before
 Display/Input/Graphics. Native and shared editors use
-`backport.editorChromeActions` (one X, one blue checkmark on
+`backport.editorChromeActions` (plain toolbar `xmark` / `checkmark` on
 `.topBarLeading` / `.topBarTrailing`). Never put custom SF Symbol buttons in
 `.cancellationAction` / `.confirmationAction` on iOS 26 (Liquid Glass doubles
 close/done).

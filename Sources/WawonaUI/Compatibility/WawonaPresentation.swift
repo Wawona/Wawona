@@ -170,6 +170,8 @@ extension WawonaBackport where Content: View {
 }
 
 #if os(iOS) || os(visionOS)
+/// Default navigation toolbar: system sizes/spacing. Plain SF Symbols only.
+/// No custom circle fill, glassProminent, font weight, or sharedBackground hacks.
 @available(iOS 26.0, visionOS 26.0, *)
 private struct EditorChromeToolbarIOS26: ToolbarContent {
     let saveDisabled: Bool
@@ -177,15 +179,9 @@ private struct EditorChromeToolbarIOS26: ToolbarContent {
     let onSave: () -> Void
 
     var body: some ToolbarContent {
-        // Leading X stays on the shared glass bar (system close chrome).
-        // Trailing Save is a Messages-style primary circle: hide the shared
-        // glass blob, then paint an opaque accent circle (composeCircleButton).
-        // Do not stack `.glassEffect` here: sheet toolbars are already Liquid
-        // Glass; glass-on-glass goes invisible (swiftui-expert liquid-glass).
         ToolbarItem(placement: .topBarLeading) {
             Button(action: onCancel) {
                 Image(systemName: "xmark")
-                    .font(.body.weight(.semibold))
             }
             .accessibility(label: Text("Cancel"))
             .accessibility(identifier: "wwn.machines.editor.cancel")
@@ -193,14 +189,11 @@ private struct EditorChromeToolbarIOS26: ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) {
             Button(action: onSave) {
                 Image(systemName: "checkmark")
-                    .font(.body.weight(.semibold))
             }
-            .backport.composeCircleButton()
             .disabled(saveDisabled)
             .accessibility(label: Text("Save"))
             .accessibility(identifier: "wwn.machines.editor.save")
         }
-        .sharedBackgroundVisibility(.hidden)
     }
 }
 
@@ -214,7 +207,6 @@ private struct EditorChromeToolbarIOS14: ToolbarContent {
         ToolbarItem(placement: .topBarLeading) {
             Button(action: onCancel) {
                 Image(systemName: "xmark")
-                    .font(.body.weight(.semibold))
             }
             .accessibility(label: Text("Cancel"))
             .accessibility(identifier: "wwn.machines.editor.cancel")
@@ -222,9 +214,7 @@ private struct EditorChromeToolbarIOS14: ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) {
             Button(action: onSave) {
                 Image(systemName: "checkmark")
-                    .font(.body.weight(.semibold))
             }
-            .backport.composeCircleButton()
             .disabled(saveDisabled)
             .accessibility(label: Text("Save"))
             .accessibility(identifier: "wwn.machines.editor.save")
