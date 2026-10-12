@@ -425,6 +425,19 @@ impl WawonaCore {
     pub fn pop_pending_gamma_apply(&self) -> Option<crate::core::state::GammaRampApply> {
         None
     }
+
+    /// Create a connected Wayland client fd for an in-process conformance
+    /// harness. C ABI only (`WWNCoreCreateTestClientSocket`). Not UniFFI:
+    /// tuples are not a UniFFI return type.
+    pub fn create_test_client_socket(&self) -> Result<(i32, u32)> {
+        let mut compositor_guard = self.compositor.lock_recover();
+        let compositor = compositor_guard
+            .as_mut()
+            .ok_or(CompositorError::NotStarted)?;
+        compositor
+            .create_test_client_socket()
+            .map_err(|e| CompositorError::socket_error(e.to_string()).into())
+    }
 }
 
 #[uniffi::export]
@@ -891,19 +904,6 @@ impl WawonaCore {
             .as_ref()
             .map(|c| c.get_socket_paths())
             .unwrap_or_default()
-    }
-
-    /// Create a connected Wayland client fd for an in-process conformance
-    /// harness. The returned internal client id scopes protocol object ids,
-    /// which are only unique per client.
-    pub fn create_test_client_socket(&self) -> Result<(i32, u32)> {
-        let mut compositor_guard = self.compositor.lock_recover();
-        let compositor = compositor_guard
-            .as_mut()
-            .ok_or(CompositorError::NotStarted)?;
-        compositor
-            .create_test_client_socket()
-            .map_err(|e| CompositorError::socket_error(e.to_string()).into())
     }
 
     /// Position a mapped toplevel identified by a client's wl_surface object.
