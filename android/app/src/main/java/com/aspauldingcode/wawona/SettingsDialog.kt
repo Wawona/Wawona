@@ -1521,7 +1521,7 @@ private fun AboutSection(context: Context) {
             modifier = Modifier.fillMaxWidth().testTag("wwn.settings.reportBug"),
             shape = RoundedCornerShape(12.dp)
         ) { Text("Report") }
-        Spacer(modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(16.dp))
         OutlinedButton(
             onClick = { uriHandler.openUri("https://aspauldingcode.com") },
             modifier = Modifier.fillMaxWidth().testTag("wwn.settings.aboutAuthor"),
