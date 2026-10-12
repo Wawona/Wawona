@@ -366,7 +366,8 @@ let
           "-Wl,-u,_wawona_wasm_can_run"
           "-Wl,-u,_wawona_wasm_request_interrupt"
           "-Wl,-u,_wawona_wasm_is_running"
-          "-Wl,-u,_wpm_main"
+          # Do not -u _wpm_main: Relay also exports it. One root is enough;
+          # dual -u pulled both archives (~duplicate _wpm_main).
           "-lwawona_wasm"
         ];
       # Pass the static archive by path. ld prefers a same-dir
@@ -1581,7 +1582,8 @@ PLIST
               "-lcrypto"
                "-lepoll-shim"
              ] ++ westonToytoolkitLdflagsAppleMobile iosSimDeps ++ westonCompositorLdflagsAppleMobile iosSimDeps
-             ++ (ilandGlLdflags { deps = iosSimDeps; simulator = true; }) ++ moltenvkLdflags iosSimDeps ++ swiftshaderLdflags iosSimDeps ++ footLdflags iosSimDeps ++ fastfetchLdflags iosSimDeps ++ phoonLdflags iosSimDeps ++ wasmLdflags iosSimDeps ++ niriLdflags iosSimDeps ++ fuzzelLdflags iosSimDeps ++ waypipeLdflags iosSimDeps
+             # niri -force_load first; lazy Rust archives after (std once).
+             ++ (ilandGlLdflags { deps = iosSimDeps; simulator = true; }) ++ moltenvkLdflags iosSimDeps ++ swiftshaderLdflags iosSimDeps ++ footLdflags iosSimDeps ++ fastfetchLdflags iosSimDeps ++ niriLdflags iosSimDeps ++ phoonLdflags iosSimDeps ++ wasmLdflags iosSimDeps ++ fuzzelLdflags iosSimDeps ++ waypipeLdflags iosSimDeps
              ++ sshCliLdflags iosSimDeps
              ++ appleMobileResolvLdflags
              ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [
@@ -1632,7 +1634,7 @@ PLIST
                "-lcrypto"
                "-lepoll-shim"
              ] ++ westonToytoolkitLdflagsAppleMobile iosDeps ++ westonCompositorLdflagsAppleMobile iosDeps
-             ++ (ilandGlLdflags { deps = iosDeps; simulator = false; }) ++ moltenvkLdflags iosDeps ++ swiftshaderLdflags iosDeps ++ footLdflags iosDeps ++ fastfetchLdflags iosDeps ++ phoonLdflags iosDeps ++ wasmLdflags iosDeps ++ niriLdflags iosDeps ++ fuzzelLdflags iosDeps ++ waypipeLdflags iosDeps
+             ++ (ilandGlLdflags { deps = iosDeps; simulator = false; }) ++ moltenvkLdflags iosDeps ++ swiftshaderLdflags iosDeps ++ footLdflags iosDeps ++ fastfetchLdflags iosDeps ++ niriLdflags iosDeps ++ phoonLdflags iosDeps ++ wasmLdflags iosDeps ++ fuzzelLdflags iosDeps ++ waypipeLdflags iosDeps
              ++ sshCliLdflags iosDeps
              ++ appleMobileResolvLdflags
              ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [
@@ -1823,7 +1825,7 @@ PLIST
               "-lcrypto"
               "-lepoll-shim"
             ] ++ westonToytoolkitLdflagsAppleMobile ipadosDeps ++ westonCompositorLdflagsAppleMobile ipadosDeps
-            ++ (ilandGlLdflags { deps = ipadosDeps; simulator = false; }) ++ moltenvkLdflags ipadosDeps ++ swiftshaderLdflags ipadosDeps ++ footLdflags ipadosDeps ++ fastfetchLdflags ipadosDeps ++ phoonLdflags ipadosDeps ++ wasmLdflags ipadosDeps ++ niriLdflags ipadosDeps ++ fuzzelLdflags ipadosDeps ++ waypipeLdflags ipadosDeps
+            ++ (ilandGlLdflags { deps = ipadosDeps; simulator = false; }) ++ moltenvkLdflags ipadosDeps ++ swiftshaderLdflags ipadosDeps ++ footLdflags ipadosDeps ++ fastfetchLdflags ipadosDeps ++ niriLdflags ipadosDeps ++ phoonLdflags ipadosDeps ++ wasmLdflags ipadosDeps ++ fuzzelLdflags ipadosDeps ++ waypipeLdflags ipadosDeps
             ++ sshCliLdflags ipadosDeps
              ++ appleMobileResolvLdflags
             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [
@@ -1858,7 +1860,7 @@ PLIST
               "-lcrypto"
               "-lepoll-shim"
             ] ++ westonToytoolkitLdflagsAppleMobile ipadosSimDeps ++ westonCompositorLdflagsAppleMobile ipadosSimDeps
-            ++ (ilandGlLdflags { deps = ipadosSimDeps; simulator = true; }) ++ moltenvkLdflags ipadosSimDeps ++ swiftshaderLdflags ipadosSimDeps ++ footLdflags ipadosSimDeps ++ fastfetchLdflags ipadosSimDeps ++ phoonLdflags ipadosSimDeps ++ wasmLdflags ipadosSimDeps ++ niriLdflags ipadosSimDeps ++ fuzzelLdflags ipadosSimDeps ++ waypipeLdflags ipadosSimDeps
+            ++ (ilandGlLdflags { deps = ipadosSimDeps; simulator = true; }) ++ moltenvkLdflags ipadosSimDeps ++ swiftshaderLdflags ipadosSimDeps ++ footLdflags ipadosSimDeps ++ fastfetchLdflags ipadosSimDeps ++ niriLdflags ipadosSimDeps ++ phoonLdflags ipadosSimDeps ++ wasmLdflags ipadosSimDeps ++ fuzzelLdflags ipadosSimDeps ++ waypipeLdflags ipadosSimDeps
             ++ sshCliLdflags ipadosSimDeps
              ++ appleMobileResolvLdflags
             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [
@@ -2749,7 +2751,7 @@ PLIST
               "-lcrypto"
               "-lwayland-egl"
             ] ++ westonToytoolkitLdflagsAppleMobile visionosDeps ++ westonCompositorLdflagsAppleMobile visionosDeps
-            ++ (ilandGlLdflags { deps = visionosDeps; simulator = false; }) ++ moltenvkLdflags visionosDeps ++ footLdflags visionosDeps ++ fastfetchLdflags visionosDeps ++ phoonLdflags visionosDeps ++ wasmLdflags visionosDeps ++ niriLdflags visionosDeps ++ fuzzelLdflags visionosDeps ++ waypipeLdflags visionosDeps
+            ++ (ilandGlLdflags { deps = visionosDeps; simulator = false; }) ++ moltenvkLdflags visionosDeps ++ footLdflags visionosDeps ++ fastfetchLdflags visionosDeps ++ niriLdflags visionosDeps ++ phoonLdflags visionosDeps ++ wasmLdflags visionosDeps ++ fuzzelLdflags visionosDeps ++ waypipeLdflags visionosDeps
             ++ sshCliLdflags visionosDeps
              ++ appleMobileResolvLdflags
             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ derivedRustLdflags ++ finalCxxLdflags;
@@ -2782,7 +2784,7 @@ PLIST
               "-lcrypto"
               "-lwayland-egl"
             ] ++ westonToytoolkitLdflagsAppleMobile visionosSimDeps ++ westonCompositorLdflagsAppleMobile visionosSimDeps
-            ++ (ilandGlLdflags { deps = visionosSimDeps; simulator = true; }) ++ moltenvkLdflags visionosSimDeps ++ footLdflags visionosSimDeps ++ fastfetchLdflags visionosSimDeps ++ phoonLdflags visionosSimDeps ++ wasmLdflags visionosSimDeps ++ niriLdflags visionosSimDeps ++ fuzzelLdflags visionosSimDeps ++ waypipeLdflags visionosSimDeps
+            ++ (ilandGlLdflags { deps = visionosSimDeps; simulator = true; }) ++ moltenvkLdflags visionosSimDeps ++ footLdflags visionosSimDeps ++ fastfetchLdflags visionosSimDeps ++ niriLdflags visionosSimDeps ++ phoonLdflags visionosSimDeps ++ wasmLdflags visionosSimDeps ++ fuzzelLdflags visionosSimDeps ++ waypipeLdflags visionosSimDeps
             ++ sshCliLdflags visionosSimDeps
              ++ appleMobileResolvLdflags
             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ derivedRustLdflags ++ finalCxxLdflags;

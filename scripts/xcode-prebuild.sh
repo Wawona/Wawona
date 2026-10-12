@@ -213,6 +213,24 @@ rm -f "$derived/libwawona.a"
 cp -f "$active_out/lib/libwawona.a" "$derived/libwawona.a"
 echo "Copied $derived/libwawona.a <- $active_out/lib/libwawona.a"
 
+# Apple-mobile (and any target that -force_load libniri.a) already owns one
+# Rust sysroot. -u _wawona_coreutils_main would otherwise pull a second
+# std/core from libwawona.a and fail ld with duplicate rust_eh_personality.
+# Drop those CGUs; niri's force-load satisfies the runtime symbols.
+case "${TARGET_NAME:-}" in
+  Wawona-iOS|Wawona-iPadOS|Wawona-tvOS|Wawona-visionOS|Wawona-watchOS)
+    _rust_rt_re='^(std|core|alloc|compiler_builtins|panic_abort|panic_unwind|rustc_std_workspace_core|rustc_std_workspace_alloc|rustc_std_workspace_std)-'
+    _stripped=0
+    while IFS= read -r _member; do
+      [ -n "$_member" ] || continue
+      if ar d "$derived/libwawona.a" "$_member" 2>/dev/null; then
+        _stripped=$((_stripped + 1))
+      fi
+    done < <(ar t "$derived/libwawona.a" 2>/dev/null | grep -E "$_rust_rt_re" || true)
+    echo "Stripped ${_stripped} Rust runtime CGUs from libwawona.a (niri owns std)"
+    ;;
+esac
+
 # Realize link-only native deps that the app links by absolute /nix/store path
 # (OTHER_LDFLAGS), but that are NOT in the Rust backend's build closure. These
 # impure (__noChroot) derivations are not in the binary cache, so unless they
