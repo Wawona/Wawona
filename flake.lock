@@ -551,6 +551,59 @@
         "type": "github"
       }
     },
+    "iland": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "rust-overlay": "rust-overlay",
+        "wwn-toolchain": [
+          "wwn-toolchain"
+        ]
+      },
+      "locked": {
+        "lastModified": 1791834143,
+        "narHash": "sha256-a8h/9mn829UI18mErhuBcjoCnvu78zPS8FI6ud751ro=",
+        "owner": "Wawona",
+        "repo": "iLand",
+        "rev": "92a2960314794d07c081a88ad0a03eb075774c99",
+        "type": "github"
+      },
+      "original": {
+        "owner": "Wawona",
+        "ref": "development",
+        "repo": "iLand",
+        "type": "github"
+      }
+    },
+    "iland_2": {
+      "inputs": {
+        "nixpkgs": [
+          "wwn-waypipe",
+          "nixpkgs"
+        ],
+        "rust-overlay": [
+          "wwn-waypipe",
+          "rust-overlay"
+        ],
+        "wwn-toolchain": [
+          "wwn-waypipe",
+          "wwn-toolchain"
+        ]
+      },
+      "locked": {
+        "lastModified": 1786606319,
+        "narHash": "sha256-w/o7I/5w/ipAPcAzcrP6HQ2IFoJkhxQYsva9p7glvXk=",
+        "rev": "b65fb5e1acdaf9fc784180b9fb7c737ced958f04",
+        "revCount": 66,
+        "type": "tarball",
+        "url": "https://api.flakehub.com/f/pinned/Wawona/iLand/0.1.66%2Brev-b65fb5e1acdaf9fc784180b9fb7c737ced958f04/019ffa09-d33d-7d01-8376-dcf2b817efd3/source.tar.gz"
+      },
+      "original": {
+        "type": "tarball",
+        "url": "https://flakehub.com/f/Wawona/iLand/%2A"
+      }
+    },
     "microvm": {
       "inputs": {
         "nixpkgs": [
@@ -773,17 +826,17 @@
         "android-nixpkgs": "android-nixpkgs",
         "crate2nix": "crate2nix",
         "doorman": "doorman",
+        "iland": "iland",
         "microvm": "microvm",
         "nix-appimage": "nix-appimage",
         "nix-xcodeenvtests": "nix-xcodeenvtests",
         "nixpkgs": "nixpkgs_2",
         "repo-wawona-io": "repo-wawona-io",
-        "rust-overlay": "rust-overlay",
+        "rust-overlay": "rust-overlay_2",
         "terminal": "terminal",
         "toolbar-keys": "toolbar-keys",
         "wwn-coreutils": "wwn-coreutils",
         "wwn-igetty": "wwn-igetty",
-        "iland": "iland",
         "wwn-iomfb": "wwn-iomfb",
         "wwn-iowatchdog": "wwn-iowatchdog",
         "wwn-relay": "wwn-relay",
@@ -796,6 +849,27 @@
       }
     },
     "rust-overlay": {
+      "inputs": {
+        "nixpkgs": [
+          "iland",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1782530211,
+        "narHash": "sha256-Zn5H2VVMaP79C+bvaUQD+SBXSKoTnURMZGiUrG00zII=",
+        "owner": "oxalica",
+        "repo": "rust-overlay",
+        "rev": "06ba695dfefc4afc513b49dfc41c4bf0dd2eaeb1",
+        "type": "github"
+      },
+      "original": {
+        "owner": "oxalica",
+        "repo": "rust-overlay",
+        "type": "github"
+      }
+    },
+    "rust-overlay_2": {
       "inputs": {
         "nixpkgs": [
           "nixpkgs"
@@ -815,31 +889,10 @@
         "type": "github"
       }
     },
-    "rust-overlay_2": {
-      "inputs": {
-        "nixpkgs": [
-          "wwn-coreutils",
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1782530211,
-        "narHash": "sha256-Zn5H2VVMaP79C+bvaUQD+SBXSKoTnURMZGiUrG00zII=",
-        "owner": "oxalica",
-        "repo": "rust-overlay",
-        "rev": "06ba695dfefc4afc513b49dfc41c4bf0dd2eaeb1",
-        "type": "github"
-      },
-      "original": {
-        "owner": "oxalica",
-        "repo": "rust-overlay",
-        "type": "github"
-      }
-    },
     "rust-overlay_3": {
       "inputs": {
         "nixpkgs": [
-          "iland",
+          "wwn-coreutils",
           "nixpkgs"
         ]
       },
@@ -999,7 +1052,7 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "rust-overlay": "rust-overlay_2",
+        "rust-overlay": "rust-overlay_3",
         "wwn-toolchain": [
           "wwn-toolchain"
         ]
@@ -1024,14 +1077,14 @@
         "doorman": [
           "doorman"
         ],
+        "iland": [
+          "iland"
+        ],
         "nixpkgs": [
           "nixpkgs"
         ],
         "rust-overlay": [
           "rust-overlay"
-        ],
-        "iland": [
-          "iland"
         ],
         "wwn-toolchain": [
           "wwn-toolchain"
@@ -1050,59 +1103,6 @@
         "ref": "development",
         "repo": "wwn-igetty",
         "type": "github"
-      }
-    },
-    "iland": {
-      "inputs": {
-        "nixpkgs": [
-          "nixpkgs"
-        ],
-        "rust-overlay": "rust-overlay_3",
-        "wwn-toolchain": [
-          "wwn-toolchain"
-        ]
-      },
-      "locked": {
-        "lastModified": 1791761509,
-        "narHash": "sha256-7BvU0VvO4y2wqwNalY6kw5pJ+jHq2X2/smdkbxOdZAU=",
-        "owner": "Wawona",
-        "repo": "iLand",
-        "rev": "9ca3fb48cc1e9a9f6a0def9ab84817543909748f",
-        "type": "github"
-      },
-      "original": {
-        "owner": "Wawona",
-        "ref": "development",
-        "repo": "iLand",
-        "type": "github"
-      }
-    },
-    "iland_2": {
-      "inputs": {
-        "nixpkgs": [
-          "wwn-waypipe",
-          "nixpkgs"
-        ],
-        "rust-overlay": [
-          "wwn-waypipe",
-          "rust-overlay"
-        ],
-        "wwn-toolchain": [
-          "wwn-waypipe",
-          "wwn-toolchain"
-        ]
-      },
-      "locked": {
-        "lastModified": 1786606319,
-        "narHash": "sha256-w/o7I/5w/ipAPcAzcrP6HQ2IFoJkhxQYsva9p7glvXk=",
-        "rev": "b65fb5e1acdaf9fc784180b9fb7c737ced958f04",
-        "revCount": 66,
-        "type": "tarball",
-        "url": "https://api.flakehub.com/f/pinned/Wawona/iLand/0.1.66%2Brev-b65fb5e1acdaf9fc784180b9fb7c737ced958f04/019ffa09-d33d-7d01-8376-dcf2b817efd3/source.tar.gz"
-      },
-      "original": {
-        "type": "tarball",
-        "url": "https://flakehub.com/f/Wawona/iLand/%2A"
       }
     },
     "wwn-iomfb": {
@@ -1280,11 +1280,11 @@
     },
     "wwn-waypipe": {
       "inputs": {
+        "iland": "iland_2",
         "nixpkgs": [
           "nixpkgs"
         ],
         "rust-overlay": "rust-overlay_4",
-        "iland": "iland_2",
         "wwn-ssh": [
           "wwn-ssh"
         ],
