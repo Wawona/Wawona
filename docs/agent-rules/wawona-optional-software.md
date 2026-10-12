@@ -29,6 +29,7 @@ no-fork patch burden shrinks instead of growing.
 | weston-simple-shm and weston toys | Deb | Delete |
 | kmscube, gbm-es2-demo, opengl-cube, vkcube, weston-simple-egl | Deb | Delete |
 | hello-wasi-gui, chess-wawona | Wasm P1 | Already wasm |
+| gtk4-hello, wayland-bridge-smoke | WASIX (wasinix `pkgs/programs/`) | Link `libraries.gtk4`; Relay host `wawona_wayland_*`; Wasmer hosts only (not Pulley / store IPA keep-set) |
 | GTK and similar | Deb + WASIX `pkgs/libraries/` (not `programs/`) | Do not add in-app |
 
 Deb audiences: jailbreak iOS rootless/rootful, Termux `aarch64`, Linux amd64/arm64.

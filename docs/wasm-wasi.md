@@ -93,6 +93,22 @@ bundled `hello-wasi-gui.wasm` (`wl_shm` + `xdg_wm_base`).
 Do not brand this as an “App Store” for iOS apps. It is a **runtime package
 registry**. Prefer OCI artifacts + a thin client over inventing a bespoke protocol.
 
+### WASIX GTK / Wayland programs (wasinix)
+
+Toolkit is a **library** (`wasinix` `pkgs/libraries/gtk4`). Programs that link
+it are separate:
+
+| Program | Role |
+|---------|------|
+| `wayland-bridge-smoke` | One SHM frame via `wawona_wayland_*` |
+| `gtk4-hello` | Minimal GTK4 Wayland window (`GSK_RENDERER=cairo`) |
+
+Build: `nix build github:Wawona/wasinix#wasmer.gtk4-hello` (Linux CI). Run under
+Relay with host imports and a live Wawona `WAYLAND_DISPLAY` (see
+`wasinix/scripts/smoke-wayland-relay.sh`). **Not** store Pulley, **not**
+bundled keep-set beside `hello-wasi-gui`. Machines: drop the `.wasm` as a local
+module on Wasmer-capable hosts (macOS/Linux; iOS 27+ Wasmer WebKit when linked).
+
 **Full implementation plan:** [`wasm-package-manager.md`](./wasm-package-manager.md)
 (registry at `repo.wawona.io/wasm/v1`, human catalog at `/search/?channel=wasm`;
 Sileo iOS jailbreak debs and Termux Android sideload debs stay a separate APT

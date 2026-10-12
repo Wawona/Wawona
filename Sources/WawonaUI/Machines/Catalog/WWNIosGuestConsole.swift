@@ -5,7 +5,8 @@ import UIKit
 
 /// iOS / visionOS host for Guest console. Relay boot logs, SSH, and Native
 /// Shell Terminal Start post `WWNRelayGuestConsoleNeededNotification`; macOS
-/// uses `WWNMacGuestConsole`. This presents a full-screen console sheet.
+/// uses `WWNMacGuestConsole`. Shell source runs in-process zsh via
+/// `IosShellSession` (not a stub splash).
 @MainActor
 final class WWNIosGuestConsole: ObservableObject {
   static let shared = WWNIosGuestConsole()
@@ -13,6 +14,10 @@ final class WWNIosGuestConsole: ObservableObject {
   @Published var isPresented = false
   @Published var title = "Guest console"
   @Published var logText = ""
+  @Published var inputLine = ""
+  @Published var statusMessage = ""
+
+  let termModel = WawonaTerminalModel()
 
   private var machineId = ""
   private var source = "relay"
@@ -20,6 +25,9 @@ final class WWNIosGuestConsole: ObservableObject {
   private var pumpTimer: Timer?
   private var observer: NSObjectProtocol?
   private var started = false
+  private var shell: IosShellSession?
+
+  var isShell: Bool { source == "shell" }
 
   func startObservingIfNeeded() {
     guard !started else { return }
@@ -47,13 +55,18 @@ final class WWNIosGuestConsole: ObservableObject {
       return
     }
     stopPump()
+    stopShell()
     self.machineId = machineId
     self.source = source
     fed = 0
+    inputLine = ""
+    statusMessage = ""
+    termModel.lines = []
     switch source {
     case "shell":
       title = "Wawona Terminal"
-      logText = "Wawona Terminal\nNative Shell starting.\n"
+      logText = ""
+      startShell()
     case "ssh":
       title = "SSH session"
       logText = "SSH session starting.\n"
@@ -72,14 +85,50 @@ final class WWNIosGuestConsole: ObservableObject {
       return
     }
     stopPump()
+    stopShell()
     isPresented = false
     self.machineId = ""
     source = "relay"
     fed = 0
+    inputLine = ""
+    statusMessage = ""
   }
 
   func userDismiss() {
     dismiss(machineId: machineId)
+  }
+
+  func submitInput() {
+    guard isShell else { return }
+    var payload = inputLine
+    if !payload.hasSuffix("\n") {
+      payload += "\n"
+    }
+    shell?.write(Data(payload.utf8))
+    inputLine = ""
+  }
+
+  func sendControl(_ byte: UInt8) {
+    guard isShell else { return }
+    shell?.write(Data([byte]))
+  }
+
+  private func startShell() {
+    let session = IosShellSession()
+    session.onScreen = { [weak self] data in
+      self?.termModel.applySnapshot(data)
+    }
+    session.onFailure = { [weak self] message in
+      self?.statusMessage = message
+      self?.logText = message + "\n"
+    }
+    shell = session
+    session.start(cols: 80, rows: 28)
+  }
+
+  private func stopShell() {
+    shell?.stop()
+    shell = nil
   }
 
   private func startPump() {
@@ -119,12 +168,48 @@ struct WWNIosGuestConsoleSheet: View {
 
   var body: some View {
     NavigationView {
-      ScrollView {
-        Text(console.logText.isEmpty ? " " : console.logText)
-          .font(.system(.footnote, design: .monospaced))
-          .foregroundColor(.white)
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .padding(12)
+      VStack(spacing: 0) {
+        if console.isShell {
+          WawonaTerminalView(model: console.termModel)
+          if !console.statusMessage.isEmpty {
+            Text(console.statusMessage)
+              .font(.system(.caption2, design: .monospaced))
+              .foregroundColor(.orange)
+              .frame(maxWidth: .infinity, alignment: .leading)
+              .padding(.horizontal, 12)
+              .padding(.vertical, 4)
+          }
+          #if !os(tvOS)
+          HStack(spacing: 8) {
+            TextField("Type here", text: $console.inputLine, onCommit: {
+              console.submitInput()
+            })
+            .font(.system(.body, design: .monospaced))
+            #if os(iOS)
+            .autocapitalization(.none)
+            .disableAutocorrection(true)
+            #endif
+            .padding(8)
+            .background(Color(white: 0.12))
+            .cornerRadius(6)
+            Button("Send") { console.submitInput() }
+              .accessibility(identifier: "wwn.guestConsole.send")
+            Button("^C") { console.sendControl(0x03) }
+              .accessibility(identifier: "wwn.guestConsole.ctrlC")
+          }
+          .padding(8)
+          .background(Color.black)
+          #endif
+        } else {
+          ScrollView {
+            Text(console.logText.isEmpty ? " " : console.logText)
+              .font(.system(.footnote, design: .monospaced))
+              .foregroundColor(.white)
+              .frame(maxWidth: .infinity, alignment: .leading)
+              .padding(12)
+          }
+          .background(Color.black)
+        }
       }
       .background(Color.black)
       .backport.navigationTitle(console.title, inline: true)

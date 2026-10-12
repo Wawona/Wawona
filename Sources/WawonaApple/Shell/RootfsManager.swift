@@ -86,6 +86,10 @@ public final class WWNRootfsManager: NSObject {
         setenv("HOME", home, 1)
         setenv("ZDOTDIR", home, 1)
         setenv("WAWONA_ROOTFS", activeRootfsPath(), 1)
+        setenv("WAWONA_ZSH_IN_PROCESS", "1", 1)
+        setenv("WAWONA_SHELL", "/usr/bin/zsh", 1)
+        setenv("SHELL", "/usr/bin/zsh", 1)
+        setenv("TERM", "xterm-256color", 1)
         let path = "/usr/bin:/bin:/usr/sbin:/sbin:" + activeRootfsPath() + "/usr/bin"
         setenv("PATH", path, 1)
         setenv("XDG_CONFIG_HOME", (home as NSString).appendingPathComponent(".config"), 1)

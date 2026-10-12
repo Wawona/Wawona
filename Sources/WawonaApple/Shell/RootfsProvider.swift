@@ -136,7 +136,7 @@ public final class WWNRootfsProvider: NSObject {
     }
 
     @objc public static func applyShellEnvironment() {
-        #if os(iOS)
+        #if os(iOS) || os(tvOS) || os(visionOS)
         WWNRootfsManager.applyShellEnvironment()
         #endif
     }
