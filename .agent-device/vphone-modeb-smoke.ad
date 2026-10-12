@@ -1,0 +1,14 @@
+# Mode B tipa smoke on vphone (Wawona agent-device fork)
+
+# Requires: nix run .#vphone-jb-lab (or --smoke-only), visible VM window,
+# Wawona agent-device with vphone support (0.18.3-wawona.1+).
+
+open --device "vphone wawona-jb" --session vphone-modeb
+screenshot --out .agent-device/test-artifacts/dmabuf/vphone-jb/ad-smoke-home.png
+apps
+snapshot -i
+# tipa path is relative to Wawona checkout when WAWONA_ROOT is set
+install .agent-device/test-artifacts/dmabuf/vphone-jb/WawonaModeBDemo-26.9.2-iOS-arm64.tipa
+open com.aspauldingcode.wawona.modeb-demo
+screenshot --out .agent-device/test-artifacts/dmabuf/vphone-jb/ad-smoke-demo.png
+close
