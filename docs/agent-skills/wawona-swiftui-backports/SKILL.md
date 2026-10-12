@@ -27,9 +27,16 @@ iPad/vision = top-trailing.
 
 ## Machine editor sheets
 
-Use `backport.editorSheet()` for both machine editors. iPad gets system page
-sizing and a large detent; phone keeps medium/large. iPadOS 13 remains supported.
-The actual iPad Simulator page presentation was verified on 2026-10-02.
+On **iOS / visionOS**, present Add/Edit with `.fullScreenCover(item:)`, not
+`.sheet` on the NavigationSplitView detail. Forced `.regular` width + iOS 26
+bottom search made sheets silently no-op (tap OK, editor never appears, PID
+looks halted). macOS keeps `.sheet` + `backport.editorSheet()`. tvOS already
+used fullScreenCover.
+
+`WawonaStateObject` must capture the factory only (never construct the
+`ObservableObject` in `init`). Eager construction leaked
+`NotificationCenter` observers on discarded `WWNMachinesViewModel` instances
+and rebuilt heavy drafts on every body eval.
 
 Selected machine configuration goes immediately after identity/type, before
 Display/Input/Graphics. Native and shared editors use

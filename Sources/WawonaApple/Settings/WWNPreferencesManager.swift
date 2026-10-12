@@ -11,11 +11,24 @@ public final class WWNPreferencesManager: NSObject {
 
     @objc(sharedManager)
     public class func sharedManager() -> WWNPreferencesManager {
-        lock.lock()
-        defer { lock.unlock() }
+        // Fast path: no lock once live. Avoid holding the non-recursive lock
+        // across `init` (prefs FFI / UserDefaults) so a re-entrant caller cannot
+        // freeze the main thread (Add Machine draft seeding hits prefs).
         if let existing = _shared { return existing }
+        lock.lock()
+        if let existing = _shared {
+            lock.unlock()
+            return existing
+        }
+        lock.unlock()
         let instance = WWNPreferencesManager()
+        lock.lock()
+        if let existing = _shared {
+            lock.unlock()
+            return existing
+        }
         _shared = instance
+        lock.unlock()
         return instance
     }
 

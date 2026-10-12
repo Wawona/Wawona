@@ -85,40 +85,58 @@ private struct WawonaViewTask: ViewModifier {
 /// Holds the observable once in `@State` and forwards `objectWillChange` so
 /// feature views do not need an availability-gated property wrapper.
 /// Used by Machines UI wrappers that must stay visible on the product floor.
+///
+/// Critical: never construct `ObjectType` in `init`. SwiftUI rebuilds view
+/// structs often (sheet present, Add Machine, layout). Eager construction
+/// leaked `NotificationCenter` observers on discarded `WWNMachinesViewModel`
+/// instances and rebuilt heavy `WWNMachineEditorDraft` on the main thread,
+/// freezing the PID when Add Machine was pressed.
 @propertyWrapper
 public struct WawonaStateObject<ObjectType: ObservableObject>: DynamicProperty {
     @State private var box: Box
     @ObservedObject private var observed: Box
 
     public init(wrappedValue: @autoclosure @escaping () -> ObjectType) {
-        let box = Box(wrappedValue())
+        // Capture the factory only. `@State` keeps the first Box; later view
+        // inits discard a fresh empty Box without calling the factory.
+        let box = Box(factory: wrappedValue)
         _box = State(wrappedValue: box)
         _observed = ObservedObject(wrappedValue: box)
     }
 
     public var wrappedValue: ObjectType {
-        observed.object
+        observed.resolved()
     }
 
     public var projectedValue: ObservedObject<ObjectType>.Wrapper {
-        ObservedObject(wrappedValue: observed.object).projectedValue
+        ObservedObject(wrappedValue: observed.resolved()).projectedValue
     }
 
     public mutating func update() {
         if observed !== box {
             _observed = ObservedObject(wrappedValue: box)
         }
+        // Materialize once State identity has settled for this update cycle.
+        _ = box.resolved()
     }
 
     private final class Box: ObservableObject {
-        let object: ObjectType
+        private var object: ObjectType?
         private var cancellable: AnyCancellable?
+        private let factory: () -> ObjectType
 
-        init(_ object: ObjectType) {
-            self.object = object
-            cancellable = object.objectWillChange.sink { [weak self] _ in
+        init(factory: @escaping () -> ObjectType) {
+            self.factory = factory
+        }
+
+        func resolved() -> ObjectType {
+            if let object { return object }
+            let created = factory()
+            object = created
+            cancellable = created.objectWillChange.sink { [weak self] _ in
                 self?.objectWillChange.send()
             }
+            return created
         }
     }
 }

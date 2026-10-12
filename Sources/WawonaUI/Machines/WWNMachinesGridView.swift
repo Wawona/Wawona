@@ -79,10 +79,21 @@ struct WWNMachinesGridViewModern: View {
     .wwnA11y(WWNA11y.machinesRoot, label: detailNavigationTitle)
     .modifier(WWNMachineStartPlacementPrompt(model: model))
     #if !os(tvOS)
+    // iOS/visionOS: present Add/Edit as fullScreenCover. A `.sheet` on the
+    // NavigationSplitView *detail* (forced `.regular` width + iOS 26 bottom
+    // search toolbar) often never appears: taps succeed, editorDestination
+    // flips, UI stays on Machines (PID looks halted). tvOS already used
+    // fullScreenCover. macOS keeps a window sheet.
+    #if os(iOS) || os(visionOS)
+    .fullScreenCover(item: $editorDestination) { destination in
+      machineEditor(for: destination)
+    }
+    #else
     .sheet(item: $editorDestination) { destination in
-        machineEditor(for: destination)
-          .backport.editorSheet()
-      }
+      machineEditor(for: destination)
+        .backport.editorSheet()
+    }
+    #endif
       .sheet(isPresented: $showTagEditor) {
         WWNTagEditorSheet(tag: tagEditorTag) { name, colorHex in
           if let existing = tagEditorTag {
