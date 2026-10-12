@@ -297,8 +297,12 @@ final class WWNMainWindowRouter: ObservableObject {
     }
 
     func showTabOverview() {
-        sessionSurfaceVisible = false
-        selection = .tabOverview
+        // Safari Exposé on the live session surface. List sidebar demoted.
+        showSessionSurface()
+        selection = .session
+        #if canImport(UIKit) && (os(iOS) || os(tvOS) || os(visionOS))
+        WWNClientTabChromeController.active?.openTabExpose()
+        #endif
     }
 
     /// Dedicated Global Settings host (section sidebar). Not the Machines
@@ -541,13 +545,22 @@ struct WawonaMainWindowView: View {
                 .tag(WWNMainDestination.machines)
                 .accessibility(identifier: WWNA11y.machinesRoot)
 
-                sidebarRow(
-                    destination: .tabOverview,
-                    title: "Tab Overview",
-                    systemImage: "square.on.square",
-                    color: .accentColor,
-                    accessibilityID: "wwn.tabOverview"
-                )
+                Button {
+                    router.showTabOverview()
+                    #if os(iOS)
+                    if isPhonePortrait {
+                        withAnimation { showSidebar = false }
+                    }
+                    #endif
+                } label: {
+                    WawonaLabel {
+                        Text("Tab Overview")
+                    } icon: {
+                        Image(systemName: "square.on.square")
+                            .foregroundColor(.accentColor)
+                    }
+                }
+                .accessibility(identifier: "wwn.tabOverview")
             }
 
             Section(header: Text("Project")) {
@@ -657,7 +670,11 @@ struct WawonaMainWindowView: View {
                 WawonaProjectStatusView()
                     .backport.navigationTitle("Work Status")
             } else if case .tabOverview? = router.selection {
-                WWNTabOverviewView()
+                // Legacy deep-link: park List; open Safari Exposé instead.
+                Color.clear
+                    .onAppear {
+                        router.showTabOverview()
+                    }
             } else if case .settings(let id)? = router.selection {
                 // Legacy deep-link into a section: open the dedicated host.
                 Color.clear
@@ -740,10 +757,11 @@ struct WawonaMainWindowView: View {
             }
         ))
         #endif
-        // Sidebar Machines / tag / Tab Overview parks compositor chrome.
+        // Sidebar Machines / tag parks compositor chrome. Tab Overview opens
+        // Safari Exposé on the session surface (does not park).
         .backport.onChange(of: router.selection) { _, newValue in
             switch newValue {
-            case .machines?, .machinesTag?, .tabOverview?:
+            case .machines?, .machinesTag?:
                 if router.sessionSurfaceVisible {
                     router.sessionSurfaceVisible = false
                 }

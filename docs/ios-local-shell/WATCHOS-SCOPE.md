@@ -79,6 +79,8 @@ No exceptions.
 Watch clients still commit **SHM** (`CGImage` in `WWNWatchCompositorBridge`).
 The session surface GPU-composites those frames with SpriteKit
 (`WatchSpritePresentView`, 30 fps cap, paused when the scene is not active).
-That is **not** GLES/Vulkan. `gpuStackGate` stays blocked until the watchOS
-SDK ships public Metal. `WWN_WATCHOS_METAL=1` is research only and never in
-the store Watch IPA. `WWN_WATCH_SK_PRESENT=0` restores the CPU `Image` blit.
+Present is **not** GLES/Vulkan. `gpuStackGate` (public Metal path) stays
+blocked. Client GLES/VK may use CPU SwiftShader (+ ANGLE) when
+`WWN_WATCH_SWIFTSHADER=1` (`watchSoftwareGlesVkGate`). Never MoltenVK.
+`WWN_WATCHOS_METAL=1` is research only and never in the store Watch IPA.
+`WWN_WATCH_SK_PRESENT=0` restores the CPU `Image` blit.

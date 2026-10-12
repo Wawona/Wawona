@@ -142,9 +142,11 @@ public enum PlatformCapabilities: Sendable {
     ///   would forfeit store compliance.
     ///
     /// tvOS: `.available` when this target was linked with MoltenVK and
-    /// ANGLE (`WWN_TVOS_GPU_BUNDLED`). watchOS GL/VK stays blocked (no Metal).
-    /// Watch *present* of SHM frames is a separate gate
-    /// (`watchPresentAcceleratorGate`): SpriteKit blit, not GLES/Vulkan.
+    /// ANGLE (`WWN_TVOS_GPU_BUNDLED`). watchOS has no public Metal; Metal /
+    /// MoltenVK / `CAMetalLayer` stay blocked. Watch *present* is SpriteKit
+    /// (`watchPresentAcceleratorGate`). Watch *client* GLES/VK is a separate
+    /// CPU ICD gate (`watchSoftwareGlesVkGate`): SwiftShader + ANGLE when
+    /// bundled, never public Metal.
     public static var gpuStackGate: CapabilityGate {
         if let rust = rustGate("gpu") {
             #if os(tvOS) && WWN_TVOS_GPU_BUNDLED
@@ -171,6 +173,28 @@ public enum PlatformCapabilities: Sendable {
     }
 
     public static var allowsGpuStack: Bool { gpuStackGate.isAvailable }
+
+    /// watchOS client GLES/Vulkan via CPU SwiftShader (+ ANGLE) when the
+    /// Watch app links that ICD (`WWN_WATCH_SWIFTSHADER_BUNDLED`). Present
+    /// stays SpriteKit/SceneKit. Not MoltenVK. Not public Metal.
+    public static var watchSoftwareGlesVkGate: CapabilityGate {
+        if let rust = rustGate("watch_software_gles_vk") {
+            return rust
+        }
+        #if os(watchOS)
+        #if WWN_WATCH_SWIFTSHADER_BUNDLED
+        return .available
+        #else
+        return .planned(flag: "WWN_WATCH_SWIFTSHADER")
+        #endif
+        #else
+        return .forbidden(reason: "watch software GLES/VK is watchOS-only")
+        #endif
+    }
+
+    public static var allowsWatchSoftwareGlesVk: Bool {
+        watchSoftwareGlesVkGate.isAvailable
+    }
 
     /// SpriteKit (default) GPU composite of Wayland SHM frames on watchOS.
     /// Not GLES, not Vulkan, not `CAMetalLayer`. `WWN_WATCH_SK_PRESENT=0`
@@ -218,10 +242,12 @@ public enum PlatformCapabilities: Sendable {
     }
 
     /// ANGLE / GLES clients (kmscube, opengl-cube, weston-simple-egl).
-    /// tvOS ships ANGLE when `WWN_TVOS_GPU_BUNDLED`. watchOS has no Metal.
+    /// tvOS ships ANGLE when `WWN_TVOS_GPU_BUNDLED`. watchOS uses CPU
+    /// SwiftShader+ANGLE when `watchSoftwareGlesVkGate` is available (never
+    /// public Metal / MoltenVK).
     public static var allowsGlesStack: Bool {
         #if os(watchOS)
-        return false
+        return allowsWatchSoftwareGlesVk
         #else
         return allowsGpuStack
         #endif

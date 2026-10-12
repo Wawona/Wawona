@@ -106,19 +106,17 @@ forbidden while iPhone is planned for those features.
      work on tvOS: dispatch straight into the ICD, as `WWN_VULKAN_LIBRARY`
      already does. Rendered-frame PROPER is still pending. Never drop tvOS
      from the graphics roadmap.
-   - **watchOS GL/VK is ⛔ blocked, not forbidden and not deferred.** `WatchOS26.5.sdk`
-     ships **no `Metal.framework` at all** (device *or* simulator), no
-     `OpenGLES.framework`, and `CAMetalLayer` is annotated
-     `API_UNAVAILABLE(watchos)`. ANGLE and MoltenVK both terminate in Metal, so
-     neither has a floor. Re-check on each SDK bump by listing
-     `$(xcrun --sdk watchos --show-sdk-path)/System/Library/Frameworks`.
-     Do **not** "fix" GL/VK with private Metal or by abusing SpriteKit/SceneKit
-     as a shader backdoor.
+   - **watchOS public Metal / MoltenVK / `CAMetalLayer` stay ⛔ blocked.**
+     `WatchOS26.5.sdk` ships **no `Metal.framework`**. Do **not** "fix" that
+     with private Metal or SpriteKit/SceneKit as a shader backdoor.
+   - **watchOS client GLES/VK is ⏳ planned → ✅ when `WWN_WATCH_SWIFTSHADER=1`.**
+     CPU SwiftShader (+ ANGLE) ICD path (`watchSoftwareGlesVkGate`). Never
+     MoltenVK. Never public Metal. Default store Watch IPA may omit the ICD
+     until the flag is on; verifier then requires SwiftShader+ANGLE markers.
    - **watchOS present accelerator is ✅ available.** SpriteKit `SKTexture` blit
-     of Wayland SHM frames (`watchPresentAcceleratorGate`). Clients stay
-     software; the *output* is GPU-composited. Not GLES/Vulkan. Verifier
-     requires SpriteKit and forbids Metal/ANGLE/MoltenVK in the store Watch
-     IPA. `WWN_WATCHOS_METAL=1` is research only and never ships to stores.
+     of Wayland SHM frames (`watchPresentAcceleratorGate`). Present is not
+     GLES/Vulkan. Verifier requires SpriteKit and forbids Metal unless
+     `WWN_WATCHOS_METAL=1` (research only; never store).
 2. **visionOS / iPadOS**. Multi-window is mandatory: one host window/scene per
    Wayland client, same model as macOS. Android should match when the OS can
    host multiple app windows.

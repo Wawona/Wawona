@@ -215,12 +215,11 @@ if [[ "$platform" == "tvos" && "${WWN_TVOS_GPU:-0}" == "1" ]]; then
   echo "OK: tvos ANGLE found in $carrier (WWN_TVOS_GPU=1)"
 fi
 
-# watchOS has no GL/VK opt-in. The watchOS 26.5 SDK ships no Metal.framework
-# (device or simulator) and CAMetalLayer is API_UNAVAILABLE(watchos), so ANGLE
-# and MoltenVK have no backend. SpriteKit present (Track A) is separate and
-# asserted after this block. WWN_WATCHOS_METAL=1 is research-only weak-link
-# Metal and never a store IPA. See docs/iland-graphics-progress.md.
-if [[ ( "$platform" == "tvos" && "${WWN_TVOS_GPU:-0}" != "1" ) || "$platform" == "watchos" ]]; then
+# tvOS without WWN_TVOS_GPU: no MoltenVK/ANGLE. watchOS: no public Metal;
+# MoltenVK forbidden always. CPU SwiftShader+ANGLE clients allowed only when
+# WWN_WATCH_SWIFTSHADER=1 (present stays SpriteKit). WWN_WATCHOS_METAL=1 is
+# research-only and never a store IPA.
+if [[ "$platform" == "tvos" && "${WWN_TVOS_GPU:-0}" != "1" ]]; then
   for marker in 'MoltenVK version'; do
     if carrier="$(bundle_has_marker "$marker")"; then
       echo "FAIL: $platform bundle statically embeds forbidden driver '$marker': $carrier" >&2
@@ -271,10 +270,45 @@ if [[ ( "$platform" == "tvos" && "${WWN_TVOS_GPU:-0}" != "1" ) || "$platform" ==
   fi
 fi
 
-# watchOS present accelerator (Track A): SpriteKit is required. Metal in the
-# Watch product LC_LOAD is forbidden unless WWN_WATCHOS_METAL=1 (research only;
-# never TestFlight / ASC Watch IPA). GL/VK drivers stay forbidden above.
+# watchOS: forbid MoltenVK / public Metal always. Optional CPU ICD path.
 if [[ "$platform" == "watchos" ]]; then
+  if carrier="$(bundle_has_marker 'MoltenVK version')"; then
+    echo "FAIL: watchos must not embed MoltenVK (no public Metal WSI): $carrier" >&2
+    exit 1
+  fi
+
+  watch_cpu_icd=0
+  if [[ "${WWN_WATCH_SWIFTSHADER:-0}" == "1" ]]; then
+    watch_cpu_icd=1
+  fi
+
+  if [[ "$watch_cpu_icd" -eq 0 ]]; then
+    if carrier="$(bundle_has_swiftshader)"; then
+      echo "FAIL: watchos bundle embeds SwiftShader without WWN_WATCH_SWIFTSHADER=1: $carrier" >&2
+      exit 1
+    fi
+    if carrier="$(bundle_has_exact_marker 'ANGLE (')"; then
+      echo "FAIL: watchos bundle embeds ANGLE without WWN_WATCH_SWIFTSHADER=1: $carrier" >&2
+      exit 1
+    fi
+    echo "OK: watchos has no GLES/VK ICD (SpriteKit present only)"
+  else
+    if ! carrier="$(bundle_has_swiftshader)"; then
+      if ! nm_match="$(find "$root" -type f -name 'WawonaWatch' -print 2>/dev/null | head -1)"; then
+        nm_match=""
+      fi
+      if [[ -z "$nm_match" ]] || ! nm -gU "$nm_match" 2>/dev/null | grep -q 'vkGetInstanceProcAddr'; then
+        echo "FAIL: watchos WWN_WATCH_SWIFTSHADER=1 but SwiftShader ICD not found" >&2
+        exit 1
+      fi
+    fi
+    if ! carrier="$(bundle_has_exact_marker 'ANGLE (')"; then
+      echo "FAIL: watchos WWN_WATCH_SWIFTSHADER=1 but ANGLE not found" >&2
+      exit 1
+    fi
+    echo "OK: watchos CPU GLES/VK (SwiftShader + ANGLE; present remains SpriteKit)"
+  fi
+
   found_spritekit=0
   if command -v otool >/dev/null 2>&1; then
     while IFS= read -r binary; do
@@ -287,7 +321,7 @@ if [[ "$platform" == "watchos" ]]; then
           if [[ "${WWN_WATCHOS_METAL:-0}" == "1" ]]; then
             echo "INFO: watchos links Metal.framework under WWN_WATCHOS_METAL=1 (research; not store): $binary"
           else
-            echo "FAIL: watchos Mach-O links Metal.framework (store Track A is SpriteKit only): $binary" >&2
+            echo "FAIL: watchos Mach-O links Metal.framework (store present is SpriteKit only): $binary" >&2
             echo "$linked" >&2
             exit 1
           fi

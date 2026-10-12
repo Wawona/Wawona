@@ -72,7 +72,8 @@ final class WWNClientTabChromeModel: ObservableObject {
     var onNewTab: (() -> Void)?
     var onRequestRefreshPreviews: (() -> Void)?
 
-    /// Terminal-only sessions keep top chrome. Wayland clients use sidebar Tab Overview.
+    /// Terminal-only sessions keep the floating top tab bar. Wayland sessions
+    /// hide that bar but still open Safari-style Exposé (`WWNClientTabExposeView`).
     var showsTerminalChrome: Bool {
         guard !tabs.isEmpty else { return false }
         return tabs.allSatisfy { tab in
@@ -84,6 +85,13 @@ final class WWNClientTabChromeModel: ObservableObject {
     func toggleExpose() {
         overviewOpen.toggle()
         if overviewOpen {
+            onRequestRefreshPreviews?()
+        }
+    }
+
+    func openExpose() {
+        if !overviewOpen {
+            overviewOpen = true
             onRequestRefreshPreviews?()
         }
     }
@@ -259,7 +267,7 @@ final class WWNClientTabPassThroughView: UIView {
             return nil
         }
         if let ctrl = controller, !ctrl.isOverviewOpen {
-            let maxBarY = safeAreaInsets.top + WWNTabBarSizingPolicy.barHeight + 16
+            let maxBarY = safeAreaInsets.top + ctrl.contentTopReserve
             if point.y > maxBarY {
                 return nil
             }
@@ -287,39 +295,58 @@ struct WWNClientSessionTabBarRootView: View {
             Color.clear
                 .allowsHitTesting(false)
 
-            // Wayland compositor: no floating tab / toolbar chrome (sidebar
-            // Tab Overview + Focus). Keep bar only when every tab is Terminal.
-            if !model.tabs.isEmpty && !model.overviewOpen && model.showsTerminalChrome {
+            // Terminal: floating tab bar. Wayland: compact Exposé affordance.
+            // Both open `WWNClientTabExposeView` (Safari-style), not the List.
+            if !model.tabs.isEmpty && !model.overviewOpen {
                 Group {
-                    if #available(iOS 14, tvOS 14, *) {
-                        WWNClientTabBar(model: model)
+                    if model.showsTerminalChrome {
+                        if #available(iOS 14, tvOS 14, *) {
+                            WWNClientTabBar(model: model)
+                        } else {
+                            HStack {
+                                WawonaButton(action: model.createNewTab) {
+                                    Image(systemName: "plus")
+                                }
+                                .accessibility(label: Text("New Tab"))
+                                .accessibility(identifier: "wwn.client.tab.new")
+                                Spacer()
+                                Text(model.tabs.first(where: { $0.id == model.selectedId })?.title ?? "Client")
+                                    .lineLimit(1)
+                                Spacer()
+                                WawonaButton(action: model.toggleExpose) {
+                                    Image(systemName: "square.on.square")
+                                }
+                                .accessibility(label: Text("Tab Overview"))
+                                .accessibility(identifier: "wwn.client.tabs.overview")
+                            }
+                            .padding(12)
+                            #if os(tvOS)
+                            .background(Color.secondary.opacity(0.25))
+                            #else
+                            .background(Color(UIColor.secondarySystemBackground))
+                            #endif
+                        }
                     } else {
                         HStack {
-                            WawonaButton(action: model.createNewTab) {
-                                Image(systemName: "plus")
-                            }
-                            .accessibility(label: Text("New Tab"))
-                            .accessibility(identifier: "wwn.client.tab.new")
-                            Spacer()
-                            Text(model.tabs.first(where: { $0.id == model.selectedId })?.title ?? "Client")
-                                .lineLimit(1)
                             Spacer()
                             WawonaButton(action: model.toggleExpose) {
                                 Image(systemName: "square.on.square")
+                                    .padding(10)
                             }
                             .accessibility(label: Text("Tab Overview"))
                             .accessibility(identifier: "wwn.client.tabs.overview")
+                            #if os(tvOS)
+                            .background(Color.secondary.opacity(0.35))
+                            #else
+                            .background(Color(UIColor.secondarySystemBackground).opacity(0.92))
+                            #endif
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                         }
-                        .padding(12)
-                        #if os(tvOS)
-                        .background(Color.secondary.opacity(0.25))
-                        #else
-                        .background(Color(UIColor.secondarySystemBackground))
-                        #endif
+                        .padding(.horizontal, 12)
                     }
                 }
-                    .padding(.top, topSafeAreaInset)
-                    .transition(.move(edge: .top).combined(with: .opacity))
+                .padding(.top, topSafeAreaInset)
+                .transition(.move(edge: .top).combined(with: .opacity))
             }
 
             if model.overviewOpen {
@@ -1091,10 +1118,13 @@ struct WWNClientTabExposeCard: View {
 
 // MARK: - Objective-C Host Controller (WWNClientTabChromeController)
 
-/// ObjC host for SceneDelegate. Full-screen pass-through; bar + overview
+/// Host for SceneDelegate. Full-screen pass-through; bar + overview
 /// receive hits. Underlying compositor keeps the rest.
 @objc(WWNClientTabChromeController)
 public final class WWNClientTabChromeController: NSObject {
+    /// Live chrome on the focused session surface (Safari Exposé entry).
+    public static weak var active: WWNClientTabChromeController?
+
     private let model = WWNClientTabChromeModel()
     private var host: WWNClientTabHostingController?
     private var passThrough: WWNClientTabPassThroughView?
@@ -1112,6 +1142,7 @@ public final class WWNClientTabChromeController: NSObject {
     }
 
     @objc public func attach(to parentView: UIView) {
+        WWNClientTabChromeController.active = self
         if let existing = passThrough {
             if existing.superview !== parentView {
                 existing.removeFromSuperview()
@@ -1183,10 +1214,21 @@ public final class WWNClientTabChromeController: NSObject {
     /// Matches the pass-through hit band so Wayland pixels start below it.
     @objc public var contentTopReserve: CGFloat {
         let hidden = passThrough?.isHidden ?? true
-        if hidden || model.tabs.isEmpty || !model.showsTerminalChrome {
+        if hidden || model.tabs.isEmpty {
             return 0
         }
-        return WWNTabBarSizingPolicy.barHeight + 16
+        if model.showsTerminalChrome {
+            return WWNTabBarSizingPolicy.barHeight + 16
+        }
+        // Compact Wayland Exposé button under the status bar.
+        return 44
+    }
+
+    /// Open Safari-style Exposé without toggling closed. Used by sidebar Tab Overview.
+    public func openTabExpose() {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+            model.openExpose()
+        }
     }
 
     @objc public func selectNextTab() {
