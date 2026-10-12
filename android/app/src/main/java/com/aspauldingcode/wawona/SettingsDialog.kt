@@ -52,6 +52,12 @@ import java.io.File
 import java.net.NetworkInterface
 import androidx.compose.animation.togetherWith
 
+private const val PUSH_ROW_SURFACE = 0.4f
+private const val PUSH_ROW_MUTED_SURFACE = 0.22f
+private const val PUSH_ROW_ICON = 0.8f
+private const val PUSH_ROW_MUTED_ICON = 0.4f
+private const val PUSH_ROW_MUTED_TITLE = 0.6f
+
 /** Sidebar tabs. Order matches Rust `settings_catalog` for Android.
  *  Desktop is a planned extra and stays last (not in the store catalog). */
 private enum class SettingsTab(val label: String, val icon: ImageVector, val testTag: String) {
@@ -2051,6 +2057,65 @@ fun SettingsSwitchItem(
     }
 }
 
+/** Null [onClick] = read-only / muted row (no chevron). */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SettingsPushRow(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    onClick: (() -> Unit)?,
+) {
+    Surface(
+        onClick = { onClick?.invoke() },
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(
+            alpha = if (onClick == null) PUSH_ROW_MUTED_SURFACE else PUSH_ROW_SURFACE,
+        ),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                icon,
+                null,
+                Modifier.size(24.dp),
+                tint = MaterialTheme.colorScheme.primary.copy(
+                    alpha = if (onClick == null) PUSH_ROW_MUTED_ICON else PUSH_ROW_ICON,
+                ),
+            )
+            Spacer(Modifier.width(16.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                    color = MaterialTheme.colorScheme.onSurface.copy(
+                        alpha = if (onClick == null) PUSH_ROW_MUTED_TITLE else 1f,
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (onClick != null) {
+                Icon(
+                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsTextInputItem(
@@ -2064,9 +2129,14 @@ fun SettingsTextInputItem(
         else { text = default; prefs.edit().putString(key, default).apply() }
     }
     val openEditor = LocalOpenSettingsTextEditor.current
-    Surface(
-        onClick = {
-            if (!readOnly) {
+    SettingsPushRow(
+        title = title,
+        subtitle = text.ifEmpty { default }.ifEmpty { " " },
+        icon = icon,
+        onClick = if (readOnly) {
+            null
+        } else {
+            {
                 openEditor(
                     SettingsTextEditorSpec(
                         key = key,
@@ -2081,46 +2151,7 @@ fun SettingsTextInputItem(
                 )
             }
         },
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (readOnly) 0.22f else 0.4f),
-    ) {
-        Row(
-            Modifier.fillMaxWidth().padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                icon,
-                null,
-                Modifier.size(24.dp),
-                tint = MaterialTheme.colorScheme.primary.copy(alpha = if (readOnly) 0.4f else 0.8f),
-            )
-            Spacer(Modifier.width(16.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    title,
-                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (readOnly) 0.6f else 1f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text.ifEmpty { default }.ifEmpty { " " },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            if (!readOnly) {
-                Icon(
-                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-    }
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -2132,8 +2163,10 @@ fun SettingsPasswordInputItem(
     var text by remember { mutableStateOf(prefs.getString(key, default) ?: default) }
     LaunchedEffect(key) { text = prefs.getString(key, default) ?: default }
     val openEditor = LocalOpenSettingsTextEditor.current
-    val masked = if (text.isEmpty()) " " else "••••••••"
-    Surface(
+    SettingsPushRow(
+        title = title,
+        subtitle = if (text.isEmpty()) " " else "••••••••",
+        icon = icon,
         onClick = {
             openEditor(
                 SettingsTextEditorSpec(
@@ -2146,39 +2179,7 @@ fun SettingsPasswordInputItem(
                 )
             )
         },
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-    ) {
-        Row(
-            Modifier.fillMaxWidth().padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(icon, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f))
-            Spacer(Modifier.width(16.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    title,
-                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    masked,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Icon(
-                Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -2222,6 +2223,49 @@ fun SettingsMultiLineTextInputItem(
 }
 
 @Composable
+private fun SettingsTextEditorField(
+    spec: SettingsTextEditorSpec,
+    text: String,
+    onTextChange: (String) -> Unit,
+    revealed: Boolean,
+    onToggleReveal: () -> Unit,
+) {
+    val transform = when {
+        spec.kind != SettingsTextEditorKind.Password -> VisualTransformation.None
+        revealed -> VisualTransformation.None
+        else -> PasswordVisualTransformation()
+    }
+    OutlinedTextField(
+        value = text,
+        onValueChange = { if (!spec.readOnly) onTextChange(it) },
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true,
+        readOnly = spec.readOnly,
+        enabled = !spec.readOnly,
+        label = { Text(if (spec.prompt.isNotEmpty()) spec.prompt else spec.title) },
+        visualTransformation = transform,
+        trailingIcon = if (spec.kind == SettingsTextEditorKind.Password) {
+            {
+                IconButton(onClick = onToggleReveal) {
+                    Icon(
+                        if (revealed) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                        contentDescription = "Toggle visibility",
+                    )
+                }
+            }
+        } else {
+            null
+        },
+        keyboardOptions = KeyboardOptions(keyboardType = spec.keyboardType),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = MaterialTheme.colorScheme.primary,
+            unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+        ),
+        shape = RoundedCornerShape(12.dp),
+    )
+}
+
+@Composable
 private fun SettingsTextEditorPage(
     spec: SettingsTextEditorSpec,
     prefs: SharedPreferences,
@@ -2245,54 +2289,23 @@ private fun SettingsTextEditorPage(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        OutlinedTextField(
-            value = text,
-            onValueChange = { if (!spec.readOnly) text = it },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            readOnly = spec.readOnly,
-            enabled = !spec.readOnly,
-            label = {
-                Text(if (spec.prompt.isNotEmpty()) spec.prompt else spec.title)
-            },
-            visualTransformation = when {
-                spec.kind != SettingsTextEditorKind.Password -> VisualTransformation.None
-                revealed -> VisualTransformation.None
-                else -> PasswordVisualTransformation()
-            },
-            trailingIcon = if (spec.kind == SettingsTextEditorKind.Password) {
-                {
-                    IconButton(onClick = { revealed = !revealed }) {
-                        Icon(
-                            if (revealed) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                            contentDescription = "Toggle visibility",
-                        )
-                    }
-                }
-            } else {
-                null
-            },
-            keyboardOptions = KeyboardOptions(keyboardType = spec.keyboardType),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-            ),
-            shape = RoundedCornerShape(12.dp),
+        SettingsTextEditorField(
+            spec = spec,
+            text = text,
+            onTextChange = { text = it },
+            revealed = revealed,
+            onToggleReveal = { revealed = !revealed },
         )
         if (!spec.readOnly) {
             Button(
                 onClick = {
-                    val next = when {
-                        spec.revertToDefaultOnEmpty && text.isEmpty() -> spec.default
-                        else -> text
-                    }
+                    val next =
+                        if (spec.revertToDefaultOnEmpty && text.isEmpty()) spec.default else text
                     prefs.edit().putString(spec.key, next).apply()
                     onDone()
                 },
                 modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Save")
-            }
+            ) { Text("Save") }
         }
     }
 }

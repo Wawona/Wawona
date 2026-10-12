@@ -75,6 +75,9 @@
     <ID>FunctionNaming:SettingsDialog.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun SettingsMultiLineTextInputItem( prefs: SharedPreferences, key: String, title: String, description: String, icon: ImageVector, default: String )</ID>
     <ID>FunctionNaming:SettingsDialog.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun SettingsPasswordInputItem( prefs: SharedPreferences, key: String, title: String, description: String, icon: ImageVector, default: String )</ID>
     <ID>FunctionNaming:SettingsDialog.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun SettingsTextInputItem( prefs: SharedPreferences, key: String, title: String, description: String, icon: ImageVector, default: String, keyboardType: KeyboardType, revertToDefaultOnEmpty: Boolean = false, readOnly: Boolean = false )</ID>
+    <ID>FunctionNaming:SettingsDialog.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable private fun SettingsPushRow( title: String, subtitle: String, icon: ImageVector, onClick: (() -&gt; Unit)?, )</ID>
+    <ID>FunctionNaming:SettingsDialog.kt$@Composable private fun SettingsTextEditorField( spec: SettingsTextEditorSpec, text: String, onTextChange: (String) -&gt; Unit, revealed: Boolean, onToggleReveal: () -&gt; Unit, )</ID>
+    <ID>FunctionNaming:SettingsDialog.kt$@Composable private fun SettingsTextEditorPage( spec: SettingsTextEditorSpec, prefs: SharedPreferences, onDone: () -&gt; Unit, )</ID>
     <ID>FunctionNaming:SettingsDialog.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable private fun DesktopSection(prefs: SharedPreferences, context: Context, accent: Color)</ID>
     <ID>FunctionNaming:SettingsDialog.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable private fun LockscreenSection(prefs: SharedPreferences, accent: Color)</ID>
     <ID>FunctionNaming:WawonaModalSheet.kt$@Composable fun WawonaSheetDragHandle(modifier: Modifier = Modifier)</ID>
