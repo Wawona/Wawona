@@ -505,6 +505,25 @@ let
     mkdir -p "$DEST"
     # Nix store font paths are often symlinks; iOS installd rejects symlinks in .app
     # bundles (MIInstallerErrorDomain Code 70). -L dereferences to real files.
+    # watchOS: ASC ITMS-90389 75MB thinned cap. Ship Regular (+ Bold) Nerd Mono
+    # only; phone/TV/vision keep the full DejaVu set.
+    case "''${PLATFORM_NAME:-}" in
+      watchos|watchsimulator)
+        SRC="${wawonaBundledFonts}/share/fonts"
+        mkdir -p "$DEST/truetype"
+        for f in \
+          DejaVuSansMNerdFontMono-Regular.ttf \
+          DejaVuSansMNerdFontMono-Bold.ttf; do
+          if [ -f "$SRC/truetype/$f" ]; then
+            cp -L "$SRC/truetype/$f" "$DEST/truetype/$f"
+          elif [ -f "$SRC/$f" ]; then
+            cp -L "$SRC/$f" "$DEST/truetype/$f"
+          fi
+        done
+        echo "Embedded watchOS font subset into $DEST (ITMS-90389)"
+        exit 0
+        ;;
+    esac
     cp -RL "${wawonaBundledFonts}/share/fonts/." "$DEST/"
     echo "Embedded Wawona fonts (DejaVu + DejaVuSansM Nerd Font Mono) into $DEST"
   '';
@@ -1063,6 +1082,16 @@ PLIST
         echo "warning: weston $NAME not found at $SRC" >&2
       fi
     done
+    # ASC ITMS-90389: watchOS thinned apps must stay under 75MB. Full Adwaita
+    # + default Xcursor themes are ~40MB and unused on Watch (SpriteKit present,
+    # no host Xcursor path). Keep weston PNGs; skip cursors on watch only.
+    case "''${PLATFORM_NAME:-}" in
+      watchos|watchsimulator)
+        echo "watchOS: skip Adwaita/default cursor themes (ITMS-90389)"
+        chmod -R u+w "$WESTON_DEST" 2>/dev/null || true
+        exit 0
+        ;;
+    esac
     CURSOR_SRC="${adwaitaCursors}/share/icons/Adwaita/cursors"
     if [ -d "$CURSOR_SRC" ]; then
       mkdir -p "$ICONS_DEST"
@@ -1093,7 +1122,6 @@ PLIST
     "$(BUILT_PRODUCTS_DIR)/$(FULL_PRODUCT_NAME)/share/weston/sign_minimize.png"
     "$(BUILT_PRODUCTS_DIR)/$(FULL_PRODUCT_NAME)/share/weston/panel.png"
     "$(BUILT_PRODUCTS_DIR)/$(FULL_PRODUCT_NAME)/share/weston/background.png"
-    "$(BUILT_PRODUCTS_DIR)/$(FULL_PRODUCT_NAME)/share/icons/Adwaita/cursors/default"
   ];
 
   westonDataEmbedPhase = {
