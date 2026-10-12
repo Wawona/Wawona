@@ -1650,8 +1650,9 @@ struct WWNMachinesGridViewLegacy: View {
     }
     .navigationViewStyle(StackNavigationViewStyle())
     // Same as Modern: sheet on NavigationView often never presents on iOS
-    // (tap succeeds, editorDestination flips, UI stuck). fullScreenCover works.
-    .fullScreenCover(item: $editorDestination) { destination in
+    // (tap succeeds, editorDestination flips, UI stuck). Backport uses
+    // fullScreenCover on iOS 14+ and sheet on the iOS 13 floor.
+    .backport.fullScreenCover(item: $editorDestination) { destination in
       switch destination {
       case .add:
         WWNMachineEditorView(

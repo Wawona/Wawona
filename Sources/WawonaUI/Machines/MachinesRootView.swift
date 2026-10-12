@@ -72,7 +72,7 @@ struct MachinesRootView: View {
             })
             #endif
             #if os(iOS) || os(visionOS)
-            .fullScreenCover(item: $editorSheet) { sheet in
+            .backport.fullScreenCover(item: $editorSheet) { sheet in
                 Group {
                     switch sheet {
                     case .add:

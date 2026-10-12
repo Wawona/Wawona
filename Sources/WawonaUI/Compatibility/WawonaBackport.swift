@@ -258,6 +258,24 @@ public extension WawonaBackport where Content: View {
         #endif
     }
 
+    /// Item-driven full-screen cover on iOS 14+; sheet fallback on iOS 13.
+    /// Prefer this over bare `.fullScreenCover(item:)` so the iOS 13 floor compiles.
+    @ViewBuilder
+    func fullScreenCover<Item: Identifiable, Cover: View>(
+        item: Binding<Item?>,
+        @ViewBuilder content cover: @escaping (Item) -> Cover
+    ) -> some View {
+        #if os(iOS) || os(tvOS) || os(visionOS)
+        if #available(iOS 14.0, tvOS 14.0, *) {
+            self.content.fullScreenCover(item: item, content: cover)
+        } else {
+            self.content.sheet(item: item, content: cover)
+        }
+        #else
+        self.content.sheet(item: item, content: cover)
+        #endif
+    }
+
 
     private func fallbackGlass(cornerRadius: CGFloat) -> some View {
         content.background(
