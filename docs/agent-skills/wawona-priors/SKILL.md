@@ -28,6 +28,7 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-mission-critical` | Risk tiers, AI parity, proof obligations, security baseline, release evidence. |
 | `wasm-packages-gha` | Store WASI P1 builds on GHA (`Wawona/wasm-packages`). Not laptop publish. |
 | `wawona-wasm-cli-ports` | Port CLI to WASI P1 vs WASIX: wasm-packages vs wasinix. No stubs / nixpkgs2wasi. |
+| `wawona-package` | Before any dependency or package compile: write LIBC, TEXT, GPU. Android is Bionic. cairo, harfbuzz, pango are not substitutes. |
 | `repo-wawona-io-catalogs` | Dual wasm/deb catalogs; GHA build vs catalog host split. |
 | `wawona-machine-types` | Machines UI: Native Shell / VM / Container. Sessions under Native Shell. |
 | `wawona-apple-swift` | Apple compositor Swift/SwiftUI. Always load `swiftui-pro` + `swiftui-expert-skill` first. |
@@ -59,7 +60,7 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-compositor-backend` | Aqua nested vs Classic DRM |
 | `wawona-nested-compositor-cursor` | Host cursor on niri/weston |
 | `wawona-inprocess-cairo` | Nested weston teardown |
-| `wawona-native-compositors` / `wawona-port-fidelity` | Weston/Niri; waypipe equivalence |
+| `wawona-native-compositors` / `wawona-optional-software` / `wawona-port-fidelity` | Weston/Niri as debs/wasm; keep-set; waypipe equivalence |
 | `wawona-relay-wasm` | WASI Runtime on every target including watchOS |
 | `wawona-relay` | One L3′ engine: Linux VMs, OCI-in-VM, Mode A wasm. Never QEMU/UTM |
 | `wawona-relay-ios-hypervisor` | Mode B iOS/iPadOS Hypervisor.framework window (not HVF-via-qemu) |
@@ -87,7 +88,9 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-vphone-*` / `wawona-trollstore-*` | Mode B lab / tipa |
 | `repo-wawona-io-*` | Dual wasm/deb catalog host (`repo.wawona.io`) |
 | `wawona-wasm-cli-ports` | Two lanes for CLI→wasm (P1 GHA vs wasinix). No nixpkgs scrape. |
+| `wawona-package` | Fail closed on libc and text-stack guesses before compile. Android Bionic. cairo is not harfbuzz and not GLES. |
 | `wawona-native-over-wasm` | No wasm twin of native-all-targets CLIs |
+| `wawona-optional-software` | Unbundle Wayland clients to wasm/deb. Keep zsh, uutils, fastfetch. Debs skip App Store patches. |
 | `wawona-machine-types` | Three Machines kinds. SSH/wasm/waypipe are Native Shell sessions. |
 | `wawona-apple-mobile-mode-a-backends` | Mode A SSH/zsh/uutils/`system()`: wwn-* owners, no Swift backends, patch budget, iOS 13 |
 
@@ -297,5 +300,6 @@ Canonical prose: `Wawona/docs/` and `wwn-mcp/knowledge/wawona/`.
 
 - Native over wasm (no uutils twin in `/wasm/v1`): rule `wawona-native-over-wasm`, list `wasm-packages/scripts/native-all-targets.txt`.
 - CLI→wasm: two lanes only. Store P1 = `wasm-packages` GHA. Nixpkgs→WASIX = `wasinix`. Never `nixpkgs2wasi` stubs. Skill/rule `wawona-wasm-cli-ports`. GitHub #172-#177 closed wontfix.
+- Before compiling a Wawona dependency or package, write `LIBC`, `TEXT`, and `GPU`. Android Termux is Bionic, not glibc. cairo, harfbuzz, and pango are separate libraries. Linking cairo does not provide GLES. New deb: `pkgs/wayland/clients.nix` plus `ndkLibs.nix`. Verdict is `package-doctor`, not `nix build` exit 0. Skill/rule `wawona-package`.
 - Do not bundle UTM-SE (GitHub #33 closed wontfix). VM engine is Relay.
 - Do not size-gate watchOS wasm (GitHub #156 closed wontfix). Relay wasm is required.

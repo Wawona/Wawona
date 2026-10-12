@@ -23,6 +23,11 @@ enum RelayABI {
         _ height: UnsafeMutablePointer<UInt32>?
     ) -> Int32
 
+    /// Mode A present path. Hard-linked like `copyFrame` (not dlsym): iOS
+    /// static archives must not miss the tip symbol and fall into host_waypipe.
+    @_silgen_name("relay_start_shm_importer")
+    static func startShmImporter(_ handle: UnsafePointer<CChar>?) -> Int32
+
     @_silgen_name("relay_copy_log")
     static func copyLog(
         _ handle: UnsafePointer<CChar>?,
@@ -89,6 +94,15 @@ enum RelayABI {
 #if os(iOS) || os(macOS)
 @_silgen_name("wwn_waypipe_client_fd")
 func wwn_waypipe_client_fd(_ fd: Int32) -> Int32
+#endif
+
+#if os(iOS) && WWN_MODE_B
+@_silgen_name("wwn_modeb_desktop_present_bgra")
+func wwn_modeb_desktop_present_bgra(
+    _ pixels: UnsafeRawPointer?,
+    _ width: UInt32,
+    _ height: UInt32
+) -> Int32
 #endif
 
 @_cdecl("wwn_wasmer_webkit_available")

@@ -50,14 +50,32 @@ export WAWONA_MICROVM_READY_TIMEOUT="$READY_TIMEOUT"
 export WAWONA_MICROVM_SESSION="$SESSION_BIN"
 
 echo "smoke: launching session -> $SESSION_LOG" >&2
-"$SESSION_BIN" >"$SESSION_LOG" 2>&1 &
-SESSION_PID=$!
+# Detach from the caller process group (agent shells often kill nohup children).
+# Track vfkit via the resilient session supervisor (bridge restart on wayland-0 loss).
+SESSION_PID="$(
+  python3 - "$SESSION_BIN" "$SESSION_LOG" <<'PY'
+import os, subprocess, sys
+session, log_path = sys.argv[1], sys.argv[2]
+log = open(log_path, "w")
+p = subprocess.Popen(
+    [session],
+    stdin=subprocess.DEVNULL,
+    stdout=log,
+    stderr=subprocess.STDOUT,
+    start_new_session=True,
+    close_fds=True,
+)
+print(p.pid)
+PY
+)"
 
 cleanup() {
   if kill -0 "$SESSION_PID" 2>/dev/null; then
     kill "$SESSION_PID" 2>/dev/null || true
     wait "$SESSION_PID" 2>/dev/null || true
   fi
+  # Session cleanup trap kills vfkit; also sweep orphans from prior agent runs.
+  pkill -f 'vfkit .*wawona-microvm\.img' 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 

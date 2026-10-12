@@ -43,6 +43,11 @@ private enum CBufferDataLayout {
 private enum CompositorShmPresent {
     static func drain(core: UnsafeMutableRawPointer?, engine: IlandPresentEngine) {
         guard let core else { return }
+        // Late-mounted session surface starts at drawableSize 0. Popping now
+        // would free SHM without a successful present and stall waypipe clients.
+        let drawable = engine.layer.drawableSize
+        guard drawable.width >= 1, drawable.height >= 1 else { return }
+
         var presented = false
         while true {
             guard let raw = WWNCorePopPendingBuffer(core) else { break }
@@ -73,9 +78,11 @@ private enum CompositorShmPresent {
                     bottomUp: yFlip
                 )
             }
+            // Always complete the frame callback. A failed Metal blit must not
+            // leave the Wayland client waiting forever (black session surface).
+            WWNCoreNotifyFramePresented(
+                core, surfaceId, bufferId, WWNCoreGetTimestampMs(core))
             if ok {
-                WWNCoreNotifyFramePresented(
-                    core, surfaceId, bufferId, WWNCoreGetTimestampMs(core))
                 presented = true
             }
             WWNBufferDataFree(raw)
@@ -160,6 +167,24 @@ public final class IlandPresenterObjC: NSObject {
             surface,
             bottomUpRows: bottomUpRows,
             normalizedContentRect: contentRect
+        ) ?? false
+    }
+
+    /// Mode A StaticCpu: guest SHM pixels from `relay_copy_frame` / shm importer.
+    @objc(presentBGRAPixels:width:height:stride:bottomUp:)
+    public func presentBGRAPixels(
+        _ pixels: UnsafeMutablePointer<UInt8>,
+        width: Int32,
+        height: Int32,
+        stride: Int32,
+        bottomUp: Bool
+    ) -> Bool {
+        engine?.presentBGRAPixels(
+            width: Int(width),
+            height: Int(height),
+            stride: Int(stride),
+            pixels: pixels,
+            bottomUp: bottomUp
         ) ?? false
     }
 

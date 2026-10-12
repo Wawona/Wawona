@@ -22,12 +22,15 @@ final class IlandPresentEngine {
         layer.pixelFormat = .bgra8Unorm
         layer.framebufferOnly = false
         layer.isOpaque = false
+        // EDR may raise the layer to rgba16Float. Apply that before makePipeline
+        // so colorAttachments match nextDrawable (mismatch drew solid green junk
+        // with ColorOperations/HDR on).
+        Self.applyEDRPreferences(to: layer)
         guard let queue = dev.makeCommandQueue(),
               let pipeline = IlandMetalPipeline.makePipeline(device: dev, pixelFormat: layer.pixelFormat)
         else { return nil }
         self.queue = queue
         self.pipeline = pipeline
-        configureEDR(on: layer)
         publishPreferredModeFromLayer()
     }
 
@@ -261,6 +264,10 @@ final class IlandPresentEngine {
     }
 
     private func configureEDR(on layer: CAMetalLayer) {
+        Self.applyEDRPreferences(to: layer)
+    }
+
+    private static func applyEDRPreferences(to layer: CAMetalLayer) {
         #if !SWIFT_PACKAGE && !os(tvOS)
         let hdr = WWNPreferencesManager.sharedManager().colorOperations()
         if hdr {

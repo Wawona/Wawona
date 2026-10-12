@@ -8,7 +8,7 @@ public enum MachineEditorDomain {
     public static func machineEditorState(from profile: MachineProfile?) -> MachineEditorState {
         guard let profile else {
             return MachineEditorState(
-                selectedLauncherName: ClientLauncher.presets.first?.name ?? "weston-terminal",
+                selectedLauncherName: ClientLauncher.presets.first?.name ?? "wawona-shell",
                 sshPortText: "22",
                 inputProfile: WawonaPreferences.normalizedTouchInputType(nil),
                 waypipeEnabled: true
@@ -179,6 +179,6 @@ public enum MachineEditorDomain {
            ClientLauncher.presets.contains(where: { $0.name == bundled }) {
             return bundled
         }
-        return ClientLauncher.presets.first?.name ?? "weston-terminal"
+        return ClientLauncher.presets.first?.name ?? "wawona-shell"
     }
 }

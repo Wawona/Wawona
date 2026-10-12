@@ -23,8 +23,24 @@ Never document QEMU or UTM as a Start path.
 
 ## One-command dogfood (macOS)
 
-Wawona must already be running (`wayland-0` under `$WAWONA_RUNTIME`, default
-`/tmp/wawona-$UID`).
+Wawona must already be running as **Regular UI** (`wayland-0` under
+`$WAWONA_RUNTIME`, default `/tmp/wawona-$UID`). Tip builds auto-reveal the
+session Metal surface when the first Wayland client attaches (and when the
+session writes `$WAWONA_RUNTIME/show-session-surface` / posts
+`WWNShowSessionSurfaceNotification`). Do not leave only `--compositor-host`
+owning the socket: clients would attach there with no Machines Metal view.
+
+The supervised session restarts the bridge if Wawona restarts (lost
+`wayland-0`) and tracks the real `vfkit` PID so a short-lived `microvm-run`
+wrapper cannot tear the session down and leave an orphan VM. Agent shells
+must launch the session with a new process group (`start_new_session` /
+smoke script); plain `nohup` children often die with the tool process and
+leave a blank Metal surface with no waypipe client.
+
+Session Metal present: `CompositorHostView` must call `MetalPresenter.resize`
+(sets `drawableSize`). With Settings → Color Operations / HDR on, EDR must
+configure `CAMetalLayer.pixelFormat` before `makePipeline`, or SHM clients
+draw as a solid green letterboxed slab.
 
 ```sh
 # Preferred: bridge + vfkit MicroVM under one supervisor

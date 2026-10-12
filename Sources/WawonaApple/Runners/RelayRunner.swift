@@ -16,7 +16,7 @@ public final class WWNRelay: NSObject {
     private var backendsByMachineId: [String: String] = [:]
     private var handlesByMachineId: [String: String] = [:]
 
-    #if os(iOS) && WWN_MODE_B
+    #if os(iOS) || os(macOS)
     private var frameSource: DispatchSourceTimer?
     private var frameHandle: String?
     private var frameFails = 0
@@ -51,12 +51,47 @@ public final class WWNRelay: NSObject {
             return false
         }
 
+        // One live StaticCpu per machineId. Re-entry (AUTO_START + UI Start)
+        // must NOT stop+restart: tearing down vsock 1024 mid-boot leaves guest
+        // waypipe with `No wl_shm` / `ECONNRESET` and AUTH never lands.
+        // Idempotent success if this machine already owns a session.
+        let machineId = profile.machineId
+        if !machineId.isEmpty, hasOwnedSession(forMachineId: machineId) {
+            RelaySceneLog.write(
+                "relay_start skip re-entry machineId=\(machineId)"
+            )
+            NSLog(
+                "[WWNRelay] startProfile skip re-entry machineId=%@",
+                machineId
+            )
+            return true
+        }
+
+        // Claim before long relay_start (16G rootfs SHA256). Parallel connect
+        // during hash must see hasOwnedSession and skip, not stopAll mid-start.
+        if !machineId.isEmpty {
+            let claimed = lock.withLock { () -> Bool in
+                if handlesByMachineId[machineId] != nil { return false }
+                handlesByMachineId[machineId] = ""
+                return true
+            }
+            if !claimed {
+                RelaySceneLog.write(
+                    "relay_start skip re-entry (claim race) machineId=\(machineId)"
+                )
+                return true
+            }
+        }
+
         let spec = Self.specJSON(profile: profile, kind: kind)
         var backendOut: UnsafeMutablePointer<CChar>?
         let resolveRc = spec.withCString { RelayABI.resolveBackend($0, &backendOut) }
         let backend = RelayABI.takeString(backendOut)
 
         if resolveRc == -1 {
+            if !machineId.isEmpty {
+                lock.withLock { handlesByMachineId.removeValue(forKey: machineId) }
+            }
             error?.pointee = NSError(
                 domain: "WWNRelay", code: 2,
                 userInfo: [NSLocalizedDescriptionKey: backend ?? "Relay forbids this backend (no QEMU, no UTM)."]
@@ -64,14 +99,17 @@ public final class WWNRelay: NSObject {
             return false
         }
         if resolveRc == -2 {
+            if !machineId.isEmpty {
+                lock.withLock { handlesByMachineId.removeValue(forKey: machineId) }
+            }
             error?.pointee = NSError(
                 domain: "WWNRelay", code: 3,
                 userInfo: [NSLocalizedDescriptionKey: backend ?? "Relay backend is planned. Fail closed. No QEMU."]
             )
             return false
         }
-        if !profile.machineId.isEmpty, let backend, !backend.isEmpty {
-            lock.withLock { backendsByMachineId[profile.machineId] = backend }
+        if !machineId.isEmpty, let backend, !backend.isEmpty {
+            lock.withLock { backendsByMachineId[machineId] = backend }
         }
 
         RelaySceneLog.write("relay_start begin kind=\(kind) backend=\(backend ?? "(nil)")")
@@ -81,6 +119,12 @@ public final class WWNRelay: NSObject {
         RelaySceneLog.write("relay_start done rc=\(startRc) handle=\(handleOrError ?? "(null)")")
 
         guard startRc == 0 else {
+            if !machineId.isEmpty {
+                lock.withLock {
+                    handlesByMachineId.removeValue(forKey: machineId)
+                    backendsByMachineId.removeValue(forKey: machineId)
+                }
+            }
             error?.pointee = NSError(
                 domain: "WWNRelay", code: 4,
                 userInfo: [NSLocalizedDescriptionKey: handleOrError?.isEmpty == false
@@ -89,8 +133,8 @@ public final class WWNRelay: NSObject {
             return false
         }
 
-        if !profile.machineId.isEmpty, let handle = handleOrError, !handle.isEmpty {
-            lock.withLock { handlesByMachineId[profile.machineId] = handle }
+        if !machineId.isEmpty, let handle = handleOrError, !handle.isEmpty {
+            lock.withLock { handlesByMachineId[machineId] = handle }
         }
 
         if kind == "wasm" { return true }
@@ -114,10 +158,17 @@ public final class WWNRelay: NSObject {
         if backend == "static-cpu" {
             #if os(iOS) || os(macOS)
             guard let handle = handleOrError else { return true }
-            let transportRc = handle.withCString {
-                RelayABI.startHostWaypipe($0, wwn_waypipe_client_fd)
-            }
-            if transportRc != 0 {
+            // Mode A present: shm importer → relay_copy_frame → IlandPresentEngine.
+            // Importer and host_waypipe both consume vsock 1024; prefer importer.
+            // Never attach host_waypipe first: that steals the listener and
+            // leaves copy_frame empty forever (no Mode A SHM present log).
+            let shmRc = handle.withCString { RelayABI.startShmImporter($0) }
+            RelaySceneLog.write("relay_start_shm_importer rc=\(shmRc)")
+            NSLog("[WWNRelay] relay_start_shm_importer rc=%d", shmRc)
+            if shmRc != 0 {
+                // Mode A present needs the SHM importer. Do not fall through to
+                // host_waypipe: it consumes vsock 1024 and leaves copy_frame empty.
+                #if os(iOS)
                 _ = handle.withCString { RelayABI.stop($0) }
                 lock.withLock {
                     handlesByMachineId.removeValue(forKey: profile.machineId)
@@ -125,17 +176,48 @@ public final class WWNRelay: NSObject {
                 }
                 error?.pointee = NSError(
                     domain: "WWNRelay", code: 6,
-                    userInfo: [NSLocalizedDescriptionKey: "Relay could not attach native guest graphics."]
+                    userInfo: [NSLocalizedDescriptionKey: "Relay could not attach guest graphics."]
                 )
                 return false
+                #else
+                let transportRc = handle.withCString {
+                    RelayABI.startHostWaypipe($0, wwn_waypipe_client_fd)
+                }
+                RelaySceneLog.write("relay_start_host_waypipe rc=\(transportRc)")
+                if transportRc != 0 {
+                    _ = handle.withCString { RelayABI.stop($0) }
+                    lock.withLock {
+                        handlesByMachineId.removeValue(forKey: profile.machineId)
+                        backendsByMachineId.removeValue(forKey: profile.machineId)
+                    }
+                    error?.pointee = NSError(
+                        domain: "WWNRelay", code: 6,
+                        userInfo: [NSLocalizedDescriptionKey: "Relay could not attach guest graphics."]
+                    )
+                    return false
+                }
+                #endif
             }
-            #endif
-            #if os(iOS) && WWN_MODE_B
-            let hid = lock.withLock { handlesByMachineId[profile.machineId] }
+            // Pump copy_frame. SHM importer fills imported frames for Mode A.
+            let hid = lock.withLock { handlesByMachineId[profile.machineId] } ?? handle
             startPresenting(handle: hid)
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.framePresents == 0 else { return }
                 self.startPresenting(handle: hid)
+            }
+            // Mode A pixels need IlandPresenter (CompositorHostView). Same
+            // reveal as macOS microvm / compositor client-attach. AUTO_START
+            // used to call connect without Machines Start, leaving presenter nil.
+            let surfaceMachineId = profile.machineId
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(
+                    name: Notification.Name("WWNShowSessionSurfaceNotification"),
+                    object: nil,
+                    userInfo: [
+                        "machineId": surfaceMachineId,
+                        "source": "relay-static-cpu",
+                    ]
+                )
             }
             #endif
             #if os(iOS)
@@ -169,12 +251,23 @@ public final class WWNRelay: NSObject {
 
     @objc(stopProfileWithMachineId:)
     public func stopProfile(withMachineId machineId: String) {
-        #if os(iOS) && WWN_MODE_B
+        RelaySceneLog.write("relay_stopProfile begin machineId=\(machineId)")
+        #if os(iOS) || os(macOS)
         stopFrameSource()
         frameHandle = nil
         #endif
         let handle = lock.withLock { handlesByMachineId[machineId] }
+        // In-flight claim (""): drop claim only; relay_start not finished yet.
+        if let handle, handle.isEmpty {
+            lock.withLock {
+                handlesByMachineId.removeValue(forKey: machineId)
+                backendsByMachineId.removeValue(forKey: machineId)
+            }
+            RelaySceneLog.write("relay_stopProfile dropped claim machineId=\(machineId)")
+            return
+        }
         if let handle, !handle.isEmpty, handle.withCString({ RelayABI.stop($0) }) != 0 {
+            RelaySceneLog.write("relay_stopProfile pending machineId=\(machineId) handle=\(handle)")
             return
         }
         lock.withLock {
@@ -187,13 +280,21 @@ public final class WWNRelay: NSObject {
 
     @objc(stopAll)
     public func stopAll() {
-        #if os(iOS) && WWN_MODE_B
+        RelaySceneLog.write("relay_stopAll begin count=\(lock.withLock { handlesByMachineId.count })")
+        #if os(iOS) || os(macOS)
         stopFrameSource()
         frameHandle = nil
         #endif
         let snapshot = lock.withLock { handlesByMachineId }
         for (machineId, handle) in snapshot {
-            if !handle.isEmpty, handle.withCString({ RelayABI.stop($0) }) != 0 { continue }
+            if handle.isEmpty {
+                lock.withLock {
+                    handlesByMachineId.removeValue(forKey: machineId)
+                    backendsByMachineId.removeValue(forKey: machineId)
+                }
+                continue
+            }
+            if handle.withCString({ RelayABI.stop($0) }) != 0 { continue }
             lock.withLock {
                 handlesByMachineId.removeValue(forKey: machineId)
                 backendsByMachineId.removeValue(forKey: machineId)
@@ -211,7 +312,8 @@ public final class WWNRelay: NSObject {
     public func hasOwnedSession(forMachineId machineId: String) -> Bool {
         lock.withLock {
             guard !machineId.isEmpty else { return false }
-            return handlesByMachineId[machineId]?.isEmpty == false
+            // Empty string = in-flight claim during relay_start hash/boot.
+            return handlesByMachineId[machineId] != nil
         }
     }
 
@@ -220,7 +322,7 @@ public final class WWNRelay: NSObject {
         lock.withLock { backendsByMachineId[machineId] }
     }
 
-    #if os(iOS) && WWN_MODE_B
+    #if os(iOS) || os(macOS)
     private func startPresenting(handle: String?) {
         RelaySceneLog.write("relay present enter handle=\(handle ?? "(nil)")")
         stopFrameSource()
@@ -228,7 +330,7 @@ public final class WWNRelay: NSObject {
         frameFails = 0
         framePresents = 0
         guard let handle, !handle.isEmpty else {
-            NSLog("[WWNRelay] Mode B present: empty Relay handle")
+            NSLog("[WWNRelay] StaticCpu present: empty Relay handle")
             return
         }
         let timer = DispatchSource.makeTimerSource(queue: .main)
@@ -248,39 +350,80 @@ public final class WWNRelay: NSObject {
         guard let handle = frameHandle, !handle.isEmpty else { return }
         var srcW: UInt32 = 0
         var srcH: UInt32 = 0
-        if handle.withCString({ RelayABI.copyFrame($0, nil, 0, &srcW, &srcH) }) != 0 || srcW == 0 || srcH == 0 {
-            frameFails += 1
-            if frameFails >= 3 {
-                stopFrameSource()
-                _ = DesktopSession.recoverToGreeter()
-            }
+        // ERR_PLANNED (-2) means no frame yet; keep polling.
+        let sizeRc = handle.withCString { RelayABI.copyFrame($0, nil, 0, &srcW, &srcH) }
+        if sizeRc != 0 || srcW == 0 || srcH == 0 {
             return
         }
         let count = Int(srcW) * Int(srcH) * 4
         var pixels = [UInt8](repeating: 0, count: count)
         let copyRc = pixels.withUnsafeMutableBytes { buf in
             handle.withCString {
-                RelayABI.copyFrame($0, buf.baseAddress?.assumingMemoryBound(to: UInt8.self), count, &srcW, &srcH)
+                RelayABI.copyFrame(
+                    $0,
+                    buf.baseAddress?.assumingMemoryBound(to: UInt8.self),
+                    count,
+                    &srcW,
+                    &srcH
+                )
             }
         }
-        guard copyRc == 0 else {
-            frameFails += 1
-            return
-        }
-        let rc = pixels.withUnsafeBytes {
+        guard copyRc == 0 else { return }
+
+        #if os(iOS) && WWN_MODE_B
+        let modeBRc = pixels.withUnsafeBytes {
             wwn_modeb_desktop_present_bgra($0.baseAddress, srcW, srcH)
         }
-        if rc != 0 {
+        if modeBRc == 0 {
+            frameFails = 0
+            framePresents += 1
+            return
+        }
+        #endif
+
+        #if canImport(Metal) && !os(watchOS)
+        guard let presenter = IlandPresenterObjC.activePresenterForDrain() else {
             frameFails += 1
-            if frameFails >= 3 {
-                stopFrameSource()
-                _ = DesktopSession.recoverToGreeter()
+            // First miss after pixels arrive: session surface not mounted
+            // (AUTO_START used to skip showSessionSurface). Re-request mount.
+            if frameFails == 1 || frameFails == 25 || frameFails == 100 {
+                RelaySceneLog.write(
+                    "relay present no IlandPresenter (session surface?) fails=\(frameFails)"
+                )
+                NSLog(
+                    "[WWNRelay] Mode A SHM: no IlandPresenter (mount session surface) fails=%d",
+                    frameFails
+                )
+                NotificationCenter.default.post(
+                    name: Notification.Name("WWNShowSessionSurfaceNotification"),
+                    object: nil,
+                    userInfo: ["source": "relay-present-nil-presenter"]
+                )
             }
             return
         }
-        frameFails = 0
-        framePresents += 1
-        if framePresents >= 1 { stopFrameSource() }
+        let stride = Int32(srcW) * 4
+        let ok = pixels.withUnsafeMutableBufferPointer { buf in
+            guard let base = buf.baseAddress else { return false }
+            return presenter.presentBGRAPixels(
+                base,
+                width: Int32(srcW),
+                height: Int32(srcH),
+                stride: stride,
+                bottomUp: false
+            )
+        }
+        if ok {
+            frameFails = 0
+            framePresents += 1
+            if framePresents == 1 {
+                RelaySceneLog.write("relay present Mode A SHM \(srcW)x\(srcH)")
+                NSLog("[WWNRelay] Mode A SHM present \(srcW)x\(srcH)")
+            }
+        } else {
+            frameFails += 1
+        }
+        #endif
     }
     #endif
 }

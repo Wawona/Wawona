@@ -38,6 +38,11 @@ int relay_stop(const char *handle);
 typedef int (*relay_host_waypipe_entry)(int fd);
 int relay_start_host_waypipe(const char *handle, relay_host_waypipe_entry entry);
 
+/* Import guest wl_shm via waypipe-vsock (BUFFER_FILL/DIFF). Exclusive with
+ * relay_start_host_waypipe on the same session. Mode A StaticCpu present path
+ * until wwn_waypipe_client_fd is a real SplitFD client. */
+int relay_start_shm_importer(const char *handle);
+
 int relay_wayland_endpoint(const char *handle, char **endpoint_out);
 
 int relay_status(const char *handle, char **status_out);

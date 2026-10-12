@@ -13,7 +13,8 @@ Shell sessions cover Terminal (Wawona Terminal), Wayland clients, Wasm, and
 Waypipe (optional SSH). See [`machine-profiles.md`](./machine-profiles.md) and
 rule `wawona-machine-types`.
 
-Weston and Niri both ship on every product target. Display backend is
+Weston and Niri stay real ports. Install as debs or wasm from repo.wawona.io.
+The app keeps the compositor, zsh, uutils, and fastfetch. Display backend is
 `CompositorBackend`: `auto` | `wayland` | `drm`.
 
 VM and container Machine kinds are **planned** on macOS, iOS, iPadOS, Android,

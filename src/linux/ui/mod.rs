@@ -9,7 +9,9 @@ mod settings;
 
 pub use adaptive::{clamp_content, install_breakpoint, LayoutBinding};
 pub use editor::show_editor;
-pub use home::{build_home_shell, rebuild_home, HomeShell, MachineSessions, RebuildHome};
+pub use home::{
+    build_home_shell, maybe_show_welcome, rebuild_home, HomeShell, MachineSessions, RebuildHome,
+};
 pub use modal_sheet::present_sheet;
 pub use settings::show_settings;
 

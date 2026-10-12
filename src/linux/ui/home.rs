@@ -756,3 +756,45 @@ fn show_warning(parent: &adw::ApplicationWindow, message: &str) {
     dlg.connect_response(|d, _| d.close());
     dlg.present();
 }
+
+/// First-launch welcome. Same copy as Apple/Android (`wawona-welcome-alert`).
+pub fn maybe_show_welcome(parent: &adw::ApplicationWindow, state: &SharedAppState) {
+    let needs = {
+        let app = state.borrow();
+        !app.settings.has_seen_welcome && app.store.profiles.is_empty()
+    };
+    if !needs {
+        return;
+    }
+
+    let dlg = gtk::MessageDialog::new(
+        Some(parent),
+        gtk::DialogFlags::MODAL,
+        gtk::MessageType::Info,
+        gtk::ButtonsType::None,
+        crate::domain::welcome_copy::MESSAGE,
+    );
+    dlg.set_title(Some(crate::domain::welcome_copy::TITLE));
+    dlg.add_button(
+        crate::domain::welcome_copy::CONTINUE,
+        gtk::ResponseType::Accept,
+    );
+    crate::linux::ui::a11y::set_wwn_a11y(
+        &dlg,
+        crate::linux::ui::a11y::id::WELCOME_ROOT,
+        Some(crate::domain::welcome_copy::TITLE),
+    );
+
+    let state_c = state.clone();
+    dlg.connect_response(move |d, response| {
+        if response == gtk::ResponseType::Accept {
+            {
+                let mut app = state_c.borrow_mut();
+                app.settings.has_seen_welcome = true;
+                app.persist_settings();
+            }
+        }
+        d.close();
+    });
+    dlg.present();
+}

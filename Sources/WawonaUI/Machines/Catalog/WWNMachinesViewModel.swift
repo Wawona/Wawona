@@ -83,24 +83,10 @@ var kBundledClients: [BundledClient] {
 let kAllBundledClients: [BundledClient] = [
   BundledClient(
     id: "wawona-shell",
-    name: "None",
+    name: "Native Shell",
     prefsKey: "WawonaShellEnabled",
     icon: "terminal",
-    description: "Wawona Terminal. No Wayland client"
-  ),
-  BundledClient(
-    id: "weston-terminal",
-    name: "Weston Terminal",
-    prefsKey: "WestonTerminalEnabled",
-    icon: "terminal",
-    description: "Terminal emulator. Uses host cursor"
-  ),
-  BundledClient(
-    id: "weston-simple-shm",
-    name: "Weston Simple SHM",
-    prefsKey: "WestonSimpleSHMEnabled",
-    icon: "square.on.square.dashed",
-    description: "Minimal shared-memory Wayland client"
+    description: "zsh + uutils. Optional Wayland clients install via wpm or apt"
   ),
   BundledClient(
     id: "wawona-wasm",
@@ -110,25 +96,39 @@ let kAllBundledClients: [BundledClient] = [
     description: "Wayland WASI. Empty path runs bundled hello-wasi-gui (wl_shm) on every target"
   ),
   BundledClient(
+    id: "weston-terminal",
+    name: "Weston Terminal",
+    prefsKey: "WestonTerminalEnabled",
+    icon: "terminal",
+    description: "Optional deb. Terminal emulator. Uses host cursor"
+  ),
+  BundledClient(
+    id: "weston-simple-shm",
+    name: "Weston Simple SHM",
+    prefsKey: "WestonSimpleSHMEnabled",
+    icon: "square.on.square.dashed",
+    description: "Optional deb. Minimal shared-memory Wayland client"
+  ),
+  BundledClient(
     id: "weston",
     name: "Weston",
     prefsKey: "WestonEnabled",
     icon: "rectangle.on.rectangle",
-    description: "Wayland reference compositor. Nested Wayland or iland DRM/KMS (Display Backend). Mode B Take Over uses DRM."
+    description: "Optional deb. Nested Wayland or iland DRM/KMS (Display Backend)."
   ),
   BundledClient(
     id: "niri",
     name: "Niri",
     prefsKey: "NiriEnabled",
     icon: "rectangle.split.3x1",
-    description: "Scrollable-tiling compositor. Nested Wayland or iland DRM/KMS (Display Backend). Mode B Take Over uses DRM."
+    description: "Optional deb. Nested Wayland or iland DRM/KMS (Display Backend)."
   ),
   BundledClient(
     id: "foot",
     name: "Foot Terminal",
     prefsKey: "FootEnabled",
     icon: "character.cursor.ibeam",
-    description: "Lightweight Wayland terminal emulator"
+    description: "Optional deb. Lightweight Wayland terminal emulator"
   ),
   BundledClient(
     id: "weston-flower",

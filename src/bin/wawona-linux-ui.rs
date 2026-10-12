@@ -26,9 +26,9 @@ mod app {
         RuntimeState,
     };
     use wawona::linux::ui::{
-        a11y, build_home_shell, clamp_content, install_breakpoint, rebuild_home, show_editor,
-        show_settings, AppState, HomeShell, LayoutBinding, MachineSessions, RebuildHome,
-        SharedAppState,
+        a11y, build_home_shell, clamp_content, install_breakpoint, maybe_show_welcome, rebuild_home,
+        show_editor, show_settings, AppState, HomeShell, LayoutBinding, MachineSessions,
+        RebuildHome, SharedAppState,
     };
     use wawona::linux::ui_model::LayoutMode;
     use wawona::linux::service;
@@ -1113,6 +1113,7 @@ mod app {
 
         wawona::wlog!("UI", "Main window presented");
         window.present();
+        maybe_show_welcome(&window, &state);
     }
 }
 #[cfg(feature = "linux-ui")]

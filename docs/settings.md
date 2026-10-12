@@ -203,7 +203,7 @@ Settings fields. Hidden on tvOS / watchOS when those capabilities are absent.
 | **Display Backend** | `CompositorBackend` | Popup | `auto` | All | Nested compositor backend: `auto`, `wayland`, or `drm`. Resolved by `WWNResolveCompositorBackend` onto `NIRI_BACKEND` / `weston --backend=`. Do not pin nested-only. |
 | **Text Assist** | `enableTextAssist` | Switch | Off | iOS, Android | Host text assist / autocorrect via the compositor text-input path. iOS still reads this key. |
 | **Dictation** | `enableDictation` | Switch | Off | Android | Android dictation toggle (paired with Text Assist). |
-| **Nested Compositors** | `nestedCompositorsSupport` / `NestedCompositorsSupport` | Switch | On | All | Nested Weston and Niri. Both ship on every product target. |
+| **Nested Compositors** | `nestedCompositorsSupport` / `NestedCompositorsSupport` | Switch | On | All | Nested Weston and Niri when installed (deb/wasm). Not mandatory in-app archives. |
 | **Multiple Clients** | `multipleClients` / `MultipleClients` | Switch | On | All | Allow multiple Wayland clients simultaneously |
 | **Log Level** | `wawona.pref.logLevel` | Popup | info | About, all | Minimum log severity for the in-app log ring |
 

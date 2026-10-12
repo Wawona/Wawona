@@ -131,7 +131,24 @@ final class CompositorHostPlatformView: PlatformView {
     #endif
 
     private func syncMetalLayerGeometry() {
-        metalPresenter?.layer?.frame = bounds
+        // Match CompositorView: frame alone leaves drawableSize at 0, so
+        // nextDrawable fails, SHM drain frees buffers without frame_done, and
+        // waypipe clients stall on a black session surface.
+        #if os(macOS)
+        var scale = window?.backingScaleFactor ?? 0
+        if scale < 1 {
+            scale = layer?.contentsScale ?? 0
+        }
+        if scale < 1 { scale = 2 }
+        #else
+        var scale = window?.screen.scale ?? 0
+        if scale < 1 { scale = contentScaleFactor }
+        if scale < 1 { scale = 2 }
+        #endif
+        if let metalLayer = metalPresenter?.layer {
+            metalLayer.contentsScale = scale
+        }
+        metalPresenter?.resize(bounds.size)
         #if os(macOS)
         ilandPresenter?.hostGeometryDidChange()
         #else

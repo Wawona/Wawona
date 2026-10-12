@@ -89,16 +89,10 @@ pub fn wayland_picker_groups() -> Vec<(SoftwareKind, Vec<&'static BundledClient>
 /// catalogs.
 pub const BUNDLED_CLIENTS: &[BundledClient] = &[
     BundledClient {
-        id: "weston-terminal",
-        name: "Weston Terminal",
-        description: "Terminal emulator. Uses host cursor",
+        id: "wawona-shell",
+        name: "Native Shell",
+        description: "zsh + uutils. Optional Wayland clients install via wpm or apt",
         icon_name: "utilities-terminal-symbolic",
-    },
-    BundledClient {
-        id: "weston-simple-shm",
-        name: "Weston Simple SHM",
-        description: "Minimal shared-memory Wayland client",
-        icon_name: "view-grid-symbolic",
     },
     BundledClient {
         id: "wawona-wasm",
@@ -107,21 +101,33 @@ pub const BUNDLED_CLIENTS: &[BundledClient] = &[
         icon_name: "application-x-executable-symbolic",
     },
     BundledClient {
+        id: "weston-terminal",
+        name: "Weston Terminal",
+        description: "Terminal emulator (optional: install deb). Uses host cursor",
+        icon_name: "utilities-terminal-symbolic",
+    },
+    BundledClient {
+        id: "weston-simple-shm",
+        name: "Weston Simple SHM",
+        description: "Minimal shared-memory Wayland client (optional: install deb)",
+        icon_name: "view-grid-symbolic",
+    },
+    BundledClient {
         id: "weston",
         name: "Weston",
-        description: "Wayland reference compositor (nested compositor)",
+        description: "Wayland reference compositor (optional deb; nested or DRM)",
         icon_name: "view-app-grid-symbolic",
     },
     BundledClient {
         id: "niri",
         name: "Niri",
-        description: "Scrollable-tiling compositor (nested compositor)",
+        description: "Scrollable-tiling compositor (optional deb; nested or DRM)",
         icon_name: "view-column-symbolic",
     },
     BundledClient {
         id: "foot",
         name: "Foot Terminal",
-        description: "Lightweight Wayland terminal emulator",
+        description: "Lightweight Wayland terminal emulator (optional: install deb)",
         icon_name: "text-editor-symbolic",
     },
     BundledClient {

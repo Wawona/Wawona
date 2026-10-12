@@ -121,7 +121,7 @@ public struct MachineEditorState: Sendable, Hashable {
         typeRawValue: String = "native",
         nativeShellKindRawValue: String = "terminal",
         nativeShellUseSSH: Bool = false,
-        selectedLauncherName: String = "weston-terminal",
+        selectedLauncherName: String = "wawona-shell",
         sshHost: String = "",
         sshUser: String = "",
         sshPortText: String = "22",

@@ -8,6 +8,9 @@ use gtk::prelude::*;
 use gtk4 as gtk;
 
 pub mod id {
+    pub const WELCOME_ROOT: &str = "wwn.welcome.root";
+    pub const WELCOME_CONTINUE: &str = "wwn.welcome.continue";
+
     pub const MACHINES_ROOT: &str = "wwn.machines.root";
     pub const MACHINES_SETTINGS: &str = "wwn.machines.settings";
     pub const MACHINES_ADD: &str = "wwn.machines.add";

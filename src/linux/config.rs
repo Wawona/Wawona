@@ -30,6 +30,7 @@ impl LinuxMachineType {
 
 /// Wayland client presets for native machine type (mirrors `ClientLauncher.presets` from SwiftUI).
 pub const LAUNCHER_PRESETS: &[(&str, &str)] = &[
+    ("wawona-shell", "Native Shell"),
     ("weston-terminal", "Weston Terminal"),
     ("weston-simple-shm", "Weston Simple SHM"),
     ("foot", "Foot Terminal"),
@@ -55,7 +56,7 @@ impl LinuxMachineProfile {
             id: generate_id(),
             name: name.to_string(),
             machine_type: LinuxMachineType::Native,
-            selected_launcher: "weston-terminal".to_string(),
+            selected_launcher: "wawona-shell".to_string(),
             ssh_host: String::new(),
             ssh_user: String::new(),
             ssh_port: 22,
@@ -80,7 +81,7 @@ impl LinuxMachineProfile {
                 if !custom_command.is_empty() {
                     custom_command.to_string()
                 } else if self.selected_launcher.trim().is_empty() {
-                    "weston-terminal".to_string()
+                    "wawona-shell".to_string()
                 } else {
                     self.selected_launcher.clone()
                 }
@@ -132,6 +133,9 @@ pub struct LinuxSettings {
     /// Names to unset even if present in the host environment.
     #[serde(default)]
     pub environment_unsets: Vec<String>,
+    /// First-launch welcome alert dismissed (`wawona-welcome-alert`).
+    #[serde(default)]
+    pub has_seen_welcome: bool,
 }
 
 impl Default for LinuxSettings {
@@ -157,6 +161,7 @@ impl Default for LinuxSettings {
             log_level: "info".to_string(),
             environment_overrides: std::collections::BTreeMap::new(),
             environment_unsets: Vec::new(),
+            has_seen_welcome: false,
         }
     }
 }

@@ -371,7 +371,12 @@ fun WawonaApp(
     val sessionOrchestrator = remember { SessionOrchestrator() }
     var showMachinesHome by remember { mutableStateOf(true) }
     var pendingStartProfile by remember { mutableStateOf<MachineProfile?>(null) }
-    var showWelcome by remember { mutableStateOf(!prefs.getBoolean("hasSeenWelcome", false)) }
+    // Same gate as Apple: unseen + empty Machines list (`wawona-welcome-alert`).
+    var showWelcome by remember {
+        mutableStateOf(
+            !prefs.getBoolean("hasSeenWelcome", false) && profiles.isEmpty()
+        )
+    }
     var isWaypipeRunning by remember { mutableStateOf(false) }
     /* Startup log overlay. */
     var showStartupLog by remember { mutableStateOf(false) }
@@ -1411,12 +1416,8 @@ fun WawonaApp(
             AlertDialog(
                 onDismissRequest = { /* require Continue */ },
                 modifier = Modifier.testTag(WawonaTestTags.WELCOME_ROOT),
-                title = { Text("Welcome to Wawona") },
-                text = {
-                    Text(
-                        "A clean Wayland compositor experience. Add a machine when you are ready."
-                    )
-                },
+                title = { Text(WelcomeCopy.TITLE) },
+                text = { Text(WelcomeCopy.MESSAGE) },
                 confirmButton = {
                     TextButton(
                         onClick = {
@@ -1425,7 +1426,7 @@ fun WawonaApp(
                         },
                         modifier = Modifier.testTag(WawonaTestTags.WELCOME_CONTINUE),
                     ) {
-                        Text("Continue")
+                        Text(WelcomeCopy.CONTINUE)
                     }
                 },
             )

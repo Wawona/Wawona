@@ -78,10 +78,11 @@ public extension ClientLauncher {
     }
 
     static let fallbackPresets: [ClientLauncher] = [
+        ClientLauncher(name: "wawona-shell", executablePath: "wawona-shell", displayName: "Native Shell"),
+        ClientLauncher(name: "wawona-wasm", executablePath: "wasm", displayName: "Hello WASI GUI / Runtime (.wasm)"),
         ClientLauncher(name: "weston-terminal", executablePath: "weston-terminal", displayName: "Weston Terminal"),
         ClientLauncher(name: "foot", executablePath: "foot", displayName: "Foot Terminal"),
         ClientLauncher(name: "weston-simple-shm", executablePath: "weston-simple-shm", displayName: "Weston Simple SHM"),
-        ClientLauncher(name: "wawona-wasm", executablePath: "wasm", displayName: "Hello WASI GUI / Runtime (.wasm)"),
         ClientLauncher(name: "weston", executablePath: "weston", displayName: "Weston"),
         ClientLauncher(name: "niri", executablePath: "niri", displayName: "Niri"),
         ClientLauncher(name: "weston-flower", executablePath: "weston-flower", displayName: "Weston Flower"),

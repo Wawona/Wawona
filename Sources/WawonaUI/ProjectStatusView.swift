@@ -4,12 +4,54 @@ import SwiftUI
 /// spinner: green is proved, orange is active, red needs attention.
 struct WawonaProjectStatusView: View {
     private let rows: [ProjectStatusRow] = [
-        .init(title: "Relay static CPU", state: "Active", color: .orange, detail: "Real 4 KiB NixOS guest executes. Boot proof pending."),
-        .init(title: "Guest console", state: "Active", color: .orange, detail: "PL011 early path plus virtio-console to wwn-igetty."),
-        .init(title: "NixOS readiness", state: "Blocked", color: .red, detail: "Awaiting real guest output: WAWONA_RELAY_READY=1."),
-        .init(title: "iOS / iPadOS Mode A", state: "Ready", color: .green, detail: "Static CPU route. No JIT or Hypervisor.framework."),
-        .init(title: "visionOS VM / container", state: "Ready", color: .green, detail: "Same static CPU route as iOS and iPadOS."),
-        .init(title: "Wayland to iland", state: "Planned", color: .orange, detail: "vsock + waypipe proof follows guest readiness.")
+        .init(
+            title: "Relay StaticCpu",
+            state: "Ready",
+            color: .green,
+            detail: "Multi-User NixOS on E4A1C0DE (4 KiB and 16 KiB). auth51."
+        ),
+        .init(
+            title: "NixOS readiness",
+            state: "Ready",
+            color: .green,
+            detail: "WAWONA_RELAY_AUTH_OK=1 on vsock plus WAWONA_RELAY_READY=1."
+        ),
+        .init(
+            title: "nixpkgs over NAT",
+            state: "Ready",
+            color: .green,
+            detail: "nix run nixpkgs#fastfetch substitutes then wawona-fastfetch: end."
+        ),
+        .init(
+            title: "Wayland SHM import",
+            state: "Ready",
+            color: .green,
+            detail: "Relay imported SHM frame 800x600 sha256=5b6add91… (auth18/51)."
+        ),
+        .init(
+            title: "iland present in UI",
+            state: "Active",
+            color: .orange,
+            detail: "Mode A pumps shm importer into IlandPresentEngine. Host waypipe client_fd still stub."
+        ),
+        .init(
+            title: "Interaction",
+            state: "Blocked",
+            color: .red,
+            detail: "Need one Multi-Touch the guest sees, then Stop back to Machines."
+        ),
+        .init(
+            title: "OCI lifecycle",
+            state: "Blocked",
+            color: .red,
+            detail: "Thin create/start/stop/kill on StaticCpu still open."
+        ),
+        .init(
+            title: "STARDUST / ASC",
+            state: "Blocked",
+            color: .red,
+            detail: "Signed device run + store IPA audit last. Completely complete stays 0%."
+        ),
     ]
 
     var body: some View {
@@ -17,7 +59,7 @@ struct WawonaProjectStatusView: View {
             Section {
                 WawonaLabel("Wawona delivery board", systemImage: "scope")
                     .font(.headline)
-                Text("Green proved. Orange in progress. Red blocker.")
+                Text("Green proved. Orange in progress. Red blocker. Scorecard ~59% of twelve gates.")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
             }
@@ -38,7 +80,9 @@ struct WawonaProjectStatusView: View {
                 }
             }
             Section(header: Text("Completion gate")) {
-                Text("Real NixOS console must print WAWONA_RELAY_READY=1. Then verify Wayland over vsock/waypipe into iland.")
+                Text(
+                    "Completely complete needs every acceptance gate plus a store-shaped IPA that boots NixOS on device. Simulator E4A1C0DE is not STARDUST."
+                )
             }
         }
     }

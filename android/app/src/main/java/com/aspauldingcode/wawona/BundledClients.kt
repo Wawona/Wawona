@@ -57,9 +57,10 @@ data class BundledClientOption(
 
 object BundledClients {
     val all: List<BundledClientOption> = listOf(
+        BundledClientOption("wawona-shell", "Native Shell", "zsh + uutils. Optional Wayland clients install via wpm or apt", Icons.Filled.Terminal),
+        BundledClientOption("wawona-wasm", "Wawona Runtime (.wasm)", "Wayland WASI module from the filesystem (Wawona Runtime)", Icons.Filled.Apps),
         BundledClientOption("weston-terminal", "Weston Terminal", "Terminal emulator. Uses host cursor", Icons.Filled.Terminal),
         BundledClientOption("weston-simple-shm", "Weston Simple SHM", "Minimal shared-memory Wayland client", Icons.Filled.Dashboard),
-        BundledClientOption("wawona-wasm", "Wawona Runtime (.wasm)", "Wayland WASI module from the filesystem (Wawona Runtime)", Icons.Filled.Apps),
         BundledClientOption("weston", "Weston", "Wayland reference compositor (nested compositor)", Icons.Filled.ViewModule),
         BundledClientOption("niri", "Niri", "Scrollable-tiling compositor (nested compositor)", Icons.Filled.ViewColumn),
         BundledClientOption("foot", "Foot Terminal", "Lightweight Wayland terminal emulator", Icons.Filled.Create),
@@ -96,4 +97,35 @@ object BundledClients {
                 .sortedBy { it.name.lowercase() }
             if (group.isEmpty()) null else kind to group
         }
+
+    /**
+     * Optional clients found under Termux / jailbreak prefixes.
+     * Store / Play never probe APT. See wawona-optional-software.
+     */
+    fun installedDebClients(): List<BundledClientOption> {
+        val prefixes = listOf(
+            "/data/data/com.termux/files/usr/bin",
+            "/var/jb/usr/bin",
+            "/usr/bin",
+        )
+        val ids = listOf(
+            "weston", "niri", "foot", "weston-terminal", "weston-simple-shm",
+            "weston-flower", "kmscube", "vkcube",
+        )
+        val out = mutableListOf<BundledClientOption>()
+        for (prefix in prefixes) {
+            for (id in ids) {
+                val f = java.io.File(prefix, id)
+                if (f.isFile && out.none { it.id == id }) {
+                    out += BundledClientOption(
+                        id,
+                        labelFor(id),
+                        "Installed deb: ${f.absolutePath}",
+                        Icons.Filled.Apps,
+                    )
+                }
+            }
+        }
+        return out
+    }
 }

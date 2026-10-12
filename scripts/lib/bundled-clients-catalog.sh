@@ -1,5 +1,8 @@
-# Canonical bundled native clients. Keep in sync with
-# Sources/Wawona: kBundledClients in WWNMachinesViewModel.swift
+# Canonical native / optional Wayland clients.
+# Keep-set in the app: compositor host, zsh, uutils, fastfetch, hello-wasi-gui.
+# Move-set (weston/niri/foot/toys/cubes) ships as debs/wasm. Matrix cells for
+# the move-set skip unless WAWONA_TEST_OPTIONAL_CLIENTS=1 (legacy in-process).
+# See wawona-optional-software.
 #
 # Usage: source scripts/lib/bundled-clients-catalog.sh
 #   bundled_clients_all          → space-separated ids
@@ -77,6 +80,19 @@ bundled_client_skip_reason() {
       esac
       ;;
   esac
+  # Optional software: prove via deb/wasm install, not in-app force_load.
+  if [ "${WAWONA_TEST_OPTIONAL_CLIENTS:-0}" != "1" ]; then
+    case "$client" in
+      weston|niri|foot|weston-terminal|weston-simple-shm|weston-flower|\
+      weston-smoke|weston-clickdot|weston-eventdemo|weston-resizor|\
+      weston-cliptest|weston-transformed|weston-stacking|weston-dnd|\
+      weston-image|weston-scaler|weston-editor|weston-constraints|\
+      kmscube|gbm-es2-demo|opengl-cube|vkcube|weston-simple-egl)
+        echo "optional-software: install via deb/wasm (set WAWONA_TEST_OPTIONAL_CLIENTS=1 for legacy in-process)"
+        return 0
+        ;;
+    esac
+  fi
   echo ""
 }
 

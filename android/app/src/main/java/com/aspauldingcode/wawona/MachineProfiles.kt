@@ -86,7 +86,7 @@ data class MachineProfile(
     val sshAuthMethod: String = "password",
     val sshKeyPath: String = "",
     val sshKeyPassphrase: String = "",
-    val nativeLauncher: String = "weston-terminal",
+    val nativeLauncher: String = "wawona-shell",
     val remoteCommand: String = "",
     val customScript: String = "",
     val waypipeCompress: String = "lz4",
@@ -333,7 +333,7 @@ object MachineProfileStore {
             sshKeyPath = prefs.getString("waypipeSSHKeyPath", "") ?: "",
             sshKeyPassphrase = prefs.getString("waypipeSSHKeyPassphrase", "") ?: "",
             nativeLauncher = prefs.getString("nativeLauncher", null)?.takeIf { it.isNotBlank() }
-                ?: if (hasSSHHost) "" else "weston-terminal",
+                ?: if (hasSSHHost) "" else "wawona-shell",
             remoteCommand = prefs.getString("waypipeRemoteCommand", "") ?: "",
             customScript = prefs.getString("waypipeCustomScript", "") ?: "",
             waypipeCompress = prefs.getString("waypipeCompress", "lz4") ?: "lz4",
@@ -439,7 +439,7 @@ object MachineProfileStore {
                 if (type == MachineType.WASM) {
                     "wawona-wasm"
                 } else {
-                    obj.optString("nativeLauncher", "weston-terminal")
+                    obj.optString("nativeLauncher", "wawona-shell")
                 }
             },
             remoteCommand = obj.optString("remoteCommand", ""),

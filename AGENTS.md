@@ -148,17 +148,19 @@ not MCP. Skill `wawona-gh`. Rule `wawona-gh`.
   `flake.nix` adds them as inputs, builds toolchains via
   `wwn-toolchain.lib.mkToolchains`, and merges each repo's `registryFragment`
   over `baseRegistry`. Edit a patched recipe in its `wwn-*` repo, not in Wawona.
-- **Weston + Niri ship natively everywhere:** bundle real target-native
-  compositor archives in macOS, iOS, iPadOS, tvOS, watchOS, visionOS, and
-  Android products. Never substitute success-shaped entry-point stubs or omit
-  either compositor. tvOS/watchOS use constrained non-GL fallbacks; this does
-  not permit ANGLE/Vulkan, VMs, or containers on those targets. See
-  workspace rule `wawona-bundled-compositors`.
-- **In-process cairo:** Apple mobile and Android link `weston_compositor_main`
-  in one process with terminals and pango. Do not call
+- **Weston + Niri stay real ports; optional install:** not mandatory App Store
+  in-app archives. Ship as debs (jailbreak / Termux / Linux) or wasm. Keep in
+  the app: compositor, Relay wasm, zsh, uutils, fastfetch. Debs must not carry
+  App Store no-fork patches. See `wawona-optional-software`,
+  `wawona-native-compositors`.
+- **Package check before compile.** Write `LIBC`, `TEXT`, and `GPU`. Android
+  Termux is Bionic, not glibc. cairo, harfbuzz, and pango are separate
+  libraries. Linking cairo does not provide GLES. Skill/rule `wawona-package`.
+- **In-process cairo (legacy while linked):** if Apple mobile / Android still
+  force-load `weston_compositor_main`, do not call
   `cairo_debug_reset_static_data` / `cleanup_after_cairo` on nested weston
-  destroy (SIGABRT). Toytoolkit `window.c` skip is not enough. See
-  `docs/agent-rules/wawona-inprocess-cairo.md` and rule `wawona-inprocess-cairo`.
+  destroy (SIGABRT). Deb weston is a separate process and does not need that
+  skip. See `docs/agent-rules/wawona-inprocess-cairo.md`.
 - **Nested compositor cursor:** weston/niri draw `wl_pointer`. Hide the host
   overlay on every target, including iOS Touchpad. Ignore Show Virtual Cursor
   and `NestedCompositorCursor` for compositor machines. Classify with

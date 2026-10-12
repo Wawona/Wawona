@@ -55,6 +55,12 @@ public final class WWNSceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     /// Lab / simctl: `SIMCTL_CHILD_WWN_AUTO_START_MACHINE=<id> xcrun simctl launch …`.
     /// Starts the named profile without XCUITest (Xcode 26 agent-device runner gap).
+    ///
+    /// Must mount the session Metal surface before `connect`: Mode A StaticCpu
+    /// present pumps `relay_copy_frame` into `IlandPresenterObjC`, which only
+    /// exists while `CompositorHostView` is in the tree. Calling
+    /// `WWNMachineSessionBridge.connect` alone leaves Machines UI up and
+    /// `activePresenterForDrain()` nil forever (no `Mode A SHM present` log).
     private static func autoStartMachineIfRequested() {
         let mid = ProcessInfo.processInfo.environment["WWN_AUTO_START_MACHINE"]?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -70,15 +76,38 @@ public final class WWNSceneDelegate: UIResponder, UIWindowSceneDelegate {
                 NSLog("WWN_AUTO_START_MACHINE: no profile %@", mid)
                 return
             }
-            do {
-                try WWNMachineSessionBridge.connect(profile)
-                NSLog("WWN_AUTO_START_MACHINE: started %@", mid)
-            } catch {
-                NSLog(
-                    "WWN_AUTO_START_MACHINE: failed %@: %@",
-                    mid,
-                    error.localizedDescription
-                )
+            // Same path as Machines Start: reveal Metal host, then session.
+            NotificationCenter.default.post(
+                name: Notification.Name("WWNShowSessionSurfaceNotification"),
+                object: nil
+            )
+            // `relay_start` SHA256-verifies grown rootfs on the calling thread
+            // (multi-GB). Never block main: CompositorHostView / IlandPresenter
+            // need runloop turns while artifacts hash, or Mode A SHM stays nil.
+            DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 0.8) {
+                do {
+                    try WWNMachineSessionBridge.connect(profile)
+                    DispatchQueue.main.async {
+                        NotificationCenter.default.post(
+                            name: Notification.Name("WWNShowSessionSurfaceNotification"),
+                            object: nil,
+                            userInfo: [
+                                "machineId": mid,
+                                "source": "auto-start",
+                            ]
+                        )
+                        NSLog("WWN_AUTO_START_MACHINE: started %@", mid)
+                    }
+                } catch {
+                    let msg = error.localizedDescription
+                    DispatchQueue.main.async {
+                        NSLog(
+                            "WWN_AUTO_START_MACHINE: failed %@: %@",
+                            mid,
+                            msg
+                        )
+                    }
+                }
             }
         }
     }

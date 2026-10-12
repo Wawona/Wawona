@@ -55,6 +55,8 @@ public final class WWNMachineProfile: NSObject {
             "remoteCommand": remoteCommand,
             "settingsOverrides": settingsOverrides,
             "runtimeOverrides": runtimeOverrides,
+            "containerSettings": containerSettings,
+            "vmSettings": vmSettings,
         ]
     }
 }
@@ -80,6 +82,8 @@ public final class WWNMachineProfileStore: NSObject {
             p.remoteCommand = dict["remoteCommand"] as? String ?? ""
             p.settingsOverrides = dict["settingsOverrides"] as? [String: Any] ?? [:]
             p.runtimeOverrides = dict["runtimeOverrides"] as? [String: Any] ?? [:]
+            p.containerSettings = dict["containerSettings"] as? [String: Any] ?? [:]
+            p.vmSettings = dict["vmSettings"] as? [String: Any] ?? [:]
             return p
         }
     }

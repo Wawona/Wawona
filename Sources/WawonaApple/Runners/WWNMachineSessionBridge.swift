@@ -92,11 +92,27 @@ public final class WWNMachineSessionBridge: NSObject {
         #if os(macOS)
         WWNVirtualMachineRunner.sharedRunner.stopAll()
         #endif
-        WWNRelay.sharedRelay.stopAll()
+        // Never WWNRelay.stopAll() here. connect() / scene churn used to kill a
+        // live StaticCpu mid-boot (pending stop + hasOwnedSession stuck → frozen
+        // guest, no AUTH/SHM). Relay lifecycle: connectRelayBacked (replace) or
+        // disconnectProfile / stopProfile only.
     }
 
     @objc(connectProfile:error:)
     public static func connect(_ profile: WWNMachineProfile) throws {
+        // Relay VM/container idempotency must run BEFORE iOS stopAllActiveTransports.
+        // stopAllActiveTransports calls WWNRelay.stopAll(); a second connect
+        // (AUTO_START + UI Start, or a late Machines Start) was killing StaticCpu
+        // mid-boot, then connectRelayBacked saw hasOwnedSession on a pending-stop
+        // handle and returned without restart. Guest console froze (no AUTH /
+        // No wl_shm) with host RSS collapsed and no StaticCpu thread.
+        if profileUsesVirtualMachineBackend(profile) || profileUsesContainerBackend(profile) {
+            if let mid = profile.machineId as String?, !mid.isEmpty,
+               WWNRelay.sharedRelay.hasOwnedSession(forMachineId: mid) {
+                return
+            }
+        }
+
         #if os(iOS)
         if !profileUsesNativeCompositorClient(profile) {
             stopAllActiveTransports()
@@ -277,6 +293,17 @@ public final class WWNMachineSessionBridge: NSObject {
         if !allowed {
             throw NSError(domain: "WWNMachineSessionBridge", code: code,
                           userInfo: [NSLocalizedDescriptionKey: forbidden])
+        }
+        // Idempotent: AUTO_START + UI Start both call here. Relay owns the
+        // skip-re-entry gate so vsock 1024 / SHM importer stay attached.
+        if let mid = profile.machineId as String?, !mid.isEmpty,
+           WWNRelay.sharedRelay.hasOwnedSession(forMachineId: mid) {
+            return
+        }
+        // Replacing with a different (or first) Relay machine: stop any prior
+        // session. Same-machine re-entry already returned above.
+        if WWNRelay.sharedRelay.hasOwnedSessions() {
+            WWNRelay.sharedRelay.stopAll()
         }
         var err: NSError?
         let ok = WWNRelay.sharedRelay.startProfile(profile, error: &err)

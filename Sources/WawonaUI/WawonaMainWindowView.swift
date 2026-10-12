@@ -213,8 +213,10 @@ final class WWNMainWindowRouter: ObservableObject {
     private var sessionSurfaceObserver: NSObjectProtocol?
     #if os(macOS)
     private var distributedSessionSurfaceObserver: NSObjectProtocol?
-    private var sessionSurfaceFlagTimer: Timer?
     #endif
+    /// Lab remount / park: touch `$XDG_RUNTIME_DIR/show-session-surface` or
+    /// `hide-session-surface` (macOS + iOS sim). Avoids lldb on live StaticCpu.
+    private var sessionSurfaceFlagTimer: Timer?
 
     private init() {
         sessionSurfaceObserver = NotificationCenter.default.addObserver(
@@ -235,6 +237,10 @@ final class WWNMainWindowRouter: ObservableObject {
             ) { [weak self] _ in
                 self?.showSessionSurface()
             }
+        #endif
+        // Mode A StaticCpu / AUTO_START: if Machines chrome covers Metal again,
+        // lab can remount without lldb by touching the runtime flag. Same timer
+        // parks via `hide-session-surface` for N11 Stop without sidebar selection.
         sessionSurfaceFlagTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) {
             [weak self] _ in
             self?.consumeSessionSurfaceFlagIfPresent()
@@ -242,18 +248,22 @@ final class WWNMainWindowRouter: ObservableObject {
         if let sessionSurfaceFlagTimer {
             RunLoop.main.add(sessionSurfaceFlagTimer, forMode: .common)
         }
-        #endif
     }
 
-    #if os(macOS)
     private func consumeSessionSurfaceFlagIfPresent() {
         let runtime = WWNPreferencesManager.preferredSharedRuntimeDir()
+        let hideFlag = (runtime as NSString).appendingPathComponent("hide-session-surface")
+        if FileManager.default.fileExists(atPath: hideFlag) {
+            try? FileManager.default.removeItem(atPath: hideFlag)
+            hideSessionSurface()
+            NSLog("WWNHideSessionSurface: sessionSurfaceVisible=0 (flag)")
+            return
+        }
         let flag = (runtime as NSString).appendingPathComponent("show-session-surface")
         guard FileManager.default.fileExists(atPath: flag) else { return }
         try? FileManager.default.removeItem(atPath: flag)
         showSessionSurface()
     }
-    #endif
 
     func showMachines() {
         sessionSurfaceVisible = false
@@ -267,6 +277,8 @@ final class WWNMainWindowRouter: ObservableObject {
     func showSessionSurface() {
         sessionSurfaceVisible = true
         selection = .session
+        // Lab: prove AUTO_START / remount flag actually flipped Metal host.
+        NSLog("WWNShowSessionSurface: sessionSurfaceVisible=1")
     }
 
     func hideSessionSurface() {
@@ -353,6 +365,11 @@ struct WawonaMainWindowView: View {
     /// Sidebar column visibility. Phone portrait starts `.detailOnly` so
     /// Machines is the main view; the system sidebar toggle reveals the column.
     @State private var showSidebar = false
+    /// List selection lives in `@State`, not `@Published`. Binding
+    /// `List(selection:)` straight to `router.selection` exclusivity-crashes
+    /// on iOS 16 NavigationSplitView (Display / Settings tap): AttributeGraph
+    /// still reads the `ObservableObject` while `Published` writes.
+    @State private var listSelection: WWNMainDestination? = .machines
     #if os(iOS) || os(visionOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.verticalSizeClass) private var verticalSizeClass
@@ -360,8 +377,23 @@ struct WawonaMainWindowView: View {
 
     var body: some View {
         splitView
-            .onAppear { syncSplitColumns() }
-            .backport.onChange(of: router.selection) { _, _ in handleSelectionChange() }
+            .onAppear {
+                listSelection = router.selection ?? .machines
+                syncSplitColumns()
+            }
+            .backport.onChange(of: listSelection) { _, newValue in
+                guard newValue != router.selection else { return }
+                // Next turn: keep Published write off the List exclusivity window.
+                DispatchQueue.main.async {
+                    router.selection = newValue
+                }
+            }
+            .backport.onChange(of: router.selection) { _, newValue in
+                if listSelection != newValue {
+                    listSelection = newValue
+                }
+                handleSelectionChange()
+            }
             .backport.onChange(of: model.sections) { _, newValue in
                 DispatchQueue.main.async {
                     router.validate(sections: newValue)
@@ -441,7 +473,7 @@ struct WawonaMainWindowView: View {
     // MARK: - Sidebar
 
     private var sidebar: some View {
-        List(selection: $router.selection) {
+        List(selection: $listSelection) {
             Section(header: Text("Machines")) {
                 sidebarRow(
                     destination: .machines,
@@ -543,12 +575,12 @@ struct WawonaMainWindowView: View {
             if #available(iOS 16.0, tvOS 16.0, macOS 13.0, *) {
                 NavigationLink(value: destination) { sidebarLabel }
             } else {
-                Button { router.selection = destination } label: { sidebarLabel }
+                Button { listSelection = destination } label: { sidebarLabel }
             }
         }
         .tag(destination)
         .accessibility(identifier: accessibilityID ?? "")
-        .accessibility(addTraits: router.selection == destination ? .isSelected : [])
+        .accessibility(addTraits: listSelection == destination ? .isSelected : [])
     }
 
     // MARK: - Detail
@@ -666,8 +698,11 @@ struct WawonaMainWindowView: View {
         #endif
         #if os(iOS)
         if isPhonePortrait {
-            withAnimation {
-                showSidebar = false
+            // Defer column collapse off the selection write / AG update.
+            DispatchQueue.main.async {
+                withAnimation {
+                    showSidebar = false
+                }
             }
         }
         #endif
@@ -676,6 +711,7 @@ struct WawonaMainWindowView: View {
     private func syncSplitColumns() {
         if router.selection == nil {
             router.selection = .machines
+            listSelection = .machines
         }
         #if os(iOS)
         showSidebar = !isPhonePortrait

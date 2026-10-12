@@ -353,7 +353,8 @@ public final class WawonaPreferences: ObservableObject {
             ?? defaults.string(forKey: "TouchInputType")
             ?? "Multi-Touch"
         defaultInputProfile = Self.normalizedTouchInputType(loadedInput)
-        defaultBundledAppID = defaults.string(forKey: keyPrefix + "defaultBundledAppID") ?? "weston-terminal"
+        // Native Shell (zsh). Optional Wayland clients install via wpm/debs.
+        defaultBundledAppID = defaults.string(forKey: keyPrefix + "defaultBundledAppID") ?? "wawona-shell"
         defaultWaypipeEnabled = defaults.object(forKey: keyPrefix + "defaultWaypipeEnabled") as? Bool ?? true
         xwaylandSupport = defaults.object(forKey: keyPrefix + "xwaylandSupport") as? Bool
             ?? defaults.object(forKey: "WaypipeXwls") as? Bool ?? false
@@ -394,7 +395,12 @@ public final class WawonaPreferences: ObservableObject {
             defaults.object(forKey: "MachineSessionThumbnailsEnabled") as? Bool
             ?? defaults.object(forKey: keyPrefix + "machineSessionThumbnailsEnabled") as? Bool
             ?? true
+        // Welcome seen flag: prefer canonical key; accept legacy aliases written
+        // by WWNPreferencesManager / sim scripts / Android-shaped keys.
         hasCompletedWelcome = defaults.bool(forKey: keyPrefix + "hasCompletedWelcome")
+            || defaults.bool(forKey: "hasCompletedWelcome")
+            || defaults.bool(forKey: "HasSeenWelcome")
+            || defaults.bool(forKey: "hasSeenWelcome")
 
         if let launchersData = defaults.data(forKey: keyPrefix + "globalClientLaunchers"),
            let launchers = try? JSONDecoder().decode([ClientLauncher].self, from: launchersData) {
@@ -503,6 +509,10 @@ public final class WawonaPreferences: ObservableObject {
         defaults.set(machineSessionThumbnailsEnabled, forKey: "MachineSessionThumbnailsEnabled")
         defaults.set(machineSessionThumbnailsEnabled, forKey: keyPrefix + "machineSessionThumbnailsEnabled")
         defaults.set(hasCompletedWelcome, forKey: keyPrefix + "hasCompletedWelcome")
+        // Keep legacy / cross-host aliases in sync (WWNPreferencesManager, scripts).
+        defaults.set(hasCompletedWelcome, forKey: "hasCompletedWelcome")
+        defaults.set(hasCompletedWelcome, forKey: "HasSeenWelcome")
+        defaults.set(hasCompletedWelcome, forKey: "hasSeenWelcome")
         if let data = try? JSONEncoder().encode(globalClientLaunchers) {
             defaults.set(data, forKey: keyPrefix + "globalClientLaunchers")
         }
