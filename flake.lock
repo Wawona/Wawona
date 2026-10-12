@@ -576,34 +576,6 @@
         "type": "github"
       }
     },
-    "iland_2": {
-      "inputs": {
-        "nixpkgs": [
-          "wwn-waypipe",
-          "nixpkgs"
-        ],
-        "rust-overlay": [
-          "wwn-waypipe",
-          "rust-overlay"
-        ],
-        "wwn-toolchain": [
-          "wwn-waypipe",
-          "wwn-toolchain"
-        ]
-      },
-      "locked": {
-        "lastModified": 1786606319,
-        "narHash": "sha256-w/o7I/5w/ipAPcAzcrP6HQ2IFoJkhxQYsva9p7glvXk=",
-        "rev": "b65fb5e1acdaf9fc784180b9fb7c737ced958f04",
-        "revCount": 66,
-        "type": "tarball",
-        "url": "https://api.flakehub.com/f/pinned/Wawona/iLand/0.1.66%2Brev-b65fb5e1acdaf9fc784180b9fb7c737ced958f04/019ffa09-d33d-7d01-8376-dcf2b817efd3/source.tar.gz"
-      },
-      "original": {
-        "type": "tarball",
-        "url": "https://flakehub.com/f/Wawona/iLand/%2A"
-      }
-    },
     "microvm": {
       "inputs": {
         "nixpkgs": [
@@ -1091,11 +1063,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1788397861,
-        "narHash": "sha256-kybMyFwuvTC63VnW81gksSrFRmur7/9ueso+9hKftnk=",
+        "lastModified": 1791834178,
+        "narHash": "sha256-JVljJWUOUkcZ1k2UlfTJgtddDscyIWWV4Ztr7QlHmHA=",
         "owner": "Wawona",
         "repo": "wwn-igetty",
-        "rev": "3a9fe4c13e8d9ceaf2f8e8d7524010da90933acf",
+        "rev": "656b3f11db8bcf077ebe5143a6bc022c03aaf13f",
         "type": "github"
       },
       "original": {
@@ -1280,7 +1252,9 @@
     },
     "wwn-waypipe": {
       "inputs": {
-        "iland": "iland_2",
+        "iland": [
+          "iland"
+        ],
         "nixpkgs": [
           "nixpkgs"
         ],
@@ -1293,11 +1267,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1788212412,
-        "narHash": "sha256-rMRIAMB6rBNDlpYT2wujvSJIWq7fKaFAxMbebSo1Tt4=",
+        "lastModified": 1791834183,
+        "narHash": "sha256-mXGeu4OZoVx4s/W2qsJNOFr7sRKoaA+ePxHhe/FNIRg=",
         "owner": "Wawona",
         "repo": "wwn-waypipe",
-        "rev": "13b07bd6aac6d98a2047fec4d3556ab46d17256c",
+        "rev": "f180088d6f459301151bf503912c4fad498847f2",
         "type": "github"
       },
       "original": {

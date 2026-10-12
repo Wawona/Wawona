@@ -65,6 +65,7 @@
     wwn-waypipe.inputs.nixpkgs.follows = "nixpkgs";
     wwn-waypipe.inputs.wwn-toolchain.follows = "wwn-toolchain";
     wwn-waypipe.inputs.wwn-ssh.follows = "wwn-ssh";
+    wwn-waypipe.inputs.iland.follows = "iland";
     wwn-swinging-bridge.url = "github:Wawona/Wawona-Swinging-Bridge";
     wwn-swinging-bridge.inputs.nixpkgs.follows = "nixpkgs";
     wwn-swinging-bridge.inputs.wwn-toolchain.follows = "wwn-toolchain";
