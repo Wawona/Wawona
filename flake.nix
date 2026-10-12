@@ -909,11 +909,41 @@
       packages =
         commonPackages
         # WLCS conformance runner (ci-l2-wlcs). Linux-only; production WWNCore ABI.
-        // (pkgs.lib.optionalAttrs (isLinuxHost && builtins.pathExists ./dependencies/tests/wlcs.nix) {
-          wawona-wlcs-run = pkgs.callPackage ./dependencies/tests/wlcs.nix {
-            wawonaBackend = backend-linux;
-          };
-        })
+        # backend-linux lives in the Darwin packages let only; define a Linux
+        # scoped backend here so nix run .#wawona-wlcs-run evaluates on GHA.
+        // (pkgs.lib.optionalAttrs (isLinuxHost && builtins.pathExists ./dependencies/tests/wlcs.nix) (
+          let
+            workspace-src-linux-wlcs = pkgs.callPackage ./dependencies/wawona/workspace-src.nix {
+              wawonaSrc = src;
+              waypipeSrc = waypipe-src;
+              coreutilsSrc = coreutils-src;
+              platform = "linux";
+              inherit wawonaVersion;
+            };
+            sharedLinuxCargoNixWlcs =
+              crate2nix.tools.${pkgs.stdenv.hostPlatform.system}.generatedCargoNix {
+                name = "wawona-linux-workspace-wlcs";
+                src = workspace-src-linux-wlcs;
+              };
+            backend-linux-wlcs = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
+              inherit crate2nix wawonaVersion toolchains nixpkgs;
+              workspaceSrc = workspace-src-linux-wlcs;
+              platform = "linux";
+              cargoNixDrv = sharedLinuxCargoNixWlcs;
+              nativeDeps = {
+                libwayland = pkgs.wayland;
+                xkbcommon = pkgs.libxkbcommon;
+                pixman = pkgs.pixman;
+                libffi = pkgs.libffi;
+                openssl = pkgs.openssl;
+              };
+            };
+          in {
+            wawona-wlcs-run = pkgs.callPackage ./dependencies/tests/wlcs.nix {
+              wawonaBackend = backend-linux-wlcs;
+            };
+          }
+        ))
         // (pkgs.lib.optionalAttrs (isLinuxHost || androidSDK != null) {
           wawona-android = wawonaAndroidPkg;
           wawona-android-backend = backend-android;
