@@ -42,9 +42,13 @@ let
     };
   };
 in
+let
+  # nixpkgs wlcs installs the harness under libexec, not $out/bin.
+  wlcsBin = "${wlcs}/libexec/wlcs/wlcs";
+in
 writeShellApplication {
   name = "wawona-wlcs-run";
-  runtimeInputs = [ wlcs python3 ];
+  runtimeInputs = [ python3 ];
   text = ''
     set -euo pipefail
 
@@ -81,7 +85,7 @@ HELP
     output_dir="$(realpath "$output_dir")"
     xml="$output_dir/wlcs.xml"
     set +e
-    wlcs "${integration}/lib/libwawona_wlcs.so" \
+    "${wlcsBin}" "${integration}/lib/libwawona_wlcs.so" \
       "--gtest_output=xml:$xml" "''${wlcs_args[@]}" \
       2>&1 | tee "$output_dir/wlcs.log"
     wlcs_status="''${PIPESTATUS[0]}"
