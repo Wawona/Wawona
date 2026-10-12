@@ -49,7 +49,7 @@ let
     fuzzel = "1.11";
     openssh = "9.9p2";
     epollShim = "0.0.20240608";
-    iland = if ilandVersionFromSibling != null then ilandVersionFromSibling else "26.9.9";
+    iland = if ilandVersionFromSibling != null then ilandVersionFromSibling else "26.10.12";
     fastfetch = "2";
     kmscube = "mesa";
   };

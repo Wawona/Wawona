@@ -50,13 +50,6 @@
       "version": "0.11.0"
     },
     {
-      "license": "MIT",
-      "name": "Wawona Relay",
-      "role": "Bundled WASI and VM/container runtime",
-      "url": "https://github.com/Wawona/Relay",
-      "version": "0.1.0"
-    },
-    {
       "license": "BSD-3-Clause",
       "name": "libssh2",
       "role": "In-process SSH (Apple mobile)",
@@ -82,14 +75,14 @@
       "name": "MoltenVK",
       "role": "Vulkan on Metal",
       "url": "https://github.com/KhronosGroup/MoltenVK",
-      "version": "1.4.1"
+      "version": "1.4.2"
     },
     {
       "license": "MIT",
       "name": "iland",
       "role": "Userspace DRM/KMS/GBM (Mode A)",
       "url": "https://github.com/Wawona/iLand",
-      "version": "26.9.9"
+      "version": "26.10.12"
     },
     {
       "license": "MIT",
@@ -121,3 +114,4 @@
     }
   ]
 }
+
