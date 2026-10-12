@@ -242,16 +242,17 @@ let
   # Apple-mobile packages are static-only. SwiftShader is the CPU Vulkan
   # fallback after MoltenVK and must be linked into the app, never copied as a
   # simulator dylib plus ICD manifest.
-  # Deduped ICD archive (unique keep-%d.o members, case-safe). force_load so
-  # Darwin ld + -dead_strip still pulls the full C++/LLVM web; -u alone left
-  # Pass vtable / DrawCall undefined when only ICD entry points were rooted.
+  # Content-hash deduped ICD (wwn-iland). Regular archive + -u: force_load
+  # pulls ASTC/Reactor twins that collide with ANGLE and other staticlibs
+  # (~13 duplicate symbols). Complete archive makes -u sufficient for the
+  # namespaced ICD entry points and their dependency closure.
   swiftshaderLdflags = deps:
     let
       swiftshader = deps.swiftshader or null;
       archive = "${strip swiftshader}/lib/libvk_swiftshader.a";
     in
       if swiftshader == null || !builtins.pathExists archive then [ ] else [
-        "-force_load" archive
+        archive
         "-Wl,-u,_wwn_swiftshader_vkGetInstanceProcAddr"
         "-Wl,-u,_wwn_swiftshader_vkCreateInstance"
         "-Wl,-u,_wwn_swiftshader_vkEnumerateInstanceExtensionProperties"
