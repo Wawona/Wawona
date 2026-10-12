@@ -19,11 +19,15 @@ android {
         minSdk = 24
         targetSdk = 36
         // Ship: beta (stores) / Play: Fastlane + nix set WAWONA_BUILD_NUMBER / WAWONA_VERSION.
-        // Studio / local defaults: read repo VERSION (CalVer). Never ship a stale hardcode.
+        // Studio / local: prefer env, else repo VERSION (CalVer). Nix always exports WAWONA_VERSION.
         versionCode = (System.getenv("WAWONA_BUILD_NUMBER") ?: "1").toInt()
-        versionName = System.getenv("WAWONA_VERSION")
-            ?: rootProject.file("../VERSION").takeIf { it.isFile }?.readText()?.trim()
-            ?: error("Set WAWONA_VERSION or keep VERSION at repo root")
+        versionName = System.getenv("WAWONA_VERSION")?.trim()?.takeIf { it.isNotEmpty() }
+            ?: sequenceOf(
+                rootProject.file("../VERSION"),
+                rootProject.file("../../VERSION"),
+                rootProject.file("VERSION"),
+            ).firstOrNull { it.isFile }?.readText()?.trim()?.takeIf { it.isNotEmpty() }
+            ?: "0.0.0"
         // Layer-3 Compose UI tests (ci-l3-android-espresso).
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

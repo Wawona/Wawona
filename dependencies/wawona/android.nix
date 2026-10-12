@@ -639,12 +639,15 @@ PY
     buildPhase = ''
       runHook preBuild
 
+      # Always stamp CalVer into the APK/AAB (debug and release). The Gradle
+      # tree inside Nix may not include a sibling VERSION file.
+      export WAWONA_VERSION="${releaseVersionName}"
+      export WAWONA_BUILD_NUMBER="${releaseBuildNumber}"
+
       if [ "${if isReleaseBuild then "1" else "0"}" = "1" ]; then
         export ANDROID_KEYSTORE_PASSWORD="${releaseKeystorePassword}"
         export ANDROID_KEY_ALIAS="${releaseKeyAlias}"
         export ANDROID_KEY_PASSWORD="${releaseKeyPassword}"
-        export WAWONA_BUILD_NUMBER="${releaseBuildNumber}"
-        export WAWONA_VERSION="${releaseVersionName}"
         # Prefer BASE64 baked at impure eval - host RUNNER_TEMP paths are
         # not readable inside the Nix build sandbox (Permission denied).
         if [ -n "${releaseKeystoreBase64}" ]; then
