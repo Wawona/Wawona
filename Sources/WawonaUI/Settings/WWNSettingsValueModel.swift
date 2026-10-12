@@ -23,6 +23,10 @@ final class WWNSettingsValueModel: ObservableObject {
     /// the section layout (SSH auth method, virtual cursor).
     @Published private(set) var sections: [WWNPreferencesSection] = []
 
+    /// One-shot notice after a Settings action (Generate Key, etc.).
+    @Published private(set) var actionNoticeTitle: String = "Settings"
+    @Published private(set) var actionNoticeMessage: String?
+
     private let defaults = UserDefaults.standard
     private let globalSnapshotKey = "wawona.globalSettingsSnapshot.v1"
     private var observers: [NSObjectProtocol] = []
@@ -160,19 +164,81 @@ final class WWNSettingsValueModel: ObservableObject {
 
     /// True when a password row has a stored value (button shows "Change…").
     func hasPassword(for item: WWNSettingItem) -> Bool {
+        !passwordValue(for: item).isEmpty
+    }
+
+    /// Current password / passphrase for an editor page.
+    func passwordValue(for item: WWNSettingItem) -> String {
         let prefs = WWNPreferencesManager.sharedManager()
         switch itemKey(item) {
         case "WaypipeSSHPassword", "SSHPassword":
             let waypipe = prefs.waypipeSSHPassword()
             let ssh = prefs.sshPassword()
-            return !(waypipe.isEmpty ? ssh : waypipe).isEmpty
+            return waypipe.isEmpty ? ssh : waypipe
         case "WaypipeSSHKeyPassphrase", "SSHKeyPassphrase":
             let waypipe = prefs.waypipeSSHKeyPassphrase()
             let ssh = prefs.sshKeyPassphrase()
-            return !(waypipe.isEmpty ? ssh : waypipe).isEmpty
+            return waypipe.isEmpty ? ssh : waypipe
         default:
-            return false
+            return ""
         }
+    }
+
+    func clearActionNotice() {
+        actionNoticeMessage = nil
+    }
+
+    /// Run a Settings button row. Prefer `actionBlock` when set; else known keys.
+    func performButtonAction(for item: WWNSettingItem) {
+        if let block = item.actionBlock {
+            block()
+            return
+        }
+        switch itemKey(item) {
+        case "SSHGenerateKey":
+            generateSSHKey()
+        case "CopyRecentLogs":
+            WWNDiagnosticReport.copyRecentLogs(machineOnly: false)
+        case "CopyMachineLogs":
+            WWNDiagnosticReport.copyRecentLogs(machineOnly: true)
+        default:
+            break
+        }
+    }
+
+    private func generateSSHKey() {
+        let keyType = defaults.string(forKey: "SSHKeyType") ?? "ed25519"
+        let passphrase = WWNPreferencesManager.sharedManager().sshKeyPassphrase()
+        do {
+            let path = try WWNSSHKeygen.generateKeyType(keyType, passphrase: passphrase)
+            let prefs = WWNPreferencesManager.sharedManager()
+            prefs.setSshKeyPath(path)
+            prefs.setSshAuthMethod(1)
+            defaults.set(path, forKey: "SSHKeyPath")
+            defaults.set(path, forKey: "WaypipeSSHKeyPath")
+            recordGlobalValue(path, forKey: "SSHKeyPath")
+            commit(rebuild: true)
+            presentActionNotice(
+                title: "SSH Key Generated",
+                message: "Private key saved to:\n\(path)\n\nPublic key: \(path).pub"
+            )
+        } catch {
+            presentActionNotice(
+                title: "Could Not Generate Key",
+                message: error.localizedDescription
+            )
+        }
+    }
+
+    private func presentActionNotice(title: String, message: String) {
+        if !Thread.isMainThread {
+            DispatchQueue.main.async { [weak self] in
+                self?.presentActionNotice(title: title, message: message)
+            }
+            return
+        }
+        actionNoticeTitle = title
+        actionNoticeMessage = message
     }
 
     // MARK: - Value writes (mirror `act:`)
@@ -467,7 +533,8 @@ final class WWNSettingsValueModel: ObservableObject {
         case "SSHTestConnection": return ("Test", "checkmark.shield")
         case "SSHGenerateKey": return ("Generate", "key")
         case "SSHImportGPGKey": return ("Import", "square.and.arrow.down")
-        case "CopyRecentLogs", "CopyMachineLogs": return ("Copy", "doc.on.doc")
+        case "CopyRecentLogs": return ("Copy Logs", "doc.on.doc")
+        case "CopyMachineLogs": return ("Copy", "doc.on.doc")
         case "ReportGitHubIssue": return ("Report", "ladybug")
         default: return ("Run", "play")
         }

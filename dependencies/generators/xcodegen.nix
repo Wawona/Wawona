@@ -133,15 +133,11 @@ let
   mobileGetprognameLdflags = [
     "-force_load" derivedGetprognameLib
   ];
-  # Force the in-process dispatch entry points out of libwawona.a / privatized
-  # archives.  Weak refs from libwwn-pty.a alone do not pull these symbols.
+  # In-process shell dispatch only (no niri/fuzzel/phoon: optional-software).
   mobileDispatchLdflags = [
     "-Wl,-u,_wawona_coreutils_main"
     "-Wl,-u,_fastfetch_main"
-    "-Wl,-u,_phoon_main"
     "-Wl,-u,_waypipe_main"
-    "-Wl,-u,_niri_main"
-    "-Wl,-u,_fuzzel_main"
     "-Wl,-u,_wawona_dispatch_can_handle"
     "-Wl,-u,_wawona_dispatch_inprocess"
     "-Wl,-u,_wawona_dispatch_spawn_async"
@@ -377,10 +373,18 @@ let
       # Host apps that call it keep wawona_relay_copy_frame_stub.c (weak).
       # relay-oci pulls zstd_safe → libzstd. Apple-mobile already has -lzstd
       # earlier; macOS did not until crate2nix Relay. Link zstd after the .a.
+      # Mode A StaticCpu present needs start_shm_importer. Always -u that
+      # symbol. Never weak-stub it in wawona_relay_optional_stubs.c: Apple ld
+      # treats a weak def as satisfying -u and never pulls the archive member
+      # (binary keeps ERR_PLANNED / -2). The linked libwawona_relay.a must
+      # actually export _relay_start_shm_importer (stale nix-deps without that
+      # T symbol fail closed at link once stubs are gone).
       relay =
         if r == null then [] else [
           "-Wl,-u,_relay_resolve_backend"
           "-Wl,-u,_relay_start"
+          "-Wl,-u,_relay_start_shm_importer"
+          "-Wl,-u,_relay_start_host_waypipe"
           "${strip r}/lib/libwawona_relay.a"
         ] ++ (
           let
@@ -442,6 +446,22 @@ let
       "-Wl,-u,_ssh_keygen_main"
       "-Wl,-u,_scp_main"
     ];
+  # Host present: libiland_userland only (no ANGLE / cubes). Store Apple-mobile.
+  ilandPresentLdflags = deps:
+    let
+      iland = deps.iland or null;
+    in
+      if iland == null then [] else [
+        "-L${strip iland}/lib"
+        "-force_load" "${strip iland}/lib/libiland_userland.a"
+      ];
+  # Product keep-set link tail: fastfetch + Relay wasm + waypipe + ssh.
+  # No weston / niri / foot / cubes / phoon / fuzzel (optional-software).
+  productKeepLdflags = deps: { withWaypipe ? true }:
+    (fastfetchLdflags deps)
+    ++ (wasmLdflags deps)
+    ++ (lib.optionals withWaypipe (waypipeLdflags deps))
+    ++ (sshCliLdflags deps);
   # glib/gio (res_9_*) needs libresolv on Apple even with zero OpenSSH.
   appleMobileResolvLdflags = [ "-lresolv" ];
   # Static archives with C++ (ANGLE, Rust backend, fastfetch, …) need libc++
@@ -600,17 +620,17 @@ let
     '';
   };
 
-  iosPreBuild = mkPreBuildPhase { withZsh = true; withGetprogname = true; withFoot = true; withFuzzel = true; };
+  iosPreBuild = mkPreBuildPhase { withZsh = true; withGetprogname = true; };
 
-  ipadosPreBuild = mkPreBuildPhase { withZsh = true; withGetprogname = true; withFoot = true; withFuzzel = true; };
+  ipadosPreBuild = mkPreBuildPhase { withZsh = true; withGetprogname = true; };
 
-  tvosPreBuild = mkPreBuildPhase { withZsh = true; withGetprogname = true; withFoot = true; };
+  tvosPreBuild = mkPreBuildPhase { withZsh = true; withGetprogname = true; };
 
   macosPreBuild = mkPreBuildPhase { };
 
-  visionosPreBuild = mkPreBuildPhase { withZsh = true; withGetprogname = true; withFoot = true; withFuzzel = true; };
+  visionosPreBuild = mkPreBuildPhase { withZsh = true; withGetprogname = true; };
 
-  watchosPreBuild = mkPreBuildPhase { withZsh = true; withFoot = true; };
+  watchosPreBuild = mkPreBuildPhase { withZsh = true; };
 
   # Runs before Nix prebuild; writes $(SRCROOT)/.build/wwn-build-number.xcconfig so
   # every Xcode build gets a fresh CURRENT_PROJECT_VERSION (timestamp locally, CI run id).
@@ -734,8 +754,7 @@ let
             "-lzstd"
             "-llz4"
             "-lepoll-shim"
-          ] ++ (mobileBaseLdflags simDeps) ++ westonToytoolkitLdflagsAppleMobile simDeps ++ westonCompositorLdflagsAppleMobile simDeps
-          ++ (ilandGlLdflags { deps = simDeps; simulator = true; }) ++ moltenvkLdflags simDeps ++ footLdflags simDeps ++ extraSimLdflags
+          ] ++ (mobileBaseLdflags simDeps) ++ (ilandPresentLdflags simDeps) ++ (productKeepLdflags simDeps {}) ++ extraSimLdflags
           ++ derivedRustLdflags ++ finalCxxLdflags;
           GCC_PREPROCESSOR_DEFINITIONS = [ "$(inherited)" ] ++ extraDefines ++ versionDefs;
         } // lib.optionalAttrs (!simulatorOnly) {
@@ -759,8 +778,7 @@ let
             "-lzstd"
             "-llz4"
             "-lepoll-shim"
-          ] ++ (mobileBaseLdflags deps) ++ westonToytoolkitLdflagsAppleMobile deps ++ westonCompositorLdflagsAppleMobile deps
-          ++ (ilandGlLdflags { inherit deps; simulator = false; }) ++ moltenvkLdflags deps ++ footLdflags deps ++ extraDeviceLdflags
+          ] ++ (mobileBaseLdflags deps) ++ (ilandPresentLdflags deps) ++ (productKeepLdflags deps {}) ++ extraDeviceLdflags
           ++ derivedRustLdflags ++ finalCxxLdflags;
         };
       };
@@ -997,11 +1015,10 @@ PLIST
   # without libEGL/libGLESv2 (dyld "Library not loaded: @rpath/libEGL...").
   # tvOS/watchOS intentionally do NOT call this. They must never get
   # ANGLE/Vulkan/OpenGL or VM/container embeds (native + remote only).
+  # Product keep-set: no weston/niri data, no ANGLE dylib embeds (optional-software).
   mkAppleGpuPostBuildPhases = { rootfsEmbedPhase, withVm ? true }:
-    [ xkbEmbedPhase fontEmbedPhase westonDataEmbedPhase niriDataEmbedPhase appsCatalogEmbedPhase rootfsEmbedPhase ]
+    [ xkbEmbedPhase fontEmbedPhase rootfsEmbedPhase ]
     ++ lib.optionals withVm mobileVmEmbedPhases
-    ++ lib.optionals (angleSimDylib != null) [ angleSimEmbedPhase ]
-    ++ lib.optionals (angleDeviceDylib != null) [ angleDeviceEmbedPhase ]
     ++ [ simInstallWritableBundlePhase ];
 
   iosPostBuildPhases = mkAppleGpuPostBuildPhases {
@@ -1538,7 +1555,6 @@ PLIST
           { path = "src/resources/app-bundle/PrivacyInfo.xcprivacy"; type = "file"; buildPhase = "resources"; }
           { path = "src/resources/app-bundle/LaunchScreen.storyboard"; type = "file"; buildPhase = "resources"; }
           (settingsDepsResource "ios")
-          helloWasiGuiResource
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
@@ -1610,10 +1626,7 @@ PLIST
               "-lssl"
               "-lcrypto"
                "-lepoll-shim"
-             ] ++ westonToytoolkitLdflagsAppleMobile iosSimDeps ++ westonCompositorLdflagsAppleMobile iosSimDeps
-             # niri -force_load first; lazy Rust archives after (std once).
-             ++ (ilandGlLdflags { deps = iosSimDeps; simulator = true; }) ++ moltenvkLdflags iosSimDeps ++ swiftshaderLdflags iosSimDeps ++ footLdflags iosSimDeps ++ fastfetchLdflags iosSimDeps ++ niriLdflags iosSimDeps ++ phoonLdflags iosSimDeps ++ wasmLdflags iosSimDeps ++ fuzzelLdflags iosSimDeps ++ waypipeLdflags iosSimDeps
-             ++ sshCliLdflags iosSimDeps
+             ] ++ (ilandPresentLdflags iosSimDeps) ++ (productKeepLdflags iosSimDeps {})
              ++ appleMobileResolvLdflags
              ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [
                "-L$(DERIVED_FILE_DIR)"
@@ -1630,7 +1643,7 @@ PLIST
               "${strip (iosSimDeps.libwayland or null)}/include/wayland"
               "${strip (iosSimDeps.xkbcommon or null)}/include"
               "${strip (iosSimDeps.libssh2 or null)}/include"
-            ] ++ vmEngineContractHeaderPaths iosSimDeps ++ (pixmanHeaderPaths iosSimDeps) ++ (ilandGlHeaderPaths iosSimDeps);
+            ] ++ vmEngineContractHeaderPaths iosSimDeps ++ (pixmanHeaderPaths iosSimDeps);
           } // lib.optionalAttrs (!simulatorOnly) {
             "OTHER_CFLAGS[sdk=iphoneos*]" = [ "$(inherited)" ] ++ ios26ObjcAutolinkOff;
             "OTHER_SWIFT_FLAGS[sdk=iphoneos*]" = [ "$(inherited)" ] ++ ios26SwiftAutolinkOff;
@@ -1662,9 +1675,7 @@ PLIST
                "-lssl"
                "-lcrypto"
                "-lepoll-shim"
-             ] ++ westonToytoolkitLdflagsAppleMobile iosDeps ++ westonCompositorLdflagsAppleMobile iosDeps
-             ++ (ilandGlLdflags { deps = iosDeps; simulator = false; }) ++ moltenvkLdflags iosDeps ++ swiftshaderLdflags iosDeps ++ footLdflags iosDeps ++ fastfetchLdflags iosDeps ++ niriLdflags iosDeps ++ phoonLdflags iosDeps ++ wasmLdflags iosDeps ++ fuzzelLdflags iosDeps ++ waypipeLdflags iosDeps
-             ++ sshCliLdflags iosDeps
+             ] ++ (ilandPresentLdflags iosDeps) ++ (productKeepLdflags iosDeps {})
              ++ appleMobileResolvLdflags
              ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [
                "-L$(DERIVED_FILE_DIR)"
@@ -1676,7 +1687,7 @@ PLIST
               "${strip (iosDeps.libwayland or null)}/include/wayland"
               "${strip (iosDeps.xkbcommon or null)}/include"
               "${strip (iosDeps.libssh2 or null)}/include"
-            ] ++ vmEngineContractHeaderPaths iosDeps ++ (pixmanHeaderPaths iosDeps) ++ (ilandGlHeaderPaths iosDeps);
+            ] ++ vmEngineContractHeaderPaths iosDeps ++ (pixmanHeaderPaths iosDeps);
           };
         };
         dependencies = [
@@ -1782,7 +1793,6 @@ PLIST
           { path = "src/resources/app-bundle/PrivacyInfo.xcprivacy"; type = "file"; buildPhase = "resources"; }
           { path = "src/resources/app-bundle/LaunchScreen.storyboard"; type = "file"; buildPhase = "resources"; }
           (settingsDepsResource "ipados")
-          helloWasiGuiResource
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
@@ -1854,9 +1864,7 @@ PLIST
               "-lssl"
               "-lcrypto"
               "-lepoll-shim"
-            ] ++ westonToytoolkitLdflagsAppleMobile ipadosDeps ++ westonCompositorLdflagsAppleMobile ipadosDeps
-            ++ (ilandGlLdflags { deps = ipadosDeps; simulator = false; }) ++ moltenvkLdflags ipadosDeps ++ swiftshaderLdflags ipadosDeps ++ footLdflags ipadosDeps ++ fastfetchLdflags ipadosDeps ++ niriLdflags ipadosDeps ++ phoonLdflags ipadosDeps ++ wasmLdflags ipadosDeps ++ fuzzelLdflags ipadosDeps ++ waypipeLdflags ipadosDeps
-            ++ sshCliLdflags ipadosDeps
+            ] ++ (ilandPresentLdflags ipadosDeps) ++ (productKeepLdflags ipadosDeps {})
              ++ appleMobileResolvLdflags
             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [
               "-L$(DERIVED_FILE_DIR)"
@@ -1889,9 +1897,7 @@ PLIST
               "-lssl"
               "-lcrypto"
               "-lepoll-shim"
-            ] ++ westonToytoolkitLdflagsAppleMobile ipadosSimDeps ++ westonCompositorLdflagsAppleMobile ipadosSimDeps
-            ++ (ilandGlLdflags { deps = ipadosSimDeps; simulator = true; }) ++ moltenvkLdflags ipadosSimDeps ++ swiftshaderLdflags ipadosSimDeps ++ footLdflags ipadosSimDeps ++ fastfetchLdflags ipadosSimDeps ++ niriLdflags ipadosSimDeps ++ phoonLdflags ipadosSimDeps ++ wasmLdflags ipadosSimDeps ++ fuzzelLdflags ipadosSimDeps ++ waypipeLdflags ipadosSimDeps
-            ++ sshCliLdflags ipadosSimDeps
+            ] ++ (ilandPresentLdflags ipadosSimDeps) ++ (productKeepLdflags ipadosSimDeps {})
              ++ appleMobileResolvLdflags
             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [
               "-L$(DERIVED_FILE_DIR)"
@@ -1908,14 +1914,14 @@ PLIST
               "${strip (ipadosDeps.libwayland or null)}/include/wayland"
               "${strip (ipadosDeps.xkbcommon or null)}/include"
               "${strip (ipadosDeps.libssh2 or null)}/include"
-            ] ++ vmEngineContractHeaderPaths ipadosDeps ++ (pixmanHeaderPaths ipadosDeps) ++ (ilandGlHeaderPaths ipadosDeps);
+            ] ++ vmEngineContractHeaderPaths ipadosDeps ++ (pixmanHeaderPaths ipadosDeps);
             "HEADER_SEARCH_PATHS[sdk=iphonesimulator*]" = [
               "$(inherited)"
               "${strip (ipadosSimDeps.libwayland or null)}/include"
               "${strip (ipadosSimDeps.libwayland or null)}/include/wayland"
               "${strip (ipadosSimDeps.xkbcommon or null)}/include"
               "${strip (ipadosSimDeps.libssh2 or null)}/include"
-            ] ++ vmEngineContractHeaderPaths ipadosSimDeps ++ (pixmanHeaderPaths ipadosSimDeps) ++ (ilandGlHeaderPaths ipadosSimDeps);
+            ] ++ vmEngineContractHeaderPaths ipadosSimDeps ++ (pixmanHeaderPaths ipadosSimDeps);
           };
         };
         dependencies = [
@@ -1968,7 +1974,6 @@ PLIST
           { path = "src/resources/app-bundle/PrivacyInfo.xcprivacy"; type = "file"; buildPhase = "resources"; }
           { path = "src/resources/app-bundle/LaunchScreen.storyboard"; type = "file"; buildPhase = "resources"; }
           (settingsDepsResource "tvos")
-          helloWasiGuiResource
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
@@ -1978,7 +1983,7 @@ PLIST
         # dylibs. tvOS GPU is Mode A GLES+Vulkan. VM/container machines stay forbidden.
         # appsCatalogEmbedPhase is cheap and already gates on appletvos|appletvsimulator
         # so nested niri/fuzzel can resolve .desktop entries from the share tree.
-        postBuildScripts = [ xkbEmbedPhase fontEmbedPhase westonDataEmbedPhase tvosNiriDataEmbedPhase appsCatalogEmbedPhase tvosRootfsEmbedPhase simInstallWritableBundlePhase stripIOSOnlyInfoPlistKeysPhase ];
+        postBuildScripts = [ xkbEmbedPhase fontEmbedPhase tvosRootfsEmbedPhase simInstallWritableBundlePhase stripIOSOnlyInfoPlistKeysPhase ];
 
         settings = {
           base = {
@@ -2034,16 +2039,11 @@ PLIST
               "-lssl"
               "-lcrypto"
               "-lepoll-shim"
-              # niri's wayland-egl crate references wl_egl_window_* even on the
-              # software-only tvOS surface.
-              "-lwayland-egl"
             # phoon lazy-linked (see phoonLdflags): -lphoon_rs after niri's
             # force-load so std/core dedupe (no duplicate symbols) while phoon is
             # still bundled on tvOS.
-            ] ++ westonToytoolkitLdflagsAppleMobile tvosDeps ++ westonCompositorLdflagsAppleMobile tvosDeps ++ niriLdflags tvosDeps ++ footLdflags tvosDeps ++ fastfetchLdflags tvosDeps ++ phoonLdflags tvosDeps ++ wasmLdflags tvosDeps
-            ++ sshCliLdflags tvosDeps
+            ] ++ (ilandPresentLdflags tvosDeps) ++ (productKeepLdflags tvosDeps {})
              ++ appleMobileResolvLdflags
-            ++ (ilandGlLdflags { deps = tvosDeps; simulator = false; }) ++ moltenvkLdflags tvosDeps
             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ "-liconv" ] ++ derivedRustLdflags ++ finalCxxLdflagsNoIokit;
             "OTHER_LDFLAGS[sdk=appletvsimulator*]" = [
               "$(inherited)"
@@ -2072,36 +2072,30 @@ PLIST
               "-lssl"
               "-lcrypto"
               "-lepoll-shim"
-              "-lwayland-egl"
             # phoon lazy-linked on tvOS sim too (see tvOS device block).
-            ] ++ westonToytoolkitLdflagsAppleMobile tvosSimDeps ++ westonCompositorLdflagsAppleMobile tvosSimDeps ++ niriLdflags tvosSimDeps ++ footLdflags tvosSimDeps ++ fastfetchLdflags tvosSimDeps ++ phoonLdflags tvosSimDeps ++ wasmLdflags tvosSimDeps
-            ++ sshCliLdflags tvosSimDeps
+            ] ++ (ilandPresentLdflags tvosSimDeps) ++ (productKeepLdflags tvosSimDeps {})
              ++ appleMobileResolvLdflags
-            ++ (ilandGlLdflags { deps = tvosSimDeps; simulator = true; }) ++ moltenvkLdflags tvosSimDeps
             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ "-liconv" ] ++ derivedRustLdflags ++ finalCxxLdflagsNoIokit;
             GCC_PREPROCESSOR_DEFINITIONS = [
               "$(inherited)"
               "TARGET_OS_IPHONE=1"
               "TARGET_OS_TV=1"
-              "WWN_TVOS_GPU_BUNDLED=1"
               "PRODUCT_BUNDLE_IDENTIFIER=\\\"com.aspauldingcode.Wawona\\\""
             ] ++ versionDefs;
-            "SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=appletvos*]" = [ "$(inherited)" "WWN_TVOS_GPU_BUNDLED" ];
-            "SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=appletvsimulator*]" = [ "$(inherited)" "WWN_TVOS_GPU_BUNDLED" ];
             "HEADER_SEARCH_PATHS[sdk=appletvos*]" = [
               "$(inherited)"
               "${strip (tvosDeps.libwayland or null)}/include"
               "${strip (tvosDeps.libwayland or null)}/include/wayland"
               "${strip (tvosDeps.xkbcommon or null)}/include"
               "${strip (tvosDeps.libssh2 or null)}/include"
-            ] ++ (pixmanHeaderPaths tvosDeps) ++ (ilandGlHeaderPaths tvosDeps);
+            ] ++ (pixmanHeaderPaths tvosDeps);
             "HEADER_SEARCH_PATHS[sdk=appletvsimulator*]" = [
               "$(inherited)"
               "${strip (tvosSimDeps.libwayland or null)}/include"
               "${strip (tvosSimDeps.libwayland or null)}/include/wayland"
               "${strip (tvosSimDeps.xkbcommon or null)}/include"
               "${strip (tvosSimDeps.libssh2 or null)}/include"
-            ] ++ (pixmanHeaderPaths tvosSimDeps) ++ (ilandGlHeaderPaths tvosSimDeps);
+            ] ++ (pixmanHeaderPaths tvosSimDeps);
           };
         };
         dependencies = [
@@ -2146,7 +2140,6 @@ PLIST
           # Missing this makes ASC accept the IPA then discard the build (never listed).
           { path = "src/resources/app-bundle/PrivacyInfo.xcprivacy"; type = "file"; buildPhase = "resources"; }
           (settingsDepsResource "macos")
-          helloWasiGuiResource
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
@@ -2161,20 +2154,6 @@ PLIST
             script = ''
               WAYPIPE_SRC="${strip (macosDeps.waypipe or null)}/bin/waypipe"
               SSHPASS_SRC="${strip (macosDeps.sshpass or null)}/bin/sshpass"
-              WESTON_SRC="${strip macosWeston}/bin"
-              FOOT_BIN="${strip macosFoot}/bin"
-              FASTFETCH_BIN="${strip macosFastfetch}/bin"
-              PHOON_BIN="${strip macosPhoon}/bin"
-              ZSH_BIN="${strip macosZsh}/bin"
-              KMSCUBE_BIN="${strip macosKmscube}/bin"
-              MODEB_TTY_BIN="${strip macosModebTty}/bin"
-              OPENGL_CUBE_BIN="${strip macosOpenglCube}/bin"
-              VKCUBE_BIN="${strip macosVkcube}/bin"
-              GBM_ES2_BIN="${strip macosGbmEs2Demo}/bin"
-              WESTON_SIMPLE_EGL_BIN="${strip macosWestonSimpleEgl}/bin"
-              NIRI_BIN="${strip macosNiri}/bin"
-              NIRI_CFG="${strip macosNiri}/share/niri/default-config.kdl"
-              FUZZEL_BIN="${strip macosFuzzel}/bin"
 
               # Bundled helper binaries are copied out of the read-only Nix
               # store, so they carry no signature valid for this app. The final
@@ -2206,7 +2185,7 @@ PLIST
 
               # Fail the build when a required nested-client binary is missing
               # from the Nix store path baked into this script (silent skip left
-              # macOS Debug apps without niri/fuzzel).
+              # macOS Debug apps without required helpers).
               require_bin() {
                 src="$1"
                 name="$2"
@@ -2233,29 +2212,14 @@ PLIST
                 done
               fi
 
-              if [ -d "$WESTON_SRC" ]; then
-                for client in "$WESTON_SRC"/weston*; do
-                  [ -f "$client" ] || continue
-                  case "$client" in *.so|*.dylib) continue ;; esac
-                  bundle_bin "$client" "$(basename "$client")"
-                done
-              fi
+              FASTFETCH_BIN="${strip macosFastfetch}/bin"
+              ZSH_BIN="${strip macosZsh}/bin"
+              MODEB_TTY_BIN="${strip macosModebTty}/bin"
 
-              bundle_bin "$FOOT_BIN/foot" "foot"
-              if [ -f "$FOOT_BIN/.foot-wrapped" ]; then
-                bundle_bin "$FOOT_BIN/.foot-wrapped" ".foot-wrapped"
-              fi
               bundle_bin "$FASTFETCH_BIN/fastfetch" "fastfetch"
-              [ -f "$PHOON_BIN/phoon" ] && bundle_bin "$PHOON_BIN/phoon" "phoon"
               bundle_bin "$ZSH_BIN/zsh" "zsh"
-              require_bin "$KMSCUBE_BIN/kmscube" "kmscube"
-              if [ -f "$GBM_ES2_BIN/gbm-es2-demo" ]; then
-                bundle_bin "$GBM_ES2_BIN/gbm-es2-demo" "gbm-es2-demo"
-              elif [ -f "$GBM_ES2_BIN/gbm_es2_demo" ]; then
-                bundle_bin "$GBM_ES2_BIN/gbm_es2_demo" "gbm-es2-demo"
-              fi
-              # Mode B multi-VT console (Classic own-display). Soft-require so
-              # older product graphs without modebTty still link.
+
+              # Mode B multi-VT console (Classic own-display). Soft-require.
               if [ -f "$MODEB_TTY_BIN/igettyd" ]; then
                 require_bin "$MODEB_TTY_BIN/igettyd" "igettyd"
                 install -m 755 "$MODEB_TTY_BIN/igettyd" "$MACOS_DEST/igettyd"
@@ -2293,71 +2257,11 @@ PLIST
                   ln -sf ../MacOS/modeb-getty "$BIN_DEST/modeb-getty"
                 fi
               fi
-              # Wayland clients: Machines Start launches these as NSTasks against
-              # the compositor socket. Archives (opengl_cube_main / vkcube_main)
-              # remain linked for the iOS-family in-process path.
-              if [ -f "$OPENGL_CUBE_BIN/opengl-cube" ]; then
-                bundle_bin "$OPENGL_CUBE_BIN/opengl-cube" "opengl-cube"
-              fi
-              require_bin "$VKCUBE_BIN/vkcube" "vkcube"
-              if [ -f "$VKCUBE_BIN/vkcube-kms" ]; then
-                bundle_bin "$VKCUBE_BIN/vkcube-kms" "vkcube-kms"
-              fi
-              require_bin "$WESTON_SIMPLE_EGL_BIN/weston-simple-egl" "weston-simple-egl"
 
-              # niri (wwn-niri): nested scrollable-tiling compositor. Ship the
-              # binary plus its read-only KDL config, resolved at runtime via
-              # WAWONA_SHARE_ROOT (Contents/Resources/share/niri).
-              require_bin "$NIRI_BIN/niri" "niri"
-              if [ ! -f "$NIRI_CFG" ]; then
-                echo "error: required niri config missing: $NIRI_CFG" >&2
-                exit 1
-              fi
-              SHARE_NIRI="$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/Resources/share/niri"
-              mkdir -p "$SHARE_NIRI"
-              install -m 644 "$NIRI_CFG" "$SHARE_NIRI/default-config.kdl"
-              echo "Bundled niri default-config.kdl"
+              # weston / niri / foot / cubes / phoon / fuzzel: optional-software
+              # (repo.wawona.io). Not bundled in the product app.
 
-              # fuzzel (wwn-niri): niri's Mod+D launcher; must be on PATH when
-              # niri spawns child processes (see WWNWaypipeRunner niri env).
-              require_bin "$FUZZEL_BIN/fuzzel" "fuzzel"
-
-              # Weston nested compositor runtime assets. The weston binaries are
-              # bundled above, but nested weston also needs its data (PNGs), shell
-              # + backend modules, TrueType fonts, and a cursor theme. The app
-              # refuses to launch nested weston when WESTON_DATA_DIR /
-              # WESTON_MODULE_DIR / WESTON_BACKEND_DIR are unset, and those are
-              # derived at runtime from these bundle paths (Resources/share/weston,
-              # Resources/lib/weston, Resources/lib/libweston-13). Mirrors macos.nix.
-              WESTON_STORE="${strip macosWeston}"
               RES_DEST="$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/Resources"
-              if [ -d "$WESTON_STORE/libexec" ]; then
-                for helper in "$WESTON_STORE/libexec"/weston-*; do
-                  [ -f "$helper" ] || continue
-                  hbase="$(basename "$helper")"
-                  bundle_bin "$helper" "$hbase"
-                  install -m 755 "$helper" "$MACOS_DEST/$hbase"
-                  sign_bin "$MACOS_DEST/$hbase"
-                  echo "Bundled weston helper $hbase"
-                done
-              fi
-              if [ -d "$WESTON_STORE/share/weston" ]; then
-                mkdir -p "$RES_DEST/share/weston"
-                cp -R "$WESTON_STORE/share/weston/." "$RES_DEST/share/weston/"
-                chmod -R u+w "$RES_DEST/share/weston"
-                if [ ! -f "$RES_DEST/share/weston/terminal.png" ] && [ -f "$RES_DEST/share/weston/icon_terminal.png" ]; then
-                  ln -sf icon_terminal.png "$RES_DEST/share/weston/terminal.png"
-                fi
-                echo "Bundled share/weston assets"
-              fi
-              if [ -d "$WESTON_STORE/lib/weston" ]; then
-                mkdir -p "$RES_DEST/lib/weston"
-                cp -R "$WESTON_STORE/lib/weston/." "$RES_DEST/lib/weston/"
-                chmod -R u+w "$RES_DEST/lib/weston"
-                for _so in "$RES_DEST/lib/weston"/*.dylib; do sign_bin "$_so"; done
-                echo "Bundled lib/weston modules"
-              fi
-              
               MOLTENVK_STORE="${strip (pkgs.moltenvk or null)}"
               if [ -n "$MOLTENVK_STORE" ] && [ -d "$MOLTENVK_STORE/share/vulkan/icd.d" ]; then
                 mkdir -p "$RES_DEST/vulkan/icd.d"
@@ -2640,9 +2544,7 @@ PLIST
               "-L$(DERIVED_FILE_DIR)"
               "-lwawona"
             ] ++ (ilandGlLdflags { deps = macosDeps; simulator = false; })
-              ++ (westonToytoolkitLdflagsMacos macosDeps)
-              ++ (westonCompositorLdflags macosDeps)
-              ++ (wasmLdflags macosDeps)
+              ++ (productKeepLdflags macosDeps { withWaypipe = false; })
               ++ finalCxxLdflags;
             GCC_PREPROCESSOR_DEFINITIONS = [
               "$(inherited)"
@@ -2707,7 +2609,6 @@ PLIST
           { path = "src/resources/app-bundle/PrivacyInfo.xcprivacy"; type = "file"; buildPhase = "resources"; }
           { path = "src/resources/app-bundle/LaunchScreen.storyboard"; type = "file"; buildPhase = "resources"; }
           (settingsDepsResource "visionos")
-          helloWasiGuiResource
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
           { path = "src/resources/Wawona-iOS-Dark-1024x1024@1x.png"; type = "file"; }
@@ -2781,10 +2682,7 @@ PLIST
               "-lmbedtls"
               "-lssl"
               "-lcrypto"
-              "-lwayland-egl"
-            ] ++ westonToytoolkitLdflagsAppleMobile visionosDeps ++ westonCompositorLdflagsAppleMobile visionosDeps
-            ++ (ilandGlLdflags { deps = visionosDeps; simulator = false; }) ++ moltenvkLdflags visionosDeps ++ footLdflags visionosDeps ++ fastfetchLdflags visionosDeps ++ niriLdflags visionosDeps ++ phoonLdflags visionosDeps ++ wasmLdflags visionosDeps ++ fuzzelLdflags visionosDeps ++ waypipeLdflags visionosDeps
-            ++ sshCliLdflags visionosDeps
+            ] ++ (ilandPresentLdflags visionosDeps) ++ (productKeepLdflags visionosDeps {})
              ++ appleMobileResolvLdflags
             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ derivedRustLdflags ++ finalCxxLdflags;
             "OTHER_LDFLAGS[sdk=xrsimulator*]" = [
@@ -2814,10 +2712,7 @@ PLIST
               "-lmbedtls"
               "-lssl"
               "-lcrypto"
-              "-lwayland-egl"
-            ] ++ westonToytoolkitLdflagsAppleMobile visionosSimDeps ++ westonCompositorLdflagsAppleMobile visionosSimDeps
-            ++ (ilandGlLdflags { deps = visionosSimDeps; simulator = true; }) ++ moltenvkLdflags visionosSimDeps ++ footLdflags visionosSimDeps ++ fastfetchLdflags visionosSimDeps ++ niriLdflags visionosSimDeps ++ phoonLdflags visionosSimDeps ++ wasmLdflags visionosSimDeps ++ fuzzelLdflags visionosSimDeps ++ waypipeLdflags visionosSimDeps
-            ++ sshCliLdflags visionosSimDeps
+            ] ++ (ilandPresentLdflags visionosSimDeps) ++ (productKeepLdflags visionosSimDeps {})
              ++ appleMobileResolvLdflags
             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ derivedRustLdflags ++ finalCxxLdflags;
             GCC_PREPROCESSOR_DEFINITIONS = [
@@ -2832,14 +2727,14 @@ PLIST
               "${strip (visionosDeps.libwayland or null)}/include/wayland"
               "${strip (visionosDeps.xkbcommon or null)}/include"
               "${strip (visionosDeps.libssh2 or null)}/include"
-            ] ++ (pixmanHeaderPaths visionosDeps) ++ (ilandGlHeaderPaths visionosDeps);
+            ] ++ (pixmanHeaderPaths visionosDeps);
             "HEADER_SEARCH_PATHS[sdk=xrsimulator*]" = [
               "$(inherited)"
               "${strip (visionosSimDeps.libwayland or null)}/include"
               "${strip (visionosSimDeps.libwayland or null)}/include/wayland"
               "${strip (visionosSimDeps.xkbcommon or null)}/include"
               "${strip (visionosSimDeps.libssh2 or null)}/include"
-            ] ++ (pixmanHeaderPaths visionosSimDeps) ++ (ilandGlHeaderPaths visionosSimDeps);
+            ] ++ (pixmanHeaderPaths visionosSimDeps);
           };
         };
         dependencies = [
@@ -2901,8 +2796,6 @@ PLIST
             # MachineProfileDomain still falls back to C trampolines.
             SWIFT_INCLUDE_PATHS = "$(inherited) $(SRCROOT)/.nix-deps/uniffi $(SRCROOT)/macos-dependencies/uniffi";
             HEADER_SEARCH_PATHS = "$(inherited) $(SRCROOT)/.nix-deps/uniffi $(SRCROOT)/macos-dependencies/uniffi";
-            "SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=appletvos*]" = [ "$(inherited)" "WWN_TVOS_GPU_BUNDLED" ];
-            "SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=appletvsimulator*]" = [ "$(inherited)" "WWN_TVOS_GPU_BUNDLED" ];
             # Never on framework targets (ASC ITMS-90429/90427): only the app
             # target's "Embed Frameworks" phase should run swift-stdlib-tool.
             ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = "NO";
@@ -2975,7 +2868,6 @@ PLIST
           # Missing this makes ASC accept the IPA then discard the build (never listed).
           { path = "src/resources/app-bundle/PrivacyInfo.xcprivacy"; type = "file"; buildPhase = "resources"; }
           (settingsDepsResource "watchos")
-          helloWasiGuiResource
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
         ];
@@ -3147,18 +3039,9 @@ PLIST
               "$(BUILD_DIR)/$(CONFIGURATION)-$(PLATFORM_NAME)/WawonaModel.framework/WawonaModel"
               "$(BUILD_DIR)/$(CONFIGURATION)-$(PLATFORM_NAME)/WawonaUIContracts.framework/WawonaUIContracts"
             ];
-            # -force_load is needed for the Wayland client libraries because
-            # WWNWatchStubs.c provides __attribute__((weak)) definitions of
-            # weston_main / weston_simple_shm_main / etc.  Without -force_load
-            # the linker sees the weak defs as "already defined" and never pulls
-            # the strong versions from the .a archives.
-            #
-            # Order matters: libweston_simple_shm.a is force-loaded BEFORE
-            # -lwayland-server because both archives contain xdg-shell-protocol.o.
-            # The Apple linker accepts the force-loaded copy first and silently
-            # skips the duplicate from normal -l archive linking.
             # Full native stack is arm64-only (Nix watch libs). arm64_32 uses
             # weak WWNWatchStubs.c so the fat binary satisfies ASC 90733.
+            # Product keep-set: Relay wasm + waypipe + ssh + fastfetch + zsh.
             "OTHER_LDFLAGS[sdk=watchos*][arch=arm64]" = [
               "$(inherited)"
               "-L${strip (watchosDeps.libffi or null)}/lib"
@@ -3185,22 +3068,7 @@ PLIST
               "-lssl"
               "-lcrypto"
               "-lxkbcommon"
-              # niri's wayland-egl crate references wl_egl_window_*, which lives
-              # in libwayland-egl even on the software-only watchOS surface.
-              "-lwayland-egl"
-            # phoon lazy-linked (see phoonLdflags), same rationale as the waypipe
-            # lazy link just below: niri is force-loaded, so -lphoon_rs after it
-            # dedupes std/core (no 2134 duplicate symbols) while keeping phoon
-            # bundled on watchOS.
-            ] ++ westonToytoolkitLdflagsAppleMobile watchosDeps ++ westonCompositorLdflagsAppleMobile watchosDeps ++ niriLdflags watchosDeps ++ footLdflags watchosDeps ++ fastfetchLdflags watchosDeps ++ phoonLdflags watchosDeps ++ wasmLdflags watchosDeps
-            ++ lib.optionals (watchosDeps ? waypipe && watchosDeps.waypipe != null) [
-              # Lazy archive link, not -force_load: niri is already force-loaded
-              # and both are Rust staticlibs bundling std/core, so forcing both
-              # yields thousands of duplicate symbols. _waypipe_main is kept
-              # alive by the global -Wl,-u in mobileDispatchLdflags.
-              "-L${strip watchosDeps.waypipe}/lib"
-              "-lwaypipe"
-            ] ++ sshCliLdflags watchosDeps
+            ] ++ (ilandPresentLdflags watchosDeps) ++ (productKeepLdflags watchosDeps {})
             ++ appleMobileResolvLdflags ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ "-liconv" ] ++ lib.optionals (watchosBackend != null) [
               "-L$(DERIVED_FILE_DIR)"
               "-lwawona"
@@ -3236,13 +3104,7 @@ PLIST
               "-lssl"
               "-lcrypto"
               "-lxkbcommon"
-              "-lwayland-egl"
-            # phoon lazy-linked on watchOS sim too (see watchOS device block).
-            ] ++ westonToytoolkitLdflagsAppleMobile watchosSimDeps ++ westonCompositorLdflagsAppleMobile watchosSimDeps ++ niriLdflags watchosSimDeps ++ footLdflags watchosSimDeps ++ fastfetchLdflags watchosSimDeps ++ phoonLdflags watchosSimDeps ++ wasmLdflags watchosSimDeps
-            ++ lib.optionals (watchosSimDeps ? waypipe && watchosSimDeps.waypipe != null) [
-              "-L${strip watchosSimDeps.waypipe}/lib"
-              "-lwaypipe"
-            ] ++ sshCliLdflags watchosSimDeps
+            ] ++ (ilandPresentLdflags watchosSimDeps) ++ (productKeepLdflags watchosSimDeps {})
             ++ appleMobileResolvLdflags ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ "-liconv" ] ++ lib.optionals (watchosSimBackend != null) [
               "-L$(DERIVED_FILE_DIR)"
               "-lwawona"

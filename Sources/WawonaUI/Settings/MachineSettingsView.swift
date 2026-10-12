@@ -339,7 +339,7 @@ public struct MachineSettingsView: View {
             if profile.type == .wasm {
                 NativeSettingsRow("Command", summary: "Wasm launch command") {
                     WawonaTextField("", text: Binding(
-                        get: { draft?.runtimeOverrides.wasmCommand ?? "wasm hello-wasi-gui" },
+                        get: { draft?.runtimeOverrides.wasmCommand ?? "" },
                         set: { value in updateDraft { $0.runtimeOverrides.wasmCommand = value } }
                     ))
                     .labelsHidden()
@@ -361,7 +361,7 @@ public struct MachineSettingsView: View {
                 NativeSettingsRow(
                     "Wasm Module",
                     summary: wasmModuleSummary,
-                    help: "Choose a local .wasm module. If unset, Wawona runs the bundled hello-wasi-gui module."
+                    help: "Choose a local .wasm module or wpm package. No demo module is bundled."
                 ) {
                     HStack {
                         WawonaButton("Choose", systemImage: "doc.badge.gearshape") {
@@ -411,7 +411,7 @@ public struct MachineSettingsView: View {
                     NativeSettingsRow(
                         "Wasm Module",
                         summary: wasmModuleSummary,
-                        help: "Choose a local .wasm module. If unset, Wawona runs bundled hello-wasi-gui."
+                        help: "Choose a local .wasm module or wpm package. No demo module is bundled."
                     ) {
                         HStack {
                             WawonaButton("Choose", systemImage: "doc.badge.gearshape") {
@@ -594,7 +594,7 @@ public struct MachineSettingsView: View {
                     Text("Unavailable").foregroundColor(.secondary)
                 }
             }
-            NativeSettingsRow("Enable HDR") {
+            NativeSettingsRow("Color Operations / HDR") {
                 Toggle("", isOn: colorOperationsBinding).labelsHidden()
             }
         }
@@ -635,7 +635,7 @@ public struct MachineSettingsView: View {
                 Toggle("", isOn: shakeToCloseBinding).labelsHidden()
             }
             #endif
-            #if !os(tvOS)
+            #if os(watchOS)
             NativeSettingsRow("Swipe Back to Exit") {
                 Toggle("", isOn: swipeBackToCloseBinding).labelsHidden()
             }
@@ -684,7 +684,7 @@ public struct MachineSettingsView: View {
                 Text("Show Virtual Cursor: \(resolved.renderMacOSPointer ? "Enabled" : "Disabled")")
             }
             Text("Auto Scale: \(resolved.autoScale ? "Enabled" : "Disabled")")
-            Text("HDR: \(resolved.colorOperations ? "Enabled" : "Disabled")")
+            Text("Color ops / HDR: \(resolved.colorOperations ? "Allowed" : "Off")")
             Text("Display: \(resolved.waylandDisplay)")
             Text("Touch Input: \(WawonaPreferences.normalizedTouchInputType(resolved.inputProfile))")
             if profile.type.isSSH {
@@ -709,7 +709,9 @@ public struct MachineSettingsView: View {
             Text("Menu / Shake to Exit: \(resolved.shakeToCloseEnabled ? "Enabled" : "Disabled")")
             #else
             Text("Shake to Exit: \(resolved.shakeToCloseEnabled ? "Enabled" : "Disabled")")
+            #if os(watchOS)
             Text("Swipe Back to Exit: \(resolved.swipeBackToCloseEnabled ? "Enabled" : "Disabled")")
+            #endif
             #endif
             Text("Resize Display for Virtual Keyboard: \(resolved.resizeDisplayForVirtualKeyboard ? "Enabled" : "Disabled")")
             }

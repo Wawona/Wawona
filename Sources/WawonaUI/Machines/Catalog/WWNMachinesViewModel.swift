@@ -78,188 +78,22 @@ var kBundledClients: [BundledClient] {
   }
 }
 
-/// Native clients. wawona-shell is the host shell in the console view, with
-/// no Wayland client. Never add modeb-tty, igetty, or igettyd.
+/// Product keep-set only. Nested compositors and Wayland demos install later
+/// via `wpm` / apt (`repo.wawona.io`). Never add modeb-tty, igetty, or igettyd.
 let kAllBundledClients: [BundledClient] = [
   BundledClient(
     id: "wawona-shell",
     name: "Native Shell",
     prefsKey: "WawonaShellEnabled",
     icon: "terminal",
-    description: "zsh + uutils. Optional Wayland clients install via wpm or apt"
+    description: "zsh + uutils + fastfetch. Optional Wayland clients via wpm or apt"
   ),
   BundledClient(
     id: "wawona-wasm",
     name: "Wawona Runtime (.wasm)",
     prefsKey: "WawonaWasmEnabled",
     icon: "doc.badge.gearshape",
-    description: "Wayland WASI. Empty path runs bundled hello-wasi-gui (wl_shm) on every target"
-  ),
-  BundledClient(
-    id: "weston-terminal",
-    name: "Weston Terminal",
-    prefsKey: "WestonTerminalEnabled",
-    icon: "terminal",
-    description: "Optional deb. Terminal emulator. Uses host cursor"
-  ),
-  BundledClient(
-    id: "weston-simple-shm",
-    name: "Weston Simple SHM",
-    prefsKey: "WestonSimpleSHMEnabled",
-    icon: "square.on.square.dashed",
-    description: "Optional deb. Minimal shared-memory Wayland client"
-  ),
-  BundledClient(
-    id: "weston",
-    name: "Weston",
-    prefsKey: "WestonEnabled",
-    icon: "rectangle.on.rectangle",
-    description: "Optional deb. Nested Wayland or iland DRM/KMS (Display Backend)."
-  ),
-  BundledClient(
-    id: "niri",
-    name: "Niri",
-    prefsKey: "NiriEnabled",
-    icon: "rectangle.split.3x1",
-    description: "Optional deb. Nested Wayland or iland DRM/KMS (Display Backend)."
-  ),
-  BundledClient(
-    id: "foot",
-    name: "Foot Terminal",
-    prefsKey: "FootEnabled",
-    icon: "character.cursor.ibeam",
-    description: "Optional deb. Lightweight Wayland terminal emulator"
-  ),
-  BundledClient(
-    id: "weston-flower",
-    name: "Weston Flower",
-    prefsKey: "WestonFlowerEnabled",
-    icon: "leaf",
-    description: "Animated cairo demo (toytoolkit)"
-  ),
-  BundledClient(
-    id: "kmscube",
-    name: "KMS Cube",
-    prefsKey: "KmscubeEnabled",
-    icon: "cube",
-    description: "Spinning GL cube via iland + ANGLE (userland KMS)",
-    requiresGpuStack: true
-  ),
-  BundledClient(
-    id: "gbm-es2-demo",
-    name: "GBM ES2 Demo",
-    prefsKey: "GbmEs2DemoEnabled",
-    icon: "cube.fill",
-    description: "ds-hwang gbm_es2_demo. DRM/GBM/GLES2 over iland (KMS)",
-    requiresGpuStack: true
-  ),
-  BundledClient(
-    id: "opengl-cube",
-    name: "OpenGL Cube",
-    prefsKey: "OpenglCubeEnabled",
-    icon: "cube",
-    description: "GLES cube via Wayland-EGL (iland + ANGLE)",
-    requiresGpuStack: true
-  ),
-  BundledClient(
-    id: "vkcube",
-    name: "Vulkan Cube",
-    prefsKey: "VkcubeEnabled",
-    icon: "cube",
-    description: "Vulkan cube. Mode A: Wayland client. Mode B Take Over: vkcube-kms (iland DRM/KMS/GBM).",
-    requiresGpuStack: true
-  ),
-  BundledClient(
-    id: "weston-simple-egl",
-    name: "Weston Simple EGL",
-    prefsKey: "WestonSimpleEglEnabled",
-    icon: "cube.transparent",
-    description: "Wayland EGL demo client (iland + ANGLE)",
-    requiresGpuStack: true
-  ),
-  BundledClient(
-    id: "weston-smoke",
-    name: "Weston Smoke",
-    prefsKey: "WestonSmokeEnabled",
-    icon: "cloud",
-    description: "Smoke particle cairo demo"
-  ),
-  BundledClient(
-    id: "weston-clickdot",
-    name: "Weston Clickdot",
-    prefsKey: "WestonClickdotEnabled",
-    icon: "circle.grid.2x2",
-    description: "Pointer click visualization demo"
-  ),
-  BundledClient(
-    id: "weston-eventdemo",
-    name: "Weston Event Demo",
-    prefsKey: "WestonEventdemoEnabled",
-    icon: "hand.tap",
-    description: "Input event logging demo"
-  ),
-  BundledClient(
-    id: "weston-resizor",
-    name: "Weston Resizor",
-    prefsKey: "WestonResizorEnabled",
-    icon: "arrow.up.left.and.arrow.down.right",
-    description: "Interactive resize demo"
-  ),
-  BundledClient(
-    id: "weston-cliptest",
-    name: "Weston Cliptest",
-    prefsKey: "WestonCliptestEnabled",
-    icon: "scissors",
-    description: "Clipping region demo"
-  ),
-  BundledClient(
-    id: "weston-transformed",
-    name: "Weston Transformed",
-    prefsKey: "WestonTransformedEnabled",
-    icon: "rotate.3d",
-    description: "Buffer transform demo"
-  ),
-  BundledClient(
-    id: "weston-stacking",
-    name: "Weston Stacking",
-    prefsKey: "WestonStackingEnabled",
-    icon: "square.stack.3d.up",
-    description: "Subsurface stacking demo"
-  ),
-  BundledClient(
-    id: "weston-dnd",
-    name: "Weston DnD",
-    prefsKey: "WestonDndEnabled",
-    icon: "arrow.right.doc.on.clipboard",
-    description: "Drag-and-drop demo"
-  ),
-  BundledClient(
-    id: "weston-image",
-    name: "Weston Image",
-    prefsKey: "WestonImageEnabled",
-    icon: "photo",
-    description: "PNG image loader demo"
-  ),
-  BundledClient(
-    id: "weston-scaler",
-    name: "Weston Scaler",
-    prefsKey: "WestonScalerEnabled",
-    icon: "arrow.up.left.and.down.right.magnifyingglass",
-    description: "Viewport scaler demo"
-  ),
-  BundledClient(
-    id: "weston-editor",
-    name: "Weston Editor",
-    prefsKey: "WestonEditorEnabled",
-    icon: "pencil",
-    description: "Text editor demo"
-  ),
-  BundledClient(
-    id: "weston-constraints",
-    name: "Weston Constraints",
-    prefsKey: "WestonConstraintsEnabled",
-    icon: "lock.rectangle.stack",
-    description: "Pointer constraints demo"
+    description: "Relay WASI Runtime. Pick a .wasm module or wpm package path"
   ),
 ]
 
@@ -290,6 +124,9 @@ private let wwnMachineSessionQueue = DispatchQueue(
 
 @MainActor
 final class WWNMachinesViewModel: ObservableObject {
+  /// Shared so Tab Overview, Focus, and the Machines grid share live status.
+  static let shared = WWNMachinesViewModel()
+
   @Published private(set) var profiles: [WWNMachineProfile] = []
   @Published var connectionError: String?
   /// When Default Start Type is Prompt and windowing is available.
@@ -674,8 +511,9 @@ final class WWNMachinesViewModel: ObservableObject {
     }
   }
 
-  /// Relay, SSH terminal, and the native shell show the guest console before
-  /// the session queue runs start. Wayland clients stay on their own surface.
+  /// Every Start shows Wawona Terminal (or guest console) with launch / client
+  /// logs first. Wayland Metal is mounted but not revealed until Focus or
+  /// Tab Overview selects the client.
   private func presentGuestConsoleIfNeeded(_ profile: WWNMachineProfile) {
     let machineId = profile.machineId ?? ""
     guard !machineId.isEmpty else { return }
@@ -695,10 +533,11 @@ final class WWNMachinesViewModel: ObservableObject {
       } else if kind == kWWNNativeShellKindTerminal {
         source = "shell"
       } else {
-        return
+        // Wayland / Wasm / Waypipe: still show Terminal with launch logs.
+        source = "client"
       }
     } else {
-      return
+      source = "client"
     }
     #if os(iOS) || os(tvOS) || os(visionOS)
     NotificationCenter.default.post(
@@ -834,8 +673,8 @@ final class WWNMachinesViewModel: ObservableObject {
     }
   }
 
-  /// Native Wayland / wasm clients and macOS MicroVM waypipe clients draw into
-  /// the host compositor surface (tab) or a dedicated window/scene.
+  /// Mount Metal for Wayland / VM present without covering Machines / Terminal.
+  /// Focus or Tab Overview calls `showSessionSurface` to reveal the client.
   private func revealSessionSurfaceIfNeeded(
     _ profile: WWNMachineProfile,
     openInNewWindow: Bool
@@ -862,7 +701,8 @@ final class WWNMachinesViewModel: ObservableObject {
       return
       #endif
     }
-    WWNMainWindowRouter.shared.showSessionSurface()
+    // Start: mount presenter for SHM/DRM drain; keep Machines + Terminal up.
+    WWNMainWindowRouter.shared.mountSessionSurface()
     #endif
   }
 
@@ -907,6 +747,7 @@ final class WWNMachinesViewModel: ObservableObject {
     }
     if !stillNative {
       WWNMainWindowRouter.shared.hideSessionSurface()
+      WWNMainWindowRouter.shared.sessionSurfaceMounted = false
     }
     #endif
     #if os(iOS) || os(tvOS) || os(visionOS)
@@ -931,13 +772,18 @@ final class WWNMachinesViewModel: ObservableObject {
     }
     touchLastUsed(profile.machineId)
     WWNMachineProfileStore.setActiveMachineId(profile.machineId)
-    // Focus always reveals the in-window tab surface (not a new Start prompt).
-    revealSessionSurfaceIfNeeded(profile, openInNewWindow: false)
+    #if os(iOS) || os(visionOS)
+    // Dismiss Terminal sheet; show the Wayland / Metal client deliberately.
+    NotificationCenter.default.post(
+      name: Notification.Name("WWNRelayGuestConsoleNeededNotification"),
+      object: nil,
+      userInfo: ["machineId": profile.machineId ?? "", "source": "close"]
+    )
+    #endif
+    WWNMainWindowRouter.shared.showSessionSurface()
     #if os(macOS)
     _ = WWNCompositorBridge.sharedBridge.focusClientWindows(forMachineId: profile.machineId)
     #elseif os(iOS) || os(tvOS) || os(visionOS)
-    // Minimize returns to Machines without killing the session; Focus must
-    // reverse that and reveal the live compositor again.
     NotificationCenter.default.post(
       name: .WWNClientFocusRequested,
       object: nil,
@@ -1126,7 +972,7 @@ final class WWNMachinesViewModel: ObservableObject {
     if !pkg.isEmpty { return "wasm \(pkg)" }
     let path = (runtime[kRuntimeWasmModulePathKey] as? String) ?? ""
     if !path.isEmpty { return (path as NSString).lastPathComponent }
-    return "wasm hello-wasi-gui"
+    return ""
   }
 
   func selectedClientId(for profile: WWNMachineProfile) -> String? {

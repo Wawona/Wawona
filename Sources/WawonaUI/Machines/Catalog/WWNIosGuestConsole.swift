@@ -174,6 +174,7 @@ final class WWNIosGuestConsole: ObservableObject {
   private var fed = 0
   private var pumpTimer: Timer?
   private var observer: NSObjectProtocol?
+  private var launchLogObserver: NSObjectProtocol?
   private var started = false
   private var shell: IosShellSession?
 
@@ -195,6 +196,17 @@ final class WWNIosGuestConsole: ObservableObject {
         console.dismiss(machineId: mid)
       } else {
         console.present(machineId: mid, source: src)
+      }
+    }
+    launchLogObserver = NotificationCenter.default.addObserver(
+      forName: Notification.Name("WWNClientLaunchLogNotification"),
+      object: nil,
+      queue: .main
+    ) { [weak self] note in
+      guard let console = self, console.isPresented else { return }
+      guard console.source == "client" || console.source == "relay" else { return }
+      if let line = note.userInfo?["line"] as? String, !line.isEmpty {
+        console.logText += line
       }
     }
   }
@@ -220,12 +232,15 @@ final class WWNIosGuestConsole: ObservableObject {
     case "ssh":
       title = "SSH session"
       logText = "SSH session starting.\n"
+    case "client":
+      title = "Wawona Terminal"
+      logText = "Starting client…\n"
     default:
-      title = "Guest console"
+      title = "Wawona Terminal"
       logText = "Guest console\n"
     }
     isPresented = true
-    if source == "relay" {
+    if source == "relay" || source == "client" {
       startPump()
     }
   }
@@ -301,14 +316,27 @@ final class WWNIosGuestConsole: ObservableObject {
   }
 
   private func pumpOnce() {
-    guard source == "relay", !machineId.isEmpty else { return }
-    guard let log = WWNRelay.sharedRelay.consoleLog(forMachineId: machineId),
-          log.count > fed
-    else { return }
-    let delta = log.subdata(in: fed..<log.count)
-    fed = log.count
-    if let chunk = String(data: delta, encoding: .utf8), !chunk.isEmpty {
-      logText += chunk
+    guard source == "relay" || source == "client", !machineId.isEmpty else { return }
+    if let log = WWNRelay.sharedRelay.consoleLog(forMachineId: machineId),
+       log.count > fed
+    {
+      let delta = log.subdata(in: fed..<log.count)
+      fed = log.count
+      if let chunk = String(data: delta, encoding: .utf8), !chunk.isEmpty {
+        logText += chunk
+      }
+      return
+    }
+    // Native Wayland: banner until Focus / Tab Overview reveals Metal.
+    if source == "client", fed == 0 {
+      fed = 1
+      if let profile = WWNMachineProfileStore.profile(byId: machineId) {
+        let client = WWNMachineSessionBridge.nativeClientId(forProfile: profile) ?? "client"
+        let display = WWNCompositorBridge.sharedBridge.socketName()
+        logText += "$ wwn-exec \(client)\n"
+        logText += "WAYLAND_DISPLAY=\(display.isEmpty ? "wayland-0" : display)\n"
+        logText += "# Use Focus or Tab Overview to show the compositor.\n"
+      }
     }
   }
 }

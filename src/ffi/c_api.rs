@@ -863,7 +863,8 @@ pub struct CBufferData {
     pub size: usize,     // Size of pixel data
     pub capacity: usize, // Capacity of pixel data (for freeing)
     pub iosurface_id: u32,
-    /// 1 = bake IOSurface with a CPU Y-flip (nested Weston on Apple).
+    /// 1 = Apple Metal present applies V remap for top-down Wayland rows.
+    /// 0 = buffer already Y-corrected for Wayland (nested weston GL).
     pub cpu_y_flip: u8,
 }
 
@@ -880,7 +881,7 @@ pub extern "C" fn WWNCorePopPendingBuffer(core: *mut WWNCore) -> *mut CBufferDat
         let core = unsafe { &*core };
 
         if let Some(event) = core.pop_pending_buffer() {
-            let cpu_y_flip = if core.nested_weston_cpu_y_flip(event.window_id.id) {
+            let cpu_y_flip = if core.apple_metal_present_y_flip(event.window_id.id) {
                 1u8
             } else {
                 0u8

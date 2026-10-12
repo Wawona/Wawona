@@ -158,87 +158,42 @@ case "$platform" in
   ios|ipados|visionos|tvos|watchos) apple_store_safety ;;
 esac
 
+# Store Apple-mobile (iOS/iPadOS/visionOS): no in-app ANGLE / MoltenVK / cubes.
+# Host present is Smithay + Metal. GLES clients install later (optional-software).
+# macOS + Android keep ANGLE/MoltenVK (see below). IOKit stays allowed here.
 if [[ "$platform" == "ios" || "$platform" == "ipados" || "$platform" == "visionos" ]]; then
-  # "MoltenVK version" is the driver's own banner, unlike the bare name which
-  # also shows up in ICD path literals.
-  if ! carrier="$(bundle_has_marker 'MoltenVK version')"; then
-    echo "FAIL: $platform bundle has no statically linked MoltenVK" >&2
-    exit 1
-  fi
-  echo "OK: $platform MoltenVK found in $carrier"
-
-  if ! carrier="$(bundle_has_exact_marker 'ANGLE (')"; then
-    echo "FAIL: $platform bundle has no statically linked ANGLE" >&2
-    exit 1
-  fi
-  echo "OK: $platform ANGLE found in $carrier"
-
-  if [[ "$simulator" == "1" ]]; then
-    # iOS/iPadOS/visionOS *Simulator* / CI: MoltenVK's Metal pipeline bring-up
-    # fatally aborts the app on the headless CI simulator, so the bundled
-    # SwiftShader CPU Vulkan ICD is REQUIRED here for vkcube to fall back to. It
-    # may be a loose dylib or the namespaced static source provider. Static
-    # acceptance requires its actual public entry points and driver identifiers,
-    # not shared UI prose. Neither form is permitted in device artifacts.
-    ss_dylib="$(find "$root" -type f -name 'libvk_swiftshader.dylib' -print -quit 2>/dev/null || true)"
-    if [[ -n "$ss_dylib" ]]; then
-      echo "OK: $platform simulator SwiftShader CPU fallback ICD present ($ss_dylib)"
-    else
-      ss_static=""
-      while IFS= read -r binary; do
-        count="$(nm -gU "$binary" 2>/dev/null | awk '
-          $2 == "T" && ($3 == "_wwn_swiftshader_vkGetInstanceProcAddr" ||
-            $3 == "_wwn_swiftshader_vkCreateInstance" ||
-            $3 == "_wwn_swiftshader_vkDestroyInstance") { entries[$3] = 1 }
-          END { print length(entries) }
-        ')"
-        if [[ "$count" == "3" ]]; then
-          ss_static="$binary"
-          break
-        fi
-      done < <(mach_o_files)
-      if [[ -z "$ss_static" ]] || ! bundle_has_swiftshader; then
-        echo "FAIL: $platform simulator bundle is missing a real SwiftShader CPU Vulkan ICD" >&2
-        exit 1
-      fi
-      echo "OK: $platform simulator static SwiftShader provider linked ($ss_static)"
-    fi
-  else
-    # On-device Apple store builds are MoltenVK-only: the SwiftShader CPU ICD is a
-    # macOS + iOS-Simulator/CI fallback and must never ship in a reviewed device
-    # binary (neither as a dylib nor statically embedded).
-    ss_files="$(find "$root" -type f -iname '*swiftshader*' -print 2>/dev/null || true)"
-    if [[ -n "$ss_files" ]]; then
-      echo "FAIL: $platform on-device bundle contains SwiftShader artifacts (device is MoltenVK-only):" >&2
-      echo "$ss_files" >&2
+  : "${simulator:=0}"
+  for marker in 'MoltenVK version'; do
+    if carrier="$(bundle_has_marker "$marker")"; then
+      echo "FAIL: $platform bundle statically embeds forbidden driver '$marker': $carrier" >&2
       exit 1
     fi
-    if carrier="$(bundle_has_swiftshader)"; then
-      echo "FAIL: $platform on-device bundle statically embeds SwiftShader (device is MoltenVK-only): $carrier" >&2
-      exit 1
-    fi
-    echo "OK: $platform is MoltenVK-only (no SwiftShader)"
+  done
+  if carrier="$(bundle_has_swiftshader)"; then
+    echo "FAIL: $platform bundle statically embeds forbidden driver 'SwiftShader': $carrier" >&2
+    exit 1
   fi
-
-  # Drivers may be static or embedded frameworks, but they must resolve inside
-  # the app bundle. An absolute path outside the bundle would mean loading a
-  # driver the store never reviewed.
-  while IFS= read -r binary; do
-    while IFS= read -r dep; do
-      case "$dep" in
-        @*) ;;
-        /System/*|/usr/lib/*) ;;
-        *)
-          echo "FAIL: $platform loads a driver from outside the bundle: $binary" >&2
-          echo "       -> $dep" >&2
-          exit 1
-          ;;
-      esac
-    done < <(otool -L "$binary" 2>/dev/null \
-               | grep $'^\t' \
-               | awk '{print $1}' \
-               | grep -E 'libvulkan|libEGL|libGLESv2|MoltenVK' || true)
-  done < <(mach_o_files)
+  if carrier="$(bundle_has_exact_marker 'ANGLE (')"; then
+    echo "FAIL: $platform bundle statically embeds forbidden driver 'ANGLE': $carrier" >&2
+    exit 1
+  fi
+  driver_symbols="$(bundle_driver_symbols)"
+  if [[ "$driver_symbols" -gt 0 ]]; then
+    echo "FAIL: $platform bundle defines $driver_symbols Vulkan/EGL entry points; store keep-set is Metal present only" >&2
+    exit 1
+  fi
+  forbidden_files="$(
+    find "$root" -type f \
+      \( -iname '*angle*' -o -iname '*moltenvk*' -o -iname '*vulkan*icd*' \
+         -o -iname '*swiftshader*' -o -name 'libvulkan*' \
+         -o -name 'libEGL*' -o -name 'libGLES*' \) -print 2>/dev/null || true
+  )"
+  if [[ -n "$forbidden_files" ]]; then
+    echo "FAIL: $platform bundle contains forbidden GPU driver artifacts:" >&2
+    echo "$forbidden_files" >&2
+    exit 1
+  fi
+  echo "OK: $platform has no ANGLE/MoltenVK/SwiftShader (optional-software unbundled)"
 fi
 
 # tvOS GPU support is a scheduled reversal, not a permanent exclusion: the

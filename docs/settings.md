@@ -26,10 +26,10 @@ Never PrefPane, Settings.bundle, Settings-Watch.bundle, or App Info Preferences.
 
 | Target / band | Sole Global Settings host |
 |---|---|
-| **macOS** | In-app Machines sidebar catalog |
-| **iOS / iPadOS** | In-app Machines sidebar catalog |
+| **macOS** | In-app `WWNGlobalSettingsHostView` (gear / ⌘,) |
+| **iOS / iPadOS** | In-app `WWNGlobalSettingsHostView` (gear; not Machines home sidebar) |
 | **watchOS prefs** | In-app `WatchGlobalSettingsView` on the wrist |
-| **tvOS / visionOS** | In-app Machines sidebar catalog |
+| **tvOS / visionOS** | In-app `WWNGlobalSettingsHostView` |
 | **Android** | In-app Compose `SettingsDialog` |
 | **Linux** | In-app libadwaita settings dialog |
 
@@ -46,12 +46,12 @@ in-app catalog via `visibleSections`.
 
 | Layer | UI | Entry points |
 |-------|-----|--------------|
-| **Global Wawona Settings** | **One in-app host per platform** (table above). Catalog from `GlobalSettingsCatalog` / Rust `settings_catalog`. Apple: Machines sidebar + `WWNSettingsSectionView`. Android: Compose `SettingsDialog`. Linux: libadwaita dialog | macOS `⌘,` / menubar / toolbar Settings. iOS toolbar Settings. Watch sheet from Machines. Android in-app gear. Never System Settings or Settings.app |
+| **Global Wawona Settings** | **One in-app host per platform** (table above). Catalog from `GlobalSettingsCatalog` / Rust `settings_catalog`. Apple: `WWNGlobalSettingsHostView` (section sidebar + `WWNSettingsSectionView`). iOS text/password use push editors. Android: Compose `SettingsDialog`. Linux: libadwaita dialog | macOS `⌘,` / menubar / toolbar Settings. iOS toolbar gear. Watch sheet from Machines. Android in-app gear. Never System Settings or Settings.app |
 | **Machine profiles + overrides** | SwiftUI (`MachineEditorView` via `MachineEditorValidation`, `MachineSettingsView`) | Add / swipe **Edit** = identity editor; **Machine Settings** = per-machine overrides |
 
 Global Settings sections are declared in `WawonaUIContracts.GlobalSettingsCatalog`.
 iOS includes **Apple Watch** companion document transfer actions (WatchConnectivity
-send-side) in the in-app catalog. Catalog sections include Display (Enable HDR),
+send-side) in the in-app catalog. Catalog sections include Display (Color Operations / HDR),
 Machines (shake / swipe / tvOS Menu), iCloud Sync (Apple; omit on tvOS), Local
 Shell, Dependencies, plus Input / Graphics / Env Vars / Waypipe / SSH / About.
 watchOS omits Desktop (forbidden), Local Shell, and Apple Watch send UI. Watch
@@ -76,7 +76,7 @@ A Settings row is two columns. Never put a paragraph in both.
 
 | Setting | Key | Type | Default | Platforms | Description |
 |---------|-----|------|---------|------------|-------------|
-| **Enable HDR** | `colorOperations` / `ColorOperations` | Switch | On | All | Color profiles and HDR (EDR) present path |
+| **Color Operations / HDR** | `colorOperations` / `ColorOperations` | Switch | On | All | Allow HDR when clients negotiate `wp_color_management` / HDR buffers. Does not force Metal EDR for SDR |
 | **Force Server-Side Decorations** | `forceServerSideDecorations` / `ForceServerSideDecorations` | Switch | Off | macOS only | When off, weston-family clients draw CSD. Other hosts always use SSD (no Settings row) |
 | **Respect Safe Area** | `respectSafeArea` / `RespectSafeArea` | Switch | On | iPhone / iPad | Avoid notches, Dynamic Island, display cutouts |
 | **Show macOS Cursor** | `RenderMacOSPointer` | Switch | Off | macOS only | Toggle visibility of the macOS system cursor |
@@ -342,7 +342,7 @@ Sideloaded iOS IPAs have no TestFlight crash pipeline. TestFlight testers should
 |---------|-------|-----|------|---------|
 | Force SSD | Off (toggle) | Always SSD (no row) | Always SSD (no row) | Always SSD (no row) |
 | Multiple Clients | On | On | On | On |
-| Enable HDR | On | On | On | On |
+| Color Operations / HDR | On | On | On | On |
 | Vulkan Driver | KosmicKrisp (Apple Silicon + macOS 26+), else moltenvk | moltenvk | moltenvk (GPU bundle) | system |
 | OpenGL Driver | angle | angle | angle (GPU bundle) | system |
 

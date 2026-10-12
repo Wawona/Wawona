@@ -269,7 +269,7 @@ struct WWNMachineEditorViewModern: View {
           }
           .pickerStyle(.navigationLink)
           Toggle("Enable DMABUF", isOn: $draft.dmabufEnabled)
-          Toggle("Enable HDR", isOn: $draft.colorOperations)
+          Toggle("Color Operations / HDR", isOn: $draft.colorOperations)
         } header: {
           Text("Graphics")
         } footer: {

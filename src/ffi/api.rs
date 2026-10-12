@@ -3094,11 +3094,15 @@ impl WawonaCore {
         popped
     }
 
-    /// Nested Weston gl-renderer Y-corrects for Wayland. Niri/ANGLE Metal
-    /// IOSurfaces are already top-down in the CPU mapping, so the same
-    /// identity CGImage bake inverts Weston. Flip only that compositor.
+    /// Whether Apple Metal present must apply a V remap (`cpu_y_flip` / shader
+    /// `bottomUp` UV).
+    ///
+    /// Wayland SHM and top-down IOSurface store row 0 at the **top**. Metal
+    /// clip-space `y = -1` is the **bottom** of the viewport, so upright
+    /// present needs the flipped UV map. Nested weston gl-renderer already
+    /// Y-corrects for Wayland; applying the host remap again inverts it.
     /// Match title as well: wayland-backend never sends set_app_id.
-    pub fn nested_weston_cpu_y_flip(&self, window_id: u64) -> bool {
+    pub fn apple_metal_present_y_flip(&self, window_id: u64) -> bool {
         let state = self.state.read_recover();
         let (app_id, title) = state
             .get_window(window_id as u32)
@@ -3107,7 +3111,13 @@ impl WawonaCore {
                 (w.app_id.clone(), w.title.clone())
             })
             .unwrap_or_default();
-        crate::core::wayland::xdg::decoration::is_nested_weston_compositor(&app_id, &title)
+        !crate::core::wayland::xdg::decoration::is_nested_weston_compositor(&app_id, &title)
+    }
+
+    /// Deprecated name kept for UniFFI exports; prefer
+    /// [`Self::apple_metal_present_y_flip`].
+    pub fn nested_weston_cpu_y_flip(&self, window_id: u64) -> bool {
+        self.apple_metal_present_y_flip(window_id)
     }
 
     /// Pop pending gamma restore (platform restores original tables)

@@ -11,12 +11,16 @@ rebuild them.
 
 | Target / band | Sole Global Settings host |
 |---|---|
-| macOS | In-app Machines sidebar catalog (`WWNSettingsSectionView`) |
-| iOS / iPadOS | In-app Machines sidebar catalog |
+| macOS | In-app `WWNGlobalSettingsHostView` (gear / ⌘,). Section sidebar + detail |
+| iOS / iPadOS | In-app `WWNGlobalSettingsHostView` (gear). Not Machines home sidebar |
 | watchOS | In-app `WatchGlobalSettingsView` on the wrist |
-| tvOS / visionOS | In-app Machines sidebar catalog |
+| tvOS / visionOS | In-app `WWNGlobalSettingsHostView` (gear) |
 | Android | In-app Compose `SettingsDialog` |
 | Linux | In-app libadwaita settings dialog |
+
+Text and password fields on iOS / tvOS / visionOS use a push editor page
+(Settings.app pattern: row → new view → Save → back), not sheets or inline
+fields in the section list.
 
 Storage is the **app container**: `UserDefaults.standard` on Apple,
 app `SharedPreferences` on Android. Never a PrefPane suite
@@ -33,8 +37,8 @@ Machine editors, one-shot actions (Watch send, import, log copy). They must
 **not** become a second Global Settings hub with a different Display / Input
 catalog.
 
-Sidebar Destinations may still list Desktop / About / Dependencies as part of
-the same in-app catalog (`visibleSections`).
+Machines home sidebar lists Machines / Project / Tags only. Global Settings
+sections live in the dedicated Settings host sidebar (`visibleSections`).
 
 ## Hard rejects
 

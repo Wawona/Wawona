@@ -125,7 +125,7 @@ enum WawonaLaunchMode: Equatable {
         }
         print(
             """
-            Wawona. Wayland compositor for macOS
+            Wawona. A Universal Wayland Compositor
 
             Usage:
               Wawona run <recipe>

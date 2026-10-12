@@ -88,6 +88,10 @@ extension WWNPreferencesManager {
 
     @objc public func setRespectSafeArea(_ enabled: Bool) {
         defs.set(enabled, forKey: kWWNPrefsRespectSafeArea)
+        NotificationCenter.default.post(
+            name: Notification.Name("WWNRespectSafeAreaChangedNotification"),
+            object: nil
+        )
     }
 
     @objc public func resizeDisplayForVirtualKeyboard() -> Bool {

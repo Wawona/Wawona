@@ -188,7 +188,7 @@ pub fn show_settings(parent: &adw::ApplicationWindow, state: &SharedAppState, la
     display_group.set_title("Display");
     let color_ops = gtk::Switch::new();
     color_ops.set_active(settings.color_operations);
-    add_row(&display_group, "Enable HDR", &color_ops);
+    add_row(&display_group, "Color Operations / HDR", &color_ops);
     display_page.add(&display_group);
     crate::linux::ui::a11y::set_wwn_a11y(
         &display_page,

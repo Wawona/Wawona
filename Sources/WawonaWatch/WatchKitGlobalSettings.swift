@@ -29,7 +29,7 @@ struct WatchGlobalSettingsView: View {
         NavigationStack {
             Form {
                 Section("Display") {
-                    Toggle("Enable HDR", isOn: Binding(
+                    Toggle("Color Operations / HDR", isOn: Binding(
                         get: { preferences.colorOperations },
                         set: {
                             preferences.colorOperations = $0
@@ -99,9 +99,12 @@ struct WatchGlobalSettingsView: View {
                 }
             }
             .navigationTitle("Wawona Settings")
+            // watchOS HIG: text Done on the trailing confirmation slot (not
+            // an SF Symbol xmark; crown/focus chrome expects a word).
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
+                        .accessibilityIdentifier("wwn.settings.close")
                 }
             }
             .accessibilityIdentifier("wwn.settings.watch.catalog")

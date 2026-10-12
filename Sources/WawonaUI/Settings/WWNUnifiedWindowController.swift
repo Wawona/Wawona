@@ -32,7 +32,7 @@ final class WWNUnifiedWindowController: NSObject {
         present()
     }
 
-    /// ⌘, / toolbar Settings: in-app Global Settings sidebar catalog.
+    /// ⌘, / toolbar Settings: dedicated in-app Global Settings host.
     @objc func showSettings() {
         router.showSettings()
         present()

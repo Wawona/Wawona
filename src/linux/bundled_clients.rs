@@ -85,152 +85,20 @@ pub fn wayland_picker_groups() -> Vec<(SoftwareKind, Vec<&'static BundledClient>
         .collect()
 }
 
-/// The 23 canonical bundled clients, in the same order as the Apple/Android
-/// catalogs.
+/// Product keep-set only (same order as Apple/Android catalogs). Nested
+/// compositors and demos install later via `wpm` / apt.
 pub const BUNDLED_CLIENTS: &[BundledClient] = &[
     BundledClient {
         id: "wawona-shell",
         name: "Native Shell",
-        description: "zsh + uutils. Optional Wayland clients install via wpm or apt",
+        description: "zsh + uutils + fastfetch. Optional Wayland clients via wpm or apt",
         icon_name: "utilities-terminal-symbolic",
     },
     BundledClient {
         id: "wawona-wasm",
         name: "Wawona Runtime (.wasm)",
-        description: "Wayland WASI module from the filesystem (Wawona Runtime)",
+        description: "Relay WASI Runtime. Pick a .wasm module or wpm package path",
         icon_name: "application-x-executable-symbolic",
-    },
-    BundledClient {
-        id: "weston-terminal",
-        name: "Weston Terminal",
-        description: "Terminal emulator (optional: install deb). Uses host cursor",
-        icon_name: "utilities-terminal-symbolic",
-    },
-    BundledClient {
-        id: "weston-simple-shm",
-        name: "Weston Simple SHM",
-        description: "Minimal shared-memory Wayland client (optional: install deb)",
-        icon_name: "view-grid-symbolic",
-    },
-    BundledClient {
-        id: "weston",
-        name: "Weston",
-        description: "Wayland reference compositor (optional deb; nested or DRM)",
-        icon_name: "view-app-grid-symbolic",
-    },
-    BundledClient {
-        id: "niri",
-        name: "Niri",
-        description: "Scrollable-tiling compositor (optional deb; nested or DRM)",
-        icon_name: "view-column-symbolic",
-    },
-    BundledClient {
-        id: "foot",
-        name: "Foot Terminal",
-        description: "Lightweight Wayland terminal emulator (optional: install deb)",
-        icon_name: "text-editor-symbolic",
-    },
-    BundledClient {
-        id: "weston-flower",
-        name: "Weston Flower",
-        description: "Animated cairo demo (toytoolkit)",
-        icon_name: "preferences-desktop-wallpaper-symbolic",
-    },
-    BundledClient {
-        id: "kmscube",
-        name: "KMS Cube",
-        description: "Spinning GL cube via iland + ANGLE (userland KMS)",
-        icon_name: "view-paged-symbolic",
-    },
-    BundledClient {
-        id: "opengl-cube",
-        name: "OpenGL Cube",
-        description: "GLES cube via iland userland KMS",
-        icon_name: "view-paged-symbolic",
-    },
-    BundledClient {
-        id: "vkcube",
-        name: "Vulkan Cube",
-        description: "Vulkan API smoke test",
-        icon_name: "view-paged-symbolic",
-    },
-    BundledClient {
-        id: "weston-simple-egl",
-        name: "Weston Simple EGL",
-        description: "Wayland EGL demo client",
-        icon_name: "weather-overcast-symbolic",
-    },
-    BundledClient {
-        id: "weston-smoke",
-        name: "Weston Smoke",
-        description: "Smoke particle cairo demo",
-        icon_name: "weather-fog-symbolic",
-    },
-    BundledClient {
-        id: "weston-clickdot",
-        name: "Weston Clickdot",
-        description: "Pointer click visualization demo",
-        icon_name: "input-touchpad-symbolic",
-    },
-    BundledClient {
-        id: "weston-eventdemo",
-        name: "Weston Event Demo",
-        description: "Input event logging demo",
-        icon_name: "view-list-symbolic",
-    },
-    BundledClient {
-        id: "weston-resizor",
-        name: "Weston Resizor",
-        description: "Interactive resize demo",
-        icon_name: "view-fullscreen-symbolic",
-    },
-    BundledClient {
-        id: "weston-cliptest",
-        name: "Weston Cliptest",
-        description: "Clipping region demo",
-        icon_name: "edit-cut-symbolic",
-    },
-    BundledClient {
-        id: "weston-transformed",
-        name: "Weston Transformed",
-        description: "Buffer transform demo",
-        icon_name: "object-rotate-right-symbolic",
-    },
-    BundledClient {
-        id: "weston-stacking",
-        name: "Weston Stacking",
-        description: "Subsurface stacking demo",
-        icon_name: "view-paged-symbolic",
-    },
-    BundledClient {
-        id: "weston-dnd",
-        name: "Weston DnD",
-        description: "Drag-and-drop demo",
-        icon_name: "edit-copy-symbolic",
-    },
-    BundledClient {
-        id: "weston-image",
-        name: "Weston Image",
-        description: "PNG image loader demo",
-        icon_name: "image-x-generic-symbolic",
-    },
-    BundledClient {
-        id: "weston-scaler",
-        name: "Weston Scaler",
-        description: "Viewport scaler demo",
-        icon_name: "zoom-in-symbolic",
-    },
-    BundledClient {
-        id: "weston-editor",
-        name: "Weston Editor",
-        description: "Text editor demo",
-        icon_name: "document-edit-symbolic",
-    },
-    BundledClient {
-        id: "weston-constraints",
-        name: "Weston Constraints",
-        description: "Pointer constraints demo",
-        icon_name: "view-continuous-symbolic",
     },
 ];
 
@@ -268,19 +136,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn catalog_has_twenty_three_unique_clients() {
-        assert_eq!(BUNDLED_CLIENTS.len(), 23);
+    fn catalog_has_two_unique_product_clients() {
+        assert_eq!(BUNDLED_CLIENTS.len(), 2);
         let mut ids: Vec<&str> = BUNDLED_CLIENTS.iter().map(|c| c.id).collect();
         ids.sort_unstable();
         ids.dedup();
-        assert_eq!(ids.len(), 23, "bundled client ids must be unique");
+        assert_eq!(ids.len(), 2, "product client ids must be unique");
+        assert_eq!(BUNDLED_CLIENTS[0].id, "wawona-shell");
+        assert_eq!(BUNDLED_CLIENTS[1].id, "wawona-wasm");
     }
 
     #[test]
     fn lookup_and_label_work() {
-        assert_eq!(bundled_client("foot").unwrap().name, "Foot Terminal");
-        assert_eq!(label_for("kmscube"), "KMS Cube");
+        assert_eq!(bundled_client("wawona-shell").unwrap().name, "Native Shell");
+        assert_eq!(label_for("wawona-wasm"), "Wawona Runtime (.wasm)");
         assert_eq!(label_for("does-not-exist"), "does-not-exist");
+        // Installed optional debs still fill-host when launched by path/id.
         assert!(fills_host("niri"));
         assert!(fills_host("/usr/bin/weston --backend=wayland"));
         assert!(!fills_host("weston-flower"));
@@ -288,13 +159,9 @@ mod tests {
     }
 
     #[test]
-    fn picker_groups_compositors_then_client_types() {
+    fn picker_groups_empty_without_optional_software() {
         let groups = wayland_picker_groups();
-        assert_eq!(groups[0].0, SoftwareKind::Compositor);
-        let compositor_ids: Vec<&str> = groups[0].1.iter().map(|c| c.id).collect();
-        assert!(compositor_ids.contains(&"weston"));
-        assert!(compositor_ids.contains(&"niri"));
-        assert!(!groups.iter().any(|(_, cs)| cs.iter().any(|c| c.id == "wawona-wasm")));
+        assert!(groups.is_empty(), "product catalog has no Wayland picker rows");
         assert_eq!(
             SoftwareKind::for_client_id("weston-flower"),
             SoftwareKind::Demo

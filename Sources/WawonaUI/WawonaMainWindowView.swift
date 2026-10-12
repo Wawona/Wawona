@@ -192,6 +192,8 @@ enum WWNMainDestination: Hashable {
     /// In-window Wayland session surface (tabbed Start). Sidebar Machines
     /// returns here to the grid; no floating overlay button on the client.
     case session
+    /// Running clients; Focus opens the compositor deliberately.
+    case tabOverview
     case projectStatus
     /// Rust `settings_catalog` slug (`display`, `input`, …).
     case settings(GlobalSettingsSectionID)
@@ -270,48 +272,62 @@ final class WWNMainWindowRouter: ObservableObject {
         selection = .machines
     }
 
-    /// When true, the Wayland compositor Metal surface fills the detail column
-    /// (Machines Start / Focus for native Wayland clients).
+    /// Metal host is in the tree (SHM/DRM drain). Distinct from visible chrome.
+    @Published var sessionSurfaceMounted = false
+    /// When true, the Wayland compositor fills the detail (Focus / Tab Overview).
     @Published var sessionSurfaceVisible = false
 
+    /// Mount presenter without covering Machines / Terminal (Start path).
+    func mountSessionSurface() {
+        sessionSurfaceMounted = true
+        NSLog("WWNMountSessionSurface: mounted=1 visible=%d", sessionSurfaceVisible ? 1 : 0)
+    }
+
     func showSessionSurface() {
+        sessionSurfaceMounted = true
         sessionSurfaceVisible = true
         selection = .session
-        // Lab: prove AUTO_START / remount flag actually flipped Metal host.
         NSLog("WWNShowSessionSurface: sessionSurfaceVisible=1")
     }
 
+    /// Park compositor chrome; keep session running until Stop.
     func hideSessionSurface() {
         sessionSurfaceVisible = false
         selection = .machines
     }
 
+    func showTabOverview() {
+        sessionSurfaceVisible = false
+        selection = .tabOverview
+    }
+
+    /// Dedicated Global Settings host (section sidebar). Not the Machines
+    /// home sidebar. Never System Settings / Settings.app.
+    @Published var isSettingsPresented = false
+    @Published var settingsSelection: GlobalSettingsSectionID?
+
     /// Opens Global Settings in-app (`wawona-global-settings-exclusive`).
-    /// Sole host is the Machines sidebar catalog. Never System Settings,
-    /// Settings.app, or a second sheet beside that list.
     func showSettings() {
-        showSidebarSettings()
-    }
-
-    /// In-app sidebar Global Settings (full `visibleSections` catalog).
-    func showSidebarSettings() {
-        if let first = GlobalSettingsCatalog.visibleSections(
-            for: GlobalSettingsCatalog.currentHost
-        ).first {
-            selection = .settings(first)
-        } else {
-            selection = .machines
+        if settingsSelection == nil {
+            settingsSelection = GlobalSettingsCatalog.visibleSections(
+                for: GlobalSettingsCatalog.currentHost
+            ).first
         }
+        isSettingsPresented = true
     }
 
+    func dismissSettings() {
+        isSettingsPresented = false
+    }
+
+    /// Deep-link into a Settings section inside the dedicated host.
     func selectSettings(title: String) {
         if let id = GlobalSettingsSectionID.allCases.first(where: {
             $0.title.caseInsensitiveCompare(title) == .orderedSame || $0.rawValue == title
         }) {
-            selection = .settings(id)
-        } else {
-            selection = .machines
+            settingsSelection = id
         }
+        isSettingsPresented = true
     }
 
     func selectTag(_ tagId: String) {
@@ -319,8 +335,14 @@ final class WWNMainWindowRouter: ObservableObject {
     }
 
     /// After `WWNPreferences` rebuilds its sections (auth method / cursor
-    /// changes), drop selections that no longer exist.
+    /// changes), drop settings selections that no longer exist.
     func validate(sections: [WWNPreferencesSection]) {
+        if let id = settingsSelection,
+           WawonaMainWindowView.objcSection(id, in: sections) == nil {
+            settingsSelection = GlobalSettingsCatalog.visibleSections(
+                for: GlobalSettingsCatalog.currentHost
+            ).first
+        }
         if case .settings(let id)? = selection,
            WawonaMainWindowView.objcSection(id, in: sections) == nil {
             selection = .machines
@@ -346,11 +368,9 @@ extension WWNPreferencesSection {
     }
 }
 
-/// Unified Machine Configuration + Settings sidebar.
-/// Apple `NavigationSplitView` + `List(selection:)` + `.backport.sidebarList()`
-/// on macOS, iOS, iPadOS, tvOS, and visionOS (TN3154). iPhone uses the same
-/// sidebar column and toggle as iPad and macOS. Never a back-arrow stack to
-/// a sidebar page. Watch stays on `WawonaWatch`.
+/// Unified Machine Configuration window. Global Settings opens as a dedicated
+/// host (`WWNGlobalSettingsHostView`) from the gear; section list stays out of
+/// the Machines home sidebar.
 struct WawonaMainWindowView: View {
     @ObservedObject var model: WWNSettingsValueModel
     @ObservedObject var router: WWNMainWindowRouter
@@ -388,9 +408,12 @@ struct WawonaMainWindowView: View {
                 #endif
             }
             #if os(iOS) || os(visionOS)
-            .backport.fullScreenCover(isPresented: $guestConsole.isPresented) {
-                WWNIosGuestConsoleSheet(console: guestConsole)
-            }
+            .modifier(
+                WWNGuestConsoleHostModifier(
+                    console: guestConsole,
+                    sessionSurfaceMounted: router.sessionSurfaceMounted
+                )
+            )
             #endif
             .backport.onChange(of: listSelection) { _, newValue in
                 guard newValue != router.selection else { return }
@@ -421,6 +444,11 @@ struct WawonaMainWindowView: View {
             .backport.onChange(of: showSidebar) { _, _ in
                 WWNHostKeyboard.dismiss()
             }
+            .backport.onChange(of: router.sessionSurfaceVisible) { _, visible in
+                if visible {
+                    withAnimation { showSidebar = false }
+                }
+            }
             #endif
             #if !os(tvOS)
             .sheet(isPresented: $showTagEditor) {
@@ -440,6 +468,13 @@ struct WawonaMainWindowView: View {
                 for: Notification.Name("wawonaOpenInAppGlobalSettingsPanel")
             )) { _ in
                 router.showSettings()
+            }
+            .backport.fullScreenCover(isPresented: $router.isSettingsPresented) {
+                WWNGlobalSettingsHostView(
+                    model: model,
+                    selection: $router.settingsSelection,
+                    onDismiss: { router.dismissSettings() }
+                )
             }
     }
 
@@ -486,12 +521,32 @@ struct WawonaMainWindowView: View {
     private var sidebar: some View {
         List(selection: $listSelection) {
             Section(header: Text("Machines")) {
+                // Always return to Machine Configuration (even if already selected).
+                Button {
+                    router.showMachines()
+                    listSelection = .machines
+                    #if os(iOS)
+                    if isPhonePortrait {
+                        withAnimation { showSidebar = false }
+                    }
+                    #endif
+                } label: {
+                    WawonaLabel {
+                        Text("Machines")
+                    } icon: {
+                        Image(systemName: "desktopcomputer")
+                            .foregroundColor(Color(red: 0.35, green: 0.34, blue: 0.84))
+                    }
+                }
+                .tag(WWNMainDestination.machines)
+                .accessibility(identifier: WWNA11y.machinesRoot)
+
                 sidebarRow(
-                    destination: .machines,
-                    title: "Machines",
-                    systemImage: "desktopcomputer",
-                    color: Color(red: 0.35, green: 0.34, blue: 0.84),
-                    accessibilityID: WWNA11y.machinesRoot
+                    destination: .tabOverview,
+                    title: "Tab Overview",
+                    systemImage: "square.on.square",
+                    color: .accentColor,
+                    accessibilityID: "wwn.tabOverview"
                 )
             }
 
@@ -503,19 +558,6 @@ struct WawonaMainWindowView: View {
                     color: .orange,
                     accessibilityID: "wwn.projectStatus"
                 )
-            }
-
-            Section(header: Text("Settings")) {
-                ForEach(catalogSections, id: \.self) { id in
-                    let objc = WawonaMainWindowView.objcSection(id, in: model.sections)
-                    sidebarRow(
-                        destination: .settings(id),
-                        title: id.title,
-                        systemImage: id.systemImage,
-                        color: objc?.swiftUIIconColor,
-                        accessibilityID: objc?.accessibilityIdentifier ?? "wwn.settings.\(id.rawValue)"
-                    )
-                }
             }
 
             #if !os(tvOS)
@@ -596,11 +638,6 @@ struct WawonaMainWindowView: View {
 
     // MARK: - Detail
 
-    /// Full in-app Global Settings catalog (sole host on every Apple target).
-    private var catalogSections: [GlobalSettingsSectionID] {
-        GlobalSettingsCatalog.visibleSections(for: GlobalSettingsCatalog.currentHost)
-    }
-
     static func objcSection(
         _ id: GlobalSettingsSectionID,
         in sections: [WWNPreferencesSection]
@@ -619,17 +656,16 @@ struct WawonaMainWindowView: View {
             if case .projectStatus? = router.selection {
                 WawonaProjectStatusView()
                     .backport.navigationTitle("Work Status")
+            } else if case .tabOverview? = router.selection {
+                WWNTabOverviewView()
             } else if case .settings(let id)? = router.selection {
-                if let section = Self.objcSection(id, in: model.sections) {
-                    WWNSettingsSectionView(section: section, model: model)
-                        .backport.navigationTitle(id.detailTitle)
-                } else {
-                    WawonaEmptyState(
-                        "Section Unavailable",
-                        systemImage: "questionmark.circle",
-                        description: Text("This settings section is no longer available.")
-                    )
-                }
+                // Legacy deep-link into a section: open the dedicated host.
+                Color.clear
+                    .onAppear {
+                        router.settingsSelection = id
+                        router.isSettingsPresented = true
+                        router.selection = .machines
+                    }
             } else {
                 machinesPane
             }
@@ -638,23 +674,39 @@ struct WawonaMainWindowView: View {
 
     private var isMachinesDestination: Bool {
         switch router.selection {
-        case .machines?, .session?, .machinesTag?, nil: return true
+        case .machines?, .session?, .tabOverview?, .machinesTag?, nil: return true
         default: return false
         }
     }
 
+    private var respectSafeArea: Bool {
+        let global = WWNPreferencesManager.sharedManager().respectSafeArea()
+        guard let id = WWNMachineProfileStore.activeMachineId(),
+              let profile = WWNMachineProfileStore.profile(byId: id),
+              let override = profile.runtimeOverrides["RespectSafeArea"] as? Bool
+        else {
+            return global
+        }
+        return override
+    }
+
     private var machinesPane: some View {
-        // Mount Metal host only while the session surface is shown. Keeping it
-        // always-mounted under the Machines grid can abort WindowGroup creation
-        // (NSView + Metal init during first body eval). Pending SHM buffers wait
-        // in the core queue until the presenter appears, then the 60 Hz pump drains.
+        // Mount Metal when a Wayland/VM session needs the presenter (SHM drain).
+        // Visible only after Focus / Tab Overview. Start keeps Machines + Terminal.
         ZStack {
-            if router.sessionSurfaceVisible {
+            if router.sessionSurfaceMounted {
                 #if !SWIFT_PACKAGE && (os(macOS) || os(iOS) || os(visionOS))
                 CompositorBridge()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    #if !os(iOS) && !os(visionOS)
+                    .edgesIgnoringSafeArea(.all)
+                    #endif
+                    .opacity(router.sessionSurfaceVisible ? 1 : 0)
+                    .allowsHitTesting(router.sessionSurfaceVisible)
+                    .accessibility(hidden: !router.sessionSurfaceVisible)
                 #endif
-            } else {
+            }
+            if !router.sessionSurfaceVisible {
                 WWNMachinesGridView(
                     onConnect: onConnect,
                     filterTagID: activeTagFilterID,
@@ -662,17 +714,51 @@ struct WawonaMainWindowView: View {
                 )
             }
         }
-        // Sidebar Machines / tag parks the in-window session (no floating overlay).
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        #if os(iOS) || os(visionOS)
+        // Whole pane: Respect Safe Area off → edge-to-edge phone; on → notch/home inset.
+        .modifier(WWNSessionSafeAreaModifier(
+            respectSafeArea: respectSafeArea,
+            sessionVisible: router.sessionSurfaceVisible
+        ))
+        .modifier(WWNSessionStatusBarModifier(
+            hideStatusBar: router.sessionSurfaceVisible && !respectSafeArea
+        ))
+        #endif
+        #if os(iOS) || os(tvOS) || os(visionOS)
+        .navigationBarHidden(router.sessionSurfaceVisible)
+        #endif
+        #if os(iOS)
+        .modifier(WWNSessionHideToolbarWhenVisible(active: router.sessionSurfaceVisible))
+        #endif
+        #if os(iOS) || os(visionOS)
+        .modifier(WWNSessionSurfaceGestureModifier(
+            showSidebar: $showSidebar,
+            sessionVisible: router.sessionSurfaceVisible,
+            onShakePark: {
+                router.hideSessionSurface()
+            }
+        ))
+        #endif
+        // Sidebar Machines / tag / Tab Overview parks compositor chrome.
         .backport.onChange(of: router.selection) { _, newValue in
             switch newValue {
-            case .machines?, .machinesTag?:
+            case .machines?, .machinesTag?, .tabOverview?:
                 if router.sessionSurfaceVisible {
-                    router.hideSessionSurface()
+                    router.sessionSurfaceVisible = false
                 }
             default:
                 break
             }
         }
+        #if os(iOS) || os(visionOS)
+        .onReceive(NotificationCenter.default.publisher(
+            for: Notification.Name("WWNRespectSafeAreaChangedNotification")
+        )) { _ in
+            // Force SwiftUI to re-read respectSafeArea after Settings toggle.
+            router.objectWillChange.send()
+        }
+        #endif
     }
 
     private var activeTagFilterID: String? {
@@ -725,10 +811,46 @@ struct WawonaMainWindowView: View {
             listSelection = .machines
         }
         #if os(iOS)
-        showSidebar = !isPhonePortrait
+        // Wayland fullscreen: no system sidebar toggle chrome.
+        if router.sessionSurfaceVisible {
+            showSidebar = false
+        } else {
+            showSidebar = !isPhonePortrait
+        }
         #elseif os(visionOS)
         showSidebar = true
         #endif
     }
 }
+
+#if os(iOS) || os(visionOS)
+/// Host Guest Console without killing Mode A Metal. A fullScreenCover can
+/// dismantle CompositorHostView (deinit clears activeIlandPresenter) so SHM
+/// present stops after one frame. Overlay while the session surface is mounted.
+private struct WWNGuestConsoleHostModifier: ViewModifier {
+    @ObservedObject var console: WWNIosGuestConsole
+    let sessionSurfaceMounted: Bool
+
+    func body(content: Content) -> some View {
+        let coverPresented = Binding<Bool>(
+            get: { console.isPresented && !sessionSurfaceMounted },
+            set: { presented in
+                if !presented {
+                    console.userDismiss()
+                }
+            }
+        )
+        // ZStack (not overlay{}) for iOS 13 floor.
+        return ZStack {
+            content
+            if console.isPresented && sessionSurfaceMounted {
+                WWNIosGuestConsoleSheet(console: console)
+            }
+        }
+        .backport.fullScreenCover(isPresented: coverPresented) {
+            WWNIosGuestConsoleSheet(console: console)
+        }
+    }
+}
+#endif
 #endif

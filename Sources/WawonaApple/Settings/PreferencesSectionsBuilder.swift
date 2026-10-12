@@ -75,7 +75,7 @@ public final class WWNPreferencesSectionsBuilder: NSObject {
                       "Keep compositor content out of the notch and home indicator.")
         case .colorOperations:
             return sw("Color Operations / HDR", kWWNPrefsColorOperations, true,
-                      "Allow HDR and advanced color when the client requests it.")
+                      "Allow HDR when a client negotiates color management or presents an HDR buffer. Does not force EDR for SDR clients.")
         case .nestedCompositors:
             return sw("Nested Compositors", kWWNPrefsNestedCompositorsSupport, true,
                       "Allow nested weston/niri sessions inside Machines.")
@@ -124,11 +124,12 @@ public final class WWNPreferencesSectionsBuilder: NSObject {
             return sw("Universal Clipboard", kWWNPrefsUniversalClipboard, true,
                       "Share clipboard with the host pasteboard.")
         case .shakeToClose:
-            return sw("Shake to Close", "ShakeToCloseEnabled", true,
-                      "Shake the device to close the focused client.")
+            return sw("Shake to Exit Machine", "wawona.pref.shakeToCloseEnabled", true,
+                      "Shake the device to leave the compositor and return to Machines. Session stays running until Stop.")
         case .swipeBackToClose:
-            return sw("Swipe Back to Close", "SwipeBackToCloseEnabled", true,
-                      "Edge swipe closes the focused client.")
+            // iOS/iPadOS: edge swipe opens the sidebar (not exit). watchOS keeps exit.
+            return sw("Swipe Back to Exit Machine", "wawona.pref.swipeBackToCloseEnabled", true,
+                      "On Apple Watch, swipe back leaves the active session.")
 
         case .renderer:
             return popup("Renderer", "Renderer", "metal",
@@ -266,29 +267,28 @@ public final class WWNPreferencesSectionsBuilder: NSObject {
             return link(
                 "Website",
                 "https://wawona.io",
-                "Open wawona.io",
+                "Visit",
                 iconURL: "https://wawona.io/favicon.ico"
             )
         case .aboutAuthor:
-            return info(
-                "Author",
-                "AboutAuthor",
+            return link(
                 "Alex Spaulding",
-                "Project author.",
+                "https://aspauldingcode.com",
+                "Visit",
                 iconURL: "https://github.com/aspauldingcode.png?size=160"
             )
         case .aboutSource:
             return link(
-                "Source Code",
+                "Source",
                 "https://github.com/Wawona/Wawona",
-                "View on GitHub",
+                "Contribute",
                 iconURL: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
             )
         case .aboutSponsors:
             return link(
-                "GitHub Sponsors",
+                "Sponsors",
                 "https://github.com/sponsors/aspauldingcode",
-                "Sponsor on GitHub",
+                "Sponsor",
                 iconURL: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
             )
         case .watchCompanionStatus:

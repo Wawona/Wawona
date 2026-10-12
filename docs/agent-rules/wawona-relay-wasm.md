@@ -1,3 +1,8 @@
+---
+description: Relay Wasm Runtime ships on every Wawona product target, including watchOS
+alwaysApply: true
+---
+
 # Relay Wasm on every Wawona target
 
 Wawona Relay Runtime (WASI / `wwn-wasm`, later `wwn-relay`) must compile, link,
@@ -26,8 +31,7 @@ through WasmerSDK.
 
 ## Later WASIX registry (planned)
 
-Catalog ABI and publish path:
-[`repo.wawona.io/docs/wasm-abi.md`](https://github.com/Wawona/repo.wawona.io/blob/development/docs/wasm-abi.md).
+Catalog ABI and publish path: `repo.wawona.io/docs/wasm-abi.md`.
 WebC / wasinix / WASIX packages are **not shipping**. The execute table above
 stays in force.
 
@@ -45,23 +49,22 @@ commit** must update this rule and product docs for:
 Hard reject until that gate: claim WASIX runs on Pulley or on store iOS /
 iPadOS ≤ 26 Mode A.
 
-## hello-wasi-gui must run on every target
+## Relay wasm engine on every target (no bundled demo module)
 
-`examples/hello-wasi-gui` (bundled `hello-wasi-gui.wasm`) is the required
-Wayland WASI smoke. Machines **Start** on **watchOS** (and every other
-product target) must launch it via Relay. Transfer-only WatchConnectivity
-is not enough.
+`libwawona_wasm` / `wpm` must link on every product target, including
+**watchOS**. Transfer-only WatchConnectivity is not enough.
 
-Present path for that smoke is **`wl_shm` + `xdg_wm_base`** into the host
-Wawona compositor (SpriteKit blit on watchOS). That is the portable GUI
-path.
+Bundled `hello-wasi-gui.wasm` is **optional-software** (`wpm` / `/wasm/v1`),
+not a product keep-set resource. Machines Start for wasm requires a user
+module path or installed package. Present for SHM wasm clients stays
+`wl_shm` + `xdg_wm_base` into the host compositor (SpriteKit on watchOS).
 
 GPU Wayland wasm clients (GLES / Vulkan / Metal via ANGLE / MoltenVK /
 KosmicKrisp) follow the platform GPU gate:
 
-| Target | hello-wasi-gui (`wl_shm`) | GPU wasm (GL / VK / Metal) |
+| Target | Relay wasm engine | GPU wasm (GL / VK / Metal) |
 |---|---|---|
-| macOS, iOS, iPadOS, visionOS, Android, Linux | required | required when GPU stack is available |
+| macOS, iOS, iPadOS, visionOS, Android, Linux | required | when GPU stack is available |
 | tvOS | required | Metal / GLES when bundled |
 | watchOS | **required** | **blocked** (no Metal / GLES / `CAMetalLayer`). SHM + SpriteKit only |
 
@@ -76,7 +79,7 @@ KosmicKrisp) follow the platform GPU gate:
 - Dropping wasm from a scheme, `mobile-platform-deps`, or `wasmLdflags` to
   make CI or size look green. GitHub #156 (watchOS size gate) closed wontfix
 - Treating tvOS / watchOS / visionOS wasm as optional or "transfer only"
-- Hiding `wawona-wasm` from Watch Machines so Start cannot run hello-wasi-gui
+- Hiding `wawona-wasm` from Watch Machines so Start cannot run a user `.wasm`
 - Cranelift native / `MAP_JIT` in App Store Apple-mobile
 - Wasmer, WKWebView, or JSPI Wasm execute on iOS 13-26
 - Linking WasmerSDK by raising the iOS deployment target above 13.0
@@ -89,6 +92,5 @@ KosmicKrisp) follow the platform GPU gate:
 - Claiming WASIX / WebC / wasinix packages are runnable on store Pulley or on
   iOS / iPadOS ≤ 26 Mode A before the Later WASIX registry same-commit gate
 
-Canonical: [`../wasm-wasi.md`](../wasm-wasi.md), `wawona-native-compositors`,
-`wawona-linux-vms-relay-runtime`. Cursor: `.cursor/rules/wawona-relay-wasm.mdc`.
-Registry ABI: `repo.wawona.io/docs/wasm-abi.md`.
+Canonical: `Wawona/docs/wasm-wasi.md`, `wawona-native-compositors`,
+`wawona-linux-vms-relay-runtime`. Registry ABI: `repo.wawona.io/docs/wasm-abi.md`.

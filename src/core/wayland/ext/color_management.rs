@@ -49,16 +49,24 @@ impl GlobalDispatch<WpColorManagerV1, ()> for CompositorState {
     ) {
         let mgr = data_init.init(resource, ());
         use wp_color_manager_v1::{Feature, Primaries, RenderIntent, TransferFunction};
+        // Advertise SDR + HDR transfer functions. Host EDR present is not
+        // forced by Settings; clients set_image_description when they need HDR.
         mgr.supported_intent(RenderIntent::Perceptual);
+        mgr.supported_intent(RenderIntent::Relative);
         mgr.supported_feature(Feature::Parametric);
         mgr.supported_feature(Feature::SetPrimaries);
         mgr.supported_feature(Feature::SetTfPower);
         mgr.supported_feature(Feature::SetLuminances);
+        mgr.supported_feature(Feature::SetMasteringDisplayPrimaries);
         mgr.supported_tf_named(TransferFunction::Bt1886);
         mgr.supported_tf_named(TransferFunction::Gamma22);
+        // Do not advertise deprecated `srgb` TF (protocol v2).
+        mgr.supported_tf_named(TransferFunction::St2084Pq);
+        mgr.supported_tf_named(TransferFunction::Hlg);
         mgr.supported_primaries_named(Primaries::Srgb);
+        mgr.supported_primaries_named(Primaries::Bt2020);
         mgr.done();
-        tracing::debug!("Bound wp_color_manager_v1");
+        tracing::debug!("Bound wp_color_manager_v1 (SDR+HDR named TF advertised)");
     }
 }
 
@@ -137,18 +145,31 @@ impl Dispatch<WpColorManagementOutputV1, ColorOutputData> for CompositorState {
 
 impl Dispatch<WpColorManagementSurfaceV1, ColorSurfaceData> for CompositorState {
     fn request(
-        _state: &mut Self,
+        state: &mut Self,
         _client: &Client,
         _resource: &WpColorManagementSurfaceV1,
         request: wp_color_management_surface_v1::Request,
-        _data: &ColorSurfaceData,
+        data: &ColorSurfaceData,
         _dhandle: &DisplayHandle,
         _data_init: &mut DataInit<'_, Self>,
     ) {
         match request {
-            wp_color_management_surface_v1::Request::Destroy => {}
-            wp_color_management_surface_v1::Request::SetImageDescription { .. } => {}
-            wp_color_management_surface_v1::Request::UnsetImageDescription => {}
+            wp_color_management_surface_v1::Request::Destroy => {
+                state.surfaces_with_image_description.remove(&data.surface_id);
+            }
+            wp_color_management_surface_v1::Request::SetImageDescription { .. } => {
+                // Protocol path only. Does not force host Metal EDR; present
+                // enables EDR when the buffer pixel format is HDR and Settings
+                // still allows color operations.
+                state.surfaces_with_image_description.insert(data.surface_id);
+                tracing::debug!(
+                    "wp_color_management_surface_v1.set_image_description surface={}",
+                    data.surface_id
+                );
+            }
+            wp_color_management_surface_v1::Request::UnsetImageDescription => {
+                state.surfaces_with_image_description.remove(&data.surface_id);
+            }
             _ => {}
         }
     }

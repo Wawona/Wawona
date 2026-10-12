@@ -9,7 +9,7 @@
 //! - Serializable for debugging
 //! - Decoupled from Wayland protocol types where possible
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
@@ -1558,6 +1558,10 @@ pub struct CompositorState {
     /// Per-client fill-host pin, claimed from `pending_client_fills_host`.
     pub client_fills_host: HashMap<ClientId, bool>,
 
+    /// Surfaces that called `wp_color_management_surface_v1.set_image_description`.
+    /// Protocol bookkeeping only; does not force host Metal EDR.
+    pub surfaces_with_image_description: HashSet<u32>,
+
     /// Keyboard repeat rate (Hz)
     pub keyboard_repeat_rate: i32,
 
@@ -1695,6 +1699,7 @@ impl CompositorState {
             pending_client_decoration_policy: None,
             pending_client_fills_host: None,
             client_fills_host: HashMap::new(),
+            surfaces_with_image_description: HashSet::new(),
             keyboard_repeat_rate: 33,
             keyboard_repeat_delay: 500,
             touch_pointer_emulation: false,

@@ -149,11 +149,8 @@ final class CompositorHostPlatformView: PlatformView {
             metalLayer.contentsScale = scale
         }
         metalPresenter?.resize(bounds.size)
-        #if os(macOS)
+        // Rotation / safe-area changes: publish wl_output mode so clients resize.
         ilandPresenter?.hostGeometryDidChange()
-        #else
-        ilandPresenter?.syncPreferredModeFromLayer()
-        #endif
     }
 
     #if os(iOS)

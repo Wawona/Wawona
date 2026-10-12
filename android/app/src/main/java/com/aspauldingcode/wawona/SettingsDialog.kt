@@ -1465,6 +1465,17 @@ private fun AboutSection(context: Context) {
             style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Bold),
             color = MaterialTheme.colorScheme.onSurface)
         Spacer(Modifier.height(4.dp))
+        Text(
+            "A Universal Wayland Compositor",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(8.dp))
+        TextButton(
+            onClick = { uriHandler.openUri("https://wawona.io") },
+            modifier = Modifier.testTag("wwn.settings.aboutWebsite"),
+        ) { Text("Visit") }
+        Spacer(Modifier.height(12.dp))
         Text("Version $version",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1475,12 +1486,6 @@ private fun AboutSection(context: Context) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.testTag("wwn.settings.about.build"),
         )
-        Spacer(Modifier.height(8.dp))
-        OutlinedButton(
-            onClick = { uriHandler.openUri("https://wawona.io") },
-            modifier = Modifier.fillMaxWidth().testTag("wwn.settings.aboutWebsite"),
-            shape = RoundedCornerShape(12.dp)
-        ) { Text("https://wawona.io") }
         Spacer(Modifier.height(8.dp))
         val hostOs = remember {
             "Android ${Build.VERSION.RELEASE} (${Build.MODEL})"
@@ -1501,7 +1506,7 @@ private fun AboutSection(context: Context) {
             },
             modifier = Modifier.fillMaxWidth().testTag("wwn.settings.copyRecentLogs"),
             shape = RoundedCornerShape(12.dp)
-        ) { Text("Copy Recent Logs") }
+        ) { Text("Copy Logs") }
         Spacer(Modifier.height(8.dp))
         OutlinedButton(
             onClick = {
@@ -1515,27 +1520,19 @@ private fun AboutSection(context: Context) {
             },
             modifier = Modifier.fillMaxWidth().testTag("wwn.settings.reportBug"),
             shape = RoundedCornerShape(12.dp)
-        ) { Text("Report a Bug on GitHub") }
-        Spacer(Modifier.height(8.dp))
-        Text("A Wayland Compositor for macOS, iOS & Android",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(24.dp))
-        Text("Author",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(4.dp))
+        ) { Text("Report") }
+        Spacer(modifier.height(16.dp))
         OutlinedButton(
             onClick = { uriHandler.openUri("https://aspauldingcode.com") },
             modifier = Modifier.fillMaxWidth().testTag("wwn.settings.aboutAuthor"),
             shape = RoundedCornerShape(12.dp)
         ) { Text("Alex Spaulding") }
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(12.dp))
         OutlinedButton(
-            onClick = { uriHandler.openUri("https://github.com/wawona/wawona") },
+            onClick = { uriHandler.openUri("https://github.com/Wawona/Wawona") },
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp)
-        ) { Text("Source Code") }
+        ) { Text("Contribute") }
         Spacer(Modifier.height(12.dp))
         Row(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -1546,12 +1543,12 @@ private fun AboutSection(context: Context) {
                 onClick = { uriHandler.openUri("https://ko-fi.com/aspauldingcode") },
                 modifier = Modifier.weight(1f),
                 shape = RoundedCornerShape(12.dp)
-            ) { Text("Ko-fi") }
+            ) { Text("Support") }
             OutlinedButton(
                 onClick = { uriHandler.openUri("https://github.com/sponsors/aspauldingcode") },
                 modifier = Modifier.weight(1f),
                 shape = RoundedCornerShape(12.dp)
-            ) { Text("GitHub Sponsors") }
+            ) { Text("Sponsor") }
         }
         Spacer(Modifier.height(12.dp))
         Row(
@@ -1561,10 +1558,13 @@ private fun AboutSection(context: Context) {
         ) {
             TextButton(
                 onClick = { uriHandler.openUri("https://github.com/aspauldingcode") }
-            ) { Text("GitHub") }
+            ) { Text("Profile") }
+            TextButton(
+                onClick = { uriHandler.openUri("https://x.com/aspauldingcode") }
+            ) { Text("Follow") }
             TextButton(
                 onClick = { uriHandler.openUri("https://www.linkedin.com/in/aspauldingcode/") }
-            ) { Text("LinkedIn") }
+            ) { Text("Connect") }
         }
         Spacer(Modifier.height(32.dp))
     }
@@ -1621,13 +1621,8 @@ private fun AboutDependencyRow(
 ) {
     var showDetail by remember { mutableStateOf(false) }
     val context = LocalContext.current
-    val subtitle = buildString {
-        append(version)
-        if (license.isNotBlank()) {
-            if (isNotEmpty()) append(" · ")
-            append(license)
-        }
-    }
+    // Row preview: role (like Apple Dependencies). Version stays trailing.
+    val subtitle = description.trim()
     val body = buildString {
         if (description.isNotBlank()) append(description)
         if (license.isNotBlank()) {
@@ -1670,9 +1665,17 @@ private fun AboutDependencyRow(
                         subtitle.replace('\n', ' ').replace(Regex(" +"), " ").trim(),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        overflow = TextOverflow.Clip
+                        overflow = TextOverflow.Clip,
+                        maxLines = 1,
                     )
                 }
+            }
+            if (version.isNotBlank()) {
+                Text(
+                    version,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }
@@ -1680,25 +1683,25 @@ private fun AboutDependencyRow(
         AlertDialog(
             onDismissRequest = { showDetail = false },
             title = { Text(name) },
-            text = { Text(body.ifEmpty { name }) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(body.ifEmpty { name })
+                    if (url.isNotBlank()) {
+                        TextButton(
+                            onClick = {
+                                runCatching {
+                                    context.startActivity(
+                                        Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                    )
+                                }
+                            }
+                        ) { Text(url) }
+                    }
+                }
+            },
             confirmButton = {
                 TextButton(onClick = { showDetail = false }) { Text("OK") }
             },
-            dismissButton = if (url.isNotBlank()) {
-                {
-                    TextButton(
-                        onClick = {
-                            runCatching {
-                                context.startActivity(
-                                    Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                )
-                            }
-                        }
-                    ) { Text("Open Website") }
-                }
-            } else {
-                null
-            }
         )
     }
 }

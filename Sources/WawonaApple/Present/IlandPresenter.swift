@@ -46,7 +46,19 @@ private enum CompositorShmPresent {
         // Late-mounted session surface starts at drawableSize 0. Popping now
         // would free SHM without a successful present and stall waypipe clients.
         let drawable = engine.layer.drawableSize
-        guard drawable.width >= 1, drawable.height >= 1 else { return }
+        guard drawable.width >= 1, drawable.height >= 1 else {
+            // One-shot: proves blank session when Metal never got a real layout.
+            struct Once { static var logged = false }
+            if !Once.logged {
+                Once.logged = true
+                NSLog(
+                    "WWNShmPresent: skip drain drawable=%.0fx%.0f (await layout)",
+                    drawable.width,
+                    drawable.height
+                )
+            }
+            return
+        }
 
         var presented = false
         while true {
@@ -145,12 +157,10 @@ public final class IlandPresenterObjC: NSObject {
         engine?.invalidate()
     }
 
-    #if os(macOS)
     @objc
     public func hostGeometryDidChange() {
         engine?.hostGeometryDidChange()
     }
-    #endif
 
     @objc
     public func syncPreferredModeFromLayer() {

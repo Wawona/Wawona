@@ -107,24 +107,10 @@ public final class WWNWaypipeRunner: NSObject {
         delegate?.runnerDidStop?()
     }
     @objc public func launchWestonSimpleSHM() {
-        guard !isWestonSimpleSHMRunning else { return }
-        isWestonSimpleSHMRunning = true
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            var name = strdup("weston-simple-shm")
-            defer { free(name) }
-            var argv: [UnsafeMutablePointer<CChar>?] = [name, nil]
-            let result = argv.withUnsafeMutableBufferPointer { buf in
-                weston_simple_shm_main(1, buf.baseAddress)
-            }
-            DispatchQueue.main.async {
-                self?.isWestonSimpleSHMRunning = false
-                if result != 0 {
-                    self?.delegate?.runnerDidReceiveError?(
-                        "weston-simple-shm exited with \(result)."
-                    )
-                }
-            }
-        }
+        isWestonSimpleSHMRunning = false
+        let msg = Self.optionalSoftwareMissingMessage(for: "weston-simple-shm")
+        delegate?.runnerDidReceiveError?(msg)
+        Self.appendClientLaunchLog("error: \(msg)\n")
     }
     @objc public func stopWestonSimpleSHM() {
         isWestonSimpleSHMRunning = false
@@ -132,7 +118,6 @@ public final class WWNWaypipeRunner: NSObject {
     @objc public func launchWeston() { launchInProcessWeston(drm: false) }
     @objc public func launchWestonDrm() { launchInProcessWeston(drm: true) }
     @objc public func stopWeston() {
-        wwn_weston_compositor_shutdown_requested = 1
         westonRunning = false
     }
     @objc public func launchWestonTerminal() {
@@ -177,22 +162,13 @@ public final class WWNWaypipeRunner: NSObject {
         switch clientId {
         case "wawona-shell":
             break
-        case "weston":
-            launchWeston()
-        case "weston-terminal":
-            launchWestonTerminal()
-        case "foot":
-            launchFoot()
-        case "weston-simple-shm":
-            launchWestonSimpleSHM()
         case "wawona-wasm", "hello-wasi-gui":
-            let bundled = Bundle.main.path(forResource: "hello-wasi-gui", ofType: "wasm") ?? ""
-            if !bundled.isEmpty {
-                launchWasmModule(atPath: bundled, machineId: machineId)
-            } else {
-                delegate?.runnerDidReceiveError?("Bundled hello-wasi-gui.wasm is missing.")
-            }
+            let msg =
+                "No .wasm module selected. Set a module path or install a package with wpm."
+            delegate?.runnerDidReceiveError?(msg)
+            Self.appendClientLaunchLog("error: \(msg)\n")
         default:
+            // Prefer installed deb path (above). Otherwise fail closed.
             _ = launchBundledExecutable(names: [clientId], clientKey: clientId)
         }
     }

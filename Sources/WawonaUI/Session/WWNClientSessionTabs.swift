@@ -72,6 +72,15 @@ final class WWNClientTabChromeModel: ObservableObject {
     var onNewTab: (() -> Void)?
     var onRequestRefreshPreviews: (() -> Void)?
 
+    /// Terminal-only sessions keep top chrome. Wayland clients use sidebar Tab Overview.
+    var showsTerminalChrome: Bool {
+        guard !tabs.isEmpty else { return false }
+        return tabs.allSatisfy { tab in
+            let t = tab.segmentedTitle.lowercased()
+            return t == "terminal" || t == "shell"
+        }
+    }
+
     func toggleExpose() {
         overviewOpen.toggle()
         if overviewOpen {
@@ -278,7 +287,9 @@ struct WWNClientSessionTabBarRootView: View {
             Color.clear
                 .allowsHitTesting(false)
 
-            if !model.tabs.isEmpty && !model.overviewOpen {
+            // Wayland compositor: no floating tab / toolbar chrome (sidebar
+            // Tab Overview + Focus). Keep bar only when every tab is Terminal.
+            if !model.tabs.isEmpty && !model.overviewOpen && model.showsTerminalChrome {
                 Group {
                     if #available(iOS 14, tvOS 14, *) {
                         WWNClientTabBar(model: model)
@@ -1172,7 +1183,7 @@ public final class WWNClientTabChromeController: NSObject {
     /// Matches the pass-through hit band so Wayland pixels start below it.
     @objc public var contentTopReserve: CGFloat {
         let hidden = passThrough?.isHidden ?? true
-        if hidden || model.tabs.isEmpty {
+        if hidden || model.tabs.isEmpty || !model.showsTerminalChrome {
             return 0
         }
         return WWNTabBarSizingPolicy.barHeight + 16

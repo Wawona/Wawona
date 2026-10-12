@@ -29,13 +29,19 @@ public final class MetalPresenter {
     }
 
     public func setPreferredMode(width: Int, height: Int, refreshMillihz: UInt32 = 60_000) {
+        // Nested weston/niri copy the first configure / wl_output.mode. A
+        // 0x0 preferred mode blanks the parent session and does not recover.
+        guard width >= 1, height >= 1 else { return }
         IlandDrmBindings.setPreferredMode(UInt32(width), UInt32(height), refreshMillihz)
         layer?.drawableSize = CGSize(width: width, height: height)
     }
 
     public func resize(_ size: CGSize) {
         guard let layer else { return }
+        // Late UIViewRepresentable mounts often layout at 0x0 first. Keep
+        // frame in sync but never publish a zero preferred mode.
         layer.frame = CGRect(origin: .zero, size: size)
+        guard size.width >= 1, size.height >= 1 else { return }
         let scale = layer.contentsScale > 0 ? layer.contentsScale : 1
         layer.drawableSize = CGSize(width: size.width * scale, height: size.height * scale)
         setPreferredMode(width: Int(layer.drawableSize.width), height: Int(layer.drawableSize.height))

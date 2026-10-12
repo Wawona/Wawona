@@ -219,16 +219,10 @@ public final class WWNRelay: NSObject {
                     ]
                 )
             }
-            #endif
-            #if os(iOS)
-            let machineId = profile.machineId
-            DispatchQueue.main.async {
-                NotificationCenter.default.post(
-                    name: .WWNRelayGuestConsoleNeeded,
-                    object: nil,
-                    userInfo: ["machineId": machineId, "source": "relay"]
-                )
-            }
+            // Do not auto-present Guest Console here. On iOS a fullScreenCover
+            // tears down CompositorHostView (deinit → IlandPresenter nil) and
+            // Mode A SHM present dies after the first frame. Session surface
+            // owns the pixels; open Guest Console only when the user asks.
             #endif
         }
         return true
@@ -405,12 +399,13 @@ public final class WWNRelay: NSObject {
         let stride = Int32(srcW) * 4
         let ok = pixels.withUnsafeMutableBufferPointer { buf in
             guard let base = buf.baseAddress else { return false }
+            // Guest SHM is Wayland top-down; Apple Metal needs V remap.
             return presenter.presentBGRAPixels(
                 base,
                 width: Int32(srcW),
                 height: Int32(srcH),
                 stride: stride,
-                bottomUp: false
+                bottomUp: true
             )
         }
         if ok {

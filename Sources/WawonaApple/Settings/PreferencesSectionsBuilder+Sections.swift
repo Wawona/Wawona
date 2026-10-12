@@ -13,13 +13,18 @@ extension WWNPreferencesSectionsBuilder {
         let fields = Set(GlobalSettingsCatalog.visibleFields(in: .about, for: host))
         var items: [WWNSettingItem] = []
 
+        // Website sits under the logo/title (see `headerRow` + `AboutHeader` url).
         let header = WWNSettingItem.item(
             title: "Wawona",
             key: "AboutHeader",
             type: .WSettingHeader,
             default: nil,
-            desc: "A Wayland Compositor for macOS, iOS & Android"
+            desc: "A Universal Wayland Compositor"
         )
+        if fields.contains(.aboutWebsite) {
+            header.urlString = "https://wawona.io"
+            header.buttonTitle = "Visit"
+        }
         items.append(header)
 
         if fields.contains(.aboutVersion), let row = item(for: .aboutVersion) {
@@ -31,44 +36,50 @@ extension WWNPreferencesSectionsBuilder {
         if fields.contains(.aboutPlatform), let row = item(for: .aboutPlatform) {
             items.append(row)
         }
-        if fields.contains(.aboutWebsite), let row = item(for: .aboutWebsite) {
-            items.append(row)
-        }
-        if fields.contains(.aboutAuthor), let row = item(for: .aboutAuthor) {
-            items.append(row)
-        }
 
-        // Social / portfolio rows (same URLs and marks as the ObjC About table).
+        let copyLogs = button(
+            "Copy Logs",
+            "CopyRecentLogs",
+            "Copy Wawona version, host OS, and recent logs."
+        )
+        copyLogs.actionBlock = {
+            WWNDiagnosticReport.copyRecentLogs(machineOnly: false)
+        }
+        items.append(copyLogs)
+
+        // Author + portfolio are one person / one site.
         if fields.contains(.aboutAuthor) {
-            items.append(contentsOf: [
+            items.append(
                 link(
-                    "Portfolio",
+                    "Alex Spaulding",
                     "https://aspauldingcode.com",
-                    "Visit Website",
-                    iconURL: "https://aspauldingcode.com/favicon.ico"
-                ),
+                    "Visit",
+                    iconURL: "https://github.com/aspauldingcode.png?size=160"
+                )
+            )
+            items.append(contentsOf: [
                 link(
                     "GitHub",
                     "https://github.com/aspauldingcode",
-                    "View GitHub Profile",
+                    "Profile",
                     iconURL: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
                 ),
                 link(
                     "X",
                     "https://x.com/aspauldingcode",
-                    "Follow on X",
+                    "Follow",
                     iconURL: "https://x.com/favicon.ico"
                 ),
                 link(
                     "LinkedIn",
                     "https://www.linkedin.com/in/aspauldingcode/",
-                    "Connect on LinkedIn",
+                    "Connect",
                     iconURL: "https://upload.wikimedia.org/wikipedia/commons/c/ca/LinkedIn_logo_initials.png"
                 ),
                 link(
                     "Ko-fi",
                     "https://ko-fi.com/aspauldingcode",
-                    "Buy me a coffee",
+                    "Support",
                     iconURL: "https://ko-fi.com/android-icon-192x192.png"
                 ),
             ])
@@ -103,18 +114,17 @@ extension WWNPreferencesSectionsBuilder {
         return inventory.enumerated().map { index, pkg in
             let name = (pkg["name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "Package"
             let version = pkg["version"] as? String ?? ""
-            let role = pkg["role"] as? String ?? ""
+            // Line 0 = row subtitle (role). Extra lines = info sheet only.
+            let role = (pkg["role"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                ?? ""
             let url = pkg["url"] as? String ?? ""
             let license = pkg["license"] as? String ?? ""
-            var desc = role
-            if !license.isEmpty {
-                desc = desc.isEmpty ? "License: \(license)" : "\(desc)\nLicense: \(license)"
-            }
-            if !url.isEmpty {
-                desc = desc.isEmpty ? url : "\(desc)\n\(url)"
-            }
+            var lines: [String] = []
+            if !role.isEmpty { lines.append(role) }
+            if !license.isEmpty { lines.append("License: \(license)") }
+            if !url.isEmpty { lines.append(url) }
             let key = "Dependency.\(index).\(name)"
-            return info(name, key, version, desc)
+            return info(name, key, version, lines.joined(separator: "\n"))
         }
     }
 

@@ -14,16 +14,10 @@ struct WWNSettingsSectionView: View {
     let section: WWNPreferencesSection
     @ObservedObject var model: WWNSettingsValueModel
 
-    @State private var passwordItem: WWNSettingItem?
-    @State private var passwordText = ""
-    @State private var passwordRevealed = false
-
     var body: some View {
         if section.accessibilityIdentifier == "wwn.settings.environment" {
-            WawonaBackport<Any>.navigation {
-                EnvironmentVariablesView(preferences: WawonaPreferences.shared, perMachine: false)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            EnvironmentVariablesView(preferences: WawonaPreferences.shared, perMachine: false)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             Form {
                 if section.accessibilityIdentifier == "wwn.settings.desktop" {
@@ -31,14 +25,8 @@ struct WWNSettingsSectionView: View {
                 } else {
                     Section {
                         ForEach(Array(section.items.enumerated()), id: \.offset) { _, item in
-                            WWNSettingsRowView(
-                                item: item,
-                                model: model,
-                                onPasswordEdit: { passwordItem = $0 }
-                            )
-                            // Keep a separator after every row, including after
-                            // an iOS split-detail restoration.
-                            .backport.visibleRowSeparator()
+                            WWNSettingsRowView(item: item, model: model)
+                                .backport.visibleRowSeparator()
                         }
                     }
                 }
@@ -52,14 +40,6 @@ struct WWNSettingsSectionView: View {
             #if os(iOS) || os(visionOS)
             .onDisappear { WWNHostKeyboard.dismiss() }
             #endif
-            .sheet(isPresented: Binding(
-                get: { passwordItem != nil },
-                set: { if !$0 { passwordItem = nil } }
-            )) {
-                if let item = passwordItem {
-                    passwordSheet(for: item)
-                }
-            }
         }
     }
 
@@ -71,12 +51,8 @@ struct WWNSettingsSectionView: View {
         if !desktopItems.isEmpty {
             Section {
                 ForEach(Array(desktopItems.enumerated()), id: \.offset) { _, item in
-                    WWNSettingsRowView(
-                        item: item,
-                        model: model,
-                        onPasswordEdit: { passwordItem = $0 }
-                    )
-                    .backport.visibleRowSeparator()
+                    WWNSettingsRowView(item: item, model: model)
+                        .backport.visibleRowSeparator()
                 }
             } header: {
                 Text("Desktop")
@@ -85,12 +61,8 @@ struct WWNSettingsSectionView: View {
         if !lockItems.isEmpty {
             Section {
                 ForEach(Array(lockItems.enumerated()), id: \.offset) { _, item in
-                    WWNSettingsRowView(
-                        item: item,
-                        model: model,
-                        onPasswordEdit: { passwordItem = $0 }
-                    )
-                    .backport.visibleRowSeparator()
+                    WWNSettingsRowView(item: item, model: model)
+                        .backport.visibleRowSeparator()
                 }
             } header: {
                 Text("Lock Screen")
@@ -103,57 +75,6 @@ struct WWNSettingsSectionView: View {
         let title = item.title.lowercased()
         return key.contains("lockscreen") || title.contains("lock screen")
     }
-
-    private func passwordSheet(for item: WWNSettingItem) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(model.itemTitle(item))
-                .font(.headline)
-            if !model.itemDescription(item).isEmpty {
-                Text(model.itemDescription(item))
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            HStack {
-                if passwordRevealed {
-                    WawonaTextField("Enter a Password...", text: $passwordText)
-                        .textFieldStyle(.roundedBorder)
-                } else {
-                    SecureField("Enter a Password...", text: $passwordText)
-                        .textFieldStyle(.roundedBorder)
-                }
-                WawonaButton {
-                    passwordRevealed.toggle()
-                } label: {
-                    Image(systemName: passwordRevealed ? "eye.slash" : "eye")
-                }
-                .buttonStyle(.borderless)
-                #if os(macOS)
-                .help(passwordRevealed ? "Hide password" : "Show password")
-                #endif
-            }
-            HStack {
-                Spacer()
-                WawonaButton("Cancel") {
-                    passwordItem = nil
-                }
-                #if !os(tvOS)
-                .backport.cancelShortcut()
-                #endif
-                WawonaButton("Save") {
-                    model.setPassword(passwordText, for: item)
-                    passwordItem = nil
-                }
-                #if !os(tvOS)
-                .backport.defaultShortcut()
-                #endif
-                .backport.borderedButton(prominent: true)
-            }
-        }
-        .padding(20)
-        #if os(macOS)
-        .frame(width: 420)
-        #endif
-    }
 }
 
 /// One settings row, rendered by `WWNSettingType` (same semantics as the
@@ -161,9 +82,20 @@ struct WWNSettingsSectionView: View {
 private struct WWNSettingsRowView: View {
     let item: WWNSettingItem
     @ObservedObject var model: WWNSettingsValueModel
-    var onPasswordEdit: (WWNSettingItem) -> Void = { _ in }
     @State private var showingHelp = false
     @State private var numberText = ""
+
+    /// iOS / tvOS / visionOS: text and password open a push editor (Settings.app).
+    /// macOS keeps inline fields (and a push password editor).
+    private var usesPushTextEditor: Bool {
+        #if os(macOS)
+        false
+        #else
+        true
+        #endif
+    }
+
+    private var usesPushPasswordEditor: Bool { true }
 
     private var title: String { model.itemTitle(item) }
     private var desc: String { model.itemDescription(item) }
@@ -175,14 +107,21 @@ private struct WWNSettingsRowView: View {
         }
         return desc
     }
+    /// One-line subtitle: first non-empty desc line, capped.
     private var compactDescription: String {
-        let normalized = desc.split(whereSeparator: \.isWhitespace).joined(separator: " ")
-        guard normalized.count <= 88 else { return "" }
-        return normalized
+        let first = desc
+            .split(separator: "\n", omittingEmptySubsequences: true)
+            .first
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            ?? ""
+        guard !first.isEmpty, first.count <= 88 else { return "" }
+        return first
     }
     private var hasDetailedHelp: Bool {
         if item.type == .WSettingInfo {
-            return !detailedHelp.isEmpty
+            // Info circle when there is more than the one-line role preview.
+            let lines = desc.split(separator: "\n", omittingEmptySubsequences: true)
+            return lines.count > 1 || (!desc.isEmpty && compactDescription.isEmpty)
         }
         let normalized = desc.split(whereSeparator: \.isWhitespace).joined(separator: " ")
         return !desc.isEmpty && compactDescription != normalized
@@ -225,65 +164,27 @@ private struct WWNSettingsRowView: View {
     // MARK: Row layouts
 
     private var titleStack: some View {
-        HStack(alignment: .top, spacing: 6) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                if !compactDescription.isEmpty {
-                    Text(compactDescription)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                }
-            }
-            if hasDetailedHelp {
-                helpButton
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+            if !compactDescription.isEmpty {
+                Text(compactDescription)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
             }
         }
     }
 
-    @ViewBuilder
     private var helpButton: some View {
-        let button = WawonaButton {
+        WawonaButton {
             showingHelp = true
         } label: {
             Image(systemName: "info.circle")
         }
         .buttonStyle(.borderless)
         .accessibility(label: Text("Help for \(title)"))
-
-        #if os(tvOS)
-        button.alert(title, isPresented: $showingHelp) {
-            WawonaButton("OK", role: .cancel) {}
-        } message: {
-            Text(detailedHelp)
-        }
-        #else
-        button
-            #if os(macOS)
-            .help("More information")
-            #endif
-            .popover(isPresented: $showingHelp) {
-                ScrollView(.vertical) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(title)
-                            .font(.headline)
-                            .lineLimit(nil)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Text(detailedHelp)
-                            .font(.body)
-                            .foregroundColor(.secondary)
-                            .lineLimit(nil)
-                            .fixedSize(horizontal: false, vertical: true)
-                            #if !os(tvOS) && !os(watchOS)
-                            .backport.selectableText()
-                            #endif
-                    }
-                    .padding(16)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .frame(minWidth: 280, idealWidth: 360, maxWidth: 400)
-                .frame(maxHeight: 320)
-            }
+        #if os(macOS)
+        .help("More information")
         #endif
     }
 
@@ -299,24 +200,34 @@ private struct WWNSettingsRowView: View {
         .accessibility(identifier: item.accessibilityIdentifier ?? "")
     }
 
+    @ViewBuilder
     private var textRow: some View {
-        let prompt = model.textPrompt(for: item)
-        return rowLayout {
-            WawonaTextField(
-                "",
-                text: model.stringBinding(for: item),
-                prompt: prompt.isEmpty ? nil : Text(prompt)
-            )
-            .textFieldStyle(.roundedBorder)
-            .multilineTextAlignment(.trailing)
-            .backport.doneSubmitLabel()
-            .accessibility(label: Text(title))
+        if usesPushTextEditor {
+            pushValueRow(
+                preview: model.stringValue(for: item),
+                emptyPreview: "Not Set",
+                kind: .text,
+                initial: model.stringValue(for: item)
+            ) { model.setString($0, for: item) }
+        } else {
+            let prompt = model.textPrompt(for: item)
+            rowLayout {
+                WawonaTextField(
+                    "",
+                    text: model.stringBinding(for: item),
+                    prompt: prompt.isEmpty ? nil : Text(prompt)
+                )
+                .textFieldStyle(.roundedBorder)
+                .multilineTextAlignment(.trailing)
+                .backport.doneSubmitLabel()
+                .accessibility(label: Text(title))
+                .accessibility(identifier: item.accessibilityIdentifier ?? "")
+                #if os(macOS)
+                .help(desc)
+                #endif
+            }
             .accessibility(identifier: item.accessibilityIdentifier ?? "")
-            #if os(macOS)
-            .help(desc)
-            #endif
         }
-        .accessibility(identifier: item.accessibilityIdentifier ?? "")
     }
 
     private var numberRow: some View {
@@ -401,14 +312,53 @@ private struct WWNSettingsRowView: View {
         DispatchQueue.main.async { model.setNumberText(numberText, for: item) }
     }
 
+    @ViewBuilder
     private var passwordRow: some View {
-        rowLayout {
-            WawonaButton(model.hasPassword(for: item) ? "Change…" : "Set…") {
-                onPasswordEdit(item)
-            }
-            .backport.borderedButton()
-            .accessibility(identifier: item.accessibilityIdentifier ?? "")
+        if usesPushPasswordEditor {
+            pushValueRow(
+                preview: model.hasPassword(for: item) ? "••••••••" : "",
+                emptyPreview: "Not Set",
+                kind: .password,
+                initial: model.passwordValue(for: item)
+            ) { model.setPassword($0, for: item) }
+        } else {
+            EmptyView()
         }
+    }
+
+    private func pushValueRow(
+        preview: String,
+        emptyPreview: String,
+        kind: WWNSettingsTextEditorView.Kind,
+        initial: String,
+        onSave: @escaping (String) -> Void
+    ) -> some View {
+        let shown = preview.isEmpty ? emptyPreview : preview
+        return NavigationLink(destination: WWNSettingsTextEditorView(
+            title: title,
+            helpText: desc,
+            prompt: model.textPrompt(for: item),
+            kind: kind,
+            initialValue: initial,
+            onSave: onSave
+        )) {
+            HStack(spacing: 12) {
+                titleStack
+                Spacer(minLength: 12)
+                Text(shown)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                if hasDetailedHelp {
+                    helpButton
+                }
+            }
+        }
+        .modifier(WWNSettingsHelpPresentationModifier(
+            title: title,
+            bodyText: detailedHelp,
+            isPresented: $showingHelp
+        ))
+        .accessibility(identifier: item.accessibilityIdentifier ?? "")
     }
 
     private var popupRow: some View {
@@ -435,7 +385,9 @@ private struct WWNSettingsRowView: View {
         let presentation = model.actionPresentation(for: item)
         return rowLayout {
             WawonaButton(presentation.title, systemImage: presentation.systemImage) {
-                DispatchQueue.main.async { item.actionBlock?() }
+                DispatchQueue.main.async {
+                    model.performButtonAction(for: item)
+                }
             }
             .backport.borderedButton()
             .accessibility(identifier: item.accessibilityIdentifier ?? "")
@@ -450,7 +402,7 @@ private struct WWNSettingsRowView: View {
             }
             titleStack
             Spacer(minLength: 12)
-            HStack(alignment: .top, spacing: 8) {
+            HStack(alignment: .center, spacing: 10) {
                 Text(model.stringValue(for: item))
                     #if !os(tvOS)
                     .backport.selectableText()
@@ -470,8 +422,16 @@ private struct WWNSettingsRowView: View {
                 .help("Copy to clipboard")
                 #endif
                 #endif
+                if hasDetailedHelp {
+                    helpButton
+                }
             }
         }
+        .modifier(WWNSettingsHelpPresentationModifier(
+            title: title,
+            bodyText: detailedHelp,
+            isPresented: $showingHelp
+        ))
         .accessibility(identifier: item.accessibilityIdentifier ?? "")
     }
 
@@ -485,7 +445,11 @@ private struct WWNSettingsRowView: View {
             Spacer(minLength: 12)
             if !item.urlString.isEmpty, let url = URL(string: item.urlString) {
                 WawonaLink(destination: url) {
-                    WawonaLabel(presentation.title, systemImage: presentation.systemImage)
+                    // Tight label: avoid Label's default icon/title gap.
+                    HStack(spacing: 4) {
+                        Text(presentation.title)
+                        Image(systemName: presentation.systemImage)
+                    }
                 }
                 .accessibility(identifier: item.accessibilityIdentifier ?? "")
             }
@@ -494,10 +458,10 @@ private struct WWNSettingsRowView: View {
     }
 
     private var headerRow: some View {
-        HStack(spacing: 14) {
+        HStack(alignment: .center, spacing: 14) {
             WawonaAboutIconView()
                 .frame(width: 56, height: 56)
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(.system(size: 20).weight(.semibold))
                 if !desc.isEmpty {
@@ -505,8 +469,19 @@ private struct WWNSettingsRowView: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
+                if !item.urlString.isEmpty, let url = URL(string: item.urlString) {
+                    let visit = item.buttonTitle.isEmpty ? "Visit" : item.buttonTitle
+                    WawonaLink(destination: url) {
+                        HStack(spacing: 4) {
+                            Text(visit)
+                            Image(systemName: "arrow.up.right.square")
+                        }
+                        .font(.caption.weight(.semibold))
+                    }
+                    .accessibility(label: Text("\(visit) wawona.io"))
+                }
             }
-            Spacer()
+            Spacer(minLength: 0)
         }
         .padding(.vertical, 4)
         .accessibility(identifier: item.accessibilityIdentifier ?? "")
@@ -520,18 +495,163 @@ private struct WWNSettingsRowView: View {
             HStack(spacing: 12) {
                 titleStack
                 Spacer(minLength: 12)
-                control()
-                    .frame(width: controlWidth, alignment: .trailing)
+                HStack(spacing: 10) {
+                    control()
+                        .frame(width: controlWidth, alignment: .trailing)
+                    if hasDetailedHelp {
+                        helpButton
+                    }
+                }
             }
         } vertical: {
             VStack(alignment: .leading, spacing: 8) {
-                titleStack
+                HStack(alignment: .top, spacing: 10) {
+                    titleStack
+                    Spacer(minLength: 0)
+                    if hasDetailedHelp {
+                        helpButton
+                    }
+                }
                 control()
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
         }
+        .modifier(WWNSettingsHelpPresentationModifier(
+            title: title,
+            bodyText: detailedHelp,
+            isPresented: $showingHelp
+        ))
     }
 }
+
+/// Attach sheet / popover / alert for the info button.
+private struct WWNSettingsHelpPresentationModifier: ViewModifier {
+    let title: String
+    let bodyText: String
+    @Binding var isPresented: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        #if os(tvOS)
+        content.alert(title, isPresented: $isPresented) {
+            WawonaButton("OK", role: .cancel) {}
+        } message: {
+            Text(bodyText)
+        }
+        #elseif os(macOS)
+        content.popover(isPresented: $isPresented) {
+            WWNSettingsHelpSheet(title: title, bodyText: bodyText)
+                .frame(minWidth: 280, idealWidth: 360, maxWidth: 420)
+                .frame(maxHeight: 360)
+        }
+        #else
+        content.sheet(isPresented: $isPresented) {
+            WWNSettingsHelpSheet(title: title, bodyText: bodyText)
+                .modifier(WWNSettingsHelpSheetChrome())
+        }
+        #endif
+    }
+}
+
+/// Compact About / Dependencies help: bottom sheet (iOS) or popover (macOS).
+private struct WWNSettingsHelpSheet: View {
+    let title: String
+    let bodyText: String
+    @Environment(\.presentationMode) private var presentationMode
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            #if os(iOS) || os(visionOS)
+            HStack {
+                Text(title)
+                    .font(.headline)
+                Spacer()
+                WawonaButton("Done") {
+                    presentationMode.wrappedValue.dismiss()
+                }
+            }
+            #else
+            Text(title)
+                .font(.headline)
+            #endif
+            ScrollView(.vertical) {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(Array(paragraphs.enumerated()), id: \.offset) { _, paragraph in
+                        if let url = URL(string: paragraph),
+                           let scheme = url.scheme?.lowercased(),
+                           scheme == "http" || scheme == "https" {
+                            WawonaLink(destination: url) {
+                                Text(paragraph)
+                                    .font(.body)
+                                    .multilineTextAlignment(.leading)
+                            }
+                        } else {
+                            Text(paragraph)
+                                .font(.body)
+                                .foregroundColor(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                                #if !os(tvOS) && !os(watchOS)
+                                .backport.selectableText()
+                                #endif
+                        }
+                    }
+                    ForEach(embeddedLinks, id: \.absoluteString) { url in
+                        WawonaLink(destination: url) {
+                            HStack(spacing: 4) {
+                                Text(url.absoluteString)
+                                Image(systemName: "arrow.up.right.square")
+                            }
+                            .font(.footnote)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var paragraphs: [String] {
+        bodyText
+            .split(separator: "\n", omittingEmptySubsequences: true)
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
+    /// URLs mentioned inside prose lines (not already a whole-line link).
+    private var embeddedLinks: [URL] {
+        let detector = try? NSDataDetector(
+            types: NSTextCheckingResult.CheckingType.link.rawValue
+        )
+        let ns = bodyText as NSString
+        let range = NSRange(location: 0, length: ns.length)
+        let matches = detector?.matches(in: bodyText, options: [], range: range) ?? []
+        var urls: [URL] = []
+        for match in matches {
+            guard let url = match.url else { continue }
+            let whole = paragraphs.contains(where: { $0 == url.absoluteString })
+            if !whole { urls.append(url) }
+        }
+        return urls
+    }
+}
+
+#if os(iOS) || os(visionOS)
+/// Fit-to-content bottom sheet when the OS allows custom detents.
+private struct WWNSettingsHelpSheetChrome: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 16.0, visionOS 1.0, *) {
+            content
+                .presentationDetents([.height(220), .medium])
+                .presentationDragIndicator(.visible)
+        } else {
+            content
+        }
+    }
+}
+#endif
+
 
 /// The iOS settings table retains the same leading identity icons as its
 /// UIKit counterpart.  A symbol placeholder reserves the row geometry while

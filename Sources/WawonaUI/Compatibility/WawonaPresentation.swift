@@ -100,6 +100,50 @@ extension WawonaBackport where Content: View {
         }
     }
 
+    /// Global Settings dismiss. Trailing control only (right edge).
+    ///
+    /// - **iOS / iPadOS / visionOS:** plain `xmark` on `.topBarTrailing`
+    ///   (iOS 13: `navigationBarItems` trailing). Never put SF Symbols in
+    ///   `.cancellationAction` / `.confirmationAction` on iOS 26 (Liquid Glass
+    ///   doubles close/done).
+    /// - **macOS / tvOS:** system `Done` text on `.confirmationAction` (HIG).
+    @ViewBuilder
+    @MainActor
+    func settingsCloseAction(onClose: @escaping () -> Void) -> some View {
+        #if os(macOS) || os(tvOS)
+        if #available(macOS 11.0, tvOS 14.0, *) {
+            content.toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done", action: onClose)
+                        .accessibility(identifier: "wwn.settings.close")
+                }
+            }
+        } else {
+            content
+        }
+        #elseif os(iOS) || os(visionOS)
+        if #available(iOS 26.0, visionOS 26.0, *) {
+            content.toolbar {
+                SettingsCloseToolbarIOS26(onClose: onClose)
+            }
+        } else if #available(iOS 14.0, *) {
+            content.toolbar {
+                SettingsCloseToolbarIOS14(onClose: onClose)
+            }
+        } else {
+            content.navigationBarItems(
+                trailing: Button(action: onClose) {
+                    Image(systemName: "xmark")
+                }
+                .accessibility(label: Text("Close"))
+                .accessibility(identifier: "wwn.settings.close")
+            )
+        }
+        #else
+        content
+        #endif
+    }
+
     /// Per-machine Add/Edit sheet chrome. One leading X, one trailing checkmark.
     /// Do **not** use `.cancellationAction` / `.confirmationAction` with custom
     /// SF Symbols on iOS 26: Liquid Glass also vends system close/done there,
@@ -170,6 +214,37 @@ extension WawonaBackport where Content: View {
 }
 
 #if os(iOS) || os(visionOS)
+/// Trailing Settings close. Plain SF Symbol only (matches machine-editor chrome).
+@available(iOS 26.0, visionOS 26.0, *)
+private struct SettingsCloseToolbarIOS26: ToolbarContent {
+    let onClose: () -> Void
+
+    var body: some ToolbarContent {
+        ToolbarItem(placement: .topBarTrailing) {
+            Button(action: onClose) {
+                Image(systemName: "xmark")
+            }
+            .accessibility(label: Text("Close"))
+            .accessibility(identifier: "wwn.settings.close")
+        }
+    }
+}
+
+@available(iOS 14.0, *)
+private struct SettingsCloseToolbarIOS14: ToolbarContent {
+    let onClose: () -> Void
+
+    var body: some ToolbarContent {
+        ToolbarItem(placement: .topBarTrailing) {
+            Button(action: onClose) {
+                Image(systemName: "xmark")
+            }
+            .accessibility(label: Text("Close"))
+            .accessibility(identifier: "wwn.settings.close")
+        }
+    }
+}
+
 /// Default navigation toolbar: system sizes/spacing. Plain SF Symbols only.
 /// No custom circle fill, glassProminent, font weight, or sharedBackground hacks.
 @available(iOS 26.0, visionOS 26.0, *)
@@ -381,8 +456,8 @@ extension WawonaBackport where Content: View {
     }
 
     @ViewBuilder func sidebarWidth() -> some View {
-        #if os(macOS) || os(iOS)
-        if #available(iOS 16.0, macOS 13.0, *) {
+        #if os(macOS) || os(iOS) || os(visionOS)
+        if #available(iOS 16.0, macOS 13.0, visionOS 1.0, *) {
             content.navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 300)
         } else { content }
         #else

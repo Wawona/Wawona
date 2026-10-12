@@ -128,6 +128,57 @@ public final class WWNMachineProfileStore: NSObject {
         loadProfiles().first { $0.machineId == machineId }
     }
 
+    /// Lab AUTO_START: synthesize a Mode A StaticCpu VM when prefs injection is
+    /// wiped by cfprefsd. Prefer the signed embed in the `.app` (same as
+    /// `RelaySpec.guestResources`), then Application Support staging.
+    /// Prefers 16k when that guest tree is present.
+    @objc(labSynthesizeStaticCpuProfileIfGuestStaged:)
+    public static func labSynthesizeStaticCpuProfileIfGuestStaged(
+        machineId: String
+    ) -> WWNMachineProfile? {
+        guard !machineId.isEmpty else { return nil }
+        let support = FileManager.default.urls(
+            for: .applicationSupportDirectory, in: .userDomainMask
+        ).first
+        let guestsRoot = (support?.path ?? "") + "/Wawona/guests"
+        let variant: String = {
+            let fm = FileManager.default
+            let bundle = Bundle.main
+            for v in ["16k", "4k"] {
+                let name = "wawona-nixos-guest-\(v)"
+                if let bundled = bundle.path(forResource: name, ofType: nil) {
+                    let manifest = (bundled as NSString)
+                        .appendingPathComponent("manifest.json")
+                    if fm.isReadableFile(atPath: manifest) { return v }
+                }
+                let staged = guestsRoot + "/\(name)/manifest.json"
+                if fm.isReadableFile(atPath: staged) { return v }
+            }
+            return ""
+        }()
+        guard !variant.isEmpty else { return nil }
+        let p = WWNMachineProfile()
+        p.machineId = machineId
+        p.name = "Lab StaticCpu \(variant)"
+        p.type = "virtual_machine"
+        p.favorite = true
+        p.vmSettings = [
+            "guestVariant": variant,
+            "memoryMB": 2048,
+            "diskGiB": 8,
+            "maxDiskGiB": 64,
+            "provider": "relay",
+            "vmIdentifier": machineId,
+        ]
+        _ = upsertProfile(p)
+        NSLog(
+            "WWN_AUTO_START_MACHINE: lab-synthesized %@ guest=%@",
+            machineId,
+            variant
+        )
+        return p
+    }
+
     @objc(applyMachineToRuntimePrefs:)
     public static func applyMachineToRuntimePrefs(_ profile: WWNMachineProfile) {
         _ = profile
@@ -154,14 +205,42 @@ public final class WWNMachineProfileStore: NSObject {
 
     @objc(resolvedShakeToCloseForProfile:)
     public static func resolvedShakeToClose(for profile: WWNMachineProfile?) -> Bool {
-        _ = profile
-        return false
+        let global =
+            UserDefaults.standard.object(forKey: "wawona.pref.shakeToCloseEnabled") as? Bool
+            ?? UserDefaults.standard.object(forKey: "ShakeToCloseEnabled") as? Bool
+            ?? true
+        if let override = profile?.runtimeOverrides["shakeToCloseEnabled"] as? Bool {
+            return override
+        }
+        return global
     }
 
+    @objc public static func resolvedShakeToCloseActive() -> Bool {
+        guard let id = activeMachineId(),
+              let active = profile(byId: id)
+        else {
+            return resolvedShakeToClose(for: nil)
+        }
+        return resolvedShakeToClose(for: active)
+    }
+
+    /// iPhone/iPad: edge swipe opens the Machines sidebar (not session exit).
+    /// watchOS keeps swipe-back-to-exit via Watch UI.
     @objc(resolvedSwipeBackToCloseForProfile:)
     public static func resolvedSwipeBackToClose(for profile: WWNMachineProfile?) -> Bool {
+        #if os(watchOS)
+        let global =
+            UserDefaults.standard.object(forKey: "wawona.pref.swipeBackToCloseEnabled") as? Bool
+            ?? UserDefaults.standard.object(forKey: "SwipeBackToCloseEnabled") as? Bool
+            ?? true
+        if let override = profile?.runtimeOverrides["swipeBackToCloseEnabled"] as? Bool {
+            return override
+        }
+        return global
+        #else
         _ = profile
-        return true
+        return false
+        #endif
     }
 
     @objc(resolvedResizeDisplayForVirtualKeyboardForProfile:)

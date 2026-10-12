@@ -19,13 +19,17 @@ final class IlandPresentEngine {
         self.layer = layer
         self.device = dev
         layer.device = dev
+        // SDR host present by default. Do not force rgba16Float / EDR from
+        // Settings Color Operations. Clients negotiate via wp_color_manager_v1;
+        // Metal EDR only follows HDR content (see maybeEnableEDRForHDRContent).
         layer.pixelFormat = .bgra8Unorm
         layer.framebufferOnly = false
         layer.isOpaque = false
-        // EDR may raise the layer to rgba16Float. Apply that before makePipeline
-        // so colorAttachments match nextDrawable (mismatch drew solid green junk
-        // with ColorOperations/HDR on).
-        Self.applyEDRPreferences(to: layer)
+        #if !os(tvOS)
+        if #available(iOS 16.0, macOS 14.0, visionOS 1.0, *) {
+            layer.wantsExtendedDynamicRangeContent = false
+        }
+        #endif
         guard let queue = dev.makeCommandQueue(),
               let pipeline = IlandMetalPipeline.makePipeline(device: dev, pixelFormat: layer.pixelFormat)
         else { return nil }
@@ -42,11 +46,9 @@ final class IlandPresentEngine {
         publishPreferredModeFromLayer()
     }
 
-    #if os(macOS)
     func hostGeometryDidChange() {
         syncPreferredModeFromLayer()
     }
-    #endif
 
     func presentIOSurface(_ surface: IOSurface, crtcID: UInt32, framebufferID: UInt32) {
         #if WWN_MODE_B
@@ -84,6 +86,8 @@ final class IlandPresentEngine {
             return
         }
 
+        maybeEnableEDRForHDRContent(sourceFormat: source.pixelFormat)
+        // Top-down DRM/IOSurface → Metal V remap (bottomUp UV).
         draw(source: source, drawable: drawable, bottomUp: true, contentRect: vector_float4(0, 0, 1, 1)) {
             IlandDrmBindings.completePageFlip(crtcID, framebufferID)
         }
@@ -126,6 +130,7 @@ final class IlandPresentEngine {
             Float(normalizedContentRect.size.width),
             Float(normalizedContentRect.size.height)
         )
+        maybeEnableEDRForHDRContent(sourceFormat: source.pixelFormat)
         draw(source: source, drawable: drawable, bottomUp: bottomUpRows, contentRect: rect, onComplete: nil)
         return true
     }
@@ -198,7 +203,8 @@ final class IlandPresentEngine {
         }
 
         encoder.setRenderPipelineState(pipeline)
-        // Same uniforms on macOS Mode A: SHM clients (weston-terminal) need Y-flip.
+        // bottomUp=true → Metal UV map for Wayland top-down rows (row0=top).
+        // bottomUp=false → nested weston GL already Y-corrected for Wayland.
         var bottomUpFlag: UInt32 = bottomUp ? 1 : 0
         encoder.setVertexBytes(&bottomUpFlag, length: MemoryLayout<UInt32>.size, index: 0)
         var rect = contentRect
@@ -263,24 +269,33 @@ final class IlandPresentEngine {
         _ = surface
     }
 
-    private func configureEDR(on layer: CAMetalLayer) {
-        Self.applyEDRPreferences(to: layer)
-    }
-
-    private static func applyEDRPreferences(to layer: CAMetalLayer) {
+    /// Enable Metal EDR only when the presented buffer is an HDR pixel format
+    /// and Settings still allows color operations. Never force EDR for SDR
+    /// clients just because Color Operations is on.
+    func maybeEnableEDRForHDRContent(sourceFormat: MTLPixelFormat) {
         #if !SWIFT_PACKAGE && !os(tvOS)
-        let hdr = WWNPreferencesManager.sharedManager().colorOperations()
-        if hdr {
-            if #available(iOS 16.0, macOS 14.0, visionOS 1.0, *) {
-                layer.wantsExtendedDynamicRangeContent = true
-                layer.pixelFormat = .rgba16Float
+        let allow = WWNPreferencesManager.sharedManager().colorOperations()
+        let isHDR: Bool = {
+            switch sourceFormat {
+            case .rgba16Float, .rgba32Float, .bgr10_xr, .bgr10_xr_srgb, .bgra10_xr, .bgra10_xr_srgb:
+                return true
+            default:
+                return false
+            }
+        }()
+        if #available(iOS 16.0, macOS 14.0, visionOS 1.0, *) {
+            let wantEDR = allow && isHDR
+            if layer.wantsExtendedDynamicRangeContent != wantEDR {
+                layer.wantsExtendedDynamicRangeContent = wantEDR
+            }
+            if wantEDR {
                 if let cs = CGColorSpace(name: CGColorSpace.extendedLinearSRGB) {
                     layer.colorspace = cs
                 }
             }
         }
         #else
-        _ = layer
+        _ = sourceFormat
         #endif
     }
 }

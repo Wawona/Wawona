@@ -46,7 +46,7 @@ struct WWNMachinesGridViewModern: View {
   var filterTagID: String? = nil
   var onClearTagFilter: (() -> Void)? = nil
 
-  @WawonaStateObject private var model = WWNMachinesViewModel()
+  @ObservedObject private var model = WWNMachinesViewModel.shared
   @ObservedObject private var tagStore = WWNMachineTagStore.shared
   @State private var editorDestination: MachineEditorDestination?
   @State private var searchQuery = ""
@@ -1591,7 +1591,7 @@ struct WWNMachinesGridViewLegacy: View {
   var filterTagID: String? = nil
   var onClearTagFilter: (() -> Void)? = nil
 
-  @WawonaStateObject private var model = WWNMachinesViewModel()
+  @ObservedObject private var model = WWNMachinesViewModel.shared
   @ObservedObject private var tagStore = WWNMachineTagStore.shared
   @State private var editorDestination: MachineEditorDestination?
   @State private var searchQuery = ""

@@ -5,10 +5,12 @@ import AppKit
 import UIKit
 #endif
 
-/// Shared Settings look for Wawona Global Settings hubs.
+/// Settings.app-style colored icon tiles (General hub look).
 ///
-/// Targets the same visual language as Settings.app rows (colored rounded
-/// icon tile + title). Used by in-app Global Settings chrome. OS PrefPane /
+/// Not used by the in-app Global Settings sidebar. That column matches
+/// Machines home (`List(selection:)` + tinted SF Symbol `WawonaLabel`) so
+/// iOS 26 sidebar Liquid Glass stays consistent. Keep this helper only for
+/// surfaces that intentionally mimic Settings.app rows. OS PrefPane /
 /// Settings.bundle hosts are retired (`wawona-global-settings-exclusive`).
 public enum WawonaSettingsHubChrome {
     public static let iconTileSize: CGFloat = 29

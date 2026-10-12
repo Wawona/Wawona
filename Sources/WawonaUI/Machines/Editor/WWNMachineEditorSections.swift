@@ -952,9 +952,9 @@ struct WWNMachineGraphicsEditorSection: View {
         }
         WWNEditorToggleRow("Enable DMABUF", icon: "square.on.square", isOn: $draft.dmabufEnabled)
         WWNEditorToggleRow(
-          "Enable HDR",
+          "Color Operations / HDR",
           icon: "sun.max",
-          footnote: "Color profiles and HDR via the color operations pipeline.",
+          footnote: "Allow HDR when a client negotiates wp_color_manager_v1 or presents an HDR buffer. Does not force EDR for SDR clients.",
           isOn: $draft.colorOperations
         )
       }
@@ -1032,7 +1032,9 @@ struct WWNSessionExitEditorSection: View {
     ) {
       VStack(alignment: .leading, spacing: 12) {
         WWNEditorToggleRow("Shake to Exit Machine", icon: "iphone.gen3", isOn: $draft.shakeToCloseEnabled)
+        #if os(watchOS)
         WWNEditorToggleRow("Swipe Back to Exit Machine", icon: "hand.draw", isOn: $draft.swipeBackToCloseEnabled)
+        #endif
       }
     }
   }

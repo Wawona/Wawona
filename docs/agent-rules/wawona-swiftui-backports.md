@@ -50,6 +50,9 @@ Hard rejects:
   or editor sheet xmark/checkmark (use default toolbar `Button` + SF Symbol)
 - Custom SF Symbol Cancel/Save in `.cancellationAction` /
   `.confirmationAction` on iOS 26 (system also vends close/done)
+- Global Settings dismiss: use `backport.settingsCloseAction` (trailing
+  `xmark` on iOS / iPadOS / visionOS; `Done` on macOS / tvOS). Never a
+  leading `Done` string in `.cancellationAction` for Settings close.
 
 iPhone Machines bottom search: see skill `wawona-swiftui-backports` and
 `wwn-mcp/knowledge/wawona/ios-iphone-machines-messages-chrome.md`.

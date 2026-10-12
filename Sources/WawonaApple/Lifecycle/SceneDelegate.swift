@@ -2,6 +2,25 @@
 import SwiftUI
 import UIKit
 
+#if os(iOS) || os(visionOS)
+/// Key window that surfaces shake to SwiftUI (first-responder probes miss Metal).
+private final class WWNShakeWindow: UIWindow {
+    private var lastShakeAt: TimeInterval = 0
+
+    override func motionEnded(_ motion: UIEvent.EventSubtype, with event: UIEvent?) {
+        super.motionEnded(motion, with: event)
+        guard motion == .motionShake else { return }
+        let now = ProcessInfo.processInfo.systemUptime
+        guard now - lastShakeAt > 0.8 else { return }
+        lastShakeAt = now
+        NotificationCenter.default.post(
+            name: Notification.Name("WWNDeviceDidShakeNotification"),
+            object: nil
+        )
+    }
+}
+#endif
+
 /// Scene entry. Hosts Machines SwiftUI chrome (first-launch welcome is a
 /// native SwiftUI alert, not a page). Replaces `WWNSceneDelegate.m`.
 /// Process entry is `Darwin/Sources/Main.swift` (`UIApplicationMain`);
@@ -18,7 +37,11 @@ public final class WWNSceneDelegate: UIResponder, UIWindowSceneDelegate {
     ) {
         _ = session
         guard let windowScene = scene as? UIWindowScene else { return }
+        #if os(iOS) || os(visionOS)
+        let window: UIWindow = WWNShakeWindow(windowScene: windowScene)
+        #else
         let window = UIWindow(windowScene: windowScene)
+        #endif
         self.window = window
         // Host chrome is SwiftUI. Do not insert UIKit subviews under
         // UIHostingController.view (SwiftUI runtime warning / broken hierarchy).
@@ -72,7 +95,12 @@ public final class WWNSceneDelegate: UIResponder, UIWindowSceneDelegate {
             } else {
                 setenv("WAYLAND_DISPLAY", bridge.socketName(), 1)
             }
-            guard let profile = WWNMachineProfileStore.profile(byId: mid) else {
+            guard let profile =
+                WWNMachineProfileStore.profile(byId: mid)
+                ?? WWNMachineProfileStore.labSynthesizeStaticCpuProfileIfGuestStaged(
+                    machineId: mid
+                )
+            else {
                 NSLog("WWN_AUTO_START_MACHINE: no profile %@", mid)
                 return
             }
@@ -113,8 +141,14 @@ public final class WWNSceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 
     @objc public func applyRespectSafeAreaPreference() {
+        // Compositor safe-area is owned by SwiftUI `WWNSessionSafeAreaModifier`
+        // (Respect Safe Area pref). Keep the hosting root full-window.
         guard let window, let container = compositorContainer else { return }
         container.frame = window.bounds
+        NotificationCenter.default.post(
+            name: Notification.Name("WWNRespectSafeAreaChangedNotification"),
+            object: nil
+        )
     }
 
     public func sceneDidBecomeActive(_ scene: UIScene) {

@@ -8,18 +8,22 @@ import simd
 enum IlandMetalPipeline {
     static let textureCacheMax = 16
 
-    // Mode A SHM / IOSurface: same Y-flip + content-rect uniforms on every
-    // Metal host (macOS used to ignore bottomUp and looked empty/wrong).
+    // Wayland SHM / top-down IOSurface: row0 = image top. Metal NDC y=-1 is
+    // viewport bottom, so upright present uses the `waylandTopDown` UV map
+    // (historical uniform name: bottomUp). Nested weston GL that already
+    // Y-corrected for Wayland passes bottomUp=0.
     static let shaderSource = """
     #include <metal_stdlib>
     using namespace metal;
     struct VOut { float4 pos [[position]]; float2 uv; };
     vertex VOut wwn_vs(uint vid [[vertex_id]], constant uint &bottomUp [[buffer(0)]]) {
       float2 p[4] = { float2(-1,-1), float2(1,-1), float2(-1,1), float2(1,1) };
-      float2 top[4] = { float2(0,0), float2(1,0), float2(0,1), float2(1,1) };
-      float2 bottom[4] = { float2(0,1), float2(1,1), float2(0,0), float2(1,0) };
+      // Identity UV in clip space (wrong for Wayland top-down → upside-down).
+      float2 alreadyCorrected[4] = { float2(0,0), float2(1,0), float2(0,1), float2(1,1) };
+      // Map texture top (v=0) to viewport top (ndc y=+1).
+      float2 waylandTopDown[4] = { float2(0,1), float2(1,1), float2(0,0), float2(1,0) };
       VOut o; o.pos = float4(p[vid], 0, 1);
-      o.uv = bottomUp != 0 ? bottom[vid] : top[vid]; return o;
+      o.uv = bottomUp != 0 ? waylandTopDown[vid] : alreadyCorrected[vid]; return o;
     }
     fragment float4 wwn_fs(VOut in [[stage_in]],
                            texture2d<float> tex [[texture(0)]],

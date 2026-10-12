@@ -180,7 +180,7 @@ jobs:
           APP="$(find -L "result-tvos" -type d -name '*.app' -print -quit)"
           test -n "$APP"
           ditto "$APP" "$OUT_DIR/Wawona.app"
-          export WWN_TVOS_GPU=1
+          # Store tvOS: no ANGLE/MoltenVK in product (optional-software).
           ./.github/scripts/verify-iland-graphics-bundle.sh \
             --platform "tvos" "$OUT_DIR/Wawona.app"
           true
@@ -240,6 +240,7 @@ jobs:
           true
           ./.github/scripts/verify-iland-graphics-bundle.sh \
             --platform "watchos" "$OUT_DIR/Wawona.app"
+          ./.github/scripts/verify-watchos-app-size.sh "$OUT_DIR/Wawona.app"
           true
           if [ -x "$OUT_DIR/Wawona.app/Wawona" ]; then
             if /usr/bin/strings "$OUT_DIR/Wawona.app/Wawona" | /usr/bin/grep -E 'IOMobileFramebuffer|WWN_MODE_B'; then

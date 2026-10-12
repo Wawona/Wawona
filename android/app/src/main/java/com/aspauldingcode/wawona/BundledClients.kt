@@ -57,30 +57,18 @@ data class BundledClientOption(
 
 object BundledClients {
     val all: List<BundledClientOption> = listOf(
-        BundledClientOption("wawona-shell", "Native Shell", "zsh + uutils. Optional Wayland clients install via wpm or apt", Icons.Filled.Terminal),
-        BundledClientOption("wawona-wasm", "Wawona Runtime (.wasm)", "Wayland WASI module from the filesystem (Wawona Runtime)", Icons.Filled.Apps),
-        BundledClientOption("weston-terminal", "Weston Terminal", "Terminal emulator. Uses host cursor", Icons.Filled.Terminal),
-        BundledClientOption("weston-simple-shm", "Weston Simple SHM", "Minimal shared-memory Wayland client", Icons.Filled.Dashboard),
-        BundledClientOption("weston", "Weston", "Wayland reference compositor (nested compositor)", Icons.Filled.ViewModule),
-        BundledClientOption("niri", "Niri", "Scrollable-tiling compositor (nested compositor)", Icons.Filled.ViewColumn),
-        BundledClientOption("foot", "Foot Terminal", "Lightweight Wayland terminal emulator", Icons.Filled.Create),
-        BundledClientOption("weston-flower", "Weston Flower", "Animated cairo demo (toytoolkit)", Icons.Filled.Eco),
-        BundledClientOption("kmscube", "KMS Cube", "Spinning GL cube via iland + ANGLE (userland KMS)", Icons.Filled.ViewInAr),
-        BundledClientOption("opengl-cube", "OpenGL Cube", "GLES cube via Wayland-EGL (ANGLE)", Icons.Filled.ViewInAr),
-        BundledClientOption("vkcube", "Vulkan Cube", "Vulkan API smoke test", Icons.Filled.ViewInAr),
-        BundledClientOption("weston-simple-egl", "Weston Simple EGL", "Wayland EGL demo client", Icons.Filled.Cloud),
-        BundledClientOption("weston-smoke", "Weston Smoke", "Smoke particle cairo demo", Icons.Filled.Cloud),
-        BundledClientOption("weston-clickdot", "Weston Clickdot", "Pointer click visualization demo", Icons.Filled.TouchApp),
-        BundledClientOption("weston-eventdemo", "Weston Event Demo", "Input event logging demo", Icons.Filled.Apps),
-        BundledClientOption("weston-resizor", "Weston Resizor", "Interactive resize demo", Icons.Filled.OpenWith),
-        BundledClientOption("weston-cliptest", "Weston Cliptest", "Clipping region demo", Icons.Filled.Crop),
-        BundledClientOption("weston-transformed", "Weston Transformed", "Buffer transform demo", Icons.Filled.Rotate90DegreesCcw),
-        BundledClientOption("weston-stacking", "Weston Stacking", "Subsurface stacking demo", Icons.Filled.Layers),
-        BundledClientOption("weston-dnd", "Weston DnD", "Drag-and-drop demo", Icons.Filled.ContentCut),
-        BundledClientOption("weston-image", "Weston Image", "PNG image loader demo", Icons.Filled.Image),
-        BundledClientOption("weston-scaler", "Weston Scaler", "Viewport scaler demo", Icons.Filled.ArrowUpward),
-        BundledClientOption("weston-editor", "Weston Editor", "Text editor demo", Icons.Filled.Edit),
-        BundledClientOption("weston-constraints", "Weston Constraints", "Pointer constraints demo", Icons.Filled.StackedBarChart),
+        BundledClientOption(
+            "wawona-shell",
+            "Native Shell",
+            "zsh + uutils + fastfetch. Optional Wayland clients via wpm or apt",
+            Icons.Filled.Terminal,
+        ),
+        BundledClientOption(
+            "wawona-wasm",
+            "Wawona Runtime (.wasm)",
+            "Relay WASI Runtime. Pick a .wasm module or wpm package path",
+            Icons.Filled.Apps,
+        ),
     )
 
     fun labelFor(id: String): String = when (id) {

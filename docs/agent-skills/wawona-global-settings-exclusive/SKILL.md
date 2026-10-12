@@ -10,10 +10,11 @@ Open the rule: `wawona-global-settings-exclusive` /
 
 ## Do
 
-- macOS / iOS / iPadOS / tvOS / visionOS → in-app Machines sidebar catalog
+- macOS / iOS / iPadOS / tvOS / visionOS → in-app `WWNGlobalSettingsHostView` (gear)
 - watchOS → in-app `WatchGlobalSettingsView`
 - Android → Compose `SettingsDialog` only
 - Linux → in-app libadwaita dialog
+- iOS text / password → push editor page (not sheet / inline)
 - Store prefs in the app container (`UserDefaults.standard` / SharedPreferences)
 
 ## Hard rejects

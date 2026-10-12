@@ -486,7 +486,8 @@ public struct GlobalSettingsCatalog: Sendable {
                 .universalClipboard,
                 .shakeToClose,
             ])
-            if host == .iOS || host == .watchOS || host == .visionOS || host == .android {
+            // Phone/iPad: edge swipe opens sidebar. watchOS / Android keep exit swipe.
+            if host == .watchOS || host == .android {
                 fields.append(.swipeBackToClose)
             }
             return fields
@@ -521,7 +522,7 @@ public struct GlobalSettingsCatalog: Sendable {
             return fields
         case .machines:
             var fields: [GlobalSettingsFieldID] = [.shakeToClose]
-            if host == .iOS || host == .watchOS || host == .visionOS || host == .android {
+            if host == .watchOS || host == .android {
                 fields.append(.swipeBackToClose)
             }
             fields.append(.sessionThumbnails)

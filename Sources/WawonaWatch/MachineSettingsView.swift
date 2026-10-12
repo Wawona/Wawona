@@ -185,12 +185,12 @@ struct MachineSettingsView: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                 Toggle("Enable DMABUF", isOn: dmabufEnabledBinding)
-                Toggle("Enable HDR", isOn: colorOperationsBinding)
+                Toggle("Color Operations / HDR", isOn: colorOperationsBinding)
             } else {
                 Text("GPU stack not available on watchOS (native + remote only).")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                Toggle("Enable HDR", isOn: colorOperationsBinding)
+                Toggle("Color Operations / HDR", isOn: colorOperationsBinding)
             }
         }
     }
@@ -233,7 +233,7 @@ struct MachineSettingsView: View {
             Text("Virtual Cursor: \(resolved.renderMacOSPointer ? "On" : "Off")")
             Text("Nested Cursor: \(resolved.nestedCompositorCursor)")
             Text("Auto Scale: \(resolved.autoScale ? "On" : "Off")")
-            Text("HDR: \(resolved.colorOperations ? "On" : "Off")")
+            Text("Color ops / HDR: \(resolved.colorOperations ? "Allowed" : "Off")")
             Text("Display: \(resolved.waylandDisplay)")
             Text("Input: \(resolved.inputProfile)")
             if profile.type.isSSH {

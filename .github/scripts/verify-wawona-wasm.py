@@ -58,8 +58,17 @@ def main() -> None:
     for needle in ("wasmLdflags", "-lwawona_wasm", "_wawona_wasm_run"):
         if needle not in xg:
             errors.append(f"xcodegen.nix missing {needle}")
-    if "wasmLdflags watchosDeps" not in xg or "wasmLdflags watchosSimDeps" not in xg:
-        errors.append("watchOS must link wawona-wasm (wasmLdflags watchosDeps / watchosSimDeps)")
+    watch_linked = (
+        ("wasmLdflags watchosDeps" in xg or "productKeepLdflags watchosDeps" in xg)
+        and (
+            "wasmLdflags watchosSimDeps" in xg
+            or "productKeepLdflags watchosSimDeps" in xg
+        )
+    )
+    if not watch_linked:
+        errors.append(
+            "watchOS must link wawona-wasm (productKeepLdflags / wasmLdflags watchos*)"
+        )
 
     mobile = read(MOBILE_DEPS)
     if 'buildFn "wawona-wasm"' not in mobile and '"wawona-wasm" = buildFn' not in mobile:
@@ -79,13 +88,7 @@ def main() -> None:
     if not WASM_DOC.is_file():
         errors.append("docs/wasm-wasi.md missing")
 
-    hello = ROOT / "src/resources/wasm/hello-wasi-gui.wasm"
-    if not hello.is_file() or hello.stat().st_size < 32:
-        errors.append("src/resources/wasm/hello-wasi-gui.wasm must ship (Watch and every target)")
-    android_hello = ROOT / "android/app/src/main/assets/wasm/hello-wasi-gui.wasm"
-    if not android_hello.is_file():
-        errors.append("android assets must include wasm/hello-wasi-gui.wasm")
-
+    # hello-wasi-gui is optional-software (wpm), not a product bundle resource.
     launchers = read(ROOT / "Sources/WawonaModel/ClientLauncher.swift")
     if "allowsWasmRuntime" not in launchers:
         errors.append("ClientLauncher must gate wawona-wasm with allowsWasmRuntime")
@@ -97,8 +100,6 @@ def main() -> None:
     watch_bridge = read(ROOT / "Sources/WawonaApple/Watch/WatchCompositorBridge.swift")
     if "launchWasmModuleAtPath" not in watch_bridge:
         errors.append("watch compositor must expose launchWasmModuleAtPath")
-    if "hello-wasi-gui" not in watch_bridge:
-        errors.append("watch compositor must resolve bundled hello-wasi-gui")
     if "wawona_wasm_run" not in watch_bridge:
         errors.append("watch compositor must call wawona_wasm_run (Relay Pulley)")
 

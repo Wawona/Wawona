@@ -43,4 +43,6 @@ Display/Input/Graphics. Native and shared editors use
 `backport.editorChromeActions` (plain toolbar `xmark` / `checkmark` on
 `.topBarLeading` / `.topBarTrailing`). Never put custom SF Symbol buttons in
 `.cancellationAction` / `.confirmationAction` on iOS 26 (Liquid Glass doubles
-close/done).
+close/done). Global Settings dismiss: `backport.settingsCloseAction`
+(trailing `xmark` on iOS / iPadOS / visionOS; `Done` on macOS / tvOS /
+watchOS).

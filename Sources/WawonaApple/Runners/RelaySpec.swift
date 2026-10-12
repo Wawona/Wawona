@@ -94,10 +94,25 @@ extension WWNRelay {
         var guestVariant = vmSettings["guestVariant"] as? String ?? "4k"
         if guestVariant != "4k", guestVariant != "16k" { guestVariant = "4k" }
         let guestResource = "wawona-nixos-guest-\(guestVariant)"
-        let guestDir = bundle.path(forResource: guestResource, ofType: nil) ?? ""
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
         let stateDir = (appSupport?.path ?? NSTemporaryDirectory()) + "/Wawona/relay-state"
         try? FileManager.default.createDirectory(atPath: stateDir, withIntermediateDirectories: true)
+        // Prefer the signed embed in the .app. Fall back to Application Support
+        // so lab/TF builds can stage guests without a multi-gig IPA (N16).
+        let bundledGuest = bundle.path(forResource: guestResource, ofType: nil) ?? ""
+        let stagedGuest = (appSupport?.path ?? "") + "/Wawona/guests/\(guestResource)"
+        let guestDir: String = {
+            let fm = FileManager.default
+            let bundledManifest = (bundledGuest as NSString).appendingPathComponent("manifest.json")
+            if !bundledGuest.isEmpty, fm.isReadableFile(atPath: bundledManifest) {
+                return bundledGuest
+            }
+            let stagedManifest = (stagedGuest as NSString).appendingPathComponent("manifest.json")
+            if fm.isReadableFile(atPath: stagedManifest) {
+                return stagedGuest
+            }
+            return bundledGuest
+        }()
         let manifestPath = (guestDir as NSString).appendingPathComponent("manifest.json")
         guard let data = try? Data(contentsOf: URL(fileURLWithPath: manifestPath)),
               let manifest = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {

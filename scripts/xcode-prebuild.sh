@@ -213,23 +213,8 @@ rm -f "$derived/libwawona.a"
 cp -f "$active_out/lib/libwawona.a" "$derived/libwawona.a"
 echo "Copied $derived/libwawona.a <- $active_out/lib/libwawona.a"
 
-# Apple-mobile (and any target that -force_load libniri.a) already owns one
-# Rust sysroot. -u _wawona_coreutils_main would otherwise pull a second
-# std/core from libwawona.a and fail ld with duplicate rust_eh_personality.
-# Drop those CGUs; niri's force-load satisfies the runtime symbols.
-case "${TARGET_NAME:-}" in
-  Wawona-iOS|Wawona-iPadOS|Wawona-tvOS|Wawona-visionOS|Wawona-watchOS)
-    _rust_rt_re='^(std|core|alloc|compiler_builtins|panic_abort|panic_unwind|rustc_std_workspace_core|rustc_std_workspace_alloc|rustc_std_workspace_std)-'
-    _stripped=0
-    while IFS= read -r _member; do
-      [ -n "$_member" ] || continue
-      if ar d "$derived/libwawona.a" "$_member" 2>/dev/null; then
-        _stripped=$((_stripped + 1))
-      fi
-    done < <(ar t "$derived/libwawona.a" 2>/dev/null | grep -E "$_rust_rt_re" || true)
-    echo "Stripped ${_stripped} Rust runtime CGUs from libwawona.a (niri owns std)"
-    ;;
-esac
+# Product keep-set no longer force-loads libniri.a. Keep Rust std in
+# libwawona.a so -lwawona / coreutils resolve without a second compositor archive.
 
 # Realize link-only native deps that the app links by absolute /nix/store path
 # (OTHER_LDFLAGS), but that are NOT in the Rust backend's build closure. These
@@ -238,7 +223,8 @@ esac
 LINK_DEPS=()
 case "${TARGET_NAME:-}" in
   Wawona-macOS)
-    LINK_DEPS=(kmscube)
+    # Cubes / weston / niri are optional-software, not product link deps.
+    LINK_DEPS=()
     ;;
 esac
 # Only iterate when non-empty. An empty "${LINK_DEPS[@]:-}" expands to a
@@ -379,48 +365,5 @@ if [ "$_with_zsh" = "1" ]; then
   # Apple mobile SSH CLI is libwwn-ssh-cli.a from wwn-ssh (force_loaded via
   # xcodegen store path). Never libssh-inprocess.a / OpenSSH on App Store targets.
 
-  # foot + fuzzel: Wayland client archives that each embed their own copy of the
-  # generated protocol marshalling (xdg_toplevel_interface, …). Force-loaded raw,
-  # those symbols collide with weston's (and each other's). Privatize like
-  # zsh. Merge to one .o, keep only the *_main entry global. So the
-  # protocol symbols become local and weston's copies stay authoritative.
-  # foot is linked on every Apple-mobile target; fuzzel on iOS/iPadOS/visionOS.
-  _foot_dev_attr="foot-ios"; _foot_sim_attr="foot-ios-sim"
-  _fuzzel_dev_attr="fuzzel-ios"; _fuzzel_sim_attr="fuzzel-ios-sim"
-  case "${TARGET_NAME:-}" in
-    Wawona-tvOS)
-      _foot_dev_attr="foot-tvos"; _foot_sim_attr="foot-tvos-sim"
-      _fuzzel_dev_attr=""; _fuzzel_sim_attr="" ;;
-    Wawona-watchOS)
-      _foot_dev_attr="foot-watchos"; _foot_sim_attr="foot-watchos-sim"
-      _fuzzel_dev_attr=""; _fuzzel_sim_attr="" ;;
-  esac
-  if [ "$_is_sim" = "1" ]; then
-    _foot_attr="$_foot_sim_attr"; _fuzzel_attr="$_fuzzel_sim_attr"
-  else
-    _foot_attr="$_foot_dev_attr"; _fuzzel_attr="$_fuzzel_dev_attr"
-  fi
-
-  foot_out="$("$NIX" build --no-link --print-out-paths "${_nix_flags[@]}" "$FLAKE_REF#$_foot_attr")"
-  privatize_lib "$foot_out/lib/libfoot.a" "$derived/libfoot.a" \
-    "$_arch" "$_ld_platform" "$_min_ver" \
-    _foot_main _wwn_foot_is_compat_shim
-  echo "Privatized $derived/libfoot.a (from $foot_out)"
-
-  if [ -n "$_fuzzel_attr" ]; then
-    fuzzel_out="$("$NIX" build --no-link --print-out-paths "${_nix_flags[@]}" "$FLAKE_REF#$_fuzzel_attr")"
-    privatize_lib "$fuzzel_out/lib/libfuzzel.a" "$derived/libfuzzel.a" \
-      "$_arch" "$_ld_platform" "$_min_ver" \
-      _fuzzel_main
-    echo "Privatized $derived/libfuzzel.a (from $fuzzel_out)"
-  else
-    echo "Skipping fuzzel privatize for ${TARGET_NAME:-unknown} (not linked)"
-  fi
-
-  # NOTE: phoon (wwn-phoon-rs) is intentionally NOT privatized here. It is a
-  # pure-Rust crate like niri/waypipe: Rust name-mangles every internal symbol,
-  # so the only global C symbol is phoon_main and there is nothing to collide
-  # with. It is force-loaded straight from its nix-store archive by phoonLdflags
-  # in xcodegen.nix. Running privatize_lib on it would LTO-DCE phoon_main out of
-  # the mixed native+bitcode archive.
+  # foot / fuzzel / phoon: optional-software (not product-linked).
 fi
