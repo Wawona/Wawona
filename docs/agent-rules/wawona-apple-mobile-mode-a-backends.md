@@ -32,6 +32,8 @@ uutils or implement a second SSH/zsh stack.
 - Mega `libwawona-appstore` SDK that owns every tool
 - Re-pinning uutils with `fetchFromGitHub` inside Wawona `flake.nix`
 - Raising deployment target above 13.0 for Wasmer / GhosttyKit / convenience
+- Native Shell Terminal Start as a splash only. Wire `wwn_pty` +
+  `wawona_zsh_main` + `wwn_term` + inject (`wawona-ios-native-shell`)
 
 ## Verify
 

@@ -4,7 +4,7 @@ import SwiftUI
 import UIKit
 
 /// Styled lines from `wwn_term_export`. Face: bundled DejaVuSansM Nerd Font Mono.
-private struct WawonaTerminalSpan: Identifiable {
+struct WawonaTerminalSpan: Identifiable {
   let id: Int
   let text: String
   let fg: UInt32
@@ -14,7 +14,7 @@ private struct WawonaTerminalSpan: Identifiable {
   let underline: Bool
 }
 
-private struct WawonaTerminalLine: Identifiable {
+struct WawonaTerminalLine: Identifiable {
   let id: Int
   let spans: [WawonaTerminalSpan]
 }
@@ -32,7 +32,7 @@ final class WawonaTerminalModel: ObservableObject {
   }
 }
 
-private enum WawonaTerminalSnapshot {
+enum WawonaTerminalSnapshot {
   static func lines(from data: Data) -> [WawonaTerminalLine] {
     if data.count < 4 { return [] }
     var offset = 0
@@ -110,7 +110,7 @@ private enum WawonaTerminalSnapshot {
   }
 }
 
-private struct WawonaTerminalView: View {
+struct WawonaTerminalView: View {
   @ObservedObject var model: WawonaTerminalModel
 
   var body: some View {
@@ -323,7 +323,7 @@ struct WWNIosGuestConsoleSheet: View {
           WawonaTerminalView(model: console.termModel)
           if !console.statusMessage.isEmpty {
             Text(console.statusMessage)
-              .font(.system(.caption2, design: .monospaced))
+              .font(.system(.caption, design: .monospaced))
               .foregroundColor(.orange)
               .frame(maxWidth: .infinity, alignment: .leading)
               .padding(.horizontal, 12)

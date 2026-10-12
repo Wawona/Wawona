@@ -71,6 +71,8 @@ Order: **Compositors** (weston, niri), then client types (**Terminals**,
 - Custom Command as a Wayland client option (belongs under Terminal)
 - Equating Native Shell with VM/container engines
 - Flat unsorted Wayland catalogs in the native editor (keep section order)
+- Apple-mobile Terminal Start as splash-only ("Native Shell starting").
+  Wire real shell: skill/rule `wawona-ios-native-shell`
 
 ## Legacy load
 

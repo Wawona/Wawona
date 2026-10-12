@@ -190,9 +190,13 @@ not MCP. Skill `wawona-gh`. Rule `wawona-gh`.
   `safe-subset.txt`). NOT ios_system; multicall coreutils is macOS/Android-only.
   Apple-mobile SSH = **wwn-ssh** libssh2 (never OpenSSH / NIOSSH as product).
   Store-safe `system()` = `wawona_dispatch_inprocess`. Swift is UI only for
-  these backends. Rule: `wawona-apple-mobile-mode-a-backends`. Filesystem =
-  `wawona-rootfs` (sandbox + Application Support, no chroot); "iOS containers" =
-  app sandbox, not Containerization.framework. Query `project=ios-shell`.
+  these backends. Rule: `wawona-apple-mobile-mode-a-backends`. Native Shell →
+  Terminal Start must wire `wwn_pty` + `wwn_term` + inject (never a
+  "Native Shell starting" splash). Tip `weston_terminal_main` is fake SHM
+  chrome, not the product shell. Rule/skill: `wawona-ios-native-shell`.
+  Filesystem = `wawona-rootfs` (sandbox + Application Support, no chroot);
+  "iOS containers" = app sandbox, not Containerization.framework. Query
+  `project=ios-shell`.
 - **Android Gradle JVM is JBR 21**: Android Studio and local `./gradlew` use
   the embedded JetBrains Runtime (JDK table `21`), not nixpkgs OpenJDK.
   Linux Nix uses `jetbrains.jdk-no-jcef-21`. Darwin Nix sandbox cannot

@@ -218,7 +218,7 @@ final class IosShellSession {
     private func armPump() {
         let fd = master
         guard fd >= 0 else { return }
-        let source = DispatchSource.makeReadSource(descriptor: fd, queue: queue)
+        let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
         source.setEventHandler { [weak self] in
             self?.drainMaster()
         }

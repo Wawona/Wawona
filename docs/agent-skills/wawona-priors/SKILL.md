@@ -31,6 +31,7 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-package` | Before any dependency or package compile: write LIBC, TEXT, GPU. Android is Bionic. cairo, harfbuzz, pango are not substitutes. |
 | `repo-wawona-io-catalogs` | Dual wasm/deb catalogs; GHA build vs catalog host split. |
 | `wawona-machine-types` | Machines UI: Native Shell / VM / Container. Sessions under Native Shell. |
+| `wawona-ios-native-shell` | Apple-mobile Terminal Start: real in-process zsh + term UI. Never "Native Shell starting" splash. |
 | `wawona-apple-swift` | Apple compositor Swift/SwiftUI. Always load `swiftui-pro` + `swiftui-expert-skill` first. |
 | `wawona-android-compose` | Android Kotlin/Compose. Always load `compose-agent` + `modern-jetpack-compose` first. |
 | `wawona-swiftui-backports` | iOS 13 `WawonaBackport` shims. Wins over upstream SwiftUI skill modernization. |
@@ -92,6 +93,7 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-native-over-wasm` | No wasm twin of native-all-targets CLIs |
 | `wawona-optional-software` | Unbundle Wayland clients to wasm/deb. Keep zsh, uutils, fastfetch. Debs skip App Store patches. |
 | `wawona-machine-types` | Three Machines kinds. SSH/wasm/waypipe are Native Shell sessions. |
+| `wawona-ios-native-shell` | Apple-mobile Wawona Terminal Start. No splash stub. Fake `weston_terminal_main` is not a shell. |
 | `wawona-apple-mobile-mode-a-backends` | Mode A SSH/zsh/uutils/`system()`: wwn-* owners, no Swift backends, patch budget, iOS 13 |
 
 ## Hard-won (do not re-learn)
@@ -100,6 +102,12 @@ skill, add one row. Capture flow: `wawona-learn`.
   `safe-subset.txt`), **wwn-ssh** (libssh2), **wwn-zsh**, **wawona-pty**
   dispatch. Wawona links only. No NIOSSH / ios_system product path. Rule:
   `wawona-apple-mobile-mode-a-backends`.
+- Apple-mobile Native Shell → Terminal Start must run in-process zsh
+  (`wwn_pty_session_start` + `wwn_term` + inject). Never ship
+  "Native Shell starting" as the UX. Tip `weston_terminal_main`
+  (`mobile-weston-terminal.c`) is fake SHM chrome, not a shell. User
+  saying "weston terminal" often means Wawona Terminal. Rule/skill:
+  `wawona-ios-native-shell`. RAG: `ios-native-shell-terminal.md`.
 - watchOS **always** enables Cargo `coreutils` (in-process uutils safe
   subset), same as iOS. Do not size-gate it off. Weak `wawona_coreutils_main`
   stub only on arm64_32 (`!__LP64__`); never on arm64. Stale WATCHOS-SCOPE

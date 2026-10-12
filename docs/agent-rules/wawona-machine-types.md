@@ -43,6 +43,8 @@ Other. Custom commands belong under Terminal. Shared kind helpers:
 - Offering Custom Command as a Wayland client (use Terminal session)
 - Calling the on-device shell a VM or a container
 - Flat unsorted Wayland catalogs in the native machine editor
+- Apple-mobile Terminal Start that is only a "Native Shell starting" splash
+  (rule `wawona-ios-native-shell`)
 
 ## Code pointers
 
