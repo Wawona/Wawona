@@ -25,7 +25,7 @@ demo is a separate program that links `libraries.gtk4`. Deb twin on
 ## Deb recipe shape
 
 ```text
-repo.wawona.io/pkgs/wayland/<name>/default.nix
+repo.wawona.io/catalog/deb/gui/<name>/default.nix
   → mkDebFromBins, target android|linux
   → upstream / process binary + platform substitution only
   → NEVER apple-mobile.nix / *_main rename / no-fork

@@ -744,6 +744,30 @@
         "type": "github"
       }
     },
+    "repo-wawona-io": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "wwn-toolchain": [
+          "wwn-toolchain"
+        ]
+      },
+      "locked": {
+        "lastModified": 1791826223,
+        "narHash": "sha256-Gm21Ek+6iUlrkQGxRHTw5B8gcYitESuO6PVxGC5Ytug=",
+        "owner": "Wawona",
+        "repo": "repo.wawona.io",
+        "rev": "3b59f5bbc0d10fff2ab95ded829cecb75e905ce1",
+        "type": "github"
+      },
+      "original": {
+        "owner": "Wawona",
+        "ref": "development",
+        "repo": "repo.wawona.io",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
         "android-nixpkgs": "android-nixpkgs",
@@ -753,26 +777,21 @@
         "nix-appimage": "nix-appimage",
         "nix-xcodeenvtests": "nix-xcodeenvtests",
         "nixpkgs": "nixpkgs_2",
+        "repo-wawona-io": "repo-wawona-io",
         "rust-overlay": "rust-overlay",
         "terminal": "terminal",
         "toolbar-keys": "toolbar-keys",
         "wwn-coreutils": "wwn-coreutils",
-        "wwn-fastfetch": "wwn-fastfetch",
-        "wwn-foot": "wwn-foot",
         "wwn-igetty": "wwn-igetty",
         "wwn-iland": "wwn-iland",
         "wwn-iomfb": "wwn-iomfb",
         "wwn-iowatchdog": "wwn-iowatchdog",
-        "wwn-kmscube": "wwn-kmscube",
-        "wwn-niri": "wwn-niri",
-        "wwn-phoon-rs": "wwn-phoon-rs",
         "wwn-relay": "wwn-relay",
         "wwn-ssh": "wwn-ssh",
         "wwn-swinging-bridge": "wwn-swinging-bridge",
         "wwn-toolchain": "wwn-toolchain",
         "wwn-vphone": "wwn-vphone",
         "wwn-waypipe": "wwn-waypipe",
-        "wwn-weston": "wwn-weston",
         "wwn-zsh": "wwn-zsh"
       }
     },
@@ -820,7 +839,7 @@
     "rust-overlay_3": {
       "inputs": {
         "nixpkgs": [
-          "wwn-fastfetch",
+          "wwn-iland",
           "nixpkgs"
         ]
       },
@@ -841,69 +860,6 @@
     "rust-overlay_4": {
       "inputs": {
         "nixpkgs": [
-          "wwn-foot",
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1782530211,
-        "narHash": "sha256-Zn5H2VVMaP79C+bvaUQD+SBXSKoTnURMZGiUrG00zII=",
-        "owner": "oxalica",
-        "repo": "rust-overlay",
-        "rev": "06ba695dfefc4afc513b49dfc41c4bf0dd2eaeb1",
-        "type": "github"
-      },
-      "original": {
-        "owner": "oxalica",
-        "repo": "rust-overlay",
-        "type": "github"
-      }
-    },
-    "rust-overlay_5": {
-      "inputs": {
-        "nixpkgs": [
-          "wwn-iland",
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1782530211,
-        "narHash": "sha256-Zn5H2VVMaP79C+bvaUQD+SBXSKoTnURMZGiUrG00zII=",
-        "owner": "oxalica",
-        "repo": "rust-overlay",
-        "rev": "06ba695dfefc4afc513b49dfc41c4bf0dd2eaeb1",
-        "type": "github"
-      },
-      "original": {
-        "owner": "oxalica",
-        "repo": "rust-overlay",
-        "type": "github"
-      }
-    },
-    "rust-overlay_6": {
-      "inputs": {
-        "nixpkgs": [
-          "wwn-kmscube",
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1782530211,
-        "narHash": "sha256-Zn5H2VVMaP79C+bvaUQD+SBXSKoTnURMZGiUrG00zII=",
-        "owner": "oxalica",
-        "repo": "rust-overlay",
-        "rev": "06ba695dfefc4afc513b49dfc41c4bf0dd2eaeb1",
-        "type": "github"
-      },
-      "original": {
-        "owner": "oxalica",
-        "repo": "rust-overlay",
-        "type": "github"
-      }
-    },
-    "rust-overlay_7": {
-      "inputs": {
-        "nixpkgs": [
           "wwn-waypipe",
           "nixpkgs"
         ]
@@ -922,28 +878,7 @@
         "type": "github"
       }
     },
-    "rust-overlay_8": {
-      "inputs": {
-        "nixpkgs": [
-          "wwn-weston",
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1782530211,
-        "narHash": "sha256-Zn5H2VVMaP79C+bvaUQD+SBXSKoTnURMZGiUrG00zII=",
-        "owner": "oxalica",
-        "repo": "rust-overlay",
-        "rev": "06ba695dfefc4afc513b49dfc41c4bf0dd2eaeb1",
-        "type": "github"
-      },
-      "original": {
-        "owner": "oxalica",
-        "repo": "rust-overlay",
-        "type": "github"
-      }
-    },
-    "rust-overlay_9": {
+    "rust-overlay_5": {
       "inputs": {
         "nixpkgs": [
           "wwn-zsh",
@@ -1084,52 +1019,6 @@
         "type": "github"
       }
     },
-    "wwn-fastfetch": {
-      "inputs": {
-        "nixpkgs": [
-          "nixpkgs"
-        ],
-        "rust-overlay": "rust-overlay_3",
-        "wwn-toolchain": [
-          "wwn-toolchain"
-        ]
-      },
-      "locked": {
-        "lastModified": 1787430337,
-        "narHash": "sha256-+yuvN1XST5roXAn1pcCTardAouhccQ6Tp2jhMbiAvQo=",
-        "rev": "660ac0d7249d31fe869ed7f186cc285660156490",
-        "revCount": 18,
-        "type": "tarball",
-        "url": "https://api.flakehub.com/f/pinned/Wawona/wwn-fastfetch/0.1.18%2Brev-660ac0d7249d31fe869ed7f186cc285660156490/01a02b27-2ce0-7d50-bc06-d1ed6eb484ac/source.tar.gz"
-      },
-      "original": {
-        "type": "tarball",
-        "url": "https://flakehub.com/f/Wawona/wwn-fastfetch/%2A"
-      }
-    },
-    "wwn-foot": {
-      "inputs": {
-        "nixpkgs": [
-          "nixpkgs"
-        ],
-        "rust-overlay": "rust-overlay_4",
-        "wwn-toolchain": [
-          "wwn-toolchain"
-        ]
-      },
-      "locked": {
-        "lastModified": 1787463789,
-        "narHash": "sha256-Lxqaw2H8ZWzgvlLSbxXWM5AVUtc5g00iOJH2TYWPnMw=",
-        "rev": "f5b4b65b960a1e05a98a041fc6910e11ca71fc84",
-        "revCount": 20,
-        "type": "tarball",
-        "url": "https://api.flakehub.com/f/pinned/Wawona/wwn-foot/0.1.20%2Brev-f5b4b65b960a1e05a98a041fc6910e11ca71fc84/01a02d25-b6a3-7b83-bcbd-399c71b945cf/source.tar.gz"
-      },
-      "original": {
-        "type": "tarball",
-        "url": "https://flakehub.com/f/Wawona/wwn-foot/%2A"
-      }
-    },
     "wwn-igetty": {
       "inputs": {
         "doorman": [
@@ -1168,7 +1057,7 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "rust-overlay": "rust-overlay_5",
+        "rust-overlay": "rust-overlay_3",
         "wwn-toolchain": [
           "wwn-toolchain"
         ]
@@ -1258,89 +1147,6 @@
         "type": "github"
       }
     },
-    "wwn-kmscube": {
-      "inputs": {
-        "nixpkgs": [
-          "nixpkgs"
-        ],
-        "rust-overlay": "rust-overlay_6",
-        "wwn-iland": [
-          "wwn-iland"
-        ],
-        "wwn-toolchain": [
-          "wwn-toolchain"
-        ]
-      },
-      "locked": {
-        "lastModified": 1791767669,
-        "narHash": "sha256-F/Y+Tb8lkT256DRRfbIb2GeYuAhiyC5ozLBfcjTN5CI=",
-        "owner": "Wawona",
-        "repo": "wwn-kmscube",
-        "rev": "34e8b90fb8cd5c8dd488b5452b7fb69439a1423b",
-        "type": "github"
-      },
-      "original": {
-        "owner": "Wawona",
-        "ref": "development",
-        "repo": "wwn-kmscube",
-        "type": "github"
-      }
-    },
-    "wwn-niri": {
-      "inputs": {
-        "nixpkgs": [
-          "nixpkgs"
-        ],
-        "rust-overlay": [
-          "rust-overlay"
-        ],
-        "wwn-iland": [
-          "wwn-iland"
-        ],
-        "wwn-toolchain": [
-          "wwn-toolchain"
-        ]
-      },
-      "locked": {
-        "lastModified": 1791681182,
-        "narHash": "sha256-evSpad0EwTNc3daxxScPse+NcAY3oLcopWYA0lX10tM=",
-        "owner": "Wawona",
-        "repo": "wwn-niri",
-        "rev": "6b6e302bedeb0313c15ca3a55a2d42c7bbb10422",
-        "type": "github"
-      },
-      "original": {
-        "owner": "Wawona",
-        "ref": "development",
-        "repo": "wwn-niri",
-        "type": "github"
-      }
-    },
-    "wwn-phoon-rs": {
-      "inputs": {
-        "nixpkgs": [
-          "nixpkgs"
-        ],
-        "rust-overlay": [
-          "rust-overlay"
-        ],
-        "wwn-toolchain": [
-          "wwn-toolchain"
-        ]
-      },
-      "locked": {
-        "lastModified": 1787430361,
-        "narHash": "sha256-7VOICeqFFMopHX8+bskXNQIRyMH5bChpKK15cg6K88E=",
-        "rev": "4b07265bf444d41c1a7ffe267d11aaeff7a59775",
-        "revCount": 9,
-        "type": "tarball",
-        "url": "https://api.flakehub.com/f/pinned/Wawona/wwn-phoon-rs/0.1.9%2Brev-4b07265bf444d41c1a7ffe267d11aaeff7a59775/01a02b28-3232-77d0-8ea6-5d0b1dc8682a/source.tar.gz"
-      },
-      "original": {
-        "type": "tarball",
-        "url": "https://flakehub.com/f/Wawona/wwn-phoon-rs/%2A"
-      }
-    },
     "wwn-relay": {
       "inputs": {
         "crate2nix": [
@@ -1360,11 +1166,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1791562978,
-        "narHash": "sha256-nQqAQ50sjrGPeOl1mXmEOY8Xz9JY6+k3EFHRD3FWBQQ=",
+        "lastModified": 1791788438,
+        "narHash": "sha256-N90JjysRohSX17agy3pBZq4Gg9Ix6GwVwYqnAIWWhq0=",
         "owner": "Wawona",
         "repo": "Relay",
-        "rev": "717a7659a18e2581be15fff5ec7eb71e5b276d50",
+        "rev": "4ded84b9dc822e2826a380a4f12b6222c5f02a00",
         "type": "github"
       },
       "original": {
@@ -1477,7 +1283,7 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "rust-overlay": "rust-overlay_7",
+        "rust-overlay": "rust-overlay_4",
         "wwn-iland": "wwn-iland_2",
         "wwn-ssh": [
           "wwn-ssh"
@@ -1501,43 +1307,12 @@
         "type": "github"
       }
     },
-    "wwn-weston": {
-      "inputs": {
-        "nixpkgs": [
-          "nixpkgs"
-        ],
-        "rust-overlay": "rust-overlay_8",
-        "wwn-iland": [
-          "wwn-iland"
-        ],
-        "wwn-kmscube": [
-          "wwn-kmscube"
-        ],
-        "wwn-toolchain": [
-          "wwn-toolchain"
-        ]
-      },
-      "locked": {
-        "lastModified": 1791681181,
-        "narHash": "sha256-PZri7daQxOVCcUv+6djJhlIm0LDgTHwbzufUX7pr5Go=",
-        "owner": "Wawona",
-        "repo": "wwn-weston",
-        "rev": "8e63b320b66e284064a6fd37420dabbcb08aebf3",
-        "type": "github"
-      },
-      "original": {
-        "owner": "Wawona",
-        "ref": "development",
-        "repo": "wwn-weston",
-        "type": "github"
-      }
-    },
     "wwn-zsh": {
       "inputs": {
         "nixpkgs": [
           "nixpkgs"
         ],
-        "rust-overlay": "rust-overlay_9",
+        "rust-overlay": "rust-overlay_5",
         "wwn-toolchain": [
           "wwn-toolchain"
         ]

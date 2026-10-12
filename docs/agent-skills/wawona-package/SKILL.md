@@ -100,9 +100,9 @@ Two search channels. Never one list. Store `wpm` reads `/wasm/v1` only.
 
 | Need | Where |
 |------|--------|
-| stdio and files | `wasm-packages` allowlist, Wasmtime smoke, `wasi-p1` |
+| stdio and files | `catalog/wasm/cli/<name>` `abi = wasi-p1`, Wasmtime smoke |
 | Component Model only | wrap that P1 module (`wasm-tools component new`), `wasi-p2`, Wasmtime |
-| fork, threads, sockets, TTY, toolkit | `wasinix`, Wasmer smoke, `wasix`. Not a P1 row |
+| fork, threads, sockets, TTY, toolkit | `catalog/wasm/{cli,gui,lib}` `abi = wasix`, Wasmer smoke. Not a P1 row |
 | name in `native-all-targets.txt` | stop. No wasm twin |
 | deb process | `repo.wawona.io` `mkDebFromBins`. No `apple-mobile.nix`, no `*_main` |
 
@@ -129,8 +129,8 @@ not get its own copy of those flags.
 
 Deb process packages live in `repo.wawona.io`.
 
-1. Copy `pkgs/wayland/TEMPLATE.nix` to `pkgs/wayland/<name>/default.nix`.
-2. Add one line in `pkgs/wayland/clients.nix`.
+1. Copy `pkgs/wayland/TEMPLATE.nix` to `catalog/deb/gui/<name>/default.nix` (or `catalog/deb/cli` or `catalog/deb/lib`).
+2. `builtins.readDir` is the index. Do not add a clients.nix line.
 3. Android compiler and libraries come from `pkgs/wayland/ndkLibs.nix` (`pcPath`, `cargoEnv`). Do not import `lib/androidNdk.nix` from the package. `scripts/check-wayland-ndk-imports.py` fails that import.
 4. Pack with `packProcessDeb` (`lib/packProcessDeb.nix`): pname, upstream version, homepage, files. No copied `dpkg-deb` script.
 5. Termux apt unpack stays `lib/termuxSysroot.nix` (niri pango, glib, harfbuzz). Do not fold that into `ndkLibs.nix`.

@@ -46,19 +46,6 @@
     wwn-iland.url = "github:Wawona/wwn-iland/development";
     wwn-iland.inputs.nixpkgs.follows = "nixpkgs";
     wwn-iland.inputs.wwn-toolchain.follows = "wwn-toolchain";
-    # github/development until FlakeHub rolling includes vkcube-kms (L2).
-    # Cited: docs/wwn-repo-dag.md.
-    wwn-kmscube.url = "github:Wawona/wwn-kmscube/development";
-    wwn-kmscube.inputs.nixpkgs.follows = "nixpkgs";
-    wwn-kmscube.inputs.wwn-toolchain.follows = "wwn-toolchain";
-    wwn-kmscube.inputs.wwn-iland.follows = "wwn-iland";
-    # github/development until FlakeHub rolling has hostPlatform Darwin checks.
-    # Cited: docs/wwn-repo-dag.md.
-    wwn-weston.url = "github:Wawona/wwn-weston/development";
-    wwn-weston.inputs.nixpkgs.follows = "nixpkgs";
-    wwn-weston.inputs.wwn-toolchain.follows = "wwn-toolchain";
-    wwn-weston.inputs.wwn-iland.follows = "wwn-iland";
-    wwn-weston.inputs.wwn-kmscube.follows = "wwn-kmscube";
     # github/main until FlakeHub rolling includes iOS HOME physicalize
     # (0e41745). Cited: docs/wwn-repo-dag.md.
     wwn-zsh.url = "github:Wawona/wwn-zsh/development";
@@ -87,17 +74,11 @@
     wwn-coreutils.url = "github:Wawona/wwn-coreutils/development";
     wwn-coreutils.inputs.nixpkgs.follows = "nixpkgs";
     wwn-coreutils.inputs.wwn-toolchain.follows = "wwn-toolchain";
-    wwn-foot.url = "https://flakehub.com/f/Wawona/wwn-foot/*";
-    wwn-foot.inputs.nixpkgs.follows = "nixpkgs";
-    wwn-foot.inputs.wwn-toolchain.follows = "wwn-toolchain";
-    wwn-fastfetch.url = "https://flakehub.com/f/Wawona/wwn-fastfetch/*";
-    wwn-fastfetch.inputs.nixpkgs.follows = "nixpkgs";
-    wwn-fastfetch.inputs.wwn-toolchain.follows = "wwn-toolchain";
-    # phoon (clean-room Rust moon-phase utility), in-process shell tool.
-    wwn-phoon-rs.url = "https://flakehub.com/f/Wawona/wwn-phoon-rs/*";
-    wwn-phoon-rs.inputs.nixpkgs.follows = "nixpkgs";
-    wwn-phoon-rs.inputs.wwn-toolchain.follows = "wwn-toolchain";
-    wwn-phoon-rs.inputs.rust-overlay.follows = "rust-overlay";
+    # Mode A wasm and Mode B deb, plus the in-app registry for fastfetch,
+    # phoon, weston, niri, foot, and kmscube. Not an input of wwn-toolchain.
+    repo-wawona-io.url = "github:Wawona/repo.wawona.io/development";
+    repo-wawona-io.inputs.nixpkgs.follows = "nixpkgs";
+    repo-wawona-io.inputs.wwn-toolchain.follows = "wwn-toolchain";
     # Wawona Relay: Linux VMs, OCI-in-VM, Mode A WASI. L3′. Never QEMU/UTM.
     # Replaces wwn-wasm + wwn-vms + wwn-containers. Cited: docs/wwn-repo-dag.md.
     # Public repo: github: so GHA runners can fetch (git+ssh needs a deploy key).
@@ -109,14 +90,6 @@
     # Relay follows wwn-toolchain/crate2nix; L4 toolchain lock may omit that
     # nested input after follows rewrite. Pin to the top-level crate2nix.
     wwn-relay.inputs.crate2nix.follows = "crate2nix";
-    # niri: nested Mode A on every target; macOS Mode B DRM/KMS tty (iland).
-    # github/development until FlakeHub rolling includes the tty recipe.
-    # docs/wwn-repo-dag.md (L3' may merge iland for GPU).
-    wwn-niri.url = "github:Wawona/wwn-niri/development";
-    wwn-niri.inputs.nixpkgs.follows = "nixpkgs";
-    wwn-niri.inputs.wwn-toolchain.follows = "wwn-toolchain";
-    wwn-niri.inputs.rust-overlay.follows = "rust-overlay";
-    wwn-niri.inputs.wwn-iland.follows = "wwn-iland";
     # macOS Watchdog tools (IOWatchdog / watchdogd). L3'. Desktop Mode B only.
     # Cited: docs/wwn-repo-dag.md. github: until FlakeHub rolling exists.
     wwn-iowatchdog.url = "github:Wawona/wwn-iowatchdog/development";
@@ -162,18 +135,13 @@
     nix-appimage,
     wwn-toolchain,
     wwn-iland,
-    wwn-kmscube,
-    wwn-weston,
     wwn-zsh,
     wwn-ssh,
     wwn-waypipe,
     wwn-swinging-bridge,
     wwn-coreutils,
-    wwn-foot,
-    wwn-fastfetch,
-    wwn-phoon-rs,
+    repo-wawona-io,
     wwn-relay,
-    wwn-niri,
     wwn-iowatchdog,
     wwn-vphone,
     wwn-iomfb,
@@ -404,16 +372,11 @@
       wwn-toolchain.lib.baseRegistry
       // wwn-ssh.registryFragment
       // wwn-iland.registryFragment
-      // wwn-kmscube.registryFragment
-      // wwn-weston.registryFragment
+      // repo-wawona-io.registryFragment
       // wwn-zsh.registryFragment
       // wwn-waypipe.registryFragment
       // wwn-swinging-bridge.registryFragment
-      // wwn-foot.registryFragment
-      // wwn-fastfetch.registryFragment
-      // wwn-phoon-rs.registryFragment
-      // wwn-relay.registryFragment
-      // wwn-niri.registryFragment;
+      // wwn-relay.registryFragment;
     mkWawonaToolchains = {
       pkgs,
       pkgsAndroid ? null,
@@ -444,18 +407,18 @@
     coreutilsPatchedSrcNix = "${wwn-coreutils}/dependencies/libs/coreutils/coreutils-patched-src.nix";
     coreutilsPatchSourceSh = "${wwn-coreutils}/dependencies/libs/coreutils/patch-coreutils-source.sh";
     coreutilsMulticallNix = "${wwn-coreutils}/dependencies/libs/coreutils/multicall.nix";
-    westonSimpleShmPatchedSrcNix = "${wwn-weston}/dependencies/libs/weston-simple-shm/patched-src.nix";
-    westonAndroidSignalPolyfill = "${wwn-weston}/dependencies/toolchains/wwn-android-signal-polyfill.h";
-    westonSimpleShmLinuxNix = "${wwn-weston}/dependencies/libs/weston-simple-shm/linux.nix";
-    kmscubeMacosNix = "${wwn-kmscube}/dependencies/clients/kmscube/macos.nix";
-    kmscubeIosNix = "${wwn-kmscube}/dependencies/clients/kmscube/apple-mobile.nix";
-    kmscubeLdflagsNix = "${wwn-kmscube}/dependencies/generators/kmscube-ldflags.nix";
-    fastfetchMacosNix = "${wwn-fastfetch}/dependencies/clients/fastfetch/macos.nix";
-    fastfetchIosNix = "${wwn-fastfetch}/dependencies/clients/fastfetch/apple-mobile.nix";
-    fastfetchLdflagsNix = "${wwn-fastfetch}/dependencies/generators/fastfetch-ldflags.nix";
-    westonPtySpikeIosNix = "${wwn-weston}/dependencies/clients/weston/ios-pty-spike/ios.nix";
-    westonToytoolkitLdflagsNix = "${wwn-weston}/dependencies/generators/weston-toytoolkit-ldflags.nix";
-    westonCompositorLdflagsNix = "${wwn-weston}/dependencies/generators/weston-compositor-ldflags.nix";
+    westonSimpleShmPatchedSrcNix = "${repo-wawona-io}/catalog/deb/gui/weston/in-app/dependencies/libs/weston-simple-shm/patched-src.nix";
+    westonAndroidSignalPolyfill = "${repo-wawona-io}/catalog/deb/gui/weston/in-app/dependencies/toolchains/wwn-android-signal-polyfill.h";
+    westonSimpleShmLinuxNix = "${repo-wawona-io}/catalog/deb/gui/weston/in-app/dependencies/libs/weston-simple-shm/linux.nix";
+    kmscubeMacosNix = "${repo-wawona-io}/catalog/deb/gui/kmscube/in-app/dependencies/clients/kmscube/macos.nix";
+    kmscubeIosNix = "${repo-wawona-io}/catalog/deb/gui/kmscube/in-app/dependencies/clients/kmscube/apple-mobile.nix";
+    kmscubeLdflagsNix = "${repo-wawona-io}/catalog/deb/gui/kmscube/in-app/dependencies/generators/kmscube-ldflags.nix";
+    fastfetchMacosNix = "${repo-wawona-io}/catalog/deb/cli/fastfetch/in-app/dependencies/clients/fastfetch/macos.nix";
+    fastfetchIosNix = "${repo-wawona-io}/catalog/deb/cli/fastfetch/in-app/dependencies/clients/fastfetch/apple-mobile.nix";
+    fastfetchLdflagsNix = "${repo-wawona-io}/catalog/deb/cli/fastfetch/in-app/dependencies/generators/fastfetch-ldflags.nix";
+    westonPtySpikeIosNix = "${repo-wawona-io}/catalog/deb/gui/weston/in-app/dependencies/clients/weston/ios-pty-spike/ios.nix";
+    westonToytoolkitLdflagsNix = "${repo-wawona-io}/catalog/deb/gui/weston/in-app/dependencies/generators/weston-toytoolkit-ldflags.nix";
+    westonCompositorLdflagsNix = "${repo-wawona-io}/catalog/deb/gui/weston/in-app/dependencies/generators/weston-compositor-ldflags.nix";
     mobileBaseLdflagsNix = "${wwn-toolchain}/dependencies/generators/mobile-base-ldflags.nix";
     ilandGlLdflagsNix = "${wwn-iland}/dependencies/generators/iland-gl-ldflags.nix";
     ilandGlAndroidLdflagsNix = "${wwn-iland}/dependencies/generators/iland-gl-android-ldflags.nix";

@@ -15,7 +15,7 @@ are retired. Do not revive them. Do not ship a 30-line toy under `sed` / `jq` /
 |------|-----|------|---------------|
 | stdio + basic files only | **WASI P1** `wasm32-wasip1` | `Wawona/wasm-packages` (GHA) | `/wasm/v1` for store `wpm` / Pulley |
 | Component Model | **WASI P2** | wrap P1 with `wasm-tools component new` when needed | same store path when ready |
-| fork, threads, sockets, TTY, real POSIX | **WASIX** `wasm32-wasix` | `Wawona/wasinix` (Nix + wasixcc) | Wasmer/WebC → `repo.wawona.io/wasm`; **not** store Pulley |
+| fork, threads, sockets, TTY, real POSIX | **WASIX** `wasm32-wasix` | `repo.wawona.io` `catalog/wasm` `abi = wasix` | Wasmer smoke; **not** a store P1 row |
 
 Label from what the binary **uses**. Never mark WASIX as store `wasi-p1`.
 
