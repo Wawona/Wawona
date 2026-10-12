@@ -51,7 +51,7 @@ python3 catalog/wasm/src/p1/scripts/sync-recipes-from-allowlist.py
 | `name` | Upstream name (`grep`, `jaq`, `chess`). Never `wawona-*` brand |
 | `version` | Upstream release (not invented `0.1.0`) |
 | `homepage` | Upstream project URL (nixpkgs `meta.homepage`). Not `website` |
-| `source` | Port / packaging tree (wasm-packages or wasinix path) |
+| `source` | Port tree under `catalog/wasm/src/p1` or `catalog/wasm/src/wasinix` |
 | `origin` | `port` (or `scratch` only for true Wawona smokes) |
 
 ## Never

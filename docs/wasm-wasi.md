@@ -4,7 +4,7 @@ Milestone: [Support WASI P1 P2 WASM!](https://github.com/Wawona/Wawona/milestone
 
 ## Tradeoff: not platform-native
 
-Do not also ship `/wasm/v1` twins of CLIs that are already native on every target (`wasm-packages/scripts/native-all-targets.txt`, rule `wawona-native-over-wasm`).
+Do not also ship `/wasm/v1` twins of CLIs that are already native on every target (`catalog/wasm/src/p1/scripts/native-all-targets.txt`, rule `wawona-native-over-wasm`).
 
 Wawona prefers **native in-process ports** when we can ship them (zsh, uutils,
 weston-terminal, foot, …). Those are real platform binaries inside the reviewed
@@ -93,19 +93,19 @@ bundled `hello-wasi-gui.wasm` (`wl_shm` + `xdg_wm_base`).
 Do not brand this as an “App Store” for iOS apps. It is a **runtime package
 registry**. Prefer OCI artifacts + a thin client over inventing a bespoke protocol.
 
-### WASIX GTK / Wayland programs (wasinix)
+### WASIX GTK / Wayland programs
 
-Toolkit is a **library** (`wasinix` `pkgs/libraries/gtk4`). Programs that link
-it are separate:
+Toolkit is a **library**: `repo.wawona.io` `catalog/wasm/lib/gtk4`
+(`catalog/wasm/src/wasinix/pkgs/libraries/gtk.nix`). Programs that link
+it are separate cards:
 
-| Program | Role |
-|---------|------|
-| `wayland-bridge-smoke` | One SHM frame via `wawona_wayland_*` |
-| `gtk4-hello` | Minimal GTK4 Wayland window (`GSK_RENDERER=cairo`) |
+| Program | Kind | Role |
+|---------|------|------|
+| `wayland-bridge-smoke` | gui | One SHM frame via `wawona_wayland_*` |
+| `gtk4-hello` | gui | Minimal GTK4 Wayland window (`GSK_RENDERER=cairo`) |
 
-Build: `nix build github:Wawona/wasinix#wasmer.gtk4-hello` (Linux CI). Run under
-Relay with host imports and a live Wawona `WAYLAND_DISPLAY` (see
-`wasinix/scripts/smoke-wayland-relay.sh`). **Not** store Pulley, **not**
+Run under Relay with host imports and a live Wawona `WAYLAND_DISPLAY` (see
+`catalog/wasm/src/wasinix/scripts/smoke-wayland-relay.sh`). **Not** store Pulley, **not**
 bundled keep-set beside `hello-wasi-gui`. Machines: drop the `.wasm` as a local
 module on Wasmer-capable hosts (macOS/Linux; iOS 27+ Wasmer WebKit when linked).
 

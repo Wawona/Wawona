@@ -15,10 +15,11 @@ no-fork patch burden shrinks instead of growing.
 | Component | Owner | Patches |
 |-----------|-------|---------|
 | Smithay compositor + iland present | Wawona / wwn-iland | Product |
-| Relay wasm runtime + `hello-wasi-gui` smoke | Relay | Runtime |
+| Relay wasm runtime (`wpm`, Pulley) | Relay | Runtime. No bundled demo `.wasm` |
 | zsh | wwn-zsh | App Store keep |
 | uutils safe subset | wwn-coreutils | App Store keep. No wasm twin |
-| fastfetch | wwn-fastfetch | App Store keep |
+| fastfetch | `repo.wawona.io` `catalog/deb/cli/fastfetch/in-app` | App Store keep. Not the deb card. |
+| waypipe + ssh (libssh2 on Apple mobile) | wwn-waypipe / wwn-ssh | Product remote path |
 
 ## Move-set
 
@@ -29,8 +30,8 @@ no-fork patch burden shrinks instead of growing.
 | weston-simple-shm and weston toys | Deb | Delete |
 | kmscube, gbm-es2-demo, opengl-cube, vkcube, weston-simple-egl | Deb | Delete |
 | hello-wasi-gui, chess-wawona | Wasm P1 | Already wasm |
-| gtk4-hello, wayland-bridge-smoke | WASIX (wasinix `pkgs/programs/`) | Link `libraries.gtk4`; Relay host `wawona_wayland_*`; Wasmer hosts only (not Pulley / store IPA keep-set) |
-| GTK and similar | Deb + WASIX `pkgs/libraries/` (not `programs/`) | Do not add in-app |
+| gtk4-hello, wayland-bridge-smoke | `catalog/wasm/gui`, `abi = wasix` | Link gtk4 lib. Wasmer hosts only. |
+| GTK and similar | `catalog/wasm/lib` (gtk4) plus a deb when one exists | Do not add in-app |
 
 Deb audiences: jailbreak iOS rootless/rootful, Termux `aarch64`, Linux amd64/arm64.
 Store hosts use `wpm` / wasm only until a real wasm port exists.

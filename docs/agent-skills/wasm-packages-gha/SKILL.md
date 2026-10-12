@@ -1,29 +1,33 @@
 ---
 name: wasm-packages-gha
-description: Build WASI packages for repo.wawona.io/wasm on GitHub Actions. Use when adding recipes, allowlist, nightly build, or auto-publish to the catalog.
+description: Build store WASI P1 packages inside repo.wawona.io catalog/wasm (abi wasi-p1). Use for allowlist and recipes. WASIX is the same catalog with abi wasix. The old Wawona/wasm-packages repo is deleted.
 ---
 
-# wasm-packages GHA builds
+# wasm-packages GHA builds (store WASI P1)
 
 Production path: **GitHub Actions** on `ubuntu-24.04`. Not a laptop.
 
+Sources live in `repo.wawona.io` `catalog/wasm/src/p1`. WASIX is
+`catalog/wasm/src/wasinix` with card `abi = wasix`. `Wawona/wasm-packages`
+is deleted. Do not `gh workflow run` against it. Decision table:
+skill/rule `wawona-wasm-cli-ports`.
+
 | Piece | Path |
 |-------|------|
-| Allowlist | `allowlist.toml` (curated; `blocked` skips; no nixpkgs mirror) |
-| Freshness | `version_policy` + `check-upstream-versions.py` / `bump-outdated.py` |
-| Recipes | `recipes.json` via `scripts/sync-recipes-from-allowlist.py` + `packages/<name>/` |
-| Build | `build-wasm.yml` (push, dispatch, cron; nightly freshness; `wasm-out`) |
-| Publish | `publish-to-repo.yml` (`workflow_run` + dispatch; `WAWONA_REPO_TOKEN`) |
-| Catalog | `repo.wawona.io` `/wasm/v1` on **development** (Pages deploys that branch) |
+| Allowlist | `catalog/wasm/src/p1/allowlist.toml` |
+| Recipes | `catalog/wasm/src/p1/packages/<name>/` |
+| Card | `catalog/wasm/<kind>/<name>/default.nix` |
+| Smoke | **Wasmtime** `catalog/wasm/src/p1/scripts/smoke-package.sh` |
+| Catalog | `repo.wawona.io` `/wasm/v1` on **development** |
 
-`version_policy`: `local` \| `cargo-deps` \| `crates-io` \| `git-tag`. Nightly
-runners compare catalog + upstream (crates.io / git tags / lockfile deps),
-bump allowlist + Cargo when ahead, rebuild, then bot-commit `[skip ci]`.
+WASIX packages are tested with **Wasmer** from `catalog/wasm/src/wasinix`.
+
+Ports need real upstream trees, `upstream_version`, and `homepage` (upstream
+URL). Stubs named `jq`/`grep`/`sed` stay **blocked**.
 
 ```bash
-gh secret set WAWONA_REPO_TOKEN --repo Wawona/wasm-packages   # bot/App preferred
-python3 scripts/sync-recipes-from-allowlist.py
-gh workflow run build-wasm.yml --repo Wawona/wasm-packages
+python3 catalog/wasm/src/p1/scripts/sync-recipes-from-allowlist.py
+nix eval .#catalogIndex.hello-wasi.abi
 ```
 
 Nightly selects packages missing/stale vs live `index.json`, capped by
@@ -37,8 +41,10 @@ Org catalogs skill: `repo-wawona-io-catalogs`.
 
 - Publish laptop-built `.wasm` as production
 - Revive `nixpkgs2wasi` / auto-mirror nixpkgs
-- Claim WASIX runs on store Pulley
+- Claim WASIX runs on store Pulley (WASIX = wasinix lane)
+- Put WASIX build recipes only in this repo (use `wasinix`)
 - Put build recipes only in `repo.wawona.io` (catalog host stays thin)
 - Ship empty stubs for `blocked` allowlist rows
+- Forge upstream names at invented `0.1.0`
 
 Never package names in `scripts/native-all-targets.txt` (native uutils on all targets).

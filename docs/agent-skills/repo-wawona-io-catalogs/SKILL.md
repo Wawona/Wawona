@@ -19,14 +19,17 @@ jailbreak.
 
 | Deb audience | Client | Architecture | Jailbreak? | Store/Play? |
 |--------------|--------|--------------|------------|-------------|
-| Jailbroken iOS / iPadOS | Sileo, then Irisin, then Zebra, then Cydia | `iphoneos-arm64` rootless, `iphoneos-arm` rootful (Sileo, Zebra, Cydia), `iphoneos-arm64e` RootHide. Irisin is iOS 16+ rootless and roothide. Cydia is last, for older jailbreaks such as iOS 13. | Yes | No |
+| Jailbroken iOS / iPadOS | Any APT client that speaks the repo | `iphoneos-arm64` rootless, `iphoneos-arm` rootful, `iphoneos-arm64e` RootHide | Yes | No |
 | Sideloaded Android | Termux `apt` | `aarch64` (and `arm`) | **No** | **No** |
+
+Do not rank iOS package managers in UI copy (no "Sileo, then Irisin, then
+Zebra, then Cydia"). They are interchangeable APT clients for the same root.
 
 `/search/` is a chooser, not a mixed All channel. HTML landings:
 
 - `/wasm/` → wasm catalog
 - `/deb/` → deb catalog (both APT audiences)
-- `/jailbreak/` → iOS bookmark. Order: Sileo, Irisin, Zebra, Cydia. Not Termux. Not APT root.
+- `/jailbreak/` → iOS APT bookmark. Not Termux. Not APT root.
 - `/termux/` → Termux Android sideload bookmark. Not jailbreak. Not Play.
 
 ## Firewall
@@ -34,7 +37,7 @@ jailbreak.
 | Consumer | `/wasm/v1` | APT `/` (`Packages`) |
 |----------|------------|----------------------|
 | App Store / Play `wpm` | Yes | **Never** |
-| Sileo, Irisin, Zebra, or Cydia (jailbroken iOS) | Optional | Yes |
+| Jailbroken iOS APT clients | Optional | Yes |
 | Termux (sideloaded Android) | Optional | Yes |
 
 Store `wpm` default registry: `https://repo.wawona.io/wasm/v1` (client fetches
@@ -43,24 +46,56 @@ Store `wpm` default registry: `https://repo.wawona.io/wasm/v1` (client fetches
 This host publishes `/wasm/v1` today. Do not auto-mirror nixpkgs here.
 ABI labels and later Wasmer/WebC (wasinix): `docs/wasm-abi.md`.
 
-## Wasm package builds (GHA)
+## Wasm package builds (two lanes)
 
-Production builds: **`Wawona/wasm-packages`** on `ubuntu-24.04` (not a laptop).
+Hard law: skill/rule `wawona-wasm-cli-ports`. This host catalogs; it does not
+own the Nix→WASIX converter.
+
+| Lane | Where | ABI | Lands here as |
+|------|------|-----|---------------|
+| Store P1 | `catalog/wasm` `abi = wasi-p1` (`src/p1`) | `wasm32-wasip1` | `/wasm/v1` for `wpm` / Pulley |
+| WASIX | `catalog/wasm` `abi = wasix` (`src/wasinix`) | `wasm32-wasix` | Wasmer/WebC under `/wasm` (not Pulley P1 rows) |
+
+Hydra-style verified dots: index `ci.status` + `/wasm/v1/ci.json`. Green =
+Wasmtime (P1/P2) or Wasmer (WASIX) smoke pass. Gray = not verified. Red =
+fail. Suites `terminal` / `socket` / `wayland` are planned Wawona ABI checks.
+
+Store P1 loop:
 
 | Piece | Where |
 |-------|--------|
-| Recipes | `wasm-packages` `recipes.json` + `packages/<name>/` |
-| Build CI | `build-wasm.yml` (matrix + wasmtime smoke + artifacts) |
-| Publish CI | `publish-to-repo.yml` (needs `WAWONA_REPO_TOKEN`; PRs into this repo) |
+| Allowlist | `catalog/wasm/src/p1/allowlist.toml` (curated; no nixpkgs mirror) |
+| Recipes | `catalog/wasm/src/p1/packages/<name>/` (real upstream only) |
+| Card | `catalog/wasm/<kind>/<name>/default.nix` |
 | Catalog | this repo `wasm/v1/` |
 
 ```bash
-gh workflow run build-wasm.yml --repo Wawona/wasm-packages
-# after green: publish workflow or stage via scripts/stage-for-repo.py
+# P1 card
+nix eval .#catalogIndex.hello-wasi.abi
+# WASIX entry is a function. Do not treat Wawona/wasinix as a live repo.
+nix eval .#legacyWasix --apply 'f: builtins.isFunction f'
 ```
 
-Proven: `hello-wasi` 0.1.2 and `wasi-true` 0.1.0. Local `cargo` is debug only.
-Do not claim WASIX/WebC shipping. Do not revive `nixpkgs2wasi` / `n2w`.
+Stub `jq`/`grep`/`sed` stay blocked until real upstream trees ship. Do not
+claim WASIX on store Pulley. Do not revive `nixpkgs2wasi` / `n2w`.
+
+## Wawona Ports (names, versions, links)
+
+Hard gate: `.cursor/rules/repo-wawona-io-ports.mdc`. Almost every catalog row
+is a port of existing software.
+
+- Package `name`: upstream name for ports; distinct unbranded name for scratch.
+  Never `wawona-` / `wwn-` prefix or `-wawona` / `-wwn` suffix.
+- Port `version`: the upstream release/tag you ported. Never invent `0.1.0`
+  because the port just landed. Require `upstream_version` (equal to `version`).
+- Links: field **`homepage`** (nixpkgs-style upstream project URL) and
+  `source` (port / packaging tree). Do not rename to `website`. Do not set
+  every row to `wawona.io/docs/wasm/`.
+- A short reimplementation is not a port of GNU sed / jqlang jq. Keep stubs
+  blocked until the real upstream tree ships with that project's version.
+
+`scripts/check-packages.py` enforces this on `wasm/v1/index.json`. Build
+allowlist: `catalog/wasm/src/p1/docs/package-versioning.md`.
 
 ## Never
 
@@ -76,9 +111,13 @@ Do not claim WASIX/WebC shipping. Do not revive `nixpkgs2wasi` / `n2w`.
 - Publish laptop-built `.wasm` as the production catalog source
 - Revive `nixpkgs2wasi` / `n2w` as the wasm producer
 - Route `where_to_edit("repo.wawona.io …")` to the `wawona.io` website
-- Route wasm **build** recipes to this repo (builds live in `Wawona/wasm-packages`)
+- Recreate `Wawona/wasm-packages` or `Wawona/wasinix`. Recipes live in `catalog/wasm`.
 - Mention retired `wwn-apt` in `setup.sh`
 - Drop `hello-wasi` from `wasm/v1/index.json`
+- Brand package names with `wawona-` / `wwn-` (or `-wawona` / `-wwn`)
+- Publish a port at invented `0.1.0` instead of the upstream version
+- Rename `homepage` to `website`, or blanket-link every package to docs/wasm
+- Ship stub `sed`/`jq`/`grep` blobs as if they were upstream ports
 
 ## Humans
 

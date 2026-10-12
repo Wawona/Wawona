@@ -18,10 +18,11 @@ compositor + iland, Relay wasm runtime, `hello-wasi-gui` smoke.
 **Move to deb (delete App Store patches):** weston, niri, foot,
 weston-terminal, weston toys, GPU cubes. Deb = upstream process.
 
-**Wasm:** store optional GUI. P1 = `wasm-packages`. WASIX = `wasinix` (not Pulley).
-GTK toolkit = `wasinix` `pkgs/libraries/` (not `pkgs/programs/`). A GTK app
-demo is a separate program that links `libraries.gtk4`. Deb twin on
-`repo.wawona.io`. See `wasinix/docs/libraries-vs-programs.md`.
+**Wasm:** store optional GUI. Card under `catalog/wasm/<kind>/<name>/`.
+`abi = wasi-p1` or `abi = wasix`. WASIX is not Pulley.
+GTK4 is `catalog/wasm/lib/gtk4`. A GTK demo is `catalog/wasm/gui`.
+Implementation stays in `catalog/wasm/src/wasinix`. Do not recreate
+`Wawona/wasinix` or `Wawona/wasm-packages`.
 ## Deb recipe shape
 
 ```text

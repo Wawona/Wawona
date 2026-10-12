@@ -56,8 +56,11 @@ flowchart BT
 
 ## Hard rules
 
-1. **L0 never imports L1+**. Never add `wwn-iland`/weston/kmscube as
-   `wwn-toolchain` flake inputs or into `baseRegistry`.
+1. **L0 never imports L1+**. Never add `wwn-iland`, `repo.wawona.io`, or a
+   port flake (`weston`, `kmscube`, `niri`, `foot`, `fastfetch`, `phoon`) as a
+   `wwn-toolchain` input, and never add their keys to `baseRegistry`. Those
+   port GitHub repos are deleted. Recipes and one `registryFragment` live in
+   `repo.wawona.io` `catalog/`.
 2. **L1 never imports L2+**. Iland must not flake- or build-depend on weston,
    kmscube, waypipe, Wawona, or toytoolkit.
 3. **Registry merge only upward**. Consumers do `baseRegistry // ilandFragment

@@ -21,6 +21,7 @@ GPU     one hop, or none, wl_shm
 - Linking cairo does not provide GLES or Vulkan. GPU is L1 `wwn-iland`.
 - `nix build` exiting 0 is not green. Verdict is `nix run .#package-doctor` in `repo.wawona.io`.
 - New deb program: one directory `catalog/deb/<kind>/<name>/` copied from `TEMPLATE.nix`. `builtins.readDir` is the index. Android libraries come from `pkgs/wayland/ndkLibs.nix`. Do not import `androidNdk.nix` from the package.
+- Do not create `packages/` for recipes. The APT index file is already named `Packages`. On a case-insensitive disk that name cannot also be a directory. Recipes live under `catalog/`.
 
 Lane choice stays `wawona-wasm-cli-ports`. Deb shape stays
 `wawona-optional-software`. Catalog split stays `repo-wawona-io-catalogs`.

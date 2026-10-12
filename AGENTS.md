@@ -141,13 +141,16 @@ not MCP. Skill `wawona-gh`. Rule `wawona-gh`.
 - **Apple = OS 26 / Liquid Glass**; **Material 3 Expressive = Android 16+ only**.
 - **iOS min OS vs SDK.** Mach-O min is iOS **13.0** through the latest iOS (26 now, 27 when the SDK ships). Never raise that floor to match a dependency (GhosttyKit 17 stays unlinked). Never downgrade the SDK. App Store IPAs do not ship a product `.dylib` (static archives; Apple `libswift*` is the exception). One ANGLE, one MoltenVK, Wawona patches. App Store / TrollStore / Sileo. Bundled clients (fastfetch, weston, and every other in-process archive) compile at that same 13.0 floor. CMake `CMAKE_C_FLAGS` and Meson `c_args` do not apply to `.m`. Set `CMAKE_OBJC_FLAGS` and `objc_args` or clang emits `_objc_release_xN` and dyld aborts on iOS 13-15. See `docs/agent-rules/wawona-ios-min-os.md`.
 - **Apple-mobile process entry.** `Darwin/Sources/Main.swift` on iOS/iPadOS/tvOS/visionOS (and macOS). Mobile uses `UIApplicationMain` (iOS 13 floor). Never leave LC_MAIN to a bundled client's C `_main` (`gbm_es2_demo`). Set `XDG_RUNTIME_DIR` to `preferredSharedRuntimeDir` before host compositor start. See `docs/agent-rules/wawona-ios-app-entry.md` and skill `wawona-ios-sim-runtime`.
-- **Patched software lives in `wwn-*` repos** (Wawona org): the cross-compile
-  framework + common libraries + `wawona-pty` are in `wwn-toolchain`; the patched
-  apps are in `wwn-zsh`, `wwn-weston` (+ `weston-simple-shm`), `wwn-iland`,
-  `wwn-waypipe`, `wwn-coreutils`, `wwn-foot`. Wawona is an **integration layer**:
-  `flake.nix` adds them as inputs, builds toolchains via
-  `wwn-toolchain.lib.mkToolchains`, and merges each repo's `registryFragment`
-  over `baseRegistry`. Edit a patched recipe in its `wwn-*` repo, not in Wawona.
+- **Patched software lives in `wwn-*` repos or the catalog** (Wawona org): the
+  cross-compile framework + common libraries + `wawona-pty` are in
+  `wwn-toolchain`; zsh is `wwn-zsh`; graphics is `wwn-iland`; waypipe is
+  `wwn-waypipe`; uutils is `wwn-coreutils`. Weston, niri, foot, kmscube,
+  fastfetch, phoon, neovim, store P1 wasm, and WASIX live in
+  `repo.wawona.io` `catalog/{wasm,deb}/{cli,gui,lib}`. Wawona is an
+  **integration layer**: one `repo-wawona-io` input, `registryFragment`
+  merged over `baseRegistry`. Do not re-add the deleted port flakes.
+  `wwn-toolchain` does not input the catalog. Edit a port recipe in the
+  catalog, not in Wawona.
 - **Weston + Niri stay real ports; optional install:** not mandatory App Store
   in-app archives. Ship as debs (jailbreak / Termux / Linux) or wasm. Keep in
   the app: compositor, Relay wasm, zsh, uutils, fastfetch. Debs must not carry
@@ -182,7 +185,7 @@ not MCP. Skill `wawona-gh`. Rule `wawona-gh`.
   userland SkyLight/Mach IPC. Direct Turnip/KGSL is forbidden.
 - **Patched upstreams**: query `get_patch` before assuming upstream behavior. The
   patch anchors are checked in each repo's CI (`verify-weston-ios-patches.py` in
-  `wwn-weston`, `verify-zsh-ios-patches.py` in `wwn-zsh`); Wawona keeps the
+  `repo.wawona.io` `catalog/deb/gui/weston/in-app`, `verify-zsh-ios-patches.py` in `wwn-zsh`); Wawona keeps the
   Wayland/Android maintainability checks under `.github/scripts/`.
 - **zsh on iOS**: static `libwawona-zsh.a` (`wawona_zsh_main`) run **in-process
   on a pthread**, NO fork/exec/posix_spawn/dlopen; external commands dispatched
@@ -286,12 +289,13 @@ is on (`wawona-nested-compositor-cursor`). Full rule:
 
 - **Repo DAG (acyclic L0-L4; never invert):** `wwn-toolchain` (L0 substrate:
   cairo/pango/pixman/libwayland/…) → `wwn-iland` (L1 complete graphics stack:
-  iland + ANGLE/ICDs after P2) → `wwn-kmscube` (L2) → `wwn-weston` (L3) →
-  Wawona (L4). `wwn-waypipe`/`Wawona-Swinging-Bridge` / flake `wwn-swinging-bridge`/`wwn-vms` are L3′ (→ toolchain). Never
-  add a `wwn-*` flake input to `wwn-toolchain`, never put graphics keys in its
-  `baseRegistry`, never make `wwn-iland` depend on weston/kmscube/waypipe, and
-  never make Wawona an input of any `wwn-*`. Canonical: `docs/wwn-repo-dag.md`;
-  workspace rule `wawona-repo-dag`.
+  iland + ANGLE/ICDs after P2) → Wawona (L4). Port recipes are
+  `repo.wawona.io` `catalog/`, one `registryFragment`, not L2/L3 flakes.
+  `wwn-waypipe` / `Wawona-Swinging-Bridge` / Relay are L3′ (toolchain). Never
+  add a `wwn-*` or catalog flake input to `wwn-toolchain`, never put graphics
+  keys in its `baseRegistry`, never make `wwn-iland` depend on weston/kmscube/waypipe,
+  and never make Wawona an input of any `wwn-*` or of the catalog. Canonical:
+  `docs/wwn-repo-dag.md`; workspace rule `wawona-repo-dag`.
 - Builds are Nix-based; see `docs/compilation.md` and `docs/2026-nix-build-system.md`.
 - Don't commit secrets.
 - **GitHub Sponsors.** Every `github.com/Wawona/*` repo must ship the same
@@ -316,7 +320,7 @@ is on (`wawona-nested-compositor-cursor`). Full rule:
   `docs/agent-rules/wawona-relay-wasm.md`.
 - **Closed wontfix.** Do not revive `nixpkgs2wasi` / `n2w` (#172-#177). Do not
   bundle UTM-SE (#33). Do not size-gate watchOS wasm (#156). Store P1 is
-  `wasm-packages`. WASIX is `wasinix`. VM engine is Relay. A live
+  `catalog/wasm` with `abi = wasi-p1`. WASIX is the same tree with `abi = wasix`. VM engine is Relay. A live
   `Wawona/nixpkgs2wasi` GitHub repo is not a flake input.
 - **iOS min OS**. Phone and iPad min OS is **13.0** against the **latest**
   iPhoneOS SDK only (26 now; 27 when it ships). Never downgrade the SDK. One
