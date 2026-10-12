@@ -216,3 +216,6 @@ fastlane/report.xml
 
 # Local editor (home-manager / machine-specific)
 .zed/
+
+# Local dogfood: prebuilt .so extracted for Kotlin-only assembleDebug
+/android/app/src/main/jniLibs/

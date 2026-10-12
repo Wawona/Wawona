@@ -1257,10 +1257,16 @@ fun WawonaApp(
             0
         }
     val outputHeightPx = with(density) { configuration.screenHeightDp.dp.roundToPx() }
-    val compositorBottomPadPx = (
-        outputHeightPx -
-            WawonaNative.nativeUsableOutputHeight(outputHeightPx, keyboardOverlapPx)
-        ).coerceAtLeast(0)
+    // Usable height is Rust `work_area::usable_output_height` via JNI. Tip Compose
+    // can ship ahead of a matching libwawona.so; fall back to the same TouchOsk
+    // clamp so Machines UI still launches for dogfood.
+    val usableOutputHeightPx = runCatching {
+        WawonaNative.nativeUsableOutputHeight(outputHeightPx, keyboardOverlapPx)
+    }.getOrElse {
+        // Mirror work_area.rs TouchOsk: (height - overlap).max(1)
+        (outputHeightPx - keyboardOverlapPx.coerceAtLeast(0)).coerceAtLeast(1)
+    }
+    val compositorBottomPadPx = (outputHeightPx - usableOutputHeightPx).coerceAtLeast(0)
     val compositorBottomPadDp = with(density) { compositorBottomPadPx.toDp() }
 
     var selectedClientTabId by remember { mutableStateOf("shell") }
