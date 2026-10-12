@@ -353,12 +353,10 @@ struct WWNMachinesGridViewModern: View {
     }
   }
 
-  /// iOS 26 phone: system bottom search + compose +. ToolbarSpacer is required
-  /// so search does not eat the full width and overlap Add. Keep Add off the
-  /// shared glass blob (`sharedBackgroundVisibility(.hidden)`). Messages-style
-  /// compose uses prominent glass fill (blue bubble), not a bare + glyph.
-  /// Prefer `Image` over `Label` here: bottom-bar `Label` often drops the circle.
-  /// Top-trailing Add remains as failsafe when this bottom slot collapses.
+  /// iOS 26 phone: sole Add Machine control (Messages compose). Never pair
+  /// with top-trailing Add. ToolbarSpacer keeps search from eating the +.
+  /// `sharedBackgroundVisibility(.hidden)` + `composeCircleButton` (opaque
+  /// accent circle). Prefer `Image` over `Label` (Label drops the circle).
   @ToolbarContentBuilder
   private var iosPhoneMessagesBottomToolbar: some ToolbarContent {
     #if os(iOS)
@@ -381,7 +379,8 @@ struct WWNMachinesGridViewModern: View {
     #endif
   }
 
-  /// Shared Add control for top-trailing and iOS 26 bottom compose.
+  /// Shared Add control: iPad/vision top-trailing, or iPhone bottom compose.
+  /// Call sites must not mount this twice on the same host.
   private var iosAddMachineToolbarButton: some View {
     Button {
       editorDestination = .add
@@ -540,19 +539,22 @@ struct WWNMachinesGridViewModern: View {
       EmptyView()
     }
     #else
-    // iPhone + iPad: top-trailing Add. Phone also keeps Messages bottom
-    // compose next to search. The split forces `.regular` width so List
-    // selection works; that can collapse the iOS 26 bottom compose slot, so
-    // top-trailing is the failsafe (otherwise Add vanishes entirely).
+    // Exactly one Add Machine control per host:
+    // - iPhone: bottom compose only (iOS 26 Messages toolbar, or pre-26
+    //   safeAreaInset chrome). Never also top-trailing.
+    // - iPad / visionOS: top-trailing only.
+    // Top bar on phone is sort + Settings only.
     #if os(iOS)
-    if #available(iOS 26.0, *) {
-      ToolbarItem(placement: .topBarTrailing) {
-        iosAddMachineToolbarButton
-      }
-      .sharedBackgroundVisibility(.hidden)
-    } else {
-      ToolbarItem(placement: .topBarTrailing) {
-        iosAddMachineToolbarButton
+    if !isIosPhone {
+      if #available(iOS 26.0, *) {
+        ToolbarItem(placement: .topBarTrailing) {
+          iosAddMachineToolbarButton
+        }
+        .sharedBackgroundVisibility(.hidden)
+      } else {
+        ToolbarItem(placement: .topBarTrailing) {
+          iosAddMachineToolbarButton
+        }
       }
     }
     #elseif os(visionOS)
@@ -560,9 +562,10 @@ struct WWNMachinesGridViewModern: View {
       Button {
         editorDestination = .add
       } label: {
-        Label("Add Machine", systemImage: "plus")
+        Image(systemName: "plus")
+          .font(.body.weight(.semibold))
       }
-      .backport.glassToolbarButton()
+      .backport.composeCircleButton()
       .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
     }
     #endif
@@ -1086,35 +1089,9 @@ struct WWNMachinesGridViewModern: View {
     .background(Color.secondary.opacity(0.14), in: Capsule())
   }
 
-  #if os(iOS) || os(visionOS)
-  private var iosAddMachineButton: some View {
-    Button {
-      editorDestination = .add
-    } label: {
-      Image(systemName: "plus")
-        .font(.title2.weight(.semibold))
-        .frame(width: 56, height: 56)
-    }
-    .backport.glassProminentButtonStyle()
-    .modifier(WWNCircularBorderShape())
-    .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
-  }
-  #endif
-
 }
 
 #if os(iOS) || os(visionOS)
-private struct WWNCircularBorderShape: ViewModifier {
-  @ViewBuilder
-  func body(content: Content) -> some View {
-    if #available(iOS 17.0, *) {
-      content.buttonBorderShape(.circle)
-    } else {
-      content
-    }
-  }
-}
-
 /// iPhone: system `.searchable` owned by the split-detail navigation item.
 /// Keep dismissing via `WWNHostKeyboard` when the split column changes.
 @available(iOS 16.0, *)

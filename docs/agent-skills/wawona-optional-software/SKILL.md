@@ -19,7 +19,9 @@ compositor + iland, Relay wasm runtime, `hello-wasi-gui` smoke.
 weston-terminal, weston toys, GPU cubes. Deb = upstream process.
 
 **Wasm:** store optional GUI. P1 = `wasm-packages`. WASIX = `wasinix` (not Pulley).
-
+GTK toolkit = `wasinix` `pkgs/libraries/` (not `pkgs/programs/`). A GTK app
+demo is a separate program that links `libraries.gtk4`. Deb twin on
+`repo.wawona.io`. See `wasinix/docs/libraries-vs-programs.md`.
 ## Deb recipe shape
 
 ```text

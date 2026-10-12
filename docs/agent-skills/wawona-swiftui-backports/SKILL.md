@@ -20,12 +20,10 @@ must use its default placement. `DefaultToolbarItem(kind: .search, placement:
 split-detail restoration. Keep `usesNativePhoneSearchToolbar` true on iOS 26+.
 Top-trailing toolbar buttons use `.automatic`, not `.glass` (glass-on-glass).
 Add Machine / editor Save checkmark: `Image(systemName:)` +
-`.backport.composeCircleButton()` (`.iconOnly` + `.borderedProminent` +
-`.circle` + accent tint) + `sharedBackgroundVisibility(.hidden)`. iOS 26
-`.glassProminent` on toolbar/sheet icon buttons often paints a bare glyph
-with no fill. Toolbar `Label` also drops the bubble. Keep Add in
-top-trailing on phone: the split forces `.regular` width and the bottom
-compose slot can collapse, which made + vanish.
+`.backport.composeCircleButton()` + `sharedBackgroundVisibility(.hidden)`.
+Opaque accent circle (no glass-on-glass). Toolbar `Label` drops the bubble.
+**One Add only:** phone = bottom compose; iPad/vision = top-trailing.
+Never a second top-trailing Add on phone.
 
 ## Machine editor sheets
 

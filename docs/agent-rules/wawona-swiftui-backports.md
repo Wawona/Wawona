@@ -14,10 +14,15 @@ button.backport.composeCircleButton()
 
 iPhone Machines Add and editor Save checkmark: use `Image(systemName:)`
 plus `.backport.composeCircleButton()` and
-`sharedBackgroundVisibility(.hidden)`. That shim uses `.borderedProminent` +
-`.circle` (opaque blue fill). iOS 26 `.glassProminent` on toolbar/sheet icon
-buttons often paints a bare glyph with no bubble. A toolbar `Label` does the
-same.
+`sharedBackgroundVisibility(.hidden)`. The shim paints an opaque accent
+circle + white glyph (iOS 26 toolbar/sheet glass-on-glass makes
+`.glassProminent` / extra `.glassEffect` invisible). A toolbar `Label`
+drops the circle.
+
+**Exactly one Add Machine control.** iPhone: bottom compose only (iOS 26
+Messages toolbar, or pre-26 `safeAreaInset` chrome). iPad / visionOS:
+top-trailing only. Never mount Add in both top-trailing and bottom on
+phone.
 
 The compatibility namespace owns every `#available` check and its fallback.
 Do not scatter availability branches through feature views. Add a named shim to

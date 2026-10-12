@@ -35,13 +35,16 @@ gh workflow run build-wasm.yml --repo Wawona/wasm-packages
 ## Lane B: nixpkgs → WASIX (`Wawona/wasinix`)
 
 ```bash
-# pkgs/programs/foo/foo.nix : override nixpkgs pkg + wasixcc
+# Program: pkgs/programs/foo/foo.nix
 nix build .#wasix.foo
 nix build .#wasmer.foo   # WebC / wasmer.toml, owner=wawona
+# Library/toolkit: pkgs/libraries/ (GTK4, cairo, …)
+nix build .#wasix.libraries.exnrefEh.gtk4
 ```
 
-- Pattern: see `pkgs/programs/grep/grep.nix` (gnugrep.override + patches).
-- Docs: `wasinix/docs/wawona-publish.md`.
+- Programs: `pkgs/programs/grep/grep.nix` (gnugrep.override + patches).
+- Libraries/toolkits: `pkgs/libraries/` (see `gtk.nix`). Never `programs/gtk4`.
+- Docs: `wasinix/docs/wawona-publish.md`, `wasinix/docs/libraries-vs-programs.md`.
 - Do **not** put WASIX into Mode A `/wasm/v1` P1 rows. Wasmer-only execute
   until the same-commit product gate (`wawona-relay-wasm`).
 

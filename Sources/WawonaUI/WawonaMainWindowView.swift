@@ -359,6 +359,9 @@ struct WawonaMainWindowView: View {
     @ObservedObject var sessions: SessionOrchestrator
     var onConnect: (() -> Void)? = nil
     @ObservedObject private var tagStore = WWNMachineTagStore.shared
+    #if os(iOS) || os(visionOS)
+    @ObservedObject private var guestConsole = WWNIosGuestConsole.shared
+    #endif
 
     @State private var tagEditorTag: WWNMachineTag?
     @State private var showTagEditor = false
@@ -380,7 +383,15 @@ struct WawonaMainWindowView: View {
             .onAppear {
                 listSelection = router.selection ?? .machines
                 syncSplitColumns()
+                #if os(iOS) || os(visionOS)
+                guestConsole.startObservingIfNeeded()
+                #endif
             }
+            #if os(iOS) || os(visionOS)
+            .backport.fullScreenCover(isPresented: $guestConsole.isPresented) {
+                WWNIosGuestConsoleSheet(console: guestConsole)
+            }
+            #endif
             .backport.onChange(of: listSelection) { _, newValue in
                 guard newValue != router.selection else { return }
                 // Next turn: keep Published write off the List exclusivity window.

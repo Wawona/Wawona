@@ -177,6 +177,11 @@ private struct EditorChromeToolbarIOS26: ToolbarContent {
     let onSave: () -> Void
 
     var body: some ToolbarContent {
+        // Leading X stays on the shared glass bar (system close chrome).
+        // Trailing Save is a Messages-style primary circle: hide the shared
+        // glass blob, then paint an opaque accent circle (composeCircleButton).
+        // Do not stack `.glassEffect` here: sheet toolbars are already Liquid
+        // Glass; glass-on-glass goes invisible (swiftui-expert liquid-glass).
         ToolbarItem(placement: .topBarLeading) {
             Button(action: onCancel) {
                 Image(systemName: "xmark")

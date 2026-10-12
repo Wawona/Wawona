@@ -36,12 +36,20 @@ every product target), do **not** wasm-package it.
 
 ## Lane B: nixpkgs → WASIX (`wasinix`)
 
-This is the right “cross-compile from nixpkgs” path.
+This is the right “cross-compile from nixpkgs” path. Split by kind:
 
-1. `pkgs/programs/<name>/<name>.nix`: start from the nixpkgs derivation
-   (`override` / `callPackage`), cross with wasixcc + WASIX sysroot.
-2. Patches next to the recipe. Install `*.wasm` in `$out/bin`.
-3. `makeWasmerPackage` → WebC / `wasmer.toml` (`owner = "wawona"`).
+| Kind | Tree | Example |
+|------|------|---------|
+| **Library / toolkit** | `pkgs/libraries/` | GTK4, cairo, glib, zlib |
+| **Program (CLI / app)** | `pkgs/programs/` | grep, nano; a GTK *demo* links `libraries.gtk4` |
+
+GTK4 is a **library**, never `pkgs/programs/gtk4`. See
+`wasinix/docs/libraries-vs-programs.md`.
+
+1. Programs: `pkgs/programs/<name>/<name>.nix` from nixpkgs override + wasixcc.
+   Libraries/toolkits: `pkgs/libraries/` (`mkUpstreamLibrary` / gtk.nix).
+2. Patches next to the recipe. Programs install `*.wasm` in `$out/bin`.
+3. `makeWasmerPackage` → WebC / `wasmer.toml` (`owner = "wawona"`) for programs.
 4. Catalog identity: upstream **name**, upstream **version**, `homepage` =
    upstream project, `source` = wasinix recipe / commit.
 5. Do not dump WASIX into Mode A `/wasm/v1` P1 rows. Product gate before
@@ -50,6 +58,7 @@ This is the right “cross-compile from nixpkgs” path.
 ```bash
 nix build .#wasix.grep
 nix build .#wasmer.grep
+nix build .#wasix.libraries.exnrefEh.gtk4
 ```
 
 ## Catalog metadata (both lanes)
@@ -73,6 +82,7 @@ a Wasmtime (P1/P2) or Wasmer (WASIX) smoke. Do not smoke WASIX with Wasmtime.
 
 - Revive `nixpkgs2wasi` / `n2w` / auto-mirror nixpkgs. GitHub #172-#177 closed wontfix. A live `Wawona/nixpkgs2wasi` clone is not a flake input and not the producer. Foot-on-iPhone stays on #143 via `wasm-packages` or `wasinix`
 - Stub CLI under an upstream name at fake `0.1.0`
+- Toolkit/framework (GTK, Qt, cairo, GLib) under `pkgs/programs/`
 - WASIX labeled or shipped as store Pulley P1
 - Laptop-built blobs as production catalog source
 - Wasm twin of a native-all-targets CLI

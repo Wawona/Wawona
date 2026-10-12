@@ -27,7 +27,7 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-formal-verification` | Verification report + Relay Kani/Verus. Matrix navigation, helpers, severity. |
 | `wawona-mission-critical` | Risk tiers, AI parity, proof obligations, security baseline, release evidence. |
 | `wasm-packages-gha` | Store WASI P1 builds on GHA (`Wawona/wasm-packages`). Not laptop publish. |
-| `wawona-wasm-cli-ports` | Port CLI to WASI P1 vs WASIX: wasm-packages vs wasinix. No stubs / nixpkgs2wasi. |
+| `wawona-wasm-cli-ports` | Port CLI to WASI P1 vs WASIX: wasm-packages vs wasinix. Libraries/toolkits under `pkgs/libraries/` (GTK4). No stubs / nixpkgs2wasi. |
 | `wawona-package` | Before any dependency or package compile: write LIBC, TEXT, GPU. Android is Bionic. cairo, harfbuzz, pango are not substitutes. |
 | `repo-wawona-io-catalogs` | Dual wasm/deb catalogs; GHA build vs catalog host split. |
 | `wawona-machine-types` | Machines UI: Native Shell / VM / Container. Sessions under Native Shell. |
@@ -299,7 +299,7 @@ skill, add one row. Capture flow: `wawona-learn`.
 Canonical prose: `Wawona/docs/` and `wwn-mcp/knowledge/wawona/`.
 
 - Native over wasm (no uutils twin in `/wasm/v1`): rule `wawona-native-over-wasm`, list `wasm-packages/scripts/native-all-targets.txt`.
-- CLI→wasm: two lanes only. Store P1 = `wasm-packages` GHA. Nixpkgs→WASIX = `wasinix`. Never `nixpkgs2wasi` stubs. Skill/rule `wawona-wasm-cli-ports`. GitHub #172-#177 closed wontfix.
+- CLI→wasm: two lanes only. Store P1 = `wasm-packages` GHA. Nixpkgs→WASIX = `wasinix`. Libraries/toolkits (GTK4) = `pkgs/libraries/`, not `programs/`. Never `nixpkgs2wasi` stubs. Skill/rule `wawona-wasm-cli-ports`. GitHub #172-#177 closed wontfix.
 - Before compiling a Wawona dependency or package, write `LIBC`, `TEXT`, and `GPU`. Android Termux is Bionic, not glibc. cairo, harfbuzz, and pango are separate libraries. Linking cairo does not provide GLES. New deb: `pkgs/wayland/clients.nix` plus `ndkLibs.nix`. Verdict is `package-doctor`, not `nix build` exit 0. Skill/rule `wawona-package`.
 - Do not bundle UTM-SE (GitHub #33 closed wontfix). VM engine is Relay.
 - Do not size-gate watchOS wasm (GitHub #156 closed wontfix). Relay wasm is required.

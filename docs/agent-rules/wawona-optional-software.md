@@ -29,7 +29,7 @@ no-fork patch burden shrinks instead of growing.
 | weston-simple-shm and weston toys | Deb | Delete |
 | kmscube, gbm-es2-demo, opengl-cube, vkcube, weston-simple-egl | Deb | Delete |
 | hello-wasi-gui, chess-wawona | Wasm P1 | Already wasm |
-| GTK and similar | Deb + WASIX | Do not add in-app |
+| GTK and similar | Deb + WASIX `pkgs/libraries/` (not `programs/`) | Do not add in-app |
 
 Deb audiences: jailbreak iOS rootless/rootful, Termux `aarch64`, Linux amd64/arm64.
 Store hosts use `wpm` / wasm only until a real wasm port exists.

@@ -242,30 +242,44 @@ public extension WawonaBackport where Content: View {
     }
 
     /// Filled blue circle for primary icon actions (Add +, editor Save checkmark).
-    /// Availability lives here (Dave DeLong `Backport` namespace).
+    /// Availability lives here ([Dave DeLong `Backport`](https://davedelong.com/blog/2021/10/09/simplifying-backwards-compatibility-in-swift/)).
     ///
-    /// iOS 26 `.glassProminent` on toolbar/sheet `Image` buttons often paints a
-    /// bare accent glyph with no bubble. Use `.borderedProminent` + `.circle` +
-    /// accent tint for an opaque blue fill. Pair with
-    /// `sharedBackgroundVisibility(.hidden)` on the `ToolbarItem`. Prefer
-    /// `Image(systemName:)` over `Label` (Label drops the circle). Force
-    /// `.iconOnly`. `ButtonBorderShape.circle` is iOS 17+; older hosts clip.
+    /// iOS 26 Liquid Glass: toolbar/sheet bars are already glass. System
+    /// `.glassProminent` / `.borderedProminent` often paint a bare glyph (or
+    /// nothing) when the item uses `sharedBackgroundVisibility(.hidden)`.
+    /// Extra `.glassEffect` is glass-on-glass and goes invisible on sheet
+    /// chrome. Opaque accent circle + white glyph + `.plain` instead.
+    /// Pair with `sharedBackgroundVisibility(.hidden)` on the `ToolbarItem`.
+    /// Prefer `Image(systemName:)` over `Label`. Symbol/foreground availability
+    /// stays inside this shim (iOS 13 floor).
     @ViewBuilder
     @MainActor
     func composeCircleButton() -> some View {
         #if os(iOS) || os(tvOS) || os(visionOS)
-        if #available(iOS 17.0, tvOS 17.0, *) {
+        if #available(iOS 26.0, tvOS 26.0, *) {
             content
                 .labelStyle(.iconOnly)
+                .modifier(WWNComposeCircleGlyph())
+                .frame(width: 36, height: 36)
+                .background(Circle().fill(Color.accentColor))
+                .clipShape(Circle())
+                .contentShape(Circle())
+                .buttonStyle(.plain)
+                .shadow(color: Color.accentColor.opacity(0.35), radius: 4, x: 0, y: 1)
+        } else if #available(iOS 17.0, tvOS 17.0, *) {
+            content
+                .labelStyle(.iconOnly)
+                .modifier(WWNComposeCircleGlyph())
                 .buttonStyle(.borderedProminent)
                 .buttonBorderShape(.circle)
                 .tint(Color.accentColor)
         } else if #available(iOS 15.0, tvOS 15.0, *) {
             content
                 .labelStyle(.iconOnly)
+                .modifier(WWNComposeCircleGlyph())
                 .buttonStyle(.borderedProminent)
                 .clipShape(Circle())
-                .accentColor(Color.accentColor)
+                .tint(Color.accentColor)
         } else {
             content
                 .buttonStyle(.plain)
@@ -283,6 +297,23 @@ public extension WawonaBackport where Content: View {
         }
         #else
         content
+        #endif
+    }
+
+    /// Full-screen cover on iOS 14+; sheet fallback on iOS 13.
+    @ViewBuilder
+    func fullScreenCover<Cover: View>(
+        isPresented: Binding<Bool>,
+        @ViewBuilder content cover: @escaping () -> Cover
+    ) -> some View {
+        #if os(iOS) || os(tvOS) || os(visionOS)
+        if #available(iOS 14.0, tvOS 14.0, *) {
+            self.content.fullScreenCover(isPresented: isPresented, content: cover)
+        } else {
+            self.content.sheet(isPresented: isPresented, content: cover)
+        }
+        #else
+        self.content.sheet(isPresented: isPresented, content: cover)
         #endif
     }
 
@@ -314,6 +345,25 @@ public extension WawonaBackport where Content: View {
                 )
                 .shadow(color: Color.black.opacity(0.15), radius: 6, x: 0, y: 2)
         )
+    }
+}
+
+/// White monochrome SF Symbol for compose / Save circles. `foregroundStyle` /
+/// `symbolRenderingMode` are iOS 15+; iOS 13–14 use `foregroundColor`.
+private struct WWNComposeCircleGlyph: ViewModifier {
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        #if os(iOS) || os(tvOS) || os(visionOS)
+        if #available(iOS 15.0, tvOS 15.0, *) {
+            content
+                .symbolRenderingMode(.monochrome)
+                .foregroundStyle(.white)
+        } else {
+            content.foregroundColor(.white)
+        }
+        #else
+        content
+        #endif
     }
 }
 
