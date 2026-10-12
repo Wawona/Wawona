@@ -61,9 +61,11 @@ Before claiming one Mode A IPA is proven across its supported OS range, migrate
 every post-13 SwiftUI API into named shims and run both forced compatibility
 paths. Physical proof starts at iOS 13 devices.
 
-Machine Add/Edit on iOS / visionOS uses `.fullScreenCover(item:)` from
-`WWNMachinesGridView`. A `.sheet` on the NavigationSplitView detail (forced
-`.regular` + iOS 26 bottom search) can silently fail to present. macOS keeps
-`.sheet` + `backport.editorSheet()` (iPad page sizing / large detent when that
-path is used). `WawonaStateObject` must not construct the wrapped object in
-`init` (factory only), or ViewModel observers leak and Add freezes.
+Machine Add/Edit on iOS / visionOS uses `backport.machineEditorSheet(item:)`
+from `WWNMachinesGridView`: half sheet on phone (`.medium` → `.large`), page
+or large on iPad, system Liquid Glass on iOS 26. Do not use `fullScreenCover`
+for that editor. Direct `.sheet` on the NavigationSplitView detail can no-op;
+the backport attaches via a zero-size background. macOS keeps sheet +
+`editorSheet()`. tvOS stays fullScreenCover. `WawonaStateObject` must not
+construct the wrapped object in `init` (factory only), or ViewModel observers
+leak and Add freezes.

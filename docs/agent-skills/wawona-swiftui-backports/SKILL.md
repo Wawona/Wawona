@@ -27,11 +27,13 @@ iPad/vision = top-trailing.
 
 ## Machine editor sheets
 
-On **iOS / visionOS**, present Add/Edit with `.fullScreenCover(item:)`, not
-`.sheet` on the NavigationSplitView detail. Forced `.regular` width + iOS 26
-bottom search made sheets silently no-op (tap OK, editor never appears, PID
-looks halted). macOS keeps `.sheet` + `backport.editorSheet()`. tvOS already
-used fullScreenCover.
+On **iOS / visionOS**, present Add/Edit with
+`backport.machineEditorSheet(item:)` (resizable **sheet**, not
+`fullScreenCover`). Phone: `.medium` then pull to `.large`. iPad: page/large.
+iOS 26: keep system Liquid Glass sheet material (no custom
+`presentationBackground`). Attach via the zero-size background helper so
+NavigationSplitView detail + iOS 26 bottom search still present. macOS:
+sheet + `editorSheet()`. tvOS: fullScreenCover (10-foot).
 
 `WawonaStateObject` must capture the factory only (never construct the
 `ObservableObject` in `init`). Eager construction leaked

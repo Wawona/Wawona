@@ -424,24 +424,75 @@ extension WawonaBackport where Content: View {
         }
     }
 
+    /// Per-machine Add/Edit chrome. Phone: half sheet (`.medium`) that the
+    /// user can pull to `.large`. iPad: page/large. iOS 26 keeps the system
+    /// Liquid Glass sheet material (do not force `presentationBackground`).
+    /// iOS 13–15: plain sheet (no detent API).
     @ViewBuilder func editorSheet() -> some View {
         #if os(iOS)
         if UIDevice.current.userInterfaceIdiom == .pad {
             if #available(iOS 18.0, *) {
                 // Page sizing follows the available window, including multitasking.
-                content.presentationSizing(.page).presentationDetents([.large])
+                content
+                    .presentationSizing(.page)
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
             } else if #available(iOS 16.0, *) {
-                content.presentationDetents([.large])
+                content
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
             } else {
                 content
             }
         } else if #available(iOS 16.4, *) {
-            content.presentationDetents([.medium, .large]).presentationContentInteraction(.scrolls)
+            content
+                .presentationDetents([.medium, .large])
+                .presentationContentInteraction(.scrolls)
+                .presentationDragIndicator(.visible)
         } else if #available(iOS 16.0, *) {
-            content.presentationDetents([.medium, .large])
-        } else { content }
+            content
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        } else {
+            content
+        }
+        #elseif os(visionOS)
+        content
         #else
         content
+        #endif
+    }
+
+    /// Present Add/Edit Machine. Phone/iPad/vision: resizable **sheet** (not
+    /// fullScreenCover). Attaches via a zero-size background so
+    /// NavigationSplitView detail + iOS 26 bottom search still present.
+    /// tvOS stays fullScreenCover (10-foot).
+    @ViewBuilder
+    func machineEditorSheet<Item: Identifiable, Editor: View>(
+        item: Binding<Item?>,
+        @ViewBuilder editor: @escaping (Item) -> Editor
+    ) -> some View {
+        #if os(tvOS)
+        if #available(tvOS 14.0, *) {
+            content.fullScreenCover(item: item, content: editor)
+        } else {
+            content.sheet(item: item, content: editor)
+        }
+        #elseif os(iOS) || os(visionOS)
+        content.background(
+            Color.clear
+                .frame(width: 0, height: 0)
+                .accessibility(hidden: true)
+                .sheet(item: item) { value in
+                    editor(value)
+                        .backport.editorSheet()
+                }
+        )
+        #else
+        content.sheet(item: item) { value in
+            editor(value)
+                .backport.editorSheet()
+        }
         #endif
     }
 

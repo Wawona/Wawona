@@ -79,33 +79,25 @@ struct WWNMachinesGridViewModern: View {
     .wwnA11y(WWNA11y.machinesRoot, label: detailNavigationTitle)
     .modifier(WWNMachineStartPlacementPrompt(model: model))
     #if !os(tvOS)
-    // iOS/visionOS: present Add/Edit as fullScreenCover. A `.sheet` on the
-    // NavigationSplitView *detail* (forced `.regular` width + iOS 26 bottom
-    // search toolbar) often never appears: taps succeed, editorDestination
-    // flips, UI stays on Machines (PID looks halted). tvOS already used
-    // fullScreenCover. macOS keeps a window sheet.
-    #if os(iOS) || os(visionOS)
-    .fullScreenCover(item: $editorDestination) { destination in
+    // Phone: half sheet (medium) pullable to large. iPad: page/large.
+    // iOS 26: system Liquid Glass sheet. Background attachment keeps the
+    // sheet reliable on NavigationSplitView detail + bottom search.
+    // tvOS uses fullScreenCover inside `machineEditorSheet`.
+    .backport.machineEditorSheet(item: $editorDestination) { destination in
       machineEditor(for: destination)
     }
-    #else
-    .sheet(item: $editorDestination) { destination in
-      machineEditor(for: destination)
-        .backport.editorSheet()
-    }
-    #endif
-      .sheet(isPresented: $showTagEditor) {
-        WWNTagEditorSheet(tag: tagEditorTag) { name, colorHex in
-          if let existing = tagEditorTag {
-            var updated = existing
-            updated.name = name
-            updated.colorHex = colorHex
-            tagStore.updateTag(updated)
-          } else {
-            tagStore.createTag(name: name, colorHex: colorHex)
-          }
+    .sheet(isPresented: $showTagEditor) {
+      WWNTagEditorSheet(tag: tagEditorTag) { name, colorHex in
+        if let existing = tagEditorTag {
+          var updated = existing
+          updated.name = name
+          updated.colorHex = colorHex
+          tagStore.updateTag(updated)
+        } else {
+          tagStore.createTag(name: name, colorHex: colorHex)
         }
       }
+    }
     #endif
     #if !os(macOS)
       .animation(.spring(duration: 0.42, bounce: 0.26), value: visibleProfiles.count)
@@ -1649,10 +1641,9 @@ struct WWNMachinesGridViewLegacy: View {
       )
     }
     .navigationViewStyle(StackNavigationViewStyle())
-    // Same as Modern: sheet on NavigationView often never presents on iOS
-    // (tap succeeds, editorDestination flips, UI stuck). Backport uses
-    // fullScreenCover on iOS 14+ and sheet on the iOS 13 floor.
-    .backport.fullScreenCover(item: $editorDestination) { destination in
+    // iOS 13–15: card sheet (no detent API). Same background attachment as
+    // Modern so presentation stays reliable under NavigationView.
+    .backport.machineEditorSheet(item: $editorDestination) { destination in
       switch destination {
       case .add:
         WWNMachineEditorView(
