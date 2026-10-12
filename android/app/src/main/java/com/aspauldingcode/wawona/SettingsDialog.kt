@@ -7,6 +7,7 @@ import android.net.Uri
 import com.aspauldingcode.wawona.anowaw.AnowawPowerController
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -52,11 +53,6 @@ import java.io.File
 import java.net.NetworkInterface
 import androidx.compose.animation.togetherWith
 
-private const val PUSH_ROW_SURFACE = 0.4f
-private const val PUSH_ROW_MUTED_SURFACE = 0.22f
-private const val PUSH_ROW_ICON = 0.8f
-private const val PUSH_ROW_MUTED_ICON = 0.4f
-private const val PUSH_ROW_MUTED_TITLE = 0.6f
 
 /** Sidebar tabs. Order matches Rust `settings_catalog` for Android.
  *  Desktop is a planned extra and stays last (not in the store catalog). */
@@ -65,7 +61,7 @@ private enum class SettingsTab(val label: String, val icon: ImageVector, val tes
     INPUT("Input", Icons.Filled.Keyboard, WawonaTestTags.SETTINGS_INPUT),
     GRAPHICS("Graphics", Icons.Filled.GraphicEq, WawonaTestTags.SETTINGS_GRAPHICS),
     CONNECTION("Connection", Icons.Filled.Computer, WawonaTestTags.SETTINGS_CONNECTION),
-    ENVIRONMENT("Env Vars", Icons.Filled.List, WawonaTestTags.SETTINGS_ENVIRONMENT),
+    ENVIRONMENT("Env Vars", Icons.AutoMirrored.Filled.List, WawonaTestTags.SETTINGS_ENVIRONMENT),
     LOCAL_SHELL("Local Shell", Icons.Filled.Folder, WawonaTestTags.SETTINGS_LOCAL_SHELL),
     MACHINES("Machines", Icons.Filled.Storage, WawonaTestTags.SETTINGS_MACHINES),
     ADVANCED("Advanced", Icons.Filled.Tune, WawonaTestTags.SETTINGS_ADVANCED),
@@ -221,15 +217,24 @@ fun SettingsDialog(
                 )
             }
         } else {
+            val motion = MaterialTheme.motionScheme
             androidx.compose.animation.AnimatedContent(
                 targetState = narrowDetailTab,
                 transitionSpec = {
+                    val slide = motion.defaultSpatialSpec<androidx.compose.ui.unit.IntOffset>()
+                    val fade = motion.defaultEffectsSpec<Float>()
                     if (targetState != null) {
-                        (androidx.compose.animation.slideInHorizontally { width -> width } + androidx.compose.animation.fadeIn()).togetherWith(
-                                androidx.compose.animation.slideOutHorizontally { width -> -width } + androidx.compose.animation.fadeOut())
+                        (androidx.compose.animation.slideInHorizontally(slide) { width -> width } +
+                            androidx.compose.animation.fadeIn(fade)).togetherWith(
+                            androidx.compose.animation.slideOutHorizontally(slide) { width -> -width } +
+                                androidx.compose.animation.fadeOut(fade),
+                        )
                     } else {
-                        (androidx.compose.animation.slideInHorizontally { width -> -width } + androidx.compose.animation.fadeIn()).togetherWith(
-                                androidx.compose.animation.slideOutHorizontally { width -> width } + androidx.compose.animation.fadeOut())
+                        (androidx.compose.animation.slideInHorizontally(slide) { width -> -width } +
+                            androidx.compose.animation.fadeIn(fade)).togetherWith(
+                            androidx.compose.animation.slideOutHorizontally(slide) { width -> width } +
+                                androidx.compose.animation.fadeOut(fade),
+                        )
                     }
                 },
                 label = "SettingsNavigation",
@@ -270,42 +275,35 @@ private fun SettingsSidebarList(
     ) {
         SettingsTab.entries.forEach { tab ->
             val isSelected = selected == tab
-            Surface(
-                onClick = { onSelect(tab) },
-                color = if (isSelected) {
-                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
-                } else {
-                    MaterialTheme.colorScheme.surfaceContainerLow
+            NavigationDrawerItem(
+                label = {
+                    Text(
+                        tab.label,
+                        style = MaterialTheme.typography.labelLarge,
+                    )
                 },
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 2.dp)
-                    .testTag(tab.testTag)
-                    .border(
-                        width = 1.dp,
-                        color = if (isSelected) {
-                            tab.accentColor.copy(alpha = 0.45f)
-                        } else {
-                            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f)
-                        },
-                        shape = RoundedCornerShape(12.dp),
-                    ),
-            ) {
-                Row(
-                    Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
+                selected = isSelected,
+                onClick = { onSelect(tab) },
+                icon = {
                     Icon(
                         tab.icon,
                         contentDescription = tab.label,
-                        modifier = Modifier.size(20.dp),
-                        tint = tab.accentColor,
                     )
-                    Spacer(Modifier.width(12.dp))
-                    Text(tab.label, style = MaterialTheme.typography.bodyLarge)
-                }
-            }
+                },
+                shape = MaterialTheme.shapes.large,
+                colors = NavigationDrawerItemDefaults.colors(
+                    selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    selectedIconColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    selectedTextColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    unselectedContainerColor = Color.Transparent,
+                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    unselectedTextColor = MaterialTheme.colorScheme.onSurface,
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 2.dp)
+                    .testTag(tab.testTag),
+            )
         }
     }
 }
@@ -2066,53 +2064,51 @@ private fun SettingsPushRow(
     icon: ImageVector,
     onClick: (() -> Unit)?,
 ) {
+    val enabled = onClick != null
+    val scheme = MaterialTheme.colorScheme
+    val iconTint = if (enabled) scheme.primary else scheme.onSurfaceVariant
     Surface(
         onClick = { onClick?.invoke() },
+        enabled = enabled,
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(
-            alpha = if (onClick == null) PUSH_ROW_MUTED_SURFACE else PUSH_ROW_SURFACE,
-        ),
+        shape = MaterialTheme.shapes.large,
+        color = if (enabled) scheme.surfaceContainerHigh else scheme.surfaceContainerLow,
+        tonalElevation = if (enabled) 1.dp else 0.dp,
     ) {
-        Row(
-            Modifier.fillMaxWidth().padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                icon,
-                null,
-                Modifier.size(24.dp),
-                tint = MaterialTheme.colorScheme.primary.copy(
-                    alpha = if (onClick == null) PUSH_ROW_MUTED_ICON else PUSH_ROW_ICON,
-                ),
-            )
-            Spacer(Modifier.width(16.dp))
-            Column(Modifier.weight(1f)) {
+        ListItem(
+            headlineContent = {
                 Text(
                     title,
-                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
-                    color = MaterialTheme.colorScheme.onSurface.copy(
-                        alpha = if (onClick == null) PUSH_ROW_MUTED_TITLE else 1f,
-                    ),
+                    style = MaterialTheme.typography.titleMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+            },
+            supportingContent = {
                 Text(
                     subtitle,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
+                    color = scheme.onSurfaceVariant,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-            }
-            if (onClick != null) {
-                Icon(
-                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
+            },
+            leadingContent = { Icon(icon, contentDescription = null, tint = iconTint) },
+            trailingContent = onClick?.let {
+                {
+                    Icon(
+                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = scheme.onSurfaceVariant,
+                    )
+                }
+            },
+            colors = ListItemDefaults.colors(
+                containerColor = Color.Transparent,
+                headlineColor = if (enabled) scheme.onSurface else scheme.onSurfaceVariant,
+                leadingIconColor = iconTint,
+            ),
+        )
     }
 }
 

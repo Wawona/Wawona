@@ -1044,7 +1044,10 @@ fun WawonaApp(
             guestConsoleText = if (profile.type == MachineType.SSH_TERMINAL) {
                 "SSH session starting.\n"
             } else {
-                "Wawona Terminal\n\nNative Shell session ready.\nType is not wired to a live PTY on Android yet.\nUse a Wayland client Machine for compositor paint.\n"
+                "Wawona Terminal\n\n" +
+                    "Native Shell session ready.\n" +
+                    "Type is not wired to a live PTY on Android yet.\n" +
+                    "Use a Wayland client Machine for compositor paint.\n"
             }
             showGuestConsole = true
             showMachinesHome = false

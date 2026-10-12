@@ -12,6 +12,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -99,8 +100,11 @@ fun WawonaModalSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-        containerColor = MaterialTheme.colorScheme.surface,
+        shape = MaterialTheme.shapes.extraLarge.copy(
+            bottomStart = CornerSize(0.dp),
+            bottomEnd = CornerSize(0.dp),
+        ),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         dragHandle = { WawonaSheetDragHandle() },
     ) {
         Column(
@@ -138,11 +142,11 @@ fun WawonaSheetDragHandle(modifier: Modifier = Modifier) {
     Box(
         modifier
             .padding(vertical = 12.dp)
-            .width(40.dp)
+            .width(48.dp)
             .height(4.dp)
             .background(
                 MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                RoundedCornerShape(2.dp),
+                MaterialTheme.shapes.extraSmall,
             ),
     )
 }

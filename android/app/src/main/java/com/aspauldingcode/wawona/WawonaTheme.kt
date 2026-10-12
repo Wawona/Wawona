@@ -6,6 +6,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialExpressiveTheme
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
@@ -34,7 +35,23 @@ val WawonaCompositorBackground = Color(0xFF0F1018)
 
 val LocalWawonaCompositorBackground = staticCompositionLocalOf { WawonaCompositorBackground }
 
+/** Material You 3 Expressive is Android 16 (API 36) and newer only. */
+private val expressiveApiAvailable: Boolean
+    get() = Build.VERSION.SDK_INT >= 36
+
+/**
+ * Expressive shape scale (larger corner radii). Used on API 36+; below 36 we keep a
+ * slightly tighter M3 scale so older devices stay utilitarian.
+ */
 private val WawonaExpressiveShapes = Shapes(
+    extraSmall = RoundedCornerShape(4.dp),
+    small = RoundedCornerShape(8.dp),
+    medium = RoundedCornerShape(16.dp),
+    large = RoundedCornerShape(28.dp),
+    extraLarge = RoundedCornerShape(36.dp),
+)
+
+private val WawonaStandardShapes = Shapes(
     extraSmall = RoundedCornerShape(4.dp),
     small = RoundedCornerShape(8.dp),
     medium = RoundedCornerShape(12.dp),
@@ -104,7 +121,7 @@ private val WawonaStaticLight = lightColorScheme(
     surfaceTint = Color(0xFF2855C5),
 )
 
-private val WawonaExpressiveTypography = Typography(
+private val WawonaTypography = Typography(
     displayLarge = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = FontWeight.W400,
@@ -218,17 +235,13 @@ private fun wawonaColorScheme(
     dynamicColor: Boolean,
     context: android.content.Context,
 ): androidx.compose.material3.ColorScheme {
-    val expressiveBase =
-        if (darkTheme) darkColorScheme() else expressiveLightColorScheme()
-    val staticBase = if (darkTheme) WawonaStaticDark else WawonaStaticLight
-
     val resolved = when {
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        Build.VERSION.SDK_INT >= 36 ->
-            expressiveBase
+        expressiveApiAvailable ->
+            if (darkTheme) darkColorScheme() else expressiveLightColorScheme()
         else ->
-            staticBase
+            if (darkTheme) WawonaStaticDark else WawonaStaticLight
     }
 
     return if (darkTheme) {
@@ -250,12 +263,17 @@ fun WawonaTheme(
 ) {
     val context = LocalContext.current
     val colorScheme = wawonaColorScheme(darkTheme, dynamicColor, context)
+    val shapes = if (expressiveApiAvailable) WawonaExpressiveShapes else WawonaStandardShapes
+    val motionScheme =
+        if (expressiveApiAvailable) MotionScheme.expressive() else MotionScheme.standard()
 
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
+            @Suppress("DEPRECATION")
             window.statusBarColor = Color.Transparent.toArgb()
+            @Suppress("DEPRECATION")
             window.navigationBarColor = Color.Transparent.toArgb()
             WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
             WindowCompat.getInsetsController(window, view).isAppearanceLightNavigationBars = !darkTheme
@@ -263,12 +281,22 @@ fun WawonaTheme(
     }
 
     CompositionLocalProvider(LocalWawonaCompositorBackground provides WawonaCompositorBackground) {
-        MaterialExpressiveTheme(
-            colorScheme = colorScheme,
-            motionScheme = MotionScheme.expressive(),
-            shapes = WawonaExpressiveShapes,
-            typography = WawonaExpressiveTypography,
-            content = content,
-        )
+        if (expressiveApiAvailable) {
+            MaterialExpressiveTheme(
+                colorScheme = colorScheme,
+                motionScheme = motionScheme,
+                shapes = shapes,
+                typography = WawonaTypography,
+                content = content,
+            )
+        } else {
+            MaterialTheme(
+                colorScheme = colorScheme,
+                motionScheme = motionScheme,
+                shapes = shapes,
+                typography = WawonaTypography,
+                content = content,
+            )
+        }
     }
 }

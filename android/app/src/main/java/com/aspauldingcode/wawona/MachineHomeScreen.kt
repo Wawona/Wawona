@@ -5,10 +5,6 @@ import android.os.Build
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SizeTransform
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearOutSlowInEasing
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -18,13 +14,13 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.filled.Close
@@ -34,9 +30,10 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -53,7 +50,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.ScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.KeyboardOptions
@@ -114,7 +110,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
@@ -245,13 +240,19 @@ fun MachineWelcomeScreen(
                             ),
                         )
                     } else {
-                        Text("Machine Configuration")
+                        Text(
+                            "Machine Configuration",
+                            style = MaterialTheme.typography.titleLarge,
+                        )
                     }
                 },
                 scrollBehavior = scrollBehavior,
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background.copy(alpha = 0.82f),
-                    scrolledContainerColor = MaterialTheme.colorScheme.background.copy(alpha = 0.96f),
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface,
+                    actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                 ),
                 navigationIcon = {
                     if (searchExpanded) {
@@ -288,27 +289,25 @@ fun MachineWelcomeScreen(
             )
         },
         floatingActionButton = {
-            Surface(
+            FloatingActionButton(
                 onClick = { creating = true },
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                shadowElevation = 6.dp,
-                modifier = Modifier
-                    .padding(end = 16.dp, bottom = 16.dp)
-                    .size(44.dp)
-                    .testTag(WawonaTestTags.MACHINES_ADD),
+                modifier = Modifier.testTag(WawonaTestTags.MACHINES_ADD),
+                shape = MaterialTheme.shapes.large,
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                elevation = FloatingActionButtonDefaults.elevation(
+                    defaultElevation = 4.dp,
+                    pressedElevation = 6.dp,
+                ),
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        Icons.Filled.Add,
-                        contentDescription = "Add Machine",
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
+                Icon(
+                    Icons.Filled.Add,
+                    contentDescription = "Add Machine",
+                )
             }
         },
     ) { padding ->
+        val motion = MaterialTheme.motionScheme
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -323,8 +322,8 @@ fun MachineWelcomeScreen(
                     end = 16.dp,
                     bottom = listBottomPadding,
                 ),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 if (visibleProfiles.isEmpty()) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
@@ -358,7 +357,11 @@ fun MachineWelcomeScreen(
                     items(visibleProfiles, key = { it.id }) { profile ->
                         AnimatedVisibility(
                             visible = true,
-                            enter = fadeIn() + scaleIn(initialScale = 0.95f, animationSpec = spring()),
+                            enter = fadeIn(animationSpec = motion.defaultEffectsSpec()) +
+                                scaleIn(
+                                    initialScale = 0.96f,
+                                    animationSpec = motion.defaultSpatialSpec(),
+                                ),
                         ) {
                             MachineGridCard(
                                 profile = profile,
@@ -446,35 +449,19 @@ private fun MachineGridCard(
     val statusColor = statusColorFor(status)
     val subtitle = machineSubtitle(profile)
     val summary = configurationSummary(profile)
-
-    val cardShape = RoundedCornerShape(20.dp)
-    // Lift the card visibly off the near-black compositor background, matching the
-    // iOS glass card (white @ 0.05 over ultra-thin material).
-    val cardSurface = lerp(
-        MaterialTheme.colorScheme.surface,
-        MaterialTheme.colorScheme.onSurface,
-        0.07f,
-    )
+    val cardShape = MaterialTheme.shapes.extraLarge
+    val scheme = MaterialTheme.colorScheme
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .testTag(WawonaTestTags.machinesCard(profile.id))
-            .shadow(
-                elevation = 20.dp,
-                shape = cardShape,
-                clip = false,
-                ambientColor = Color.Black.copy(alpha = 0.35f),
-                spotColor = Color.Black.copy(alpha = 0.45f),
-            )
-            .border(
-                width = 1.dp,
-                color = Color.White.copy(alpha = 0.2f),
-                shape = cardShape,
-            ),
+            .testTag(WawonaTestTags.machinesCard(profile.id)),
         shape = cardShape,
-        colors = CardDefaults.cardColors(containerColor = cardSurface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = scheme.surfaceContainerHigh,
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        border = BorderStroke(1.dp, scheme.outlineVariant),
     ) {
         Column(
             modifier = Modifier
@@ -524,14 +511,14 @@ private fun MachineGridCard(
             Text(
                 summary,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = scheme.onSurfaceVariant,
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis
             )
 
             MachineActionButtonRow {
                 if (isRunning) {
-                    CompactOutlinedButton(
+                    CompactTonalButton(
                         onClick = onFocus,
                         modifier = Modifier.testTag(WawonaTestTags.MACHINES_FOCUS),
                     ) {
@@ -544,8 +531,8 @@ private fun MachineGridCard(
                         onClick = onStop,
                         modifier = Modifier.testTag(WawonaTestTags.MACHINES_STOP),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.error,
-                            contentColor = MaterialTheme.colorScheme.onError,
+                            containerColor = scheme.error,
+                            contentColor = scheme.onError,
                         ),
                     ) {
                         MachineActionContent(
@@ -559,8 +546,8 @@ private fun MachineGridCard(
                         modifier = Modifier.testTag(WawonaTestTags.MACHINES_START),
                         enabled = capabilities.launchSupported && status != MachineStatus.CONNECTING,
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary,
+                            containerColor = scheme.primary,
+                            contentColor = scheme.onPrimary,
                         ),
                     ) {
                         MachineActionContent(
@@ -569,7 +556,7 @@ private fun MachineGridCard(
                         )
                     }
                 }
-                CompactOutlinedButton(
+                CompactTonalButton(
                     onClick = onEdit,
                     modifier = Modifier.testTag(WawonaTestTags.MACHINES_EDIT),
                 ) {
@@ -582,8 +569,8 @@ private fun MachineGridCard(
                     onClick = onDelete,
                     enabled = !isRunning,
                     modifier = Modifier.testTag(WawonaTestTags.MACHINES_DELETE),
-                    contentColor = MaterialTheme.colorScheme.error,
-                    borderColor = MaterialTheme.colorScheme.error.copy(alpha = 0.5f),
+                    contentColor = scheme.error,
+                    borderColor = scheme.error.copy(alpha = 0.5f),
                 ) {
                     MachineActionContent(
                         icon = { Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(machineActionIconSize())) },
@@ -647,8 +634,9 @@ private fun CompactOutlinedButton(
 ) {
     OutlinedButton(
         onClick = onClick,
-        modifier = modifier.defaultMinSize(minWidth = 0.dp, minHeight = 36.dp),
+        modifier = modifier.defaultMinSize(minWidth = 0.dp, minHeight = 40.dp),
         enabled = enabled,
+        shape = MaterialTheme.shapes.medium,
         contentPadding = machineActionPadding(),
         border = BorderStroke(1.dp, borderColor),
         colors = ButtonDefaults.outlinedButtonColors(
@@ -668,10 +656,28 @@ private fun CompactFilledButton(
 ) {
     Button(
         onClick = onClick,
-        modifier = modifier.defaultMinSize(minWidth = 0.dp, minHeight = 36.dp),
+        modifier = modifier.defaultMinSize(minWidth = 0.dp, minHeight = 40.dp),
         enabled = enabled,
+        shape = MaterialTheme.shapes.medium,
         contentPadding = machineActionPadding(),
         colors = colors,
+        content = content,
+    )
+}
+
+@Composable
+private fun CompactTonalButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    content: @Composable RowScope.() -> Unit,
+) {
+    FilledTonalButton(
+        onClick = onClick,
+        modifier = modifier.defaultMinSize(minWidth = 0.dp, minHeight = 40.dp),
+        enabled = enabled,
+        shape = MaterialTheme.shapes.medium,
+        contentPadding = machineActionPadding(),
         content = content,
     )
 }
@@ -692,11 +698,15 @@ private fun MachineCardBanner(
     statusColor: Color,
     thumbnailBitmap: android.graphics.Bitmap?
 ) {
-    val shape = RoundedCornerShape(16.dp)
+    val shape = MaterialTheme.shapes.large
+    val scheme = MaterialTheme.colorScheme
+    val scrimTop = scheme.scrim.copy(alpha = 0.12f)
+    val scrimBottom = scheme.scrim.copy(alpha = 0.48f)
+    val onMedia = scheme.inverseOnSurface
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(90.dp)
+            .height(96.dp)
             .clip(shape)
     ) {
         if (thumbnailBitmap != null) {
@@ -713,8 +723,9 @@ private fun MachineCardBanner(
                     .background(
                         Brush.linearGradient(
                             colors = listOf(
-                                statusColor.copy(alpha = 0.32f),
-                                Color(0xFF6366F1).copy(alpha = 0.18f)
+                                statusColor.copy(alpha = 0.42f),
+                                scheme.primary.copy(alpha = 0.28f),
+                                scheme.tertiary.copy(alpha = 0.22f),
                             )
                         )
                     )
@@ -725,17 +736,14 @@ private fun MachineCardBanner(
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
-                        colors = listOf(
-                            Color.Black.copy(alpha = 0.10f),
-                            Color.Black.copy(alpha = 0.40f)
-                        )
+                        colors = listOf(scrimTop, scrimBottom)
                     )
                 )
         )
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 12.dp),
+                .padding(horizontal = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(Modifier.weight(1f)) {
@@ -743,27 +751,31 @@ private fun MachineCardBanner(
                     profileName.ifBlank { "Unnamed Machine" },
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White,
+                    color = onMedia,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     subtitle,
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color.White.copy(alpha = 0.82f),
+                    color = onMedia.copy(alpha = 0.86f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            Icon(
-                Icons.Filled.Computer,
-                contentDescription = null,
-                tint = statusColor,
-                modifier = Modifier
-                    .size(40.dp)
-                    .background(Color.White.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
-                    .padding(8.dp)
-            )
+            Surface(
+                shape = MaterialTheme.shapes.medium,
+                color = scheme.surface.copy(alpha = 0.55f),
+                contentColor = statusColor,
+            ) {
+                Icon(
+                    Icons.Filled.Computer,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .padding(10.dp)
+                        .size(20.dp),
+                )
+            }
         }
     }
 }
@@ -801,21 +813,26 @@ private fun StatusChip(text: String, modifier: Modifier = Modifier) {
         text = text,
         style = MaterialTheme.typography.labelSmall,
         fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.onSecondaryContainer,
         modifier = modifier
             .background(
-                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.14f),
-                RoundedCornerShape(50),
+                MaterialTheme.colorScheme.secondaryContainer,
+                MaterialTheme.shapes.small,
             )
             .padding(horizontal = 8.dp, vertical = 5.dp),
     )
 }
 
-private fun statusColorFor(status: MachineStatus): Color = when (status) {
-    MachineStatus.CONNECTED -> Color(0xFF34D399)
-    MachineStatus.CONNECTING -> Color(0xFF60A5FA)
-    MachineStatus.DEGRADED -> Color(0xFFFBBF24)
-    MachineStatus.ERROR -> Color(0xFFFB7185)
-    MachineStatus.DISCONNECTED -> Color(0xFF94A3B8)
+@Composable
+private fun statusColorFor(status: MachineStatus): Color {
+    val scheme = MaterialTheme.colorScheme
+    return when (status) {
+        MachineStatus.CONNECTED -> scheme.tertiary
+        MachineStatus.CONNECTING -> scheme.primary
+        MachineStatus.DEGRADED -> scheme.secondary
+        MachineStatus.ERROR -> scheme.error
+        MachineStatus.DISCONNECTED -> scheme.onSurfaceVariant
+    }
 }
 
 private fun machineScopeLabel(type: MachineType): String = when (type) {
@@ -1149,12 +1166,13 @@ private fun MachineEditorSheet(
         },
     ) { contentScrollState ->
         LaunchedEffect(showClientPicker) { contentScrollState.scrollTo(0) }
+        val motion = MaterialTheme.motionScheme
         AnimatedContent(
             targetState = showClientPicker,
             modifier = Modifier.testTag(WawonaTestTags.MACHINES_EDITOR),
             transitionSpec = {
-                val slideSpec = tween<androidx.compose.ui.unit.IntOffset>(durationMillis = 320, easing = FastOutSlowInEasing)
-                val fadeSpec = tween<Float>(durationMillis = 220, easing = LinearOutSlowInEasing)
+                val slideSpec = motion.defaultSpatialSpec<androidx.compose.ui.unit.IntOffset>()
+                val fadeSpec = motion.defaultEffectsSpec<Float>()
                 val transform = if (targetState) {
                     (slideInHorizontally(slideSpec) { it } + fadeIn(fadeSpec)).togetherWith(
                         slideOutHorizontally(slideSpec) { -it / 4 } + fadeOut(fadeSpec),
