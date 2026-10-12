@@ -987,6 +987,9 @@
             coreutilsAndroid = coreutils-multicall-android;
             targetPkgs = pkgsAndroidCross;
             waypipe = toolchainsAndroid.buildForAndroid "waypipe" {};
+            # Same Terminal Compose face overlay as wawona-android (Nix sandbox
+            # cannot follow the gitignored symlink; MainActivity needs these).
+            terminalSrc = inputs.terminal;
             inherit
               androidToolchainNix
               westonSimpleShmPatchedSrcNix
