@@ -21,6 +21,9 @@ re-open a closed incident or invert a gate.
    If the prior already forbids it, stop.
 4. **Prove.** Link/eval/package failures: local `nix build` of the failing cell
    (`wawona-local-before-ci`). UI: agent-device (`wawona-test-control`).
+   Flake input rename: skill `wawona-flake-consumer-rename`. iOS sim build
+   ladder / ffmpeg / Watch: skill `wawona-ios-sim-runtime`. Do not judge
+   long `nix build` via `tee | tail` alone (false exit / truncated log).
 5. **Capture.** If you learned a durable fact, skill `wawona-learn` + reindex RAG.
 
 ## Improve means

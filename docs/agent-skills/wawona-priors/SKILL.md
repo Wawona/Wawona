@@ -19,7 +19,8 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-carplay-lab` | Playport physical-iPhone CarPlay lab; private runtime identity and pairing. |
 | `wawona-vphone-lab-recover` | Dead / stale vphone lab. Sock refused. Stuck SSH wait. |
 | `wawona-ios-min-os` | iOS 13-27+ min OS vs latest SDK, including bundled archives. ObjC needs its own deployment flag. One ANGLE, one MoltenVK. Never downgrade SDK. |
-| `wawona-ios-sim-runtime` | iOS Simulator dogfood: profiles import, SIMCTL_CHILD AUTO_START, XCUITest gap. |
+| `wawona-ios-sim-runtime` | iOS Simulator dogfood: backend ladder, ffmpeg nativeDeps, Watch vs phone, half-sheet, AUTO_START. |
+| `wawona-flake-consumer-rename` | After renaming a flake input/repo (e.g. iLand), bump every consumer tip + follows before claiming eval green. |
 | `wawona-ios-link-contract` | Fail before compile when Sources membership or C symbol missing. |
 | `wawona-gh` | GitHub issues/milestones/PRs/`gh run`. Shell + local `gh`. No GitHub MCP. |
 | `wawona-relay-ios-hypervisor` | Mode B iOS Hypervisor.framework via Relay. Not QEMU HVF. |
@@ -49,7 +50,7 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-rust-first` | New Wawona-owned logic |
 | `wawona-uniffi-domain` | Product domain vs `WWNCore*`; no JFFI fork |
 | `wawona-nix-generated` | Generated files are Nix outputs; never git-track UniFFI |
-| `wawona-repo-dag` | Flake input / registry key |
+| `wawona-repo-dag` | Flake input / registry key; rename cascade → skill `wawona-flake-consumer-rename` |
 | `wawona-product-map` | Which product you are touching |
 | `wawona-mode-a-b` / `wawona-ios-mode-b-channels` | Store vs TrollStore vs Sileo |
 | `wawona-macos-mode-a` / `wawona-macos-no-appstore` | macOS in-window vs SIP |

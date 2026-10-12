@@ -46,9 +46,30 @@ Prove: process connects to a live Wawona Wayland socket. Then unlink from
 Default bundled id: empty / Native Shell. Store picker: `wpm` only. Mode B /
 Termux / Linux: list installed debs under the package prefix.
 
+## Stale xcodegen trap (2026-10-12)
+
+After unbundle, tip Nix/`xcodegen.nix` must drop `-force_load`
+`libfoot.a` / `libfuzzel.a` (and similar move-set archives). A **checked-in
+or leftover** `Wawona.xcodeproj` can still force_load them.
+
+Symptoms on local `xcodebuild -scheme Wawona-iOS`:
+
+```text
+ld: library '…/DerivedSources/libfoot.a' not found
+# or after a host stub:
+ld: building for iOS-simulator, but linking … built for macOS
+Undefined symbols: _foot_main, _fuzzel_main (from libwwn-pty dispatch)
+```
+
+`scripts/xcode-prebuild.sh` privatizes zsh/fastfetch. It does **not** build
+foot/fuzzel. Lab escape: ios-sim `ar` stubs that export `foot_main` /
+`fuzzel_main`, or regenerate the project from tip Nix. Product fix: unlink
+in xcodegen in the same change as the unbundle.
+
 ## Never
 
 - Grow App Store patch surface past zsh, uutils, fastfetch
 - Ship ElleKit or APT in store IPA
 - Revive nixpkgs2wasi stubs
 - Default launcher `weston-terminal`
+- Leave stale `Wawona.xcodeproj` force_loading move-set archives after unlink

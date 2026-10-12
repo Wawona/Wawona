@@ -61,3 +61,12 @@ L4 Wawona. Merges all fragments; never an input of L0-L3.
 **When adding a flake input or a `registry.nix` key, re-read
 `docs/wwn-repo-dag.md` and its cycle watch list first.** Any `flake.nix` /
 `registry.nix` change must update or cite that doc in the same change.
+
+## Flake / GitHub rename
+
+Renaming an L1/L3′ flake input or GitHub repo (example: `wwn-iland` →
+`Wawona/iLand`, input `iland`) is not done until **every consumer tip** and
+the Wawona lock follow the new name (explicit `*.inputs.iland.follows`).
+Registry package keys may stay stable. Skill:
+`wawona-flake-consumer-rename`. Do not leave Wawona on a tip that still
+requires `wwn-iland` via a nested lock.
