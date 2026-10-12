@@ -96,9 +96,30 @@ private data class SettingsChoiceSpec(
     val persist: ((SharedPreferences, String) -> Unit)? = null,
 )
 
+private enum class SettingsTextEditorKind {
+    Text,
+    Password,
+}
+
+/** Push editor page (iOS Settings.app / WWNSettingsTextEditorView parity). */
+private data class SettingsTextEditorSpec(
+    val key: String,
+    val title: String,
+    val helpText: String,
+    val prompt: String = "",
+    val kind: SettingsTextEditorKind = SettingsTextEditorKind.Text,
+    val default: String = "",
+    val revertToDefaultOnEmpty: Boolean = false,
+    val keyboardType: KeyboardType = KeyboardType.Text,
+    val readOnly: Boolean = false,
+)
+
 private val LocalOpenSettingsChoice = staticCompositionLocalOf<(SettingsChoiceSpec) -> Unit> {
     {}
 }
+
+private val LocalOpenSettingsTextEditor =
+    staticCompositionLocalOf<(SettingsTextEditorSpec) -> Unit> { {} }
 
 /**
  * Sole Global Settings host on Android Play / typical sideload.
@@ -120,14 +141,19 @@ fun SettingsDialog(
     var selectedTab by remember { mutableStateOf(SettingsTab.DISPLAY) }
     var narrowDetailTab by remember { mutableStateOf<SettingsTab?>(null) }
     var choicePage by remember { mutableStateOf<SettingsChoiceSpec?>(null) }
+    var textEditorPage by remember { mutableStateOf<SettingsTextEditorSpec?>(null) }
 
     WawonaModalSheet(
         onDismiss = { onApply(); onDismiss() },
-        title = choicePage?.title ?: "Wawona Settings",
+        title = textEditorPage?.title ?: choicePage?.title ?: "Wawona Settings",
         defaultDetent = WawonaSheetDetent.Large,
         scrollBehavior = WawonaSheetScrollBehavior.ExpandWithContent,
         navigationIcon = {
-            if (choicePage != null) {
+            if (textEditorPage != null) {
+                IconButton(onClick = { textEditorPage = null }) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                }
+            } else if (choicePage != null) {
                 IconButton(onClick = { choicePage = null }) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                 }
@@ -146,8 +172,23 @@ fun SettingsDialog(
             }
         },
     ) { _ ->
-        CompositionLocalProvider(LocalOpenSettingsChoice provides { spec -> choicePage = spec }) {
-            if (choicePage != null) {
+        CompositionLocalProvider(
+            LocalOpenSettingsChoice provides { spec ->
+                textEditorPage = null
+                choicePage = spec
+            },
+            LocalOpenSettingsTextEditor provides { spec ->
+                choicePage = null
+                textEditorPage = spec
+            },
+        ) {
+            if (textEditorPage != null) {
+                SettingsTextEditorPage(
+                    spec = textEditorPage!!,
+                    prefs = prefs,
+                    onDone = { textEditorPage = null },
+                )
+            } else if (choicePage != null) {
                 SettingsChoiceList(
                     spec = choicePage!!,
                     prefs = prefs,
@@ -157,7 +198,11 @@ fun SettingsDialog(
             Row(Modifier.fillMaxSize().testTag(WawonaTestTags.SETTINGS_ROOT)) {
                 SettingsSidebarList(
                     selected = selectedTab,
-                    onSelect = { selectedTab = it; choicePage = null },
+                    onSelect = {
+                        selectedTab = it
+                        choicePage = null
+                        textEditorPage = null
+                    },
                     modifier = Modifier.width(220.dp),
                 )
                 VerticalDivider()
@@ -2018,41 +2063,62 @@ fun SettingsTextInputItem(
         if (!readOnly) text = prefs.getString(key, default) ?: default
         else { text = default; prefs.edit().putString(key, default).apply() }
     }
+    val openEditor = LocalOpenSettingsTextEditor.current
     Surface(
-        Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        onClick = {
+            if (!readOnly) {
+                openEditor(
+                    SettingsTextEditorSpec(
+                        key = key,
+                        title = title,
+                        helpText = description,
+                        kind = SettingsTextEditorKind.Text,
+                        default = default,
+                        revertToDefaultOnEmpty = revertToDefaultOnEmpty,
+                        keyboardType = keyboardType,
+                        readOnly = false,
+                    )
+                )
+            }
+        },
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (readOnly) 0.22f else 0.4f),
     ) {
-        Column(Modifier.fillMaxWidth().padding(16.dp)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Icon(icon, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f))
-                Spacer(Modifier.width(16.dp))
-                Text(title, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
-                    color = MaterialTheme.colorScheme.onSurface,
+        Row(
+            Modifier.fillMaxWidth().padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                icon,
+                null,
+                Modifier.size(24.dp),
+                tint = MaterialTheme.colorScheme.primary.copy(alpha = if (readOnly) 0.4f else 0.8f),
+            )
+            Spacer(Modifier.width(16.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (readOnly) 0.6f else 1f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f))
+                )
+                Text(
+                    text.ifEmpty { default }.ifEmpty { " " },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
-            Spacer(Modifier.height(12.dp))
-            OutlinedTextField(
-                value = text,
-                onValueChange = { nv ->
-                    if (!readOnly) {
-                        val fv = if (revertToDefaultOnEmpty && nv.isEmpty()) default else nv
-                        text = fv; prefs.edit().putString(key, fv).apply()
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(), singleLine = true,
-                readOnly = readOnly, enabled = !readOnly,
-                keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                    disabledTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    disabledBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
-                ),
-                shape = RoundedCornerShape(12.dp)
-            )
+            if (!readOnly) {
+                Icon(
+                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }
@@ -2064,41 +2130,52 @@ fun SettingsPasswordInputItem(
     icon: ImageVector, default: String
 ) {
     var text by remember { mutableStateOf(prefs.getString(key, default) ?: default) }
-    var visible by remember { mutableStateOf(false) }
     LaunchedEffect(key) { text = prefs.getString(key, default) ?: default }
+    val openEditor = LocalOpenSettingsTextEditor.current
+    val masked = if (text.isEmpty()) " " else "••••••••"
     Surface(
-        Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        onClick = {
+            openEditor(
+                SettingsTextEditorSpec(
+                    key = key,
+                    title = title,
+                    helpText = description,
+                    kind = SettingsTextEditorKind.Password,
+                    default = default,
+                    keyboardType = KeyboardType.Password,
+                )
+            )
+        },
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
     ) {
-        Column(Modifier.fillMaxWidth().padding(16.dp)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Icon(icon, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f))
-                Spacer(Modifier.width(16.dp))
-                Text(title, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+        Row(
+            Modifier.fillMaxWidth().padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(icon, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f))
+            Spacer(Modifier.width(16.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f))
+                )
+                Text(
+                    masked,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
-            Spacer(Modifier.height(12.dp))
-            OutlinedTextField(
-                value = text,
-                onValueChange = { text = it; prefs.edit().putString(key, it).apply() },
-                modifier = Modifier.fillMaxWidth(), singleLine = true,
-                visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
-                trailingIcon = {
-                    IconButton(onClick = { visible = !visible }) {
-                        Icon(if (visible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                            "Toggle visibility")
-                    }
-                },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outline
-                ),
-                shape = RoundedCornerShape(12.dp)
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -2140,6 +2217,82 @@ fun SettingsMultiLineTextInputItem(
                 ),
                 shape = RoundedCornerShape(12.dp)
             )
+        }
+    }
+}
+
+@Composable
+private fun SettingsTextEditorPage(
+    spec: SettingsTextEditorSpec,
+    prefs: SharedPreferences,
+    onDone: () -> Unit,
+) {
+    var text by remember(spec.key) {
+        mutableStateOf(prefs.getString(spec.key, spec.default) ?: spec.default)
+    }
+    var revealed by remember { mutableStateOf(false) }
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        if (spec.helpText.isNotBlank()) {
+            Text(
+                spec.helpText,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        OutlinedTextField(
+            value = text,
+            onValueChange = { if (!spec.readOnly) text = it },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            readOnly = spec.readOnly,
+            enabled = !spec.readOnly,
+            label = {
+                Text(if (spec.prompt.isNotEmpty()) spec.prompt else spec.title)
+            },
+            visualTransformation = when {
+                spec.kind != SettingsTextEditorKind.Password -> VisualTransformation.None
+                revealed -> VisualTransformation.None
+                else -> PasswordVisualTransformation()
+            },
+            trailingIcon = if (spec.kind == SettingsTextEditorKind.Password) {
+                {
+                    IconButton(onClick = { revealed = !revealed }) {
+                        Icon(
+                            if (revealed) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                            contentDescription = "Toggle visibility",
+                        )
+                    }
+                }
+            } else {
+                null
+            },
+            keyboardOptions = KeyboardOptions(keyboardType = spec.keyboardType),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+            ),
+            shape = RoundedCornerShape(12.dp),
+        )
+        if (!spec.readOnly) {
+            Button(
+                onClick = {
+                    val next = when {
+                        spec.revertToDefaultOnEmpty && text.isEmpty() -> spec.default
+                        else -> text
+                    }
+                    prefs.edit().putString(spec.key, next).apply()
+                    onDone()
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Save")
+            }
         }
     }
 }
