@@ -830,19 +830,19 @@ struct WWNMachineDisplayEditorSection: View {
         WWNEditorFieldRow(
           "Display Backend",
           icon: "display",
-          footnote: "Wayland runs the client nested inside Wawona. DRM/KMS runs it against wwn-iland's userspace display stack, as it would on bare metal."
+          footnote: "Wayland runs the client nested inside Wawona. DRM/KMS runs it against iLand's userspace display stack, as it would on bare metal."
         ) {
           Picker("", selection: $draft.compositorBackend) {
             Text("Auto").tag("auto")
             Text("Wayland (nested)").tag("wayland")
-            Text("DRM/KMS (wwn-iland)").tag("drm")
+            Text("DRM/KMS (iLand)").tag("drm")
           }
           .wwnPlatformPickerStyle()
           .labelsHidden()
           .disabled(draft.openGLDriver == "none")
           .backport.help(draft.openGLDriver == "none"
             ? "DRM/KMS presents through iland, which needs an OpenGL driver."
-            : "Wayland runs the client nested inside Wawona. DRM/KMS runs it against wwn-iland's userspace display stack, as it would on bare metal.")
+            : "Wayland runs the client nested inside Wawona. DRM/KMS runs it against iLand's userspace display stack, as it would on bare metal.")
         }
       }
     }

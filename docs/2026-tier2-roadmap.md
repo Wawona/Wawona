@@ -11,7 +11,7 @@ Status source of truth: [`2026-SOURCE-OF-TRUTH.md`](./2026-SOURCE-OF-TRUTH.md).
 
 - **Goal**: clients' GBM buffers presented as IOSurface-backed dmabuf without a
   CPU copy (currently SHM/copy path on Apple).
-- **Entry points**: `wwn-iland` (GBM/EGL/DRM userland), `zwp_linux_dmabuf_v1`
+- **Entry points**: `iLand` (GBM/EGL/DRM userland), `zwp_linux_dmabuf_v1`
   (`src/core/wayland/ext/linux_dmabuf.rs`. Currently advertisement-honest, no
   raw formats), `WWNIlandPresenter` (Metal present).
 - **Plan**: back GBM allocations with IOSurface; export dma-buf fd via the

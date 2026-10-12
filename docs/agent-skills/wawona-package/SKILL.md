@@ -62,7 +62,7 @@ present is red.
 
 ### GPU
 
-L1 `wwn-iland`. Linking cairo does not provide GLES or Vulkan.
+L1 `iLand`. Linking cairo does not provide GLES or Vulkan.
 
 One hop. Do not stack Zink on Vulkan to reach Metal.
 
@@ -73,7 +73,7 @@ One hop. Do not stack Zink on Vulkan to reach Metal.
 
 Never open `/dev/dri` or `/dev/kgsl`. No kernel DRM. No direct Turnip/KGSL.
 
-Graphics recipes: `wwn-iland`. Substrate (cairo, pango, pixman, freetype,
+Graphics recipes: `iLand`. Substrate (cairo, pango, pixman, freetype,
 fontconfig, harfbuzz): `wwn-toolchain`. Do not swap those owners.
 `wawona-repo-dag`, `wawona-platform-targets`.
 

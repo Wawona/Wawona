@@ -12,11 +12,11 @@ if [[ ! -f "$NIX_FILE" ]]; then
   exit 1
 fi
 
-ILAND_VERSION_FILE="$(cd "$ROOT/.." && pwd)/wwn-iland/VERSION"
+ILAND_VERSION_FILE="$(cd "$ROOT/.." && pwd)/iLand/VERSION"
 if [[ -f "$ILAND_VERSION_FILE" ]]; then
   echo "iland VERSION (sibling): $(tr -d '[:space:]' <"$ILAND_VERSION_FILE")"
 else
-  echo "warning: sibling wwn-iland/VERSION not found; using settings-deps fallback" >&2
+  echo "warning: sibling iLand/VERSION not found; using settings-deps fallback" >&2
 fi
 
 write_json() {

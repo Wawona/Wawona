@@ -615,7 +615,7 @@ public struct MachineSettingsView: View {
             }
             NativeSettingsRow(
                 "Display Backend",
-                help: "Auto selects the best available path. Wayland nests the client. DRM uses the wwn-iland userspace display stack."
+                help: "Auto selects the best available path. Wayland nests the client. DRM uses the iLand userspace display stack."
             ) {
                 Picker("", selection: compositorBackendBinding) {
                     Text("Inherit (\(preferences.compositorBackend))").tag("")

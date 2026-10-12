@@ -29,7 +29,7 @@ as history.
   `docs/agent-rules/wawona-release-assets.md`.
 - **macOS weston/niri Aqua vs Classic.** Machines Start in Aqua nests on
   Wawona (`--backend=wayland`, `NIRI_BACKEND=nested`) or runs weston
-  in-process on wwn-iland when Display Backend is drm. Classic Take Over
+  in-process on iLand when Display Backend is drm. Classic Take Over
   (WindowServer down) always uses iland DRM; nested Wayland is refused.
   Leaked `WWN_MODEB_TTY` no longer rewrites Aqua launches onto a TTY/DRM
   path that then fails without insert. Agent rule:
@@ -269,7 +269,7 @@ as history.
 
 - **visionOS static ANGLE / iland EGL-image `ld: duplicate symbol` (real
   dedup).** Per-member `llvm-objcopy` rename of ANGLE's public EGL/GLES image
-  entrypoints to `_angle_*` in `wwn-iland` (`c7a3275`); shim stays strong.
+  entrypoints to `_angle_*` in `iLand` (`c7a3275`); shim stays strong.
   Replaces the interim weak-export workaround. (#122)
 - **tvOS Gate: packages compile.** `WWNSceneDelegate` imports
   `WWNRootfsProvider` on all `TARGET_OS_IPHONE` (including tvOS).
@@ -306,7 +306,7 @@ as history.
 ### Added
 
 - **Bundled clients green on every target (no skips).** iOS `vkcube` now
-  renders on a bundled SwiftShader CPU ICD (`wwn-iland` `swiftshader-ios-sim`,
+  renders on a bundled SwiftShader CPU ICD (`iLand` `swiftshader-ios-sim`,
   simulator-only; device stays MoltenVK-only). Android `gbm-es2-demo` renders
   via an iland EGL-shim CPU-readback fallback (plain GL texture +
   `glReadPixels`→AHB) when AHB native-buffer import is unavailable on the
@@ -342,7 +342,7 @@ as history.
   exports `eglCreateImageKHR`/`eglDestroyImageKHR`/`glEGLImageTargetTexture2DOES`.
   The iland EGL shim's IOSurface dma_buf copies of those collided with ANGLE's
   static defs on visionOS only. Fixed by real dedup, not weak coexistence:
-  `wwn-iland` (`2aaf961`) extends `rename-angle-symbols.sh` so static ANGLE's
+  `iLand` (`2aaf961`) extends `rename-angle-symbols.sh` so static ANGLE's
   public image entrypoints become `_angle_*` (same pattern as the rest of the
   EGL surface), applied to both `libEGL.a` and `libGLESv2.a`; the shim keeps
   strong ownership of the IOSurface dma_buf path. Also drop visionOS
@@ -368,7 +368,7 @@ as history.
   into legacy Swift-runtime expectations no matter what SwiftSupport content
   was shipped. Fixed on both sides: `xcodegen.nix` now embeds the flat ANGLE
   copies **simulator-only** (device ships `libEGL.framework`/
-  `libGLESv2.framework` only), and `wwn-iland`'s EGL shim (input bumped to
+  `libGLESv2.framework` only), and `iLand`'s EGL shim (input bumped to
   `d6cf97a`) probes the framework-wrapped binaries first. Canonical shape
   for every Apple-mobile ipa, watch or not, is ABI-stable. No
   `SwiftSupport/`, no `Frameworks/libswift*`.

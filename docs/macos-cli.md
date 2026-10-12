@@ -77,7 +77,7 @@ Or add `home.sessionPath = [ "$HOME/.local/bin" ];` and rebuild home-manager.
 `--backend` is the same choice as **Settings → Display → Display Backend**:
 
 - **wayland**. Nest Weston / Niri as a Wayland client of Wawona
-- **drm**. Drive **wwn-iland** userspace DRM/KMS/GBM (needs OpenGL driver ≠ none)
+- **drm**. Drive **iLand** userspace DRM/KMS/GBM (needs OpenGL driver ≠ none)
 - **auto**. Nested wayland (safe default)
 
 ## Examples
@@ -93,7 +93,7 @@ Wawona run flower
 Wawona run weston
 Wawona --headless --backend wayland --client weston
 
-# Niri on wwn-iland userspace DRM/KMS
+# Niri on iLand userspace DRM/KMS
 Wawona --headless --backend drm --client niri
 
 # Saved Machines profile by id or name

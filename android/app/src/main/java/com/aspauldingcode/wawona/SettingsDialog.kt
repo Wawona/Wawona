@@ -510,7 +510,7 @@ private fun AdvancedSection(prefs: SharedPreferences) {
             prefs,
             "compositorBackend",
             "Display Backend",
-            "How bundled clients and nested compositors present. Wayland runs them nested inside Wawona; DRM/KMS runs them against wwn-iland's userspace display stack.",
+            "How bundled clients and nested compositors present. Wayland runs them nested inside Wawona; DRM/KMS runs them against iLand's userspace display stack.",
             Icons.Filled.Monitor,
             "auto",
             listOf("auto", "wayland", "drm"),
@@ -518,7 +518,7 @@ private fun AdvancedSection(prefs: SharedPreferences) {
             optionLabels = mapOf(
                 "auto" to "Auto",
                 "wayland" to "Wayland (nested)",
-                "drm" to "DRM/KMS (wwn-iland)",
+                "drm" to "DRM/KMS (iLand)",
             ),
         )
         SettingsSwitchItem(prefs, "multipleClients", "Multiple Clients",

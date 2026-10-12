@@ -46,7 +46,7 @@ leftover QEMU tree the Wawona runtime.
 
 - Relay **must support NixOS MicroVM profiles** as first-class Wawona Machines
   on every target that permits VM machines. A MicroVM uses Relay's CPU, virtio,
-  `wwn-iland` userspace DRM/KMS/GBM, and Wawona Wayland path.
+  `iLand` userspace DRM/KMS/GBM, and Wawona Wayland path.
 - A virtual disk is grow-only while a machine is stopped. Relay owns the size
   validation and resize plan; native UI exposes it as a simple discrete slider.
 - The slider never changes a running disk, shrinks a filesystem, or delegates

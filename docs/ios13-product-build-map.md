@@ -54,7 +54,7 @@ src/platform/macos/ui/Machines/WWNWasmCatalogSearchView.swift:8:18: error: 'dism
 - Main executable, WawonaModel, and WawonaUIContracts: iOS 13.0 / SDK 26.5.
 - Old ANGLE framework plists said 13.0, but their binaries require 16.0.
   This artifact is not accepted as an iOS 13 product.
-- Updated published wwn-iland and wwn-toolchain pins. The current-source build
+- Updated published iLand and wwn-toolchain pins. The current-source build
   explicitly evaluates local Relay and local static SwiftShader recipe changes;
   unpublished changes are not represented as a published pin.
 - Current-source ANGLE static archives passed object-level inspection: all 501

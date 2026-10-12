@@ -1,4 +1,9 @@
-# wwn-iland Mode A / Mode B + Desktop / LockScreen Replacement
+---
+description: iland Mode A vs Mode B for Desktop/LockScreen. Not Wawona Swinging Bridge
+alwaysApply: true
+---
+
+# iLand Mode A / Mode B + Desktop / LockScreen Replacement
 
 Authority for **when** Wawona uses App Store-safe in-window iland (Mode A)
 versus the SIP-gated host Desktop/LockScreen `.dylib` (Mode B on macOS).
@@ -51,24 +56,44 @@ only**. Not Linux. Not App Store iOS family.
 ## Runtime decision (macOS)
 
 1. Detect SIP via `WWNSipStatus` (`csrutil status` text parse. Same as
-   playground `checkSipStatus`). Mode B requires the first line
-   `System Integrity Protection status: disabled`. Settings shows that as
-   **Fully Disabled**. Partial
-   (`Debugging Restrictions: disabled` after `csrutil enable --without debug`)
-   is refused.
+ playground `checkSipStatus`). Mode B requires the first line
+ `System Integrity Protection status: disabled`. Settings shows that as
+ **Fully Disabled**. Partial (`Debugging Restrictions: disabled` after
+ `csrutil enable --without debug`) is refused.
 2. If SIP is **not** fully disabled → Mode A only; ignore / clear
-   `DesktopReplacementEnabled`.
+ `DesktopReplacementEnabled`.
 3. If SIP allows **and** Settings → Desktop → Enable Desktop Replacement is on
-   **and** the user chooses Replace now → Mode B via
-   `WWNDesktopReplacementController` (privileged insert of bundled dylib).
-   First enable installs sudoers NOPASSWD for the root helper. It does not
-   install a login LaunchAgent. Take Over is per session. `--compositor-host`
-   must never Classic-engage. Disable kernel
-   IOWatchdog (`wwn-iowatchdog`) first, then unload watchdogd, then
-   WindowServer. Abort if IOWatchdog disable fails. Never
-   `launchctl kickstart -k` watchdogd. After Classic, `restore_watchdogd`
-   must not kickstart Path B (2026-08-23 timeout). Probe may inject while Aqua stays
-   up. Prefix `DYLD_INSERT_LIBRARIES` on the niri/weston exec only.
+ **and** the user chooses Replace now → Mode B via
+ `WWNDesktopReplacementController` (privileged insert of bundled dylib).
+ First enable installs `/etc/sudoers.d/wawona-modeb`.
+ `nix run .#install` always syncs helper + dylib + `wwn-iowatchdog` +
+ sudoers for this store (administrator once) and
+ fails if the helper still points at a previous nix store. It does **not**
+ take over the screen. It does **not** install
+ `com.aspauldingcode.wawona.modeb-login`. It must **never** run
+ `wwn-iowatchdog disable`/`enable` or attach `lldb` to `watchdogd`
+ (2026-08-20 install panic: daemon exited SIGTRAP while kernel IOWatchdog
+ was still armed). Stage may only `launchctl enable`+`bootstrap` a
+ disabled watchdogd job. That Aqua LaunchAgent killed WindowServer on
+ login, Aqua died, and the helper restored then re-fired (2026-08-18 and
+ 2026-08-19). Take Over is per session. Logout returns normal macOS. Take
+ Over disables kernel IOWatchdog (`wwn-iowatchdog`, IOKit type 1 / method
+ 3) first, then unloads `com.apple.watchdogd`, then WindowServer. Abort if
+ IOWatchdog disable fails. Unloading `watchdogd` without that panics
+ immediately (`watchdogd[pid] exited`, 2026-08-19). `launchctl kickstart
+ -k` on watchdogd is the same panic (ws-guard every 10s, 2026-08-19
+ 23:12). Probe (`--mode-b-probe`) may inject while both stay up.
+ `ws-guard` may restore WindowServer only. It must never
+ enable/load/bootstrap/kickstart/bootout watchdogd. Never `export
+ DYLD_INSERT_LIBRARIES` in `run-modeb.sh`. Prefix it on the niri/weston
+ command only. Apple `/bin/*` is `arm64e`; the dylib is `arm64`. A global
+ export kills `date`/`mkdir`/`launchctl` and leaves no compositor PID.
+ Partial SIP is refused. WindowServer restore uses `enable` + `load -w` +
+ `kickstart -k` when launchd has no pid. Never do that to watchdogd.
+ Restore after Classic with Path B sticky must **not** bootstrap or
+ kickstart Path B and must **not** Apple-enable `watchdogd` (2026-08-23:
+ Path B kickstart re-armed kernel monitoring, 8 checkins, 92s timeout).
+ Kernel Disable stays sticky. Apple enable is only when Path B is absent.
 4. Otherwise → Mode A.
 
 Never invent CSR_* syscalls; stay on `csrutil status` string matching.
@@ -76,32 +101,31 @@ Never invent CSR_* syscalls; stay on `csrutil status` string matching.
 ## Shipping rules (hard)
 
 - Ship `libwayland-mac.dylib` **only** in `.#wawona-macos-desktop-host`
-  (`Contents/Library/Wawona/iland/`). Built from
-  `wwn-iland` `registryFragment.iland-baremetal` /
-  `dependencies/libs/iland/macos-baremetal.nix`.
+ (`Contents/Library/Wawona/iland/`). Built from
+ `iLand` `registryFragment.iland-baremetal` /
+ `dependencies/libs/iland/macos-baremetal.nix`.
+- Ship `wwn-iowatchdog` from flake input `wwn-iowatchdog` (L3′). Do not
+ re-vendor Watchdog C sources under `Wawona/src/platform/macos/modeb/`.
 - Default `.#wawona-macos` (store-safe / product-build / TestFlight-shaped) and
-  **all** iOS/iPadOS/tvOS/watchOS/visionOS/Android artifacts: **dylib absent**.
+ **all** iOS/iPadOS/tvOS/watchOS/visionOS/Android artifacts: **dylib absent**.
 - Assert with `Wawona/.github/scripts/verify-iland-mode-b-bundle.sh`.
 - Cargo: `iland-baremetal` only with `profile-desktop-host` or
-  `profile-full-dev` (see `Wawona/src/lib.rs` compile_errors). Never on mobile.
+ `profile-full-dev` (see `Wawona/src/lib.rs` compile_errors). Never on mobile.
 - Do **not** ship or describe Desktop/LockScreen as ready until the planned
-  work lands; gates stay ⏳ / in-app Apple-mobile ❌.
+ work lands; gates stay ⏳ / in-app Apple-mobile ❌.
 
 ## Where to edit
 
-- Mode A recipes / shims: `wwn-iland` (`macos.nix`, `ios.nix`, `android.nix`,
-  `upstream/shims/`).
-- Mode B dylib build: `wwn-iland/.../macos-baremetal.nix`.
-- Mode B Watchdog tools: `wwn-iowatchdog` (L3′ flake; not in-tree C).
-- **macOS 26 watchdog safety:** `wawona-mode-b-watchdog-safety` (never Take
-  Over / never LLDB MCP on `watchdogd`).
-- SIP + prefs UI: `Sources/WawonaApple/ModeB/SipStatus.swift`, `Sources/WawonaApple/Settings/WWNPreferences.swift` Desktop section
-  (**Enable Desktop Replacement** runs doctor / heal / Path B; Replace now stays gated).
-- Engage/disengage: `Sources/WawonaApple/ModeB/DesktopReplacementController.swift`,
-   `Sources/WawonaApple/Runners/WWNMachineSessionBridge.swift`. `nix run .#install` syncs helper + dylib +
-   `wwn-iowatchdog` + sudoers for this store (administrator once) and
-  copies helper + dylib for this store (no take-over; never `wwn-iowatchdog`
-  disable/enable or lldb on `watchdogd` during stage).
-  Site: https://wawona.io/docs/desktop/ (restage helper and dylib).
+- Mode A recipes / shims: `iLand` (`macos.nix`, `ios.nix`, `android.nix`,
+ `upstream/shims/`).
+- Mode B dylib build: `iLand/.../macos-baremetal.nix`.
+- Mode B Watchdog tools: `github.com/Wawona/wwn-iowatchdog`.
+- **macOS 26:** `wawona-mode-b-watchdog-safety` (never Take Over / LLDB on
+ `watchdogd`).
+- SIP + prefs UI: `Sources/WawonaApple/ModeB/SipStatus.swift`,
+  `Sources/WawonaApple/Settings/WWNPreferences.swift` Desktop section.
+- Engage/disengage: `WWNDesktopReplacementController` (Swift),
+  `Sources/WawonaApple/Runners/WWNMachineSessionBridge.swift`. Compositor argv/env:
+  `WaypipeRunner` `baremetalCompositorLaunchSpecForProfile:`.
 - Canonical prose: `Wawona/docs/iland-mode-a-b-desktop.md`.
 - Wawona Swinging Bridge: `wawona-swinging-bridge`, `Wawona/docs/swinging-bridge.md`.

@@ -1,7 +1,12 @@
+---
+description: macOS Mode A is mandatory. SIP on, iland DRM/KMS in a Cocoa window, never require Mode B dylib
+alwaysApply: true
+---
+
 # macOS Mode A is always required
 
 Wawona on macOS must keep working as **Mode A** with **SIP enabled**. Userspace
-DRM/KMS/GBM (`wwn-iland` `libiland_userland.a`) presents **inside a normal
+DRM/KMS/GBM (`iLand` `libiland_userland.a`) presents **inside a normal
 macOS window** (AppKit + `WWNIlandPresenter` / CAMetalLayer). That is the
 default product. It is not optional, not a fallback, and not replaced by
 Desktop Replacement.
@@ -27,5 +32,6 @@ or testing Mode B must never break Mode A.
 - Treating "macOS Wawona" as Desktop Replacement only.
 - Breaking CAMetalLayer / Mode A present to finish Classic Take Over.
 
-Cursor rule: `wawona-macos-mode-a`. See also `wawona-iland-mode-b-desktop`,
+Canonical: `wawona-iland-mode-b-desktop`, `docs/iland-mode-a-b-desktop.md`,
+`docs/agent-rules/wawona-macos-mode-a.md`. See also
 `wawona-compositor-backend`.

@@ -2,7 +2,7 @@
 
 Wawona does **not** port SDL/Qt/GTK inside the graphics epic. Those stay
 follow-on repos (`wwn-sdl2` / `wwn-qt` / `wwn-gtk`). This document is the
-catalog of what those ports need from the stack that `wwn-iland` + Wawona's
+catalog of what those ports need from the stack that `iLand` + Wawona's
 compositor must keep green. Canonical architecture prose also lives in
 [`iland-graphics-stack.md`](iland-graphics-stack.md) (§ Toolkit readiness).
 

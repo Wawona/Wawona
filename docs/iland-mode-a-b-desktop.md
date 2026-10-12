@@ -11,13 +11,13 @@
 Live grades: [`iland-graphics-progress.md`](iland-graphics-progress.md).
 CI bundle matrix: [`testing/graphics-ci-matrix.md`](testing/graphics-ci-matrix.md).
 
-Canonical description of how Wawona uses **wwn-iland** for graphics present and
+Canonical description of how Wawona uses **iLand** for graphics present and
 macOS Desktop/LockScreen host replacement. When this conflicts with older docs
 or comments, **this file wins** (also mirrored in
 `.cursor/rules/wawona-iland-mode-b-desktop.mdc` and `AGENTS.md`).
 
 Upstream inspiration: [CoreBedtime/iland](https://github.com/CoreBedtime/iland).
-Wawona packaging: [wwn-iland](https://github.com/Wawona/wwn-iland).
+Wawona packaging: [iLand](https://github.com/Wawona/iLand).
 Stack architecture and toolkit contracts:
 [`iland-graphics-stack.md`](iland-graphics-stack.md). Repository ownership:
 [`wwn-repo-dag.md`](wwn-repo-dag.md).
@@ -101,8 +101,8 @@ is classified as partial and **refused**. Do not use CSR_* APIs.
 
 | Package / recipe | Mode | Notes |
 |------------------|------|--------|
-| `wwn-iland` `iland` (`macos.nix`, `ios.nix`, …) | A | `libiland_userland.a` |
-| `wwn-iland` `iland-baremetal` (`macos-baremetal.nix`) | B | `libwayland-mac.dylib` + embedded daemons |
+| `iLand` `iland` (`macos.nix`, `ios.nix`, …) | A | `libiland_userland.a` |
+| `iLand` `iland-baremetal` (`macos-baremetal.nix`) | B | `libwayland-mac.dylib` + embedded daemons |
 | `wwn-iowatchdog` (L3′, flake input) | B | macOS Watchdog CLIs; bundled as `Contents/Library/Wawona/wwn-iowatchdog` |
 | `.#wawona-macos` | A only | Product / store-safe shaped; **must not** contain Mode B dylib |
 | `.#wawona-macos-desktop-host` | A + B dylib | Developer ID / desktop-host; dylib at `Contents/Library/Wawona/iland/libwayland-mac.dylib` |
@@ -136,7 +136,7 @@ Prefs (macOS `NSUserDefaults`):
 
 ## Mode B: iland dylib vs wwn-igetty
 
-WindowServer replacement is **wwn-iland** `iland-baremetal` (`libwayland-mac.dylib`).
+WindowServer replacement is **iLand** `iland-baremetal` (`libwayland-mac.dylib`).
 What you boot into is **wwn-igetty** (Linux-shaped VTs + Doorman getty). Settings
 → Desktop Replacement → Desktop Machine picks an iland DRM/KMS compositor
 (weston, niri, kmscube, custom). That session is **assigned a VT**
@@ -221,7 +221,7 @@ compositor the Desktop Machine names.
 
 Private CoreDisplay / SkyLight / `CAWindowServer` SPI used by `framebufferd`
 (prototypes, ObjC encodings, 25F80 disasm, safe-call rules) lives in the L1
-repo: [`wwn-iland/docs/mode-b/baremetal-display-spi-25F80.md`](../../wwn-iland/docs/mode-b/baremetal-display-spi-25F80.md)
+repo: [`iLand/docs/mode-b/baremetal-display-spi-25F80.md`](../../iLand/docs/mode-b/baremetal-display-spi-25F80.md)
 (sibling checkout). Re-verify on each macOS point release.
 
 1. Settings stores `DesktopReplacementMachineId` (weston, niri, or custom
@@ -406,7 +406,7 @@ wrong flake attr.
 
 ## Portable KMS abstraction + IOSurface (Mode A)
 
-`wwn-iland` is a **portable KMS-like display stack**, not "IOSurface replaces
+`iLand` is a **portable KMS-like display stack**, not "IOSurface replaces
 GBM." On Apple, a backend **emulates the KMS object model** (connector, encoder,
 CRTC, plane, framebuffer); **GBM and libdrm stay the client-facing ABI** and map
 into that allocator/present path. IOSurface is the shared **FB / BO backing**;
@@ -440,7 +440,7 @@ format/size) are tracked in [`iland-graphics-progress.md`](iland-graphics-progre
 - Repo DAG: `.cursor/rules/wawona-repo-dag.mdc` (+ Wawona repo mirror);
   canonical `docs/wwn-repo-dag.md`
 - Platform matrix: `.cursor/rules/wawona-platform-targets.mdc`
-- tvOS/watchOS GL stubs: `.cursor/rules/wwn-iland-apple-fallback.mdc`
-- Agent entry: `Wawona/AGENTS.md`, `wwn-iland/AGENTS.md`
+- tvOS/watchOS GL stubs: `.cursor/rules/iland-apple-fallback.mdc`
+- Agent entry: `Wawona/AGENTS.md`, `iLand/AGENTS.md`
 - Graphics-stack progress + capability matrix:
   [`iland-graphics-progress.md`](iland-graphics-progress.md); epic #122

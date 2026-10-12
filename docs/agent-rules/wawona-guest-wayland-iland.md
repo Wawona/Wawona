@@ -1,7 +1,12 @@
+---
+description: Linux VM guests speak Wayland into Wawona (iland). Never UTM Spice, ANGLE, or virgl
+alwaysApply: true
+---
+
 # Guest GUI is Wayland into Wawona (iland)
 
 **Product boundary.** A Linux guest in Wawona is a **Wayland client of Wawona**.
-Pixels go through **wwn-iland** (IOSurface + Metal on Apple, AHardwareBuffer on
+Pixels go through **iLand** (IOSurface + Metal on Apple, AHardwareBuffer on
 Android). Same nested-compositor path as weston/niri: vsock + **waypipe**, then
 iland present. Not a second display stack inside the VM engine.
 
@@ -10,13 +15,13 @@ window. Those paths are forbidden in Wawona products.
 
 ## Required
 
-- **Every Relay virtual-machine GUI** uses `wwn-iland` userspace DRM/KMS/GBM
+- **Every Relay virtual-machine GUI** uses `iLand` userspace DRM/KMS/GBM
   framebuffer services and Wawona Wayland. This is mandatory for all targets
   that support VM machines, including headless-to-GUI transitions.
 - Guest compositor and apps bind Wayland globals on Wawona (or waypipe into it).
 - Host present is `iland_drm_set_present_callback` / `WWNIlandPresenter`.
 - Graphics keys (ANGLE, MoltenVK, KosmicKrisp, SwiftShader) stay **L1**
-  `wwn-iland`. Never rebuild them inside Relay or a leftover UTM tree.
+  `iLand`. Never rebuild them inside Relay or a leftover UTM tree.
 
 ## Hard rejects
 
@@ -26,4 +31,4 @@ window. Those paths are forbidden in Wawona products.
 - Re-hosting a Wayland guest onto UTM’s display because iland is unfinished
 
 Canonical: `wawona-linux-vms-relay-runtime`, `wawona-port-fidelity`,
-`wawona-repo-dag`. Cursor: `.cursor/rules/wawona-guest-wayland-iland.mdc`.
+`wawona-repo-dag`. Prose: `docs/agent-rules/wawona-guest-wayland-iland.md`.

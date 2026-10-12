@@ -14,7 +14,7 @@ no-fork patch burden shrinks instead of growing.
 
 | Component | Owner | Patches |
 |-----------|-------|---------|
-| Smithay compositor + iland present | Wawona / wwn-iland | Product |
+| Smithay compositor + iland present | Wawona / iLand | Product |
 | Relay wasm runtime (`wpm`, Pulley) | Relay | Runtime. No bundled demo `.wasm` |
 | zsh | wwn-zsh | App Store keep |
 | uutils safe subset | wwn-coreutils | App Store keep. No wasm twin |

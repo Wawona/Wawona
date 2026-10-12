@@ -72,7 +72,7 @@ on representative iPhone/iPad releases and hardware. Record failures explicitly.
 
 ## Ownership
 
-Toolchain: `wwn-toolchain`. Graphics recipes: `wwn-iland`. App and UI: `Wawona`.
+Toolchain: `wwn-toolchain`. Graphics recipes: `iLand`. App and UI: `Wawona`.
 Relay stays Rust and uses the same floor supplied by its consuming toolchain.
 Reference: `Wawona/docs/agent-rules/wawona-ios-min-os.md`.
 

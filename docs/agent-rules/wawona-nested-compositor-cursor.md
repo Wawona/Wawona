@@ -11,7 +11,7 @@ This is **not** Swinging Bridge. Not Desktop Replacement itself.
 | Focused client | Host / virtual cursor | What to do |
 |---|---|---|
 | Nested Wayland compositor (`weston --backend=wayland`, `niri` nested) | **No** | Hide + grab host pointer. Nested compositor paints its cursor |
-| Compositor on **wwn-iland DRM** (`weston --backend=drm`, `niri` `NIRI_BACKEND=tty`, Classic insert) | **No** | Same. iland present does not add a host pointer |
+| Compositor on **iLand DRM** (`weston --backend=drm`, `niri` `NIRI_BACKEND=tty`, Classic insert) | **No** | Same. iland present does not add a host pointer |
 | Non-compositor Wayland client (`weston-terminal`, `foot`, cubes, gtk, …) | **Yes**, if Show Virtual Cursor is on | Host overlay or real pointer. Client may also set `wp_cursor_shape` / cursor surface |
 
 Classify with `profileIndicatesNestedCompositor` / Swift

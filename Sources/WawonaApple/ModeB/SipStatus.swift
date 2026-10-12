@@ -100,7 +100,7 @@ public enum SipStatus: Equatable, Sendable {
     }
 
     public static let desktopReplacementHowToMessage = """
-        wwn-iland macOS Desktop Replacement (Mode B) replaces \
+        iLand macOS Desktop Replacement (Mode B) replaces \
         SkyLight/WindowServer by injecting libwayland-mac.dylib into a root \
         compositor. That requires System Integrity Protection (SIP) fully \
         disabled. Not a normal App Store configuration.

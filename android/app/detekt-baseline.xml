@@ -319,7 +319,7 @@
     <ID>MaxLineLength:SettingsDialog.kt$"Autocorrect, text suggestions, smart punctuation, swipe-to-type, and text replacements via the native keyboard"</ID>
     <ID>MaxLineLength:SettingsDialog.kt$"Avoid system UI and notches"</ID>
     <ID>MaxLineLength:SettingsDialog.kt$"How Start opens a machine. Prompt asks each time. New Tab keeps the client in this window. New Window opens another window."</ID>
-    <ID>MaxLineLength:SettingsDialog.kt$"How bundled clients and nested compositors present. Wayland runs them nested inside Wawona; DRM/KMS runs them against wwn-iland's userspace display stack."</ID>
+    <ID>MaxLineLength:SettingsDialog.kt$"How bundled clients and nested compositors present. Wayland runs them nested inside Wawona; DRM/KMS runs them against iLand's userspace display stack."</ID>
     <ID>MaxLineLength:SettingsDialog.kt$(androidx.compose.animation.slideInHorizontally { width -&gt; -width } + androidx.compose.animation.fadeIn())</ID>
     <ID>MaxLineLength:SettingsDialog.kt$(androidx.compose.animation.slideInHorizontally { width -&gt; width } + androidx.compose.animation.fadeIn())</ID>
     <ID>MaxLineLength:SettingsDialog.kt$SettingsTab.CONNECTION -&gt; ConnectionSection(prefs, localIpAddress, context, SettingsTab.CONNECTION.accentColor)</ID>

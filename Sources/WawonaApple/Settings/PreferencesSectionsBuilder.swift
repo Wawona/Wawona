@@ -82,7 +82,7 @@ public final class WWNPreferencesSectionsBuilder: NSObject {
         case .compositorBackend:
             return popup(
                 "Display Backend", kWWNPrefsCompositorBackend, "auto",
-                ["Auto", "Wayland (nested)", "DRM/KMS (wwn-iland)"],
+                ["Auto", "Wayland (nested)", "DRM/KMS (iLand)"],
                 ["auto", "wayland", "drm"],
                 "How nested weston/niri attach while the host compositor is up.")
         case .multipleClients:

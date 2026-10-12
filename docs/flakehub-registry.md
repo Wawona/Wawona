@@ -48,7 +48,7 @@ Each GitHub-hosted flake runs [`.github/workflows/flakehub-publish.yml`](../.git
   rolling on `development`). Cache hits still come from FlakeHub Cache on build
   jobs ([`flakehub-cache.md`](./flakehub-cache.md)).
 - **`wwn-*`:** may still publish rolling from their tracked branch
-  (`wwn-toolchain`, `wwn-iland`, …) until they adopt tags/dispatch.
+  (`wwn-toolchain`, `iLand`, …) until they adopt tags/dispatch.
 - **Tags (Wawona):** `vYY.M.D` publishes SemVer `YY.M.D` (`rolling: false`).
   Older tags are backfilled with **workflow_dispatch** `tag=`.
 - **Visibility:** `public`.

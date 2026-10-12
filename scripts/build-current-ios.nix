@@ -36,9 +36,9 @@ let
     outPath = toolchainSource;
     inputs = toolchainInputs;
   };
-  ilandSource = cleanSibling ../../wwn-iland;
+  ilandSource = cleanSibling ../../iland;
   relaySource = cleanSibling ../../Relay;
-  ilandInputs = base.inputs.wwn-iland.inputs // {
+  ilandInputs = base.inputs.iland.inputs // {
     inherit (base.inputs) nixpkgs rust-overlay;
     wwn-toolchain = toolchain;
     self = iland;
@@ -61,7 +61,7 @@ let
   waypipeInputs = base.inputs.wwn-waypipe.inputs // {
     inherit (base.inputs) nixpkgs rust-overlay;
     wwn-toolchain = toolchain;
-    wwn-iland = iland;
+    iland = iland;
     self = waypipe;
   };
   waypipe = (import (waypipeSource + "/flake.nix")).outputs waypipeInputs // {
@@ -71,7 +71,7 @@ let
   terminalSource = cleanSibling ../../Terminal;
   productInputs = base.inputs // {
     wwn-toolchain = toolchain;
-    wwn-iland = iland;
+    iland = iland;
     wwn-relay = relay;
     wwn-waypipe = waypipe;
     terminal = terminalSource;

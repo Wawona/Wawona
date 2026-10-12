@@ -28,7 +28,7 @@ SCAN_ROOTS = [
     WORKSPACE / "Wawona" / "scripts",
     WORKSPACE / "Wawona" / "dependencies" / "clients",
     WORKSPACE / "Wawona" / "dependencies" / "tools",
-    WORKSPACE / "wwn-iland",
+    WORKSPACE / "iLand",
     WORKSPACE / "wwn-iomfb-rs",
     WORKSPACE / "wwn-igetty",
     WORKSPACE / "Wawona-Swinging-Bridge",

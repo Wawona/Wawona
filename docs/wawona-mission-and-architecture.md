@@ -51,10 +51,10 @@ Every Machines feature must be classified as native / remote / VM / container an
 refused on targets that forbid that class. See `wawona-platform-targets` and
 `docs/vms-containers.md`.
 
-## Userland DRM/KMS/GBM (wwn-iland)
+## Userland DRM/KMS/GBM (iLand)
 
 Linux graphics clients expect a kernel display stack. Apple and Android do not
-provide one, and a store-shipped app may not add one. `wwn-iland` therefore
+provide one, and a store-shipped app may not add one. `iLand` therefore
 implements **DRM/KMS/GBM entirely in userspace**, emulating KMS objects
 (connector, CRTC, plane, framebuffer) over IOSurface + Metal on Apple and
 AHardwareBuffer on Android. No kernel interaction, no Linux required.
@@ -128,7 +128,7 @@ supports the remote path, that reference is runnable: stream the real Linux buil
 in from a VM or remote host and compare. If they differ, the port is wrong.
 
 A port substitutes the *platform underneath* the client. Libc gaps, EGL→ANGLE,
-Vulkan→MoltenVK/KosmicKrisp, DRM/KMS/GBM→`wwn-iland`, static linking shape. It
+Vulkan→MoltenVK/KosmicKrisp, DRM/KMS/GBM→`iLand`, static linking shape. It
 never substitutes the client's own behaviour: the protocols it speaks, the
 windowing path upstream itself uses, its renderer, or its feature set.
 
@@ -156,7 +156,7 @@ If a bundled client supports more than one way to run, that choice belongs to th
 user, not to a hardcoded constant. The clearest case is the display backend:
 `niri` and `weston` each have a real DRM/KMS backend as well as a nested-Wayland
 one. Pinning them to nested throws away the userspace DRM/KMS/GBM path that
-`wwn-iland` exists to provide, and hides the bare-metal-shaped behaviour that
+`iLand` exists to provide, and hides the bare-metal-shaped behaviour that
 Mode B ultimately depends on.
 
 So the backend is a setting. Global (`CompositorBackend`: `auto` | `wayland` |

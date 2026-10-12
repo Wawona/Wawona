@@ -48,7 +48,7 @@ Likely: Take Over proceeded on **stale marker** or claim-ok without Path B sock
 
 ## Fixes (this change)
 
-1. **wwn-iland:** hook `stat`/`lstat`/`fstat`/`fstatat` for `/dev/dri/*` and
+1. **iLand:** hook `stat`/`lstat`/`fstat`/`fstatat` for `/dev/dri/*` and
    `fstat` on `DRM_VIRTUAL_FD`; udev `devnum` returns `makedev(226,0)`. Publish
    `modeb-drm-client.pid` from the dylib while any DRM client runs.
 2. **wwn-igetty:** skip text-VT scanout while `modeb-drm-client.pid` is alive

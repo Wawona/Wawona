@@ -17,9 +17,9 @@ import androidx.compose.runtime.mutableIntStateOf
  * and an [AppDrawer] exposes both installed Android apps and the other
  * configured Wayland clients.
  *
- * This is the Android counterpart to the macOS wwn-iland "Mode B"
+ * This is the Android counterpart to the macOS iLand "Mode B"
  * SkyLight/WindowServer replacement. On Android the DRM/KMS present path
- * (wwn-iland `android/`) targets the launcher surface instead of an OS daemon,
+ * (iLand `android/`) targets the launcher surface instead of an OS daemon,
  * which is why the desktop machine is constrained to a locally-ported native
  * client. Never a VM, waypipe/network, or container machine.
  */

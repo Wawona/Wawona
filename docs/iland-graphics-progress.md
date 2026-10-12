@@ -1,11 +1,11 @@
-# wwn-iland graphics stack. Living progress + capability matrix
+# iLand graphics stack. Living progress + capability matrix
 
-Source-of-truth progress tracker for the **wwn-iland unified graphics stack**
-epic. Twin of the Cursor plan `wwn-iland graphics stack. Prioritized phased
+Source-of-truth progress tracker for the **iLand unified graphics stack**
+epic. Twin of the Cursor plan `iLand graphics stack. Prioritized phased
 plan` and of GitHub epic **#122** (`Wawona/Wawona`). Updated every inner-loop
 iteration (grades + repos touched + waypipe zero-copy impact).
 
-- Plan: Cursor plan `wwn-iland graphics stack` (dual-loop, P0→P4).
+- Plan: Cursor plan `iLand graphics stack` (dual-loop, P0→P4).
 - Canonical stack: [`iland-graphics-stack.md`](iland-graphics-stack.md).
 - Canonical Mode A/B: [`iland-mode-a-b-desktop.md`](iland-mode-a-b-desktop.md).
 - Repo layering: [`wwn-repo-dag.md`](wwn-repo-dag.md) (enforced).
@@ -89,7 +89,7 @@ copies swapchain/`VkImage` pixels into an IOSurface slot via
 re-hosted as an xdg-shell Wayland client (`main.c`); the old KMS/GBM path is
 kept as `vkcube_kms.c`. Machines Start routes `vkcube` like `opengl-cube`
 (compositor client), not through `WWNIlandPresenter`. Grade stays WIRED until a
-rendered frame is observed. SHAs: wwn-iland `fe08db2`, wwn-kmscube `d37dd29`,
+rendered frame is observed. SHAs: iLand `fe08db2`, wwn-kmscube `d37dd29`,
 Wawona `03b146e`.
 
 **2026-08-25 `final-tvos-gpu` WIRED (both drivers).** ANGLE source GN
@@ -109,7 +109,7 @@ on Apple mobile and Desktop/SIP UI leakage into iOS-family bundles. Apple
 IOSurface dmabuf + waypipe zero-copy remain the #86 PROPER half; AHB/waypipe
 Android is the open half.
 
-**2026-07-31 Android GBM Apple parity + waypipe unstub (WIRED).** `wwn-iland`
+**2026-07-31 Android GBM Apple parity + waypipe unstub (WIRED).** `iLand`
 Android GBM now matches Apple for `gbm_bo_map`/`unmap` (`map_count`),
 `gbm_device_is_format_supported`, `gbm_device_get_backend_name` (`iland-ahb`),
 honest AHB formats (BGRA8888 via HAL format 5; `R10G10B10A2` for 2101010), and
@@ -122,7 +122,7 @@ handles (SHM/`--no-gpu` unchanged). Acceptance client
 registry recipes). Grade stays WIRED until Agent-Device shows frames.
 
 **2026-07-31 Android Wayland GL/VK wiring landed (WIRED, runtime pending).**
-`wwn-iland` `8152b62` builds `libiland_wayland_egl` (+ optional vulkan WSI) for
+`iLand` `8152b62` builds `libiland_wayland_egl` (+ optional vulkan WSI) for
 Android with in-process AHB id registry (`ILandIOSurfaceLookup`) and GBM
 `get_fd`/`import` under the same #86 high-bit modifier. `wwn-kmscube`
 `0b2f372` rehosts Android `opengl-cube`/`vkcube` as Wayland clients. Wawona
@@ -222,7 +222,7 @@ into it, and let `eglReleaseTexImage` publish the writes. All with the client's
 context still current on the render pbuffer. With that, `centre=0xffec808b` and
 the cube renders solid, depth-correct, at ~62 fps:
 
-- `wwn-iland` `.../shims/egl/src/egl.c`. `zc_blit_to_slot` rewritten;
+- `iLand` `.../shims/egl/src/egl.c`. `zc_blit_to_slot` rewritten;
   `zc_probe_iosurface`; `glGenTextures`/`glBindTexture`/`glGenFramebuffers`/
   `glFramebufferTexture2D`/`glCheckFramebufferStatus`/`glGetError` resolved on
   both the static and dlopen ANGLE paths; `eglBindTexImage`/`eglReleaseTexImage`
@@ -276,7 +276,7 @@ canceled.` That is a host permission/prompt state, not a Wawona defect, and it
 gates every macOS runtime proof that needs pixels
 (`wawona-test-control` forbids substituting `screencapture`/`osascript`).
 
-**2026-07-24 P2 graphics-driver ownership loop:** `wwn-iland` now owns
+**2026-07-24 P2 graphics-driver ownership loop:** `iLand` now owns
 ANGLE, SwiftShader, and MoltenVK registry entries. Apple-mobile MoltenVK uses
 the pinned upstream 1.4.1 all-platform release (`sha256:
 2c498bf8c98b88ba1e84c1f153403d4c1a8490c122d9e2a3df238b25d4e10557`),
@@ -339,7 +339,7 @@ passes with the Mode B dylib at
 **2026-07-25 Apple package matrix proof:** all sixteen Apple graphics packages
 (`iland-{macos,ios,ios-sim,ipados,tvos,watchos,visionos,visionos-sim}`,
 `iland-baremetal-macos`, `moltenvk-{macos,ios,ios-sim,visionos,visionos-sim}`,
-`kosmickrisp-macos`, `angle-{ios,ios-sim}`) build from `wwn-iland`. Slice audit
+`kosmickrisp-macos`, `angle-{ios,ios-sim}`) build from `iLand`. Slice audit
 of the built archives:
 
 | Package | `LC_BUILD_VERSION` | Contents |
@@ -477,7 +477,7 @@ has no GPU stack *or* the resolved driver is `None`, naming the setting in the
 log. Replacing two copies of a tvOS/watchOS-only check that let the
 driver-preference case through.
 
-Repos touched: `wwn-iland` (EGL shim + macOS/Android recipes), `Wawona`
+Repos touched: `iLand` (EGL shim + macOS/Android recipes), `Wawona`
 (autostart hook, present logging, GPU refusal). waypipe zero-copy impact: none -
 buffer export and dmabuf paths are untouched; this is which ANGLE image the
 process binds and whether EGL fails politely.
@@ -540,7 +540,7 @@ in-process iland DRM + ANGLE path used by GPU-capable Apple mobile targets.
 package/build gap; product runtime evidence is still required before PROPER.
 
 **2026-07-24 KosmicKrisp correction:** current upstream Mesa/Nixpkgs provides
-KosmicKrisp for Apple-Silicon macOS. `wwn-iland` now exposes a Vulkan-only
+KosmicKrisp for Apple-Silicon macOS. `iLand` now exposes a Vulkan-only
 Mesa KosmicKrisp package; its build produced
 `libvulkan_kosmickrisp.dylib` plus the aarch64 ICD manifest. Wawona's macOS
 product bundles and signs it beside MoltenVK. A direct ICD smoke test returned
@@ -577,7 +577,7 @@ Apple mobile, Android compositor-client builds, and macOS. `weston-terminal`
 concurrency accelerates release/redraw but is not root cause. Exact dual-client
 runtime replay remains required before PROPER.
 
-**#58 Mode-A device open (landed in `wwn-iland`):** added `iland_drm_open_card()`
+**#58 Mode-A device open (landed in `iLand`):** added `iland_drm_open_card()`
 in `drm_linux.c` + a reusable force-include header
 `shims/drm/drm/include/iland_drm_open_compat.h` that redirects a stock client's
 raw `open("/dev/dri/cardN")` to the in-process virtual DRM fd (non-DRM paths
@@ -594,7 +594,7 @@ compiles, exports `_iland_drm_open_card` (`nm`), ships `iland_drm_open_compat.h`
 pending full Wawona app build + Agent-Device). **waypipe zero-copy impact: none.**
 
 **#94 format contract + stock-consumer wiring (landed on `development`):**
-`wwn-iland` [`eedd2e5`](https://github.com/Wawona/wwn-iland/commit/eedd2e5cf2e62256c048f5a532e8eda50e1314bf)
+`iLand` [`eedd2e5`](https://github.com/Wawona/iLand/commit/eedd2e5cf2e62256c048f5a532e8eda50e1314bf)
 now records each GBM BO's DRM fourcc, allocates only the matching IOSurface
 pixel format (`XRGB8888`/`ARGB8888` → BGRA; supported 10-bit formats → `l10r`),
 and makes `drmModeAddFB2` reject unsupported or mismatched backing rather than
@@ -610,8 +610,8 @@ product-shaped iOS/iPadOS/visionOS or Android runtime capture has yet proved
 the target frame and Android still uses the CPU compatibility surface instead
 of an AHardwareBuffer zero-copy backend.
 
-**Apple IOSurface dmabuf bridge (#86, landed):** `wwn-iland`
-[`dec66e5`](https://github.com/Wawona/wwn-iland/commit/dec66e5) makes GBM export
+**Apple IOSurface dmabuf bridge (#86, landed):** `iLand`
+[`dec66e5`](https://github.com/Wawona/iLand/commit/dec66e5) makes GBM export
 the existing waypipe IOSurface modifier convention (high bit + IOSurface ID),
 supplies the protocol placeholder fd, and imports that modifier with
 `IOSurfaceLookup` without copying pixels. Both `nix build .#iland-macos` and
@@ -635,7 +635,7 @@ retaining the non-DRM compositor as the explicit pixman fallback. Do not grade
 this above **WIRED** until the Android product builds and Agent-Device captures
 the renderer/backend logs from the Play/Home session.
 
-Local overrides against `wwn-weston` `b32ab72` and `wwn-iland` `98004e7`
+Local overrides against `wwn-weston` `b32ab72` and `iLand` `98004e7`
 successfully built both static Weston compositor variants and all native
 Wawona Android code. The product derivation then stopped only at its expected
 signing-input gate (`ANDROID_KEYSTORE_BASE64`/`ANDROID_KEYSTORE_PATH`), not a
@@ -837,7 +837,7 @@ contract holds, the per-frame texture import is gone, and resize letterboxes
 instead of distorting. Depth also works now, which it did not when this section
 was written. ANGLE gives an IOSurface pbuffer no depth attachment while
 reporting one, so every GL client on this path silently lost `GL_DEPTH_TEST`
-(fixed in `wwn-iland` by rendering into a depth-capable pbuffer and blitting to
+(fixed in `iLand` by rendering into a depth-capable pbuffer and blitting to
 the presented IOSurface). Accepted as PROPER by the owner on that basis. The
 uneven cadence stays open as `kms-pipelining` below: it needs more than one
 outstanding flip per CRTC, an iland ABI change, and is a smoothness follow-up
@@ -1096,7 +1096,7 @@ or vblank-correct flips. Grade remains **WIRED**, not PROPER.
   via `VK_DRIVER_FILES`/`VK_ICD_FILENAMES`. **VM-only, must not leak into Mode A:**
   virtio-gpu, virglrenderer, Venus, gfxstream (stay in `wwn-vms`/UTM engine;
   confirmed `wwn-vms/README.md:9-11,40`).
-- **Local packaging inventory:** `wwn-iland` owns ANGLE, MoltenVK,
+- **Local packaging inventory:** `iLand` owns ANGLE, MoltenVK,
   SwiftShader and macOS KosmicKrisp recipes/registry entries. Turnip is
   intentionally not packaged because direct KGSL access violates Wawona's
   runtime-only/no-direct-kernel policy.
@@ -1120,9 +1120,9 @@ or vblank-correct flips. Grade remains **WIRED**, not PROPER.
 
 - `wwn-toolchain` `2bd941e` removes `angle` and `swiftshader` from L0's
   `baseRegistry` and deletes Android's SwiftShader bypass.
-- `wwn-iland` `55b705c` owns both keys in its L1 `registryFragment`; an Android
+- `iLand` `55b705c` owns both keys in its L1 `registryFragment`; an Android
   iland build passes against the split registry. ANGLE and SwiftShader recipes
-  now live under `wwn-iland/dependencies/libs/`; L0 retains substrate only.
+  now live under `iLand/dependencies/libs/`; L0 retains substrate only.
 - Apple now applies Vulkan and OpenGL selections through one
   `WWNSettings_ApplyGraphicsDriverSelection` function at startup and after
   per-machine overrides. It sets both Vulkan loader variables, applies the
@@ -1269,7 +1269,7 @@ pixman.
 
 Flake edges are acyclic (R5). P2 resolved ANGLE, SwiftShader, MoltenVK and
 KosmicKrisp ownership under L1
-`wwn-iland.registryFragment`; L0 now carries fail-loud ownership sentinels only.
+`iLand.registryFragment`; L0 now carries fail-loud ownership sentinels only.
 `pixman` correctly stays L0 (cairo depends on it `cairo/ios.nix:24`); moving it
 to iland would force cairo→iland (cycle).
 In-toolchain `freetype↔harfbuzz↔cairo` disable edges are intentional one-way
@@ -1322,7 +1322,7 @@ No `wwn-*` recipe edits; no flake.lock bumps.
 P1 (in progress):
 - `Wawona`: Mode A/B store matrix + portable-KMS model in `iland-mode-a-b-desktop.md`;
   workspace `wawona-repo-dag.mdc` Cursor rule; AGENTS.md DAG stub (on disk).
-- `wwn-iland`: `iland_drm_open_card` + `iland_drm_open_compat.h` (#58 Mode-A open
+- `iLand`: `iland_drm_open_card` + `iland_drm_open_compat.h` (#58 Mode-A open
   shim); header install in `macos.nix`/`ios.nix`/`android.nix`; force-include in
   `gl-clients-macos.nix`/`gl-clients-ios.nix`; AGENTS/README DAG layer identity.
 - `wwn-toolchain`: AGENTS.md (new) + README DAG layer identity (on disk).

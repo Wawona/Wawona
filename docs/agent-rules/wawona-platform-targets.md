@@ -134,8 +134,8 @@ forbidden while iPhone is planned for those features.
    **no root required, no fallback tier required**. Never wire Desktop/LockScreen
    UI into App Store Apple-mobile builds; never mention jailbreak in those
    binaries.
-5. **wwn-iland**. Platforms without IOKit / without GL (watchOS, tvOS, …)
-   need a non-IOKit, non-GL fallback path. See `wwn-iland-apple-fallback`.
+5. **iLand**. Platforms without IOKit / without GL (watchOS, tvOS, …)
+   need a non-IOKit, non-GL fallback path. See `iland-apple-fallback`.
 6. **iland Mode B dylib**. `libwayland-mac.dylib` is **macOS desktop-host
    only** (`wawona-macos-desktop-host`). SIP-gated Desktop/LockScreen
    Replacement (`WWNSipStatus` + Settings Desktop). Engage only when SIP is

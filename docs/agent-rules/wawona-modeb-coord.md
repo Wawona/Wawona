@@ -5,7 +5,7 @@ pageflip or present over each other.
 
 ## Single lease
 
-Canonical implementation: `wwn-iland/.../shims/modeb-coord.{h,c}`.
+Canonical implementation: `iLand/.../shims/modeb-coord.{h,c}`.
 
 | Path | Role |
 |------|------|

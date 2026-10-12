@@ -1504,16 +1504,16 @@ private fun MachineEditorSheet(
                             label = "Display Backend",
                             selected = when (compositorBackend) {
                                 "wayland" -> "Wayland (nested)"
-                                "drm" -> "DRM/KMS (wwn-iland)"
+                                "drm" -> "DRM/KMS (iLand)"
                                 else -> "Auto"
                             },
-                            options = listOf("Auto", "Wayland (nested)", "DRM/KMS (wwn-iland)"),
+                            options = listOf("Auto", "Wayland (nested)", "DRM/KMS (iLand)"),
                             expanded = compositorBackendExpanded,
                             onExpandedChange = { compositorBackendExpanded = it },
                             onSelect = {
                                 compositorBackend = when (it) {
                                     "Wayland (nested)" -> "wayland"
-                                    "DRM/KMS (wwn-iland)" -> "drm"
+                                    "DRM/KMS (iLand)" -> "drm"
                                     else -> "auto"
                                 }
                                 compositorBackendExpanded = false

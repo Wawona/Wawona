@@ -118,7 +118,7 @@ Mode B libseat/udev stubs grant `session_active` so DRM output enable can run.
 **Local proof (2026-08-20 / 25F80):**
 
 - Path B sticky: `claim-ok` `ok path=b sticky=1`; `--doctor` `coverage_ok yes`
-- `wwn-iland` `0af7a0d`: `drmModePlane` + `DRM_MODE_PROP_*` match mesa/libdrm;
+- `iLand` `0af7a0d`: `drmModePlane` + `DRM_MODE_PROP_*` match mesa/libdrm;
   EGL QueryContext/Surface/ReleaseThread; platform_gbm client string
 - Manual + staged KEEP_WS: weston `--backend=drm` + ANGLE Metal, log shows
   `Using GL renderer`, `Output 'DP-1' enabled`, `framebufferd` live; Aqua and

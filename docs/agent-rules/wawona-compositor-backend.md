@@ -51,7 +51,7 @@ install, the same remap niri already does. Stub windows make
 
 ## Classic (WindowServer down)
 
-No host Wayland for the **session** compositor. That one uses wwn-iland
+No host Wayland for the **session** compositor. That one uses iLand
 userspace DRM/KMS/GBM:
 
 - weston `--backend=drm`
@@ -76,7 +76,7 @@ Required on every path (Aqua nested, Aqua iland DRM weston, Classic DRM):
 
 ```text
 Wawona
-  weston (wayland or wwn-iland DRM)
+  weston (wayland or iLand DRM)
     weston --backend=wayland
     niri NIRI_BACKEND=nested
   niri (nested or Classic tty)

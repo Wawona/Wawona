@@ -241,7 +241,7 @@ struct WWNMachineEditorViewModern: View {
           Picker("Display Backend", selection: $draft.compositorBackend) {
             Text("Auto").tag("auto")
             Text("Wayland (nested)").tag("wayland")
-            Text("DRM/KMS (wwn-iland)").tag("drm")
+            Text("DRM/KMS (iLand)").tag("drm")
           }
           .pickerStyle(.navigationLink)
           Button("Open Wawona Settings", systemImage: "gearshape") {

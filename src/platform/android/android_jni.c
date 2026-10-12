@@ -4995,7 +4995,7 @@ static void *weston_thread_func(void *arg) {
   if (use_drm)
     wwn_iland_presenter_android_init();
 #endif
-  /* DRM/KMS → wwn-iland userspace display stack; Wayland → nested client of
+  /* DRM/KMS → iLand userspace display stack; Wayland → nested client of
    * the Wawona compositor. Matches macOS Display Backend / --backend. */
   char config_path[512] = "";
   char config_arg[600] = "";
@@ -5019,7 +5019,7 @@ static void *weston_thread_func(void *arg) {
   char *argv_wl[] = {"weston", "--backend=wayland", "--renderer=gl",
                      "--socket=wawona-nested", "--shell=desktop-shell.so",
                      config_arg[0] ? config_arg : NULL, NULL};
-  LOGI("weston backend=%s", use_drm ? "drm (wwn-iland)" : "wayland (nested)");
+  LOGI("weston backend=%s", use_drm ? "drm (iLand)" : "wayland (nested)");
   /* Panel launchers (weston-terminal icon) connect via this named socket. */
   setenv("WAWONA_NESTED_WAYLAND_DISPLAY", "wawona-nested", 1);
   setenv("WAWONA_NESTED_WAYLAND", "1", 1);
@@ -5486,7 +5486,7 @@ static jboolean wwn_launch_niri_nested(void) {
   if (pid == 0) {
     /* WAYLAND_DISPLAY and XDG_RUNTIME_DIR are inherited from the app
      * process. Honour Display Backend: drm → niri tty/DRM path over
-     * wwn-iland; otherwise nested Wayland client of Wawona. */
+     * iLand; otherwise nested Wayland client of Wawona. */
     setenv("NIRI_BACKEND", use_drm ? "tty" : "nested", 1);
     /* The exec'd binary leaves the app's linker namespace, so its NEEDED
      * libs (libwayland-*, libxkbcommon bundled in jniLibs) must be found

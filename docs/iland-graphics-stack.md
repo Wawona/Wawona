@@ -9,7 +9,7 @@ is in [`wwn-repo-dag.md`](wwn-repo-dag.md).
 
 ## Architecture
 
-`wwn-iland` is a KMS-like display abstraction, not a replacement API for stock
+`iLand` is a KMS-like display abstraction, not a replacement API for stock
 clients. kmscube, Weston and future toolkit ports keep the standard libdrm,
 GBM, EGL, Vulkan and Wayland interfaces.
 
@@ -39,7 +39,7 @@ semantics required by the accepted stock clients.
 - GPU-capable Apple and Android compositor products use GPU renderers. Pixman
   is an explicit software fallback and the tvOS/watchOS path.
 
-`wwn-iland.registryFragment` is the sole L1 registry owner for ANGLE,
+`iLand.registryFragment` is the sole L1 registry owner for ANGLE,
 SwiftShader, MoltenVK, and KosmicKrisp. Apple-mobile MoltenVK is a pinned, public-API
 upstream static release slice; macOS may use the unrestricted native package.
 KosmicKrisp is built from upstream Mesa for macOS. Its iOS registry variants
@@ -98,7 +98,7 @@ Cairo / Qt raster / SDL software / Weston pixman
 ```
 
 Pixman remains in `wwn-toolchain` because Cairo and Weston consume it.
-`wwn-iland` may link pixman for composition helpers but never owns it. Software
+`iLand` may link pixman for composition helpers but never owns it. Software
 rendering must not be converted into fake GLES, Zink, or a second full-frame
 copy. waypipe may intentionally degrade to SHM/compression, but a GPU session
 must retain its zero-copy dmabuf route.

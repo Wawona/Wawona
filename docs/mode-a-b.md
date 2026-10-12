@@ -101,7 +101,7 @@ installer for that lab, not an expanded public `.tipa` compatibility claim.
 
 The TrollStore tipa launches the normal Machines and Settings UI. Desktop
 Replacement is off by default. Turning it on and using Replace now (or Start
-on Weston/Niri) takes the panel with `wwn-iland` IOMFB so those compositors
+on Weston/Niri) takes the panel with `iLand` IOMFB so those compositors
 can use DRM/KMS. Text consoles are `wwn-igetty` plus a Wawona PTY. Turning
 the toggle off restores IOMFB and returns Machines. UIKit stays input and
 lifecycle glue. There is no framebuffer machine-picker GUI. Wayland and

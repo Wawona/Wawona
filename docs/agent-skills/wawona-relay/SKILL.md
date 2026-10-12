@@ -164,7 +164,7 @@ from **Relay native Hypervisor.framework** on the Mode B SoC/OS window.
 |--------|------|
 | Backend table, C ABI, flake `registryFragment` | `Wawona/Relay` |
 | Machines trampoline (`WWNRelay`) | L4 `Wawona` |
-| Guest GUI / iland present | `wwn-iland` + L4. Never UTM display |
+| Guest GUI / iland present | `iLand` + L4. Never UTM display |
 
 
 Cross-page scalar/SIMD memory accesses must translate every virtual fragment:

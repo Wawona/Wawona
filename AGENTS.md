@@ -116,7 +116,7 @@ not MCP. Skill `wawona-gh`. Rule `wawona-gh`.
   `wawona-android-compose-skills`. Material 3 Expressive is Android 16+ only.
   In-app `SettingsDialog` only.
 - **Smithay** `0.7`, `wayland_frontend` only.
-- **iland (wwn-iland). Two modes** (do not conflate):
+- **iland (iLand). Two modes** (do not conflate):
   - **Mode A (default, App Store-safe):** static `libiland_userland.a`, in-window
     present via `iland_drm_set_present_callback` → `WWNIlandPresenter`. Used on
     macOS/iOS/iPadOS/visionOS/Android (tvOS/watchOS stubs). No SIP, no dylib inject.
@@ -143,7 +143,7 @@ not MCP. Skill `wawona-gh`. Rule `wawona-gh`.
 - **Apple-mobile process entry.** `Darwin/Sources/Main.swift` on iOS/iPadOS/tvOS/visionOS (and macOS). Mobile uses `UIApplicationMain` (iOS 13 floor). Never leave LC_MAIN to a bundled client's C `_main` (`gbm_es2_demo`). Set `XDG_RUNTIME_DIR` to `preferredSharedRuntimeDir` before host compositor start. See `docs/agent-rules/wawona-ios-app-entry.md` and skill `wawona-ios-sim-runtime`.
 - **Patched software lives in `wwn-*` repos or the catalog** (Wawona org): the
   cross-compile framework + common libraries + `wawona-pty` are in
-  `wwn-toolchain`; zsh is `wwn-zsh`; graphics is `wwn-iland`; waypipe is
+  `wwn-toolchain`; zsh is `wwn-zsh`; graphics is `iLand`; waypipe is
   `wwn-waypipe`; uutils is `wwn-coreutils`. Weston, niri, foot, kmscube,
   fastfetch, phoon, neovim, store P1 wasm, and WASIX live in
   `repo.wawona.io` `catalog/{wasm,deb}/{cli,gui,lib}`. Wawona is an
@@ -171,7 +171,7 @@ not MCP. Skill `wawona-gh`. Rule `wawona-gh`.
   `isNestedCompositorClient`. See `docs/agent-rules/wawona-nested-compositor-cursor.md`.
 - **macOS weston/niri backends:** Aqua Machines Start nests them on Wawona
   (`--backend=wayland`, `NIRI_BACKEND=nested`) or runs weston in-process on
-  wwn-iland when Display Backend is `drm`. Classic Take Over (WindowServer
+  iLand when Display Backend is `drm`. Classic Take Over (WindowServer
   down) always uses iland userspace DRM; nested Wayland is refused. Detect
   Classic by WindowServer gone, never by leaked `WWN_MODEB_TTY`. Never
   `sudo niri`. See `wawona-compositor-backend` and
@@ -288,12 +288,12 @@ is on (`wawona-nested-compositor-cursor`). Full rule:
 ## Conventions
 
 - **Repo DAG (acyclic L0-L4; never invert):** `wwn-toolchain` (L0 substrate:
-  cairo/pango/pixman/libwayland/…) → `wwn-iland` (L1 complete graphics stack:
+  cairo/pango/pixman/libwayland/…) → `iLand` (L1 complete graphics stack:
   iland + ANGLE/ICDs after P2) → Wawona (L4). Port recipes are
   `repo.wawona.io` `catalog/`, one `registryFragment`, not L2/L3 flakes.
   `wwn-waypipe` / `Wawona-Swinging-Bridge` / Relay are L3′ (toolchain). Never
   add a `wwn-*` or catalog flake input to `wwn-toolchain`, never put graphics
-  keys in its `baseRegistry`, never make `wwn-iland` depend on weston/kmscube/waypipe,
+  keys in its `baseRegistry`, never make `iLand` depend on weston/kmscube/waypipe,
   and never make Wawona an input of any `wwn-*` or of the catalog. Canonical:
   `docs/wwn-repo-dag.md`; workspace rule `wawona-repo-dag`.
 - Builds are Nix-based; see `docs/compilation.md` and `docs/2026-nix-build-system.md`.

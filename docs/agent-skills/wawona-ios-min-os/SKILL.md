@@ -30,7 +30,7 @@ Meson cross file, `xcode-prebuild.sh` privatize).
 - Do not add extra GLES translation hops on iOS (ANGLE Metal is the path)
 - Do not raise the iOS floor above 13.0 to link a newer dependency, and do not ship a product `.dylib` in an App Store IPA (static `.a` only; Apple `libswift*` is the exception)
 
-Query `wwn-mcp` first (`where_to_edit` ANGLE/MoltenVK → `wwn-iland`;
+Query `wwn-mcp` first (`where_to_edit` ANGLE/MoltenVK → `iLand`;
 `IPHONEOS_DEPLOYMENT_TARGET` → `wwn-toolchain`).
 
 ## iOS 13 shared UI checkpoint (2026-09-30)

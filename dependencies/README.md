@@ -1,6 +1,6 @@
 # Wawona Nix Dependencies
 
-This directory is the **integration layer** for building Wawona on Apple, Android, and Linux targets. Cross-compiled libraries, toolchains, and ldflags generators live in upstream `wwn-*` flake inputs (`wwn-toolchain`, `wwn-weston`, `wwn-iland`, …); `flake.nix` injects their store paths into `pkgs` so recipes here never fall back to stale in-tree copies.
+This directory is the **integration layer** for building Wawona on Apple, Android, and Linux targets. Cross-compiled libraries, toolchains, and ldflags generators live in upstream `wwn-*` flake inputs (`wwn-toolchain`, `wwn-weston`, `iLand`, …); `flake.nix` injects their store paths into `pkgs` so recipes here never fall back to stale in-tree copies.
 
 ## Directory Structure
 
@@ -24,7 +24,7 @@ Canonical upstream locations:
 |---------|-------------|
 | Apple toolchain, Android SDK config, mobile-base ldflags | `wwn-toolchain` |
 | Weston toytoolkit/compositor ldflags, simple-shm | `wwn-weston` |
-| iland/ANGLE ldflags | `wwn-iland` |
+| iland/ANGLE ldflags | `iLand` |
 | Per-lib build recipes (`libs/*`, `toolchains/*`) | respective `wwn-*` inputs via `mergedRegistry` |
 
 ## Local dev override

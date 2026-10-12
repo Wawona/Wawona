@@ -193,7 +193,7 @@ skill, add one row. Capture flow: `wawona-learn`.
   2026-10-06 still had Swift **5.10.1** (no stdlib). Stop and bump nixpkgs.
   Knowledge: `nixpkgs-swift-packaging.md`.
 - Port = substitute platform, not client. Waypipe Linux build is the reference.
-- Graphics keys live in L1 `wwn-iland`. Never L0 toolchain. Never invert DAG.
+- Graphics keys live in L1 `iLand`. Never L0 toolchain. Never invert DAG.
 - iOS min OS is **13.0** against the **latest** iPhoneOS SDK only (26 now, 27
   next). Never downgrade the SDK. One ANGLE, one MoltenVK, Wawona patches.
   App Store / TrollStore / Sileo share that min. ASC upload range is a
@@ -251,7 +251,7 @@ skill, add one row. Capture flow: `wawona-learn`.
 - iOS Settings → Desktop appears only on Mode B tipa / Sileo
   (`profile-ios-mode-b`, `WWN_MODE_B`). Store IPA omits it. MCP
   `ios`/`desktop` stays forbidden (App Store row). The section is
-  wwn-iland IOMFB + wwn-igetty, not SpringBoard in the store build.
+  iLand IOMFB + wwn-igetty, not SpringBoard in the store build.
 - Darwin `rustPlatform.buildRustPackage` cargoBuildHook targets host
   Darwin even if `CARGO_BUILD_TARGET` is Android. Force `buildPhase`
   `--target aarch64-linux-android` and install only that `libwawona_wasm.a`.

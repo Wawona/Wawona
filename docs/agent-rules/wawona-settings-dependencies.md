@@ -37,7 +37,7 @@ Each package is Okular-style (`KAboutComponent`-like):
 3. Keep roles honest: Apple mobile SSH is libssh2; macOS/Android/Linux SSH
    is OpenSSH. watchOS GPU stays off the list. tvOS lists MoltenVK and
    ANGLE when `WWN_TVOS_GPU` is linked.
-4. **iland** version comes from sibling `wwn-iland/VERSION` (CalVer). Bump
-   that file in `wwn-iland` when shipping graphics stack changes.
+4. **iland** version comes from sibling `iLand/VERSION` (CalVer). Bump
+   that file in `iLand` when shipping graphics stack changes.
 
 Tracked Cursor mirror: `.cursor/rules/wawona-settings-dependencies.mdc`.

@@ -252,7 +252,7 @@ end
 # dylib flips its validator into that legacy mode → rotating ITMS-90426/
 # 90429/90433 no matter what SwiftSupport content is shipped. ANGLE must be
 # embedded ONLY as libEGL.framework / libGLESv2.framework on device
-# (xcodegen.nix keeps flat copies simulator-only; wwn-iland's EGL shim
+# (xcodegen.nix keeps flat copies simulator-only; iLand's EGL shim
 # probes the framework paths first).
 def assert_no_loose_dylibs!(ipa)
   require "open3"

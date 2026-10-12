@@ -213,7 +213,7 @@ impl GlobalDispatch<zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1, ()> for CompositorSta
 
         #[cfg(not(target_os = "watchos"))]
         {
-            // Advertise the IOSurface-modifier convention (#86 / wwn-iland + waypipe).
+            // Advertise the IOSurface-modifier convention (#86 / iLand + waypipe).
             // High bit set = IOSurface id in low 63 bits. Do NOT advertise LINEAR
             // (raw dmabuf). That path is unsupported and caused client failures.
             let mod_hi = ((IOSURFACE_MODIFIER >> 32) & 0xffff_ffff) as u32;

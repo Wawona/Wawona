@@ -43,9 +43,9 @@
     wwn-toolchain.url = "github:Wawona/wwn-toolchain/development";
     wwn-toolchain.inputs.nixpkgs.follows = "nixpkgs";
     wwn-toolchain.inputs.rust-overlay.follows = "rust-overlay";
-    wwn-iland.url = "github:Wawona/wwn-iland/development";
-    wwn-iland.inputs.nixpkgs.follows = "nixpkgs";
-    wwn-iland.inputs.wwn-toolchain.follows = "wwn-toolchain";
+    iland.url = "github:Wawona/iLand/development";
+    iland.inputs.nixpkgs.follows = "nixpkgs";
+    iland.inputs.wwn-toolchain.follows = "wwn-toolchain";
     # github/main until FlakeHub rolling includes iOS HOME physicalize
     # (0e41745). Cited: docs/wwn-repo-dag.md.
     wwn-zsh.url = "github:Wawona/wwn-zsh/development";
@@ -109,7 +109,7 @@
     wwn-igetty.inputs.nixpkgs.follows = "nixpkgs";
     wwn-igetty.inputs.rust-overlay.follows = "rust-overlay";
     wwn-igetty.inputs.wwn-toolchain.follows = "wwn-toolchain";
-    wwn-igetty.inputs.wwn-iland.follows = "wwn-iland";
+    wwn-igetty.inputs.iland.follows = "iland";
     wwn-igetty.inputs.doorman.follows = "doorman";
     # Mode B console login (Linux getty/login parity). L3' peer, macOS-only.
     # Follow the root nixpkgs lineage; the dependency remains nixpkgs-only.
@@ -134,7 +134,7 @@
     crate2nix,
     nix-appimage,
     wwn-toolchain,
-    wwn-iland,
+    iland,
     wwn-zsh,
     wwn-ssh,
     wwn-waypipe,
@@ -305,7 +305,7 @@
           ilandGlAndroidLdflagsNix
           westonAndroidSignalPolyfill
           ;
-        # The Apple toolchain (xcode-wrapper) used to live in-tree; wwn-iland's
+        # The Apple toolchain (xcode-wrapper) used to live in-tree; iland's
         # gl-clients recipes accept it as `xcodeUtils`/`iosToolchain`. Resolve it
         # from the wwn-toolchain input so callPackage can auto-fill those formals.
         iosToolchain = import applePath {
@@ -371,7 +371,7 @@
     mergedRegistry =
       wwn-toolchain.lib.baseRegistry
       // wwn-ssh.registryFragment
-      // wwn-iland.registryFragment
+      // iland.registryFragment
       // repo-wawona-io.registryFragment
       // wwn-zsh.registryFragment
       // wwn-waypipe.registryFragment
@@ -392,7 +392,7 @@
         # callPackage fills recipes from pkgs.crate2nix (CLI drv, no .tools)
         # and relay-crate2nix / rust-backend-c2n fail at eval.
         extraArgs = {
-          ilandSrc = wwn-iland;
+          ilandSrc = iland;
           inherit crate2nix;
         };
       };
@@ -420,8 +420,8 @@
     westonToytoolkitLdflagsNix = "${repo-wawona-io}/catalog/deb/gui/weston/in-app/dependencies/generators/weston-toytoolkit-ldflags.nix";
     westonCompositorLdflagsNix = "${repo-wawona-io}/catalog/deb/gui/weston/in-app/dependencies/generators/weston-compositor-ldflags.nix";
     mobileBaseLdflagsNix = "${wwn-toolchain}/dependencies/generators/mobile-base-ldflags.nix";
-    ilandGlLdflagsNix = "${wwn-iland}/dependencies/generators/iland-gl-ldflags.nix";
-    ilandGlAndroidLdflagsNix = "${wwn-iland}/dependencies/generators/iland-gl-android-ldflags.nix";
+    ilandGlLdflagsNix = "${iland}/dependencies/generators/iland-gl-ldflags.nix";
+    ilandGlAndroidLdflagsNix = "${iland}/dependencies/generators/iland-gl-android-ldflags.nix";
     androidConfigNix = "${wwn-toolchain}/dependencies/android/sdk-config.nix";
     androidWrapperNix = "${wwn-toolchain}/dependencies/utils/android-wrapper.nix";
     # --------------------------------------------------------------------------

@@ -49,7 +49,7 @@ Current flake inputs (see `flake.nix`; do not invent extra `wwn-*` edges):
 | `microvm` | VM machine type (`wwn-vms`) |
 | `nix-appimage` | Linux AppImage packaging |
 | `wwn-toolchain` | L0 substrate (cairo, pango, wayland, openssl, …) |
-| `wwn-iland` | L1 graphics (ANGLE, SwiftShader, MoltenVK, KosmicKrisp) |
+| `iLand` | L1 graphics (ANGLE, SwiftShader, MoltenVK, KosmicKrisp) |
 | `wwn-kmscube` | L2 GLES/KMS client |
 | `wwn-weston` | L3 nested compositor |
 | `wwn-niri` | L3′ nested compositor |
@@ -92,7 +92,7 @@ excluded since those are injected separately as Nix derivations.
 
 ### Directory structure
 
-Wawona keeps only the **integration layer** under `dependencies/`. Library recipes and toolchains live in flake inputs (`wwn-toolchain`, `wwn-weston`, `wwn-iland`, …). `flake.nix` merges their registries and injects store paths into `pkgs`.
+Wawona keeps only the **integration layer** under `dependencies/`. Library recipes and toolchains live in flake inputs (`wwn-toolchain`, `wwn-weston`, `iLand`, …). `flake.nix` merges their registries and injects store paths into `pkgs`.
 
 ```
 dependencies/                 # Wawona integration (this repo)
@@ -107,7 +107,7 @@ wwn-toolchain/                # upstream flake input
 ├── dependencies/android/     # sdk-config.nix (canonical Android version pins)
 └── dependencies/apple/       # Xcode wrapper + signing helpers
 
-wwn-weston/, wwn-iland/, …    # upstream app ports + ldflags generators
+wwn-weston/, iLand/, …    # upstream app ports + ldflags generators
 ```
 
 For local development against sibling checkouts:

@@ -18,7 +18,7 @@ GPU     one hop, or none, wl_shm
 
 - Android Termux is **Bionic**. Not glibc. Not musl. Not host `pkg-config`. NDK clang in `repo.wawona.io/lib/androidNdk.nix`. Not the nixpkgs Android GCC bootstrap.
 - cairo, harfbuzz, pango, pixman, freetype, and fontconfig are separate L0 libraries. None replaces another. There is no system cairo on Android or wasm.
-- Linking cairo does not provide GLES or Vulkan. GPU is L1 `wwn-iland`.
+- Linking cairo does not provide GLES or Vulkan. GPU is L1 `iLand`.
 - `nix build` exiting 0 is not green. Verdict is `nix run .#package-doctor` in `repo.wawona.io`.
 - New deb program: one directory `catalog/deb/<kind>/<name>/` copied from `TEMPLATE.nix`. `builtins.readDir` is the index. Android libraries come from `pkgs/wayland/ndkLibs.nix`. Do not import `androidNdk.nix` from the package.
 - Do not create `packages/` for recipes. The APT index file is already named `Packages`. On a case-insensitive disk that name cannot also be a directory. Recipes live under `catalog/`.

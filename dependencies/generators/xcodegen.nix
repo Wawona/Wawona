@@ -238,7 +238,7 @@ let
   # Apple-mobile packages are static-only. SwiftShader is the CPU Vulkan
   # fallback after MoltenVK and must be linked into the app, never copied as a
   # simulator dylib plus ICD manifest.
-  # Content-hash deduped ICD (wwn-iland). Regular archive + -u: force_load
+  # Content-hash deduped ICD (iland). Regular archive + -u: force_load
   # pulls ASTC/Reactor twins that collide with ANGLE and other staticlibs
   # (~13 duplicate symbols). Complete archive makes -u sufficient for the
   # namespaced ICD entry points and their dependency closure.
@@ -894,7 +894,7 @@ PLIST
     # 90429/90433 (every iOS upload from build 60 through 120 failed this
     # way while dylib-free tvOS/visionOS ipas from the same commits were
     # accepted). iland's EGL shim probes the framework-wrapped binaries
-    # first (wwn-iland egl.c load_angle/gles candidates), so devices only
+    # first (iland egl.c load_angle/gles candidates), so devices only
     # need libEGL.framework/libGLESv2.framework.
     case "''${PLATFORM_NAME:-}" in
       *simulator)

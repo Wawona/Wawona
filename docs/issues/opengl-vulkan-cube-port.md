@@ -18,7 +18,7 @@
 - Sources of truth for platform status stay `docs/iland-graphics-progress.md`
   (grades) and this file (packaging/launch).
 - Class: GPU bundled-client smoke (depends on nested-client / iland presenter foundations)
-- Repos: [`wwn-kmscube`](https://github.com/Wawona/wwn-kmscube) (primary), [`wwn-iland`](https://github.com/Wawona/wwn-iland) (ldflags only), [`Wawona`](https://github.com/Wawona/Wawona) (link + launch)
+- Repos: [`wwn-kmscube`](https://github.com/Wawona/wwn-kmscube) (primary), [`iLand`](https://github.com/Wawona/iLand) (ldflags only), [`Wawona`](https://github.com/Wawona/Wawona) (link + launch)
 
 Keep this file synchronized with the GitHub issue body when phases or
 delivery decisions change. Cursor plan: `port_gl_vk_cubes_f44b72b6`.
@@ -66,7 +66,7 @@ produced a duplicate client in the first place:
 
 | Client | Path | What it proves |
 |---|---|---|
-| KMS Cube | iland's **userspace KMS/DRM**. Opens the virtual card, GBM buffers, `drmModePageFlip` | that DRM/KMS client semantics work with **no kernel and no Linux**; that is the entire point of wwn-iland |
+| KMS Cube | iland's **userspace KMS/DRM**. Opens the virtual card, GBM buffers, `drmModePageFlip` | that DRM/KMS client semantics work with **no kernel and no Linux**; that is the entire point of iLand |
 | OpenGL Cube | **Wawona's Wayland compositor + our EGL/OpenGL**. `wl_surface` + `wl_egl_window` + `eglSwapBuffers` | that a stock Wayland GL client works on our compositor |
 | Vulkan Cube | Vulkan (KMS today, via the ICD under selection) | that Vulkan reaches the host GPU |
 
@@ -95,7 +95,7 @@ impossibility*; it remains only until the mobile unstub lands.
 - Vulkan Cube = krh/vkcube **KMS/GBM** against iland virtual DRM (`/dev/dri/card0` → fd 42) + host Vulkan ICD (MoltenVK Apple; device Vulkan / SwiftShader Android).
 - tvOS: GLES (ANGLE) and Vulkan (MoltenVK) when `WWN_TVOS_GPU_BUNDLED`. watchOS: **never** (`allowsGpuStack == false`).
 
-**Prerequisite:** wwn-iland supplies OpenGL (ANGLE) + Vulkan + software-fallback for DRM/GBM bind. This issue owns **client packaging + launch wiring**, not a new iland graphics architecture.
+**Prerequisite:** iLand supplies OpenGL (ANGLE) + Vulkan + software-fallback for DRM/GBM bind. This issue owns **client packaging + launch wiring**, not a new iland graphics architecture.
 
 ## Delivery model
 
@@ -167,14 +167,14 @@ iland virtual DRM + present (Metal / Android overlay)
 1. Confirm branches:
    ```bash
    cd ~/Wawona/wwn-kmscube && git checkout development && git pull --ff-only
-   cd ~/Wawona/wwn-iland   && git checkout development && git pull --ff-only
+   cd ~/Wawona/iLand   && git checkout development && git pull --ff-only
    cd ~/Wawona/Wawona      && git checkout development && git pull --ff-only
    ```
 2. Read the kmscube template end-to-end:
    - `wwn-kmscube/dependencies/clients/kmscube/{apple-mobile,macos,android,ios}.nix`
    - `wwn-kmscube/flake.nix` (`registryFragment.kmscube`)
-   - `wwn-iland/dependencies/generators/iland-gl-ldflags.nix`
-   - `wwn-iland/dependencies/generators/iland-gl-android-ldflags.nix`
+   - `iLand/dependencies/generators/iland-gl-ldflags.nix`
+   - `iLand/dependencies/generators/iland-gl-android-ldflags.nix`
    - `Wawona/dependencies/wawona/mobile-platform-deps.nix` (`allowGpu` block)
    - `Wawona/src/platform/macos/Sources/WawonaApple/Present/IlandPresenter.swift` (`launchNestedKmscubeWithWidth:`)
    - `Wawona/src/platform/macos/ui/Settings/Sources/WawonaApple/Runners/WaypipeRunner.swift` (`kmscube` special-case)
@@ -321,9 +321,9 @@ nm -gU result/lib/libvkcube.a | grep vkcube_main
 
 ---
 
-## Phase 3. Link into the app (`wwn-iland` + `Wawona`)
+## Phase 3. Link into the app (`iLand` + `Wawona`)
 
-### 3a. Apple ldflags (`wwn-iland`)
+### 3a. Apple ldflags (`iLand`)
 
 Edit `dependencies/generators/iland-gl-ldflags.nix`:
 
@@ -523,6 +523,6 @@ lists `kmscube|opengl-cube|vkcube|weston-simple-egl` for tvOS/watchOS.
 4. Phase 4 launch generalization
 5. Phase 5 device verify + matrix
 
-Prefer **one PR per repo** (`wwn-kmscube` first, then `wwn-iland` ldflags if
+Prefer **one PR per repo** (`wwn-kmscube` first, then `iLand` ldflags if
 needed, then `Wawona` integration), or a coordinated stack with
 `wwn-kmscube` mergeable alone via flake input bump.

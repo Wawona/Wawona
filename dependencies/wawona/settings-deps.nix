@@ -8,8 +8,8 @@
 # Regenerate JSON snapshots (do not hand-edit):
 #   ./scripts/regen-settings-deps.sh
 #
-# ANGLE / MoltenVK / iland versions must match the linked wwn-iland recipes.
-# iland CalVer comes from sibling wwn-iland/VERSION (or versions.iland fallback).
+# ANGLE / MoltenVK / iland versions must match the linked iland recipes.
+# iland CalVer comes from sibling iland/VERSION (or versions.iland fallback).
 
 let
   lib = builtins;
@@ -17,7 +17,7 @@ let
   # Prefer live sibling VERSION when regenerating from the org workspace.
   ilandVersionFromSibling =
     let
-      path = ../../../wwn-iland/VERSION;
+      path = ../../../iland/VERSION;
     in
     if builtins.pathExists path then
       builtins.replaceStrings [ "\n" "\r" " " ] [ "" "" "" ] (builtins.readFile path)
@@ -35,7 +35,7 @@ let
     libssh2 = "1.11.1";
     openssl = "3.4.1";
     pixman = "0.44.2";
-    # Per-target ANGLE pins (wwn-iland angle recipes). Not a single "chromium".
+    # Per-target ANGLE pins (iland angle recipes). Not a single "chromium".
     angleIos = "7258"; # GN source static archives (minos 14 sim / 13 device floor)
     angleMacos = "7258"; # nixpkgs.angle / GN source builds (tvOS/visionOS)
     angleAndroid = "chromium-7151";
@@ -137,7 +137,7 @@ let
       role = "CPU Vulkan ICD";
     };
     iland = {
-      url = "https://github.com/Wawona/wwn-iland";
+      url = "https://github.com/Wawona/iLand";
       license = "MIT";
       role = "Userspace DRM/KMS/GBM (Mode A)";
     };
