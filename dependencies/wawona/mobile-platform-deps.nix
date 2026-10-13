@@ -4,7 +4,8 @@
   toolchains,
   simulator ? false,
   # mobile: iOS/iPadOS. tv: tvOS. watch: watchOS. vision: visionOS.
-  # All Apple mobile variants: libssh2 + waypipe remote (never OpenSSH).
+  # All Apple mobile variants: libssh2 + waypipe remote. Never OpenSSH
+  # (no libssh-inprocess / openssh-ios on these targets).
   variant ? "mobile",
   extras ? {},
 }:

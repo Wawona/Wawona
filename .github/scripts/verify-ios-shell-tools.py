@@ -26,8 +26,9 @@ PREBUILD = ROOT / "scripts/xcode-prebuild.sh"
 IOS_ROOTFS = ROOT / "dependencies/wawona/ios-rootfs.nix"
 MOBILE_DEPS = ROOT / "dependencies/wawona/mobile-platform-deps.nix"
 
-FASTFETCH_MIN_LASTMODIFIED = 1782867491
-FASTFETCH_KNOWN_BAD_REV = "104cf2284ad161ecb82b3d182123ff2e437e3a34"
+# In-app fastfetch lives under repo.wawona.io (not a wwn-fastfetch flake input).
+FASTFETCH_CATALOG_MARKER = "catalog/deb/cli/fastfetch/in-app"
+REPO_WAWONA_IO_MIN_LASTMODIFIED = 1782867491
 
 REQUIRED_FLAKE_OUTPUTS = (
     "zsh-ios",
@@ -153,26 +154,35 @@ def verify_prebuild(text: str) -> list[str]:
 
 
 def verify_fastfetch_lock() -> list[str]:
+    """Keep-set fastfetch comes from repo.wawona.io in-app catalog, not wwn-fastfetch."""
+    errors: list[str] = []
     if not FLAKE_LOCK.is_file():
         return ["flake.lock missing"]
     data = json.loads(FLAKE_LOCK.read_text(encoding="utf-8"))
-    node = data.get("nodes", {}).get("wwn-fastfetch")
+    if "wwn-fastfetch" in data.get("nodes", {}):
+        errors.append(
+            "flake.lock must not pin deleted wwn-fastfetch; use repo-wawona-io "
+            f"{FASTFETCH_CATALOG_MARKER}"
+        )
+    node = data.get("nodes", {}).get("repo-wawona-io")
     if not node:
-        return ["flake.lock missing wwn-fastfetch input"]
+        errors.append("flake.lock missing repo-wawona-io input (hosts in-app fastfetch)")
+        return errors
     locked = node.get("locked", {})
-    rev = locked.get("rev", "")
     last_modified = int(locked.get("lastModified", 0))
-    if rev == FASTFETCH_KNOWN_BAD_REV:
-        return [
-            "flake.lock pins wwn-fastfetch@104cf22 which lacks the in-process "
-            "exit()/signal safety wrapper; update wwn-fastfetch"
-        ]
-    if last_modified < FASTFETCH_MIN_LASTMODIFIED:
-        return [
-            f"wwn-fastfetch lock too old (lastModified {last_modified} < "
-            f"{FASTFETCH_MIN_LASTMODIFIED})"
-        ]
-    return []
+    if last_modified < REPO_WAWONA_IO_MIN_LASTMODIFIED:
+        errors.append(
+            f"repo-wawona-io lock too old (lastModified {last_modified} < "
+            f"{REPO_WAWONA_IO_MIN_LASTMODIFIED})"
+        )
+    flake = read(FLAKE)
+    if FASTFETCH_CATALOG_MARKER not in flake:
+        errors.append(
+            f"flake.nix missing in-app fastfetch path ({FASTFETCH_CATALOG_MARKER})"
+        )
+    if "wwn-fastfetch.url" in flake or 'inputs.wwn-fastfetch' in flake:
+        errors.append("flake.nix must not re-add wwn-fastfetch input")
+    return errors
 
 
 def verify_inproc_clients(rootfs_text: str) -> list[str]:
@@ -381,7 +391,8 @@ def main() -> int:
 
     print(
         "iOS shell-tools wiring check OK "
-        "(libssh2 + ssh-cli; wwn-coreutils safe-subset; no Swift shell backends)"
+        "(libssh2 + ssh-cli; repo.wawona.io fastfetch; wwn-coreutils safe-subset; "
+        "no Swift shell backends)"
     )
     return 0
 
