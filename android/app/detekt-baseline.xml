@@ -2,19 +2,22 @@
 <SmellBaseline>
   <ManuallySuppressedIssues/>
   <CurrentIssues>
+    <ID>ComplexCondition:MachineHomeScreen.kt$uiType == MachineType.NATIVE &amp;&amp; useSsh &amp;&amp; (shellKind == NativeShellKind.TERMINAL || shellKind == NativeShellKind.WAYPIPE)</ID>
     <ID>ComplexCondition:MainActivity.kt$w &gt; 0 &amp;&amp; h &gt; 0 &amp;&amp; (w != lastPolledOutputW || h != lastPolledOutputH)</ID>
     <ID>ComplexCondition:WasmCatalog.kt$WasmCatalog$bytes.size &lt; 4 || bytes[0] != 0x00.toByte() || bytes[1] != 0x61.toByte() || bytes[2] != 0x73.toByte() || bytes[3] != 0x6d.toByte()</ID>
     <ID>ComplexCondition:WawonaSurfaceView.kt$WawonaSurfaceView$gen != dragGeneration || activeFingerCount != 1 || scrollActive || dragging</ID>
     <ID>ComplexCondition:WawonaSurfaceView.kt$WawonaSurfaceView$gestureEnding &amp;&amp; !scrollActive &amp;&amp; lowMovement &amp;&amp; shortTap &amp;&amp; maxFingerCount &gt;= 2</ID>
     <ID>ComplexCondition:WawonaSurfaceView.kt$WawonaSurfaceView$gestureEnding &amp;&amp; !scrollActive &amp;&amp; shortTap &amp;&amp; maxFingerCount &lt;= 1</ID>
     <ID>ComplexCondition:WawonaSurfaceView.kt$WawonaSurfaceView.&lt;no name provided&gt;$gen != dragGeneration || activeFingerCount != 1 || scrollActive || dragging</ID>
-    <ID>CyclomaticComplexMethod:MachineHomeScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable private fun MachineEditorSheet( title: String, initial: MachineProfile?, onDismiss: () -&gt; Unit, onSave: (MachineProfile) -&gt; Unit, onOpenSettings: () -&gt; Unit )</ID>
+    <ID>CyclomaticComplexMethod:MachineHomeScreen.kt$@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class) @Composable fun MachineWelcomeScreen( profiles: List&lt;MachineProfile&gt;, thumbnailRevision: Int, activeMachineId: String?, machineStatusFor: (String) -&gt; MachineStatus, onCreate: (MachineProfile) -&gt; Unit, onUpdate: (MachineProfile) -&gt; Unit, onDelete: (MachineProfile) -&gt; Unit, onConnect: (MachineProfile) -&gt; Unit, onFocus: (MachineProfile) -&gt; Unit, onStop: (MachineProfile) -&gt; Unit, onOpenSettings: () -&gt; Unit )</ID>
+    <ID>CyclomaticComplexMethod:MachineHomeScreen.kt$@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class) @Composable private fun MachineEditorSheet( title: String, initial: MachineProfile?, onDismiss: () -&gt; Unit, onSave: (MachineProfile) -&gt; Unit, onOpenSettings: () -&gt; Unit )</ID>
     <ID>CyclomaticComplexMethod:MachineProfiles.kt$MachineProfileStore$private fun migrateFromLegacyPrefs(prefs: SharedPreferences)</ID>
     <ID>CyclomaticComplexMethod:MainActivity.kt$@Composable fun WawonaApp( prefs: SharedPreferences, surfaceCallback: SurfaceHolder.Callback, cacheDirPath: String, displayDensity: Float )</ID>
-    <ID>CyclomaticComplexMethod:ModifierAccessoryBar.kt$@Composable fun ModifierAccessoryBar( modifier: Modifier = Modifier, keyboardExpanded: Boolean, onToggleKeyboardExpanded: () -&gt; Unit, onCollapseToPipByDrag: () -&gt; Unit )</ID>
-    <ID>CyclomaticComplexMethod:ModifierAccessoryBar.kt$@Composable private fun ToolbarKeyRow( ids: List&lt;String&gt;, rowMod: Modifier, inactive: Color, sticky: Color, locked: Color, textColor: Color, layout: ToolbarLayoutStore, trailing: (@Composable () -&gt; Unit)? = null, onPress: (String) -&gt; Unit, )</ID>
+    <ID>CyclomaticComplexMethod:ModifierAccessoryBar.kt$@Composable fun ModifierAccessoryBar( modifier: Modifier = Modifier, keyboardExpanded: Boolean, onToggleKeyboardExpanded: () -&gt; Unit, onCollapseToPipByDrag: () -&gt; Unit, onTabSwitcher: () -&gt; Unit = {}, onAppSettings: () -&gt; Unit = {}, onNewConnection: () -&gt; Unit = {}, onToggleTabBar: () -&gt; Unit = {}, onToggleFullScreen: () -&gt; Unit = {}, onToggleMouseCapture: () -&gt; Unit = {}, onClipboardManager: () -&gt; Unit = {}, onWritingAssistance: (Int) -&gt; Unit = {}, onCompose: () -&gt; Unit = {}, onBrightnessBoost: () -&gt; Unit = {}, onAiAgent: () -&gt; Unit = {}, onVoiceAgent: () -&gt; Unit = {}, )</ID>
+    <ID>CyclomaticComplexMethod:ModifierAccessoryBar.kt$@Composable private fun ToolbarKeyRow( ids: List&lt;String&gt;, rowMod: Modifier, inactive: Color, sticky: Color, locked: Color, textColor: Color, layout: ToolbarLayoutStore, labelFor: (String) -&gt; String? = { null }, trailing: (@Composable () -&gt; Unit)? = null, onPress: (String) -&gt; Unit, )</ID>
     <ID>CyclomaticComplexMethod:ScreencopyHelper.kt$ScreencopyHelper$private suspend fun pollOne(window: Window, screencopy: Boolean)</ID>
     <ID>CyclomaticComplexMethod:SettingsDialog.kt$@Composable private fun SSHSection(prefs: SharedPreferences, accent: Color)</ID>
+    <ID>CyclomaticComplexMethod:SettingsDialog.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun SettingsDialog( prefs: SharedPreferences, onDismiss: () -&gt; Unit, onApply: () -&gt; Unit )</ID>
     <ID>CyclomaticComplexMethod:WawonaSurfaceView.kt$WawonaSurfaceView$private fun handleTouchpadMode(event: MotionEvent, ts: Int): Boolean</ID>
     <ID>EmptyFunctionBlock:MainActivity.kt$&lt;no name provided&gt;${ }</ID>
     <ID>FunctionNaming:AppDrawer.kt$@Composable fun AppDrawer( waylandMachines: List&lt;MachineProfile&gt;, onLaunchWaylandMachine: (MachineProfile) -&gt; Unit, onLaunchAndroidApp: (AndroidApp) -&gt; Unit, onDismiss: () -&gt; Unit, modifier: Modifier = Modifier, )</ID>
@@ -29,24 +32,30 @@
     <ID>FunctionNaming:MachineHomeScreen.kt$@Composable private fun EditorSectionCard( title: String, subtitle: String, content: @Composable () -&gt; Unit )</ID>
     <ID>FunctionNaming:MachineHomeScreen.kt$@Composable private fun FittingBadgeText( text: String, modifier: Modifier = Modifier, style: TextStyle = MaterialTheme.typography.labelSmall, fontWeight: FontWeight? = FontWeight.Bold, color: Color = Color.Unspecified, )</ID>
     <ID>FunctionNaming:MachineHomeScreen.kt$@Composable private fun MachineActionContent( icon: @Composable () -&gt; Unit, title: String, )</ID>
-    <ID>FunctionNaming:MachineHomeScreen.kt$@Composable private fun MachineCardBanner( profileName: String, subtitle: String, statusColor: Color, thumbnailBitmap: android.graphics.Bitmap? )</ID>
-    <ID>FunctionNaming:MachineHomeScreen.kt$@Composable private fun MachineGridCard( profile: MachineProfile, thumbnailRevision: Int, status: MachineStatus, isActive: Boolean, onEdit: () -&gt; Unit, onDelete: () -&gt; Unit, onConnect: () -&gt; Unit, onFocus: () -&gt; Unit, onStop: () -&gt; Unit )</ID>
+    <ID>FunctionNaming:MachineHomeScreen.kt$@Composable private fun MachineCardBanner( profileName: String, subtitle: String, statusColor: Color, thumbnailBitmap: android.graphics.Bitmap?, searchQuery: String = "", )</ID>
+    <ID>FunctionNaming:MachineHomeScreen.kt$@Composable private fun MachineCardEntrance(content: @Composable () -&gt; Unit)</ID>
+    <ID>FunctionNaming:MachineHomeScreen.kt$@Composable private fun MachineSectionHeader(title: String)</ID>
     <ID>FunctionNaming:MachineHomeScreen.kt$@Composable private fun StatusChip(text: String, modifier: Modifier = Modifier)</ID>
+    <ID>FunctionNaming:MachineHomeScreen.kt$@Composable private fun TagDot(tag: MachineTag, size: androidx.compose.ui.unit.Dp)</ID>
     <ID>FunctionNaming:MachineHomeScreen.kt$@Composable private fun ToggleRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -&gt; Unit)</ID>
     <ID>FunctionNaming:MachineHomeScreen.kt$@OptIn(ExperimentalLayoutApi::class) @Composable private fun MachineActionButtonRow(content: @Composable () -&gt; Unit)</ID>
-    <ID>FunctionNaming:MachineHomeScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun MachineWelcomeScreen( profiles: List&lt;MachineProfile&gt;, thumbnailRevision: Int, activeMachineId: String?, machineStatusFor: (String) -&gt; MachineStatus, onCreate: (MachineProfile) -&gt; Unit, onUpdate: (MachineProfile) -&gt; Unit, onDelete: (MachineProfile) -&gt; Unit, onConnect: (MachineProfile) -&gt; Unit, onFocus: (MachineProfile) -&gt; Unit, onStop: (MachineProfile) -&gt; Unit, onOpenSettings: () -&gt; Unit )</ID>
+    <ID>FunctionNaming:MachineHomeScreen.kt$@OptIn(ExperimentalLayoutApi::class) @Composable private fun MachineGridCard( profile: MachineProfile, thumbnailRevision: Int, status: MachineStatus, isActive: Boolean, onEdit: () -&gt; Unit, onDelete: () -&gt; Unit, onConnect: () -&gt; Unit, onFocus: () -&gt; Unit, onStop: () -&gt; Unit, searchQuery: String = "", tags: List&lt;MachineTag&gt; = emptyList(), isPinned: Boolean = false, allTags: List&lt;MachineTag&gt; = emptyList(), onTogglePin: () -&gt; Unit = {}, onToggleTag: (MachineTag) -&gt; Unit = {}, )</ID>
+    <ID>FunctionNaming:MachineHomeScreen.kt$@OptIn(ExperimentalLayoutApi::class) @Composable private fun TagEditorDialog( onDismiss: () -&gt; Unit, onSave: (name: String, colorHex: String) -&gt; Unit, initialTag: MachineTag? = null, onDelete: (() -&gt; Unit)? = null, )</ID>
     <ID>FunctionNaming:MachineHomeScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable private fun AuthMethodDropdown( selected: String, expanded: Boolean, onExpandedChange: (Boolean) -&gt; Unit, onSelect: (String) -&gt; Unit )</ID>
-    <ID>FunctionNaming:MachineHomeScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable private fun MachineEditorSheet( title: String, initial: MachineProfile?, onDismiss: () -&gt; Unit, onSave: (MachineProfile) -&gt; Unit, onOpenSettings: () -&gt; Unit )</ID>
     <ID>FunctionNaming:MachineHomeScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable private fun MachineTypeDropdown( selected: MachineType, expanded: Boolean, onExpandedChange: (Boolean) -&gt; Unit, onSelect: (MachineType) -&gt; Unit )</ID>
     <ID>FunctionNaming:MachineHomeScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable private fun StringDropdownField( label: String, selected: String, options: List&lt;String&gt;, expanded: Boolean, onExpandedChange: (Boolean) -&gt; Unit, onSelect: (String) -&gt; Unit, enabled: Boolean = true, )</ID>
+    <ID>FunctionNaming:MachineHomeScreen.kt$@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class) @Composable fun MachineWelcomeScreen( profiles: List&lt;MachineProfile&gt;, thumbnailRevision: Int, activeMachineId: String?, machineStatusFor: (String) -&gt; MachineStatus, onCreate: (MachineProfile) -&gt; Unit, onUpdate: (MachineProfile) -&gt; Unit, onDelete: (MachineProfile) -&gt; Unit, onConnect: (MachineProfile) -&gt; Unit, onFocus: (MachineProfile) -&gt; Unit, onStop: (MachineProfile) -&gt; Unit, onOpenSettings: () -&gt; Unit )</ID>
+    <ID>FunctionNaming:MachineHomeScreen.kt$@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class) @Composable private fun MachineEditorSheet( title: String, initial: MachineProfile?, onDismiss: () -&gt; Unit, onSave: (MachineProfile) -&gt; Unit, onOpenSettings: () -&gt; Unit )</ID>
+    <ID>FunctionNaming:MachinesSidebar.kt$@Composable fun MachinesConfigurationSidebar( tags: List&lt;MachineTag&gt;, selected: MachinesNavDest, onSelect: (MachinesNavDest) -&gt; Unit, onCreateTag: () -&gt; Unit, onEditTag: (MachineTag) -&gt; Unit, onDeleteTag: (MachineTag) -&gt; Unit, modifier: Modifier = Modifier, )</ID>
+    <ID>FunctionNaming:MachinesSidebar.kt$@Composable fun TabOverviewPlaceholder( profiles: List&lt;MachineProfile&gt;, activeMachineId: String?, machineStatusFor: (String) -&gt; MachineStatus, onFocus: (MachineProfile) -&gt; Unit, )</ID>
     <ID>FunctionNaming:MainActivity.kt$@Composable fun WawonaApp( prefs: SharedPreferences, surfaceCallback: SurfaceHolder.Callback, cacheDirPath: String, displayDensity: Float )</ID>
     <ID>FunctionNaming:MainActivity.kt$@Composable private fun GuestConsoleOverlay( text: String, onDismiss: () -&gt; Unit, modifier: Modifier = Modifier, )</ID>
     <ID>FunctionNaming:MainActivity.kt$@Composable private fun StartupLogOverlay( clientLabel: String, lines: List&lt;String&gt;, onDismiss: () -&gt; Unit, modifier: Modifier = Modifier, )</ID>
-    <ID>FunctionNaming:ModifierAccessoryBar.kt$@Composable fun ModifierAccessoryBar( modifier: Modifier = Modifier, keyboardExpanded: Boolean, onToggleKeyboardExpanded: () -&gt; Unit, onCollapseToPipByDrag: () -&gt; Unit )</ID>
+    <ID>FunctionNaming:ModifierAccessoryBar.kt$@Composable fun ModifierAccessoryBar( modifier: Modifier = Modifier, keyboardExpanded: Boolean, onToggleKeyboardExpanded: () -&gt; Unit, onCollapseToPipByDrag: () -&gt; Unit, onTabSwitcher: () -&gt; Unit = {}, onAppSettings: () -&gt; Unit = {}, onNewConnection: () -&gt; Unit = {}, onToggleTabBar: () -&gt; Unit = {}, onToggleFullScreen: () -&gt; Unit = {}, onToggleMouseCapture: () -&gt; Unit = {}, onClipboardManager: () -&gt; Unit = {}, onWritingAssistance: (Int) -&gt; Unit = {}, onCompose: () -&gt; Unit = {}, onBrightnessBoost: () -&gt; Unit = {}, onAiAgent: () -&gt; Unit = {}, onVoiceAgent: () -&gt; Unit = {}, )</ID>
     <ID>FunctionNaming:ModifierAccessoryBar.kt$@Composable private fun AccessoryKey( label: String, bgColor: Color, textColor: Color, onClick: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
     <ID>FunctionNaming:ModifierAccessoryBar.kt$@Composable private fun ToolbarCustomizeDialog( layout: ToolbarLayoutStore, onDismiss: () -&gt; Unit, )</ID>
     <ID>FunctionNaming:ModifierAccessoryBar.kt$@Composable private fun ToolbarEditLine( title: String, onUp: () -&gt; Unit, onDown: () -&gt; Unit, onMove: () -&gt; Unit, moveLabel: String, onHide: () -&gt; Unit, )</ID>
-    <ID>FunctionNaming:ModifierAccessoryBar.kt$@Composable private fun ToolbarKeyRow( ids: List&lt;String&gt;, rowMod: Modifier, inactive: Color, sticky: Color, locked: Color, textColor: Color, layout: ToolbarLayoutStore, trailing: (@Composable () -&gt; Unit)? = null, onPress: (String) -&gt; Unit, )</ID>
+    <ID>FunctionNaming:ModifierAccessoryBar.kt$@Composable private fun ToolbarKeyRow( ids: List&lt;String&gt;, rowMod: Modifier, inactive: Color, sticky: Color, locked: Color, textColor: Color, layout: ToolbarLayoutStore, labelFor: (String) -&gt; String? = { null }, trailing: (@Composable () -&gt; Unit)? = null, onPress: (String) -&gt; Unit, )</ID>
     <ID>FunctionNaming:SettingsDialog.kt$@Composable fun AdvancedWaypipeDialog(prefs: SharedPreferences, onDismiss: () -&gt; Unit)</ID>
     <ID>FunctionNaming:SettingsDialog.kt$@Composable fun LockedSwitchItem( title: String, description: String, icon: ImageVector, alertTitle: String, alertMessage: String )</ID>
     <ID>FunctionNaming:SettingsDialog.kt$@Composable fun SettingsSectionHeader(title: String, icon: ImageVector, tint: Color = MaterialTheme.colorScheme.primary)</ID>
@@ -69,6 +78,8 @@
     <ID>FunctionNaming:SettingsDialog.kt$@Composable private fun SettingsInfoRow(title: String, value: String, description: String, icon: ImageVector)</ID>
     <ID>FunctionNaming:SettingsDialog.kt$@Composable private fun SettingsSectionContent( tab: SettingsTab, prefs: SharedPreferences, context: Context, localIpAddress: String?, modifier: Modifier = Modifier, )</ID>
     <ID>FunctionNaming:SettingsDialog.kt$@Composable private fun SettingsSidebarList( selected: SettingsTab?, onSelect: (SettingsTab) -&gt; Unit, modifier: Modifier = Modifier, )</ID>
+    <ID>FunctionNaming:SettingsDialog.kt$@Composable private fun SettingsTextEditorField( spec: SettingsTextEditorSpec, text: String, onTextChange: (String) -&gt; Unit, revealed: Boolean, onToggleReveal: () -&gt; Unit, )</ID>
+    <ID>FunctionNaming:SettingsDialog.kt$@Composable private fun SettingsTextEditorPage( spec: SettingsTextEditorSpec, prefs: SharedPreferences, onDone: () -&gt; Unit, )</ID>
     <ID>FunctionNaming:SettingsDialog.kt$@Composable private fun WaypipeLogsDialog(logPath: String, onDismiss: () -&gt; Unit)</ID>
     <ID>FunctionNaming:SettingsDialog.kt$@Composable private fun WaypipeSection(prefs: SharedPreferences, context: Context, accent: Color)</ID>
     <ID>FunctionNaming:SettingsDialog.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun SettingsDialog( prefs: SharedPreferences, onDismiss: () -&gt; Unit, onApply: () -&gt; Unit )</ID>
@@ -76,25 +87,25 @@
     <ID>FunctionNaming:SettingsDialog.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun SettingsMultiLineTextInputItem( prefs: SharedPreferences, key: String, title: String, description: String, icon: ImageVector, default: String )</ID>
     <ID>FunctionNaming:SettingsDialog.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun SettingsPasswordInputItem( prefs: SharedPreferences, key: String, title: String, description: String, icon: ImageVector, default: String )</ID>
     <ID>FunctionNaming:SettingsDialog.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun SettingsTextInputItem( prefs: SharedPreferences, key: String, title: String, description: String, icon: ImageVector, default: String, keyboardType: KeyboardType, revertToDefaultOnEmpty: Boolean = false, readOnly: Boolean = false )</ID>
-    <ID>FunctionNaming:SettingsDialog.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable private fun SettingsPushRow( title: String, subtitle: String, icon: ImageVector, onClick: (() -&gt; Unit)?, )</ID>
-    <ID>FunctionNaming:SettingsDialog.kt$@Composable private fun SettingsTextEditorField( spec: SettingsTextEditorSpec, text: String, onTextChange: (String) -&gt; Unit, revealed: Boolean, onToggleReveal: () -&gt; Unit, )</ID>
-    <ID>FunctionNaming:SettingsDialog.kt$@Composable private fun SettingsTextEditorPage( spec: SettingsTextEditorSpec, prefs: SharedPreferences, onDone: () -&gt; Unit, )</ID>
     <ID>FunctionNaming:SettingsDialog.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable private fun DesktopSection(prefs: SharedPreferences, context: Context, accent: Color)</ID>
     <ID>FunctionNaming:SettingsDialog.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable private fun LockscreenSection(prefs: SharedPreferences, accent: Color)</ID>
+    <ID>FunctionNaming:SettingsDialog.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable private fun SettingsPushRow( title: String, subtitle: String, icon: ImageVector, onClick: (() -&gt; Unit)?, )</ID>
     <ID>FunctionNaming:WawonaModalSheet.kt$@Composable fun WawonaSheetDragHandle(modifier: Modifier = Modifier)</ID>
     <ID>FunctionNaming:WawonaModalSheet.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun WawonaModalSheet( onDismiss: () -&gt; Unit, title: String, defaultDetent: WawonaSheetDetent = WawonaSheetDetent.Medium, scrollBehavior: WawonaSheetScrollBehavior = WawonaSheetScrollBehavior.ExpandWithContent, navigationIcon: @Composable () -&gt; Unit = {}, actions: @Composable RowScope.() -&gt; Unit = {}, content: @Composable ColumnScope.(contentScrollState: ScrollState) -&gt; Unit, )</ID>
     <ID>FunctionNaming:WawonaTheme.kt$@OptIn(ExperimentalMaterial3ExpressiveApi::class) @Composable fun WawonaTheme( darkTheme: Boolean = isSystemInDarkTheme(), dynamicColor: Boolean = true, content: @Composable () -&gt; Unit, )</ID>
     <ID>LongMethod:AppDrawer.kt$@Composable fun AppDrawer( waylandMachines: List&lt;MachineProfile&gt;, onLaunchWaylandMachine: (MachineProfile) -&gt; Unit, onLaunchAndroidApp: (AndroidApp) -&gt; Unit, onDismiss: () -&gt; Unit, modifier: Modifier = Modifier, )</ID>
-    <ID>LongMethod:MachineHomeScreen.kt$@Composable private fun MachineCardBanner( profileName: String, subtitle: String, statusColor: Color, thumbnailBitmap: android.graphics.Bitmap? )</ID>
-    <ID>LongMethod:MachineHomeScreen.kt$@Composable private fun MachineGridCard( profile: MachineProfile, thumbnailRevision: Int, status: MachineStatus, isActive: Boolean, onEdit: () -&gt; Unit, onDelete: () -&gt; Unit, onConnect: () -&gt; Unit, onFocus: () -&gt; Unit, onStop: () -&gt; Unit )</ID>
-    <ID>LongMethod:MachineHomeScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun MachineWelcomeScreen( profiles: List&lt;MachineProfile&gt;, thumbnailRevision: Int, activeMachineId: String?, machineStatusFor: (String) -&gt; MachineStatus, onCreate: (MachineProfile) -&gt; Unit, onUpdate: (MachineProfile) -&gt; Unit, onDelete: (MachineProfile) -&gt; Unit, onConnect: (MachineProfile) -&gt; Unit, onFocus: (MachineProfile) -&gt; Unit, onStop: (MachineProfile) -&gt; Unit, onOpenSettings: () -&gt; Unit )</ID>
-    <ID>LongMethod:MachineHomeScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable private fun MachineEditorSheet( title: String, initial: MachineProfile?, onDismiss: () -&gt; Unit, onSave: (MachineProfile) -&gt; Unit, onOpenSettings: () -&gt; Unit )</ID>
+    <ID>LongMethod:MachineHomeScreen.kt$@Composable private fun MachineCardBanner( profileName: String, subtitle: String, statusColor: Color, thumbnailBitmap: android.graphics.Bitmap?, searchQuery: String = "", )</ID>
+    <ID>LongMethod:MachineHomeScreen.kt$@OptIn(ExperimentalLayoutApi::class) @Composable private fun MachineGridCard( profile: MachineProfile, thumbnailRevision: Int, status: MachineStatus, isActive: Boolean, onEdit: () -&gt; Unit, onDelete: () -&gt; Unit, onConnect: () -&gt; Unit, onFocus: () -&gt; Unit, onStop: () -&gt; Unit, searchQuery: String = "", tags: List&lt;MachineTag&gt; = emptyList(), isPinned: Boolean = false, allTags: List&lt;MachineTag&gt; = emptyList(), onTogglePin: () -&gt; Unit = {}, onToggleTag: (MachineTag) -&gt; Unit = {}, )</ID>
+    <ID>LongMethod:MachineHomeScreen.kt$@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class) @Composable fun MachineWelcomeScreen( profiles: List&lt;MachineProfile&gt;, thumbnailRevision: Int, activeMachineId: String?, machineStatusFor: (String) -&gt; MachineStatus, onCreate: (MachineProfile) -&gt; Unit, onUpdate: (MachineProfile) -&gt; Unit, onDelete: (MachineProfile) -&gt; Unit, onConnect: (MachineProfile) -&gt; Unit, onFocus: (MachineProfile) -&gt; Unit, onStop: (MachineProfile) -&gt; Unit, onOpenSettings: () -&gt; Unit )</ID>
+    <ID>LongMethod:MachineHomeScreen.kt$@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class) @Composable private fun MachineEditorSheet( title: String, initial: MachineProfile?, onDismiss: () -&gt; Unit, onSave: (MachineProfile) -&gt; Unit, onOpenSettings: () -&gt; Unit )</ID>
     <ID>LongMethod:MachineHomeScreen.kt$fun performSave()</ID>
     <ID>LongMethod:MachineProfiles.kt$MachineProfileStore$private fun parseProfile(obj: JSONObject): MachineProfile</ID>
+    <ID>LongMethod:MachinesSidebar.kt$@Composable fun MachinesConfigurationSidebar( tags: List&lt;MachineTag&gt;, selected: MachinesNavDest, onSelect: (MachinesNavDest) -&gt; Unit, onCreateTag: () -&gt; Unit, onEditTag: (MachineTag) -&gt; Unit, onDeleteTag: (MachineTag) -&gt; Unit, modifier: Modifier = Modifier, )</ID>
+    <ID>LongMethod:MachinesSidebar.kt$@Composable fun TabOverviewPlaceholder( profiles: List&lt;MachineProfile&gt;, activeMachineId: String?, machineStatusFor: (String) -&gt; MachineStatus, onFocus: (MachineProfile) -&gt; Unit, )</ID>
     <ID>LongMethod:MainActivity.kt$@Composable fun WawonaApp( prefs: SharedPreferences, surfaceCallback: SurfaceHolder.Callback, cacheDirPath: String, displayDensity: Float )</ID>
     <ID>LongMethod:MainActivity.kt$@Composable private fun StartupLogOverlay( clientLabel: String, lines: List&lt;String&gt;, onDismiss: () -&gt; Unit, modifier: Modifier = Modifier, )</ID>
     <ID>LongMethod:MainActivity.kt$fun connectMachine(profile: MachineProfile, sessionId: String? = null, newWindow: Boolean = false)</ID>
-    <ID>LongMethod:ModifierAccessoryBar.kt$@Composable fun ModifierAccessoryBar( modifier: Modifier = Modifier, keyboardExpanded: Boolean, onToggleKeyboardExpanded: () -&gt; Unit, onCollapseToPipByDrag: () -&gt; Unit )</ID>
+    <ID>LongMethod:ModifierAccessoryBar.kt$@Composable fun ModifierAccessoryBar( modifier: Modifier = Modifier, keyboardExpanded: Boolean, onToggleKeyboardExpanded: () -&gt; Unit, onCollapseToPipByDrag: () -&gt; Unit, onTabSwitcher: () -&gt; Unit = {}, onAppSettings: () -&gt; Unit = {}, onNewConnection: () -&gt; Unit = {}, onToggleTabBar: () -&gt; Unit = {}, onToggleFullScreen: () -&gt; Unit = {}, onToggleMouseCapture: () -&gt; Unit = {}, onClipboardManager: () -&gt; Unit = {}, onWritingAssistance: (Int) -&gt; Unit = {}, onCompose: () -&gt; Unit = {}, onBrightnessBoost: () -&gt; Unit = {}, onAiAgent: () -&gt; Unit = {}, onVoiceAgent: () -&gt; Unit = {}, )</ID>
     <ID>LongMethod:ModifierAccessoryBar.kt$@Composable private fun ToolbarCustomizeDialog( layout: ToolbarLayoutStore, onDismiss: () -&gt; Unit, )</ID>
     <ID>LongMethod:ModifierAccessoryBar.kt$fun pressId(id: String)</ID>
     <ID>LongMethod:SettingsDialog.kt$@Composable private fun AboutDependencyRow( name: String, version: String, description: String, license: String, url: String, )</ID>
@@ -115,9 +126,11 @@
     <ID>LongParameterList:MachineHomeScreen.kt$( id: String, name: String, description: String, icon: ImageVector, selectedId: String, onSelect: (String) -&gt; Unit, )</ID>
     <ID>LongParameterList:MachineHomeScreen.kt$( label: String, selected: String, options: List&lt;String&gt;, expanded: Boolean, onExpandedChange: (Boolean) -&gt; Unit, onSelect: (String) -&gt; Unit, enabled: Boolean = true, )</ID>
     <ID>LongParameterList:MachineHomeScreen.kt$( onClick: () -&gt; Unit, modifier: Modifier = Modifier, enabled: Boolean = true, contentColor: Color = MaterialTheme.colorScheme.onSurface, borderColor: Color = MaterialTheme.colorScheme.outline, content: @Composable RowScope.() -&gt; Unit, )</ID>
-    <ID>LongParameterList:MachineHomeScreen.kt$( profile: MachineProfile, thumbnailRevision: Int, status: MachineStatus, isActive: Boolean, onEdit: () -&gt; Unit, onDelete: () -&gt; Unit, onConnect: () -&gt; Unit, onFocus: () -&gt; Unit, onStop: () -&gt; Unit )</ID>
+    <ID>LongParameterList:MachineHomeScreen.kt$( profile: MachineProfile, thumbnailRevision: Int, status: MachineStatus, isActive: Boolean, onEdit: () -&gt; Unit, onDelete: () -&gt; Unit, onConnect: () -&gt; Unit, onFocus: () -&gt; Unit, onStop: () -&gt; Unit, searchQuery: String = "", tags: List&lt;MachineTag&gt; = emptyList(), isPinned: Boolean = false, allTags: List&lt;MachineTag&gt; = emptyList(), onTogglePin: () -&gt; Unit = {}, onToggleTag: (MachineTag) -&gt; Unit = {}, )</ID>
     <ID>LongParameterList:MachineHomeScreen.kt$( profiles: List&lt;MachineProfile&gt;, thumbnailRevision: Int, activeMachineId: String?, machineStatusFor: (String) -&gt; MachineStatus, onCreate: (MachineProfile) -&gt; Unit, onUpdate: (MachineProfile) -&gt; Unit, onDelete: (MachineProfile) -&gt; Unit, onConnect: (MachineProfile) -&gt; Unit, onFocus: (MachineProfile) -&gt; Unit, onStop: (MachineProfile) -&gt; Unit, onOpenSettings: () -&gt; Unit )</ID>
-    <ID>LongParameterList:ModifierAccessoryBar.kt$( ids: List&lt;String&gt;, rowMod: Modifier, inactive: Color, sticky: Color, locked: Color, textColor: Color, layout: ToolbarLayoutStore, trailing: (@Composable () -&gt; Unit)? = null, onPress: (String) -&gt; Unit, )</ID>
+    <ID>LongParameterList:MachinesSidebar.kt$( tags: List&lt;MachineTag&gt;, selected: MachinesNavDest, onSelect: (MachinesNavDest) -&gt; Unit, onCreateTag: () -&gt; Unit, onEditTag: (MachineTag) -&gt; Unit, onDeleteTag: (MachineTag) -&gt; Unit, modifier: Modifier = Modifier, )</ID>
+    <ID>LongParameterList:ModifierAccessoryBar.kt$( ids: List&lt;String&gt;, rowMod: Modifier, inactive: Color, sticky: Color, locked: Color, textColor: Color, layout: ToolbarLayoutStore, labelFor: (String) -&gt; String? = { null }, trailing: (@Composable () -&gt; Unit)? = null, onPress: (String) -&gt; Unit, )</ID>
+    <ID>LongParameterList:ModifierAccessoryBar.kt$( modifier: Modifier = Modifier, keyboardExpanded: Boolean, onToggleKeyboardExpanded: () -&gt; Unit, onCollapseToPipByDrag: () -&gt; Unit, onTabSwitcher: () -&gt; Unit = {}, onAppSettings: () -&gt; Unit = {}, onNewConnection: () -&gt; Unit = {}, onToggleTabBar: () -&gt; Unit = {}, onToggleFullScreen: () -&gt; Unit = {}, onToggleMouseCapture: () -&gt; Unit = {}, onClipboardManager: () -&gt; Unit = {}, onWritingAssistance: (Int) -&gt; Unit = {}, onCompose: () -&gt; Unit = {}, onBrightnessBoost: () -&gt; Unit = {}, onAiAgent: () -&gt; Unit = {}, onVoiceAgent: () -&gt; Unit = {}, )</ID>
     <ID>LongParameterList:ModifierAccessoryBar.kt$( title: String, onUp: () -&gt; Unit, onDown: () -&gt; Unit, onMove: () -&gt; Unit, moveLabel: String, onHide: () -&gt; Unit, )</ID>
     <ID>LongParameterList:SettingsDialog.kt$( prefs: SharedPreferences, key: String, title: String, description: String, icon: ImageVector, default: Boolean, enabled: Boolean = true, iconTint: Color = MaterialTheme.colorScheme.primary, onCheckedChange: ((Boolean) -&gt; Unit)? = null, )</ID>
     <ID>LongParameterList:SettingsDialog.kt$( prefs: SharedPreferences, key: String, title: String, description: String, icon: ImageVector, default: String )</ID>
@@ -137,18 +150,12 @@
     <ID>MagicNumber:KeyboardLayouts.kt$KeyboardLayouts$80</ID>
     <ID>MagicNumber:KeyboardLayouts.kt$KeyboardLayouts$84</ID>
     <ID>MagicNumber:LocalShellRootfs.kt$LocalShellRootfs$8</ID>
-    <ID>MagicNumber:MachineHomeScreen.kt$0.07f</ID>
-    <ID>MagicNumber:MachineHomeScreen.kt$0xFF34D399</ID>
-    <ID>MagicNumber:MachineHomeScreen.kt$0xFF60A5FA</ID>
-    <ID>MagicNumber:MachineHomeScreen.kt$0xFF6366F1</ID>
-    <ID>MagicNumber:MachineHomeScreen.kt$0xFF94A3B8</ID>
-    <ID>MagicNumber:MachineHomeScreen.kt$0xFFFB7185</ID>
-    <ID>MagicNumber:MachineHomeScreen.kt$0xFFFBBF24</ID>
     <ID>MagicNumber:MachineHomeScreen.kt$22</ID>
     <ID>MagicNumber:MachineHomeScreen.kt$360</ID>
     <ID>MagicNumber:MachineHomeScreen.kt$4</ID>
     <ID>MagicNumber:MachineHomeScreen.kt$5</ID>
-    <ID>MagicNumber:MachineHomeScreen.kt$50</ID>
+    <ID>MagicNumber:MachineHomeScreen.kt$6</ID>
+    <ID>MagicNumber:MachineHomeScreen.kt$840</ID>
     <ID>MagicNumber:MachineInputSanitizer.kt$MachineInputSanitizer$3</ID>
     <ID>MagicNumber:MachineInputSanitizer.kt$MachineInputSanitizer$65535</ID>
     <ID>MagicNumber:MachineProfiles.kt$MachineProfileStore$22</ID>
@@ -156,6 +163,8 @@
     <ID>MagicNumber:MachineSearch.kt$MachineSearch$14</ID>
     <ID>MagicNumber:MachineSearch.kt$MachineSearch$8</ID>
     <ID>MagicNumber:MachineSearch.kt$MachineSearch$9</ID>
+    <ID>MagicNumber:MachineTags.kt$MachineTagPalette$16</ID>
+    <ID>MagicNumber:MachineTags.kt$MachineTagPalette$6</ID>
     <ID>MagicNumber:MainActivity.kt$0.05f</ID>
     <ID>MagicNumber:MainActivity.kt$0.6f</ID>
     <ID>MagicNumber:MainActivity.kt$0.72f</ID>
@@ -186,6 +195,8 @@
     <ID>MagicNumber:MainActivity.kt$8</ID>
     <ID>MagicNumber:MainActivity.kt$&lt;no name provided&gt;$3</ID>
     <ID>MagicNumber:MainActivity.kt$MainActivity$200</ID>
+    <ID>MagicNumber:ModifierAccessoryBar.kt$3</ID>
+    <ID>MagicNumber:ModifierAccessoryBar.kt$600</ID>
     <ID>MagicNumber:ScreencopyHelper.kt$ScreencopyHelper$3</ID>
     <ID>MagicNumber:ScreencopyHelper.kt$ScreencopyHelper$4</ID>
     <ID>MagicNumber:SessionActivity.kt$SessionActivity$120L</ID>
@@ -273,17 +284,10 @@
     <ID>MagicNumber:WawonaTheme.kt$0xFFFFDAD6</ID>
     <ID>MagicNumber:WawonaTheme.kt$0xFFFFFFFF</ID>
     <ID>MagicNumber:WawonaTheme.kt$36</ID>
+    <ID>MagicNumber:WawonaToolbarLayout.kt$ToolbarCatalog$600</ID>
     <ID>MagicNumber:WawonaToolbarLayout.kt$ToolbarLayoutStore$5</ID>
     <ID>MatchingDeclarationName:AndroidMachineSessionBridge.kt$AndroidMobileVmRunner</ID>
-    <ID>MaxLineLength:BundledClients.kt$BundledClients$BundledClientOption("kmscube", "KMS Cube", "Spinning GL cube via iland + ANGLE (userland KMS)", Icons.Filled.ViewInAr)</ID>
-    <ID>MaxLineLength:BundledClients.kt$BundledClients$BundledClientOption("niri", "Niri", "Scrollable-tiling compositor (nested compositor)", Icons.Filled.ViewColumn)</ID>
-    <ID>MaxLineLength:BundledClients.kt$BundledClients$BundledClientOption("wawona-wasm", "Wawona Runtime (.wasm)", "Wayland WASI module from the filesystem (Wawona Runtime)", Icons.Filled.Apps)</ID>
-    <ID>MaxLineLength:BundledClients.kt$BundledClients$BundledClientOption("weston", "Weston", "Wayland reference compositor (nested compositor)", Icons.Filled.ViewModule)</ID>
-    <ID>MaxLineLength:BundledClients.kt$BundledClients$BundledClientOption("weston-clickdot", "Weston Clickdot", "Pointer click visualization demo", Icons.Filled.TouchApp)</ID>
-    <ID>MaxLineLength:BundledClients.kt$BundledClients$BundledClientOption("weston-constraints", "Weston Constraints", "Pointer constraints demo", Icons.Filled.StackedBarChart)</ID>
-    <ID>MaxLineLength:BundledClients.kt$BundledClients$BundledClientOption("weston-simple-shm", "Weston Simple SHM", "Minimal shared-memory Wayland client", Icons.Filled.Dashboard)</ID>
-    <ID>MaxLineLength:BundledClients.kt$BundledClients$BundledClientOption("weston-terminal", "Weston Terminal", "Terminal emulator. Uses host cursor", Icons.Filled.Terminal)</ID>
-    <ID>MaxLineLength:BundledClients.kt$BundledClients$BundledClientOption("weston-transformed", "Weston Transformed", "Buffer transform demo", Icons.Filled.Rotate90DegreesCcw)</ID>
+    <ID>MatchingDeclarationName:MachinesSidebar.kt$MachinesNavDest</ID>
     <ID>MaxLineLength:MachineHomeScreen.kt$OutlinedTextField(value = "QEMU/AVF", onValueChange = {}, label = { Text("Backend") }, singleLine = true, readOnly = true, modifier = Modifier.fillMaxWidth())</ID>
     <ID>MaxLineLength:MachineHomeScreen.kt$OutlinedTextField(value = "container-in-VM", onValueChange = {}, label = { Text("Backend") }, singleLine = true, readOnly = true, modifier = Modifier.fillMaxWidth())</ID>
     <ID>MaxLineLength:MachineHomeScreen.kt$OutlinedTextField(value = containerEntry, onValueChange = { containerEntry = it }, label = { Text("Entry Command") }, modifier = Modifier.fillMaxWidth())</ID>
@@ -306,9 +310,9 @@
     <ID>MaxLineLength:MachineHomeScreen.kt$mutableStateOf(readBoolOverride(existingOverrides, "forceServerSideDecorations", prefs.getBoolean("forceServerSideDecorations", false)))</ID>
     <ID>MaxLineLength:MachineHomeScreen.kt$mutableStateOf(readBoolOverride(existingOverrides, "universalClipboard", prefs.getBoolean("universalClipboard", false)))</ID>
     <ID>MaxLineLength:MachineHomeScreen.kt$mutableStateOf(readStringOverride(existingOverrides, "openglDriver", prefs.getString("openglDriver", "angle") ?: "angle"))</ID>
-    <ID>MaxLineLength:MachineHomeScreen.kt$subtitle = "Choose a bundled client on the local compositor socket. Custom commands belong under SSH Terminal (Remote Shell Command)."</ID>
+    <ID>MaxLineLength:MachineHomeScreen.kt$subtitle = "Choose a bundled client on the local compositor socket. Custom commands belong under the Terminal session."</ID>
     <ID>MaxLineLength:MachineHomeScreen.kt$subtitle = "Same as native shell: wasm hello-wasi-gui. Pick a local file, search repo.wawona.io /wasm/v1, or type the command. Native still runs wasm from the shell."</ID>
-    <ID>MaxLineLength:MachineHomeScreen.kt$val slideSpec = tween&lt;androidx.compose.ui.unit.IntOffset&gt;(durationMillis = 320, easing = FastOutSlowInEasing)</ID>
+    <ID>MaxLineLength:MachineHomeScreen.kt$subtitle = "Terminal, Wayland client, Wasm, or Waypipe. SSH is an option for Terminal and Waypipe."</ID>
     <ID>MaxLineLength:MachineHomeScreen.kt$writeBoolOverride(settingsOverrides, "colorOperations", colorOperations, prefs.getBoolean("colorSyncSupport", false))</ID>
     <ID>MaxLineLength:MachineHomeScreen.kt$writeBoolOverride(settingsOverrides, "dmabufEnabled", dmabufEnabled, prefs.getBoolean("nestedCompositorsSupport", true))</ID>
     <ID>MaxLineLength:MachineHomeScreen.kt$writeBoolOverride(settingsOverrides, "forceServerSideDecorations", forceSsd, prefs.getBoolean("forceServerSideDecorations", false))</ID>
@@ -319,17 +323,14 @@
     <ID>MaxLineLength:MachineHomeScreen.kt$writeStringOverride(settingsOverrides, "openglDriver", openglDriver, prefs.getString("openglDriver", "angle") ?: "angle")</ID>
     <ID>MaxLineLength:MachineHomeScreen.kt$writeStringOverride(settingsOverrides, "vulkanDriver", vulkanDriver, prefs.getString("vulkanDriver", "system") ?: "system")</ID>
     <ID>MaxLineLength:MachineProfiles.kt$MachineProfileStore$if (machineId.isNullOrBlank()) remove(KEY_ACTIVE_MACHINE_ID) else putString(KEY_ACTIVE_MACHINE_ID, machineId)</ID>
+    <ID>MaxLineLength:MachineTags.kt$MachineTagStore$fun</ID>
     <ID>MaxLineLength:MainActivity.kt$pipButtonOffsetX</ID>
     <ID>MaxLineLength:SettingsDialog.kt$"Autocorrect, text suggestions, smart punctuation, swipe-to-type, and text replacements via the native keyboard"</ID>
     <ID>MaxLineLength:SettingsDialog.kt$"Avoid system UI and notches"</ID>
     <ID>MaxLineLength:SettingsDialog.kt$"How Start opens a machine. Prompt asks each time. New Tab keeps the client in this window. New Window opens another window."</ID>
     <ID>MaxLineLength:SettingsDialog.kt$"How bundled clients and nested compositors present. Wayland runs them nested inside Wawona; DRM/KMS runs them against iLand's userspace display stack."</ID>
-    <ID>MaxLineLength:SettingsDialog.kt$(androidx.compose.animation.slideInHorizontally { width -&gt; -width } + androidx.compose.animation.fadeIn())</ID>
-    <ID>MaxLineLength:SettingsDialog.kt$(androidx.compose.animation.slideInHorizontally { width -&gt; width } + androidx.compose.animation.fadeIn())</ID>
     <ID>MaxLineLength:SettingsDialog.kt$SettingsTab.CONNECTION -&gt; ConnectionSection(prefs, localIpAddress, context, SettingsTab.CONNECTION.accentColor)</ID>
     <ID>MaxLineLength:SettingsDialog.kt$Toast.makeText(context, "Unable to open Home settings: ${e.message}", Toast.LENGTH_LONG).show()</ID>
-    <ID>MaxLineLength:SettingsDialog.kt$androidx.compose.animation.slideOutHorizontally { width -&gt; -width } + androidx.compose.animation.fadeOut()</ID>
-    <ID>MaxLineLength:SettingsDialog.kt$androidx.compose.animation.slideOutHorizontally { width -&gt; width } + androidx.compose.animation.fadeOut()</ID>
     <ID>NestedBlockDepth:MachineSearch.kt$MachineSearch$fun fzfScore(pattern: String, candidate: String): Int?</ID>
     <ID>NestedBlockDepth:MainActivity.kt$@Composable fun WawonaApp( prefs: SharedPreferences, surfaceCallback: SurfaceHolder.Callback, cacheDirPath: String, displayDensity: Float )</ID>
     <ID>NestedBlockDepth:SettingsDialog.kt$fun getLocalIpAddress(context: Context): String?</ID>
@@ -344,6 +345,9 @@
     <ID>ReturnCount:MachineInputSanitizer.kt$MachineInputSanitizer$fun splitHostAndPort(rawHost: String, rawPort: String?, fallbackPort: Int = 22): HostPort</ID>
     <ID>ReturnCount:MachineProfiles.kt$MachineProfileStore$fun persistActiveMachineSettings(prefs: SharedPreferences): List&lt;MachineProfile&gt;</ID>
     <ID>ReturnCount:MachineSearch.kt$MachineSearch$fun fzfScore(pattern: String, candidate: String): Int?</ID>
+    <ID>ReturnCount:MachineSearch.kt$MachineSearch$internal fun subtitle(profile: MachineProfile): String</ID>
+    <ID>ReturnCount:MachineSearch.kt$MachineSearch$internal fun summary(profile: MachineProfile): String</ID>
+    <ID>ReturnCount:MachineTags.kt$MachineTagPalette$fun color(hex: String): Color</ID>
     <ID>ReturnCount:MachineThumbnailStore.kt$MachineThumbnailStore$suspend fun captureFromSurface(surfaceView: SurfaceView?, machineId: String): Boolean</ID>
     <ID>ReturnCount:MainActivity.kt$&lt;no name provided&gt;$override fun onSensorChanged(event: SensorEvent)</ID>
     <ID>ReturnCount:MainActivity.kt$fun launchNativeClient(clientId: String): Boolean</ID>
@@ -359,6 +363,7 @@
     <ID>ReturnCount:WawonaInputConnection.kt$WawonaInputConnection$override fun commitText(text: CharSequence?, newCursorPosition: Int): Boolean</ID>
     <ID>ReturnCount:WawonaInputConnection.kt$WawonaInputConnection$override fun sendKeyEvent(event: KeyEvent): Boolean</ID>
     <ID>ReturnCount:WawonaSurfaceView.kt$WawonaSurfaceView.&lt;no name provided&gt;$override fun run()</ID>
+    <ID>ReturnCount:WawonaToolbarLayout.kt$ToolbarLayoutStore$private fun load()</ID>
     <ID>ReturnCount:WawonaToolbarLayout.kt$ToolbarLayoutStore$private fun moveIn(row: List&lt;String&gt;, id: String, direction: Int): List&lt;String&gt;</ID>
     <ID>ReturnCount:WawonaToolbarLayout.kt$ToolbarLayoutStore$private fun removeFrom(section: String, id: String): Boolean</ID>
     <ID>TooGenericExceptionCaught:MainActivity.kt$MainActivity$e: Exception</ID>
@@ -381,6 +386,7 @@
     <ID>TooManyFunctions:WawonaSurfaceView.kt$WawonaSurfaceView : SurfaceView</ID>
     <ID>TooManyFunctions:WawonaToolbarLayout.kt$ToolbarLayoutStore</ID>
     <ID>UnusedParameter:AndroidMachineSessionBridge.kt$AndroidMobileVmRunner$profile: MachineProfile</ID>
+    <ID>UnusedParameter:MachinesSidebar.kt$onDeleteTag: (MachineTag) -&gt; Unit</ID>
     <ID>UnusedParameter:SessionExitSettings.kt$SessionExitSettings$prefs: SharedPreferences</ID>
     <ID>UnusedParameter:SettingsDialog.kt$context: Context</ID>
     <ID>UnusedParameter:SettingsDialog.kt$description: String</ID>
