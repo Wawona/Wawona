@@ -348,7 +348,13 @@ private struct WWNMachineCardMaterial: ViewModifier {
         shape.fill(Color(nsColor: .controlBackgroundColor))
       }
     }
-    #elseif os(iOS) || os(tvOS) || os(visionOS)
+    #elseif os(visionOS)
+    // glassEffect is unavailable on visionOS; match WawonaBackport.liquidGlass.
+    content.background {
+      shape.fill(Color.white.opacity(0.05))
+        .background(.ultraThinMaterial, in: shape)
+    }
+    #elseif os(iOS) || os(tvOS)
     if #available(iOS 26.0, tvOS 26.0, *) {
       content
         .background { shape.fill(.clear) }
