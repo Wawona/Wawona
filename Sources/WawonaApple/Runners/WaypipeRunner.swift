@@ -3,6 +3,17 @@ import WawonaModel
 #if canImport(AppKit)
 import AppKit
 #endif
+#if canImport(Darwin)
+import Darwin
+#endif
+
+#if os(iOS) || os(tvOS) || os(visionOS)
+@_silgen_name("waypipe_main")
+private func waypipe_main(
+    _ argc: Int32,
+    _ argv: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?
+) -> Int32
+#endif
 
 @objc public protocol WWNWaypipeRunnerDelegate: AnyObject {
     @objc optional func runnerDidReceiveError(_ message: String)
@@ -28,23 +39,69 @@ public final class WWNWaypipeRunner: NSObject {
     let lock = NSLock()
     @objc public static func sharedRunner() -> WWNWaypipeRunner { shared }
     @objc public func findWaypipeBinary() -> String {
-        let bundle = Bundle.main.bundleURL
-            .appendingPathComponent("Contents/MacOS/waypipe", isDirectory: false).path
-        for p in [bundle, "/opt/homebrew/bin/waypipe", "/usr/local/bin/waypipe", "/usr/bin/waypipe"] {
-            if FileManager.default.isExecutableFile(atPath: p) { return p }
+        let root = Bundle.main.bundleURL
+        let candidates = [
+            root.appendingPathComponent("Contents/Resources/bin/waypipe").path,
+            root.appendingPathComponent("Contents/MacOS/waypipe").path,
+            root.appendingPathComponent("waypipe").path,
+            "/opt/homebrew/bin/waypipe",
+            "/usr/local/bin/waypipe",
+            "/usr/bin/waypipe",
+        ]
+        for p in candidates where FileManager.default.isExecutableFile(atPath: p) {
+            return p
         }
         return "waypipe"
     }
+
+    /// Build `waypipe [opts] ssh [ssh-opts] user@host -- remote`.
+    /// Mirrors Android `android_jni.c` SSH argv (port, key, StrictHostKeyChecking).
     @objc(buildWaypipeArguments:)
     public func buildWaypipeArguments(_ prefs: WWNPreferencesManager) -> [String] {
-        var args = [findWaypipeBinary(), "ssh"]
+        var args: [String] = [findWaypipeBinary()]
+        let compress = prefs.waypipeCompress()
+        if !compress.isEmpty {
+            args.append(contentsOf: ["--compress", compress])
+        }
+        if prefs.waypipeDebug() { args.append("--debug") }
+        if prefs.waypipeNoGpu() { args.append("--no-gpu") }
+        if prefs.waypipeOneshot() { args.append("--oneshot") }
+        let threads = prefs.waypipeThreads()
+        if !threads.isEmpty, threads != "0" {
+            args.append(contentsOf: ["--threads", threads])
+        }
+        let video = prefs.waypipeVideo()
+        if !video.isEmpty, video != "none" {
+            args.append(contentsOf: ["--video", video])
+        }
+        let sshBin = prefs.waypipeSSHBinary()
+        if !sshBin.isEmpty, sshBin != "ssh" {
+            args.append(contentsOf: ["--ssh-bin", sshBin])
+        }
+        args.append("ssh")
+        args.append(contentsOf: [
+            "-o", "StrictHostKeyChecking=accept-new",
+            "-o", "UserKnownHostsFile=/dev/null",
+            "-T",
+            "-p", "\(prefs.sshPort())",
+        ])
+        let keyPath = prefs.sshKeyPath()
+        if !keyPath.isEmpty {
+            args.append(contentsOf: [
+                "-i", (keyPath as NSString).expandingTildeInPath,
+                "-o", "PreferredAuthentications=publickey",
+                "-o", "IdentitiesOnly=yes",
+            ])
+        }
         let host = prefs.sshHost()
         let user = prefs.sshUser()
         if !host.isEmpty {
             args.append(user.isEmpty ? host : "\(user)@\(host)")
         }
+        args.append("--")
         let remote = prefs.waypipeRemoteCommand()
-        args.append(remoteSwayEnvPrefixedCommand(remote.isEmpty ? "sway" : remote))
+        let cmd = remote.isEmpty ? "weston-simple-shm" : remote
+        args.append(remoteSwayEnvPrefixedCommand(cmd))
         return args
     }
     @objc(remoteSwayEnvPrefixedCommand:)
@@ -80,6 +137,15 @@ public final class WWNWaypipeRunner: NSObject {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: exe)
         task.arguments = Array(args.dropFirst())
+        var env = ProcessInfo.processInfo.environment
+        let runtime = WWNPreferencesManager.preferredSharedRuntimeDir()
+        env["XDG_RUNTIME_DIR"] = runtime
+        env["WAYLAND_DISPLAY"] = prefs.waypipeDisplay()
+        let pass = prefs.sshPassword()
+        if !pass.isEmpty {
+            env["SSHPASS"] = pass
+        }
+        task.environment = env
         task.terminationHandler = { [weak self] _ in
             DispatchQueue.main.async {
                 self?.isRunning = false
@@ -93,11 +159,55 @@ public final class WWNWaypipeRunner: NSObject {
         } catch {
             delegate?.runnerDidReceiveError?(error.localizedDescription)
         }
+        #elseif os(iOS) || os(tvOS) || os(visionOS)
+        launchWaypipeInProcess(prefs)
         #else
         _ = prefs
-        delegate?.runnerDidReceiveError?("waypipe Process is macOS-only.")
+        delegate?.runnerDidReceiveError?("waypipe is unavailable on this platform.")
         #endif
     }
+
+    #if os(iOS) || os(tvOS) || os(visionOS)
+    /// In-process `waypipe_main` (libssh2). Same argv shape as Android JNI.
+    private func launchWaypipeInProcess(_ prefs: WWNPreferencesManager) {
+        if let err = validatePreflight(forPrefs: prefs) {
+            delegate?.runnerDidReceiveError?(err)
+            return
+        }
+        let args = buildWaypipeArguments(prefs)
+        // Drop host Process path; argv[0] is still "waypipe" for waypipe_main.
+        let argvStrings = ["waypipe"] + Array(args.dropFirst())
+        isRunning = true
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let runtime = WWNPreferencesManager.preferredSharedRuntimeDir()
+            try? FileManager.default.createDirectory(
+                atPath: runtime, withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
+            )
+            setenv("XDG_RUNTIME_DIR", runtime, 1)
+            setenv("WAYLAND_DISPLAY", prefs.waypipeDisplay(), 1)
+            let pass = prefs.sshPassword()
+            if !pass.isEmpty { setenv("SSHPASS", pass, 1) }
+            var cStrings: [UnsafeMutablePointer<CChar>?] = argvStrings.map { strdup($0) }
+            cStrings.append(nil)
+            defer {
+                for ptr in cStrings where ptr != nil {
+                    free(ptr)
+                }
+            }
+            let rc = cStrings.withUnsafeMutableBufferPointer { buf in
+                waypipe_main(Int32(argvStrings.count), buf.baseAddress)
+            }
+            DispatchQueue.main.async {
+                self?.isRunning = false
+                if rc != 0 {
+                    self?.delegate?.runnerDidReceiveError?("waypipe exited \(rc)")
+                }
+                self?.delegate?.runnerDidStop?()
+            }
+        }
+    }
+    #endif
     @objc public func stopWaypipe() {
         #if os(macOS)
         waypipeTask?.terminate()

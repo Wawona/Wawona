@@ -181,7 +181,36 @@ public final class WWNMachineProfileStore: NSObject {
 
     @objc(applyMachineToRuntimePrefs:)
     public static func applyMachineToRuntimePrefs(_ profile: WWNMachineProfile) {
-        _ = profile
+        let prefs = WWNPreferencesManager.sharedManager()
+        prefs.setSshHost(profile.sshHost)
+        prefs.setSshUser(profile.sshUser)
+        prefs.setSshPort(profile.sshPort > 0 ? profile.sshPort : 22)
+        prefs.setSshAuthMethod(profile.sshAuthMethod)
+        prefs.setSshKeyPath(profile.sshKeyPath)
+        prefs.setSshPassword(profile.sshPassword.isEmpty ? nil : profile.sshPassword)
+        prefs.setSshKeyPassphrase(profile.sshKeyPassphrase.isEmpty ? nil : profile.sshKeyPassphrase)
+        prefs.setWaypipeSSHHost(profile.sshHost)
+        prefs.setWaypipeSSHUser(profile.sshUser)
+        prefs.setWaypipeSSHKeyPath(profile.sshKeyPath)
+        prefs.setWaypipeSSHAuthMethod(profile.sshAuthMethod)
+        prefs.setWaypipeSSHPassword(profile.sshPassword.isEmpty ? nil : profile.sshPassword)
+        prefs.setWaypipeRemoteCommand(profile.remoteCommand)
+        if !profile.customScript.isEmpty {
+            prefs.setWaypipeCustomScript(profile.customScript)
+        }
+        if !profile.waypipeCompress.isEmpty {
+            prefs.setWaypipeCompress(profile.waypipeCompress)
+        }
+        if !profile.waypipeThreads.isEmpty {
+            prefs.setWaypipeThreads(profile.waypipeThreads)
+        }
+        if !profile.waypipeVideo.isEmpty {
+            prefs.setWaypipeVideo(profile.waypipeVideo)
+        }
+        prefs.setWaypipeDebug(profile.waypipeDebug)
+        prefs.setWaypipeOneshot(profile.waypipeOneshot)
+        prefs.setWaypipeNoGpu(profile.waypipeDisableGpu)
+        prefs.setWaypipeSSHEnabled(true)
     }
 
     @objc public static func applyActiveMachineToRuntimePrefs() {
