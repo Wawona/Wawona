@@ -46,7 +46,12 @@ public final class WWNSceneDelegate: UIResponder, UIWindowSceneDelegate {
         // Host chrome is SwiftUI. Do not insert UIKit subviews under
         // UIHostingController.view (SwiftUI runtime warning / broken hierarchy).
         // New Window Start opens a session-only scene (no Machines chrome).
+        // tvOS has no multi-window session scenes; isSessionScene is iOS/vision only.
+        #if os(iOS) || os(visionOS)
         let sessionOnly = WWNSessionWindowPresenter.isSessionScene(options: connectionOptions)
+        #else
+        let sessionOnly = false
+        #endif
         let hosting: UIHostingController<AnyView>
         if sessionOnly {
             hosting = UIHostingController(rootView: AnyView(WWNSessionSurfaceRootView()))
