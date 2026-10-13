@@ -21,13 +21,23 @@ python3 "$ROOT/scripts/appium/verify-a11y-sync.py"
 python3 "$ROOT/scripts/appium/verify-matrix.py"
 
 MARKERS="${WAWONA_APPIUM_MARKERS:-}"
-EXTRA=()
+# Bash + set -u: empty "${arr[@]}" is "unbound variable" on GitHub runners.
+EXTRA_ARGS=()
 if [[ -n "$MARKERS" ]]; then
-  EXTRA+=(-m "$MARKERS")
+  EXTRA_ARGS+=(-m "$MARKERS")
+fi
+if (($# > 0)); then
+  EXTRA_ARGS+=("$@")
 fi
 
 if [[ "${WAWONA_APPIUM_DRY:-0}" == "1" ]]; then
-  exec pytest tests/test_gates_unit.py -q "${EXTRA[@]}" "$@"
+  if ((${#EXTRA_ARGS[@]} > 0)); then
+    exec pytest tests/test_gates_unit.py -q "${EXTRA_ARGS[@]}"
+  fi
+  exec pytest tests/test_gates_unit.py -q
 fi
 
-exec pytest tests -q --junitxml="$WAWONA_APPIUM_ARTIFACTS/junit.xml" "${EXTRA[@]}" "$@"
+if ((${#EXTRA_ARGS[@]} > 0)); then
+  exec pytest tests -q --junitxml="$WAWONA_APPIUM_ARTIFACTS/junit.xml" "${EXTRA_ARGS[@]}"
+fi
+exec pytest tests -q --junitxml="$WAWONA_APPIUM_ARTIFACTS/junit.xml"
