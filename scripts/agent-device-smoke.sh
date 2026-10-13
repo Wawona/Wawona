@@ -144,15 +144,34 @@ run_ios() {
     agent-device wait 'id="wwn.machines.root"' 8000 "${ad_common[@]}" >/dev/null 2>&1 || true
   fi
 
-  if ! agent-device press 'id="wwn.settings.display"' "${ad_common[@]}" >/dev/null 2>&1 \
-    && ! agent-device press 'label="Display"' "${ad_common[@]}" >/dev/null 2>&1; then
-    echo "FAIL: Settings sidebar Display not found" >&2
+  # Global Settings is in-app (gear). Open the host first, then Display.
+  if ! agent-device press 'id="wwn.settings"' "${ad_common[@]}" >/dev/null 2>&1 \
+    && ! agent-device press 'label="Settings"' "${ad_common[@]}" >/dev/null 2>&1 \
+    && ! agent-device press 'id="wwn.settings.open"' "${ad_common[@]}" >/dev/null 2>&1; then
+    echo "FAIL: Settings gear not found on Machines home" >&2
     agent-device screenshot "$ARTIFACTS/ios-settings-open-fail.png" "${ad_common[@]}" || true
     agent-device snapshot -i --raw "${ad_common[@]}" || true
     exit 1
   fi
+  agent-device wait 1500 "${ad_common[@]}" || true
   if ! agent-device wait 'id="wwn.settings.root"' 15000 "${ad_common[@]}" >/dev/null 2>&1 \
-    && ! agent-device wait 'id="wwn.settings.display"' 5000 "${ad_common[@]}" >/dev/null 2>&1; then
+    && ! agent-device wait 'text="Display"' 8000 "${ad_common[@]}" >/dev/null 2>&1 \
+    && ! agent-device wait 'label="Display"' 5000 "${ad_common[@]}" >/dev/null 2>&1; then
+    echo "FAIL: Global Settings host not visible after gear" >&2
+    agent-device screenshot "$ARTIFACTS/ios-settings-root-missing.png" "${ad_common[@]}" || true
+    agent-device snapshot -i --raw "${ad_common[@]}" || true
+    exit 1
+  fi
+  if ! agent-device press 'id="wwn.settings.display"' "${ad_common[@]}" >/dev/null 2>&1 \
+    && ! agent-device press 'label="Display"' "${ad_common[@]}" >/dev/null 2>&1 \
+    && ! agent-device press 'text="Display"' "${ad_common[@]}" >/dev/null 2>&1; then
+    echo "FAIL: Settings Display row not found" >&2
+    agent-device screenshot "$ARTIFACTS/ios-settings-display-missing.png" "${ad_common[@]}" || true
+    agent-device snapshot -i --raw "${ad_common[@]}" || true
+    exit 1
+  fi
+  if ! agent-device wait 'id="wwn.settings.display"' 10000 "${ad_common[@]}" >/dev/null 2>&1 \
+    && ! agent-device wait 'text="Display"' 5000 "${ad_common[@]}" >/dev/null 2>&1; then
     echo "FAIL: Settings Display section not visible" >&2
     agent-device screenshot "$ARTIFACTS/ios-settings-display-missing.png" "${ad_common[@]}" || true
     agent-device snapshot -i --raw "${ad_common[@]}" || true
