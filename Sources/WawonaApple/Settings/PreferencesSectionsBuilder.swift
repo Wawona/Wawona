@@ -155,8 +155,9 @@ public final class WWNPreferencesSectionsBuilder: NSObject {
             return text("Wayland Display", "WaylandDisplay", "wayland-0",
                         "WAYLAND_DISPLAY name for the in-app compositor.")
         case .defaultWaylandClient:
-            return text("Default Wayland Client", "DefaultBundledAppID", "",
-                        "Bundled client id used when Start has no other client.")
+            // Bundled Wayland clients removed. Default Start is Wawona Terminal.
+            return text("Default Native Client", "DefaultBundledAppID", "wawona-shell",
+                        "Keep-set id only: wawona-shell or wawona-wasm. Optional software installs via wpm.")
         case .environmentTable:
             return nil
         case .resetShellDotfiles:

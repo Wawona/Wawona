@@ -430,16 +430,6 @@ fun WawonaApp(
     var showClipboardDialog by remember { mutableStateOf(false) }
     var clipboardPreviewText by remember { mutableStateOf("") }
 
-    var westonSimpleShmEnabled by remember {
-        mutableStateOf(prefs.getBoolean("westonSimpleSHMEnabled", false))
-    }
-    var nativeWestonEnabled by remember {
-        mutableStateOf(prefs.getBoolean("westonEnabled", false))
-    }
-    var nativeWestonTerminalEnabled by remember {
-        mutableStateOf(prefs.getBoolean("westonTerminalEnabled", false))
-    }
-
     fun isNativeClientRunning(clientId: String): Boolean = when (clientId) {
         "weston" -> WawonaNative.nativeIsWestonRunning()
         "weston-terminal" -> WawonaNative.nativeIsWestonTerminalRunning()
@@ -524,12 +514,6 @@ fun WawonaApp(
     DisposableEffect(prefs) {
         val listener = SharedPreferences.OnSharedPreferenceChangeListener { sp, key ->
             when (key) {
-                "westonSimpleSHMEnabled" ->
-                    westonSimpleShmEnabled = sp.getBoolean("westonSimpleSHMEnabled", false)
-                "westonEnabled" ->
-                    nativeWestonEnabled = sp.getBoolean("westonEnabled", false)
-                "westonTerminalEnabled" ->
-                    nativeWestonTerminalEnabled = sp.getBoolean("westonTerminalEnabled", false)
                 "wawona.pref.shakeToCloseEnabled" ->
                     shakeToCloseEnabled = sp.getBoolean("wawona.pref.shakeToCloseEnabled", true)
                 "wawona.pref.swipeBackToCloseEnabled" ->
@@ -740,51 +724,6 @@ fun WawonaApp(
         }
     }
 
-    LaunchedEffect(westonSimpleShmEnabled, nativeWestonEnabled, nativeWestonTerminalEnabled) {
-        if (!nativeRuntimeReady) {
-            return@LaunchedEffect
-        }
-
-        if (westonSimpleShmEnabled) {
-            if (!WawonaNative.nativeIsWestonSimpleSHMRunning()) {
-                if (WawonaNative.nativeRunWestonSimpleSHM()) {
-                    WLog.i("WESTON", "weston-simple-shm launched")
-                } else {
-                    WLog.e("WESTON", "Failed to launch weston-simple-shm")
-                }
-            }
-        } else if (WawonaNative.nativeIsWestonSimpleSHMRunning()) {
-            WawonaNative.nativeStopWestonSimpleSHM()
-            WLog.i("WESTON", "weston-simple-shm stopped")
-        }
-
-        if (nativeWestonEnabled) {
-            if (!WawonaNative.nativeIsWestonRunning()) {
-                if (WawonaNative.nativeRunWeston()) {
-                    WLog.i("WESTON", "nested Weston compositor launched")
-                } else {
-                    WLog.e("WESTON", "Failed to launch nested Weston compositor")
-                }
-            }
-        } else if (WawonaNative.nativeIsWestonRunning()) {
-            WawonaNative.nativeStopWeston()
-            WLog.i("WESTON", "nested Weston compositor stopped")
-        }
-
-        if (nativeWestonTerminalEnabled) {
-            if (!WawonaNative.nativeIsWestonTerminalRunning()) {
-                if (WawonaNative.nativeRunWestonTerminal()) {
-                    WLog.i("WESTON", "weston-terminal launched")
-                } else {
-                    WLog.e("WESTON", "Failed to launch weston-terminal")
-                }
-            }
-        } else if (WawonaNative.nativeIsWestonTerminalRunning()) {
-            WawonaNative.nativeStopWestonTerminal()
-            WLog.i("WESTON", "weston-terminal stopped")
-        }
-    }
-
     var hadWindow by remember { mutableStateOf(false) }
     var lastPolledOutputW by remember { mutableIntStateOf(0) }
     var lastPolledOutputH by remember { mutableIntStateOf(0) }
@@ -923,25 +862,23 @@ fun WawonaApp(
     }
 
     fun launchNativeMachine(profile: MachineProfile): Boolean {
-        val bundled = profile.runtimeOverrides.optString("bundledAppID", "").trim()
-        val launcher = profile.nativeLauncher.ifBlank {
-            if (profile.type == MachineType.WASM || bundled == "wawona-wasm") {
-                "wawona-wasm"
-            } else {
-                "wawona-shell"
-            }
-        }
-        if (bundled == "wawona-shell" || launcher == "wawona-shell") {
-            // GuestConsole hosts the product shell UI. PTY + in-process zsh
-            // attach for Android is still the Native Shell Start path to finish;
-            // do not pretend a Wayland client launched.
-            WLog.i("NATIVE", "Native Shell Start: GuestConsole (no Wayland client)")
-            return true
-        }
-        if (profile.type == MachineType.WASM || launcher == "wawona-wasm" || bundled == "wawona-wasm") {
+        val bundled = NativeShellSession.migrateClientId(
+            profile.runtimeOverrides.optString("bundledAppID", "").trim()
+                .ifBlank { profile.nativeLauncher }
+        )
+        if (profile.type == MachineType.WASM || bundled == "wawona-wasm") {
             return launchRelayWasm(context, profile)
         }
-        return launchNativeClient(launcher)
+        // Bundled Wayland clients (weston-terminal, niri, cubes, …) removed.
+        // Native Shell Start is Wawona Terminal only (cli / wpm / SSH / waypipe).
+        if (bundled != "wawona-shell" && !NativeShellSession.isKeepSetClientId(bundled)) {
+            WLog.w(
+                "NATIVE",
+                "Ignoring retired bundled client '$bundled'; opening Wawona Terminal",
+            )
+        }
+        WLog.i("NATIVE", "Native Shell Start: GuestConsole (Wawona Terminal)")
+        return true
     }
 
     fun savedStartUsesNewWindow(): Boolean {
@@ -993,8 +930,11 @@ fun WawonaApp(
             return when (profile.type) {
                 MachineType.VM, MachineType.CONTAINER, MachineType.SSH_TERMINAL -> true
                 MachineType.NATIVE -> {
-                    val bundled = profile.runtimeOverrides.optString("bundledAppID", "").trim()
-                    bundled == "wawona-shell" || profile.nativeLauncher == "wawona-shell"
+                    val bundled = NativeShellSession.migrateClientId(
+                        profile.runtimeOverrides.optString("bundledAppID", "").trim()
+                            .ifBlank { profile.nativeLauncher }
+                    )
+                    bundled == "wawona-shell"
                 }
                 else -> false
             }

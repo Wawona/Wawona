@@ -78,18 +78,22 @@ pub fn show_editor(
     let session_group = adw::PreferencesGroup::new();
     session_group.set_title("Native Shell Session");
     session_group.set_description(Some(
-        "Terminal is Wawona Terminal (local or SSH). Wayland and Wasm run as clients. Waypipe streams with optional SSH.",
+        "Terminal is Wawona Terminal (local or SSH; install/run wasm and CLI from the shell). Wasm runs Relay packages. Waypipe streams with optional SSH.",
     ));
     let session_combo = gtk::ComboBoxText::new();
     for (id, label) in [
         ("terminal", "Terminal"),
-        ("wayland", "Wayland"),
         ("wasm", "Wasm"),
         ("waypipe", "Waypipe"),
     ] {
         session_combo.append(Some(id), label);
     }
-    session_combo.set_active_id(Some(initial_session));
+    let session_id = if initial_session == "wayland" {
+        "terminal"
+    } else {
+        initial_session
+    };
+    session_combo.set_active_id(Some(session_id));
     add_row(&session_group, "Session", &session_combo);
     let use_ssh_switch = gtk::Switch::builder()
         .active(initial_use_ssh)
@@ -107,61 +111,20 @@ pub fn show_editor(
     terminal_custom_row.add_suffix(&terminal_custom_entry);
     session_group.add(&terminal_custom_row);
 
-    // MARK: Wayland Software (Native): Compositors, then client types.
-    // Custom commands belong under Terminal, not the Wayland picker.
-    use crate::linux::bundled_clients::{wayland_picker_groups, SoftwareKind};
+    // Bundled Wayland client picker removed. Keep-set: wawona-shell / wawona-wasm.
     let mut initial_client = profile
         .runtime_overrides
         .bundled_app_id
         .clone()
         .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "weston-terminal".to_string());
-    // Legacy Wayland "custom" → Terminal Custom Command (command stays in remote_command).
-    if initial_client == "custom" {
+        .unwrap_or_else(|| "wawona-shell".to_string());
+    if initial_client == "custom" || (initial_client != "wawona-shell" && initial_client != "wawona-wasm")
+    {
         session_combo.set_active_id(Some("terminal"));
-        initial_client = "weston-simple-shm".to_string();
+        initial_client = "wawona-shell".to_string();
     }
     let selected_client = Rc::new(RefCell::new(initial_client));
-    let mut first_radio: Option<gtk::CheckButton> = None;
-    let mut client_groups: Vec<adw::PreferencesGroup> = Vec::new();
-
-    for (kind, clients) in wayland_picker_groups() {
-        let group = adw::PreferencesGroup::new();
-        group.set_title(kind.section_title());
-        if kind == SoftwareKind::Compositor {
-            group.set_description(Some(
-                "Nested compositors. Then Terminals, Graphics, Demos, and Other. Custom commands are under Terminal.",
-            ));
-        }
-        for client in clients {
-            let row = adw::ActionRow::new();
-            row.set_title(client.name);
-            row.set_subtitle(client.description);
-            row.set_title_lines(1);
-            row.set_activatable(false);
-            let radio = gtk::CheckButton::new();
-            if let Some(ref first) = first_radio {
-                radio.set_group(Some(first));
-            } else {
-                first_radio = Some(radio.clone());
-            }
-            if *selected_client.borrow() == client.id {
-                radio.set_active(true);
-            }
-            let sel = selected_client.clone();
-            let id = client.id.to_string();
-            radio.connect_toggled(move |btn| {
-                if btn.is_active() {
-                    *sel.borrow_mut() = id.clone();
-                }
-            });
-            row.add_prefix(&radio);
-            let icon = gtk::Image::from_icon_name(client.icon_name);
-            row.add_prefix(&icon);
-            group.add(&row);
-        }
-        client_groups.push(group);
-    }
+    let client_groups: Vec<adw::PreferencesGroup> = Vec::new();
 
     let wasm_group = adw::PreferencesGroup::new();
     wasm_group.set_title("Wasm");
@@ -777,9 +740,8 @@ pub fn show_editor(
             runtime_overrides: baseline.runtime_overrides.clone(),
             ..baseline.clone()
         };
-        if tid == "native" && kind == "wayland" {
-            updated.runtime_overrides.bundled_app_id = Some(selected_client.borrow().clone());
-        } else if tid == "native" && kind == "terminal" && !use_ssh {
+        if tid == "native" && (kind == "terminal" || kind == "wayland") && !use_ssh {
+            let _ = selected_client.borrow();
             updated.runtime_overrides.bundled_app_id = Some("wawona-shell".into());
         } else if tid == "native" && kind == "wasm" {
             updated.runtime_overrides.bundled_app_id = Some("wawona-wasm".into());
@@ -896,10 +858,9 @@ fn native_shell_session_from(profile: &MachineProfile) -> (&'static str, bool) {
                 ("waypipe", false)
             } else if bundled == "wawona-wasm" {
                 ("wasm", false)
-            } else if bundled.is_empty() || bundled == "wawona-shell" {
-                ("terminal", false)
             } else {
-                ("wayland", false)
+                // Former bundled Wayland clients → Wawona Terminal.
+                ("terminal", false)
             }
         }
         MachineType::VirtualMachine | MachineType::Container => ("terminal", false),

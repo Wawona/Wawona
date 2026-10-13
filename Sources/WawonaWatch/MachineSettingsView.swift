@@ -83,17 +83,8 @@ struct MachineSettingsView: View {
             .pickerStyle(.navigationLink)
 
             if profile.type == .native {
-                NavigationLink {
-                    WatchBundledClientPickerView(selection: bundledAppIDSelectionBinding)
-                } label: {
-                    HStack {
-                        Text("Wayland Client")
-                        Spacer()
-                        Text(ClientLauncher.displayName(for: resolvedBundledAppID))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-                }
+                LabeledContent("Session", value: "Wawona Terminal")
+                    .foregroundStyle(.secondary)
             }
 
             if let backend = profile.type.backendEngineLabel {

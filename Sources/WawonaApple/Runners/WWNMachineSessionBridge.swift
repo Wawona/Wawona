@@ -55,30 +55,24 @@ public final class WWNMachineSessionBridge: NSObject {
         guard profileUsesNativeCompositorClient(profile) else { return nil }
 
         let kind = WWNNativeShellConfiguration.kind(for: profile)
-        if kind == kWWNNativeShellKindTerminal {
+        if kind == kWWNNativeShellKindWasm {
+            return "wawona-wasm"
+        }
+        // No bundled Wayland clients. Terminal / Waypipe / legacy weston-* → shell.
+        if kind == kWWNNativeShellKindTerminal
+          || kind == kWWNNativeShellKindWayland
+          || kind == kWWNNativeShellKindWaypipe {
             return "wawona-shell"
         }
-
         if let runtime = profile.runtimeOverrides as? [String: Any],
            let bundled = runtime["bundledAppID"] as? String, !bundled.isEmpty {
-            return bundled
+            return WWNNativeShellConfiguration.migrateClientId(bundled)
         }
         if let overrides = profile.settingsOverrides as? [String: Any],
            let native = overrides["NativeClientId"] as? String, !native.isEmpty {
-            return native
+            return WWNNativeShellConfiguration.migrateClientId(native)
         }
-        let legacy: [String: String] = [
-            "WestonSimpleSHMEnabled": "weston-simple-shm",
-            "WestonEnabled": "weston",
-            "WestonTerminalEnabled": "weston-terminal",
-            "FootEnabled": "foot",
-        ]
-        if let overrides = profile.settingsOverrides as? [String: Any] {
-            for (key, client) in legacy {
-                if (overrides[key] as? NSNumber)?.boolValue == true { return client }
-            }
-        }
-        return kind == kWWNNativeShellKindWayland ? "weston-simple-shm" : nil
+        return "wawona-shell"
     }
 
     @objc(stopAllActiveTransports)

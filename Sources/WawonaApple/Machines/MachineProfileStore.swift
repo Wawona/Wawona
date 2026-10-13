@@ -307,19 +307,24 @@ public final class WWNMachineProfileStore: NSObject {
         return profileIndicatesNested(withNativeClientId: client, bundledAppID: custom)
     }
 
-    /// Desktop Replacement session machine: local Native Shell Wayland
-    /// compositor only (weston / niri / custom nested compositor). Not
-    /// Terminal, Wasm, Waypipe, SSH, terminal clients, or igetty.
+    /// Desktop Replacement session machine: installed nested compositor
+    /// (weston / niri via wpm/apt), not Wawona Terminal / Wasm / Waypipe /
+    /// SSH / igetty. Bundled clients are gone; id must still look like a
+    /// compositor after optional-software install.
     @objc(profileEligibleForDesktopReplacement:)
     public static func profileEligibleForDesktopReplacement(_ profile: WWNMachineProfile) -> Bool {
         if profileIsIgettyConsoleNotAMachine(profile) { return false }
         guard WWNNativeShellConfiguration.isNativeShellFamily(profile.type) else {
             return false
         }
-        // Folded native family must surface as Native Shell Wayland, not
-        // Terminal / Wasm / Waypipe.
         let kind = WWNNativeShellConfiguration.kind(for: profile)
-        guard kind == kWWNNativeShellKindWayland else { return false }
+        if kind == kWWNNativeShellKindWasm
+          || kind == kWWNNativeShellKindWaypipe
+          || kind == kWWNNativeShellKindTerminal {
+            // Terminal keep-set is shell; only an explicit compositor id qualifies.
+            if WWNNativeShellConfiguration.usesSSH(for: profile) { return false }
+            return profileIndicatesNestedCompositor(profile)
+        }
         if WWNNativeShellConfiguration.usesSSH(for: profile) { return false }
         return profileIndicatesNestedCompositor(profile)
     }

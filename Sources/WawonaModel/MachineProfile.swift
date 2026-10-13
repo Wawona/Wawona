@@ -90,14 +90,19 @@ extension MachineType {
 /// `MachineType` values (`wasm`, `ssh_terminal`, `ssh_waypipe`) for connect.
 public enum NativeShellKind: String, Codable, CaseIterable, Sendable {
     case terminal
+    /// Legacy storage only. Bundled Wayland clients removed; migrate to `.terminal`.
     case wayland
     case wasm
     case waypipe
 
+    /// Sessions offered in Add/Edit. No bundled Wayland client picker.
+    public static var selectableCases: [NativeShellKind] {
+        [.terminal, .wasm, .waypipe]
+    }
+
     public var userFacingName: String {
         switch self {
-        case .terminal: return "Terminal"
-        case .wayland: return "Wayland"
+        case .terminal, .wayland: return "Terminal"
         case .wasm: return "Wasm"
         case .waypipe: return "Waypipe"
         }
@@ -105,15 +110,14 @@ public enum NativeShellKind: String, Codable, CaseIterable, Sendable {
 
     public var symbolName: String {
         switch self {
-        case .terminal: return "terminal"
-        case .wayland: return "display"
+        case .terminal, .wayland: return "terminal"
         case .wasm: return "doc.badge.gearshape"
         case .waypipe: return "arrow.triangle.2.circlepath"
         }
     }
 
     public var allowsSSH: Bool {
-        self == .terminal || self == .waypipe
+        self == .terminal || self == .waypipe || self == .wayland
     }
 }
 
@@ -144,10 +148,8 @@ public struct NativeShellSession: Hashable, Sendable {
             if bundled == "wawona-wasm" {
                 return NativeShellSession(kind: .wasm, useSSH: false)
             }
-            if bundled.isEmpty || bundled == "wawona-shell" {
-                return NativeShellSession(kind: .terminal, useSSH: false)
-            }
-            return NativeShellSession(kind: .wayland, useSSH: false)
+            // Former bundled Wayland clients → Wawona Terminal.
+            return NativeShellSession(kind: .terminal, useSSH: false)
         case .virtualMachine, .container:
             return NativeShellSession(kind: .terminal, useSSH: false)
         }
@@ -173,13 +175,10 @@ public struct NativeShellSession: Hashable, Sendable {
 
     public func resolvedBundledAppID(selectedLauncher: String) -> String? {
         switch kind {
-        case .terminal:
+        case .terminal, .wayland:
             return useSSH ? nil : "wawona-shell"
         case .wasm:
             return "wawona-wasm"
-        case .wayland:
-            let trimmed = selectedLauncher.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.isEmpty ? "weston-simple-shm" : trimmed
         case .waypipe:
             return nil
         }

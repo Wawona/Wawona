@@ -114,14 +114,13 @@ struct WWNMachineEditorViewModern: View {
         } header: {
           Text("Connection Profile")
         } footer: {
-          Text("tvOS supports Native Shell only (Terminal, Wayland, Wasm, Waypipe). VM and Container are hidden.")
+          Text("tvOS supports Native Shell only (Terminal, Wasm, Waypipe). VM and Container are hidden.")
         }
 
         if draft.type == kWWNMachineTypeNative {
           Section("Native Shell Session") {
             Picker("Session", selection: $draft.nativeShellKind) {
               Text("Terminal").tag(kWWNNativeShellKindTerminal)
-              Text("Wayland").tag(kWWNNativeShellKindWayland)
               Text("Wasm").tag(kWWNNativeShellKindWasm)
               Text("Waypipe").tag(kWWNNativeShellKindWaypipe)
             }
@@ -167,24 +166,6 @@ struct WWNMachineEditorViewModern: View {
                 }
               } else {
                 WWNTvFormTextField("Command", text: $draft.wasmCommand, prompt: "wasm hello-wasi-gui")
-              }
-            }
-          }
-
-          if draft.nativeShellKind == kWWNNativeShellKindWayland {
-            Section("Wayland Software") {
-              NavigationLink {
-                WWNNativeClientPickerView(
-                  selectedClientId: $draft.selectedClientId
-                )
-              } label: {
-                HStack {
-                  Text("Bundled Software")
-                  Spacer()
-                  Text(nativeClientSummary)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                }
               }
             }
           }
@@ -374,8 +355,6 @@ struct WWNMachineEditorViewModern: View {
             WWNNativeShellSessionEditorSection(draft: draft)
 
             switch draft.nativeShellKind {
-            case kWWNNativeShellKindWayland:
-              WWNNativeClientEditorSection(draft: draft)
             case kWWNNativeShellKindWasm:
               WWNWasmEditorSection(draft: draft)
             case kWWNNativeShellKindWaypipe:
@@ -386,7 +365,7 @@ struct WWNMachineEditorViewModern: View {
               if draft.nativeShellUseSSH {
                 WWNLaunchCommandEditorSection(command: draft.previewCommand)
               }
-            case kWWNNativeShellKindTerminal:
+            case kWWNNativeShellKindTerminal, kWWNNativeShellKindWayland:
               if draft.nativeShellUseSSH {
                 WWNRemoteSSHEditorSection(draft: draft)
                 WWNLaunchCommandEditorSection(command: draft.previewCommand)
@@ -613,7 +592,6 @@ struct WWNMachineEditorViewLegacy: View {
           Section(header: Text("Native Shell Session")) {
             Picker("Session", selection: $draft.nativeShellKind) {
               Text("Terminal").tag(kWWNNativeShellKindTerminal)
-              Text("Wayland").tag(kWWNNativeShellKindWayland)
               Text("Wasm").tag(kWWNNativeShellKindWasm)
               Text("Waypipe").tag(kWWNNativeShellKindWaypipe)
             }

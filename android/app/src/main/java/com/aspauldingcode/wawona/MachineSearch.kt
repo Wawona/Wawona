@@ -103,10 +103,9 @@ object MachineSearch {
         }
         val (kind, useSsh) = NativeShellSession.from(profile)
         return when (kind) {
-            NativeShellKind.WAYLAND -> BundledClients.labelFor(profile.nativeLauncher)
             NativeShellKind.WASM -> profile.runtimeOverrides.optString("wasmCommand", "wasm hello-wasi-gui")
                 .ifBlank { "wasm hello-wasi-gui" }
-            NativeShellKind.TERMINAL -> {
+            NativeShellKind.TERMINAL, NativeShellKind.WAYLAND -> {
                 if (useSsh) {
                     if (profile.sshHost.isBlank()) "SSH endpoint not configured"
                     else "${profile.sshUser.ifBlank { "user" }}@${profile.sshHost}"
@@ -119,7 +118,7 @@ object MachineSearch {
                     if (profile.sshHost.isBlank()) "SSH endpoint not configured"
                     else "${profile.sshUser.ifBlank { "user" }}@${profile.sshHost}"
                 } else {
-                    profile.remoteCommand.ifBlank { "weston-simple-shm" }
+                    profile.remoteCommand.ifBlank { "waypipe (local)" }
                 }
             }
         }
@@ -133,21 +132,16 @@ object MachineSearch {
         }
         val (kind, useSsh) = NativeShellSession.from(profile)
         return when (kind) {
-            NativeShellKind.WAYLAND -> {
-                val client = BundledClients.labelFor(profile.nativeLauncher)
-                if (client.isBlank()) "No client configured. Edit to select one"
-                else "Runs: $client"
-            }
             NativeShellKind.WASM -> {
                 val cmd = profile.runtimeOverrides.optString("wasmCommand", "wasm hello-wasi-gui")
                     .ifBlank { "wasm hello-wasi-gui" }
                 "Runs: $cmd"
             }
             NativeShellKind.WAYPIPE -> {
-                val cmd = profile.remoteCommand.ifBlank { "weston-simple-shm" }
+                val cmd = profile.remoteCommand.ifBlank { "waypipe" }
                 if (useSsh) "Waypipe command: $cmd" else "Local waypipe: $cmd"
             }
-            NativeShellKind.TERMINAL -> {
+            NativeShellKind.TERMINAL, NativeShellKind.WAYLAND -> {
                 val cmd = profile.remoteCommand.ifBlank { if (useSsh) "bash -l" else "interactive shell" }
                 if (useSsh) "SSH terminal command: $cmd" else "Terminal: $cmd"
             }

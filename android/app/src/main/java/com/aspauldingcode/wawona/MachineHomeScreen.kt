@@ -1291,8 +1291,6 @@ private fun MachineEditorSheet(
 ) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("wawona_prefs", Context.MODE_PRIVATE) }
-    var showClientPicker by remember { mutableStateOf(false) }
-
     var name by remember { mutableStateOf(initial?.name ?: "") }
     val initialSession = remember(initial) {
         initial?.let { NativeShellSession.from(it) } ?: (NativeShellKind.TERMINAL to false)
@@ -1300,7 +1298,13 @@ private fun MachineEditorSheet(
     var uiType by remember {
         mutableStateOf(initial?.type?.selectablePivot() ?: MachineType.NATIVE)
     }
-    var shellKind by remember { mutableStateOf(initialSession.first) }
+    var shellKind by remember {
+        // Legacy Wayland session folds into Terminal (no bundled clients).
+        mutableStateOf(
+            if (initialSession.first == NativeShellKind.WAYLAND) NativeShellKind.TERMINAL
+            else initialSession.first
+        )
+    }
     var useSsh by remember { mutableStateOf(initialSession.second) }
     var sshHost by remember { mutableStateOf(initial?.sshHost ?: "") }
     var sshPort by remember { mutableStateOf((initial?.sshPort ?: 22).toString()) }
@@ -1309,7 +1313,11 @@ private fun MachineEditorSheet(
     var sshKeyPath by remember { mutableStateOf(initial?.sshKeyPath ?: "") }
     var sshKeyPassphrase by remember { mutableStateOf(initial?.sshKeyPassphrase ?: "") }
     var sshAuthMethod by remember { mutableStateOf(initial?.sshAuthMethod ?: "password") }
-    var nativeLauncher by remember { mutableStateOf(initial?.nativeLauncher ?: "weston-terminal") }
+    var nativeLauncher by remember {
+        mutableStateOf(
+            NativeShellSession.migrateClientId(initial?.nativeLauncher ?: "wawona-shell")
+        )
+    }
     var wasmModulePath by remember {
         mutableStateOf(initial?.runtimeOverrides?.optString("wasmModulePath", "") ?: "")
     }
@@ -1596,65 +1604,27 @@ private fun MachineEditorSheet(
 
     WawonaModalSheet(
         onDismiss = onDismiss,
-        title = if (showClientPicker) "Wayland Client" else title,
+        title = title,
         defaultDetent = WawonaSheetDetent.Medium,
         scrollBehavior = WawonaSheetScrollBehavior.ContentFirst,
         navigationIcon = {
-            if (showClientPicker) {
-                IconButton(onClick = { showClientPicker = false }) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                }
-            } else {
-                TextButton(onClick = onDismiss) { Text("Cancel") }
-            }
+            TextButton(onClick = onDismiss) { Text("Cancel") }
         },
         actions = {
-            if (!showClientPicker) {
-                TextButton(onClick = { performSave() }) {
-                    Text("Save", fontWeight = FontWeight.SemiBold)
-                }
+            TextButton(onClick = { performSave() }) {
+                Text("Save", fontWeight = FontWeight.SemiBold)
             }
         },
     ) { contentScrollState ->
-        LaunchedEffect(showClientPicker) { contentScrollState.scrollTo(0) }
-        val motion = MaterialTheme.motionScheme
-        AnimatedContent(
-            targetState = showClientPicker,
-            modifier = Modifier.testTag(WawonaTestTags.MACHINES_EDITOR),
-            transitionSpec = {
-                val slideSpec = motion.defaultSpatialSpec<androidx.compose.ui.unit.IntOffset>()
-                val fadeSpec = motion.defaultEffectsSpec<Float>()
-                val transform = if (targetState) {
-                    (slideInHorizontally(slideSpec) { it } + fadeIn(fadeSpec)).togetherWith(
-                        slideOutHorizontally(slideSpec) { -it / 4 } + fadeOut(fadeSpec),
-                    )
-                } else {
-                    (slideInHorizontally(slideSpec) { -it } + fadeIn(fadeSpec)).togetherWith(
-                        slideOutHorizontally(slideSpec) { it / 4 } + fadeOut(fadeSpec),
-                    )
-                }
-                transform.using(SizeTransform(clip = false))
-            },
-            label = "machineEditorClientPicker",
-        ) { pickingClient ->
-            if (pickingClient) {
-                BundledClientPicker(
-                    selectedId = nativeLauncher,
-                    scrollState = contentScrollState,
-                    onSelect = { id ->
-                        nativeLauncher = id
-                        showClientPicker = false
-                    },
-                )
-            } else {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .verticalScroll(contentScrollState)
-                        .padding(horizontal = 16.dp)
-                        .padding(bottom = 24.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
+        Column(
+            modifier = Modifier
+                .testTag(WawonaTestTags.MACHINES_EDITOR)
+                .fillMaxWidth()
+                .verticalScroll(contentScrollState)
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
                     EditorSectionCard(
                         title = "Connection Profile",
                         subtitle = "Name and type for this machine profile."
@@ -1685,23 +1655,23 @@ private fun MachineEditorSheet(
                     if (uiType == MachineType.NATIVE) {
                         EditorSectionCard(
                             title = "Native Shell Session",
-                            subtitle = "Terminal, Wayland client, Wasm, or Waypipe. SSH is an option for Terminal and Waypipe."
+                            subtitle = "Wawona Terminal (cli, wasm, SSH), Wasm, or Waypipe. " +
+                                "Optional software installs via wpm from the shell.",
                         ) {
                             FlowRow(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
-                                NativeShellKind.entries.forEach { kind ->
+                                NativeShellKind.selectableEntries.forEach { kind ->
                                     FilterChip(
                                         selected = shellKind == kind,
                                         onClick = {
                                             shellKind = kind
-                                            if (kind == NativeShellKind.WAYLAND &&
-                                                (nativeLauncher == "wawona-wasm" || nativeLauncher == "wawona-shell")
-                                            ) {
-                                                nativeLauncher = "weston-simple-shm"
+                                            nativeLauncher = when (kind) {
+                                                NativeShellKind.WASM -> "wawona-wasm"
+                                                else -> "wawona-shell"
                                             }
-                                            if (kind == NativeShellKind.WASM || kind == NativeShellKind.WAYLAND) {
+                                            if (kind == NativeShellKind.WASM) {
                                                 useSsh = false
                                             }
                                         },
@@ -1828,49 +1798,6 @@ private fun MachineEditorSheet(
                                 }
                             }
                             wasmCatalogNote?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-                        }
-                    }
-
-                    if (uiType == MachineType.NATIVE && shellKind == NativeShellKind.WAYLAND) {
-                        EditorSectionCard(
-                            title = "Wayland Client",
-                            subtitle = "Choose a bundled client on the local compositor socket. Custom commands belong under the Terminal session."
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { showClientPicker = true }
-                                    .padding(vertical = 8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("Bundled Client")
-                                Text(
-                                    if (nativeLauncher == "wawona-wasm" && wasmModulePath.isNotBlank()) {
-                                        wasmModulePath.substringAfterLast('/')
-                                    } else {
-                                        BundledClients.labelFor(nativeLauncher)
-                                    },
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                            if (nativeLauncher == "wawona-wasm") {
-                                OutlinedTextField(
-                                    value = wasmModulePath,
-                                    onValueChange = { wasmModulePath = it },
-                                    label = { Text("Wasm module path") },
-                                    placeholder = { Text("/sdcard/…/wayland-shm-rust.wasm") },
-                                    singleLine = true,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                                Text(
-                                    "Empty path runs bundled hello-wasi-gui (wl_shm).",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
                         }
                     }
 
@@ -2142,87 +2069,6 @@ private fun MachineEditorSheet(
                             OutlinedTextField(value = containerNotes, onValueChange = { containerNotes = it }, label = { Text("Notes") }, modifier = Modifier.fillMaxWidth())
                         }
                     }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun BundledClientPicker(
-    selectedId: String,
-    scrollState: ScrollState,
-    onSelect: (String) -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .verticalScroll(scrollState)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        BundledClients.waylandPickerGroups().forEach { (kind, clients) ->
-            Text(
-                kind.sectionTitle,
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(top = 12.dp, bottom = 2.dp),
-            )
-            clients.forEach { client ->
-                BundledClientPickerRow(
-                    id = client.id,
-                    name = client.name,
-                    description = client.description,
-                    icon = client.icon,
-                    selectedId = selectedId,
-                    onSelect = onSelect,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun BundledClientPickerRow(
-    id: String,
-    name: String,
-    description: String,
-    icon: ImageVector,
-    selectedId: String,
-    onSelect: (String) -> Unit,
-) {
-    val isSelected = id == selectedId
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(
-                if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
-                else Color.Transparent
-            )
-            .clickable { onSelect(id) }
-            .padding(horizontal = 8.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Icon(
-            if (isSelected) Icons.Filled.CheckCircle else Icons.Filled.RadioButtonUnchecked,
-            contentDescription = null,
-            tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Icon(
-            icon,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
-            modifier = Modifier.size(22.dp),
-        )
-        Column(Modifier.weight(1f)) {
-            Text(name, fontWeight = FontWeight.SemiBold)
-            Text(
-                description,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
         }
     }
 }

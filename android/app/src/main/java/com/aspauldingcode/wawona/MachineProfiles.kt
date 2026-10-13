@@ -46,11 +46,16 @@ enum class MachineType(val value: String) {
 /** Native Shell session modes (not top-level machine types). */
 enum class NativeShellKind(val id: String, val label: String) {
     TERMINAL("terminal", "Terminal"),
+    /** Legacy only. Bundled Wayland clients removed; migrate to [TERMINAL]. */
     WAYLAND("wayland", "Wayland"),
     WASM("wasm", "Wasm"),
     WAYPIPE("waypipe", "Waypipe");
 
     companion object {
+        /** Sessions offered in Add/Edit. No bundled Wayland client picker. */
+        val selectableEntries: List<NativeShellKind> =
+            listOf(TERMINAL, WASM, WAYPIPE)
+
         fun fromId(id: String): NativeShellKind =
             entries.firstOrNull { it.id == id } ?: TERMINAL
     }
@@ -58,6 +63,23 @@ enum class NativeShellKind(val id: String, val label: String) {
 
 /** Map storage MachineType ↔ Native Shell Session (mirrors Linux / Swift). */
 object NativeShellSession {
+    /** Product keep-set client ids. Everything else was a bundled Wayland demo. */
+    fun isKeepSetClientId(id: String): Boolean {
+        val t = id.trim()
+        return t.isEmpty() || t == "wawona-shell" || t == "wawona-wasm"
+    }
+
+    /** Remap retired weston/niri/foot/kmscube ids to Wawona Terminal. */
+    fun migrateClientId(id: String): String {
+        val t = id.trim()
+        return when {
+            t.isEmpty() || t == "custom" -> "wawona-shell"
+            t == "wawona-wasm" -> "wawona-wasm"
+            t == "wawona-shell" -> "wawona-shell"
+            else -> "wawona-shell"
+        }
+    }
+
     fun from(profile: MachineProfile): Pair<NativeShellKind, Boolean> = when (profile.type) {
         MachineType.WASM -> NativeShellKind.WASM to false
         MachineType.SSH_TERMINAL -> NativeShellKind.TERMINAL to true
@@ -71,9 +93,8 @@ object NativeShellSession {
                 waypipe && (bundled.isEmpty() || bundled == "wawona-shell") ->
                     NativeShellKind.WAYPIPE to false
                 bundled == "wawona-wasm" -> NativeShellKind.WASM to false
-                bundled.isEmpty() || bundled == "wawona-shell" ->
-                    NativeShellKind.TERMINAL to false
-                else -> NativeShellKind.WAYLAND to false
+                // Former bundled Wayland clients (weston-terminal, …) → Terminal.
+                else -> NativeShellKind.TERMINAL to false
             }
         }
         MachineType.VM, MachineType.CONTAINER -> NativeShellKind.TERMINAL to false
@@ -81,16 +102,16 @@ object NativeShellSession {
 
     fun storageType(kind: NativeShellKind, useSsh: Boolean): MachineType = when (kind) {
         NativeShellKind.WASM -> MachineType.WASM
-        NativeShellKind.TERMINAL -> if (useSsh) MachineType.SSH_TERMINAL else MachineType.NATIVE
+        NativeShellKind.TERMINAL, NativeShellKind.WAYLAND ->
+            if (useSsh) MachineType.SSH_TERMINAL else MachineType.NATIVE
         NativeShellKind.WAYPIPE -> if (useSsh) MachineType.SSH_WAYPIPE else MachineType.NATIVE
-        NativeShellKind.WAYLAND -> MachineType.NATIVE
     }
 
-    fun resolvedBundledAppId(kind: NativeShellKind, selectedLauncher: String): String? =
+    fun resolvedBundledAppId(kind: NativeShellKind, @Suppress("UNUSED_PARAMETER") selectedLauncher: String): String? =
         when (kind) {
-            NativeShellKind.TERMINAL, NativeShellKind.WAYPIPE -> "wawona-shell"
+            NativeShellKind.TERMINAL, NativeShellKind.WAYPIPE, NativeShellKind.WAYLAND ->
+                "wawona-shell"
             NativeShellKind.WASM -> "wawona-wasm"
-            NativeShellKind.WAYLAND -> selectedLauncher.trim().ifEmpty { "weston-simple-shm" }
         }
 }
 

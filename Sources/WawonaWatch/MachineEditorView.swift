@@ -68,7 +68,8 @@ struct MachineEditorView: View {
         } else {
             _type = State(initialValue: parsed)
         }
-        _selectedLauncherName = State(initialValue: state.selectedLauncherName)
+        let migrated = state.selectedLauncherName == "wawona-wasm" ? "wawona-wasm" : "wawona-shell"
+        _selectedLauncherName = State(initialValue: migrated)
         _sshHost = State(initialValue: state.sshHost)
         _sshUser = State(initialValue: state.sshUser)
         _sshPort = State(initialValue: MachineEditorValidation.normalizedPort(from: state))
@@ -155,19 +156,10 @@ struct MachineEditorView: View {
 
                 if isNative && shows(.launcher) {
                     Section {
-                        NavigationLink {
-                            WatchBundledClientPickerView(selection: $selectedLauncherName)
-                        } label: {
-                            HStack {
-                                Text(MachineEditorValidation.metadata(for: .launcher).label)
-                                Spacer()
-                                Text(ClientLauncher.displayName(for: selectedLauncherName))
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
-                        }
+                        LabeledContent("Session", value: "Wawona Terminal")
+                            .foregroundStyle(.secondary)
                     } footer: {
-                        Text("Connects via local Wayland socket. No network or SSH required.")
+                        Text("Native Shell is Wawona Terminal. Install optional software with wpm from the shell.")
                     }
                 }
 

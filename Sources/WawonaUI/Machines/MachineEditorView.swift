@@ -55,11 +55,15 @@ struct MachineEditorView: View {
         let state = MachineEditorDomain.machineEditorState(from: profile)
         _name = State(initialValue: state.name)
         _type = State(initialValue: MachineType(rawValue: state.typeRawValue) ?? .native)
+        let loadedKind = NativeShellKind(rawValue: state.nativeShellKindRawValue) ?? .terminal
         _nativeShellKind = State(
-            initialValue: NativeShellKind(rawValue: state.nativeShellKindRawValue) ?? .terminal
+            initialValue: loadedKind == .wayland ? .terminal : loadedKind
         )
         _nativeShellUseSSH = State(initialValue: state.nativeShellUseSSH)
-        _selectedLauncherName = State(initialValue: state.selectedLauncherName)
+        let migratedLauncher = state.selectedLauncherName == "wawona-wasm"
+            ? "wawona-wasm"
+            : "wawona-shell"
+        _selectedLauncherName = State(initialValue: migratedLauncher)
         _sshHost = State(initialValue: state.sshHost)
         _sshUser = State(initialValue: state.sshUser)
         _sshPort = State(initialValue: MachineEditorValidation.normalizedPort(from: state))
@@ -173,7 +177,7 @@ struct MachineEditorView: View {
                 if isNative {
                     Section {
                         Picker("Session", selection: $nativeShellKind) {
-                            ForEach(NativeShellKind.allCases, id: \.self) { kind in
+                            ForEach(NativeShellKind.selectableCases, id: \.self) { kind in
                                 Text(kind.userFacingName).tag(kind)
                             }
                         }
@@ -202,12 +206,10 @@ struct MachineEditorView: View {
                             nativeShellKind == .terminal
                                 ? (nativeShellUseSSH
                                     ? "Custom Command runs in the remote SSH session. Empty defaults to bash -l."
-                                    : "Optional Custom Command for Wawona Terminal. Empty opens an interactive shell.")
-                                : nativeShellKind == .wayland
-                                    ? "Bundled Wayland client on the local compositor socket."
-                                    : nativeShellKind == .wasm
-                                        ? "Relay WASI package (same bytecode as /wasm/v1)."
-                                        : "Waypipe stream, with optional SSH to a remote host."
+                                    : "Wawona Terminal. Install or run wasm/CLI packages from the shell. Empty opens an interactive shell.")
+                                : nativeShellKind == .wasm
+                                    ? "Relay WASI package (same bytecode as /wasm/v1)."
+                                    : "Waypipe stream, with optional SSH to a remote host."
                         )
                     }
 
@@ -264,39 +266,6 @@ struct MachineEditorView: View {
                         }
                     }
 
-                    if nativeShellKind == .wayland {
-                        Section {
-                            #if os(macOS)
-                            Picker("Wayland Software", selection: $selectedLauncherName) {
-                                ForEach(
-                                    ClientLauncher.presets.waylandPickerGrouped(),
-                                    id: \.kind
-                                ) { group in
-                                    Section(group.kind.sectionTitle) {
-                                        ForEach(group.clients) { launcher in
-                                            Text(launcher.displayName).tag(launcher.name)
-                                        }
-                                    }
-                                }
-                            }
-                            .wwnMachineChoicePicker()
-                            #else
-                            NavigationLink {
-                                BundledClientPickerView(selection: $selectedLauncherName)
-                            } label: {
-                                HStack {
-                                    Text("Wayland Software")
-                                    Spacer()
-                                    Text(ClientLauncher.displayName(for: selectedLauncherName))
-                                        .foregroundColor(.secondary)
-                                        .lineLimit(1)
-                                }
-                            }
-                            #endif
-                        } footer: {
-                            Text("Compositors, then clients by type. Custom commands belong under Terminal. Connects on the local Wayland socket.")
-                        }
-                    }
                 }
 
                 // MARK: Container - OCI image run via wwn-containers

@@ -28,10 +28,13 @@ use those raw values for connect).
 
 | Session | Meaning | Use SSH |
 |---|---|---|
-| Terminal | Wawona Terminal (`wawona-shell`). Optional Custom Command. Not foot. Not weston-terminal. | Optional |
-| Wayland | Bundled Wayland client (weston, niri, cubes, …). No Custom Command here. | No |
+| Terminal | Wawona Terminal (`wawona-shell`). Optional Custom Command. Install/run wasm + CLI via `wpm` from the shell. Not foot. Not weston-terminal. | Optional |
 | Wasm | Relay WASI / `wpm` / `/wasm/v1` | No |
 | Waypipe | waypipe stream (local or remote) | Optional |
+
+**No Wayland bundled-client session.** Optional weston/niri/foot/cubes install
+later via `wpm` / apt and run from the Terminal. Legacy `NativeShellKind=wayland`
+and ids like `weston-terminal` migrate to Terminal / `wawona-shell` on load.
 
 Overrides (WWN path): `NativeShellKind`, `NativeShellUseSSH` in
 `settingsOverrides`. Helpers: `WWNNativeShellConfiguration`,
@@ -55,22 +58,16 @@ Persists as `NativeCustomCommand`; with Use SSH on it is also the SSH
 `remoteCommand`. Empty = interactive local shell / default `bash -l` over SSH.
 Legacy Wayland client id `custom` migrates to Terminal on edit/save.
 
-## Wayland software picker (Native Shell → Wayland)
-
-Order: **Compositors** (weston, niri), then client types (**Terminals**,
-**Graphics**, **Demos**), then **Other**. No Custom Command row. Shared kind:
-`BundledWaylandSoftwareKind` (Swift) / `SoftwareKind` (Linux) /
-`BundledWaylandSoftwareKind` (Android).
-
 ## Hard rejects
 
 - Separate Machines kinds for SSH, Waypipe, or Wasm in the type picker
 - Treating Wawona Terminal as foot / weston-terminal
 - Inferring Use SSH from a leftover `sshHost` on Wayland/Terminal local
-- Listing `wawona-shell` / `wawona-wasm` in the Wayland client picker
+- Re-adding a Machines **Wayland** session or bundled-client picker
+  (weston-terminal, niri, cubes, …)
+- Default launcher `weston-terminal` or Settings auto-start of weston demos
 - Custom Command as a Wayland client option (belongs under Terminal)
 - Equating Native Shell with VM/container engines
-- Flat unsorted Wayland catalogs in the native editor (keep section order)
 - Apple-mobile Terminal Start as splash-only ("Native Shell starting").
   Wire real shell: skill/rule `wawona-ios-native-shell`
 

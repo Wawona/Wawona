@@ -617,7 +617,7 @@ private fun AdvancedSection(prefs: SharedPreferences) {
             prefs,
             "compositorBackend",
             "Display Backend",
-            "How bundled clients and nested compositors present. Wayland runs them nested inside Wawona; DRM/KMS runs them against iLand's userspace display stack.",
+            "How nested compositors present when started from the shell. Wayland nests inside Wawona; DRM/KMS uses iLand userspace.",
             Icons.Filled.Monitor,
             "auto",
             listOf("auto", "wayland", "drm"),
@@ -630,15 +630,6 @@ private fun AdvancedSection(prefs: SharedPreferences) {
         )
         SettingsSwitchItem(prefs, "multipleClients", "Multiple Clients",
             "Allow multiple Wayland clients", Icons.Filled.Group, default = true,
-            iconTint = SettingsTab.ADVANCED.accentColor)
-        SettingsSwitchItem(prefs, "westonSimpleSHMEnabled", "Enable Weston Simple SHM",
-            "Start weston-simple-shm on launch", Icons.Filled.PlayArrow, default = false,
-            iconTint = SettingsTab.ADVANCED.accentColor)
-        SettingsSwitchItem(prefs, "westonEnabled", "Enable Native Weston",
-            "Start native weston compositor", Icons.Filled.Monitor, default = false,
-            iconTint = SettingsTab.ADVANCED.accentColor)
-        SettingsSwitchItem(prefs, "westonTerminalEnabled", "Enable Weston Terminal",
-            "Start native weston-terminal client", Icons.Filled.Terminal, default = false,
             iconTint = SettingsTab.ADVANCED.accentColor)
     }
 }

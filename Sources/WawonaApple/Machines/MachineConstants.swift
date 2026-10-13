@@ -49,16 +49,22 @@ public enum WWNNativeShellConfiguration {
             return kWWNNativeShellKindWaypipe
         case kWWNMachineTypeNative:
             let client = bundledClientId(in: profile) ?? ""
-            if client == "wawona-shell" || client.isEmpty {
-                return kWWNNativeShellKindTerminal
-            }
             if client == "wawona-wasm" {
                 return kWWNNativeShellKindWasm
             }
-            return kWWNNativeShellKindWayland
+            // Retired bundled Wayland clients (weston-terminal, niri, …) → Terminal.
+            return kWWNNativeShellKindTerminal
         default:
             return kWWNNativeShellKindTerminal
         }
+    }
+
+    /// Keep-set client ids only. Former bundled demos remap to `wawona-shell`.
+    public static func migrateClientId(_ id: String) -> String {
+        let t = id.trimmingCharacters(in: .whitespacesAndNewlines)
+        if t == "wawona-wasm" { return "wawona-wasm" }
+        if t == "wawona-shell" || t.isEmpty || t == "custom" { return "wawona-shell" }
+        return "wawona-shell"
     }
 
     public static func usesSSH(for profile: WWNMachineProfile) -> Bool {

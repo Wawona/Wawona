@@ -204,14 +204,6 @@ final class WWNMachineEditorDraft: ObservableObject {
       initialNativeClientId = stored
     } else if let stored = overrides["NativeClientId"] as? String, !stored.isEmpty {
       initialNativeClientId = stored
-    } else if (overrides["WestonEnabled"] as? Bool) == true {
-      initialNativeClientId = "weston"
-    } else if (overrides["WestonTerminalEnabled"] as? Bool) == true {
-      initialNativeClientId = "weston-terminal"
-    } else if (overrides["WestonSimpleSHMEnabled"] as? Bool) == true {
-      initialNativeClientId = "weston-simple-shm"
-    } else if (overrides["FootEnabled"] as? Bool) == true {
-      initialNativeClientId = "foot"
     } else {
       initialNativeClientId = "wawona-shell"
     }
@@ -219,13 +211,12 @@ final class WWNMachineEditorDraft: ObservableObject {
       initialNativeClientId = "wawona-shell"
     }
 
-    // Legacy Wayland client id "custom" becomes Terminal + Custom Command.
-    let resolvedClientId: String
-    if initialNativeClientId == kNativeClientCustomId {
+    // Bundled Wayland clients removed. Keep-set only: shell / wasm.
+    let resolvedClientId = WWNNativeShellConfiguration.migrateClientId(initialNativeClientId)
+    if resolvedClientId == kNativeClientWasmId {
+      nativeShellKind = kWWNNativeShellKindWasm
+    } else if nativeShellKind == kWWNNativeShellKindWayland {
       nativeShellKind = kWWNNativeShellKindTerminal
-      resolvedClientId = "wawona-shell"
-    } else {
-      resolvedClientId = initialNativeClientId
     }
     selectedClientId = resolvedClientId
     let autoShowMacPointerDefault = !WWNMachineProfileStore.profileIndicatesNested(
@@ -599,22 +590,14 @@ final class WWNMachineEditorDraft: ObservableObject {
       return
     }
     switch nativeShellKind {
-    case kWWNNativeShellKindTerminal:
+    case kWWNNativeShellKindTerminal, kWWNNativeShellKindWayland:
+      // Retired bundled Wayland session → Terminal + Wawona Terminal.
+      nativeShellKind = kWWNNativeShellKindTerminal
       selectedClientId = "wawona-shell"
     case kWWNNativeShellKindWasm:
       selectedClientId = kNativeClientWasmId
-    case kWWNNativeShellKindWayland:
-      // Legacy Wayland "custom" clients move to Terminal (Custom Command lives there).
-      if selectedClientId == kNativeClientCustomId {
-        nativeShellKind = kWWNNativeShellKindTerminal
-        selectedClientId = "wawona-shell"
-      } else if selectedClientId == "wawona-shell"
-        || selectedClientId == kNativeClientWasmId
-        || selectedClientId.isEmpty {
-        selectedClientId = "weston-simple-shm"
-      }
     case kWWNNativeShellKindWaypipe:
-      break
+      selectedClientId = "wawona-shell"
     default:
       nativeShellKind = kWWNNativeShellKindTerminal
       selectedClientId = "wawona-shell"

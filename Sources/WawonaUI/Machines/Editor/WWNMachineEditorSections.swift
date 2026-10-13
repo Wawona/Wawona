@@ -21,7 +21,7 @@ struct WWNMachineProfileEditorSection: View {
       icon: draft.machineTypeSymbol,
       title: "Machine Profile",
       tint: .accentColor,
-      info: "Three kinds only. Native Shell covers Wawona Terminal, Wayland clients, Wasm, and Waypipe (with optional SSH)."
+      info: "Three kinds only. Native Shell covers Wawona Terminal (cli, wpm, SSH), Wasm, and Waypipe. Optional Wayland software installs later via wpm."
     ) {
       VStack(alignment: .leading, spacing: 12) {
         WWNEditorFieldRow("Display Name") {
@@ -57,7 +57,7 @@ struct WWNMachineProfileEditorSection: View {
   }
 }
 
-/// Native Shell session mode: Terminal, Wayland, Wasm, or Waypipe.
+/// Native Shell session mode: Terminal, Wasm, or Waypipe.
 #if os(iOS)
 @available(iOS 16.0, *)
 #endif
@@ -69,12 +69,11 @@ struct WWNNativeShellSessionEditorSection: View {
       icon: "square.stack.3d.up",
       title: "Native Shell Session",
       tint: .blue,
-      info: "Pick how this machine starts. Terminal is Wawona Terminal (local or SSH). Wayland and Wasm run as clients. Waypipe streams a remote or local compositor."
+      info: "Pick how this machine starts. Terminal is Wawona Terminal (local or SSH; install/run wasm and CLI from the shell). Wasm runs Relay packages. Waypipe streams with optional SSH."
     ) {
       VStack(alignment: .leading, spacing: 12) {
         Picker("Session", selection: $draft.nativeShellKind) {
           Text("Terminal").tag(kWWNNativeShellKindTerminal)
-          Text("Wayland").tag(kWWNNativeShellKindWayland)
           Text("Wasm").tag(kWWNNativeShellKindWasm)
           Text("Waypipe").tag(kWWNNativeShellKindWaypipe)
         }

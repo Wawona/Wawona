@@ -379,33 +379,6 @@ public struct MachineSettingsView: View {
             }
 
             if profile.type == .native {
-                #if os(macOS)
-                NativeSettingsRow("Wayland Client") {
-                    Picker("", selection: bundledAppIDSelectionBinding) {
-                        ForEach(ClientLauncher.presets) { launcher in
-                            Text(launcher.displayName).tag(launcher.name)
-                        }
-                        if !ClientLauncher.presets.contains(where: { $0.name == resolvedBundledAppID }) {
-                            Text(ClientLauncher.displayName(for: resolvedBundledAppID))
-                                .tag(resolvedBundledAppID)
-                        }
-                    }
-                    .labelsHidden()
-                    .nativeSettingsPickerStyle()
-                }
-                #else
-                NavigationLink {
-                    BundledClientPickerView(selection: bundledAppIDSelectionBinding)
-                } label: {
-                    HStack {
-                        Text("Wayland Client")
-                        Spacer()
-                        Text(wasmClientSummary)
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
-                    }
-                }
-                #endif
                 if resolvedBundledAppID == "wawona-wasm" {
                     #if os(macOS) || os(iOS) || os(visionOS)
                     NativeSettingsRow(
