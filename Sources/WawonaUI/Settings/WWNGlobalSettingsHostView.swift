@@ -27,8 +27,10 @@ private struct WWNSettingsPhoneSplitStyle: ViewModifier {
 /// Dedicated Global Settings host (in-app only; never Settings.app / PrefPane).
 ///
 /// Chrome matches Machines home: system `SidebarListStyle`, tinted SF Symbol
-/// rows, `List` selection. Dismiss uses `backport.settingsCloseAction`
-/// (trailing `xmark` on iOS / iPadOS / visionOS; `Done` on macOS / tvOS).
+/// rows, `List` selection. Dismiss stays on the **detail / split toolbar**
+/// via `backport.settingsCloseAction` (trailing `xmark` on iOS / iPadOS /
+/// visionOS; `Done` on macOS / tvOS). Never put a close control on the
+/// sidebar list column.
 struct WWNGlobalSettingsHostView: View {
     @ObservedObject var model: WWNSettingsValueModel
     @Binding var selection: GlobalSettingsSectionID?
@@ -55,10 +57,6 @@ struct WWNGlobalSettingsHostView: View {
         isPhoneIdiom && verticalSizeClass == .regular
     }
     #endif
-
-    /// Close lives on whichever column is the focused chrome.
-    private var showsCloseOnSidebar: Bool { showSidebar }
-    private var showsCloseOnDetail: Bool { !showSidebar }
 
     private var noticePresented: Binding<Bool> {
         Binding(
@@ -116,7 +114,11 @@ struct WWNGlobalSettingsHostView: View {
         }
         listSelection = selection
         #if os(iOS)
+        // Phone: open on the detail column so the trailing close toolbar is
+        // visible immediately. Sidebar stays a column toggle, not dismiss chrome.
         if isPhonePortrait {
+            showSidebar = false
+        } else {
             showSidebar = true
         }
         #elseif os(macOS) || os(visionOS)
@@ -231,10 +233,6 @@ struct WWNGlobalSettingsHostView: View {
         }
         .backport.sidebarList()
         .backport.navigationTitle("Settings")
-        .modifier(WWNSettingsCloseChrome(
-            enabled: showsCloseOnSidebar,
-            onClose: onDismiss
-        ))
         #if os(macOS) || os(iOS) || os(visionOS)
         .backport.sidebarWidth()
         #endif
@@ -280,42 +278,23 @@ struct WWNGlobalSettingsHostView: View {
 
     @ViewBuilder
     private var settingsDetail: some View {
-        if let id = selection,
-           let section = WawonaMainWindowView.objcSection(id, in: model.sections) {
-            WawonaBackport<Any>.navigation {
+        // Toolbar on the split detail column only (same pattern as Machines
+        // home). Do not nest NavigationStack here: NavigationSplitView already
+        // owns column chrome. Do not put close on the sidebar list.
+        Group {
+            if let id = selection,
+               let section = WawonaMainWindowView.objcSection(id, in: model.sections) {
                 WWNSettingsSectionView(section: section, model: model)
                     .backport.navigationTitle(id.detailTitle)
-                    .modifier(WWNSettingsCloseChrome(
-                        enabled: showsCloseOnDetail,
-                        onClose: onDismiss
-                    ))
+            } else {
+                WawonaEmptyState(
+                    "Settings",
+                    systemImage: "gearshape",
+                    description: Text("Choose a section.")
+                )
             }
-        } else {
-            WawonaEmptyState(
-                "Settings",
-                systemImage: "gearshape",
-                description: Text("Choose a section.")
-            )
-            .modifier(WWNSettingsCloseChrome(
-                enabled: showsCloseOnDetail,
-                onClose: onDismiss
-            ))
         }
-    }
-}
-
-/// Applies `settingsCloseAction` only when `enabled` (one close control per chrome).
-private struct WWNSettingsCloseChrome: ViewModifier {
-    let enabled: Bool
-    let onClose: () -> Void
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if enabled {
-            content.backport.settingsCloseAction(onClose: onClose)
-        } else {
-            content
-        }
+        .backport.settingsCloseAction(onClose: onDismiss)
     }
 }
 #endif
