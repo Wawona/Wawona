@@ -1913,6 +1913,8 @@ PLIST
             ] ++ (ilandPresentLdflags ipadosDeps) ++ (productKeepLdflags ipadosDeps {})
              ++ appleMobileResolvLdflags
             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [
+              # zsh zreaddir / getkeystring need libiconv (same as iOS keep-set).
+              "-liconv"
               "-L$(DERIVED_FILE_DIR)"
               "-lwawona"
             ] ++ vmEngineContractLdflags ipadosDeps ++ finalCxxLdflags;
@@ -1946,6 +1948,7 @@ PLIST
             ] ++ (ilandPresentLdflags ipadosSimDeps) ++ (productKeepLdflags ipadosSimDeps {})
              ++ appleMobileResolvLdflags
             ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [
+              "-liconv"
               "-L$(DERIVED_FILE_DIR)"
               "-lwawona"
             ] ++ vmEngineContractLdflags ipadosSimDeps ++ finalCxxLdflags;
@@ -2018,7 +2021,8 @@ PLIST
           # Required-reason API manifest (UserDefaults / boot time / file timestamps).
           # Missing this makes ASC accept the IPA then discard the build (never listed).
           { path = "src/resources/app-bundle/PrivacyInfo.xcprivacy"; type = "file"; buildPhase = "resources"; }
-          { path = "src/resources/app-bundle/LaunchScreen.storyboard"; type = "file"; buildPhase = "resources"; }
+          # Do not embed the iOS LaunchScreen.storyboard: ibtool rejects it for
+          # target device type "tv" (CompileStoryboard fails the tvOS product).
           (settingsDepsResource "tvos")
           { path = "src/resources/Wawona.icon"; type = "folder"; }
           { path = "src/resources/Wawona.icon/Assets/wayland.png"; type = "file"; }
