@@ -1,0 +1,21 @@
+# Zero-AI: Start → Wawona Terminal overlay (Compose testTagsAsResourceId).
+# Run: scripts/agent-device-smoke.sh terminal-android
+context platform=android
+context session=wawona-android-terminal-start
+
+open com.aspauldingcode.wawona --relaunch
+wait 4000
+press id="wwn.welcome.continue"
+wait 2000
+wait id="wwn.machines.root" 20000
+is visible id="wwn.machines.start"
+press id="wwn.machines.start"
+wait 8000
+wait id="wwn.terminal.root" 30000
+is visible id="wwn.terminal.root"
+is visible id="wwn.terminal.done"
+screenshot ./.agent-device/test-artifacts/android-terminal-start.png
+press id="wwn.terminal.done"
+wait 1500
+screenshot ./.agent-device/test-artifacts/android-terminal-done.png
+close

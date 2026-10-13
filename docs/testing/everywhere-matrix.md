@@ -155,8 +155,9 @@ lands, the manual item is retired in favor of the ID. IDs are Rust test fns
 | waypipe session | (capability lane) | script | pending |
 | UI parity vs golden baselines | `ui_parity_diff.py` + agent-device batch | ci | pending (`ci-l3-parity-agentdevice`) |
 | Graphics conformance (GL/Vulkan) | `dependencies/tests/graphics-validate.nix` | nix | pending (`ci-graphics-cts`) |
-| Apple UI flows | XCUITest target | xcuitest | pending (`ci-l3-apple-xcuitest`) |
-| Android UI flows | Compose UI Test (`testTag`) | espresso | pending (`ci-l3-android-espresso`) |
+| Apple UI flows | Appium XCUITest / Mac2 (`Tests/appium`) | appium | in progress (`ui-appium.yml`) |
+| Android UI flows | Appium UiAutomator2 (`Tests/appium`) | appium | in progress (`ui-appium.yml`) |
+| Linux UI + catalog | Appium AT-SPI2 / Linux driver | appium | in progress (`ui-appium.yml`) |
 
 Run locally: `nix develop -c cargo test --lib --tests`;
 `./scripts/ci-macos-compat-smoke.sh`; `agent-device replay .agent-device/<name>.ad`.

@@ -719,7 +719,13 @@ fun WawonaApp(
             WawonaNative.nativePrepareShellEnvironment(context.filesDir.absolutePath)
             KeyboardLayouts.applyHostKeymap()
             WawonaNative.nativeInit(cacheDirPath)
-            WawonaNative.nativeReloadHostKeymap()
+            try {
+                WawonaNative.nativeReloadHostKeymap()
+            } catch (_: UnsatisfiedLinkError) {
+                WLog.w("ACTIVITY", "nativeReloadHostKeymap missing; continue")
+            } catch (_: NoSuchMethodError) {
+                WLog.w("ACTIVITY", "nativeReloadHostKeymap missing; continue")
+            }
             if (!WawonaNative.nativeIsCompositorReady()) {
                 throw IllegalStateException("Wayland compositor did not start")
             }
@@ -734,6 +740,18 @@ fun WawonaApp(
             Toast.makeText(context, toastText, Toast.LENGTH_LONG).show()
             false
         }
+    }
+
+    /** True when Start should open Wawona Terminal even if compositor JNI is stale. */
+    fun isInteractiveShellTerminal(profile: MachineProfile): Boolean {
+        if (profile.type != MachineType.NATIVE) return false
+        val (kind, _) = NativeShellSession.from(profile)
+        if (kind != NativeShellKind.TERMINAL) return false
+        val bundled = NativeShellSession.migrateClientId(
+            profile.runtimeOverrides.optString("bundledAppID", "").trim()
+                .ifBlank { profile.nativeLauncher }
+        )
+        return bundled == "wawona-shell"
     }
 
     var hadWindow by remember { mutableStateOf(false) }
@@ -930,37 +948,39 @@ fun WawonaApp(
             activity?.window?.decorView?.let { ViewCompat.requestApplyInsets(it) }
         } catch (_: Exception) {
         }
-        if (!ensureNativeRuntimeReady()) {
+        val shellTerminalOnly = isInteractiveShellTerminal(profile)
+        val runtimeOk = ensureNativeRuntimeReady()
+        if (!runtimeOk && !shellTerminalOnly) {
             sessionOrchestrator.markDegraded(targetSession, "Failed to initialize compositor runtime")
             return
+        }
+        if (!runtimeOk && shellTerminalOnly) {
+            WLog.w(
+                "NATIVE",
+                "Compositor runtime unavailable; opening Wawona Terminal + Toolbar Keys anyway",
+            )
         }
         // New Window gives the machine its own task on Android 7+. New Tab
         // stays in this activity, same as the iPhone client tabs. The C claim
         // map consumes a reservation exactly once on Created.
         // Finish any leftover host task first so its surfaceDestroyed cannot
         // race-destroy the new swapchain (#141).
-        val wantsNewWindow = newWindow && SessionActivity.supportsHostTask()
+        val wantsNewWindow = newWindow && SessionActivity.supportsHostTask() && runtimeOk
         SessionActivityRegistry.finishSession(targetSession)
         val hostId = if (wantsNewWindow) SessionActivity.newHostId() else 0L
         if (hostId != 0L) {
             SessionActivityRegistry.reserve(targetSession, hostId)
-            WawonaNative.nativeReserveNextHostWindow(hostId)
-        }
-        fun isInteractiveShell(profile: MachineProfile): Boolean {
-            if (profile.type != MachineType.NATIVE) return false
-            val (kind, _) = NativeShellSession.from(profile)
-            if (kind != NativeShellKind.TERMINAL) return false
-            val bundled = NativeShellSession.migrateClientId(
-                profile.runtimeOverrides.optString("bundledAppID", "").trim()
-                    .ifBlank { profile.nativeLauncher }
-            )
-            return bundled == "wawona-shell"
+            try {
+                WawonaNative.nativeReserveNextHostWindow(hostId)
+            } catch (_: UnsatisfiedLinkError) {
+                // Stale .so; stay in-activity New Tab.
+            }
         }
 
         fun openStartTerminal(profile: MachineProfile, wasmPath: String? = null) {
             val banner = MachineStartCommand.argvBanner(prefs, profile, wasmPath)
             guestConsoleText = when {
-                isInteractiveShell(profile) &&
+                isInteractiveShellTerminal(profile) &&
                     !NativeShellSession.from(profile).second &&
                     !profile.sshEnabled -> {
                     banner +
@@ -999,9 +1019,9 @@ fun WawonaApp(
                 showGuestConsole = true
                 guestConsoleTeeLogs = true
                 showMachinesHome = false
-                if (!hasRealExternalKeyboard(context.resources.configuration)) {
-                    keyboardUiMode = KeyboardUiMode.ACCESSORY_ONLY
-                }
+                // Toolbar Keys stay visible for Terminal; AVD host keyboards must
+                // not force HIDDEN_EXTERNAL over the accessory bar.
+                keyboardUiMode = KeyboardUiMode.ACCESSORY_ONLY
             } else {
                 if (hostId != 0L) {
                     WawonaNative.nativeReleaseHostWindow(hostId)
@@ -1212,10 +1232,11 @@ fun WawonaApp(
     val inSessionUi = !showWelcome && !showMachinesHome
     // Terminal Start and compositor Focus both host Toolbar Keys. Overlay must
     // leave bottom room so the bar is not buried under GuestConsoleOverlay.
+    // Terminal always hosts Toolbar Keys (even if a host/AVD keyboard is present).
     val showAccessoryBar =
         (inSessionUi || showGuestConsole) &&
-            !hardwareKeyboardActive &&
-            !keyboardUiMode.isPip()
+            !keyboardUiMode.isPip() &&
+            (!hardwareKeyboardActive || showGuestConsole)
     val showKeyboardPipButton =
         (inSessionUi || showGuestConsole) &&
             !hardwareKeyboardActive &&
@@ -1293,8 +1314,15 @@ fun WawonaApp(
         }
     }
 
-    LaunchedEffect(hardwareKeyboardActive, inSessionUi) {
-        if (!inSessionUi) return@LaunchedEffect
+    LaunchedEffect(hardwareKeyboardActive, inSessionUi, showGuestConsole) {
+        if (!inSessionUi && !showGuestConsole) return@LaunchedEffect
+        // Keep Toolbar Keys while Terminal is up; do not hide for AVD/host KB.
+        if (showGuestConsole) {
+            if (keyboardUiMode.isPip() || keyboardUiMode == KeyboardUiMode.HIDDEN_EXTERNAL) {
+                keyboardUiMode = KeyboardUiMode.ACCESSORY_ONLY
+            }
+            return@LaunchedEffect
+        }
         if (hardwareKeyboardActive) {
             if (keyboardUiMode != KeyboardUiMode.HIDDEN_EXTERNAL) {
                 keyboardUiModeBeforeExternal = keyboardUiMode
@@ -1850,7 +1878,7 @@ fun WawonaApp(
                         val session = sessionOrchestrator.startSession(profile)
                         connectMachine(profile, session.sessionId, newWindow = false)
                     },
-                    modifier = Modifier.testTag("wwn.machines.start.tab"),
+                    modifier = Modifier.testTag(WawonaTestTags.MACHINES_START_TAB),
                 ) {
                     Text("New Tab")
                 }
@@ -1863,7 +1891,7 @@ fun WawonaApp(
                             val session = sessionOrchestrator.startSession(profile)
                             connectMachine(profile, session.sessionId, newWindow = true)
                         },
-                        modifier = Modifier.testTag("wwn.machines.start.window"),
+                        modifier = Modifier.testTag(WawonaTestTags.MACHINES_START_WINDOW),
                     ) {
                         Text("New Window")
                     }

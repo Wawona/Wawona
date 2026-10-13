@@ -31,6 +31,13 @@ Legacy `NativeShellKind=wayland` and client ids such as `weston-terminal`,
 `niri`, `foot`, cubes migrate to Terminal / `wawona-shell` on load. Optional
 software installs later via `wpm` / apt and runs from the Terminal.
 
+## Start UI
+
+Every Start opens **Wawona Terminal** with the machine `$ argv` banner and
+CLI logs. Compositor mounts behind until Focus / Done. Android:
+`MachineStartCommand`. Forbidden: StartupLog preview ("Starting …",
+auto-dismiss on first frame).
+
 ## Hard rejects
 
 - Type picker entries for `wasm`, `ssh_waypipe`, or `ssh_terminal`
@@ -38,6 +45,7 @@ software installs later via `wpm` / apt and runs from the Terminal.
 - Inferring SSH from a non-empty host when `NativeShellUseSSH` is false
 - Re-adding a Machines **Wayland** session or bundled-client picker
 - Default launcher `weston-terminal` or Settings auto-start of weston demos
+- StartupLog / preview-log overlay as the machine Start surface
 - Offering Custom Command as a Wayland client (use Terminal session)
 - Calling the on-device shell a VM or a container
 - Apple-mobile Terminal Start that is only a "Native Shell starting" splash

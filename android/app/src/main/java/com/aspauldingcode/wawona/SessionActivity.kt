@@ -277,7 +277,19 @@ internal fun hasRealExternalKeyboard(configuration: Configuration): Boolean {
             (sources and android.view.InputDevice.SOURCE_KEYBOARD) ==
                 android.view.InputDevice.SOURCE_KEYBOARD &&
                 device.keyboardType == android.view.InputDevice.KEYBOARD_TYPE_ALPHABETIC
-        if (isFullKeyboard && !device.name.contains("Virtual", ignoreCase = true)) {
+        // AVD "qwerty2" / Goldfish / ranchu are host-laptop passthrough, not a
+        // real Bluetooth/USB keyboard. Hiding Toolbar Keys for them breaks
+        // Terminal + compositor dogfood on every emulator.
+        val name = device.name
+        val emulatorBuiltin =
+            name.equals("qwerty2", ignoreCase = true) ||
+                name.contains("Goldfish", ignoreCase = true) ||
+                name.contains("ranchu", ignoreCase = true) ||
+                name.contains("Emulator", ignoreCase = true)
+        if (isFullKeyboard &&
+            !name.contains("Virtual", ignoreCase = true) &&
+            !emulatorBuiltin
+        ) {
             external = true
             break
         }

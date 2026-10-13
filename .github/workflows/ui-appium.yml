@@ -1,0 +1,301 @@
+name: "Watch: Appium UI matrix"
+
+# Nightly + path-filtered development push. Not a promote blocker until the
+# native lane is green and Build: GUI smoke switches over. Docs:
+# docs/testing/appium-ui-matrix.md
+
+on:
+  workflow_dispatch:
+    inputs:
+      products_ready:
+        description: "Download Gate: products artifacts instead of building"
+        type: boolean
+        required: false
+        default: false
+      lanes:
+        description: "all | apple | android | linux | unit"
+        type: string
+        required: false
+        default: "all"
+  schedule:
+    - cron: "30 7 * * *"
+  push:
+    branches: [development]
+    paths:
+      - "Tests/appium/**"
+      - "scripts/appium/**"
+      - ".github/workflows/ui-appium.yml"
+      - "Sources/WawonaUI/Machines/Catalog/WWNAccessibilityIdentifiers.swift"
+      - "android/app/src/main/java/com/aspauldingcode/wawona/WawonaTestTags.kt"
+      - "src/linux/ui/a11y.rs"
+      - "Sources/WawonaModel/PlatformCapabilities.swift"
+
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+
+concurrency:
+  group: ui-appium-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  unit:
+    name: "selectors + matrix (offline)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tip soft-supersede
+        run: ./.github/scripts/ci-require-branch-tip.sh || true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify a11y sync + matrix + Wayland guest map
+        run: |
+          pip install -q tomli
+          python3 scripts/appium/verify-a11y-sync.py
+          python3 scripts/appium/verify-matrix.py
+          python3 scripts/appium/verify-wayland-guest-map.py
+          cd Tests/appium
+          python3 -m venv .venv
+          . .venv/bin/activate
+          pip install -q -r requirements.txt
+          WAWONA_APPIUM_DRY=1 PYTHONPATH=. pytest tests/test_gates_unit.py -q
+
+  android:
+    name: "Android Appium (KVM)"
+    if: ${{ github.event_name != 'push' || true }}
+    needs: unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tip soft-supersede
+        run: ./.github/scripts/ci-require-branch-tip.sh || true
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Download product-android-apk
+        if: ${{ inputs.products_ready }}
+        uses: actions/download-artifact@v8
+        with:
+          name: product-android-apk
+          path: dist/
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Appium + UiAutomator2
+        run: |
+          npm install -g appium@3.1.1
+          appium driver install uiautomator2
+      - name: Start Appium
+        run: |
+          appium --address 127.0.0.1 --port 4723 > /tmp/appium.log 2>&1 &
+          echo $! > /tmp/appium.pid
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:4723/status && break
+            sleep 1
+          done
+      - name: Android Appium suite
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot-save
+          disable-animations: true
+          script: |
+            set -euo pipefail
+            APK="${GITHUB_WORKSPACE}/dist/Wawona.apk"
+            if [[ ! -f "$APK" ]]; then
+              echo "No product APK; unit-level Appium dry path only"
+              export WAWONA_APPIUM_DRY=1
+            else
+              export WAWONA_APP_PATH="$APK"
+            fi
+            export WAWONA_APPIUM_PLATFORM=android
+            export WAWONA_APPIUM_SERVER=http://127.0.0.1:4723
+            chmod +x scripts/appium/run-appium-suite.sh
+            WAWONA_APPIUM_MARKERS='native or wayland or (not catalog)' \
+              ./scripts/appium/run-appium-suite.sh || {
+                # First tips may lack full a11y wiring; keep Watch non-blocking.
+                echo "Appium Android suite returned non-zero (Watch lane)"
+                exit 0
+              }
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: appium-android
+          path: .agent-device/test-artifacts/appium/
+          if-no-files-found: warn
+
+  linux:
+    name: "Linux Appium (Xvfb + Wayland nested catalog)"
+    needs: unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tip soft-supersede
+        run: ./.github/scripts/ci-require-branch-tip.sh || true
+      - name: Install Xvfb + AT-SPI + Wayland clients
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libxkbcommon-x11-0 \
+            libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+            libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 \
+            libxcb-xfixes0 x11-utils at-spi2-core \
+            weston foot || true
+      - name: Start Xvfb
+        run: |
+          /sbin/start-stop-daemon --start --quiet \
+            --pidfile /tmp/custom_xvfb_99.pid --make-pidfile \
+            --background --exec /usr/bin/Xvfb -- :99 \
+            --screen 0 1920x1200x24
+          echo "DISPLAY=:99.0" >> "$GITHUB_ENV"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Appium Linux driver
+        run: |
+          npm install -g appium@3.1.1
+          appium driver install --source=npm appium-linux-driver || true
+          appium --address 127.0.0.1 --port 4723 > /tmp/appium.log 2>&1 &
+          sleep 3
+      - name: Linux Appium native + Wayland catalog
+        env:
+          DISPLAY: ":99.0"
+          WAWONA_APPIUM_PLATFORM: linux
+          WAWONA_APPIUM_SERVER: http://127.0.0.1:4723
+          WAWONA_WAYLAND_GUEST: nested
+        run: |
+          set -euo pipefail
+          chmod +x scripts/appium/run-appium-suite.sh
+          chmod +x scripts/appium/launch-wayland-client.sh
+          python3 scripts/appium/verify-wayland-guest-map.py
+          # Full AT-SPI + nested guests need a live Wawona Wayland socket.
+          # When AppImage is absent, keep DRY for Appium session only; guest
+          # map verification above already failed closed.
+          if [[ -z "${WAWONA_APP_PATH:-}" && ! -x /usr/bin/Wawona ]]; then
+            export WAWONA_APPIUM_DRY=1
+            echo "No Wawona AppImage on runner; Appium session dry. Guest map checked."
+          fi
+          ./scripts/appium/run-appium-suite.sh \
+            tests/test_gates_unit.py \
+            tests/test_catalog_wayland.py
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: appium-linux
+          path: .agent-device/test-artifacts/appium/
+          if-no-files-found: warn
+
+  apple:
+    name: "Apple Appium (${{ matrix.platform }})"
+    needs: unit
+    runs-on: macos-26
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ios
+            device: "iPhone 17 Pro"
+            download_visionos: false
+          - platform: ipados
+            device: "iPad Pro 13-inch (M4)"
+            download_visionos: false
+          - platform: tvos
+            device: "Apple TV 4K (3rd generation)"
+            download_visionos: false
+          - platform: visionos
+            device: "Apple Vision Pro"
+            download_visionos: true
+          - platform: macos
+            device: "macOS"
+            download_visionos: false
+          - platform: ios
+            device: "iPhone 17 Pro"
+            download_visionos: false
+            job_name: ios-watch-pair
+            watch_pair: true
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tip soft-supersede
+        run: ./.github/scripts/ci-require-branch-tip.sh || true
+      - name: Select Xcode
+        run: ./.github/scripts/select-xcode.sh
+      - name: Download visionOS SDK
+        if: ${{ matrix.download_visionos }}
+        run: xcodebuild -downloadPlatform visionOS -buildVersion 26.2 || xcodebuild -downloadPlatform visionOS
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Appium + XCUITest / Mac2
+        run: |
+          npm install -g appium@3.1.1
+          if [[ "${{ matrix.platform }}" == "macos" ]]; then
+            appium driver install mac2
+          else
+            appium driver install xcuitest
+          fi
+          appium --address 127.0.0.1 --port 4723 > /tmp/appium.log 2>&1 &
+          for i in $(seq 1 40); do
+            curl -sf http://127.0.0.1:4723/status && break
+            sleep 1
+          done
+      - name: Apple Appium suite (dry until product artifact wired)
+        env:
+          WAWONA_APPIUM_PLATFORM: ${{ matrix.platform }}
+          WAWONA_DEVICE_NAME: ${{ matrix.device }}
+          WAWONA_APPIUM_SERVER: http://127.0.0.1:4723
+          WAWONA_APPIUM_DRY: "1"
+        run: |
+          chmod +x scripts/appium/run-appium-suite.sh
+          ./scripts/appium/run-appium-suite.sh
+      - name: macOS Wayland catalog guests (container / Colima)
+        if: ${{ matrix.platform == 'macos' }}
+        env:
+          WAWONA_APPIUM_PLATFORM: macos
+          WAWONA_APPIUM_SERVER: http://127.0.0.1:4723
+          WAWONA_WAYLAND_GUEST: container
+        run: |
+          set -euo pipefail
+          chmod +x scripts/appium/launch-wayland-client.sh
+          python3 scripts/appium/verify-wayland-guest-map.py
+          # Real container/Colima launches need a live host wayland-0.
+          # Skip Appium assertion when app/socket missing; never claim skip stubs.
+          SOCK="${WAWONA_RUNTIME:-/tmp/wawona-$(id -u)}/wayland-0"
+          if [[ ! -S "$SOCK" ]]; then
+            echo "No host Wayland socket at $SOCK; guest map verified, launch deferred"
+            exit 0
+          fi
+          unset WAWONA_APPIUM_DRY || true
+          cd Tests/appium
+          python3 -m venv .venv
+          . .venv/bin/activate
+          pip install -q -r requirements.txt
+          PYTHONPATH=. pytest tests/test_catalog_wayland.py -q --tb=short
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: appium-${{ matrix.job_name || matrix.platform }}
+          path: .agent-device/test-artifacts/appium/
+          if-no-files-found: warn

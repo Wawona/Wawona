@@ -1,9 +1,9 @@
 #if os(macOS)
 import AppKit
 
-/// AppKit host for the guest console. Relay boot, SSH, and a native
-/// shell show here until a Wayland client is on screen. The surface
-/// parses ANSI and draws DejaVuSansM Nerd Font Mono with Metal.
+/// AppKit host for Wawona Terminal on macOS Start. Every machine Start
+/// presents this window with `$ argv` and streamed CLI logs. Close reveals
+/// the compositor (Focus). No auto-dismiss on first frame.
 @objc final class WWNMacGuestConsole: NSObject, NSWindowDelegate {
   @objc static let shared = WWNMacGuestConsole()
 
@@ -11,6 +11,7 @@ import AppKit
   private var surface: WWNTermSurface?
   private let pumpQueue = DispatchQueue(label: "com.aspauldingcode.wawona.mac-guest-console")
   private var pumpTimer: DispatchSourceTimer?
+  private var launchLogObserver: NSObjectProtocol?
   private var fed = 0
   private var machineId = ""
   private var source = "relay"
@@ -46,7 +47,7 @@ import AppKit
     // next Start hits objc_retain on a dangling NSWindow (SIGSEGV).
     window.isReleasedWhenClosed = false
     window.delegate = self
-    window.title = "Guest console"
+    window.title = "Wawona Terminal"
     window.contentView = surface
     window.center()
     window.makeKeyAndOrderFront(nil)
@@ -55,15 +56,28 @@ import AppKit
     if source == "shell" {
       startShell()
     } else {
-      let banner = source == "ssh" ? "SSH session starting.\n" : "Guest console\n"
+      let banner: String
+      switch source {
+      case "ssh":
+        banner = "SSH session starting.\n"
+      case "client":
+        banner = clientBanner(machineId: machineId)
+      default:
+        banner = "Wawona Terminal\n"
+      }
       surface.feed(Data(banner.utf8))
     }
+    startLaunchLogObserver()
     startPump()
   }
 
   func dismiss(machineId: String) {
     if !self.machineId.isEmpty, machineId != self.machineId { return }
     stopped = true
+    if let obs = launchLogObserver {
+      NotificationCenter.default.removeObserver(obs)
+      launchLogObserver = nil
+    }
     pumpTimer?.cancel()
     pumpTimer = nil
     shell?.terminate()
@@ -81,6 +95,42 @@ import AppKit
   func windowWillClose(_ notification: Notification) {
     let closingId = machineId
     dismiss(machineId: closingId)
+    guard !closingId.isEmpty else { return }
+    WWNMachineProfileStore.setActiveMachineId(closingId)
+    WWNMainWindowRouter.shared.showSessionSurface()
+  }
+
+  private func clientBanner(machineId: String) -> String {
+    guard let profile = WWNMachineProfileStore.profile(byId: machineId) else {
+      return "Wawona Terminal\n"
+    }
+    let prefs = WWNPreferencesManager.sharedManager()
+    let kind = WWNNativeShellConfiguration.kind(for: profile)
+    if kind == kWWNNativeShellKindWaypipe || profile.type == kWWNMachineTypeSSHWaypipe {
+      let preview = WWNWaypipeRunner.sharedRunner().generateWaypipePreviewString(prefs)
+      return "$ \(preview)\n"
+    }
+    let client = WWNMachineSessionBridge.nativeClientId(forProfile: profile) ?? "client"
+    let display = WWNCompositorBridge.sharedBridge.socketName()
+    return "$ wwn-exec \(client)\nWAYLAND_DISPLAY=\(display.isEmpty ? "wayland-0" : display)\n"
+  }
+
+  private func startLaunchLogObserver() {
+    if let obs = launchLogObserver {
+      NotificationCenter.default.removeObserver(obs)
+    }
+    launchLogObserver = NotificationCenter.default.addObserver(
+      forName: Notification.Name("WWNClientLaunchLogNotification"),
+      object: nil,
+      queue: .main
+    ) { [weak self] note in
+      guard let self, !self.stopped else { return }
+      guard self.source == "client" || self.source == "relay" || self.source == "ssh"
+      else { return }
+      if let line = note.userInfo?["line"] as? String, !line.isEmpty {
+        self.append(Data(line.utf8))
+      }
+    }
   }
 
   private func startPump() {
@@ -94,12 +144,14 @@ import AppKit
   }
 
   private func pumpOnce() {
-    if stopped || source != "relay" { return }
-    guard let log = WWNRelay.sharedRelay.consoleLog(forMachineId: machineId),
-          log.count > fed else { return }
-    let delta = log.subdata(in: fed..<log.count)
-    fed = log.count
-    append(delta)
+    if stopped { return }
+    if source == "relay" {
+      guard let log = WWNRelay.sharedRelay.consoleLog(forMachineId: machineId),
+            log.count > fed else { return }
+      let delta = log.subdata(in: fed..<log.count)
+      fed = log.count
+      append(delta)
+    }
   }
 
   private func startShell() {

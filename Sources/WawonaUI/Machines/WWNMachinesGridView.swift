@@ -352,7 +352,7 @@ struct WWNMachinesGridViewModern: View {
         Label("Search", systemImage: "magnifyingglass")
       }
       .backport.glassToolbarButton()
-      .accessibilityIdentifier("wwn.machines.search")
+      .accessibilityIdentifier(WWNA11y.machinesSearch)
     }
   }
 
@@ -405,7 +405,7 @@ struct WWNMachinesGridViewModern: View {
           .font(.system(size: 15))
           .modifier(WWNSearchFieldFocus(isFocused: $isSearchFocused))
           .accessibilityLabel("Search machines")
-          .accessibilityIdentifier("wwn.machines.search")
+          .accessibilityIdentifier(WWNA11y.machinesSearch)
         if !searchQuery.isEmpty {
           Button {
             searchQuery = ""

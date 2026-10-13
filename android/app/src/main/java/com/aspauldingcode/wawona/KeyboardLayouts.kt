@@ -41,11 +41,18 @@ object KeyboardLayouts {
             WLog.w("XKB", "KeyCharacterMap dump empty; seat stays US fallback")
             return
         }
-        WawonaNative.nativeApplyHostKeyLevels(
-            ids.toIntArray(),
-            levels.toIntArray(),
-        )
-        WLog.i("XKB", "host dump: applied ${ids.size} keys from KeyCharacterMap")
+        try {
+            WawonaNative.nativeApplyHostKeyLevels(
+                ids.toIntArray(),
+                levels.toIntArray(),
+            )
+            WLog.i("XKB", "host dump: applied ${ids.size} keys from KeyCharacterMap")
+        } catch (_: UnsatisfiedLinkError) {
+            // Tip Compose ahead of libwawona.so. Seat stays on MINIMAL until rebuild.
+            WLog.w("XKB", "nativeApplyHostKeyLevels missing; skip host dump")
+        } catch (_: NoSuchMethodError) {
+            WLog.w("XKB", "nativeApplyHostKeyLevels missing; skip host dump")
+        }
     }
 
     private fun decode(raw: Int): Int {

@@ -6,15 +6,14 @@ import WawonaModel
 enum WatchMachineSessionBridge {
     static func connect(profile: MachineProfile) -> Bool {
         let logger = WWNStartupLogger.shared
-        // Capture before compositor/client start so early lines aren't missed
-        // (same contract as iOS showStartupLogForClient:).
+        // Capture into Wawona Terminal before compositor/client start.
         logger.beginCapture()
 
         let bridge = WWNWatchCompositorBridge.shared
         applyScreenOutputSize(bridge)
         if !bridge.isRunning {
             guard bridge.start(withSocketName: "wayland-0") else {
-                logger.appendLine("[LAUNCH] Compositor start failed")
+                logger.appendLine("error: compositor start failed")
                 NSLog("WATCH: compositor start failed (mini server and Rust backend both unavailable)")
                 logger.endCapture()
                 return false
@@ -29,7 +28,6 @@ enum WatchMachineSessionBridge {
             let clientId = profile.type == .wasm
                 ? "wawona-wasm"
                 : resolvedNativeClientId(for: profile)
-            logger.appendLine("[LAUNCH] Starting \(clientId) …")
             if clientId == "wawona-wasm" || clientId == "hello-wasi-gui" || profile.type == .wasm {
                 let spec = WasmLaunchSpec(
                     mode: WasmLaunchMode(rawValue: profile.runtimeOverrides.wasmLaunchMode ?? "command") ?? .command,
@@ -38,9 +36,10 @@ enum WatchMachineSessionBridge {
                     command: profile.runtimeOverrides.wasmCommand ?? WasmLaunch.defaultCommand
                 )
                 let arg = WasmLaunch.ensureArg(spec: spec)
-                logger.appendLine("[LAUNCH] Relay wasm \(arg)")
+                logger.appendLine("$ wpm run \(arg)")
                 bridge.launchWasmModule(atPath: arg)
             } else {
+                logger.appendLine("$ wwn-exec \(clientId)")
                 bridge.launchClient(withId: clientId)
             }
             return true
@@ -50,7 +49,9 @@ enum WatchMachineSessionBridge {
                 return false
             }
             let command = profile.remoteCommand.isEmpty ? "weston-simple-shm" : profile.remoteCommand
-            logger.appendLine("[LAUNCH] Starting waypipe → \(command) …")
+            logger.appendLine(
+                "$ waypipe ssh -p \(profile.sshPort) \(profile.sshUser)@\(profile.sshHost) \(command)"
+            )
             bridge.launchWaypipe(
                 withHost: profile.sshHost,
                 user: profile.sshUser,
@@ -60,10 +61,12 @@ enum WatchMachineSessionBridge {
             )
             let ok = bridge.isWaypipeRunning
             if !ok {
+                logger.appendLine("error: waypipe failed to start")
                 logger.endCapture()
             }
             return ok
         case .virtualMachine, .container:
+            logger.appendLine("error: VM/container forbidden on watchOS")
             logger.endCapture()
             return false
         }

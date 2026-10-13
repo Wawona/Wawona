@@ -267,4 +267,64 @@ final class IosShellSession {
 
     deinit { stop() }
 }
+
+/// Launch / client log path: same `wwn_term` screen as Native Shell, no PTY.
+/// Feeds UTF-8 banners and streamed CLI lines into `WawonaTerminalView`.
+final class IosLogTermSession {
+    private var term: OpaquePointer?
+    private var cols: UInt32 = 80
+    private var rows: UInt32 = 28
+    private let queue = DispatchQueue(label: "com.aspauldingcode.wawona.ios-log-term")
+    private var stopped = false
+
+    var onScreen: ((Data) -> Void)?
+
+    func start(cols: UInt32 = 80, rows: UInt32 = 28) {
+        stop()
+        stopped = false
+        self.cols = max(20, cols)
+        self.rows = max(8, rows)
+        guard let term = IosShellABI.termNew(self.cols, self.rows) else { return }
+        self.term = term
+        exportScreen()
+    }
+
+    func feed(_ text: String) {
+        guard !text.isEmpty else { return }
+        feed(Data(text.utf8))
+    }
+
+    func feed(_ data: Data) {
+        guard !stopped, !data.isEmpty, let term else { return }
+        queue.async { [weak self] in
+            guard let self, !self.stopped, let term = self.term else { return }
+            data.withUnsafeBytes { raw in
+                guard let base = raw.bindMemory(to: UInt8.self).baseAddress else { return }
+                IosShellABI.termFeed(term, base, data.count)
+            }
+            self.exportScreen()
+        }
+    }
+
+    func stop() {
+        stopped = true
+        if let term {
+            IosShellABI.termFree(term)
+            self.term = nil
+        }
+    }
+
+    private func exportScreen() {
+        guard let term else { return }
+        var len = 0
+        guard let ptr = IosShellABI.termExport(term, &len), len > 0 else { return }
+        let data = Data(bytes: ptr, count: len)
+        IosShellABI.termSnapshotFree(ptr, len)
+        DispatchQueue.main.async { [weak self] in
+            self?.onScreen?(data)
+        }
+    }
+
+    deinit { stop() }
+}
 #endif

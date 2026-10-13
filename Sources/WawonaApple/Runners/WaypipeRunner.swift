@@ -146,8 +146,15 @@ public final class WWNWaypipeRunner: NSObject {
             env["SSHPASS"] = pass
         }
         task.environment = env
-        task.terminationHandler = { [weak self] _ in
+        Self.attachProcessOutputPipes(
+            task,
+            argvBanner: generateWaypipePreviewString(prefs)
+        )
+        task.terminationHandler = { [weak self] proc in
             DispatchQueue.main.async {
+                Self.appendClientLaunchLog(
+                    "exit: waypipe status=\(proc.terminationStatus)\n"
+                )
                 self?.isRunning = false
                 self?.delegate?.runnerDidStop?()
             }
@@ -158,6 +165,7 @@ public final class WWNWaypipeRunner: NSObject {
             isRunning = true
         } catch {
             delegate?.runnerDidReceiveError?(error.localizedDescription)
+            Self.appendClientLaunchLog("error: \(error.localizedDescription)\n")
         }
         #elseif os(iOS) || os(tvOS) || os(visionOS)
         launchWaypipeInProcess(prefs)
@@ -177,6 +185,12 @@ public final class WWNWaypipeRunner: NSObject {
         let args = buildWaypipeArguments(prefs)
         // Drop host Process path; argv[0] is still "waypipe" for waypipe_main.
         let argvStrings = ["waypipe"] + Array(args.dropFirst())
+        Self.appendClientLaunchLog(
+            "$ \(generateWaypipePreviewString(prefs))\n"
+        )
+        Self.appendClientLaunchLog(
+            "# in-process waypipe_main (libssh2); Close Terminal to Focus compositor\n"
+        )
         isRunning = true
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let runtime = WWNPreferencesManager.preferredSharedRuntimeDir()
@@ -200,6 +214,7 @@ public final class WWNWaypipeRunner: NSObject {
             }
             DispatchQueue.main.async {
                 self?.isRunning = false
+                Self.appendClientLaunchLog("exit: waypipe_main status=\(rc)\n")
                 if rc != 0 {
                     self?.delegate?.runnerDidReceiveError?("waypipe exited \(rc)")
                 }
@@ -285,6 +300,7 @@ public final class WWNWaypipeRunner: NSObject {
     @objc(launchWasmModuleAtPath:machineId:)
     public func launchWasmModule(atPath path: String, machineId: String?) {
         if let machineId { machineClients[machineId] = "wawona-wasm" }
+        Self.appendClientLaunchLog("$ wpm run \(path)\n")
         DispatchQueue.global(qos: .userInitiated).async {
             let rc: Int32 = path.withCString { pathC in
                 "wasm".withCString { nameC in
@@ -294,8 +310,9 @@ public final class WWNWaypipeRunner: NSObject {
                     }
                 }
             }
-            if rc != 0 {
-                DispatchQueue.main.async {
+            DispatchQueue.main.async {
+                Self.appendClientLaunchLog("exit: wasm status=\(rc)\n")
+                if rc != 0 {
                     self.delegate?.runnerDidReceiveError?("wasm exited \(rc) for \(path)")
                 }
             }

@@ -31,6 +31,12 @@ system behavior as the fallback, and test both paths. The product floor is
 iOS 13, so SwiftUI is the UI. There is no iOS 11 or 12 UIKit-only product.
 Business and graphics policy stay in Rust; this rule covers presentation APIs only.
 
+`ScrollViewReader` is iOS 14+. Wawona Terminal uses
+`WawonaBackport<Any>.scrollViewReader` plus `WawonaScrollViewProxy` in
+`Compatibility/WawonaBackport.swift`. Never bare `ScrollViewReader` in
+phone/iPad/tv/vision feature views. iOS 13 fallback: plain `ScrollView`
+(`scrollTo` no-op). Watch (watchOS 10) may use native `ScrollViewReader`.
+
 Upgrade path (DeLong): when dropping an old OS floor, delete the shim and
 search `backport.` call sites, then remove the `.backport` segment.
 

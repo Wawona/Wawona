@@ -1,0 +1,91 @@
+# Appium UI matrix
+
+Mode A product UI and Wayland sessions on GitHub-hosted runners. Agent-device
+stays for local dogfood and vphone Mode B.
+
+## Agent rule (hard)
+
+Rule `wawona-appium-ui-gh` (alwaysApply). Skill `wawona-appium`. **If a
+GitHub runner UI / Appium / GUI job fails, load Appium skills, reproduce, and
+fix with Appium.** Do not use agent-device or osascript to paper over runner
+reds. agent-device stays local dogfood and vphone Mode B.
+
+## Agent skills (host)
+
+Before local Appium work, load the dendritic Appium skill pack installed from
+`/etc/nix-darwin/.dotfiles/skills/appium`:
+
+| Agent | Discovery |
+|-------|-----------|
+| Cursor | `~/.agents/skills/appium`, `~/.cursor/skills/appium` |
+| Antigravity | `~/.gemini/antigravity/skills/appium` |
+| Codex / ChatGPT desktop | `~/.codex/skills/appium` + `[mcp_servers.appium]` |
+
+Docs: `/etc/nix-darwin/.dotfiles/docs/appium-agents.md`. Upstream setup skills:
+`appium-setup`, `appium-setup-uiautomator2`, `appium-setup-xcuitest`,
+`appium-setup-mac2`, `appium-troubleshooting`. MCP server name: `appium`
+(`appium-mcp`).
+
+Restart the IDE after `nh darwin switch` or after running
+`scripts/configure-appium-agents.py`.
+
+## Suite layout
+
+| Path | Role |
+|------|------|
+| [`Tests/appium/`](../../Tests/appium/) | pytest + Appium 2 page objects |
+| [`Tests/appium/matrix.toml`](../../Tests/appium/matrix.toml) | Platform gates + catalog Wayland guests |
+| [`Tests/appium/selectors.json`](../../Tests/appium/selectors.json) | Canonical `wwn.*` ids |
+| [`scripts/appium/launch-wayland-client.sh`](../../scripts/appium/launch-wayland-client.sh) | Real Wayland guest launcher |
+| [`.github/workflows/ui-appium.yml`](../../.github/workflows/ui-appium.yml) | Nightly / path-filtered `development` |
+
+## Wayland catalog clients (23.A / 23.B)
+
+Catalog rows are **not** packaging-card skips. Each client is a real Wayland
+process forwarded into the host Wawona socket:
+
+| `guest` | How |
+|---------|-----|
+| `container` | macOS `Wawona run` / `container-desktop-clients-macos.sh` (`weston-container`, `sway`, `hyprland`, …) |
+| `colima` | Colima Linux VM + `waypipe-ssh-colima-lab.sh` (foot, firefox, DEs, …) |
+| `nested` | Linux runner: same-host nested client on `WAYLAND_DISPLAY` |
+
+CI fails closed if `matrix.toml` and `launch-wayland-client.sh` drift
+(`scripts/appium/verify-wayland-guest-map.py`). Appium then asserts the host
+compositor surface (`wwn.compositor.surface`).
+
+## Runners
+
+| Job | Label |
+|-----|-------|
+| iOS, iPadOS, tvOS, visionOS, macOS, iPhone+watch | `macos-26` |
+| Android emulator | `ubuntu-latest` + KVM |
+| Linux desktop + nested Wayland catalog | `ubuntu-latest` + Xvfb |
+
+visionOS job alone downloads the 26.2 runtime. Do not rebuild products in the
+test job; download Gate: products artifacts when `products_ready` is set.
+
+## Local
+
+```bash
+# Offline gate/selector + guest-map checks (no Appium server):
+python3 scripts/appium/verify-matrix.py
+python3 scripts/appium/verify-wayland-guest-map.py
+cd Tests/appium
+python3 -m venv .venv && . .venv/bin/activate
+pip install -r requirements.txt
+WAWONA_APPIUM_DRY=1 pytest tests/test_gates_unit.py -q
+
+# Wayland catalog (host compositor must own wayland-0 first):
+export WAWONA_APPIUM_PLATFORM=macos   # or linux
+export WAWONA_WAYLAND_GUEST=container # or colima / nested
+# Start Wawona so $WAWONA_RUNTIME/wayland-0 exists, then:
+pytest tests/test_catalog_wayland.py -q
+
+# Full native session (Appium server on :4723, app installed):
+export WAWONA_APPIUM_PLATFORM=ios
+export WAWONA_APP_PATH=/path/to/Wawona.app
+pytest tests/test_native_ui.py -q
+```
+
+See also [`everywhere-matrix.md`](./everywhere-matrix.md) and [`../ci.md`](../ci.md).

@@ -344,4 +344,110 @@ public extension WawonaBackport where Content == Any {
         content()
         #endif
     }
+
+    /// Dave DeLong namespace: `ScrollViewReader` (iOS 14+) with an iOS 13
+    /// plain-`ScrollView` host. Call sites must not use bare `ScrollViewReader`.
+    /// Wawona Terminal uses this for end-of-buffer scroll.
+    @ViewBuilder
+    @MainActor
+    static func scrollViewReader<Inner: View>(
+        @ViewBuilder content: @escaping (WawonaScrollViewProxy) -> Inner
+    ) -> some View {
+        #if os(iOS) || os(tvOS) || os(visionOS)
+        if #available(iOS 14.0, tvOS 14.0, *) {
+            WawonaNativeScrollViewReader(content: content)
+        } else {
+            content(WawonaScrollViewProxy())
+        }
+        #elseif os(watchOS)
+        if #available(watchOS 7.0, *) {
+            WawonaNativeScrollViewReader(content: content)
+        } else {
+            content(WawonaScrollViewProxy())
+        }
+        #elseif os(macOS)
+        if #available(macOS 11.0, *) {
+            WawonaNativeScrollViewReader(content: content)
+        } else {
+            content(WawonaScrollViewProxy())
+        }
+        #else
+        content(WawonaScrollViewProxy())
+        #endif
+    }
 }
+
+/// Programmatic scroll proxy for `WawonaBackport.scrollViewReader`.
+/// iOS 14+ wraps `ScrollViewProxy`. iOS 13: `scrollTo` is a no-op.
+public struct WawonaScrollViewProxy {
+    private let scrollToImpl: ((AnyHashable, UnitPoint?) -> Void)?
+
+    fileprivate init(
+        scrollToImpl: ((AnyHashable, UnitPoint?) -> Void)? = nil
+    ) {
+        self.scrollToImpl = scrollToImpl
+    }
+
+    public func scrollTo<ID: Hashable>(_ id: ID, anchor: UnitPoint? = nil) {
+        scrollToImpl?(AnyHashable(id), anchor)
+    }
+}
+
+#if os(iOS) || os(tvOS) || os(visionOS)
+@available(iOS 14.0, tvOS 14.0, *)
+private struct WawonaNativeScrollViewReader<Inner: View>: View {
+    let content: (WawonaScrollViewProxy) -> Inner
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            content(
+                WawonaScrollViewProxy(scrollToImpl: { id, anchor in
+                    if let anchor {
+                        proxy.scrollTo(id, anchor: anchor)
+                    } else {
+                        proxy.scrollTo(id)
+                    }
+                })
+            )
+        }
+    }
+}
+#elseif os(watchOS)
+@available(watchOS 7.0, *)
+private struct WawonaNativeScrollViewReader<Inner: View>: View {
+    let content: (WawonaScrollViewProxy) -> Inner
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            content(
+                WawonaScrollViewProxy(scrollToImpl: { id, anchor in
+                    if let anchor {
+                        proxy.scrollTo(id, anchor: anchor)
+                    } else {
+                        proxy.scrollTo(id)
+                    }
+                })
+            )
+        }
+    }
+}
+#elseif os(macOS)
+@available(macOS 11.0, *)
+private struct WawonaNativeScrollViewReader<Inner: View>: View {
+    let content: (WawonaScrollViewProxy) -> Inner
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            content(
+                WawonaScrollViewProxy(scrollToImpl: { id, anchor in
+                    if let anchor {
+                        proxy.scrollTo(id, anchor: anchor)
+                    } else {
+                        proxy.scrollTo(id)
+                    }
+                })
+            )
+        }
+    }
+}
+#endif

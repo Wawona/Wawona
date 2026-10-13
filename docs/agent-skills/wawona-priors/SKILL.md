@@ -32,9 +32,10 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-package` | Before any dependency or package compile: write LIBC, TEXT, GPU. Android is Bionic. cairo, harfbuzz, pango are not substitutes. |
 | `repo-wawona-io-catalogs` | Dual wasm/deb catalogs; GHA build vs catalog host split. |
 | `wawona-machine-types` | Machines UI: Native Shell / VM / Container. Sessions under Native Shell. |
-| `wawona-ios-native-shell` | Apple-mobile Terminal Start: real in-process zsh + term UI. Never "Native Shell starting" splash. |
+| `wawona-ios-native-shell` | Every Start = Wawona Terminal (`$ argv` + CLI logs). Native Shell = live zsh. No StartupLog preview / first-frame auto-dismiss. |
 | `wawona-apple-swift` | Apple compositor Swift/SwiftUI. Always load `swiftui-pro` + `swiftui-expert-skill` first. |
 | `wawona-android-compose` | Android Kotlin/Compose. Always load `compose-agent` + `modern-jetpack-compose` first. |
+| `wawona-appium` | Mode A Appium UI on GH runners. Load dendritic `appium` skills; red UI jobs fix with Appium only. |
 | `wawona-swiftui-backports` | iOS 13 `WawonaBackport` shims. Wins over upstream SwiftUI skill modernization. |
 | `wawona-icon-composer` | Layered icon drafts, native rendering, shared IDE tooling. |
 
@@ -73,10 +74,11 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-ios-link-contract` | Membership + called C symbols before Apple app compile |
 | `wawona-apple-swift-skills` | Must install/use SwiftUI + Swift concurrency/testing skills for Apple UI |
 | `wawona-android-compose-skills` | Must install/use Compose + Android skills for Kotlin UI |
+| `wawona-appium-ui-gh` | AlwaysApply: Appium skills for Mode A UI on GH runners; red UI jobs must be fixed with Appium |
 | `wawona-machine-start-placement` | Start Prompt / New Tab / New Window; gate on windowing |
 | `wawona-apple-swift-glue` | Rust + Swift only; zero ObjC product classes |
 | `wawona-swinging-bridge` | Not Desktop, not LockScreen |
-| `wawona-test-control` / `wawona-agent-device` | UI / vphone |
+| `wawona-test-control` / `wawona-agent-device` | Local dogfood / vphone (not GH Mode A Appium) |
 | `wawona-agent-device-multitouch` | Wayland client taps |
 | `wawona-android-jbr` | Android Gradle / Studio JBR 21 |
 | `wawona-local-before-ci` | Link/eval before push |

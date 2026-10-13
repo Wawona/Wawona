@@ -19,6 +19,30 @@ extension WWNWaypipeRunner {
         )
     }
 
+    #if os(macOS)
+    /// Print `$ argv` then attach Process stdout/stderr into the Terminal log.
+    /// macOS only: `Foundation.Process` is unavailable on Apple-mobile.
+    static func attachProcessOutputPipes(_ task: Process, argvBanner: String?) {
+        if let banner = argvBanner, !banner.isEmpty {
+            let line = banner.hasPrefix("$") ? banner : "$ \(banner)"
+            appendClientLaunchLog(line.hasSuffix("\n") ? line : line + "\n")
+        }
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = pipe
+        pipe.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            guard !data.isEmpty,
+                  let text = String(data: data, encoding: .utf8),
+                  !text.isEmpty
+            else { return }
+            DispatchQueue.main.async {
+                appendClientLaunchLog(text.hasSuffix("\n") ? text : text + "\n")
+            }
+        }
+    }
+    #endif
+
     /// Nested weston / niri / toy clients are optional-software. Fail closed
     /// with an install hint when the binary is not already on disk (deb/apt).
     static func optionalSoftwareMissingMessage(for clientId: String) -> String {
@@ -58,8 +82,12 @@ extension WWNWaypipeRunner {
         env.removeValue(forKey: "WWN_MODEB_INSERT")
         if env["NIRI_BACKEND"] == "tty" { env.removeValue(forKey: "NIRI_BACKEND") }
         task.environment = env
-        task.terminationHandler = { [weak self] (_: Process) in
+        Self.attachProcessOutputPipes(task, argvBanner: path)
+        task.terminationHandler = { [weak self] (proc: Process) in
             DispatchQueue.main.async {
+                Self.appendClientLaunchLog(
+                    "exit: \(clientKey) status=\(proc.terminationStatus)\n"
+                )
                 self?.lock.lock()
                 self?.clientTasks.removeValue(forKey: clientKey)
                 self?.lock.unlock()
@@ -73,6 +101,7 @@ extension WWNWaypipeRunner {
             return true
         } catch {
             delegate?.runnerDidReceiveError?(error.localizedDescription)
+            Self.appendClientLaunchLog("error: \(error.localizedDescription)\n")
             return false
         }
         #else

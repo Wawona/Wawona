@@ -10,9 +10,9 @@ import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Unified logger.  When a startup-log capture is active (between
- * [enableSink] and [disableSink]) every log line is also emitted on
- * [sinkFlow] so the native scrollable startup log overlay can display it.
+ * Unified logger. When a Terminal capture is active (between [enableSink]
+ * and [disableSink]) every log line is also emitted on [sinkFlow] so
+ * Wawona Terminal can show CLI-side host logs for the Start session.
  */
 object WLog {
     private val fmt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
@@ -20,7 +20,7 @@ object WLog {
     private val _sinkFlow = MutableSharedFlow<String>(
         extraBufferCapacity = 256,  // drop oldest if the UI falls behind
     )
-    /** Collect this in the startup log overlay composable. */
+    /** Collect this into Wawona Terminal while a machine Start is live. */
     val sinkFlow: SharedFlow<String> = _sinkFlow.asSharedFlow()
 
     private val sinkActive = AtomicBoolean(false)

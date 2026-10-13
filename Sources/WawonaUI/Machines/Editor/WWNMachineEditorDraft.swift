@@ -212,12 +212,16 @@ final class WWNMachineEditorDraft: ObservableObject {
     }
 
     // Bundled Wayland clients removed. Keep-set only: shell / wasm.
+    // Use locals: Swift forbids reading `self.nativeShellKind` until every
+    // stored property is initialized.
     let resolvedClientId = WWNNativeShellConfiguration.migrateClientId(initialNativeClientId)
+    var resolvedShellKind = initialNativeShellKind
     if resolvedClientId == kNativeClientWasmId {
-      nativeShellKind = kWWNNativeShellKindWasm
-    } else if nativeShellKind == kWWNNativeShellKindWayland {
-      nativeShellKind = kWWNNativeShellKindTerminal
+      resolvedShellKind = kWWNNativeShellKindWasm
+    } else if resolvedShellKind == kWWNNativeShellKindWayland {
+      resolvedShellKind = kWWNNativeShellKindTerminal
     }
+    nativeShellKind = resolvedShellKind
     selectedClientId = resolvedClientId
     let autoShowMacPointerDefault = !WWNMachineProfileStore.profileIndicatesNested(
       nativeClientId: resolvedClientId,

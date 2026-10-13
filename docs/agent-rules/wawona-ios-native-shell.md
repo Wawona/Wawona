@@ -33,10 +33,20 @@ notification: `WWNRelayGuestConsoleNeededNotification` with `source=shell`.
 Real weston-terminal (patched `terminal.c` + pty) is optional software / deb path,
 not the store Native Shell product.
 
+## Start UI (all machine kinds)
+
+Every machine Start presents **Wawona Terminal** first (`$ argv` + CLI /
+host logs). Native Shell uses a live zsh PTY. Waypipe / wasm / client Start
+streams launch output into the same Terminal chrome. Close / Done reveals
+the compositor (Focus). **No** StartupLog preview card. **No** auto-dismiss
+on first frame.
+
 ## Hard rejects
 
 - Guest console text **"Native Shell starting"** (or any static splash) as the
   Terminal Start UX
+- `StartupLogOverlay` / `WWNStartupLogViewController` preview as Start UI
+- Auto-dismiss Terminal on first compositor frame
 - `connectNative` no-op for `wawona-shell` while presenting that splash
 - Calling `weston_terminal_main` / mobile fake terminal a real shell or a
   substitute for Wawona Terminal

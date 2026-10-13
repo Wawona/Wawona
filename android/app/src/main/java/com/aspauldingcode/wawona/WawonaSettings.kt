@@ -8,28 +8,42 @@ object WawonaSettings {
     fun apply(prefs: SharedPreferences, profile: MachineProfile? = null) {
         val decorations = readDecorationPrefs(prefs)
         val graphics = readGraphicsPrefs(prefs)
-        WawonaNative.nativeSetTouchPointerEmulation(
-            prefs.getBoolean("touchPointerEmulation", false)
-        )
-        WawonaNative.nativeApplySettings(
-            decorations.forceServerSideDecorations,
-            decorations.autoScale,
-            decorations.renderingBackend,
-            decorations.respectSafeArea,
-            decorations.renderMacOSPointer,
-            decorations.swapCmdAsCtrl,
-            decorations.universalClipboard,
-            decorations.colorOperations,
-            decorations.nestedCompositorsSupport,
-            decorations.useMetal4ForNested,
-            decorations.multipleClients,
-            decorations.waypipeRSSupport,
-            decorations.enableTCPListener,
-            decorations.tcpPort,
-            graphics.vulkanDriver,
-            graphics.openglDriver,
-            graphics.compositorBackend
-        )
+        // Tip Compose can ship ahead of libwawona.so. UnsatisfiedLinkError is
+        // Error, not Exception; connectMachine's catch (Exception) cannot eat it.
+        try {
+            WawonaNative.nativeSetTouchPointerEmulation(
+                prefs.getBoolean("touchPointerEmulation", false)
+            )
+        } catch (_: UnsatisfiedLinkError) {
+            // Older native libs without the symbol. Ignore until rebuild.
+        } catch (_: NoSuchMethodError) {
+            // Older native libs without the symbol. Ignore until rebuild.
+        }
+        try {
+            WawonaNative.nativeApplySettings(
+                decorations.forceServerSideDecorations,
+                decorations.autoScale,
+                decorations.renderingBackend,
+                decorations.respectSafeArea,
+                decorations.renderMacOSPointer,
+                decorations.swapCmdAsCtrl,
+                decorations.universalClipboard,
+                decorations.colorOperations,
+                decorations.nestedCompositorsSupport,
+                decorations.useMetal4ForNested,
+                decorations.multipleClients,
+                decorations.waypipeRSSupport,
+                decorations.enableTCPListener,
+                decorations.tcpPort,
+                graphics.vulkanDriver,
+                graphics.openglDriver,
+                graphics.compositorBackend
+            )
+        } catch (_: UnsatisfiedLinkError) {
+            // Older native libs without the symbol. Ignore until rebuild.
+        } catch (_: NoSuchMethodError) {
+            // Older native libs without the symbol. Ignore until rebuild.
+        }
         try {
             WawonaNative.nativeApplyEnvironmentOverrides(
                 EnvironmentOverrides.jniPayload(prefs, profile)

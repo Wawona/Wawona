@@ -265,9 +265,21 @@ missing patch anchors, meson version floors, or `Cargo.lock` skew.
 
 Full rule: workspace `.cursor/rules/wawona-local-before-ci.mdc`.
 
+## Appium on GitHub runners (Mode A UI)
+
+Mode A product UI on GH runners is **Appium 2** (`ui-appium.yml`,
+`Tests/appium/`). Rule `wawona-appium-ui-gh` (alwaysApply). Skill
+`wawona-appium` plus dendritic `appium` / `appium-troubleshooting` /
+driver children. **If a runner UI / Appium / GUI job fails, reproduce and
+fix with Appium skills.** Do not greenwash with agent-device, osascript,
+or skip stubs. agent-device stays local dogfood and vphone Mode B.
+Docs: `docs/testing/appium-ui-matrix.md`,
+`docs/agent-rules/wawona-appium-ui-gh.md`.
+
 ## agent-device: Multi-Touch for Wayland clients
 
-Drive app/UI with agent-device (`../.cursor/rules/wawona-agent-device.mdc`).
+Drive local / Mode B app UI with agent-device (`../.cursor/rules/wawona-agent-device.mdc`).
+GH Mode A UI is Appium (`wawona-appium-ui-gh`).
 Mode B tipa/APT on the jailbroken research VM:
 `nix run github:Wawona/wwn-vphone#vphone-jb-lab` then
 `agent-device packages …` (`help vphone-packages`). Rules:

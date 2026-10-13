@@ -1,0 +1,141 @@
+# Capability matrix for Appium UI tests.
+# Mirrors PlatformCapabilities / wawona-platform-targets.
+# States: available | planned | blocked | forbidden
+# CI verifies this file via scripts/appium/verify-matrix.py
+#
+# Catalog clients are REAL Wayland guests. They launch via
+# scripts/appium/launch-wayland-client.sh into the host Wawona socket:
+#   guest=container  → wawona-container-desktop / Wawona run (macOS)
+#   guest=colima     → Colima Linux + waypipe SSH
+#   guest=nested     → same-host nested client (Linux runner)
+# Catalog cards in repo.wawona.io are packaging, not a substitute for a guest.
+
+[platforms.ios]
+vm = "planned"
+container = "planned"
+multi_window = "fill_primary"
+toolbar_keys = "available"
+device_rotation = "available"
+gpu_driver_picker = "available"
+ssh = "available"
+waypipe = "available"
+wasm = "available"
+native_shell = "available"
+watch_import_send = "available"
+
+[platforms.ipados]
+vm = "planned"
+container = "planned"
+multi_window = "multi_scene"
+toolbar_keys = "available"
+device_rotation = "available"
+gpu_driver_picker = "available"
+ssh = "available"
+waypipe = "available"
+wasm = "available"
+native_shell = "available"
+watch_import_send = "available"
+
+[platforms.tvos]
+vm = "forbidden"
+container = "forbidden"
+multi_window = "fill_primary"
+toolbar_keys = "forbidden"
+device_rotation = "blocked"
+gpu_driver_picker = "available"
+ssh = "available"
+waypipe = "available"
+wasm = "available"
+native_shell = "available"
+watch_import_send = "forbidden"
+
+[platforms.watchos]
+vm = "forbidden"
+container = "forbidden"
+multi_window = "stub"
+toolbar_keys = "blocked"
+device_rotation = "blocked"
+gpu_driver_picker = "blocked"
+ssh = "available"
+waypipe = "available"
+wasm = "available"
+native_shell = "available"
+watch_import_send = "forbidden"
+
+[platforms.visionos]
+vm = "planned"
+container = "planned"
+multi_window = "multi_scene"
+toolbar_keys = "forbidden"
+device_rotation = "blocked"
+gpu_driver_picker = "available"
+ssh = "available"
+waypipe = "available"
+wasm = "available"
+native_shell = "available"
+watch_import_send = "forbidden"
+
+[platforms.macos]
+vm = "planned"
+container = "available"
+multi_window = "native_appkit"
+toolbar_keys = "available"
+device_rotation = "resize_window"
+gpu_driver_picker = "available"
+ssh = "available"
+waypipe = "available"
+wasm = "available"
+native_shell = "available"
+watch_import_send = "forbidden"
+catalog_clients = "available"
+
+[platforms.android]
+vm = "planned"
+container = "planned"
+multi_window = "fill_primary"
+toolbar_keys = "available"
+device_rotation = "available"
+gpu_driver_picker = "available"
+ssh = "available"
+waypipe = "available"
+wasm = "available"
+native_shell = "available"
+watch_import_send = "forbidden"
+
+[platforms.linux]
+vm = "planned"
+container = "planned"
+multi_window = "native_appkit"
+toolbar_keys = "available"
+device_rotation = "resize_window"
+gpu_driver_picker = "available"
+ssh = "available"
+waypipe = "available"
+wasm = "available"
+native_shell = "available"
+watch_import_send = "forbidden"
+catalog_clients = "available"
+
+# 23.A Compositors / DEs (Wayland into Wawona)
+[catalog.compositors]
+weston = { status = "available", guest = "container", recipe = "weston-container" }
+niri = { status = "available", guest = "colima", command = "niri" }
+swaywm = { status = "available", guest = "container", recipe = "sway" }
+mangowm = { status = "available", guest = "colima", command = "mango" }
+hyprland = { status = "available", guest = "container", recipe = "hyprland" }
+cosmic_de = { status = "available", guest = "colima", command = "cosmic-comp" }
+phosh_de = { status = "available", guest = "colima", command = "phosh" }
+kde_plasma_de = { status = "available", guest = "colima", command = "plasmashell" }
+kde_plasma_mobile_de = { status = "available", guest = "colima", command = "plasmashell" }
+gnome_de = { status = "available", guest = "colima", command = "gnome-shell" }
+
+# 23.B Applications (Wayland into Wawona)
+[catalog.applications]
+weston_terminal = { status = "available", guest = "colima", command = "weston-terminal" }
+weston_simple_shm = { status = "available", guest = "colima", command = "weston-simple-shm" }
+foot = { status = "available", guest = "colima", command = "foot" }
+ghostty_terminal = { status = "available", guest = "colima", command = "ghostty" }
+konsole = { status = "available", guest = "colima", command = "konsole" }
+firefox_wayland = { status = "available", guest = "colima", command = "firefox" }
+thunar = { status = "available", guest = "colima", command = "thunar" }
+dolphin = { status = "available", guest = "colima", command = "dolphin" }

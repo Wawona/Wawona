@@ -37,7 +37,7 @@ struct CompositorActiveView: View {
     var body: some View {
         ZStack {
             WatchCompositorSurfaceView(onFirstFrame: {
-                startupLog.scheduleDismissAfterFirstFrame()
+                // Terminal stays front until Done (Focus). Do not auto-dismiss.
             })
                 .ignoresSafeArea()
 
@@ -53,7 +53,6 @@ struct CompositorActiveView: View {
                     clientLabel: startupClientLabel
                 )
                 .ignoresSafeArea()
-                .transition(.opacity)
                 .zIndex(2)
             }
 

@@ -13,7 +13,14 @@
 #   scripts/agent-device-smoke.sh xkb-ios|xkb-watchos|xkb-android|xkb-macos
 #   scripts/agent-device-smoke.sh xkb-ipados|xkb-tvos|xkb-visionos   # P1
 #   scripts/agent-device-smoke.sh all       # ios + android + fuzzel (default)
+#   scripts/agent-device-smoke.sh terminal  # Start → Wawona Terminal (ios+android)
+#   scripts/agent-device-smoke.sh terminal-ios|terminal-android
 # vphone is lab-only. Gate: products must not use it as IOMFB/JIT proof.
+#
+# Terminal-as-Start zero-AI stack (no model credits):
+#   1) JVM: cd android && ./gradlew :Wawona:testDebugUnitTest --tests '*MachineStartCommandTest'
+#   2) Espresso: ./gradlew :Wawona:connectedDebugAndroidTest --tests '*TerminalStartUiTest'
+#   3) This script: terminal / terminal-ios / terminal-android (.ad replay)
 #
 # Env:
 #   WAWONA_IOS_SIM         simulator name   (default: iPhone 17 Pro)
@@ -587,6 +594,57 @@ run_ios_shell_cli() {
   stop_agent_device_daemons
 }
 
+run_ios_terminal_start() {
+  echo "== iOS Terminal Start: agent-device replay wawona-ios-terminal-start.ad =="
+  mkdir -p "$ARTIFACTS"
+  stop_agent_device_daemons
+  source "$ROOT/scripts/lib/agent-device-ios-system-ui.sh"
+  ios_prepare_system_ui || true
+  if [[ -n "${WAWONA_IOS_APP:-}" ]]; then
+    STAGE="$(mktemp -d)/Wawona.app"
+    cp -R "$WAWONA_IOS_APP" "$STAGE"
+    chmod -R u+w "$STAGE"
+    xcrun simctl uninstall "$IOS_DEVICE" com.aspauldingcode.Wawona 2>/dev/null || true
+    xcrun simctl install "$IOS_DEVICE" "$STAGE"
+  fi
+  agent-device prepare ios-runner \
+    --platform ios --device "$IOS_DEVICE" --session wawona-ios-terminal-start \
+    --timeout "${WAWONA_IOS_PREPARE_TIMEOUT_MS:-600000}" || true
+  agent-device replay "$ROOT/.agent-device/wawona-ios-terminal-start.ad" \
+    --platform ios \
+    --device "$IOS_DEVICE" \
+    --session wawona-ios-terminal-start
+  stop_agent_device_daemons
+}
+
+run_android_terminal_start() {
+  local serial="${WAWONA_ANDROID_SERIAL:-}"
+  if [[ -z "$serial" ]]; then
+    serial="$(adb devices 2>/dev/null | awk 'NR>1 && $2=="device"{print $1; exit}')"
+  fi
+  if [[ -z "$serial" ]]; then
+    echo "== Android Terminal Start: skip (no device/emulator) =="
+    return 0
+  fi
+  export ANDROID_SERIAL="$serial"
+  echo "== Android Terminal Start: serial=$serial =="
+  if [[ -n "${WAWONA_ANDROID_APK:-}" ]]; then
+    adb -s "$serial" uninstall com.aspauldingcode.wawona >/dev/null 2>&1 || true
+    adb -s "$serial" install "$WAWONA_ANDROID_APK"
+  fi
+  stop_agent_device_daemons
+  agent-device replay "$ROOT/.agent-device/wawona-android-terminal-start.ad" \
+    --platform android \
+    --serial "$serial" \
+    --session wawona-android-terminal-start
+  stop_agent_device_daemons
+}
+
+run_terminal() {
+  run_ios_terminal_start
+  run_android_terminal_start
+}
+
 run_android_shell_ssh() {
   # Sparse OpenSSH proof: APK ships libssh*_bin.so with OpenSSH_ banner.
   # Emulator ABI may not exec aarch64; strings smoke is the portable gate.
@@ -855,6 +913,9 @@ case "$LANE" in
   xkb-visionos) run_xkb visionos ;;
   android) run_android ;;
   android-shell-ssh) run_android_shell_ssh ;;
+  terminal) run_terminal ;;
+  terminal-ios) run_ios_terminal_start ;;
+  terminal-android) run_android_terminal_start ;;
   fuzzel|android-fuzzel|ios-fuzzel|macos-fuzzel)
     chmod +x "$ROOT/scripts/agent-device-fuzzel-smoke.sh"
     "$ROOT/scripts/agent-device-fuzzel-smoke.sh" "$LANE"
@@ -865,7 +926,7 @@ case "$LANE" in
     run_fuzzel
     ;;
   *)
-    echo "usage: $0 [ios|ios-ci|ios-foot|ios-shell-cli|ios-darwin-cli|xkb|xkb-ios|xkb-watchos|xkb-android|xkb-macos|xkb-ipados|xkb-tvos|xkb-visionos|android|android-shell-ssh|fuzzel|android-fuzzel|ios-fuzzel|macos-fuzzel|vphone|all]" >&2
+    echo "usage: $0 [ios|ios-ci|ios-foot|ios-shell-cli|ios-darwin-cli|xkb|xkb-ios|xkb-watchos|xkb-android|xkb-macos|xkb-ipados|xkb-tvos|xkb-visionos|android|android-shell-ssh|terminal|terminal-ios|terminal-android|fuzzel|android-fuzzel|ios-fuzzel|macos-fuzzel|vphone|all]" >&2
     exit 2
     ;;
 esac

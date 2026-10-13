@@ -13,8 +13,13 @@ Kinds: `wawona-machine-types`. RAG: `wwn-mcp/knowledge/wawona/ios-native-shell-t
 
 ## One-line truth
 
-Terminal Start on Apple mobile must leave a **live zsh prompt** in Wawona
-Terminal UI. A splash string is a bug.
+Every machine Start presents **Wawona Terminal** first (not a StartupLog
+preview card). Native Shell Terminal Start must leave a **live zsh prompt**.
+Waypipe / wasm / client Start shows `$ argv` plus streamed CLI logs. Close /
+Done reveals the compositor (Focus). No auto-dismiss on first frame.
+
+A splash-only string or "Starting … / auto-dismisses on first frame" card
+is a bug.
 
 ## Start checklist
 
@@ -55,9 +60,22 @@ the app target (`wawona-ios-link-contract`).
 ## Hard rejects
 
 - Splash-only Terminal Start
+- `StartupLogOverlay` / `WWNStartupLogViewController` preview as Start UI
+- Auto-dismiss Terminal on first compositor frame
 - `wawona-shell` no-op connect behind that splash
 - Documenting or using fake `weston_terminal_main` as Native Shell
 - Skipping `WAWONA_ZSH_IN_PROCESS`
 
 Prove on tip: `nm` shows `wawona_zsh_main`, `wwn_pty_session_start`,
 `wwn_term_new`. Start → prompt, not a banner.
+
+## Zero-AI regression (no model)
+
+| Layer | Command |
+|---|---|
+| JVM argv banners | `cd android && ./gradlew :Wawona:testDebugUnitTest --tests '*MachineStartCommandTest'` |
+| Compose Start UI | `./gradlew :Wawona:connectedDebugAndroidTest --tests '*TerminalStartUiTest'` |
+| iOS/Android replay | `scripts/agent-device-smoke.sh terminal` (or `terminal-ios` / `terminal-android`) |
+
+Assert `id="wwn.terminal.root"` + `id="wwn.terminal.done"` after Start.
+Do not dogfood multi-sim with an AI agent for this gate.

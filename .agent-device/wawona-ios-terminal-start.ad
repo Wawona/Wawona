@@ -1,0 +1,27 @@
+# Zero-AI: Start → Wawona Terminal (not StartupLog preview).
+# Run: scripts/agent-device-smoke.sh terminal-ios
+# Requires tip app with wwn.terminal.root / wwn.terminal.done.
+context platform=ios
+context session=wawona-ios-terminal-start
+context device=iPhone 17 Pro
+
+open com.aspauldingcode.Wawona --relaunch
+wait 2500
+press label="Continue"
+press text="Continue"
+wait selector id="wwn.machines.root" --timeout-ms 20000
+is visible id="wwn.machines.start"
+press id="wwn.machines.start"
+wait 2500
+press label="Continue"
+press text="Continue"
+wait selector id="wwn.terminal.root" --timeout-ms 30000
+is visible id="wwn.terminal.root"
+is visible id="wwn.terminal.done"
+screenshot ./.agent-device/test-artifacts/ios-terminal-start.png
+# StartupLog chrome must not own the sheet title path.
+is visible text="Wawona Terminal"
+press id="wwn.terminal.done"
+wait 1500
+screenshot ./.agent-device/test-artifacts/ios-terminal-done.png
+close

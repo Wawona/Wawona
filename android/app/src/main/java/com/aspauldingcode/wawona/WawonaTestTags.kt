@@ -18,11 +18,32 @@ object WawonaTestTags {
     const val MACHINES_SETTINGS = "wwn.machines.settings"
     const val MACHINES_ADD = "wwn.machines.add"
     const val MACHINES_START = "wwn.machines.start"
+    const val MACHINES_START_TAB = "wwn.machines.start.tab"
+    const val MACHINES_START_WINDOW = "wwn.machines.start.window"
     const val MACHINES_STOP = "wwn.machines.stop"
     const val MACHINES_FOCUS = "wwn.machines.focus"
     const val MACHINES_EDIT = "wwn.machines.edit"
     const val MACHINES_DELETE = "wwn.machines.delete"
+    const val MACHINES_SEARCH = "wwn.machines.search"
+    const val MACHINES_PIN = "wwn.machines.pin"
+    const val MACHINES_SIDEBAR = "wwn.machines.sidebar"
+    const val MACHINES_OVERVIEW = "wwn.machines.overview"
+    const val MACHINES_OVERVIEW_FOCUS = "wwn.machines.overview.focus"
+    const val MACHINES_OVERVIEW_TERMINATE = "wwn.machines.overview.terminate"
+    const val MACHINES_OVERVIEW_ADD = "wwn.machines.overview.add"
+    const val MACHINES_TAG_CREATE = "wwn.machines.tag.create"
+    const val MACHINES_TAG_NAME = "wwn.machines.tag.name"
+    const val MACHINES_TAG_COLOR = "wwn.machines.tag.color"
+    const val MACHINES_TAG_FILTER = "wwn.machines.tag.filter"
+    const val MACHINES_IMPORT_FILE = "wwn.machines.import.file"
     const val MACHINES_EDITOR = "wwn.machines.editor"
+    const val MACHINES_EDITOR_SAVE = "wwn.machines.editor.save"
+    const val MACHINES_EDITOR_CANCEL = "wwn.machines.editor.cancel"
+    const val MACHINES_EDITOR_NAME = "wwn.machines.editor.name"
+    const val MACHINES_EDITOR_TYPE = "wwn.machines.editor.type"
+    const val MACHINES_EDITOR_TYPE_NATIVE = "wwn.machines.editor.type.native"
+    const val MACHINES_EDITOR_TYPE_VM = "wwn.machines.editor.type.virtual_machine"
+    const val MACHINES_EDITOR_TYPE_CONTAINER = "wwn.machines.editor.type.container"
 
     fun machinesCard(machineId: String): String = "wwn.machines.card.$machineId"
 
@@ -53,4 +74,14 @@ object WawonaTestTags {
     const val COMPOSITOR_SURFACE = "wwn.compositor.surface"
     const val CLIENT_TABS = "wwn.client.tabs"
     const val APP_DRAWER_OPEN = "wwn.appdrawer.open"
+
+    /** Wawona Terminal Start host (replaces StartupLog preview). */
+    const val TERMINAL_ROOT = "wwn.terminal.root"
+    const val TERMINAL_DONE = "wwn.terminal.done"
+    /** @deprecated Prefer [TERMINAL_DONE]; kept for iOS GuestConsole parity docs. */
+    const val GUEST_CONSOLE_DONE = "wwn.guestConsole.done"
+
+    const val TOOLBAR_ROOT = "wwn.toolbar.root"
+    const val TOOLBAR_CUSTOMIZE = "wwn.toolbar.customize"
+    const val KEYBOARD_DISMISS = "wwn.keyboard.dismiss"
 }

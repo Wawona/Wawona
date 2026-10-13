@@ -297,6 +297,17 @@ final class WWNMainWindowRouter: ObservableObject {
     }
 
     func showTabOverview() {
+        // Dismiss Terminal first; Exposé needs the live session surface.
+        #if os(iOS) || os(visionOS)
+        NotificationCenter.default.post(
+            name: Notification.Name("WWNRelayGuestConsoleNeededNotification"),
+            object: nil,
+            userInfo: [
+                "machineId": WWNMachineProfileStore.activeMachineId() ?? "",
+                "source": "close",
+            ]
+        )
+        #endif
         // Safari Exposé on the live session surface. List sidebar demoted.
         showSessionSurface()
         selection = .session

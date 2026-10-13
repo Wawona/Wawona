@@ -58,6 +58,13 @@ Persists as `NativeCustomCommand`; with Use SSH on it is also the SSH
 `remoteCommand`. Empty = interactive local shell / default `bash -l` over SSH.
 Legacy Wayland client id `custom` migrates to Terminal on edit/save.
 
+## Start UI
+
+Every Start opens **Wawona Terminal** with the machine’s `$ argv` banner and
+CLI / host logs. Compositor mounts behind; user Focus / Done reveals it.
+Android helper: `MachineStartCommand`. Forbidden: StartupLog preview card
+("Starting …", auto-dismiss on first frame).
+
 ## Hard rejects
 
 - Separate Machines kinds for SSH, Waypipe, or Wasm in the type picker
@@ -70,6 +77,7 @@ Legacy Wayland client id `custom` migrates to Terminal on edit/save.
 - Equating Native Shell with VM/container engines
 - Apple-mobile Terminal Start as splash-only ("Native Shell starting").
   Wire real shell: skill/rule `wawona-ios-native-shell`
+- StartupLog / preview-log overlay as the machine Start surface
 
 ## Legacy load
 

@@ -219,3 +219,10 @@ fastlane/report.xml
 
 # Local dogfood: prebuilt .so extracted for Kotlin-only assembleDebug
 /android/app/src/main/jniLibs/
+Tests/appium/.venv/
+Tests/appium/**/__pycache__/
+Tests/appium/.pytest_cache/
+!Tests/appium/requirements.txt
+XCBuildData/
+/verification-out/
+/android/verification-out/
