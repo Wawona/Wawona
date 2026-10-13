@@ -447,13 +447,27 @@ let
       "-Wl,-u,_scp_main"
     ];
   # Host present: libiland_userland only (no ANGLE / cubes). Store Apple-mobile.
+  #
+  # Lazy archive link, not -force_load. The archive carries iland's EGL shim
+  # (egl.c.o), which is compiled with ILAND_ANGLE_STATIC and therefore imports
+  # the namespaced angle_egl* entry points. Store Apple-mobile presents through
+  # Metal/SpriteKit and bundles no ANGLE (wawona-optional-software), so
+  # force-loading that member leaves 24 undefined _angle_egl* symbols. Nothing
+  # else in the archive references EGL, and the keep-set ships no GLES client,
+  # so a lazy -l drops egl.c.o and keeps the userspace DRM/KMS/GBM present path.
+  # The -u roots are the Mode A present ABI (iland_drm_* / iland_present); the
+  # rest of the archive is pulled transitively from those.
   ilandPresentLdflags = deps:
     let
       iland = deps.iland or null;
     in
       if iland == null then [] else [
         "-L${strip iland}/lib"
-        "-force_load" "${strip iland}/lib/libiland_userland.a"
+        "-Wl,-u,_iland_drm_set_present_callback"
+        "-Wl,-u,_iland_drm_set_preferred_mode"
+        "-Wl,-u,_iland_drm_complete_page_flip"
+        "-Wl,-u,_iland_drm_prepare_virtual_fd"
+        "-liland_userland"
       ];
   # wwn-toolchain wawona-pty: libwwn-pty.a owns the in-process shell ABI
   # (wwn_pty_session_*, wwn_zsh_soft_exit, wwn_pty_ios_*) and the store-safe
@@ -1655,6 +1669,10 @@ PLIST
              ] ++ (ilandPresentLdflags iosSimDeps) ++ (productKeepLdflags iosSimDeps {})
              ++ appleMobileResolvLdflags
              ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [
+               # zsh zreaddir / getkeystring call iconv_open / iconv / iconv_close.
+               # tvOS, watchOS, and visionOS already carry this; iOS reached it
+               # through weston's toytoolkit tail before the unbundling.
+               "-liconv"
                "-L$(DERIVED_FILE_DIR)"
                "-lwawona"
              ] ++ vmEngineContractLdflags iosSimDeps ++ finalCxxLdflags;
@@ -1704,6 +1722,8 @@ PLIST
              ] ++ (ilandPresentLdflags iosDeps) ++ (productKeepLdflags iosDeps {})
              ++ appleMobileResolvLdflags
              ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [
+               # See the simulator block: zsh needs iconv.
+               "-liconv"
                "-L$(DERIVED_FILE_DIR)"
                "-lwawona"
              ] ++ vmEngineContractLdflags iosDeps ++ finalCxxLdflags;
@@ -2710,7 +2730,7 @@ PLIST
               "-lcrypto"
             ] ++ (ilandPresentLdflags visionosDeps) ++ (productKeepLdflags visionosDeps {})
              ++ appleMobileResolvLdflags
-            ++ mobileZshLdflags ++ mobileDispatchLdflags ++ derivedRustLdflags ++ finalCxxLdflags;
+            ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ "-liconv" ] ++ derivedRustLdflags ++ finalCxxLdflags;
             "OTHER_LDFLAGS[sdk=xrsimulator*]" = [
               "$(inherited)"
             ] ++ ios26SwiftUiClientLdflags ++ [
@@ -2740,7 +2760,7 @@ PLIST
               "-lcrypto"
             ] ++ (ilandPresentLdflags visionosSimDeps) ++ (productKeepLdflags visionosSimDeps {})
              ++ appleMobileResolvLdflags
-            ++ mobileZshLdflags ++ mobileDispatchLdflags ++ derivedRustLdflags ++ finalCxxLdflags;
+            ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ "-liconv" ] ++ derivedRustLdflags ++ finalCxxLdflags;
             GCC_PREPROCESSOR_DEFINITIONS = [
               "$(inherited)"
               "TARGET_OS_IPHONE=1"

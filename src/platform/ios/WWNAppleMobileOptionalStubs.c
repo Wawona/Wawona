@@ -67,6 +67,14 @@ WWN_UNBUNDLED_CLIENT(smoke_main)
 WWN_UNBUNDLED_CLIENT(stacking_main)
 WWN_UNBUNDLED_CLIENT(transformed_main)
 
+/* GPU cube clients. Swift (IlandNestedGpuClients / IlandDrmBindings) still
+ * declares these with @_silgen_name, so they are strong references from the
+ * app's own objects, not weak dispatch references. kmscube and gbm-es2-demo
+ * are optional-software, and the store Apple-mobile keep-set presents through
+ * Metal with no ANGLE, so there is nothing to run here. */
+WWN_UNBUNDLED_CLIENT(kmscube_main)
+WWN_UNBUNDLED_CLIENT(gbm_es2_demo_main)
+
 #undef WWN_UNBUNDLED_CLIENT
 
 /* niri takes no argv over its C ABI. */
