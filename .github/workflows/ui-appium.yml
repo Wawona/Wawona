@@ -112,22 +112,8 @@ jobs:
           profile: pixel_7
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot-save
           disable-animations: true
-          # android-emulator-runner invokes /usr/bin/sh (dash). No bashisms,
-          # no line continuations inside if (dash EOF parse bug).
-          script: |
-            set -eu
-            APK="${GITHUB_WORKSPACE}/dist/Wawona.apk"
-            if [ ! -f "$APK" ]; then
-              echo "No product APK; unit-level Appium dry path only"
-              export WAWONA_APPIUM_DRY=1
-            else
-              export WAWONA_APP_PATH="$APK"
-            fi
-            export WAWONA_APPIUM_PLATFORM=android
-            export WAWONA_APPIUM_SERVER=http://127.0.0.1:4723
-            export WAWONA_APPIUM_MARKERS="native or wayland or (not catalog)"
-            chmod +x scripts/appium/run-appium-suite.sh
-            ./scripts/appium/run-appium-suite.sh || echo "Appium Android suite returned non-zero (Watch lane)"
+          # One-liner: multiline script under /usr/bin/sh (dash) broke if/fi.
+          script: bash scripts/appium/ci-android-suite.sh
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v7
