@@ -101,3 +101,11 @@ def test_platform_row_macos_has_catalog(monkeypatch):
     monkeypatch.setenv("WAWONA_APPIUM_PLATFORM", "macos")
     row = platform_row()
     assert row.get("catalog_clients") == "available"
+
+
+def test_catalog_ids_match_gallery_lists():
+    from tests.test_catalog_wayland import APPLICATIONS, COMPOSITORS
+
+    m = load_matrix()
+    assert set(m["catalog"]["compositors"]) == set(COMPOSITORS)
+    assert set(m["catalog"]["applications"]) == set(APPLICATIONS)

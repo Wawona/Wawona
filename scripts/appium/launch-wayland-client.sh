@@ -86,7 +86,38 @@ launch_container() {
     "$ROOT/scripts/container-desktop-clients-macos.sh" "$recipe"
 }
 
+launch_local_bundle() {
+  # macOS: prefer clients bundled in Wawona.app against the live host socket.
+  local bin_dir="/Applications/Wawona.app/Contents/Resources/bin"
+  local exe=""
+  case "$CLIENT" in
+    foot) exe="$bin_dir/foot" ;;
+    weston) exe="$bin_dir/weston" ;;
+    weston_terminal) exe="$bin_dir/weston-terminal" ;;
+    weston_simple_shm) exe="$bin_dir/weston-simple-shm" ;;
+    niri) exe="$bin_dir/niri" ;;
+    *) return 1 ;;
+  esac
+  if [[ ! -x "$exe" ]]; then
+    return 1
+  fi
+  mkdir -p "$ROOT/.agent-device/test-artifacts/appium"
+  local cmd="$exe"
+  case "$CLIENT" in
+    weston) cmd="$exe --backend=wayland --socket=appium-local-weston --width=1024 --height=768" ;;
+    niri) cmd="env NIRI_BACKEND=nested $exe" ;;
+  esac
+  nohup bash -lc "export XDG_RUNTIME_DIR='$XDG_RUNTIME_DIR' WAYLAND_DISPLAY='$WAYLAND_DISPLAY'; $cmd" \
+    >"$ROOT/.agent-device/test-artifacts/appium/local-${CLIENT}.log" 2>&1 &
+  echo "local-bundle pid=$! client=$CLIENT cmd=$cmd"
+  return 0
+}
+
 launch_colima() {
+  # Prefer in-app binaries when present (stable host socket; no SSH race).
+  if [[ "$(uname -s)" == "Darwin" ]] && launch_local_bundle; then
+    return 0
+  fi
   local cmd="$1"
   local pkg="$cmd"
   case "$cmd" in

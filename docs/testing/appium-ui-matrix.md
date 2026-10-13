@@ -42,7 +42,23 @@ Restart the IDE after `nh darwin switch` or after running
 ## Wayland catalog clients (23.A / 23.B)
 
 Catalog rows are **not** packaging-card skips. Each client is a real Wayland
-process forwarded into the host Wawona socket:
+process forwarded into the host Wawona socket. **Pass means a machine
+screenshot** of that client in
+`.agent-device/test-artifacts/appium/catalog-gallery/<client>.png` (and
+`index.html`). DRY skips are not catalog proof. CI uploads
+`appium-catalog-gallery-*` artifacts.
+
+Capture locally (Wawona up, Appium on :4723):
+
+```bash
+./scripts/appium/capture-catalog-gallery.sh
+# or one client:
+./scripts/appium/capture-catalog-gallery.sh kde_plasma_de
+python3 scripts/appium/verify-catalog-gallery.py
+open .agent-device/test-artifacts/appium/catalog-gallery/index.html
+```
+
+Each client is a real Wayland process forwarded into the host Wawona socket:
 
 | `guest` | How |
 |---------|-----|

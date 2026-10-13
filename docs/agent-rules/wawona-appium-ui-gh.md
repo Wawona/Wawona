@@ -47,6 +47,9 @@ lane under `ui-appium.yml`):
 - Selectors: `wwn.*` only
 - Catalog Wayland clients: real guests via
   `scripts/appium/launch-wayland-client.sh` (container / Colima / nested)
+- **Catalog green = machine PNG** in
+  `.agent-device/test-artifacts/appium/catalog-gallery/<client>.png`
+  (non-blank). DRY is not catalog proof.
 - Docs: `docs/testing/appium-ui-matrix.md`
 
 ## Hard rejects

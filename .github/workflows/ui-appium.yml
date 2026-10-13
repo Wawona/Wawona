@@ -164,27 +164,37 @@ jobs:
           WAWONA_APPIUM_PLATFORM: linux
           WAWONA_APPIUM_SERVER: http://127.0.0.1:4723
           WAWONA_WAYLAND_GUEST: nested
+          WAWONA_APPIUM_ARTIFACTS: ${{ github.workspace }}/.agent-device/test-artifacts/appium
         run: |
           set -euo pipefail
           chmod +x scripts/appium/run-appium-suite.sh
           chmod +x scripts/appium/launch-wayland-client.sh
           python3 scripts/appium/verify-wayland-guest-map.py
-          # Full AT-SPI + nested guests need a live Wawona Wayland socket.
-          # When AppImage is absent, keep DRY for Appium session only; guest
-          # map verification above already failed closed.
+          # Catalog green = machine PNG per client. Without a live Wawona
+          # socket, do NOT run catalog tests (DRY is not catalog proof).
           if [[ -z "${WAWONA_APP_PATH:-}" && ! -x /usr/bin/Wawona ]]; then
-            export WAWONA_APPIUM_DRY=1
-            echo "No Wawona AppImage on runner; Appium session dry. Guest map checked."
+            echo "No Wawona AppImage on runner; unit gates only (no catalog claim)."
+            WAWONA_APPIUM_DRY=1 ./scripts/appium/run-appium-suite.sh \
+              tests/test_gates_unit.py
+            exit 0
           fi
           ./scripts/appium/run-appium-suite.sh \
             tests/test_gates_unit.py \
             tests/test_catalog_wayland.py
+          python3 scripts/appium/verify-catalog-gallery.py
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: appium-linux
           path: .agent-device/test-artifacts/appium/
+          if-no-files-found: warn
+      - name: Upload catalog screenshot gallery
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: appium-catalog-gallery-linux
+          path: .agent-device/test-artifacts/appium/catalog-gallery/
           if-no-files-found: warn
 
   apple:
@@ -259,27 +269,32 @@ jobs:
           WAWONA_APPIUM_PLATFORM: macos
           WAWONA_APPIUM_SERVER: http://127.0.0.1:4723
           WAWONA_WAYLAND_GUEST: container
+          WAWONA_APPIUM_ARTIFACTS: ${{ github.workspace }}/.agent-device/test-artifacts/appium
         run: |
           set -euo pipefail
           chmod +x scripts/appium/launch-wayland-client.sh
+          chmod +x scripts/appium/capture-catalog-gallery.sh
           python3 scripts/appium/verify-wayland-guest-map.py
-          # Real container/Colima launches need a live host wayland-0.
-          # Skip Appium assertion when app/socket missing; never claim skip stubs.
+          # Catalog green = PNG per client in catalog-gallery/. No socket =>
+          # do not claim clients were tested.
           SOCK="${WAWONA_RUNTIME:-/tmp/wawona-$(id -u)}/wayland-0"
           if [[ ! -S "$SOCK" ]]; then
-            echo "No host Wayland socket at $SOCK; guest map verified, launch deferred"
+            echo "No host Wayland socket at $SOCK; guest map verified, no catalog claim."
             exit 0
           fi
           unset WAWONA_APPIUM_DRY || true
-          cd Tests/appium
-          python3 -m venv .venv
-          . .venv/bin/activate
-          pip install -q -r requirements.txt
-          PYTHONPATH=. pytest tests/test_catalog_wayland.py -q --tb=short
+          ./scripts/appium/capture-catalog-gallery.sh
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: appium-${{ matrix.job_name || matrix.platform }}
           path: .agent-device/test-artifacts/appium/
+          if-no-files-found: warn
+      - name: Upload catalog screenshot gallery (macOS)
+        if: ${{ always() && matrix.platform == 'macos' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: appium-catalog-gallery-macos
+          path: .agent-device/test-artifacts/appium/catalog-gallery/
           if-no-files-found: warn

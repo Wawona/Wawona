@@ -2,20 +2,52 @@
 
 Clients are real Wayland processes in a Linux container or Colima guest,
 forwarded into the host Wawona compositor (waypipe / vsock). Appium then
-asserts the host surface. This is not a packaging-card skip list.
+asserts the host surface AND saves a machine screenshot.
+
+A green test without a non-blank PNG in catalog-gallery/ is a failure.
+DRY mode must not claim catalog clients are tested.
 """
 
 from __future__ import annotations
 
 import os
 import time
+from pathlib import Path
 
 import pytest
 
 from wawona_appium.gates import catalog_entry, feature_state, platform_name
+from wawona_appium.screenshot_evidence import (
+    publish_gallery,
+    require_client_screenshot,
+    write_gallery_index,
+)
 from wawona_appium.wayland_guest import launch_client, wait_for_socket
 
 pytestmark = [pytest.mark.catalog, pytest.mark.wayland]
+
+COMPOSITORS = [
+    "weston",
+    "niri",
+    "swaywm",
+    "mangowm",
+    "hyprland",
+    "cosmic_de",
+    "phosh_de",
+    "kde_plasma_de",
+    "kde_plasma_mobile_de",
+    "gnome_de",
+]
+APPLICATIONS = [
+    "weston_terminal",
+    "weston_simple_shm",
+    "foot",
+    "ghostty_terminal",
+    "konsole",
+    "firefox_wayland",
+    "thunar",
+    "dolphin",
+]
 
 
 def _require_catalog_platform():
@@ -29,21 +61,38 @@ def _require_catalog_platform():
         pytest.skip(f"catalog_clients unset on {name}")
 
 
+def _artifact_root(artifacts: Path) -> Path:
+    # Prefer suite-wide gallery so CI uploads one folder of proof.
+    env = os.environ.get("WAWONA_APPIUM_ARTIFACTS")
+    if env:
+        return Path(env)
+    return artifacts.parent if artifacts.name else artifacts
+
+
 def _launch_and_assert(client_id: str, kind: str, machines, compositor, artifacts):
     _require_catalog_platform()
     entry = catalog_entry(kind, client_id)
     if entry.get("status") != "available":
-        pytest.skip(entry.get("reason", f"{client_id} not available"))
+        pytest.fail(
+            f"{client_id} must be an available Wayland guest in matrix.toml "
+            f"(got {entry!r}). Do not skip-stub catalog clients."
+        )
 
     if os.environ.get("WAWONA_APPIUM_DRY") == "1":
-        pytest.skip("WAWONA_APPIUM_DRY=1: guest launch skipped")
+        pytest.fail(
+            f"WAWONA_APPIUM_DRY=1 cannot prove {client_id}. "
+            "Unset DRY, start Wawona (wayland-0), launch the guest, "
+            "and capture a machine screenshot."
+        )
 
     try:
         wait_for_socket(timeout=20)
     except FileNotFoundError as exc:
-        pytest.skip(f"host compositor not up: {exc}")
+        pytest.fail(
+            f"host compositor not up for {client_id}: {exc}. "
+            "Start Wawona before claiming catalog clients are tested."
+        )
 
-    # Prefer the guest backend declared on the catalog row when env unset.
     guest = entry.get("guest")
     if guest and not os.environ.get("WAWONA_WAYLAND_GUEST"):
         os.environ["WAWONA_WAYLAND_GUEST"] = str(guest)
@@ -59,11 +108,14 @@ def _launch_and_assert(client_id: str, kind: str, machines, compositor, artifact
             f"(rc={result.returncode}): {(result.stderr or result.stdout)[-800:]}"
         )
 
-    # Host UI: Focus / compositor surface must show the client.
-    time.sleep(2.0)
+    # Let the client paint before Focus / screenshot.
+    settle = float(os.environ.get("WAWONA_CATALOG_SETTLE_SEC", "4"))
+    time.sleep(settle)
     if machines.exists(machines.FOCUS):
         machines.tap(machines.FOCUS)
-    deadline = time.time() + 60
+        time.sleep(1.0)
+
+    deadline = time.time() + 90
     while time.time() < deadline:
         if compositor.exists(compositor.SURFACE):
             break
@@ -73,40 +125,42 @@ def _launch_and_assert(client_id: str, kind: str, machines, compositor, artifact
     )
     compositor.wait_surface()
     compositor.tap_surface()
-    machines.screenshot(str(artifacts / f"wayland-{client_id}.png"))
+
+    shot = artifacts / f"wayland-{client_id}.png"
+    # Prefer the compositor surface element (client pixels), not whole desktop.
+    try:
+        compositor.screenshot_surface(str(shot))
+    except Exception:
+        machines.screenshot(str(shot))
+    require_client_screenshot(shot, client_id)
+    gallery_root = _artifact_root(artifacts)
+    published = publish_gallery(shot, gallery_root, client_id)
+    require_client_screenshot(published, client_id)
 
 
-@pytest.mark.parametrize(
-    "name",
-    [
-        "weston",
-        "niri",
-        "swaywm",
-        "mangowm",
-        "hyprland",
-        "cosmic_de",
-        "phosh_de",
-        "kde_plasma_de",
-        "kde_plasma_mobile_de",
-        "gnome_de",
-    ],
-)
+@pytest.fixture(scope="module", autouse=True)
+def _catalog_gallery_index(artifacts_module_root):
+    yield
+    clients = COMPOSITORS + APPLICATIONS
+    write_gallery_index(artifacts_module_root, clients)
+
+
+@pytest.fixture(scope="module")
+def artifacts_module_root():
+    env = os.environ.get("WAWONA_APPIUM_ARTIFACTS")
+    if env:
+        root = Path(env)
+    else:
+        root = Path(".agent-device/test-artifacts/appium")
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+@pytest.mark.parametrize("name", COMPOSITORS)
 def test_catalog_compositor_wayland(name, machines, compositor, artifacts):
     _launch_and_assert(name, "compositors", machines, compositor, artifacts)
 
 
-@pytest.mark.parametrize(
-    "name",
-    [
-        "weston_terminal",
-        "weston_simple_shm",
-        "foot",
-        "ghostty_terminal",
-        "konsole",
-        "firefox_wayland",
-        "thunar",
-        "dolphin",
-    ],
-)
+@pytest.mark.parametrize("name", APPLICATIONS)
 def test_catalog_application_wayland(name, machines, compositor, artifacts):
     _launch_and_assert(name, "applications", machines, compositor, artifacts)

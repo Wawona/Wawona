@@ -24,6 +24,17 @@ class CompositorPage(BasePage):
     def tap_surface(self) -> None:
         self.tap(self.SURFACE)
 
+    def screenshot_surface(self, path: str) -> None:
+        """Capture the compositor surface element, not the whole desktop."""
+        el = self.wait_visible(self.SURFACE)
+        # Appium element screenshot when supported; else crop via full shot.
+        try:
+            el.screenshot(path)
+            return
+        except Exception:
+            pass
+        self.screenshot(path)
+
     def wait_toolbar(self) -> None:
         self.wait_visible(self.TOOLBAR)
 
