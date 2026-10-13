@@ -163,6 +163,17 @@ fun ModifierAccessoryBar(
     onBrightnessBoost: () -> Unit = {},
     onAiAgent: () -> Unit = {},
     onVoiceAgent: () -> Unit = {},
+    /** Printable / sequence text. Default: Wayland TI commit. Terminal overrides. */
+    onCommitText: (String) -> Unit = { WawonaNative.nativeCommitText(it) },
+    /** Linux keycode inject. Default: compositor seat. Terminal may remap. */
+    onInjectKey: (keycode: Int, pressed: Boolean, timestamp: Int) -> Unit =
+        { keycode, pressed, timestamp ->
+            WawonaNative.nativeInjectKey(keycode, pressed, timestamp)
+        },
+    onInjectModifiers: (mods: Int, group: Int, locked: Int, latched: Int) -> Unit =
+        { mods, group, locked, latched ->
+            WawonaNative.nativeInjectModifiers(mods, group, locked, latched)
+        },
 ) {
     var pressTimestamp by remember { mutableStateOf(0) }
 
@@ -217,37 +228,37 @@ fun ModifierAccessoryBar(
         var mods = 0
         if (ModifierState.shiftActive) {
             mods = mods or XkbMod.SHIFT
-            WawonaNative.nativeInjectKey(LinuxKey.LEFTSHIFT, true, ts)
+            onInjectKey(LinuxKey.LEFTSHIFT, true, ts)
         }
         if (ModifierState.ctrlActive) {
             mods = mods or XkbMod.CTRL
-            WawonaNative.nativeInjectKey(LinuxKey.LEFTCTRL, true, ts)
+            onInjectKey(LinuxKey.LEFTCTRL, true, ts)
         }
         if (ModifierState.altActive) {
             mods = mods or XkbMod.ALT
-            WawonaNative.nativeInjectKey(LinuxKey.LEFTALT, true, ts)
+            onInjectKey(LinuxKey.LEFTALT, true, ts)
         }
         if (ModifierState.superActive) {
             mods = mods or XkbMod.LOGO
-            WawonaNative.nativeInjectKey(LinuxKey.LEFTMETA, true, ts)
+            onInjectKey(LinuxKey.LEFTMETA, true, ts)
         }
         if (mods != 0) {
-            WawonaNative.nativeInjectModifiers(mods, 0, 0, 0)
+            onInjectModifiers(mods, 0, 0, 0)
         }
-        WawonaNative.nativeInjectKey(keycode, true, ts)
-        WawonaNative.nativeInjectKey(keycode, false, ts)
-        if (ModifierState.shiftActive) WawonaNative.nativeInjectKey(LinuxKey.LEFTSHIFT, false, ts)
-        if (ModifierState.ctrlActive) WawonaNative.nativeInjectKey(LinuxKey.LEFTCTRL, false, ts)
-        if (ModifierState.altActive) WawonaNative.nativeInjectKey(LinuxKey.LEFTALT, false, ts)
-        if (ModifierState.superActive) WawonaNative.nativeInjectKey(LinuxKey.LEFTMETA, false, ts)
-        if (mods != 0) WawonaNative.nativeInjectModifiers(0, 0, 0, 0)
+        onInjectKey(keycode, true, ts)
+        onInjectKey(keycode, false, ts)
+        if (ModifierState.shiftActive) onInjectKey(LinuxKey.LEFTSHIFT, false, ts)
+        if (ModifierState.ctrlActive) onInjectKey(LinuxKey.LEFTCTRL, false, ts)
+        if (ModifierState.altActive) onInjectKey(LinuxKey.LEFTALT, false, ts)
+        if (ModifierState.superActive) onInjectKey(LinuxKey.LEFTMETA, false, ts)
+        if (mods != 0) onInjectModifiers(0, 0, 0, 0)
         ModifierState.clearStickyModifiers()
     }
 
     fun sendBuiltInKey(id: String, spec: ToolbarKeySpec) {
         val builtIn = ToolbarCatalog.pressBuiltInValue(id)
         if (!builtIn.isNullOrEmpty() && id !in INJECT_KEY_IDS) {
-            WawonaNative.nativeCommitText(builtIn)
+            onCommitText(builtIn)
             ModifierState.clearStickyModifiers()
             return
         }
@@ -329,7 +340,7 @@ fun ModifierAccessoryBar(
         fun pressId(id: String) {
             val custom = layout.custom(id)
             if (custom != null) {
-                WawonaNative.nativeCommitText(custom.text)
+                onCommitText(custom.text)
                 return
             }
             val spec = ToolbarCatalog.spec(id)
@@ -390,7 +401,7 @@ fun ModifierAccessoryBar(
                         } else {
                             null
                         }
-                        if (!text.isNullOrEmpty()) WawonaNative.nativeCommitText(text)
+                        if (!text.isNullOrEmpty()) onCommitText(text)
                     }
                     "tabSwitcher" -> onTabSwitcher()
                     "appSettings" -> onAppSettings()

@@ -72,7 +72,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
@@ -85,13 +84,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Surface
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
@@ -378,12 +370,10 @@ fun WawonaApp(
         )
     }
     var isWaypipeRunning by remember { mutableStateOf(false) }
-    /* Startup log overlay. */
-    var showStartupLog by remember { mutableStateOf(false) }
-    var startupLogClientLabel by remember { mutableStateOf("") }
-    val startupLogLines = remember { mutableStateOf(listOf<String>()) }
+    /* Wawona Terminal is the Start UI (replaces StartupLog overlay). */
     var showGuestConsole by remember { mutableStateOf(false) }
-    var guestConsoleText by remember { mutableStateOf("Guest console\n") }
+    var guestConsoleText by remember { mutableStateOf("Wawona Terminal\n") }
+    var guestConsoleTeeLogs by remember { mutableStateOf(false) }
     var windowTitle by remember { mutableStateOf("") }
     val clipboardManager = remember {
         context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -540,27 +530,48 @@ fun WawonaApp(
         showSessionCloseDialog = false
     }
 
-    /* Collect WLog sink lines into the startup log list while overlay is shown. */
-    LaunchedEffect(showStartupLog) {
-        if (showStartupLog) {
-            startupLogLines.value = listOf()
-            WLog.enableSink()
+    /* Tee host WLog + waypipe stderr into Wawona Terminal while Start is live. */
+    LaunchedEffect(showGuestConsole, guestConsoleTeeLogs) {
+        if (!showGuestConsole || !guestConsoleTeeLogs) {
+            WLog.disableSink()
+            return@LaunchedEffect
+        }
+        WLog.enableSink()
+        try {
             WLog.sinkFlow.collectLatest { line ->
-                startupLogLines.value = startupLogLines.value + line
+                guestConsoleText = guestConsoleText + line + "\n"
             }
-        } else {
+        } finally {
             WLog.disableSink()
         }
     }
 
-    /* Auto-dismiss startup log after a grace period once logs stop flowing. */
-    LaunchedEffect(showStartupLog, startupLogLines.value.size) {
-        if (!showStartupLog) return@LaunchedEffect
-        /* Wait until there have been at least a few lines and then no new ones
-         * for 2 s, indicating the client has fully started. */
-        if (startupLogLines.value.size >= 3) {
-            delay(2_000)
-            if (showStartupLog) showStartupLog = false
+    LaunchedEffect(showGuestConsole, guestConsoleTeeLogs, isWaypipeRunning) {
+        if (!showGuestConsole || !guestConsoleTeeLogs) return@LaunchedEffect
+        val stderr = MachineStartCommand.waypipeStderrPath(context.cacheDir)
+        var offset = if (stderr.isFile) stderr.length() else 0L
+        while (showGuestConsole && guestConsoleTeeLogs) {
+            delay(400)
+            if (!stderr.isFile) continue
+            val len = stderr.length()
+            if (len > offset) {
+                try {
+                    val chunk = stderr.inputStream().use { input ->
+                        input.skip(offset)
+                        input.readBytes().toString(Charsets.UTF_8)
+                    }
+                    offset = len
+                    if (chunk.isNotEmpty()) {
+                        guestConsoleText = guestConsoleText + chunk
+                        if (!guestConsoleText.endsWith("\n")) {
+                            guestConsoleText += "\n"
+                        }
+                    }
+                } catch (_: Exception) {
+                }
+            } else if (len < offset) {
+                offset = 0L
+            }
         }
     }
 
@@ -593,7 +604,8 @@ fun WawonaApp(
             sessionOrchestrator.markDisconnected(activeId)
         }
         sessionOrchestrator.setActiveSession(null)
-        showStartupLog = false
+        showGuestConsole = false
+        guestConsoleTeeLogs = false
         showMachinesHome = true
     }
 
@@ -862,12 +874,20 @@ fun WawonaApp(
     }
 
     fun launchNativeMachine(profile: MachineProfile): Boolean {
+        val (kind, _) = NativeShellSession.from(profile)
         val bundled = NativeShellSession.migrateClientId(
             profile.runtimeOverrides.optString("bundledAppID", "").trim()
                 .ifBlank { profile.nativeLauncher }
         )
-        if (profile.type == MachineType.WASM || bundled == "wawona-wasm") {
+        if (profile.type == MachineType.WASM || bundled == "wawona-wasm" ||
+            kind == NativeShellKind.WASM
+        ) {
             return launchRelayWasm(context, profile)
+        }
+        if (kind == NativeShellKind.WAYPIPE ||
+            profile.runtimeOverrides.optBoolean("waypipeEnabled", false)
+        ) {
+            return launchWaypipe()
         }
         // Bundled Wayland clients (weston-terminal, niri, cubes, …) removed.
         // Native Shell Start is Wawona Terminal only (cli / wpm / SSH / waypipe).
@@ -926,23 +946,41 @@ fun WawonaApp(
             SessionActivityRegistry.reserve(targetSession, hostId)
             WawonaNative.nativeReserveNextHostWindow(hostId)
         }
-        fun wantsGuestConsole(profile: MachineProfile): Boolean {
-            return when (profile.type) {
-                MachineType.VM, MachineType.CONTAINER, MachineType.SSH_TERMINAL -> true
-                MachineType.NATIVE -> {
-                    val bundled = NativeShellSession.migrateClientId(
-                        profile.runtimeOverrides.optString("bundledAppID", "").trim()
-                            .ifBlank { profile.nativeLauncher }
-                    )
-                    bundled == "wawona-shell"
+        fun isInteractiveShell(profile: MachineProfile): Boolean {
+            if (profile.type != MachineType.NATIVE) return false
+            val (kind, _) = NativeShellSession.from(profile)
+            if (kind != NativeShellKind.TERMINAL) return false
+            val bundled = NativeShellSession.migrateClientId(
+                profile.runtimeOverrides.optString("bundledAppID", "").trim()
+                    .ifBlank { profile.nativeLauncher }
+            )
+            return bundled == "wawona-shell"
+        }
+
+        fun openStartTerminal(profile: MachineProfile, wasmPath: String? = null) {
+            val banner = MachineStartCommand.argvBanner(prefs, profile, wasmPath)
+            guestConsoleText = when {
+                isInteractiveShell(profile) &&
+                    !NativeShellSession.from(profile).second &&
+                    !profile.sshEnabled -> {
+                    banner +
+                        "Wawona Terminal\n" +
+                        "Native Shell session ready.\n" +
+                        "Interactive PTY is not wired on Android yet.\n" +
+                        "CLI launch output for other machine kinds streams here.\n"
                 }
-                else -> false
+                else -> banner
             }
+            guestConsoleTeeLogs = true
+            showGuestConsole = true
+            showMachinesHome = false
         }
 
         fun finishConnect(launched: Boolean) {
             if (launched) {
-                if (hostId != 0L && !wantsGuestConsole(profile)) {
+                // New Window still mounts the compositor host; Terminal stays
+                // front in this activity until the user closes it (Focus).
+                if (hostId != 0L) {
                     context.startActivity(
                         SessionActivity.createIntent(
                             context = context,
@@ -957,21 +995,10 @@ fun WawonaApp(
                     DesktopReplacement.isAppBridgeEnabled(prefs)) {
                     appScope.launch { AnowawSession.attach(context, prefs) }
                 }
-                if (wantsGuestConsole(profile)) {
-                    showGuestConsole = true
-                    showStartupLog = false
-                    showMachinesHome = false
-                } else {
-                    val label = when (profile.type) {
-                        MachineType.NATIVE, MachineType.WASM ->
-                            if (profile.type == MachineType.WASM) "wawona-wasm"
-                            else profile.nativeLauncher.ifBlank { "wawona-shell" }
-                        else -> profile.name.ifBlank { "Wayland client" }
-                    }
-                    startupLogClientLabel = label
-                    showStartupLog = true
-                    showMachinesHome = hostId != 0L
-                }
+                // Terminal already opened before launch; keep it (do not reset text).
+                showGuestConsole = true
+                guestConsoleTeeLogs = true
+                showMachinesHome = false
                 if (!hasRealExternalKeyboard(context.resources.configuration)) {
                     keyboardUiMode = KeyboardUiMode.ACCESSORY_ONLY
                 }
@@ -984,21 +1011,13 @@ fun WawonaApp(
                     targetSession,
                     "Launch unsupported or failed for ${profile.type.value}"
                 )
+                guestConsoleText = guestConsoleText +
+                    "error: launch unsupported or failed for ${profile.type.value}\n"
             }
         }
 
-        if (wantsGuestConsole(profile)) {
-            guestConsoleText = if (profile.type == MachineType.SSH_TERMINAL) {
-                "SSH session starting.\n"
-            } else {
-                "Wawona Terminal\n\n" +
-                    "Native Shell session ready.\n" +
-                    "Type is not wired to a live PTY on Android yet.\n" +
-                    "Use a Wayland client Machine for compositor paint.\n"
-            }
-            showGuestConsole = true
-            showMachinesHome = false
-        }
+        // Always present Wawona Terminal before / during launch (no StartupLog).
+        openStartTerminal(profile)
         if (profile.type == MachineType.VM || profile.type == MachineType.CONTAINER) {
             Thread {
                 val ok = try {
@@ -1048,6 +1067,7 @@ fun WawonaApp(
 
     fun disconnectMachine(profile: MachineProfile) {
         showGuestConsole = false
+        guestConsoleTeeLogs = false
         val session = sessionOrchestrator.sessions.firstOrNull {
             it.machineId == profile.id &&
                 (it.state == MachineSessionState.CONNECTED || it.state == MachineSessionState.CONNECTING)
@@ -1190,12 +1210,19 @@ fun WawonaApp(
         SessionExitSettings.resolvedResizeDisplayForVirtualKeyboard(prefs, activeProfile()) &&
             !hardwareKeyboardActive
     val inSessionUi = !showWelcome && !showMachinesHome
+    // Terminal Start and compositor Focus both host Toolbar Keys. Overlay must
+    // leave bottom room so the bar is not buried under GuestConsoleOverlay.
     val showAccessoryBar =
-        inSessionUi && !hardwareKeyboardActive && !keyboardUiMode.isPip()
+        (inSessionUi || showGuestConsole) &&
+            !hardwareKeyboardActive &&
+            !keyboardUiMode.isPip()
     val showKeyboardPipButton =
-        inSessionUi && !hardwareKeyboardActive && keyboardUiMode.isPip()
+        (inSessionUi || showGuestConsole) &&
+            !hardwareKeyboardActive &&
+            keyboardUiMode.isPip()
     // Accessory bar content is ~36dp keys + padding; keep in sync with ModifierAccessoryBar.
     val accessoryBarHeightDp = if (showAccessoryBar) 44.dp else 0.dp
+    val terminalRoutesToolbar = showGuestConsole
     val imeResizePx = if (resizeDisplayForVirtualKeyboard && imeVisible) imeBottom else 0
     val keyboardOverlapPx =
         if (resizeDisplayForVirtualKeyboard) {
@@ -1481,6 +1508,125 @@ fun WawonaApp(
                 )
             }
 
+            if (showKeyboardPipButton) {
+                BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                    val pipDocked = keyboardUiMode == KeyboardUiMode.PIP_DOCKED_LEFT ||
+                        keyboardUiMode == KeyboardUiMode.PIP_DOCKED_RIGHT
+                    val pipWidthDp = if (pipDocked) 30.dp else 56.dp
+                    val pipHeightDp = 42.dp
+                    val pipWidthPx = with(density) { pipWidthDp.toPx() }
+                    val pipHeightPx = with(density) { pipHeightDp.toPx() }
+                    val maxX = (constraints.maxWidth - pipWidthPx).coerceAtLeast(0f)
+                    val maxY = (constraints.maxHeight - pipHeightPx).coerceAtLeast(0f)
+                    val bottomInsetPx = maxOf(
+                        with(density) { 16.dp.toPx() },
+                        systemBarBottomPx.toFloat() + with(density) { 8.dp.toPx() }
+                    )
+                    val clampedYMax = (maxY - bottomInsetPx).coerceAtLeast(0f)
+                    pipButtonOffsetX = pipButtonOffsetX.coerceIn(
+                        if (keyboardUiMode == KeyboardUiMode.PIP_DOCKED_LEFT) {
+                            with(density) { (-14).dp.toPx() }
+                        } else {
+                            0f
+                        },
+                        if (keyboardUiMode == KeyboardUiMode.PIP_DOCKED_RIGHT) {
+                            (constraints.maxWidth - with(density) { 16.dp.toPx() }).coerceAtLeast(0f)
+                        } else {
+                            maxX
+                        }
+                    )
+                    pipButtonOffsetY = pipButtonOffsetY.coerceIn(0f, clampedYMax)
+
+                    TextButton(
+                        onClick = { keyboardUiMode = KeyboardUiMode.ACCESSORY_ONLY },
+                        modifier = Modifier
+                            .offset {
+                                IntOffset(
+                                    pipButtonOffsetX.roundToInt(),
+                                    pipButtonOffsetY.roundToInt()
+                                )
+                            }
+                            .pointerInput(maxX, clampedYMax) {
+                                detectDragGestures(
+                                    onDragStart = {
+                                        keyboardUiMode = KeyboardUiMode.PIP_FLOATING
+                                    },
+                                    onDrag = { change, dragAmount ->
+                                        change.consume()
+                                        pipButtonOffsetX =
+                                            (pipButtonOffsetX + dragAmount.x).coerceIn(0f, maxX)
+                                        pipButtonOffsetY =
+                                            (pipButtonOffsetY + dragAmount.y).coerceIn(0f, clampedYMax)
+                                    },
+                                    onDragEnd = {
+                                        val dockThreshold = with(density) { 28.dp.toPx() }
+                                        keyboardUiMode = when {
+                                            pipButtonOffsetX <= dockThreshold -> {
+                                                pipButtonOffsetX = with(density) { (-14).dp.toPx() }
+                                                KeyboardUiMode.PIP_DOCKED_LEFT
+                                            }
+                                            pipButtonOffsetX >= maxX - dockThreshold -> {
+                                                pipButtonOffsetX = (constraints.maxWidth - with(density) { 16.dp.toPx() })
+                                                    .coerceAtLeast(0f)
+                                                KeyboardUiMode.PIP_DOCKED_RIGHT
+                                            }
+                                            else -> KeyboardUiMode.PIP_FLOATING
+                                        }
+                                    }
+                                )
+                            }
+                            .background(
+                                MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.78f),
+                                RoundedCornerShape(24.dp)
+                            )
+                            .size(width = pipWidthDp, height = pipHeightDp)
+                    ) {
+                        Text(
+                            when (keyboardUiMode) {
+                                KeyboardUiMode.PIP_DOCKED_LEFT -> "›"
+                                KeyboardUiMode.PIP_DOCKED_RIGHT -> "‹"
+                                else -> "⌨"
+                            }
+                        )
+                    }
+                }
+            }
+
+            if (showGuestConsole) {
+                GuestConsoleOverlay(
+                    text = guestConsoleText,
+                    onDismiss = {
+                        showGuestConsole = false
+                        guestConsoleTeeLogs = false
+                        WLog.disableSink()
+                        // Done = Focus: reveal compositor (same as Focus on card).
+                        val activeId = MachineProfileStore.getActiveMachineId(prefs)
+                            ?: sessionOrchestrator.sessions
+                                .firstOrNull { it.state == MachineSessionState.CONNECTED }
+                                ?.machineId
+                        val profile = profiles.firstOrNull { it.id == activeId }
+                        if (profile != null) {
+                            focusMachine(profile)
+                        } else {
+                            showMachinesHome = false
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(
+                            bottom = if (showAccessoryBar) {
+                                accessoryBarHeightDp + when {
+                                    imeVisible -> with(density) { imeBottom.toDp() }
+                                    else -> systemBarBottomDp
+                                }
+                            } else {
+                                0.dp
+                            },
+                        ),
+                )
+            }
+
+            // Draw Toolbar Keys above Terminal overlay so Start + Focus share one bar.
             if (showAccessoryBar) {
                 val safeLeftDp = if (respectSafeArea) {
                     with(density) { WindowInsets.safeDrawing.getLeft(this, LayoutDirection.Ltr).toDp() }
@@ -1582,107 +1728,27 @@ fun WawonaApp(
                         WLog.i("TOOLBAR", "Voice agent (coming soon)")
                         Toast.makeText(context, "Voice agent: coming soon", Toast.LENGTH_SHORT).show()
                     },
-                )
-            }
-
-            if (showKeyboardPipButton) {
-                BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                    val pipDocked = keyboardUiMode == KeyboardUiMode.PIP_DOCKED_LEFT ||
-                        keyboardUiMode == KeyboardUiMode.PIP_DOCKED_RIGHT
-                    val pipWidthDp = if (pipDocked) 30.dp else 56.dp
-                    val pipHeightDp = 42.dp
-                    val pipWidthPx = with(density) { pipWidthDp.toPx() }
-                    val pipHeightPx = with(density) { pipHeightDp.toPx() }
-                    val maxX = (constraints.maxWidth - pipWidthPx).coerceAtLeast(0f)
-                    val maxY = (constraints.maxHeight - pipHeightPx).coerceAtLeast(0f)
-                    val bottomInsetPx = maxOf(
-                        with(density) { 16.dp.toPx() },
-                        systemBarBottomPx.toFloat() + with(density) { 8.dp.toPx() }
-                    )
-                    val clampedYMax = (maxY - bottomInsetPx).coerceAtLeast(0f)
-                    pipButtonOffsetX = pipButtonOffsetX.coerceIn(
-                        if (keyboardUiMode == KeyboardUiMode.PIP_DOCKED_LEFT) {
-                            with(density) { (-14).dp.toPx() }
+                    onCommitText = { text ->
+                        if (terminalRoutesToolbar) {
+                            guestConsoleText += text
                         } else {
-                            0f
-                        },
-                        if (keyboardUiMode == KeyboardUiMode.PIP_DOCKED_RIGHT) {
-                            (constraints.maxWidth - with(density) { 16.dp.toPx() }).coerceAtLeast(0f)
-                        } else {
-                            maxX
+                            WawonaNative.nativeCommitText(text)
                         }
-                    )
-                    pipButtonOffsetY = pipButtonOffsetY.coerceIn(0f, clampedYMax)
-
-                    TextButton(
-                        onClick = { keyboardUiMode = KeyboardUiMode.ACCESSORY_ONLY },
-                        modifier = Modifier
-                            .offset {
-                                IntOffset(
-                                    pipButtonOffsetX.roundToInt(),
-                                    pipButtonOffsetY.roundToInt()
-                                )
+                    },
+                    onInjectKey = { keycode, pressed, timestamp ->
+                        if (terminalRoutesToolbar) {
+                            if (pressed) {
+                                guestConsoleText += terminalEchoForLinuxKey(keycode)
                             }
-                            .pointerInput(maxX, clampedYMax) {
-                                detectDragGestures(
-                                    onDragStart = {
-                                        keyboardUiMode = KeyboardUiMode.PIP_FLOATING
-                                    },
-                                    onDrag = { change, dragAmount ->
-                                        change.consume()
-                                        pipButtonOffsetX =
-                                            (pipButtonOffsetX + dragAmount.x).coerceIn(0f, maxX)
-                                        pipButtonOffsetY =
-                                            (pipButtonOffsetY + dragAmount.y).coerceIn(0f, clampedYMax)
-                                    },
-                                    onDragEnd = {
-                                        val dockThreshold = with(density) { 28.dp.toPx() }
-                                        keyboardUiMode = when {
-                                            pipButtonOffsetX <= dockThreshold -> {
-                                                pipButtonOffsetX = with(density) { (-14).dp.toPx() }
-                                                KeyboardUiMode.PIP_DOCKED_LEFT
-                                            }
-                                            pipButtonOffsetX >= maxX - dockThreshold -> {
-                                                pipButtonOffsetX = (constraints.maxWidth - with(density) { 16.dp.toPx() })
-                                                    .coerceAtLeast(0f)
-                                                KeyboardUiMode.PIP_DOCKED_RIGHT
-                                            }
-                                            else -> KeyboardUiMode.PIP_FLOATING
-                                        }
-                                    }
-                                )
-                            }
-                            .background(
-                                MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.78f),
-                                RoundedCornerShape(24.dp)
-                            )
-                            .size(width = pipWidthDp, height = pipHeightDp)
-                    ) {
-                        Text(
-                            when (keyboardUiMode) {
-                                KeyboardUiMode.PIP_DOCKED_LEFT -> "›"
-                                KeyboardUiMode.PIP_DOCKED_RIGHT -> "‹"
-                                else -> "⌨"
-                            }
-                        )
-                    }
-                }
-            }
-
-            if (showGuestConsole) {
-                GuestConsoleOverlay(
-                    text = guestConsoleText,
-                    onDismiss = { showGuestConsole = false },
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
-
-            if (showStartupLog) {
-                StartupLogOverlay(
-                    clientLabel = startupLogClientLabel,
-                    lines = startupLogLines.value,
-                    onDismiss = { showStartupLog = false },
-                    modifier = Modifier.align(Alignment.Center)
+                        } else {
+                            WawonaNative.nativeInjectKey(keycode, pressed, timestamp)
+                        }
+                    },
+                    onInjectModifiers = { mods, group, locked, latched ->
+                        if (!terminalRoutesToolbar) {
+                            WawonaNative.nativeInjectModifiers(mods, group, locked, latched)
+                        }
+                    },
                 )
             }
 
@@ -1841,11 +1907,22 @@ fun WawonaApp(
     }
 }
 
+/** Echo Toolbar Keys into the log Terminal while Start covers the compositor. */
+private fun terminalEchoForLinuxKey(keycode: Int): String {
+    return when (keycode) {
+        LinuxKey.ENTER -> "\n"
+        LinuxKey.TAB -> "\t"
+        LinuxKey.ESC -> "\u001B"
+        LinuxKey.BACKSPACE -> "\u0008"
+        LinuxKey.LEFTCTRL, LinuxKey.LEFTSHIFT, LinuxKey.LEFTALT, LinuxKey.LEFTMETA -> ""
+        else -> ""
+    }
+}
+
 /**
- * Guest console for Android. Relay boot, SSH, and a native shell show
- * here until a Wayland client is on screen. ANSI color and bold come
- * from the shared Rust screen. The face is DejaVuSansM Nerd Font Mono.
- * HWUI presents the text on the GPU (Vulkan or OpenGL ES).
+ * Wawona Terminal for Android. Every machine Start presents this surface
+ * with the resolved `$ argv` banner and streamed CLI / host logs. Close
+ * reveals the compositor (Focus). No auto-dismiss on first frame.
  */
 @Composable
 private fun GuestConsoleOverlay(
@@ -1856,7 +1933,7 @@ private fun GuestConsoleOverlay(
     val context = LocalContext.current
     val family = remember(context) { nerdMonoFamily(context) }
     Surface(
-        modifier = modifier,
+        modifier = modifier.testTag(WawonaTestTags.TERMINAL_ROOT),
         color = Color.Black,
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -1866,8 +1943,11 @@ private fun GuestConsoleOverlay(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("Wawona Terminal", color = Color.White, fontFamily = family)
-                TextButton(onClick = onDismiss) {
-                    Text("Close", color = Color.White)
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.testTag(WawonaTestTags.TERMINAL_DONE),
+                ) {
+                    Text("Done", color = Color.White)
                 }
             }
             BoxWithConstraints(modifier = Modifier.weight(1f)) {
@@ -1922,117 +2002,3 @@ private fun terminalLines(raw: String, cols: Int, rows: Int): List<AnnotatedStri
     return wawonaTerminalLines(packed)
 }
 
-/**
- * Startup log overlay. Shown between "Run" and the first compositor frame.
- *
- * Displays a native scrollable text view (LazyColumn of log lines) with a
- * frosted-glass card.  The user can long-press to select and copy text.
- * Auto-dismissed by the caller when [showStartupLog] is set to false.
- */
-@Composable
-private fun StartupLogOverlay(
-    clientLabel: String,
-    lines: List<String>,
-    onDismiss: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val listState = rememberLazyListState()
-
-    /* Auto-scroll to the latest entry. */
-    LaunchedEffect(lines.size) {
-        if (lines.isNotEmpty()) {
-            listState.animateScrollToItem(lines.size - 1)
-        }
-    }
-
-    Surface(
-        modifier = modifier
-            .fillMaxWidth(0.92f)
-            .fillMaxSize(0.72f),
-        shape = RoundedCornerShape(16.dp),
-        color = Color(0xDD121212),
-        tonalElevation = 8.dp,
-        shadowElevation = 12.dp,
-    ) {
-        Column(modifier = Modifier.padding(0.dp)) {
-            /* Header */
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(
-                        modifier = Modifier
-                            .padding(end = 10.dp)
-                            .height(18.dp)
-                            .fillMaxWidth(0.05f),
-                        strokeWidth = 2.dp,
-                        color = Color(0xFF4CAF50),
-                    )
-                    Text(
-                        text = "Starting $clientLabel",
-                        style = TextStyle(
-                            color = Color.White,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold,
-                        ),
-                    )
-                }
-                TextButton(onClick = onDismiss) {
-                    Text("Done", color = Color(0xFF90CAF9), fontSize = 13.sp)
-                }
-            }
-
-            HorizontalDivider(color = Color(0x33FFFFFF), thickness = 0.5.dp)
-
-            /* Log lines. Selectable for copy */
-            SelectionContainer {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .background(Color(0xFF0A0A0A))
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                ) {
-                    items(lines) { line ->
-                        Text(
-                            text = line,
-                            style = TextStyle(
-                                color = Color(0xFF69FF74),
-                                fontSize = 11.5.sp,
-                                fontFamily = FontFamily.Monospace,
-                                lineHeight = 18.sp,
-                            ),
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-                    if (lines.isEmpty()) {
-                        item {
-                            Text(
-                                text = "Waiting for log output…",
-                                style = TextStyle(
-                                    color = Color(0xFF888888),
-                                    fontSize = 11.5.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                ),
-                            )
-                        }
-                    }
-                }
-            }
-
-            HorizontalDivider(color = Color(0x33FFFFFF), thickness = 0.5.dp)
-            Text(
-                text = "Long-press to select • auto-dismisses on first frame",
-                style = TextStyle(color = Color(0xFF666666), fontSize = 10.sp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-            )
-        }
-    }
-}

@@ -88,6 +88,20 @@ public enum SeatForwarder {
         _ height: UInt32
     )
 
+    @_silgen_name("WWNCoreTextInputCommit")
+    private static func WWNCoreTextInputCommit(
+        _ core: UnsafeMutableRawPointer?,
+        _ text: UnsafePointer<CChar>?
+    )
+
+    /// UTF-8 commit via `zwp_text_input_v3` (IME / Toolbar Keys printable).
+    public static func commitText(core: UnsafeMutableRawPointer?, text: String) {
+        guard !text.isEmpty else { return }
+        text.withCString { cstr in
+            WWNCoreTextInputCommit(core, cstr)
+        }
+    }
+
     public static func injectKey(
         core: UnsafeMutableRawPointer?,
         timeMs: UInt32,

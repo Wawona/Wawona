@@ -1,6 +1,9 @@
 #if os(iOS) || os(tvOS) || os(visionOS)
 import UIKit
 import QuartzCore
+#if os(iOS)
+import GameController
+#endif
 
 /// UIKit compositor surface. Replaces WWNCompositorView_ios.m.
 @objc(WWNCompositorView_ios)
@@ -48,6 +51,10 @@ public final class WWNCompositorView_ios: UIView, UITextInput {
 
     @objc public func activateKeyboard() {
         keyboardActive = true
+        #if os(iOS)
+        _ = ensureToolbarAccessory()
+        refreshHardwareKeyboardAccessoryMode()
+        #endif
         _ = becomeFirstResponder()
     }
 
@@ -73,6 +80,39 @@ public final class WWNCompositorView_ios: UIView, UITextInput {
     }
 
     public override var canBecomeFirstResponder: Bool { true }
+
+    #if os(iOS)
+    public override var inputAccessoryView: UIView? {
+        get { ensureToolbarAccessory() }
+        set { _ = newValue }
+    }
+
+    public override var inputView: UIView? {
+        get {
+            if toolbarAccessoryOnlyMode {
+                let blank = UIView(frame: .zero)
+                blank.backgroundColor = .clear
+                return blank
+            }
+            return nil
+        }
+        set { _ = newValue }
+    }
+
+    /// Hardware keyboard → accessory-only (hide OSK). Soft keyboard stays expanded.
+    private func refreshHardwareKeyboardAccessoryMode() {
+        let hardware = Self.isHardwareKeyboardLikelyConnected()
+        hardwareKeyboardActive = hardware
+        applyToolbarAccessoryOnlyMode(hardware)
+    }
+
+    private static func isHardwareKeyboardLikelyConnected() -> Bool {
+        if #available(iOS 14.0, *) {
+            return GCKeyboard.coalesced != nil
+        }
+        return false
+    }
+    #endif
 
     // Minimal UITextInput stubs so the class conforms.
     public var selectedTextRange: UITextRange? {

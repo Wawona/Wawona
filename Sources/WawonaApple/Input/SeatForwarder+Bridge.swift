@@ -90,8 +90,7 @@ extension SeatForwarder {
     }
 
     public static func insertText(core: UnsafeMutableRawPointer?, text: String) {
-        // Printable text goes through zwp_text_input_v3 on the Rust side when wired.
-        _ = (core, text)
+        commitText(core: core, text: text)
     }
 
     public static func deleteBackward(core: UnsafeMutableRawPointer?) {
