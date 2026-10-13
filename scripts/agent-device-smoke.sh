@@ -552,6 +552,7 @@ run_ios_darwin_cli() {
   stop_agent_device_daemons
 }
 
+run_ios_shell_cli() {
   # Sparse Device-gate replay: libssh2 CLI in PTY (ssh -V / ssh-keygen).
   # Prefer headless wwn-ssh matrix for routine CI; this proves dispatch in-app.
   echo "== iOS shell CLI: agent-device replay wawona-ios-shell-cli.ad =="

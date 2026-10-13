@@ -125,9 +125,9 @@ private val LocalOpenSettingsTextEditor =
 
 /**
  * Sole Global Settings host on Android Play / typical sideload.
- * App Info → Preferences opens this same dialog. Do not also ship a
- * SettingsPreferenceService Global Settings surface until OS inject is
- * product-usable for the shipping artifact (`wawona-global-settings-exclusive`).
+ * Full-screen host (iOS `WWNGlobalSettingsHostView` parity), not a modal sheet.
+ * Do not also ship a SettingsPreferenceService Global Settings surface
+ * (`wawona-global-settings-exclusive`).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -145,118 +145,176 @@ fun SettingsDialog(
     var choicePage by remember { mutableStateOf<SettingsChoiceSpec?>(null) }
     var textEditorPage by remember { mutableStateOf<SettingsTextEditorSpec?>(null) }
 
-    WawonaModalSheet(
-        onDismiss = { onApply(); onDismiss() },
-        title = textEditorPage?.title ?: choicePage?.title ?: "Wawona Settings",
-        defaultDetent = WawonaSheetDetent.Large,
-        scrollBehavior = WawonaSheetScrollBehavior.ExpandWithContent,
-        navigationIcon = {
-            if (textEditorPage != null) {
-                IconButton(onClick = { textEditorPage = null }) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                }
-            } else if (choicePage != null) {
-                IconButton(onClick = { choicePage = null }) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                }
-            } else if (!isWide && narrowDetailTab != null) {
-                IconButton(onClick = { narrowDetailTab = null }) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                }
-            }
-        },
-        actions = {
-            TextButton(
-                onClick = { onApply(); onDismiss() },
-                modifier = Modifier.testTag(WawonaTestTags.SETTINGS_DONE),
-            ) {
-                Text("Done")
-            }
-        },
-    ) { _ ->
-        CompositionLocalProvider(
-            LocalOpenSettingsChoice provides { spec ->
-                textEditorPage = null
-                choicePage = spec
-            },
-            LocalOpenSettingsTextEditor provides { spec ->
-                choicePage = null
-                textEditorPage = spec
-            },
-        ) {
-            if (textEditorPage != null) {
-                SettingsTextEditorPage(
-                    spec = textEditorPage!!,
-                    prefs = prefs,
-                    onDone = { textEditorPage = null },
-                )
-            } else if (choicePage != null) {
-                SettingsChoiceList(
-                    spec = choicePage!!,
-                    prefs = prefs,
-                    onPicked = { choicePage = null },
-                )
-            } else if (isWide) {
-            Row(Modifier.fillMaxSize().testTag(WawonaTestTags.SETTINGS_ROOT)) {
-                SettingsSidebarList(
-                    selected = selectedTab,
-                    onSelect = {
-                        selectedTab = it
-                        choicePage = null
-                        textEditorPage = null
-                    },
-                    modifier = Modifier.width(220.dp),
-                )
-                VerticalDivider()
-                SettingsSectionContent(
-                    tab = selectedTab,
-                    prefs = prefs,
-                    context = context,
-                    localIpAddress = localIpAddress,
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        } else {
-            val motion = MaterialTheme.motionScheme
-            androidx.compose.animation.AnimatedContent(
-                targetState = narrowDetailTab,
-                transitionSpec = {
-                    val slide = motion.defaultSpatialSpec<androidx.compose.ui.unit.IntOffset>()
-                    val fade = motion.defaultEffectsSpec<Float>()
-                    if (targetState != null) {
-                        (androidx.compose.animation.slideInHorizontally(slide) { width -> width } +
-                            androidx.compose.animation.fadeIn(fade)).togetherWith(
-                            androidx.compose.animation.slideOutHorizontally(slide) { width -> -width } +
-                                androidx.compose.animation.fadeOut(fade),
-                        )
-                    } else {
-                        (androidx.compose.animation.slideInHorizontally(slide) { width -> -width } +
-                            androidx.compose.animation.fadeIn(fade)).togetherWith(
-                            androidx.compose.animation.slideOutHorizontally(slide) { width -> width } +
-                                androidx.compose.animation.fadeOut(fade),
-                        )
-                    }
-                },
-                label = "SettingsNavigation",
-                modifier = Modifier.testTag(WawonaTestTags.SETTINGS_ROOT)
-            ) { currentTab ->
-                if (currentTab == null) {
-                    SettingsSidebarList(
-                        selected = null,
-                        onSelect = { narrowDetailTab = it },
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                } else {
-                    SettingsSectionContent(
-                        tab = currentTab,
-                        prefs = prefs,
-                        context = context,
-                        localIpAddress = localIpAddress,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-            }
+    fun finish() {
+        onApply()
+        onDismiss()
+    }
+
+    val title = textEditorPage?.title
+        ?: choicePage?.title
+        ?: narrowDetailTab?.label?.takeIf { !isWide }
+        ?: "Wawona Settings"
+
+    val canNavigateBack = textEditorPage != null ||
+        choicePage != null ||
+        (!isWide && narrowDetailTab != null)
+
+    androidx.activity.compose.BackHandler {
+        when {
+            textEditorPage != null -> textEditorPage = null
+            choicePage != null -> choicePage = null
+            !isWide && narrowDetailTab != null -> narrowDetailTab = null
+            else -> finish()
         }
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background,
+    ) {
+        Scaffold(
+            modifier = Modifier
+                .fillMaxSize()
+                .testTag(WawonaTestTags.SETTINGS_ROOT),
+            containerColor = MaterialTheme.colorScheme.background,
+            topBar = {
+                TopAppBar(
+                    title = {
+                        Text(
+                            title,
+                            maxLines = 1,
+                            style = MaterialTheme.typography.titleLarge,
+                        )
+                    },
+                    navigationIcon = {
+                        if (canNavigateBack) {
+                            IconButton(
+                                onClick = {
+                                    when {
+                                        textEditorPage != null -> textEditorPage = null
+                                        choicePage != null -> choicePage = null
+                                        else -> narrowDetailTab = null
+                                    }
+                                },
+                            ) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = "Back",
+                                )
+                            }
+                        } else {
+                            IconButton(onClick = { finish() }) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = "Close settings",
+                                )
+                            }
+                        }
+                    },
+                    actions = {
+                        TextButton(
+                            onClick = { finish() },
+                            modifier = Modifier.testTag(WawonaTestTags.SETTINGS_DONE),
+                        ) {
+                            Text("Done")
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+                        scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                    ),
+                )
+            },
+        ) { padding ->
+            CompositionLocalProvider(
+                LocalOpenSettingsChoice provides { spec ->
+                    textEditorPage = null
+                    choicePage = spec
+                },
+                LocalOpenSettingsTextEditor provides { spec ->
+                    choicePage = null
+                    textEditorPage = spec
+                },
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .padding(padding),
+                ) {
+                    if (textEditorPage != null) {
+                        SettingsTextEditorPage(
+                            spec = textEditorPage!!,
+                            prefs = prefs,
+                            onDone = { textEditorPage = null },
+                        )
+                    } else if (choicePage != null) {
+                        SettingsChoiceList(
+                            spec = choicePage!!,
+                            prefs = prefs,
+                            onPicked = { choicePage = null },
+                        )
+                    } else if (isWide) {
+                        Row(Modifier.fillMaxSize()) {
+                            SettingsSidebarList(
+                                selected = selectedTab,
+                                onSelect = {
+                                    selectedTab = it
+                                    choicePage = null
+                                    textEditorPage = null
+                                },
+                                modifier = Modifier.width(220.dp),
+                            )
+                            VerticalDivider()
+                            SettingsSectionContent(
+                                tab = selectedTab,
+                                prefs = prefs,
+                                context = context,
+                                localIpAddress = localIpAddress,
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                    } else {
+                        val motion = MaterialTheme.motionScheme
+                        androidx.compose.animation.AnimatedContent(
+                            targetState = narrowDetailTab,
+                            transitionSpec = {
+                                val slide = motion.defaultSpatialSpec<androidx.compose.ui.unit.IntOffset>()
+                                val fade = motion.defaultEffectsSpec<Float>()
+                                if (targetState != null) {
+                                    (androidx.compose.animation.slideInHorizontally(slide) { width -> width } +
+                                        androidx.compose.animation.fadeIn(fade)).togetherWith(
+                                        androidx.compose.animation.slideOutHorizontally(slide) { width -> -width } +
+                                            androidx.compose.animation.fadeOut(fade),
+                                    )
+                                } else {
+                                    (androidx.compose.animation.slideInHorizontally(slide) { width -> -width } +
+                                        androidx.compose.animation.fadeIn(fade)).togetherWith(
+                                        androidx.compose.animation.slideOutHorizontally(slide) { width -> width } +
+                                            androidx.compose.animation.fadeOut(fade),
+                                    )
+                                }
+                            },
+                            label = "SettingsNavigation",
+                        ) { currentTab ->
+                            if (currentTab == null) {
+                                SettingsSidebarList(
+                                    selected = null,
+                                    onSelect = { narrowDetailTab = it },
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            } else {
+                                SettingsSectionContent(
+                                    tab = currentTab,
+                                    prefs = prefs,
+                                    context = context,
+                                    localIpAddress = localIpAddress,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

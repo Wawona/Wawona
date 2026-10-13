@@ -2,8 +2,10 @@ package com.aspauldingcode.wawona
 
 import android.content.ClipboardManager
 import android.content.Context
+import android.widget.Toast
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -22,9 +24,12 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -113,7 +118,6 @@ object ModifierState {
         superLocked = false
     }
 
-    // Best-effort sync from native keyboard modifier stream.
     fun syncShiftFromNative(active: Boolean, locked: Boolean = false) {
         shiftActive = active || locked
         shiftLocked = locked
@@ -128,6 +132,8 @@ private object XkbMod {
 }
 
 private const val DOUBLE_TAP_THRESHOLD_MS = 400L
+
+private val INJECT_KEY_IDS = setOf("esc", "tab", "arrowUp", "arrowDown", "arrowLeft", "arrowRight")
 
 /** Terminal fallback only. Printable text is TI v3 (host-keymap-bridge). */
 fun controlToLinuxKeycode(ch: Char): LinuxKeyMapping? {
@@ -144,7 +150,19 @@ fun ModifierAccessoryBar(
     modifier: Modifier = Modifier,
     keyboardExpanded: Boolean,
     onToggleKeyboardExpanded: () -> Unit,
-    onCollapseToPipByDrag: () -> Unit
+    onCollapseToPipByDrag: () -> Unit,
+    onTabSwitcher: () -> Unit = {},
+    onAppSettings: () -> Unit = {},
+    onNewConnection: () -> Unit = {},
+    onToggleTabBar: () -> Unit = {},
+    onToggleFullScreen: () -> Unit = {},
+    onToggleMouseCapture: () -> Unit = {},
+    onClipboardManager: () -> Unit = {},
+    onWritingAssistance: (Int) -> Unit = {},
+    onCompose: () -> Unit = {},
+    onBrightnessBoost: () -> Unit = {},
+    onAiAgent: () -> Unit = {},
+    onVoiceAgent: () -> Unit = {},
 ) {
     var pressTimestamp by remember { mutableStateOf(0) }
 
@@ -226,12 +244,44 @@ fun ModifierAccessoryBar(
         ModifierState.clearStickyModifiers()
     }
 
+    fun sendBuiltInKey(id: String, spec: ToolbarKeySpec) {
+        val builtIn = ToolbarCatalog.pressBuiltInValue(id)
+        if (!builtIn.isNullOrEmpty() && id !in INJECT_KEY_IDS) {
+            WawonaNative.nativeCommitText(builtIn)
+            ModifierState.clearStickyModifiers()
+            return
+        }
+        when (spec.kind) {
+            ToolbarKeyKind.KEY -> sendAccessoryKey(spec.keycode)
+            ToolbarKeyKind.SHIFTED -> {
+                val wasShift = ModifierState.shiftActive
+                ModifierState.shiftActive = true
+                sendAccessoryKey(spec.keycode)
+                if (!wasShift && !ModifierState.shiftLocked) ModifierState.shiftActive = false
+            }
+            else -> Unit
+        }
+    }
+
     val context = LocalContext.current
-    val layout = remember { ToolbarLayoutStore(context.applicationContext) }
+    val configuration = LocalConfiguration.current
+    val isPad = configuration.screenWidthDp >= 600
+    val layout = remember {
+        ToolbarLayoutStore(context.applicationContext, if (isPad) "pad" else "phone")
+    }
     var showSettings by remember { mutableStateOf(false) }
     var arrowsOpen by remember { mutableStateOf(false) }
     var revealedDrawers by remember { mutableStateOf(if (layout.drawerOpenByDefault) 1 else 0) }
     var cycleIndex by remember { mutableStateOf(0) }
+    val writingPrefs = remember {
+        context.applicationContext.getSharedPreferences(PREFS_WRITING, Context.MODE_PRIVATE)
+    }
+    var writingMode by remember { mutableIntStateOf(writingPrefs.getInt("mode", 0)) }
+    fun writingLabel() = when (writingMode) {
+        1 -> "Aa·"
+        2 -> "Aa+"
+        else -> "Aa"
+    }
     val scheme = MaterialTheme.colorScheme
     val barBg = scheme.surfaceContainer
     val keyInactive = scheme.surfaceVariant
@@ -284,13 +334,7 @@ fun ModifierAccessoryBar(
             }
             val spec = ToolbarCatalog.spec(id)
             when (spec.kind) {
-                ToolbarKeyKind.KEY -> sendAccessoryKey(spec.keycode)
-                ToolbarKeyKind.SHIFTED -> {
-                    val wasShift = ModifierState.shiftActive
-                    ModifierState.shiftActive = true
-                    sendAccessoryKey(spec.keycode)
-                    if (!wasShift && !ModifierState.shiftLocked) ModifierState.shiftActive = false
-                }
+                ToolbarKeyKind.KEY, ToolbarKeyKind.SHIFTED -> sendBuiltInKey(id, spec)
                 ToolbarKeyKind.MOD -> when (spec.mod) {
                     "shift" -> handleModifierTap(
                         ModifierState.shiftActive, ModifierState.shiftLocked, lastModShiftTap,
@@ -316,8 +360,9 @@ fun ModifierAccessoryBar(
                         { ModifierState.superLocked = it },
                         { lastModSuperTap = it }
                     )
+                    else -> sendBuiltInKey(id, spec)
                 }
-                ToolbarKeyKind.ACTION -> when (id) {
+                ToolbarKeyKind.ACTION, ToolbarKeyKind.TOGGLE -> when (id) {
                     "dismiss" -> if (keyboardExpanded) onToggleKeyboardExpanded()
                     "toolbarSettings" -> showSettings = true
                     "arrowDrawerToggle" -> arrowsOpen = !arrowsOpen
@@ -347,6 +392,28 @@ fun ModifierAccessoryBar(
                         }
                         if (!text.isNullOrEmpty()) WawonaNative.nativeCommitText(text)
                     }
+                    "tabSwitcher" -> onTabSwitcher()
+                    "appSettings" -> onAppSettings()
+                    "newConnection" -> onNewConnection()
+                    "toggleTabBar" -> onToggleTabBar()
+                    "toggleFullScreen" -> onToggleFullScreen()
+                    "toggleMouseCapture" -> onToggleMouseCapture()
+                    "clipboardManager" -> onClipboardManager()
+                    "writingAssistance" -> {
+                        writingMode = (writingMode + 1) % 3
+                        writingPrefs.edit().putInt("mode", writingMode).apply()
+                        val label = when (writingMode) {
+                            1 -> "Basic"
+                            2 -> "Advanced"
+                            else -> "Off"
+                        }
+                        Toast.makeText(context, "Writing assistance: $label", Toast.LENGTH_SHORT).show()
+                        onWritingAssistance(writingMode)
+                    }
+                    "compose" -> onCompose()
+                    "brightnessBoost" -> onBrightnessBoost()
+                    "aiAgent" -> onAiAgent()
+                    "voiceAgent" -> onVoiceAgent()
                 }
             }
         }
@@ -363,50 +430,67 @@ fun ModifierAccessoryBar(
                 ToolbarKeyRow(
                     listOf("arrowLeft", "arrowDown", "arrowUp", "arrowRight"),
                     rowMod, keyInactive, keySticky, keyLocked, keyText, layout,
+                    labelFor = { id -> if (id == "writingAssistance") writingLabel() else null },
                 ) { pressId(it) }
             }
-            val drawerRows = if (layout.drawerToggleMode == "cycle" && revealedDrawers > 0) {
-                listOf(layout.drawers.getOrElse(cycleIndex) { emptyList() })
-            } else {
-                layout.drawers.take(revealedDrawers)
-            }
-            drawerRows.forEach { row ->
-                ToolbarKeyRow(row, rowMod, keyInactive, keySticky, keyLocked, keyText, layout) {
-                    pressId(it)
+            val density = LocalDensity.current
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                val imeWidthPx = with(density) { 48.dp.toPx() }
+                val horizontalPadPx = with(density) { 8.dp.toPx() }
+                val buttonWidthPx = with(density) { 55.dp.toPx() }
+                val availablePx = (constraints.maxWidth.toFloat() - imeWidthPx - horizontalPadPx)
+                    .coerceAtLeast(0f)
+                val effectiveDrawers = layout.effectiveDrawers(availablePx, buttonWidthPx)
+                val effectiveMain = layout.effectiveMain(availablePx, buttonWidthPx)
+                val drawerRows = if (layout.drawerToggleMode == "cycle" && revealedDrawers > 0) {
+                    listOf(effectiveDrawers.getOrElse(cycleIndex) { emptyList() })
+                } else {
+                    effectiveDrawers.take(revealedDrawers)
                 }
+                for (row in drawerRows) {
+                    ToolbarKeyRow(
+                        row, rowMod, keyInactive, keySticky, keyLocked, keyText, layout,
+                        labelFor = { id -> if (id == "writingAssistance") writingLabel() else null },
+                    ) {
+                        pressId(it)
+                    }
+                }
+                ToolbarKeyRow(
+                    effectiveMain, rowMod, keyInactive, keySticky, keyLocked, keyText, layout,
+                    labelFor = { id -> if (id == "writingAssistance") writingLabel() else null },
+                    trailing = {
+                        AccessoryKey(
+                            if (keyboardExpanded) "IME" else "IME",
+                            keyInactive,
+                            keyText,
+                            onClick = onToggleKeyboardExpanded,
+                            modifier = Modifier
+                                .width(48.dp)
+                                .pointerInput(keyboardExpanded) {
+                                    var dragDistanceY = 0f
+                                    detectDragGestures(
+                                        onDragStart = { dragDistanceY = 0f },
+                                        onDrag = { change, dragAmount ->
+                                            change.consume()
+                                            dragDistanceY += dragAmount.y
+                                        },
+                                        onDragEnd = {
+                                            if (!keyboardExpanded && abs(dragDistanceY) > 28f) {
+                                                onCollapseToPipByDrag()
+                                            }
+                                        },
+                                        onDragCancel = { dragDistanceY = 0f }
+                                    )
+                                },
+                        )
+                    },
+                ) { pressId(it) }
             }
-            ToolbarKeyRow(
-                layout.main, rowMod, keyInactive, keySticky, keyLocked, keyText, layout,
-                trailing = {
-                    AccessoryKey(
-                        if (keyboardExpanded) "IME" else "IME",
-                        keyInactive,
-                        keyText,
-                        onClick = onToggleKeyboardExpanded,
-                        modifier = Modifier
-                            .width(48.dp)
-                            .pointerInput(keyboardExpanded) {
-                                var dragDistanceY = 0f
-                                detectDragGestures(
-                                    onDragStart = { dragDistanceY = 0f },
-                                    onDrag = { change, dragAmount ->
-                                        change.consume()
-                                        dragDistanceY += dragAmount.y
-                                    },
-                                    onDragEnd = {
-                                        if (!keyboardExpanded && abs(dragDistanceY) > 28f) {
-                                            onCollapseToPipByDrag()
-                                        }
-                                    },
-                                    onDragCancel = { dragDistanceY = 0f }
-                                )
-                            },
-                    )
-                },
-            ) { pressId(it) }
         }
     }
 }
+
+private const val PREFS_WRITING = "wawona_toolbar_writing_assistance"
 
 @Composable
 private fun ToolbarKeyRow(
@@ -417,6 +501,7 @@ private fun ToolbarKeyRow(
     locked: Color,
     textColor: Color,
     layout: ToolbarLayoutStore,
+    labelFor: (String) -> String? = { null },
     trailing: (@Composable () -> Unit)? = null,
     onPress: (String) -> Unit,
 ) {
@@ -428,7 +513,7 @@ private fun ToolbarKeyRow(
         ids.forEach { id ->
             val custom = layout.custom(id)
             val spec = ToolbarCatalog.spec(id)
-            val label = custom?.label ?: spec.label
+            val label = labelFor(id) ?: custom?.label ?: spec.label
             val active = when (spec.mod) {
                 "shift" -> ModifierState.shiftActive
                 "ctrl" -> ModifierState.ctrlActive

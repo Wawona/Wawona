@@ -136,10 +136,34 @@ int fastfetch_main(int argc, char **argv) {
     return 1;
 }
 
-/* No phoon_main stub: wwn-phoon-rs (libphoon_rs.a) is lazy-linked on watchOS
- * (-lphoon_rs + -Wl,-u,_phoon_main; std dedupes against niri's force-load), so
- * the real phoon_main is always pulled. A weak stub here would satisfy the -u
- * and stop the archive member from being linked. */
+/* phoon is optional-software (repo.wawona.io deb/wasm), not in the product
+ * keep-set, so libphoon_rs.a is no longer on the watch link line and
+ * mobileDispatchLdflags no longer carries -Wl,-u,_phoon_main. Nothing can
+ * satisfy wawona-dispatch.o's reference, and Apple ld does not treat a weak
+ * declaration in a force-loaded object as allow-missing. Stub it. */
+__attribute__((weak))
+int phoon_main(int argc, char **argv) {
+    (void)argc; (void)argv;
+    return 127;
+}
+
+/* Nested-compositor re-entrancy probes that wawona-dispatch.o reads before
+ * starting weston or niri. Both compositors are optional-software; report
+ * "not running, not used" so dispatch takes its own fail-closed path. */
+__attribute__((weak))
+int wwn_weston_compositor_is_running(void) {
+    return 0;
+}
+
+__attribute__((weak))
+int wwn_niri_main_is_running(void) {
+    return 0;
+}
+
+__attribute__((weak))
+int wwn_niri_main_already_used(void) {
+    return 0;
+}
 
 __attribute__((weak))
 int fuzzel_main(int argc, char **argv) {

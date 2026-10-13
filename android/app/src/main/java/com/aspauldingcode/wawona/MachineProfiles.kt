@@ -17,23 +17,81 @@ enum class MachineType(val value: String) {
     VM("virtual_machine"),
     CONTAINER("container");
 
+    /** Add/Edit picker + card chip. Wasm / SSH / Waypipe fold under Native Shell. */
     val displayLabel: String
         get() = when (this) {
-            NATIVE -> "Native"
-            WASM -> "Wasm"
-            SSH_WAYPIPE -> "SSH + Waypipe"
-            SSH_TERMINAL -> "SSH Terminal"
+            NATIVE, WASM, SSH_WAYPIPE, SSH_TERMINAL -> "Native Shell"
             VM -> "Virtual Machine"
             CONTAINER -> "Container"
         }
+
+    /** Pivot storage type → UI type for the three-kind picker. */
+    fun selectablePivot(): MachineType = when (this) {
+        WASM, SSH_WAYPIPE, SSH_TERMINAL -> NATIVE
+        else -> this
+    }
 
     val isLocal: Boolean
         get() = this == NATIVE || this == WASM || this == VM || this == CONTAINER
 
     companion object {
+        /** Add/Edit Machine picker only. Session modes live under Native Shell. */
+        val selectableForUi: List<MachineType> = listOf(NATIVE, VM, CONTAINER)
+
         fun fromValue(value: String): MachineType =
             entries.firstOrNull { it.value == value } ?: NATIVE
     }
+}
+
+/** Native Shell session modes (not top-level machine types). */
+enum class NativeShellKind(val id: String, val label: String) {
+    TERMINAL("terminal", "Terminal"),
+    WAYLAND("wayland", "Wayland"),
+    WASM("wasm", "Wasm"),
+    WAYPIPE("waypipe", "Waypipe");
+
+    companion object {
+        fun fromId(id: String): NativeShellKind =
+            entries.firstOrNull { it.id == id } ?: TERMINAL
+    }
+}
+
+/** Map storage MachineType ↔ Native Shell Session (mirrors Linux / Swift). */
+object NativeShellSession {
+    fun from(profile: MachineProfile): Pair<NativeShellKind, Boolean> = when (profile.type) {
+        MachineType.WASM -> NativeShellKind.WASM to false
+        MachineType.SSH_TERMINAL -> NativeShellKind.TERMINAL to true
+        MachineType.SSH_WAYPIPE -> NativeShellKind.WAYPIPE to true
+        MachineType.NATIVE -> {
+            val bundled = profile.runtimeOverrides.optString("bundledAppID", "")
+                .ifBlank { profile.nativeLauncher }
+                .trim()
+            val waypipe = profile.runtimeOverrides.optBoolean("waypipeEnabled", false)
+            when {
+                waypipe && (bundled.isEmpty() || bundled == "wawona-shell") ->
+                    NativeShellKind.WAYPIPE to false
+                bundled == "wawona-wasm" -> NativeShellKind.WASM to false
+                bundled.isEmpty() || bundled == "wawona-shell" ->
+                    NativeShellKind.TERMINAL to false
+                else -> NativeShellKind.WAYLAND to false
+            }
+        }
+        MachineType.VM, MachineType.CONTAINER -> NativeShellKind.TERMINAL to false
+    }
+
+    fun storageType(kind: NativeShellKind, useSsh: Boolean): MachineType = when (kind) {
+        NativeShellKind.WASM -> MachineType.WASM
+        NativeShellKind.TERMINAL -> if (useSsh) MachineType.SSH_TERMINAL else MachineType.NATIVE
+        NativeShellKind.WAYPIPE -> if (useSsh) MachineType.SSH_WAYPIPE else MachineType.NATIVE
+        NativeShellKind.WAYLAND -> MachineType.NATIVE
+    }
+
+    fun resolvedBundledAppId(kind: NativeShellKind, selectedLauncher: String): String? =
+        when (kind) {
+            NativeShellKind.TERMINAL, NativeShellKind.WAYPIPE -> "wawona-shell"
+            NativeShellKind.WASM -> "wawona-wasm"
+            NativeShellKind.WAYLAND -> selectedLauncher.trim().ifEmpty { "weston-simple-shm" }
+        }
 }
 
 enum class MachineStatus {

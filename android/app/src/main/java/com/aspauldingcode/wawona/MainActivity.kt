@@ -423,6 +423,12 @@ fun WawonaApp(
     var showAppDrawer by remember { mutableStateOf(false) }
     val immersiveCompositorMode =
         !showWelcome && !showMachinesHome && sessionOrchestrator.activeSessionId != null
+    var toolbarSessionFullscreen by remember { mutableStateOf(true) }
+    var brightnessBoostActive by remember { mutableStateOf(false) }
+    var forceShowClientTabs by remember { mutableStateOf(false) }
+    var showTabSwitcher by remember { mutableStateOf(false) }
+    var showClipboardDialog by remember { mutableStateOf(false) }
+    var clipboardPreviewText by remember { mutableStateOf("") }
 
     var westonSimpleShmEnabled by remember {
         mutableStateOf(prefs.getBoolean("westonSimpleSHMEnabled", false))
@@ -691,11 +697,12 @@ fun WawonaApp(
         }
     }
 
-    DisposableEffect(immersiveCompositorMode) {
+    DisposableEffect(immersiveCompositorMode, toolbarSessionFullscreen) {
         val window = activity?.window
         val controller = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
         if (controller != null) {
-            if (immersiveCompositorMode) {
+            val hideBars = immersiveCompositorMode && toolbarSessionFullscreen
+            if (hideBars) {
                 controller.hide(WindowInsetsCompat.Type.systemBars())
                 controller.systemBarsBehavior =
                     WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
@@ -1482,6 +1489,16 @@ fun WawonaApp(
                     .testTag(WawonaTestTags.COMPOSITOR_SURFACE)
             )
 
+            if (brightnessBoostActive) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(safeAreaPadding)
+                        .padding(bottom = compositorBottomPadDp)
+                        .background(Color.White.copy(alpha = 0.18f)),
+                )
+            }
+
             if (desktopModeEnabled) {
                 Surface(
                     onClick = { showAppDrawer = true },
@@ -1507,7 +1524,7 @@ fun WawonaApp(
                 }
             }
 
-            if (inSessionUi && clientTabs.size > 1) {
+            if (inSessionUi && (clientTabs.size > 1 || forceShowClientTabs)) {
                 ClientSessionTabs(
                     tabs = clientTabs,
                     selectedId = selectedClientTabId,
@@ -1560,7 +1577,71 @@ fun WawonaApp(
                     },
                     onCollapseToPipByDrag = {
                         keyboardUiMode = KeyboardUiMode.PIP_FLOATING
-                    }
+                    },
+                    onTabSwitcher = {
+                        if (clientTabs.isNotEmpty()) {
+                            showTabSwitcher = true
+                        }
+                    },
+                    onAppSettings = { showSettingsDialog = true },
+                    onNewConnection = { showMachinesHome = true },
+                    onToggleTabBar = {
+                        forceShowClientTabs = !forceShowClientTabs
+                        Toast.makeText(
+                            context,
+                            if (forceShowClientTabs) "Tab bar shown" else "Tab bar auto",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    },
+                    onToggleFullScreen = {
+                        toolbarSessionFullscreen = !toolbarSessionFullscreen
+                        Toast.makeText(
+                            context,
+                            if (toolbarSessionFullscreen) "Full screen" else "System bars shown",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    },
+                    onToggleMouseCapture = {
+                        val touchpad = !prefs.getBoolean("touchpadMode", false)
+                        prefs.edit().putBoolean("touchpadMode", touchpad).apply()
+                        WawonaSettings.apply(prefs)
+                        Toast.makeText(
+                            context,
+                            if (touchpad) "Touchpad mode" else "Multi-Touch",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    },
+                    onClipboardManager = {
+                        val clip = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                        val data = clip?.primaryClip
+                        clipboardPreviewText = if (data != null && data.itemCount > 0) {
+                            data.getItemAt(0).coerceToText(context)?.toString().orEmpty()
+                        } else {
+                            ""
+                        }
+                        showClipboardDialog = true
+                    },
+                    onCompose = {
+                        keyboardUiMode = KeyboardUiMode.EXPANDED
+                        showNativeKeyboard()
+                        Toast.makeText(context, "Compose", Toast.LENGTH_SHORT).show()
+                    },
+                    onBrightnessBoost = {
+                        brightnessBoostActive = !brightnessBoostActive
+                        Toast.makeText(
+                            context,
+                            if (brightnessBoostActive) "Brightness boost on" else "Brightness boost off",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    },
+                    onAiAgent = {
+                        WLog.i("TOOLBAR", "AI agent (coming soon)")
+                        Toast.makeText(context, "AI agent: coming soon", Toast.LENGTH_SHORT).show()
+                    },
+                    onVoiceAgent = {
+                        WLog.i("TOOLBAR", "Voice agent (coming soon)")
+                        Toast.makeText(context, "Voice agent: coming soon", Toast.LENGTH_SHORT).show()
+                    },
                 )
             }
 
@@ -1675,6 +1756,69 @@ fun WawonaApp(
             onApply = {
                 WawonaSettings.apply(prefs)
             }
+        )
+    }
+
+    if (showTabSwitcher && clientTabs.isNotEmpty()) {
+        AlertDialog(
+            onDismissRequest = { showTabSwitcher = false },
+            title = { Text("Client tabs") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    clientTabs.forEach { tab ->
+                        TextButton(onClick = {
+                            selectedClientTabId = tab.id
+                            showTabSwitcher = false
+                            WLog.i("TABS", "switcher selected tab=${tab.id}")
+                        }) {
+                            Text(
+                                tab.title,
+                                fontWeight = if (tab.id == selectedClientTabId) {
+                                    FontWeight.Bold
+                                } else {
+                                    FontWeight.Normal
+                                },
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showTabSwitcher = false }) {
+                    Text("Close")
+                }
+            },
+        )
+    }
+
+    if (showClipboardDialog) {
+        AlertDialog(
+            onDismissRequest = { showClipboardDialog = false },
+            title = { Text("Clipboard") },
+            text = {
+                Text(
+                    if (clipboardPreviewText.isEmpty()) {
+                        "(empty)"
+                    } else {
+                        clipboardPreviewText
+                    },
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (clipboardPreviewText.isNotEmpty()) {
+                        WawonaNative.nativeCommitText(clipboardPreviewText)
+                    }
+                    showClipboardDialog = false
+                }) {
+                    Text("Paste")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClipboardDialog = false }) {
+                    Text("Close")
+                }
+            },
         )
     }
 

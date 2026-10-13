@@ -8,8 +8,9 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Phone toolbar document. Same stable ids as ToolbarKeys (`defaults` phone form).
- * Android persists the document in SharedPreferences. It does not invent a second catalog.
+ * Host port of ToolbarKeys (github.com/Wawona/ToolbarKeys). Same stable ids,
+ * layout version 14, phone/pad defaults, and press_built_in values as the crate.
+ * Android draws Compose slots; UniFFI is not linked on this NDK path yet.
  */
 data class ToolbarCustomKey(
     val id: String,
@@ -22,6 +23,7 @@ enum class ToolbarKeyKind {
     SHIFTED,
     MOD,
     ACTION,
+    TOGGLE,
 }
 
 data class ToolbarKeySpec(
@@ -33,6 +35,8 @@ data class ToolbarKeySpec(
 )
 
 object ToolbarCatalog {
+    const val LAYOUT_VERSION = 14
+
     val phoneMain = listOf(
         "dismiss", "tabSwitcher", "esc", "ctrl", "writingAssistance", "shift", "tab",
         "arrowDrawerToggle", "drawerToggle", "toolbarSettings",
@@ -46,6 +50,56 @@ object ToolbarCatalog {
         "toggleTabBar", "newConnection", "toggleMouseCapture", "aiAgent", "brightnessBoost",
         "clipboardManager", "appSettings",
     )
+    private val padExtra = listOf(
+        "alt", "cmd", "backtick", "dash", "slash", "singleQuote", "semicolon",
+        "leftBracket", "rightBracket",
+    )
+    val padMain = phoneMain + padExtra
+    val padDrawer = listOf(
+        "tilde", "caret", "underscore", "backslash", "pipe", "leftBrace", "rightBrace",
+        "lessThan", "greaterThan", "questionMark", "equals", "doubleQuote", "colon",
+        "leftParen", "rightParen", "atSign", "hash", "dollar", "percent", "ampersand",
+        "asterisk", "paste", "compose", "voiceAgent", "toggleFullScreen", "toggleTabBar",
+        "newConnection", "toggleMouseCapture", "aiAgent", "brightnessBoost", "clipboardManager",
+        "appSettings",
+    )
+
+    /** press_built_in values. Null means modifier/action (host handles). */
+    private val builtInValues: Map<String, String> = mapOf(
+        "tab" to "\t",
+        "arrowUp" to "\u001b[A",
+        "arrowDown" to "\u001b[B",
+        "arrowLeft" to "\u001b[D",
+        "arrowRight" to "\u001b[C",
+        "backtick" to "`",
+        "tilde" to "~",
+        "caret" to "^",
+        "underscore" to "_",
+        "backslash" to "\\",
+        "pipe" to "|",
+        "leftBracket" to "[",
+        "rightBracket" to "]",
+        "leftBrace" to "{",
+        "rightBrace" to "}",
+        "lessThan" to "<",
+        "greaterThan" to ">",
+        "slash" to "/",
+        "questionMark" to "?",
+        "dash" to "-",
+        "equals" to "=",
+        "singleQuote" to "'",
+        "doubleQuote" to "\"",
+        "semicolon" to ";",
+        "colon" to ":",
+        "leftParen" to "(",
+        "rightParen" to ")",
+        "atSign" to "@",
+        "hash" to "#",
+        "dollar" to "$",
+        "percent" to "%",
+        "ampersand" to "&",
+        "asterisk" to "*",
+    )
 
     private val specs = listOf(
         spec("dismiss", "Hide", ToolbarKeyKind.ACTION),
@@ -56,7 +110,7 @@ object ToolbarCatalog {
         spec("shift", "Shift", ToolbarKeyKind.MOD, mod = "shift"),
         spec("tab", "Tab", ToolbarKeyKind.KEY, LinuxKey.TAB),
         spec("arrowDrawerToggle", "Arrows", ToolbarKeyKind.ACTION),
-        spec("drawerToggle", "More", ToolbarKeyKind.ACTION),
+        spec("drawerToggle", "More", ToolbarKeyKind.TOGGLE),
         spec("toolbarSettings", "Gear", ToolbarKeyKind.ACTION),
         spec("alt", "Alt", ToolbarKeyKind.MOD, mod = "alt"),
         spec("cmd", "Cmd", ToolbarKeyKind.MOD, mod = "super"),
@@ -89,6 +143,15 @@ object ToolbarCatalog {
         spec("ampersand", "&", ToolbarKeyKind.SHIFTED, LinuxKey.KEY_7),
         spec("asterisk", "*", ToolbarKeyKind.SHIFTED, LinuxKey.KEY_8),
         spec("paste", "Paste", ToolbarKeyKind.ACTION),
+        spec("compose", "Compose", ToolbarKeyKind.ACTION),
+        spec("voiceAgent", "Voice", ToolbarKeyKind.ACTION),
+        spec("toggleFullScreen", "Full", ToolbarKeyKind.ACTION),
+        spec("toggleTabBar", "Tabs bar", ToolbarKeyKind.ACTION),
+        spec("newConnection", "New", ToolbarKeyKind.ACTION),
+        spec("toggleMouseCapture", "Mouse", ToolbarKeyKind.ACTION),
+        spec("aiAgent", "AI", ToolbarKeyKind.ACTION),
+        spec("brightnessBoost", "Bright", ToolbarKeyKind.ACTION),
+        spec("clipboardManager", "Clip", ToolbarKeyKind.ACTION),
         spec("appSettings", "App", ToolbarKeyKind.ACTION),
         spec("arrowUp", "Up", ToolbarKeyKind.KEY, LinuxKey.UP),
         spec("arrowDown", "Down", ToolbarKeyKind.KEY, LinuxKey.DOWN),
@@ -96,8 +159,22 @@ object ToolbarCatalog {
         spec("arrowRight", "Right", ToolbarKeyKind.KEY, LinuxKey.RIGHT),
     ).associateBy { it.id }
 
+    fun defaultMain(form: String): List<String> =
+        if (form == "pad") padMain else phoneMain
+
+    fun defaultDrawer(form: String): List<String> =
+        if (form == "pad") padDrawer else phoneDrawer
+
+    fun formForWidthDp(widthDp: Int): String = if (widthDp >= 600) "pad" else "phone"
+
     fun spec(id: String): ToolbarKeySpec =
         specs[id] ?: ToolbarKeySpec(id, id, ToolbarKeyKind.ACTION)
+
+    fun pressBuiltInValue(id: String): String? = builtInValues[id]
+
+    /** Symbol ids commit text via press_built_in; esc/tab/arrows stay key inject. */
+    fun isSymbolCommit(id: String): Boolean =
+        id in builtInValues && id !in setOf("tab", "arrowUp", "arrowDown", "arrowLeft", "arrowRight")
 
     private fun spec(
         id: String,
@@ -108,12 +185,21 @@ object ToolbarCatalog {
     ) = ToolbarKeySpec(id, label, kind, keycode, mod)
 }
 
-class ToolbarLayoutStore(context: Context) {
+class ToolbarLayoutStore(context: Context, formFactor: String? = null) {
     private val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    private val resolvedForm = formFactor ?: run {
+        val dm = context.resources.displayMetrics
+        val widthDp = (dm.widthPixels / dm.density).toInt()
+        ToolbarCatalog.formForWidthDp(widthDp)
+    }
 
-    var main by mutableStateOf(ToolbarCatalog.phoneMain)
+    var form by mutableStateOf(resolvedForm)
         private set
-    var drawers by mutableStateOf(listOf(ToolbarCatalog.phoneDrawer))
+    var version by mutableStateOf(ToolbarCatalog.LAYOUT_VERSION)
+        private set
+    var main by mutableStateOf(ToolbarCatalog.defaultMain(resolvedForm))
+        private set
+    var drawers by mutableStateOf(listOf(ToolbarCatalog.defaultDrawer(resolvedForm)))
         private set
     var hidden by mutableStateOf(emptyList<String>())
         private set
@@ -127,6 +213,48 @@ class ToolbarLayoutStore(context: Context) {
     init {
         load()
     }
+
+    /**
+     * Matches ToolbarStore::effective: pack main to width, overflow into drawer[0],
+     * keep drawerToggle on the main row when any drawer content exists.
+     */
+    private fun effectivePack(
+        availableWidthPx: Float,
+        buttonWidthPx: Float,
+    ): Pair<List<String>, List<List<String>>> {
+        val capacity = if (buttonWidthPx > 0f) {
+            (availableWidthPx / buttonWidthPx).toInt().coerceAtLeast(1)
+        } else {
+            main.size.coerceAtLeast(1)
+        }
+        val mainValid = main.filter { it !in hidden }
+        val visible = mainValid.take(capacity).toMutableList()
+        val overflow = mainValid.drop(capacity).toMutableList()
+        val drawerRows = drawers.map { row -> row.filter { it !in hidden } }.toMutableList()
+        if (drawerRows.isEmpty()) drawerRows.add(emptyList())
+        val anyDrawer = overflow.isNotEmpty() || drawerRows.any { it.isNotEmpty() }
+        val toggle = "drawerToggle"
+        if (anyDrawer && toggle !in visible && toggle !in hidden) {
+            overflow.removeAll { it == toggle }
+            if (visible.isNotEmpty()) {
+                val last = visible.removeAt(visible.lastIndex)
+                if (last != toggle) overflow.add(0, last)
+                visible.add(toggle)
+            } else {
+                visible.add(toggle)
+            }
+        } else {
+            overflow.removeAll { it == toggle }
+        }
+        drawerRows[0] = overflow + drawerRows[0]
+        return visible to drawerRows
+    }
+
+    fun effectiveMain(availableWidthPx: Float, buttonWidthPx: Float): List<String> =
+        effectivePack(availableWidthPx, buttonWidthPx).first
+
+    fun effectiveDrawers(availableWidthPx: Float, buttonWidthPx: Float): List<List<String>> =
+        effectivePack(availableWidthPx, buttonWidthPx).second
 
     fun hide(id: String) {
         if (id == "drawerToggle" || id == "toolbarSettings") return
@@ -207,12 +335,13 @@ class ToolbarLayoutStore(context: Context) {
     fun custom(id: String): ToolbarCustomKey? = customs.firstOrNull { it.id == id }
 
     fun reset() {
-        main = ToolbarCatalog.phoneMain
-        drawers = listOf(ToolbarCatalog.phoneDrawer)
+        main = ToolbarCatalog.defaultMain(form)
+        drawers = listOf(ToolbarCatalog.defaultDrawer(form))
         hidden = emptyList()
         customs = emptyList()
         drawerOpenByDefault = false
         drawerToggleMode = "stack"
+        version = ToolbarCatalog.LAYOUT_VERSION
         save()
     }
 
@@ -246,31 +375,54 @@ class ToolbarLayoutStore(context: Context) {
         } catch (_: Exception) {
             return
         }
-        main = json.optJSONArray("main")?.toStrings()?.ifEmpty { null } ?: ToolbarCatalog.phoneMain
+        val savedForm = json.optString("form", form).ifBlank { form }
+        val savedVersion = json.optInt("version", 0)
+        if (savedForm != form || savedVersion < ToolbarCatalog.LAYOUT_VERSION) {
+            // Form change or old document: adopt crate defaults for current form.
+            form = resolvedForm
+            version = ToolbarCatalog.LAYOUT_VERSION
+            main = ToolbarCatalog.defaultMain(form)
+            drawers = listOf(ToolbarCatalog.defaultDrawer(form))
+            hidden = json.optJSONArray("hidden")?.toStrings().orEmpty()
+            customs = parseCustoms(json.optJSONArray("customs"))
+            drawerOpenByDefault = json.optBoolean("drawerOpenByDefault", false)
+            drawerToggleMode = json.optString("drawerToggleMode", "stack")
+            save()
+            return
+        }
+        form = savedForm
+        version = savedVersion
+        main = json.optJSONArray("main")?.toStrings()?.ifEmpty { null }
+            ?: ToolbarCatalog.defaultMain(form)
         val drawerJson = json.optJSONArray("drawers")
         drawers = if (drawerJson == null) {
-            listOf(ToolbarCatalog.phoneDrawer)
+            listOf(ToolbarCatalog.defaultDrawer(form))
         } else {
             (0 until drawerJson.length()).map { i ->
                 drawerJson.optJSONArray(i)?.toStrings().orEmpty()
             }.ifEmpty { listOf(emptyList()) }
         }
         hidden = json.optJSONArray("hidden")?.toStrings().orEmpty()
-        customs = json.optJSONArray("customs")?.let { array ->
-            (0 until array.length()).mapNotNull { i ->
-                val item = array.optJSONObject(i) ?: return@mapNotNull null
-                val id = item.optString("id")
-                val label = item.optString("label")
-                val text = item.optString("text")
-                if (id.isEmpty() || label.isEmpty()) null else ToolbarCustomKey(id, label, text)
-            }
-        }.orEmpty()
+        customs = parseCustoms(json.optJSONArray("customs"))
         drawerOpenByDefault = json.optBoolean("drawerOpenByDefault", false)
         drawerToggleMode = json.optString("drawerToggleMode", "stack")
     }
 
+    private fun parseCustoms(array: JSONArray?): List<ToolbarCustomKey> {
+        if (array == null) return emptyList()
+        return (0 until array.length()).mapNotNull { i ->
+            val item = array.optJSONObject(i) ?: return@mapNotNull null
+            val id = item.optString("id")
+            val label = item.optString("label")
+            val text = item.optString("text")
+            if (id.isEmpty() || label.isEmpty()) null else ToolbarCustomKey(id, label, text)
+        }
+    }
+
     private fun save() {
         val json = JSONObject()
+        json.put("version", version)
+        json.put("form", form)
         json.put("main", JSONArray(main))
         json.put("drawers", JSONArray().apply {
             drawers.forEach { row -> put(JSONArray(row)) }

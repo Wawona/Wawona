@@ -2,6 +2,7 @@ package com.aspauldingcode.wawona
 
 import android.content.Context
 import android.os.Build
+import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SizeTransform
@@ -78,6 +79,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -127,6 +129,21 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.VerticalDivider
+import androidx.compose.material3.rememberDrawerState
+import androidx.compose.material.icons.automirrored.filled.Sort
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.outlined.PushPin
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import android.net.Uri
@@ -187,7 +204,7 @@ private fun writeStringOverride(overrides: JSONObject, key: String, value: Strin
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun MachineWelcomeScreen(
     profiles: List<MachineProfile>,
@@ -209,10 +226,103 @@ fun MachineWelcomeScreen(
     val listBottomPadding = 72.dp
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
 
-    val visibleProfiles = remember(profiles, searchQuery) {
-        MachineSearch.fuzzyFilter(profiles, searchQuery, MachineSearch::searchableText)
+    val catalogContext = LocalContext.current
+    val catalogPrefs = remember {
+        catalogContext.getSharedPreferences("wawona_prefs", Context.MODE_PRIVATE)
+    }
+    val tagStore = remember { MachineTagStore(catalogPrefs) }
+    var tags by remember { mutableStateOf(tagStore.loadTags()) }
+    var assignments by remember { mutableStateOf(tagStore.loadAssignments()) }
+    var pinnedIds by remember { mutableStateOf(MachineCatalogPrefs.loadPinned(catalogPrefs)) }
+    var sortKey by remember { mutableStateOf(MachineCatalogPrefs.loadSortKey(catalogPrefs)) }
+    var sortAscending by remember { mutableStateOf(MachineCatalogPrefs.loadSortAscending(catalogPrefs)) }
+    var navDest by remember { mutableStateOf<MachinesNavDest>(MachinesNavDest.Machines) }
+    var showCreateTag by remember { mutableStateOf(false) }
+    var editingTag by remember { mutableStateOf<MachineTag?>(null) }
+    val catalogTitle = remember(navDest, tags) {
+        when (val dest = navDest) {
+            is MachinesNavDest.Machines -> "Machine Configuration"
+            is MachinesNavDest.TabOverview -> "Tab Overview"
+            is MachinesNavDest.Tag -> tags.firstOrNull { it.id == dest.tagId }?.name ?: "Tag"
+        }
+    }
+    var sortMenuExpanded by remember { mutableStateOf(false) }
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val drawerScope = rememberCoroutineScope()
+    val isWide = LocalConfiguration.current.screenWidthDp >= 840
+
+    LaunchedEffect(profiles) {
+        assignments = tagStore.pruneAssignments(profiles.map { it.id }.toSet(), assignments)
+        val validPins = pinnedIds.filter { id -> profiles.any { it.id == id } }.toSet()
+        if (validPins != pinnedIds) {
+            pinnedIds = validPins
+            MachineCatalogPrefs.savePinned(catalogPrefs, validPins)
+        }
+    }
+    LaunchedEffect(tags, navDest) {
+        val dest = navDest
+        if (dest is MachinesNavDest.Tag && tags.none { it.id == dest.tagId }) {
+            navDest = MachinesNavDest.Machines
+        }
     }
 
+    val visibleProfiles = remember(
+        profiles, searchQuery, navDest, assignments, pinnedIds, sortKey, sortAscending,
+    ) {
+        val dest = navDest
+        val tagFiltered = if (dest is MachinesNavDest.Tag) {
+            profiles.filter { dest.tagId in assignments[it.id].orEmpty() }
+        } else {
+            profiles
+        }
+        val searched = MachineSearch.fuzzyFilter(tagFiltered, searchQuery, MachineSearch::searchableText)
+        if (searchQuery.isBlank()) {
+            MachineCatalogPrefs.ordered(searched, pinnedIds, sortKey, sortAscending)
+        } else {
+            // Keep fuzzy relevance order; only float pinned machines to the front.
+            searched.filter { it.id in pinnedIds } + searched.filter { it.id !in pinnedIds }
+        }
+    }
+
+    val sidebarContent: @Composable (onPicked: () -> Unit) -> Unit = { onPicked ->
+        MachinesConfigurationSidebar(
+            tags = tags,
+            selected = navDest,
+            onSelect = {
+                navDest = it
+                onPicked()
+            },
+            onCreateTag = {
+                onPicked()
+                showCreateTag = true
+            },
+            onEditTag = { tag ->
+                onPicked()
+                editingTag = tag
+            },
+            onDeleteTag = { tag ->
+                val (nextTags, nextAssignments) = tagStore.deleteTag(tag.id, tags, assignments)
+                tags = nextTags
+                assignments = nextAssignments
+                val dest = navDest
+                if (dest is MachinesNavDest.Tag && dest.tagId == tag.id) {
+                    navDest = MachinesNavDest.Machines
+                }
+            },
+        )
+    }
+
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        gesturesEnabled = !isWide,
+        drawerContent = {
+            if (!isWide) {
+                ModalDrawerSheet {
+                    sidebarContent { drawerScope.launch { drawerState.close() } }
+                }
+            }
+        },
+    ) {
     Scaffold(
         modifier = Modifier
             .nestedScroll(scrollBehavior.nestedScrollConnection)
@@ -241,7 +351,7 @@ fun MachineWelcomeScreen(
                         )
                     } else {
                         Text(
-                            "Machine Configuration",
+                            catalogTitle,
                             style = MaterialTheme.typography.titleLarge,
                         )
                     }
@@ -265,6 +375,10 @@ fun MachineWelcomeScreen(
                                 contentDescription = "Close search",
                             )
                         }
+                    } else if (!isWide) {
+                        IconButton(onClick = { drawerScope.launch { drawerState.open() } }) {
+                            Icon(Icons.Filled.Menu, contentDescription = "Open sidebar")
+                        }
                     }
                 },
                 actions = {
@@ -278,6 +392,47 @@ fun MachineWelcomeScreen(
                         IconButton(onClick = { searchExpanded = true }) {
                             Icon(Icons.Filled.Search, contentDescription = "Search machines")
                         }
+                        Box {
+                            IconButton(onClick = { sortMenuExpanded = true }) {
+                                Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "Sort machines")
+                            }
+                            DropdownMenu(
+                                expanded = sortMenuExpanded,
+                                onDismissRequest = { sortMenuExpanded = false },
+                            ) {
+                                MachineSortKey.entries.forEach { key ->
+                                    DropdownMenuItem(
+                                        text = { Text(key.label) },
+                                        trailingIcon = {
+                                            if (key == sortKey) {
+                                                Icon(Icons.Filled.Check, contentDescription = null)
+                                            }
+                                        },
+                                        onClick = {
+                                            sortKey = key
+                                            MachineCatalogPrefs.saveSort(catalogPrefs, key, sortAscending)
+                                            sortMenuExpanded = false
+                                        },
+                                    )
+                                }
+                                HorizontalDivider()
+                                listOf(true to "Ascending", false to "Descending").forEach { (asc, label) ->
+                                    DropdownMenuItem(
+                                        text = { Text(label) },
+                                        trailingIcon = {
+                                            if (asc == sortAscending) {
+                                                Icon(Icons.Filled.Check, contentDescription = null)
+                                            }
+                                        },
+                                        onClick = {
+                                            sortAscending = asc
+                                            MachineCatalogPrefs.saveSort(catalogPrefs, sortKey, asc)
+                                            sortMenuExpanded = false
+                                        },
+                                    )
+                                }
+                            }
+                        }
                         IconButton(
                             onClick = onOpenSettings,
                             modifier = Modifier.testTag(WawonaTestTags.MACHINES_SETTINGS),
@@ -289,30 +444,49 @@ fun MachineWelcomeScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = { creating = true },
-                modifier = Modifier.testTag(WawonaTestTags.MACHINES_ADD),
-                shape = MaterialTheme.shapes.large,
-                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                elevation = FloatingActionButtonDefaults.elevation(
-                    defaultElevation = 4.dp,
-                    pressedElevation = 6.dp,
-                ),
-            ) {
-                Icon(
-                    Icons.Filled.Add,
-                    contentDescription = "Add Machine",
-                )
+            if (navDest !is MachinesNavDest.TabOverview) {
+                FloatingActionButton(
+                    onClick = { creating = true },
+                    modifier = Modifier.testTag(WawonaTestTags.MACHINES_ADD),
+                    shape = MaterialTheme.shapes.large,
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    elevation = FloatingActionButtonDefaults.elevation(
+                        defaultElevation = 4.dp,
+                        pressedElevation = 6.dp,
+                    ),
+                ) {
+                    Icon(
+                        Icons.Filled.Add,
+                        contentDescription = "Add Machine",
+                    )
+                }
             }
         },
     ) { padding ->
         val motion = MaterialTheme.motionScheme
-        Box(
+        Row(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
         ) {
+        if (isWide) {
+            sidebarContent {}
+            VerticalDivider(Modifier.fillMaxHeight())
+        }
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight(),
+        ) {
+            if (navDest is MachinesNavDest.TabOverview) {
+                TabOverviewPlaceholder(
+                    profiles = profiles,
+                    activeMachineId = activeMachineId,
+                    machineStatusFor = machineStatusFor,
+                    onFocus = onFocus,
+                )
+            } else {
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(minSize = 280.dp),
                 modifier = Modifier.fillMaxSize(),
@@ -354,15 +528,8 @@ fun MachineWelcomeScreen(
                         }
                     }
                 } else {
-                    items(visibleProfiles, key = { it.id }) { profile ->
-                        AnimatedVisibility(
-                            visible = true,
-                            enter = fadeIn(animationSpec = motion.defaultEffectsSpec()) +
-                                scaleIn(
-                                    initialScale = 0.96f,
-                                    animationSpec = motion.defaultSpatialSpec(),
-                                ),
-                        ) {
+                    val renderCard: @Composable (MachineProfile) -> Unit = { profile ->
+                        MachineCardEntrance {
                             MachineGridCard(
                                 profile = profile,
                                 thumbnailRevision = thumbnailRevision,
@@ -373,10 +540,51 @@ fun MachineWelcomeScreen(
                                 onConnect = { onConnect(profile) },
                                 onFocus = { onFocus(profile) },
                                 onStop = { onStop(profile) },
+                                searchQuery = searchQuery,
+                                tags = tagStore.tagsFor(profile.id, tags, assignments),
+                                isPinned = profile.id in pinnedIds,
+                                allTags = tags,
+                                onTogglePin = {
+                                    if (profile.id !in pinnedIds &&
+                                        pinnedIds.size >= MachineCatalogPrefs.MAX_PINNED
+                                    ) {
+                                        Toast.makeText(
+                                            catalogContext,
+                                            "Pin limit reached (6)",
+                                            Toast.LENGTH_SHORT,
+                                        ).show()
+                                    } else {
+                                        pinnedIds = MachineCatalogPrefs.togglePin(
+                                            catalogPrefs,
+                                            profile.id,
+                                            pinnedIds,
+                                        )
+                                    }
+                                },
+                                onToggleTag = { tag ->
+                                    assignments = tagStore.toggleAssignment(tag.id, profile.id, assignments)
+                                },
                             )
                         }
                     }
+                    val pinnedVisible = visibleProfiles.filter { it.id in pinnedIds }
+                    val otherVisible = visibleProfiles.filter { it.id !in pinnedIds }
+                    if (pinnedVisible.isNotEmpty()) {
+                        item(key = "header-pinned", span = { GridItemSpan(maxLineSpan) }) {
+                            MachineSectionHeader("Pinned")
+                        }
+                        items(pinnedVisible, key = { it.id }) { profile -> renderCard(profile) }
+                    }
+                    if (otherVisible.isNotEmpty()) {
+                        if (pinnedVisible.isNotEmpty()) {
+                            item(key = "header-others", span = { GridItemSpan(maxLineSpan) }) {
+                                MachineSectionHeader("Machines")
+                            }
+                        }
+                        items(otherVisible, key = { it.id }) { profile -> renderCard(profile) }
+                    }
                 }
+            }
             }
 
             Box(
@@ -408,6 +616,42 @@ fun MachineWelcomeScreen(
                     ),
             )
         }
+        }
+    }
+    }
+
+    if (showCreateTag) {
+        TagEditorDialog(
+            onDismiss = { showCreateTag = false },
+            onSave = { name, colorHex ->
+                tags = tagStore.createTag(name, colorHex, tags)
+                showCreateTag = false
+            },
+        )
+    }
+
+    editingTag?.let { tag ->
+        TagEditorDialog(
+            initialTag = tag,
+            onDismiss = { editingTag = null },
+            onSave = { name, colorHex ->
+                tags = tagStore.updateTag(
+                    tag.copy(name = name.trim(), colorHex = colorHex),
+                    tags,
+                )
+                editingTag = null
+            },
+            onDelete = {
+                val (nextTags, nextAssignments) = tagStore.deleteTag(tag.id, tags, assignments)
+                tags = nextTags
+                assignments = nextAssignments
+                val dest = navDest
+                if (dest is MachinesNavDest.Tag && dest.tagId == tag.id) {
+                    navDest = MachinesNavDest.Machines
+                }
+                editingTag = null
+            },
+        )
     }
 
     if (creating || editorProfile != null) {
@@ -429,6 +673,109 @@ fun MachineWelcomeScreen(
 }
 
 @Composable
+private fun MachineCardEntrance(content: @Composable () -> Unit) {
+    val motion = MaterialTheme.motionScheme
+    AnimatedVisibility(
+        visible = true,
+        enter = fadeIn(animationSpec = motion.defaultEffectsSpec()) +
+            scaleIn(
+                initialScale = 0.96f,
+                animationSpec = motion.defaultSpatialSpec(),
+            ),
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun MachineSectionHeader(title: String) {
+    Text(
+        title,
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp),
+    )
+}
+
+@Composable
+private fun TagDot(tag: MachineTag, size: androidx.compose.ui.unit.Dp) {
+    Box(
+        Modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(MachineTagPalette.color(tag.colorHex)),
+    )
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun TagEditorDialog(
+    onDismiss: () -> Unit,
+    onSave: (name: String, colorHex: String) -> Unit,
+    initialTag: MachineTag? = null,
+    onDelete: (() -> Unit)? = null,
+) {
+    var name by remember(initialTag) { mutableStateOf(initialTag?.name ?: "") }
+    var colorHex by remember(initialTag) {
+        mutableStateOf(initialTag?.colorHex ?: MachineTagPalette.hexes[6])
+    }
+    val isEdit = initialTag != null
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (isEdit) "Edit Tag" else "New Tag") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    MachineTagPalette.hexes.forEach { hex ->
+                        val selected = hex == colorHex
+                        Box(
+                            Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(MachineTagPalette.color(hex))
+                                .border(
+                                    width = if (selected) 3.dp else 0.dp,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    shape = CircleShape,
+                                )
+                                .clickable { colorHex = hex },
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onSave(name, colorHex) },
+                enabled = name.isNotBlank(),
+            ) { Text(if (isEdit) "Save" else "Create") }
+        },
+        dismissButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (isEdit && onDelete != null) {
+                    TextButton(onClick = onDelete) { Text("Delete") }
+                }
+                TextButton(onClick = onDismiss) { Text("Cancel") }
+            }
+        },
+    )
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
 private fun MachineGridCard(
     profile: MachineProfile,
     thumbnailRevision: Int,
@@ -438,9 +785,16 @@ private fun MachineGridCard(
     onDelete: () -> Unit,
     onConnect: () -> Unit,
     onFocus: () -> Unit,
-    onStop: () -> Unit
+    onStop: () -> Unit,
+    searchQuery: String = "",
+    tags: List<MachineTag> = emptyList(),
+    isPinned: Boolean = false,
+    allTags: List<MachineTag> = emptyList(),
+    onTogglePin: () -> Unit = {},
+    onToggleTag: (MachineTag) -> Unit = {},
 ) {
     val context = LocalContext.current
+    var tagMenuExpanded by remember { mutableStateOf(false) }
     val thumbnailBitmap = remember(profile.id, thumbnailRevision) {
         MachineThumbnailStore.load(context, profile.id)
     }
@@ -473,8 +827,63 @@ private fun MachineGridCard(
                 profileName = profile.name,
                 subtitle = subtitle,
                 statusColor = statusColor,
-                thumbnailBitmap = thumbnailBitmap
+                thumbnailBitmap = thumbnailBitmap,
+                searchQuery = searchQuery,
             )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                FlowRow(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    tags.forEach { tag ->
+                        AssistChip(
+                            onClick = { onToggleTag(tag) },
+                            label = { Text(tag.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            leadingIcon = { TagDot(tag, 10.dp) },
+                        )
+                    }
+                }
+                Box {
+                    TextButton(onClick = { tagMenuExpanded = true }) { Text("Tags") }
+                    DropdownMenu(
+                        expanded = tagMenuExpanded,
+                        onDismissRequest = { tagMenuExpanded = false },
+                    ) {
+                        if (allTags.isEmpty()) {
+                            DropdownMenuItem(
+                                text = { Text("No tags. Create one from the sidebar.") },
+                                enabled = false,
+                                onClick = {},
+                            )
+                        } else {
+                            allTags.forEach { tag ->
+                                DropdownMenuItem(
+                                    text = { Text(tag.name) },
+                                    leadingIcon = { TagDot(tag, 12.dp) },
+                                    trailingIcon = {
+                                        if (tags.any { it.id == tag.id }) {
+                                            Icon(Icons.Filled.Check, contentDescription = null)
+                                        }
+                                    },
+                                    onClick = { onToggleTag(tag) },
+                                )
+                            }
+                        }
+                    }
+                }
+                IconButton(onClick = onTogglePin) {
+                    Icon(
+                        if (isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
+                        contentDescription = if (isPinned) "Unpin machine" else "Pin machine",
+                        tint = if (isPinned) scheme.primary else scheme.onSurfaceVariant,
+                    )
+                }
+            }
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -496,7 +905,7 @@ private fun MachineGridCard(
                 )
                 Spacer(Modifier.weight(1f))
                 StatusChip(
-                    machineScopeLabel(profile.type),
+                    machineScopeLabel(profile),
                     modifier = Modifier.weight(1f, fill = false),
                 )
                 StatusChip(
@@ -696,7 +1105,8 @@ private fun MachineCardBanner(
     profileName: String,
     subtitle: String,
     statusColor: Color,
-    thumbnailBitmap: android.graphics.Bitmap?
+    thumbnailBitmap: android.graphics.Bitmap?,
+    searchQuery: String = "",
 ) {
     val shape = MaterialTheme.shapes.large
     val scheme = MaterialTheme.colorScheme
@@ -747,8 +1157,25 @@ private fun MachineCardBanner(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(Modifier.weight(1f)) {
+                val displayName = profileName.ifBlank { "Unnamed Machine" }
+                val highlighted = remember(displayName, searchQuery) {
+                    buildAnnotatedString {
+                        highlightSearchSpans(displayName, searchQuery).forEach { (text, isMatch) ->
+                            if (isMatch) {
+                                withStyle(
+                                    SpanStyle(
+                                        background = Color.Yellow.copy(alpha = 0.65f),
+                                        color = Color.Black,
+                                    ),
+                                ) { append(text) }
+                            } else {
+                                append(text)
+                            }
+                        }
+                    }
+                }
                 Text(
-                    profileName.ifBlank { "Unnamed Machine" },
+                    highlighted,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = onMedia,
@@ -835,21 +1262,25 @@ private fun statusColorFor(status: MachineStatus): Color {
     }
 }
 
-private fun machineScopeLabel(type: MachineType): String = when (type) {
-    MachineType.NATIVE, MachineType.WASM, MachineType.VM, MachineType.CONTAINER -> "LOCAL"
-    MachineType.SSH_WAYPIPE, MachineType.SSH_TERMINAL -> "REMOTE"
+private fun machineScopeLabel(profile: MachineProfile): String =
+    when (profile.type.selectablePivot()) {
+        MachineType.NATIVE -> if (NativeShellSession.from(profile).second) "REMOTE" else "LOCAL"
+        else -> "LOCAL"
+    }
+
+private fun typeChipLabel(profile: MachineProfile): String =
+    when (profile.type.selectablePivot()) {
+        MachineType.NATIVE -> {
+            val (kind, useSsh) = NativeShellSession.from(profile)
+            val base = "NATIVE SHELL " + kind.label.uppercase()
+            if (useSsh) "$base + SSH" else base
+        }
+        MachineType.VM -> "VM"
+        MachineType.CONTAINER -> "CONTAINER"
+        else -> "NATIVE SHELL"
 }
 
-private fun typeChipLabel(profile: MachineProfile): String = when (profile.type) {
-    MachineType.NATIVE -> "NATIVE"
-    MachineType.WASM -> "WASM"
-    MachineType.SSH_WAYPIPE -> "SSH+WAYPIPE"
-    MachineType.SSH_TERMINAL -> "SSH TERMINAL"
-    MachineType.VM -> "VM"
-    MachineType.CONTAINER -> "CONTAINER"
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun MachineEditorSheet(
     title: String,
@@ -863,7 +1294,14 @@ private fun MachineEditorSheet(
     var showClientPicker by remember { mutableStateOf(false) }
 
     var name by remember { mutableStateOf(initial?.name ?: "") }
-    var type by remember { mutableStateOf(initial?.type ?: MachineType.NATIVE) }
+    val initialSession = remember(initial) {
+        initial?.let { NativeShellSession.from(it) } ?: (NativeShellKind.TERMINAL to false)
+    }
+    var uiType by remember {
+        mutableStateOf(initial?.type?.selectablePivot() ?: MachineType.NATIVE)
+    }
+    var shellKind by remember { mutableStateOf(initialSession.first) }
+    var useSsh by remember { mutableStateOf(initialSession.second) }
     var sshHost by remember { mutableStateOf(initial?.sshHost ?: "") }
     var sshPort by remember { mutableStateOf((initial?.sshPort ?: 22).toString()) }
     var sshUser by remember { mutableStateOf(initial?.sshUser ?: "") }
@@ -1051,7 +1489,12 @@ private fun MachineEditorSheet(
             sshPort.ifBlank { null },
             initial?.sshPort ?: 22
         )
-        val base = initial ?: MachineProfile(name = trimmedName, type = type)
+        val storageType = if (uiType == MachineType.NATIVE) {
+            NativeShellSession.storageType(shellKind, useSsh)
+        } else {
+            uiType
+        }
+        val base = initial ?: MachineProfile(name = trimmedName, type = storageType)
         val settingsOverrides = JSONObject(base.settingsOverrides.toString())
         writeBoolOverride(settingsOverrides, "machineThumbnailEnabledOverride", machineThumbnailEnabled, true)
         writeBoolOverride(settingsOverrides, "forceServerSideDecorations", forceSsd, prefs.getBoolean("forceServerSideDecorations", false))
@@ -1098,7 +1541,8 @@ private fun MachineEditorSheet(
         val withEnv = EnvironmentOverrides.withMachineEnv(base, machineEnvironment)
         val runtimeOverrides = JSONObject(withEnv.runtimeOverrides.toString())
         val trimmedWasm = wasmModulePath.trim()
-        if (type == MachineType.WASM) {
+        val nativeSession = uiType == MachineType.NATIVE
+        if (nativeSession && shellKind == NativeShellKind.WASM) {
             runtimeOverrides.put("bundledAppID", "wawona-wasm")
             val cmd = wasmCommand.trim().ifEmpty { WasmCatalog.DEFAULT_COMMAND }
             runtimeOverrides.put("wasmCommand", cmd)
@@ -1107,16 +1551,23 @@ private fun MachineEditorSheet(
             if (pkg.isNotEmpty()) runtimeOverrides.put("wasmPackage", pkg) else runtimeOverrides.remove("wasmPackage")
             if (trimmedWasm.isNotEmpty()) runtimeOverrides.put("wasmModulePath", trimmedWasm)
             else runtimeOverrides.remove("wasmModulePath")
-        } else if (nativeLauncher == "wawona-wasm" && trimmedWasm.isNotEmpty()) {
-            runtimeOverrides.put("wasmModulePath", trimmedWasm)
-            runtimeOverrides.put("bundledAppID", "wawona-wasm")
         } else {
             runtimeOverrides.remove("wasmModulePath")
+            if (nativeSession) {
+                NativeShellSession.resolvedBundledAppId(shellKind, nativeLauncher)?.let {
+                    runtimeOverrides.put("bundledAppID", it)
+                }
+                runtimeOverrides.put("waypipeEnabled", shellKind == NativeShellKind.WAYPIPE)
+            }
+        }
+        val resolvedLauncher = when {
+            !nativeSession -> nativeLauncher
+            else -> NativeShellSession.resolvedBundledAppId(shellKind, nativeLauncher) ?: nativeLauncher
         }
         onSave(
             base.copy(
                 name = trimmedName,
-                type = type,
+                type = storageType,
                 sshHost = sanitizedHostPort.host,
                 sshPort = sanitizedHostPort.port,
                 sshUser = sshUser.trim(),
@@ -1124,7 +1575,7 @@ private fun MachineEditorSheet(
                 sshAuthMethod = sshAuthMethod.trim().ifEmpty { "password" },
                 sshKeyPath = sshKeyPath.trim(),
                 sshKeyPassphrase = sshKeyPassphrase,
-                nativeLauncher = if (type == MachineType.WASM) "wawona-wasm" else nativeLauncher,
+                nativeLauncher = resolvedLauncher,
                 remoteCommand = remoteCommand.trim(),
                 settingsOverrides = settingsOverrides,
                 runtimeOverrides = runtimeOverrides,
@@ -1217,14 +1668,11 @@ private fun MachineEditorSheet(
                             modifier = Modifier.fillMaxWidth()
                         )
                         MachineTypeDropdown(
-                            selected = type,
+                            selected = uiType,
                             expanded = machineTypePickerExpanded,
                             onExpandedChange = { machineTypePickerExpanded = it },
                             onSelect = {
-                                type = it
-                                if (it == MachineType.WASM) {
-                                    nativeLauncher = "wawona-wasm"
-                                }
+                                uiType = it
                                 machineTypePickerExpanded = false
                             }
                         )
@@ -1234,7 +1682,40 @@ private fun MachineEditorSheet(
                         }
                     }
 
-                    if (type == MachineType.WASM) {
+                    if (uiType == MachineType.NATIVE) {
+                        EditorSectionCard(
+                            title = "Native Shell Session",
+                            subtitle = "Terminal, Wayland client, Wasm, or Waypipe. SSH is an option for Terminal and Waypipe."
+                        ) {
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                NativeShellKind.entries.forEach { kind ->
+                                    FilterChip(
+                                        selected = shellKind == kind,
+                                        onClick = {
+                                            shellKind = kind
+                                            if (kind == NativeShellKind.WAYLAND &&
+                                                (nativeLauncher == "wawona-wasm" || nativeLauncher == "wawona-shell")
+                                            ) {
+                                                nativeLauncher = "weston-simple-shm"
+                                            }
+                                            if (kind == NativeShellKind.WASM || kind == NativeShellKind.WAYLAND) {
+                                                useSsh = false
+                                            }
+                                        },
+                                        label = { Text(kind.label) },
+                                    )
+                                }
+                            }
+                            if (shellKind == NativeShellKind.TERMINAL || shellKind == NativeShellKind.WAYPIPE) {
+                                ToggleRow("Use SSH", useSsh) { useSsh = it }
+                            }
+                        }
+                    }
+
+                    if (uiType == MachineType.NATIVE && shellKind == NativeShellKind.WASM) {
                         EditorSectionCard(
                             title = "Wasm",
                             subtitle = "Same as native shell: wasm hello-wasi-gui. Pick a local file, search repo.wawona.io /wasm/v1, or type the command. Native still runs wasm from the shell."
@@ -1350,10 +1831,10 @@ private fun MachineEditorSheet(
                         }
                     }
 
-                    if (type == MachineType.NATIVE) {
+                    if (uiType == MachineType.NATIVE && shellKind == NativeShellKind.WAYLAND) {
                         EditorSectionCard(
                             title = "Wayland Client",
-                            subtitle = "Choose a bundled client on the local compositor socket. Custom commands belong under SSH Terminal (Remote Shell Command)."
+                            subtitle = "Choose a bundled client on the local compositor socket. Custom commands belong under the Terminal session."
                         ) {
                             Row(
                                 modifier = Modifier
@@ -1393,8 +1874,10 @@ private fun MachineEditorSheet(
                         }
                     }
 
-                    if (type == MachineType.SSH_WAYPIPE || type == MachineType.SSH_TERMINAL) {
-                        val isWaypipe = type == MachineType.SSH_WAYPIPE
+                    if (uiType == MachineType.NATIVE && useSsh &&
+                        (shellKind == NativeShellKind.TERMINAL || shellKind == NativeShellKind.WAYPIPE)
+                    ) {
+                        val isWaypipe = shellKind == NativeShellKind.WAYPIPE
                         EditorSectionCard(
                             title = if (isWaypipe) "SSH + Waypipe" else "SSH Connection",
                             subtitle = if (isWaypipe) {
@@ -1632,7 +2115,7 @@ private fun MachineEditorSheet(
                         }
                     }
 
-                    if (type == MachineType.VM) {
+                    if (uiType == MachineType.VM) {
                         EditorSectionCard(
                             title = "Virtual Machine",
                             subtitle = "Hypervisor is selected automatically for this platform."
@@ -1646,7 +2129,7 @@ private fun MachineEditorSheet(
                         }
                     }
 
-                    if (type == MachineType.CONTAINER) {
+                    if (uiType == MachineType.CONTAINER) {
                         EditorSectionCard(
                             title = "Container",
                             subtitle = "Container runtime is selected automatically for this platform."
@@ -1804,7 +2287,7 @@ private fun MachineTypeDropdown(
                 .menuAnchor()
         )
         DropdownMenu(expanded = expanded, onDismissRequest = { onExpandedChange(false) }) {
-            MachineType.entries.forEach { candidate ->
+            MachineType.selectableForUi.forEach { candidate ->
                 DropdownMenuItem(
                     text = { Text(candidate.displayLabel) },
                     onClick = { onSelect(candidate) }

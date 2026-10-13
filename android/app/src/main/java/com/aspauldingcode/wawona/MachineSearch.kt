@@ -67,7 +67,7 @@ object MachineSearch {
         profile.name,
         profile.sshHost,
         profile.sshUser,
-        scopeLabel(profile.type),
+        scopeLabel(profile),
         typeLabel(profile),
         subtitle(profile),
         summary(profile),
@@ -77,53 +77,81 @@ object MachineSearch {
         .joinToString(" ")
         .lowercase()
 
-    private fun scopeLabel(type: MachineType): String = when (type) {
-        MachineType.NATIVE, MachineType.WASM, MachineType.VM, MachineType.CONTAINER -> "LOCAL"
-        MachineType.SSH_WAYPIPE, MachineType.SSH_TERMINAL -> "REMOTE"
+    private fun scopeLabel(profile: MachineProfile): String {
+        val (kind, useSsh) = NativeShellSession.from(profile)
+        return when (profile.type.selectablePivot()) {
+            MachineType.VM, MachineType.CONTAINER -> "LOCAL"
+            else -> if (useSsh && (kind == NativeShellKind.TERMINAL || kind == NativeShellKind.WAYPIPE)) {
+                "REMOTE"
+            } else {
+                "LOCAL"
+            }
+        }
     }
 
-    private fun typeLabel(profile: MachineProfile): String = when (profile.type) {
-        MachineType.NATIVE -> "NATIVE"
-        MachineType.WASM -> "WASM"
-        MachineType.SSH_WAYPIPE -> "SSH+WAYPIPE"
-        MachineType.SSH_TERMINAL -> "SSH TERMINAL"
+    private fun typeLabel(profile: MachineProfile): String = when (profile.type.selectablePivot()) {
         MachineType.VM -> "VM"
         MachineType.CONTAINER -> "CONTAINER"
+        else -> "NATIVE SHELL"
     }
 
-    internal fun subtitle(profile: MachineProfile): String = when (profile.type) {
-        MachineType.NATIVE -> BundledClients.labelFor(profile.nativeLauncher)
-        MachineType.WASM -> profile.runtimeOverrides.optString("wasmCommand", "wasm hello-wasi-gui")
-            .ifBlank { "wasm hello-wasi-gui" }
-        MachineType.SSH_WAYPIPE, MachineType.SSH_TERMINAL -> {
-            if (profile.sshHost.isBlank()) "SSH endpoint not configured"
-            else "${profile.sshUser.ifBlank { "user" }}@${profile.sshHost}"
+    internal fun subtitle(profile: MachineProfile): String {
+        when (profile.type.selectablePivot()) {
+            MachineType.VM -> return "VM profile (QEMU/AVF)"
+            MachineType.CONTAINER -> return "Container profile (container-in-VM)"
+            else -> Unit
         }
-        MachineType.VM -> "VM profile (QEMU/AVF)"
-        MachineType.CONTAINER -> "Container profile (container-in-VM)"
-    }
-
-    internal fun summary(profile: MachineProfile): String = when (profile.type) {
-        MachineType.NATIVE -> {
-            val client = BundledClients.labelFor(profile.nativeLauncher)
-            if (client.isBlank()) "No client configured. Edit to select one"
-            else "Runs: $client"
-        }
-        MachineType.WASM -> {
-            val cmd = profile.runtimeOverrides.optString("wasmCommand", "wasm hello-wasi-gui")
+        val (kind, useSsh) = NativeShellSession.from(profile)
+        return when (kind) {
+            NativeShellKind.WAYLAND -> BundledClients.labelFor(profile.nativeLauncher)
+            NativeShellKind.WASM -> profile.runtimeOverrides.optString("wasmCommand", "wasm hello-wasi-gui")
                 .ifBlank { "wasm hello-wasi-gui" }
-            "Runs: $cmd"
+            NativeShellKind.TERMINAL -> {
+                if (useSsh) {
+                    if (profile.sshHost.isBlank()) "SSH endpoint not configured"
+                    else "${profile.sshUser.ifBlank { "user" }}@${profile.sshHost}"
+                } else {
+                    profile.remoteCommand.ifBlank { "Wawona Terminal" }
+                }
+            }
+            NativeShellKind.WAYPIPE -> {
+                if (useSsh) {
+                    if (profile.sshHost.isBlank()) "SSH endpoint not configured"
+                    else "${profile.sshUser.ifBlank { "user" }}@${profile.sshHost}"
+                } else {
+                    profile.remoteCommand.ifBlank { "weston-simple-shm" }
+                }
+            }
         }
-        MachineType.SSH_WAYPIPE -> {
-            val cmd = profile.remoteCommand.ifBlank { "weston-simple-shm" }
-            "Waypipe command: $cmd"
+    }
+
+    internal fun summary(profile: MachineProfile): String {
+        when (profile.type.selectablePivot()) {
+            MachineType.VM -> return "Backend: QEMU/AVF"
+            MachineType.CONTAINER -> return "Backend: container-in-VM"
+            else -> Unit
         }
-        MachineType.SSH_TERMINAL -> {
-            val cmd = profile.remoteCommand.ifBlank { "bash -l" }
-            "SSH terminal command: $cmd"
+        val (kind, useSsh) = NativeShellSession.from(profile)
+        return when (kind) {
+            NativeShellKind.WAYLAND -> {
+                val client = BundledClients.labelFor(profile.nativeLauncher)
+                if (client.isBlank()) "No client configured. Edit to select one"
+                else "Runs: $client"
+            }
+            NativeShellKind.WASM -> {
+                val cmd = profile.runtimeOverrides.optString("wasmCommand", "wasm hello-wasi-gui")
+                    .ifBlank { "wasm hello-wasi-gui" }
+                "Runs: $cmd"
+            }
+            NativeShellKind.WAYPIPE -> {
+                val cmd = profile.remoteCommand.ifBlank { "weston-simple-shm" }
+                if (useSsh) "Waypipe command: $cmd" else "Local waypipe: $cmd"
+            }
+            NativeShellKind.TERMINAL -> {
+                val cmd = profile.remoteCommand.ifBlank { if (useSsh) "bash -l" else "interactive shell" }
+                if (useSsh) "SSH terminal command: $cmd" else "Terminal: $cmd"
+            }
         }
-        MachineType.VM -> "Backend: QEMU/AVF"
-        MachineType.CONTAINER -> "Backend: container-in-VM"
     }
 
     private fun launchCommandPreview(profile: MachineProfile): String = summary(profile)

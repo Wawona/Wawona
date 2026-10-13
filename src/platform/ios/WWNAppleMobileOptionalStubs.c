@@ -1,21 +1,26 @@
 /*
- * Optional in-process entry points that wawona-dispatch / UI reference.
- * SSH CLI symbols (ssh_main / ssh_keygen_main / scp_main) come from
- * libwwn-ssh-cli.a (wwn-ssh). Do NOT stub them here.
+ * Optional in-process entry points that wawona-dispatch (libwwn-pty.a)
+ * references but the product keep-set does not link.
  *
  * Darwin's linker does not treat __attribute__((weak)) declarations as
  * allow-missing the way ELF does when the referencing .o is -force_load'd.
  * Provide empty definitions so platforms without those archives still link.
  *
- * wwn-neovim is not currently merged into the Wawona registry, but
- * libwwn-pty still references wawona_nvim_main. Stub until that archive
- * is force-loaded again. Watch uses WWNWatchStubs.c instead.
+ * Keep-set symbols must NOT be stubbed here, or the real archive member never
+ * gets pulled (a definition satisfies the -Wl,-u root):
+ *   fastfetch_main            libfastfetch.a (-force_load)
+ *   ssh_main / ssh_keygen_main / scp_main   libwwn-ssh-cli.a (-force_load)
+ *   wawona_coreutils_main     libwawona.a (uutils feature, -u root)
+ *   waypipe_main              libwaypipe.a (lazy -l, -u root)
+ *   wawona_wasm_* / wpm_main  libwawona_wasm.a / libwawona_relay.a
  *
- * tvOS omits fuzzel (no fork/exec launcher). GPU clients
- * (ANGLE, kmscube, weston-simple-egl) are linked for real; do not stub
- * those entry points or they collide with the archives.
+ * Everything below is optional-software: weston, its toytoolkit demos, foot,
+ * niri, fuzzel, and phoon now install from repo.wawona.io as debs or wasm
+ * instead of being force-loaded into the app, so nothing on the link line
+ * defines these. See docs/agent-rules/wawona-optional-software.md.
+ *
+ * watchOS uses src/platform/watchos/WWNWatchStubs.c instead of this file.
  */
-#include <stdio.h>
 #include <stddef.h>
 
 #if defined(__APPLE__)
@@ -24,29 +29,64 @@
 
 #if defined(__APPLE__) && (TARGET_OS_IOS || TARGET_OS_TV || TARGET_OS_VISION)
 
+/* wwn-neovim is not currently merged into the Wawona registry, but
+ * libwwn-pty may still reference wawona_nvim_main. */
 int wawona_nvim_main(int argc, char *argv[]) {
   (void)argc;
   (void)argv;
   return 127;
 }
 
-#endif
+/* 127 is "command not found": dispatch reports the client as unavailable
+ * rather than pretending it ran. */
+#define WWN_UNBUNDLED_CLIENT(name)                                             \
+  int name(int argc, char *argv[]) {                                           \
+    (void)argc;                                                                \
+    (void)argv;                                                                \
+    return 127;                                                                \
+  }
 
-#if defined(__APPLE__) && TARGET_OS_TV
+WWN_UNBUNDLED_CLIENT(phoon_main)
+WWN_UNBUNDLED_CLIENT(foot_main)
+WWN_UNBUNDLED_CLIENT(fuzzel_main)
+WWN_UNBUNDLED_CLIENT(weston_compositor_main)
+WWN_UNBUNDLED_CLIENT(weston_terminal_main)
+WWN_UNBUNDLED_CLIENT(weston_simple_shm_main)
+WWN_UNBUNDLED_CLIENT(simple_egl_main)
+WWN_UNBUNDLED_CLIENT(clickdot_main)
+WWN_UNBUNDLED_CLIENT(cliptest_main)
+WWN_UNBUNDLED_CLIENT(constraints_main)
+WWN_UNBUNDLED_CLIENT(dnd_main)
+WWN_UNBUNDLED_CLIENT(editor_main)
+WWN_UNBUNDLED_CLIENT(eventdemo_main)
+WWN_UNBUNDLED_CLIENT(flower_main)
+WWN_UNBUNDLED_CLIENT(image_main)
+WWN_UNBUNDLED_CLIENT(resizor_main)
+WWN_UNBUNDLED_CLIENT(scaler_main)
+WWN_UNBUNDLED_CLIENT(smoke_main)
+WWN_UNBUNDLED_CLIENT(stacking_main)
+WWN_UNBUNDLED_CLIENT(transformed_main)
 
-/* NOTE: no fastfetch_main stub. Wwn-fastfetch (libfastfetch.a) is now
- * -force_load'd on tvOS too (fastfetchLdflags tvosDeps), so the real
- * fastfetch_main wrapper is always pulled. A strong stub here would be a
- * duplicate symbol against the force-loaded archive; a weak one would satisfy
- * the -u and stop the member from linking (same reasoning as phoon). #139 */
-/* NOTE: no phoon_main stub. Wwn-phoon-rs (libphoon_rs.a) is lazy-linked on
- * every Apple target, including tvOS (-lphoon_rs + -Wl,-u,_phoon_main; std
- * dedupes against niri's force-load), so the real C ABI entry is always pulled.
- * A stub here would satisfy the -u and stop the archive member from linking. */
-int fuzzel_main(int argc, char *argv[]) {
-  (void)argc;
-  (void)argv;
+#undef WWN_UNBUNDLED_CLIENT
+
+/* niri takes no argv over its C ABI. */
+int niri_main(void) {
   return 127;
 }
 
-#endif /* tvOS */
+/* Nested-compositor re-entrancy probes that dispatch reads before starting
+ * weston or niri. Report "not running, not used" so dispatch takes its own
+ * fail-closed path. */
+int wwn_weston_compositor_is_running(void) {
+  return 0;
+}
+
+int wwn_niri_main_is_running(void) {
+  return 0;
+}
+
+int wwn_niri_main_already_used(void) {
+  return 0;
+}
+
+#endif /* iOS / iPadOS / tvOS / visionOS */

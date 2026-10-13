@@ -455,13 +455,39 @@ let
         "-L${strip iland}/lib"
         "-force_load" "${strip iland}/lib/libiland_userland.a"
       ];
-  # Product keep-set link tail: fastfetch + Relay wasm + waypipe + ssh.
+  # wwn-toolchain wawona-pty: libwwn-pty.a owns the in-process shell ABI
+  # (wwn_pty_session_*, wwn_zsh_soft_exit, wwn_pty_ios_*) and the store-safe
+  # external-command dispatch (wawona_dispatch_can_handle / _inprocess /
+  # _spawn_async). The privatized zsh archive references those from its patched
+  # Src/exec.c and zexit, so they must be on the link line of every Apple-mobile
+  # target that force-loads zsh.
+  #
+  # Until the optional-software unbundling this archive rode along inside
+  # westonToytoolkitLdflags (it force-loaded libwwn-pty.a for the weston
+  # toytoolkit). Dropping weston from the keep-set dropped the pty archive too
+  # and left _wawona_dispatch_* / _wwn_pty_ios_* / _wwn_zsh_soft_exit undefined.
+  #
+  # -force_load, not a lazy -l: this is a plain C archive (three objects, no
+  # Rust std), so there is no duplicate-std hazard, and the symbols are first
+  # referenced by archives that appear LATER on the link line (force-loaded
+  # zsh), which a lazy -l here would not satisfy. Every client entry point it
+  # calls (weston/foot/niri/fuzzel/phoon/wpm mains) is declared weak upstream,
+  # so force-loading pulls no optional-software dependency.
+  wawonaPtyLdflags = deps:
+    let
+      pty = deps."wawona-pty" or null;
+    in
+      if pty == null then [] else [
+        "-force_load" "${strip pty}/lib/libwwn-pty.a"
+      ];
+  # Product keep-set link tail: fastfetch + Relay wasm + waypipe + ssh + pty.
   # No weston / niri / foot / cubes / phoon / fuzzel (optional-software).
   productKeepLdflags = deps: { withWaypipe ? true }:
     (fastfetchLdflags deps)
     ++ (wasmLdflags deps)
     ++ (lib.optionals withWaypipe (waypipeLdflags deps))
-    ++ (sshCliLdflags deps);
+    ++ (sshCliLdflags deps)
+    ++ (wawonaPtyLdflags deps);
   # glib/gio (res_9_*) needs libresolv on Apple even with zero OpenSSH.
   appleMobileResolvLdflags = [ "-lresolv" ];
   # Static archives with C++ (ANGLE, Rust backend, fastfetch, …) need libc++
@@ -3042,6 +3068,16 @@ PLIST
             # Full native stack is arm64-only (Nix watch libs). arm64_32 uses
             # weak WWNWatchStubs.c so the fat binary satisfies ASC 90733.
             # Product keep-set: Relay wasm + waypipe + ssh + fastfetch + zsh.
+            #
+            # -lwayland-server is watchOS-only in the keep-set: WWNMiniWaylandServer.c
+            # is the Watch host compositor (wl_display_*, wl_global_create,
+            # wl_resource_*, wl_event_loop_*). The other Apple targets reach Wayland
+            # through Smithay in libwawona.a and only need -lwayland-client.
+            # wwn-toolchain libwayland/watchos.nix merges xdg-shell-protocol.o into
+            # libwayland-server.a, so this one -l also supplies xdg_wm_base_interface,
+            # xdg_surface_interface, xdg_toplevel_interface, and xdg_positioner_interface.
+            # Before the optional-software unbundling weston's compositor ldflags
+            # carried it; nothing in the keep-set replaced it.
             "OTHER_LDFLAGS[sdk=watchos*][arch=arm64]" = [
               "$(inherited)"
               "-L${strip (watchosDeps.libffi or null)}/lib"
@@ -3056,6 +3092,7 @@ PLIST
               "-L${strip (watchosDeps.xkbcommon or iosDeps.xkbcommon or null)}/lib"
               "-lffi"
               "-lwayland-client"
+              "-lwayland-server"
               "-lepoll-shim"
               "-lpixman-1"
               # -lzstd comes from wasmLdflags (relay); do not duplicate.
@@ -3092,6 +3129,8 @@ PLIST
               "-L${strip (watchosSimDeps.xkbcommon or iosSimDeps.xkbcommon or null)}/lib"
               "-lffi"
               "-lwayland-client"
+              # Mini server + xdg-shell protocol objects (see device block).
+              "-lwayland-server"
               "-lepoll-shim"
               "-lpixman-1"
               # -lzstd comes from wasmLdflags (relay); do not duplicate.
