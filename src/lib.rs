@@ -10,9 +10,9 @@ pub mod core;
 pub mod darwin_cli;
 pub mod domain;
 pub mod ffi;
-pub mod term;
 pub mod platform;
 pub mod prelude;
+pub mod term;
 pub mod util;
 pub mod version;
 // Linux GTK + file store. Domain types live in `domain` (always compiled).
@@ -61,9 +61,6 @@ compile_error!("feature `profile-ios-mode-b` cannot be combined with a store-saf
 
 // Re-export FFI types at crate root for UniFFI
 // UniFFI's generated code expects these types to be accessible from the crate root
-pub use ffi::api::{build_info, build_number, version, WawonaCore};
-pub use ffi::errors::*;
-pub use ffi::types::*;
 pub use domain::error::DomainError;
 pub use domain::machine_profile::{
     ClientLauncher, ContainerMachineSettings, DomainEnvironmentOverride, MachineProfile,
@@ -74,6 +71,10 @@ pub use domain::uniffi_api::{
     sanitize_ssh_host_uniffi, validate_machine_editor, validate_machine_profile,
     MachineProfileStoreApi,
 };
+pub use ffi::api::{build_info, build_number, version, WawonaCore};
+pub use ffi::errors::*;
+pub use ffi::types::*;
+pub use term::{TerminalLine, TerminalSession, TerminalSpan};
 
 // When the waypipe feature is enabled (iOS/Android), force the linker to
 // include waypipe's objects in the staticlib so waypipe_main is available
