@@ -4,17 +4,28 @@ public struct CompositorBridge: View {
     public init() {}
 
     public var body: some View {
+        // Product Mode A SHM needs CompositorHostView (IlandPresenter). A
+        // SWIFT_PACKAGE placeholder is black UIView with no presenter; tip
+        // AUTO_START then logs `no IlandPresenter` forever. Prefer Host when
+        // Metal glue is in the same target; placeholder only for SPM previews.
+        surface
+            .accessibility(identifier: WWNA11y.compositorSurface)
+            .accessibility(label: Text("Compositor surface"))
+    }
+
+    @ViewBuilder
+    private var surface: some View {
         #if os(macOS)
-        #if SWIFT_PACKAGE
-        MacCompositorPlaceholder()
-        #else
+        #if canImport(Metal) && !os(watchOS)
         CompositorHostView()
+        #else
+        MacCompositorPlaceholder()
         #endif
         #elseif os(iOS)
-        #if SWIFT_PACKAGE
-        IOSCompositorPlaceholder()
-        #else
+        #if canImport(Metal) && !os(watchOS)
         CompositorHostView()
+        #else
+        IOSCompositorPlaceholder()
         #endif
         #elseif os(Android)
         AndroidCompositorView()

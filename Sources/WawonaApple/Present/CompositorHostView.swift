@@ -13,8 +13,11 @@ public struct CompositorHostView: View {
     public var body: some View {
         #if os(macOS)
         CompositorHostNSViewRepresentable(core: core)
+            // Contract id for Appium Mac2 / XCUITest (WWNA11y.compositorSurface).
+            .accessibility(identifier: "wwn.compositor.surface")
         #elseif os(iOS)
         CompositorHostUIViewRepresentable(core: core)
+            .accessibility(identifier: "wwn.compositor.surface")
         #endif
     }
 }
@@ -82,9 +85,16 @@ final class CompositorHostPlatformView: PlatformView {
         super.init(frame: .zero)
         wantsLayer = true
         layer?.backgroundColor = PlatformColor.black.cgColor
+        // Appium Mac2 binds accessibilityIdentifier on the NSView itself.
+        setAccessibilityElement(true)
+        setAccessibilityIdentifier("wwn.compositor.surface")
+        setAccessibilityLabel("Compositor surface")
         #else
         super.init(frame: .zero)
         backgroundColor = .black
+        isAccessibilityElement = true
+        accessibilityIdentifier = "wwn.compositor.surface"
+        accessibilityLabel = "Compositor surface"
         #endif
         // Build Metal after super.init so a presenter failure cannot abort NSView.
         let presenter = MetalPresenter()
