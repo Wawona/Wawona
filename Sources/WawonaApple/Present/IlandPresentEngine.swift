@@ -24,7 +24,9 @@ final class IlandPresentEngine {
         // Metal EDR only follows HDR content (see maybeEnableEDRForHDRContent).
         layer.pixelFormat = .bgra8Unorm
         layer.framebufferOnly = false
-        layer.isOpaque = false
+        // Opaque: translucent CAMetalLayer + never-presented drawable reads as
+        // empty black under SwiftUI. Host compositor present is always opaque.
+        layer.isOpaque = true
         #if !os(tvOS)
         if #available(iOS 16.0, macOS 14.0, visionOS 1.0, *) {
             layer.wantsExtendedDynamicRangeContent = false
@@ -36,6 +38,42 @@ final class IlandPresentEngine {
         self.queue = queue
         self.pipeline = pipeline
         publishPreferredModeFromLayer()
+    }
+
+    /// Prove Metal can present without a Wayland/SHM client (layout arm).
+    /// Deep teal is never guest black, so a blank session is distinguishable.
+    func presentClearProof(reason: String) -> Bool {
+        if !Thread.isMainThread {
+            DispatchQueue.main.async { [weak self] in
+                _ = self?.presentClearProof(reason: reason)
+            }
+            return true
+        }
+        publishPreferredModeFromLayer()
+        let dw = layer.drawableSize.width
+        let dh = layer.drawableSize.height
+        guard dw >= 1, dh >= 1, let drawable = layer.nextDrawable() else {
+            NSLog(
+                "[\(presentLogModule)] clearProof FAIL reason=\(reason) drawable=\(Int(dw))x\(Int(dh))"
+            )
+            return false
+        }
+        let pass = MTLRenderPassDescriptor()
+        pass.colorAttachments[0].texture = drawable.texture
+        pass.colorAttachments[0].loadAction = .clear
+        // Deep teal (not guest black). Proves CAMetalLayer + nextDrawable.
+        pass.colorAttachments[0].clearColor = MTLClearColorMake(0.05, 0.22, 0.28, 1)
+        pass.colorAttachments[0].storeAction = .store
+        guard let commands = queue.makeCommandBuffer(),
+              let encoder = commands.makeRenderCommandEncoder(descriptor: pass)
+        else { return false }
+        encoder.endEncoding()
+        commands.present(drawable)
+        commands.commit()
+        NSLog(
+            "[\(presentLogModule)] clearProof OK reason=\(reason) drawable=\(Int(dw))x\(Int(dh))"
+        )
+        return true
     }
 
     func invalidate() {
@@ -81,7 +119,19 @@ final class IlandPresentEngine {
             surface: surface,
             width: width,
             height: height
-        ), let drawable = layer.nextDrawable() else {
+        ) else {
+            NSLog("[\(presentLogModule)] presentIOSurface texture FAIL \(width)x\(height)")
+            IlandDrmBindings.completePageFlip(crtcID, framebufferID)
+            return
+        }
+        guard let drawable = layer.nextDrawable() else {
+            struct Once { static var logged = false }
+            if !Once.logged {
+                Once.logged = true
+                NSLog(
+                    "[\(presentLogModule)] nextDrawable FAIL drawable=\(Int(layer.drawableSize.width))x\(Int(layer.drawableSize.height))"
+                )
+            }
             IlandDrmBindings.completePageFlip(crtcID, framebufferID)
             return
         }
@@ -163,9 +213,17 @@ final class IlandPresentEngine {
         )
         descriptor.usage = .shaderRead
         descriptor.storageMode = .shared
-        guard let source = device.makeTexture(descriptor: descriptor),
-              let drawable = layer.nextDrawable()
-        else { return false }
+        guard let source = device.makeTexture(descriptor: descriptor) else { return false }
+        guard let drawable = layer.nextDrawable() else {
+            struct Once { static var logged = false }
+            if !Once.logged {
+                Once.logged = true
+                NSLog(
+                    "[\(presentLogModule)] presentBGRA nextDrawable FAIL drawable=\(Int(layer.drawableSize.width))x\(Int(layer.drawableSize.height))"
+                )
+            }
+            return false
+        }
         source.replace(
             region: MTLRegionMake2D(0, 0, width, height),
             mipmapLevel: 0,

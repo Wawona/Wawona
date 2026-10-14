@@ -29,7 +29,10 @@ enum IlandMetalPipeline {
                            texture2d<float> tex [[texture(0)]],
                            constant float4 &rect [[buffer(0)]]) {
       constexpr sampler s(filter::linear, address::clamp_to_edge);
-      return tex.sample(s, rect.xy + in.uv * rect.zw);
+      float4 c = tex.sample(s, rect.xy + in.uv * rect.zw);
+      // wl_shm XRGB / many clients leave A=0. With srcAlpha blend that
+      // composites to clear black and the session surface stays empty.
+      return float4(c.rgb, 1.0);
     }
     """
 
@@ -67,11 +70,8 @@ enum IlandMetalPipeline {
             descriptor.vertexFunction = library.makeFunction(name: "wwn_vs")
             descriptor.fragmentFunction = library.makeFunction(name: "wwn_fs")
             descriptor.colorAttachments[0].pixelFormat = pixelFormat
-            descriptor.colorAttachments[0].isBlendingEnabled = true
-            descriptor.colorAttachments[0].sourceRGBBlendFactor = .sourceAlpha
-            descriptor.colorAttachments[0].destinationRGBBlendFactor = .oneMinusSourceAlpha
-            descriptor.colorAttachments[0].sourceAlphaBlendFactor = .one
-            descriptor.colorAttachments[0].destinationAlphaBlendFactor = .oneMinusSourceAlpha
+            // Opaque host present. srcAlpha + A=0 SHM was painting black.
+            descriptor.colorAttachments[0].isBlendingEnabled = false
             return try device.makeRenderPipelineState(descriptor: descriptor)
         } catch {
             NSLog("[iland] pipeline failed: \(error)")

@@ -27,13 +27,13 @@ private struct CompositorHostNSViewRepresentable: NSViewRepresentable {
 
     func makeNSView(context: Context) -> CompositorHostPlatformView {
         let view = CompositorHostPlatformView(core: core ?? WWNCompositorBridge.sharedBridge.core)
-        WWNCompositorBridge.sharedBridge.containerView = view
+        view.ensureIlandPresenter(reason: "makeNSView")
         return view
     }
 
     func updateNSView(_ nsView: CompositorHostPlatformView, context: Context) {
         nsView.core = core ?? WWNCompositorBridge.sharedBridge.core
-        WWNCompositorBridge.sharedBridge.containerView = nsView
+        nsView.ensureIlandPresenter(reason: "updateNSView")
     }
 }
 #endif
@@ -46,13 +46,13 @@ private struct CompositorHostUIViewRepresentable: UIViewRepresentable {
 
     func makeUIView(context: Context) -> CompositorHostPlatformView {
         let view = CompositorHostPlatformView(core: core ?? WWNCompositorBridge.sharedBridge.core)
-        WWNCompositorBridge.sharedBridge.containerView = view
+        view.ensureIlandPresenter(reason: "makeUIView")
         return view
     }
 
     func updateUIView(_ uiView: CompositorHostPlatformView, context: Context) {
         uiView.core = core ?? WWNCompositorBridge.sharedBridge.core
-        WWNCompositorBridge.sharedBridge.containerView = uiView
+        uiView.ensureIlandPresenter(reason: "updateUIView")
     }
 }
 #endif
@@ -70,6 +70,8 @@ final class CompositorHostPlatformView: PlatformView {
     var core: UnsafeMutableRawPointer?
     private var metalPresenter: MetalPresenter?
     private var ilandPresenter: IlandPresenterObjC?
+    private var ensurePresenterObserver: NSObjectProtocol?
+    private var didClearProof = false
     #if os(macOS)
     private var trackingArea: NSTrackingArea?
     #endif
@@ -94,7 +96,53 @@ final class CompositorHostPlatformView: PlatformView {
             #else
             layer.addSublayer(metalLayer)
             #endif
-            ilandPresenter = IlandPresenterObjC(layer: metalLayer, device: presenter.device)
+        }
+        ensurePresenterObserver = NotificationCenter.default.addObserver(
+            forName: Notification.Name("WWNEnsureIlandPresenterNotification"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.ensureIlandPresenter(reason: "notify")
+        }
+        ensureIlandPresenter(reason: "init")
+    }
+
+    /// Mode A SHM drain needs a live `activePresenterForDrain`. SwiftUI can
+    /// recreate this UIView while a sibling deinit clears the process-global
+    /// presenter; RelayRunner then posts ShowSessionSurface and churns worse.
+    /// Re-arm on every layout / representable update.
+    func ensureIlandPresenter(reason: String) {
+        WWNCompositorBridge.sharedBridge.containerView = self
+        if let existing = ilandPresenter,
+           IlandPresenterObjC.activePresenterForDrain() === existing {
+            return
+        }
+        guard let metalLayer = metalPresenter?.layer else {
+            NSLog("CompositorHost: ensureIlandPresenter(%@) no CAMetalLayer", reason)
+            return
+        }
+        if let p = IlandPresenterObjC(layer: metalLayer, device: metalPresenter?.device) {
+            ilandPresenter = p
+            NSLog(
+                "CompositorHost: IlandPresenter armed reason=%@ layer=%dx%d",
+                reason,
+                Int(metalLayer.drawableSize.width),
+                Int(metalLayer.drawableSize.height)
+            )
+            maybePresentClearProof(reason: reason)
+        } else {
+            NSLog("CompositorHost: IlandPresenter init FAILED reason=%@", reason)
+        }
+    }
+
+    private func maybePresentClearProof(reason: String) {
+        guard !didClearProof else { return }
+        guard let metalLayer = metalPresenter?.layer,
+              metalLayer.drawableSize.width >= 1,
+              metalLayer.drawableSize.height >= 1
+        else { return }
+        if ilandPresenter?.presentClearProof(reason: reason) == true {
+            didClearProof = true
         }
     }
 
@@ -107,11 +155,13 @@ final class CompositorHostPlatformView: PlatformView {
     override func layoutSubviews() {
         super.layoutSubviews()
         syncMetalLayerGeometry()
+        ensureIlandPresenter(reason: "layoutSubviews")
     }
     #else
     override func layout() {
         super.layout()
         syncMetalLayerGeometry()
+        ensureIlandPresenter(reason: "layout")
     }
 
     override func updateTrackingAreas() {
@@ -147,10 +197,12 @@ final class CompositorHostPlatformView: PlatformView {
         #endif
         if let metalLayer = metalPresenter?.layer {
             metalLayer.contentsScale = scale
+            metalLayer.isOpaque = true
         }
         metalPresenter?.resize(bounds.size)
         // Rotation / safe-area changes: publish wl_output mode so clients resize.
         ilandPresenter?.hostGeometryDidChange()
+        maybePresentClearProof(reason: "layout")
     }
 
     #if os(iOS)
@@ -231,7 +283,14 @@ final class CompositorHostPlatformView: PlatformView {
     #endif
 
     deinit {
-        ilandPresenter?.invalidate()
+        if let ensurePresenterObserver {
+            NotificationCenter.default.removeObserver(ensurePresenterObserver)
+        }
+        // Only tear down if we still own the process-global. A newer Host may
+        // already have re-armed; clearing that would leave Mode A SHM dry.
+        if let p = ilandPresenter, IlandPresenterObjC.activePresenterForDrain() === p {
+            p.invalidate()
+        }
     }
 }
 #endif

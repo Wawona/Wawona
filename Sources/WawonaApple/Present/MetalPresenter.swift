@@ -17,6 +17,7 @@ public final class MetalPresenter {
             metalLayer.device = device
             metalLayer.pixelFormat = .bgra8Unorm
             metalLayer.framebufferOnly = false
+            metalLayer.isOpaque = true
             layer = metalLayer
         }
     }

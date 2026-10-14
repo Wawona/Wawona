@@ -162,6 +162,12 @@ public final class IlandPresenterObjC: NSObject {
         engine?.hostGeometryDidChange()
     }
 
+    /// Clear Metal to a non-black proof color once layout has a real drawable.
+    @objc(presentClearProofWithReason:)
+    public func presentClearProof(reason: String) -> Bool {
+        engine?.presentClearProof(reason: reason) ?? false
+    }
+
     @objc
     public func syncPreferredModeFromLayer() {
         engine?.syncPreferredModeFromLayer()
