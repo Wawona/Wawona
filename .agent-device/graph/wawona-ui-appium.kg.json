@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "name": "wawona-ui-appium",
-  "updated_at": "2026-10-14T21:45:46Z",
-  "tick": 7,
+  "updated_at": "2026-10-14T21:48:34Z",
+  "tick": 8,
   "max_ticks": 8,
   "ontology": {
     "entity_types": [
@@ -426,9 +426,9 @@
     },
     {
       "id": "N4",
-      "status": "open",
+      "status": "in_progress",
       "title": "Capture remaining catalog clients",
-      "detail": "After N1: foot, weston, niri, kde_plasma_de, \u2026 into catalog-gallery/"
+      "detail": "weston_simple_shm + foot proved via local-bundle on sock. Remaining: weston, niri, kde_plasma_de, \u2026"
     },
     {
       "id": "N5",
@@ -496,6 +496,17 @@
       },
       "time": "2026-10-14T21:45:46Z",
       "source": "require_client_screenshot + publish_gallery",
+      "confidence": 1.0
+    },
+    {
+      "id": "evt:n4-foot-proved",
+      "type": "Proof",
+      "trigger": "foot catalog-gallery PNG via local bin on wayland-0",
+      "args": {
+        "path": ".agent-device/test-artifacts/appium/catalog-gallery/foot.png"
+      },
+      "time": "2026-10-14T21:48:34Z",
+      "source": "local foot + Mac2 surface shot",
       "confidence": 1.0
     }
   ]
