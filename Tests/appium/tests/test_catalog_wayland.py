@@ -97,6 +97,22 @@ def _launch_and_assert(client_id: str, kind: str, machines, compositor, artifact
     if guest and not os.environ.get("WAWONA_WAYLAND_GUEST"):
         os.environ["WAWONA_WAYLAND_GUEST"] = str(guest)
 
+    # Host Present only exposes wwn.compositor.surface after a machine Start.
+    # Catalog guests attach to the live sock; without Start/Focus the surface
+    # a11y id is missing and screenshots stay blank.
+    machines.open_root()
+    if not compositor.exists(compositor.SURFACE):
+        if machines.exists(machines.START) or machines.exists(machines.START_TAB):
+            machines.start(placement="tab")
+            time.sleep(2.0)
+        elif machines.exists(machines.ADD):
+            machines.add_machine(f"catalog-{client_id}", kind="native")
+            machines.start(placement="tab")
+            time.sleep(2.0)
+    if machines.exists(machines.FOCUS):
+        machines.tap(machines.FOCUS)
+        time.sleep(1.0)
+
     result = launch_client(client_id)
     (artifacts / f"guest-{client_id}.log").write_text(
         (result.stdout or "") + "\n" + (result.stderr or ""),
@@ -121,7 +137,8 @@ def _launch_and_assert(client_id: str, kind: str, machines, compositor, artifact
             break
         time.sleep(1.0)
     assert compositor.exists(compositor.SURFACE), (
-        f"compositor surface missing after launching Wayland client {client_id}"
+        f"compositor surface missing after launching Wayland client {client_id}. "
+        "Start a Machines session so Present shows the host compositor."
     )
     compositor.wait_surface()
     compositor.tap_surface()
