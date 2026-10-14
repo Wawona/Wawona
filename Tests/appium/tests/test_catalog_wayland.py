@@ -97,8 +97,9 @@ def _launch_and_assert(client_id: str, kind: str, machines, compositor, artifact
     if guest and not os.environ.get("WAWONA_WAYLAND_GUEST"):
         os.environ["WAWONA_WAYLAND_GUEST"] = str(guest)
 
-    # Host Present only exposes wwn.compositor.surface after a machine Start.
-    # Catalog guests attach to the live sock; without Start/Focus the surface
+    # Host Present only exposes wwn.compositor.surface after Focus / after the
+    # Wawona Terminal window closes (Start opens Terminal; close = Focus).
+    # Catalog guests attach to the live sock; without that reveal the surface
     # a11y id is missing and screenshots stay blank.
     machines.open_root()
     if not compositor.exists(compositor.SURFACE):
@@ -112,6 +113,33 @@ def _launch_and_assert(client_id: str, kind: str, machines, compositor, artifact
     if machines.exists(machines.FOCUS):
         machines.tap(machines.FOCUS)
         time.sleep(1.0)
+    # macOS: Start presents Wawona Terminal; closing it calls showSessionSurface.
+    if not compositor.exists(compositor.SURFACE) and platform_name() == "macos":
+        try:
+            import subprocess
+
+            script = (
+                'tell application "System Events"\n'
+                '  tell process "Wawona"\n'
+                "    repeat with w in (every window)\n"
+                '      if (name of w as text) contains "Terminal" then\n'
+                "        try\n"
+                "          click button 1 of w\n"
+                "        end try\n"
+                "      end if\n"
+                "    end repeat\n"
+                "  end tell\n"
+                "end tell\n"
+            )
+            subprocess.run(
+                ["osascript", "-e", script],
+                check=False,
+                capture_output=True,
+                timeout=10,
+            )
+            time.sleep(1.5)
+        except Exception:
+            pass
 
     result = launch_client(client_id)
     (artifacts / f"guest-{client_id}.log").write_text(

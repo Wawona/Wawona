@@ -509,5 +509,9 @@
       "source": "local foot + Mac2 surface shot",
       "confidence": 1.0
     }
+  ],
+  "last_tick": "tick: weston_terminal gallery proved (surface, dark-terminal blank fix); false shm PNG rejected",
+  "proved": [
+    "weston_terminal"
   ]
 }

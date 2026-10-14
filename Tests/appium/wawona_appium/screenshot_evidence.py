@@ -72,6 +72,10 @@ def _center_region_is_blank(
 
     Mac2 often captures the whole display (dock + IDE chrome give variance)
     while the Machines/compositor pane is empty. Sample the center 50% box.
+
+    Dark clients (weston-terminal, foot) keep a low mean luminance. Structure
+    (prompt text, chrome) still raises stddev. Blank means flat AND
+    near-black/near-white, not merely dark.
     """
     try:
         from PIL import Image  # type: ignore
@@ -102,7 +106,9 @@ def _center_region_is_blank(
         mean = sum(samples) / len(samples)
         var = sum((s - mean) ** 2 for s in samples) / len(samples)
         stddev = var**0.5
-        return mean < max_mean_black or mean > min_mean_white or stddev < max_stddev
+        return stddev < max_stddev and (
+            mean < max_mean_black or mean > min_mean_white
+        )
 
     with Image.open(path) as im:
         im = im.convert("L")
@@ -114,7 +120,9 @@ def _center_region_is_blank(
             return True
         mean = sum(pixels) / len(pixels)
         stddev = statistics.pstdev(pixels)
-        return mean < max_mean_black or mean > min_mean_white or stddev < max_stddev
+        return stddev < max_stddev and (
+            mean < max_mean_black or mean > min_mean_white
+        )
 
 
 def require_client_screenshot(path: Path, client_id: str) -> Path:
