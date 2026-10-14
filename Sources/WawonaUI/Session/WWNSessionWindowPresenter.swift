@@ -14,6 +14,8 @@ import UIKit
 public enum WWNSessionWindowPresenter {
     /// Activity type for an iPad / visionOS session scene.
     public static let sessionActivityType = "com.aspauldingcode.wawona.session"
+    /// Activity type for an iPad / visionOS Wawona Terminal window.
+    public static let terminalActivityType = "com.aspauldingcode.wawona.terminal"
 
     #if os(macOS)
     private static var sessionController: NSWindowController?
@@ -24,6 +26,14 @@ public enum WWNSessionWindowPresenter {
         presentMacSessionWindow(title: title)
         #elseif os(iOS) || os(visionOS)
         presentUIKitSessionScene()
+        #endif
+    }
+
+    /// New Window for Wawona Terminal. macOS uses `WWNMacGuestConsole`.
+    /// iPad and visionOS get a terminal-only scene. iPhone stays tabbed.
+    public static func presentTerminalWindow() {
+        #if os(iOS) || os(visionOS)
+        presentUIKitTerminalScene()
         #endif
     }
 
@@ -51,10 +61,26 @@ public enum WWNSessionWindowPresenter {
     #endif
 
     #if os(iOS) || os(visionOS)
+    private static weak var terminalScene: UIWindowScene?
+    private static var closingTerminal = false
+
+    private static func presentUIKitTerminalScene() {
+        if let existing = terminalScene {
+            existing.windows.first?.makeKeyAndVisible()
+            return
+        }
+        requestScene(activityType: terminalActivityType, title: "Wawona Terminal")
+    }
+
     private static func presentUIKitSessionScene() {
-        let activity = NSUserActivity(activityType: sessionActivityType)
-        activity.title = "Wawona Session"
-        activity.userInfo = ["wwn.session": true]
+        requestScene(activityType: sessionActivityType, title: "Wawona Session")
+    }
+
+    private static func requestScene(activityType: String, title: String) {
+        let activity = NSUserActivity(activityType: activityType)
+        activity.title = title
+        let session = activityType == sessionActivityType
+        activity.userInfo = session ? ["wwn.session": true] : ["wwn.terminal": true]
         activity.becomeCurrent()
         let options: UIScene.ActivationRequestOptions?
         #if os(iOS)
@@ -73,6 +99,11 @@ public enum WWNSessionWindowPresenter {
             userActivity: activity,
             options: options,
             errorHandler: { error in
+                if !session {
+                    Task { @MainActor in
+                        WWNIosGuestConsole.shared.fallBackToTab()
+                    }
+                }
                 NSLog(
                     "WWNSessionWindowPresenter: scene activation failed: %@",
                     error.localizedDescription
@@ -88,20 +119,80 @@ public enum WWNSessionWindowPresenter {
                 || ($0.userInfo?["wwn.session"] as? Bool) == true
         }
     }
+
+    public static func isTerminalScene(options: UIScene.ConnectionOptions) -> Bool {
+        options.userActivities.contains {
+            $0.activityType == terminalActivityType
+                || ($0.userInfo?["wwn.terminal"] as? Bool) == true
+        }
+    }
+
+    public static func noteTerminalScene(_ scene: UIWindowScene) {
+        terminalScene = scene
+    }
+
+    public static func closeTerminalWindow() {
+        guard let scene = terminalScene else { return }
+        closingTerminal = true
+        let options = UIWindowSceneDestructionRequestOptions()
+        options.windowDismissalAnimation = .standard
+        UIApplication.shared.requestSceneSessionDestruction(
+            scene.session,
+            options: options,
+            errorHandler: { error in
+                closingTerminal = false
+                NSLog(
+                    "WWNSessionWindowPresenter: terminal close failed: %@",
+                    error.localizedDescription
+                )
+            }
+        )
+    }
+
+    /// OS closed the terminal window. Returns true when the console should dismiss.
+    public static func terminalSceneDidDisconnect(_ scene: UIScene) -> Bool {
+        guard let windowScene = scene as? UIWindowScene, windowScene === terminalScene else {
+            return false
+        }
+        terminalScene = nil
+        if closingTerminal {
+            closingTerminal = false
+            return false
+        }
+        return true
+    }
     #endif
 }
 
-/// Full-bleed compositor host for a dedicated session window/scene.
+#if os(iOS) || os(visionOS)
+/// Full-screen Wawona Terminal for a dedicated iPad / visionOS window.
+public struct WWNTerminalWindowRoot: View {
+    @ObservedObject private var console = WWNIosGuestConsole.shared
+
+    public init() {}
+
+    public var body: some View {
+        WWNIosGuestConsoleSheet(console: console)
+    }
+}
+#endif
+
+/// Compositor host for a dedicated session window/scene.
 public struct WWNSessionSurfaceRootView: View {
     public init() {}
 
     public var body: some View {
         #if !SWIFT_PACKAGE && (os(macOS) || os(iOS) || os(visionOS))
-        // edgesIgnoringSafeArea stays valid on iOS 13; avoids ViewBuilder
-        // buildEither (iOS 16+) around ignoresSafeArea().
+        // macOS titled session window: layout below the titlebar
+        // (contentLayoutRect). Do not ignore top safe area or Metal draws
+        // under the chrome. iOS / visionOS session scenes stay full-bleed.
         CompositorBridge()
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            #if os(iOS) || os(visionOS)
+            // edgesIgnoringSafeArea stays valid on iOS 13; avoids ViewBuilder
+            // buildEither (iOS 16+) around ignoresSafeArea().
             .edgesIgnoringSafeArea(.all)
+            #endif
         #else
         Color.black
         #endif

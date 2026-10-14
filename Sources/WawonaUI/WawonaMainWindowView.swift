@@ -287,7 +287,9 @@ final class WWNMainWindowRouter: ObservableObject {
         sessionSurfaceMounted = true
         sessionSurfaceVisible = true
         selection = .session
-        NSLog("WWNShowSessionSurface: sessionSurfaceVisible=1")
+        NSLog(
+            "WWNShowSessionSurface: mounted=1 visible=1 selection=session"
+        )
     }
 
     /// Park compositor chrome; keep session running until Stop.
@@ -394,7 +396,7 @@ struct WawonaMainWindowView: View {
     @ObservedObject var sessions: SessionOrchestrator
     var onConnect: (() -> Void)? = nil
     @ObservedObject private var tagStore = WWNMachineTagStore.shared
-    #if os(iOS) || os(visionOS)
+    #if os(iOS) || os(tvOS) || os(visionOS)
     @ObservedObject private var guestConsole = WWNIosGuestConsole.shared
     #endif
 
@@ -418,11 +420,11 @@ struct WawonaMainWindowView: View {
             .onAppear {
                 listSelection = router.selection ?? .machines
                 syncSplitColumns()
-                #if os(iOS) || os(visionOS)
+                #if os(iOS) || os(tvOS) || os(visionOS)
                 guestConsole.startObservingIfNeeded()
                 #endif
             }
-            #if os(iOS) || os(visionOS)
+            #if os(iOS) || os(tvOS) || os(visionOS)
             .modifier(
                 WWNGuestConsoleHostModifier(
                     console: guestConsole,
@@ -546,12 +548,11 @@ struct WawonaMainWindowView: View {
                     }
                     #endif
                 } label: {
-                    WawonaLabel {
-                        Text("Machines")
-                    } icon: {
-                        Image(systemName: "desktopcomputer")
-                            .foregroundColor(Color(red: 0.35, green: 0.34, blue: 0.84))
-                    }
+                    WawonaSettingsHubChrome.hubRow(
+                        title: "Machines",
+                        systemImage: "desktopcomputer",
+                        iconColor: Self.machinesSidebarIndigo
+                    )
                 }
                 .tag(WWNMainDestination.machines)
                 .accessibility(identifier: WWNA11y.machinesRoot)
@@ -564,12 +565,11 @@ struct WawonaMainWindowView: View {
                     }
                     #endif
                 } label: {
-                    WawonaLabel {
-                        Text("Tab Overview")
-                    } icon: {
-                        Image(systemName: "square.on.square")
-                            .foregroundColor(.accentColor)
-                    }
+                    WawonaSettingsHubChrome.hubRow(
+                        title: "Tab Overview",
+                        systemImage: "square.on.square",
+                        iconColor: Self.tabOverviewSidebarBlue
+                    )
                 }
                 .accessibility(identifier: "wwn.tabOverview")
             }
@@ -628,6 +628,24 @@ struct WawonaMainWindowView: View {
         #endif
     }
 
+    /// systemIndigo (Settings Machines / PreferencesSectionsBuilder).
+    private static var machinesSidebarIndigo: Color {
+        #if os(macOS)
+        Color(nsColor: .systemIndigo)
+        #else
+        Color(UIColor.systemIndigo)
+        #endif
+    }
+
+    /// systemBlue (Settings Display / SSH accent).
+    private static var tabOverviewSidebarBlue: Color {
+        #if os(macOS)
+        Color(nsColor: .systemBlue)
+        #else
+        Color(UIColor.systemBlue)
+        #endif
+    }
+
     /// Apple TN3154: `List(selection:)` + `NavigationLink(value:)` + `.tag`.
     /// The split is always regular-width on iOS, so this highlights the row
     /// and swaps the detail column. It does not push a stack page.
@@ -639,25 +657,57 @@ struct WawonaMainWindowView: View {
         tagColorHex: String? = nil,
         accessibilityID: String? = nil
     ) -> some View {
-        let sidebarLabel = WawonaLabel {
-            Text(title)
-        } icon: {
-            if let tagColorHex {
-                WWNTagDot(colorHex: tagColorHex, size: 10)
-            } else if let systemImage {
-                Image(systemName: systemImage).foregroundColor(color ?? .accentColor)
-            }
-        }
-        return Group {
+        Group {
             if #available(iOS 16.0, tvOS 16.0, macOS 13.0, *) {
-                NavigationLink(value: destination) { sidebarLabel }
+                NavigationLink(value: destination) {
+                    sidebarRowLabel(
+                        title: title,
+                        systemImage: systemImage,
+                        color: color,
+                        tagColorHex: tagColorHex
+                    )
+                }
             } else {
-                Button { listSelection = destination } label: { sidebarLabel }
+                Button {
+                    listSelection = destination
+                } label: {
+                    sidebarRowLabel(
+                        title: title,
+                        systemImage: systemImage,
+                        color: color,
+                        tagColorHex: tagColorHex
+                    )
+                }
             }
         }
         .tag(destination)
         .accessibility(identifier: accessibilityID ?? "")
         .accessibility(addTraits: listSelection == destination ? .isSelected : [])
+    }
+
+    /// Settings.app-style colored tile + title (matches Global Settings / Android).
+    @ViewBuilder
+    private func sidebarRowLabel(
+        title: String,
+        systemImage: String?,
+        color: Color?,
+        tagColorHex: String?
+    ) -> some View {
+        if let tagColorHex {
+            HStack(spacing: 12) {
+                WWNTagDot(colorHex: tagColorHex, size: 10)
+                Text(title)
+                Spacer(minLength: 0)
+            }
+        } else if let systemImage {
+            WawonaSettingsHubChrome.hubRow(
+                title: title,
+                systemImage: systemImage,
+                iconColor: color ?? .accentColor
+            )
+        } else {
+            Text(title)
+        }
     }
 
     // MARK: - Detail
@@ -722,13 +772,15 @@ struct WawonaMainWindowView: View {
         // Mount Metal when a Wayland/VM session needs the presenter (SHM drain).
         // Visible only after Focus / Tab Overview. Start keeps Machines + Terminal.
         ZStack {
-            if router.sessionSurfaceMounted {
+            // visible implies mount. visible=1 + mounted=0 was a black empty
+            // ZStack (no Metal, no Machines grid) during AUTO_START.
+            if router.sessionSurfaceMounted || router.sessionSurfaceVisible {
                 #if !SWIFT_PACKAGE && (os(macOS) || os(iOS) || os(visionOS))
+                // macOS: stay inside contentLayoutRect so the titled / tabbed
+                // chrome is not drawn over Wayland (weston-smoke / SHM).
+                // iOS / visionOS: Respect Safe Area is applied on the pane.
                 CompositorBridge()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    #if !os(iOS) && !os(visionOS)
-                    .edgesIgnoringSafeArea(.all)
-                    #endif
                     .opacity(router.sessionSurfaceVisible ? 1 : 0)
                     .allowsHitTesting(router.sessionSurfaceVisible)
                     .accessibility(hidden: !router.sessionSurfaceVisible)
@@ -852,7 +904,7 @@ struct WawonaMainWindowView: View {
     }
 }
 
-#if os(iOS) || os(visionOS)
+#if os(iOS) || os(tvOS) || os(visionOS)
 /// Host Guest Console without killing Mode A Metal. A fullScreenCover can
 /// dismantle CompositorHostView (deinit clears activeIlandPresenter) so SHM
 /// present stops after one frame. Overlay while the session surface is mounted.
@@ -861,23 +913,15 @@ private struct WWNGuestConsoleHostModifier: ViewModifier {
     let sessionSurfaceMounted: Bool
 
     func body(content: Content) -> some View {
-        let coverPresented = Binding<Bool>(
-            get: { console.isPresented && !sessionSurfaceMounted },
-            set: { presented in
-                if !presented {
-                    console.userDismiss()
-                }
-            }
-        )
+        // Never fullScreenCover while a Relay/VM session needs Metal.
+        // Cover dismantles CompositorHostView (deinit clears
+        // activeIlandPresenter) and Mode A SHM present dies. Overlay only.
         // ZStack (not overlay{}) for iOS 13 floor.
         return ZStack {
             content
-            if console.isPresented && sessionSurfaceMounted {
+            if console.isPresented && !console.windowed {
                 WWNIosGuestConsoleSheet(console: console)
             }
-        }
-        .backport.fullScreenCover(isPresented: coverPresented) {
-            WWNIosGuestConsoleSheet(console: console)
         }
     }
 }
