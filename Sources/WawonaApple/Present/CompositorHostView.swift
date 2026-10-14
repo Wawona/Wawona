@@ -11,13 +11,16 @@ public struct CompositorHostView: View {
     }
 
     public var body: some View {
+        // Do NOT attach .accessibility(identifier:) on the Representable.
+        // SwiftUI invents a 1x1 AX node that shadows the real NSView/UIView
+        // (Mac2 element screenshots became 1x1 PNG). Contract id lives on
+        // CompositorHostPlatformView only.
         #if os(macOS)
         CompositorHostNSViewRepresentable(core: core)
-            // Contract id for Appium Mac2 / XCUITest (WWNA11y.compositorSurface).
-            .accessibility(identifier: "wwn.compositor.surface")
+            .accessibilityElement(children: .contain)
         #elseif os(iOS)
         CompositorHostUIViewRepresentable(core: core)
-            .accessibility(identifier: "wwn.compositor.surface")
+            .accessibilityElement(children: .contain)
         #endif
     }
 }
@@ -89,6 +92,7 @@ final class CompositorHostPlatformView: PlatformView {
         setAccessibilityElement(true)
         setAccessibilityIdentifier("wwn.compositor.surface")
         setAccessibilityLabel("Compositor surface")
+        setAccessibilityRole(.image)
         #else
         super.init(frame: .zero)
         backgroundColor = .black
@@ -172,6 +176,18 @@ final class CompositorHostPlatformView: PlatformView {
         super.layout()
         syncMetalLayerGeometry()
         ensureIlandPresenter(reason: "layout")
+        // Keep AX frame in sync with Metal bounds for Mac2 screenshots.
+        if let window {
+            setAccessibilityFrame(window.convertToScreen(convert(bounds, to: nil)))
+        }
+    }
+
+    override func accessibilityHitTest(_ point: NSPoint) -> Any? {
+        guard let window else { return super.accessibilityHitTest(point) }
+        let inWindow = window.convertPoint(fromScreen: point)
+        let local = convert(inWindow, from: nil)
+        if bounds.contains(local) { return self }
+        return super.accessibilityHitTest(point)
     }
 
     override func updateTrackingAreas() {

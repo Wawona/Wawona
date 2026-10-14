@@ -26,20 +26,52 @@ def _apple_options() -> XCUITestOptions | Mac2Options:
         opts = Mac2Options()
         opts.platform_name = "mac"
         opts.automation_name = "Mac2"
+        # Prefer appPath + noReset so XCTest activates a live Wawona instead of
+        # cold-launch hanging on nix-store bundles. Set WAWONA_MAC2_MANAGE_APP=0
+        # only for desktop-wide AX probes (Finder-rooted page_source).
+        manage_app = os.environ.get("WAWONA_MAC2_MANAGE_APP", "1") == "1"
         bundle = os.environ.get("WAWONA_BUNDLE_ID", "com.aspauldingcode.Wawona")
-        opts.bundle_id = bundle
-        app = os.environ.get("WAWONA_APP_PATH")
-        if app:
-            opts.app = app
+        app = os.environ.get("WAWONA_APP_PATH", "").strip()
+        if manage_app:
+            opts.bundle_id = bundle
+            if app and os.path.isdir(app):
+                # Mac2 capability name is appPath (not XCUITest "app").
+                opts.set_capability("appium:appPath", app)
         opts.set_capability("appium:showServerLogs", True)
         # Contended hosts often need >120s for WebDriverAgentMac xcodebuild.
         opts.set_capability(
             "appium:serverStartupTimeout",
             int(os.environ.get("WAWONA_MAC2_SERVER_STARTUP_MS", "300000")),
         )
-        wda_dd = os.environ.get("WAWONA_MAC2_DERIVED_DATA_PATH", "/tmp/wda-mac-dd")
-        if wda_dd and os.path.isdir(wda_dd):
-            opts.set_capability("appium:derivedDataPath", wda_dd)
+        # Prefer a pre-warmed WDA (scripts/appium/ensure-wda-mac.sh). Avoids
+        # Xcode 26 xcodebuild relaunch missing TestingInterop / _Testing_Foundation.
+        wda_url = os.environ.get("WAWONA_MAC2_WDA_URL", "").strip()
+        if not wda_url:
+            host = os.environ.get("WAWONA_MAC2_WDA_HOST", "127.0.0.1").strip()
+            port = os.environ.get("WAWONA_MAC2_WDA_PORT", "10100").strip()
+            try:
+                import urllib.request
+
+                with urllib.request.urlopen(
+                    f"http://{host}:{port}/status", timeout=1.5
+                ) as resp:
+                    if resp.status == 200:
+                        wda_url = f"http://{host}:{port}"
+            except Exception:
+                wda_url = ""
+        if wda_url:
+            opts.set_capability("appium:webDriverAgentMacUrl", wda_url)
+        bootstrap = os.environ.get("WAWONA_MAC2_BOOTSTRAP_ROOT", "").strip()
+        if bootstrap and os.path.isdir(bootstrap):
+            opts.set_capability("appium:bootstrapRoot", bootstrap)
+        opts.set_capability(
+            "appium:noReset",
+            os.environ.get("WAWONA_APPIUM_NO_RESET", "1") == "1",
+        )
+        opts.set_capability(
+            "appium:skipAppKill",
+            os.environ.get("WAWONA_MAC2_SKIP_APP_KILL", "1") == "1",
+        )
         return opts
 
     opts = XCUITestOptions()

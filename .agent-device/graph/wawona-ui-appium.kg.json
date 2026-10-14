@@ -1,0 +1,502 @@
+{
+  "schema_version": 1,
+  "name": "wawona-ui-appium",
+  "updated_at": "2026-10-14T21:45:46Z",
+  "tick": 7,
+  "max_ticks": 8,
+  "ontology": {
+    "entity_types": [
+      "Repo",
+      "Product",
+      "Platform",
+      "CapabilityGate",
+      "Workflow",
+      "TestSuite",
+      "Driver",
+      "GuestBackend",
+      "Client",
+      "Artifact",
+      "Skill",
+      "Rule"
+    ],
+    "relation_types": [
+      "OWNS",
+      "IMPLEMENTS_IN",
+      "GATES",
+      "TESTED_BY",
+      "DRIVES_WITH",
+      "LAUNCHES_VIA",
+      "PRODUCES",
+      "FORBIDDEN_ON",
+      "DOCUMENTED_IN",
+      "REQUIRES_SKILL"
+    ]
+  },
+  "competency_answers": {
+    "products_desktop_vs_swinging_bridge_vs_relay": {
+      "answer": "Desktop+LockScreen = host DE/greeter. Swinging Bridge = apps as Wayland clients (not Desktop). Relay = Linux VMs + OCI-in-VM + Mode A WASI.",
+      "citations": [
+        "wawona/docs wawona-product-map.md:1-13"
+      ],
+      "confidence": 0.95
+    },
+    "platforms_forbid_vm_container": {
+      "answer": "tvOS vm=forbidden; watchOS container=forbidden (and vm forbidden by product matrix). visionOS vm=planned (not forbidden).",
+      "citations": [
+        "wwn-mcp get_capability tvos/vm",
+        "wwn-mcp get_capability watchos/container",
+        "wwn-mcp get_capability visionos/vm"
+      ],
+      "confidence": 0.95
+    },
+    "appium_run_paths": {
+      "macos": {
+        "driver": "Mac2",
+        "env": "WAWONA_APPIUM_PLATFORM=macos WAWONA_APP_PATH=\u2026/Wawona.app",
+        "cmd": "appium (server :4723); ./scripts/appium/run-appium-suite.sh  OR  pytest tests/test_native_ui.py -q",
+        "skill": "appium-setup-mac2"
+      },
+      "ios_family": {
+        "driver": "XCUITest",
+        "env": "WAWONA_APPIUM_PLATFORM=ios|ipados|tvos|visionos|watchos WAWONA_APP_PATH=\u2026",
+        "cmd": "pytest tests/test_native_ui.py -q",
+        "skill": "appium-setup-xcuitest"
+      },
+      "android": {
+        "driver": "UiAutomator2",
+        "env": "WAWONA_APPIUM_PLATFORM=android WAWONA_APP_PATH=\u2026.apk",
+        "cmd": "bash scripts/appium/ci-android-suite.sh  OR  run-appium-suite.sh",
+        "skill": "appium-setup-uiautomator2"
+      },
+      "linux": {
+        "driver": "AT-SPI / Linux desktop caps in session.py",
+        "env": "WAWONA_APPIUM_PLATFORM=linux WAWONA_WAYLAND_GUEST=nested",
+        "cmd": "Xvfb + pytest tests/test_catalog_wayland.py -q",
+        "skill": "appium + wawona-appium"
+      },
+      "citations": [
+        "docs/testing/appium-ui-matrix.md",
+        "Tests/appium/wawona_appium/drivers/session.py",
+        "wawona/docs appium-ui-gh.md"
+      ],
+      "confidence": 0.9
+    },
+    "client_guest_and_screenshot": {
+      "pattern": ".agent-device/test-artifacts/appium/catalog-gallery/<client>.png must pass require_client_screenshot",
+      "examples": {
+        "weston": {
+          "guest": "container",
+          "screenshot": "catalog-gallery/weston.png",
+          "status": "UNPROVED"
+        },
+        "niri": {
+          "guest": "colima",
+          "screenshot": "catalog-gallery/niri.png",
+          "status": "UNPROVED"
+        },
+        "kde_plasma_de": {
+          "guest": "colima",
+          "screenshot": "catalog-gallery/kde_plasma_de.png",
+          "status": "UNPROVED"
+        },
+        "weston_simple_shm": {
+          "guest": "colima (local-bundle on Darwin)",
+          "screenshot": "catalog-gallery/weston_simple_shm.png",
+          "status": "UNPROVED",
+          "note": "Surface a11y wired (7a49463d). Local proof blocked on nix rebuild after term UniFFI flake gap (80f2a59e)."
+        },
+        "foot": {
+          "guest": "colima",
+          "screenshot": "catalog-gallery/foot.png",
+          "status": "UNPROVED"
+        }
+      },
+      "citations": [
+        "Tests/appium/matrix.toml + verify-wayland-guest-map.py OK 18 clients",
+        "docs/testing/appium-ui-matrix.md:42-71",
+        "screenshot_evidence.require_client_screenshot"
+      ],
+      "confidence": 0.92
+    }
+  },
+  "entities": [
+    {
+      "id": "repo:Wawona",
+      "type": "Repo",
+      "attrs": {
+        "layer": "L4"
+      },
+      "source": "wwn-mcp where_to_edit Machines UI",
+      "extracted_at": "2026-10-13T18:58:00Z",
+      "confidence": 1.0
+    },
+    {
+      "id": "product:DesktopLockScreen",
+      "type": "Product",
+      "attrs": {
+        "role": "Host DE / greeter"
+      },
+      "source": "wawona-product-map.md:1-13",
+      "extracted_at": "2026-10-13T18:58:00Z",
+      "confidence": 0.95
+    },
+    {
+      "id": "product:SwingingBridge",
+      "type": "Product",
+      "attrs": {
+        "role": "Apps \u2192 Wayland clients"
+      },
+      "source": "wawona-product-map.md:1-13",
+      "extracted_at": "2026-10-13T18:58:00Z",
+      "confidence": 0.95
+    },
+    {
+      "id": "product:Relay",
+      "type": "Product",
+      "attrs": {
+        "role": "Linux VMs + OCI-in-VM + Mode A WASI",
+        "repo": "wwn-relay"
+      },
+      "source": "wawona-product-map.md:1-13",
+      "extracted_at": "2026-10-13T18:58:00Z",
+      "confidence": 0.95
+    },
+    {
+      "id": "suite:Tests/appium",
+      "type": "TestSuite",
+      "attrs": {
+        "workflow": "ui-appium.yml"
+      },
+      "source": "appium-ui-gh.md + appium-ui-matrix.md",
+      "extracted_at": "2026-10-13T18:58:00Z",
+      "confidence": 1.0
+    },
+    {
+      "id": "driver:Mac2",
+      "type": "Driver",
+      "attrs": {
+        "platforms": [
+          "macos"
+        ]
+      },
+      "source": "session.py",
+      "extracted_at": "2026-10-13T18:58:00Z",
+      "confidence": 1.0
+    },
+    {
+      "id": "driver:XCUITest",
+      "type": "Driver",
+      "attrs": {
+        "platforms": [
+          "ios",
+          "ipados",
+          "tvos",
+          "visionos",
+          "watchos"
+        ]
+      },
+      "source": "session.py",
+      "extracted_at": "2026-10-13T18:58:00Z",
+      "confidence": 1.0
+    },
+    {
+      "id": "driver:UiAutomator2",
+      "type": "Driver",
+      "attrs": {
+        "platforms": [
+          "android"
+        ]
+      },
+      "source": "session.py",
+      "extracted_at": "2026-10-13T18:58:00Z",
+      "confidence": 1.0
+    },
+    {
+      "id": "guest:container",
+      "type": "GuestBackend",
+      "attrs": {
+        "clients": [
+          "weston",
+          "swaywm",
+          "hyprland"
+        ]
+      },
+      "source": "verify-wayland-guest-map.py",
+      "extracted_at": "2026-10-13T18:58:00Z",
+      "confidence": 1.0
+    },
+    {
+      "id": "guest:colima",
+      "type": "GuestBackend",
+      "attrs": {
+        "clients": [
+          "niri",
+          "kde_plasma_de",
+          "foot",
+          "weston_simple_shm",
+          "\u2026"
+        ]
+      },
+      "source": "verify-wayland-guest-map.py",
+      "extracted_at": "2026-10-13T18:58:00Z",
+      "confidence": 1.0
+    },
+    {
+      "id": "guest:nested",
+      "type": "GuestBackend",
+      "attrs": {
+        "where": "Linux runner / Xvfb"
+      },
+      "source": "appium-ui-matrix.md",
+      "extracted_at": "2026-10-13T18:58:00Z",
+      "confidence": 1.0
+    },
+    {
+      "id": "gate:tvos.vm",
+      "type": "CapabilityGate",
+      "attrs": {
+        "state": "forbidden"
+      },
+      "source": "wwn-mcp get_capability",
+      "extracted_at": "2026-10-13T18:58:00Z",
+      "confidence": 1.0
+    },
+    {
+      "id": "gate:watchos.container",
+      "type": "CapabilityGate",
+      "attrs": {
+        "state": "forbidden"
+      },
+      "source": "wwn-mcp get_capability",
+      "extracted_at": "2026-10-13T18:58:00Z",
+      "confidence": 1.0
+    },
+    {
+      "id": "skill:wawona-appium",
+      "type": "Skill",
+      "attrs": {},
+      "source": ".cursor/skills/wawona-appium",
+      "extracted_at": "2026-10-13T18:58:00Z",
+      "confidence": 1.0
+    },
+    {
+      "id": "rule:wawona-appium-ui-gh",
+      "type": "Rule",
+      "attrs": {
+        "alwaysApply": true
+      },
+      "source": "docs/agent-rules/wawona-appium-ui-gh.md",
+      "extracted_at": "2026-10-13T18:58:00Z",
+      "confidence": 1.0
+    },
+    {
+      "id": "artifact:catalog-gallery/weston_simple_shm.png",
+      "type": "Artifact",
+      "attrs": {
+        "status": "UNPROVED",
+        "reason": "waiting rebuilt app with a11y + term UniFFI"
+      },
+      "source": "require_client_screenshot 2026-10-13",
+      "extracted_at": "2026-10-14T19:40:30Z",
+      "confidence": 1.0
+    },
+    {
+      "id": "human:Accessibility.TCC",
+      "type": "Artifact",
+      "attrs": {
+        "status": "EMPTY_LIST",
+        "action": "add WebDriverAgentRunner-Runner + unlock"
+      },
+      "source": "mac2-gate.png",
+      "extracted_at": "2026-10-14T20:56:31Z",
+      "confidence": 1.0
+    }
+  ],
+  "edges": [
+    {
+      "from": "repo:Wawona",
+      "rel": "OWNS",
+      "to": "suite:Tests/appium",
+      "source": "appium-ui-matrix.md",
+      "extracted_at": "2026-10-13T18:58:00Z",
+      "confidence": 1.0
+    },
+    {
+      "from": "suite:Tests/appium",
+      "rel": "DRIVES_WITH",
+      "to": "driver:Mac2",
+      "source": "session.py",
+      "extracted_at": "2026-10-13T18:58:00Z",
+      "confidence": 1.0
+    },
+    {
+      "from": "suite:Tests/appium",
+      "rel": "DRIVES_WITH",
+      "to": "driver:XCUITest",
+      "source": "session.py",
+      "extracted_at": "2026-10-13T18:58:00Z",
+      "confidence": 1.0
+    },
+    {
+      "from": "suite:Tests/appium",
+      "rel": "DRIVES_WITH",
+      "to": "driver:UiAutomator2",
+      "source": "session.py",
+      "extracted_at": "2026-10-13T18:58:00Z",
+      "confidence": 1.0
+    },
+    {
+      "from": "suite:Tests/appium",
+      "rel": "REQUIRES_SKILL",
+      "to": "skill:wawona-appium",
+      "source": "wawona-appium-ui-gh",
+      "extracted_at": "2026-10-13T18:58:00Z",
+      "confidence": 1.0
+    },
+    {
+      "from": "suite:Tests/appium",
+      "rel": "DOCUMENTED_IN",
+      "to": "rule:wawona-appium-ui-gh",
+      "source": "docs",
+      "extracted_at": "2026-10-13T18:58:00Z",
+      "confidence": 1.0
+    },
+    {
+      "from": "product:SwingingBridge",
+      "rel": "FORBIDDEN_ON",
+      "to": "gate:confused_with_desktop",
+      "note": "Never call SB Desktop/LockScreen",
+      "source": "wawona-product-map.md:72-81",
+      "extracted_at": "2026-10-13T18:58:00Z",
+      "confidence": 0.9
+    },
+    {
+      "from": "driver:Mac2",
+      "rel": "GATES",
+      "to": "human:XCTest.UIAutomation",
+      "source": "WDA Timed out while enabling automation mode + on-screen Touch ID prompt 2026-10-13",
+      "extracted_at": "2026-10-13T21:56:36Z",
+      "confidence": 1.0
+    },
+    {
+      "from": "driver:Mac2",
+      "rel": "GATES",
+      "to": "human:Accessibility.TCC",
+      "source": "System Settings Accessibility empty 2026-10-14",
+      "extracted_at": "2026-10-14T20:56:31Z",
+      "confidence": 1.0
+    }
+  ],
+  "bootstrap": {
+    "verify_matrix": "OK platforms=8 compositors=10 apps=8",
+    "verify_guest_map": "OK 18 clients",
+    "dry_unit": "15 passed",
+    "appium_skill_present": true,
+    "gallery_proved_clients": [],
+    "ci_tip": {
+      "run": 38474248736,
+      "conclusion": "success",
+      "note": "All ui-appium jobs green after EXTRA[@] fix including Android KVM"
+    }
+  },
+  "next_action": {
+    "tick": 7,
+    "cmd": "capture remaining catalog clients (N4) via capture-catalog-gallery.sh",
+    "goal": "catalog-gallery full matrix PNGs",
+    "blocked_by": null
+  },
+  "nexts": [
+    {
+      "id": "N1",
+      "status": "proved",
+      "title": "Catalog gallery PNG via Mac2",
+      "detail": "Mac2 + ensure-wda-mac (Xcode26 DYLD) + appPath/noReset. Gallery PNG catalog-gallery/weston_simple_shm.png ~1.2MB shows shm pattern. Surface rect 963x726."
+    },
+    {
+      "id": "N2",
+      "status": "done",
+      "title": "CI EXTRA[@] unbound under set -u",
+      "detail": "65734149; tip 38474248736 all success"
+    },
+    {
+      "id": "N3",
+      "status": "done",
+      "title": "Android emulator zip on tip",
+      "detail": "Tip run Android Appium KVM success"
+    },
+    {
+      "id": "N4",
+      "status": "open",
+      "title": "Capture remaining catalog clients",
+      "detail": "After N1: foot, weston, niri, kde_plasma_de, \u2026 into catalog-gallery/"
+    },
+    {
+      "id": "N5",
+      "status": "done",
+      "title": "Appium server flapping locally",
+      "detail": "ensure-appium/ensure-wda start_new_session; capture wires both; no DYLD on Node"
+    },
+    {
+      "id": "N6",
+      "status": "done",
+      "title": "Catalog test Start-before-launch",
+      "detail": "Start-before-launch + tip ui-appium green; a11y surface wiring is the real N1 blocker"
+    }
+  ],
+  "mode": "graph-engineering-continuous",
+  "events": [
+    {
+      "id": "evt:term-uniffi-flake-gap",
+      "type": "BuildFailure",
+      "trigger": "rust_wawona E0583 mod uniffi_api",
+      "args": {
+        "fix": "80f2a59e",
+        "cause": "flake copies git-tracked only; file was ??"
+      },
+      "time": "2026-10-14T19:40:30Z",
+      "source": "nix build .#wawona-macos",
+      "confidence": 1.0
+    },
+    {
+      "id": "evt:mac2-accessibility-empty",
+      "type": "HumanGate",
+      "trigger": "Mac2 session proxy timeout; System Settings Accessibility list empty",
+      "args": {
+        "add": [
+          "/tmp/wda-mac-dd/Build/Products/Debug/WebDriverAgentRunner-Runner.app",
+          "~/Library/Developer/Xcode/DerivedData/WebDriverAgentMac-*/Build/Products/Debug/WebDriverAgentRunner-Runner.app"
+        ],
+        "also": "Xcode / Terminal if prompted for UI Automation",
+        "app_built": "/tmp/wawona-macos-a11y (7a49463d cache) has wwn.compositor.surface"
+      },
+      "time": "2026-10-14T20:56:31Z",
+      "source": "screencapture System Settings Accessibility No Items",
+      "confidence": 1.0
+    },
+    {
+      "id": "evt:mac2-xcode26-testing-dyld",
+      "type": "DriverFix",
+      "trigger": "WDA SIGABRT missing lib_TestingInterop/_Testing_Foundation on Xcode 26",
+      "args": {
+        "fix": "scripts/appium/ensure-wda-mac.sh DYLD_* + webDriverAgentMacUrl",
+        "also": "ensure-appium strips DYLD from Node; start_new_session survives agent shells"
+      },
+      "time": "2026-10-14T21:45:46Z",
+      "source": "local Mac2 weston_simple_shm gallery",
+      "confidence": 1.0
+    },
+    {
+      "id": "evt:n1-catalog-gallery-proved",
+      "type": "Proof",
+      "trigger": "weston_simple_shm catalog-gallery PNG",
+      "args": {
+        "path": ".agent-device/test-artifacts/appium/catalog-gallery/weston_simple_shm.png",
+        "bytes": 1210362,
+        "surface_rect": "963x726"
+      },
+      "time": "2026-10-14T21:45:46Z",
+      "source": "require_client_screenshot + publish_gallery",
+      "confidence": 1.0
+    }
+  ]
+}

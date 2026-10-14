@@ -27,10 +27,34 @@ if [[ ! -S "$SOCK" ]]; then
 fi
 
 chmod +x "$ROOT/scripts/appium/ensure-appium.sh"
+chmod +x "$ROOT/scripts/appium/ensure-wda-mac.sh"
 chmod +x "$ROOT/scripts/appium/run-appium-suite.sh"
 chmod +x "$ROOT/scripts/appium/launch-wayland-client.sh"
 # Local Mac2 / Linux sessions flap :4723; never start pytest cold.
 "$ROOT/scripts/appium/ensure-appium.sh"
+# Darwin: pre-warm WDA with Xcode 26 Testing DYLD paths, then Mac2 attaches.
+if [[ "$(uname -s)" == "Darwin" && "${WAWONA_APPIUM_PLATFORM}" == "macos" ]]; then
+  "$ROOT/scripts/appium/ensure-wda-mac.sh"
+  export WAWONA_MAC2_WDA_URL="${WAWONA_MAC2_WDA_URL:-http://127.0.0.1:${WAWONA_MAC2_WDA_PORT:-10100}}"
+  export WAWONA_MAC2_MANAGE_APP="${WAWONA_MAC2_MANAGE_APP:-1}"
+  export WAWONA_APPIUM_NO_RESET="${WAWONA_APPIUM_NO_RESET:-1}"
+  export WAWONA_MAC2_SKIP_APP_KILL="${WAWONA_MAC2_SKIP_APP_KILL:-1}"
+  if [[ -z "${WAWONA_APP_PATH:-}" ]]; then
+    for cand in \
+      /tmp/wawona-macos-a11y/Wawona.app \
+      /tmp/wawona-macos/Wawona.app \
+      "$ROOT/result/Applications/Wawona.app"
+    do
+      if [[ -d "$cand" ]]; then
+        export WAWONA_APP_PATH="$cand"
+        break
+      fi
+    done
+  fi
+  # Prefer activate over cold launch when Wawona is already up.
+  osascript -e 'tell application id "com.aspauldingcode.Wawona" to activate' \
+    >/dev/null 2>&1 || true
+fi
 
 cd "$ROOT/Tests/appium"
 if [[ ! -d .venv ]]; then

@@ -27,12 +27,20 @@ class CompositorPage(BasePage):
     def screenshot_surface(self, path: str) -> None:
         """Capture the compositor surface element, not the whole desktop."""
         el = self.wait_visible(self.SURFACE)
-        # Appium element screenshot when supported; else crop via full shot.
-        try:
-            el.screenshot(path)
-            return
-        except Exception:
-            pass
+        rect = getattr(el, "rect", None) or {}
+        width = int(rect.get("width") or 0)
+        height = int(rect.get("height") or 0)
+        # SwiftUI used to expose a 1x1 AX wrapper; reject tiny element shots.
+        if width >= 32 and height >= 32:
+            try:
+                el.screenshot(path)
+                from pathlib import Path
+
+                if Path(path).is_file() and Path(path).stat().st_size >= 12000:
+                    return
+            except Exception:
+                pass
+        # Fall back to the app/window shot (still Wawona, not full desktop).
         self.screenshot(path)
 
     def wait_toolbar(self) -> None:

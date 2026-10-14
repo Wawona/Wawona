@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Keep a local Appium 3 server on :4723 (Mac2 / XCUITest / UiAutomator2).
 # macOS has no setsid; use nohup + pidfile. Idempotent.
+#
+# Do NOT export DYLD_* here. Node/Appium dies when MacOSX Developer Testing
+# paths override its dyld search. Xcode 26 WDA DYLD belongs in ensure-wda-mac.sh.
 set -euo pipefail
 export PATH="${HOME}/.local/bin:${PATH}"
 export APPIUM_HOME="${APPIUM_HOME:-${HOME}/.local/share/appium-cli}"
@@ -23,11 +26,45 @@ if [[ -f "$PIDFILE" ]]; then
   rm -f "$PIDFILE"
 fi
 
-nohup env PATH="$PATH" APPIUM_HOME="$APPIUM_HOME" appium \
-  --address "$HOST" --port "$PORT" --base-path / --log-level info \
-  >>"$LOG" 2>&1 &
-echo $! >"$PIDFILE"
-disown "$(cat "$PIDFILE")" 2>/dev/null || true
+# New session so Cursor/agent shell teardown cannot SIGHUP Node.
+# Strip inherited Testing DYLD so a parent shell cannot poison Node.
+python3 - "$HOST" "$PORT" "$PIDFILE" "$LOG" "$PATH" "$APPIUM_HOME" <<'PY'
+import os, subprocess, sys, shutil
+
+host, port, pidfile, log, path, appium_home = sys.argv[1:7]
+env = os.environ.copy()
+env["PATH"] = path
+env["APPIUM_HOME"] = appium_home
+for k in (
+    "DYLD_FRAMEWORK_PATH",
+    "DYLD_LIBRARY_PATH",
+    "DYLD_FALLBACK_FRAMEWORK_PATH",
+    "DYLD_FALLBACK_LIBRARY_PATH",
+):
+    env.pop(k, None)
+appium = shutil.which("appium", path=path) or "appium"
+with open(log, "a", encoding="utf-8") as out:
+    proc = subprocess.Popen(
+        [
+            appium,
+            "--address",
+            host,
+            "--port",
+            port,
+            "--base-path",
+            "/",
+            "--log-level",
+            "info",
+        ],
+        stdout=out,
+        stderr=subprocess.STDOUT,
+        env=env,
+        start_new_session=True,
+        close_fds=True,
+    )
+open(pidfile, "w", encoding="utf-8").write(str(proc.pid))
+print(proc.pid)
+PY
 
 for _ in $(seq 1 40); do
   if curl -sf "http://${HOST}:${PORT}/status" >/dev/null; then
