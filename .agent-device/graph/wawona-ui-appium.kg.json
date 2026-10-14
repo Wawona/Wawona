@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "name": "wawona-ui-appium",
-  "updated_at": "2026-10-14T22:20:46Z",
-  "tick": 10,
+  "updated_at": "2026-10-14T22:22:39Z",
+  "tick": 11,
   "max_ticks": 8,
   "ontology": {
     "entity_types": [
@@ -495,11 +495,15 @@
       "confidence": 1.0
     }
   ],
-  "last_tick": "tick10: weston nested gallery OK via WESTON_BACKEND_DIR; launch script wired",
+  "last_tick": "tick11: local N4 keepset done (shm/foot/weston_terminal/weston). Next ghostty/niri/DE need Colima or Linux guest; no niri Darwin bin in catalog.",
   "proved": [
     "weston_simple_shm",
     "foot",
     "weston_terminal",
     "weston"
-  ]
+  ],
+  "blocker": {
+    "next": "ghostty_terminal / niri / DE clients",
+    "reason": "No Colima/lima; catalog niri Darwin attr absent (niri-android only); ghostty bin absent from Wawona.app"
+  }
 }
