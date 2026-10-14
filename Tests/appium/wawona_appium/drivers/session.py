@@ -32,6 +32,14 @@ def _apple_options() -> XCUITestOptions | Mac2Options:
         if app:
             opts.app = app
         opts.set_capability("appium:showServerLogs", True)
+        # Contended hosts often need >120s for WebDriverAgentMac xcodebuild.
+        opts.set_capability(
+            "appium:serverStartupTimeout",
+            int(os.environ.get("WAWONA_MAC2_SERVER_STARTUP_MS", "300000")),
+        )
+        wda_dd = os.environ.get("WAWONA_MAC2_DERIVED_DATA_PATH", "/tmp/wda-mac-dd")
+        if wda_dd and os.path.isdir(wda_dd):
+            opts.set_capability("appium:derivedDataPath", wda_dd)
         return opts
 
     opts = XCUITestOptions()

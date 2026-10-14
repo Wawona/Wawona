@@ -26,8 +26,11 @@ if [[ ! -S "$SOCK" ]]; then
   exit 2
 fi
 
+chmod +x "$ROOT/scripts/appium/ensure-appium.sh"
 chmod +x "$ROOT/scripts/appium/run-appium-suite.sh"
 chmod +x "$ROOT/scripts/appium/launch-wayland-client.sh"
+# Local Mac2 / Linux sessions flap :4723; never start pytest cold.
+"$ROOT/scripts/appium/ensure-appium.sh"
 
 cd "$ROOT/Tests/appium"
 if [[ ! -d .venv ]]; then
