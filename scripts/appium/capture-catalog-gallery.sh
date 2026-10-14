@@ -6,6 +6,9 @@
 #   - Wawona running with $WAWONA_RUNTIME/wayland-0
 #   - Appium on :4723 (mac2 on Darwin, linux driver on Linux)
 #   - Colima (macOS colima guests) and/or container recipes as needed
+#   - Present revealed (Focus / close Wawona Terminal) so wwn.compositor.surface
+#     exists. Dark terminals pass require_client_screenshot via stddev, not mean.
+#   - Nested weston local-bundle needs WESTON_BACKEND_DIR (set by launch script)
 #
 # Usage:
 #   scripts/appium/capture-catalog-gallery.sh           # all clients
@@ -17,10 +20,16 @@ ART="${WAWONA_APPIUM_ARTIFACTS:-$ROOT/.agent-device/test-artifacts/appium}"
 export WAWONA_APPIUM_ARTIFACTS="$ART"
 export WAWONA_APPIUM_PLATFORM="${WAWONA_APPIUM_PLATFORM:-macos}"
 export WAWONA_APPIUM_SERVER="${WAWONA_APPIUM_SERVER:-http://127.0.0.1:4723}"
+# Dark clients (weston-terminal) often need >4s before first SHM attach.
+export WAWONA_CATALOG_SETTLE_SEC="${WAWONA_CATALOG_SETTLE_SEC:-8}"
 unset WAWONA_APPIUM_DRY || true
 
 RUNTIME="${WAWONA_RUNTIME:-${XDG_RUNTIME_DIR:-/tmp/wawona-$(id -u)}}"
+export XDG_RUNTIME_DIR="$RUNTIME"
 SOCK="$RUNTIME/wayland-0"
+if [[ -z "${FONTCONFIG_FILE:-}" && -f "$RUNTIME/fonts.conf" ]]; then
+  export FONTCONFIG_FILE="$RUNTIME/fonts.conf"
+fi
 if [[ ! -S "$SOCK" ]]; then
   echo "FAIL: no Wayland socket at $SOCK. Start Wawona first." >&2
   exit 2
