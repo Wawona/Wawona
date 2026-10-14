@@ -88,7 +88,11 @@ launch_container() {
 
 launch_local_bundle() {
   # macOS: prefer clients bundled in Wawona.app against the live host socket.
-  local bin_dir="/Applications/Wawona.app/Contents/Resources/bin"
+  # Prefer WAWONA_APP_PATH (nix product) over /Applications so modules match.
+  local app_root="${WAWONA_APP_PATH:-/Applications/Wawona.app}"
+  app_root="${app_root%/}"
+  local bin_dir="$app_root/Contents/Resources/bin"
+  local res_lib="$app_root/Contents/Resources/lib"
   local exe=""
   case "$CLIENT" in
     foot) exe="$bin_dir/foot" ;;
@@ -103,13 +107,21 @@ launch_local_bundle() {
   fi
   mkdir -p "$ROOT/.agent-device/test-artifacts/appium"
   local cmd="$exe"
+  local env_prefix="export XDG_RUNTIME_DIR='$XDG_RUNTIME_DIR' WAYLAND_DISPLAY='$WAYLAND_DISPLAY'"
   case "$CLIENT" in
-    weston) cmd="$exe --backend=wayland --socket=appium-local-weston --width=1024 --height=768" ;;
+    weston)
+      # Weston 13 aborts if wayland-backend.so is loaded from a stale nix
+      # module dir before weston_log_set_handler. Point at this app's modules.
+      env_prefix="$env_prefix DYLD_LIBRARY_PATH='$res_lib\${DYLD_LIBRARY_PATH:+:\$DYLD_LIBRARY_PATH}'"
+      env_prefix="$env_prefix WESTON_BACKEND_DIR='$res_lib/libweston-13'"
+      env_prefix="$env_prefix WESTON_MODULE_DIR='$res_lib/weston'"
+      cmd="$exe --backend=wayland --socket=appium-local-weston --width=1024 --height=768"
+      ;;
     niri) cmd="env NIRI_BACKEND=nested $exe" ;;
   esac
-  nohup bash -lc "export XDG_RUNTIME_DIR='$XDG_RUNTIME_DIR' WAYLAND_DISPLAY='$WAYLAND_DISPLAY'; $cmd" \
+  nohup bash -lc "$env_prefix; $cmd" \
     >"$ROOT/.agent-device/test-artifacts/appium/local-${CLIENT}.log" 2>&1 &
-  echo "local-bundle pid=$! client=$CLIENT cmd=$cmd"
+  echo "local-bundle pid=$! client=$CLIENT cmd=$cmd app=$app_root"
   return 0
 }
 

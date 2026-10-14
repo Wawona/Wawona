@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "name": "wawona-ui-appium",
-  "updated_at": "2026-10-14T21:48:34Z",
-  "tick": 8,
+  "updated_at": "2026-10-14T22:20:46Z",
+  "tick": 10,
   "max_ticks": 8,
   "ontology": {
     "entity_types": [
@@ -85,9 +85,10 @@
       "pattern": ".agent-device/test-artifacts/appium/catalog-gallery/<client>.png must pass require_client_screenshot",
       "examples": {
         "weston": {
-          "guest": "container",
+          "guest": "local-bundle",
           "screenshot": "catalog-gallery/weston.png",
-          "status": "UNPROVED"
+          "status": "PROVED",
+          "note": "Nested wayland-backend needs WESTON_BACKEND_DIR=app libweston-13 (stale store module aborts on weston_log_set_handler)"
         },
         "niri": {
           "guest": "colima",
@@ -102,13 +103,19 @@
         "weston_simple_shm": {
           "guest": "colima (local-bundle on Darwin)",
           "screenshot": "catalog-gallery/weston_simple_shm.png",
-          "status": "UNPROVED",
-          "note": "Surface a11y wired (7a49463d). Local proof blocked on nix rebuild after term UniFFI flake gap (80f2a59e)."
+          "status": "PROVED",
+          "note": "PROVED local Mac2 surface 14:45"
         },
         "foot": {
           "guest": "colima",
           "screenshot": "catalog-gallery/foot.png",
-          "status": "UNPROVED"
+          "status": "PROVED",
+          "note": "PROVED local Mac2 surface 14:47"
+        },
+        "weston_terminal": {
+          "status": "PROVED",
+          "screenshot": "catalog-gallery/weston_terminal.png",
+          "note": "PROVED local Mac2 surface 15:16; dark-terminal blank detector fixed"
         }
       },
       "citations": [
@@ -406,42 +413,20 @@
     "blocked_by": null
   },
   "nexts": [
-    {
-      "id": "N1",
-      "status": "proved",
-      "title": "Catalog gallery PNG via Mac2",
-      "detail": "Mac2 + ensure-wda-mac (Xcode26 DYLD) + appPath/noReset. Gallery PNG catalog-gallery/weston_simple_shm.png ~1.2MB shows shm pattern. Surface rect 963x726."
-    },
-    {
-      "id": "N2",
-      "status": "done",
-      "title": "CI EXTRA[@] unbound under set -u",
-      "detail": "65734149; tip 38474248736 all success"
-    },
-    {
-      "id": "N3",
-      "status": "done",
-      "title": "Android emulator zip on tip",
-      "detail": "Tip run Android Appium KVM success"
-    },
-    {
-      "id": "N4",
-      "status": "in_progress",
-      "title": "Capture remaining catalog clients",
-      "detail": "weston_simple_shm + foot proved via local-bundle on sock. Remaining: weston, niri, kde_plasma_de, \u2026"
-    },
-    {
-      "id": "N5",
-      "status": "done",
-      "title": "Appium server flapping locally",
-      "detail": "ensure-appium/ensure-wda start_new_session; capture wires both; no DYLD on Node"
-    },
-    {
-      "id": "N6",
-      "status": "done",
-      "title": "Catalog test Start-before-launch",
-      "detail": "Start-before-launch + tip ui-appium green; a11y surface wiring is the real N1 blocker"
-    }
+    "ghostty_terminal",
+    "niri",
+    "kde_plasma_de",
+    "swaywm",
+    "konsole",
+    "firefox_wayland",
+    "thunar",
+    "dolphin",
+    "hyprland",
+    "mangowm",
+    "cosmic_de",
+    "phosh_de",
+    "kde_plasma_mobile_de",
+    "gnome_de"
   ],
   "mode": "graph-engineering-continuous",
   "events": [
@@ -510,8 +495,11 @@
       "confidence": 1.0
     }
   ],
-  "last_tick": "tick: weston_terminal gallery proved (surface, dark-terminal blank fix); false shm PNG rejected",
+  "last_tick": "tick10: weston nested gallery OK via WESTON_BACKEND_DIR; launch script wired",
   "proved": [
-    "weston_terminal"
+    "weston_simple_shm",
+    "foot",
+    "weston_terminal",
+    "weston"
   ]
 }
