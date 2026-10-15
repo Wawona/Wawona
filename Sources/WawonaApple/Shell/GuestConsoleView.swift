@@ -1,51 +1,6 @@
 #if os(iOS) || os(tvOS) || os(visionOS)
 import Darwin
 import Foundation
-import UIKit
-
-@objc(WWNGuestConsoleView)
-public final class WWNGuestConsoleView: UIView {
-    @objc public private(set) var machineId: String = ""
-    private let textView = UITextView()
-
-    @objc(initWithMachineId:)
-    public convenience init(machineId: String) {
-        self.init(machineId: machineId, source: "local")
-    }
-
-    @objc(initWithMachineId:source:)
-    public init(machineId: String, source: String) {
-        self.machineId = machineId
-        super.init(frame: .zero)
-        _ = source
-        #if !os(tvOS)
-        textView.isEditable = false
-        #endif
-        textView.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
-        textView.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(textView)
-        NSLayoutConstraint.activate([
-            textView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            textView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            textView.topAnchor.constraint(equalTo: topAnchor),
-            textView.bottomAnchor.constraint(equalTo: bottomAnchor),
-        ])
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { nil }
-
-    @objc(appendOutput:)
-    public func appendOutput(_ bytes: Data) {
-        if let s = String(data: bytes, encoding: .utf8) {
-            DispatchQueue.main.async {
-                self.textView.text += s
-            }
-        }
-    }
-
-    @objc public func stop() {}
-}
 
 /// In-process Native Shell: `wwn_pty_session` + `wawona_zsh_main` + `wwn_term_*`.
 enum IosShellABI {
@@ -84,6 +39,9 @@ enum IosShellABI {
     @_silgen_name("wwn_pty_tty_shim_set_winsize")
     static func setWinsize(_ ws: UnsafePointer<winsize>?)
 
+    @_silgen_name("wwn_pty_ios_kick_shell_display")
+    static func kickShellDisplay()
+
     @_silgen_name("wwn_term_new")
     static func termNew(_ cols: UInt32, _ rows: UInt32) -> OpaquePointer?
 
@@ -100,14 +58,24 @@ enum IosShellABI {
         _ len: Int
     )
 
-    @_silgen_name("wwn_term_export")
-    static func termExport(
-        _ term: OpaquePointer?,
-        _ outLen: UnsafeMutablePointer<Int>?
-    ) -> UnsafeMutablePointer<UInt8>?
+    @_silgen_name("wwn_term_lines_json")
+    static func termLinesJson(_ term: OpaquePointer?) -> UnsafeMutablePointer<CChar>?
 
-    @_silgen_name("wwn_term_snapshot_free")
-    static func termSnapshotFree(_ ptr: UnsafeMutablePointer<UInt8>?, _ len: Int)
+    @_silgen_name("wwn_term_images_json")
+    static func termImagesJson(_ term: OpaquePointer?) -> UnsafeMutablePointer<CChar>?
+
+    @_silgen_name("wwn_term_set_cell_px")
+    static func termSetCellPx(_ term: OpaquePointer?, _ width: UInt32, _ height: UInt32)
+
+    @_silgen_name("wwn_term_string_free")
+    static func termStringFree(_ ptr: UnsafeMutablePointer<CChar>?)
+
+    @_silgen_name("wwn_term_encode_paste")
+    static func encodePaste(
+        _ term: OpaquePointer?,
+        _ bytes: UnsafePointer<UInt8>?,
+        _ len: Int
+    ) -> UnsafeMutablePointer<CChar>?
 
     @_silgen_name("wwn_term_take_reply")
     static func termTakeReply(
@@ -115,6 +83,12 @@ enum IosShellABI {
         _ buf: UnsafeMutablePointer<UInt8>?,
         _ cap: Int
     ) -> Int
+
+    @_silgen_name("wwn_term_pointer")
+    static func termPointer(
+        _ term: OpaquePointer?, _ button: UInt8, _ col: UInt32, _ row: UInt32,
+        _ pressed: Int32, _ motion: Int32
+    )
 }
 
 final class IosShellSession {
@@ -127,7 +101,8 @@ final class IosShellSession {
     private var rows: UInt32 = 24
     private var stopped = false
 
-    var onScreen: ((Data) -> Void)?
+    var onScreen: ((String) -> Void)?
+    var onPictures: ((String) -> Void)?
     var onFailure: ((String) -> Void)?
 
     func start(cols: UInt32 = 80, rows: UInt32 = 24) {
@@ -188,11 +163,87 @@ final class IosShellSession {
         exportScreen()
     }
 
+    func resize(cols: UInt32, rows: UInt32, cellW: UInt32 = 8, cellH: UInt32 = 16) {
+        let cols = min(512, max(20, cols))
+        let rows = min(256, max(8, rows))
+        queue.async { [weak self] in
+            guard let self, !self.stopped, let term = self.term else { return }
+            IosShellABI.termSetCellPx(term, cellW, cellH)
+            guard cols != self.cols || rows != self.rows else { return }
+            self.cols = cols
+            self.rows = rows
+            IosShellABI.termResize(term, cols, rows)
+            var ws = winsize()
+            ws.ws_row = UInt16(rows)
+            ws.ws_col = UInt16(cols)
+            withUnsafePointer(to: &ws) { IosShellABI.setWinsize($0) }
+            IosShellABI.kickShellDisplay()
+            self.exportScreen()
+        }
+    }
+
+    /// Bytes for the local VT only. The PTY does not see them.
+    func feedLocal(_ data: Data) {
+        guard !stopped, !data.isEmpty else { return }
+        queue.async { [weak self] in
+            guard let self, !self.stopped, let term = self.term else { return }
+            data.withUnsafeBytes { raw in
+                guard let base = raw.bindMemory(to: UInt8.self).baseAddress else { return }
+                IosShellABI.termFeed(term, base, data.count)
+            }
+            self.exportScreen()
+        }
+    }
+
+    func pointer(button: UInt8, col: UInt32, row: UInt32, pressed: Bool, motion: Bool) {
+        queue.async { [weak self] in
+            guard let self, !self.stopped, let term = self.term else { return }
+            IosShellABI.termPointer(term, button, col, row, pressed ? 1 : 0, motion ? 1 : 0)
+            var reply = [UInt8](repeating: 0, count: 256)
+            let n = reply.withUnsafeMutableBufferPointer { ptr in
+                IosShellABI.termTakeReply(term, ptr.baseAddress, ptr.count)
+            }
+            if n > 0 {
+                _ = reply.withUnsafeBytes { raw in
+                    IosShellABI.inject(raw.baseAddress, n)
+                }
+            }
+        }
+    }
+
     func write(_ data: Data) {
         guard !stopped, !data.isEmpty else { return }
         data.withUnsafeBytes { raw in
             guard let base = raw.baseAddress else { return }
             _ = IosShellABI.inject(base, data.count)
+        }
+    }
+
+    /// Multiline input is a paste. Mode 2004 wraps it on the session queue.
+    func writePaste(_ data: Data) {
+        guard !stopped, !data.isEmpty else { return }
+        queue.async { [weak self] in
+            guard let self, !self.stopped else { return }
+            let wrapped: Data
+            if let term = self.term {
+                wrapped = data.withUnsafeBytes { raw in
+                    guard let base = raw.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
+                        return data
+                    }
+                    guard let ptr = IosShellABI.encodePaste(term, base, data.count) else {
+                        return data
+                    }
+                    let text = String(cString: ptr)
+                    IosShellABI.termStringFree(ptr)
+                    return Data(text.utf8)
+                }
+            } else {
+                wrapped = data
+            }
+            wrapped.withUnsafeBytes { raw in
+                guard let base = raw.baseAddress else { return }
+                _ = IosShellABI.inject(base, wrapped.count)
+            }
         }
     }
 
@@ -255,21 +306,11 @@ final class IosShellSession {
     }
 
     private func exportScreen() {
-        guard let term else { return }
-        var len = 0
-        guard let ptr = IosShellABI.termExport(term, &len), len > 0 else { return }
-        let data = Data(bytes: ptr, count: len)
-        IosShellABI.termSnapshotFree(ptr, len)
-        DispatchQueue.main.async { [weak self] in
-            self?.onScreen?(data)
-        }
+        publishTerm(term, onScreen: onScreen, onPictures: onPictures)
     }
 
     deinit { stop() }
 }
-
-/// Launch / client log path: same `wwn_term` screen as Native Shell, no PTY.
-/// Feeds UTF-8 banners and streamed CLI lines into `WawonaTerminalView`.
 final class IosLogTermSession {
     private var term: OpaquePointer?
     private var cols: UInt32 = 80
@@ -277,7 +318,8 @@ final class IosLogTermSession {
     private let queue = DispatchQueue(label: "com.aspauldingcode.wawona.ios-log-term")
     private var stopped = false
 
-    var onScreen: ((Data) -> Void)?
+    var onScreen: ((String) -> Void)?
+    var onPictures: ((String) -> Void)?
 
     func start(cols: UInt32 = 80, rows: UInt32 = 28) {
         stop()
@@ -287,6 +329,20 @@ final class IosLogTermSession {
         guard let term = IosShellABI.termNew(self.cols, self.rows) else { return }
         self.term = term
         exportScreen()
+    }
+
+    func resize(cols: UInt32, rows: UInt32, cellW: UInt32 = 8, cellH: UInt32 = 16) {
+        let cols = min(512, max(20, cols))
+        let rows = min(256, max(8, rows))
+        queue.async { [weak self] in
+            guard let self, !self.stopped, let term = self.term else { return }
+            IosShellABI.termSetCellPx(term, cellW, cellH)
+            guard cols != self.cols || rows != self.rows else { return }
+            self.cols = cols
+            self.rows = rows
+            IosShellABI.termResize(term, cols, rows)
+            self.exportScreen()
+        }
     }
 
     func feed(_ text: String) {
@@ -315,16 +371,30 @@ final class IosLogTermSession {
     }
 
     private func exportScreen() {
-        guard let term else { return }
-        var len = 0
-        guard let ptr = IosShellABI.termExport(term, &len), len > 0 else { return }
-        let data = Data(bytes: ptr, count: len)
-        IosShellABI.termSnapshotFree(ptr, len)
-        DispatchQueue.main.async { [weak self] in
-            self?.onScreen?(data)
-        }
+        publishTerm(term, onScreen: onScreen, onPictures: onPictures)
     }
 
     deinit { stop() }
+}
+
+private func publishTerm(
+    _ term: OpaquePointer?,
+    onScreen: ((String) -> Void)?,
+    onPictures: ((String) -> Void)?
+) {
+    guard let term else { return }
+    let lines = takeTermString(IosShellABI.termLinesJson(term))
+    let pictures = takeTermString(IosShellABI.termImagesJson(term))
+    DispatchQueue.main.async {
+        onScreen?(lines)
+        onPictures?(pictures)
+    }
+}
+
+private func takeTermString(_ ptr: UnsafeMutablePointer<CChar>?) -> String {
+    guard let ptr else { return "[]" }
+    let text = String(cString: ptr)
+    IosShellABI.termStringFree(ptr)
+    return text
 }
 #endif

@@ -43,6 +43,7 @@
     wwn-toolchain.url = "github:Wawona/wwn-toolchain/development";
     wwn-toolchain.inputs.nixpkgs.follows = "nixpkgs";
     wwn-toolchain.inputs.rust-overlay.follows = "rust-overlay";
+    wwn-toolchain.inputs.crate2nix.follows = "crate2nix";
     iland.url = "github:Wawona/iLand/development";
     iland.inputs.nixpkgs.follows = "nixpkgs";
     iland.inputs.wwn-toolchain.follows = "wwn-toolchain";
@@ -647,6 +648,7 @@
         rustBackend = backend-android;
         coreutilsAndroid = coreutils-multicall-android;
         terminalSrc = inputs.terminal;
+        toolbarKeysSrc = inputs."toolbar-keys";
         targetPkgs = pkgsAndroidCross;
         waypipe = toolchainsAndroid.buildForAndroid "waypipe" {};
         inherit
@@ -780,6 +782,7 @@
         waypipeBinaryPathFallback = studioWaypipeBinFallback;
         anowawAndroid = toolchainsAndroid.buildForAndroid "anowaw" {};
         terminalSrc = inputs.terminal;
+        toolbarKeysSrc = inputs."toolbar-keys";
       };
 
       # ── Cross-Platform Packages ───────────────────────────────────────
@@ -918,8 +921,8 @@
               wawonaSrc = src;
               waypipeSrc = waypipe-src;
               coreutilsSrc = coreutils-src;
-              # Committed src/term/screen.rs is a symlink into Terminal/;
-              # sandbox needs the flake input copy.
+              # Committed src/term/screen.rs and kitty.rs are symlinks into
+              # Terminal/; sandbox needs the flake input copies.
               terminalSrc = inputs.terminal;
               platform = "linux";
               inherit wawonaVersion;
@@ -983,9 +986,11 @@
             coreutilsAndroid = coreutils-multicall-android;
             targetPkgs = pkgsAndroidCross;
             waypipe = toolchainsAndroid.buildForAndroid "waypipe" {};
-            # Same Terminal Compose face overlay as wawona-android (Nix sandbox
-            # cannot follow the gitignored symlink; MainActivity needs these).
+            # Same Terminal / ToolbarKeys Compose overlays as wawona-android
+            # (Nix sandbox cannot follow the gitignored sibling; MainActivity
+            # needs these).
             terminalSrc = inputs.terminal;
+            toolbarKeysSrc = inputs."toolbar-keys";
             inherit
               androidToolchainNix
               westonSimpleShmPatchedSrcNix

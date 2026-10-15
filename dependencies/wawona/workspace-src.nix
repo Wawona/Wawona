@@ -115,10 +115,19 @@ PY
     # interpolation (cannot coerce null to a string).
     ${if terminalSrc != null then ''
     mkdir -p $out/src/term
-    rm -f $out/src/term/screen.rs
+    rm -f $out/src/term/screen.rs $out/src/term/kitty.rs
     cp ${terminalSrc}/src/screen.rs $out/src/term/screen.rs
     chmod u+w $out/src/term/screen.rs
-    echo "✓ Terminal screen injected"
+    # kitty.rs landed in Terminal after some pins. The pinned screen does not
+    # reference it until that file exists. Do not fail the app link on an
+    # older Terminal input.
+    if [ -f ${terminalSrc}/src/kitty.rs ]; then
+      cp ${terminalSrc}/src/kitty.rs $out/src/term/kitty.rs
+      chmod u+w $out/src/term/kitty.rs
+      echo "✓ Terminal screen and kitty injected"
+    else
+      echo "✓ Terminal screen injected"
+    fi
     '' else ''
     echo "note: terminalSrc unset; keeping workspace term screen as packaged"
     ''}

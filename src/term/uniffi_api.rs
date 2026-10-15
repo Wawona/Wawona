@@ -25,6 +25,21 @@ pub struct TerminalLine {
     pub spans: Vec<TerminalSpan>,
 }
 
+#[derive(uniffi::Record)]
+pub struct TerminalImage {
+    pub id: u32,
+    pub column: i32,
+    pub row: i32,
+    pub x_px: i32,
+    pub y_px: i32,
+    pub pixel_width: u32,
+    pub pixel_height: u32,
+    pub columns: u32,
+    pub rows: u32,
+    pub z: i32,
+    pub rgba: Vec<u8>,
+}
+
 #[derive(uniffi::Object)]
 pub struct TerminalSession {
     inner: Mutex<Term>,
@@ -92,6 +107,34 @@ impl TerminalSession {
             .lock()
             .map(|term| term.title().to_string())
             .unwrap_or_default()
+    }
+
+    pub fn set_cell_px(&self, width: u32, height: u32) {
+        if let Ok(mut term) = self.inner.lock() {
+            term.set_cell_px(width, height);
+        }
+    }
+
+    pub fn images(&self) -> Vec<TerminalImage> {
+        let Ok(term) = self.inner.lock() else {
+            return Vec::new();
+        };
+        term.placed_images()
+            .into_iter()
+            .map(|image| TerminalImage {
+                id: image.id,
+                column: image.col,
+                row: image.row,
+                x_px: image.x_px,
+                y_px: image.y_px,
+                pixel_width: image.px_w,
+                pixel_height: image.px_h,
+                columns: image.cols,
+                rows: image.rows,
+                z: image.z,
+                rgba: image.rgba,
+            })
+            .collect()
     }
 }
 

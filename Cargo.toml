@@ -49,6 +49,9 @@ libadwaita = { version = "0.7", optional = true }
 # use come from uniffi_macros (default features); the uniffi-bindgen CLI binary
 # is not built here, so cli is unnecessary.
 uniffi = { version = "0.30.0" }
+# Kitty graphics in src/term (RGBA, zlib, PNG). Pure Rust inflate.
+flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"] }
+png = "0.17.16"
 
 # Core Wayland
 wayland-server = "0.31.13"

@@ -2,8 +2,12 @@ import Testing
 @testable import WawonaUIContracts
 
 @Test
-func nativeVisibilityIncludesLauncherOnly() {
-    let state = MachineEditorState(name: "Local", typeRawValue: "native")
+func nativeWaylandVisibilityIncludesLauncherOnly() {
+    let state = MachineEditorState(
+        name: "Local",
+        typeRawValue: "native",
+        nativeShellKindRawValue: "wayland"
+    )
     let fields = MachineEditorValidation.visibleFields(for: state)
     #expect(fields.contains(.name))
     #expect(fields.contains(.type))
@@ -14,8 +18,13 @@ func nativeVisibilityIncludesLauncherOnly() {
 }
 
 @Test
-func sshVisibilityIncludesRemoteFields() {
-    let state = MachineEditorState(name: "Remote", typeRawValue: "ssh_waypipe")
+func nativeTerminalWithSSHIncludesRemoteFields() {
+    let state = MachineEditorState(
+        name: "Remote",
+        typeRawValue: "native",
+        nativeShellKindRawValue: "terminal",
+        nativeShellUseSSH: true
+    )
     let fields = MachineEditorValidation.visibleFields(for: state)
     #expect(fields.contains(.sshHost))
     #expect(fields.contains(.sshUser))
@@ -28,7 +37,9 @@ func sshVisibilityIncludesRemoteFields() {
 func validationFlagsMissingAndInvalidFields() {
     let state = MachineEditorState(
         name: "",
-        typeRawValue: "ssh_terminal",
+        typeRawValue: "native",
+        nativeShellKindRawValue: "terminal",
+        nativeShellUseSSH: true,
         sshHost: "",
         sshUser: "",
         sshPortText: "0"
@@ -53,7 +64,11 @@ func vmAndContainerShowProfileFieldsWithoutBackendChoice() {
     #expect(containerFields == [.name, .type, .containerRef, .entryCommand, .desktopSession])
 
     let wasmFields = MachineEditorValidation.visibleFields(
-        for: MachineEditorState(name: "Wasm", typeRawValue: "wasm"))
+        for: MachineEditorState(
+            name: "Wasm",
+            typeRawValue: "native",
+            nativeShellKindRawValue: "wasm"
+        ))
     #expect(wasmFields.contains(.wasmCommand))
     #expect(wasmFields.contains(.wasmModulePath))
     #expect(!wasmFields.contains(.launcher))

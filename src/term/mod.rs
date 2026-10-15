@@ -5,10 +5,13 @@
 //!
 //! Hosts draw [`TerminalSession`] lines. The C exports feed the in-process PTY.
 
+#[cfg(target_os = "android")]
+mod android_shell;
+
 mod uniffi_api;
 
 #[path = "screen.rs"]
 mod screen;
 
 pub use screen::*;
-pub use uniffi_api::{TerminalLine, TerminalSession, TerminalSpan};
+pub use uniffi_api::{TerminalImage, TerminalLine, TerminalSession, TerminalSpan};
