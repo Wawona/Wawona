@@ -173,14 +173,41 @@ done
 xcrun simctl list runtimes 2>/dev/null || true
 xcodebuild -showsdks 2>/dev/null | grep -i simulator || true
 
-if [ -n "$PRESENT" ]; then
-  echo "simulator SDK/runtime available for: $PRESENT; skipping platform download in Nix builds"
-  set_skip
-  if [ -n "$MISSING" ]; then
-    echo "::warning::Still missing simulator SDK/runtime for: $MISSING"
+# Attempt an explicit platform download for anything still missing. Do not set
+# WAWONA_SKIP_* while any requested SDK is absent: that flag stops Nix from
+# downloading too, and Relay configure then dies with "SDK not found"
+# (watchsimulator / xrsimulator on runners that only had iPhoneSimulator).
+for p in $MISSING; do
+  case "$p" in
+    ios|ipados) plat="iOS" ;;
+    tvos) plat="tvOS" ;;
+    watchos) plat="watchOS" ;;
+    visionos) plat="xrOS" ;;
+    *) continue ;;
+  esac
+  echo "Downloading simulator platform: $plat"
+  xcodebuild -downloadPlatform "$plat" 2>&1 || \
+    echo "::warning::xcodebuild -downloadPlatform $plat failed"
+done
+
+MISSING=""
+PRESENT=""
+for p in $PLATFORMS; do
+  token="$(sdk_token_for "$p")"
+  ere="$(runtime_ere_for "$p")"
+  if has_sdk "$token" || has_runtime "$ere"; then
+    PRESENT="$(append_unique "$PRESENT" "$p")"
+  else
+    MISSING="$(append_unique "$MISSING" "$p")"
   fi
+done
+
+if [ -z "$MISSING" ]; then
+  echo "all requested simulator SDK(s) present: $PRESENT"
+  set_skip
   exit 0
 fi
 
-echo "::warning::No requested simulator SDK or runtime visible ($PLATFORMS); Nix may run xcodebuild -downloadPlatform iOS"
+echo "::warning::Still missing simulator SDK/runtime for: $MISSING (have: ${PRESENT:-none})"
+echo "Leaving WAWONA_SKIP_IOS_SIMULATOR_PLATFORM_DOWNLOAD unset so Nix may download."
 exit 0

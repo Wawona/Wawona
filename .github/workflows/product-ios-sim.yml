@@ -49,9 +49,11 @@ jobs:
         id: xcode
         run: ./.github/scripts/select-xcode.sh
 
-      # SDK check is cheap; set skip before Nix so build-app.nix never hits CDN.
-      - name: Ensure iOS Simulator SDK (skip platform download when present)
-        run: ./.github/scripts/warm-ios-simulator-sdk.sh ios
+      # XcodeGen emits every Apple target in one project.yml. A cache-miss
+      # Relay/backend for watch/tv/vision needs that SDK at configure even when
+      # this job only builds the iOS slice. Warm the full simulator set.
+      - name: Ensure Apple simulator SDKs
+        run: ./.github/scripts/warm-ios-simulator-sdk.sh all
 
       - uses: ./.github/actions/setup-nix-flakehub
 

@@ -49,7 +49,7 @@ jobs:
         run: ./.github/scripts/select-xcode.sh
 
       - name: Ensure Apple simulator SDK (skip platform download when present)
-        run: ./.github/scripts/warm-ios-simulator-sdk.sh ipados
+        run: ./.github/scripts/warm-ios-simulator-sdk.sh all
 
       - uses: ./.github/actions/setup-nix-flakehub
 
@@ -106,7 +106,7 @@ jobs:
         run: ./.github/scripts/select-xcode.sh
 
       - name: Ensure Apple simulator SDK (skip platform download when present)
-        run: ./.github/scripts/warm-ios-simulator-sdk.sh visionos
+        run: ./.github/scripts/warm-ios-simulator-sdk.sh all
 
       - uses: ./.github/actions/setup-nix-flakehub
 
@@ -163,7 +163,7 @@ jobs:
         run: ./.github/scripts/select-xcode.sh
 
       - name: Ensure Apple simulator SDK (skip platform download when present)
-        run: ./.github/scripts/warm-ios-simulator-sdk.sh tvos
+        run: ./.github/scripts/warm-ios-simulator-sdk.sh all
 
       - uses: ./.github/actions/setup-nix-flakehub
 
@@ -220,7 +220,7 @@ jobs:
         run: ./.github/scripts/select-xcode.sh
 
       - name: Ensure Apple simulator SDK (skip platform download when present)
-        run: ./.github/scripts/warm-ios-simulator-sdk.sh watchos
+        run: ./.github/scripts/warm-ios-simulator-sdk.sh all
 
       - uses: ./.github/actions/setup-nix-flakehub
 
