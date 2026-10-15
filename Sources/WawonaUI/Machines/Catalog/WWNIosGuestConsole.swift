@@ -294,6 +294,7 @@ struct WawonaTerminalView: View {
             lineText(line)
               .frame(maxWidth: .infinity, alignment: .leading)
               .id(line.id)
+              #if !os(tvOS)
               .simultaneousGesture(
                 DragGesture(minimumDistance: 0).onEnded { value in
                   let col = UInt32(max(1, Int(value.location.x / WawonaTerminalFonts.cellWidth) + 1))
@@ -305,6 +306,7 @@ struct WawonaTerminalView: View {
                   onCell?(col, UInt32(idx - start + 1))
                 }
               )
+              #endif
           }
           Color.clear.frame(height: 1).id("wwn-term-end")
             .onAppear {
@@ -327,11 +329,13 @@ struct WawonaTerminalView: View {
         guard stick else { return }
         scrollTerminalToEnd(proxy)
       }
+      #if !os(tvOS)
       .simultaneousGesture(
         DragGesture(minimumDistance: 8).onChanged { value in
           if abs(value.translation.height) > 16 { userDragged = true }
         }
       )
+      #endif
       .onReceive(Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()) { _ in
         if model.lines.contains(where: { $0.spans.contains(where: \.blink) }) {
           blinkOn.toggle()
@@ -555,9 +559,11 @@ final class WWNIosGuestConsole: ObservableObject {
     let mid = machineId
     let wasWindow = windowed
     dismiss(machineId: mid)
+    #if os(iOS) || os(visionOS)
     if wasWindow {
       WWNSessionWindowPresenter.closeTerminalWindow()
     }
+    #endif
     guard !mid.isEmpty else { return }
     WWNMachineProfileStore.setActiveMachineId(mid)
     WWNMainWindowRouter.shared.showSessionSurface()
