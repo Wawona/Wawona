@@ -69,7 +69,8 @@ Not the textbook PROTOCOL-then-DIFF order.
 | Skip works, still held, no imports | DIFF before create_buffer; release never queued | Catch-up `import_guest_pixels` on `create_buffer`; release even if buffer id missing from map |
 | AUTH + held=0 + attach buffer=N, **no** `create_buffer` log | Attach references id MiniCompositor never registered | Synthesize pool+buffer from `last_file` on attach |
 | Dim heuristic **64x625** for 160000 bytes | `len % (64*4)==0` wins over square | Prefer 200x200 / near-square factors before 64xN |
-| Black screenshot with `present 64x625` | Cursor-sized pool only; no 1.92MiB OPEN_FILE yet | Still a gap: decode unhandled PROTOCOL opcodes; do not claim 800x600 |
+| OPEN_FILE only **160000** (never 1.92MiB) | Upstream `weston-smoke` hardcodes **200×200** and ignores xdg configure | Guest overlay patches `clients/smoke.c` → 800×600 (`configuration.nix`) |
+| Black screenshot with `present 64x625` | Cursor-sized pool / pre-patch smoke | Need patched guest + `imported SHM frame: 800x600` |
 
 ## Evidence commands
 

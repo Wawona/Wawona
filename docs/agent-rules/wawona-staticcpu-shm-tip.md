@@ -12,8 +12,9 @@ STARDUST are human gates. Do not park SHM engineering on them.
 
 1. Import `BUFFER_DIFF` / `last_file` pixels when MiniCompositor `buffers` is
    empty (ghost frame; no `wl_buffer.release` target).
-2. Claim shm-ui green from `AUTH_OK` alone, or from **64x625-only** imports
-   without documenting the missing 800x600 / 1.92MiB `OPEN_FILE` gap.
+2. Claim shm-ui green from `AUTH_OK` alone, or from **64x625-only** /
+   **200x200** imports without an 800x600 / 1.92MiB `OPEN_FILE`. Stock
+   `weston-smoke` hardcodes 200x200; guest must ship the 800x600 patch.
 3. Lab-synth guest Bundle directory named `guest-4k`. Required name:
    `wawona-nixos-guest-4k` (or `…-16k`).
 4. Treat host `/tmp/wawona_sim_<uid>/relay-shm.log` (no UDID suffix) as live tip
