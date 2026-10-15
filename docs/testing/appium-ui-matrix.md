@@ -46,7 +46,8 @@ process forwarded into the host Wawona socket. **Pass means a machine
 screenshot** of that client in
 `.agent-device/test-artifacts/appium/catalog-gallery/<client>.png` (and
 `index.html`). DRY skips are not catalog proof. CI uploads
-`appium-catalog-gallery-*` artifacts.
+`appium-catalog-gallery-*` artifacts with `include-hidden-files: true`
+(upload-artifact v4+ drops `.agent-device/` otherwise).
 
 Capture locally (Wawona up, Appium on :4723):
 

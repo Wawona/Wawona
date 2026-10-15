@@ -30,14 +30,18 @@ if (($# > 0)); then
   EXTRA_ARGS+=("$@")
 fi
 
+# Always write junit under artifacts so CI upload-artifact has a file even
+# when WAWONA_APPIUM_DRY=1 (Apple mobile lanes until product wired).
+JUNIT="$WAWONA_APPIUM_ARTIFACTS/junit.xml"
+
 if [[ "${WAWONA_APPIUM_DRY:-0}" == "1" ]]; then
   if ((${#EXTRA_ARGS[@]} > 0)); then
-    exec pytest tests/test_gates_unit.py -q "${EXTRA_ARGS[@]}"
+    exec pytest tests/test_gates_unit.py -q --junitxml="$JUNIT" "${EXTRA_ARGS[@]}"
   fi
-  exec pytest tests/test_gates_unit.py -q
+  exec pytest tests/test_gates_unit.py -q --junitxml="$JUNIT"
 fi
 
 if ((${#EXTRA_ARGS[@]} > 0)); then
-  exec pytest tests -q --junitxml="$WAWONA_APPIUM_ARTIFACTS/junit.xml" "${EXTRA_ARGS[@]}"
+  exec pytest tests -q --junitxml="$JUNIT" "${EXTRA_ARGS[@]}"
 fi
-exec pytest tests -q --junitxml="$WAWONA_APPIUM_ARTIFACTS/junit.xml"
+exec pytest tests -q --junitxml="$JUNIT"

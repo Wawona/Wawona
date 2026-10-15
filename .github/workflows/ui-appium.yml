@@ -120,6 +120,9 @@ jobs:
         with:
           name: appium-android
           path: .agent-device/test-artifacts/appium/
+          # Path is under .agent-device (hidden). Without this, upload finds
+          # nothing and if-no-files-found:warn creates zero artifacts.
+          include-hidden-files: true
           if-no-files-found: warn
 
   linux:
@@ -172,8 +175,11 @@ jobs:
           python3 scripts/appium/verify-wayland-guest-map.py
           # Catalog green = machine PNG per client. Without a live Wawona
           # socket, do NOT run catalog tests (DRY is not catalog proof).
+          mkdir -p "${WAWONA_APPIUM_ARTIFACTS}/catalog-gallery"
           if [[ -z "${WAWONA_APP_PATH:-}" && ! -x /usr/bin/Wawona ]]; then
             echo "No Wawona AppImage on runner; unit gates only (no catalog claim)."
+            printf '%s\n' "SKIP: no Wawona AppImage on runner; DRY unit only." \
+              >"${WAWONA_APPIUM_ARTIFACTS}/catalog-gallery/SKIPPED.txt"
             WAWONA_APPIUM_DRY=1 ./scripts/appium/run-appium-suite.sh \
               tests/test_gates_unit.py
             exit 0
@@ -188,6 +194,7 @@ jobs:
         with:
           name: appium-linux
           path: .agent-device/test-artifacts/appium/
+          include-hidden-files: true
           if-no-files-found: warn
       - name: Upload catalog screenshot gallery
         if: always()
@@ -195,6 +202,7 @@ jobs:
         with:
           name: appium-catalog-gallery-linux
           path: .agent-device/test-artifacts/appium/catalog-gallery/
+          include-hidden-files: true
           if-no-files-found: warn
 
   apple:
@@ -275,15 +283,11 @@ jobs:
           set -euo pipefail
           chmod +x scripts/appium/launch-wayland-client.sh
           chmod +x scripts/appium/ensure-colima.sh
+          chmod +x scripts/appium/ensure-tip-wawona-macos.sh
           chmod +x scripts/appium/capture-catalog-gallery.sh
           python3 scripts/appium/verify-wayland-guest-map.py
-          # Catalog green = PNG per client in catalog-gallery/. No socket =>
-          # do not claim clients were tested.
-          SOCK="${WAWONA_RUNTIME:-/tmp/wawona-$(id -u)}/wayland-0"
-          if [[ ! -S "$SOCK" ]]; then
-            echo "No host Wayland socket at $SOCK; guest map verified, no catalog claim."
-            exit 0
-          fi
+          # capture-catalog-gallery.sh owns tip clean-launch + Colima + PNGs.
+          # Do NOT exit early on a missing sock: tip ensure creates wayland-0.
           # Fail closed without Colima. Start if brew formula present.
           if ! command -v colima >/dev/null 2>&1; then
             brew install colima lima || {
@@ -299,6 +303,7 @@ jobs:
         with:
           name: appium-${{ matrix.job_name || matrix.platform }}
           path: .agent-device/test-artifacts/appium/
+          include-hidden-files: true
           if-no-files-found: warn
       - name: Upload catalog screenshot gallery (macOS)
         if: ${{ always() && matrix.platform == 'macos' }}
@@ -306,4 +311,6 @@ jobs:
         with:
           name: appium-catalog-gallery-macos
           path: .agent-device/test-artifacts/appium/catalog-gallery/
-          if-no-files-found: warn
+          include-hidden-files: true
+          # Catalog step must leave PNGs (or fail). Empty gallery is red.
+          if-no-files-found: error
