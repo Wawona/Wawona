@@ -229,6 +229,29 @@ let
             echo "Merged Wawona launcher icon assets"
           fi
         '' else ""}
+        ${if terminalSrc != null then ''
+          TERM_KT_SRC="${toString terminalSrc}/android/com/aspauldingcode/wawona"
+          TERM_KT_DST="$OUT/app/src/main/java/com/aspauldingcode/wawona"
+          if [ -d "$TERM_KT_SRC" ]; then
+            mkdir -p "$TERM_KT_DST"
+            cp -f "$TERM_KT_SRC"/*.kt "$TERM_KT_DST/"
+            chmod -R u+w "$TERM_KT_DST"
+            echo "Overlayed Terminal Android Compose sources"
+          fi
+        '' else ""}
+        ${if toolbarKeysSrc != null then ''
+          TK_KT_SRC="${toString toolbarKeysSrc}/android/com/wawona/toolbarkeys"
+          TK_KT_DST="$OUT/app/src/main/java/com/wawona/toolbarkeys"
+          if [ -d "$TK_KT_SRC" ]; then
+            mkdir -p "$TK_KT_DST"
+            cp -f "$TK_KT_SRC"/*.kt "$TK_KT_DST/"
+            chmod -R u+w "$TK_KT_DST"
+            echo "Overlayed ToolbarKeys Android Compose sources"
+          else
+            echo "ERROR: ToolbarKeys Android sources missing at $TK_KT_SRC"
+            exit 1
+          fi
+        '' else ""}
         echo "Generated Android Studio project at $OUT from repository sources."
       else
         echo "ERROR: Could not locate android project sources under wawonaSrc."

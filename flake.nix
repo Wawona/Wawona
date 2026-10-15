@@ -1504,14 +1504,13 @@
             # Product-sim + iOS-embedded watch companion: skip thin LTO / O3.
             release = false;
           };
-          mobileGuestArtifacts =
-            if builtins.pathExists "${wwn-relay}/import/vms/dependencies/vms/mobile/guest-artifacts.nix"
-            then wwn-relay.packages.aarch64-linux.wawona-nixos-guest-4k or null
-            else null;
-          mobileGuestArtifacts16k =
-            if builtins.pathExists "${wwn-relay}/import/vms/dependencies/vms/mobile/guest-artifacts.nix"
-            then wwn-relay.packages.aarch64-linux.wawona-nixos-guest-16k or null
-            else null;
+          # Signed NixOS guest images are aarch64-linux only. Referencing
+          # wwn-relay.packages.aarch64-linux.* from Darwin forces
+          # wawona-arm64-16k.config (platform mismatch). Mode A Apple product
+          # builds embed guests via env (WAWONA_MOBILE_GUEST_*_DIR) when a
+          # Linux builder / cache already produced them; do not realize here.
+          mobileGuestArtifacts = null;
+          mobileGuestArtifacts16k = null;
           mobileVmEngine = null;
           mobileVmEngineModeB = null;
           mkXcodegen = {

@@ -350,7 +350,9 @@ final class WWNSettingsValueModel: ObservableObject {
 
     /// Push Global Settings toolbar prefs into `KeyboardToolbarManager`.
     private func syncToolbarHostOptionsIfNeeded(key: String) {
-        #if os(iOS) || os(tvOS) || os(visionOS)
+        // ToolbarKeys UIKit views ship on iOS/iPadOS only (xcodegen omits them
+        // on tvOS/visionOS: haptics / ultraThinMaterial / UIScreen).
+        #if os(iOS)
         let toolbarKeys: Set<String> = [
             kWWNPrefsPersistentToolbar,
             kWWNPrefsShowToolbarWithHardwareKeyboard,

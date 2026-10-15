@@ -40,9 +40,16 @@ def platform() -> str:
     return platform_name()
 
 
-@pytest.fixture(scope="session")
+def _driver_scope() -> str:
+    # Catalog multi-client runs die if one Mac2 session is poisoned; allow
+    # per-test sessions via WAWONA_APPIUM_DRIVER_SCOPE=function.
+    scope = os.environ.get("WAWONA_APPIUM_DRIVER_SCOPE", "session").strip().lower()
+    return "function" if scope == "function" else "session"
+
+
+@pytest.fixture(scope=_driver_scope())
 def driver():
-    """One Appium session per worker. Set WAWONA_APPIUM_DRY=1 to skip connect."""
+    """Appium session. Default one per worker; catalog may use function scope."""
     if os.environ.get("WAWONA_APPIUM_DRY") == "1":
         pytest.skip("WAWONA_APPIUM_DRY=1: no Appium server")
     drv = create_driver()

@@ -92,6 +92,9 @@ else
   source .venv/bin/activate
 fi
 export PYTHONPATH="$ROOT/Tests/appium"
+# Multi-client catalog: fresh Mac2 session per test so one poison does not
+# cascade InvalidSessionId across the matrix.
+export WAWONA_APPIUM_DRIVER_SCOPE="${WAWONA_APPIUM_DRIVER_SCOPE:-function}"
 
 if [[ $# -gt 0 ]]; then
   # Single -k expression: multiple -k flags do not OR in pytest.

@@ -139,12 +139,12 @@ pub fn show_tab_overview(
             if cards.is_empty() {
                 stack.set_visible_child_name("empty");
                 if !had_running && q.trim().is_empty() {
-                    empty.set_title(Some("No Active Tabs"));
+                    empty.set_title("No Active Tabs");
                     empty.set_description(Some(
                         "Start a machine, then open Tab Overview to switch sessions.",
                     ));
                 } else {
-                    empty.set_title(Some("No Matching Tabs"));
+                    empty.set_title("No Matching Tabs");
                     empty.set_description(Some("Try a different search."));
                 }
                 return;

@@ -12,6 +12,7 @@ use std::process::{Child, Command, Stdio};
 use std::rc::Rc;
 use std::sync::Arc;
 
+use adw::prelude::*;
 use gtk::prelude::{NativeExt, *};
 use gtk4 as gtk;
 use libadwaita as adw;
