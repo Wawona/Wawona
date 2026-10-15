@@ -79,12 +79,14 @@ def main() -> int:
             "product-apple-family.yml: missing warm-ios-simulator-sdk.sh "
             "(watch/tv/vision sim builds still hit -downloadPlatform iOS without the skip flag)"
         )
-    for plat in ("ipados", "tvos", "watchos", "visionos"):
-        if f"warm-ios-simulator-sdk.sh {plat}" not in apple_family_wf:
-            errors.append(
-                f"product-apple-family.yml: warm script must be passed {plat} "
-                "(ios|ipados|tvos|watchos|visionos)"
-            )
+    # Per-job platform args or a single `all` (XcodeGen needs every Apple SDK).
+    if "warm-ios-simulator-sdk.sh all" not in apple_family_wf:
+        for plat in ("ipados", "tvos", "watchos", "visionos"):
+            if f"warm-ios-simulator-sdk.sh {plat}" not in apple_family_wf:
+                errors.append(
+                    f"product-apple-family.yml: warm script must be passed {plat} "
+                    "or `all` (ios|ipados|tvos|watchos|visionos)"
+                )
 
     e2e_ios = (WORKFLOWS / "device-e2e-ios.yml").read_text(encoding="utf-8")
     if WARM_REF not in e2e_ios:
