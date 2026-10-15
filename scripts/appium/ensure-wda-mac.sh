@@ -15,7 +15,18 @@ MAC_FW="${XCODE_DEV}/Platforms/MacOSX.platform/Developer/Library/Frameworks"
 MAC_LIB="${XCODE_DEV}/Platforms/MacOSX.platform/Developer/usr/lib"
 SHARED_FW="/Applications/Xcode.app/Contents/SharedFrameworks"
 
-if curl -sf "${URL}/status" >/dev/null; then
+if [[ "${WAWONA_MAC2_FORCE_RESTART:-0}" == "1" ]]; then
+  echo "WAWONA_MAC2_FORCE_RESTART=1: stopping WDA on ${URL}"
+  if [[ -f "$PIDFILE" ]]; then
+    old="$(cat "$PIDFILE" || true)"
+    if [[ -n "${old}" ]]; then
+      kill "$old" 2>/dev/null || true
+    fi
+    rm -f "$PIDFILE"
+  fi
+  killall WebDriverAgentRunner-Runner 2>/dev/null || true
+  sleep 1
+elif curl -sf "${URL}/status" >/dev/null; then
   echo "wda-mac already up on ${URL}"
   exit 0
 fi

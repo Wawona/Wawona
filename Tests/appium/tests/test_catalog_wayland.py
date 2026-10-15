@@ -1,8 +1,8 @@
 """Wayland catalog battery (plan 23.A / 23.B).
 
-Clients are real Wayland processes in a Linux container or Colima guest,
-forwarded into the host Wawona compositor (waypipe / vsock). Appium then
-asserts the host surface AND saves a machine screenshot.
+Clients are real Wayland processes in a Colima guest (Darwin) or nested
+(Linux CI), forwarded into the host Wawona compositor (waypipe). Appium
+then asserts the Present surface AND saves a catalog-gallery screenshot.
 
 A green test without a non-blank PNG in catalog-gallery/ is a failure.
 DRY mode must not claim catalog clients are tested.

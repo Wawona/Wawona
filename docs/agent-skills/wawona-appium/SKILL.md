@@ -55,6 +55,19 @@ colima start
 - Claim green without `catalog-gallery/<client>.png` passing
   `require_client_screenshot`
 
+### Mac2 TCC (human)
+
+If WDA logs `Not authorized for performing UI testing actions` or Mac2
+cannot read `page_source` / `wwn.machines.root`: System Settings → Privacy
+& Security → **Accessibility** (and Developer Tools if present) must allow
+`WebDriverAgentRunner-Runner`. Re-toggle after Xcode/WDA rebuild. Agent
+cannot grant TCC.
+
+`ensure-colima.sh` resolves `nixpkgs#colima` when brew is missing. Prefer
+`WAWONA_APP_PATH=/Applications/Wawona.app` (or a11y Debug) with
+`WAWONA_MAC2_MANAGE_APP=1` + `skipAppKill`. `MANAGE_APP=0` drops bundleId
+and cannot see Machines root.
+
 ### Present reveal (macOS)
 
 Start opens **Wawona Terminal**. Close that window (or Focus) so

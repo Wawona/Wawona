@@ -53,6 +53,9 @@ fi
 if [[ "$(uname -s)" == "Darwin" && "${WAWONA_APPIUM_PLATFORM}" == "macos" ]]; then
   "$ROOT/scripts/appium/ensure-wda-mac.sh"
   export WAWONA_MAC2_WDA_URL="${WAWONA_MAC2_WDA_URL:-http://127.0.0.1:${WAWONA_MAC2_WDA_PORT:-10100}}"
+  # Keep manageApp=1 so Mac2 gets bundleId (required for wwn.* AX). Prefer
+  # skipAppKill + noReset so a pre-started host compositor is not killed.
+  # MANAGE_APP=0 is only for desktop-wide AX probes (no Machines root).
   export WAWONA_MAC2_MANAGE_APP="${WAWONA_MAC2_MANAGE_APP:-1}"
   export WAWONA_APPIUM_NO_RESET="${WAWONA_APPIUM_NO_RESET:-1}"
   export WAWONA_MAC2_SKIP_APP_KILL="${WAWONA_MAC2_SKIP_APP_KILL:-1}"
@@ -60,7 +63,10 @@ if [[ "$(uname -s)" == "Darwin" && "${WAWONA_APPIUM_PLATFORM}" == "macos" ]]; th
     for cand in \
       /tmp/wawona-macos-a11y/Wawona.app \
       /tmp/wawona-macos/Wawona.app \
-      "$ROOT/result/Applications/Wawona.app"
+      "$ROOT/result/Applications/Wawona.app" \
+      "/Applications/Wawona.app" \
+      "$ROOT/build/DerivedData-macos-new/Build/Products/Debug/Wawona.app" \
+      "$ROOT/build/DerivedData-macos/Build/Products/Debug/Wawona.app"
     do
       if [[ -d "$cand" ]]; then
         export WAWONA_APP_PATH="$cand"

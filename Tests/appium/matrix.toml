@@ -5,9 +5,9 @@
 #
 # Catalog clients are REAL Wayland guests. They launch via
 # scripts/appium/launch-wayland-client.sh into the host Wawona socket:
-#   guest=container  → wawona-container-desktop / Wawona run (macOS)
-#   guest=colima     → Colima Linux + waypipe SSH
-#   guest=nested     → same-host nested client (Linux runner)
+#   guest=colima     → Colima Linux + waypipe SSH (required on Darwin)
+#   guest=nested     → same-host nested client (Linux CI only)
+# guest=container / local-bundle are forbidden for catalog proof.
 # Catalog cards in repo.wawona.io are packaging, not a substitute for a guest.
 
 [platforms.ios]

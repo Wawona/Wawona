@@ -7,10 +7,21 @@
 #   WAWONA_COLIMA_START=1 scripts/appium/ensure-colima.sh   # start if stopped
 set -euo pipefail
 
-export PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin:${PATH:-}"
+export PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin:${HOME}/.nix-profile/bin:/nix/var/nix/profiles/default/bin:${PATH:-}"
+
+# Host brew often missing in agent shells; resolve colima from nix if needed.
+if ! command -v colima >/dev/null 2>&1; then
+  if command -v nix >/dev/null 2>&1; then
+    _colima_out="$(nix build --no-link --print-out-paths 'nixpkgs#colima' 2>/dev/null | head -1 || true)"
+    _lima_out="$(nix build --no-link --print-out-paths 'nixpkgs#lima' 2>/dev/null | head -1 || true)"
+    if [[ -n "${_colima_out}" && -x "${_colima_out}/bin/colima" ]]; then
+      export PATH="${_colima_out}/bin:${_lima_out:+${_lima_out}/bin:}${PATH}"
+    fi
+  fi
+fi
 
 if ! command -v colima >/dev/null 2>&1; then
-  echo "FAIL: colima not on PATH. Install (brew install colima lima) then colima start." >&2
+  echo "FAIL: colima not on PATH. Install via brew (colima lima) or nix profile, then colima start." >&2
   exit 6
 fi
 

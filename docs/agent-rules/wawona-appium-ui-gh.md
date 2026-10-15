@@ -64,6 +64,9 @@ lane under `ui-appium.yml`):
 - Catalog packaging-card skips instead of Wayland guests
 - Claim a catalog client OK without a Present surface screenshot
 - Darwin catalog via local-bundle host bins or Apple Containerization
+- Set `WAWONA_MAC2_MANAGE_APP=0` for catalog (drops bundleId; no Machines root)
+- Ignore WDA `Not authorized for performing UI testing actions` (TCC:
+  grant Accessibility to `WebDriverAgentRunner-Runner`)
 - Cancel tip `ui-appium` / Gate UI jobs to clear the queue (`wawona-ci-no-cancel`)
 
 Cursor rule: `wawona-appium-ui-gh`. Skill: `wawona-appium`. Dendritic: `appium`.
