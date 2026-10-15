@@ -335,8 +335,12 @@ if [ "$_with_zsh" = "1" ]; then
   _zsh_env_key="WAWONA_ZSH_LIB_$(echo "${TARGET_NAME:-}" | tr '-' '_')"
   _zsh_lib="${!_zsh_env_key:-${WAWONA_ZSH_LIB:-}}"
   if [ -n "$_zsh_lib" ] && [ -f "$_zsh_lib" ]; then
-    cp -f "$_zsh_lib" "$derived/libwawona-zsh.a"
-    echo "Using injected zsh lib $_zsh_lib"
+    # Always platform-stamp. Bare cp leaves a wrong LC_BUILD_VERSION (e.g. macOS
+    # .o into visionOS-sim) and fails at Ld.
+    privatize_lib "$_zsh_lib" "$derived/libwawona-zsh.a" \
+      "$_arch" "$_ld_platform" "$_min_ver" \
+      _wawona_zsh_main
+    echo "Using injected zsh lib $_zsh_lib (platform-stamped for $_ld_platform)"
   elif [ -n "${NIX_BUILD_TOP:-}" ]; then
     echo "ERROR: NIX_BUILD_TOP set but no WAWONA_ZSH_LIB for ${TARGET_NAME:-}; inject via inject-xcode-backend-env.nix" >&2
     exit 1
@@ -349,14 +353,13 @@ if [ "$_with_zsh" = "1" ]; then
   fi
 
   # fastfetch: in-process system-info tool (no fork/exec, no GPU dep) shipped on
-  # the WHOLE Apple family (#139). iOS/iPadOS/visionOS share the iOS archive
-  # (fastfetch-ios sim / fastfetch-ios-device); tvOS/watchOS use their own
-  # SDK-matched archives (fastfetch-<plat> device / -sim), mirroring zsh above.
+  # the WHOLE Apple family (#139). Per-target SDK-matched archives, same as zsh.
   _ff_dev="fastfetch-ios-device"
   _ff_sim="fastfetch-ios"
   case "${TARGET_NAME:-}" in
-    Wawona-tvOS)   _ff_dev="fastfetch-tvos";   _ff_sim="fastfetch-tvos-sim" ;;
-    Wawona-watchOS) _ff_dev="fastfetch-watchos"; _ff_sim="fastfetch-watchos-sim" ;;
+    Wawona-tvOS)     _ff_dev="fastfetch-tvos";     _ff_sim="fastfetch-tvos-sim" ;;
+    Wawona-watchOS)  _ff_dev="fastfetch-watchos";  _ff_sim="fastfetch-watchos-sim" ;;
+    Wawona-visionOS) _ff_dev="fastfetch-visionos"; _ff_sim="fastfetch-visionos-sim" ;;
   esac
   _ff_attr="$_ff_dev"
   case "$_sdk" in
@@ -365,8 +368,10 @@ if [ "$_with_zsh" = "1" ]; then
   _ff_env_key="WAWONA_FF_LIB_$(echo "${TARGET_NAME:-}" | tr '-' '_')"
   _ff_lib="${!_ff_env_key:-${WAWONA_FF_LIB:-}}"
   if [ -n "$_ff_lib" ] && [ -f "$_ff_lib" ]; then
-    cp -f "$_ff_lib" "$derived/libfastfetch.a"
-    echo "Using injected fastfetch lib $_ff_lib"
+    privatize_lib "$_ff_lib" "$derived/libfastfetch.a" \
+      "$_arch" "$_ld_platform" "$_min_ver" \
+      _fastfetch_main
+    echo "Using injected fastfetch lib $_ff_lib (platform-stamped for $_ld_platform)"
   elif [ -n "${NIX_BUILD_TOP:-}" ]; then
     echo "ERROR: NIX_BUILD_TOP set but no WAWONA_FF_LIB for ${TARGET_NAME:-}; inject via inject-xcode-backend-env.nix" >&2
     exit 1

@@ -2712,6 +2712,8 @@
             fastfetch-tvos-sim = toolchains.buildForTVOS "fastfetch" {simulator = true;};
             fastfetch-watchos = toolchains.buildForWatchOS "fastfetch" {simulator = false;};
             fastfetch-watchos-sim = toolchains.buildForWatchOS "fastfetch" {simulator = true;};
+            fastfetch-visionos = toolchains.buildForVisionOS "fastfetch" {simulator = false;};
+            fastfetch-visionos-sim = toolchains.buildForVisionOS "fastfetch" {simulator = true;};
             fastfetch-macos = toolchains.buildForMacOS "fastfetch" {};
             iland-gl-clients-ios = toolchains.buildForIOS "kmscube" {simulator = true;};
             iland-gl-clients-ios-device = toolchains.buildForIOS "kmscube" {simulator = false;};

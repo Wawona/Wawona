@@ -91,8 +91,18 @@ jobs:
           find "$APP" \( -name '*.dylib' -o -name '*.so' \) -type f -exec chmod +x {} + 2>/dev/null || true
           test -x "$APP/Contents/MacOS/Wawona" \
             || { echo "FAIL: MacOS/Wawona not executable"; ls -la "$APP/Contents/MacOS" || true; exit 1; }
-          test -x "$APP/Contents/Resources/bin/niri" \
-            || { echo "FAIL: niri missing/not executable in product-macos-app"; ls -la "$APP/Contents/Resources/bin" || true; exit 1; }
+          # Keep-set only (optional-software: niri/fuzzel/weston install later).
+          BIN="$APP/Contents/Resources/bin"
+          ls -la "$BIN" 2>/dev/null || true
+          keep_ok=0
+          for keep in wawona-shell zsh fastfetch; do
+            if [[ -x "$BIN/$keep" ]]; then
+              keep_ok=1
+              break
+            fi
+          done
+          [[ "$keep_ok" -eq 1 ]] \
+            || { echo "FAIL: keep-set shell tool missing in product-macos-app"; ls -la "$BIN" || true; exit 1; }
 
       - name: macOS compositor-host runtime smoke
         env:

@@ -44,11 +44,20 @@ done
 [[ -n "$EXE" ]] || { echo "FAIL: no Watch executable under $WATCH_APP" >&2; exit 1; }
 
 # Prove Relay wasm stayed linked (do not size-gate by dropping wasm).
-if ! /usr/bin/nm -gU "$EXE" 2>/dev/null | /usr/bin/grep -q 'wawona_wasm_run'; then
-  if ! /usr/bin/strings "$EXE" | /usr/bin/grep -q 'wawona_wasm'; then
-    echo "FAIL: Watch executable missing wawona_wasm (Relay wasm required)" >&2
-    exit 1
-  fi
+# Prefer nm. Avoid `strings | grep` alone: strings can fail mid-pipe
+# ("failed to flush output") and falsely trip this gate.
+wasm_ok=0
+if /usr/bin/nm -gU "$EXE" 2>/dev/null | /usr/bin/grep -q 'wawona_wasm'; then
+  wasm_ok=1
+elif /usr/bin/nm -a "$EXE" 2>/dev/null | /usr/bin/grep -q 'wawona_wasm'; then
+  wasm_ok=1
+elif /usr/bin/grep -a -q 'wawona_wasm' "$EXE" 2>/dev/null; then
+  wasm_ok=1
+fi
+if [[ "$wasm_ok" -ne 1 ]]; then
+  echo "FAIL: Watch executable missing wawona_wasm (Relay wasm required)" >&2
+  /usr/bin/nm -gU "$EXE" 2>/dev/null | /usr/bin/grep -i wasm | head -20 >&2 || true
+  exit 1
 fi
 
 SIZE="$(/usr/bin/stat -f%z "$EXE" 2>/dev/null || /usr/bin/stat -c%s "$EXE")"

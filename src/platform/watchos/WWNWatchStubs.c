@@ -348,9 +348,10 @@ void wwn_ios_refresh_bundle_env(void) {}
 __attribute__((weak))
 void wwn_pty_ios_allow_new_shell_session(void) {}
 
-/* Weak fallbacks for watchOS arm64_32 (no aarch64 wasm archive).
- * arm64 + simulator link libwawona_wasm.a (strong symbols win).
- * Keep these weak so the 32-bit companion still links. */
+/* arm64_32 only: no aarch64 libwawona_wasm.a on that slice. arm64 / sim must
+ * NOT define these. Apple ld treats a weak def as satisfying -Wl,-u and never
+ * pulls -lwawona_wasm (Relay wasm then dead-strips away; size gate fails). */
+#if defined(__arm64_32__)
 __attribute__((weak))
 int wawona_wasm_run(int argc, char **argv) {
     (void)argc; (void)argv;
@@ -376,6 +377,7 @@ int wpm_main(int argc, char **argv) {
     (void)argc; (void)argv;
     return 1;
 }
+#endif /* __arm64_32__ */
 
 __attribute__((weak))
 char *WWNHostKeymapXkbV1Copy(void) {
