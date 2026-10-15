@@ -273,8 +273,10 @@ Mode A product UI on GH runners is **Appium 2** (`ui-appium.yml`,
 driver children. **If a runner UI / Appium / GUI job fails, reproduce and
 fix with Appium skills.** Do not greenwash with agent-device, osascript,
 or skip stubs. agent-device stays local dogfood and vphone Mode B.
-Docs: `docs/testing/appium-ui-matrix.md`,
-`docs/agent-rules/wawona-appium-ui-gh.md`.
+Darwin catalog Wayland guests are **Colima + waypipe only**
+(`ensure-colima.sh`). Catalog green = Present `wwn.compositor.surface`
+PNG after Terminal close/Focus (not Machines/Settings). Docs:
+`docs/testing/appium-ui-matrix.md`, `docs/agent-rules/wawona-appium-ui-gh.md`.
 
 ## agent-device: Multi-Touch for Wayland clients
 

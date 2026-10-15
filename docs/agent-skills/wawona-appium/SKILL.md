@@ -23,10 +23,51 @@ description: >-
 | `Tests/appium/` | pytest + page objects |
 | `Tests/appium/matrix.toml` | Platform + catalog guest gates |
 | `Tests/appium/selectors.json` | Canonical `wwn.*` ids |
-| `scripts/appium/launch-wayland-client.sh` | Container / Colima / nested Wayland guests |
+| `scripts/appium/launch-wayland-client.sh` | Colima (Darwin) / nested (Linux) guests |
+| `scripts/appium/ensure-colima.sh` | Fail closed unless Colima SSH works |
 | `scripts/appium/verify-wayland-guest-map.py` | Fail closed on map drift |
+| `scripts/appium/capture-catalog-gallery.sh` | Gallery PNGs + verify |
 | `.github/workflows/ui-appium.yml` | Nightly / path-filtered runners |
 | `docs/testing/appium-ui-matrix.md` | Human prose |
+
+## Catalog Wayland guests (hard)
+
+Darwin / macOS catalog testing is **Colima + waypipe only**.
+
+```text
+colima start
+./scripts/appium/ensure-colima.sh
+# Wawona owns wayland-0, then:
+./scripts/appium/capture-catalog-gallery.sh foot
+```
+
+| Guest | When |
+|-------|------|
+| `colima` | Required on Darwin. Matrix rows are `guest = "colima"`. |
+| `nested` | Linux CI only (`WAWONA_WAYLAND_GUEST=nested`). |
+
+### Never (catalog)
+
+- Local-bundle host bins (`Wawona.app/Contents/Resources/bin/...`) as catalog proof
+- Apple Containerization / `Wawona run` / `container` guest for catalog
+- Publish gallery PNG of Machines, Settings, or full desktop
+- Label `weston-simple-shm` rainbow as `weston_terminal`
+- Claim green without `catalog-gallery/<client>.png` passing
+  `require_client_screenshot`
+
+### Present reveal (macOS)
+
+Start opens **Wawona Terminal**. Close that window (or Focus) so
+`showSessionSurface` mounts `wwn.compositor.surface`. Without that, Mac2
+sees Machines only.
+
+Dark terminals (foot, weston-terminal): blank detector needs **flat AND**
+near-black/white. Low mean alone is not blank (`screenshot_evidence.py`).
+
+Nested weston in a Colima guest is the product path. If someone debugs a
+host `weston` binary: stale nix `wayland-backend.so` aborts on
+`weston_log_set_handler` unless `WESTON_BACKEND_DIR` points at the app
+tree. Catalog must not use that host path.
 
 ## Runner failure loop
 
@@ -55,5 +96,8 @@ Never greenwash with skip stubs or agent-device/osascript.
 - Replace runner UI with agent-device
 - Invent non-`wwn.*` accessibility ids
 - Catalog card skips instead of Wayland guests
+- Darwin catalog without Colima
 
 Rule: `wawona-appium-ui-gh`. Host install: `/etc/nix-darwin/.dotfiles/docs/appium-agents.md`.
+RAG: `wwn-mcp/knowledge/wawona/appium-ui-gh.md`,
+`appium-catalog-colima.md`.

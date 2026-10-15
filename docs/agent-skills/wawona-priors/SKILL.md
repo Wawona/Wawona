@@ -32,10 +32,11 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-package` | Before any dependency or package compile: write LIBC, TEXT, GPU. Android is Bionic. cairo, harfbuzz, pango are not substitutes. |
 | `repo-wawona-io-catalogs` | Dual wasm/deb catalogs; GHA build vs catalog host split. |
 | `wawona-machine-types` | Machines UI: Native Shell / VM / Container. Sessions under Native Shell. |
+| `wawona-machine-card-actions` | Machines grid Focus/Stop/Edit/Delete must fit inside card. No ViewThatFits HStack clip. |
 | `wawona-ios-native-shell` | Every Start = Wawona Terminal (`$ argv` + CLI logs). Native Shell = live zsh. No StartupLog preview / first-frame auto-dismiss. |
 | `wawona-apple-swift` | Apple compositor Swift/SwiftUI. Always load `swiftui-pro` + `swiftui-expert-skill` first. |
 | `wawona-android-compose` | Android Kotlin/Compose. Always load `compose-agent` + `modern-jetpack-compose` first. |
-| `wawona-appium` | Mode A Appium UI on GH runners. Load dendritic `appium` skills; red UI jobs fix with Appium only. |
+| `wawona-appium` | Mode A Appium UI on GH runners. Darwin catalog = Colima only; Present surface PNG; no local-bundle. Load dendritic `appium`; red UI jobs fix with Appium only. |
 | `wawona-swiftui-backports` | iOS 13 `WawonaBackport` shims. Wins over upstream SwiftUI skill modernization. |
 | `wawona-icon-composer` | Layered icon drafts, native rendering, shared IDE tooling. |
 
@@ -96,6 +97,7 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-native-over-wasm` | No wasm twin of native-all-targets CLIs |
 | `wawona-optional-software` | Unbundle Wayland clients to wasm/deb. Keep zsh, uutils, fastfetch. Debs skip App Store patches. |
 | `wawona-machine-types` | Three Machines kinds. SSH/wasm/waypipe are Native Shell sessions. |
+| `wawona-machine-card-actions` | Card action chips always inside glass; Flow measure + card hug height |
 | `wawona-ios-native-shell` | Apple-mobile Wawona Terminal Start. No splash stub. Fake `weston_terminal_main` is not a shell. |
 | `wawona-apple-mobile-mode-a-backends` | Mode A SSH/zsh/uutils/`system()`: wwn-* owners, no Swift backends, patch budget, iOS 13 |
 
@@ -182,6 +184,12 @@ skill, add one row. Capture flow: `wawona-learn`.
 - Prove `ld` locally. Do not burn Gate: products to discover duplicates.
 - Relay Wasm ships on every target. Do not size-gate watchOS off.
 - hello-wasi-gui (`wl_shm`) must run on Watch Machines Start. Transfer is not run.
+- Machines grid card actions (Focus/Stop/Edit/Delete): never
+  `ViewThatFits(HStack)` before `MachineActionFlow`. Nil proposal width
+  under LazyVGrid made Flow report one-row height then clip Delete.
+  Always flow-wrap; `resolvedMaxWidth` ~2 chips/line; card
+  `fixedSize` vertical before stretch. Rule/skill:
+  `wawona-machine-card-actions`. RAG: `machine-card-actions.md`.
 - Machines UI kinds are only Native Shell / VM / Container. Wasm, SSH, and
   Waypipe are **Native Shell sessions** (Terminal / Wayland / Wasm / Waypipe),
   not type-picker rows. Wawona Terminal is `wawona-shell`. Skill

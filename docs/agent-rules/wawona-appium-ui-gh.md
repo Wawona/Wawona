@@ -46,11 +46,15 @@ lane under `ui-appium.yml`):
 - Gates: `matrix.toml` (PlatformCapabilities)
 - Selectors: `wwn.*` only
 - Catalog Wayland clients: real guests via
-  `scripts/appium/launch-wayland-client.sh` (container / Colima / nested)
-- **Catalog green = machine PNG** in
+  `scripts/appium/launch-wayland-client.sh` (**Colima on Darwin**; nested on
+  Linux). Run `ensure-colima.sh` first on macOS. No local-bundle.
+- **Catalog green = Present surface PNG** in
   `.agent-device/test-artifacts/appium/catalog-gallery/<client>.png`
-  (non-blank). DRY is not catalog proof.
-- Docs: `docs/testing/appium-ui-matrix.md`
+  (non-blank via `require_client_screenshot`). Capture
+  `wwn.compositor.surface` after closing Wawona Terminal / Focus. DRY /
+  Machines / Settings / desktop PNGs are not catalog proof.
+- Docs: `docs/testing/appium-ui-matrix.md`. RAG:
+  `wwn-mcp/knowledge/wawona/appium-catalog-colima.md`.
 
 ## Hard rejects
 
@@ -58,6 +62,8 @@ lane under `ui-appium.yml`):
 - Skip Appium skills and guess XCUITest / UiAutomator2 / Mac2 caps
 - Invent accessibility ids outside `wwn.*`
 - Catalog packaging-card skips instead of Wayland guests
+- Claim a catalog client OK without a Present surface screenshot
+- Darwin catalog via local-bundle host bins or Apple Containerization
 - Cancel tip `ui-appium` / Gate UI jobs to clear the queue (`wawona-ci-no-cancel`)
 
 Cursor rule: `wawona-appium-ui-gh`. Skill: `wawona-appium`. Dendritic: `appium`.
