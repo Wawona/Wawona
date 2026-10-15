@@ -146,6 +146,12 @@ jobs:
           repository: Wawona/Terminal
           ref: development
           path: Terminal
+      # Toolbar Keys Compose chrome lives in Wawona/ToolbarKeys (flake input overlay).
+      - uses: actions/checkout@v5
+        with:
+          repository: Wawona/ToolbarKeys
+          ref: development
+          path: ToolbarKeys
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

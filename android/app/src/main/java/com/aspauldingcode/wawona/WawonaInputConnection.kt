@@ -7,6 +7,10 @@ import android.view.inputmethod.BaseInputConnection
 import android.view.inputmethod.CorrectionInfo
 import android.view.inputmethod.CursorAnchorInfo
 import android.view.inputmethod.InputConnection
+import com.wawona.toolbarkeys.LinuxKey
+import com.wawona.toolbarkeys.ModifierState
+import com.wawona.toolbarkeys.controlToLinuxKeycode
+
 
 /**
  * InputConnection that routes Android IME text (including emoji) to the
@@ -38,6 +42,22 @@ class WawonaInputConnection(
 
     override fun commitText(text: CharSequence?, newCursorPosition: Int): Boolean {
         if (text == null || text.isEmpty()) return true
+        if (WawonaGuestTerm.acceptsKeys) {
+            val raw = text.toString()
+            val cooked = if (
+                ModifierState.ctrlActive &&
+                raw.length == 1 &&
+                raw[0].lowercaseChar() in 'a'..'z'
+            ) {
+                (raw[0].lowercaseChar().code - 'a'.code + 1).toChar().toString()
+            } else {
+                raw
+            }
+            WawonaGuestTerm.feedKeys(cooked)
+            if (ModifierState.ctrlActive) ModifierState.clearStickyModifiers()
+            super.commitText(text, newCursorPosition)
+            return true
+        }
         WLog.d("INPUT", "commitText: \"$text\" cursorPos=$newCursorPosition")
 
         if (ModifierState.hasActiveModifiers()) {
@@ -110,6 +130,10 @@ class WawonaInputConnection(
     }
 
     override fun setComposingText(text: CharSequence?, newCursorPosition: Int): Boolean {
+        if (WawonaGuestTerm.acceptsKeys) {
+            super.setComposingText(text, newCursorPosition)
+            return true
+        }
         val str = text?.toString() ?: ""
         WLog.d("INPUT", "setComposingText: \"$str\" cursorPos=$newCursorPosition")
         WawonaNative.nativePreeditText(str, 0, str.length)
@@ -118,6 +142,10 @@ class WawonaInputConnection(
     }
 
     override fun finishComposingText(): Boolean {
+        if (WawonaGuestTerm.acceptsKeys) {
+            super.finishComposingText()
+            return true
+        }
         WLog.d("INPUT", "finishComposingText")
         WawonaNative.nativePreeditText("", 0, 0)
         super.finishComposingText()
@@ -125,6 +153,15 @@ class WawonaInputConnection(
     }
 
     override fun deleteSurroundingText(beforeLength: Int, afterLength: Int): Boolean {
+        if (WawonaGuestTerm.acceptsKeys) {
+            val n = beforeLength.coerceAtLeast(0)
+            val before = terminalEraseBytes(n)
+            val after = "\u001b[3~".repeat(afterLength.coerceAtLeast(0))
+            val bytes = before + after
+            if (bytes.isNotEmpty()) WawonaGuestTerm.feedKeys(bytes)
+            super.deleteSurroundingText(beforeLength, afterLength)
+            return true
+        }
         WLog.d("INPUT", "deleteSurroundingText: before=$beforeLength after=$afterLength")
         WawonaNative.nativeDeleteSurroundingText(beforeLength, afterLength)
         if (beforeLength > 0 || afterLength > 0) {
@@ -144,6 +181,11 @@ class WawonaInputConnection(
     }
 
     override fun sendKeyEvent(event: KeyEvent): Boolean {
+        if (WawonaGuestTerm.acceptsKeys) {
+            val bytes = terminalBytesForKey(event)
+            if (bytes != null) WawonaGuestTerm.feedKeys(bytes)
+            return true
+        }
         if (event.action == KeyEvent.ACTION_DOWN) {
             when (event.keyCode) {
                 KeyEvent.KEYCODE_SHIFT_LEFT, KeyEvent.KEYCODE_SHIFT_RIGHT -> {
@@ -191,6 +233,14 @@ class WawonaInputConnection(
         if (correctionInfo == null) return true
         val oldText = correctionInfo.oldText?.toString() ?: return true
         val newText = correctionInfo.newText?.toString() ?: return true
+        if (WawonaGuestTerm.acceptsKeys) {
+            if (oldText.isNotEmpty()) {
+                WawonaGuestTerm.feedKeys(terminalEraseBytes(oldText.length))
+            }
+            WawonaGuestTerm.feedKeys(newText)
+            super.commitText(newText, 1)
+            return true
+        }
         WLog.d("INPUT", "commitCorrection: \"$oldText\" -> \"$newText\" at offset=${correctionInfo.offset}")
 
         val deleteLen = oldText.length
@@ -204,6 +254,10 @@ class WawonaInputConnection(
     }
 
     override fun performEditorAction(editorAction: Int): Boolean {
+        if (WawonaGuestTerm.acceptsKeys) {
+            WawonaGuestTerm.feedKeys(terminalEnterBytes())
+            return true
+        }
         WLog.d("INPUT", "performEditorAction: $editorAction")
         return super.performEditorAction(editorAction)
     }

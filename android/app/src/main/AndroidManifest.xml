@@ -55,6 +55,17 @@
             android:configChanges="orientation|keyboardHidden|screenSize|smallestScreenSize|density"
             android:windowSoftInputMode="adjustNothing" />
 
+        <!-- New Window Start: Wawona Terminal in its own task. New Tab stays in MainActivity. -->
+        <activity
+            android:name=".TerminalActivity"
+            android:label="Wawona Terminal"
+            android:exported="false"
+            android:launchMode="standard"
+            android:taskAffinity="com.aspauldingcode.wawona.terminal"
+            android:resizeableActivity="true"
+            android:configChanges="orientation|keyboardHidden|screenSize|smallestScreenSize|density"
+            android:windowSoftInputMode="adjustResize" />
+
         <!-- Android Auto: template-based status dashboard (Car App Library). -->
         <meta-data
             android:name="com.google.android.gms.car.application"

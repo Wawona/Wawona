@@ -12,6 +12,8 @@ import android.view.SurfaceView
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
+import com.wawona.toolbarkeys.ModifierState
+
 
 /* Linux input button codes */
 private const val BTN_LEFT = 0x110
@@ -447,6 +449,11 @@ class WawonaSurfaceView(context: Context) : SurfaceView(context) {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        if (WawonaGuestTerm.acceptsKeys) {
+            val bytes = terminalBytesForKey(event) ?: return super.onKeyDown(keyCode, event)
+            WawonaGuestTerm.feedKeys(bytes)
+            return true
+        }
         when (keyCode) {
             KeyEvent.KEYCODE_SHIFT_LEFT, KeyEvent.KEYCODE_SHIFT_RIGHT -> {
                 ModifierState.syncShiftFromNative(active = true, locked = ModifierState.shiftLocked)
@@ -468,6 +475,7 @@ class WawonaSurfaceView(context: Context) : SurfaceView(context) {
     }
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        if (WawonaGuestTerm.acceptsKeys) return true
         when (keyCode) {
             KeyEvent.KEYCODE_SHIFT_LEFT, KeyEvent.KEYCODE_SHIFT_RIGHT -> {
                 if (!ModifierState.shiftLocked) {
