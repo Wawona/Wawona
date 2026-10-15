@@ -68,15 +68,21 @@ jobs:
           find "$APP/Contents/MacOS" -type f -exec chmod +x {} + 2>/dev/null || true
           find "$APP/Contents/Resources/bin" -type f -exec chmod +x {} + 2>/dev/null || true
           find "$APP" \( -name '*.dylib' -o -name '*.so' \) -type f -exec chmod +x {} + 2>/dev/null || true
-          NIRI="$APP/Contents/Resources/bin/niri"
-          FUZZEL="$APP/Contents/Resources/bin/fuzzel"
+          # Keep-set only (optional-software: niri/fuzzel install later via
+          # repo.wawona.io). Assert the host binary and at least one shell tool.
           MAIN="$APP/Contents/MacOS/Wawona"
-          test -f "$NIRI" || { echo "FAIL: staged niri missing at $NIRI"; ls -laR "$APP/Contents/Resources/bin" || true; exit 1; }
-          test -f "$FUZZEL" || { echo "FAIL: staged fuzzel missing at $FUZZEL"; exit 1; }
+          BIN="$APP/Contents/Resources/bin"
           test -f "$MAIN" || { echo "FAIL: staged MacOS/Wawona missing"; exit 1; }
-          chmod +x "$NIRI" "$FUZZEL" "$MAIN"
-          test -x "$NIRI" && test -x "$FUZZEL" && test -x "$MAIN"
-          # Bundle XKB data so nested niri works after artifact download (no nix store).
+          chmod +x "$MAIN"
+          test -x "$MAIN"
+          ls -la "$BIN" 2>/dev/null || true
+          # Prefer zsh/fastfetch when present; do not require unbundled clients.
+          for keep in wawona-shell zsh fastfetch; do
+            if [ -f "$BIN/$keep" ]; then
+              chmod +x "$BIN/$keep"
+            fi
+          done
+          # Bundle XKB data for Wayland clients after artifact download (no nix store).
           XKB_OUT="$(nix build --no-link --print-out-paths nixpkgs#xkeyboard_config)"
           mkdir -p "$APP/Contents/Resources/share/X11"
           ditto "$XKB_OUT/share/X11/xkb" "$APP/Contents/Resources/share/X11/xkb"

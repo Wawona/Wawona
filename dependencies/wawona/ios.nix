@@ -35,10 +35,14 @@
   # First-class Rust backend so product xcodebuild copies libwawona.a instead of
   # nested `nix build --impure` (Gate: products iOS sim was recompiling rust).
   rustBackend ? null,
+  # Absolute paths to libwawona-zsh.a / libfastfetch.a (skip nested nix in sandbox).
+  zshLib ? null,
+  fastfetchLib ? null,
   mobileGuestArtifacts ? null,
   mobileGuestArtifacts16k ? null,
   mobileContainerGuestArtifacts ? null,
   companionBackends ? { },
+  companionShellLibs ? { },
   ...
 }:
 
@@ -155,6 +159,9 @@ let
     rustBackend
     xcodeTarget
     companionBackends
+    companionShellLibs
+    zshLib
+    fastfetchLib
     mobileGuestArtifacts
     mobileGuestArtifacts16k
     mobileContainerGuestArtifacts

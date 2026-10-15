@@ -331,9 +331,15 @@ if [ "$_with_zsh" = "1" ]; then
   case "$_sdk" in
     *simulator*) _zsh_attr="${_zsh_attr}-sim" ;;
   esac
-  if [ -n "${WAWONA_ZSH_LIB:-}" ] && [ -f "${WAWONA_ZSH_LIB}" ]; then
-    cp -f "${WAWONA_ZSH_LIB}" "$derived/libwawona-zsh.a"
-    echo "Using WAWONA_ZSH_LIB=$WAWONA_ZSH_LIB"
+  # Per-target inject (iOS product builds also compile the watch companion).
+  _zsh_env_key="WAWONA_ZSH_LIB_$(echo "${TARGET_NAME:-}" | tr '-' '_')"
+  _zsh_lib="${!_zsh_env_key:-${WAWONA_ZSH_LIB:-}}"
+  if [ -n "$_zsh_lib" ] && [ -f "$_zsh_lib" ]; then
+    cp -f "$_zsh_lib" "$derived/libwawona-zsh.a"
+    echo "Using injected zsh lib $_zsh_lib"
+  elif [ -n "${NIX_BUILD_TOP:-}" ]; then
+    echo "ERROR: NIX_BUILD_TOP set but no WAWONA_ZSH_LIB for ${TARGET_NAME:-}; inject via inject-xcode-backend-env.nix" >&2
+    exit 1
   else
     zsh_out="$("$NIX" build --no-link --print-out-paths "${_nix_flags[@]}" "$FLAKE_REF#$_zsh_attr")"
     privatize_lib "$zsh_out/lib/libwawona-zsh.a" "$derived/libwawona-zsh.a" \
@@ -356,11 +362,21 @@ if [ "$_with_zsh" = "1" ]; then
   case "$_sdk" in
     *simulator*) _ff_attr="$_ff_sim" ;;
   esac
-  ff_out="$("$NIX" build --no-link --print-out-paths "${_nix_flags[@]}" "$FLAKE_REF#$_ff_attr")"
-  privatize_lib "$ff_out/lib/libfastfetch.a" "$derived/libfastfetch.a" \
-    "$_arch" "$_ld_platform" "$_min_ver" \
-    _fastfetch_main
-  echo "Privatized $derived/libfastfetch.a (from $ff_out)"
+  _ff_env_key="WAWONA_FF_LIB_$(echo "${TARGET_NAME:-}" | tr '-' '_')"
+  _ff_lib="${!_ff_env_key:-${WAWONA_FF_LIB:-}}"
+  if [ -n "$_ff_lib" ] && [ -f "$_ff_lib" ]; then
+    cp -f "$_ff_lib" "$derived/libfastfetch.a"
+    echo "Using injected fastfetch lib $_ff_lib"
+  elif [ -n "${NIX_BUILD_TOP:-}" ]; then
+    echo "ERROR: NIX_BUILD_TOP set but no WAWONA_FF_LIB for ${TARGET_NAME:-}; inject via inject-xcode-backend-env.nix" >&2
+    exit 1
+  else
+    ff_out="$("$NIX" build --no-link --print-out-paths "${_nix_flags[@]}" "$FLAKE_REF#$_ff_attr")"
+    privatize_lib "$ff_out/lib/libfastfetch.a" "$derived/libfastfetch.a" \
+      "$_arch" "$_ld_platform" "$_min_ver" \
+      _fastfetch_main
+    echo "Privatized $derived/libfastfetch.a (from $ff_out)"
+  fi
 
   # Apple mobile SSH CLI is libwwn-ssh-cli.a from wwn-ssh (force_loaded via
   # xcodegen store path). Never libssh-inprocess.a / OpenSSH on App Store targets.

@@ -22,6 +22,9 @@
   applePath,
   rustBackend ? null,
   companionBackends ? { },
+  zshLib ? null,
+  fastfetchLib ? null,
+  companionShellLibs ? { },
   ...
 }:
 
@@ -92,5 +95,13 @@ in
     ]
   );
 }).overrideAttrs (import ./inject-xcode-backend-env.nix {
-  inherit lib rustBackend xcodeTarget companionBackends;
+  inherit
+    lib
+    rustBackend
+    xcodeTarget
+    companionBackends
+    companionShellLibs
+    zshLib
+    fastfetchLib
+    ;
 })

@@ -1807,6 +1807,14 @@
             # wawona-nixos-guest-{4k,16k} inside the .app (embed script).
             inherit mobileGuestArtifacts mobileGuestArtifacts16k;
             companionBackends = {"Wawona-watchOS" = backend-watchos-sim;};
+            zshLib = "${iosSimDeps.zsh}/lib/libwawona-zsh.a";
+            fastfetchLib = "${iosSimDeps.fastfetch}/lib/libfastfetch.a";
+            companionShellLibs = {
+              "Wawona-watchOS" = {
+                zshLib = "${watchosSimDeps.zsh}/lib/libwawona-zsh.a";
+                fastfetchLib = "${watchosSimDeps.fastfetch}/lib/libfastfetch.a";
+              };
+            };
           };
           wawona-watchos-app-sim = pkgs.callPackage ./dependencies/wawona/watchos.nix {
             inherit wawonaSrc wawonaVersion teamId;
@@ -1814,6 +1822,8 @@
             xcodeProject = xcodegenWatchosSimOutputs.project;
             simulator = true;
             rustBackend = backend-watchos-sim;
+            zshLib = "${watchosSimDeps.zsh}/lib/libwawona-zsh.a";
+            fastfetchLib = "${watchosSimDeps.fastfetch}/lib/libfastfetch.a";
           };
           wawona-watchos-app-device = pkgs.callPackage ./dependencies/wawona/watchos.nix {
             inherit wawonaSrc wawonaVersion;
@@ -1821,6 +1831,8 @@
             xcodeProject = xcodegenWatchosOutputs.project;
             simulator = false;
             rustBackend = backend-watchos;
+            zshLib = "${watchosDeps.zsh}/lib/libwawona-zsh.a";
+            fastfetchLib = "${watchosDeps.fastfetch}/lib/libfastfetch.a";
           };
           wawona-ios-app-device = pkgs.callPackage ./dependencies/wawona/ios.nix {
             inherit wawonaSrc wawonaVersion;
@@ -1831,6 +1843,14 @@
             rustBackend = backend-ios;
             inherit mobileGuestArtifacts mobileGuestArtifacts16k;
             companionBackends = {"Wawona-watchOS" = backend-watchos;};
+            zshLib = "${iosDeps.zsh}/lib/libwawona-zsh.a";
+            fastfetchLib = "${iosDeps.fastfetch}/lib/libfastfetch.a";
+            companionShellLibs = {
+              "Wawona-watchOS" = {
+                zshLib = "${watchosDeps.zsh}/lib/libwawona-zsh.a";
+                fastfetchLib = "${watchosDeps.fastfetch}/lib/libfastfetch.a";
+              };
+            };
           };
           wawona-ios-modeb-sileo-app-device = pkgs.callPackage ./dependencies/wawona/ios.nix {
             inherit wawonaSrc wawonaVersion;
@@ -1844,6 +1864,8 @@
             deploymentTarget = "13.0";
             rustBackend = backend-ios-modeb-sileo;
             companionBackends = {};
+            zshLib = "${iosDeps.zsh}/lib/libwawona-zsh.a";
+            fastfetchLib = "${iosDeps.fastfetch}/lib/libfastfetch.a";
           };
           wawona-ios-modeb-tipa-app-device = pkgs.callPackage ./dependencies/wawona/ios.nix {
             inherit wawonaSrc wawonaVersion;
@@ -1857,6 +1879,8 @@
             deploymentTarget = "14.0";
             rustBackend = backend-ios-modeb-tipa;
             companionBackends = {};
+            zshLib = "${iosDeps.zsh}/lib/libwawona-zsh.a";
+            fastfetchLib = "${iosDeps.fastfetch}/lib/libfastfetch.a";
           };
           # Historical name remains the Sileo iOS 13+ app.  New callers must
           # choose the explicit channel output above.
@@ -2047,6 +2071,14 @@
             deploymentTarget = "13.0";
             rustBackend = backend-ios-sim;
             companionBackends = {"Wawona-watchOS" = backend-watchos-sim;};
+            zshLib = "${iosSimDeps.zsh}/lib/libwawona-zsh.a";
+            fastfetchLib = "${iosSimDeps.fastfetch}/lib/libfastfetch.a";
+            companionShellLibs = {
+              "Wawona-watchOS" = {
+                zshLib = "${watchosSimDeps.zsh}/lib/libwawona-zsh.a";
+                fastfetchLib = "${watchosSimDeps.fastfetch}/lib/libfastfetch.a";
+              };
+            };
           };
           wawona-ipados-app-device = pkgs.callPackage ./dependencies/wawona/ipados.nix {
             inherit wawonaSrc wawonaVersion;
@@ -2056,6 +2088,14 @@
             deploymentTarget = "13.0";
             rustBackend = backend-ios;
             companionBackends = {"Wawona-watchOS" = backend-watchos;};
+            zshLib = "${iosDeps.zsh}/lib/libwawona-zsh.a";
+            fastfetchLib = "${iosDeps.fastfetch}/lib/libfastfetch.a";
+            companionShellLibs = {
+              "Wawona-watchOS" = {
+                zshLib = "${watchosDeps.zsh}/lib/libwawona-zsh.a";
+                fastfetchLib = "${watchosDeps.fastfetch}/lib/libfastfetch.a";
+              };
+            };
           };
           wawona-tvos-app-sim = pkgs.callPackage ./dependencies/wawona/tvos.nix {
             inherit wawonaSrc wawonaVersion teamId;
@@ -2063,6 +2103,8 @@
             xcodeProject = xcodegenOutputs.project;
             simulator = true;
             rustBackend = backend-tvos-sim;
+            zshLib = "${tvosSimDeps.zsh}/lib/libwawona-zsh.a";
+            fastfetchLib = "${tvosSimDeps.fastfetch}/lib/libfastfetch.a";
           };
           wawona-tvos-app-device = pkgs.callPackage ./dependencies/wawona/tvos.nix {
             inherit wawonaSrc wawonaVersion;
@@ -2070,6 +2112,8 @@
             xcodeProject = xcodegenOutputs.project;
             simulator = false;
             rustBackend = backend-tvos;
+            zshLib = "${tvosDeps.zsh}/lib/libwawona-zsh.a";
+            fastfetchLib = "${tvosDeps.fastfetch}/lib/libfastfetch.a";
           };
           wawona-visionos-app-sim = pkgs.callPackage ./dependencies/wawona/visionos.nix {
             inherit wawonaSrc wawonaVersion teamId;
@@ -2077,6 +2121,8 @@
             xcodeProject = xcodegenOutputs.project;
             simulator = true;
             rustBackend = backend-visionos-sim;
+            zshLib = "${visionosSimDeps.zsh}/lib/libwawona-zsh.a";
+            fastfetchLib = "${visionosSimDeps.fastfetch}/lib/libfastfetch.a";
           };
           wawona-visionos-app-device = pkgs.callPackage ./dependencies/wawona/visionos.nix {
             inherit wawonaSrc wawonaVersion;
@@ -2084,6 +2130,8 @@
             xcodeProject = xcodegenOutputs.project;
             simulator = false;
             rustBackend = backend-visionos;
+            zshLib = "${visionosDeps.zsh}/lib/libwawona-zsh.a";
+            fastfetchLib = "${visionosDeps.fastfetch}/lib/libfastfetch.a";
           };
           wawona-ios-ipa =
             if teamId != null
@@ -2097,6 +2145,14 @@
                 deploymentTarget = "13.0";
                 rustBackend = backend-ios;
                 companionBackends = {"Wawona-watchOS" = backend-watchos;};
+                zshLib = "${iosDeps.zsh}/lib/libwawona-zsh.a";
+                fastfetchLib = "${iosDeps.fastfetch}/lib/libfastfetch.a";
+                companionShellLibs = {
+                  "Wawona-watchOS" = {
+                    zshLib = "${watchosDeps.zsh}/lib/libwawona-zsh.a";
+                    fastfetchLib = "${watchosDeps.fastfetch}/lib/libfastfetch.a";
+                  };
+                };
               }
             else missingTeamRelease "wawona-ios-ipa";
           wawona-ios-xcarchive =
@@ -2111,6 +2167,14 @@
                 deploymentTarget = "13.0";
                 rustBackend = backend-ios;
                 companionBackends = {"Wawona-watchOS" = backend-watchos;};
+                zshLib = "${iosDeps.zsh}/lib/libwawona-zsh.a";
+                fastfetchLib = "${iosDeps.fastfetch}/lib/libfastfetch.a";
+                companionShellLibs = {
+                  "Wawona-watchOS" = {
+                    zshLib = "${watchosDeps.zsh}/lib/libwawona-zsh.a";
+                    fastfetchLib = "${watchosDeps.fastfetch}/lib/libfastfetch.a";
+                  };
+                };
               }
             else missingTeamRelease "wawona-ios-xcarchive";
           mkPlatformIpa = name: file: args:
@@ -2129,15 +2193,29 @@
             deploymentTarget = "13.0";
             rustBackend = backend-ios;
             companionBackends = {"Wawona-watchOS" = backend-watchos;};
+            zshLib = "${iosDeps.zsh}/lib/libwawona-zsh.a";
+            fastfetchLib = "${iosDeps.fastfetch}/lib/libfastfetch.a";
+            companionShellLibs = {
+              "Wawona-watchOS" = {
+                zshLib = "${watchosDeps.zsh}/lib/libwawona-zsh.a";
+                fastfetchLib = "${watchosDeps.fastfetch}/lib/libfastfetch.a";
+              };
+            };
           };
           wawona-tvos-ipa = mkPlatformIpa "wawona-tvos-ipa" ./dependencies/wawona/tvos.nix {
             rustBackend = backend-tvos;
+            zshLib = "${tvosDeps.zsh}/lib/libwawona-zsh.a";
+            fastfetchLib = "${tvosDeps.fastfetch}/lib/libfastfetch.a";
           };
           wawona-visionos-ipa = mkPlatformIpa "wawona-visionos-ipa" ./dependencies/wawona/visionos.nix {
             rustBackend = backend-visionos;
+            zshLib = "${visionosDeps.zsh}/lib/libwawona-zsh.a";
+            fastfetchLib = "${visionosDeps.fastfetch}/lib/libfastfetch.a";
           };
           wawona-watchos-ipa = mkPlatformIpa "wawona-watchos-ipa" ./dependencies/wawona/watchos.nix {
             rustBackend = backend-watchos;
+            zshLib = "${watchosDeps.zsh}/lib/libwawona-zsh.a";
+            fastfetchLib = "${watchosDeps.fastfetch}/lib/libfastfetch.a";
           };
           wawona-ios-simulator = apple.simulateApp {
             name = "wawona-ios-simulator";
