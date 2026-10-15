@@ -9,6 +9,8 @@
 
 #include <android/log.h>
 #include <dlfcn.h>
+#include <errno.h>
+#include <string.h>
 
 #define TAG "WawonaClients"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)

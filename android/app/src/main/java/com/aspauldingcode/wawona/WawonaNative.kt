@@ -221,6 +221,24 @@ object WawonaNative {
         logs: String
     ): String
 
-    /** ANSI screen packed as little-endian cells. Null if the parser is absent. */
-    external fun nativeTermSnapshot(bytes: ByteArray, cols: Int, rows: Int): ByteArray?
+    /** UniFFI TerminalSession.lines() JSON. Empty array if the screen is absent. */
+    external fun nativeTermLines(bytes: ByteArray, cols: Int, rows: Int): String?
+
+    /** Live Guest Console VT. The handle is a Rust `wwn_term`. */
+    external fun nativeTermOpen(cols: Int, rows: Int): Long
+    external fun nativeTermClose(handle: Long)
+    external fun nativeTermFeed(handle: Long, bytes: ByteArray)
+    external fun nativeTermResize(handle: Long, cols: Int, rows: Int)
+    external fun nativeTermDocument(handle: Long): String?
+    external fun nativeTermTitle(handle: Long): String?
+    external fun nativeTermPointer(handle: Long, col: Int, row: Int)
+    external fun nativeTermImages(handle: Long): String?
+    external fun nativeTermCellPx(handle: Long, width: Int, height: Int)
+
+    /** Bundled zsh on a PTY. Master fd, or -1 when zsh or `/dev/ptmx` is missing. */
+    external fun nativeTermShellStart(): Int
+    external fun nativeTermShellWrite(fd: Int, bytes: ByteArray): Int
+    external fun nativeTermShellRead(fd: Int, buf: ByteArray): Int
+    external fun nativeTermShellResize(fd: Int, cols: Int, rows: Int)
+    external fun nativeTermShellStop()
 }

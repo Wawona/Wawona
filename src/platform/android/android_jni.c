@@ -26,6 +26,8 @@
 #include <android/native_window_jni.h>
 #include <dlfcn.h>
 #include <jni.h>
+#include <pthread.h>
+#include <stdint.h>
 #include <sys/types.h>
 #include <bits/signal_types.h>
 #include <signal.h>
@@ -1956,6 +1958,7 @@ static void choreographer_frame_cb(long frameTimeNanos, void *data) {
                                       buf->buffer_id, buf->width, buf->height,
                                       buf->stride, buf->format, buf->pixels,
                                       buf->size);
+#ifdef WAWONA_ILAND_GL
       } else if (buf->iosurface_id != 0 && buf->width > 0 && buf->height > 0) {
         /* Wayland dmabuf / #86: high-bit modifier packs an AHB-backed
          * ILandIOSurface id. Lock CPU-mapped pixels and upload like SHM. */
@@ -1992,6 +1995,7 @@ static void choreographer_frame_cb(long frameTimeNanos, void *data) {
         } else {
           LOGI("AHB lookup failed for iosurface_id=%u", buf->iosurface_id);
         }
+#endif
       }
       WWNBufferDataFree(buf);
     }
@@ -6321,6 +6325,247 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeIsMobileVmRunning(
   (void)env;
   (void)clazz;
   return g_mobile_vm_running ? JNI_TRUE : JNI_FALSE;
+}
+
+/* UniFFI TerminalSession.lines() JSON. The VT screen stays in Rust. */
+extern char *wwn_term_bytes_lines_json(const uint8_t *bytes, size_t len,
+                                       uint32_t cols, uint32_t rows);
+extern void wwn_term_string_free(char *ptr);
+
+JNIEXPORT jstring JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeTermLines(JNIEnv *env,
+                                                           jclass clazz,
+                                                           jbyteArray bytes,
+                                                           jint cols, jint rows) {
+  (void)clazz;
+  if (!bytes || cols <= 0 || rows <= 0) {
+    return (*env)->NewStringUTF(env, "[]");
+  }
+  jsize n = (*env)->GetArrayLength(env, bytes);
+  jbyte *raw = (*env)->GetByteArrayElements(env, bytes, NULL);
+  char *json = NULL;
+  if (raw) {
+    json = wwn_term_bytes_lines_json((const uint8_t *)raw, (size_t)n,
+                                     (uint32_t)cols, (uint32_t)rows);
+    (*env)->ReleaseByteArrayElements(env, bytes, raw, JNI_ABORT);
+  }
+  if (!json) {
+    return (*env)->NewStringUTF(env, "[]");
+  }
+  jstring out = (*env)->NewStringUTF(env, json);
+  wwn_term_string_free(json);
+  return out;
+}
+
+/* One live VT for the Android Guest Console. The log string is not the screen. */
+typedef struct wwn_term wwn_term;
+extern wwn_term *wwn_term_new(uint32_t cols, uint32_t rows);
+extern void wwn_term_free(wwn_term *term);
+extern void wwn_term_resize(wwn_term *term, uint32_t cols, uint32_t rows);
+extern void wwn_term_feed(wwn_term *term, const uint8_t *bytes, size_t len);
+extern char *wwn_term_lines_json(const wwn_term *term);
+extern uint32_t wwn_term_title(const wwn_term *term, uint8_t *out, uint32_t cap);
+extern void wwn_term_pointer(wwn_term *term, uint8_t button, uint32_t col,
+                             uint32_t row, int pressed, int motion);
+extern size_t wwn_term_take_reply(wwn_term *term, uint8_t *buf, size_t cap);
+extern void wwn_term_set_cell_px(wwn_term *term, uint32_t width, uint32_t height);
+extern char *wwn_term_images_json(const wwn_term *term);
+extern int wwn_android_shell_start(const char *shell_path);
+extern int wwn_android_shell_write(int fd, const uint8_t *bytes, size_t len);
+extern int wwn_android_shell_read(int fd, uint8_t *buf, size_t cap);
+extern void wwn_android_shell_resize(int fd, int cols, int rows);
+extern void wwn_android_shell_stop(void);
+
+static pthread_mutex_t g_wwn_term_mu = PTHREAD_MUTEX_INITIALIZER;
+
+static wwn_term *wwn_jni_term(jlong handle) {
+  return (wwn_term *)(uintptr_t)handle;
+}
+
+JNIEXPORT jlong JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeTermOpen(JNIEnv *env,
+                                                          jclass clazz, jint cols,
+                                                          jint rows) {
+  (void)env;
+  (void)clazz;
+  if (cols < 1) cols = 80;
+  if (rows < 1) rows = 24;
+  pthread_mutex_lock(&g_wwn_term_mu);
+  wwn_term *term = wwn_term_new((uint32_t)cols, (uint32_t)rows);
+  pthread_mutex_unlock(&g_wwn_term_mu);
+  return (jlong)(uintptr_t)term;
+}
+
+JNIEXPORT void JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeTermClose(JNIEnv *env,
+                                                           jclass clazz,
+                                                           jlong handle) {
+  (void)env;
+  (void)clazz;
+  pthread_mutex_lock(&g_wwn_term_mu);
+  wwn_term_free(wwn_jni_term(handle));
+  pthread_mutex_unlock(&g_wwn_term_mu);
+}
+
+JNIEXPORT void JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeTermFeed(JNIEnv *env, jclass clazz,
+                                                          jlong handle,
+                                                          jbyteArray bytes) {
+  (void)clazz;
+  if (!handle || !bytes) return;
+  jsize n = (*env)->GetArrayLength(env, bytes);
+  jbyte *raw = (*env)->GetByteArrayElements(env, bytes, NULL);
+  if (!raw) return;
+  pthread_mutex_lock(&g_wwn_term_mu);
+  wwn_term *term = wwn_jni_term(handle);
+  wwn_term_feed(term, (const uint8_t *)raw, (size_t)n);
+  uint8_t sink[256];
+  while (wwn_term_take_reply(term, sink, sizeof sink) == sizeof sink) {
+  }
+  pthread_mutex_unlock(&g_wwn_term_mu);
+  (*env)->ReleaseByteArrayElements(env, bytes, raw, JNI_ABORT);
+}
+
+JNIEXPORT void JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeTermResize(JNIEnv *env,
+                                                            jclass clazz,
+                                                            jlong handle, jint cols,
+                                                            jint rows) {
+  (void)env;
+  (void)clazz;
+  if (!handle || cols < 1 || rows < 1) return;
+  pthread_mutex_lock(&g_wwn_term_mu);
+  wwn_term_resize(wwn_jni_term(handle), (uint32_t)cols, (uint32_t)rows);
+  pthread_mutex_unlock(&g_wwn_term_mu);
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeTermDocument(JNIEnv *env,
+                                                              jclass clazz,
+                                                              jlong handle) {
+  (void)clazz;
+  if (!handle) return (*env)->NewStringUTF(env, "[]");
+  pthread_mutex_lock(&g_wwn_term_mu);
+  char *json = wwn_term_lines_json(wwn_jni_term(handle));
+  pthread_mutex_unlock(&g_wwn_term_mu);
+  if (!json) return (*env)->NewStringUTF(env, "[]");
+  jstring out = (*env)->NewStringUTF(env, json);
+  wwn_term_string_free(json);
+  return out;
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeTermTitle(JNIEnv *env,
+                                                           jclass clazz,
+                                                           jlong handle) {
+  (void)clazz;
+  if (!handle) return (*env)->NewStringUTF(env, "");
+  uint8_t buf[256];
+  pthread_mutex_lock(&g_wwn_term_mu);
+  wwn_term_title(wwn_jni_term(handle), buf, sizeof buf);
+  pthread_mutex_unlock(&g_wwn_term_mu);
+  return (*env)->NewStringUTF(env, (const char *)buf);
+}
+
+JNIEXPORT void JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeTermPointer(
+    JNIEnv *env, jclass clazz, jlong handle, jint col, jint row) {
+  (void)env;
+  (void)clazz;
+  if (!handle || col < 1 || row < 1) return;
+  uint8_t reply[64];
+  pthread_mutex_lock(&g_wwn_term_mu);
+  wwn_term *term = wwn_jni_term(handle);
+  wwn_term_pointer(term, 0, (uint32_t)col, (uint32_t)row, 1, 0);
+  wwn_term_pointer(term, 0, (uint32_t)col, (uint32_t)row, 0, 0);
+  /* No Android PTY yet. Drop the report so it cannot pile up. */
+  (void)wwn_term_take_reply(term, reply, sizeof reply);
+  pthread_mutex_unlock(&g_wwn_term_mu);
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeTermImages(JNIEnv *env,
+                                                            jclass clazz,
+                                                            jlong handle) {
+  (void)clazz;
+  if (!handle) return (*env)->NewStringUTF(env, "[]");
+  pthread_mutex_lock(&g_wwn_term_mu);
+  char *json = wwn_term_images_json(wwn_jni_term(handle));
+  pthread_mutex_unlock(&g_wwn_term_mu);
+  if (!json) return (*env)->NewStringUTF(env, "[]");
+  jstring out = (*env)->NewStringUTF(env, json);
+  wwn_term_string_free(json);
+  return out;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeTermShellStart(JNIEnv *env,
+                                                                jclass clazz) {
+  (void)env;
+  (void)clazz;
+  if (!g_zsh_bin_path[0]) return -1;
+  return wwn_android_shell_start(g_zsh_bin_path);
+}
+
+JNIEXPORT jint JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeTermShellWrite(JNIEnv *env,
+                                                                jclass clazz,
+                                                                jint fd,
+                                                                jbyteArray bytes) {
+  (void)clazz;
+  if (fd < 0 || !bytes) return -1;
+  jsize n = (*env)->GetArrayLength(env, bytes);
+  if (n <= 0) return 0;
+  jbyte *raw = (*env)->GetByteArrayElements(env, bytes, NULL);
+  if (!raw) return -1;
+  int wrote = wwn_android_shell_write(fd, (const uint8_t *)raw, (size_t)n);
+  (*env)->ReleaseByteArrayElements(env, bytes, raw, JNI_ABORT);
+  return wrote;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeTermShellRead(JNIEnv *env,
+                                                               jclass clazz,
+                                                               jint fd,
+                                                               jbyteArray buf) {
+  (void)clazz;
+  if (fd < 0 || !buf) return -1;
+  jsize cap = (*env)->GetArrayLength(env, buf);
+  if (cap <= 0) return -1;
+  jbyte *raw = (*env)->GetByteArrayElements(env, buf, NULL);
+  if (!raw) return -1;
+  int n = wwn_android_shell_read(fd, (uint8_t *)raw, (size_t)cap);
+  (*env)->ReleaseByteArrayElements(env, buf, raw, n > 0 ? 0 : JNI_ABORT);
+  return n;
+}
+
+JNIEXPORT void JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeTermShellResize(
+    JNIEnv *env, jclass clazz, jint fd, jint cols, jint rows) {
+  (void)env;
+  (void)clazz;
+  wwn_android_shell_resize(fd, cols, rows);
+}
+
+JNIEXPORT void JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeTermShellStop(JNIEnv *env,
+                                                               jclass clazz) {
+  (void)env;
+  (void)clazz;
+  wwn_android_shell_stop();
+}
+
+JNIEXPORT void JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeTermCellPx(JNIEnv *env,
+                                                            jclass clazz,
+                                                            jlong handle, jint width,
+                                                            jint height) {
+  (void)env;
+  (void)clazz;
+  if (!handle) return;
+  pthread_mutex_lock(&g_wwn_term_mu);
+  wwn_term_set_cell_px(wwn_jni_term(handle), (uint32_t)width, (uint32_t)height);
+  pthread_mutex_unlock(&g_wwn_term_mu);
 }
 
 // ---------------------------------------------------------------------------

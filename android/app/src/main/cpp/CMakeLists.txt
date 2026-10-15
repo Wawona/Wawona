@@ -245,6 +245,18 @@ endif()
 # Target Link Libraries (Rust backend first to match Nix/ld resolution)
 set(_WAWONA_LINK_LIBS "")
 if(DEFINED RUST_BACKEND_LIB AND NOT RUST_BACKEND_LIB STREQUAL "")
+  if(NOT WAWONA_STUDIO_FALLBACK)
+    # android_shell.rs is its own object in the staticlib. Pull it even when
+    # the archive index was produced on a Darwin host.
+    foreach(_shell_symbol
+        wwn_android_shell_start
+        wwn_android_shell_write
+        wwn_android_shell_read
+        wwn_android_shell_resize
+        wwn_android_shell_stop)
+      list(APPEND _WAWONA_LINK_LIBS "-Wl,-u,${_shell_symbol}")
+    endforeach()
+  endif()
   list(APPEND _WAWONA_LINK_LIBS ${RUST_BACKEND_LIB})
 endif()
 if(WAWONA_STUDIO_FALLBACK)
@@ -301,8 +313,14 @@ else()
 endif()
 if(WAWONA_HAVE_ANOWAW)
   # libanowaw.so is bundled into jniLibs via androidDeps; link it so the JNI
-  # glue resolves the anowaw_* C ABI.
-  list(APPEND _WAWONA_LINK_LIBS anowaw)
+  # glue resolves the anowaw_* C ABI. Studio fallback has no NIX_LIB_DIRS.
+  set(_ANOWAW_SO
+      "${CMAKE_CURRENT_SOURCE_DIR}/../jniLibs/${ANDROID_ABI}/libanowaw.so")
+  if(EXISTS "${_ANOWAW_SO}")
+    list(APPEND _WAWONA_LINK_LIBS "${_ANOWAW_SO}")
+  else()
+    list(APPEND _WAWONA_LINK_LIBS anowaw)
+  endif()
 endif()
 target_link_libraries(wawona PRIVATE ${_WAWONA_LINK_LIBS} ${NIX_EXTRA_LINK_FLAGS})
 
