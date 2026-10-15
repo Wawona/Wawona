@@ -50,6 +50,21 @@ iOS `vm` stays planned. Remaining work follows **Shortest calendar path** in
 that file: 4 KiB SHM import first, no second smoke, no guest rebuild, no
 16 KiB/AOT/ISA/STARDUST until the frame hash.
 
+## Mode A SHM tip (2026-10-15 hard-won)
+
+waypipe often delivers `OPEN_FILE → BUFFER_DIFF → PROTOCOL` (not PROTOCOL then
+DIFF). Importing DIFF pixels with an empty MiniCompositor `buffers` map creates
+a ghost frame and `all buffers are held by the server`. Fixes live in
+`Relay/crates/relay-vm/src/shm_import.rs`: skip-empty, release-all, create_buffer
+catch-up, attach synthesize from `last_file`, dim prefer 200x200 over 64xN.
+
+Lab-synth Bundle guest dir must be **`wawona-nixos-guest-4k`**, not `guest-4k`.
+Per-UDID `XDG_RUNTIME_DIR`. AUTH + 64x625 present is **not** 800x600
+weston-smoke face until 1.92MiB OPEN_FILE / decoded create_buffer lands.
+
+Open skill `wawona-staticcpu-shm-tip`, rule `wawona-staticcpu-shm-tip`, RAG
+`staticcpu-shm-tip.md`. Graph ticks: `Relay/docs/agentic-graph-staticcpu.md`.
+
 ## Rust + crate2nix (required)
 
 Relay product logic is **Rust**. C/ObjC/Swift/JNI is only thin ABI or Apple framework trampolines (`wawona_relay.h`, eventual VZ ObjC bridge). Do not grow Swift/C engines, spikes as product paths, or new `buildRustPackage` monoliths. Nix builds of Relay crates must use **crate2nix** for per-crate `/nix/store` derivations (same granularity as L4 `rust-backend-c2n.nix`): 1. Pin: `crate2nix.follows = "wwn-toolchain/crate2nix"` (L0 owns the tip). 2. Build: `crate2nix.tools.${system}.generatedCargoNix` over the Relay

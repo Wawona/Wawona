@@ -19,7 +19,8 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-carplay-lab` | Playport physical-iPhone CarPlay lab; private runtime identity and pairing. |
 | `wawona-vphone-lab-recover` | Dead / stale vphone lab. Sock refused. Stuck SSH wait. |
 | `wawona-ios-min-os` | iOS 13-27+ min OS vs latest SDK, including bundled archives. ObjC needs its own deployment flag. One ANGLE, one MoltenVK. Never downgrade SDK. |
-| `wawona-ios-sim-runtime` | iOS Simulator dogfood: backend ladder, ffmpeg nativeDeps, Watch vs phone, half-sheet, AUTO_START. |
+| `wawona-ios-sim-runtime` | iOS Simulator dogfood: backend ladder, ffmpeg nativeDeps, Watch vs phone, half-sheet, AUTO_START, lab-synth guest name. |
+| `wawona-staticcpu-shm-tip` | Mode A StaticCpu SHM tip: DIFF-before-buffer, release, synthesize attach, exclusive UDID, 800x600 gap. |
 | `wawona-flake-consumer-rename` | After renaming a flake input/repo (e.g. iLand), bump every consumer tip + follows before claiming eval green. |
 | `wawona-ios-link-contract` | Fail before compile when Sources membership or C symbol missing. |
 | `wawona-gh` | GitHub issues/milestones/PRs/`gh run`. Shell + local `gh`. No GitHub MCP. |
@@ -68,6 +69,7 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-native-compositors` / `wawona-optional-software` / `wawona-port-fidelity` | Weston/Niri as debs/wasm; keep-set; waypipe equivalence |
 | `wawona-relay-wasm` | WASI Runtime on every target including watchOS |
 | `wawona-relay` | One L3′ engine: Linux VMs, OCI-in-VM, Mode A wasm. Never QEMU/UTM |
+| `wawona-staticcpu-shm-tip` | Mode A StaticCpu SHM tip: DIFF-before-buffer, lab-synth guest name, evidence order |
 | `wawona-relay-ios-hypervisor` | Mode B iOS/iPadOS Hypervisor.framework window (not HVF-via-qemu) |
 | `wawona-linux-vms-relay-runtime` | NixOS VMs; Mode A/B engines; no QEMU/UTM |
 | `wawona-platform-targets` | Four-state gates. Ghostty grid is `Wawona/Ghostty` (Zig). Toolbar keys are `Wawona/ToolbarKeys`. |
@@ -169,11 +171,19 @@ skill, add one row. Capture flow: `wawona-learn`.
   `-Dmain=gbm_es2_demo_cli_main` only; product ABI stays
   `extern C gbm_es2_demo_main`. Do not `-Dmain=gbm_es2_demo_main`
   (redefinition). Set `XDG_RUNTIME_DIR` to `preferredSharedRuntimeDir`
-  (`/tmp/wawona_sim_<uid>`) before host compositor start. Simulator profile
-  inject: `defaults import`, not raw plist rewrite. Env into guest:
-  `SIMCTL_CHILD_WWN_AUTO_START_MACHINE=<id>` (plain `launch -e` is argv).
+  (`/tmp/wawona_sim_<uid>_<udid8>` per UDID) before host compositor start.
+  Simulator profile inject: `defaults import`, not raw plist rewrite. Env into
+  guest: `SIMCTL_CHILD_WWN_AUTO_START_MACHINE=<id>` (plain `launch -e` is argv).
   AUTO_START may leave Connected=0; trust stderr. Rule
   `wawona-ios-app-entry`. Skill `wawona-ios-sim-runtime`.
+- Mode A StaticCpu SHM (2026-10-15): waypipe often
+  `OPEN_FILE → BUFFER_DIFF → PROTOCOL`. Import with empty `buffers` map =
+  ghost frame + `all buffers are held`. Skip-empty, release-all, create_buffer
+  catch-up, attach synthesize from `last_file`, prefer 200x200 over 64xN for
+  160000 bytes. Lab-synth guest dir = `wawona-nixos-guest-4k` not `guest-4k`.
+  AUTH + 64x625 present ≠ 800x600 weston-smoke face. Completely complete stays
+  0% until store TF. Skill `wawona-staticcpu-shm-tip`. RAG
+  `staticcpu-shm-tip.md`. Rule `wawona-staticcpu-shm-tip`.
 - Mode B TrollStore proof device is `vphone wawona-jb`. Do not wait for
   STARDUST. TXM MAP_JIT `EPERM` and Metal nil are proven on that guest.
   iOS VMs wait on Relay. Fail closed. No QEMU product path. Linux guests

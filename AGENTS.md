@@ -242,6 +242,12 @@ not MCP. Skill `wawona-gh`. Rule `wawona-gh`.
   (`wawona-relay-ios-hypervisor`); that is not HVF-via-qemu. tvOS /
   watchOS / visionOS: no VM/container kinds. See `wawona-relay`,
   `wawona-linux-vms-relay-runtime`, and `wawona-guest-wayland-iland`.
+- **Mode A StaticCpu SHM tip (Simulator).** waypipe often
+  `OPEN_FILE → BUFFER_DIFF → PROTOCOL`. Empty `buffers` + DIFF import =
+  held-server ghost. Lab-synth guest dir = `wawona-nixos-guest-4k` (not
+  `guest-4k`). AUTH + 64x625 ≠ 800x600 face. Completely complete stays 0%
+  until store TF. Skill/rule `wawona-staticcpu-shm-tip`. RAG
+  `staticcpu-shm-tip.md`. Graph: `Relay/docs/agentic-graph-staticcpu.md`.
 
 ## Local before CI (do not burn the queue)
 

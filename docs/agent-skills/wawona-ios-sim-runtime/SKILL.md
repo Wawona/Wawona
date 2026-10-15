@@ -82,13 +82,37 @@ build those archives. Provide ios-sim stubs exporting `foot_main` /
 ```bash
 rm -rf /tmp/Wawona-ios-tip.app
 ditto result-ios-sim-tip/Wawona.app /tmp/Wawona-ios-tip.app   # or Xcode DerivedData app
-chmod -R u+w /tmp/Wawona-ios-tip.app && xattr -cr /tmp/Wawona-ios-tip.app
+# nix store apps are often read-only; chmod before any guest embed/ditto
+chmod -R u+rwX /tmp/Wawona-ios-tip.app && xattr -cr /tmp/Wawona-ios-tip.app
 xcrun simctl install booted /tmp/Wawona-ios-tip.app
 ```
 
 Prove entry: `nm -gU …/Wawona | rg 'T _main'` and `gbm_es2_demo_main` present,
 no archive C `_main` as sole life. Socket after launch:
 `/tmp/wawona_sim_$UID_<udid8>/wayland-0` (per-UDID; avoids multi-sim bind clash).
+
+Exclusive StaticCpu SHM tip: prefer one UDID + install lock
+`/tmp/wawona-sim-install.lock.d`. Do not claim green from a host SHM log under
+a different UDID path. Skill: `wawona-staticcpu-shm-tip`.
+
+## StaticCpu guest embed (lab-synth)
+
+`labSynthesizeStaticCpuProfileIfGuestStaged` looks for Bundle resource
+**`wawona-nixos-guest-4k`** (or `…-16k`), **not** `guest-4k`.
+
+```bash
+ditto /path/to/guest-tree /tmp/Wawona-smoke-tip.app/wawona-nixos-guest-4k
+chmod -R u+rwX /tmp/Wawona-smoke-tip.app
+SIMCTL_CHILD_WWN_AUTO_START_MACHINE=static-smoke-n10b \
+  xcrun simctl launch "$UDID" com.aspauldingcode.Wawona
+```
+
+Log must include `lab-synthesized static-smoke-n10b guest=4k`.
+`no profile static-smoke-n10b` = wrong directory name or missing manifest.
+
+SHM held / 64x625-only / missing 800x600: open `wawona-staticcpu-shm-tip`
+(waypipe DIFF-before-buffer, release, synthesize attach). Do not rebuild the
+guest while BUFFER_DIFF already arrives.
 
 ## Machine editor half-sheet (UI proof)
 
@@ -164,3 +188,6 @@ ls /tmp/wawona_sim_$UID/wayland-0
 ❌ Ignoring `libavutil` / empty `nativeDeps.ffmpeg` when waypipe video is on  
 ❌ `nix build … | tee | tail` as the only status signal  
 ❌ Forgetting Main.swift / gbm `_main` / XDG gates (see rule)  
+❌ Guest embed dir named `guest-4k` for lab-synth (must be `wawona-nixos-guest-4k`)  
+❌ Shared `/tmp/wawona_sim_$UID/wayland-0` across two booted sims  
+❌ Treating host `/tmp/wawona_sim_503/relay-shm.log` as live tip SHM evidence  

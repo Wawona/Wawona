@@ -284,11 +284,19 @@ final class WWNMainWindowRouter: ObservableObject {
     }
 
     func showSessionSurface() {
+        // Global Settings replaces `machinesChrome` (CompositorBridge) with
+        // `WWNGlobalSettingsHostView`. Leaving Settings up leaves
+        // activeIlandPresenter nil forever: Mode A SHM imports but never
+        // presents ("no IlandPresenter"). First-frame / AUTO_START must
+        // dismiss Settings so Metal remounts.
+        if isSettingsPresented {
+            isSettingsPresented = false
+        }
         sessionSurfaceMounted = true
         sessionSurfaceVisible = true
         selection = .session
         NSLog(
-            "WWNShowSessionSurface: mounted=1 visible=1 selection=session"
+            "WWNShowSessionSurface: mounted=1 visible=1 selection=session settings=0"
         )
     }
 
@@ -320,6 +328,8 @@ final class WWNMainWindowRouter: ObservableObject {
     @Published var settingsSelection: GlobalSettingsSectionID?
 
     /// Opens Global Settings in-app (`wawona-global-settings-exclusive`).
+    /// Slide-up animation is driven from the host view transition; this wraps
+    /// the flag change in the shared spring.
     func showSettings() {
         sessionSurfaceVisible = false
         if settingsSelection == nil {
@@ -327,14 +337,23 @@ final class WWNMainWindowRouter: ObservableObject {
                 for: GlobalSettingsCatalog.currentHost
             ).first
         }
-        isSettingsPresented = true
+        withAnimation(Self.settingsCoverAnimation) {
+            isSettingsPresented = true
+        }
     }
 
     func dismissSettings() {
-        isSettingsPresented = false
+        withAnimation(Self.settingsCoverAnimation) {
+            isSettingsPresented = false
+        }
         if case .settings? = selection {
             selection = .machines
         }
+    }
+
+    /// Shared spring for Settings cover (insert + remove). iOS 13-safe API.
+    static var settingsCoverAnimation: Animation {
+        .spring(response: 0.42, dampingFraction: 0.88)
     }
 
     /// Deep-link into a Settings section inside the dedicated host.
@@ -385,9 +404,11 @@ extension WWNPreferencesSection {
     }
 }
 
-/// Unified Machine Configuration window. Global Settings replaces this chrome
-/// in-window (`WWNGlobalSettingsHostView` from gear / Cmd-,). Never a sheet,
-/// PrefPane, or Settings.app host. Section list stays out of the Machines sidebar.
+/// Unified Machine Configuration window. Global Settings covers this chrome
+/// in-window with a bottom slide (`WWNGlobalSettingsHostView` from gear /
+/// Cmd-,). Never a sheet, PrefPane, or Settings.app host (macOS sheet
+/// backport is a floating popup). Section list stays out of the Machines
+/// sidebar.
 struct WawonaMainWindowView: View {
     @ObservedObject var model: WWNSettingsValueModel
     @ObservedObject var router: WWNMainWindowRouter
@@ -414,20 +435,57 @@ struct WawonaMainWindowView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     #endif
+    /// Bottom cover insert/remove. Same motion on every Apple target.
+    /// Reduce Motion (UIKit/AppKit, iOS 13 floor): fade only.
+    private var settingsCoverTransition: AnyTransition {
+        if Self.accessibilityReduceMotionEnabled {
+            return .opacity
+        }
+        return .asymmetric(
+            insertion: .move(edge: .bottom).combined(with: .opacity),
+            removal: .move(edge: .bottom).combined(with: .opacity)
+        )
+    }
+
+    private static var accessibilityReduceMotionEnabled: Bool {
+        #if os(macOS)
+        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        #else
+        UIAccessibility.isReduceMotionEnabled
+        #endif
+    }
+
+    /// System grouped / window background under the Settings cover.
+    private var settingsCoverBackground: Color {
+        #if os(macOS)
+        Color(nsColor: .windowBackgroundColor)
+        #else
+        Color(UIColor.systemBackground)
+        #endif
+    }
 
     var body: some View {
-        // Global Settings owns the window chrome (same NavigationSplitView
-        // pattern as Machines). Never sheet / fullScreenCover: on macOS that
-        // backport is a floating popup, unlike machine-editor sheets.
-        Group {
+        // Global Settings slides up over Machines (in-window cover). Never
+        // sheet / fullScreenCover: on macOS that backport is a floating popup.
+        //
+        // Mode A StaticCpu: keep `machinesChrome` mounted under the cover so
+        // CompositorBridge / IlandPresenter stay alive while Settings is up.
+        ZStack {
+            machinesChrome
+                .allowsHitTesting(!router.isSettingsPresented)
+                .accessibility(hidden: router.isSettingsPresented)
+
             if router.isSettingsPresented {
                 WWNGlobalSettingsHostView(
                     model: model,
                     selection: $router.settingsSelection,
                     onDismiss: { router.dismissSettings() }
                 )
-            } else {
-                machinesChrome
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                // Opaque so Machines does not show through mid-slide.
+                .background(settingsCoverBackground.edgesIgnoringSafeArea(.all))
+                .transition(settingsCoverTransition)
+                .zIndex(1)
             }
         }
         .onReceive(NotificationCenter.default.publisher(
@@ -678,7 +736,7 @@ struct WawonaMainWindowView: View {
         .accessibility(addTraits: listSelection == destination ? .isSelected : [])
     }
 
-    /// Plain SF Symbol + title (matches Global Settings sidebar).
+    /// Section-tinted SF Symbol + title (matches Global Settings sidebar).
     @ViewBuilder
     private func sidebarRowLabel(
         title: String,
