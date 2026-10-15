@@ -14,6 +14,7 @@ pub mod machine_profile;
 pub mod prefs_keys;
 pub mod profile_store;
 pub mod sanitize_ssh_host;
+pub mod tab_overview;
 pub mod uniffi_api;
 pub mod validation;
 pub mod welcome_copy;
@@ -112,13 +113,25 @@ pub mod settings_catalog {
         use SettingsSectionId::*;
         match host {
             SettingsHost::MacOs => vec![
-                Display, Input, Graphics, Environment,
-                ICloudSync, Desktop, Waypipe, Ssh, About, Dependencies,
+                Display,
+                Input,
+                Graphics,
+                Environment,
+                ICloudSync,
+                Desktop,
+                Waypipe,
+                Ssh,
+                About,
+                Dependencies,
             ],
             SettingsHost::Ios => {
                 let mut sections = vec![
-                    Display, Input, Graphics, Environment,
-                    ICloudSync, AppleWatch,
+                    Display,
+                    Input,
+                    Graphics,
+                    Environment,
+                    ICloudSync,
+                    AppleWatch,
                 ];
                 // Store IPA must not list Desktop. TrollStore tipa and Sileo
                 // Mode B compile with profile-ios-mode-b (IOMFB + igetty).
@@ -128,20 +141,59 @@ pub mod settings_catalog {
                 sections
             }
             SettingsHost::VisionOs => vec![
-                Display, Input, Graphics, Environment,
-                ICloudSync, Waypipe, Ssh, About, Dependencies,
+                Display,
+                Input,
+                Graphics,
+                Environment,
+                ICloudSync,
+                Waypipe,
+                Ssh,
+                About,
+                Dependencies,
             ],
-            SettingsHost::Android | SettingsHost::Linux => vec![
-                Display, Input, Graphics, Environment,
-                Waypipe, Ssh, About, Dependencies,
+            // Android Mode A: Default Home + LockScreen replacement (no SIP).
+            // Linux: Desktop/LockScreen forbidden (product map).
+            SettingsHost::Android => vec![
+                Display,
+                Input,
+                Graphics,
+                Environment,
+                Desktop,
+                Waypipe,
+                Ssh,
+                About,
+                Dependencies,
+            ],
+            SettingsHost::Linux => vec![
+                Display,
+                Input,
+                Graphics,
+                Environment,
+                Waypipe,
+                Ssh,
+                About,
+                Dependencies,
             ],
             SettingsHost::TvOs => vec![
-                Display, Input, Graphics, Environment,
-                Waypipe, Ssh, About, Dependencies,
+                Display,
+                Input,
+                Graphics,
+                Environment,
+                Waypipe,
+                Ssh,
+                About,
+                Dependencies,
             ],
             SettingsHost::WatchOs => vec![
-                Display, Input, Graphics, Environment, ICloudSync,
-                Waypipe, Ssh, About, Dependencies,
+                Display,
+                Input,
+                Graphics,
+                Environment,
+                ICloudSync,
+                Waypipe,
+                Ssh,
+                About,
+                Dependencies,
             ],
         }
     }
@@ -172,11 +224,11 @@ pub mod settings_catalog {
         }
 
         #[test]
-        fn android_and_linux_share_store_catalog() {
-            assert_eq!(
-                visible_sections(SettingsHost::Android),
-                visible_sections(SettingsHost::Linux)
-            );
+        fn android_has_desktop_linux_does_not() {
+            let android = visible_sections(SettingsHost::Android);
+            let linux = visible_sections(SettingsHost::Linux);
+            assert!(android.contains(&SettingsSectionId::Desktop));
+            assert!(!linux.contains(&SettingsSectionId::Desktop));
             assert_eq!(host_from_slug("ios"), Some(SettingsHost::Ios));
         }
     }

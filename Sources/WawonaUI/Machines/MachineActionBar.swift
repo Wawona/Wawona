@@ -63,20 +63,16 @@ struct MachineActionBar: View {
         }
         .frame(maxWidth: .infinity)
       case .flow:
+        // Always flow-wrap. ViewThatFits(HStack) first often measured Flow with
+        // infinite width (one-row height), then placed a wrapped second row that
+        // the machine card clipped (Focus/Stop/Edit/Delete → Delete cut off).
         if #available(iOS 16.0, tvOS 16.0, watchOS 9.0, macOS 13.0, *) {
-        ViewThatFits(in: .horizontal) {
-          HStack(spacing: chipSpacing) {
-            ForEach(items) { item in
-              MachineActionChip(item: item, expands: false)
-            }
-          }
           MachineActionFlow(spacing: chipSpacing, lineSpacing: chipSpacing) {
             ForEach(items) { item in
               MachineActionChip(item: item, expands: false)
             }
           }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
+          .frame(maxWidth: .infinity, alignment: .leading)
         } else {
           VStack(spacing: stackSpacing) {
             ForEach(items) { item in MachineActionChip(item: item, expands: true) }
@@ -241,7 +237,11 @@ struct MachineActionFlow: Layout {
   private func arrange(proposal: ProposedViewSize, subviews: Subviews) -> (
     size: CGSize, frames: [CGRect]
   ) {
-    let maxWidth = proposal.width ?? .infinity
+    let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
+    // LazyVGrid / card measure often passes nil width. If we treat that as
+    // infinity, every chip stays on one row and sizeThatFits under-reports
+    // height; placeSubviews then wraps into a clipped second row.
+    let maxWidth = resolvedMaxWidth(proposal: proposal, sizes: sizes)
     var frames: [CGRect] = []
     frames.reserveCapacity(subviews.count)
     var x: CGFloat = 0
@@ -249,9 +249,8 @@ struct MachineActionFlow: Layout {
     var rowHeight: CGFloat = 0
     var usedWidth: CGFloat = 0
 
-    for subview in subviews {
-      let size = subview.sizeThatFits(.unspecified)
-      if x > 0 && maxWidth.isFinite && x + size.width > maxWidth {
+    for size in sizes {
+      if x > 0 && x + size.width > maxWidth {
         x = 0
         y += rowHeight + lineSpacing
         rowHeight = 0
@@ -262,7 +261,26 @@ struct MachineActionFlow: Layout {
       usedWidth = max(usedWidth, x - spacing)
     }
 
-    let width = maxWidth.isFinite ? min(usedWidth, maxWidth) : usedWidth
-    return (CGSize(width: width, height: y + rowHeight), frames)
+    let width = min(usedWidth, maxWidth)
+    let height = subviews.isEmpty ? 0 : y + rowHeight
+    return (CGSize(width: width, height: height), frames)
+  }
+
+  /// Concrete wrap width for measurement when the parent proposes nil/infinity.
+  private func resolvedMaxWidth(proposal: ProposedViewSize, sizes: [CGSize]) -> CGFloat {
+    if let width = proposal.width, width.isFinite, width > 0 {
+      return width
+    }
+    guard !sizes.isEmpty else { return 0 }
+    // Machine cards show 3-4 actions. Assume a line holds about two chips so
+    // height accounts for wrap before the grid locks the row height.
+    let widest = sizes.map(\.width).max() ?? 0
+    if sizes.count <= 2 {
+      let line = sizes.map(\.width).reduce(0, +) + CGFloat(max(sizes.count - 1, 0)) * spacing
+      return max(widest, line)
+    }
+    let first = sizes[0].width
+    let second = sizes[1].width
+    return max(widest, first + spacing + second)
   }
 }

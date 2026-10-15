@@ -118,7 +118,8 @@ pub fn show_editor(
         .clone()
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "wawona-shell".to_string());
-    if initial_client == "custom" || (initial_client != "wawona-shell" && initial_client != "wawona-wasm")
+    if initial_client == "custom"
+        || (initial_client != "wawona-shell" && initial_client != "wawona-wasm")
     {
         session_combo.set_active_id(Some("terminal"));
         initial_client = "wawona-shell".to_string();
@@ -210,17 +211,13 @@ pub fn show_editor(
             filters.append(&filter);
             dialog.set_filters(Some(&filters));
             let wasm_path_c = wasm_path_c.clone();
-            dialog.open(
-                Some(&win),
-                None::<&gio::Cancellable>,
-                move |result| {
-                    if let Ok(file) = result {
-                        if let Some(path) = file.path() {
-                            wasm_path_c.set_text(&path.to_string_lossy());
-                        }
+            dialog.open(Some(&win), None::<&gio::Cancellable>, move |result| {
+                if let Ok(file) = result {
+                    if let Some(path) = file.path() {
+                        wasm_path_c.set_text(&path.to_string_lossy());
                     }
-                },
-            );
+                }
+            });
         });
     }
     {
@@ -763,8 +760,7 @@ pub fn show_editor(
                 }
                 .into(),
             );
-            updated.runtime_overrides.wasm_package =
-                if pkg.is_empty() { None } else { Some(pkg) };
+            updated.runtime_overrides.wasm_package = if pkg.is_empty() { None } else { Some(pkg) };
             updated.runtime_overrides.wasm_module_path =
                 if path.is_empty() { None } else { Some(path) };
         } else if tid == "native" && kind == "waypipe" {

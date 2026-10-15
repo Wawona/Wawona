@@ -26,7 +26,7 @@ Never PrefPane, Settings.bundle, Settings-Watch.bundle, or App Info Preferences.
 
 | Target / band | Sole Global Settings host |
 |---|---|
-| **macOS** | In-app `WWNGlobalSettingsHostView` (gear / ⌘,) |
+| **macOS** | In-app `WWNGlobalSettingsHostView` replaces Machines chrome in the main window (gear / Cmd-,). Never a sheet |
 | **iOS / iPadOS** | In-app `WWNGlobalSettingsHostView` (gear; not Machines home sidebar) |
 | **watchOS prefs** | In-app `WatchGlobalSettingsView` on the wrist |
 | **tvOS / visionOS** | In-app `WWNGlobalSettingsHostView` |
@@ -46,16 +46,17 @@ in-app catalog via `visibleSections`.
 
 | Layer | UI | Entry points |
 |-------|-----|--------------|
-| **Global Wawona Settings** | **One in-app host per platform** (table above). Catalog from `GlobalSettingsCatalog` / Rust `settings_catalog`. Apple: `WWNGlobalSettingsHostView` (section sidebar + `WWNSettingsSectionView`). iOS text/password use push editors. Android: Compose `SettingsDialog`. Linux: libadwaita dialog | macOS `⌘,` / menubar / toolbar Settings. iOS toolbar gear. Watch sheet from Machines. Android in-app gear. Never System Settings or Settings.app |
+| **Global Wawona Settings** | **One in-app host per platform** (table above). Catalog from `GlobalSettingsCatalog` / Rust `settings_catalog`. Apple: `WWNGlobalSettingsHostView` replaces Machines chrome in the main window (section sidebar + `WWNSettingsSectionView`). Never a floating sheet on macOS. iOS text/password use push editors. Android: Compose `SettingsDialog`. Linux: libadwaita dialog | macOS Cmd-, / menubar / toolbar Settings. iOS toolbar gear. Watch sheet from Machines. Android in-app gear. Never System Settings or Settings.app |
 | **Machine profiles + overrides** | SwiftUI (`MachineEditorView` via `MachineEditorValidation`, `MachineSettingsView`) | Add / swipe **Edit** = identity editor; **Machine Settings** = per-machine overrides |
 
-Global Settings sections are declared in `WawonaUIContracts.GlobalSettingsCatalog`.
-iOS includes **Apple Watch** companion document transfer actions (WatchConnectivity
-send-side) in the in-app catalog. Catalog sections include Display (Color Operations / HDR),
-Machines (shake / swipe / tvOS Menu), iCloud Sync (Apple; omit on tvOS), Local
-Shell, Dependencies, plus Input / Graphics / Env Vars / Waypipe / SSH / About.
-watchOS omits Desktop (forbidden), Local Shell, and Apple Watch send UI. Watch
-globals are edited on the wrist. Same `wawona.pref.*` keys.
+Global Settings sections come from Rust `settings_catalog` /
+`GlobalSettingsCatalog.visibleSections` (`SettingsContracts.swift`). Store
+hosts share: Display, Input, Graphics, Env Vars, Waypipe, SSH, About,
+Dependencies. iOS adds iCloud Sync + Apple Watch (and Desktop only in Mode B).
+There is **no Advanced** sidebar row: nested compositors / Display Backend /
+Multiple Clients live under Display; shake / swipe under Input; session
+thumbnails under Graphics. watchOS omits Desktop. Watch globals edit on the
+wrist. Same `wawona.pref.*` keys.
 
 ### Settings row layout
 

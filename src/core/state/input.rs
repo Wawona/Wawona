@@ -397,8 +397,10 @@ impl CompositorState {
         None
     }
 
-    fn wl_surface_for(&self, surface_id: u32) -> Option<wayland_server::protocol::wl_surface::WlSurface>
-    {
+    fn wl_surface_for(
+        &self,
+        surface_id: u32,
+    ) -> Option<wayland_server::protocol::wl_surface::WlSurface> {
         self.surfaces
             .get(&surface_id)
             .and_then(|surf| surf.read().ok()?.resource.clone())
@@ -426,11 +428,13 @@ impl CompositorState {
         // This is a client-compatibility bridge, not a host text-selection UI.
         let terminal_selection = self
             .get_window_by_surface(surface_id)
-            .and_then(|window| window.read().ok().map(|window| {
-                crate::core::wayland::ext::text_input::is_terminal_text_entry_app_id(
-                    &window.app_id,
-                )
-            }))
+            .and_then(|window| {
+                window.read().ok().map(|window| {
+                    crate::core::wayland::ext::text_input::is_terminal_text_entry_app_id(
+                        &window.app_id,
+                    )
+                })
+            })
             .unwrap_or(false);
         terminal_selection
             || crate::core::input::touch::should_mirror_pointer_for_chrome(nested)
@@ -609,8 +613,8 @@ impl CompositorState {
         if self.seat.touch.get_touch_surface(id).is_none() {
             return;
         }
-        let release_pointer = self.seat.touch.pointer_mirror_id == Some(id)
-            && self.seat.touch.pointer_button_held;
+        let release_pointer =
+            self.seat.touch.pointer_mirror_id == Some(id) && self.seat.touch.pointer_button_held;
         self.smithay_touch_up(id, time);
         if release_pointer {
             self.smithay_pointer_mirror_button(false, time);
@@ -629,9 +633,7 @@ impl CompositorState {
             return;
         };
         self.smithay_touch_motion(id, surface.clone(), x, y, time);
-        if self.seat.touch.pointer_mirror_id == Some(id)
-            && self.seat.touch.pointer_button_held
-        {
+        if self.seat.touch.pointer_mirror_id == Some(id) && self.seat.touch.pointer_button_held {
             self.smithay_pointer_mirror_motion(&surface, x, y, time);
         }
     }

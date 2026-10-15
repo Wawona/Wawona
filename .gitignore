@@ -226,3 +226,4 @@ Tests/appium/.pytest_cache/
 XCBuildData/
 /verification-out/
 /android/verification-out/
+ToolbarKeys

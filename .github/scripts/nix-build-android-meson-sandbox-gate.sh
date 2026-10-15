@@ -3,7 +3,8 @@
 # Matches the macOS GitHub Actions builder where /usr/bin/env is denied.
 #
 # Local monorepo (sibling checkouts):
-#   WWN_TOOLCHAIN_ROOT=/path/to/wwn-toolchain WWN_WESTON_ROOT=/path/to/wwn-weston \
+#   WWN_TOOLCHAIN_ROOT=/path/to/wwn-toolchain \
+#   REPO_WAWONA_IO_ROOT=/path/to/repo.wawona.io \
 #     ./.github/scripts/nix-build-android-meson-sandbox-gate.sh
 #
 # Force cold rebuild of meson leaves (slow; catches missing patchShebangs hooks):
@@ -20,8 +21,8 @@ OVERRIDE=()
 if [[ -n "${WWN_TOOLCHAIN_ROOT:-}" && -d "${WWN_TOOLCHAIN_ROOT}" ]]; then
   OVERRIDE+=(--override-input wwn-toolchain "path:${WWN_TOOLCHAIN_ROOT}")
 fi
-if [[ -n "${WWN_WESTON_ROOT:-}" && -d "${WWN_WESTON_ROOT}" ]]; then
-  OVERRIDE+=(--override-input wwn-weston "path:${WWN_WESTON_ROOT}")
+if [[ -n "${REPO_WAWONA_IO_ROOT:-}" && -d "${REPO_WAWONA_IO_ROOT}" ]]; then
+  OVERRIDE+=(--override-input repo-wawona-io "path:${REPO_WAWONA_IO_ROOT}")
 fi
 
 if [[ "${VERIFY_REBUILD:-}" == "1" ]]; then

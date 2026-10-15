@@ -5,8 +5,7 @@
 //! `wawona-welcome-alert`.
 
 pub const TITLE: &str = "Welcome to Wawona";
-pub const MESSAGE: &str =
-    "A Universal Wayland Compositor. Tap '+' to add a Machine.";
+pub const MESSAGE: &str = "A Universal Wayland Compositor. Tap '+' to add a Machine.";
 pub const CONTINUE: &str = "Continue";
 
 #[cfg(test)]

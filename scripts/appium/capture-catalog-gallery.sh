@@ -30,10 +30,6 @@ SOCK="$RUNTIME/wayland-0"
 if [[ -z "${FONTCONFIG_FILE:-}" && -f "$RUNTIME/fonts.conf" ]]; then
   export FONTCONFIG_FILE="$RUNTIME/fonts.conf"
 fi
-if [[ ! -S "$SOCK" ]]; then
-  echo "FAIL: no Wayland socket at $SOCK. Start Wawona first." >&2
-  exit 2
-fi
 
 chmod +x "$ROOT/scripts/appium/ensure-appium.sh"
 chmod +x "$ROOT/scripts/appium/ensure-wda-mac.sh"
@@ -49,15 +45,22 @@ else
 fi
 # Local Mac2 / Linux sessions flap :4723; never start pytest cold.
 "$ROOT/scripts/appium/ensure-appium.sh"
-# Darwin: tip build + clean launch (never /Applications or stale DD), then WDA.
+# Darwin: tip build + clean launch FIRST (never /Applications or stale DD).
+# Socket proof comes after tip launch so cold start works.
 if [[ "$(uname -s)" == "Darwin" && "${WAWONA_APPIUM_PLATFORM}" == "macos" ]]; then
   chmod +x "$ROOT/scripts/appium/ensure-tip-wawona-macos.sh"
   chmod +x "$ROOT/scripts/lib/require-tip-wawona-app.sh"
   # Rebuild when git HEAD drifts; always quit + relaunch tip binary.
   eval "$("$ROOT/scripts/appium/ensure-tip-wawona-macos.sh")"
+  RUNTIME="${WAWONA_RUNTIME:-$RUNTIME}"
+  export XDG_RUNTIME_DIR="$RUNTIME"
+  SOCK="$RUNTIME/wayland-0"
   # shellcheck source=/dev/null
   source "$ROOT/scripts/lib/require-tip-wawona-app.sh"
   wawona_refuse_stale_app_path "$WAWONA_APP_PATH"
+  # Do not inherit a leftover FORCE_RESTART from a prior lab shell; tip
+  # clean launch already quit/relaunch Wawona. Restart WDA only when down.
+  unset WAWONA_MAC2_FORCE_RESTART || true
   "$ROOT/scripts/appium/ensure-wda-mac.sh"
   export WAWONA_MAC2_WDA_URL="${WAWONA_MAC2_WDA_URL:-http://127.0.0.1:${WAWONA_MAC2_WDA_PORT:-10100}}"
   # Keep manageApp=1 so Mac2 gets bundleId (required for wwn.* AX). Prefer
@@ -67,8 +70,15 @@ if [[ "$(uname -s)" == "Darwin" && "${WAWONA_APPIUM_PLATFORM}" == "macos" ]]; th
   export WAWONA_APPIUM_NO_RESET="${WAWONA_APPIUM_NO_RESET:-1}"
   export WAWONA_MAC2_SKIP_APP_KILL="${WAWONA_MAC2_SKIP_APP_KILL:-1}"
   echo "WAWONA_APP_PATH=$WAWONA_APP_PATH"
+  # Give tip UI a beat after clean launch before Mac2 attaches.
+  sleep "${WAWONA_TIP_SETTLE_SEC:-2}"
   osascript -e 'tell application id "com.aspauldingcode.Wawona" to activate' \
     >/dev/null 2>&1 || true
+fi
+
+if [[ ! -S "$SOCK" ]]; then
+  echo "FAIL: no Wayland socket at $SOCK after tip ensure / start." >&2
+  exit 2
 fi
 
 cd "$ROOT/Tests/appium"

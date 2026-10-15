@@ -155,20 +155,26 @@ impl Dispatch<WpColorManagementSurfaceV1, ColorSurfaceData> for CompositorState 
     ) {
         match request {
             wp_color_management_surface_v1::Request::Destroy => {
-                state.surfaces_with_image_description.remove(&data.surface_id);
+                state
+                    .surfaces_with_image_description
+                    .remove(&data.surface_id);
             }
             wp_color_management_surface_v1::Request::SetImageDescription { .. } => {
                 // Protocol path only. Does not force host Metal EDR; present
                 // enables EDR when the buffer pixel format is HDR and Settings
                 // still allows color operations.
-                state.surfaces_with_image_description.insert(data.surface_id);
+                state
+                    .surfaces_with_image_description
+                    .insert(data.surface_id);
                 tracing::debug!(
                     "wp_color_management_surface_v1.set_image_description surface={}",
                     data.surface_id
                 );
             }
             wp_color_management_surface_v1::Request::UnsetImageDescription => {
-                state.surfaces_with_image_description.remove(&data.surface_id);
+                state
+                    .surfaces_with_image_description
+                    .remove(&data.surface_id);
             }
             _ => {}
         }

@@ -334,10 +334,7 @@ fn ensure_xkb_locale_root() {
             if candidate.join("compose.dir").is_file() {
                 if let Ok(canonical) = candidate.canonicalize() {
                     std::env::set_var("XLOCALEDIR", &canonical);
-                    tracing::info!(
-                        "xkb: using bundled compose locale {}",
-                        canonical.display()
-                    );
+                    tracing::info!("xkb: using bundled compose locale {}", canonical.display());
                     return;
                 }
             }

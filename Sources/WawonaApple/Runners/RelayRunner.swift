@@ -388,8 +388,11 @@ public final class WWNRelay: NSObject {
                     "[WWNRelay] Mode A SHM: no IlandPresenter (mount session surface) fails=%d",
                     frameFails
                 )
+                // Do NOT post ShowSessionSurface here: remount churns SwiftUI,
+                // sibling Host deinit clears activePresenter, and SHM stays dry.
+                // Ask the live CompositorHost to re-arm IlandPresenter instead.
                 NotificationCenter.default.post(
-                    name: Notification.Name("WWNShowSessionSurfaceNotification"),
+                    name: Notification.Name("WWNEnsureIlandPresenterNotification"),
                     object: nil,
                     userInfo: ["source": "relay-present-nil-presenter"]
                 )
@@ -414,6 +417,17 @@ public final class WWNRelay: NSObject {
             if framePresents == 1 {
                 RelaySceneLog.write("relay present Mode A SHM \(srcW)x\(srcH)")
                 NSLog("[WWNRelay] Mode A SHM present \(srcW)x\(srcH)")
+                // First pixels: leave Work Status / Machines chrome. Session
+                // surface owns the frame (not the delivery board).
+                NotificationCenter.default.post(
+                    name: Notification.Name("WWNShowSessionSurfaceNotification"),
+                    object: nil,
+                    userInfo: [
+                        "source": "relay-mode-a-first-frame",
+                        "width": Int(srcW),
+                        "height": Int(srcH),
+                    ]
+                )
             }
         } else {
             frameFails += 1

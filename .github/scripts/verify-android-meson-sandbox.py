@@ -23,7 +23,10 @@ MESON_ANDROID_REL = (
     "dependencies/libs/libwayland/android.nix",
 )
 
-WESTON_COMPOSITOR_REL = "dependencies/clients/weston/compositor-android.nix"
+# In-app weston compositor after optional-software move into repo.wawona.io.
+WESTON_COMPOSITOR_REL = (
+    "catalog/deb/gui/weston/in-app/dependencies/clients/weston/compositor-android.nix"
+)
 
 APPLY_NEEDLE = "androidMesonSandbox.apply"
 SANDBOX_MODULE_REL = "dependencies/toolchains/android-meson-sandbox.nix"
@@ -63,7 +66,7 @@ def check_meson_recipe(path: Path, rel: str, errors: list[str]) -> None:
 def main() -> int:
     errors: list[str] = []
     toolchain = resolve_root("WWN_TOOLCHAIN_ROOT", "wwn-toolchain")
-    weston = resolve_root("WWN_WESTON_ROOT", "wwn-weston")
+    catalog = resolve_root("REPO_WAWONA_IO_ROOT", "repo.wawona.io")
 
     if toolchain is None:
         errors.append(
@@ -81,12 +84,12 @@ def main() -> int:
         for rel in MESON_ANDROID_REL:
             check_meson_recipe(toolchain / rel, rel, errors)
 
-    if weston is None:
+    if catalog is None:
         errors.append(
-            "wwn-weston not found (set WWN_WESTON_ROOT or checkout sibling wwn-weston/)"
+            "repo.wawona.io not found (set REPO_WAWONA_IO_ROOT or checkout sibling repo.wawona.io/)"
         )
     else:
-        check_meson_recipe(weston / WESTON_COMPOSITOR_REL, WESTON_COMPOSITOR_REL, errors)
+        check_meson_recipe(catalog / WESTON_COMPOSITOR_REL, WESTON_COMPOSITOR_REL, errors)
 
     if errors:
         print("Android meson sandbox wiring check FAILED:")

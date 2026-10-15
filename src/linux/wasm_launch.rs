@@ -217,13 +217,22 @@ fn http_get_bytes(url: &str) -> Option<Vec<u8>> {
 /// `wpm install <name>` downloads `/wasm/v1` first, then runs `wasm <file|name>`.
 pub fn effective_wasm_command(profile: &MachineProfile) -> String {
     let ov = &profile.runtime_overrides;
-    if let Some(path) = ov.wasm_module_path.as_deref().map(str::trim).filter(|s| !s.is_empty())
+    if let Some(path) = ov
+        .wasm_module_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
     {
         if Path::new(path).is_file() {
             return format!("wasm {}", shell_quote(path));
         }
     }
-    if let Some(pkg) = ov.wasm_package.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+    if let Some(pkg) = ov
+        .wasm_package
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
         let name = normalize_alias(pkg);
         if let Some(file) = ensure_package_file(&name) {
             return format!("wasm {}", shell_quote(&file.to_string_lossy()));
@@ -258,8 +267,14 @@ mod tests {
 
     #[test]
     fn parses_native_shell_commands() {
-        assert_eq!(wasm_arg_from_command("wasm hello-wasi-gui"), "hello-wasi-gui");
-        assert_eq!(wasm_arg_from_command("wasm wasi-hello-gui"), "hello-wasi-gui");
+        assert_eq!(
+            wasm_arg_from_command("wasm hello-wasi-gui"),
+            "hello-wasi-gui"
+        );
+        assert_eq!(
+            wasm_arg_from_command("wasm wasi-hello-gui"),
+            "hello-wasi-gui"
+        );
         assert_eq!(
             wasm_arg_from_command("wpm install hello-wasi-gui"),
             "hello-wasi-gui"

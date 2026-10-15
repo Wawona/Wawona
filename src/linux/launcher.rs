@@ -304,11 +304,7 @@ fn shell_quote(path: &str) -> String {
 }
 
 fn rewrite_weston_honeycomb(command: &str, rt: &RuntimeState) -> String {
-    let token = command
-        .split_whitespace()
-        .next()
-        .unwrap_or(command)
-        .trim();
+    let token = command.split_whitespace().next().unwrap_or(command).trim();
     let base = std::path::Path::new(token)
         .file_name()
         .and_then(|s| s.to_str())
@@ -317,7 +313,10 @@ fn rewrite_weston_honeycomb(command: &str, rt: &RuntimeState) -> String {
         return command.to_string();
     }
     let Some(data) = crate::core::weston_ini::weston_data_dir() else {
-        wlog!("LAUNCHER", "weston honeycomb skipped: no share/weston/background.png");
+        wlog!(
+            "LAUNCHER",
+            "weston honeycomb skipped: no share/weston/background.png"
+        );
         return command.to_string();
     };
     let ini = std::path::Path::new(&rt.xdg_runtime_dir).join("weston.ini");

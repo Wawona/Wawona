@@ -95,6 +95,31 @@ public final class WWNPreferencesSectionsBuilder: NSObject {
                 ["prompt", "newTab", "newWindow"],
                 "What Start does when the app can open another window. Hidden on hosts that only support tabs.")
 
+        case .toolbarKeysCustomize:
+            return button("Customize Toolbar Keys", "ToolbarKeysCustomize",
+                          "Reorder, hide, and add custom Toolbar Keys (Rootshell layout).")
+        case .persistentToolbar:
+            return sw("Persistent Toolbar", kWWNPrefsPersistentToolbar, false,
+                      "Keep the toolbar visible when the software keyboard is dismissed.")
+        case .showToolbarWithHardwareKeyboard:
+            return sw("Show Toolbar with Hardware Keyboard",
+                      kWWNPrefsShowToolbarWithHardwareKeyboard, false,
+                      "Keep the toolbar docked while an external keyboard is connected.")
+        case .toolbarThemeAware:
+            return sw("Toolbar Follow Theme", kWWNPrefsToolbarThemeAware, true,
+                      "Tint toolbar glass from the host light/dark appearance.")
+        case .toolbarChromeStyle:
+            return popup(
+                "Toolbar Style", kWWNPrefsToolbarChromeStyle, "flat",
+                ["Flat", "Sculpted", "Steampunk", "Phosphor", "Beige Box", "Neon Grid", "Circuit Board"],
+                ["flat", "sculpted", "steampunk", "phosphor", "beige-box", "neon-grid", "circuit-board"],
+                "Rootshell keyboard chrome styles applied to Toolbar Keys.")
+        case .toolbarArrowJoystickMode:
+            return popup(
+                "Arrow Key Mode", kWWNPrefsToolbarArrowJoystickMode, "joystick",
+                ["Joystick", "Cluster"],
+                ["joystick", "cluster"],
+                "How the arrow-key control behaves on the toolbar.")
         case .virtualCursor:
             return sw("Show Virtual Cursor", kWWNPrefsRenderMacOSPointer, false,
                       "Draw a host/virtual pointer for non-compositor clients.")

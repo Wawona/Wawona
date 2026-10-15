@@ -60,10 +60,7 @@ impl TestEnv {
             .insert_client(server_sock, Arc::new(client_data.clone()))
             .unwrap();
         self.state.clients.insert(server_client.id(), client_data);
-        (
-            Connection::from_socket(client_sock).unwrap(),
-            server_client,
-        )
+        (Connection::from_socket(client_sock).unwrap(), server_client)
     }
 
     pub fn loop_dispatch(&mut self) {

@@ -58,6 +58,7 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-macos-mode-a` / `wawona-macos-no-appstore` | macOS in-window vs SIP |
 | `wawona-macos-prefpane` | PrefPane retired. In-app Global Settings only |
 | `wawona-global-settings-exclusive` | One Global Settings host per platform. In-app only |
+| `wawona-apple-sidebar-icons` | Plain SF Symbols in Machines/Settings sidebars; accents on Settings detail only |
 | `wawona-welcome-alert` | First-launch Welcome alert copy identical on Apple, Android, Linux |
 | `wawona-iland-mode-b-desktop` | Desktop dylib / Take Over |
 | `wawona-mode-b-watchdog-safety` | `watchdogd` / IOWatchdog |

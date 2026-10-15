@@ -29,9 +29,7 @@ pub fn weston_data_dir() -> Option<PathBuf> {
     }
     candidates.push(PathBuf::from("/usr/share/weston"));
     candidates.push(PathBuf::from("/usr/local/share/weston"));
-    candidates
-        .into_iter()
-        .find(|p| honeycomb_png(p).is_file())
+    candidates.into_iter().find(|p| honeycomb_png(p).is_file())
 }
 
 pub fn honeycomb_png(data_dir: &Path) -> PathBuf {
@@ -92,11 +90,7 @@ pub fn write_honeycomb_ini(
 
 /// If `command` is the weston compositor (not weston-terminal), add `--config=`.
 pub fn with_config_arg(command: &str, ini: &Path) -> String {
-    let token = command
-        .split_whitespace()
-        .next()
-        .unwrap_or(command)
-        .trim();
+    let token = command.split_whitespace().next().unwrap_or(command).trim();
     let base = Path::new(token)
         .file_name()
         .and_then(|s| s.to_str())
@@ -122,10 +116,7 @@ mod tests {
             with_config_arg("weston --backend=wayland", ini),
             "weston --backend=wayland --config=/tmp/weston.ini"
         );
-        assert_eq!(
-            with_config_arg("weston-terminal", ini),
-            "weston-terminal"
-        );
+        assert_eq!(with_config_arg("weston-terminal", ini), "weston-terminal");
         assert_eq!(
             with_config_arg("weston --config=/x.ini", ini),
             "weston --config=/x.ini"
@@ -140,7 +131,9 @@ mod tests {
         let bg = tmp.join("background.png");
         fs::write(&bg, b"png").unwrap();
         let ini = tmp.join("weston.ini");
-        assert!(write_honeycomb_ini(&ini, &tmp, false, Some("weston-desktop-shell"), None).unwrap());
+        assert!(
+            write_honeycomb_ini(&ini, &tmp, false, Some("weston-desktop-shell"), None).unwrap()
+        );
         let body = fs::read_to_string(&ini).unwrap();
         assert!(body.contains("background-image="));
         assert!(body.contains("background.png"));

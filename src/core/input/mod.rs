@@ -1,20 +1,20 @@
 pub mod host_keymap;
 pub mod keyboard;
 pub mod osk;
-pub mod work_area;
 pub mod pointer;
 pub mod seat;
 pub mod touch;
+pub mod work_area;
 pub mod xkb;
 
 // Re-export key types for convenience
 pub use host_keymap::{generate_from_host, FallbackHostKeymap, HostKeyCode, HostKeymapBridge};
-pub use osk::{default_osk_host, osk_should_show, OskHost};
-pub use work_area::usable_output_height;
 pub use keyboard::KeyboardState;
+pub use osk::{default_osk_host, osk_should_show, OskHost};
 pub use pointer::PointerState;
 pub use seat::Seat;
 pub use touch::TouchState;
+pub use work_area::usable_output_height;
 pub use xkb::{KeyResult, XkbContext, XkbState};
 
 /// Button/Key state

@@ -582,22 +582,35 @@ fn attach_card_actions(
     let state_r = state.clone();
     let parent_r = parent.clone();
     let sessions_r = sessions.clone();
-    start_btn.connect_clicked(move |_| match try_launch_profile(&mid, &state_r) {
-        Ok(child) => {
-            wlog!("UI", "Launched '{}' pid={}", mname, child.id());
-            sessions_r.borrow_mut().insert(mid.clone(), child);
-            let mut app = state_r.borrow_mut();
-            let _ = app.store.set_active(Some(mid.clone()));
-            drop(app);
-            rebuild_home(RebuildHome {
-                shell: &shell_r,
-                state: &state_r,
-                parent: &parent_r,
-                sessions: sessions_r.clone(),
-                layout,
-            });
+    start_btn.connect_clicked(move |_| {
+        let terminal_cmd = {
+            let app = state_r.borrow();
+            app.store
+                .profile(&mid)
+                .and_then(super::terminal::shell_command)
+        };
+        let launched = if let Some(command) = terminal_cmd {
+            super::terminal::open_shell(&parent_r, &command)
+        } else {
+            try_launch_profile(&mid, &state_r)
+        };
+        match launched {
+            Ok(child) => {
+                wlog!("UI", "Launched '{}' pid={}", mname, child.id());
+                sessions_r.borrow_mut().insert(mid.clone(), child);
+                let mut app = state_r.borrow_mut();
+                let _ = app.store.set_active(Some(mid.clone()));
+                drop(app);
+                rebuild_home(RebuildHome {
+                    shell: &shell_r,
+                    state: &state_r,
+                    parent: &parent_r,
+                    sessions: sessions_r.clone(),
+                    layout,
+                });
+            }
+            Err(e) => show_warning(&parent_r, &e),
         }
-        Err(e) => show_warning(&parent_r, &e),
     });
 
     // Focus: mark active (host window raise is compositor-driven).

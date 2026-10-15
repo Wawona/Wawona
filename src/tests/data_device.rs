@@ -51,15 +51,11 @@ impl Dispatch<wl_registry::WlRegistry, ()> for ClientState {
         {
             match interface.as_str() {
                 "wl_seat" => state.seat = Some(proxy.bind(name, version, qh, ())),
-                "wl_data_device_manager" => {
-                    state.ddm = Some(proxy.bind(name, version, qh, ()))
-                }
+                "wl_data_device_manager" => state.ddm = Some(proxy.bind(name, version, qh, ())),
                 "wl_compositor" => {
                     state.compositor = Some(proxy.bind(name, version.min(4), qh, ()))
                 }
-                "xdg_wm_base" => {
-                    state.xdg_wm_base = Some(proxy.bind(name, version.min(1), qh, ()))
-                }
+                "xdg_wm_base" => state.xdg_wm_base = Some(proxy.bind(name, version.min(1), qh, ())),
                 _ => {}
             }
         }
@@ -295,10 +291,7 @@ fn server_surface_for_client(
     panic!("no server surface for client");
 }
 
-fn keyboard_focus(
-    env: &mut TestEnv,
-    surface: wayland_server::protocol::wl_surface::WlSurface,
-) {
+fn keyboard_focus(env: &mut TestEnv, surface: wayland_server::protocol::wl_surface::WlSurface) {
     let seat = env
         .state
         .smithay_runtime

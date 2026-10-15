@@ -24,13 +24,14 @@ private struct WWNSettingsPhoneSplitStyle: ViewModifier {
 }
 #endif
 
-/// Dedicated Global Settings host (in-app only; never Settings.app / PrefPane).
+/// Dedicated Global Settings host. Replaces Machines chrome in the same window
+/// (in-app only; never sheet, PrefPane, or Settings.app).
 ///
-/// Chrome matches Machines home: system `SidebarListStyle`, tinted SF Symbol
-/// rows, `List` selection. Dismiss stays on the **detail / split toolbar**
-/// via `backport.settingsCloseAction` (trailing `xmark` on iOS / iPadOS /
-/// visionOS; `Done` on macOS / tvOS). Never put a close control on the
-/// sidebar list column.
+/// Chrome matches Machines home: system `SidebarListStyle`, plain SF Symbol
+/// sidebar rows (`WawonaSettingsHubChrome.hubRow`), `List` selection. Dismiss
+/// stays on the **detail / split toolbar** via `backport.settingsCloseAction`
+/// (trailing `xmark` on iOS / iPadOS / visionOS; `Done` on macOS / tvOS).
+/// Never put a close control on the sidebar list column.
 struct WWNGlobalSettingsHostView: View {
     @ObservedObject var model: WWNSettingsValueModel
     @Binding var selection: GlobalSettingsSectionID?
@@ -106,6 +107,14 @@ struct WWNGlobalSettingsHostView: View {
                 }
             )
         }
+        #if os(iOS) || os(tvOS) || os(visionOS)
+        .sheet(isPresented: $model.presentToolbarKeysSettings) {
+            NavigationView {
+                KeyboardToolbarSettingsView()
+            }
+            .navigationViewStyle(StackNavigationViewStyle())
+        }
+        #endif
     }
 
     private func ensureSelection() {
@@ -247,7 +256,7 @@ struct WWNGlobalSettingsHostView: View {
         }
     }
 
-    /// Same row shape as Machines home: tinted SF Symbol + title.
+    /// Same row shape as Machines home: plain SF Symbol + title.
     @ViewBuilder
     private func settingsSidebarRow(_ id: GlobalSettingsSectionID) -> some View {
         let objc = WawonaMainWindowView.objcSection(id, in: model.sections)
@@ -264,14 +273,12 @@ struct WWNGlobalSettingsHostView: View {
     }
 
     private func settingsRowLabel(_ id: GlobalSettingsSectionID) -> some View {
-        let objc = WawonaMainWindowView.objcSection(id, in: model.sections)
-        let color = objc?.swiftUIIconColor ?? .accentColor
-        return WawonaLabel {
-            Text(id.title)
-        } icon: {
-            Image(systemName: id.systemImage)
-                .foregroundColor(color)
-        }
+        // Plain SF Symbol. Section accent tints the detail pane, not this icon.
+        WawonaSettingsHubChrome.hubRow(
+            title: id.title,
+            systemImage: id.systemImage,
+            iconColor: .accentColor
+        )
     }
 
     // MARK: - Detail

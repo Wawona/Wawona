@@ -4,7 +4,10 @@
 #[inline]
 pub fn is_ssh_host_metachar(c: char) -> bool {
     // `matches!` stays CBMC-friendly. Avoid `str::contains` (SIMD pattern code).
-    matches!(c, '"' | '\'' | '`' | '$' | ';' | '&' | '|' | '<' | '>' | '\\')
+    matches!(
+        c,
+        '"' | '\'' | '`' | '$' | ';' | '&' | '|' | '<' | '>' | '\\'
+    )
 }
 
 /// Drop accidental scheme, path, query, and `host:port` so host and port stay split.

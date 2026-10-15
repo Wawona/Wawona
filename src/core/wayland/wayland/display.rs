@@ -23,8 +23,7 @@ fn release_mobile_socket_lock(socket_path: &str) -> Result<()> {
     // private struct layout.
     for descriptor in 0..descriptor_limit {
         let mut path = [0i8; libc::PATH_MAX as usize];
-        let path_result =
-            unsafe { libc::fcntl(descriptor, libc::F_GETPATH, path.as_mut_ptr()) };
+        let path_result = unsafe { libc::fcntl(descriptor, libc::F_GETPATH, path.as_mut_ptr()) };
         if path_result == -1 {
             continue;
         }

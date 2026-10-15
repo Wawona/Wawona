@@ -107,6 +107,24 @@ public enum MachineProfileDomain {
             "modeb-tty", "modeb-ttyd", "igetty", "igettyd", "modeb-getty",
         ].contains(token)
     }
+
+    /// Safari-style Tab Overview search. Indices into `titles` that match `query`.
+    /// Prefers rust `wawona_tab_overview_filter_indices`; Swift fallback matches.
+    public static func tabOverviewFilterIndices(query: String, titles: [String]) -> [Int] {
+        if let data = try? JSONEncoder().encode(titles),
+           let titlesJSON = String(data: data, encoding: .utf8),
+           let out = callString2("wawona_tab_overview_filter_indices", query, titlesJSON),
+           let outData = out.data(using: .utf8),
+           let decoded = try? JSONDecoder().decode([Int].self, from: outData)
+        {
+            return decoded
+        }
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if q.isEmpty {
+            return Array(titles.indices)
+        }
+        return titles.indices.filter { titles[$0].lowercased().contains(q) }
+    }
 }
 
 private typealias StrFn1 = @convention(c) (UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?

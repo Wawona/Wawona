@@ -201,8 +201,11 @@ extension WawonaBackport where Content: View {
                 .accessibility(identifier: "wwn.machines.editor.cancel"),
                 trailing: Button(action: onSave) {
                     Image(systemName: "checkmark")
+                        .font(.body.weight(.semibold))
+                        .foregroundColor(.white)
                 }
                 .disabled(saveDisabled)
+                .backport.blueGlassCircleButton(size: 32)
                 .accessibility(label: Text("Save"))
                 .accessibility(identifier: "wwn.machines.editor.save")
             )
@@ -245,8 +248,8 @@ private struct SettingsCloseToolbarIOS14: ToolbarContent {
     }
 }
 
-/// Default navigation toolbar: system sizes/spacing. Plain SF Symbols only.
-/// No custom circle fill, glassProminent, font weight, or sharedBackground hacks.
+/// Leading cancel stays plain. Trailing Save uses accent (primary) circle fill
+/// like the Machines Add `+` compose control (`blueGlassCircleButton`).
 @available(iOS 26.0, visionOS 26.0, *)
 private struct EditorChromeToolbarIOS26: ToolbarContent {
     let saveDisabled: Bool
@@ -264,8 +267,11 @@ private struct EditorChromeToolbarIOS26: ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) {
             Button(action: onSave) {
                 Image(systemName: "checkmark")
+                    .font(.body.weight(.semibold))
+                    .foregroundColor(.white)
             }
             .disabled(saveDisabled)
+            .backport.blueGlassCircleButton(size: 32)
             .accessibility(label: Text("Save"))
             .accessibility(identifier: "wwn.machines.editor.save")
         }
@@ -289,8 +295,11 @@ private struct EditorChromeToolbarIOS14: ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) {
             Button(action: onSave) {
                 Image(systemName: "checkmark")
+                    .font(.body.weight(.semibold))
+                    .foregroundColor(.white)
             }
             .disabled(saveDisabled)
+            .backport.blueGlassCircleButton(size: 32)
             .accessibility(label: Text("Save"))
             .accessibility(identifier: "wwn.machines.editor.save")
         }

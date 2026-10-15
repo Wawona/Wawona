@@ -954,7 +954,6 @@ impl SeatState {
     pub fn get_touches(&self) -> &[wl_touch::WlTouch] {
         &[]
     }
-
 }
 
 impl SeatState {
@@ -1981,21 +1980,15 @@ impl CompositorState {
                 let old_h = window.height;
                 let old_x = window.x;
                 let old_y = window.y;
-                let matches_prev_output = Self::size_matches_output(
-                    window.width,
-                    window.height,
-                    prev_w,
-                    prev_h,
-                );
+                let matches_prev_output =
+                    Self::size_matches_output(window.width, window.height, prev_w, prev_h);
                 let matches_prev_usable = Self::size_matches_output(
                     window.width,
                     window.height,
                     prev_usable.width,
                     prev_usable.height,
                 );
-                let fill_primary = window.fills_host
-                    || matches_prev_output
-                    || matches_prev_usable;
+                let fill_primary = window.fills_host || matches_prev_output || matches_prev_usable;
 
                 if Self::is_host_locked_window_flags(
                     wid,

@@ -26,13 +26,13 @@ impl Capability {
 }
 
 pub fn unavailable(cmd: &str, cap: Capability) -> i32 {
-    eprintln!(
-        "{cmd}: unavailable in this app ({})",
-        cap.as_str()
-    );
+    eprintln!("{cmd}: unavailable in this app ({})", cap.as_str());
     1
 }
 
 pub fn virtual_note(cmd: &str, detail: &str) {
-    eprintln!("{cmd}: Wawona scope ({}, {detail})", Capability::SupportedVirtual.as_str());
+    eprintln!(
+        "{cmd}: Wawona scope ({}, {detail})",
+        Capability::SupportedVirtual.as_str()
+    );
 }

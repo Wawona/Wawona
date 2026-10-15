@@ -49,9 +49,25 @@ pub fn run(args: &[String]) -> i32 {
         "tmutil" => tmutil(rest),
         "softwareupdate" => softwareupdate(rest),
         "codesign" => codesign(rest),
-        "profiles" | "kmutil" | "csrutil" | "systemextensionsctl" | "metal" | "simctl"
-        | "devicectl" | "xcrun" | "osascript" | "uiopen" | "uicache" | "uialert" | "uinotify"
-        | "uisave" | "uishoot" | "uidisplay" | "lsrebuild" | "mgask" | "ldid" => {
+        "profiles"
+        | "kmutil"
+        | "csrutil"
+        | "systemextensionsctl"
+        | "metal"
+        | "simctl"
+        | "devicectl"
+        | "xcrun"
+        | "osascript"
+        | "uiopen"
+        | "uicache"
+        | "uialert"
+        | "uinotify"
+        | "uisave"
+        | "uishoot"
+        | "uidisplay"
+        | "lsrebuild"
+        | "mgask"
+        | "ldid" => {
             let cap = match name {
                 "simctl" | "devicectl" | "kmutil" | "csrutil" | "systemextensionsctl" | "metal" => {
                     Capability::UnsupportedPlatform
@@ -70,7 +86,8 @@ pub fn run(args: &[String]) -> i32 {
 }
 
 fn help_flag(args: &[String]) -> bool {
-    args.iter().any(|a| a == "-h" || a == "--help" || a == "help")
+    args.iter()
+        .any(|a| a == "-h" || a == "--help" || a == "help")
 }
 
 fn prefs_dir() -> PathBuf {
@@ -138,25 +155,23 @@ fn plutil(args: &[String]) -> i32 {
     let mut rc = 0;
     for file in files {
         match op.as_str() {
-            "-lint" | "-p" => {
-                match load_plist(&file) {
-                    Ok(v) => {
-                        if op == "-lint" {
-                            println!("{file}: OK");
-                        } else {
-                            print!("{}", format::plutil_p(&v));
-                        }
-                    }
-                    Err(e) => {
-                        if op == "-lint" {
-                            eprint!("{}", format::plutil_lint_error(&file, &e));
-                        } else {
-                            eprintln!("plutil: {file}: {e}");
-                        }
-                        rc = 1;
+            "-lint" | "-p" => match load_plist(&file) {
+                Ok(v) => {
+                    if op == "-lint" {
+                        println!("{file}: OK");
+                    } else {
+                        print!("{}", format::plutil_p(&v));
                     }
                 }
-            }
+                Err(e) => {
+                    if op == "-lint" {
+                        eprint!("{}", format::plutil_lint_error(&file, &e));
+                    } else {
+                        eprintln!("plutil: {file}: {e}");
+                    }
+                    rc = 1;
+                }
+            },
             "-convert" => {
                 let dest = out_path.as_deref().unwrap_or(file.as_str());
                 if let Some(write) = host::with_host(|h| h.plist_write) {
@@ -286,7 +301,9 @@ fn defaults(args: &[String]) -> i32 {
                 }
             };
             if args.len() >= 3 {
-                if let Ok(serde_json::Value::Object(map)) = serde_json::from_str::<serde_json::Value>(&json) {
+                if let Ok(serde_json::Value::Object(map)) =
+                    serde_json::from_str::<serde_json::Value>(&json)
+                {
                     match map.get(&args[2]) {
                         Some(v) => {
                             println!("{}", json_scalar(v));
@@ -382,7 +399,8 @@ fn defaults(args: &[String]) -> i32 {
             let Ok(json) = plist_to_json(path.to_str().unwrap_or("")) else {
                 return 1;
             };
-            let mut v: serde_json::Value = serde_json::from_str(&json).unwrap_or(serde_json::json!({}));
+            let mut v: serde_json::Value =
+                serde_json::from_str(&json).unwrap_or(serde_json::json!({}));
             if let serde_json::Value::Object(ref mut m) = v {
                 m.remove(&args[2]);
             }
@@ -400,7 +418,13 @@ fn defaults(args: &[String]) -> i32 {
 fn json_scalar(v: &serde_json::Value) -> String {
     match v {
         serde_json::Value::String(s) => s.clone(),
-        serde_json::Value::Bool(b) => if *b { "1".into() } else { "0".into() },
+        serde_json::Value::Bool(b) => {
+            if *b {
+                "1".into()
+            } else {
+                "0".into()
+            }
+        }
         serde_json::Value::Number(n) => n.to_string(),
         other => other.to_string(),
     }
@@ -464,30 +488,30 @@ fn xattr_list(path: &str, long: bool) -> i32 {
     }
     #[cfg(target_vendor = "apple")]
     {
-    let c_path = CString::new(path).unwrap_or_default();
-    let mut buf = vec![0u8; 4096];
-    let n = unsafe {
-        libc::listxattr(
-            c_path.as_ptr(),
-            buf.as_mut_ptr() as *mut c_char,
-            buf.len(),
-            libc::XATTR_NOFOLLOW,
-        )
-    };
-    if n < 0 {
-        eprintln!("xattr: {path}: {}", std::io::Error::last_os_error());
-        return 1;
-    }
-    let names = split_c_strings(&buf[..n as usize]);
-    for name in names {
-        if long {
-            print!("{name}: ");
-            let _ = xattr_get(path, &name);
-        } else {
-            println!("{name}");
+        let c_path = CString::new(path).unwrap_or_default();
+        let mut buf = vec![0u8; 4096];
+        let n = unsafe {
+            libc::listxattr(
+                c_path.as_ptr(),
+                buf.as_mut_ptr() as *mut c_char,
+                buf.len(),
+                libc::XATTR_NOFOLLOW,
+            )
+        };
+        if n < 0 {
+            eprintln!("xattr: {path}: {}", std::io::Error::last_os_error());
+            return 1;
         }
-    }
-    0
+        let names = split_c_strings(&buf[..n as usize]);
+        for name in names {
+            if long {
+                print!("{name}: ");
+                let _ = xattr_get(path, &name);
+            } else {
+                println!("{name}");
+            }
+        }
+        0
     }
 }
 
@@ -499,42 +523,42 @@ fn xattr_get(path: &str, name: &str) -> i32 {
     }
     #[cfg(target_vendor = "apple")]
     {
-    let c_path = CString::new(path).unwrap_or_default();
-    let c_name = CString::new(name).unwrap_or_default();
-    let n = unsafe {
-        libc::getxattr(
-            c_path.as_ptr(),
-            c_name.as_ptr(),
-            std::ptr::null_mut(),
-            0,
-            0,
-            libc::XATTR_NOFOLLOW,
-        )
-    };
-    if n < 0 {
-        eprintln!("xattr: {path}: {}", std::io::Error::last_os_error());
-        return 1;
-    }
-    let mut buf = vec![0u8; n as usize];
-    let n2 = unsafe {
-        libc::getxattr(
-            c_path.as_ptr(),
-            c_name.as_ptr(),
-            buf.as_mut_ptr() as *mut libc::c_void,
-            buf.len(),
-            0,
-            libc::XATTR_NOFOLLOW,
-        )
-    };
-    if n2 < 0 {
-        return 1;
-    }
-    buf.truncate(n2 as usize);
-    match String::from_utf8(buf.clone()) {
-        Ok(s) => println!("{s}"),
-        Err(_) => println!("{}", hex::encode_or_debug(&buf)),
-    }
-    0
+        let c_path = CString::new(path).unwrap_or_default();
+        let c_name = CString::new(name).unwrap_or_default();
+        let n = unsafe {
+            libc::getxattr(
+                c_path.as_ptr(),
+                c_name.as_ptr(),
+                std::ptr::null_mut(),
+                0,
+                0,
+                libc::XATTR_NOFOLLOW,
+            )
+        };
+        if n < 0 {
+            eprintln!("xattr: {path}: {}", std::io::Error::last_os_error());
+            return 1;
+        }
+        let mut buf = vec![0u8; n as usize];
+        let n2 = unsafe {
+            libc::getxattr(
+                c_path.as_ptr(),
+                c_name.as_ptr(),
+                buf.as_mut_ptr() as *mut libc::c_void,
+                buf.len(),
+                0,
+                libc::XATTR_NOFOLLOW,
+            )
+        };
+        if n2 < 0 {
+            return 1;
+        }
+        buf.truncate(n2 as usize);
+        match String::from_utf8(buf.clone()) {
+            Ok(s) => println!("{s}"),
+            Err(_) => println!("{}", hex::encode_or_debug(&buf)),
+        }
+        0
     }
 }
 
@@ -552,24 +576,24 @@ fn xattr_set(path: &str, name: &str, value: &[u8]) -> i32 {
     }
     #[cfg(target_vendor = "apple")]
     {
-    let c_path = CString::new(path).unwrap_or_default();
-    let c_name = CString::new(name).unwrap_or_default();
-    let rc = unsafe {
-        libc::setxattr(
-            c_path.as_ptr(),
-            c_name.as_ptr(),
-            value.as_ptr() as *const libc::c_void,
-            value.len(),
-            0,
-            libc::XATTR_NOFOLLOW,
-        )
-    };
-    if rc != 0 {
-        eprintln!("xattr: {path}: {}", std::io::Error::last_os_error());
-        1
-    } else {
-        0
-    }
+        let c_path = CString::new(path).unwrap_or_default();
+        let c_name = CString::new(name).unwrap_or_default();
+        let rc = unsafe {
+            libc::setxattr(
+                c_path.as_ptr(),
+                c_name.as_ptr(),
+                value.as_ptr() as *const libc::c_void,
+                value.len(),
+                0,
+                libc::XATTR_NOFOLLOW,
+            )
+        };
+        if rc != 0 {
+            eprintln!("xattr: {path}: {}", std::io::Error::last_os_error());
+            1
+        } else {
+            0
+        }
     }
 }
 
@@ -581,21 +605,16 @@ fn xattr_remove(path: &str, name: &str) -> i32 {
     }
     #[cfg(target_vendor = "apple")]
     {
-    let c_path = CString::new(path).unwrap_or_default();
-    let c_name = CString::new(name).unwrap_or_default();
-    let rc = unsafe {
-        libc::removexattr(
-            c_path.as_ptr(),
-            c_name.as_ptr(),
-            libc::XATTR_NOFOLLOW,
-        )
-    };
-    if rc != 0 {
-        eprintln!("xattr: {path}: {}", std::io::Error::last_os_error());
-        1
-    } else {
-        0
-    }
+        let c_path = CString::new(path).unwrap_or_default();
+        let c_name = CString::new(name).unwrap_or_default();
+        let rc =
+            unsafe { libc::removexattr(c_path.as_ptr(), c_name.as_ptr(), libc::XATTR_NOFOLLOW) };
+        if rc != 0 {
+            eprintln!("xattr: {path}: {}", std::io::Error::last_os_error());
+            1
+        } else {
+            0
+        }
     }
 }
 
@@ -607,23 +626,23 @@ fn xattr_clear(path: &str) -> i32 {
     }
     #[cfg(target_vendor = "apple")]
     {
-    let c_path = CString::new(path).unwrap_or_default();
-    let mut buf = vec![0u8; 4096];
-    let n = unsafe {
-        libc::listxattr(
-            c_path.as_ptr(),
-            buf.as_mut_ptr() as *mut c_char,
-            buf.len(),
-            libc::XATTR_NOFOLLOW,
-        )
-    };
-    if n < 0 {
-        return 1;
-    }
-    for name in split_c_strings(&buf[..n as usize]) {
-        let _ = xattr_remove(path, &name);
-    }
-    0
+        let c_path = CString::new(path).unwrap_or_default();
+        let mut buf = vec![0u8; 4096];
+        let n = unsafe {
+            libc::listxattr(
+                c_path.as_ptr(),
+                buf.as_mut_ptr() as *mut c_char,
+                buf.len(),
+                libc::XATTR_NOFOLLOW,
+            )
+        };
+        if n < 0 {
+            return 1;
+        }
+        for name in split_c_strings(&buf[..n as usize]) {
+            let _ = xattr_remove(path, &name);
+        }
+        0
     }
 }
 
@@ -830,7 +849,11 @@ fn pbcopy(args: &[String]) -> i32 {
         return unavailable("pbcopy", Capability::MissingBackend);
     };
     let c = CString::new(text).unwrap_or_default();
-    if fn_(c.as_ptr()) != 0 { 1 } else { 0 }
+    if fn_(c.as_ptr()) != 0 {
+        1
+    } else {
+        0
+    }
 }
 
 fn pbpaste(args: &[String]) -> i32 {
@@ -947,7 +970,9 @@ fn open(cmd: &str, args: &[String]) -> i32 {
     }
     let path = PathBuf::from(target);
     let path = if path.is_relative() {
-        std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")).join(path)
+        std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join(path)
     } else {
         path
     };
@@ -970,7 +995,11 @@ fn open(cmd: &str, args: &[String]) -> i32 {
     let Some(fn_) = host::with_host(|h| h.open_file) else {
         return unavailable("open", Capability::MissingBackend);
     };
-    if fn_(c.as_ptr()) != 0 { 1 } else { 0 }
+    if fn_(c.as_ptr()) != 0 {
+        1
+    } else {
+        0
+    }
 }
 
 fn ditto(args: &[String]) -> i32 {
@@ -983,7 +1012,11 @@ fn ditto(args: &[String]) -> i32 {
     if let Some(fn_) = host::with_host(|h| h.copy_item) {
         let a = CString::new(src.as_str()).unwrap_or_default();
         let b = CString::new(dst.as_str()).unwrap_or_default();
-        return if fn_(a.as_ptr(), b.as_ptr()) != 0 { 1 } else { 0 };
+        return if fn_(a.as_ptr(), b.as_ptr()) != 0 {
+            1
+        } else {
+            0
+        };
     }
     copy_tree(Path::new(src), Path::new(dst))
 }
@@ -1110,8 +1143,16 @@ fn log_cmd(args: &[String]) -> i32 {
 
 fn system_profiler(args: &[String]) -> i32 {
     let _ = args;
-    println!("Software:\n\n    System Version: {} {}\n    Build: {}", product_name(), product_version(), build_version());
-    println!("    Scope: public APIs only ({})", Capability::SupportedRestricted.as_str());
+    println!(
+        "Software:\n\n    System Version: {} {}\n    Build: {}",
+        product_name(),
+        product_version(),
+        build_version()
+    );
+    println!(
+        "    Scope: public APIs only ({})",
+        Capability::SupportedRestricted.as_str()
+    );
     0
 }
 
@@ -1137,7 +1178,11 @@ fn caffeinate(args: &[String]) -> i32 {
 }
 
 fn networksetup(args: &[String]) -> i32 {
-    if args.is_empty() || args[0] == "-getinfo" || args[0] == "-listallhardwareports" || help_flag(args) {
+    if args.is_empty()
+        || args[0] == "-getinfo"
+        || args[0] == "-listallhardwareports"
+        || help_flag(args)
+    {
         if help_flag(args) {
             eprintln!("usage: networksetup -listallhardwareports");
             return 0;
@@ -1185,7 +1230,10 @@ fn scutil(args: &[String]) -> i32 {
             return 0;
         }
     }
-    println!("Network information ({})", Capability::SupportedRestricted.as_str());
+    println!(
+        "Network information ({})",
+        Capability::SupportedRestricted.as_str()
+    );
     list_ifaces();
     0
 }
@@ -1194,7 +1242,10 @@ fn ioreg(args: &[String]) -> i32 {
     let _ = args;
     println!("+-o Root  <class IORegistry, public sysctl subset>");
     println!("  Build: {}", build_version());
-    eprintln!("ioreg: host IORegistry is not available ({})", Capability::SupportedRestricted.as_str());
+    eprintln!(
+        "ioreg: host IORegistry is not available ({})",
+        Capability::SupportedRestricted.as_str()
+    );
     0
 }
 
@@ -1210,7 +1261,10 @@ fn launchctl(args: &[String]) -> i32 {
         "list" => {
             if let Ok(rd) = fs::read_dir(&dir) {
                 for e in rd.flatten() {
-                    println!("- 0 {}", e.path().file_stem().unwrap_or_default().to_string_lossy());
+                    println!(
+                        "- 0 {}",
+                        e.path().file_stem().unwrap_or_default().to_string_lossy()
+                    );
                 }
             }
             0
@@ -1328,7 +1382,10 @@ fn mdls(args: &[String]) -> i32 {
     let p = Path::new(&args[0]);
     match fs::metadata(p) {
         Ok(m) => {
-            println!("kMDItemDisplayName = \"{}\"", p.file_name().unwrap_or_default().to_string_lossy());
+            println!(
+                "kMDItemDisplayName = \"{}\"",
+                p.file_name().unwrap_or_default().to_string_lossy()
+            );
             println!("kMDItemFSSize      = {}", m.len());
             0
         }

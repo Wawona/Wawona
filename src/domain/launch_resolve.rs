@@ -61,7 +61,10 @@ pub struct NestedCursorPolicy {
 
 /// Nested compositor clients always hide the host cursor, even when
 /// Show Virtual Cursor is on.
-pub fn nested_cursor_policy(is_nested_compositor: bool, show_virtual_cursor_pref: bool) -> NestedCursorPolicy {
+pub fn nested_cursor_policy(
+    is_nested_compositor: bool,
+    show_virtual_cursor_pref: bool,
+) -> NestedCursorPolicy {
     if is_nested_compositor {
         NestedCursorPolicy {
             hide_host_cursor: true,
@@ -86,9 +89,8 @@ pub fn resolve_backend_json(
 
 pub fn nested_cursor_json(is_nested_compositor: bool, show_virtual_cursor_pref: bool) -> String {
     let p = nested_cursor_policy(is_nested_compositor, show_virtual_cursor_pref);
-    serde_json::to_string(&p).unwrap_or_else(|_| {
-        r#"{"hide_host_cursor":false,"show_virtual_pointer":false}"#.into()
-    })
+    serde_json::to_string(&p)
+        .unwrap_or_else(|_| r#"{"hide_host_cursor":false,"show_virtual_pointer":false}"#.into())
 }
 
 #[cfg(test)]

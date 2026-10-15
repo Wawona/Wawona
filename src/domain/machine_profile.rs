@@ -235,9 +235,17 @@ pub struct MachineRuntimeOverrides {
 pub struct ContainerMachineSettings {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub runtime: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none", rename = "containerRef")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        rename = "containerRef"
+    )]
     pub container_ref: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none", rename = "entryCommand")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        rename = "entryCommand"
+    )]
     pub entry_command: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
@@ -253,13 +261,25 @@ pub struct ContainerMachineSettings {
     pub platform: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none", rename = "readOnly")]
     pub read_only: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none", rename = "initProcess")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        rename = "initProcess"
+    )]
     pub init_process: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub remove: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none", rename = "kernelPath")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        rename = "kernelPath"
+    )]
     pub kernel_path: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none", rename = "initfsPath")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        rename = "initfsPath"
+    )]
     pub initfs_path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none", rename = "vsockPort")]
     pub vsock_port: Option<i32>,
@@ -283,12 +303,20 @@ pub struct ContainerMachineSettings {
 pub struct VirtualMachineSettings {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none", rename = "vmIdentifier")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        rename = "vmIdentifier"
+    )]
     pub vm_identifier: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none", rename = "vsockPort")]
     pub vsock_port: Option<String>,
     /// Bundled, signed NixOS guest image variant: `4k` or `16k`.
-    #[serde(default, skip_serializing_if = "Option::is_none", rename = "guestVariant")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        rename = "guestVariant"
+    )]
     pub guest_variant: Option<String>,
     /// Guest RAM selected in the machine editor. The Relay spec verifies this
     /// against the selected manifest before allocating its one RAM arena.
@@ -297,13 +325,21 @@ pub struct VirtualMachineSettings {
     /// Writable virtio-block capacity and its user-approved growth ceiling.
     #[serde(default, skip_serializing_if = "Option::is_none", rename = "diskGiB")]
     pub disk_gib: Option<i32>,
-    #[serde(default, skip_serializing_if = "Option::is_none", rename = "maxDiskGiB")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        rename = "maxDiskGiB"
+    )]
     pub max_disk_gib: Option<i32>,
     #[serde(default, skip_serializing_if = "Option::is_none", rename = "nixFiles")]
     pub nix_files: Option<std::collections::HashMap<String, String>>,
     /// NixOS system generation to select on the next start. Absent boots the
     /// disk's current `system` profile.
-    #[serde(default, skip_serializing_if = "Option::is_none", rename = "nixosGeneration")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        rename = "nixosGeneration"
+    )]
     pub nixos_generation: Option<i32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
@@ -376,7 +412,11 @@ pub struct MachineProfile {
         rename = "containerSettings"
     )]
     pub container_settings: Option<ContainerMachineSettings>,
-    #[serde(default, skip_serializing_if = "Option::is_none", rename = "vmSettings")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        rename = "vmSettings"
+    )]
     pub vm_settings: Option<VirtualMachineSettings>,
 }
 
@@ -473,9 +513,7 @@ impl MachineProfile {
                 return name.to_ascii_lowercase();
             }
         }
-        self.remote_command
-            .trim()
-            .to_ascii_lowercase()
+        self.remote_command.trim().to_ascii_lowercase()
     }
 }
 
@@ -599,7 +637,8 @@ mod tests {
             disk_gib: Some(16),
             max_disk_gib: Some(64),
             nix_files: Some(std::collections::HashMap::from([(
-                "configuration.nix".into(), "{ imports = [ ./relay.nix ]; }".into(),
+                "configuration.nix".into(),
+                "{ imports = [ ./relay.nix ]; }".into(),
             )])),
             nixos_generation: Some(2),
             notes: None,
@@ -610,7 +649,10 @@ mod tests {
         assert!(json.contains("\"diskGiB\":16"), "{json}");
         assert!(json.contains("\"maxDiskGiB\":64"), "{json}");
         assert!(json.contains("\"nixosGeneration\":2"), "{json}");
-        assert_eq!(serde_json::from_str::<VirtualMachineSettings>(&json).unwrap(), settings);
+        assert_eq!(
+            serde_json::from_str::<VirtualMachineSettings>(&json).unwrap(),
+            settings
+        );
     }
 
     #[test]

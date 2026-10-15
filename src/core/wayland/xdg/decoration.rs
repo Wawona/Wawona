@@ -446,7 +446,10 @@ mod tests {
         // Apple Metal present: Wayland SHM row0=top needs V remap for all
         // clients except nested weston (gl-renderer already Y-corrected).
         assert!(
-            !is_nested_weston_compositor("org.freedesktop.weston.wayland-terminal", "Weston Terminal"),
+            !is_nested_weston_compositor(
+                "org.freedesktop.weston.wayland-terminal",
+                "Weston Terminal"
+            ),
             "weston-terminal must get Metal V remap (not nested compositor)"
         );
         assert!(

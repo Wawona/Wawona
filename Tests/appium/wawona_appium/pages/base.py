@@ -6,7 +6,12 @@ import time
 from typing import Any
 
 from appium.webdriver.common.appiumby import AppiumBy
-from selenium.common.exceptions import NoSuchElementException, TimeoutException
+from selenium.common.exceptions import (
+    InvalidSessionIdException,
+    NoSuchElementException,
+    TimeoutException,
+    WebDriverException,
+)
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
@@ -28,6 +33,11 @@ class BasePage:
             self.find(accessibility_id)
             return True
         except NoSuchElementException:
+            return False
+        except InvalidSessionIdException:
+            raise
+        except WebDriverException:
+            # Mac2 often maps missing AX nodes to 404 ProxyRequestError.
             return False
 
     def wait_visible(self, accessibility_id: str, timeout: float | None = None):

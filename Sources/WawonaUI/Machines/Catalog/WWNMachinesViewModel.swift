@@ -514,9 +514,15 @@ final class WWNMachinesViewModel: ObservableObject {
   /// Every Start shows Wawona Terminal (or guest console) with launch / client
   /// logs first. Wayland Metal is mounted but not revealed until Focus or
   /// Tab Overview selects the client.
-  private func presentGuestConsoleIfNeeded(_ profile: WWNMachineProfile) {
+  private func presentGuestConsoleIfNeeded(
+    _ profile: WWNMachineProfile,
+    openInNewWindow: Bool
+  ) {
     let machineId = profile.machineId ?? ""
     guard !machineId.isEmpty else { return }
+    #if os(macOS) || os(tvOS) || os(watchOS)
+    _ = openInNewWindow
+    #endif
     let source: String
     if profile.type == kWWNMachineTypeVirtualMachine ||
       profile.type == kWWNMachineTypeContainer {
@@ -539,11 +545,21 @@ final class WWNMachinesViewModel: ObservableObject {
     } else {
       source = "client"
     }
+    #if os(iOS) || os(visionOS)
+    let separateWindow = openInNewWindow
+      && MachineStartPlacement.allowsWindowedStart(for: GlobalSettingsCatalog.currentHost)
+    WWNIosGuestConsole.openNextInWindow = separateWindow
+    #endif
     #if os(iOS) || os(tvOS) || os(visionOS)
     NotificationCenter.default.post(
       name: Notification.Name("WWNRelayGuestConsoleNeededNotification"),
       object: nil,
       userInfo: ["machineId": machineId, "source": source])
+    #if os(iOS) || os(visionOS)
+    if separateWindow {
+      WWNSessionWindowPresenter.presentTerminalWindow()
+    }
+    #endif
     #elseif os(macOS)
     WWNMacGuestConsole.shared.present(machineId: machineId, source: source)
     #else
@@ -603,7 +619,7 @@ final class WWNMachinesViewModel: ObservableObject {
     let machineId = profile.machineId ?? ""
     let isContainer = profile.type == kWWNMachineTypeContainer
     statusByMachineId[machineId] = isContainer ? .preparing : .connecting
-    presentGuestConsoleIfNeeded(profile)
+    presentGuestConsoleIfNeeded(profile, openInNewWindow: openInNewWindow)
     let generation = bumpSessionGeneration(machineId)
 
     #if os(iOS) || os(tvOS) || os(visionOS)

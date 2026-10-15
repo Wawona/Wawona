@@ -6,6 +6,7 @@ import UIKit
 #endif
 import SwiftUI
 import WawonaModel
+import WawonaUIContracts
 
 /// SwiftUI detail pane for one `WWNPreferencesSection`, replacing the AppKit
 /// `WWNPreferencesContent` table. Rows mirror the AppKit controls 1:1 but with
@@ -14,33 +15,41 @@ struct WWNSettingsSectionView: View {
     let section: WWNPreferencesSection
     @ObservedObject var model: WWNSettingsValueModel
 
+    private var sectionAccent: Color { section.swiftUIIconColor }
+
     var body: some View {
-        if section.accessibilityIdentifier == "wwn.settings.environment" {
-            EnvironmentVariablesView(preferences: WawonaPreferences.shared, perMachine: false)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
-            Form {
-                if section.accessibilityIdentifier == "wwn.settings.desktop" {
-                    desktopFormSections
-                } else {
-                    Section {
-                        ForEach(Array(section.items.enumerated()), id: \.offset) { _, item in
-                            WWNSettingsRowView(item: item, model: model)
-                                .backport.visibleRowSeparator()
+        Group {
+            if section.accessibilityIdentifier == "wwn.settings.environment" {
+                EnvironmentVariablesView(preferences: WawonaPreferences.shared, perMachine: false)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                Form {
+                    if section.accessibilityIdentifier == "wwn.settings.desktop" {
+                        desktopFormSections
+                    } else {
+                        Section {
+                            ForEach(Array(section.items.enumerated()), id: \.offset) { _, item in
+                                WWNSettingsRowView(item: item, model: model)
+                                    .backport.visibleRowSeparator()
+                            }
                         }
                     }
                 }
+                #if os(macOS)
+                .backport.groupedForm()
+                #endif
+                #if os(iOS)
+                .backport.dismissKeyboardOnScroll()
+                #endif
+                #if os(iOS) || os(visionOS)
+                .onDisappear { WWNHostKeyboard.dismiss() }
+                #endif
             }
-            #if os(macOS)
-            .backport.groupedForm()
-            #endif
-            #if os(iOS)
-            .backport.dismissKeyboardOnScroll()
-            #endif
-            #if os(iOS) || os(visionOS)
-            .onDisappear { WWNHostKeyboard.dismiss() }
-            #endif
         }
+        // Section accent tints detail controls (Toggle / Picker / Button /
+        // Link), matching Android section accents. Not sidebar icon tiles.
+        .settingsSectionAccent(sectionAccent)
+        .backport.tint(sectionAccent)
     }
 
     /// Desktop Replacement detail: labelled Desktop vs Lock Screen groups.
@@ -56,6 +65,7 @@ struct WWNSettingsSectionView: View {
                 }
             } header: {
                 Text("Desktop")
+                    .foregroundColor(sectionAccent)
             }
         }
         if !lockItems.isEmpty {
@@ -66,6 +76,7 @@ struct WWNSettingsSectionView: View {
                 }
             } header: {
                 Text("Lock Screen")
+                    .foregroundColor(sectionAccent)
             }
         }
     }
@@ -82,6 +93,7 @@ struct WWNSettingsSectionView: View {
 private struct WWNSettingsRowView: View {
     let item: WWNSettingItem
     @ObservedObject var model: WWNSettingsValueModel
+    @Environment(\.settingsSectionAccent) private var sectionAccent
     @State private var showingHelp = false
     @State private var numberText = ""
 
@@ -180,6 +192,7 @@ private struct WWNSettingsRowView: View {
             showingHelp = true
         } label: {
             Image(systemName: "info.circle")
+                .foregroundColor(.secondary)
         }
         .buttonStyle(.borderless)
         .accessibility(label: Text("Help for \(title)"))
@@ -194,6 +207,7 @@ private struct WWNSettingsRowView: View {
                 .labelsHidden()
                 .toggleStyle(.switch)
                 .backport.controlSize(.regular)
+                .backport.tint(sectionAccent)
                 .accessibility(label: Text(title))
         }
         .disabled(!item.interactive)
@@ -374,6 +388,7 @@ private struct WWNSettingsRowView: View {
             #else
             .backport.menuPicker()
             #endif
+            .backport.tint(sectionAccent)
             .disabled(!item.interactive)
             .accessibility(label: Text(title))
             .accessibility(identifier: item.accessibilityIdentifier ?? "")
@@ -390,6 +405,7 @@ private struct WWNSettingsRowView: View {
                 }
             }
             .backport.borderedButton()
+            .backport.tint(sectionAccent)
             .accessibility(identifier: item.accessibilityIdentifier ?? "")
         }
         .accessibility(identifier: item.accessibilityIdentifier ?? "")
@@ -416,6 +432,7 @@ private struct WWNSettingsRowView: View {
                     model.copyValueToPasteboard(item)
                 } label: {
                     Image(systemName: "doc.on.doc")
+                        .foregroundColor(.secondary)
                 }
                 .buttonStyle(.borderless)
                 #if os(macOS)
@@ -451,6 +468,7 @@ private struct WWNSettingsRowView: View {
                         Image(systemName: presentation.systemImage)
                     }
                 }
+                .backport.tint(sectionAccent)
                 .accessibility(identifier: item.accessibilityIdentifier ?? "")
             }
         }

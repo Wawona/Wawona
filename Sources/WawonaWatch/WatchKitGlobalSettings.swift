@@ -2,6 +2,7 @@
 import SwiftUI
 import WatchKit
 import WawonaModel
+import WawonaUIContracts
 
 /// Watch Global Settings live in the wrist app (`wawona-global-settings-exclusive`).
 /// Same `wawona.pref.*` keys as other targets. Container is `UserDefaults.standard`.
@@ -18,6 +19,7 @@ enum WatchKitGlobalSettings {
 }
 
 /// Compact in-app Global Settings for watchOS. Sole host on this target.
+/// Section accents tint detail controls (`WawonaSettingsHubChrome.accentColor`).
 struct WatchGlobalSettingsView: View {
     @ObservedObject private var preferences = WawonaPreferences.shared
     @Environment(\.dismiss) private var dismiss
@@ -25,10 +27,23 @@ struct WatchGlobalSettingsView: View {
     private let touchOptions = ["Multi-Touch", "Touchpad"]
     private let logLevels = ["debug", "info", "warn", "error"]
 
+    private var displayAccent: Color {
+        WawonaSettingsHubChrome.accentColor(for: .display)
+    }
+    private var machinesAccent: Color {
+        WawonaSettingsHubChrome.accentColor(for: .machines)
+    }
+    private var inputAccent: Color {
+        WawonaSettingsHubChrome.accentColor(for: .input)
+    }
+    private var aboutAccent: Color {
+        WawonaSettingsHubChrome.accentColor(for: .about)
+    }
+
     var body: some View {
         NavigationStack {
             Form {
-                Section("Display") {
+                Section {
                     Toggle("Color Operations / HDR", isOn: Binding(
                         get: { preferences.colorOperations },
                         set: {
@@ -36,10 +51,14 @@ struct WatchGlobalSettingsView: View {
                             preferences.save()
                         }
                     ))
+                    .accentColor(displayAccent)
                     .accessibilityIdentifier("wwn.settings.display.hdr")
+                } header: {
+                    Text("Display")
+                        .foregroundColor(displayAccent)
                 }
 
-                Section("Machines") {
+                Section {
                     Toggle("Shake to Exit Machine", isOn: Binding(
                         get: { preferences.shakeToCloseEnabled },
                         set: {
@@ -47,6 +66,7 @@ struct WatchGlobalSettingsView: View {
                             preferences.save()
                         }
                     ))
+                    .accentColor(machinesAccent)
                     Toggle("Swipe Back to Exit Machine", isOn: Binding(
                         get: { preferences.swipeBackToCloseEnabled },
                         set: {
@@ -54,6 +74,7 @@ struct WatchGlobalSettingsView: View {
                             preferences.save()
                         }
                     ))
+                    .accentColor(machinesAccent)
                     Toggle("Session Thumbnails", isOn: Binding(
                         get: { preferences.machineSessionThumbnailsEnabled },
                         set: {
@@ -61,9 +82,13 @@ struct WatchGlobalSettingsView: View {
                             preferences.save()
                         }
                     ))
+                    .accentColor(machinesAccent)
+                } header: {
+                    Text("Machines")
+                        .foregroundColor(machinesAccent)
                 }
 
-                Section("Input") {
+                Section {
                     Picker("Touch Input Type", selection: Binding(
                         get: {
                             WawonaPreferences.normalizedTouchInputType(
@@ -81,9 +106,13 @@ struct WatchGlobalSettingsView: View {
                         }
                     }
                     .pickerStyle(.navigationLink)
+                    .accentColor(inputAccent)
+                } header: {
+                    Text("Input")
+                        .foregroundColor(inputAccent)
                 }
 
-                Section("About") {
+                Section {
                     Picker("Log Level", selection: Binding(
                         get: { preferences.logLevel },
                         set: {
@@ -96,6 +125,10 @@ struct WatchGlobalSettingsView: View {
                         }
                     }
                     .pickerStyle(.navigationLink)
+                    .accentColor(aboutAccent)
+                } header: {
+                    Text("About")
+                        .foregroundColor(aboutAccent)
                 }
             }
             .navigationTitle("Wawona Settings")

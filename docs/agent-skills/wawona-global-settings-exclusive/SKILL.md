@@ -10,7 +10,8 @@ Open the rule: `wawona-global-settings-exclusive` /
 
 ## Do
 
-- macOS / iOS / iPadOS / tvOS / visionOS → in-app `WWNGlobalSettingsHostView` (gear)
+- macOS → in-app `WWNGlobalSettingsHostView` replaces Machines chrome (gear / Cmd-,; never sheet)
+- iOS / iPadOS / tvOS / visionOS → in-app `WWNGlobalSettingsHostView` (gear)
 - watchOS → in-app `WatchGlobalSettingsView`
 - Android → Compose `SettingsDialog` only
 - Linux → in-app libadwaita dialog

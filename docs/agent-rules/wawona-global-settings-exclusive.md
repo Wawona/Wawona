@@ -11,7 +11,7 @@ rebuild them.
 
 | Target / band | Sole Global Settings host |
 |---|---|
-| macOS | In-app `WWNGlobalSettingsHostView` (gear / ⌘,). Section sidebar + detail |
+| macOS | In-app `WWNGlobalSettingsHostView` replaces Machines chrome in the main window (gear / Cmd-,). Never a sheet. Section sidebar + detail |
 | iOS / iPadOS | In-app `WWNGlobalSettingsHostView` (gear). Not Machines home sidebar |
 | watchOS | In-app `WatchGlobalSettingsView` on the wrist |
 | tvOS / visionOS | In-app `WWNGlobalSettingsHostView` (gear) |
@@ -40,6 +40,12 @@ catalog.
 Machines home sidebar lists Machines / Project / Tags only. Global Settings
 sections live in the dedicated Settings host sidebar (`visibleSections`).
 
+## Sidebar icons (Apple)
+
+Plain SF Symbols in Machines and Settings sidebars. Section accents tint
+Settings detail controls only. Never colored rounded-square icon tiles.
+See `wawona-apple-sidebar-icons`.
+
 ## Hard rejects
 
 - PrefPane / `Settings.bundle` / `Settings-Watch.bundle` as a Global Settings host
@@ -48,6 +54,8 @@ sections live in the dedicated Settings host sidebar (`visibleSections`).
 - `ACTION_APPLICATION_PREFERENCES` / `SettingsPreferenceService` as a second host
 - Dual OS Settings inject **and** in-app Global Settings for the same catalog
 - Desktop / Mode B / jailbreak copy in any retired Settings.bundle
+- macOS Global Settings as `.sheet` / floating popup (must replace Machines chrome in-window)
+- Colored rounded-square tiles with white SF Symbols in Settings or Machines sidebars
 
 Cursor rule: `.cursor/rules/wawona-global-settings-exclusive.mdc`.
 Product: `docs/settings.md`. RAG: `wwn-mcp/knowledge/wawona/global-settings-exclusive.md`.

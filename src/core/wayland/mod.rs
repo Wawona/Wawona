@@ -6,8 +6,8 @@
 use smithay::reexports::wayland_server::Resource;
 
 pub mod catalog;
-pub mod host_im;
 pub mod ext;
+pub mod host_im;
 pub mod plasma;
 pub mod protocol;
 pub mod wayland;
@@ -1001,19 +1001,20 @@ pub mod smithay_runtime {
             smithay::wayland::selection::data_device::set_data_device_focus(dh, &seat, None);
         }
         if state.smithay_runtime.text_input.is_none() {
-            state.smithay_runtime.text_input = Some(
-                smithay::wayland::text_input::TextInputManagerState::new::<CompositorState>(dh),
-            );
+            state.smithay_runtime.text_input =
+                Some(smithay::wayland::text_input::TextInputManagerState::new::<
+                    CompositorState,
+                >(dh));
         }
         if state.smithay_runtime.input_method.is_none() {
             let profile = state.protocol_profile;
             state.smithay_runtime.input_method = Some(
-                smithay::wayland::input_method::InputMethodManagerState::new::<
-                    CompositorState,
-                    _,
-                >(dh, move |client| {
-                    crate::core::wayland::host_im::is_trusted_input_method(client, profile)
-                }),
+                smithay::wayland::input_method::InputMethodManagerState::new::<CompositorState, _>(
+                    dh,
+                    move |client| {
+                        crate::core::wayland::host_im::is_trusted_input_method(client, profile)
+                    },
+                ),
             );
         }
         if crate::core::wayland::policy::allow_privileged_wlr(state.protocol_profile)

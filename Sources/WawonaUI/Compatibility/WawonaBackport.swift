@@ -42,6 +42,17 @@ public extension WawonaBackport where Content: View {
         #endif
     }
 
+    /// Section accent for Toggle / Button / Link / Picker.
+    /// `.tint` on iOS 15+; `.accentColor` on the iOS 13–14 floor.
+    @ViewBuilder
+    func tint(_ color: Color) -> some View {
+        if #available(iOS 15.0, macOS 12.0, tvOS 15.0, watchOS 8.0, *) {
+            content.tint(color)
+        } else {
+            content.accentColor(color)
+        }
+    }
+
     /// Keeps Settings rows visibly separated on every supported SwiftUI host.
     /// iOS 15 adds a native row-separator API; iOS 13–14 get the same visual
     /// boundary without changing the app's deployment target.

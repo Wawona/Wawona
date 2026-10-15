@@ -32,7 +32,9 @@ pub enum DarwinCliPlan {
     Version,
     ListClients,
     ListMachines,
-    MachinesShow { query: String },
+    MachinesShow {
+        query: String,
+    },
     Run {
         recipe: String,
         headless: bool,
@@ -54,7 +56,10 @@ pub enum DarwinCliPlan {
         machine: Option<String>,
         backend: Option<String>,
     },
-    Error { message: String, exit_code: i32 },
+    Error {
+        message: String,
+        exit_code: i32,
+    },
 }
 
 fn is_cocoa_passthrough(arg: &str) -> bool {
@@ -225,8 +230,8 @@ pub fn parse(args: &[String]) -> DarwinCliPlan {
                     show_settings = true;
                 }
             }
-            "--help" | "-h" | "--version" | "-v" | "--list-clients" | "--list-machines"
-            | "run" | "machines" => {}
+            "--help" | "-h" | "--version" | "-v" | "--list-clients" | "--list-machines" | "run"
+            | "machines" => {}
             a if a.starts_with("--mode-b-") => {}
             a if a.starts_with('-') => {
                 return DarwinCliPlan::Error {
@@ -351,9 +356,8 @@ fn parse_mode_b(args: &[String]) -> DarwinCliPlan {
 
 /// Serialize a plan to JSON for the C trampoline / Swift decoder.
 pub fn parse_to_json(args: &[String]) -> String {
-    serde_json::to_string(&parse(args)).unwrap_or_else(|_| {
-        r#"{"kind":"error","message":"serialize failed","exit_code":2}"#.into()
-    })
+    serde_json::to_string(&parse(args))
+        .unwrap_or_else(|_| r#"{"kind":"error","message":"serialize failed","exit_code":2}"#.into())
 }
 
 /// Full CLI help text (macOS Darwin entry).

@@ -27,8 +27,11 @@ older. iPadOS 26 adds window control chrome only.
 
 1. Setting **New Tab** (or no windowing): Start shows the client in the
    current Machines window (`showSessionSurface`).
-2. Setting **New Window**: Start opens a dedicated macOS `NSWindow` or
-   iPad/visionOS `UIWindowScene` (session-only root). Machines chrome stays.
+2. Setting **New Window**: Start opens a dedicated window. Wawona
+   Terminal is that window (`WWNMacGuestConsole` on macOS, a terminal
+   scene on iPad and visionOS, `TerminalActivity` on Android 24+). A
+   Wayland client still gets its compositor window beside the terminal.
+   Machines chrome stays. New Tab keeps the terminal in the current window.
 3. Setting **Prompt**: macOS `NSAlert`; other Apple hosts action sheet;
    Android `AlertDialog`. Only when windowing is available.
 4. Return from in-window session: sidebar **Machines** (selection

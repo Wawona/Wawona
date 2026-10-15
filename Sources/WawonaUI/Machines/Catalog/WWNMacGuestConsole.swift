@@ -1,5 +1,6 @@
 #if os(macOS)
 import AppKit
+import Darwin
 
 /// AppKit host for Wawona Terminal on macOS Start. Every machine Start
 /// presents this window with `$ argv` and streamed CLI logs. Close reveals
@@ -15,14 +16,16 @@ import AppKit
   private var fed = 0
   private var machineId = ""
   private var source = "relay"
-  private var shell: Process?
-  private var shellInput: Pipe?
+  private var master: Int32 = -1
+  private var shellPid: pid_t = -1
+  private var shellReader: DispatchSourceRead?
   private var stopped = false
 
   func present(machineId: String, source: String) {
     guard !machineId.isEmpty else { return }
     if let existing = window, self.machineId == machineId {
       existing.makeKeyAndOrderFront(nil)
+      focusShellKeys()
       return
     }
     dismiss(machineId: self.machineId)
@@ -33,7 +36,13 @@ import AppKit
 
     let surface = WWNTermSurface(frame: NSRect(x: 0, y: 0, width: 780, height: 480))
     surface.onReply = { [weak self] data in
-      self?.shellInput?.fileHandleForWriting.write(data)
+      self?.writeMaster(data)
+    }
+    surface.onResize = { [weak self] cols, rows in
+      self?.setWinsize(cols: cols, rows: rows)
+    }
+    surface.onTitle = { [weak self] title in
+      self?.window?.title = title
     }
     self.surface = surface
 
@@ -55,6 +64,7 @@ import AppKit
 
     if source == "shell" {
       startShell()
+      focusShellKeys()
     } else {
       let banner: String
       switch source {
@@ -80,9 +90,16 @@ import AppKit
     }
     pumpTimer?.cancel()
     pumpTimer = nil
-    shell?.terminate()
-    shell = nil
-    shellInput = nil
+    if shellPid > 0 {
+      kill(shellPid, SIGTERM)
+      shellPid = -1
+    }
+    shellReader?.cancel()
+    shellReader = nil
+    if master >= 0 {
+      close(master)
+      master = -1
+    }
     if let window {
       window.delegate = nil
       window.orderOut(nil)
@@ -155,25 +172,95 @@ import AppKit
   }
 
   private func startShell() {
-    let process = Process()
-    process.executableURL = URL(fileURLWithPath: "/bin/zsh")
-    process.arguments = ["-l"]
-    let output = Pipe()
-    let input = Pipe()
-    process.standardOutput = output
-    process.standardError = output
-    process.standardInput = input
-    output.fileHandleForReading.readabilityHandler = { [weak self] handle in
-      let data = handle.availableData
-      if !data.isEmpty { self?.append(data) }
-    }
-    do {
-      try process.run()
-      shell = process
-      shellInput = input
-    } catch {
+    var masterFd: Int32 = -1
+    var slaveFd: Int32 = -1
+    var win = winsize(ws_row: 24, ws_col: 80, ws_xpixel: 0, ws_ypixel: 0)
+    var name = [CChar](repeating: 0, count: 128)
+    guard openpty(&masterFd, &slaveFd, &name, nil, &win) == 0 else {
       append(Data("Native shell did not start.\n".utf8))
+      return
     }
+    var actions: posix_spawn_file_actions_t?
+    var attr: posix_spawnattr_t?
+    posix_spawn_file_actions_init(&actions)
+    posix_spawnattr_init(&attr)
+    posix_spawnattr_setflags(&attr, Int16(POSIX_SPAWN_SETSID))
+    var pid: pid_t = 0
+    let path = strdup("/bin/zsh")
+    let arg = strdup("-l")
+    var argv: [UnsafeMutablePointer<CChar>?] = [path, arg, nil]
+    let rc: Int32 = name.withUnsafeBufferPointer { buf in
+      posix_spawn_file_actions_addopen(&actions, 0, buf.baseAddress, O_RDWR, 0)
+      posix_spawn_file_actions_adddup2(&actions, 0, 1)
+      posix_spawn_file_actions_adddup2(&actions, 0, 2)
+      posix_spawn_file_actions_addclose(&actions, masterFd)
+      posix_spawn_file_actions_addclose(&actions, slaveFd)
+      return posix_spawn(&pid, "/bin/zsh", &actions, &attr, &argv, environ)
+    }
+    free(path)
+    free(arg)
+    posix_spawn_file_actions_destroy(&actions)
+    posix_spawnattr_destroy(&attr)
+    close(slaveFd)
+    guard rc == 0 else {
+      close(masterFd)
+      append(Data("Native shell did not start.\n".utf8))
+      return
+    }
+    master = masterFd
+    shellPid = pid
+    let fd = masterFd
+    let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: pumpQueue)
+    source.setEventHandler { [weak self] in
+      var buf = [UInt8](repeating: 0, count: 4096)
+      let n = read(fd, &buf, buf.count)
+      if n > 0 {
+        self?.append(Data(buf.prefix(n)))
+      }
+    }
+    shellReader = source
+    source.resume()
+    if let surface {
+      setWinsize(cols: surface.gridCols, rows: surface.gridRows)
+    }
+  }
+
+  /// Shell keys land on the VT view. Log consoles stay read-only.
+  private func focusShellKeys() {
+    guard source == "shell", let window, let surface else { return }
+    window.makeFirstResponder(surface)
+  }
+
+  private func writeMaster(_ data: Data) {
+    let fd = master
+    guard fd >= 0, !data.isEmpty else { return }
+    data.withUnsafeBytes { raw in
+      guard let base = raw.baseAddress else { return }
+      var sent = 0
+      while sent < raw.count {
+        let n = write(fd, base.advanced(by: sent), raw.count - sent)
+        if n > 0 {
+          sent += n
+          continue
+        }
+        if n < 0, errno == EINTR {
+          continue
+        }
+        break
+      }
+    }
+  }
+
+  private func setWinsize(cols: UInt32, rows: UInt32) {
+    let fd = master
+    guard fd >= 0 else { return }
+    var win = winsize(
+      ws_row: UInt16(min(rows, UInt32(UInt16.max))),
+      ws_col: UInt16(min(cols, UInt32(UInt16.max))),
+      ws_xpixel: 0,
+      ws_ypixel: 0
+    )
+    _ = ioctl(fd, TIOCSWINSZ, &win)
   }
 
   private func append(_ data: Data) {

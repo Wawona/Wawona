@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Shallow-clone flake inputs needed for cross-repo verify scripts when the
-# workspace checkout is Wawona-only (no sibling wwn-toolchain / wwn-weston).
+# workspace checkout is Wawona-only (no sibling wwn-toolchain / repo.wawona.io).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -33,4 +33,5 @@ clone_at_lock() {
 }
 
 clone_at_lock wwn-toolchain "$ROOT/wwn-toolchain"
-clone_at_lock wwn-weston "$ROOT/wwn-weston"
+# Port recipes (weston, …) live in the catalog host, not deleted wwn-weston.
+clone_at_lock repo-wawona-io "$ROOT/repo.wawona.io"

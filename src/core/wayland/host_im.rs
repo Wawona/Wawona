@@ -38,7 +38,11 @@ impl ClientData for HostImClientData {
     }
 
     fn disconnected(&self, client_id: ClientId, reason: DisconnectReason) {
-        tracing::debug!("host IM client disconnected: {:?} ({:?})", client_id, reason);
+        tracing::debug!(
+            "host IM client disconnected: {:?} ({:?})",
+            client_id,
+            reason
+        );
     }
 }
 
@@ -58,10 +62,8 @@ pub struct HostImMirror {
 impl HostImMirror {
     pub fn hidden_text(&self) -> bool {
         const HINT_HIDDEN_TEXT: u32 = 0x8;
-        self.content_purpose
-            == crate::core::wayland::ext::text_input::content_purpose::PASSWORD
-            || self.content_purpose
-                == crate::core::wayland::ext::text_input::content_purpose::PIN
+        self.content_purpose == crate::core::wayland::ext::text_input::content_purpose::PASSWORD
+            || self.content_purpose == crate::core::wayland::ext::text_input::content_purpose::PIN
             || (self.content_hint & HINT_HIDDEN_TEXT) != 0
     }
 }
@@ -123,11 +125,15 @@ impl HostImRelay {
     }
 
     pub fn queue_preedit(&self, text: &str, cursor_begin: i32, cursor_end: i32) {
-        self.shared.outgoing.lock().unwrap().push(HostImCommand::Preedit {
-            text: text.to_string(),
-            cursor_begin,
-            cursor_end,
-        });
+        self.shared
+            .outgoing
+            .lock()
+            .unwrap()
+            .push(HostImCommand::Preedit {
+                text: text.to_string(),
+                cursor_begin,
+                cursor_end,
+            });
     }
 
     pub fn queue_delete_surrounding(&self, before: u32, after: u32) {

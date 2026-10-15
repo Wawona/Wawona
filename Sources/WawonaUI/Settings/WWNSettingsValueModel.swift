@@ -27,6 +27,9 @@ final class WWNSettingsValueModel: ObservableObject {
     @Published private(set) var actionNoticeTitle: String = "Settings"
     @Published private(set) var actionNoticeMessage: String?
 
+    /// Present Toolbar Keys customize sheet (iOS / tvOS / visionOS).
+    @Published var presentToolbarKeysSettings: Bool = false
+
     private let defaults = UserDefaults.standard
     private let globalSnapshotKey = "wawona.globalSettingsSnapshot.v1"
     private var observers: [NSObjectProtocol] = []
@@ -197,6 +200,15 @@ final class WWNSettingsValueModel: ObservableObject {
         switch itemKey(item) {
         case "SSHGenerateKey":
             generateSSHKey()
+        case "ToolbarKeysCustomize":
+            #if os(iOS) || os(tvOS) || os(visionOS)
+            presentToolbarKeysSettings = true
+            #else
+            presentActionNotice(
+                title: "Toolbar Keys",
+                message: "Customize Toolbar Keys on iPhone, iPad, or Android."
+            )
+            #endif
         case "CopyRecentLogs":
             WWNDiagnosticReport.copyRecentLogs(machineOnly: false)
         case "CopyMachineLogs":
@@ -314,6 +326,7 @@ final class WWNSettingsValueModel: ObservableObject {
                 object: nil
             )
         }
+        syncToolbarHostOptionsIfNeeded(key: key)
         commit(rebuild: sectionRebuildKeys.contains(key))
     }
 
@@ -331,7 +344,26 @@ final class WWNSettingsValueModel: ObservableObject {
             defaults.set(value, forKey: key)
             recordGlobalValue(value, forKey: key)
         }
+        syncToolbarHostOptionsIfNeeded(key: key)
         commit(rebuild: sectionRebuildKeys.contains(key))
+    }
+
+    /// Push Global Settings toolbar prefs into `KeyboardToolbarManager`.
+    private func syncToolbarHostOptionsIfNeeded(key: String) {
+        #if os(iOS) || os(tvOS) || os(visionOS)
+        let toolbarKeys: Set<String> = [
+            kWWNPrefsPersistentToolbar,
+            kWWNPrefsShowToolbarWithHardwareKeyboard,
+            kWWNPrefsToolbarThemeAware,
+            kWWNPrefsToolbarChromeStyle,
+            kWWNPrefsToolbarArrowJoystickMode,
+        ]
+        guard toolbarKeys.contains(key) else { return }
+        // KeyboardToolbarManager is @MainActor; this model is not (ObjC trampoline).
+        DispatchQueue.main.async {
+            KeyboardToolbarManager.shared.reloadHostOptionsFromDefaults()
+        }
+        #endif
     }
 
     func setPassword(_ password: String, for item: WWNSettingItem) {
@@ -525,6 +557,7 @@ final class WWNSettingsValueModel: ObservableObject {
         case "RootfsResetDotfiles": return ("Reset", "arrow.counterclockwise")
         case "RootfsReinstallSystem": return ("Reset", "arrow.counterclockwise")
         case "RootfsImportFile": return ("Import", "square.and.arrow.down")
+        case "ToolbarKeysCustomize": return ("Customize", "keyboard")
         case "WatchCompanionSend": return ("Choose File", "applewatch.and.arrow.forward")
         case "DesktopReplacementSipHowTo": return ("Learn More", "info.circle")
         case "DesktopReplacementTakeOver": return ("Replace Now", "rectangle.inset.filled")

@@ -7,27 +7,29 @@ import AppKit
 @available(iOS 16.0, *)
 #endif
 struct WWNMachineCardView: View {
-  let profile: WWNMachineProfile
-  let status: WWNMachineTransientStatus
-  let thumbnailImage: WWNPlatformImage?
-  let typeLabel: String
-  let scopeLabel: String
-  let subtitle: String
-  let summary: String
-  let launchSupported: Bool
-  let isActive: Bool
-  let isRunning: Bool
-  var isPinned: Bool = false
-  var tags: [WWNMachineTag] = []
-  /// When non-empty, matching characters in the machine name are highlighted.
-  var searchQuery: String = ""
-  let onEdit: () -> Void
-  let onDelete: () -> Void
-  let onConnect: () -> Void
-  let onStop: () -> Void
-  let onFocus: () -> Void
+    let profile: WWNMachineProfile
+    let status: WWNMachineTransientStatus
+    let thumbnailImage: WWNPlatformImage?
+    let typeLabel: String
+    let scopeLabel: String
+    let subtitle: String
+    let summary: String
+    let launchSupported: Bool
+    let isActive: Bool
+    let isRunning: Bool
+    var isPinned: Bool = false
+    var tags: [WWNMachineTag] = []
+    /// When non-empty, matching characters in the machine name are highlighted.
+    var searchQuery: String = ""
+    let onEdit: () -> Void
+    let onDelete: () -> Void
+    let onConnect: () -> Void
+    let onStop: () -> Void
+    let onFocus: () -> Void
 
-  var body: some View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
     VStack(alignment: .leading, spacing: 12) {
       headerBanner
 
@@ -49,6 +51,10 @@ struct WWNMachineCardView: View {
       actionButtons
     }
     .padding(16)
+    // Hug content height so a wrapped Focus/Stop/Edit/Delete row is not
+    // clipped when LazyVGrid equalizes siblings. Stretch width only.
+    .frame(maxWidth: .infinity, alignment: .topLeading)
+    .fixedSize(horizontal: false, vertical: true)
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     .modifier(WWNMachineCardMaterial(cornerRadius: 20))
     .overlay {
@@ -312,7 +318,7 @@ struct WWNMachineCardView: View {
     }
   }
 
-  /// Machine name with search-term characters emphasized (yellow underline).
+  /// Machine name with search-term characters emphasized (pastel highlighter).
   @ViewBuilder
   private var highlightedName: some View {
     let display = profile.name.isEmpty ? "Unnamed Machine" : profile.name
@@ -320,7 +326,12 @@ struct WWNMachineCardView: View {
     if query.isEmpty {
       Text(display)
     } else {
-      Self.highlightedNameText(display, query: query)
+      Text(Self.highlightedNameAttributed(
+        display,
+        query: query,
+        highlight: Self.searchHighlightBackground(colorScheme),
+        matchForeground: Self.searchHighlightForeground
+      ))
     }
   }
 
@@ -377,26 +388,53 @@ private struct WWNMachineCardMaterial: ViewModifier {
 @available(iOS 16.0, *)
 #endif
 extension WWNMachineCardView {
-  /// Marks fuzzy-matched characters from `query` inside `name` via `Text` concat
-  /// (iOS 13; `AttributedString` is iOS 15+).
-  private static func highlightedNameText(_ name: String, query: String) -> Text {
-    let terms = query.lowercased().split(whereSeparator: { $0.isWhitespace }).map(String.init)
-    guard let term = terms.first, !term.isEmpty else {
-      return Text(name)
+  /// Pastel highlighter fill. Follows light/dark; macOS uses system find highlight.
+  static func searchHighlightBackground(_ scheme: ColorScheme) -> Color {
+    #if os(macOS)
+    // System find/mark color, softened toward pastel.
+    Color(nsColor: .findHighlightColor).opacity(scheme == .dark ? 0.55 : 0.70)
+    #else
+    // Soft systemYellow: cream in light, amber wash in dark (banner-safe).
+    if scheme == .dark {
+      Color(red: 0.93, green: 0.78, blue: 0.28).opacity(0.50)
+    } else {
+      Color(red: 1.0, green: 0.94, blue: 0.55).opacity(0.82)
     }
-    let needle = Array(term)
+    #endif
+  }
+
+  /// Ink on highlighter for contrast on banner and material cards.
+  static var searchHighlightForeground: Color {
+    Color(red: 0.12, green: 0.12, blue: 0.12)
+  }
+
+  /// Fuzzy-matched characters get pastel background (Android Machines parity).
+  /// `AttributedString` background is iOS 15+ / macOS 12+; card is iOS 16+.
+  static func highlightedNameAttributed(
+    _ name: String,
+    query: String,
+    highlight: Color,
+    matchForeground: Color
+  ) -> AttributedString {
+    let needle = Array(
+      query.lowercased().filter { !$0.isWhitespace }
+    )
+    guard !needle.isEmpty else {
+      return AttributedString(name)
+    }
+    var attributed = AttributedString()
     var needleIndex = 0
-    var result = Text("")
     for character in name {
-      let piece = Text(String(character))
+      var piece = AttributedString(String(character))
       if needleIndex < needle.count,
          String(character).lowercased() == String(needle[needleIndex]) {
-        result = result + piece.bold().foregroundColor(.black)
+        piece.backgroundColor = highlight
+        piece.foregroundColor = matchForeground
+        piece.inlinePresentationIntent = .stronglyEmphasized
         needleIndex += 1
-      } else {
-        result = result + piece
       }
+      attributed.append(piece)
     }
-    return result
+    return attributed
   }
 }

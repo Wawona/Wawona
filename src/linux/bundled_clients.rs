@@ -107,11 +107,16 @@ pub fn bundled_client(id: &str) -> Option<&'static BundledClient> {
     BUNDLED_CLIENTS.iter().find(|c| c.id == id)
 }
 
-/// Display label for a client id, falling back to the raw id when unknown.
+/// Display label for a client id.
+/// Keep-set first, then optional-software catalog presets, then the raw id.
 pub fn label_for(id: &str) -> String {
-    bundled_client(id)
-        .map(|c| c.name.to_string())
-        .unwrap_or_else(|| id.to_string())
+    if let Some(c) = bundled_client(id) {
+        return c.name.to_string();
+    }
+    if let Some(name) = crate::domain::client_catalog::display_name(id) {
+        return name.to_string();
+    }
+    id.to_string()
 }
 
 /// Terminals and nested compositors fill the host. Demos stay client-preferred
@@ -161,7 +166,10 @@ mod tests {
     #[test]
     fn picker_groups_empty_without_optional_software() {
         let groups = wayland_picker_groups();
-        assert!(groups.is_empty(), "product catalog has no Wayland picker rows");
+        assert!(
+            groups.is_empty(),
+            "product catalog has no Wayland picker rows"
+        );
         assert_eq!(
             SoftwareKind::for_client_id("weston-flower"),
             SoftwareKind::Demo

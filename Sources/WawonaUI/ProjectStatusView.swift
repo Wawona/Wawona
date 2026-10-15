@@ -32,25 +32,31 @@ struct WawonaProjectStatusView: View {
             title: "iland present in UI",
             state: "Active",
             color: .orange,
-            detail: "Mode A pumps shm importer into IlandPresentEngine. Host waypipe client_fd still stub."
+            detail: "Wiring Ready (N10). Live non-black session surface still required on tip Start."
         ),
         .init(
             title: "Interaction",
-            state: "Blocked",
-            color: .red,
-            detail: "Need one Multi-Touch the guest sees, then Stop back to Machines."
+            state: "Active",
+            color: .orange,
+            detail: "Multi-Touch + Stop park wired. Need guest-seen touch evidence on session surface."
         ),
         .init(
             title: "OCI lifecycle",
-            state: "Blocked",
-            color: .red,
-            detail: "Thin create/start/stop/kill on StaticCpu still open."
+            state: "Active",
+            color: .orange,
+            detail: "Host → Relay; ContainerCommand includes Kill. Prove one StaticCpu create/start/stop/kill."
+        ),
+        .init(
+            title: "Offline AOT",
+            state: "Ready",
+            color: .green,
+            detail: "aot-translate offline only. Not in store staticlib. Hot-kernel measure recorded."
         ),
         .init(
             title: "STARDUST / ASC",
-            state: "Blocked",
-            color: .red,
-            detail: "Signed device run + store IPA audit last. Completely complete stays 0%."
+            state: "Active",
+            color: .orange,
+            detail: "ASC VALID/IN_BETA_TESTING. Store IPA audit + TF Distribution still open. Completely complete 0%."
         ),
     ]
 
@@ -59,7 +65,7 @@ struct WawonaProjectStatusView: View {
             Section {
                 WawonaLabel("Wawona delivery board", systemImage: "scope")
                     .font(.headline)
-                Text("Green proved. Orange in progress. Red blocker. Scorecard ~59% of twelve gates.")
+                Text("Green proved. Orange in progress. Red blocker. Session pixels use Machines Focus surface, not this board.")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
             }
@@ -81,7 +87,7 @@ struct WawonaProjectStatusView: View {
             }
             Section(header: Text("Completion gate")) {
                 Text(
-                    "Completely complete needs every acceptance gate plus a store-shaped IPA that boots NixOS on device. Simulator E4A1C0DE is not STARDUST."
+                    "Completely complete needs every acceptance gate plus a store-shaped IPA that boots NixOS on device. Work Status is a board only; guest frames present on the session surface."
                 )
             }
         }

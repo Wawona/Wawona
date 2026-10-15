@@ -6,6 +6,8 @@ mod editor;
 mod home;
 mod modal_sheet;
 mod settings;
+mod tab_overview;
+mod terminal;
 
 pub use adaptive::{clamp_content, install_breakpoint, LayoutBinding};
 pub use editor::show_editor;
@@ -14,6 +16,7 @@ pub use home::{
 };
 pub use modal_sheet::present_sheet;
 pub use settings::show_settings;
+pub use tab_overview::show_tab_overview;
 
 use std::cell::RefCell;
 use std::rc::Rc;

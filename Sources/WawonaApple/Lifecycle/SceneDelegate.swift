@@ -49,11 +49,20 @@ public final class WWNSceneDelegate: UIResponder, UIWindowSceneDelegate {
         // tvOS has no multi-window session scenes; isSessionScene is iOS/vision only.
         #if os(iOS) || os(visionOS)
         let sessionOnly = WWNSessionWindowPresenter.isSessionScene(options: connectionOptions)
+        let terminalOnly = WWNSessionWindowPresenter.isTerminalScene(options: connectionOptions)
         #else
         let sessionOnly = false
+        let terminalOnly = false
         #endif
         let hosting: UIHostingController<AnyView>
-        if sessionOnly {
+        if terminalOnly {
+            #if os(iOS) || os(visionOS)
+            WWNSessionWindowPresenter.noteTerminalScene(windowScene)
+            hosting = UIHostingController(rootView: AnyView(WWNTerminalWindowRoot()))
+            #else
+            hosting = UIHostingController(rootView: AnyView(WawonaRootView()))
+            #endif
+        } else if sessionOnly {
             hosting = UIHostingController(rootView: AnyView(WWNSessionSurfaceRootView()))
         } else {
             hosting = UIHostingController(rootView: AnyView(WawonaRootView()))
@@ -76,7 +85,7 @@ public final class WWNSceneDelegate: UIResponder, UIWindowSceneDelegate {
         if bridge.ensureRunning(withSocketName: "wayland-0") {
             setenv("WAYLAND_DISPLAY", bridge.socketName(), 1)
         }
-        if !sessionOnly {
+        if !sessionOnly && !terminalOnly {
             Self.autoStartMachineIfRequested()
         }
     }
@@ -129,6 +138,39 @@ public final class WWNSceneDelegate: UIResponder, UIWindowSceneDelegate {
                                 "source": "auto-start",
                             ]
                         )
+                        // Native Shell / SSH: open Guest Console (Toolbar Keys).
+                        // Virtual Machine / Container: do NOT. On iOS a
+                        // fullScreenCover before CompositorHostView mounts
+                        // leaves activePresenterForDrain nil (Mode A SHM
+                        // never presents). Session surface owns the pixels.
+                        let isRelaySurface =
+                            profile.type == kWWNMachineTypeVirtualMachine
+                            || profile.type == kWWNMachineTypeContainer
+                        if !isRelaySurface {
+                            let consoleSource: String
+                            if WWNNativeShellConfiguration.isNativeShellFamily(profile.type)
+                                || profile.type == kWWNMachineTypeNative {
+                                let kind = WWNNativeShellConfiguration.kind(for: profile)
+                                let useSSH = WWNNativeShellConfiguration.usesSSH(for: profile)
+                                if kind == kWWNNativeShellKindTerminal && useSSH {
+                                    consoleSource = "ssh"
+                                } else if kind == kWWNNativeShellKindTerminal {
+                                    consoleSource = "shell"
+                                } else {
+                                    consoleSource = "client"
+                                }
+                            } else {
+                                consoleSource = "client"
+                            }
+                            NotificationCenter.default.post(
+                                name: Notification.Name("WWNRelayGuestConsoleNeededNotification"),
+                                object: nil,
+                                userInfo: [
+                                    "machineId": mid,
+                                    "source": consoleSource,
+                                ]
+                            )
+                        }
                         NSLog("WWN_AUTO_START_MACHINE: started %@", mid)
                     }
                 } catch {
@@ -154,6 +196,16 @@ public final class WWNSceneDelegate: UIResponder, UIWindowSceneDelegate {
             name: Notification.Name("WWNRespectSafeAreaChangedNotification"),
             object: nil
         )
+    }
+
+    public func sceneDidDisconnect(_ scene: UIScene) {
+        #if os(iOS) || os(visionOS)
+        if WWNSessionWindowPresenter.terminalSceneDidDisconnect(scene) {
+            WWNIosGuestConsole.shared.dismiss(machineId: "")
+        }
+        #else
+        _ = scene
+        #endif
     }
 
     public func sceneDidBecomeActive(_ scene: UIScene) {

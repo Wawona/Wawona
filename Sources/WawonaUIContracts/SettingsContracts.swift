@@ -194,6 +194,7 @@ public enum GlobalSettingsSectionID: String, Sendable, CaseIterable, Hashable {
     /// Navigation / detail section title. Sidebar stays on `title`.
     public var detailTitle: String {
         switch self {
+        case .environment: return "Environment Variables"
         case .desktop: return "Desktop Replacement"
         default: return title
         }
@@ -232,6 +233,12 @@ public enum GlobalSettingsFieldID: String, Sendable, CaseIterable {
     case forceSSD
     case respectSafeArea
     case colorOperations
+    case toolbarKeysCustomize
+    case persistentToolbar
+    case showToolbarWithHardwareKeyboard
+    case toolbarThemeAware
+    case toolbarChromeStyle
+    case toolbarArrowJoystickMode
     case virtualCursor
     case nestedCompositorCursor
     case touchInputType
@@ -295,13 +302,17 @@ public enum GlobalSettingsFieldID: String, Sendable, CaseIterable {
     case dependenciesInventory
 }
 
-/// Single catalog for global Wawona Settings. Watch, iOS, and macOS must
-/// render the same section/field IDs for a given host. Never a second
-/// free-text "Input Profile" beside Touch Input Type.
+/// Single catalog for global Wawona Settings. Every host (Apple, Android,
+/// Linux) must render the same section/field IDs for a given host. Never a
+/// second free-text "Input Profile" beside Touch Input Type.
 ///
-/// Section *order* is owned by Rust `src/domain/settings_catalog.rs`
-/// (`visible_sections` / `settings_visible_sections`). Do not grow this
-/// list independently. Field visibility stays here until that lift.
+/// Section *order* is owned by Rust `src/domain/mod.rs` (`settings_catalog`
+/// / `visible_sections` / `settings_visible_sections`). Do not grow this
+/// list independently. There is **no Advanced** sidebar section: nested
+/// compositors, Display Backend, and Multiple Clients live under Display;
+/// shake / swipe under Input; session thumbnails under Graphics. Connection
+/// / Local Shell / Machines IDs remain for field mapping only and are not
+/// in `visible_sections` for any store host.
 ///
 /// Prefer the C trampoline (`wawona_settings_visible_sections`) when
 /// `libwawona.a` is linked. UniFFI `settings_visible_sections` is the
@@ -383,7 +394,7 @@ public struct GlobalSettingsCatalog: Sendable {
         case .android:
             return [
                 .display, .input, .graphics, .environment,
-                .waypipe, .ssh, .about, .dependencies,
+                .desktop, .waypipe, .ssh, .about, .dependencies,
             ]
         case .linux:
             return [
@@ -459,6 +470,7 @@ public struct GlobalSettingsCatalog: Sendable {
     ) -> [GlobalSettingsFieldID] {
         switch section {
         case .display:
+            // Was "Advanced" plus HDR. Same on iOS and Android.
             var fields: [GlobalSettingsFieldID] = [.colorOperations]
             if host == .macOS {
                 fields.append(.forceSSD)
@@ -472,10 +484,22 @@ public struct GlobalSettingsCatalog: Sendable {
             }
             return fields
         case .input:
-            var fields: [GlobalSettingsFieldID] = [
+            var fields: [GlobalSettingsFieldID] = []
+            // Toolbar Keys (Rootshell docking + appearance). Mobile / Android hosts.
+            if host == .iOS || host == .android || host == .visionOS || host == .tvOS {
+                fields.append(contentsOf: [
+                    .toolbarKeysCustomize,
+                    .persistentToolbar,
+                    .showToolbarWithHardwareKeyboard,
+                    .toolbarThemeAware,
+                    .toolbarChromeStyle,
+                    .toolbarArrowJoystickMode,
+                ])
+            }
+            fields.append(contentsOf: [
                 .virtualCursor,
                 .nestedCompositorCursor,
-            ]
+            ])
             if host != .tvOS {
                 fields.append(.touchInputType)
                 fields.append(.touchPointerEmulation)
@@ -486,7 +510,8 @@ public struct GlobalSettingsCatalog: Sendable {
                 .universalClipboard,
                 .shakeToClose,
             ])
-            // Phone/iPad: edge swipe opens sidebar. watchOS / Android keep exit swipe.
+            // Phone/iPad: edge swipe opens Machines sidebar (not exit).
+            // watchOS / Android keep swipe-back as session exit.
             if host == .watchOS || host == .android {
                 fields.append(.swipeBackToClose)
             }
@@ -499,8 +524,11 @@ public struct GlobalSettingsCatalog: Sendable {
             fields.append(contentsOf: [.vulkanDriver, .openGLDriver, .sessionThumbnails])
             return fields
         case .connection:
+            // Not in visible_sections. Env Vars owns wayland display fields.
             return [.waylandDisplay, .defaultWaylandClient]
         case .environment:
+            // Apple hosts EnvironmentVariablesView only (items empty in builder).
+            // Fields listed for catalog / Android parity of shell actions.
             var fields: [GlobalSettingsFieldID] = [
                 .environmentTable, .waylandDisplay, .defaultWaylandClient,
             ]
@@ -512,6 +540,7 @@ public struct GlobalSettingsCatalog: Sendable {
             }
             return fields
         case .localShell:
+            // Not in visible_sections. Shell reset actions live under Env Vars.
             if host == .tvOS || host == .watchOS {
                 return []
             }
@@ -521,6 +550,7 @@ public struct GlobalSettingsCatalog: Sendable {
             }
             return fields
         case .machines:
+            // Not in visible_sections. Gestures → Input; thumbnails → Graphics.
             var fields: [GlobalSettingsFieldID] = [.shakeToClose]
             if host == .watchOS || host == .android {
                 fields.append(.swipeBackToClose)

@@ -256,14 +256,20 @@ mod tests {
     fn card_labels_match_macos_view_model() {
         let mut native = machine("Local", false, MachineType::Native);
         native.remote_command.clear();
-        native.runtime_overrides.bundled_app_id = Some("foot".into());
-        assert_eq!(machine_subtitle(&native), "Foot Terminal");
+        native.runtime_overrides.bundled_app_id = Some("wawona-shell".into());
+        assert_eq!(machine_subtitle(&native), "Native Shell");
         assert_eq!(
             machine_configuration_summary(&native),
-            "Runs: Foot Terminal"
+            "Runs: Native Shell"
         );
         assert!(launch_supported(&native));
         assert_eq!(machine_scope_label(native.machine_type), "Local");
+
+        // Optional-software id still resolves via client_catalog (not keep-set).
+        let mut optional = machine("Foot", false, MachineType::Native);
+        optional.remote_command.clear();
+        optional.runtime_overrides.bundled_app_id = Some("foot".into());
+        assert_eq!(machine_subtitle(&optional), "Foot Terminal");
 
         let mut unconfigured = machine("Empty", false, MachineType::Native);
         unconfigured.remote_command.clear();

@@ -6,7 +6,7 @@ use super::error::DomainError;
 use super::machine_profile::MachineProfile;
 use super::profile_store::ProfileDocument;
 use super::validation::{
-    sanitize_ssh_host, validate_editor, validate_profile, EditorStateView, normalize_ssh_port,
+    normalize_ssh_port, sanitize_ssh_host, validate_editor, validate_profile, EditorStateView,
 };
 
 #[derive(uniffi::Object)]
@@ -42,10 +42,7 @@ impl MachineProfileStoreApi {
     }
 
     pub fn put_profile(&self, profile: MachineProfile) -> Result<(), DomainError> {
-        self.inner
-            .lock()
-            .expect("profile store lock")
-            .put(profile)
+        self.inner.lock().expect("profile store lock").put(profile)
     }
 
     pub fn delete_profile(&self, id: String) {
@@ -74,9 +71,7 @@ pub fn machine_profiles_decode_v1(json: String) -> Result<Vec<MachineProfile>, D
 }
 
 #[uniffi::export]
-pub fn machine_profiles_encode_v1(
-    profiles: Vec<MachineProfile>,
-) -> Result<String, DomainError> {
+pub fn machine_profiles_encode_v1(profiles: Vec<MachineProfile>) -> Result<String, DomainError> {
     let doc = ProfileDocument {
         profiles,
         active_machine_id: None,
@@ -168,11 +163,7 @@ pub fn launch_resolve_backend_json(
     classic_own_display: bool,
     cli_override: Option<String>,
 ) -> String {
-    super::launch_resolve::resolve_backend_json(
-        &pref,
-        classic_own_display,
-        cli_override.as_deref(),
-    )
+    super::launch_resolve::resolve_backend_json(&pref, classic_own_display, cli_override.as_deref())
 }
 
 #[uniffi::export]

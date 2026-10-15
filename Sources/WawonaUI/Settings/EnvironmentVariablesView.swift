@@ -195,21 +195,33 @@ public struct EnvironmentVariablesView: View {
         }
     }
 
+    /// Horizontal filter chips (Android Env Vars FilterChip parity). Not a
+    /// segmented control: long category lists stay scrollable with color marks.
     private var categoryPicker: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            Picker("Category", selection: $selectedCategory) {
-                WawonaLabel("All", systemImage: "square.grid.2x2")
-                    .tag(Optional<EnvironmentCategory>.none)
+            HStack(spacing: 8) {
+                EnvironmentCategoryChip(
+                    title: "All",
+                    systemImage: "square.grid.2x2",
+                    accent: Color.secondary,
+                    selected: selectedCategory == nil
+                ) {
+                    selectedCategory = nil
+                }
                 ForEach(activeCategories, id: \.self) { cat in
-                    WawonaLabel(cat.displayName, systemImage: cat.iconName)
-                        .tag(Optional(cat))
+                    EnvironmentCategoryChip(
+                        title: cat.displayName,
+                        systemImage: cat.iconName,
+                        accent: cat.accentColor,
+                        selected: selectedCategory == cat
+                    ) {
+                        selectedCategory = cat
+                    }
                 }
             }
-            .labelsHidden()
-            .pickerStyle(.segmented)
-            .fixedSize(horizontal: true, vertical: false)
-            .accessibility(identifier: "wwn.settings.environment.category")
+            .padding(.horizontal, 16)
             .padding(.vertical, 10)
+            .accessibility(identifier: "wwn.settings.environment.category")
         }
     }
 
@@ -728,4 +740,33 @@ struct NewEnvironmentVariableSheet: View {
     }
 }
 
-// TODO: Replace .segmented with .tabs when TabsPickerStyle ships in a stable SwiftUI SDK.
+/// Colored category chip for Env Vars filter strip (Android FilterChip parity).
+private struct EnvironmentCategoryChip: View {
+    let title: String
+    let systemImage: String
+    let accent: Color
+    let selected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(selected ? accent : .secondary)
+                Text(title)
+                    .font(.subheadline.weight(selected ? .semibold : .regular))
+                    .foregroundColor(selected ? .primary : .secondary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .backport.background(
+                selected ? accent.opacity(0.18) : Color.secondary.opacity(0.12),
+                in: Capsule()
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
+        .accessibility(addTraits: selected ? .isSelected : [])
+        .accessibility(label: Text(title))
+    }
+}

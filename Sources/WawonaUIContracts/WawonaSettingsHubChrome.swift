@@ -5,42 +5,40 @@ import AppKit
 import UIKit
 #endif
 
-/// Settings.app-style colored icon tiles (General hub look).
+/// Sidebar row helpers for in-app Global Settings and Machines Configuration.
 ///
-/// Not used by the in-app Global Settings sidebar. That column matches
-/// Machines home (`List(selection:)` + tinted SF Symbol `WawonaLabel`) so
-/// iOS 26 sidebar Liquid Glass stays consistent. Keep this helper only for
-/// surfaces that intentionally mimic Settings.app rows. OS PrefPane /
+/// Sidebars use **plain SF Symbols** (system style). Never colored rounded
+/// squares with white glyphs. Section accent colors tint Settings **detail**
+/// controls only (`settingsSectionAccent` / `.backport.tint`). OS PrefPane /
 /// Settings.bundle hosts are retired (`wawona-global-settings-exclusive`).
 public enum WawonaSettingsHubChrome {
-    public static let iconTileSize: CGFloat = 29
-    public static let iconTileCorner: CGFloat = 7
+    /// Column width so sidebar titles align under plain glyphs.
+    public static let sidebarIconColumn: CGFloat = 20
 
-    /// Settings.app / General-style glyph tile.
+    /// Plain SF Symbol for a sidebar row. No tile background.
     @ViewBuilder
-    public static func iconTile(systemName: String, color: Color) -> some View {
-        Image(systemName: systemName.isEmpty ? "gearshape.fill" : systemName)
-            .font(.body.weight(.semibold))
+    public static func sidebarIcon(systemName: String) -> some View {
+        Image(systemName: systemName.isEmpty ? "gearshape" : systemName)
+            .font(.body)
             // iOS 13 floor: avoid foregroundStyle (15+) / accessibilityHidden (14+).
-            .foregroundColor(.white)
-            .frame(width: iconTileSize, height: iconTileSize)
-            .background(
-                RoundedRectangle(cornerRadius: iconTileCorner, style: .continuous)
-                    .fill(color)
-            )
+            .foregroundColor(.primary)
+            .frame(width: sidebarIconColumn, alignment: .center)
             .accessibility(hidden: true)
     }
 
-    /// Hub list row: colored SF Symbol tile + section title.
+    /// Hub list row: plain SF Symbol + section title.
     /// iOS 13 floor: avoid `Label { } icon:` (iOS 14+).
-    @ViewBuilder
+    /// `iconColor` is ignored (kept so call sites stay source-compatible).
+    /// Accents belong on Settings detail controls, not sidebar icons.
     public static func hubRow(
         title: String,
         systemImage: String,
         iconColor: Color
     ) -> some View {
-        HStack(spacing: 12) {
-            iconTile(systemName: systemImage, color: iconColor)
+        // iconColor unused on purpose: no colored sidebar tiles.
+        _ = iconColor
+        return HStack(spacing: 8) {
+            sidebarIcon(systemName: systemImage)
             Text(title)
             Spacer(minLength: 0)
         }
@@ -56,7 +54,7 @@ public enum WawonaSettingsHubChrome {
         case let t where t.contains("environment"): return "terminal"
         case let t where t.contains("desktop"): return "desktopcomputer"
         case let t where t.contains("about"): return "info.circle"
-        default: return "gearshape.fill"
+        default: return "gearshape"
         }
     }
 
@@ -65,4 +63,102 @@ public enum WawonaSettingsHubChrome {
     #elseif canImport(UIKit)
     public static func color(uiColor: UIColor) -> Color { Color(uiColor) }
     #endif
+
+    /// Section accent for Global Settings **detail** controls (and headers).
+    /// Matches `PreferencesSectionsBuilder.iconColor` and Android
+    /// `SettingsTab.accentColor`. Never use this as a sidebar icon tile fill.
+    /// Uses system UIColors so teal/indigo/brown stay valid on the iOS 13 floor
+    /// (SwiftUI `.teal` / `.indigo` / `.brown` are iOS 15+).
+    public static func accentColor(for id: GlobalSettingsSectionID) -> Color {
+        #if os(macOS)
+        switch id {
+        case .display, .ssh: return Color(nsColor: .systemBlue)
+        case .input, .about: return Color(nsColor: .systemPurple)
+        case .graphics: return Color(nsColor: .systemRed)
+        case .connection: return Color(nsColor: .systemOrange)
+        case .environment, .desktop: return Color(nsColor: .systemTeal)
+        case .localShell, .waypipe: return Color(nsColor: .systemGreen)
+        case .machines: return Color(nsColor: .systemIndigo)
+        case .iCloudSync:
+            return Color(
+                nsColor: NSColor(calibratedRed: 0.20, green: 0.68, blue: 0.90, alpha: 1)
+            )
+        case .appleWatch: return Color(nsColor: .systemPink)
+        case .dependencies: return Color(nsColor: .systemBrown)
+        }
+        #elseif os(watchOS)
+        // watchOS: UIColor.systemBlue / systemTeal / … unavailable.
+        switch id {
+        case .display, .ssh: return .blue
+        case .input, .about: return .purple
+        case .graphics: return .red
+        case .connection: return .orange
+        case .environment, .desktop:
+            return Color(red: 0.35, green: 0.78, blue: 0.78)
+        case .localShell, .waypipe: return .green
+        case .machines:
+            return Color(red: 0.35, green: 0.34, blue: 0.84)
+        case .iCloudSync:
+            return Color(red: 0.20, green: 0.68, blue: 0.90)
+        case .appleWatch: return .pink
+        case .dependencies:
+            return Color(red: 0.67, green: 0.45, blue: 0.20)
+        }
+        #elseif canImport(UIKit)
+        switch id {
+        case .display, .ssh: return Color(UIColor.systemBlue)
+        case .input, .about: return Color(UIColor.systemPurple)
+        case .graphics: return Color(UIColor.systemRed)
+        case .connection: return Color(UIColor.systemOrange)
+        case .environment, .desktop: return Color(UIColor.systemTeal)
+        case .localShell, .waypipe: return Color(UIColor.systemGreen)
+        case .machines: return Color(UIColor.systemIndigo)
+        case .iCloudSync:
+            return Color(UIColor(red: 0.20, green: 0.68, blue: 0.90, alpha: 1))
+        case .appleWatch: return Color(UIColor.systemPink)
+        case .dependencies: return Color(UIColor.systemBrown)
+        }
+        #else
+        switch id {
+        case .display, .ssh: return .blue
+        case .input, .about: return .purple
+        case .graphics: return .red
+        case .connection: return .orange
+        case .environment, .desktop:
+            return Color(red: 0.35, green: 0.78, blue: 0.78)
+        case .localShell, .waypipe: return .green
+        case .machines:
+            return Color(red: 0.35, green: 0.34, blue: 0.84)
+        case .iCloudSync:
+            return Color(red: 0.20, green: 0.68, blue: 0.90)
+        case .appleWatch: return .pink
+        case .dependencies:
+            return Color(red: 0.67, green: 0.45, blue: 0.20)
+        }
+        #endif
+    }
+}
+
+// MARK: - Section accent (Settings detail controls)
+
+/// Accent for the open Settings section's detail pane (toggles, pickers,
+/// buttons, links, section headers). Default is the system accent.
+/// Do **not** paint this onto sidebar icon backgrounds.
+private enum SettingsSectionAccentKey: EnvironmentKey {
+    static let defaultValue: Color = .accentColor
+}
+
+public extension EnvironmentValues {
+    var settingsSectionAccent: Color {
+        get { self[SettingsSectionAccentKey.self] }
+        set { self[SettingsSectionAccentKey.self] = newValue }
+    }
+}
+
+public extension View {
+    /// Propagate section accent into Settings detail. Pair with
+    /// `.backport.tint(color)` so Toggle / Picker / Button / Link use it.
+    func settingsSectionAccent(_ color: Color) -> some View {
+        environment(\.settingsSectionAccent, color)
+    }
 }

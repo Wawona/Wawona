@@ -67,7 +67,15 @@ public final class WWNWatchCompositorBridge: NSObject {
 
     @objc public func startHostShellConsole() { hostShellActive = true }
     @objc(writeHostShell:)
-    public func writeHostShell(_ text: String) { _ = text }
+    public func writeHostShell(_ text: String) {
+        guard !text.isEmpty else { return }
+        let line = text.hasSuffix("\n") ? text : text + "\n"
+        NotificationCenter.default.post(
+            name: WWNGuestConsoleOutputNotification,
+            object: nil,
+            userInfo: ["text": line]
+        )
+    }
     @objc public func stopHostShellConsole() { hostShellActive = false }
 
     @objc(sendText:)

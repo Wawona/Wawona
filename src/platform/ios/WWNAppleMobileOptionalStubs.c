@@ -97,4 +97,96 @@ int wwn_niri_main_already_used(void) {
   return 0;
 }
 
+/*
+ * Temporary dogfood stubs: tip GuestConsoleView calls wwn_term_* that the
+ * pinned ios-backend-sim (26.10.13) libwawona.a does not export yet. Real
+ * Terminal sources live under src/term (flake input). Rebuild
+ * wawona-ios-backend-sim against tip Terminal, then delete this block.
+ */
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+
+typedef struct wwn_term wwn_term;
+
+wwn_term *wwn_term_new(uint32_t cols, uint32_t rows) {
+  (void)cols;
+  (void)rows;
+  return NULL;
+}
+
+void wwn_term_free(wwn_term *term) { (void)term; }
+
+void wwn_term_resize(wwn_term *term, uint32_t cols, uint32_t rows) {
+  (void)term;
+  (void)cols;
+  (void)rows;
+}
+
+void wwn_term_feed(wwn_term *term, const uint8_t *bytes, size_t len) {
+  (void)term;
+  (void)bytes;
+  (void)len;
+}
+
+size_t wwn_term_take_reply(wwn_term *term, uint8_t *buf, size_t cap) {
+  (void)term;
+  (void)buf;
+  (void)cap;
+  return 0;
+}
+
+void wwn_term_set_cell_px(wwn_term *term, uint32_t width, uint32_t height) {
+  (void)term;
+  (void)width;
+  (void)height;
+}
+
+void wwn_term_pointer(wwn_term *term, uint8_t button, uint32_t col, uint32_t row,
+                      int32_t pressed, int32_t motion) {
+  (void)term;
+  (void)button;
+  (void)col;
+  (void)row;
+  (void)pressed;
+  (void)motion;
+}
+
+char *wwn_term_lines_json(const wwn_term *term) {
+  (void)term;
+  char *s = (char *)malloc(3);
+  if (s) {
+    memcpy(s, "[]", 3);
+  }
+  return s;
+}
+
+char *wwn_term_images_json(const wwn_term *term) {
+  (void)term;
+  char *s = (char *)malloc(3);
+  if (s) {
+    memcpy(s, "[]", 3);
+  }
+  return s;
+}
+
+char *wwn_term_encode_paste(wwn_term *term, const uint8_t *bytes, size_t len) {
+  (void)term;
+  if (!bytes || len == 0) {
+    char *empty = (char *)malloc(1);
+    if (empty) {
+      empty[0] = '\0';
+    }
+    return empty;
+  }
+  char *s = (char *)malloc(len + 1);
+  if (s) {
+    memcpy(s, bytes, len);
+    s[len] = '\0';
+  }
+  return s;
+}
+
+void wwn_term_string_free(char *ptr) { free(ptr); }
+
 #endif /* iOS / iPadOS / tvOS / visionOS */

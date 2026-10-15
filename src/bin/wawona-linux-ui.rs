@@ -27,7 +27,8 @@ mod app {
     };
     use wawona::linux::ui::{
         a11y, build_home_shell, clamp_content, install_breakpoint, maybe_show_welcome, rebuild_home,
-        show_editor, show_settings, AppState, HomeShell, LayoutBinding, MachineSessions,
+        show_editor, show_settings, show_tab_overview, AppState, HomeShell, LayoutBinding,
+        MachineSessions,
         RebuildHome, SharedAppState,
     };
     use wawona::linux::ui_model::LayoutMode;
@@ -434,6 +435,15 @@ mod app {
             Some("Settings"),
         );
         header.pack_end(&settings_btn);
+
+        let overview_btn = gtk::Button::from_icon_name("view-grid-symbolic");
+        overview_btn.set_tooltip_text(Some("Tab Overview"));
+        a11y::set_wwn_a11y(
+            &overview_btn,
+            a11y::id::MACHINES_OVERVIEW,
+            Some("Tab Overview"),
+        );
+        header.pack_end(&overview_btn);
 
         let new_btn_content = gtk::Box::new(gtk::Orientation::Horizontal, 6);
         new_btn_content.append(&gtk::Image::from_icon_name("list-add-symbolic"));
@@ -1108,6 +1118,24 @@ mod app {
             settings_btn.connect_clicked(move |_| {
                 wawona::wlog!("UI", "Settings button pressed");
                 show_settings(&window, &state, binding.get());
+            });
+        }
+
+        {
+            let state = state.clone();
+            let window = window.clone();
+            let home = home.clone();
+            let sessions = machine_sessions.clone();
+            let binding = layout_binding.clone();
+            overview_btn.connect_clicked(move |_| {
+                wawona::wlog!("UI", "Tab Overview button pressed");
+                show_tab_overview(
+                    &window,
+                    &state,
+                    sessions.clone(),
+                    &home,
+                    binding.get(),
+                );
             });
         }
 

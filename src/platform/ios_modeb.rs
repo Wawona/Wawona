@@ -375,9 +375,7 @@ extern "C" fn present_logical_session(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn wwn_modeb_desktop_set_present_session(
-    fn_ptr: Option<PresentSessionFn>,
-) {
+pub unsafe extern "C" fn wwn_modeb_desktop_set_present_session(fn_ptr: Option<PresentSessionFn>) {
     PRESENT_SESSION.store(
         fn_ptr.map(|f| f as *mut ()).unwrap_or(ptr::null_mut()),
         Ordering::SeqCst,
@@ -773,10 +771,7 @@ pub extern "C" fn wwn_modeb_desktop_phase() -> u32 {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn wwn_modeb_desktop_size(
-    out_width: *mut u32,
-    out_height: *mut u32,
-) -> i32 {
+pub unsafe extern "C" fn wwn_modeb_desktop_size(out_width: *mut u32, out_height: *mut u32) -> i32 {
     let state = desktop()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());

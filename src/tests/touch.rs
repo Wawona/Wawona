@@ -82,8 +82,7 @@ impl Dispatch<wl_seat::WlSeat, ()> for Probe {
                         state.touch = Some(seat.get_touch(qh, ()));
                     }
                 }
-                if capabilities.contains(wl_seat::Capability::Pointer) && state.pointer.is_none()
-                {
+                if capabilities.contains(wl_seat::Capability::Pointer) && state.pointer.is_none() {
                     state.pointer = Some(seat.get_pointer(qh, ()));
                 }
             }
@@ -219,7 +218,11 @@ fn bind_probe(env: &mut TestEnv) -> (wayland_client::EventQueue<Probe>, Probe) {
     (queue, probe)
 }
 
-fn map_surface(env: &mut TestEnv, queue: &mut wayland_client::EventQueue<Probe>, probe: &mut Probe) {
+fn map_surface(
+    env: &mut TestEnv,
+    queue: &mut wayland_client::EventQueue<Probe>,
+    probe: &mut Probe,
+) {
     let qh = queue.handle();
     let compositor = probe.compositor.clone().expect("wl_compositor");
     let xdg = probe.xdg_wm_base.clone().expect("xdg_wm_base");
@@ -234,11 +237,7 @@ fn map_surface(env: &mut TestEnv, queue: &mut wayland_client::EventQueue<Probe>,
 }
 
 fn first_surface_id(env: &TestEnv) -> u32 {
-    *env.state
-        .surfaces
-        .keys()
-        .next()
-        .expect("mapped surface")
+    *env.state.surfaces.keys().next().expect("mapped surface")
 }
 
 #[test]
@@ -258,8 +257,7 @@ fn smithay_touch_down_motion_up_frame() {
 
     env.state
         .inject_touch_down_on_surface(7, sid, 12.0, 18.0, 10);
-    env.state
-        .inject_touch_motion_local(7, 20.0, 30.0, 20);
+    env.state.inject_touch_motion_local(7, 20.0, 30.0, 20);
     env.state.inject_touch_up(7, 30);
     env.state.inject_touch_frame();
     env.wait_roundtrip(&mut queue, &mut probe);
@@ -268,7 +266,10 @@ fn smithay_touch_down_motion_up_frame() {
     assert_eq!(probe.motions, vec![7]);
     assert_eq!(probe.ups, vec![7]);
     assert!(probe.frames >= 1);
-    assert_eq!(probe.pointer_axis, 0, "one-finger inject must not emit axis");
+    assert_eq!(
+        probe.pointer_axis, 0,
+        "one-finger inject must not emit axis"
+    );
     assert_eq!(
         probe.pointer_buttons, 0,
         "apps must not get BTN_LEFT from Multi-Touch"
@@ -283,8 +284,7 @@ fn pointer_emulation_pref_mirrors_button() {
     map_surface(&mut env, &mut queue, &mut probe);
     let sid = first_surface_id(&env);
 
-    env.state
-        .inject_touch_down_on_surface(3, sid, 8.0, 8.0, 10);
+    env.state.inject_touch_down_on_surface(3, sid, 8.0, 8.0, 10);
     env.state.inject_touch_up(3, 20);
     env.state.inject_touch_frame();
     env.wait_roundtrip(&mut queue, &mut probe);
@@ -305,10 +305,8 @@ fn single_touch_cap_drops_second_id() {
     map_surface(&mut env, &mut queue, &mut probe);
     let sid = first_surface_id(&env);
 
-    env.state
-        .inject_touch_down_on_surface(1, sid, 1.0, 1.0, 10);
-    env.state
-        .inject_touch_down_on_surface(2, sid, 2.0, 2.0, 11);
+    env.state.inject_touch_down_on_surface(1, sid, 1.0, 1.0, 10);
+    env.state.inject_touch_down_on_surface(2, sid, 2.0, 2.0, 11);
     env.state.inject_touch_frame();
     env.wait_roundtrip(&mut queue, &mut probe);
 
@@ -323,8 +321,7 @@ fn touch_cancel_clears() {
     map_surface(&mut env, &mut queue, &mut probe);
     let sid = first_surface_id(&env);
 
-    env.state
-        .inject_touch_down_on_surface(4, sid, 1.0, 1.0, 10);
+    env.state.inject_touch_down_on_surface(4, sid, 1.0, 1.0, 10);
     env.state.inject_touch_cancel();
     env.wait_roundtrip(&mut queue, &mut probe);
 
@@ -336,7 +333,8 @@ fn touch_cancel_clears() {
 fn store_safe_hides_primary_selection() {
     let mut state = crate::core::state::CompositorState::new(None);
     state.protocol_profile = ProtocolProfile::StoreSafe;
-    let mut display = wayland_server::Display::<crate::core::state::CompositorState>::new().unwrap();
+    let mut display =
+        wayland_server::Display::<crate::core::state::CompositorState>::new().unwrap();
     let mut handle = display.handle();
     crate::core::wayland::smithay_runtime::register_core_shell(&mut state, &handle);
     crate::core::wayland::ext::register(&mut state, &handle);
@@ -365,7 +363,8 @@ fn store_safe_hides_primary_selection() {
 fn desktop_advertises_primary_selection() {
     let mut state = crate::core::state::CompositorState::new(None);
     state.protocol_profile = ProtocolProfile::DesktopHost;
-    let mut display = wayland_server::Display::<crate::core::state::CompositorState>::new().unwrap();
+    let mut display =
+        wayland_server::Display::<crate::core::state::CompositorState>::new().unwrap();
     let mut handle = display.handle();
     crate::core::wayland::smithay_runtime::register_core_shell(&mut state, &handle);
     crate::core::wayland::ext::register(&mut state, &handle);

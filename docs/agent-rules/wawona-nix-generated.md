@@ -31,10 +31,24 @@ Bindings: `uniffi-bindgen` is `dependencies/generators/uniffi-bindgen.nix`
 rewrites it; CI `git diff --exit-code` fails if stale. That is not an app
 binary. Do not use it as a pattern for Swift, Kotlin, or Xcode projects.
 
+## Xcode project
+
+`Wawona.xcodeproj` / `project.pbxproj` is **always** the output of Nix
+XcodeGen (`dependencies/generators/xcodegen.nix`). An Apple app `nix build`
+runs that generator inside the derivation. A local project is only
+`nix run .#xcodegen`, `.#xcodegen-ios`, or `.#xcodegen-macos`.
+
+Spec paths stay relative (`.nix-deps/...`). Copy a store input into
+`.nix-deps` before generate. A store path in the spec is written into
+`project.pbxproj`.
+
 ## Hard rejects
 
 - Checking in generated UniFFI Swift/Kotlin under `Sources/` or `android/`
-- Hand-editing a file Nix just wrote
+- Hand-editing `project.pbxproj`, or any file Nix just wrote
+- Copying a generated `.xcodeproj` aside and patching paths into it
+- Putting `/nix/store` or `/store/<hash>` into `project.pbxproj`
+- Interpolating a Nix store path into an XcodeGen source entry
 - `|| true` on bindgen so a missing binding still "succeeds"
 - Adding `uniffi` `cli` / `uniffi_build` to the Wawona crate2nix graph
 - Copying `result/uniffi` into git "for convenience"

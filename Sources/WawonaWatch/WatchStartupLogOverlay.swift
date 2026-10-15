@@ -62,26 +62,7 @@ struct WatchStartupLogOverlay: View {
                     .lineLimit(2)
             }
 
-            // watchOS 10+ has ScrollViewReader natively. Phone Terminal uses
-            // WawonaBackport.scrollViewReader (iOS 13 floor); Watch does not
-            // link WawonaUI Compatibility.
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 2) {
-                        ForEach(Array(model.lines.enumerated()), id: \.offset) { index, line in
-                            Text(line)
-                                .font(.system(size: 9, design: .monospaced))
-                                .foregroundStyle(Color(red: 0.41, green: 1.0, blue: 0.45))
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .id(index)
-                        }
-                    }
-                }
-                .onChange(of: model.lines.count) { _, count in
-                    guard count > 0 else { return }
-                    proxy.scrollTo(count - 1, anchor: .bottom)
-                }
-            }
+            WatchTerminalScreen(text: model.lines.joined(separator: "\n"))
         }
         .padding(8)
         .frame(maxWidth: .infinity, maxHeight: .infinity)

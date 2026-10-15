@@ -203,14 +203,8 @@ struct WatchGuestConsoleOverlay: View {
     let text: String
 
     var body: some View {
-        ScrollView {
-            Text(AttributedString(WWNWatchCompositorBridge.styledTerminalText(text)))
-                .lineLimit(nil)
-                .fixedSize(horizontal: true, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(6)
-        }
-        .background(Color.black)
+        WatchTerminalScreen(text: text)
+            .padding(6)
     }
 }
 

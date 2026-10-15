@@ -1,6 +1,9 @@
 import Foundation
 
-/// OCI container supervision. Product path is WWNRelay; Rust owns the host engine next.
+/// OCI container supervision. Same StaticCpu engine as VM (`WWNRelay`).
+/// Host chrome calls here; Rust owns create/start/stop/kill over the guest
+/// control channel (`relay-oci` `ContainerCommand`, including Kill).
+/// Session park (hide surface → Machines) stays in `WWNMachinesViewModel.disconnect`.
 @objc(WWNContainerRunner)
 public final class WWNContainerRunner: NSObject {
     @objc(sharedRunner) public static let sharedRunner = WWNContainerRunner()
@@ -11,20 +14,17 @@ public final class WWNContainerRunner: NSObject {
 
     @objc(launchProfile:error:)
     public func launchProfile(_ profile: WWNMachineProfile, error: NSErrorPointer) -> Bool {
-        _ = profile
-        error?.pointee = NSError(
-            domain: "WWNContainerRunner",
-            code: 200,
-            userInfo: [NSLocalizedDescriptionKey:
-                "Container supervision moves to the Relay Rust host. Use Machines Start."]
-        )
-        return false
+        // Thin path: container kind uses Relay StaticCpu (OCI-in-VM). Never a
+        // second engine. Never QEMU/UTM.
+        return WWNRelay.sharedRelay.startProfile(profile, error: error)
     }
 
     @objc(stopProfileWithMachineId:)
     public func stopProfile(withMachineId machineId: String) {
-        _ = machineId
+        WWNRelay.sharedRelay.stopProfile(withMachineId: machineId)
     }
 
-    @objc public func stopAll() {}
+    @objc public func stopAll() {
+        WWNRelay.sharedRelay.stopAll()
+    }
 }

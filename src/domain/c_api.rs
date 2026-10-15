@@ -18,7 +18,9 @@ fn cstr_to_str<'a>(ptr: *const c_char) -> Option<&'a str> {
 }
 
 fn to_cstring(s: String) -> *mut c_char {
-    CString::new(s).map(|c| c.into_raw()).unwrap_or(std::ptr::null_mut())
+    CString::new(s)
+        .map(|c| c.into_raw())
+        .unwrap_or(std::ptr::null_mut())
 }
 
 #[no_mangle]
@@ -202,10 +204,7 @@ pub extern "C" fn wawona_session_is_forbidden_client_id(id: *const c_char) -> i3
 /// When `argc` > 0, `argv` is a classic C argv (argv[0] skipped).
 /// Caller frees with `wawona_domain_string_free`.
 #[no_mangle]
-pub extern "C" fn wawona_darwin_cli_parse(
-    argc: i32,
-    argv: *const *const c_char,
-) -> *mut c_char {
+pub extern "C" fn wawona_darwin_cli_parse(argc: i32, argv: *const *const c_char) -> *mut c_char {
     if argc <= 1 || argv.is_null() {
         return to_cstring(super::darwin_cli::parse_to_json(&[]));
     }
@@ -288,4 +287,27 @@ pub extern "C" fn wawona_launch_nested_cursor_policy(
         is_nested_compositor != 0,
         show_virtual_cursor != 0,
     ))
+}
+
+/// Filter Tab Overview titles. `titles_json` is a JSON string array.
+/// Returns a JSON array of matching indices, or null on parse error.
+/// Caller frees with `wawona_domain_string_free`.
+#[no_mangle]
+pub extern "C" fn wawona_tab_overview_filter_indices(
+    query: *const c_char,
+    titles_json: *const c_char,
+) -> *mut c_char {
+    let q = cstr_to_str(query).unwrap_or("");
+    let Some(titles_text) = cstr_to_str(titles_json) else {
+        return std::ptr::null_mut();
+    };
+    let titles: Vec<String> = match serde_json::from_str(titles_text) {
+        Ok(v) => v,
+        Err(_) => return std::ptr::null_mut(),
+    };
+    let indices = super::tab_overview::filter_indices(q, &titles);
+    match serde_json::to_string(&indices) {
+        Ok(out) => to_cstring(out),
+        Err(_) => std::ptr::null_mut(),
+    }
 }

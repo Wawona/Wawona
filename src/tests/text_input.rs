@@ -221,7 +221,8 @@ fn host_im_stand_in_binds() {
 fn store_safe_does_not_advertise_im_or_virtual_keyboard() {
     let mut state = crate::core::state::CompositorState::new(None);
     state.protocol_profile = ProtocolProfile::StoreSafe;
-    let mut display = wayland_server::Display::<crate::core::state::CompositorState>::new().unwrap();
+    let mut display =
+        wayland_server::Display::<crate::core::state::CompositorState>::new().unwrap();
     let mut handle = display.handle();
     crate::core::wayland::smithay_runtime::register_core_shell(&mut state, &handle);
     crate::core::wayland::ext::register(&mut state, &handle);

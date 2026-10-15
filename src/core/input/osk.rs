@@ -27,12 +27,7 @@ pub fn default_osk_host() -> OskHost {
 /// `wanted` is committed TI enable or terminal synthesis (`text_entry_wanted`).
 /// `hardware_keyboard` collapses the OSK (iPad Magic Keyboard, Bluetooth).
 /// `force` is a manual activate on OSK hosts only (Sxmo / KWin style).
-pub fn osk_should_show(
-    wanted: bool,
-    host: OskHost,
-    hardware_keyboard: bool,
-    force: bool,
-) -> bool {
+pub fn osk_should_show(wanted: bool, host: OskHost, hardware_keyboard: bool, force: bool) -> bool {
     match host {
         OskHost::Never => false,
         OskHost::TouchOsk => force || (wanted && !hardware_keyboard),

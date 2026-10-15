@@ -1472,8 +1472,11 @@ PLIST
   ] ++ wawonaAppleSources;
   # Phone / iPad get ToolbarKeys. tvOS and visionOS omit it: haptics /
   # ultraThinMaterial / UIScreen are unavailable on those SDKs.
+  # Relative path only. installPhase and the local xcodegen script copy
+  # ToolbarKeys into .nix-deps before generate. A store path here becomes a
+  # /nix/store entry in project.pbxproj.
   appleMobileEnvUISourcesWithToolbar = appleMobileEnvUISourcesBase ++ [
-    { path = "${toolbarKeysSrc}/apple/Keyboard"; }
+    { path = ".nix-deps/toolbar-keys/Keyboard"; }
   ];
   appleMobileEnvUISources = appleMobileEnvUISourcesWithToolbar;
   appleTvEnvUISources = [
@@ -3278,6 +3281,10 @@ PLIST
       runHook preInstall
       export HOME="$TMPDIR"
       export USER="nobody"
+      rm -rf .nix-deps/toolbar-keys
+      mkdir -p .nix-deps/toolbar-keys
+      cp -R ${toolbarKeysSrc}/apple/Keyboard .nix-deps/toolbar-keys/Keyboard
+      chmod -R u+w .nix-deps/toolbar-keys
       ${pkgs.xcodegen}/bin/xcodegen generate --spec project.yml
       mkdir -p $out
       cp -R . "$out/"
@@ -3397,6 +3404,10 @@ EOF
     if [ -n "$EFFECTIVE_TEAM_ID" ]; then
       echo "Applied TEAM_ID=$EFFECTIVE_TEAM_ID to Wawona-iOS, Wawona-iPadOS, Wawona-tvOS, and Wawona-watchOS."
     fi
+    rm -rf "$REPO_ROOT/.nix-deps/toolbar-keys"
+    mkdir -p "$REPO_ROOT/.nix-deps/toolbar-keys"
+    cp -R ${toolbarKeysSrc}/apple/Keyboard "$REPO_ROOT/.nix-deps/toolbar-keys/Keyboard"
+    chmod -R u+w "$REPO_ROOT/.nix-deps/toolbar-keys"
     ${xcodeUtils.xcodeWrapper}/bin/xcode-wrapper ${pkgs.xcodegen}/bin/xcodegen generate --use-cache --spec "$TMP_SPEC"
 
     # #ITMS-90426-watch (2026-08-08): three embed-location variants tried for

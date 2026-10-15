@@ -58,7 +58,11 @@ pub fn sw_vers_block(product: &str, version: &str, build: &str) -> String {
     format!("ProductName:\t\t{product}\nProductVersion:\t\t{version}\nBuildVersion:\t\t{build}\n")
 }
 
-pub fn load_plist_value(path: &str, data: &[u8], json_from_host: Option<String>) -> Result<Value, String> {
+pub fn load_plist_value(
+    path: &str,
+    data: &[u8],
+    json_from_host: Option<String>,
+) -> Result<Value, String> {
     if let Some(j) = json_from_host {
         return serde_json::from_str(&j).map_err(|e| e.to_string());
     }
@@ -156,7 +160,7 @@ fn json_quoted(s: &str) -> String {
 
 pub fn defaults_read_domain(value: &Value) -> String {
     let mut out = String::new();
-    write_next( &mut out, value, 0);
+    write_next(&mut out, value, 0);
     if !out.ends_with('\n') {
         out.push('\n');
     }
@@ -294,7 +298,11 @@ impl<'a> Xml<'a> {
     fn parse_value(&mut self) -> Result<Value, String> {
         self.skip_ws_and_comments();
         let tag = self.skip_tag()?;
-        let name = tag.trim_end_matches('/').split_whitespace().next().unwrap_or("");
+        let name = tag
+            .trim_end_matches('/')
+            .split_whitespace()
+            .next()
+            .unwrap_or("");
         if tag.ends_with('/') || name == "true" || name == "false" {
             return match name {
                 "true" => Ok(Value::Bool(true)),
@@ -414,9 +422,7 @@ pub fn ostype_display(bytes: &[u8; 4]) -> String {
 }
 
 pub fn get_file_info_text(path: &Path, meta: &std::fs::Metadata, finder: Option<&[u8]>) -> String {
-    let shown = path
-        .canonicalize()
-        .unwrap_or_else(|_| path.to_path_buf());
+    let shown = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
     let mut ty = [0u8; 4];
     let mut cr = [0u8; 4];
     if let Some(buf) = finder {
@@ -454,7 +460,11 @@ pub fn codesign_verbose(path: &str, data: &[u8]) -> String {
                 let _ = writeln!(out, "Signature size={n}");
             }
             let _ = writeln!(out, "Info.plist=not bound");
-            let _ = writeln!(out, "TeamIdentifier={}", info.team.unwrap_or_else(|| "not set".into()));
+            let _ = writeln!(
+                out,
+                "TeamIdentifier={}",
+                info.team.unwrap_or_else(|| "not set".into())
+            );
             let _ = writeln!(out, "Sealed Resources=none");
             if let Some(r) = info.req_line {
                 let _ = writeln!(out, "{r}");
@@ -591,9 +601,8 @@ fn parse_thin(data: &[u8], format_override: Option<String>) -> Result<CsInfo, ()
         }
         off += cmdsize;
     }
-    let fmt = format_override.unwrap_or_else(|| {
-        format!("Mach-O thin ({})", cpu_name(cputype, subtype))
-    });
+    let fmt =
+        format_override.unwrap_or_else(|| format!("Mach-O thin ({})", cpu_name(cputype, subtype)));
     Ok(CsInfo {
         ident,
         format: fmt,
@@ -644,15 +653,12 @@ fn parse_superblob(blob: &[u8]) -> Option<Cd> {
             if rmagic == 0xfade0c01 {
                 let length = u32::from_be_bytes(req[4..8].try_into().ok()?);
                 let nreq = u32::from_be_bytes(req[8..12].try_into().ok()?);
-                req_line = Some(format!(
-                    "Internal requirements count={nreq} size={length}"
-                ));
+                req_line = Some(format!("Internal requirements count={nreq} size={length}"));
             }
         } else if typ == 0x10000 && blob.len() >= offset + 8 {
             let cms = &blob[offset..];
-            cms_size = Some(
-                (u32::from_be_bytes(cms[4..8].try_into().ok()?) as usize).saturating_sub(8),
-            );
+            cms_size =
+                Some((u32::from_be_bytes(cms[4..8].try_into().ok()?) as usize).saturating_sub(8));
         }
     }
     let mut cd = cd?;
@@ -720,7 +726,11 @@ fn cpu_name(cputype: u32, subtype: u32) -> String {
 }
 
 fn rd32(data: &[u8], off: usize, swapped: bool) -> Result<u32, ()> {
-    let s: [u8; 4] = data.get(off..off + 4).ok_or(())?.try_into().map_err(|_| ())?;
+    let s: [u8; 4] = data
+        .get(off..off + 4)
+        .ok_or(())?
+        .try_into()
+        .map_err(|_| ())?;
     Ok(if swapped {
         u32::from_le_bytes(s)
     } else {
@@ -729,7 +739,11 @@ fn rd32(data: &[u8], off: usize, swapped: bool) -> Result<u32, ()> {
 }
 
 fn rd32_end(data: &[u8], off: usize, le: bool) -> Result<u32, ()> {
-    let s: [u8; 4] = data.get(off..off + 4).ok_or(())?.try_into().map_err(|_| ())?;
+    let s: [u8; 4] = data
+        .get(off..off + 4)
+        .ok_or(())?
+        .try_into()
+        .map_err(|_| ())?;
     Ok(if le {
         u32::from_le_bytes(s)
     } else {
@@ -744,18 +758,27 @@ mod tests {
     #[test]
     fn sw_vers_uses_tabs() {
         let s = sw_vers_block("macOS", "26.5.1", "25F80");
-        assert_eq!(s, "ProductName:\t\tmacOS\nProductVersion:\t\t26.5.1\nBuildVersion:\t\t25F80\n");
+        assert_eq!(
+            s,
+            "ProductName:\t\tmacOS\nProductVersion:\t\t26.5.1\nBuildVersion:\t\t25F80\n"
+        );
     }
 
     #[test]
     fn plutil_p_matches_apple_shape() {
         let v = serde_json::json!({"hello":"world","n":1});
-        assert_eq!(plutil_p(&v), "{\n  \"hello\" => \"world\"\n  \"n\" => 1\n}\n");
+        assert_eq!(
+            plutil_p(&v),
+            "{\n  \"hello\" => \"world\"\n  \"n\" => 1\n}\n"
+        );
     }
 
     #[test]
     fn defaults_domain_matches_apple_shape() {
         let v = serde_json::json!({"color":"blue","n":1});
-        assert_eq!(defaults_read_domain(&v), "{\n    color = blue;\n    n = 1;\n}\n");
+        assert_eq!(
+            defaults_read_domain(&v),
+            "{\n    color = blue;\n    n = 1;\n}\n"
+        );
     }
 }

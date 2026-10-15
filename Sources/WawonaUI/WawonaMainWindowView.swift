@@ -299,7 +299,7 @@ final class WWNMainWindowRouter: ObservableObject {
     }
 
     func showTabOverview() {
-        // Dismiss Terminal first; Exposé needs the live session surface.
+        // Park compositor chrome; SwiftUI Tab Overview is the detail host.
         #if os(iOS) || os(visionOS)
         NotificationCenter.default.post(
             name: Notification.Name("WWNRelayGuestConsoleNeededNotification"),
@@ -310,21 +310,18 @@ final class WWNMainWindowRouter: ObservableObject {
             ]
         )
         #endif
-        // Safari Exposé on the live session surface. List sidebar demoted.
-        showSessionSurface()
-        selection = .session
-        #if canImport(UIKit) && (os(iOS) || os(tvOS) || os(visionOS))
-        WWNClientTabChromeController.active?.openTabExpose()
-        #endif
+        sessionSurfaceVisible = false
+        selection = .tabOverview
     }
 
-    /// Dedicated Global Settings host (section sidebar). Not the Machines
-    /// home sidebar. Never System Settings / Settings.app.
+    /// Dedicated Global Settings host replaces Machines chrome in the same
+    /// window (never a sheet / PrefPane / Settings.app).
     @Published var isSettingsPresented = false
     @Published var settingsSelection: GlobalSettingsSectionID?
 
     /// Opens Global Settings in-app (`wawona-global-settings-exclusive`).
     func showSettings() {
+        sessionSurfaceVisible = false
         if settingsSelection == nil {
             settingsSelection = GlobalSettingsCatalog.visibleSections(
                 for: GlobalSettingsCatalog.currentHost
@@ -335,6 +332,9 @@ final class WWNMainWindowRouter: ObservableObject {
 
     func dismissSettings() {
         isSettingsPresented = false
+        if case .settings? = selection {
+            selection = .machines
+        }
     }
 
     /// Deep-link into a Settings section inside the dedicated host.
@@ -344,7 +344,7 @@ final class WWNMainWindowRouter: ObservableObject {
         }) {
             settingsSelection = id
         }
-        isSettingsPresented = true
+        showSettings()
     }
 
     func selectTag(_ tagId: String) {
@@ -385,9 +385,9 @@ extension WWNPreferencesSection {
     }
 }
 
-/// Unified Machine Configuration window. Global Settings opens as a dedicated
-/// host (`WWNGlobalSettingsHostView`) from the gear; section list stays out of
-/// the Machines home sidebar.
+/// Unified Machine Configuration window. Global Settings replaces this chrome
+/// in-window (`WWNGlobalSettingsHostView` from gear / Cmd-,). Never a sheet,
+/// PrefPane, or Settings.app host. Section list stays out of the Machines sidebar.
 struct WawonaMainWindowView: View {
     @ObservedObject var model: WWNSettingsValueModel
     @ObservedObject var router: WWNMainWindowRouter
@@ -416,6 +416,35 @@ struct WawonaMainWindowView: View {
     #endif
 
     var body: some View {
+        // Global Settings owns the window chrome (same NavigationSplitView
+        // pattern as Machines). Never sheet / fullScreenCover: on macOS that
+        // backport is a floating popup, unlike machine-editor sheets.
+        Group {
+            if router.isSettingsPresented {
+                WWNGlobalSettingsHostView(
+                    model: model,
+                    selection: $router.settingsSelection,
+                    onDismiss: { router.dismissSettings() }
+                )
+            } else {
+                machinesChrome
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(
+            for: Notification.Name("wawonaOpenInAppGlobalSettingsPanel")
+        )) { _ in
+            router.showSettings()
+        }
+        .backport.onChange(of: model.sections) { _, newValue in
+            DispatchQueue.main.async {
+                router.validate(sections: newValue)
+            }
+        }
+    }
+
+    /// Machines home + session surface. Hidden while Global Settings is up.
+    @ViewBuilder
+    private var machinesChrome: some View {
         splitView
             .onAppear {
                 listSelection = router.selection ?? .machines
@@ -444,11 +473,6 @@ struct WawonaMainWindowView: View {
                     listSelection = newValue
                 }
                 handleSelectionChange()
-            }
-            .backport.onChange(of: model.sections) { _, newValue in
-                DispatchQueue.main.async {
-                    router.validate(sections: newValue)
-                }
             }
             .backport.onChange(of: tagStore.tags) { _, newValue in
                 DispatchQueue.main.async {
@@ -481,18 +505,6 @@ struct WawonaMainWindowView: View {
                 }
             }
             #endif
-            .onReceive(NotificationCenter.default.publisher(
-                for: Notification.Name("wawonaOpenInAppGlobalSettingsPanel")
-            )) { _ in
-                router.showSettings()
-            }
-            .backport.fullScreenCover(isPresented: $router.isSettingsPresented) {
-                WWNGlobalSettingsHostView(
-                    model: model,
-                    selection: $router.settingsSelection,
-                    onDismiss: { router.dismissSettings() }
-                )
-            }
     }
 
     @ViewBuilder
@@ -538,40 +550,21 @@ struct WawonaMainWindowView: View {
     private var sidebar: some View {
         List(selection: $listSelection) {
             Section(header: Text("Machines")) {
-                // Always return to Machine Configuration (even if already selected).
-                Button {
-                    router.showMachines()
-                    listSelection = .machines
-                    #if os(iOS)
-                    if isPhonePortrait {
-                        withAnimation { showSidebar = false }
-                    }
-                    #endif
-                } label: {
-                    WawonaSettingsHubChrome.hubRow(
-                        title: "Machines",
-                        systemImage: "desktopcomputer",
-                        iconColor: Self.machinesSidebarIndigo
-                    )
-                }
-                .tag(WWNMainDestination.machines)
-                .accessibility(identifier: WWNA11y.machinesRoot)
-
-                Button {
-                    router.showTabOverview()
-                    #if os(iOS)
-                    if isPhonePortrait {
-                        withAnimation { showSidebar = false }
-                    }
-                    #endif
-                } label: {
-                    WawonaSettingsHubChrome.hubRow(
-                        title: "Tab Overview",
-                        systemImage: "square.on.square",
-                        iconColor: Self.tabOverviewSidebarBlue
-                    )
-                }
-                .accessibility(identifier: "wwn.tabOverview")
+                // TN3154: NavigationLink(value:) + .tag. Not Button (double chrome).
+                sidebarRow(
+                    destination: .machines,
+                    title: "Machines",
+                    systemImage: "desktopcomputer",
+                    color: Self.machinesSidebarIndigo,
+                    accessibilityID: WWNA11y.machinesRoot
+                )
+                sidebarRow(
+                    destination: .tabOverview,
+                    title: "Tab Overview",
+                    systemImage: "square.on.square",
+                    color: Self.tabOverviewSidebarBlue,
+                    accessibilityID: "wwn.tabOverview"
+                )
             }
 
             Section(header: Text("Project")) {
@@ -685,7 +678,7 @@ struct WawonaMainWindowView: View {
         .accessibility(addTraits: listSelection == destination ? .isSelected : [])
     }
 
-    /// Settings.app-style colored tile + title (matches Global Settings / Android).
+    /// Plain SF Symbol + title (matches Global Settings sidebar).
     @ViewBuilder
     private func sidebarRowLabel(
         title: String,
@@ -731,18 +724,13 @@ struct WawonaMainWindowView: View {
                 WawonaProjectStatusView()
                     .backport.navigationTitle("Work Status")
             } else if case .tabOverview? = router.selection {
-                // Legacy deep-link: park List; open Safari Exposé instead.
-                Color.clear
-                    .onAppear {
-                        router.showTabOverview()
-                    }
+                WWNTabOverviewView()
             } else if case .settings(let id)? = router.selection {
-                // Legacy deep-link into a section: open the dedicated host.
+                // Deep-link: swap Machines chrome for the in-window Settings host.
                 Color.clear
                     .onAppear {
                         router.settingsSelection = id
-                        router.isSettingsPresented = true
-                        router.selection = .machines
+                        router.showSettings()
                     }
             } else {
                 machinesPane
@@ -820,14 +808,25 @@ struct WawonaMainWindowView: View {
             }
         ))
         #endif
-        // Sidebar Machines / tag parks compositor chrome. Tab Overview opens
-        // Safari Exposé on the session surface (does not park).
+        // Sidebar Machines / tag / Tab Overview parks compositor chrome.
         .backport.onChange(of: router.selection) { _, newValue in
             switch newValue {
-            case .machines?, .machinesTag?:
+            case .machines?, .machinesTag?, .tabOverview?, .projectStatus?:
                 if router.sessionSurfaceVisible {
                     router.sessionSurfaceVisible = false
                 }
+                #if os(iOS) || os(visionOS)
+                if case .tabOverview? = newValue {
+                    NotificationCenter.default.post(
+                        name: Notification.Name("WWNRelayGuestConsoleNeededNotification"),
+                        object: nil,
+                        userInfo: [
+                            "machineId": WWNMachineProfileStore.activeMachineId() ?? "",
+                            "source": "close",
+                        ]
+                    )
+                }
+                #endif
             default:
                 break
             }
