@@ -55,14 +55,26 @@ if [[ "$launch_rc" -ne 0 ]]; then
   exit 1
 fi
 
+# simctl launch prints "bundle.id: PID". Prefer that PID over launchctl
+# ui/$(id -u)/… (often empty on GitHub macos-26 sims even when the app
+# is foreground and screenshotable).
+LAUNCH_PID="$(awk -F': ' -v b="$BUNDLE_ID" '$1 == b { print $2; exit }' "$OUT_DIR/launch.out" || true)"
+
 alive=0
 for _ in $(seq 1 60); do
+  if [[ -n "$LAUNCH_PID" ]] \
+    && xcrun simctl spawn "$UDID" /bin/ps -p "$LAUNCH_PID" -o pid= 2>/dev/null \
+    | grep -Eq '[1-9]'; then
+    alive=1
+    break
+  fi
   if xcrun simctl spawn "$UDID" launchctl print "ui/$(id -u)/$BUNDLE_ID" 2>/dev/null \
     | grep -Eqi 'state = running|pid = [1-9]'; then
     alive=1
     break
   fi
-  if xcrun simctl spawn "$UDID" ps -ax 2>/dev/null | grep -F "Wawona.app/Wawona" | grep -vq grep; then
+  if xcrun simctl spawn "$UDID" /bin/ps -ax 2>/dev/null \
+    | grep -E 'Wawona\.app/Wawona([[:space:]]|$)' | grep -vq grep; then
     alive=1
     break
   fi
@@ -73,10 +85,11 @@ xcrun simctl io "$UDID" screenshot "$OUT_DIR/launch.png" || true
 
 if [[ "$alive" -ne 1 ]]; then
   echo "FAIL: Wawona did not stay running after simctl launch" >&2
+  echo "launch_pid=${LAUNCH_PID:-none}" >&2
   cat "$OUT_DIR/launch.out" "$OUT_DIR/launch.err" || true
   exit 1
 fi
-echo "PASS: simctl install + launch (process alive)"
+echo "PASS: simctl install + launch (process alive pid=${LAUNCH_PID:-unknown})"
 
 if [[ "${WAWONA_IOS_XCUITEST:-0}" == "1" ]]; then
   echo "== XCUITest (optional; WAWONA_IOS_XCUITEST=1) =="
