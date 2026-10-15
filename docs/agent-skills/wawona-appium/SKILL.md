@@ -135,12 +135,14 @@ Never greenwash with skip stubs or agent-device/osascript.
 | Mode A product UI on GH runners | **Appium** |
 | Local dogfood / Mode B vphone tipa/APT | **agent-device** |
 
-## CI artifacts (hidden path)
+## CI artifacts
 
-Upload paths are under `.agent-device/`. `upload-artifact` v4+ needs
-`include-hidden-files: true` or runs show `arts=0` while steps stay green.
-macOS catalog: run `capture-catalog-gallery.sh` (tip + Colima). Never exit
-early on missing `wayland-0` before tip ensure.
+CI uses `scripts/appium/ci-prepare-artifacts.sh` → `test-artifacts/appium/`
+(non-hidden). Local dogfood stays `.agent-device/test-artifacts/appium`.
+`upload-artifact` v4+ drops hidden `.agent-device/` without
+`include-hidden-files`. Gallery upload only when `*.png` exists. Without a
+staged host app on GH, write `SKIPPED.txt` (pass `products_ready` after Gate).
+Local: `capture-catalog-gallery.sh` (tip + Colima).
 
 ## Hard rejects
 
@@ -149,7 +151,8 @@ early on missing `wayland-0` before tip ensure.
 - Invent non-`wwn.*` accessibility ids
 - Catalog card skips instead of Wayland guests
 - Darwin catalog without Colima
-- Appium CI upload without `include-hidden-files: true`
+- Appium CI artifacts under `.agent-device/` (use `ci-prepare-artifacts.sh`)
+- Catalog gallery upload of `SKIPPED.txt` labeled as PNG proof
 
 Rule: `wawona-appium-ui-gh`. Host install: `/etc/nix-darwin/.dotfiles/docs/appium-agents.md`.
 RAG: `wwn-mcp/knowledge/wawona/appium-ui-gh.md`,
