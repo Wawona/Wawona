@@ -91,14 +91,16 @@ launch_colima() {
     konsole) pkg=konsole ;;
     thunar) pkg=thunar ;;
     dolphin) pkg=dolphin ;;
-    mango) pkg=mangowm ;;
+    # nixpkgs#mango (matrix id mangowm). Force wlroots wayland backend for waypipe.
+    mango) pkg=mango; cmd="env WLR_BACKENDS=wayland mango -c /home/lima.guest/.config/mango/config.toml" ;;
     cosmic-comp) pkg=cosmic-comp ;;
-    phosh) pkg=phosh ;;
-    gnome-shell) pkg=gnome-shell ;;
+    # Ubuntu ships phosh at /usr/libexec/phosh (no PATH bin named phosh).
+    phosh) pkg=phosh; cmd="/usr/libexec/phosh" ;;
+    gnome-shell) pkg=gnome-shell; cmd="gnome-shell --wayland --nested" ;;
     plasmashell) pkg=plasma-workspace ;;
-    niri) pkg=niri ;;
+    niri) pkg=niri; cmd="env NIRI_BACKEND=nested niri" ;;
     sway) pkg=sway ;;
-    Hyprland|hyprland) pkg=hyprland; cmd=Hyprland ;;
+    Hyprland|hyprland) pkg=hyprland; cmd="Hyprland" ;;
     weston) pkg=weston; cmd="weston --backend=wayland --socket=appium-colima-weston --width=1024 --height=768" ;;
     weston-terminal|weston-simple-shm) pkg=weston ;;
   esac
@@ -112,9 +114,23 @@ launch_colima() {
   KEY="${COLIMA_SSH_KEY:-$HOME/.colima/_lima/_config/user}"
   PORT="$(awk '$1=="Port" { print $2; exit }' "$COLIMA_SSH_CONFIG" 2>/dev/null || echo 49419)"
   apt_log="/tmp/wawona-colima-apt-${CLIENT}.log"
+  # Binary path for presence check. `env VAR=x bin` → take first non-assignment.
+  bin_check=""
+  # shellcheck disable=SC2086
+  set -- $cmd
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      env) shift; continue ;;
+      *=*) shift; continue ;;
+      *) bin_check="$1"; break ;;
+    esac
+  done
+  bin_check="${bin_check:-$TARGET}"
+  # Guest may ship nix-profile clients (niri/hyprland/ghostty) outside apt.
+  guest_env='export PATH="$HOME/.nix-profile/bin:/home/lima.guest/.nix-profile/bin:/usr/local/bin:/usr/bin:/bin:$PATH"; [ -f "$HOME/.nix-profile/etc/profile.d/nix.sh" ] && . "$HOME/.nix-profile/etc/profile.d/nix.sh"; [ -f /home/lima.guest/.nix-profile/etc/profile.d/nix.sh ] && . /home/lima.guest/.nix-profile/etc/profile.d/nix.sh; '
   if ! ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
     -i "$KEY" -p "$PORT" "lima@127.0.0.1" \
-    "command -v ${cmd%% *} >/dev/null || sudo DEBIAN_FRONTEND=noninteractive apt-get install -y $pkg" \
+    "${guest_env} command -v ${bin_check} >/dev/null || test -x ${bin_check} || sudo DEBIAN_FRONTEND=noninteractive apt-get install -y $pkg" \
     >"$apt_log" 2>&1; then
     echo "FAIL: Colima guest missing '$pkg' (client=$CLIENT). See $apt_log" >&2
     tail -40 "$apt_log" >&2 || true
@@ -122,9 +138,19 @@ launch_colima() {
   fi
   if ! ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
     -i "$KEY" -p "$PORT" "lima@127.0.0.1" \
-    "command -v ${cmd%% *} >/dev/null"; then
-    echo "FAIL: apt claimed ok but '${cmd%% *}' still missing in Colima" >&2
+    "${guest_env} command -v ${bin_check} >/dev/null || test -x ${bin_check}"; then
+    echo "FAIL: guest binary '${bin_check}' still missing after apt/nix (client=$CLIENT)" >&2
     exit 7
+  fi
+  # Resolve absolute path so waypipe remote argv does not depend on login PATH.
+  resolved="$(ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    -i "$KEY" -p "$PORT" "lima@127.0.0.1" \
+    "${guest_env} command -v ${bin_check}" | tr -d '\r' | head -1)"
+  if [[ -n "$resolved" && "$resolved" == /* ]]; then
+    case "$cmd" in
+      env\ NIRI_BACKEND=nested\ niri) cmd="env NIRI_BACKEND=nested ${resolved}" ;;
+      "${bin_check}"*) cmd="${resolved}${cmd#"$bin_check"}" ;;
+    esac
   fi
   chmod +x "$ROOT/scripts/waypipe-ssh-colima-lab.sh"
   # shellcheck disable=SC2086
