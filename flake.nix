@@ -1260,9 +1260,11 @@
                 }
               else baseTc;
           in
-            pkgs.callPackage "${wwn-relay}/recipes/relay-staticlib.nix" {
+            # __noChroot: mkIOSBuildEnv needs host Xcode Platforms. Relay tip
+            # sets this too; keep the override so older Relay pins still link.
+            (pkgs.callPackage "${wwn-relay}/recipes/relay-staticlib.nix" {
               inherit iosToolchain simulator;
-            };
+            }).overrideAttrs (_: { __noChroot = true; });
           iosDeps = mobilePlatformDeps {
             buildFn = toolchains.buildForIOS;
             inherit toolchains;

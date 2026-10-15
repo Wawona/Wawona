@@ -59,6 +59,8 @@ in
 rustPlatform.buildRustPackage {
   pname = "wawona-relay";
   version = "0.1.0";
+  # Host Xcode Platforms. Same as Relay recipes/relay-staticlib.nix.
+  __noChroot = true;
   src = lib.cleanSourceWith {
     src = src;
     filter = srcFilter;
