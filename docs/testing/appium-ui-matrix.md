@@ -45,12 +45,13 @@ Catalog rows are **not** packaging-card skips. Each client is a real Wayland
 process forwarded into the host Wawona socket. **Pass means a machine
 screenshot** of that client in
 `.agent-device/test-artifacts/appium/catalog-gallery/<client>.png` (and
-`index.html`) locally. DRY skips are not catalog proof. CI writes the same
-tree under `test-artifacts/appium/` (non-hidden) and uploads
-`appium-catalog-gallery-*` only when `*.png` exists. Without a staged host
-app, CI writes `SKIPPED.txt` and does not claim catalog green. Pass
-`workflow_dispatch` `products_ready=true` after Gate products to run
-catalog (macOS product app / Linux AppImage).
+`index.html`) locally. DRY skips are not catalog proof. CI writes under
+`test-artifacts/appium/` (non-hidden). **macOS catalog fail-closed:** tip
+build + Colima smoke clients (`weston_simple_shm foot`); job red if no PNG.
+Never `exit 0` with `SKIPPED.txt`. Linux catalog runs only when
+`products_ready` (AppImage); otherwise the catalog step is skipped, not
+fake-green. Gallery upload uses `if-no-files-found: error` when the catalog
+step ran.
 
 Capture locally (Wawona up, Appium on :4723):
 

@@ -6,8 +6,8 @@ name: "Watch: Appium UI matrix"
 #
 # Artifacts: CI writes to test-artifacts/appium/ (non-hidden). Local dogfood
 # still uses .agent-device/test-artifacts/appium via script defaults.
-# Catalog PNGs upload only when *.png exists. Without a host app on the
-# runner, catalog writes SKIPPED.txt and does not claim green.
+# Catalog green = PNG only. macOS tip+Colima smoke fail-closed (no SKIPPED
+# exit 0). Linux catalog only when products_ready.
 
 on:
   workflow_dispatch:
@@ -177,7 +177,21 @@ jobs:
           appium driver install --source=npm appium-linux-driver || true
           appium --address 127.0.0.1 --port 4723 > /tmp/appium.log 2>&1 &
           sleep 3
-      - name: Linux Appium native + Wayland catalog
+      - name: Linux Appium unit gates
+        env:
+          DISPLAY: ":99.0"
+          WAWONA_APPIUM_PLATFORM: linux
+          WAWONA_APPIUM_SERVER: http://127.0.0.1:4723
+        run: |
+          set -euo pipefail
+          eval "$(scripts/appium/ci-prepare-artifacts.sh)"
+          chmod +x scripts/appium/run-appium-suite.sh
+          python3 scripts/appium/verify-wayland-guest-map.py
+          WAWONA_APPIUM_DRY=1 ./scripts/appium/run-appium-suite.sh \
+            tests/test_gates_unit.py
+      - name: Linux Wayland catalog (needs AppImage)
+        # Literally skip (not exit 0 + SKIPPED.txt). Catalog green = PNG only.
+        if: ${{ inputs.products_ready }}
         env:
           DISPLAY: ":99.0"
           WAWONA_APPIUM_PLATFORM: linux
@@ -188,30 +202,30 @@ jobs:
           eval "$(scripts/appium/ci-prepare-artifacts.sh)"
           chmod +x scripts/appium/run-appium-suite.sh
           chmod +x scripts/appium/launch-wayland-client.sh
-          python3 scripts/appium/verify-wayland-guest-map.py
-          # Stage AppImage from dist/ when products_ready downloaded it.
           if [[ -z "${WAWONA_APP_PATH:-}" ]]; then
             img="$(find dist -name 'Wawona*.AppImage' -type f 2>/dev/null | head -1 || true)"
             if [[ -n "$img" ]]; then
               chmod +x "$img"
               export WAWONA_APP_PATH="$img"
-              echo "WAWONA_APP_PATH=$WAWONA_APP_PATH" >> "$GITHUB_ENV"
             fi
           fi
-          # Catalog green = machine PNG per client. Without a live Wawona
-          # host, DRY only + SKIPPED marker (not a catalog claim).
+          # Fail closed: SKIPPED.txt + exit 0 is false green (no PNG proof).
           if [[ -z "${WAWONA_APP_PATH:-}" && ! -x /usr/bin/Wawona ]]; then
-            echo "No Wawona AppImage on runner; unit gates only (no catalog claim)."
-            printf '%s\n' "SKIP: no Wawona AppImage; DRY unit only. Pass products_ready for catalog." \
-              >"${WAWONA_APPIUM_ARTIFACTS}/catalog-gallery/SKIPPED.txt"
-            WAWONA_APPIUM_DRY=1 ./scripts/appium/run-appium-suite.sh \
-              tests/test_gates_unit.py
-            exit 0
+            echo "::error title=Catalog not proven::No Wawona AppImage. Pass products_ready after Gate products."
+            printf '%s\n' "FAIL: no AppImage; catalog not proven." \
+              >"${WAWONA_APPIUM_ARTIFACTS}/catalog-gallery/FAILED.txt"
+            exit 1
           fi
           ./scripts/appium/run-appium-suite.sh \
             tests/test_gates_unit.py \
             tests/test_catalog_wayland.py
           python3 scripts/appium/verify-catalog-gallery.py
+          shopt -s nullglob
+          pngs=("${WAWONA_APPIUM_ARTIFACTS}/catalog-gallery/"*.png)
+          if ((${#pngs[@]} == 0)); then
+            echo "::error title=Catalog not proven::No catalog-gallery PNG after suite."
+            exit 1
+          fi
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v7
@@ -220,7 +234,7 @@ jobs:
           path: test-artifacts/appium/
           if-no-files-found: warn
       - name: Upload catalog screenshot gallery
-        if: ${{ always() && hashFiles('test-artifacts/appium/catalog-gallery/*.png') != '' }}
+        if: ${{ always() && inputs.products_ready }}
         uses: actions/upload-artifact@v7
         with:
           name: appium-catalog-gallery-linux
@@ -325,6 +339,9 @@ jobs:
           WAWONA_APPIUM_SERVER: http://127.0.0.1:4723
           WAWONA_WAYLAND_GUEST: colima
           WAWONA_COLIMA_START: "1"
+          # CI smoke clients only. Full matrix is local
+          # scripts/appium/capture-catalog-gallery.sh (no argv).
+          WAWONA_CATALOG_CI_CLIENTS: "weston_simple_shm foot"
         run: |
           set -euo pipefail
           eval "$(scripts/appium/ci-prepare-artifacts.sh)"
@@ -333,14 +350,7 @@ jobs:
           chmod +x scripts/appium/ensure-tip-wawona-macos.sh
           chmod +x scripts/appium/capture-catalog-gallery.sh
           python3 scripts/appium/verify-wayland-guest-map.py
-          # GH runners: do not tip-xcodebuild the full catalog without a staged
-          # host app (products_ready). Local agents still tip-launch via capture.
-          if [[ -n "${GITHUB_ACTIONS:-}" && -z "${WAWONA_APP_PATH:-}" ]]; then
-            echo "No staged Wawona.app (pass products_ready). Guest map OK; no catalog claim."
-            printf '%s\n' "SKIP: no host app on runner; pass workflow_dispatch products_ready=true after Gate products." \
-              >"${WAWONA_APPIUM_ARTIFACTS}/catalog-gallery/SKIPPED.txt"
-            exit 0
-          fi
+          # Never exit 0 without PNGs. SKIPPED.txt was false green on tip a58384fc.
           if ! command -v colima >/dev/null 2>&1; then
             brew install colima lima || {
               echo "FAIL: colima required for macOS catalog Wayland guests" >&2
@@ -349,7 +359,7 @@ jobs:
           fi
           unset WAWONA_APPIUM_DRY || true
           # Gate product (products_ready): copy into tip path so ensure-tip
-          # clean-launches without xcodebuild. Still refuses /Applications.
+          # clean-launches without xcodebuild. Else capture tip-builds.
           if [[ -n "${WAWONA_APP_PATH:-}" && -d "${WAWONA_APP_PATH}" ]]; then
             TIP_APP="/tmp/wawona-macos-tip/DerivedData/Build/Products/Debug/Wawona.app"
             mkdir -p "$(dirname "$TIP_APP")"
@@ -359,7 +369,15 @@ jobs:
             export WAWONA_TIP_SKIP_BUILD=1
             export WAWONA_APP_PATH="$TIP_APP"
           fi
-          ./scripts/appium/capture-catalog-gallery.sh
+          # shellcheck disable=SC2086
+          ./scripts/appium/capture-catalog-gallery.sh ${WAWONA_CATALOG_CI_CLIENTS}
+          shopt -s nullglob
+          pngs=("${WAWONA_APPIUM_ARTIFACTS}/catalog-gallery/"*.png)
+          if ((${#pngs[@]} == 0)); then
+            echo "::error title=Catalog not proven::No catalog-gallery PNG after capture."
+            exit 1
+          fi
+          echo "Catalog PNGs: ${pngs[*]}"
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v7
@@ -368,9 +386,10 @@ jobs:
           path: test-artifacts/appium/
           if-no-files-found: warn
       - name: Upload catalog screenshot gallery (macOS)
-        if: ${{ always() && matrix.platform == 'macos' && hashFiles('test-artifacts/appium/catalog-gallery/*.png') != '' }}
+        if: ${{ always() && matrix.platform == 'macos' }}
         uses: actions/upload-artifact@v7
         with:
           name: appium-catalog-gallery-macos
           path: test-artifacts/appium/catalog-gallery/
+          # Fail the job when catalog left no PNG (or FAILED.txt only).
           if-no-files-found: error
