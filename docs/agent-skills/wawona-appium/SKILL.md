@@ -91,6 +91,15 @@ is forbidden for catalog.
 `ensure-colima.sh` resolves `nixpkgs#colima` when brew is missing.
 `WAWONA_MAC2_MANAGE_APP=1` + `skipAppKill`. `MANAGE_APP=0` drops bundleId.
 
+### Colima guests beyond Ubuntu apt
+
+Ubuntu 24.04 apt covers weston/sway/foot/plasma/gnome/phosh/konsole/…
+Non-apt catalog rows (niri, hyprland, mango, cosmic-comp, ghostty) install
+via **guest nix-profile** (`nix profile install nixpkgs#…` after single-user
+nix in the Colima VM). `launch-wayland-client.sh` sources that profile and
+resolves absolute paths. Mango needs `WLR_BACKENDS=wayland` + a config under
+`~/.config/mango/`. Phosh binary is `/usr/libexec/phosh`.
+
 ### Present reveal (macOS)
 
 Start opens **Wawona Terminal**. Close that window (or Focus) so
