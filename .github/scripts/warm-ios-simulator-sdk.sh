@@ -177,12 +177,27 @@ xcodebuild -showsdks 2>/dev/null | grep -i simulator || true
 # WAWONA_SKIP_* while any requested SDK is absent: that flag stops Nix from
 # downloading too, and Relay configure then dies with "SDK not found"
 # (watchsimulator / xrsimulator on runners that only had iPhoneSimulator).
-for p in $MISSING; do
+# XcodeGen also evaluates *device* Relay archives (appletvos / watchos / xros),
+# so download those platform packs too when warming `all`.
+for p in $MISSING all_device; do
   case "$p" in
     ios|ipados) plat="iOS" ;;
     tvos) plat="tvOS" ;;
     watchos) plat="watchOS" ;;
     visionos) plat="xrOS" ;;
+    all_device)
+      # Only when the caller asked for the full set.
+      case " $PLATFORMS " in
+        *" visionos "*|*" tvos "*|*" watchos "*) ;;
+        *) continue ;;
+      esac
+      for plat in tvOS watchOS xrOS; do
+        echo "Downloading Apple platform pack: $plat"
+        xcodebuild -downloadPlatform "$plat" 2>&1 || \
+          echo "::warning::xcodebuild -downloadPlatform $plat failed"
+      done
+      continue
+      ;;
     *) continue ;;
   esac
   echo "Downloading simulator platform: $plat"
