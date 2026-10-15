@@ -647,6 +647,14 @@ in
           chmod u+w src/term/screen.rs
         fi
       fi
+      if [ -L src/term/kitty.rs ] || [ ! -e src/term/kitty.rs ]; then
+        rm -f src/term/kitty.rs
+        if [ -n "${toString xcodeProject}" ] && [ -f "${xcodeProject}/src/term/kitty.rs" ]; then
+          mkdir -p src/term
+          cp -L "${xcodeProject}/src/term/kitty.rs" src/term/kitty.rs
+          chmod u+w src/term/kitty.rs
+        fi
+      fi
     '';
 
     preBuild = ''
@@ -1251,7 +1259,7 @@ SHELL_EOF
               chmod -R u+w $project
               rm -rf "$project/_xcode_project/DerivedData" "$project/DerivedData"
               if [ -n "${toString xcodeProject}" ]; then
-                rm -f "$project/src/term/screen.rs"
+                rm -f "$project/src/term/screen.rs" "$project/src/term/kitty.rs"
                 cp -r ${xcodeProject}/* "$project/"
                 chmod -R u+w $project
               fi
@@ -1276,7 +1284,7 @@ SHELL_EOF
             chmod -R u+w $project
             rm -rf "$project/_xcode_project/DerivedData" "$project/DerivedData"
             if [ -n "${toString xcodeProject}" ]; then
-              rm -f "$project/src/term/screen.rs"
+              rm -f "$project/src/term/screen.rs" "$project/src/term/kitty.rs"
               cp -r ${xcodeProject}/* "$project/"
               chmod -R u+w $project
             fi
