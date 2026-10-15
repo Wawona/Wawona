@@ -36,6 +36,16 @@ def main() -> int:
     for kind in ("compositors", "applications"):
         clients.extend(sorted(data["catalog"][kind]))
 
+    # Partial gallery runs: WAWONA_CATALOG_VERIFY_ONLY=niri,swaywm
+    only = os.environ.get("WAWONA_CATALOG_VERIFY_ONLY", "").strip()
+    if only:
+        wanted = {c.strip() for c in only.split(",") if c.strip()}
+        unknown = sorted(wanted - set(clients))
+        if unknown:
+            print(f"FAIL unknown catalog clients: {', '.join(unknown)}")
+            return 2
+        clients = [c for c in clients if c in wanted]
+
     missing = []
     bad = []
     for client in clients:

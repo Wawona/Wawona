@@ -111,10 +111,21 @@ launch_colima() {
   COLIMA_SSH_CONFIG="${COLIMA_SSH_CONFIG:-$HOME/.colima/ssh_config}"
   KEY="${COLIMA_SSH_KEY:-$HOME/.colima/_lima/_config/user}"
   PORT="$(awk '$1=="Port" { print $2; exit }' "$COLIMA_SSH_CONFIG" 2>/dev/null || echo 49419)"
-  ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+  apt_log="/tmp/wawona-colima-apt-${CLIENT}.log"
+  if ! ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
     -i "$KEY" -p "$PORT" "lima@127.0.0.1" \
     "command -v ${cmd%% *} >/dev/null || sudo DEBIAN_FRONTEND=noninteractive apt-get install -y $pkg" \
-    >/tmp/wawona-colima-apt-"$CLIENT".log 2>&1 || true
+    >"$apt_log" 2>&1; then
+    echo "FAIL: Colima guest missing '$pkg' (client=$CLIENT). See $apt_log" >&2
+    tail -40 "$apt_log" >&2 || true
+    exit 7
+  fi
+  if ! ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    -i "$KEY" -p "$PORT" "lima@127.0.0.1" \
+    "command -v ${cmd%% *} >/dev/null"; then
+    echo "FAIL: apt claimed ok but '${cmd%% *}' still missing in Colima" >&2
+    exit 7
+  fi
   chmod +x "$ROOT/scripts/waypipe-ssh-colima-lab.sh"
   # shellcheck disable=SC2086
   "$ROOT/scripts/waypipe-ssh-colima-lab.sh" "$CLIENT" $cmd

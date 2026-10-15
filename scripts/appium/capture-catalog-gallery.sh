@@ -101,5 +101,11 @@ else
   pytest tests/test_catalog_wayland.py -q --tb=short
 fi
 
-python3 "$ROOT/scripts/appium/verify-catalog-gallery.py"
+# Partial runs (argv clients) only verify those PNGs; full run verifies matrix.
+if [[ $# -gt 0 ]]; then
+  WAWONA_CATALOG_VERIFY_ONLY="$(printf '%s,' "$@" | sed 's/,$//')" \
+    python3 "$ROOT/scripts/appium/verify-catalog-gallery.py"
+else
+  python3 "$ROOT/scripts/appium/verify-catalog-gallery.py"
+fi
 echo "Gallery: $ART/catalog-gallery/index.html"

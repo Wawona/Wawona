@@ -123,6 +123,9 @@ if [[ "${WAWONA_TIP_SKIP_LAUNCH:-0}" != "1" ]]; then
   osascript -e 'tell application id "com.aspauldingcode.Wawona" to quit' \
     >/dev/null 2>&1 || true
   pkill -f 'Wawona.app/Contents/MacOS/Wawona' 2>/dev/null || true
+  # Stale install waypipe children keep holding Colima SSH; kill them too.
+  pkill -f '/Applications/Wawona.app/Contents/Resources/bin/waypipe' \
+    2>/dev/null || true
   sleep 1
   rm -f "$RUNTIME/wayland-0"
   nohup env WAWONA_RUNTIME="$RUNTIME" XDG_RUNTIME_DIR="$RUNTIME" \
