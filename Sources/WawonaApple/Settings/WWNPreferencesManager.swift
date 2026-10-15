@@ -59,7 +59,18 @@ public final class WWNPreferencesManager: NSObject {
         #if os(iOS) || targetEnvironment(simulator)
         let fm = FileManager.default
         #if targetEnvironment(simulator)
-        let candidate = "/tmp/wawona_sim_\(getuid())"
+        // Per-UDID dir: multi-sim / multi-agent must not share one wayland-0
+        // (uid-only /tmp/wawona_sim_<uid> caused bind failures across UDIDs).
+        let udid = ProcessInfo.processInfo.environment["SIMULATOR_UDID"] ?? ""
+        let udidSuffix: String
+        if udid.count >= 8 {
+            udidSuffix = "_" + String(udid.prefix(8)).lowercased()
+        } else if !udid.isEmpty {
+            udidSuffix = "_" + udid.lowercased()
+        } else {
+            udidSuffix = ""
+        }
+        let candidate = "/tmp/wawona_sim_\(getuid())\(udidSuffix)"
         #else
         let candidate = "/tmp/wawona_dev_\(getuid())"
         #endif

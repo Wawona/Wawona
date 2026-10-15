@@ -88,7 +88,7 @@ xcrun simctl install booted /tmp/Wawona-ios-tip.app
 
 Prove entry: `nm -gU …/Wawona | rg 'T _main'` and `gbm_es2_demo_main` present,
 no archive C `_main` as sole life. Socket after launch:
-`/tmp/wawona_sim_$UID/wayland-0`.
+`/tmp/wawona_sim_$UID_<udid8>/wayland-0` (per-UDID; avoids multi-sim bind clash).
 
 ## Machine editor half-sheet (UI proof)
 

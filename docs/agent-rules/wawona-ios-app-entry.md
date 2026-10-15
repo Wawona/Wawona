@@ -46,7 +46,8 @@ Same idea for any other upstream `main.cpp` force-loaded into Wawona.
 Before `WWNCoreStart` / `WWNCompositorBridge.start`:
 
 1. Set `XDG_RUNTIME_DIR` to `WWNPreferencesManager.preferredSharedRuntimeDir()`
-   (simulator: `/tmp/wawona_sim_<uid>`).
+   (simulator: `/tmp/wawona_sim_<uid>_<udid8>` when `SIMULATOR_UDID`
+   is set; else `/tmp/wawona_sim_<uid>`).
 2. `mkdir` that path mode `0700`.
 
 Default Rust fallback `/tmp/wawona-<uid>` **fails to bind** on iOS Simulator
@@ -77,6 +78,6 @@ Do not use these without a backport / alternate path when `IPHONEOS_DEPLOYMENT_T
 nm -gU "$GBM_A" | rg 'T _' | rg -i 'main|gbm'
 # App: has _main; LC_MAIN is the app, not ES2Cube-only life
 nm -gU result-ios-sim/Wawona.app/Wawona | rg 'T _main'
-# Sim compositor: socket under wawona_sim_*
-ls /tmp/wawona_sim_$UID/wayland-0
+# Sim compositor: per-UDID socket under wawona_sim_*
+ls /tmp/wawona_sim_${UID}_*/wayland-0
 ```
