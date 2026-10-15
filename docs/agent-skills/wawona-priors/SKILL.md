@@ -36,7 +36,7 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-ios-native-shell` | Every Start = Wawona Terminal (`$ argv` + CLI logs). Native Shell = live zsh. No StartupLog preview / first-frame auto-dismiss. |
 | `wawona-apple-swift` | Apple compositor Swift/SwiftUI. Always load `swiftui-pro` + `swiftui-expert-skill` first. |
 | `wawona-android-compose` | Android Kotlin/Compose. Always load `compose-agent` + `modern-jetpack-compose` first. |
-| `wawona-appium` | Mode A Appium UI on GH runners. Darwin catalog = Colima only; Present surface PNG; no local-bundle. Load dendritic `appium`; red UI jobs fix with Appium only. |
+| `wawona-appium` | Mode A Appium UI on GH runners. Tip host app + clean launch; Darwin catalog = Colima only; Present surface PNG; no local-bundle. |
 | `wawona-swiftui-backports` | iOS 13 `WawonaBackport` shims. Wins over upstream SwiftUI skill modernization. |
 | `wawona-icon-composer` | Layered icon drafts, native rendering, shared IDE tooling. |
 
@@ -76,6 +76,7 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-apple-swift-skills` | Must install/use SwiftUI + Swift concurrency/testing skills for Apple UI |
 | `wawona-android-compose-skills` | Must install/use Compose + Android skills for Kotlin UI |
 | `wawona-appium-ui-gh` | AlwaysApply: Appium skills for Mode A UI on GH runners; red UI jobs must be fixed with Appium |
+| `wawona-test-tip-app` | AlwaysApply: tip build + clean launch for every Appium/agent-device/smoke; never `/Applications` |
 | `wawona-machine-start-placement` | Start Prompt / New Tab / New Window; gate on windowing |
 | `wawona-apple-swift-glue` | Rust + Swift only; zero ObjC product classes |
 | `wawona-swinging-bridge` | Not Desktop, not LockScreen |

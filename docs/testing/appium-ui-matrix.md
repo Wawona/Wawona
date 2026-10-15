@@ -93,16 +93,19 @@ WAWONA_APPIUM_DRY=1 pytest tests/test_gates_unit.py -q
 
 # Wayland catalog (host compositor must own wayland-0 first):
 export WAWONA_APPIUM_PLATFORM=macos   # or linux
-# Darwin: Colima required (scripts/appium/ensure-colima.sh).
-# Linux CI: WAWONA_WAYLAND_GUEST=nested
+# Darwin: tip host + Colima (never /Applications).
+eval "$(scripts/appium/ensure-tip-wawona-macos.sh)"
 colima start   # once on the host
-# Start Wawona so $WAWONA_RUNTIME/wayland-0 exists, then:
+./scripts/appium/ensure-colima.sh
+# Or: ./scripts/appium/capture-catalog-gallery.sh foot
 pytest tests/test_catalog_wayland.py -q
 
-# Full native session (Appium server on :4723, app installed):
+# Full native session (Appium server on :4723, tip app):
 export WAWONA_APPIUM_PLATFORM=ios
-export WAWONA_APP_PATH=/path/to/Wawona.app
+export WAWONA_APP_PATH=/path/to/tip/Wawona.app   # never stale install
 pytest tests/test_native_ui.py -q
 ```
+
+Tip app rule: [`../agent-rules/wawona-test-tip-app.md`](../agent-rules/wawona-test-tip-app.md).
 
 See also [`everywhere-matrix.md`](./everywhere-matrix.md) and [`../ci.md`](../ci.md).

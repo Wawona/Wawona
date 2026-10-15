@@ -15,7 +15,24 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ART="$ROOT/.agent-device/test-artifacts"
 WAWONA_RUNTIME="${WAWONA_RUNTIME:-/tmp/wawona-$(id -u)}"
-WP="${WAWONA_WAYPIPE_BIN:-/Applications/Wawona.app/Contents/Resources/bin/waypipe}"
+# Prefer tip test app Resources; never default to a stale /Applications install.
+if [[ -z "${WAWONA_WAYPIPE_BIN:-}" ]]; then
+  for _wp in \
+    "${WAWONA_APP_PATH:-}/Contents/Resources/bin/waypipe" \
+    /tmp/wawona-macos-tip/Wawona.app/Contents/Resources/bin/waypipe \
+    /tmp/wawona-macos-tip/DerivedData/Build/Products/Debug/Wawona.app/Contents/Resources/bin/waypipe
+  do
+    if [[ -x "$_wp" ]]; then
+      WP="$_wp"
+      break
+    fi
+  done
+fi
+WP="${WAWONA_WAYPIPE_BIN:-${WP:-}}"
+if [[ -z "$WP" || ! -x "$WP" ]]; then
+  echo "FAIL: waypipe missing. Set WAWONA_APP_PATH to tip Wawona.app (wawona-test-tip-app)." >&2
+  exit 2
+fi
 SSH_CONFIG="${COLIMA_SSH_CONFIG:-$HOME/.colima/ssh_config}"
 KEY="${COLIMA_SSH_KEY:-$HOME/.colima/_lima/_config/user}"
 PORT="${COLIMA_SSH_PORT:-}"

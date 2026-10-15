@@ -45,6 +45,10 @@ lane under `ui-appium.yml`):
 - Root: `Wawona/Tests/appium/`
 - Gates: `matrix.toml` (PlatformCapabilities)
 - Selectors: `wwn.*` only
+- **Tip host app (hard):** Darwin Mac2 always runs
+  `scripts/appium/ensure-tip-wawona-macos.sh` first (rebuild when HEAD
+  drifts, clean launch tip binary, refuse `/Applications`). See
+  `wawona-test-tip-app`.
 - Catalog Wayland clients: real guests via
   `scripts/appium/launch-wayland-client.sh` (**Colima on Darwin**; nested on
   Linux). Run `ensure-colima.sh` first on macOS. No local-bundle.
@@ -64,10 +68,12 @@ lane under `ui-appium.yml`):
 - Catalog packaging-card skips instead of Wayland guests
 - Claim a catalog client OK without a Present surface screenshot
 - Darwin catalog via local-bundle host bins or Apple Containerization
+- Launch `/Applications/Wawona.app` or stale DerivedData for Appium
 - Set `WAWONA_MAC2_MANAGE_APP=0` for catalog (drops bundleId; no Machines root)
-- Ignore WDA `Not authorized for performing UI testing actions` (TCC:
-  grant Accessibility to `WebDriverAgentRunner-Runner`)
+- Ignore WDA `Not authorized for performing UI testing actions` (TCC /
+  Automation Mode; see skill `wawona-appium`)
 - Cancel tip `ui-appium` / Gate UI jobs to clear the queue (`wawona-ci-no-cancel`)
 
 Cursor rule: `wawona-appium-ui-gh`. Skill: `wawona-appium`. Dendritic: `appium`.
-Related: `wawona-test-control` (local agent-device), `wawona-gh`, `wawona-ci-no-cancel`.
+Related: `wawona-test-tip-app`, `wawona-test-control`, `wawona-gh`,
+`wawona-ci-no-cancel`.

@@ -49,32 +49,24 @@ else
 fi
 # Local Mac2 / Linux sessions flap :4723; never start pytest cold.
 "$ROOT/scripts/appium/ensure-appium.sh"
-# Darwin: pre-warm WDA with Xcode 26 Testing DYLD paths, then Mac2 attaches.
+# Darwin: tip build + clean launch (never /Applications or stale DD), then WDA.
 if [[ "$(uname -s)" == "Darwin" && "${WAWONA_APPIUM_PLATFORM}" == "macos" ]]; then
+  chmod +x "$ROOT/scripts/appium/ensure-tip-wawona-macos.sh"
+  chmod +x "$ROOT/scripts/lib/require-tip-wawona-app.sh"
+  # Rebuild when git HEAD drifts; always quit + relaunch tip binary.
+  eval "$("$ROOT/scripts/appium/ensure-tip-wawona-macos.sh")"
+  # shellcheck source=/dev/null
+  source "$ROOT/scripts/lib/require-tip-wawona-app.sh"
+  wawona_refuse_stale_app_path "$WAWONA_APP_PATH"
   "$ROOT/scripts/appium/ensure-wda-mac.sh"
   export WAWONA_MAC2_WDA_URL="${WAWONA_MAC2_WDA_URL:-http://127.0.0.1:${WAWONA_MAC2_WDA_PORT:-10100}}"
   # Keep manageApp=1 so Mac2 gets bundleId (required for wwn.* AX). Prefer
-  # skipAppKill + noReset so a pre-started host compositor is not killed.
+  # skipAppKill + noReset so the tip compositor we just launched is not killed.
   # MANAGE_APP=0 is only for desktop-wide AX probes (no Machines root).
   export WAWONA_MAC2_MANAGE_APP="${WAWONA_MAC2_MANAGE_APP:-1}"
   export WAWONA_APPIUM_NO_RESET="${WAWONA_APPIUM_NO_RESET:-1}"
   export WAWONA_MAC2_SKIP_APP_KILL="${WAWONA_MAC2_SKIP_APP_KILL:-1}"
-  if [[ -z "${WAWONA_APP_PATH:-}" ]]; then
-    for cand in \
-      /tmp/wawona-macos-a11y/Wawona.app \
-      /tmp/wawona-macos/Wawona.app \
-      "$ROOT/result/Applications/Wawona.app" \
-      "/Applications/Wawona.app" \
-      "$ROOT/build/DerivedData-macos-new/Build/Products/Debug/Wawona.app" \
-      "$ROOT/build/DerivedData-macos/Build/Products/Debug/Wawona.app"
-    do
-      if [[ -d "$cand" ]]; then
-        export WAWONA_APP_PATH="$cand"
-        break
-      fi
-    done
-  fi
-  # Prefer activate over cold launch when Wawona is already up.
+  echo "WAWONA_APP_PATH=$WAWONA_APP_PATH"
   osascript -e 'tell application id "com.aspauldingcode.Wawona" to activate' \
     >/dev/null 2>&1 || true
 fi
@@ -92,12 +84,9 @@ fi
 export PYTHONPATH="$ROOT/Tests/appium"
 
 if [[ $# -gt 0 ]]; then
-  # Filter parametrize ids: test_catalog_*[name]
-  ARGS=()
-  for c in "$@"; do
-    ARGS+=("-k" "$c")
-  done
-  pytest tests/test_catalog_wayland.py -q --tb=short "${ARGS[@]}"
+  # Single -k expression: multiple -k flags do not OR in pytest.
+  expr="$(printf '%s or ' "$@" | sed 's/ or $//')"
+  pytest tests/test_catalog_wayland.py -q --tb=short -k "$expr"
 else
   pytest tests/test_catalog_wayland.py -q --tb=short
 fi

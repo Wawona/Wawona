@@ -55,18 +55,41 @@ colima start
 - Claim green without `catalog-gallery/<client>.png` passing
   `require_client_screenshot`
 
-### Mac2 TCC (human)
+### Mac2 Automation Mode + TCC
 
-If WDA logs `Not authorized for performing UI testing actions` or Mac2
-cannot read `page_source` / `wwn.machines.root`: System Settings → Privacy
-& Security → **Accessibility** (and Developer Tools if present) must allow
-`WebDriverAgentRunner-Runner`. Re-toggle after Xcode/WDA rebuild. Agent
-cannot grant TCC.
+`appium driver doctor mac2` warning
+`Automation Mode requires user authentication` maps to WDA
+`Not authorized for performing UI testing actions` even when Accessibility
+TCC already allows `WebDriverAgentRunner-Runner`.
 
-`ensure-colima.sh` resolves `nixpkgs#colima` when brew is missing. Prefer
-`WAWONA_APP_PATH=/Applications/Wawona.app` (or a11y Debug) with
-`WAWONA_MAC2_MANAGE_APP=1` + `skipAppKill`. `MANAGE_APP=0` drops bundleId
-and cannot see Machines root.
+Fix (admin GUI password once):
+
+```bash
+osascript -e 'do shell script "/usr/bin/automationmodetool enable-automationmode-without-authentication" with administrator privileges'
+automationmodetool   # expect: DOES NOT REQUIRE user authentication
+appium driver doctor mac2   # Automation Mode check green
+```
+
+Non-interactive `automationmodetool …` fails (empty password). Prefer
+osascript admin dialog. Also keep Accessibility for
+`WebDriverAgentRunner-Runner` after WDA rebuilds.
+
+### Tip app + clean launch (hard)
+
+Rule `wawona-test-tip-app`. Every Appium / test host launch:
+
+```bash
+eval "$(scripts/appium/ensure-tip-wawona-macos.sh)"
+# rebuilds when git HEAD drifts; quits leftovers; starts tip binary
+```
+
+Never `/Applications/Wawona.app` or old `DerivedData-macos*`.
+`capture-catalog-gallery.sh` calls ensure-tip first.
+`WAWONA_TEST_REBUILD=1` forces xcodebuild. `WAWONA_ALLOW_STALE_TEST_APP=1`
+is forbidden for catalog.
+
+`ensure-colima.sh` resolves `nixpkgs#colima` when brew is missing.
+`WAWONA_MAC2_MANAGE_APP=1` + `skipAppKill`. `MANAGE_APP=0` drops bundleId.
 
 ### Present reveal (macOS)
 
