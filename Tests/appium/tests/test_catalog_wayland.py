@@ -53,7 +53,7 @@ APPLICATIONS = [
 def _require_catalog_platform():
     name = platform_name()
     if name not in {"macos", "linux"}:
-        pytest.skip("catalog Wayland guests run on macOS (container) or Linux (nested)")
+        pytest.skip("catalog Wayland guests run on macOS (Colima) or Linux (nested)")
     try:
         if feature_state("catalog_clients") != "available":
             pytest.skip(f"catalog_clients not available on {name}")
@@ -93,9 +93,12 @@ def _launch_and_assert(client_id: str, kind: str, machines, compositor, artifact
             "Start Wawona before claiming catalog clients are tested."
         )
 
-    guest = entry.get("guest")
-    if guest and not os.environ.get("WAWONA_WAYLAND_GUEST"):
-        os.environ["WAWONA_WAYLAND_GUEST"] = str(guest)
+    # Darwin catalog = Colima always. Linux CI may set nested.
+    if platform_name() == "macos":
+        os.environ["WAWONA_WAYLAND_GUEST"] = "colima"
+    else:
+        guest = entry.get("guest") or "nested"
+        os.environ.setdefault("WAWONA_WAYLAND_GUEST", str(guest))
 
     # Host Present only exposes wwn.compositor.surface after Focus / after the
     # Wawona Terminal window closes (Start opens Terminal; close = Focus).

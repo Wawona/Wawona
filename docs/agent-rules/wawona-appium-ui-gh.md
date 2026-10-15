@@ -24,7 +24,7 @@ Install / refresh from `/etc/nix-darwin/.dotfiles` (`skills/appium`,
 - Editing `Tests/appium/`, `scripts/appium/`, `.github/workflows/ui-appium.yml`
 - Touching `wwn.*` a11y ids / `selectors.json` / `matrix.toml`
 - Any red or flaky **UI / Appium / GUI smoke** job on GitHub Actions
-- Wayland catalog guests on runners (container / Colima / nested)
+- Wayland catalog guests on runners (Colima on Darwin; nested on Linux)
 
 ## Runner failure loop (hard)
 

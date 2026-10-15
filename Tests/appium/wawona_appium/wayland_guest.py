@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -21,6 +22,11 @@ def launch_client(client_id: str, *, timeout: float = 180.0) -> subprocess.Compl
         env.get("XDG_RUNTIME_DIR", f"/tmp/wawona-{os.getuid()}"),
     )
     env.setdefault("WAYLAND_DISPLAY", "wayland-0")
+    # Darwin catalog tests always Colima. Linux CI sets nested explicitly.
+    if sys.platform == "darwin":
+        env["WAWONA_WAYLAND_GUEST"] = "colima"
+    else:
+        env.setdefault("WAWONA_WAYLAND_GUEST", "nested")
     return subprocess.run(
         ["bash", str(_LAUNCH), client_id],
         check=False,

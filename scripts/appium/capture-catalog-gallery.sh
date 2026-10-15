@@ -5,10 +5,10 @@
 # Prerequisites:
 #   - Wawona running with $WAWONA_RUNTIME/wayland-0
 #   - Appium on :4723 (mac2 on Darwin, linux driver on Linux)
-#   - Colima (macOS colima guests) and/or container recipes as needed
+#   - Darwin: Colima running (ensure-colima.sh). No local-bundle / container.
+#   - Linux: nested guest on the same WAYLAND_DISPLAY
 #   - Present revealed (Focus / close Wawona Terminal) so wwn.compositor.surface
 #     exists. Dark terminals pass require_client_screenshot via stddev, not mean.
-#   - Nested weston local-bundle needs WESTON_BACKEND_DIR (set by launch script)
 #
 # Usage:
 #   scripts/appium/capture-catalog-gallery.sh           # all clients
@@ -37,8 +37,16 @@ fi
 
 chmod +x "$ROOT/scripts/appium/ensure-appium.sh"
 chmod +x "$ROOT/scripts/appium/ensure-wda-mac.sh"
+chmod +x "$ROOT/scripts/appium/ensure-colima.sh"
 chmod +x "$ROOT/scripts/appium/run-appium-suite.sh"
 chmod +x "$ROOT/scripts/appium/launch-wayland-client.sh"
+
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  export WAWONA_WAYLAND_GUEST=colima
+  "$ROOT/scripts/appium/ensure-colima.sh"
+else
+  export WAWONA_WAYLAND_GUEST="${WAWONA_WAYLAND_GUEST:-nested}"
+fi
 # Local Mac2 / Linux sessions flap :4723; never start pytest cold.
 "$ROOT/scripts/appium/ensure-appium.sh"
 # Darwin: pre-warm WDA with Xcode 26 Testing DYLD paths, then Mac2 attaches.

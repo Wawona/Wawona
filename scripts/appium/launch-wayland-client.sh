@@ -1,17 +1,20 @@
 #!/usr/bin/env bash
 # Launch a Wayland client into the live Wawona compositor for Appium catalog
-# tests. Prefer a Linux container (macOS Containerization / wawona-container-
-# desktop) or a Colima guest over waypipe SSH. Nested is for Linux runners.
-# Never invent a fake client or skip because a packaging card is missing.
+# tests.
+#
+# Darwin / macOS: Colima Linux guest + waypipe SSH only. No local-bundle, no
+# Apple Containerization shortcut. Fail closed if Colima is down.
+# Linux runners: nested on the same WAYLAND_DISPLAY (CI sets nested).
 #
 # Usage:
 #   scripts/appium/launch-wayland-client.sh <client-id>
-#   WAWONA_WAYLAND_GUEST=container|colima|nested scripts/appium/launch-wayland-client.sh swaywm
+#   WAWONA_WAYLAND_GUEST=colima|nested scripts/appium/launch-wayland-client.sh swaywm
 #
 # Env:
 #   WAWONA_RUNTIME / XDG_RUNTIME_DIR  compositor runtime (default /tmp/wawona-$UID)
 #   WAYLAND_DISPLAY                   default wayland-0
-#   WAWONA_WAYLAND_GUEST              container (default on Darwin) | colima | nested
+#   WAWONA_WAYLAND_GUEST              colima (default Darwin) | nested (default Linux)
+#   WAWONA_COLIMA_START=1             ensure-colima may start a stopped VM
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -26,17 +29,14 @@ if [[ ! -S "$SOCK" ]]; then
   exit 2
 fi
 
-# Map Appium matrix ids → guest:target.
-# Container recipes match scripts/container-desktop-clients-macos.sh /
-# assert-container-recipes-no-nix.sh (weston-container, sway, hyprland, …).
-# Everything else uses Colima + waypipe SSH into the same host socket.
+# Map Appium matrix ids → guest:command (apt / PATH name inside Colima).
 recipe_for() {
   case "$1" in
-    weston) echo "container:weston-container" ;;
+    weston) echo "colima:weston" ;;
     weston_terminal) echo "colima:weston-terminal" ;;
     niri) echo "colima:niri" ;;
-    swaywm) echo "container:sway" ;;
-    hyprland) echo "container:hyprland" ;;
+    swaywm) echo "colima:sway" ;;
+    hyprland) echo "colima:Hyprland" ;;
     weston_simple_shm) echo "colima:weston-simple-shm" ;;
     foot) echo "colima:foot" ;;
     ghostty_terminal) echo "colima:ghostty" ;;
@@ -56,10 +56,16 @@ recipe_for() {
 GUEST="${WAWONA_WAYLAND_GUEST:-}"
 if [[ -z "$GUEST" ]]; then
   if [[ "$(uname -s)" == "Darwin" ]]; then
-    GUEST=container
+    GUEST=colima
   else
     GUEST=nested
   fi
+fi
+
+# Catalog testing never uses Apple containerization or local host bins.
+if [[ "$GUEST" == "container" || "$GUEST" == "local" || "$GUEST" == "local-bundle" ]]; then
+  echo "FAIL: WAWONA_WAYLAND_GUEST=$GUEST forbidden for catalog tests; use colima (Darwin) or nested (Linux)." >&2
+  exit 5
 fi
 
 SPEC="$(recipe_for "$CLIENT")"
@@ -71,65 +77,12 @@ if [[ "$KIND" == "unknown" ]]; then
   exit 3
 fi
 
-# Recipe kind wins over default guest when they disagree.
-if [[ "$KIND" == "colima" ]]; then
+# Recipe kind is always colima in the map; nested only via explicit env on Linux.
+if [[ "$GUEST" != "nested" ]]; then
   GUEST=colima
-elif [[ "$KIND" == "container" && "$GUEST" == "nested" ]]; then
-  # Linux CI: nest instead of macOS containerization.
-  GUEST=nested
 fi
 
-launch_container() {
-  local recipe="$1"
-  chmod +x "$ROOT/scripts/container-desktop-clients-macos.sh"
-  WAWONA_CONTAINER_BACKEND="${WAWONA_CONTAINER_BACKEND:-containerization}" \
-    "$ROOT/scripts/container-desktop-clients-macos.sh" "$recipe"
-}
-
-launch_local_bundle() {
-  # macOS: prefer clients bundled in Wawona.app against the live host socket.
-  # Prefer WAWONA_APP_PATH (nix product) over /Applications so modules match.
-  local app_root="${WAWONA_APP_PATH:-/Applications/Wawona.app}"
-  app_root="${app_root%/}"
-  local bin_dir="$app_root/Contents/Resources/bin"
-  local res_lib="$app_root/Contents/Resources/lib"
-  local exe=""
-  case "$CLIENT" in
-    foot) exe="$bin_dir/foot" ;;
-    weston) exe="$bin_dir/weston" ;;
-    weston_terminal) exe="$bin_dir/weston-terminal" ;;
-    weston_simple_shm) exe="$bin_dir/weston-simple-shm" ;;
-    niri) exe="$bin_dir/niri" ;;
-    *) return 1 ;;
-  esac
-  if [[ ! -x "$exe" ]]; then
-    return 1
-  fi
-  mkdir -p "$ROOT/.agent-device/test-artifacts/appium"
-  local cmd="$exe"
-  local env_prefix="export XDG_RUNTIME_DIR='$XDG_RUNTIME_DIR' WAYLAND_DISPLAY='$WAYLAND_DISPLAY'"
-  case "$CLIENT" in
-    weston)
-      # Weston 13 aborts if wayland-backend.so is loaded from a stale nix
-      # module dir before weston_log_set_handler. Point at this app's modules.
-      env_prefix="$env_prefix DYLD_LIBRARY_PATH='$res_lib\${DYLD_LIBRARY_PATH:+:\$DYLD_LIBRARY_PATH}'"
-      env_prefix="$env_prefix WESTON_BACKEND_DIR='$res_lib/libweston-13'"
-      env_prefix="$env_prefix WESTON_MODULE_DIR='$res_lib/weston'"
-      cmd="$exe --backend=wayland --socket=appium-local-weston --width=1024 --height=768"
-      ;;
-    niri) cmd="env NIRI_BACKEND=nested $exe" ;;
-  esac
-  nohup bash -lc "$env_prefix; $cmd" \
-    >"$ROOT/.agent-device/test-artifacts/appium/local-${CLIENT}.log" 2>&1 &
-  echo "local-bundle pid=$! client=$CLIENT cmd=$cmd app=$app_root"
-  return 0
-}
-
 launch_colima() {
-  # Prefer in-app binaries when present (stable host socket; no SSH race).
-  if [[ "$(uname -s)" == "Darwin" ]] && launch_local_bundle; then
-    return 0
-  fi
   local cmd="$1"
   local pkg="$cmd"
   case "$cmd" in
@@ -144,8 +97,13 @@ launch_colima() {
     gnome-shell) pkg=gnome-shell ;;
     plasmashell) pkg=plasma-workspace ;;
     niri) pkg=niri ;;
+    sway) pkg=sway ;;
+    Hyprland|hyprland) pkg=hyprland; cmd=Hyprland ;;
+    weston) pkg=weston; cmd="weston --backend=wayland --socket=appium-colima-weston --width=1024 --height=768" ;;
     weston-terminal|weston-simple-shm) pkg=weston ;;
   esac
+  chmod +x "$ROOT/scripts/appium/ensure-colima.sh"
+  "$ROOT/scripts/appium/ensure-colima.sh"
   if [[ ! -x "$ROOT/scripts/waypipe-ssh-colima-lab.sh" && ! -f "$ROOT/scripts/waypipe-ssh-colima-lab.sh" ]]; then
     echo "FAIL: waypipe-ssh-colima-lab.sh missing" >&2
     exit 4
@@ -155,10 +113,11 @@ launch_colima() {
   PORT="$(awk '$1=="Port" { print $2; exit }' "$COLIMA_SSH_CONFIG" 2>/dev/null || echo 49419)"
   ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
     -i "$KEY" -p "$PORT" "lima@127.0.0.1" \
-    "command -v $cmd >/dev/null || sudo DEBIAN_FRONTEND=noninteractive apt-get install -y $pkg" \
+    "command -v ${cmd%% *} >/dev/null || sudo DEBIAN_FRONTEND=noninteractive apt-get install -y $pkg" \
     >/tmp/wawona-colima-apt-"$CLIENT".log 2>&1 || true
   chmod +x "$ROOT/scripts/waypipe-ssh-colima-lab.sh"
-  "$ROOT/scripts/waypipe-ssh-colima-lab.sh" "$CLIENT" "$cmd"
+  # shellcheck disable=SC2086
+  "$ROOT/scripts/waypipe-ssh-colima-lab.sh" "$CLIENT" $cmd
 }
 
 launch_nested() {
@@ -185,9 +144,6 @@ echo "wayland-guest: client=$CLIENT guest=$GUEST target=$TARGET sock=$SOCK"
 mkdir -p "$ROOT/.agent-device/test-artifacts/appium"
 
 case "$GUEST" in
-  container)
-    launch_container "$TARGET"
-    ;;
   colima)
     launch_colima "$TARGET"
     ;;
@@ -195,7 +151,7 @@ case "$GUEST" in
     launch_nested "$TARGET"
     ;;
   *)
-    echo "FAIL: unknown WAWONA_WAYLAND_GUEST=$GUEST" >&2
+    echo "FAIL: unknown WAWONA_WAYLAND_GUEST=$GUEST (allowed: colima, nested)" >&2
     exit 5
     ;;
 esac

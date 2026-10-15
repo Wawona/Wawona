@@ -118,11 +118,12 @@ catalog_clients = "available"
 
 # 23.A Compositors / DEs (Wayland into Wawona)
 [catalog.compositors]
-weston = { status = "available", guest = "container", recipe = "weston-container" }
+# Darwin catalog testing is Colima + waypipe only (no local-bundle / container shortcut).
+weston = { status = "available", guest = "colima", command = "weston" }
 niri = { status = "available", guest = "colima", command = "niri" }
-swaywm = { status = "available", guest = "container", recipe = "sway" }
+swaywm = { status = "available", guest = "colima", command = "sway" }
 mangowm = { status = "available", guest = "colima", command = "mango" }
-hyprland = { status = "available", guest = "container", recipe = "hyprland" }
+hyprland = { status = "available", guest = "colima", command = "Hyprland" }
 cosmic_de = { status = "available", guest = "colima", command = "cosmic-comp" }
 phosh_de = { status = "available", guest = "colima", command = "phosh" }
 kde_plasma_de = { status = "available", guest = "colima", command = "plasmashell" }

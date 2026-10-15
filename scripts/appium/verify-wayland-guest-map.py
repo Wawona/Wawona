@@ -19,7 +19,9 @@ except ModuleNotFoundError:
 ROOT = Path(__file__).resolve().parents[2]
 MATRIX = ROOT / "Tests/appium/matrix.toml"
 LAUNCH = ROOT / "scripts/appium/launch-wayland-client.sh"
-ALLOWED_GUESTS = {"container", "colima", "nested"}
+# Catalog matrix rows are Colima. Nested is only a Linux CI override via env,
+# not a matrix guest value.
+ALLOWED_GUESTS = {"colima"}
 
 
 def main() -> int:

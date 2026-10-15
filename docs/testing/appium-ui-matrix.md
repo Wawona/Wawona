@@ -62,9 +62,8 @@ Each client is a real Wayland process forwarded into the host Wawona socket:
 
 | `guest` | How |
 |---------|-----|
-| `container` | macOS `Wawona run` / `container-desktop-clients-macos.sh` (`weston-container`, `sway`, `hyprland`, …) |
-| `colima` | Colima Linux VM + `waypipe-ssh-colima-lab.sh` (foot, firefox, DEs, …) |
-| `nested` | Linux runner: same-host nested client on `WAYLAND_DISPLAY` |
+| `colima` | **Required on Darwin.** Colima Linux VM + `waypipe-ssh-colima-lab.sh`. No local-bundle, no Apple Containerization shortcut for catalog tests. |
+| `nested` | Linux runner only: same-host nested client on `WAYLAND_DISPLAY` (`WAWONA_WAYLAND_GUEST=nested`) |
 
 CI fails closed if `matrix.toml` and `launch-wayland-client.sh` drift
 (`scripts/appium/verify-wayland-guest-map.py`). Appium then asserts the host
@@ -94,7 +93,9 @@ WAWONA_APPIUM_DRY=1 pytest tests/test_gates_unit.py -q
 
 # Wayland catalog (host compositor must own wayland-0 first):
 export WAWONA_APPIUM_PLATFORM=macos   # or linux
-export WAWONA_WAYLAND_GUEST=container # or colima / nested
+# Darwin: Colima required (scripts/appium/ensure-colima.sh).
+# Linux CI: WAWONA_WAYLAND_GUEST=nested
+colima start   # once on the host
 # Start Wawona so $WAWONA_RUNTIME/wayland-0 exists, then:
 pytest tests/test_catalog_wayland.py -q
 

@@ -57,14 +57,15 @@ def test_ios_phone_no_new_window(monkeypatch):
 def test_catalog_weston_available_with_guest():
     entry = catalog_entry("compositors", "weston")
     assert entry["status"] == "available"
-    assert entry["guest"] == "container"
-    assert entry.get("recipe") == "weston-container"
+    assert entry["guest"] == "colima"
+    assert entry.get("command") == "weston"
 
 
-def test_catalog_hyprland_available_container():
+def test_catalog_hyprland_available_colima():
     entry = catalog_entry("compositors", "hyprland")
     assert entry["status"] == "available"
-    assert entry["guest"] == "container"
+    assert entry["guest"] == "colima"
+    assert entry.get("command") == "Hyprland"
 
 
 def test_catalog_foot_colima():
@@ -79,7 +80,8 @@ def test_every_catalog_row_has_wayland_guest():
     for kind in ("compositors", "applications"):
         for name, entry in m["catalog"][kind].items():
             assert entry["status"] == "available", name
-            assert entry["guest"] in {"container", "colima", "nested"}, name
+            # Darwin catalog = Colima. Linux CI may override with nested via env.
+            assert entry["guest"] == "colima", name
 
 
 def test_selectors_nonempty():

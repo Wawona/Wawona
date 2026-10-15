@@ -263,16 +263,18 @@ jobs:
         run: |
           chmod +x scripts/appium/run-appium-suite.sh
           ./scripts/appium/run-appium-suite.sh
-      - name: macOS Wayland catalog guests (container / Colima)
+      - name: macOS Wayland catalog guests (Colima)
         if: ${{ matrix.platform == 'macos' }}
         env:
           WAWONA_APPIUM_PLATFORM: macos
           WAWONA_APPIUM_SERVER: http://127.0.0.1:4723
-          WAWONA_WAYLAND_GUEST: container
+          WAWONA_WAYLAND_GUEST: colima
+          WAWONA_COLIMA_START: "1"
           WAWONA_APPIUM_ARTIFACTS: ${{ github.workspace }}/.agent-device/test-artifacts/appium
         run: |
           set -euo pipefail
           chmod +x scripts/appium/launch-wayland-client.sh
+          chmod +x scripts/appium/ensure-colima.sh
           chmod +x scripts/appium/capture-catalog-gallery.sh
           python3 scripts/appium/verify-wayland-guest-map.py
           # Catalog green = PNG per client in catalog-gallery/. No socket =>
@@ -281,6 +283,13 @@ jobs:
           if [[ ! -S "$SOCK" ]]; then
             echo "No host Wayland socket at $SOCK; guest map verified, no catalog claim."
             exit 0
+          fi
+          # Fail closed without Colima. Start if brew formula present.
+          if ! command -v colima >/dev/null 2>&1; then
+            brew install colima lima || {
+              echo "FAIL: colima required for macOS catalog Wayland guests" >&2
+              exit 1
+            }
           fi
           unset WAWONA_APPIUM_DRY || true
           ./scripts/appium/capture-catalog-gallery.sh
