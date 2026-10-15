@@ -1005,11 +1005,11 @@
     "toolbar-keys": {
       "flake": false,
       "locked": {
-        "lastModified": 1791390997,
-        "narHash": "sha256-iJa48BdmmSkYshSiCnTMPTkcjPfVZviuX918D1FE71s=",
+        "lastModified": 1792024073,
+        "narHash": "sha256-2y5wipOAfRlXsBqYG7q9ekjx+EzDBrcorHiT5/OlUSo=",
         "owner": "Wawona",
         "repo": "ToolbarKeys",
-        "rev": "36324cc1561d89ec475d9ac1d6a318ece91f1ac7",
+        "rev": "82ba432bbcdfc3edd7c80c1ffa57037933dd36cb",
         "type": "github"
       },
       "original": {

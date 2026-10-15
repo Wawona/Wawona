@@ -147,5 +147,119 @@ final class WWNTerminalToolbarField: UITextField {
     override func deleteBackward() {
         coordinator?.parent.onInjectData(Data([0x7F]))
     }
+
+    override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        if #available(iOS 13.4, *), coordinator?.parent.isShell == true {
+            var rest = Set<UIPress>()
+            for press in presses {
+                if let key = press.key, let bytes = WWNTerminalKeyBytes.special(for: key) {
+                    coordinator?.parent.onInjectData(Data(bytes))
+                } else {
+                    rest.insert(press)
+                }
+            }
+            if !rest.isEmpty {
+                super.pressesBegan(rest, with: event)
+            }
+            return
+        }
+        super.pressesBegan(presses, with: event)
+    }
+
+    override var keyCommands: [UIKeyCommand]? {
+        if #available(iOS 13.4, *) { return super.keyCommands }
+        guard coordinator?.parent.isShell == true else { return super.keyCommands }
+        return WWNTerminalKeyBytes.legacyCommands(action: #selector(legacyTermKey(_:)))
+    }
+
+    @objc private func legacyTermKey(_ command: UIKeyCommand) {
+        guard coordinator?.parent.isShell == true else { return }
+        coordinator?.parent.onInjectData(Data(WWNTerminalKeyBytes.legacyBytes(command)))
+    }
+}
+#endif
+
+#if os(tvOS) || os(visionOS)
+import SwiftUI
+import UIKit
+
+/// Live key host for tvOS and visionOS. No Toolbar Keys accessory.
+struct WWNTerminalKeyHost: UIViewRepresentable {
+    var onInjectData: (Data) -> Void
+    var onInjectText: (String) -> Void
+    var autoFocus: Bool
+
+    func makeUIView(context: Context) -> WWNTerminalKeyField {
+        let field = WWNTerminalKeyField()
+        field.onInjectData = onInjectData
+        field.onInjectText = onInjectText
+        return field
+    }
+
+    func updateUIView(_ uiView: WWNTerminalKeyField, context: Context) {
+        uiView.onInjectData = onInjectData
+        uiView.onInjectText = onInjectText
+        if autoFocus, !uiView.isFirstResponder {
+            DispatchQueue.main.async {
+                _ = uiView.becomeFirstResponder()
+            }
+        }
+    }
+}
+
+final class WWNTerminalKeyField: UITextField {
+    var onInjectData: ((Data) -> Void)?
+    var onInjectText: ((String) -> Void)?
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = .clear
+        textColor = .clear
+        tintColor = .clear
+        autocorrectionType = .no
+        autocapitalizationType = .none
+        spellCheckingType = .no
+        alpha = 0.02
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { nil }
+
+    override var canBecomeFirstResponder: Bool { true }
+
+    override func insertText(_ text: String) {
+        onInjectText?(text)
+    }
+
+    override func deleteBackward() {
+        onInjectData?(Data([0x7F]))
+    }
+
+    override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        if #available(tvOS 13.4, iOS 13.4, *) {
+            var rest = Set<UIPress>()
+            for press in presses {
+                if let key = press.key, let bytes = WWNTerminalKeyBytes.special(for: key) {
+                    onInjectData?(Data(bytes))
+                } else {
+                    rest.insert(press)
+                }
+            }
+            if !rest.isEmpty {
+                super.pressesBegan(rest, with: event)
+            }
+            return
+        }
+        super.pressesBegan(presses, with: event)
+    }
+
+    override var keyCommands: [UIKeyCommand]? {
+        if #available(tvOS 13.4, iOS 13.4, *) { return super.keyCommands }
+        return WWNTerminalKeyBytes.legacyCommands(action: #selector(legacyTermKey(_:)))
+    }
+
+    @objc private func legacyTermKey(_ command: UIKeyCommand) {
+        onInjectData?(Data(WWNTerminalKeyBytes.legacyBytes(command)))
+    }
 }
 #endif

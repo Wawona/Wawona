@@ -1,9 +1,9 @@
-#if os(iOS) || os(visionOS)
+#if os(iOS) || os(tvOS) || os(visionOS)
 import Combine
 import SwiftUI
 import UIKit
 
-/// Styled lines from `wwn_term_export`. Face: bundled DejaVuSansM Nerd Font Mono.
+/// Styled lines from UniFFI `TerminalSession`. Host monospaced face, Nerd Font for private-use icons.
 struct WawonaTerminalSpan: Identifiable {
   let id: Int
   let text: String
@@ -12,6 +12,8 @@ struct WawonaTerminalSpan: Identifiable {
   let bold: Bool
   let italic: Bool
   let underline: Bool
+  let blink: Bool
+  let strike: Bool
 }
 
 struct WawonaTerminalLine: Identifiable {
@@ -21,97 +23,266 @@ struct WawonaTerminalLine: Identifiable {
 
 final class WawonaTerminalModel: ObservableObject {
   @Published var lines: [WawonaTerminalLine] = []
+  @Published var pictures: [WawonaTerminalPicture] = []
+  /// Bumps on every document apply, including in-place last-line edits.
+  @Published var pinToken = 0
+  private var nextLineID = 1
+  private var lineIDs: [Int] = []
+  private var lineKeys: [String] = []
 
-  func applySnapshot(_ data: Data) {
-    let next = WawonaTerminalSnapshot.lines(from: data)
+  func reset() {
+    lines = []
+    pictures = []
+    lineIDs = []
+    lineKeys = []
+    pinToken += 1
+  }
+
+  func applyPictures(_ document: String) {
+    let next = WawonaTerminalDocument.pictures(from: document)
+    if Thread.isMainThread {
+      pictures = next
+    } else {
+      DispatchQueue.main.async { [weak self] in
+        self?.pictures = next
+      }
+    }
+  }
+
+  func applyLines(_ document: String) {
+    let parsed = WawonaTerminalDocument.lines(from: document)
+    let keys = parsed.map { $0.spans.map(\.text).joined(separator: "\u{1}") }
+    lineIDs = alignLineIDs(oldIDs: lineIDs, oldKeys: lineKeys, newKeys: keys) {
+      let id = nextLineID
+      nextLineID += 1
+      return id
+    }
+    lineKeys = keys
+    let next = zip(lineIDs, parsed).map { id, line in
+      WawonaTerminalLine(
+        id: id,
+        spans: line.spans.enumerated().map { index, span in
+          WawonaTerminalSpan(
+            id: index,
+            text: span.text,
+            fg: span.fg,
+            bg: span.bg,
+            bold: span.bold,
+            italic: span.italic,
+            underline: span.underline,
+            blink: span.blink,
+            strike: span.strike
+          )
+        }
+      )
+    }
     if Thread.isMainThread {
       lines = next
+      pinToken += 1
     } else {
-      DispatchQueue.main.async { [weak self] in self?.lines = next }
+      DispatchQueue.main.async { [weak self] in
+        self?.lines = next
+        self?.pinToken += 1
+      }
     }
   }
 }
 
-enum WawonaTerminalSnapshot {
-  static func lines(from data: Data) -> [WawonaTerminalLine] {
-    if data.count < 4 { return [] }
-    var offset = 0
-    let lineCount = Int(readU32(data, &offset))
-    var lines: [WawonaTerminalLine] = []
-    lines.reserveCapacity(lineCount)
-    for lineIndex in 0..<lineCount {
-      if offset + 4 > data.count { break }
-      let cells = Int(readU32(data, &offset))
-      var pieces: [(UInt32, UInt32, UInt32, UInt32)] = []
-      pieces.reserveCapacity(cells)
-      for _ in 0..<cells {
-        if offset + 16 > data.count { break }
-        let cp = readU32(data, &offset)
-        let fg = readU32(data, &offset)
-        let bg = readU32(data, &offset)
-        let attrs = readU32(data, &offset)
-        pieces.append((cp, fg, bg, attrs))
-      }
-      var end = pieces.count
-      while end > 0 {
-        let cell = pieces[end - 1]
-        if (cell.0 == 0 || cell.0 == 32) && cell.2 == 0 {
-          end -= 1
-        } else {
-          break
-        }
-      }
-      var spans: [WawonaTerminalSpan] = []
-      var text = ""
-      var style: (UInt32, UInt32, UInt32)?
-      var spanID = 0
-      for index in 0..<end {
-        let cell = pieces[index]
-        let key = (cell.1, cell.2, cell.3)
-        let changed =
-          style.map { $0.0 != key.0 || $0.1 != key.1 || $0.2 != key.2 } ?? true
-        if changed {
-          if !text.isEmpty, let style {
-            spans.append(makeSpan(id: spanID, text: text, style: style))
-            spanID += 1
-            text = ""
-          }
-          style = key
-        }
-        let cp = cell.0 == 0 ? 32 : cell.0
-        if let scalar = Unicode.Scalar(cp) {
-          text.append(Character(scalar))
-        }
-      }
-      if !text.isEmpty, let style {
-        spans.append(makeSpan(id: spanID, text: text, style: style))
-      }
-      lines.append(WawonaTerminalLine(id: lineIndex, spans: spans))
+private func alignLineIDs(
+  oldIDs: [Int],
+  oldKeys: [String],
+  newKeys: [String],
+  mint: () -> Int
+) -> [Int] {
+  if newKeys == oldKeys, newKeys.count == oldIDs.count {
+    return oldIDs
+  }
+  if newKeys.count >= oldKeys.count, Array(newKeys.prefix(oldKeys.count)) == oldKeys {
+    var ids = oldIDs
+    while ids.count < newKeys.count {
+      ids.append(mint())
     }
-    return lines
+    return ids
   }
-
-  private static func makeSpan(id: Int, text: String, style: (UInt32, UInt32, UInt32))
-    -> WawonaTerminalSpan
+  if !oldKeys.isEmpty, newKeys.count == oldKeys.count,
+    Array(newKeys.dropLast()) == Array(oldKeys.dropFirst())
   {
-    WawonaTerminalSpan(
-      id: id, text: text, fg: style.0, bg: style.1,
-      bold: style.2 & 1 != 0, italic: style.2 & 4 != 0, underline: style.2 & 8 != 0
-    )
+    var ids = Array(oldIDs.dropFirst())
+    ids.append(mint())
+    return ids
+  }
+  var ids: [Int] = []
+  let overlap = min(oldIDs.count, newKeys.count)
+  let fresh = newKeys.count - overlap
+  for _ in 0..<fresh {
+    ids.append(mint())
+  }
+  ids.append(contentsOf: oldIDs.suffix(overlap))
+  return ids
+}
+
+private struct TermLineRecord: Decodable {
+  struct Span: Decodable {
+    let text: String
+    let fg: UInt32
+    let bg: UInt32
+    let bold: Bool
+    let italic: Bool
+    let underline: Bool
+    let blink: Bool
+    let strike: Bool
   }
 
-  private static func readU32(_ data: Data, _ offset: inout Int) -> UInt32 {
-    let b0 = UInt32(data[offset])
-    let b1 = UInt32(data[offset + 1])
-    let b2 = UInt32(data[offset + 2])
-    let b3 = UInt32(data[offset + 3])
-    offset += 4
-    return b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)
+  let spans: [Span]
+}
+
+enum WawonaTerminalDocument {
+  static func lines(from document: String) -> [WawonaTerminalLine] {
+    let data = Data(document.utf8)
+    let decoded = (try? JSONDecoder().decode([TermLineRecord].self, from: data)) ?? []
+    return decoded.enumerated().map { index, line in
+      WawonaTerminalLine(
+        id: index,
+        spans: line.spans.enumerated().map { spanIndex, span in
+          WawonaTerminalSpan(
+            id: spanIndex,
+            text: span.text,
+            fg: span.fg,
+            bg: span.bg,
+            bold: span.bold,
+            italic: span.italic,
+            underline: span.underline,
+            blink: span.blink,
+            strike: span.strike
+          )
+        }
+      )
+    }
+  }
+
+  static func pictures(from document: String) -> [WawonaTerminalPicture] {
+    let data = Data(document.utf8)
+    let decoded = (try? JSONDecoder().decode([PictureRecord].self, from: data)) ?? []
+    return decoded.compactMap { record in
+      guard let image = cgImage(record) else { return nil }
+      return WawonaTerminalPicture(
+        id: record.n, col: record.col, row: record.row,
+        columns: max(1, record.cols), rows: max(1, record.rows), z: record.z, image: image
+      )
+    }
+  }
+}
+
+struct WawonaTerminalPicture: Identifiable {
+  let id: Int
+  let col: Int
+  let row: Int
+  let columns: Int
+  let rows: Int
+  let z: Int
+  let image: CGImage
+}
+
+private struct PictureRecord: Decodable {
+  let n: Int
+  let col: Int
+  let row: Int
+  let w: Int
+  let h: Int
+  let cols: Int
+  let rows: Int
+  let z: Int
+  let rgba: String
+}
+
+private func cgImage(_ record: PictureRecord) -> CGImage? {
+  guard record.w > 0, record.h > 0, let data = Data(base64Encoded: record.rgba, options: .ignoreUnknownCharacters),
+    data.count >= record.w * record.h * 4
+  else { return nil }
+  let space = CGColorSpaceCreateDeviceRGB()
+  let info = CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue)
+  guard let provider = CGDataProvider(data: data as CFData) else { return nil }
+  return CGImage(
+    width: record.w, height: record.h, bitsPerComponent: 8, bitsPerPixel: 32,
+    bytesPerRow: record.w * 4, space: space, bitmapInfo: info, provider: provider,
+    decode: nil, shouldInterpolate: true, intent: .defaultIntent
+  )
+}
+
+struct WawonaTerminalRun: Identifiable {
+  let id: Int
+  let text: String
+  let nerd: Bool
+}
+
+enum WawonaTerminalFonts {
+  static let pointSize: CGFloat = 13
+  static var host: Font { Font.system(size: pointSize, design: .monospaced) }
+  static var nerd: Font { Font.custom("DejaVuSansM Nerd Font Mono", size: pointSize) }
+
+  static var rowHeight: CGFloat {
+    max(1, UIFont.monospacedSystemFont(ofSize: pointSize, weight: .regular).lineHeight)
+  }
+
+  static var cellWidth: CGFloat {
+    let font = UIFont.monospacedSystemFont(ofSize: pointSize, weight: .regular)
+    return max(1, ("M" as NSString).size(withAttributes: [.font: font]).width)
+  }
+
+  static func runs(_ text: String) -> [WawonaTerminalRun] {
+    var out: [WawonaTerminalRun] = []
+    var current = ""
+    var nerd: Bool?
+    var id = 0
+    func flush() {
+      guard let nerd, !current.isEmpty else { return }
+      out.append(WawonaTerminalRun(id: id, text: current, nerd: nerd))
+      id += 1
+      current = ""
+    }
+    for ch in text {
+      let flag = isNerd(ch)
+      if nerd != flag {
+        flush()
+        nerd = flag
+      }
+      current.append(ch)
+    }
+    flush()
+    if out.isEmpty {
+      out.append(WawonaTerminalRun(id: 0, text: " ", nerd: false))
+    }
+    return out
+  }
+
+  static func isNerd(_ ch: Character) -> Bool {
+    !ch.unicodeScalars.isEmpty
+      && ch.unicodeScalars.allSatisfy { scalar in
+        let u = scalar.value
+        return (0xE000...0xF8FF).contains(u)
+          || (0xF0000...0xFFFFD).contains(u)
+          || (0x100000...0x10FFFD).contains(u)
+      }
+  }
+}
+
+struct WawonaTerminalViewportKey: PreferenceKey {
+  static var defaultValue: CGSize = .zero
+  static func reduce(value: inout CGSize, nextValue: () -> CGSize) {
+    let next = nextValue()
+    if next != .zero {
+      value = next
+    }
   }
 }
 
 struct WawonaTerminalView: View {
   @ObservedObject var model: WawonaTerminalModel
+  var screenRows: UInt32 = 28
+  var onCell: ((UInt32, UInt32) -> Void)?
+  @State private var blinkOn = true
+  @State private var stick = true
+  @State private var userDragged = false
 
   var body: some View {
     // ScrollViewReader via Dave DeLong namespace (`WawonaBackport`). Never bare
@@ -123,43 +294,117 @@ struct WawonaTerminalView: View {
             lineText(line)
               .frame(maxWidth: .infinity, alignment: .leading)
               .id(line.id)
+              .simultaneousGesture(
+                DragGesture(minimumDistance: 0).onEnded { value in
+                  let col = UInt32(max(1, Int(value.location.x / WawonaTerminalFonts.cellWidth) + 1))
+                  let live = Int(screenRows)
+                  let start = max(0, model.lines.count - live)
+                  guard let idx = model.lines.firstIndex(where: { $0.id == line.id }), idx >= start else {
+                    return
+                  }
+                  onCell?(col, UInt32(idx - start + 1))
+                }
+              )
           }
+          Color.clear.frame(height: 1).id("wwn-term-end")
+            .onAppear {
+              stick = true
+              userDragged = false
+            }
+            .onDisappear {
+              if userDragged { stick = false }
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .background(terminalPictures(behind: true))
+        .overlay(terminalPictures(behind: false), alignment: .topLeading)
         .padding(8)
       }
       .background(Color.black)
       .onAppear { scrollTerminalToEnd(proxy) }
-      .backport.onChange(of: model.lines.count) { _ in
+      .backport.onChange(of: model.pinToken) { _ in
+        if model.lines.isEmpty { stick = true }
+        guard stick else { return }
         scrollTerminalToEnd(proxy)
+      }
+      .simultaneousGesture(
+        DragGesture(minimumDistance: 8).onChanged { value in
+          if abs(value.translation.height) > 16 { userDragged = true }
+        }
+      )
+      .onReceive(Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()) { _ in
+        if model.lines.contains(where: { $0.spans.contains(where: \.blink) }) {
+          blinkOn.toggle()
+        }
       }
     }
   }
 
+  private func terminalPictures(behind: Bool) -> some View {
+    let live = Int(screenRows)
+    let start = max(0, model.lines.count - live)
+    let rowH = WawonaTerminalFonts.rowHeight
+    let cellW = WawonaTerminalFonts.cellWidth
+    return ZStack(alignment: .topLeading) {
+      ForEach(model.pictures.filter { behind ? $0.z < 0 : $0.z >= 0 }) { picture in
+        Image(decorative: picture.image, scale: 1)
+          .resizable()
+          .frame(width: cellW * CGFloat(picture.columns), height: rowH * CGFloat(picture.rows))
+          .offset(x: cellW * CGFloat(picture.col), y: rowH * CGFloat(start + picture.row))
+          .allowsHitTesting(false)
+      }
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+  }
+
   private func scrollTerminalToEnd(_ proxy: WawonaScrollViewProxy) {
-    guard let last = model.lines.last?.id else { return }
     DispatchQueue.main.async {
-      proxy.scrollTo(last, anchor: .bottom)
+      proxy.scrollTo("wwn-term-end", anchor: .bottom)
     }
   }
 
   private func lineText(_ line: WawonaTerminalLine) -> some View {
-    let body = line.spans.reduce(Text("")) { acc, span in
-      acc + spanText(span)
+    let spans = line.spans.isEmpty
+      ? [WawonaTerminalSpan(id: 0, text: " ", fg: 0xE8E8E8, bg: 0, bold: false, italic: false, underline: false, blink: false, strike: false)]
+      : line.spans
+    return HStack(spacing: 0) {
+      ForEach(spans) { span in
+        spanView(span, blinkOn: blinkOn)
+      }
     }
-    return (line.spans.isEmpty ? Text(" ") : body)
-      .font(.custom("DejaVuSansM Nerd Font Mono", size: 13))
-      .lineLimit(1)
-      .fixedSize(horizontal: true, vertical: true)
-      .frame(minHeight: 16, alignment: .leading)
+    .lineLimit(1)
+    .fixedSize(horizontal: true, vertical: true)
+    .frame(minHeight: WawonaTerminalFonts.rowHeight, alignment: .leading)
   }
 
-  private func spanText(_ span: WawonaTerminalSpan) -> Text {
-    var text = Text(span.text).foregroundColor(rgb(span.fg))
-    if span.bold { text = text.bold() }
-    if span.italic { text = text.italic() }
-    if span.underline { text = text.underline() }
-    return text
+  private func spanView(_ span: WawonaTerminalSpan, blinkOn: Bool) -> some View {
+    HStack(spacing: 0) {
+      ForEach(WawonaTerminalFonts.runs(span.text)) { run in
+        styled(run.text, span)
+          .font(run.nerd ? WawonaTerminalFonts.nerd : WawonaTerminalFonts.host)
+      }
+    }
+    .background(span.bg == 0 ? Color.clear : rgb(span.bg))
+    .opacity(span.blink && !blinkOn ? 0.15 : 1)
+    .overlay(strikeBar(span), alignment: .center)
+  }
+
+  private func strikeBar(_ span: WawonaTerminalSpan) -> some View {
+    Group {
+      if span.strike {
+        Rectangle()
+          .fill(rgb(span.fg))
+          .frame(height: 1)
+      }
+    }
+  }
+
+  private func styled(_ text: String, _ span: WawonaTerminalSpan) -> Text {
+    var view = Text(text).foregroundColor(rgb(span.fg))
+    if span.bold { view = view.bold() }
+    if span.italic { view = view.italic() }
+    if span.underline { view = view.underline() }
+    return view
   }
 
   private func rgb(_ value: UInt32) -> Color {
@@ -178,12 +423,16 @@ final class WWNIosGuestConsole: ObservableObject {
   static let shared = WWNIosGuestConsole()
 
   @Published var isPresented = false
+  /// New Window on iPad / visionOS. The main window must not also show the tab.
+  @Published var windowed = false
+  /// Set by Start before the present notification. Cleared in `present`.
+  static var openNextInWindow = false
   @Published var title = "Guest console"
-  @Published var logText = ""
   @Published var inputLine = ""
   @Published var statusMessage = ""
 
   let termModel = WawonaTerminalModel()
+  @Published var screenRows: UInt32 = 28
 
   private var machineId = ""
   private var source = "relay"
@@ -241,8 +490,9 @@ final class WWNIosGuestConsole: ObservableObject {
     fed = 0
     inputLine = ""
     statusMessage = ""
-    logText = ""
-    termModel.lines = []
+    termModel.reset()
+    windowed = Self.openNextInWindow
+    Self.openNextInWindow = false
     title = "Wawona Terminal"
     switch source {
     case "shell":
@@ -263,6 +513,19 @@ final class WWNIosGuestConsole: ObservableObject {
     }
   }
 
+  func fitTerminal(to size: CGSize) {
+    guard size.width > 1, size.height > 1 else { return }
+    let cellW = WawonaTerminalFonts.cellWidth
+    let cellH = WawonaTerminalFonts.rowHeight
+    let cols = UInt32(min(512, max(20, Int((size.width - 16) / cellW))))
+    let rows = UInt32(min(256, max(8, Int(size.height / cellH))))
+    screenRows = rows
+    let pxW = UInt32(max(1, cellW.rounded()))
+    let pxH = UInt32(max(1, cellH.rounded()))
+    shell?.resize(cols: cols, rows: rows, cellW: pxW, cellH: pxH)
+    logTerm?.resize(cols: cols, rows: rows, cellW: pxW, cellH: pxH)
+  }
+
   func dismiss(machineId: String) {
     if !self.machineId.isEmpty, !machineId.isEmpty, machineId != self.machineId {
       return
@@ -271,18 +534,30 @@ final class WWNIosGuestConsole: ObservableObject {
     stopShell()
     stopLogTerm()
     isPresented = false
+    windowed = false
     self.machineId = ""
     source = "relay"
     fed = 0
     inputLine = ""
     statusMessage = ""
-    logText = ""
+  }
+
+  /// Scene activation failed. Show the terminal in the current window.
+  func fallBackToTab() {
+    windowed = false
+    if !machineId.isEmpty {
+      isPresented = true
+    }
   }
 
   /// Done = Focus: park Terminal, reveal mounted Wayland / Metal client.
   func userDismiss() {
     let mid = machineId
+    let wasWindow = windowed
     dismiss(machineId: mid)
+    if wasWindow {
+      WWNSessionWindowPresenter.closeTerminalWindow()
+    }
     guard !mid.isEmpty else { return }
     WWNMachineProfileStore.setActiveMachineId(mid)
     WWNMainWindowRouter.shared.showSessionSurface()
@@ -295,8 +570,27 @@ final class WWNIosGuestConsole: ObservableObject {
 
   private func appendLog(_ chunk: String) {
     guard !chunk.isEmpty else { return }
-    logText += chunk
-    logTerm?.feed(chunk)
+    if isShell {
+      shell?.feedLocal(Data(chunk.utf8))
+    } else {
+      logTerm?.feed(chunk)
+    }
+  }
+
+  /// Local VT erase. Does not write the PTY.
+  func pointerTap(col: UInt32, row: UInt32) {
+    guard isShell else { return }
+    shell?.pointer(button: 0, col: col, row: row, pressed: true, motion: false)
+    shell?.pointer(button: 0, col: col, row: row, pressed: false, motion: false)
+  }
+
+  func clearScreen() {
+    let erase = Data([0x1B, 0x5B, 0x33, 0x4A])
+    if isShell {
+      shell?.feedLocal(erase)
+    } else {
+      logTerm?.feed(erase)
+    }
   }
 
   func submitInput() {
@@ -318,7 +612,11 @@ final class WWNIosGuestConsole: ObservableObject {
   func injectTerminalText(_ text: String) {
     guard !text.isEmpty else { return }
     if isShell {
-      shell?.write(Data(text.utf8))
+      if text.contains("\n") || text.contains("\r") {
+        shell?.writePaste(Data(text.utf8))
+      } else {
+        shell?.write(Data(text.utf8))
+      }
     } else {
       appendLog(text)
     }
@@ -336,7 +634,10 @@ final class WWNIosGuestConsole: ObservableObject {
   private func startShell() {
     let session = IosShellSession()
     session.onScreen = { [weak self] data in
-      self?.termModel.applySnapshot(data)
+      self?.termModel.applyLines(data)
+    }
+    session.onPictures = { [weak self] data in
+      self?.termModel.applyPictures(data)
     }
     session.onFailure = { [weak self] message in
       self?.statusMessage = message
@@ -355,7 +656,10 @@ final class WWNIosGuestConsole: ObservableObject {
     stopLogTerm()
     let session = IosLogTermSession()
     session.onScreen = { [weak self] data in
-      self?.termModel.applySnapshot(data)
+      self?.termModel.applyLines(data)
+    }
+    session.onPictures = { [weak self] data in
+      self?.termModel.applyPictures(data)
     }
     logTerm = session
     session.start(cols: 80, rows: 28)
@@ -427,7 +731,17 @@ struct WWNIosGuestConsoleSheet: View {
   var body: some View {
     NavigationView {
       VStack(spacing: 0) {
-        WawonaTerminalView(model: console.termModel)
+        WawonaTerminalView(model: console.termModel, screenRows: console.screenRows) { col, row in
+          console.pointerTap(col: col, row: row)
+        }
+          .background(
+            GeometryReader { geo in
+              Color.clear.preference(key: WawonaTerminalViewportKey.self, value: geo.size)
+            }
+          )
+          .onPreferenceChange(WawonaTerminalViewportKey.self) { size in
+            console.fitTerminal(to: size)
+          }
         if !console.statusMessage.isEmpty {
           Text(console.statusMessage)
             .font(.system(.caption, design: .monospaced))
@@ -448,23 +762,23 @@ struct WWNIosGuestConsoleSheet: View {
         )
         .frame(width: 1, height: 1)
         .accessibility(identifier: "wwn.guestConsole.send")
-        #elseif os(visionOS)
+        #elseif os(tvOS) || os(visionOS)
         if console.isShell {
-          HStack(spacing: 8) {
-            TextField("Type here", text: $console.inputLine, onCommit: {
-              console.submitInput()
-            })
-            .font(.custom("DejaVuSansM Nerd Font Mono", size: 14))
-            .padding(8)
-            .background(Color(white: 0.12))
-            .cornerRadius(6)
-            Button("Send") { console.submitInput() }
-              .accessibility(identifier: "wwn.guestConsole.send")
+          WWNTerminalKeyHost(
+            onInjectData: { console.injectTerminalData($0) },
+            onInjectText: { console.injectTerminalText($0) },
+            autoFocus: true
+          )
+          .frame(width: 1, height: 1)
+          .accessibility(identifier: "wwn.guestConsole.send")
+          #if os(visionOS)
+          HStack {
             Button("^C") { console.sendControl(0x03) }
               .accessibility(identifier: "wwn.guestConsole.ctrlC")
           }
           .padding(8)
           .background(Color.black)
+          #endif
         }
         #endif
       }
@@ -475,7 +789,8 @@ struct WWNIosGuestConsoleSheet: View {
         Button("Done") { console.userDismiss() }
           .accessibility(identifier: WWNA11y.terminalDone)
       } trailing: {
-        EmptyView()
+        Button("Clear") { console.clearScreen() }
+          .accessibility(identifier: "wwn.terminal.clear")
       }
     }
     .navigationViewStyle(StackNavigationViewStyle())

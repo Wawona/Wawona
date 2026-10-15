@@ -21,6 +21,9 @@ public final class WWNCompositorView_ios: UIView, UITextInput {
     /// Soft cursor for gamepad / GCMouse injection (Touchpad mode).
     private var virtualPointer = CGPoint.zero
     private var virtualPointerSeeded = false
+    #if os(iOS)
+    private var toolbarDockObservers: [NSObjectProtocol] = []
+    #endif
 
     public override init(frame: CGRect) {
         super.init(frame: frame)
@@ -35,10 +38,54 @@ public final class WWNCompositorView_ios: UIView, UITextInput {
         #if !os(tvOS)
         isMultipleTouchEnabled = true
         #endif
+        #if os(iOS)
+        installToolbarDockObservers()
+        #endif
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { nil }
+
+    #if os(iOS)
+    deinit {
+        for token in toolbarDockObservers {
+            NotificationCenter.default.removeObserver(token)
+        }
+    }
+
+    private func installToolbarDockObservers() {
+        let center = NotificationCenter.default
+        let refresh: (Notification) -> Void = { [weak self] _ in
+            self?.refreshHardwareKeyboardAccessoryMode()
+        }
+        toolbarDockObservers.append(
+            center.addObserver(
+                forName: KeyboardToolbarManager.optionsDidChangeNotification,
+                object: nil,
+                queue: .main,
+                using: refresh
+            )
+        )
+        if #available(iOS 14.0, *) {
+            toolbarDockObservers.append(
+                center.addObserver(
+                    forName: .GCKeyboardDidConnect,
+                    object: nil,
+                    queue: .main,
+                    using: refresh
+                )
+            )
+            toolbarDockObservers.append(
+                center.addObserver(
+                    forName: .GCKeyboardDidDisconnect,
+                    object: nil,
+                    queue: .main,
+                    using: refresh
+                )
+            )
+        }
+    }
+    #endif
 
     public override func layoutSubviews() {
         super.layoutSubviews()
@@ -83,7 +130,16 @@ public final class WWNCompositorView_ios: UIView, UITextInput {
 
     #if os(iOS)
     public override var inputAccessoryView: UIView? {
-        get { ensureToolbarAccessory() }
+        get {
+            if hardwareKeyboardActive {
+                let mgr = KeyboardToolbarManager.shared
+                // Rootshell: hide dock unless Show with Hardware Keyboard (or Persistent).
+                if !mgr.showWithHardwareKeyboard && !mgr.persistentToolbar {
+                    return nil
+                }
+            }
+            return ensureToolbarAccessory()
+        }
         set { _ = newValue }
     }
 
@@ -99,11 +155,23 @@ public final class WWNCompositorView_ios: UIView, UITextInput {
         set { _ = newValue }
     }
 
-    /// Hardware keyboard → accessory-only (hide OSK). Soft keyboard stays expanded.
+    /// Hardware keyboard: hide OSK; dock toolbar only when prefs allow (Rootshell).
     private func refreshHardwareKeyboardAccessoryMode() {
         let hardware = Self.isHardwareKeyboardLikelyConnected()
         hardwareKeyboardActive = hardware
-        applyToolbarAccessoryOnlyMode(hardware)
+        let mgr = KeyboardToolbarManager.shared
+        let dockWithHardware = mgr.showWithHardwareKeyboard || mgr.persistentToolbar
+        if hardware {
+            applyToolbarAccessoryOnlyMode(dockWithHardware)
+        } else if mgr.persistentToolbar && keyboardActive {
+            // Soft keyboard dismissed path: keep accessory-only dock.
+            applyToolbarAccessoryOnlyMode(toolbarAccessoryOnlyMode)
+        } else {
+            applyToolbarAccessoryOnlyMode(false)
+        }
+        if keyboardActive {
+            reloadInputViews()
+        }
     }
 
     private static func isHardwareKeyboardLikelyConnected() -> Bool {

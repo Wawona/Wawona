@@ -23,6 +23,7 @@
 , waypipeBinaryPathFallback ? ""
 , anowawAndroid ? null
 , terminalSrc ? null
+, toolbarKeysSrc ? null
 }:
 
 let
@@ -200,6 +201,16 @@ let
           cp -f "$TERM_KT_SRC"/*.kt "$TERM_KT_DST/"
           chmod -R u+w "$TERM_KT_DST"
           echo "Overlayed Terminal Android Compose sources"
+        fi
+      '' else ""}
+      ${if toolbarKeysSrc != null then ''
+        TK_KT_SRC="${toString toolbarKeysSrc}/android/com/wawona/toolbarkeys"
+        TK_KT_DST="$OUT/app/src/main/java/com/wawona/toolbarkeys"
+        if [ -d "$TK_KT_SRC" ]; then
+          mkdir -p "$TK_KT_DST"
+          cp -f "$TK_KT_SRC"/*.kt "$TK_KT_DST/"
+          chmod -R u+w "$TK_KT_DST"
+          echo "Overlayed ToolbarKeys Android Compose sources"
         fi
       '' else ""}
       echo ""

@@ -52,6 +52,12 @@ Read these skills **in this order**, then edit:
 - Play / Mode A: no Mode B, JIT, jailbreak, or privileged desktop engines.
 - Guest GUI stays Wayland into Wawona (iland). Not UTM Spice paths.
 - Prefer Compose over new XML Views. Migrate with the official migrate skill.
+- Soft keyboard: Terminal Start and compositor Focus both host Toolbar Keys
+  (`ToolbarKeysBar` from flake input `toolbar-keys`). Draw the bar **above**
+  `GuestConsoleOverlay` (bottom pad the overlay). Dual-route inject: Terminal
+  interactive → `WawonaGuestTerm.feedKeys`; else → `nativeInjectKey` /
+  `nativeCommitText`. Do not keep a second Material chip bar in `android/app`.
+  See `docs/toolbar-keys.md`.
 
 ## Install / refresh (operator machine)
 

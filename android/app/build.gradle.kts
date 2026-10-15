@@ -126,6 +126,9 @@ android {
         jniLibs {
             // AGP upgrade path: replace manifest extractNativeLibs with DSL.
             useLegacyPackaging = true
+            // Local Studio/cmake builds libwawona.so while androidDeps also
+            // stages one into jniLibs. Prefer the cmake output.
+            pickFirsts += "**/libwawona.so"
         }
     }
 
@@ -139,6 +142,15 @@ android {
             ).firstOrNull { it.isDirectory }
             if (terminalUi != null) {
                 kotlin.directories += terminalUi.path
+            }
+            // ToolbarKeys Compose (github.com/Wawona/ToolbarKeys). Same overlay
+            // pattern as Terminal; Nix copies into app/src when building APK.
+            val toolbarKeysUi = listOf(
+                file("../../../ToolbarKeys/android"),
+                file("../../ToolbarKeys/android"),
+            ).firstOrNull { it.isDirectory }
+            if (toolbarKeysUi != null) {
+                kotlin.directories += toolbarKeysUi.path
             }
         }
     }

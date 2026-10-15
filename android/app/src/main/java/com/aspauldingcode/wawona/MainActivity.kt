@@ -17,7 +17,11 @@ import android.view.inputmethod.InputMethodManager
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.WindowInsetsController
+import android.graphics.Bitmap
 import android.graphics.Typeface
+import android.util.Base64
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import android.widget.Toast
 import java.io.File
 import androidx.activity.ComponentActivity
@@ -28,8 +32,10 @@ import androidx.activity.enableEdgeToEdge
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -65,7 +71,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -80,6 +95,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material3.Icon
+import com.wawona.toolbarkeys.LinuxKey
+import com.wawona.toolbarkeys.ModifierState
+import com.wawona.toolbarkeys.ToolbarKeysBar
 import androidx.compose.material3.Text
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.AlertDialog
@@ -372,7 +390,8 @@ fun WawonaApp(
     var isWaypipeRunning by remember { mutableStateOf(false) }
     /* Wawona Terminal is the Start UI (replaces StartupLog overlay). */
     var showGuestConsole by remember { mutableStateOf(false) }
-    var guestConsoleText by remember { mutableStateOf("Wawona Terminal\n") }
+    val guestTerm = WawonaGuestTerm.term
+    val terminalInWindow = WawonaGuestTerm.inOwnWindow
     var guestConsoleTeeLogs by remember { mutableStateOf(false) }
     var windowTitle by remember { mutableStateOf("") }
     val clipboardManager = remember {
@@ -391,6 +410,8 @@ fun WawonaApp(
     var surfaceViewRef by remember { mutableStateOf<WawonaSurfaceView?>(null) }
     var keyboardUiMode by remember { mutableStateOf(KeyboardUiMode.ACCESSORY_ONLY) }
     var keyboardUiModeBeforeExternal by remember { mutableStateOf(KeyboardUiMode.ACCESSORY_ONLY) }
+    // ToolbarKeys drawer grows above the main row; host pad tracks occupied height.
+    var accessoryOccupiedHeightDp by remember { mutableStateOf(44.dp) }
     var pipButtonOffsetX by remember { mutableStateOf(16f) }
     var pipButtonOffsetY by remember { mutableStateOf(160f) }
     val appScope = rememberCoroutineScope()
@@ -531,26 +552,26 @@ fun WawonaApp(
     }
 
     /* Tee host WLog + waypipe stderr into Wawona Terminal while Start is live. */
-    LaunchedEffect(showGuestConsole, guestConsoleTeeLogs) {
-        if (!showGuestConsole || !guestConsoleTeeLogs) {
+    LaunchedEffect(showGuestConsole, terminalInWindow, guestConsoleTeeLogs) {
+        if ((!showGuestConsole && !terminalInWindow) || !guestConsoleTeeLogs) {
             WLog.disableSink()
             return@LaunchedEffect
         }
         WLog.enableSink()
         try {
             WLog.sinkFlow.collectLatest { line ->
-                guestConsoleText = guestConsoleText + line + "\n"
+                guestTerm.feed(line + "\n")
             }
         } finally {
             WLog.disableSink()
         }
     }
 
-    LaunchedEffect(showGuestConsole, guestConsoleTeeLogs, isWaypipeRunning) {
-        if (!showGuestConsole || !guestConsoleTeeLogs) return@LaunchedEffect
+    LaunchedEffect(showGuestConsole, terminalInWindow, guestConsoleTeeLogs, isWaypipeRunning) {
+        if ((!showGuestConsole && !terminalInWindow) || !guestConsoleTeeLogs) return@LaunchedEffect
         val stderr = MachineStartCommand.waypipeStderrPath(context.cacheDir)
         var offset = if (stderr.isFile) stderr.length() else 0L
-        while (showGuestConsole && guestConsoleTeeLogs) {
+        while ((showGuestConsole || WawonaGuestTerm.inOwnWindow) && guestConsoleTeeLogs) {
             delay(400)
             if (!stderr.isFile) continue
             val len = stderr.length()
@@ -562,10 +583,7 @@ fun WawonaApp(
                     }
                     offset = len
                     if (chunk.isNotEmpty()) {
-                        guestConsoleText = guestConsoleText + chunk
-                        if (!guestConsoleText.endsWith("\n")) {
-                            guestConsoleText += "\n"
-                        }
+                        guestTerm.feed(if (chunk.endsWith("\n")) chunk else chunk + "\n")
                     }
                 } catch (_: Exception) {
                 }
@@ -979,27 +997,44 @@ fun WawonaApp(
 
         fun openStartTerminal(profile: MachineProfile, wasmPath: String? = null) {
             val banner = MachineStartCommand.argvBanner(prefs, profile, wasmPath)
-            guestConsoleText = when {
-                isInteractiveShellTerminal(profile) &&
-                    !NativeShellSession.from(profile).second &&
-                    !profile.sshEnabled -> {
+            val interactiveShell = isInteractiveShellTerminal(profile) &&
+                !NativeShellSession.from(profile).second &&
+                !profile.sshEnabled
+            WawonaGuestTerm.acceptsKeys = isInteractiveShellTerminal(profile)
+            if (interactiveShell) WawonaGuestTerm.ensureShell() else WawonaGuestTerm.stopShell()
+            guestTerm.replace(when {
+                interactiveShell && WawonaGuestTerm.shellRunning ->
+                    banner +
+                        "Wawona Terminal\n" +
+                        "Native Shell session ready.\n"
+                interactiveShell ->
                     banner +
                         "Wawona Terminal\n" +
                         "Native Shell session ready.\n" +
                         "Interactive PTY is not wired on Android yet.\n" +
                         "CLI launch output for other machine kinds streams here.\n"
-                }
                 else -> banner
-            }
+            })
+            if (WawonaGuestTerm.shellRunning) WawonaGuestTerm.pumpShell()
             guestConsoleTeeLogs = true
-            showGuestConsole = true
-            showMachinesHome = false
+            if (newWindow && SessionActivity.supportsHostTask()) {
+                showGuestConsole = false
+                showMachinesHome = true
+                WawonaGuestTerm.open(
+                    context,
+                    profile.name.ifBlank { "Wawona Terminal" },
+                )
+            } else {
+                WawonaGuestTerm.finishWindow()
+                showGuestConsole = true
+                showMachinesHome = false
+            }
         }
 
         fun finishConnect(launched: Boolean) {
             if (launched) {
-                // New Window still mounts the compositor host; Terminal stays
-                // front in this activity until the user closes it (Focus).
+                // New Window: compositor host is SessionActivity. Wawona
+                // Terminal is TerminalActivity, not a tab in this activity.
                 if (hostId != 0L) {
                     context.startActivity(
                         SessionActivity.createIntent(
@@ -1016,9 +1051,11 @@ fun WawonaApp(
                     appScope.launch { AnowawSession.attach(context, prefs) }
                 }
                 // Terminal already opened before launch; keep it (do not reset text).
-                showGuestConsole = true
+                if (!WawonaGuestTerm.inOwnWindow) {
+                    showGuestConsole = true
+                    showMachinesHome = false
+                }
                 guestConsoleTeeLogs = true
-                showMachinesHome = false
                 // Toolbar Keys stay visible for Terminal; AVD host keyboards must
                 // not force HIDDEN_EXTERNAL over the accessory bar.
                 keyboardUiMode = KeyboardUiMode.ACCESSORY_ONLY
@@ -1031,8 +1068,7 @@ fun WawonaApp(
                     targetSession,
                     "Launch unsupported or failed for ${profile.type.value}"
                 )
-                guestConsoleText = guestConsoleText +
-                    "error: launch unsupported or failed for ${profile.type.value}\n"
+                guestTerm.feed("error: launch unsupported or failed for ${profile.type.value}\n")
             }
         }
 
@@ -1088,6 +1124,9 @@ fun WawonaApp(
     fun disconnectMachine(profile: MachineProfile) {
         showGuestConsole = false
         guestConsoleTeeLogs = false
+        WawonaGuestTerm.acceptsKeys = false
+        WawonaGuestTerm.stopShell()
+        WawonaGuestTerm.finishWindow()
         val session = sessionOrchestrator.sessions.firstOrNull {
             it.machineId == profile.id &&
                 (it.state == MachineSessionState.CONNECTED || it.state == MachineSessionState.CONNECTING)
@@ -1226,23 +1265,36 @@ fun WawonaApp(
     val systemBarBottomPx = with(density) { WindowInsets.systemBars.getBottom(this) }
     val systemBarBottomDp = with(density) { systemBarBottomPx.toDp() }
     val hardwareKeyboardActive = hasRealExternalKeyboard(configuration)
+    // Bumped when Settings Apply so docking prefs recompose.
+    var toolbarPrefsRevision by remember { mutableIntStateOf(0) }
+    val showToolbarWithHardwareKeyboard = remember(toolbarPrefsRevision) {
+        prefs.getBoolean("showToolbarWithHardwareKeyboard", false)
+    }
+    val persistentToolbar = remember(toolbarPrefsRevision) {
+        prefs.getBoolean("persistentToolbar", false)
+    }
     val resizeDisplayForVirtualKeyboard =
         SessionExitSettings.resolvedResizeDisplayForVirtualKeyboard(prefs, activeProfile()) &&
             !hardwareKeyboardActive
     val inSessionUi = !showWelcome && !showMachinesHome
     // Terminal Start and compositor Focus both host Toolbar Keys. Overlay must
     // leave bottom room so the bar is not buried under GuestConsoleOverlay.
-    // Terminal always hosts Toolbar Keys (even if a host/AVD keyboard is present).
+    // Rootshell `showToolbarWithHardwareKeyboard`: keep docked with external KB.
     val showAccessoryBar =
         (inSessionUi || showGuestConsole) &&
             !keyboardUiMode.isPip() &&
-            (!hardwareKeyboardActive || showGuestConsole)
+            (
+                !hardwareKeyboardActive ||
+                    showGuestConsole ||
+                    showToolbarWithHardwareKeyboard ||
+                    persistentToolbar
+            )
     val showKeyboardPipButton =
         (inSessionUi || showGuestConsole) &&
             !hardwareKeyboardActive &&
             keyboardUiMode.isPip()
-    // Accessory bar content is ~36dp keys + padding; keep in sync with ModifierAccessoryBar.
-    val accessoryBarHeightDp = if (showAccessoryBar) 44.dp else 0.dp
+    // Main row + open drawer/arrow rows (ToolbarKeys intrinsic growth).
+    val accessoryBarHeightDp = if (showAccessoryBar) accessoryOccupiedHeightDp else 0.dp
     val terminalRoutesToolbar = showGuestConsole
     val imeResizePx = if (resizeDisplayForVirtualKeyboard && imeVisible) imeBottom else 0
     val keyboardOverlapPx =
@@ -1314,7 +1366,13 @@ fun WawonaApp(
         }
     }
 
-    LaunchedEffect(hardwareKeyboardActive, inSessionUi, showGuestConsole) {
+    LaunchedEffect(
+        hardwareKeyboardActive,
+        inSessionUi,
+        showGuestConsole,
+        showToolbarWithHardwareKeyboard,
+        persistentToolbar,
+    ) {
         if (!inSessionUi && !showGuestConsole) return@LaunchedEffect
         // Keep Toolbar Keys while Terminal is up; do not hide for AVD/host KB.
         if (showGuestConsole) {
@@ -1324,11 +1382,19 @@ fun WawonaApp(
             return@LaunchedEffect
         }
         if (hardwareKeyboardActive) {
-            if (keyboardUiMode != KeyboardUiMode.HIDDEN_EXTERNAL) {
-                keyboardUiModeBeforeExternal = keyboardUiMode
+            if (showToolbarWithHardwareKeyboard || persistentToolbar) {
+                // Rootshell: dock accessory while hardware keyboard is connected.
+                if (keyboardUiMode == KeyboardUiMode.HIDDEN_EXTERNAL || keyboardUiMode.isPip()) {
+                    keyboardUiMode = KeyboardUiMode.ACCESSORY_ONLY
+                }
+                hideNativeKeyboard()
+            } else {
+                if (keyboardUiMode != KeyboardUiMode.HIDDEN_EXTERNAL) {
+                    keyboardUiModeBeforeExternal = keyboardUiMode
+                }
+                keyboardUiMode = KeyboardUiMode.HIDDEN_EXTERNAL
+                hideNativeKeyboard()
             }
-            keyboardUiMode = KeyboardUiMode.HIDDEN_EXTERNAL
-            hideNativeKeyboard()
         } else if (keyboardUiMode == KeyboardUiMode.HIDDEN_EXTERNAL) {
             keyboardUiMode =
                 if (keyboardUiModeBeforeExternal == KeyboardUiMode.HIDDEN_EXTERNAL) {
@@ -1364,6 +1430,10 @@ fun WawonaApp(
             }
             val wanted = try {
                 WawonaNative.nativeOskShouldShow(hardwareKeyboardActive, false)
+            } catch (_: UnsatisfiedLinkError) {
+                false
+            } catch (_: NoSuchMethodError) {
+                false
             } catch (_: Exception) {
                 false
             }
@@ -1622,7 +1692,8 @@ fun WawonaApp(
 
             if (showGuestConsole) {
                 GuestConsoleOverlay(
-                    text = guestConsoleText,
+                    term = guestTerm,
+                    acceptKeys = WawonaGuestTerm.acceptsKeys,
                     onDismiss = {
                         showGuestConsole = false
                         guestConsoleTeeLogs = false
@@ -1671,7 +1742,7 @@ fun WawonaApp(
                     keyboardUiMode == KeyboardUiMode.EXPANDED -> systemBarBottomDp
                     else -> systemBarBottomDp + 8.dp
                 }
-                ModifierAccessoryBar(
+                ToolbarKeysBar(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(
@@ -1692,6 +1763,7 @@ fun WawonaApp(
                     onCollapseToPipByDrag = {
                         keyboardUiMode = KeyboardUiMode.PIP_FLOATING
                     },
+                    onOccupiedHeightChanged = { accessoryOccupiedHeightDp = it },
                     onTabSwitcher = {
                         if (clientTabs.isNotEmpty()) {
                             showTabSwitcher = true
@@ -1757,8 +1829,9 @@ fun WawonaApp(
                         Toast.makeText(context, "Voice agent: coming soon", Toast.LENGTH_SHORT).show()
                     },
                     onCommitText = { text ->
+                        // Terminal overlay up: feed VT / PTY. Focus (overlay down): Wayland.
                         if (terminalRoutesToolbar) {
-                            guestConsoleText += text
+                            WawonaGuestTerm.feedKeys(text)
                         } else {
                             WawonaNative.nativeCommitText(text)
                         }
@@ -1766,13 +1839,14 @@ fun WawonaApp(
                     onInjectKey = { keycode, pressed, timestamp ->
                         if (terminalRoutesToolbar) {
                             if (pressed) {
-                                guestConsoleText += terminalEchoForLinuxKey(keycode)
+                                WawonaGuestTerm.feedKeys(terminalEchoForLinuxKey(keycode))
                             }
                         } else {
                             WawonaNative.nativeInjectKey(keycode, pressed, timestamp)
                         }
                     },
                     onInjectModifiers = { mods, group, locked, latched ->
+                        // Shell has no seat modifiers; skip while Terminal owns the bar.
                         if (!terminalRoutesToolbar) {
                             WawonaNative.nativeInjectModifiers(mods, group, locked, latched)
                         }
@@ -1789,6 +1863,7 @@ fun WawonaApp(
             onDismiss = { showSettingsDialog = false },
             onApply = {
                 WawonaSettings.apply(prefs)
+                toolbarPrefsRevision += 1
             }
         )
     }
@@ -1935,13 +2010,25 @@ fun WawonaApp(
     }
 }
 
-/** Echo Toolbar Keys into the log Terminal while Start covers the compositor. */
+/** Toolbar Keys use Linux keycodes. Arrows must become CSI, not an empty inject. */
 private fun terminalEchoForLinuxKey(keycode: Int): String {
+    val ctrl = ModifierState.ctrlActive
+    fun arrow(letter: Char): String =
+        if (ctrl) "\u001b[1;5$letter" else "\u001b[$letter"
     return when (keycode) {
-        LinuxKey.ENTER -> "\n"
+        LinuxKey.ENTER -> terminalEnterBytes()
         LinuxKey.TAB -> "\t"
-        LinuxKey.ESC -> "\u001B"
-        LinuxKey.BACKSPACE -> "\u0008"
+        LinuxKey.ESC -> "\u001b"
+        LinuxKey.BACKSPACE -> terminalEraseBytes(1)
+        LinuxKey.UP -> arrow('A')
+        LinuxKey.DOWN -> arrow('B')
+        LinuxKey.RIGHT -> arrow('C')
+        LinuxKey.LEFT -> arrow('D')
+        LinuxKey.HOME -> if (ctrl) "\u001b[1;5H" else "\u001b[H"
+        LinuxKey.END -> if (ctrl) "\u001b[1;5F" else "\u001b[F"
+        LinuxKey.PAGEUP -> if (ctrl) "\u001b[5;5~" else "\u001b[5~"
+        LinuxKey.PAGEDOWN -> if (ctrl) "\u001b[6;5~" else "\u001b[6~"
+        LinuxKey.SPACE -> if (ctrl) "\u0000" else " "
         LinuxKey.LEFTCTRL, LinuxKey.LEFTSHIFT, LinuxKey.LEFTALT, LinuxKey.LEFTMETA -> ""
         else -> ""
     }
@@ -1953,24 +2040,56 @@ private fun terminalEchoForLinuxKey(keycode: Int): String {
  * reveals the compositor (Focus). No auto-dismiss on first frame.
  */
 @Composable
-private fun GuestConsoleOverlay(
-    text: String,
+internal fun GuestConsoleOverlay(
+    term: WawonaAndroidTerm,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    acceptKeys: Boolean = false,
 ) {
     val context = LocalContext.current
-    val family = remember(context) { nerdMonoFamily(context) }
+    val nerd = remember(context) { nerdMonoFamily(context) }
+    val generation = term.generation
+    val focus = remember { FocusRequester() }
+    var draft by remember { mutableStateOf(TextFieldValue("")) }
+    LaunchedEffect(acceptKeys) {
+        if (acceptKeys) {
+            runCatching { focus.requestFocus() }
+        }
+    }
     Surface(
         modifier = modifier.testTag(WawonaTestTags.TERMINAL_ROOT),
         color = Color.Black,
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .then(
+                    if (acceptKeys) {
+                        Modifier.onPreviewKeyEvent { event ->
+                            val bytes = terminalBytesForKey(event.nativeKeyEvent) ?: return@onPreviewKeyEvent false
+                            WawonaGuestTerm.feedKeys(bytes)
+                            true
+                        }
+                    } else {
+                        Modifier
+                    },
+                ),
+        ) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("Wawona Terminal", color = Color.White, fontFamily = family)
+                Text(
+                    term.title,
+                    color = Color.White,
+                    fontFamily = FontFamily.Monospace,
+                    maxLines = 1,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = { term.feed("\u001b[3J") }) {
+                    Text("Clear", color = Color.White)
+                }
                 TextButton(
                     onClick = onDismiss,
                     modifier = Modifier.testTag(WawonaTestTags.TERMINAL_DONE),
@@ -1980,22 +2099,251 @@ private fun GuestConsoleOverlay(
             }
             BoxWithConstraints(modifier = Modifier.weight(1f)) {
                 val density = LocalDensity.current
-                val charPx = with(density) { 13.sp.toPx() } * 0.6f
-                val rowPx = with(density) { 16.sp.toPx() }
+                val cell = remember(density) { hostMonoCell(density) }
                 val padPx = with(density) { 24.dp.toPx() }
                 val cols = with(density) {
-                    ((maxWidth.toPx() - padPx) / charPx).toInt()
+                    ((maxWidth.toPx() - padPx) / cell.first).toInt()
                 }.coerceIn(20, 512)
-                val rows = with(density) { (maxHeight.toPx() / rowPx).toInt() }.coerceIn(8, 256)
-                val fitted = remember(text, cols, rows) { terminalLines(text, cols, rows) }
-                WawonaTerminalText(
-                    lines = fitted,
-                    fontFamily = family,
-                    modifier = Modifier.fillMaxSize(),
+                val rows = with(density) { (maxHeight.toPx() / cell.second).toInt() }.coerceIn(8, 256)
+                var fitted by remember {
+                    mutableStateOf(listOf(WawonaTerminalRow(0, AnnotatedString(""))))
+                }
+                var pictures by remember { mutableStateOf(emptyList<WawonaTermPicture>()) }
+                LaunchedEffect(generation, cols, rows, nerd) {
+                    term.resize(cols, rows)
+                    term.cellPx(cell.first.toInt().coerceAtLeast(1), cell.second.toInt().coerceAtLeast(1))
+                    val document = term.document()
+                    fitted = WawonaTerminalRowIds.align(fitted, wawonaTerminalLines(document, nerd))
+                    pictures = decodeTermPictures(term.pictures())
+                }
+                Box(modifier = Modifier.fillMaxSize()) {
+                    pictures.filter { it.z < 0 }.forEach { picture ->
+                        TermPictureImage(picture, cell)
+                    }
+                    WawonaTerminalText(
+                        rows = fitted,
+                        minRowHeight = with(density) { cell.second.toDp() },
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .pointerInput(cols, rows, cell, acceptKeys) {
+                                detectTapGestures { offset ->
+                                    if (acceptKeys) runCatching { focus.requestFocus() }
+                                    val col = (offset.x / cell.first).toInt() + 1
+                                    val row = (offset.y / cell.second).toInt() + 1
+                                    term.pointer(col.coerceIn(1, cols), row.coerceIn(1, rows))
+                                }
+                            },
+                    )
+                    pictures.filter { it.z >= 0 }.forEach { picture ->
+                        TermPictureImage(picture, cell)
+                    }
+                }
+            }
+            if (acceptKeys) {
+                BasicTextField(
+                    value = draft,
+                    onValueChange = { next ->
+                        if (next.composition != null) {
+                            draft = next
+                            return@BasicTextField
+                        }
+                        if (next.text.isNotEmpty()) WawonaGuestTerm.feedKeys(next.text)
+                        draft = TextFieldValue("")
+                    },
+                    textStyle = TextStyle(
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        fontFamily = FontFamily.Monospace,
+                    ),
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.None,
+                        imeAction = ImeAction.None,
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                        .focusRequester(focus)
+                        .testTag("wwn.guestConsole.send"),
                 )
             }
         }
     }
+}
+
+/** Live Rust VT for the Android Guest Console. Deltas go in. The string log does not. */
+internal class WawonaAndroidTerm {
+    var handle = 0L
+    var generation by mutableIntStateOf(0)
+    var title by mutableStateOf("Wawona Terminal")
+
+    fun replace(text: String) {
+        close()
+        open()
+        feed(text)
+    }
+
+    fun feed(text: String) {
+        if (text.isEmpty()) return
+        if (handle == 0L) open()
+        if (handle == 0L) return
+        try {
+            WawonaNative.nativeTermFeed(handle, cookNewlines(text))
+            val next = WawonaNative.nativeTermTitle(handle).orEmpty()
+            if (next.isNotEmpty()) title = next
+            generation++
+        } catch (_: UnsatisfiedLinkError) {
+        }
+    }
+
+    fun resize(cols: Int, rows: Int) {
+        if (handle == 0L) return
+        try {
+            WawonaNative.nativeTermResize(handle, cols, rows)
+            WawonaGuestTerm.noteShellSize(cols, rows)
+        } catch (_: UnsatisfiedLinkError) {
+        }
+    }
+
+    fun document(): String {
+        if (handle == 0L) return "[]"
+        return try {
+            WawonaNative.nativeTermDocument(handle) ?: "[]"
+        } catch (_: UnsatisfiedLinkError) {
+            "[]"
+        }
+    }
+
+    fun cellPx(width: Int, height: Int) {
+        if (handle == 0L) return
+        try {
+            WawonaNative.nativeTermCellPx(handle, width, height)
+        } catch (_: UnsatisfiedLinkError) {
+        }
+    }
+
+    fun pictures(): String {
+        if (handle == 0L) return "[]"
+        return try {
+            WawonaNative.nativeTermImages(handle) ?: "[]"
+        } catch (_: UnsatisfiedLinkError) {
+            "[]"
+        }
+    }
+
+    fun pointer(col: Int, row: Int) {
+        if (handle == 0L) return
+        try {
+            WawonaNative.nativeTermPointer(handle, col, row)
+        } catch (_: UnsatisfiedLinkError) {
+        }
+    }
+
+    fun close() {
+        if (handle == 0L) return
+        try {
+            WawonaNative.nativeTermClose(handle)
+        } catch (_: UnsatisfiedLinkError) {
+        }
+        handle = 0L
+    }
+
+    private fun open() {
+        handle = try {
+            WawonaNative.nativeTermOpen(80, 28)
+        } catch (_: UnsatisfiedLinkError) {
+            0L
+        }
+    }
+}
+
+/** xterm F1-F12. Null when the code is not a function key. */
+private fun functionKeyBytes(code: Int): String? {
+    val n = code - android.view.KeyEvent.KEYCODE_F1 + 1
+    if (n !in 1..12) return null
+    return when (n) {
+        1 -> "\u001bOP"
+        2 -> "\u001bOQ"
+        3 -> "\u001bOR"
+        4 -> "\u001bOS"
+        5 -> "\u001b[15~"
+        6 -> "\u001b[17~"
+        7 -> "\u001b[18~"
+        8 -> "\u001b[19~"
+        9 -> "\u001b[20~"
+        10 -> "\u001b[21~"
+        11 -> "\u001b[23~"
+        else -> "\u001b[24~"
+    }
+}
+
+/** Live zsh echoes erase. Local VT does not, so that path paints BS, space, BS. */
+internal fun terminalEraseBytes(count: Int): String {
+    if (count <= 0) return ""
+    return if (WawonaGuestTerm.shellRunning) "\u007f".repeat(count) else "\u0008 \u0008".repeat(count)
+}
+
+internal fun terminalEnterBytes(): String =
+    if (WawonaGuestTerm.shellRunning) "\r" else "\n"
+
+/** Hardware keys for the interactive terminal. Soft letters stay on the text field. */
+internal fun terminalBytesForKey(event: android.view.KeyEvent): String? {
+    if (event.action != android.view.KeyEvent.ACTION_DOWN) return null
+    val soft = event.flags and android.view.KeyEvent.FLAG_SOFT_KEYBOARD != 0
+    if (soft) {
+        return when (event.keyCode) {
+            android.view.KeyEvent.KEYCODE_DEL -> terminalEraseBytes(1)
+            android.view.KeyEvent.KEYCODE_FORWARD_DEL -> "\u001b[3~"
+            android.view.KeyEvent.KEYCODE_ENTER,
+            android.view.KeyEvent.KEYCODE_NUMPAD_ENTER -> terminalEnterBytes()
+            else -> null
+        }
+    }
+    val unicode = event.unicodeChar
+    val ctrl = event.isCtrlPressed ||
+        (event.metaState and android.view.KeyEvent.META_CTRL_ON) != 0
+    if (ctrl) {
+        if (unicode != 0) {
+            val ch = Character.toLowerCase(unicode)
+            if (ch in 'a'.code..'z'.code) {
+                return (ch - 'a'.code + 1).toChar().toString()
+            }
+        }
+        val code = event.keyCode
+        if (code in android.view.KeyEvent.KEYCODE_A..android.view.KeyEvent.KEYCODE_Z) {
+            return (code - android.view.KeyEvent.KEYCODE_A + 1).toChar().toString()
+        }
+    }
+    functionKeyBytes(event.keyCode)?.let { return it }
+    return when (event.keyCode) {
+        android.view.KeyEvent.KEYCODE_ENTER,
+        android.view.KeyEvent.KEYCODE_NUMPAD_ENTER -> terminalEnterBytes()
+        android.view.KeyEvent.KEYCODE_DEL -> terminalEraseBytes(1)
+        android.view.KeyEvent.KEYCODE_FORWARD_DEL -> "\u001b[3~"
+        android.view.KeyEvent.KEYCODE_TAB -> "\t"
+        android.view.KeyEvent.KEYCODE_ESCAPE -> "\u001b"
+        android.view.KeyEvent.KEYCODE_DPAD_UP -> "\u001b[A"
+        android.view.KeyEvent.KEYCODE_DPAD_DOWN -> "\u001b[B"
+        android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> "\u001b[C"
+        android.view.KeyEvent.KEYCODE_DPAD_LEFT -> "\u001b[D"
+        android.view.KeyEvent.KEYCODE_MOVE_HOME -> "\u001b[H"
+        android.view.KeyEvent.KEYCODE_MOVE_END -> "\u001b[F"
+        android.view.KeyEvent.KEYCODE_PAGE_UP -> "\u001b[5~"
+        android.view.KeyEvent.KEYCODE_PAGE_DOWN -> "\u001b[6~"
+        else -> {
+            if (unicode == 0) null else String(Character.toChars(unicode))
+        }
+    }
+}
+
+private fun cookNewlines(raw: String): ByteArray {
+    val cooked = StringBuilder(raw.length + 8)
+    for (ch in raw) {
+        if (ch == '\n' && (cooked.isEmpty() || cooked.last() != '\r')) {
+            cooked.append('\r')
+        }
+        cooked.append(ch)
+    }
+    return cooked.toString().toByteArray(Charsets.UTF_8)
 }
 
 private fun nerdMonoFamily(context: android.content.Context): FontFamily {
@@ -2010,23 +2358,85 @@ private fun nerdMonoFamily(context: android.content.Context): FontFamily {
     }
 }
 
-private fun terminalLines(raw: String, cols: Int, rows: Int): List<AnnotatedString> {
-    val cooked = StringBuilder(raw.length + 8)
-    for (ch in raw) {
-        if (ch == '\n' && (cooked.isEmpty() || cooked.last() != '\r')) {
-            cooked.append('\r')
-        }
-        cooked.append(ch)
+private fun hostMonoCell(density: androidx.compose.ui.unit.Density): Pair<Float, Float> {
+    val paint = android.graphics.Paint().apply {
+        typeface = Typeface.MONOSPACE
+        textSize = with(density) { 13.sp.toPx() }
+        isAntiAlias = true
     }
-    val packed = try {
-        WawonaNative.nativeTermSnapshot(
-            cooked.toString().toByteArray(Charsets.UTF_8),
-            cols,
-            rows,
+    val width = paint.measureText("M").coerceAtLeast(1f)
+    val metrics = paint.fontMetrics
+    val height = (metrics.descent - metrics.ascent).coerceAtLeast(1f)
+    return width to height
+}
+
+private data class WawonaTermPicture(
+    val id: Int,
+    val col: Int,
+    val row: Int,
+    val columns: Int,
+    val rows: Int,
+    val z: Int,
+    val image: ImageBitmap,
+)
+
+@Composable
+private fun TermPictureImage(picture: WawonaTermPicture, cell: Pair<Float, Float>) {
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    Image(
+        bitmap = picture.image,
+        contentDescription = null,
+        modifier = Modifier
+            .offset { IntOffset((picture.col * cell.first).toInt(), (picture.row * cell.second).toInt()) }
+            .size(
+                with(density) { (picture.columns * cell.first).toDp() },
+                with(density) { (picture.rows * cell.second).toDp() },
+            ),
+    )
+}
+
+private fun decodeTermPictures(json: String): List<WawonaTermPicture> {
+    val out = ArrayList<WawonaTermPicture>()
+    val array = try {
+        org.json.JSONArray(json)
+    } catch (_: org.json.JSONException) {
+        return out
+    }
+    for (i in 0 until array.length()) {
+        val item = array.optJSONObject(i) ?: continue
+        val w = item.optInt("w")
+        val h = item.optInt("h")
+        if (w < 1 || h < 1) continue
+        val raw = try {
+            Base64.decode(item.optString("rgba"), Base64.DEFAULT)
+        } catch (_: IllegalArgumentException) {
+            continue
+        }
+        if (raw.size < w * h * 4) continue
+        val pixels = IntArray(w * h)
+        var p = 0
+        for (n in pixels.indices) {
+            val r = raw[p].toInt() and 255
+            val g = raw[p + 1].toInt() and 255
+            val b = raw[p + 2].toInt() and 255
+            val a = raw[p + 3].toInt() and 255
+            pixels[n] = (a shl 24) or (r shl 16) or (g shl 8) or b
+            p += 4
+        }
+        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        bmp.setPixels(pixels, 0, w, 0, 0, w, h)
+        out.add(
+            WawonaTermPicture(
+                id = item.optInt("n"),
+                col = item.optInt("col"),
+                row = item.optInt("row"),
+                columns = item.optInt("cols").coerceAtLeast(1),
+                rows = item.optInt("rows").coerceAtLeast(1),
+                z = item.optInt("z"),
+                image = bmp.asImageBitmap(),
+            ),
         )
-    } catch (_: UnsatisfiedLinkError) {
-        null
-    } ?: return listOf(AnnotatedString(raw))
-    return wawonaTerminalLines(packed)
+    }
+    return out
 }
 

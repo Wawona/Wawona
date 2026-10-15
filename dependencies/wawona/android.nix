@@ -31,6 +31,8 @@
   coreutilsAndroid ? null,
   # github:Wawona/Terminal (flake = false). Compose terminal text face.
   terminalSrc ? null,
+  # github:Wawona/ToolbarKeys (flake = false). Compose Toolbar Keys chrome.
+  toolbarKeysSrc ? null,
   ...
 }:
 
@@ -321,10 +323,6 @@ in
         echo "ERROR: Missing ScreencopyHelper.kt"
         exit 1
       fi
-      if [ ! -f android/app/src/main/java/com/aspauldingcode/wawona/ModifierAccessoryBar.kt ]; then
-        echo "ERROR: Missing ModifierAccessoryBar.kt"
-        exit 1
-      fi
       if [ ! -f android/app/src/main/java/com/aspauldingcode/wawona/KeyboardLayouts.kt ]; then
         echo "ERROR: Missing KeyboardLayouts.kt (KeyCharacterMap host dump)"
         exit 1
@@ -395,6 +393,25 @@ in
           echo "ERROR: Terminal Android sources missing at $TERM_KT_SRC"
           exit 1
         fi
+      ''}
+
+      # ToolbarKeys Compose (Rootshell layout + settings sheet). Lives in the
+      # toolbar-keys flake input; Wawona does not keep a second copy.
+      ${lib.optionalString (toolbarKeysSrc != null) ''
+        TK_KT_SRC="${toolbarKeysSrc}/android/com/wawona/toolbarkeys"
+        TK_KT_DST="app/src/main/java/com/wawona/toolbarkeys"
+        if [ -d "$TK_KT_SRC" ]; then
+          mkdir -p "$TK_KT_DST"
+          cp -f "$TK_KT_SRC"/*.kt "$TK_KT_DST/"
+          chmod -R u+w "$TK_KT_DST"
+          echo "Overlayed ToolbarKeys Android Compose sources into $TK_KT_DST"
+        else
+          echo "ERROR: ToolbarKeys Android sources missing at $TK_KT_SRC"
+          exit 1
+        fi
+      ''}${lib.optionalString (toolbarKeysSrc == null) ''
+        echo "ERROR: toolbarKeysSrc unset; Toolbar Keys Compose must come from Wawona/ToolbarKeys"
+        exit 1
       ''}
 
       # Offline-only Maven: HTTPS through MITM still SocketExceptions in the

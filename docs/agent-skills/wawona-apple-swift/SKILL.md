@@ -35,6 +35,7 @@ Read these skills **in this order**, then edit:
 | `async` / actors / Task / MainActor | `swift-concurrency-pro` and `swift-concurrency` |
 | Swift Testing / XCTest migration | `swift-testing-pro` and `swift-testing-expert` |
 | iOS Simulator dogfood | `wawona-ios-sim-runtime` + xcodebuild MCP |
+| Machines grid card actions | `wawona-machine-card-actions` (Focus/Stop/Edit/Delete fit) |
 | Instruments / SwiftUI hitches | `swiftui-expert-skill` trace refs + user-instruments MCP |
 
 ## Wawona overrides (hard)
@@ -48,9 +49,9 @@ These beat upstream SwiftUI skill advice:
   duplicated in SwiftUI.
 - `WWNCore*` poll ABI for compositor present. No UniFFI frame callbacks.
 - Store IPA: no Mode B / JIT / IOMFB. macOS is never App Store feature-gated.
-- Soft keyboard: Terminal **and** compositor Focus must host Toolbar Keys
+- Soft keyboard: Terminal and compositor Focus host Toolbar Keys
   (`WWNKeyboardAccessoryView` / `WWNTerminalToolbarHost`). Drawing stays in
-  `ToolbarKeys/apple/Keyboard`. See `docs/toolbar-keys.md`.
+  ToolbarKeys. See `docs/toolbar-keys.md`.
 
 ## Install / refresh (operator machine)
 

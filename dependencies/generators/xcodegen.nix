@@ -3255,15 +3255,17 @@ PLIST
 
     nativeBuildInputs = [ pkgs.xcodegen ];
 
-    # Repo keeps src/term/screen.rs as a sibling symlink. Sandbox/store
-    # copies leave it dangling (/nix/store/Terminal/...), which fails
-    # noBrokenSymlinks and breaks later `cp` into product $project outputs.
-    # Replace with the Terminal flake input file after unpack.
+    # Repo keeps src/term/screen.rs and src/term/kitty.rs as sibling
+    # symlinks. Sandbox/store copies leave them dangling
+    # (/nix/store/Terminal/...), which fails noBrokenSymlinks and breaks
+    # later `cp` into product $project outputs. Replace with the Terminal
+    # flake input files after unpack. screen.rs loads kitty.rs via #[path].
     postPatch = lib.optionalString (terminalSrc != null) ''
       mkdir -p src/term
-      rm -f src/term/screen.rs
+      rm -f src/term/screen.rs src/term/kitty.rs
       cp ${terminalSrc}/src/screen.rs src/term/screen.rs
-      chmod u+w src/term/screen.rs
+      cp ${terminalSrc}/src/kitty.rs src/term/kitty.rs
+      chmod u+w src/term/screen.rs src/term/kitty.rs
     '';
 
     buildPhase = ''
