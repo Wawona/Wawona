@@ -10,6 +10,9 @@ jobs:
   nix:
     name: Nix floor
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v5
       - uses: DeterminateSystems/nix-installer-action@v22
