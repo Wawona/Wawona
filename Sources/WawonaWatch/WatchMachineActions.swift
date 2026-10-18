@@ -203,6 +203,18 @@ struct WatchTagDot: View {
     }
 }
 
+/// Pin chip used on the thumbnail, matching the iOS banner.
+struct WatchMachinePinMark: View {
+    var body: some View {
+        Image(systemName: "pin.fill")
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.white)
+            .padding(4)
+            .background(Color.black.opacity(0.45), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .accessibilityLabel("Pinned")
+    }
+}
+
 /// Overlapping dots for a machine's tags, Finder style.
 struct WatchTagDots: View {
     let tags: [WWNMachineTag]

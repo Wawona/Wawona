@@ -78,36 +78,38 @@ struct WatchMachineList: View {
 
     private func rows(_ list: [MachineProfile]) -> some View {
         ForEach(list) { profile in
-            let bleedThumbnail = WatchMachineThumbnailStore.isEnabled(
+            let showsThumbnail = WatchMachineThumbnailStore.isEnabled(
                 profile: profile,
                 preferences: preferences
             )
+            let tags = tagStore.tags(for: profile.id)
+            let isPinned = pinStore.isPinned(profile.id)
             Button {
                 guard !suppressTap else { return }
                 openProfile = profile
             } label: {
                 VStack(alignment: .leading, spacing: 4) {
-                    WatchMachineRowPreview(profile: profile)
+                    WatchMachineRowPreview(
+                        profile: profile,
+                        tags: tags,
+                        isPinned: isPinned
+                    )
                     HStack(spacing: 4) {
                         MachineRowLabel(
                             profile: profile,
                             sessions: sessions,
                             searchQuery: searchQuery
                         )
-                        Spacer(minLength: 2)
-                        WatchTagDots(tags: tagStore.tags(for: profile.id))
-                        if pinStore.isPinned(profile.id) {
-                            Image(systemName: "pin.fill")
-                                .font(.caption2)
-                                .foregroundStyle(.white)
-                                .accessibilityLabel("Pinned")
+                        if !showsThumbnail {
+                            Spacer(minLength: 2)
+                            WatchTagDots(tags: tags)
+                            if isPinned {
+                                WatchMachinePinMark()
+                            }
                         }
                     }
-                    .padding(.horizontal, bleedThumbnail ? 10 : 0)
-                    .padding(.bottom, bleedThumbnail ? 6 : 0)
                 }
             }
-            .modifier(WatchMachineCardBleed(active: bleedThumbnail))
             .simultaneousGesture(
                 LongPressGesture(minimumDuration: 0.5).onEnded { _ in
                     suppressTap = true
@@ -165,21 +167,6 @@ struct WatchMachineList: View {
             onEdit(profile)
         case .delete:
             profileStore.delete(id: profile.id)
-        }
-    }
-}
-
-/// Drops the row's top inset so the thumbnail meets the platter.
-/// Side insets stay on the title, not on the image.
-private struct WatchMachineCardBleed: ViewModifier {
-    var active: Bool
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if active {
-            content.listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-        } else {
-            content
         }
     }
 }

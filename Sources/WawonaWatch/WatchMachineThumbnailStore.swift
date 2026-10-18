@@ -100,6 +100,8 @@ enum WatchMachineThumbnailStore {
 /// Preview above the machine name. Full row width so the title stays readable.
 struct WatchMachineRowPreview: View {
     let profile: MachineProfile
+    var tags: [WWNMachineTag] = []
+    var isPinned = false
     @ObservedObject private var preferences = WawonaPreferences.shared
     @State private var image: UIImage?
 
@@ -129,9 +131,24 @@ struct WatchMachineRowPreview: View {
                     .frame(height: 28)
             }
         }
+        .overlay {
+            if enabled, !tags.isEmpty || isPinned {
+                HStack(spacing: 4) {
+                    WatchTagDots(tags: tags)
+                    Spacer(minLength: 2)
+                    if isPinned {
+                        WatchMachinePinMark()
+                    }
+                }
+                .padding(.horizontal, 4)
+            }
+        }
         .compositingGroup()
         .modifier(WatchMachineThumbnailClip())
-        .accessibilityHidden(true)
+        .padding(.top, enabled ? 6 : 0)
+        .padding(.horizontal, enabled ? -4 : 0)
+        .accessibilityElement(children: .contain)
+        .accessibilityHidden(!enabled)
         .accessibilityIdentifier("wwn.machine.thumbnail.\(profile.id)")
         .onAppear(perform: reload)
         .onReceive(NotificationCenter.default.publisher(for: .wwnWatchMachineThumbnail)) { note in
@@ -146,20 +163,20 @@ struct WatchMachineRowPreview: View {
     }
 }
 
-/// Top corners follow the machine platter. Bottom corners stay small
-/// because the title sits under the image.
+/// Nested in the machine platter. Concentric corners follow that platter
+/// and never collapse to a square when the inset is large.
 private struct WatchMachineThumbnailClip: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
         if #available(watchOS 26.0, *) {
             content.clipShape(
                 ConcentricRectangle(
-                    uniformTopCorners: .concentric,
-                    uniformBottomCorners: .fixed(8)
+                    corners: .concentric(minimum: .fixed(10)),
+                    isUniform: true
                 )
             )
         } else {
-            content.clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            content.clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
     }
 }
