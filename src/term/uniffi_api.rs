@@ -6,7 +6,13 @@
 
 use std::sync::{Arc, Mutex};
 
-use super::screen::{StyledLine, Term};
+use super::screen::{recommended_scroll_cap, StyledLine, Term};
+
+/// Live RAM/CPU scrollback recommendation (same probe as `Term::new`).
+#[uniffi::export]
+pub fn terminal_recommended_scrollback_cap(cols: u32) -> u32 {
+    recommended_scroll_cap(cols as usize) as u32
+}
 
 #[derive(uniffi::Record)]
 pub struct TerminalSpan {
@@ -57,6 +63,28 @@ impl TerminalSession {
     pub fn resize(&self, cols: u32, rows: u32) {
         if let Ok(mut term) = self.inner.lock() {
             term.resize(cols as usize, rows as usize);
+            // Columns change bytes-per-row; re-probe available RAM/CPU.
+            term.refresh_scroll_cap(1.0);
+        }
+    }
+
+    pub fn set_scrollback_cap(&self, rows: u32) {
+        if let Ok(mut term) = self.inner.lock() {
+            term.set_scroll_cap(rows as usize);
+        }
+    }
+
+    pub fn scrollback_cap(&self) -> u32 {
+        self.inner
+            .lock()
+            .map(|term| term.scroll_cap() as u32)
+            .unwrap_or(0)
+    }
+
+    /// Re-probe RAM/CPU. `host_factor` in 0.25…1.0 for Low Power / thermal.
+    pub fn refresh_scrollback_cap(&self, host_factor: f32) {
+        if let Ok(mut term) = self.inner.lock() {
+            term.refresh_scroll_cap(host_factor);
         }
     }
 

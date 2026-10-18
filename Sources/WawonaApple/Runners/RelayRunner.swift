@@ -269,7 +269,9 @@ public final class WWNRelay: NSObject {
             backendsByMachineId.removeValue(forKey: machineId)
         }
         WWNVirtualMachineRunner.sharedRunner.stopProfile(withMachineId: machineId)
-        WWNContainerRunner.sharedRunner.stopProfile(withMachineId: machineId)
+        // ContainerRunner.stopProfile calls back into this method. Do not
+        // call it here. That cycle overflowed the session queue on tab close
+        // (SIGBUS, stack guard, ~549 frames, 2026-10-17).
     }
 
     @objc(stopAll)
@@ -295,7 +297,7 @@ public final class WWNRelay: NSObject {
             }
         }
         WWNVirtualMachineRunner.sharedRunner.stopAll()
-        WWNContainerRunner.sharedRunner.stopAll()
+        // ContainerRunner.stopAll calls Relay.stopAll. Same cycle as stopProfile.
     }
 
     @objc public func hasOwnedSessions() -> Bool {

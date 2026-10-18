@@ -294,9 +294,9 @@ if [[ "$platform" == "watchos" ]]; then
     echo "OK: watchos has no GLES/VK ICD (SpriteKit present only)"
   else
     if ! carrier="$(bundle_has_swiftshader)"; then
-      if ! nm_match="$(find "$root" -type f -name 'WawonaWatch' -print 2>/dev/null | head -1)"; then
-        nm_match=""
-      fi
+      watch_exe="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$root/Info.plist" 2>/dev/null || echo Wawona)"
+      nm_match="$root/$watch_exe"
+      [[ -f "$nm_match" ]] || nm_match=""
       if [[ -z "$nm_match" ]] || ! nm -gU "$nm_match" 2>/dev/null | grep -q 'vkGetInstanceProcAddr'; then
         echo "FAIL: watchos WWN_WATCH_SWIFTSHADER=1 but SwiftShader ICD not found" >&2
         exit 1

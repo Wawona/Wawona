@@ -448,30 +448,41 @@ pub fn show_settings(parent: &adw::ApplicationWindow, state: &SharedAppState, la
     diag_page.add(&diag_group);
     stack.add_named(&diag_page, Some("Diagnostics"));
 
-    // About
+    // About: icon and version, then links, then the facts group.
     let about_page = adw::PreferencesPage::new();
-    let about_group = adw::PreferencesGroup::new();
-    about_group.set_title("Wawona");
-    add_info_row(&about_group, "Version", &format!("v{}", version()));
-    add_info_row(&about_group, "Build", &build_number());
-    add_info_row(&about_group, "Platform", "Linux");
-    add_info_row(
-        &about_group,
-        "Description",
-        "Multi-platform compositor control plane.",
-    );
+
+    let banner = adw::PreferencesGroup::new();
+    let mark = adw::ActionRow::new();
+    mark.set_title("Wawona");
+    mark.set_subtitle(&format!("v{}", version()));
+    let icon = gtk::Image::from_icon_name("wawona");
+    icon.set_pixel_size(64);
+    mark.add_prefix(&icon);
+    banner.add(&mark);
+    about_page.add(&banner);
+
+    let links = adw::PreferencesGroup::new();
+    for (title, subtitle, url, icon) in WAWN_ABOUT_LINKS {
+        add_about_link_row(&links, title, subtitle, url, icon);
+    }
+    about_page.add(&links);
+
+    let facts = adw::PreferencesGroup::new();
+    add_info_row(&facts, "Version", &format!("v{}", version()));
+    add_info_row(&facts, "Build", &build_number());
+    add_info_row(&facts, "Platform", "Linux");
     add_choice_row(
-        &about_group,
+        &facts,
         "Log Level",
         &["debug", "info", "warn", "error"],
         log_level_value.clone(),
         open_choice.clone(),
     );
-    let copy_logs = gtk::Button::with_label("Copy Recent Logs");
+    let copy_logs = gtk::Button::with_label("Copy Logs");
     crate::linux::ui::a11y::set_wwn_a11y(
         &copy_logs,
         crate::linux::ui::a11y::id::SETTINGS_COPY_LOGS,
-        Some("Copy Recent Logs"),
+        Some("Copy Logs"),
     );
     let report_bug = gtk::Button::with_label("Report a Bug on GitHub");
     report_bug.add_css_class("suggested-action");
@@ -480,17 +491,15 @@ pub fn show_settings(parent: &adw::ApplicationWindow, state: &SharedAppState, la
         crate::linux::ui::a11y::id::SETTINGS_REPORT_BUG,
         Some("Report a Bug on GitHub"),
     );
-    add_link_row(&about_group, "Wawona.io", "https://wawona.io");
-    add_row(&about_group, "Diagnostics", &copy_logs);
-    add_row(&about_group, "GitHub", &report_bug);
-    add_link_row(&about_group, "Author", "https://aspauldingcode.com");
+    add_row(&facts, "Diagnostics", &copy_logs);
+    add_row(&facts, "GitHub", &report_bug);
     copy_logs.connect_clicked(|_| {
         linux_copy_bug_diagnostics();
     });
     report_bug.connect_clicked(|_| {
         linux_open_github_bug_report();
     });
-    about_page.add(&about_group);
+    about_page.add(&facts);
     stack.add_named(&about_page, Some("About"));
 
     drop(cfg);
@@ -652,6 +661,203 @@ fn linux_open_url(url: &str) {
 
 fn settings_one_line(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Same order and subtitles as `WawonaAboutLinks` in SettingsContracts.swift.
+const WAWN_ABOUT_LINKS: &[(&str, &str, &str, &str)] = &[
+    (
+        "Website",
+        "Wawona.io",
+        "https://wawona.io",
+        "https://wawona.io/favicon.ico",
+    ),
+    (
+        "Alex Spaulding",
+        "Founder",
+        "https://aspauldingcode.com",
+        "https://github.com/aspauldingcode.png?size=160",
+    ),
+    (
+        "GitHub",
+        "aspauldingcode",
+        "https://github.com/aspauldingcode",
+        "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png",
+    ),
+    (
+        "X",
+        "aspauldingcode",
+        "https://x.com/aspauldingcode",
+        "bundle:X.png",
+    ),
+    (
+        "LinkedIn",
+        "aspauldingcode",
+        "https://www.linkedin.com/in/aspauldingcode/",
+        "https://upload.wikimedia.org/wikipedia/commons/c/ca/LinkedIn_logo_initials.png",
+    ),
+    (
+        "Ko-fi",
+        "aspauldingcode",
+        "https://ko-fi.com/aspauldingcode",
+        "https://ko-fi.com/android-icon-192x192.png",
+    ),
+    (
+        "Sponsors",
+        "GitHub Sponsors",
+        "https://github.com/sponsors/aspauldingcode",
+        "bundle:GitHubSponsors.png",
+    ),
+    (
+        "GitHub",
+        "Wawona",
+        "https://github.com/Wawona/Wawona",
+        "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png",
+    ),
+];
+
+fn add_about_link_row(
+    group: &adw::PreferencesGroup,
+    title: &str,
+    subtitle: &str,
+    url: &str,
+    icon: &str,
+) {
+    let row = adw::ActionRow::new();
+    row.set_title(title);
+    row.set_title_lines(1);
+    row.set_subtitle(subtitle);
+    row.set_subtitle_lines(1);
+    row.set_activatable(true);
+    ensure_favicon_css();
+    let image = gtk::Image::new();
+    image.set_pixel_size(28);
+    image.set_overflow(gtk::Overflow::Hidden);
+    image.add_css_class("wwn-favicon");
+    row.add_prefix(&image);
+    load_about_favicon(&image, icon);
+    let open_url = url.to_string();
+    row.connect_activated(move |_| {
+        linux_open_url(&open_url);
+    });
+    group.add(&row);
+}
+
+fn ensure_favicon_css() {
+    use std::sync::Once;
+    static ONCE: Once = Once::new();
+    ONCE.call_once(|| {
+        let provider = gtk::CssProvider::new();
+        provider.load_from_data(".wwn-favicon { border-radius: 6px; }");
+        if let Some(display) = gtk::gdk::Display::default() {
+            gtk::style_context_add_provider_for_display(
+                &display,
+                &provider,
+                gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+            );
+        }
+    });
+}
+
+fn load_about_favicon(image: &gtk::Image, icon: &str) {
+    if let Some(name) = icon.strip_prefix("bundle:") {
+        if let Some(bytes) = bundled_about_png(name) {
+            set_favicon_bytes(image, bytes);
+        }
+        return;
+    }
+    let url = icon.to_string();
+    let cache = favicon_cache_file(&url);
+    if let Ok(bytes) = std::fs::read(&cache) {
+        set_favicon_bytes(image, &bytes);
+    }
+    let (sender, receiver) = std::sync::mpsc::channel::<Vec<u8>>();
+    std::thread::spawn(move || {
+        let Some(fetched) = fetch_favicon_bytes(&url) else {
+            return;
+        };
+        let changed = std::fs::read(&cache).ok().as_deref() != Some(fetched.as_slice());
+        if !changed {
+            return;
+        }
+        if let Some(parent) = cache.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        if std::fs::write(&cache, &fetched).is_ok() {
+            let _ = sender.send(fetched);
+        }
+    });
+    let image = image.clone();
+    glib::timeout_add_local(std::time::Duration::from_millis(200), move || {
+        match receiver.try_recv() {
+            Ok(bytes) => {
+                set_favicon_bytes(&image, &bytes);
+                glib::ControlFlow::Break
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => glib::ControlFlow::Break,
+        }
+    });
+}
+
+fn set_favicon_bytes(image: &gtk::Image, bytes: &[u8]) {
+    let gbytes = glib::Bytes::from(bytes);
+    if let Ok(texture) = gtk::gdk::Texture::from_bytes(&gbytes) {
+        image.set_paintable(Some(&texture));
+    }
+}
+
+fn bundled_about_png(name: &str) -> Option<&'static [u8]> {
+    match name {
+        "X.png" => Some(include_bytes!(
+            "../../resources/Wawona.icon/Assets/X.png"
+        )),
+        "GitHubSponsors.png" => Some(include_bytes!(
+            "../../resources/Wawona.icon/Assets/GitHubSponsors.png"
+        )),
+        _ => None,
+    }
+}
+
+fn favicon_cache_file(url: &str) -> std::path::PathBuf {
+    let base = std::env::var_os("XDG_CACHE_HOME")
+        .map(std::path::PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("HOME").map(|home| std::path::PathBuf::from(home).join(".cache"))
+        })
+        .unwrap_or_else(|| std::path::PathBuf::from("/tmp"));
+    base.join("wawona")
+        .join("favicons")
+        .join(format!("{:x}", fnv64(url.as_bytes())))
+}
+
+fn fetch_favicon_bytes(url: &str) -> Option<Vec<u8>> {
+    let tmp = favicon_cache_file(url).with_extension("tmp");
+    if let Some(parent) = tmp.parent() {
+        std::fs::create_dir_all(parent).ok()?;
+    }
+    let ok = std::process::Command::new("curl")
+        .args(["-fsSL", "--max-time", "20", "-o"])
+        .arg(&tmp)
+        .arg(url)
+        .status()
+        .ok()?
+        .success();
+    if !ok {
+        let _ = std::fs::remove_file(&tmp);
+        return None;
+    }
+    let bytes = std::fs::read(&tmp).ok()?;
+    let _ = std::fs::remove_file(&tmp);
+    if bytes.is_empty() { None } else { Some(bytes) }
+}
+
+fn fnv64(bytes: &[u8]) -> u64 {
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for byte in bytes {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    hash
 }
 
 fn add_link_row(group: &adw::PreferencesGroup, title: &str, url: &str) {

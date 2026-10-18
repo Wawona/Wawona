@@ -102,7 +102,7 @@ resolves absolute paths. Mango needs `WLR_BACKENDS=wayland` + a config under
 
 ### Present reveal (macOS)
 
-Start opens **Wawona Terminal**. Close that window (or Focus) so
+Start opens **Wawona Terminal**. A Wayland client attach auto-opens Present (or Close/Focus); 
 `showSessionSurface` mounts `wwn.compositor.surface`. Without that, Mac2
 sees Machines only.
 

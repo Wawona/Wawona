@@ -80,8 +80,10 @@ let
     }
 
     # No fork/exec for terminal control sequences.
+    # ESC[3J clears scrollback. ESC[2J alone archives the screen into the
+    # Wawona Terminal ScrollView history, so typed `clear` looked like a no-op.
     clear() {
-      print -rn -- $'\033[2J\033[H'
+      print -rn -- $'\033[H\033[2J\033[3J'
     }
 
     # bash-style `help` is not a zsh builtin. Dispatch prints the catalog.
@@ -206,5 +208,5 @@ Bundled Wawona userland templates. Do not modify files inside the app bundle.
 zsh is linked into the app binary; this tree holds templates, share files, and
 writable HOME data under Application Support after first launch.
 EOF
-    echo "25" > $out/rootfs/etc/zsh/.template-version
+    echo "26" > $out/rootfs/etc/zsh/.template-version
   ''

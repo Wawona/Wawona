@@ -95,6 +95,7 @@ public final class WWNTermSurface: NSView {
     public override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         term = wwn_term_new(cols, rows)
+        WawonaTerminalScrollback.apply(to: term)
         gpu.autoresizingMask = [.width, .height]
         gpu.frame = bounds
         addSubview(gpu)

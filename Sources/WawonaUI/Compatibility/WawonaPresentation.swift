@@ -1,4 +1,5 @@
 import SwiftUI
+import WawonaUIContracts
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -103,15 +104,33 @@ extension WawonaBackport where Content: View {
     /// Global Settings dismiss. Trailing control only (right edge).
     ///
     /// - **iOS / iPadOS / visionOS:** plain `xmark` on `.topBarTrailing`
-    ///   (iOS 13: `navigationBarItems` trailing). Never put SF Symbols in
-    ///   `.cancellationAction` / `.confirmationAction` on iOS 26 (Liquid Glass
-    ///   doubles close/done).
+    ///   (iOS 13: `navigationBarItems` trailing). When `chromeBridge.onAdd`
+    ///   is set, one `ToolbarItemGroup` places plain `plus` left of `xmark`
+    ///   (`[+][x]`). Never put SF Symbols in `.cancellationAction` /
+    ///   `.confirmationAction` on iOS 26 (Liquid Glass doubles close/done).
+    ///   Never make Add `.primaryAction`.
     /// - **macOS / tvOS:** system `Done` text on `.confirmationAction` (HIG).
     @ViewBuilder
     @MainActor
     func settingsCloseAction(onClose: @escaping () -> Void) -> some View {
+        settingsCloseAction(onClose: onClose, chromeBridge: nil)
+    }
+
+    @ViewBuilder
+    @MainActor
+    func settingsCloseAction(
+        onClose: @escaping () -> Void,
+        chromeBridge: WawonaSettingsChromeBridge?
+    ) -> some View {
         #if os(macOS) || os(tvOS)
-        if #available(macOS 11.0, tvOS 14.0, *) {
+        if #available(macOS 13.0, tvOS 16.0, *) {
+            content.toolbar {
+                ToolbarItem(id: "wwn.settings.close", placement: .confirmationAction) {
+                    Button("Done", action: onClose)
+                        .accessibility(identifier: "wwn.settings.close")
+                }
+            }
+        } else if #available(macOS 11.0, tvOS 14.0, *) {
             content.toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done", action: onClose)
@@ -124,19 +143,15 @@ extension WawonaBackport where Content: View {
         #elseif os(iOS) || os(visionOS)
         if #available(iOS 26.0, visionOS 26.0, *) {
             content.toolbar {
-                SettingsCloseToolbarIOS26(onClose: onClose)
+                SettingsCloseToolbarIOS26(onClose: onClose, chromeBridge: chromeBridge)
             }
         } else if #available(iOS 14.0, *) {
             content.toolbar {
-                SettingsCloseToolbarIOS14(onClose: onClose)
+                SettingsCloseToolbarIOS14(onClose: onClose, chromeBridge: chromeBridge)
             }
         } else {
             content.navigationBarItems(
-                trailing: Button(action: onClose) {
-                    Image(systemName: "xmark")
-                }
-                .accessibility(label: Text("Close"))
-                .accessibility(identifier: "wwn.settings.close")
+                trailing: SettingsCloseTrailingIOS13(onClose: onClose, chromeBridge: chromeBridge)
             )
         }
         #else
@@ -217,13 +232,26 @@ extension WawonaBackport where Content: View {
 }
 
 #if os(iOS) || os(visionOS)
-/// Trailing Settings close. Plain SF Symbol only (matches machine-editor chrome).
+/// Trailing Settings chrome. Plain SF Symbols only. Optional Add left of Close.
 @available(iOS 26.0, visionOS 26.0, *)
 private struct SettingsCloseToolbarIOS26: ToolbarContent {
     let onClose: () -> Void
+    @ObservedObject var chromeBridge: WawonaSettingsChromeBridge
+
+    init(onClose: @escaping () -> Void, chromeBridge: WawonaSettingsChromeBridge?) {
+        self.onClose = onClose
+        self.chromeBridge = chromeBridge ?? WawonaSettingsChromeBridge()
+    }
 
     var body: some ToolbarContent {
-        ToolbarItem(placement: .topBarTrailing) {
+        ToolbarItemGroup(placement: .topBarTrailing) {
+            if let onAdd = chromeBridge.onAdd {
+                Button(action: onAdd) {
+                    Image(systemName: "plus")
+                }
+                .accessibility(label: Text("Add Variable"))
+                .accessibility(identifier: "wwn.settings.environment.new")
+            }
             Button(action: onClose) {
                 Image(systemName: "xmark")
             }
@@ -236,9 +264,50 @@ private struct SettingsCloseToolbarIOS26: ToolbarContent {
 @available(iOS 14.0, *)
 private struct SettingsCloseToolbarIOS14: ToolbarContent {
     let onClose: () -> Void
+    @ObservedObject var chromeBridge: WawonaSettingsChromeBridge
+
+    init(onClose: @escaping () -> Void, chromeBridge: WawonaSettingsChromeBridge?) {
+        self.onClose = onClose
+        self.chromeBridge = chromeBridge ?? WawonaSettingsChromeBridge()
+    }
 
     var body: some ToolbarContent {
-        ToolbarItem(placement: .topBarTrailing) {
+        ToolbarItemGroup(placement: .topBarTrailing) {
+            if let onAdd = chromeBridge.onAdd {
+                Button(action: onAdd) {
+                    Image(systemName: "plus")
+                }
+                .accessibility(label: Text("Add Variable"))
+                .accessibility(identifier: "wwn.settings.environment.new")
+            }
+            Button(action: onClose) {
+                Image(systemName: "xmark")
+            }
+            .accessibility(label: Text("Close"))
+            .accessibility(identifier: "wwn.settings.close")
+        }
+    }
+}
+
+/// iOS 13: no `ToolbarItemGroup`; plain HStack in `navigationBarItems`.
+private struct SettingsCloseTrailingIOS13: View {
+    let onClose: () -> Void
+    @ObservedObject var chromeBridge: WawonaSettingsChromeBridge
+
+    init(onClose: @escaping () -> Void, chromeBridge: WawonaSettingsChromeBridge?) {
+        self.onClose = onClose
+        self.chromeBridge = chromeBridge ?? WawonaSettingsChromeBridge()
+    }
+
+    var body: some View {
+        HStack(spacing: 16) {
+            if let onAdd = chromeBridge.onAdd {
+                Button(action: onAdd) {
+                    Image(systemName: "plus")
+                }
+                .accessibility(label: Text("Add Variable"))
+                .accessibility(identifier: "wwn.settings.environment.new")
+            }
             Button(action: onClose) {
                 Image(systemName: "xmark")
             }

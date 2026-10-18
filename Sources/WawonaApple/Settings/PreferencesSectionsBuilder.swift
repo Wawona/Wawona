@@ -1,4 +1,5 @@
 import Foundation
+import WawonaModel
 import WawonaUIContracts
 #if os(macOS)
 import AppKit
@@ -22,6 +23,12 @@ public final class WWNPreferencesSectionsBuilder: NSObject {
             section.iconColor = Self.iconColor(for: id)
             if id == .environment {
                 // Detail pane hosts EnvironmentVariablesView; no inventory rows.
+                section.items = []
+            } else if id == .iCloudSync {
+                // Detail pane hosts WWNICloudSyncSettingsView; no inventory rows.
+                section.items = []
+            } else if id == .appleWatch {
+                // Detail pane hosts WWNAppleWatchSettingsView; no inventory rows.
                 section.items = []
             } else if id == .desktop {
                 section.items = desktopItems()
@@ -175,6 +182,13 @@ public final class WWNPreferencesSectionsBuilder: NSObject {
         case .sessionThumbnails:
             return sw("Session Thumbnails", kWWNPrefsMachineSessionThumbnailsEnabled, true,
                       "Capture machine thumbnails while a session is running.")
+        case .spritePresentAccelerator:
+            return sw(
+                "SpriteKit Present Accelerator",
+                "SpritePresentAccelerator",
+                true,
+                "Software rendering draws the frame. SpriteKit composites it onto the watch."
+            )
 
         case .waylandDisplay:
             return text("Wayland Display", "WaylandDisplay", "wayland-0",
@@ -196,12 +210,17 @@ public final class WWNPreferencesSectionsBuilder: NSObject {
                           "Pick a file and copy it into the shell HOME.")
 
         case .iCloudSyncEnabled:
-            return sw("iCloud Drive Sync", WWNRootfsICloudSyncPreferenceKey, false,
-                      "Keep the on-device shell HOME under iCloud Drive Documents.")
+            return sw("iCloud Sync", WWNCloudSync.enabledKey, true,
+                      "Sync machines, preferences, and shell HOME through CloudKit.")
         case .iCloudSyncStatus:
             return info("iCloud Status", "ICloudSyncStatus",
-                        WWNRootfsICloudSync.isEnabled() ? "Enabled" : "Disabled",
-                        "Whether shell HOME sync is currently on.")
+                        WWNCloudSync.shared.status.summary,
+                        "CloudKit sync state for this device.")
+        case .iCloudSyncNow:
+            return button("Sync Now", "ICloudSyncNow", "Fetch and upload changes now.")
+        case .iCloudDriveHome:
+            return sw("Keep HOME in iCloud Drive", WWNRootfsICloudSyncPreferenceKey, false,
+                      "Keep the on-device shell HOME under iCloud Drive Documents.")
 
         case .waypipeByDefault:
             return sw("Waypipe by Default", "DefaultWaypipeEnabled", true,
@@ -290,35 +309,15 @@ public final class WWNPreferencesSectionsBuilder: NSObject {
             return info("Platform", "AboutPlatform", platformLabel(),
                         "Host product target.")
         case .aboutWebsite:
-            return link(
-                "Website",
-                "https://wawona.io",
-                "Visit",
-                iconURL: "https://wawona.io/favicon.ico"
-            )
+            return aboutLink(WawonaAboutLinks.row(url: "https://wawona.io"), button: "Visit")
         case .aboutAuthor:
-            return link(
-                "Alex Spaulding",
-                "https://aspauldingcode.com",
-                "Visit",
-                iconURL: "https://github.com/aspauldingcode.png?size=160"
-            )
+            return aboutLink(WawonaAboutLinks.row(url: "https://aspauldingcode.com"), button: "Visit")
         case .aboutSource:
-            return link(
-                "Source",
-                "https://github.com/Wawona/Wawona",
-                "Contribute",
-                iconURL: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
-            )
+            return aboutLink(WawonaAboutLinks.row(url: "https://github.com/Wawona/Wawona"), button: "Contribute")
         case .aboutSponsors:
-            return link(
-                "Sponsors",
-                "https://github.com/sponsors/aspauldingcode",
-                "Sponsor",
-                iconURL: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
-            )
+            return aboutLink(WawonaAboutLinks.row(url: "https://github.com/sponsors/aspauldingcode"), button: "Sponsor")
         case .watchCompanionStatus:
-            return info("Watch Companion", "WatchCompanionStatus", "See Apple Watch section",
+            return info("Watch Companion", "WatchCompanionStatus", "Pairing, Watch app, and reachability.",
                         "WatchConnectivity companion status.")
         case .watchSendDocument:
             return button("Send Document to Watch", "WatchCompanionSend",

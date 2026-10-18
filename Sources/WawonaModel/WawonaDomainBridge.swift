@@ -150,7 +150,7 @@ public enum WawonaDomainBridge {
 
     private typealias FreeFn = @convention(c) (UnsafeMutablePointer<CChar>?) -> Void
 
-    private static func symbol(_ name: String) -> UnsafeMutableRawPointer? {
+    static func symbol(_ name: String) -> UnsafeMutableRawPointer? {
         name.withCString { dlsym(UnsafeMutableRawPointer(bitPattern: -2), $0) }
     }
 }

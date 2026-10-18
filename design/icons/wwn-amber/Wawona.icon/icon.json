@@ -1,0 +1,103 @@
+{
+  "fill-specializations": [
+    {
+      "value": {
+        "automatic-gradient": "srgb:1,0.65,0.015,1"
+      }
+    },
+    {
+      "appearance": "dark",
+      "value": {
+        "solid": "srgb:0.42,0.20,0.04,1"
+      }
+    }
+  ],
+  "groups": [
+    {
+      "name": "Sculpted tree planes",
+      "layers": [
+        {
+          "name": "Sculpted tree planes",
+          "image-name": "facets.png",
+          "glass": true
+        }
+      ],
+      "specular": true,
+      "lighting": "combined",
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.02
+      },
+      "translucency": {
+        "enabled": true,
+        "value": 0.04
+      }
+    },
+    {
+      "name": "Tunnel tree silhouette",
+      "layers": [
+        {
+          "name": "Tunnel tree silhouette",
+          "image-name": "tree.png",
+          "glass": true
+        }
+      ],
+      "specular": true,
+      "lighting": "combined",
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.08
+      },
+      "translucency": {
+        "enabled": true,
+        "value": 0.05
+      }
+    },
+    {
+      "name": "HDR tunnel interior",
+      "layers": [
+        {
+          "name": "HDR tunnel interior",
+          "image-name": "interior.exr",
+          "glass": false
+        }
+      ],
+      "specular": false,
+      "lighting": "combined",
+      "shadow": {
+        "kind": "none",
+        "opacity": 0
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0
+      }
+    },
+    {
+      "name": "WWN ivory monogram",
+      "layers": [
+        {
+          "name": "WWN ivory monogram",
+          "image-name": "letters.png",
+          "glass": true
+        }
+      ],
+      "specular": true,
+      "lighting": "combined",
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.02
+      },
+      "translucency": {
+        "enabled": true,
+        "value": 0.16
+      }
+    }
+  ],
+  "supported-platforms": {
+    "squares": "shared",
+    "circles": [
+      "watchOS"
+    ]
+  }
+}

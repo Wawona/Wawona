@@ -24,6 +24,15 @@ private func WWNCoreFlushClients(_ core: UnsafeMutableRawPointer?)
 private func WWNCoreProcessEvents(_ core: UnsafeMutableRawPointer?) -> Bool
 @_silgen_name("WWNCoreGetClientCount")
 private func WWNCoreGetClientCount(_ core: UnsafeMutableRawPointer?) -> UInt32
+@_silgen_name("WWNCorePopWindowEvent")
+private func WWNCorePopWindowEvent(_ core: UnsafeMutableRawPointer?) -> UnsafeMutableRawPointer?
+@_silgen_name("WWNWindowEventFree")
+private func WWNWindowEventFree(_ event: UnsafeMutableRawPointer?)
+
+/// `CWindowEventType` values that mean a client mapped something the user
+/// should see above Wawona Terminal.
+private let wwnWindowEventCreated: UInt64 = 0
+private let wwnWindowEventPopupCreated: UInt64 = 4
 
 @objc(WWNCompositorBridge)
 public final class WWNCompositorBridge: NSObject {
@@ -45,8 +54,9 @@ public final class WWNCompositorBridge: NSObject {
         q.setSpecific(key: WWNCompositorBridge.eventQueueKey, value: 1)
         return q
     }()
-    /// One-shot gate so waypipe/MicroVM clients reveal the session surface once.
-    private var didRequestSessionSurfaceForClients = false
+    /// Last seen Wayland client count. Rising edge reveals Present (Terminal
+    /// may spawn clients; one-shot would miss the second `wasm` launch).
+    private var lastWaylandClientCount: UInt32 = 0
     #if canImport(AppKit)
     @objc public weak var containerView: NSView?
     @objc public weak var externalMirrorView: NSView?
@@ -92,7 +102,7 @@ public final class WWNCompositorBridge: NSObject {
         if let core {
             _ = WWNCoreStop(core)
         }
-        didRequestSessionSurfaceForClients = false
+        lastWaylandClientCount = 0
     }
 
     private func startEventPumpIfNeeded() {
@@ -163,8 +173,12 @@ public final class WWNCompositorBridge: NSObject {
         let process: () -> Void = { [weak self] in
             guard let self else { return }
             _ = WWNCoreProcessEvents(self.core)
+            let mappedWindow = self.drainWindowEvents()
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
+                if mappedWindow {
+                    self.requestSessionSurface(reason: "wayland-window")
+                }
                 self.requestSessionSurfaceIfClientsAttached()
                 // SHM / IOSurface clients need PopPendingBuffer → Metal.
                 #if canImport(Metal) && !os(watchOS)
@@ -181,14 +195,40 @@ public final class WWNCompositorBridge: NSObject {
         }
     }
 
-    /// CLI MicroVM / external waypipe never hit Machines Start. When the first
-    /// client attaches to this process's compositor, reveal the Metal host so
-    /// pending SHM buffers can drain (CompositorBridge mounts only then).
+    /// Pop `CWindowEvent`s. A Created or PopupCreated toplevel is a Wayland
+    /// client the Terminal started. Client count alone misses that: the
+    /// connection can already be open, or the count never rises, and the
+    /// Terminal sheet stays on top until Done.
+    private func drainWindowEvents() -> Bool {
+        guard let core else { return false }
+        var mapped = false
+        while let event = WWNCorePopWindowEvent(core) {
+            let type = event.load(as: UInt64.self)
+            if type == wwnWindowEventCreated || type == wwnWindowEventPopupCreated {
+                mapped = true
+            }
+            WWNWindowEventFree(event)
+        }
+        return mapped
+    }
+
+    /// CLI MicroVM / external waypipe / Native Shell `wasm` never should
+    /// leave the user stuck on Wawona Terminal. When client count rises,
+    /// reveal Present (parks Terminal chrome; keeps the PTY alive).
     private func requestSessionSurfaceIfClientsAttached() {
-        guard !didRequestSessionSurfaceForClients, let core else { return }
-        guard WWNCoreGetClientCount(core) > 0 else { return }
-        didRequestSessionSurfaceForClients = true
-        let userInfo: [AnyHashable: Any] = ["source": "compositor-client-attach"]
+        guard let core else { return }
+        let count = WWNCoreGetClientCount(core)
+        let grew = count > lastWaylandClientCount
+        lastWaylandClientCount = count
+        guard grew, count > 0 else { return }
+        requestSessionSurface(reason: "client-count=\(count)")
+    }
+
+    private func requestSessionSurface(reason: String) {
+        let userInfo: [AnyHashable: Any] = [
+            "source": "compositor-client-attach",
+            "reason": reason,
+        ]
         NotificationCenter.default.post(
             name: Notification.Name("WWNShowSessionSurfaceNotification"),
             object: nil,
@@ -201,7 +241,7 @@ public final class WWNCompositorBridge: NSObject {
             userInfo: userInfo
         )
         #endif
-        NSLog("[WWNCompositorBridge] requested session surface (Wayland clients attached)")
+        NSLog("[WWNCompositorBridge] requested session surface (%@)", reason)
     }
 
     #if canImport(Metal) && !os(watchOS)

@@ -42,7 +42,7 @@ sections live in the dedicated Settings host sidebar (`visibleSections`).
 
 ## Sidebar icons (Apple)
 
-Plain SF Symbols in Machines and Settings sidebars. Section accents tint
+Section-tinted SF Symbols in Machines and Settings sidebars. Section accents also tint
 Settings detail controls only. Never colored rounded-square icon tiles.
 See `wawona-apple-sidebar-icons`.
 

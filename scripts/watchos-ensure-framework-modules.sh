@@ -7,7 +7,7 @@
 # watchos-fix-embedded-frameworks.sh is too late for compile.
 #
 # Critical: this runs inside a Wawona-watchOS script phase. Inherited env
-# (PRODUCT_NAME=WawonaWatch, TARGET_NAME, EXECUTABLE_*, ENABLE_DEBUG_DYLIB, …)
+# (PRODUCT_NAME=Wawona, TARGET_NAME, EXECUTABLE_*, ENABLE_DEBUG_DYLIB, …)
 # leaks into nested xcodebuild and turns framework targets into the watch
 # app's debug dylib (undefined _main). Wipe product/target vars and isolate
 # BUILD_DIR before invoking xcodebuild.
@@ -56,13 +56,31 @@ case "$PLATFORM_NAME" in
   watchos) want_platform=4 ;;
 esac
 
+# A leftover watch framework from an older DerivedData still has the right
+# LC_BUILD_VERSION. Treat it as missing when Sources/<fw> is newer, or the
+# watch app compiles against a module that never exported later types.
+sources_newer_than() {
+  local fw="$1" stamp="$2"
+  local src="${SRCROOT}/Sources/${fw}"
+  [[ -d "$src" && -n "$stamp" && -f "$stamp" ]] || return 1
+  local newer
+  newer="$(find "$src" -name '*.swift' -newer "$stamp" -print -quit)"
+  [[ -n "$newer" ]]
+}
+
 swiftmodule_ready() {
-  local fw="$1" candidate
+  local fw="$1" candidate stamp
   while IFS= read -r candidate; do
-    if [[ "$(platform_of "${candidate}/${fw}")" == "$want_platform" ]] \
-      && [[ -d "${candidate}/Modules/${fw}.swiftmodule" || -d "${candidate}/Modules" ]]; then
-      return 0
+    if [[ "$(platform_of "${candidate}/${fw}")" != "$want_platform" ]]; then
+      continue
     fi
+    stamp="$(find "${candidate}/Modules/${fw}.swiftmodule" -type f -name '*.swiftmodule' -print -quit 2>/dev/null || true)"
+    [[ -n "$stamp" ]] || continue
+    if sources_newer_than "$fw" "$stamp"; then
+      echo "note: watchos-ensure-framework-modules: ${fw} swiftmodule older than Sources/${fw}"
+      continue
+    fi
+    return 0
   done < <(find "${BUILD_DIR}" -type d -name "${fw}.framework" 2>/dev/null)
   return 1
 }

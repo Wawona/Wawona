@@ -222,6 +222,34 @@ public enum PlatformCapabilities: Sendable {
 
     public static var allowsWasmRuntime: Bool { wasmRuntimeGate.isAvailable }
 
+    /// CloudKit private database sync (`WWNCloudSync`): machines, prefs, env
+    /// vars, shell HOME. Every Apple target, watchOS and tvOS included.
+    public static var cloudKitSyncGate: CapabilityGate {
+        if let rust = rustGate("cloudkit_sync") {
+            return rust
+        }
+        #if canImport(Darwin)
+        return .available
+        #else
+        return .forbidden(reason: "CloudKit sync is Apple-account only")
+        #endif
+    }
+
+    /// iCloud Drive ubiquity HOME. Apple QA1935: Drive is unavailable on
+    /// tvOS and watchOS (`ubiquityIdentityToken` is always nil there).
+    public static var iCloudDriveHomeGate: CapabilityGate {
+        if let rust = rustGate("icloud_drive_home") {
+            return rust
+        }
+        #if os(tvOS) || os(watchOS)
+        return .blocked(reason: "iCloud Drive is unavailable on this platform (QA1935)")
+        #elseif os(iOS) || os(macOS) || os(visionOS)
+        return .available
+        #else
+        return .forbidden(reason: "iCloud Drive is Apple-only")
+        #endif
+    }
+
     public static var allowsWatchPresentAccelerator: Bool {
         watchPresentAcceleratorGate.isAvailable
     }
@@ -231,9 +259,13 @@ public enum PlatformCapabilities: Sendable {
     public static var watchPresentAcceleratorEnabled: Bool {
         #if os(watchOS)
         if let value = ProcessInfo.processInfo.environment["WWN_WATCH_SK_PRESENT"] {
-            if value == "0" || value.lowercased() == "false" {
+            let lowered = value.lowercased()
+            if lowered == "0" || lowered == "false" {
                 return false
             }
+        }
+        if UserDefaults.standard.object(forKey: "SpritePresentAccelerator") != nil {
+            return UserDefaults.standard.bool(forKey: "SpritePresentAccelerator")
         }
         return allowsWatchPresentAccelerator
         #else

@@ -7,25 +7,37 @@ import UIKit
 #endif
 
 extension WWNPreferencesSectionsBuilder {
-    /// About detail: header logo plus link rows with service marks (pre-SwiftUI
-    /// `WWNPreferences` inventory). Catalog field IDs still gate visibility.
+    /// About detail: icon and version, then link rows, then the
+    /// version / build / platform / log / copy group.
     static func aboutItems(for host: GlobalSettingsHost) -> [WWNSettingItem] {
         let fields = Set(GlobalSettingsCatalog.visibleFields(in: .about, for: host))
         var items: [WWNSettingItem] = []
 
-        // Website sits under the logo/title (see `headerRow` + `AboutHeader` url).
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
         let header = WWNSettingItem.item(
             title: "Wawona",
             key: "AboutHeader",
             type: .WSettingHeader,
             default: nil,
-            desc: "A Universal Wayland Compositor"
+            desc: version
         )
-        if fields.contains(.aboutWebsite) {
-            header.urlString = "https://wawona.io"
-            header.buttonTitle = "Visit"
-        }
         items.append(header)
+
+        if fields.contains(.aboutWebsite), let row = item(for: .aboutWebsite) {
+            items.append(row)
+        }
+        if fields.contains(.aboutAuthor) {
+            let buttons = ["Visit", "Profile", "Follow", "Connect", "Support"]
+            for (linkRow, button) in zip(WawonaAboutLinks.rows.dropFirst().prefix(5), buttons) {
+                items.append(aboutLink(linkRow, button: button))
+            }
+        }
+        if fields.contains(.aboutSponsors), let row = item(for: .aboutSponsors) {
+            items.append(row)
+        }
+        if fields.contains(.aboutSource), let row = item(for: .aboutSource) {
+            items.append(row)
+        }
 
         if fields.contains(.aboutVersion), let row = item(for: .aboutVersion) {
             items.append(row)
@@ -34,6 +46,9 @@ extension WWNPreferencesSectionsBuilder {
             items.append(row)
         }
         if fields.contains(.aboutPlatform), let row = item(for: .aboutPlatform) {
+            items.append(row)
+        }
+        if fields.contains(.logLevel), let row = item(for: .logLevel) {
             items.append(row)
         }
 
@@ -46,54 +61,6 @@ extension WWNPreferencesSectionsBuilder {
             WWNDiagnosticReport.copyRecentLogs(machineOnly: false)
         }
         items.append(copyLogs)
-
-        // Author + portfolio are one person / one site.
-        if fields.contains(.aboutAuthor) {
-            items.append(
-                link(
-                    "Alex Spaulding",
-                    "https://aspauldingcode.com",
-                    "Visit",
-                    iconURL: "https://github.com/aspauldingcode.png?size=160"
-                )
-            )
-            items.append(contentsOf: [
-                link(
-                    "GitHub",
-                    "https://github.com/aspauldingcode",
-                    "Profile",
-                    iconURL: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
-                ),
-                link(
-                    "X",
-                    "https://x.com/aspauldingcode",
-                    "Follow",
-                    iconURL: "https://x.com/favicon.ico"
-                ),
-                link(
-                    "LinkedIn",
-                    "https://www.linkedin.com/in/aspauldingcode/",
-                    "Connect",
-                    iconURL: "https://upload.wikimedia.org/wikipedia/commons/c/ca/LinkedIn_logo_initials.png"
-                ),
-                link(
-                    "Ko-fi",
-                    "https://ko-fi.com/aspauldingcode",
-                    "Support",
-                    iconURL: "https://ko-fi.com/android-icon-192x192.png"
-                ),
-            ])
-        }
-
-        if fields.contains(.aboutSponsors), let row = item(for: .aboutSponsors) {
-            items.append(row)
-        }
-        if fields.contains(.aboutSource), let row = item(for: .aboutSource) {
-            items.append(row)
-        }
-        if fields.contains(.logLevel), let row = item(for: .logLevel) {
-            items.append(row)
-        }
         return items
     }
 
@@ -276,13 +243,19 @@ extension WWNPreferencesSectionsBuilder {
         _ title: String,
         _ url: String,
         _ button: String,
-        iconURL: String = ""
+        iconURL: String = "",
+        subtitle: String = ""
     ) -> WWNSettingItem {
-        let item = WWNSettingItem.item(title: title, key: "", type: .WSettingLink, default: nil, desc: "")
+        let item = WWNSettingItem.item(title: title, key: "", type: .WSettingLink, default: nil, desc: subtitle)
         item.urlString = url
         item.buttonTitle = button
         item.iconURL = iconURL
         return item
+    }
+
+    static func aboutLink(_ row: WawonaAboutLink?, button: String) -> WWNSettingItem {
+        guard let row else { return link("", "", button) }
+        return link(row.title, row.url, button, iconURL: row.iconURL, subtitle: row.subtitle)
     }
 
     static func popup(

@@ -54,4 +54,14 @@ extension WawonaBackport where Content: View {
             content.buttonStyle(DefaultButtonStyle())
         }
     }
+
+    /// iOS 15+ `foregroundStyle`. iOS 13 keeps `foregroundColor`.
+    @ViewBuilder
+    func secondaryForeground() -> some View {
+        if #available(iOS 15.0, tvOS 15.0, watchOS 8.0, macOS 12.0, *) {
+            content.foregroundStyle(.secondary)
+        } else {
+            content.foregroundColor(.secondary)
+        }
+    }
 }

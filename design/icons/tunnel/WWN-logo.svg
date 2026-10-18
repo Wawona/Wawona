@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+<defs><mask id="carving" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024"><rect width="1024" height="1024" fill="white"/>
+  <g transform="translate(130.15 0) scale(0.70 1)" fill="#000000" stroke="#000000" stroke-width="4" stroke-linejoin="round">
+    <path d="M330 345H354L373 429L394 363H415L436 429L455 345H479L449 470H425L405 408L385 470H361Z"/>
+    <path d="M497 345H521L540 429L561 363H582L603 429L622 345H646L616 470H592L572 408L552 470H528Z"/>
+    <path d="M666 345H690L737 424V345H761V470H737L690 390V470H666Z"/>
+  </g>
+
+  <path fill="#000000" d="M416 862V666C416 599 459 552 512 552C565 552 608 599 608 666V862Z"/>
+</mask></defs>
+<g mask="url(#carving)">
+  <path fill="currentColor" d="M346 154H678C699 154 713 171 708 191C682 311 671 436 679 575C686 692 722 783 782 836C792 845 786 862 771 862H253C238 862 232 845 242 836C302 783 338 692 345 575C353 436 342 311 316 191C311 171 325 154 346 154Z"/>
+</g>
+</svg>

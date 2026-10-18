@@ -163,10 +163,24 @@ final class AppMainDelegate: NSObject, AppMainDelegateBase {
             _ application: UIApplication,
             didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
         ) -> Bool {
-            _ = application
             _ = launchOptions
             SharedAppDelegate.shared.onLaunch()
+            application.registerForRemoteNotifications()
             return true
+        }
+
+        /// CKDatabaseSubscription silent push from `WWNCloudSync`.
+        func application(
+            _ application: UIApplication,
+            didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+            fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
+        ) {
+            _ = application
+            _ = userInfo
+            Task { @MainActor in
+                await WWNCloudSync.shared.syncNow()
+                completionHandler(.newData)
+            }
         }
 
         func application(

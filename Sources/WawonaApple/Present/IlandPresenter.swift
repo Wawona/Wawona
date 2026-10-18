@@ -162,7 +162,7 @@ public final class IlandPresenterObjC: NSObject {
         engine?.hostGeometryDidChange()
     }
 
-    /// Clear Metal to a non-black proof color once layout has a real drawable.
+    /// True when the layer can accept a guest frame. Does not present a clear.
     @objc(presentClearProofWithReason:)
     public func presentClearProof(reason: String) -> Bool {
         engine?.presentClearProof(reason: reason) ?? false

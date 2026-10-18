@@ -29,6 +29,7 @@ fallback) instead of removing it from the product surface.
 | Watch SpriteKit present | n/a | n/a | n/a | n/a | n/a | n/a | ✅ |
 | Desktop + LockScreen replacement | ⏳ planned | ⏳ planned | ❌ App Store | ❌ | ❌ App Store | ❌ | ❌ |
 | Wawona Swinging Bridge | ⏳ Mode A+B | ⏳ Mode A+B | ❌ App Store (Mode B only) | ❌ | ❌ App Store (Mode B only) | ❌ | ❌ |
+| iCloud Sync (CloudKit) | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | iCloud Drive (shell HOME) | ✅ | ❌ | ✅ | ✅ | ✅ | ⛔ blocked | ⛔ blocked |
 | Relay Wasm (WASI / `wpm`) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
@@ -183,13 +184,24 @@ forbidden while iPhone is planned for those features.
     real DRM/KMS/KGSL ioctls, ship kernel code, or require kernel patches.
     Mode B `baremetal` is a legacy package name, not kernel access. Android
     direct Turnip/KGSL is forbidden; use system Vulkan/Metal or SwiftShader.
-13. **iCloud Drive (shell HOME)**. Settings → iCloud Sync is ubiquity Documents
-    for the on-device shell HOME (`WWNRootfsICloudSync`), not CloudKit or iCloud
-    KVS. Apple QA1935: iCloud Drive is unavailable on tvOS and watchOS
-    (`ubiquityIdentityToken` is always nil). That is **⛔ blocked**, not a
-    Settings stub. Omit the iCloud section on tvOS. watchOS may show a status
-    page that says Drive is unavailable. Do not add a fake toggle. CloudKit/KVS
-    exist on tvOS; they are not this section. Re-check on SDK bumps.
+13. **iCloud Sync is CloudKit on every Apple target.** Settings → iCloud Sync
+    syncs through CloudKit (container `iCloud.com.aspauldingcode.Wawona`,
+    private database, zone `WawonaSync`, `CKRecord` + `CKAsset`,
+    `CKDatabaseSubscription`, manual Sync Now, `accountStatus` first) on
+    macOS, iOS, iPadOS, visionOS, tvOS and watchOS. Scope: machine profiles
+    (secrets redacted, merged by Rust), tags, pins, env vars, allowlisted
+    preferences, and HOME files. Rust `domain::cloud_sync` owns the key
+    allowlist, HOME exclusions and caps, conflict choice, and profile
+    merge. Swift (`WWNCloudSync`) is transport only. Gate rows:
+    `cloudkit_sync` (Apple ✅, Android/Linux ❌). Fail closed without the
+    CloudKit entitlement (`CloudSyncEntitlement` scans the signature);
+    never construct `CKContainer` unsigned. Async CloudKit needs iOS 15 /
+    tvOS 15 / watchOS 8 / macOS 12; older OS shows a status, no fake sync.
+    **iCloud Drive HOME** (`WWNRootfsICloudSync`, ubiquity Documents) is a
+    separate toggle: Apple QA1935 makes Drive unavailable on tvOS and
+    watchOS (`ubiquityIdentityToken` is always nil). That row stays
+    **⛔ blocked** (`icloud_drive_home`). Do not add a Drive toggle there.
+    Re-check on SDK bumps.
 14. **No Ghostty.** Do not port, vendor, or link libghostty. Do not add a
     `wwn-ghostty` flake input or a GhosttyKit embed. Relay boot, SSH, and the
     native shell use Wawona Terminal (`github.com/Wawona/Terminal`, flake

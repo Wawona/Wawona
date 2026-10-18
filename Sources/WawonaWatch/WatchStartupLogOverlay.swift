@@ -3,7 +3,7 @@ import Combine
 import SwiftUI
 
 /// Feeds `WWNStartupLogger` into Wawona Terminal during machine Start.
-/// Stays front until the user taps Done (Focus). No auto-dismiss on first frame.
+/// Parks when a Wayland client attaches. Done still focuses the surface.
 final class WatchStartupLogModel: NSObject, ObservableObject, WWNStartupLoggerDelegate {
     @Published private(set) var lines: [String] = []
     @Published var isPresented = false
@@ -25,8 +25,10 @@ final class WatchStartupLogModel: NSObject, ObservableObject, WWNStartupLoggerDe
         logger.endCapture()
     }
 
-    /// Kept for call-site compatibility; first frame must not hide Terminal.
-    func scheduleDismissAfterFirstFrame() {}
+    /// A mapped Wayland client parks this log. The shell stays up.
+    func scheduleDismissAfterFirstFrame() {
+        dismiss()
+    }
 
     func startupLogger(_ logger: WWNStartupLogger, didAppendLine line: String) {
         lines.append(line)
@@ -37,37 +39,23 @@ final class WatchStartupLogModel: NSObject, ObservableObject, WWNStartupLoggerDe
 struct WatchStartupLogOverlay: View {
     @ObservedObject var model: WatchStartupLogModel
     let clientLabel: String
+    var onClose: () -> Void = {}
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
-                Text("Wawona Terminal")
-                    .font(.caption2.weight(.semibold))
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-                Button("Done") {
-                    model.dismiss()
-                }
-                .font(.caption2)
-                .buttonStyle(.plain)
-                .foregroundStyle(.cyan)
-                .accessibilityLabel("Close Terminal")
-                .accessibilityIdentifier("wwn.terminal.done")
-            }
-
+        VStack(alignment: .leading, spacing: 0) {
             if !clientLabel.isEmpty {
                 Text("$ \(clientLabel)")
                     .font(.system(size: 9, design: .monospaced))
                     .foregroundStyle(Color(white: 0.65))
-                    .lineLimit(2)
+                    .lineLimit(1)
             }
 
             WatchTerminalScreen(text: model.lines.joined(separator: "\n"))
         }
-        .padding(8)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.black)
         .accessibilityIdentifier("wwn.terminal.root")
+        .accessibilityAction(named: "Leave Terminal", onClose)
     }
 }
 #endif

@@ -135,9 +135,9 @@ final class WWNMachinesViewModel: ObservableObject {
   /// Machine ids the user pinned via the card context menu. Pinned machines
   /// occupy a prioritized grid section. Hard cap: `maxPinnedMachines`.
   @Published private(set) var pinnedMachineIds: Set<String> = []
-  private static let pinnedDefaultsKey = "wawona.machines.pinnedMachineIds"
+  private static let pinnedDefaultsKey = WWNMachinePinStore.defaultsKey
   /// Product limit: at most six pinned machines in the Machines grid.
-  static let maxPinnedMachines = 6
+  static let maxPinnedMachines = WWNMachinePinStore.maxPinned
 
   // MARK: Sorting
 
@@ -690,7 +690,9 @@ final class WWNMachinesViewModel: ObservableObject {
   }
 
   /// Mount Metal for Wayland / VM present without covering Machines / Terminal.
-  /// Focus or Tab Overview calls `showSessionSurface` to reveal the client.
+  /// Focus or a client attach calls `showSessionSurface` to reveal the client.
+  /// Native Shell (`wawona-shell`) also mounts: Terminal may spawn Wayland
+  /// clients (`wasm chess`, …) that need SHM drain before Present shows.
   private func revealSessionSurfaceIfNeeded(
     _ profile: WWNMachineProfile,
     openInNewWindow: Bool
@@ -700,11 +702,7 @@ final class WWNMachinesViewModel: ObservableObject {
       if WWNMachineSessionBridge.profileUsesVirtualMachineBackend(profile) {
         return true
       }
-      guard WWNMachineSessionBridge.profileUsesNativeCompositorClient(profile) else {
-        return false
-      }
-      let client = WWNMachineSessionBridge.nativeClientId(forProfile: profile) ?? ""
-      return client != "wawona-shell"
+      return WWNMachineSessionBridge.profileUsesNativeCompositorClient(profile)
     }()
     guard usesSurface else { return }
     if openInNewWindow,

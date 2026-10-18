@@ -59,7 +59,7 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-macos-mode-a` / `wawona-macos-no-appstore` | macOS in-window vs SIP |
 | `wawona-macos-prefpane` | PrefPane retired. In-app Global Settings only |
 | `wawona-global-settings-exclusive` | One Global Settings host per platform. In-app only |
-| `wawona-apple-sidebar-icons` | Plain SF Symbols in Machines/Settings sidebars; accents on Settings detail only |
+| `wawona-apple-sidebar-icons` | Section-tinted SF Symbols in Machines/Settings sidebars; accents on detail too |
 | `wawona-welcome-alert` | First-launch Welcome alert copy identical on Apple, Android, Linux |
 | `wawona-iland-mode-b-desktop` | Desktop dylib / Take Over |
 | `wawona-mode-b-watchdog-safety` | `watchdogd` / IOWatchdog |
@@ -251,10 +251,12 @@ skill, add one row. Capture flow: `wawona-learn`.
   regular width so the split never becomes a back-arrow stack.
   Portrait starts `.detailOnly` + `.prominentDetail`. Toolbar overlay
   search on iPad + `endEditing` on selection/column change. iPhone
-  Machines uses the iOS 26 Messages/Mail bottom search: `.searchable` +
-  `DefaultToolbarItem(kind: .search)` + `ToolbarSpacer` + bottomBar
-  plus. No custom capsule. No 44/56pt +. Do not put `.searchable` on
-  the phone split detail without the spacer.   Watch stays compact. Watch globals are in-app
+  Machines uses the iOS 26 Messages/Mail bottom search: `.searchable`
+  at default placement plus `WWNPhoneIntegratedSearchToolbar`
+  (`searchBarPlacementBarButtonItem` in the visible controller's
+  `toolbarItems`, flexible space, prominent +). Not
+  `DefaultToolbarItem(kind: .search)`. No custom capsule. No 44/56pt +.
+  Watch stays compact. Watch globals are in-app
   `WatchGlobalSettingsView` (wrist). Do not restore Settings-Watch.bundle
   or `WatchUIContractAdapters`. Section *order* is Rust `settings_catalog`.
   Global Settings exclusivity: in-app only

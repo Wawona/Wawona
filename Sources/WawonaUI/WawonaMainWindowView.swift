@@ -292,6 +292,13 @@ final class WWNMainWindowRouter: ObservableObject {
         if isSettingsPresented {
             isSettingsPresented = false
         }
+        // Wawona Terminal can start Wayland clients. Park Terminal chrome
+        // (keep PTY) so Present is not covered; never require Done/Close.
+        #if os(macOS)
+        WWNMacGuestConsole.shared.parkForCompositor()
+        #elseif os(iOS) || os(tvOS) || os(visionOS)
+        WWNIosGuestConsole.shared.parkForCompositor()
+        #endif
         sessionSurfaceMounted = true
         sessionSurfaceVisible = true
         selection = .session
@@ -325,6 +332,10 @@ final class WWNMainWindowRouter: ObservableObject {
     /// Dedicated Global Settings host replaces Machines chrome in the same
     /// window (never a sheet / PrefPane / Settings.app).
     @Published var isSettingsPresented = false
+    /// True from the moment Settings is requested until Machines chrome
+    /// owns the window toolbar again. Machines must not register search
+    /// or toolbar items during this span.
+    @Published var settingsOwnsWindowToolbar = false
     @Published var settingsSelection: GlobalSettingsSectionID?
 
     /// Opens Global Settings in-app (`wawona-global-settings-exclusive`).
@@ -332,6 +343,7 @@ final class WWNMainWindowRouter: ObservableObject {
     /// the flag change in the shared spring.
     func showSettings() {
         sessionSurfaceVisible = false
+        settingsOwnsWindowToolbar = true
         if settingsSelection == nil {
             settingsSelection = GlobalSettingsCatalog.visibleSections(
                 for: GlobalSettingsCatalog.currentHost
@@ -431,6 +443,12 @@ struct WawonaMainWindowView: View {
     /// on iOS 16 NavigationSplitView (Display / Settings tap): AttributeGraph
     /// still reads the `ObservableObject` while `Published` writes.
     @State private var listSelection: WWNMainDestination? = .machines
+    /// Machines `NavigationSplitView` and Settings `NavigationSplitView` share
+    /// one `NSToolbar`. Inserting the sidebar toggle (or Done) while the other
+    /// item is still registered throws, and AppKit turns that into SIGTRAP.
+    /// Drop Machines chrome, let the bar go empty, then mount Settings.
+    @State private var machinesSplitMounted = true
+    @State private var settingsHostMounted = false
     #if os(iOS) || os(visionOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.verticalSizeClass) private var verticalSizeClass
@@ -475,7 +493,7 @@ struct WawonaMainWindowView: View {
                 .allowsHitTesting(!router.isSettingsPresented)
                 .accessibility(hidden: router.isSettingsPresented)
 
-            if router.isSettingsPresented {
+            if settingsHostMounted {
                 WWNGlobalSettingsHostView(
                     model: model,
                     selection: $router.settingsSelection,
@@ -492,6 +510,21 @@ struct WawonaMainWindowView: View {
             for: Notification.Name("wawonaOpenInAppGlobalSettingsPanel")
         )) { _ in
             router.showSettings()
+        }
+        .backport.onChange(of: router.isSettingsPresented) { _, presented in
+            if presented {
+                router.settingsOwnsWindowToolbar = true
+                machinesSplitMounted = false
+                DispatchQueue.main.async {
+                    settingsHostMounted = true
+                }
+            } else {
+                settingsHostMounted = false
+                DispatchQueue.main.async {
+                    machinesSplitMounted = true
+                    router.settingsOwnsWindowToolbar = false
+                }
+            }
         }
         .backport.onChange(of: model.sections) { _, newValue in
             DispatchQueue.main.async {
@@ -515,7 +548,8 @@ struct WawonaMainWindowView: View {
             .modifier(
                 WWNGuestConsoleHostModifier(
                     console: guestConsole,
-                    sessionSurfaceMounted: router.sessionSurfaceMounted
+                    sessionSurfaceMounted: router.sessionSurfaceMounted,
+                    sessionSurfaceVisible: router.sessionSurfaceVisible
                 )
             )
             #endif
@@ -567,7 +601,9 @@ struct WawonaMainWindowView: View {
 
     @ViewBuilder
     private var splitView: some View {
-        if #available(iOS 16.0, tvOS 16.0, macOS 13.0, *) {
+        if !machinesSplitMounted {
+            detail
+        } else if #available(iOS 16.0, tvOS 16.0, macOS 13.0, *) {
             NavigationSplitView(columnVisibility: Binding(
                 get: { showSidebar ? .all : .detailOnly },
                 set: { showSidebar = $0 != .detailOnly }
@@ -968,15 +1004,18 @@ struct WawonaMainWindowView: View {
 private struct WWNGuestConsoleHostModifier: ViewModifier {
     @ObservedObject var console: WWNIosGuestConsole
     let sessionSurfaceMounted: Bool
+    let sessionSurfaceVisible: Bool
 
     func body(content: Content) -> some View {
         // Never fullScreenCover while a Relay/VM session needs Metal.
         // Cover dismantles CompositorHostView (deinit clears
         // activeIlandPresenter) and Mode A SHM present dies. Overlay only.
         // ZStack (not overlay{}) for iOS 13 floor.
+        // A mapped Wayland client sets sessionSurfaceVisible. The Terminal
+        // sheet must not stay above that surface until Done.
         return ZStack {
             content
-            if console.isPresented && !console.windowed {
+            if console.isPresented && !console.windowed && !sessionSurfaceVisible {
                 WWNIosGuestConsoleSheet(console: console)
             }
         }

@@ -100,6 +100,7 @@ final class IosShellSession {
     private var cols: UInt32 = 80
     private var rows: UInt32 = 24
     private var stopped = false
+    private var pressureObservers: [NSObjectProtocol] = []
 
     var onScreen: ((String) -> Void)?
     var onPictures: ((String) -> Void)?
@@ -121,6 +122,13 @@ final class IosShellSession {
         setenv("WAWONA_SHELL", "/usr/bin/zsh", 1)
         setenv("SHELL", "/usr/bin/zsh", 1)
         setenv("TERM", "xterm-256color", 1)
+        // Latch ONLCR write path for Simulator real POSIX PTYs. Prefer the
+        // process latch in tip wwn-pty when linked; otherwise setenv only.
+        setenv("WAWONA_PTY_FAKE_TTY", "1", 1)
+        if let sym = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "wwn_pty_ios_force_fake_tty") {
+            typealias ForceFakeTty = @convention(c) () -> Void
+            unsafeBitCast(sym, to: ForceFakeTty.self)()
+        }
 
         IosShellABI.allowNewShellSession()
 
@@ -129,6 +137,9 @@ final class IosShellSession {
             return
         }
         self.term = term
+        // Term::new already probed RAM/CPU; fold Low Power / thermal in.
+        WawonaTerminalScrollback.apply(to: term)
+        installPressureObservers()
 
         var ws = winsize()
         ws.ws_row = UInt16(self.rows)
@@ -144,6 +155,7 @@ final class IosShellSession {
         guard let started else {
             IosShellABI.termFree(term)
             self.term = nil
+            clearPressureObservers()
             onFailure?("Native Shell failed to start (in-process zsh).")
             return
         }
@@ -163,6 +175,21 @@ final class IosShellSession {
         exportScreen()
     }
 
+    private func installPressureObservers() {
+        clearPressureObservers()
+        pressureObservers = WawonaTerminalScrollback.installPressureObservers { [weak self] in
+            guard let self, let term = self.term else { return }
+            WawonaTerminalScrollback.apply(to: term)
+        }
+    }
+
+    private func clearPressureObservers() {
+        for token in pressureObservers {
+            NotificationCenter.default.removeObserver(token)
+        }
+        pressureObservers.removeAll()
+    }
+
     func resize(cols: UInt32, rows: UInt32, cellW: UInt32 = 8, cellH: UInt32 = 16) {
         let cols = min(512, max(20, cols))
         let rows = min(256, max(8, rows))
@@ -173,6 +200,7 @@ final class IosShellSession {
             self.cols = cols
             self.rows = rows
             IosShellABI.termResize(term, cols, rows)
+            WawonaTerminalScrollback.apply(to: term)
             var ws = winsize()
             ws.ws_row = UInt16(rows)
             ws.ws_col = UInt16(cols)
@@ -249,6 +277,7 @@ final class IosShellSession {
 
     func stop() {
         stopped = true
+        clearPressureObservers()
         pump?.cancel()
         pump = nil
         if master >= 0 {
@@ -328,6 +357,7 @@ final class IosLogTermSession {
         self.rows = max(8, rows)
         guard let term = IosShellABI.termNew(self.cols, self.rows) else { return }
         self.term = term
+        WawonaTerminalScrollback.apply(to: term)
         exportScreen()
     }
 
@@ -341,6 +371,7 @@ final class IosLogTermSession {
             self.cols = cols
             self.rows = rows
             IosShellABI.termResize(term, cols, rows)
+            WawonaTerminalScrollback.apply(to: term)
             self.exportScreen()
         }
     }

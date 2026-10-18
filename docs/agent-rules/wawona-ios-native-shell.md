@@ -3,6 +3,21 @@
 Authority for **Apple-mobile Native Shell → Terminal** Start. Product name:
 **Wawona Terminal** (`wawona-shell`). Not foot. Not weston-terminal.
 
+## Why Wawona Terminal exists (Apple)
+
+On **every Apple platform** (iOS / iPadOS / macOS / tvOS / watchOS /
+visionOS), Native Shell text must use **host-native selection**: press-and-hold
+handles, magnifier, system Copy / Select All. On iOS / iPadOS / visionOS that
+is a read-only **`UITextView`** (`WawonaTerminalSelectableText`), not SwiftUI
+`Text` + `.textSelection` + `.contextMenu` (those steal long-press and fake a
+duplicate highlight). Never a Wayland client surface.
+
+Wayland has no glyph-box selection protocol. Drawing UIKit / AppKit selection
+handles on weston-terminal / foot / GTK pixels is **forbidden**
+(`host-edit-menu-clipboard`, port fidelity). So the product shell is Wawona
+Terminal. Foot and weston-terminal stay optional Wayland software; they do
+not replace Native Shell on Apple.
+
 Canonical backends: `wawona-apple-mobile-mode-a-backends`. Machines kinds:
 `wawona-machine-types`. Skill: `wawona-ios-native-shell`.
 
@@ -37,19 +52,43 @@ not the store Native Shell product.
 
 Every machine Start presents **Wawona Terminal** first (`$ argv` + CLI /
 host logs). Native Shell uses a live zsh PTY. Waypipe / wasm / client Start
-streams launch output into the same Terminal chrome. Close / Done reveals
-the compositor (Focus). **No** StartupLog preview card. **No** auto-dismiss
-on first frame.
+streams launch output into the same Terminal chrome. **No** StartupLog
+preview card.
+
+### Terminal may start Wayland clients (hard)
+
+Wawona Terminal can launch Wayland clients (`wasm chess`, weston, foot, …)
+against the host compositor. When a client attaches:
+
+1. Present (Metal / compositor view) opens **automatically**.
+2. Terminal chrome is **parked** (hidden). The PTY / shell stays alive.
+3. The user must **never** have to tap Done / Close / Focus just to see
+   the client.
+
+Done / Close still Focuses Present the same way (park, do not kill shell).
+Stop tears down the shell. Mount the session surface on Native Shell Start
+so SHM can drain before the first client maps.
+
+**No** auto-dismiss of Terminal on an empty first compositor frame at Start
+(that was the old StartupLog / Mode A SHM bug). Auto-reveal is tied to
+**Wayland client count rising**, not to Metal present alone.
 
 ## Hard rejects
 
 - Guest console text **"Native Shell starting"** (or any static splash) as the
   Terminal Start UX
 - `StartupLogOverlay` / `WWNStartupLogViewController` preview as Start UI
-- Auto-dismiss Terminal on first compositor frame
+- Requiring Done / Close / Focus to see a Wayland client started from Terminal
+- Killing the shell PTY when parking Terminal for Present (Done / client attach)
+- Skipping `mountSessionSurface` on `wawona-shell` Start (clients cannot present)
+- Auto-dismiss Terminal on an empty first compositor frame with no client
 - `connectNative` no-op for `wawona-shell` while presenting that splash
 - Calling `weston_terminal_main` / mobile fake terminal a real shell or a
   substitute for Wawona Terminal
+- Replacing Apple Native Shell with foot / weston-terminal (or any Wayland
+  terminal) and claiming native text selection
+- Overlaying UIKit / AppKit selection handles on Wayland client glyphs to
+  "fix" selection in a Wayland terminal
 - Writing keyboard bytes only to the PTY master on Apple mobile (use inject)
 - Omitting `WAWONA_ZSH_IN_PROCESS` before `wwn_pty_session_start`
 - Shipping Terminal UI that cannot show a prompt after Start on a linked tip

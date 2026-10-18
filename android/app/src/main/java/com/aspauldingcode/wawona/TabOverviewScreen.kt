@@ -1,6 +1,10 @@
 package com.aspauldingcode.wawona
 
-import androidx.compose.foundation.Image
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -33,6 +37,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -204,10 +209,31 @@ private fun TabOverviewCard(
         append(status.displayTitle)
         if (isActive) append(" · Active")
     }
+    var swipeOffset by remember(profile.id) { mutableFloatStateOf(0f) }
+    val clientRatio = thumbnail?.let { bmp ->
+        if (bmp.height > 0) bmp.width.toFloat() / bmp.height.toFloat() else null
+    }
 
     Column(
         modifier
             .fillMaxWidth()
+            .offset { IntOffset(swipeOffset.roundToInt(), 0) }
+            .pointerInput(profile.id) {
+                val threshold = -72.dp.toPx()
+                detectHorizontalDragGestures(
+                    onDragEnd = {
+                        if (swipeOffset < threshold) {
+                            onClose()
+                        } else {
+                            swipeOffset = 0f
+                        }
+                    },
+                    onHorizontalDrag = { _, dragAmount ->
+                        val next = swipeOffset + dragAmount
+                        if (next < 0f) swipeOffset = next
+                    },
+                )
+            }
             .clip(shape)
             .border(
                 width = if (isActive) 2.dp else 1.dp,
@@ -260,9 +286,14 @@ private fun TabOverviewCard(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(0.72f)
-                .clip(RoundedCornerShape(10.dp))
-                .background(scheme.surfaceContainerHighest),
+                .then(
+                    if (clientRatio != null) {
+                        Modifier.aspectRatio(clientRatio)
+                    } else {
+                        Modifier
+                    }
+                )
+                .clip(RoundedCornerShape(10.dp)),
             contentAlignment = Alignment.Center,
         ) {
             if (thumbnail != null) {

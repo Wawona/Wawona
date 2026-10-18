@@ -191,6 +191,72 @@ pub extern "C" fn wawona_capability_gate(
     to_cstring(super::capabilities::gate(platform, feature).to_string())
 }
 
+/// 1 if `key` is a UserDefaults key mirrored through CloudKit.
+#[no_mangle]
+pub extern "C" fn wawona_cloud_sync_is_synced_key(key: *const c_char) -> i32 {
+    cstr_to_str(key).map_or(0, |k| i32::from(super::cloud_sync::is_synced_defaults_key(k)))
+}
+
+/// 1 if a HOME-relative path (`/` separators) must not be mirrored.
+#[no_mangle]
+pub extern "C" fn wawona_cloud_sync_home_path_excluded(rel: *const c_char) -> i32 {
+    cstr_to_str(rel).map_or(1, |r| i32::from(super::cloud_sync::home_path_excluded(r)))
+}
+
+#[no_mangle]
+pub extern "C" fn wawona_cloud_sync_home_max_file_bytes() -> u64 {
+    super::cloud_sync::HOME_MAX_FILE_BYTES
+}
+
+#[no_mangle]
+pub extern "C" fn wawona_cloud_sync_home_max_files() -> u32 {
+    super::cloud_sync::HOME_MAX_FILES
+}
+
+/// 1 when the cloud copy should replace the local one.
+#[no_mangle]
+pub extern "C" fn wawona_cloud_sync_prefer_remote(
+    local_modified_ms: i64,
+    remote_modified_ms: i64,
+    local_ever_synced: i32,
+) -> i32 {
+    i32::from(super::cloud_sync::prefer_remote(
+        local_modified_ms,
+        remote_modified_ms,
+        local_ever_synced != 0,
+    ))
+}
+
+/// Profiles JSON with passwords and passphrases removed. NULL on bad JSON.
+/// Caller frees with `wawona_domain_string_free`.
+#[no_mangle]
+pub extern "C" fn wawona_cloud_sync_redact_profiles(json: *const c_char) -> *mut c_char {
+    let Some(json) = cstr_to_str(json) else {
+        return std::ptr::null_mut();
+    };
+    match super::cloud_sync::redact_profiles_json(json) {
+        Ok(out) => to_cstring(out),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+/// Cloud profiles applied onto local, keeping local secrets. NULL on bad
+/// JSON. Caller frees with `wawona_domain_string_free`.
+#[no_mangle]
+pub extern "C" fn wawona_cloud_sync_merge_profiles(
+    local: *const c_char,
+    remote: *const c_char,
+    bootstrap: i32,
+) -> *mut c_char {
+    let (Some(local), Some(remote)) = (cstr_to_str(local), cstr_to_str(remote)) else {
+        return std::ptr::null_mut();
+    };
+    match super::cloud_sync::merge_remote_profiles_json(local, remote, bootstrap != 0) {
+        Ok(out) => to_cstring(out),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
 /// 1 if this client / bundled id is forbidden as a Machines profile.
 #[no_mangle]
 pub extern "C" fn wawona_session_is_forbidden_client_id(id: *const c_char) -> i32 {

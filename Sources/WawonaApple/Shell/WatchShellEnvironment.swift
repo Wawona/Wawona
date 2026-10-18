@@ -39,7 +39,65 @@ public final class WWNWatchShellEnvironment: NSObject {
         setenv("XDG_STATE_HOME", (home as NSString).appendingPathComponent(".local/state"), 1)
 
         applyBundleShareEnv()
+        linkInboxIntoHome(home)
+        publishWaylandSession(display: "wayland-0")
         shellLog("in-process zsh; HOME=\(home) WAWONA_ROOTFS=\(active)")
+    }
+
+    /// Same pair iOS sets before the shell. The compositor binds
+    /// `$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY`. In-process `wasm` reads those.
+    static func publishWaylandSession(display: String) {
+        let runtime = watchRuntimeDir()
+        try? FileManager.default.createDirectory(
+            atPath: runtime,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        setenv("XDG_RUNTIME_DIR", runtime, 1)
+        let name = display.isEmpty ? "wayland-0" : display
+        setenv("WAYLAND_DISPLAY", name, 1)
+    }
+
+    /// Matches iOS `preferredSharedRuntimeDir` without pulling phone Settings
+    /// into the watch target. Simulator path is per-UDID so two watches do
+    /// not share one `wayland-0`.
+    static func watchRuntimeDir() -> String {
+        #if targetEnvironment(simulator)
+        let udid = ProcessInfo.processInfo.environment["SIMULATOR_UDID"] ?? ""
+        let suffix: String
+        if udid.count >= 8 {
+            suffix = "_" + String(udid.prefix(8)).lowercased()
+        } else if !udid.isEmpty {
+            suffix = "_" + udid.lowercased()
+        } else {
+            suffix = ""
+        }
+        return "/tmp/wawona_sim_\(getuid())\(suffix)"
+        #else
+        return "/tmp/wawona-\(getuid())"
+        #endif
+    }
+
+    /// Phone transfers already land in the Watch app container
+    /// (`Documents/Wawona/inbox`). Link that directory at `$HOME/inbox` so
+    /// `ls` and `cd` see it. No separate "From iPhone" screen.
+    @objc public static func publishInboxIntoHome() {
+        apply()
+    }
+
+    private static func linkInboxIntoHome(_ home: String) {
+        let fm = FileManager.default
+        guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else {
+            return
+        }
+        let inbox = docs.appendingPathComponent("Wawona/inbox", isDirectory: true)
+        try? fm.createDirectory(at: inbox, withIntermediateDirectories: true)
+        let link = (home as NSString).appendingPathComponent("inbox")
+        var isDir: ObjCBool = false
+        if fm.fileExists(atPath: link, isDirectory: &isDir) {
+            return
+        }
+        try? fm.createSymbolicLink(atPath: link, withDestinationPath: inbox.path)
     }
 
     private static func shellLog(_ message: String) {

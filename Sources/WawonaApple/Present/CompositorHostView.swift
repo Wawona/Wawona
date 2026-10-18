@@ -1,4 +1,4 @@
-#if canImport(Metal) && (os(macOS) || os(iOS)) && !os(watchOS)
+#if canImport(Metal) && !os(watchOS)
 import SwiftUI
 import QuartzCore
 
@@ -18,7 +18,7 @@ public struct CompositorHostView: View {
         #if os(macOS)
         CompositorHostNSViewRepresentable(core: core)
             .accessibilityElement(children: .contain)
-        #elseif os(iOS)
+        #elseif os(iOS) || os(tvOS) || os(visionOS)
         CompositorHostUIViewRepresentable(core: core)
             .accessibilityElement(children: .contain)
         #endif
@@ -44,7 +44,7 @@ private struct CompositorHostNSViewRepresentable: NSViewRepresentable {
 }
 #endif
 
-#if os(iOS)
+#if os(iOS) || os(tvOS) || os(visionOS)
 import UIKit
 
 private struct CompositorHostUIViewRepresentable: UIViewRepresentable {
@@ -66,12 +66,12 @@ private struct CompositorHostUIViewRepresentable: UIViewRepresentable {
 #if os(macOS)
 typealias PlatformView = NSView
 typealias PlatformColor = NSColor
-#elseif os(iOS)
+#elseif os(iOS) || os(tvOS) || os(visionOS)
 typealias PlatformView = UIView
 typealias PlatformColor = UIColor
 #endif
 
-#if os(macOS) || os(iOS)
+#if os(macOS) || os(iOS) || os(tvOS) || os(visionOS)
 final class CompositorHostPlatformView: PlatformView {
     var core: UnsafeMutableRawPointer?
     private var metalPresenter: MetalPresenter?
@@ -231,7 +231,7 @@ final class CompositorHostPlatformView: PlatformView {
         maybePresentClearProof(reason: "layout")
     }
 
-    #if os(iOS)
+    #if os(iOS) || os(visionOS)
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         forwardTouches(touches, ended: false)
     }

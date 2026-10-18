@@ -1,5 +1,9 @@
 import SwiftUI
 import WawonaModel
+import WawonaUIContracts
+#if canImport(UIKit)
+import UIKit
+#endif
 
 extension EnvironmentCategory {
     var iconName: String {
@@ -16,7 +20,22 @@ extension EnvironmentCategory {
         }
     }
 
+    /// Category accent for filter pills and row glyphs. Prefer system UIColors
+    /// so teal/indigo stay valid on the iOS 13 floor.
     var accentColor: Color {
+        #if canImport(UIKit) && !os(watchOS)
+        switch self {
+        case .session: return Color(UIColor.systemBlue)
+        case .graphics: return Color(UIColor.systemPurple)
+        case .shell: return Color(UIColor.systemOrange)
+        case .xdg: return Color(UIColor.systemIndigo)
+        case .fonts: return Color(UIColor.systemTeal)
+        case .input: return Color(UIColor.systemGreen)
+        case .debug: return Color(UIColor.systemRed)
+        case .secrets: return Color(UIColor.systemYellow)
+        case .user: return Color(UIColor.systemTeal)
+        }
+        #else
         switch self {
         case .session: return .blue
         case .graphics: return .purple
@@ -28,6 +47,7 @@ extension EnvironmentCategory {
         case .secrets: return .yellow
         case .user: return Color(red: 0, green: 0.78, blue: 0.75)
         }
+        #endif
     }
 
     var displayName: String {
@@ -55,6 +75,9 @@ public struct EnvironmentVariablesView: View {
     public var perMachine: Bool
     /// Optional draft map for editors that save later.
     public var draftMachineOverrides: Binding<EnvironmentOverrideMap>?
+    /// When set (Global Settings host), registers Add for `[+][x]` chrome.
+    /// Own `navigationActions` Add is skipped so + stays plain, left of Close.
+    public var chromeBridge: WawonaSettingsChromeBridge?
 
     @State private var searchText: String = ""
     @State private var selectedCategory: EnvironmentCategory? = nil
@@ -66,13 +89,15 @@ public struct EnvironmentVariablesView: View {
         profileStore: MachineProfileStore? = nil,
         machineID: String? = nil,
         perMachine: Bool = false,
-        draftMachineOverrides: Binding<EnvironmentOverrideMap>? = nil
+        draftMachineOverrides: Binding<EnvironmentOverrideMap>? = nil,
+        chromeBridge: WawonaSettingsChromeBridge? = nil
     ) {
         self.preferences = preferences
         self.profileStore = profileStore
         self.machineID = machineID
         self.perMachine = perMachine
         self.draftMachineOverrides = draftMachineOverrides
+        self.chromeBridge = chromeBridge
     }
 
     private var profile: MachineProfile? {
@@ -172,14 +197,12 @@ public struct EnvironmentVariablesView: View {
         .backport.searchable(text: $searchText, prompt: "Search variables")
         .backport.navigationTitle("Environment Variables", inline: true)
         .accessibility(identifier: "wwn.settings.environment")
-        .backport.navigationActions(trailingIsPrimary: true, leading: { EmptyView() }, trailing: {
-                WawonaButton {
-                    isPresentingNewSheet = true
-                } label: {
-                    WawonaLabel("Add Variable", systemImage: "plus")
-                }
-                .accessibility(identifier: "wwn.settings.environment.new")
-            })
+        // Global Settings: host owns `[+][x]` via chromeBridge. Standalone
+        // (machine editor): keep a plain trailing + (never .primaryAction).
+        .modifier(EnvironmentVariablesAddChrome(
+            chromeBridge: chromeBridge,
+            isPresentingNewSheet: $isPresentingNewSheet
+        ))
         .sheet(isPresented: $isPresentingNewSheet) {
             NewEnvironmentVariableSheet { name, value in
                 saveNew(name: name, value: value)
@@ -741,6 +764,7 @@ struct NewEnvironmentVariableSheet: View {
 }
 
 /// Colored category chip for Env Vars filter strip (Android FilterChip parity).
+/// Glyph stays accent-colored when unselected so category colors remain visible.
 private struct EnvironmentCategoryChip: View {
     let title: String
     let systemImage: String
@@ -753,7 +777,7 @@ private struct EnvironmentCategoryChip: View {
             HStack(spacing: 6) {
                 Image(systemName: systemImage)
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(selected ? accent : .secondary)
+                    .foregroundColor(accent)
                 Text(title)
                     .font(.subheadline.weight(selected ? .semibold : .regular))
                     .foregroundColor(selected ? .primary : .secondary)
@@ -761,12 +785,44 @@ private struct EnvironmentCategoryChip: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .backport.background(
-                selected ? accent.opacity(0.18) : Color.secondary.opacity(0.12),
+                selected ? accent.opacity(0.22) : accent.opacity(0.10),
                 in: Capsule()
             )
         }
         .buttonStyle(PlainButtonStyle())
         .accessibility(addTraits: selected ? .isSelected : [])
         .accessibility(label: Text(title))
+    }
+}
+
+/// Registers Add with Settings host chrome, or shows a plain trailing + alone.
+private struct EnvironmentVariablesAddChrome: ViewModifier {
+    var chromeBridge: WawonaSettingsChromeBridge?
+    @Binding var isPresentingNewSheet: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if let chromeBridge {
+            content
+                .onAppear {
+                    chromeBridge.onAdd = { isPresentingNewSheet = true }
+                }
+                .onDisappear {
+                    chromeBridge.onAdd = nil
+                }
+        } else {
+            content.backport.navigationActions(
+                trailingIsPrimary: false,
+                leading: { EmptyView() },
+                trailing: {
+                    WawonaButton {
+                        isPresentingNewSheet = true
+                    } label: {
+                        WawonaLabel("Add Variable", systemImage: "plus")
+                    }
+                    .accessibility(identifier: "wwn.settings.environment.new")
+                }
+            )
+        }
     }
 }

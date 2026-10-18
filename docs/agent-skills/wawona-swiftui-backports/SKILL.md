@@ -18,16 +18,17 @@ Wawona Terminal on iOS 13+. Never bare `ScrollViewReader` at phone call sites.
 ## iOS 26 bottom search
 
 For the iPhone Machines Messages-style bottom search row, `.searchable(text:)`
-must use its default placement. `DefaultToolbarItem(kind: .search, placement:
-.bottomBar)` is the sole owner of the search slot. Do not add
-`placement: .toolbar`, which vends a conflicting navigation item during
-split-detail restoration. Keep `usesNativePhoneSearchToolbar` true on iOS 26+.
+must use its default placement so the visible controller owns the
+`UISearchController`. The bottom slot is `WWNPhoneIntegratedSearchToolbar`:
+copy `navigationItem.searchBarPlacementBarButtonItem` into that controller's
+`toolbarItems` with a flexible space and one prominent `+`. Do not use
+`DefaultToolbarItem(kind: .search, placement: .bottomBar)`. That vends the
+button from a bridge navigation item, UIKit ignores it, and SwiftUI inserts
+a zero-height `UIKitToolbar` under `UIHostingController.view`. Do not add
+`placement: .toolbar`. Keep `usesNativePhoneSearchToolbar` true on iOS 26+.
 Top-trailing toolbar buttons use `.automatic`, not `.glass` (glass-on-glass).
-iPhone bottom Add and editor Cancel/Save: plain `ToolbarItem` + `Button` +
-`Image(systemName:)` (`plus` / `xmark` / `checkmark`). Default toolbar
-styling only. No custom circles, glassProminent, fixed frames, or
-`sharedBackgroundVisibility` hacks. **One Add only:** phone = bottom;
-iPad/vision = top-trailing.
+Editor Cancel/Save stay plain `xmark` / `checkmark`. **One Add only:**
+phone = bottom toolbar `+`; iPad/vision = top-trailing.
 
 ## Machine editor sheets
 

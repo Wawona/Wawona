@@ -48,14 +48,69 @@ extension WawonaBackport where Content: View {
         } else {
             // A separate presentation node avoids the pre-14.5 multiple-sheet limitation.
             content.background(Color.clear.sheet(isPresented: isPresented) {
-                WawonaDocumentPicker(isPresented: isPresented,
-                    identifiers: allowedContentTypes.map(\.legacy), completion: onCompletion)
+                WawonaDocumentPicker(
+                    isPresented: isPresented,
+                    identifiers: allowedContentTypes.map(\.legacy),
+                    allowsMultipleSelection: false,
+                    completion: { result in
+                        switch result {
+                        case .success(let urls):
+                            if let url = urls.first {
+                                onCompletion(.success(url))
+                            }
+                        case .failure(let error):
+                            onCompletion(.failure(error))
+                        }
+                    }
+                )
             })
         }
         #else
         if #available(macOS 11.0, watchOS 7.0, visionOS 1.0, *) {
             content.fileImporter(isPresented: isPresented,
                 allowedContentTypes: allowedContentTypes.map(\.native), onCompletion: onCompletion)
+        } else {
+            content
+        }
+        #endif
+    }
+
+    /// Several files in one pick. iOS 13 uses `UIDocumentPicker`; iOS 14+ uses `fileImporter`.
+    @ViewBuilder
+    func fileImporter(
+        isPresented: Binding<Bool>,
+        allowedContentTypes: [WawonaFileType],
+        allowsMultipleSelection: Bool,
+        onCompletion: @escaping (Result<[URL], Error>) -> Void
+    ) -> some View {
+        #if os(tvOS)
+        content
+        #elseif os(iOS)
+        if #available(iOS 14.0, *) {
+            content.fileImporter(
+                isPresented: isPresented,
+                allowedContentTypes: allowedContentTypes.map(\.native),
+                allowsMultipleSelection: allowsMultipleSelection,
+                onCompletion: onCompletion
+            )
+        } else {
+            content.background(Color.clear.sheet(isPresented: isPresented) {
+                WawonaDocumentPicker(
+                    isPresented: isPresented,
+                    identifiers: allowedContentTypes.map(\.legacy),
+                    allowsMultipleSelection: allowsMultipleSelection,
+                    completion: onCompletion
+                )
+            })
+        }
+        #else
+        if #available(macOS 11.0, watchOS 7.0, visionOS 1.0, *) {
+            content.fileImporter(
+                isPresented: isPresented,
+                allowedContentTypes: allowedContentTypes.map(\.native),
+                allowsMultipleSelection: allowsMultipleSelection,
+                onCompletion: onCompletion
+            )
         } else {
             content
         }
@@ -78,12 +133,13 @@ extension WawonaBackport where Content: View {
 private struct WawonaDocumentPicker: UIViewControllerRepresentable {
     @Binding var isPresented: Bool
     let identifiers: [String]
-    let completion: (Result<URL, Error>) -> Void
+    let allowsMultipleSelection: Bool
+    let completion: (Result<[URL], Error>) -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
     func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
         let picker = UIDocumentPickerViewController(documentTypes: identifiers, in: .open)
-        picker.allowsMultipleSelection = false
+        picker.allowsMultipleSelection = allowsMultipleSelection
         picker.delegate = context.coordinator
         return picker
     }
@@ -96,10 +152,13 @@ private struct WawonaDocumentPicker: UIViewControllerRepresentable {
         init(_ owner: WawonaDocumentPicker) { self.owner = owner }
         func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
             owner.isPresented = false
-            if let url = urls.first { owner.completion(.success(url)) }
+            if urls.isEmpty == false {
+                owner.completion(.success(urls))
+            }
         }
         func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
             owner.isPresented = false
+            owner.completion(.failure(CocoaError(.userCancelled)))
         }
     }
 }

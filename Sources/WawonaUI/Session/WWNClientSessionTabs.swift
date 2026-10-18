@@ -1017,6 +1017,11 @@ struct WWNClientTabExposeCard: View {
     let onSelect: () -> Void
     let onClose: () -> Void
 
+    private var clientRatio: CGFloat? {
+        guard let preview = tab.preview, preview.size.height > 1 else { return nil }
+        return preview.size.width / preview.size.height
+    }
+
     private var titleText: String {
         tab.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? "Untitled Client"
@@ -1087,7 +1092,7 @@ struct WWNClientTabExposeCard: View {
                 }
             }
             .frame(maxWidth: .infinity)
-            .aspectRatio(0.60, contentMode: .fit)
+            .aspectRatio(clientRatio, contentMode: .fit)
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             .padding(.horizontal, 6)
             .padding(.bottom, 6)

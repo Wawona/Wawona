@@ -14,18 +14,50 @@ import WawonaUIContracts
 struct WWNSettingsSectionView: View {
     let section: WWNPreferencesSection
     @ObservedObject var model: WWNSettingsValueModel
+    /// Host-owned; Env Vars registers Add for `[+][x]` detail chrome.
+    var chromeBridge: WawonaSettingsChromeBridge? = nil
 
     private var sectionAccent: Color { section.swiftUIIconColor }
+
+    @ViewBuilder
+    private var appleWatchDetail: some View {
+        #if os(iOS)
+        WWNAppleWatchSettingsView()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        #else
+        EmptyView()
+        #endif
+    }
+
+    @ViewBuilder
+    private var iCloudSyncDetail: some View {
+        #if os(iOS) || os(macOS) || os(visionOS) || os(tvOS)
+        WWNICloudSyncSettingsView()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        #else
+        EmptyView()
+        #endif
+    }
 
     var body: some View {
         Group {
             if section.accessibilityIdentifier == "wwn.settings.environment" {
-                EnvironmentVariablesView(preferences: WawonaPreferences.shared, perMachine: false)
+                EnvironmentVariablesView(
+                    preferences: WawonaPreferences.shared,
+                    perMachine: false,
+                    chromeBridge: chromeBridge
+                )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if section.accessibilityIdentifier == WWNA11y.settingsAppleWatch {
+                appleWatchDetail
+            } else if section.accessibilityIdentifier == WWNA11y.settingsICloudSync {
+                iCloudSyncDetail
             } else {
                 Form {
                     if section.accessibilityIdentifier == "wwn.settings.desktop" {
                         desktopFormSections
+                    } else if section.accessibilityIdentifier == "wwn.settings.about" {
+                        aboutFormSections
                     } else {
                         Section {
                             ForEach(Array(section.items.enumerated()), id: \.offset) { _, item in
@@ -50,6 +82,38 @@ struct WWNSettingsSectionView: View {
         // Link), matching Android section accents. Not sidebar icon tiles.
         .settingsSectionAccent(sectionAccent)
         .backport.tint(sectionAccent)
+    }
+
+    /// About: icon and version, then links, then the facts group.
+    @ViewBuilder
+    private var aboutFormSections: some View {
+        let banner = section.items.filter { $0.type == .WSettingHeader }
+        let links = section.items.filter { $0.type == .WSettingLink }
+        let facts = section.items.filter {
+            $0.type != .WSettingHeader && $0.type != .WSettingLink
+        }
+        if !banner.isEmpty {
+            Section {
+                settingsRows(banner)
+            }
+        }
+        if !links.isEmpty {
+            Section {
+                settingsRows(links)
+            }
+        }
+        if !facts.isEmpty {
+            Section {
+                settingsRows(facts)
+            }
+        }
+    }
+
+    private func settingsRows(_ items: [WWNSettingItem]) -> some View {
+        ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+            WWNSettingsRowView(item: item, model: model)
+                .backport.visibleRowSeparator()
+        }
     }
 
     /// Desktop Replacement detail: labelled Desktop vs Lock Screen groups.
@@ -476,32 +540,19 @@ private struct WWNSettingsRowView: View {
     }
 
     private var headerRow: some View {
-        HStack(alignment: .center, spacing: 14) {
+        VStack(spacing: 8) {
             WawonaAboutIconView()
-                .frame(width: 56, height: 56)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.system(size: 20).weight(.semibold))
-                if !desc.isEmpty {
-                    Text(desc)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                if !item.urlString.isEmpty, let url = URL(string: item.urlString) {
-                    let visit = item.buttonTitle.isEmpty ? "Visit" : item.buttonTitle
-                    WawonaLink(destination: url) {
-                        HStack(spacing: 4) {
-                            Text(visit)
-                            Image(systemName: "arrow.up.right.square")
-                        }
-                        .font(.caption.weight(.semibold))
-                    }
-                    .accessibility(label: Text("\(visit) wawona.io"))
-                }
+                .frame(width: 72, height: 72)
+            Text(title)
+                .font(.system(size: 20).weight(.semibold))
+            if !desc.isEmpty {
+                Text(desc)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
-            Spacer(minLength: 0)
         }
-        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
         .accessibility(identifier: item.accessibilityIdentifier ?? "")
     }
 
@@ -711,19 +762,33 @@ private final class WWNSettingsRemoteImageLoader: ObservableObject {
     @Published private(set) var image: Image?
 
     init(url: URL) {
+        if let file = WawonaAboutLinks.bundleFile(for: url.absoluteString),
+           let image = Self.image(from: WawonaFaviconCache.bundleData(named: file)) {
+            self.image = image
+            return
+        }
+        if let image = Self.image(from: WawonaFaviconCache.cachedData(for: url)) {
+            self.image = image
+        }
         URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
-            guard let data else { return }
-            #if os(macOS)
-            guard let platformImage = NSImage(data: data) else { return }
-            let image = Image(nsImage: platformImage)
-            #else
-            guard let platformImage = UIImage(data: data) else { return }
-            let image = Image(uiImage: platformImage)
-            #endif
+            guard let data, Self.image(from: data) != nil else { return }
+            guard WawonaFaviconCache.storeIfChanged(remoteURL: url, data: data) else { return }
+            guard let image = Self.image(from: data) else { return }
             DispatchQueue.main.async {
                 self?.image = image
             }
         }.resume()
+    }
+
+    private static func image(from data: Data?) -> Image? {
+        guard let data else { return nil }
+        #if os(macOS)
+        guard let platformImage = NSImage(data: data) else { return nil }
+        return Image(nsImage: platformImage)
+        #else
+        guard let platformImage = UIImage(data: data) else { return nil }
+        return Image(uiImage: platformImage)
+        #endif
     }
 }
 

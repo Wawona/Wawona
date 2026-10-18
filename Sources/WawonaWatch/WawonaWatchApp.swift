@@ -15,6 +15,7 @@ public struct WawonaWatchRootView: View {
     /// Native SwiftUI alert (not a full-screen Welcome page). Same first-launch
     /// gate as phone/macOS/Android (`hasCompletedWelcome`).
     @State private var showWelcomeAlert = false
+    @State private var settingsRoute: WatchSettingsRoute?
 
     public init() {}
 
@@ -36,7 +37,14 @@ public struct WawonaWatchRootView: View {
                     }
                     .frame(height: 80)
                 }
-                MachineStatusView(profileStore: profileStore, sessions: sessions)
+                MachineStatusView(
+                    profileStore: profileStore,
+                    sessions: sessions,
+                    settingsRoute: $settingsRoute
+                )
+            }
+            .navigationDestination(item: $settingsRoute) { _ in
+                WatchGlobalSettingsView()
             }
         }
         .fullScreenCover(item: $autoSession) { session in
@@ -45,7 +53,8 @@ public struct WawonaWatchRootView: View {
                     CompositorActiveView(
                         profile: autoProfile,
                         session: session,
-                        sessions: sessions
+                        sessions: sessions,
+                        onPark: { autoSession = nil }
                     )
                 }
             }
@@ -64,6 +73,7 @@ public struct WawonaWatchRootView: View {
             if needsWelcome {
                 showWelcomeAlert = true
             }
+            WWNWatchShellEnvironment.publishInboxIntoHome()
             WatchCompanionController.shared.activate()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 maybeAutoConnectNestedClient()
@@ -75,6 +85,11 @@ public struct WawonaWatchRootView: View {
             } else if preferences.hasCompletedWelcome {
                 showWelcomeAlert = false
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(
+            for: WWNWatchCompanionTransferDidChange
+        )) { _ in
+            WWNWatchShellEnvironment.publishInboxIntoHome()
         }
         .onReceive(NotificationCenter.default.publisher(
             for: Notification.Name("WWNWatchDisplayFrameNotification")

@@ -351,7 +351,9 @@ let
   # wwn-wasm: Pulley interpreter on Apple mobile. Lazy -l like phoon (Wasmtime
   # embeds Rust std). Mandatory on watchOS too (wawona-relay-wasm). Never -force_load.
   # Do not gate on pathExists. That silently drops the archive before first build.
-  wasmLdflags = deps:
+  # withRelayVm: link libwawona_relay.a (NixOS VM / shm importer / host waypipe).
+  # Watch is Pulley + wpm only. VM and container kinds stay forbidden there.
+  wasmLdflags = deps: withRelayVm:
     let
       w = deps.wawona-wasm or null;
       r = deps.wawona-relay or null;
@@ -362,8 +364,9 @@ let
           "-Wl,-u,_wawona_wasm_can_run"
           "-Wl,-u,_wawona_wasm_request_interrupt"
           "-Wl,-u,_wawona_wasm_is_running"
-          # Do not -u _wpm_main: Relay also exports it. One root is enough;
-          # dual -u pulled both archives (~duplicate _wpm_main).
+          # One -u. wpm_main lives in libwawona_wasm.a (KEEP_WPM_MAIN). Do not
+          # add a second -u on the Relay VM archive.
+          "-Wl,-u,_wpm_main"
           "-lwawona_wasm"
         ];
       # Pass the static archive by path. ld prefers a same-dir
@@ -380,7 +383,7 @@ let
       # actually export _relay_start_shm_importer (stale nix-deps without that
       # T symbol fail closed at link once stubs are gone).
       relay =
-        if r == null then [] else [
+        if (!withRelayVm) || r == null then [] else [
           "-Wl,-u,_relay_resolve_backend"
           "-Wl,-u,_relay_start"
           "-Wl,-u,_relay_start_shm_importer"
@@ -496,9 +499,9 @@ let
       ];
   # Product keep-set link tail: fastfetch + Relay wasm + waypipe + ssh + pty.
   # No weston / niri / foot / cubes / phoon / fuzzel (optional-software).
-  productKeepLdflags = deps: { withWaypipe ? true }:
+  productKeepLdflags = deps: { withWaypipe ? true, withRelayVm ? true }:
     (fastfetchLdflags deps)
-    ++ (wasmLdflags deps)
+    ++ (wasmLdflags deps withRelayVm)
     ++ (lib.optionals withWaypipe (waypipeLdflags deps))
     ++ (sshCliLdflags deps)
     ++ (wawonaPtyLdflags deps);
@@ -1080,7 +1083,7 @@ PLIST
   # also fixed a second, same-root-cause bug where Xcode's own
   # ValidateEmbeddedBinary misread an iOS-Simulator host as plain "iOS"
   # device because of the hardcoded value, and rejected the (correctly
-  # watchOS-Simulator) embedded WawonaWatch.app. LSRequiresIPhoneOS +
+  # watchOS-Simulator) embedded Watch/Wawona.app. LSRequiresIPhoneOS +
   # UISupportedInterfaceOrientations~ipad are iOS/iPadOS-only keys that stay
   # hardcoded in source (iOS/iPadOS correctly need them); strip them here for
   # every non-iOS/-iPadOS app target. Same bug class already fixed for
@@ -2048,6 +2051,8 @@ PLIST
             SUPPORTED_PLATFORMS = "appletvos appletvsimulator";
             TARGETED_DEVICE_FAMILY = "3";
             CODE_SIGN_STYLE = "Automatic";
+            # CloudKit only: iCloud Drive is unavailable on tvOS (QA1935).
+            CODE_SIGN_ENTITLEMENTS = "src/resources/app-bundle/Wawona-CloudKit.entitlements";
             ENABLE_DEBUG_DYLIB = "NO";
             CODE_SIGNING_ALLOWED = "YES";
             CODE_SIGNING_REQUIRED = "YES";
@@ -2947,8 +2952,6 @@ PLIST
           # include watchos|watchsimulator; deps are platform-agnostic pkgs.
           xkbEmbedPhase
           fontEmbedPhase
-          westonDataEmbedPhase
-          watchosNiriDataEmbedPhase
           appsCatalogEmbedPhase
           watchosRootfsEmbedPhase
           {
@@ -2982,8 +2985,12 @@ PLIST
         settings = {
           base = {
             PRODUCT_BUNDLE_IDENTIFIER = "com.aspauldingcode.Wawona.watch";
-            # Distinct Swift module from the iOS host (project PRODUCT_NAME=Wawona).
-            PRODUCT_NAME = "WawonaWatch";
+            # CloudKit only: iCloud Drive is unavailable on watchOS (QA1935).
+            CODE_SIGN_ENTITLEMENTS = "src/resources/app-bundle/Wawona-CloudKit.entitlements";
+            # Same bundle and executable name as every other Wawona app
+            # (Watch/Wawona.app/Wawona). The Swift module stays distinct
+            # from the iOS host module.
+            PRODUCT_NAME = "Wawona";
             PRODUCT_MODULE_NAME = "WawonaWatch";
             SUPPORTED_PLATFORMS = "watchos watchsimulator";
             SDKROOT = "watchos";
@@ -3010,12 +3017,12 @@ PLIST
             # Every other app target (iOS/tvOS/macOS/visionOS) disables the
             # Simulator-only "debug dylib" launch accelerator; Wawona-watchOS
             # never got it. With it on, Xcode additionally links a
-            # WawonaWatch.debug.dylib against the SAME flat, single-platform
+            # Wawona.debug.dylib (watch) against the SAME flat, single-platform
             # WawonaModel.framework used by every platform in Nix's
             # build-app.nix (CONFIGURATION_BUILD_DIR=$out is forced globally),
             # so linking always fails: "building for watchOS-simulator, but
             # linking in dylib ... built for iOS-simulator". Even though the
-            # real WawonaWatch.app link (below) succeeds because
+            # real watch Wawona.app link (below) succeeds because
             # watchos-ensure-framework-modules.sh merges the watchos-simulator
             # swiftmodule slice into that same $out for the *compile* step.
             # This dylib is a Debug+Simulator quick-launch optimization only
@@ -3031,7 +3038,7 @@ PLIST
             "CODE_SIGNING_ALLOWED[sdk=watchsimulator*]" = "NO";
             "CODE_SIGNING_REQUIRED[sdk=watchsimulator*]" = "NO";
             # App target only (see Wawona-iOS). Required so ASC ITMS-90427
-            # ("expected dylibs missing from .../WawonaWatch.app") does not fire.
+            # ("expected dylibs missing from .../Watch/Wawona.app") does not fire.
             ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = "YES";
             LD_RUNPATH_SEARCH_PATHS = [ "$(inherited)" "@executable_path/Frameworks" ];
             GCC_PREPROCESSOR_DEFINITIONS = [
@@ -3084,9 +3091,9 @@ PLIST
             # absolute path (a real, never-shared-with-iOS watch build under
             # BUILD_DIR/CONFIGURATION-PLATFORM_NAME). The dylib's own
             # LC_ID_DYLIB install name (@rpath/<fw>.framework/<fw>) is what
-            # ends up in WawonaWatch's load commands, so at runtime it still
+            # ends up in the watch executable's load commands, so at runtime it still
             # resolves against the embedded (watch-platform, via "Fix Watch
-            # Embedded Frameworks") copy in WawonaWatch.app/Frameworks. This
+            # Embedded Frameworks") copy in Watch/Wawona.app/Frameworks. This
             # path is only ever consulted to satisfy the link step.
             OTHER_LDFLAGS = [
               "$(inherited)"
@@ -3123,7 +3130,7 @@ PLIST
               "-lwayland-server"
               "-lepoll-shim"
               "-lpixman-1"
-              # -lzstd comes from wasmLdflags (relay); do not duplicate.
+              "-lzstd"
               "-llz4"
               "-lz"
               "-lssh2"
@@ -3133,7 +3140,7 @@ PLIST
               "-lssl"
               "-lcrypto"
               "-lxkbcommon"
-            ] ++ (ilandPresentLdflags watchosDeps) ++ (productKeepLdflags watchosDeps {})
+            ] ++ (ilandPresentLdflags watchosDeps) ++ (productKeepLdflags watchosDeps { withRelayVm = false; })
             ++ appleMobileResolvLdflags ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ "-liconv" ] ++ lib.optionals (watchosBackend != null) [
               "-L$(DERIVED_FILE_DIR)"
               "-lwawona"
@@ -3161,7 +3168,7 @@ PLIST
               "-lwayland-server"
               "-lepoll-shim"
               "-lpixman-1"
-              # -lzstd comes from wasmLdflags (relay); do not duplicate.
+              "-lzstd"
               "-llz4"
               "-lz"
               "-lssh2"
@@ -3171,7 +3178,7 @@ PLIST
               "-lssl"
               "-lcrypto"
               "-lxkbcommon"
-            ] ++ (ilandPresentLdflags watchosSimDeps) ++ (productKeepLdflags watchosSimDeps {})
+            ] ++ (ilandPresentLdflags watchosSimDeps) ++ (productKeepLdflags watchosSimDeps { withRelayVm = false; })
             ++ appleMobileResolvLdflags ++ mobileZshLdflags ++ mobileDispatchLdflags ++ [ "-liconv" ] ++ lib.optionals (watchosSimBackend != null) [
               "-L$(DERIVED_FILE_DIR)"
               "-lwawona"
@@ -3193,7 +3200,7 @@ PLIST
           # OTHER_LDFLAGS/FRAMEWORK_SEARCH_PATHS entries below, pointing at
           # watchos-ensure-framework-modules.sh's own per-platform install
           # (BUILD_DIR/CONFIGURATION-PLATFORM_NAME, a real watch Mach-O, never
-          # shared with iOS); embedding into WawonaWatch.app/Frameworks is
+          # shared with iOS); embedding into Watch/Wawona.app/Frameworks is
           # handled by "Fix Watch Embedded Frameworks" below, which already
           # finds that same install (or rebuilds it) independent of Xcode's
           # own Embed Frameworks phase.

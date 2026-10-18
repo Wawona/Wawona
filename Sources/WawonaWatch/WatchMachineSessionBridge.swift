@@ -101,9 +101,7 @@ enum WatchMachineSessionBridge {
         if let launcher = profile.launchers.first?.name, !launcher.isEmpty {
             return launcher
         }
-        // Prefer an explicit launcher; fall back to SHM demo (always works on
-        // the watch mini server without GPU).
-        return "weston-simple-shm"
+        return "wawona-shell"
     }
 }
 #endif

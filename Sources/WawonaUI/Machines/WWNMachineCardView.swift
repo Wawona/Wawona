@@ -1,6 +1,9 @@
 import SwiftUI
+import WawonaModel
 #if os(macOS)
 import AppKit
+#elseif canImport(UIKit)
+import UIKit
 #endif
 
 #if os(iOS)
@@ -61,7 +64,8 @@ struct WWNMachineCardView: View {
       RoundedRectangle(cornerRadius: 20, style: .continuous)
         .strokeBorder(cardOutlineColor, lineWidth: 1)
     }
-    // No drop shadow: native material / liquid glass provides depth.
+    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    // Hard: no `.shadow`, no Liquid Glass elevation on machine cards.
     #if !os(macOS)
     .animation(.spring(duration: 0.4, bounce: 0.24), value: status)
     #endif
@@ -104,14 +108,10 @@ struct WWNMachineCardView: View {
           .frame(height: 90)
       }
 
+      // Flat scrim only. A bottom-heavy black gradient reads as a drop
+      // shadow under the banner on light Machine Configuration cards.
       RoundedRectangle(cornerRadius: 16, style: .continuous)
-        .fill(
-          LinearGradient(
-            colors: [Color.black.opacity(0.10), Color.black.opacity(0.40)],
-            startPoint: .top,
-            endPoint: .bottom
-          )
-        )
+        .fill(Color.black.opacity(0.28))
         .frame(height: 90)
 
       HStack {
@@ -337,8 +337,9 @@ struct WWNMachineCardView: View {
 
 }
 
-/// Machine card chrome: liquid glass on macOS / iOS 26+, native material elsewhere.
-/// No drop shadows (depth comes from the material).
+/// Machine card chrome. Flat fill + hairline only.
+/// Never `.shadow` and never `.glassEffect` on iOS/tvOS: Liquid Glass paints a
+/// drop-shadow / elevation halo around cards in the Machines grid.
 #if os(iOS)
 @available(iOS 16.0, *)
 #endif
@@ -348,33 +349,19 @@ private struct WWNMachineCardMaterial: ViewModifier {
   func body(content: Content) -> some View {
     let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
     #if os(macOS)
-    if #available(macOS 26.0, *) {
-      content
-        .background { shape.fill(.clear) }
-        .glassEffect(.regular, in: shape)
-    } else {
-      // Solid fill: ultraThinMaterial forces expensive opaque-region
-      // recalculation on every NSWindow move (drag lag on Machines).
-      content.background {
-        shape.fill(Color(nsColor: .controlBackgroundColor))
-      }
+    // Solid fill: ultraThinMaterial / glassEffect force opaque-region work on
+    // every NSWindow move (drag lag) and glass draws an elevation halo.
+    content.background {
+      shape.fill(Color(nsColor: .controlBackgroundColor))
     }
     #elseif os(visionOS)
-    // glassEffect is unavailable on visionOS; match WawonaBackport.liquidGlass.
     content.background {
       shape.fill(Color.white.opacity(0.05))
         .background(.ultraThinMaterial, in: shape)
     }
     #elseif os(iOS) || os(tvOS)
-    if #available(iOS 26.0, tvOS 26.0, *) {
-      content
-        .background { shape.fill(.clear) }
-        .glassEffect(.regular, in: shape)
-    } else {
-      content.background {
-        shape.fill(Color.white.opacity(0.05))
-          .background(.ultraThinMaterial, in: shape)
-      }
+    content.background {
+      shape.fill(Color(UIColor.secondarySystemGroupedBackground))
     }
     #else
     content.background {

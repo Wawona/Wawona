@@ -31,7 +31,7 @@ func watchCompanionStatusReflectsUnpairedTransport() {
     let controller = WatchCompanionController(defaults: defaults, transport: mock)
     let status = controller.status()
     #expect(status.supported)
-    #expect(!status.paired)
+    #expect(status.paired == false)
     #expect(status.summary.contains("No paired"))
 }
 
@@ -92,5 +92,51 @@ func watchCompanionIngestReceivedFileCopiesToInbox() throws {
     #expect(dest?.path.contains("Wawona/inbox") == true)
     if let dest {
         try? FileManager.default.removeItem(at: dest.deletingLastPathComponent())
+    }
+}
+
+@Test
+func watchCompanionStageAndSendKeepsDisplayName() throws {
+    let mock = MockWatchCompanionTransport()
+    let defaults = UserDefaults(suiteName: "wawona.watch.stage.\(UUID().uuidString)")!
+    let controller = WatchCompanionController(defaults: defaults, transport: mock)
+    let tmp = FileManager.default.temporaryDirectory
+        .appendingPathComponent("hello-\(UUID().uuidString).wasm")
+    try Data("abc".utf8).write(to: tmp)
+    defer { try? FileManager.default.removeItem(at: tmp) }
+    let result = controller.stageAndSend(securityScopedSource: tmp)
+    #expect(result == .queued(fileName: tmp.lastPathComponent))
+    #expect(defaults.string(forKey: WatchCompanionPrefs.lastTransferNameKey) == tmp.lastPathComponent)
+    let staged = try #require(mock.lastURL)
+    #expect(staged.lastPathComponent.hasSuffix("-\(tmp.lastPathComponent)"))
+    #expect(FileManager.default.fileExists(atPath: staged.path))
+    try? FileManager.default.removeItem(at: staged)
+}
+
+@Test
+func watchCompanionNoteTransferFinishedMarksDelivered() {
+    let defaults = UserDefaults(suiteName: "wawona.watch.done.\(UUID().uuidString)")!
+    let controller = WatchCompanionController(
+        defaults: defaults,
+        transport: MockWatchCompanionTransport()
+    )
+    controller.noteTransferFinished(fileName: "../hello.wasm", errorMessage: nil)
+    #expect(defaults.string(forKey: WatchCompanionPrefs.lastTransferNameKey) == "hello.wasm")
+    #expect(defaults.string(forKey: WatchCompanionPrefs.lastTransferStatusKey) == "delivered")
+}
+
+@Test
+func watchCompanionIngestStripsPathFromPreferredName() throws {
+    let tmp = FileManager.default.temporaryDirectory
+        .appendingPathComponent("path-\(UUID().uuidString).bin")
+    try Data([0x01]).write(to: tmp)
+    defer { try? FileManager.default.removeItem(at: tmp) }
+    let dest = WatchCompanionController.ingestReceivedFile(
+        at: tmp,
+        preferredName: "../nested/demo.wasm"
+    )
+    #expect(dest?.lastPathComponent == "demo.wasm")
+    if let dest {
+        try? FileManager.default.removeItem(at: dest)
     }
 }

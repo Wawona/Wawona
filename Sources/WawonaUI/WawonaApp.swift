@@ -103,6 +103,9 @@ public final class WawonaAppDelegate: Sendable {
         if bridge.start(withSocketName: "wayland-0") {
             setenv("WAYLAND_DISPLAY", bridge.socketName(), 1)
         }
+        Task { @MainActor in
+            WWNCloudSync.shared.start(homePath: { WWNRootfsManager.activeHomePath() })
+        }
         #endif
     }
 

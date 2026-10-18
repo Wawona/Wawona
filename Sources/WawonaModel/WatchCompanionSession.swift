@@ -15,6 +15,20 @@ public enum WatchCompanionPrefs {
     public static let lastTransferAtKey = "wawona.pref.watchCompanionLastTransferAt"
 }
 
+/// Posted on the main queue when pairing, reachability, or a transfer changes.
+public let WWNWatchCompanionTransferDidChange =
+    Notification.Name("WWNWatchCompanionTransferDidChange")
+
+public struct WatchOutstandingTransfer: Sendable, Equatable, Identifiable {
+    public var id: String
+    public var name: String
+
+    public init(id: String, name: String) {
+        self.id = id
+        self.name = name
+    }
+}
+
 public struct WatchCompanionStatus: Sendable, Equatable {
     public var supported: Bool
     public var paired: Bool
@@ -109,35 +123,112 @@ public final class WatchCompanionController: @unchecked Sendable {
         )
     }
 
-    public func sendDocument(at url: URL) -> WatchCompanionSendResult {
-        let name = url.lastPathComponent
-        let result = transport.transferFile(
+    /// Copy a document-picker URL into a stable outbox, then queue it.
+    /// `WCSession.transferFile` requires the file to stay until delivery finishes.
+    public func stageAndSend(securityScopedSource url: URL) -> WatchCompanionSendResult {
+        let displayName = WatchCompanionController.safeFileName(url.lastPathComponent)
+        let accessed = url.startAccessingSecurityScopedResource()
+        defer {
+            if accessed {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+        var isDirectory: ObjCBool = false
+        if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
+           isDirectory.boolValue {
+            let result = WatchCompanionSendResult.failed(message: "Choose a file, not a folder.")
+            record(result, fallbackName: displayName)
+            return result
+        }
+        let staged: URL
+        do {
+            staged = try stageCopy(of: url, displayName: displayName)
+        } catch {
+            let result = WatchCompanionSendResult.failed(message: error.localizedDescription)
+            record(result, fallbackName: displayName)
+            return result
+        }
+        let result = sendDocument(at: staged, displayName: displayName)
+        if case .failed = result {
+            try? FileManager.default.removeItem(at: staged)
+        }
+        return result
+    }
+
+    public func sendDocument(at url: URL, displayName: String? = nil) -> WatchCompanionSendResult {
+        let name = WatchCompanionController.safeFileName(displayName ?? url.lastPathComponent)
+        let transferred = transport.transferFile(
             from: url,
             metadata: ["name": name, "kind": "document"]
         )
-        switch result {
-        case .queued(let fileName):
-            defaults.set(fileName, forKey: WatchCompanionPrefs.lastTransferNameKey)
-            defaults.set("queued", forKey: WatchCompanionPrefs.lastTransferStatusKey)
-            defaults.set(Date().timeIntervalSince1970, forKey: WatchCompanionPrefs.lastTransferAtKey)
+        let result: WatchCompanionSendResult
+        switch transferred {
+        case .queued:
+            result = .queued(fileName: name)
         case .failed(let message):
-            defaults.set(name, forKey: WatchCompanionPrefs.lastTransferNameKey)
-            defaults.set("failed: \(message)", forKey: WatchCompanionPrefs.lastTransferStatusKey)
-            defaults.set(Date().timeIntervalSince1970, forKey: WatchCompanionPrefs.lastTransferAtKey)
+            result = .failed(message: message)
         }
+        record(result, fallbackName: name)
         return result
+    }
+
+    /// Sender-side completion from `WCSession` `didFinish`.
+    public func noteTransferFinished(fileName: String, errorMessage: String?) {
+        let name = WatchCompanionController.safeFileName(fileName)
+        if let errorMessage, !errorMessage.isEmpty {
+            record(.failed(message: errorMessage), fallbackName: name)
+            return
+        }
+        defaults.set(name, forKey: WatchCompanionPrefs.lastTransferNameKey)
+        defaults.set("delivered", forKey: WatchCompanionPrefs.lastTransferStatusKey)
+        defaults.set(Date().timeIntervalSince1970, forKey: WatchCompanionPrefs.lastTransferAtKey)
+        postTransferDidChange()
+    }
+
+    public func outstandingTransfers() -> [WatchOutstandingTransfer] {
+        #if canImport(WatchConnectivity) && os(iOS)
+        guard WCSession.isSupported(), WCSession.default.activationState == .activated else {
+            return []
+        }
+        return WCSession.default.outstandingFileTransfers.map { transfer in
+            let url = transfer.file.fileURL
+            let name = WatchCompanionController.safeFileName(
+                (transfer.file.metadata?["name"] as? String) ?? url.lastPathComponent
+            )
+            return WatchOutstandingTransfer(id: url.path, name: name)
+        }
+        #else
+        return []
+        #endif
+    }
+
+    /// Watch-side inbox. iPhone sends land here after `transferFile`.
+    public static func inboxDirectory() -> URL? {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("Wawona/inbox", isDirectory: true)
+    }
+
+    public static func inboxFileNames() -> [String] {
+        guard let inbox = inboxDirectory() else { return [] }
+        let urls = (try? FileManager.default.contentsOfDirectory(
+            at: inbox,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        )) ?? []
+        return urls.map(\.lastPathComponent).sorted()
     }
 
     /// Watch-side: persist a received file into Documents/Wawona/inbox/.
     @discardableResult
     public static func ingestReceivedFile(at url: URL, preferredName: String?) -> URL? {
         let fm = FileManager.default
-        guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else {
+        guard let inbox = inboxDirectory() else {
             return nil
         }
-        let inbox = docs.appendingPathComponent("Wawona/inbox", isDirectory: true)
         try? fm.createDirectory(at: inbox, withIntermediateDirectories: true)
-        let name = (preferredName?.isEmpty == false) ? preferredName! : url.lastPathComponent
+        let name = WatchCompanionController.safeFileName(
+            (preferredName?.isEmpty == false) ? preferredName! : url.lastPathComponent
+        )
         let dest = inbox.appendingPathComponent(name)
         try? fm.removeItem(at: dest)
         do {
@@ -145,10 +236,69 @@ public final class WatchCompanionController: @unchecked Sendable {
             UserDefaults.standard.set(name, forKey: WatchCompanionPrefs.lastTransferNameKey)
             UserDefaults.standard.set("received", forKey: WatchCompanionPrefs.lastTransferStatusKey)
             UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: WatchCompanionPrefs.lastTransferAtKey)
+            if Thread.isMainThread {
+                NotificationCenter.default.post(name: WWNWatchCompanionTransferDidChange, object: nil)
+            } else {
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(name: WWNWatchCompanionTransferDidChange, object: nil)
+                }
+            }
             return dest
         } catch {
             return nil
         }
+    }
+
+    private func record(_ result: WatchCompanionSendResult, fallbackName: String) {
+        switch result {
+        case .queued(let fileName):
+            defaults.set(fileName, forKey: WatchCompanionPrefs.lastTransferNameKey)
+            defaults.set("queued", forKey: WatchCompanionPrefs.lastTransferStatusKey)
+        case .failed(let message):
+            defaults.set(fallbackName, forKey: WatchCompanionPrefs.lastTransferNameKey)
+            defaults.set("failed: \(message)", forKey: WatchCompanionPrefs.lastTransferStatusKey)
+        }
+        defaults.set(Date().timeIntervalSince1970, forKey: WatchCompanionPrefs.lastTransferAtKey)
+        postTransferDidChange()
+    }
+
+    private func postTransferDidChange() {
+        let post = {
+            NotificationCenter.default.post(name: WWNWatchCompanionTransferDidChange, object: nil)
+        }
+        if Thread.isMainThread {
+            post()
+        } else {
+            DispatchQueue.main.async(execute: post)
+        }
+    }
+
+    private func stageCopy(of url: URL, displayName: String) throws -> URL {
+        let fileManager = FileManager.default
+        let root = try fileManager.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        let directory = root
+            .appendingPathComponent("Wawona", isDirectory: true)
+            .appendingPathComponent("watch-outbox", isDirectory: true)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        let destination = directory.appendingPathComponent("\(UUID().uuidString)-\(displayName)")
+        if fileManager.fileExists(atPath: destination.path) {
+            try fileManager.removeItem(at: destination)
+        }
+        try fileManager.copyItem(at: url, to: destination)
+        return destination
+    }
+
+    static func safeFileName(_ raw: String) -> String {
+        let base = (raw as NSString).lastPathComponent
+        if base.isEmpty || base == "." || base == ".." {
+            return "document"
+        }
+        return base
     }
 
     private func lastTransferSummary() -> String {
@@ -219,7 +369,7 @@ public final class WCSessionWatchCompanionTransport: NSObject, WatchCompanionTra
     public func activate() {
         guard WCSession.isSupported() else { return }
         let session = WCSession.default
-        if session.delegate == nil {
+        if session.delegate !== self {
             session.delegate = self
         }
         session.activate()
@@ -231,11 +381,12 @@ public final class WCSessionWatchCompanionTransport: NSObject, WatchCompanionTra
         }
         #if os(iOS)
         let session = WCSession.default
-        if session.delegate == nil {
+        if session.delegate !== self {
             session.delegate = self
         }
         if session.activationState != .activated {
             session.activate()
+            return .failed(message: "Watch session is still starting. Try again in a moment.")
         }
         guard session.isPaired else {
             return .failed(message: "No paired Apple Watch")
@@ -255,11 +406,46 @@ public final class WCSessionWatchCompanionTransport: NSObject, WatchCompanionTra
         activationDidCompleteWith activationState: WCSessionActivationState,
         error: Error?
     ) {
+        _ = session
         _ = activationState
         _ = error
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: WWNWatchCompanionTransferDidChange, object: nil)
+        }
+    }
+
+    public func sessionReachabilityDidChange(_ session: WCSession) {
+        _ = session
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: WWNWatchCompanionTransferDidChange, object: nil)
+        }
     }
 
     #if os(iOS)
+    public func session(
+        _ session: WCSession,
+        didFinish fileTransfer: WCSessionFileTransfer,
+        error: Error?
+    ) {
+        _ = session
+        let url = fileTransfer.file.fileURL
+        let name = (fileTransfer.file.metadata?["name"] as? String) ?? url.lastPathComponent
+        WatchCompanionController.shared.noteTransferFinished(
+            fileName: name,
+            errorMessage: error?.localizedDescription
+        )
+        if error == nil {
+            try? FileManager.default.removeItem(at: url)
+        }
+    }
+
+    public func sessionWatchStateDidChange(_ session: WCSession) {
+        _ = session
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: WWNWatchCompanionTransferDidChange, object: nil)
+        }
+    }
+
     public func sessionDidBecomeInactive(_ session: WCSession) {}
     public func sessionDidDeactivate(_ session: WCSession) {
         session.activate()

@@ -89,6 +89,9 @@ func iosGlobalSettingsIncludeInputAndWaypipe() {
     #expect(GlobalSettingsCatalog.visibleFields(in: .graphics, for: .iOS) == [
         .vulkanDriver, .openGLDriver, .sessionThumbnails,
     ])
+    #expect(GlobalSettingsCatalog.visibleFields(in: .graphics, for: .watchOS) == [
+        .renderer, .spritePresentAccelerator, .sessionThumbnails,
+    ])
     #expect(GlobalSettingsCatalog.visibleFields(in: .machines, for: .iOS).contains(.shakeToClose))
     #expect(GlobalSettingsCatalog.visibleFields(in: .machines, for: .iOS).contains(.sessionThumbnails))
     #expect(GlobalSettingsCatalog.visibleFields(in: .machines, for: .iOS).contains(.vmEngine))
@@ -129,11 +132,17 @@ func visionOSOmitsAppleWatchCompanionSection() {
 }
 
 @Test
-func tvOSOmitsICloudDriveSection() {
-    let sections = GlobalSettingsCatalog.visibleSections(for: .tvOS)
-    #expect(!sections.contains(.iCloudSync))
-    #expect(!sections.contains(.localShell))
-    #expect(GlobalSettingsCatalog.visibleFields(in: .iCloudSync, for: .tvOS).isEmpty)
+func tvOSAndWatchOSSyncThroughCloudKitWithoutDrive() {
+    for host in [GlobalSettingsHost.tvOS, .watchOS] {
+        #expect(GlobalSettingsCatalog.visibleSections(for: host).contains(.iCloudSync))
+        let fields = GlobalSettingsCatalog.visibleFields(in: .iCloudSync, for: host)
+        #expect(fields.contains(.iCloudSyncEnabled))
+        #expect(fields.contains(.iCloudSyncNow))
+        #expect(!fields.contains(.iCloudDriveHome))
+    }
+    #expect(!GlobalSettingsCatalog.visibleSections(for: .tvOS).contains(.localShell))
+    #expect(GlobalSettingsCatalog.visibleFields(in: .iCloudSync, for: .iOS).contains(.iCloudDriveHome))
+    #expect(GlobalSettingsCatalog.visibleFields(in: .iCloudSync, for: .android).isEmpty)
 }
 
 @Test

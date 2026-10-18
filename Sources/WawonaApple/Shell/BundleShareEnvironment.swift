@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// Point in-process weston / toytoolkit at bundled `share/` assets.
 /// Restores the former `WWNConfigureBundledFontsIfNeeded` + WESTON_DATA_DIR
@@ -127,3 +130,82 @@ public final class WWNBundleShareEnvironment: NSObject {
         return ""
     }
 }
+
+/// Host-side scrollback budget on top of the Rust RAM/CPU probe.
+///
+/// Rust `recommended_scroll_cap` sizes history from available memory and CPU
+/// parallelism (tracks OS version / jetsam). This type folds Low Power Mode,
+/// thermal pressure, and memory-warning tightening the VT crate cannot see.
+enum WawonaTerminalScrollback {
+    static func hostFactor() -> Float {
+        var factor: Float = 1.0
+        let info = ProcessInfo.processInfo
+        if info.isLowPowerModeEnabled {
+            factor *= 0.5
+        }
+        #if os(iOS) || os(tvOS) || os(watchOS) || os(visionOS) || os(macOS)
+        switch info.thermalState {
+        case .nominal, .fair:
+            break
+        case .serious:
+            factor *= 0.5
+        case .critical:
+            factor *= 0.35
+        @unknown default:
+            break
+        }
+        #endif
+        return max(0.25, min(1.0, factor))
+    }
+
+    static func hostFactorPermille() -> UInt32 {
+        UInt32((hostFactor() * 1000).rounded())
+    }
+
+    static func apply(to term: OpaquePointer?) {
+        guard let term else { return }
+        wwn_term_refresh_scrollback_cap(term, hostFactorPermille())
+    }
+
+    static func installPressureObservers(apply: @escaping () -> Void) -> [NSObjectProtocol] {
+        var tokens: [NSObjectProtocol] = []
+        let center = NotificationCenter.default
+        tokens.append(
+            center.addObserver(
+                forName: .NSProcessInfoPowerStateDidChange,
+                object: nil,
+                queue: .main
+            ) { _ in apply() }
+        )
+        tokens.append(
+            center.addObserver(
+                forName: ProcessInfo.thermalStateDidChangeNotification,
+                object: nil,
+                queue: .main
+            ) { _ in apply() }
+        )
+        #if os(iOS) || os(tvOS) || os(visionOS)
+        tokens.append(
+            center.addObserver(
+                forName: UIApplication.didReceiveMemoryWarningNotification,
+                object: nil,
+                queue: .main
+            ) { _ in apply() }
+        )
+        #endif
+        return tokens
+    }
+}
+
+@_silgen_name("wwn_term_refresh_scrollback_cap")
+private func wwn_term_refresh_scrollback_cap(
+    _ term: OpaquePointer?,
+    _ hostFactorPermille: UInt32
+)
+
+@_silgen_name("wwn_term_recommended_scrollback_cap")
+func wwn_term_recommended_scrollback_cap(_ cols: UInt32) -> UInt32
+
+@_silgen_name("wwn_term_scrollback_cap")
+func wwn_term_scrollback_cap(_ term: OpaquePointer?) -> UInt32
+

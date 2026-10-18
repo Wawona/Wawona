@@ -1,23 +1,35 @@
-# Apple sidebar icons (plain SF Symbols)
+# Apple sidebar icons (tinted SF Symbols)
 
 Authority for Machines and Global Settings sidebar glyphs on Apple SwiftUI.
 
 ## Rule
 
-Sidebars use **plain SF Symbols** (system style). Never colored rounded
-squares with white glyphs. Section accent colors tint Settings **detail**
-controls only (Toggle, Picker, Button, Link, section headers).
+- Sidebars: **section-tinted SF Symbols** (`WawonaSettingsHubChrome.sidebarIcon`
+  / `hubRow` with `iconColor`). Glyph color = section accent. No colored
+  rounded-square tile, no white glyph on colored fill.
+- Settings **detail**: same section accent tints Toggle / Picker / Button /
+  Link / section headers (`.settingsSectionAccent` + `.backport.tint`; watch
+  uses `.accentColor`).
+- Accent palette: `WawonaSettingsHubChrome.accentColor(for:)` and section
+  `swiftUIIconColor`. Tint glyphs and detail controls; never paint that color
+  onto sidebar icon backgrounds.
+- Settings split chrome matches Machines: system `NavigationSplitView`
+  sidebar toggle (do not strip / do not add a second custom `sidebar.left`).
+  Detail trailing: `settingsCloseAction(onClose:chromeBridge:)` (`[+][x]`).
+  Pass `showSidebar:` only on pre-16 HStack (no system toggle there).
 
 ## Hard rejects
 
-- Colored icon tiles in Machines or Settings sidebars
-- Section accent as sidebar icon background fill
-- Settings.app General hub tile chrome for Wawona list rows
+- Settings.app General-style colored hub tiles in Wawona Machines or Settings
+  sidebars
+- Section accent as sidebar icon chrome (background fill)
+- Monochrome / `.primary`-only sidebar glyphs that drop section colors
 
 ## Code
 
 `WawonaSettingsHubChrome` in `Sources/WawonaUIContracts`. Detail tint in
 `WWNSettingsSectionView` (`.settingsSectionAccent` + `.backport.tint`).
+Toolbar: `WawonaPresentation.settingsCloseAction(onClose:chromeBridge:)`.
 
 Skill: `wawona-apple-sidebar-icons`. Related:
 `wawona-global-settings-exclusive`.

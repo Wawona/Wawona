@@ -1,0 +1,83 @@
+{
+  "fill-specializations": [
+    {
+      "value": {
+        "solid": "srgb:0.086275,0.219608,0.27451,1"
+      }
+    },
+    {
+      "appearance": "dark",
+      "value": {
+        "solid": "srgb:0.062745,0.137255,0.180392,1"
+      }
+    }
+  ],
+  "groups": [
+    {
+      "name": "Sequoia with WWN and tunnel cutouts",
+      "layers": [
+        {
+          "name": "Sequoia with WWN and tunnel cutouts",
+          "image-name": "sequoia-face.png",
+          "glass": true
+        }
+      ],
+      "lighting": "combined",
+      "specular": true,
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.12
+      },
+      "translucency": {
+        "enabled": true,
+        "value": 0.12
+      }
+    },
+    {
+      "name": "Carving depth",
+      "layers": [
+        {
+          "name": "Carving depth",
+          "image-name": "carved-edge.png",
+          "glass": false
+        }
+      ],
+      "lighting": "combined",
+      "specular": false,
+      "shadow": {
+        "kind": "none",
+        "opacity": 0
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0
+      }
+    },
+    {
+      "name": "HDR illuminated interior",
+      "layers": [
+        {
+          "name": "HDR illuminated interior",
+          "image-name": "interior-hdr.exr",
+          "glass": true
+        }
+      ],
+      "lighting": "combined",
+      "specular": true,
+      "shadow": {
+        "kind": "none",
+        "opacity": 0
+      },
+      "translucency": {
+        "enabled": true,
+        "value": 0.08
+      }
+    }
+  ],
+  "supported-platforms": {
+    "squares": "shared",
+    "circles": [
+      "watchOS"
+    ]
+  }
+}

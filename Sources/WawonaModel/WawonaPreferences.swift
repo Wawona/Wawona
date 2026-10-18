@@ -170,6 +170,7 @@ public final class WawonaPreferences: ObservableObject {
     @Published public var nestedCompositorCursor: String = "virtual"
     @Published public var autoScale: Bool = true
     @Published public var colorOperations: Bool = true
+    @Published public var respectSafeArea: Bool = true
     @Published public var waylandDisplay: String = "wayland-0"
     @Published public var sshHost: String = ""
     @Published public var sshUser: String = ""
@@ -227,6 +228,8 @@ public final class WawonaPreferences: ObservableObject {
     @Published public var shakeToCloseEnabled: Bool = true
     @Published public var swipeBackToCloseEnabled: Bool = true
     @Published public var machineSessionThumbnailsEnabled: Bool = true
+    /// Watch SpriteKit present. Default on. `WWN_WATCH_SK_PRESENT=0` still forces CPU.
+    @Published public var spritePresentAccelerator: Bool = true
     @Published public var hasCompletedWelcome: Bool = false
     @Published public var globalClientLaunchers: [ClientLauncher] = ClientLauncher.presets
     @Published public var diagnostics: [SettingsDiagnosticEntry] = []
@@ -245,6 +248,11 @@ public final class WawonaPreferences: ObservableObject {
         load()
         if defaults.dictionary(forKey: "wawona.globalSettingsSnapshot.v1") == nil {
             recordGlobalSettingsSnapshot()
+        }
+        NotificationCenter.default.addObserver(
+            forName: WWNCloudSync.didApplyRemoteChanges, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.load() }
         }
     }
 
@@ -300,6 +308,8 @@ public final class WawonaPreferences: ObservableObject {
         autoScale = defaults.object(forKey: keyPrefix + "autoScale") as? Bool ?? true
         colorOperations = defaults.object(forKey: "ColorOperations") as? Bool
             ?? defaults.object(forKey: keyPrefix + "colorOperations") as? Bool ?? true
+        respectSafeArea = defaults.object(forKey: "RespectSafeArea") as? Bool
+            ?? defaults.object(forKey: keyPrefix + "respectSafeArea") as? Bool ?? true
         waylandDisplay = defaults.string(forKey: keyPrefix + "waylandDisplay") ?? "wayland-0"
         sshHost = defaults.string(forKey: "SSHHost")
             ?? defaults.string(forKey: keyPrefix + "sshHost") ?? ""
@@ -395,6 +405,9 @@ public final class WawonaPreferences: ObservableObject {
             defaults.object(forKey: "MachineSessionThumbnailsEnabled") as? Bool
             ?? defaults.object(forKey: keyPrefix + "machineSessionThumbnailsEnabled") as? Bool
             ?? true
+        spritePresentAccelerator = defaults.object(forKey: "SpritePresentAccelerator") as? Bool
+            ?? defaults.object(forKey: keyPrefix + "spritePresentAccelerator") as? Bool
+            ?? true
         // Welcome seen flag: prefer canonical key; accept legacy aliases written
         // by WWNPreferencesManager / sim scripts / Android-shaped keys.
         hasCompletedWelcome = defaults.bool(forKey: keyPrefix + "hasCompletedWelcome")
@@ -441,6 +454,8 @@ public final class WawonaPreferences: ObservableObject {
         defaults.set(autoScale, forKey: "AutoScale")
         defaults.set(colorOperations, forKey: "ColorOperations")
         defaults.set(colorOperations, forKey: keyPrefix + "colorOperations")
+        defaults.set(respectSafeArea, forKey: "RespectSafeArea")
+        defaults.set(respectSafeArea, forKey: keyPrefix + "respectSafeArea")
         defaults.set(waylandDisplay, forKey: keyPrefix + "waylandDisplay")
         defaults.set(sshHost, forKey: "SSHHost")
         defaults.set(sshHost, forKey: keyPrefix + "sshHost")
@@ -508,6 +523,8 @@ public final class WawonaPreferences: ObservableObject {
         defaults.set(swipeBackToCloseEnabled, forKey: keyPrefix + "swipeBackToCloseEnabled")
         defaults.set(machineSessionThumbnailsEnabled, forKey: "MachineSessionThumbnailsEnabled")
         defaults.set(machineSessionThumbnailsEnabled, forKey: keyPrefix + "machineSessionThumbnailsEnabled")
+        defaults.set(spritePresentAccelerator, forKey: "SpritePresentAccelerator")
+        defaults.set(spritePresentAccelerator, forKey: keyPrefix + "spritePresentAccelerator")
         defaults.set(hasCompletedWelcome, forKey: keyPrefix + "hasCompletedWelcome")
         // Keep legacy / cross-host aliases in sync (WWNPreferencesManager, scripts).
         defaults.set(hasCompletedWelcome, forKey: "hasCompletedWelcome")

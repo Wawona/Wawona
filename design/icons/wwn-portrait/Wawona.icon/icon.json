@@ -1,0 +1,83 @@
+{
+  "fill-specializations" : [
+    {
+      "value" : {
+        "solid" : "srgb:1.00000,1.00000,1.00000,1.00000"
+      }
+    },
+    {
+      "appearance" : "dark",
+      "value" : {
+        "solid" : "srgb:0.09000,0.09000,0.09000,1.00000"
+      }
+    }
+  ],
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "glass" : true,
+          "image-name" : "portrait-layer.png",
+          "name" : "Original grayscale portrait"
+        }
+      ],
+      "lighting" : "combined",
+      "name" : "Original grayscale portrait",
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.1
+      },
+      "specular" : true,
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.04
+      }
+    },
+    {
+      "layers" : [
+        {
+          "glass" : true,
+          "image-name" : "wwn-layer.png",
+          "name" : "WWN white lettering"
+        }
+      ],
+      "lighting" : "combined",
+      "name" : "WWN white lettering",
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.035
+      },
+      "specular" : true,
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.1
+      }
+    },
+    {
+      "layers" : [
+        {
+          "glass" : true,
+          "image-name" : "amber-layer.png",
+          "name" : "Amber glass medallion"
+        }
+      ],
+      "lighting" : "combined",
+      "name" : "Amber glass medallion",
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.045
+      },
+      "specular" : true,
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.16
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "circles" : [
+      "watchOS"
+    ],
+    "squares" : "shared"
+  }
+}

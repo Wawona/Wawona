@@ -10,6 +10,9 @@ struct WawonaWatch: App {
         WindowGroup {
             WawonaWatchRootView()
         }
+        .backgroundTask(.appRefresh("wawona.cloudsync")) {
+            await WWNCloudSync.shared.syncNow()
+        }
     }
 }
 #endif

@@ -80,6 +80,10 @@ enum WWNA11y {
   static let settingsWaypipe = "wwn.settings.waypipe"
   static let settingsAppleWatch = "wwn.settings.appleWatch"
   static let settingsAppleWatchImport = "wwn.settings.appleWatch.import"
+  static let settingsICloudSync = "wwn.settings.iCloudSync"
+  static let settingsICloudSyncToggle = "wwn.settings.iCloudSync.toggle"
+  static let settingsICloudSyncNow = "wwn.settings.iCloudSync.syncNow"
+  static let settingsICloudDriveToggle = "wwn.settings.iCloudSync.driveToggle"
   static let settingsDone = "wwn.settings.done"
 
   static let compositorSurface = "wwn.compositor.surface"

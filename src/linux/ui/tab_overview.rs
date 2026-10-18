@@ -47,7 +47,7 @@ pub fn show_tab_overview(
     flow.set_valign(gtk::Align::Start);
     flow.set_max_children_per_line(3);
     flow.set_selection_mode(gtk::SelectionMode::None);
-    flow.set_homogeneous(true);
+    flow.set_homogeneous(false);
     flow.set_column_spacing(12);
     flow.set_row_spacing(12);
     flow.set_margin_start(16);
@@ -215,7 +215,6 @@ fn build_card(
     box_.append(&header_row);
 
     let preview = gtk::Box::new(gtk::Orientation::Vertical, 8);
-    preview.set_size_request(180, 120);
     preview.add_css_class("view");
     let icon = gtk::Image::from_icon_name("computer-symbolic");
     icon.set_pixel_size(36);
@@ -243,6 +242,10 @@ fn build_card(
     box_.append(&focus_btn);
 
     frame.set_child(Some(&box_));
+
+    let swipe = gtk::GestureSwipe::new();
+    swipe.set_touch_only(true);
+    frame.add_controller(swipe.clone());
 
     {
         let mid = profile.id.clone();
@@ -275,25 +278,48 @@ fn build_card(
         let sessions = sessions.clone();
         let overview = overview.clone();
         close_btn.connect_clicked(move |_| {
-            if let Some(mut child) = sessions.borrow_mut().remove(&mid) {
-                let _ = child.kill();
+            close_tab(&mid, &sessions, &state, &parent, &shell, layout, &overview);
+        });
+        let mid = profile.id.clone();
+        let state = state.clone();
+        let parent = parent.clone();
+        let shell = shell.clone();
+        let sessions = sessions.clone();
+        let overview = overview.clone();
+        swipe.connect_swipe(move |_, vx, _vy| {
+            if vx < -800.0 {
+                close_tab(&mid, &sessions, &state, &parent, &shell, layout, &overview);
             }
-            {
-                let mut app = state.borrow_mut();
-                if app.store.active_machine_id.as_deref() == Some(mid.as_str()) {
-                    let _ = app.store.set_active(None);
-                }
-            }
-            overview.close();
-            rebuild_home(RebuildHome {
-                shell: &shell,
-                state: &state,
-                parent: &parent,
-                sessions: sessions.clone(),
-                layout,
-            });
         });
     }
 
     frame
+}
+
+fn close_tab(
+    mid: &str,
+    sessions: &MachineSessions,
+    state: &SharedAppState,
+    parent: &adw::ApplicationWindow,
+    shell: &HomeShell,
+    layout: LayoutMode,
+    overview: &adw::Window,
+) {
+    if let Some(mut child) = sessions.borrow_mut().remove(mid) {
+        let _ = child.kill();
+    }
+    {
+        let mut app = state.borrow_mut();
+        if app.store.active_machine_id.as_deref() == Some(mid) {
+            let _ = app.store.set_active(None);
+        }
+    }
+    overview.close();
+    rebuild_home(RebuildHome {
+        shell,
+        state,
+        parent,
+        sessions: sessions.clone(),
+        layout,
+    });
 }

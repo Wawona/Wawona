@@ -90,6 +90,9 @@ public final class WWNRootfsManager: NSObject {
         setenv("WAWONA_SHELL", "/usr/bin/zsh", 1)
         setenv("SHELL", "/usr/bin/zsh", 1)
         setenv("TERM", "xterm-256color", 1)
+        // Real POSIX PTY on Simulator: zsh clears ONLCR; wwn_write needs this
+        // so LF expands to CRLF (else fastfetch / multiline output stair-steps).
+        setenv("WAWONA_PTY_FAKE_TTY", "1", 1)
         let path = "/usr/bin:/bin:/usr/sbin:/sbin:" + activeRootfsPath() + "/usr/bin"
         setenv("PATH", path, 1)
         setenv("XDG_CONFIG_HOME", (home as NSString).appendingPathComponent(".config"), 1)

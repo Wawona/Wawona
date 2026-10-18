@@ -24,9 +24,11 @@ final class IlandPresentEngine {
         // Metal EDR only follows HDR content (see maybeEnableEDRForHDRContent).
         layer.pixelFormat = .bgra8Unorm
         layer.framebufferOnly = false
-        // Opaque: translucent CAMetalLayer + never-presented drawable reads as
-        // empty black under SwiftUI. Host compositor present is always opaque.
+        // Opaque once a guest frame exists. Stay invisible until then: a
+        // clear-only present is not a Wayland frame and reads as a stuck plate
+        // on every Apple host that shares this layer.
         layer.isOpaque = true
+        layer.opacity = 0
         #if !os(tvOS)
         if #available(iOS 16.0, macOS 14.0, visionOS 1.0, *) {
             layer.wantsExtendedDynamicRangeContent = false
@@ -40,38 +42,26 @@ final class IlandPresentEngine {
         publishPreferredModeFromLayer()
     }
 
-    /// Prove Metal can present without a Wayland/SHM client (layout arm).
-    /// Deep teal is never guest black, so a blank session is distinguishable.
+    /// Layout arm: drawable is large enough for a later guest present.
+    /// Does not call `nextDrawable` or `present`. A clear plate is not a frame.
     func presentClearProof(reason: String) -> Bool {
         if !Thread.isMainThread {
             DispatchQueue.main.async { [weak self] in
                 _ = self?.presentClearProof(reason: reason)
             }
-            return true
+            return false
         }
         publishPreferredModeFromLayer()
         let dw = layer.drawableSize.width
         let dh = layer.drawableSize.height
-        guard dw >= 1, dh >= 1, let drawable = layer.nextDrawable() else {
+        guard dw >= 1, dh >= 1 else {
             NSLog(
-                "[\(presentLogModule)] clearProof FAIL reason=\(reason) drawable=\(Int(dw))x\(Int(dh))"
+                "[\(presentLogModule)] layerReady FAIL reason=\(reason) drawable=\(Int(dw))x\(Int(dh))"
             )
             return false
         }
-        let pass = MTLRenderPassDescriptor()
-        pass.colorAttachments[0].texture = drawable.texture
-        pass.colorAttachments[0].loadAction = .clear
-        // Deep teal (not guest black). Proves CAMetalLayer + nextDrawable.
-        pass.colorAttachments[0].clearColor = MTLClearColorMake(0.05, 0.22, 0.28, 1)
-        pass.colorAttachments[0].storeAction = .store
-        guard let commands = queue.makeCommandBuffer(),
-              let encoder = commands.makeRenderCommandEncoder(descriptor: pass)
-        else { return false }
-        encoder.endEncoding()
-        commands.present(drawable)
-        commands.commit()
         NSLog(
-            "[\(presentLogModule)] clearProof OK reason=\(reason) drawable=\(Int(dw))x\(Int(dh))"
+            "[\(presentLogModule)] layerReady reason=\(reason) drawable=\(Int(dw))x\(Int(dh)) (no clear present)"
         )
         return true
     }
@@ -288,6 +278,7 @@ final class IlandPresentEngine {
         if let onComplete {
             commands.addCompletedHandler { _ in onComplete() }
         }
+        layer.opacity = 1
         commands.present(drawable)
         commands.commit()
     }

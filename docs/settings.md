@@ -52,7 +52,8 @@ in-app catalog via `visibleSections`.
 Global Settings sections come from Rust `settings_catalog` /
 `GlobalSettingsCatalog.visibleSections` (`SettingsContracts.swift`). Store
 hosts share: Display, Input, Graphics, Env Vars, Waypipe, SSH, About,
-Dependencies. iOS adds iCloud Sync + Apple Watch (and Desktop only in Mode B).
+Dependencies. Every Apple host adds iCloud Sync. iOS adds Apple Watch (and
+Desktop only in Mode B).
 There is **no Advanced** sidebar row: nested compositors / Display Backend /
 Multiple Clients live under Display; shake / swipe under Input; session
 thumbnails under Graphics. watchOS omits Desktop. Watch globals edit on the
@@ -100,7 +101,7 @@ Watch; not iCloud Drive ubiquity on watchOS. AX id: `wwn.settings.appleWatch`.
 |---------|---------------|------|-----------|-------------|
 | **Companion Status** | (info) | Info | iOS | Paired / Watch app installed / reachable |
 | **Last Transfer** | `wawona.pref.watchCompanionLast*` | Info | iOS | Last queued/failed send |
-| **Send Document to Watch** | document picker → `transferFile` | Button | iOS | Queue a file (including `.wasm`) into Watch `Documents/Wawona/inbox` |
+| **Send Document to Watch** | document picker (one or more files) → staged outbox → `transferFile` | Button | iOS | Queue files (including `.wasm`) into Watch `Documents/Wawona/inbox` |
 
 CloudKit catalog mirror is tracked as a follow-up ([#155](https://github.com/Wawona/Wawona/issues/155)).
 watchOS runs the same Relay Pulley interpreter as iOS ([`wawona-relay-wasm`](agent-rules/wawona-relay-wasm.md)). Transfer via WatchConnectivity still lands in `Documents/Wawona/inbox`.
@@ -179,13 +180,36 @@ One Settings section. Session gestures and VM/container prefs share `wwn.setting
 
 ## iCloud Sync (Apple)
 
-AX id: `wwn.settings.icloudSync`. Omit on Android, Linux, and tvOS. Key:
-`wawona.pref.localShellICloudSyncEnabled` (`WWNRootfsICloudSync`). Toggle on
-macOS, iOS, iPadOS, visionOS. Apple [QA1935](https://developer.apple.com/library/archive/qa/qa1935/_index.html):
+AX id: `wwn.settings.icloudSync`. Shown on every Apple target (macOS, iOS,
+iPadOS, visionOS, tvOS, watchOS). Omitted on Android and Linux.
+
+| Setting | Key | Type | Default | Platforms | Description |
+|---------|-----|------|---------|------------|-------------|
+| **iCloud Sync** | `wawona.pref.cloudKitSyncEnabled` | Switch | On | All Apple | CloudKit sync of machines, tags, pins, env vars, preferences, and HOME files. Passwords and key paths stay on the device |
+| **Status / Last Synced / HOME Files** | (info) | Info | | All Apple | `accountStatus`, last pass time, synced HOME file count |
+| **Sync Now** | (button) | Button | | All Apple | Runs one fetch + push pass |
+| **iCloud Drive HOME** | `wawona.pref.localShellICloudSyncEnabled` | Switch | Off | macOS, iOS, iPadOS, visionOS | Separate: shell HOME in iCloud Drive ubiquity (`WWNRootfsICloudSync`) |
+
+CloudKit transport: container `iCloud.com.aspauldingcode.Wawona`, private
+database, custom zone `WawonaSync`. Records `WawonaDefault` (`key`, `value`,
+`modified`) and `WawonaHomeFile` (`path`, `file` CKAsset, `modified`).
+`CKDatabaseSubscription` `wawona-private-changes` plus app foreground, a
+debounced local change, silent push, and the watchOS `wawona.cloudsync`
+background refresh trigger a pass. Newer `modified` wins. A key never synced
+on this device yields to the cloud copy. Machine profiles merge in Rust and
+keep local secrets.
+
+Rust `domain::cloud_sync` owns the synced key allowlist, HOME exclusions
+(`.cache`, `.Trash`, `inbox`, `.local/state`, `.zsh_sessions`, `.DS_Store`,
+`.zcompdump*`, `*.icloud`), caps (25 MiB per file, 2000 files), conflict
+choice, and profile merge. Swift `WWNCloudSync` is transport only. Sync
+fails closed (status, no `CKContainer`) when the binary lacks the CloudKit
+entitlement, and needs iOS 15 / tvOS 15 / watchOS 8 / macOS 12.
+
+Apple [QA1935](https://developer.apple.com/library/archive/qa/qa1935/_index.html):
 iCloud Drive is unavailable on tvOS and watchOS (`ubiquityIdentityToken` is
-always nil). Wawona iCloud Sync is Drive ubiquity for shell HOME, not CloudKit
-or iCloud KVS, so the section is omitted on tvOS rather than shown as
-unsupported. watchOS may keep a status page that says Drive is unavailable.
+always nil), so the Drive HOME switch is absent there (gate
+`icloud_drive_home` blocked). CloudKit covers HOME files on those targets.
 
 ---
 

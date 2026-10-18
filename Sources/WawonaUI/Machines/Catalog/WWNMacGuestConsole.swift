@@ -81,6 +81,16 @@ import Darwin
     startPump()
   }
 
+  /// Hide Terminal window without killing the shell / log session.
+  /// Present opens when a Wayland client attaches; Closing is Focus, not Stop.
+  func parkForCompositor() {
+    guard let window else { return }
+    // Keep the NSWindow reference (isReleasedWhenClosed=false) so ARC does
+    // not tear down the PTY host while a client started from Terminal runs.
+    window.orderOut(nil)
+    NSLog("WWNMacGuestConsole: parked Terminal (shell kept alive) mid=%@", machineId)
+  }
+
   func dismiss(machineId: String) {
     if !self.machineId.isEmpty, machineId != self.machineId { return }
     stopped = true
@@ -111,7 +121,8 @@ import Darwin
 
   func windowWillClose(_ notification: Notification) {
     let closingId = machineId
-    dismiss(machineId: closingId)
+    // Close = Focus: park chrome, keep shell, reveal Present.
+    parkForCompositor()
     guard !closingId.isEmpty else { return }
     WWNMachineProfileStore.setActiveMachineId(closingId)
     WWNMainWindowRouter.shared.showSessionSurface()

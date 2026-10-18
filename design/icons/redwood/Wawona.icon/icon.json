@@ -1,0 +1,88 @@
+{
+  "fill-specializations": [
+    {
+      "value": {
+        "solid": "srgb:0.04314,0.20784,0.32157,1"
+      }
+    },
+    {
+      "appearance": "dark",
+      "value": {
+        "solid": "srgb:0.03137,0.12157,0.2,1"
+      }
+    }
+  ],
+  "groups": [
+    {
+      "name": "Carved bark face",
+      "layers": [
+        {
+          "name": "Bark bands with W! cutout",
+          "image-name": "bark-carved.png",
+          "glass": true
+        },
+        {
+          "name": "Redwood face with W! cutout",
+          "image-name": "trunk-carved.png",
+          "glass": true
+        }
+      ],
+      "specular": true,
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.18
+      },
+      "translucency": {
+        "enabled": true,
+        "value": 0.18
+      },
+      "lighting": "combined",
+      "blur": 0.06
+    },
+    {
+      "name": "Carving depth",
+      "layers": [
+        {
+          "name": "Inside walls of W! carving",
+          "image-name": "carving-wall.png",
+          "glass": false
+        }
+      ],
+      "specular": false,
+      "shadow": {
+        "kind": "none",
+        "opacity": 0
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0
+      }
+    },
+    {
+      "name": "HDR glowing tree interior",
+      "layers": [
+        {
+          "name": "W! scene-linear HDR emission",
+          "image-name": "interior-hdr.exr",
+          "glass": true
+        }
+      ],
+      "specular": true,
+      "shadow": {
+        "kind": "none",
+        "opacity": 0
+      },
+      "translucency": {
+        "enabled": true,
+        "value": 0.12
+      },
+      "lighting": "individual"
+    }
+  ],
+  "supported-platforms": {
+    "circles": [
+      "watchOS"
+    ],
+    "squares": "shared"
+  }
+}

@@ -6,7 +6,7 @@
 #
 # WatchOS keeps embed=false (see xcodegen.nix) so Xcode never runs Embed
 # Frameworks / codeSign=true for these two. This script is the only copy into
-# WawonaWatch.app/Frameworks, and therefore the only place that can re-sign
+# Watch/Wawona.app/Frameworks, and therefore the only place that can re-sign
 # them. Device installd rejects unsigned nested frameworks (0xe800801c).
 set -euo pipefail
 

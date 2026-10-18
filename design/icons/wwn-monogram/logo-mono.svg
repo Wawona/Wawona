@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <g transform="translate(-24 0)" fill="currentColor" stroke="currentColor" stroke-width="10" stroke-linejoin="round">
+    <path id="w-front" d="M160 335H224L268 559L305 415H355L392 559L436 335H500L430 680H373L342 568Q330 532 318 568L287 680H230Z"/>
+    <path id="w-middle" d="M414 335H478L522 559L559 415H609L646 559L690 335H754L684 680H627L596 568Q584 532 572 568L541 680H484Z"/>
+    <path id="n-back" d="M692 335H748L850 568V335H912V680H856L754 449V680H692Z"/>
+  </g>
+</svg>

@@ -7,38 +7,36 @@ import UIKit
 
 /// Sidebar row helpers for in-app Global Settings and Machines Configuration.
 ///
-/// Sidebars use **plain SF Symbols** (system style). Never colored rounded
-/// squares with white glyphs. Section accent colors tint Settings **detail**
-/// controls only (`settingsSectionAccent` / `.backport.tint`). OS PrefPane /
-/// Settings.bundle hosts are retired (`wawona-global-settings-exclusive`).
+/// Sidebars use **section-tinted SF Symbols** (glyph color = section accent).
+/// Never colored rounded-square tiles with white glyphs. The same accents tint
+/// Settings **detail** controls (`settingsSectionAccent` / `.backport.tint`).
+/// OS PrefPane / Settings.bundle hosts are retired
+/// (`wawona-global-settings-exclusive`).
 public enum WawonaSettingsHubChrome {
-    /// Column width so sidebar titles align under plain glyphs.
+    /// Column width so sidebar titles align under tinted glyphs.
     public static let sidebarIconColumn: CGFloat = 20
 
-    /// Plain SF Symbol for a sidebar row. No tile background.
+    /// Section-tinted SF Symbol for a sidebar row. No tile background.
     @ViewBuilder
-    public static func sidebarIcon(systemName: String) -> some View {
+    public static func sidebarIcon(systemName: String, color: Color) -> some View {
         Image(systemName: systemName.isEmpty ? "gearshape" : systemName)
             .font(.body)
             // iOS 13 floor: avoid foregroundStyle (15+) / accessibilityHidden (14+).
-            .foregroundColor(.primary)
+            .foregroundColor(color)
             .frame(width: sidebarIconColumn, alignment: .center)
             .accessibility(hidden: true)
     }
 
-    /// Hub list row: plain SF Symbol + section title.
+    /// Hub list row: section-tinted SF Symbol + section title.
     /// iOS 13 floor: avoid `Label { } icon:` (iOS 14+).
-    /// `iconColor` is ignored (kept so call sites stay source-compatible).
-    /// Accents belong on Settings detail controls, not sidebar icons.
+    /// `iconColor` tints the glyph only. Never a colored rounded-square tile.
     public static func hubRow(
         title: String,
         systemImage: String,
         iconColor: Color
     ) -> some View {
-        // iconColor unused on purpose: no colored sidebar tiles.
-        _ = iconColor
-        return HStack(spacing: 8) {
-            sidebarIcon(systemName: systemImage)
+        HStack(spacing: 8) {
+            sidebarIcon(systemName: systemImage, color: iconColor)
             Text(title)
             Spacer(minLength: 0)
         }
@@ -64,7 +62,7 @@ public enum WawonaSettingsHubChrome {
     public static func color(uiColor: UIColor) -> Color { Color(uiColor) }
     #endif
 
-    /// Section accent for Global Settings **detail** controls (and headers).
+    /// Section accent for sidebar glyphs and Settings **detail** controls.
     /// Matches `PreferencesSectionsBuilder.iconColor` and Android
     /// `SettingsTab.accentColor`. Never use this as a sidebar icon tile fill.
     /// Uses system UIColors so teal/indigo/brown stay valid on the iOS 13 floor
@@ -161,4 +159,14 @@ public extension View {
     func settingsSectionAccent(_ color: Color) -> some View {
         environment(\.settingsSectionAccent, color)
     }
+}
+
+// MARK: - Settings detail toolbar chrome
+
+/// Optional Add action for Global Settings detail trailing chrome.
+/// Env Vars registers `onAdd` so the host can place `[+][x]` in one group.
+public final class WawonaSettingsChromeBridge: ObservableObject {
+    @Published public var onAdd: (() -> Void)?
+
+    public init() {}
 }

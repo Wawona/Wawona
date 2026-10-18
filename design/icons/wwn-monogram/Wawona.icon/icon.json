@@ -1,0 +1,103 @@
+{
+  "fill-specializations": [
+    {
+      "value": {
+        "solid": "srgb:0.078431,0.176471,0.235294,1"
+      }
+    },
+    {
+      "appearance": "dark",
+      "value": {
+        "solid": "srgb:0.043137,0.109804,0.160784,1"
+      }
+    }
+  ],
+  "groups": [
+    {
+      "layers": [
+        {
+          "glass": true,
+          "image-name": "w-front.png",
+          "name": "WWN front fold"
+        }
+      ],
+      "lighting": "individual",
+      "name": "WWN front fold",
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.1
+      },
+      "specular": true,
+      "translucency": {
+        "enabled": true,
+        "value": 0.22
+      }
+    },
+    {
+      "layers": [
+        {
+          "glass": true,
+          "image-name": "w-middle.png",
+          "name": "WWN middle fold"
+        }
+      ],
+      "lighting": "individual",
+      "name": "WWN middle fold",
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.1
+      },
+      "specular": true,
+      "translucency": {
+        "enabled": true,
+        "value": 0.28
+      }
+    },
+    {
+      "layers": [
+        {
+          "glass": true,
+          "image-name": "n-back.png",
+          "name": "WWN rear fold"
+        }
+      ],
+      "lighting": "individual",
+      "name": "WWN rear fold",
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.1
+      },
+      "specular": true,
+      "translucency": {
+        "enabled": true,
+        "value": 0.32
+      }
+    },
+    {
+      "layers": [
+        {
+          "glass": false,
+          "image-name": "internal-light.exr",
+          "name": "HDR internal light"
+        }
+      ],
+      "lighting": "individual",
+      "name": "HDR internal light",
+      "shadow": {
+        "kind": "none",
+        "opacity": 0
+      },
+      "specular": false,
+      "translucency": {
+        "enabled": false,
+        "value": 0
+      }
+    }
+  ],
+  "supported-platforms": {
+    "circles": [
+      "watchOS"
+    ],
+    "squares": "shared"
+  }
+}

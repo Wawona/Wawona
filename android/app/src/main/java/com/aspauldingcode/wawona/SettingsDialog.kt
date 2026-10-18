@@ -374,6 +374,16 @@ private fun SettingsSectionContent(
     localIpAddress: String?,
     modifier: Modifier = Modifier,
 ) {
+    if (tab == SettingsTab.ENVIRONMENT) {
+        var envPage by remember { mutableStateOf<EnvVarsPage>(EnvVarsPage.List) }
+        EnvironmentVariablesScreen(
+            prefs = prefs,
+            page = envPage,
+            onPageChange = { envPage = it },
+            modifier = modifier.fillMaxSize().testTag(tab.testTag),
+        )
+        return
+    }
     Column(
         modifier
             .fillMaxSize()
@@ -387,7 +397,7 @@ private fun SettingsSectionContent(
             SettingsTab.INPUT -> InputSection(prefs)
             SettingsTab.GRAPHICS -> GraphicsSection(prefs)
             SettingsTab.CONNECTION -> ConnectionSection(prefs, localIpAddress, context, SettingsTab.CONNECTION.accentColor)
-            SettingsTab.ENVIRONMENT -> EnvironmentSection(prefs, SettingsTab.ENVIRONMENT.accentColor)
+            SettingsTab.ENVIRONMENT -> Unit
             SettingsTab.LOCAL_SHELL -> LocalShellSection(context, SettingsTab.LOCAL_SHELL.accentColor)
             SettingsTab.DESKTOP -> {
                 DesktopSection(prefs, context, SettingsTab.DESKTOP.accentColor)
@@ -482,127 +492,6 @@ private fun GraphicsSection(prefs: SharedPreferences) {
         SettingsDropdownItem(prefs, "openglDriver", "OpenGL Driver",
             "Select OpenGL/GLES implementation. None disables OpenGL.", Icons.Filled.GraphicEq, "ANGLE",
             listOf("None", "ANGLE", "System"), iconTint = SettingsTab.GRAPHICS.accentColor)
-    }
-}
-
-@Composable
-private fun EnvironmentSection(prefs: SharedPreferences, accent: Color) {
-    var map by remember {
-        mutableStateOf(EnvironmentOverrides.loadGlobal(prefs).toList().sortedBy { it.first })
-    }
-    var showEditor by remember { mutableStateOf(false) }
-    var editName by remember { mutableStateOf("") }
-    var editValue by remember { mutableStateOf("") }
-    var isNew by remember { mutableStateOf(false) }
-
-    fun persist(next: Map<String, EnvironmentOverrides.Entry>) {
-        EnvironmentOverrides.saveGlobal(prefs, next)
-        map = next.toList().sortedBy { it.first }
-        try {
-            WawonaNative.nativeApplyEnvironmentOverrides(
-                EnvironmentOverrides.jniPayload(prefs, null)
-            )
-        } catch (_: Throwable) {
-        }
-    }
-
-    SettingsSectionHeader("Env Vars", Icons.Filled.List, accent)
-    Text(
-        "Windows-style overrides for vars Wawona injects (TERM, WAYLAND_DISPLAY, VK_*, …). " +
-            "Machine Settings can override these. Applies on next Start.",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(bottom = 8.dp).testTag(WawonaTestTags.SETTINGS_ENVIRONMENT),
-    )
-    SettingsGroup(accent) {
-        if (map.isEmpty()) {
-            Text(
-                "No global overrides (Wawona defaults).",
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(12.dp),
-            )
-        } else {
-            map.forEach { (name, entry) ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(name, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
-                        Text(
-                            if (entry.action == "unset") "(unset)" else (entry.value ?: ""),
-                            fontFamily = FontFamily.Monospace,
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                    TextButton(onClick = {
-                        isNew = false
-                        editName = name
-                        editValue = entry.value ?: ""
-                        showEditor = true
-                    }) { Text("Edit") }
-                    TextButton(onClick = {
-                        val next = EnvironmentOverrides.loadGlobal(prefs)
-                        next.remove(name)
-                        persist(next)
-                    }) { Text("Reset") }
-                }
-            }
-        }
-    }
-    Row(modifier = Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(onClick = {
-            isNew = true
-            editName = ""
-            editValue = ""
-            showEditor = true
-        }) { Text("New") }
-        OutlinedButton(onClick = {
-            val next = EnvironmentOverrides.loadGlobal(prefs)
-            EnvironmentOverrides.resetManaged(next)
-            persist(next)
-        }) { Text("Reset Wawona-managed") }
-        OutlinedButton(onClick = { persist(emptyMap()) }) { Text("Reset All") }
-    }
-
-    if (showEditor) {
-        AlertDialog(
-            onDismissRequest = { showEditor = false },
-            title = { Text(if (isNew) "New Variable" else "Edit Variable") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = editName,
-                        onValueChange = { editName = it },
-                        label = { Text("Name") },
-                        enabled = isNew,
-                        singleLine = true,
-                    )
-                    OutlinedTextField(
-                        value = editValue,
-                        onValueChange = { editValue = it },
-                        label = { Text("Value") },
-                        singleLine = true,
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    val name = editName.trim()
-                    if (name.isNotEmpty()) {
-                        val next = EnvironmentOverrides.loadGlobal(prefs)
-                        next[name] = EnvironmentOverrides.Entry.set(editValue)
-                        persist(next)
-                    }
-                    showEditor = false
-                }) { Text("Save") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showEditor = false }) { Text("Cancel") }
-            },
-        )
     }
 }
 
@@ -1542,6 +1431,13 @@ private fun AboutSection(context: Context) {
             "1"
         }
     }
+    val hostOs = remember {
+        "Android ${Build.VERSION.RELEASE} (${Build.MODEL})"
+    }
+    val installChannel = remember { androidInstallChannel(context) }
+    val versionBare = remember {
+        if (version.startsWith("v")) version.drop(1) else version
+    }
 
     Column(
         Modifier.fillMaxWidth(),
@@ -1564,107 +1460,236 @@ private fun AboutSection(context: Context) {
             color = MaterialTheme.colorScheme.onSurface)
         Spacer(Modifier.height(4.dp))
         Text(
-            "A Universal Wayland Compositor",
+            version,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Spacer(Modifier.height(8.dp))
-        TextButton(
-            onClick = { uriHandler.openUri("https://wawona.io") },
-            modifier = Modifier.testTag("wwn.settings.aboutWebsite"),
-        ) { Text("Visit") }
-        Spacer(Modifier.height(12.dp))
-        Text("Version $version",
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(2.dp))
-        Text(
-            "Build $buildNumber",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.testTag("wwn.settings.about.build"),
+        Spacer(Modifier.height(16.dp))
+        AboutLinkRows(uriHandler)
+        Spacer(Modifier.height(16.dp))
+        AboutFactsGroup(
+            context = context,
+            version = version,
+            buildNumber = buildNumber,
+            hostOs = hostOs,
+            installChannel = installChannel,
+            versionBare = versionBare,
+            uriHandler = uriHandler,
         )
-        Spacer(Modifier.height(8.dp))
-        val hostOs = remember {
-            "Android ${Build.VERSION.RELEASE} (${Build.MODEL})"
-        }
-        val installChannel = remember { androidInstallChannel(context) }
-        val versionBare = remember {
-            if (version.startsWith("v")) version.drop(1) else version
-        }
-        OutlinedButton(
-            onClick = {
-                copyWawonaBugDiagnostics(
-                    context,
-                    version,
-                    hostOs,
-                    installChannel,
-                    machineOnly = false,
-                )
-            },
-            modifier = Modifier.fillMaxWidth().testTag("wwn.settings.copyRecentLogs"),
-            shape = RoundedCornerShape(12.dp)
-        ) { Text("Copy Logs") }
-        Spacer(Modifier.height(8.dp))
-        OutlinedButton(
-            onClick = {
-                openWawonaGithubBugReport(
-                    context,
-                    uriHandler,
-                    versionBare,
-                    hostOs,
-                    installChannel,
-                )
-            },
-            modifier = Modifier.fillMaxWidth().testTag("wwn.settings.reportBug"),
-            shape = RoundedCornerShape(12.dp)
-        ) { Text("Report") }
-        Spacer(modifier = Modifier.height(16.dp))
-        OutlinedButton(
-            onClick = { uriHandler.openUri("https://aspauldingcode.com") },
-            modifier = Modifier.fillMaxWidth().testTag("wwn.settings.aboutAuthor"),
-            shape = RoundedCornerShape(12.dp)
-        ) { Text("Alex Spaulding") }
-        Spacer(Modifier.height(12.dp))
-        OutlinedButton(
-            onClick = { uriHandler.openUri("https://github.com/Wawona/Wawona") },
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp)
-        ) { Text("Contribute") }
-        Spacer(Modifier.height(12.dp))
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            OutlinedButton(
-                onClick = { uriHandler.openUri("https://ko-fi.com/aspauldingcode") },
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(12.dp)
-            ) { Text("Support") }
-            OutlinedButton(
-                onClick = { uriHandler.openUri("https://github.com/sponsors/aspauldingcode") },
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(12.dp)
-            ) { Text("Sponsor") }
-        }
-        Spacer(Modifier.height(12.dp))
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            TextButton(
-                onClick = { uriHandler.openUri("https://github.com/aspauldingcode") }
-            ) { Text("Profile") }
-            TextButton(
-                onClick = { uriHandler.openUri("https://x.com/aspauldingcode") }
-            ) { Text("Follow") }
-            TextButton(
-                onClick = { uriHandler.openUri("https://www.linkedin.com/in/aspauldingcode/") }
-            ) { Text("Connect") }
-        }
         Spacer(Modifier.height(32.dp))
+    }
+}
+
+@Composable
+private fun AboutFactsGroup(
+    context: Context,
+    version: String,
+    buildNumber: String,
+    hostOs: String,
+    installChannel: String,
+    versionBare: String,
+    uriHandler: UriHandler,
+) {
+    val prefs = remember { context.getSharedPreferences("wawona_prefs", Context.MODE_PRIVATE) }
+    var logLevel by remember { mutableStateOf(prefs.getString("LogLevel", "info") ?: "info") }
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+    ) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+            AboutFactLine("Version", version)
+            AboutFactLine("Build", buildNumber, tag = "wwn.settings.about.build")
+            AboutFactLine("Platform", hostOs)
+            Text(
+                "Log Level",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.padding(top = 4.dp),
+            ) {
+                listOf("error", "warn", "info", "debug", "trace").forEach { level ->
+                    FilterChip(
+                        selected = logLevel == level,
+                        onClick = {
+                            logLevel = level
+                            prefs.edit().putString("LogLevel", level).apply()
+                        },
+                        label = { Text(level) },
+                    )
+                }
+            }
+            OutlinedButton(
+                onClick = {
+                    copyWawonaBugDiagnostics(
+                        context,
+                        version,
+                        hostOs,
+                        installChannel,
+                        machineOnly = false,
+                    )
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp)
+                    .testTag("wwn.settings.copyRecentLogs"),
+                shape = RoundedCornerShape(12.dp),
+            ) { Text("Copy Logs") }
+            OutlinedButton(
+                onClick = {
+                    openWawonaGithubBugReport(
+                        context,
+                        uriHandler,
+                        versionBare,
+                        hostOs,
+                        installChannel,
+                    )
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp)
+                    .testTag("wwn.settings.reportBug"),
+                shape = RoundedCornerShape(12.dp),
+            ) { Text("Report") }
+        }
+    }
+}
+
+@Composable
+private fun AboutFactLine(title: String, value: String, tag: String? = null) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .then(if (tag != null) Modifier.testTag(tag) else Modifier),
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(title, style = MaterialTheme.typography.bodyLarge)
+        Text(
+            value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+private data class AboutLink(
+    val title: String,
+    val subtitle: String,
+    val url: String,
+    val icon: String,
+)
+
+/** Same order and subtitles as `WawonaAboutLinks` in SettingsContracts.swift. */
+private val aboutLinks = listOf(
+    AboutLink("Website", "Wawona.io", "https://wawona.io", "https://wawona.io/favicon.ico"),
+    AboutLink("Alex Spaulding", "Founder", "https://aspauldingcode.com", "https://github.com/aspauldingcode.png?size=160"),
+    AboutLink("GitHub", "aspauldingcode", "https://github.com/aspauldingcode", "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"),
+    AboutLink("X", "aspauldingcode", "https://x.com/aspauldingcode", "bundle:X.png"),
+    AboutLink("LinkedIn", "aspauldingcode", "https://www.linkedin.com/in/aspauldingcode/", "https://upload.wikimedia.org/wikipedia/commons/c/ca/LinkedIn_logo_initials.png"),
+    AboutLink("Ko-fi", "aspauldingcode", "https://ko-fi.com/aspauldingcode", "https://ko-fi.com/android-icon-192x192.png"),
+    AboutLink("Sponsors", "GitHub Sponsors", "https://github.com/sponsors/aspauldingcode", "bundle:GitHubSponsors.png"),
+    AboutLink("GitHub", "Wawona", "https://github.com/Wawona/Wawona", "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"),
+)
+
+@Composable
+private fun AboutLinkRows(uriHandler: UriHandler) {
+    val context = LocalContext.current
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+        aboutLinks.forEach { link ->
+            Surface(
+                onClick = { uriHandler.openUri(link.url) },
+                modifier = Modifier.fillMaxWidth().testTag("wwn.settings.about.link.${link.title}.${link.subtitle}"),
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+            ) {
+                Row(
+                    Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    AboutFavicon(context, link.icon)
+                    Spacer(Modifier.width(12.dp))
+                    Column {
+                        Text(link.title, style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            link.subtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AboutFavicon(context: Context, icon: String) {
+    var bitmap by remember(icon) { mutableStateOf(AboutFaviconCache.cached(context, icon)) }
+    LaunchedEffect(icon) {
+        AboutFaviconCache.refresh(context, icon) { bitmap = it }
+    }
+    val shape = RoundedCornerShape(6.dp)
+    Box(
+        Modifier.size(28.dp).clip(shape).background(MaterialTheme.colorScheme.surface, shape),
+        contentAlignment = Alignment.Center,
+    ) {
+        val current = bitmap
+        if (current != null) {
+            AndroidView(
+                modifier = Modifier.fillMaxSize().clip(shape),
+                factory = { ImageView(it) },
+                update = {
+                    it.setImageBitmap(current)
+                    it.scaleType = ImageView.ScaleType.FIT_CENTER
+                },
+            )
+        }
+    }
+}
+
+private object AboutFaviconCache {
+    fun cached(context: Context, icon: String): android.graphics.Bitmap? {
+        val bytes = if (icon.startsWith("bundle:")) {
+            runCatching { context.assets.open("about/${icon.removePrefix("bundle:")}").readBytes() }.getOrNull()
+        } else {
+            file(context, icon).takeIf { it.exists() }?.readBytes()
+        }
+        return bytes?.let { android.graphics.BitmapFactory.decodeByteArray(it, 0, it.size) }
+    }
+
+    fun refresh(context: Context, icon: String, apply: (android.graphics.Bitmap) -> Unit) {
+        if (icon.startsWith("bundle:")) {
+            cached(context, icon)?.let(apply)
+            return
+        }
+        Thread {
+            val bytes = runCatching {
+                java.net.URL(icon).openStream().use { it.readBytes() }
+            }.getOrNull() ?: return@Thread
+            val digest = sha256(bytes)
+            val hashFile = file(context, icon).resolveSibling(file(context, icon).name + ".sha256")
+            val previous = hashFile.takeIf { it.exists() }?.readText()
+            if (previous == digest) return@Thread
+            val image = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return@Thread
+            file(context, icon).parentFile?.mkdirs()
+            file(context, icon).writeBytes(bytes)
+            hashFile.writeText(digest)
+            android.os.Handler(android.os.Looper.getMainLooper()).post { apply(image) }
+        }.start()
+    }
+
+    private fun file(context: Context, icon: String): java.io.File {
+        val name = sha256(icon.toByteArray())
+        return java.io.File(context.cacheDir, "wwn-favicons/$name")
+    }
+
+    private fun sha256(bytes: ByteArray): String {
+        val digest = java.security.MessageDigest.getInstance("SHA-256").digest(bytes)
+        return digest.joinToString("") { "%02x".format(it) }
     }
 }
 

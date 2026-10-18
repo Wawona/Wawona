@@ -16,8 +16,8 @@ iPhone Machines Add and machine-editor Cancel/Save are **plain toolbar
 buttons**: `ToolbarItem` + `Button` + `Image(systemName:)` (`plus`,
 `xmark`, `checkmark`). Default system size and spacing. No custom circle
 fill, glassProminent compose shim, fixed frame, font weight, or
-`sharedBackgroundVisibility` hacks on those items. iPhone bottom Add sits
-next to `DefaultToolbarItem(kind: .search)` with a `ToolbarSpacer`.
+`sharedBackgroundVisibility` hacks on those items. iPhone bottom Add
+is the prominent `+` in `WWNPhoneIntegratedSearchToolbar` (`toolbarItems` on the visible controller).
 
 **Exactly one Add Machine control.** iPhone: bottom toolbar only (iOS 26
 Messages search bar, or pre-26 `safeAreaInset` chrome). iPad / visionOS:
@@ -51,7 +51,8 @@ Hard rejects:
 - Moving availability or compositor capability policy into SwiftUI
 - `.buttonStyle(.glass)` on iOS 26 navigation toolbar items (glass-on-glass)
 - Custom glass search capsule on iPhone Machines when iOS 26 system
-  `DefaultToolbarItem(kind: .search)` is available
+  search is available (`WWNPhoneIntegratedSearchToolbar`, not
+  `DefaultToolbarItem(kind: .search)`)
 - Custom opaque / glassProminent / fixed-frame styling on iPhone toolbar Add
   or editor sheet xmark/checkmark (use default toolbar `Button` + SF Symbol)
 - Custom SF Symbol Cancel/Save in `.cancellationAction` /

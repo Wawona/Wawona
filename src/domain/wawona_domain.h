@@ -38,6 +38,18 @@ char *wawona_launch_resolve_backend(
 char *wawona_launch_nested_cursor_policy(
     int is_nested_compositor, int show_virtual_cursor);
 
+/* CloudKit sync policy. Hosts own CKRecord transport only. */
+int wawona_cloud_sync_is_synced_key(const char *key);
+int wawona_cloud_sync_home_path_excluded(const char *rel);
+unsigned long long wawona_cloud_sync_home_max_file_bytes(void);
+unsigned int wawona_cloud_sync_home_max_files(void);
+int wawona_cloud_sync_prefer_remote(
+    long long local_modified_ms, long long remote_modified_ms, int local_ever_synced);
+/* Caller frees with wawona_domain_string_free. NULL on bad JSON. */
+char *wawona_cloud_sync_redact_profiles(const char *json);
+char *wawona_cloud_sync_merge_profiles(
+    const char *local, const char *remote, int bootstrap);
+
 #ifdef __cplusplus
 }
 #endif

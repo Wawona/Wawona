@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 #if canImport(Darwin)
 import Darwin
@@ -599,11 +600,144 @@ public struct GlobalSettingsCatalog: Sendable {
             ]
         case .about:
             return [
-                .aboutVersion, .aboutBuild, .aboutPlatform, .aboutWebsite,
-                .aboutAuthor, .aboutSource, .aboutSponsors, .logLevel,
+                .aboutWebsite, .aboutAuthor, .aboutSource, .aboutSponsors,
+                .aboutVersion, .aboutBuild, .aboutPlatform, .logLevel,
             ]
         case .dependencies:
             return [.dependenciesInventory]
         }
+    }
+}
+
+/// About link rows, same order and subtitles on every product.
+public struct WawonaAboutLink: Sendable, Hashable {
+    public let title: String
+    public let subtitle: String
+    public let url: String
+    public let iconURL: String
+
+    public init(title: String, subtitle: String, url: String, iconURL: String) {
+        self.title = title
+        self.subtitle = subtitle
+        self.url = url
+        self.iconURL = iconURL
+    }
+}
+
+public enum WawonaAboutLinks {
+    /// `bundle:<file>` loads `<file>` from `Wawona.icon/Assets` in the app.
+    public static let bundlePrefix = "bundle:"
+
+    public static let rows: [WawonaAboutLink] = [
+        WawonaAboutLink(
+            title: "Website",
+            subtitle: "Wawona.io",
+            url: "https://wawona.io",
+            iconURL: "https://wawona.io/favicon.ico"
+        ),
+        WawonaAboutLink(
+            title: "Alex Spaulding",
+            subtitle: "Founder",
+            url: "https://aspauldingcode.com",
+            iconURL: "https://github.com/aspauldingcode.png?size=160"
+        ),
+        WawonaAboutLink(
+            title: "GitHub",
+            subtitle: "aspauldingcode",
+            url: "https://github.com/aspauldingcode",
+            iconURL: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
+        ),
+        WawonaAboutLink(
+            title: "X",
+            subtitle: "aspauldingcode",
+            url: "https://x.com/aspauldingcode",
+            iconURL: "bundle:X.png"
+        ),
+        WawonaAboutLink(
+            title: "LinkedIn",
+            subtitle: "aspauldingcode",
+            url: "https://www.linkedin.com/in/aspauldingcode/",
+            iconURL: "https://upload.wikimedia.org/wikipedia/commons/c/ca/LinkedIn_logo_initials.png"
+        ),
+        WawonaAboutLink(
+            title: "Ko-fi",
+            subtitle: "aspauldingcode",
+            url: "https://ko-fi.com/aspauldingcode",
+            iconURL: "https://ko-fi.com/android-icon-192x192.png"
+        ),
+        WawonaAboutLink(
+            title: "Sponsors",
+            subtitle: "GitHub Sponsors",
+            url: "https://github.com/sponsors/aspauldingcode",
+            iconURL: "bundle:GitHubSponsors.png"
+        ),
+        WawonaAboutLink(
+            title: "GitHub",
+            subtitle: "Wawona",
+            url: "https://github.com/Wawona/Wawona",
+            iconURL: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
+        ),
+    ]
+
+    public static func row(url: String) -> WawonaAboutLink? {
+        rows.first { $0.url == url }
+    }
+
+    public static func bundleFile(for iconURL: String) -> String? {
+        guard iconURL.hasPrefix(bundlePrefix) else { return nil }
+        let name = String(iconURL.dropFirst(bundlePrefix.count))
+        return name.isEmpty ? nil : name
+    }
+}
+
+/// Disk cache for About favicons. A stored image shows immediately. A later
+/// fetch replaces it only when the SHA-256 of the bytes changes.
+public enum WawonaFaviconCache {
+    public static func cachedData(for remoteURL: URL) -> Data? {
+        let file = fileURL(for: remoteURL)
+        return try? Data(contentsOf: file)
+    }
+
+    /// Writes `data` when its hash differs from the stored hash.
+    /// Returns true when the cache changed.
+    public static func storeIfChanged(remoteURL: URL, data: Data) -> Bool {
+        let digest = sha256Hex(data)
+        let hashURL = fileURL(for: remoteURL).appendingPathExtension("sha256")
+        if let previous = try? String(contentsOf: hashURL, encoding: .utf8),
+           previous == digest {
+            return false
+        }
+        let file = fileURL(for: remoteURL)
+        do {
+            try FileManager.default.createDirectory(
+                at: file.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try data.write(to: file, options: .atomic)
+            try digest.write(to: hashURL, atomically: true, encoding: .utf8)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    public static func bundleData(named file: String) -> Data? {
+        let parts = file.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
+        let name = String(parts.first ?? "")
+        let ext = parts.count > 1 ? String(parts[1]) : nil
+        let url = Bundle.main.url(forResource: name, withExtension: ext, subdirectory: "Wawona.icon/Assets")
+            ?? Bundle.main.url(forResource: name, withExtension: ext)
+        guard let url else { return nil }
+        return try? Data(contentsOf: url)
+    }
+
+    private static func fileURL(for remoteURL: URL) -> URL {
+        let root = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("wwn-favicons", isDirectory: true)
+        return root.appendingPathComponent(sha256Hex(Data(remoteURL.absoluteString.utf8)))
+    }
+
+    private static func sha256Hex(_ data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 }

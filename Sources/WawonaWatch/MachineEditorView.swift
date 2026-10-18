@@ -14,7 +14,8 @@ struct MachineEditorView: View {
 
     @State var name: String
     @State var type: MachineType
-    @State var selectedLauncherName: String
+    @State var nativeShellKind: NativeShellKind
+    @State var nativeShellUseSSH: Bool
     @State var sshHost: String
     @State var sshUser: String
     @State var sshPort: Int
@@ -33,9 +34,17 @@ struct MachineEditorView: View {
     @State private var wasmCatalogLoading = false
 
     private var isEditing: Bool { existingProfile != nil }
-    private var isNative: Bool { type == .native }
-    private var isWasm: Bool { type == .wasm }
-    private var isSSH: Bool { type.isSSH }
+
+    private var editorNavigationTitle: String {
+        if isEditing {
+            let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? "Edit Machine" : trimmed
+        }
+        return name.isEmpty ? "New Machine" : name
+    }
+    private var isNative: Bool { type == .native || type == .wasm || type.isSSH }
+    private var isWasm: Bool { isNative && nativeShellKind == .wasm }
+    private var isSSH: Bool { isNative && nativeShellKind.allowsSSH && nativeShellUseSSH }
 
     private var contractState: MachineEditorState {
         persistableEditorState()
@@ -68,8 +77,9 @@ struct MachineEditorView: View {
         } else {
             _type = State(initialValue: parsed)
         }
-        let migrated = state.selectedLauncherName == "wawona-wasm" ? "wawona-wasm" : "wawona-shell"
-        _selectedLauncherName = State(initialValue: migrated)
+        let kind = NativeShellKind(rawValue: state.nativeShellKindRawValue) ?? .terminal
+        _nativeShellKind = State(initialValue: kind == .wayland ? .terminal : kind)
+        _nativeShellUseSSH = State(initialValue: state.nativeShellUseSSH)
         _sshHost = State(initialValue: state.sshHost)
         _sshUser = State(initialValue: state.sshUser)
         _sshPort = State(initialValue: MachineEditorValidation.normalizedPort(from: state))
@@ -154,12 +164,27 @@ struct MachineEditorView: View {
                     }
                 }
 
-                if isNative && shows(.launcher) {
+                if isNative {
                     Section {
-                        LabeledContent("Session", value: "Wawona Terminal")
-                            .foregroundStyle(.secondary)
+                        Picker("Session", selection: $nativeShellKind) {
+                            ForEach(NativeShellKind.selectableCases, id: \.self) { kind in
+                                Text(kind.userFacingName).tag(kind)
+                            }
+                        }
+                        .pickerStyle(.navigationLink)
+                        if nativeShellKind.allowsSSH {
+                            Toggle("Use SSH", isOn: $nativeShellUseSSH)
+                        }
+                        if nativeShellKind == .terminal || nativeShellKind == .waypipe {
+                            TextField(
+                                nativeShellKind == .waypipe ? "Remote command" : "Custom Command",
+                                text: $remoteCommand
+                            )
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                        }
                     } footer: {
-                        Text("Native Shell is Wawona Terminal. Install optional software with wpm from the shell.")
+                        Text(sessionFootnote)
                     }
                 }
 
@@ -248,13 +273,28 @@ struct MachineEditorView: View {
                     }
                 }
             }
-            .navigationTitle(isEditing ? "Edit Machine" : "Add Machine")
+            .navigationTitle(editorNavigationTitle)
+            .navigationBarBackButtonHidden(true)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save", action: save).disabled(hasValidationIssues)
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(action: { dismiss() }) {
+                        Image(systemName: "xmark")
+                    }
+                    .accessibilityLabel("Cancel")
+                    .accessibilityIdentifier("wwn.machines.editor.cancel")
                 }
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(action: save) {
+                        Image(systemName: "checkmark")
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 32, height: 32)
+                            .background(Circle().fill(Color.blue))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(hasValidationIssues)
+                    .accessibilityLabel("Save")
+                    .accessibilityIdentifier("wwn.machines.editor.save")
                 }
             }
         }
@@ -265,8 +305,10 @@ struct MachineEditorView: View {
         return MachineEditorState(
             id: existingProfile?.id ?? base.id,
             name: name,
-            typeRawValue: type.rawValue,
-            selectedLauncherName: selectedLauncherName,
+            typeRawValue: "native",
+            nativeShellKindRawValue: nativeShellKind.rawValue,
+            nativeShellUseSSH: nativeShellKind.allowsSSH && nativeShellUseSSH,
+            selectedLauncherName: nativeShellKind == .wasm ? "wawona-wasm" : "wawona-shell",
             sshHost: MachineProfileDomain.sanitizeSSHHost(sshHost),
             sshUser: sshUser,
             sshPortText: String(MachineProfileDomain.normalizeSSHPort(String(sshPort))),
@@ -276,7 +318,7 @@ struct MachineEditorView: View {
             sshKeyPassphrase: sshKeyPassphrase,
             remoteCommand: remoteCommand,
             inputProfile: base.inputProfile,
-            bundledAppID: isNative ? selectedLauncherName : (isWasm ? "wawona-wasm" : base.bundledAppID),
+            bundledAppID: nativeShellKind == .wasm ? "wawona-wasm" : "wawona-shell",
             waypipeEnabled: waypipeEnabled,
             wasmCommand: wasmCommand,
             wasmModulePath: wasmModulePath,
@@ -322,6 +364,17 @@ struct MachineEditorView: View {
                 wasmCatalogNote = error.localizedDescription
             }
             wasmCatalogLoading = false
+        }
+    }
+
+    private var sessionFootnote: String {
+        switch nativeShellKind {
+        case .wasm:
+            return "Relay wasm on this Watch. SHM only. GPU wasm is blocked."
+        case .waypipe:
+            return "Waypipe into this Watch. SSH is optional."
+        case .terminal, .wayland:
+            return "Wawona Terminal uses the Watch app container. ls and cd start at HOME."
         }
     }
 

@@ -360,6 +360,9 @@ public struct MachineRuntimeOverrides: Codable, Hashable, Sendable {
     public var wasmPackage: String?
     /// Native-shell command (`wasm hello-wasi-gui` or `wpm install hello-wasi-gui`).
     public var wasmCommand: String?
+    /// Per-machine session thumbnail. Nil inherits Wawona Settings.
+    /// JSON key matches the iOS editor override.
+    public var machineThumbnailEnabledOverride: Bool?
     /// Explicit env overrides (#157). Never stash in settingsOverrides. Codable drops unknown keys.
     public var environment: EnvironmentOverrideMap?
 
@@ -387,6 +390,7 @@ public struct MachineRuntimeOverrides: Codable, Hashable, Sendable {
         wasmLaunchMode: String? = nil,
         wasmPackage: String? = nil,
         wasmCommand: String? = nil,
+        machineThumbnailEnabledOverride: Bool? = nil,
         environment: EnvironmentOverrideMap? = nil
     ) {
         self.renderer = renderer
@@ -412,6 +416,7 @@ public struct MachineRuntimeOverrides: Codable, Hashable, Sendable {
         self.wasmLaunchMode = wasmLaunchMode
         self.wasmPackage = wasmPackage
         self.wasmCommand = wasmCommand
+        self.machineThumbnailEnabledOverride = machineThumbnailEnabledOverride
         self.environment = environment
     }
 }
@@ -625,8 +630,15 @@ public final class MachineProfileStore: ObservableObject {
     @Published public private(set) var profiles: [MachineProfile] = []
     @Published public var activeMachineId: String?
 
+    private var cloudObserver: NSObjectProtocol?
+
     public init() {
         load()
+        cloudObserver = NotificationCenter.default.addObserver(
+            forName: WWNCloudSync.didApplyRemoteChanges, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.load() }
+        }
     }
 
     public func load() {

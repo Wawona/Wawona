@@ -1,0 +1,106 @@
+{
+  "fill-specializations": [
+    {
+      "value": {
+        "solid": "srgb:0.078431,0.176471,0.235294,1"
+      }
+    },
+    {
+      "appearance": "dark",
+      "value": {
+        "solid": "srgb:0.043137,0.109804,0.160784,1"
+      }
+    }
+  ],
+  "groups": [
+    {
+      "name": "WWN rounded first W",
+      "layers": [
+        {
+          "name": "WWN front fold",
+          "image-name": "letter-0.png",
+          "glass": true
+        }
+      ],
+      "specular": true,
+      "lighting": "individual",
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.04
+      },
+      "translucency": {
+        "enabled": true,
+        "value": 0.36
+      },
+      "blur": 0.5
+    },
+    {
+      "name": "WWN rounded second W",
+      "layers": [
+        {
+          "name": "WWN middle fold",
+          "image-name": "letter-1.png",
+          "glass": true
+        }
+      ],
+      "specular": true,
+      "lighting": "individual",
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.04
+      },
+      "translucency": {
+        "enabled": true,
+        "value": 0.36
+      },
+      "blur": 0.5
+    },
+    {
+      "name": "WWN rounded N",
+      "layers": [
+        {
+          "name": "WWN rear fold",
+          "image-name": "letter-2.png",
+          "glass": true
+        }
+      ],
+      "specular": true,
+      "lighting": "individual",
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.04
+      },
+      "translucency": {
+        "enabled": true,
+        "value": 0.36
+      },
+      "blur": 0.5
+    },
+    {
+      "name": "HDR internal light",
+      "layers": [
+        {
+          "name": "HDR internal light",
+          "image-name": "internal-light.exr",
+          "glass": false
+        }
+      ],
+      "specular": false,
+      "lighting": "individual",
+      "shadow": {
+        "kind": "none",
+        "opacity": 0
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0
+      }
+    }
+  ],
+  "supported-platforms": {
+    "squares": "shared",
+    "circles": [
+      "watchOS"
+    ]
+  }
+}

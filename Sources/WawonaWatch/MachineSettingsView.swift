@@ -82,9 +82,27 @@ struct MachineSettingsView: View {
             }
             .pickerStyle(.navigationLink)
 
-            if profile.type == .native {
-                LabeledContent("Session", value: "Wawona Terminal")
-                    .foregroundStyle(.secondary)
+            if profile.type == .native || profile.type == .wasm || profile.type.isSSH {
+                Picker("Session", selection: sessionKindBinding) {
+                    ForEach(NativeShellKind.selectableCases, id: \.self) { kind in
+                        Text(kind.userFacingName).tag(kind)
+                    }
+                }
+                .pickerStyle(.navigationLink)
+                if NativeShellSession.from(profile: profile).kind == .wasm {
+                    TextField("wasm command", text: wasmCommandBinding)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    TextField("Package", text: wasmPackageBinding)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    TextField("Local .wasm", text: wasmModulePathBinding)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    Text("Relay wasm. SHM + SpriteKit. GPU wasm is blocked.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             if let backend = profile.type.backendEngineLabel {
@@ -160,14 +178,11 @@ struct MachineSettingsView: View {
 
     @ViewBuilder
     private func graphicsSection() -> some View {
-        Section("Graphics") {
+        Section {
             Picker("Renderer", selection: rendererBinding) {
-                Text("metal").tag("metal")
                 Text("software").tag("software")
             }
             .pickerStyle(.navigationLink)
-            // watchOS has no GPU stack (ANGLE/Vulkan). Keep fields for profile
-            // portability but mark them clearly.
             if PlatformCapabilities.allowsGpuStack {
                 TextField("Vulkan Driver", text: vulkanDriverBinding)
                     .textInputAutocapitalization(.never)
@@ -183,6 +198,12 @@ struct MachineSettingsView: View {
                     .foregroundStyle(.secondary)
                 Toggle("Color Operations / HDR", isOn: colorOperationsBinding)
             }
+            Toggle("Show Session Thumbnail", isOn: thumbnailBinding)
+                .accessibilityIdentifier("wwn.machine.thumbnail")
+        } header: {
+            Text("Graphics")
+        } footer: {
+            Text("Uses the Graphics setting unless this machine overrides it.")
         }
     }
 
@@ -204,14 +225,18 @@ struct MachineSettingsView: View {
     @ViewBuilder
     private func environmentSection(for profile: MachineProfile) -> some View {
         Section("Environment") {
-            let count = profile.runtimeOverrides.environment?.count ?? 0
-            Text(count == 0 ? "Inherit global" : "\(count) override(s)")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-            Button("Clear Overrides", systemImage: "arrow.counterclockwise") {
-                updateDraft { $0.runtimeOverrides.environment = nil }
+            NavigationLink("Environment Variables") {
+                WatchEnvironmentList(
+                    preferences: preferences,
+                    machineEnvironment: Binding(
+                        get: { draft?.runtimeOverrides.environment ?? profile.runtimeOverrides.environment ?? [:] },
+                        set: { map in
+                            updateDraft { $0.runtimeOverrides.environment = map.isEmpty ? nil : map }
+                        }
+                    )
+                )
             }
-            .accessibilityIdentifier("wwn.settings.environment.machine.clear")
+            .accessibilityIdentifier("wwn.settings.environment.machine")
         }
     }
 
@@ -237,6 +262,7 @@ struct MachineSettingsView: View {
             Text("Log Level: \(resolved.logLevel)")
             Text("Shake to Exit: \(resolved.shakeToCloseEnabled ? "On" : "Off")")
             Text("Swipe Back to Exit: \(resolved.swipeBackToCloseEnabled ? "On" : "Off")")
+            Text("Session Thumbnail: \(WatchMachineThumbnailStore.isEnabled(profile: profile, preferences: preferences) ? "On" : "Off")")
             Text("Resize Display for Virtual Keyboard: \(resolved.resizeDisplayForVirtualKeyboard ? "On" : "Off")")
         }
     }
@@ -281,6 +307,48 @@ struct MachineSettingsView: View {
     }
 
     // MARK: - Bindings
+
+    private var sessionKindBinding: Binding<NativeShellKind> {
+        Binding(
+            get: {
+                guard let draft else { return .terminal }
+                let kind = NativeShellSession.from(profile: draft).kind
+                return kind == .wayland ? .terminal : kind
+            },
+            set: { kind in
+                updateDraft { profile in
+                    let session = NativeShellSession(kind: kind, useSSH: false)
+                    profile.type = session.storageType
+                    profile.runtimeOverrides.bundledAppID = session.resolvedBundledAppID(selectedLauncher: "wawona-shell")
+                    profile.runtimeOverrides.waypipeEnabled = session.waypipeEnabled
+                    if kind == .wasm, (profile.runtimeOverrides.wasmCommand ?? "").isEmpty {
+                        profile.runtimeOverrides.wasmCommand = "wasm hello-wasi-gui"
+                    }
+                }
+            }
+        )
+    }
+
+    private var wasmCommandBinding: Binding<String> {
+        Binding(
+            get: { draft?.runtimeOverrides.wasmCommand ?? "wasm hello-wasi-gui" },
+            set: { value in updateDraft { $0.runtimeOverrides.wasmCommand = value } }
+        )
+    }
+
+    private var wasmPackageBinding: Binding<String> {
+        Binding(
+            get: { draft?.runtimeOverrides.wasmPackage ?? "" },
+            set: { value in updateDraft { $0.runtimeOverrides.wasmPackage = value } }
+        )
+    }
+
+    private var wasmModulePathBinding: Binding<String> {
+        Binding(
+            get: { draft?.runtimeOverrides.wasmModulePath ?? "" },
+            set: { value in updateDraft { $0.runtimeOverrides.wasmModulePath = value } }
+        )
+    }
 
     private var nameBinding: Binding<String> {
         Binding(
@@ -488,6 +556,24 @@ struct MachineSettingsView: View {
                     ?? preferences.swipeBackToCloseEnabled
             },
             set: { value in updateDraft { $0.runtimeOverrides.swipeBackToCloseEnabled = value } }
+        )
+    }
+
+    private var thumbnailBinding: Binding<Bool> {
+        Binding(
+            get: {
+                draft?.runtimeOverrides.machineThumbnailEnabledOverride
+                    ?? preferences.machineSessionThumbnailsEnabled
+            },
+            set: { value in
+                updateDraft { profile in
+                    if value == preferences.machineSessionThumbnailsEnabled {
+                        profile.runtimeOverrides.machineThumbnailEnabledOverride = nil
+                    } else {
+                        profile.runtimeOverrides.machineThumbnailEnabledOverride = value
+                    }
+                }
+            }
         )
     }
 

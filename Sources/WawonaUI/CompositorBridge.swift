@@ -21,7 +21,7 @@ public struct CompositorBridge: View {
         #else
         MacCompositorPlaceholder()
         #endif
-        #elseif os(iOS)
+        #elseif os(iOS) || os(tvOS) || os(visionOS)
         #if canImport(Metal) && !os(watchOS)
         CompositorHostView()
         #else

@@ -348,10 +348,13 @@ void wwn_ios_refresh_bundle_env(void) {}
 __attribute__((weak))
 void wwn_pty_ios_allow_new_shell_session(void) {}
 
-/* arm64_32 only: no aarch64 libwawona_wasm.a on that slice. arm64 / sim must
- * NOT define these. Apple ld treats a weak def as satisfying -Wl,-u and never
- * pulls -lwawona_wasm (Relay wasm then dead-strips away; size gate fails). */
-#if defined(__arm64_32__)
+/* arm64_32 only: no aarch64 libwawona_wasm.a / libwawona.a on that slice.
+ * Gate on !__LP64__ (ILP32). Clang does NOT define __arm64_32__; it defines
+ * __ARM64_ARCH_8_32__. A wrong macro left these stubs out and broke
+ * Wawona-watchOS Ld (undefined _wawona_wasm_* / _wwn_term_*).
+ * arm64 / sim must NOT define these. Apple ld treats a weak def as satisfying
+ * -Wl,-u and never pulls -lwawona_wasm (Relay wasm then dead-strips away). */
+#if !defined(__LP64__)
 __attribute__((weak))
 int wawona_wasm_run(int argc, char **argv) {
     (void)argc; (void)argv;
@@ -377,7 +380,29 @@ int wpm_main(int argc, char **argv) {
     (void)argc; (void)argv;
     return 1;
 }
-#endif /* __arm64_32__ */
+
+/* WatchTerminalScreen @_silgen_name; real impls live in libwawona.a (arm64). */
+__attribute__((weak))
+char *wwn_term_bytes_lines_json(const uint8_t *bytes, size_t len,
+                                uint32_t cols, uint32_t rows) {
+    (void)bytes; (void)len; (void)cols; (void)rows;
+    return NULL;
+}
+
+__attribute__((weak))
+char *wwn_term_bytes_images_json(const uint8_t *bytes, size_t len,
+                                 uint32_t cols, uint32_t rows,
+                                 uint32_t cell_w, uint32_t cell_h) {
+    (void)bytes; (void)len; (void)cols; (void)rows;
+    (void)cell_w; (void)cell_h;
+    return NULL;
+}
+
+__attribute__((weak))
+void wwn_term_string_free(char *ptr) {
+    (void)ptr;
+}
+#endif /* !__LP64__ */
 
 __attribute__((weak))
 char *WWNHostKeymapXkbV1Copy(void) {

@@ -11,76 +11,70 @@ struct QuickConnectView: View {
     @ObservedObject private var preferences = WawonaPreferences.shared
     @State private var showDisconnectConfirmation = false
     @State private var startFailed = false
+    @State private var showingEditor = false
 
     private var requiresExitConfirmation: Bool {
         let resolved = preferences.resolvedSettings(for: profile)
         return resolved.shakeToCloseEnabled || resolved.swipeBackToCloseEnabled
     }
 
-    var activeSession: MachineSession? {
-        sessions.sessions.first(where: { $0.machineId == profile.id })
+    private var runningSession: MachineSession? {
+        sessions.sessions.first {
+            $0.machineId == profile.id && ($0.status == .connected || $0.status == .connecting)
+        }
     }
-
-    private var isNative: Bool { profile.type == .native }
-    private var startLabel: String { isNative ? "Start" : "Connect" }
-    private var stopLabel: String { isNative ? "Stop" : "Disconnect" }
 
     var body: some View {
         VStack(spacing: 12) {
             Text(profile.name).font(.headline)
-            if let activeSession, activeSession.status == .connected {
+            if let runningSession {
+                Button {
+                    onStarted(runningSession)
+                } label: {
+                    Label("Focus", systemImage: "scope")
+                        .frame(maxWidth: .infinity)
+                }
+                .accessibilityIdentifier("wwn.watch.focus")
+                .accessibilityLabel("Focus")
                 Button(role: .destructive) {
                     if requiresExitConfirmation {
                         showDisconnectConfirmation = true
                     } else {
-                        disconnectActiveSession(activeSession)
+                        stopSession(runningSession)
                     }
                 } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "stop.circle.fill")
-                        Text(stopLabel)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                    }
+                    Label("Stop", systemImage: "stop.fill")
+                        .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
-                .frame(maxWidth: .infinity)
-                .accessibilityIdentifier(isNative ? "wwn.watch.stop" : "wwn.watch.disconnect")
-                .accessibilityLabel(stopLabel)
+                .accessibilityIdentifier("wwn.watch.stop")
+                .accessibilityLabel("Stop")
             } else {
                 Button {
                     // Do not write profileStore here. `activeMachineId` + save()
-                    // republishes Machines and destroys this NavigationLink
-                    // destination before the compositor cover can present.
+                    // republishes Machines and destroys this destination
+                    // before the compositor cover can present.
                     if WatchMachineSessionBridge.connect(profile: profile) {
                         onStarted(sessions.connect(machineId: profile.id))
                     } else {
                         startFailed = true
                     }
                 } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "play.fill")
-                        Text(startLabel)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                    }
+                    Label("Start", systemImage: "play.fill")
+                        .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
-                .frame(maxWidth: .infinity)
-                .accessibilityIdentifier(isNative ? "wwn.watch.start" : "wwn.watch.connect")
-                .accessibilityLabel(startLabel)
+                .accessibilityIdentifier("wwn.watch.start")
+                .accessibilityLabel("Start")
             }
-            NavigationLink {
-                MachineSettingsView(
-                    preferences: WawonaPreferences.shared,
-                    profileStore: profileStore,
-                    machineID: profile.id
-                )
-            } label: {
-                Label("Machine Settings", systemImage: "slider.horizontal.3")
+            Button(action: { showingEditor = true }) {
+                Label("Edit", systemImage: "slider.horizontal.3")
             }
             .accessibilityIdentifier("wwn.watch.machineSettings")
-            .accessibilityLabel("Machine Settings")
+            .accessibilityLabel("Edit")
+        }
+        .sheet(isPresented: $showingEditor) {
+            MachineEditorView(profileStore: profileStore, profile: profile)
         }
         .alert("Could not start", isPresented: $startFailed) {
             Button("OK", role: .cancel) {}
@@ -93,8 +87,8 @@ struct QuickConnectView: View {
             titleVisibility: .visible
         ) {
             Button("Close", role: .destructive) {
-                if let activeSession {
-                    disconnectActiveSession(activeSession)
+                if let runningSession {
+                    stopSession(runningSession)
                 }
             }
             Button("Cancel", role: .cancel) {}
@@ -103,7 +97,7 @@ struct QuickConnectView: View {
         }
     }
 
-    private func disconnectActiveSession(_ activeSession: MachineSession) {
+    private func stopSession(_ activeSession: MachineSession) {
         WatchMachineSessionBridge.disconnect(profile: profile)
         sessions.disconnect(sessionId: activeSession.id)
     }

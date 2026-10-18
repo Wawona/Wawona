@@ -1,0 +1,14 @@
+{
+  "asset": "Wawona.icon/Assets/interior-hdr.exr",
+  "encoding": "OpenEXR 32-bit floating-point RGBA",
+  "color_space": "scene-linear Rec.709, D65",
+  "alpha": "straight",
+  "sdr_reference_white": 1.0,
+  "peak_rgb": [
+    4.0,
+    3.4,
+    0.38
+  ],
+  "sdr_companion": "interior-sdr.png",
+  "status": "HDR data verified; display HDR output requires separate verification"
+}

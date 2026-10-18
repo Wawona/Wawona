@@ -27,11 +27,12 @@ private struct WWNSettingsPhoneSplitStyle: ViewModifier {
 /// Dedicated Global Settings host. Replaces Machines chrome in the same window
 /// (in-app only; never sheet, PrefPane, or Settings.app).
 ///
-/// Chrome matches Machines home: system `SidebarListStyle`, plain SF Symbol
-/// sidebar rows (`WawonaSettingsHubChrome.hubRow`), `List` selection. Dismiss
-/// stays on the **detail / split toolbar** via `backport.settingsCloseAction`
-/// (trailing `xmark` on iOS / iPadOS / visionOS; `Done` on macOS / tvOS).
-/// Never put a close control on the sidebar list column.
+/// Chrome matches Machines home: system `SidebarListStyle`, section-tinted SF
+/// Symbol sidebar rows (`WawonaSettingsHubChrome.hubRow`), `List` selection.
+/// Dismiss stays on the **detail / split toolbar** via
+/// `backport.settingsCloseAction(onClose:chromeBridge:)` (`[+][x]` when Add
+/// is registered; trailing `xmark` otherwise on iOS / iPadOS / visionOS;
+/// `Done` on macOS / tvOS). Never put a close control on the sidebar list.
 struct WWNGlobalSettingsHostView: View {
     @ObservedObject var model: WWNSettingsValueModel
     @Binding var selection: GlobalSettingsSectionID?
@@ -41,6 +42,9 @@ struct WWNGlobalSettingsHostView: View {
     /// Local list selection. Never bind `List(selection:)` to `@Published`
     /// (iOS 16 NavigationSplitView AttributeGraph exclusivity crash).
     @State private var listSelection: GlobalSettingsSectionID?
+    /// Env Vars (and similar) register Add so detail trailing stays `[+][x]`.
+    /// iOS 13 floor: `@WawonaStateObject` (not `@StateObject`, iOS 14+).
+    @WawonaStateObject private var chromeBridge = WawonaSettingsChromeBridge()
     #if os(iOS) || os(visionOS)
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     #endif
@@ -258,16 +262,23 @@ struct WWNGlobalSettingsHostView: View {
         }
     }
 
-    /// Same row shape as Machines home: plain SF Symbol + title.
+    /// Same row shape as Machines home: section-tinted SF Symbol + title.
     @ViewBuilder
     private func settingsSidebarRow(_ id: GlobalSettingsSectionID) -> some View {
         let objc = WawonaMainWindowView.objcSection(id, in: model.sections)
         Group {
-            if #available(iOS 16.0, macOS 13.0, visionOS 1.0, *) {
+            #if os(macOS)
+            // List selection owns the row. NavigationLink(value:) in this
+            // column has no destination and makes AppKit insert a new toolbar
+            // item on every section change.
+            settingsRowLabel(id)
+            #else
+            if #available(iOS 16.0, visionOS 1.0, *) {
                 NavigationLink(value: id) { settingsRowLabel(id) }
             } else {
                 Button { listSelection = id } label: { settingsRowLabel(id) }
             }
+            #endif
         }
         .tag(id)
         .accessibility(identifier: objc?.accessibilityIdentifier ?? "wwn.settings.\(id.rawValue)")
@@ -275,11 +286,16 @@ struct WWNGlobalSettingsHostView: View {
     }
 
     private func settingsRowLabel(_ id: GlobalSettingsSectionID) -> some View {
-        // Plain SF Symbol. Section accent tints the detail pane, not this icon.
-        WawonaSettingsHubChrome.hubRow(
+        let tint: Color = {
+            if let objc = WawonaMainWindowView.objcSection(id, in: model.sections) {
+                return objc.swiftUIIconColor
+            }
+            return WawonaSettingsHubChrome.accentColor(for: id)
+        }()
+        return WawonaSettingsHubChrome.hubRow(
             title: id.title,
             systemImage: id.systemImage,
-            iconColor: .accentColor
+            iconColor: tint
         )
     }
 
@@ -293,7 +309,11 @@ struct WWNGlobalSettingsHostView: View {
         Group {
             if let id = selection,
                let section = WawonaMainWindowView.objcSection(id, in: model.sections) {
-                WWNSettingsSectionView(section: section, model: model)
+                WWNSettingsSectionView(
+                    section: section,
+                    model: model,
+                    chromeBridge: chromeBridge
+                )
                     .backport.navigationTitle(id.detailTitle)
             } else {
                 WawonaEmptyState(
@@ -303,7 +323,7 @@ struct WWNGlobalSettingsHostView: View {
                 )
             }
         }
-        .backport.settingsCloseAction(onClose: onDismiss)
+        .backport.settingsCloseAction(onClose: onDismiss, chromeBridge: chromeBridge)
     }
 }
 #endif

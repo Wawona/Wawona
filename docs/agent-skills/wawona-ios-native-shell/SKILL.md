@@ -13,10 +13,17 @@ Kinds: `wawona-machine-types`. RAG: `wwn-mcp/knowledge/wawona/ios-native-shell-t
 
 ## One-line truth
 
+**Why:** Apple Native Shell needs **host-native text selection** (press-hold,
+magnifier, Copy). Wayland terminals cannot; that is why Wawona Terminal is
+host UI, not foot / weston-terminal.
+
 Every machine Start presents **Wawona Terminal** first (not a StartupLog
 preview card). Native Shell Terminal Start must leave a **live zsh prompt**.
-Waypipe / wasm / client Start shows `$ argv` plus streamed CLI logs. Close /
-Done reveals the compositor (Focus). No auto-dismiss on first frame.
+Waypipe / wasm / client Start shows `$ argv` plus streamed CLI logs.
+
+**Terminal may start Wayland clients.** Client attach → Present opens
+automatically; Terminal parks (PTY stays). Never require Done / Close.
+Done parks the same way. No auto-dismiss on an empty first frame.
 
 A splash-only string or "Starting … / auto-dismisses on first frame" card
 is a bug.
@@ -57,11 +64,30 @@ the app target (`wawona-ios-link-contract`).
 | `Font.TextStyle.caption2` | `.caption` (iOS 13 floor) |
 | Install OK, launch Locked | Unlock device; install already done |
 
+## Stop and second session (2026-10-17)
+
+zsh runs in-process and ends by EOF inside `zleread()` (soft-exit, no
+unwinding). Every global it touched survives into the next `zsh_main`.
+
+| Wrong | Right |
+|---|---|
+| Shell owned by the SwiftUI view, stopped in `onDisappear` | Process registry owns it. Views attach/detach. Stop only on Close / Stop |
+| `pthread_join` before closing the input pipe write end (0x8BADF00D) | `wwn_pty_ios_stop_shell_session` closes every `input_write` first |
+| Master pump spins at EOF | Cancel the pump on `read` == 0 |
+| Trust zsh statics on re-entry | `wwn-zsh` resets: `zleactive`, `errflag`, signal queue (stop SIGINT stays queued), feature `ADDED` marks, special params (`patch-zsh-reentry.py`) |
+| `tcgetattr` on SHTTY (pipe dup above fd 10) | `patch-zsh-fake-tty.py`. libwwn-pty interpose does not apply inside the static app |
+
+Symptom of stale state: second Start shows `mba%` with no banner (rc files
+abort), or builtins are "command not found", or HOME is `/`.
+Prove: Close then Start shows the banner and `~ %`, `cd; pwd` prints HOME.
+
 ## Hard rejects
 
 - Splash-only Terminal Start
 - `StartupLogOverlay` / `WWNStartupLogViewController` preview as Start UI
-- Auto-dismiss Terminal on first compositor frame
+- Requiring Done / Close to see a Wayland client from Terminal
+- Killing the shell when parking Terminal for Present
+- Auto-dismiss Terminal on empty first compositor frame (no client)
 - `wawona-shell` no-op connect behind that splash
 - Documenting or using fake `weston_terminal_main` as Native Shell
 - Skipping `WAWONA_ZSH_IN_PROCESS`
@@ -79,3 +105,16 @@ Prove on tip: `nm` shows `wawona_zsh_main`, `wwn_pty_session_start`,
 
 Assert `id="wwn.terminal.root"` + `id="wwn.terminal.done"` after Start.
 Do not dogfood multi-sim with an AI agent for this gate.
+
+## Window size on the pty pipe (2026-10-17)
+
+`TIOCGWINSZ` on SHTTY fails (pipe, and `__interpose` does not apply inside the
+static app). zsh then uses 80x24. On a 36-column watch grid PROMPT_SP pads to
+80 and every prompt (after ^C too) wraps to an extra blank line.
+`patch-zsh-fake-tty.py` makes `adjustwinsize` fall back to
+`wwn_pty_tty_shim_get_winsize` (host calls `wwn_pty_tty_shim_set_winsize`
+before start). Check: `print $COLUMNS` matches the host grid. The throwaway
+`make zsh` link needs the stub in `wawona-dispatch-link-stubs.c`.
+
+watchOS text entry: a hidden `TextField` with `@FocusState` does **not** open
+system input. Use a sheet `TextField` the user taps.

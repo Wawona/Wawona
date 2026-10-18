@@ -1,0 +1,9 @@
+{
+  "encoding": "32-bit floating-point RGBA OpenEXR",
+  "color_space": "scene-linear Rec.709, D65",
+  "alpha": "straight",
+  "sdr_reference_white": 1,
+  "peak_red": 2,
+  "verified": "EXR reopened and peak values checked",
+  "display_HDR": "unmeasured"
+}

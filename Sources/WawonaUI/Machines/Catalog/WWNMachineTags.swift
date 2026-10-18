@@ -1,19 +1,10 @@
 import SwiftUI
+import WawonaModel
 #if os(macOS)
 import AppKit
 #else
 import UIKit
 #endif
-
-// MARK: - Tag model
-
-/// Finder-style color tag for machines. Identity is a stable UUID so tag
-/// renames keep machine assignments intact.
-struct WWNMachineTag: Identifiable, Codable, Hashable {
-  let id: String
-  var name: String
-  var colorHex: String
-}
 
 // MARK: - Palette
 
@@ -62,121 +53,6 @@ enum WWNTagPalette {
       green: Double((value >> 8) & 0xFF) / 255.0,
       blue: Double(value & 0xFF) / 255.0
     )
-  }
-}
-
-// MARK: - Tag store
-
-/// Shared store for machine tags + per-machine assignments. Persists to
-/// UserDefaults (per app) so macOS / iOS builds keep their own tag sets,
-/// matching the rest of the machine preferences.
-final class WWNMachineTagStore: ObservableObject {
-  static let shared = WWNMachineTagStore()
-
-  @Published private(set) var tags: [WWNMachineTag] = []
-  /// machineId -> tag ids (insertion order preserved).
-  @Published private(set) var tagIdsByMachine: [String: [String]] = [:]
-
-  private let tagsDefaultsKey = "wawona.machines.tags"
-  private let assignmentsDefaultsKey = "wawona.machines.tagAssignments"
-
-  private init() {
-    load()
-  }
-
-  // MARK: - Reads
-
-  func tags(for machineId: String) -> [WWNMachineTag] {
-    let ids = tagIdsByMachine[machineId] ?? []
-    return tags.filter { ids.contains($0.id) }
-  }
-
-  func isAssigned(_ tagId: String, to machineId: String) -> Bool {
-    tagIdsByMachine[machineId]?.contains(tagId) ?? false
-  }
-
-  // MARK: - Writes
-
-  @discardableResult
-  func createTag(name: String, colorHex: String) -> WWNMachineTag {
-    let tag = WWNMachineTag(
-      id: UUID().uuidString,
-      name: name.trimmingCharacters(in: .whitespacesAndNewlines),
-      colorHex: colorHex
-    )
-    guard !tag.name.isEmpty else { return tag }
-    tags.append(tag)
-    persist()
-    return tag
-  }
-
-  func updateTag(_ tag: WWNMachineTag) {
-    guard let index = tags.firstIndex(where: { $0.id == tag.id }) else { return }
-    tags[index] = WWNMachineTag(
-      id: tag.id,
-      name: tag.name.trimmingCharacters(in: .whitespacesAndNewlines),
-      colorHex: tag.colorHex
-    )
-    persist()
-  }
-
-  func deleteTag(id: String) {
-    tags.removeAll { $0.id == id }
-    for machineId in tagIdsByMachine.keys {
-      tagIdsByMachine[machineId]?.removeAll { $0 == id }
-    }
-    persist()
-  }
-
-  func setAssigned(_ assigned: Bool, tag: WWNMachineTag, to machineId: String) {
-    var ids = tagIdsByMachine[machineId] ?? []
-    if assigned {
-      if !ids.contains(tag.id) {
-        ids.append(tag.id)
-      }
-    } else {
-      ids.removeAll { $0 == tag.id }
-    }
-    if ids.isEmpty {
-      tagIdsByMachine.removeValue(forKey: machineId)
-    } else {
-      tagIdsByMachine[machineId] = ids
-    }
-    persist()
-  }
-
-  /// Drop assignments for machines that no longer exist.
-  func pruneAssignments(keeping machineIds: Set<String>) {
-    let stale = tagIdsByMachine.keys.filter { !machineIds.contains($0) }
-    guard !stale.isEmpty else { return }
-    for machineId in stale {
-      tagIdsByMachine.removeValue(forKey: machineId)
-    }
-    persist()
-  }
-
-  // MARK: - Persistence
-
-  private func load() {
-    let defaults = UserDefaults.standard
-    if let data = defaults.data(forKey: tagsDefaultsKey),
-       let decoded = try? JSONDecoder().decode([WWNMachineTag].self, from: data) {
-      tags = decoded
-    }
-    if let data = defaults.data(forKey: assignmentsDefaultsKey),
-       let decoded = try? JSONDecoder().decode([String: [String]].self, from: data) {
-      tagIdsByMachine = decoded
-    }
-  }
-
-  private func persist() {
-    let defaults = UserDefaults.standard
-    if let data = try? JSONEncoder().encode(tags) {
-      defaults.set(data, forKey: tagsDefaultsKey)
-    }
-    if let data = try? JSONEncoder().encode(tagIdsByMachine) {
-      defaults.set(data, forKey: assignmentsDefaultsKey)
-    }
   }
 }
 

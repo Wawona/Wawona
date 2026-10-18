@@ -128,6 +128,7 @@ public final class WWNRootfsICloudSync: NSObject {
     @objc public static func isSupported() -> Bool { false }
     @objc public static func isEnabled() -> Bool { false }
     @objc public static func isContainerAvailable() -> Bool { false }
+    @objc public static func localHomePath() -> String { "" }
     @objc public static func icloudHomePath() -> String? { nil }
     @objc public static func statusSummary() -> String { "Not available on this platform." }
     @objc public static func prepareICloudLayout() {}

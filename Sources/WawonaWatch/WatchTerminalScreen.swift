@@ -47,9 +47,9 @@ struct WatchTerminalScreen: View {
                 .background(watchPictures(behind: true))
                 .overlay(watchPictures(behind: false), alignment: .topLeading)
             }
-            .onChange(of: rows.count) { _, count in
-                guard count > 0 else { return }
-                proxy.scrollTo(rows[count - 1].id, anchor: .bottom)
+            .onChange(of: rows.count) { _, _ in
+                guard let id = rows.last?.id else { return }
+                proxy.scrollTo(id, anchor: .bottom)
             }
         }
         .background(Color.black)
@@ -242,8 +242,10 @@ private struct WatchTerminalRow: View {
             }
         }
         .lineLimit(1)
-        .fixedSize(horizontal: true, vertical: true)
-        .frame(minHeight: WatchTerminalFonts.cell.1, alignment: .leading)
+        .fixedSize(horizontal: true, vertical: false)
+        .frame(height: WatchTerminalFonts.cell.1, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .clipped()
     }
 
     private func styled(_ raw: String, _ span: WatchTerminalSpan) -> Text {
@@ -296,6 +298,25 @@ private struct WatchTermLineRecord: Decodable {
 
 private enum WatchTerminalSnapshot {
     static func lines(from text: String, cols: UInt32, rows: UInt32) -> [[WatchTerminalSpan]] {
+        if text.first == "[" {
+            let decoded = (try? JSONDecoder().decode([WatchTermLineRecord].self, from: Data(text.utf8))) ?? []
+            if !decoded.isEmpty {
+                return decoded.map { line in
+                    line.spans.map { span in
+                        WatchTerminalSpan(
+                            text: span.text,
+                            fg: span.fg,
+                            bg: span.bg,
+                            bold: span.bold,
+                            italic: span.italic,
+                            underline: span.underline,
+                            blink: span.blink,
+                            strike: span.strike
+                        )
+                    }
+                }
+            }
+        }
         let normalized = text
             .replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\n", with: "\r\n")
@@ -405,5 +426,22 @@ private func watchImage(_ record: WatchPictureRecord) -> CGImage? {
             intent: .defaultIntent
         )
     }
+}
+/// Text after the shell prompt on the last occupied row. That is the
+/// command line the editor must show and keep in step with.
+func watchTerminalCommandLine(from screen: String) -> String {
+    guard screen.first == "[",
+          let rows = try? JSONDecoder().decode([WatchTermLineRecord].self, from: Data(screen.utf8))
+    else { return "" }
+    let lines = rows.map { $0.spans.map(\.text).joined() }
+    guard let last = lines.last(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) else {
+        return ""
+    }
+    for marker in ["% ", "# ", "$ "] {
+        if let range = last.range(of: marker, options: .backwards) {
+            return String(last[range.upperBound...])
+        }
+    }
+    return ""
 }
 #endif

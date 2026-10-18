@@ -906,6 +906,12 @@ pub struct CBufferData {
     /// 1 = Apple Metal present applies V remap for top-down Wayland rows.
     /// 0 = buffer already Y-corrected for Wayland (nested weston GL).
     pub cpu_y_flip: u8,
+    pub _pad_present: [u8; 3],
+    /// 1 = reverse rows before a top-origin sampler (CGImage, SpriteKit
+    /// `SKTexture(cgImage:)`, Android Bitmap). Those samplers match `wl_shm`
+    /// (row 0 is the top). This is the inverse of `cpu_y_flip`: normal SHM
+    /// stays 0, nested weston GL (Metal already-corrected) stays 1.
+    pub top_origin_row_reverse: u8,
 }
 
 /// Pop the next pending buffer update
@@ -921,11 +927,8 @@ pub extern "C" fn WWNCorePopPendingBuffer(core: *mut WWNCore) -> *mut CBufferDat
         let core = unsafe { &*core };
 
         if let Some(event) = core.pop_pending_buffer() {
-            let cpu_y_flip = if core.apple_metal_present_y_flip(event.window_id.id) {
-                1u8
-            } else {
-                0u8
-            };
+            let (cpu_y_flip, top_origin_row_reverse) =
+                present_row_orientation(core, event.window_id.id);
             // Extract data based on buffer type
             match event.buffer.data {
                 super::types::BufferData::Shm {
@@ -961,6 +964,8 @@ pub extern "C" fn WWNCorePopPendingBuffer(core: *mut WWNCore) -> *mut CBufferDat
                         capacity,
                         iosurface_id: 0,
                         cpu_y_flip,
+                        _pad_present: [0; 3],
+                        top_origin_row_reverse,
                     });
 
                     return Box::into_raw(data);
@@ -984,6 +989,8 @@ pub extern "C" fn WWNCorePopPendingBuffer(core: *mut WWNCore) -> *mut CBufferDat
                         capacity: 0,
                         iosurface_id: id,
                         cpu_y_flip,
+                        _pad_present: [0; 3],
+                        top_origin_row_reverse,
                     });
                     return Box::into_raw(data);
                 }
@@ -1019,6 +1026,8 @@ pub extern "C" fn WWNCorePopPendingBuffer(core: *mut WWNCore) -> *mut CBufferDat
                         capacity: 0,
                         iosurface_id: 0,
                         cpu_y_flip,
+                        _pad_present: [0; 3],
+                        top_origin_row_reverse,
                     });
                     return Box::into_raw(data);
                 }
@@ -1047,6 +1056,26 @@ pub extern "C" fn WWNCorePopPendingBuffer(core: *mut WWNCore) -> *mut CBufferDat
         }
     }
 }
+
+/// Metal V remap plus the matching top-origin row reverse.
+///
+/// `wl_shm` stores row 0 at the top. Metal's clip space puts `y = -1` at the
+/// bottom, so upright Metal present sets `cpu_y_flip`. CGImage and
+/// `SKTexture(cgImage:)` are top-origin, same as Wayland, so they reverse
+/// rows only for the nested-weston buffer that Metal treats as already
+/// corrected.
+fn present_row_orientation(core: &WWNCore, window_id: u64) -> (u8, u8) {
+    if core.apple_metal_present_y_flip(window_id) {
+        (1, 0)
+    } else {
+        (0, 1)
+    }
+}
+
+const _: () = {
+    assert!(std::mem::offset_of!(CBufferData, cpu_y_flip) == 68);
+    assert!(std::mem::offset_of!(CBufferData, top_origin_row_reverse) == 72);
+};
 
 /// Free a CBufferData structure and its pixel data
 #[no_mangle]
