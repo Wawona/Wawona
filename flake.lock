@@ -738,11 +738,11 @@
     "terminal": {
       "flake": false,
       "locked": {
-        "lastModified": 1792033423,
-        "narHash": "sha256-Um31Dyq7/4wZLtBNZjaKJT9cFw126uS9lGEGA0268mM=",
+        "lastModified": 1792533009,
+        "narHash": "sha256-WCrXWWOsiaivCniyPw1eACIDRJVa8N/VUxAwgvhZEI0=",
         "owner": "Wawona",
         "repo": "Terminal",
-        "rev": "d31eafb16c36c233f9425880473ac8cb6c439dda",
+        "rev": "389e6f726966dbbb3918f31f91f41cbe09d8a719",
         "type": "github"
       },
       "original": {

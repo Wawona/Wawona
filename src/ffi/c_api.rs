@@ -1122,6 +1122,19 @@ pub extern "C" fn WWNCoreNotifyFramePresented(
     }));
 }
 
+/// Present the whole current scene for a headless host. Returns nodes presented.
+#[no_mangle]
+pub extern "C" fn WWNCorePresentRenderScene(core: *mut WWNCore, timestamp_ms: u32) -> u32 {
+    if core.is_null() {
+        return 0;
+    }
+    let core = unsafe { &*core };
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        core.present_render_scene(timestamp_ms)
+    }))
+    .map_or(0, |presented| u32::try_from(presented).unwrap_or(u32::MAX))
+}
+
 // ----------------------------------------------------------------------------
 // Input Injection API
 // ----------------------------------------------------------------------------

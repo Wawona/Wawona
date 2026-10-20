@@ -438,6 +438,24 @@ impl WawonaCore {
             .create_test_client_socket()
             .map_err(|e| CompositorError::socket_error(e.to_string()).into())
     }
+
+    /// Present every node of the current scene, as a drawing host does after a
+    /// frame. Headless hosts (the WLCS harness) call this once per refresh so
+    /// frame callbacks, buffer releases, and presentation feedback take the
+    /// same path as on-screen hosts. C ABI only (`WWNCorePresentRenderScene`).
+    pub fn present_render_scene(&self, timestamp_ms: u32) -> usize {
+        let scene = self.get_render_scene();
+        let presented = scene.nodes.len();
+        for node in scene.nodes {
+            let buffer =
+                (node.texture.handle != 0).then(|| BufferId::new(node.texture.handle));
+            self.notify_frame_presented(node.surface_id, buffer, timestamp_ms);
+        }
+        if presented > 0 {
+            self.flush_clients();
+        }
+        presented
+    }
 }
 
 #[uniffi::export]

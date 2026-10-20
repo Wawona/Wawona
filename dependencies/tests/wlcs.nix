@@ -5,6 +5,7 @@
 , pkg-config
 , wayland
 , python3
+, coreutils
 , wawonaBackend
 , writeShellApplication
 }:
@@ -48,13 +49,15 @@ let
 in
 writeShellApplication {
   name = "wawona-wlcs-run";
-  runtimeInputs = [ python3 ];
+  runtimeInputs = [ python3 coreutils ];
   text = ''
     set -euo pipefail
 
     output_dir="''${WAWONA_WLCS_OUTPUT_DIR:-wlcs-results}"
     minimum_pass_rate="''${WAWONA_WLCS_MINIMUM_PASS_RATE:-100}"
     maximum_failures="''${WAWONA_WLCS_MAXIMUM_FAILURES:-0}"
+    # A hung test must still leave a graded report inside the CI job budget.
+    run_timeout="''${WAWONA_WLCS_TIMEOUT_SECONDS:-1800}"
     declare -a wlcs_args=()
     while (($#)); do
       case "$1" in
@@ -64,12 +67,15 @@ writeShellApplication {
           minimum_pass_rate="$2"; shift 2 ;;
         --maximum-failures)
           maximum_failures="$2"; shift 2 ;;
+        --timeout)
+          run_timeout="$2"; shift 2 ;;
         --help)
           cat <<'HELP'
 Usage: wawona-wlcs-run [runner options] [GoogleTest options]
   --output-dir DIR          Report directory (default: wlcs-results)
   --minimum-pass-rate N     Required percentage (default: 100)
   --maximum-failures N      Required failure ceiling (default: 0)
+  --timeout SECONDS         Whole-run limit; a hang fails as infra (default: 1800)
 
 Examples:
   wawona-wlcs-run
@@ -85,7 +91,8 @@ HELP
     output_dir="$(realpath "$output_dir")"
     xml="$output_dir/wlcs.xml"
     set +e
-    "${wlcsBin}" "${integration}/lib/libwawona_wlcs.so" \
+    timeout --kill-after=30 "$run_timeout" \
+      "${wlcsBin}" "${integration}/lib/libwawona_wlcs.so" \
       "--gtest_output=xml:$xml" "''${wlcs_args[@]}" \
       2>&1 | tee "$output_dir/wlcs.log"
     wlcs_status="''${PIPESTATUS[0]}"
@@ -93,6 +100,7 @@ HELP
 
     python3 ${../../scripts/wlcs-grade.py} \
       --xml "$xml" \
+      --log "$output_dir/wlcs.log" \
       --json "$output_dir/summary.json" \
       --markdown "$output_dir/summary.md" \
       --wlcs-exit-code "$wlcs_status" \

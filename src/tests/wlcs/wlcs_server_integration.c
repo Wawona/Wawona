@@ -12,8 +12,9 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <time.h>
+#include <string.h>
 #include <unistd.h>
-#include <wayland-client-core.h>
+#include <wayland-client.h>
 #include <wayland-util.h>
 #include <wlcs/display_server.h>
 #include <wlcs/pointer.h>
@@ -38,6 +39,7 @@ extern void WWNCoreInjectTouchMotion(
 extern void WWNCoreInjectTouchUp(void *core, int32_t id, uint32_t timestamp_ms);
 extern void WWNCoreInject_touch_frame(void *core);
 extern void WWNCoreFlushClients(void *core);
+extern uint32_t WWNCorePresentRenderScene(void *core, uint32_t timestamp_ms);
 
 typedef struct {
     int fd;
@@ -76,30 +78,136 @@ static uint32_t timestamp_ms(void) {
                       ((uint64_t)ts.tv_nsec / 1000000u));
 }
 
+/* Headless output refresh. Real hosts present after drawing; WLCS has no
+ * display, so the harness presents the scene at this cadence instead. */
+#define WAWONA_WLCS_REFRESH_MS 16u
+
 static void *event_thread_main(void *opaque) {
     WawonaWlcsServer *server = opaque;
+    uint32_t last_present = timestamp_ms();
     while (atomic_load_explicit(
         &server->event_thread_running, memory_order_acquire)) {
         (void)WWNCoreProcessEvents(server->core);
+        uint32_t now = timestamp_ms();
+        if (now - last_present >= WAWONA_WLCS_REFRESH_MS) {
+            (void)WWNCorePresentRenderScene(server->core, now);
+            last_present = now;
+        }
         usleep(1000);
     }
     return NULL;
 }
 
-static const WlcsExtensionDescriptor kExtensions[] = {
-    {.name = "xdg_shell", .version = 6},
+/*
+ * WLCS skips every test whose interface is missing from this list, so it is
+ * derived from the globals the core really advertises instead of a hand list
+ * that drifts from src/core/wayland.
+ */
+static WlcsExtensionDescriptor *g_extensions;
+static size_t g_extension_count;
+static size_t g_extension_capacity;
+static WlcsIntegrationDescriptor g_descriptor = {
+    .version = WLCS_INTEGRATION_DESCRIPTOR_VERSION,
+};
+static pthread_once_t g_descriptor_once = PTHREAD_ONCE_INIT;
+
+static void probe_registry_global(
+    void *data, struct wl_registry *registry, uint32_t name,
+    const char *interface, uint32_t version) {
+    (void)data;
+    (void)registry;
+    (void)name;
+    for (size_t i = 0; i < g_extension_count; ++i) {
+        if (strcmp(g_extensions[i].name, interface) == 0) {
+            if (version > g_extensions[i].version) {
+                g_extensions[i].version = version;
+            }
+            return;
+        }
+    }
+    if (g_extension_count == g_extension_capacity) {
+        size_t capacity = g_extension_capacity ? g_extension_capacity * 2 : 64;
+        WlcsExtensionDescriptor *grown =
+            realloc(g_extensions, capacity * sizeof(*grown));
+        if (!grown) {
+            return;
+        }
+        g_extensions = grown;
+        g_extension_capacity = capacity;
+    }
+    char *copy = strdup(interface);
+    if (!copy) {
+        return;
+    }
+    g_extensions[g_extension_count++] =
+        (WlcsExtensionDescriptor){.name = copy, .version = version};
+}
+
+static void probe_registry_global_remove(
+    void *data, struct wl_registry *registry, uint32_t name) {
+    (void)data;
+    (void)registry;
+    (void)name;
+}
+
+static const struct wl_registry_listener kProbeRegistryListener = {
+    .global = probe_registry_global,
+    .global_remove = probe_registry_global_remove,
 };
 
-static const WlcsIntegrationDescriptor kDescriptor = {
-    .version = WLCS_INTEGRATION_DESCRIPTOR_VERSION,
-    .num_extensions = sizeof(kExtensions) / sizeof(kExtensions[0]),
-    .supported_extensions = kExtensions,
-};
+typedef struct {
+    void *core;
+    atomic_bool running;
+} ProbeLoop;
+
+static void *probe_thread_main(void *opaque) {
+    ProbeLoop *loop = opaque;
+    while (atomic_load_explicit(&loop->running, memory_order_acquire)) {
+        (void)WWNCoreProcessEvents(loop->core);
+        usleep(1000);
+    }
+    return NULL;
+}
+
+static void probe_advertised_globals(void) {
+    ProbeLoop loop = {.core = WWNCoreNew()};
+    if (!loop.core || !WWNCoreStart(loop.core, "wawona-wlcs-probe")) {
+        abort();
+    }
+    atomic_init(&loop.running, true);
+    pthread_t thread;
+    if (pthread_create(&thread, NULL, probe_thread_main, &loop) != 0) {
+        abort();
+    }
+
+    uint32_t client_id = 0;
+    int fd = WWNCoreCreateTestClientSocket(loop.core, &client_id);
+    struct wl_display *display = fd >= 0 ? wl_display_connect_to_fd(fd) : NULL;
+    if (!display) {
+        abort();
+    }
+    struct wl_registry *registry = wl_display_get_registry(display);
+    wl_registry_add_listener(registry, &kProbeRegistryListener, NULL);
+    if (wl_display_roundtrip(display) < 0 || g_extension_count == 0) {
+        abort();
+    }
+    wl_registry_destroy(registry);
+    wl_display_disconnect(display);
+
+    atomic_store_explicit(&loop.running, false, memory_order_release);
+    pthread_join(thread, NULL);
+    (void)WWNCoreStop(loop.core);
+    WWNCoreFree(loop.core);
+
+    g_descriptor.num_extensions = g_extension_count;
+    g_descriptor.supported_extensions = g_extensions;
+}
 
 static const WlcsIntegrationDescriptor *wawona_get_descriptor(
     const WlcsDisplayServer *server) {
     (void)server;
-    return &kDescriptor;
+    pthread_once(&g_descriptor_once, probe_advertised_globals);
+    return &g_descriptor;
 }
 
 static void wawona_start(WlcsDisplayServer *display_server) {
@@ -287,6 +395,7 @@ static WlcsDisplayServer *wawona_create_server(
     int argc, char const **argv) {
     (void)argc;
     (void)argv;
+    pthread_once(&g_descriptor_once, probe_advertised_globals);
     WawonaWlcsServer *server = calloc(1, sizeof(*server));
     if (!server) {
         return NULL;
