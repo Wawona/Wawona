@@ -413,17 +413,6 @@ impl XdgShellHandler for CompositorState {
         }
         self.surface_to_window.insert(surface_id, window_id);
 
-        if let Some(surface_res) = self
-            .get_surface(surface_id)
-            .and_then(|s| s.read().ok().and_then(|s| s.resource.clone()))
-        {
-            for output in self.output_resources.values() {
-                if surface_res.client() == output.client() {
-                    surface_res.enter(output);
-                }
-            }
-        }
-
         self.pending_compositor_events
             .push(CompositorEvent::PopupCreated {
                 client_id: client_id.clone(),

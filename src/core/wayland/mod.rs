@@ -17,9 +17,14 @@ pub mod xdg;
 impl smithay::wayland::buffer::BufferHandler for crate::core::state::CompositorState {
     fn buffer_destroyed(
         &mut self,
-        _buffer: &smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer,
+        buffer: &smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer,
     ) {
-        // Wawona keeps explicit buffer lifecycle bookkeeping in its own render paths.
+        // Protocol ids are recycled; a stale entry would hand the next buffer
+        // with this id the old buffer's size, stride, and format.
+        use smithay::reexports::wayland_server::Resource;
+        if let Some(client) = buffer.client() {
+            self.remove_buffer(client.id(), buffer.id().protocol_id());
+        }
     }
 }
 
@@ -211,13 +216,34 @@ impl smithay::wayland::compositor::CompositorHandler for crate::core::state::Com
                         let buffer_id = buffer_resource.id().protocol_id();
                         surface_state.pending.buffer_id = Some(buffer_id);
 
-                        if let Some(buffer_ref) = self.get_buffer(client_id.clone(), buffer_id) {
+                        let known = self.get_buffer(client_id.clone(), buffer_id).filter(|b| {
+                            b.read()
+                                .unwrap()
+                                .resource
+                                .as_ref()
+                                .is_none_or(|res| res == &buffer_resource)
+                        });
+                        if let Some(buffer_ref) = known {
                             let mut buf = buffer_ref.write().unwrap();
                             buf.released = false;
                             buf.resource = Some(buffer_resource.clone());
                             surface_state.pending.buffer = buf.buffer_type.clone();
                         } else if let Ok((width, height, stride, offset, format)) =
-                            with_buffer_contents(&buffer_resource, |_, _, data| {
+                            with_buffer_contents(&buffer_resource, |ptr, len, data| {
+                                // Touch the buffer's last byte so a pool truncated
+                                // after creation faults here, inside Smithay's
+                                // SIGBUS guard, which posts wl_shm.invalid_fd.
+                                if let Some(last) = crate::core::surface::buffer::shm_last_byte(
+                                    data.offset,
+                                    data.stride,
+                                    data.height,
+                                )
+                                .filter(|&last| last < len)
+                                {
+                                    // SAFETY: `last < len` keeps the read inside the
+                                    // pool mapping Smithay holds for this closure.
+                                    let _ = unsafe { std::ptr::read_volatile(ptr.add(last)) };
+                                }
                                 (
                                     data.width,
                                     data.height,
@@ -320,6 +346,14 @@ impl smithay::input::SeatHandler for crate::core::state::CompositorState {
             return;
         };
         let client = focused.and_then(|surface| surface.client());
+        let keyboard_surface = focused.zip(client.as_ref()).and_then(|(surface, client)| {
+            self.protocol_to_internal_surface
+                .get(&(client.id(), surface.id().protocol_id()))
+                .copied()
+        });
+        self.ext
+            .pointer_constraints
+            .sync_activation(keyboard_surface, self.seat.pointer.focus);
         smithay::wayland::selection::data_device::set_data_device_focus(&dh, seat, client.clone());
         if self.smithay_runtime.primary_selection.is_some() {
             smithay::wayland::selection::primary_selection::set_primary_focus(&dh, seat, client);
@@ -345,9 +379,10 @@ impl smithay::wayland::selection::SelectionHandler for crate::core::state::Compo
         source: Option<smithay::wayland::selection::SelectionSource>,
         seat: smithay::input::Seat<Self>,
     ) {
-        if ty != smithay::wayland::selection::SelectionTarget::Clipboard
-            && ty != smithay::wayland::selection::SelectionTarget::Primary
-        {
+        // The native pasteboard has one slot: only the clipboard feeds it.
+        // Primary stays Wayland-internal (the request below reads the
+        // clipboard selection, so bridging Primary would copy the wrong data).
+        if ty != smithay::wayland::selection::SelectionTarget::Clipboard {
             return;
         }
         let Some(source) = source else {

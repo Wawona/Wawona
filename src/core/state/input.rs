@@ -250,17 +250,6 @@ impl CompositorState {
         if let Some((surface_id, lx, ly)) = picking_res {
             if Some(surface_id) != old_focus {
                 if let Some(old_id) = old_focus {
-                    let old_client_id = self
-                        .surfaces
-                        .get(&old_id)
-                        .and_then(|s| s.read().unwrap().client_id.clone());
-                    if let Some(cid) = old_client_id {
-                        self.ext
-                            .pointer_constraints
-                            .deactivate_constraints(cid, old_id);
-                    }
-                }
-                if let Some(old_id) = old_focus {
                     if let Some(surface) = self.get_surface(old_id) {
                         let surface = surface.read().unwrap();
                         if let Some(res) = &surface.resource {
@@ -285,15 +274,7 @@ impl CompositorState {
                 self.seat.pointer.focus = Some(surface_id);
                 self.focus
                     .set_pointer_focus(self.surface_to_window.get(&surface_id).copied());
-                let new_client_id = self
-                    .surfaces
-                    .get(&surface_id)
-                    .and_then(|s| s.read().unwrap().client_id.clone());
-                if let Some(cid) = new_client_id {
-                    self.ext
-                        .pointer_constraints
-                        .activate_constraints(cid, surface_id);
-                }
+                self.sync_pointer_constraints();
             }
 
             for pointer in &self.seat.pointer.resources {
@@ -301,15 +282,6 @@ impl CompositorState {
             }
         } else {
             if let Some(old_id) = old_focus {
-                let old_client_id = self
-                    .surfaces
-                    .get(&old_id)
-                    .and_then(|s| s.read().unwrap().client_id.clone());
-                if let Some(cid) = old_client_id {
-                    self.ext
-                        .pointer_constraints
-                        .deactivate_constraints(cid, old_id);
-                }
                 if let Some(surface) = self.get_surface(old_id) {
                     let surface = surface.read().unwrap();
                     if let Some(res) = &surface.resource {
@@ -322,6 +294,7 @@ impl CompositorState {
             }
             self.seat.pointer.focus = None;
             self.focus.set_pointer_focus(None);
+            self.sync_pointer_constraints();
         }
     }
 
@@ -708,14 +681,48 @@ impl CompositorState {
     pub fn set_focused_window(&mut self, window_id: Option<u32>) {
         self.focus.set_keyboard_focus(window_id);
 
-        if let Some(wid) = window_id {
-            if let Some(window) = self.windows.get(&wid) {
-                let window = window.read().unwrap();
-                self.seat.keyboard.focus = Some(window.surface_id);
-            }
-        } else {
-            self.seat.keyboard.focus = None;
+        let target = match window_id {
+            Some(wid) => match self.windows.get(&wid) {
+                Some(window) => Some(window.read().unwrap().surface_id),
+                None => return,
+            },
+            None => None,
+        };
+        if self.seat.keyboard.focus == target {
+            return;
         }
+        let resource_of = |state: &Self, sid: Option<u32>| {
+            sid.and_then(|sid| state.surfaces.get(&sid))
+                .and_then(|s| s.read().unwrap().resource.clone())
+        };
+        let old_res = resource_of(self, self.seat.keyboard.focus);
+        let new_res = resource_of(self, target);
+        self.seat.keyboard.focus = target;
+
+        if let Some(res) = &old_res {
+            self.ext.text_input.leave(res);
+        }
+        let serial = self.next_serial();
+        if let Some(keyboard) = self
+            .smithay_runtime
+            .seat
+            .as_ref()
+            .and_then(|s| s.get_keyboard())
+        {
+            keyboard.set_focus(self, new_res.clone(), serial.into());
+        } else {
+            if let Some(res) = &old_res {
+                self.seat.broadcast_keyboard_leave(serial, res);
+            }
+            if let Some(res) = &new_res {
+                let keys = self.seat.keyboard.pressed_keys.clone();
+                self.seat.broadcast_keyboard_enter(serial, res, &keys);
+            }
+        }
+        if let Some(res) = &new_res {
+            self.ext.text_input.enter(res, target);
+        }
+        self.sync_pointer_constraints();
 
         tracing::debug!("Focus changed to window: {:?}", window_id);
     }
@@ -755,6 +762,54 @@ impl CompositorState {
     // Input Processing
     // =========================================================================
 
+    /// Recompute pointer-constraint activation from current keyboard and
+    /// pointer focus. Call after either focus changes.
+    pub fn sync_pointer_constraints(&mut self) {
+        let (keyboard, pointer) = (self.seat.keyboard.focus, self.seat.pointer.focus);
+        self.ext
+            .pointer_constraints
+            .sync_activation(keyboard, pointer);
+    }
+
+    /// Apply the active pointer constraint to a global motion target.
+    /// Returns `None` when the pointer is locked (position must not change);
+    /// otherwise the position, clamped into the focused window when confined.
+    pub fn constrain_global_pointer(&mut self, x: f64, y: f64, time_ms: u32) -> Option<(f64, f64)> {
+        use crate::core::wayland::ext::pointer_constraints::{
+            clamp_to_confinement, ActiveConstraint,
+        };
+        let (raw_x, raw_y) = self.seat.pointer.global_raw.unwrap_or((x, y));
+        self.seat.pointer.global_raw = Some((x, y));
+        let (dx, dy) = (x - raw_x, y - raw_y);
+        let moved = dx.is_finite() && dy.is_finite() && (dx != 0.0 || dy != 0.0);
+        if moved {
+            self.ext
+                .relative_pointers
+                .broadcast_relative_motion(0, 0, time_ms, dx, dy, dx, dy);
+        }
+        let Some(focus) = self.seat.pointer.focus else {
+            return Some((x, y));
+        };
+        match self.ext.pointer_constraints.active_on(focus) {
+            Some(ActiveConstraint::Locked) => None,
+            Some(ActiveConstraint::Confined) => {
+                let (cx, cy) = self.seat.pointer.global_position.unwrap_or((x, y));
+                let (tx, ty) = if moved { (cx + dx, cy + dy) } else { (cx, cy) };
+                Some(
+                    self.get_window_by_surface(focus)
+                        .map(|window| {
+                            let g = window.read().unwrap().geometry();
+                            let w = i32::try_from(g.width).unwrap_or(i32::MAX);
+                            let h = i32::try_from(g.height).unwrap_or(i32::MAX);
+                            clamp_to_confinement(tx, ty, (g.x, g.y, w, h))
+                        })
+                        .unwrap_or((tx, ty)),
+                )
+            }
+            None => Some((x, y)),
+        }
+    }
+
     /// Process a raw input event from the platform/FFI
     pub fn process_input_event(&mut self, event: crate::core::input::InputEvent) {
         use crate::core::input::InputEvent;
@@ -778,6 +833,7 @@ impl CompositorState {
                 self.inject_touch_cancel();
             }
             InputEvent::PointerMotion { x, y, time_ms } => {
+                let (prev_x, prev_y) = (self.seat.pointer.x, self.seat.pointer.y);
                 self.seat.pointer.x = x;
                 self.seat.pointer.y = y;
 
@@ -830,16 +886,18 @@ impl CompositorState {
                         }
 
                         self.seat.pointer.focus = Some(surface_id);
+                        self.sync_pointer_constraints();
                     }
+                    self.seat.pointer.focus_x = x - win_geo.x as f64;
+                    self.seat.pointer.focus_y = y - win_geo.y as f64;
 
-                    let dx = x - self.seat.pointer.x;
-                    let dy = y - self.seat.pointer.y;
-                    self.ext
-                        .relative_pointers
-                        .broadcast_relative_motion(0, 0, time_ms, dx, dy, dx, dy);
-
-                    self.seat.pointer.x = x;
-                    self.seat.pointer.y = y;
+                    let dx = x - prev_x;
+                    let dy = y - prev_y;
+                    if dx != 0.0 || dy != 0.0 {
+                        self.ext
+                            .relative_pointers
+                            .broadcast_relative_motion(0, 0, time_ms, dx, dy, dx, dy);
+                    }
 
                     let client_id = self
                         .surfaces
@@ -889,6 +947,7 @@ impl CompositorState {
                         }
                     }
                     self.seat.pointer.focus = None;
+                    self.sync_pointer_constraints();
                 }
             }
             InputEvent::PointerButton {

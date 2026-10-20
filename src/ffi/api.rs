@@ -439,6 +439,124 @@ impl WawonaCore {
             .map_err(|e| CompositorError::socket_error(e.to_string()).into())
     }
 
+    /// Mark this core as driven by a host without a window system, so the
+    /// core applies desktop focus policy itself (see `headless_host`).
+    pub fn set_headless_host(&self, enabled: bool) {
+        self.state.write_recover().headless_host = enabled;
+    }
+
+    /// Headless host loop step (WLCS, CI): drain window events nobody else
+    /// consumes and re-pick the global pointer, since the scene may have
+    /// changed under it.
+    pub fn headless_host_tick(&self) {
+        while self.pop_window_event().is_some() {}
+        self.repick_global_pointer(crate::core::compositor::Compositor::timestamp_ms());
+        self.flush_clients();
+    }
+
+    /// Pointer motion in compositor-global coordinates, for hosts without a
+    /// window system. Applies pointer constraints, then delivers through the
+    /// window-local path platform hosts use.
+    pub fn inject_pointer_motion_global(&self, x: f64, y: f64, timestamp_ms: u32) {
+        if !self.is_running() {
+            return;
+        }
+        let position = {
+            let mut state = self.state.write_recover();
+            let position = state.constrain_global_pointer(x, y, timestamp_ms);
+            if let Some(position) = position {
+                state.seat.pointer.global_position = Some(position);
+            }
+            position
+        };
+        if let Some((x, y)) = position {
+            self.deliver_global_pointer(x, y, timestamp_ms);
+        }
+    }
+
+    /// Pointer button at the global pointer. A press focuses and raises the
+    /// window under the pointer (click-to-focus).
+    pub fn inject_pointer_button_global(&self, button: u32, state: ButtonState, timestamp_ms: u32) {
+        if !self.is_running() {
+            return;
+        }
+        let Some((window, _, _)) = self.state.read_recover().seat.pointer.global_target else {
+            return;
+        };
+        if state == ButtonState::Pressed {
+            let mut compositor_state = self.state.write_recover();
+            if let Ok(wid) = u32::try_from(window) {
+                compositor_state.set_focused_window(Some(wid));
+                compositor_state.window_tree.bring_to_front(wid);
+            }
+        }
+        self.inject_pointer_button(
+            WindowId { id: window },
+            PointerButton::Other(button),
+            state,
+            timestamp_ms,
+        );
+    }
+
+    /// Re-deliver the global pointer when the window or window-local position
+    /// under it changed without pointer motion (window moved, resized,
+    /// mapped, or unmapped).
+    pub fn repick_global_pointer(&self, timestamp_ms: u32) {
+        let (position, last) = {
+            let state = self.state.read_recover();
+            (
+                state.seat.pointer.global_position,
+                state.seat.pointer.global_target,
+            )
+        };
+        let Some((x, y)) = position else {
+            return;
+        };
+        if self.global_pointer_target(x, y) != last {
+            self.deliver_global_pointer(x, y, timestamp_ms);
+        }
+    }
+
+    /// Window and window-local position under a global point. While a button
+    /// is held, the implicit grab keeps the pressed window as the target.
+    fn global_pointer_target(&self, x: f64, y: f64) -> Option<(u64, f64, f64)> {
+        let mut state = self.state.write_recover();
+        let grabbed = (state.seat.pointer.button_count > 0)
+            .then_some(state.seat.pointer.global_target)
+            .flatten()
+            .map(|(window, _, _)| window);
+        let window = match grabbed {
+            Some(window) => u32::try_from(window).ok()?,
+            None => {
+                let (surface, _, _) = state.find_surface_at(x, y)?;
+                state
+                    .get_window_by_surface(surface)
+                    .map(|w| w.read_recover().id)?
+            }
+        };
+        let window_ref = state.get_window(window)?;
+        let w = window_ref.read_recover();
+        Some((u64::from(window), x - f64::from(w.x), y - f64::from(w.y)))
+    }
+
+    fn deliver_global_pointer(&self, x: f64, y: f64, timestamp_ms: u32) {
+        let target = self.global_pointer_target(x, y);
+        let previous = {
+            let mut state = self.state.write_recover();
+            std::mem::replace(&mut state.seat.pointer.global_target, target)
+        };
+        match target {
+            Some((window, lx, ly)) => {
+                self.inject_pointer_motion(WindowId { id: window }, lx, ly, timestamp_ms);
+            }
+            None => {
+                if let Some((window, _, _)) = previous {
+                    self.inject_pointer_leave(WindowId { id: window }, timestamp_ms);
+                }
+            }
+        }
+    }
+
     /// Present every node of the current scene, as a drawing host does after a
     /// frame. Headless hosts (the WLCS harness) call this once per refresh so
     /// frame callbacks, buffer releases, and presentation feedback take the
@@ -447,8 +565,7 @@ impl WawonaCore {
         let scene = self.get_render_scene();
         let presented = scene.nodes.len();
         for node in scene.nodes {
-            let buffer =
-                (node.texture.handle != 0).then(|| BufferId::new(node.texture.handle));
+            let buffer = (node.texture.handle != 0).then(|| BufferId::new(node.texture.handle));
             self.notify_frame_presented(node.surface_id, buffer, timestamp_ms);
         }
         if presented > 0 {
@@ -954,9 +1071,15 @@ impl WawonaCore {
         let Some(window) = state.get_window_by_surface(internal_surface_id) else {
             return false;
         };
-        let mut window = window.write_recover();
-        window.x = x;
-        window.y = y;
+        {
+            let mut window = window.write_recover();
+            window.x = x;
+            window.y = y;
+        }
+        drop(state);
+        drop(compositor_guard);
+        self.repick_global_pointer(crate::core::compositor::Compositor::timestamp_ms());
+        self.flush_clients();
         true
     }
 
@@ -3108,6 +3231,7 @@ fn ensure_pointer_focus(
             }
         }
     }
+    state.sync_pointer_constraints();
     deliver_pointer_motion_to_clients(state, 0, lx, ly);
 }
 
@@ -4452,6 +4576,7 @@ impl WawonaCore {
             }
 
             state.seat.pointer.focus = None;
+            state.sync_pointer_constraints();
 
             if let Some(surface) = state.surfaces.get(&sid).cloned() {
                 let surface = surface.read_recover();

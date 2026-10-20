@@ -10,6 +10,7 @@
 #include <stdatomic.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
 #include <string.h>
@@ -40,6 +41,8 @@ extern void WWNCoreInjectTouchUp(void *core, int32_t id, uint32_t timestamp_ms);
 extern void WWNCoreInject_touch_frame(void *core);
 extern void WWNCoreFlushClients(void *core);
 extern uint32_t WWNCorePresentRenderScene(void *core, uint32_t timestamp_ms);
+extern void WWNCoreHeadlessHostTick(void *core);
+extern void WWNCoreSetHeadlessHost(void *core, bool enabled);
 
 typedef struct {
     int fd;
@@ -88,6 +91,7 @@ static void *event_thread_main(void *opaque) {
     while (atomic_load_explicit(
         &server->event_thread_running, memory_order_acquire)) {
         (void)WWNCoreProcessEvents(server->core);
+        WWNCoreHeadlessHostTick(server->core);
         uint32_t now = timestamp_ms();
         if (now - last_present >= WAWONA_WLCS_REFRESH_MS) {
             (void)WWNCorePresentRenderScene(server->core, now);
@@ -171,7 +175,9 @@ static void *probe_thread_main(void *opaque) {
 
 static void probe_advertised_globals(void) {
     ProbeLoop loop = {.core = WWNCoreNew()};
-    if (!loop.core || !WWNCoreStart(loop.core, "wawona-wlcs-probe")) {
+    char socket_name[64];
+    snprintf(socket_name, sizeof socket_name, "wawona-wlcs-probe-%ld", (long)getpid());
+    if (!loop.core || !WWNCoreStart(loop.core, socket_name)) {
         abort();
     }
     atomic_init(&loop.running, true);
@@ -215,7 +221,12 @@ static void wawona_start(WlcsDisplayServer *display_server) {
     if (!server->core) {
         server->core = WWNCoreNew();
     }
-    if (!server->core || !WWNCoreStart(server->core, "wawona-wlcs")) {
+    char socket_name[64];
+    snprintf(socket_name, sizeof socket_name, "wawona-wlcs-%ld", (long)getpid());
+    if (server->core) {
+        WWNCoreSetHeadlessHost(server->core, true);
+    }
+    if (!server->core || !WWNCoreStart(server->core, socket_name)) {
         abort();
     }
     atomic_store_explicit(

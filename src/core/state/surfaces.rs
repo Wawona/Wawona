@@ -179,12 +179,23 @@ impl CompositorState {
         // subsurfaces that happens on the ancestor's commit, and smithay
         // re-invokes CompositorHandler::commit for each surface in the
         // transaction). So the shadow state always does a direct commit here.
-        let release_id = if let Some(surface) = self.get_surface(surface_id) {
+        let (release_id, output_presence) = if let Some(surface) = self.get_surface(surface_id) {
             let mut surface = surface.write().unwrap();
-            surface.commit()
+            let release_id = surface.commit();
+            let mapped = !matches!(
+                surface.current.buffer,
+                crate::core::surface::BufferType::None
+            );
+            (
+                release_id,
+                surface.resource.clone().map(|res| (res, mapped)),
+            )
         } else {
-            None
+            (None, None)
         };
+        if let Some((resource, mapped)) = output_presence {
+            self.sync_surface_outputs(&resource, mapped);
+        }
 
         let client_id = if let Some(surface) = self.get_surface(surface_id) {
             surface.read().unwrap().client_id.clone()
@@ -206,6 +217,23 @@ impl CompositorState {
 
         self.ext.presentation.mark_committed(surface_id);
         self.finalize_surface_commit(surface_id);
+    }
+
+    /// wl_surface.enter/leave. A surface with content is on every output; an
+    /// unmapped one is on none. Smithay dedupes and replays enter for outputs
+    /// the client binds later.
+    pub fn sync_surface_outputs(
+        &self,
+        surface: &wayland_server::protocol::wl_surface::WlSurface,
+        mapped: bool,
+    ) {
+        for output in &self.smithay_runtime.smithay_outputs {
+            if mapped {
+                output.enter(surface);
+            } else {
+                output.leave(surface);
+            }
+        }
     }
 
     /// Queue a buffer for release after next frame presentation

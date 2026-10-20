@@ -1478,6 +1478,12 @@ pub struct CompositorState {
     /// window's first surface is committed (becomeKeyWindow vs first xdg map).
     pub pending_keyboard_focus_window: Option<u64>,
 
+    /// Host has no window system (WLCS, CI): the core applies desktop focus
+    /// policy itself, synchronously, so focus changes are ordered before any
+    /// later protocol reply (a new toplevel takes keyboard focus; destroying
+    /// the focused one returns focus to the previous window).
+    pub headless_host: bool,
+
     /// Subsurface registry, keyed by subsurface's surface ID
     pub subsurfaces: HashMap<u32, SubsurfaceState>,
 
@@ -1679,6 +1685,7 @@ impl CompositorState {
             windows: HashMap::new(),
             surface_to_window: HashMap::new(),
             pending_keyboard_focus_window: None,
+            headless_host: false,
             subsurfaces: HashMap::new(),
             subsurface_children: HashMap::new(),
             protocol_to_internal_surface: HashMap::new(),
