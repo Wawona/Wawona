@@ -64,7 +64,11 @@ pub fn launch(
         LinuxMachineType::SshWaypipe => {
             let target = machine_target(profile);
             let remote_cmd = if profile.remote_command.trim().is_empty() {
-                "weston-terminal".to_string()
+                if !settings.waypipe_remote_command.trim().is_empty() {
+                    settings.waypipe_remote_command.clone()
+                } else {
+                    "weston-terminal".to_string()
+                }
             } else {
                 profile.remote_command.clone()
             };
@@ -77,28 +81,20 @@ pub fn launch(
                 remote_cmd
             );
             let mut c = Command::new("waypipe");
-            c.arg("--compress")
-                .arg(settings.waypipe_compression.clone())
-                .arg("ssh")
-                .arg("-p")
-                .arg(profile.ssh_port.to_string())
-                .arg(target)
-                .arg(remote_cmd);
-            if settings.waypipe_debug {
-                wlog!("LAUNCHER", "Waypipe debug enabled");
-                c.arg("--debug");
-            }
-            if settings.waypipe_video != "none" {
-                wlog!("LAUNCHER", "Waypipe video={}", settings.waypipe_video);
-                c.arg("--video").arg(settings.waypipe_video.clone());
-            }
+            configure_waypipe_command(
+                &mut c,
+                settings,
+                profile.ssh_port as i32,
+                &target,
+                &remote_cmd,
+            );
             c
         }
     };
 
     cmd.env("XDG_RUNTIME_DIR", &rt.xdg_runtime_dir);
     cmd.env("WAYLAND_DISPLAY", &rt.wayland_display);
-    apply_environment_overrides(&mut cmd, settings);
+    apply_settings_environment(&mut cmd, settings);
     cmd.stdin(Stdio::null());
     cmd.stdout(Stdio::inherit());
     cmd.stderr(Stdio::inherit());
@@ -115,15 +111,134 @@ pub fn launch(
     Ok(child)
 }
 
-fn apply_environment_overrides(cmd: &mut Command, settings: &LinuxSettings) {
+fn configure_waypipe_command(
+    c: &mut Command,
+    settings: &LinuxSettings,
+    port: i32,
+    target: &str,
+    remote_cmd: &str,
+) {
+    let comp = if settings.waypipe_compress_level > 0 {
+        format!(
+            "{}:{}",
+            settings.waypipe_compression, settings.waypipe_compress_level
+        )
+    } else {
+        settings.waypipe_compression.clone()
+    };
+    c.arg("--compress").arg(comp);
+    if settings.waypipe_threads > 0 {
+        c.arg("--threads").arg(settings.waypipe_threads.to_string());
+    }
+    if settings.waypipe_display > 0 {
+        c.arg("--display")
+            .arg(format!("wayland-{}", settings.waypipe_display));
+    }
+    if !settings.waypipe_socket.trim().is_empty() {
+        c.arg("--socket").arg(settings.waypipe_socket.trim());
+    }
+    if settings.waypipe_no_gpu {
+        c.arg("--no-gpu");
+    }
+    if settings.waypipe_oneshot {
+        c.arg("--oneshot");
+    }
+    if settings.waypipe_unlink_socket {
+        c.arg("--unlink-socket");
+    }
+    if settings.waypipe_login_shell {
+        c.arg("--login-shell");
+    }
+    if !settings.waypipe_title_prefix.trim().is_empty() {
+        c.arg("--title-prefix")
+            .arg(settings.waypipe_title_prefix.trim());
+    }
+    if settings.waypipe_debug {
+        c.arg("--debug");
+    }
+    if settings.waypipe_video != "none" && !settings.waypipe_video.is_empty() {
+        let mut v = settings.waypipe_video.clone();
+        if !settings.waypipe_video_bpf.is_empty() && settings.waypipe_video_bpf != "0" {
+            v.push_str(&format!(":bpf={}", settings.waypipe_video_bpf));
+        }
+        c.arg("--video").arg(v);
+    }
+    c.arg("ssh")
+        .arg("-p")
+        .arg(port.to_string())
+        .arg(target)
+        .arg(remote_cmd);
+}
+
+fn apply_settings_environment(cmd: &mut Command, settings: &LinuxSettings) {
     for name in &settings.environment_unsets {
         cmd.env_remove(name);
+    }
+    if !settings.compositor_backend.is_empty() && settings.compositor_backend != "auto" {
+        let niri_val = match settings.compositor_backend.trim().to_lowercase().as_str() {
+            "drm" | "tty" => "tty",
+            _ => "nested",
+        };
+        cmd.env("NIRI_BACKEND", niri_val);
+    }
+    if !settings.vulkan_driver.is_empty() && settings.vulkan_driver != "auto" {
+        cmd.env("VK_ICD_FILENAMES", &settings.vulkan_driver);
+        cmd.env("VK_DRIVER_FILES", &settings.vulkan_driver);
+        cmd.env("WWN_VULKAN_DRIVER", &settings.vulkan_driver);
+    }
+    if !settings.opengl_driver.is_empty() && settings.opengl_driver != "auto" {
+        cmd.env("WWN_OPENGL_DRIVER", &settings.opengl_driver);
     }
     for (name, value) in &settings.environment_overrides {
         if value.is_empty() {
             cmd.env_remove(name);
         } else {
             cmd.env(name, value);
+        }
+    }
+}
+
+fn apply_profile_runtime_overrides(cmd: &mut Command, profile: &MachineProfile) {
+    let ro = &profile.runtime_overrides;
+    if let Some(ref backend) = ro.compositor_backend {
+        let trimmed = backend.trim();
+        if !trimmed.is_empty() && trimmed != "auto" {
+            let niri_val = match trimmed.to_lowercase().as_str() {
+                "drm" | "tty" => "tty",
+                _ => "nested",
+            };
+            cmd.env("NIRI_BACKEND", niri_val);
+        }
+    }
+    if let Some(ref vk) = ro.vulkan_driver {
+        let trimmed = vk.trim();
+        if !trimmed.is_empty() && trimmed != "auto" {
+            cmd.env("VK_ICD_FILENAMES", trimmed);
+            cmd.env("VK_DRIVER_FILES", trimmed);
+            cmd.env("WWN_VULKAN_DRIVER", trimmed);
+        }
+    }
+    if let Some(ref gl) = ro.open_gl_driver {
+        let trimmed = gl.trim();
+        if !trimmed.is_empty() && trimmed != "auto" {
+            cmd.env("WWN_OPENGL_DRIVER", trimmed);
+        }
+    }
+    if let Some(ref env_map) = ro.environment {
+        for (key, entry) in env_map {
+            if entry.action == "unset" {
+                cmd.env_remove(key);
+            } else if entry.action == "set" {
+                if let Some(ref val) = entry.value {
+                    if val.is_empty() {
+                        cmd.env_remove(key);
+                    } else {
+                        cmd.env(key, val);
+                    }
+                } else {
+                    cmd.env_remove(key);
+                }
+            }
         }
     }
 }
@@ -209,7 +324,11 @@ pub fn launch_profile(
         MachineType::SshWaypipe => {
             let target = canonical_target(profile);
             let remote_cmd = if profile.remote_command.trim().is_empty() {
-                "weston-terminal".to_string()
+                if !settings.waypipe_remote_command.trim().is_empty() {
+                    settings.waypipe_remote_command.clone()
+                } else {
+                    "weston-terminal".to_string()
+                }
             } else {
                 profile.remote_command.clone()
             };
@@ -222,26 +341,22 @@ pub fn launch_profile(
                 remote_cmd
             );
             let mut c = Command::new("waypipe");
-            c.arg("--compress")
-                .arg(settings.waypipe_compression.clone())
-                .arg("ssh")
-                .arg("-p")
-                .arg(profile.ssh_port.to_string())
-                .arg(target)
-                .arg(remote_cmd);
-            if settings.waypipe_debug {
-                c.arg("--debug");
-            }
-            if settings.waypipe_video != "none" {
-                c.arg("--video").arg(settings.waypipe_video.clone());
-            }
+            configure_waypipe_command(&mut c, settings, profile.ssh_port, &target, &remote_cmd);
             c
         }
     };
 
+    let wayland_display = profile
+        .runtime_overrides
+        .wayland_display
+        .as_deref()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or(&rt.wayland_display);
+
     cmd.env("XDG_RUNTIME_DIR", &rt.xdg_runtime_dir);
-    cmd.env("WAYLAND_DISPLAY", &rt.wayland_display);
-    apply_environment_overrides(&mut cmd, settings);
+    cmd.env("WAYLAND_DISPLAY", wayland_display);
+    apply_settings_environment(&mut cmd, settings);
+    apply_profile_runtime_overrides(&mut cmd, profile);
     cmd.stdin(Stdio::null());
     cmd.stdout(Stdio::inherit());
     cmd.stderr(Stdio::inherit());

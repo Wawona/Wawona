@@ -5,12 +5,16 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use adw::prelude::*;
+use gtk::prelude::*;
 use gtk4 as gtk;
 use gtk4::gio;
 use gtk4::glib;
 use libadwaita as adw;
 
-use crate::linux::machine_profile::{MachineProfile, MachineType};
+use crate::domain::machine_profile::{
+    ContainerMachineSettings, DomainEnvironmentOverride, MachineProfile, MachineType,
+    VirtualMachineSettings,
+};
 use crate::linux::session_exit;
 use crate::linux::ui::home::{rebuild_home, HomeShell, MachineSessions, RebuildHome};
 use crate::linux::ui::modal_sheet::present_sheet;
@@ -39,7 +43,7 @@ pub fn show_editor(
     }
     let baseline = profile.clone();
 
-    // Toolbar: Cancel (cancellation) leading, Save (confirmation) trailing.
+    // Toolbar: Cancel leading, Save trailing.
     let header = adw::HeaderBar::new();
     let cancel_btn = gtk::Button::with_label("Cancel");
     let save_btn = gtk::Button::with_label("Save");
@@ -53,7 +57,7 @@ pub fn show_editor(
     // MARK: Connection Profile
     let profile_group = adw::PreferencesGroup::new();
     profile_group.set_title("Connection Profile");
-    profile_group.set_description(Some("Name and type for this machine profile."));
+    profile_group.set_description(Some("Name, type, and favorite status for this machine profile."));
     let name_entry = gtk::Entry::builder()
         .placeholder_text("e.g. Studio Linux VM")
         .text(&profile.name)
@@ -74,11 +78,17 @@ pub fn show_editor(
     type_combo.set_active_id(Some(&mt_id(ui_type)));
     add_row(&profile_group, "Type", &type_combo);
 
+    let favorite_switch = gtk::Switch::builder()
+        .active(profile.favorite)
+        .valign(gtk::Align::Center)
+        .build();
+    add_switch_row(&profile_group, "Favorite Machine", &favorite_switch);
+
     let (initial_session, initial_use_ssh) = native_shell_session_from(&profile);
     let session_group = adw::PreferencesGroup::new();
     session_group.set_title("Native Shell Session");
     session_group.set_description(Some(
-        "Terminal is Wawona Terminal (local or SSH; install/run wasm and CLI from the shell). Wasm runs Relay packages. Waypipe streams with optional SSH.",
+        "Terminal is Wawona Terminal (local or SSH). Wasm runs Relay packages. Waypipe streams with optional SSH.",
     ));
     let session_combo = gtk::ComboBoxText::new();
     for (id, label) in [
@@ -111,7 +121,6 @@ pub fn show_editor(
     terminal_custom_row.add_suffix(&terminal_custom_entry);
     session_group.add(&terminal_custom_row);
 
-    // Bundled Wayland client picker removed. Keep-set: wawona-shell / wawona-wasm.
     let mut initial_client = profile
         .runtime_overrides
         .bundled_app_id
@@ -130,7 +139,7 @@ pub fn show_editor(
     let wasm_group = adw::PreferencesGroup::new();
     wasm_group.set_title("Wasm");
     wasm_group.set_description(Some(
-        "Same as native shell: wasm hello-wasi-gui. Local file, package name, or typed command. Native still runs wasm from the shell.",
+        "Same as native shell: wasm hello-wasi-gui. Local file, package name, or typed command.",
     ));
     let wasm_cmd = gtk::Entry::builder()
         .placeholder_text("wasm hello-wasi-gui")
@@ -234,9 +243,6 @@ pub fn show_editor(
             let pkg_e = wasm_pkg_c.clone();
             let cmd_e = wasm_cmd_c.clone();
             let path_e = wasm_path_c.clone();
-            // gtk4 0.9 widgets (and WeakRef<Widget>) are !Send. Background work
-            // returns Send data over mpsc; the main loop applies it with
-            // timeout_add_local (no Send bound on the UI closure).
             type SearchMsg = Result<Vec<crate::linux::wasm_launch::CatalogPackage>, String>;
             let (tx, rx) = std::sync::mpsc::sync_channel::<SearchMsg>(1);
             let note_poll = note.clone();
@@ -346,6 +352,21 @@ pub fn show_editor(
         .placeholder_text("Optional")
         .build();
     password_entry.set_text(&profile.ssh_password);
+    let auth_method_combo = gtk::ComboBoxText::new();
+    auth_method_combo.append(Some("0"), "Password");
+    auth_method_combo.append(Some("1"), "Public Key");
+    auth_method_combo.set_active_id(Some(if profile.ssh_auth_method == 1 { "1" } else { "0" }));
+
+    let key_path_entry = gtk::Entry::builder()
+        .placeholder_text("~/.ssh/id_ed25519")
+        .text(&profile.ssh_key_path)
+        .build();
+    let key_passphrase_entry = gtk::PasswordEntry::builder()
+        .show_peek_icon(true)
+        .placeholder_text("Optional")
+        .build();
+    key_passphrase_entry.set_text(&profile.ssh_key_passphrase);
+
     let cmd_entry = gtk::Entry::builder().text(&profile.remote_command).build();
     let cmd_row = adw::ActionRow::new();
     cmd_row.set_activatable(false);
@@ -353,7 +374,10 @@ pub fn show_editor(
     add_row(&remote_group, "Host", &host_entry);
     add_row(&remote_group, "User", &user_entry);
     add_row(&remote_group, "Port", &port_entry);
+    add_row(&remote_group, "Auth Method", &auth_method_combo);
     add_row(&remote_group, "Password", &password_entry);
+    add_row(&remote_group, "Key Path", &key_path_entry);
+    add_row(&remote_group, "Key Passphrase", &key_passphrase_entry);
     remote_group.add(&cmd_row);
 
     // MARK: Command Preview (Remote)
@@ -385,9 +409,19 @@ pub fn show_editor(
     force_ssd.set_active(profile.runtime_overrides.force_ssd.unwrap_or(true));
     let auto_scale = gtk::Switch::new();
     auto_scale.set_active(profile.runtime_overrides.auto_scale.unwrap_or(true));
+
+    let compositor_backend_combo = gtk::ComboBoxText::new();
+    for (id, label) in [("auto", "Auto"), ("wayland", "Wayland (nested)"), ("drm", "DRM/KMS (iLand)")] {
+        compositor_backend_combo.append(Some(id), label);
+    }
+    compositor_backend_combo.set_active_id(Some(
+        profile.runtime_overrides.compositor_backend.as_deref().unwrap_or("auto")
+    ));
+
     let vulkan_driver = gtk::ComboBoxText::new();
     for (id, label) in [
         ("none", "None"),
+        ("system", "System"),
         ("moltenvk", "MoltenVK"),
         ("kosmickrisp", "KosmicKrisp"),
     ] {
@@ -398,10 +432,10 @@ pub fn show_editor(
             .runtime_overrides
             .vulkan_driver
             .as_deref()
-            .unwrap_or("none"),
+            .unwrap_or("system"),
     ));
     let opengl_driver = gtk::ComboBoxText::new();
-    for (id, label) in [("none", "None"), ("angle", "ANGLE")] {
+    for (id, label) in [("none", "None"), ("system", "System"), ("angle", "ANGLE")] {
         opengl_driver.append(Some(id), label);
     }
     opengl_driver.set_active_id(Some(
@@ -409,18 +443,26 @@ pub fn show_editor(
             .runtime_overrides
             .open_gl_driver
             .as_deref()
-            .unwrap_or("none"),
+            .unwrap_or("system"),
     ));
     let dmabuf = gtk::Switch::new();
-    dmabuf.set_active(profile.runtime_overrides.dmabuf_enabled.unwrap_or(false));
+    dmabuf.set_active(profile.runtime_overrides.dmabuf_enabled.unwrap_or(true));
     let color_ops = gtk::Switch::new();
     color_ops.set_active(profile.runtime_overrides.color_operations.unwrap_or(false));
+
+    let input_profile_entry = gtk::Entry::builder()
+        .placeholder_text("e.g. direct (empty = inherit global)")
+        .text(profile.runtime_overrides.input_profile.as_deref().unwrap_or(""))
+        .build();
+
     add_row(&dig_group, "Force Server-Side Decorations", &force_ssd);
     add_row(&dig_group, "Auto Scale", &auto_scale);
+    add_row(&dig_group, "Display Backend", &compositor_backend_combo);
     add_row(&dig_group, "Vulkan Driver", &vulkan_driver);
     add_row(&dig_group, "OpenGL Driver", &opengl_driver);
     add_row(&dig_group, "Enable DMABUF", &dmabuf);
     add_row(&dig_group, "Color Operations / HDR", &color_ops);
+    add_row(&dig_group, "Input Profile", &input_profile_entry);
 
     // MARK: Session Exit
     let session_exit_group = adw::PreferencesGroup::new();
@@ -448,11 +490,63 @@ pub fn show_editor(
     let vm_group = adw::PreferencesGroup::new();
     vm_group.set_title("Virtual Machine");
     vm_group.set_description(Some(
-        "Hypervisor is selected automatically for this platform.",
+        "KVM hypervisor and guest system parameters. Fail closed without /dev/kvm.",
     ));
     let vm_backend = gtk::Label::new(Some("Relay KVM"));
     vm_backend.add_css_class("dim-label");
     add_row(&vm_group, "Backend", &vm_backend);
+
+    let vm_variant_combo = gtk::ComboBoxText::new();
+    for (id, label) in [("nixos-guest-4k", "NixOS Guest 4K"), ("standard", "Standard Linux")] {
+        vm_variant_combo.append(Some(id), label);
+    }
+    let current_variant = profile
+        .vm_settings
+        .as_ref()
+        .and_then(|s| s.guest_variant.as_deref())
+        .unwrap_or("nixos-guest-4k");
+    vm_variant_combo.set_active_id(Some(current_variant));
+    add_row(&vm_group, "Guest Variant", &vm_variant_combo);
+
+    let current_mem = profile
+        .vm_settings
+        .as_ref()
+        .and_then(|s| s.memory_mb)
+        .unwrap_or(2048);
+    let vm_memory_spin = gtk::SpinButton::with_range(512.0, 32768.0, 512.0);
+    vm_memory_spin.set_value(current_mem as f64);
+    add_row(&vm_group, "Memory (MB)", &vm_memory_spin);
+
+    let current_disk = profile
+        .vm_settings
+        .as_ref()
+        .and_then(|s| s.disk_gib)
+        .unwrap_or(20);
+    let vm_disk_spin = gtk::SpinButton::with_range(4.0, 1024.0, 4.0);
+    vm_disk_spin.set_value(current_disk as f64);
+    add_row(&vm_group, "Disk Size (GiB)", &vm_disk_spin);
+
+    let current_vsock = profile
+        .vm_settings
+        .as_ref()
+        .and_then(|s| s.vsock_port.as_deref())
+        .and_then(|p| p.parse::<f64>().ok())
+        .unwrap_or(1024.0);
+    let vm_vsock_spin = gtk::SpinButton::with_range(1024.0, 65535.0, 1.0);
+    vm_vsock_spin.set_value(current_vsock);
+    add_row(&vm_group, "VSock Port", &vm_vsock_spin);
+
+    let current_notes = profile
+        .vm_settings
+        .as_ref()
+        .and_then(|s| s.notes.as_deref())
+        .unwrap_or("");
+    let vm_notes_entry = gtk::Entry::builder()
+        .placeholder_text("Optional notes")
+        .text(current_notes)
+        .build();
+    add_row(&vm_group, "Notes", &vm_notes_entry);
+
     let vm_note = gtk::Label::new(Some(
         "Linux guests use KVM via cloud-hypervisor or crosvm. Fail closed without /dev/kvm. No QEMU.",
     ));
@@ -466,16 +560,56 @@ pub fn show_editor(
     let container_group = adw::PreferencesGroup::new();
     container_group.set_title("Container");
     container_group.set_description(Some(
-        "Container runtime is selected automatically for this platform.",
+        "OCI runtime configuration. Containers unpack OCI images and run on the Relay VM.",
     ));
     let container_backend = gtk::Label::new(Some("OCI-in-VM"));
     container_backend.add_css_class("dim-label");
     add_row(&container_group, "Backend", &container_backend);
+
+    let current_ref = profile
+        .container_settings
+        .as_ref()
+        .and_then(|s| s.container_ref.as_deref())
+        .unwrap_or("");
+    let container_ref_entry = gtk::Entry::builder()
+        .placeholder_text("e.g. alpine:latest")
+        .text(current_ref)
+        .build();
+    add_row(&container_group, "Image Reference", &container_ref_entry);
+
+    let current_container_cmd = profile
+        .container_settings
+        .as_ref()
+        .and_then(|s| s.entry_command.as_deref())
+        .unwrap_or(&profile.remote_command);
     let container_cmd = gtk::Entry::builder()
         .placeholder_text("weston-simple-shm")
-        .text(&profile.remote_command)
+        .text(current_container_cmd)
         .build();
     add_row(&container_group, "Startup Command", &container_cmd);
+
+    let current_container_mem = profile
+        .container_settings
+        .as_ref()
+        .and_then(|s| s.memory.as_deref())
+        .unwrap_or("");
+    let container_memory_entry = gtk::Entry::builder()
+        .placeholder_text("e.g. 1024MB")
+        .text(current_container_mem)
+        .build();
+    add_row(&container_group, "Memory Limit", &container_memory_entry);
+
+    let current_desktop = profile
+        .container_settings
+        .as_ref()
+        .and_then(|s| s.desktop_session)
+        .unwrap_or(false);
+    let container_desktop_switch = gtk::Switch::builder()
+        .active(current_desktop)
+        .valign(gtk::Align::Center)
+        .build();
+    add_switch_row(&container_group, "Desktop Session", &container_desktop_switch);
+
     let container_note = gtk::Label::new(Some(
         "Containers unpack OCI, then run on the same KVM VM as virtual_machine. Not host Docker.",
     ));
@@ -484,6 +618,40 @@ pub fn show_editor(
     container_note.add_css_class("dim-label");
     container_note.add_css_class("caption");
     container_group.add(&container_note);
+
+    // MARK: Environment Variables (Per-Machine)
+    let env_group = adw::PreferencesGroup::new();
+    env_group.set_title("Environment Variables");
+    env_group.set_description(Some(
+        "Per-machine KEY=value overrides applied to launched clients (overrides global env vars). Lines starting with -NAME unset a variable.",
+    ));
+    let env_text = gtk::TextView::new();
+    env_text.set_monospace(true);
+    env_text.set_wrap_mode(gtk::WrapMode::WordChar);
+    env_text.set_vexpand(true);
+    env_text.set_hexpand(true);
+    {
+        let mut buf = String::new();
+        if let Some(env_map) = &profile.runtime_overrides.environment {
+            for (k, v) in env_map {
+                if v.action == "unset" {
+                    buf.push('-');
+                    buf.push_str(k);
+                    buf.push('\n');
+                } else if let Some(val) = &v.value {
+                    buf.push_str(k);
+                    buf.push('=');
+                    buf.push_str(val);
+                    buf.push('\n');
+                }
+            }
+        }
+        env_text.buffer().set_text(&buf);
+    }
+    let env_scroll = gtk::ScrolledWindow::new();
+    env_scroll.set_min_content_height(140);
+    env_scroll.set_child(Some(&env_text));
+    env_group.add(&env_scroll);
 
     // Command preview text mirrors WWNMachineEditorView.previewCommand.
     let update_preview = {
@@ -540,8 +708,6 @@ pub fn show_editor(
         })
     };
 
-    // Show/hide type-specific sections + relabel command field, mirroring the
-    // macOS editor's conditional sections.
     let update_sections = {
         let cgs = client_groups.clone();
         let wg = wasm_group.clone();
@@ -576,7 +742,6 @@ pub fn show_editor(
             ctg.set_visible(type_id == "container");
             use_ssh.set_sensitive(kind == "terminal" || kind == "waypipe");
             terminal_custom_row.set_visible(is_native && kind == "terminal");
-            // Terminal Custom Command lives under Native Shell Session; Waypipe keeps Remote Command here.
             cmd_row.set_visible(kind == "waypipe" && ssh_on);
             if kind == "waypipe" && ssh_on {
                 rg.set_title("SSH + Waypipe");
@@ -642,7 +807,6 @@ pub fn show_editor(
         entry.connect_changed(move |_| preview());
     }
 
-    // Section order matches WWNMachineEditorView.body.
     let form = adw::PreferencesPage::new();
     form.add(&profile_group);
     form.add(&session_group);
@@ -656,6 +820,7 @@ pub fn show_editor(
     form.add(&session_exit_group);
     form.add(&vm_group);
     form.add(&container_group);
+    form.add(&env_group);
 
     let scroll = gtk::ScrolledWindow::builder()
         .hscrollbar_policy(gtk::PolicyType::Never)
@@ -700,6 +865,10 @@ pub fn show_editor(
         } else {
             cmd_entry.text().trim().to_string()
         };
+        let auth_method = auth_method_combo
+            .active_id()
+            .and_then(|s| s.parse::<i32>().ok())
+            .unwrap_or(0);
         let mut updated = MachineProfile {
             id: pid.clone(),
             name: {
@@ -731,10 +900,57 @@ pub fn show_editor(
             } else {
                 String::new()
             },
+            ssh_auth_method: auth_method,
+            ssh_key_path: if use_ssh {
+                key_path_entry.text().trim().to_string()
+            } else {
+                String::new()
+            },
+            ssh_key_passphrase: if use_ssh {
+                key_passphrase_entry.text().to_string()
+            } else {
+                String::new()
+            },
             remote_command,
-            favorite: baseline.favorite,
+            favorite: favorite_switch.is_active(),
             launchers: baseline.launchers.clone(),
             runtime_overrides: baseline.runtime_overrides.clone(),
+            container_settings: if mt == MachineType::Container {
+                Some(ContainerMachineSettings {
+                    runtime: Some("OCI-in-VM".to_string()),
+                    container_ref: {
+                        let r = container_ref_entry.text().trim().to_string();
+                        if r.is_empty() { None } else { Some(r) }
+                    },
+                    entry_command: {
+                        let c = container_cmd.text().trim().to_string();
+                        if c.is_empty() { None } else { Some(c) }
+                    },
+                    memory: {
+                        let m = container_memory_entry.text().trim().to_string();
+                        if m.is_empty() { None } else { Some(m) }
+                    },
+                    desktop_session: Some(container_desktop_switch.is_active()),
+                    ..baseline.container_settings.clone().unwrap_or_default()
+                })
+            } else {
+                baseline.container_settings.clone()
+            },
+            vm_settings: if mt == MachineType::VirtualMachine {
+                Some(VirtualMachineSettings {
+                    guest_variant: vm_variant_combo.active_id().map(|s| s.to_string()),
+                    memory_mb: Some(vm_memory_spin.value() as i32),
+                    disk_gib: Some(vm_disk_spin.value() as i32),
+                    vsock_port: Some(format!("{}", vm_vsock_spin.value() as u32)),
+                    notes: {
+                        let n = vm_notes_entry.text().trim().to_string();
+                        if n.is_empty() { None } else { Some(n) }
+                    },
+                    ..baseline.vm_settings.clone().unwrap_or_default()
+                })
+            } else {
+                baseline.vm_settings.clone()
+            },
             ..baseline.clone()
         };
         if tid == "native" && (kind == "terminal" || kind == "wayland") && !use_ssh {
@@ -770,10 +986,54 @@ pub fn show_editor(
             Some(kind == "waypipe" || (kind == "terminal" && use_ssh));
         updated.runtime_overrides.force_ssd = Some(force_ssd.is_active());
         updated.runtime_overrides.auto_scale = Some(auto_scale.is_active());
+        updated.runtime_overrides.compositor_backend = compositor_backend_combo.active_id().map(|s| s.to_string());
         updated.runtime_overrides.vulkan_driver = vulkan_driver.active_id().map(|s| s.to_string());
         updated.runtime_overrides.open_gl_driver = opengl_driver.active_id().map(|s| s.to_string());
         updated.runtime_overrides.dmabuf_enabled = Some(dmabuf.is_active());
         updated.runtime_overrides.color_operations = Some(color_ops.is_active());
+        {
+            let inp = input_profile_entry.text().trim().to_string();
+            updated.runtime_overrides.input_profile = if inp.is_empty() { None } else { Some(inp) };
+        }
+        {
+            let buffer = env_text.buffer();
+            let start = buffer.start_iter();
+            let end = buffer.end_iter();
+            let text = buffer.text(&start, &end, false);
+            let mut env_map = std::collections::HashMap::new();
+            for line in text.lines() {
+                let line = line.trim();
+                if line.is_empty() || line.starts_with('#') {
+                    continue;
+                }
+                if let Some(name) = line.strip_prefix('-') {
+                    let name = name.trim();
+                    if !name.is_empty() {
+                        env_map.insert(
+                            name.to_string(),
+                            DomainEnvironmentOverride {
+                                action: "unset".to_string(),
+                                value: None,
+                            },
+                        );
+                    }
+                    continue;
+                }
+                if let Some((k, v)) = line.split_once('=') {
+                    let k = k.trim();
+                    if !k.is_empty() {
+                        env_map.insert(
+                            k.to_string(),
+                            DomainEnvironmentOverride {
+                                action: "set".to_string(),
+                                value: Some(v.to_string()),
+                            },
+                        );
+                    }
+                }
+            }
+            updated.runtime_overrides.environment = if env_map.is_empty() { None } else { Some(env_map) };
+        }
         session_exit::write_session_exit_overrides(
             &mut updated.runtime_overrides,
             shake_switch.is_active(),
@@ -794,6 +1054,16 @@ pub fn show_editor(
         wlog!("UI", "Machine saved id={} type={}", pid, tid);
         d.close();
     });
+}
+
+fn add_switch_row(group: &adw::PreferencesGroup, title: &str, switch: &gtk::Switch) {
+    let row = adw::ActionRow::new();
+    row.set_title(title);
+    row.set_title_lines(1);
+    switch.set_valign(gtk::Align::Center);
+    row.add_suffix(switch);
+    row.set_activatable_widget(Some(switch));
+    group.add(&row);
 }
 
 fn add_row(group: &adw::PreferencesGroup, title: &str, widget: &impl IsA<gtk::Widget>) {
@@ -855,7 +1125,6 @@ fn native_shell_session_from(profile: &MachineProfile) -> (&'static str, bool) {
             } else if bundled == "wawona-wasm" {
                 ("wasm", false)
             } else {
-                // Former bundled Wayland clients → Wawona Terminal.
                 ("terminal", false)
             }
         }

@@ -1,4 +1,4 @@
-//! Settings dialog with section parity to Android `SettingsDialog`.
+//! Settings dialog with full parity to Apple and Android Global Settings.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -16,8 +16,97 @@ use crate::linux::ui::SharedAppState;
 use crate::linux::ui_model::LayoutMode;
 use crate::wlog;
 
+struct SettingsSectionMeta {
+    name: &'static str,
+    icon: &'static str,
+    css_class: &'static str,
+    a11y_id: &'static str,
+}
+
+const SETTINGS_SECTIONS: &[SettingsSectionMeta] = &[
+    SettingsSectionMeta {
+        name: "Display",
+        icon: "video-display-symbolic",
+        css_class: "wwn-icon-blue",
+        a11y_id: "wwn.settings.display",
+    },
+    SettingsSectionMeta {
+        name: "Input",
+        icon: "input-keyboard-symbolic",
+        css_class: "wwn-icon-purple",
+        a11y_id: "wwn.settings.input",
+    },
+    SettingsSectionMeta {
+        name: "Graphics",
+        icon: "applications-graphics-symbolic",
+        css_class: "wwn-icon-red",
+        a11y_id: "wwn.settings.graphics",
+    },
+    SettingsSectionMeta {
+        name: "Connection",
+        icon: "network-wired-symbolic",
+        css_class: "wwn-icon-orange",
+        a11y_id: "wwn.settings.connection",
+    },
+    SettingsSectionMeta {
+        name: "Env Vars",
+        icon: "utilities-terminal-symbolic",
+        css_class: "wwn-icon-teal",
+        a11y_id: "wwn.settings.environment",
+    },
+    SettingsSectionMeta {
+        name: "Local Shell",
+        icon: "folder-symbolic",
+        css_class: "wwn-icon-green",
+        a11y_id: "wwn.settings.localshell",
+    },
+    SettingsSectionMeta {
+        name: "Machines",
+        icon: "computer-symbolic",
+        css_class: "wwn-icon-indigo",
+        a11y_id: "wwn.settings.machines",
+    },
+    SettingsSectionMeta {
+        name: "Waypipe",
+        icon: "network-wireless-symbolic",
+        css_class: "wwn-icon-blue",
+        a11y_id: "wwn.settings.waypipe",
+    },
+    SettingsSectionMeta {
+        name: "SSH",
+        icon: "channel-secure-symbolic",
+        css_class: "wwn-icon-slate",
+        a11y_id: "wwn.settings.ssh",
+    },
+    SettingsSectionMeta {
+        name: "About",
+        icon: "help-about-symbolic",
+        css_class: "wwn-icon-purple",
+        a11y_id: "wwn.settings.about",
+    },
+    SettingsSectionMeta {
+        name: "Dependencies",
+        icon: "package-x-generic-symbolic",
+        css_class: "wwn-icon-brown",
+        a11y_id: "wwn.settings.dependencies",
+    },
+    SettingsSectionMeta {
+        name: "Launch Agent",
+        icon: "system-run-symbolic",
+        css_class: "wwn-icon-slate",
+        a11y_id: "wwn.settings.launchagent",
+    },
+    SettingsSectionMeta {
+        name: "Diagnostics",
+        icon: "utilities-system-monitor-symbolic",
+        css_class: "wwn-icon-orange",
+        a11y_id: "wwn.settings.diagnostics",
+    },
+];
+
 pub fn show_settings(parent: &adw::ApplicationWindow, state: &SharedAppState, layout: LayoutMode) {
     wlog!("UI", "Settings dialog opened");
+    ensure_settings_css();
 
     let header = adw::HeaderBar::new();
     let done_btn = gtk::Button::with_label("Done");
@@ -36,38 +125,33 @@ pub fn show_settings(parent: &adw::ApplicationWindow, state: &SharedAppState, la
     let sidebar = gtk::ListBox::new();
     sidebar.set_selection_mode(gtk::SelectionMode::Single);
     sidebar.add_css_class("navigation-sidebar");
-    sidebar.set_width_request(180);
+    sidebar.set_width_request(200);
     crate::linux::ui::a11y::set_wwn_a11y(
         &sidebar,
         crate::linux::ui::a11y::id::SETTINGS_ROOT,
         Some("Settings"),
     );
 
-    let sections = [
-        "Display",
-        "Input",
-        "Graphics",
-        "Connection",
-        "Env Vars",
-        "Local Shell",
-        "Machines",
-        "SSH and Waypipe",
-        "About",
-        "Dependencies",
-        "Launch Agent",
-        "Diagnostics",
-    ];
-    for name in &sections {
+    for meta in SETTINGS_SECTIONS {
         let row = gtk::ListBoxRow::new();
-        let label = gtk::Label::new(Some(name));
+        let row_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+        row_box.set_margin_start(10);
+        row_box.set_margin_end(10);
+        row_box.set_margin_top(6);
+        row_box.set_margin_bottom(6);
+
+        let icon = gtk::Image::from_icon_name(meta.icon);
+        icon.set_pixel_size(18);
+        icon.add_css_class(meta.css_class);
+        row_box.append(&icon);
+
+        let label = gtk::Label::new(Some(meta.name));
         label.set_xalign(0.0);
-        label.set_margin_start(8);
-        label.set_margin_end(8);
-        label.set_margin_top(4);
-        label.set_margin_bottom(4);
-        row.set_child(Some(&label));
-        let id = crate::linux::ui::a11y::settings_section_id(name);
-        crate::linux::ui::a11y::set_wwn_a11y(&row, &id, Some(name));
+        label.set_hexpand(true);
+        row_box.append(&label);
+
+        row.set_child(Some(&row_box));
+        crate::linux::ui::a11y::set_wwn_a11y(&row, meta.a11y_id, Some(meta.name));
         sidebar.append(&row);
     }
 
@@ -77,7 +161,17 @@ pub fn show_settings(parent: &adw::ApplicationWindow, state: &SharedAppState, la
 
     let cfg = state.borrow();
     let settings = &cfg.settings;
+
     let renderer_value = Rc::new(RefCell::new(settings.renderer.clone()));
+    let compositor_backend_value = Rc::new(RefCell::new(settings.compositor_backend.clone()));
+    let vulkan_driver_value = Rc::new(RefCell::new(settings.vulkan_driver.clone()));
+    let opengl_driver_value = Rc::new(RefCell::new(settings.opengl_driver.clone()));
+    let ssh_auth_method_value = Rc::new(RefCell::new(settings.ssh_auth_method.clone()));
+    let ssh_key_type_value = Rc::new(RefCell::new(settings.ssh_key_type.clone()));
+    let wp_compress_value = Rc::new(RefCell::new(settings.waypipe_compression.clone()));
+    let wp_video_value = Rc::new(RefCell::new(settings.waypipe_video.clone()));
+    let wp_video_enc_value = Rc::new(RefCell::new(settings.waypipe_video_encoding.clone()));
+    let wp_video_dec_value = Rc::new(RefCell::new(settings.waypipe_video_decoding.clone()));
     let log_level_value = Rc::new(RefCell::new(settings.log_level.clone()));
 
     let detail_stack = gtk::Stack::new();
@@ -149,46 +243,44 @@ pub fn show_settings(parent: &adw::ApplicationWindow, state: &SharedAppState, la
         });
     }
 
-    // Machines (global defaults for new profiles)
-    let machines_page = adw::PreferencesPage::new();
-    let machines_group = adw::PreferencesGroup::new();
-    machines_group.set_title("Machine Defaults");
-    machines_group.set_description(Some(
-        "Defaults applied when creating new machine profiles. Per-machine overrides live in the editor.",
-    ));
-    add_choice_row(
-        &machines_group,
-        "Default Renderer",
-        &["vulkan", "software"],
-        renderer_value.clone(),
-        open_choice.clone(),
-    );
-    machines_page.add(&machines_group);
-    let vm_group = adw::PreferencesGroup::new();
-    vm_group.set_title("Virtual Machines");
-    add_info_row(
-        &vm_group,
-        "Wawona Relay",
-        "Linux guests use KVM via cloud-hypervisor or crosvm. Fail closed without /dev/kvm. No QEMU.",
-    );
-    let container_group = adw::PreferencesGroup::new();
-    container_group.set_title("Containers");
-    add_info_row(
-        &container_group,
-        "OCI-in-VM",
-        "Containers unpack OCI, then run on the same KVM VM. Not host Docker or proot.",
-    );
-    machines_page.add(&vm_group);
-    machines_page.add(&container_group);
-    stack.add_named(&machines_page, Some("Machines"));
-
-    // Display
+    // MARK: Display
     let display_page = adw::PreferencesPage::new();
     let display_group = adw::PreferencesGroup::new();
     display_group.set_title("Display");
+    display_group.set_description(Some(
+        "Nested compositor presentation, color management, and window decorations.",
+    ));
     let color_ops = gtk::Switch::new();
     color_ops.set_active(settings.color_operations);
-    add_row(&display_group, "Color Operations / HDR", &color_ops);
+    add_switch_row(&display_group, "Color Operations / HDR", &color_ops);
+    add_choice_row(
+        &display_group,
+        "Display Backend",
+        &["auto", "wayland", "drm"],
+        compositor_backend_value.clone(),
+        open_choice.clone(),
+    );
+    let nested_compositors_switch = gtk::Switch::new();
+    nested_compositors_switch.set_active(settings.nested_compositors);
+    add_switch_row(
+        &display_group,
+        "Nested Compositors",
+        &nested_compositors_switch,
+    );
+    let multiple_clients_switch = gtk::Switch::new();
+    multiple_clients_switch.set_active(settings.multiple_clients);
+    add_switch_row(
+        &display_group,
+        "Multiple Clients",
+        &multiple_clients_switch,
+    );
+    let force_ssd_switch = gtk::Switch::new();
+    force_ssd_switch.set_active(settings.force_ssd);
+    add_switch_row(
+        &display_group,
+        "Force Server-Side Decorations",
+        &force_ssd_switch,
+    );
     display_page.add(&display_group);
     crate::linux::ui::a11y::set_wwn_a11y(
         &display_page,
@@ -197,23 +289,51 @@ pub fn show_settings(parent: &adw::ApplicationWindow, state: &SharedAppState, la
     );
     stack.add_named(&display_page, Some("Display"));
 
-    // Input
+    // MARK: Input
     let input_page = adw::PreferencesPage::new();
     let input_group = adw::PreferencesGroup::new();
     input_group.set_title("Input");
+    input_group.set_description(Some(
+        "Keyboard repeat rates, touch interaction, and clipboard synchronization.",
+    ));
     let input_profile = gtk::Entry::new();
     input_profile.set_text(&settings.input_profile);
     let key_repeat = gtk::SpinButton::with_range(1.0, 60.0, 1.0);
     key_repeat.set_value(settings.key_repeat as f64);
-    add_row(&input_group, "Default Input Profile", &input_profile);
+    add_entry_row(&input_group, "Default Input Profile", &input_profile);
     add_row(&input_group, "Key Repeat", &key_repeat);
+    let touch_pointer_switch = gtk::Switch::new();
+    touch_pointer_switch.set_active(settings.touch_pointer_emulation);
+    add_switch_row(
+        &input_group,
+        "Pointer Emulation for Touch",
+        &touch_pointer_switch,
+    );
+    let virtual_cursor_switch = gtk::Switch::new();
+    virtual_cursor_switch.set_active(settings.show_virtual_cursor);
+    add_switch_row(&input_group, "Show Virtual Cursor", &virtual_cursor_switch);
+    let universal_clipboard_switch = gtk::Switch::new();
+    universal_clipboard_switch.set_active(settings.universal_clipboard);
+    add_switch_row(
+        &input_group,
+        "Universal Clipboard",
+        &universal_clipboard_switch,
+    );
     input_page.add(&input_group);
+    crate::linux::ui::a11y::set_wwn_a11y(
+        &input_page,
+        crate::linux::ui::a11y::id::SETTINGS_INPUT,
+        Some("Input"),
+    );
     stack.add_named(&input_page, Some("Input"));
 
-    // Graphics
+    // MARK: Graphics
     let graphics_page = adw::PreferencesPage::new();
     let graphics_group = adw::PreferencesGroup::new();
     graphics_group.set_title("Graphics");
+    graphics_group.set_description(Some(
+        "Rendering subsystem, hardware acceleration drivers, and buffer formats.",
+    ));
     add_choice_row(
         &graphics_group,
         "Renderer",
@@ -221,20 +341,44 @@ pub fn show_settings(parent: &adw::ApplicationWindow, state: &SharedAppState, la
         renderer_value.clone(),
         open_choice.clone(),
     );
+    add_choice_row(
+        &graphics_group,
+        "Vulkan Driver",
+        &["system", "swiftshader", "none"],
+        vulkan_driver_value.clone(),
+        open_choice.clone(),
+    );
+    add_choice_row(
+        &graphics_group,
+        "OpenGL Driver",
+        &["system", "angle", "none"],
+        opengl_driver_value.clone(),
+        open_choice.clone(),
+    );
+    let dmabuf_switch = gtk::Switch::new();
+    dmabuf_switch.set_active(settings.dmabuf_enabled);
+    add_switch_row(&graphics_group, "Enable DMABUF", &dmabuf_switch);
     graphics_page.add(&graphics_group);
+    crate::linux::ui::a11y::set_wwn_a11y(
+        &graphics_page,
+        crate::linux::ui::a11y::id::SETTINGS_GRAPHICS,
+        Some("Graphics"),
+    );
     stack.add_named(&graphics_page, Some("Graphics"));
 
-    // Connection (catalog: waylandDisplay + default client). Linux has no
-    // separate default-client picker here; socket name is the connection row.
+    // MARK: Connection
     let connection_page = adw::PreferencesPage::new();
     let connection_group = adw::PreferencesGroup::new();
     connection_group.set_title("Connection");
     connection_group.set_description(Some(
-        "Networking and the compositor socket. Environment Variables hold XDG / TERM.",
+        "Compositor socket endpoint and network listener settings.",
     ));
     let wayland_display = gtk::Entry::new();
     wayland_display.set_text(&settings.wayland_display);
-    add_row(&connection_group, "Wayland Display", &wayland_display);
+    add_entry_row(&connection_group, "Wayland Display", &wayland_display);
+    let tcp_port = gtk::SpinButton::with_range(1024.0, 65535.0, 1.0);
+    tcp_port.set_value(settings.tcp_port as f64);
+    add_row(&connection_group, "TCP Listener Port", &tcp_port);
     connection_page.add(&connection_group);
     crate::linux::ui::a11y::set_wwn_a11y(
         &connection_page,
@@ -243,13 +387,13 @@ pub fn show_settings(parent: &adw::ApplicationWindow, state: &SharedAppState, la
     );
     stack.add_named(&connection_page, Some("Connection"));
 
-    // Environment (#157 / #161)
+    // MARK: Environment Variables
     let env_page = adw::PreferencesPage::new();
     let env_group = adw::PreferencesGroup::new();
     env_group.set_title("Environment Variables");
     env_group.set_description(Some(
         "Global KEY=value overrides applied to launched clients (machine overrides win). \
-         Lines starting with -NAME unset a variable. Same catalog as Apple/Android Settings → Environment.",
+         Lines starting with -NAME unset a variable. Matches Apple and Android Settings.",
     ));
     let env_text = gtk::TextView::new();
     env_text.set_monospace(true);
@@ -275,6 +419,26 @@ pub fn show_settings(parent: &adw::ApplicationWindow, state: &SharedAppState, la
     env_scroll.set_min_content_height(220);
     env_scroll.set_child(Some(&env_text));
     env_group.add(&env_scroll);
+
+    let env_actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    env_actions.set_margin_top(8);
+    let reset_managed_btn = gtk::Button::with_label("Reset Wawona-managed");
+    let clear_all_btn = gtk::Button::with_label("Clear All");
+    env_actions.append(&reset_managed_btn);
+    env_actions.append(&clear_all_btn);
+    {
+        let buffer = env_text.buffer();
+        reset_managed_btn.connect_clicked(move |_| {
+            buffer.set_text("XDG_CURRENT_DESKTOP=Wawona\nWAYLAND_DISPLAY=wawona-0\n");
+        });
+    }
+    {
+        let buffer = env_text.buffer();
+        clear_all_btn.connect_clicked(move |_| {
+            buffer.set_text("");
+        });
+    }
+    env_group.add(&env_actions);
     env_page.add(&env_group);
     crate::linux::ui::a11y::set_wwn_a11y(
         &env_page,
@@ -283,15 +447,20 @@ pub fn show_settings(parent: &adw::ApplicationWindow, state: &SharedAppState, la
     );
     stack.add_named(&env_page, Some("Env Vars"));
 
-    // Local Shell (host environment. Mirrors WWNRootfsProvider host snapshot)
+    // MARK: Local Shell
     let shell_page = adw::PreferencesPage::new();
     let shell_group = adw::PreferencesGroup::new();
     shell_group.set_title("Local Shell");
     shell_group.set_description(Some(
-        "Linux uses your login environment, not a sandbox rootfs. Reset System Tree and bundled HOME import do not apply.",
+        "Linux uses your host login environment. Sandboxed rootfs reset does not apply.",
     ));
     let home = std::env::var("HOME").unwrap_or_else(|_| "(unset)".into());
-    let open_home = gtk::Button::with_label("Open HOME");
+    let user = std::env::var("USER").unwrap_or_else(|_| "user".into());
+    let shell_prog = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into());
+    add_info_row(&shell_group, "User", &user);
+    add_info_row(&shell_group, "Shell", &shell_prog);
+    add_info_row(&shell_group, "HOME Path", &home);
+    let open_home = gtk::Button::with_label("Open HOME in File Manager");
     {
         let home_path = home.clone();
         open_home.connect_clicked(move |_| {
@@ -304,41 +473,239 @@ pub fn show_settings(parent: &adw::ApplicationWindow, state: &SharedAppState, la
     shell_page.add(&shell_group);
     stack.add_named(&shell_page, Some("Local Shell"));
 
-    // SSH and Waypipe
-    let ssh_page = adw::PreferencesPage::new();
-    let ssh_group = adw::PreferencesGroup::new();
-    ssh_group.set_title("SSH");
-    let ssh_host = gtk::Entry::new();
-    ssh_host.set_text(&settings.ssh_host);
-    let ssh_user = gtk::Entry::new();
-    ssh_user.set_text(&settings.ssh_user);
-    let ssh_password = gtk::PasswordEntry::builder().show_peek_icon(true).build();
-    ssh_password.set_text(&settings.ssh_password);
-    let ssh_port = gtk::Entry::new();
-    ssh_port.set_text(&settings.ssh_port.to_string());
-    add_row(&ssh_group, "Host", &ssh_host);
-    add_row(&ssh_group, "User", &ssh_user);
-    add_row(&ssh_group, "Password", &ssh_password);
-    add_row(&ssh_group, "Port", &ssh_port);
+    // MARK: Machines
+    let machines_page = adw::PreferencesPage::new();
+    let machines_group = adw::PreferencesGroup::new();
+    machines_group.set_title("Machine Defaults");
+    machines_group.set_description(Some(
+        "Global options applied across sessions. Per-machine overrides live in Machine Configuration.",
+    ));
+    add_choice_row(
+        &machines_group,
+        "Default Renderer",
+        &["vulkan", "software"],
+        renderer_value.clone(),
+        open_choice.clone(),
+    );
+    let thumbnails_switch = gtk::Switch::new();
+    thumbnails_switch.set_active(settings.session_thumbnails);
+    add_switch_row(
+        &machines_group,
+        "Session Thumbnails",
+        &thumbnails_switch,
+    );
+    let shake_switch = gtk::Switch::new();
+    shake_switch.set_active(settings.shake_to_close);
+    add_switch_row(&machines_group, "Shake to Exit Machine", &shake_switch);
+    let swipe_switch = gtk::Switch::new();
+    swipe_switch.set_active(settings.swipe_back_to_close);
+    add_switch_row(&machines_group, "Swipe Back to Exit Machine", &swipe_switch);
+    machines_page.add(&machines_group);
+
+    let vm_group = adw::PreferencesGroup::new();
+    vm_group.set_title("Virtual Machines");
+    add_info_row(
+        &vm_group,
+        "Virtual Machine Engine",
+        "Wawona Relay (KVM via cloud-hypervisor or crosvm). Fail closed without /dev/kvm.",
+    );
+    let vm_vsock_port = gtk::SpinButton::with_range(1024.0, 65535.0, 1.0);
+    vm_vsock_port.set_value(settings.vm_vsock_port as f64);
+    add_row(&vm_group, "VSock Port", &vm_vsock_port);
+    machines_page.add(&vm_group);
+
+    let container_group = adw::PreferencesGroup::new();
+    container_group.set_title("Containers");
+    add_info_row(
+        &container_group,
+        "Container Runtime",
+        "OCI-in-VM. Containers unpack OCI images, then run on the same Relay KVM VM.",
+    );
+    let container_image_store = gtk::Entry::new();
+    container_image_store.set_text(&settings.container_image_store);
+    add_entry_row(&container_group, "Image Store", &container_image_store);
+    machines_page.add(&container_group);
+    stack.add_named(&machines_page, Some("Machines"));
+
+    // MARK: Waypipe
+    let waypipe_page = adw::PreferencesPage::new();
     let waypipe_group = adw::PreferencesGroup::new();
-    waypipe_group.set_title("Waypipe");
-    let wp_compress = gtk::Entry::new();
-    wp_compress.set_text(&settings.waypipe_compression);
-    let wp_video = gtk::Entry::new();
-    wp_video.set_text(&settings.waypipe_video);
-    let wp_debug = gtk::Switch::new();
-    wp_debug.set_active(settings.waypipe_debug);
+    waypipe_group.set_title("Waypipe Parameters");
+    waypipe_group.set_description(Some(
+        "Wayland protocol proxy configuration for remote streaming over SSH or unix sockets.",
+    ));
     let wp_enabled = gtk::Switch::new();
     wp_enabled.set_active(settings.waypipe_enabled);
-    add_row(&waypipe_group, "Compression", &wp_compress);
-    add_row(&waypipe_group, "Video", &wp_video);
-    add_row(&waypipe_group, "Debug", &wp_debug);
-    add_row(&waypipe_group, "Default Waypipe Enabled", &wp_enabled);
-    ssh_page.add(&ssh_group);
-    ssh_page.add(&waypipe_group);
-    stack.add_named(&ssh_page, Some("SSH and Waypipe"));
+    add_switch_row(&waypipe_group, "Default Waypipe Enabled", &wp_enabled);
+    let wp_display = gtk::SpinButton::with_range(0.0, 99.0, 1.0);
+    wp_display.set_value(settings.waypipe_display as f64);
+    add_row(&waypipe_group, "Display Number", &wp_display);
+    let wp_socket = gtk::Entry::new();
+    wp_socket.set_text(&settings.waypipe_socket);
+    wp_socket.set_placeholder_text(Some("/tmp/waypipe.sock (leave blank for auto)"));
+    add_entry_row(&waypipe_group, "Socket Path", &wp_socket);
+    add_choice_row(
+        &waypipe_group,
+        "Compression",
+        &["lz4", "zstd", "none"],
+        wp_compress_value.clone(),
+        open_choice.clone(),
+    );
+    let wp_compress_level = gtk::SpinButton::with_range(1.0, 22.0, 1.0);
+    wp_compress_level.set_value(settings.waypipe_compress_level as f64);
+    add_row(&waypipe_group, "Compression Level", &wp_compress_level);
+    let wp_threads = gtk::SpinButton::with_range(0.0, 32.0, 1.0);
+    wp_threads.set_value(settings.waypipe_threads as f64);
+    add_row(&waypipe_group, "Worker Threads", &wp_threads);
+    add_choice_row(
+        &waypipe_group,
+        "Video Compression",
+        &["none", "h264", "vp9", "av1"],
+        wp_video_value.clone(),
+        open_choice.clone(),
+    );
+    add_choice_row(
+        &waypipe_group,
+        "Video Encoding",
+        &["hw", "sw", "hwenc", "swenc"],
+        wp_video_enc_value.clone(),
+        open_choice.clone(),
+    );
+    add_choice_row(
+        &waypipe_group,
+        "Video Decoding",
+        &["hw", "sw", "hwdec", "swdec"],
+        wp_video_dec_value.clone(),
+        open_choice.clone(),
+    );
+    let wp_video_bpf = gtk::Entry::new();
+    wp_video_bpf.set_text(&settings.waypipe_video_bpf);
+    wp_video_bpf.set_placeholder_text(Some("e.g. 5000000 (empty = auto)"));
+    add_entry_row(&waypipe_group, "Bits Per Frame", &wp_video_bpf);
+    let wp_remote_cmd = gtk::Entry::new();
+    wp_remote_cmd.set_text(&settings.waypipe_remote_command);
+    wp_remote_cmd.set_placeholder_text(Some("e.g. weston-terminal"));
+    add_entry_row(&waypipe_group, "Remote Command", &wp_remote_cmd);
+    let wp_title_prefix = gtk::Entry::new();
+    wp_title_prefix.set_text(&settings.waypipe_title_prefix);
+    wp_title_prefix.set_placeholder_text(Some("e.g. Remote:"));
+    add_entry_row(&waypipe_group, "Title Prefix", &wp_title_prefix);
+    let wp_no_gpu = gtk::Switch::new();
+    wp_no_gpu.set_active(settings.waypipe_no_gpu);
+    add_switch_row(&waypipe_group, "Disable GPU (Force SHM)", &wp_no_gpu);
+    let wp_oneshot = gtk::Switch::new();
+    wp_oneshot.set_active(settings.waypipe_oneshot);
+    add_switch_row(&waypipe_group, "One-shot Exit", &wp_oneshot);
+    let wp_unlink_socket = gtk::Switch::new();
+    wp_unlink_socket.set_active(settings.waypipe_unlink_socket);
+    add_switch_row(&waypipe_group, "Unlink Socket on Exit", &wp_unlink_socket);
+    let wp_login_shell = gtk::Switch::new();
+    wp_login_shell.set_active(settings.waypipe_login_shell);
+    add_switch_row(&waypipe_group, "Login Shell", &wp_login_shell);
+    let wp_debug = gtk::Switch::new();
+    wp_debug.set_active(settings.waypipe_debug);
+    add_switch_row(&waypipe_group, "Debug Mode", &wp_debug);
+    waypipe_page.add(&waypipe_group);
+    crate::linux::ui::a11y::set_wwn_a11y(
+        &waypipe_page,
+        crate::linux::ui::a11y::id::SETTINGS_WAYPIPE,
+        Some("Waypipe"),
+    );
+    stack.add_named(&waypipe_page, Some("Waypipe"));
 
-    // Dependencies
+    // MARK: SSH
+    let ssh_page = adw::PreferencesPage::new();
+    let ssh_group = adw::PreferencesGroup::new();
+    ssh_group.set_title("SSH Connection");
+    ssh_group.set_description(Some(
+        "Remote SSH server credentials and public key authentication details.",
+    ));
+    let ssh_host = gtk::Entry::new();
+    ssh_host.set_text(&settings.ssh_host);
+    ssh_host.set_placeholder_text(Some("host.example.com"));
+    let ssh_user = gtk::Entry::new();
+    ssh_user.set_text(&settings.ssh_user);
+    ssh_user.set_placeholder_text(Some("username"));
+    let ssh_port = gtk::SpinButton::with_range(1.0, 65535.0, 1.0);
+    ssh_port.set_value(settings.ssh_port as f64);
+    let ssh_password = gtk::PasswordEntry::builder().show_peek_icon(true).build();
+    ssh_password.set_text(&settings.ssh_password);
+    add_entry_row(&ssh_group, "Host", &ssh_host);
+    add_entry_row(&ssh_group, "User", &ssh_user);
+    add_row(&ssh_group, "Port", &ssh_port);
+    add_choice_row(
+        &ssh_group,
+        "Auth Method",
+        &["public_key", "password"],
+        ssh_auth_method_value.clone(),
+        open_choice.clone(),
+    );
+    add_entry_row(&ssh_group, "Password", &ssh_password);
+    let ssh_key_path = gtk::Entry::new();
+    ssh_key_path.set_text(&settings.ssh_key_path);
+    ssh_key_path.set_placeholder_text(Some("~/.ssh/id_ed25519"));
+    add_entry_row(&ssh_group, "Key Path", &ssh_key_path);
+    let ssh_key_passphrase = gtk::PasswordEntry::builder().show_peek_icon(true).build();
+    ssh_key_passphrase.set_text(&settings.ssh_key_passphrase);
+    add_entry_row(&ssh_group, "Key Passphrase", &ssh_key_passphrase);
+    add_choice_row(
+        &ssh_group,
+        "Key Type",
+        &["ed25519", "ecdsa", "rsa"],
+        ssh_key_type_value.clone(),
+        open_choice.clone(),
+    );
+
+    let ssh_status_lbl = gtk::Label::new(None);
+    ssh_status_lbl.set_wrap(true);
+    ssh_status_lbl.set_xalign(0.0);
+    ssh_status_lbl.add_css_class("dim-label");
+
+    let generate_key_btn = gtk::Button::with_label("Generate Key");
+    {
+        let key_type_val = ssh_key_type_value.clone();
+        let key_path_ent = ssh_key_path.clone();
+        let key_pass_ent = ssh_key_passphrase.clone();
+        let status_lbl = ssh_status_lbl.clone();
+        generate_key_btn.connect_clicked(move |_| {
+            let kt = key_type_val.borrow().clone();
+            let kp = key_path_ent.text().to_string();
+            let pass = key_pass_ent.text().to_string();
+            match linux_generate_ssh_key(&kt, &kp, &pass) {
+                Ok(msg) => status_lbl.set_text(&msg),
+                Err(err) => status_lbl.set_text(&err),
+            }
+        });
+    }
+    add_row(&ssh_group, "Generate Key", &generate_key_btn);
+
+    let test_ssh_btn = gtk::Button::with_label("Test Connection");
+    {
+        let host_ent = ssh_host.clone();
+        let user_ent = ssh_user.clone();
+        let port_spin = ssh_port.clone();
+        let status_lbl = ssh_status_lbl.clone();
+        test_ssh_btn.connect_clicked(move |_| {
+            let h = host_ent.text().to_string();
+            let u = user_ent.text().to_string();
+            let p = port_spin.value() as u16;
+            match linux_test_ssh_connection(&h, &u, p) {
+                Ok(msg) => status_lbl.set_text(&msg),
+                Err(err) => status_lbl.set_text(&err),
+            }
+        });
+    }
+    add_row(&ssh_group, "Test Connection", &test_ssh_btn);
+    ssh_group.add(&ssh_status_lbl);
+    ssh_page.add(&ssh_group);
+    crate::linux::ui::a11y::set_wwn_a11y(
+        &ssh_page,
+        crate::linux::ui::a11y::id::SETTINGS_SSH,
+        Some("SSH"),
+    );
+    stack.add_named(&ssh_page, Some("SSH"));
+
+    // MARK: Dependencies
     let deps_page = adw::PreferencesPage::new();
     let deps_group = adw::PreferencesGroup::new();
     deps_group.set_title("Bundled Dependencies");
@@ -384,7 +751,7 @@ pub fn show_settings(parent: &adw::ApplicationWindow, state: &SharedAppState, la
     deps_page.add(&deps_group);
     stack.add_named(&deps_page, Some("Dependencies"));
 
-    // Launch Agent
+    // MARK: Launch Agent
     let agent_page = adw::PreferencesPage::new();
     let agent_group = adw::PreferencesGroup::new();
     agent_group.set_title("Launch Agent and Runtime");
@@ -430,7 +797,7 @@ pub fn show_settings(parent: &adw::ApplicationWindow, state: &SharedAppState, la
     agent_page.add(&agent_group);
     stack.add_named(&agent_page, Some("Launch Agent"));
 
-    // Diagnostics
+    // MARK: Diagnostics
     let diag_page = adw::PreferencesPage::new();
     let diag_group = adw::PreferencesGroup::new();
     diag_group.set_title("Runtime Diagnostics");
@@ -448,7 +815,7 @@ pub fn show_settings(parent: &adw::ApplicationWindow, state: &SharedAppState, la
     diag_page.add(&diag_group);
     stack.add_named(&diag_page, Some("Diagnostics"));
 
-    // About: icon and version, then links, then the facts group.
+    // MARK: About
     let about_page = adw::PreferencesPage::new();
 
     let banner = adw::PreferencesGroup::new();
@@ -513,8 +880,8 @@ pub fn show_settings(parent: &adw::ApplicationWindow, state: &SharedAppState, la
             back_btn.set_visible(false);
             if let Some(row) = row {
                 let idx = row.index() as usize;
-                if idx < sections.len() {
-                    stack.set_visible_child_name(sections[idx]);
+                if idx < SETTINGS_SECTIONS.len() {
+                    stack.set_visible_child_name(SETTINGS_SECTIONS[idx].name);
                 }
             }
         });
@@ -524,7 +891,7 @@ pub fn show_settings(parent: &adw::ApplicationWindow, state: &SharedAppState, la
     }
 
     let split = gtk::Paned::new(gtk::Orientation::Horizontal);
-    split.set_position(180);
+    split.set_position(210);
     split.set_wide_handle(true);
     split.set_shrink_start_child(false);
     split.set_shrink_end_child(false);
@@ -554,19 +921,51 @@ pub fn show_settings(parent: &adw::ApplicationWindow, state: &SharedAppState, la
         let mut app = st.borrow_mut();
         app.settings.wayland_display = wayland_display.text().to_string();
         app.settings.auto_scale = true;
+        app.settings.compositor_backend = compositor_backend_value.borrow().clone();
+        app.settings.nested_compositors = nested_compositors_switch.is_active();
+        app.settings.multiple_clients = multiple_clients_switch.is_active();
         app.settings.input_profile = input_profile.text().to_string();
         app.settings.key_repeat = key_repeat.value() as u32;
+        app.settings.touch_pointer_emulation = touch_pointer_switch.is_active();
+        app.settings.show_virtual_cursor = virtual_cursor_switch.is_active();
+        app.settings.universal_clipboard = universal_clipboard_switch.is_active();
         app.settings.renderer = renderer_value.borrow().clone();
-        app.settings.force_ssd = true;
+        app.settings.force_ssd = force_ssd_switch.is_active();
         app.settings.color_operations = color_ops.is_active();
+        app.settings.vulkan_driver = vulkan_driver_value.borrow().clone();
+        app.settings.opengl_driver = opengl_driver_value.borrow().clone();
+        app.settings.dmabuf_enabled = dmabuf_switch.is_active();
+        app.settings.tcp_port = tcp_port.value() as u16;
         app.settings.ssh_host = ssh_host.text().to_string();
         app.settings.ssh_user = ssh_user.text().to_string();
-        app.settings.ssh_port = ssh_port.text().parse().unwrap_or(22);
+        app.settings.ssh_port = ssh_port.value() as u16;
         app.settings.ssh_password = ssh_password.text().to_string();
-        app.settings.waypipe_compression = wp_compress.text().to_string();
-        app.settings.waypipe_video = wp_video.text().to_string();
+        app.settings.ssh_auth_method = ssh_auth_method_value.borrow().clone();
+        app.settings.ssh_key_path = ssh_key_path.text().to_string();
+        app.settings.ssh_key_passphrase = ssh_key_passphrase.text().to_string();
+        app.settings.ssh_key_type = ssh_key_type_value.borrow().clone();
+        app.settings.session_thumbnails = thumbnails_switch.is_active();
+        app.settings.shake_to_close = shake_switch.is_active();
+        app.settings.swipe_back_to_close = swipe_switch.is_active();
+        app.settings.vm_vsock_port = vm_vsock_port.value() as u32;
+        app.settings.container_image_store = container_image_store.text().to_string();
+        app.settings.waypipe_compression = wp_compress_value.borrow().clone();
+        app.settings.waypipe_video = wp_video_value.borrow().clone();
+        app.settings.waypipe_video_encoding = wp_video_enc_value.borrow().clone();
+        app.settings.waypipe_video_decoding = wp_video_dec_value.borrow().clone();
+        app.settings.waypipe_video_bpf = wp_video_bpf.text().to_string();
+        app.settings.waypipe_no_gpu = wp_no_gpu.is_active();
+        app.settings.waypipe_oneshot = wp_oneshot.is_active();
+        app.settings.waypipe_unlink_socket = wp_unlink_socket.is_active();
+        app.settings.waypipe_login_shell = wp_login_shell.is_active();
+        app.settings.waypipe_title_prefix = wp_title_prefix.text().to_string();
+        app.settings.waypipe_remote_command = wp_remote_cmd.text().to_string();
         app.settings.waypipe_debug = wp_debug.is_active();
         app.settings.waypipe_enabled = wp_enabled.is_active();
+        app.settings.waypipe_display = wp_display.value() as u32;
+        app.settings.waypipe_socket = wp_socket.text().to_string();
+        app.settings.waypipe_compress_level = wp_compress_level.value() as u32;
+        app.settings.waypipe_threads = wp_threads.value() as u32;
         app.settings.log_level = log_level_value.borrow().clone();
         {
             let buffer = env_text.buffer();
@@ -652,15 +1051,62 @@ fn linux_open_github_bug_report() {
         &linux_host_os(),
         &report,
     );
-    let _ = std::process::Command::new("xdg-open").arg(&url).spawn();
+    linux_open_url(&url);
 }
 
 fn linux_open_url(url: &str) {
     let _ = std::process::Command::new("xdg-open").arg(url).spawn();
 }
 
-fn settings_one_line(text: &str) -> String {
-    text.split_whitespace().collect::<Vec<_>>().join(" ")
+fn linux_generate_ssh_key(key_type: &str, path: &str, passphrase: &str) -> Result<String, String> {
+    let expanded_path = if let Some(stripped) = path.strip_prefix("~/") {
+        if let Ok(home) = std::env::var("HOME") {
+            format!("{home}/{stripped}")
+        } else {
+            path.to_string()
+        }
+    } else {
+        path.to_string()
+    };
+    if let Some(parent) = std::path::Path::new(&expanded_path).parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let status = std::process::Command::new("ssh-keygen")
+        .args(["-t", key_type, "-f", &expanded_path, "-N", passphrase, "-q"])
+        .status();
+    match status {
+        Ok(s) if s.success() => Ok(format!("Key created at {path}")),
+        Ok(s) => Err(format!("ssh-keygen exited with code {}", s.code().unwrap_or(-1))),
+        Err(e) => Err(format!("Failed to run ssh-keygen: {e}")),
+    }
+}
+
+fn linux_test_ssh_connection(host: &str, user: &str, port: u16) -> Result<String, String> {
+    if host.trim().is_empty() {
+        return Err("Host cannot be empty".to_string());
+    }
+    let target = if user.trim().is_empty() {
+        host.trim().to_string()
+    } else {
+        format!("{}@{}", user.trim(), host.trim())
+    };
+    let status = std::process::Command::new("ssh")
+        .args([
+            "-p",
+            &port.to_string(),
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "ConnectTimeout=5",
+            &target,
+            "true",
+        ])
+        .status();
+    match status {
+        Ok(s) if s.success() => Ok(format!("Connection to {target} succeeded")),
+        Ok(s) => Err(format!("SSH exited with code {}", s.code().unwrap_or(-1))),
+        Err(e) => Err(format!("Failed to run ssh: {e}")),
+    }
 }
 
 /// Same order and subtitles as `WawonaAboutLinks` in SettingsContracts.swift.
@@ -728,7 +1174,6 @@ fn add_about_link_row(
     row.set_subtitle(subtitle);
     row.set_subtitle_lines(1);
     row.set_activatable(true);
-    ensure_favicon_css();
     let image = gtk::Image::new();
     image.set_pixel_size(28);
     image.set_overflow(gtk::Overflow::Hidden);
@@ -742,12 +1187,23 @@ fn add_about_link_row(
     group.add(&row);
 }
 
-fn ensure_favicon_css() {
+fn ensure_settings_css() {
     use std::sync::Once;
     static ONCE: Once = Once::new();
     ONCE.call_once(|| {
         let provider = gtk::CssProvider::new();
-        provider.load_from_data(".wwn-favicon { border-radius: 6px; }");
+        provider.load_from_data(
+            ".wwn-favicon { border-radius: 6px; }\n\
+             .wwn-icon-blue { color: #3584e4; }\n\
+             .wwn-icon-purple { color: #9141ac; }\n\
+             .wwn-icon-red { color: #e01b24; }\n\
+             .wwn-icon-orange { color: #ff7800; }\n\
+             .wwn-icon-teal { color: #00bfa5; }\n\
+             .wwn-icon-green { color: #2ec27e; }\n\
+             .wwn-icon-indigo { color: #7851a9; }\n\
+             .wwn-icon-slate { color: #5f6368; }\n\
+             .wwn-icon-brown { color: #986a44; }\n",
+        );
         if let Some(display) = gtk::gdk::Display::default() {
             gtk::style_context_add_provider_for_display(
                 &display,
@@ -860,17 +1316,15 @@ fn fnv64(bytes: &[u8]) -> u64 {
     hash
 }
 
-fn add_link_row(group: &adw::PreferencesGroup, title: &str, url: &str) {
+fn add_dependency_row(group: &adw::PreferencesGroup, title: &str, subtitle: &str, url: &str) {
     let row = adw::ActionRow::new();
     row.set_title(title);
     row.set_title_lines(1);
-    let label = url
-        .trim()
-        .trim_start_matches("https://")
-        .trim_start_matches("http://");
-    row.set_subtitle(&settings_one_line(label));
-    row.set_subtitle_lines(1);
+    row.set_subtitle(subtitle);
+    row.set_subtitle_lines(0);
     row.set_activatable(true);
+    let chevron = gtk::Image::from_icon_name("go-next-symbolic");
+    row.add_suffix(&chevron);
     let open_url = url.to_string();
     row.connect_activated(move |_| {
         linux_open_url(&open_url);
@@ -878,94 +1332,23 @@ fn add_link_row(group: &adw::PreferencesGroup, title: &str, url: &str) {
     group.add(&row);
 }
 
-fn add_dependency_row(group: &adw::PreferencesGroup, title: &str, detail: &str, url: &str) {
+fn add_switch_row(group: &adw::PreferencesGroup, title: &str, switch: &gtk::Switch) {
     let row = adw::ActionRow::new();
     row.set_title(title);
     row.set_title_lines(1);
-    row.set_subtitle(&settings_one_line(detail));
-    row.set_subtitle_lines(0);
-    row.set_activatable(true);
-    let title_owned = title.to_string();
-    let detail_owned = detail.to_string();
-    let url_owned = url.to_string();
-    row.connect_activated(move |row| {
-        let parent = row.root().and_downcast::<gtk::Window>();
-        let body = format!("{detail_owned}\n\n{url_owned}");
-        let dlg = gtk::MessageDialog::new(
-            parent.as_ref(),
-            gtk::DialogFlags::MODAL,
-            gtk::MessageType::Info,
-            gtk::ButtonsType::None,
-            &body,
-        );
-        dlg.set_title(Some(&title_owned));
-        dlg.add_button("Open Website", gtk::ResponseType::Accept);
-        dlg.add_button("OK", gtk::ResponseType::Ok);
-        let url_c = url_owned.clone();
-        dlg.connect_response(move |d, response| {
-            if response == gtk::ResponseType::Accept {
-                linux_open_url(&url_c);
-            }
-            d.close();
-        });
-        dlg.present();
-    });
+    switch.set_valign(gtk::Align::Center);
+    row.add_suffix(switch);
+    row.set_activatable_widget(Some(switch));
     group.add(&row);
 }
 
-fn add_info_row(group: &adw::PreferencesGroup, title: &str, detail: &str) {
+fn add_entry_row(group: &adw::PreferencesGroup, title: &str, entry: &impl IsA<gtk::Widget>) {
     let row = adw::ActionRow::new();
     row.set_title(title);
     row.set_title_lines(1);
-    row.set_subtitle(&settings_one_line(detail));
-    // 0 disables ellipsis; the real value wraps in the row.
-    row.set_subtitle_lines(0);
-    row.set_activatable(true);
-    let title_owned = title.to_string();
-    let detail = detail.to_string();
-    row.connect_activated(move |row| {
-        let parent = row.root().and_downcast::<gtk::Window>();
-        let dlg = gtk::MessageDialog::new(
-            parent.as_ref(),
-            gtk::DialogFlags::MODAL,
-            gtk::MessageType::Info,
-            gtk::ButtonsType::Ok,
-            &detail,
-        );
-        dlg.set_title(Some(&title_owned));
-        dlg.connect_response(|d, _| d.close());
-        dlg.present();
-    });
-    group.add(&row);
-}
-
-fn add_choice_row(
-    group: &adw::PreferencesGroup,
-    title: &str,
-    choices: &[&str],
-    selected: Rc<RefCell<String>>,
-    open_choice: Rc<dyn Fn(String, Vec<String>, Rc<RefCell<String>>, gtk::Label)>,
-) {
-    let row = adw::ActionRow::new();
-    row.set_title(title);
-    row.set_title_lines(1);
-    row.set_activatable(true);
-    let value = gtk::Label::new(Some(selected.borrow().as_str()));
-    value.add_css_class("dim-label");
-    row.add_suffix(&value);
-    row.add_suffix(&gtk::Image::from_icon_name("go-next-symbolic"));
-    let title_owned = title.to_string();
-    let choices_owned: Vec<String> = choices.iter().map(|choice| (*choice).to_string()).collect();
-    let selected_c = selected.clone();
-    let value_c = value.clone();
-    row.connect_activated(move |_| {
-        open_choice(
-            title_owned.clone(),
-            choices_owned.clone(),
-            selected_c.clone(),
-            value_c.clone(),
-        );
-    });
+    entry.set_valign(gtk::Align::Center);
+    row.add_suffix(entry);
+    row.set_activatable(false);
     group.add(&row);
 }
 
@@ -975,5 +1358,43 @@ fn add_row(group: &adw::PreferencesGroup, title: &str, widget: &impl IsA<gtk::Wi
     row.set_title_lines(1);
     row.add_suffix(widget);
     row.set_activatable(false);
+    group.add(&row);
+}
+
+fn add_info_row(group: &adw::PreferencesGroup, title: &str, value: &str) {
+    let row = adw::ActionRow::new();
+    row.set_title(title);
+    row.set_title_lines(1);
+    row.set_subtitle(value);
+    row.set_subtitle_lines(0);
+    group.add(&row);
+}
+
+fn add_choice_row(
+    group: &adw::PreferencesGroup,
+    title: &str,
+    choices: &[&str],
+    value: Rc<RefCell<String>>,
+    open_choice: Rc<dyn Fn(String, Vec<String>, Rc<RefCell<String>>, gtk::Label)>,
+) {
+    let row = adw::ActionRow::new();
+    row.set_title(title);
+    row.set_title_lines(1);
+    row.set_activatable(true);
+    let val_label = gtk::Label::new(Some(&value.borrow()));
+    val_label.add_css_class("dim-label");
+    row.add_suffix(&val_label);
+    let chevron = gtk::Image::from_icon_name("go-next-symbolic");
+    row.add_suffix(&chevron);
+    let title_s = title.to_string();
+    let choices_v: Vec<String> = choices.iter().map(|s| s.to_string()).collect();
+    row.connect_activated(move |_| {
+        open_choice(
+            title_s.clone(),
+            choices_v.clone(),
+            value.clone(),
+            val_label.clone(),
+        );
+    });
     group.add(&row);
 }

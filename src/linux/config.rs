@@ -101,30 +101,109 @@ fn generate_id() -> String {
     format!("{ts:X}-{r:08X}")
 }
 
+fn default_true() -> bool { true }
+fn default_compositor_backend() -> String { "auto".to_string() }
+fn default_vulkan_driver() -> String { "system".to_string() }
+fn default_opengl_driver() -> String { "system".to_string() }
+fn default_tcp_port() -> u16 { 6000 }
+fn default_ssh_key_type() -> String { "ed25519".to_string() }
+fn default_vm_vsock_port() -> u32 { 1024 }
+fn default_container_image_store() -> String { "~/.local/share/wawona/oci".to_string() }
+fn default_compress_level() -> u32 { 7 }
+fn default_video_encoding() -> String { "hw".to_string() }
+fn default_video_decoding() -> String { "hw".to_string() }
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LinuxSettings {
     // Display
     pub wayland_display: String,
     pub auto_scale: bool,
+    #[serde(default = "default_compositor_backend")]
+    pub compositor_backend: String,
+    #[serde(default = "default_true")]
+    pub nested_compositors: bool,
+    #[serde(default = "default_true")]
+    pub multiple_clients: bool,
+
     // Input
     pub input_profile: String,
     pub key_repeat: u32,
+    #[serde(default)]
+    pub touch_pointer_emulation: bool,
+    #[serde(default)]
+    pub show_virtual_cursor: bool,
+    #[serde(default = "default_true")]
+    pub universal_clipboard: bool,
+
     // Graphics
     pub renderer: String,
     pub force_ssd: bool,
     pub color_operations: bool,
+    #[serde(default = "default_vulkan_driver")]
+    pub vulkan_driver: String,
+    #[serde(default = "default_opengl_driver")]
+    pub opengl_driver: String,
+    #[serde(default = "default_true")]
+    pub dmabuf_enabled: bool,
+
     // Connection
+    #[serde(default = "default_tcp_port")]
+    pub tcp_port: u16,
     pub ssh_host: String,
     pub ssh_user: String,
     pub ssh_port: u16,
     pub ssh_password: String,
     pub ssh_auth_method: String,
     pub ssh_key_path: String,
+    #[serde(default)]
+    pub ssh_key_passphrase: String,
+    #[serde(default = "default_ssh_key_type")]
+    pub ssh_key_type: String,
+
+    // Machines defaults
+    #[serde(default = "default_true")]
+    pub session_thumbnails: bool,
+    #[serde(default = "default_true")]
+    pub shake_to_close: bool,
+    #[serde(default = "default_true")]
+    pub swipe_back_to_close: bool,
+    #[serde(default = "default_vm_vsock_port")]
+    pub vm_vsock_port: u32,
+    #[serde(default = "default_container_image_store")]
+    pub container_image_store: String,
+
     // Waypipe
     pub waypipe_compression: String,
     pub waypipe_video: String,
     pub waypipe_debug: bool,
     pub waypipe_enabled: bool,
+    #[serde(default)]
+    pub waypipe_display: u32,
+    #[serde(default)]
+    pub waypipe_socket: String,
+    #[serde(default = "default_compress_level")]
+    pub waypipe_compress_level: u32,
+    #[serde(default)]
+    pub waypipe_threads: u32,
+    #[serde(default = "default_video_encoding")]
+    pub waypipe_video_encoding: String,
+    #[serde(default = "default_video_decoding")]
+    pub waypipe_video_decoding: String,
+    #[serde(default)]
+    pub waypipe_video_bpf: String,
+    #[serde(default)]
+    pub waypipe_no_gpu: bool,
+    #[serde(default)]
+    pub waypipe_oneshot: bool,
+    #[serde(default)]
+    pub waypipe_unlink_socket: bool,
+    #[serde(default)]
+    pub waypipe_login_shell: bool,
+    #[serde(default)]
+    pub waypipe_title_prefix: String,
+    #[serde(default)]
+    pub waypipe_remote_command: String,
+
     // Advanced
     pub log_level: String,
     /// Global environment overrides (#157): name → value. Empty value means unset.
@@ -143,21 +222,51 @@ impl Default for LinuxSettings {
         Self {
             wayland_display: "wawona-0".to_string(),
             auto_scale: true,
+            compositor_backend: "auto".to_string(),
+            nested_compositors: true,
+            multiple_clients: true,
             input_profile: "direct".to_string(),
             key_repeat: 30,
+            touch_pointer_emulation: false,
+            show_virtual_cursor: false,
+            universal_clipboard: true,
             renderer: "vulkan".to_string(),
             force_ssd: true,
             color_operations: false,
+            vulkan_driver: "system".to_string(),
+            opengl_driver: "system".to_string(),
+            dmabuf_enabled: true,
+            tcp_port: 6000,
             ssh_host: String::new(),
             ssh_user: String::new(),
             ssh_port: 22,
             ssh_password: String::new(),
             ssh_auth_method: "public_key".to_string(),
             ssh_key_path: "~/.ssh/id_ed25519".to_string(),
+            ssh_key_passphrase: String::new(),
+            ssh_key_type: "ed25519".to_string(),
+            session_thumbnails: true,
+            shake_to_close: true,
+            swipe_back_to_close: true,
+            vm_vsock_port: 1024,
+            container_image_store: "~/.local/share/wawona/oci".to_string(),
             waypipe_compression: "lz4".to_string(),
             waypipe_video: "none".to_string(),
             waypipe_debug: false,
             waypipe_enabled: true,
+            waypipe_display: 0,
+            waypipe_socket: String::new(),
+            waypipe_compress_level: 7,
+            waypipe_threads: 0,
+            waypipe_video_encoding: "hw".to_string(),
+            waypipe_video_decoding: "hw".to_string(),
+            waypipe_video_bpf: String::new(),
+            waypipe_no_gpu: false,
+            waypipe_oneshot: false,
+            waypipe_unlink_socket: false,
+            waypipe_login_shell: false,
+            waypipe_title_prefix: String::new(),
+            waypipe_remote_command: String::new(),
             log_level: "info".to_string(),
             environment_overrides: std::collections::BTreeMap::new(),
             environment_unsets: Vec::new(),
