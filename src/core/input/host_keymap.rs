@@ -593,6 +593,19 @@ impl HostKeymapBridge for FallbackHostKeymap {
 mod tests {
     use super::*;
 
+    /// Exclusive lock over the process-global host key levels.
+    ///
+    /// `HOST_LEVELS` is global state, so a test that mutates it can otherwise
+    /// land between the reads of another test and make that test observe two
+    /// different keymaps. Every test that reads or mutates the global holds
+    /// this lock for its whole logical operation.
+    fn host_levels_lock() -> std::sync::MutexGuard<'static, ()> {
+        static HOST_LEVELS_TEST_LOCK: Mutex<()> = Mutex::new(());
+        HOST_LEVELS_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
     fn us_letter_levels() -> HashMap<&'static str, [u32; 4]> {
         let mut m = HashMap::new();
         m.insert("AC01", [u32::from(b'a'), u32::from(b'A'), 0, 0]);
@@ -603,6 +616,7 @@ mod tests {
 
     #[test]
     fn generate_from_host_matches_us_letter_rows() {
+        let _guard = host_levels_lock();
         clear_host_key_levels();
         let km = generate_from_host();
         assert!(
@@ -645,6 +659,7 @@ mod tests {
 
     #[test]
     fn apply_mac_vk_q_as_a_then_generate() {
+        let _guard = host_levels_lock();
         clear_host_key_levels();
         // kVK 12 is Q position (AD01). Host French: a/A.
         apply_host_key_levels(
@@ -659,6 +674,7 @@ mod tests {
 
     #[test]
     fn fallback_bridge_uses_generate_from_host() {
+        let _guard = host_levels_lock();
         clear_host_key_levels();
         let bridge = FallbackHostKeymap;
         assert_eq!(bridge.keymap_xkb_v1(), generate_from_host());
