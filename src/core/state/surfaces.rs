@@ -28,6 +28,14 @@ impl CompositorState {
     /// Remove a surface
     pub fn remove_surface(&mut self, surface_id: u32) {
         self.end_touches_on_surface(surface_id);
+        if self.seat.pointer.focus == Some(surface_id) {
+            let serial = self.next_serial();
+            self.leave_pointer_surface(surface_id, serial);
+        }
+        if self.seat.keyboard.focus == Some(surface_id) {
+            self.seat.keyboard.focus = None;
+            self.sync_pointer_constraints();
+        }
         self.surfaces.remove(&surface_id);
         self.frame_callbacks.remove(&surface_id);
 
@@ -36,6 +44,10 @@ impl CompositorState {
         }
 
         tracing::debug!("Removed surface {}", surface_id);
+
+        if self.headless_host {
+            self.repick_headless_global_pointer();
+        }
     }
 
     /// A destroyed surface can no longer be touched: send `wl_touch.up`
@@ -505,7 +517,7 @@ impl CompositorState {
                                 // surfaces in the output (flower/smoke 200×200)
                                 // once, when they map. Later commits must not
                                 // undo a compositor or user move.
-                                if first_map && window.size_authority.is_client() {
+                                if first_map && window.size_authority.is_client() && !self.headless_host {
                                     let (ow, oh) = self
                                         .outputs
                                         .get(self.primary_output)
