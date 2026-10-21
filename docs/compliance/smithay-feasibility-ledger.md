@@ -95,4 +95,4 @@ Every interface currently classified as `equivalent = "no-equivalent"` must reso
 - `true-no-path`: no practical Smithay runtime owner in current Wawona release, or protocol is explicitly ecosystem-specific (`KDE`, `Wawona-specific`, `legacy`).
 - `architecture-blocked`: Smithay-shaped target exists conceptually, but current runtime ownership is still custom and must remain profile-gated until cutover lands.
 
-The closure verifier enforces that all 51 no-equivalent interfaces have one of these dispositions and exports a machine-readable artifact for CI.
+The closure verifier enforces that all 56 no-equivalent interfaces have one of these dispositions and exports a machine-readable artifact for CI.

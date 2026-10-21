@@ -265,6 +265,31 @@ These interfaces remain custom-owned in the current runtime and are intentionall
   - Equivalent status: `no-equivalent`
   - Exposure: `desktop-host`, `full-dev`
 
+- `zxdg_shell_v6`
+  - Module: `src/core/wayland/xdg/mod.rs`
+  - Equivalent status: `no-equivalent`
+  - Exposure: `desktop-host`, `full-dev`
+
+- `wl_shell`
+  - Module: `src/core/wayland/xdg/mod.rs`
+  - Equivalent status: `no-equivalent`
+  - Exposure: `desktop-host`, `full-dev`
+
+- `gtk_primary_selection_device_manager`
+  - Module: `src/core/wayland/ext/mod.rs`
+  - Equivalent status: `no-equivalent`
+  - Exposure: `desktop-host`, `full-dev`
+
+- `zwp_text_input_manager_v2`
+  - Module: `src/core/wayland/ext/mod.rs`
+  - Equivalent status: `no-equivalent`
+  - Exposure: `desktop-host`, `full-dev`
+
+- `zwp_input_method_v1`
+  - Module: `src/core/wayland/ext/mod.rs`
+  - Equivalent status: `no-equivalent`
+  - Exposure: `desktop-host`, `full-dev`
+
 ## Optional Ecosystem Surface (Not Baseline Smithay Contract)
 
 - `wayland-protocols-hyprland`
