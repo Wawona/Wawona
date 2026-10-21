@@ -1,6 +1,8 @@
 pub mod decoration;
 pub mod extension_handlers;
 pub mod shell_handler;
+pub mod surface_validation;
+pub mod toplevel_state;
 pub mod xdg_activation;
 pub mod xdg_dialog;
 pub mod xdg_foreign;

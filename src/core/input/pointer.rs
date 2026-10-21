@@ -35,8 +35,10 @@ pub struct PointerState {
     /// measured against it, so a confined pointer moves relative to its
     /// clamped position instead of jumping to the host's absolute target.
     pub global_raw: Option<(f64, f64)>,
-    /// Window and window-local position last delivered by global injection.
+    /// Surface and surface-local position last delivered by global injection.
     pub global_target: Option<(u64, f64, f64)>,
+    /// Compositor-owned interactive move / resize (headless hosts only).
+    pub interactive_grab: Option<super::interactive_grab::InteractiveGrab>,
 }
 
 impl PointerState {

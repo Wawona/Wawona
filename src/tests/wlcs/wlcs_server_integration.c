@@ -353,10 +353,14 @@ static WlcsPointer *wawona_create_pointer(WlcsDisplayServer *display_server) {
     return &pointer->base;
 }
 
+/*
+ * touch.h declares wl_fixed_t, but wlcs::Touch::down_at/move_to pass plain
+ * integer compositor coordinates (wlcs <= 1.8.1; Mir's harness reads ints).
+ */
 static void touch_down(WlcsTouch *touch, wl_fixed_t x, wl_fixed_t y) {
     WawonaWlcsTouch *t = (WawonaWlcsTouch *)touch;
-    t->x = wl_fixed_to_double(x);
-    t->y = wl_fixed_to_double(y);
+    t->x = (double)x;
+    t->y = (double)y;
     t->active_id++;
     WWNCoreInjectTouchDown(
         t->server->core, t->active_id, t->x, t->y, timestamp_ms());
@@ -366,8 +370,8 @@ static void touch_down(WlcsTouch *touch, wl_fixed_t x, wl_fixed_t y) {
 
 static void touch_move(WlcsTouch *touch, wl_fixed_t x, wl_fixed_t y) {
     WawonaWlcsTouch *t = (WawonaWlcsTouch *)touch;
-    t->x = wl_fixed_to_double(x);
-    t->y = wl_fixed_to_double(y);
+    t->x = (double)x;
+    t->y = (double)y;
     WWNCoreInjectTouchMotion(
         t->server->core, t->active_id, t->x, t->y, timestamp_ms());
     WWNCoreInject_touch_frame(t->server->core);

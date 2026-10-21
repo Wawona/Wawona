@@ -32,6 +32,7 @@ struct ClientState {
     selection_offers: u32,
     selection_events: u32,
     offer: Option<wl_data_offer::WlDataOffer>,
+    source_cancelled: bool,
 }
 
 impl Dispatch<wl_registry::WlRegistry, ()> for ClientState {
@@ -117,17 +118,21 @@ impl Dispatch<wl_data_device::WlDataDevice, ()> for ClientState {
 
 impl Dispatch<wl_data_source::WlDataSource, ()> for ClientState {
     fn event(
-        _state: &mut Self,
+        state: &mut Self,
         _proxy: &wl_data_source::WlDataSource,
         event: wl_data_source::Event,
         _data: &(),
         _conn: &Connection,
         _qh: &QueueHandle<Self>,
     ) {
-        if let wl_data_source::Event::Send { fd, .. } = event {
-            use std::io::Write;
-            let mut file = std::fs::File::from(fd);
-            let _ = file.write_all(CLIPBOARD_PAYLOAD);
+        match event {
+            wl_data_source::Event::Send { fd, .. } => {
+                use std::io::Write;
+                let mut file = std::fs::File::from(fd);
+                let _ = file.write_all(CLIPBOARD_PAYLOAD);
+            }
+            wl_data_source::Event::Cancelled => state.source_cancelled = true,
+            _ => {}
         }
     }
 }
@@ -453,4 +458,68 @@ fn test_data_device_copy_a_paste_b() {
     );
     let _ = source;
     let _ = device_a;
+}
+
+/// A client without keyboard focus may still set the clipboard (WLCS
+/// `CopyCutPaste`): the focused client must get the offer and the bytes,
+/// and the unfocused source is cancelled once the focused client copies.
+#[test]
+fn unfocused_set_selection_should_reach_focused_client_and_cancel_on_replace() {
+    let mut env = TestEnv::new();
+    let (mut queue_a, mut a) = bind_globals(&mut env);
+    map_surface(&mut env, &mut queue_a, &mut a);
+    let qh_a = queue_a.handle();
+    let device_a =
+        a.ddm
+            .clone()
+            .expect("A ddm")
+            .get_data_device(&a.seat.clone().expect("A seat"), &qh_a, ());
+    env.wait_roundtrip(&mut queue_a, &mut a);
+
+    let (conn_b, server_b) = env.add_client(2);
+    let mut queue_b = conn_b.new_event_queue::<ClientState>();
+    let qh_b = queue_b.handle();
+    let _registry_b = conn_b.display().get_registry(&qh_b, ());
+    let mut b = ClientState::default();
+    env.wait_roundtrip_on(&conn_b, &mut queue_b, &mut b);
+    map_surface_on(&mut env, &conn_b, &mut queue_b, &mut b);
+    let ddm_b = b.ddm.clone().expect("B ddm");
+    let device_b = ddm_b.get_data_device(&b.seat.clone().expect("B seat"), &qh_b, ());
+    env.wait_roundtrip_on(&conn_b, &mut queue_b, &mut b);
+    let b_surface = server_surface_for_client(&env, &server_b);
+    keyboard_focus(&mut env, b_surface);
+    env.wait_roundtrip_on(&conn_b, &mut queue_b, &mut b);
+    let offers_before = b.selection_events;
+
+    let source_a = a.ddm.clone().expect("A ddm").create_data_source(&qh_a, ());
+    source_a.offer("text/plain;charset=utf-8".into());
+    device_a.set_selection(Some(&source_a), 1);
+    env.wait_roundtrip(&mut queue_a, &mut a);
+    env.wait_roundtrip_on(&conn_b, &mut queue_b, &mut b);
+
+    assert!(
+        b.selection_events > offers_before,
+        "focused client B must see unfocused A's selection"
+    );
+    let offer = b.offer.clone().expect("B data offer");
+    let (reader, writer) = nix::unistd::pipe().expect("pipe");
+    offer.receive("text/plain;charset=utf-8".into(), writer.as_fd());
+    env.wait_roundtrip_on(&conn_b, &mut queue_b, &mut b);
+    env.wait_roundtrip(&mut queue_a, &mut a);
+    drop(writer);
+    use std::io::Read;
+    let mut buf = Vec::new();
+    std::fs::File::from(reader).read_to_end(&mut buf).ok();
+    assert_eq!(buf, CLIPBOARD_PAYLOAD, "B must read A's proxied bytes");
+    assert!(!a.source_cancelled, "A's source is still the selection");
+
+    let source_b = ddm_b.create_data_source(&qh_b, ());
+    source_b.offer("text/plain".into());
+    device_b.set_selection(Some(&source_b), 2);
+    env.wait_roundtrip_on(&conn_b, &mut queue_b, &mut b);
+    env.wait_roundtrip(&mut queue_a, &mut a);
+    assert!(
+        a.source_cancelled,
+        "replaced unfocused source must receive wl_data_source.cancelled"
+    );
 }

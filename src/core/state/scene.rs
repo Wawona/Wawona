@@ -386,6 +386,12 @@ impl CompositorState {
         }
 
         for window_id in ordered_windows {
+            // A platform host hides minimized windows itself and never
+            // clears `minimized`, so only the headless window manager
+            // drops them from the scene (and from input picking).
+            if self.headless_host && !self.is_window_shown(window_id) {
+                continue;
+            }
             if let Some(window) = self.get_window(window_id) {
                 let window = window.read().unwrap();
                 let node_id = self.next_node_id();
@@ -726,34 +732,76 @@ impl CompositorState {
         parent_surface_id: u32,
         geometry_offset: (i32, i32),
     ) {
-        if let Some(children) = self.subsurface_children.get(&parent_surface_id).cloned() {
-            for child_surface_id in children {
-                let sub_info = self
-                    .subsurfaces
-                    .get(&child_surface_id)
-                    .map(|s| (s.position, s.sync));
+        let (children, below_parent) = self.subsurface_stacking(parent_surface_id);
+        let mut added_below = 0;
+        for (index, child_surface_id) in children.into_iter().enumerate() {
+            let Some(pos) = self.subsurfaces.get(&child_surface_id).map(|s| s.position) else {
+                continue;
+            };
+            let node_id = self.next_node_id();
+            let mut node = SceneNode::new(node_id).with_surface(child_surface_id);
 
-                if let Some((pos, _sync)) = sub_info {
-                    let node_id = self.next_node_id();
-                    let mut node = SceneNode::new(node_id).with_surface(child_surface_id);
+            node.set_position(pos.0 - geometry_offset.0, pos.1 - geometry_offset.1);
 
-                    node.set_position(pos.0 - geometry_offset.0, pos.1 - geometry_offset.1);
-
-                    if let Some(surface_ref) = self.get_surface(child_surface_id) {
-                        let surface = surface_ref.read().unwrap();
-                        node.set_size(
-                            surface.current.width.max(0) as u32,
-                            surface.current.height.max(0) as u32,
-                        );
-                        node.scale = (surface.current.scale.max(1)) as f32;
-                    }
-
-                    scene.add_node(node);
-                    scene.add_child(parent_node_id, node_id);
-
-                    self.add_subsurfaces_to_scene(scene, node_id, child_surface_id, (0, 0));
+            if let Some(surface_ref) = self.get_surface(child_surface_id) {
+                if let Ok(surface) = surface_ref.read() {
+                    node.set_size(
+                        surface.current.width.max(0) as u32,
+                        surface.current.height.max(0) as u32,
+                    );
+                    node.scale = (surface.current.scale.max(1)) as f32;
                 }
             }
+
+            scene.add_node(node);
+            scene.add_child(parent_node_id, node_id);
+            if index < below_parent {
+                added_below += 1;
+            }
+
+            self.add_subsurfaces_to_scene(scene, node_id, child_surface_id, (0, 0));
         }
+        if let Some(parent) = scene.nodes.get_mut(&parent_node_id) {
+            parent.children_below = added_below;
+        }
+    }
+
+    /// Direct subsurfaces of `surface_id` bottom to top, as Smithay's surface
+    /// tree orders them, and how many of them stack below `surface_id`.
+    fn subsurface_stacking(&self, surface_id: u32) -> (Vec<u32>, usize) {
+        use smithay::wayland::compositor::{with_surface_tree_upward, TraversalAction};
+
+        let Some(parent) = self.wl_surface_for(surface_id) else {
+            return (Vec::new(), 0);
+        };
+        // `None` marks the parent's own slot in its children list.
+        let mut order = Vec::new();
+        with_surface_tree_upward(
+            &parent,
+            false,
+            |_, _, &is_child| {
+                if is_child {
+                    TraversalAction::SkipChildren
+                } else {
+                    TraversalAction::DoChildren(true)
+                }
+            },
+            |surface, _, &is_child| order.push(is_child.then(|| surface.clone())),
+            |_, _, _| true,
+        );
+
+        let below_parent = order.iter().take_while(|slot| slot.is_some()).count();
+        let mut children = Vec::with_capacity(order.len());
+        let mut below = 0;
+        for (index, slot) in order.iter().enumerate() {
+            let Some(id) = slot.as_ref().and_then(|s| self.internal_surface_id(s)) else {
+                continue;
+            };
+            if index < below_parent {
+                below += 1;
+            }
+            children.push(id);
+        }
+        (children, below)
     }
 }

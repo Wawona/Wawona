@@ -315,6 +315,14 @@ impl CompositorState {
 
     /// Destroy a window
     pub fn destroy_window(&mut self, window_id: u32) {
+        if self
+            .seat
+            .pointer
+            .interactive_grab
+            .is_some_and(|grab| grab.window_id == window_id)
+        {
+            self.seat.pointer.interactive_grab = None;
+        }
         if let Some(window) = self.windows.remove(&window_id) {
             let surface_id = match window.read() {
                 Ok(w) => w.surface_id,

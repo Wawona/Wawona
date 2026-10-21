@@ -27,6 +27,7 @@ impl CompositorState {
 
     /// Remove a surface
     pub fn remove_surface(&mut self, surface_id: u32) {
+        self.end_touches_on_surface(surface_id);
         self.surfaces.remove(&surface_id);
         self.frame_callbacks.remove(&surface_id);
 
@@ -35,6 +36,28 @@ impl CompositorState {
         }
 
         tracing::debug!("Removed surface {}", surface_id);
+    }
+
+    /// A destroyed surface can no longer be touched: send `wl_touch.up`
+    /// (and `frame`) for every contact that went down on it.
+    fn end_touches_on_surface(&mut self, surface_id: u32) {
+        let mut touched: Vec<i32> = self
+            .seat
+            .touch
+            .active_points
+            .values()
+            .filter(|point| point.surface_id == surface_id)
+            .map(|point| point.id)
+            .collect();
+        if touched.is_empty() {
+            return;
+        }
+        touched.sort_unstable();
+        let time = crate::core::compositor::Compositor::timestamp_ms();
+        for id in touched {
+            self.inject_touch_up(id, time);
+        }
+        self.inject_touch_frame();
     }
 
     /// Get a surface
@@ -71,6 +94,7 @@ impl CompositorState {
             parent_id,
             position: (0, 0),
             pending_position: (0, 0),
+            committed_position: (0, 0),
             sync: true,
             z_order,
         };
@@ -110,10 +134,24 @@ impl CompositorState {
         }
     }
 
-    /// Commit subsurface position (called on parent commit for sync mode)
+    /// The client committed `parent_id`: capture its children's pending
+    /// positions into the parent's committed state.
+    pub fn capture_subsurface_positions(&mut self, parent_id: u32) {
+        let Some(children) = self.subsurface_children.get(&parent_id) else {
+            return;
+        };
+        for child_id in children {
+            if let Some(state) = self.subsurfaces.get_mut(child_id) {
+                state.committed_position = state.pending_position;
+            }
+        }
+    }
+
+    /// The parent's state was applied: its children take the positions
+    /// captured by the parent's last client commit.
     pub fn commit_subsurface_position(&mut self, surface_id: u32) {
         if let Some(state) = self.subsurfaces.get_mut(&surface_id) {
-            state.position = state.pending_position;
+            state.position = state.committed_position;
         }
     }
 
@@ -182,6 +220,9 @@ impl CompositorState {
         let (release_id, output_presence) = if let Some(surface) = self.get_surface(surface_id) {
             let mut surface = surface.write().unwrap();
             let release_id = surface.commit();
+            self.ext
+                .viewporter
+                .apply_on_surface_commit(surface_id, &mut surface.current);
             let mapped = !matches!(
                 surface.current.buffer,
                 crate::core::surface::BufferType::None
@@ -217,6 +258,7 @@ impl CompositorState {
 
         self.ext.presentation.mark_committed(surface_id);
         self.finalize_surface_commit(surface_id);
+        self.repick_global_pointer_after_commit();
     }
 
     /// wl_surface.enter/leave. A surface with content is on every output; an
@@ -448,10 +490,18 @@ impl CompositorState {
                                 window.height = target_height;
                                 window.geometry_x = target_geometry_x;
                                 window.geometry_y = target_geometry_y;
+                                let first_map = !window.has_committed_buffer;
                                 window.has_committed_buffer = true;
+                                // The headless window manager stacks a window
+                                // when it maps, not when its role is created.
+                                if first_map && self.headless_host {
+                                    self.window_tree.bring_to_front(wid);
+                                }
                                 // Placement ≠ sizing: center client-constrained
-                                // surfaces in the output (flower/smoke 200×200).
-                                if window.size_authority.is_client() {
+                                // surfaces in the output (flower/smoke 200×200)
+                                // once, when they map. Later commits must not
+                                // undo a compositor or user move.
+                                if first_map && window.size_authority.is_client() {
                                     let (ow, oh) = self
                                         .outputs
                                         .get(self.primary_output)

@@ -5,6 +5,8 @@ use crate::core::wayland::protocol::wlroots::wlr_foreign_toplevel_management_uns
     zwlr_foreign_toplevel_handle_v1, zwlr_foreign_toplevel_manager_v1,
 };
 
+type ForeignHandle = zwlr_foreign_toplevel_handle_v1::ZwlrForeignToplevelHandleV1;
+
 pub struct ForeignToplevelManagerData;
 
 impl GlobalDispatch<zwlr_foreign_toplevel_manager_v1::ZwlrForeignToplevelManagerV1, ()>
@@ -24,17 +26,19 @@ impl GlobalDispatch<zwlr_foreign_toplevel_manager_v1::ZwlrForeignToplevelManager
             data_init.init(resource, ());
 
         // Advertise all existing windows
-        for (&window_id, window_lock) in state.windows.iter() {
-            let window = window_lock.read().unwrap();
-
-            let handle_resource = client.create_resource::<zwlr_foreign_toplevel_handle_v1::ZwlrForeignToplevelHandleV1, u32, CompositorState>(
-                handle,
-                manager.version(),
-                window_id,
-            ).expect("Failed to create zwlr_foreign_toplevel_handle_v1");
-
+        let window_ids: Vec<u32> = state.windows.keys().copied().collect();
+        for window_id in window_ids {
+            let Ok(handle_resource) = client
+                .create_resource::<ForeignHandle, u32, CompositorState>(
+                    handle,
+                    manager.version(),
+                    window_id,
+                )
+            else {
+                continue;
+            };
             manager.toplevel(&handle_resource);
-            send_toplevel_info(&handle_resource, &window);
+            state.send_toplevel_info(&handle_resource, window_id);
             state
                 .wlr
                 .foreign_toplevel_handles
@@ -60,179 +64,100 @@ impl Dispatch<zwlr_foreign_toplevel_manager_v1::ZwlrForeignToplevelManagerV1, ()
         _dhandle: &DisplayHandle,
         _data_init: &mut wayland_server::DataInit<'_, Self>,
     ) {
-        match request {
-            zwlr_foreign_toplevel_manager_v1::Request::Stop => {
-                let id = resource.id();
-                state.wlr.foreign_toplevel_managers.retain(|m| m.id() != id);
-            }
-            _ => {}
+        if let zwlr_foreign_toplevel_manager_v1::Request::Stop = request {
+            let id = resource.id();
+            state.wlr.foreign_toplevel_managers.retain(|m| m.id() != id);
+            resource.finished();
         }
     }
 }
 
-impl Dispatch<zwlr_foreign_toplevel_handle_v1::ZwlrForeignToplevelHandleV1, u32>
-    for CompositorState
-{
+impl Dispatch<ForeignHandle, u32> for CompositorState {
     fn request(
         state: &mut Self,
         _client: &wayland_server::Client,
-        _resource: &zwlr_foreign_toplevel_handle_v1::ZwlrForeignToplevelHandleV1,
+        resource: &ForeignHandle,
         request: zwlr_foreign_toplevel_handle_v1::Request,
         data: &u32,
         _dhandle: &DisplayHandle,
         _data_init: &mut wayland_server::DataInit<'_, Self>,
     ) {
+        use crate::core::compositor::CompositorEvent;
+        use zwlr_foreign_toplevel_handle_v1::Request;
+
         let window_id = *data;
+        // A headless host has no platform window manager, so the core
+        // applies requests itself. Otherwise maximize / activate / close go
+        // through the host (fill-primary on iOS, AppKit zoom on macOS): do
+        // not pre-configure here, that races the host resize.
+        let headless = state.headless_host;
+        let key = state.toplevel_key_for_window(window_id);
         match request {
-            zwlr_foreign_toplevel_handle_v1::Request::SetMaximized => {
-                // Host-authority path (fill-primary on iOS, AppKit zoom on macOS):
-                // emit the event and let the platform bridge resize + sync xdg
-                // state. Do not pre-configure at the current client size here -
-                // that races host fill-primary and never reaches ObjC/Swift
-                // (Close/Minimize push events; Maximize must too).
-                state.pending_compositor_events.push(
-                    crate::core::compositor::CompositorEvent::WindowMaximized {
+            Request::SetMaximized => match key {
+                Some(key) if headless => state.maximize_toplevel(key),
+                _ => state
+                    .pending_compositor_events
+                    .push(CompositorEvent::WindowMaximized {
                         window_id,
                         maximized: true,
-                    },
-                );
-            }
-            zwlr_foreign_toplevel_handle_v1::Request::UnsetMaximized => {
-                state.pending_compositor_events.push(
-                    crate::core::compositor::CompositorEvent::WindowMaximized {
+                    }),
+            },
+            Request::UnsetMaximized => match key {
+                Some(key) if headless => state.unmaximize_toplevel(key),
+                _ => state
+                    .pending_compositor_events
+                    .push(CompositorEvent::WindowMaximized {
                         window_id,
                         maximized: false,
-                    },
-                );
-            }
-            zwlr_foreign_toplevel_handle_v1::Request::SetMinimized => {
-                if let Some(window_lock) = state.windows.get(&window_id) {
-                    let mut window = window_lock.write().unwrap();
-                    window.minimized = true;
+                    }),
+            },
+            Request::SetMinimized => {
+                if let Some(key) = key {
+                    state.minimize_toplevel(key);
                 }
-                state.pending_compositor_events.push(
-                    crate::core::compositor::CompositorEvent::WindowMinimized {
-                        window_id,
-                        minimized: true,
-                    },
-                );
             }
-            zwlr_foreign_toplevel_handle_v1::Request::UnsetMinimized => {
-                if let Some(window_lock) = state.windows.get(&window_id) {
-                    let mut window = window_lock.write().unwrap();
-                    window.minimized = false;
+            Request::UnsetMinimized => {
+                if headless {
+                    state.activate_window(window_id);
+                } else {
+                    state.unminimize_window(window_id);
                 }
-                state.pending_compositor_events.push(
-                    crate::core::compositor::CompositorEvent::WindowMinimized {
-                        window_id,
-                        minimized: false,
-                    },
-                );
             }
-            zwlr_foreign_toplevel_handle_v1::Request::Activate { seat: _ } => {
-                // Set focus through the compositor's focus manager
-                state.set_focused_window(Some(window_id));
-
-                // Send configure with activated state
-                if let Some((tl_id, tl_data)) = state
-                    .xdg
-                    .toplevels
-                    .iter()
-                    .find(|(_, t)| t.window_id == window_id)
-                {
-                    let tl_id = tl_id.clone();
-                    let w = tl_data.width;
-                    let h = tl_data.height;
-                    if let Some(tl) = state.xdg.toplevels.get_mut(&tl_id) {
-                        tl.activated = true;
-                    }
-                    state.send_toplevel_configure(tl_id.0.clone(), tl_id.1, w, h);
+            Request::Activate { seat: _ } => {
+                if headless {
+                    state.activate_window(window_id);
+                } else {
+                    state.set_focused_window(Some(window_id));
+                    state
+                        .pending_compositor_events
+                        .push(CompositorEvent::WindowActivationRequested { window_id });
                 }
-
-                state.pending_compositor_events.push(
-                    crate::core::compositor::CompositorEvent::WindowActivationRequested {
-                        window_id,
-                    },
-                );
             }
-            zwlr_foreign_toplevel_handle_v1::Request::Close => {
-                state.pending_compositor_events.push(
-                    crate::core::compositor::CompositorEvent::WindowCloseRequested { window_id },
-                );
+            Request::Close => {
+                if headless {
+                    state.close_window(window_id);
+                } else {
+                    state
+                        .pending_compositor_events
+                        .push(CompositorEvent::WindowCloseRequested { window_id });
+                }
             }
-            zwlr_foreign_toplevel_handle_v1::Request::SetRectangle {
-                surface: _,
-                x: _,
-                y: _,
-                width: _,
-                height: _,
-            } => {
+            Request::SetRectangle { .. } => {
                 // Informational hint for animations
             }
-            zwlr_foreign_toplevel_handle_v1::Request::Destroy => {
-                // Destructor
-            }
-            zwlr_foreign_toplevel_handle_v1::Request::SetFullscreen { output: _ } => {
-                if let Some(window_lock) = state.windows.get(&window_id) {
-                    let mut window = window_lock.write().unwrap();
-                    window.fullscreen = true;
-                    window.maximized = false;
-                }
-                if let Some((tl_id, _)) = state
-                    .xdg
-                    .toplevels
-                    .iter()
-                    .find(|(_, t)| t.window_id == window_id)
-                {
-                    let tl_id = tl_id.clone();
-                    if let Some(tl) = state.xdg.toplevels.get_mut(&tl_id) {
-                        tl.pending_fullscreen = true;
-                        tl.pending_maximized = false;
-                    }
-                    let (fw, fh) = state
-                        .outputs
-                        .get(state.primary_output)
-                        .map(|o| (o.width.max(1), o.height.max(1)))
-                        .unwrap_or((1, 1));
-                    state.send_toplevel_configure(tl_id.0.clone(), tl_id.1, fw, fh);
-                    state.pending_compositor_events.push(
-                        crate::core::compositor::CompositorEvent::WindowFullscreen {
-                            window_id,
-                            fullscreen: true,
-                        },
-                    );
+            Request::Destroy => {
+                if let Some(handles) = state.wlr.foreign_toplevel_handles.get_mut(&window_id) {
+                    handles.retain(|h| h.id() != resource.id());
                 }
             }
-            zwlr_foreign_toplevel_handle_v1::Request::UnsetFullscreen => {
-                if let Some(window_lock) = state.windows.get(&window_id) {
-                    let mut window = window_lock.write().unwrap();
-                    window.fullscreen = false;
+            Request::SetFullscreen { output } => {
+                if let Some(key) = key {
+                    state.fullscreen_toplevel(key, output);
                 }
-                if let Some((tl_id, _)) = state
-                    .xdg
-                    .toplevels
-                    .iter()
-                    .find(|(_, t)| t.window_id == window_id)
-                {
-                    let tl_id = tl_id.clone();
-                    if let Some(tl) = state.xdg.toplevels.get_mut(&tl_id) {
-                        tl.pending_fullscreen = false;
-                    }
-                    let (rw, rh) = state
-                        .get_window(window_id)
-                        .and_then(|w| {
-                            w.read()
-                                .ok()
-                                .map(|w| (w.width.max(1) as u32, w.height.max(1) as u32))
-                        })
-                        .unwrap_or((1, 1));
-                    state.send_toplevel_configure(tl_id.0.clone(), tl_id.1, rw, rh);
-                    state.pending_compositor_events.push(
-                        crate::core::compositor::CompositorEvent::WindowFullscreen {
-                            window_id,
-                            fullscreen: false,
-                        },
-                    );
+            }
+            Request::UnsetFullscreen => {
+                if let Some(key) = key {
+                    state.unfullscreen_toplevel(key);
                 }
             }
             _ => {}
@@ -245,58 +170,20 @@ pub fn notify_toplevel_created(state: &mut CompositorState, window_id: u32) {
     let Some(dhandle) = state.smithay_runtime.display_handle.clone() else {
         return;
     };
-    let Some(window_lock) = state.windows.get(&window_id).cloned() else {
-        return;
-    };
-    let (title, app_id, maximized, minimized, activated, fullscreen) = match window_lock.read() {
-        Ok(w) => (
-            w.title.clone(),
-            w.app_id.clone(),
-            w.maximized,
-            w.minimized,
-            w.activated,
-            w.fullscreen,
-        ),
-        Err(_) => return,
-    };
-
-    // Snapshot managers first so we can mutate handle maps while iterating.
     let managers: Vec<_> = state.wlr.foreign_toplevel_managers.clone();
     for manager in managers {
         let Some(client) = manager.client() else {
             continue;
         };
-        let Ok(handle_resource) = client.create_resource::<
-            zwlr_foreign_toplevel_handle_v1::ZwlrForeignToplevelHandleV1,
-            u32,
-            CompositorState,
-        >(&dhandle, manager.version(), window_id) else {
+        let Ok(handle_resource) = client.create_resource::<ForeignHandle, u32, CompositorState>(
+            &dhandle,
+            manager.version(),
+            window_id,
+        ) else {
             continue;
         };
         manager.toplevel(&handle_resource);
-        handle_resource.title(title.clone());
-        handle_resource.app_id(app_id.clone());
-        let mut states = Vec::new();
-        if maximized {
-            states.push(zwlr_foreign_toplevel_handle_v1::State::Maximized as u32);
-        }
-        if minimized {
-            states.push(zwlr_foreign_toplevel_handle_v1::State::Minimized as u32);
-        }
-        if activated {
-            states.push(zwlr_foreign_toplevel_handle_v1::State::Activated as u32);
-        }
-        if fullscreen {
-            states.push(zwlr_foreign_toplevel_handle_v1::State::Fullscreen as u32);
-        }
-        let states_bytes: &[u8] = unsafe {
-            std::slice::from_raw_parts(
-                states.as_ptr() as *const u8,
-                states.len() * std::mem::size_of::<u32>(),
-            )
-        };
-        handle_resource.state(states_bytes.to_vec());
-        handle_resource.done();
+        state.send_toplevel_info(&handle_resource, window_id);
         state
             .wlr
             .foreign_toplevel_handles
@@ -310,47 +197,62 @@ pub fn notify_toplevel_created(state: &mut CompositorState, window_id: u32) {
 pub fn notify_toplevel_destroyed(state: &mut CompositorState, window_id: u32) {
     if let Some(handles) = state.wlr.foreign_toplevel_handles.remove(&window_id) {
         for handle in handles {
-            handle.closed();
+            if handle.is_alive() {
+                handle.closed();
+            }
         }
     }
 }
 
-/// Helper to send all information about a toplevel
-fn send_toplevel_info(
-    handle: &zwlr_foreign_toplevel_handle_v1::ZwlrForeignToplevelHandleV1,
-    window: &crate::core::window::Window,
-) {
-    handle.title(window.title.clone());
-    handle.app_id(window.app_id.clone());
+/// `zwlr_foreign_toplevel_handle_v1.state` array for the given flags.
+pub fn foreign_state_array(
+    maximized: bool,
+    minimized: bool,
+    activated: bool,
+    fullscreen: bool,
+) -> Vec<u8> {
+    use zwlr_foreign_toplevel_handle_v1::State;
+    [
+        (maximized, State::Maximized),
+        (minimized, State::Minimized),
+        (activated, State::Activated),
+        (fullscreen, State::Fullscreen),
+    ]
+    .into_iter()
+    .filter(|(set, _)| *set)
+    .flat_map(|(_, state)| (state as u32).to_ne_bytes())
+    .collect()
+}
 
-    // States
-    let mut states = Vec::new();
-    if window.maximized {
-        states.push(zwlr_foreign_toplevel_handle_v1::State::Maximized as u32);
-    }
-    if window.minimized {
-        states.push(zwlr_foreign_toplevel_handle_v1::State::Minimized as u32);
-    }
-    if window.activated {
-        states.push(zwlr_foreign_toplevel_handle_v1::State::Activated as u32);
-    }
-    if window.fullscreen {
-        states.push(zwlr_foreign_toplevel_handle_v1::State::Fullscreen as u32);
+impl CompositorState {
+    /// Send title, app_id, state and `done` for `window_id` on one handle.
+    fn send_toplevel_info(&self, handle: &ForeignHandle, window_id: u32) {
+        let Some(window) = self.get_window(window_id) else {
+            return;
+        };
+        let Ok(window) = window.read() else {
+            return;
+        };
+        handle.title(window.title.clone());
+        handle.app_id(window.app_id.clone());
+        handle.state(foreign_state_array(
+            window.maximized,
+            window.minimized,
+            window.activated,
+            window.fullscreen,
+        ));
+        handle.done();
     }
 
-    // Convert Vec<u32> to &[u8] for Wayland array
-    let states_bytes: &[u8] = unsafe {
-        std::slice::from_raw_parts(
-            states.as_ptr() as *const u8,
-            states.len() * std::mem::size_of::<u32>(),
-        )
-    };
-    handle.state(states_bytes.to_vec());
-
-    // Outputs (TODO: Real output tracking)
-    // For now, we don't send any output_enter events here as we don't have the WlOutput resources easily available
-
-    handle.done();
+    /// Re-publish a toplevel's title, app_id and state to every handle.
+    pub(crate) fn refresh_foreign_toplevel(&self, window_id: u32) {
+        let Some(handles) = self.wlr.foreign_toplevel_handles.get(&window_id) else {
+            return;
+        };
+        for handle in handles.iter().filter(|h| h.is_alive()) {
+            self.send_toplevel_info(handle, window_id);
+        }
+    }
 }
 
 /// Register zwlr_foreign_toplevel_manager_v1 global
@@ -358,4 +260,24 @@ pub fn register_foreign_toplevel_management(
     display: &DisplayHandle,
 ) -> wayland_server::backend::GlobalId {
     display.create_global::<CompositorState, zwlr_foreign_toplevel_manager_v1::ZwlrForeignToplevelManagerV1, ()>(3, ())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::foreign_state_array;
+
+    #[test]
+    fn foreign_state_array_should_encode_each_set_flag_as_native_u32() {
+        let bytes = foreign_state_array(true, false, true, true);
+        let states: Vec<u32> = bytes
+            .chunks_exact(4)
+            .map(|c| u32::from_ne_bytes([c[0], c[1], c[2], c[3]]))
+            .collect();
+        assert_eq!(states, vec![0, 2, 3]);
+    }
+
+    #[test]
+    fn foreign_state_array_should_be_empty_without_flags() {
+        assert!(foreign_state_array(false, false, false, false).is_empty());
+    }
 }

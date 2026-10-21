@@ -83,7 +83,21 @@ impl Scene {
             let current_abs_scale = abs_scale * node.scale;
             let current_abs_opacity = abs_opacity * node.opacity;
 
-            // If this node points to a surface, add it to the list
+            // Z-order is child index, with this node's own surface inserted
+            // after the first `children_below` children.
+            let split = node.children_below.min(node.children.len());
+            let (below, above) = node.children.split_at(split);
+            for &child_id in below {
+                self.flatten_recursive(
+                    child_id,
+                    current_abs_x,
+                    current_abs_y,
+                    current_abs_scale,
+                    current_abs_opacity,
+                    result,
+                );
+            }
+
             if let Some(surface_id) = node.surface_id {
                 result.push(FlattenedSurface {
                     surface_id,
@@ -97,8 +111,7 @@ impl Scene {
                 });
             }
 
-            // Recurse into children (z-order is determined by child index)
-            for &child_id in &node.children {
+            for &child_id in above {
                 self.flatten_recursive(
                     child_id,
                     current_abs_x,
@@ -141,5 +154,52 @@ impl Scene {
                 self.dump_recursive(child_id, depth + 1, out);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn surface_order(scene: &Scene) -> Vec<u32> {
+        scene.flatten().iter().map(|s| s.surface_id).collect()
+    }
+
+    fn parent_with_two_children(children_below: usize) -> Scene {
+        let mut scene = Scene::new();
+        scene.add_node(SceneNode::new(1).with_surface(10));
+        scene.add_node(SceneNode::new(2).with_surface(20));
+        scene.add_node(SceneNode::new(3).with_surface(30));
+        scene.set_root(1);
+        scene.add_child(1, 2);
+        scene.add_child(1, 3);
+        if let Some(parent) = scene.nodes.get_mut(&1) {
+            parent.children_below = children_below;
+        }
+        scene
+    }
+
+    #[test]
+    fn flatten_should_stack_children_above_parent_by_default() {
+        assert_eq!(
+            surface_order(&parent_with_two_children(0)),
+            vec![10, 20, 30]
+        );
+    }
+
+    #[test]
+    fn flatten_should_stack_leading_children_below_parent() {
+        assert_eq!(
+            surface_order(&parent_with_two_children(1)),
+            vec![20, 10, 30]
+        );
+    }
+
+    #[test]
+    fn flatten_should_clamp_children_below_to_child_count() {
+        assert_eq!(
+            surface_order(&parent_with_two_children(9)),
+            vec![20, 30, 10]
+        );
     }
 }

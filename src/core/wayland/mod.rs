@@ -10,6 +10,7 @@ pub mod ext;
 pub mod host_im;
 pub mod plasma;
 pub mod protocol;
+pub mod selection_proxy;
 pub mod wayland;
 pub mod wlr;
 pub mod xdg;
@@ -96,9 +97,8 @@ impl smithay::wayland::compositor::CompositorHandler for crate::core::state::Com
         };
         let surface_id = self.ensure_internal_surface_mapping(client_id.clone(), surface);
         let parent_id = self.ensure_internal_surface_mapping(client_id, parent);
-        if !self.subsurfaces.contains_key(&surface_id) {
-            self.add_subsurface(surface_id, parent_id);
-        }
+        self.remove_subsurface(surface_id);
+        self.add_subsurface(surface_id, parent_id);
     }
 
     fn commit(
@@ -311,8 +311,26 @@ impl smithay::wayland::compositor::CompositorHandler for crate::core::state::Com
     }
 }
 
-smithay::delegate_compositor!(crate::core::state::CompositorState);
-
+// `delegate_compositor!` minus `wl_surface`, which runs through
+// `xdg::surface_validation` before reaching Smithay.
+smithay::reexports::wayland_server::delegate_global_dispatch!(crate::core::state::CompositorState: [
+    smithay::reexports::wayland_server::protocol::wl_compositor::WlCompositor: ()
+] => smithay::wayland::compositor::CompositorState);
+smithay::reexports::wayland_server::delegate_global_dispatch!(crate::core::state::CompositorState: [
+    smithay::reexports::wayland_server::protocol::wl_subcompositor::WlSubcompositor: ()
+] => smithay::wayland::compositor::CompositorState);
+smithay::reexports::wayland_server::delegate_dispatch!(crate::core::state::CompositorState: [
+    smithay::reexports::wayland_server::protocol::wl_compositor::WlCompositor: ()
+] => smithay::wayland::compositor::CompositorState);
+smithay::reexports::wayland_server::delegate_dispatch!(crate::core::state::CompositorState: [
+    smithay::reexports::wayland_server::protocol::wl_region::WlRegion: smithay::wayland::compositor::RegionUserData
+] => smithay::wayland::compositor::CompositorState);
+smithay::reexports::wayland_server::delegate_dispatch!(crate::core::state::CompositorState: [
+    smithay::reexports::wayland_server::protocol::wl_callback::WlCallback: ()
+] => smithay::wayland::compositor::CompositorState);
+smithay::reexports::wayland_server::delegate_dispatch!(crate::core::state::CompositorState: [
+    smithay::reexports::wayland_server::protocol::wl_subcompositor::WlSubcompositor: ()
+] => smithay::wayland::compositor::CompositorState);
 impl smithay::input::SeatHandler for crate::core::state::CompositorState {
     type KeyboardFocus = smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
     type PointerFocus = smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
@@ -362,23 +380,18 @@ impl smithay::input::SeatHandler for crate::core::state::CompositorState {
 }
 
 impl smithay::wayland::selection::SelectionHandler for crate::core::state::CompositorState {
-    type SelectionUserData = ();
+    type SelectionUserData = selection_proxy::SelectionOwner;
 
     /// A client set the clipboard (or primary) selection. Pull its text
     /// so the native platform layer can push it into NSPasteboard /
     /// UIPasteboard / ClipboardManager (see `ClipboardBridge`).
-    ///
-    /// The actual read happens on a background thread: `request_data_
-    /// device_client_selection` only queues a `wl_data_source.send` to the
-    /// client, which won't reach it until the compositor flushes/dispatches
-    /// again after this call returns, so blocking here on the pipe would
-    /// deadlock.
     fn new_selection(
         &mut self,
         ty: smithay::wayland::selection::SelectionTarget,
         source: Option<smithay::wayland::selection::SelectionSource>,
         seat: smithay::input::Seat<Self>,
     ) {
+        self.cancel_proxied_selection(ty);
         // The native pasteboard has one slot: only the clipboard feeds it.
         // Primary stays Wayland-internal (the request below reads the
         // clipboard selection, so bridging Primary would copy the wrong data).
@@ -389,7 +402,60 @@ impl smithay::wayland::selection::SelectionHandler for crate::core::state::Compo
             // Selection cleared client-side; nothing to push natively.
             return;
         };
-        let mimes = source.mime_types();
+        self.bridge_client_clipboard(&source.mime_types(), |mime, writer| {
+            smithay::wayland::selection::data_device::request_data_device_client_selection(
+                &seat, mime, writer,
+            )
+            .map_err(|err| format!("{err:?}"))
+        });
+    }
+
+    /// A client requested to read a compositor-owned selection: either the
+    /// native pasteboard content most recently pushed via
+    /// `WWNCoreSetClipboardText`, or a selection proxied for an unfocused
+    /// client (forwarded to its source).
+    fn send_selection(
+        &mut self,
+        ty: smithay::wayland::selection::SelectionTarget,
+        mime_type: String,
+        fd: std::os::fd::OwnedFd,
+        _seat: smithay::input::Seat<Self>,
+        user_data: &Self::SelectionUserData,
+    ) {
+        if user_data.forward_request(mime_type, &fd) {
+            return;
+        }
+        if ty != smithay::wayland::selection::SelectionTarget::Clipboard
+            && ty != smithay::wayland::selection::SelectionTarget::Primary
+        {
+            return;
+        }
+        let text = self
+            .clipboard_bridge
+            .read()
+            .ok()
+            .and_then(|bridge| bridge.outgoing_to_client.clone());
+        if let Some(text) = text {
+            use std::io::Write;
+            let mut file = std::fs::File::from(fd);
+            let _ = file.write_all(text.as_bytes());
+        }
+    }
+}
+
+impl crate::core::state::CompositorState {
+    /// Pull a client clipboard selection as text into `ClipboardBridge` so
+    /// the native platform layer can push it into its pasteboard.
+    /// `request` asks the client source to write `mime` into the fd.
+    ///
+    /// The actual read happens on a background thread: the request only
+    /// queues a `send` to the client, which won't reach it until the
+    /// compositor flushes/dispatches again, so blocking here would deadlock.
+    pub(crate) fn bridge_client_clipboard(
+        &self,
+        mimes: &[String],
+        request: impl FnOnce(String, std::os::fd::OwnedFd) -> Result<(), String>,
+    ) {
         let mime = [
             "text/plain;charset=utf-8",
             "text/plain",
@@ -410,12 +476,8 @@ impl smithay::wayland::selection::SelectionHandler for crate::core::state::Compo
                 return;
             }
         };
-        if let Err(err) =
-            smithay::wayland::selection::data_device::request_data_device_client_selection(
-                &seat, mime, writer,
-            )
-        {
-            tracing::warn!("Clipboard bridge: failed to request client selection: {err:?}");
+        if let Err(err) = request(mime, writer) {
+            tracing::warn!("Clipboard bridge: failed to request client selection: {err}");
             return;
         }
 
@@ -436,34 +498,6 @@ impl smithay::wayland::selection::SelectionHandler for crate::core::state::Compo
                 }
             })
             .ok();
-    }
-
-    /// A client requested to read the compositor-owned selection (i.e. the
-    /// native pasteboard content most recently pushed via
-    /// `WWNCoreSetClipboardText`). Write it into the client-provided fd.
-    fn send_selection(
-        &mut self,
-        ty: smithay::wayland::selection::SelectionTarget,
-        _mime_type: String,
-        fd: std::os::fd::OwnedFd,
-        _seat: smithay::input::Seat<Self>,
-        _user_data: &Self::SelectionUserData,
-    ) {
-        if ty != smithay::wayland::selection::SelectionTarget::Clipboard
-            && ty != smithay::wayland::selection::SelectionTarget::Primary
-        {
-            return;
-        }
-        let text = self
-            .clipboard_bridge
-            .read()
-            .ok()
-            .and_then(|bridge| bridge.outgoing_to_client.clone());
-        if let Some(text) = text {
-            use std::io::Write;
-            let mut file = std::fs::File::from(fd);
-            let _ = file.write_all(text.as_bytes());
-        }
     }
 }
 
@@ -656,10 +690,34 @@ impl smithay::wayland::selection::primary_selection::PrimarySelectionHandler
 }
 
 smithay::delegate_seat!(crate::core::state::CompositorState);
-smithay::delegate_data_device!(crate::core::state::CompositorState);
-smithay::delegate_primary_selection!(crate::core::state::CompositorState);
-smithay::delegate_xdg_shell!(crate::core::state::CompositorState);
-smithay::delegate_xdg_decoration!(crate::core::state::CompositorState);
+// Expanded `delegate_data_device!` / `delegate_primary_selection!`: the
+// devices and sources dispatch through `selection_proxy`.
+smithay::reexports::wayland_server::delegate_global_dispatch!(crate::core::state::CompositorState: [
+    smithay::reexports::wayland_server::protocol::wl_data_device_manager::WlDataDeviceManager: ()
+] => smithay::wayland::selection::data_device::DataDeviceState);
+smithay::reexports::wayland_server::delegate_dispatch!(crate::core::state::CompositorState: [
+    smithay::reexports::wayland_server::protocol::wl_data_device_manager::WlDataDeviceManager: ()
+] => smithay::wayland::selection::data_device::DataDeviceState);
+smithay::reexports::wayland_server::delegate_global_dispatch!(crate::core::state::CompositorState: [
+    smithay::reexports::wayland_protocols::wp::primary_selection::zv1::server::zwp_primary_selection_device_manager_v1::ZwpPrimarySelectionDeviceManagerV1: smithay::wayland::selection::primary_selection::PrimaryDeviceManagerGlobalData
+] => smithay::wayland::selection::primary_selection::PrimarySelectionState);
+smithay::reexports::wayland_server::delegate_dispatch!(crate::core::state::CompositorState: [
+    smithay::reexports::wayland_protocols::wp::primary_selection::zv1::server::zwp_primary_selection_device_manager_v1::ZwpPrimarySelectionDeviceManagerV1: ()
+] => smithay::wayland::selection::primary_selection::PrimarySelectionState);
+// `delegate_xdg_shell!` minus `xdg_wm_base`, `xdg_positioner`, `xdg_surface`,
+// `xdg_popup`, and `xdg_toplevel` requests, which run through
+// `xdg::surface_validation` before reaching Smithay.
+smithay::reexports::wayland_server::delegate_global_dispatch!(crate::core::state::CompositorState: [
+    smithay::reexports::wayland_protocols::xdg::shell::server::xdg_wm_base::XdgWmBase: ()
+] => smithay::wayland::shell::xdg::XdgShellState);
+// `delegate_xdg_decoration!` minus manager requests (orphan tracking in
+// `xdg::surface_validation`).
+smithay::reexports::wayland_server::delegate_global_dispatch!(crate::core::state::CompositorState: [
+    smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_decoration_manager_v1::ZxdgDecorationManagerV1: smithay::wayland::shell::xdg::decoration::XdgDecorationManagerGlobalData
+] => smithay::wayland::shell::xdg::decoration::XdgDecorationState);
+smithay::reexports::wayland_server::delegate_dispatch!(crate::core::state::CompositorState: [
+    smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1: smithay::wayland::shell::xdg::ToplevelSurface
+] => smithay::wayland::shell::xdg::decoration::XdgDecorationState);
 smithay::delegate_xdg_foreign!(crate::core::state::CompositorState);
 smithay::delegate_xdg_activation!(crate::core::state::CompositorState);
 smithay::delegate_xdg_dialog!(crate::core::state::CompositorState);

@@ -134,6 +134,7 @@ impl Default for SmithayRuntimeState {
 // Sub-modules containing extracted CompositorState impl blocks
 mod host_lock;
 mod input;
+pub mod pointer_focus;
 mod scene;
 mod surfaces;
 mod windows;
@@ -151,8 +152,11 @@ pub struct SubsurfaceState {
     pub parent_id: u32,
     /// Position relative to parent
     pub position: (i32, i32),
-    /// Pending position (before commit)
+    /// Pending position (`wl_subsurface.set_position`, before the parent commits)
     pub pending_position: (i32, i32),
+    /// Position captured by the parent's `wl_surface.commit`, applied when
+    /// the parent's state is applied (later, for a synchronized parent)
+    pub committed_position: (i32, i32),
     /// Whether in synchronized mode
     pub sync: bool,
     /// Z-order relative to siblings (higher = on top)
@@ -1484,6 +1488,35 @@ pub struct CompositorState {
     /// the focused one returns focus to the previous window).
     pub headless_host: bool,
 
+    /// Live `xdg_surface` per `wl_surface`, for request-time xdg-shell
+    /// validation (`core::wayland::xdg::surface_validation`).
+    pub xdg_surface_objects: HashMap<
+        wayland_server::backend::ObjectId,
+        smithay::reexports::wayland_protocols::xdg::shell::server::xdg_surface::XdgSurface,
+    >,
+
+    /// `zxdg_toplevel_decoration_v1` per `xdg_toplevel` (with its manager),
+    /// for the `orphaned` check on toplevel destroy.
+    pub toplevel_decorations: HashMap<
+        wayland_server::backend::ObjectId,
+        (
+            smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_decoration_manager_v1::ZxdgDecorationManagerV1,
+            smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1,
+        ),
+    >,
+
+    /// Positioners whose anchor rect has a zero axis, and the axes in flight
+    /// for the `get_popup` / `reposition` request being dispatched.
+    pub zero_anchor_positioners: HashMap<
+        wayland_server::backend::ObjectId,
+        crate::core::wayland::xdg::surface_validation::ZeroAnchorAxes,
+    >,
+    pub pending_zero_anchor: Option<crate::core::wayland::xdg::surface_validation::ZeroAnchorAxes>,
+
+    /// MIME types offered by each live `zwp_primary_selection_source_v1`
+    /// (Smithay keeps its copy crate-private).
+    pub primary_source_mime_types: HashMap<wayland_server::backend::ObjectId, Vec<String>>,
+
     /// Subsurface registry, keyed by subsurface's surface ID
     pub subsurfaces: HashMap<u32, SubsurfaceState>,
 
@@ -1686,6 +1719,11 @@ impl CompositorState {
             surface_to_window: HashMap::new(),
             pending_keyboard_focus_window: None,
             headless_host: false,
+            xdg_surface_objects: HashMap::new(),
+            zero_anchor_positioners: HashMap::new(),
+            toplevel_decorations: HashMap::new(),
+            pending_zero_anchor: None,
+            primary_source_mime_types: HashMap::new(),
             subsurfaces: HashMap::new(),
             subsurface_children: HashMap::new(),
             protocol_to_internal_surface: HashMap::new(),

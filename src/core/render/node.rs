@@ -15,6 +15,9 @@ pub struct SceneNode {
     pub opacity: f32,
     pub visible: bool,
     pub children: Vec<u32>,
+    /// How many leading `children` stack below this node's own surface
+    /// (`wl_subsurface.place_below` the parent). The rest stack above it.
+    pub children_below: usize,
     /// Normalized content rect within the buffer (0..1 range).
     /// Default is [0, 0, 1, 1] (full buffer).
     /// Non-default when xdg_surface.set_window_geometry crops to a CSD content area.
@@ -34,6 +37,7 @@ impl SceneNode {
             opacity: 1.0,
             visible: true,
             children: Vec::new(),
+            children_below: 0,
             content_rect: ContentRect::default(),
         }
     }
