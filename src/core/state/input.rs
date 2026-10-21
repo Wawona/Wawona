@@ -925,6 +925,20 @@ impl CompositorState {
             self.refresh_foreign_toplevel(window_id);
         }
         let Some(toplevel_surface) = toplevel_surface else {
+            if let Some(tl_data) = self.xdg.toplevels.get(&key) {
+                if tl_data.v6_resource.is_some() {
+                    let configured = self
+                        .xdg
+                        .surfaces
+                        .get(&(key.0.clone(), xdg_surface_id))
+                        .map(|s| s.configured || s.last_acked_serial > 0)
+                        .unwrap_or(false);
+                    if configured {
+                        let (w, h) = (tl_data.width, tl_data.height);
+                        self.send_toplevel_configure(key.0.clone(), key.1, w, h);
+                    }
+                }
+            }
             return;
         };
         toplevel_surface.with_pending_state(|state| {

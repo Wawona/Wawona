@@ -25,17 +25,17 @@ impl CompositorState {
             .map(|(key, _)| key.clone())
     }
 
-    fn toplevel_window_id(&self, key: &ToplevelKey) -> Option<u32> {
+    pub(crate) fn toplevel_window_id(&self, key: &ToplevelKey) -> Option<u32> {
         self.xdg.toplevels.get(key).map(|tl| tl.window_id)
     }
 
-    fn read_window<T>(&self, window_id: u32, f: impl FnOnce(&Window) -> T) -> Option<T> {
+    pub(crate) fn read_window<T>(&self, window_id: u32, f: impl FnOnce(&Window) -> T) -> Option<T> {
         let window = self.get_window(window_id)?;
         let window = window.read().ok()?;
         Some(f(&window))
     }
 
-    fn update_window(&self, window_id: u32, f: impl FnOnce(&mut Window)) {
+    pub(crate) fn update_window(&self, window_id: u32, f: impl FnOnce(&mut Window)) {
         if let Some(window) = self.get_window(window_id) {
             if let Ok(mut window) = window.write() {
                 f(&mut window);
@@ -49,14 +49,14 @@ impl CompositorState {
             .unwrap_or(false)
     }
 
-    fn window_output_id(&self, window_id: u32) -> u32 {
+    pub(crate) fn window_output_id(&self, window_id: u32) -> u32 {
         self.read_window(window_id, |w| w.outputs.first().copied())
             .flatten()
             .or_else(|| self.outputs.get(self.primary_output).map(|o| o.id))
             .unwrap_or(0)
     }
 
-    fn maximized_size(&self, key: &ToplevelKey, window_id: u32) -> (u32, u32) {
+    pub(crate) fn maximized_size(&self, key: &ToplevelKey, window_id: u32) -> (u32, u32) {
         let (w, h) = self
             .get_usable_region(self.window_output_id(window_id))
             .map(|(_, _, w, h)| (w, h))
@@ -68,14 +68,14 @@ impl CompositorState {
             .unwrap_or((w, h))
     }
 
-    fn fullscreen_size(&self, output_id: u32) -> (u32, u32) {
+    pub(crate) fn fullscreen_size(&self, output_id: u32) -> (u32, u32) {
         self.get_output_geometry(output_id)
             .map(|(_, _, w, h)| (w, h))
             .unwrap_or((0, 0))
     }
 
     /// Remember the floating geometry before the first maximize/fullscreen.
-    fn save_floating_geometry(&mut self, key: &ToplevelKey, window_id: u32) {
+    pub(crate) fn save_floating_geometry(&mut self, key: &ToplevelKey, window_id: u32) {
         let geometry = self.read_window(window_id, |w| {
             (w.x, w.y, w.width.max(0) as u32, w.height.max(0) as u32)
         });
@@ -88,7 +88,7 @@ impl CompositorState {
     /// chose (it committed a buffer while floating) is restored; otherwise
     /// 0x0 lets the client decide. The current size is the maximized or
     /// fullscreen size and must never be echoed back.
-    fn restore_floating_geometry(&mut self, key: &ToplevelKey, window_id: u32) -> (u32, u32) {
+    pub(crate) fn restore_floating_geometry(&mut self, key: &ToplevelKey, window_id: u32) -> (u32, u32) {
         let saved = self
             .xdg
             .toplevels

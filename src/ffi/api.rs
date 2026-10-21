@@ -496,6 +496,14 @@ impl WawonaCore {
             if state == ButtonState::Released {
                 self.state.write_recover().end_interactive_grab();
                 self.repick_global_pointer(timestamp_ms);
+                let wl_state = wayland_server::protocol::wl_pointer::ButtonState::Released;
+                let mut compositor_state = self.state.write_recover();
+                compositor_state.seat.cleanup_resources();
+                compositor_state.deliver_global_button(button, wl_state, timestamp_ms);
+                if let Some(client) = compositor_state.focused_pointer_client() {
+                    compositor_state.send_pointer_frame(&client);
+                }
+                drop(compositor_state);
                 self.flush_clients();
             }
             return;

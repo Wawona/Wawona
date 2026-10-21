@@ -340,6 +340,8 @@ pub struct XdgSurfaceData {
     pub configured: bool,
     /// The actual protocol resource
     pub resource: Option<xdg_surface::XdgSurface>,
+    /// Associated zxdg_surface_v6 resource (if v6 surface)
+    pub v6_resource: Option<crate::core::wayland::xdg::v6::protocol::zxdg_surface_v6::ZxdgSurfaceV6>,
     /// Window geometry from set_window_geometry (content rect for CSD); (x, y, width, height)
     pub geometry: Option<(i32, i32, i32, i32)>,
 }
@@ -354,6 +356,7 @@ impl XdgSurfaceData {
             last_acked_serial: 0,
             configured: false,
             resource: None,
+            v6_resource: None,
             geometry: None,
         }
     }
@@ -405,6 +408,8 @@ pub struct XdgToplevelData {
     pub pending_fullscreen: bool,
     /// The actual protocol resource
     pub resource: Option<xdg_toplevel::XdgToplevel>,
+    /// Associated zxdg_toplevel_v6 resource (if v6 toplevel)
+    pub v6_resource: Option<crate::core::wayland::xdg::v6::protocol::zxdg_toplevel_v6::ZxdgToplevelV6>,
     /// Smithay's `ToplevelSurface` wrapper (owns configure/serial machinery).
     /// Populated when xdg-shell is driven by smithay's `delegate_xdg_shell!`.
     pub toplevel_surface: Option<smithay::wayland::shell::xdg::ToplevelSurface>,
@@ -441,6 +446,7 @@ impl XdgToplevelData {
             pending_maximized: false,
             pending_fullscreen: false,
             resource: None,
+            v6_resource: None,
             toplevel_surface: None,
             deferred_configure_size: None,
             interactive_resize: false,
@@ -485,6 +491,8 @@ pub struct XdgPopupData {
     pub repositioned_token: Option<u32>,
     /// The actual protocol resource
     pub resource: Option<xdg_popup::XdgPopup>,
+    /// Associated zxdg_popup_v6 resource (if v6 popup)
+    pub v6_resource: Option<crate::core::wayland::xdg::v6::protocol::zxdg_popup_v6::ZxdgPopupV6>,
     /// Smithay's `PopupSurface` wrapper (owns configure/serial machinery).
     pub popup_surface: Option<smithay::wayland::shell::xdg::PopupSurface>,
 }
@@ -1663,6 +1671,9 @@ pub struct CompositorState {
     /// wlroots protocol state (layer shell, virtual devices, data control)
     pub wlr: WlrState,
 
+    /// zxdg_shell_v6 protocol state
+    pub xdg_v6: crate::core::wayland::xdg::v6::XdgV6State,
+
     // =========================================================================
     // Core Protocol Resources
     // =========================================================================
@@ -1765,6 +1776,7 @@ impl CompositorState {
             xdg: XdgState::default(),
             ext: ExtProtocolState::default(),
             wlr: WlrState::default(),
+            xdg_v6: crate::core::wayland::xdg::v6::XdgV6State::default(),
             seat_resources: HashMap::new(),
 
             pending_compositor_events: Vec::new(),
