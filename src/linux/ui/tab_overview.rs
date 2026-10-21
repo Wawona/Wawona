@@ -280,6 +280,9 @@ fn build_card(
         close_btn.connect_clicked(move |_| {
             close_tab(&mid, &sessions, &state, &parent, &shell, layout, &overview);
         });
+    }
+
+    {
         let mid = profile.id.clone();
         let state = state.clone();
         let parent = parent.clone();
