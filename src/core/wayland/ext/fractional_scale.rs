@@ -21,6 +21,25 @@ pub struct FractionalScaleData {
     pub surface_id: u32,
 }
 
+/// The `wp_fractional_scale_v1` of a `wl_surface` (at most one may be live).
+#[derive(Debug, Default)]
+struct SurfaceFractionalScale(std::sync::Mutex<Option<WpFractionalScaleV1>>);
+
+impl SurfaceFractionalScale {
+    fn is_live(&self) -> bool {
+        self.0
+            .lock()
+            .map(|slot| slot.as_ref().is_some_and(|object| object.is_alive()))
+            .unwrap_or(false)
+    }
+
+    fn set(&self, object: WpFractionalScaleV1) {
+        if let Ok(mut slot) = self.0.lock() {
+            *slot = Some(object);
+        }
+    }
+}
+
 // ============================================================================
 // wp_fractional_scale_manager_v1
 // ============================================================================
@@ -52,8 +71,28 @@ impl Dispatch<WpFractionalScaleManagerV1, ()> for CompositorState {
         match request {
             wp_fractional_scale_manager_v1::Request::GetFractionalScale { id, surface } => {
                 let surface_id = surface.id().protocol_id();
-                // let data = FractionalScaleData { surface_id };
+                let exists = smithay::wayland::compositor::with_states(&surface, |states| {
+                    states
+                        .data_map
+                        .get::<SurfaceFractionalScale>()
+                        .is_some_and(|slot| slot.is_live())
+                });
+                if exists {
+                    _resource.post_error(
+                        wp_fractional_scale_manager_v1::Error::FractionalScaleExists,
+                        "the surface already has a fractional_scale object",
+                    );
+                    return;
+                }
                 let fractional_scale = data_init.init(id, ());
+                smithay::wayland::compositor::with_states(&surface, |states| {
+                    states
+                        .data_map
+                        .insert_if_missing_threadsafe(SurfaceFractionalScale::default);
+                    if let Some(slot) = states.data_map.get::<SurfaceFractionalScale>() {
+                        slot.set(fractional_scale.clone());
+                    }
+                });
 
                 // Send initial preferred scale in 1/120 units, aligned with current output scale.
                 let output_scale = _state.primary_output().scale.max(1.0);

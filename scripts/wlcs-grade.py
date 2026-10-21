@@ -10,6 +10,22 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 
+TIMEOUT_EXIT_CODES = (124, 137)
+
+
+def unfinished_test(log: Path | None) -> str | None:
+    """Last test GoogleTest started but never reported (the hung one)."""
+    if log is None or not log.is_file():
+        return None
+    running = None
+    for line in log.read_text(errors="replace").splitlines():
+        if line.startswith("[ RUN      ] "):
+            running = line.removeprefix("[ RUN      ] ").strip()
+        elif line.startswith(("[       OK ] ", "[  FAILED  ] ", "[  SKIPPED ] ")):
+            running = None
+    return running
+
+
 def grade_for(rate: float) -> str:
     for minimum, grade in ((99, "A"), (95, "B"), (90, "C"), (80, "D")):
         if rate >= minimum:
@@ -22,6 +38,7 @@ def main() -> int:
     parser.add_argument("--xml", required=True, type=Path)
     parser.add_argument("--json", required=True, type=Path)
     parser.add_argument("--markdown", required=True, type=Path)
+    parser.add_argument("--log", type=Path)
     parser.add_argument("--wlcs-exit-code", type=int, required=True)
     parser.add_argument("--minimum-pass-rate", type=float, default=100.0)
     parser.add_argument("--maximum-failures", type=int, default=0)
@@ -60,6 +77,12 @@ def main() -> int:
         except (ET.ParseError, ValueError) as exc:
             infrastructure_error = f"invalid WLCS XML: {exc}"
 
+    if args.wlcs_exit_code in TIMEOUT_EXIT_CODES:
+        hung = unfinished_test(args.log)
+        infrastructure_error = "WLCS exceeded the run timeout" + (
+            f" (hung in `{hung}`)" if hung else ""
+        )
+
     passed = sum(case["status"] == "passed" for case in cases)
     failed = sum(case["status"] == "failed" for case in cases)
     skipped = sum(case["status"] == "skipped" for case in cases)
@@ -94,6 +117,7 @@ def main() -> int:
         },
         "wlcs_exit_code": args.wlcs_exit_code,
         "infrastructure_error": infrastructure_error,
+        "unfinished_test": unfinished_test(args.log),
         "tests": cases,
     }
     args.json.parent.mkdir(parents=True, exist_ok=True)

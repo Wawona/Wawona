@@ -944,3 +944,235 @@ fn test_keyboard_key_a_keysym() {
         "KEY_A press should surface keysym 0x61 to client"
     );
 }
+
+fn xdg_validation_client(
+    env: &mut TestEnv,
+) -> (
+    wayland_client::EventQueue<ClientState>,
+    QueueHandle<ClientState>,
+    ClientState,
+) {
+    let display = env.client.display();
+    let mut event_queue = env.client.new_event_queue::<ClientState>();
+    let qh = event_queue.handle();
+    let _registry = display.get_registry(&qh, ());
+    let mut client_state = ClientState {
+        compositor: None,
+        shm: None,
+        seat: None,
+        pointer: None,
+        keyboard: None,
+        xdg_wm_base: None,
+        xdg_surface: None,
+        xdg_toplevel: None,
+        subcompositor: None,
+        relative_pointer_manager: None,
+        relative_motion_events: Vec::new(),
+        last_keysym: None,
+    };
+    env.wait_roundtrip(&mut event_queue, &mut client_state);
+    (event_queue, qh, client_state)
+}
+
+fn small_shm_buffer(
+    client_state: &ClientState,
+    qh: &QueueHandle<ClientState>,
+) -> wayland_client::protocol::wl_buffer::WlBuffer {
+    let temp = tempfile::tempfile().unwrap();
+    temp.set_len(4096).unwrap();
+    let pool = client_state
+        .shm
+        .as_ref()
+        .expect("wl_shm not bound")
+        .create_pool(temp.as_fd(), 4096, qh, ());
+    pool.create_buffer(0, 16, 16, 64, wl_shm::Format::Xrgb8888, qh, ())
+}
+
+fn assert_protocol_error(env: &TestEnv, interface: &str, code: u32) {
+    let err = env
+        .client
+        .protocol_error()
+        .unwrap_or_else(|| panic!("expected {interface} error {code}, client still connected"));
+    assert_eq!(
+        (err.object_interface.as_str(), err.code),
+        (interface, code),
+        "unexpected protocol error: {}",
+        err.message
+    );
+}
+
+#[test]
+fn get_xdg_surface_on_subsurface_is_role_error() {
+    let mut env = TestEnv::new();
+    let (mut event_queue, qh, mut client_state) = xdg_validation_client(&mut env);
+    let compositor = client_state.compositor.clone().unwrap();
+    let parent = compositor.create_surface(&qh, ());
+    let child = compositor.create_surface(&qh, ());
+    let _sub =
+        client_state
+            .subcompositor
+            .as_ref()
+            .unwrap()
+            .get_subsurface(&child, &parent, &qh, ());
+    let _xdg = client_state
+        .xdg_wm_base
+        .as_ref()
+        .unwrap()
+        .get_xdg_surface(&child, &qh, ());
+    env.wait_roundtrip(&mut event_queue, &mut client_state);
+    assert_protocol_error(&env, "xdg_wm_base", xdg_wm_base::Error::Role as u32);
+}
+
+#[test]
+fn get_xdg_surface_with_attached_buffer_is_invalid_state() {
+    let mut env = TestEnv::new();
+    let (mut event_queue, qh, mut client_state) = xdg_validation_client(&mut env);
+    let surface = client_state
+        .compositor
+        .as_ref()
+        .unwrap()
+        .create_surface(&qh, ());
+    let buffer = small_shm_buffer(&client_state, &qh);
+    surface.attach(Some(&buffer), 0, 0);
+    let _xdg = client_state
+        .xdg_wm_base
+        .as_ref()
+        .unwrap()
+        .get_xdg_surface(&surface, &qh, ());
+    env.wait_roundtrip(&mut event_queue, &mut client_state);
+    assert_protocol_error(
+        &env,
+        "xdg_wm_base",
+        xdg_wm_base::Error::InvalidSurfaceState as u32,
+    );
+}
+
+#[test]
+fn get_xdg_surface_with_committed_buffer_is_invalid_state() {
+    let mut env = TestEnv::new();
+    let (mut event_queue, qh, mut client_state) = xdg_validation_client(&mut env);
+    let surface = client_state
+        .compositor
+        .as_ref()
+        .unwrap()
+        .create_surface(&qh, ());
+    let buffer = small_shm_buffer(&client_state, &qh);
+    surface.attach(Some(&buffer), 0, 0);
+    surface.commit();
+    env.wait_roundtrip(&mut event_queue, &mut client_state);
+    let _xdg = client_state
+        .xdg_wm_base
+        .as_ref()
+        .unwrap()
+        .get_xdg_surface(&surface, &qh, ());
+    env.wait_roundtrip(&mut event_queue, &mut client_state);
+    assert_protocol_error(
+        &env,
+        "xdg_wm_base",
+        xdg_wm_base::Error::InvalidSurfaceState as u32,
+    );
+}
+
+#[test]
+fn attach_to_unconfigured_xdg_surface_is_error() {
+    let mut env = TestEnv::new();
+    let (mut event_queue, qh, mut client_state) = xdg_validation_client(&mut env);
+    let surface = client_state
+        .compositor
+        .as_ref()
+        .unwrap()
+        .create_surface(&qh, ());
+    let _xdg = client_state
+        .xdg_wm_base
+        .as_ref()
+        .unwrap()
+        .get_xdg_surface(&surface, &qh, ());
+    let buffer = small_shm_buffer(&client_state, &qh);
+    surface.attach(Some(&buffer), 0, 0);
+    env.wait_roundtrip(&mut event_queue, &mut client_state);
+    assert_protocol_error(
+        &env,
+        "xdg_surface",
+        xdg_surface::Error::UnconfiguredBuffer as u32,
+    );
+}
+
+#[test]
+fn attach_after_initial_configure_is_accepted() {
+    let mut env = TestEnv::new();
+    let (mut event_queue, qh, mut client_state) = xdg_validation_client(&mut env);
+    let surface = client_state
+        .compositor
+        .as_ref()
+        .unwrap()
+        .create_surface(&qh, ());
+    let xdg = client_state
+        .xdg_wm_base
+        .as_ref()
+        .unwrap()
+        .get_xdg_surface(&surface, &qh, ());
+    let _toplevel = xdg.get_toplevel(&qh, ());
+    surface.commit();
+    env.wait_roundtrip(&mut event_queue, &mut client_state);
+    let buffer = small_shm_buffer(&client_state, &qh);
+    surface.attach(Some(&buffer), 0, 0);
+    surface.commit();
+    env.wait_roundtrip(&mut event_queue, &mut client_state);
+    assert!(
+        env.client.protocol_error().is_none(),
+        "configured xdg_surface attach must be accepted: {:?}",
+        env.client.protocol_error()
+    );
+}
+
+#[test]
+fn later_commit_keeps_moved_toplevel_position() {
+    let mut env = TestEnv::new();
+    let (mut event_queue, qh, mut client_state) = xdg_validation_client(&mut env);
+    let surface = client_state
+        .compositor
+        .as_ref()
+        .unwrap()
+        .create_surface(&qh, ());
+    let xdg = client_state
+        .xdg_wm_base
+        .as_ref()
+        .unwrap()
+        .get_xdg_surface(&surface, &qh, ());
+    let _toplevel = xdg.get_toplevel(&qh, ());
+    surface.commit();
+    env.wait_roundtrip(&mut event_queue, &mut client_state);
+    let buffer = small_shm_buffer(&client_state, &qh);
+    surface.attach(Some(&buffer), 0, 0);
+    surface.commit();
+    env.wait_roundtrip(&mut event_queue, &mut client_state);
+
+    let client_id = env
+        .state
+        .clients
+        .keys()
+        .next()
+        .expect("No server client")
+        .clone();
+    let surface_id = *env
+        .state
+        .protocol_to_internal_surface
+        .get(&(client_id, surface.id().protocol_id()))
+        .expect("surface internal ID not found");
+    let window = env
+        .state
+        .get_window_by_surface(surface_id)
+        .expect("toplevel window missing");
+    {
+        let mut window = window.write().unwrap();
+        window.x = 20;
+        window.y = 30;
+    }
+
+    surface.attach(Some(&buffer), 0, 0);
+    surface.commit();
+    env.wait_roundtrip(&mut event_queue, &mut client_state);
+
+    let window = window.read().unwrap();
+    assert_eq!((window.x, window.y), (20, 30));
+}

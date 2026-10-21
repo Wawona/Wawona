@@ -1,4 +1,5 @@
 pub mod host_keymap;
+pub mod interactive_grab;
 pub mod keyboard;
 pub mod osk;
 pub mod pointer;

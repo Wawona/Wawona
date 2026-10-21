@@ -438,6 +438,119 @@ impl WawonaCore {
             .create_test_client_socket()
             .map_err(|e| CompositorError::socket_error(e.to_string()).into())
     }
+
+    /// Mark this core as driven by a host without a window system, so the
+    /// core applies desktop focus policy itself (see `headless_host`).
+    pub fn set_headless_host(&self, enabled: bool) {
+        self.state.write_recover().headless_host = enabled;
+    }
+
+    /// Headless host loop step (WLCS, CI): drain window events nobody else
+    /// consumes and re-pick the global pointer, since the scene may have
+    /// changed under it.
+    pub fn headless_host_tick(&self) {
+        while self.pop_window_event().is_some() {}
+        self.repick_global_pointer(crate::core::compositor::Compositor::timestamp_ms());
+        self.flush_clients();
+    }
+
+    /// Pointer motion in compositor-global coordinates, for hosts without a
+    /// window system. Applies pointer constraints, then delivers through the
+    /// window-local path platform hosts use.
+    pub fn inject_pointer_motion_global(&self, x: f64, y: f64, timestamp_ms: u32) {
+        if !self.is_running() {
+            return;
+        }
+        let position = {
+            let mut state = self.state.write_recover();
+            if state.update_interactive_grab((x, y)) {
+                drop(state);
+                self.flush_clients();
+                return;
+            }
+            let position = state.constrain_global_pointer(x, y, timestamp_ms);
+            if let Some(position) = position {
+                state.seat.pointer.global_position = Some(position);
+            }
+            position
+        };
+        if let Some((x, y)) = position {
+            self.deliver_global_pointer(x, y, timestamp_ms);
+        }
+    }
+
+    /// Pointer button at the global pointer. A press focuses and raises the
+    /// window under the pointer (click-to-focus).
+    pub fn inject_pointer_button_global(&self, button: u32, state: ButtonState, timestamp_ms: u32) {
+        if !self.is_running() {
+            return;
+        }
+        if self
+            .state
+            .read_recover()
+            .seat
+            .pointer
+            .interactive_grab
+            .is_some()
+        {
+            if state == ButtonState::Released {
+                self.state.write_recover().end_interactive_grab();
+                self.repick_global_pointer(timestamp_ms);
+                let wl_state = wayland_server::protocol::wl_pointer::ButtonState::Released;
+                let mut compositor_state = self.state.write_recover();
+                compositor_state.seat.cleanup_resources();
+                compositor_state.deliver_global_button(button, wl_state, timestamp_ms);
+                if let Some(client) = compositor_state.focused_pointer_client() {
+                    compositor_state.send_pointer_frame(&client);
+                }
+                drop(compositor_state);
+                self.flush_clients();
+            }
+            return;
+        }
+        let wl_state = match state {
+            ButtonState::Released => wayland_server::protocol::wl_pointer::ButtonState::Released,
+            ButtonState::Pressed => wayland_server::protocol::wl_pointer::ButtonState::Pressed,
+        };
+        let mut compositor_state = self.state.write_recover();
+        compositor_state.seat.cleanup_resources();
+        compositor_state.deliver_global_button(button, wl_state, timestamp_ms);
+        if let Some(client) = compositor_state.focused_pointer_client() {
+            compositor_state.send_pointer_frame(&client);
+        }
+    }
+
+    /// Re-deliver the global pointer when the surface or surface-local
+    /// position under it changed without pointer motion (window moved,
+    /// resized, mapped, or unmapped).
+    pub fn repick_global_pointer(&self, timestamp_ms: u32) {
+        let mut state = self.state.write_recover();
+        state.repick_global_pointer(timestamp_ms, &mut || self.next_serial());
+    }
+
+    fn deliver_global_pointer(&self, x: f64, y: f64, timestamp_ms: u32) {
+        let serial = self.next_serial();
+        self.state
+            .write_recover()
+            .deliver_global_pointer(x, y, timestamp_ms, serial);
+    }
+
+    /// Present every node of the current scene, as a drawing host does after a
+    /// frame. Headless hosts (the WLCS harness) call this once per refresh so
+    /// frame callbacks, buffer releases, and presentation feedback take the
+    /// same path as on-screen hosts. C ABI only (`WWNCorePresentRenderScene`).
+    pub fn present_render_scene(&self, timestamp_ms: u32) -> usize {
+        let scene = self.get_render_scene();
+        let presented = scene.nodes.len();
+        for node in scene.nodes {
+            let buffer = (node.texture.handle != 0).then(|| BufferId::new(node.texture.handle));
+            self.notify_frame_presented(node.surface_id, buffer, timestamp_ms);
+        }
+        if presented > 0 {
+            self.flush_clients();
+        }
+        presented
+    }
 }
 
 #[uniffi::export]
@@ -925,7 +1038,7 @@ impl WawonaCore {
             return false;
         };
 
-        let state = self.state.write_recover();
+        let mut state = self.state.write_recover();
         let Some(internal_surface_id) = state
             .protocol_to_internal_surface
             .get(&(backend_client_id, protocol_surface_id))
@@ -933,12 +1046,24 @@ impl WawonaCore {
         else {
             return false;
         };
-        let Some(window) = state.get_window_by_surface(internal_surface_id) else {
+        if let Some(window) = state.get_window_by_surface(internal_surface_id) {
+            let window_id = {
+                let mut window = window.write_recover();
+                window.x = x;
+                window.y = y;
+                window.id
+            };
+            state.reconstrain_reactive_popups(window_id);
+        } else if let Some(layer) = state.layer_surface_for(internal_surface_id) {
+            layer.write_recover().position_override = Some((x, y));
+            state.reposition_layer_surfaces();
+        } else {
             return false;
-        };
-        let mut window = window.write_recover();
-        window.x = x;
-        window.y = y;
+        }
+        drop(state);
+        drop(compositor_guard);
+        self.repick_global_pointer(crate::core::compositor::Compositor::timestamp_ms());
+        self.flush_clients();
         true
     }
 
@@ -2851,50 +2976,7 @@ fn smithay_send_pointer_enter(
     lx: f64,
     ly: f64,
 ) -> usize {
-    let Some(pointer) = smithay_pointer_handle(state) else {
-        return 0;
-    };
-    let mut sent = 0;
-    for ptr in pointer.client_pointers(client) {
-        ptr.enter(serial, surface, lx, ly);
-        sent += 1;
-    }
-    sent
-}
-
-fn smithay_send_pointer_leave(
-    state: &CompositorState,
-    client: &wayland_server::Client,
-    serial: u32,
-    surface: &wayland_server::protocol::wl_surface::WlSurface,
-) -> usize {
-    let Some(pointer) = smithay_pointer_handle(state) else {
-        return 0;
-    };
-    let mut sent = 0;
-    for ptr in pointer.client_pointers(client) {
-        ptr.leave(serial, surface);
-        sent += 1;
-    }
-    sent
-}
-
-fn smithay_send_pointer_motion(
-    state: &CompositorState,
-    client: &wayland_server::Client,
-    time: u32,
-    lx: f64,
-    ly: f64,
-) -> usize {
-    let Some(pointer) = smithay_pointer_handle(state) else {
-        return 0;
-    };
-    let mut sent = 0;
-    for ptr in pointer.client_pointers(client) {
-        ptr.motion(time, lx, ly);
-        sent += 1;
-    }
-    sent
+    state.send_pointer_enter(client, serial, surface, lx, ly)
 }
 
 fn smithay_send_pointer_button(
@@ -2957,19 +3039,7 @@ fn smithay_send_pointer_axis(
 }
 
 fn smithay_send_pointer_frame(state: &CompositorState, client: &wayland_server::Client) -> usize {
-    let Some(pointer) = smithay_pointer_handle(state) else {
-        return 0;
-    };
-    let mut sent = 0;
-    // Smithay's own seat path gates this; client_pointers() does not.
-    // Opcode 5 (`frame`) is since wl_pointer v5. See broadcast_frame.
-    for ptr in pointer.client_pointers(client) {
-        if ptr.version() >= 5 {
-            ptr.frame();
-            sent += 1;
-        }
-    }
-    sent
+    state.send_pointer_frame(client)
 }
 
 /// Deliver wl_pointer motion/frame to Wayland clients.
@@ -2983,36 +3053,7 @@ fn deliver_pointer_motion_to_clients(
     lx: f64,
     ly: f64,
 ) {
-    let focused_client = state.focused_pointer_client();
-    if let Some(client) = focused_client.as_ref() {
-        let mut sent = smithay_send_pointer_motion(state, client, timestamp_ms, lx, ly);
-        if sent == 0 {
-            if let Some(sid) = state.seat.pointer.focus {
-                if let Some(surface) = state.surfaces.get(&sid).cloned() {
-                    let surface = surface.read_recover();
-                    if let Some(res) = &surface.resource {
-                        let enter_serial = state.next_serial();
-                        sent = smithay_send_pointer_enter(state, client, enter_serial, res, lx, ly);
-                        if sent > 0 {
-                            state.seat.pointer.last_enter_serial = enter_serial;
-                            sent = smithay_send_pointer_motion(state, client, timestamp_ms, lx, ly);
-                        }
-                    }
-                }
-            }
-        }
-        if sent > 0 {
-            smithay_send_pointer_frame(state, client);
-            return;
-        }
-    }
-    if state.seat.pointer.resources.is_empty() {
-        return;
-    }
-    state
-        .seat
-        .broadcast_pointer_motion(timestamp_ms, lx, ly, focused_client.as_ref());
-    state.seat.broadcast_pointer_frame(focused_client.as_ref());
+    state.deliver_pointer_motion(timestamp_ms, lx, ly);
 }
 
 /// Push a pointer motion at the seat's current global position so clients
@@ -3052,45 +3093,25 @@ fn ensure_pointer_focus(
         return;
     }
 
-    let old_sid = state.seat.pointer.focus;
-
-    state.seat.pointer.focus = Some(target_sid);
     let x = state.seat.pointer.x;
     let y = state.seat.pointer.y;
     let (lx, ly) = pointer_surface_local_coords(state, x, y, Some(target_sid));
-    state.seat.pointer.focus_x = lx;
-    state.seat.pointer.focus_y = ly;
+    focus_pointer_surface(state, target_sid, lx, ly, serial_fn);
+}
 
-    let serial = serial_fn();
-    state.seat.pointer.last_enter_serial = serial;
-
-    if let Some(old_sid) = old_sid {
-        if let Some(surface) = state.surfaces.get(&old_sid).cloned() {
-            let surface = surface.read_recover();
-            if let Some(res) = &surface.resource {
-                if let Some(client) = res.client() {
-                    if smithay_send_pointer_leave(state, &client, serial, res) == 0 {
-                        state.seat.broadcast_pointer_leave(serial, res);
-                    }
-                }
-            }
-        }
+/// Move pointer focus to `target_sid` (any surface, including subsurfaces)
+/// at surface-local `(lx, ly)`: leave the old surface, enter the new one.
+fn focus_pointer_surface(
+    state: &mut crate::core::state::CompositorState,
+    target_sid: u32,
+    lx: f64,
+    ly: f64,
+    serial_fn: &dyn Fn() -> u32,
+) {
+    if state.seat.pointer.focus == Some(target_sid) {
+        return;
     }
-
-    if let Some(surface) = state.surfaces.get(&target_sid).cloned() {
-        let surface = surface.read_recover();
-        if let Some(res) = &surface.resource {
-            if let Some(client) = res.client() {
-                let sent = smithay_send_pointer_enter(state, &client, serial, res, lx, ly);
-                if sent > 0 {
-                    smithay_send_pointer_frame(state, &client);
-                } else {
-                    state.seat.broadcast_pointer_enter(serial, res, lx, ly);
-                }
-            }
-        }
-    }
-    deliver_pointer_motion_to_clients(state, 0, lx, ly);
+    state.focus_pointer_surface(target_sid, lx, ly, serial_fn());
 }
 
 #[uniffi::export]
@@ -4125,6 +4146,21 @@ impl WawonaCore {
         state: ButtonState,
         timestamp_ms: u32,
     ) {
+        self.pointer_button(Some(window_id), button, state, timestamp_ms);
+    }
+}
+
+impl WawonaCore {
+    /// Pointer button at the current pointer focus. `Some(window)` is the
+    /// platform path: focus is first corrected to that window's root surface.
+    /// `None` keeps the focus global motion established (may be a subsurface).
+    fn pointer_button(
+        &self,
+        window_id: Option<WindowId>,
+        button: PointerButton,
+        state: ButtonState,
+        timestamp_ms: u32,
+    ) {
         if !self.is_running() {
             return;
         }
@@ -4149,7 +4185,9 @@ impl WawonaCore {
 
         // Auto-correct pointer focus to the window the platform says
         // this click targets.
-        ensure_pointer_focus(&mut state, window_id, &|| self.next_serial());
+        if let Some(window_id) = window_id {
+            ensure_pointer_focus(&mut state, window_id, &|| self.next_serial());
+        }
 
         // Weston desktop-shell tracks the launcher via wl_pointer motion +
         // button in the same frame; sync position immediately before click.
@@ -4197,7 +4235,10 @@ impl WawonaCore {
             state.seat.broadcast_pointer_frame(focused_client.as_ref());
         }
     }
+}
 
+#[uniffi::export]
+impl WawonaCore {
     /// Inject pointer axis (scroll) event
     pub fn inject_pointer_axis(
         &self,
@@ -4334,11 +4375,12 @@ impl WawonaCore {
             "text/plain".to_string(),
             "UTF8_STRING".to_string(),
         ];
+        state.cancel_proxied_selection(smithay::wayland::selection::SelectionTarget::Clipboard);
         smithay::wayland::selection::data_device::set_data_device_selection(
             &dh,
             &seat,
             mime_types,
-            (),
+            crate::core::wayland::selection_proxy::SelectionOwner::Host,
         );
     }
 
@@ -4432,19 +4474,7 @@ impl WawonaCore {
             if state.seat.pointer.button_count > 0 {
                 return;
             }
-
-            state.seat.pointer.focus = None;
-
-            if let Some(surface) = state.surfaces.get(&sid).cloned() {
-                let surface = surface.read_recover();
-                if let Some(res) = &surface.resource {
-                    if let Some(client) = res.client() {
-                        if smithay_send_pointer_leave(&state, &client, serial, res) == 0 {
-                            state.seat.broadcast_pointer_leave(serial, res);
-                        }
-                    }
-                }
-            }
+            state.leave_pointer_surface(sid, serial);
         }
     }
 

@@ -193,15 +193,15 @@ impl CompositorState {
         let flattened = self.scene.flatten();
 
         for surface in flattened.iter().rev() {
-            let sx = surface.x as f64;
-            let sy = surface.y as f64;
-            let sw = surface.width as f64;
-            let sh = surface.height as f64;
+            let (sx, sy, sw, sh, cropped) = uncropped_input_bounds(surface);
 
             if x >= sx && x < sx + sw && y >= sy && y < sy + sh {
-                let scale = self.view_to_surface_scale(surface.surface_id, sw, sh);
-                let local_x = (x - sx) * scale;
-                let local_y = (y - sy) * scale;
+                let (local_x, local_y) = if cropped {
+                    let scale = self.view_to_surface_scale(surface.surface_id, sw, sh);
+                    ((x - sx) * scale, (y - sy) * scale)
+                } else {
+                    self.view_to_surface_coords(surface.surface_id, sw, sh, x - sx, y - sy)
+                };
                 let lx = local_x as i32;
                 let ly = local_y as i32;
 
@@ -250,17 +250,6 @@ impl CompositorState {
         if let Some((surface_id, lx, ly)) = picking_res {
             if Some(surface_id) != old_focus {
                 if let Some(old_id) = old_focus {
-                    let old_client_id = self
-                        .surfaces
-                        .get(&old_id)
-                        .and_then(|s| s.read().unwrap().client_id.clone());
-                    if let Some(cid) = old_client_id {
-                        self.ext
-                            .pointer_constraints
-                            .deactivate_constraints(cid, old_id);
-                    }
-                }
-                if let Some(old_id) = old_focus {
                     if let Some(surface) = self.get_surface(old_id) {
                         let surface = surface.read().unwrap();
                         if let Some(res) = &surface.resource {
@@ -285,15 +274,7 @@ impl CompositorState {
                 self.seat.pointer.focus = Some(surface_id);
                 self.focus
                     .set_pointer_focus(self.surface_to_window.get(&surface_id).copied());
-                let new_client_id = self
-                    .surfaces
-                    .get(&surface_id)
-                    .and_then(|s| s.read().unwrap().client_id.clone());
-                if let Some(cid) = new_client_id {
-                    self.ext
-                        .pointer_constraints
-                        .activate_constraints(cid, surface_id);
-                }
+                self.sync_pointer_constraints();
             }
 
             for pointer in &self.seat.pointer.resources {
@@ -301,15 +282,6 @@ impl CompositorState {
             }
         } else {
             if let Some(old_id) = old_focus {
-                let old_client_id = self
-                    .surfaces
-                    .get(&old_id)
-                    .and_then(|s| s.read().unwrap().client_id.clone());
-                if let Some(cid) = old_client_id {
-                    self.ext
-                        .pointer_constraints
-                        .deactivate_constraints(cid, old_id);
-                }
                 if let Some(surface) = self.get_surface(old_id) {
                     let surface = surface.read().unwrap();
                     if let Some(res) = &surface.resource {
@@ -322,6 +294,7 @@ impl CompositorState {
             }
             self.seat.pointer.focus = None;
             self.focus.set_pointer_focus(None);
+            self.sync_pointer_constraints();
         }
     }
 
@@ -340,28 +313,8 @@ impl CompositorState {
         if state == wl_pointer::ButtonState::Pressed {
             self.seat.pointer.button_count += 1;
 
-            if !self.seat.popup_grab_stack.is_empty() {
-                let mut on_grab_tree = false;
-                if let Some(focus_id) = self.seat.pointer.focus {
-                    for &(ref cid, popup_id) in &self.seat.popup_grab_stack {
-                        if let Some(popup) = self.xdg.popups.get(&(cid.clone(), popup_id)) {
-                            if popup.surface_id == focus_id {
-                                on_grab_tree = true;
-                                break;
-                            }
-                            if let Some(&wid) = self.surface_to_window.get(&focus_id) {
-                                if wid == popup.window_id {
-                                    on_grab_tree = true;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if !on_grab_tree {
-                    self.dismiss_popup_grab();
-                }
+            if self.click_ends_popup_grab(self.seat.pointer.focus) {
+                self.dismiss_popup_grab();
             }
         } else {
             self.seat.pointer.button_count = self.seat.pointer.button_count.saturating_sub(1);
@@ -397,7 +350,7 @@ impl CompositorState {
         None
     }
 
-    fn wl_surface_for(
+    pub(crate) fn wl_surface_for(
         &self,
         surface_id: u32,
     ) -> Option<wayland_server::protocol::wl_surface::WlSurface> {
@@ -706,18 +659,314 @@ impl CompositorState {
 
     /// Set focused window
     pub fn set_focused_window(&mut self, window_id: Option<u32>) {
+        if self.focus_change_ends_popup_grab(window_id) {
+            self.dismiss_popup_grab_without_refocus();
+        }
         self.focus.set_keyboard_focus(window_id);
 
-        if let Some(wid) = window_id {
-            if let Some(window) = self.windows.get(&wid) {
-                let window = window.read().unwrap();
-                self.seat.keyboard.focus = Some(window.surface_id);
+        let target = match window_id {
+            Some(wid) => match self.windows.get(&wid) {
+                Some(window) => Some(window.read().unwrap().surface_id),
+                None => return,
+            },
+            None => None,
+        };
+        let target = self.exclusive_layer_focus().or(target);
+        self.set_keyboard_focus_surface(target);
+        tracing::debug!("Focus changed to window: {:?}", window_id);
+    }
+
+    /// Move `wl_keyboard` (and text-input) focus to `target`. Activation
+    /// follows the toplevel that owns the surface, so focusing a grabbing
+    /// popup keeps its parent window activated.
+    pub(crate) fn set_keyboard_focus_surface(&mut self, target: Option<u32>) {
+        if self.seat.keyboard.focus == target {
+            return;
+        }
+        let resource_of = |state: &Self, sid: Option<u32>| {
+            sid.and_then(|sid| state.surfaces.get(&sid))
+                .and_then(|s| s.read().unwrap().resource.clone())
+        };
+        let old_target = self.seat.keyboard.focus;
+        let old_res = resource_of(self, old_target);
+        let new_res = resource_of(self, target);
+        self.seat.keyboard.focus = target;
+        let old_active = old_target.and_then(|sid| self.activation_surface(sid));
+        let new_active = target.and_then(|sid| self.activation_surface(sid));
+        if old_active != new_active {
+            if let Some(sid) = old_active {
+                self.set_toplevel_activated(sid, false);
             }
-        } else {
-            self.seat.keyboard.focus = None;
+            if let Some(sid) = new_active {
+                self.set_toplevel_activated(sid, true);
+            }
         }
 
-        tracing::debug!("Focus changed to window: {:?}", window_id);
+        if let Some(res) = &old_res {
+            self.ext.text_input.leave(res);
+        }
+        let serial = self.next_serial();
+        if let Some(keyboard) = self
+            .smithay_runtime
+            .seat
+            .as_ref()
+            .and_then(|s| s.get_keyboard())
+        {
+            keyboard.set_focus(self, new_res.clone(), serial.into());
+        } else {
+            if let Some(res) = &old_res {
+                self.seat.broadcast_keyboard_leave(serial, res);
+            }
+            if let Some(res) = &new_res {
+                let keys = self.seat.keyboard.pressed_keys.clone();
+                self.seat.broadcast_keyboard_enter(serial, res, &keys);
+            }
+        }
+        if let Some(res) = &new_res {
+            self.ext.text_input.enter(res, target);
+        }
+        crate::core::wayland::ext::text_input_v2::notify_focus_changed(self, old_target, target);
+        self.sync_pointer_constraints();
+    }
+
+    /// Surface under a global point, or `grabbed` when an implicit grab pins
+    /// it, with the point in that surface's local coordinates.
+    pub fn pointer_target_at_global(
+        &mut self,
+        x: f64,
+        y: f64,
+        grabbed: Option<u32>,
+    ) -> Option<(u32, f64, f64)> {
+        let Some(surface_id) = grabbed else {
+            return self.find_surface_at(x, y);
+        };
+        let (sx, sy, w, h, _) = self.surface_position_in_scene(surface_id)?;
+        let (lx, ly) =
+            self.view_to_surface_coords(surface_id, w, h, x - f64::from(sx), y - f64::from(sy));
+        Some((surface_id, lx, ly))
+    }
+
+    /// Window owning `surface_id`, following subsurfaces up to their root.
+    pub fn root_window_of_surface(&self, mut surface_id: u32) -> Option<u32> {
+        // Bounded walk: a malformed parent cycle must not hang input.
+        for _ in 0..64 {
+            if let Some(&window_id) = self.surface_to_window.get(&surface_id) {
+                return Some(window_id);
+            }
+            surface_id = match self.subsurfaces.get(&surface_id) {
+                Some(sub) => sub.parent_id,
+                None => {
+                    let parent = smithay::wayland::compositor::get_parent(
+                        &self.wl_surface_for(surface_id)?,
+                    )?;
+                    self.internal_surface_id(&parent)?
+                }
+            };
+        }
+        None
+    }
+
+    /// Internal id of an already-mapped protocol surface.
+    pub fn internal_surface_id(
+        &self,
+        surface: &wayland_server::protocol::wl_surface::WlSurface,
+    ) -> Option<u32> {
+        let client = surface.client()?.id();
+        self.protocol_to_internal_surface
+            .get(&(client, surface.id().protocol_id()))
+            .copied()
+    }
+
+    /// Clear pointer focus and send `wl_pointer.leave` (and `frame` on v5+)
+    /// for `surface_id`.
+    pub fn leave_pointer_surface(&mut self, surface_id: u32, serial: u32) {
+        self.seat.pointer.focus = None;
+        self.sync_pointer_constraints();
+
+        let resource = self
+            .surfaces
+            .get(&surface_id)
+            .and_then(|surface| surface.read().ok().and_then(|s| s.resource.clone()));
+        let Some(resource) = resource else {
+            return;
+        };
+        let Some(client) = resource.client() else {
+            return;
+        };
+        if self.send_pointer_leave(&client, serial, &resource) > 0 {
+            self.send_pointer_frame(&client);
+        } else {
+            self.seat.broadcast_pointer_leave(serial, &resource);
+        }
+    }
+
+    /// Start a compositor-owned interactive move (`edges == None`) or resize
+    /// of `window_id`. Headless hosts only, and only while a button is held.
+    /// The compositor takes the button over, so the client's implicit grab
+    /// ends and the pointer leaves the surface on the next re-pick.
+    pub fn start_interactive_grab(
+        &mut self,
+        window_id: u32,
+        edges: Option<crate::core::input::interactive_grab::GrabEdges>,
+    ) -> bool {
+        if !self.headless_host || self.seat.pointer.button_count == 0 {
+            return false;
+        }
+        let Some(start_pointer) = self.seat.pointer.global_position else {
+            return false;
+        };
+        let Some(window) = self.get_window(window_id) else {
+            return false;
+        };
+        let Ok(start_rect) = window.read().map(|w| (w.x, w.y, w.width, w.height)) else {
+            return false;
+        };
+        self.seat.pointer.interactive_grab =
+            Some(crate::core::input::interactive_grab::InteractiveGrab {
+                window_id,
+                start_pointer,
+                start_rect,
+                edges,
+            });
+        self.seat.pointer.button_count = 0;
+        // The compositor owns the pointer for the whole grab, so the client
+        // loses pointer focus now, not on the next motion.
+        if let Some(focus) = self.seat.pointer.focus {
+            let serial = self.next_serial();
+            self.leave_pointer_surface(focus, serial);
+        }
+        self.seat.pointer.global_target = None;
+        true
+    }
+
+    /// Apply the interactive grab to a global pointer position. Returns
+    /// `false` when no grab is active (the motion belongs to clients).
+    pub fn update_interactive_grab(&mut self, pointer: (f64, f64)) -> bool {
+        let Some(grab) = self.seat.pointer.interactive_grab else {
+            return false;
+        };
+        let Some(window) = self.get_window(grab.window_id) else {
+            self.seat.pointer.interactive_grab = None;
+            return false;
+        };
+        let (x, y, w, h) = crate::core::input::interactive_grab::grab_rect(&grab, pointer);
+        {
+            let mut window = window.write().unwrap();
+            window.x = x;
+            window.y = y;
+        }
+        self.reconstrain_reactive_popups(grab.window_id);
+        self.seat.pointer.global_position = Some(pointer);
+        self.seat.pointer.global_raw = Some(pointer);
+        if grab.edges.is_some() {
+            self.configure_interactive_resize(grab.window_id, (w, h), true);
+        }
+        true
+    }
+
+    /// End the interactive grab. Returns `false` when none was active.
+    pub fn end_interactive_grab(&mut self) -> bool {
+        let Some(grab) = self.seat.pointer.interactive_grab.take() else {
+            return false;
+        };
+        if grab.edges.is_some() {
+            let pointer = self
+                .seat
+                .pointer
+                .global_position
+                .unwrap_or(grab.start_pointer);
+            let (_, _, w, h) = crate::core::input::interactive_grab::grab_rect(&grab, pointer);
+            self.configure_interactive_resize(grab.window_id, (w, h), false);
+        }
+        true
+    }
+
+    fn configure_interactive_resize(&mut self, window_id: u32, (w, h): (i32, i32), resizing: bool) {
+        let Some((key, unchanged)) = self
+            .xdg
+            .toplevels
+            .iter_mut()
+            .find(|(_, tl)| tl.window_id == window_id)
+            .map(|(key, tl)| {
+                let unchanged = tl.interactive_resize == resizing
+                    && (tl.width as i32, tl.height as i32) == (w, h);
+                tl.interactive_resize = resizing;
+                (key.clone(), unchanged)
+            })
+        else {
+            return;
+        };
+        if unchanged {
+            return;
+        }
+        let _ = self.send_toplevel_configure(key.0, key.1, w.max(1) as u32, h.max(1) as u32);
+    }
+
+    /// Mirror keyboard focus into the toplevel's xdg `activated` state. Only a
+    /// real state change produces a configure.
+    fn set_toplevel_activated(&mut self, surface_id: u32, activated: bool) {
+        use wayland_protocols::xdg::shell::server::xdg_toplevel::State;
+
+        let Some((key, toplevel_surface, xdg_surface_id)) = self
+            .xdg
+            .toplevels
+            .iter()
+            .find(|(_, tl)| tl.surface_id == surface_id)
+            .map(|(key, tl)| (key.clone(), tl.toplevel_surface.clone(), tl.xdg_surface_id))
+        else {
+            return;
+        };
+        let window_id = self.xdg.toplevels.get_mut(&key).map(|tl| {
+            tl.activated = activated;
+            tl.window_id
+        });
+        if let Some(window_id) = window_id {
+            if let Some(Ok(mut window)) = self.get_window(window_id).as_ref().map(|w| w.write()) {
+                window.activated = activated;
+            }
+            self.refresh_foreign_toplevel(window_id);
+        }
+        let Some(toplevel_surface) = toplevel_surface else {
+            if let Some(tl_data) = self.xdg.toplevels.get(&key) {
+                if tl_data.v6_resource.is_some() {
+                    let configured = self
+                        .xdg
+                        .surfaces
+                        .get(&(key.0.clone(), xdg_surface_id))
+                        .map(|s| s.configured || s.last_acked_serial > 0)
+                        .unwrap_or(false);
+                    if configured {
+                        let (w, h) = (tl_data.width, tl_data.height);
+                        self.send_toplevel_configure(key.0.clone(), key.1, w, h);
+                    }
+                }
+            }
+            return;
+        };
+        toplevel_surface.with_pending_state(|state| {
+            if activated {
+                state.states.set(State::Activated);
+            } else {
+                state.states.unset(State::Activated);
+            }
+        });
+        // Focus can land inside `new_toplevel` before its initial configure;
+        // that configure carries the pending state, so do not send another.
+        if !toplevel_surface.is_initial_configure_sent() {
+            return;
+        }
+        let Some(serial) = toplevel_surface.send_pending_configure() else {
+            return;
+        };
+        let serial = u32::from(serial);
+        if let Some(tl) = self.xdg.toplevels.get_mut(&key) {
+            tl.pending_serial = serial;
+        }
+        if let Some(surface_data) = self.xdg.surfaces.get_mut(&(key.0, xdg_surface_id)) {
+            surface_data.pending_serial = serial;
+            surface_data.pending_serials.push(serial);
+            surface_data.configured = false;
+        }
     }
 
     /// Get the client of the currently focused keyboard surface
@@ -755,6 +1004,54 @@ impl CompositorState {
     // Input Processing
     // =========================================================================
 
+    /// Recompute pointer-constraint activation from current keyboard and
+    /// pointer focus. Call after either focus changes.
+    pub fn sync_pointer_constraints(&mut self) {
+        let (keyboard, pointer) = (self.seat.keyboard.focus, self.seat.pointer.focus);
+        self.ext
+            .pointer_constraints
+            .sync_activation(keyboard, pointer);
+    }
+
+    /// Apply the active pointer constraint to a global motion target.
+    /// Returns `None` when the pointer is locked (position must not change);
+    /// otherwise the position, clamped into the focused window when confined.
+    pub fn constrain_global_pointer(&mut self, x: f64, y: f64, time_ms: u32) -> Option<(f64, f64)> {
+        use crate::core::wayland::ext::pointer_constraints::{
+            clamp_to_confinement, ActiveConstraint,
+        };
+        let (raw_x, raw_y) = self.seat.pointer.global_raw.unwrap_or((x, y));
+        self.seat.pointer.global_raw = Some((x, y));
+        let (dx, dy) = (x - raw_x, y - raw_y);
+        let moved = dx.is_finite() && dy.is_finite() && (dx != 0.0 || dy != 0.0);
+        if moved {
+            self.ext
+                .relative_pointers
+                .broadcast_relative_motion(0, 0, time_ms, dx, dy, dx, dy);
+        }
+        let Some(focus) = self.seat.pointer.focus else {
+            return Some((x, y));
+        };
+        match self.ext.pointer_constraints.active_on(focus) {
+            Some(ActiveConstraint::Locked) => None,
+            Some(ActiveConstraint::Confined) => {
+                let (cx, cy) = self.seat.pointer.global_position.unwrap_or((x, y));
+                let (tx, ty) = if moved { (cx + dx, cy + dy) } else { (cx, cy) };
+                Some(
+                    self.get_window_by_surface(focus)
+                        .map(|window| {
+                            let g = window.read().unwrap().geometry();
+                            let w = i32::try_from(g.width).unwrap_or(i32::MAX);
+                            let h = i32::try_from(g.height).unwrap_or(i32::MAX);
+                            clamp_to_confinement(tx, ty, (g.x, g.y, w, h))
+                        })
+                        .unwrap_or((tx, ty)),
+                )
+            }
+            None => Some((x, y)),
+        }
+    }
+
     /// Process a raw input event from the platform/FFI
     pub fn process_input_event(&mut self, event: crate::core::input::InputEvent) {
         use crate::core::input::InputEvent;
@@ -778,6 +1075,7 @@ impl CompositorState {
                 self.inject_touch_cancel();
             }
             InputEvent::PointerMotion { x, y, time_ms } => {
+                let (prev_x, prev_y) = (self.seat.pointer.x, self.seat.pointer.y);
                 self.seat.pointer.x = x;
                 self.seat.pointer.y = y;
 
@@ -830,16 +1128,18 @@ impl CompositorState {
                         }
 
                         self.seat.pointer.focus = Some(surface_id);
+                        self.sync_pointer_constraints();
                     }
+                    self.seat.pointer.focus_x = x - win_geo.x as f64;
+                    self.seat.pointer.focus_y = y - win_geo.y as f64;
 
-                    let dx = x - self.seat.pointer.x;
-                    let dy = y - self.seat.pointer.y;
-                    self.ext
-                        .relative_pointers
-                        .broadcast_relative_motion(0, 0, time_ms, dx, dy, dx, dy);
-
-                    self.seat.pointer.x = x;
-                    self.seat.pointer.y = y;
+                    let dx = x - prev_x;
+                    let dy = y - prev_y;
+                    if dx != 0.0 || dy != 0.0 {
+                        self.ext
+                            .relative_pointers
+                            .broadcast_relative_motion(0, 0, time_ms, dx, dy, dx, dy);
+                    }
 
                     let client_id = self
                         .surfaces
@@ -889,6 +1189,7 @@ impl CompositorState {
                         }
                     }
                     self.seat.pointer.focus = None;
+                    self.sync_pointer_constraints();
                 }
             }
             InputEvent::PointerButton {
@@ -1038,5 +1339,86 @@ impl CompositorState {
                 );
             }
         }
+    }
+}
+
+/// Global input bounds `(x, y, w, h, cropped)` of a presented surface.
+///
+/// Presentation may crop a toplevel to its xdg window geometry, but input
+/// still covers the whole surface (client-side shadows and resize borders,
+/// limited only by the input region), so the crop is undone here. Bounds are
+/// rounded because surface sizes and offsets are integral while the
+/// normalized content rect is `f32`.
+fn uncropped_input_bounds(
+    surface: &crate::core::render::scene::FlattenedSurface,
+) -> (f64, f64, f64, f64, bool) {
+    let (x, y) = (f64::from(surface.x), f64::from(surface.y));
+    let (w, h) = (f64::from(surface.width), f64::from(surface.height));
+    let rect = &surface.content_rect;
+    let (cx, cy) = (f64::from(rect.x), f64::from(rect.y));
+    let (cw, ch) = (f64::from(rect.w), f64::from(rect.h));
+    let full = cx <= 0.0 && cy <= 0.0 && cw >= 1.0 && ch >= 1.0;
+    if full || cw <= 0.0 || ch <= 0.0 {
+        return (x, y, w, h, false);
+    }
+    let full_w = (w / cw).round();
+    let full_h = (h / ch).round();
+    (
+        x - (cx * full_w).round(),
+        y - (cy * full_h).round(),
+        full_w,
+        full_h,
+        true,
+    )
+}
+
+#[cfg(test)]
+mod uncropped_input_bounds_tests {
+    use super::uncropped_input_bounds;
+    use crate::core::render::scene::FlattenedSurface;
+    use crate::ffi::types::ContentRect;
+
+    fn presented(x: i32, y: i32, w: u32, h: u32, content_rect: ContentRect) -> FlattenedSurface {
+        FlattenedSurface {
+            surface_id: 1,
+            x,
+            y,
+            width: w,
+            height: h,
+            opacity: 1.0,
+            scale: 1.0,
+            content_rect,
+        }
+    }
+
+    #[test]
+    fn uncropped_surface_keeps_presented_bounds() {
+        let bounds = uncropped_input_bounds(&presented(10, 20, 100, 50, ContentRect::default()));
+        assert_eq!(bounds, (10.0, 20.0, 100.0, 50.0, false));
+    }
+
+    #[test]
+    fn geometry_cropped_surface_takes_input_on_whole_surface() {
+        // 215x108 surface, window geometry (12, 5, 183, 97), geometry at (76, 54).
+        let rect = ContentRect {
+            x: 12.0 / 215.0,
+            y: 5.0 / 108.0,
+            w: 183.0 / 215.0,
+            h: 97.0 / 108.0,
+        };
+        let bounds = uncropped_input_bounds(&presented(76, 54, 183, 97, rect));
+        assert_eq!(bounds, (64.0, 49.0, 215.0, 108.0, true));
+    }
+
+    #[test]
+    fn degenerate_content_rect_falls_back_to_presented_bounds() {
+        let rect = ContentRect {
+            x: 0.5,
+            y: 0.0,
+            w: 0.0,
+            h: 1.0,
+        };
+        let bounds = uncropped_input_bounds(&presented(0, 0, 10, 10, rect));
+        assert_eq!(bounds, (0.0, 0.0, 10.0, 10.0, false));
     }
 }

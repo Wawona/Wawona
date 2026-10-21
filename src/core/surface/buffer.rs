@@ -166,3 +166,46 @@ impl Default for BufferType {
         Self::None
     }
 }
+
+/// Pool offset of the last byte a `wl_shm` buffer covers. `None` when the
+/// client-declared layout is empty, negative, or overflows.
+pub(crate) fn shm_last_byte(offset: i32, stride: i32, height: i32) -> Option<usize> {
+    let offset = usize::try_from(offset).ok()?;
+    let stride = usize::try_from(stride).ok()?;
+    let height = usize::try_from(height).ok()?;
+    stride
+        .checked_mul(height)?
+        .checked_add(offset)?
+        .checked_sub(1)
+        .filter(|_| stride > 0 && height > 0)
+}
+
+#[cfg(test)]
+mod shm_extent_tests {
+    use super::shm_last_byte;
+
+    #[test]
+    fn last_byte_of_simple_buffer() {
+        assert_eq!(shm_last_byte(0, 800, 200), Some(159_999));
+    }
+
+    #[test]
+    fn last_byte_includes_offset() {
+        assert_eq!(shm_last_byte(16, 4, 2), Some(23));
+    }
+
+    #[test]
+    fn negative_layout_is_rejected() {
+        assert_eq!(shm_last_byte(-1, 4, 2), None);
+    }
+
+    #[test]
+    fn empty_buffer_is_rejected() {
+        assert_eq!(shm_last_byte(8, 0, 2), None);
+    }
+
+    #[test]
+    fn zero_height_is_rejected() {
+        assert_eq!(shm_last_byte(0, 4, 0), None);
+    }
+}

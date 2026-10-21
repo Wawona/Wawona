@@ -1122,6 +1122,42 @@ pub extern "C" fn WWNCoreNotifyFramePresented(
     }));
 }
 
+/// Present the whole current scene for a headless host. Returns nodes presented.
+/// Headless host: the core applies desktop focus policy itself. Call before
+/// `WWNCoreStart`. Only for hosts without their own window system (WLCS, CI).
+#[no_mangle]
+pub extern "C" fn WWNCoreSetHeadlessHost(core: *mut WWNCore, enabled: bool) {
+    if core.is_null() {
+        return;
+    }
+    let core = unsafe { &*core };
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        core.set_headless_host(enabled)
+    }));
+}
+
+/// Headless host loop step: drain window events and re-pick the pointer.
+#[no_mangle]
+pub extern "C" fn WWNCoreHeadlessHostTick(core: *mut WWNCore) {
+    if core.is_null() {
+        return;
+    }
+    let core = unsafe { &*core };
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| core.headless_host_tick()));
+}
+
+#[no_mangle]
+pub extern "C" fn WWNCorePresentRenderScene(core: *mut WWNCore, timestamp_ms: u32) -> u32 {
+    if core.is_null() {
+        return 0;
+    }
+    let core = unsafe { &*core };
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        core.present_render_scene(timestamp_ms)
+    }))
+    .map_or(0, |presented| u32::try_from(presented).unwrap_or(u32::MAX))
+}
+
 // ----------------------------------------------------------------------------
 // Input Injection API
 // ----------------------------------------------------------------------------
@@ -1138,11 +1174,9 @@ pub extern "C" fn WWNCoreInjectPointerMotionGlobal(
         return;
     }
     let core = unsafe { &*core };
-    core.inject_input_event(super::types::InputEvent::PointerMotion {
-        x,
-        y,
-        time_ms: timestamp_ms,
-    });
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        core.inject_pointer_motion_global(x, y, timestamp_ms)
+    }));
 }
 
 /// Inject a pointer button using the seat's current global pointer focus.
@@ -1157,15 +1191,14 @@ pub extern "C" fn WWNCoreInjectPointerButtonGlobal(
         return;
     }
     let core = unsafe { &*core };
-    core.inject_input_event(super::types::InputEvent::PointerButton {
-        button: button_code,
-        state: if state == 1 {
-            ButtonState::Pressed
-        } else {
-            ButtonState::Released
-        },
-        time_ms: timestamp_ms,
-    });
+    let state = if state == 1 {
+        ButtonState::Pressed
+    } else {
+        ButtonState::Released
+    };
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        core.inject_pointer_button_global(button_code, state, timestamp_ms)
+    }));
 }
 
 /// Resolve topmost window id at compositor-global coordinates.

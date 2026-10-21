@@ -10,9 +10,11 @@ pub mod data_control;
 pub mod fifo;
 pub mod foreign_toplevel_list;
 pub mod fractional_scale;
+pub mod gtk_primary_selection;
 pub mod idle_inhibit;
 pub mod idle_notify;
 pub mod input_method;
+pub mod input_method_v1;
 pub mod input_timestamps;
 pub mod keyboard_shortcuts_inhibit;
 pub mod linux_dmabuf;
@@ -29,6 +31,7 @@ pub mod subcompositor;
 pub mod tablet;
 pub mod tearing_control;
 pub mod text_input;
+pub mod text_input_v2;
 pub mod transient_seat;
 pub mod viewporter;
 pub mod workspace;
@@ -146,6 +149,12 @@ pub fn register(_state: &mut CompositorState, dh: &DisplayHandle) {
                 _state.protocol_profile.as_str()
             );
         }
+    }
+
+    if policy::allow_desktop_extensions(_state.protocol_profile) {
+        gtk_primary_selection::register_gtk_primary_selection(dh);
+        text_input_v2::register_text_input_manager_v2(dh);
+        input_method_v1::register_input_method_v1(dh);
     }
 
     crate::wlog!(

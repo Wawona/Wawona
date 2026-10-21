@@ -15,7 +15,7 @@ use wayland_protocols::wp::text_input::zv3::client::{
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
 
 #[derive(Default)]
-struct Probe {
+pub(super) struct Probe {
     ti_manager: Option<ZwpTextInputManagerV3>,
     im_manager: bool,
     vk_manager: bool,
@@ -25,9 +25,11 @@ struct Probe {
     xdg_surface: Option<xdg_surface::XdgSurface>,
     xdg_toplevel: Option<xdg_toplevel::XdgToplevel>,
     surface: Option<wl_surface::WlSurface>,
-    text_input: Option<ZwpTextInputV3>,
-    commit_strings: Vec<String>,
-    done_serials: Vec<u32>,
+    pub(super) text_input: Option<ZwpTextInputV3>,
+    pub(super) commit_strings: Vec<String>,
+    pub(super) done_serials: Vec<u32>,
+    pub(super) entered: u32,
+    pub(super) left: u32,
 }
 
 impl Dispatch<wl_registry::WlRegistry, ()> for Probe {
@@ -112,6 +114,8 @@ impl Dispatch<ZwpTextInputV3, ()> for Probe {
             zwp_text_input_v3::Event::Done { serial } => {
                 state.done_serials.push(serial);
             }
+            zwp_text_input_v3::Event::Enter { .. } => state.entered += 1,
+            zwp_text_input_v3::Event::Leave { .. } => state.left += 1,
             _ => {}
         }
     }
@@ -195,7 +199,7 @@ impl Dispatch<wl_callback::WlCallback, ()> for Probe {
     }
 }
 
-fn bind_probe(env: &mut TestEnv) -> (wayland_client::EventQueue<Probe>, Probe) {
+pub(super) fn bind_probe(env: &mut TestEnv) -> (wayland_client::EventQueue<Probe>, Probe) {
     let mut queue = env.client.new_event_queue::<Probe>();
     let qh = queue.handle();
     let _registry = env.client.display().get_registry(&qh, ());
@@ -426,4 +430,88 @@ fn trusted_filter_rejects_store_client() {
         &client,
         ProtocolProfile::StoreSafe
     ));
+}
+
+pub(super) fn create_text_input(
+    env: &mut TestEnv,
+    queue: &mut wayland_client::EventQueue<Probe>,
+    probe: &mut Probe,
+) {
+    let qh = queue.handle();
+    let manager = probe.ti_manager.clone().expect("TI-v3 manager");
+    let seat = probe.seat.clone().expect("seat");
+    probe.text_input = Some(manager.get_text_input(&seat, &qh, ()));
+    env.wait_roundtrip(queue, probe);
+}
+
+/// Map an xdg_toplevel and focus it through the window manager path.
+pub(super) fn map_and_focus_window(
+    env: &mut TestEnv,
+    queue: &mut wayland_client::EventQueue<Probe>,
+    probe: &mut Probe,
+) {
+    let qh = queue.handle();
+    let compositor = probe.compositor.clone().expect("wl_compositor");
+    let xdg = probe.xdg_wm_base.clone().expect("xdg_wm_base");
+    let surface = compositor.create_surface(&qh, ());
+    let xdg_surface = xdg.get_xdg_surface(&surface, &qh, ());
+    probe.xdg_toplevel = Some(xdg_surface.get_toplevel(&qh, ()));
+    probe.xdg_surface = Some(xdg_surface);
+    surface.commit();
+    probe.surface = Some(surface);
+    env.wait_roundtrip(queue, probe);
+
+    let window_id = *env.state.windows.keys().next().expect("window");
+    env.state.set_focused_window(Some(window_id));
+    env.wait_roundtrip(queue, probe);
+}
+
+pub(super) fn enable_and_commit(
+    env: &mut TestEnv,
+    queue: &mut wayland_client::EventQueue<Probe>,
+    probe: &mut Probe,
+) {
+    let ti = probe.text_input.as_ref().expect("text input");
+    ti.enable();
+    ti.commit();
+    env.wait_roundtrip(queue, probe);
+}
+
+#[test]
+fn text_input_created_before_focus_should_receive_enter_on_window_focus() {
+    let mut env = TestEnv::new();
+    let (mut queue, mut probe) = bind_probe(&mut env);
+    create_text_input(&mut env, &mut queue, &mut probe);
+    map_and_focus_window(&mut env, &mut queue, &mut probe);
+    assert_eq!(
+        probe.entered, 1,
+        "text input must enter the focused surface"
+    );
+}
+
+#[test]
+fn headless_text_input_should_enter_window_focused_on_creation() {
+    let mut env = TestEnv::new();
+    env.state.headless_host = true;
+    let (mut queue, mut probe) = bind_probe(&mut env);
+    create_text_input(&mut env, &mut queue, &mut probe);
+    let qh = queue.handle();
+    let compositor = probe.compositor.clone().expect("wl_compositor");
+    let xdg = probe.xdg_wm_base.clone().expect("xdg_wm_base");
+    let surface = compositor.create_surface(&qh, ());
+    let xdg_surface = xdg.get_xdg_surface(&surface, &qh, ());
+    probe.xdg_toplevel = Some(xdg_surface.get_toplevel(&qh, ()));
+    probe.xdg_surface = Some(xdg_surface);
+    surface.commit();
+    probe.surface = Some(surface);
+    env.wait_roundtrip(&mut queue, &mut probe);
+    assert_eq!(
+        env.state.seat.keyboard.focus.is_some(),
+        true,
+        "headless host focuses new toplevels"
+    );
+    assert_eq!(
+        probe.entered, 1,
+        "text input must enter the focused surface"
+    );
 }

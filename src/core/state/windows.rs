@@ -259,23 +259,6 @@ impl CompositorState {
         self.window_tree.insert(window_id);
 
         self.focus.set_keyboard_focus(Some(window_id));
-        if let Some(old_focus_wid) = self.focus.pointer_focus {
-            if let Some(old_window) = self.windows.get(&old_focus_wid) {
-                let (sid, cid) = {
-                    let w = old_window.read().unwrap();
-                    let sid = w.surface_id;
-                    let cid = self
-                        .get_surface(sid)
-                        .and_then(|s| s.read().unwrap().client_id.clone());
-                    (sid, cid)
-                };
-                if let Some(cid) = cid {
-                    self.ext
-                        .pointer_constraints
-                        .deactivate_constraints(cid, sid);
-                }
-            }
-        }
         self.focus.set_pointer_focus(Some(window_id));
 
         if let Some(pending_wid) = self.pending_keyboard_focus_window.take() {
@@ -309,15 +292,11 @@ impl CompositorState {
             }
         }
 
-        let client_id = self
-            .get_surface(surface_id)
-            .and_then(|s| s.read().unwrap().client_id.clone());
-        if let Some(cid) = client_id {
-            self.ext
-                .pointer_constraints
-                .activate_constraints(cid, surface_id);
-        }
+        self.sync_pointer_constraints();
         self.window_tree.bring_to_front(window_id);
+        if self.headless_host {
+            self.set_focused_window(Some(window_id));
+        }
 
         tracing::info!("Registered window {} for surface {}", window_id, surface_id);
         window_id
@@ -336,6 +315,14 @@ impl CompositorState {
 
     /// Destroy a window
     pub fn destroy_window(&mut self, window_id: u32) {
+        if self
+            .seat
+            .pointer
+            .interactive_grab
+            .is_some_and(|grab| grab.window_id == window_id)
+        {
+            self.seat.pointer.interactive_grab = None;
+        }
         if let Some(window) = self.windows.remove(&window_id) {
             let surface_id = match window.read() {
                 Ok(w) => w.surface_id,
@@ -356,37 +343,22 @@ impl CompositorState {
             }
 
             if self.focus.has_keyboard_focus(window_id) {
-                let next = self.focus.focus_history.first().copied();
-                self.focus.set_keyboard_focus(next);
-            }
-            if let Some(old_focus_wid) = self.focus.pointer_focus {
-                if old_focus_wid == window_id {
-                    let (sid, cid) = {
-                        let sid = match window.read() {
-                            Ok(w) => w.surface_id, // window removed from map, Arc still valid
-                            Err(_) => {
-                                tracing::warn!(
-                                    "destroy_window: poisoned window lock while clearing pointer focus for {}",
-                                    window_id
-                                );
-                                0
-                            }
-                        };
-                        let cid = self
-                            .get_surface(sid)
-                            .and_then(|s| s.read().ok().and_then(|surf| surf.client_id.clone()));
-                        (sid, cid)
-                    };
-                    if sid != 0 {
-                        if let Some(cid) = cid {
-                            self.ext
-                                .pointer_constraints
-                                .deactivate_constraints(cid, sid);
-                        }
-                    }
-                    self.focus.set_pointer_focus(None);
+                let next = self
+                    .focus
+                    .focus_history
+                    .iter()
+                    .copied()
+                    .find(|&wid| wid != window_id && self.windows.contains_key(&wid));
+                if self.headless_host {
+                    self.set_focused_window(next);
+                } else {
+                    self.focus.set_keyboard_focus(next);
                 }
             }
+            if self.focus.pointer_focus == Some(window_id) {
+                self.focus.set_pointer_focus(None);
+            }
+            self.sync_pointer_constraints();
 
             tracing::info!("Destroyed window {}", window_id);
 
@@ -578,6 +550,7 @@ impl CompositorState {
         }
 
         if changed {
+            self.reposition_layer_surfaces();
             crate::core::wayland::wayland::output::notify_output_change(self, output_id);
         }
 

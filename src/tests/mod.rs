@@ -1,5 +1,6 @@
 pub mod data_device;
 pub mod harness;
+pub mod input_method;
 pub mod integration;
 pub mod protocol_matrix;
 pub mod surface;

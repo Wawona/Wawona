@@ -222,6 +222,124 @@ impl CompositorState {
             return Some(serial);
         }
 
+        let v6_resource = self
+            .xdg
+            .toplevels
+            .get(&(client_id.clone(), toplevel_id))
+            .and_then(|tl| tl.v6_resource.clone());
+
+        if let Some(v6_toplevel) = v6_resource {
+            let fallback_fs = self
+                .outputs
+                .get(self.primary_output)
+                .map(|o| (o.width.max(1), o.height.max(1)))
+                .unwrap_or((1024, 768));
+            let (
+                final_w,
+                final_h,
+                activated,
+                pending_maximized,
+                pending_fullscreen,
+                interactive_resize,
+            ) = {
+                let Some(toplevel_data) = self
+                    .xdg
+                    .toplevels
+                    .get_mut(&(client_id.clone(), toplevel_id))
+                else {
+                    return None;
+                };
+                toplevel_data.deferred_configure_size = None;
+                let (final_w, final_h) = if toplevel_data.pending_fullscreen {
+                    if width > 0 && height > 0 {
+                        (width, height)
+                    } else {
+                        fallback_fs
+                    }
+                } else if width == 0 && height == 0 {
+                    (0, 0)
+                } else {
+                    let (clamped_w, clamped_h) =
+                        toplevel_data.clamp_size(width.max(1), height.max(1));
+                    (clamped_w.max(1), clamped_h.max(1))
+                };
+                toplevel_data.width = final_w;
+                toplevel_data.height = final_h;
+                (
+                    final_w,
+                    final_h,
+                    toplevel_data.activated,
+                    toplevel_data.pending_maximized,
+                    toplevel_data.pending_fullscreen,
+                    toplevel_data.interactive_resize,
+                )
+            };
+
+            let mut states_bytes = Vec::new();
+            if pending_maximized {
+                states_bytes.extend_from_slice(
+                    &(crate::core::wayland::xdg::v6::protocol::zxdg_toplevel_v6::State::Maximized as u32)
+                        .to_ne_bytes(),
+                );
+            }
+            if pending_fullscreen {
+                states_bytes.extend_from_slice(
+                    &(crate::core::wayland::xdg::v6::protocol::zxdg_toplevel_v6::State::Fullscreen as u32)
+                        .to_ne_bytes(),
+                );
+            }
+            if interactive_resize {
+                states_bytes.extend_from_slice(
+                    &(crate::core::wayland::xdg::v6::protocol::zxdg_toplevel_v6::State::Resizing as u32)
+                        .to_ne_bytes(),
+                );
+            }
+            if activated {
+                states_bytes.extend_from_slice(
+                    &(crate::core::wayland::xdg::v6::protocol::zxdg_toplevel_v6::State::Activated as u32)
+                        .to_ne_bytes(),
+                );
+            }
+
+            v6_toplevel.configure(final_w as i32, final_h as i32, states_bytes);
+            let serial = self.next_serial();
+            if let Some(surf_res) = self
+                .xdg
+                .surfaces
+                .get(&(client_id.clone(), xdg_surface_id))
+                .and_then(|s| s.v6_resource.as_ref())
+            {
+                surf_res.configure(serial);
+            }
+
+            crate::wlog!(
+                crate::util::logging::COMPOSITOR,
+                "send_toplevel_configure (v6): client={:?} tl_id={} size={}x{} serial={}",
+                client_id,
+                toplevel_id,
+                final_w,
+                final_h,
+                serial
+            );
+            if let Some(toplevel_data) = self
+                .xdg
+                .toplevels
+                .get_mut(&(client_id.clone(), toplevel_id))
+            {
+                toplevel_data.pending_serial = serial;
+            }
+            if let Some(surface_data) = self
+                .xdg
+                .surfaces
+                .get_mut(&(client_id.clone(), xdg_surface_id))
+            {
+                surface_data.pending_serial = serial;
+                surface_data.pending_serials.push(serial);
+                surface_data.configured = false;
+            }
+            return Some(serial);
+        }
+
         // Smithay is the only serial namespace: every real toplevel is created
         // by smithay's XdgShellHandler::new_toplevel and always carries a
         // ToplevelSurface. A missing one means teardown is racing. Do not
@@ -249,6 +367,15 @@ impl CompositorState {
                     res.close();
                     return true;
                 }
+                if let Some(res) = &data.v6_resource {
+                    crate::wlog!(
+                        crate::util::logging::COMPOSITOR,
+                        "Sending zxdg_toplevel_v6.close for window_id={}",
+                        window_id
+                    );
+                    res.close();
+                    return true;
+                }
                 break;
             }
         }
@@ -264,38 +391,42 @@ impl CompositorState {
     /// dismissed it: click-away, Escape, parent teardown). Returns `true` if a
     /// matching popup was found.
     pub fn send_popup_done_for_window(&mut self, window_id: u32) -> bool {
-        for ((cid, pid), data) in self.xdg.popups.iter() {
-            if data.window_id == window_id {
-                if let Some(res) = &data.resource {
-                    crate::wlog!(
-                        crate::util::logging::COMPOSITOR,
-                        "Sending xdg_popup.popup_done for window_id={} popup={}",
-                        window_id,
-                        pid
-                    );
-                    res.popup_done();
-                }
-                let key = (cid.clone(), *pid);
-                self.seat
-                    .popup_grab_stack
-                    .retain(|(gcid, gpid)| !(gcid == &key.0 && *gpid == key.1));
-                return true;
-            }
+        let Some((key, surface_id, resource, v6_resource)) = self
+            .xdg
+            .popups
+            .iter()
+            .find(|(_, data)| data.window_id == window_id)
+            .map(|(key, data)| {
+                (
+                    key.clone(),
+                    data.surface_id,
+                    data.resource.clone(),
+                    data.v6_resource.clone(),
+                )
+            })
+        else {
+            return false;
+        };
+        if let Some(res) = resource {
+            crate::wlog!(
+                crate::util::logging::COMPOSITOR,
+                "Sending xdg_popup.popup_done for window_id={} popup={}",
+                window_id,
+                key.1
+            );
+            res.popup_done();
         }
-        false
-    }
-
-    /// Dismiss the active popup grab and all its child popups
-    pub fn dismiss_popup_grab(&mut self) {
-        while let Some((cid, pid)) = self.seat.popup_grab_stack.pop() {
-            if let Some(data) = self.xdg.popups.get(&(cid.clone(), pid)) {
-                let resource = data.resource.clone();
-                if let Some(res) = resource {
-                    tracing::debug!("Dismissing popup {} for client {:?}", pid, cid);
-                    res.popup_done();
-                }
-            }
+        if let Some(res) = v6_resource {
+            crate::wlog!(
+                crate::util::logging::COMPOSITOR,
+                "Sending zxdg_popup_v6.popup_done for window_id={} popup={}",
+                window_id,
+                key.1
+            );
+            res.popup_done();
         }
+        self.end_popup_grab_for(&key, surface_id);
+        true
     }
 
     /// Get the geometry of an output (x, y, width, height)
@@ -306,45 +437,13 @@ impl CompositorState {
             .map(|o| (o.x, o.y, o.width, o.height))
     }
 
-    /// Get the usable region of an output (excluding layer shell exclusive zones)
+    /// Usable region of an output: the output minus safe-area insets and
+    /// layer-shell exclusive zones, as last arranged by
+    /// [`Self::reposition_layer_surfaces`].
     pub fn get_usable_region(&self, output_id: u32) -> Option<(i32, i32, u32, u32)> {
-        let (mut ox, mut oy, mut owidth, mut oheight) = self.get_output_geometry(output_id)?;
-
-        let mut top_zone = 0;
-        let mut bottom_zone = 0;
-        let mut left_zone = 0;
-        let mut right_zone = 0;
-
-        for layer_surface in self.wlr.layer_surfaces.values() {
-            let ls = layer_surface.read().unwrap();
-            if ls.output_id != output_id || ls.exclusive_zone <= 0 {
-                continue;
-            }
-
-            let anchor = ls.anchor;
-            let zone = ls.exclusive_zone as i32;
-
-            if (anchor & 1) != 0 && (anchor & 2) == 0 {
-                top_zone += zone;
-            } else if (anchor & 2) != 0 && (anchor & 1) == 0 {
-                bottom_zone += zone;
-            } else if (anchor & 4) != 0 && (anchor & 8) == 0 {
-                left_zone += zone;
-            } else if (anchor & 8) != 0 && (anchor & 4) == 0 {
-                right_zone += zone;
-            }
-        }
-
-        ox += left_zone;
-        oy += top_zone;
-
-        let width_reduction = (left_zone + right_zone) as u32;
-        let height_reduction = (top_zone + bottom_zone) as u32;
-
-        owidth = owidth.saturating_sub(width_reduction);
-        oheight = oheight.saturating_sub(height_reduction);
-
-        Some((ox, oy, owidth, oheight))
+        let output = self.outputs.iter().find(|o| o.id == output_id)?;
+        let usable = output.usable_area;
+        Some((usable.x, usable.y, usable.width, usable.height))
     }
 
     /// Generate next scene node ID
@@ -386,8 +485,17 @@ impl CompositorState {
         }
 
         for window_id in ordered_windows {
+            // A platform host hides minimized windows itself and never
+            // clears `minimized`, so only the headless window manager
+            // drops them from the scene (and from input picking).
+            if self.headless_host && !self.is_window_shown(window_id) {
+                continue;
+            }
             if let Some(window) = self.get_window(window_id) {
                 let window = window.read().unwrap();
+                if !self.surface_has_content(window.surface_id, window.has_committed_buffer) {
+                    continue;
+                }
                 let node_id = self.next_node_id();
                 let mut node = SceneNode::new(node_id).with_surface(window.surface_id);
                 let is_kiosk_window = self.is_host_locked_window(window.id);
@@ -530,6 +638,7 @@ impl CompositorState {
             .xdg
             .popups
             .iter()
+            .filter(|(_, p)| p.parent_surface_id.is_none())
             .map(|((cid, _), p)| (cid.clone(), p.surface_id, p.geometry, p.parent_id))
             .collect();
 
@@ -569,146 +678,227 @@ impl CompositorState {
         self.scene = new_scene;
     }
 
-    /// Reposition all layer surfaces and update output usable areas.
+    /// Arrange layer surfaces on every output and update usable areas.
+    ///
+    /// Surfaces with a positive exclusive zone are placed first, highest
+    /// layer first and in creation order, each inside the area left by the
+    /// ones before it, and reserve their zone. The rest are placed inside the
+    /// final usable area, or the whole output for an exclusive zone of -1.
+    /// A changed arranged size is configured; a changed usable area
+    /// reconfigures maximized toplevels.
     pub fn reposition_layer_surfaces(&mut self) {
-        let output_count = self.outputs.len();
-        for i in 0..output_count {
-            let (output_id, ox, oy, ow, oh) = {
+        use crate::core::wayland::wlr::layer_shell::{
+            layer_configure_size, layer_position, reserve_exclusive_zone,
+        };
+
+        let order: Vec<_> = self
+            .smithay_runtime
+            .layer_shell
+            .as_ref()
+            .map(|shell| {
+                shell
+                    .layer_surfaces()
+                    .filter_map(|handle| self.internal_surface_id(handle.wl_surface()))
+                    .filter_map(|sid| self.layer_surface_for(sid))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let mut usable_changed = Vec::new();
+        for i in 0..self.outputs.len() {
+            let (output_id, full, previous) = {
                 let o = &self.outputs[i];
-                (o.id, o.x, o.y, o.width as i32, o.height as i32)
+                (
+                    o.id,
+                    crate::util::geometry::Rect::new(o.x, o.y, o.width, o.height),
+                    o.usable_area,
+                )
             };
-
-            let mut usable = crate::util::geometry::Rect::new(ox, oy, ow as u32, oh as u32);
-
-            // Apply platform safe area insets as implicit exclusive zones.
+            let mut usable = full;
             let (sa_top, sa_right, sa_bottom, sa_left) = self.outputs[i].safe_area_insets;
-            if sa_top > 0 {
-                usable.y += sa_top;
-                usable.height = (usable.height as i32 - sa_top).max(0) as u32;
-            }
-            if sa_bottom > 0 {
-                usable.height = (usable.height as i32 - sa_bottom).max(0) as u32;
-            }
-            if sa_left > 0 {
-                usable.x += sa_left;
-                usable.width = (usable.width as i32 - sa_left).max(0) as u32;
-            }
-            if sa_right > 0 {
-                usable.width = (usable.width as i32 - sa_right).max(0) as u32;
+            for (anchor, inset) in [(1, sa_top), (2, sa_bottom), (4, sa_left), (8, sa_right)] {
+                crate::core::wayland::wlr::layer_shell::reserve_exclusive_zone(
+                    &mut usable,
+                    anchor,
+                    inset,
+                    (0, 0, 0, 0),
+                );
             }
 
-            let ls_refs: Vec<_> = self
-                .wlr
-                .layer_surfaces
-                .values()
-                .filter(|ls| ls.read().unwrap().output_id == output_id)
+            let on_output: Vec<_> = order
+                .iter()
+                .filter(|ls| {
+                    ls.read()
+                        .map(|ls| ls.output_id == output_id && ls.initialized)
+                        .unwrap_or(false)
+                })
                 .cloned()
                 .collect();
 
-            for layer in 0..4 {
-                for ls_lock in &ls_refs {
-                    let ls_read = ls_lock.read().unwrap();
-                    if ls_read.layer != layer || ls_read.exclusive_zone <= 0 {
-                        continue;
+            let place = |ls_lock: &std::sync::Arc<std::sync::RwLock<LayerSurface>>,
+                         area: &crate::util::geometry::Rect| {
+                let Ok(mut ls) = ls_lock.write() else {
+                    return;
+                };
+                let size = layer_configure_size(ls.requested, ls.anchor, ls.margin, area);
+                let (x, y) = ls
+                    .position_override
+                    .unwrap_or_else(|| layer_position(size, ls.anchor, ls.margin, area));
+                ls.x = x;
+                ls.y = y;
+                ls.width = size.0;
+                ls.height = size.1;
+            };
+
+            for layer in (0..4).rev() {
+                for ls_lock in &on_output {
+                    let (matches, anchor, zone, margin) = match ls_lock.read() {
+                        Ok(ls) => (
+                            ls.layer == layer && ls.exclusive_zone > 0,
+                            ls.anchor,
+                            ls.exclusive_zone,
+                            ls.margin,
+                        ),
+                        Err(_) => continue,
+                    };
+                    if matches {
+                        place(ls_lock, &usable);
+                        reserve_exclusive_zone(&mut usable, anchor, zone, margin);
                     }
-
-                    let zone = ls_read.exclusive_zone;
-                    let anchor = ls_read.anchor;
-
-                    // Anchor bits: 1=top, 2=bottom, 4=left, 8=right
-                    if (anchor & 1) != 0 && (anchor & 4) != 0 && (anchor & 8) != 0 {
-                        usable.y += zone;
-                        usable.height = (usable.height as i32 - zone).max(0) as u32;
-                    } else if (anchor & 2) != 0 && (anchor & 4) != 0 && (anchor & 8) != 0 {
-                        usable.height = (usable.height as i32 - zone).max(0) as u32;
-                    } else if (anchor & 4) != 0 && (anchor & 1) != 0 && (anchor & 2) != 0 {
-                        usable.x += zone;
-                        usable.width = (usable.width as i32 - zone).max(0) as u32;
-                    } else if (anchor & 8) != 0 && (anchor & 1) != 0 && (anchor & 2) != 0 {
-                        usable.width = (usable.width as i32 - zone).max(0) as u32;
-                    } else if anchor == 1 {
-                        usable.y += zone;
-                        usable.height = (usable.height as i32 - zone).max(0) as u32;
-                    } else if anchor == 2 {
-                        usable.height = (usable.height as i32 - zone).max(0) as u32;
-                    } else if anchor == 4 {
-                        usable.x += zone;
-                        usable.width = (usable.width as i32 - zone).max(0) as u32;
-                    } else if anchor == 8 {
-                        usable.width = (usable.width as i32 - zone).max(0) as u32;
+                }
+            }
+            for layer in (0..4).rev() {
+                for ls_lock in &on_output {
+                    let (matches, zone) = match ls_lock.read() {
+                        Ok(ls) => (
+                            ls.layer == layer && ls.exclusive_zone <= 0,
+                            ls.exclusive_zone,
+                        ),
+                        Err(_) => continue,
+                    };
+                    if matches {
+                        let area = if zone < 0 { full } else { usable };
+                        place(ls_lock, &area);
                     }
                 }
             }
 
             self.outputs[i].usable_area = usable;
-
-            for ls_lock in &ls_refs {
-                let mut ls = ls_lock.write().unwrap();
-                let anchor = ls.anchor;
-                let margin = ls.margin;
-                let mut w = ls.width;
-                let mut h = ls.height;
-
-                let x;
-                let y;
-
-                if (anchor & 4) != 0 && (anchor & 8) != 0 {
-                    w = (ow - margin.1 - margin.3).max(0) as u32;
-                    x = ox + margin.3;
-                } else if (anchor & 8) != 0 {
-                    x = ox + ow - w as i32 - margin.1;
-                } else if (anchor & 4) != 0 {
-                    x = ox + margin.3;
-                } else {
-                    x = ox + (ow - w as i32) / 2;
-                }
-
-                if (anchor & 1) != 0 && (anchor & 2) != 0 {
-                    h = (oh - margin.0 - margin.2).max(0) as u32;
-                    y = oy + margin.0;
-                } else if (anchor & 2) != 0 {
-                    y = oy + oh - h as i32 - margin.2;
-                } else if (anchor & 1) != 0 {
-                    y = oy + margin.0;
-                } else {
-                    y = oy + (oh - h as i32) / 2;
-                }
-
-                ls.x = x;
-                ls.y = y;
-                ls.width = w;
-                ls.height = h;
+            if (previous.x, previous.y, previous.width, previous.height)
+                != (usable.x, usable.y, usable.width, usable.height)
+            {
+                usable_changed.push(output_id);
             }
+
+            for ls_lock in &on_output {
+                let Ok(ls) = ls_lock.read() else {
+                    continue;
+                };
+                let Some(handle) = ls.handle.as_ref() else {
+                    continue;
+                };
+                let initial_sent =
+                    smithay::wayland::compositor::with_states(handle.wl_surface(), |states| {
+                        states
+                            .data_map
+                            .get::<smithay::wayland::shell::wlr_layer::LayerSurfaceData>()
+                            .and_then(|d| d.lock().ok().map(|a| a.initial_configure_sent))
+                            .unwrap_or(false)
+                    });
+                let size = (
+                    i32::try_from(ls.width).unwrap_or(0),
+                    i32::try_from(ls.height).unwrap_or(0),
+                );
+                handle.with_pending_state(|state| state.size = Some(size.into()));
+                if initial_sent {
+                    handle.send_pending_configure();
+                }
+            }
+        }
+        for output_id in usable_changed {
+            self.reconfigure_maximized_toplevels(output_id);
         }
     }
 
     fn add_layer_to_scene(&mut self, scene: &mut Scene, root_id: u32, layer: u32) {
-        self.reposition_layer_surfaces();
+        let mut node_data: Vec<_> = self
+            .wlr
+            .layer_surfaces
+            .values()
+            .filter_map(|ls_ref| {
+                let ls = ls_ref.read().ok()?;
+                (ls.layer == layer && ls.mapped).then_some((ls.surface_id, ls.x, ls.y))
+            })
+            .collect();
+        // Creation order keeps stacking stable within a layer.
+        node_data.sort_by_key(|(sid, _, _)| *sid);
 
-        let mut node_data = Vec::new();
-        for ls_ref in self.wlr.layer_surfaces.values() {
-            let ls = ls_ref.read().unwrap();
-            if ls.layer == layer {
-                node_data.push((ls.surface_id, ls.x, ls.y, ls.width, ls.height));
-            }
-        }
-
-        for (surface_id, x, y, width, height) in node_data {
+        for (surface_id, x, y) in node_data {
+            let Some(surface_ref) = self.get_surface(surface_id) else {
+                continue;
+            };
+            let (width, height, scale) = match surface_ref.read() {
+                Ok(s) => (
+                    s.current.width.max(0) as u32,
+                    s.current.height.max(0) as u32,
+                    s.current.scale.max(1) as f32,
+                ),
+                Err(_) => continue,
+            };
             let node_id = self.next_node_id();
             let mut node = SceneNode::new(node_id).with_surface(surface_id);
-
             node.set_position(x, y);
             node.set_size(width, height);
-            if let Some(surface_ref) = self.get_surface(surface_id) {
-                let surface = surface_ref.read().unwrap();
-                node.scale = (surface.current.scale.max(1)) as f32;
-            }
+            node.scale = scale;
 
             scene.add_node(node);
             scene.add_child(root_id, node_id);
 
             self.add_subsurfaces_to_scene(scene, node_id, surface_id, (0, 0));
+            self.add_layer_popups_to_scene(scene, node_id, surface_id);
         }
+    }
+
+    /// `zwlr_layer_surface_v1.get_popup` children, positioned relative to
+    /// their layer surface.
+    fn add_layer_popups_to_scene(&mut self, scene: &mut Scene, parent_node_id: u32, parent: u32) {
+        let popups: Vec<_> = self
+            .xdg
+            .popups
+            .values()
+            .filter(|p| p.parent_surface_id == Some(parent))
+            .map(|p| (p.surface_id, p.geometry))
+            .collect();
+        for (surface_id, geometry) in popups {
+            if !self.surface_has_content(surface_id, true) {
+                continue;
+            }
+            let node_id = self.next_node_id();
+            let mut node = SceneNode::new(node_id).with_surface(surface_id);
+            node.set_position(geometry.0, geometry.1);
+            node.set_size(
+                u32::try_from(geometry.2).unwrap_or(0),
+                u32::try_from(geometry.3).unwrap_or(0),
+            );
+            node.opacity = self.ext.alpha_modifier.get_alpha_f64(surface_id) as f32;
+            scene.add_node(node);
+            scene.add_child(parent_node_id, node_id);
+            self.add_subsurfaces_to_scene(scene, node_id, surface_id, (0, 0));
+        }
+    }
+
+    /// Whether a window root or subsurface has a buffer. A null buffer
+    /// commit unmaps the surface together with its subsurface tree, so it
+    /// leaves the scene and input picking. Platform hosts keep a placeholder
+    /// for a window that never committed a buffer; the headless manager
+    /// does not.
+    fn surface_has_content(&self, surface_id: u32, has_committed_buffer: bool) -> bool {
+        if !self.headless_host && !has_committed_buffer {
+            return true;
+        }
+        self.get_surface(surface_id)
+            .and_then(|surface| surface.read().ok().map(|s| s.current.buffer_id.is_some()))
+            .unwrap_or(false)
     }
 
     /// Build subsurface scene nodes for `parent_surface_id`.
@@ -726,34 +916,79 @@ impl CompositorState {
         parent_surface_id: u32,
         geometry_offset: (i32, i32),
     ) {
-        if let Some(children) = self.subsurface_children.get(&parent_surface_id).cloned() {
-            for child_surface_id in children {
-                let sub_info = self
-                    .subsurfaces
-                    .get(&child_surface_id)
-                    .map(|s| (s.position, s.sync));
+        let (children, below_parent) = self.subsurface_stacking(parent_surface_id);
+        let mut added_below = 0;
+        for (index, child_surface_id) in children.into_iter().enumerate() {
+            let Some(pos) = self.subsurfaces.get(&child_surface_id).map(|s| s.position) else {
+                continue;
+            };
+            if !self.surface_has_content(child_surface_id, true) {
+                continue;
+            }
+            let node_id = self.next_node_id();
+            let mut node = SceneNode::new(node_id).with_surface(child_surface_id);
 
-                if let Some((pos, _sync)) = sub_info {
-                    let node_id = self.next_node_id();
-                    let mut node = SceneNode::new(node_id).with_surface(child_surface_id);
+            node.set_position(pos.0 - geometry_offset.0, pos.1 - geometry_offset.1);
 
-                    node.set_position(pos.0 - geometry_offset.0, pos.1 - geometry_offset.1);
-
-                    if let Some(surface_ref) = self.get_surface(child_surface_id) {
-                        let surface = surface_ref.read().unwrap();
-                        node.set_size(
-                            surface.current.width.max(0) as u32,
-                            surface.current.height.max(0) as u32,
-                        );
-                        node.scale = (surface.current.scale.max(1)) as f32;
-                    }
-
-                    scene.add_node(node);
-                    scene.add_child(parent_node_id, node_id);
-
-                    self.add_subsurfaces_to_scene(scene, node_id, child_surface_id, (0, 0));
+            if let Some(surface_ref) = self.get_surface(child_surface_id) {
+                if let Ok(surface) = surface_ref.read() {
+                    node.set_size(
+                        surface.current.width.max(0) as u32,
+                        surface.current.height.max(0) as u32,
+                    );
+                    node.scale = (surface.current.scale.max(1)) as f32;
                 }
             }
+
+            scene.add_node(node);
+            scene.add_child(parent_node_id, node_id);
+            if index < below_parent {
+                added_below += 1;
+            }
+
+            self.add_subsurfaces_to_scene(scene, node_id, child_surface_id, (0, 0));
         }
+        if let Some(parent) = scene.nodes.get_mut(&parent_node_id) {
+            parent.children_below = added_below;
+        }
+    }
+
+    /// Direct subsurfaces of `surface_id` bottom to top, as Smithay's surface
+    /// tree orders them, and how many of them stack below `surface_id`.
+    fn subsurface_stacking(&self, surface_id: u32) -> (Vec<u32>, usize) {
+        use smithay::wayland::compositor::{with_surface_tree_upward, TraversalAction};
+
+        let Some(parent) = self.wl_surface_for(surface_id) else {
+            return (Vec::new(), 0);
+        };
+        // `None` marks the parent's own slot in its children list.
+        let mut order = Vec::new();
+        with_surface_tree_upward(
+            &parent,
+            false,
+            |_, _, &is_child| {
+                if is_child {
+                    TraversalAction::SkipChildren
+                } else {
+                    TraversalAction::DoChildren(true)
+                }
+            },
+            |surface, _, &is_child| order.push(is_child.then(|| surface.clone())),
+            |_, _, _| true,
+        );
+
+        let below_parent = order.iter().take_while(|slot| slot.is_some()).count();
+        let mut children = Vec::with_capacity(order.len());
+        let mut below = 0;
+        for (index, slot) in order.iter().enumerate() {
+            let Some(id) = slot.as_ref().and_then(|s| self.internal_surface_id(s)) else {
+                continue;
+            };
+            if index < below_parent {
+                below += 1;
+            }
+            children.push(id);
+        }
+        (children, below)
     }
 }

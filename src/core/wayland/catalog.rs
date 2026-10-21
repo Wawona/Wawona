@@ -168,6 +168,46 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         StoreSafeCore
     ),
     cat!(
+        "zxdg_shell_v6",
+        "xdg-shell-unstable-v6",
+        Xdg,
+        "src/core/wayland/xdg/v6/mod.rs",
+        Functional,
+        StoreSafeCore
+    ),
+    cat!(
+        "wl_shell",
+        "wayland",
+        WaylandCore,
+        "src/core/wayland/wl_shell.rs",
+        Functional,
+        DesktopOnly
+    ),
+    cat!(
+        "gtk_primary_selection_device_manager",
+        "gtk-primary-selection",
+        Ext,
+        "src/core/wayland/ext/gtk_primary_selection.rs",
+        Functional,
+        DesktopOnly
+    ),
+    cat!(
+        "zwp_text_input_manager_v2",
+        "text-input-unstable-v2",
+        Plasma,
+        "src/core/wayland/ext/text_input_v2.rs",
+        Functional,
+        DesktopOnly
+    ),
+    cat!(
+        "zwp_input_method_v1",
+        "input-method-unstable-v1",
+        Ext,
+        "src/core/wayland/ext/input_method_v1.rs",
+        Functional,
+        DesktopOnly
+    ),
+    cat!(
         "zxdg_decoration_manager_v1",
         "xdg-decoration-unstable-v1",
         Xdg,

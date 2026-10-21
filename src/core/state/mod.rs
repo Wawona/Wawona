@@ -96,6 +96,7 @@ pub struct SmithayRuntimeState {
     pub text_input: Option<smithay::wayland::text_input::TextInputManagerState>,
     pub input_method: Option<smithay::wayland::input_method::InputMethodManagerState>,
     pub virtual_keyboard: Option<smithay::wayland::virtual_keyboard::VirtualKeyboardManagerState>,
+    pub layer_shell: Option<smithay::wayland::shell::wlr_layer::WlrLayerShellState>,
     pub client_compositor_state: smithay::wayland::compositor::CompositorClientState,
     pub core_shell_initialized: bool,
     pub extension_wlr_initialized: bool,
@@ -124,6 +125,7 @@ impl Default for SmithayRuntimeState {
             text_input: None,
             input_method: None,
             virtual_keyboard: None,
+            layer_shell: None,
             client_compositor_state: smithay::wayland::compositor::CompositorClientState::default(),
             core_shell_initialized: false,
             extension_wlr_initialized: false,
@@ -134,6 +136,8 @@ impl Default for SmithayRuntimeState {
 // Sub-modules containing extracted CompositorState impl blocks
 mod host_lock;
 mod input;
+pub mod pointer_focus;
+pub mod popup_grab;
 mod scene;
 mod surfaces;
 mod windows;
@@ -151,8 +155,11 @@ pub struct SubsurfaceState {
     pub parent_id: u32,
     /// Position relative to parent
     pub position: (i32, i32),
-    /// Pending position (before commit)
+    /// Pending position (`wl_subsurface.set_position`, before the parent commits)
     pub pending_position: (i32, i32),
+    /// Position captured by the parent's `wl_surface.commit`, applied when
+    /// the parent's state is applied (later, for a synchronized parent)
+    pub committed_position: (i32, i32),
     /// Whether in synchronized mode
     pub sync: bool,
     /// Z-order relative to siblings (higher = on top)
@@ -257,7 +264,9 @@ unsafe impl Sync for ShmPool {}
 // Layer Shell State
 // ============================================================================
 
-/// Layer surface state (wlr-layer-shell-unstable-v1)
+/// Layer surface state (wlr-layer-shell-unstable-v1). Smithay owns the
+/// protocol object; this mirror holds the committed layout request and the
+/// arranged geometry.
 #[derive(Debug, Clone)]
 pub struct LayerSurface {
     /// Associated surface ID
@@ -272,24 +281,28 @@ pub struct LayerSurface {
     pub anchor: u32,
     /// Margin (top, right, bottom, left)
     pub margin: (i32, i32, i32, i32),
-    /// Exclusive zone
+    /// Exclusive zone (-1: ignore other zones, 0: none)
     pub exclusive_zone: i32,
     /// Keyboard interactivity
     pub interactivity: u32,
-    /// Desired width
+    /// Size the client requested with `set_size`
+    pub requested: (u32, u32),
+    /// Arranged (configured) width
     pub width: u32,
-    /// Desired height
+    /// Arranged (configured) height
     pub height: u32,
-    /// Calculated X position
+    /// Arranged X position
     pub x: i32,
-    /// Calculated Y position
+    /// Arranged Y position
     pub y: i32,
-    /// Whether initial configure was acked
-    pub configured: bool,
-    /// Pending configure serial
-    pub pending_serial: u32,
-    /// Protocol resource (optional as it might be held in a wrapper)
-    pub resource: Option<crate::core::wayland::protocol::wlroots::wlr_layer_shell_unstable_v1::zwlr_layer_surface_v1::ZwlrLayerSurfaceV1>,
+    /// Position pinned by a host/test placement hook
+    pub position_override: Option<(i32, i32)>,
+    /// The initial commit has been processed
+    pub initialized: bool,
+    /// A buffer is attached
+    pub mapped: bool,
+    /// Smithay layer surface handle
+    pub handle: Option<smithay::wayland::shell::wlr_layer::LayerSurface>,
 }
 
 impl LayerSurface {
@@ -303,13 +316,15 @@ impl LayerSurface {
             margin: (0, 0, 0, 0),
             exclusive_zone: 0,
             interactivity: 0,
+            requested: (0, 0),
             width: 0,
             height: 0,
             x: 0,
             y: 0,
-            configured: false,
-            pending_serial: 0,
-            resource: None,
+            position_override: None,
+            initialized: false,
+            mapped: false,
+            handle: None,
         }
     }
 }
@@ -335,6 +350,8 @@ pub struct XdgSurfaceData {
     pub configured: bool,
     /// The actual protocol resource
     pub resource: Option<xdg_surface::XdgSurface>,
+    /// Associated zxdg_surface_v6 resource (if v6 surface)
+    pub v6_resource: Option<crate::core::wayland::xdg::v6::protocol::zxdg_surface_v6::ZxdgSurfaceV6>,
     /// Window geometry from set_window_geometry (content rect for CSD); (x, y, width, height)
     pub geometry: Option<(i32, i32, i32, i32)>,
 }
@@ -349,6 +366,7 @@ impl XdgSurfaceData {
             last_acked_serial: 0,
             configured: false,
             resource: None,
+            v6_resource: None,
             geometry: None,
         }
     }
@@ -400,6 +418,8 @@ pub struct XdgToplevelData {
     pub pending_fullscreen: bool,
     /// The actual protocol resource
     pub resource: Option<xdg_toplevel::XdgToplevel>,
+    /// Associated zxdg_toplevel_v6 resource (if v6 toplevel)
+    pub v6_resource: Option<crate::core::wayland::xdg::v6::protocol::zxdg_toplevel_v6::ZxdgToplevelV6>,
     /// Smithay's `ToplevelSurface` wrapper (owns configure/serial machinery).
     /// Populated when xdg-shell is driven by smithay's `delegate_xdg_shell!`.
     pub toplevel_surface: Option<smithay::wayland::shell::xdg::ToplevelSurface>,
@@ -436,6 +456,7 @@ impl XdgToplevelData {
             pending_maximized: false,
             pending_fullscreen: false,
             resource: None,
+            v6_resource: None,
             toplevel_surface: None,
             deferred_configure_size: None,
             interactive_resize: false,
@@ -474,12 +495,16 @@ pub struct XdgPopupData {
     pub xdg_surface_id: u32,
     pub window_id: u32,
     pub parent_id: Option<u32>,
+    /// Layer surface parent (`zwlr_layer_surface_v1.get_popup`)
+    pub parent_surface_id: Option<u32>,
     pub geometry: (i32, i32, i32, i32), // x, y, width, height
     pub anchor_rect: (i32, i32, i32, i32),
     pub grabbed: bool,
     pub repositioned_token: Option<u32>,
     /// The actual protocol resource
     pub resource: Option<xdg_popup::XdgPopup>,
+    /// Associated zxdg_popup_v6 resource (if v6 popup)
+    pub v6_resource: Option<crate::core::wayland::xdg::v6::protocol::zxdg_popup_v6::ZxdgPopupV6>,
     /// Smithay's `PopupSurface` wrapper (owns configure/serial machinery).
     pub popup_surface: Option<smithay::wayland::shell::xdg::PopupSurface>,
 }
@@ -1294,6 +1319,10 @@ pub struct ExtProtocolState {
     pub commit_timing: crate::core::wayland::ext::commit_timing::CommitTimingState,
     /// Text input (IME) state (v1 weston-editor survivors only)
     pub text_input: crate::core::wayland::ext::text_input::TextInputState,
+    /// Text input v2 state
+    pub text_input_v2: crate::core::wayland::ext::text_input_v2::TextInputV2State,
+    /// Input method v1 state
+    pub input_method_v1: crate::core::wayland::ext::input_method_v1::InputMethodV1State,
     /// Session lock state
     #[cfg(feature = "desktop-protocols")]
     pub session_lock: crate::core::wayland::ext::session_lock::SessionLockState,
@@ -1339,6 +1368,8 @@ impl Default for ExtProtocolState {
             fifo: crate::core::wayland::ext::fifo::FifoState::default(),
             commit_timing: crate::core::wayland::ext::commit_timing::CommitTimingState::default(),
             text_input: crate::core::wayland::ext::text_input::TextInputState::default(),
+            text_input_v2: crate::core::wayland::ext::text_input_v2::TextInputV2State::default(),
+            input_method_v1: crate::core::wayland::ext::input_method_v1::InputMethodV1State::default(),
             #[cfg(feature = "desktop-protocols")]
             session_lock: crate::core::wayland::ext::session_lock::SessionLockState::default(),
             security_context: crate::core::wayland::ext::security_context::SecurityContextState::default(),
@@ -1477,6 +1508,41 @@ pub struct CompositorState {
     /// Deferred keyboard focus when inject_keyboard_enter fires before the
     /// window's first surface is committed (becomeKeyWindow vs first xdg map).
     pub pending_keyboard_focus_window: Option<u64>,
+
+    /// Host has no window system (WLCS, CI): the core applies desktop focus
+    /// policy itself, synchronously, so focus changes are ordered before any
+    /// later protocol reply (a new toplevel takes keyboard focus; destroying
+    /// the focused one returns focus to the previous window).
+    pub headless_host: bool,
+
+    /// Live `xdg_surface` per `wl_surface`, for request-time xdg-shell
+    /// validation (`core::wayland::xdg::surface_validation`).
+    pub xdg_surface_objects: HashMap<
+        wayland_server::backend::ObjectId,
+        smithay::reexports::wayland_protocols::xdg::shell::server::xdg_surface::XdgSurface,
+    >,
+
+    /// `zxdg_toplevel_decoration_v1` per `xdg_toplevel` (with its manager),
+    /// for the `orphaned` check on toplevel destroy.
+    pub toplevel_decorations: HashMap<
+        wayland_server::backend::ObjectId,
+        (
+            smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_decoration_manager_v1::ZxdgDecorationManagerV1,
+            smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1,
+        ),
+    >,
+
+    /// Positioners whose anchor rect has a zero axis, and the axes in flight
+    /// for the `get_popup` / `reposition` request being dispatched.
+    pub zero_anchor_positioners: HashMap<
+        wayland_server::backend::ObjectId,
+        crate::core::wayland::xdg::surface_validation::ZeroAnchorAxes,
+    >,
+    pub pending_zero_anchor: Option<crate::core::wayland::xdg::surface_validation::ZeroAnchorAxes>,
+
+    /// MIME types offered by each live `zwp_primary_selection_source_v1`
+    /// (Smithay keeps its copy crate-private).
+    pub primary_source_mime_types: HashMap<wayland_server::backend::ObjectId, Vec<String>>,
 
     /// Subsurface registry, keyed by subsurface's surface ID
     pub subsurfaces: HashMap<u32, SubsurfaceState>,
@@ -1623,6 +1689,15 @@ pub struct CompositorState {
     /// wlroots protocol state (layer shell, virtual devices, data control)
     pub wlr: WlrState,
 
+    /// zxdg_shell_v6 protocol state
+    pub xdg_v6: crate::core::wayland::xdg::v6::XdgV6State,
+
+    /// wl_shell protocol state
+    pub wl_shell: crate::core::wayland::wl_shell::WlShellState,
+
+    /// gtk_primary_selection protocol state
+    pub gtk_primary_selection: crate::core::wayland::ext::gtk_primary_selection::GtkPrimarySelectionState,
+
     // =========================================================================
     // Core Protocol Resources
     // =========================================================================
@@ -1679,6 +1754,12 @@ impl CompositorState {
             windows: HashMap::new(),
             surface_to_window: HashMap::new(),
             pending_keyboard_focus_window: None,
+            headless_host: false,
+            xdg_surface_objects: HashMap::new(),
+            zero_anchor_positioners: HashMap::new(),
+            toplevel_decorations: HashMap::new(),
+            pending_zero_anchor: None,
+            primary_source_mime_types: HashMap::new(),
             subsurfaces: HashMap::new(),
             subsurface_children: HashMap::new(),
             protocol_to_internal_surface: HashMap::new(),
@@ -1719,6 +1800,9 @@ impl CompositorState {
             xdg: XdgState::default(),
             ext: ExtProtocolState::default(),
             wlr: WlrState::default(),
+            xdg_v6: crate::core::wayland::xdg::v6::XdgV6State::default(),
+            wl_shell: crate::core::wayland::wl_shell::WlShellState::default(),
+            gtk_primary_selection: crate::core::wayland::ext::gtk_primary_selection::GtkPrimarySelectionState::default(),
             seat_resources: HashMap::new(),
 
             pending_compositor_events: Vec::new(),

@@ -110,6 +110,48 @@ def scoped_files(source_module: str) -> list[Path]:
     return []
 
 
+def strip_line_comments(text: str) -> str:
+    """Drop `//` comments so a macro named in prose is not ownership."""
+    return "\n".join(line.split("//", 1)[0] for line in text.splitlines())
+
+
+def impl_blocks(text: str, hint: str) -> list[str]:
+    """Bodies of `impl (Global)Dispatch<..hint..>` blocks."""
+    blocks = []
+    pattern = re.compile(rf"impl\s+(GlobalDispatch|Dispatch)<[^>\n]*{re.escape(hint)}")
+    for match in pattern.finditer(text):
+        start = text.find("{", match.end())
+        if start < 0:
+            continue
+        depth = 0
+        for idx in range(start, len(text)):
+            if text[idx] == "{":
+                depth += 1
+            elif text[idx] == "}":
+                depth -= 1
+                if depth == 0:
+                    blocks.append(text[start : idx + 1])
+                    break
+    return blocks
+
+
+def forwards_to_smithay(block: str, hint: str) -> bool:
+    """Wrapper whose body calls the Smithay `*State` impl for the same type."""
+    return re.search(
+        rf"<\s*[\w:]*State\s+as\s+(GlobalDispatch|Dispatch)<\s*[\w:]*\b{re.escape(hint)}\b",
+        block,
+    ) is not None
+
+
+def expanded_delegate_owns(text: str, hint: str) -> bool:
+    """`delegate_(global_)dispatch!` routing `hint` into a Smithay `*State`."""
+    pattern = re.compile(
+        rf"delegate_(?:global_)?dispatch!\([^;]*?\b{re.escape(hint)}\b[^;]*?=>\s*[\w:]*smithay[\w:]*State\)",
+        re.S,
+    )
+    return pattern.search(text) is not None
+
+
 def has_smithay_runtime_wiring() -> bool:
     text = COMPOSITOR_RS.read_text(encoding="utf-8")
     return (
@@ -155,7 +197,7 @@ def main() -> int:
     report = []
     strict_failures: list[str] = []
     unknown_modules: list[str] = []
-    wayland_mod_text = WAYLAND_MOD.read_text(encoding="utf-8")
+    wayland_code = strip_line_comments(WAYLAND_MOD.read_text(encoding="utf-8"))
 
     for entry in entries:
         files = scoped_files(entry.source_module)
@@ -174,17 +216,17 @@ def main() -> int:
                     text,
                 ):
                     create_matches.append(str(file.relative_to(ROOT)))
-                if re.search(
-                    rf"impl\s+(GlobalDispatch|Dispatch)<[^>\n]*{re.escape(hint)}",
-                    text,
-                ):
+                blocks = impl_blocks(text, hint)
+                if any(not forwards_to_smithay(block, hint) for block in blocks):
                     dispatch_matches.append(str(file.relative_to(ROOT)))
 
         create_matches = sorted(set(create_matches))
         dispatch_matches = sorted(set(dispatch_matches))
 
         marker = DELEGATE_OWNERSHIP_MARKERS.get(entry.interface)
-        delegate_owned = marker is not None and marker in wayland_mod_text
+        delegate_owned = (marker is not None and marker in wayland_code) or any(
+            expanded_delegate_owns(wayland_code, hint) for hint in type_hints
+        )
 
         dual_registration = bool(create_matches or dispatch_matches)
 

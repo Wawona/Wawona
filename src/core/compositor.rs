@@ -693,8 +693,15 @@ impl Compositor {
         // A nested compositor (weston, cage, etc.) exiting can race with
         // dispatch/flush and produce transient backend errors. Those should not
         // be treated as fatal for the host compositor.
+        // Host IM events emitted outside dispatch (focus changes from the
+        // platform) and during it must reach an external IM owner before the
+        // replies to requests that client sends later.
         if let Some(relay) = state.host_im.as_mut() {
             crate::core::wayland::host_im::prepare(relay);
+        }
+        if state.host_im.is_some() {
+            let _ = self.display.flush_clients();
+            crate::core::wayland::host_im::finish(state);
         }
         let dispatched = match self.display.dispatch_clients(state) {
             Ok(count) => count,
@@ -706,6 +713,9 @@ impl Compositor {
                 0
             }
         };
+        if state.host_im.is_some() {
+            let _ = self.display.flush_clients();
+        }
         crate::core::wayland::host_im::finish(state);
 
         // Flush client event queues. Treat disconnect-related failures as

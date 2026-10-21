@@ -3,12 +3,11 @@
 //! This module provides implementations for wlroots-compatible protocols.
 
 // Protocol modules for categorization
-pub mod layer_shell;
-pub use layer_shell::LayerSurfaceData;
 pub mod data_control;
 pub mod export_dmabuf;
 pub mod foreign_toplevel_management;
 pub mod gamma_control;
+pub mod layer_shell;
 pub mod output_management;
 pub mod output_power_management;
 pub mod screencopy;
@@ -25,7 +24,7 @@ pub fn register(state: &mut CompositorState, dh: &DisplayHandle) {
     // Layer-shell buffers are queued into the render scene (DesktopHost /
     // Android quads). Keep advertisement gated to desktop/dev profiles.
     if policy::allow_desktop_extensions(state.protocol_profile) {
-        layer_shell::register_layer_shell(dh);
+        layer_shell::register_layer_shell(state, dh);
     } else {
         crate::wlog!(
             crate::util::logging::COMPOSITOR,

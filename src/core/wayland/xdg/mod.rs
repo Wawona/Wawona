@@ -1,6 +1,8 @@
 pub mod decoration;
 pub mod extension_handlers;
 pub mod shell_handler;
+pub mod surface_validation;
+pub mod toplevel_state;
 pub mod xdg_activation;
 pub mod xdg_dialog;
 pub mod xdg_foreign;
@@ -14,6 +16,7 @@ pub mod xdg_toplevel_drag;
 pub mod xdg_toplevel_icon;
 pub mod xdg_toplevel_tag;
 pub mod xdg_wm_base;
+pub mod v6;
 
 use crate::core::state::CompositorState;
 use crate::core::wayland::policy;
@@ -28,6 +31,8 @@ pub fn register(state: &mut CompositorState, dh: &DisplayHandle) {
         crate::core::wayland::smithay_runtime::register_xdg_extensions(state, dh);
         // xdg_toplevel_drag_v1 has no Smithay delegate in 0.7. Custom dispatch remains.
         xdg_toplevel_drag::register_xdg_toplevel_drag(dh);
+        v6::register(state, dh);
+        crate::core::wayland::wl_shell::register(state, dh);
 
         crate::wlog!(
             crate::util::logging::COMPOSITOR,

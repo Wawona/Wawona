@@ -61,7 +61,7 @@ impl CompositorState {
             .map(|_| (surface.wl_surface().client().unwrap().id(), popup_id))
     }
 
-    fn ensure_xdg_surface_entry(
+    pub(crate) fn ensure_xdg_surface_entry(
         &mut self,
         client_id: ClientId,
         wl_surface: &WlSurface,
@@ -83,12 +83,111 @@ impl CompositorState {
         xdg_surface_key
     }
 
-    fn popup_target_rect(&self) -> Rectangle<i32, Logical> {
+    /// Send a popup's configure and record its serial for ack validation.
+    pub(crate) fn send_popup_configure(
+        &mut self,
+        surface: &PopupSurface,
+        client_id: ClientId,
+        xdg_surface_id: u32,
+    ) {
+        match surface.send_configure() {
+            Ok(serial) => {
+                if let Some(data) = self.xdg.surfaces.get_mut(&(client_id, xdg_surface_id)) {
+                    data.pending_serial = u32::from(serial);
+                    data.pending_serials.push(u32::from(serial));
+                }
+            }
+            Err(err) => tracing::debug!("popup configure not sent: {err:?}"),
+        }
+    }
+
+    /// Initial commit of a popup that never received a parent: configure it
+    /// against the output so the client is not left waiting.
+    pub(crate) fn configure_parentless_popup_on_commit(&mut self, wl_surface: &WlSurface) {
+        let Some(client_id) = wl_surface.client().map(|c| c.id()) else {
+            return;
+        };
+        let pending = self.xdg.popups.values().find_map(|p| {
+            let surface = p.popup_surface.as_ref()?;
+            (surface.wl_surface() == wl_surface && !surface.is_initial_configure_sent())
+                .then(|| (surface.clone(), p.xdg_surface_id))
+        });
+        if let Some((surface, xdg_surface_id)) = pending {
+            self.send_popup_configure(&surface, client_id, xdg_surface_id);
+        }
+    }
+    pub(crate) fn popup_target_rect(&self) -> Rectangle<i32, Logical> {
         let output = self.primary_output();
         Rectangle::new(
             (output.x, output.y).into(),
             (output.width as i32, output.height as i32).into(),
         )
+    }
+
+    /// Popup constraint target in the parent's coordinate space (positioner
+    /// geometry is parent-relative).
+    pub(crate) fn popup_target_rect_for(&self, parent_window: Option<u32>) -> Rectangle<i32, Logical> {
+        let mut rect = self.popup_target_rect();
+        if let Some((px, py)) = parent_window.and_then(|wid| self.window_origin(wid)) {
+            rect.loc.x -= px;
+            rect.loc.y -= py;
+        }
+        rect
+    }
+
+    /// Absolute origin of a toplevel window or of a popup (parent origin plus
+    /// popup geometry, up the popup chain).
+    pub(crate) fn window_origin(&self, window_id: u32) -> Option<(i32, i32)> {
+        let mut id = window_id;
+        let (mut ox, mut oy) = (0i32, 0i32);
+        // Popup chains are short; the bound stops a malformed parent loop.
+        for _ in 0..32 {
+            if let Some(window) = self.get_window(id) {
+                let w = window.read().unwrap();
+                return Some((ox.saturating_add(w.x), oy.saturating_add(w.y)));
+            }
+            let popup = self.xdg.popups.values().find(|p| p.window_id == id)?;
+            ox = ox.saturating_add(popup.geometry.0);
+            oy = oy.saturating_add(popup.geometry.1);
+            id = popup.parent_id?;
+        }
+        None
+    }
+
+    /// Re-place reactive popups under `moved_window` after it moved
+    /// (xdg_positioner.set_reactive). Non-reactive popups keep their
+    /// parent-relative geometry and simply move with the parent.
+    pub fn reconstrain_reactive_popups(&mut self, moved_window: u32) {
+        let children: Vec<_> = self
+            .xdg
+            .popups
+            .iter()
+            .filter(|(_, p)| p.parent_id == Some(moved_window))
+            .map(|(key, p)| (key.clone(), p.popup_surface.clone(), p.window_id))
+            .collect();
+        for (key, surface, popup_window) in children {
+            let Some(surface) = surface else {
+                continue;
+            };
+            let positioner = surface.with_pending_state(|state| state.positioner);
+            if positioner.reactive {
+                let geo = positioner
+                    .get_unconstrained_geometry(self.popup_target_rect_for(Some(moved_window)));
+                let rect = (geo.loc.x, geo.loc.y, geo.size.w, geo.size.h);
+                let changed = self
+                    .xdg
+                    .popups
+                    .get_mut(&key)
+                    .is_some_and(|p| std::mem::replace(&mut p.geometry, rect) != rect);
+                if changed {
+                    surface.with_pending_state(|state| state.geometry = geo);
+                    if let Err(err) = surface.send_configure() {
+                        tracing::debug!("reactive popup configure not sent: {err:?}");
+                    }
+                }
+            }
+            self.reconstrain_reactive_popups(popup_window);
+        }
     }
 
     fn parent_window_for_popup(&self, popup: &PopupSurface) -> Option<u32> {
@@ -157,7 +256,7 @@ impl CompositorState {
                     tl_data.fullscreen = tl_data.pending_fullscreen;
                     let maximized = tl_data.maximized;
                     let fullscreen = tl_data.fullscreen;
-                    drop(tl_data);
+                    let _ = tl_data;
                     if let Some(window) = self.get_window(window_id) {
                         let mut window = window.write().unwrap();
                         window.maximized = maximized;
@@ -375,12 +474,19 @@ impl XdgShellHandler for CompositorState {
             }
         }
 
-        let geo = positioner.get_unconstrained_geometry(self.popup_target_rect());
+        let positioner =
+            super::surface_validation::restore_zero_anchor(positioner, self.pending_zero_anchor);
+        let parent_window_id = self.parent_window_for_popup(&surface);
+        let geo =
+            positioner.get_unconstrained_geometry(self.popup_target_rect_for(parent_window_id));
+        surface.with_pending_state(|state| {
+            state.positioner = positioner;
+            state.geometry = geo;
+        });
         let px = geo.loc.x;
         let py = geo.loc.y;
         let popup_w = geo.size.w;
         let popup_h = geo.size.h;
-        let parent_window_id = self.parent_window_for_popup(&surface);
 
         let window_id = self.next_window_id();
         let popup_data = XdgPopupData {
@@ -388,6 +494,7 @@ impl XdgShellHandler for CompositorState {
             xdg_surface_id,
             window_id,
             parent_id: parent_window_id,
+            parent_surface_id: None,
             geometry: (px, py, popup_w, popup_h),
             anchor_rect: (
                 positioner.anchor_rect.loc.x,
@@ -399,6 +506,7 @@ impl XdgShellHandler for CompositorState {
             repositioned_token: None,
             resource: Some(surface.xdg_popup().clone()),
             popup_surface: Some(surface.clone()),
+            v6_resource: None,
         };
 
         self.xdg
@@ -413,17 +521,6 @@ impl XdgShellHandler for CompositorState {
         }
         self.surface_to_window.insert(surface_id, window_id);
 
-        if let Some(surface_res) = self
-            .get_surface(surface_id)
-            .and_then(|s| s.read().ok().and_then(|s| s.resource.clone()))
-        {
-            for output in self.output_resources.values() {
-                if surface_res.client() == output.client() {
-                    surface_res.enter(output);
-                }
-            }
-        }
-
         self.pending_compositor_events
             .push(CompositorEvent::PopupCreated {
                 client_id: client_id.clone(),
@@ -436,15 +533,12 @@ impl XdgShellHandler for CompositorState {
                 height: popup_h.max(1) as u32,
             });
 
-        if let Ok(serial) = surface.send_configure() {
-            if let Some(surface_data) = self
-                .xdg
-                .surfaces
-                .get_mut(&(client_id.clone(), xdg_surface_id))
-            {
-                surface_data.pending_serial = u32::from(serial);
-                surface_data.pending_serials.push(u32::from(serial));
-            }
+        // A parentless popup gets its parent from another protocol
+        // (zwlr_layer_surface_v1.get_popup) before its initial commit, and a
+        // non-reactive popup accepts exactly one configure. Configure it once
+        // the parent is known, or at its initial commit if none ever is.
+        if surface.get_parent_surface().is_some() {
+            self.send_popup_configure(&surface, client_id, xdg_surface_id);
         }
     }
 
@@ -453,18 +547,7 @@ impl XdgShellHandler for CompositorState {
             return;
         };
         let popup_id = surface.xdg_popup().id().protocol_id();
-        if let Some(data) = self.xdg.popups.get_mut(&(client_id.clone(), popup_id)) {
-            data.grabbed = true;
-            if !self
-                .seat
-                .popup_grab_stack
-                .contains(&(client_id.clone(), popup_id))
-            {
-                self.seat
-                    .popup_grab_stack
-                    .push((client_id.clone(), popup_id));
-            }
-        }
+        self.begin_popup_grab((client_id, popup_id));
     }
 
     fn reposition_request(
@@ -477,7 +560,15 @@ impl XdgShellHandler for CompositorState {
             return;
         };
         let popup_id = surface.xdg_popup().id().protocol_id();
-        let geo = positioner.get_unconstrained_geometry(self.popup_target_rect());
+        let positioner =
+            super::surface_validation::restore_zero_anchor(positioner, self.pending_zero_anchor);
+        let parent_window_id = self
+            .xdg
+            .popups
+            .get(&(client_id.clone(), popup_id))
+            .and_then(|p| p.parent_id);
+        let geo =
+            positioner.get_unconstrained_geometry(self.popup_target_rect_for(parent_window_id));
         let px = geo.loc.x;
         let py = geo.loc.y;
 
@@ -504,7 +595,12 @@ impl XdgShellHandler for CompositorState {
             state.geometry = geo;
             state.positioner = positioner;
         });
-        let _ = surface.send_repositioned(token);
+        surface.send_repositioned(token);
+        // xdg_popup.reposition: `repositioned` is followed by a fresh
+        // xdg_popup.configure + xdg_surface.configure.
+        if let Err(err) = surface.send_configure() {
+            tracing::debug!("reposition configure not sent: {err:?}");
+        }
     }
 
     fn ack_configure(&mut self, surface: WlSurface, configure: Configure) {
@@ -537,9 +633,10 @@ impl XdgShellHandler for CompositorState {
             return;
         };
 
-        if let Some(window) = self.get_window(window_id) {
-            window.write().unwrap().title = title.clone();
+        if let Some(Ok(mut window)) = self.get_window(window_id).as_ref().map(|w| w.write()) {
+            window.title = title.clone();
         }
+        self.refresh_foreign_toplevel(window_id);
         self.pending_compositor_events
             .push(CompositorEvent::WindowTitleChanged { window_id, title });
     }
@@ -581,10 +678,10 @@ impl XdgShellHandler for CompositorState {
             return;
         };
 
-        if let Some(window) = self.get_window(window_id) {
-            let mut w = window.write().unwrap();
-            w.app_id = app_id.clone();
+        if let Some(Ok(mut window)) = self.get_window(window_id).as_ref().map(|w| w.write()) {
+            window.app_id = app_id.clone();
         }
+        self.refresh_foreign_toplevel(window_id);
         if should_reassert_decoration {
             let xdg_mode = crate::core::wayland::xdg::decoration::preferred_xdg_decoration_mode(
                 self, window_id,
@@ -627,6 +724,9 @@ impl XdgShellHandler for CompositorState {
             .get(&(client_id, toplevel_id))
             .map(|tl| tl.window_id)
         {
+            if self.start_interactive_grab(window_id, None) {
+                return;
+            }
             self.pending_compositor_events
                 .push(CompositorEvent::WindowMoveRequested {
                     window_id,
@@ -655,6 +755,11 @@ impl XdgShellHandler for CompositorState {
             if self.is_host_locked_window(window_id) {
                 return;
             }
+            let grab_edges =
+                crate::core::input::interactive_grab::GrabEdges::from_xdg(edges.into());
+            if self.start_interactive_grab(window_id, Some(grab_edges)) {
+                return;
+            }
             self.pending_compositor_events
                 .push(CompositorEvent::WindowResizeRequested {
                     window_id,
@@ -666,300 +771,32 @@ impl XdgShellHandler for CompositorState {
     }
 
     fn minimize_request(&mut self, surface: ToplevelSurface) {
-        let Some((client_id, toplevel_id)) = self.xdg_toplevel_key_for_surface(&surface) else {
-            return;
-        };
-        let window_id = self
-            .xdg
-            .toplevels
-            .get(&(client_id, toplevel_id))
-            .map(|tl| tl.window_id);
-        if let Some(window_id) = window_id {
-            if let Some(window) = self.get_window(window_id) {
-                window.write().unwrap().minimized = true;
-            }
-            self.pending_compositor_events
-                .push(CompositorEvent::WindowMinimized {
-                    window_id,
-                    minimized: true,
-                });
+        if let Some(key) = self.xdg_toplevel_key_for_surface(&surface) {
+            self.minimize_toplevel(key);
         }
     }
 
     fn maximize_request(&mut self, surface: ToplevelSurface) {
-        let Some((client_id, toplevel_id)) = self.xdg_toplevel_key_for_surface(&surface) else {
-            return;
-        };
-        let output_id = {
-            let tl = self.xdg.toplevels.get(&(client_id.clone(), toplevel_id));
-            tl.and_then(|tl| self.get_window(tl.window_id))
-                .map(|window| {
-                    let window = window.read().unwrap();
-                    window.outputs.first().copied().unwrap_or_else(|| {
-                        self.outputs
-                            .get(self.primary_output)
-                            .map(|o| o.id)
-                            .unwrap_or(0)
-                    })
-                })
-                .unwrap_or_else(|| {
-                    self.outputs
-                        .get(self.primary_output)
-                        .map(|o| o.id)
-                        .unwrap_or(0)
-                })
-        };
-        let (width, height) = self
-            .get_usable_region(output_id)
-            .map(|(_, _, w, h)| (w, h))
-            .unwrap_or((0, 0));
-
-        let window_id = self
-            .xdg
-            .toplevels
-            .get(&(client_id.clone(), toplevel_id))
-            .map(|tl| tl.window_id);
-        if let Some(wid) = window_id {
-            if let Some(geo) = self.get_window(wid).map(|window| {
-                let window = window.read().unwrap();
-                (
-                    window.x,
-                    window.y,
-                    window.width as u32,
-                    window.height as u32,
-                )
-            }) {
-                if let Some(tl) = self
-                    .xdg
-                    .toplevels
-                    .get_mut(&(client_id.clone(), toplevel_id))
-                {
-                    if tl.saved_geometry.is_none() {
-                        tl.saved_geometry = Some(geo);
-                    }
-                }
-            }
-            if let Some(window) = self.get_window(wid) {
-                window.write().unwrap().maximized = true;
-            }
-        }
-        let (clamped_w, clamped_h) = self
-            .xdg
-            .toplevels
-            .get(&(client_id.clone(), toplevel_id))
-            .map(|tl| tl.clamp_size(width, height))
-            .unwrap_or((width, height));
-        if let Some(tl) = self
-            .xdg
-            .toplevels
-            .get_mut(&(client_id.clone(), toplevel_id))
-        {
-            tl.pending_maximized = true;
-            tl.pending_fullscreen = false;
-        }
-        let _ = self.send_toplevel_configure(client_id.clone(), toplevel_id, clamped_w, clamped_h);
-        if let Some(window_id) = window_id {
-            self.pending_compositor_events
-                .push(CompositorEvent::WindowMaximized {
-                    window_id,
-                    maximized: true,
-                });
+        if let Some(key) = self.xdg_toplevel_key_for_surface(&surface) {
+            self.maximize_toplevel(key);
         }
     }
 
     fn unmaximize_request(&mut self, surface: ToplevelSurface) {
-        let Some((client_id, toplevel_id)) = self.xdg_toplevel_key_for_surface(&surface) else {
-            return;
-        };
-        let saved = self
-            .xdg
-            .toplevels
-            .get_mut(&(client_id.clone(), toplevel_id))
-            .and_then(|tl| {
-                tl.pending_maximized = false;
-                tl.saved_geometry.take()
-            });
-        let window_id = self
-            .xdg
-            .toplevels
-            .get(&(client_id.clone(), toplevel_id))
-            .map(|tl| tl.window_id);
-        // Restore the saved pre-maximize geometry only when it reflects a size
-        // the client actually chose (i.e. it committed a buffer while floating).
-        // Otherwise send 0x0 per xdg-shell: the client decides its own size.
-        // Falling back to the current window size here is always wrong. The
-        // current size IS the maximized size.
-        let client_chose_size = window_id
-            .and_then(|wid| self.get_window(wid))
-            .map(|window| window.read().unwrap().has_committed_buffer)
-            .unwrap_or(false);
-        let (restore_w, restore_h) = match saved {
-            Some((x, y, w, h)) if client_chose_size && w > 0 && h > 0 => {
-                if let Some(wid) = window_id {
-                    if let Some(window) = self.get_window(wid) {
-                        let mut win = window.write().unwrap();
-                        win.maximized = false;
-                        win.x = x;
-                        win.y = y;
-                    }
-                }
-                (w, h)
-            }
-            _ => {
-                if let Some(wid) = window_id {
-                    if let Some(window) = self.get_window(wid) {
-                        window.write().unwrap().maximized = false;
-                    }
-                }
-                (0, 0)
-            }
-        };
-        self.send_toplevel_configure(client_id.clone(), toplevel_id, restore_w, restore_h);
-        if let Some(window_id) = window_id {
-            self.pending_compositor_events
-                .push(CompositorEvent::WindowMaximized {
-                    window_id,
-                    maximized: false,
-                });
+        if let Some(key) = self.xdg_toplevel_key_for_surface(&surface) {
+            self.unmaximize_toplevel(key);
         }
     }
 
     fn fullscreen_request(&mut self, surface: ToplevelSurface, output: Option<WlOutput>) {
-        let Some((client_id, toplevel_id)) = self.xdg_toplevel_key_for_surface(&surface) else {
-            return;
-        };
-        let output_id = if let Some(o) = output {
-            self.output_id_by_resource
-                .get(&o.id())
-                .copied()
-                .unwrap_or_else(|| o.id().protocol_id())
-        } else {
-            self.xdg
-                .toplevels
-                .get(&(client_id.clone(), toplevel_id))
-                .and_then(|tl| self.get_window(tl.window_id))
-                .map(|window| {
-                    let window = window.read().unwrap();
-                    window.outputs.first().copied().unwrap_or_else(|| {
-                        self.outputs
-                            .get(self.primary_output)
-                            .map(|o| o.id)
-                            .unwrap_or(0)
-                    })
-                })
-                .unwrap_or_else(|| {
-                    self.outputs
-                        .get(self.primary_output)
-                        .map(|o| o.id)
-                        .unwrap_or(0)
-                })
-        };
-        let (width, height) = self
-            .get_output_geometry(output_id)
-            .map(|(_, _, w, h)| (w, h))
-            .unwrap_or((0, 0));
-
-        let window_id = self
-            .xdg
-            .toplevels
-            .get(&(client_id.clone(), toplevel_id))
-            .map(|tl| tl.window_id);
-        if let Some(wid) = window_id {
-            if let Some(geo) = self.get_window(wid).map(|window| {
-                let window = window.read().unwrap();
-                (
-                    window.x,
-                    window.y,
-                    window.width as u32,
-                    window.height as u32,
-                )
-            }) {
-                if let Some(tl) = self
-                    .xdg
-                    .toplevels
-                    .get_mut(&(client_id.clone(), toplevel_id))
-                {
-                    if tl.saved_geometry.is_none() {
-                        tl.saved_geometry = Some(geo);
-                    }
-                }
-            }
-            if let Some(window) = self.get_window(wid) {
-                let mut window = window.write().unwrap();
-                window.fullscreen = true;
-                window.maximized = false;
-            }
-        }
-        if let Some(tl) = self
-            .xdg
-            .toplevels
-            .get_mut(&(client_id.clone(), toplevel_id))
-        {
-            tl.pending_fullscreen = true;
-            tl.pending_maximized = false;
-        }
-        let _ = self.send_toplevel_configure(client_id, toplevel_id, width, height);
-        if let Some(window_id) = window_id {
-            self.pending_compositor_events
-                .push(CompositorEvent::WindowFullscreen {
-                    window_id,
-                    fullscreen: true,
-                });
+        if let Some(key) = self.xdg_toplevel_key_for_surface(&surface) {
+            self.fullscreen_toplevel(key, output);
         }
     }
 
     fn unfullscreen_request(&mut self, surface: ToplevelSurface) {
-        let Some((client_id, toplevel_id)) = self.xdg_toplevel_key_for_surface(&surface) else {
-            return;
-        };
-        let saved = self
-            .xdg
-            .toplevels
-            .get_mut(&(client_id.clone(), toplevel_id))
-            .and_then(|tl| {
-                tl.pending_fullscreen = false;
-                tl.saved_geometry.take()
-            });
-        let window_id = self
-            .xdg
-            .toplevels
-            .get(&(client_id.clone(), toplevel_id))
-            .map(|tl| tl.window_id);
-        // Same rule as unmaximize: only restore a saved size the client
-        // actually chose; otherwise 0x0 lets the client decide. The current
-        // window size is the fullscreen size and must not be echoed back.
-        let client_chose_size = window_id
-            .and_then(|wid| self.get_window(wid))
-            .map(|window| window.read().unwrap().has_committed_buffer)
-            .unwrap_or(false);
-        let (restore_w, restore_h) = match saved {
-            Some((x, y, w, h)) if client_chose_size && w > 0 && h > 0 => {
-                if let Some(wid) = window_id {
-                    if let Some(window) = self.get_window(wid) {
-                        let mut win = window.write().unwrap();
-                        win.fullscreen = false;
-                        win.x = x;
-                        win.y = y;
-                    }
-                }
-                (w, h)
-            }
-            _ => {
-                if let Some(wid) = window_id {
-                    if let Some(window) = self.get_window(wid) {
-                        window.write().unwrap().fullscreen = false;
-                    }
-                }
-                (0, 0)
-            }
-        };
-        self.send_toplevel_configure(client_id, toplevel_id, restore_w, restore_h);
-        if let Some(window_id) = window_id {
-            self.pending_compositor_events
-                .push(CompositorEvent::WindowFullscreen {
-                    window_id,
-                    fullscreen: false,
-                });
+        if let Some(key) = self.xdg_toplevel_key_for_surface(&surface) {
+            self.unfullscreen_toplevel(key);
         }
     }
 
@@ -980,14 +817,14 @@ impl XdgShellHandler for CompositorState {
         let popup_id = surface.xdg_popup().id().protocol_id();
         if let Some(data) = self.xdg.popups.remove(&(client_id.clone(), popup_id)) {
             self.surface_to_window.remove(&data.surface_id);
-            self.seat
-                .popup_grab_stack
-                .retain(|(cid, pid)| cid != &client_id || *pid != popup_id);
+            self.end_popup_grab_for(&(client_id.clone(), popup_id), data.surface_id);
             self.pending_compositor_events
                 .push(CompositorEvent::WindowDestroyed {
                     window_id: data.window_id,
                 });
             self.xdg.surfaces.remove(&(client_id, data.xdg_surface_id));
+            // Leave the popup while its wl_surface still exists.
+            self.repick_headless_global_pointer();
         }
     }
 }

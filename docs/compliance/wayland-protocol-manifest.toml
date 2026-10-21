@@ -648,3 +648,53 @@ source_module = "src/core/wayland/ext/mod.rs"
 compile_expectation = "desktop-feature-gated"
 equivalent = "no-equivalent"
 notes = "Legacy fullscreen shell retained behind explicit runtime opt-in"
+
+[[protocol]]
+interface = "zxdg_shell_v6"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/xdg/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "no-equivalent"
+notes = "Legacy xdg-shell unstable v6: no active smithay runtime wiring in this release"
+
+[[protocol]]
+interface = "wl_shell"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/xdg/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "no-equivalent"
+notes = "Legacy wl_shell: no active smithay runtime wiring in this release"
+
+[[protocol]]
+interface = "gtk_primary_selection_device_manager"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/ext/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "no-equivalent"
+notes = "GTK primary selection: no active smithay runtime wiring in this release"
+
+[[protocol]]
+interface = "zwp_text_input_manager_v2"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/ext/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "no-equivalent"
+notes = "Plasma text-input v2: no active smithay runtime wiring in this release"
+
+[[protocol]]
+interface = "zwp_input_method_v1"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/ext/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "no-equivalent"
+notes = "Input method v1: no active smithay runtime wiring in this release"
