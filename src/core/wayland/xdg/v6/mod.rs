@@ -487,7 +487,6 @@ impl Dispatch<ZxdgSurfaceV6, Arc<V6SurfaceUserData>> for CompositorState {
                     .surfaces
                     .get(&(client_id.clone(), parent_id));
                 let parent_window_id = parent_surface.and_then(|s| s.window_id);
-                let parent_surface_id = parent_surface.map(|s| s.surface_id);
 
                 let pos_state = match pos_data.to_positioner_state() {
                     Some(ps) => ps,
@@ -500,8 +499,9 @@ impl Dispatch<ZxdgSurfaceV6, Arc<V6SurfaceUserData>> for CompositorState {
                 let popup_w = geo.size.w;
                 let popup_h = geo.size.h;
 
+                let window_id = state.next_window_id();
                 let popup_user_data = Arc::new(V6PopupUserData {
-                    window_id: state.next_window_id(),
+                    window_id,
                     surface_id: data.internal_surface_id,
                     xdg_surface_id: resource.id().protocol_id(),
                     surface_user_data: data.clone(),
@@ -509,7 +509,6 @@ impl Dispatch<ZxdgSurfaceV6, Arc<V6SurfaceUserData>> for CompositorState {
                 let popup_resource = data_init.init(id, popup_user_data);
                 let popup_id = popup_resource.id().protocol_id();
                 let xdg_surf_id = resource.id().protocol_id();
-                let window_id = state.next_window_id();
 
                 let anchor_rect = pos_data.anchor_rect.unwrap_or((0, 0, 0, 0));
                 let popup_data = XdgPopupData {
@@ -517,7 +516,7 @@ impl Dispatch<ZxdgSurfaceV6, Arc<V6SurfaceUserData>> for CompositorState {
                     xdg_surface_id: xdg_surf_id,
                     window_id,
                     parent_id: parent_window_id,
-                    parent_surface_id,
+                    parent_surface_id: None,
                     geometry: (px, py, popup_w, popup_h),
                     anchor_rect,
                     grabbed: false,
