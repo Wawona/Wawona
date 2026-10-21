@@ -13,6 +13,7 @@ pub mod plasma;
 pub mod protocol;
 pub mod selection_proxy;
 pub mod wayland;
+pub mod wl_shell;
 pub mod wlr;
 pub mod xdg;
 

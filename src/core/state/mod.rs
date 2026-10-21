@@ -1674,6 +1674,9 @@ pub struct CompositorState {
     /// zxdg_shell_v6 protocol state
     pub xdg_v6: crate::core::wayland::xdg::v6::XdgV6State,
 
+    /// wl_shell protocol state
+    pub wl_shell: crate::core::wayland::wl_shell::WlShellState,
+
     // =========================================================================
     // Core Protocol Resources
     // =========================================================================
@@ -1777,6 +1780,7 @@ impl CompositorState {
             ext: ExtProtocolState::default(),
             wlr: WlrState::default(),
             xdg_v6: crate::core::wayland::xdg::v6::XdgV6State::default(),
+            wl_shell: crate::core::wayland::wl_shell::WlShellState::default(),
             seat_resources: HashMap::new(),
 
             pending_compositor_events: Vec::new(),

@@ -32,6 +32,7 @@ pub fn register(state: &mut CompositorState, dh: &DisplayHandle) {
         // xdg_toplevel_drag_v1 has no Smithay delegate in 0.7. Custom dispatch remains.
         xdg_toplevel_drag::register_xdg_toplevel_drag(dh);
         v6::register(state, dh);
+        crate::core::wayland::wl_shell::register(state, dh);
 
         crate::wlog!(
             crate::util::logging::COMPOSITOR,
