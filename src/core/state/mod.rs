@@ -96,6 +96,7 @@ pub struct SmithayRuntimeState {
     pub text_input: Option<smithay::wayland::text_input::TextInputManagerState>,
     pub input_method: Option<smithay::wayland::input_method::InputMethodManagerState>,
     pub virtual_keyboard: Option<smithay::wayland::virtual_keyboard::VirtualKeyboardManagerState>,
+    pub layer_shell: Option<smithay::wayland::shell::wlr_layer::WlrLayerShellState>,
     pub client_compositor_state: smithay::wayland::compositor::CompositorClientState,
     pub core_shell_initialized: bool,
     pub extension_wlr_initialized: bool,
@@ -124,6 +125,7 @@ impl Default for SmithayRuntimeState {
             text_input: None,
             input_method: None,
             virtual_keyboard: None,
+            layer_shell: None,
             client_compositor_state: smithay::wayland::compositor::CompositorClientState::default(),
             core_shell_initialized: false,
             extension_wlr_initialized: false,
@@ -262,7 +264,9 @@ unsafe impl Sync for ShmPool {}
 // Layer Shell State
 // ============================================================================
 
-/// Layer surface state (wlr-layer-shell-unstable-v1)
+/// Layer surface state (wlr-layer-shell-unstable-v1). Smithay owns the
+/// protocol object; this mirror holds the committed layout request and the
+/// arranged geometry.
 #[derive(Debug, Clone)]
 pub struct LayerSurface {
     /// Associated surface ID
@@ -277,24 +281,28 @@ pub struct LayerSurface {
     pub anchor: u32,
     /// Margin (top, right, bottom, left)
     pub margin: (i32, i32, i32, i32),
-    /// Exclusive zone
+    /// Exclusive zone (-1: ignore other zones, 0: none)
     pub exclusive_zone: i32,
     /// Keyboard interactivity
     pub interactivity: u32,
-    /// Desired width
+    /// Size the client requested with `set_size`
+    pub requested: (u32, u32),
+    /// Arranged (configured) width
     pub width: u32,
-    /// Desired height
+    /// Arranged (configured) height
     pub height: u32,
-    /// Calculated X position
+    /// Arranged X position
     pub x: i32,
-    /// Calculated Y position
+    /// Arranged Y position
     pub y: i32,
-    /// Whether initial configure was acked
-    pub configured: bool,
-    /// Pending configure serial
-    pub pending_serial: u32,
-    /// Protocol resource (optional as it might be held in a wrapper)
-    pub resource: Option<crate::core::wayland::protocol::wlroots::wlr_layer_shell_unstable_v1::zwlr_layer_surface_v1::ZwlrLayerSurfaceV1>,
+    /// Position pinned by a host/test placement hook
+    pub position_override: Option<(i32, i32)>,
+    /// The initial commit has been processed
+    pub initialized: bool,
+    /// A buffer is attached
+    pub mapped: bool,
+    /// Smithay layer surface handle
+    pub handle: Option<smithay::wayland::shell::wlr_layer::LayerSurface>,
 }
 
 impl LayerSurface {
@@ -308,13 +316,15 @@ impl LayerSurface {
             margin: (0, 0, 0, 0),
             exclusive_zone: 0,
             interactivity: 0,
+            requested: (0, 0),
             width: 0,
             height: 0,
             x: 0,
             y: 0,
-            configured: false,
-            pending_serial: 0,
-            resource: None,
+            position_override: None,
+            initialized: false,
+            mapped: false,
+            handle: None,
         }
     }
 }
@@ -479,6 +489,8 @@ pub struct XdgPopupData {
     pub xdg_surface_id: u32,
     pub window_id: u32,
     pub parent_id: Option<u32>,
+    /// Layer surface parent (`zwlr_layer_surface_v1.get_popup`)
+    pub parent_surface_id: Option<u32>,
     pub geometry: (i32, i32, i32, i32), // x, y, width, height
     pub anchor_rect: (i32, i32, i32, i32),
     pub grabbed: bool,

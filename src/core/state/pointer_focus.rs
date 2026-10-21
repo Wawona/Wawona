@@ -189,6 +189,8 @@ impl CompositorState {
             if let Some(wid) = window {
                 self.set_focused_window(Some(wid));
                 self.window_tree.bring_to_front(wid);
+            } else if let Some(sid) = clicked.filter(|sid| self.layer_takes_click_focus(*sid)) {
+                self.set_keyboard_focus_surface(Some(sid));
             }
             self.seat.pointer.button_count += 1;
         } else {

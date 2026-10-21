@@ -56,6 +56,28 @@ impl CompositorState {
             .unwrap_or(0)
     }
 
+    /// Reconfigure maximized (not fullscreen) toplevels on `output_id` after
+    /// its usable area changed (layer-shell exclusive zones, safe area).
+    pub(crate) fn reconfigure_maximized_toplevels(&mut self, output_id: u32) {
+        let keys: Vec<ToplevelKey> = self
+            .xdg
+            .toplevels
+            .iter()
+            .filter(|(_, tl)| tl.pending_maximized && !tl.pending_fullscreen)
+            .map(|(key, _)| key.clone())
+            .collect();
+        for key in keys {
+            let Some(window_id) = self.toplevel_window_id(&key) else {
+                continue;
+            };
+            if self.window_output_id(window_id) != output_id {
+                continue;
+            }
+            let size = self.maximized_size(&key, window_id);
+            self.configure_toplevel(&key, size);
+        }
+    }
+
     fn maximized_size(&self, key: &ToplevelKey, window_id: u32) -> (u32, u32) {
         let (w, h) = self
             .get_usable_region(self.window_output_id(window_id))

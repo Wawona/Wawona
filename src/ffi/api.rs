@@ -1038,16 +1038,20 @@ impl WawonaCore {
         else {
             return false;
         };
-        let Some(window) = state.get_window_by_surface(internal_surface_id) else {
+        if let Some(window) = state.get_window_by_surface(internal_surface_id) {
+            let window_id = {
+                let mut window = window.write_recover();
+                window.x = x;
+                window.y = y;
+                window.id
+            };
+            state.reconstrain_reactive_popups(window_id);
+        } else if let Some(layer) = state.layer_surface_for(internal_surface_id) {
+            layer.write_recover().position_override = Some((x, y));
+            state.reposition_layer_surfaces();
+        } else {
             return false;
-        };
-        let window_id = {
-            let mut window = window.write_recover();
-            window.x = x;
-            window.y = y;
-            window.id
-        };
-        state.reconstrain_reactive_popups(window_id);
+        }
         drop(state);
         drop(compositor_guard);
         self.repick_global_pointer(crate::core::compositor::Compositor::timestamp_ms());

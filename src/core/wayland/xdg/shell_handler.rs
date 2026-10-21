@@ -83,7 +83,7 @@ impl CompositorState {
         xdg_surface_key
     }
 
-    fn popup_target_rect(&self) -> Rectangle<i32, Logical> {
+    pub(crate) fn popup_target_rect(&self) -> Rectangle<i32, Logical> {
         let output = self.primary_output();
         Rectangle::new(
             (output.x, output.y).into(),
@@ -461,6 +461,7 @@ impl XdgShellHandler for CompositorState {
             xdg_surface_id,
             window_id,
             parent_id: parent_window_id,
+            parent_surface_id: None,
             geometry: (px, py, popup_w, popup_h),
             anchor_rect: (
                 positioner.anchor_rect.loc.x,

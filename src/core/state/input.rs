@@ -671,6 +671,7 @@ impl CompositorState {
             },
             None => None,
         };
+        let target = self.exclusive_layer_focus().or(target);
         self.set_keyboard_focus_surface(target);
         tracing::debug!("Focus changed to window: {:?}", window_id);
     }

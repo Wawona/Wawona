@@ -295,6 +295,7 @@ impl smithay::wayland::compositor::CompositorHandler for crate::core::state::Com
 
         self.sync_xdg_window_geometry_from_surface(surface, surface_id);
         self.handle_surface_commit(surface_id);
+        self.commit_layer_surface(surface, surface_id);
     }
 
     fn destroyed(

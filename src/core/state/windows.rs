@@ -550,6 +550,7 @@ impl CompositorState {
         }
 
         if changed {
+            self.reposition_layer_surfaces();
             crate::core::wayland::wayland::output::notify_output_change(self, output_id);
         }
 
