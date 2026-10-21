@@ -192,6 +192,22 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         DesktopOnly
     ),
     cat!(
+        "zwp_text_input_manager_v2",
+        "text-input-unstable-v2",
+        Plasma,
+        "src/core/wayland/ext/text_input_v2.rs",
+        Functional,
+        DesktopOnly
+    ),
+    cat!(
+        "zwp_input_method_v1",
+        "input-method-unstable-v1",
+        Ext,
+        "src/core/wayland/ext/input_method_v1.rs",
+        Functional,
+        DesktopOnly
+    ),
+    cat!(
         "zxdg_decoration_manager_v1",
         "xdg-decoration-unstable-v1",
         Xdg,

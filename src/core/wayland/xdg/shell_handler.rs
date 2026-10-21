@@ -256,7 +256,7 @@ impl CompositorState {
                     tl_data.fullscreen = tl_data.pending_fullscreen;
                     let maximized = tl_data.maximized;
                     let fullscreen = tl_data.fullscreen;
-                    drop(tl_data);
+                    let _ = tl_data;
                     if let Some(window) = self.get_window(window_id) {
                         let mut window = window.write().unwrap();
                         window.maximized = maximized;

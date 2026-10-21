@@ -1319,6 +1319,10 @@ pub struct ExtProtocolState {
     pub commit_timing: crate::core::wayland::ext::commit_timing::CommitTimingState,
     /// Text input (IME) state (v1 weston-editor survivors only)
     pub text_input: crate::core::wayland::ext::text_input::TextInputState,
+    /// Text input v2 state
+    pub text_input_v2: crate::core::wayland::ext::text_input_v2::TextInputV2State,
+    /// Input method v1 state
+    pub input_method_v1: crate::core::wayland::ext::input_method_v1::InputMethodV1State,
     /// Session lock state
     #[cfg(feature = "desktop-protocols")]
     pub session_lock: crate::core::wayland::ext::session_lock::SessionLockState,
@@ -1364,6 +1368,8 @@ impl Default for ExtProtocolState {
             fifo: crate::core::wayland::ext::fifo::FifoState::default(),
             commit_timing: crate::core::wayland::ext::commit_timing::CommitTimingState::default(),
             text_input: crate::core::wayland::ext::text_input::TextInputState::default(),
+            text_input_v2: crate::core::wayland::ext::text_input_v2::TextInputV2State::default(),
+            input_method_v1: crate::core::wayland::ext::input_method_v1::InputMethodV1State::default(),
             #[cfg(feature = "desktop-protocols")]
             session_lock: crate::core::wayland::ext::session_lock::SessionLockState::default(),
             security_context: crate::core::wayland::ext::security_context::SecurityContextState::default(),
