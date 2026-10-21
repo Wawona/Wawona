@@ -482,11 +482,12 @@ impl Dispatch<ZxdgSurfaceV6, Arc<V6SurfaceUserData>> for CompositorState {
 
                 let parent_id = parent.id().protocol_id();
                 let client_id = client.id();
-                let parent_window_id = state
+                let parent_surface = state
                     .xdg
                     .surfaces
-                    .get(&(client_id.clone(), parent_id))
-                    .and_then(|s| s.window_id);
+                    .get(&(client_id.clone(), parent_id));
+                let parent_window_id = parent_surface.and_then(|s| s.window_id);
+                let parent_surface_id = parent_surface.map(|s| s.surface_id);
 
                 let pos_state = match pos_data.to_positioner_state() {
                     Some(ps) => ps,
@@ -516,6 +517,7 @@ impl Dispatch<ZxdgSurfaceV6, Arc<V6SurfaceUserData>> for CompositorState {
                     xdg_surface_id: xdg_surf_id,
                     window_id,
                     parent_id: parent_window_id,
+                    parent_surface_id,
                     geometry: (px, py, popup_w, popup_h),
                     anchor_rect,
                     grabbed: false,
