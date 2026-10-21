@@ -61,7 +61,7 @@ impl CompositorState {
             .map(|_| (surface.wl_surface().client().unwrap().id(), popup_id))
     }
 
-    fn ensure_xdg_surface_entry(
+    pub(crate) fn ensure_xdg_surface_entry(
         &mut self,
         client_id: ClientId,
         wl_surface: &WlSurface,
@@ -116,7 +116,6 @@ impl CompositorState {
             self.send_popup_configure(&surface, client_id, xdg_surface_id);
         }
     }
-
     pub(crate) fn popup_target_rect(&self) -> Rectangle<i32, Logical> {
         let output = self.primary_output();
         Rectangle::new(
@@ -127,7 +126,7 @@ impl CompositorState {
 
     /// Popup constraint target in the parent's coordinate space (positioner
     /// geometry is parent-relative).
-    fn popup_target_rect_for(&self, parent_window: Option<u32>) -> Rectangle<i32, Logical> {
+    pub(crate) fn popup_target_rect_for(&self, parent_window: Option<u32>) -> Rectangle<i32, Logical> {
         let mut rect = self.popup_target_rect();
         if let Some((px, py)) = parent_window.and_then(|wid| self.window_origin(wid)) {
             rect.loc.x -= px;
@@ -507,6 +506,7 @@ impl XdgShellHandler for CompositorState {
             repositioned_token: None,
             resource: Some(surface.xdg_popup().clone()),
             popup_surface: Some(surface.clone()),
+            v6_resource: None,
         };
 
         self.xdg

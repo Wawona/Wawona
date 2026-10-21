@@ -128,6 +128,10 @@ impl CompositorState {
                     tracing::debug!("Dismissing popup {} for client {:?}", key.1, key.0);
                     resource.popup_done();
                 }
+                if let Some(resource) = popup.v6_resource.as_ref() {
+                    tracing::debug!("Dismissing v6 popup {} for client {:?}", key.1, key.0);
+                    resource.popup_done();
+                }
             }
         }
     }

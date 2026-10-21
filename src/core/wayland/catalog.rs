@@ -168,6 +168,22 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         StoreSafeCore
     ),
     cat!(
+        "zxdg_shell_v6",
+        "xdg-shell-unstable-v6",
+        Xdg,
+        "src/core/wayland/xdg/v6/mod.rs",
+        Functional,
+        StoreSafeCore
+    ),
+    cat!(
+        "wl_shell",
+        "wayland",
+        WaylandCore,
+        "src/core/wayland/wl_shell.rs",
+        Functional,
+        DesktopOnly
+    ),
+    cat!(
         "zxdg_decoration_manager_v1",
         "xdg-decoration-unstable-v1",
         Xdg,

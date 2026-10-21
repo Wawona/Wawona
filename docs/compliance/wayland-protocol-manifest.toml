@@ -648,3 +648,24 @@ source_module = "src/core/wayland/ext/mod.rs"
 compile_expectation = "desktop-feature-gated"
 equivalent = "no-equivalent"
 notes = "Legacy fullscreen shell retained behind explicit runtime opt-in"
+
+[[protocol]]
+interface = "zxdg_shell_v6"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/xdg/v6/mod.rs"
+compile_expectation = "all-targets"
+equivalent = "no-equivalent"
+notes = "Legacy xdg-shell unstable v6 for conformance and legacy client compatibility"
+
+[[protocol]]
+interface = "wl_shell"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/wl_shell.rs"
+compile_expectation = "all-targets"
+equivalent = "no-equivalent"
+notes = "Legacy wl_shell for conformance and legacy client compatibility"
+

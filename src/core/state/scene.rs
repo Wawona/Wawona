@@ -222,6 +222,124 @@ impl CompositorState {
             return Some(serial);
         }
 
+        let v6_resource = self
+            .xdg
+            .toplevels
+            .get(&(client_id.clone(), toplevel_id))
+            .and_then(|tl| tl.v6_resource.clone());
+
+        if let Some(v6_toplevel) = v6_resource {
+            let fallback_fs = self
+                .outputs
+                .get(self.primary_output)
+                .map(|o| (o.width.max(1), o.height.max(1)))
+                .unwrap_or((1024, 768));
+            let (
+                final_w,
+                final_h,
+                activated,
+                pending_maximized,
+                pending_fullscreen,
+                interactive_resize,
+            ) = {
+                let Some(toplevel_data) = self
+                    .xdg
+                    .toplevels
+                    .get_mut(&(client_id.clone(), toplevel_id))
+                else {
+                    return None;
+                };
+                toplevel_data.deferred_configure_size = None;
+                let (final_w, final_h) = if toplevel_data.pending_fullscreen {
+                    if width > 0 && height > 0 {
+                        (width, height)
+                    } else {
+                        fallback_fs
+                    }
+                } else if width == 0 && height == 0 {
+                    (0, 0)
+                } else {
+                    let (clamped_w, clamped_h) =
+                        toplevel_data.clamp_size(width.max(1), height.max(1));
+                    (clamped_w.max(1), clamped_h.max(1))
+                };
+                toplevel_data.width = final_w;
+                toplevel_data.height = final_h;
+                (
+                    final_w,
+                    final_h,
+                    toplevel_data.activated,
+                    toplevel_data.pending_maximized,
+                    toplevel_data.pending_fullscreen,
+                    toplevel_data.interactive_resize,
+                )
+            };
+
+            let mut states_bytes = Vec::new();
+            if pending_maximized {
+                states_bytes.extend_from_slice(
+                    &(crate::core::wayland::xdg::v6::protocol::zxdg_toplevel_v6::State::Maximized as u32)
+                        .to_ne_bytes(),
+                );
+            }
+            if pending_fullscreen {
+                states_bytes.extend_from_slice(
+                    &(crate::core::wayland::xdg::v6::protocol::zxdg_toplevel_v6::State::Fullscreen as u32)
+                        .to_ne_bytes(),
+                );
+            }
+            if interactive_resize {
+                states_bytes.extend_from_slice(
+                    &(crate::core::wayland::xdg::v6::protocol::zxdg_toplevel_v6::State::Resizing as u32)
+                        .to_ne_bytes(),
+                );
+            }
+            if activated {
+                states_bytes.extend_from_slice(
+                    &(crate::core::wayland::xdg::v6::protocol::zxdg_toplevel_v6::State::Activated as u32)
+                        .to_ne_bytes(),
+                );
+            }
+
+            v6_toplevel.configure(final_w as i32, final_h as i32, states_bytes);
+            let serial = self.next_serial();
+            if let Some(surf_res) = self
+                .xdg
+                .surfaces
+                .get(&(client_id.clone(), xdg_surface_id))
+                .and_then(|s| s.v6_resource.as_ref())
+            {
+                surf_res.configure(serial);
+            }
+
+            crate::wlog!(
+                crate::util::logging::COMPOSITOR,
+                "send_toplevel_configure (v6): client={:?} tl_id={} size={}x{} serial={}",
+                client_id,
+                toplevel_id,
+                final_w,
+                final_h,
+                serial
+            );
+            if let Some(toplevel_data) = self
+                .xdg
+                .toplevels
+                .get_mut(&(client_id.clone(), toplevel_id))
+            {
+                toplevel_data.pending_serial = serial;
+            }
+            if let Some(surface_data) = self
+                .xdg
+                .surfaces
+                .get_mut(&(client_id.clone(), xdg_surface_id))
+            {
+                surface_data.pending_serial = serial;
+                surface_data.pending_serials.push(serial);
+                surface_data.configured = false;
+            }
+            return Some(serial);
+        }
+
         // Smithay is the only serial namespace: every real toplevel is created
         // by smithay's XdgShellHandler::new_toplevel and always carries a
         // ToplevelSurface. A missing one means teardown is racing. Do not
@@ -249,6 +367,15 @@ impl CompositorState {
                     res.close();
                     return true;
                 }
+                if let Some(res) = &data.v6_resource {
+                    crate::wlog!(
+                        crate::util::logging::COMPOSITOR,
+                        "Sending zxdg_toplevel_v6.close for window_id={}",
+                        window_id
+                    );
+                    res.close();
+                    return true;
+                }
                 break;
             }
         }
@@ -264,12 +391,19 @@ impl CompositorState {
     /// dismissed it: click-away, Escape, parent teardown). Returns `true` if a
     /// matching popup was found.
     pub fn send_popup_done_for_window(&mut self, window_id: u32) -> bool {
-        let Some((key, surface_id, resource)) = self
+        let Some((key, surface_id, resource, v6_resource)) = self
             .xdg
             .popups
             .iter()
             .find(|(_, data)| data.window_id == window_id)
-            .map(|(key, data)| (key.clone(), data.surface_id, data.resource.clone()))
+            .map(|(key, data)| {
+                (
+                    key.clone(),
+                    data.surface_id,
+                    data.resource.clone(),
+                    data.v6_resource.clone(),
+                )
+            })
         else {
             return false;
         };
@@ -277,6 +411,15 @@ impl CompositorState {
             crate::wlog!(
                 crate::util::logging::COMPOSITOR,
                 "Sending xdg_popup.popup_done for window_id={} popup={}",
+                window_id,
+                key.1
+            );
+            res.popup_done();
+        }
+        if let Some(res) = v6_resource {
+            crate::wlog!(
+                crate::util::logging::COMPOSITOR,
+                "Sending zxdg_popup_v6.popup_done for window_id={} popup={}",
                 window_id,
                 key.1
             );

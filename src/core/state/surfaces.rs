@@ -351,6 +351,10 @@ impl CompositorState {
             // commits emit WindowSizeChanged can make host windows oscillate between
             // unrelated dimensions (seen as flicker with nested clients).
             let should_sync_host_window_size = direct_window_id.is_some();
+            self.apply_v6_commit(
+                id,
+                surface.current.buffer != crate::core::surface::BufferType::None,
+            );
             // Synchronize window dimensions with surface dimensions.
             //
             // When xdg_surface geometry is set, use the geometry width/height
