@@ -669,3 +669,14 @@ compile_expectation = "all-targets"
 equivalent = "no-equivalent"
 notes = "Legacy wl_shell for conformance and legacy client compatibility"
 
+[[protocol]]
+interface = "gtk_primary_selection_device_manager"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/ext/gtk_primary_selection.rs"
+compile_expectation = "all-targets"
+equivalent = "no-equivalent"
+notes = "GTK primary selection protocol for middle-click paste"
+
+
