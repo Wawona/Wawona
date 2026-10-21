@@ -10,6 +10,7 @@ pub mod data_control;
 pub mod fifo;
 pub mod foreign_toplevel_list;
 pub mod fractional_scale;
+pub mod gtk_primary_selection;
 pub mod idle_inhibit;
 pub mod idle_notify;
 pub mod input_method;
@@ -146,6 +147,10 @@ pub fn register(_state: &mut CompositorState, dh: &DisplayHandle) {
                 _state.protocol_profile.as_str()
             );
         }
+    }
+
+    if policy::allow_desktop_extensions(_state.protocol_profile) {
+        gtk_primary_selection::register_gtk_primary_selection(dh);
     }
 
     crate::wlog!(

@@ -184,6 +184,14 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         DesktopOnly
     ),
     cat!(
+        "gtk_primary_selection_device_manager",
+        "gtk-primary-selection",
+        Ext,
+        "src/core/wayland/ext/gtk_primary_selection.rs",
+        Functional,
+        DesktopOnly
+    ),
+    cat!(
         "zxdg_decoration_manager_v1",
         "xdg-decoration-unstable-v1",
         Xdg,

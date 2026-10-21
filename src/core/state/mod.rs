@@ -1689,6 +1689,9 @@ pub struct CompositorState {
     /// wl_shell protocol state
     pub wl_shell: crate::core::wayland::wl_shell::WlShellState,
 
+    /// gtk_primary_selection protocol state
+    pub gtk_primary_selection: crate::core::wayland::ext::gtk_primary_selection::GtkPrimarySelectionState,
+
     // =========================================================================
     // Core Protocol Resources
     // =========================================================================
@@ -1793,6 +1796,7 @@ impl CompositorState {
             wlr: WlrState::default(),
             xdg_v6: crate::core::wayland::xdg::v6::XdgV6State::default(),
             wl_shell: crate::core::wayland::wl_shell::WlShellState::default(),
+            gtk_primary_selection: crate::core::wayland::ext::gtk_primary_selection::GtkPrimarySelectionState::default(),
             seat_resources: HashMap::new(),
 
             pending_compositor_events: Vec::new(),
