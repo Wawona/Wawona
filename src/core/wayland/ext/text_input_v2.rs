@@ -350,4 +350,3 @@ mod tests {
         assert!(state.clients.is_empty());
     }
 }
-

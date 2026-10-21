@@ -396,4 +396,3 @@ impl Dispatch<WlShellSurface, Arc<WlShellSurfaceUserData>> for CompositorState {
         }
     }
 }
-

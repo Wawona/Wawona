@@ -698,6 +698,3 @@ source_module = "src/core/wayland/ext/input_method_v1.rs"
 compile_expectation = "all-targets"
 equivalent = "no-equivalent"
 notes = "Input method v1 protocol for text-input v2 bridging"
-
-
-
