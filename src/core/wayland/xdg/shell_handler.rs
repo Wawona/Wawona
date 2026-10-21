@@ -515,18 +515,7 @@ impl XdgShellHandler for CompositorState {
             return;
         };
         let popup_id = surface.xdg_popup().id().protocol_id();
-        if let Some(data) = self.xdg.popups.get_mut(&(client_id.clone(), popup_id)) {
-            data.grabbed = true;
-            if !self
-                .seat
-                .popup_grab_stack
-                .contains(&(client_id.clone(), popup_id))
-            {
-                self.seat
-                    .popup_grab_stack
-                    .push((client_id.clone(), popup_id));
-            }
-        }
+        self.begin_popup_grab((client_id, popup_id));
     }
 
     fn reposition_request(
@@ -796,14 +785,14 @@ impl XdgShellHandler for CompositorState {
         let popup_id = surface.xdg_popup().id().protocol_id();
         if let Some(data) = self.xdg.popups.remove(&(client_id.clone(), popup_id)) {
             self.surface_to_window.remove(&data.surface_id);
-            self.seat
-                .popup_grab_stack
-                .retain(|(cid, pid)| cid != &client_id || *pid != popup_id);
+            self.end_popup_grab_for(&(client_id.clone(), popup_id), data.surface_id);
             self.pending_compositor_events
                 .push(CompositorEvent::WindowDestroyed {
                     window_id: data.window_id,
                 });
             self.xdg.surfaces.remove(&(client_id, data.xdg_surface_id));
+            // Leave the popup while its wl_surface still exists.
+            self.repick_headless_global_pointer();
         }
     }
 }

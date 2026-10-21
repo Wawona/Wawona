@@ -264,38 +264,26 @@ impl CompositorState {
     /// dismissed it: click-away, Escape, parent teardown). Returns `true` if a
     /// matching popup was found.
     pub fn send_popup_done_for_window(&mut self, window_id: u32) -> bool {
-        for ((cid, pid), data) in self.xdg.popups.iter() {
-            if data.window_id == window_id {
-                if let Some(res) = &data.resource {
-                    crate::wlog!(
-                        crate::util::logging::COMPOSITOR,
-                        "Sending xdg_popup.popup_done for window_id={} popup={}",
-                        window_id,
-                        pid
-                    );
-                    res.popup_done();
-                }
-                let key = (cid.clone(), *pid);
-                self.seat
-                    .popup_grab_stack
-                    .retain(|(gcid, gpid)| !(gcid == &key.0 && *gpid == key.1));
-                return true;
-            }
+        let Some((key, surface_id, resource)) = self
+            .xdg
+            .popups
+            .iter()
+            .find(|(_, data)| data.window_id == window_id)
+            .map(|(key, data)| (key.clone(), data.surface_id, data.resource.clone()))
+        else {
+            return false;
+        };
+        if let Some(res) = resource {
+            crate::wlog!(
+                crate::util::logging::COMPOSITOR,
+                "Sending xdg_popup.popup_done for window_id={} popup={}",
+                window_id,
+                key.1
+            );
+            res.popup_done();
         }
-        false
-    }
-
-    /// Dismiss the active popup grab and all its child popups
-    pub fn dismiss_popup_grab(&mut self) {
-        while let Some((cid, pid)) = self.seat.popup_grab_stack.pop() {
-            if let Some(data) = self.xdg.popups.get(&(cid.clone(), pid)) {
-                let resource = data.resource.clone();
-                if let Some(res) = resource {
-                    tracing::debug!("Dismissing popup {} for client {:?}", pid, cid);
-                    res.popup_done();
-                }
-            }
-        }
+        self.end_popup_grab_for(&key, surface_id);
+        true
     }
 
     /// Get the geometry of an output (x, y, width, height)

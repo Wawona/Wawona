@@ -312,28 +312,8 @@ impl CompositorState {
         if state == wl_pointer::ButtonState::Pressed {
             self.seat.pointer.button_count += 1;
 
-            if !self.seat.popup_grab_stack.is_empty() {
-                let mut on_grab_tree = false;
-                if let Some(focus_id) = self.seat.pointer.focus {
-                    for &(ref cid, popup_id) in &self.seat.popup_grab_stack {
-                        if let Some(popup) = self.xdg.popups.get(&(cid.clone(), popup_id)) {
-                            if popup.surface_id == focus_id {
-                                on_grab_tree = true;
-                                break;
-                            }
-                            if let Some(&wid) = self.surface_to_window.get(&focus_id) {
-                                if wid == popup.window_id {
-                                    on_grab_tree = true;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if !on_grab_tree {
-                    self.dismiss_popup_grab();
-                }
+            if self.click_ends_popup_grab(self.seat.pointer.focus) {
+                self.dismiss_popup_grab();
             }
         } else {
             self.seat.pointer.button_count = self.seat.pointer.button_count.saturating_sub(1);
@@ -678,6 +658,9 @@ impl CompositorState {
 
     /// Set focused window
     pub fn set_focused_window(&mut self, window_id: Option<u32>) {
+        if self.focus_change_ends_popup_grab(window_id) {
+            self.dismiss_popup_grab_without_refocus();
+        }
         self.focus.set_keyboard_focus(window_id);
 
         let target = match window_id {
@@ -687,6 +670,14 @@ impl CompositorState {
             },
             None => None,
         };
+        self.set_keyboard_focus_surface(target);
+        tracing::debug!("Focus changed to window: {:?}", window_id);
+    }
+
+    /// Move `wl_keyboard` (and text-input) focus to `target`. Activation
+    /// follows the toplevel that owns the surface, so focusing a grabbing
+    /// popup keeps its parent window activated.
+    pub(crate) fn set_keyboard_focus_surface(&mut self, target: Option<u32>) {
         if self.seat.keyboard.focus == target {
             return;
         }
@@ -698,11 +689,15 @@ impl CompositorState {
         let old_res = resource_of(self, old_target);
         let new_res = resource_of(self, target);
         self.seat.keyboard.focus = target;
-        if let Some(sid) = old_target {
-            self.set_toplevel_activated(sid, false);
-        }
-        if let Some(sid) = target {
-            self.set_toplevel_activated(sid, true);
+        let old_active = old_target.and_then(|sid| self.activation_surface(sid));
+        let new_active = target.and_then(|sid| self.activation_surface(sid));
+        if old_active != new_active {
+            if let Some(sid) = old_active {
+                self.set_toplevel_activated(sid, false);
+            }
+            if let Some(sid) = new_active {
+                self.set_toplevel_activated(sid, true);
+            }
         }
 
         if let Some(res) = &old_res {
@@ -729,8 +724,6 @@ impl CompositorState {
             self.ext.text_input.enter(res, target);
         }
         self.sync_pointer_constraints();
-
-        tracing::debug!("Focus changed to window: {:?}", window_id);
     }
 
     /// Surface under a global point, or `grabbed` when an implicit grab pins

@@ -8,6 +8,7 @@ use smithay::reexports::wayland_server::Resource;
 pub mod catalog;
 pub mod ext;
 pub mod host_im;
+pub mod im_relay;
 pub mod plasma;
 pub mod protocol;
 pub mod selection_proxy;
@@ -724,8 +725,32 @@ smithay::delegate_xdg_dialog!(crate::core::state::CompositorState);
 smithay::delegate_xdg_system_bell!(crate::core::state::CompositorState);
 smithay::delegate_xdg_toplevel_icon!(crate::core::state::CompositorState);
 smithay::delegate_xdg_toplevel_tag!(crate::core::state::CompositorState);
-smithay::delegate_text_input_manager!(crate::core::state::CompositorState);
-smithay::delegate_input_method_manager!(crate::core::state::CompositorState);
+// Expanded `delegate_text_input_manager!` minus `zwp_text_input_v3`, which
+// `im_relay` wraps to deactivate the IM when the active text input dies.
+smithay::reexports::wayland_server::delegate_global_dispatch!(crate::core::state::CompositorState: [
+    smithay::reexports::wayland_protocols::wp::text_input::zv3::server::zwp_text_input_manager_v3::ZwpTextInputManagerV3: ()
+] => smithay::wayland::text_input::TextInputManagerState);
+smithay::reexports::wayland_server::delegate_dispatch!(crate::core::state::CompositorState: [
+    smithay::reexports::wayland_protocols::wp::text_input::zv3::server::zwp_text_input_manager_v3::ZwpTextInputManagerV3: ()
+] => smithay::wayland::text_input::TextInputManagerState);
+// Expanded `delegate_input_method_manager!` minus the manager `Dispatch`:
+// `im_relay` routes external `get_input_method` through the host stand-in.
+smithay::reexports::wayland_server::delegate_global_dispatch!(crate::core::state::CompositorState: [
+    smithay::reexports::wayland_protocols_misc::zwp_input_method_v2::server::zwp_input_method_manager_v2::ZwpInputMethodManagerV2:
+    smithay::wayland::input_method::InputMethodManagerGlobalData
+] => smithay::wayland::input_method::InputMethodManagerState);
+smithay::reexports::wayland_server::delegate_dispatch!(crate::core::state::CompositorState: [
+    smithay::reexports::wayland_protocols_misc::zwp_input_method_v2::server::zwp_input_method_v2::ZwpInputMethodV2:
+    smithay::wayland::input_method::InputMethodUserData<crate::core::state::CompositorState>
+] => smithay::wayland::input_method::InputMethodManagerState);
+smithay::reexports::wayland_server::delegate_dispatch!(crate::core::state::CompositorState: [
+    smithay::reexports::wayland_protocols_misc::zwp_input_method_v2::server::zwp_input_method_keyboard_grab_v2::ZwpInputMethodKeyboardGrabV2:
+    smithay::wayland::input_method::InputMethodKeyboardUserData<crate::core::state::CompositorState>
+] => smithay::wayland::input_method::InputMethodManagerState);
+smithay::reexports::wayland_server::delegate_dispatch!(crate::core::state::CompositorState: [
+    smithay::reexports::wayland_protocols_misc::zwp_input_method_v2::server::zwp_input_popup_surface_v2::ZwpInputPopupSurfaceV2:
+    smithay::wayland::input_method::InputMethodPopupSurfaceUserData
+] => smithay::wayland::input_method::InputMethodManagerState);
 smithay::delegate_virtual_keyboard_manager!(crate::core::state::CompositorState);
 
 impl smithay::wayland::input_method::InputMethodHandler for crate::core::state::CompositorState {
@@ -1051,6 +1076,16 @@ pub mod smithay_runtime {
         if state.smithay_runtime.seat_state.is_none() {
             let mut seat_state = smithay::input::SeatState::<CompositorState>::new();
             let mut seat = seat_state.new_wl_seat(dh, "seat0");
+            // Smithay fetches these with thread-bound `insert_if_missing`.
+            // Embedders start the compositor on one thread and dispatch or
+            // inject input on another, which would split text-input and
+            // input-method state into per-thread copies.
+            seat.user_data().insert_if_missing_threadsafe(
+                smithay::wayland::text_input::TextInputHandle::default,
+            );
+            seat.user_data().insert_if_missing_threadsafe(
+                smithay::wayland::input_method::InputMethodHandle::default,
+            );
             let _ = seat.add_pointer();
             let _ = seat.add_touch();
             // Keyboard capability is added on EVERY platform. Smithay is the

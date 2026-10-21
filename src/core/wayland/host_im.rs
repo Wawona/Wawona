@@ -25,7 +25,10 @@ use wayland_server::backend::{ClientData, ClientId, DisconnectReason};
 use wayland_server::{Client, Display, DisplayHandle};
 
 use crate::core::state::CompositorState;
+use crate::core::wayland::im_relay::{forward_host_event, ExternalImLink, HostImEvent};
 use crate::core::wayland::policy::ProtocolProfile;
+use wayland_client::Proxy;
+use wayland_protocols_misc::zwp_input_method_v2::server::zwp_input_method_v2::ZwpInputMethodV2 as ServerInputMethod;
 
 /// Client data that marks the in-process host IM. Filters trust this type.
 pub struct HostImClientData {
@@ -56,6 +59,7 @@ pub struct HostImMirror {
     pub surrounding_anchor: i32,
     pub content_hint: u32,
     pub content_purpose: u32,
+    pub text_change_cause: u32,
     pub cursor_rect: (i32, i32, i32, i32),
 }
 
@@ -87,6 +91,7 @@ enum HostImCommand {
 struct HostImShared {
     mirror: Mutex<HostImMirror>,
     outgoing: Mutex<Vec<HostImCommand>>,
+    external: Mutex<Option<ExternalImLink>>,
 }
 
 struct HostImClient {
@@ -146,6 +151,24 @@ impl HostImRelay {
 
     pub fn mirror(&self) -> HostImMirror {
         self.shared.mirror.lock().unwrap().clone()
+    }
+
+    /// Run `f` on the external IM that owns the seat through this relay.
+    pub(crate) fn with_external<R>(&self, f: impl FnOnce(&mut Option<ExternalImLink>) -> R) -> R {
+        let mut link = self
+            .shared
+            .external
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        f(&mut link)
+    }
+
+    /// Server-side `zwp_input_method_v2` this stand-in bound.
+    pub(crate) fn server_input_method(&self, dh: &DisplayHandle) -> Option<ServerInputMethod> {
+        let protocol_id = Proxy::id(self.inner.im.as_ref()?).protocol_id();
+        self._server_client
+            .object_from_protocol_id::<ServerInputMethod>(dh, protocol_id)
+            .ok()
     }
 
     pub fn has_instance(&self) -> bool {
@@ -216,6 +239,7 @@ fn start(dh: &mut DisplayHandle) -> Result<HostImRelay, String> {
     let shared = Arc::new(HostImShared {
         mirror: Mutex::new(HostImMirror::default()),
         outgoing: Mutex::new(Vec::new()),
+        external: Mutex::new(None),
     });
     let inner = HostImClient {
         shared: shared.clone(),
@@ -367,6 +391,14 @@ impl Dispatch<HostImObject, ()> for HostImClient {
         _qh: &QueueHandle<Self>,
     ) {
         let mut mirror = state.shared.mirror.lock().unwrap();
+        if let Some(relayed) = relayed_event(&event) {
+            let mut link = state
+                .shared
+                .external
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            forward_host_event(&mut link, relayed);
+        }
         match event {
             zwp_input_method_v2::Event::Activate => {
                 mirror.active = true;
@@ -405,8 +437,36 @@ impl Dispatch<HostImObject, ()> for HostImClient {
             zwp_input_method_v2::Event::Unavailable => {
                 mirror.active = false;
             }
-            zwp_input_method_v2::Event::TextChangeCause { .. } => {}
+            zwp_input_method_v2::Event::TextChangeCause { cause } => {
+                mirror.text_change_cause = cause.into_result().map(|c| c as u32).unwrap_or(0);
+            }
             _ => {}
         }
     }
+}
+
+/// Host IM event in the form the external owner receives it.
+fn relayed_event(event: &zwp_input_method_v2::Event) -> Option<HostImEvent> {
+    Some(match event {
+        zwp_input_method_v2::Event::Activate => HostImEvent::Activate,
+        zwp_input_method_v2::Event::Deactivate => HostImEvent::Deactivate,
+        zwp_input_method_v2::Event::SurroundingText {
+            text,
+            cursor,
+            anchor,
+        } => HostImEvent::SurroundingText {
+            text: text.clone(),
+            cursor: *cursor,
+            anchor: *anchor,
+        },
+        zwp_input_method_v2::Event::TextChangeCause { cause } => {
+            HostImEvent::TextChangeCause(u32::from(*cause))
+        }
+        zwp_input_method_v2::Event::ContentType { hint, purpose } => HostImEvent::ContentType {
+            hint: u32::from(*hint),
+            purpose: u32::from(*purpose),
+        },
+        zwp_input_method_v2::Event::Done => HostImEvent::Done,
+        _ => return None,
+    })
 }

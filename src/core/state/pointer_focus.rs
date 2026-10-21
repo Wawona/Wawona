@@ -29,7 +29,7 @@ impl CompositorState {
             .and_then(|seat| seat.get_pointer())
     }
 
-    fn surface_resource(&self, surface_id: u32) -> Option<WlSurface> {
+    pub(crate) fn surface_resource(&self, surface_id: u32) -> Option<WlSurface> {
         self.surfaces
             .get(&surface_id)
             .and_then(|surface| surface.read().ok().and_then(|s| s.resource.clone()))
@@ -173,12 +173,19 @@ impl CompositorState {
     ) {
         use wayland_server::protocol::wl_pointer::ButtonState;
         if state == ButtonState::Pressed {
-            let window = self
+            let clicked = self
                 .seat
                 .pointer
                 .global_target
-                .and_then(|(surface, _, _)| u32::try_from(surface).ok())
-                .and_then(|sid| self.root_window_of_surface(sid));
+                .and_then(|(surface, _, _)| u32::try_from(surface).ok());
+            let window = clicked.and_then(|sid| self.root_window_of_surface(sid));
+            if self.click_ends_popup_grab(clicked) {
+                if window.is_some() {
+                    self.dismiss_popup_grab_without_refocus();
+                } else {
+                    self.dismiss_popup_grab();
+                }
+            }
             if let Some(wid) = window {
                 self.set_focused_window(Some(wid));
                 self.window_tree.bring_to_front(wid);
@@ -335,8 +342,9 @@ impl CompositorState {
         self.deliver_global_pointer(x, y, timestamp_ms, serial);
     }
 
-    /// Commit-time re-pick for headless hosts.
-    pub(crate) fn repick_global_pointer_after_commit(&mut self) {
+    /// Re-pick for headless hosts after the scene changed under the pointer
+    /// (commit, popup unmapped).
+    pub(crate) fn repick_headless_global_pointer(&mut self) {
         if !self.headless_host {
             return;
         }

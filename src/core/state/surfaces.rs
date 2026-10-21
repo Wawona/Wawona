@@ -258,7 +258,7 @@ impl CompositorState {
 
         self.ext.presentation.mark_committed(surface_id);
         self.finalize_surface_commit(surface_id);
-        self.repick_global_pointer_after_commit();
+        self.repick_headless_global_pointer();
     }
 
     /// wl_surface.enter/leave. A surface with content is on every output; an

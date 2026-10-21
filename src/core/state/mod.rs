@@ -135,6 +135,7 @@ impl Default for SmithayRuntimeState {
 mod host_lock;
 mod input;
 pub mod pointer_focus;
+pub mod popup_grab;
 mod scene;
 mod surfaces;
 mod windows;

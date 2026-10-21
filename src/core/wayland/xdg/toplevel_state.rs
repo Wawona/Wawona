@@ -128,7 +128,7 @@ impl CompositorState {
                     .find(|&wid| wid != window_id && self.is_window_shown(wid));
                 self.set_focused_window(next);
             }
-            self.repick_global_pointer_after_commit();
+            self.repick_headless_global_pointer();
         }
         self.pending_compositor_events
             .push(CompositorEvent::WindowMinimized {
@@ -149,7 +149,7 @@ impl CompositorState {
         self.update_window(window_id, |w| w.minimized = false);
         if self.headless_host {
             self.window_tree.bring_to_front(window_id);
-            self.repick_global_pointer_after_commit();
+            self.repick_headless_global_pointer();
         }
         self.pending_compositor_events
             .push(CompositorEvent::WindowMinimized {
@@ -165,7 +165,7 @@ impl CompositorState {
         self.window_tree.bring_to_front(window_id);
         self.set_focused_window(Some(window_id));
         if self.headless_host {
-            self.repick_global_pointer_after_commit();
+            self.repick_headless_global_pointer();
         }
     }
 
