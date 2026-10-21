@@ -11,13 +11,24 @@
 }:
 
 let
+  # wlcs <= 1.8.1 truncates the bad SHM pool inside assert(), which release
+  # builds compile out, so BadBufferTest.test_truncated_shm_file never
+  # truncates anything (Mir: WLCS_BAD_BUFFER_TEST_BAD). Keep the truncation
+  # unconditional so the test checks what it claims to.
+  wlcsChecked = wlcs.overrideAttrs (old: {
+    postPatch = (old.postPatch or "") + ''
+      substituteInPlace tests/test_bad_buffer.cpp \
+        --replace-fail 'assert(ftruncate(fd, 12) == 0);' 'if (ftruncate(fd, 12) != 0) abort();'
+    '';
+  });
+
   integration = stdenv.mkDerivation {
     pname = "wawona-wlcs-integration";
     version = "0.1.0";
     src = ../../src/tests/wlcs;
 
     nativeBuildInputs = [ pkg-config ];
-    buildInputs = [ wlcs wayland wawonaBackend ];
+    buildInputs = [ wlcsChecked wayland wawonaBackend ];
 
     buildPhase = ''
       runHook preBuild
@@ -45,7 +56,7 @@ let
 in
 let
   # nixpkgs wlcs installs the harness under libexec, not $out/bin.
-  wlcsBin = "${wlcs}/libexec/wlcs/wlcs";
+  wlcsBin = "${wlcsChecked}/libexec/wlcs/wlcs";
 in
 writeShellApplication {
   name = "wawona-wlcs-run";

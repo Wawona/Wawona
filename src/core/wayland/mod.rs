@@ -243,7 +243,9 @@ impl smithay::wayland::compositor::CompositorHandler for crate::core::state::Com
                                 {
                                     // SAFETY: `last < len` keeps the read inside the
                                     // pool mapping Smithay holds for this closure.
-                                    let _ = unsafe { std::ptr::read_volatile(ptr.add(last)) };
+                                    std::hint::black_box(unsafe {
+                                        std::ptr::read_volatile(ptr.add(last))
+                                    });
                                 }
                                 (
                                     data.width,
