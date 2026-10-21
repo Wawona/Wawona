@@ -193,14 +193,15 @@ impl CompositorState {
         let flattened = self.scene.flatten();
 
         for surface in flattened.iter().rev() {
-            let sx = surface.x as f64;
-            let sy = surface.y as f64;
-            let sw = surface.width as f64;
-            let sh = surface.height as f64;
+            let (sx, sy, sw, sh, cropped) = uncropped_input_bounds(surface);
 
             if x >= sx && x < sx + sw && y >= sy && y < sy + sh {
-                let (local_x, local_y) =
-                    self.view_to_surface_coords(surface.surface_id, sw, sh, x - sx, y - sy);
+                let (local_x, local_y) = if cropped {
+                    let scale = self.view_to_surface_scale(surface.surface_id, sw, sh);
+                    ((x - sx) * scale, (y - sy) * scale)
+                } else {
+                    self.view_to_surface_coords(surface.surface_id, sw, sh, x - sx, y - sy)
+                };
                 let lx = local_x as i32;
                 let ly = local_y as i32;
 
@@ -1322,5 +1323,86 @@ impl CompositorState {
                 );
             }
         }
+    }
+}
+
+/// Global input bounds `(x, y, w, h, cropped)` of a presented surface.
+///
+/// Presentation may crop a toplevel to its xdg window geometry, but input
+/// still covers the whole surface (client-side shadows and resize borders,
+/// limited only by the input region), so the crop is undone here. Bounds are
+/// rounded because surface sizes and offsets are integral while the
+/// normalized content rect is `f32`.
+fn uncropped_input_bounds(
+    surface: &crate::core::render::scene::FlattenedSurface,
+) -> (f64, f64, f64, f64, bool) {
+    let (x, y) = (f64::from(surface.x), f64::from(surface.y));
+    let (w, h) = (f64::from(surface.width), f64::from(surface.height));
+    let rect = &surface.content_rect;
+    let (cx, cy) = (f64::from(rect.x), f64::from(rect.y));
+    let (cw, ch) = (f64::from(rect.w), f64::from(rect.h));
+    let full = cx <= 0.0 && cy <= 0.0 && cw >= 1.0 && ch >= 1.0;
+    if full || cw <= 0.0 || ch <= 0.0 {
+        return (x, y, w, h, false);
+    }
+    let full_w = (w / cw).round();
+    let full_h = (h / ch).round();
+    (
+        x - (cx * full_w).round(),
+        y - (cy * full_h).round(),
+        full_w,
+        full_h,
+        true,
+    )
+}
+
+#[cfg(test)]
+mod uncropped_input_bounds_tests {
+    use super::uncropped_input_bounds;
+    use crate::core::render::scene::FlattenedSurface;
+    use crate::ffi::types::ContentRect;
+
+    fn presented(x: i32, y: i32, w: u32, h: u32, content_rect: ContentRect) -> FlattenedSurface {
+        FlattenedSurface {
+            surface_id: 1,
+            x,
+            y,
+            width: w,
+            height: h,
+            opacity: 1.0,
+            scale: 1.0,
+            content_rect,
+        }
+    }
+
+    #[test]
+    fn uncropped_surface_keeps_presented_bounds() {
+        let bounds = uncropped_input_bounds(&presented(10, 20, 100, 50, ContentRect::default()));
+        assert_eq!(bounds, (10.0, 20.0, 100.0, 50.0, false));
+    }
+
+    #[test]
+    fn geometry_cropped_surface_takes_input_on_whole_surface() {
+        // 215x108 surface, window geometry (12, 5, 183, 97), geometry at (76, 54).
+        let rect = ContentRect {
+            x: 12.0 / 215.0,
+            y: 5.0 / 108.0,
+            w: 183.0 / 215.0,
+            h: 97.0 / 108.0,
+        };
+        let bounds = uncropped_input_bounds(&presented(76, 54, 183, 97, rect));
+        assert_eq!(bounds, (64.0, 49.0, 215.0, 108.0, true));
+    }
+
+    #[test]
+    fn degenerate_content_rect_falls_back_to_presented_bounds() {
+        let rect = ContentRect {
+            x: 0.5,
+            y: 0.0,
+            w: 0.0,
+            h: 1.0,
+        };
+        let bounds = uncropped_input_bounds(&presented(0, 0, 10, 10, rect));
+        assert_eq!(bounds, (0.0, 0.0, 10.0, 10.0, false));
     }
 }

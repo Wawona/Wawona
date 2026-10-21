@@ -382,6 +382,9 @@ impl CompositorState {
             }
             if let Some(window) = self.get_window(window_id) {
                 let window = window.read().unwrap();
+                if !self.surface_has_content(window.surface_id, window.has_committed_buffer) {
+                    continue;
+                }
                 let node_id = self.next_node_id();
                 let mut node = SceneNode::new(node_id).with_surface(window.surface_id);
                 let is_kiosk_window = self.is_host_locked_window(window.id);
@@ -705,6 +708,20 @@ impl CompositorState {
         }
     }
 
+    /// Whether a window root or subsurface has a buffer. A null buffer
+    /// commit unmaps the surface together with its subsurface tree, so it
+    /// leaves the scene and input picking. Platform hosts keep a placeholder
+    /// for a window that never committed a buffer; the headless manager
+    /// does not.
+    fn surface_has_content(&self, surface_id: u32, has_committed_buffer: bool) -> bool {
+        if !self.headless_host && !has_committed_buffer {
+            return true;
+        }
+        self.get_surface(surface_id)
+            .and_then(|surface| surface.read().ok().map(|s| s.current.buffer_id.is_some()))
+            .unwrap_or(false)
+    }
+
     /// Build subsurface scene nodes for `parent_surface_id`.
     ///
     /// `geometry_offset` is subtracted from the positions of **direct**
@@ -726,6 +743,9 @@ impl CompositorState {
             let Some(pos) = self.subsurfaces.get(&child_surface_id).map(|s| s.position) else {
                 continue;
             };
+            if !self.surface_has_content(child_surface_id, true) {
+                continue;
+            }
             let node_id = self.next_node_id();
             let mut node = SceneNode::new(node_id).with_surface(child_surface_id);
 

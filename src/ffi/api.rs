@@ -500,20 +500,16 @@ impl WawonaCore {
             }
             return;
         }
-        let Some((surface, _, _)) = self.state.read_recover().seat.pointer.global_target else {
-            return;
+        let wl_state = match state {
+            ButtonState::Released => wayland_server::protocol::wl_pointer::ButtonState::Released,
+            ButtonState::Pressed => wayland_server::protocol::wl_pointer::ButtonState::Pressed,
         };
-        if state == ButtonState::Pressed {
-            let mut compositor_state = self.state.write_recover();
-            let window = u32::try_from(surface)
-                .ok()
-                .and_then(|sid| compositor_state.root_window_of_surface(sid));
-            if let Some(wid) = window {
-                compositor_state.set_focused_window(Some(wid));
-                compositor_state.window_tree.bring_to_front(wid);
-            }
+        let mut compositor_state = self.state.write_recover();
+        compositor_state.seat.cleanup_resources();
+        compositor_state.deliver_global_button(button, wl_state, timestamp_ms);
+        if let Some(client) = compositor_state.focused_pointer_client() {
+            compositor_state.send_pointer_frame(&client);
         }
-        self.pointer_button(None, PointerButton::Other(button), state, timestamp_ms);
     }
 
     /// Re-deliver the global pointer when the surface or surface-local
