@@ -83,6 +83,40 @@ impl CompositorState {
         xdg_surface_key
     }
 
+    /// Send a popup's configure and record its serial for ack validation.
+    pub(crate) fn send_popup_configure(
+        &mut self,
+        surface: &PopupSurface,
+        client_id: ClientId,
+        xdg_surface_id: u32,
+    ) {
+        match surface.send_configure() {
+            Ok(serial) => {
+                if let Some(data) = self.xdg.surfaces.get_mut(&(client_id, xdg_surface_id)) {
+                    data.pending_serial = u32::from(serial);
+                    data.pending_serials.push(u32::from(serial));
+                }
+            }
+            Err(err) => tracing::debug!("popup configure not sent: {err:?}"),
+        }
+    }
+
+    /// Initial commit of a popup that never received a parent: configure it
+    /// against the output so the client is not left waiting.
+    pub(crate) fn configure_parentless_popup_on_commit(&mut self, wl_surface: &WlSurface) {
+        let Some(client_id) = wl_surface.client().map(|c| c.id()) else {
+            return;
+        };
+        let pending = self.xdg.popups.values().find_map(|p| {
+            let surface = p.popup_surface.as_ref()?;
+            (surface.wl_surface() == wl_surface && !surface.is_initial_configure_sent())
+                .then(|| (surface.clone(), p.xdg_surface_id))
+        });
+        if let Some((surface, xdg_surface_id)) = pending {
+            self.send_popup_configure(&surface, client_id, xdg_surface_id);
+        }
+    }
+
     pub(crate) fn popup_target_rect(&self) -> Rectangle<i32, Logical> {
         let output = self.primary_output();
         Rectangle::new(
@@ -499,15 +533,12 @@ impl XdgShellHandler for CompositorState {
                 height: popup_h.max(1) as u32,
             });
 
-        if let Ok(serial) = surface.send_configure() {
-            if let Some(surface_data) = self
-                .xdg
-                .surfaces
-                .get_mut(&(client_id.clone(), xdg_surface_id))
-            {
-                surface_data.pending_serial = u32::from(serial);
-                surface_data.pending_serials.push(u32::from(serial));
-            }
+        // A parentless popup gets its parent from another protocol
+        // (zwlr_layer_surface_v1.get_popup) before its initial commit, and a
+        // non-reactive popup accepts exactly one configure. Configure it once
+        // the parent is known, or at its initial commit if none ever is.
+        if surface.get_parent_surface().is_some() {
+            self.send_popup_configure(&surface, client_id, xdg_surface_id);
         }
     }
 

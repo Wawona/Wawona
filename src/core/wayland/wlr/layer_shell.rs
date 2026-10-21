@@ -264,16 +264,8 @@ impl WlrLayerShellHandler for CompositorState {
                 data.geometry = (geo.loc.x, geo.loc.y, geo.size.w, geo.size.h);
                 data.xdg_surface_id
             });
-        match popup.send_configure() {
-            Ok(serial) => {
-                let pending =
-                    xdg_surface_id.and_then(|id| self.xdg.surfaces.get_mut(&(client_id, id)));
-                if let Some(surface_data) = pending {
-                    surface_data.pending_serial = u32::from(serial);
-                    surface_data.pending_serials.push(u32::from(serial));
-                }
-            }
-            Err(err) => tracing::debug!("layer popup configure not sent: {err:?}"),
+        if let Some(xdg_surface_id) = xdg_surface_id {
+            self.send_popup_configure(&popup, client_id, xdg_surface_id);
         }
     }
 
