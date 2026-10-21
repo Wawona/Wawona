@@ -725,6 +725,7 @@ impl CompositorState {
         if let Some(res) = &new_res {
             self.ext.text_input.enter(res, target);
         }
+        crate::core::wayland::ext::text_input_v2::notify_focus_changed(self, old_target, target);
         self.sync_pointer_constraints();
     }
 
