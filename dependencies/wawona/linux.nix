@@ -18,6 +18,7 @@ pkgs.writeShellApplication {
   runtimeInputs = [
     pkgs.gtk4
     pkgs.libadwaita
+    pkgs.adwaita-icon-theme
     pkgs.glib
     pkgs.cairo
     pkgs.pango

@@ -549,7 +549,8 @@ mod app {
         sidebar_list.set_margin_start(8);
         sidebar_list.set_margin_end(8);
 
-        let make_sidebar_row = |name: &str, icon_name: &str, css_class: &str, a11y_id: &str| {
+        let icon_theme = gtk::IconTheme::for_display(&gtk4::prelude::WidgetExt::display(&window));
+        let make_sidebar_row = |name: &str, icons: &[&str], css_class: &str, a11y_id: &str| {
             let row = gtk::ListBoxRow::new();
             let row_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
             row_box.set_margin_start(10);
@@ -557,7 +558,13 @@ mod app {
             row_box.set_margin_top(8);
             row_box.set_margin_bottom(8);
 
-            let icon = gtk::Image::from_icon_name(icon_name);
+            let chosen_icon = icons
+                .iter()
+                .copied()
+                .find(|&ic| icon_theme.has_icon(ic))
+                .unwrap_or_else(|| icons.first().copied().unwrap_or(""));
+
+            let icon = gtk::Image::from_icon_name(chosen_icon);
             icon.set_pixel_size(18);
             icon.add_css_class(css_class);
             row_box.append(&icon);
@@ -584,13 +591,28 @@ mod app {
             lbl
         };
 
-        let row_machines = make_sidebar_row("Machines", "computer-symbolic", "wwn-icon-indigo", a11y::id::MACHINES_ROOT);
+        let row_machines = make_sidebar_row(
+            "Machines",
+            &["user-desktop-symbolic", "computer-symbolic", "video-display-symbolic"],
+            "wwn-icon-indigo",
+            a11y::id::MACHINES_ROOT,
+        );
         sidebar_list.append(&row_machines);
 
-        let row_overview = make_sidebar_row("Tab Overview", "view-grid-symbolic", "wwn-icon-blue", a11y::id::MACHINES_OVERVIEW);
+        let row_overview = make_sidebar_row(
+            "Tab Overview",
+            &["view-grid-symbolic", "window-restore-symbolic"],
+            "wwn-icon-blue",
+            a11y::id::MACHINES_OVERVIEW,
+        );
         sidebar_list.append(&row_overview);
 
-        let row_work_status = make_sidebar_row("Work Status", "view-list-bullet-symbolic", "wwn-icon-orange", "wwn.projectStatus");
+        let row_work_status = make_sidebar_row(
+            "Work Status",
+            &["view-list-symbolic", "task-due-symbolic", "checkbox-checked-symbolic"],
+            "wwn-icon-orange",
+            "wwn.projectStatus",
+        );
         sidebar_list.append(&row_work_status);
 
         sidebar_list.set_header_func(move |row, _before| {

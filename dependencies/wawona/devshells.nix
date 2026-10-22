@@ -70,6 +70,7 @@ builtins.listToAttrs (map (system: let
       # runtimeInputs of dependencies/wawona/linux.nix.
       pkgs.gtk4
       pkgs.libadwaita
+      pkgs.adwaita-icon-theme
       pkgs.glib
       pkgs.cairo
       pkgs.pango

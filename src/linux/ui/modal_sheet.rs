@@ -70,7 +70,6 @@ pub fn install_sheet_styles() {
             .wwn-sheet-handle-bar {
               padding-top: 10px;
               padding-bottom: 6px;
-              cursor: grab;
             }
 
             .wwn-sheet-handle {
