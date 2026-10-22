@@ -907,8 +907,16 @@ pub fn build_editor_view(
         if tid == "native" && (kind == "terminal" || kind == "wayland") && !use_ssh {
             updated.runtime_overrides.bundled_app_id = Some("wawona-shell".into());
         } else if tid == "native" && kind == "wasm" {
-            updated.runtime_overrides.bundled_app_id = Some("wawona-wasm".into());
             let cmd = wasm_cmd_row.text().trim().to_string();
+            let pkg = wasm_pkg_row.text().trim().to_string();
+            let app_id = if !pkg.is_empty() {
+                pkg.clone()
+            } else if cmd.contains("hello-wasi-gui") {
+                "hello-wasi-gui".to_string()
+            } else {
+                "wawona-wasm".to_string()
+            };
+            updated.runtime_overrides.bundled_app_id = Some(app_id);
             updated.runtime_overrides.wasm_command = Some(if cmd.is_empty() {
                 "wasm hello-wasi-gui".into()
             } else {
@@ -1101,7 +1109,6 @@ fn parse_mt(id: &str) -> MachineType {
 
 fn storage_type_for_native_shell(kind: &str, use_ssh: bool) -> MachineType {
     match kind {
-        "wasm" => MachineType::Wasm,
         "terminal" if use_ssh => MachineType::SshTerminal,
         "waypipe" if use_ssh => MachineType::SshWaypipe,
         _ => MachineType::Native,
@@ -1124,7 +1131,11 @@ fn native_shell_session_from(profile: &MachineProfile) -> (&'static str, bool) {
                 && (bundled.is_empty() || bundled == "wawona-shell")
             {
                 ("waypipe", false)
-            } else if bundled == "wawona-wasm" {
+            } else if bundled == "wawona-wasm"
+                || bundled == "hello-wasi-gui"
+                || profile.runtime_overrides.wasm_command.is_some()
+                || profile.runtime_overrides.wasm_module_path.is_some()
+            {
                 ("wasm", false)
             } else {
                 ("terminal", false)

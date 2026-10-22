@@ -49,7 +49,11 @@ pub fn shell_command(profile: &MachineProfile) -> Option<String> {
                 .as_deref()
                 .map(str::trim)
                 .unwrap_or("");
-            if id == "wawona-wasm" {
+            if id == "wawona-wasm"
+                || id == "hello-wasi-gui"
+                || profile.runtime_overrides.wasm_command.is_some()
+                || profile.runtime_overrides.wasm_module_path.is_some()
+            {
                 Some(crate::linux::wasm_launch::effective_wasm_command(profile))
             } else if id == "wawona-shell" || !profile.remote_command.trim().is_empty() {
                 let custom = profile.remote_command.trim();

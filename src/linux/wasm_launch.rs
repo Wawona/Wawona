@@ -84,11 +84,36 @@ fn local_module_named(name: &str) -> Option<PathBuf> {
     dest.is_file().then_some(dest)
 }
 
+pub fn ensure_bundled_hello_wasi_gui() -> Option<PathBuf> {
+    const BYTES: &[u8] = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/src/resources/wasm/hello-wasi-gui.wasm"
+    ));
+    let dir = modules_dir();
+    let _ = fs::create_dir_all(&dir);
+    let dest = dir.join("hello-wasi-gui.wasm");
+    if dest.is_file() && dest.metadata().map(|m| m.len() as usize).unwrap_or(0) == BYTES.len() {
+        return Some(dest);
+    }
+    let tmp = std::env::temp_dir().join("wawona-hello-wasi-gui.wasm");
+    if !tmp.is_file() || tmp.metadata().map(|m| m.len() as usize).unwrap_or(0) != BYTES.len() {
+        let _ = fs::write(&tmp, BYTES);
+    }
+    let _ = fs::write(&dest, BYTES);
+    if dest.is_file() {
+        Some(dest)
+    } else if tmp.is_file() {
+        Some(tmp)
+    } else {
+        None
+    }
+}
+
 /// Fetch `/wasm/v1` into the Wawona folder when the package is not local.
 pub fn ensure_package_file(name: &str) -> Option<PathBuf> {
     let wanted = normalize_alias(name);
     if BUNDLED_ALIASES.contains(&wanted.as_str()) || wanted == DEFAULT_PACKAGE {
-        return None;
+        return ensure_bundled_hello_wasi_gui();
     }
     if let Some(existing) = local_module_named(&wanted) {
         return Some(existing);

@@ -274,7 +274,12 @@ pub fn launch_profile(
 
     let mut cmd = match profile.machine_type {
         MachineType::Native | MachineType::Wasm => {
-            let run_cmd = if profile.machine_type == MachineType::Wasm {
+            let is_wasm = profile.machine_type == MachineType::Wasm
+                || profile.runtime_overrides.bundled_app_id.as_deref() == Some("wawona-wasm")
+                || profile.runtime_overrides.bundled_app_id.as_deref() == Some("hello-wasi-gui")
+                || profile.runtime_overrides.wasm_command.is_some()
+                || profile.runtime_overrides.wasm_module_path.is_some();
+            let run_cmd = if is_wasm {
                 crate::linux::wasm_launch::effective_wasm_command(profile)
             } else {
                 rewrite_weston_honeycomb(
