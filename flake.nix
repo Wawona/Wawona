@@ -1013,18 +1013,16 @@
           gl-cts-android = gl-cts-android;
         })
         // (pkgs.lib.optionalAttrs isLinuxHost {
-          wawona-linux = pkgs.callPackage ./dependencies/wawona/linux.nix {
-            inherit wawonaVersion;
-            waypipeSrc = waypipe-src;
-            coreutilsSrc = coreutils-src;
-            terminalSrc = inputs.terminal;
-          };
           wawona-linux-ui-bin = pkgs.callPackage ./dependencies/wawona/linux-ui-prebuilt.nix {
             inherit wawonaVersion;
             waypipeSrc = waypipe-src;
             coreutilsSrc = coreutils-src;
             # Sandbox cannot follow the gitignored Terminal symlink; inject.
             terminalSrc = inputs.terminal;
+          };
+          wawona-linux = pkgs.callPackage ./dependencies/wawona/linux.nix {
+            inherit wawonaVersion;
+            wawonaLinuxUiBin = self.packages.${system}.wawona-linux-ui-bin;
           };
           # Self-contained, glibc-portable AppImage of the GTK UI. The bundled
           # binary auto-selects the GDK x11/wayland backend at startup based on
