@@ -73,9 +73,10 @@
     wwn-swinging-bridge.inputs.rust-overlay.follows = "rust-overlay";
     # GitHub tip (same class as wwn-toolchain / wwn-zsh). Owns uutils pin,
     # patch, and safe-subset.txt for Mode A in-process coreutils.
-    wwn-coreutils.url = "github:Wawona/wwn-coreutils/development";
-    wwn-coreutils.inputs.nixpkgs.follows = "nixpkgs";
-    wwn-coreutils.inputs.wwn-toolchain.follows = "wwn-toolchain";
+    wwn-uutils-rs.url = "github:Wawona/wwn-uutils-rs/development";
+    wwn-uutils-rs.inputs.nixpkgs.follows = "nixpkgs";
+    wwn-uutils-rs.inputs.wwn-toolchain.follows = "wwn-toolchain";
+    wwn-uutils-rs.inputs.rust-overlay.follows = "rust-overlay";
     # Mode A wasm and Mode B deb, plus the in-app registry for fastfetch,
     # phoon, weston, niri, foot, and kmscube. Not an input of wwn-toolchain.
     repo-wawona-io.url = "github:Wawona/repo.wawona.io/development";
@@ -107,17 +108,17 @@
     wwn-iomfb.inputs.nixpkgs.follows = "nixpkgs";
     # Linux-shaped VTs + Doorman login after Mode B own-display. L3'.
     # Cited: docs/wwn-repo-dag.md. github: until FlakeHub rolling exists.
-    wwn-igetty.url = "github:Wawona/wwn-igetty/development";
-    wwn-igetty.inputs.nixpkgs.follows = "nixpkgs";
-    wwn-igetty.inputs.rust-overlay.follows = "rust-overlay";
-    wwn-igetty.inputs.wwn-toolchain.follows = "wwn-toolchain";
-    wwn-igetty.inputs.iland.follows = "iland";
-    wwn-igetty.inputs.doorman.follows = "doorman";
+    iGetty.url = "github:Wawona/iGetty/development";
+    iGetty.inputs.nixpkgs.follows = "nixpkgs";
+    iGetty.inputs.rust-overlay.follows = "rust-overlay";
+    iGetty.inputs.wwn-toolchain.follows = "wwn-toolchain";
+    iGetty.inputs.iland.follows = "iland";
+    iGetty.inputs.doorman.follows = "Doorman";
     # Mode B console login (Linux getty/login parity). L3' peer, macOS-only.
     # Follow the root nixpkgs lineage; the dependency remains nixpkgs-only.
     # Cited: docs/wwn-repo-dag.md.
-    doorman.url = "github:Wawona/doorman";
-    doorman.inputs.nixpkgs.follows = "nixpkgs";
+    Doorman.url = "github:Wawona/Doorman";
+    Doorman.inputs.nixpkgs.follows = "nixpkgs";
     # Keyboard toolbar (Rust model + UIKit views). L3'. Not a flake.
     # Wawona compiles apple/Keyboard from this tree. Cited: docs/wwn-repo-dag.md.
     toolbar-keys.url = "github:Wawona/ToolbarKeys/development";
@@ -141,14 +142,14 @@
     wwn-ssh,
     wwn-waypipe,
     wwn-swinging-bridge,
-    wwn-coreutils,
+    wwn-uutils-rs,
     repo-wawona-io,
     wwn-relay,
     wwn-iowatchdog,
     wwn-vphone,
     wwn-iomfb,
-    wwn-igetty,
-    doorman,
+    iGetty,
+    Doorman,
     ...
   }: let
     linuxSystems = ["x86_64-linux" "aarch64-linux"];
@@ -406,9 +407,9 @@
     waypipePatchedSrcNix = "${wwn-waypipe}/dependencies/libs/waypipe/waypipe-patched-src.nix";
     waypipePatchAndroidSh = "${wwn-waypipe}/dependencies/libs/waypipe/patch-waypipe-android.sh";
     waypipePatchSourceSh = "${wwn-waypipe}/dependencies/libs/waypipe/patch-waypipe-source.sh";
-    coreutilsPatchedSrcNix = "${wwn-coreutils}/dependencies/libs/coreutils/coreutils-patched-src.nix";
-    coreutilsPatchSourceSh = "${wwn-coreutils}/dependencies/libs/coreutils/patch-coreutils-source.sh";
-    coreutilsMulticallNix = "${wwn-coreutils}/dependencies/libs/coreutils/multicall.nix";
+    coreutilsPatchedSrcNix = "${wwn-uutils-rs}/dependencies/libs/coreutils/coreutils-patched-src.nix";
+    coreutilsPatchSourceSh = "${wwn-uutils-rs}/dependencies/libs/coreutils/patch-coreutils-source.sh";
+    coreutilsMulticallNix = "${wwn-uutils-rs}/dependencies/libs/coreutils/multicall.nix";
     westonSimpleShmPatchedSrcNix = "${repo-wawona-io}/catalog/deb/gui/weston/in-app/dependencies/libs/weston-simple-shm/patched-src.nix";
     westonAndroidSignalPolyfill = "${repo-wawona-io}/catalog/deb/gui/weston/in-app/dependencies/toolchains/wwn-android-signal-polyfill.h";
     westonSimpleShmLinuxNix = "${repo-wawona-io}/catalog/deb/gui/weston/in-app/dependencies/libs/weston-simple-shm/linux.nix";
@@ -433,10 +434,10 @@
       rev = "v0.11.0";
       sha256 = "sha256-Tbd/yY90yb2+/ODYVL3SudHaJCGJKatZ9FuGM2uAX+8=";
     };
-    # uutils pin owned by wwn-coreutils (do not re-fetch here). See
-    # wwn-coreutils/dependencies/libs/coreutils/coreutils-src.nix and
+    # uutils pin owned by wwn-uutils-rs (do not re-fetch here). See
+    # wwn-uutils-rs/dependencies/libs/coreutils/coreutils-src.nix and
     # scripts/ensure-coreutils.sh (mkPatchedSrc).
-    coreutils-src = wwn-coreutils.lib.coreutilsSrc bootstrapPkgs;
+    coreutils-src = wwn-uutils-rs.lib.coreutilsSrc bootstrapPkgs;
 
     getPackagesForSystem = system: pkgs: let
       isLinuxHost = builtins.elem system linuxSystems;
@@ -603,7 +604,7 @@
       # in-process / macOS multicall. Requires rust-overlay on androidPkgs.
       coreutils-multicall-android =
         androidPkgs.callPackage
-        "${wwn-coreutils}/dependencies/libs/coreutils/multicall-android.nix" {
+        "${wwn-uutils-rs}/dependencies/libs/coreutils/multicall-android.nix" {
           coreutils-src = coreutils-patched-android;
           androidToolchain = toolchainsAndroid.androidToolchain;
         };
@@ -900,9 +901,9 @@
           kmscube = pkgs.callPackage kmscubeMacosNix {buildModule = toolchains;};
           "iland-gl-clients" = pkgs.callPackage kmscubeMacosNix {buildModule = toolchains;};
           "gbm-es2-demo" = toolchains.buildForMacOS "gbm-es2-demo" {};
-          # wwn-igetty: Linux-shaped VTs + Doorman (Classic own-display).
-          modeb-tty = wwn-igetty.packages.${system}.wwn-igetty;
-          wwn-igetty = wwn-igetty.packages.${system}.wwn-igetty;
+          # iGetty: Linux-shaped VTs + Doorman (Classic own-display).
+          modeb-tty = iGetty.packages.${system}.wwn-igetty;
+          wwn-igetty = iGetty.packages.${system}.wwn-igetty;
           # L3' reconstructed IOMFB. Mode B tipa only. Cited: docs/wwn-repo-dag.md.
           iomfb-ios = pkgs.callPackage "${wwn-iomfb}/ios.nix" {
             inherit (pkgs) iosToolchain;
@@ -1280,7 +1281,7 @@
               "vm-engine-contract-modeb" =
                 toolchains.buildForIOS "vm-engine-contract-modeb" {};
               "igetty-ios" =
-                wwn-igetty.packages.${system}.wwn-igetty-ios;
+                iGetty.packages.${system}.wwn-igetty-ios;
               "wawona-relay" = mkWawonaRelayApple {
                 simulator = false;
                 platform = "ios";
@@ -1685,7 +1686,7 @@
                 else null;
               macosModebTty =
                 if want "macos"
-                then wwn-igetty.packages.${system}.wwn-igetty
+                then iGetty.packages.${system}.wwn-igetty
                 else null;
               macosOpenglCube =
                 if want "macos"
@@ -1784,7 +1785,7 @@
               else null;
             zsh = pkgs.zsh;
             kmscube = pkgs.callPackage kmscubeMacosNix {buildModule = toolchains;};
-            modebTty = wwn-igetty.packages.${system}.wwn-igetty;
+            modebTty = iGetty.packages.${system}.wwn-igetty;
             # macOS-only xcodegen project (platformFilter = ["macos"]) so product
             # builds use the same Wawona-macOS scheme as local xcodebuild, without
             # pulling iOS/device backend graphs.

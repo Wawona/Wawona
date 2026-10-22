@@ -1,5 +1,25 @@
 {
   "nodes": {
+    "Doorman": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1787430291,
+        "narHash": "sha256-eBWtWGf2ADSkv5QolUINGjtsA/zIm0FTzCABcXvbcv8=",
+        "owner": "Wawona",
+        "repo": "Doorman",
+        "rev": "3d3ab7faf82f4aceca6aeea772533390d232847a",
+        "type": "github"
+      },
+      "original": {
+        "owner": "Wawona",
+        "repo": "Doorman",
+        "type": "github"
+      }
+    },
     "android-nixpkgs": {
       "inputs": {
         "devshell": "devshell",
@@ -160,26 +180,6 @@
       "original": {
         "owner": "numtide",
         "repo": "devshell",
-        "type": "github"
-      }
-    },
-    "doorman": {
-      "inputs": {
-        "nixpkgs": [
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1787430291,
-        "narHash": "sha256-eBWtWGf2ADSkv5QolUINGjtsA/zIm0FTzCABcXvbcv8=",
-        "owner": "Wawona",
-        "repo": "doorman",
-        "rev": "3d3ab7faf82f4aceca6aeea772533390d232847a",
-        "type": "github"
-      },
-      "original": {
-        "owner": "Wawona",
-        "repo": "doorman",
         "type": "github"
       }
     },
@@ -358,6 +358,39 @@
       "original": {
         "owner": "hercules-ci",
         "repo": "gitignore.nix",
+        "type": "github"
+      }
+    },
+    "iGetty": {
+      "inputs": {
+        "doorman": [
+          "Doorman"
+        ],
+        "iland": [
+          "iland"
+        ],
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "rust-overlay": [
+          "rust-overlay"
+        ],
+        "wwn-toolchain": [
+          "wwn-toolchain"
+        ]
+      },
+      "locked": {
+        "lastModified": 1792692397,
+        "narHash": "sha256-WqgNIJkSZL4NZe3+SgH6K+tuISjarfqhewklVsH4PrE=",
+        "owner": "Wawona",
+        "repo": "iGetty",
+        "rev": "c5e62fdfa151f532dda4a7bc61e5da07b19d3462",
+        "type": "github"
+      },
+      "original": {
+        "owner": "Wawona",
+        "ref": "development",
+        "repo": "iGetty",
         "type": "github"
       }
     },
@@ -545,9 +578,10 @@
     },
     "root": {
       "inputs": {
+        "Doorman": "Doorman",
         "android-nixpkgs": "android-nixpkgs",
         "crate2nix": "crate2nix",
-        "doorman": "doorman",
+        "iGetty": "iGetty",
         "iland": "iland",
         "microvm": "microvm",
         "nix-appimage": "nix-appimage",
@@ -557,14 +591,13 @@
         "rust-overlay": "rust-overlay_2",
         "terminal": "terminal",
         "toolbar-keys": "toolbar-keys",
-        "wwn-coreutils": "wwn-coreutils",
-        "wwn-igetty": "wwn-igetty",
         "wwn-iomfb": "wwn-iomfb",
         "wwn-iowatchdog": "wwn-iowatchdog",
         "wwn-relay": "wwn-relay",
         "wwn-ssh": "wwn-ssh",
         "wwn-swinging-bridge": "wwn-swinging-bridge",
         "wwn-toolchain": "wwn-toolchain",
+        "wwn-uutils-rs": "wwn-uutils-rs",
         "wwn-vphone": "wwn-vphone",
         "wwn-waypipe": "wwn-waypipe",
         "wwn-zsh": "wwn-zsh"
@@ -614,27 +647,6 @@
     "rust-overlay_3": {
       "inputs": {
         "nixpkgs": [
-          "wwn-coreutils",
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1782530211,
-        "narHash": "sha256-Zn5H2VVMaP79C+bvaUQD+SBXSKoTnURMZGiUrG00zII=",
-        "owner": "oxalica",
-        "repo": "rust-overlay",
-        "rev": "06ba695dfefc4afc513b49dfc41c4bf0dd2eaeb1",
-        "type": "github"
-      },
-      "original": {
-        "owner": "oxalica",
-        "repo": "rust-overlay",
-        "type": "github"
-      }
-    },
-    "rust-overlay_4": {
-      "inputs": {
-        "nixpkgs": [
           "wwn-waypipe",
           "nixpkgs"
         ]
@@ -653,7 +665,7 @@
         "type": "github"
       }
     },
-    "rust-overlay_5": {
+    "rust-overlay_4": {
       "inputs": {
         "nixpkgs": [
           "wwn-zsh",
@@ -766,64 +778,6 @@
         "owner": "Wawona",
         "ref": "development",
         "repo": "ToolbarKeys",
-        "type": "github"
-      }
-    },
-    "wwn-coreutils": {
-      "inputs": {
-        "nixpkgs": [
-          "nixpkgs"
-        ],
-        "rust-overlay": "rust-overlay_3",
-        "wwn-toolchain": [
-          "wwn-toolchain"
-        ]
-      },
-      "locked": {
-        "lastModified": 1791691354,
-        "narHash": "sha256-L2xo0VYSxK+B9w3XQYiGrUwo6xRUPmE6NnCAhikRzpI=",
-        "owner": "Wawona",
-        "repo": "wwn-coreutils",
-        "rev": "6368776f17aa4eb4afdf4ee0d6b42d56b10a9c4a",
-        "type": "github"
-      },
-      "original": {
-        "owner": "Wawona",
-        "ref": "development",
-        "repo": "wwn-coreutils",
-        "type": "github"
-      }
-    },
-    "wwn-igetty": {
-      "inputs": {
-        "doorman": [
-          "doorman"
-        ],
-        "iland": [
-          "iland"
-        ],
-        "nixpkgs": [
-          "nixpkgs"
-        ],
-        "rust-overlay": [
-          "rust-overlay"
-        ],
-        "wwn-toolchain": [
-          "wwn-toolchain"
-        ]
-      },
-      "locked": {
-        "lastModified": 1791869172,
-        "narHash": "sha256-TEHMeaBYXiTn06pH+vSFD7IPXbKDdPNGd/w8QOvtPPg=",
-        "owner": "Wawona",
-        "repo": "wwn-igetty",
-        "rev": "c7d740d3ac49f41e33d7487bac33845495863a53",
-        "type": "github"
-      },
-      "original": {
-        "owner": "Wawona",
-        "ref": "development",
-        "repo": "wwn-igetty",
         "type": "github"
       }
     },
@@ -981,6 +935,33 @@
         "type": "github"
       }
     },
+    "wwn-uutils-rs": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "rust-overlay": [
+          "rust-overlay"
+        ],
+        "wwn-toolchain": [
+          "wwn-toolchain"
+        ]
+      },
+      "locked": {
+        "lastModified": 1792692340,
+        "narHash": "sha256-TypmKXfSJsUZgteIdiPy37JZ0eK/bgyj8NvsKC9iXUs=",
+        "owner": "Wawona",
+        "repo": "wwn-uutils-rs",
+        "rev": "c4f8829a3ae2d33288f677eb1c7d295deb8b9a98",
+        "type": "github"
+      },
+      "original": {
+        "owner": "Wawona",
+        "ref": "development",
+        "repo": "wwn-uutils-rs",
+        "type": "github"
+      }
+    },
     "wwn-vphone": {
       "inputs": {
         "nixpkgs": [
@@ -1010,7 +991,7 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "rust-overlay": "rust-overlay_4",
+        "rust-overlay": "rust-overlay_3",
         "wwn-ssh": [
           "wwn-ssh"
         ],
@@ -1038,7 +1019,7 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "rust-overlay": "rust-overlay_5",
+        "rust-overlay": "rust-overlay_4",
         "wwn-toolchain": [
           "wwn-toolchain"
         ]

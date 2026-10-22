@@ -144,7 +144,7 @@ not MCP. Skill `wawona-gh`. Rule `wawona-gh`.
 - **Patched software lives in `wwn-*` repos or the catalog** (Wawona org): the
   cross-compile framework + common libraries + `wawona-pty` are in
   `wwn-toolchain`; zsh is `wwn-zsh`; graphics is `iLand`; waypipe is
-  `wwn-waypipe`; uutils is `wwn-coreutils`. Weston, niri, foot, kmscube,
+  `wwn-waypipe`; uutils is `wwn-uutils-rs`. Weston, niri, foot, kmscube,
   fastfetch, phoon, neovim, store P1 wasm, and WASIX live in
   `repo.wawona.io` `catalog/{wasm,deb}/{cli,gui,lib}`. Wawona is an
   **integration layer**: one `repo-wawona-io` input, `registryFragment`
@@ -176,7 +176,7 @@ not MCP. Skill `wawona-gh`. Rule `wawona-gh`.
   Classic by WindowServer gone, never by leaked `WWN_MODEB_TTY`. Never
   `sudo niri`. See `wawona-compositor-backend` and
   `docs/agent-rules/wawona-compositor-backend.md`.
-- **wwn-igetty is not a machine.** Doorman PAM console + Linux framebuffer
+- **iGetty is not a machine.** Doorman PAM console + Linux framebuffer
   TTY. Machine Configuration must never list `modeb-tty` / igetty. Desktop
   Machine is weston, niri, or a KMS client on an assigned VT.
 - **Graphics stays runtime-only:** iland virtualizes DRM/KMS/GBM in userland.
@@ -189,7 +189,7 @@ not MCP. Skill `wawona-gh`. Rule `wawona-gh`.
   Wayland/Android maintainability checks under `.github/scripts/`.
 - **zsh on iOS**: static `libwawona-zsh.a` (`wawona_zsh_main`) run **in-process
   on a pthread**, NO fork/exec/posix_spawn/dlopen; external commands dispatched
-  in-process to uutils coreutils (safe subset owned by **wwn-coreutils**
+  in-process to uutils coreutils (safe subset owned by **wwn-uutils-rs**
   `safe-subset.txt`). NOT ios_system; multicall coreutils is macOS/Android-only.
   Apple-mobile SSH = **wwn-ssh** libssh2 (never OpenSSH / NIOSSH as product).
   Store-safe `system()` = `wawona_dispatch_inprocess`. Swift is UI only for
