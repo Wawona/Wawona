@@ -1017,6 +1017,7 @@
             inherit wawonaVersion;
             waypipeSrc = waypipe-src;
             coreutilsSrc = coreutils-src;
+            terminalSrc = inputs.terminal;
           };
           wawona-linux-ui-bin = pkgs.callPackage ./dependencies/wawona/linux-ui-prebuilt.nix {
             inherit wawonaVersion;

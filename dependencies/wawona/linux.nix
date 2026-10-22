@@ -4,6 +4,7 @@
   wawonaSrc ? ../..,
   waypipeSrc ? null,
   coreutilsSrc ? null,
+  terminalSrc ? null,
   westonSimpleShmLinuxNix,
   # phoon (wwn-phoon-rs): clean-room Rust moon-phase utility. Bundled on Linux
   # via the toolchain build; falls back to absent if not provided.
@@ -58,8 +59,19 @@ pkgs.writeShellApplication {
     workdir="$(mktemp -d)"
     trap 'chmod -R u+w "$workdir" 2>/dev/null || true; rm -rf "$workdir"' EXIT
 
-    cp -rL "${wawonaSrc}"/. "$workdir"/
+    cp -rP "${wawonaSrc}"/. "$workdir"/
     chmod -R u+w "$workdir"
+
+    # Terminal screen and kitty are symlinks into the sibling Terminal repo.
+    # Replace broken symlinks with terminalSrc if provided.
+    if [ -n "${toString terminalSrc}" ] && [ -d "${terminalSrc}" ]; then
+      rm -f "$workdir/src/term/screen.rs" "$workdir/src/term/kitty.rs"
+      cp "${terminalSrc}/src/screen.rs" "$workdir/src/term/screen.rs"
+      if [ -f "${terminalSrc}/src/kitty.rs" ]; then
+        cp "${terminalSrc}/src/kitty.rs" "$workdir/src/term/kitty.rs"
+      fi
+      chmod u+w "$workdir/src/term/screen.rs" "$workdir/src/term/kitty.rs" 2>/dev/null || true
+    fi
 
     if [ ! -f "$workdir/waypipe/Cargo.toml" ]; then
       mkdir -p "$workdir/waypipe"
