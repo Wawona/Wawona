@@ -888,11 +888,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1792688985,
-        "narHash": "sha256-fWXe5kV/za+VQGtqSFiKt47cuHL65T/blgQmkDcu4ws=",
+        "lastModified": 1792691407,
+        "narHash": "sha256-SgLtorW1v2SWHgWvUJbzHVnEC3daSWHMN5TP5TTgbTY=",
         "owner": "Wawona",
         "repo": "Relay",
-        "rev": "dee315bf9d974dae0a40cc7fe64f275067aa0892",
+        "rev": "a121305b3f355e1ffb2c4aae000a3cab6d6bb721",
         "type": "github"
       },
       "original": {
