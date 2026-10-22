@@ -95,8 +95,8 @@
     wwn-relay.inputs.crate2nix.follows = "crate2nix";
     # macOS Watchdog tools (IOWatchdog / watchdogd). L3'. Desktop Mode B only.
     # Cited: docs/wwn-repo-dag.md. github: until FlakeHub rolling exists.
-    wwn-iowatchdog.url = "github:Wawona/wwn-iowatchdog/development";
-    wwn-iowatchdog.inputs.nixpkgs.follows = "nixpkgs";
+    iowatchdog-tools.url = "github:Wawona/iowatchdog-tools/development";
+    iowatchdog-tools.inputs.nixpkgs.follows = "nixpkgs";
     # Jailbroken iOS research lab (vphone-cli). L3' nixpkgs-only. Never ships
     # a prebuilt iOS VM / IPSW. Cited: docs/wwn-repo-dag.md.
     wwn-vphone.url = "github:Wawona/wwn-vphone/development";
@@ -104,8 +104,8 @@
     # Reconstructed iOS IOMFB. L3' nixpkgs-only. Mode B tipa only.
     # Cited: docs/wwn-repo-dag.md. L1 must not import this.
     # Public MIT tree: github: for CI and local (no SSH deploy key).
-    wwn-iomfb.url = "github:Wawona/wwn-iomfb-rs/development";
-    wwn-iomfb.inputs.nixpkgs.follows = "nixpkgs";
+    iomfb-rs.url = "github:Wawona/iomfb-rs/development";
+    iomfb-rs.inputs.nixpkgs.follows = "nixpkgs";
     # Linux-shaped VTs + Doorman login after Mode B own-display. L3'.
     # Cited: docs/wwn-repo-dag.md. github: until FlakeHub rolling exists.
     iGetty.url = "github:Wawona/iGetty/development";
@@ -145,9 +145,9 @@
     wwn-uutils-rs,
     repo-wawona-io,
     wwn-relay,
-    wwn-iowatchdog,
+    iowatchdog-tools,
     wwn-vphone,
-    wwn-iomfb,
+    iomfb-rs,
     iGetty,
     Doorman,
     ...
@@ -905,7 +905,7 @@
           modeb-tty = iGetty.packages.${system}.wwn-igetty;
           wwn-igetty = iGetty.packages.${system}.wwn-igetty;
           # L3' reconstructed IOMFB. Mode B tipa only. Cited: docs/wwn-repo-dag.md.
-          iomfb-ios = pkgs.callPackage "${wwn-iomfb}/ios.nix" {
+          iomfb-ios = pkgs.callPackage "${iomfb-rs}/ios.nix" {
             inherit (pkgs) iosToolchain;
             simulator = false;
           };
@@ -1273,7 +1273,7 @@
               # Device-only and linked exclusively by Wawona-iOS-ModeB.
               # L3' reconstructed IOMFB. Not L1 iland-iomfb.
               # Cited: docs/wwn-repo-dag.md.
-              "iomfb-ios" = pkgs.callPackage "${wwn-iomfb}/ios.nix" {
+              "iomfb-ios" = pkgs.callPackage "${iomfb-rs}/ios.nix" {
                 inherit (pkgs) iosToolchain;
                 simulator = false;
               };
@@ -1793,8 +1793,8 @@
             xcodeProject = xcodegenMacosOutputs.project;
             # Mode B dylib enabled for all macOS builds (Wawona macOS is non-App Store).
             ilandBaremetal = toolchains.buildForMacOS "iland-baremetal" {};
-            # L3' Watchdog tools (github.com/Wawona/wwn-iowatchdog).
-            iowatchdog = wwn-iowatchdog.packages.${system}.wwn-iowatchdog;
+            # L3' Watchdog tools (github.com/Wawona/iowatchdog-tools).
+            iowatchdog = iowatchdog-tools.packages.${system}.wwn-iowatchdog;
           };
           # L3' jailbroken iOS lab (github.com/Wawona/wwn-vphone). No prebuilt VM.
           vphone-cli = wwn-vphone.packages.${system}.vphone-cli;

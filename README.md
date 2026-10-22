@@ -122,11 +122,18 @@ After applying your flake, Wawona is available as `pkgs.wawona`, and the activat
 
 See [Usage Guide](docs/usage.md) and [Settings Reference](docs/settings.md).
 
-### Linux VM automation
+### Wawona on Linux (GTK4 + Libadwaita)
 
-- **Linux KDE Plasma VM automation:** `nix run .#wawona-linux-vm`
-  - Launches a NixOS VM (Plasma 6 Wayland) in QEMU for Linux UI testing.
-  - Uses `kvm` on Linux when available; on macOS uses `hvf` and falls back to `tcg` if unavailable.
+- **Native Linux UI:** `nix run .#wawona-linux`
+  - Runs Wawona natively on Linux with a GTK4 / Libadwaita host shell (`src/bin/wawona-linux-ui.rs`).
+  - Fluid session navigation with Tab Overview (`AdwTabOverview`), integrated Settings dialog (`AdwPreferencesWindow`), and machine management.
+  - Wayland protocol conformance verified against WLCS (`wawona-wlcs`).
+
+### VMs, Containers, and Wasm (Wawona Relay)
+
+- **Engine:** [Wawona Relay](https://github.com/Wawona/Relay) (`wwn-relay`)
+  - Linux virtual machines via host `cloud-hypervisor` (`/dev/kvm`), containers via OCI runtime, and Wasm packages for Store/WASI-P1/WASIX apps.
+  - Zero QEMU dependency. Unified runtime across Linux, macOS, iOS, Android.
 
 ### "I don't have nix"
 
