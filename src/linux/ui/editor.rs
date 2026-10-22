@@ -19,7 +19,7 @@ use crate::domain::machine_profile::{
     VirtualMachineSettings,
 };
 use crate::linux::ui::home::{rebuild_home, HomeShell, MachineSessions, RebuildHome};
-use crate::linux::ui::modal_sheet::present_sheet;
+use crate::linux::ui::modal_sheet;
 use crate::linux::ui::SharedAppState;
 use crate::linux::ui_model::LayoutMode;
 use crate::wlog;
@@ -1020,20 +1020,43 @@ pub fn show_editor(
     shell: &HomeShell,
     sessions: MachineSessions,
     layout: LayoutMode,
+    on_rebuild: Option<Rc<dyn Fn()>>,
 ) {
-    let dialog_holder: Rc<RefCell<Option<adw::Window>>> = Rc::new(RefCell::new(None));
-    let dh = dialog_holder.clone();
+    let is_new = existing.is_none();
+    let title = if is_new {
+        "Add Machine Profile"
+    } else {
+        "Edit Machine Profile"
+    };
+
+    let touch_mode = modal_sheet::is_touchscreen_mode(state);
+    let phone_width = layout.is_compact() || parent.width() <= 600;
+    let is_mobile_touch = touch_mode && phone_width;
+
     let shell_c = shell.clone();
     let state_c = state.clone();
     let parent_c = parent.clone();
     let sessions_c = sessions.clone();
-    let content = build_editor_view(
-        state,
-        existing,
-        default_type,
-        sessions,
-        Rc::new(move |saved| {
-            if saved {
+    let on_rebuild_c = on_rebuild.clone();
+
+    let dialog_holder: Rc<RefCell<Option<adw::Window>>> = Rc::new(RefCell::new(None));
+    let close_bottom_sheet_holder: Rc<RefCell<Option<Rc<dyn Fn(bool)>>>> =
+        Rc::new(RefCell::new(None));
+
+    let dh = dialog_holder.clone();
+    let cbsh = close_bottom_sheet_holder.clone();
+
+    let on_close: Rc<dyn Fn(bool)> = Rc::new(move |saved| {
+        if let Some(close_bottom) = cbsh.borrow_mut().take() {
+            close_bottom(saved);
+        }
+        if let Some(d) = dh.borrow_mut().take() {
+            d.close();
+        }
+        if saved {
+            if let Some(rebuild) = on_rebuild_c.as_ref() {
+                rebuild();
+            } else {
                 rebuild_home(RebuildHome {
                     shell: &shell_c,
                     state: &state_c,
@@ -1044,13 +1067,25 @@ pub fn show_editor(
                     on_open_terminal: None,
                 });
             }
-            if let Some(d) = dh.borrow().as_ref() {
-                d.close();
-            }
-        }),
+        }
+    });
+
+    let content = build_editor_view(
+        state,
+        existing,
+        default_type,
+        sessions,
+        on_close.clone(),
     );
-    let title = "Machine Profile";
-    let dialog = present_sheet(parent, title, &content, layout);
+
+    if is_mobile_touch {
+        if let Some(close_fn) = modal_sheet::present_bottom_sheet(parent, &content, on_close.clone()) {
+            *close_bottom_sheet_holder.borrow_mut() = Some(close_fn);
+            return;
+        }
+    }
+
+    let dialog = modal_sheet::present_macos_sheet(parent, title, &content, on_close);
     *dialog_holder.borrow_mut() = Some(dialog);
 }
 

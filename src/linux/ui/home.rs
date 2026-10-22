@@ -511,8 +511,11 @@ fn build_machine_card(
     summary.set_xalign(0.0);
 
     // Action buttons
+    // Action buttons: equidistant row following SwiftUI interfacing
     let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     actions.set_hexpand(true);
+    actions.set_homogeneous(true);
+    actions.add_css_class("machine-actions-row");
 
     let start_btn = button_with_icon_label("media-playback-start-symbolic", "Start");
     start_btn.add_css_class("suggested-action");
@@ -534,6 +537,7 @@ fn build_machine_card(
 
     let stop_btn = button_with_icon_label("media-playback-stop-symbolic", "Stop");
     stop_btn.add_css_class("destructive-action");
+    stop_btn.set_hexpand(true);
     crate::linux::ui::a11y::set_wwn_a11y(
         &stop_btn,
         crate::linux::ui::a11y::id::MACHINES_STOP,
@@ -541,6 +545,7 @@ fn build_machine_card(
     );
 
     let edit_btn = button_with_icon_label("emblem-system-symbolic", "Edit");
+    edit_btn.set_hexpand(true);
     crate::linux::ui::a11y::set_wwn_a11y(
         &edit_btn,
         crate::linux::ui::a11y::id::MACHINES_EDIT,
@@ -548,6 +553,7 @@ fn build_machine_card(
     );
 
     let delete_btn = button_with_icon_label("user-trash-symbolic", "Delete");
+    delete_btn.set_hexpand(true);
     crate::linux::ui::a11y::set_wwn_a11y(
         &delete_btn,
         crate::linux::ui::a11y::id::MACHINES_DELETE,
@@ -589,12 +595,13 @@ fn button_with_icon_label(icon: &str, label: &str) -> gtk::Button {
     let content = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     content.set_halign(gtk::Align::Center);
     content.set_valign(gtk::Align::Center);
+    content.set_hexpand(true);
     let image = gtk::Image::from_icon_name(icon);
     image.set_pixel_size(16);
     let text = gtk::Label::new(Some(label));
     text.set_single_line_mode(true);
     text.set_wrap(false);
-    text.set_ellipsize(gtk::pango::EllipsizeMode::None);
+    text.set_ellipsize(gtk::pango::EllipsizeMode::End);
     content.append(&image);
     content.append(&text);
     let btn = gtk::Button::new();
@@ -771,10 +778,20 @@ fn install_machine_card_styles() {
             .palette-dot-10 { background-color: #A3855E; }
             .palette-dot-11 { background-color: #8E8E93; }
 
+            .machine-actions-row {
+              margin-top: 4px;
+            }
+
             .machine-action-button {
               border-radius: 8px;
-              padding: 6px 12px;
+              padding: 6px 10px;
               font-weight: 600;
+              min-height: 36px;
+              transition: all 140ms ease;
+            }
+
+            .machine-action-button:hover {
+              transform: translateY(-1px);
             }
             "#,
         );
@@ -1008,6 +1025,7 @@ fn attach_card_actions(
                 &shell_e,
                 sessions_e.clone(),
                 layout,
+                None,
             );
         }
     });
@@ -1170,6 +1188,7 @@ fn attach_card_actions(
                 &shell_edit,
                 sessions_edit.clone(),
                 layout,
+                None,
             );
         }
     });

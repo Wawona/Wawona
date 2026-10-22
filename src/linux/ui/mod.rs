@@ -2,9 +2,9 @@
 
 pub mod a11y;
 mod adaptive;
-mod editor;
+pub mod editor;
 mod home;
-mod modal_sheet;
+pub mod modal_sheet;
 mod settings;
 mod tab_overview;
 mod terminal;

@@ -64,6 +64,9 @@ pkgs.writeShellApplication {
     if [ "''${WAWONA_NO_LLDB:-0}" = "1" ]; then DEBUG_MODE=false; fi
 
     BIN="${if wawonaLinuxUiBin != null then "${wawonaLinuxUiBin}/bin/wawona-linux-ui" else ""}"
+    if [ -n "''${WAWONA_UI_BIN:-}" ] && [ -x "$WAWONA_UI_BIN" ]; then
+      BIN="$WAWONA_UI_BIN"
+    fi
     if [ -n "$BIN" ] && [ -x "$BIN" ]; then
       if [ "$DEBUG_MODE" = "true" ]; then
         echo "[LLDB] Launching under LLDB (--debug)." >&2

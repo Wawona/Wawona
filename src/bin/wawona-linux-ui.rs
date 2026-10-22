@@ -25,9 +25,9 @@ mod app {
         write_runtime_state, RuntimeState,
     };
     use wawona::linux::ui::{
-        a11y, build_editor_view, build_home_shell, build_settings_view, build_tab_overview_view,
+        a11y, build_home_shell, build_settings_view, build_tab_overview_view,
         build_work_status_view, clamp_content, ensure_settings_css, install_adaptive_split_view,
-        maybe_show_welcome, rebuild_home,
+        maybe_show_welcome, rebuild_home, show_editor,
         AppState, LayoutBinding, MachineSessions, RebuildHome, SharedAppState,
     };
     use wawona::linux::ui_model::LayoutMode;
@@ -694,7 +694,12 @@ mod app {
         settings_container.set_vexpand(true);
         root_stack.add_named(&settings_container, Some("settings"));
 
-        window.set_content(Some(&root_stack));
+        let root_overlay = gtk::Overlay::new();
+        root_overlay.set_child(Some(&root_stack));
+        root_overlay.set_hexpand(true);
+        root_overlay.set_vexpand(true);
+
+        window.set_content(Some(&root_overlay));
 
         let open_settings = {
             let root_stack = root_stack.clone();
@@ -799,36 +804,23 @@ mod app {
         }
 
         let open_editor = Rc::new({
-            let editor_slot = editor_slot.clone();
-            let content_stack = content_stack.clone();
-            let sidebar_list = sidebar_list.clone();
+            let window = window.clone();
             let state = state.clone();
+            let home = home.clone();
             let sessions = machine_sessions.clone();
+            let layout_binding = layout_binding.clone();
             let on_rebuild = on_rebuild.clone();
             move |existing: Option<wawona::linux::machine_profile::MachineProfile>| {
-                while let Some(c) = editor_slot.first_child() {
-                    editor_slot.remove(&c);
-                }
-                let stack_c = content_stack.clone();
-                let side_c = sidebar_list.clone();
-                let on_rebuild_c = on_rebuild.clone();
-                let editor_view = build_editor_view(
+                show_editor(
+                    &window,
                     &state,
                     existing,
                     MachineType::Native,
+                    &home,
                     sessions.clone(),
-                    Rc::new(move |saved| {
-                        if saved {
-                            on_rebuild_c();
-                        }
-                        stack_c.set_visible_child_name("machines");
-                        if let Some(r0) = side_c.row_at_index(0) {
-                            side_c.select_row(Some(&r0));
-                        }
-                    }),
+                    layout_binding.get(),
+                    Some(on_rebuild.clone()),
                 );
-                editor_slot.append(&editor_view);
-                content_stack.set_visible_child_name("editor");
             }
         });
 
