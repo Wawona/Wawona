@@ -196,6 +196,12 @@ impl TagStore {
         tag
     }
 
+    pub fn update_tag(&mut self, tag: MachineTag) {
+        if let Some(pos) = self.tags.iter().position(|t| t.id == tag.id) {
+            self.tags[pos] = tag;
+        }
+    }
+
     pub fn delete_tag(&mut self, tag_id: &str) {
         self.tags.retain(|t| t.id != tag_id);
         for ids in self.tag_ids_by_machine.values_mut() {

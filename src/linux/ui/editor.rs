@@ -88,7 +88,10 @@ pub fn build_editor_view(
     profile_group.add(&type_row);
 
     let favorite_row = adw::SwitchRow::new();
-    favorite_row.set_title("Favorite Machine");
+    favorite_row.set_title("Pin Machine");
+    favorite_row.set_subtitle("Keep this machine pinned to the top of the grid");
+    let pin_icon = gtk::Image::from_icon_name("view-pin-symbolic");
+    favorite_row.add_prefix(&pin_icon);
     favorite_row.set_active(profile.favorite);
     profile_group.add(&favorite_row);
 

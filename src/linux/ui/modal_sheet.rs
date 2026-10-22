@@ -326,20 +326,27 @@ pub fn present_sheet(
         .title(title)
         .build();
 
-    match layout {
-        LayoutMode::Compact => {
-            dialog.set_default_width(360);
-            dialog.set_default_height(520);
-            dialog.set_resizable(true);
-        }
-        LayoutMode::Expanded => {
-            dialog.set_default_width(760);
-            dialog.set_default_height(680);
-            dialog.set_resizable(true);
+    let host = parent.as_ref().upcast_ref::<gtk::Widget>();
+    let host_w = host.width();
+    let host_h = host.height();
+    if host_w >= 240 {
+        dialog.set_default_width(host_w.min(1100));
+        dialog.set_default_height(host_h.clamp(360, 900));
+    } else {
+        match layout {
+            LayoutMode::Compact => {
+                dialog.set_default_width(360);
+                dialog.set_default_height(520);
+            }
+            LayoutMode::Expanded => {
+                dialog.set_default_width(760);
+                dialog.set_default_height(680);
+            }
         }
     }
+    dialog.set_resizable(true);
+    dialog.set_width_request(240);
 
     dialog.set_content(Some(content));
-    dialog.present();
     dialog
 }

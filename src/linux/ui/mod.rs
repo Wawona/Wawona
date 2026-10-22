@@ -11,11 +11,15 @@ mod tab_overview;
 mod terminal;
 pub mod work_status;
 
-pub use adaptive::{clamp_content, install_adaptive_split_view, install_breakpoint, LayoutBinding};
+pub use adaptive::{
+    clamp_content, ensure_adaptive_css, install_adaptive_split_view, install_breakpoint,
+    is_touchscreen_active, make_resizable_sidebar, LayoutBinding,
+};
 pub use editor::{build_editor_view, show_editor};
 pub use env_vars::build_env_vars_view;
 pub use home::{
-    build_home_shell, maybe_show_welcome, rebuild_home, HomeShell, MachineSessions, RebuildHome,
+    build_home_shell, color_dot, maybe_show_welcome, rebuild_home, show_edit_tag_dialog,
+    show_new_tag_dialog, HomeShell, MachineSessions, RebuildHome,
 };
 pub use modal_sheet::present_sheet;
 pub use settings::{build_settings_view, ensure_settings_css, show_settings};

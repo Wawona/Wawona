@@ -1,6 +1,6 @@
 //! Settings dialog with full parity to Apple and Android Global Settings.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use gtk4 as gtk;
@@ -101,8 +101,8 @@ pub fn build_settings_view_internal(
     ensure_settings_css();
 
     let split_view = adw::OverlaySplitView::new();
-    split_view.set_min_sidebar_width(200.0);
-    split_view.set_max_sidebar_width(280.0);
+    split_view.set_min_sidebar_width(180.0);
+    split_view.set_max_sidebar_width(420.0);
     split_view.set_sidebar_width_fraction(0.28);
     split_view.set_enable_show_gesture(true);
     split_view.set_enable_hide_gesture(true);
@@ -114,8 +114,36 @@ pub fn build_settings_view_internal(
     header.set_show_end_title_buttons(false);
     header.set_show_start_title_buttons(false);
 
-    let toggle_sidebar_btn = gtk::Button::from_icon_name("sidebar-show-symbolic");
+    let toggle_icon_name = if let Some(d) = gtk4::gdk::Display::default() {
+        let theme = gtk::IconTheme::for_display(&d);
+        if let Ok(entries) = std::fs::read_dir("/nix/store") {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    if name.contains("adwaita-icon-theme") && !name.ends_with(".drv") && !name.ends_with(".xz") {
+                        let icons_dir = path.join("share").join("icons");
+                        if icons_dir.is_dir() {
+                            theme.add_search_path(&icons_dir);
+                        }
+                    }
+                }
+            }
+        }
+        ["sidebar-show-symbolic", "view-sidebar-symbolic", "pan-start-symbolic"]
+            .into_iter()
+            .find(|&ic| theme.has_icon(ic))
+            .unwrap_or("sidebar-show-symbolic")
+    } else {
+        "sidebar-show-symbolic"
+    };
+
+    let toggle_sidebar_btn = gtk::Button::from_icon_name(toggle_icon_name);
     toggle_sidebar_btn.set_tooltip_text(Some("Toggle Sidebar"));
+    crate::linux::ui::a11y::set_wwn_a11y(
+        &toggle_sidebar_btn,
+        "wwn.settings.toggleSidebar",
+        Some("Toggle Sidebar"),
+    );
     let split_view_toggle = split_view.clone();
     toggle_sidebar_btn.connect_clicked(move |_| {
         let shows = split_view_toggle.shows_sidebar();
@@ -140,7 +168,6 @@ pub fn build_settings_view_internal(
     let sidebar = gtk::ListBox::new();
     sidebar.set_selection_mode(gtk::SelectionMode::Single);
     sidebar.add_css_class("navigation-sidebar");
-    sidebar.set_size_request(180, -1);
     crate::linux::ui::a11y::set_wwn_a11y(
         &sidebar,
         crate::linux::ui::a11y::id::SETTINGS_ROOT,
@@ -149,6 +176,7 @@ pub fn build_settings_view_internal(
 
     for meta in SETTINGS_SECTIONS {
         let row = gtk::ListBoxRow::new();
+        row.set_focusable(false);
         let row_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
         row_box.set_margin_start(10);
         row_box.set_margin_end(10);
@@ -668,8 +696,26 @@ pub fn build_settings_view_internal(
     sidebar_scroll.set_hscrollbar_policy(gtk::PolicyType::Never);
     sidebar_scroll.set_child(Some(&sidebar));
 
-    split_view.set_sidebar(Some(&sidebar_scroll));
+    let resizable_settings_sidebar = crate::linux::ui::make_resizable_sidebar(&split_view, &sidebar_scroll, 0.28);
+    split_view.set_sidebar(Some(&resizable_settings_sidebar));
     split_view.set_content(Some(&stack));
+
+    // Same collapse rule as the Machines `AdwOverlaySplitView`. The settings
+    // page lives in the app stack, so a breakpoint hung only on a dialog never
+    // sees the app width. Track this split's own width instead.
+    let collapsed_applied = Rc::new(Cell::new(None::<bool>));
+    split_view.add_tick_callback(move |split, _| {
+        let width = split.width();
+        if width <= 0 {
+            return glib::ControlFlow::Continue;
+        }
+        let should = crate::linux::ui_model::split_should_collapse(width);
+        if collapsed_applied.get() != Some(should) {
+            collapsed_applied.set(Some(should));
+            split.set_collapsed(should);
+        }
+        glib::ControlFlow::Continue
+    });
 
     {
         let stack = stack.clone();
@@ -788,16 +834,19 @@ pub fn show_settings(parent: &adw::ApplicationWindow, state: &SharedAppState, la
     );
     let dialog = present_sheet(parent, "Settings", &body, layout);
 
-    if let Ok(cond) = adw::BreakpointCondition::parse("max-width: 760px") {
+    if let Ok(cond) = adw::BreakpointCondition::parse(&format!(
+        "max-width: {}px",
+        crate::linux::ui_model::SPLIT_COLLAPSE_BELOW_PX
+    )) {
         let bp = adw::Breakpoint::new(cond);
         bp.add_setter(&split_view, "collapsed", Some(&true.to_value()));
-        bp.add_setter(&split_view, "show-sidebar", Some(&false.to_value()));
         dialog.add_breakpoint(bp);
     }
-    if layout.is_compact() {
+    if layout.is_compact() || crate::linux::ui_model::split_should_collapse(parent.width()) {
         split_view.set_collapsed(true);
         split_view.set_show_sidebar(true);
     }
+    dialog.present();
 
     *dialog_holder.borrow_mut() = Some(dialog);
 }
@@ -994,7 +1043,37 @@ pub fn ensure_settings_css() {
              .wwn-icon-green { color: #2ec27e; }\n\
              .wwn-icon-indigo { color: #44458d; }\n\
              .wwn-icon-brown { color: #986a44; }\n\
-             .wwn-icon-slate { color: #5e5c64; }\n",
+             .wwn-icon-slate { color: #5e5c64; }\n\
+             .wwn-env-chip {\n\
+                 min-height: 28px;\n\
+                 min-width: 0;\n\
+                 padding: 2px 10px;\n\
+             }\n\
+             .wwn-icon-blue-chip { background-color: color-mix(in srgb, #3584e4 16%, transparent); }\n\
+             .wwn-icon-purple-chip { background-color: color-mix(in srgb, #9141ac 16%, transparent); }\n\
+             .wwn-icon-red-chip { background-color: color-mix(in srgb, #e01b24 16%, transparent); }\n\
+             .wwn-icon-orange-chip { background-color: color-mix(in srgb, #ff7800 16%, transparent); }\n\
+             .wwn-icon-teal-chip { background-color: color-mix(in srgb, #21a499 16%, transparent); }\n\
+             .wwn-icon-green-chip { background-color: color-mix(in srgb, #2ec27e 16%, transparent); }\n\
+             .wwn-icon-indigo-chip { background-color: color-mix(in srgb, #44458d 18%, transparent); }\n\
+             .wwn-icon-slate-chip { background-color: color-mix(in srgb, #5e5c64 16%, transparent); }\n\
+             .wwn-env-chip.wwn-env-chip-selected {\n\
+                 font-weight: 700;\n\
+                 box-shadow: inset 0 0 0 1.5px currentColor;\n\
+             }\n\
+             .wwn-icon-blue-chip.wwn-env-chip-selected { background-color: color-mix(in srgb, #3584e4 32%, transparent); }\n\
+             .wwn-icon-purple-chip.wwn-env-chip-selected { background-color: color-mix(in srgb, #9141ac 32%, transparent); }\n\
+             .wwn-icon-red-chip.wwn-env-chip-selected { background-color: color-mix(in srgb, #e01b24 32%, transparent); }\n\
+             .wwn-icon-orange-chip.wwn-env-chip-selected { background-color: color-mix(in srgb, #ff7800 32%, transparent); }\n\
+             .wwn-icon-teal-chip.wwn-env-chip-selected { background-color: color-mix(in srgb, #21a499 32%, transparent); }\n\
+             .wwn-icon-green-chip.wwn-env-chip-selected { background-color: color-mix(in srgb, #2ec27e 32%, transparent); }\n\
+             .wwn-icon-indigo-chip.wwn-env-chip-selected { background-color: color-mix(in srgb, #44458d 34%, transparent); }\n\
+             .wwn-icon-slate-chip.wwn-env-chip-selected { background-color: color-mix(in srgb, #5e5c64 30%, transparent); }\n\
+             .settings-overlay-sheet {\n\
+                 background-color: var(--window-bg-color);\n\
+                 box-shadow: 0 -12px 36px rgba(0, 0, 0, 0.45);\n\
+                 border-top: 1px solid var(--borders, rgba(255, 255, 255, 0.15));\n\
+             }\n",
         );
         if let Some(display) = gtk::gdk::Display::default() {
             gtk::style_context_add_provider_for_display(
@@ -1210,6 +1289,7 @@ fn add_dependency_row(
 fn add_switch_row(group: &adw::PreferencesGroup, title: &str, active: bool) -> adw::SwitchRow {
     let row = adw::SwitchRow::new();
     row.set_title(title);
+    row.set_title_lines(2);
     row.set_active(active);
     group.add(&row);
     row

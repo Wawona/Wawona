@@ -35,6 +35,46 @@ impl LayoutMode {
     }
 }
 
+/// Width below which an `AdwOverlaySplitView` collapses, matching the main
+/// Machines sidebar breakpoint.
+pub const SPLIT_COLLAPSE_BELOW_PX: i32 = 760;
+
+/// True when a split view should overlay its sidebar instead of taking a column.
+/// Inclusive, matching `AdwBreakpoint` `max-width: 760px`.
+pub fn split_should_collapse(width: i32) -> bool {
+    width > 0 && width <= SPLIT_COLLAPSE_BELOW_PX
+}
+
+/// Sidebar width from a pointer X measured in the split view.
+///
+/// `grab` is `pointer_x - edge` captured at drag start. The edge is the
+/// sidebar's trailing edge when the sidebar is packed at the start, and its
+/// leading edge when packed at the end. Using the split view's coordinates
+/// keeps the width stable while the handle itself moves.
+pub fn sidebar_width_from_pointer(
+    pointer_x: f64,
+    grab: f64,
+    total: f64,
+    sidebar_at_end: bool,
+    min_w: f64,
+    max_w: f64,
+) -> f64 {
+    if !total.is_finite() || total <= 1.0 {
+        return if min_w.is_finite() { min_w.max(0.0) } else { 0.0 };
+    }
+    let edge = pointer_x - grab;
+    let raw = if sidebar_at_end { total - edge } else { edge };
+    let min_w = if min_w.is_finite() { min_w.max(0.0) } else { 0.0 };
+    let max_w = if max_w.is_finite() {
+        max_w.max(min_w)
+    } else {
+        min_w
+    };
+    let room = (total - 48.0).max(min_w);
+    let hi = max_w.min(room).max(min_w);
+    raw.clamp(min_w, hi)
+}
+
 /// Scope chip label (mirrors `machineScopeLabel(for:)` on macOS).
 pub fn machine_scope_label(
     machine_type: crate::linux::machine_profile::MachineType,
@@ -325,6 +365,25 @@ mod tests {
         assert_eq!(LayoutMode::for_width(599), LayoutMode::Compact);
         assert_eq!(LayoutMode::for_width(600), LayoutMode::Expanded);
         assert_eq!(LayoutMode::for_width(1280), LayoutMode::Expanded);
+    }
+
+    #[test]
+    fn split_collapses_below_main_sidebar_breakpoint() {
+        assert!(split_should_collapse(320));
+        assert!(split_should_collapse(760));
+        assert!(!split_should_collapse(761));
+        assert!(!split_should_collapse(0));
+    }
+
+    #[test]
+    fn sidebar_drag_uses_split_coordinates() {
+        let w = sidebar_width_from_pointer(300.0, 0.0, 1000.0, false, 160.0, 420.0);
+        assert!((w - 300.0).abs() < 0.01);
+        let end = sidebar_width_from_pointer(700.0, 0.0, 1000.0, true, 160.0, 420.0);
+        assert!((end - 300.0).abs() < 0.01);
+        // A pointer left of the minimum must not invert the clamp on a phone width.
+        let narrow = sidebar_width_from_pointer(20.0, 0.0, 280.0, false, 160.0, 420.0);
+        assert!((narrow - 160.0).abs() < 0.01);
     }
 
     #[test]

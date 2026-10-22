@@ -55,7 +55,7 @@ pub fn shell_command(profile: &MachineProfile) -> Option<String> {
                 || profile.runtime_overrides.wasm_module_path.is_some()
             {
                 Some(crate::linux::wasm_launch::effective_wasm_command(profile))
-            } else if id == "wawona-shell" || !profile.remote_command.trim().is_empty() {
+            } else if id == "wawona-shell" || id.is_empty() || !profile.remote_command.trim().is_empty() {
                 let custom = profile.remote_command.trim();
                 if custom.is_empty() {
                     Some("wawona-shell".to_string())
@@ -164,6 +164,40 @@ fn open_pty() -> Result<(i32, i32), String> {
     Ok((master, slave))
 }
 
+pub fn detect_user_shell() -> String {
+    if let Ok(sh) = std::env::var("SHELL") {
+        let trimmed = sh.trim();
+        if !trimmed.is_empty() && std::path::Path::new(trimmed).is_file() {
+            return trimmed.to_string();
+        }
+    }
+    unsafe {
+        let uid = libc::getuid();
+        let pwd = libc::getpwuid(uid);
+        if !pwd.is_null() && !(*pwd).pw_shell.is_null() {
+            if let Ok(sh_str) = std::ffi::CStr::from_ptr((*pwd).pw_shell).to_str() {
+                let trimmed = sh_str.trim();
+                if !trimmed.is_empty() && std::path::Path::new(trimmed).is_file() {
+                    return trimmed.to_string();
+                }
+            }
+        }
+    }
+    for candidate in &[
+        "/run/current-system/sw/bin/zsh",
+        "/run/current-system/sw/bin/bash",
+        "/bin/bash",
+        "/usr/bin/zsh",
+        "/usr/bin/bash",
+        "/bin/sh",
+    ] {
+        if std::path::Path::new(candidate).is_file() {
+            return (*candidate).to_string();
+        }
+    }
+    "/bin/sh".to_string()
+}
+
 fn spawn_on_slave(slave_fd: i32, command: &str) -> Result<Child, String> {
     use std::os::unix::process::CommandExt;
 
@@ -176,20 +210,59 @@ fn spawn_on_slave(slave_fd: i32, command: &str) -> Result<Child, String> {
         .try_clone()
         .map_err(|err| err.to_string())
         .map(Stdio::from)?;
-    let mut cmd = if command == "wawona-shell" {
-        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
-        let mut cmd = Command::new(shell);
-        cmd.arg("-i");
-        cmd
+    let stderr = slave
+        .try_clone()
+        .map_err(|err| err.to_string())
+        .map(Stdio::from)?;
+
+    let user_shell = detect_user_shell();
+    let shell_file_name = std::path::Path::new(&user_shell)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("sh")
+        .to_string();
+
+    let mut cmd = if command == "wawona-shell" || command.trim().is_empty() {
+        let mut c = Command::new(&user_shell);
+        c.arg0(format!("-{shell_file_name}"));
+        c.args(["-l", "-i"]);
+        c
     } else {
-        let mut cmd = Command::new("/bin/sh");
-        cmd.args(["-c", command]);
-        cmd
+        let mut c = Command::new(&user_shell);
+        c.arg0(format!("-{shell_file_name}"));
+        c.args(["-l", "-i", "-c", command]);
+        c
     };
+
     cmd.stdin(stdin)
         .stdout(stdout)
-        .stderr(Stdio::from(slave))
-        .env("TERM", "xterm-256color");
+        .stderr(stderr);
+
+    // Default working directory to user HOME directory
+    if let Ok(home) = std::env::var("HOME") {
+        let p = std::path::Path::new(&home);
+        if p.is_dir() {
+            cmd.current_dir(p);
+        }
+    } else {
+        unsafe {
+            let uid = libc::getuid();
+            let pwd = libc::getpwuid(uid);
+            if !pwd.is_null() && !(*pwd).pw_dir.is_null() {
+                if let Ok(dir_str) = std::ffi::CStr::from_ptr((*pwd).pw_dir).to_str() {
+                    let p = std::path::Path::new(dir_str);
+                    if p.is_dir() {
+                        cmd.current_dir(p);
+                    }
+                }
+            }
+        }
+    }
+
+    cmd.env("TERM", "xterm-256color");
+    cmd.env("COLORTERM", "truecolor");
+    cmd.env("SHELL", &user_shell);
+
     let (runtime_dir, wayland_disp) = if let Ok(rt) = crate::linux::runtime::read_runtime_state() {
         (rt.xdg_runtime_dir, rt.wayland_display)
     } else {
@@ -197,10 +270,18 @@ fn spawn_on_slave(slave_fd: i32, command: &str) -> Result<Child, String> {
         (format!("/run/user/{uid}"), "wawona-0".to_string())
     };
     cmd.env("XDG_RUNTIME_DIR", &runtime_dir);
-    cmd.env("WAYLAND_DISPLAY", &wayland_disp);
+
+    // If host desktop environment already runs Wayland, keep it so desktop tools work seamlessly;
+    // expose Wawona compositor socket under WAWONA_WAYLAND_DISPLAY.
+    if std::env::var("WAYLAND_DISPLAY").is_ok() {
+        cmd.env("WAWONA_WAYLAND_DISPLAY", &wayland_disp);
+    } else {
+        cmd.env("WAYLAND_DISPLAY", &wayland_disp);
+    }
     cmd.env_remove("WAYLAND_SOCKET");
     cmd.env("GDK_BACKEND", "wayland");
     cmd.env("QT_QPA_PLATFORM", "wayland");
+
     unsafe {
         cmd.pre_exec(move || {
             libc::signal(libc::SIGTTOU, libc::SIG_IGN);
@@ -477,21 +558,29 @@ pub fn build_terminal_view(
         );
     });
 
-    let df1 = do_fit.clone();
-    scroll.connect_notify_local(Some("width"), move |_, _| {
-        df1();
+    let df_tick = do_fit.clone();
+    let last_term_size = Rc::new(Cell::new((0i32, 0i32)));
+    root.add_tick_callback(move |widget, _| {
+        if !widget.is_mapped() {
+            return gtk::glib::ControlFlow::Continue;
+        }
+        let w = widget.width();
+        let h = widget.height();
+        if w > 0 && h > 0 && last_term_size.get() != (w, h) {
+            last_term_size.set((w, h));
+            df_tick();
+        }
+        gtk::glib::ControlFlow::Continue
     });
-    let df2 = do_fit.clone();
-    scroll.connect_notify_local(Some("height"), move |_, _| {
-        df2();
+
+    let df_map = do_fit.clone();
+    root.connect_map(move |_| {
+        df_map();
     });
-    let df3 = do_fit.clone();
-    scroll.connect_map(move |_| {
-        df3();
-    });
-    let df4 = do_fit.clone();
+
+    let df_idle = do_fit.clone();
     glib::idle_add_local(move || {
-        df4();
+        df_idle();
         glib::ControlFlow::Break
     });
 
@@ -538,7 +627,23 @@ fn dup_master(fd: i32) -> Rc<RefCell<Option<File>>> {
 }
 
 fn bytes_for_key(key: gtk::gdk::Key, state: gtk::gdk::ModifierType) -> Vec<u8> {
+    if state.contains(gtk::gdk::ModifierType::ALT_MASK) {
+        if let Some(ch) = key.to_unicode() {
+            let mut res = vec![0x1b];
+            res.extend_from_slice(ch.to_string().as_bytes());
+            return res;
+        }
+    }
     if state.contains(gtk::gdk::ModifierType::CONTROL_MASK) {
+        match key {
+            gtk::gdk::Key::bracketleft => return vec![0x1b],
+            gtk::gdk::Key::backslash => return vec![0x1c],
+            gtk::gdk::Key::bracketright => return vec![0x1d],
+            gtk::gdk::Key::asciicircum | gtk::gdk::Key::caret => return vec![0x1e],
+            gtk::gdk::Key::underscore | gtk::gdk::Key::slash => return vec![0x1f],
+            gtk::gdk::Key::space | gtk::gdk::Key::at => return vec![0x00],
+            _ => {}
+        }
         if let Some(ch) = key.to_unicode() {
             let lower = ch.to_ascii_lowercase();
             if lower.is_ascii_lowercase() {
@@ -592,17 +697,21 @@ fn fit_grid(
     back: &gtk::DrawingArea,
     front: &gtk::DrawingArea,
 ) {
-    let alloc = container.allocation();
+    let w = container.width();
+    let h = container.height();
+    if w <= 0 || h <= 0 {
+        return;
+    }
     let layout = view.create_pango_layout(Some("M"));
     let (cell_w, cell_h) = layout.pixel_size();
-    if cell_w < 1 || cell_h < 1 || alloc.width() < 1 || alloc.height() < 1 {
+    if cell_w < 1 || cell_h < 1 {
         return;
     }
     let cell_changed = glyph.get() != (cell_w, cell_h);
     glyph.set((cell_w, cell_h));
     session.set_cell_px(cell_w as u32, cell_h as u32);
-    let usable_w = (alloc.width() - 28).max(cell_w);
-    let usable_h = (alloc.height() - 24).max(cell_h);
+    let usable_w = (w - 36).max(cell_w);
+    let usable_h = (h - 24).max(cell_h);
     let cols = (usable_w / cell_w).clamp(20, 512) as u32;
     let rows = (usable_h / cell_h).clamp(8, 256) as u32;
     let grid_changed = grid.get() != (cols, rows);
@@ -615,14 +724,16 @@ fn fit_grid(
         let mut winsize = libc::winsize {
             ws_row: rows as u16,
             ws_col: cols as u16,
-            ws_xpixel: 0,
-            ws_ypixel: 0,
+            ws_xpixel: (cols as i32 * cell_w) as u16,
+            ws_ypixel: (rows as i32 * cell_h) as u16,
         };
         unsafe {
             libc::ioctl(master_fd, libc::TIOCSWINSZ, &mut winsize);
         }
     }
     refresh(session, buffer, pictures, grid, back, front);
+    let mut end = buffer.end_iter();
+    let _ = view.scroll_to_iter(&mut end, 0.0, false, 0.0, 1.0);
 }
 
 struct PictureLayer {

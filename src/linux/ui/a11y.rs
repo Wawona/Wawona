@@ -24,6 +24,7 @@ pub mod id {
     pub const MACHINES_SEARCH: &str = "wwn.machines.search";
     pub const MACHINES_PIN: &str = "wwn.machines.pin";
     pub const MACHINES_SIDEBAR: &str = "wwn.machines.sidebar";
+    pub const MACHINES_SIDEBAR_RESIZER: &str = "wwn.machines.sidebar.resizer";
     pub const MACHINES_OVERVIEW: &str = "wwn.machines.overview";
     pub const MACHINES_OVERVIEW_FOCUS: &str = "wwn.machines.overview.focus";
     pub const MACHINES_OVERVIEW_TERMINATE: &str = "wwn.machines.overview.terminate";

@@ -27,7 +27,7 @@ mod app {
     use wawona::linux::ui::{
         a11y, build_home_shell, build_settings_view, build_tab_overview_view,
         build_work_status_view, clamp_content, ensure_settings_css, install_adaptive_split_view,
-        maybe_show_welcome, rebuild_home, show_editor,
+        is_touchscreen_active, make_resizable_sidebar, maybe_show_welcome, rebuild_home, show_editor,
         AppState, LayoutBinding, MachineSessions, RebuildHome, SharedAppState,
     };
     use wawona::linux::ui_model::LayoutMode;
@@ -71,6 +71,61 @@ mod app {
         last_dispatched_host_resizes: HashMap<u64, (u32, u32)>,
         /// Host windows currently in an xdg interactive-resize session.
         interactive_resize_active: HashSet<u64>,
+    }
+
+    /// Snapshot the largest Wayland SHM surface into the active machine thumbnail.
+    fn maybe_save_wayland_thumbnail(
+        cs: &CompositorState,
+        state: &SharedAppState,
+        last_ms: &Cell<i64>,
+    ) {
+        let now = now_unix_ms() as i64;
+        if now.saturating_sub(last_ms.get()) < 1200 {
+            return;
+        }
+        let machine_id = {
+            let app = state.borrow();
+            let Some(id) = app.store.active_machine_id.clone() else {
+                return;
+            };
+            let profile = app.store.profile(&id);
+            if !wawona::linux::session_exit::thumbnails_enabled(&app.settings, profile) {
+                return;
+            }
+            id
+        };
+        let Some(scene) = cs.scene.as_ref() else {
+            return;
+        };
+        let mut best: Option<(u32, u32, u32, Vec<u8>)> = None;
+        let mut best_area = 0u64;
+        for node in &scene.nodes {
+            let sid = node.surface_id.id;
+            let bid = node.texture.handle;
+            if bid == 0 {
+                continue;
+            }
+            let Some(buf) = cs.buffer_cache.get(&(sid, bid)) else {
+                continue;
+            };
+            if buf.width < 8 || buf.height < 8 {
+                continue;
+            }
+            let area = buf.width as u64 * buf.height as u64;
+            if area > best_area {
+                best_area = area;
+                best = Some((buf.width, buf.height, buf.stride, buf.pixels.clone()));
+            }
+        }
+        let Some((width, height, stride, pixels)) = best else {
+            return;
+        };
+        last_ms.set(now);
+        if let Err(err) =
+            wawona::linux::thumbnail_store::save_argb32_premul(&machine_id, width, height, stride, &pixels)
+        {
+            wawona::wlog!("UI", "machine thumbnail save failed: {err}");
+        }
     }
 
     fn dispatch_pending_host_resize(cs: &mut CompositorState, wid: u64) {
@@ -432,16 +487,16 @@ mod app {
 
         let window = adw::ApplicationWindow::builder()
             .application(app)
-            .title("Wawona Machine Control Panel")
+            .title("Machine Configuration")
             .default_width(900)
             .default_height(640)
-            .width_request(320)
-            .height_request(480)
+            .width_request(240)
+            .height_request(360)
             .build();
         window.set_resizable(true);
         let split_view = adw::OverlaySplitView::new();
-        split_view.set_min_sidebar_width(220.0);
-        split_view.set_max_sidebar_width(320.0);
+        split_view.set_min_sidebar_width(180.0);
+        split_view.set_max_sidebar_width(520.0);
         split_view.set_sidebar_width_fraction(0.25);
         split_view.set_enable_show_gesture(true);
         split_view.set_enable_hide_gesture(true);
@@ -463,11 +518,31 @@ mod app {
         });
         window.add_controller(key_controller);
 
+        let icon_theme = gtk::IconTheme::for_display(&gtk4::prelude::WidgetExt::display(&window));
+        if let Ok(entries) = std::fs::read_dir("/nix/store") {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    if name.contains("adwaita-icon-theme") && !name.ends_with(".drv") && !name.ends_with(".xz") {
+                        let icons_dir = path.join("share").join("icons");
+                        if icons_dir.is_dir() {
+                            icon_theme.add_search_path(&icons_dir);
+                        }
+                    }
+                }
+            }
+        }
+
         // Toolbar mirrors macOS detailToolbarContent: leading sidebar toggle,
         // title Machines, search in the toolbar, and trailing primary actions [Add][Settings].
         let header = adw::HeaderBar::new();
 
-        let toggle_sidebar_btn = gtk::Button::from_icon_name("sidebar-show-symbolic");
+        let toggle_icon_name = ["sidebar-show-symbolic", "view-sidebar-symbolic", "pan-start-symbolic"]
+            .into_iter()
+            .find(|&ic| icon_theme.has_icon(ic))
+            .unwrap_or("sidebar-show-symbolic");
+
+        let toggle_sidebar_btn = gtk::Button::from_icon_name(toggle_icon_name);
         toggle_sidebar_btn.set_tooltip_text(Some("Toggle Sidebar (Ctrl+B)"));
         a11y::set_wwn_a11y(
             &toggle_sidebar_btn,
@@ -481,8 +556,22 @@ mod app {
         });
         header.pack_start(&toggle_sidebar_btn);
 
+        let brand_title = gtk::Label::new(Some("Wawona"));
+        brand_title.add_css_class("heading");
+        brand_title.add_css_class("title-3");
+        brand_title.set_margin_start(4);
+        brand_title.set_margin_end(8);
+        brand_title.set_valign(gtk::Align::Center);
+        a11y::set_wwn_a11y(&brand_title, "wwn.header.brand", Some("Wawona"));
+        header.pack_start(&brand_title);
+
+        let title_lbl = gtk::Label::new(Some("Machine Configuration"));
+        title_lbl.add_css_class("title");
+        title_lbl.set_ellipsize(gtk::pango::EllipsizeMode::End);
+        title_lbl.set_max_width_chars(16);
+
         // pack_end order: first packed sits furthest right, so Settings goes
-        // in before Add to render as [Add][Settings].
+        // in before Add to render as [Search][Add][Settings].
         let settings_btn = gtk::Button::from_icon_name("emblem-system-symbolic");
         settings_btn.set_tooltip_text(Some("Settings"));
         a11y::set_wwn_a11y(
@@ -492,23 +581,20 @@ mod app {
         );
         header.pack_end(&settings_btn);
 
-        let overview_btn = gtk::Button::from_icon_name("view-grid-symbolic");
-        overview_btn.set_tooltip_text(Some("Tab Overview"));
-        a11y::set_wwn_a11y(
-            &overview_btn,
-            a11y::id::MACHINES_OVERVIEW,
-            Some("Tab Overview"),
-        );
-        header.pack_end(&overview_btn);
-
-        let new_btn_content = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-        new_btn_content.append(&gtk::Image::from_icon_name("list-add-symbolic"));
-        new_btn_content.append(&gtk::Label::new(Some("Add")));
-        let new_btn = gtk::Button::new();
-        new_btn.set_child(Some(&new_btn_content));
+        let new_btn = gtk::Button::from_icon_name("list-add-symbolic");
         new_btn.set_tooltip_text(Some("Add Machine Profile"));
         a11y::set_wwn_a11y(&new_btn, a11y::id::MACHINES_ADD, Some("Add Machine"));
         header.pack_end(&new_btn);
+
+        let search_toggle_btn = gtk::ToggleButton::new();
+        search_toggle_btn.set_icon_name("system-search-symbolic");
+        search_toggle_btn.set_tooltip_text(Some("Search Machines (Ctrl+F)"));
+        a11y::set_wwn_a11y(
+            &search_toggle_btn,
+            "wwn.machines.searchToggle",
+            Some("Search Machines"),
+        );
+        header.pack_end(&search_toggle_btn);
 
         let rebuild_slot: Rc<RefCell<Option<Rc<dyn Fn()>>>> = Rc::new(RefCell::new(None));
         let rebuild_slot_for_shell = rebuild_slot.clone();
@@ -520,38 +606,139 @@ mod app {
         let home = build_home_shell(on_rebuild.clone());
         header.set_title_widget(Some(&home.search));
 
+        let search_revealer = gtk::Revealer::new();
+        search_revealer.set_transition_type(gtk::RevealerTransitionType::SlideDown);
+        let compact_search_box = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        compact_search_box.add_css_class("compact-search-bar");
+        let compact_search = gtk::SearchEntry::new();
+        compact_search.set_placeholder_text(Some("Search machines"));
+        compact_search.set_hexpand(true);
+        a11y::set_wwn_a11y(
+            &compact_search,
+            a11y::id::MACHINES_SEARCH,
+            Some("Search machines"),
+        );
+        let compact_clamp = clamp_content(&compact_search);
+        compact_clamp.set_hexpand(true);
+        compact_search_box.append(&compact_clamp);
+        search_revealer.set_child(Some(&compact_search_box));
+
+        let rev_c = search_revealer.clone();
+        let cs_focus = compact_search.clone();
+        search_toggle_btn.connect_toggled(move |btn| {
+            let active = btn.is_active();
+            rev_c.set_reveal_child(active);
+            if active {
+                cs_focus.grab_focus();
+            }
+        });
+
+        let st_escape = search_toggle_btn.clone();
+        compact_search.connect_stop_search(move |_| {
+            st_escape.set_active(false);
+        });
+
+        let bottom_bar = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        bottom_bar.add_css_class("bottom-search-toolbar");
+        let bottom_search = gtk::SearchEntry::new();
+        bottom_search.set_placeholder_text(Some("Search machines"));
+        bottom_search.set_hexpand(true);
+        bottom_search.add_css_class("search-entry");
+        a11y::set_wwn_a11y(
+            &bottom_search,
+            a11y::id::MACHINES_SEARCH,
+            Some("Search machines"),
+        );
+
+        let bottom_add_btn = gtk::Button::from_icon_name("list-add-symbolic");
+        bottom_add_btn.set_tooltip_text(Some("Add Machine Profile"));
+        bottom_add_btn.add_css_class("suggested-action");
+        bottom_add_btn.add_css_class("circular");
+        bottom_add_btn.add_css_class("bottom-add-btn");
+        a11y::set_wwn_a11y(&bottom_add_btn, a11y::id::MACHINES_ADD, Some("Add Machine"));
+
+        bottom_bar.append(&bottom_search);
+        bottom_bar.append(&bottom_add_btn);
+
+        {
+            let query_rc = home.query.clone();
+            let on_reb = on_rebuild.clone();
+            let s_top = home.search.clone();
+            let s_compact = compact_search.clone();
+            let s_bottom = bottom_search.clone();
+
+            let q1 = query_rc.clone();
+            let r1 = on_reb.clone();
+            let sc1 = s_compact.clone();
+            let sb1 = s_bottom.clone();
+            s_top.connect_search_changed(move |entry| {
+                let text = entry.text().to_string();
+                if *q1.borrow() != text {
+                    *q1.borrow_mut() = text.clone();
+                    if sc1.text().as_str() != text {
+                        sc1.set_text(&text);
+                    }
+                    if sb1.text().as_str() != text {
+                        sb1.set_text(&text);
+                    }
+                    r1();
+                }
+            });
+
+            let q2 = query_rc.clone();
+            let r2 = on_reb.clone();
+            let st2 = s_top.clone();
+            let sb2 = s_bottom.clone();
+            s_compact.connect_search_changed(move |entry| {
+                let text = entry.text().to_string();
+                if *q2.borrow() != text {
+                    *q2.borrow_mut() = text.clone();
+                    if st2.text().as_str() != text {
+                        st2.set_text(&text);
+                    }
+                    if sb2.text().as_str() != text {
+                        sb2.set_text(&text);
+                    }
+                    r2();
+                }
+            });
+
+            let q3 = query_rc.clone();
+            let r3 = on_reb.clone();
+            let st3 = s_top.clone();
+            let sc3 = s_compact.clone();
+            s_bottom.connect_search_changed(move |entry| {
+                let text = entry.text().to_string();
+                if *q3.borrow() != text {
+                    *q3.borrow_mut() = text.clone();
+                    if st3.text().as_str() != text {
+                        st3.set_text(&text);
+                    }
+                    if sc3.text().as_str() != text {
+                        sc3.set_text(&text);
+                    }
+                    r3();
+                }
+            });
+        }
+
         ensure_settings_css();
 
         let sidebar_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        sidebar_box.set_width_request(220);
+        sidebar_box.set_width_request(180);
         sidebar_box.add_css_class("sidebar");
-
-        let brand_box = gtk::Box::new(gtk::Orientation::Vertical, 2);
-        brand_box.set_margin_start(16);
-        brand_box.set_margin_end(16);
-        brand_box.set_margin_top(16);
-        brand_box.set_margin_bottom(12);
-
-        let brand_title = gtk::Label::new(Some("Wawona"));
-        brand_title.add_css_class("title-1");
-        brand_title.set_xalign(0.0);
-        let brand_sub = gtk::Label::new(Some("Machine Control"));
-        brand_sub.add_css_class("dim-label");
-        brand_sub.add_css_class("caption");
-        brand_sub.set_xalign(0.0);
-        brand_box.append(&brand_title);
-        brand_box.append(&brand_sub);
-        sidebar_box.append(&brand_box);
 
         let sidebar_list = gtk::ListBox::new();
         sidebar_list.set_selection_mode(gtk::SelectionMode::Single);
         sidebar_list.add_css_class("navigation-sidebar");
         sidebar_list.set_margin_start(8);
         sidebar_list.set_margin_end(8);
+        sidebar_list.set_margin_top(8);
 
         let icon_theme = gtk::IconTheme::for_display(&gtk4::prelude::WidgetExt::display(&window));
         let make_sidebar_row = |name: &str, icons: &[&str], css_class: &str, a11y_id: &str| {
             let row = gtk::ListBoxRow::new();
+            row.set_focusable(false);
             let row_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
             row_box.set_margin_start(10);
             row_box.set_margin_end(10);
@@ -625,6 +812,46 @@ mod app {
 
         sidebar_box.append(&sidebar_list);
 
+        // Tags section
+        let tags_section_box = gtk::Box::new(gtk::Orientation::Vertical, 2);
+        tags_section_box.set_margin_start(8);
+        tags_section_box.set_margin_end(8);
+        tags_section_box.set_margin_top(8);
+
+        let tags_header_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        let tags_hdr = make_section_hdr("Tags");
+        tags_hdr.set_hexpand(true);
+        tags_header_box.append(&tags_hdr);
+
+        let add_tag_btn = gtk::Button::from_icon_name("list-add-symbolic");
+        add_tag_btn.add_css_class("flat");
+        add_tag_btn.add_css_class("circular");
+        add_tag_btn.set_tooltip_text(Some("New Tag"));
+        a11y::set_wwn_a11y(&add_tag_btn, "wwn.sidebar.tag.add", Some("New Tag"));
+        tags_header_box.append(&add_tag_btn);
+        tags_section_box.append(&tags_header_box);
+
+        let tags_list = gtk::ListBox::new();
+        tags_list.set_selection_mode(gtk::SelectionMode::Single);
+        tags_list.add_css_class("navigation-sidebar");
+        tags_section_box.append(&tags_list);
+
+        sidebar_box.append(&tags_section_box);
+
+        {
+            let window_t = window.clone();
+            let state_t = state.clone();
+            let on_rebuild_t = on_rebuild.clone();
+            add_tag_btn.connect_clicked(move |_| {
+                wawona::linux::ui::show_new_tag_dialog(
+                    &window_t,
+                    None,
+                    state_t.clone(),
+                    on_rebuild_t.clone(),
+                );
+            });
+        }
+
         let spacer = gtk::Box::new(gtk::Orientation::Vertical, 0);
         spacer.set_vexpand(true);
         sidebar_box.append(&spacer);
@@ -662,7 +889,8 @@ mod app {
         footer_card.append(&footer_inner);
         sidebar_box.append(&footer_card);
 
-        split_view.set_sidebar(Some(&sidebar_box));
+        let resizable_sidebar = make_resizable_sidebar(&split_view, &sidebar_box, 0.25);
+        split_view.set_sidebar(Some(&resizable_sidebar));
 
         let content_stack = gtk::Stack::new();
         content_stack.set_transition_type(gtk::StackTransitionType::None);
@@ -673,8 +901,58 @@ mod app {
         home_body.set_vexpand(true);
         let machines_page = gtk::Box::new(gtk::Orientation::Vertical, 0);
         machines_page.append(&header);
+        machines_page.append(&search_revealer);
         machines_page.append(&home_body);
+        machines_page.append(&bottom_bar);
         content_stack.add_named(&machines_page, Some("machines"));
+
+        {
+            let is_touch = is_touchscreen_active();
+            let header_c = header.clone();
+            let top_search_c = home.search.clone();
+            let title_lbl_c = title_lbl.clone();
+            let brand_c = brand_title.clone();
+            let toggle_btn_c = search_toggle_btn.clone();
+            let revealer_c = search_revealer.clone();
+            let new_btn_c = new_btn.clone();
+            let bottom_bar_c = bottom_bar.clone();
+            let last_state = Rc::new(Cell::new(None::<(bool, bool)>));
+
+            machines_page.add_tick_callback(move |widget, _| {
+                let w = widget.width();
+                if w <= 0 {
+                    return gtk::glib::ControlFlow::Continue;
+                }
+                let is_compact = w < 760;
+                if last_state.get() == Some((is_touch, is_compact)) {
+                    return gtk::glib::ControlFlow::Continue;
+                }
+                last_state.set(Some((is_touch, is_compact)));
+
+                brand_c.set_visible(w >= 520);
+                if is_touch {
+                    header_c.set_title_widget(Some(&title_lbl_c));
+                    toggle_btn_c.set_visible(false);
+                    revealer_c.set_reveal_child(false);
+                    new_btn_c.set_visible(false);
+                    bottom_bar_c.set_visible(true);
+                } else {
+                    bottom_bar_c.set_visible(false);
+                    new_btn_c.set_visible(true);
+                    if is_compact {
+                        header_c.set_title_widget(Some(&title_lbl_c));
+                        toggle_btn_c.set_visible(true);
+                    } else {
+                        header_c.set_title_widget(Some(&top_search_c));
+                        toggle_btn_c.set_visible(false);
+                        revealer_c.set_reveal_child(false);
+                        toggle_btn_c.set_active(false);
+                    }
+                }
+
+                gtk::glib::ControlFlow::Continue
+            });
+        }
 
         let editor_slot = gtk::Box::new(gtk::Orientation::Vertical, 0);
         editor_slot.set_hexpand(true);
@@ -704,8 +982,8 @@ mod app {
         install_adaptive_split_view(&window, &split_view, &layout_binding);
 
         let root_stack = gtk::Stack::new();
-        root_stack.set_transition_type(gtk::StackTransitionType::SlideUpDown);
-        root_stack.set_transition_duration(300);
+        root_stack.set_transition_type(gtk::StackTransitionType::OverUpDown);
+        root_stack.set_transition_duration(280);
         root_stack.set_hexpand(true);
         root_stack.set_vexpand(true);
 
@@ -714,6 +992,7 @@ mod app {
         let settings_container = gtk::Box::new(gtk::Orientation::Vertical, 0);
         settings_container.set_hexpand(true);
         settings_container.set_vexpand(true);
+        settings_container.add_css_class("settings-overlay-sheet");
         root_stack.add_named(&settings_container, Some("settings"));
 
         let root_overlay = gtk::Overlay::new();
@@ -753,14 +1032,22 @@ mod app {
             let on_rebuild = on_rebuild.clone();
             let active_terminal_tab = active_terminal.clone();
             let split_view_for_list = split_view.clone();
+            let tags_list_c = tags_list.clone();
+            let home_c = home.clone();
             sidebar_list.connect_row_selected(move |_, row| {
                 let Some(r) = row else { return };
+                tags_list_c.unselect_all();
                 if split_view_for_list.is_collapsed() {
                     split_view_for_list.set_show_sidebar(false);
                 }
                 match r.index() {
                     0 => {
+                        let was_filtered = home_c.selected_tag_id.borrow().is_some();
+                        home_c.selected_tag_id.replace(None);
                         content_stack.set_visible_child_name("machines");
+                        if was_filtered {
+                            on_rebuild();
+                        }
                     }
                     1 => {
                         while let Some(c) = tab_overview_slot.first_child() {
@@ -808,6 +1095,166 @@ mod app {
                 }
             });
         }
+
+        let is_rebuilding_tags = Rc::new(Cell::new(false));
+        {
+            let state = state.clone();
+            let home = home.clone();
+            let sidebar_list = sidebar_list.clone();
+            let content_stack = content_stack.clone();
+            let split_view = split_view.clone();
+            let on_rebuild = on_rebuild.clone();
+            let is_rebuilding_tags = is_rebuilding_tags.clone();
+            tags_list.connect_row_selected(move |_, row| {
+                if is_rebuilding_tags.get() {
+                    return;
+                }
+                let Some(r) = row else { return };
+                let idx = r.index() as usize;
+                let tags = state.borrow().tags.tags.clone();
+                if let Some(tag) = tags.get(idx) {
+                    if home.selected_tag_id.borrow().as_deref() == Some(&tag.id) {
+                        return;
+                    }
+                    sidebar_list.unselect_all();
+                    home.selected_tag_id.replace(Some(tag.id.clone()));
+                    content_stack.set_visible_child_name("machines");
+                    if split_view.is_collapsed() {
+                        split_view.set_show_sidebar(false);
+                    }
+                    on_rebuild();
+                }
+            });
+        }
+
+        let rebuild_tags_list = {
+            let tags_list = tags_list.clone();
+            let state = state.clone();
+            let home = home.clone();
+            let window = window.clone();
+            let on_rebuild = on_rebuild.clone();
+            let is_rebuilding_tags = is_rebuilding_tags.clone();
+
+            Rc::new(move || {
+                is_rebuilding_tags.set(true);
+                while let Some(c) = tags_list.first_child() {
+                    tags_list.remove(&c);
+                }
+
+                let all_tags = state.borrow().tags.tags.clone();
+                let current_sel = home.selected_tag_id.borrow().clone();
+
+                for tag in all_tags {
+                    let row = gtk::ListBoxRow::new();
+                    row.set_focusable(false);
+                    let row_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+                    row_box.set_margin_start(10);
+                    row_box.set_margin_end(10);
+                    row_box.set_margin_top(6);
+                    row_box.set_margin_bottom(6);
+
+                    let dot = wawona::linux::ui::color_dot(&tag.color_hex, 10);
+                    row_box.append(&dot);
+
+                    let name_lbl = gtk::Label::new(Some(&tag.name));
+                    name_lbl.set_xalign(0.0);
+                    name_lbl.set_hexpand(true);
+                    name_lbl.add_css_class("heading");
+                    row_box.append(&name_lbl);
+
+                    let count = state
+                        .borrow()
+                        .tags
+                        .tag_ids_by_machine
+                        .values()
+                        .filter(|ids| ids.contains(&tag.id))
+                        .count();
+                    if count > 0 {
+                        let count_lbl = gtk::Label::new(Some(&count.to_string()));
+                        count_lbl.add_css_class("dim-label");
+                        count_lbl.add_css_class("caption");
+                        row_box.append(&count_lbl);
+                    }
+
+                    row.set_child(Some(&row_box));
+                    a11y::set_wwn_a11y(&row, &format!("wwn.sidebar.tag.{}", tag.id), Some(&tag.name));
+
+                    let right_click = gtk::GestureClick::new();
+                    right_click.set_button(3);
+                    let tag_c = tag.clone();
+                    let state_c = state.clone();
+                    let window_c = window.clone();
+                    let on_rebuild_c = on_rebuild.clone();
+                    let home_c = home.clone();
+                    let row_c = row.clone();
+                    right_click.connect_pressed(move |_, _, x, y| {
+                        let popover = gtk::Popover::new();
+                        let menu_box = gtk::Box::new(gtk::Orientation::Vertical, 4);
+                        menu_box.set_margin_start(4);
+                        menu_box.set_margin_end(4);
+                        menu_box.set_margin_top(4);
+                        menu_box.set_margin_bottom(4);
+
+                        let edit_btn = gtk::Button::with_label("Edit Tag...");
+                        edit_btn.add_css_class("flat");
+                        let tag_edit = tag_c.clone();
+                        let state_edit = state_c.clone();
+                        let window_edit = window_c.clone();
+                        let on_rebuild_edit = on_rebuild_c.clone();
+                        let pop_edit = popover.clone();
+                        edit_btn.connect_clicked(move |_| {
+                            pop_edit.popdown();
+                            wawona::linux::ui::show_edit_tag_dialog(
+                                &window_edit,
+                                &tag_edit,
+                                state_edit.clone(),
+                                on_rebuild_edit.clone(),
+                            );
+                        });
+                        menu_box.append(&edit_btn);
+
+                        let del_btn = gtk::Button::with_label("Delete Tag");
+                        del_btn.add_css_class("flat");
+                        del_btn.add_css_class("destructive-action");
+                        let tag_id_del = tag_c.id.clone();
+                        let state_del = state_c.clone();
+                        let home_del = home_c.clone();
+                        let on_rebuild_del = on_rebuild_c.clone();
+                        let pop_del = popover.clone();
+                        del_btn.connect_clicked(move |_| {
+                            pop_del.popdown();
+                            {
+                                let mut app = state_del.borrow_mut();
+                                app.tags.delete_tag(&tag_id_del);
+                                app.persist_tags();
+                            }
+                            if home_del.selected_tag_id.borrow().as_deref() == Some(&tag_id_del) {
+                                home_del.selected_tag_id.replace(None);
+                            }
+                            on_rebuild_del();
+                        });
+                        menu_box.append(&del_btn);
+
+                        popover.set_child(Some(&menu_box));
+                        popover.set_parent(&row_c);
+                        popover.connect_closed(|p| {
+                            p.unparent();
+                        });
+                        let rect = gtk::gdk::Rectangle::new(x as i32, y as i32, 1, 1);
+                        popover.set_pointing_to(Some(&rect));
+                        popover.popup();
+                    });
+                    row.add_controller(right_click);
+
+                    tags_list.append(&row);
+
+                    if current_sel.as_deref() == Some(&tag.id) {
+                        tags_list.select_row(Some(&row));
+                    }
+                }
+                is_rebuilding_tags.set(false);
+            })
+        };
 
         match std::env::var("WAWONA_INITIAL_PAGE").as_deref() {
             Ok("tab_overview") => {
@@ -952,7 +1399,9 @@ mod app {
             let binding_c = layout_binding.clone();
             let open_editor_edit = open_editor.clone();
             let open_terminal_rebuild = open_terminal.clone();
+            let rebuild_tags_c = rebuild_tags_list.clone();
             *rebuild_slot.borrow_mut() = Some(Rc::new(move || {
+                rebuild_tags_c();
                 let open_ed = open_editor_edit.clone();
                 let open_term = open_terminal_rebuild.clone();
                 rebuild_home(RebuildHome {
@@ -976,6 +1425,8 @@ mod app {
         if compositor.is_some() {
             let comp = comp.clone();
             let app = app.clone();
+            let state_for_thumb = state.clone();
+            let last_thumb_ms = Rc::new(Cell::new(0i64));
             gtk::glib::timeout_add_local(Duration::from_millis(16), move || {
                 let mut cs = comp.borrow_mut();
 
@@ -1558,6 +2009,7 @@ mod app {
                 let scene = cs.core.get_render_scene();
                 let needs_redraw = scene.needs_redraw;
                 cs.scene = Some(scene);
+                maybe_save_wayland_thumbnail(&cs, &state_for_thumb, &last_thumb_ms);
 
                 if needs_redraw {
                     for cw in cs.client_windows.values() {
@@ -1577,6 +2029,12 @@ mod app {
                 wawona::wlog!("UI", "Add Machine button pressed");
                 open_editor_add(None);
             });
+
+            let open_editor_bottom = open_editor.clone();
+            bottom_add_btn.connect_clicked(move |_| {
+                wawona::wlog!("UI", "Bottom Add Machine button pressed");
+                open_editor_bottom(None);
+            });
         }
 
         {
@@ -1589,18 +2047,13 @@ mod app {
 
         {
             let sidebar_list_c = sidebar_list.clone();
-            overview_btn.connect_clicked(move |_| {
-                wawona::wlog!("UI", "Tab Overview button pressed");
-                if let Some(r1) = sidebar_list_c.row_at_index(1) {
-                    sidebar_list_c.select_row(Some(&r1));
-                }
-            });
-        }
-
-        {
-            let sidebar_list_c = sidebar_list.clone();
             let open_editor_c = open_editor.clone();
             let open_settings_key = open_settings.clone();
+            let bottom_search_key = bottom_search.clone();
+            let compact_search_key = compact_search.clone();
+            let top_search_key = home.search.clone();
+            let search_toggle_key = search_toggle_btn.clone();
+
             let key_ctrl = gtk::EventControllerKey::new();
             key_ctrl.connect_key_pressed(move |_, keyval, _, state| {
                 let is_ctrl = state.contains(gtk::gdk::ModifierType::CONTROL_MASK);
@@ -1630,6 +2083,17 @@ mod app {
                         }
                         gtk::gdk::Key::n => {
                             open_editor_c(None);
+                            return gtk::glib::Propagation::Stop;
+                        }
+                        gtk::gdk::Key::f | gtk::gdk::Key::F => {
+                            if is_touchscreen_active() {
+                                bottom_search_key.grab_focus();
+                            } else if search_toggle_key.is_visible() {
+                                search_toggle_key.set_active(true);
+                                compact_search_key.grab_focus();
+                            } else {
+                                top_search_key.grab_focus();
+                            }
                             return gtk::glib::Propagation::Stop;
                         }
                         _ => {}

@@ -430,7 +430,7 @@ fn build_card(
     } else {
         card.add_css_class("wwn-tab-card");
     }
-    card.set_size_request(240, -1);
+    card.set_size_request(160, -1);
     card.set_hexpand(true);
     card.set_halign(gtk::Align::Fill);
     a11y::set_wwn_a11y(

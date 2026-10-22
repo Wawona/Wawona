@@ -25,10 +25,8 @@ pub fn swipe_back_to_close_enabled(
 }
 
 /// Whether machine thumbnails should be captured/shown for this profile.
-pub fn thumbnails_enabled(_settings: &LinuxSettings, profile: Option<&MachineProfile>) -> bool {
-    // Linux does not yet persist a global thumbnail toggle; default on unless
-    // a per-machine override disables it via runtime overrides in the future.
-    profile.is_some()
+pub fn thumbnails_enabled(settings: &LinuxSettings, profile: Option<&MachineProfile>) -> bool {
+    settings.session_thumbnails && profile.is_some()
 }
 
 /// Apply session-exit toggles from editor widgets into runtime overrides.

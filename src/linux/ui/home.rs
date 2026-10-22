@@ -31,6 +31,8 @@ pub struct HomeShell {
     pub summary: gtk::Box,
     pub flow: gtk::Box,
     pub query: Rc<RefCell<String>>,
+    pub selected_tag_id: Rc<RefCell<Option<String>>>,
+    pub on_rebuild: Rc<dyn Fn()>,
 }
 
 pub struct RebuildHome<'a> {
@@ -54,17 +56,17 @@ pub fn build_home_shell(on_rebuild: Rc<dyn Fn()>) -> HomeShell {
 
     // Summary strip: "Machine Configuration" + Profiles / Connected / Ready pills
     // (mirrors macOS `summaryStrip`).
-    let summary = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-    summary.set_margin_start(18);
-    summary.set_margin_end(18);
+    let summary = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    summary.set_margin_start(8);
+    summary.set_margin_end(8);
     summary.set_margin_top(8);
 
     let flow = gtk::Box::new(gtk::Orientation::Vertical, 12);
     flow.set_hexpand(true);
     flow.set_vexpand(true);
-    flow.set_margin_start(16);
-    flow.set_margin_end(16);
-    flow.set_margin_bottom(16);
+    flow.set_margin_start(8);
+    flow.set_margin_end(8);
+    flow.set_margin_bottom(12);
 
     let query = Rc::new(RefCell::new(String::new()));
 
@@ -112,38 +114,34 @@ pub fn build_home_shell(on_rebuild: Rc<dyn Fn()>) -> HomeShell {
     );
 
     // Responsive column count listener
-    let last_w = Rc::new(Cell::new(0));
+    let current_cols = Rc::new(Cell::new(0));
     let on_rebuild_resize = on_rebuild.clone();
     root.add_tick_callback(move |widget, _| {
         if !widget.is_mapped() {
             return gtk::glib::ControlFlow::Continue;
         }
         let w = widget.width();
-        let old = last_w.get();
-        if w > 0 && old > 0 {
-            let old_cols = if old >= 1050 {
-                3
-            } else if old >= 680 {
-                2
-            } else {
-                1
-            };
-            let new_cols = if w >= 1050 {
-                3
-            } else if w >= 680 {
-                2
-            } else {
-                1
-            };
-            if old_cols != new_cols {
-                last_w.set(w);
-                on_rebuild_resize();
-                return gtk::glib::ControlFlow::Continue;
-            }
+        if w <= 0 {
+            return gtk::glib::ControlFlow::Continue;
         }
-        last_w.set(w);
+        let cols = if w >= 1050 {
+            3
+        } else if w >= 680 {
+            2
+        } else {
+            1
+        };
+        let prev = current_cols.get();
+        if prev != 0 && prev != cols {
+            current_cols.set(cols);
+            on_rebuild_resize();
+        } else if prev == 0 {
+            current_cols.set(cols);
+        }
         gtk::glib::ControlFlow::Continue
     });
+
+    let selected_tag_id = Rc::new(RefCell::new(None));
 
     HomeShell {
         root,
@@ -153,6 +151,8 @@ pub fn build_home_shell(on_rebuild: Rc<dyn Fn()>) -> HomeShell {
         summary,
         flow,
         query,
+        selected_tag_id,
+        on_rebuild,
     }
 }
 
@@ -165,20 +165,53 @@ pub fn rebuild_home(ctx: RebuildHome<'_>) {
 
     let app = ctx.state.borrow();
     let query = ctx.shell.query.borrow().clone();
+    let selected_tag_id = ctx.shell.selected_tag_id.borrow().clone();
     let active_id = app.store.active_machine_id.clone();
     let all_profiles: Vec<MachineProfile> = app.store.profiles.clone();
-    let visible: Vec<MachineProfile> = visible_machines(&app.store.profiles, &query)
+    let mut visible: Vec<MachineProfile> = visible_machines(&app.store.profiles, &query)
         .into_iter()
         .cloned()
         .collect();
+
+    let active_tag = selected_tag_id
+        .as_ref()
+        .and_then(|tid| app.tags.tags.iter().find(|t| &t.id == tid).cloned());
+
+    if let Some(tid) = &selected_tag_id {
+        visible.retain(|p| app.tags.is_assigned(tid, &p.id));
+    }
     let has_any = !app.store.profiles.is_empty();
     let has_query = !query.trim().is_empty();
+    let show_thumbnails = app.settings.session_thumbnails;
     drop(app);
 
-    rebuild_summary_strip(&ctx.shell.summary, &all_profiles, &ctx.sessions);
+    let on_clear_tag = {
+        let tag_id_cell = ctx.shell.selected_tag_id.clone();
+        let on_rebuild_fn = ctx.shell.on_rebuild.clone();
+        Some(Rc::new(move || {
+            tag_id_cell.replace(None);
+            on_rebuild_fn();
+        }) as Rc<dyn Fn()>)
+    };
+
+    rebuild_summary_strip(
+        &ctx.shell.summary,
+        &all_profiles,
+        &ctx.sessions,
+        active_tag.as_ref(),
+        on_clear_tag,
+    );
 
     if visible.is_empty() {
-        let (title, subtitle) = empty_state_text(has_any, has_query);
+        let (title, subtitle) = if let Some(tag) = active_tag {
+            (
+                format!("No Machines Tagged \"{}\"", tag.name),
+                "Assign this tag to a machine from its context menu.".to_string(),
+            )
+        } else {
+            let (t, s) = empty_state_text(has_any, has_query);
+            (t.to_string(), s.to_string())
+        };
         let empty = adw::StatusPage::builder()
             .icon_name("system-search-symbolic")
             .title(title)
@@ -200,7 +233,7 @@ pub fn rebuild_home(ctx: RebuildHome<'_>) {
         pinned_lbl.set_margin_bottom(2);
         ctx.shell.flow.append(&pinned_lbl);
 
-        let flow = populate_flow(&pinned, &query, &active_id, &ctx);
+        let flow = populate_flow(&pinned, &query, &active_id, show_thumbnails, &ctx);
         ctx.shell.flow.append(&flow);
     }
 
@@ -215,7 +248,7 @@ pub fn rebuild_home(ctx: RebuildHome<'_>) {
             ctx.shell.flow.append(&machines_lbl);
         }
 
-        let flow = populate_flow(&unpinned, &query, &active_id, &ctx);
+        let flow = populate_flow(&unpinned, &query, &active_id, show_thumbnails, &ctx);
         ctx.shell.flow.append(&flow);
     }
 }
@@ -227,6 +260,7 @@ fn populate_flow(
     profiles: &[MachineProfile],
     query: &str,
     active_id: &Option<String>,
+    show_thumbnails: bool,
     ctx: &RebuildHome<'_>,
 ) -> gtk::FlowBox {
     let flow = gtk::FlowBox::new();
@@ -250,6 +284,7 @@ fn populate_flow(
             &ctx.sessions,
             &tags,
             query,
+            show_thumbnails,
         );
         let root = card.root.clone();
         attach_card_actions(
@@ -266,8 +301,9 @@ fn populate_flow(
         // Wrap in a box so FlowBox doesn't stretch the frame oddly.
         let wrapper = gtk::Box::new(gtk::Orientation::Vertical, 0);
         wrapper.set_hexpand(true);
-        // 280px minimum matches SwiftUI's ~280pt card minimum on compact.
-        wrapper.set_size_request(280, -1);
+        // 160px lets one card fit a phone-width column. FlowBox still grows
+        // cards to share a wide window, up to three per line.
+        wrapper.set_size_request(160, -1);
         wrapper.append(&root);
         flow.append(&wrapper);
     }
@@ -279,16 +315,61 @@ fn rebuild_summary_strip(
     summary: &gtk::Box,
     profiles: &[MachineProfile],
     sessions: &MachineSessions,
+    active_tag: Option<&crate::linux::tag_store::MachineTag>,
+    on_clear_tag: Option<Rc<dyn Fn()>>,
 ) {
     while let Some(child) = summary.first_child() {
         summary.remove(&child);
     }
 
+    let heading_row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     let heading_icon = gtk::Image::from_icon_name("network-server-symbolic");
     let heading = gtk::Label::new(Some("Machine Configuration"));
     heading.add_css_class("heading");
-    summary.append(&heading_icon);
-    summary.append(&heading);
+    heading.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    heading.set_hexpand(true);
+    heading.set_xalign(0.0);
+    heading_row.append(&heading_icon);
+    heading_row.append(&heading);
+    summary.append(&heading_row);
+
+    let pills = gtk::FlowBox::new();
+    pills.set_selection_mode(gtk::SelectionMode::None);
+    pills.set_column_spacing(6);
+    pills.set_row_spacing(6);
+    pills.set_min_children_per_line(1);
+    pills.set_max_children_per_line(8);
+    pills.set_homogeneous(false);
+    pills.set_hexpand(true);
+    pills.set_halign(gtk::Align::Start);
+    summary.append(&pills);
+
+    if let Some(tag) = active_tag {
+        let pill = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        pill.add_css_class("card");
+        pill.set_margin_top(2);
+        pill.set_margin_bottom(2);
+        pill.set_margin_start(4);
+
+        let dot = color_dot(&tag.color_hex, 10);
+        pill.append(&dot);
+
+        let t = gtk::Label::new(Some(&format!("Tag: {}", tag.name)));
+        t.add_css_class("caption-heading");
+        pill.append(&t);
+
+        if let Some(on_clear) = on_clear_tag {
+            let clear_btn = gtk::Button::from_icon_name("window-close-symbolic");
+            clear_btn.add_css_class("flat");
+            clear_btn.add_css_class("circular");
+            clear_btn.set_tooltip_text(Some("Clear tag filter"));
+            clear_btn.connect_clicked(move |_| {
+                on_clear();
+            });
+            pill.append(&clear_btn);
+        }
+        pills.append(&pill);
+    }
 
     let connected = profiles
         .iter()
@@ -315,7 +396,7 @@ fn rebuild_summary_strip(
         v.set_margin_end(10);
         pill.append(&t);
         pill.append(&v);
-        summary.append(&pill);
+        pills.append(&pill);
     }
 }
 
@@ -363,6 +444,7 @@ fn build_machine_card(
     sessions: &MachineSessions,
     tags: &[crate::linux::tag_store::MachineTag],
     search_query: &str,
+    show_thumbnails: bool,
 ) -> MachineCard {
     let frame = gtk::Frame::new(None);
     frame.add_css_class("card");
@@ -382,24 +464,35 @@ fn build_machine_card(
     // Header banner: thumbnail (or gradient placeholder) with name + subtitle and
     // the machine-type icon in a frosted glass tile.
     let banner = gtk::Overlay::new();
+    banner.set_overflow(gtk::Overflow::Hidden);
     let thumb_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
     thumb_box.add_css_class("machine-banner");
-    thumb_box.set_height_request(94);
-    let mut has_thumbnail = false;
-    if let Ok(path) = thumbnail_store::thumbnail_path(&profile.id) {
-        if path.is_file() {
-            has_thumbnail = true;
-            let pic = gtk::Picture::for_filename(&path);
-            pic.set_can_shrink(true);
-            pic.set_hexpand(true);
-            pic.set_vexpand(true);
-            thumb_box.append(&pic);
+    thumb_box.set_height_request(90);
+    thumb_box.set_overflow(gtk::Overflow::Hidden);
+    let pic = gtk::Picture::new();
+    pic.set_content_fit(gtk::ContentFit::Cover);
+    pic.set_can_shrink(true);
+    pic.set_hexpand(true);
+    pic.set_vexpand(true);
+    pic.set_visible(false);
+    thumb_box.append(&pic);
+    if show_thumbnails {
+        if let Ok(path) = thumbnail_store::thumbnail_path(&profile.id) {
+            watch_machine_thumbnail(&thumb_box, &pic, path);
+        } else {
+            thumb_box.add_css_class("machine-banner-placeholder");
         }
-    }
-    if !has_thumbnail {
+    } else {
         thumb_box.add_css_class("machine-banner-placeholder");
     }
     banner.set_child(Some(&thumb_box));
+
+    let scrim = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    scrim.add_css_class("machine-banner-scrim");
+    scrim.set_hexpand(true);
+    scrim.set_vexpand(true);
+    scrim.set_can_target(false);
+    banner.add_overlay(&scrim);
 
     let banner_content = gtk::Box::new(gtk::Orientation::Horizontal, 12);
     banner_content.set_margin_start(14);
@@ -427,15 +520,31 @@ fn build_machine_card(
     subtitle.set_ellipsize(gtk::pango::EllipsizeMode::End);
 
     let title_row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-    if profile.favorite {
-        let star = gtk::Image::from_icon_name("starred-symbolic");
-        star.set_pixel_size(16);
-        star.add_css_class("wwn-icon-orange");
-        title_row.append(&star);
-    }
     title_row.append(&title_widget);
+
+    // Finder-style tag dots, inline with the machine name in the thumbnail banner.
+    for t in tags.iter().take(4) {
+        let dot = color_dot(&t.color_hex, 10);
+        dot.set_tooltip_text(Some(&t.name));
+        dot.set_valign(gtk::Align::Center);
+        title_row.append(&dot);
+    }
+    if tags.len() > 4 {
+        let more_lbl = gtk::Label::new(Some(&format!("+{}", tags.len() - 4)));
+        more_lbl.add_css_class("caption");
+        more_lbl.add_css_class("machine-banner-tag-count");
+        more_lbl.set_tooltip_text(Some(&format!("{} more tags", tags.len() - 4)));
+        more_lbl.set_valign(gtk::Align::Center);
+        title_row.append(&more_lbl);
+    }
+
     name_col.append(&title_row);
     name_col.append(&subtitle);
+
+    // Trailing icon tray: machine-type icon tile + pinned icon tile
+    let icon_tray = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    icon_tray.set_valign(gtk::Align::Center);
+    icon_tray.set_halign(gtk::Align::End);
 
     let icon_tile = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     icon_tile.add_css_class("machine-type-icon-tile");
@@ -443,9 +552,21 @@ fn build_machine_card(
     let type_icon = gtk::Image::from_icon_name(profile.machine_type.icon_name());
     type_icon.set_pixel_size(24);
     icon_tile.append(&type_icon);
+    icon_tray.append(&icon_tile);
+
+    if profile.favorite {
+        let pin_tile = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        pin_tile.add_css_class("machine-pin-tile");
+        pin_tile.set_valign(gtk::Align::Center);
+        pin_tile.set_tooltip_text(Some("Pinned"));
+        let pin_icon = gtk::Image::from_icon_name("view-pin-symbolic");
+        pin_icon.set_pixel_size(18);
+        pin_tile.append(&pin_icon);
+        icon_tray.append(&pin_tile);
+    }
 
     banner_content.append(&name_col);
-    banner_content.append(&icon_tile);
+    banner_content.append(&icon_tray);
     banner.add_overlay(&banner_content);
 
     // Status badge + chips
@@ -474,11 +595,6 @@ fn build_machine_card(
     let chips = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     chips.set_halign(gtk::Align::End);
     chips.set_hexpand(true);
-    if profile.favorite {
-        let p_chip = chip("PINNED");
-        p_chip.add_css_class("machine-chip-pinned");
-        chips.append(&p_chip);
-    }
     chips.append(&chip(
         &machine_scope_label(profile.machine_type).to_uppercase(),
     ));
@@ -492,16 +608,6 @@ fn build_machine_card(
     }
     badge_row.append(&chips);
 
-    let mut tags_box_opt = None;
-    if !tags.is_empty() {
-        let tags_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-        tags_box.add_css_class("machine-tags-row");
-        for t in tags {
-            tags_box.append(&tag_chip(&t.name, &t.color_hex));
-        }
-        tags_box_opt = Some(tags_box);
-    }
-
     // Summary line
     let summary = gtk::Label::new(Some(&machine_configuration_summary(profile)));
     summary.set_wrap(true);
@@ -510,16 +616,20 @@ fn build_machine_card(
     summary.add_css_class("caption");
     summary.set_xalign(0.0);
 
-    // Action buttons
-    // Action buttons: equidistant row following SwiftUI interfacing
-    let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    // Action chips match SwiftUI MachineActionBar: small, content-sized, wrapping.
+    let actions = gtk::FlowBox::new();
+    actions.set_selection_mode(gtk::SelectionMode::None);
+    actions.set_column_spacing(6);
+    actions.set_row_spacing(6);
+    actions.set_min_children_per_line(1);
+    actions.set_max_children_per_line(8);
+    actions.set_homogeneous(false);
     actions.set_hexpand(true);
-    actions.set_homogeneous(true);
+    actions.set_halign(gtk::Align::Start);
     actions.add_css_class("machine-actions-row");
 
     let start_btn = button_with_icon_label("media-playback-start-symbolic", "Start");
     start_btn.add_css_class("suggested-action");
-    start_btn.set_hexpand(true);
     crate::linux::ui::a11y::set_wwn_a11y(
         &start_btn,
         crate::linux::ui::a11y::id::MACHINES_START,
@@ -528,7 +638,6 @@ fn build_machine_card(
 
     let focus_btn = button_with_icon_label("find-location-symbolic", "Focus");
     focus_btn.add_css_class("suggested-action");
-    focus_btn.set_hexpand(true);
     crate::linux::ui::a11y::set_wwn_a11y(
         &focus_btn,
         crate::linux::ui::a11y::id::MACHINES_FOCUS,
@@ -537,7 +646,6 @@ fn build_machine_card(
 
     let stop_btn = button_with_icon_label("media-playback-stop-symbolic", "Stop");
     stop_btn.add_css_class("destructive-action");
-    stop_btn.set_hexpand(true);
     crate::linux::ui::a11y::set_wwn_a11y(
         &stop_btn,
         crate::linux::ui::a11y::id::MACHINES_STOP,
@@ -545,7 +653,6 @@ fn build_machine_card(
     );
 
     let edit_btn = button_with_icon_label("emblem-system-symbolic", "Edit");
-    edit_btn.set_hexpand(true);
     crate::linux::ui::a11y::set_wwn_a11y(
         &edit_btn,
         crate::linux::ui::a11y::id::MACHINES_EDIT,
@@ -553,7 +660,6 @@ fn build_machine_card(
     );
 
     let delete_btn = button_with_icon_label("user-trash-symbolic", "Delete");
-    delete_btn.set_hexpand(true);
     crate::linux::ui::a11y::set_wwn_a11y(
         &delete_btn,
         crate::linux::ui::a11y::id::MACHINES_DELETE,
@@ -574,9 +680,6 @@ fn build_machine_card(
 
     vbox.append(&banner);
     vbox.append(&badge_row);
-    if let Some(tb) = tags_box_opt {
-        vbox.append(&tb);
-    }
     vbox.append(&summary);
     vbox.append(&actions);
     frame.set_child(Some(&vbox));
@@ -591,13 +694,49 @@ fn build_machine_card(
     }
 }
 
+fn watch_machine_thumbnail(banner: &gtk::Box, pic: &gtk::Picture, path: std::path::PathBuf) {
+    let banner = banner.clone();
+    let pic = pic.clone();
+    let last_stamp = std::rc::Rc::new(std::cell::Cell::new(0u128));
+    let ticks = std::rc::Rc::new(std::cell::Cell::new(0i32));
+    banner.add_tick_callback(move |banner, _| {
+        let n = ticks.get().wrapping_add(1);
+        ticks.set(n);
+        if n % 20 != 1 {
+            return gtk::glib::ControlFlow::Continue;
+        }
+        let Ok(meta) = std::fs::metadata(&path) else {
+            pic.set_visible(false);
+            banner.add_css_class("machine-banner-placeholder");
+            return gtk::glib::ControlFlow::Continue;
+        };
+        let stamp = meta
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+        if stamp == last_stamp.get() {
+            return gtk::glib::ControlFlow::Continue;
+        }
+        if let Ok(bytes) = std::fs::read(&path) {
+            if let Ok(tex) = gtk::gdk::Texture::from_bytes(&gtk::glib::Bytes::from_owned(bytes)) {
+                pic.set_paintable(Some(&tex));
+                pic.set_visible(true);
+                banner.remove_css_class("machine-banner-placeholder");
+                last_stamp.set(stamp);
+            }
+        }
+        gtk::glib::ControlFlow::Continue
+    });
+}
+
 fn button_with_icon_label(icon: &str, label: &str) -> gtk::Button {
-    let content = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    let content = gtk::Box::new(gtk::Orientation::Horizontal, 4);
     content.set_halign(gtk::Align::Center);
     content.set_valign(gtk::Align::Center);
-    content.set_hexpand(true);
     let image = gtk::Image::from_icon_name(icon);
-    image.set_pixel_size(16);
+    image.set_pixel_size(14);
     let text = gtk::Label::new(Some(label));
     text.set_single_line_mode(true);
     text.set_wrap(false);
@@ -643,7 +782,7 @@ fn tag_chip(name: &str, color_hex: &str) -> gtk::Box {
     pill
 }
 
-fn color_dot(color_hex: &str, size: i32) -> gtk::Box {
+pub fn color_dot(color_hex: &str, size: i32) -> gtk::Box {
     let dot = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     dot.add_css_class("tag-color-dot");
     dot.set_size_request(size, size);
@@ -685,7 +824,8 @@ fn install_machine_card_styles() {
 
             .machine-banner {
               border-radius: 14px;
-              min-height: 94px;
+              min-height: 90px;
+              overflow: hidden;
               background-image: linear-gradient(
                 135deg,
                 rgba(53, 132, 228, 0.35),
@@ -693,6 +833,14 @@ fn install_machine_card_styles() {
                 rgba(0, 0, 0, 0.45)
               );
               border: 1px solid rgba(255, 255, 255, 0.10);
+            }
+
+            .machine-banner picture {
+              min-height: 90px;
+            }
+
+            .machine-banner-scrim {
+              background-color: rgba(0, 0, 0, 0.28);
             }
 
             .machine-banner-title {
@@ -712,6 +860,20 @@ fn install_machine_card_styles() {
               border-radius: 10px;
               padding: 8px;
               color: #ffffff;
+            }
+
+            .machine-pin-tile {
+              background-color: rgba(0, 0, 0, 0.45);
+              border: 1px solid rgba(255, 255, 255, 0.22);
+              border-radius: 8px;
+              padding: 8px;
+              color: #ffa348;
+            }
+
+            .machine-banner-tag-count {
+              color: rgba(255, 255, 255, 0.75);
+              font-size: 0.75rem;
+              font-weight: 600;
             }
 
             .machine-chip {
@@ -751,8 +913,10 @@ fn install_machine_card_styles() {
 
             .tag-color-dot {
               border-radius: 999px;
-              min-width: 8px;
-              min-height: 8px;
+              min-width: 10px;
+              min-height: 10px;
+              border: 1px solid rgba(255, 255, 255, 0.35);
+              box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
             }
 
             .tag-palette-button {
@@ -782,16 +946,27 @@ fn install_machine_card_styles() {
               margin-top: 4px;
             }
 
-            .machine-action-button {
-              border-radius: 8px;
-              padding: 6px 10px;
-              font-weight: 600;
-              min-height: 36px;
-              transition: all 140ms ease;
+            flowbox.machine-actions-row > flowboxchild {
+              padding: 0;
+              margin: 0;
+              background: none;
+              border: none;
+              box-shadow: none;
+              min-height: 0;
+              min-width: 0;
             }
 
-            .machine-action-button:hover {
-              transform: translateY(-1px);
+            button.machine-action-button {
+              border-radius: 8px;
+              padding: 2px 8px;
+              font-weight: 600;
+              font-size: 13px;
+              min-height: 26px;
+              min-width: 0;
+            }
+
+            button.machine-action-button label {
+              font-size: 13px;
             }
             "#,
         );
@@ -1065,8 +1240,14 @@ fn attach_card_actions(
 
     let is_fav = profile.favorite;
     let pin_label = if is_fav { "Unpin Machine" } else { "Pin Machine" };
-    let pin_icon = if is_fav { "starred-symbolic" } else { "non-starred-symbolic" };
-    let pin_item = popover_menu_button(pin_icon, pin_label, false);
+    let pin_item = popover_menu_button("view-pin-symbolic", pin_label, false);
+    if is_fav {
+        if let Some(content) = pin_item.child().and_then(|c| c.downcast::<gtk::Box>().ok()) {
+            if let Some(img) = content.first_child().and_then(|c| c.downcast::<gtk::Image>().ok()) {
+                img.add_css_class("wwn-icon-orange");
+            }
+        }
+    }
     let mid_pin = profile.id.clone();
     let state_pin = state.clone();
     let parent_pin = parent.clone();
@@ -1152,15 +1333,28 @@ fn attach_card_actions(
     let popover_newtag = popover.clone();
     new_tag_btn.connect_clicked(move |_| {
         popover_newtag.popdown();
+        let parent_c = parent_newtag.clone();
+        let state_c = state_newtag.clone();
+        let shell_c = shell_newtag.clone();
+        let sessions_c = sessions_newtag.clone();
+        let on_edit_c = on_edit_newtag.clone();
+        let on_open_term_c = on_open_term_newtag.clone();
+        let on_rebuild_fn = Rc::new(move || {
+            rebuild_home(RebuildHome {
+                shell: &shell_c,
+                state: &state_c,
+                parent: &parent_c,
+                sessions: sessions_c.clone(),
+                layout,
+                on_edit: on_edit_c.clone(),
+                on_open_terminal: on_open_term_c.clone(),
+            });
+        });
         show_new_tag_dialog(
             &parent_newtag,
-            &mid_newtag,
+            Some(&mid_newtag),
             state_newtag.clone(),
-            shell_newtag.clone(),
-            sessions_newtag.clone(),
-            layout,
-            on_edit_newtag.clone(),
-            on_open_term_newtag.clone(),
+            on_rebuild_fn,
         );
     });
     menu_box.append(&new_tag_btn);
@@ -1343,20 +1537,20 @@ fn tag_menu_item(tag: &crate::linux::tag_store::MachineTag, is_assigned: bool) -
     btn
 }
 
-fn show_new_tag_dialog(
+pub fn show_new_tag_dialog(
     parent: &adw::ApplicationWindow,
-    machine_id: &str,
+    machine_id: Option<&str>,
     state: SharedAppState,
-    shell: HomeShell,
-    sessions: MachineSessions,
-    layout: LayoutMode,
-    on_edit: Option<Rc<dyn Fn(MachineProfile)>>,
-    on_open_terminal: Option<Rc<dyn Fn(String, String)>>,
+    on_rebuild: Rc<dyn Fn()>,
 ) {
     let dialog = adw::MessageDialog::new(
         Some(parent),
         Some("New Tag"),
-        Some("Create a tag and assign it to this machine."),
+        Some(if machine_id.is_some() {
+            "Create a tag and assign it to this machine."
+        } else {
+            "Create a new machine tag."
+        }),
     );
     dialog.add_response("cancel", "Cancel");
     dialog.add_response("create", "Create Tag");
@@ -1424,8 +1618,7 @@ fn show_new_tag_dialog(
     vbox.append(&palette_grid);
     dialog.set_extra_child(Some(&vbox));
 
-    let mid = machine_id.to_string();
-    let parent_c = parent.clone();
+    let mid = machine_id.map(|s| s.to_string());
     dialog.connect_response(None, move |d, response| {
         if response == "create" {
             let name = name_entry.text().trim().to_string();
@@ -1434,18 +1627,111 @@ fn show_new_tag_dialog(
                 {
                     let mut app = state.borrow_mut();
                     let new_tag = app.tags.create_tag(&name, &color);
-                    app.tags.set_assigned(true, &new_tag.id, &mid);
+                    if let Some(ref m) = mid {
+                        app.tags.set_assigned(true, &new_tag.id, m);
+                    }
                     app.persist_tags();
                 }
-                rebuild_home(RebuildHome {
-                    shell: &shell,
-                    state: &state,
-                    parent: &parent_c,
-                    sessions: sessions.clone(),
-                    layout,
-                    on_edit: on_edit.clone(),
-                    on_open_terminal: on_open_terminal.clone(),
-                });
+                on_rebuild();
+            }
+        }
+        d.close();
+    });
+
+    dialog.present();
+}
+
+pub fn show_edit_tag_dialog(
+    parent: &adw::ApplicationWindow,
+    tag: &crate::linux::tag_store::MachineTag,
+    state: SharedAppState,
+    on_rebuild: Rc<dyn Fn()>,
+) {
+    let dialog = adw::MessageDialog::new(
+        Some(parent),
+        Some("Edit Tag"),
+        Some("Change the tag name and color."),
+    );
+    dialog.add_response("cancel", "Cancel");
+    dialog.add_response("save", "Save");
+    dialog.set_response_appearance("save", adw::ResponseAppearance::Suggested);
+    dialog.set_default_response(Some("save"));
+    dialog.set_close_response("cancel");
+
+    let vbox = gtk::Box::new(gtk::Orientation::Vertical, 12);
+    vbox.set_margin_top(8);
+    vbox.set_margin_bottom(8);
+
+    let entry_group = adw::PreferencesGroup::new();
+    let name_entry = adw::EntryRow::new();
+    name_entry.set_title("Tag Name");
+    name_entry.set_text(&tag.name);
+    entry_group.add(&name_entry);
+    vbox.append(&entry_group);
+
+    let color_lbl = gtk::Label::new(Some("Color"));
+    color_lbl.add_css_class("dim-label");
+    color_lbl.add_css_class("caption");
+    color_lbl.set_xalign(0.0);
+    vbox.append(&color_lbl);
+
+    let palette_grid = gtk::Grid::new();
+    palette_grid.set_column_spacing(8);
+    palette_grid.set_row_spacing(8);
+    palette_grid.set_halign(gtk::Align::Center);
+
+    let selected_color = Rc::new(RefCell::new(tag.color_hex.clone()));
+    let buttons = Rc::new(RefCell::new(Vec::<gtk::Button>::new()));
+
+    for (i, &hex) in crate::linux::tag_store::PALETTE_HEX.iter().enumerate() {
+        let btn = gtk::Button::new();
+        btn.add_css_class("flat");
+        btn.add_css_class("tag-palette-button");
+        if hex.eq_ignore_ascii_case(&tag.color_hex) {
+            btn.add_css_class("tag-palette-selected");
+        }
+
+        let dot = color_dot(hex, 20);
+        btn.set_child(Some(&dot));
+
+        let sel_c = selected_color.clone();
+        let hex_str = hex.to_string();
+        let btns_c = buttons.clone();
+        let btn_self = btn.clone();
+
+        btn.connect_clicked(move |_| {
+            *sel_c.borrow_mut() = hex_str.clone();
+            for b in btns_c.borrow().iter() {
+                b.remove_css_class("tag-palette-selected");
+            }
+            btn_self.add_css_class("tag-palette-selected");
+        });
+
+        buttons.borrow_mut().push(btn.clone());
+        let col = (i as i32) % 6;
+        let row = (i as i32) / 6;
+        palette_grid.attach(&btn, col, row, 1, 1);
+    }
+
+    vbox.append(&palette_grid);
+    dialog.set_extra_child(Some(&vbox));
+
+    let tag_id = tag.id.clone();
+    dialog.connect_response(None, move |d, response| {
+        if response == "save" {
+            let name = name_entry.text().trim().to_string();
+            if !name.is_empty() {
+                let color = selected_color.borrow().clone();
+                {
+                    let mut app = state.borrow_mut();
+                    app.tags.update_tag(crate::linux::tag_store::MachineTag {
+                        id: tag_id.clone(),
+                        name,
+                        color_hex: color,
+                    });
+                    app.persist_tags();
+                }
+                on_rebuild();
             }
         }
         d.close();
@@ -1464,6 +1750,8 @@ impl Clone for HomeShell {
             summary: self.summary.clone(),
             flow: self.flow.clone(),
             query: self.query.clone(),
+            selected_tag_id: self.selected_tag_id.clone(),
+            on_rebuild: self.on_rebuild.clone(),
         }
     }
 }

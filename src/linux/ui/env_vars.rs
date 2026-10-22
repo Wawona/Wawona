@@ -52,14 +52,14 @@ impl EnvCategory {
 
     pub fn icon_name(&self) -> &'static str {
         match self {
-            Self::Session => "view-grid-symbolic",
-            Self::Graphics => "display-brightness-symbolic",
-            Self::Shell => "system-run-symbolic",
+            Self::Session => "preferences-system-symbolic",
+            Self::Graphics => "color-select-symbolic",
+            Self::Shell => "utilities-terminal-symbolic",
             Self::Xdg => "folder-symbolic",
-            Self::Fonts => "text-x-generic-symbolic",
-            Self::Input => "user-desktop-symbolic",
+            Self::Fonts => "font-x-generic-symbolic",
+            Self::Input => "input-keyboard-symbolic",
             Self::Debug => "dialog-warning-symbolic",
-            Self::User => "application-x-executable-symbolic",
+            Self::User => "avatar-default-symbolic",
         }
     }
 
@@ -67,14 +67,32 @@ impl EnvCategory {
         match self {
             Self::Session => "wwn-icon-blue",
             Self::Graphics => "wwn-icon-purple",
-            Self::Shell => "wwn-icon-green",
-            Self::Xdg => "wwn-icon-orange",
+            Self::Shell => "wwn-icon-orange",
+            Self::Xdg => "wwn-icon-indigo",
             Self::Fonts => "wwn-icon-teal",
-            Self::Input => "wwn-icon-indigo",
+            Self::Input => "wwn-icon-green",
             Self::Debug => "wwn-icon-red",
-            Self::User => "wwn-icon-slate",
+            Self::User => "wwn-icon-teal",
         }
     }
+}
+
+fn env_filter_chip(label: &str, icon: &str, color_class: &str) -> gtk::Button {
+    let content = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    content.set_halign(gtk::Align::Center);
+    let image = gtk::Image::from_icon_name(icon);
+    image.set_pixel_size(14);
+    image.add_css_class(color_class);
+    let text = gtk::Label::new(Some(label));
+    content.append(&image);
+    content.append(&text);
+    let btn = gtk::Button::new();
+    btn.set_child(Some(&content));
+    btn.add_css_class("pill");
+    btn.add_css_class("flat");
+    btn.add_css_class("wwn-env-chip");
+    btn.add_css_class(&format!("{color_class}-chip"));
+    btn
 }
 
 #[derive(Debug, Clone)]
@@ -690,15 +708,13 @@ pub fn build_env_vars_view(
         Rc::new(RefCell::new(Vec::new()));
 
     // "All" chip
-    let all_btn = gtk::Button::with_label("All");
-    all_btn.add_css_class("pill");
-    all_btn.add_css_class("suggested-action");
+    let all_btn = env_filter_chip("All", "view-grid-symbolic", "wwn-icon-slate");
+    all_btn.add_css_class("wwn-env-chip-selected");
     chips_box.append(&all_btn);
     chip_buttons.borrow_mut().push((None, all_btn.clone()));
 
     for &cat in EnvCategory::all() {
-        let btn = gtk::Button::with_label(cat.display_name());
-        btn.add_css_class("pill");
+        let btn = env_filter_chip(cat.display_name(), cat.icon_name(), cat.css_class());
         chips_box.append(&btn);
         chip_buttons.borrow_mut().push((Some(cat), btn));
     }
@@ -727,12 +743,12 @@ pub fn build_env_vars_view(
     let scroll = gtk::ScrolledWindow::new();
     scroll.set_hexpand(true);
     scroll.set_vexpand(true);
-    scroll.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
+    scroll.set_policy(gtk::PolicyType::Automatic, gtk::PolicyType::Automatic);
 
     let list_content_box = gtk::Box::new(gtk::Orientation::Vertical, 12);
-    list_content_box.set_margin_start(16);
-    list_content_box.set_margin_end(16);
-    list_content_box.set_margin_bottom(16);
+    list_content_box.set_margin_start(8);
+    list_content_box.set_margin_end(8);
+    list_content_box.set_margin_bottom(12);
 
     let list_box = gtk::ListBox::new();
     list_box.set_selection_mode(gtk::SelectionMode::None);
@@ -740,7 +756,14 @@ pub fn build_env_vars_view(
     list_content_box.append(&list_box);
 
     // MARK: 4. Footer Actions
-    let footer_actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    let footer_actions = gtk::FlowBox::new();
+    footer_actions.set_selection_mode(gtk::SelectionMode::None);
+    footer_actions.set_column_spacing(8);
+    footer_actions.set_row_spacing(8);
+    footer_actions.set_min_children_per_line(1);
+    footer_actions.set_max_children_per_line(4);
+    footer_actions.set_homogeneous(false);
+    footer_actions.set_halign(gtk::Align::Start);
     footer_actions.set_margin_top(8);
 
     let reset_managed_btn = gtk::Button::with_label("Reset Wawona Defaults");
@@ -1171,9 +1194,9 @@ pub fn build_env_vars_view(
                 *sel_cat.borrow_mut() = cat_val;
                 for (other_cat, other_btn) in chip_btns.borrow().iter() {
                     if *other_cat == cat_val {
-                        other_btn.add_css_class("suggested-action");
+                        other_btn.add_css_class("wwn-env-chip-selected");
                     } else {
-                        other_btn.remove_css_class("suggested-action");
+                        other_btn.remove_css_class("wwn-env-chip-selected");
                     }
                 }
                 if let Some(f) = pop_fn.borrow().as_ref() {
