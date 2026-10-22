@@ -64,14 +64,14 @@ pkgs.writeShellApplication {
 
     # Terminal screen and kitty are symlinks into the sibling Terminal repo.
     # Replace broken symlinks with terminalSrc if provided.
-    if [ -n "${toString terminalSrc}" ] && [ -d "${terminalSrc}" ]; then
-      rm -f "$workdir/src/term/screen.rs" "$workdir/src/term/kitty.rs"
-      cp "${terminalSrc}/src/screen.rs" "$workdir/src/term/screen.rs"
-      if [ -f "${terminalSrc}/src/kitty.rs" ]; then
-        cp "${terminalSrc}/src/kitty.rs" "$workdir/src/term/kitty.rs"
-      fi
-      chmod u+w "$workdir/src/term/screen.rs" "$workdir/src/term/kitty.rs" 2>/dev/null || true
+    ${if terminalSrc != null then ''
+    rm -f "$workdir/src/term/screen.rs" "$workdir/src/term/kitty.rs"
+    cp "${terminalSrc}/src/screen.rs" "$workdir/src/term/screen.rs"
+    if [ -f "${terminalSrc}/src/kitty.rs" ]; then
+      cp "${terminalSrc}/src/kitty.rs" "$workdir/src/term/kitty.rs"
     fi
+    chmod u+w "$workdir/src/term/screen.rs" "$workdir/src/term/kitty.rs" 2>/dev/null || true
+    '' else ""}
 
     if [ ! -f "$workdir/waypipe/Cargo.toml" ]; then
       mkdir -p "$workdir/waypipe"
