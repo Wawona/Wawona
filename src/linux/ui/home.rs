@@ -1269,9 +1269,19 @@ fn attach_card_actions(
     });
     card.root.add_controller(right_click);
 
+    // Context menu:
+    // 1. Right-click for mouse / KBM input.
+    // 2. Touch-only long press (tap-and-hold) for touchscreen input.
+    // Mouse click-and-hold is explicitly ignored so click-and-drag or deliberate clicks never trigger it.
     let long_press = gtk::GestureLongPress::new();
+    long_press.set_touch_only(true);
     let popover_lp = popover.clone();
-    long_press.connect_pressed(move |_, x, y| {
+    long_press.connect_pressed(move |gesture, x, y| {
+        if let Some(dev) = gesture.current_event_device() {
+            if dev.source() != gtk::gdk::InputSource::Touchscreen {
+                return;
+            }
+        }
         let rect = gtk::gdk::Rectangle::new(x as i32, y as i32, 1, 1);
         popover_lp.set_pointing_to(Some(&rect));
         popover_lp.popup();
