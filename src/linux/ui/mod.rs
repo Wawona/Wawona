@@ -3,6 +3,7 @@
 pub mod a11y;
 mod adaptive;
 pub mod editor;
+pub mod env_vars;
 mod home;
 pub mod modal_sheet;
 mod settings;
@@ -12,6 +13,7 @@ pub mod work_status;
 
 pub use adaptive::{clamp_content, install_adaptive_split_view, install_breakpoint, LayoutBinding};
 pub use editor::{build_editor_view, show_editor};
+pub use env_vars::build_env_vars_view;
 pub use home::{
     build_home_shell, maybe_show_welcome, rebuild_home, HomeShell, MachineSessions, RebuildHome,
 };

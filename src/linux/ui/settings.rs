@@ -89,18 +89,47 @@ const SETTINGS_SECTIONS: &[SettingsSectionMeta] = &[
 ];
 
 pub fn build_settings_view(state: &SharedAppState, on_done: Rc<dyn Fn()>) -> gtk::Box {
+    let (body, _) = build_settings_view_internal(state, on_done);
+    body
+}
+
+pub fn build_settings_view_internal(
+    state: &SharedAppState,
+    on_done: Rc<dyn Fn()>,
+) -> (gtk::Box, adw::OverlaySplitView) {
     wlog!("UI", "Building settings view");
     ensure_settings_css();
+
+    let split_view = adw::OverlaySplitView::new();
+    split_view.set_min_sidebar_width(200.0);
+    split_view.set_max_sidebar_width(280.0);
+    split_view.set_sidebar_width_fraction(0.28);
+    split_view.set_enable_show_gesture(true);
+    split_view.set_enable_hide_gesture(true);
+    split_view.set_show_sidebar(true);
+    split_view.set_hexpand(true);
+    split_view.set_vexpand(true);
 
     let header = adw::HeaderBar::new();
     header.set_show_end_title_buttons(false);
     header.set_show_start_title_buttons(false);
+
+    let toggle_sidebar_btn = gtk::Button::from_icon_name("sidebar-show-symbolic");
+    toggle_sidebar_btn.set_tooltip_text(Some("Toggle Sidebar"));
+    let split_view_toggle = split_view.clone();
+    toggle_sidebar_btn.connect_clicked(move |_| {
+        let shows = split_view_toggle.shows_sidebar();
+        split_view_toggle.set_show_sidebar(!shows);
+    });
+    header.pack_start(&toggle_sidebar_btn);
+
     let title_lbl = gtk::Label::new(Some("Settings"));
     title_lbl.add_css_class("title");
     header.set_title_widget(Some(&title_lbl));
 
-    let done_btn = gtk::Button::with_label("Done");
+    let done_btn = gtk::Button::from_icon_name("object-select-symbolic");
     done_btn.add_css_class("suggested-action");
+    done_btn.set_tooltip_text(Some("Done"));
     crate::linux::ui::a11y::set_wwn_a11y(
         &done_btn,
         crate::linux::ui::a11y::id::SETTINGS_DONE,
@@ -272,8 +301,11 @@ pub fn build_settings_view(state: &SharedAppState, on_done: Rc<dyn Fn()>) -> gtk
     stack.add_named(&graphics_page, Some("Graphics"));
 
     // MARK: Environment Variables
-    let env_page = adw::PreferencesPage::new();
+    let env_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    env_box.set_hexpand(true);
+    env_box.set_vexpand(true);
 
+    let conn_pref_page = adw::PreferencesPage::new();
     let conn_group = adw::PreferencesGroup::new();
     conn_group.set_title("Compositor Endpoint");
     conn_group.set_description(Some(
@@ -281,65 +313,25 @@ pub fn build_settings_view(state: &SharedAppState, on_done: Rc<dyn Fn()>) -> gtk
     ));
     let wayland_display = add_entry_row(&conn_group, "Wayland Display", &settings.wayland_display);
     let tcp_port = add_spin_row(&conn_group, "TCP Listener Port", settings.tcp_port as f64, 1024.0, 65535.0, 1.0);
-    env_page.add(&conn_group);
+    conn_pref_page.add(&conn_group);
+    env_box.append(&conn_pref_page);
 
-    let env_group = adw::PreferencesGroup::new();
-    env_group.set_title("Environment Variables");
-    env_group.set_description(Some(
-        "Global KEY=value overrides applied to launched clients (machine overrides win). \
-         Lines starting with -NAME unset a variable. Matches Apple and Android Settings.",
-    ));
-    let env_text = gtk::TextView::new();
-    env_text.set_monospace(true);
-    env_text.set_wrap_mode(gtk::WrapMode::WordChar);
-    env_text.set_vexpand(true);
-    env_text.set_hexpand(true);
-    {
-        let mut buf = String::new();
-        for (k, v) in &settings.environment_overrides {
-            buf.push_str(k);
-            buf.push('=');
-            buf.push_str(v);
-            buf.push('\n');
-        }
-        for name in &settings.environment_unsets {
-            buf.push('-');
-            buf.push_str(name);
-            buf.push('\n');
-        }
-        env_text.buffer().set_text(&buf);
-    }
-    let env_scroll = gtk::ScrolledWindow::new();
-    env_scroll.set_min_content_height(220);
-    env_scroll.set_child(Some(&env_text));
-    env_group.add(&env_scroll);
+    let env_overrides_cell = Rc::new(RefCell::new(settings.environment_overrides.clone()));
+    let env_unsets_cell = Rc::new(RefCell::new(settings.environment_unsets.clone()));
 
-    let env_actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    env_actions.set_margin_top(8);
-    let reset_managed_btn = gtk::Button::with_label("Reset Wawona-managed");
-    let clear_all_btn = gtk::Button::with_label("Clear All");
-    env_actions.append(&reset_managed_btn);
-    env_actions.append(&clear_all_btn);
-    {
-        let buffer = env_text.buffer();
-        reset_managed_btn.connect_clicked(move |_| {
-            buffer.set_text("XDG_CURRENT_DESKTOP=Wawona\nWAYLAND_DISPLAY=wawona-0\n");
-        });
-    }
-    {
-        let buffer = env_text.buffer();
-        clear_all_btn.connect_clicked(move |_| {
-            buffer.set_text("");
-        });
-    }
-    env_group.add(&env_actions);
-    env_page.add(&env_group);
+    let env_manager_view = crate::linux::ui::env_vars::build_env_vars_view(
+        env_overrides_cell.clone(),
+        env_unsets_cell.clone(),
+        settings,
+    );
+    env_box.append(&env_manager_view);
+
     crate::linux::ui::a11y::set_wwn_a11y(
-        &env_page,
+        &env_box,
         crate::linux::ui::a11y::id::SETTINGS_ENVIRONMENT,
         Some("Env Vars"),
     );
-    stack.add_named(&env_page, Some("Env Vars"));
+    stack.add_named(&env_box, Some("Env Vars"));
 
     // MARK: Waypipe
     let waypipe_page = adw::PreferencesPage::new();
@@ -672,26 +664,24 @@ pub fn build_settings_view(state: &SharedAppState, on_done: Rc<dyn Fn()>) -> gtk
 
     drop(cfg);
 
-    let split = gtk::Paned::new(gtk::Orientation::Horizontal);
-    split.set_position(210);
-    split.set_wide_handle(true);
-    split.set_shrink_start_child(true);
-    split.set_shrink_end_child(true);
-
     let sidebar_scroll = gtk::ScrolledWindow::new();
     sidebar_scroll.set_hscrollbar_policy(gtk::PolicyType::Never);
     sidebar_scroll.set_child(Some(&sidebar));
 
-    split.set_start_child(Some(&sidebar_scroll));
-    split.set_end_child(Some(&stack));
+    split_view.set_sidebar(Some(&sidebar_scroll));
+    split_view.set_content(Some(&stack));
 
     {
         let stack = stack.clone();
+        let split_view_c = split_view.clone();
         sidebar.connect_row_selected(move |_, row| {
             if let Some(row) = row {
                 let idx = row.index() as usize;
                 if idx < SETTINGS_SECTIONS.len() {
                     stack.set_visible_child_name(SETTINGS_SECTIONS[idx].name);
+                    if split_view_c.is_collapsed() {
+                        split_view_c.set_show_sidebar(false);
+                    }
                 }
             }
         });
@@ -711,7 +701,7 @@ pub fn build_settings_view(state: &SharedAppState, on_done: Rc<dyn Fn()>) -> gtk
 
     let body = gtk::Box::new(gtk::Orientation::Vertical, 0);
     body.append(&header);
-    body.append(&split);
+    body.append(&split_view);
 
     let st = state.clone();
     let on_done_c = on_done.clone();
@@ -774,49 +764,21 @@ pub fn build_settings_view(state: &SharedAppState, on_done: Rc<dyn Fn()>) -> gtk
         app.settings.waypipe_compress_level = wp_compress_level.value() as u32;
         app.settings.waypipe_threads = wp_threads.value() as u32;
         app.settings.log_level = log_level_value.borrow().clone();
-        {
-            let buffer = env_text.buffer();
-            let start = buffer.start_iter();
-            let end = buffer.end_iter();
-            let text = buffer.text(&start, &end, false);
-            let mut overrides = std::collections::BTreeMap::new();
-            let mut unsets = Vec::new();
-            for line in text.lines() {
-                let line = line.trim();
-                if line.is_empty() || line.starts_with('#') {
-                    continue;
-                }
-                if let Some(name) = line.strip_prefix('-') {
-                    let name = name.trim();
-                    if !name.is_empty() {
-                        unsets.push(name.to_string());
-                    }
-                    continue;
-                }
-                if let Some((k, v)) = line.split_once('=') {
-                    let k = k.trim();
-                    let v = v.trim();
-                    if !k.is_empty() {
-                        overrides.insert(k.to_string(), v.to_string());
-                    }
-                }
-            }
-            app.settings.environment_overrides = overrides;
-            app.settings.environment_unsets = unsets;
-        }
+        app.settings.environment_overrides = env_overrides_cell.borrow().clone();
+        app.settings.environment_unsets = env_unsets_cell.borrow().clone();
         app.persist_settings();
         wlog!("UI", "Settings saved");
         drop(app);
         on_done_c();
     });
 
-    body
+    (body, split_view)
 }
 
 pub fn show_settings(parent: &adw::ApplicationWindow, state: &SharedAppState, layout: LayoutMode) {
     let dialog_holder: Rc<RefCell<Option<adw::Window>>> = Rc::new(RefCell::new(None));
     let dh = dialog_holder.clone();
-    let body = build_settings_view(
+    let (body, split_view) = build_settings_view_internal(
         state,
         Rc::new(move || {
             if let Some(d) = dh.borrow().as_ref() {
@@ -825,6 +787,18 @@ pub fn show_settings(parent: &adw::ApplicationWindow, state: &SharedAppState, la
         }),
     );
     let dialog = present_sheet(parent, "Settings", &body, layout);
+
+    if let Ok(cond) = adw::BreakpointCondition::parse("max-width: 760px") {
+        let bp = adw::Breakpoint::new(cond);
+        bp.add_setter(&split_view, "collapsed", Some(&true.to_value()));
+        bp.add_setter(&split_view, "show-sidebar", Some(&false.to_value()));
+        dialog.add_breakpoint(bp);
+    }
+    if layout.is_compact() {
+        split_view.set_collapsed(true);
+        split_view.set_show_sidebar(true);
+    }
+
     *dialog_holder.borrow_mut() = Some(dialog);
 }
 
