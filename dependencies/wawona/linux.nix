@@ -17,6 +17,7 @@ pkgs.writeShellApplication {
   runtimeInputs = [
     pkgs.cargo
     pkgs.rustc
+    pkgs.python3
     pkgs.pkg-config
     pkgs.stdenv.cc
     pkgs.gtk4
@@ -73,10 +74,16 @@ pkgs.writeShellApplication {
     chmod u+w "$workdir/src/term/screen.rs" "$workdir/src/term/kitty.rs" 2>/dev/null || true
     '' else ""}
 
-    if [ ! -f "$workdir/waypipe/Cargo.toml" ]; then
+    rm -rf "$workdir/waypipe" "$workdir/coreutils"
+
+    if [ -n "${toString waypipeSrc}" ]; then
       mkdir -p "$workdir/waypipe"
       cp -rL "${waypipeSrc}"/. "$workdir/waypipe"/
       chmod -R u+w "$workdir/waypipe"
+      rm -f "$workdir/waypipe/Cargo.lock"
+      if [ -f "$workdir/scripts/lib/expand_uutils_workspace_deps.py" ]; then
+        python3 "$workdir/scripts/lib/expand_uutils_workspace_deps.py" --waypipe "$workdir/waypipe"
+      fi
     fi
 
     if [ ! -f "$workdir/waypipe/Cargo.toml" ]; then
@@ -86,10 +93,14 @@ pkgs.writeShellApplication {
 
     # Cargo resolves the optional ./coreutils path dependency even when the
     # feature is disabled, so the manifest must exist in the staged workspace.
-    if [ ! -f "$workdir/coreutils/Cargo.toml" ]; then
+    if [ -n "${toString coreutilsSrc}" ]; then
       mkdir -p "$workdir/coreutils"
       cp -rL "${coreutilsSrc}"/. "$workdir/coreutils"/
       chmod -R u+w "$workdir/coreutils"
+      rm -f "$workdir/coreutils/Cargo.lock"
+      if [ -f "$workdir/scripts/lib/expand_uutils_workspace_deps.py" ]; then
+        python3 "$workdir/scripts/lib/expand_uutils_workspace_deps.py" "$workdir/coreutils"
+      fi
     fi
 
     if [ ! -f "$workdir/coreutils/Cargo.toml" ]; then
