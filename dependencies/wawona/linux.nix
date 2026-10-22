@@ -47,6 +47,7 @@ pkgs.writeShellApplication {
     pkgs.systemd
     pkgs.coreutils
     pkgs.lldb
+    pkgs.cloud-hypervisor
   ] ++ pkgs.lib.optional (phoon != null) phoon;
   text = ''
     set -euo pipefail
