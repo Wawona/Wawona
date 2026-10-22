@@ -49,7 +49,9 @@ pub fn shell_command(profile: &MachineProfile) -> Option<String> {
                 .as_deref()
                 .map(str::trim)
                 .unwrap_or("");
-            if id == "wawona-shell" {
+            if id == "wawona-wasm" {
+                Some(crate::linux::wasm_launch::effective_wasm_command(profile))
+            } else if id == "wawona-shell" || !profile.remote_command.trim().is_empty() {
                 let custom = profile.remote_command.trim();
                 if custom.is_empty() {
                     Some("wawona-shell".to_string())
@@ -58,6 +60,16 @@ pub fn shell_command(profile: &MachineProfile) -> Option<String> {
                 }
             } else {
                 None
+            }
+        }
+        MachineType::Wasm => Some(crate::linux::wasm_launch::effective_wasm_command(profile)),
+        MachineType::VirtualMachine | MachineType::Container => {
+            let cmd = profile.effective_command();
+            let trimmed = cmd.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
             }
         }
         _ => None,

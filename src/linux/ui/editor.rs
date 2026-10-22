@@ -712,7 +712,7 @@ pub fn build_editor_view(
             let kind = get_combo_id(&session, &session_ids);
             let ssh_on = use_ssh.is_active();
             sg.set_visible(is_native);
-            wg.set_visible(is_native && kind == "wasm");
+            wg.set_visible((is_native && kind == "wasm") || type_id == "wasm");
             rg.set_visible(is_native && ssh_on);
             pg.set_visible(is_native && ssh_on);
             vg.set_visible(type_id == "virtual_machine");

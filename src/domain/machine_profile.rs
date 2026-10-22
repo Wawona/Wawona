@@ -488,6 +488,48 @@ impl MachineProfile {
                 .filter(|s| !s.is_empty())
                 .map(|s| s.to_string())
                 .unwrap_or_else(|| "wasm hello-wasi-gui".to_string()),
+            MachineType::VirtualMachine => {
+                let custom = self.remote_command.trim();
+                if !custom.is_empty() {
+                    custom.to_string()
+                } else {
+                    let variant = self
+                        .vm_settings
+                        .as_ref()
+                        .and_then(|s| s.guest_variant.as_deref())
+                        .unwrap_or("nixos-guest-4k");
+                    let mem = self
+                        .vm_settings
+                        .as_ref()
+                        .and_then(|s| s.memory_mb)
+                        .unwrap_or(2048);
+                    format!("wawona-vm-launch --guest {variant} --memory {mem}")
+                }
+            }
+            MachineType::Container => {
+                let custom = self.remote_command.trim();
+                if !custom.is_empty() {
+                    custom.to_string()
+                } else if let Some(ref image) = self
+                    .container_settings
+                    .as_ref()
+                    .and_then(|s| s.container_ref.as_deref())
+                    .filter(|s| !s.trim().is_empty())
+                {
+                    let entry = self
+                        .container_settings
+                        .as_ref()
+                        .and_then(|s| s.entry_command.as_deref())
+                        .unwrap_or("");
+                    if entry.is_empty() {
+                        format!("wawona-container-run --image {image}")
+                    } else {
+                        format!("wawona-container-run --image {image} -- {entry}")
+                    }
+                } else {
+                    "wawona-container-run".to_string()
+                }
+            }
             _ => self.remote_command.clone(),
         }
     }
