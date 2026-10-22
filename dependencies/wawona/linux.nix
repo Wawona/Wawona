@@ -14,6 +14,7 @@
 
 pkgs.writeShellApplication {
   name = "wawona-linux-run";
+  excludeShellChecks = [ "SC2157" ];
   runtimeInputs = [
     pkgs.cargo
     pkgs.rustc
