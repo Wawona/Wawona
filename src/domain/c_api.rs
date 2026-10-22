@@ -175,6 +175,34 @@ pub extern "C" fn wawona_settings_visible_sections(host: *const c_char) -> *mut 
     to_cstring(joined)
 }
 
+/// Comma-separated allowed Vulkan drivers for `host`.
+/// Caller frees with `wawona_domain_string_free`. Empty string if unknown host.
+#[no_mangle]
+pub extern "C" fn wawona_settings_allowed_vulkan_drivers(host: *const c_char) -> *mut c_char {
+    let Some(slug) = cstr_to_str(host) else {
+        return to_cstring(String::new());
+    };
+    let Some(parsed) = super::settings_catalog::host_from_slug(slug) else {
+        return to_cstring(String::new());
+    };
+    let joined = super::settings_catalog::allowed_vulkan_drivers(parsed).join(",");
+    to_cstring(joined)
+}
+
+/// Comma-separated allowed OpenGL drivers for `host`.
+/// Caller frees with `wawona_domain_string_free`. Empty string if unknown host.
+#[no_mangle]
+pub extern "C" fn wawona_settings_allowed_opengl_drivers(host: *const c_char) -> *mut c_char {
+    let Some(slug) = cstr_to_str(host) else {
+        return to_cstring(String::new());
+    };
+    let Some(parsed) = super::settings_catalog::host_from_slug(slug) else {
+        return to_cstring(String::new());
+    };
+    let joined = super::settings_catalog::allowed_opengl_drivers(parsed).join(",");
+    to_cstring(joined)
+}
+
 /// Four-state gate: `available`, `planned`, `blocked`, or `forbidden`.
 /// Caller frees with `wawona_domain_string_free`.
 #[no_mangle]

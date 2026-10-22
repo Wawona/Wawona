@@ -4,7 +4,6 @@ mod app {
     use std::collections::{HashMap, HashSet};
     use std::env;
     use std::path::Path;
-    use std::process::Child;
     use std::rc::Rc;
     use std::sync::Arc;
     use std::time::Duration;
@@ -19,20 +18,19 @@ mod app {
         AxisSource, BufferData, DecorationMode, KeyState as WlKeyState, PointerAxis,
         PointerButton, RenderScene, WindowEvent, WindowId, WindowSizeCause,
     };
-    use wawona::linux::config;
     use wawona::linux::machine_profile::MachineType;
+    use wawona::wlog;
     use wawona::linux::runtime::{
-        self, ensure_runtime_dir, now_unix_ms, now_unix_s, write_runtime_env, write_runtime_state,
-        RuntimeState,
+        ensure_runtime_dir, now_unix_ms, now_unix_s, read_runtime_state, write_runtime_env,
+        write_runtime_state, RuntimeState,
     };
     use wawona::linux::ui::{
-        a11y, build_home_shell, clamp_content, install_breakpoint, maybe_show_welcome, rebuild_home,
-        show_editor, show_settings, show_tab_overview, AppState, HomeShell, LayoutBinding,
-        MachineSessions,
-        RebuildHome, SharedAppState,
+        a11y, build_editor_view, build_home_shell, build_settings_view, build_tab_overview_view,
+        build_work_status_view, clamp_content, ensure_settings_css, install_adaptive_split_view,
+        maybe_show_welcome, rebuild_home,
+        AppState, LayoutBinding, MachineSessions, RebuildHome, SharedAppState,
     };
     use wawona::linux::ui_model::LayoutMode;
-    use wawona::linux::service;
 
     struct CachedBuffer {
         pixels: Vec<u8>,
@@ -165,8 +163,11 @@ mod app {
         for i in 0..4 {
             let sock = runtime_dir.join(format!("wawona-{i}"));
             let lock = runtime_dir.join(format!("wawona-{i}.lock"));
-            if sock.exists() { let _ = std::fs::remove_file(&sock); }
-            if lock.exists() { let _ = std::fs::remove_file(&lock); }
+            let is_alive = std::os::unix::net::UnixStream::connect(&sock).is_ok();
+            if !is_alive {
+                if sock.exists() { let _ = std::fs::remove_file(&sock); }
+                if lock.exists() { let _ = std::fs::remove_file(&lock); }
+            }
         }
 
         for i in 0..4 {
@@ -261,6 +262,7 @@ mod app {
                 core.inject_pointer_motion(wid, x, y, ts);
                 core.inject_pointer_button(wid, btn, WlKeyState::Pressed, ts);
                 core.inject_pointer_frame(wid);
+                core.inject_keyboard_enter(wid, Vec::new());
             });
         }
         {
@@ -280,6 +282,24 @@ mod app {
             });
         }
         da.add_controller(click_ctrl);
+
+        // Focus controller for keyboard enter / leave
+        let focus_ctrl = gtk::EventControllerFocus::new();
+        {
+            let core = core.clone();
+            let wid = window_id;
+            focus_ctrl.connect_enter(move |_| {
+                core.inject_keyboard_enter(wid, Vec::new());
+            });
+        }
+        {
+            let core = core.clone();
+            let wid = window_id;
+            focus_ctrl.connect_leave(move |_| {
+                core.inject_keyboard_leave(wid);
+            });
+        }
+        da.add_controller(focus_ctrl);
 
         // Scroll
         let scroll_ctrl = gtk::EventControllerScroll::new(
@@ -309,7 +329,7 @@ mod app {
             key_ctrl.connect_key_pressed(move |_, keyval, keycode, _| {
                 let ts = (now_unix_ms() & 0xFFFF_FFFF) as u32;
                 let _ = keyval;
-                core.inject_key(keycode - 8, WlKeyState::Pressed, ts);
+                core.inject_key(keycode.saturating_sub(8), WlKeyState::Pressed, ts);
                 gtk::glib::Propagation::Stop
             });
         }
@@ -317,7 +337,7 @@ mod app {
             let core = core.clone();
             key_ctrl.connect_key_released(move |_, _keyval, keycode, _| {
                 let ts = (now_unix_ms() & 0xFFFF_FFFF) as u32;
-                core.inject_key(keycode - 8, WlKeyState::Released, ts);
+                core.inject_key(keycode.saturating_sub(8), WlKeyState::Released, ts);
             });
         }
         da.add_controller(key_ctrl);
@@ -419,11 +439,47 @@ mod app {
             .height_request(480)
             .build();
         window.set_resizable(true);
-        install_breakpoint(&window, &layout_binding);
+        let split_view = adw::OverlaySplitView::new();
+        split_view.set_min_sidebar_width(220.0);
+        split_view.set_max_sidebar_width(320.0);
+        split_view.set_sidebar_width_fraction(0.25);
+        split_view.set_enable_show_gesture(true);
+        split_view.set_enable_hide_gesture(true);
+        split_view.set_show_sidebar(true);
 
-        // Toolbar mirrors macOS `detailToolbarContent`: title "Machines",
-        // search in the toolbar, and trailing primary actions [Add][Settings].
+        let key_controller = gtk::EventControllerKey::new();
+        let split_view_key = split_view.clone();
+        key_controller.connect_key_pressed(move |_, keyval, _, state| {
+            let is_ctrl = state.contains(gtk::gdk::ModifierType::CONTROL_MASK);
+            if (is_ctrl && (keyval == gtk::gdk::Key::b || keyval == gtk::gdk::Key::B || keyval == gtk::gdk::Key::backslash))
+                || keyval == gtk::gdk::Key::F9
+            {
+                let shows = split_view_key.shows_sidebar();
+                split_view_key.set_show_sidebar(!shows);
+                gtk::glib::Propagation::Stop
+            } else {
+                gtk::glib::Propagation::Proceed
+            }
+        });
+        window.add_controller(key_controller);
+
+        // Toolbar mirrors macOS detailToolbarContent: leading sidebar toggle,
+        // title Machines, search in the toolbar, and trailing primary actions [Add][Settings].
         let header = adw::HeaderBar::new();
+
+        let toggle_sidebar_btn = gtk::Button::from_icon_name("sidebar-show-symbolic");
+        toggle_sidebar_btn.set_tooltip_text(Some("Toggle Sidebar (Ctrl+B)"));
+        a11y::set_wwn_a11y(
+            &toggle_sidebar_btn,
+            "wwn.machines.toggleSidebar",
+            Some("Toggle Sidebar"),
+        );
+        let split_view_toggle = split_view.clone();
+        toggle_sidebar_btn.connect_clicked(move |_| {
+            let shows = split_view_toggle.shows_sidebar();
+            split_view_toggle.set_show_sidebar(!shows);
+        });
+        header.pack_start(&toggle_sidebar_btn);
 
         // pack_end order: first packed sits furthest right, so Settings goes
         // in before Add to render as [Add][Settings].
@@ -461,15 +517,418 @@ mod app {
                 f();
             }
         });
-        let home = build_home_shell(on_rebuild);
+        let home = build_home_shell(on_rebuild.clone());
         header.set_title_widget(Some(&home.search));
+
+        ensure_settings_css();
+
+        let sidebar_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        sidebar_box.set_width_request(220);
+        sidebar_box.add_css_class("sidebar");
+
+        let brand_box = gtk::Box::new(gtk::Orientation::Vertical, 2);
+        brand_box.set_margin_start(16);
+        brand_box.set_margin_end(16);
+        brand_box.set_margin_top(16);
+        brand_box.set_margin_bottom(12);
+
+        let brand_title = gtk::Label::new(Some("Wawona"));
+        brand_title.add_css_class("title-1");
+        brand_title.set_xalign(0.0);
+        let brand_sub = gtk::Label::new(Some("Machine Control"));
+        brand_sub.add_css_class("dim-label");
+        brand_sub.add_css_class("caption");
+        brand_sub.set_xalign(0.0);
+        brand_box.append(&brand_title);
+        brand_box.append(&brand_sub);
+        sidebar_box.append(&brand_box);
+
+        let sidebar_list = gtk::ListBox::new();
+        sidebar_list.set_selection_mode(gtk::SelectionMode::Single);
+        sidebar_list.add_css_class("navigation-sidebar");
+        sidebar_list.set_margin_start(8);
+        sidebar_list.set_margin_end(8);
+
+        let make_sidebar_row = |name: &str, icon_name: &str, css_class: &str, a11y_id: &str| {
+            let row = gtk::ListBoxRow::new();
+            let row_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+            row_box.set_margin_start(10);
+            row_box.set_margin_end(10);
+            row_box.set_margin_top(8);
+            row_box.set_margin_bottom(8);
+
+            let icon = gtk::Image::from_icon_name(icon_name);
+            icon.set_pixel_size(18);
+            icon.add_css_class(css_class);
+            row_box.append(&icon);
+
+            let label = gtk::Label::new(Some(name));
+            label.set_xalign(0.0);
+            label.set_hexpand(true);
+            label.add_css_class("heading");
+            row_box.append(&label);
+
+            row.set_child(Some(&row_box));
+            a11y::set_wwn_a11y(&row, a11y_id, Some(name));
+            row
+        };
+
+        let make_section_hdr = |title: &str| {
+            let lbl = gtk::Label::new(Some(title));
+            lbl.add_css_class("dim-label");
+            lbl.add_css_class("caption-heading");
+            lbl.set_xalign(0.0);
+            lbl.set_margin_start(12);
+            lbl.set_margin_top(12);
+            lbl.set_margin_bottom(4);
+            lbl
+        };
+
+        let row_machines = make_sidebar_row("Machines", "computer-symbolic", "wwn-icon-indigo", a11y::id::MACHINES_ROOT);
+        sidebar_list.append(&row_machines);
+
+        let row_overview = make_sidebar_row("Tab Overview", "view-grid-symbolic", "wwn-icon-blue", a11y::id::MACHINES_OVERVIEW);
+        sidebar_list.append(&row_overview);
+
+        let row_work_status = make_sidebar_row("Work Status", "view-list-bullet-symbolic", "wwn-icon-orange", "wwn.projectStatus");
+        sidebar_list.append(&row_work_status);
+
+        sidebar_list.set_header_func(move |row, _before| {
+            match row.index() {
+                0 => row.set_header(Some(&make_section_hdr("Machines"))),
+                2 => row.set_header(Some(&make_section_hdr("Project"))),
+                _ => row.set_header(gtk::Widget::NONE),
+            }
+        });
+
+        sidebar_box.append(&sidebar_list);
+
+        let spacer = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        spacer.set_vexpand(true);
+        sidebar_box.append(&spacer);
+
+        let wayland_display_str = read_runtime_state()
+            .map(|rt| rt.wayland_display)
+            .unwrap_or_else(|_| "wawona-0".to_string());
+        let footer_card = gtk::Box::new(gtk::Orientation::Vertical, 4);
+        footer_card.set_margin_start(12);
+        footer_card.set_margin_end(12);
+        footer_card.set_margin_bottom(12);
+        footer_card.add_css_class("card");
+
+        let footer_inner = gtk::Box::new(gtk::Orientation::Vertical, 4);
+        footer_inner.set_margin_start(10);
+        footer_inner.set_margin_end(10);
+        footer_inner.set_margin_top(8);
+        footer_inner.set_margin_bottom(8);
+
+        let f_top = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        let dot = gtk::Image::from_icon_name("media-record-symbolic");
+        dot.set_pixel_size(10);
+        dot.add_css_class("wwn-icon-green");
+        f_top.append(&dot);
+        let f_disp = gtk::Label::new(Some(&wayland_display_str));
+        f_disp.add_css_class("heading");
+        f_top.append(&f_disp);
+        footer_inner.append(&f_top);
+
+        let f_proto = gtk::Label::new(Some("32 Wayland Protocols"));
+        f_proto.add_css_class("dim-label");
+        f_proto.add_css_class("caption");
+        f_proto.set_xalign(0.0);
+        footer_inner.append(&f_proto);
+        footer_card.append(&footer_inner);
+        sidebar_box.append(&footer_card);
+
+        split_view.set_sidebar(Some(&sidebar_box));
+
+        let content_stack = gtk::Stack::new();
+        content_stack.set_transition_type(gtk::StackTransitionType::None);
+        content_stack.set_hexpand(true);
+        content_stack.set_vexpand(true);
 
         let home_body = clamp_content(&home.root);
         home_body.set_vexpand(true);
-        let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        root.append(&header);
-        root.append(&home_body);
-        window.set_content(Some(&root));
+        let machines_page = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        machines_page.append(&header);
+        machines_page.append(&home_body);
+        content_stack.add_named(&machines_page, Some("machines"));
+
+        let editor_slot = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        editor_slot.set_hexpand(true);
+        editor_slot.set_vexpand(true);
+        content_stack.add_named(&editor_slot, Some("editor"));
+
+        let tab_overview_slot = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        tab_overview_slot.set_hexpand(true);
+        tab_overview_slot.set_vexpand(true);
+        content_stack.add_named(&tab_overview_slot, Some("tab_overview"));
+
+        let terminal_slot = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        terminal_slot.set_hexpand(true);
+        terminal_slot.set_vexpand(true);
+        content_stack.add_named(&terminal_slot, Some("terminal"));
+
+        let active_terminal: Rc<RefCell<Option<String>>> = Rc::new(RefCell::new(None));
+
+        let split_view_for_status = split_view.clone();
+        let work_status_page = build_work_status_view(Some(Rc::new(move || {
+            let shows = split_view_for_status.shows_sidebar();
+            split_view_for_status.set_show_sidebar(!shows);
+        })));
+        content_stack.add_named(&work_status_page, Some("work_status"));
+
+        split_view.set_content(Some(&content_stack));
+        install_adaptive_split_view(&window, &split_view, &layout_binding);
+
+        let root_stack = gtk::Stack::new();
+        root_stack.set_transition_type(gtk::StackTransitionType::SlideUpDown);
+        root_stack.set_transition_duration(300);
+        root_stack.set_hexpand(true);
+        root_stack.set_vexpand(true);
+
+        root_stack.add_named(&split_view, Some("main"));
+
+        let settings_container = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        settings_container.set_hexpand(true);
+        settings_container.set_vexpand(true);
+        root_stack.add_named(&settings_container, Some("settings"));
+
+        window.set_content(Some(&root_stack));
+
+        let open_settings = {
+            let root_stack = root_stack.clone();
+            let settings_container = settings_container.clone();
+            let state = state.clone();
+            let on_rebuild = on_rebuild.clone();
+            Rc::new(move || {
+                while let Some(c) = settings_container.first_child() {
+                    settings_container.remove(&c);
+                }
+                let root_stack_c = root_stack.clone();
+                let on_rebuild_c = on_rebuild.clone();
+                let on_done = Rc::new(move || {
+                    on_rebuild_c();
+                    root_stack_c.set_visible_child_name("main");
+                });
+                let settings_view = build_settings_view(&state, on_done);
+                settings_container.append(&settings_view);
+                root_stack.set_visible_child_name("settings");
+            })
+        };
+
+        {
+            let content_stack = content_stack.clone();
+            let tab_overview_slot = tab_overview_slot.clone();
+            let sidebar_list_c = sidebar_list.clone();
+            let state = state.clone();
+            let sessions = machine_sessions.clone();
+            let on_rebuild = on_rebuild.clone();
+            let active_terminal_tab = active_terminal.clone();
+            let split_view_for_list = split_view.clone();
+            sidebar_list.connect_row_selected(move |_, row| {
+                let Some(r) = row else { return };
+                if split_view_for_list.is_collapsed() {
+                    split_view_for_list.set_show_sidebar(false);
+                }
+                match r.index() {
+                    0 => {
+                        content_stack.set_visible_child_name("machines");
+                    }
+                    1 => {
+                        while let Some(c) = tab_overview_slot.first_child() {
+                            tab_overview_slot.remove(&c);
+                        }
+                        let stack_c = content_stack.clone();
+                        let side_c = sidebar_list_c.clone();
+                        let on_rebuild_c = on_rebuild.clone();
+                        let active_term_c = active_terminal_tab.clone();
+                        let on_select = Rc::new({
+                            let stack_c = stack_c.clone();
+                            let side_c = side_c.clone();
+                            let on_rebuild_c = on_rebuild_c.clone();
+                            let active_term_c = active_term_c.clone();
+                            move |mid: String| {
+                                on_rebuild_c();
+                                if active_term_c.borrow().as_deref() == Some(&mid) {
+                                    stack_c.set_visible_child_name("terminal");
+                                } else {
+                                    stack_c.set_visible_child_name("machines");
+                                    if let Some(r0) = side_c.row_at_index(0) {
+                                        side_c.select_row(Some(&r0));
+                                    }
+                                }
+                            }
+                        });
+                        let on_close = Rc::new({
+                            let stack_c = stack_c.clone();
+                            let side_c = side_c.clone();
+                            move || {
+                                stack_c.set_visible_child_name("machines");
+                                if let Some(r0) = side_c.row_at_index(0) {
+                                    side_c.select_row(Some(&r0));
+                                }
+                            }
+                        });
+                        let tab_view = build_tab_overview_view(&state, sessions.clone(), on_select, on_close);
+                        tab_overview_slot.append(&tab_view);
+                        content_stack.set_visible_child_name("tab_overview");
+                    }
+                    2 => {
+                        content_stack.set_visible_child_name("work_status");
+                    }
+                    _ => {}
+                }
+            });
+        }
+
+        match std::env::var("WAWONA_INITIAL_PAGE").as_deref() {
+            Ok("tab_overview") => {
+                sidebar_list.select_row(Some(&row_overview));
+            }
+            Ok("settings") => {
+                open_settings();
+            }
+            Ok("work_status") => {
+                sidebar_list.select_row(Some(&row_work_status));
+            }
+            _ => {
+                sidebar_list.select_row(Some(&row_machines));
+                content_stack.set_visible_child_name("machines");
+            }
+        }
+
+        let open_editor = Rc::new({
+            let editor_slot = editor_slot.clone();
+            let content_stack = content_stack.clone();
+            let sidebar_list = sidebar_list.clone();
+            let state = state.clone();
+            let sessions = machine_sessions.clone();
+            let on_rebuild = on_rebuild.clone();
+            move |existing: Option<wawona::linux::machine_profile::MachineProfile>| {
+                while let Some(c) = editor_slot.first_child() {
+                    editor_slot.remove(&c);
+                }
+                let stack_c = content_stack.clone();
+                let side_c = sidebar_list.clone();
+                let on_rebuild_c = on_rebuild.clone();
+                let editor_view = build_editor_view(
+                    &state,
+                    existing,
+                    MachineType::Native,
+                    sessions.clone(),
+                    Rc::new(move |saved| {
+                        if saved {
+                            on_rebuild_c();
+                        }
+                        stack_c.set_visible_child_name("machines");
+                        if let Some(r0) = side_c.row_at_index(0) {
+                            side_c.select_row(Some(&r0));
+                        }
+                    }),
+                );
+                editor_slot.append(&editor_view);
+                content_stack.set_visible_child_name("editor");
+            }
+        });
+
+        let open_terminal = Rc::new({
+            let terminal_slot = terminal_slot.clone();
+            let content_stack = content_stack.clone();
+            let sidebar_list = sidebar_list.clone();
+            let state = state.clone();
+            let sessions = machine_sessions.clone();
+            let on_rebuild = on_rebuild.clone();
+            let active_terminal = active_terminal.clone();
+            move |mid: String, command: String| {
+                if active_terminal.borrow().as_deref() == Some(&mid)
+                    && terminal_slot.first_child().is_some()
+                {
+                    let mut app = state.borrow_mut();
+                    let _ = app.store.set_active(Some(mid.clone()));
+                    drop(app);
+                    content_stack.set_visible_child_name("terminal");
+                    return;
+                }
+
+                let mname = {
+                    let app = state.borrow();
+                    app.store
+                        .profile(&mid)
+                        .map(|p| p.name.clone())
+                        .unwrap_or_else(|| "Terminal".into())
+                };
+
+                match wawona::linux::ui::start_shell(&command) {
+                    Ok((child, session, master)) => {
+                        wlog!("UI", "Started in-app terminal '{}' pid={}", mname, child.id());
+                        let pid = child.id();
+                        sessions.borrow_mut().insert(mid.clone(), child);
+                        {
+                            let mut app = state.borrow_mut();
+                            let _ = app.store.set_active(Some(mid.clone()));
+                        }
+                        *active_terminal.borrow_mut() = Some(mid.clone());
+
+                        let stack_c = content_stack.clone();
+                        let side_c = sidebar_list.clone();
+                        let on_rebuild_c = on_rebuild.clone();
+
+                        let on_back = Rc::new({
+                            let stack_c = stack_c.clone();
+                            let side_c = side_c.clone();
+                            let on_rebuild_c = on_rebuild_c.clone();
+                            move || {
+                                on_rebuild_c();
+                                stack_c.set_visible_child_name("machines");
+                                if let Some(r0) = side_c.row_at_index(0) {
+                                    side_c.select_row(Some(&r0));
+                                }
+                            }
+                        });
+
+                        let on_stop = Rc::new({
+                            let stack_c = stack_c.clone();
+                            let side_c = side_c.clone();
+                            let on_rebuild_c = on_rebuild_c.clone();
+                            let sessions_c = sessions.clone();
+                            let mid_c = mid.clone();
+                            let active_term_c = active_terminal.clone();
+                            move || {
+                                *active_term_c.borrow_mut() = None;
+                                if let Some(mut ch) = sessions_c.borrow_mut().remove(&mid_c) {
+                                    let _ = ch.kill();
+                                }
+                                on_rebuild_c();
+                                stack_c.set_visible_child_name("machines");
+                                if let Some(r0) = side_c.row_at_index(0) {
+                                    side_c.select_row(Some(&r0));
+                                }
+                            }
+                        });
+
+                        let term_view = wawona::linux::ui::build_terminal_view(
+                            session,
+                            master,
+                            pid,
+                            &mname,
+                            on_back,
+                            on_stop,
+                        );
+
+                        while let Some(c) = terminal_slot.first_child() {
+                            terminal_slot.remove(&c);
+                        }
+                        terminal_slot.append(&term_view);
+                        content_stack.set_visible_child_name("terminal");
+                        on_rebuild();
+                    }
+                    Err(e) => {
+                        wlog!("UI", "Failed to start in-app terminal: {}", e);
+                    }
+                }
+            }
+        });
 
         {
             let home_c = home.clone();
@@ -477,13 +936,21 @@ mod app {
             let window_c = window.clone();
             let sessions_c = machine_sessions.clone();
             let binding_c = layout_binding.clone();
+            let open_editor_edit = open_editor.clone();
+            let open_terminal_rebuild = open_terminal.clone();
             *rebuild_slot.borrow_mut() = Some(Rc::new(move || {
+                let open_ed = open_editor_edit.clone();
+                let open_term = open_terminal_rebuild.clone();
                 rebuild_home(RebuildHome {
                     shell: &home_c,
                     state: &state_c,
                     parent: &window_c,
                     sessions: sessions_c.clone(),
                     layout: binding_c.get(),
+                    on_edit: Some(Rc::new(move |profile| {
+                        open_ed(Some(profile));
+                    })),
+                    on_open_terminal: Some(open_term),
                 });
             }));
         }
@@ -1091,57 +1558,77 @@ mod app {
         }
 
         {
-            let state = state.clone();
-            let window = window.clone();
-            let home = home.clone();
-            let sessions_n = machine_sessions.clone();
-            let binding = layout_binding.clone();
+            let open_editor_add = open_editor.clone();
             new_btn.connect_clicked(move |_| {
                 wawona::wlog!("UI", "Add Machine button pressed");
-                let default_type = MachineType::Native;
-                show_editor(
-                    &window,
-                    &state,
-                    None,
-                    default_type,
-                    &home,
-                    sessions_n.clone(),
-                    binding.get(),
-                );
+                open_editor_add(None);
             });
         }
 
         {
-            let state = state.clone();
-            let window = window.clone();
-            let binding = layout_binding.clone();
+            let open_settings_btn = open_settings.clone();
             settings_btn.connect_clicked(move |_| {
                 wawona::wlog!("UI", "Settings button pressed");
-                show_settings(&window, &state, binding.get());
+                open_settings_btn();
             });
         }
 
         {
-            let state = state.clone();
-            let window = window.clone();
-            let home = home.clone();
-            let sessions = machine_sessions.clone();
-            let binding = layout_binding.clone();
+            let sidebar_list_c = sidebar_list.clone();
             overview_btn.connect_clicked(move |_| {
                 wawona::wlog!("UI", "Tab Overview button pressed");
-                show_tab_overview(
-                    &window,
-                    &state,
-                    sessions.clone(),
-                    &home,
-                    binding.get(),
-                );
+                if let Some(r1) = sidebar_list_c.row_at_index(1) {
+                    sidebar_list_c.select_row(Some(&r1));
+                }
             });
+        }
+
+        {
+            let sidebar_list_c = sidebar_list.clone();
+            let open_editor_c = open_editor.clone();
+            let open_settings_key = open_settings.clone();
+            let key_ctrl = gtk::EventControllerKey::new();
+            key_ctrl.connect_key_pressed(move |_, keyval, _, state| {
+                let is_ctrl = state.contains(gtk::gdk::ModifierType::CONTROL_MASK);
+                if is_ctrl {
+                    match keyval {
+                        gtk::gdk::Key::comma => {
+                            open_settings_key();
+                            return gtk::glib::Propagation::Stop;
+                        }
+                        gtk::gdk::Key::_1 => {
+                            if let Some(r0) = sidebar_list_c.row_at_index(0) {
+                                sidebar_list_c.select_row(Some(&r0));
+                            }
+                            return gtk::glib::Propagation::Stop;
+                        }
+                        gtk::gdk::Key::_2 => {
+                            if let Some(r1) = sidebar_list_c.row_at_index(1) {
+                                sidebar_list_c.select_row(Some(&r1));
+                            }
+                            return gtk::glib::Propagation::Stop;
+                        }
+                        gtk::gdk::Key::_3 => {
+                            if let Some(r2) = sidebar_list_c.row_at_index(2) {
+                                sidebar_list_c.select_row(Some(&r2));
+                            }
+                            return gtk::glib::Propagation::Stop;
+                        }
+                        gtk::gdk::Key::n => {
+                            open_editor_c(None);
+                            return gtk::glib::Propagation::Stop;
+                        }
+                        _ => {}
+                    }
+                }
+                gtk::glib::Propagation::Proceed
+            });
+            window.add_controller(key_ctrl);
         }
 
         wawona::wlog!("UI", "Main window presented");
         window.present();
-        maybe_show_welcome(&window, &state);
+        maybe_show_welcome(&home, &state);
     }
 }
 #[cfg(feature = "linux-ui")]

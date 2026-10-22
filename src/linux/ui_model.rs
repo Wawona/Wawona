@@ -157,39 +157,145 @@ pub fn launch_supported(profile: &MachineProfile) -> bool {
 }
 
 /// Case-insensitive match of a query against a profile's user-visible text
-/// (name, host, user, command, type label).
-fn profile_matches_query(profile: &MachineProfile, needle: &str) -> bool {
-    if needle.is_empty() {
-        return true;
+/// Boundary characters used for token-boundary bonus in fzf scoring.
+const BOUNDARY_CHARS: &[char] = &[' ', '_', '-', '/', '.', ':'];
+
+/// Lightweight fzf-style subsequence matcher.
+/// Returns `None` if pattern is not a subsequence of candidate.
+/// Bonuses: adjacency (+14), token boundary (+9), position 0 (+10).
+/// Earlier first-match gets `max(0, 24 - firstMatch)` bonus.
+pub fn fzf_score(pattern: &str, candidate: &str) -> Option<i32> {
+    if pattern.is_empty() {
+        return Some(0);
     }
-    let needle = needle.to_lowercase();
-    let haystacks = [
-        profile.name.to_lowercase(),
-        profile.ssh_host.to_lowercase(),
-        profile.ssh_user.to_lowercase(),
-        profile.remote_command.to_lowercase(),
-        profile.machine_type.user_facing_name().to_lowercase(),
-        profile.summary().to_lowercase(),
-    ];
-    haystacks.iter().any(|h| h.contains(&needle))
+    let p: Vec<char> = pattern.to_lowercase().chars().collect();
+    let c: Vec<char> = candidate.to_lowercase().chars().collect();
+    if p.len() > c.len() {
+        return None;
+    }
+    let mut score: i32 = 0;
+    let mut pi = 0usize;
+    let mut ci = 0usize;
+    let mut last_match: Option<usize> = None;
+    let mut first_match: Option<usize> = None;
+
+    while pi < p.len() && ci < c.len() {
+        if p[pi] == c[ci] {
+            if first_match.is_none() {
+                first_match = Some(ci);
+            }
+            score += 8;
+            if let Some(lm) = last_match {
+                let gap = (ci - lm) as i32 - 1;
+                if gap == 0 {
+                    score += 14; // adjacency bonus
+                } else {
+                    score -= gap.min(10);
+                }
+            }
+            if ci == 0 {
+                score += 10; // start-of-string bonus
+            } else if BOUNDARY_CHARS.contains(&c[ci - 1]) {
+                score += 9; // token boundary bonus
+            }
+            last_match = Some(ci);
+            pi += 1;
+        }
+        ci += 1;
+    }
+    if pi != p.len() {
+        return None;
+    }
+    if let Some(fm) = first_match {
+        score += (24 - fm as i32).max(0);
+    }
+    Some(score)
 }
 
-/// Filter + order machines for display: favorites first, then by name, after
-/// applying the search query. Returns borrowed references in display order.
+/// Returns byte ranges in `text` that match the subsequence characters of `query`.
+/// Used to apply Pango markup highlight to the machine name in the card banner.
+pub fn highlight_ranges(query: &str, text: &str) -> Vec<std::ops::Range<usize>> {
+    if query.trim().is_empty() {
+        return Vec::new();
+    }
+    // Walk the query as space-separated terms and collect matched char positions.
+    let needle: Vec<char> = query
+        .to_lowercase()
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .collect();
+    if needle.is_empty() {
+        return Vec::new();
+    }
+    let text_chars: Vec<(usize, char)> = text.char_indices().collect();
+    let mut ranges = Vec::new();
+    let mut ni = 0usize;
+    for (byte_off, ch) in &text_chars {
+        if ni >= needle.len() {
+            break;
+        }
+        if ch.to_lowercase().next() == Some(needle[ni]) {
+            let len = ch.len_utf8();
+            ranges.push(*byte_off..*byte_off + len);
+            ni += 1;
+        }
+    }
+    ranges
+}
+
+/// Searchable corpus for a machine (name + host + user + command + type).
+fn profile_searchable(profile: &MachineProfile) -> String {
+    [
+        profile.name.as_str(),
+        profile.ssh_host.as_str(),
+        profile.ssh_user.as_str(),
+        profile.remote_command.as_str(),
+        profile.machine_type.user_facing_name(),
+    ]
+    .join(" ")
+}
+
+/// Filter + order machines for display using fzf-style scoring.
+/// Pinned (favorite) machines that match lead; within pinned/unpinned, sort by
+/// descending score then by name (matches SwiftUI `visibleProfiles`).
 pub fn visible_machines<'a>(
     machines: &'a [MachineProfile],
     query: &str,
 ) -> Vec<&'a MachineProfile> {
-    let mut out: Vec<&MachineProfile> = machines
+    let q = query.trim();
+    if q.is_empty() {
+        // No query: favorites first, then alphabetical (original behavior).
+        let mut out: Vec<&MachineProfile> = machines.iter().collect();
+        out.sort_by(|a, b| {
+            b.favorite
+                .cmp(&a.favorite)
+                .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+        });
+        return out;
+    }
+    // Fuzzy filter + score.
+    let terms: Vec<&str> = q.split_whitespace().collect();
+    let mut scored: Vec<(&MachineProfile, i32)> = machines
         .iter()
-        .filter(|m| profile_matches_query(m, query))
+        .filter_map(|m| {
+            let haystack = profile_searchable(m);
+            let mut total = 0i32;
+            for term in &terms {
+                match fzf_score(term, &haystack) {
+                    Some(s) => total += s,
+                    None => return None,
+                }
+            }
+            Some((m, total))
+        })
         .collect();
-    out.sort_by(|a, b| {
+    scored.sort_by(|(a, sa), (b, sb)| {
         b.favorite
             .cmp(&a.favorite)
+            .then_with(|| sb.cmp(sa))
             .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
     });
-    out
+    scored.into_iter().map(|(m, _)| m).collect()
 }
 
 /// Placeholder text shown when the filtered list is empty (mirrors the macOS
@@ -243,7 +349,7 @@ mod tests {
         let machines = vec![m];
         assert_eq!(visible_machines(&machines, "work").len(), 1);
         assert_eq!(visible_machines(&machines, "example").len(), 1);
-        assert_eq!(visible_machines(&machines, "nope").len(), 0);
+        assert_eq!(visible_machines(&machines, "nomatch").len(), 0);
     }
 
     #[test]

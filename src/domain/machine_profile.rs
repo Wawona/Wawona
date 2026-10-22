@@ -47,12 +47,12 @@ impl MachineType {
     /// Freedesktop icon name (Linux GTK).
     pub fn icon_name(&self) -> &'static str {
         match self {
-            Self::Native => "computer-symbolic",
+            Self::Native => "user-desktop-symbolic",
             Self::Wasm => "application-x-executable-symbolic",
             Self::SshWaypipe => "network-workgroup-symbolic",
-            Self::SshTerminal => "utilities-terminal-symbolic",
-            Self::VirtualMachine => "computer-apple-ipad-symbolic",
-            Self::Container => "package-x-generic-symbolic",
+            Self::SshTerminal => "text-x-generic-symbolic",
+            Self::VirtualMachine => "drive-harddisk-symbolic",
+            Self::Container => "folder-symbolic",
         }
     }
 

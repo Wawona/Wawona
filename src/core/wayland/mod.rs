@@ -639,7 +639,7 @@ impl smithay::wayland::selection::data_device::ServerDndGrabHandler
                             data.into_bytes()
                         }
                     } else {
-                        // Unknown MIME type — send raw data
+                        // Unknown MIME type: send raw data
                         tracing::debug!(
                             "DnD send: unknown mime '{}', sending raw data",
                             requested_mime

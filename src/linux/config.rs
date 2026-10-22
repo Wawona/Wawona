@@ -112,6 +112,7 @@ fn default_container_image_store() -> String { "~/.local/share/wawona/oci".to_st
 fn default_compress_level() -> u32 { 7 }
 fn default_video_encoding() -> String { "hw".to_string() }
 fn default_video_decoding() -> String { "hw".to_string() }
+fn default_start_behavior() -> String { "prompt".to_string() }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LinuxSettings {
@@ -163,14 +164,16 @@ pub struct LinuxSettings {
     // Machines defaults
     #[serde(default = "default_true")]
     pub session_thumbnails: bool,
-    #[serde(default = "default_true")]
+    #[serde(default)]
     pub shake_to_close: bool,
-    #[serde(default = "default_true")]
+    #[serde(default)]
     pub swipe_back_to_close: bool,
     #[serde(default = "default_vm_vsock_port")]
     pub vm_vsock_port: u32,
     #[serde(default = "default_container_image_store")]
     pub container_image_store: String,
+    #[serde(default = "default_start_behavior")]
+    pub start_behavior: String,
 
     // Waypipe
     pub waypipe_compression: String,
@@ -246,10 +249,11 @@ impl Default for LinuxSettings {
             ssh_key_passphrase: String::new(),
             ssh_key_type: "ed25519".to_string(),
             session_thumbnails: true,
-            shake_to_close: true,
-            swipe_back_to_close: true,
+            shake_to_close: false,
+            swipe_back_to_close: false,
             vm_vsock_port: 1024,
             container_image_store: "~/.local/share/wawona/oci".to_string(),
+            start_behavior: "prompt".to_string(),
             waypipe_compression: "lz4".to_string(),
             waypipe_video: "none".to_string(),
             waypipe_debug: false,
@@ -358,12 +362,22 @@ mod tests {
     }
 
     #[test]
-    fn native_effective_command_prefers_custom_command_override() {
-        let mut profile = LinuxMachineProfile::new("Local");
-        profile.machine_type = LinuxMachineType::Native;
-        profile.selected_launcher = "weston-terminal".to_string();
-        profile.remote_command = "foot --server".to_string();
+    fn test_settings_persistence_display_backend_and_waypipe_threads() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let path = tmp.path().join("linux-config-v1.json");
 
-        assert_eq!(profile.effective_command(), "foot --server");
+        let mut cfg = super::LinuxAppConfig::default();
+        cfg.settings.compositor_backend = "drm".to_string();
+        cfg.settings.waypipe_threads = 4;
+
+        let json = serde_json::to_string_pretty(&cfg).expect("serialize");
+        std::fs::write(&path, &json).expect("write");
+
+        let loaded_text = std::fs::read_to_string(&path).expect("read");
+        let loaded: super::LinuxAppConfig = serde_json::from_str(&loaded_text).expect("deserialize");
+
+        assert_eq!(loaded.settings.compositor_backend, "drm");
+        assert_eq!(loaded.settings.waypipe_threads, 4);
     }
 }
+

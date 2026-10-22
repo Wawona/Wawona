@@ -52,7 +52,7 @@ void main() {
     // no additional V flip is needed here: doing so would sample the crop's
     // bottom rows at the window's top edge, both inverting content vertically
     // and (whenever content_rect_y is non-zero) swapping in decoration rows
-    // from outside the intended crop — e.g. showing the CSD titlebar at the
+    // from outside the intended crop, e.g. showing the CSD titlebar at the
     // window's bottom edge instead of cropping it from the top.
     fragTexCoord = rectOrigin + inTexCoord * rectSize;
 }

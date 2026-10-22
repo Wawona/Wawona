@@ -1585,7 +1585,7 @@ private data class AboutLink(
 
 /** Same order and subtitles as `WawonaAboutLinks` in SettingsContracts.swift. */
 private val aboutLinks = listOf(
-    AboutLink("Website", "Wawona.io", "https://wawona.io", "https://wawona.io/favicon.ico"),
+    AboutLink("Website", "Wawona.io", "https://wawona.io", "bundle:WawonaWebsite.png"),
     AboutLink("Alex Spaulding", "Founder", "https://aspauldingcode.com", "https://github.com/aspauldingcode.png?size=160"),
     AboutLink("GitHub", "aspauldingcode", "https://github.com/aspauldingcode", "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"),
     AboutLink("X", "aspauldingcode", "https://x.com/aspauldingcode", "bundle:X.png"),

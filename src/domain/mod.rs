@@ -199,6 +199,217 @@ pub mod settings_catalog {
         }
     }
 
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+    pub enum SettingsFieldId {
+        ForceSsd,
+        RespectSafeArea,
+        ColorOperations,
+        NestedCompositors,
+        CompositorBackend,
+        MultipleClients,
+        ShowVirtualCursor,
+        TouchInputType,
+        TouchpadMode,
+        PointerEmulationForTouch,
+        SwapCmdWithAlt,
+        UniversalClipboard,
+        KeyRepeat,
+        Renderer,
+        VulkanDriver,
+        OpenGlDriver,
+        SessionThumbnails,
+        ShakeToClose,
+        SwipeBackToClose,
+        VirtualMachine,
+        Containers,
+        ICloudSync,
+        ICloudDriveHome,
+        AppleWatch,
+        DesktopReplacement,
+        Waypipe,
+        Ssh,
+        About,
+        Dependencies,
+    }
+
+    /// Allowed Vulkan ICD drivers for each host.
+    /// Android and Linux strictly use Mesa/system or SwiftShader CPU fallback.
+    /// KosmicKrisp and MoltenVK are Metal-based Apple-only drivers and forbidden elsewhere.
+    pub fn allowed_vulkan_drivers(host: SettingsHost) -> &'static [&'static str] {
+        match host {
+            SettingsHost::MacOs => &["kosmickrisp", "moltenvk", "swiftshader", "none"],
+            SettingsHost::Ios | SettingsHost::VisionOs => {
+                &["moltenvk", "kosmickrisp", "swiftshader", "none"]
+            }
+            SettingsHost::TvOs => &["moltenvk", "none"],
+            SettingsHost::WatchOs => &["none"],
+            SettingsHost::Android => &["system", "swiftshader", "none"],
+            SettingsHost::Linux => &["system", "swiftshader", "none"],
+        }
+    }
+
+    /// Default Vulkan driver for a host.
+    pub fn default_vulkan_driver(host: SettingsHost) -> &'static str {
+        match host {
+            SettingsHost::MacOs => "kosmickrisp",
+            SettingsHost::Ios | SettingsHost::VisionOs | SettingsHost::TvOs => "moltenvk",
+            SettingsHost::WatchOs => "none",
+            SettingsHost::Android | SettingsHost::Linux => "system",
+        }
+    }
+
+    /// Allowed OpenGL/GLES drivers for each host.
+    pub fn allowed_opengl_drivers(host: SettingsHost) -> &'static [&'static str] {
+        match host {
+            SettingsHost::MacOs
+            | SettingsHost::Ios
+            | SettingsHost::VisionOs
+            | SettingsHost::TvOs => &["angle", "none"],
+            SettingsHost::WatchOs => &["none"],
+            SettingsHost::Android | SettingsHost::Linux => &["system", "angle", "none"],
+        }
+    }
+
+    /// Default OpenGL driver for a host.
+    pub fn default_opengl_driver(host: SettingsHost) -> &'static str {
+        match host {
+            SettingsHost::MacOs
+            | SettingsHost::Ios
+            | SettingsHost::VisionOs
+            | SettingsHost::TvOs => "angle",
+            SettingsHost::WatchOs => "none",
+            SettingsHost::Android | SettingsHost::Linux => "system",
+        }
+    }
+
+    /// Check if a Vulkan driver is valid on the given host.
+    pub fn is_valid_vulkan_driver(host: SettingsHost, driver: &str) -> bool {
+        let norm = driver.trim().to_ascii_lowercase();
+        allowed_vulkan_drivers(host).iter().any(|&d| d == norm)
+    }
+
+    /// Check if an OpenGL driver is valid on the given host.
+    pub fn is_valid_opengl_driver(host: SettingsHost, driver: &str) -> bool {
+        let norm = driver.trim().to_ascii_lowercase();
+        allowed_opengl_drivers(host).iter().any(|&d| d == norm)
+    }
+
+    /// Sanitize Vulkan driver selection, falling back to host default if invalid.
+    pub fn sanitize_vulkan_driver(host: SettingsHost, driver: &str) -> &'static str {
+        let norm = driver.trim().to_ascii_lowercase();
+        for &allowed in allowed_vulkan_drivers(host) {
+            if allowed == norm {
+                return allowed;
+            }
+        }
+        default_vulkan_driver(host)
+    }
+
+    /// Sanitize OpenGL driver selection, falling back to host default if invalid.
+    pub fn sanitize_opengl_driver(host: SettingsHost, driver: &str) -> &'static str {
+        let norm = driver.trim().to_ascii_lowercase();
+        for &allowed in allowed_opengl_drivers(host) {
+            if allowed == norm {
+                return allowed;
+            }
+        }
+        default_opengl_driver(host)
+    }
+
+    /// Whether a specific settings field is permitted on a host.
+    /// The UI must not lie by presenting toggles for features that do not exist or are forbidden.
+    pub fn is_field_allowed(field: SettingsFieldId, host: SettingsHost) -> bool {
+        match field {
+            SettingsFieldId::ForceSsd => host == SettingsHost::MacOs,
+            SettingsFieldId::RespectSafeArea => host == SettingsHost::Ios,
+            SettingsFieldId::ColorOperations
+            | SettingsFieldId::NestedCompositors
+            | SettingsFieldId::CompositorBackend
+            | SettingsFieldId::MultipleClients
+            | SettingsFieldId::SessionThumbnails => true,
+            SettingsFieldId::ShowVirtualCursor => host != SettingsHost::WatchOs,
+            SettingsFieldId::TouchInputType => {
+                matches!(
+                    host,
+                    SettingsHost::Ios | SettingsHost::Android | SettingsHost::VisionOs
+                )
+            }
+            SettingsFieldId::TouchpadMode => host == SettingsHost::Android,
+            SettingsFieldId::PointerEmulationForTouch => {
+                matches!(
+                    host,
+                    SettingsHost::Ios
+                        | SettingsHost::Android
+                        | SettingsHost::VisionOs
+                        | SettingsHost::WatchOs
+                )
+            }
+            SettingsFieldId::SwapCmdWithAlt => {
+                matches!(host, SettingsHost::MacOs | SettingsHost::Ios)
+            }
+            SettingsFieldId::UniversalClipboard => host != SettingsHost::TvOs,
+            SettingsFieldId::KeyRepeat => {
+                matches!(host, SettingsHost::Linux | SettingsHost::MacOs)
+            }
+            SettingsFieldId::Renderer => true,
+            SettingsFieldId::VulkanDriver | SettingsFieldId::OpenGlDriver => {
+                host != SettingsHost::WatchOs
+            }
+            SettingsFieldId::ShakeToClose => {
+                matches!(
+                    host,
+                    SettingsHost::Ios
+                        | SettingsHost::Android
+                        | SettingsHost::WatchOs
+                        | SettingsHost::VisionOs
+                        | SettingsHost::TvOs
+                )
+            }
+            SettingsFieldId::SwipeBackToClose => {
+                matches!(
+                    host,
+                    SettingsHost::Ios
+                        | SettingsHost::Android
+                        | SettingsHost::WatchOs
+                        | SettingsHost::VisionOs
+                )
+            }
+            SettingsFieldId::VirtualMachine | SettingsFieldId::Containers => {
+                matches!(
+                    host,
+                    SettingsHost::MacOs
+                        | SettingsHost::Ios
+                        | SettingsHost::Android
+                        | SettingsHost::Linux
+                )
+            }
+            SettingsFieldId::ICloudSync => {
+                matches!(
+                    host,
+                    SettingsHost::MacOs
+                        | SettingsHost::Ios
+                        | SettingsHost::TvOs
+                        | SettingsHost::WatchOs
+                        | SettingsHost::VisionOs
+                )
+            }
+            SettingsFieldId::ICloudDriveHome => {
+                matches!(
+                    host,
+                    SettingsHost::MacOs | SettingsHost::Ios | SettingsHost::VisionOs
+                )
+            }
+            SettingsFieldId::AppleWatch => host == SettingsHost::Ios,
+            SettingsFieldId::DesktopReplacement => {
+                matches!(host, SettingsHost::MacOs | SettingsHost::Android)
+            }
+            SettingsFieldId::Waypipe
+            | SettingsFieldId::Ssh
+            | SettingsFieldId::About
+            | SettingsFieldId::Dependencies => true,
+        }
+    }
+
     #[cfg(test)]
     mod tests {
         use super::*;
@@ -234,6 +445,82 @@ pub mod settings_catalog {
             assert!(android.contains(&SettingsSectionId::Desktop));
             assert!(!linux.contains(&SettingsSectionId::Desktop));
             assert_eq!(host_from_slug("ios"), Some(SettingsHost::Ios));
+        }
+
+        #[test]
+        fn driver_options_enforce_platform_rules() {
+            // Linux and Android must never allow KosmicKrisp or MoltenVK
+            let linux_vk = allowed_vulkan_drivers(SettingsHost::Linux);
+            assert!(!linux_vk.contains(&"kosmickrisp"));
+            assert!(!linux_vk.contains(&"moltenvk"));
+            assert!(linux_vk.contains(&"system"));
+            assert!(linux_vk.contains(&"swiftshader"));
+            assert!(linux_vk.contains(&"none"));
+
+            let android_vk = allowed_vulkan_drivers(SettingsHost::Android);
+            assert!(!android_vk.contains(&"kosmickrisp"));
+            assert!(!android_vk.contains(&"moltenvk"));
+            assert!(android_vk.contains(&"system"));
+
+            assert!(!is_valid_vulkan_driver(SettingsHost::Linux, "kosmickrisp"));
+            assert!(!is_valid_vulkan_driver(SettingsHost::Linux, "moltenvk"));
+            assert!(!is_valid_vulkan_driver(SettingsHost::Android, "kosmickrisp"));
+            assert!(is_valid_vulkan_driver(SettingsHost::Linux, "system"));
+            assert!(is_valid_vulkan_driver(SettingsHost::Linux, "swiftshader"));
+
+            // macOS allows KosmicKrisp and MoltenVK
+            let mac_vk = allowed_vulkan_drivers(SettingsHost::MacOs);
+            assert!(mac_vk.contains(&"kosmickrisp"));
+            assert!(mac_vk.contains(&"moltenvk"));
+            assert!(is_valid_vulkan_driver(SettingsHost::MacOs, "kosmickrisp"));
+
+            // watchOS has GL and VK blocked
+            assert_eq!(allowed_vulkan_drivers(SettingsHost::WatchOs), &["none"]);
+            assert_eq!(allowed_opengl_drivers(SettingsHost::WatchOs), &["none"]);
+
+            // Sanitization fallback
+            assert_eq!(
+                sanitize_vulkan_driver(SettingsHost::Linux, "kosmickrisp"),
+                "system"
+            );
+            assert_eq!(
+                sanitize_vulkan_driver(SettingsHost::Android, "moltenvk"),
+                "system"
+            );
+            assert_eq!(
+                sanitize_vulkan_driver(SettingsHost::MacOs, "kosmickrisp"),
+                "kosmickrisp"
+            );
+        }
+
+        #[test]
+        fn field_visibility_rules_prevent_ui_lies() {
+            // Force SSD is macOS only (other hosts always use SSD)
+            assert!(is_field_allowed(SettingsFieldId::ForceSsd, SettingsHost::MacOs));
+            assert!(!is_field_allowed(SettingsFieldId::ForceSsd, SettingsHost::Linux));
+            assert!(!is_field_allowed(SettingsFieldId::ForceSsd, SettingsHost::Android));
+
+            // Respect Safe Area is iPhone/iPad only
+            assert!(is_field_allowed(SettingsFieldId::RespectSafeArea, SettingsHost::Ios));
+            assert!(!is_field_allowed(SettingsFieldId::RespectSafeArea, SettingsHost::Linux));
+            assert!(!is_field_allowed(SettingsFieldId::RespectSafeArea, SettingsHost::MacOs));
+
+            // Shake to close and swipe back are mobile/wrist only
+            assert!(is_field_allowed(SettingsFieldId::ShakeToClose, SettingsHost::Ios));
+            assert!(is_field_allowed(SettingsFieldId::ShakeToClose, SettingsHost::Android));
+            assert!(!is_field_allowed(SettingsFieldId::ShakeToClose, SettingsHost::Linux));
+            assert!(!is_field_allowed(SettingsFieldId::SwipeBackToClose, SettingsHost::Linux));
+
+            // Swap Cmd with Alt is macOS/iOS only
+            assert!(is_field_allowed(SettingsFieldId::SwapCmdWithAlt, SettingsHost::MacOs));
+            assert!(is_field_allowed(SettingsFieldId::SwapCmdWithAlt, SettingsHost::Ios));
+            assert!(!is_field_allowed(SettingsFieldId::SwapCmdWithAlt, SettingsHost::Linux));
+            assert!(!is_field_allowed(SettingsFieldId::SwapCmdWithAlt, SettingsHost::Android));
+
+            // Desktop replacement is forbidden on Linux
+            assert!(!is_field_allowed(SettingsFieldId::DesktopReplacement, SettingsHost::Linux));
+            assert!(is_field_allowed(SettingsFieldId::DesktopReplacement, SettingsHost::MacOs));
+            assert!(is_field_allowed(SettingsFieldId::DesktopReplacement, SettingsHost::Android));
         }
     }
 }

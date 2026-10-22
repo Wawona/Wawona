@@ -92,8 +92,11 @@ pub fn launch(
         }
     };
 
+    cmd.env_remove("WAYLAND_SOCKET");
     cmd.env("XDG_RUNTIME_DIR", &rt.xdg_runtime_dir);
     cmd.env("WAYLAND_DISPLAY", &rt.wayland_display);
+    cmd.env("GDK_BACKEND", "wayland");
+    cmd.env("QT_QPA_PLATFORM", "wayland");
     apply_settings_environment(&mut cmd, settings);
     cmd.stdin(Stdio::null());
     cmd.stdout(Stdio::inherit());
@@ -353,8 +356,11 @@ pub fn launch_profile(
         .filter(|s| !s.trim().is_empty())
         .unwrap_or(&rt.wayland_display);
 
+    cmd.env_remove("WAYLAND_SOCKET");
     cmd.env("XDG_RUNTIME_DIR", &rt.xdg_runtime_dir);
     cmd.env("WAYLAND_DISPLAY", wayland_display);
+    cmd.env("GDK_BACKEND", "wayland");
+    cmd.env("QT_QPA_PLATFORM", "wayland");
     apply_settings_environment(&mut cmd, settings);
     apply_profile_runtime_overrides(&mut cmd, profile);
     cmd.stdin(Stdio::null());
@@ -446,3 +452,145 @@ fn rewrite_weston_honeycomb(command: &str, rt: &RuntimeState) -> String {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::machine_profile::{DomainEnvironmentOverride, MachineProfile, MachineType};
+    use crate::linux::config::LinuxSettings;
+    use std::collections::HashMap;
+
+    #[test]
+    fn test_machine_editor_env_parser_logic() {
+        let input = "FOO=bar\n-BAZ\nSPACES=val with spaces\n# comment\n-UNSET_VAR\n";
+        let mut env_map = HashMap::new();
+        for line in input.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            if let Some(name) = line.strip_prefix('-') {
+                let name = name.trim();
+                if !name.is_empty() {
+                    env_map.insert(
+                        name.to_string(),
+                        DomainEnvironmentOverride {
+                            action: "unset".to_string(),
+                            value: None,
+                        },
+                    );
+                }
+                continue;
+            }
+            if let Some((k, v)) = line.split_once('=') {
+                let k = k.trim();
+                if !k.is_empty() {
+                    env_map.insert(
+                        k.to_string(),
+                        DomainEnvironmentOverride {
+                            action: "set".to_string(),
+                            value: Some(v.to_string()),
+                        },
+                    );
+                }
+            }
+        }
+
+        assert_eq!(
+            env_map.get("FOO"),
+            Some(&DomainEnvironmentOverride {
+                action: "set".to_string(),
+                value: Some("bar".to_string()),
+            })
+        );
+        assert_eq!(
+            env_map.get("BAZ"),
+            Some(&DomainEnvironmentOverride {
+                action: "unset".to_string(),
+                value: None,
+            })
+        );
+        assert_eq!(
+            env_map.get("SPACES"),
+            Some(&DomainEnvironmentOverride {
+                action: "set".to_string(),
+                value: Some("val with spaces".to_string()),
+            })
+        );
+        assert_eq!(
+            env_map.get("UNSET_VAR"),
+            Some(&DomainEnvironmentOverride {
+                action: "unset".to_string(),
+                value: None,
+            })
+        );
+        assert!(!env_map.contains_key("# comment"));
+    }
+
+    #[test]
+    fn test_launcher_precedence_machine_overrides_beat_global_and_defaults() {
+        let mut settings = LinuxSettings::default();
+        settings.compositor_backend = "drm".to_string();
+        settings.vulkan_driver = "/usr/share/vulkan/intel.json".to_string();
+        settings.opengl_driver = "system_gl".to_string();
+        settings.environment_overrides.insert("GLOBAL_ONLY".to_string(), "global_val".to_string());
+        settings.environment_overrides.insert("SHARED_KEY".to_string(), "from_global".to_string());
+
+        let mut profile = MachineProfile::new("Test Profile");
+        profile.machine_type = MachineType::Native;
+        profile.runtime_overrides.compositor_backend = Some("nested".to_string());
+        profile.runtime_overrides.vulkan_driver = Some("/custom/radv.json".to_string());
+        profile.runtime_overrides.open_gl_driver = Some("/custom/radeonsi".to_string());
+
+        let mut env_map = HashMap::new();
+        env_map.insert(
+            "SHARED_KEY".to_string(),
+            DomainEnvironmentOverride {
+                action: "set".to_string(),
+                value: Some("from_profile".to_string()),
+            },
+        );
+        env_map.insert(
+            "GLOBAL_ONLY".to_string(),
+            DomainEnvironmentOverride {
+                action: "unset".to_string(),
+                value: None,
+            },
+        );
+        env_map.insert(
+            "PROFILE_ONLY".to_string(),
+            DomainEnvironmentOverride {
+                action: "set".to_string(),
+                value: Some("profile_val".to_string()),
+            },
+        );
+        profile.runtime_overrides.environment = Some(env_map);
+
+        let mut cmd = Command::new("sh");
+        apply_settings_environment(&mut cmd, &settings);
+        apply_profile_runtime_overrides(&mut cmd, &profile);
+
+        let envs: std::collections::HashMap<_, _> = cmd
+            .get_envs()
+            .map(|(k, v)| (k.to_string_lossy().to_string(), v.map(|s| s.to_string_lossy().to_string())))
+            .collect();
+
+        // Machine profile compositor_backend ("nested") overrides global ("tty" from drm)
+        assert_eq!(envs.get("NIRI_BACKEND"), Some(&Some("nested".to_string())));
+
+        // Machine profile vulkan_driver overrides global
+        assert_eq!(envs.get("VK_ICD_FILENAMES"), Some(&Some("/custom/radv.json".to_string())));
+        assert_eq!(envs.get("WWN_VULKAN_DRIVER"), Some(&Some("/custom/radv.json".to_string())));
+
+        // Machine profile open_gl_driver overrides global
+        assert_eq!(envs.get("WWN_OPENGL_DRIVER"), Some(&Some("/custom/radeonsi".to_string())));
+
+        // Environment overrides: profile beats global
+        assert_eq!(envs.get("SHARED_KEY"), Some(&Some("from_profile".to_string())));
+        assert_eq!(envs.get("PROFILE_ONLY"), Some(&Some("profile_val".to_string())));
+
+        // Environment unsets in profile unsets global
+        assert_eq!(envs.get("GLOBAL_ONLY"), Some(&None));
+    }
+}
+

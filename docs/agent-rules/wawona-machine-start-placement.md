@@ -18,7 +18,8 @@ another window.
 | iPhone | no | never (always New Tab) |
 | Android API 24+ | yes (`SessionActivity` host task) | yes |
 | Android < 24 | no | never |
-| tvOS / watchOS / Linux | no | never |
+| Linux | yes (tab or dedicated window) | yes |
+| tvOS / watchOS | no | never |
 
 iPad multi-window is **not** gated on iPadOS 26. Multi-scene windowing is
 older. iPadOS 26 adds window control chrome only.

@@ -3,7 +3,7 @@ members = ["."]
 
 [package]
 name = "wawona"
-version = "26.10.18"
+version = "26.10.21"
 edition = "2021"
 
 [lints.rust]
@@ -40,7 +40,7 @@ glib = { version = "0.20", optional = true }
 # v4_10: FileDialog (Wasm file picker in the Linux machine editor).
 gtk4 = { version = "0.9", optional = true, features = ["v4_10"] }
 cairo-rs = { version = "0.20", optional = true }
-libadwaita = { version = "0.7", optional = true }
+libadwaita = { version = "0.7", optional = true, features = ["v1_4"] }
 
 # No "cli" feature: it pulls uniffi_bindgen (+clap/camino/askama/goblin/…) into
 # the graph. crate2nix then builds uniffi_bindgen with feature sets that diverge

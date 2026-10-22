@@ -65,7 +65,8 @@ pub fn shell_command(profile: &MachineProfile) -> Option<String> {
 }
 
 /// Open a PTY, start `command`, and present the VT screen.
-pub fn open_shell(parent: &impl IsA<gtk::Window>, command: &str) -> Result<Child, String> {
+/// Start shell on a PTY and return child, session, and master file descriptor.
+pub fn start_shell(command: &str) -> Result<(Child, Arc<TerminalSession>, File), String> {
     let (master_fd, slave_fd) = open_pty()?;
     let child = match spawn_on_slave(slave_fd, command) {
         Ok(child) => child,
@@ -76,7 +77,35 @@ pub fn open_shell(parent: &impl IsA<gtk::Window>, command: &str) -> Result<Child
     };
     let session = TerminalSession::new(80, 24);
     let master = unsafe { File::from_raw_fd(master_fd) };
-    present(parent, session, master, child.id());
+    Ok((child, session, master))
+}
+
+/// Open a PTY, start `command`, and present the VT screen in a floating window (fallback).
+pub fn open_shell(parent: &impl IsA<gtk::Window>, command: &str) -> Result<Child, String> {
+    let (child, session, master) = start_shell(command)?;
+    let window = adw::Window::builder()
+        .transient_for(parent)
+        .modal(false)
+        .default_width(760)
+        .default_height(460)
+        .title("Wawona Terminal")
+        .build();
+    let win_c1 = window.clone();
+    let win_c2 = window.clone();
+    let view = build_terminal_view(
+        session,
+        master,
+        child.id(),
+        "Local Shell",
+        Rc::new(move || {
+            win_c1.close();
+        }),
+        Rc::new(move || {
+            win_c2.close();
+        }),
+    );
+    window.set_content(Some(&view));
+    window.present();
     Ok(child)
 }
 
@@ -114,11 +143,14 @@ fn open_pty() -> Result<(i32, i32), String> {
         if flags >= 0 {
             libc::fcntl(master, libc::F_SETFL, flags | libc::O_NONBLOCK);
         }
+        libc::fcntl(master, libc::F_SETFD, libc::FD_CLOEXEC);
     }
     Ok((master, slave))
 }
 
 fn spawn_on_slave(slave_fd: i32, command: &str) -> Result<Child, String> {
+    use std::os::unix::process::CommandExt;
+
     let slave = unsafe { File::from_raw_fd(slave_fd) };
     let stdin = slave
         .try_clone()
@@ -142,27 +174,74 @@ fn spawn_on_slave(slave_fd: i32, command: &str) -> Result<Child, String> {
         .stdout(stdout)
         .stderr(Stdio::from(slave))
         .env("TERM", "xterm-256color");
-    if let Ok(rt) = crate::linux::runtime::read_runtime_state() {
-        cmd.env("XDG_RUNTIME_DIR", rt.xdg_runtime_dir);
-        cmd.env("WAYLAND_DISPLAY", rt.wayland_display);
+    let (runtime_dir, wayland_disp) = if let Ok(rt) = crate::linux::runtime::read_runtime_state() {
+        (rt.xdg_runtime_dir, rt.wayland_display)
+    } else {
+        let uid = unsafe { libc::getuid() };
+        (format!("/run/user/{uid}"), "wawona-0".to_string())
+    };
+    cmd.env("XDG_RUNTIME_DIR", &runtime_dir);
+    cmd.env("WAYLAND_DISPLAY", &wayland_disp);
+    cmd.env_remove("WAYLAND_SOCKET");
+    cmd.env("GDK_BACKEND", "wayland");
+    cmd.env("QT_QPA_PLATFORM", "wayland");
+    unsafe {
+        cmd.pre_exec(move || {
+            libc::signal(libc::SIGTTOU, libc::SIG_IGN);
+            libc::signal(libc::SIGTTIN, libc::SIG_IGN);
+            let _ = libc::setsid();
+            let _ = libc::ioctl(0, libc::TIOCSCTTY, 0);
+            let _ = libc::tcsetpgrp(0, libc::getpid());
+            libc::signal(libc::SIGTTOU, libc::SIG_DFL);
+            libc::signal(libc::SIGTTIN, libc::SIG_DFL);
+            Ok(())
+        });
     }
     cmd.spawn()
         .map_err(|err| format!("shell failed to start: {err}"))
 }
 
-fn present(parent: &impl IsA<gtk::Window>, session: Arc<TerminalSession>, master: File, pid: u32) {
-    let window = adw::Window::builder()
-        .transient_for(parent)
-        .modal(false)
-        .default_width(720)
-        .default_height(420)
-        .title("Wawona Terminal")
-        .build();
-    a11y::set_wwn_a11y(&window, id::TERMINAL_ROOT, Some("Wawona Terminal"));
+/// Build an in-app GTK widget hosting Wawona Terminal.
+pub fn build_terminal_view(
+    session: Arc<TerminalSession>,
+    master: File,
+    pid: u32,
+    title: &str,
+    on_back: Rc<dyn Fn()>,
+    on_stop: Rc<dyn Fn()>,
+) -> gtk::Widget {
+    let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    root.set_hexpand(true);
+    root.set_vexpand(true);
+    root.add_css_class("wwn-terminal-root");
+    a11y::set_wwn_a11y(&root, id::TERMINAL_ROOT, Some("Wawona Terminal"));
 
     let header = adw::HeaderBar::new();
-    let done = gtk::Button::with_label("Done");
+    header.set_show_end_title_buttons(false);
+    header.set_show_start_title_buttons(false);
+
+    let back_btn = gtk::Button::builder()
+        .icon_name("go-previous-symbolic")
+        .tooltip_text("Back to Machines")
+        .css_classes(["flat"])
+        .build();
+    let on_back_click = on_back.clone();
+    back_btn.connect_clicked(move |_| {
+        on_back_click();
+    });
+    header.pack_start(&back_btn);
+
+    let title_widget = adw::WindowTitle::new(title, "Wawona Terminal (xterm-256color)");
+    header.set_title_widget(Some(&title_widget));
+
+    let done = gtk::Button::with_label("Stop Session");
+    done.add_css_class("destructive-action");
     a11y::set_wwn_a11y(&done, id::TERMINAL_DONE, Some("Close Terminal"));
+    let on_stop_click = on_stop.clone();
+    done.connect_clicked(move |_| {
+        unsafe { libc::kill(pid as i32, libc::SIGTERM) };
+        on_stop_click();
+    });
     header.pack_end(&done);
 
     let view = gtk::TextView::new();
@@ -172,6 +251,12 @@ fn present(parent: &impl IsA<gtk::Window>, session: Arc<TerminalSession>, master
     view.set_wrap_mode(gtk::WrapMode::None);
     view.set_focusable(true);
     view.set_can_focus(true);
+    view.set_top_margin(12);
+    view.set_bottom_margin(12);
+    view.set_left_margin(14);
+    view.set_right_margin(14);
+    view.add_css_class("wwn-terminal-view");
+
     let buffer = view.buffer();
     let pictures: Rc<RefCell<PictureLayer>> = Rc::new(RefCell::new(PictureLayer {
         images: Vec::new(),
@@ -182,7 +267,11 @@ fn present(parent: &impl IsA<gtk::Window>, session: Arc<TerminalSession>, master
         .child(&view)
         .hexpand(true)
         .vexpand(true)
+        .hscrollbar_policy(gtk::PolicyType::Automatic)
+        .vscrollbar_policy(gtk::PolicyType::Automatic)
         .build();
+    scroll.add_css_class("wwn-terminal-scroll");
+
     let back = gtk::DrawingArea::new();
     back.set_hexpand(true);
     back.set_vexpand(true);
@@ -190,18 +279,28 @@ fn present(parent: &impl IsA<gtk::Window>, session: Arc<TerminalSession>, master
     front.set_can_target(false);
     front.set_hexpand(true);
     front.set_vexpand(true);
+
     let overlay = gtk::Overlay::new();
     overlay.set_child(Some(&back));
     overlay.add_overlay(&scroll);
     overlay.add_overlay(&front);
-    let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    overlay.set_hexpand(true);
+    overlay.set_vexpand(true);
+
     root.append(&header);
     root.append(&overlay);
-    window.set_content(Some(&root));
 
     let css = gtk::CssProvider::new();
     css.load_from_data(
-        "textview, textview text { background: transparent; color: #e8e8e8; font-family: monospace, \"DejaVuSansM Nerd Font Mono\"; }",
+        "
+        .wwn-terminal-root { background-color: #0d0f14; }
+        .wwn-terminal-scroll, .wwn-terminal-scroll viewport, .wwn-terminal-view, textview.wwn-terminal-view, textview.wwn-terminal-view text {
+            background-color: #0d0f14;
+            color: #e8e8e8;
+            font-family: \"DejaVu Sans Mono\", \"Fira Code\", monospace, \"DejaVuSansM Nerd Font Mono\";
+            font-size: 13px;
+        }
+        ",
     );
     if let Some(display) = gtk::gdk::Display::default() {
         gtk::style_context_add_provider_for_display(
@@ -216,12 +315,13 @@ fn present(parent: &impl IsA<gtk::Window>, session: Arc<TerminalSession>, master
     let view_fd = view.clone();
     let buffer_fd = buffer.clone();
     let session_fd = session.clone();
-    let window_fd = window.clone();
+    let title_fd = title_widget.clone();
     let master_fd_loop = master.clone();
     let pictures_fd = pictures.clone();
     let back_fd = back.clone();
     let front_fd = front.clone();
     let grid_fd = grid.clone();
+
     glib::unix_fd_add_local(fd, glib::IOCondition::IN, move |_, _| {
         let mut buf = [0u8; 4096];
         let read = {
@@ -229,9 +329,15 @@ fn present(parent: &impl IsA<gtk::Window>, session: Arc<TerminalSession>, master
             file.read(&mut buf)
         };
         match read {
-            Ok(0) => glib::ControlFlow::Break,
+            Ok(0) => {
+                title_fd.set_subtitle("Process exited [Finished]");
+                glib::ControlFlow::Break
+            }
             Err(err) if err.kind() == ErrorKind::WouldBlock => glib::ControlFlow::Continue,
-            Err(_) => glib::ControlFlow::Break,
+            Err(_) => {
+                title_fd.set_subtitle("Process exited [Finished]");
+                glib::ControlFlow::Break
+            }
             Ok(n) => {
                 session_fd.feed(buf[..n].to_vec());
                 let reply = session_fd.take_reply();
@@ -249,10 +355,10 @@ fn present(parent: &impl IsA<gtk::Window>, session: Arc<TerminalSession>, master
                 );
                 let title = session_fd.title();
                 if !title.is_empty() {
-                    window_fd.set_title(Some(&title));
+                    title_fd.set_subtitle(&title);
                 }
                 let mut end = buffer_fd.end_iter();
-                let _ = view_fd.scroll_to_iter(&mut end, 0.0, true, 0.0, 1.0);
+                let _ = view_fd.scroll_to_iter(&mut end, 0.0, false, 0.0, 1.0);
                 glib::ControlFlow::Continue
             }
         }
@@ -260,11 +366,21 @@ fn present(parent: &impl IsA<gtk::Window>, session: Arc<TerminalSession>, master
 
     let master_keys = dup_master(fd);
     let session_keys = session.clone();
+    let buffer_keys = buffer.clone();
     let keys = gtk::EventControllerKey::new();
     keys.connect_key_pressed(move |_, key, _, state| {
         if state.contains(gtk::gdk::ModifierType::CONTROL_MASK) {
             if let Some(ch) = key.to_unicode() {
-                if ch.eq_ignore_ascii_case(&'v') {
+                if state.contains(gtk::gdk::ModifierType::SHIFT_MASK) {
+                    if ch.eq_ignore_ascii_case(&'c') {
+                        copy_selection_to_clipboard(&buffer_keys);
+                        return gtk::glib::Propagation::Stop;
+                    }
+                    if ch.eq_ignore_ascii_case(&'v') {
+                        paste_from_clipboard(&session_keys, &master_keys);
+                        return gtk::glib::Propagation::Stop;
+                    }
+                } else if ch.eq_ignore_ascii_case(&'v') {
                     paste_from_clipboard(&session_keys, &master_keys);
                     return gtk::glib::Propagation::Stop;
                 }
@@ -284,6 +400,7 @@ fn present(parent: &impl IsA<gtk::Window>, session: Arc<TerminalSession>, master
     wire_picture_canvas(&back, &pictures, &glyph, &scroll, true);
     wire_picture_canvas(&front, &pictures, &glyph, &scroll, false);
     refresh(&session, &buffer, &pictures, &grid, &back, &front);
+
     let session_ptr = session.clone();
     let master_ptr = master.clone();
     let glyph_ptr = glyph.clone();
@@ -301,6 +418,7 @@ fn present(parent: &impl IsA<gtk::Window>, session: Arc<TerminalSession>, master
         emit_pointer(&session_rel, &master_rel, &glyph_rel, x, y, button, false, false);
     });
     view.add_controller(click);
+
     let session_motion = session.clone();
     let master_motion = master.clone();
     let glyph_motion = glyph.clone();
@@ -321,46 +439,46 @@ fn present(parent: &impl IsA<gtk::Window>, session: Arc<TerminalSession>, master
 
     let session_fit = session.clone();
     let view_fit = view.clone();
+    let scroll_fit = scroll.clone();
     let buffer_fit = buffer.clone();
     let grid_fit = grid.clone();
     let glyph_fit = glyph.clone();
     let pictures_fit = pictures.clone();
     let back_fit = back.clone();
     let front_fit = front.clone();
-    window.connect_realize(move |widget| {
-        let Some(surface) = widget.surface() else {
-            return;
-        };
-        let session = session_fit.clone();
-        let view = view_fit.clone();
-        let buffer = buffer_fit.clone();
-        let grid = grid_fit.clone();
-        let glyph = glyph_fit.clone();
-        let pictures = pictures_fit.clone();
-        let back = back_fit.clone();
-        let front = front_fit.clone();
-        surface.connect_layout(move |_, _, _| {
-            fit_grid(
-                &view,
-                &session,
-                fd,
-                &grid,
-                &glyph,
-                &buffer,
-                &pictures,
-                &back,
-                &front,
-            );
-        });
+    let do_fit = Rc::new(move || {
+        fit_grid(
+            &scroll_fit,
+            &view_fit,
+            &session_fit,
+            fd,
+            &grid_fit,
+            &glyph_fit,
+            &buffer_fit,
+            &pictures_fit,
+            &back_fit,
+            &front_fit,
+        );
     });
-    let session_idle = session.clone();
-    let view_idle = view.clone();
-    let buffer_idle = buffer.clone();
-    let grid_idle = grid.clone();
-    let glyph_idle = glyph.clone();
-    let pictures_idle = pictures.clone();
-    let back_idle = back.clone();
-    let front_idle = front.clone();
+
+    let df1 = do_fit.clone();
+    scroll.connect_notify_local(Some("width"), move |_, _| {
+        df1();
+    });
+    let df2 = do_fit.clone();
+    scroll.connect_notify_local(Some("height"), move |_, _| {
+        df2();
+    });
+    let df3 = do_fit.clone();
+    scroll.connect_map(move |_| {
+        df3();
+    });
+    let df4 = do_fit.clone();
+    glib::idle_add_local(move || {
+        df4();
+        glib::ControlFlow::Break
+    });
+
     let buffer_blink = buffer.clone();
     let blink_on = Rc::new(Cell::new(false));
     glib::timeout_add_local(Duration::from_millis(500), move || {
@@ -374,29 +492,24 @@ fn present(parent: &impl IsA<gtk::Window>, session: Arc<TerminalSession>, master
         });
         glib::ControlFlow::Continue
     });
-    glib::idle_add_local(move || {
-        fit_grid(
-            &view_idle,
-            &session_idle,
-            fd,
-            &grid_idle,
-            &glyph_idle,
-            &buffer_idle,
-            &pictures_idle,
-            &back_idle,
-            &front_idle,
-        );
-        glib::ControlFlow::Break
+
+    let view_focus = view.clone();
+    root.connect_map(move |_| {
+        view_focus.grab_focus();
     });
 
-    let window_done = window.clone();
-    done.connect_clicked(move |_| {
-        unsafe { libc::kill(pid as i32, libc::SIGTERM) };
-        window_done.close();
-    });
-    window.present();
-    view.grab_focus();
+    root.upcast()
 }
+
+fn copy_selection_to_clipboard(buffer: &gtk::TextBuffer) {
+    if let Some((start, end)) = buffer.selection_bounds() {
+        let text = buffer.text(&start, &end, false);
+        if let Some(display) = gtk::gdk::Display::default() {
+            display.clipboard().set_text(&text);
+        }
+    }
+}
+
 
 fn dup_master(fd: i32) -> Rc<RefCell<Option<File>>> {
     let dup = unsafe { libc::dup(fd) };
@@ -431,6 +544,7 @@ fn bytes_for_key(key: gtk::gdk::Key, state: gtk::gdk::ModifierType) -> Vec<u8> {
         gtk::gdk::Key::Page_Up => b"\x1b[5~".to_vec(),
         gtk::gdk::Key::Page_Down => b"\x1b[6~".to_vec(),
         gtk::gdk::Key::Delete => b"\x1b[3~".to_vec(),
+        gtk::gdk::Key::ISO_Left_Tab => b"\x1b[Z".to_vec(),
         gtk::gdk::Key::F1 => b"\x1bOP".to_vec(),
         gtk::gdk::Key::F2 => b"\x1bOQ".to_vec(),
         gtk::gdk::Key::F3 => b"\x1bOR".to_vec(),
@@ -451,6 +565,7 @@ fn bytes_for_key(key: gtk::gdk::Key, state: gtk::gdk::ModifierType) -> Vec<u8> {
 }
 
 fn fit_grid(
+    container: &impl IsA<gtk::Widget>,
     view: &gtk::TextView,
     session: &TerminalSession,
     master_fd: i32,
@@ -461,7 +576,7 @@ fn fit_grid(
     back: &gtk::DrawingArea,
     front: &gtk::DrawingArea,
 ) {
-    let alloc = view.allocation();
+    let alloc = container.allocation();
     let layout = view.create_pango_layout(Some("M"));
     let (cell_w, cell_h) = layout.pixel_size();
     if cell_w < 1 || cell_h < 1 || alloc.width() < 1 || alloc.height() < 1 {
@@ -470,8 +585,10 @@ fn fit_grid(
     let cell_changed = glyph.get() != (cell_w, cell_h);
     glyph.set((cell_w, cell_h));
     session.set_cell_px(cell_w as u32, cell_h as u32);
-    let cols = (alloc.width() / cell_w).clamp(20, 512) as u32;
-    let rows = (alloc.height() / cell_h).clamp(8, 256) as u32;
+    let usable_w = (alloc.width() - 28).max(cell_w);
+    let usable_h = (alloc.height() - 24).max(cell_h);
+    let cols = (usable_w / cell_w).clamp(20, 512) as u32;
+    let rows = (usable_h / cell_h).clamp(8, 256) as u32;
     let grid_changed = grid.get() != (cols, rows);
     if !cell_changed && !grid_changed {
         return;
@@ -719,3 +836,63 @@ fn rgba_to_cairo(rgba: &[u8], width: usize, height: usize, stride: usize) -> Vec
     }
     data
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_spawn_and_read_echo() {
+        let (master_fd, slave_fd) = open_pty().expect("open_pty failed");
+        let mut child = spawn_on_slave(slave_fd, "echo hello-wawona").expect("spawn failed");
+        let mut master = unsafe { File::from_raw_fd(master_fd) };
+        let mut buf = [0u8; 128];
+        let mut output = Vec::new();
+        for _ in 0..50 {
+            match master.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => output.extend_from_slice(&buf[..n]),
+                Err(err) if err.kind() == ErrorKind::WouldBlock => {
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+                Err(_) => break,
+            }
+            if output.windows(12).any(|w| w == b"hello-wawona") {
+                break;
+            }
+        }
+        let _ = child.kill();
+        let _ = child.wait();
+        let text = String::from_utf8_lossy(&output);
+        assert!(text.contains("hello-wawona"), "output was: {text}");
+    }
+
+    #[test]
+    fn test_spawn_interactive_shell() {
+        let (master_fd, slave_fd) = open_pty().expect("open_pty failed");
+        let mut child = spawn_on_slave(slave_fd, "wawona-shell").expect("spawn failed");
+        let mut master = unsafe { File::from_raw_fd(master_fd) };
+        // Send a simple command to the interactive shell
+        let _ = master.write_all(b"echo shell-is-alive\n");
+        let mut buf = [0u8; 128];
+        let mut output = Vec::new();
+        for _ in 0..50 {
+            match master.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => output.extend_from_slice(&buf[..n]),
+                Err(err) if err.kind() == ErrorKind::WouldBlock => {
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+                Err(_) => break,
+            }
+            if output.windows(14).any(|w| w == b"shell-is-alive") {
+                break;
+            }
+        }
+        let _ = child.kill();
+        let _ = child.wait();
+        let text = String::from_utf8_lossy(&output);
+        assert!(text.contains("shell-is-alive"), "output was: {text}");
+    }
+}
+

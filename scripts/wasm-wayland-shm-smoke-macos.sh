@@ -88,7 +88,7 @@ APP_PID=$!
 DISPLAY_SOCK=""
 for _ in $(seq 1 "$WAIT_SECS"); do
   # Historical: "Compositor started. Socket: /path"
-  # Current apps: "Compositor started — socket: /path" or "… - socket:"
+  # Current apps: "Compositor started - socket: /path" or "… - socket:"
   DISPLAY_SOCK="$(
     sed -nE 's/.*Compositor started[. ].*[Ss]ocket:[[:space:]]*([^[:space:]]+).*/\1/p' \
       /tmp/wawona-wasm-shm-app.log | head -n1

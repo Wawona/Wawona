@@ -423,7 +423,7 @@ public struct GlobalSettingsCatalog: Sendable {
     /// iPadOS 26 (26 adds window control chrome only).
     public static func allowsWindowedMachineStart(_ host: GlobalSettingsHost) -> Bool {
         switch host {
-        case .macOS, .visionOS, .android:
+        case .macOS, .visionOS, .android, .linux:
             return true
         case .iOS:
             #if os(iOS)
@@ -431,7 +431,7 @@ public struct GlobalSettingsCatalog: Sendable {
             #else
             return false
             #endif
-        case .tvOS, .watchOS, .linux:
+        case .tvOS, .watchOS:
             return false
         }
     }
@@ -633,7 +633,7 @@ public enum WawonaAboutLinks {
             title: "Website",
             subtitle: "Wawona.io",
             url: "https://wawona.io",
-            iconURL: "https://wawona.io/favicon.ico"
+            iconURL: "bundle:WawonaWebsite.png"
         ),
         WawonaAboutLink(
             title: "Alex Spaulding",

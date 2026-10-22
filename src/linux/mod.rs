@@ -8,6 +8,7 @@ pub mod relay;
 pub mod runtime;
 pub mod service;
 pub mod session_exit;
+pub mod tag_store;
 pub mod thumbnail_store;
 #[cfg(feature = "linux-ui")]
 pub mod ui;

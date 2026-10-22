@@ -368,12 +368,36 @@ const PHYSICAL_ONLY: &[(HostKeyCode, u32)] = &[
 
 static HOST_LEVELS: Mutex<Option<HashMap<&'static str, [u32; 4]>>> = Mutex::new(None);
 
-/// Seat keymap. Live dump when the host has pushed levels; else US fallback.
+/// Seat keymap. Live dump when the host has pushed levels; else on Linux query host layout via xkbcommon; else US fallback.
 pub fn generate_from_host() -> String {
     if let Some(dumped) = dump_host_layout_xkb_v1() {
         return dumped;
     }
+    #[cfg(target_os = "linux")]
+    if let Some(linux_dump) = dump_linux_host_layout_xkb_v1() {
+        return linux_dump;
+    }
     MINIMAL_KEYMAP.to_string()
+}
+
+#[cfg(target_os = "linux")]
+fn dump_linux_host_layout_xkb_v1() -> Option<String> {
+    let ctx = xkbcommon::xkb::Context::new(xkbcommon::xkb::CONTEXT_NO_FLAGS);
+    let keymap = xkbcommon::xkb::Keymap::new_from_names(
+        &ctx,
+        "",
+        "",
+        "",
+        "",
+        None,
+        xkbcommon::xkb::KEYMAP_COMPILE_NO_FLAGS,
+    )?;
+    let s = keymap.get_as_string(xkbcommon::xkb::KEYMAP_FORMAT_TEXT_V1);
+    if s.is_empty() {
+        None
+    } else {
+        Some(s)
+    }
 }
 
 fn dump_host_layout_xkb_v1() -> Option<String> {
@@ -619,18 +643,12 @@ mod tests {
         let _guard = host_levels_lock();
         clear_host_key_levels();
         let km = generate_from_host();
-        assert!(
-            km.contains("key <AC01> { [ a, A ] }"),
-            "US home row A missing: {km}"
-        );
-        assert!(
-            km.contains("key <AD01> { [ q, Q ] }"),
-            "US Q row missing: {km}"
-        );
-        assert!(
-            km.contains("key <AB01> { [ z, Z ] }"),
-            "US Z row missing: {km}"
-        );
+        let has_ac01 = km.lines().any(|l| l.contains("<AC01>") && (l.contains(" a,") || l.contains("0x61")));
+        assert!(has_ac01, "US home row A missing: {km}");
+        let has_ad01 = km.lines().any(|l| l.contains("<AD01>") && (l.contains(" q,") || l.contains("0x71")));
+        assert!(has_ad01, "US Q row missing: {km}");
+        let has_ab01 = km.lines().any(|l| l.contains("<AB01>") && (l.contains(" z,") || l.contains("0x7a")));
+        assert!(has_ab01, "US Z row missing: {km}");
         assert!(km.contains("xkb_keymap {"), "not XKB v1: {km}");
     }
 

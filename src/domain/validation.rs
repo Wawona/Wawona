@@ -118,6 +118,43 @@ pub fn validate_profile(profile: &MachineProfile) -> Result<(), String> {
     Ok(())
 }
 
+/// Validate profile overrides for a specific host platform.
+/// Ensures platform-specific driver rules are respected (e.g. no KosmicKrisp on Linux or Android).
+pub fn validate_profile_for_host(
+    host: super::settings_catalog::SettingsHost,
+    profile: &MachineProfile,
+) -> Result<(), String> {
+    validate_profile(profile)?;
+
+    if let Some(ref vk) = profile.runtime_overrides.vulkan_driver {
+        let trimmed = vk.trim();
+        if !trimmed.is_empty()
+            && trimmed != "auto"
+            && !super::settings_catalog::is_valid_vulkan_driver(host, trimmed)
+        {
+            return Err(format!(
+                "Vulkan driver '{trimmed}' is not supported on {host:?}. Allowed options: {:?}",
+                super::settings_catalog::allowed_vulkan_drivers(host)
+            ));
+        }
+    }
+
+    if let Some(ref gl) = profile.runtime_overrides.open_gl_driver {
+        let trimmed = gl.trim();
+        if !trimmed.is_empty()
+            && trimmed != "auto"
+            && !super::settings_catalog::is_valid_opengl_driver(host, trimmed)
+        {
+            return Err(format!(
+                "OpenGL driver '{trimmed}' is not supported on {host:?}. Allowed options: {:?}",
+                super::settings_catalog::allowed_opengl_drivers(host)
+            ));
+        }
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -127,5 +164,26 @@ mod tests {
         assert!(is_forbidden_machines_client_id("igettyd"));
         assert!(is_forbidden_machines_client_id(" ModeB-TTY "));
         assert!(!is_forbidden_machines_client_id("weston-terminal"));
+    }
+
+    #[test]
+    fn validate_profile_for_host_rejects_invalid_drivers() {
+        use super::super::settings_catalog::SettingsHost;
+
+        let mut profile = MachineProfile::default();
+        profile.name = "Test".into();
+        profile.runtime_overrides.vulkan_driver = Some("kosmickrisp".into());
+
+        // KosmicKrisp is forbidden on Linux and Android
+        assert!(validate_profile_for_host(SettingsHost::Linux, &profile).is_err());
+        assert!(validate_profile_for_host(SettingsHost::Android, &profile).is_err());
+
+        // KosmicKrisp is allowed on macOS
+        assert!(validate_profile_for_host(SettingsHost::MacOs, &profile).is_ok());
+
+        // System driver is allowed on Linux and Android
+        profile.runtime_overrides.vulkan_driver = Some("system".into());
+        assert!(validate_profile_for_host(SettingsHost::Linux, &profile).is_ok());
+        assert!(validate_profile_for_host(SettingsHost::Android, &profile).is_ok());
     }
 }

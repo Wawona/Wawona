@@ -1,43 +1,47 @@
-//! Machine profile editor modal. 1:1 with the macOS `WWNMachineEditorView`
-//! (section order, titles, subtitles, labels, and button placement).
+//! In-app per-machine profile configuration view.
+//!
+//! Uses native Libadwaita PreferencesPage, EntryRow, SwitchRow, ComboRow, and
+//! SpinRow widgets for modern, responsive HIG styling.
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
+
+use gtk4 as gtk;
+use gtk4::{gio, glib};
+use libadwaita as adw;
 
 use adw::prelude::*;
 use gtk::prelude::*;
-use gtk4 as gtk;
-use gtk4::gio;
-use gtk4::glib;
-use libadwaita as adw;
 
 use crate::domain::machine_profile::{
     ContainerMachineSettings, DomainEnvironmentOverride, MachineProfile, MachineType,
     VirtualMachineSettings,
 };
-use crate::linux::session_exit;
 use crate::linux::ui::home::{rebuild_home, HomeShell, MachineSessions, RebuildHome};
 use crate::linux::ui::modal_sheet::present_sheet;
 use crate::linux::ui::SharedAppState;
 use crate::linux::ui_model::LayoutMode;
 use crate::wlog;
 
-pub fn show_editor(
-    parent: &adw::ApplicationWindow,
+pub fn build_editor_view(
     state: &SharedAppState,
     existing: Option<MachineProfile>,
     default_type: MachineType,
-    shell: &HomeShell,
-    sessions: MachineSessions,
-    layout: LayoutMode,
-) {
+    _sessions: MachineSessions,
+    on_close: Rc<dyn Fn(bool)>,
+) -> gtk::Box {
     let is_new = existing.is_none();
     let title = if is_new {
         "Add Machine Profile"
     } else {
         "Edit Machine Profile"
     };
-    let mut profile = existing.unwrap_or_else(|| MachineProfile::new(""));
+
+    let mut profile = existing.unwrap_or_else(|| MachineProfile {
+        id: crate::domain::machine_profile::new_uuid(),
+        ..MachineProfile::default()
+    });
     if is_new {
         profile.machine_type = default_type;
     }
@@ -45,6 +49,8 @@ pub fn show_editor(
 
     // Toolbar: Cancel leading, Save trailing.
     let header = adw::HeaderBar::new();
+    header.set_show_end_title_buttons(false);
+    header.set_show_start_title_buttons(false);
     let cancel_btn = gtk::Button::with_label("Cancel");
     let save_btn = gtk::Button::with_label("Save");
     save_btn.add_css_class("suggested-action");
@@ -58,31 +64,33 @@ pub fn show_editor(
     let profile_group = adw::PreferencesGroup::new();
     profile_group.set_title("Connection Profile");
     profile_group.set_description(Some("Name, type, and favorite status for this machine profile."));
-    let name_entry = gtk::Entry::builder()
-        .placeholder_text("e.g. Studio Linux VM")
-        .text(&profile.name)
-        .build();
-    add_row(&profile_group, "Display Name", &name_entry);
 
-    let type_combo = gtk::ComboBoxText::new();
-    for mt in MachineType::selectable_for_ui() {
-        let id = mt_id(*mt);
-        type_combo.append(Some(&id), mt.user_facing_name());
-    }
+    let name_row = adw::EntryRow::new();
+    name_row.set_title("Display Name");
+    name_row.set_text(&profile.name);
+    profile_group.add(&name_row);
+
+    let mt_items: Vec<(&str, &str)> = vec![
+        ("native", "Native Shell"),
+        ("wasm", "Relay Wasm"),
+        ("ssh_waypipe", "SSH + Waypipe"),
+        ("ssh_terminal", "SSH Terminal"),
+        ("virtual_machine", "Virtual Machine (Linux)"),
+        ("container", "Container (OCI)"),
+    ];
     let ui_type = match profile.machine_type {
         MachineType::Wasm | MachineType::SshWaypipe | MachineType::SshTerminal => {
             MachineType::Native
         }
         other => other,
     };
-    type_combo.set_active_id(Some(&mt_id(ui_type)));
-    add_row(&profile_group, "Type", &type_combo);
+    let (type_row, type_ids) = make_combo_row("Type", &mt_items, &mt_id(ui_type));
+    profile_group.add(&type_row);
 
-    let favorite_switch = gtk::Switch::builder()
-        .active(profile.favorite)
-        .valign(gtk::Align::Center)
-        .build();
-    add_switch_row(&profile_group, "Favorite Machine", &favorite_switch);
+    let favorite_row = adw::SwitchRow::new();
+    favorite_row.set_title("Favorite Machine");
+    favorite_row.set_active(profile.favorite);
+    profile_group.add(&favorite_row);
 
     let (initial_session, initial_use_ssh) = native_shell_session_from(&profile);
     let session_group = adw::PreferencesGroup::new();
@@ -90,102 +98,88 @@ pub fn show_editor(
     session_group.set_description(Some(
         "Terminal is Wawona Terminal (local or SSH). Wasm runs Relay packages. Waypipe streams with optional SSH.",
     ));
-    let session_combo = gtk::ComboBoxText::new();
-    for (id, label) in [
+
+    let session_items = [
         ("terminal", "Terminal"),
         ("wasm", "Wasm"),
         ("waypipe", "Waypipe"),
-    ] {
-        session_combo.append(Some(id), label);
-    }
+    ];
     let session_id = if initial_session == "wayland" {
         "terminal"
     } else {
         initial_session
     };
-    session_combo.set_active_id(Some(session_id));
-    add_row(&session_group, "Session", &session_combo);
-    let use_ssh_switch = gtk::Switch::builder()
-        .active(initial_use_ssh)
-        .valign(gtk::Align::Center)
-        .build();
-    add_row(&session_group, "Use SSH", &use_ssh_switch);
-    let terminal_custom_entry = gtk::Entry::builder()
-        .placeholder_text("e.g. bash -l (empty = interactive shell)")
-        .text(&profile.remote_command)
-        .build();
-    let terminal_custom_row = adw::ActionRow::new();
-    terminal_custom_row.set_title("Custom Command");
-    terminal_custom_row.set_title_lines(1);
-    terminal_custom_row.set_activatable(false);
-    terminal_custom_row.add_suffix(&terminal_custom_entry);
-    session_group.add(&terminal_custom_row);
+    let (session_row, session_ids) = make_combo_row("Session", &session_items, session_id);
+    session_group.add(&session_row);
 
-    let mut initial_client = profile
-        .runtime_overrides
-        .bundled_app_id
-        .clone()
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "wawona-shell".to_string());
-    if initial_client == "custom"
-        || (initial_client != "wawona-shell" && initial_client != "wawona-wasm")
-    {
-        session_combo.set_active_id(Some("terminal"));
-        initial_client = "wawona-shell".to_string();
-    }
-    let selected_client = Rc::new(RefCell::new(initial_client));
-    let client_groups: Vec<adw::PreferencesGroup> = Vec::new();
+    let use_ssh_row = adw::SwitchRow::new();
+    use_ssh_row.set_title("Use SSH");
+    use_ssh_row.set_active(initial_use_ssh);
+    session_group.add(&use_ssh_row);
+
+    let terminal_custom_row = adw::EntryRow::new();
+    terminal_custom_row.set_title("Custom Command");
+    terminal_custom_row.set_text(&profile.remote_command);
+    session_group.add(&terminal_custom_row);
 
     let wasm_group = adw::PreferencesGroup::new();
     wasm_group.set_title("Wasm");
     wasm_group.set_description(Some(
         "Same as native shell: wasm hello-wasi-gui. Local file, package name, or typed command.",
     ));
-    let wasm_cmd = gtk::Entry::builder()
-        .placeholder_text("wasm hello-wasi-gui")
-        .text(
-            profile
-                .runtime_overrides
-                .wasm_command
-                .as_deref()
-                .unwrap_or("wasm hello-wasi-gui"),
-        )
-        .build();
-    add_row(&wasm_group, "Command", &wasm_cmd);
-    let wasm_pkg = gtk::Entry::builder()
-        .placeholder_text("hello-wasi-gui")
-        .text(
-            profile
-                .runtime_overrides
-                .wasm_package
-                .as_deref()
-                .unwrap_or(""),
-        )
-        .build();
-    add_row(&wasm_group, "Package", &wasm_pkg);
-    let wasm_path = gtk::Entry::builder()
-        .placeholder_text("~/…/Wawona/wasm-modules/hello-wasi-gui.wasm")
-        .text(
-            profile
-                .runtime_overrides
-                .wasm_module_path
-                .as_deref()
-                .unwrap_or(""),
-        )
-        .build();
-    add_row(&wasm_group, "Local .wasm", &wasm_path);
-    let wasm_pick = gtk::Button::with_label("Choose file…");
-    add_row(&wasm_group, "Browse", &wasm_pick);
-    let wasm_search = gtk::Button::with_label("Search catalog");
-    add_row(&wasm_group, "Repo", &wasm_search);
+
+    let wasm_cmd_row = adw::EntryRow::new();
+    wasm_cmd_row.set_title("Command");
+    wasm_cmd_row.set_text(
+        profile
+            .runtime_overrides
+            .wasm_command
+            .as_deref()
+            .unwrap_or("wasm hello-wasi-gui"),
+    );
+    wasm_group.add(&wasm_cmd_row);
+
+    let wasm_pkg_row = adw::EntryRow::new();
+    wasm_pkg_row.set_title("Package");
+    wasm_pkg_row.set_text(
+        profile
+            .runtime_overrides
+            .wasm_package
+            .as_deref()
+            .unwrap_or(""),
+    );
+    wasm_group.add(&wasm_pkg_row);
+
+    let wasm_path_row = adw::EntryRow::new();
+    wasm_path_row.set_title("Local .wasm Path");
+    wasm_path_row.set_text(
+        profile
+            .runtime_overrides
+            .wasm_module_path
+            .as_deref()
+            .unwrap_or(""),
+    );
+    let wasm_pick = gtk::Button::with_label("Browse…");
+    wasm_path_row.add_suffix(&wasm_pick);
+    wasm_group.add(&wasm_path_row);
+
+    let wasm_search_row = adw::ActionRow::new();
+    wasm_search_row.set_title("Catalog Repository");
+    wasm_search_row.set_subtitle("Search catalog packages on repo.wawona.io");
+    let wasm_search = gtk::Button::with_label("Search");
+    wasm_search_row.add_suffix(&wasm_search);
+    wasm_group.add(&wasm_search_row);
+
     let wasm_note = gtk::Label::new(None);
     wasm_note.set_wrap(true);
     wasm_note.set_xalign(0.0);
     wasm_note.add_css_class("dim-label");
     wasm_group.add(&wasm_note);
+
     let wasm_results = gtk::ListBox::new();
     wasm_results.set_selection_mode(gtk::SelectionMode::None);
     wasm_group.add(&wasm_results);
+
     for local in crate::linux::wasm_launch::list_local_modules() {
         let row = adw::ActionRow::new();
         row.set_title(
@@ -195,32 +189,37 @@ pub fn show_editor(
                 .unwrap_or_else(|| local.display().to_string())
                 .as_str(),
         );
+        row.set_subtitle(&local.display().to_string());
         row.set_activatable(true);
-        let wasm_path_c = wasm_path.clone();
-        let wasm_cmd_c = wasm_cmd.clone();
+        let wasm_path_c = wasm_path_row.clone();
+        let wasm_cmd_c = wasm_cmd_row.clone();
         let path_s = local.display().to_string();
-        row.connect_activated(move |_| {
+        let gesture = gtk::GestureClick::new();
+        gesture.connect_released(move |_, _, _, _| {
             wasm_path_c.set_text(&path_s);
             wasm_cmd_c.set_text(&format!("wasm {path_s}"));
         });
+        row.add_controller(gesture);
         wasm_group.add(&row);
     }
+
     {
-        let win = parent.clone();
-        let wasm_path_c = wasm_path.clone();
+        let wasm_pick_btn = wasm_pick.clone();
+        let wasm_path_c = wasm_path_row.clone();
         wasm_pick.connect_clicked(move |_| {
             let dialog = gtk::FileDialog::builder()
-                .title("Choose a Wasm module")
+                .title("Select .wasm module")
                 .modal(true)
                 .build();
             let filter = gtk::FileFilter::new();
-            filter.set_name(Some("Wasm modules"));
+            filter.set_name(Some("WebAssembly module (*.wasm)"));
             filter.add_pattern("*.wasm");
             let filters = gio::ListStore::new::<gtk::FileFilter>();
             filters.append(&filter);
             dialog.set_filters(Some(&filters));
             let wasm_path_c = wasm_path_c.clone();
-            dialog.open(Some(&win), None::<&gio::Cancellable>, move |result| {
+            let win = wasm_pick_btn.root().and_then(|r| r.downcast::<gtk::Window>().ok());
+            dialog.open(win.as_ref(), None::<&gio::Cancellable>, move |result| {
                 if let Ok(file) = result {
                     if let Some(path) = file.path() {
                         wasm_path_c.set_text(&path.to_string_lossy());
@@ -229,92 +228,82 @@ pub fn show_editor(
             });
         });
     }
+
     {
-        let wasm_pkg_c = wasm_pkg.clone();
-        let wasm_cmd_c = wasm_cmd.clone();
-        let wasm_path_c = wasm_path.clone();
-        let results = wasm_results.clone();
-        let note = wasm_note.clone();
+        let wasm_results_c = wasm_results.clone();
+        let wasm_path_c = wasm_path_row.clone();
+        let wasm_cmd_c = wasm_cmd_row.clone();
+        let wasm_pkg_c = wasm_pkg_row.clone();
+        let wasm_note_c = wasm_note.clone();
         wasm_search.connect_clicked(move |_| {
-            let q = wasm_pkg_c.text().to_string();
-            note.set_text("Searching /wasm/v1…");
-            let note = note.clone();
-            let results = results.clone();
-            let pkg_e = wasm_pkg_c.clone();
-            let cmd_e = wasm_cmd_c.clone();
-            let path_e = wasm_path_c.clone();
-            type SearchMsg = Result<Vec<crate::linux::wasm_launch::CatalogPackage>, String>;
-            let (tx, rx) = std::sync::mpsc::sync_channel::<SearchMsg>(1);
+            let q = wasm_pkg_c.text().trim().to_string();
+            let results_list = wasm_results_c.clone();
+            let path_entry = wasm_path_c.clone();
+            let cmd_entry = wasm_cmd_c.clone();
+            let note = wasm_note_c.clone();
+            note.set_text("Searching catalog…");
+            while let Some(child) = results_list.first_child() {
+                results_list.remove(&child);
+            }
+            let (tx, rx) = std::sync::mpsc::channel::<Result<Vec<crate::linux::wasm_launch::CatalogPackage>, String>>();
             let note_poll = note.clone();
-            let results_poll = results.clone();
-            let pkg_poll = pkg_e.clone();
-            let cmd_poll = cmd_e.clone();
-            let path_poll = path_e.clone();
-            glib::timeout_add_local(std::time::Duration::from_millis(16), move || {
+            let results_poll = results_list.clone();
+            let path_poll = path_entry.clone();
+            let cmd_poll = cmd_entry.clone();
+            glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
                 match rx.try_recv() {
-                    Ok(found) => {
-                        while let Some(child) = results_poll.first_child() {
-                            results_poll.remove(&child);
-                        }
-                        match found {
-                            Ok(pkgs) if pkgs.is_empty() => {
-                                note_poll.set_text("No packages in /wasm/v1 match.");
-                            }
-                            Ok(pkgs) => {
-                                note_poll.set_text("Tap a package to download from /wasm/v1.");
-                                for pkg in pkgs {
+                    Ok(items) => {
+                        note_poll.set_text("");
+                        match items {
+                            Ok(found) => {
+                                if found.is_empty() {
+                                    note_poll.set_text("No catalog matches found.");
+                                }
+                                for item in found {
                                     let row = adw::ActionRow::new();
-                                    row.set_title(&pkg.name);
-                                    row.set_subtitle(&format!(
-                                        "{}  {}",
-                                        pkg.version, pkg.summary
-                                    ));
+                                    row.set_title(&item.name);
+                                    let sub = format!(
+                                        "{} • v{}",
+                                        item.summary,
+                                        item.version,
+                                    );
+                                    row.set_subtitle(&sub);
                                     row.set_activatable(true);
-                                    let name = pkg.name.clone();
-                                    let pe = pkg_poll.clone();
+                                    let name = item.name.clone();
+                                    let pe = path_poll.clone();
                                     let ce = cmd_poll.clone();
                                     let pte = path_poll.clone();
                                     let nte = note_poll.clone();
-                                    row.connect_activated(move |_| {
+                                    let gesture = gtk::GestureClick::new();
+                                    gesture.connect_released(move |_, _, _, _| {
                                         pe.set_text(&name);
                                         ce.set_text(&format!("wasm {name}"));
                                         nte.set_text("Downloading…");
-                                        let name2 = name.clone();
-                                        let (dtx, drx) =
-                                            std::sync::mpsc::sync_channel::<Option<String>>(1);
-                                        let pte2 = pte.clone();
-                                        let nte2 = nte.clone();
-                                        glib::timeout_add_local(
-                                            std::time::Duration::from_millis(16),
-                                            move || match drx.try_recv() {
-                                                Ok(Some(path)) => {
-                                                    pte2.set_text(&path);
-                                                    nte2.set_text("Saved to the Wawona folder.");
+                                        let name_c = name.clone();
+                                        let (tx_dl, rx_dl) = std::sync::mpsc::channel::<Option<std::path::PathBuf>>();
+                                        let pte_c = pte.clone();
+                                        let nte_c = nte.clone();
+                                        glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
+                                            match rx_dl.try_recv() {
+                                                Ok(Some(p)) => {
+                                                    pte_c.set_text(&p.display().to_string());
+                                                    nte_c.set_text("Ready");
                                                     glib::ControlFlow::Break
                                                 }
                                                 Ok(None) => {
-                                                    nte2.set_text(
-                                                        "Download failed, or this is bundled hello-wasi-gui.",
-                                                    );
+                                                    nte_c.set_text("Download failed");
                                                     glib::ControlFlow::Break
                                                 }
-                                                Err(std::sync::mpsc::TryRecvError::Empty) => {
-                                                    glib::ControlFlow::Continue
-                                                }
-                                                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                                                    glib::ControlFlow::Break
-                                                }
-                                            },
-                                        );
+                                                Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
+                                                Err(std::sync::mpsc::TryRecvError::Disconnected) => glib::ControlFlow::Break,
+                                            }
+                                        });
                                         std::thread::spawn(move || {
-                                            let got = crate::linux::wasm_launch::ensure_package_file(
-                                                &name2,
-                                            );
-                                            let msg = got
-                                                .map(|p| p.to_string_lossy().into_owned());
-                                            let _ = dtx.send(msg);
+                                            let res = crate::linux::wasm_launch::ensure_package_file(&name_c);
+                                            let _ = tx_dl.send(res);
                                         });
                                     });
+                                    row.add_controller(gesture);
                                     results_poll.append(&row);
                                 }
                             }
@@ -335,49 +324,47 @@ pub fn show_editor(
 
     // MARK: SSH + Waypipe / SSH Connection (Remote)
     let remote_group = adw::PreferencesGroup::new();
-    let host_entry = gtk::Entry::builder()
-        .placeholder_text("host.example.com")
-        .text(&profile.ssh_host)
-        .build();
-    let user_entry = gtk::Entry::builder()
-        .placeholder_text("username")
-        .text(&profile.ssh_user)
-        .build();
-    let port_entry = gtk::Entry::builder()
-        .placeholder_text("22")
-        .text(&profile.ssh_port.to_string())
-        .build();
-    let password_entry = gtk::PasswordEntry::builder()
-        .show_peek_icon(true)
-        .placeholder_text("Optional")
-        .build();
-    password_entry.set_text(&profile.ssh_password);
-    let auth_method_combo = gtk::ComboBoxText::new();
-    auth_method_combo.append(Some("0"), "Password");
-    auth_method_combo.append(Some("1"), "Public Key");
-    auth_method_combo.set_active_id(Some(if profile.ssh_auth_method == 1 { "1" } else { "0" }));
+    let host_row = adw::EntryRow::new();
+    host_row.set_title("Host");
+    host_row.set_text(&profile.ssh_host);
+    remote_group.add(&host_row);
 
-    let key_path_entry = gtk::Entry::builder()
-        .placeholder_text("~/.ssh/id_ed25519")
-        .text(&profile.ssh_key_path)
-        .build();
-    let key_passphrase_entry = gtk::PasswordEntry::builder()
-        .show_peek_icon(true)
-        .placeholder_text("Optional")
-        .build();
-    key_passphrase_entry.set_text(&profile.ssh_key_passphrase);
+    let user_row = adw::EntryRow::new();
+    user_row.set_title("User");
+    user_row.set_text(&profile.ssh_user);
+    remote_group.add(&user_row);
 
-    let cmd_entry = gtk::Entry::builder().text(&profile.remote_command).build();
-    let cmd_row = adw::ActionRow::new();
-    cmd_row.set_activatable(false);
-    cmd_row.add_suffix(&cmd_entry);
-    add_row(&remote_group, "Host", &host_entry);
-    add_row(&remote_group, "User", &user_entry);
-    add_row(&remote_group, "Port", &port_entry);
-    add_row(&remote_group, "Auth Method", &auth_method_combo);
-    add_row(&remote_group, "Password", &password_entry);
-    add_row(&remote_group, "Key Path", &key_path_entry);
-    add_row(&remote_group, "Key Passphrase", &key_passphrase_entry);
+    let port_row = adw::EntryRow::new();
+    port_row.set_title("Port");
+    port_row.set_text(&profile.ssh_port.to_string());
+    remote_group.add(&port_row);
+
+    let auth_items = [("0", "Password"), ("1", "Public Key")];
+    let (auth_method_row, auth_ids) = make_combo_row(
+        "Authentication Method",
+        &auth_items,
+        if profile.ssh_auth_method == 1 { "1" } else { "0" },
+    );
+    remote_group.add(&auth_method_row);
+
+    let password_row = adw::PasswordEntryRow::new();
+    password_row.set_title("Password");
+    password_row.set_text(&profile.ssh_password);
+    remote_group.add(&password_row);
+
+    let key_path_row = adw::EntryRow::new();
+    key_path_row.set_title("Key Path");
+    key_path_row.set_text(&profile.ssh_key_path);
+    remote_group.add(&key_path_row);
+
+    let key_passphrase_row = adw::PasswordEntryRow::new();
+    key_passphrase_row.set_title("Key Passphrase");
+    key_passphrase_row.set_text(&profile.ssh_key_passphrase);
+    remote_group.add(&key_passphrase_row);
+
+    let cmd_row = adw::EntryRow::new();
+    cmd_row.set_title("Remote Command");
+    cmd_row.set_text(&profile.remote_command);
     remote_group.add(&cmd_row);
 
     // MARK: Command Preview (Remote)
@@ -405,86 +392,66 @@ pub fn show_editor(
     dig_group.set_description(Some(
         "Per-machine overrides for global Display, Input, Graphics, and HDR settings.",
     ));
-    let force_ssd = gtk::Switch::new();
-    force_ssd.set_active(profile.runtime_overrides.force_ssd.unwrap_or(true));
-    let auto_scale = gtk::Switch::new();
-    auto_scale.set_active(profile.runtime_overrides.auto_scale.unwrap_or(true));
 
-    let compositor_backend_combo = gtk::ComboBoxText::new();
-    for (id, label) in [("auto", "Auto"), ("wayland", "Wayland (nested)"), ("drm", "DRM/KMS (iLand)")] {
-        compositor_backend_combo.append(Some(id), label);
-    }
-    compositor_backend_combo.set_active_id(Some(
-        profile.runtime_overrides.compositor_backend.as_deref().unwrap_or("auto")
-    ));
+    let backend_items = [
+        ("auto", "Auto"),
+        ("wayland", "Wayland (nested)"),
+        ("drm", "DRM/KMS (iLand)"),
+    ];
+    let (compositor_backend_row, backend_ids) = make_combo_row(
+        "Display Backend",
+        &backend_items,
+        profile
+            .runtime_overrides
+            .compositor_backend
+            .as_deref()
+            .unwrap_or("auto"),
+    );
+    dig_group.add(&compositor_backend_row);
 
-    let vulkan_driver = gtk::ComboBoxText::new();
-    for (id, label) in [
-        ("none", "None"),
+    let vulkan_items = [
         ("system", "System"),
-        ("moltenvk", "MoltenVK"),
-        ("kosmickrisp", "KosmicKrisp"),
-    ] {
-        vulkan_driver.append(Some(id), label);
-    }
-    vulkan_driver.set_active_id(Some(
+        ("swiftshader", "SwiftShader"),
+        ("none", "None"),
+    ];
+    let (vulkan_driver_row, vulkan_ids) = make_combo_row(
+        "Vulkan Driver",
+        &vulkan_items,
         profile
             .runtime_overrides
             .vulkan_driver
             .as_deref()
             .unwrap_or("system"),
-    ));
-    let opengl_driver = gtk::ComboBoxText::new();
-    for (id, label) in [("none", "None"), ("system", "System"), ("angle", "ANGLE")] {
-        opengl_driver.append(Some(id), label);
-    }
-    opengl_driver.set_active_id(Some(
+    );
+    dig_group.add(&vulkan_driver_row);
+
+    let opengl_items = [("system", "System"), ("angle", "ANGLE"), ("none", "None")];
+    let (opengl_driver_row, opengl_ids) = make_combo_row(
+        "OpenGL Driver",
+        &opengl_items,
         profile
             .runtime_overrides
             .open_gl_driver
             .as_deref()
             .unwrap_or("system"),
-    ));
-    let dmabuf = gtk::Switch::new();
-    dmabuf.set_active(profile.runtime_overrides.dmabuf_enabled.unwrap_or(true));
-    let color_ops = gtk::Switch::new();
-    color_ops.set_active(profile.runtime_overrides.color_operations.unwrap_or(false));
-
-    let input_profile_entry = gtk::Entry::builder()
-        .placeholder_text("e.g. direct (empty = inherit global)")
-        .text(profile.runtime_overrides.input_profile.as_deref().unwrap_or(""))
-        .build();
-
-    add_row(&dig_group, "Force Server-Side Decorations", &force_ssd);
-    add_row(&dig_group, "Auto Scale", &auto_scale);
-    add_row(&dig_group, "Display Backend", &compositor_backend_combo);
-    add_row(&dig_group, "Vulkan Driver", &vulkan_driver);
-    add_row(&dig_group, "OpenGL Driver", &opengl_driver);
-    add_row(&dig_group, "Enable DMABUF", &dmabuf);
-    add_row(&dig_group, "Color Operations / HDR", &color_ops);
-    add_row(&dig_group, "Input Profile", &input_profile_entry);
-
-    // MARK: Session Exit
-    let session_exit_group = adw::PreferencesGroup::new();
-    session_exit_group.set_title("Session Exit");
-    session_exit_group
-        .set_description(Some("Per-machine overrides for closing an active session."));
-    let shake_switch = gtk::Switch::new();
-    shake_switch.set_active(session_exit::shake_to_close_enabled(
-        &state.borrow().settings,
-        Some(&profile),
-    ));
-    let swipe_switch = gtk::Switch::new();
-    swipe_switch.set_active(session_exit::swipe_back_to_close_enabled(
-        &state.borrow().settings,
-        Some(&profile),
-    ));
-    add_row(&session_exit_group, "Shake to Exit Machine", &shake_switch);
-    add_row(
-        &session_exit_group,
-        "Swipe Back to Exit Machine",
-        &swipe_switch,
     );
+    dig_group.add(&opengl_driver_row);
+
+    let color_ops_row = adw::SwitchRow::new();
+    color_ops_row.set_title("Color Operations / HDR");
+    color_ops_row.set_active(profile.runtime_overrides.color_operations.unwrap_or(false));
+    dig_group.add(&color_ops_row);
+
+    let input_profile_row = adw::EntryRow::new();
+    input_profile_row.set_title("Input Profile");
+    input_profile_row.set_text(
+        profile
+            .runtime_overrides
+            .input_profile
+            .as_deref()
+            .unwrap_or(""),
+    );
+    dig_group.add(&input_profile_row);
 
     // MARK: Virtual Machine
     let vm_group = adw::PreferencesGroup::new();
@@ -492,39 +459,35 @@ pub fn show_editor(
     vm_group.set_description(Some(
         "KVM hypervisor and guest system parameters. Fail closed without /dev/kvm.",
     ));
-    let vm_backend = gtk::Label::new(Some("Relay KVM"));
-    vm_backend.add_css_class("dim-label");
-    add_row(&vm_group, "Backend", &vm_backend);
 
-    let vm_variant_combo = gtk::ComboBoxText::new();
-    for (id, label) in [("nixos-guest-4k", "NixOS Guest 4K"), ("standard", "Standard Linux")] {
-        vm_variant_combo.append(Some(id), label);
-    }
+    let vm_variant_items = [
+        ("nixos-guest-4k", "NixOS Guest 4K"),
+        ("standard", "Standard Linux"),
+    ];
     let current_variant = profile
         .vm_settings
         .as_ref()
         .and_then(|s| s.guest_variant.as_deref())
         .unwrap_or("nixos-guest-4k");
-    vm_variant_combo.set_active_id(Some(current_variant));
-    add_row(&vm_group, "Guest Variant", &vm_variant_combo);
+    let (vm_variant_row, vm_variant_ids) =
+        make_combo_row("Guest Variant", &vm_variant_items, current_variant);
+    vm_group.add(&vm_variant_row);
 
     let current_mem = profile
         .vm_settings
         .as_ref()
         .and_then(|s| s.memory_mb)
         .unwrap_or(2048);
-    let vm_memory_spin = gtk::SpinButton::with_range(512.0, 32768.0, 512.0);
-    vm_memory_spin.set_value(current_mem as f64);
-    add_row(&vm_group, "Memory (MB)", &vm_memory_spin);
+    let vm_memory_row = make_spin_row("Memory (MB)", current_mem as f64, 512.0, 32768.0, 512.0);
+    vm_group.add(&vm_memory_row);
 
     let current_disk = profile
         .vm_settings
         .as_ref()
         .and_then(|s| s.disk_gib)
         .unwrap_or(20);
-    let vm_disk_spin = gtk::SpinButton::with_range(4.0, 1024.0, 4.0);
-    vm_disk_spin.set_value(current_disk as f64);
-    add_row(&vm_group, "Disk Size (GiB)", &vm_disk_spin);
+    let vm_disk_row = make_spin_row("Disk Size (GiB)", current_disk as f64, 4.0, 1024.0, 4.0);
+    vm_group.add(&vm_disk_row);
 
     let current_vsock = profile
         .vm_settings
@@ -532,20 +495,18 @@ pub fn show_editor(
         .and_then(|s| s.vsock_port.as_deref())
         .and_then(|p| p.parse::<f64>().ok())
         .unwrap_or(1024.0);
-    let vm_vsock_spin = gtk::SpinButton::with_range(1024.0, 65535.0, 1.0);
-    vm_vsock_spin.set_value(current_vsock);
-    add_row(&vm_group, "VSock Port", &vm_vsock_spin);
+    let vm_vsock_row = make_spin_row("VSock Port", current_vsock, 1024.0, 65535.0, 1.0);
+    vm_group.add(&vm_vsock_row);
 
     let current_notes = profile
         .vm_settings
         .as_ref()
         .and_then(|s| s.notes.as_deref())
         .unwrap_or("");
-    let vm_notes_entry = gtk::Entry::builder()
-        .placeholder_text("Optional notes")
-        .text(current_notes)
-        .build();
-    add_row(&vm_group, "Notes", &vm_notes_entry);
+    let vm_notes_row = adw::EntryRow::new();
+    vm_notes_row.set_title("Notes");
+    vm_notes_row.set_text(current_notes);
+    vm_group.add(&vm_notes_row);
 
     let vm_note = gtk::Label::new(Some(
         "Linux guests use KVM via cloud-hypervisor or crosvm. Fail closed without /dev/kvm. No QEMU.",
@@ -562,53 +523,46 @@ pub fn show_editor(
     container_group.set_description(Some(
         "OCI runtime configuration. Containers unpack OCI images and run on the Relay VM.",
     ));
-    let container_backend = gtk::Label::new(Some("OCI-in-VM"));
-    container_backend.add_css_class("dim-label");
-    add_row(&container_group, "Backend", &container_backend);
 
     let current_ref = profile
         .container_settings
         .as_ref()
         .and_then(|s| s.container_ref.as_deref())
         .unwrap_or("");
-    let container_ref_entry = gtk::Entry::builder()
-        .placeholder_text("e.g. alpine:latest")
-        .text(current_ref)
-        .build();
-    add_row(&container_group, "Image Reference", &container_ref_entry);
+    let container_ref_row = adw::EntryRow::new();
+    container_ref_row.set_title("Image Reference");
+    container_ref_row.set_text(current_ref);
+    container_group.add(&container_ref_row);
 
     let current_container_cmd = profile
         .container_settings
         .as_ref()
         .and_then(|s| s.entry_command.as_deref())
         .unwrap_or(&profile.remote_command);
-    let container_cmd = gtk::Entry::builder()
-        .placeholder_text("weston-simple-shm")
-        .text(current_container_cmd)
-        .build();
-    add_row(&container_group, "Startup Command", &container_cmd);
+    let container_cmd_row = adw::EntryRow::new();
+    container_cmd_row.set_title("Startup Command");
+    container_cmd_row.set_text(current_container_cmd);
+    container_group.add(&container_cmd_row);
 
     let current_container_mem = profile
         .container_settings
         .as_ref()
         .and_then(|s| s.memory.as_deref())
         .unwrap_or("");
-    let container_memory_entry = gtk::Entry::builder()
-        .placeholder_text("e.g. 1024MB")
-        .text(current_container_mem)
-        .build();
-    add_row(&container_group, "Memory Limit", &container_memory_entry);
+    let container_memory_row = adw::EntryRow::new();
+    container_memory_row.set_title("Memory Limit");
+    container_memory_row.set_text(current_container_mem);
+    container_group.add(&container_memory_row);
 
     let current_desktop = profile
         .container_settings
         .as_ref()
         .and_then(|s| s.desktop_session)
         .unwrap_or(false);
-    let container_desktop_switch = gtk::Switch::builder()
-        .active(current_desktop)
-        .valign(gtk::Align::Center)
-        .build();
-    add_switch_row(&container_group, "Desktop Session", &container_desktop_switch);
+    let container_desktop_row = adw::SwitchRow::new();
+    container_desktop_row.set_title("Desktop Session");
+    container_desktop_row.set_active(current_desktop);
+    container_group.add(&container_desktop_row);
 
     let container_note = gtk::Label::new(Some(
         "Containers unpack OCI, then run on the same KVM VM as virtual_machine. Not host Docker.",
@@ -619,12 +573,13 @@ pub fn show_editor(
     container_note.add_css_class("caption");
     container_group.add(&container_note);
 
-    // MARK: Environment Variables (Per-Machine)
+    // MARK: Environment Variables
     let env_group = adw::PreferencesGroup::new();
     env_group.set_title("Environment Variables");
     env_group.set_description(Some(
         "Per-machine KEY=value overrides applied to launched clients (overrides global env vars). Lines starting with -NAME unset a variable.",
     ));
+
     let env_text = gtk::TextView::new();
     env_text.set_monospace(true);
     env_text.set_wrap_mode(gtk::WrapMode::WordChar);
@@ -655,19 +610,17 @@ pub fn show_editor(
 
     // Command preview text mirrors WWNMachineEditorView.previewCommand.
     let update_preview = {
-        let host = host_entry.clone();
-        let user = user_entry.clone();
-        let port = port_entry.clone();
-        let cmd = cmd_entry.clone();
-        let terminal_cmd = terminal_custom_entry.clone();
-        let session = session_combo.clone();
+        let host = host_row.clone();
+        let user = user_row.clone();
+        let port = port_row.clone();
+        let cmd = cmd_row.clone();
+        let terminal_cmd = terminal_custom_row.clone();
+        let session = session_row.clone();
+        let session_ids = session_ids.clone();
         let lbl = preview_lbl.clone();
         let settings = state.borrow().settings.clone();
         Rc::new(move || {
-            let kind = session
-                .active_id()
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| "terminal".into());
+            let kind = get_combo_id(&session, &session_ids);
             let is_waypipe = kind == "waypipe";
             let host = host.text().trim().to_string();
             if host.is_empty() {
@@ -675,66 +628,90 @@ pub fn show_editor(
                 return;
             }
             let user = user.text().trim().to_string();
-            let target = if user.is_empty() {
-                host
-            } else {
-                format!("{user}@{host}")
-            };
-            let port = port.text().trim().parse::<i32>().unwrap_or(22);
-            let command = if is_waypipe {
+            let port_str = port.text().trim().to_string();
+            let port = port_str.parse::<u16>().unwrap_or(22);
+            let remote_command = if is_waypipe {
                 cmd.text().trim().to_string()
             } else {
                 terminal_cmd.text().trim().to_string()
             };
-            let effective = if command.is_empty() {
+            let remote_command = if remote_command.is_empty() {
                 if is_waypipe {
-                    "weston-simple-shm"
+                    "weston-simple-shm".to_string()
                 } else {
-                    "bash -l"
+                    String::new()
                 }
-                .to_string()
             } else {
-                command
+                remote_command
             };
-            let text = if is_waypipe {
-                format!(
-                    "waypipe --compress '{}' ssh -p {} '{}' '{}'",
-                    settings.waypipe_compression, port, target, effective
-                )
+            let mut parts: Vec<String> = Vec::new();
+            if is_waypipe {
+                parts.push("waypipe".into());
+                let sock = settings.waypipe_socket.trim();
+                if !sock.is_empty() {
+                    parts.push(format!("--socket={sock}"));
+                }
+                if settings.waypipe_display > 0 {
+                    parts.push(format!("--display=wayland-{}", settings.waypipe_display));
+                }
+                let comp = settings.waypipe_compression.trim();
+                if !comp.is_empty() && comp != "none" {
+                    parts.push(format!("--compress={comp}"));
+                    if settings.waypipe_compress_level > 0 {
+                        parts.push(format!(
+                            "--compress-level={}",
+                            settings.waypipe_compress_level
+                        ));
+                    }
+                }
+                if settings.waypipe_threads > 0 {
+                    parts.push(format!("--threads={}", settings.waypipe_threads));
+                }
+                let video = settings.waypipe_video.trim();
+                if !video.is_empty() && video != "none" {
+                    parts.push(format!("--video={video}"));
+                    let bpf = settings.waypipe_video_bpf.trim();
+                    if !bpf.is_empty() {
+                        parts.push(format!("--video-bpf={bpf}"));
+                    }
+                }
+                parts.push("ssh".into());
             } else {
-                format!("ssh -p {} '{}' '{}'", port, target, effective)
-            };
-            lbl.set_text(&text);
+                parts.push("ssh".into());
+            }
+            if port != 22 {
+                parts.push(format!("-p {port}"));
+            }
+            if !user.is_empty() {
+                parts.push(format!("{user}@{host}"));
+            } else {
+                parts.push(host);
+            }
+            if !remote_command.is_empty() {
+                parts.push(remote_command);
+            }
+            lbl.set_text(&parts.join(" "));
         })
     };
 
     let update_sections = {
-        let cgs = client_groups.clone();
-        let wg = wasm_group.clone();
+        let preview = update_preview.clone();
         let sg = session_group.clone();
+        let wg = wasm_group.clone();
         let rg = remote_group.clone();
         let pg = preview_group.clone();
         let vg = vm_group.clone();
         let ctg = container_group.clone();
-        let cmd_row = cmd_row.clone();
-        let cmd = cmd_entry.clone();
+        let session = session_row.clone();
+        let session_ids = session_ids.clone();
+        let use_ssh = use_ssh_row.clone();
         let terminal_custom_row = terminal_custom_row.clone();
-        let terminal_custom_entry = terminal_custom_entry.clone();
-        let session = session_combo.clone();
-        let use_ssh = use_ssh_switch.clone();
-        let preview = update_preview.clone();
+        let cmd_row = cmd_row.clone();
         move |type_id: &str| {
             let is_native = type_id == "native";
+            let kind = get_combo_id(&session, &session_ids);
+            let ssh_on = use_ssh.is_active();
             sg.set_visible(is_native);
-            let kind = session
-                .active_id()
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| "terminal".into());
-            let ssh_on = use_ssh.is_active() && (kind == "terminal" || kind == "waypipe");
-            let show_wayland = is_native && kind == "wayland";
-            for g in &cgs {
-                g.set_visible(show_wayland);
-            }
             wg.set_visible(is_native && kind == "wasm");
             rg.set_visible(is_native && ssh_on);
             pg.set_visible(is_native && ssh_on);
@@ -749,130 +726,103 @@ pub fn show_editor(
                     "Connects to a remote host via SSH and proxies the Wayland protocol using waypipe.",
                 ));
                 cmd_row.set_title("Remote Command");
-                cmd.set_placeholder_text(Some("weston-simple-shm"));
             } else if kind == "terminal" && ssh_on {
                 rg.set_title("SSH Connection");
                 rg.set_description(Some(
                     "Connects to a remote host via SSH and opens a terminal session.",
                 ));
-                terminal_custom_entry.set_placeholder_text(Some("e.g. bash -l"));
-            } else if kind == "terminal" {
-                terminal_custom_entry
-                    .set_placeholder_text(Some("e.g. htop (empty = interactive shell)"));
             }
             preview();
         }
     };
+
     update_sections(&mt_id(ui_type));
+
     {
         let u = update_sections.clone();
-        type_combo.connect_changed(move |c| {
-            let id = c
-                .active_id()
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| "native".into());
+        let type_row = type_row.clone();
+        let type_ids = type_ids.clone();
+        type_row.connect_selected_notify(move |c| {
+            let id = get_combo_id(c, &type_ids);
             u(&id);
         });
     }
     {
         let u = update_sections.clone();
-        let type_combo = type_combo.clone();
-        session_combo.connect_changed(move |_| {
-            let id = type_combo
-                .active_id()
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| "native".into());
+        let type_row = type_row.clone();
+        let type_ids = type_ids.clone();
+        session_row.connect_selected_notify(move |_| {
+            let id = get_combo_id(&type_row, &type_ids);
             u(&id);
         });
     }
     {
         let u = update_sections.clone();
-        let type_combo = type_combo.clone();
-        use_ssh_switch.connect_active_notify(move |_| {
-            let id = type_combo
-                .active_id()
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| "native".into());
+        let type_row = type_row.clone();
+        let type_ids = type_ids.clone();
+        use_ssh_row.connect_active_notify(move |_| {
+            let id = get_combo_id(&type_row, &type_ids);
             u(&id);
         });
     }
+
     for entry in [
-        &host_entry,
-        &user_entry,
-        &port_entry,
-        &cmd_entry,
-        &terminal_custom_entry,
+        &host_row,
+        &user_row,
+        &port_row,
+        &cmd_row,
+        &terminal_custom_row,
     ] {
         let preview = update_preview.clone();
         entry.connect_changed(move |_| preview());
     }
 
     let form = adw::PreferencesPage::new();
+    form.set_vexpand(true);
     form.add(&profile_group);
     form.add(&session_group);
-    for g in &client_groups {
-        form.add(g);
-    }
     form.add(&wasm_group);
     form.add(&remote_group);
     form.add(&preview_group);
     form.add(&dig_group);
-    form.add(&session_exit_group);
     form.add(&vm_group);
     form.add(&container_group);
     form.add(&env_group);
 
-    let scroll = gtk::ScrolledWindow::builder()
-        .hscrollbar_policy(gtk::PolicyType::Never)
-        .vexpand(true)
-        .child(&form)
-        .build();
-
     let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
     content.append(&header);
-    content.append(&scroll);
+    content.append(&form);
 
-    let dialog = present_sheet(parent, title, &content, layout);
+    let on_close_c = on_close.clone();
+    cancel_btn.connect_clicked(move |_| on_close_c(false));
 
-    let d = dialog.clone();
-    cancel_btn.connect_clicked(move |_| d.close());
-
-    let d = dialog.clone();
     let st = state.clone();
     let pid = profile.id.clone();
-    let shell = shell.clone();
-    let sessions_sv = sessions.clone();
-    let parent_c = parent.clone();
+    let on_close_s = on_close.clone();
     save_btn.connect_clicked(move |_| {
-        let tid = type_combo
-            .active_id()
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| "native".into());
-        let kind = session_combo
-            .active_id()
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| "terminal".into());
-        let use_ssh = use_ssh_switch.is_active() && (kind == "terminal" || kind == "waypipe");
+        let tid = get_combo_id(&type_row, &type_ids);
+        let kind = get_combo_id(&session_row, &session_ids);
+        let use_ssh = use_ssh_row.is_active() && (kind == "terminal" || kind == "waypipe");
         let mt = if tid == "native" {
             storage_type_for_native_shell(&kind, use_ssh)
         } else {
             parse_mt(&tid)
         };
         let remote_command = if mt == MachineType::Container {
-            container_cmd.text().trim().to_string()
+            container_cmd_row.text().trim().to_string()
         } else if kind == "terminal" {
-            terminal_custom_entry.text().trim().to_string()
+            terminal_custom_row.text().trim().to_string()
         } else {
-            cmd_entry.text().trim().to_string()
+            cmd_row.text().trim().to_string()
         };
-        let auth_method = auth_method_combo
-            .active_id()
-            .and_then(|s| s.parse::<i32>().ok())
+        let auth_method = get_combo_id(&auth_method_row, &auth_ids)
+            .parse::<i32>()
             .unwrap_or(0);
+
         let mut updated = MachineProfile {
             id: pid.clone(),
             name: {
-                let nm = name_entry.text().trim().to_string();
+                let nm = name_row.text().trim().to_string();
                 if nm.is_empty() {
                     "Unnamed Machine".to_string()
                 } else {
@@ -881,56 +831,56 @@ pub fn show_editor(
             },
             machine_type: mt,
             ssh_host: if use_ssh {
-                host_entry.text().trim().to_string()
+                host_row.text().trim().to_string()
             } else {
                 String::new()
             },
             ssh_user: if use_ssh {
-                user_entry.text().trim().to_string()
+                user_row.text().trim().to_string()
             } else {
                 String::new()
             },
             ssh_port: if use_ssh {
-                port_entry.text().trim().parse::<i32>().unwrap_or(22)
+                port_row.text().trim().parse::<i32>().unwrap_or(22)
             } else {
                 22
             },
             ssh_password: if use_ssh {
-                password_entry.text().to_string()
+                password_row.text().to_string()
             } else {
                 String::new()
             },
             ssh_auth_method: auth_method,
             ssh_key_path: if use_ssh {
-                key_path_entry.text().trim().to_string()
+                key_path_row.text().trim().to_string()
             } else {
                 String::new()
             },
             ssh_key_passphrase: if use_ssh {
-                key_passphrase_entry.text().to_string()
+                key_passphrase_row.text().to_string()
             } else {
                 String::new()
             },
             remote_command,
-            favorite: favorite_switch.is_active(),
+            favorite: favorite_row.is_active(),
             launchers: baseline.launchers.clone(),
             runtime_overrides: baseline.runtime_overrides.clone(),
             container_settings: if mt == MachineType::Container {
                 Some(ContainerMachineSettings {
                     runtime: Some("OCI-in-VM".to_string()),
                     container_ref: {
-                        let r = container_ref_entry.text().trim().to_string();
+                        let r = container_ref_row.text().trim().to_string();
                         if r.is_empty() { None } else { Some(r) }
                     },
                     entry_command: {
-                        let c = container_cmd.text().trim().to_string();
+                        let c = container_cmd_row.text().trim().to_string();
                         if c.is_empty() { None } else { Some(c) }
                     },
                     memory: {
-                        let m = container_memory_entry.text().trim().to_string();
+                        let m = container_memory_row.text().trim().to_string();
                         if m.is_empty() { None } else { Some(m) }
                     },
-                    desktop_session: Some(container_desktop_switch.is_active()),
+                    desktop_session: Some(container_desktop_row.is_active()),
                     ..baseline.container_settings.clone().unwrap_or_default()
                 })
             } else {
@@ -938,12 +888,12 @@ pub fn show_editor(
             },
             vm_settings: if mt == MachineType::VirtualMachine {
                 Some(VirtualMachineSettings {
-                    guest_variant: vm_variant_combo.active_id().map(|s| s.to_string()),
-                    memory_mb: Some(vm_memory_spin.value() as i32),
-                    disk_gib: Some(vm_disk_spin.value() as i32),
-                    vsock_port: Some(format!("{}", vm_vsock_spin.value() as u32)),
+                    guest_variant: Some(get_combo_id(&vm_variant_row, &vm_variant_ids)),
+                    memory_mb: Some(vm_memory_row.value() as i32),
+                    disk_gib: Some(vm_disk_row.value() as i32),
+                    vsock_port: Some(format!("{}", vm_vsock_row.value() as u32)),
                     notes: {
-                        let n = vm_notes_entry.text().trim().to_string();
+                        let n = vm_notes_row.text().trim().to_string();
                         if n.is_empty() { None } else { Some(n) }
                     },
                     ..baseline.vm_settings.clone().unwrap_or_default()
@@ -953,19 +903,19 @@ pub fn show_editor(
             },
             ..baseline.clone()
         };
+
         if tid == "native" && (kind == "terminal" || kind == "wayland") && !use_ssh {
-            let _ = selected_client.borrow();
             updated.runtime_overrides.bundled_app_id = Some("wawona-shell".into());
         } else if tid == "native" && kind == "wasm" {
             updated.runtime_overrides.bundled_app_id = Some("wawona-wasm".into());
-            let cmd = wasm_cmd.text().trim().to_string();
+            let cmd = wasm_cmd_row.text().trim().to_string();
             updated.runtime_overrides.wasm_command = Some(if cmd.is_empty() {
                 "wasm hello-wasi-gui".into()
             } else {
                 cmd
             });
-            let pkg = wasm_pkg.text().trim().to_string();
-            let path = wasm_path.text().trim().to_string();
+            let pkg = wasm_pkg_row.text().trim().to_string();
+            let path = wasm_path_row.text().trim().to_string();
             updated.runtime_overrides.wasm_launch_mode = Some(
                 if !path.is_empty() {
                     "file"
@@ -982,17 +932,21 @@ pub fn show_editor(
         } else if tid == "native" && kind == "waypipe" {
             updated.runtime_overrides.bundled_app_id = None;
         }
+
         updated.runtime_overrides.waypipe_enabled =
             Some(kind == "waypipe" || (kind == "terminal" && use_ssh));
-        updated.runtime_overrides.force_ssd = Some(force_ssd.is_active());
-        updated.runtime_overrides.auto_scale = Some(auto_scale.is_active());
-        updated.runtime_overrides.compositor_backend = compositor_backend_combo.active_id().map(|s| s.to_string());
-        updated.runtime_overrides.vulkan_driver = vulkan_driver.active_id().map(|s| s.to_string());
-        updated.runtime_overrides.open_gl_driver = opengl_driver.active_id().map(|s| s.to_string());
-        updated.runtime_overrides.dmabuf_enabled = Some(dmabuf.is_active());
-        updated.runtime_overrides.color_operations = Some(color_ops.is_active());
+        updated.runtime_overrides.force_ssd = Some(true);
+        updated.runtime_overrides.auto_scale = Some(true);
+        updated.runtime_overrides.compositor_backend =
+            Some(get_combo_id(&compositor_backend_row, &backend_ids));
+        updated.runtime_overrides.vulkan_driver =
+            Some(get_combo_id(&vulkan_driver_row, &vulkan_ids));
+        updated.runtime_overrides.open_gl_driver =
+            Some(get_combo_id(&opengl_driver_row, &opengl_ids));
+        updated.runtime_overrides.dmabuf_enabled = Some(true);
+        updated.runtime_overrides.color_operations = Some(color_ops_row.is_active());
         {
-            let inp = input_profile_entry.text().trim().to_string();
+            let inp = input_profile_row.text().trim().to_string();
             updated.runtime_overrides.input_profile = if inp.is_empty() { None } else { Some(inp) };
         }
         {
@@ -1000,79 +954,127 @@ pub fn show_editor(
             let start = buffer.start_iter();
             let end = buffer.end_iter();
             let text = buffer.text(&start, &end, false);
-            let mut env_map = std::collections::HashMap::new();
+            let mut env_map: HashMap<String, DomainEnvironmentOverride> = HashMap::new();
             for line in text.lines() {
-                let line = line.trim();
-                if line.is_empty() || line.starts_with('#') {
+                let trimmed = line.trim();
+                if trimmed.is_empty() {
                     continue;
                 }
-                if let Some(name) = line.strip_prefix('-') {
+                if let Some(name) = trimmed.strip_prefix('-') {
                     let name = name.trim();
                     if !name.is_empty() {
                         env_map.insert(
                             name.to_string(),
                             DomainEnvironmentOverride {
-                                action: "unset".to_string(),
+                                action: "unset".into(),
                                 value: None,
                             },
                         );
                     }
-                    continue;
-                }
-                if let Some((k, v)) = line.split_once('=') {
+                } else if let Some((k, v)) = trimmed.split_once('=') {
                     let k = k.trim();
+                    let v = v.trim();
                     if !k.is_empty() {
                         env_map.insert(
                             k.to_string(),
                             DomainEnvironmentOverride {
-                                action: "set".to_string(),
+                                action: "set".into(),
                                 value: Some(v.to_string()),
                             },
                         );
                     }
                 }
             }
-            updated.runtime_overrides.environment = if env_map.is_empty() { None } else { Some(env_map) };
+            updated.runtime_overrides.environment = if env_map.is_empty() {
+                None
+            } else {
+                Some(env_map)
+            };
         }
-        session_exit::write_session_exit_overrides(
-            &mut updated.runtime_overrides,
-            shake_switch.is_active(),
-            swipe_switch.is_active(),
-        );
 
         let mut app = st.borrow_mut();
         let _ = app.store.upsert(updated);
+        let _ = app.store.save();
         drop(app);
 
-        rebuild_home(RebuildHome {
-            shell: &shell,
-            state: &st,
-            parent: &parent_c,
-            sessions: sessions_sv.clone(),
-            layout,
-        });
         wlog!("UI", "Machine saved id={} type={}", pid, tid);
-        d.close();
+        on_close_s(true);
     });
+
+    content
 }
 
-fn add_switch_row(group: &adw::PreferencesGroup, title: &str, switch: &gtk::Switch) {
-    let row = adw::ActionRow::new();
-    row.set_title(title);
-    row.set_title_lines(1);
-    switch.set_valign(gtk::Align::Center);
-    row.add_suffix(switch);
-    row.set_activatable_widget(Some(switch));
-    group.add(&row);
+pub fn show_editor(
+    parent: &adw::ApplicationWindow,
+    state: &SharedAppState,
+    existing: Option<MachineProfile>,
+    default_type: MachineType,
+    shell: &HomeShell,
+    sessions: MachineSessions,
+    layout: LayoutMode,
+) {
+    let dialog_holder: Rc<RefCell<Option<adw::Window>>> = Rc::new(RefCell::new(None));
+    let dh = dialog_holder.clone();
+    let shell_c = shell.clone();
+    let state_c = state.clone();
+    let parent_c = parent.clone();
+    let sessions_c = sessions.clone();
+    let content = build_editor_view(
+        state,
+        existing,
+        default_type,
+        sessions,
+        Rc::new(move |saved| {
+            if saved {
+                rebuild_home(RebuildHome {
+                    shell: &shell_c,
+                    state: &state_c,
+                    parent: &parent_c,
+                    sessions: sessions_c.clone(),
+                    layout,
+                    on_edit: None,
+                    on_open_terminal: None,
+                });
+            }
+            if let Some(d) = dh.borrow().as_ref() {
+                d.close();
+            }
+        }),
+    );
+    let title = "Machine Profile";
+    let dialog = present_sheet(parent, title, &content, layout);
+    *dialog_holder.borrow_mut() = Some(dialog);
 }
 
-fn add_row(group: &adw::PreferencesGroup, title: &str, widget: &impl IsA<gtk::Widget>) {
-    let row = adw::ActionRow::new();
+fn make_combo_row(
+    title: &str,
+    items: &[(&str, &str)],
+    active_id: &str,
+) -> (adw::ComboRow, Vec<String>) {
+    let row = adw::ComboRow::new();
     row.set_title(title);
-    row.set_title_lines(1);
-    row.add_suffix(widget);
-    row.set_activatable(false);
-    group.add(&row);
+    let ids: Vec<String> = items.iter().map(|(id, _)| id.to_string()).collect();
+    let labels: Vec<&str> = items.iter().map(|(_, label)| *label).collect();
+    let model = gtk::StringList::new(&labels);
+    row.set_model(Some(&model));
+    if let Some(idx) = items.iter().position(|(id, _)| *id == active_id) {
+        row.set_selected(idx as u32);
+    }
+    (row, ids)
+}
+
+fn get_combo_id(row: &adw::ComboRow, ids: &[String]) -> String {
+    let idx = row.selected() as usize;
+    ids.get(idx)
+        .cloned()
+        .unwrap_or_else(|| ids.first().cloned().unwrap_or_default())
+}
+
+fn make_spin_row(title: &str, val: f64, min: f64, max: f64, step: f64) -> adw::SpinRow {
+    let adj = gtk::Adjustment::new(val, min, max, step, step * 2.0, 0.0);
+    let row = adw::SpinRow::new(Some(&adj), 1.0, 0);
+    row.set_title(title);
+    row
 }
 
 fn mt_id(mt: MachineType) -> String {

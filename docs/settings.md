@@ -112,8 +112,8 @@ watchOS runs the same Relay Pulley interpreter as iOS ([`wawona-relay-wasm`](age
 
 | Setting | Key | Type | Default | Platforms | Description |
 |---------|-----|------|---------|------------|-------------|
-| **Vulkan Driver** | `vulkanDriver` / `VulkanDriver` | Dropdown | KosmicKrisp on Apple Silicon + macOS 26+; else MoltenVK on Apple; `system` on Android | GPU targets | Android: None, System, or SwiftShader. No Turnip, no `/dev/kgsl`. Apple: None, MoltenVK, KosmicKrisp. watchOS GL/VK is blocked (no Metal). Watch present is SpriteKit. |
-| **OpenGL Driver** | `openglDriver` / `OpenGLDriver` | Dropdown | `system` (Android), `angle` (macOS/iOS/tvOS GPU) | GPU targets | Android: None, ANGLE, System. Apple GPU targets: None, ANGLE. No MoltenGL. tvOS GPU defaults to ANGLE (Phase 1 leftover `none` migrates once). watchOS: None. |
+| **Vulkan Driver** | `vulkanDriver` / `VulkanDriver` | Dropdown | KosmicKrisp on Apple Silicon + macOS 26+; else MoltenVK on Apple; `system` on Android and Linux | GPU targets | Android and Linux: None, System, or SwiftShader. KosmicKrisp and MoltenVK are Metal-only translation layers for Apple and forbidden on Linux and Android. No Turnip, no `/dev/kgsl`. Apple: None, MoltenVK, KosmicKrisp. watchOS GL/VK is blocked (no Metal). Watch present is SpriteKit. |
+| **OpenGL Driver** | `openglDriver` / `OpenGLDriver` | Dropdown | `system` (Android, Linux), `angle` (macOS/iOS/tvOS GPU) | GPU targets | Android and Linux: None, ANGLE, System. Apple GPU targets: None, ANGLE. No MoltenGL. tvOS GPU defaults to ANGLE (Phase 1 leftover `none` migrates once). watchOS: None. |
 
 ---
 
@@ -375,14 +375,14 @@ Sideloaded iOS IPAs have no TestFlight crash pipeline. TestFlight testers should
 ---
 
 ## Platform-Specific Defaults
-
-| Setting | macOS | iOS | tvOS | Android |
-|---------|-------|-----|------|---------|
-| Force SSD | Off (toggle) | Always SSD (no row) | Always SSD (no row) | Always SSD (no row) |
-| Multiple Clients | On | On | On | On |
-| Color Operations / HDR | On | On | On | On |
-| Vulkan Driver | KosmicKrisp (Apple Silicon + macOS 26+), else moltenvk | moltenvk | moltenvk (GPU bundle) | system |
-| OpenGL Driver | angle | angle | angle (GPU bundle) | system |
+ 
+| Setting | macOS | iOS | tvOS | Android | Linux |
+|---------|-------|-----|------|---------|-------|
+| Force SSD | Off (toggle) | Always SSD (no row) | Always SSD (no row) | Always SSD (no row) | Always SSD (no row) |
+| Multiple Clients | On | On | On | On | On |
+| Color Operations / HDR | On | On | On | On | On |
+| Vulkan Driver | KosmicKrisp (Apple Silicon + macOS 26+), else moltenvk | moltenvk | moltenvk (GPU bundle) | system | system |
+| OpenGL Driver | angle | angle | angle (GPU bundle) | system | system |
 
 ---
 

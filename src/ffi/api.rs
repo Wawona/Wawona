@@ -3415,7 +3415,7 @@ impl WawonaCore {
                     let start_data = PointerGrabStartData {
                         // The coordinate system is relative to (0.0, 0.0) for this window's surface
                         focus: Some((surface, (0.0, 0.0).into())),
-                        button: 0x110, // BTN_LEFT — matches the button the grab tracks
+                        button: 0x110, // BTN_LEFT: matches the button the grab tracks
                         location: (sx, sy).into(),
                     };
 
@@ -3502,7 +3502,7 @@ impl WawonaCore {
                 };
                 let serial = smithay::utils::SERIAL_COUNTER.next_serial();
                 let event = smithay::input::pointer::ButtonEvent {
-                    button: 0x110, // BTN_LEFT — must match start_data.button
+                    button: 0x110, // BTN_LEFT: must match start_data.button
                     state: smithay::backend::input::ButtonState::Released,
                     serial,
                     time: time_ms,

@@ -13,6 +13,8 @@ void wawona_domain_string_free(char *s);
  * (`macos`, `ios`, `tvos`, `watchos`, `visionos`, `android`, `linux`).
  * Caller frees with wawona_domain_string_free. */
 char *wawona_settings_visible_sections(const char *host);
+char *wawona_settings_allowed_vulkan_drivers(const char *host);
+char *wawona_settings_allowed_opengl_drivers(const char *host);
 
 /* Four-state gate: available, planned, blocked, or forbidden.
  * Caller frees with wawona_domain_string_free. */

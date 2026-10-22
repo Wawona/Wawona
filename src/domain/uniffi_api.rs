@@ -123,6 +123,44 @@ pub fn settings_visible_sections(host: super::settings_catalog::SettingsHost) ->
 }
 
 #[uniffi::export]
+pub fn settings_allowed_vulkan_drivers(
+    host: super::settings_catalog::SettingsHost,
+) -> Vec<String> {
+    super::settings_catalog::allowed_vulkan_drivers(host)
+        .iter()
+        .map(|&s| s.to_string())
+        .collect()
+}
+
+#[uniffi::export]
+pub fn settings_allowed_opengl_drivers(
+    host: super::settings_catalog::SettingsHost,
+) -> Vec<String> {
+    super::settings_catalog::allowed_opengl_drivers(host)
+        .iter()
+        .map(|&s| s.to_string())
+        .collect()
+}
+
+#[uniffi::export]
+pub fn settings_default_vulkan_driver(host: super::settings_catalog::SettingsHost) -> String {
+    super::settings_catalog::default_vulkan_driver(host).to_string()
+}
+
+#[uniffi::export]
+pub fn settings_default_opengl_driver(host: super::settings_catalog::SettingsHost) -> String {
+    super::settings_catalog::default_opengl_driver(host).to_string()
+}
+
+#[uniffi::export]
+pub fn settings_is_field_allowed(
+    field: super::settings_catalog::SettingsFieldId,
+    host: super::settings_catalog::SettingsHost,
+) -> bool {
+    super::settings_catalog::is_field_allowed(field, host)
+}
+
+#[uniffi::export]
 pub fn capability_gate(platform: String, feature: String) -> String {
     super::capabilities::gate(&platform, &feature).to_string()
 }
