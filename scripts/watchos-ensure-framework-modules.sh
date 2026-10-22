@@ -136,17 +136,16 @@ build_framework() {
 # Xcode's FRAMEWORK_SEARCH_PATHS/-F for *this* compile step resolves through
 # $(BUILT_PRODUCTS_DIR), i.e. CONFIGURATION_BUILD_DIR. Not the plain
 # ${BUILD_DIR}/${CONFIGURATION}-${PLATFORM_NAME} split above. Those two are
-# the same path in a normal interactive Xcode build, but Wawona's nix
-# build-app.nix forces CONFIGURATION_BUILD_DIR=$out globally (so the whole
-# multi-platform build lands in one fixed-output store path), while BUILD_DIR
-# keeps its normal DerivedData value. Installing only under BUILD_DIR (above)
-# is therefore invisible to `swiftc -F $out` and the watch app's
+# the same path in a normal interactive Xcode build. build-app.nix sets
+# SYMROOT so each platform keeps its own directory. If a caller still forces
+# one CONFIGURATION_BUILD_DIR, that path differs from BUILD_DIR and swiftc
+# looks there. Installing only under BUILD_DIR is then invisible, and the
+# watch app's
 # `import WawonaModel` fails with "could not find module ... for target
 # arm64-apple-watchos-simulator" even though the framework was built.
-# $out already holds the iOS/iPadOS-built copy (same shared path across
-# every platform in this one xcodebuild invocation). Copy in only the new
-# platform's Modules/<fw>.swiftmodule/<triple> entries, never rm -rf the
-# framework, or the earlier platform's slice is destroyed.
+# When the directories differ, copy only this platform's swiftmodule slice
+# into the shared framework. Never rm -rf it, or the earlier platform's
+# slice is destroyed.
 merge_into_configuration_build_dir() {
   local fw="$1" src_framework="$2" dest_root="$3"
   local cbd="${CONFIGURATION_BUILD_DIR:-}"

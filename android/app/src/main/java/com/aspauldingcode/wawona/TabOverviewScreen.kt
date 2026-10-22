@@ -1,5 +1,6 @@
 package com.aspauldingcode.wawona
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.input.pointer.pointerInput

@@ -4,8 +4,9 @@
 Apple mobile SSH policy: libssh2 + ssh-cli (libwwn-ssh-cli.a). Never OpenSSH /
 libssh-inprocess.a / openssh-ios.
 
-uutils safe subset: authority is wwn-coreutils/.../safe-subset.txt (must match
-Cargo.toml coreutils features).
+uutils safe subset: authority is wwn-uutils-rs/.../safe-subset.txt (must match
+Cargo.toml coreutils features). The old input name wwn-coreutils is still
+accepted so a sibling checkout keeps working.
 """
 
 from __future__ import annotations
@@ -248,38 +249,42 @@ def verify_no_ssh_stubs() -> list[str]:
 
 
 def resolve_safe_subset_file() -> Path | None:
-    """wwn-coreutils owns safe-subset.txt. Prefer sibling, env, then flake input."""
-    env = os.environ.get("WWN_COREUTILS", "").strip()
+    """wwn-uutils-rs owns safe-subset.txt. Prefer sibling, env, then flake input."""
+    env = os.environ.get("WWN_COREUTILS", "").strip() or os.environ.get(
+        "WWN_UUTILS_RS", ""
+    ).strip()
     candidates = []
     if env:
         candidates.append(Path(env) / "dependencies/libs/coreutils/safe-subset.txt")
-    candidates.append(
-        ROOT.parent / "wwn-coreutils/dependencies/libs/coreutils/safe-subset.txt"
-    )
+    for repo in ("wwn-uutils-rs", "wwn-coreutils"):
+        candidates.append(
+            ROOT.parent / repo / "dependencies/libs/coreutils/safe-subset.txt"
+        )
     for c in candidates:
         if c.is_file():
             return c
-    try:
-        r = subprocess.run(
-            [
-                "nix",
-                "eval",
-                "--raw",
-                "--impure",
-                "--expr",
-                f'(builtins.getFlake "{ROOT}").inputs.wwn-coreutils.outPath',
-            ],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
+    for flake_input in ("wwn-uutils-rs", "wwn-coreutils"):
+        try:
+            r = subprocess.run(
+                [
+                    "nix",
+                    "eval",
+                    "--raw",
+                    "--impure",
+                    "--expr",
+                    f'(builtins.getFlake "{ROOT}").inputs.{flake_input}.outPath',
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+            continue
         if r.returncode == 0 and r.stdout.strip():
             p = Path(r.stdout.strip()) / "dependencies/libs/coreutils/safe-subset.txt"
             if p.is_file():
                 return p
-    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
-        pass
     return None
 
 
@@ -309,8 +314,8 @@ def verify_coreutils_safe_subset() -> list[str]:
     subset_path = resolve_safe_subset_file()
     if subset_path is None:
         return [
-            "cannot resolve wwn-coreutils/.../safe-subset.txt "
-            "(set WWN_COREUTILS, keep sibling checkout, or ensure nix flake input)"
+            "cannot resolve wwn-uutils-rs/.../safe-subset.txt "
+            "(set WWN_UUTILS_RS, keep sibling checkout, or ensure nix flake input)"
         ]
     authority = parse_safe_subset(read(subset_path))
     if not authority:
@@ -321,7 +326,7 @@ def verify_coreutils_safe_subset() -> list[str]:
     if cargo_feats != authority:
         errors.append(
             "Cargo.toml coreutils features must match "
-            f"wwn-coreutils safe-subset.txt ({subset_path}): "
+            f"wwn-uutils-rs safe-subset.txt ({subset_path}): "
             f"cargo={cargo_feats} authority={authority}"
         )
     # flake must not re-pin uutils with a local fetchFromGitHub for coreutils
@@ -331,11 +336,14 @@ def verify_coreutils_safe_subset() -> list[str]:
         flake,
     ):
         errors.append(
-            "flake.nix must use wwn-coreutils.lib.coreutilsSrc "
+            "flake.nix must use wwn-uutils-rs.lib.coreutilsSrc "
             "(not a local fetchFromGitHub for coreutils-src)"
         )
-    if "wwn-coreutils.lib.coreutilsSrc" not in flake:
-        errors.append("flake.nix missing wwn-coreutils.lib.coreutilsSrc for coreutils-src")
+    if (
+        "wwn-uutils-rs.lib.coreutilsSrc" not in flake
+        and "wwn-coreutils.lib.coreutilsSrc" not in flake
+    ):
+        errors.append("flake.nix missing wwn-uutils-rs.lib.coreutilsSrc for coreutils-src")
     return errors
 
 
@@ -391,7 +399,7 @@ def main() -> int:
 
     print(
         "iOS shell-tools wiring check OK "
-        "(libssh2 + ssh-cli; repo.wawona.io fastfetch; wwn-coreutils safe-subset; "
+        "(libssh2 + ssh-cli; repo.wawona.io fastfetch; wwn-uutils-rs safe-subset; "
         "no Swift shell backends)"
     )
     return 0

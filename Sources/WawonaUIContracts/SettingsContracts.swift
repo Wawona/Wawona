@@ -248,6 +248,7 @@ public enum GlobalSettingsFieldID: String, Sendable, CaseIterable {
     case swapCmdWithAlt
     case universalClipboard
     case renderer
+    case spritePresentAccelerator
     case vulkanDriver
     case openGLDriver
     case waylandDisplay
@@ -258,6 +259,8 @@ public enum GlobalSettingsFieldID: String, Sendable, CaseIterable {
     case importFileToHome
     case iCloudSyncEnabled
     case iCloudSyncStatus
+    case iCloudSyncNow
+    case iCloudDriveHome
     case waypipeByDefault
     case waypipeCompress
     case waypipeVideo
@@ -405,7 +408,7 @@ public struct GlobalSettingsCatalog: Sendable {
         case .tvOS:
             return [
                 .display, .input, .graphics, .environment,
-                .waypipe, .ssh, .about,
+                .iCloudSync, .waypipe, .ssh, .about,
                 .dependencies,
             ]
         case .watchOS:
@@ -518,12 +521,11 @@ public struct GlobalSettingsCatalog: Sendable {
             }
             return fields
         case .graphics:
-            var fields: [GlobalSettingsFieldID] = []
+            // watchOS presents through SpriteKit. Vulkan and OpenGL stay off that host.
             if host == .watchOS {
-                fields.append(.renderer)
+                return [.renderer, .spritePresentAccelerator, .sessionThumbnails]
             }
-            fields.append(contentsOf: [.vulkanDriver, .openGLDriver, .sessionThumbnails])
-            return fields
+            return [.vulkanDriver, .openGLDriver, .sessionThumbnails]
         case .connection:
             // Not in visible_sections. Env Vars owns wayland display fields.
             return [.waylandDisplay, .defaultWaylandClient]
@@ -570,10 +572,13 @@ public struct GlobalSettingsCatalog: Sendable {
         case .iCloudSync:
             switch host {
             case .macOS, .iOS, .visionOS:
-                return [.iCloudSyncEnabled, .iCloudSyncStatus]
-            case .watchOS:
-                return [.iCloudSyncStatus]
-            case .tvOS, .android, .linux:
+                return [
+                    .iCloudSyncEnabled, .iCloudSyncStatus, .iCloudSyncNow, .iCloudDriveHome,
+                ]
+            case .tvOS, .watchOS:
+                // CloudKit sync is available. iCloud Drive HOME is not (QA1935).
+                return [.iCloudSyncEnabled, .iCloudSyncStatus, .iCloudSyncNow]
+            case .android, .linux:
                 return []
             }
         case .appleWatch:
