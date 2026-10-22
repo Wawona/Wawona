@@ -1562,7 +1562,7 @@ final class WWNMachinesHostingBridge: NSObject {
     window.toolbarStyle = .unified
     window.center()
     window.contentViewController = hosting
-    window.title = "Wawona Machine Control Panel"
+    window.title = "Machine Configuration"
     // Stable id so reopen / Cmd-Shift-M never spawn a second panel.
     window.identifier = NSUserInterfaceItemIdentifier("wwn.machines.control-panel")
     window.isRestorable = false

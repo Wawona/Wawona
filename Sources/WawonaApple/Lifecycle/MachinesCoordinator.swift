@@ -147,6 +147,7 @@ public final class WWNMachinesCoordinator: NSObject {
             let title = window.title
             let ident = window.identifier?.rawValue ?? ""
             if ident == "wwn.machines.control-panel"
+                || title == "Machine Configuration"
                 || title == "Wawona Machine Control Panel"
                 || title == "Machines" {
                 window.close()
