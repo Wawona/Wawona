@@ -127,6 +127,15 @@ class MachineTagStore(private val prefs: SharedPreferences) {
     fun loadAssignments(): Map<String, List<String>> =
         MachineTagPersistence.decodeAssignments(prefs.getString(assignmentsKey, null))
 
+    fun tagsFor(
+        machineId: String,
+        tags: List<MachineTag>,
+        assignments: Map<String, List<String>>,
+    ): List<MachineTag> {
+        val ids = assignments[machineId].orEmpty()
+        return tags.filter { it.id in ids }
+    }
+
     fun saveTags(tags: List<MachineTag>) {
         prefs.edit().putString(tagsKey, MachineTagPersistence.encodeTags(tags)).apply()
     }
