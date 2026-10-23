@@ -16,20 +16,8 @@
     {
       "system": "aarch64-darwin",
       "os": "macos-26",
-      "target": "weston-ios",
-      "why": "Layer-1 nested compositor stack; FlakeHub cross-repo hit target"
-    },
-    {
-      "system": "aarch64-darwin",
-      "os": "macos-26",
       "target": "zsh-ios",
       "why": "In-process shell / rootfs wiring smoke"
-    },
-    {
-      "system": "aarch64-darwin",
-      "os": "macos-26",
-      "target": "niri-ios",
-      "why": "Bundled nested compositor used by fuzzel e2e"
     },
     {
       "system": "aarch64-darwin",
@@ -48,12 +36,6 @@
       "os": "ubuntu-latest",
       "target": "wawona-android-backend",
       "why": "Android backend also builds on Linux CI hosts"
-    },
-    {
-      "system": "x86_64-linux",
-      "os": "ubuntu-latest",
-      "target": "weston",
-      "why": "Linux Weston client/compositor packaging"
     },
     {
       "system": "aarch64-linux",
