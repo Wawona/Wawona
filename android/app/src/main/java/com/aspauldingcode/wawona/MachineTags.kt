@@ -31,18 +31,11 @@ object MachineTagPalette {
     }
 }
 
-/**
- * Shared store for machine tags + assignments. Persists in SharedPreferences
- * (same keys as iOS UserDefaults intent: per-app tag sets).
- */
-class MachineTagStore(private val prefs: SharedPreferences) {
-    private val tagsKey = "wawona.machines.tags"
-    private val assignmentsKey = "wawona.machines.tagAssignments"
-
-    fun loadTags(): List<MachineTag> {
-        val raw = prefs.getString(tagsKey, null) ?: return emptyList()
+private object MachineTagPersistence {
+    fun decodeTags(raw: String?): List<MachineTag> {
+        val source = raw ?: return emptyList()
         return runCatching {
-            val arr = JSONArray(raw)
+            val arr = JSONArray(source)
             buildList {
                 for (i in 0 until arr.length()) {
                     val obj = arr.getJSONObject(i)
@@ -60,10 +53,10 @@ class MachineTagStore(private val prefs: SharedPreferences) {
         }.getOrDefault(emptyList())
     }
 
-    fun loadAssignments(): Map<String, List<String>> {
-        val raw = prefs.getString(assignmentsKey, null) ?: return emptyMap()
+    fun decodeAssignments(raw: String?): Map<String, List<String>> {
+        val source = raw ?: return emptyMap()
         return runCatching {
-            val obj = JSONObject(raw)
+            val obj = JSONObject(source)
             buildMap {
                 obj.keys().forEach { machineId ->
                     val arr = obj.optJSONArray(machineId) ?: return@forEach
@@ -81,12 +74,7 @@ class MachineTagStore(private val prefs: SharedPreferences) {
         }.getOrDefault(emptyMap())
     }
 
-    fun tagsFor(machineId: String, tags: List<MachineTag>, assignments: Map<String, List<String>>): List<MachineTag> {
-        val ids = assignments[machineId].orEmpty()
-        return tags.filter { it.id in ids }
-    }
-
-    fun saveTags(tags: List<MachineTag>) {
+    fun encodeTags(tags: List<MachineTag>): String {
         val arr = JSONArray()
         tags.forEach { tag ->
             arr.put(
@@ -96,16 +84,55 @@ class MachineTagStore(private val prefs: SharedPreferences) {
                     .put("colorHex", tag.colorHex),
             )
         }
-        prefs.edit().putString(tagsKey, arr.toString()).apply()
+        return arr.toString()
     }
 
-    fun saveAssignments(assignments: Map<String, List<String>>) {
+    fun encodeAssignments(assignments: Map<String, List<String>>): String {
         val obj = JSONObject()
         assignments.forEach { (machineId, ids) ->
             if (ids.isEmpty()) return@forEach
             obj.put(machineId, JSONArray(ids))
         }
-        prefs.edit().putString(assignmentsKey, obj.toString()).apply()
+        return obj.toString()
+    }
+}
+
+private object MachineTagDefaults {
+    fun seedTemplateTags(prefs: SharedPreferences): List<MachineTag> {
+        val seeded = listOf(
+            MachineTag(id = "tag-work", name = "Work", colorHex = "007AFF"),
+            MachineTag(id = "tag-personal", name = "Personal", colorHex = "34C759"),
+            MachineTag(id = "tag-production", name = "Production", colorHex = "FF3B30"),
+        )
+        prefs.edit().putString("wawona.machines.tags", MachineTagPersistence.encodeTags(seeded)).apply()
+        return seeded
+    }
+}
+
+/**
+ * Shared store for machine tags + assignments. Persists in SharedPreferences
+ * (same keys as iOS UserDefaults intent: per-app tag sets).
+ */
+class MachineTagStore(private val prefs: SharedPreferences) {
+    private val tagsKey = "wawona.machines.tags"
+    private val assignmentsKey = "wawona.machines.tagAssignments"
+
+    fun loadTags(): List<MachineTag> {
+        val raw = prefs.getString(tagsKey, null)
+        val tags = MachineTagPersistence.decodeTags(raw)
+        if (tags.isNotEmpty() || raw != null) return tags
+        return MachineTagDefaults.seedTemplateTags(prefs)
+    }
+
+    fun loadAssignments(): Map<String, List<String>> =
+        MachineTagPersistence.decodeAssignments(prefs.getString(assignmentsKey, null))
+
+    fun saveTags(tags: List<MachineTag>) {
+        prefs.edit().putString(tagsKey, MachineTagPersistence.encodeTags(tags)).apply()
+    }
+
+    fun saveAssignments(assignments: Map<String, List<String>>) {
+        prefs.edit().putString(assignmentsKey, MachineTagPersistence.encodeAssignments(assignments)).apply()
     }
 
     fun createTag(name: String, colorHex: String, existing: List<MachineTag>): List<MachineTag> {
@@ -149,6 +176,15 @@ class MachineTagStore(private val prefs: SharedPreferences) {
         if (next.size != assignments.size) saveAssignments(next)
         return next
     }
+}
+
+fun tagsFor(
+    machineId: String,
+    tags: List<MachineTag>,
+    assignments: Map<String, List<String>>,
+): List<MachineTag> {
+    val ids = assignments[machineId].orEmpty()
+    return tags.filter { it.id in ids }
 }
 
 enum class MachineSortKey(val label: String) {
