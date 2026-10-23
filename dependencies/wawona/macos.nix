@@ -131,9 +131,37 @@ let
       iland = buildModule.buildForMacOS "iland" { };
       angle = buildModule.buildForMacOS "angle" { };
       inherit weston kmscube;
-      "iland-gl-clients" = kmscube;
-      "gbm-es2-demo" = buildModule.buildForMacOS "gbm-es2-demo" { };
-      vkcube = buildModule.buildForMacOS "vkcube" { };
+      "gbm-es2-demo" = (buildModule.buildForMacOS "gbm-es2-demo" { }).overrideAttrs (old: {
+        buildPhase = builtins.replaceStrings
+          [
+            ''
+    unset DEVELOPER_DIR
+    MACOS_SDK=$(xcrun --sdk macosx --show-sdk-path 2>/dev/null || true)
+    if [ ! -d "$MACOS_SDK" ]; then
+      MACOS_SDK="/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk"
+    fi
+    if [ ! -d "$MACOS_SDK" ]; then
+      MACOS_SDK=$(${xcodeUtils.findXcodeScript}/bin/find-xcode)/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
+    fi''
+          ]
+          [
+            ''
+    if [ -z "''${XCODE_APP:-}" ]; then
+      XCODE_APP=$(${xcodeUtils.findXcodeScript}/bin/find-xcode || true)
+    fi
+    if [ -n "''${XCODE_APP:-}" ] && [ -d "$XCODE_APP/Contents/Developer" ]; then
+      export DEVELOPER_DIR="$XCODE_APP/Contents/Developer"
+      MACOS_SDK="$DEVELOPER_DIR/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
+    fi
+    if [ -z "''${MACOS_SDK:-}" ] || [ ! -d "$MACOS_SDK" ]; then
+      MACOS_SDK=$(xcrun --sdk macosx --show-sdk-path 2>/dev/null || true)
+    fi
+    if [ ! -d "$MACOS_SDK" ]; then
+      MACOS_SDK="/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk"
+    fi''
+          ]
+          old.buildPhase;
+      });
       "opengl-cube" = buildModule.buildForMacOS "opengl-cube" { };
       # Not part of the weston package: it is built outside weston's meson so it
       # can link iland's Wayland-EGL winsys rather than the wayland-egl stub.

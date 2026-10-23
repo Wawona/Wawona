@@ -213,8 +213,16 @@ public final class WWNPreferencesSectionsBuilder: NSObject {
             return sw("iCloud Sync", WWNCloudSync.enabledKey, true,
                       "Sync machines, preferences, and shell HOME through CloudKit.")
         case .iCloudSyncStatus:
+            let summary: String
+            if Thread.isMainThread {
+                summary = MainActor.assumeIsolated { WWNCloudSync.shared.status.summary }
+            } else {
+                summary = DispatchQueue.main.sync {
+                    MainActor.assumeIsolated { WWNCloudSync.shared.status.summary }
+                }
+            }
             return info("iCloud Status", "ICloudSyncStatus",
-                        WWNCloudSync.shared.status.summary,
+                        summary,
                         "CloudKit sync state for this device.")
         case .iCloudSyncNow:
             return button("Sync Now", "ICloudSyncNow", "Fetch and upload changes now.")

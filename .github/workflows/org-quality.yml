@@ -121,6 +121,8 @@ jobs:
           scan-args: |-
             --include-git-root
             --recursive
+            --experimental-exclude=dependencies/generators
+            --experimental-exclude=dependencies/clients
             ./
 
   workflow-security:

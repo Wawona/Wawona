@@ -165,6 +165,13 @@
         [
           (import rust-overlay)
           (self: super: {
+            # libsecret tests abort in headless environments without a DBus session.
+            libsecret = super.libsecret.overrideAttrs (_old: {
+              doCheck = false;
+            });
+            gjs = super.gjs.overrideAttrs (_old: {
+              doCheck = false;
+            });
             # charset-normalizer mypyc-compiles with mypy. mypy's pytest suite
             # is ~45 minutes on a cold Darwin laptop. cargo-auditable's vendor
             # helper (niri) and any requests stack would otherwise rebuild it.

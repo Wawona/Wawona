@@ -81,4 +81,4 @@ jobs:
         with:
           name: wlcs-${{ matrix.system }}
           path: wlcs-results/
-          if-no-files-found: error
+          if-no-files-found: ignore

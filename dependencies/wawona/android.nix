@@ -62,7 +62,16 @@ let
   sshpassBin = buildModule.buildForAndroid "sshpass" { };
   # Real local shell for Android (fork/exec allowed); spawned by the PTY shim.
   zshAndroid = buildModule.buildForAndroid "zsh" { };
-  footAndroid = buildModule.buildForAndroid "foot" { };
+  footAndroid = (buildModule.buildForAndroid "foot" { }).overrideAttrs (old: {
+    preConfigure = (old.preConfigure or "") + ''
+      # NDK lld treats Darwin-indexed static archives as warnings; Meson's
+      # fatal warnings promote them to link errors unless --no-fatal-warnings is set.
+      if [ -f android-cross-file.txt ]; then
+        sed -i "s|c_link_args = \[|c_link_args = \['-Wl,--no-fatal-warnings', |" android-cross-file.txt || true
+        sed -i "s|cpp_link_args = \[|cpp_link_args = \['-Wl,--no-fatal-warnings', |" android-cross-file.txt || true
+      fi
+    '';
+  });
   fastfetchAndroid = buildModule.buildForAndroid "fastfetch" { };
   # phoon (wwn-phoon-rs): clean-room Rust moon-phase utility; PIE libphoon_bin.so.
   phoonAndroid = buildModule.buildForAndroid "phoon" { };

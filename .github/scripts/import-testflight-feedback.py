@@ -506,11 +506,15 @@ def process(
                 rows, included_rows = paginate(token, path, params)
             except SystemExit as err:
                 print(f"warn: {kind} list with include failed, retrying bare: {err}")
-                rows, included_rows = paginate(
-                    token,
-                    path,
-                    {"filter[app]": app_id, "limit": "50"},
-                )
+                try:
+                    rows, included_rows = paginate(
+                        token,
+                        path,
+                        {"filter[app]": app_id, "limit": "50"},
+                    )
+                except SystemExit as err2:
+                    print(f"warn: {kind} list failed: {err2}")
+                    continue
             included = index_included(included_rows)
             for row in rows:
                 rid = row.get("id") or ""
