@@ -71,7 +71,12 @@ impl ProfileStore {
             return Ok(store);
         }
 
-        Ok(Self::default())
+        let seeded = Self {
+            profiles: crate::domain::machine_profile::shipped_machines(true),
+            active_machine_id: None,
+        };
+        seeded.save()?;
+        Ok(seeded)
     }
 
     /// Persist the canonical array + active id.

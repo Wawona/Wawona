@@ -122,10 +122,28 @@ public final class WWNMachineTagStore: ObservableObject {
         if let data = defaults.data(forKey: tagsDefaultsKey),
            let decoded = try? JSONDecoder().decode([WWNMachineTag].self, from: data) {
             tags = decoded
+        } else if defaults.data(forKey: tagsDefaultsKey) == nil
+            && defaults.string(forKey: tagsDefaultsKey) == nil
+        {
+            tags = Self.templateTags
+            persistTagsOnly()
         }
         if let data = defaults.data(forKey: assignmentsDefaultsKey),
            let decoded = try? JSONDecoder().decode([String: [String]].self, from: data) {
             tagIdsByMachine = decoded
+        }
+    }
+
+    /// Work, Personal, Production. Same three templates on every product.
+    static let templateTags: [WWNMachineTag] = [
+        WWNMachineTag(id: "tag-work", name: "Work", colorHex: "007AFF"),
+        WWNMachineTag(id: "tag-personal", name: "Personal", colorHex: "34C759"),
+        WWNMachineTag(id: "tag-production", name: "Production", colorHex: "FF3B30"),
+    ]
+
+    private func persistTagsOnly() {
+        if let data = try? JSONEncoder().encode(tags) {
+            UserDefaults.standard.set(data, forKey: tagsDefaultsKey)
         }
     }
 

@@ -571,6 +571,69 @@ fn default_remote_command() -> String {
     "weston-simple-shm".to_string()
 }
 
+/// Machines every product shows on a first launch.
+///
+/// `include_guests` is false on tvOS, watchOS, and visionOS. Those targets
+/// do not offer Relay virtual machines or containers.
+pub fn shipped_machines(include_guests: bool) -> Vec<MachineProfile> {
+    let mut machines = vec![shipped_terminal(), shipped_hello_wasi_gui()];
+    if include_guests {
+        machines.push(shipped_kde());
+        machines.push(shipped_firefox());
+    }
+    machines
+}
+
+fn shipped_terminal() -> MachineProfile {
+    let mut profile = MachineProfile::new("Wawona Terminal");
+    profile.id = "machine-wawona-terminal".into();
+    profile.machine_type = MachineType::Native;
+    profile.remote_command.clear();
+    profile.runtime_overrides.bundled_app_id = Some("wawona-shell".into());
+    profile
+}
+
+fn shipped_hello_wasi_gui() -> MachineProfile {
+    let mut profile = MachineProfile::new("Hello WASI GUI");
+    profile.id = "machine-hello-wasi-gui".into();
+    profile.machine_type = MachineType::Wasm;
+    profile.remote_command.clear();
+    profile.runtime_overrides.bundled_app_id = Some("wawona-wasm".into());
+    profile.runtime_overrides.wasm_package = Some("hello-wasi-gui".into());
+    profile.runtime_overrides.wasm_command = Some("wasm hello-wasi-gui".into());
+    profile
+}
+
+fn shipped_kde() -> MachineProfile {
+    let mut profile = MachineProfile::new("KDE");
+    profile.id = "machine-kde".into();
+    profile.machine_type = MachineType::VirtualMachine;
+    profile.remote_command.clear();
+    profile.vm_settings = Some(VirtualMachineSettings {
+        vm_identifier: Some("kde".into()),
+        guest_variant: Some("4k".into()),
+        notes: Some("KDE Plasma on the NixOS guest.".into()),
+        ..VirtualMachineSettings::default()
+    });
+    profile
+}
+
+fn shipped_firefox() -> MachineProfile {
+    let mut profile = MachineProfile::new("Firefox");
+    profile.id = "machine-firefox".into();
+    profile.machine_type = MachineType::Container;
+    profile.remote_command.clear();
+    profile.container_settings = Some(ContainerMachineSettings {
+        runtime: Some("relay".into()),
+        container_ref: Some("firefox".into()),
+        entry_command: Some("firefox".into()),
+        desktop_session: Some(true),
+        notes: Some("Wayland Firefox in the Relay container guest.".into()),
+        ..ContainerMachineSettings::default()
+    });
+    profile
+}
+
 pub fn new_uuid() -> String {
     let mut bytes = [0u8; 16];
     if getrandom::getrandom(&mut bytes).is_err() {
@@ -591,6 +654,52 @@ pub fn new_uuid() -> String {
         bytes[8], bytes[9], bytes[10], bytes[11],
         bytes[12], bytes[13], bytes[14], bytes[15],
     )
+}
+
+#[cfg(test)]
+mod shipped_tests {
+    use super::*;
+
+    #[test]
+    fn watch_and_tv_ship_terminal_and_wasm_only() {
+        let machines = shipped_machines(false);
+        assert_eq!(machines.len(), 2);
+        assert_eq!(machines[0].id, "machine-wawona-terminal");
+        assert_eq!(machines[0].machine_type, MachineType::Native);
+        assert_eq!(
+            machines[0].runtime_overrides.bundled_app_id.as_deref(),
+            Some("wawona-shell")
+        );
+        assert_eq!(machines[1].machine_type, MachineType::Wasm);
+        assert_eq!(
+            machines[1].runtime_overrides.wasm_command.as_deref(),
+            Some("wasm hello-wasi-gui")
+        );
+    }
+
+    #[test]
+    fn supported_hosts_also_ship_kde_and_firefox() {
+        let machines = shipped_machines(true);
+        assert_eq!(machines.len(), 4);
+        assert_eq!(machines[2].name, "KDE");
+        assert_eq!(machines[2].machine_type, MachineType::VirtualMachine);
+        assert_eq!(
+            machines[2]
+                .vm_settings
+                .as_ref()
+                .and_then(|s| s.vm_identifier.as_deref()),
+            Some("kde")
+        );
+        assert_eq!(machines[3].name, "Firefox");
+        assert_eq!(machines[3].machine_type, MachineType::Container);
+        assert_eq!(
+            machines[3]
+                .container_settings
+                .as_ref()
+                .and_then(|s| s.desktop_session),
+            Some(true)
+        );
+    }
 }
 
 #[cfg(test)]

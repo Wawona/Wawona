@@ -651,7 +651,8 @@ public final class MachineProfileStore: ObservableObject {
             payload = legacyString.data(using: .utf8)
         }
         guard let data = payload, let json = String(data: data, encoding: .utf8) else {
-            profiles = []
+            profiles = Self.shippedMachines()
+            save()
             return
         }
         if let rust = MachineProfileDomain.decodeProfilesV1(json) {
@@ -676,6 +677,64 @@ public final class MachineProfileStore: ObservableObject {
             defaults.set(data, forKey: Self.profilesKey)
         }
         defaults.set(activeMachineId, forKey: Self.activeMachineIdKey)
+    }
+
+    /// First-launch catalog. tvOS, watchOS, and visionOS do not ship Relay
+    /// virtual machines or containers.
+    static func shippedMachines() -> [MachineProfile] {
+        var machines = [
+            MachineProfile(
+                id: "machine-wawona-terminal",
+                name: "Wawona Terminal",
+                type: .native,
+                remoteCommand: "",
+                runtimeOverrides: MachineRuntimeOverrides(bundledAppID: "wawona-shell")
+            ),
+            MachineProfile(
+                id: "machine-hello-wasi-gui",
+                name: "Hello WASI GUI",
+                type: .wasm,
+                remoteCommand: "",
+                runtimeOverrides: MachineRuntimeOverrides(
+                    bundledAppID: "wawona-wasm",
+                    wasmPackage: "hello-wasi-gui",
+                    wasmCommand: "wasm hello-wasi-gui"
+                )
+            ),
+        ]
+        #if os(tvOS) || os(watchOS) || os(visionOS)
+        return machines
+        #else
+        machines.append(
+            MachineProfile(
+                id: "machine-kde",
+                name: "KDE",
+                type: .virtualMachine,
+                remoteCommand: "",
+                vmSettings: VirtualMachineSettings(
+                    vmIdentifier: "kde",
+                    guestVariant: "4k",
+                    notes: "KDE Plasma on the NixOS guest."
+                )
+            )
+        )
+        machines.append(
+            MachineProfile(
+                id: "machine-firefox",
+                name: "Firefox",
+                type: .container,
+                remoteCommand: "",
+                containerSettings: ContainerMachineSettings(
+                    runtime: "relay",
+                    containerRef: "firefox",
+                    entryCommand: "firefox",
+                    notes: "Wayland Firefox in the Relay container guest.",
+                    desktopSession: true
+                )
+            )
+        )
+        return machines
+        #endif
     }
 
     public func upsert(_ profile: MachineProfile) {

@@ -399,6 +399,11 @@ object MachineProfileStore {
         val user = prefs.getString("waypipeSSHUser", "") ?: ""
         val defaultName = if (hostAndPort.host.isNotBlank()) "Migrated ${hostAndPort.host}" else "Default Machine"
         val hasSSHHost = hostAndPort.host.isNotBlank()
+        if (!hasSSHHost) {
+            saveProfiles(prefs, shippedProfiles())
+            prefs.edit().putBoolean(KEY_MIGRATED, true).apply()
+            return
+        }
         val profile = MachineProfile(
             name = defaultName,
             type = if (hasSSHHost) MachineType.SSH_WAYPIPE else MachineType.NATIVE,
@@ -429,6 +434,51 @@ object MachineProfileStore {
         saveProfiles(prefs, listOf(profile))
         setActiveMachineId(prefs, profile.id)
         prefs.edit().putBoolean(KEY_MIGRATED, true).apply()
+    }
+
+    /** First launch. Android allows Relay virtual machines and containers. */
+    private fun shippedProfiles(): List<MachineProfile> {
+        return listOf(
+            MachineProfile(
+                id = "machine-wawona-terminal",
+                name = "Wawona Terminal",
+                type = MachineType.NATIVE,
+                sshEnabled = false,
+                nativeLauncher = "wawona-shell",
+                remoteCommand = "",
+            ),
+            MachineProfile(
+                id = "machine-hello-wasi-gui",
+                name = "Hello WASI GUI",
+                type = MachineType.WASM,
+                sshEnabled = false,
+                nativeLauncher = "wawona-wasm",
+                remoteCommand = "wasm hello-wasi-gui",
+            ),
+            MachineProfile(
+                id = "machine-kde",
+                name = "KDE",
+                type = MachineType.VM,
+                sshEnabled = false,
+                vmSettings = VirtualMachineSettings(
+                    provider = "relay",
+                    vmIdentifier = "kde",
+                    notes = "KDE Plasma on the NixOS guest.",
+                ),
+            ),
+            MachineProfile(
+                id = "machine-firefox",
+                name = "Firefox",
+                type = MachineType.CONTAINER,
+                sshEnabled = false,
+                containerSettings = ContainerSettings(
+                    runtime = "relay",
+                    containerRef = "firefox",
+                    entryCommand = "firefox",
+                    notes = "Wayland Firefox in the Relay container guest.",
+                ),
+            ),
+        )
     }
 
     private fun parseProfiles(raw: String): List<MachineProfile> = try {

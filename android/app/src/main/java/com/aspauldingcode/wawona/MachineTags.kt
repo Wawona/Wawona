@@ -40,7 +40,7 @@ class MachineTagStore(private val prefs: SharedPreferences) {
     private val assignmentsKey = "wawona.machines.tagAssignments"
 
     fun loadTags(): List<MachineTag> {
-        val raw = prefs.getString(tagsKey, null) ?: return emptyList()
+        val raw = prefs.getString(tagsKey, null) ?: return seedTemplateTags()
         return runCatching {
             val arr = JSONArray(raw)
             buildList {
@@ -58,6 +58,17 @@ class MachineTagStore(private val prefs: SharedPreferences) {
                 }
             }
         }.getOrDefault(emptyList())
+    }
+
+    /** Work, Personal, Production. Written once, on the first launch. */
+    private fun seedTemplateTags(): List<MachineTag> {
+        val seeded = listOf(
+            MachineTag(id = "tag-work", name = "Work", colorHex = "007AFF"),
+            MachineTag(id = "tag-personal", name = "Personal", colorHex = "34C759"),
+            MachineTag(id = "tag-production", name = "Production", colorHex = "FF3B30"),
+        )
+        saveTags(seeded)
+        return seeded
     }
 
     fun loadAssignments(): Map<String, List<String>> {

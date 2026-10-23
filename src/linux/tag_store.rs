@@ -86,16 +86,6 @@ fn default_tags() -> Vec<MachineTag> {
             name: "Production".to_string(),
             color_hex: "FF3B30".to_string(),
         },
-        MachineTag {
-            id: "tag-testing".to_string(),
-            name: "Testing".to_string(),
-            color_hex: "FF9500".to_string(),
-        },
-        MachineTag {
-            id: "tag-lab".to_string(),
-            name: "Lab".to_string(),
-            color_hex: "AF52DE".to_string(),
-        },
     ]
 }
 
