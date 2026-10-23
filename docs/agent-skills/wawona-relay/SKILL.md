@@ -9,7 +9,7 @@ Repo: `github.com/Wawona/Relay` (`development`). Flake input: **`wwn-relay`**. L
 
 - `virtual_machine`: Linux / NixOS prebuilts only. Mode A speed design is offline multi-threaded AOT of the bundled guest, one StaticCpu semantics, Kani/Verus refinement. Not shipped. StaticCpu is the oracle and the fallback. No JIT, no `MAP_JIT`, no Hypervisor.framework in the store IPA. No fastest or cleanest claim until `Relay/docs/ios13-aot-assessment.md` is measured.
 - `container`: OCI unpack, then the **same** Linux VM backend
-- WASI / `wpm`: Mode A bytecode (`/wasm/v1`) only. iOS and iPadOS through OS 26 execute with Pulley. OS 27 Mode A uses Wasmer WASIX in a hidden WKWebView when `WWN_WASMER_IOS27` links WasmerSDK. Otherwise Pulley. No Cranelift or MAP_JIT in the store IPA. macOS and Linux stay Wasmtime Cranelift. Fuel stays on. One burst is 2e9 instructions (`fuel_budget`), refilled after a Wayland `socket_recv` that returns bytes. 25e6 traps `chess-wawona` during the first SHM frame after `toplevel configure 0x0`. Do not turn fuel off.
+- WASI / `wpm`: Mode A bytecode (`/wasm/v1`) only. iOS and iPadOS through OS 26 execute with Pulley. OS 27 Mode A uses Wasmer WASIX in a hidden WKWebView when `WWN_WASMER_IOS27` links WasmerSDK. Otherwise Pulley. No Cranelift or MAP_JIT in the store IPA. macOS stays Wasmtime Cranelift. Linux WASI P1/P2 stays Wasmtime Cranelift. Linux WASIX (`wasix_32v1` / `wasix_64v1`) runs on Wasmer in `wawona-wasm`. Fuel stays on. One burst is 2e9 instructions (`fuel_budget`), refilled after a Wayland `socket_recv` that returns bytes. 25e6 traps `chess-wawona` during the first SHM frame after `toplevel configure 0x0`. Do not turn fuel off.
 - Machines kind `wasm`: Start is `wasm <file|package>` (same as native shell).
   Native machines keep the `wawona-wasm` client. Do not strip `bundledAppID`
   when loading a `wasm` profile.
@@ -145,7 +145,7 @@ Kani and Verus must pass before Relay VM Rust executes. Skill
 | Host | VM | Container | Wasm |
 |------|----|-----------|------|
 | macOS Apple silicon | VZ | OCI on VZ | Cranelift |
-| Linux AppImage | KVM (cloud-hypervisor / crosvm). Fail closed without `/dev/kvm` | OCI on that VM | Cranelift |
+| Linux AppImage | KVM (cloud-hypervisor / crosvm). Fail closed without `/dev/kvm` | OCI on that VM | Cranelift for WASI P1/P2. Wasmer for WASIX |
 | iOS / iPadOS Mode A | static CPU (planned) | OCI on that VM | Pulley through OS 26. OS 27+: Wasmer WASIX in WebKit when WasmerSDK is linked |
 | iOS / iPadOS Mode B | `IosHv` when probe window matches; else static. Not HVF-via-qemu | OCI on that VM | same /wasm/v1. Pulley |
 | Android Play | static CPU (planned). No AVF | OCI-in-VM. No proot | Pulley (Mode A) |

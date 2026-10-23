@@ -67,24 +67,58 @@ pub fn shell_command(profile: &MachineProfile) -> Option<String> {
             }
         }
         MachineType::Wasm => Some(crate::linux::wasm_launch::effective_wasm_command(profile)),
-        MachineType::VirtualMachine | MachineType::Container => {
-            let cmd = profile.effective_command();
-            let trimmed = cmd.trim();
-            if trimmed.is_empty() {
-                None
-            } else {
-                Some(trimmed.to_string())
-            }
-        }
+        // VM and container consoles are the guest serial, not a host shell
+        // command. `terminal_launch` owns that path.
+        MachineType::VirtualMachine | MachineType::Container => None,
         _ => None,
+    }
+}
+
+/// How Start fills Wawona Terminal.
+#[derive(Clone, Debug)]
+pub enum TerminalLaunch {
+    /// Host login shell. Native Shell, SSH, and Wasm.
+    Shell(String),
+    /// Guest serial console. The argv is cloud-hypervisor or a one-line error.
+    /// No host login shell.
+    Guest { argv: Vec<String>, role: &'static str },
+}
+
+pub fn terminal_launch(profile: &MachineProfile) -> Option<TerminalLaunch> {
+    match profile.machine_type {
+        MachineType::VirtualMachine | MachineType::Container => {
+            let guest = crate::linux::relay::guest_terminal(profile);
+            Some(TerminalLaunch::Guest {
+                argv: guest.argv,
+                role: guest.role,
+            })
+        }
+        _ => shell_command(profile).map(TerminalLaunch::Shell),
+    }
+}
+
+pub fn launch_subtitle(launch: &TerminalLaunch) -> &'static str {
+    match launch {
+        TerminalLaunch::Shell(_) => "Wawona Terminal (xterm-256color)",
+        TerminalLaunch::Guest { role, .. } => role,
     }
 }
 
 /// Open a PTY, start `command`, and present the VT screen.
 /// Start shell on a PTY and return child, session, and master file descriptor.
 pub fn start_shell(command: &str) -> Result<(Child, Arc<TerminalSession>, File), String> {
+    start_terminal(&TerminalLaunch::Shell(command.to_string()))
+}
+
+pub fn start_terminal(
+    launch: &TerminalLaunch,
+) -> Result<(Child, Arc<TerminalSession>, File), String> {
     let (master_fd, slave_fd) = open_pty()?;
-    let child = match spawn_on_slave(slave_fd, command) {
+    let child = match launch {
+        TerminalLaunch::Shell(command) => spawn_on_slave(slave_fd, command),
+        TerminalLaunch::Guest { argv, .. } => spawn_direct(slave_fd, argv),
+    };
+    let child = match child {
         Ok(child) => child,
         Err(err) => {
             unsafe { libc::close(master_fd) };
@@ -98,13 +132,25 @@ pub fn start_shell(command: &str) -> Result<(Child, Arc<TerminalSession>, File),
 
 /// Open a PTY, start `command`, and present the VT screen in a floating window (fallback).
 pub fn open_shell(parent: &impl IsA<gtk::Window>, command: &str) -> Result<Child, String> {
-    let (child, session, master) = start_shell(command)?;
+    open_launched(
+        parent,
+        &TerminalLaunch::Shell(command.to_string()),
+        "Local Shell",
+    )
+}
+
+pub fn open_launched(
+    parent: &impl IsA<gtk::Window>,
+    launch: &TerminalLaunch,
+    title: &str,
+) -> Result<Child, String> {
+    let (child, session, master) = start_terminal(launch)?;
     let window = adw::Window::builder()
         .transient_for(parent)
         .modal(false)
         .default_width(760)
         .default_height(460)
-        .title("Wawona Terminal")
+        .title(title)
         .build();
     let win_c1 = window.clone();
     let win_c2 = window.clone();
@@ -112,7 +158,8 @@ pub fn open_shell(parent: &impl IsA<gtk::Window>, command: &str) -> Result<Child
         session,
         master,
         child.id(),
-        "Local Shell",
+        title,
+        launch_subtitle(launch),
         Rc::new(move || {
             win_c1.close();
         }),
@@ -198,22 +245,21 @@ pub fn detect_user_shell() -> String {
     "/bin/sh".to_string()
 }
 
+fn spawn_direct(slave_fd: i32, argv: &[String]) -> Result<Child, String> {
+    let program = argv
+        .first()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| "guest console has no program".to_string())?;
+    let mut cmd = Command::new(program);
+    if argv.len() > 1 {
+        cmd.args(&argv[1..]);
+    }
+    prepare_child(&mut cmd, slave_fd, None)
+}
+
 fn spawn_on_slave(slave_fd: i32, command: &str) -> Result<Child, String> {
     use std::os::unix::process::CommandExt;
-
-    let slave = unsafe { File::from_raw_fd(slave_fd) };
-    let stdin = slave
-        .try_clone()
-        .map_err(|err| err.to_string())
-        .map(Stdio::from)?;
-    let stdout = slave
-        .try_clone()
-        .map_err(|err| err.to_string())
-        .map(Stdio::from)?;
-    let stderr = slave
-        .try_clone()
-        .map_err(|err| err.to_string())
-        .map(Stdio::from)?;
 
     let user_shell = detect_user_shell();
     let shell_file_name = std::path::Path::new(&user_shell)
@@ -233,10 +279,31 @@ fn spawn_on_slave(slave_fd: i32, command: &str) -> Result<Child, String> {
         c.args(["-l", "-i", "-c", command]);
         c
     };
+    prepare_child(&mut cmd, slave_fd, Some(user_shell))
+}
 
-    cmd.stdin(stdin)
-        .stdout(stdout)
-        .stderr(stderr);
+fn prepare_child(
+    cmd: &mut Command,
+    slave_fd: i32,
+    user_shell: Option<String>,
+) -> Result<Child, String> {
+    use std::os::unix::process::CommandExt;
+
+    let slave = unsafe { File::from_raw_fd(slave_fd) };
+    let stdin = slave
+        .try_clone()
+        .map_err(|err| err.to_string())
+        .map(Stdio::from)?;
+    let stdout = slave
+        .try_clone()
+        .map_err(|err| err.to_string())
+        .map(Stdio::from)?;
+    let stderr = slave
+        .try_clone()
+        .map_err(|err| err.to_string())
+        .map(Stdio::from)?;
+
+    cmd.stdin(stdin).stdout(stdout).stderr(stderr);
 
     // Default working directory to user HOME directory
     if let Ok(home) = std::env::var("HOME") {
@@ -261,7 +328,11 @@ fn spawn_on_slave(slave_fd: i32, command: &str) -> Result<Child, String> {
 
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
-    cmd.env("SHELL", &user_shell);
+    if let Some(user_shell) = user_shell.as_deref() {
+        cmd.env("SHELL", user_shell);
+    } else {
+        cmd.env_remove("SHELL");
+    }
 
     let (runtime_dir, wayland_disp) = if let Ok(rt) = crate::linux::runtime::read_runtime_state() {
         (rt.xdg_runtime_dir, rt.wayland_display)
@@ -295,7 +366,7 @@ fn spawn_on_slave(slave_fd: i32, command: &str) -> Result<Child, String> {
         });
     }
     cmd.spawn()
-        .map_err(|err| format!("shell failed to start: {err}"))
+        .map_err(|err| format!("console failed to start: {err}"))
 }
 
 /// Build an in-app GTK widget hosting Wawona Terminal.
@@ -304,6 +375,7 @@ pub fn build_terminal_view(
     master: File,
     pid: u32,
     title: &str,
+    subtitle: &str,
     on_back: Rc<dyn Fn()>,
     on_stop: Rc<dyn Fn()>,
 ) -> gtk::Widget {
@@ -328,7 +400,7 @@ pub fn build_terminal_view(
     });
     header.pack_start(&back_btn);
 
-    let title_widget = adw::WindowTitle::new(title, "Wawona Terminal (xterm-256color)");
+    let title_widget = adw::WindowTitle::new(title, subtitle);
     header.set_title_widget(Some(&title_widget));
 
     let done = gtk::Button::with_label("Stop Session");

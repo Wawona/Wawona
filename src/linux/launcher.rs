@@ -302,17 +302,18 @@ pub fn launch_profile(
                 crate::linux::relay::RelayKind::Vm
             };
             let backend = crate::linux::relay::resolve_backend(kind)?;
-            wlog!("LAUNCHER", "Relay backend={}", backend.as_str());
-            let run_cmd = profile.effective_command();
-            if run_cmd.trim().is_empty() {
-                anyhow::bail!(
-                    "Relay {} needs a guest command. No QEMU fallback",
-                    backend.as_str()
-                );
-            }
-            let mut c = Command::new("sh");
-            c.args(["-c", &run_cmd]);
-            c
+            let guest = crate::linux::relay::guest_terminal(profile);
+            wlog!(
+                "LAUNCHER",
+                "Relay backend={} console={}",
+                backend.as_str(),
+                guest.role
+            );
+            anyhow::bail!(
+                "Relay {} console is Wawona Terminal ({})",
+                backend.as_str(),
+                guest.role
+            );
         }
         MachineType::SshTerminal => {
             let target = canonical_target(profile);

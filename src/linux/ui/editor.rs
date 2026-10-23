@@ -70,21 +70,24 @@ pub fn build_editor_view(
     name_row.set_text(&profile.name);
     profile_group.add(&name_row);
 
-    let mt_items: Vec<(&str, &str)> = vec![
-        ("native", "Native Shell"),
-        ("wasm", "Relay Wasm"),
-        ("ssh_waypipe", "SSH + Waypipe"),
-        ("ssh_terminal", "SSH Terminal"),
-        ("virtual_machine", "Virtual Machine (Linux)"),
-        ("container", "Container (OCI)"),
-    ];
+    // Three kinds only. Wasm, SSH terminal, and waypipe are Native Shell
+    // sessions, same as Swift `selectableCases` and Compose `selectableForUi`.
     let ui_type = match profile.machine_type {
         MachineType::Wasm | MachineType::SshWaypipe | MachineType::SshTerminal => {
             MachineType::Native
         }
         other => other,
     };
-    let (type_row, type_ids) = make_combo_row("Type", &mt_items, &mt_id(ui_type));
+    let mt_items: Vec<(String, String)> = MachineType::selectable_for_ui()
+        .iter()
+        .copied()
+        .map(|mt| (mt_id(mt), mt.user_facing_name().to_string()))
+        .collect();
+    let mt_refs: Vec<(&str, &str)> = mt_items
+        .iter()
+        .map(|(id, label)| (id.as_str(), label.as_str()))
+        .collect();
+    let (type_row, type_ids) = make_combo_row("Type", &mt_refs, &mt_id(ui_type));
     profile_group.add(&type_row);
 
     let favorite_row = adw::SwitchRow::new();
@@ -103,7 +106,7 @@ pub fn build_editor_view(
     ));
 
     let session_items = [
-        ("terminal", "Terminal"),
+        ("terminal", "Wawona Terminal"),
         ("wasm", "Wasm"),
         ("waypipe", "Waypipe"),
     ];
@@ -463,17 +466,28 @@ pub fn build_editor_view(
         "KVM hypervisor and guest system parameters. Fail closed without /dev/kvm.",
     ));
 
-    let vm_variant_items = [
-        ("nixos-guest-4k", "NixOS Guest 4K"),
-        ("standard", "Standard Linux"),
-    ];
-    let current_variant = profile
+    let vm_variant_items = [("4k", "NixOS 4K pages"), ("16k", "NixOS 16K pages")];
+    let current_variant = match profile
         .vm_settings
         .as_ref()
         .and_then(|s| s.guest_variant.as_deref())
-        .unwrap_or("nixos-guest-4k");
+        .unwrap_or("4k")
+    {
+        "16k" => "16k",
+        _ => "4k",
+    };
+    let vm_id_row = adw::EntryRow::new();
+    vm_id_row.set_title("VM Identifier");
+    vm_id_row.set_text(
+        profile
+            .vm_settings
+            .as_ref()
+            .and_then(|s| s.vm_identifier.as_deref())
+            .unwrap_or(""),
+    );
+    vm_group.add(&vm_id_row);
     let (vm_variant_row, vm_variant_ids) =
-        make_combo_row("Guest Variant", &vm_variant_items, current_variant);
+        make_combo_row("NixOS guest", &vm_variant_items, current_variant);
     vm_group.add(&vm_variant_row);
 
     let current_mem = profile
@@ -713,14 +727,23 @@ pub fn build_editor_view(
         move |type_id: &str| {
             let is_native = type_id == "native";
             let kind = get_combo_id(&session, &session_ids);
-            let ssh_on = use_ssh.is_active();
+            let ssh_allowed = kind == "terminal" || kind == "waypipe";
+            if is_native && !ssh_allowed && use_ssh.is_active() {
+                use_ssh.set_active(false);
+            }
+            let ssh_on = is_native && ssh_allowed && use_ssh.is_active();
             sg.set_visible(is_native);
-            wg.set_visible((is_native && kind == "wasm") || type_id == "wasm");
-            rg.set_visible(is_native && ssh_on);
-            pg.set_visible(is_native && ssh_on);
+            wg.set_visible(is_native && kind == "wasm");
+            use_ssh.set_visible(is_native && ssh_allowed);
+            use_ssh.set_subtitle(if kind == "waypipe" {
+                "Off: local waypipe. On: SSH + waypipe to a remote host."
+            } else {
+                "Off: local Wawona Terminal. On: SSH into a remote shell."
+            });
+            rg.set_visible(ssh_on);
+            pg.set_visible(ssh_on);
             vg.set_visible(type_id == "virtual_machine");
             ctg.set_visible(type_id == "container");
-            use_ssh.set_sensitive(kind == "terminal" || kind == "waypipe");
             terminal_custom_row.set_visible(is_native && kind == "terminal");
             cmd_row.set_visible(kind == "waypipe" && ssh_on);
             if kind == "waypipe" && ssh_on {
@@ -740,6 +763,27 @@ pub fn build_editor_view(
     };
 
     update_sections(&mt_id(ui_type));
+
+    {
+        let password = password_row.clone();
+        let passphrase = key_passphrase_row.clone();
+        let auth = auth_method_row.clone();
+        let ids = auth_ids.clone();
+        let apply_auth = move || {
+            let use_key = get_combo_id(&auth, &ids) == "1";
+            password.set_visible(!use_key);
+            passphrase.set_visible(use_key);
+        };
+        apply_auth();
+        let password = password_row.clone();
+        let passphrase = key_passphrase_row.clone();
+        let ids = auth_ids.clone();
+        auth_method_row.connect_selected_notify(move |row| {
+            let use_key = get_combo_id(row, &ids) == "1";
+            password.set_visible(!use_key);
+            passphrase.set_visible(use_key);
+        });
+    }
 
     {
         let u = update_sections.clone();
@@ -891,6 +935,10 @@ pub fn build_editor_view(
             },
             vm_settings: if mt == MachineType::VirtualMachine {
                 Some(VirtualMachineSettings {
+                    vm_identifier: {
+                        let id = vm_id_row.text().trim().to_string();
+                        if id.is_empty() { None } else { Some(id) }
+                    },
                     guest_variant: Some(get_combo_id(&vm_variant_row, &vm_variant_ids)),
                     memory_mb: Some(vm_memory_row.value() as i32),
                     disk_gib: Some(vm_disk_row.value() as i32),
@@ -911,15 +959,7 @@ pub fn build_editor_view(
             updated.runtime_overrides.bundled_app_id = Some("wawona-shell".into());
         } else if tid == "native" && kind == "wasm" {
             let cmd = wasm_cmd_row.text().trim().to_string();
-            let pkg = wasm_pkg_row.text().trim().to_string();
-            let app_id = if !pkg.is_empty() {
-                pkg.clone()
-            } else if cmd.contains("hello-wasi-gui") {
-                "hello-wasi-gui".to_string()
-            } else {
-                "wawona-wasm".to_string()
-            };
-            updated.runtime_overrides.bundled_app_id = Some(app_id);
+            updated.runtime_overrides.bundled_app_id = Some("wawona-wasm".into());
             updated.runtime_overrides.wasm_command = Some(if cmd.is_empty() {
                 "wasm hello-wasi-gui".into()
             } else {
@@ -944,17 +984,16 @@ pub fn build_editor_view(
             updated.runtime_overrides.bundled_app_id = None;
         }
 
-        updated.runtime_overrides.waypipe_enabled =
-            Some(kind == "waypipe" || (kind == "terminal" && use_ssh));
-        updated.runtime_overrides.force_ssd = Some(true);
-        updated.runtime_overrides.auto_scale = Some(true);
+        if tid == "native" {
+            updated.runtime_overrides.waypipe_enabled =
+                Some(kind == "waypipe" || (kind == "terminal" && use_ssh));
+        }
         updated.runtime_overrides.compositor_backend =
             Some(get_combo_id(&compositor_backend_row, &backend_ids));
         updated.runtime_overrides.vulkan_driver =
             Some(get_combo_id(&vulkan_driver_row, &vulkan_ids));
         updated.runtime_overrides.open_gl_driver =
             Some(get_combo_id(&opengl_driver_row, &opengl_ids));
-        updated.runtime_overrides.dmabuf_enabled = Some(true);
         updated.runtime_overrides.color_operations = Some(color_ops_row.is_active());
         {
             let inp = input_profile_row.text().trim().to_string();
@@ -1147,6 +1186,7 @@ fn parse_mt(id: &str) -> MachineType {
 
 fn storage_type_for_native_shell(kind: &str, use_ssh: bool) -> MachineType {
     match kind {
+        "wasm" => MachineType::Wasm,
         "terminal" if use_ssh => MachineType::SshTerminal,
         "waypipe" if use_ssh => MachineType::SshWaypipe,
         _ => MachineType::Native,

@@ -1309,7 +1309,7 @@ mod app {
             let sessions = machine_sessions.clone();
             let on_rebuild = on_rebuild.clone();
             let active_terminal = active_terminal.clone();
-            move |mid: String, command: String| {
+            move |mid: String, launch: wawona::linux::ui::TerminalLaunch| {
                 if active_terminal.borrow().as_deref() == Some(&mid)
                     && terminal_slot.first_child().is_some()
                 {
@@ -1328,7 +1328,7 @@ mod app {
                         .unwrap_or_else(|| "Terminal".into())
                 };
 
-                match wawona::linux::ui::start_shell(&command) {
+                match wawona::linux::ui::start_terminal(&launch) {
                     Ok((child, session, master)) => {
                         wlog!("UI", "Started in-app terminal '{}' pid={}", mname, child.id());
                         let pid = child.id();
@@ -1381,6 +1381,7 @@ mod app {
                             master,
                             pid,
                             &mname,
+                            wawona::linux::ui::launch_subtitle(&launch),
                             on_back,
                             on_stop,
                         );

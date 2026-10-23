@@ -350,18 +350,17 @@ impl CompositorState {
         if !self.headless_host {
             return;
         }
-        let Some((x, y)) = self.seat.pointer.global_position else {
-            return;
-        };
-        if self.global_pointer_target(x, y) == self.seat.pointer.global_target {
-            return;
+        if let Some((x, y)) = self.seat.pointer.global_position {
+            if self.global_pointer_target(x, y) != self.seat.pointer.global_target {
+                let serial = self.next_serial();
+                self.deliver_global_pointer(
+                    x,
+                    y,
+                    crate::core::compositor::Compositor::timestamp_ms(),
+                    serial,
+                );
+            }
         }
-        let serial = self.next_serial();
-        self.deliver_global_pointer(
-            x,
-            y,
-            crate::core::compositor::Compositor::timestamp_ms(),
-            serial,
-        );
+        self.repick_headless_touches();
     }
 }

@@ -556,6 +556,9 @@ impl CompositorState {
 
         if let Some((surface_id, local_x, local_y)) = self.find_surface_at(x, y) {
             self.inject_touch_down_on_surface(id, surface_id, local_x, local_y, time);
+            if let Some(point) = self.seat.touch.active_points.get_mut(&id) {
+                point.global = Some((x, y));
+            }
         }
     }
 
@@ -600,11 +603,59 @@ impl CompositorState {
         let Some(sid) = self.seat.touch.get_touch_surface(id) else {
             return;
         };
+        if let Some(point) = self.seat.touch.active_points.get_mut(&id) {
+            point.global = Some((x, y));
+        }
         let pos = self.surface_position_in_scene(sid);
         if let Some((sx, sy, node_w, node_h, _flat_scale)) = pos {
             let (local_x, local_y) =
                 self.view_to_surface_coords(sid, node_w, node_h, x - sx as f64, y - sy as f64);
             self.inject_touch_motion_local(id, local_x, local_y, time);
+        }
+    }
+
+    /// Re-send `wl_touch` when a commit moves or restacks the surface under a
+    /// contact that did not itself move. The down was delivered before this
+    /// commit was read. Pointer motion already does this re-pick.
+    pub(crate) fn repick_headless_touches(&mut self) {
+        if !self.headless_host {
+            return;
+        }
+        let contacts: Vec<(i32, f64, f64)> = self
+            .seat
+            .touch
+            .active_points
+            .iter()
+            .filter_map(|(id, point)| point.global.map(|(x, y)| (*id, x, y)))
+            .collect();
+        let time = crate::core::compositor::Compositor::timestamp_ms();
+        for (id, x, y) in contacts {
+            let Some((surface_id, local_x, local_y)) = self.find_surface_at(x, y) else {
+                continue;
+            };
+            let Some(point) = self.seat.touch.active_points.get(&id) else {
+                continue;
+            };
+            let same_surface = point.surface_id == surface_id;
+            let same_local =
+                (point.x - local_x).abs() < 0.01 && (point.y - local_y).abs() < 0.01;
+            if same_surface && same_local {
+                continue;
+            }
+            if same_surface {
+                self.inject_touch_motion_local(id, local_x, local_y, time);
+                self.inject_touch_frame();
+                continue;
+            }
+            let global = point.global;
+            self.smithay_touch_up(id, time);
+            self.inject_touch_frame();
+            self.seat.touch.touch_up(id);
+            self.inject_touch_down_on_surface(id, surface_id, local_x, local_y, time);
+            if let Some(point) = self.seat.touch.active_points.get_mut(&id) {
+                point.global = global;
+            }
+            self.inject_touch_frame();
         }
     }
 

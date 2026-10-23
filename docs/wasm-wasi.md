@@ -20,7 +20,8 @@ developers and users can target once and run across Wawona with **full App
 Store / Play compliance**:
 
 - Compile to **WASI P1 or P2** (`.wasm` bytecode as a document / package).
-  **WASIX** and Wasmer/WebC publish via wasinix are **planned** (not shipping);
+  **WASIX** modules run on Wasmer on Linux (`wawona-wasm` feature `wasmer-wasix`).
+  Wasmer/WebC catalog publish via wasinix is still not a store P1 row.
   ABI rules: [`repo.wawona.io/docs/wasm-abi.md`](https://github.com/Wawona/repo.wawona.io/blob/development/docs/wasm-abi.md)
 - Install with **`wpm`** (Wawona Runtime’s dedicated package manager) or drop
   into Files from the Mode A registry. Browse packages at
@@ -107,7 +108,7 @@ it are separate cards:
 Run under Relay with host imports and a live Wawona `WAYLAND_DISPLAY` (see
 `catalog/wasm/src/wasinix/scripts/smoke-wayland-relay.sh`). **Not** store Pulley, **not**
 bundled keep-set beside `hello-wasi-gui`. Machines: drop the `.wasm` as a local
-module on Wasmer-capable hosts (macOS/Linux; iOS 27+ Wasmer WebKit when linked).
+module on Wasmer on Linux, and on iOS 27+ Wasmer WebKit when WasmerSDK is linked.
 
 **Full implementation plan:** [`wasm-package-manager.md`](./wasm-package-manager.md)
 (registry at `repo.wawona.io/wasm/v1`, human catalog at `/search/?channel=wasm`;
@@ -124,7 +125,8 @@ channel).
 | POSIX sockets + host Wayland fd-bridge | Shipping WASM as the only way to run a port we already have natively |
 | Registry packages as Wasm **data** for the Runtime | Creating a storefront for other iOS apps |
 
-macOS and Linux may use Cranelift ([`wawona-macos-no-appstore`](../.cursor/rules/wawona-macos-no-appstore.mdc)).
+macOS may use Cranelift ([`wawona-macos-no-appstore`](../.cursor/rules/wawona-macos-no-appstore.mdc)).
+Linux WASI P1/P2 uses that same Cranelift engine. Linux WASIX uses Wasmer.
 Relay Wasm ships on **every** product target, including watchOS
 ([`wawona-relay-wasm`](agent-rules/wawona-relay-wasm.md)). watchOS and tvOS
 stay Pulley. Size is a recipe problem, not a reason to unlink the archive.

@@ -15,10 +15,11 @@ pkgs.writeShellApplication {
 
     usage() {
       cat <<'EOF'
-Usage: wawona-linux-vm-run [--memory-mb N] [--cpus N] --kernel PATH --rootfs PATH
+Usage: wawona-linux-vm-run [--memory-mb N] [--cpus N] [--cmdline STR] --kernel PATH --rootfs PATH
 
 Launches a NixOS guest with KVM via cloud-hypervisor.
-Requires /dev/kvm. No QEMU. No TCG fallback.
+Serial is the calling terminal (Wawona Terminal). Requires /dev/kvm.
+No QEMU. No TCG fallback.
 EOF
     }
 
@@ -26,12 +27,14 @@ EOF
     cpus="2"
     kernel=""
     rootfs=""
+    cmdline="console=ttyS0 root=/dev/vda rw"
     while [ "$#" -gt 0 ]; do
       case "$1" in
         --memory-mb) memory_mb="$2"; shift 2 ;;
         --cpus) cpus="$2"; shift 2 ;;
         --kernel) kernel="$2"; shift 2 ;;
         --rootfs) rootfs="$2"; shift 2 ;;
+        --cmdline) cmdline="$2"; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         *) echo "Unknown argument: $1" >&2; usage; exit 1 ;;
       esac
@@ -56,6 +59,7 @@ EOF
       --memory "size=''${memory_mb}M" \
       --kernel "$kernel" \
       --disk "path=$rootfs" \
+      --cmdline "$cmdline" \
       --serial tty \
       --console off
   '';

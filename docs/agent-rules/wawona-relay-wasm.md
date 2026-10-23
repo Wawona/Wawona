@@ -21,7 +21,8 @@ Packages stay bytecode (`/wasm/v1`, `.wasm` documents). The engine that
 | iOS / iPadOS through OS 26, plus tvOS / watchOS / visionOS | Pulley / static | Cranelift native, `MAP_JIT`, Wasmer, WKWebView JSPI |
 | iOS / iPadOS 27+ | Wasmer WASIX Swift SDK: hidden WKWebView, WebKit JIT, JSPI. Same `/wasm/v1` bytecode. Only when the build defines `WWN_WASMER_IOS27` and links WasmerSDK. Otherwise Pulley. | Cranelift native, `MAP_JIT`, a second wasm catalog, raising the deployment target above 13.0 |
 | Android Play / unrooted sideload | Pulley or store-safe Cranelift | Mode B JIT, AVF as a wasm path |
-| macOS / Linux | Wasmtime Cranelift | A second Wasmer engine beside Cranelift |
+| macOS | Wasmtime Cranelift | A second Wasmer engine. Wasmer on macOS is not the Linux WASIX path |
+| Linux | Wasmtime Cranelift for WASI P1/P2. Wasmer (`wasmer-wasix` in `wawona-wasm`) for modules that import `wasix_32v1` or `wasix_64v1` | Wasmer for P1/P2. Wasmtime for WASIX |
 | Mode B tipa / Sileo / desktop-host / root Android | Same packages. Mode B iOS stays Pulley until `MAP_JIT`. Wasmer WebKit is the Mode A iOS 27 path, not the tipa path. | A second wasm product, ElleKit-in-tipa |
 
 There is **no** Mode B flavor of the Runtime catalog. Mode B may JIT-execute
@@ -40,9 +41,10 @@ commit** must update this rule and product docs for:
 
 1. Store iOS / iPadOS through OS 26: Pulley only. A WASIX package does **not**
    run on store Pulley.
-2. macOS / Linux: today Wasmtime Cranelift only (no second Wasmer engine).
-   WASIX-as-Wasmer-only **changes** that row. Do not link Wasmer into those
-   products in a docs-only or registry tip.
+2. macOS stays Wasmtime Cranelift. Linux WASI P1/P2 stays Wasmtime Cranelift.
+   Linux WASIX runs on Wasmer inside `wawona-wasm` (`wasmer-wasix`). That does
+   not make a WASIX package runnable on Pulley or on store iOS / iPadOS through
+   OS 26.
 3. `wpm install` stays Wasm package data. Never `docker pull`. Containers stay
    Machines kind `container`.
 

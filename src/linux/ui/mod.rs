@@ -25,7 +25,10 @@ pub use home::{
 pub use modal_sheet::present_sheet;
 pub use settings::{build_settings_view, ensure_settings_css, show_settings};
 pub use tab_overview::{build_tab_overview_view, show_tab_overview};
-pub use terminal::{build_terminal_view, open_shell, shell_command, start_shell};
+pub use terminal::{
+    build_terminal_view, launch_subtitle, open_launched, open_shell, shell_command, start_shell,
+    start_terminal, terminal_launch, TerminalLaunch,
+};
 pub use work_status::build_work_status_view;
 
 use std::cell::RefCell;

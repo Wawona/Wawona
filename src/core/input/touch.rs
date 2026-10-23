@@ -5,8 +5,11 @@ use std::collections::HashMap;
 pub struct TouchPoint {
     pub id: i32,
     pub surface_id: u32,
+    /// Surface-local position last sent to the client.
     pub x: f64,
     pub y: f64,
+    /// Compositor-global position of the contact, when the host reported one.
+    pub global: Option<(f64, f64)>,
 }
 
 /// Contact-id tracker. Smithay `TouchHandle` owns `wl_touch` events.
@@ -103,6 +106,7 @@ impl TouchState {
                 surface_id,
                 x,
                 y,
+                global: None,
             },
         );
         if self.pointer_mirror_id.is_none() {

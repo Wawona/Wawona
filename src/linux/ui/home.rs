@@ -42,7 +42,7 @@ pub struct RebuildHome<'a> {
     pub sessions: MachineSessions,
     pub layout: LayoutMode,
     pub on_edit: Option<Rc<dyn Fn(MachineProfile)>>,
-    pub on_open_terminal: Option<Rc<dyn Fn(String, String)>>,
+    pub on_open_terminal: Option<Rc<dyn Fn(String, super::terminal::TerminalLaunch)>>,
 }
 
 pub fn build_home_shell(on_rebuild: Rc<dyn Fn()>) -> HomeShell {
@@ -1067,7 +1067,7 @@ fn attach_card_actions(
     sessions: MachineSessions,
     layout: LayoutMode,
     on_edit: Option<Rc<dyn Fn(MachineProfile)>>,
-    on_open_terminal: Option<Rc<dyn Fn(String, String)>>,
+    on_open_terminal: Option<Rc<dyn Fn(String, super::terminal::TerminalLaunch)>>,
 ) {
     let start_btn = card.start_btn;
     let stop_btn = card.stop_btn;
@@ -1088,9 +1088,9 @@ fn attach_card_actions(
             let app = state_r.borrow();
             app.store
                 .profile(&mid)
-                .and_then(super::terminal::shell_command)
+                .and_then(super::terminal::terminal_launch)
         };
-        if let Some(command) = terminal_cmd {
+        if let Some(launch) = terminal_cmd {
             let launch_window: Rc<dyn Fn()> = Rc::new({
                 let parent = parent_r.clone();
                 let sessions = sessions_r.clone();
@@ -1100,9 +1100,9 @@ fn attach_card_actions(
                 let on_open_term = on_open_term_r.clone();
                 let mid = mid.clone();
                 let mname = mname.clone();
-                let cmd = command.clone();
+                let launch = launch.clone();
                 move || {
-                    let launched = super::terminal::open_shell(&parent, &cmd);
+                    let launched = super::terminal::open_launched(&parent, &launch, &mname);
                     match launched {
                         Ok(child) => {
                             wlog!("UI", "Launched '{}' pid={}", mname, child.id());
@@ -1129,7 +1129,7 @@ fn attach_card_actions(
             match behavior.as_str() {
                 "tab" | "newTab" => {
                     if let Some(open_term) = on_open_term_r.as_ref() {
-                        open_term(mid.clone(), command);
+                        open_term(mid.clone(), launch.clone());
                     } else {
                         launch_window();
                     }
@@ -1154,14 +1154,14 @@ fn attach_card_actions(
 
                     let open_term_c = on_open_term_r.clone();
                     let mid_c = mid.clone();
-                    let cmd_c = command.clone();
+                    let launch_c = launch.clone();
                     let launch_win_c = launch_window.clone();
 
                     dialog.connect_response(None, move |d, response| {
                         match response {
                             "tab" => {
                                 if let Some(open_term) = open_term_c.as_ref() {
-                                    open_term(mid_c.clone(), cmd_c.clone());
+                                    open_term(mid_c.clone(), launch_c.clone());
                                 } else {
                                     launch_win_c();
                                 }
@@ -1213,11 +1213,11 @@ fn attach_card_actions(
             let app = state_f.borrow();
             app.store
                 .profile(&mid)
-                .and_then(super::terminal::shell_command)
+                .and_then(super::terminal::terminal_launch)
         };
-        if let Some(command) = terminal_cmd {
+        if let Some(launch) = terminal_cmd {
             if let Some(open_term) = on_open_term_f.as_ref() {
-                open_term(mid.clone(), command);
+                open_term(mid.clone(), launch);
                 return;
             }
         }
