@@ -12,8 +12,9 @@ mod terminal;
 pub mod work_status;
 
 pub use adaptive::{
-    clamp_content, ensure_adaptive_css, install_adaptive_split_view, install_breakpoint,
-    is_touchscreen_active, make_resizable_sidebar, scrollable_sidebar, LayoutBinding,
+    bind_content_sidebar_toggle, clamp_content, ensure_adaptive_css, install_adaptive_split_view,
+    install_breakpoint, is_touchscreen_active, make_resizable_sidebar, scrollable_sidebar,
+    sidebar_column_with_toggle, LayoutBinding,
 };
 pub use editor::{build_editor_view, show_editor};
 pub use env_vars::build_env_vars_view;

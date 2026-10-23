@@ -25,9 +25,11 @@ mod app {
         write_runtime_state, RuntimeState,
     };
     use wawona::linux::ui::{
-        a11y, build_home_shell, build_settings_view, build_tab_overview_view,
-        build_work_status_view, clamp_content, ensure_settings_css, install_adaptive_split_view,
-        is_touchscreen_active, make_resizable_sidebar, scrollable_sidebar, maybe_show_welcome, rebuild_home, show_editor,
+        a11y, bind_content_sidebar_toggle, build_home_shell, build_settings_view,
+        build_tab_overview_view, build_work_status_view, clamp_content, ensure_settings_css,
+        install_adaptive_split_view, is_touchscreen_active, make_resizable_sidebar,
+        maybe_show_welcome, rebuild_home, scrollable_sidebar, show_editor,
+        sidebar_column_with_toggle,
         AppState, LayoutBinding, MachineSessions, RebuildHome, SharedAppState,
     };
     use wawona::linux::ui_model::LayoutMode;
@@ -888,7 +890,14 @@ mod app {
         sidebar_box.append(&footer_card);
 
         let sidebar_scroll = scrollable_sidebar(&sidebar_box);
-        let resizable_sidebar = make_resizable_sidebar(&split_view, &sidebar_scroll, 0.25);
+        let sidebar_column = sidebar_column_with_toggle(
+            &split_view,
+            &sidebar_scroll,
+            toggle_icon_name,
+            "wwn.machines.sidebarToggle",
+        );
+        bind_content_sidebar_toggle(&split_view, &toggle_sidebar_btn);
+        let resizable_sidebar = make_resizable_sidebar(&split_view, &sidebar_column, 0.25);
         split_view.set_sidebar(Some(&resizable_sidebar));
 
         let content_stack = gtk::Stack::new();

@@ -246,6 +246,52 @@ pub fn make_resizable_sidebar(
     container
 }
 
+/// Sidebar column with its own header bar. `AdwOverlaySplitView` is the
+/// libadwaita mobile split: the sidebar overlays on a narrow window and can
+/// be dragged open. macOS `NavigationSplitView` keeps the sidebar toggle in
+/// that column's toolbar while the sidebar is open. The content header shows
+/// the same control only after the sidebar closes, so a covered content bar
+/// is not the only way back.
+pub fn sidebar_column_with_toggle(
+    split: &adw::OverlaySplitView,
+    body: &impl IsA<gtk::Widget>,
+    icon_name: &str,
+    a11y_id: &str,
+) -> gtk::Box {
+    let column = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    column.set_hexpand(true);
+    column.set_vexpand(true);
+
+    let bar = adw::HeaderBar::new();
+    bar.set_show_start_title_buttons(false);
+    bar.set_show_end_title_buttons(false);
+
+    let button = gtk::Button::from_icon_name(icon_name);
+    button.set_tooltip_text(Some("Toggle Sidebar (Ctrl+B)"));
+    button.set_can_focus(true);
+    crate::linux::ui::a11y::set_wwn_a11y(&button, a11y_id, Some("Toggle Sidebar"));
+    let split_toggle = split.clone();
+    button.connect_clicked(move |_| {
+        let shows = split_toggle.shows_sidebar();
+        split_toggle.set_show_sidebar(!shows);
+    });
+    bar.pack_start(&button);
+
+    column.append(&bar);
+    body.set_vexpand(true);
+    column.append(body);
+    column
+}
+
+/// Hide the content-header toggle while the sidebar (and its own toggle) is open.
+pub fn bind_content_sidebar_toggle(split: &adw::OverlaySplitView, content_toggle: &gtk::Button) {
+    let button = content_toggle.clone();
+    button.set_visible(!split.shows_sidebar());
+    split.connect_show_sidebar_notify(move |split| {
+        button.set_visible(!split.shows_sidebar());
+    });
+}
+
 /// Vertical scroller for an adaptive sidebar. Horizontal resize stays on the
 /// handle. A short window scrolls the sections instead of clipping them.
 pub fn scrollable_sidebar(child: &impl IsA<gtk::Widget>) -> gtk::ScrolledWindow {

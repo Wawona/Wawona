@@ -726,8 +726,16 @@ pub fn build_settings_view_internal(
     drop(cfg);
 
     let sidebar_scroll = crate::linux::ui::scrollable_sidebar(&sidebar);
+    let sidebar_column = crate::linux::ui::sidebar_column_with_toggle(
+        &split_view,
+        &sidebar_scroll,
+        toggle_icon_name,
+        "wwn.settings.sidebarToggle",
+    );
+    crate::linux::ui::bind_content_sidebar_toggle(&split_view, &toggle_sidebar_btn);
 
-    let resizable_settings_sidebar = crate::linux::ui::make_resizable_sidebar(&split_view, &sidebar_scroll, 0.28);
+    let resizable_settings_sidebar =
+        crate::linux::ui::make_resizable_sidebar(&split_view, &sidebar_column, 0.28);
     split_view.set_sidebar(Some(&resizable_settings_sidebar));
 
     // Header lives in the content pane, same as Machine Configuration, so the
