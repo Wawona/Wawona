@@ -392,25 +392,76 @@ private fun SettingsSectionContent(
             .padding(horizontal = 16.dp, vertical = 12.dp)
             .padding(bottom = 24.dp),
     ) {
-        when (tab) {
-            SettingsTab.DISPLAY -> DisplaySection(prefs)
-            SettingsTab.INPUT -> InputSection(prefs)
-            SettingsTab.GRAPHICS -> GraphicsSection(prefs)
-            SettingsTab.CONNECTION -> ConnectionSection(prefs, localIpAddress, context, SettingsTab.CONNECTION.accentColor)
-            SettingsTab.ENVIRONMENT -> Unit
-            SettingsTab.LOCAL_SHELL -> LocalShellSection(context, SettingsTab.LOCAL_SHELL.accentColor)
-            SettingsTab.DESKTOP -> {
-                DesktopSection(prefs, context, SettingsTab.DESKTOP.accentColor)
-                LockscreenSection(prefs, SettingsTab.DESKTOP.accentColor)
-            }
-            SettingsTab.ADVANCED -> AdvancedSection(prefs)
-            SettingsTab.WAYPIPE -> WaypipeSection(prefs, context, SettingsTab.WAYPIPE.accentColor)
-            SettingsTab.SSH -> SSHSection(prefs, SettingsTab.SSH.accentColor)
-            SettingsTab.MACHINES -> MachineStubsSection(prefs, SettingsTab.MACHINES.accentColor)
-            SettingsTab.ABOUT -> AboutSection(context)
-            SettingsTab.DEPENDENCIES -> DependenciesSection()
-        }
+        SettingsTabPage(tab, prefs, context, localIpAddress)
     }
+}
+
+@Composable
+private fun SettingsTabPage(
+    tab: SettingsTab,
+    prefs: SharedPreferences,
+    context: Context,
+    localIpAddress: String?,
+) {
+    when (tab) {
+        SettingsTab.DISPLAY,
+        SettingsTab.INPUT,
+        SettingsTab.GRAPHICS,
+        SettingsTab.CONNECTION,
+        SettingsTab.ENVIRONMENT,
+        SettingsTab.LOCAL_SHELL,
+        -> SettingsSessionPage(tab, prefs, context, localIpAddress)
+        SettingsTab.DESKTOP,
+        SettingsTab.ADVANCED,
+        SettingsTab.WAYPIPE,
+        SettingsTab.SSH,
+        SettingsTab.MACHINES,
+        SettingsTab.ABOUT,
+        SettingsTab.DEPENDENCIES,
+        -> SettingsHostPage(tab, prefs, context)
+    }
+}
+
+@Composable
+private fun SettingsSessionPage(
+    tab: SettingsTab,
+    prefs: SharedPreferences,
+    context: Context,
+    localIpAddress: String?,
+) {
+    when (tab) {
+        SettingsTab.DISPLAY -> DisplaySection(prefs)
+        SettingsTab.INPUT -> InputSection(prefs)
+        SettingsTab.GRAPHICS -> GraphicsSection(prefs)
+        SettingsTab.CONNECTION ->
+            ConnectionSection(prefs, localIpAddress, context, SettingsTab.CONNECTION.accentColor)
+        SettingsTab.LOCAL_SHELL -> LocalShellSection(context, SettingsTab.LOCAL_SHELL.accentColor)
+        else -> Unit
+    }
+}
+
+@Composable
+private fun SettingsHostPage(
+    tab: SettingsTab,
+    prefs: SharedPreferences,
+    context: Context,
+) {
+    when (tab) {
+        SettingsTab.DESKTOP -> SettingsDesktopPage(prefs, context)
+        SettingsTab.ADVANCED -> AdvancedSection(prefs)
+        SettingsTab.WAYPIPE -> WaypipeSection(prefs, context, SettingsTab.WAYPIPE.accentColor)
+        SettingsTab.SSH -> SSHSection(prefs, SettingsTab.SSH.accentColor)
+        SettingsTab.MACHINES -> MachineStubsSection(prefs, SettingsTab.MACHINES.accentColor)
+        SettingsTab.ABOUT -> AboutSection(context)
+        SettingsTab.DEPENDENCIES -> DependenciesSection()
+        else -> Unit
+    }
+}
+
+@Composable
+private fun SettingsDesktopPage(prefs: SharedPreferences, context: Context) {
+    DesktopSection(prefs, context, SettingsTab.DESKTOP.accentColor)
+    LockscreenSection(prefs, SettingsTab.DESKTOP.accentColor)
 }
 
 @Composable
@@ -1469,93 +1520,113 @@ private fun AboutSection(context: Context) {
         Spacer(Modifier.height(16.dp))
         AboutFactsGroup(
             context = context,
-            version = version,
-            buildNumber = buildNumber,
-            hostOs = hostOs,
-            installChannel = installChannel,
-            versionBare = versionBare,
+            facts = AboutFactCopy(
+                version = version,
+                buildNumber = buildNumber,
+                hostOs = hostOs,
+                installChannel = installChannel,
+                versionBare = versionBare,
+            ),
             uriHandler = uriHandler,
         )
         Spacer(Modifier.height(32.dp))
     }
 }
 
+private data class AboutFactCopy(
+    val version: String,
+    val buildNumber: String,
+    val hostOs: String,
+    val installChannel: String,
+    val versionBare: String,
+)
+
 @Composable
 private fun AboutFactsGroup(
     context: Context,
-    version: String,
-    buildNumber: String,
-    hostOs: String,
-    installChannel: String,
-    versionBare: String,
+    facts: AboutFactCopy,
     uriHandler: UriHandler,
 ) {
-    val prefs = remember { context.getSharedPreferences("wawona_prefs", Context.MODE_PRIVATE) }
-    var logLevel by remember { mutableStateOf(prefs.getString("LogLevel", "info") ?: "info") }
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
     ) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-            AboutFactLine("Version", version)
-            AboutFactLine("Build", buildNumber, tag = "wwn.settings.about.build")
-            AboutFactLine("Platform", hostOs)
-            Text(
-                "Log Level",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 8.dp),
-            )
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.padding(top = 4.dp),
-            ) {
-                listOf("error", "warn", "info", "debug", "trace").forEach { level ->
-                    FilterChip(
-                        selected = logLevel == level,
-                        onClick = {
-                            logLevel = level
-                            prefs.edit().putString("LogLevel", level).apply()
-                        },
-                        label = { Text(level) },
-                    )
-                }
-            }
-            OutlinedButton(
-                onClick = {
-                    copyWawonaBugDiagnostics(
-                        context,
-                        version,
-                        hostOs,
-                        installChannel,
-                        machineOnly = false,
-                    )
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp)
-                    .testTag("wwn.settings.copyRecentLogs"),
-                shape = RoundedCornerShape(12.dp),
-            ) { Text("Copy Logs") }
-            OutlinedButton(
-                onClick = {
-                    openWawonaGithubBugReport(
-                        context,
-                        uriHandler,
-                        versionBare,
-                        hostOs,
-                        installChannel,
-                    )
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp)
-                    .testTag("wwn.settings.reportBug"),
-                shape = RoundedCornerShape(12.dp),
-            ) { Text("Report") }
+            AboutFactLine("Version", facts.version)
+            AboutFactLine("Build", facts.buildNumber, tag = "wwn.settings.about.build")
+            AboutFactLine("Platform", facts.hostOs)
+            AboutLogLevelRow(context)
+            AboutDiagnosticsButtons(context, facts, uriHandler)
         }
     }
+}
+
+@Composable
+private fun AboutLogLevelRow(context: Context) {
+    val prefs = remember { context.getSharedPreferences("wawona_prefs", Context.MODE_PRIVATE) }
+    var logLevel by remember { mutableStateOf(prefs.getString("LogLevel", "info") ?: "info") }
+    Text(
+        "Log Level",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 8.dp),
+    )
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.padding(top = 4.dp),
+    ) {
+        listOf("error", "warn", "info", "debug", "trace").forEach { level ->
+            FilterChip(
+                selected = logLevel == level,
+                onClick = {
+                    logLevel = level
+                    prefs.edit().putString("LogLevel", level).apply()
+                },
+                label = { Text(level) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun AboutDiagnosticsButtons(
+    context: Context,
+    facts: AboutFactCopy,
+    uriHandler: UriHandler,
+) {
+    OutlinedButton(
+        onClick = {
+            copyWawonaBugDiagnostics(
+                context,
+                facts.version,
+                facts.hostOs,
+                facts.installChannel,
+                machineOnly = false,
+            )
+        },
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp)
+            .testTag("wwn.settings.copyRecentLogs"),
+        shape = RoundedCornerShape(12.dp),
+    ) { Text("Copy Logs") }
+    OutlinedButton(
+        onClick = {
+            openWawonaGithubBugReport(
+                context,
+                uriHandler,
+                facts.versionBare,
+                facts.hostOs,
+                facts.installChannel,
+            )
+        },
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp)
+            .testTag("wwn.settings.reportBug"),
+        shape = RoundedCornerShape(12.dp),
+    ) { Text("Report") }
 }
 
 @Composable
@@ -1586,13 +1657,43 @@ private data class AboutLink(
 /** Same order and subtitles as `WawonaAboutLinks` in SettingsContracts.swift. */
 private val aboutLinks = listOf(
     AboutLink("Website", "Wawona.io", "https://wawona.io", "bundle:WawonaWebsite.png"),
-    AboutLink("Alex Spaulding", "Founder", "https://aspauldingcode.com", "https://github.com/aspauldingcode.png?size=160"),
-    AboutLink("GitHub", "aspauldingcode", "https://github.com/aspauldingcode", "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"),
+    AboutLink(
+        "Alex Spaulding",
+        "Founder",
+        "https://aspauldingcode.com",
+        "https://github.com/aspauldingcode.png?size=160",
+    ),
+    AboutLink(
+        "GitHub",
+        "aspauldingcode",
+        "https://github.com/aspauldingcode",
+        "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png",
+    ),
     AboutLink("X", "aspauldingcode", "https://x.com/aspauldingcode", "bundle:X.png"),
-    AboutLink("LinkedIn", "aspauldingcode", "https://www.linkedin.com/in/aspauldingcode/", "https://upload.wikimedia.org/wikipedia/commons/c/ca/LinkedIn_logo_initials.png"),
-    AboutLink("Ko-fi", "aspauldingcode", "https://ko-fi.com/aspauldingcode", "https://ko-fi.com/android-icon-192x192.png"),
-    AboutLink("Sponsors", "GitHub Sponsors", "https://github.com/sponsors/aspauldingcode", "bundle:GitHubSponsors.png"),
-    AboutLink("GitHub", "Wawona", "https://github.com/Wawona/Wawona", "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"),
+    AboutLink(
+        "LinkedIn",
+        "aspauldingcode",
+        "https://www.linkedin.com/in/aspauldingcode/",
+        "https://upload.wikimedia.org/wikipedia/commons/c/ca/LinkedIn_logo_initials.png",
+    ),
+    AboutLink(
+        "Ko-fi",
+        "aspauldingcode",
+        "https://ko-fi.com/aspauldingcode",
+        "https://ko-fi.com/android-icon-192x192.png",
+    ),
+    AboutLink(
+        "Sponsors",
+        "GitHub Sponsors",
+        "https://github.com/sponsors/aspauldingcode",
+        "bundle:GitHubSponsors.png",
+    ),
+    AboutLink(
+        "GitHub",
+        "Wawona",
+        "https://github.com/Wawona/Wawona",
+        "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png",
+    ),
 )
 
 @Composable

@@ -253,6 +253,8 @@ tasks.withType<Test> {
 
 detekt {
     buildUponDefaultConfig = true
+    // Compose functions are PascalCase. The naming rule still applies to other functions.
+    config.setFrom(files("detekt.yml"))
     // Existing Android UI debt. Fail only on new findings after this baseline.
     baseline = file("detekt-baseline.xml")
     parallel = true

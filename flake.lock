@@ -380,11 +380,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1792692397,
-        "narHash": "sha256-WqgNIJkSZL4NZe3+SgH6K+tuISjarfqhewklVsH4PrE=",
+        "lastModified": 1792781106,
+        "narHash": "sha256-abhKq6EI0jFb2qlvdyeXgaZNXgRoAVE/EML3u0pASjI=",
         "owner": "Wawona",
         "repo": "iGetty",
-        "rev": "c5e62fdfa151f532dda4a7bc61e5da07b19d3462",
+        "rev": "97fdbf5b0513617e99605c7d15dca0669b26ea56",
         "type": "github"
       },
       "original": {

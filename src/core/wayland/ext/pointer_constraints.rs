@@ -67,13 +67,14 @@ pub struct PointerConstraintsState {
 /// The one activation policy: a constraint is in effect only while its
 /// surface holds both keyboard focus and pointer focus, and a oneshot
 /// constraint that was deactivated stays dead.
+/// Active while the pointer focus is this surface. The protocol does not
+/// require keyboard focus. A oneshot lock stays inactive after it drops.
 pub(crate) fn constraint_should_be_active(
     surface_id: u32,
-    keyboard_focus: Option<u32>,
     pointer_focus: Option<u32>,
     defunct: bool,
 ) -> bool {
-    !defunct && keyboard_focus == Some(surface_id) && pointer_focus == Some(surface_id)
+    !defunct && pointer_focus == Some(surface_id)
 }
 
 /// Clamp a global pointer position into a confinement rectangle
@@ -98,10 +99,9 @@ pub enum ActiveConstraint {
 impl PointerConstraintsState {
     /// Apply [`constraint_should_be_active`] to every constraint, sending
     /// locked/unlocked and confined/unconfined on each transition.
-    pub fn sync_activation(&mut self, keyboard_focus: Option<u32>, pointer_focus: Option<u32>) {
+    pub fn sync_activation(&mut self, pointer_focus: Option<u32>) {
         for c in self.locked_pointers.values_mut() {
-            let want =
-                constraint_should_be_active(c.surface_id, keyboard_focus, pointer_focus, c.defunct);
+            let want = constraint_should_be_active(c.surface_id, pointer_focus, c.defunct);
             if want && !c.active {
                 c.active = true;
                 c.resource.locked();
@@ -112,8 +112,7 @@ impl PointerConstraintsState {
             }
         }
         for c in self.confined_pointers.values_mut() {
-            let want =
-                constraint_should_be_active(c.surface_id, keyboard_focus, pointer_focus, c.defunct);
+            let want = constraint_should_be_active(c.surface_id, pointer_focus, c.defunct);
             if want && !c.active {
                 c.active = true;
                 c.resource.confined();
@@ -401,23 +400,23 @@ mod tests {
     use super::{clamp_to_confinement, constraint_should_be_active};
 
     #[test]
-    fn constraint_active_only_with_keyboard_and_pointer_focus() {
-        assert!(constraint_should_be_active(7, Some(7), Some(7), false));
+    fn constraint_active_with_pointer_focus() {
+        assert!(constraint_should_be_active(7, Some(7), false));
     }
 
     #[test]
-    fn constraint_inactive_without_keyboard_focus() {
-        assert!(!constraint_should_be_active(7, Some(3), Some(7), false));
+    fn constraint_inactive_when_pointer_focus_is_another_surface() {
+        assert!(!constraint_should_be_active(7, Some(3), false));
     }
 
     #[test]
     fn constraint_inactive_without_pointer_focus() {
-        assert!(!constraint_should_be_active(7, Some(7), None, false));
+        assert!(!constraint_should_be_active(7, None, false));
     }
 
     #[test]
     fn defunct_oneshot_never_reactivates() {
-        assert!(!constraint_should_be_active(7, Some(7), Some(7), true));
+        assert!(!constraint_should_be_active(7, Some(7), true));
     }
 
     #[test]

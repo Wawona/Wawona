@@ -370,14 +370,9 @@ impl smithay::input::SeatHandler for crate::core::state::CompositorState {
             return;
         };
         let client = focused.and_then(|surface| surface.client());
-        let keyboard_surface = focused.zip(client.as_ref()).and_then(|(surface, client)| {
-            self.protocol_to_internal_surface
-                .get(&(client.id(), surface.id().protocol_id()))
-                .copied()
-        });
         self.ext
             .pointer_constraints
-            .sync_activation(keyboard_surface, self.seat.pointer.focus);
+            .sync_activation(self.seat.pointer.focus);
         smithay::wayland::selection::data_device::set_data_device_focus(&dh, seat, client.clone());
         if self.smithay_runtime.primary_selection.is_some() {
             smithay::wayland::selection::primary_selection::set_primary_focus(&dh, seat, client);

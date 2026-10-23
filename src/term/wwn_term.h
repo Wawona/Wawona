@@ -28,6 +28,10 @@ typedef struct wwn_term_cell {
 
 wwn_term *wwn_term_new(uint32_t cols, uint32_t rows);
 void wwn_term_free(wwn_term *term);
+/* host_factor_permille: 1000 is 1.0. Low Power and thermal pass a lower value. */
+void wwn_term_refresh_scrollback_cap(wwn_term *term, uint32_t host_factor_permille);
+uint32_t wwn_term_scrollback_cap(const wwn_term *term);
+uint32_t wwn_term_recommended_scrollback_cap(uint32_t cols);
 void wwn_term_resize(wwn_term *term, uint32_t cols, uint32_t rows);
 void wwn_term_feed(wwn_term *term, const uint8_t *bytes, size_t len);
 /* Bytes the host must write back to the PTY (cursor reports). */

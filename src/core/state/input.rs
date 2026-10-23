@@ -1004,13 +1004,10 @@ impl CompositorState {
     // Input Processing
     // =========================================================================
 
-    /// Recompute pointer-constraint activation from current keyboard and
-    /// pointer focus. Call after either focus changes.
+    /// Recompute pointer-constraint activation from the current pointer focus.
     pub fn sync_pointer_constraints(&mut self) {
-        let (keyboard, pointer) = (self.seat.keyboard.focus, self.seat.pointer.focus);
-        self.ext
-            .pointer_constraints
-            .sync_activation(keyboard, pointer);
+        let pointer = self.seat.pointer.focus;
+        self.ext.pointer_constraints.sync_activation(pointer);
     }
 
     /// Apply the active pointer constraint to a global motion target.

@@ -58,7 +58,7 @@ func watchGlobalSettingsMatchShippedCatalog() {
     ])
     #expect(!GlobalSettingsCatalog.visibleFields(in: .display, for: .watchOS).contains(.defaultStartType))
     #expect(!GlobalSettingsCatalog.visibleFields(in: .display, for: .tvOS).contains(.defaultStartType))
-    #expect(GlobalSettingsCatalog.visibleFields(in: .display, for: .linux).contains(.defaultStartType))
+    #expect(!GlobalSettingsCatalog.visibleFields(in: .display, for: .linux).contains(.defaultStartType))
     #expect(GlobalSettingsCatalog.visibleFields(in: .display, for: .macOS).contains(.defaultStartType))
     #expect(GlobalSettingsCatalog.visibleFields(in: .display, for: .visionOS).contains(.defaultStartType))
     #expect(GlobalSettingsCatalog.visibleFields(in: .display, for: .android).contains(.defaultStartType))

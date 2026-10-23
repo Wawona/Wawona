@@ -426,7 +426,7 @@ public struct GlobalSettingsCatalog: Sendable {
     /// iPadOS 26 (26 adds window control chrome only).
     public static func allowsWindowedMachineStart(_ host: GlobalSettingsHost) -> Bool {
         switch host {
-        case .macOS, .visionOS, .android, .linux:
+        case .macOS, .visionOS, .android:
             return true
         case .iOS:
             #if os(iOS)
@@ -434,7 +434,7 @@ public struct GlobalSettingsCatalog: Sendable {
             #else
             return false
             #endif
-        case .tvOS, .watchOS:
+        case .tvOS, .watchOS, .linux:
             return false
         }
     }
