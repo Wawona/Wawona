@@ -7,11 +7,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1787430291,
-        "narHash": "sha256-eBWtWGf2ADSkv5QolUINGjtsA/zIm0FTzCABcXvbcv8=",
+        "lastModified": 1792697840,
+        "narHash": "sha256-N+MlK6G/L1NtDd7AarKLFhm2mwtyBbqtecnrGThBElg=",
         "owner": "Wawona",
         "repo": "Doorman",
-        "rev": "3d3ab7faf82f4aceca6aeea772533390d232847a",
+        "rev": "fe9ea6353818c731acf76acd290852d5bf24989e",
         "type": "github"
       },
       "original": {
@@ -106,11 +106,11 @@
         "pre-commit-hooks": "pre-commit-hooks"
       },
       "locked": {
-        "lastModified": 1782759041,
-        "narHash": "sha256-2577vxyoBa8+ZRiXr3CuPtOuEtPRYsFPSZuEc/KI/80=",
+        "lastModified": 1790579054,
+        "narHash": "sha256-S2NrwKB7aQa6HZsg2UGCmzQPI5Dw+bqUPm8R23BAUh8=",
         "owner": "nix-community",
         "repo": "crate2nix",
-        "rev": "5e1ecfd2d15b34ec90c2e51fdffbe8116595a767",
+        "rev": "1cb60331b14f15dad145dbd4e207c1ec110e5675",
         "type": "github"
       },
       "original": {
@@ -380,11 +380,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1792781106,
-        "narHash": "sha256-abhKq6EI0jFb2qlvdyeXgaZNXgRoAVE/EML3u0pASjI=",
+        "lastModified": 1792789694,
+        "narHash": "sha256-NbrtsKbvWADoyFjsU8xiGUEzeTMAtXIybBG5Klbkybg=",
         "owner": "Wawona",
         "repo": "iGetty",
-        "rev": "97fdbf5b0513617e99605c7d15dca0669b26ea56",
+        "rev": "19bc8a662ad2ffbb3a5b8d34aa587fadc4c84592",
         "type": "github"
       },
       "original": {
@@ -426,11 +426,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1791672842,
-        "narHash": "sha256-6o2vxad9xeJOqQYzmyqAvPA1jno2v+SQa/ig58DhFio=",
+        "lastModified": 1792697922,
+        "narHash": "sha256-YVxlri8sVVibVV72cs4HDN2B0VL1Jg8pN2kB3Pp/UUg=",
         "owner": "Wawona",
         "repo": "iomfb-rs",
-        "rev": "7d952c5bfd2ee791a5abc6a9be40f8d6951fa339",
+        "rev": "52674bc5a41675c09e1cf8c27a8eb2cf2b9b1c7c",
         "type": "github"
       },
       "original": {
@@ -447,11 +447,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1791427282,
-        "narHash": "sha256-DMpOZuAhWUvwW65KVbY3MMQZYIi7lv4pOm18kiwcc4s=",
+        "lastModified": 1792697951,
+        "narHash": "sha256-AJ8C6gcs2i++t8wjvhYswqXtzYWBdtHVgmQ/eq3+TG8=",
         "owner": "Wawona",
         "repo": "iowatchdog-tools",
-        "rev": "3227c239d3594bd910a3d153e26d9154dbd500ec",
+        "rev": "b467393bd1ffa652dac1f0d4a1ed604591ce0287",
         "type": "github"
       },
       "original": {
@@ -469,11 +469,11 @@
         "spectrum": "spectrum"
       },
       "locked": {
-        "lastModified": 1788636433,
-        "narHash": "sha256-iCLUJO5V2ZlEAlYxlkCZ5YLkyQrpkyXOMUTkPXjsdPk=",
+        "lastModified": 1791551030,
+        "narHash": "sha256-jTx3O3MKqPjv+cDfBFQ5zlKECBEwzF91scC+mSumZyE=",
         "owner": "microvm-nix",
         "repo": "microvm.nix",
-        "rev": "804cbac7a462aa0fa8bb60c3d2fc4ead0a62060f",
+        "rev": "f13928fe9900e91709d7ce581eefa47eaafa79e1",
         "type": "github"
       },
       "original": {
@@ -554,11 +554,11 @@
     },
     "nixpkgs_2": {
       "locked": {
-        "lastModified": 1788746152,
-        "narHash": "sha256-RaKngusl5I8pNi8RfrVvsHq3NZe7eFWzDlb01+hEVqY=",
+        "lastModified": 1792506237,
+        "narHash": "sha256-Q/8KLB6jNfpaUN1HAedE/u/Et9feE/zYSsutBLKrCFk=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "42f17a57f4f6e33b3de3dca0a2a5ea5233169d02",
+        "rev": "5adc50831c259f87faeb09ddf930d43597197473",
         "type": "github"
       },
       "original": {
@@ -604,11 +604,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1792692918,
-        "narHash": "sha256-ILBzB3TVIInqxZKRUliROByQohTpKPfRAPtw+OHNuIM=",
+        "lastModified": 1792693327,
+        "narHash": "sha256-NW0rKP+S+i43GV3jwFibjGlKYwSZTUptFAJvhP7VNnA=",
         "owner": "Wawona",
         "repo": "repo.wawona.io",
-        "rev": "8725ded9c214ac9c5a814353f8d6231100c596ec",
+        "rev": "37fc40e8422f7d502f00fedf60663a0e06e8fcdd",
         "type": "github"
       },
       "original": {
@@ -673,11 +673,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1788765185,
-        "narHash": "sha256-pp8lb5CrKjmscZbTK34HuCaq18zDU4Q6zlaD5dS+Hi4=",
+        "lastModified": 1792739799,
+        "narHash": "sha256-M2rr/yPbTHvgAzCyZ+zHJHflFM0XU7t42Sw2skA3TQM=",
         "owner": "oxalica",
         "repo": "rust-overlay",
-        "rev": "ca7f624be3935a5bc46d2c240515491ab8675503",
+        "rev": "b0829a2cc9f7b596583331d78a942c1e5170d8a0",
         "type": "github"
       },
       "original": {
@@ -731,11 +731,11 @@
     "spectrum": {
       "flake": false,
       "locked": {
-        "lastModified": 1785761586,
-        "narHash": "sha256-MWOMVqJJERwjQGgRIv8d6rlEBqbLM3VZWxHkNKIIZNw=",
+        "lastModified": 1786032750,
+        "narHash": "sha256-+Ba/kIn5BjvV7PN8bWOo7RoqgTY/Yv2M7qeMf3wS2Ag=",
         "ref": "refs/heads/main",
-        "rev": "a7762d6f54b40560dd5255ce902e6e6a5d980fe9",
-        "revCount": 1416,
+        "rev": "77d2389874bb092b8dbf05ecc5b1030372e80e98",
+        "revCount": 1417,
         "type": "git",
         "url": "https://spectrum-os.org/git/spectrum"
       },
@@ -820,6 +820,23 @@
         "owner": "Wawona",
         "ref": "development",
         "repo": "ToolbarKeys",
+        "type": "github"
+      }
+    },
+    "vphone-cli": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1791210316,
+        "narHash": "sha256-863J3Gtl5GHHtXJsIrm4tf7uyczdnGhS5bb+8m52OmE=",
+        "owner": "Lakr233",
+        "repo": "vphone-cli",
+        "rev": "94376fe82a576b4e80086c8e3cbbd7d3bd99122f",
+        "type": "github"
+      },
+      "original": {
+        "owner": "Lakr233",
+        "ref": "2.6.0",
+        "repo": "vphone-cli",
         "type": "github"
       }
     },
@@ -966,14 +983,15 @@
       "inputs": {
         "nixpkgs": [
           "nixpkgs"
-        ]
+        ],
+        "vphone-cli": "vphone-cli"
       },
       "locked": {
-        "lastModified": 1788380942,
-        "narHash": "sha256-QFI4jg1bo/rhBMIPWeHDbIAUvh/stp7i25VNZ8I6xww=",
+        "lastModified": 1791391033,
+        "narHash": "sha256-VaubT6L3qe1SEbK8/Sd7/K9YnQ7aygeTKCWCUjyElXU=",
         "owner": "Wawona",
         "repo": "wwn-vphone",
-        "rev": "d160030a340fcca16aa1db4204bd5f52896e0575",
+        "rev": "2909c4f0a9fbf97d8f9c8c89be1b2a38c81991c6",
         "type": "github"
       },
       "original": {
