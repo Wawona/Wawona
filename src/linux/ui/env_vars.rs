@@ -679,9 +679,12 @@ pub fn build_env_vars_view(
     overrides_cell: Rc<RefCell<BTreeMap<String, String>>>,
     unsets_cell: Rc<RefCell<Vec<String>>>,
     settings: &LinuxSettings,
-) -> gtk::Widget {
+    on_detail: Rc<dyn Fn(Option<&str>)>,
+) -> (gtk::Widget, Rc<dyn Fn()>, super::adaptive::AdaptiveSearchAdd) {
     let main_stack = gtk::Stack::new();
     main_stack.set_transition_type(gtk::StackTransitionType::SlideLeftRight);
+    main_stack.set_hhomogeneous(false);
+    main_stack.set_vhomogeneous(false);
     main_stack.set_hexpand(true);
     main_stack.set_vexpand(true);
 
@@ -694,14 +697,22 @@ pub fn build_env_vars_view(
     let search_query: Rc<RefCell<String>> = Rc::new(RefCell::new(String::new()));
 
     // MARK: 1. Category Filter Chips (horizontal scroll)
+    // Same as SwiftUI: ScrollView(.horizontal, showsIndicators: false).
+    // Trackpad, mouse wheel, and touch drag scroll. No bar over the pills.
     let chips_scroll = gtk::ScrolledWindow::new();
-    chips_scroll.set_policy(gtk::PolicyType::Automatic, gtk::PolicyType::Never);
-    chips_scroll.set_margin_start(12);
-    chips_scroll.set_margin_end(12);
-    chips_scroll.set_margin_top(8);
-    chips_scroll.set_margin_bottom(6);
+    chips_scroll.add_css_class("wwn-env-chips-scroll");
+    chips_scroll.set_policy(gtk::PolicyType::External, gtk::PolicyType::Never);
+    chips_scroll.set_kinetic_scrolling(true);
+    chips_scroll.set_propagate_natural_height(true);
+    chips_scroll.set_propagate_natural_width(false);
+    chips_scroll.set_min_content_width(0);
+    chips_scroll.set_has_frame(false);
+    chips_scroll.set_margin_start(16);
+    chips_scroll.set_margin_end(16);
+    chips_scroll.set_margin_top(10);
+    chips_scroll.set_margin_bottom(10);
 
-    let chips_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    let chips_box = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     chips_scroll.set_child(Some(&chips_box));
 
     let chip_buttons: Rc<RefCell<Vec<(Option<EnvCategory>, gtk::Button)>>> =
@@ -721,28 +732,24 @@ pub fn build_env_vars_view(
 
     list_box_container.append(&chips_scroll);
 
-    // MARK: 2. Search & Add Bar
-    let search_add_bar = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    search_add_bar.set_margin_start(16);
-    search_add_bar.set_margin_end(16);
-    search_add_bar.set_margin_bottom(8);
-
-    let search_entry = gtk::SearchEntry::new();
-    search_entry.set_hexpand(true);
-    search_entry.set_placeholder_text(Some("Search variables"));
-    search_add_bar.append(&search_entry);
-
-    let add_btn = gtk::Button::from_icon_name("list-add-symbolic");
-    add_btn.set_tooltip_text(Some("Add Custom Variable"));
-    add_btn.add_css_class("flat");
-    search_add_bar.append(&add_btn);
-
-    list_box_container.append(&search_add_bar);
+    // Search and add follow Machine Configuration: header on a wide or
+    // narrow window, bottom bar on a touch screen. The Settings header
+    // packs the header widgets. This page owns the revealer and bottom bar.
+    let search_chrome = super::adaptive::AdaptiveSearchAdd::new(super::adaptive::SearchAddOptions {
+        placeholder: "Search variables",
+        search_a11y: "wwn.settings.environment.search",
+        search_label: "Search variables",
+        add_tooltip: Some("Add Custom Variable"),
+        add_a11y: Some("wwn.settings.environment.new"),
+        add_label: Some("Add Variable"),
+    });
 
     // MARK: 3. Scrolled List of Variables
     let scroll = gtk::ScrolledWindow::new();
     scroll.set_hexpand(true);
     scroll.set_vexpand(true);
+    scroll.set_min_content_width(0);
+    scroll.set_min_content_height(0);
     scroll.set_policy(gtk::PolicyType::Automatic, gtk::PolicyType::Automatic);
 
     let list_content_box = gtk::Box::new(gtk::Orientation::Vertical, 12);
@@ -789,33 +796,22 @@ pub fn build_env_vars_view(
     scroll.set_child(Some(&list_content_box));
     list_box_container.append(&scroll);
 
-    main_stack.add_named(&list_box_container, Some("list"));
+    let list_page = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    list_page.set_hexpand(true);
+    list_page.set_vexpand(true);
+    list_page.append(&search_chrome.revealer);
+    list_page.append(&list_box_container);
+    list_page.append(&search_chrome.bottom_bar);
+    main_stack.add_named(&list_page, Some("list"));
 
     // MARK: 5. Detail Page
-    let detail_container = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    detail_container.set_hexpand(true);
-    detail_container.set_vexpand(true);
-
-    let detail_header = adw::HeaderBar::new();
-    detail_header.set_show_end_title_buttons(false);
-    detail_header.set_show_start_title_buttons(false);
-
-    let back_btn = gtk::Button::from_icon_name("go-previous-symbolic");
-    back_btn.set_tooltip_text(Some("Back to Variables"));
-    detail_header.pack_start(&back_btn);
-
-    let detail_title = gtk::Label::new(None);
-    detail_title.add_css_class("title");
-    detail_header.set_title_widget(Some(&detail_title));
-
-    detail_container.append(&detail_header);
-
+    // Navigation lives on the Settings header. This page is only the form.
     let detail_scroll = gtk::ScrolledWindow::new();
     detail_scroll.set_hexpand(true);
     detail_scroll.set_vexpand(true);
-    detail_container.append(&detail_scroll);
-
-    main_stack.add_named(&detail_container, Some("detail"));
+    detail_scroll.set_min_content_width(0);
+    detail_scroll.set_min_content_height(0);
+    main_stack.add_named(&detail_scroll, Some("detail"));
 
     // State bindings
     let settings_clone = settings.clone();
@@ -824,13 +820,13 @@ pub fn build_env_vars_view(
     // Detail builder helper
     let main_stack_c = main_stack.clone();
     let detail_scroll_c = detail_scroll.clone();
-    let detail_title_c = detail_title.clone();
     let overrides_for_detail = overrides_cell.clone();
     let unsets_for_detail = unsets_cell.clone();
     let populate_list_for_detail = populate_list.clone();
+    let on_detail_open = on_detail.clone();
 
     let open_detail = Rc::new(move |entry: ResolvedEnvEntry| {
-        detail_title_c.set_text(&entry.name);
+        on_detail_open(Some(entry.name.as_str()));
 
         let detail_pref_page = adw::PreferencesPage::new();
         detail_scroll_c.set_child(Some(&detail_pref_page));
@@ -1068,13 +1064,13 @@ pub fn build_env_vars_view(
         main_stack_c.set_visible_child_name("detail");
     });
 
-    // Connect Back button
-    {
+    let leave_detail: Rc<dyn Fn()> = {
         let main_stack = main_stack.clone();
-        back_btn.connect_clicked(move |_| {
+        Rc::new(move || {
             main_stack.set_visible_child_name("list");
-        });
-    }
+            on_detail(None);
+        })
+    };
 
     // Populate List closure
     {
@@ -1210,25 +1206,23 @@ pub fn build_env_vars_view(
     {
         let query_cell = search_query.clone();
         let pop_fn = populate_list.clone();
-        search_entry.connect_search_changed(move |entry| {
-            *query_cell.borrow_mut() = entry.text().to_string();
+        search_chrome.bind_query(Rc::new(move |text| {
+            *query_cell.borrow_mut() = text;
             if let Some(f) = pop_fn.borrow().as_ref() {
                 f();
             }
-        });
+        }));
     }
 
-    // Connect Add Variable Button
+    // Connect Add Variable Button. Header and bottom buttons share this.
     {
         let overrides_cell = overrides_cell.clone();
         let unsets_cell = unsets_cell.clone();
         let pop_fn = populate_list.clone();
         let open_detail = open_detail.clone();
-        let root_anchor = add_btn.clone();
-
-        add_btn.connect_clicked(move |_| {
+        let present_add: Rc<dyn Fn(&gtk::Button)> = Rc::new(move |anchor| {
             let popover = gtk::Popover::new();
-            popover.set_parent(&root_anchor);
+            popover.set_parent(anchor);
 
             let pop_box = gtk::Box::new(gtk::Orientation::Vertical, 8);
             pop_box.set_margin_start(12);
@@ -1300,6 +1294,18 @@ pub fn build_env_vars_view(
 
             popover.popup();
         });
+
+        let mut add_buttons = Vec::new();
+        if let Some(btn) = search_chrome.header_add.clone() {
+            add_buttons.push(btn);
+        }
+        if let Some(btn) = search_chrome.bottom_add.clone() {
+            add_buttons.push(btn);
+        }
+        for btn in add_buttons {
+            let present_add = present_add.clone();
+            btn.connect_clicked(move |btn| present_add(btn));
+        }
     }
 
     // Connect Reset Managed Defaults
@@ -1358,5 +1364,5 @@ pub fn build_env_vars_view(
         });
     }
 
-    main_stack.upcast()
+    (main_stack.upcast(), leave_detail, search_chrome)
 }

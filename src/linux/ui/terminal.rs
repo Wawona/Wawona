@@ -364,6 +364,10 @@ pub fn build_terminal_view(
         .child(&view)
         .hexpand(true)
         .vexpand(true)
+        .min_content_width(0)
+        .min_content_height(0)
+        .propagate_natural_width(false)
+        .propagate_natural_height(false)
         .hscrollbar_policy(gtk::PolicyType::Automatic)
         .vscrollbar_policy(gtk::PolicyType::Automatic)
         .build();

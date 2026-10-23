@@ -27,7 +27,7 @@ mod app {
     use wawona::linux::ui::{
         a11y, build_home_shell, build_settings_view, build_tab_overview_view,
         build_work_status_view, clamp_content, ensure_settings_css, install_adaptive_split_view,
-        is_touchscreen_active, make_resizable_sidebar, maybe_show_welcome, rebuild_home, show_editor,
+        is_touchscreen_active, make_resizable_sidebar, scrollable_sidebar, maybe_show_welcome, rebuild_home, show_editor,
         AppState, LayoutBinding, MachineSessions, RebuildHome, SharedAppState,
     };
     use wawona::linux::ui_model::LayoutMode;
@@ -487,7 +487,7 @@ mod app {
 
         let window = adw::ApplicationWindow::builder()
             .application(app)
-            .title("Machine Configuration")
+            .title("Wawona")
             .default_width(900)
             .default_height(640)
             .width_request(240)
@@ -533,8 +533,9 @@ mod app {
             }
         }
 
-        // Toolbar mirrors macOS detailToolbarContent: leading sidebar toggle,
-        // title Machines, search in the toolbar, and trailing primary actions [Add][Settings].
+        // Toolbar mirrors macOS: inline navigation title "Machine Configuration",
+        // search in the bar, trailing Add and Settings. The window name stays
+        // Wawona. No second app-name mark in the header.
         let header = adw::HeaderBar::new();
 
         let toggle_icon_name = ["sidebar-show-symbolic", "view-sidebar-symbolic", "pan-start-symbolic"]
@@ -556,19 +557,13 @@ mod app {
         });
         header.pack_start(&toggle_sidebar_btn);
 
-        let brand_title = gtk::Label::new(Some("Wawona"));
-        brand_title.add_css_class("heading");
-        brand_title.add_css_class("title-3");
-        brand_title.set_margin_start(4);
-        brand_title.set_margin_end(8);
-        brand_title.set_valign(gtk::Align::Center);
-        a11y::set_wwn_a11y(&brand_title, "wwn.header.brand", Some("Wawona"));
-        header.pack_start(&brand_title);
-
-        let title_lbl = gtk::Label::new(Some("Machine Configuration"));
-        title_lbl.add_css_class("title");
-        title_lbl.set_ellipsize(gtk::pango::EllipsizeMode::End);
-        title_lbl.set_max_width_chars(16);
+        let view_title = adw::WindowTitle::new("Machine Configuration", "");
+        a11y::set_wwn_a11y(
+            &view_title,
+            "wwn.header.title",
+            Some("Machine Configuration"),
+        );
+        header.set_title_widget(Some(&view_title));
 
         // pack_end order: first packed sits furthest right, so Settings goes
         // in before Add to render as [Search][Add][Settings].
@@ -582,6 +577,7 @@ mod app {
         header.pack_end(&settings_btn);
 
         let new_btn = gtk::Button::from_icon_name("list-add-symbolic");
+        new_btn.add_css_class("suggested-action");
         new_btn.set_tooltip_text(Some("Add Machine Profile"));
         a11y::set_wwn_a11y(&new_btn, a11y::id::MACHINES_ADD, Some("Add Machine"));
         header.pack_end(&new_btn);
@@ -604,7 +600,10 @@ mod app {
             }
         });
         let home = build_home_shell(on_rebuild.clone());
-        header.set_title_widget(Some(&home.search));
+        home.search.set_hexpand(false);
+        home.search.set_width_chars(12);
+        home.search.set_max_width_chars(20);
+        header.pack_end(&home.search);
 
         let search_revealer = gtk::Revealer::new();
         search_revealer.set_transition_type(gtk::RevealerTransitionType::SlideDown);
@@ -725,7 +724,6 @@ mod app {
         ensure_settings_css();
 
         let sidebar_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        sidebar_box.set_width_request(180);
         sidebar_box.add_css_class("sidebar");
 
         let sidebar_list = gtk::ListBox::new();
@@ -889,11 +887,14 @@ mod app {
         footer_card.append(&footer_inner);
         sidebar_box.append(&footer_card);
 
-        let resizable_sidebar = make_resizable_sidebar(&split_view, &sidebar_box, 0.25);
+        let sidebar_scroll = scrollable_sidebar(&sidebar_box);
+        let resizable_sidebar = make_resizable_sidebar(&split_view, &sidebar_scroll, 0.25);
         split_view.set_sidebar(Some(&resizable_sidebar));
 
         let content_stack = gtk::Stack::new();
         content_stack.set_transition_type(gtk::StackTransitionType::None);
+        content_stack.set_hhomogeneous(false);
+        content_stack.set_vhomogeneous(false);
         content_stack.set_hexpand(true);
         content_stack.set_vexpand(true);
 
@@ -908,10 +909,7 @@ mod app {
 
         {
             let is_touch = is_touchscreen_active();
-            let header_c = header.clone();
             let top_search_c = home.search.clone();
-            let title_lbl_c = title_lbl.clone();
-            let brand_c = brand_title.clone();
             let toggle_btn_c = search_toggle_btn.clone();
             let revealer_c = search_revealer.clone();
             let new_btn_c = new_btn.clone();
@@ -929,9 +927,8 @@ mod app {
                 }
                 last_state.set(Some((is_touch, is_compact)));
 
-                brand_c.set_visible(w >= 520);
                 if is_touch {
-                    header_c.set_title_widget(Some(&title_lbl_c));
+                    top_search_c.set_visible(false);
                     toggle_btn_c.set_visible(false);
                     revealer_c.set_reveal_child(false);
                     new_btn_c.set_visible(false);
@@ -940,10 +937,10 @@ mod app {
                     bottom_bar_c.set_visible(false);
                     new_btn_c.set_visible(true);
                     if is_compact {
-                        header_c.set_title_widget(Some(&title_lbl_c));
+                        top_search_c.set_visible(false);
                         toggle_btn_c.set_visible(true);
                     } else {
-                        header_c.set_title_widget(Some(&top_search_c));
+                        top_search_c.set_visible(true);
                         toggle_btn_c.set_visible(false);
                         revealer_c.set_reveal_child(false);
                         toggle_btn_c.set_active(false);
@@ -984,6 +981,8 @@ mod app {
         let root_stack = gtk::Stack::new();
         root_stack.set_transition_type(gtk::StackTransitionType::OverUpDown);
         root_stack.set_transition_duration(280);
+        root_stack.set_hhomogeneous(false);
+        root_stack.set_vhomogeneous(false);
         root_stack.set_hexpand(true);
         root_stack.set_vexpand(true);
 

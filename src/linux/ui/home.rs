@@ -54,9 +54,8 @@ pub fn build_home_shell(on_rebuild: Rc<dyn Fn()>) -> HomeShell {
         .build();
     search.set_size_request(80, -1);
 
-    // Summary strip: "Machine Configuration" + Profiles / Connected / Ready pills
-    // (mirrors macOS `summaryStrip`).
-    let summary = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    // Summary strip: one horizontal row. "Machines" sits beside the pills.
+    let summary = gtk::Box::new(gtk::Orientation::Vertical, 0);
     summary.set_margin_start(8);
     summary.set_margin_end(8);
     summary.set_margin_top(8);
@@ -81,6 +80,9 @@ pub fn build_home_shell(on_rebuild: Rc<dyn Fn()>) -> HomeShell {
         .hscrollbar_policy(gtk::PolicyType::Never)
         .vexpand(true)
         .hexpand(true)
+        .min_content_width(0)
+        .min_content_height(0)
+        .propagate_natural_width(false)
         .child(&flow)
         .build();
 
@@ -225,32 +227,27 @@ pub fn rebuild_home(ctx: RebuildHome<'_>) {
     let (pinned, unpinned): (Vec<_>, Vec<_>) = visible.into_iter().partition(|p| p.favorite);
 
     if !pinned.is_empty() {
-        let pinned_lbl = gtk::Label::new(Some("Pinned"));
-        pinned_lbl.add_css_class("heading");
-        pinned_lbl.add_css_class("dim-label");
-        pinned_lbl.set_xalign(0.0);
-        pinned_lbl.set_margin_top(8);
-        pinned_lbl.set_margin_bottom(2);
-        ctx.shell.flow.append(&pinned_lbl);
-
+        ctx.shell.flow.append(&section_label("Pinned", 8));
         let flow = populate_flow(&pinned, &query, &active_id, show_thumbnails, &ctx);
         ctx.shell.flow.append(&flow);
     }
 
     if !unpinned.is_empty() {
-        if !pinned.is_empty() {
-            let machines_lbl = gtk::Label::new(Some("Machines"));
-            machines_lbl.add_css_class("heading");
-            machines_lbl.add_css_class("dim-label");
-            machines_lbl.set_xalign(0.0);
-            machines_lbl.set_margin_top(12);
-            machines_lbl.set_margin_bottom(2);
-            ctx.shell.flow.append(&machines_lbl);
-        }
-
+        let top = if pinned.is_empty() { 8 } else { 12 };
+        ctx.shell.flow.append(&section_label("Machines", top));
         let flow = populate_flow(&unpinned, &query, &active_id, show_thumbnails, &ctx);
         ctx.shell.flow.append(&flow);
     }
+}
+
+fn section_label(text: &str, margin_top: i32) -> gtk::Label {
+    let label = gtk::Label::new(Some(text));
+    label.add_css_class("heading");
+    label.add_css_class("dim-label");
+    label.set_xalign(0.0);
+    label.set_margin_top(margin_top);
+    label.set_margin_bottom(2);
+    label
 }
 
 /// Build an adaptive FlowBox of machine cards (replaces gtk::Grid).
@@ -310,7 +307,8 @@ fn populate_flow(
     flow
 }
 
-/// "Machine Configuration" heading + Profiles / Connected / Ready pills.
+/// One side-scrolling row: "Machines" label, then Profiles / Connected / Ready,
+/// then the active tag pill. Same order as the macOS summary strip.
 fn rebuild_summary_strip(
     summary: &gtk::Box,
     profiles: &[MachineProfile],
@@ -322,54 +320,21 @@ fn rebuild_summary_strip(
         summary.remove(&child);
     }
 
-    let heading_row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    row.set_halign(gtk::Align::Start);
+    row.set_valign(gtk::Align::Center);
+
+    let heading_group = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    heading_group.set_valign(gtk::Align::Center);
     let heading_icon = gtk::Image::from_icon_name("network-server-symbolic");
-    let heading = gtk::Label::new(Some("Machine Configuration"));
+    heading_icon.set_valign(gtk::Align::Center);
+    let heading = gtk::Label::new(Some("Machines"));
     heading.add_css_class("heading");
-    heading.set_ellipsize(gtk::pango::EllipsizeMode::End);
-    heading.set_hexpand(true);
+    heading.set_valign(gtk::Align::Center);
     heading.set_xalign(0.0);
-    heading_row.append(&heading_icon);
-    heading_row.append(&heading);
-    summary.append(&heading_row);
-
-    let pills = gtk::FlowBox::new();
-    pills.set_selection_mode(gtk::SelectionMode::None);
-    pills.set_column_spacing(6);
-    pills.set_row_spacing(6);
-    pills.set_min_children_per_line(1);
-    pills.set_max_children_per_line(8);
-    pills.set_homogeneous(false);
-    pills.set_hexpand(true);
-    pills.set_halign(gtk::Align::Start);
-    summary.append(&pills);
-
-    if let Some(tag) = active_tag {
-        let pill = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-        pill.add_css_class("card");
-        pill.set_margin_top(2);
-        pill.set_margin_bottom(2);
-        pill.set_margin_start(4);
-
-        let dot = color_dot(&tag.color_hex, 10);
-        pill.append(&dot);
-
-        let t = gtk::Label::new(Some(&format!("Tag: {}", tag.name)));
-        t.add_css_class("caption-heading");
-        pill.append(&t);
-
-        if let Some(on_clear) = on_clear_tag {
-            let clear_btn = gtk::Button::from_icon_name("window-close-symbolic");
-            clear_btn.add_css_class("flat");
-            clear_btn.add_css_class("circular");
-            clear_btn.set_tooltip_text(Some("Clear tag filter"));
-            clear_btn.connect_clicked(move |_| {
-                on_clear();
-            });
-            pill.append(&clear_btn);
-        }
-        pills.append(&pill);
-    }
+    heading_group.append(&heading_icon);
+    heading_group.append(&heading);
+    row.append(&heading_group);
 
     let connected = profiles
         .iter()
@@ -382,10 +347,7 @@ fn rebuild_summary_strip(
         ("Connected", connected),
         ("Ready", ready),
     ] {
-        let pill = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-        pill.add_css_class("card");
-        pill.set_margin_top(2);
-        pill.set_margin_bottom(2);
+        let pill = summary_pill();
         let t = gtk::Label::new(Some(title));
         t.add_css_class("caption");
         t.set_margin_start(10);
@@ -394,10 +356,65 @@ fn rebuild_summary_strip(
         let v = gtk::Label::new(Some(&value.to_string()));
         v.add_css_class("caption-heading");
         v.set_margin_end(10);
+        v.set_margin_top(4);
+        v.set_margin_bottom(4);
         pill.append(&t);
         pill.append(&v);
-        pills.append(&pill);
+        row.append(&pill);
     }
+
+    if let Some(tag) = active_tag {
+        let pill = summary_pill();
+        let dot = color_dot(&tag.color_hex, 8);
+        dot.set_margin_start(10);
+        pill.append(&dot);
+
+        let t = gtk::Label::new(Some(&tag.name));
+        t.add_css_class("caption");
+        t.set_margin_top(4);
+        t.set_margin_bottom(4);
+        pill.append(&t);
+
+        if let Some(on_clear) = on_clear_tag {
+            let clear_btn = gtk::Button::from_icon_name("window-close-symbolic");
+            clear_btn.add_css_class("flat");
+            clear_btn.add_css_class("circular");
+            clear_btn.add_css_class("machine-summary-pill-clear");
+            clear_btn.set_tooltip_text(Some("Clear tag filter"));
+            clear_btn.set_margin_end(10);
+            clear_btn.connect_clicked(move |_| {
+                on_clear();
+            });
+            pill.append(&clear_btn);
+        } else {
+            t.set_margin_end(10);
+        }
+        row.append(&pill);
+    }
+
+    let scroll = gtk::ScrolledWindow::new();
+    scroll.add_css_class("machine-summary-scroll");
+    scroll.set_policy(gtk::PolicyType::External, gtk::PolicyType::Never);
+    scroll.set_kinetic_scrolling(true);
+    scroll.set_propagate_natural_height(true);
+    scroll.set_propagate_natural_width(false);
+    scroll.set_min_content_width(0);
+    scroll.set_has_frame(false);
+    scroll.set_hexpand(true);
+    scroll.set_child(Some(&row));
+    summary.append(&scroll);
+}
+
+fn summary_pill() -> gtk::Box {
+    let pill = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    pill.add_css_class("card");
+    pill.add_css_class("machine-summary-pill");
+    pill.set_margin_top(2);
+    pill.set_margin_bottom(2);
+    pill.set_hexpand(false);
+    pill.set_halign(gtk::Align::Start);
+    pill.set_valign(gtk::Align::Center);
+    pill
 }
 
 struct MachineCard {
@@ -464,16 +481,19 @@ fn build_machine_card(
     // Header banner: thumbnail (or gradient placeholder) with name + subtitle and
     // the machine-type icon in a frosted glass tile.
     let banner = gtk::Overlay::new();
+    banner.add_css_class("machine-banner-clip");
     banner.set_overflow(gtk::Overflow::Hidden);
     let thumb_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
     thumb_box.add_css_class("machine-banner");
     thumb_box.set_height_request(90);
     thumb_box.set_overflow(gtk::Overflow::Hidden);
     let pic = gtk::Picture::new();
+    pic.add_css_class("machine-banner-image");
     pic.set_content_fit(gtk::ContentFit::Cover);
     pic.set_can_shrink(true);
     pic.set_hexpand(true);
     pic.set_vexpand(true);
+    pic.set_overflow(gtk::Overflow::Hidden);
     pic.set_visible(false);
     thumb_box.append(&pic);
     if show_thumbnails {
@@ -491,6 +511,7 @@ fn build_machine_card(
     scrim.add_css_class("machine-banner-scrim");
     scrim.set_hexpand(true);
     scrim.set_vexpand(true);
+    scrim.set_overflow(gtk::Overflow::Hidden);
     scrim.set_can_target(false);
     banner.add_overlay(&scrim);
 
@@ -582,6 +603,9 @@ fn build_machine_card(
     status_icon.set_pixel_size(14);
     let status = gtk::Label::new(Some(if running { "Connected" } else { "Disconnected" }));
     status.add_css_class("caption-heading");
+    status.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    status.set_hexpand(true);
+    status.set_halign(gtk::Align::Start);
     if running {
         status.add_css_class("success");
         status_icon.add_css_class("success");
@@ -592,9 +616,16 @@ fn build_machine_card(
     badge_row.append(&status_icon);
     badge_row.append(&status);
 
-    let chips = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-    chips.set_halign(gtk::Align::End);
+    let chips = gtk::FlowBox::new();
+    chips.set_selection_mode(gtk::SelectionMode::None);
+    chips.set_column_spacing(6);
+    chips.set_row_spacing(4);
+    chips.set_min_children_per_line(1);
+    chips.set_max_children_per_line(4);
+    chips.set_homogeneous(false);
     chips.set_hexpand(true);
+    chips.set_halign(gtk::Align::End);
+    chips.add_css_class("machine-badge-chips");
     chips.append(&chip(
         &machine_scope_label(profile.machine_type).to_uppercase(),
     ));
@@ -616,7 +647,9 @@ fn build_machine_card(
     summary.add_css_class("caption");
     summary.set_xalign(0.0);
 
-    // Action chips match SwiftUI MachineActionBar: small, content-sized, wrapping.
+    // Content-sized chips, packed from the start. A FlowBox that hexpands
+    // gives every slot, including hidden Focus/Stop, an equal share of the
+    // card, which opens a wide gap between Start and Edit.
     let actions = gtk::FlowBox::new();
     actions.set_selection_mode(gtk::SelectionMode::None);
     actions.set_column_spacing(6);
@@ -624,8 +657,9 @@ fn build_machine_card(
     actions.set_min_children_per_line(1);
     actions.set_max_children_per_line(8);
     actions.set_homogeneous(false);
-    actions.set_hexpand(true);
+    actions.set_hexpand(false);
     actions.set_halign(gtk::Align::Start);
+    actions.set_valign(gtk::Align::Start);
     actions.add_css_class("machine-actions-row");
 
     let start_btn = button_with_icon_label("media-playback-start-symbolic", "Start");
@@ -672,11 +706,16 @@ fn build_machine_card(
     stop_btn.set_visible(running);
     delete_btn.set_sensitive(!running);
 
-    actions.append(&start_btn);
-    actions.append(&focus_btn);
-    actions.append(&stop_btn);
-    actions.append(&edit_btn);
-    actions.append(&delete_btn);
+    for btn in [&start_btn, &focus_btn, &stop_btn, &edit_btn, &delete_btn] {
+        btn.set_hexpand(false);
+        btn.set_halign(gtk::Align::Center);
+        actions.append(btn);
+        if let Some(slot) = btn.parent() {
+            slot.set_hexpand(false);
+            slot.set_halign(gtk::Align::Start);
+            slot.set_visible(btn.is_visible());
+        }
+    }
 
     vbox.append(&banner);
     vbox.append(&badge_row);
@@ -822,10 +861,15 @@ fn install_machine_card_styles() {
               box-shadow: 0 4px 12px rgba(0, 0, 0, 0.22);
             }
 
-            .machine-banner {
+            .machine-banner-clip,
+            .machine-banner,
+            .machine-banner-image,
+            .machine-banner-scrim {
               border-radius: 14px;
+            }
+
+            .machine-banner {
               min-height: 90px;
-              overflow: hidden;
               background-image: linear-gradient(
                 135deg,
                 rgba(53, 132, 228, 0.35),
@@ -835,6 +879,7 @@ fn install_machine_card_styles() {
               border: 1px solid rgba(255, 255, 255, 0.10);
             }
 
+            .machine-banner-image,
             .machine-banner picture {
               min-height: 90px;
             }
@@ -874,6 +919,25 @@ fn install_machine_card_styles() {
               color: rgba(255, 255, 255, 0.75);
               font-size: 0.75rem;
               font-weight: 600;
+            }
+
+            .machine-summary-pill {
+              border-radius: 999px;
+              min-height: 0;
+              min-width: 0;
+              padding: 0;
+            }
+
+            button.machine-summary-pill-clear {
+              min-height: 16px;
+              min-width: 16px;
+              padding: 0;
+              margin-top: 4px;
+              margin-bottom: 4px;
+            }
+
+            button.machine-summary-pill-clear image {
+              -gtk-icon-size: 12px;
             }
 
             .machine-chip {
@@ -946,6 +1010,16 @@ fn install_machine_card_styles() {
               margin-top: 4px;
             }
 
+            flowbox.machine-badge-chips > flowboxchild {
+              padding: 0;
+              margin: 0;
+              background: none;
+              border: none;
+              box-shadow: none;
+              min-height: 0;
+              min-width: 0;
+            }
+
             flowbox.machine-actions-row > flowboxchild {
               padding: 0;
               margin: 0;
@@ -954,6 +1028,10 @@ fn install_machine_card_styles() {
               box-shadow: none;
               min-height: 0;
               min-width: 0;
+            }
+
+            flowbox.machine-actions-row > flowboxchild > button.machine-action-button {
+              margin: 0;
             }
 
             button.machine-action-button {

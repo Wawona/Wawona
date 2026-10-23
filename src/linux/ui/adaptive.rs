@@ -232,6 +232,9 @@ pub fn make_resizable_sidebar(
     });
     handle.add_controller(click);
 
+    container.set_hexpand(true);
+    container.set_vexpand(true);
+
     if split_view.sidebar_position() == gtk::PackType::End {
         container.append(&handle);
         container.append(sidebar_content);
@@ -243,6 +246,24 @@ pub fn make_resizable_sidebar(
     container
 }
 
+/// Vertical scroller for an adaptive sidebar. Horizontal resize stays on the
+/// handle. A short window scrolls the sections instead of clipping them.
+pub fn scrollable_sidebar(child: &impl IsA<gtk::Widget>) -> gtk::ScrolledWindow {
+    let scroll = gtk::ScrolledWindow::new();
+    scroll.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
+    scroll.set_propagate_natural_width(false);
+    scroll.set_propagate_natural_height(false);
+    scroll.set_kinetic_scrolling(true);
+    scroll.set_min_content_width(0);
+    scroll.set_min_content_height(0);
+    scroll.set_hexpand(true);
+    scroll.set_vexpand(true);
+    child.set_hexpand(true);
+    child.set_vexpand(true);
+    scroll.set_child(Some(child));
+    scroll
+}
+
 /// Clamp the main content to a comfortable desktop max width.
 pub fn clamp_content(child: &impl IsA<gtk::Widget>) -> adw::Clamp {
     adw::Clamp::builder()
@@ -250,6 +271,212 @@ pub fn clamp_content(child: &impl IsA<gtk::Widget>) -> adw::Clamp {
         .maximum_size(1320)
         .tightening_threshold(600)
         .build()
+}
+
+/// Search field and optional add button, placed like Machine Configuration.
+/// Wide: search entry and add in the header. Narrow: search icon reveals a
+/// bar under the header, add stays in the header. Touch: both sit in a
+/// bottom bar.
+pub struct AdaptiveSearchAdd {
+    pub header_search: gtk::SearchEntry,
+    pub search_toggle: gtk::ToggleButton,
+    pub header_add: Option<gtk::Button>,
+    pub revealer: gtk::Revealer,
+    pub bottom_bar: gtk::Box,
+    pub bottom_add: Option<gtk::Button>,
+    compact_search: gtk::SearchEntry,
+    bottom_search: gtk::SearchEntry,
+}
+
+pub struct SearchAddOptions<'a> {
+    pub placeholder: &'a str,
+    pub search_a11y: &'a str,
+    pub search_label: &'a str,
+    pub add_tooltip: Option<&'a str>,
+    pub add_a11y: Option<&'a str>,
+    pub add_label: Option<&'a str>,
+}
+
+impl AdaptiveSearchAdd {
+    pub fn new(opts: SearchAddOptions<'_>) -> Self {
+        ensure_adaptive_css();
+
+        let header_search = gtk::SearchEntry::new();
+        header_search.set_placeholder_text(Some(opts.placeholder));
+        header_search.set_hexpand(false);
+        header_search.set_width_chars(12);
+        header_search.set_max_width_chars(20);
+        crate::linux::ui::a11y::set_wwn_a11y(
+            &header_search,
+            opts.search_a11y,
+            Some(opts.search_label),
+        );
+
+        let search_toggle = gtk::ToggleButton::new();
+        search_toggle.set_icon_name("system-search-symbolic");
+        search_toggle.set_tooltip_text(Some(opts.search_label));
+        crate::linux::ui::a11y::set_wwn_a11y(
+            &search_toggle,
+            &format!("{}.toggle", opts.search_a11y),
+            Some(opts.search_label),
+        );
+
+        let revealer = gtk::Revealer::new();
+        revealer.set_transition_type(gtk::RevealerTransitionType::SlideDown);
+        let compact_box = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        compact_box.add_css_class("compact-search-bar");
+        let compact_search = gtk::SearchEntry::new();
+        compact_search.set_placeholder_text(Some(opts.placeholder));
+        compact_search.set_hexpand(true);
+        crate::linux::ui::a11y::set_wwn_a11y(
+            &compact_search,
+            opts.search_a11y,
+            Some(opts.search_label),
+        );
+        let compact_clamp = clamp_content(&compact_search);
+        compact_clamp.set_hexpand(true);
+        compact_box.append(&compact_clamp);
+        revealer.set_child(Some(&compact_box));
+
+        let rev_c = revealer.clone();
+        let compact_focus = compact_search.clone();
+        search_toggle.connect_toggled(move |btn| {
+            let active = btn.is_active();
+            rev_c.set_reveal_child(active);
+            if active {
+                compact_focus.grab_focus();
+            }
+        });
+        let toggle_escape = search_toggle.clone();
+        compact_search.connect_stop_search(move |_| {
+            toggle_escape.set_active(false);
+        });
+
+        let bottom_bar = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        bottom_bar.add_css_class("bottom-search-toolbar");
+        let bottom_search = gtk::SearchEntry::new();
+        bottom_search.set_placeholder_text(Some(opts.placeholder));
+        bottom_search.set_hexpand(true);
+        bottom_search.add_css_class("search-entry");
+        crate::linux::ui::a11y::set_wwn_a11y(
+            &bottom_search,
+            opts.search_a11y,
+            Some(opts.search_label),
+        );
+        bottom_bar.append(&bottom_search);
+
+        let (header_add, bottom_add) = if let Some(tooltip) = opts.add_tooltip {
+            let header_add = gtk::Button::from_icon_name("list-add-symbolic");
+            header_add.set_tooltip_text(Some(tooltip));
+            if let Some(id) = opts.add_a11y {
+                crate::linux::ui::a11y::set_wwn_a11y(&header_add, id, opts.add_label);
+            }
+            let bottom_add = gtk::Button::from_icon_name("list-add-symbolic");
+            bottom_add.set_tooltip_text(Some(tooltip));
+            bottom_add.add_css_class("suggested-action");
+            bottom_add.add_css_class("circular");
+            bottom_add.add_css_class("bottom-add-btn");
+            if let Some(id) = opts.add_a11y {
+                crate::linux::ui::a11y::set_wwn_a11y(&bottom_add, id, opts.add_label);
+            }
+            bottom_bar.append(&bottom_add);
+            (Some(header_add), Some(bottom_add))
+        } else {
+            (None, None)
+        };
+
+        let chrome = Self {
+            header_search,
+            search_toggle,
+            header_add,
+            revealer,
+            bottom_bar,
+            bottom_add,
+            compact_search,
+            bottom_search,
+        };
+        chrome.apply(false, false, 0);
+        chrome
+    }
+
+    /// Pack add, then the search toggle, then the search field. Call this
+    /// after the header's trailing buttons so those stay furthest right.
+    pub fn pack_header(&self, header: &adw::HeaderBar) {
+        if let Some(add) = &self.header_add {
+            header.pack_end(add);
+        }
+        header.pack_end(&self.search_toggle);
+        header.pack_end(&self.header_search);
+    }
+
+    pub fn bind_query(&self, on_change: Rc<dyn Fn(String)>) {
+        let entries = [
+            self.header_search.clone(),
+            self.compact_search.clone(),
+            self.bottom_search.clone(),
+        ];
+        let syncing = Rc::new(Cell::new(false));
+        for entry in entries.clone() {
+            let others = entries.clone();
+            let on_change = on_change.clone();
+            let syncing = syncing.clone();
+            entry.connect_search_changed(move |entry| {
+                if syncing.get() {
+                    return;
+                }
+                let text = entry.text().to_string();
+                syncing.set(true);
+                for other in &others {
+                    if other != entry && other.text().as_str() != text {
+                        other.set_text(&text);
+                    }
+                }
+                syncing.set(false);
+                on_change(text);
+            });
+        }
+    }
+
+    /// `active` is false when this screen is not showing the list.
+    /// Width below 760px is the narrow rule from Machine Configuration.
+    pub fn apply(&self, active: bool, is_touch: bool, width: i32) {
+        let is_compact = width > 0 && width < crate::linux::ui_model::SPLIT_COLLAPSE_BELOW_PX;
+        if !active {
+            self.header_search.set_visible(false);
+            self.search_toggle.set_visible(false);
+            self.search_toggle.set_active(false);
+            self.revealer.set_reveal_child(false);
+            self.bottom_bar.set_visible(false);
+            if let Some(add) = &self.header_add {
+                add.set_visible(false);
+            }
+            return;
+        }
+        if is_touch {
+            self.header_search.set_visible(false);
+            self.search_toggle.set_visible(false);
+            self.search_toggle.set_active(false);
+            self.revealer.set_reveal_child(false);
+            if let Some(add) = &self.header_add {
+                add.set_visible(false);
+            }
+            self.bottom_bar.set_visible(true);
+        } else {
+            self.bottom_bar.set_visible(false);
+            if let Some(add) = &self.header_add {
+                add.set_visible(true);
+            }
+            if is_compact {
+                self.header_search.set_visible(false);
+                self.search_toggle.set_visible(true);
+            } else {
+                self.header_search.set_visible(true);
+                self.search_toggle.set_visible(false);
+                self.revealer.set_reveal_child(false);
+                self.search_toggle.set_active(false);
+            }
+        }
+    }
 }
 
 /// Returns true if a touchscreen is present, or if running under a Linux Mobile

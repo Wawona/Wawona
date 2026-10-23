@@ -190,15 +190,19 @@ pub fn build_tab_overview_view(
     }
     header.pack_end(&done_btn);
 
-    // Search entry
-    let search = gtk::SearchEntry::new();
-    search.set_placeholder_text(Some("Search Tabs"));
-    search.set_hexpand(true);
-    search.set_margin_start(16);
-    search.set_margin_end(16);
-    search.set_margin_top(6);
-    search.set_margin_bottom(2);
-    a11y::set_wwn_a11y(&search, "wwn.tabOverview.search", Some("Search Tabs"));
+    // Same search placement as Machine Configuration. Tab Overview has no
+    // add action, so only the search field moves.
+    let search_chrome = super::adaptive::AdaptiveSearchAdd::new(super::adaptive::SearchAddOptions {
+        placeholder: "Search Tabs",
+        search_a11y: "wwn.tabOverview.search",
+        search_label: "Search Tabs",
+        add_tooltip: None,
+        add_a11y: None,
+        add_label: None,
+    });
+    search_chrome.pack_header(&header);
+    let search = search_chrome.header_search.clone();
+    search_chrome.bind_query(std::rc::Rc::new(|_| {}));
 
     // Count row
     let count_row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
@@ -228,6 +232,9 @@ pub fn build_tab_overview_view(
     let scroller = gtk::ScrolledWindow::builder()
         .vexpand(true)
         .hexpand(true)
+        .min_content_width(0)
+        .min_content_height(0)
+        .propagate_natural_width(false)
         .hscrollbar_policy(gtk::PolicyType::Never)
         .child(&grid_clamp)
         .build();
@@ -245,15 +252,12 @@ pub fn build_tab_overview_view(
     let content_stack = gtk::Stack::new();
     content_stack.set_transition_type(gtk::StackTransitionType::Crossfade);
     content_stack.set_transition_duration(180);
+    content_stack.set_hhomogeneous(false);
+    content_stack.set_vhomogeneous(false);
     content_stack.add_named(&scroller, Some("grid"));
     content_stack.add_named(&empty, Some("empty"));
 
     // Body
-    let search_clamp = adw::Clamp::builder()
-        .maximum_size(1100)
-        .tightening_threshold(750)
-        .child(&search)
-        .build();
     let count_clamp = adw::Clamp::builder()
         .maximum_size(1100)
         .tightening_threshold(750)
@@ -261,7 +265,6 @@ pub fn build_tab_overview_view(
         .build();
 
     let body = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    body.append(&search_clamp);
     body.append(&count_clamp);
     body.append(&content_stack);
     body.set_margin_top(4);
@@ -282,7 +285,28 @@ pub fn build_tab_overview_view(
         root.add_controller(esc_ctrl);
     }
     root.append(&header);
+    root.append(&search_chrome.revealer);
     root.append(&body);
+    root.append(&search_chrome.bottom_bar);
+
+    {
+        let chrome = search_chrome;
+        let is_touch = super::adaptive::is_touchscreen_active();
+        let last_state = std::rc::Rc::new(std::cell::Cell::new(None::<(bool, bool)>));
+        root.add_tick_callback(move |widget, _| {
+            let w = widget.width();
+            if w <= 0 {
+                return gtk::glib::ControlFlow::Continue;
+            }
+            let is_compact = w < crate::linux::ui_model::SPLIT_COLLAPSE_BELOW_PX;
+            if last_state.get() == Some((is_touch, is_compact)) {
+                return gtk::glib::ControlFlow::Continue;
+            }
+            last_state.set(Some((is_touch, is_compact)));
+            chrome.apply(true, is_touch, w);
+            gtk::glib::ControlFlow::Continue
+        });
+    }
 
     // Rebuild slot
     let rebuild_slot: Rc<std::cell::RefCell<Option<Rc<dyn Fn()>>>> =
@@ -358,8 +382,12 @@ pub fn build_tab_overview_view(
             });
             content_stack.set_visible_child_name("grid");
 
-            let avail_w = grid_box.allocated_width().max(480);
-            let cols = cols_for_width(avail_w);
+            let avail_w = grid_box.allocated_width();
+            let cols = if avail_w > 0 {
+                cols_for_width(avail_w)
+            } else {
+                1
+            };
 
             let flow = gtk::FlowBox::new();
             flow.set_orientation(gtk::Orientation::Horizontal);

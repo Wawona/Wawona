@@ -153,7 +153,15 @@ pub fn build_settings_view_internal(
 
     let title_lbl = gtk::Label::new(Some("Settings"));
     title_lbl.add_css_class("title");
+    title_lbl.set_ellipsize(gtk::pango::EllipsizeMode::End);
     header.set_title_widget(Some(&title_lbl));
+
+    // Packed after the sidebar toggle, so it sits to the toggle's right.
+    // The toggle stays visible while an environment variable is open.
+    let env_back_btn = gtk::Button::from_icon_name("go-previous-symbolic");
+    env_back_btn.set_tooltip_text(Some("Back"));
+    env_back_btn.set_visible(false);
+    header.pack_start(&env_back_btn);
 
     let done_btn = gtk::Button::from_icon_name("object-select-symbolic");
     done_btn.add_css_class("suggested-action");
@@ -199,6 +207,8 @@ pub fn build_settings_view_internal(
     }
 
     let stack = gtk::Stack::new();
+    stack.set_hhomogeneous(false);
+    stack.set_vhomogeneous(false);
     stack.set_hexpand(true);
     stack.set_vexpand(true);
 
@@ -249,6 +259,16 @@ pub fn build_settings_view_internal(
         &[("prompt", "Prompt"), ("newTab", "New Tab"), ("newWindow", "New Window")],
         &settings.start_behavior,
         start_behavior_value.clone(),
+    );
+    // Same row as macOS/iOS Machine Settings → Display. Not an environment variable.
+    let wayland_display = add_entry_row(&display_group, "Wayland Display", &settings.wayland_display);
+    let tcp_port = add_spin_row(
+        &display_group,
+        "TCP Listener Port",
+        settings.tcp_port as f64,
+        1024.0,
+        65535.0,
+        1.0,
     );
     display_page.add(&display_group);
     crate::linux::ui::a11y::set_wwn_a11y(
@@ -333,26 +353,39 @@ pub fn build_settings_view_internal(
     env_box.set_hexpand(true);
     env_box.set_vexpand(true);
 
-    let conn_pref_page = adw::PreferencesPage::new();
-    let conn_group = adw::PreferencesGroup::new();
-    conn_group.set_title("Compositor Endpoint");
-    conn_group.set_description(Some(
-        "Wayland socket endpoint and TCP network listener port.",
-    ));
-    let wayland_display = add_entry_row(&conn_group, "Wayland Display", &settings.wayland_display);
-    let tcp_port = add_spin_row(&conn_group, "TCP Listener Port", settings.tcp_port as f64, 1024.0, 65535.0, 1.0);
-    conn_pref_page.add(&conn_group);
-    env_box.append(&conn_pref_page);
-
     let env_overrides_cell = Rc::new(RefCell::new(settings.environment_overrides.clone()));
     let env_unsets_cell = Rc::new(RefCell::new(settings.environment_unsets.clone()));
 
-    let env_manager_view = crate::linux::ui::env_vars::build_env_vars_view(
+    let env_detail_open = Rc::new(Cell::new(false));
+    let env_section_open = Rc::new(Cell::new(false));
+    let title_for_env = title_lbl.clone();
+    let back_for_env = env_back_btn.clone();
+    let env_detail_for_nav = env_detail_open.clone();
+    let on_env_detail: Rc<dyn Fn(Option<&str>)> = Rc::new(move |name| match name {
+        Some(name) => {
+            env_detail_for_nav.set(true);
+            back_for_env.set_visible(true);
+            title_for_env.set_text(name);
+        }
+        None => {
+            env_detail_for_nav.set(false);
+            back_for_env.set_visible(false);
+            title_for_env.set_text("Settings");
+        }
+    });
+
+    let (env_manager_view, leave_env_detail, env_chrome) = crate::linux::ui::env_vars::build_env_vars_view(
         env_overrides_cell.clone(),
         env_unsets_cell.clone(),
         settings,
+        on_env_detail,
     );
+    env_chrome.pack_header(&header);
     env_box.append(&env_manager_view);
+    {
+        let leave_env_detail = leave_env_detail.clone();
+        env_back_btn.connect_clicked(move |_| leave_env_detail());
+    }
 
     crate::linux::ui::a11y::set_wwn_a11y(
         &env_box,
@@ -692,13 +725,19 @@ pub fn build_settings_view_internal(
 
     drop(cfg);
 
-    let sidebar_scroll = gtk::ScrolledWindow::new();
-    sidebar_scroll.set_hscrollbar_policy(gtk::PolicyType::Never);
-    sidebar_scroll.set_child(Some(&sidebar));
+    let sidebar_scroll = crate::linux::ui::scrollable_sidebar(&sidebar);
 
     let resizable_settings_sidebar = crate::linux::ui::make_resizable_sidebar(&split_view, &sidebar_scroll, 0.28);
     split_view.set_sidebar(Some(&resizable_settings_sidebar));
-    split_view.set_content(Some(&stack));
+
+    // Header lives in the content pane, same as Machine Configuration, so the
+    // sidebar runs the full height of the window.
+    let content_column = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    content_column.set_hexpand(true);
+    content_column.set_vexpand(true);
+    content_column.append(&header);
+    content_column.append(&stack);
+    split_view.set_content(Some(&content_column));
 
     // Same collapse rule as the Machines `AdwOverlaySplitView`. The settings
     // page lives in the app stack, so a breakpoint hung only on a dialog never
@@ -720,11 +759,18 @@ pub fn build_settings_view_internal(
     {
         let stack = stack.clone();
         let split_view_c = split_view.clone();
+        let leave_env_detail = leave_env_detail.clone();
+        let env_section_for_nav = env_section_open.clone();
         sidebar.connect_row_selected(move |_, row| {
             if let Some(row) = row {
                 let idx = row.index() as usize;
                 if idx < SETTINGS_SECTIONS.len() {
-                    stack.set_visible_child_name(SETTINGS_SECTIONS[idx].name);
+                    let name = SETTINGS_SECTIONS[idx].name;
+                    if name != "Env Vars" {
+                        leave_env_detail();
+                    }
+                    env_section_for_nav.set(name == "Env Vars");
+                    stack.set_visible_child_name(name);
                     if split_view_c.is_collapsed() {
                         split_view_c.set_show_sidebar(false);
                     }
@@ -744,9 +790,33 @@ pub fn build_settings_view_internal(
         sidebar.select_row(Some(&initial_row));
         stack.set_visible_child_name(SETTINGS_SECTIONS[initial_section_idx as usize].name);
     }
+    env_section_open.set(SETTINGS_SECTIONS[initial_section_idx as usize].name == "Env Vars");
+
+    {
+        let chrome = env_chrome;
+        let env_section = env_section_open.clone();
+        let env_detail = env_detail_open;
+        let is_touch = crate::linux::ui::is_touchscreen_active();
+        let last_state = Rc::new(Cell::new(None::<(bool, bool, bool)>));
+        content_column.add_tick_callback(move |widget, _| {
+            let w = widget.width();
+            if w <= 0 {
+                return glib::ControlFlow::Continue;
+            }
+            let show = env_section.get() && !env_detail.get();
+            let is_compact = w > 0 && w < crate::linux::ui_model::SPLIT_COLLAPSE_BELOW_PX;
+            if last_state.get() == Some((show, is_touch, is_compact)) {
+                return glib::ControlFlow::Continue;
+            }
+            last_state.set(Some((show, is_touch, is_compact)));
+            chrome.apply(show, is_touch, w);
+            glib::ControlFlow::Continue
+        });
+    }
 
     let body = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    body.append(&header);
+    body.set_hexpand(true);
+    body.set_vexpand(true);
     body.append(&split_view);
 
     let st = state.clone();

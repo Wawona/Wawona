@@ -140,6 +140,10 @@ pub fn build_work_status_view(on_toggle_sidebar: Option<std::rc::Rc<dyn Fn()>>) 
     let scroller = gtk::ScrolledWindow::builder()
         .hscrollbar_policy(gtk::PolicyType::Never)
         .vexpand(true)
+        .hexpand(true)
+        .min_content_width(0)
+        .min_content_height(0)
+        .propagate_natural_width(false)
         .child(&page)
         .build();
 
