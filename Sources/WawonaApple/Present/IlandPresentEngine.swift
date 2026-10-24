@@ -1,15 +1,9 @@
 #if canImport(Metal) && !os(watchOS)
-import CoreGraphics
 import Foundation
 import IOSurface
 import Metal
 import QuartzCore
 import simd
-#if canImport(UIKit)
-import UIKit
-#elseif canImport(AppKit)
-import AppKit
-#endif
 
 final class IlandPresentEngine {
     let layer: CAMetalLayer
@@ -19,8 +13,6 @@ final class IlandPresentEngine {
     var textureCache: [IOSurface: MTLTexture] = [:]
     var presentLogModule = "ILAND"
     private var presentCount = 0
-    /// Downscaled PNG of the last guest frame for Machines / Tab Overview.
-    private(set) var lastThumbnailPNG: Data?
 
     init?(layer: CAMetalLayer, device: MTLDevice?) {
         guard let dev = device ?? layer.device ?? MTLCreateSystemDefaultDevice() else { return nil }
@@ -228,13 +220,6 @@ final class IlandPresentEngine {
             withBytes: pixels,
             bytesPerRow: stride
         )
-        cacheThumbnailPNG(
-            width: width,
-            height: height,
-            stride: stride,
-            pixels: UnsafePointer(pixels),
-            bottomUp: bottomUp
-        )
         draw(
             source: source,
             drawable: drawable,
@@ -243,60 +228,6 @@ final class IlandPresentEngine {
             onComplete: nil
         )
         return true
-    }
-
-    /// Nearest-neighbor downscale of BGRA8888 into a PNG for card banners.
-    private func cacheThumbnailPNG(
-        width: Int,
-        height: Int,
-        stride: Int,
-        pixels: UnsafePointer<UInt8>,
-        bottomUp: Bool
-    ) {
-        guard width > 0, height > 0, stride >= width * 4 else { return }
-        let maxEdge = 320
-        let scale = min(1.0, Double(maxEdge) / Double(max(width, height)))
-        let outW = max(1, Int((Double(width) * scale).rounded(.down)))
-        let outH = max(1, Int((Double(height) * scale).rounded(.down)))
-        var out = [UInt8](repeating: 0, count: outW * outH * 4)
-        for y in 0..<outH {
-            let srcY: Int
-            if bottomUp {
-                let mapped = Int((Double(y) + 0.5) * Double(height) / Double(outH))
-                srcY = min(height - 1, max(0, height - 1 - mapped))
-            } else {
-                srcY = min(height - 1, Int((Double(y) + 0.5) * Double(height) / Double(outH)))
-            }
-            for x in 0..<outW {
-                let srcX = min(width - 1, Int((Double(x) + 0.5) * Double(width) / Double(outW)))
-                let src = srcY * stride + srcX * 4
-                let dst = (y * outW + x) * 4
-                out[dst] = pixels[src]
-                out[dst + 1] = pixels[src + 1]
-                out[dst + 2] = pixels[src + 2]
-                out[dst + 3] = pixels[src + 3]
-            }
-        }
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
-        let bitmapInfo = CGBitmapInfo.byteOrder32Little.rawValue
-            | CGImageAlphaInfo.premultipliedFirst.rawValue
-        guard let ctx = CGContext(
-            data: &out,
-            width: outW,
-            height: outH,
-            bitsPerComponent: 8,
-            bytesPerRow: outW * 4,
-            space: colorSpace,
-            bitmapInfo: bitmapInfo
-        ), let image = ctx.makeImage() else {
-            return
-        }
-        #if canImport(UIKit)
-        lastThumbnailPNG = UIImage(cgImage: image).pngData()
-        #elseif canImport(AppKit)
-        let rep = NSBitmapImageRep(cgImage: image)
-        lastThumbnailPNG = rep.representation(using: .png, properties: [:])
-        #endif
     }
 
     private func draw(

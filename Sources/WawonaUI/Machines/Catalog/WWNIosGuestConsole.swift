@@ -497,14 +497,8 @@ final class WWNIosGuestConsole: ObservableObject {
       return
     }
     stopPump()
-    // Never pthread_join zsh on the main thread. Tab Overview Close posts
-    // this notification synchronously from disconnect; a stuck join freezes
-    // the app before Relay disconnectProfile can run (StaticCpu looks stuck
-    // ACTIVE; SpringBoard cannot relaunch).
-    let shellToStop = shell
-    shell = nil
-    let logToStop = logTerm
-    logTerm = nil
+    stopShell()
+    stopLogTerm()
     isPresented = false
     windowed = false
     self.machineId = ""
@@ -512,10 +506,6 @@ final class WWNIosGuestConsole: ObservableObject {
     fed = 0
     inputLine = ""
     statusMessage = ""
-    DispatchQueue.global(qos: .userInitiated).async {
-      shellToStop?.stop()
-      logToStop?.stop()
-    }
   }
 
   /// Scene activation failed. Show the terminal in the current window.
@@ -649,19 +639,8 @@ final class WWNIosGuestConsole: ObservableObject {
   }
 
   private func stopShell() {
-    guard let session = shell else { return }
+    shell?.stop()
     shell = nil
-    // Join off the main thread. A wedged zsh must not 0x8BADF00D the app.
-    if Thread.isMainThread {
-      let done = DispatchSemaphore(value: 0)
-      DispatchQueue.global(qos: .userInitiated).async {
-        session.stop()
-        done.signal()
-      }
-      _ = done.wait(timeout: .now() + 2.0)
-    } else {
-      session.stop()
-    }
   }
 
   private func startLogTerm() {
