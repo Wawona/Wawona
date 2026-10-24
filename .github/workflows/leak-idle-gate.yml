@@ -279,11 +279,18 @@ jobs:
           skipped=""
           missing=""
           for target in ios android macos; do
-            # artifact dirs: leak-artifacts/leak-idle-ios/verdict.json or nested
-            v="$(find leak-artifacts -path "*/${target}/verdict.json" -o -path "*/leak-idle-${target}/verdict.json" 2>/dev/null | head -1 || true)"
+            # Named files survive download-artifact flattening a single result.
+            v="$(find leak-artifacts -type f -name "verdict-${target}.json" 2>/dev/null | head -1 || true)"
+            # Backward compatibility with older artifacts that kept target directories.
             if [[ -z "$v" ]]; then
-              # also accept flat status.txt next to artifact root
-              st="$(find leak-artifacts -path "*leak-idle-${target}*" -name status.txt 2>/dev/null | head -1 || true)"
+              v="$(find leak-artifacts -type f \( -path "*/${target}/verdict.json" -o -path "*/leak-idle-${target}/verdict.json" \) 2>/dev/null | head -1 || true)"
+            fi
+            if [[ -z "$v" ]]; then
+              st="$(find leak-artifacts -type f -name "status-${target}.txt" 2>/dev/null | head -1 || true)"
+              # Also accept older status files in target-specific directories.
+              if [[ -z "$st" ]]; then
+                st="$(find leak-artifacts -type f \( -path "*/${target}/status.txt" -o -path "*/leak-idle-${target}/status.txt" \) 2>/dev/null | head -1 || true)"
+              fi
               if [[ -n "$st" ]]; then
                 status="$(cat "$st")"
               else

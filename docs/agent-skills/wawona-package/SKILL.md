@@ -150,6 +150,13 @@ Rust owns compositor policy, profiles, prefs, launch, and session.
 
 - **Apple.** Swift and SwiftUI in `Sources/WawonaUI`, `Sources/WawonaApple`, `Sources/WawonaWatch`, `Darwin/`. Load `wawona-apple-swift`, then `swiftui-pro` and `swiftui-expert-skill`. iOS 13 floor. No new Objective-C product class. C is the `WWNCore*` trampoline only.
 - **Android.** Kotlin and Compose. Load `wawona-android-compose`, then `compose-agent` and `modern-jetpack-compose`. In-app `SettingsDialog` only. JNI is a trampoline. Gradle JVM is JBR 21.
+
+Android product Gradle builds run offline from pinned Maven mirrors. When
+resolution requests Kotlin stdlib or reflect versions missing from
+`gradle-deps`, stage the exact version's POM, JAR, and Gradle module metadata
+with hash-pinned `fetchurl` entries in `dependencies/wawona/android.nix`, then
+copy them into its `file://` Maven overlay. Match the requested coordinate
+from the Gradle error. Keep the app build offline.
 - **Linux.** GTK / libadwaita for host UI. Rust core.
 - **C.** Upstream ports stay C. New Wawona product logic is not C.
 - **GTK programs.** Deb plus WASIX. Not an in-app store static port. Not Pulley if they need fork or threads.

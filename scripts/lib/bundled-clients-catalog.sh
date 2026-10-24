@@ -11,33 +11,14 @@
 
 bundled_clients_all() {
   printf '%s\n' \
-    weston-terminal \
-    weston-simple-shm \
-    weston \
-    niri \
-    foot \
-    weston-flower \
-    kmscube \
-    gbm-es2-demo \
-    opengl-cube \
-    vkcube \
-    weston-simple-egl \
-    weston-smoke \
-    weston-clickdot \
-    weston-eventdemo \
-    weston-resizor \
-    weston-cliptest \
-    weston-transformed \
-    weston-stacking \
-    weston-dnd \
-    weston-image \
-    weston-scaler \
-    weston-editor \
-    weston-constraints
+    wawona-shell \
+    wawona-wasm
 }
 
 bundled_client_prefs_key() {
   case "$1" in
+    wawona-shell) echo WawonaShellEnabled ;;
+    wawona-wasm) echo WawonaWasmEnabled ;;
     weston-terminal) echo WestonTerminalEnabled ;;
     weston-simple-shm) echo WestonSimpleSHMEnabled ;;
     weston) echo WestonEnabled ;;

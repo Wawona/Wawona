@@ -1,8 +1,10 @@
 # Watch: bundled clients gate
 
-One automated pass that exercises **every** Machines bundled native client
-(`kBundledClients` in `WWNMachinesViewModel.swift`) on every runnable platform
-target. Nested compositors (`weston`, `niri`) and all demo clients are included.
+One automated pass that exercises both Machines bundled clients
+(`kAllBundledClients` in `WWNMachinesViewModel.swift`) on every runnable
+platform target: `wawona-shell` and `wawona-wasm`. Nested compositors and demo
+clients are optional software, installed through `wpm` or apt, so this gate
+does not treat them as bundled clients.
 
 ## Run
 
@@ -11,8 +13,8 @@ target. Nested compositors (`weston`, `niri`) and all demo clients are included.
 ./scripts/bundled-clients-matrix-gate.sh
 
 # Subset
-./scripts/bundled-clients-matrix-gate.sh ios ipados
-WAWONA_MATRIX_CLIENTS="niri,weston,weston-terminal" ./scripts/bundled-clients-matrix-gate.sh ios
+./scripts/bundled-clients-matrix-gate.sh ios
+WAWONA_MATRIX_CLIENTS="wawona-shell" ./scripts/bundled-clients-matrix-gate.sh ios
 ```
 
 Artifacts: `.agent-device/test-artifacts/bundled-clients-matrix/<stamp>/`

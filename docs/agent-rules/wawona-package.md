@@ -31,3 +31,8 @@ Android static archives built on Darwin must skip the host `strip` fixup with
 `dontStrip = true`. Host cctools rewrites GNU archive indexes and makes
 `/` and `//` appear as invalid object members to Android `ld.lld`. Link a
 consumer to verify the archive.
+
+Android product Gradle runs offline. When a requested Kotlin stdlib or reflect
+version is missing from the pinned Maven mirrors, add its exact POM, JAR, and
+module metadata with verified hashes to `dependencies/wawona/android.nix` and
+stage those files in the local Maven overlay. Keep Gradle offline.

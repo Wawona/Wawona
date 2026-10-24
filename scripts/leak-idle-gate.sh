@@ -26,7 +26,8 @@
 #   WAWONA_LEAK_STRICT=1
 #
 # Exit: 0 all requested targets pass; 1 any fail; 2 skip-only when STRICT.
-# Always writes: .agent-device/test-artifacts/leak-idle-gate/<target>/verdict.json
+# Always writes target-named verdict files under
+# .agent-device/test-artifacts/leak-idle-gate/<target>/.
 
 set -euo pipefail
 
@@ -55,12 +56,14 @@ write_verdict() {
   local out_dir="$ARTIFACTS_ROOT/$target"
   mkdir -p "$out_dir"
   TARGET="$target" STATUS="$status" REASON="$reason" OUT="$out_dir/verdict.json" \
+    OUT_NAMED="$out_dir/verdict-$target.json" \
     PLATEAU_FILE="$out_dir/${target}-plateau.json" python3 <<'PY'
 import json, os, datetime, pathlib
 target = os.environ["TARGET"]
 status = os.environ["STATUS"]
 reason = os.environ["REASON"]
 path = pathlib.Path(os.environ["OUT"])
+named_path = pathlib.Path(os.environ["OUT_NAMED"])
 payload = {
     "target": target,
     "status": status,
@@ -72,9 +75,12 @@ payload = {
 pf = pathlib.Path(os.environ["PLATEAU_FILE"])
 if pf.is_file():
     payload["plateau"] = json.loads(pf.read_text())
-path.write_text(json.dumps(payload, indent=2) + "\n")
+content = json.dumps(payload, indent=2) + "\n"
+path.write_text(content)
+named_path.write_text(content)
 PY
   echo "$status" >"$out_dir/status.txt"
+  echo "$status" >"$out_dir/status-$target.txt"
   echo "== verdict $target: $status ($reason) =="
 }
 

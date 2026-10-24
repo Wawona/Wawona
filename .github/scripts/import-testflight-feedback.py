@@ -177,6 +177,12 @@ def paginate(token: str, path: str, params: dict[str, str]) -> tuple[list[dict[s
     return items, included
 
 
+def feedback_app_path(app_id: str, resource: str) -> str:
+    if resource not in {"betaFeedbackScreenshotSubmissions", "betaFeedbackCrashSubmissions"}:
+        raise ValueError(f"unsupported TestFlight feedback resource: {resource}")
+    return f"/v1/apps/{urllib.parse.quote(app_id, safe='')}/{resource}"
+
+
 def index_included(included: list[dict[str, Any]]) -> dict[tuple[str, str], dict[str, Any]]:
     out: dict[tuple[str, str], dict[str, Any]] = {}
     for row in included:
@@ -489,13 +495,13 @@ def process(
         print("no App Store Connect apps matching com.aspauldingcode.Wawona")
         return 0
     kinds = (
-        ("SCREENSHOT", "/v1/betaFeedbackScreenshotSubmissions", "screenshot"),
-        ("CRASH", "/v1/betaFeedbackCrashSubmissions", "crash"),
+        ("SCREENSHOT", "betaFeedbackScreenshotSubmissions", "screenshot"),
+        ("CRASH", "betaFeedbackCrashSubmissions", "crash"),
     )
-    for kind, path, label in kinds:
-        for app_id in app_ids:
+    for app_id in app_ids:
+        for kind, resource, label in kinds:
+            path = feedback_app_path(app_id, resource)
             params = {
-                "filter[app]": app_id,
                 "limit": "50",
             }
             if kind == "SCREENSHOT":
@@ -510,7 +516,7 @@ def process(
                     rows, included_rows = paginate(
                         token,
                         path,
-                        {"filter[app]": app_id, "limit": "50"},
+                        {"limit": "50"},
                     )
                 except SystemExit as err2:
                     print(f"warn: {kind} list failed: {err2}")
@@ -576,6 +582,16 @@ def process(
 
 
 class RedactTests(unittest.TestCase):
+    def test_feedback_list_uses_app_scoped_routes(self) -> None:
+        self.assertEqual(
+            feedback_app_path("app/id", "betaFeedbackScreenshotSubmissions"),
+            "/v1/apps/app%2Fid/betaFeedbackScreenshotSubmissions",
+        )
+        self.assertEqual(
+            feedback_app_path("app-id", "betaFeedbackCrashSubmissions"),
+            "/v1/apps/app-id/betaFeedbackCrashSubmissions",
+        )
+
     def test_email_and_path(self) -> None:
         raw = "hi alex@wawona.io from /Users/alex/code password=hunter2 1.2.3.4"
         out = redact_text(raw)
