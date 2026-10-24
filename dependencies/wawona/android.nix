@@ -179,10 +179,10 @@ let
     else ":Wawona:assembleDebug";
   isReleaseBuild = releaseArtifact == "release-aab" || releaseArtifact == "release-apk";
 
-  # AGP 9.1.1 asks for kotlin-stdlib/reflect 2.4.0. The pinned mitm
+  # AGP's resolved plugin graph asks for kotlin-stdlib/reflect 2.4.10. The pinned mitm
   # gradle-deps cache still stops at 2.2.10 / 1.6.10. Stage a file://
   # overlay so the offline Nix APK does not fail configure.
-  kotlinMaven240 =
+  kotlinMaven2410 =
     let
       fetchK = path: hash:
         pkgs.fetchurl {
@@ -190,11 +190,11 @@ let
           inherit hash;
         };
     in {
-      stdlibPom = fetchK "kotlin-stdlib/2.4.0/kotlin-stdlib-2.4.0.pom" "sha256-gZT/eanuJKf6P3SmsXnAShhZ3ouYek8JgwVuWUUXId4=";
-      stdlibJar = fetchK "kotlin-stdlib/2.4.0/kotlin-stdlib-2.4.0.jar" "sha256-zLFP+D+ryxFFi3mNvJgkdIzN/+7HnJq6eJ5u0c2oaxw=";
-      stdlibModule = fetchK "kotlin-stdlib/2.4.0/kotlin-stdlib-2.4.0.module" "sha256-wkpH3L2Sldd29EO+Qdd6wkUwlgHtBTcR3uKwJUvgLbY=";
-      reflectPom = fetchK "kotlin-reflect/2.4.0/kotlin-reflect-2.4.0.pom" "sha256-nhge5PIdScXIVQw8/KcZnBdZCo3z0eopPjlnmOTxCEI=";
-      reflectJar = fetchK "kotlin-reflect/2.4.0/kotlin-reflect-2.4.0.jar" "sha256-8NjokIYk60R4uxMen4hzZmgNLiOXQRleVI+lyQaWO5A=";
+      stdlibPom = fetchK "kotlin-stdlib/2.4.10/kotlin-stdlib-2.4.10.pom" "sha256-n4HyXpa5GRUzkt7VO9MyFudmJJCc/QgKPtsnjUT8NPA=";
+      stdlibJar = fetchK "kotlin-stdlib/2.4.10/kotlin-stdlib-2.4.10.jar" "sha256-TsApO8N1FCOyA/HYSTJRxXxC5z62N3prhWDQl0/wpt8=";
+      stdlibModule = fetchK "kotlin-stdlib/2.4.10/kotlin-stdlib-2.4.10.module" "sha256-HASpjxIAyHBdAV3wiXchFYnuy8h88cTG0oqSaC/oRG4=";
+      reflectPom = fetchK "kotlin-reflect/2.4.10/kotlin-reflect-2.4.10.pom" "sha256-QljwIS9L1y4wR/farOOODeLr/z9+kj6DZDH9j1sZGJ0=";
+      reflectJar = fetchK "kotlin-reflect/2.4.10/kotlin-reflect-2.4.10.jar" "sha256-JaGu90VNRlSOyq9RAhsOUuOBQaYu11rxJNoQm3MkxOU=";
     };
 
   getDeps =
@@ -430,13 +430,13 @@ in
       PORTAL_MAVEN_FS="${mitmCache}/https/plugins.gradle.org/m2"
       CENTRAL_MAVEN_FS="${mitmCache}/https/repo.maven.apache.org/maven2"
       EXTRA_MAVEN="$PWD/extra-maven"
-      mkdir -p "$EXTRA_MAVEN/org/jetbrains/kotlin/kotlin-stdlib/2.4.0"
-      mkdir -p "$EXTRA_MAVEN/org/jetbrains/kotlin/kotlin-reflect/2.4.0"
-      cp ${kotlinMaven240.stdlibPom} "$EXTRA_MAVEN/org/jetbrains/kotlin/kotlin-stdlib/2.4.0/kotlin-stdlib-2.4.0.pom"
-      cp ${kotlinMaven240.stdlibJar} "$EXTRA_MAVEN/org/jetbrains/kotlin/kotlin-stdlib/2.4.0/kotlin-stdlib-2.4.0.jar"
-      cp ${kotlinMaven240.stdlibModule} "$EXTRA_MAVEN/org/jetbrains/kotlin/kotlin-stdlib/2.4.0/kotlin-stdlib-2.4.0.module"
-      cp ${kotlinMaven240.reflectPom} "$EXTRA_MAVEN/org/jetbrains/kotlin/kotlin-reflect/2.4.0/kotlin-reflect-2.4.0.pom"
-      cp ${kotlinMaven240.reflectJar} "$EXTRA_MAVEN/org/jetbrains/kotlin/kotlin-reflect/2.4.0/kotlin-reflect-2.4.0.jar"
+      mkdir -p "$EXTRA_MAVEN/org/jetbrains/kotlin/kotlin-stdlib/2.4.10"
+      mkdir -p "$EXTRA_MAVEN/org/jetbrains/kotlin/kotlin-reflect/2.4.10"
+      cp ${kotlinMaven2410.stdlibPom} "$EXTRA_MAVEN/org/jetbrains/kotlin/kotlin-stdlib/2.4.10/kotlin-stdlib-2.4.10.pom"
+      cp ${kotlinMaven2410.stdlibJar} "$EXTRA_MAVEN/org/jetbrains/kotlin/kotlin-stdlib/2.4.10/kotlin-stdlib-2.4.10.jar"
+      cp ${kotlinMaven2410.stdlibModule} "$EXTRA_MAVEN/org/jetbrains/kotlin/kotlin-stdlib/2.4.10/kotlin-stdlib-2.4.10.module"
+      cp ${kotlinMaven2410.reflectPom} "$EXTRA_MAVEN/org/jetbrains/kotlin/kotlin-reflect/2.4.10/kotlin-reflect-2.4.10.pom"
+      cp ${kotlinMaven2410.reflectJar} "$EXTRA_MAVEN/org/jetbrains/kotlin/kotlin-reflect/2.4.10/kotlin-reflect-2.4.10.jar"
       if [ -d "$GOOGLE_MAVEN_FS" ] && [ -d "$CENTRAL_MAVEN_FS" ]; then
         cat > settings.gradle.kts <<EOF
 pluginManagement {

@@ -65,7 +65,15 @@ public final class WWNCompositorBridge: NSObject {
     @objc public weak var externalMirrorView: UIView?
     #endif
 
-    @objc public func captureCurrentSessionThumbnailPNGData() -> Data? { nil }
+    /// Last guest frame as PNG (from Iland present). Nil until a SHM/IOSurface
+    /// present lands. Used by Machines / Tab Overview thumbnails.
+    @objc public func captureCurrentSessionThumbnailPNGData() -> Data? {
+        #if canImport(Metal) && !os(watchOS)
+        return IlandPresenterObjC.activePresenterForDrain()?.lastThumbnailPNGData()
+        #else
+        return nil
+        #endif
+    }
 
     private var hostSeatMode: Int32 = 0
 
