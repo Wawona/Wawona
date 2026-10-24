@@ -359,7 +359,7 @@ private struct WWNMachineCardMaterial: ViewModifier {
       shape.fill(Color.white.opacity(0.05))
         .background(.ultraThinMaterial, in: shape)
     }
-    #elseif os(iOS) || os(tvOS)
+    #elseif os(iOS)
     content.background {
       shape.fill(Color(UIColor.secondarySystemGroupedBackground))
     }

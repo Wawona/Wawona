@@ -803,6 +803,20 @@
           # DejaVu (UI/CSD) + DejaVuSansM Nerd Font Mono (terminals).
           wawona-bundled-fonts = pkgs.callPackage ./dependencies/libs/fonts {};
 
+          # macOS packages the aarch64-linux guest Waypipe tree. Expose the
+          # Linux build so CI can warm its closure before the Darwin product
+          # builder tries to consume it.
+          waypipe-guest-root = let
+            linuxPkgs = pkgsFor "aarch64-linux";
+            containersDir = wwn-relay + "/import/containers/dependencies/containers";
+            waypipeGuest = linuxPkgs.callPackage (containersDir + "/macos/waypipe-guest-vsock.nix") {};
+          in
+            pkgs.callPackage (containersDir + "/macos/waypipe-guest-root.nix") {
+              waypipe = waypipeGuest;
+              vulkan-loader = linuxPkgs.vulkan-loader;
+              mesa = linuxPkgs.mesa;
+            };
+
           # Weston and Waypipe (Native on Linux, Cross-wrapped on Darwin)
           weston =
             if pkgs.stdenv.hostPlatform.isDarwin

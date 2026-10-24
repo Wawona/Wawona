@@ -26,3 +26,8 @@ GPU     one hop, or none, wl_shm
 Lane choice stays `wawona-wasm-cli-ports`. Deb shape stays
 `wawona-optional-software`. Catalog split stays `repo-wawona-io-catalogs`.
 Do not paste those rules here.
+
+Android static archives built on Darwin must skip the host `strip` fixup with
+`dontStrip = true`. Host cctools rewrites GNU archive indexes and makes
+`/` and `//` appear as invalid object members to Android `ld.lld`. Link a
+consumer to verify the archive.

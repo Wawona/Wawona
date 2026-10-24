@@ -165,13 +165,7 @@ final class CompositorHostPlatformView: PlatformView {
         nil
     }
 
-    #if os(iOS)
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        syncMetalLayerGeometry()
-        ensureIlandPresenter(reason: "layoutSubviews")
-    }
-    #else
+    #if os(macOS)
     override func layout() {
         super.layout()
         syncMetalLayerGeometry()
@@ -204,6 +198,12 @@ final class CompositorHostPlatformView: PlatformView {
         addTrackingArea(area)
         trackingArea = area
     }
+    #else
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        syncMetalLayerGeometry()
+        ensureIlandPresenter(reason: "layoutSubviews")
+    }
     #endif
 
     private func syncMetalLayerGeometry() {
@@ -215,6 +215,9 @@ final class CompositorHostPlatformView: PlatformView {
         if scale < 1 {
             scale = layer?.contentsScale ?? 0
         }
+        if scale < 1 { scale = 2 }
+        #elseif os(visionOS)
+        var scale = contentScaleFactor
         if scale < 1 { scale = 2 }
         #else
         var scale = window?.screen.scale ?? 0

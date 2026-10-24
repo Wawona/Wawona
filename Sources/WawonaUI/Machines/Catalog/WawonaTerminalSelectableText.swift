@@ -79,14 +79,20 @@ struct WawonaTerminalSelectableText: UIViewRepresentable {
     tv.backgroundColor = .black
     tv.textColor = UIColor(white: 0.91, alpha: 1)
     tv.tintColor = UIColor(white: 0.85, alpha: 1)
+    #if !os(tvOS)
     tv.isEditable = true
+    #endif
     tv.isSelectable = true
     tv.isScrollEnabled = true
     tv.alwaysBounceVertical = true
     tv.showsVerticalScrollIndicator = true
     tv.indicatorStyle = .white
+    #if !os(visionOS)
     tv.keyboardDismissMode = .none
+    #endif
+    #if !os(tvOS)
     tv.dataDetectorTypes = []
+    #endif
     tv.textContainer.lineFragmentPadding = 0
     tv.textContainer.lineBreakMode = .byClipping
     tv.textContainerInset = UIEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
@@ -315,13 +321,15 @@ struct WawonaTerminalSelectableText: UIViewRepresentable {
     )
   }
 
-  final class Coordinator: NSObject, UITextViewDelegate, WWNKeyboardAccessoryDelegate {
+  final class Coordinator: NSObject, UITextViewDelegate {
     var parent: WawonaTerminalSelectableText
     weak var textView: WawonaTerminalSelectTextView?
     var lastFingerprint = ""
     var lastBlinkOn: Bool?
     var applyingDocument = false
+    #if os(iOS)
     private var accessory: WWNKeyboardAccessoryView?
+    #endif
 
     init(parent: WawonaTerminalSelectableText) {
       self.parent = parent
@@ -409,6 +417,7 @@ struct WawonaTerminalSelectableText: UIViewRepresentable {
       parent.onInjectText?(text)
     }
 
+    #if os(iOS)
     // MARK: ToolbarKeys
 
     func keyboardAccessoryDidSendKey(name: String, keycode: UInt32, character: String?) {
@@ -473,8 +482,13 @@ struct WawonaTerminalSelectableText: UIViewRepresentable {
         parent.onInjectText?(text)
       }
     }
+    #endif
   }
 }
+
+#if os(iOS)
+extension WawonaTerminalSelectableText.Coordinator: WWNKeyboardAccessoryDelegate {}
+#endif
 
 /// Editable VT mirror. Keys → PTY. Native caret tracks blink cell.
 final class WawonaTerminalSelectTextView: UITextView {
@@ -522,6 +536,7 @@ final class WawonaTerminalSelectTextView: UITextView {
   }
 
   override func paste(_ sender: Any?) {
+    #if !os(tvOS)
     guard let text = UIPasteboard.general.string, !text.isEmpty else { return }
     if selectionCoordinator?.parent.ownsKeyboard == true {
       selectionCoordinator?.parent.onInjectText?(text)
@@ -531,6 +546,7 @@ final class WawonaTerminalSelectTextView: UITextView {
         object: text
       )
     }
+    #endif
   }
 
   override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {

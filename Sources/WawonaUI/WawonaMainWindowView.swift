@@ -297,7 +297,11 @@ final class WWNMainWindowRouter: ObservableObject {
         #if os(macOS)
         WWNMacGuestConsole.shared.parkForCompositor()
         #elseif os(iOS) || os(tvOS) || os(visionOS)
-        WWNIosGuestConsole.shared.parkForCompositor()
+        // Router stays nonisolated for ObjC scene trampolines. Terminal
+        // park is MainActor. This path runs on the main thread.
+        MainActor.assumeIsolated {
+            WWNIosGuestConsole.shared.parkForCompositor()
+        }
         #endif
         sessionSurfaceMounted = true
         sessionSurfaceVisible = true
@@ -477,6 +481,8 @@ struct WawonaMainWindowView: View {
     private var settingsCoverBackground: Color {
         #if os(macOS)
         Color(nsColor: .windowBackgroundColor)
+        #elseif os(tvOS)
+        Color.black
         #else
         Color(UIColor.systemBackground)
         #endif

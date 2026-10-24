@@ -36,10 +36,25 @@ env:
   NIXPKGS_ALLOW_UNFREE: "1"
 
 jobs:
+  waypipe-guest-cache:
+    name: "Warm aarch64-linux container Waypipe"
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
+
+      - uses: ./.github/actions/setup-nix-flakehub
+
+      - name: Build container Waypipe guest tree
+        run: nix build ".#packages.aarch64-linux.waypipe-guest-root" --print-build-logs --no-link
+
   macos-app:
     name: "macOS .app"
     runs-on: macos-26
     timeout-minutes: 90
+    needs: [waypipe-guest-cache]
     steps:
       - uses: actions/checkout@v5
         with:

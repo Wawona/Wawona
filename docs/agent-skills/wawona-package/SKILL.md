@@ -45,6 +45,11 @@ Android compiler is NDK clang in `repo.wawona.io/lib/androidNdk.nix`. The
 nixpkgs `aarch64-unknown-linux-android` GCC bootstrap is the wrong toolchain.
 A glibc `.so` inside a Termux deb is red.
 
+For Android static libraries built on Darwin, disable the host `strip` fixup
+with `dontStrip = true`. Darwin's cctools rewrites a GNU Android archive index
+as BSD and leaves GNU `/` and `//` members as ordinary objects, which Android
+`ld.lld` rejects. Validate the linked consumer, not only the archive build.
+
 ### TEXT
 
 Separate L0 packages. None replaces another. Build order:
@@ -203,3 +208,7 @@ that library, not a flag pasted into the program.
 - Pack a glibc ELF into a Termux deb.
 - Put App Store `*_main` or `apple-mobile.nix` into a deb recipe.
 - Open real `/dev/dri`.
+
+## Cross-system product cache
+
+When a Darwin product references a Linux artifact, prebuild the exact pinned Linux output on a native Linux runner and let the shared CI cache publish it before the Darwin job starts. Add a job dependency so the Darwin product cannot race the cache push. Nix on macOS can consume cached Linux store paths, but it cannot build a missing `aarch64-linux` dependency. Keep the product artifact when fixing this gate; do not silently drop the Linux guest feature to avoid the platform mismatch.
