@@ -40,6 +40,14 @@ if [[ ! -x "$WASM_BIN" ]]; then
   exit 1
 fi
 
+# Relay's locked SHM demo is interactive and stays open after the first
+# successful buffer commit. Stop the host runner once the smoke assertion is
+# observable, with a deadline so regressions fail instead of hanging the job.
+export WAWONA_REAL_WASM_BIN="$WASM_BIN"
+WASM_BIN="$ROOT/.github/scripts/wasm-smoke-client.py"
+chmod +x "$WASM_BIN"
+export WASM_BIN
+
 WORKDIR="${TMPDIR:-/tmp}/wawona-relay-wasm-src-$$"
 cleanup() { rm -rf "$WORKDIR"; }
 trap cleanup EXIT
@@ -56,7 +64,6 @@ if [[ ! -x "$SMOKE_SH" && ! -f "$SMOKE_SH" ]]; then
 fi
 
 echo "==> Wayland SHM smoke (Weston headless + locked guest)"
-export WASM_BIN
 # Guest build uses host rustc/cargo (CI installs via rust-toolchain).
 # Weston comes from nixpkgs so runners need no system compositor packages.
 need rustc
