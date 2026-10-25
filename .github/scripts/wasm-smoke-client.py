@@ -10,7 +10,7 @@ import sys
 import time
 
 
-COMMIT_MARKER = b"wayland-shm: 256x256 XRGB8888 committed"
+COMMIT_MARKER = b"XRGB8888 committed (xdg interactive)"
 SMOKE_TIMEOUT_SECONDS = 60
 TERMINATE_TIMEOUT_SECONDS = 5
 

@@ -63,6 +63,22 @@ if [[ ! -x "$SMOKE_SH" && ! -f "$SMOKE_SH" ]]; then
   exit 1
 fi
 
+# The pinned Relay smoke still expects its old 256x256 guest size. Its current
+# guest reports the compositor-selected dimensions, so keep the same SHM
+# assertion while accepting any committed width and height in this temp clone.
+python3 - "$SMOKE_SH" <<'PY'
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+source = path.read_text(encoding="utf-8")
+old = "if ! grep -q 'wayland-shm: 256x256 XRGB8888 committed' \"$OUT\"; then"
+new = "if ! grep -Eq 'wayland-shm: [0-9]+x[0-9]+ XRGB8888 committed' \"$OUT\"; then"
+if old not in source:
+    raise SystemExit("error: locked Relay smoke assertion changed; review before adapting it")
+path.write_text(source.replace(old, new, 1), encoding="utf-8")
+PY
+
 echo "==> Wayland SHM smoke (Weston headless + locked guest)"
 # Guest build uses host rustc/cargo (CI installs via rust-toolchain).
 # Weston comes from nixpkgs so runners need no system compositor packages.
