@@ -1318,11 +1318,10 @@ platform :ios do
     prefer_xcode_toolchain!
     api_key = asc_api_key
     install_testflight_profiles!(api_key)
-    ensure_all_asc_versions!(api_key)
 
     # Complete every Apple archive, export, and local IPA invariant before the
-    # first ASC upload. A later platform must never fail after an earlier IPA
-    # has already been submitted.
+    # first App Store Connect mutation. A later platform must never fail after
+    # an ASC version record exists or an earlier IPA has already been submitted.
     prepared_ipas = apple_beta_targets.map do |target|
       ipa = gym_ipa(target)
       assert_ipa_no_private_progname!(ipa)
@@ -1332,6 +1331,7 @@ platform :ios do
     end
 
     UI.success("Preflight passed for all Apple beta archives and exported IPAs")
+    ensure_all_asc_versions!(api_key)
 
     prepared_ipas.each do |target, ipa|
       upload_to_testflight(
