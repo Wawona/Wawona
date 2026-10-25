@@ -61,6 +61,8 @@ lane under `ui-appium.yml`):
   profile state even when config directories are fresh. Determine status from
   `colima status`'s exit code, not a substring match on output because
   "is not running" contains "running". Local runs keep their normal profile.
+- The macOS runner installs Colima, Lima, and the Docker CLI together. Colima's
+  default Docker runtime requires the host `docker` command before VM startup.
 - **Catalog green = Present surface PNG** in
   `.agent-device/test-artifacts/appium/catalog-gallery/<client>.png`
   (non-blank via `require_client_screenshot`). Capture

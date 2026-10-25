@@ -100,6 +100,8 @@ profile as well as both homes: runner images can inherit a stale active profile
 even when the config directories are fresh. Determine status from
 `colima status`'s exit code, not a substring match on output because "is not
 running" contains "running". Local runs use the normal profile.
+The macOS runner installs Colima, Lima, and the Docker CLI together because
+Colima's default Docker runtime checks for the host `docker` command at startup.
 `WAWONA_MAC2_MANAGE_APP=1` + `skipAppKill`. `MANAGE_APP=0` drops bundleId.
 
 ### Colima guests beyond Ubuntu apt
