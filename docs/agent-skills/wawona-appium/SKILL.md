@@ -88,7 +88,12 @@ Never `/Applications/Wawona.app` or old `DerivedData-macos*`.
 `WAWONA_TEST_REBUILD=1` forces xcodebuild. `WAWONA_ALLOW_STALE_TEST_APP=1`
 is forbidden for catalog.
 
-`ensure-colima.sh` resolves `nixpkgs#colima` when brew is missing.
+`ensure-colima.sh` resolves `nixpkgs#colima` when brew is missing. Use Colima's
+generated SSH config (`colima ssh-config`, stored under
+`${COLIMA_HOME:-$HOME/.colima}/ssh_config`) for guest commands. Do not assume
+the private key lives at `~/.colima/_lima/_config/user`: Colima can use another
+home/profile, and an already-running VM can still be reachable through its
+generated SSH config when that default key path is absent.
 `WAWONA_MAC2_MANAGE_APP=1` + `skipAppKill`. `MANAGE_APP=0` drops bundleId.
 
 ### Colima guests beyond Ubuntu apt

@@ -52,6 +52,9 @@ lane under `ui-appium.yml`):
 - Catalog Wayland clients: real guests via
   `scripts/appium/launch-wayland-client.sh` (**Colima on Darwin**; nested on
   Linux). Run `ensure-colima.sh` first on macOS. No local-bundle.
+- Colima guest SSH must use its generated SSH config (`COLIMA_SSH_CONFIG` or
+  `${COLIMA_HOME:-$HOME/.colima}/ssh_config`). Never assume an internal key,
+  port, or profile path.
 - **Catalog green = Present surface PNG** in
   `.agent-device/test-artifacts/appium/catalog-gallery/<client>.png`
   (non-blank via `require_client_screenshot`). Capture

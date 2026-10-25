@@ -111,6 +111,11 @@ export WAWONA_APP_PATH=/path/to/tip/Wawona.app   # never stale install
 pytest tests/test_native_ui.py -q
 ```
 
+Guest SSH uses Colima's generated config at
+`${COLIMA_HOME:-$HOME/.colima}/ssh_config`, or `COLIMA_SSH_CONFIG` when set.
+Do not hardcode Colima's internal identity-file path because it can vary by
+profile and runner image.
+
 Tip app rule: [`../agent-rules/wawona-test-tip-app.md`](../agent-rules/wawona-test-tip-app.md).
 
 See also [`everywhere-matrix.md`](./everywhere-matrix.md) and [`../ci.md`](../ci.md).

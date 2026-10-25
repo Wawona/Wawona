@@ -39,26 +39,26 @@ else
   fi
 fi
 
-SSH_CONFIG="${COLIMA_SSH_CONFIG:-$HOME/.colima/ssh_config}"
-KEY="${COLIMA_SSH_KEY:-$HOME/.colima/_lima/_config/user}"
-HOST="${COLIMA_SSH_HOST:-127.0.0.1}"
-USER_NAME="${COLIMA_SSH_USER:-lima}"
-PORT="${COLIMA_SSH_PORT:-}"
-if [[ -z "$PORT" && -f "$SSH_CONFIG" ]]; then
-  PORT="$(awk '$1=="Port" { print $2; exit }' "$SSH_CONFIG" || true)"
+COLIMA_HOME="${COLIMA_HOME:-$HOME/.colima}"
+SSH_CONFIG="${COLIMA_SSH_CONFIG:-$COLIMA_HOME/ssh_config}"
+if [[ ! -s "$SSH_CONFIG" ]]; then
+  mkdir -p "$(dirname "$SSH_CONFIG")"
+  if ! colima ssh-config >"$SSH_CONFIG"; then
+    echo "FAIL: could not generate Colima SSH configuration at $SSH_CONFIG" >&2
+    exit 6
+  fi
 fi
-PORT="${PORT:-49419}"
 
-if [[ ! -f "$KEY" ]]; then
-  echo "FAIL: Colima SSH key missing at $KEY" >&2
+if [[ ! -s "$SSH_CONFIG" ]]; then
+  echo "FAIL: Colima SSH configuration is empty at $SSH_CONFIG" >&2
   exit 6
 fi
 
-if ! ssh -o BatchMode=yes -o ConnectTimeout=8 \
+if ! ssh -F "$SSH_CONFIG" -o BatchMode=yes -o ConnectTimeout=8 \
   -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-  -i "$KEY" -p "$PORT" "${USER_NAME}@${HOST}" 'true' >/dev/null 2>&1; then
-  echo "FAIL: cannot ssh ${USER_NAME}@${HOST}:$PORT (Colima guest)" >&2
+  colima 'true' >/dev/null 2>&1; then
+  echo "FAIL: cannot SSH through Colima's generated configuration at $SSH_CONFIG" >&2
   exit 6
 fi
 
-echo "colima ok ssh=${USER_NAME}@${HOST}:$PORT"
+echo "colima ok ssh-config=$SSH_CONFIG"
