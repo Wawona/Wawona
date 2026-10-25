@@ -41,16 +41,17 @@ fi
 
 COLIMA_HOME="${COLIMA_HOME:-$HOME/.colima}"
 SSH_CONFIG="${COLIMA_SSH_CONFIG:-$COLIMA_HOME/ssh_config}"
-if [[ ! -s "$SSH_CONFIG" ]]; then
-  mkdir -p "$(dirname "$SSH_CONFIG")"
-  if ! colima ssh-config >"$SSH_CONFIG"; then
-    echo "FAIL: could not generate Colima SSH configuration at $SSH_CONFIG" >&2
-    exit 6
-  fi
+mkdir -p "$(dirname "$SSH_CONFIG")"
+ssh_config_tmp="$(mktemp "${TMPDIR:-/tmp}/wawona-colima-ssh.XXXXXX")"
+if ! colima ssh-config >"$ssh_config_tmp" || [[ ! -s "$ssh_config_tmp" ]]; then
+  rm -f "$ssh_config_tmp"
+  echo "FAIL: could not refresh Colima SSH configuration at $SSH_CONFIG" >&2
+  exit 6
 fi
+mv "$ssh_config_tmp" "$SSH_CONFIG"
 
 if [[ ! -s "$SSH_CONFIG" ]]; then
-  echo "FAIL: Colima SSH configuration is empty at $SSH_CONFIG" >&2
+  echo "FAIL: refreshed Colima SSH configuration is empty at $SSH_CONFIG" >&2
   exit 6
 fi
 

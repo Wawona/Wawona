@@ -89,7 +89,7 @@ Never `/Applications/Wawona.app` or old `DerivedData-macos*`.
 is forbidden for catalog.
 
 `ensure-colima.sh` resolves `nixpkgs#colima` when brew is missing. Use Colima's
-generated SSH config (`colima ssh-config`, stored under
+freshly generated SSH config (`colima ssh-config`, stored under
 `${COLIMA_HOME:-$HOME/.colima}/ssh_config`) for guest commands. Do not assume
 the private key lives at `~/.colima/_lima/_config/user`: Colima can use another
 home/profile, and an already-running VM can still be reachable through its
