@@ -339,6 +339,9 @@ jobs:
           WAWONA_APPIUM_SERVER: http://127.0.0.1:4723
           WAWONA_WAYLAND_GUEST: colima
           WAWONA_COLIMA_START: "1"
+          # This VM is disposable runner state. Recover stale prestarted Lima
+          # state when Colima says running but has no live SSH config.
+          WAWONA_COLIMA_RECOVER: "1"
           # CI smoke clients only. Full matrix is local
           # scripts/appium/capture-catalog-gallery.sh (no argv).
           WAWONA_CATALOG_CI_CLIENTS: "weston_simple_shm foot"

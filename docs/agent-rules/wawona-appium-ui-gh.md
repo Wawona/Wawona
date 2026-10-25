@@ -55,6 +55,9 @@ lane under `ui-appium.yml`):
 - Colima guest SSH must use its generated SSH config (`COLIMA_SSH_CONFIG` or
   `${COLIMA_HOME:-$HOME/.colima}/ssh_config`). Never assume an internal key,
   port, or profile path.
+- The disposable macOS CI VM may set `WAWONA_COLIMA_RECOVER=1` to force-stop
+  and recreate a stale Colima/Lima VM when its status says running but its SSH
+  config is missing. Keep this recovery off on developer machines.
 - **Catalog green = Present surface PNG** in
   `.agent-device/test-artifacts/appium/catalog-gallery/<client>.png`
   (non-blank via `require_client_screenshot`). Capture

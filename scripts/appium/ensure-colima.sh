@@ -42,23 +42,42 @@ fi
 COLIMA_HOME="${COLIMA_HOME:-$HOME/.colima}"
 SSH_CONFIG="${COLIMA_SSH_CONFIG:-$COLIMA_HOME/ssh_config}"
 mkdir -p "$(dirname "$SSH_CONFIG")"
-ssh_config_tmp="$(mktemp "${TMPDIR:-/tmp}/wawona-colima-ssh.XXXXXX")"
-if ! colima ssh-config >"$ssh_config_tmp" || [[ ! -s "$ssh_config_tmp" ]]; then
-  rm -f "$ssh_config_tmp"
-  echo "FAIL: could not refresh Colima SSH configuration at $SSH_CONFIG" >&2
-  exit 6
+refresh_ssh_config() {
+  local ssh_config_tmp
+  ssh_config_tmp="$(mktemp "${TMPDIR:-/tmp}/wawona-colima-ssh.XXXXXX")"
+  if ! colima ssh-config >"$ssh_config_tmp" || [[ ! -s "$ssh_config_tmp" ]]; then
+    rm -f "$ssh_config_tmp"
+    return 1
+  fi
+  mv "$ssh_config_tmp" "$SSH_CONFIG"
+}
+
+check_colima_ssh() {
+  ssh -F "$SSH_CONFIG" -o BatchMode=yes -o ConnectTimeout=8 \
+    -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    colima 'true' >/dev/null 2>&1
+}
+
+if ! refresh_ssh_config || ! check_colima_ssh; then
+  if [[ "${WAWONA_COLIMA_RECOVER:-0}" != "1" ]]; then
+    echo "FAIL: Colima SSH config or guest connection is unhealthy" >&2
+    exit 6
+  fi
+
+  echo "Colima reports stale guest state; force-stopping and restarting CI VM"
+  if ! colima stop --force || ! colima start; then
+    echo "FAIL: could not recover Colima CI VM" >&2
+    exit 6
+  fi
+
+  if ! refresh_ssh_config || ! check_colima_ssh; then
+    echo "FAIL: Colima guest remains unreachable after CI VM recovery" >&2
+    exit 6
+  fi
 fi
-mv "$ssh_config_tmp" "$SSH_CONFIG"
 
 if [[ ! -s "$SSH_CONFIG" ]]; then
   echo "FAIL: refreshed Colima SSH configuration is empty at $SSH_CONFIG" >&2
-  exit 6
-fi
-
-if ! ssh -F "$SSH_CONFIG" -o BatchMode=yes -o ConnectTimeout=8 \
-  -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-  colima 'true' >/dev/null 2>&1; then
-  echo "FAIL: cannot SSH through Colima's generated configuration at $SSH_CONFIG" >&2
   exit 6
 fi
 
