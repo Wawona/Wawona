@@ -56,9 +56,10 @@ lane under `ui-appium.yml`):
   `${COLIMA_HOME:-$HOME/.colima}/ssh_config`). Never assume an internal key,
   port, or profile path.
 - The macOS CI job creates unique `COLIMA_HOME` and `LIMA_HOME` directories
-  under `runner.temp` before starting its disposable VM. This avoids reusing
-  stale runner metadata with missing `lima.yaml` or `ssh.config`. Local runs
-  keep the normal profile and never reset it automatically.
+  and a unique `COLIMA_PROFILE` under `runner.temp` before starting its
+  disposable VM. Isolate all three: runner images can inherit a stale active
+  profile even when the config directories are fresh. Local runs keep the
+  normal profile and never reset it automatically.
 - **Catalog green = Present surface PNG** in
   `.agent-device/test-artifacts/appium/catalog-gallery/<client>.png`
   (non-blank via `require_client_screenshot`). Capture

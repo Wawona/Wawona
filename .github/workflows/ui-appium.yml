@@ -252,22 +252,16 @@ jobs:
         include:
           - platform: ios
             device: "iPhone 17 Pro"
-            download_visionos: false
           - platform: ipados
             device: "iPad Pro 13-inch (M4)"
-            download_visionos: false
           - platform: tvos
             device: "Apple TV 4K (3rd generation)"
-            download_visionos: false
           - platform: visionos
             device: "Apple Vision Pro"
-            download_visionos: true
           - platform: macos
             device: "macOS"
-            download_visionos: false
           - platform: ios
             device: "iPhone 17 Pro"
-            download_visionos: false
             job_name: ios-watch-pair
             watch_pair: true
     steps:
@@ -280,9 +274,8 @@ jobs:
           eval "$(scripts/appium/ci-prepare-artifacts.sh)"
       - name: Select Xcode
         run: ./.github/scripts/select-xcode.sh
-      - name: Download visionOS SDK
-        if: ${{ matrix.download_visionos }}
-        run: xcodebuild -downloadPlatform visionOS -buildVersion 26.2 || xcodebuild -downloadPlatform visionOS
+      # This matrix runs the Appium unit gate in dry mode until product
+      # artifacts are wired. Simulator SDK/runtime builds are covered by Gate: products.
       - name: Download product-macos-app
         if: ${{ matrix.platform == 'macos' && inputs.products_ready }}
         uses: actions/download-artifact@v8
@@ -339,10 +332,11 @@ jobs:
           WAWONA_APPIUM_SERVER: http://127.0.0.1:4723
           WAWONA_WAYLAND_GUEST: colima
           WAWONA_COLIMA_START: "1"
-          # Keep this job isolated from stale prestarted runner Colima/Lima
-          # metadata. Both directories are disposable for this job.
+          # Isolate both homes and the active profile from stale prestarted
+          # runner Colima/Lima metadata. These are disposable per-run values.
           COLIMA_HOME: ${{ runner.temp }}/wawona-colima
           LIMA_HOME: ${{ runner.temp }}/wawona-lima
+          COLIMA_PROFILE: wawona-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.platform }}
           COLIMA_SSH_CONFIG: ${{ runner.temp }}/wawona-colima/ssh_config
           # CI smoke clients only. Full matrix is local
           # scripts/appium/capture-catalog-gallery.sh (no argv).
