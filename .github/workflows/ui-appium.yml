@@ -339,9 +339,11 @@ jobs:
           WAWONA_APPIUM_SERVER: http://127.0.0.1:4723
           WAWONA_WAYLAND_GUEST: colima
           WAWONA_COLIMA_START: "1"
-          # This VM is disposable runner state. Recover stale prestarted Lima
-          # state when Colima says running but has no live SSH config.
-          WAWONA_COLIMA_RECOVER: "1"
+          # Keep this job isolated from stale prestarted runner Colima/Lima
+          # metadata. Both directories are disposable for this job.
+          COLIMA_HOME: ${{ runner.temp }}/wawona-colima
+          LIMA_HOME: ${{ runner.temp }}/wawona-lima
+          COLIMA_SSH_CONFIG: ${{ runner.temp }}/wawona-colima/ssh_config
           # CI smoke clients only. Full matrix is local
           # scripts/appium/capture-catalog-gallery.sh (no argv).
           WAWONA_CATALOG_CI_CLIENTS: "weston_simple_shm foot"
@@ -353,6 +355,7 @@ jobs:
           chmod +x scripts/appium/ensure-tip-wawona-macos.sh
           chmod +x scripts/appium/capture-catalog-gallery.sh
           python3 scripts/appium/verify-wayland-guest-map.py
+          mkdir -p "$COLIMA_HOME" "$LIMA_HOME"
           # Never exit 0 without PNGs. SKIPPED.txt was false green on tip a58384fc.
           if ! command -v colima >/dev/null 2>&1; then
             brew install colima lima || {

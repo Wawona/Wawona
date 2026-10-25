@@ -114,9 +114,10 @@ pytest tests/test_native_ui.py -q
 Guest SSH uses a freshly generated Colima config at
 `${COLIMA_HOME:-$HOME/.colima}/ssh_config`, or `COLIMA_SSH_CONFIG` when set.
 Do not hardcode Colima's internal identity-file path because it can vary by
-profile and runner image. The GitHub macOS guest step enables
-`WAWONA_COLIMA_RECOVER=1` for its disposable VM only. Local runs leave recovery
-off so the helper never force-stops a developer's Colima instance.
+profile and runner image. The GitHub macOS guest step creates unique
+`COLIMA_HOME` and `LIMA_HOME` directories under `runner.temp` before starting
+the disposable VM. This avoids inheriting a stale runner profile whose Lima
+metadata or SSH config is missing. Local runs use the normal Colima profile.
 
 Tip app rule: [`../agent-rules/wawona-test-tip-app.md`](../agent-rules/wawona-test-tip-app.md).
 
