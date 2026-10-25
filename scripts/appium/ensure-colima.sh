@@ -56,9 +56,14 @@ refresh_ssh_config() {
 }
 
 check_colima_ssh() {
-  ssh -F "$SSH_CONFIG" -o BatchMode=yes -o ConnectTimeout=8 \
+  local output
+  if output="$(ssh -F "$SSH_CONFIG" -o BatchMode=yes -o ConnectTimeout=8 \
     -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-    colima 'true' >/dev/null 2>&1
+    colima 'true' 2>&1)"; then
+    return 0
+  fi
+  echo "Colima SSH probe failed: ${output:-no SSH diagnostic output}" >&2
+  return 1
 }
 
 if ! refresh_ssh_config || ! check_colima_ssh; then
@@ -68,7 +73,16 @@ if ! refresh_ssh_config || ! check_colima_ssh; then
   fi
 
   echo "Colima reports stale guest state; force-stopping and restarting CI VM"
-  if ! colima stop --force || ! colima start; then
+  if ! colima stop --force; then
+    echo "FAIL: could not stop unhealthy Colima VM" >&2
+    exit 6
+  fi
+  if [[ -n "${WAWONA_COLIMA_VM_TYPE:-}" ]]; then
+    start_args=(--vm-type "$WAWONA_COLIMA_VM_TYPE")
+  else
+    start_args=()
+  fi
+  if ! colima start "${start_args[@]}"; then
     echo "FAIL: could not recover Colima CI VM" >&2
     exit 6
   fi

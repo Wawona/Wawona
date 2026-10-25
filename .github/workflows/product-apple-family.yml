@@ -224,6 +224,16 @@ jobs:
 
       - uses: ./.github/actions/setup-nix-flakehub
 
+      # The simulator product omits the device Watch target and its Rust
+      # backend. Build the device app in Gate: products so the exact
+      # Build Rust Backend via Nix phase that runs during an iOS archive is
+      # exercised before release-beta.yml can upload to ASC.
+      - name: Build watchOS device app and Rust backend
+        run: >-
+          ./.github/scripts/nix-retry.sh nix build
+          ".#wawona-watchos-app-device" --print-build-logs
+          --no-link
+
       - name: Build watchOS simulator app
         run: >-
           ./.github/scripts/nix-retry.sh nix build
@@ -254,7 +264,7 @@ jobs:
           {
             echo "# Build: watchOS"
             echo ""
-            echo "**PASS:** watchOS simulator app built and audited."
+            echo "**PASS:** watchOS device and simulator apps built, simulator app audited."
           } >>"$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v7

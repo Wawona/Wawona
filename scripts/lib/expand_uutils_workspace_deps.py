@@ -144,7 +144,14 @@ _PKG_WORKSPACE = re.compile(
 
 def expand_package_workspace(text: str, pkg: dict[str, str]) -> str:
     out: list[str] = []
+    section: str | None = None
     for line in text.splitlines(True):
+        header = line.strip()
+        if header.startswith("[") and header.endswith("]") and not header.startswith("[["):
+            section = header
+        if section != "[package]":
+            out.append(line)
+            continue
         m = _PKG_WORKSPACE.match(line.rstrip("\n"))
         if not m:
             out.append(line)
@@ -188,9 +195,17 @@ def expand_workspace_true(
     lines = text.splitlines(True)
     out: list[str] = []
     i = 0
+    bare_re = re.compile(r"^(\s*)([A-Za-z0-9_-]+)\.workspace\s*=\s*true\s*$")
     assign_re = re.compile(r"^(\s*)([A-Za-z0-9_-]+)\s*=\s*\{\s*(.*)$")
     while i < len(lines):
         line = lines[i]
+        bare = bare_re.match(line.rstrip("\n"))
+        if bare and bare.group(2) in deps:
+            indent, name = bare.group(1), bare.group(2)
+            concrete = relativize_dep_paths(deps[name], crate_toml, coreutils_root)
+            out.append(f"{indent}{name} = {concrete}\n")
+            i += 1
+            continue
         m = assign_re.match(line.rstrip("\n"))
         if not m or "workspace" not in line:
             out.append(line)
@@ -289,6 +304,8 @@ DROP_OPTIONAL_CRATES = frozenset(
     {
         "selinux",
         "selinux-sys",
+        "chcon",
+        "runcon",
         "zip",
         "coz",
         "blake3",
@@ -318,7 +335,6 @@ DROP_UUCORE_OPTIONAL_CRATES = frozenset(
     {
         "memchr",
         "regex",
-        "thiserror",
         "time",
         "data-encoding",
         "data-encoding-macro",
@@ -343,6 +359,7 @@ DROP_UUCORE_OPTIONAL_CRATES = frozenset(
 _DROP_FEATURE_NAMES = frozenset(
     {
         "feat_selinux",
+        "feat_systemd_logind",
         "feat_require_selinux",
         "feat_hardware",
         "feat_hash",
@@ -541,7 +558,7 @@ def prune_dropped_optional_deps(text: str, *, package_name: str | None = None) -
                         "dns-lookup",
                     )
                 ) or (package_name == "uucore" and any(
-                    tok in joined for tok in ("memchr", "thiserror", '"time"', "regex")
+                    tok in joined for tok in ("memchr", '"time"', "regex")
                 )):
                     filtered = _filter_feature_array(buf)
                     if filtered is None:
@@ -562,6 +579,32 @@ def prune_dropped_optional_deps(text: str, *, package_name: str | None = None) -
 def _package_name(text: str) -> str | None:
     m = re.search(r'(?m)^name\s*=\s*"([^"]+)"', text)
     return m.group(1) if m else None
+
+
+def ensure_uucore_error_dependency(text: str) -> str:
+    """Keep uucore's unconditional thiserror derives declared after pruning."""
+    if re.search(r"(?m)^thiserror\s*=", text):
+        return text
+    return re.sub(
+        r"(?m)^\[dependencies\]\s*$",
+        '[dependencies]\nthiserror = "2.0.18"',
+        text,
+        count=1,
+    )
+
+
+def adapt_uutils_umbrella_library(coreutils_root: Path) -> None:
+    """Adapt the upstream multicall entrypoint when Wawona builds it as a lib."""
+    path = coreutils_root / "src/bin/coreutils.rs"
+    if not path.is_file():
+        return
+    text = path.read_text()
+    text = text.replace(
+        "use coreutils::validation::{self, exit};",
+        '#[path = "../lib.rs"]\nmod coreutils;\nuse coreutils::validation::{self, exit};',
+    )
+    text = text.replace("#[no_mangle]", "#[unsafe(no_mangle)]")
+    path.write_text(text)
 
 
 def prune_umbrella_for_wawona(text: str) -> str:
@@ -629,11 +672,12 @@ def prune_umbrella_for_wawona(text: str) -> str:
 
 
 def dependency_names_from_manifest(text: str) -> list[str]:
-    """Cargo.lock package names for [dependencies] and [build-dependencies].
+    """Cargo.lock package names for normal and target-specific dependencies.
 
     Prefer `package = "..."` when present (uutils keys like `ls` map to
-    `uu_ls` in the lockfile). Skip target-specific / dev dependency tables.
-    Build-deps belong in the lock package's dependencies list too.
+    `uu_ls` in the lockfile). Include target-specific and build dependencies,
+    because Cargo.lock records them even when the current target does not use
+    them. Skip dev dependency tables.
     """
     names: list[str] = []
     section: str | None = None
@@ -652,7 +696,12 @@ def dependency_names_from_manifest(text: str) -> list[str]:
             section = s
             i += 1
             continue
-        if section not in keep:
+        target_dependency = (
+            section is not None
+            and section.startswith("[target.")
+            and section.endswith((".dependencies]", ".build-dependencies]"))
+        )
+        if section not in keep and not target_dependency:
             i += 1
             continue
         m = re.match(r"^([A-Za-z0-9_-]+)\s*=", s)
@@ -791,10 +840,19 @@ def process_coreutils_tree(coreutils_root: Path) -> None:
             root_toml.write_text(text)
             print(f"stripped uudoc bin / autobins under {coreutils_root}")
         remove_uudoc_sources(coreutils_root)
+        adapt_uutils_umbrella_library(coreutils_root)
+        uucore_toml = coreutils_root / "src/uucore/Cargo.toml"
+        if uucore_toml.is_file():
+            uucore_manifest = ensure_uucore_error_dependency(uucore_toml.read_text())
+            uucore_toml.write_text(uucore_manifest)
         lock = coreutils_root.parent / "Cargo.lock"
         sync_lock_package_deps(
             lock, "coreutils", dependency_names_from_manifest(root_toml.read_text())
         )
+        if uucore_toml.is_file():
+            sync_lock_package_deps(
+                lock, "uucore", dependency_names_from_manifest(uucore_toml.read_text())
+            )
         print(f"note: coreutils already expanded under {coreutils_root}; skipping expand")
         return
     count = 0
@@ -810,6 +868,8 @@ def process_coreutils_tree(coreutils_root: Path) -> None:
         text = strip_nested_workspace(text)
         text = strip_dev_dependencies(text)
         text = prune_dropped_optional_deps(text, package_name=_package_name(text))
+        if _package_name(text) == "uucore":
+            text = ensure_uucore_error_dependency(text)
         if toml.resolve() == root_toml.resolve():
             text = prune_umbrella_for_wawona(text)
             text = strip_uudoc_bin(text)
@@ -817,10 +877,16 @@ def process_coreutils_tree(coreutils_root: Path) -> None:
         toml.write_text(text)
         count += 1
     remove_uudoc_sources(coreutils_root)
+    adapt_uutils_umbrella_library(coreutils_root)
     lock = coreutils_root.parent / "Cargo.lock"
     sync_lock_package_deps(
         lock, "coreutils", dependency_names_from_manifest(root_toml.read_text())
     )
+    uucore_toml = coreutils_root / "src/uucore/Cargo.toml"
+    if uucore_toml.is_file():
+        sync_lock_package_deps(
+            lock, "uucore", dependency_names_from_manifest(uucore_toml.read_text())
+        )
     print(
         f"Expanded uutils workspace pins under {coreutils_root} "
         f"({len(deps)} deps, {len(pkg)} package fields, {count} manifests; "

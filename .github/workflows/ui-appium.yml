@@ -331,6 +331,7 @@ jobs:
           WAWONA_APPIUM_SERVER: http://127.0.0.1:4723
           WAWONA_WAYLAND_GUEST: colima
           WAWONA_COLIMA_START: "1"
+          WAWONA_COLIMA_RECOVER: "1"
           # GitHub macOS runners are VMs. VZ cannot nest there, so use Lima's
           # QEMU backend, which falls back from HVF to TCG when HVF is absent.
           WAWONA_COLIMA_VM_TYPE: qemu

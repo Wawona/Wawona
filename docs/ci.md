@@ -61,6 +61,8 @@ bootstrap and sync the `release-beta` secrets after a profile change.
 
 **Promote rule (repo law):** `development` → `master` only when the tip is green on **Verification report**, **Gate: packages**, and **Gate: products**. Gate: products is green only when **every** product cell succeeds: iOS, iPadOS, tvOS, watchOS, visionOS, macOS, Android, Linux AppImages (plus wired GUI smoke). Do not promote on a partial matrix.
 
+The Watch product cell builds both the simulator app and the Watch device app. The device build runs the `Build Rust Backend via Nix` phase for the same Watch target embedded by the iOS archive. Simulator-only builds omit that device target, so they cannot qualify the ASC upload gate.
+
 **Soft supersede:** WIP workflows use `cancel-in-progress: false` and [`.github/scripts/ci-require-branch-tip.sh`](../.github/scripts/ci-require-branch-tip.sh). Obsolete SHAs exit success as `superseded` (not Cancelled). The live tip runs the full gates. Agents must never `gh run cancel` to clear the queue.
 
 Workflow display names use a role prefix (`Gate` / `Build` / `Watch` / `Ship`). Filenames stay as before (`nix.yml`, `device-gate.yml`, …).
