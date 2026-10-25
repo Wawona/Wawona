@@ -331,6 +331,9 @@ jobs:
           WAWONA_APPIUM_SERVER: http://127.0.0.1:4723
           WAWONA_WAYLAND_GUEST: colima
           WAWONA_COLIMA_START: "1"
+          # GitHub macOS runners are VMs. VZ cannot nest there, so use Lima's
+          # QEMU backend, which falls back from HVF to TCG when HVF is absent.
+          WAWONA_COLIMA_VM_TYPE: qemu
           # Isolate both homes and the active profile from stale prestarted
           # runner Colima/Lima metadata. These are disposable per-run values.
           COLIMA_HOME: ${{ runner.temp }}/wawona-colima
@@ -351,8 +354,8 @@ jobs:
           mkdir -p "$COLIMA_HOME" "$LIMA_HOME"
           # Never exit 0 without PNGs. SKIPPED.txt was false green on tip a58384fc.
           if ! command -v colima >/dev/null 2>&1 || ! command -v docker >/dev/null 2>&1; then
-            brew install colima lima docker || {
-              echo "FAIL: colima, lima, and docker are required for macOS catalog Wayland guests" >&2
+            brew install colima lima docker qemu || {
+              echo "FAIL: colima, lima, docker, and qemu are required for macOS catalog Wayland guests" >&2
               exit 1
             }
           fi

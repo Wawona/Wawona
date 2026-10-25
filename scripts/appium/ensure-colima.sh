@@ -30,7 +30,11 @@ if status_out="$(colima status 2>&1)"; then
 else
   if [[ "${WAWONA_COLIMA_START:-0}" == "1" ]]; then
     echo "colima not running; starting (WAWONA_COLIMA_START=1)"
-    colima start
+    if [[ -n "${WAWONA_COLIMA_VM_TYPE:-}" ]]; then
+      colima start --vm-type "$WAWONA_COLIMA_VM_TYPE"
+    else
+      colima start
+    fi
   else
     echo "FAIL: colima not running. Start with: colima start" >&2
     echo "$status_out" >&2
