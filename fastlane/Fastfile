@@ -880,9 +880,10 @@ def match_readonly?
   !!ENV["CI"]
 end
 
-# App targets use Wawona-iCloud.entitlements; App Store profiles must include
-# those capabilities or xcodebuild fails at archive. `produce` has no api_key
-# option — uses Apple ID session / portal cookies when APPLE_ID is set.
+# App targets, including the watch companion, use Wawona-iCloud.entitlements;
+# each App Store profile must include those capabilities or xcodebuild fails
+# at archive. `produce` has no api_key option and uses Apple ID session / portal
+# cookies when APPLE_ID is set.
 def ensure_icloud_app_id!(_api_key, app_id)
   unless ENV["APPLE_ID"].to_s.strip.empty?
     UI.message("Ensuring iCloud capability on App ID #{app_id}")
@@ -943,7 +944,10 @@ def install_testflight_profiles!(api_key)
   force = match_force?
   UI.message("match readonly=#{readonly} force=#{force}")
 
-  ensure_icloud_app_id!(api_key, MAIN_BUNDLE_ID) unless readonly
+  unless readonly
+    ensure_icloud_app_id!(api_key, MAIN_BUNDLE_ID)
+    ensure_icloud_app_id!(api_key, WATCH_BUNDLE_ID)
+  end
 
   [
     ["tvos", MAIN_BUNDLE_ID],

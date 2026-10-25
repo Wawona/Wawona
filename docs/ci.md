@@ -44,9 +44,20 @@ Before `development` → `master`, you need three greens on the **same tip**:
 |---------|-------|--------|
 | Work / PR on **`development`** | **Verification** + **Gate: packages** + **Gate: products** (full product matrix + GUI smoke) | Nothing to stores or GitHub Releases |
 | Promote green tip → **`master`** (push) | **Gate: products** (full matrix); then **Ship: beta (stores)** + **Ship: beta AppImages** via `workflow_run` | TestFlight + Play **internal** (CI smoke via `fastlane android beta`). Open testing is `fastlane android beta_open` (Play `beta` track) after production access. Closed Alpha interim is `fastlane android beta_closed` (Play `alpha`). Linux AppImage artifacts reused from Gate: products |
+| Tag **`v*`** on a release commit | **Ship: GitHub assets**; store beta via **Ship: beta** `workflow_dispatch` if needed | GitHub Release assets (+ optional store dispatch) |
 
 **Play Draft-app note (2026-10-12):** Closed Alpha accepted a **draft** promote of internal `1791787807` (`PLAY_PROMOTE_INTERNAL=1 PLAY_RELEASE_STATUS=draft`). Open testing still needs Dashboard store listing + production access. Countries / tester emails for Alpha are Console UI after the draft lands.
-| Tag **`v*`** on a release commit | **Ship: GitHub assets**; store beta via **Ship: beta** `workflow_dispatch` if needed | GitHub Release assets (+ optional store dispatch) |
+
+**Play internal version codes:** `github.run_number` is scoped to one workflow
+and can be lower than a release already on Play. Android beta builds therefore
+use the UTC Unix timestamp as `versionCode` (below Android's `2100000000`
+limit). Keep the code monotonic across all Play tracks and release mechanisms.
+
+**Apple Watch iCloud signing:** The iPhone and Watch App IDs both need the
+iCloud capability because the Watch target carries the CloudKit entitlement.
+`fastlane regenerate_signing` enables both before it force-regenerates the
+App Store profiles. CI installs those profiles read-only, so rerun signing
+bootstrap and sync the `release-beta` secrets after a profile change.
 
 **Promote rule (repo law):** `development` → `master` only when the tip is green on **Verification report**, **Gate: packages**, and **Gate: products**. Gate: products is green only when **every** product cell succeeds: iOS, iPadOS, tvOS, watchOS, visionOS, macOS, Android, Linux AppImages (plus wired GUI smoke). Do not promote on a partial matrix.
 

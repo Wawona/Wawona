@@ -35,7 +35,7 @@ Verify release environment (Apple credentials)
 [bundle exec] fastlane regenerate_signing
 ```
 
-Enable iCloud on App IDs and force-regenerate App Store match profiles
+Enable iCloud on the iPhone and Watch App IDs and force-regenerate App Store match profiles
 
 ### beta
 

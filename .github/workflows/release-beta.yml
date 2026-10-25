@@ -160,6 +160,16 @@ jobs:
           else
             echo "WAWONA_VERSION=$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_ENV"
           fi
+          # Play versionCode must exceed every previously uploaded release.
+          # Workflow run_number is local to this workflow and can be far below
+          # an existing Play versionCode after earlier release mechanisms.
+          build_number="$(date -u +%s)"
+          if (( build_number > 2100000000 )); then
+            echo "Play versionCode exceeds Android's maximum: $build_number" >&2
+            exit 1
+          fi
+          echo "WAWONA_BUILD_NUMBER=$build_number" >> "$GITHUB_ENV"
+          echo "Play versionCode: $build_number" >> "$GITHUB_STEP_SUMMARY"
 
       - uses: ./.github/actions/setup-nix-flakehub
         with:
@@ -184,7 +194,6 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           PLAY_STORE_JSON_KEY: ${{ secrets.PLAY_STORE_JSON_KEY }}
-          WAWONA_BUILD_NUMBER: ${{ github.run_number }}
           SECRETSPEC_PROFILE: ci-android
           SECRETSPEC_PROVIDER: env
           CI: "true"
