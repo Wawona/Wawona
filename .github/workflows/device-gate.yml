@@ -25,6 +25,8 @@ on:
       - "scripts/prepare-cargo-path-deps.sh"
       - "flake.nix"
       - "flake.lock"
+      - "fastlane/**"
+      - ".github/workflows/release-beta.yml"
       - ".agent-device/**"
       - "scripts/agent-device-smoke.sh"
       - "scripts/ci-ios-xcuitest-smoke.sh"
