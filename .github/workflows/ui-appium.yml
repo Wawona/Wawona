@@ -353,7 +353,10 @@ jobs:
           python3 scripts/appium/verify-wayland-guest-map.py
           mkdir -p "$COLIMA_HOME" "$LIMA_HOME"
           # Never exit 0 without PNGs. SKIPPED.txt was false green on tip a58384fc.
-          if ! command -v colima >/dev/null 2>&1 || ! command -v docker >/dev/null 2>&1; then
+          QEMU_BIN="qemu-system-$(uname -m)"
+          if ! command -v colima >/dev/null 2>&1 \
+            || ! command -v docker >/dev/null 2>&1 \
+            || ! command -v "$QEMU_BIN" >/dev/null 2>&1; then
             brew install colima lima docker qemu || {
               echo "FAIL: colima, lima, docker, and qemu are required for macOS catalog Wayland guests" >&2
               exit 1
