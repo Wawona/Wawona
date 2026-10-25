@@ -21,8 +21,8 @@ After launch (iOS: `simctl launch`; Android: `am start` then uiautomator Welcome
 macOS: exec `Wawona.app` binary):
 
 1. Sample memory every `WAWONA_LEAK_SAMPLE_SEC` (default 15s) for `WAWONA_LEAK_HOLD_SEC` (default 60s).
-2. Fail if `(max - min) > WAWONA_LEAK_PLATEAU_MB` (default 20 MB).
-3. Fail if samples are strictly monotonic and total climb ≥ `WAWONA_LEAK_MONO_MB` (default 8 MB).
+2. Ignore the first sample as launch warm-up, then fail if `(max - min) > WAWONA_LEAK_PLATEAU_MB` (default 20 MB).
+3. Fail if steady-state samples are strictly monotonic and total climb ≥ `WAWONA_LEAK_MONO_MB` (default 8 MB).
 4. Fail if the process dies or sampling fails.
 
 Launch→steady jump is allowed; **unbounded growth during the hold** is not.

@@ -119,7 +119,8 @@ leak_macos_pid() {
   [[ -n "$pid" ]] && printf '%s\n' "$pid"
 }
 
-# Analyze comma-separated MB samples. Writes JSON to $2; exit 0=pass 1=fail.
+# Analyze comma-separated MB samples. The first sample is launch warm-up and
+# is excluded from steady-state plateau checks. Writes JSON to $2; exit 0=pass 1=fail.
 leak_analyze_plateau() {
   local csv="$1"
   local out_json="$2"
@@ -136,23 +137,24 @@ try:
     samples = [float(p) for p in parts]
 except ValueError:
     samples = []
+steady_samples = samples[1:]
 status = "fail"
 reason = "no_samples"
 spread = None
 mono_climb = None
-if samples:
-    mn, mx = min(samples), max(samples)
+if steady_samples:
+    mn, mx = min(steady_samples), max(steady_samples)
     spread = mx - mn
     mono_climb = 0.0
-    for a, b in zip(samples, samples[1:]):
+    for a, b in zip(steady_samples, steady_samples[1:]):
         if b > a:
             mono_climb = max(mono_climb, b - a)
         else:
             # reset consecutive climb tracker for strict mono across whole series
             pass
-    # Strict monotonic climb from first to last with each step increasing
-    strict = all(samples[i] < samples[i + 1] for i in range(len(samples) - 1))
-    total_climb = samples[-1] - samples[0] if len(samples) >= 2 else 0.0
+    # Strict monotonic climb across steady-state samples only.
+    strict = all(steady_samples[i] < steady_samples[i + 1] for i in range(len(steady_samples) - 1))
+    total_climb = steady_samples[-1] - steady_samples[0] if len(steady_samples) >= 2 else 0.0
     if spread > plateau:
         status, reason = "fail", f"plateau_spread_mb={spread:.2f}>{plateau}"
     elif strict and total_climb >= mono:
@@ -163,6 +165,8 @@ payload = {
     "status": status,
     "reason": reason,
     "samples_mb": samples,
+    "ignored_warmup_samples": 1 if samples else 0,
+    "steady_samples_mb": steady_samples,
     "spread_mb": spread,
     "plateau_limit_mb": plateau,
     "mono_limit_mb": mono,
