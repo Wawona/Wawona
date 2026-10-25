@@ -899,7 +899,7 @@ def ensure_icloud_app_id!(_api_key, app_id)
     UI.important("APPLE_ID unset — skipping produce iCloud; App ID must already have iCloud enabled")
   end
 rescue StandardError => e
-  UI.important("produce iCloud for #{app_id}: #{e.message}")
+  UI.user_error!("Could not enable iCloud on App ID #{app_id}: #{e.message}")
 end
 
 def find_distribution_identity_sha
