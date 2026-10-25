@@ -4228,6 +4228,7 @@ dependencies = [
  "rustix",
  "shake",
  "tempfile",
+ "thiserror",
  "unic-langid",
  "unicode-width 0.2.2",
  "unit-prefix",

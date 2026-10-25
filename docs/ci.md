@@ -63,6 +63,8 @@ bootstrap and sync the `release-beta` secrets after a profile change.
 
 The Watch product cell builds both the simulator app and the Watch device app. The device build runs the `Build Rust Backend via Nix` phase for the same Watch target embedded by the iOS archive. Simulator-only builds omit that device target, so they cannot qualify the ASC upload gate.
 
+The shared uutils workspace expansion changes the generated `uucore` manifest. Keep its dependency edges in the canonical `Cargo.lock` synchronized with the injected manifest because Linux UI and AppImage builds vendor from that lockfile. A mismatch fails `cargoSetupPostPatchHook` before compilation.
+
 OSV exceptions belong in the root `osv-scanner.toml`, with a specific affected path, a dated expiry, and a removal or reevaluation trigger. Do not suppress a finding solely to make CI green. The current temporary exceptions cover optional lockfile-only `basic-toml` and two `cgmath` advisories inherited from pinned Smithay 0.7. Recheck before expiry and remove each exception when its dependency path changes.
 
 **Soft supersede:** WIP workflows use `cancel-in-progress: false` and [`.github/scripts/ci-require-branch-tip.sh`](../.github/scripts/ci-require-branch-tip.sh). Obsolete SHAs exit success as `superseded` (not Cancelled). The live tip runs the full gates. Agents must never `gh run cancel` to clear the queue.
