@@ -25,8 +25,7 @@ if ! command -v colima >/dev/null 2>&1; then
   exit 6
 fi
 
-status_out="$(colima status 2>&1 || true)"
-if echo "$status_out" | grep -Eiq 'is running|Running'; then
+if status_out="$(colima status 2>&1)"; then
   echo "colima already running"
 else
   if [[ "${WAWONA_COLIMA_START:-0}" == "1" ]]; then
