@@ -58,8 +58,9 @@ lane under `ui-appium.yml`):
 - The macOS CI job creates unique `COLIMA_HOME` and `LIMA_HOME` directories
   and a unique `COLIMA_PROFILE` under `runner.temp` before starting its
   disposable VM. Isolate all three: runner images can inherit a stale active
-  profile even when the config directories are fresh. Local runs keep the
-  normal profile and never reset it automatically.
+  profile even when the config directories are fresh. Recovery may force-stop
+  and recreate only this run-scoped VM. Local runs keep the normal profile and
+  never reset it automatically.
 - **Catalog green = Present surface PNG** in
   `.agent-device/test-artifacts/appium/catalog-gallery/<client>.png`
   (non-blank via `require_client_screenshot`). Capture

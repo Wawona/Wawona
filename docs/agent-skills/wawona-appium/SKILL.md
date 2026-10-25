@@ -97,8 +97,9 @@ generated SSH config when that default key path is absent.
 The GitHub macOS catalog job gives Colima and Lima unique homes and sets a
 unique `COLIMA_PROFILE` under `runner.temp` before starting the VM. Isolate the
 profile as well as both homes: runner images can inherit a stale active profile
-even when the config directories are fresh. Local runs use the normal profile
-and must not reset it automatically.
+even when the config directories are fresh. CI may force-stop and recreate only
+this run-scoped disposable VM. Local runs use the normal profile and must not
+reset it automatically.
 `WAWONA_MAC2_MANAGE_APP=1` + `skipAppKill`. `MANAGE_APP=0` drops bundleId.
 
 ### Colima guests beyond Ubuntu apt

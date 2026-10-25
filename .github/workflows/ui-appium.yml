@@ -332,6 +332,8 @@ jobs:
           WAWONA_APPIUM_SERVER: http://127.0.0.1:4723
           WAWONA_WAYLAND_GUEST: colima
           WAWONA_COLIMA_START: "1"
+          # This run-scoped VM is disposable, so recover stale activation state.
+          WAWONA_COLIMA_RECOVER: "1"
           # Isolate both homes and the active profile from stale prestarted
           # runner Colima/Lima metadata. These are disposable per-run values.
           COLIMA_HOME: ${{ runner.temp }}/wawona-colima
