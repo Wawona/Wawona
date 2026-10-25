@@ -38,7 +38,6 @@ on:
 permissions:
   contents: read
   actions: read
-  id-token: write
 
 concurrency:
   group: ui-appium-${{ github.sha }}
@@ -50,10 +49,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Tip soft-supersede
         run: ./.github/scripts/ci-require-branch-tip.sh || true
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
       - name: Verify a11y sync + matrix + Wayland guest map
@@ -75,7 +74,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Tip soft-supersede
         run: ./.github/scripts/ci-require-branch-tip.sh || true
       - name: Prepare Appium artifact dir
@@ -90,14 +89,14 @@ jobs:
           sudo udevadm trigger --name-match=kvm
       - name: Download product-android-apk
         if: ${{ inputs.products_ready }}
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: product-android-apk
           path: dist/
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
       - name: Install Appium + UiAutomator2
@@ -113,7 +112,7 @@ jobs:
             sleep 1
           done
       - name: Android Appium suite
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: 34
           target: google_apis
@@ -125,7 +124,7 @@ jobs:
           script: bash scripts/appium/ci-android-suite.sh
       - name: Upload artifacts
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: appium-android
           path: test-artifacts/appium/
@@ -137,7 +136,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Tip soft-supersede
         run: ./.github/scripts/ci-require-branch-tip.sh || true
       - name: Prepare Appium artifact dir
@@ -146,7 +145,7 @@ jobs:
           eval "$(scripts/appium/ci-prepare-artifacts.sh)"
       - name: Download product AppImage
         if: ${{ inputs.products_ready }}
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: product-appimage-x86_64-linux
           path: dist/
@@ -165,10 +164,10 @@ jobs:
             --background --exec /usr/bin/Xvfb -- :99 \
             --screen 0 1920x1200x24
           echo "DISPLAY=:99.0" >> "$GITHUB_ENV"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
       - name: Install Appium Linux driver
@@ -228,14 +227,14 @@ jobs:
           fi
       - name: Upload artifacts
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: appium-linux
           path: test-artifacts/appium/
           if-no-files-found: warn
       - name: Upload catalog screenshot gallery
         if: ${{ always() && inputs.products_ready }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: appium-catalog-gallery-linux
           path: test-artifacts/appium/catalog-gallery/
@@ -265,7 +264,7 @@ jobs:
             job_name: ios-watch-pair
             watch_pair: true
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Tip soft-supersede
         run: ./.github/scripts/ci-require-branch-tip.sh || true
       - name: Prepare Appium artifact dir
@@ -278,7 +277,7 @@ jobs:
       # artifacts are wired. Simulator SDK/runtime builds are covered by Gate: products.
       - name: Download product-macos-app
         if: ${{ matrix.platform == 'macos' && inputs.products_ready }}
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: product-macos-app
           path: product-macos-app/
@@ -296,10 +295,10 @@ jobs:
           # only for Gate product of this SHA via products_ready. Catalog capture
           # treats it as the host app (not /Applications).
           echo "Staged host app: $app"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
       - name: Install Appium + XCUITest / Mac2
@@ -382,14 +381,14 @@ jobs:
           echo "Catalog PNGs: ${pngs[*]}"
       - name: Upload artifacts
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: appium-${{ matrix.job_name || matrix.platform }}
           path: test-artifacts/appium/
           if-no-files-found: warn
       - name: Upload catalog screenshot gallery (macOS)
         if: ${{ always() && matrix.platform == 'macos' }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: appium-catalog-gallery-macos
           path: test-artifacts/appium/catalog-gallery/
