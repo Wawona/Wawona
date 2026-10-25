@@ -101,6 +101,9 @@ jobs:
             max-jobs = auto
             cores = 0
 
+      - name: Test App Store Connect upload verdict gate
+        run: nix develop .#release --command ruby fastlane/spec/asc_build_upload_gate_spec.rb
+
       - name: Run Fastlane iOS beta
         env:
           MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}

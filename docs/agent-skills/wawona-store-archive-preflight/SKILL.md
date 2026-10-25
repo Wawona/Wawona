@@ -16,6 +16,10 @@ the Wawona-iOS archive compiles and signs Wawona-watchOS as an embedded app.
 2. Archive and export every selected Apple beta target.
 3. Run all archive and IPA structure assertions for every exported IPA.
 4. Only after all targets pass, upload those exact IPA files to App Store Connect.
+5. After each transport upload, poll the matching App Store Connect `buildUploads`
+   record by bundle version, build number, and platform. The lane passes only
+   when a new record reaches `COMPLETE`. `FAILED`, a missing record, or timeout
+   fails the lane. An `altool` or Fastlane transport success is not acceptance.
 
 Do not archive and upload one target at a time. A later platform failure must
 not leave an earlier platform partially submitted.

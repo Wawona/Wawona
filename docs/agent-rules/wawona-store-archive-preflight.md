@@ -4,6 +4,11 @@ Apple beta release workflow must archive, export, and validate every selected
 device IPA before its first App Store Connect upload. Upload the same validated
 IPA files. Do not interleave archive and upload per target.
 
+After each TestFlight transport upload, poll the matching App Store Connect
+`buildUploads` record by version, build number, and platform. The release lane
+passes only when a new record reaches `COMPLETE`. `FAILED`, no matching record,
+or timeout fails CI. A successful transport command is not ASC acceptance.
+
 Simulator product gates do not validate the signed iOS device archive or its
 embedded Watch app. `Wawona-iOS` must compile `Wawona-watchOS` as its companion
 under `Watch/`. Reproduce the device path with
