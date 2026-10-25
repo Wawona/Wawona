@@ -30,6 +30,11 @@ The supported store path is `Wawona-iOS` with its Watch companion embedded under
 `Watch/`, not a standalone `Wawona-watchOS` upload. Simulator builds are not a
 substitute for the device archive. Reproduce without uploading with:
 
+Gate: products builds `.#wawona-watchos-app-device` in the Watch product cell
+and also builds the simulator app. The device build runs the embedded Watch
+target's `Build Rust Backend via Nix` phase before any iOS archive or ASC upload
+can start.
+
 ```sh
 CI=true WAWONA_DEBUG_SCHEME=Wawona-iOS fastlane ios debug_export
 ```
