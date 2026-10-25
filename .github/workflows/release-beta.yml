@@ -76,7 +76,7 @@ jobs:
       )
     runs-on: macos-26
     environment: release-beta
-    timeout-minutes: 90
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v5
         with:

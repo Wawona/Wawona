@@ -22,9 +22,6 @@ private func wwn_term_bytes_images_json(
     _ cellH: UInt32
 ) -> UnsafeMutablePointer<CChar>?
 
-@_silgen_name("wwn_term_string_free")
-private func wwn_term_string_free(_ ptr: UnsafeMutablePointer<CChar>?)
-
 /// Watch draws the same VT cells as the other hosts. No Metal.
 struct WatchTerminalScreen: View {
     let text: String
@@ -329,7 +326,7 @@ private enum WatchTerminalSnapshot {
             return [[WatchTerminalSpan(text: text, fg: 0xE8E8E8, bg: 0, bold: false, italic: false, underline: false, blink: false, strike: false)]]
         }
         let document = String(cString: ptr)
-        wwn_term_string_free(ptr)
+        WatchShellABI.termStringFree(ptr)
         let decoded = (try? JSONDecoder().decode([WatchTermLineRecord].self, from: Data(document.utf8))) ?? []
         if decoded.isEmpty {
             return [[WatchTerminalSpan(text: text, fg: 0xE8E8E8, bg: 0, bold: false, italic: false, underline: false, blink: false, strike: false)]]
@@ -367,7 +364,7 @@ private enum WatchTerminalSnapshot {
         }
         guard let ptr else { return [] }
         let document = String(cString: ptr)
-        wwn_term_string_free(ptr)
+        WatchShellABI.termStringFree(ptr)
         let decoded = (try? JSONDecoder().decode([WatchPictureRecord].self, from: Data(document.utf8))) ?? []
         return decoded.compactMap { record in
             guard let image = watchImage(record) else { return nil }

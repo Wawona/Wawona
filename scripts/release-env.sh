@@ -14,6 +14,13 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+# `nix develop` exposes NIX_BUILD_TOP for its shell, even though release
+# commands run outside a Nix derivation sandbox. Xcode phases use this marker
+# to require preinjected libraries and otherwise refuse nested Nix builds.
+# Release Fastlane builds run on the host, so let xcode-prebuild.sh realize
+# uncached app and Watch libraries through the normal Nix daemon.
+unset NIX_BUILD_TOP
+
 PROFILE="${SECRETSPEC_PROFILE:-local}"
 export SECRETSPEC_FILE="${SECRETSPEC_FILE:-$ROOT/secretspec.toml}"
 export PASSWORD_STORE_DIR="${PASSWORD_STORE_DIR:-$HOME/.password-store}"

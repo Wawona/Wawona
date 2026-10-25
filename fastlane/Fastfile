@@ -1320,11 +1320,20 @@ platform :ios do
     install_testflight_profiles!(api_key)
     ensure_all_asc_versions!(api_key)
 
-    apple_beta_targets.each do |target|
+    # Complete every Apple archive, export, and local IPA invariant before the
+    # first ASC upload. A later platform must never fail after an earlier IPA
+    # has already been submitted.
+    prepared_ipas = apple_beta_targets.map do |target|
       ipa = gym_ipa(target)
       assert_ipa_no_private_progname!(ipa)
       assert_ipa_has_swift_support!(ipa)
       assert_ipa_has_watch_companion!(ipa) if target[:scheme] == "Wawona-iOS"
+      [target, ipa]
+    end
+
+    UI.success("Preflight passed for all Apple beta archives and exported IPAs")
+
+    prepared_ipas.each do |target, ipa|
       upload_to_testflight(
         **testflight_upload_options(api_key, target),
         ipa: ipa

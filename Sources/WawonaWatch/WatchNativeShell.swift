@@ -226,7 +226,7 @@ final class WatchNativeShellSession {
     }
 }
 
-private enum WatchShellABI {
+enum WatchShellABI {
     @_silgen_name("wwn_pty_session_start")
     static func sessionStart(
         _ shellPath: UnsafePointer<CChar>?,

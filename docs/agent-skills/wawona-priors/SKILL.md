@@ -38,6 +38,7 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-apple-swift` | Apple compositor Swift/SwiftUI. Always load `swiftui-pro` + `swiftui-expert-skill` first. |
 | `wawona-android-compose` | Android Kotlin/Compose. Always load `compose-agent` + `modern-jetpack-compose` first. |
 | `wawona-appium` | Mode A Appium UI on GH runners. Tip host app + clean launch; Darwin catalog = Colima only; Present surface PNG; no local-bundle. |
+| `wawona-store-archive-preflight` | Apple beta release archive/export all targets and IPA checks before the first ASC upload; simulator-only gates miss embedded Watch device compile failures. |
 | `wawona-swiftui-backports` | iOS 13 `WawonaBackport` shims. Wins over upstream SwiftUI skill modernization. |
 | `wawona-icon-composer` | Layered icon drafts, native rendering, shared IDE tooling. |
 
