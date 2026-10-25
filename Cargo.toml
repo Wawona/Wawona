@@ -3,7 +3,7 @@ members = ["."]
 
 [package]
 name = "wawona"
-version = "26.10.24"
+version = "26.10.25"
 edition = "2021"
 
 [lints.rust]
