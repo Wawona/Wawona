@@ -204,6 +204,11 @@ public final class IlandPresenterObjC: NSObject {
         ) ?? false
     }
 
+    /// Cached PNG of the last successful guest present (Machines thumbnails).
+    @objc public func lastThumbnailPNGData() -> Data? {
+        engine?.lastThumbnailPNG
+    }
+
     @objc(drainPendingBuffersFromCore:)
     public func drainPendingBuffers(fromCore core: UnsafeMutableRawPointer?) {
         guard let engine else { return }

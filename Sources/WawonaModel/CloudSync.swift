@@ -17,8 +17,8 @@ import AppKit
 public final class WWNCloudSync: ObservableObject {
     public static let shared = WWNCloudSync()
     public static let containerIdentifier = "iCloud.com.aspauldingcode.Wawona"
-    public static let enabledKey = "wawona.pref.cloudKitSyncEnabled"
-    public static let didApplyRemoteChanges = Notification.Name("WWNCloudSyncDidApplyRemoteChanges")
+    nonisolated public static let enabledKey = "wawona.pref.cloudKitSyncEnabled"
+    nonisolated public static let didApplyRemoteChanges = Notification.Name("WWNCloudSyncDidApplyRemoteChanges")
     static let backgroundRefreshIdentifier = "wawona.cloudsync"
 
     public enum Status: Equatable {

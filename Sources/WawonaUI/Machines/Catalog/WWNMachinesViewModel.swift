@@ -175,12 +175,12 @@ final class WWNMachinesViewModel: ObservableObject {
   @Published private(set) var createdAtByMachine: [String: Date] = [:]
   @Published private(set) var lastUsedAtByMachine: [String: Date] = [:]
   private static let metadataDefaultsKey = "wawona.machines.metadata"
-  #if os(macOS)
-  /// Avoid re-hitting the ObjC thumbnail store on every SwiftUI body eval
-  /// (window moves re-layout Machines and previously reloaded NSImage each time).
-  private var thumbnailCache: [String: NSImage] = [:]
+  #if os(macOS) || os(iOS) || os(tvOS) || os(visionOS)
+  /// Avoid re-hitting the thumbnail store on every SwiftUI body eval.
+  private var thumbnailCache: [String: WWNPlatformImage] = [:]
   #endif
 
+  private var captureThumbnailObserver: NSObjectProtocol?
   private var nativeProcessTerminateObserver: NSObjectProtocol?
   private var containerReadyObserver: NSObjectProtocol?
   private var containerStopObserver: NSObjectProtocol?
@@ -203,6 +203,15 @@ final class WWNMachinesViewModel: ObservableObject {
       : UserDefaults.standard.bool(forKey: Self.sortAscendingDefaultsKey)
     loadMetadata()
     reload()
+    captureThumbnailObserver = NotificationCenter.default.addObserver(
+      forName: Notification.Name("WWNCaptureActiveMachineThumbnailNotification"),
+      object: nil,
+      queue: .main
+    ) { [weak self] _ in
+      Task { @MainActor [weak self] in
+        self?.captureThumbnailForActiveMachineIfNeeded()
+      }
+    }
     nativeProcessTerminateObserver = NotificationCenter.default.addObserver(
       forName: wwnNativeClientProcessDidTerminateNotification,
       object: nil,
@@ -787,12 +796,8 @@ final class WWNMachinesViewModel: ObservableObject {
     touchLastUsed(profile.machineId)
     WWNMachineProfileStore.setActiveMachineId(profile.machineId)
     #if os(iOS) || os(visionOS)
-    // Dismiss Terminal sheet; show the Wayland / Metal client deliberately.
-    NotificationCenter.default.post(
-      name: Notification.Name("WWNRelayGuestConsoleNeededNotification"),
-      object: nil,
-      userInfo: ["machineId": profile.machineId ?? "", "source": "close"]
-    )
+    // Park Terminal chrome; do not Stop the shell (Focus is not Close).
+    WWNIosGuestConsole.shared.parkForCompositor()
     #endif
     WWNMainWindowRouter.shared.showSessionSurface()
     #if os(macOS)
@@ -809,7 +814,7 @@ final class WWNMachinesViewModel: ObservableObject {
   }
 
   func thumbnailImage(for profile: WWNMachineProfile) -> WWNPlatformImage? {
-    #if os(macOS)
+    #if os(macOS) || os(iOS) || os(tvOS) || os(visionOS)
     guard isThumbnailEnabled(for: profile) else {
       return nil
     }
@@ -820,7 +825,7 @@ final class WWNMachinesViewModel: ObservableObject {
     #endif
   }
 
-  #if os(macOS)
+  #if os(macOS) || os(iOS) || os(tvOS) || os(visionOS)
   private func isThumbnailEnabled(for profile: WWNMachineProfile) -> Bool {
     let runtimeOverrides: [String: Any] = profile.runtimeOverrides
     if let override = runtimeOverrides["machineThumbnailEnabledOverride"] as? Bool {
@@ -829,7 +834,7 @@ final class WWNMachinesViewModel: ObservableObject {
     return WWNPreferencesManager.sharedManager().machineSessionThumbnailsEnabled()
   }
 
-  private func cachedThumbnailImage(for machineId: String) -> NSImage? {
+  private func cachedThumbnailImage(for machineId: String) -> WWNPlatformImage? {
     if let cached = thumbnailCache[machineId] {
       return cached
     }
@@ -840,7 +845,7 @@ final class WWNMachinesViewModel: ObservableObject {
     return image
   }
 
-  private func loadThumbnailImage(for machineId: String) -> NSImage? {
+  private func loadThumbnailImage(for machineId: String) -> WWNPlatformImage? {
     #if !SWIFT_PACKAGE
     return WWNMachineThumbnailStore.thumbnail(forMachineId: machineId)
     #else
