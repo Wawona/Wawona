@@ -18,6 +18,12 @@ Marketing version is **`YY.M.D`** (year · month · day), Apple-style year major
 bump **build number** (`WAWONA_BUILD_NUMBER` / `CURRENT_PROJECT_VERSION`) only.
 Do not use semver majors for product releases.
 
+Product CI checks CalVer against the current `America/Los_Angeles` date.
+When a run crosses midnight there, an older branch version fails closed in
+the Xcode prebuild phase before the product can be archived or uploaded. Bump
+`VERSION`, `Cargo.toml`, and the Wawona package entry in `Cargo.lock` together,
+then rerun the product gate. Do not bypass this check for a fresh release tip.
+
 ## How to read CI (10 seconds)
 
 1. Open the run.
