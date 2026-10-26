@@ -110,6 +110,46 @@ pub extern "C" fn WWNCoreGetSocketName(core: *const WWNCore) -> *mut c_char {
         .unwrap_or(std::ptr::null_mut())
 }
 
+/// Create a connected Wayland client socket for an in-process test harness.
+/// The caller owns the returned fd. Returns -1 on failure.
+#[no_mangle]
+pub extern "C" fn WWNCoreCreateTestClientSocket(
+    core: *mut WWNCore,
+    out_client_id: *mut u32,
+) -> i32 {
+    if core.is_null() {
+        return -1;
+    }
+    let core = unsafe { &*core };
+    match core.create_test_client_socket() {
+        Ok((fd, client_id)) => {
+            if !out_client_id.is_null() {
+                unsafe {
+                    *out_client_id = client_id;
+                }
+            }
+            fd
+        }
+        Err(_) => -1,
+    }
+}
+
+/// Move a mapped toplevel by its client-scoped wl_surface object id.
+#[no_mangle]
+pub extern "C" fn WWNCorePositionWindowForProtocolSurface(
+    core: *mut WWNCore,
+    client_id: u32,
+    protocol_surface_id: u32,
+    x: i32,
+    y: i32,
+) -> bool {
+    if core.is_null() {
+        return false;
+    }
+    let core = unsafe { &*core };
+    core.position_window_for_protocol_surface(client_id, protocol_surface_id, x, y)
+}
+
 /// Free a string returned by this API
 #[no_mangle]
 pub extern "C" fn WWNStringFree(s: *mut c_char) {
@@ -202,6 +242,32 @@ pub extern "C" fn WWNCoreSetForceSSD(core: *mut WWNCore, enabled: bool) {
 
         let core = unsafe { &*core };
         core.set_force_ssd(enabled);
+    }));
+}
+
+/// `0` multi-touch, `1` single-touch, `2` touchpad. See `HostSeatMode`.
+#[no_mangle]
+pub extern "C" fn WWNCoreSetHostSeatMode(core: *mut WWNCore, mode: u32) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if core.is_null() {
+            return;
+        }
+        let core = unsafe { &*core };
+        core.set_host_seat_mode(mode);
+    }));
+}
+
+/// Pref-gated pointer stream for clients that never bind `wl_touch`.
+/// Default off. Nested compositor chrome is a separate Rust seat policy.
+#[no_mangle]
+pub extern "C" fn WWNCoreSetTouchPointerEmulation(core: *mut WWNCore, enabled: bool) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if core.is_null() {
+            return;
+        }
+
+        let core = unsafe { &*core };
+        core.set_touch_pointer_emulation(enabled);
     }));
 }
 
@@ -448,6 +514,27 @@ pub extern "C" fn WWNCoreFlushClients(core: *mut WWNCore) {
     }));
 }
 
+/// Connected Wayland client count (host compositor). Used by the macOS UI to
+/// auto-reveal the session Metal surface when waypipe / MicroVM clients attach
+/// without an in-process Machines Start.
+#[no_mangle]
+pub extern "C" fn WWNCoreGetClientCount(core: *const WWNCore) -> u32 {
+    if core.is_null() {
+        return 0;
+    }
+    let core = unsafe { &*core };
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| core.get_client_count())) {
+        Ok(count) => count,
+        Err(_) => {
+            crate::wlog!(
+                crate::util::logging::C_API,
+                "WWNCoreGetClientCount panicked; returning 0"
+            );
+            0
+        }
+    }
+}
+
 /// Free WWNCore instance
 #[no_mangle]
 pub extern "C" fn WWNCoreFree(core: *mut WWNCore) {
@@ -479,7 +566,7 @@ pub enum CWindowEventType {
     FullscreenRequested = 14,
     UnfullscreenRequested = 15,
     CloseRequested = 16,
-    /// `xdg_system_bell_v1.ring` → host plays platform system alert / beep.
+    /// `xdg_system_bell_v1.ring` -> host plays platform system alert / beep.
     SystemBell = 17,
 }
 
@@ -734,8 +821,6 @@ pub extern "C" fn WWNCorePopWindowEvent(core: *mut WWNCore) -> *mut CWindowEvent
                     c_event.surface_id = surface_id;
                     true
                 }
-                // Activated / Deactivated / others are consumed by UniFFI / Linux
-                // poll paths; C ABI hosts ignore them for now.
                 _ => false,
             };
 
@@ -825,8 +910,15 @@ pub struct CBufferData {
     pub size: usize,     // Size of pixel data
     pub capacity: usize, // Capacity of pixel data (for freeing)
     pub iosurface_id: u32,
-    /// 1 = bake IOSurface with a CPU Y-flip (nested Weston on Apple).
+    /// 1 = Apple Metal present applies V remap for top-down Wayland rows.
+    /// 0 = buffer already Y-corrected for Wayland (nested weston GL).
     pub cpu_y_flip: u8,
+    pub _pad_present: [u8; 3],
+    /// 1 = reverse rows before a top-origin sampler (CGImage, SpriteKit
+    /// `SKTexture(cgImage:)`, Android Bitmap). Those samplers match `wl_shm`
+    /// (row 0 is the top). This is the inverse of `cpu_y_flip`: normal SHM
+    /// stays 0, nested weston GL (Metal already-corrected) stays 1.
+    pub top_origin_row_reverse: u8,
 }
 
 /// Pop the next pending buffer update
@@ -842,11 +934,8 @@ pub extern "C" fn WWNCorePopPendingBuffer(core: *mut WWNCore) -> *mut CBufferDat
         let core = unsafe { &*core };
 
         if let Some(event) = core.pop_pending_buffer() {
-            let cpu_y_flip = if core.nested_weston_cpu_y_flip(event.window_id.id) {
-                1u8
-            } else {
-                0u8
-            };
+            let (cpu_y_flip, top_origin_row_reverse) =
+                present_row_orientation(core, event.window_id.id);
             // Extract data based on buffer type
             match event.buffer.data {
                 super::types::BufferData::Shm {
@@ -882,6 +971,8 @@ pub extern "C" fn WWNCorePopPendingBuffer(core: *mut WWNCore) -> *mut CBufferDat
                         capacity,
                         iosurface_id: 0,
                         cpu_y_flip,
+                        _pad_present: [0; 3],
+                        top_origin_row_reverse,
                     });
 
                     return Box::into_raw(data);
@@ -905,6 +996,8 @@ pub extern "C" fn WWNCorePopPendingBuffer(core: *mut WWNCore) -> *mut CBufferDat
                         capacity: 0,
                         iosurface_id: id,
                         cpu_y_flip,
+                        _pad_present: [0; 3],
+                        top_origin_row_reverse,
                     });
                     return Box::into_raw(data);
                 }
@@ -940,6 +1033,8 @@ pub extern "C" fn WWNCorePopPendingBuffer(core: *mut WWNCore) -> *mut CBufferDat
                         capacity: 0,
                         iosurface_id: 0,
                         cpu_y_flip,
+                        _pad_present: [0; 3],
+                        top_origin_row_reverse,
                     });
                     return Box::into_raw(data);
                 }
@@ -968,6 +1063,26 @@ pub extern "C" fn WWNCorePopPendingBuffer(core: *mut WWNCore) -> *mut CBufferDat
         }
     }
 }
+
+/// Metal V remap plus the matching top-origin row reverse.
+///
+/// `wl_shm` stores row 0 at the top. Metal's clip space puts `y = -1` at the
+/// bottom, so upright Metal present sets `cpu_y_flip`. CGImage and
+/// `SKTexture(cgImage:)` are top-origin, same as Wayland, so they reverse
+/// rows only for the nested-weston buffer that Metal treats as already
+/// corrected.
+fn present_row_orientation(core: &WWNCore, window_id: u64) -> (u8, u8) {
+    if core.apple_metal_present_y_flip(window_id) {
+        (1, 0)
+    } else {
+        (0, 1)
+    }
+}
+
+const _: () = {
+    assert!(std::mem::offset_of!(CBufferData, cpu_y_flip) == 68);
+    assert!(std::mem::offset_of!(CBufferData, top_origin_row_reverse) == 72);
+};
 
 /// Free a CBufferData structure and its pixel data
 #[no_mangle]
@@ -1014,9 +1129,84 @@ pub extern "C" fn WWNCoreNotifyFramePresented(
     }));
 }
 
+/// Present the whole current scene for a headless host. Returns nodes presented.
+/// Headless host: the core applies desktop focus policy itself. Call before
+/// `WWNCoreStart`. Only for hosts without their own window system (WLCS, CI).
+#[no_mangle]
+pub extern "C" fn WWNCoreSetHeadlessHost(core: *mut WWNCore, enabled: bool) {
+    if core.is_null() {
+        return;
+    }
+    let core = unsafe { &*core };
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        core.set_headless_host(enabled)
+    }));
+}
+
+/// Headless host loop step: drain window events and re-pick the pointer.
+#[no_mangle]
+pub extern "C" fn WWNCoreHeadlessHostTick(core: *mut WWNCore) {
+    if core.is_null() {
+        return;
+    }
+    let core = unsafe { &*core };
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| core.headless_host_tick()));
+}
+
+#[no_mangle]
+pub extern "C" fn WWNCorePresentRenderScene(core: *mut WWNCore, timestamp_ms: u32) -> u32 {
+    if core.is_null() {
+        return 0;
+    }
+    let core = unsafe { &*core };
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        core.present_render_scene(timestamp_ms)
+    }))
+    .map_or(0, |presented| u32::try_from(presented).unwrap_or(u32::MAX))
+}
+
 // ----------------------------------------------------------------------------
 // Input Injection API
 // ----------------------------------------------------------------------------
+
+/// Inject absolute pointer motion in compositor-global coordinates.
+#[no_mangle]
+pub extern "C" fn WWNCoreInjectPointerMotionGlobal(
+    core: *mut WWNCore,
+    x: f64,
+    y: f64,
+    timestamp_ms: u32,
+) {
+    if core.is_null() {
+        return;
+    }
+    let core = unsafe { &*core };
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        core.inject_pointer_motion_global(x, y, timestamp_ms)
+    }));
+}
+
+/// Inject a pointer button using the seat's current global pointer focus.
+#[no_mangle]
+pub extern "C" fn WWNCoreInjectPointerButtonGlobal(
+    core: *mut WWNCore,
+    button_code: u32,
+    state: u32,
+    timestamp_ms: u32,
+) {
+    if core.is_null() {
+        return;
+    }
+    let core = unsafe { &*core };
+    let state = if state == 1 {
+        ButtonState::Pressed
+    } else {
+        ButtonState::Released
+    };
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        core.inject_pointer_button_global(button_code, state, timestamp_ms)
+    }));
+}
 
 /// Resolve topmost window id at compositor-global coordinates.
 /// Returns 0 when no surface/window exists at that location.
@@ -1310,6 +1500,78 @@ pub extern "C" fn WWNCoreTextEntryWanted(core: *mut WWNCore) -> i32 {
         }
         let core = unsafe { &*core };
         if core.text_entry_wanted() {
+            1
+        } else {
+            0
+        }
+    })) {
+        Ok(v) => v,
+        Err(_) => 0,
+    }
+}
+
+/// Push host-layout UTF-32 levels into `HostKeymapBridge` (no running core).
+/// `kind`: 1 = macOS kVK, 2 = Android AKEYCODE.
+/// `levels4` is `count * 4` (none, Shift, Option, Shift+Option).
+#[no_mangle]
+pub extern "C" fn WWNApplyHostKeyLevels(
+    kind: i32,
+    ids: *const i32,
+    levels4: *const u32,
+    count: usize,
+) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if ids.is_null() || levels4.is_null() || count == 0 {
+            return;
+        }
+        let ids = unsafe { std::slice::from_raw_parts(ids, count) };
+        let levels = unsafe { std::slice::from_raw_parts(levels4, count.saturating_mul(4)) };
+        crate::core::input::host_keymap::apply_host_key_levels(kind, ids, levels);
+    }));
+}
+
+/// Rebuild the Smithay seat keymap from `generate_from_host()`.
+#[no_mangle]
+pub extern "C" fn WWNCoreReloadHostKeymap(core: *mut WWNCore) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if core.is_null() {
+            return;
+        }
+        let core = unsafe { &*core };
+        core.reload_host_keymap();
+    }));
+}
+
+/// Remaining output height after native OSK occlusion.
+///
+/// macOS / Linux (`OskHost::Never`) return `output_height` unchanged.
+#[no_mangle]
+pub extern "C" fn WWNCoreUsableOutputHeight(output_height: i32, keyboard_overlap: i32) -> i32 {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        crate::core::input::work_area::usable_output_height(
+            output_height,
+            keyboard_overlap,
+            crate::core::input::osk::default_osk_host(),
+        )
+    })) {
+        Ok(v) => v,
+        Err(_) => output_height,
+    }
+}
+
+/// Native OSK should expand. Always 0 on macOS / Linux.
+#[no_mangle]
+pub extern "C" fn WWNCoreOskShouldShow(
+    core: *mut WWNCore,
+    hardware_keyboard: i32,
+    force: i32,
+) -> i32 {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if core.is_null() {
+            return 0;
+        }
+        let core = unsafe { &*core };
+        if core.osk_should_show(hardware_keyboard != 0, force != 0) {
             1
         } else {
             0
@@ -2036,6 +2298,78 @@ pub extern "C" fn WWNCorePopPendingGammaApply(core: *mut WWNCore) -> *mut CGamma
             );
             std::ptr::null_mut()
         }
+    }
+}
+
+/// Heap XKB v1 string from `HostKeymapBridge`. Caller must `WWNHostKeymapXkbV1Free`.
+#[no_mangle]
+pub extern "C" fn WWNHostKeymapXkbV1Copy() -> *mut c_char {
+    match std::panic::catch_unwind(|| {
+        let km = crate::core::input::host_keymap::generate_from_host();
+        std::ffi::CString::new(km)
+            .ok()
+            .map(|s| s.into_raw())
+            .unwrap_or(std::ptr::null_mut())
+    }) {
+        Ok(p) => p,
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn WWNHostKeymapXkbV1Free(p: *mut c_char) {
+    if !p.is_null() {
+        let _ = unsafe { std::ffi::CString::from_raw(p) };
+    }
+}
+
+/// Write nested-weston.ini with the honeycomb `background.png`.
+/// `weston_data_dir` is `WESTON_DATA_DIR`. Returns 1 when the PNG exists.
+#[no_mangle]
+pub extern "C" fn WWNWriteWestonHoneycombIni(
+    path: *const c_char,
+    weston_data_dir: *const c_char,
+    use_pixman: i32,
+    shell_client: *const c_char,
+    input_method: *const c_char,
+) -> i32 {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if path.is_null() || weston_data_dir.is_null() {
+            return 0;
+        }
+        let path = unsafe { CStr::from_ptr(path) }.to_string_lossy();
+        let data = unsafe { CStr::from_ptr(weston_data_dir) }.to_string_lossy();
+        let client = if shell_client.is_null() {
+            None
+        } else {
+            Some(
+                unsafe { CStr::from_ptr(shell_client) }
+                    .to_string_lossy()
+                    .into_owned(),
+            )
+        };
+        let im = if input_method.is_null() {
+            None
+        } else {
+            Some(
+                unsafe { CStr::from_ptr(input_method) }
+                    .to_string_lossy()
+                    .into_owned(),
+            )
+        };
+        match crate::core::weston_ini::write_honeycomb_ini(
+            std::path::Path::new(path.as_ref()),
+            std::path::Path::new(data.as_ref()),
+            use_pixman != 0,
+            client.as_deref(),
+            im.as_deref(),
+        ) {
+            Ok(_) => 1,
+            Err(_) => 0,
+        }
+    })) {
+        Ok(v) => v,
+        Err(_) => 0,
     }
 }
 
