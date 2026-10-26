@@ -44,6 +44,7 @@ fi
 
 COLIMA_HOME="${COLIMA_HOME:-$HOME/.colima}"
 SSH_CONFIG="${COLIMA_SSH_CONFIG:-$COLIMA_HOME/ssh_config}"
+COLIMA_SSH_HOST=""
 mkdir -p "$(dirname "$SSH_CONFIG")"
 refresh_ssh_config() {
   local ssh_config_tmp
@@ -53,13 +54,14 @@ refresh_ssh_config() {
     return 1
   fi
   mv "$ssh_config_tmp" "$SSH_CONFIG"
+  COLIMA_SSH_HOST="$("$(dirname "$0")/colima-ssh-host.sh" "$SSH_CONFIG")"
 }
 
 check_colima_ssh() {
   local output
   if output="$(ssh -F "$SSH_CONFIG" -o BatchMode=yes -o ConnectTimeout=8 \
     -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-    colima 'true' 2>&1)"; then
+    "$COLIMA_SSH_HOST" 'true' 2>&1)"; then
     return 0
   fi
   echo "Colima SSH probe failed: ${output:-no SSH diagnostic output}" >&2
@@ -98,4 +100,4 @@ if [[ ! -s "$SSH_CONFIG" ]]; then
   exit 6
 fi
 
-echo "colima ok ssh-config=$SSH_CONFIG"
+echo "colima ok ssh-config=$SSH_CONFIG ssh-host=$COLIMA_SSH_HOST"

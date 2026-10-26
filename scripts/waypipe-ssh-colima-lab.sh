@@ -35,6 +35,7 @@ if [[ -z "$WP" || ! -x "$WP" ]]; then
 fi
 COLIMA_HOME="${COLIMA_HOME:-$HOME/.colima}"
 SSH_CONFIG="${COLIMA_SSH_CONFIG:-$COLIMA_HOME/ssh_config}"
+COLIMA_SSH_HOST="$("$ROOT/scripts/appium/colima-ssh-host.sh" "$SSH_CONFIG")"
 REMOTE_WAYPIPE="${COLIMA_REMOTE_WAYPIPE:-/usr/bin/waypipe}"
 
 mkdir -p "$ART"
@@ -54,7 +55,7 @@ if [ "${1:-}" = "--status" ]; then
   echo "runtime=$WAWONA_RUNTIME ssh_config=$SSH_CONFIG wp=$WP"
   ls -la "$WAWONA_RUNTIME/wayland-0" 2>&1 || true
   ssh -F "$SSH_CONFIG" -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-    colima 'command -v waypipe foot weston weston-terminal' 2>&1 | tail -20
+    "$COLIMA_SSH_HOST" 'command -v waypipe foot weston weston-terminal' 2>&1 | tail -20
   pgrep -lf "Resources/bin/waypipe|waypipe --no-gpu" | head -30 || true
   exit 0
 fi
@@ -87,7 +88,7 @@ launch_one() {
   # shellcheck disable=SC2086
   nohup "$WP" --no-gpu --remote-bin "$REMOTE_WAYPIPE" \
     ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-    -F "$SSH_CONFIG" -T colima -- $cmd \
+    -F "$SSH_CONFIG" -T "$COLIMA_SSH_HOST" -- $cmd \
     >"$log" 2>&1 &
   echo "started $name pid=$! -> $log"
 }

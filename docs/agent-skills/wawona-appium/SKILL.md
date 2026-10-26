@@ -46,6 +46,12 @@ colima start
 | `colima` | Required on Darwin. Matrix rows are `guest = "colima"`. |
 | `nested` | Linux CI only (`WAWONA_WAYLAND_GUEST=nested`). |
 
+CI sets a unique `COLIMA_PROFILE`, so Colima's generated SSH `Host` alias can
+include that profile name. Resolve the alias from `COLIMA_SSH_CONFIG` with
+`scripts/appium/colima-ssh-host.sh`; use it for every SSH probe, guest package
+check, binary lookup, and waypipe SSH launch. Never assume the alias is
+`colima`. `COLIMA_SSH_HOST` remains an explicit override for unusual configs.
+
 ### Never (catalog)
 
 - Local-bundle host bins (`Wawona.app/Contents/Resources/bin/...`) as catalog proof
