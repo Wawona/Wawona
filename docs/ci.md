@@ -65,6 +65,8 @@ The Watch product cell builds both the simulator app and the Watch device app. T
 
 The shared uutils workspace expansion changes the generated `uucore` manifest. Keep its dependency edges in the canonical `Cargo.lock` synchronized with the injected manifest because Linux UI and AppImage builds vendor from that lockfile. A mismatch fails `cargoSetupPostPatchHook` before compilation.
 
+Android's executable multicall must build from `wwn-uutils-rs.lib.coreutilsSrc` (the pristine upstream CLI source). `mkPatchedSrc` converts the umbrella into Apple's in-process static library. Feeding that source to the Android binary recipe fails compilation in `src/bin/coreutils.rs` before the APK can be staged.
+
 OSV exceptions belong in the root `osv-scanner.toml`, with a specific affected path, a dated expiry, and a removal or reevaluation trigger. Do not suppress a finding solely to make CI green. The current temporary exceptions cover optional lockfile-only `basic-toml` and two `cgmath` advisories inherited from pinned Smithay 0.7. Recheck before expiry and remove each exception when its dependency path changes.
 
 **Soft supersede:** WIP workflows use `cancel-in-progress: false` and [`.github/scripts/ci-require-branch-tip.sh`](../.github/scripts/ci-require-branch-tip.sh). Obsolete SHAs exit success as `superseded` (not Cancelled). The live tip runs the full gates. Agents must never `gh run cancel` to clear the queue.

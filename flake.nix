@@ -612,7 +612,10 @@
       coreutils-multicall-android =
         androidPkgs.callPackage
         "${wwn-uutils-rs}/dependencies/libs/coreutils/multicall-android.nix" {
-          coreutils-src = coreutils-patched-android;
+          # Android runs the multicall as a normal executable, so compile the
+          # pristine upstream bin. The patched source is the Apple Mode A
+          # static library and its entry point is not an Android CLI binary.
+          inherit coreutils-src;
           androidToolchain = toolchainsAndroid.androidToolchain;
         };
 
