@@ -166,6 +166,21 @@ that run ID and verify its conclusion and commit SHA before the Appium lanes
 start. The workflow fails early when the source run is missing, failed, or for
 a different commit.
 
+## Linux Appium driver setup
+
+The Linux runner uses the community Appium Linux driver. Install the pinned
+driver and its AT-SPI runtime before starting the server. Verify the installed
+driver advertises `atspi2`, then wait for `/status` to return before running
+pytest. Do not hide driver or apt installation errors with `|| true`.
+
+Linux capabilities must use `platformName=Linux`,
+`appium:automationName=atspi2`, and `appium:appName` set to the actual AppImage
+path. The former `appium-linux-driver` package name was not published, and
+`automationName=Linux` selected no driver. CI now downloads the x86-64 runtime
+from the pinned upstream release and verifies its SHA-256 before installing.
+The runtime package includes a separately distributed native AT-SPI library.
+See RAG `appium-linux-driver-ci.md` for the incident and evidence.
+
 ## Hard rejects
 
 - Guess driver caps without Appium skills

@@ -184,8 +184,8 @@ jobs:
           sudo apt-get install -y xvfb libxkbcommon-x11-0 \
             libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
             libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 \
-            libxcb-xfixes0 x11-utils at-spi2-core \
-            weston foot || true
+            libxcb-xfixes0 x11-utils at-spi2-core python3-pyatspi \
+            weston foot
       - name: Start Xvfb
         run: |
           /sbin/start-stop-daemon --start --quiet \
@@ -199,12 +199,52 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
+      - name: Install Linux AT-SPI runtime
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          package_dir="$RUNNER_TEMP/uimate-appium"
+          mkdir -p "$package_dir"
+          gh release download v0.1.1 --repo Itsmeaj/appium \
+            --pattern 'uimate-appium-linux_0.1.1_amd64.deb' \
+            --dir "$package_dir"
+          package="$package_dir/uimate-appium-linux_0.1.1_amd64.deb"
+          if [[ ! -f "$package" ]]; then
+            echo "::error title=Linux AT-SPI package missing::Expected the pinned Appium runtime .deb."
+            exit 1
+          fi
+          printf '%s  %s\n' \
+            'ddad1a23a09aad22dee6a321b7608aac46c031230c184ec9b0d62981326e5fe3' \
+            "$package" | sha256sum --check -
+          sudo apt-get install -y "$package"
+          uimate-appium-doctor
       - name: Install Appium Linux driver
         run: |
-          npm install -g appium@3.1.1
-          appium driver install --source=npm appium-linux-driver || true
+          set -euo pipefail
+          export APPIUM_HOME="$RUNNER_TEMP/appium-home"
+          npm install -g appium@3.4.0
+          appium driver install --source=npm @itsmeaj/appium-linux-driver@0.1.1
+          appium driver list --installed | tee /tmp/appium-drivers.txt
+          if ! grep -Eiq 'atspi2' /tmp/appium-drivers.txt; then
+            echo "::error title=Linux Appium driver missing::Expected installed driver advertising automationName atspi2."
+            exit 1
+          fi
           appium --address 127.0.0.1 --port 4723 > /tmp/appium.log 2>&1 &
-          sleep 3
+          echo "$!" > "$RUNNER_TEMP/appium.pid"
+          ready=0
+          for _ in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:4723/status >/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [[ "$ready" != 1 ]]; then
+            cat /tmp/appium.log
+            echo "::error title=Linux Appium server unavailable::The server did not become ready."
+            exit 1
+          fi
       - name: Linux Appium unit gates
         env:
           DISPLAY: ":99.0"

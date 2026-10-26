@@ -12,6 +12,7 @@ from wawona_appium.gates import (
     platform_row,
 )
 from wawona_appium.selectors import required_cross_platform_ids
+from wawona_appium.drivers.session import _linux_capabilities
 
 
 def test_matrix_has_all_platforms():
@@ -27,6 +28,18 @@ def test_matrix_has_all_platforms():
         "linux",
     }
     assert set(m["platforms"].keys()) == expected
+
+
+def test_linux_capabilities_select_installed_driver(monkeypatch):
+    monkeypatch.delenv("WAWONA_LINUX_AUTOMATION", raising=False)
+    monkeypatch.delenv("WAWONA_LINUX_APP_NAME", raising=False)
+    monkeypatch.setenv("WAWONA_APP_PATH", "/tmp/Wawona.AppImage")
+
+    caps = _linux_capabilities()
+
+    assert caps["platformName"] == "Linux"
+    assert caps["appium:automationName"] == "atspi2"
+    assert caps["appium:appName"] == "/tmp/Wawona.AppImage"
 
 
 @pytest.mark.parametrize(

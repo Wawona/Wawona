@@ -118,19 +118,14 @@ def _android_options() -> UiAutomator2Options:
 
 
 def _linux_capabilities() -> dict[str, Any]:
-    """Capabilities for appium-linux-driver / AT-SPI2.
-
-    Falls back to a generic Appium session; the runner must install
-    appium-linux-driver and set DISPLAY.
-    """
+    """Capabilities for the Appium Linux AT-SPI2 driver."""
     app = os.environ.get("WAWONA_APP_PATH", "Wawona")
     return {
         "platformName": "Linux",
         "appium:automationName": os.environ.get(
-            "WAWONA_LINUX_AUTOMATION", "Linux"
+            "WAWONA_LINUX_AUTOMATION", "atspi2"
         ),
-        "appium:app": app,
-        "appium:appName": os.environ.get("WAWONA_LINUX_APP_NAME", "Wawona"),
+        "appium:appName": os.environ.get("WAWONA_LINUX_APP_NAME", app),
         "appium:newCommandTimeout": int(
             os.environ.get("WAWONA_APPIUM_CMD_TIMEOUT", "120")
         ),
