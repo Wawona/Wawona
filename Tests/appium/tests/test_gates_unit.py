@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
+from pathlib import Path
+
 import pytest
 
 from wawona_appium.gates import (
@@ -12,6 +16,33 @@ from wawona_appium.gates import (
     platform_row,
 )
 from wawona_appium.selectors import required_cross_platform_ids
+from wawona_appium.drivers.session import _linux_capabilities
+
+
+def test_colima_ssh_host_uses_profile_alias(tmp_path):
+    config = tmp_path / "ssh_config"
+    config.write_text("Host colima-wawona-123-1-macos\n  HostName 127.0.0.1\n")
+    helper = Path(__file__).parents[3] / "scripts/appium/colima-ssh-host.sh"
+    result = subprocess.run(
+        [str(helper), str(config)], check=True, capture_output=True, text=True
+    )
+    assert result.stdout.strip() == "colima-wawona-123-1-macos"
+
+
+def test_colima_ssh_host_ignores_wildcard_and_allows_override(tmp_path):
+    config = tmp_path / "ssh_config"
+    config.write_text("Host *\n  ServerAliveInterval 60\nHost colima-runner\n")
+    helper = Path(__file__).parents[3] / "scripts/appium/colima-ssh-host.sh"
+    result = subprocess.run(
+        [str(helper), str(config)], check=True, capture_output=True, text=True
+    )
+    assert result.stdout.strip() == "colima-runner"
+
+    env = {**os.environ, "COLIMA_SSH_HOST": "explicit-host"}
+    result = subprocess.run(
+        [str(helper), str(config)], check=True, capture_output=True, text=True, env=env
+    )
+    assert result.stdout.strip() == "explicit-host"
 
 
 def test_matrix_has_all_platforms():
@@ -27,6 +58,19 @@ def test_matrix_has_all_platforms():
         "linux",
     }
     assert set(m["platforms"].keys()) == expected
+
+
+def test_linux_capabilities_select_installed_driver(monkeypatch):
+    monkeypatch.delenv("WAWONA_LINUX_AUTOMATION", raising=False)
+    monkeypatch.delenv("WAWONA_LINUX_APP_NAME", raising=False)
+    monkeypatch.setenv("WAWONA_APP_PATH", "/tmp/Wawona.AppImage")
+
+    caps = _linux_capabilities()
+
+    assert caps["platformName"] == "Linux"
+    assert caps["appium:automationName"] == "atspi2"
+    assert caps["appium:appName"] == "/tmp/Wawona.AppImage"
+    assert "appium:app" not in caps
 
 
 @pytest.mark.parametrize(

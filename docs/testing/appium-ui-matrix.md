@@ -83,7 +83,10 @@ compositor surface (`wwn.compositor.surface`).
 | Linux desktop + nested Wayland catalog | `ubuntu-latest` + Xvfb |
 
 visionOS job alone downloads the 26.2 runtime. Do not rebuild products in the
-test job; download Gate: products artifacts when `products_ready` is set.
+test job; download Gate: products artifacts when `products_ready` is set. For
+manual dispatch, pass both `products_ready=true` and the successful Gate:
+products workflow run ID as `products_run_id`. The workflow verifies that this
+run succeeded on the exact same commit before downloading artifacts from it.
 
 ## Local
 
@@ -118,6 +121,10 @@ profile and runner image. The GitHub macOS guest step creates unique
 `COLIMA_HOME` and `LIMA_HOME` directories under `runner.temp` before starting
 the disposable VM. This avoids inheriting a stale runner profile whose Lima
 metadata or SSH config is missing. Local runs use the normal Colima profile.
+GitHub macOS runners run inside a VM, so the catalog job sets
+`WAWONA_COLIMA_VM_TYPE=qemu`; Lima falls back from HVF to TCG when nested
+virtualization is unavailable. The job installs QEMU with Colima, Lima, and the
+Docker CLI.
 
 Tip app rule: [`../agent-rules/wawona-test-tip-app.md`](../agent-rules/wawona-test-tip-app.md).
 

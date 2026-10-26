@@ -57,9 +57,15 @@ lane under `ui-appium.yml`):
   port, or profile path.
 - The macOS CI job creates unique `COLIMA_HOME` and `LIMA_HOME` directories
   and a unique `COLIMA_PROFILE` under `runner.temp` before starting its
-  disposable VM. Isolate all three: runner images can inherit a stale active
-  profile even when the config directories are fresh. Local runs keep the
-  normal profile and never reset it automatically.
+  disposable VM. Isolate all three: runner images can inherit stale active
+  profile state even when config directories are fresh. Determine status from
+  `colima status`'s exit code, not a substring match on output because
+  "is not running" contains "running". Local runs keep their normal profile.
+- The macOS runner installs Colima, Lima, Docker CLI, and QEMU together. Colima's
+  default Docker runtime requires the host `docker` command before VM startup.
+  GitHub macOS runners are virtual machines, so the CI profile selects QEMU
+  instead of VZ. Lima falls back from HVF to TCG when HVF is not available.
+  Local runs keep the normal Colima VM type.
 - **Catalog green = Present surface PNG** in
   `.agent-device/test-artifacts/appium/catalog-gallery/<client>.png`
   (non-blank via `require_client_screenshot`). Capture

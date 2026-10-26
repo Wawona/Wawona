@@ -25,13 +25,16 @@ if ! command -v colima >/dev/null 2>&1; then
   exit 6
 fi
 
-status_out="$(colima status 2>&1 || true)"
-if echo "$status_out" | grep -Eiq 'is running|Running'; then
+if status_out="$(colima status 2>&1)"; then
   echo "colima already running"
 else
   if [[ "${WAWONA_COLIMA_START:-0}" == "1" ]]; then
     echo "colima not running; starting (WAWONA_COLIMA_START=1)"
-    colima start
+    if [[ -n "${WAWONA_COLIMA_VM_TYPE:-}" ]]; then
+      colima start --vm-type "$WAWONA_COLIMA_VM_TYPE"
+    else
+      colima start
+    fi
   else
     echo "FAIL: colima not running. Start with: colima start" >&2
     echo "$status_out" >&2
@@ -41,6 +44,7 @@ fi
 
 COLIMA_HOME="${COLIMA_HOME:-$HOME/.colima}"
 SSH_CONFIG="${COLIMA_SSH_CONFIG:-$COLIMA_HOME/ssh_config}"
+COLIMA_SSH_HOST=""
 mkdir -p "$(dirname "$SSH_CONFIG")"
 refresh_ssh_config() {
   local ssh_config_tmp
@@ -50,12 +54,18 @@ refresh_ssh_config() {
     return 1
   fi
   mv "$ssh_config_tmp" "$SSH_CONFIG"
+  COLIMA_SSH_HOST="$("$(dirname "$0")/colima-ssh-host.sh" "$SSH_CONFIG")"
 }
 
 check_colima_ssh() {
-  ssh -F "$SSH_CONFIG" -o BatchMode=yes -o ConnectTimeout=8 \
+  local output
+  if output="$(ssh -F "$SSH_CONFIG" -o BatchMode=yes -o ConnectTimeout=8 \
     -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-    colima 'true' >/dev/null 2>&1
+    "$COLIMA_SSH_HOST" 'true' 2>&1)"; then
+    return 0
+  fi
+  echo "Colima SSH probe failed: ${output:-no SSH diagnostic output}" >&2
+  return 1
 }
 
 if ! refresh_ssh_config || ! check_colima_ssh; then
@@ -65,7 +75,16 @@ if ! refresh_ssh_config || ! check_colima_ssh; then
   fi
 
   echo "Colima reports stale guest state; force-stopping and restarting CI VM"
-  if ! colima stop --force || ! colima start; then
+  if ! colima stop --force; then
+    echo "FAIL: could not stop unhealthy Colima VM" >&2
+    exit 6
+  fi
+  if [[ -n "${WAWONA_COLIMA_VM_TYPE:-}" ]]; then
+    start_args=(--vm-type "$WAWONA_COLIMA_VM_TYPE")
+  else
+    start_args=()
+  fi
+  if ! colima start "${start_args[@]}"; then
     echo "FAIL: could not recover Colima CI VM" >&2
     exit 6
   fi
@@ -81,4 +100,4 @@ if [[ ! -s "$SSH_CONFIG" ]]; then
   exit 6
 fi
 
-echo "colima ok ssh-config=$SSH_CONFIG"
+echo "colima ok ssh-config=$SSH_CONFIG ssh-host=$COLIMA_SSH_HOST"

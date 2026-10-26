@@ -24,11 +24,24 @@ the Wawona-iOS archive compiles and signs Wawona-watchOS as an embedded app.
 Do not archive and upload one target at a time. A later platform failure must
 not leave an earlier platform partially submitted.
 
+## CalVer freshness
+
+Keep `VERSION`, `Cargo.toml` `[package].version`, and the `wawona` entry in
+`Cargo.lock` equal to the current `America/Los_Angeles` date before running a
+fresh product gate or archive. The Xcode prebuild guard fails closed when a
+run crosses midnight with yesterday's version. Fix the three version sources
+and rerun the gate. Do not use `WAWONA_ALLOW_STALE_CALVER=1` for a fresh tip.
+
 ## Watch companion compile failures
 
 The supported store path is `Wawona-iOS` with its Watch companion embedded under
 `Watch/`, not a standalone `Wawona-watchOS` upload. Simulator builds are not a
 substitute for the device archive. Reproduce without uploading with:
+
+Gate: products builds `.#wawona-watchos-app-device` in the Watch product cell
+and also builds the simulator app. The device build runs the embedded Watch
+target's `Build Rust Backend via Nix` phase before any iOS archive or ASC upload
+can start.
 
 ```sh
 CI=true WAWONA_DEBUG_SCHEME=Wawona-iOS fastlane ios debug_export

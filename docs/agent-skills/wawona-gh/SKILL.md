@@ -43,6 +43,15 @@ server env.
 
 ## Common shapes
 
+### Advisory checks and reusable workflows
+
+Do not call a flaky or advisory diagnostic as a required reusable-workflow job
+inside a blocking product gate. A cancelled platform lane can make the called
+workflow fail and turn the caller red. `continue-on-error` is not an allowed
+keyword on a job that uses a reusable workflow. Run advisory diagnostics from
+their own schedule or manual dispatch, outside the blocking gate. See
+`docs/testing/leak-idle-gate.md` and RAG `workflow-advisory-gates.md`.
+
 ```bash
 # Milestone
 gh api --method POST repos/Wawona/Wawona/milestones --input - <<'EOF'

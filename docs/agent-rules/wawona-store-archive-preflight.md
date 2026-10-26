@@ -13,6 +13,9 @@ Simulator product gates do not validate the signed iOS device archive or its
 embedded Watch app. `Wawona-iOS` must compile `Wawona-watchOS` as its companion
 under `Watch/`. Reproduce the device path with
 `CI=true WAWONA_DEBUG_SCHEME=Wawona-iOS fastlane ios debug_export`.
+Gate: products must also build `.#wawona-watchos-app-device` in the Watch
+product cell. That runs the embedded target's `Build Rust Backend via Nix`
+phase before an iOS archive or ASC upload can start.
 
 The arm64_32 compatibility slice intentionally has no Nix Rust, PTY, or
 terminal libraries. Swift-referenced C ABI symbols in that slice require weak,

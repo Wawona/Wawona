@@ -32,11 +32,15 @@ cd "$ROOT"
 HEAD="$(git rev-parse HEAD)"
 need_build=0
 if [[ "${WAWONA_TIP_SKIP_BUILD:-0}" == "1" ]]; then
-  if [[ ! -x "$APP/Contents/MacOS/Wawona" ]]; then
-    echo "FAIL: WAWONA_TIP_SKIP_BUILD=1 but tip binary missing: $APP" >&2
-    exit 2
+  if [[ -f "$APP/Contents/MacOS/Wawona" && ! -x "$APP/Contents/MacOS/Wawona" ]]; then
+    chmod +x "$APP/Contents/MacOS/Wawona"
   fi
-  echo "ensure-tip-wawona-macos: SKIP_BUILD=1; clean launch only" >&2
+  if [[ ! -x "$APP/Contents/MacOS/Wawona" ]]; then
+    echo "ensure-tip-wawona-macos: WAWONA_TIP_SKIP_BUILD=1 requested but binary missing at $APP; building" >&2
+    need_build=1
+  else
+    echo "ensure-tip-wawona-macos: SKIP_BUILD=1; clean launch only" >&2
+  fi
 else
 if [[ "${WAWONA_TEST_REBUILD:-0}" == "1" ]]; then
   need_build=1
