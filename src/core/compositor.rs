@@ -324,17 +324,11 @@ pub enum CompositorEvent {
     },
     /// Cursor shape changed via wp_cursor_shape protocol
     CursorShapeChanged { shape: u32 },
-<<<<<<< ours
     /// System bell / notification requested by client
     SystemBell {
         client_id: ClientId,
         surface_id: u32,
     },
-=======
-    /// System bell / notification requested by client (`xdg_system_bell_v1`).
-    /// `surface_id` is 0 when the client passed a null surface.
-    SystemBell { surface_id: u32 },
->>>>>>> theirs
     /// Redraw needed
     RedrawNeeded { window_id: u32 },
 }
