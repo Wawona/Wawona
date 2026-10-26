@@ -248,7 +248,7 @@ data class MachineProfile(
         MachineType.VM -> MachineCapabilities(
             launchSupported = true,
             isStub = false,
-            label = "QEMU/AVF guest"
+            label = "QEMU + Android HV guest"
         )
         MachineType.CONTAINER -> MachineCapabilities(
             launchSupported = true,

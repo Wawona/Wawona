@@ -2010,6 +2010,16 @@ mod app {
                                 let _ = cw.drawing_area.grab_focus();
                             }
                         }
+                        WindowEvent::SystemBell { surface_id } => {
+                            wawona::wlog!(
+                                "COMPOSITOR",
+                                "SystemBell surface_id={} → gdk Display::beep",
+                                surface_id
+                            );
+                            if let Some(display) = gtk::gdk::Display::default() {
+                                display.beep();
+                            }
+                        }
                         _ => {}
                     }
                 }

@@ -4189,6 +4189,26 @@ impl WawonaCore {
             ensure_pointer_focus(&mut state, window_id, &|| self.next_serial());
         }
 
+        // xdg_popup grab: dismiss menus when clicking outside the grab tree.
+        // The legacy seat.inject_pointer_button path already did this; macOS/iOS
+        // inject through this FFI entry and must match.
+        //
+        // Flush popup_done + parent keyboard restore BEFORE the click that
+        // opened/dismissed the menu. GTK refuses a second grab while the
+        // prior popup_done is still in flight or keyboard focus is stuck on
+        // the dead popup surface (macOS host gives keyboard enter to popups).
+        let dismissed_popup = matches!(
+            wl_state,
+            wayland_server::protocol::wl_pointer::ButtonState::Pressed
+        ) && state.maybe_dismiss_popup_grab_on_press();
+        if dismissed_popup {
+            drop(state);
+            self.flush_clients();
+            state = self.state.write_recover();
+            state.seat.cleanup_resources();
+            ensure_pointer_focus(&mut state, window_id, &|| self.next_serial());
+        }
+
         // Weston desktop-shell tracks the launcher via wl_pointer motion +
         // button in the same frame; sync position immediately before click.
         let motion_serial = self.next_serial();
@@ -4206,6 +4226,7 @@ impl WawonaCore {
         }
 
         let focused_client = state.focused_pointer_client();
+        let mut delivered = false;
         if let Some(client) = focused_client.as_ref() {
             let sent = smithay_send_pointer_button(
                 &state,
@@ -4217,14 +4238,21 @@ impl WawonaCore {
             );
             if sent > 0 {
                 smithay_send_pointer_frame(&state, client);
-                return;
+                delivered = true;
             }
         }
-        if smithay_dispatch_pointer_button(&mut *state, serial, timestamp_ms, button_code, wl_state)
+        if !delivered
+            && smithay_dispatch_pointer_button(
+                &mut *state,
+                serial,
+                timestamp_ms,
+                button_code,
+                wl_state,
+            )
         {
-            return;
+            delivered = true;
         }
-        if !state.seat.pointer.resources.is_empty() {
+        if !delivered && !state.seat.pointer.resources.is_empty() {
             state.seat.broadcast_pointer_button(
                 serial,
                 timestamp_ms,
@@ -4234,6 +4262,9 @@ impl WawonaCore {
             );
             state.seat.broadcast_pointer_frame(focused_client.as_ref());
         }
+        drop(state);
+        self.flush_clients();
+        let _ = dismissed_popup;
     }
 }
 
@@ -4564,6 +4595,23 @@ impl WawonaCore {
             smithay_mods.serialized.locked = modifiers.mods_locked;
             smithay_mods.serialized.layout_effective = modifiers.group;
             let _ = keyboard.set_modifier_state(smithay_mods);
+            // Keep the seat cache + client view in sync. set_modifier_state
+            // alone does not always emit wl_keyboard.modifiers to the focus.
+            state.seat.keyboard.mods_depressed = modifiers.mods_depressed;
+            state.seat.keyboard.mods_latched = modifiers.mods_latched;
+            state.seat.keyboard.mods_locked = modifiers.mods_locked;
+            state.seat.keyboard.mods_group = modifiers.group;
+            let focused_client = state.focused_keyboard_client();
+            state.seat.broadcast_modifiers(
+                serial,
+                modifiers.mods_depressed,
+                modifiers.mods_latched,
+                modifiers.mods_locked,
+                modifiers.group,
+                focused_client.as_ref(),
+            );
+            drop(state);
+            self.flush_clients();
             return;
         }
         state.seat.cleanup_resources();

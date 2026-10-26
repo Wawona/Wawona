@@ -312,10 +312,7 @@ impl CompositorState {
 
         if state == wl_pointer::ButtonState::Pressed {
             self.seat.pointer.button_count += 1;
-
-            if self.click_ends_popup_grab(self.seat.pointer.focus) {
-                self.dismiss_popup_grab();
-            }
+            self.maybe_dismiss_popup_grab_on_press();
         } else {
             self.seat.pointer.button_count = self.seat.pointer.button_count.saturating_sub(1);
         }

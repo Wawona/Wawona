@@ -122,6 +122,11 @@ object MachineSearch {
                 }
             }
         }
+<<<<<<< ours
+=======
+        MachineType.VM -> "VM profile (QEMU + Android HV / TCG+JIT)"
+        MachineType.CONTAINER -> "Container profile (container-in-VM)"
+>>>>>>> theirs
     }
 
     internal fun summary(profile: MachineProfile): String {
@@ -146,6 +151,11 @@ object MachineSearch {
                 if (useSsh) "SSH terminal command: $cmd" else "Terminal: $cmd"
             }
         }
+<<<<<<< ours
+=======
+        MachineType.VM -> "Backend: QEMU + Android HV (KVM) / TCG+JIT"
+        MachineType.CONTAINER -> "Backend: container-in-VM"
+>>>>>>> theirs
     }
 
     private fun launchCommandPreview(profile: MachineProfile): String = summary(profile)

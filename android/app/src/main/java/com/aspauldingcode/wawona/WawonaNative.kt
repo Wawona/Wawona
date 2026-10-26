@@ -1,5 +1,9 @@
 package com.aspauldingcode.wawona
 
+import android.media.AudioManager
+import android.media.ToneGenerator
+import android.os.Handler
+import android.os.Looper
 import android.view.Surface
 
 object WawonaNative {
@@ -18,6 +22,26 @@ object WawonaNative {
         } catch (e: Exception) {
             WLog.e("NATIVE", "Unexpected error loading native library: ${e.message}")
             throw e
+        }
+    }
+
+    /**
+     * `xdg_system_bell_v1.ring` host feedback. Uses the same proprietary beep
+     * Android plays for volume-key feedback (`ToneGenerator.TONE_PROP_BEEP`).
+     */
+    @JvmStatic
+    fun ringSystemBell() {
+        try {
+            val tg = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 80)
+            tg.startTone(ToneGenerator.TONE_PROP_BEEP, 80)
+            Handler(Looper.getMainLooper()).postDelayed({
+                try {
+                    tg.release()
+                } catch (_: Exception) {
+                }
+            }, 200)
+        } catch (e: Exception) {
+            WLog.w("BELL", "ringSystemBell failed: ${e.message}")
         }
     }
 
@@ -197,7 +221,7 @@ object WawonaNative {
     /** Fork/exec catalog client against nested niri Wayland socket (issue #78). */
     external fun nativeRunNestedWlClient(execName: String): Boolean
 
-    /** Boot bundled mobile NixOS guest (QEMU/AVF when engine is embedded). */
+    /** Boot bundled mobile NixOS guest (QEMU + KVM or TCG+JIT when engine is embedded). */
     external fun nativeLaunchMobileVm(guestDir: String, memoryMb: Int): Boolean
     external fun nativeStopMobileVm()
     external fun nativeIsMobileVmRunning(): Boolean

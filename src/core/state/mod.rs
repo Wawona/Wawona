@@ -34,7 +34,7 @@ use crate::core::wayland::protocol::server::xdg::shell::server::{
 };
 
 use crate::core::wayland::ext::pointer_constraints::PointerConstraintsState;
-use crate::core::wayland::ext::pointer_gestures::PointerGesturesState;
+use crate::core::wayland::ext::fractional_scale::FractionalScaleState;
 use crate::core::wayland::ext::relative_pointer::RelativePointerState;
 use crate::core::wayland::ext::viewporter::{ViewportData, ViewporterState};
 use crate::core::wayland::wlr::export_dmabuf::{DmabufExportFrame, ExportDmabufState};
@@ -1279,6 +1279,8 @@ pub struct ExtProtocolState {
     pub viewports: HashMap<u32, ViewportData>,
     /// Viewporter State
     pub viewporter: ViewporterState,
+    /// Fractional scale objects (preferred_scale refresh on output change)
+    pub fractional_scale: FractionalScaleState,
 
     /// Linux DMABUF state
     pub linux_dmabuf: LinuxDmabufState,
@@ -1350,6 +1352,7 @@ impl Default for ExtProtocolState {
             pointer_constraints: PointerConstraintsState::default(),
             viewports: HashMap::new(),
             viewporter: ViewporterState::default(),
+            fractional_scale: FractionalScaleState::default(),
             linux_dmabuf: LinuxDmabufState::default(),
             #[cfg(feature = "desktop-protocols")]
             linux_drm_syncobj: SyncObjState::default(),
@@ -1971,6 +1974,8 @@ impl CompositorState {
                 scale
             );
         }
+        let preferred_scale = self.primary_output().scale;
+        self.ext.fractional_scale.notify_all(preferred_scale);
     }
 
     /// Get primary output mutably
@@ -2135,6 +2140,7 @@ impl CompositorState {
                 );
             }
         }
+        self.ext.fractional_scale.notify_all(safe_scale);
 
         tracing::info!(
             "Output size set to {}x{} @ {}x (phys: {}x{}mm)",

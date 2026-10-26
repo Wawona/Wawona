@@ -2050,7 +2050,7 @@ private fun MachineEditorSheet(
                         ) {
                             // VM engine is fixed per build target by wwn-vms and is
                             // not user-configurable (Residual E).
-                            OutlinedTextField(value = "QEMU/AVF", onValueChange = {}, label = { Text("Backend") }, singleLine = true, readOnly = true, modifier = Modifier.fillMaxWidth())
+                            OutlinedTextField(value = "QEMU + Android HV (KVM) / TCG+JIT", onValueChange = {}, label = { Text("Backend") }, singleLine = true, readOnly = true, modifier = Modifier.fillMaxWidth())
                             OutlinedTextField(value = vmIdentifier, onValueChange = { vmIdentifier = it }, label = { Text("VM Identifier") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                             OutlinedTextField(value = vmVsockPort, onValueChange = { vmVsockPort = it }, label = { Text("VSock Port") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                             OutlinedTextField(value = vmNotes, onValueChange = { vmNotes = it }, label = { Text("Notes") }, modifier = Modifier.fillMaxWidth())
