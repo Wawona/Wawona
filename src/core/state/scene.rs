@@ -625,10 +625,16 @@ impl CompositorState {
                         let win_w = window.width.max(0) as u32;
                         let win_h = window.height.max(0) as u32;
                         let surface_scale = surface.current.scale.max(1) as u32;
+                        let viewport = self.ext.viewporter.for_surface(window.surface_id);
                         // current.{width,height} are already logical
                         // (buffer / wl_surface.set_buffer_scale). Do not divide
                         // again or a scale-2 800x600 surface becomes 400x300.
                         let host_ahead = window.size_authority.is_host()
+                            // A viewport changes the surface-local bounds even
+                            // when the host window still owns its outer size.
+                            // Stretching to that stale host size breaks crop
+                            // geometry and input hit testing.
+                            && viewport.is_none()
                             && win_w > 0
                             && win_h > 0
                             && committed_width > 0
@@ -642,7 +648,6 @@ impl CompositorState {
                             render_height = committed_height;
                         }
                         node.scale = surface_scale as f32;
-                        let viewport = self.ext.viewporter.for_surface(window.surface_id);
                         let has_viewport_dest = viewport.and_then(|v| v.destination).is_some();
                         // GTK4 / fractional-scale path: buffer is physical,
                         // current size is viewport destination (logical).
