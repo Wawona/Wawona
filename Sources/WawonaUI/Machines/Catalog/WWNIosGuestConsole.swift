@@ -50,20 +50,8 @@ final class WawonaTerminalModel: ObservableObject {
   }
 
   func applyLines(_ document: String) {
-    // wwn_term emits a full screen of rows (many trailing blanks). Drop those
-    // so ScrollView height matches real output instead of a huge empty gap.
-    var parsed = WawonaTerminalDocument.lines(from: document)
-    while parsed.count > 1,
-      let last = parsed.last,
-      last.spans.allSatisfy({
-        $0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-      })
-    {
-      parsed.removeLast()
-    }
+    let parsed = WawonaTerminalDocument.lines(from: document)
     let keys = parsed.map { $0.spans.map(\.text).joined(separator: "\u{1}") }
-    let grew = keys.count > lineKeys.count
-    let changedTail = keys.last != lineKeys.last
     lineIDs = alignLineIDs(oldIDs: lineIDs, oldKeys: lineKeys, newKeys: keys) {
       let id = nextLineID
       nextLineID += 1
@@ -88,15 +76,13 @@ final class WawonaTerminalModel: ObservableObject {
         }
       )
     }
-    let shouldPin = grew || changedTail || next.isEmpty
     if Thread.isMainThread {
       lines = next
-      if shouldPin { pinToken += 1 }
+      pinToken += 1
     } else {
       DispatchQueue.main.async { [weak self] in
-        guard let self else { return }
-        self.lines = next
-        if shouldPin { self.pinToken += 1 }
+        self?.lines = next
+        self?.pinToken += 1
       }
     }
   }
@@ -234,20 +220,13 @@ enum WawonaTerminalFonts {
   static var host: Font { Font.system(size: pointSize, design: .monospaced) }
   static var nerd: Font { Font.custom("DejaVuSansM Nerd Font Mono", size: pointSize) }
 
-  /// Face used for VT cell metrics (matches product Nerd Mono; falls back to
-  /// system monospaced). Every scroll row must be exactly this tall so Enter /
-  /// Ctrl+C newlines land on a uniform grid.
-  static var metricsFont: UIFont {
-    UIFont(name: "DejaVuSansM Nerd Font Mono", size: pointSize)
-      ?? UIFont.monospacedSystemFont(ofSize: pointSize, weight: .regular)
-  }
-
   static var rowHeight: CGFloat {
-    max(1, ceil(metricsFont.lineHeight))
+    max(1, UIFont.monospacedSystemFont(ofSize: pointSize, weight: .regular).lineHeight)
   }
 
   static var cellWidth: CGFloat {
-    max(1, ceil(("M" as NSString).size(withAttributes: [.font: metricsFont]).width))
+    let font = UIFont.monospacedSystemFont(ofSize: pointSize, weight: .regular)
+    return max(1, ("M" as NSString).size(withAttributes: [.font: font]).width)
   }
 
   static func runs(_ text: String) -> [WawonaTerminalRun] {
@@ -297,49 +276,242 @@ struct WawonaTerminalViewportKey: PreferenceKey {
   }
 }
 
+private final class WWNTermPointerHold {
+  var down = false
+  var sent = false
+  var button: UInt32 = 0
+  var touches = 0
+  var slid = false
+  var id = 0
+  var col: UInt32 = 0
+  var row: UInt32 = 0
+  var onRelease: ((UInt32, UInt32, UInt32) -> Void)?
+
+  func cancelPointer() {
+    if down, sent { onRelease?(col, row, button) }
+    down = false
+    sent = false
+    slid = false
+    touches = 0
+    id += 1
+  }
+}
+
+private final class WWNTermTouchCountRecognizer: UIGestureRecognizer {
+  var onCount: ((Int) -> Void)?
+  var onCancel: (() -> Void)?
+
+  override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+    super.touchesBegan(touches, with: event)
+    note(event)
+  }
+
+  override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
+    super.touchesEnded(touches, with: event)
+    note(event)
+    finish(event)
+  }
+
+  override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
+    super.touchesCancelled(touches, with: event)
+    let done = event.allTouches?.allSatisfy { $0.phase == .ended || $0.phase == .cancelled } ?? true
+    if done { onCancel?() }
+    finish(event)
+  }
+
+  private func note(_ event: UIEvent) {
+    onCount?(event.allTouches?.count ?? 0)
+  }
+
+  private func finish(_ event: UIEvent) {
+    let done = event.allTouches?.allSatisfy { $0.phase == .ended || $0.phase == .cancelled } ?? true
+    if done { state = .failed }
+  }
+}
+
+private final class WWNTermTouchProbeView: UIView, UIGestureRecognizerDelegate {
+  weak var hold: WWNTermPointerHold?
+  private var probe: UIGestureRecognizer?
+
+  override func didMoveToSuperview() {
+    super.didMoveToSuperview()
+    attach()
+  }
+
+  override func layoutSubviews() {
+    super.layoutSubviews()
+    attach()
+  }
+
+  private func attach() {
+    guard probe == nil, let host = superview else { return }
+    let recognizer = WWNTermTouchCountRecognizer()
+    recognizer.cancelsTouchesInView = false
+    recognizer.delaysTouchesBegan = false
+    recognizer.delegate = self
+    recognizer.onCount = { [weak self] count in
+      guard let hold = self?.hold, count > hold.touches else { return }
+      hold.touches = count
+    }
+    recognizer.onCancel = { [weak self] in
+      self?.hold?.cancelPointer()
+    }
+    host.addGestureRecognizer(recognizer)
+    probe = recognizer
+  }
+
+  func gestureRecognizer(
+    _ gestureRecognizer: UIGestureRecognizer,
+    shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+  ) -> Bool {
+    true
+  }
+}
+
+private struct WWNTermTouchProbe: UIViewRepresentable {
+  var hold: WWNTermPointerHold
+  var onRelease: (UInt32, UInt32, UInt32) -> Void
+
+  func makeUIView(context: Context) -> WWNTermTouchProbeView {
+    let view = WWNTermTouchProbeView()
+    view.hold = hold
+    hold.onRelease = onRelease
+    view.isUserInteractionEnabled = false
+    view.backgroundColor = .clear
+    return view
+  }
+
+  func updateUIView(_ uiView: WWNTermTouchProbeView, context: Context) {
+    uiView.hold = hold
+    hold.onRelease = onRelease
+  }
+}
+
+private extension View {
+  @ViewBuilder
+  func applyPointerDrag<G: Gesture>(_ gesture: G, tracking: Bool) -> some View {
+    if tracking {
+      self.gesture(gesture, including: .all)
+    } else {
+      self.simultaneousGesture(gesture)
+    }
+  }
+}
+
 struct WawonaTerminalView: View {
   @ObservedObject var model: WawonaTerminalModel
   var screenRows: UInt32 = 28
-  /// Kept for call-site parity; cell taps yield to UITextView selection.
-  var onCell: ((UInt32, UInt32) -> Void)?
-  /// iOS: UITextView owns soft keyboard + ToolbarKeys; caret tracks VT blink.
-  var ownsKeyboard: Bool = false
-  var isShell: Bool = false
-  var onInjectData: ((Data) -> Void)?
-  var onInjectText: ((String) -> Void)?
+  var onPointer: ((UInt32, UInt32, UInt32, Bool, Bool) -> Void)?
   @State private var blinkOn = true
   @State private var stick = true
+  @State private var userDragged = false
+  @State private var pointerHold = WWNTermPointerHold()
 
   var body: some View {
-    // Host UITextView: real UIKit magnifier / handles / char highlight.
-    // Not SwiftUI Text + .textSelection + .contextMenu (that stole long-press
-    // and showed a fake duplicate highlight).
-    ZStack(alignment: .topLeading) {
-      terminalPictures(behind: true)
+    // ScrollViewReader via Dave DeLong namespace (`WawonaBackport`). Never bare
+    // ScrollViewReader at the call site (iOS 13 floor).
+    WawonaBackport<Any>.scrollViewReader { proxy in
+      ScrollView {
+        VStack(alignment: .leading, spacing: 0) {
+          ForEach(model.lines) { line in
+            lineText(line)
+              .frame(maxWidth: .infinity, alignment: .leading)
+              .id(line.id)
+          }
+          Color.clear.frame(height: 1).id("wwn-term-end")
+            .onAppear {
+              stick = true
+              userDragged = false
+            }
+            .onDisappear {
+              if userDragged { stick = false }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(terminalPictures(behind: true))
+        .overlay(terminalPictures(behind: false), alignment: .topLeading)
+        #if !os(tvOS)
+        .applyPointerDrag(
+          DragGesture(minimumDistance: 0, coordinateSpace: .local)
+            .onChanged { value in
+              guard let cell = cellInStack(value.location) else { return }
+              let hold = pointerHold
+              let moved = abs(value.translation.width) > 8 || abs(value.translation.height) > 8
+              if !hold.down {
+                hold.down = true
+                hold.sent = false
+                hold.slid = false
+                hold.button = 0
+                hold.col = cell.0
+                hold.row = cell.1
+                hold.id += 1
+                let id = hold.id
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                  guard hold.id == id, hold.down, !hold.sent, hold.touches < 2 else { return }
+                  hold.button = 2
+                  hold.sent = true
+                  onPointer?(hold.col, hold.row, 2, true, false)
+                }
+              }
+              hold.col = cell.0
+              hold.row = cell.1
+              if moved { hold.slid = true }
+              if moved, hold.touches < 2 {
+                if !hold.sent {
+                  hold.button = 0
+                  hold.sent = true
+                  onPointer?(cell.0, cell.1, 0, true, false)
+                }
+                onPointer?(cell.0, cell.1, hold.button, true, true)
+              }
+            }
+            .onEnded { value in
+              let hold = pointerHold
+              let cell = cellInStack(value.location) ?? (hold.col, hold.row)
+              if hold.down {
+                if !hold.sent, hold.touches >= 2, !hold.slid {
+                  onPointer?(cell.0, cell.1, 1, true, false)
+                  onPointer?(cell.0, cell.1, 1, false, false)
+                } else if hold.sent || hold.touches < 2 {
+                  if !hold.sent {
+                    hold.button = 0
+                    onPointer?(cell.0, cell.1, 0, true, false)
+                  }
+                  onPointer?(cell.0, cell.1, hold.button, false, false)
+                }
+              }
+              hold.down = false
+              hold.sent = false
+              hold.slid = false
+              hold.touches = 0
+              hold.id += 1
+            },
+          tracking: WWNTerminalCursorMode.pointerDrags
+        )
+        .background(WWNTermTouchProbe(hold: pointerHold) { col, row, button in
+          onPointer?(col, row, button, false, false)
+        })
+        #endif
         .padding(8)
-        .allowsHitTesting(false)
-      WawonaTerminalSelectableText(
-        model: model,
-        blinkOn: blinkOn,
-        stickToBottom: stick,
-        ownsKeyboard: ownsKeyboard,
-        isShell: isShell,
-        onInjectData: onInjectData,
-        onInjectText: onInjectText
+      }
+      .background(Color.black)
+      .onAppear { scrollTerminalToEnd(proxy) }
+      .backport.onChange(of: model.pinToken) { _ in
+        if model.lines.isEmpty { stick = true }
+        guard stick else { return }
+        scrollTerminalToEnd(proxy)
+      }
+      #if !os(tvOS)
+      .simultaneousGesture(
+        DragGesture(minimumDistance: 8).onChanged { value in
+          if abs(value.translation.height) > 16, !WWNTerminalCursorMode.pointerDrags { userDragged = true }
+        }
       )
-      terminalPictures(behind: false)
-        .padding(8)
-        .allowsHitTesting(false)
-    }
-    .background(Color.black)
-    .backport.onChange(of: model.pinToken) { _ in
-      if model.lines.isEmpty { stick = true }
-    }
-    .onReceive(Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()) { _ in
-      // Block-cursor blink only when a separate keyboard host still uses it.
-      guard !ownsKeyboard else { return }
-      if model.lines.contains(where: { $0.spans.contains(where: \.blink) }) {
-        blinkOn.toggle()
+      #endif
+      .onReceive(Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()) { _ in
+        if model.lines.contains(where: { $0.spans.contains(where: \.blink) }) {
+          blinkOn.toggle()
+        }
       }
     }
   }
@@ -359,6 +531,75 @@ struct WawonaTerminalView: View {
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    .allowsHitTesting(false)
+  }
+
+  private func cellInStack(_ location: CGPoint) -> (UInt32, UInt32)? {
+    let col = UInt32(max(1, Int(location.x / WawonaTerminalFonts.cellWidth) + 1))
+    let rowIndex = Int(location.y / WawonaTerminalFonts.rowHeight)
+    let live = Int(screenRows)
+    let start = max(0, model.lines.count - live)
+    guard rowIndex >= start, rowIndex < model.lines.count else { return nil }
+    return (col, UInt32(rowIndex - start + 1))
+  }
+
+  private func scrollTerminalToEnd(_ proxy: WawonaScrollViewProxy) {
+    DispatchQueue.main.async {
+      proxy.scrollTo("wwn-term-end", anchor: .bottom)
+    }
+  }
+
+  private func lineText(_ line: WawonaTerminalLine) -> some View {
+    let spans = line.spans.isEmpty
+      ? [WawonaTerminalSpan(id: 0, text: " ", fg: 0xE8E8E8, bg: 0, bold: false, italic: false, underline: false, blink: false, strike: false)]
+      : line.spans
+    return HStack(spacing: 0) {
+      ForEach(spans) { span in
+        spanView(span, blinkOn: blinkOn)
+      }
+    }
+    .lineLimit(1)
+    .fixedSize(horizontal: true, vertical: false)
+    .frame(height: WawonaTerminalFonts.rowHeight, alignment: .leading)
+    .clipped()
+  }
+
+  private func spanView(_ span: WawonaTerminalSpan, blinkOn: Bool) -> some View {
+    HStack(spacing: 0) {
+      ForEach(WawonaTerminalFonts.runs(span.text)) { run in
+        styled(run.text, span)
+          .font(run.nerd ? WawonaTerminalFonts.nerd : WawonaTerminalFonts.host)
+      }
+    }
+    .background(span.bg == 0 ? Color.clear : rgb(span.bg))
+    .opacity(span.blink && !blinkOn ? 0.15 : 1)
+    .overlay(strikeBar(span), alignment: .center)
+  }
+
+  private func strikeBar(_ span: WawonaTerminalSpan) -> some View {
+    Group {
+      if span.strike {
+        Rectangle()
+          .fill(rgb(span.fg))
+          .frame(height: 1)
+      }
+    }
+  }
+
+  private func styled(_ text: String, _ span: WawonaTerminalSpan) -> Text {
+    var view = Text(text).foregroundColor(rgb(span.fg))
+    if span.bold { view = view.bold() }
+    if span.italic { view = view.italic() }
+    if span.underline { view = view.underline() }
+    return view
+  }
+
+  private func rgb(_ value: UInt32) -> Color {
+    Color(
+      red: Double((value >> 16) & 0xFF) / 255,
+      green: Double((value >> 8) & 0xFF) / 255,
+      blue: Double(value & 0xFF) / 255
+    )
   }
 }
 
@@ -386,11 +627,12 @@ final class WWNIosGuestConsole: ObservableObject {
   private var pumpTimer: Timer?
   private var observer: NSObjectProtocol?
   private var launchLogObserver: NSObjectProtocol?
-  private var sessionSurfaceObserver: NSObjectProtocol?
-  private var pasteObserver: NSObjectProtocol?
   private var started = false
   private var shell: IosShellSession?
   private var logTerm: IosLogTermSession?
+  private var keyRepeatTimer: Timer?
+  private var keyRepeatBytes: [UInt8]?
+  private var keyRepeatTicks = 0
 
   var isShell: Bool { source == "shell" }
 
@@ -422,24 +664,6 @@ final class WWNIosGuestConsole: ObservableObject {
       if let line = note.userInfo?["line"] as? String, !line.isEmpty {
         console.appendLog(line)
       }
-    }
-    // Client attach / Focus posts this; park Terminal so Present is visible.
-    sessionSurfaceObserver = NotificationCenter.default.addObserver(
-      forName: Notification.Name("WWNShowSessionSurfaceNotification"),
-      object: nil,
-      queue: .main
-    ) { [weak self] _ in
-      self?.parkForCompositor()
-    }
-    // Native UITextView caret menu Paste → PTY (not into the VT mirror).
-    pasteObserver = NotificationCenter.default.addObserver(
-      forName: WawonaTerminalSelectionGate.pasteToPty,
-      object: nil,
-      queue: .main
-    ) { [weak self] note in
-      guard let console = self, console.isPresented, console.isShell else { return }
-      guard let text = note.object as? String, !text.isEmpty else { return }
-      console.injectTerminalText(text)
     }
   }
 
@@ -484,7 +708,7 @@ final class WWNIosGuestConsole: ObservableObject {
     let cellW = WawonaTerminalFonts.cellWidth
     let cellH = WawonaTerminalFonts.rowHeight
     let cols = UInt32(min(512, max(20, Int((size.width - 16) / cellW))))
-    let rows = UInt32(min(256, max(8, Int(size.height / cellH))))
+    let rows = UInt32(min(256, max(8, Int((size.height - 16) / cellH))))
     screenRows = rows
     let pxW = UInt32(max(1, cellW.rounded()))
     let pxH = UInt32(max(1, cellH.rounded()))
@@ -497,14 +721,8 @@ final class WWNIosGuestConsole: ObservableObject {
       return
     }
     stopPump()
-    // Never pthread_join zsh on the main thread. Tab Overview Close posts
-    // this notification synchronously from disconnect; a stuck join freezes
-    // the app before Relay disconnectProfile can run (StaticCpu looks stuck
-    // ACTIVE; SpringBoard cannot relaunch).
-    let shellToStop = shell
-    shell = nil
-    let logToStop = logTerm
-    logTerm = nil
+    stopShell()
+    stopLogTerm()
     isPresented = false
     windowed = false
     self.machineId = ""
@@ -512,10 +730,6 @@ final class WWNIosGuestConsole: ObservableObject {
     fed = 0
     inputLine = ""
     statusMessage = ""
-    DispatchQueue.global(qos: .userInitiated).async {
-      shellToStop?.stop()
-      logToStop?.stop()
-    }
   }
 
   /// Scene activation failed. Show the terminal in the current window.
@@ -526,27 +740,16 @@ final class WWNIosGuestConsole: ObservableObject {
     }
   }
 
-  /// Hide Terminal chrome without killing the PTY / log session.
-  ///
-  /// Wawona Terminal may start Wayland clients (`wasm chess`, weston, …).
-  /// Present must open without requiring Done, and Done must not tear down
-  /// the shell that owns those clients. Stop still calls `dismiss`.
-  func parkForCompositor() {
-    guard isPresented || windowed else { return }
-    #if os(iOS) || os(visionOS)
-    if windowed {
-      WWNSessionWindowPresenter.closeTerminalWindow()
-    }
-    #endif
-    windowed = false
-    isPresented = false
-    NSLog("WWNIosGuestConsole: parked Terminal (shell kept alive) mid=%@", machineId)
-  }
-
   /// Done = Focus: park Terminal, reveal mounted Wayland / Metal client.
   func userDismiss() {
     let mid = machineId
-    parkForCompositor()
+    let wasWindow = windowed
+    dismiss(machineId: mid)
+    #if os(iOS) || os(visionOS)
+    if wasWindow {
+      WWNSessionWindowPresenter.closeTerminalWindow()
+    }
+    #endif
     guard !mid.isEmpty else { return }
     WWNMachineProfileStore.setActiveMachineId(mid)
     WWNMainWindowRouter.shared.showSessionSurface()
@@ -566,31 +769,17 @@ final class WWNIosGuestConsole: ObservableObject {
     }
   }
 
-  /// Local VT erase. Does not write the PTY.
-  func pointerTap(col: UInt32, row: UInt32) {
+  func pointer(button: UInt32, col: UInt32, row: UInt32, pressed: Bool, motion: Bool) {
     guard isShell else { return }
-    shell?.pointer(button: 0, col: col, row: row, pressed: true, motion: false)
-    shell?.pointer(button: 0, col: col, row: row, pressed: false, motion: false)
+    shell?.pointer(button: UInt8(truncatingIfNeeded: button), col: col, row: row, pressed: pressed, motion: motion)
   }
 
-  /// Wipe scrollback + viewport, then restore a PS1 at the top.
-  ///
-  /// Local ESC[3J alone blanks the VT with no prompt (zsh never sees it).
-  /// Shell path: wipe the local VT (incl. scrollback), kill any partial edit,
-  /// then Ctrl+L so ZLE clear-screen redraws PS1 at home.
   func clearScreen() {
-    // ESC[H ESC[2J ESC[3J]: home, erase display, wipe scrollback.
-    let erase = Data([
-      0x1B, 0x5B, 0x48, 0x1B, 0x5B, 0x32, 0x4A, 0x1B, 0x5B, 0x33, 0x4A,
-    ])
+    let erase = Data([0x1B, 0x5B, 0x33, 0x4A])
     if isShell {
       shell?.feedLocal(erase)
-      termModel.reset()
-      // Ctrl+U: discard half-typed input. Ctrl+L: ZLE clear-screen → PS1.
-      shell?.write(Data([0x15, 0x0C]))
     } else {
       logTerm?.feed(erase)
-      termModel.reset()
     }
   }
 
@@ -613,20 +802,56 @@ final class WWNIosGuestConsole: ObservableObject {
   func injectTerminalText(_ text: String) {
     guard !text.isEmpty else { return }
     if isShell {
-      if text.contains("\n") || text.contains("\r") {
+      if text.utf8.count > 1, text.contains("\n") || text.contains("\r") {
         shell?.writePaste(Data(text.utf8))
       } else {
-        shell?.write(Data(text.utf8))
+        var data = Data(text.utf8)
+        #if os(iOS) || os(tvOS) || os(visionOS)
+        data = WWNTerminalCursorMode.mapArrow(data)
+        #endif
+        shell?.write(data)
       }
     } else {
       appendLog(text)
     }
   }
 
+  func injectTerminalPaste(_ text: String) {
+    guard !text.isEmpty else { return }
+    if isShell {
+      shell?.writePaste(Data(text.utf8))
+    } else {
+      appendLog(text)
+    }
+  }
+
+  func armKeyRepeat(_ bytes: [UInt8]) {
+    keyRepeatTimer?.invalidate()
+    keyRepeatBytes = bytes
+    keyRepeatTicks = 0
+    keyRepeatTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] timer in
+      guard let self, let bytes = self.keyRepeatBytes else { timer.invalidate(); return }
+      self.keyRepeatTicks += 1
+      guard self.keyRepeatTicks >= 8 else { return }
+      self.injectTerminalData(Data(bytes))
+    }
+  }
+
+  func cancelKeyRepeat() {
+    keyRepeatBytes = nil
+    keyRepeatTimer?.invalidate()
+    keyRepeatTimer = nil
+  }
+
   func injectTerminalData(_ data: Data) {
     guard !data.isEmpty else { return }
+    #if os(iOS) || os(tvOS) || os(visionOS)
+    let bytes = isShell ? WWNTerminalCursorMode.mapArrow(data) : data
+    #else
+    let bytes = data
+    #endif
     if isShell {
-      shell?.write(data)
+      shell?.write(bytes)
     } else if let text = String(data: data, encoding: .utf8) {
       appendLog(text)
     }
@@ -649,19 +874,9 @@ final class WWNIosGuestConsole: ObservableObject {
   }
 
   private func stopShell() {
-    guard let session = shell else { return }
+    cancelKeyRepeat()
+    shell?.stop()
     shell = nil
-    // Join off the main thread. A wedged zsh must not 0x8BADF00D the app.
-    if Thread.isMainThread {
-      let done = DispatchSemaphore(value: 0)
-      DispatchQueue.global(qos: .userInitiated).async {
-        session.stop()
-        done.signal()
-      }
-      _ = done.wait(timeout: .now() + 2.0)
-    } else {
-      session.stop()
-    }
   }
 
   private func startLogTerm() {
@@ -724,13 +939,14 @@ final class WWNIosGuestConsole: ObservableObject {
       || profile.type == kWWNMachineTypeSSHWaypipe
     {
       let preview = WWNWaypipeRunner.sharedRunner().generateWaypipePreviewString(prefs)
-      return "$ \(preview)\n"
+      return "$ \(preview)\n# Done focuses the compositor.\n"
     }
     let client = WWNMachineSessionBridge.nativeClientId(forProfile: profile) ?? "client"
     let display = WWNCompositorBridge.sharedBridge.socketName()
     return """
     $ wwn-exec \(client)
     WAYLAND_DISPLAY=\(display.isEmpty ? "wayland-0" : display)
+    # Done focuses the compositor.
 
     """
   }
@@ -738,33 +954,23 @@ final class WWNIosGuestConsole: ObservableObject {
 
 struct WWNIosGuestConsoleSheet: View {
   @ObservedObject var console: WWNIosGuestConsole
+  @State private var keyFocus = 0
 
   var body: some View {
     NavigationView {
       VStack(spacing: 0) {
-        WawonaTerminalView(
-          model: console.termModel,
-          screenRows: console.screenRows,
-          onCell: { col, row in console.pointerTap(col: col, row: row) },
-          ownsKeyboard: {
-            #if os(iOS)
-            true
-            #else
-            false
-            #endif
-          }(),
-          isShell: console.isShell,
-          onInjectData: { console.injectTerminalData($0) },
-          onInjectText: { console.injectTerminalText($0) }
-        )
-        .background(
-          GeometryReader { geo in
-            Color.clear.preference(key: WawonaTerminalViewportKey.self, value: geo.size)
-          }
-        )
-        .onPreferenceChange(WawonaTerminalViewportKey.self) { size in
-          console.fitTerminal(to: size)
+        WawonaTerminalView(model: console.termModel, screenRows: console.screenRows) { col, row, button, pressed, motion in
+          console.pointer(button: button, col: col, row: row, pressed: pressed, motion: motion)
+          if !pressed { keyFocus += 1 }
         }
+          .background(
+            GeometryReader { geo in
+              Color.clear.preference(key: WawonaTerminalViewportKey.self, value: geo.size)
+            }
+          )
+          .onPreferenceChange(WawonaTerminalViewportKey.self) { size in
+            console.fitTerminal(to: size)
+          }
         if !console.statusMessage.isEmpty {
           Text(console.statusMessage)
             .font(.system(.caption, design: .monospaced))
@@ -774,21 +980,30 @@ struct WWNIosGuestConsoleSheet: View {
             .padding(.vertical, 4)
         }
         #if os(iOS)
-        // Keyboard + ToolbarKeys live on the terminal UITextView (native caret).
-        // Keep a zero-size accessibility anchor for older UI tests.
-        Color.clear
-          .frame(maxWidth: .infinity)
-          .frame(height: 1)
-          .accessibility(identifier: "wwn.guestConsole.send")
+        // Toolbar Keys owns soft-keyboard chrome (Esc/Tab/arrows/modifiers).
+        // Host is near-invisible; accessory draws above the system keyboard.
+        WWNTerminalToolbarHost(
+          isShell: console.isShell,
+          onInjectData: { console.injectTerminalData($0) },
+          onInjectText: { console.injectTerminalText($0) },
+          onPaste: { console.injectTerminalPaste($0) },
+          onDismissKeyboard: {},
+          autoFocus: true,
+          focusTick: keyFocus,
+          onKeyRepeat: { console.armKeyRepeat($0) },
+          onKeyUp: { console.cancelKeyRepeat() }
+        )
+        .frame(width: 1, height: 1)
+        .accessibility(identifier: "wwn.guestConsole.send")
         #elseif os(tvOS) || os(visionOS)
         if console.isShell {
           WWNTerminalKeyHost(
             onInjectData: { console.injectTerminalData($0) },
             onInjectText: { console.injectTerminalText($0) },
-            autoFocus: true
+            autoFocus: true,
+            focusTick: keyFocus
           )
-          .frame(maxWidth: .infinity)
-          .frame(height: 1)
+          .frame(width: 1, height: 1)
           .accessibility(identifier: "wwn.guestConsole.send")
           #if os(visionOS)
           HStack {
@@ -811,6 +1026,14 @@ struct WWNIosGuestConsoleSheet: View {
         Button("Clear") { console.clearScreen() }
           .accessibility(identifier: "wwn.terminal.clear")
       }
+    }
+    .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
+      guard console.isShell, let bytes = WWNTerminalCursorMode.focusReport(false) else { return }
+      console.injectTerminalData(bytes)
+    }
+    .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+      guard console.isShell, let bytes = WWNTerminalCursorMode.focusReport(true) else { return }
+      console.injectTerminalData(bytes)
     }
     .navigationViewStyle(StackNavigationViewStyle())
     .preferredColorScheme(.dark)

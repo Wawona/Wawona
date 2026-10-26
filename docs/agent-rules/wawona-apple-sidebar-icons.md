@@ -4,33 +4,30 @@ Authority for Machines and Global Settings sidebar glyphs on Apple SwiftUI.
 
 ## Rule
 
-- Sidebars: **section-tinted SF Symbols** (`WawonaSettingsHubChrome.sidebarIcon`
-  / `hubRow` with `iconColor`). Glyph color = section accent. No colored
-  rounded-square tile, no white glyph on colored fill.
-- Settings **detail**: same section accent tints Toggle / Picker / Button /
-  Link / section headers (`.settingsSectionAccent` + `.backport.tint`; watch
-  uses `.accentColor`).
-- Accent palette: `WawonaSettingsHubChrome.accentColor(for:)` and section
-  `swiftUIIconColor`. Tint glyphs and detail controls; never paint that color
-  onto sidebar icon backgrounds.
-- Settings split chrome matches Machines: system `NavigationSplitView`
-  sidebar toggle (do not strip / do not add a second custom `sidebar.left`).
-  Detail trailing: `settingsCloseAction(onClose:chromeBridge:)` (`[+][x]`).
-  Pass `showSidebar:` only on pre-16 HStack (no system toggle there).
+Sidebars use **section-tinted SF Symbols** (glyph `foregroundColor` =
+section accent). Never colored rounded squares with white glyphs.
+
+The same section accents tint Settings **detail** controls (Toggle, Picker,
+Button, Link, section headers) via `.settingsSectionAccent` +
+`.backport.tint`.
 
 ## Hard rejects
 
-- Settings.app General-style colored hub tiles in Wawona Machines or Settings
-  sidebars
-- Section accent as sidebar icon chrome (background fill)
-- Monochrome / `.primary`-only sidebar glyphs that drop section colors
+- Colored icon tiles (rounded square fill + white glyph) in Machines or
+  Settings sidebars
+- Section accent as sidebar icon **background** fill
+- Settings.app General hub tile chrome for Wawona list rows
+- Monochrome / `.primary` sidebar glyphs that drop the section colors
 
 ## Code
 
-`WawonaSettingsHubChrome` in `Sources/WawonaUIContracts`. Detail tint in
-`WWNSettingsSectionView` (`.settingsSectionAccent` + `.backport.tint`).
-Toolbar: `WawonaPresentation.settingsCloseAction(onClose:chromeBridge:)`.
+`WawonaSettingsHubChrome.hubRow` / `sidebarIcon` in
+`Sources/WawonaUIContracts`. Detail tint in `WWNSettingsSectionView`.
+Settings split chrome matches Machines: system sidebar toggle (never strip /
+never a second custom `sidebar.left`). Detail trailing:
+`settingsCloseAction(onClose:chromeBridge:)`. Pass `showSidebar:` only on
+pre-16 HStack.
 
 Skill: `wawona-apple-sidebar-icons`. Related:
-`wawona-global-settings-exclusive`.
+`wawona-global-settings-exclusive`, `wawona-swiftui-backports`.
 RAG: `wwn-mcp/knowledge/wawona/apple-sidebar-icons.md`.

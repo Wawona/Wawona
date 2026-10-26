@@ -101,7 +101,6 @@ final class IosShellSession {
     private var cols: UInt32 = 80
     private var rows: UInt32 = 24
     private var stopped = false
-    private var pressureObservers: [NSObjectProtocol] = []
     private var owed = Data()
     private var retryArmed = false
 
@@ -121,17 +120,7 @@ final class IosShellSession {
             stop(); return
         }
         WWNRootfsManager.applyShellEnvironment()
-        setenv("WAWONA_ZSH_IN_PROCESS", "1", 1)
-        setenv("WAWONA_SHELL", "/usr/bin/zsh", 1)
-        setenv("SHELL", "/usr/bin/zsh", 1)
-        setenv("TERM", "xterm-256color", 1)
-        // Latch ONLCR write path for Simulator real POSIX PTYs. Prefer the
-        // process latch in tip wwn-pty when linked; otherwise setenv only.
-        setenv("WAWONA_PTY_FAKE_TTY", "1", 1)
-        if let sym = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "wwn_pty_ios_force_fake_tty") {
-            typealias ForceFakeTty = @convention(c) () -> Void
-            unsafeBitCast(sym, to: ForceFakeTty.self)()
-        }
+        [("TERM", "xterm-256color"), ("WAWONA_ZSH_IN_PROCESS", "1"), ("WAWONA_SHELL", "/usr/bin/zsh"), ("SHELL", "/usr/bin/zsh")].forEach { setenv($0.0, $0.1, 1) }
         WWNTerminalCursorMode.observe(Data([0x18, 0x1B, 0x63]))
 
         IosShellABI.allowNewShellSession()
@@ -141,9 +130,6 @@ final class IosShellSession {
             stop(); return
         }
         self.term = term
-        // Term::new already probed RAM/CPU; fold Low Power / thermal in.
-        WawonaTerminalScrollback.apply(to: term)
-        installPressureObservers()
 
         var ws = winsize()
         ws.ws_row = UInt16(self.rows)
@@ -159,7 +145,6 @@ final class IosShellSession {
         guard let started else {
             IosShellABI.termFree(term)
             self.term = nil
-            clearPressureObservers()
             onFailure?("Native Shell failed to start (in-process zsh).")
             stop(); return
         }
@@ -179,21 +164,6 @@ final class IosShellSession {
         exportScreen()
     }
 
-    private func installPressureObservers() {
-        clearPressureObservers()
-        pressureObservers = WawonaTerminalScrollback.installPressureObservers { [weak self] in
-            guard let self, let term = self.term else { return }
-            WawonaTerminalScrollback.apply(to: term)
-        }
-    }
-
-    private func clearPressureObservers() {
-        for token in pressureObservers {
-            NotificationCenter.default.removeObserver(token)
-        }
-        pressureObservers.removeAll()
-    }
-
     func resize(cols: UInt32, rows: UInt32, cellW: UInt32 = 8, cellH: UInt32 = 16) {
         let cols = min(512, max(20, cols))
         let rows = min(256, max(8, rows))
@@ -203,7 +173,6 @@ final class IosShellSession {
             guard cols != self.cols || rows != self.rows else { return }
             (self.cols, self.rows) = (cols, rows)
             IosShellABI.termResize(term, cols, rows)
-            WawonaTerminalScrollback.apply(to: term)
             var ws = winsize()
             ws.ws_row = UInt16(rows)
             ws.ws_col = UInt16(cols)
@@ -290,14 +259,9 @@ final class IosShellSession {
 
     private func halt() {
         stopped = true
-        clearPressureObservers()
         owed.removeAll()
-        pump?.cancel()
-        pump = nil
-        if master >= 0 {
-            IosShellABI.clearMaster(master)
-            master = -1
-        }
+        pump?.cancel(); pump = nil
+        if master >= 0 { IosShellABI.clearMaster(master); master = -1 }
         IosShellABI.stopShellSession()
         if let session { IosShellABI.sessionDestroy(session); self.session = nil }
         if let term { IosShellABI.termFree(term); self.term = nil }
@@ -365,7 +329,6 @@ final class IosLogTermSession {
         self.rows = max(8, rows)
         guard let term = IosShellABI.termNew(self.cols, self.rows) else { return }
         self.term = term
-        WawonaTerminalScrollback.apply(to: term)
         exportScreen()
     }
 
@@ -378,7 +341,6 @@ final class IosLogTermSession {
             guard cols != self.cols || rows != self.rows else { return }
             (self.cols, self.rows) = (cols, rows)
             IosShellABI.termResize(term, cols, rows)
-            WawonaTerminalScrollback.apply(to: term)
             self.exportScreen()
         }
     }

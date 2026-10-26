@@ -12,17 +12,21 @@ card.backport.liquidGlass(cornerRadius: 20)
 button.backport.glassToolbarButton() // .automatic on Liquid Glass bars
 ```
 
-iPhone Machines Add and machine-editor Cancel/Save are **plain toolbar
-buttons**: `ToolbarItem` + `Button` + `Image(systemName:)` (`plus`,
-`xmark`, `checkmark`). Default system size and spacing. No custom circle
-fill, glassProminent compose shim, fixed frame, font weight, or
-`sharedBackgroundVisibility` hacks on those items. iPhone bottom Add
-is the prominent `+` in `WWNPhoneIntegratedSearchToolbar` (`toolbarItems` on the visible controller).
+Machines **Add** is the primary CTA: system
+`.backport.glassProminentToolbarButton()` (blue / `.borderedProminent`
+fallback). iPad / visionOS / macOS place it on `.primaryAction`. iPhone
+bottom Add sits next to `DefaultToolbarItem(kind: .search)` with a
+`ToolbarSpacer`. Still no custom circle fill, fixed frame, font weight, or
+`sharedBackgroundVisibility` hacks on that item.
+
+Machine-editor Cancel/Save stay **plain** toolbar buttons (`xmark` /
+`checkmark` on `.topBarLeading` / `.topBarTrailing`). No glassProminent on
+those.
 
 **Exactly one Add Machine control.** iPhone: bottom toolbar only (iOS 26
-Messages search bar, or pre-26 `safeAreaInset` chrome). iPad / visionOS:
-top-trailing only. Never mount Add in both top-trailing and bottom on
-phone.
+Messages search bar, or pre-26 `safeAreaInset` chrome with
+`blueGlassCircleButton`). iPad / visionOS: `.primaryAction` only. Never
+mount Add in both top and bottom on phone.
 
 The compatibility namespace owns every `#available` check and its fallback.
 Do not scatter availability branches through feature views. Add a named shim to
@@ -51,15 +55,19 @@ Hard rejects:
 - Moving availability or compositor capability policy into SwiftUI
 - `.buttonStyle(.glass)` on iOS 26 navigation toolbar items (glass-on-glass)
 - Custom glass search capsule on iPhone Machines when iOS 26 system
-  search is available (`WWNPhoneIntegratedSearchToolbar`, not
-  `DefaultToolbarItem(kind: .search)`)
-- Custom opaque / glassProminent / fixed-frame styling on iPhone toolbar Add
-  or editor sheet xmark/checkmark (use default toolbar `Button` + SF Symbol)
+  `DefaultToolbarItem(kind: .search)` is available
+- Custom circle fill / fixed-frame / `sharedBackgroundVisibility` hacks on
+  iPhone toolbar Add (system `glassProminentToolbarButton` only) or on
+  editor sheet xmark/checkmark (plain toolbar `Button` + SF Symbol)
 - Custom SF Symbol Cancel/Save in `.cancellationAction` /
   `.confirmationAction` on iOS 26 (system also vends close/done)
-- Global Settings dismiss: use `backport.settingsCloseAction` (trailing
-  `xmark` on iOS / iPadOS / visionOS; `Done` on macOS / tvOS). Never a
-  leading `Done` string in `.cancellationAction` for Settings close.
+- Global Settings chrome matches Machines on NavigationSplitView: system
+  sidebar toggle (never strip, never custom `sidebar.left`). Detail
+  trailing only: `settingsCloseAction(onClose:chromeBridge:)` with Add +
+  Close in one `ToolbarItemGroup` (`[+][x]`). Detail `NavigationStack`
+  for Env Vars back. Pass `showSidebar:` only on pre-16 HStack. macOS /
+  tvOS: `settingsCloseAction(onClose:)` (`Done` only). Never a leading
+  `Done` in `.cancellationAction`.
 
 iPhone Machines bottom search: see skill `wawona-swiftui-backports` and
 `wwn-mcp/knowledge/wawona/ios-iphone-machines-messages-chrome.md`.
