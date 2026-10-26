@@ -327,7 +327,7 @@ jobs:
           if-no-files-found: error
 
   apple:
-    name: "Apple Appium (${{ matrix.platform }})"
+    name: "Apple Appium (${{ matrix.job_name || matrix.platform }})"
     needs: unit
     runs-on: macos-26
     timeout-minutes: 120
@@ -395,6 +395,8 @@ jobs:
           npm install -g appium@3.1.1
           if [[ "${{ matrix.platform }}" == "macos" ]]; then
             appium driver install mac2
+            chmod +x scripts/appium/ensure-wda-mac.sh
+            ./scripts/appium/ensure-wda-mac.sh
           else
             appium driver install xcuitest
           fi
@@ -455,14 +457,24 @@ jobs:
           unset WAWONA_APPIUM_DRY || true
           # Gate product (products_ready): copy into tip path so ensure-tip
           # clean-launches without xcodebuild. Else capture tip-builds.
+          TIP_APP="/tmp/wawona-macos-tip/DerivedData/Build/Products/Debug/Wawona.app"
           if [[ -n "${WAWONA_APP_PATH:-}" && -d "${WAWONA_APP_PATH}" ]]; then
-            TIP_APP="/tmp/wawona-macos-tip/DerivedData/Build/Products/Debug/Wawona.app"
             mkdir -p "$(dirname "$TIP_APP")"
             rm -rf "$TIP_APP"
             ditto "$WAWONA_APP_PATH" "$TIP_APP"
-            echo "$(git rev-parse HEAD)" >/tmp/wawona-macos-tip/git-HEAD
-            export WAWONA_TIP_SKIP_BUILD=1
-            export WAWONA_APP_PATH="$TIP_APP"
+            chmod -R +x "$TIP_APP/Contents/MacOS" 2>/dev/null || true
+            chmod -R +x "$TIP_APP/Contents/Resources/bin" 2>/dev/null || true
+            if [[ -x "$TIP_APP/Contents/MacOS/Wawona" ]]; then
+              echo "$(git rev-parse HEAD)" >/tmp/wawona-macos-tip/git-HEAD
+              export WAWONA_TIP_SKIP_BUILD=1
+              export WAWONA_APP_PATH="$TIP_APP"
+            else
+              unset WAWONA_TIP_SKIP_BUILD || true
+              unset WAWONA_APP_PATH || true
+            fi
+          else
+            unset WAWONA_TIP_SKIP_BUILD || true
+            unset WAWONA_APP_PATH || true
           fi
           # shellcheck disable=SC2086
           ./scripts/appium/capture-catalog-gallery.sh ${WAWONA_CATALOG_CI_CLIENTS}
