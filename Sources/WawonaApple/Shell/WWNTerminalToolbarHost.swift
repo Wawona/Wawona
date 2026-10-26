@@ -121,13 +121,9 @@ struct WWNTerminalToolbarHost: UIViewRepresentable {
                         parent.onInjectData(Data([0x09]))
                     }
                 } else if keycode == WWNEvdevKeycode.enter {
-<<<<<<< ours
                     WawonaTerminalReturnInject.once {
-                        parent.onInjectData(Data([0x0A]))
+                        parent.onInjectData(Data(WWNTerminalKeyBytes.toolbar("\n", control: control, alt: alt, shift: shift) ?? [0x0A]))
                     }
-=======
-                    parent.onInjectData(Data(WWNTerminalKeyBytes.toolbar("\n", control: control, alt: alt, shift: shift) ?? [0x0A]))
->>>>>>> theirs
                 } else if keycode == WWNEvdevKeycode.backspace {
                     let byte: UInt8 = control ? 0x08 : 0x7F
                     parent.onInjectData(Data(shift ? Array("\u{1B}[27;\(1 + 1 + (alt ? 2 : 0) + (control ? 4 : 0));\(byte)~".utf8) : (alt ? [0x1B, byte] : [byte])))
@@ -184,12 +180,8 @@ struct WWNTerminalToolbarHost: UIViewRepresentable {
     }
 }
 
-<<<<<<< ours
 /// Minimal `UITextField` so the system keyboard + Toolbar Keys accessory attach.
 final class WWNTerminalToolbarField: UITextField, UITextFieldDelegate {
-=======
-final class WWNTerminalToolbarField: UITextField {
->>>>>>> theirs
     weak var coordinator: WWNTerminalToolbarHost.Coordinator?
     private(set) var accessory: WWNKeyboardAccessoryView?
     private var specialDown = false
@@ -206,12 +198,9 @@ final class WWNTerminalToolbarField: UITextField {
         if #available(iOS 17.0, *) { inlinePredictionType = .no }
         if #available(iOS 18.0, *) { writingToolsBehavior = .none }
         keyboardAppearance = .dark
-<<<<<<< ours
         keyboardType = .asciiCapable
         textContentType = nil
         // Keep a thin hit target so SwiftUI layout does not collapse the host.
-=======
->>>>>>> theirs
         alpha = 0.02
         delegate = self
     }
@@ -227,35 +216,31 @@ final class WWNTerminalToolbarField: UITextField {
     override var hasText: Bool { true }
 
     override func insertText(_ text: String) {
-<<<<<<< ours
         guard !text.isEmpty else { return }
         guard !WawonaTerminalSelectionGate.isActive else { return }
+        if !specialDown { coordinator?.parent.onKeyUp?() }
+        // Modifier-aware routing: when modifiers are held, use toolbar byte table.
+        if let mods = coordinator, mods.parent.isShell,
+           mods.modControl || mods.modAlt || mods.modShift,
+           let bytes = WWNTerminalKeyBytes.toolbar(
+               text, control: mods.modControl, alt: mods.modAlt, shift: mods.modShift)
+        {
+            mods.parent.onInjectData(Data(bytes))
+            accessory?.clearOneShotModifiers()
+            return
+        }
         if text == "\n" || text == "\r" {
             WawonaTerminalReturnInject.once {
                 coordinator?.parent.onInjectData(Data([0x0A]))
             }
             return
         }
-        coordinator?.parent.onInjectText(text)
-    }
-
-    override func deleteBackward() {
-        guard !WawonaTerminalSelectionGate.isActive else { return }
-        coordinator?.parent.onInjectData(Data([0x7F]))
-=======
-        if !specialDown { coordinator?.parent.onKeyUp?() }
-        guard let mods = coordinator, mods.parent.isShell,
-            mods.modControl || mods.modAlt || mods.modShift,
-            let bytes = WWNTerminalKeyBytes.toolbar(
-                text, control: mods.modControl, alt: mods.modAlt, shift: mods.modShift)
-        else {
-            let shift = coordinator?.modShift == true, byte = text.utf8.first ?? 0
-            coordinator?.parent.onInjectText((shift && text.utf8.count == 1 && (0x61...0x7A).contains(byte)) ? String(UnicodeScalar(byte &- 0x20)) : text)
-            if shift { accessory?.clearOneShotModifiers() }
-            return
-        }
-        mods.parent.onInjectData(Data(bytes))
-        accessory?.clearOneShotModifiers()
+        let shift = coordinator?.modShift == true
+        let byte = text.utf8.first ?? 0
+        let out = (shift && text.utf8.count == 1 && (0x61...0x7A).contains(byte))
+            ? String(UnicodeScalar(byte &- 0x20)) : text
+        coordinator?.parent.onInjectText(out)
+        if shift { accessory?.clearOneShotModifiers() }
     }
 
     override func paste(_ sender: Any?) {
@@ -271,9 +256,14 @@ final class WWNTerminalToolbarField: UITextField {
     }
 
     override func deleteBackward() {
-        let ctrl = coordinator?.modControl == true, alt = coordinator?.modAlt == true, shift = coordinator?.modShift == true
+        guard !WawonaTerminalSelectionGate.isActive else { return }
+        let ctrl = coordinator?.modControl == true
+        let alt = coordinator?.modAlt == true
+        let shift = coordinator?.modShift == true
         let byte: UInt8 = ctrl ? 0x08 : 0x7F
-        let seq = shift ? Array("\u{1B}[27;\(1 + 1 + (alt ? 2 : 0) + (ctrl ? 4 : 0));\(byte)~".utf8) : (alt ? [0x1B, byte] : [byte])
+        let seq = shift
+            ? Array("\u{1B}[27;\(1 + 1 + (alt ? 2 : 0) + (ctrl ? 4 : 0));\(byte)~".utf8)
+            : (alt ? [0x1B, byte] : [byte])
         coordinator?.parent.onInjectData(Data(seq))
         if coordinator?.parent.isShell == true, ctrl || alt || shift {
             accessory?.clearOneShotModifiers()
@@ -295,7 +285,6 @@ final class WWNTerminalToolbarField: UITextField {
         if was, ok, let bytes = WWNTerminalCursorMode.focusReport(false) { coordinator?.parent.onInjectData(bytes) }
         if was, ok { WWNTerminalCursorMode.noteResponder(false); specialDown = false; coordinator?.parent.onKeyUp?() }
         return ok
->>>>>>> theirs
     }
 
     /// Soft keyboard on recent iOS often routes through the delegate instead of
@@ -327,34 +316,12 @@ final class WWNTerminalToolbarField: UITextField {
     }
 
     override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
-<<<<<<< ours
         if WawonaTerminalSelectionGate.isActive {
             super.pressesBegan(presses, with: event)
             return
         }
-        if #available(iOS 13.4, *), coordinator?.parent.isShell == true {
-            var rest = Set<UIPress>()
-            for press in presses {
-                if let key = press.key, let bytes = WWNTerminalKeyBytes.special(for: key) {
-                    if key.keyCode == .keyboardReturnOrEnter {
-                        WawonaTerminalReturnInject.once {
-                            coordinator?.parent.onInjectData(Data([0x0A]))
-                        }
-                    } else {
-                        coordinator?.parent.onInjectData(Data(bytes))
-                    }
-                } else {
-                    rest.insert(press)
-                }
-            }
-            if !rest.isEmpty {
-                super.pressesBegan(rest, with: event)
-            }
-            return
-=======
         guard #available(iOS 13.4, *), coordinator?.parent.isShell == true else {
             super.pressesBegan(presses, with: event); return
->>>>>>> theirs
         }
         var rest = presses
         for press in presses {
@@ -461,11 +428,8 @@ final class WWNTerminalKeyField: UITextField, UITextFieldDelegate {
         autocorrectionType = .no
         autocapitalizationType = .none
         spellCheckingType = .no
-<<<<<<< ours
         keyboardType = .asciiCapable
-=======
         smartQuotesType = .no; smartDashesType = .no; smartInsertDeleteType = .no
->>>>>>> theirs
         alpha = 0.02
         delegate = self
     }
