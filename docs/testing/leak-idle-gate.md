@@ -43,17 +43,14 @@ Extended Apple targets (iPadOS / visionOS / tvOS / watchOS) are gated **locally*
 
 Triggers:
 
-- **Gate: products** `workflow_call` with `products_ready: true` (product-path push to
-  `development` / `master`). Downloads that run’s `product-*` artifacts; does **not**
-  re-call `product-build` (avoids tip concurrency cancel against Gate: products)
 - `workflow_dispatch` (optional `lanes`: `all|ios|android|macos`). Builds under tip_key
   `leak-idle-*`
 - nightly schedule (`30 9 * * *` UTC). Same namespaced product-build tip_key
 
-**Not** a promote blocker. Idle-memory jobs use `continue-on-error` inside the
-reusable workflow (`continue-on-error` is invalid on `uses:` callers). The
-**Gate: products** rollup job does not `needs:` Watch: idle memory. Promote still requires **Gate: packages** +
-**Gate: products** only. Treat red Watch: idle memory as a signal to triage before promote.
+**Not** a promote blocker. It runs independently from **Gate: products** so queue
+timeouts or memory-analysis failures cannot change the blocking product result.
+Promote requires **Gate: packages** + **Gate: products**. Treat red Watch: idle
+memory as a signal to triage before promote.
 
 ### Failure identification
 

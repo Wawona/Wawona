@@ -52,6 +52,20 @@ lane under `ui-appium.yml`):
 - Catalog Wayland clients: real guests via
   `scripts/appium/launch-wayland-client.sh` (**Colima on Darwin**; nested on
   Linux). Run `ensure-colima.sh` first on macOS. No local-bundle.
+- Colima guest SSH must use its generated SSH config (`COLIMA_SSH_CONFIG` or
+  `${COLIMA_HOME:-$HOME/.colima}/ssh_config`). Never assume an internal key,
+  port, or profile path.
+- The macOS CI job creates unique `COLIMA_HOME` and `LIMA_HOME` directories
+  and a unique `COLIMA_PROFILE` under `runner.temp` before starting its
+  disposable VM. Isolate all three: runner images can inherit stale active
+  profile state even when config directories are fresh. Determine status from
+  `colima status`'s exit code, not a substring match on output because
+  "is not running" contains "running". Local runs keep their normal profile.
+- The macOS runner installs Colima, Lima, Docker CLI, and QEMU together. Colima's
+  default Docker runtime requires the host `docker` command before VM startup.
+  GitHub macOS runners are virtual machines, so the CI profile selects QEMU
+  instead of VZ. Lima falls back from HVF to TCG when HVF is not available.
+  Local runs keep the normal Colima VM type.
 - **Catalog green = Present surface PNG** in
   `.agent-device/test-artifacts/appium/catalog-gallery/<client>.png`
   (non-blank via `require_client_screenshot`). Capture

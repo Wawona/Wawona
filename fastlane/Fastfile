@@ -3,6 +3,7 @@
 require "fileutils"
 require "shellwords"
 require "tmpdir"
+require_relative "lib/asc_build_upload_gate"
 
 default_platform(:ios)
 
@@ -124,6 +125,32 @@ end
 
 def testflight_wait_timeout_seconds
   Integer(ENV.fetch("TESTFLIGHT_WAIT_TIMEOUT", "2700"))
+end
+
+def asc_build_upload_gates(targets)
+  apps = targets.map { |target, _ipa| target[:bundle_id] }.uniq.to_h do |bundle_id|
+    app = Spaceship::ConnectAPI::App.find(bundle_id)
+    UI.user_error!("App Store Connect app not found for #{bundle_id}") unless app
+    [bundle_id, app]
+  end
+
+  # Spaceship 2.232 can return a transient 404 if App.find is followed
+  # immediately by the app-scoped buildUploads endpoint.
+  sleep(2) unless apps.empty?
+
+  targets.to_h do |target, _ipa|
+    gate = Wawona::AscBuildUploadGate.new(
+      connect_api: Spaceship::ConnectAPI,
+      app: apps.fetch(target[:bundle_id]),
+      version: wawona_version,
+      build_number: wawona_build_number,
+      platform: target[:app_platform],
+      timeout_seconds: testflight_wait_timeout_seconds,
+      poll_interval_seconds: Integer(ENV.fetch("TESTFLIGHT_POLL_INTERVAL", "30")),
+      logger: ->(message) { UI.message(message) }
+    )
+    [target[:scheme], [gate, gate.baseline_ids]]
+  end
 end
 
 def testflight_upload_options(api_key, target)
@@ -1318,11 +1345,10 @@ platform :ios do
     prefer_xcode_toolchain!
     api_key = asc_api_key
     install_testflight_profiles!(api_key)
-    ensure_all_asc_versions!(api_key)
 
     # Complete every Apple archive, export, and local IPA invariant before the
-    # first ASC upload. A later platform must never fail after an earlier IPA
-    # has already been submitted.
+    # first App Store Connect mutation. A later platform must never fail after
+    # an ASC version record exists or an earlier IPA has already been submitted.
     prepared_ipas = apple_beta_targets.map do |target|
       ipa = gym_ipa(target)
       assert_ipa_no_private_progname!(ipa)
@@ -1332,12 +1358,16 @@ platform :ios do
     end
 
     UI.success("Preflight passed for all Apple beta archives and exported IPAs")
+    ensure_all_asc_versions!(api_key)
+    upload_gates = asc_build_upload_gates(prepared_ipas)
 
     prepared_ipas.each do |target, ipa|
       upload_to_testflight(
         **testflight_upload_options(api_key, target),
         ipa: ipa
       )
+      gate, baseline_ids = upload_gates.fetch(target[:scheme])
+      gate.wait_for_complete!(baseline_ids)
       if beta_testflight_groups.any?
         UI.success(
           "Uploaded and distributed #{target[:name]} #{wawona_version} (#{wawona_build_number}) " \
@@ -1386,7 +1416,10 @@ platform :ios do
     end
     UI.user_error!("IPA not found: #{ipa}") unless File.file?(ipa)
     assert_ipa_has_watch_companion!(ipa)
+    upload_gates = asc_build_upload_gates([[target, ipa]])
     upload_to_testflight(**testflight_upload_options(api_key, target), ipa: ipa)
+    gate, baseline_ids = upload_gates.fetch(target[:scheme])
+    gate.wait_for_complete!(baseline_ids)
     UI.success("Uploaded #{File.basename(ipa)} to TestFlight")
   end
 

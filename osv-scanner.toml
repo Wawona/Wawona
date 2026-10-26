@@ -1,0 +1,14 @@
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0374"
+ignoreUntil = 2027-01-25
+reason = "basic-toml is present only in Cargo.lock through optional UniFFI bindgen and Askama tooling. cargo tree --locked --target all -i basic-toml finds no active dependency path. Revisit after the optional lock graph is removed or OSV scans the active graph."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0196"
+ignoreUntil = 2027-01-25
+reason = "cgmath 0.18.0 is a transitive dependency of pinned Smithay 0.7 and has no fixed release. Track removal with the next Smithay migration."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0197"
+ignoreUntil = 2027-01-25
+reason = "cgmath 0.18.0 is a transitive dependency of pinned Smithay 0.7 and has no fixed release. The affected swap_columns API has no call sites in Wawona or Smithay 0.7 sources. Track removal with the next Smithay migration."

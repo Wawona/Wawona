@@ -46,6 +46,12 @@ colima start
 | `colima` | Required on Darwin. Matrix rows are `guest = "colima"`. |
 | `nested` | Linux CI only (`WAWONA_WAYLAND_GUEST=nested`). |
 
+CI sets a unique `COLIMA_PROFILE`, so Colima's generated SSH `Host` alias can
+include that profile name. Resolve the alias from `COLIMA_SSH_CONFIG` with
+`scripts/appium/colima-ssh-host.sh`; use it for every SSH probe, guest package
+check, binary lookup, and waypipe SSH launch. Never assume the alias is
+`colima`. `COLIMA_SSH_HOST` remains an explicit override for unusual configs.
+
 ### Never (catalog)
 
 - Local-bundle host bins (`Wawona.app/Contents/Resources/bin/...`) as catalog proof
@@ -88,7 +94,23 @@ Never `/Applications/Wawona.app` or old `DerivedData-macos*`.
 `WAWONA_TEST_REBUILD=1` forces xcodebuild. `WAWONA_ALLOW_STALE_TEST_APP=1`
 is forbidden for catalog.
 
-`ensure-colima.sh` resolves `nixpkgs#colima` when brew is missing.
+`ensure-colima.sh` resolves `nixpkgs#colima` when brew is missing. Use Colima's
+freshly generated SSH config (`colima ssh-config`, stored under
+`${COLIMA_HOME:-$HOME/.colima}/ssh_config`) for guest commands. Do not assume
+the private key lives at `~/.colima/_lima/_config/user`: Colima can use another
+home/profile, and an already-running VM can still be reachable through its
+generated SSH config when that default key path is absent.
+The GitHub macOS catalog job gives Colima and Lima unique homes and sets a
+unique `COLIMA_PROFILE` under `runner.temp` before starting the VM. Isolate the
+profile as well as both homes: runner images can inherit a stale active profile
+even when the config directories are fresh. Determine status from
+`colima status`'s exit code, not a substring match on output because "is not
+running" contains "running". Local runs use the normal profile.
+The macOS runner installs Colima, Lima, Docker CLI, and QEMU together because
+Colima's Docker runtime checks for the host `docker` command. GitHub macOS
+runners are virtual machines, so the CI job selects QEMU instead of VZ. Lima's
+QEMU backend falls back from HVF to TCG when the runner does not expose HVF.
+Local runs keep Colima's normal VM type.
 `WAWONA_MAC2_MANAGE_APP=1` + `skipAppKill`. `MANAGE_APP=0` drops bundleId.
 
 ### Colima guests beyond Ubuntu apt
@@ -143,6 +165,28 @@ macOS catalog: tip + Colima smoke (`weston_simple_shm foot`); **fail closed**
 if no PNG. Never `exit 0` + `SKIPPED.txt` (false green on tip `a58384fc`).
 Linux catalog only when `products_ready`. Gallery upload
 `if-no-files-found: error` when that step ran.
+
+For manual runs with `products_ready=true`, also provide `products_run_id` from
+the successful Gate: products run. Cross-workflow artifact downloads must use
+that run ID and verify its conclusion and commit SHA before the Appium lanes
+start. The workflow fails early when the source run is missing, failed, or for
+a different commit.
+
+## Linux Appium driver setup
+
+The Linux runner uses the community Appium Linux driver. Install the pinned
+driver and its AT-SPI runtime before starting the server. Start a session
+D-Bus bus for AT-SPI, verify the installed driver advertises `atspi2`, then
+wait for `/status` to return before running pytest. Do not hide driver or apt
+installation errors with `|| true`.
+
+Linux capabilities must use `platformName=Linux`,
+`appium:automationName=atspi2`, and `appium:appName` set to the actual AppImage
+path. The former `appium-linux-driver` package name was not published, and
+`automationName=Linux` selected no driver. CI now downloads the x86-64 runtime
+from the pinned upstream release and verifies its SHA-256 before installing.
+The runtime package includes a separately distributed native AT-SPI library.
+See RAG `appium-linux-driver-ci.md` for the incident and evidence.
 
 ## Hard rejects
 

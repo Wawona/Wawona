@@ -33,49 +33,29 @@ if [[ -z "$WP" || ! -x "$WP" ]]; then
   echo "FAIL: waypipe missing. Set WAWONA_APP_PATH to tip Wawona.app (wawona-test-tip-app)." >&2
   exit 2
 fi
-SSH_CONFIG="${COLIMA_SSH_CONFIG:-$HOME/.colima/ssh_config}"
-KEY="${COLIMA_SSH_KEY:-$HOME/.colima/_lima/_config/user}"
-PORT="${COLIMA_SSH_PORT:-}"
-USER_NAME="${COLIMA_SSH_USER:-lima}"
-HOST="${COLIMA_SSH_HOST:-127.0.0.1}"
+COLIMA_HOME="${COLIMA_HOME:-$HOME/.colima}"
+SSH_CONFIG="${COLIMA_SSH_CONFIG:-$COLIMA_HOME/ssh_config}"
+COLIMA_SSH_HOST="$("$ROOT/scripts/appium/colima-ssh-host.sh" "$SSH_CONFIG")"
 REMOTE_WAYPIPE="${COLIMA_REMOTE_WAYPIPE:-/usr/bin/waypipe}"
 
 mkdir -p "$ART"
 
-resolve_port() {
-  if [ -n "$PORT" ]; then
-    echo "$PORT"
-    return
-  fi
-  if [ -f "$SSH_CONFIG" ]; then
-    # First Port= line in lima/colima ssh_config (Host colima or lima-colima).
-    local p
-    p="$(awk '$1=="Port" { print $2; exit }' "$SSH_CONFIG")"
-    if [ -n "$p" ]; then
-      echo "$p"
-      return
-    fi
-  fi
-  echo "49419"
-}
-
 if [ "${1:-}" = "--kill" ]; then
-  pkill -f "waypipe.*${USER_NAME}@${HOST}" 2>/dev/null || true
-  echo "killed waypipe ssh sessions to ${USER_NAME}@${HOST}"
+  pkill -f 'waypipe.*ssh.*colima' 2>/dev/null || true
+  echo "killed waypipe ssh sessions to Colima"
   exit 0
 fi
 
-PORT="$(resolve_port)"
-if [ -z "$PORT" ]; then
-  echo "lab: could not resolve Colima SSH port" >&2
+if [ ! -s "$SSH_CONFIG" ]; then
+  echo "lab: Colima SSH configuration missing at $SSH_CONFIG" >&2
   exit 1
 fi
 
 if [ "${1:-}" = "--status" ]; then
-  echo "runtime=$WAWONA_RUNTIME port=$PORT wp=$WP"
+  echo "runtime=$WAWONA_RUNTIME ssh_config=$SSH_CONFIG wp=$WP"
   ls -la "$WAWONA_RUNTIME/wayland-0" 2>&1 || true
-  ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-    -i "$KEY" -p "$PORT" "${USER_NAME}@${HOST}" 'command -v waypipe foot weston weston-terminal' 2>&1 | tail -20
+  ssh -F "$SSH_CONFIG" -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    "$COLIMA_SSH_HOST" 'command -v waypipe foot weston weston-terminal' 2>&1 | tail -20
   pgrep -lf "Resources/bin/waypipe|waypipe --no-gpu" | head -30 || true
   exit 0
 fi
@@ -108,7 +88,7 @@ launch_one() {
   # shellcheck disable=SC2086
   nohup "$WP" --no-gpu --remote-bin "$REMOTE_WAYPIPE" \
     ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-    -i "$KEY" -p "$PORT" -T "${USER_NAME}@${HOST}" -- $cmd \
+    -F "$SSH_CONFIG" -T "$COLIMA_SSH_HOST" -- $cmd \
     >"$log" 2>&1 &
   echo "started $name pid=$! -> $log"
 }

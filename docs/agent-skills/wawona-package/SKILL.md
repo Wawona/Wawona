@@ -120,6 +120,11 @@ Deb hosts:
 - **Android.** Termux. `aarch64`, Bionic, prefix `/data/data/com.termux/files/usr`. Not jailbreak. Not Play.
 - **Linux.** glibc, `amd64` or `arm64`, prefix `/usr`.
 
+For the Android Play product, build the executable multicall from
+`wwn-uutils-rs.lib.coreutilsSrc`. `mkPatchedSrc` converts the upstream
+multicall into Apple's in-process static library and is not suitable for the
+Android executable recipe. Apple Mode A continues to use the patched source.
+
 Wasm is one bytecode for every product target. Every module uses the Wawona
 host ABI (`wasm-host-abi`, `wayland-wasm`). `wayland: yes` on Pulley is
 `wl_shm` plus `xdg_wm_base` only. `ci.suites.wayland` is `unknown` until a

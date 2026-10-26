@@ -25,13 +25,16 @@ if ! command -v colima >/dev/null 2>&1; then
   exit 6
 fi
 
-status_out="$(colima status 2>&1 || true)"
-if echo "$status_out" | grep -Eiq 'is running|Running'; then
+if status_out="$(colima status 2>&1)"; then
   echo "colima already running"
 else
   if [[ "${WAWONA_COLIMA_START:-0}" == "1" ]]; then
     echo "colima not running; starting (WAWONA_COLIMA_START=1)"
-    colima start
+    if [[ -n "${WAWONA_COLIMA_VM_TYPE:-}" ]]; then
+      colima start --vm-type "$WAWONA_COLIMA_VM_TYPE"
+    else
+      colima start
+    fi
   else
     echo "FAIL: colima not running. Start with: colima start" >&2
     echo "$status_out" >&2
@@ -39,26 +42,62 @@ else
   fi
 fi
 
-SSH_CONFIG="${COLIMA_SSH_CONFIG:-$HOME/.colima/ssh_config}"
-KEY="${COLIMA_SSH_KEY:-$HOME/.colima/_lima/_config/user}"
-HOST="${COLIMA_SSH_HOST:-127.0.0.1}"
-USER_NAME="${COLIMA_SSH_USER:-lima}"
-PORT="${COLIMA_SSH_PORT:-}"
-if [[ -z "$PORT" && -f "$SSH_CONFIG" ]]; then
-  PORT="$(awk '$1=="Port" { print $2; exit }' "$SSH_CONFIG" || true)"
-fi
-PORT="${PORT:-49419}"
+COLIMA_HOME="${COLIMA_HOME:-$HOME/.colima}"
+SSH_CONFIG="${COLIMA_SSH_CONFIG:-$COLIMA_HOME/ssh_config}"
+COLIMA_SSH_HOST=""
+mkdir -p "$(dirname "$SSH_CONFIG")"
+refresh_ssh_config() {
+  local ssh_config_tmp
+  ssh_config_tmp="$(mktemp "${TMPDIR:-/tmp}/wawona-colima-ssh.XXXXXX")"
+  if ! colima ssh-config >"$ssh_config_tmp" || [[ ! -s "$ssh_config_tmp" ]]; then
+    rm -f "$ssh_config_tmp"
+    return 1
+  fi
+  mv "$ssh_config_tmp" "$SSH_CONFIG"
+  COLIMA_SSH_HOST="$("$(dirname "$0")/colima-ssh-host.sh" "$SSH_CONFIG")"
+}
 
-if [[ ! -f "$KEY" ]]; then
-  echo "FAIL: Colima SSH key missing at $KEY" >&2
+check_colima_ssh() {
+  local output
+  if output="$(ssh -F "$SSH_CONFIG" -o BatchMode=yes -o ConnectTimeout=8 \
+    -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    "$COLIMA_SSH_HOST" 'true' 2>&1)"; then
+    return 0
+  fi
+  echo "Colima SSH probe failed: ${output:-no SSH diagnostic output}" >&2
+  return 1
+}
+
+if ! refresh_ssh_config || ! check_colima_ssh; then
+  if [[ "${WAWONA_COLIMA_RECOVER:-0}" != "1" ]]; then
+    echo "FAIL: Colima SSH config or guest connection is unhealthy" >&2
+    exit 6
+  fi
+
+  echo "Colima reports stale guest state; force-stopping and restarting CI VM"
+  if ! colima stop --force; then
+    echo "FAIL: could not stop unhealthy Colima VM" >&2
+    exit 6
+  fi
+  if [[ -n "${WAWONA_COLIMA_VM_TYPE:-}" ]]; then
+    start_args=(--vm-type "$WAWONA_COLIMA_VM_TYPE")
+  else
+    start_args=()
+  fi
+  if ! colima start "${start_args[@]}"; then
+    echo "FAIL: could not recover Colima CI VM" >&2
+    exit 6
+  fi
+
+  if ! refresh_ssh_config || ! check_colima_ssh; then
+    echo "FAIL: Colima guest remains unreachable after CI VM recovery" >&2
+    exit 6
+  fi
+fi
+
+if [[ ! -s "$SSH_CONFIG" ]]; then
+  echo "FAIL: refreshed Colima SSH configuration is empty at $SSH_CONFIG" >&2
   exit 6
 fi
 
-if ! ssh -o BatchMode=yes -o ConnectTimeout=8 \
-  -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-  -i "$KEY" -p "$PORT" "${USER_NAME}@${HOST}" 'true' >/dev/null 2>&1; then
-  echo "FAIL: cannot ssh ${USER_NAME}@${HOST}:$PORT (Colima guest)" >&2
-  exit 6
-fi
-
-echo "colima ok ssh=${USER_NAME}@${HOST}:$PORT"
+echo "colima ok ssh-config=$SSH_CONFIG ssh-host=$COLIMA_SSH_HOST"

@@ -110,9 +110,9 @@ launch_colima() {
     echo "FAIL: waypipe-ssh-colima-lab.sh missing" >&2
     exit 4
   fi
-  COLIMA_SSH_CONFIG="${COLIMA_SSH_CONFIG:-$HOME/.colima/ssh_config}"
-  KEY="${COLIMA_SSH_KEY:-$HOME/.colima/_lima/_config/user}"
-  PORT="$(awk '$1=="Port" { print $2; exit }' "$COLIMA_SSH_CONFIG" 2>/dev/null || echo 49419)"
+  COLIMA_HOME="${COLIMA_HOME:-$HOME/.colima}"
+  COLIMA_SSH_CONFIG="${COLIMA_SSH_CONFIG:-$COLIMA_HOME/ssh_config}"
+  COLIMA_SSH_HOST="$("$ROOT/scripts/appium/colima-ssh-host.sh" "$COLIMA_SSH_CONFIG")"
   apt_log="/tmp/wawona-colima-apt-${CLIENT}.log"
   # Binary path for presence check. `env VAR=x bin` → take first non-assignment.
   bin_check=""
@@ -128,23 +128,23 @@ launch_colima() {
   bin_check="${bin_check:-$TARGET}"
   # Guest may ship nix-profile clients (niri/hyprland/ghostty) outside apt.
   guest_env='export PATH="$HOME/.nix-profile/bin:/home/lima.guest/.nix-profile/bin:/usr/local/bin:/usr/bin:/bin:$PATH"; [ -f "$HOME/.nix-profile/etc/profile.d/nix.sh" ] && . "$HOME/.nix-profile/etc/profile.d/nix.sh"; [ -f /home/lima.guest/.nix-profile/etc/profile.d/nix.sh ] && . /home/lima.guest/.nix-profile/etc/profile.d/nix.sh; '
-  if ! ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-    -i "$KEY" -p "$PORT" "lima@127.0.0.1" \
+  if ! ssh -F "$COLIMA_SSH_CONFIG" -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    "$COLIMA_SSH_HOST" \
     "${guest_env} command -v ${bin_check} >/dev/null || test -x ${bin_check} || sudo DEBIAN_FRONTEND=noninteractive apt-get install -y $pkg" \
     >"$apt_log" 2>&1; then
     echo "FAIL: Colima guest missing '$pkg' (client=$CLIENT). See $apt_log" >&2
     tail -40 "$apt_log" >&2 || true
     exit 7
   fi
-  if ! ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-    -i "$KEY" -p "$PORT" "lima@127.0.0.1" \
+  if ! ssh -F "$COLIMA_SSH_CONFIG" -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    "$COLIMA_SSH_HOST" \
     "${guest_env} command -v ${bin_check} >/dev/null || test -x ${bin_check}"; then
     echo "FAIL: guest binary '${bin_check}' still missing after apt/nix (client=$CLIENT)" >&2
     exit 7
   fi
   # Resolve absolute path so waypipe remote argv does not depend on login PATH.
-  resolved="$(ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-    -i "$KEY" -p "$PORT" "lima@127.0.0.1" \
+  resolved="$(ssh -F "$COLIMA_SSH_CONFIG" -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    "$COLIMA_SSH_HOST" \
     "${guest_env} command -v ${bin_check}" | tr -d '\r' | head -1)"
   if [[ -n "$resolved" && "$resolved" == /* ]]; then
     case "$cmd" in

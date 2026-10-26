@@ -600,22 +600,6 @@ let
       '';
     };
 
-    # uu_cp treats mode bits as u32 except on macos/android/…; Apple mobile
-    # libc mode_t is u16 (same cast path as macos).
-    uu_cp = attrs: lib.optionalAttrs isAppleCross {
-      postPatch = (attrs.postPatch or "") + ''
-        patch -p1 < ${../patches/uu_cp-0.0.30-apple-mode-bits.patch}
-      '';
-    };
-
-    # uu_date only stubs clock_settime for macos/ios; tvOS/watchOS/visionOS
-    # also lack libc::clock_settime.
-    uu_date = attrs: lib.optionalAttrs isAppleCross {
-      postPatch = (attrs.postPatch or "") + ''
-        patch -p1 < ${../patches/uu_date-0.0.30-apple-clock-settime.patch}
-      '';
-    };
-
     weedle2 = attrs: {
       # Crates are gzipped tarballs; `.crate` is not always recognized by stdenv unpack on Linux CI.
       src = pkgs.fetchurl {

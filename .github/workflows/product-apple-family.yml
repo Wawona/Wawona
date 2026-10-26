@@ -30,7 +30,6 @@ concurrency:
 
 permissions:
   contents: read
-  id-token: write
 
 env:
   NIXPKGS_ALLOW_UNFREE: "1"
@@ -38,10 +37,13 @@ env:
 jobs:
   ipados:
     name: "iPadOS sim .app"
+    permissions:
+      contents: read
+      id-token: write
     runs-on: macos-26
     timeout-minutes: 180
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: ${{ inputs.checkout_ref || github.sha }}
 
@@ -85,7 +87,7 @@ jobs:
             echo "**PASS:** iPadOS simulator app built and audited."
           } >>"$GITHUB_STEP_SUMMARY"
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: product-ipados-sim
           path: dist/ipados-sim/
@@ -95,10 +97,13 @@ jobs:
           retention-days: 14
   visionos:
     name: "visionOS sim .app"
+    permissions:
+      contents: read
+      id-token: write
     runs-on: macos-26
     timeout-minutes: 180
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: ${{ inputs.checkout_ref || github.sha }}
 
@@ -142,7 +147,7 @@ jobs:
             echo "**PASS:** visionOS simulator app built and audited."
           } >>"$GITHUB_STEP_SUMMARY"
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: product-visionos-sim
           path: dist/visionos-sim/
@@ -152,10 +157,13 @@ jobs:
           retention-days: 14
   tvos:
     name: "tvOS sim .app"
+    permissions:
+      contents: read
+      id-token: write
     runs-on: macos-26
     timeout-minutes: 180
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: ${{ inputs.checkout_ref || github.sha }}
 
@@ -199,7 +207,7 @@ jobs:
             echo "**PASS:** tvOS simulator app built and audited."
           } >>"$GITHUB_STEP_SUMMARY"
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: product-tvos-sim
           path: dist/tvos-sim/
@@ -209,10 +217,13 @@ jobs:
           retention-days: 14
   watchos:
     name: "watchOS sim .app"
+    permissions:
+      contents: read
+      id-token: write
     runs-on: macos-26
     timeout-minutes: 180
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: ${{ inputs.checkout_ref || github.sha }}
 
@@ -223,6 +234,16 @@ jobs:
         run: ./.github/scripts/warm-ios-simulator-sdk.sh all
 
       - uses: ./.github/actions/setup-nix-flakehub
+
+      # The simulator product omits the device Watch target and its Rust
+      # backend. Build the device app in Gate: products so the exact
+      # Build Rust Backend via Nix phase that runs during an iOS archive is
+      # exercised before release-beta.yml can upload to ASC.
+      - name: Build watchOS device app and Rust backend
+        run: >-
+          ./.github/scripts/nix-retry.sh nix build
+          ".#wawona-watchos-app-device" --print-build-logs
+          --no-link
 
       - name: Build watchOS simulator app
         run: >-
@@ -254,10 +275,10 @@ jobs:
           {
             echo "# Build: watchOS"
             echo ""
-            echo "**PASS:** watchOS simulator app built and audited."
+            echo "**PASS:** watchOS device and simulator apps built, simulator app audited."
           } >>"$GITHUB_STEP_SUMMARY"
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: product-watchos-sim
           path: dist/watchos-sim/

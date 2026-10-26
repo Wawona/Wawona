@@ -25,6 +25,8 @@ on:
       - "scripts/prepare-cargo-path-deps.sh"
       - "flake.nix"
       - "flake.lock"
+      - "fastlane/**"
+      - ".github/workflows/release-beta.yml"
       - ".agent-device/**"
       - "scripts/agent-device-smoke.sh"
       - "scripts/ci-ios-xcuitest-smoke.sh"
@@ -78,7 +80,6 @@ concurrency:
 
 permissions:
   contents: read
-  id-token: write
   actions: read
 
 jobs:
@@ -90,7 +91,7 @@ jobs:
       is_tip: ${{ steps.tip.outputs.is_tip }}
       reason: ${{ steps.tip.outputs.reason }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 1
           persist-credentials: false
@@ -211,27 +212,6 @@ jobs:
       checkout_ref: ${{ inputs.checkout_ref || github.sha }}
       tip_key: ${{ inputs.checkout_ref || github.ref_name }}
       products_ready: true
-    permissions:
-      contents: read
-      id-token: write
-      actions: read
-
-  leak-idle:
-    name: "Watch: memory after idle (advisory)"
-    needs: [tip, product-ios, product-android, product-macos]
-    if: >-
-      always()
-      && !cancelled()
-      && needs.tip.outputs.is_tip == 'true'
-      && needs.product-ios.result == 'success'
-      && needs.product-android.result == 'success'
-      && needs.product-macos.result == 'success'
-    uses: ./.github/workflows/leak-idle-gate.yml
-    with:
-      checkout_ref: ${{ inputs.checkout_ref || github.sha }}
-      tip_key: ${{ inputs.checkout_ref || github.ref_name }}
-      products_ready: true
-      lanes: all
     permissions:
       contents: read
       id-token: write

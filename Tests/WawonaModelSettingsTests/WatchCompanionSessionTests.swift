@@ -79,19 +79,20 @@ func watchCompanionSendFailureRecordsMessage() throws {
 
 @Test
 func watchCompanionIngestReceivedFileCopiesToInbox() throws {
+    let name = "demo-\(UUID().uuidString).wasm"
     let tmp = FileManager.default.temporaryDirectory
         .appendingPathComponent("recv-\(UUID().uuidString).wasm")
     try Data([0x00, 0x61, 0x73, 0x6D]).write(to: tmp)
     defer { try? FileManager.default.removeItem(at: tmp) }
     let dest = WatchCompanionController.ingestReceivedFile(
         at: tmp,
-        preferredName: "demo.wasm"
+        preferredName: name
     )
     #expect(dest != nil)
-    #expect(dest?.lastPathComponent == "demo.wasm")
+    #expect(dest?.lastPathComponent == name)
     #expect(dest?.path.contains("Wawona/inbox") == true)
     if let dest {
-        try? FileManager.default.removeItem(at: dest.deletingLastPathComponent())
+        try? FileManager.default.removeItem(at: dest)
     }
 }
 
@@ -127,15 +128,16 @@ func watchCompanionNoteTransferFinishedMarksDelivered() {
 
 @Test
 func watchCompanionIngestStripsPathFromPreferredName() throws {
+    let name = "demo-\(UUID().uuidString).wasm"
     let tmp = FileManager.default.temporaryDirectory
         .appendingPathComponent("path-\(UUID().uuidString).bin")
     try Data([0x01]).write(to: tmp)
     defer { try? FileManager.default.removeItem(at: tmp) }
     let dest = WatchCompanionController.ingestReceivedFile(
         at: tmp,
-        preferredName: "../nested/demo.wasm"
+        preferredName: "../nested/\(name)"
     )
-    #expect(dest?.lastPathComponent == "demo.wasm")
+    #expect(dest?.lastPathComponent == name)
     if let dest {
         try? FileManager.default.removeItem(at: dest)
     }

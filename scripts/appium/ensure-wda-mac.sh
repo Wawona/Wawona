@@ -59,6 +59,40 @@ if [[ -z "$APP" || ! -x "$APP/Contents/MacOS/WebDriverAgentRunner-Runner" ]]; th
 fi
 
 if [[ -z "$APP" ]]; then
+  WDA_PROJ=""
+  for cand in \
+    "${HOME}/.appium/node_modules/appium-mac2-driver/WebDriverAgentMac/WebDriverAgentMac.xcodeproj" \
+    "${HOME}/.local/share/appium-cli/node_modules/appium-mac2-driver/WebDriverAgentMac/WebDriverAgentMac.xcodeproj" \
+    "$(npm root -g 2>/dev/null || true)/appium/node_modules/appium-mac2-driver/WebDriverAgentMac/WebDriverAgentMac.xcodeproj" \
+    "$(npm root -g 2>/dev/null || true)/appium-mac2-driver/WebDriverAgentMac/WebDriverAgentMac.xcodeproj"
+  do
+    if [[ -d "$cand" ]]; then
+      WDA_PROJ="$cand"
+      break
+    fi
+  done
+  if [[ -z "$WDA_PROJ" ]]; then
+    WDA_PROJ="$(find "${APPIUM_HOME:-${HOME}/.appium}" -name "WebDriverAgentMac.xcodeproj" -type d 2>/dev/null | head -1 || true)"
+  fi
+  if [[ -n "$WDA_PROJ" ]]; then
+    echo "ensure-wda-mac: building WebDriverAgentMac from $WDA_PROJ" >&2
+    mkdir -p /tmp/wda-mac-dd
+    xcodebuild \
+      -project "$WDA_PROJ" \
+      -scheme WebDriverAgentRunner \
+      -configuration Debug \
+      -derivedDataPath /tmp/wda-mac-dd \
+      CODE_SIGN_IDENTITY=- \
+      CODE_SIGNING_ALLOWED=YES \
+      build >&2
+    cand="/tmp/wda-mac-dd/Build/Products/Debug/WebDriverAgentRunner-Runner.app"
+    if [[ -x "${cand}/Contents/MacOS/WebDriverAgentRunner-Runner" ]]; then
+      APP="$cand"
+    fi
+  fi
+fi
+
+if [[ -z "$APP" ]]; then
   echo "FAIL: no WebDriverAgentRunner-Runner.app. Build once via Appium Mac2 session or xcodebuild." >&2
   exit 1
 fi
