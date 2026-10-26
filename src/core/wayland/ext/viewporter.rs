@@ -74,19 +74,15 @@ impl ViewportData {
     }
 }
 
-/// Surface size after applying the viewport. Source coordinates are measured
-/// against the raw buffer, while source dimensions become surface dimensions
-/// after dividing by `wl_surface.buffer_scale`. The unmodified surface size
-/// has already been transformed and scaled by the regular surface commit.
+/// Surface size after applying the viewport. Source coordinates are already in
+/// surface-local coordinates after the wl_surface buffer transform and scale.
 pub fn viewport_surface_size(
-    buffer_size: (i32, i32),
     surface_size: (i32, i32),
-    buffer_scale: i32,
     source: Option<ViewportSource>,
     destination: Option<(i32, i32)>,
 ) -> Result<(i32, i32), ViewportCommitError> {
     if let Some(src) = source {
-        let (bw, bh) = (f64::from(buffer_size.0), f64::from(buffer_size.1));
+        let (bw, bh) = (f64::from(surface_size.0), f64::from(surface_size.1));
         if src.x + src.width > bw || src.y + src.height > bh {
             return Err(ViewportCommitError::OutOfBuffer);
         }
@@ -95,16 +91,10 @@ pub fn viewport_surface_size(
         return Ok(dest);
     }
     match source {
-        Some(src)
-            if (src.width / f64::from(buffer_scale.max(1))).fract() != 0.0
-                || (src.height / f64::from(buffer_scale.max(1))).fract() != 0.0 =>
-        {
+        Some(src) if src.width.fract() != 0.0 || src.height.fract() != 0.0 => {
             Err(ViewportCommitError::BadSize)
         }
-        Some(src) => {
-            let scale = buffer_scale.max(1) as f64;
-            Ok(((src.width / scale) as i32, (src.height / scale) as i32))
-        }
+        Some(src) => Ok((src.width as i32, src.height as i32)),
         None => Ok(surface_size),
     }
 }
@@ -149,17 +139,11 @@ impl ViewporterState {
             return false;
         };
         data.apply_pending();
-        let Some(buffer_size) = current.buffer.dimensions() else {
+        if current.buffer.dimensions().is_none() {
             return false;
-        };
+        }
         let surface_size = (current.width, current.height);
-        match viewport_surface_size(
-            buffer_size,
-            surface_size,
-            current.scale,
-            data.source,
-            data.destination,
-        ) {
+        match viewport_surface_size(surface_size, data.source, data.destination) {
             Ok(size) => {
                 current.width = size.0;
                 current.height = size.1;
@@ -413,13 +397,7 @@ mod tests {
     #[test]
     fn viewport_surface_size_should_prefer_destination_over_source() {
         assert_eq!(
-            viewport_surface_size(
-                (100, 100),
-                (100, 100),
-                1,
-                source(0.0, 0.0, 50.5, 20.0),
-                Some((83, 20))
-            ),
+            viewport_surface_size((100, 100), source(0.0, 0.0, 50.5, 20.0), Some((83, 20))),
             Ok((83, 20))
         );
     }
@@ -427,7 +405,7 @@ mod tests {
     #[test]
     fn viewport_surface_size_should_use_integral_source_without_destination() {
         assert_eq!(
-            viewport_surface_size((100, 50), (100, 50), 1, source(0.0, 0.0, 82.0, 20.0), None),
+            viewport_surface_size((100, 50), source(0.0, 0.0, 82.0, 20.0), None),
             Ok((82, 20))
         );
     }
@@ -435,7 +413,7 @@ mod tests {
     #[test]
     fn viewport_surface_size_should_fall_back_to_buffer_size() {
         assert_eq!(
-            viewport_surface_size((640, 480), (640, 480), 1, None, None),
+            viewport_surface_size((640, 480), None, None),
             Ok((640, 480))
         );
     }
@@ -443,52 +421,27 @@ mod tests {
     #[test]
     fn viewport_surface_size_should_reject_fractional_source_without_destination() {
         assert_eq!(
-            viewport_surface_size(
-                (200, 100),
-                (200, 100),
-                1,
-                source(0.0, 0.0, 23.2, 100.0),
-                None
-            ),
+            viewport_surface_size((200, 100), source(0.0, 0.0, 23.2, 100.0), None),
             Err(ViewportCommitError::BadSize)
         );
     }
 
     #[test]
-    fn viewport_surface_size_should_reject_source_outside_scaled_buffer() {
-        // 200x100 buffer at scale 2 is 100x50 in surface coordinates.
+    fn viewport_surface_size_should_reject_source_outside_surface_size() {
         assert_eq!(
-            viewport_surface_size(
-                (200, 100),
-                (100, 50),
-                2,
-                source(100.0, 0.0, 100.5, 100.0),
-                None
-            ),
+            viewport_surface_size((100, 50), source(100.0, 0.0, 100.5, 100.0), None),
             Err(ViewportCommitError::OutOfBuffer)
         );
     }
 
     #[test]
-    fn viewport_source_dimensions_are_buffer_scaled_to_surface_size() {
+    fn viewport_source_dimensions_are_already_in_surface_coordinates() {
         assert_eq!(
-            viewport_surface_size(
-                (200, 100),
-                (100, 50),
-                2,
-                source(0.0, 0.0, 164.0, 40.0),
-                None
-            ),
-            Ok((82, 20))
+            viewport_surface_size((100, 50), source(0.0, 0.0, 82.0, 40.0), None),
+            Ok((82, 40))
         );
         assert_eq!(
-            viewport_surface_size(
-                (200, 100),
-                (100, 50),
-                2,
-                source(0.0, 0.0, 165.0, 40.0),
-                None
-            ),
+            viewport_surface_size((100, 50), source(0.0, 0.0, 82.5, 40.0), None),
             Err(ViewportCommitError::BadSize)
         );
     }

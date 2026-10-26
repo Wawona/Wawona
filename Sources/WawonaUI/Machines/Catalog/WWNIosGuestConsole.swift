@@ -221,12 +221,15 @@ enum WawonaTerminalFonts {
   static var nerd: Font { Font.custom("DejaVuSansM Nerd Font Mono", size: pointSize) }
 
   static var rowHeight: CGFloat {
-    max(1, UIFont.monospacedSystemFont(ofSize: pointSize, weight: .regular).lineHeight)
+    max(1, metricsFont.lineHeight)
+  }
+
+  static var metricsFont: UIFont {
+    UIFont.monospacedSystemFont(ofSize: pointSize, weight: .regular)
   }
 
   static var cellWidth: CGFloat {
-    let font = UIFont.monospacedSystemFont(ofSize: pointSize, weight: .regular)
-    return max(1, ("M" as NSString).size(withAttributes: [.font: font]).width)
+    max(1, ("M" as NSString).size(withAttributes: [.font: metricsFont]).width)
   }
 
   static func runs(_ text: String) -> [WawonaTerminalRun] {
@@ -636,6 +639,13 @@ final class WWNIosGuestConsole: ObservableObject {
 
   var isShell: Bool { source == "shell" }
 
+  /// Hide Terminal chrome while keeping its shell or log session alive.
+  func parkForCompositor() {
+    guard isPresented else { return }
+    isPresented = false
+    NSLog("WWNIosGuestConsole: parked Terminal (session kept alive) mid=%@", machineId)
+  }
+
   func startObservingIfNeeded() {
     guard !started else { return }
     started = true
@@ -669,7 +679,12 @@ final class WWNIosGuestConsole: ObservableObject {
 
   func present(machineId: String, source: String) {
     guard !machineId.isEmpty else { return }
-    if isPresented, self.machineId == machineId, self.source == source {
+    if self.machineId == machineId, self.source == source {
+      if !isPresented {
+        windowed = Self.openNextInWindow
+        Self.openNextInWindow = false
+        isPresented = true
+      }
       return
     }
     stopPump()

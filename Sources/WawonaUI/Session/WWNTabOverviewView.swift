@@ -70,7 +70,7 @@ struct WWNTabOverviewView: View {
         }
         .backport.navigationTitle("Tab Overview")
         .backport.searchable(text: $searchQuery, prompt: "Search Tabs")
-        .background { tabOverviewSearchPlacement }
+        .background(tabOverviewSearchPlacement)
         .accessibility(identifier: "wwn.tabOverview.detail")
     }
 
