@@ -4,13 +4,13 @@
 //! This file owns the PTY and the GTK view.
 
 use std::cell::{Cell, RefCell};
-use std::time::Duration;
 use std::fs::File;
 use std::io::{ErrorKind, Read, Write};
 use std::os::unix::io::{AsRawFd, FromRawFd};
 use std::process::{Child, Command, Stdio};
 use std::rc::Rc;
 use std::sync::Arc;
+use std::time::Duration;
 
 use adw::prelude::*;
 use gtk::prelude::{NativeExt, *};
@@ -274,7 +274,9 @@ fn present(parent: &impl IsA<gtk::Window>, session: Arc<TerminalSession>, master
                 }
             }
         }
-        let bytes = dec_keys.borrow().map_key(key, state, bytes_for_key(key, state));
+        let bytes = dec_keys
+            .borrow()
+            .map_key(key, state, bytes_for_key(key, state));
         if !bytes.is_empty() {
             if let Some(file) = master_keys.borrow_mut().as_mut() {
                 write_pty(file, &bytes);
@@ -295,14 +297,32 @@ fn present(parent: &impl IsA<gtk::Window>, session: Arc<TerminalSession>, master
     click.set_button(0);
     click.connect_pressed(move |gesture, _, x, y| {
         let button = gesture.current_button();
-        emit_pointer(&session_ptr, &master_ptr, &glyph_ptr, x, y, button, true, false);
+        emit_pointer(
+            &session_ptr,
+            &master_ptr,
+            &glyph_ptr,
+            x,
+            y,
+            button,
+            true,
+            false,
+        );
     });
     let session_rel = session.clone();
     let master_rel = master.clone();
     let glyph_rel = glyph.clone();
     click.connect_released(move |gesture, _, x, y| {
         let button = gesture.current_button();
-        emit_pointer(&session_rel, &master_rel, &glyph_rel, x, y, button, false, false);
+        emit_pointer(
+            &session_rel,
+            &master_rel,
+            &glyph_rel,
+            x,
+            y,
+            button,
+            false,
+            false,
+        );
     });
     view.add_controller(click);
     let session_motion = session.clone();
@@ -345,15 +365,7 @@ fn present(parent: &impl IsA<gtk::Window>, session: Arc<TerminalSession>, master
         let front = front_fit.clone();
         surface.connect_layout(move |_, _, _| {
             fit_grid(
-                &view,
-                &session,
-                fd,
-                &grid,
-                &glyph,
-                &buffer,
-                &pictures,
-                &back,
-                &front,
+                &view, &session, fd, &grid, &glyph, &buffer, &pictures, &back, &front,
             );
         });
     });
@@ -612,11 +624,19 @@ fn bytes_for_key(key: gtk::gdk::Key, state: gtk::gdk::ModifierType) -> Vec<u8> {
     let modified = param != 1;
     match key {
         gtk::gdk::Key::Return | gtk::gdk::Key::KP_Enter => {
-            if alt { b"\x1b\r".to_vec() } else { b"\r".to_vec() }
+            if alt {
+                b"\x1b\r".to_vec()
+            } else {
+                b"\r".to_vec()
+            }
         }
         gtk::gdk::Key::BackSpace => {
             let byte = if ctrl { 0x08 } else { 0x7f };
-            if alt { vec![0x1b, byte] } else { vec![byte] }
+            if alt {
+                vec![0x1b, byte]
+            } else {
+                vec![byte]
+            }
         }
         gtk::gdk::Key::Tab => {
             if shift {
@@ -630,7 +650,11 @@ fn bytes_for_key(key: gtk::gdk::Key, state: gtk::gdk::ModifierType) -> Vec<u8> {
         gtk::gdk::Key::Escape => vec![0x1b],
         gtk::gdk::Key::space => {
             if ctrl {
-                if alt { vec![0x1b, 0x00] } else { vec![0x00] }
+                if alt {
+                    vec![0x1b, 0x00]
+                } else {
+                    vec![0x00]
+                }
             } else if alt {
                 b"\x1b ".to_vec()
             } else {
@@ -638,16 +662,28 @@ fn bytes_for_key(key: gtk::gdk::Key, state: gtk::gdk::ModifierType) -> Vec<u8> {
             }
         }
         gtk::gdk::Key::Up | gtk::gdk::Key::KP_Up => csi_letter(b'A', param, modified, b"\x1b[A"),
-        gtk::gdk::Key::Down | gtk::gdk::Key::KP_Down => csi_letter(b'B', param, modified, b"\x1b[B"),
-        gtk::gdk::Key::Right | gtk::gdk::Key::KP_Right => csi_letter(b'C', param, modified, b"\x1b[C"),
-        gtk::gdk::Key::Left | gtk::gdk::Key::KP_Left => csi_letter(b'D', param, modified, b"\x1b[D"),
-        gtk::gdk::Key::Home | gtk::gdk::Key::KP_Home => csi_letter(b'H', param, modified, b"\x1b[H"),
+        gtk::gdk::Key::Down | gtk::gdk::Key::KP_Down => {
+            csi_letter(b'B', param, modified, b"\x1b[B")
+        }
+        gtk::gdk::Key::Right | gtk::gdk::Key::KP_Right => {
+            csi_letter(b'C', param, modified, b"\x1b[C")
+        }
+        gtk::gdk::Key::Left | gtk::gdk::Key::KP_Left => {
+            csi_letter(b'D', param, modified, b"\x1b[D")
+        }
+        gtk::gdk::Key::Home | gtk::gdk::Key::KP_Home => {
+            csi_letter(b'H', param, modified, b"\x1b[H")
+        }
         gtk::gdk::Key::End | gtk::gdk::Key::KP_End => csi_letter(b'F', param, modified, b"\x1b[F"),
-        gtk::gdk::Key::Page_Up | gtk::gdk::Key::KP_Page_Up => csi_tilde(b'5', param, modified, b"\x1b[5~"),
+        gtk::gdk::Key::Page_Up | gtk::gdk::Key::KP_Page_Up => {
+            csi_tilde(b'5', param, modified, b"\x1b[5~")
+        }
         gtk::gdk::Key::Page_Down | gtk::gdk::Key::KP_Page_Down => {
             csi_tilde(b'6', param, modified, b"\x1b[6~")
         }
-        gtk::gdk::Key::Delete | gtk::gdk::Key::KP_Delete => csi_tilde(b'3', param, modified, b"\x1b[3~"),
+        gtk::gdk::Key::Delete | gtk::gdk::Key::KP_Delete => {
+            csi_tilde(b'3', param, modified, b"\x1b[3~")
+        }
         gtk::gdk::Key::KP_Begin => b"\x1b[E".to_vec(),
         gtk::gdk::Key::KP_Divide => kp_ascii(b'/', alt),
         gtk::gdk::Key::KP_Multiply => kp_ascii(b'*', alt),
@@ -696,7 +732,11 @@ fn bytes_for_key(key: gtk::gdk::Key, state: gtk::gdk::ModifierType) -> Vec<u8> {
 }
 
 fn kp_ascii(byte: u8, alt: bool) -> Vec<u8> {
-    if alt { vec![0x1b, byte] } else { vec![byte] }
+    if alt {
+        vec![0x1b, byte]
+    } else {
+        vec![byte]
+    }
 }
 
 fn csi_letter(letter: u8, param: i32, modified: bool, plain: &[u8]) -> Vec<u8> {
@@ -875,9 +915,9 @@ fn paste_from_clipboard(session: &Arc<TerminalSession>, master: &Rc<RefCell<Opti
     };
     let session = session.clone();
     let master = master.clone();
-    display.clipboard().read_text_async(
-        None::<&gtk::gio::Cancellable>,
-        move |result| {
+    display
+        .clipboard()
+        .read_text_async(None::<&gtk::gio::Cancellable>, move |result| {
             let Ok(Some(text)) = result else {
                 return;
             };
@@ -885,8 +925,7 @@ fn paste_from_clipboard(session: &Arc<TerminalSession>, master: &Rc<RefCell<Opti
             if let Some(file) = master.borrow_mut().as_mut() {
                 write_pty(file, &bytes);
             }
-        },
-    );
+        });
 }
 
 fn css(rgb: u32) -> String {
@@ -942,14 +981,21 @@ fn blit_picture(
     if width < 1 || height < 1 {
         return;
     }
-    let need = (width as usize).saturating_mul(height as usize).saturating_mul(4);
+    let need = (width as usize)
+        .saturating_mul(height as usize)
+        .saturating_mul(4);
     if image.rgba.len() < need {
         return;
     }
     let Ok(stride) = gtk::cairo::Format::ARgb32.stride_for_width(image.pixel_width) else {
         return;
     };
-    let data = rgba_to_cairo(&image.rgba, width as usize, height as usize, stride as usize);
+    let data = rgba_to_cairo(
+        &image.rgba,
+        width as usize,
+        height as usize,
+        stride as usize,
+    );
     let Ok(surface) = gtk::cairo::ImageSurface::create_for_data(
         data,
         gtk::cairo::Format::ARgb32,

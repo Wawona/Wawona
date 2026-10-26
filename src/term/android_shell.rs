@@ -79,16 +79,14 @@ pub extern "C" fn wwn_android_shell_start(shell_path: *const c_char) -> c_int {
             return -1;
         }
         let mut name = [0u8; 64];
-        if libc::ptsname_r(
-            master,
-            name.as_mut_ptr() as *mut c_char,
-            name.len(),
-        ) != 0
-        {
+        if libc::ptsname_r(master, name.as_mut_ptr() as *mut c_char, name.len()) != 0 {
             libc::close(master);
             return -1;
         }
-        let slave = libc::open(name.as_ptr() as *const c_char, libc::O_RDWR | libc::O_CLOEXEC);
+        let slave = libc::open(
+            name.as_ptr() as *const c_char,
+            libc::O_RDWR | libc::O_CLOEXEC,
+        );
         if slave < 0 {
             libc::close(master);
             return -1;
@@ -96,11 +94,7 @@ pub extern "C" fn wwn_android_shell_start(shell_path: *const c_char) -> c_int {
         set_slave_termios(slave);
         set_winsize(master, 80, 24);
         let dash_i = c"-i";
-        let argv = [
-            path.as_ptr(),
-            dash_i.as_ptr(),
-            std::ptr::null(),
-        ];
+        let argv = [path.as_ptr(), dash_i.as_ptr(), std::ptr::null()];
         // Child only calls async-signal-safe functions, then exec. That is the
         // allowed window after fork in this multithreaded process. posix_spawn
         // cannot ioctl TIOCSCTTY, so zsh would have no controlling terminal.
@@ -167,9 +161,7 @@ pub extern "C" fn wwn_android_shell_read(fd: c_int, buf: *mut u8, cap: usize) ->
     if n == 0 {
         return -2;
     }
-    let err = std::io::Error::last_os_error()
-        .raw_os_error()
-        .unwrap_or(0);
+    let err = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
     if err == libc::EAGAIN || err == libc::EWOULDBLOCK || err == libc::EINTR {
         0
     } else if err == libc::EIO {

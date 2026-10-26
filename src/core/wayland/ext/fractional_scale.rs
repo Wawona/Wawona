@@ -4,13 +4,11 @@
 //! from the compositor, enabling smooth HiDPI rendering (GTK4, Qt, Ghostty).
 
 use std::collections::HashMap;
-use wayland_server::{
-    Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
-};
 use wayland_protocols::wp::fractional_scale::v1::server::{
     wp_fractional_scale_manager_v1::{self, WpFractionalScaleManagerV1},
     wp_fractional_scale_v1::{self, WpFractionalScaleV1},
 };
+use wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource};
 
 use crate::core::state::CompositorState;
 
@@ -125,7 +123,11 @@ impl Dispatch<WpFractionalScaleV1, FractionalScaleData> for CompositorState {
     ) {
         match request {
             wp_fractional_scale_v1::Request::Destroy => {
-                state.ext.fractional_scale.by_surface.remove(&data.surface_id);
+                state
+                    .ext
+                    .fractional_scale
+                    .by_surface
+                    .remove(&data.surface_id);
                 tracing::debug!(
                     "wp_fractional_scale_v1 destroyed for surface {}",
                     data.surface_id

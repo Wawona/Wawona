@@ -278,25 +278,29 @@ impl CompositorState {
             let mut states_bytes = Vec::new();
             if pending_maximized {
                 states_bytes.extend_from_slice(
-                    &(crate::core::wayland::xdg::v6::protocol::zxdg_toplevel_v6::State::Maximized as u32)
+                    &(crate::core::wayland::xdg::v6::protocol::zxdg_toplevel_v6::State::Maximized
+                        as u32)
                         .to_ne_bytes(),
                 );
             }
             if pending_fullscreen {
                 states_bytes.extend_from_slice(
-                    &(crate::core::wayland::xdg::v6::protocol::zxdg_toplevel_v6::State::Fullscreen as u32)
+                    &(crate::core::wayland::xdg::v6::protocol::zxdg_toplevel_v6::State::Fullscreen
+                        as u32)
                         .to_ne_bytes(),
                 );
             }
             if interactive_resize {
                 states_bytes.extend_from_slice(
-                    &(crate::core::wayland::xdg::v6::protocol::zxdg_toplevel_v6::State::Resizing as u32)
+                    &(crate::core::wayland::xdg::v6::protocol::zxdg_toplevel_v6::State::Resizing
+                        as u32)
                         .to_ne_bytes(),
                 );
             }
             if activated {
                 states_bytes.extend_from_slice(
-                    &(crate::core::wayland::xdg::v6::protocol::zxdg_toplevel_v6::State::Activated as u32)
+                    &(crate::core::wayland::xdg::v6::protocol::zxdg_toplevel_v6::State::Activated
+                        as u32)
                         .to_ne_bytes(),
                 );
             }
@@ -464,9 +468,7 @@ impl CompositorState {
             // Tear down host chrome immediately; client destroy may lag over
             // waypipe and leave a stuck grab UI.
             self.pending_compositor_events
-                .push(crate::core::compositor::CompositorEvent::WindowDestroyed {
-                    window_id,
-                });
+                .push(crate::core::compositor::CompositorEvent::WindowDestroyed { window_id });
         }
         if let Some(parent) = parent_id {
             self.restore_keyboard_focus_to_window(parent);
@@ -641,9 +643,7 @@ impl CompositorState {
                         }
                         node.scale = surface_scale as f32;
                         let viewport = self.ext.viewporter.for_surface(window.surface_id);
-                        let has_viewport_dest = viewport
-                            .and_then(|v| v.destination)
-                            .is_some();
+                        let has_viewport_dest = viewport.and_then(|v| v.destination).is_some();
                         // GTK4 / fractional-scale path: buffer is physical,
                         // current size is viewport destination (logical).
                         // Present scale must be buffer/logical so CALayer

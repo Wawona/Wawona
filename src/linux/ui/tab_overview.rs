@@ -143,11 +143,21 @@ fn icon_for_title(name: &str) -> &'static str {
 }
 
 fn status_label(is_active: bool) -> &'static str {
-    if is_active { "Running \u{00b7} Active" } else { "Running" }
+    if is_active {
+        "Running \u{00b7} Active"
+    } else {
+        "Running"
+    }
 }
 
 fn cols_for_width(width: i32) -> u32 {
-    if width >= 900 { 3 } else if width >= 480 { 2 } else { 1 }
+    if width >= 900 {
+        3
+    } else if width >= 480 {
+        2
+    } else {
+        1
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -192,14 +202,15 @@ pub fn build_tab_overview_view(
 
     // Same search placement as Machine Configuration. Tab Overview has no
     // add action, so only the search field moves.
-    let search_chrome = super::adaptive::AdaptiveSearchAdd::new(super::adaptive::SearchAddOptions {
-        placeholder: "Search Tabs",
-        search_a11y: "wwn.tabOverview.search",
-        search_label: "Search Tabs",
-        add_tooltip: None,
-        add_a11y: None,
-        add_label: None,
-    });
+    let search_chrome =
+        super::adaptive::AdaptiveSearchAdd::new(super::adaptive::SearchAddOptions {
+            placeholder: "Search Tabs",
+            search_a11y: "wwn.tabOverview.search",
+            search_label: "Search Tabs",
+            add_tooltip: None,
+            add_a11y: None,
+            add_label: None,
+        });
     search_chrome.pack_header(&header);
     let search = search_chrome.header_search.clone();
     search_chrome.bind_query(std::rc::Rc::new(|_| {}));

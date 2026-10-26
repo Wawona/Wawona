@@ -63,7 +63,9 @@ pub fn build_editor_view(
     // MARK: Connection Profile
     let profile_group = adw::PreferencesGroup::new();
     profile_group.set_title("Connection Profile");
-    profile_group.set_description(Some("Name, type, and favorite status for this machine profile."));
+    profile_group.set_description(Some(
+        "Name, type, and favorite status for this machine profile.",
+    ));
 
     let name_row = adw::EntryRow::new();
     name_row.set_title("Display Name");
@@ -224,7 +226,9 @@ pub fn build_editor_view(
             filters.append(&filter);
             dialog.set_filters(Some(&filters));
             let wasm_path_c = wasm_path_c.clone();
-            let win = wasm_pick_btn.root().and_then(|r| r.downcast::<gtk::Window>().ok());
+            let win = wasm_pick_btn
+                .root()
+                .and_then(|r| r.downcast::<gtk::Window>().ok());
             dialog.open(win.as_ref(), None::<&gio::Cancellable>, move |result| {
                 if let Ok(file) = result {
                     if let Some(path) = file.path() {
@@ -251,7 +255,9 @@ pub fn build_editor_view(
             while let Some(child) = results_list.first_child() {
                 results_list.remove(&child);
             }
-            let (tx, rx) = std::sync::mpsc::channel::<Result<Vec<crate::linux::wasm_launch::CatalogPackage>, String>>();
+            let (tx, rx) = std::sync::mpsc::channel::<
+                Result<Vec<crate::linux::wasm_launch::CatalogPackage>, String>,
+            >();
             let note_poll = note.clone();
             let results_poll = results_list.clone();
             let path_poll = path_entry.clone();
@@ -268,11 +274,7 @@ pub fn build_editor_view(
                                 for item in found {
                                     let row = adw::ActionRow::new();
                                     row.set_title(&item.name);
-                                    let sub = format!(
-                                        "{} • v{}",
-                                        item.summary,
-                                        item.version,
-                                    );
+                                    let sub = format!("{} • v{}", item.summary, item.version,);
                                     row.set_subtitle(&sub);
                                     row.set_activatable(true);
                                     let name = item.name.clone();
@@ -286,11 +288,14 @@ pub fn build_editor_view(
                                         ce.set_text(&format!("wasm {name}"));
                                         nte.set_text("Downloading…");
                                         let name_c = name.clone();
-                                        let (tx_dl, rx_dl) = std::sync::mpsc::channel::<Option<std::path::PathBuf>>();
+                                        let (tx_dl, rx_dl) =
+                                            std::sync::mpsc::channel::<Option<std::path::PathBuf>>(
+                                            );
                                         let pte_c = pte.clone();
                                         let nte_c = nte.clone();
-                                        glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
-                                            match rx_dl.try_recv() {
+                                        glib::timeout_add_local(
+                                            std::time::Duration::from_millis(50),
+                                            move || match rx_dl.try_recv() {
                                                 Ok(Some(p)) => {
                                                     pte_c.set_text(&p.display().to_string());
                                                     nte_c.set_text("Ready");
@@ -300,12 +305,19 @@ pub fn build_editor_view(
                                                     nte_c.set_text("Download failed");
                                                     glib::ControlFlow::Break
                                                 }
-                                                Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
-                                                Err(std::sync::mpsc::TryRecvError::Disconnected) => glib::ControlFlow::Break,
-                                            }
-                                        });
+                                                Err(std::sync::mpsc::TryRecvError::Empty) => {
+                                                    glib::ControlFlow::Continue
+                                                }
+                                                Err(
+                                                    std::sync::mpsc::TryRecvError::Disconnected,
+                                                ) => glib::ControlFlow::Break,
+                                            },
+                                        );
                                         std::thread::spawn(move || {
-                                            let res = crate::linux::wasm_launch::ensure_package_file(&name_c);
+                                            let res =
+                                                crate::linux::wasm_launch::ensure_package_file(
+                                                    &name_c,
+                                                );
                                             let _ = tx_dl.send(res);
                                         });
                                     });
@@ -349,7 +361,11 @@ pub fn build_editor_view(
     let (auth_method_row, auth_ids) = make_combo_row(
         "Authentication Method",
         &auth_items,
-        if profile.ssh_auth_method == 1 { "1" } else { "0" },
+        if profile.ssh_auth_method == 1 {
+            "1"
+        } else {
+            "0"
+        },
     );
     remote_group.add(&auth_method_row);
 
@@ -917,15 +933,27 @@ pub fn build_editor_view(
                     runtime: Some("OCI-in-VM".to_string()),
                     container_ref: {
                         let r = container_ref_row.text().trim().to_string();
-                        if r.is_empty() { None } else { Some(r) }
+                        if r.is_empty() {
+                            None
+                        } else {
+                            Some(r)
+                        }
                     },
                     entry_command: {
                         let c = container_cmd_row.text().trim().to_string();
-                        if c.is_empty() { None } else { Some(c) }
+                        if c.is_empty() {
+                            None
+                        } else {
+                            Some(c)
+                        }
                     },
                     memory: {
                         let m = container_memory_row.text().trim().to_string();
-                        if m.is_empty() { None } else { Some(m) }
+                        if m.is_empty() {
+                            None
+                        } else {
+                            Some(m)
+                        }
                     },
                     desktop_session: Some(container_desktop_row.is_active()),
                     ..baseline.container_settings.clone().unwrap_or_default()
@@ -937,7 +965,11 @@ pub fn build_editor_view(
                 Some(VirtualMachineSettings {
                     vm_identifier: {
                         let id = vm_id_row.text().trim().to_string();
-                        if id.is_empty() { None } else { Some(id) }
+                        if id.is_empty() {
+                            None
+                        } else {
+                            Some(id)
+                        }
                     },
                     guest_variant: Some(get_combo_id(&vm_variant_row, &vm_variant_ids)),
                     memory_mb: Some(vm_memory_row.value() as i32),
@@ -945,7 +977,11 @@ pub fn build_editor_view(
                     vsock_port: Some(format!("{}", vm_vsock_row.value() as u32)),
                     notes: {
                         let n = vm_notes_row.text().trim().to_string();
-                        if n.is_empty() { None } else { Some(n) }
+                        if n.is_empty() {
+                            None
+                        } else {
+                            Some(n)
+                        }
                     },
                     ..baseline.vm_settings.clone().unwrap_or_default()
                 })
@@ -1112,16 +1148,12 @@ pub fn show_editor(
         }
     });
 
-    let content = build_editor_view(
-        state,
-        existing,
-        default_type,
-        sessions,
-        on_close.clone(),
-    );
+    let content = build_editor_view(state, existing, default_type, sessions, on_close.clone());
 
     if is_mobile_touch {
-        if let Some(close_fn) = modal_sheet::present_bottom_sheet(parent, &content, on_close.clone()) {
+        if let Some(close_fn) =
+            modal_sheet::present_bottom_sheet(parent, &content, on_close.clone())
+        {
             *close_bottom_sheet_holder.borrow_mut() = Some(close_fn);
             return;
         }

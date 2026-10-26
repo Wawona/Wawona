@@ -7,9 +7,7 @@ use adw::prelude::*;
 use gtk4 as gtk;
 use libadwaita as adw;
 
-use crate::linux::ui_model::{
-    sidebar_width_from_pointer, LayoutMode, SPLIT_COLLAPSE_BELOW_PX,
-};
+use crate::linux::ui_model::{sidebar_width_from_pointer, LayoutMode, SPLIT_COLLAPSE_BELOW_PX};
 
 /// Live layout mode shared between widgets (updated when the window resizes).
 #[derive(Clone)]
@@ -74,7 +72,6 @@ pub fn install_adaptive_split_view(
     }
     install_breakpoint(window, binding);
 }
-
 
 /// Ensure CSS for adaptive sidebar resizing is registered.
 pub fn ensure_adaptive_css() {
@@ -528,21 +525,26 @@ impl AdaptiveSearchAdd {
 /// Returns true if a touchscreen is present, or if running under a Linux Mobile
 /// shell (such as Phosh or gnome-mobile), or if WAWONA_TOUCH_UI or WAWONA_MOBILE is set.
 pub fn is_touchscreen_active() -> bool {
-    if std::env::var("WAWONA_TOUCH_UI").map(|v| v == "1" || v == "true").unwrap_or(false)
-        || std::env::var("WAWONA_MOBILE").map(|v| v == "1" || v == "true").unwrap_or(false)
+    if std::env::var("WAWONA_TOUCH_UI")
+        .map(|v| v == "1" || v == "true")
+        .unwrap_or(false)
+        || std::env::var("WAWONA_MOBILE")
+            .map(|v| v == "1" || v == "true")
+            .unwrap_or(false)
         || std::env::var("PHOSH_SESSION").is_ok()
-        || std::env::var("GNOME_SHELL_SESSION_MODE").map(|v| v.contains("phosh")).unwrap_or(false)
+        || std::env::var("GNOME_SHELL_SESSION_MODE")
+            .map(|v| v.contains("phosh"))
+            .unwrap_or(false)
     {
         return true;
     }
     if let Some(display) = gtk::gdk::Display::default() {
         if let Some(seat) = display.default_seat() {
             use gtk::gdk::prelude::SeatExt;
-            return seat.capabilities().contains(gtk::gdk::SeatCapabilities::TOUCH);
+            return seat
+                .capabilities()
+                .contains(gtk::gdk::SeatCapabilities::TOUCH);
         }
     }
     false
 }
-
-
-

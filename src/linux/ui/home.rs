@@ -109,11 +109,7 @@ pub fn build_home_shell(on_rebuild: Rc<dyn Fn()>) -> HomeShell {
     root.append(&banner);
     root.append(&summary);
     root.append(&scroll);
-    crate::linux::ui::a11y::set_wwn_a11y(
-        &root,
-        crate::linux::ui::a11y::id::MACHINES_ROOT,
-        None,
-    );
+    crate::linux::ui::a11y::set_wwn_a11y(&root, crate::linux::ui::a11y::id::MACHINES_ROOT, None);
 
     // Responsive column count listener
     let current_cols = Rc::new(Cell::new(0));
@@ -1317,11 +1313,18 @@ fn attach_card_actions(
     menu_box.set_margin_bottom(6);
 
     let is_fav = profile.favorite;
-    let pin_label = if is_fav { "Unpin Machine" } else { "Pin Machine" };
+    let pin_label = if is_fav {
+        "Unpin Machine"
+    } else {
+        "Pin Machine"
+    };
     let pin_item = popover_menu_button("view-pin-symbolic", pin_label, false);
     if is_fav {
         if let Some(content) = pin_item.child().and_then(|c| c.downcast::<gtk::Box>().ok()) {
-            if let Some(img) = content.first_child().and_then(|c| c.downcast::<gtk::Image>().ok()) {
+            if let Some(img) = content
+                .first_child()
+                .and_then(|c| c.downcast::<gtk::Image>().ok())
+            {
                 img.add_css_class("wwn-icon-orange");
             }
         }

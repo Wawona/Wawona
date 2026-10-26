@@ -539,8 +539,12 @@ mod tests {
         settings.compositor_backend = "drm".to_string();
         settings.vulkan_driver = "/usr/share/vulkan/intel.json".to_string();
         settings.opengl_driver = "system_gl".to_string();
-        settings.environment_overrides.insert("GLOBAL_ONLY".to_string(), "global_val".to_string());
-        settings.environment_overrides.insert("SHARED_KEY".to_string(), "from_global".to_string());
+        settings
+            .environment_overrides
+            .insert("GLOBAL_ONLY".to_string(), "global_val".to_string());
+        settings
+            .environment_overrides
+            .insert("SHARED_KEY".to_string(), "from_global".to_string());
 
         let mut profile = MachineProfile::new("Test Profile");
         profile.machine_type = MachineType::Native;
@@ -578,25 +582,44 @@ mod tests {
 
         let envs: std::collections::HashMap<_, _> = cmd
             .get_envs()
-            .map(|(k, v)| (k.to_string_lossy().to_string(), v.map(|s| s.to_string_lossy().to_string())))
+            .map(|(k, v)| {
+                (
+                    k.to_string_lossy().to_string(),
+                    v.map(|s| s.to_string_lossy().to_string()),
+                )
+            })
             .collect();
 
         // Machine profile compositor_backend ("nested") overrides global ("tty" from drm)
         assert_eq!(envs.get("NIRI_BACKEND"), Some(&Some("nested".to_string())));
 
         // Machine profile vulkan_driver overrides global
-        assert_eq!(envs.get("VK_ICD_FILENAMES"), Some(&Some("/custom/radv.json".to_string())));
-        assert_eq!(envs.get("WWN_VULKAN_DRIVER"), Some(&Some("/custom/radv.json".to_string())));
+        assert_eq!(
+            envs.get("VK_ICD_FILENAMES"),
+            Some(&Some("/custom/radv.json".to_string()))
+        );
+        assert_eq!(
+            envs.get("WWN_VULKAN_DRIVER"),
+            Some(&Some("/custom/radv.json".to_string()))
+        );
 
         // Machine profile open_gl_driver overrides global
-        assert_eq!(envs.get("WWN_OPENGL_DRIVER"), Some(&Some("/custom/radeonsi".to_string())));
+        assert_eq!(
+            envs.get("WWN_OPENGL_DRIVER"),
+            Some(&Some("/custom/radeonsi".to_string()))
+        );
 
         // Environment overrides: profile beats global
-        assert_eq!(envs.get("SHARED_KEY"), Some(&Some("from_profile".to_string())));
-        assert_eq!(envs.get("PROFILE_ONLY"), Some(&Some("profile_val".to_string())));
+        assert_eq!(
+            envs.get("SHARED_KEY"),
+            Some(&Some("from_profile".to_string()))
+        );
+        assert_eq!(
+            envs.get("PROFILE_ONLY"),
+            Some(&Some("profile_val".to_string()))
+        );
 
         // Environment unsets in profile unsets global
         assert_eq!(envs.get("GLOBAL_ONLY"), Some(&None));
     }
 }
-

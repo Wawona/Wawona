@@ -634,8 +634,7 @@ impl CompositorState {
                 continue;
             };
             let same_surface = point.surface_id == surface_id;
-            let same_local =
-                (point.x - local_x).abs() < 0.01 && (point.y - local_y).abs() < 0.01;
+            let same_local = (point.x - local_x).abs() < 0.01 && (point.y - local_y).abs() < 0.01;
             if same_surface && same_local {
                 continue;
             }

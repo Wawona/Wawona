@@ -60,11 +60,19 @@ pub fn sidebar_width_from_pointer(
     max_w: f64,
 ) -> f64 {
     if !total.is_finite() || total <= 1.0 {
-        return if min_w.is_finite() { min_w.max(0.0) } else { 0.0 };
+        return if min_w.is_finite() {
+            min_w.max(0.0)
+        } else {
+            0.0
+        };
     }
     let edge = pointer_x - grab;
     let raw = if sidebar_at_end { total - edge } else { edge };
-    let min_w = if min_w.is_finite() { min_w.max(0.0) } else { 0.0 };
+    let min_w = if min_w.is_finite() {
+        min_w.max(0.0)
+    } else {
+        0.0
+    };
     let max_w = if max_w.is_finite() {
         max_w.max(min_w)
     } else {
@@ -423,10 +431,7 @@ mod tests {
         native.remote_command.clear();
         native.runtime_overrides.bundled_app_id = Some("wawona-shell".into());
         assert_eq!(machine_subtitle(&native), "Native Shell");
-        assert_eq!(
-            machine_configuration_summary(&native),
-            "Runs: Native Shell"
-        );
+        assert_eq!(machine_configuration_summary(&native), "Runs: Native Shell");
         assert!(launch_supported(&native));
         assert_eq!(machine_scope_label(native.machine_type), "Local");
 

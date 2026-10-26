@@ -541,7 +541,9 @@ pub static CATALOG_ENTRIES: &[EnvCatalogEntry] = &[
 ];
 
 pub fn find_catalog_entry(name: &str) -> Option<&'static EnvCatalogEntry> {
-    CATALOG_ENTRIES.iter().find(|e| e.name.eq_ignore_ascii_case(name))
+    CATALOG_ENTRIES
+        .iter()
+        .find(|e| e.name.eq_ignore_ascii_case(name))
 }
 
 /// Resolved entry representing the live state of a single variable.
@@ -680,7 +682,11 @@ pub fn build_env_vars_view(
     unsets_cell: Rc<RefCell<Vec<String>>>,
     settings: &LinuxSettings,
     on_detail: Rc<dyn Fn(Option<&str>)>,
-) -> (gtk::Widget, Rc<dyn Fn()>, super::adaptive::AdaptiveSearchAdd) {
+) -> (
+    gtk::Widget,
+    Rc<dyn Fn()>,
+    super::adaptive::AdaptiveSearchAdd,
+) {
     let main_stack = gtk::Stack::new();
     main_stack.set_transition_type(gtk::StackTransitionType::SlideLeftRight);
     main_stack.set_hhomogeneous(false);
@@ -735,14 +741,15 @@ pub fn build_env_vars_view(
     // Search and add follow Machine Configuration: header on a wide or
     // narrow window, bottom bar on a touch screen. The Settings header
     // packs the header widgets. This page owns the revealer and bottom bar.
-    let search_chrome = super::adaptive::AdaptiveSearchAdd::new(super::adaptive::SearchAddOptions {
-        placeholder: "Search variables",
-        search_a11y: "wwn.settings.environment.search",
-        search_label: "Search variables",
-        add_tooltip: Some("Add Custom Variable"),
-        add_a11y: Some("wwn.settings.environment.new"),
-        add_label: Some("Add Variable"),
-    });
+    let search_chrome =
+        super::adaptive::AdaptiveSearchAdd::new(super::adaptive::SearchAddOptions {
+            placeholder: "Search variables",
+            search_a11y: "wwn.settings.environment.search",
+            search_label: "Search variables",
+            add_tooltip: Some("Add Custom Variable"),
+            add_a11y: Some("wwn.settings.environment.new"),
+            add_label: Some("Add Variable"),
+        });
 
     // MARK: 3. Scrolled List of Variables
     let scroll = gtk::ScrolledWindow::new();
@@ -1088,11 +1095,8 @@ pub fn build_env_vars_view(
                 list_box.remove(&child);
             }
 
-            let all_entries = resolve_all_entries(
-                &overrides_cell.borrow(),
-                &unsets_cell.borrow(),
-                &settings,
-            );
+            let all_entries =
+                resolve_all_entries(&overrides_cell.borrow(), &unsets_cell.borrow(), &settings);
 
             let cat_filter = *selected_category.borrow();
             let query = search_query.borrow().trim().to_lowercase();
@@ -1321,8 +1325,12 @@ pub fn build_env_vars_view(
                 .map(|e| e.name)
                 .collect();
 
-            overrides_cell.borrow_mut().retain(|k, _| !managed_names.contains(k.as_str()));
-            unsets_cell.borrow_mut().retain(|k| !managed_names.contains(k.as_str()));
+            overrides_cell
+                .borrow_mut()
+                .retain(|k, _| !managed_names.contains(k.as_str()));
+            unsets_cell
+                .borrow_mut()
+                .retain(|k| !managed_names.contains(k.as_str()));
 
             if let Some(f) = pop_fn.borrow().as_ref() {
                 f();

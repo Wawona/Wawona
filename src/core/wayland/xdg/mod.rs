@@ -3,6 +3,7 @@ pub mod extension_handlers;
 pub mod shell_handler;
 pub mod surface_validation;
 pub mod toplevel_state;
+pub mod v6;
 pub mod xdg_activation;
 pub mod xdg_dialog;
 pub mod xdg_foreign;
@@ -16,7 +17,6 @@ pub mod xdg_toplevel_drag;
 pub mod xdg_toplevel_icon;
 pub mod xdg_toplevel_tag;
 pub mod xdg_wm_base;
-pub mod v6;
 
 use crate::core::state::CompositorState;
 use crate::core::wayland::policy;
@@ -33,9 +33,7 @@ pub fn register(state: &mut CompositorState, dh: &DisplayHandle) {
     // desktop-extensions registration path below.
     if state.smithay_runtime.xdg_system_bell.is_none() {
         state.smithay_runtime.xdg_system_bell =
-            Some(smithay::wayland::xdg_system_bell::XdgSystemBellState::new::<CompositorState>(
-                dh,
-            ));
+            Some(smithay::wayland::xdg_system_bell::XdgSystemBellState::new::<CompositorState>(dh));
         crate::wlog!(
             crate::util::logging::COMPOSITOR,
             "Registered xdg_system_bell_v1 (store-safe)"

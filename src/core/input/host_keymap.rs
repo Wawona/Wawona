@@ -643,11 +643,17 @@ mod tests {
         let _guard = host_levels_lock();
         clear_host_key_levels();
         let km = generate_from_host();
-        let has_ac01 = km.lines().any(|l| l.contains("<AC01>") && (l.contains(" a,") || l.contains("0x61")));
+        let has_ac01 = km
+            .lines()
+            .any(|l| l.contains("<AC01>") && (l.contains(" a,") || l.contains("0x61")));
         assert!(has_ac01, "US home row A missing: {km}");
-        let has_ad01 = km.lines().any(|l| l.contains("<AD01>") && (l.contains(" q,") || l.contains("0x71")));
+        let has_ad01 = km
+            .lines()
+            .any(|l| l.contains("<AD01>") && (l.contains(" q,") || l.contains("0x71")));
         assert!(has_ad01, "US Q row missing: {km}");
-        let has_ab01 = km.lines().any(|l| l.contains("<AB01>") && (l.contains(" z,") || l.contains("0x7a")));
+        let has_ab01 = km
+            .lines()
+            .any(|l| l.contains("<AB01>") && (l.contains(" z,") || l.contains("0x7a")));
         assert!(has_ab01, "US Z row missing: {km}");
         assert!(km.contains("xkb_keymap {"), "not XKB v1: {km}");
     }

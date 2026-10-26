@@ -9,9 +9,7 @@ pub fn title_matches(query: &str, title: &str) -> bool {
     if q.is_empty() {
         return true;
     }
-    title
-        .to_lowercase()
-        .contains(&q.to_lowercase())
+    title.to_lowercase().contains(&q.to_lowercase())
 }
 
 /// Indices into `titles` that match `query`, in original order.
