@@ -50,7 +50,6 @@ concurrency:
 
 permissions:
   contents: read
-  id-token: write
   actions: read
 
 env:
@@ -105,7 +104,7 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: ${{ inputs.checkout_ref || github.sha }}
 
@@ -114,7 +113,7 @@ jobs:
         run: ./.github/scripts/select-xcode.sh
 
       - name: Download product-ios-sim
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: product-ios-sim
           path: product-ios-sim/
@@ -150,7 +149,7 @@ jobs:
 
       - name: Upload iOS leak artifacts
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: leak-idle-ios
           path: .agent-device/test-artifacts/leak-idle-gate/ios/
@@ -164,7 +163,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: ${{ inputs.checkout_ref || github.sha }}
 
@@ -176,7 +175,7 @@ jobs:
           sudo udevadm trigger --name-match=kvm
 
       - name: Download product-android-apk
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: product-android-apk
           path: dist/
@@ -191,7 +190,7 @@ jobs:
           test -f dist/Wawona.apk
 
       - name: Run Android leak-idle gate
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: 34
           target: google_apis
@@ -207,7 +206,7 @@ jobs:
 
       - name: Upload Android leak artifacts
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: leak-idle-android
           path: .agent-device/test-artifacts/leak-idle-gate/android/
@@ -221,12 +220,12 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: ${{ inputs.checkout_ref || github.sha }}
 
       - name: Download product-macos-app
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: product-macos-app
           path: product-macos-app/
@@ -250,7 +249,7 @@ jobs:
 
       - name: Upload macOS leak artifacts
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: leak-idle-macos
           path: .agent-device/test-artifacts/leak-idle-gate/macos/
@@ -264,7 +263,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download leak artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           pattern: leak-idle-*
           path: leak-artifacts/
