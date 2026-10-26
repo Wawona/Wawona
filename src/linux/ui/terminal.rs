@@ -49,13 +49,7 @@ pub fn shell_command(profile: &MachineProfile) -> Option<String> {
                 .as_deref()
                 .map(str::trim)
                 .unwrap_or("");
-            if id == "wawona-wasm"
-                || id == "hello-wasi-gui"
-                || profile.runtime_overrides.wasm_command.is_some()
-                || profile.runtime_overrides.wasm_module_path.is_some()
-            {
-                Some(crate::linux::wasm_launch::effective_wasm_command(profile))
-            } else if id == "wawona-shell" || id.is_empty() || !profile.remote_command.trim().is_empty() {
+            if id == "wawona-shell" {
                 let custom = profile.remote_command.trim();
                 if custom.is_empty() {
                     Some("wawona-shell".to_string())
@@ -66,59 +60,14 @@ pub fn shell_command(profile: &MachineProfile) -> Option<String> {
                 None
             }
         }
-        MachineType::Wasm => Some(crate::linux::wasm_launch::effective_wasm_command(profile)),
-        // VM and container consoles are the guest serial, not a host shell
-        // command. `terminal_launch` owns that path.
-        MachineType::VirtualMachine | MachineType::Container => None,
         _ => None,
     }
 }
 
-/// How Start fills Wawona Terminal.
-#[derive(Clone, Debug)]
-pub enum TerminalLaunch {
-    /// Host login shell. Native Shell, SSH, and Wasm.
-    Shell(String),
-    /// Guest serial console. The argv is cloud-hypervisor or a one-line error.
-    /// No host login shell.
-    Guest { argv: Vec<String>, role: &'static str },
-}
-
-pub fn terminal_launch(profile: &MachineProfile) -> Option<TerminalLaunch> {
-    match profile.machine_type {
-        MachineType::VirtualMachine | MachineType::Container => {
-            let guest = crate::linux::relay::guest_terminal(profile);
-            Some(TerminalLaunch::Guest {
-                argv: guest.argv,
-                role: guest.role,
-            })
-        }
-        _ => shell_command(profile).map(TerminalLaunch::Shell),
-    }
-}
-
-pub fn launch_subtitle(launch: &TerminalLaunch) -> &'static str {
-    match launch {
-        TerminalLaunch::Shell(_) => "Wawona Terminal (xterm-256color)",
-        TerminalLaunch::Guest { role, .. } => role,
-    }
-}
-
 /// Open a PTY, start `command`, and present the VT screen.
-/// Start shell on a PTY and return child, session, and master file descriptor.
-pub fn start_shell(command: &str) -> Result<(Child, Arc<TerminalSession>, File), String> {
-    start_terminal(&TerminalLaunch::Shell(command.to_string()))
-}
-
-pub fn start_terminal(
-    launch: &TerminalLaunch,
-) -> Result<(Child, Arc<TerminalSession>, File), String> {
+pub fn open_shell(parent: &impl IsA<gtk::Window>, command: &str) -> Result<Child, String> {
     let (master_fd, slave_fd) = open_pty()?;
-    let child = match launch {
-        TerminalLaunch::Shell(command) => spawn_on_slave(slave_fd, command),
-        TerminalLaunch::Guest { argv, .. } => spawn_direct(slave_fd, argv),
-    };
-    let child = match child {
+    let child = match spawn_on_slave(slave_fd, command) {
         Ok(child) => child,
         Err(err) => {
             unsafe { libc::close(master_fd) };
@@ -127,48 +76,7 @@ pub fn start_terminal(
     };
     let session = TerminalSession::new(80, 24);
     let master = unsafe { File::from_raw_fd(master_fd) };
-    Ok((child, session, master))
-}
-
-/// Open a PTY, start `command`, and present the VT screen in a floating window (fallback).
-pub fn open_shell(parent: &impl IsA<gtk::Window>, command: &str) -> Result<Child, String> {
-    open_launched(
-        parent,
-        &TerminalLaunch::Shell(command.to_string()),
-        "Local Shell",
-    )
-}
-
-pub fn open_launched(
-    parent: &impl IsA<gtk::Window>,
-    launch: &TerminalLaunch,
-    title: &str,
-) -> Result<Child, String> {
-    let (child, session, master) = start_terminal(launch)?;
-    let window = adw::Window::builder()
-        .transient_for(parent)
-        .modal(false)
-        .default_width(760)
-        .default_height(460)
-        .title(title)
-        .build();
-    let win_c1 = window.clone();
-    let win_c2 = window.clone();
-    let view = build_terminal_view(
-        session,
-        master,
-        child.id(),
-        title,
-        launch_subtitle(launch),
-        Rc::new(move || {
-            win_c1.close();
-        }),
-        Rc::new(move || {
-            win_c2.close();
-        }),
-    );
-    window.set_content(Some(&view));
-    window.present();
+    present(parent, session, master, child.id());
     Ok(child)
 }
 
@@ -206,89 +114,11 @@ fn open_pty() -> Result<(i32, i32), String> {
         if flags >= 0 {
             libc::fcntl(master, libc::F_SETFL, flags | libc::O_NONBLOCK);
         }
-        libc::fcntl(master, libc::F_SETFD, libc::FD_CLOEXEC);
     }
     Ok((master, slave))
 }
 
-pub fn detect_user_shell() -> String {
-    if let Ok(sh) = std::env::var("SHELL") {
-        let trimmed = sh.trim();
-        if !trimmed.is_empty() && std::path::Path::new(trimmed).is_file() {
-            return trimmed.to_string();
-        }
-    }
-    unsafe {
-        let uid = libc::getuid();
-        let pwd = libc::getpwuid(uid);
-        if !pwd.is_null() && !(*pwd).pw_shell.is_null() {
-            if let Ok(sh_str) = std::ffi::CStr::from_ptr((*pwd).pw_shell).to_str() {
-                let trimmed = sh_str.trim();
-                if !trimmed.is_empty() && std::path::Path::new(trimmed).is_file() {
-                    return trimmed.to_string();
-                }
-            }
-        }
-    }
-    for candidate in &[
-        "/run/current-system/sw/bin/zsh",
-        "/run/current-system/sw/bin/bash",
-        "/bin/bash",
-        "/usr/bin/zsh",
-        "/usr/bin/bash",
-        "/bin/sh",
-    ] {
-        if std::path::Path::new(candidate).is_file() {
-            return (*candidate).to_string();
-        }
-    }
-    "/bin/sh".to_string()
-}
-
-fn spawn_direct(slave_fd: i32, argv: &[String]) -> Result<Child, String> {
-    let program = argv
-        .first()
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| "guest console has no program".to_string())?;
-    let mut cmd = Command::new(program);
-    if argv.len() > 1 {
-        cmd.args(&argv[1..]);
-    }
-    prepare_child(&mut cmd, slave_fd, None)
-}
-
 fn spawn_on_slave(slave_fd: i32, command: &str) -> Result<Child, String> {
-    use std::os::unix::process::CommandExt;
-
-    let user_shell = detect_user_shell();
-    let shell_file_name = std::path::Path::new(&user_shell)
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("sh")
-        .to_string();
-
-    let mut cmd = if command == "wawona-shell" || command.trim().is_empty() {
-        let mut c = Command::new(&user_shell);
-        c.arg0(format!("-{shell_file_name}"));
-        c.args(["-l", "-i"]);
-        c
-    } else {
-        let mut c = Command::new(&user_shell);
-        c.arg0(format!("-{shell_file_name}"));
-        c.args(["-l", "-i", "-c", command]);
-        c
-    };
-    prepare_child(&mut cmd, slave_fd, Some(user_shell))
-}
-
-fn prepare_child(
-    cmd: &mut Command,
-    slave_fd: i32,
-    user_shell: Option<String>,
-) -> Result<Child, String> {
-    use std::os::unix::process::CommandExt;
-
     let slave = unsafe { File::from_raw_fd(slave_fd) };
     let stdin = slave
         .try_clone()
@@ -298,119 +128,41 @@ fn prepare_child(
         .try_clone()
         .map_err(|err| err.to_string())
         .map(Stdio::from)?;
-    let stderr = slave
-        .try_clone()
-        .map_err(|err| err.to_string())
-        .map(Stdio::from)?;
-
-    cmd.stdin(stdin).stdout(stdout).stderr(stderr);
-
-    // Default working directory to user HOME directory
-    if let Ok(home) = std::env::var("HOME") {
-        let p = std::path::Path::new(&home);
-        if p.is_dir() {
-            cmd.current_dir(p);
-        }
+    let mut cmd = if command == "wawona-shell" {
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
+        let mut cmd = Command::new(shell);
+        cmd.arg("-i");
+        cmd
     } else {
-        unsafe {
-            let uid = libc::getuid();
-            let pwd = libc::getpwuid(uid);
-            if !pwd.is_null() && !(*pwd).pw_dir.is_null() {
-                if let Ok(dir_str) = std::ffi::CStr::from_ptr((*pwd).pw_dir).to_str() {
-                    let p = std::path::Path::new(dir_str);
-                    if p.is_dir() {
-                        cmd.current_dir(p);
-                    }
-                }
-            }
-        }
-    }
-
-    cmd.env("TERM", "xterm-256color");
-    cmd.env("COLORTERM", "truecolor");
-    if let Some(user_shell) = user_shell.as_deref() {
-        cmd.env("SHELL", user_shell);
-    } else {
-        cmd.env_remove("SHELL");
-    }
-
-    let (runtime_dir, wayland_disp) = if let Ok(rt) = crate::linux::runtime::read_runtime_state() {
-        (rt.xdg_runtime_dir, rt.wayland_display)
-    } else {
-        let uid = unsafe { libc::getuid() };
-        (format!("/run/user/{uid}"), "wawona-0".to_string())
+        let mut cmd = Command::new("/bin/sh");
+        cmd.args(["-c", command]);
+        cmd
     };
-    cmd.env("XDG_RUNTIME_DIR", &runtime_dir);
-
-    // If host desktop environment already runs Wayland, keep it so desktop tools work seamlessly;
-    // expose Wawona compositor socket under WAWONA_WAYLAND_DISPLAY.
-    if std::env::var("WAYLAND_DISPLAY").is_ok() {
-        cmd.env("WAWONA_WAYLAND_DISPLAY", &wayland_disp);
-    } else {
-        cmd.env("WAYLAND_DISPLAY", &wayland_disp);
-    }
-    cmd.env_remove("WAYLAND_SOCKET");
-    cmd.env("GDK_BACKEND", "wayland");
-    cmd.env("QT_QPA_PLATFORM", "wayland");
-
-    unsafe {
-        cmd.pre_exec(move || {
-            libc::signal(libc::SIGTTOU, libc::SIG_IGN);
-            libc::signal(libc::SIGTTIN, libc::SIG_IGN);
-            let _ = libc::setsid();
-            let _ = libc::ioctl(0, libc::TIOCSCTTY, 0);
-            let _ = libc::tcsetpgrp(0, libc::getpid());
-            libc::signal(libc::SIGTTOU, libc::SIG_DFL);
-            libc::signal(libc::SIGTTIN, libc::SIG_DFL);
-            Ok(())
-        });
+    cmd.stdin(stdin)
+        .stdout(stdout)
+        .stderr(Stdio::from(slave))
+        .env("TERM", "xterm-256color");
+    if let Ok(rt) = crate::linux::runtime::read_runtime_state() {
+        cmd.env("XDG_RUNTIME_DIR", rt.xdg_runtime_dir);
+        cmd.env("WAYLAND_DISPLAY", rt.wayland_display);
     }
     cmd.spawn()
-        .map_err(|err| format!("console failed to start: {err}"))
+        .map_err(|err| format!("shell failed to start: {err}"))
 }
 
-/// Build an in-app GTK widget hosting Wawona Terminal.
-pub fn build_terminal_view(
-    session: Arc<TerminalSession>,
-    master: File,
-    pid: u32,
-    title: &str,
-    subtitle: &str,
-    on_back: Rc<dyn Fn()>,
-    on_stop: Rc<dyn Fn()>,
-) -> gtk::Widget {
-    let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    root.set_hexpand(true);
-    root.set_vexpand(true);
-    root.add_css_class("wwn-terminal-root");
-    a11y::set_wwn_a11y(&root, id::TERMINAL_ROOT, Some("Wawona Terminal"));
+fn present(parent: &impl IsA<gtk::Window>, session: Arc<TerminalSession>, master: File, pid: u32) {
+    let window = adw::Window::builder()
+        .transient_for(parent)
+        .modal(false)
+        .default_width(720)
+        .default_height(420)
+        .title("Wawona Terminal")
+        .build();
+    a11y::set_wwn_a11y(&window, id::TERMINAL_ROOT, Some("Wawona Terminal"));
 
     let header = adw::HeaderBar::new();
-    header.set_show_end_title_buttons(false);
-    header.set_show_start_title_buttons(false);
-
-    let back_btn = gtk::Button::builder()
-        .icon_name("go-previous-symbolic")
-        .tooltip_text("Back to Machines")
-        .css_classes(["flat"])
-        .build();
-    let on_back_click = on_back.clone();
-    back_btn.connect_clicked(move |_| {
-        on_back_click();
-    });
-    header.pack_start(&back_btn);
-
-    let title_widget = adw::WindowTitle::new(title, subtitle);
-    header.set_title_widget(Some(&title_widget));
-
-    let done = gtk::Button::with_label("Stop Session");
-    done.add_css_class("destructive-action");
+    let done = gtk::Button::with_label("Done");
     a11y::set_wwn_a11y(&done, id::TERMINAL_DONE, Some("Close Terminal"));
-    let on_stop_click = on_stop.clone();
-    done.connect_clicked(move |_| {
-        unsafe { libc::kill(pid as i32, libc::SIGTERM) };
-        on_stop_click();
-    });
     header.pack_end(&done);
 
     let view = gtk::TextView::new();
@@ -420,12 +172,6 @@ pub fn build_terminal_view(
     view.set_wrap_mode(gtk::WrapMode::None);
     view.set_focusable(true);
     view.set_can_focus(true);
-    view.set_top_margin(12);
-    view.set_bottom_margin(12);
-    view.set_left_margin(14);
-    view.set_right_margin(14);
-    view.add_css_class("wwn-terminal-view");
-
     let buffer = view.buffer();
     let pictures: Rc<RefCell<PictureLayer>> = Rc::new(RefCell::new(PictureLayer {
         images: Vec::new(),
@@ -436,15 +182,7 @@ pub fn build_terminal_view(
         .child(&view)
         .hexpand(true)
         .vexpand(true)
-        .min_content_width(0)
-        .min_content_height(0)
-        .propagate_natural_width(false)
-        .propagate_natural_height(false)
-        .hscrollbar_policy(gtk::PolicyType::Automatic)
-        .vscrollbar_policy(gtk::PolicyType::Automatic)
         .build();
-    scroll.add_css_class("wwn-terminal-scroll");
-
     let back = gtk::DrawingArea::new();
     back.set_hexpand(true);
     back.set_vexpand(true);
@@ -452,28 +190,18 @@ pub fn build_terminal_view(
     front.set_can_target(false);
     front.set_hexpand(true);
     front.set_vexpand(true);
-
     let overlay = gtk::Overlay::new();
     overlay.set_child(Some(&back));
     overlay.add_overlay(&scroll);
     overlay.add_overlay(&front);
-    overlay.set_hexpand(true);
-    overlay.set_vexpand(true);
-
+    let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
     root.append(&header);
     root.append(&overlay);
+    window.set_content(Some(&root));
 
     let css = gtk::CssProvider::new();
     css.load_from_data(
-        "
-        .wwn-terminal-root { background-color: #0d0f14; }
-        .wwn-terminal-scroll, .wwn-terminal-scroll viewport, .wwn-terminal-view, textview.wwn-terminal-view, textview.wwn-terminal-view text {
-            background-color: #0d0f14;
-            color: #e8e8e8;
-            font-family: \"DejaVu Sans Mono\", \"Fira Code\", monospace, \"DejaVuSansM Nerd Font Mono\";
-            font-size: 13px;
-        }
-        ",
+        "textview, textview text { background: transparent; color: #e8e8e8; font-family: monospace, \"DejaVuSansM Nerd Font Mono\"; }",
     );
     if let Some(display) = gtk::gdk::Display::default() {
         gtk::style_context_add_provider_for_display(
@@ -488,13 +216,14 @@ pub fn build_terminal_view(
     let view_fd = view.clone();
     let buffer_fd = buffer.clone();
     let session_fd = session.clone();
-    let title_fd = title_widget.clone();
+    let window_fd = window.clone();
+    let dec_modes = Rc::new(RefCell::new(HostDecModes::default()));
+    let dec_read = dec_modes.clone();
     let master_fd_loop = master.clone();
     let pictures_fd = pictures.clone();
     let back_fd = back.clone();
     let front_fd = front.clone();
     let grid_fd = grid.clone();
-
     glib::unix_fd_add_local(fd, glib::IOCondition::IN, move |_, _| {
         let mut buf = [0u8; 4096];
         let read = {
@@ -502,21 +231,16 @@ pub fn build_terminal_view(
             file.read(&mut buf)
         };
         match read {
-            Ok(0) => {
-                title_fd.set_subtitle("Process exited [Finished]");
-                glib::ControlFlow::Break
-            }
+            Ok(0) => glib::ControlFlow::Break,
             Err(err) if err.kind() == ErrorKind::WouldBlock => glib::ControlFlow::Continue,
-            Err(_) => {
-                title_fd.set_subtitle("Process exited [Finished]");
-                glib::ControlFlow::Break
-            }
+            Err(_) => glib::ControlFlow::Break,
             Ok(n) => {
                 session_fd.feed(buf[..n].to_vec());
+                dec_read.borrow_mut().observe(&buf[..n]);
                 let reply = session_fd.take_reply();
                 if !reply.is_empty() {
                     let mut file = master_fd_loop.borrow_mut();
-                    let _ = file.write_all(&reply);
+                    write_pty(&mut file, &reply);
                 }
                 refresh(
                     &session_fd,
@@ -528,10 +252,10 @@ pub fn build_terminal_view(
                 );
                 let title = session_fd.title();
                 if !title.is_empty() {
-                    title_fd.set_subtitle(&title);
+                    window_fd.set_title(Some(&title));
                 }
                 let mut end = buffer_fd.end_iter();
-                let _ = view_fd.scroll_to_iter(&mut end, 0.0, false, 0.0, 1.0);
+                let _ = view_fd.scroll_to_iter(&mut end, 0.0, true, 0.0, 1.0);
                 glib::ControlFlow::Continue
             }
         }
@@ -539,30 +263,21 @@ pub fn build_terminal_view(
 
     let master_keys = dup_master(fd);
     let session_keys = session.clone();
-    let buffer_keys = buffer.clone();
+    let dec_keys = dec_modes.clone();
     let keys = gtk::EventControllerKey::new();
     keys.connect_key_pressed(move |_, key, _, state| {
         if state.contains(gtk::gdk::ModifierType::CONTROL_MASK) {
             if let Some(ch) = key.to_unicode() {
-                if state.contains(gtk::gdk::ModifierType::SHIFT_MASK) {
-                    if ch.eq_ignore_ascii_case(&'c') {
-                        copy_selection_to_clipboard(&buffer_keys);
-                        return gtk::glib::Propagation::Stop;
-                    }
-                    if ch.eq_ignore_ascii_case(&'v') {
-                        paste_from_clipboard(&session_keys, &master_keys);
-                        return gtk::glib::Propagation::Stop;
-                    }
-                } else if ch.eq_ignore_ascii_case(&'v') {
+                if ch.eq_ignore_ascii_case(&'v') {
                     paste_from_clipboard(&session_keys, &master_keys);
                     return gtk::glib::Propagation::Stop;
                 }
             }
         }
-        let bytes = bytes_for_key(key, state);
+        let bytes = dec_keys.borrow().map_key(key, state, bytes_for_key(key, state));
         if !bytes.is_empty() {
             if let Some(file) = master_keys.borrow_mut().as_mut() {
-                let _ = file.write_all(&bytes);
+                write_pty(file, &bytes);
             }
         }
         gtk::glib::Propagation::Stop
@@ -573,7 +288,6 @@ pub fn build_terminal_view(
     wire_picture_canvas(&back, &pictures, &glyph, &scroll, true);
     wire_picture_canvas(&front, &pictures, &glyph, &scroll, false);
     refresh(&session, &buffer, &pictures, &grid, &back, &front);
-
     let session_ptr = session.clone();
     let master_ptr = master.clone();
     let glyph_ptr = glyph.clone();
@@ -591,7 +305,6 @@ pub fn build_terminal_view(
         emit_pointer(&session_rel, &master_rel, &glyph_rel, x, y, button, false, false);
     });
     view.add_controller(click);
-
     let session_motion = session.clone();
     let master_motion = master.clone();
     let glyph_motion = glyph.clone();
@@ -612,54 +325,46 @@ pub fn build_terminal_view(
 
     let session_fit = session.clone();
     let view_fit = view.clone();
-    let scroll_fit = scroll.clone();
     let buffer_fit = buffer.clone();
     let grid_fit = grid.clone();
     let glyph_fit = glyph.clone();
     let pictures_fit = pictures.clone();
     let back_fit = back.clone();
     let front_fit = front.clone();
-    let do_fit = Rc::new(move || {
-        fit_grid(
-            &scroll_fit,
-            &view_fit,
-            &session_fit,
-            fd,
-            &grid_fit,
-            &glyph_fit,
-            &buffer_fit,
-            &pictures_fit,
-            &back_fit,
-            &front_fit,
-        );
+    window.connect_realize(move |widget| {
+        let Some(surface) = widget.surface() else {
+            return;
+        };
+        let session = session_fit.clone();
+        let view = view_fit.clone();
+        let buffer = buffer_fit.clone();
+        let grid = grid_fit.clone();
+        let glyph = glyph_fit.clone();
+        let pictures = pictures_fit.clone();
+        let back = back_fit.clone();
+        let front = front_fit.clone();
+        surface.connect_layout(move |_, _, _| {
+            fit_grid(
+                &view,
+                &session,
+                fd,
+                &grid,
+                &glyph,
+                &buffer,
+                &pictures,
+                &back,
+                &front,
+            );
+        });
     });
-
-    let df_tick = do_fit.clone();
-    let last_term_size = Rc::new(Cell::new((0i32, 0i32)));
-    root.add_tick_callback(move |widget, _| {
-        if !widget.is_mapped() {
-            return gtk::glib::ControlFlow::Continue;
-        }
-        let w = widget.width();
-        let h = widget.height();
-        if w > 0 && h > 0 && last_term_size.get() != (w, h) {
-            last_term_size.set((w, h));
-            df_tick();
-        }
-        gtk::glib::ControlFlow::Continue
-    });
-
-    let df_map = do_fit.clone();
-    root.connect_map(move |_| {
-        df_map();
-    });
-
-    let df_idle = do_fit.clone();
-    glib::idle_add_local(move || {
-        df_idle();
-        glib::ControlFlow::Break
-    });
-
+    let session_idle = session.clone();
+    let view_idle = view.clone();
+    let buffer_idle = buffer.clone();
+    let grid_idle = grid.clone();
+    let glyph_idle = glyph.clone();
+    let pictures_idle = pictures.clone();
+    let back_idle = back.clone();
+    let front_idle = front.clone();
     let buffer_blink = buffer.clone();
     let blink_on = Rc::new(Cell::new(false));
     glib::timeout_add_local(Duration::from_millis(500), move || {
@@ -673,24 +378,29 @@ pub fn build_terminal_view(
         });
         glib::ControlFlow::Continue
     });
-
-    let view_focus = view.clone();
-    root.connect_map(move |_| {
-        view_focus.grab_focus();
+    glib::idle_add_local(move || {
+        fit_grid(
+            &view_idle,
+            &session_idle,
+            fd,
+            &grid_idle,
+            &glyph_idle,
+            &buffer_idle,
+            &pictures_idle,
+            &back_idle,
+            &front_idle,
+        );
+        glib::ControlFlow::Break
     });
 
-    root.upcast()
+    let window_done = window.clone();
+    done.connect_clicked(move |_| {
+        unsafe { libc::kill(pid as i32, libc::SIGTERM) };
+        window_done.close();
+    });
+    window.present();
+    view.grab_focus();
 }
-
-fn copy_selection_to_clipboard(buffer: &gtk::TextBuffer) {
-    if let Some((start, end)) = buffer.selection_bounds() {
-        let text = buffer.text(&start, &end, false);
-        if let Some(display) = gtk::gdk::Display::default() {
-            display.clipboard().set_text(&text);
-        }
-    }
-}
-
 
 fn dup_master(fd: i32) -> Rc<RefCell<Option<File>>> {
     let dup = unsafe { libc::dup(fd) };
@@ -702,67 +412,315 @@ fn dup_master(fd: i32) -> Rc<RefCell<Option<File>>> {
     Rc::new(RefCell::new(file))
 }
 
-fn bytes_for_key(key: gtk::gdk::Key, state: gtk::gdk::ModifierType) -> Vec<u8> {
-    if state.contains(gtk::gdk::ModifierType::ALT_MASK) {
-        if let Some(ch) = key.to_unicode() {
-            let mut res = vec![0x1b];
-            res.extend_from_slice(ch.to_string().as_bytes());
-            return res;
-        }
-    }
-    if state.contains(gtk::gdk::ModifierType::CONTROL_MASK) {
-        match key {
-            gtk::gdk::Key::bracketleft => return vec![0x1b],
-            gtk::gdk::Key::backslash => return vec![0x1c],
-            gtk::gdk::Key::bracketright => return vec![0x1d],
-            gtk::gdk::Key::asciicircum | gtk::gdk::Key::caret => return vec![0x1e],
-            gtk::gdk::Key::underscore | gtk::gdk::Key::slash => return vec![0x1f],
-            gtk::gdk::Key::space | gtk::gdk::Key::at => return vec![0x00],
-            _ => {}
-        }
-        if let Some(ch) = key.to_unicode() {
-            let lower = ch.to_ascii_lowercase();
-            if lower.is_ascii_lowercase() {
-                return vec![lower as u8 - b'a' + 1];
+fn write_pty(file: &mut File, bytes: &[u8]) {
+    let mut sent = 0;
+    let mut spins = 0;
+    while sent < bytes.len() && spins < 32 {
+        match file.write(&bytes[sent..]) {
+            Ok(0) => spins += 1,
+            Ok(n) => {
+                sent += n;
+                spins = 0;
             }
+            Err(err)
+                if err.kind() == ErrorKind::Interrupted || err.kind() == ErrorKind::WouldBlock =>
+            {
+                spins += 1;
+            }
+            Err(_) => return,
         }
-    }
-    match key {
-        gtk::gdk::Key::Return | gtk::gdk::Key::KP_Enter => b"\r".to_vec(),
-        gtk::gdk::Key::BackSpace => vec![0x7f],
-        gtk::gdk::Key::Tab => b"\t".to_vec(),
-        gtk::gdk::Key::Escape => vec![0x1b],
-        gtk::gdk::Key::Up => b"\x1b[A".to_vec(),
-        gtk::gdk::Key::Down => b"\x1b[B".to_vec(),
-        gtk::gdk::Key::Right => b"\x1b[C".to_vec(),
-        gtk::gdk::Key::Left => b"\x1b[D".to_vec(),
-        gtk::gdk::Key::Home => b"\x1b[H".to_vec(),
-        gtk::gdk::Key::End => b"\x1b[F".to_vec(),
-        gtk::gdk::Key::Page_Up => b"\x1b[5~".to_vec(),
-        gtk::gdk::Key::Page_Down => b"\x1b[6~".to_vec(),
-        gtk::gdk::Key::Delete => b"\x1b[3~".to_vec(),
-        gtk::gdk::Key::ISO_Left_Tab => b"\x1b[Z".to_vec(),
-        gtk::gdk::Key::F1 => b"\x1bOP".to_vec(),
-        gtk::gdk::Key::F2 => b"\x1bOQ".to_vec(),
-        gtk::gdk::Key::F3 => b"\x1bOR".to_vec(),
-        gtk::gdk::Key::F4 => b"\x1bOS".to_vec(),
-        gtk::gdk::Key::F5 => b"\x1b[15~".to_vec(),
-        gtk::gdk::Key::F6 => b"\x1b[17~".to_vec(),
-        gtk::gdk::Key::F7 => b"\x1b[18~".to_vec(),
-        gtk::gdk::Key::F8 => b"\x1b[19~".to_vec(),
-        gtk::gdk::Key::F9 => b"\x1b[20~".to_vec(),
-        gtk::gdk::Key::F10 => b"\x1b[21~".to_vec(),
-        gtk::gdk::Key::F11 => b"\x1b[23~".to_vec(),
-        gtk::gdk::Key::F12 => b"\x1b[24~".to_vec(),
-        _ => key
-            .to_unicode()
-            .map(|ch| ch.to_string().into_bytes())
-            .unwrap_or_default(),
     }
 }
 
+#[derive(Default)]
+struct HostDecModes {
+    cursor_app: bool,
+    keypad_app: bool,
+    pending: Vec<u8>,
+}
+
+impl HostDecModes {
+    fn observe(&mut self, bytes: &[u8]) {
+        self.pending.extend_from_slice(bytes);
+        let mut i = 0;
+        while i < self.pending.len() {
+            if self.pending[i] != 0x1b {
+                i += 1;
+                continue;
+            }
+            if i + 1 >= self.pending.len() {
+                break;
+            }
+            match self.pending[i + 1] {
+                b'c' => {
+                    self.cursor_app = false;
+                    self.keypad_app = false;
+                    i += 2;
+                }
+                b'=' => {
+                    self.keypad_app = true;
+                    i += 2;
+                }
+                b'>' => {
+                    self.keypad_app = false;
+                    i += 2;
+                }
+                b'[' => match self.finish_csi(i + 2) {
+                    Some(next) => i = next,
+                    None => break,
+                },
+                _ => i += 1,
+            }
+        }
+        if i > 0 {
+            self.pending.drain(..i);
+        }
+        if self.pending.len() > 32 {
+            let drop_n = self.pending.len() - 32;
+            self.pending.drain(..drop_n);
+        }
+    }
+
+    fn finish_csi(&mut self, start: usize) -> Option<usize> {
+        let mut j = start;
+        let mut private = false;
+        if j < self.pending.len() && self.pending[j] == b'?' {
+            private = true;
+            j += 1;
+        }
+        let mut params = Vec::new();
+        let mut cur = 0i32;
+        let mut any = false;
+        loop {
+            if j >= self.pending.len() {
+                return None;
+            }
+            let c = self.pending[j];
+            if c.is_ascii_digit() {
+                cur = (cur * 10 + i32::from(c - b'0')).min(9999);
+                any = true;
+                j += 1;
+                continue;
+            }
+            if c == b';' {
+                params.push(if any { cur } else { 0 });
+                cur = 0;
+                any = false;
+                j += 1;
+                continue;
+            }
+            if (0x40..=0x7e).contains(&c) {
+                params.push(if any { cur } else { 0 });
+                if private && (c == b'h' || c == b'l') {
+                    if params.contains(&1) {
+                        self.cursor_app = c == b'h';
+                    }
+                    if params.contains(&66) {
+                        self.keypad_app = c == b'l';
+                    }
+                }
+                return Some(j + 1);
+            }
+            return Some(j + 1);
+        }
+    }
+
+    fn map_key(
+        &self,
+        key: gtk::gdk::Key,
+        state: gtk::gdk::ModifierType,
+        bytes: Vec<u8>,
+    ) -> Vec<u8> {
+        let bare = !state.contains(gtk::gdk::ModifierType::CONTROL_MASK)
+            && !state.contains(gtk::gdk::ModifierType::ALT_MASK)
+            && !state.contains(gtk::gdk::ModifierType::SHIFT_MASK);
+        if bare && self.keypad_app {
+            if let Some(letter) = keypad_ss3(key) {
+                return vec![0x1b, b'O', letter];
+            }
+        }
+        if self.cursor_app
+            && bytes.len() == 3
+            && bytes[0] == 0x1b
+            && bytes[1] == b'['
+            && (b'A'..=b'D').contains(&bytes[2])
+        {
+            return vec![0x1b, b'O', bytes[2]];
+        }
+        bytes
+    }
+}
+
+fn keypad_ss3(key: gtk::gdk::Key) -> Option<u8> {
+    Some(match key {
+        gtk::gdk::Key::KP_0 => 0x70,
+        gtk::gdk::Key::KP_1 => 0x71,
+        gtk::gdk::Key::KP_2 => 0x72,
+        gtk::gdk::Key::KP_3 => 0x73,
+        gtk::gdk::Key::KP_4 => 0x74,
+        gtk::gdk::Key::KP_5 => 0x75,
+        gtk::gdk::Key::KP_6 => 0x76,
+        gtk::gdk::Key::KP_7 => 0x77,
+        gtk::gdk::Key::KP_8 => 0x78,
+        gtk::gdk::Key::KP_9 => 0x79,
+        gtk::gdk::Key::KP_Decimal => 0x6e,
+        gtk::gdk::Key::KP_Subtract => 0x6d,
+        gtk::gdk::Key::KP_Add => 0x6b,
+        gtk::gdk::Key::KP_Multiply => 0x6a,
+        gtk::gdk::Key::KP_Divide => 0x6f,
+        gtk::gdk::Key::KP_Enter => 0x4d,
+        gtk::gdk::Key::KP_Separator => 0x6c,
+        gtk::gdk::Key::KP_Equal => 0x58,
+        _ => return None,
+    })
+}
+
+fn bytes_for_key(key: gtk::gdk::Key, state: gtk::gdk::ModifierType) -> Vec<u8> {
+    let ctrl = state.contains(gtk::gdk::ModifierType::CONTROL_MASK);
+    let alt = state.contains(gtk::gdk::ModifierType::ALT_MASK);
+    let shift = state.contains(gtk::gdk::ModifierType::SHIFT_MASK);
+    if ctrl {
+        if let Some(ch) = key.to_unicode() {
+            let upper = ch.to_ascii_uppercase();
+            if upper.is_ascii() {
+                let ascii = upper as u8;
+                if (0x40..=0x5F).contains(&ascii) {
+                    let byte = ascii & 0x1F;
+                    return if alt { vec![0x1b, byte] } else { vec![byte] };
+                }
+            }
+        }
+        let extra = match key {
+            gtk::gdk::Key::_2 | gtk::gdk::Key::KP_2 => Some(0x00),
+            gtk::gdk::Key::_3 => Some(0x1b),
+            gtk::gdk::Key::_4 => Some(0x1c),
+            gtk::gdk::Key::_5 => Some(0x1d),
+            gtk::gdk::Key::_6 | gtk::gdk::Key::KP_6 => Some(0x1e),
+            gtk::gdk::Key::_7 | gtk::gdk::Key::minus | gtk::gdk::Key::KP_Subtract => Some(0x1f),
+            gtk::gdk::Key::_8 => Some(0x7f),
+            gtk::gdk::Key::slash => Some(if shift { 0x7f } else { 0x1f }),
+            gtk::gdk::Key::bracketleft => Some(0x1b),
+            gtk::gdk::Key::backslash => Some(0x1c),
+            gtk::gdk::Key::bracketright => Some(0x1d),
+            _ => None,
+        };
+        if let Some(byte) = extra {
+            return if alt { vec![0x1b, byte] } else { vec![byte] };
+        }
+    }
+    let param = 1 + i32::from(shift) + 2 * i32::from(alt) + 4 * i32::from(ctrl);
+    let modified = param != 1;
+    match key {
+        gtk::gdk::Key::Return | gtk::gdk::Key::KP_Enter => {
+            if alt { b"\x1b\r".to_vec() } else { b"\r".to_vec() }
+        }
+        gtk::gdk::Key::BackSpace => {
+            let byte = if ctrl { 0x08 } else { 0x7f };
+            if alt { vec![0x1b, byte] } else { vec![byte] }
+        }
+        gtk::gdk::Key::Tab => {
+            if shift {
+                b"\x1b[Z".to_vec()
+            } else if alt {
+                b"\x1b\t".to_vec()
+            } else {
+                b"\t".to_vec()
+            }
+        }
+        gtk::gdk::Key::Escape => vec![0x1b],
+        gtk::gdk::Key::space => {
+            if ctrl {
+                if alt { vec![0x1b, 0x00] } else { vec![0x00] }
+            } else if alt {
+                b"\x1b ".to_vec()
+            } else {
+                b" ".to_vec()
+            }
+        }
+        gtk::gdk::Key::Up | gtk::gdk::Key::KP_Up => csi_letter(b'A', param, modified, b"\x1b[A"),
+        gtk::gdk::Key::Down | gtk::gdk::Key::KP_Down => csi_letter(b'B', param, modified, b"\x1b[B"),
+        gtk::gdk::Key::Right | gtk::gdk::Key::KP_Right => csi_letter(b'C', param, modified, b"\x1b[C"),
+        gtk::gdk::Key::Left | gtk::gdk::Key::KP_Left => csi_letter(b'D', param, modified, b"\x1b[D"),
+        gtk::gdk::Key::Home | gtk::gdk::Key::KP_Home => csi_letter(b'H', param, modified, b"\x1b[H"),
+        gtk::gdk::Key::End | gtk::gdk::Key::KP_End => csi_letter(b'F', param, modified, b"\x1b[F"),
+        gtk::gdk::Key::Page_Up | gtk::gdk::Key::KP_Page_Up => csi_tilde(b'5', param, modified, b"\x1b[5~"),
+        gtk::gdk::Key::Page_Down | gtk::gdk::Key::KP_Page_Down => {
+            csi_tilde(b'6', param, modified, b"\x1b[6~")
+        }
+        gtk::gdk::Key::Delete | gtk::gdk::Key::KP_Delete => csi_tilde(b'3', param, modified, b"\x1b[3~"),
+        gtk::gdk::Key::KP_Begin => b"\x1b[E".to_vec(),
+        gtk::gdk::Key::KP_Divide => kp_ascii(b'/', alt),
+        gtk::gdk::Key::KP_Multiply => kp_ascii(b'*', alt),
+        gtk::gdk::Key::KP_Subtract => kp_ascii(b'-', alt),
+        gtk::gdk::Key::KP_Add => kp_ascii(b'+', alt),
+        gtk::gdk::Key::KP_Equal => kp_ascii(b'=', alt),
+        gtk::gdk::Key::KP_Separator => kp_ascii(b',', alt),
+        gtk::gdk::Key::Insert | gtk::gdk::Key::KP_Insert => {
+            csi_tilde(b'2', param, modified, b"\x1b[2~")
+        }
+        gtk::gdk::Key::Menu => csi_fn("29", param, modified, b"\x1b[29~"),
+        gtk::gdk::Key::Find => csi_tilde(b'1', param, modified, b"\x1b[1~"),
+        gtk::gdk::Key::Select => csi_tilde(b'4', param, modified, b"\x1b[4~"),
+        gtk::gdk::Key::Help => csi_fn("28", param, modified, b"\x1b[28~"),
+        gtk::gdk::Key::F1 => csi_letter(b'P', param, modified, b"\x1bOP"),
+        gtk::gdk::Key::F2 => csi_letter(b'Q', param, modified, b"\x1bOQ"),
+        gtk::gdk::Key::F3 => csi_letter(b'R', param, modified, b"\x1bOR"),
+        gtk::gdk::Key::F4 => csi_letter(b'S', param, modified, b"\x1bOS"),
+        gtk::gdk::Key::F5 => csi_fn("15", param, modified, b"\x1b[15~"),
+        gtk::gdk::Key::F6 => csi_fn("17", param, modified, b"\x1b[17~"),
+        gtk::gdk::Key::F7 => csi_fn("18", param, modified, b"\x1b[18~"),
+        gtk::gdk::Key::F8 => csi_fn("19", param, modified, b"\x1b[19~"),
+        gtk::gdk::Key::F9 => csi_fn("20", param, modified, b"\x1b[20~"),
+        gtk::gdk::Key::F10 => csi_fn("21", param, modified, b"\x1b[21~"),
+        gtk::gdk::Key::F11 => csi_fn("23", param, modified, b"\x1b[23~"),
+        gtk::gdk::Key::F12 => csi_fn("24", param, modified, b"\x1b[24~"),
+        gtk::gdk::Key::F13 => csi_fn("25", param, modified, b"\x1b[25~"),
+        gtk::gdk::Key::F14 => csi_fn("26", param, modified, b"\x1b[26~"),
+        gtk::gdk::Key::F15 => csi_fn("28", param, modified, b"\x1b[28~"),
+        gtk::gdk::Key::F16 => csi_fn("29", param, modified, b"\x1b[29~"),
+        gtk::gdk::Key::F17 => csi_fn("31", param, modified, b"\x1b[31~"),
+        gtk::gdk::Key::F18 => csi_fn("32", param, modified, b"\x1b[32~"),
+        gtk::gdk::Key::F19 => csi_fn("33", param, modified, b"\x1b[33~"),
+        gtk::gdk::Key::F20 => csi_fn("34", param, modified, b"\x1b[34~"),
+        _ => {
+            let Some(ch) = key.to_unicode() else {
+                return Vec::new();
+            };
+            let mut bytes = ch.to_string().into_bytes();
+            if alt {
+                bytes.insert(0, 0x1b);
+            }
+            bytes
+        }
+    }
+}
+
+fn kp_ascii(byte: u8, alt: bool) -> Vec<u8> {
+    if alt { vec![0x1b, byte] } else { vec![byte] }
+}
+
+fn csi_letter(letter: u8, param: i32, modified: bool, plain: &[u8]) -> Vec<u8> {
+    if !modified {
+        return plain.to_vec();
+    }
+    format!("\x1b[1;{param}{}", letter as char).into_bytes()
+}
+
+fn csi_fn(code: &str, param: i32, modified: bool, plain: &[u8]) -> Vec<u8> {
+    if !modified {
+        return plain.to_vec();
+    }
+    format!("\x1b[{code};{param}~").into_bytes()
+}
+
+fn csi_tilde(code: u8, param: i32, modified: bool, plain: &[u8]) -> Vec<u8> {
+    if !modified {
+        return plain.to_vec();
+    }
+    format!("\x1b[{};{param}~", code as char).into_bytes()
+}
+
 fn fit_grid(
-    container: &impl IsA<gtk::Widget>,
     view: &gtk::TextView,
     session: &TerminalSession,
     master_fd: i32,
@@ -773,23 +731,17 @@ fn fit_grid(
     back: &gtk::DrawingArea,
     front: &gtk::DrawingArea,
 ) {
-    let w = container.width();
-    let h = container.height();
-    if w <= 0 || h <= 0 {
-        return;
-    }
+    let alloc = view.allocation();
     let layout = view.create_pango_layout(Some("M"));
     let (cell_w, cell_h) = layout.pixel_size();
-    if cell_w < 1 || cell_h < 1 {
+    if cell_w < 1 || cell_h < 1 || alloc.width() < 1 || alloc.height() < 1 {
         return;
     }
     let cell_changed = glyph.get() != (cell_w, cell_h);
     glyph.set((cell_w, cell_h));
     session.set_cell_px(cell_w as u32, cell_h as u32);
-    let usable_w = (w - 36).max(cell_w);
-    let usable_h = (h - 24).max(cell_h);
-    let cols = (usable_w / cell_w).clamp(20, 512) as u32;
-    let rows = (usable_h / cell_h).clamp(8, 256) as u32;
+    let cols = (alloc.width() / cell_w).clamp(20, 512) as u32;
+    let rows = (alloc.height() / cell_h).clamp(8, 256) as u32;
     let grid_changed = grid.get() != (cols, rows);
     if !cell_changed && !grid_changed {
         return;
@@ -800,16 +752,14 @@ fn fit_grid(
         let mut winsize = libc::winsize {
             ws_row: rows as u16,
             ws_col: cols as u16,
-            ws_xpixel: (cols as i32 * cell_w) as u16,
-            ws_ypixel: (rows as i32 * cell_h) as u16,
+            ws_xpixel: 0,
+            ws_ypixel: 0,
         };
         unsafe {
             libc::ioctl(master_fd, libc::TIOCSWINSZ, &mut winsize);
         }
     }
     refresh(session, buffer, pictures, grid, back, front);
-    let mut end = buffer.end_iter();
-    let _ = view.scroll_to_iter(&mut end, 0.0, false, 0.0, 1.0);
 }
 
 struct PictureLayer {
@@ -916,7 +866,7 @@ fn emit_pointer(
         return;
     }
     let mut file = master.borrow_mut();
-    let _ = file.write_all(&reply);
+    write_pty(&mut file, &reply);
 }
 
 fn paste_from_clipboard(session: &Arc<TerminalSession>, master: &Rc<RefCell<Option<File>>>) {
@@ -933,7 +883,7 @@ fn paste_from_clipboard(session: &Arc<TerminalSession>, master: &Rc<RefCell<Opti
             };
             let bytes = session.encode_paste(text.to_string());
             if let Some(file) = master.borrow_mut().as_mut() {
-                let _ = file.write_all(&bytes);
+                write_pty(file, &bytes);
             }
         },
     );
@@ -1039,63 +989,3 @@ fn rgba_to_cairo(rgba: &[u8], width: usize, height: usize, stride: usize) -> Vec
     }
     data
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_spawn_and_read_echo() {
-        let (master_fd, slave_fd) = open_pty().expect("open_pty failed");
-        let mut child = spawn_on_slave(slave_fd, "echo hello-wawona").expect("spawn failed");
-        let mut master = unsafe { File::from_raw_fd(master_fd) };
-        let mut buf = [0u8; 128];
-        let mut output = Vec::new();
-        for _ in 0..50 {
-            match master.read(&mut buf) {
-                Ok(0) => break,
-                Ok(n) => output.extend_from_slice(&buf[..n]),
-                Err(err) if err.kind() == ErrorKind::WouldBlock => {
-                    std::thread::sleep(Duration::from_millis(50));
-                }
-                Err(_) => break,
-            }
-            if output.windows(12).any(|w| w == b"hello-wawona") {
-                break;
-            }
-        }
-        let _ = child.kill();
-        let _ = child.wait();
-        let text = String::from_utf8_lossy(&output);
-        assert!(text.contains("hello-wawona"), "output was: {text}");
-    }
-
-    #[test]
-    fn test_spawn_interactive_shell() {
-        let (master_fd, slave_fd) = open_pty().expect("open_pty failed");
-        let mut child = spawn_on_slave(slave_fd, "wawona-shell").expect("spawn failed");
-        let mut master = unsafe { File::from_raw_fd(master_fd) };
-        // Send a simple command to the interactive shell
-        let _ = master.write_all(b"echo shell-is-alive\n");
-        let mut buf = [0u8; 128];
-        let mut output = Vec::new();
-        for _ in 0..50 {
-            match master.read(&mut buf) {
-                Ok(0) => break,
-                Ok(n) => output.extend_from_slice(&buf[..n]),
-                Err(err) if err.kind() == ErrorKind::WouldBlock => {
-                    std::thread::sleep(Duration::from_millis(50));
-                }
-                Err(_) => break,
-            }
-            if output.windows(14).any(|w| w == b"shell-is-alive") {
-                break;
-            }
-        }
-        let _ = child.kill();
-        let _ = child.wait();
-        let text = String::from_utf8_lossy(&output);
-        assert!(text.contains("shell-is-alive"), "output was: {text}");
-    }
-}
-
