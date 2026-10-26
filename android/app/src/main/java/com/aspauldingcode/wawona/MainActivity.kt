@@ -32,6 +32,15 @@ import androidx.activity.enableEdgeToEdge
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import android.provider.Settings as AndroidSettings
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -80,6 +89,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.platform.LocalConfiguration
@@ -92,6 +102,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.zIndex
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material3.Icon
@@ -1857,14 +1868,63 @@ fun WawonaApp(
         }
     }
 
-    if (showSettingsDialog) {
+    // Slide up from bottom (Apple Settings cover parity). Instant if the
+    // system animator duration scale is 0 (Reduce animations).
+    val settingsAnimatorScale = remember(context) {
+        runCatching {
+            AndroidSettings.Global.getFloat(
+                context.contentResolver,
+                AndroidSettings.Global.ANIMATOR_DURATION_SCALE,
+                1f,
+            )
+        }.getOrDefault(1f)
+    }
+    val settingsReduceMotion = settingsAnimatorScale == 0f
+    AnimatedVisibility(
+        visible = showSettingsDialog,
+        modifier = Modifier
+            .fillMaxSize()
+            .zIndex(2f),
+        enter = if (settingsReduceMotion) {
+            fadeIn(animationSpec = tween(0))
+        } else {
+            slideInVertically(
+                initialOffsetY = { fullHeight -> fullHeight },
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = Spring.StiffnessMediumLow,
+                ),
+            ) + fadeIn(
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = Spring.StiffnessMediumLow,
+                ),
+            )
+        },
+        exit = if (settingsReduceMotion) {
+            fadeOut(animationSpec = tween(0))
+        } else {
+            slideOutVertically(
+                targetOffsetY = { fullHeight -> fullHeight },
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = Spring.StiffnessMediumLow,
+                ),
+            ) + fadeOut(
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = Spring.StiffnessMediumLow,
+                ),
+            )
+        },
+    ) {
         SettingsDialog(
             prefs = prefs,
             onDismiss = { showSettingsDialog = false },
             onApply = {
                 WawonaSettings.apply(prefs)
                 toolbarPrefsRevision += 1
-            }
+            },
         )
     }
 
@@ -2050,7 +2110,7 @@ internal fun GuestConsoleOverlay(
     val nerd = remember(context) { nerdMonoFamily(context) }
     val generation = term.generation
     val focus = remember { FocusRequester() }
-    var draft by remember { mutableStateOf(TextFieldValue("")) }
+    var draft by remember { mutableStateOf(TextFieldValue(TERM_IME_ANCHOR, TextRange(TERM_IME_ANCHOR.length))) }
     LaunchedEffect(acceptKeys) {
         if (acceptKeys) {
             runCatching { focus.requestFocus() }
@@ -2147,11 +2207,19 @@ internal fun GuestConsoleOverlay(
                             draft = next
                             return@BasicTextField
                         }
-                        if (next.text.isNotEmpty()) WawonaGuestTerm.feedKeys(next.text)
-                        draft = TextFieldValue("")
+                        val committed = next.text
+                        if (committed.startsWith(TERM_IME_ANCHOR)) {
+                            val typed = committed.removePrefix(TERM_IME_ANCHOR)
+                            if (typed.isNotEmpty()) WawonaGuestTerm.feedKeys(typed)
+                        } else if (committed.isEmpty()) {
+                            WawonaGuestTerm.feedKeys(terminalEraseBytes(1))
+                        } else {
+                            WawonaGuestTerm.feedKeys(committed)
+                        }
+                        draft = TextFieldValue(TERM_IME_ANCHOR, TextRange(TERM_IME_ANCHOR.length))
                     },
                     textStyle = TextStyle(
-                        color = Color.White,
+                        color = Color.Transparent,
                         fontSize = 16.sp,
                         fontFamily = FontFamily.Monospace,
                     ),
@@ -2257,9 +2325,25 @@ internal class WawonaAndroidTerm {
 }
 
 /** xterm F1-F12. Null when the code is not a function key. */
-private fun functionKeyBytes(code: Int): String? {
+private fun functionKeyBytes(code: Int, param: Int): String? {
     val n = code - android.view.KeyEvent.KEYCODE_F1 + 1
     if (n !in 1..12) return null
+    if (param != 1) {
+        return when (n) {
+            1 -> "\u001b[1;${param}P"
+            2 -> "\u001b[1;${param}Q"
+            3 -> "\u001b[1;${param}R"
+            4 -> "\u001b[1;${param}S"
+            5 -> "\u001b[15;${param}~"
+            6 -> "\u001b[17;${param}~"
+            7 -> "\u001b[18;${param}~"
+            8 -> "\u001b[19;${param}~"
+            9 -> "\u001b[20;${param}~"
+            10 -> "\u001b[21;${param}~"
+            11 -> "\u001b[23;${param}~"
+            else -> "\u001b[24;${param}~"
+        }
+    }
     return when (n) {
         1 -> "\u001bOP"
         2 -> "\u001bOQ"
@@ -2275,6 +2359,9 @@ private fun functionKeyBytes(code: Int): String? {
         else -> "\u001b[24~"
     }
 }
+
+/** Keeps the IME field non-empty so Backspace still produces a change. */
+private const val TERM_IME_ANCHOR = "\u200B"
 
 /** Live zsh echoes erase. Local VT does not, so that path paints BS, space, BS. */
 internal fun terminalEraseBytes(count: Int): String {
@@ -2301,39 +2388,110 @@ internal fun terminalBytesForKey(event: android.view.KeyEvent): String? {
     val unicode = event.unicodeChar
     val ctrl = event.isCtrlPressed ||
         (event.metaState and android.view.KeyEvent.META_CTRL_ON) != 0
+    val alt = event.isAltPressed ||
+        (event.metaState and android.view.KeyEvent.META_ALT_ON) != 0
+    val shift = event.isShiftPressed ||
+        (event.metaState and android.view.KeyEvent.META_SHIFT_ON) != 0
+    val param = 1 + (if (shift) 1 else 0) + (if (alt) 2 else 0) + (if (ctrl) 4 else 0)
     if (ctrl) {
-        if (unicode != 0) {
-            val ch = Character.toLowerCase(unicode)
-            if (ch in 'a'.code..'z'.code) {
-                return (ch - 'a'.code + 1).toChar().toString()
-            }
+        val baseMeta = if (shift) android.view.KeyEvent.META_SHIFT_ON else 0
+        val base = Character.toUpperCase(event.getUnicodeChar(baseMeta))
+        if (base in 0x40..0x5F) {
+            val byte = (base and 0x1F).toChar()
+            return if (alt) "\u001b$byte" else byte.toString()
         }
         val code = event.keyCode
-        if (code in android.view.KeyEvent.KEYCODE_A..android.view.KeyEvent.KEYCODE_Z) {
-            return (code - android.view.KeyEvent.KEYCODE_A + 1).toChar().toString()
+        val extra = when (code) {
+            android.view.KeyEvent.KEYCODE_2 -> 0x00
+            android.view.KeyEvent.KEYCODE_3,
+            android.view.KeyEvent.KEYCODE_LEFT_BRACKET -> 0x1B
+            android.view.KeyEvent.KEYCODE_4,
+            android.view.KeyEvent.KEYCODE_BACKSLASH -> 0x1C
+            android.view.KeyEvent.KEYCODE_5,
+            android.view.KeyEvent.KEYCODE_RIGHT_BRACKET -> 0x1D
+            android.view.KeyEvent.KEYCODE_6 -> 0x1E
+            android.view.KeyEvent.KEYCODE_7,
+            android.view.KeyEvent.KEYCODE_MINUS -> 0x1F
+            android.view.KeyEvent.KEYCODE_8 -> 0x7F
+            android.view.KeyEvent.KEYCODE_SLASH -> if (shift) 0x7F else 0x1F
+            in android.view.KeyEvent.KEYCODE_A..android.view.KeyEvent.KEYCODE_Z ->
+                code - android.view.KeyEvent.KEYCODE_A + 1
+            else -> -1
+        }
+        if (extra >= 0) {
+            val byte = extra.toChar()
+            return if (alt) "\u001b$byte" else byte.toString()
         }
     }
-    functionKeyBytes(event.keyCode)?.let { return it }
+    functionKeyBytes(event.keyCode, param)?.let { return it }
     return when (event.keyCode) {
         android.view.KeyEvent.KEYCODE_ENTER,
-        android.view.KeyEvent.KEYCODE_NUMPAD_ENTER -> terminalEnterBytes()
-        android.view.KeyEvent.KEYCODE_DEL -> terminalEraseBytes(1)
-        android.view.KeyEvent.KEYCODE_FORWARD_DEL -> "\u001b[3~"
-        android.view.KeyEvent.KEYCODE_TAB -> "\t"
+        android.view.KeyEvent.KEYCODE_NUMPAD_ENTER ->
+            if (alt) "\u001b${terminalEnterBytes()}" else terminalEnterBytes()
+        android.view.KeyEvent.KEYCODE_DEL -> {
+            if (!WawonaGuestTerm.shellRunning) return terminalEraseBytes(1)
+            val byte = if (ctrl) "\u0008" else "\u007f"
+            if (alt) "\u001b$byte" else byte
+        }
+        android.view.KeyEvent.KEYCODE_FORWARD_DEL -> csiTilde('3', "\u001b[3~", param)
+        android.view.KeyEvent.KEYCODE_INSERT -> csiTilde('2', "\u001b[2~", param)
+        android.view.KeyEvent.KEYCODE_MENU ->
+            if (param == 1) "\u001b[29~" else "\u001b[29;$param~"
+        android.view.KeyEvent.KEYCODE_SEARCH -> csiTilde('1', "\u001b[1~", param)
+        android.view.KeyEvent.KEYCODE_HELP ->
+            if (param == 1) "\u001b[28~" else "\u001b[28;$param~"
+        android.view.KeyEvent.KEYCODE_NUMPAD_8 -> numpadNav(unicode, csiLetter('A', "\u001b[A", param))
+        android.view.KeyEvent.KEYCODE_NUMPAD_2 -> numpadNav(unicode, csiLetter('B', "\u001b[B", param))
+        android.view.KeyEvent.KEYCODE_NUMPAD_6 -> numpadNav(unicode, csiLetter('C', "\u001b[C", param))
+        android.view.KeyEvent.KEYCODE_NUMPAD_4 -> numpadNav(unicode, csiLetter('D', "\u001b[D", param))
+        android.view.KeyEvent.KEYCODE_NUMPAD_7 -> numpadNav(unicode, csiLetter('H', "\u001b[H", param))
+        android.view.KeyEvent.KEYCODE_NUMPAD_1 -> numpadNav(unicode, csiLetter('F', "\u001b[F", param))
+        android.view.KeyEvent.KEYCODE_NUMPAD_9 -> numpadNav(unicode, csiTilde('5', "\u001b[5~", param))
+        android.view.KeyEvent.KEYCODE_NUMPAD_3 -> numpadNav(unicode, csiTilde('6', "\u001b[6~", param))
+        android.view.KeyEvent.KEYCODE_NUMPAD_0 -> numpadNav(unicode, csiTilde('2', "\u001b[2~", param))
+        android.view.KeyEvent.KEYCODE_NUMPAD_DOT -> numpadNav(unicode, csiTilde('3', "\u001b[3~", param))
+        android.view.KeyEvent.KEYCODE_NUMPAD_5 -> numpadNav(unicode, "\u001b[E")
+        android.view.KeyEvent.KEYCODE_NUMPAD_DIVIDE -> numpadNav(unicode, "/")
+        android.view.KeyEvent.KEYCODE_NUMPAD_MULTIPLY -> numpadNav(unicode, "*")
+        android.view.KeyEvent.KEYCODE_NUMPAD_SUBTRACT -> numpadNav(unicode, "-")
+        android.view.KeyEvent.KEYCODE_NUMPAD_ADD -> numpadNav(unicode, "+")
+        android.view.KeyEvent.KEYCODE_NUMPAD_EQUALS -> numpadNav(unicode, "=")
+        android.view.KeyEvent.KEYCODE_NUMPAD_COMMA -> numpadNav(unicode, ",")
+        android.view.KeyEvent.KEYCODE_TAB ->
+            if (shift) "\u001b[Z" else if (alt) "\u001b\t" else "\t"
         android.view.KeyEvent.KEYCODE_ESCAPE -> "\u001b"
-        android.view.KeyEvent.KEYCODE_DPAD_UP -> "\u001b[A"
-        android.view.KeyEvent.KEYCODE_DPAD_DOWN -> "\u001b[B"
-        android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> "\u001b[C"
-        android.view.KeyEvent.KEYCODE_DPAD_LEFT -> "\u001b[D"
-        android.view.KeyEvent.KEYCODE_MOVE_HOME -> "\u001b[H"
-        android.view.KeyEvent.KEYCODE_MOVE_END -> "\u001b[F"
-        android.view.KeyEvent.KEYCODE_PAGE_UP -> "\u001b[5~"
-        android.view.KeyEvent.KEYCODE_PAGE_DOWN -> "\u001b[6~"
+        android.view.KeyEvent.KEYCODE_SPACE -> when {
+            ctrl && alt -> "\u001b\u0000"
+            ctrl -> "\u0000"
+            alt -> "\u001b "
+            else -> " "
+        }
+        android.view.KeyEvent.KEYCODE_DPAD_UP -> csiLetter('A', "\u001b[A", param)
+        android.view.KeyEvent.KEYCODE_DPAD_DOWN -> csiLetter('B', "\u001b[B", param)
+        android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> csiLetter('C', "\u001b[C", param)
+        android.view.KeyEvent.KEYCODE_DPAD_LEFT -> csiLetter('D', "\u001b[D", param)
+        android.view.KeyEvent.KEYCODE_MOVE_HOME -> csiLetter('H', "\u001b[H", param)
+        android.view.KeyEvent.KEYCODE_MOVE_END -> csiLetter('F', "\u001b[F", param)
+        android.view.KeyEvent.KEYCODE_PAGE_UP -> csiTilde('5', "\u001b[5~", param)
+        android.view.KeyEvent.KEYCODE_PAGE_DOWN -> csiTilde('6', "\u001b[6~", param)
         else -> {
+            if (alt && event.keyCode in android.view.KeyEvent.KEYCODE_A..android.view.KeyEvent.KEYCODE_Z) {
+                val ch = (event.keyCode - android.view.KeyEvent.KEYCODE_A + 'a'.code).toChar()
+                return "\u001b$ch"
+            }
             if (unicode == 0) null else String(Character.toChars(unicode))
         }
     }
 }
+
+private fun csiLetter(letter: Char, plain: String, param: Int): String =
+    if (param == 1) plain else "\u001b[1;$param$letter"
+
+private fun csiTilde(code: Char, plain: String, param: Int): String =
+    if (param == 1) plain else "\u001b[$code;$param~"
+
+private fun numpadNav(unicode: Int, nav: String): String =
+    if (unicode == 0) nav else String(Character.toChars(unicode))
 
 private fun cookNewlines(raw: String): ByteArray {
     val cooked = StringBuilder(raw.length + 8)

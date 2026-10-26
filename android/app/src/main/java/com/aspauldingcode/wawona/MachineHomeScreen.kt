@@ -445,12 +445,13 @@ fun MachineWelcomeScreen(
         },
         floatingActionButton = {
             if (navDest !is MachinesNavDest.TabOverview) {
+                // Primary CTA (Apple Add Machine `.primaryAction` / blue parity).
                 FloatingActionButton(
                     onClick = { creating = true },
                     modifier = Modifier.testTag(WawonaTestTags.MACHINES_ADD),
                     shape = MaterialTheme.shapes.large,
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
                     elevation = FloatingActionButtonDefaults.elevation(
                         defaultElevation = 4.dp,
                         pressedElevation = 6.dp,

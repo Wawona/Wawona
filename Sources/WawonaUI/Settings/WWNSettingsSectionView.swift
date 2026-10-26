@@ -79,7 +79,8 @@ struct WWNSettingsSectionView: View {
             }
         }
         // Section accent tints detail controls (Toggle / Picker / Button /
-        // Link), matching Android section accents. Not sidebar icon tiles.
+        // Link), matching Android section accents and sidebar glyph colors.
+        // Never a rounded sidebar icon tile fill.
         .settingsSectionAccent(sectionAccent)
         .backport.tint(sectionAccent)
     }
