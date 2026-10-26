@@ -92,7 +92,7 @@ Workflow display names use a role prefix (`Gate` / `Build` / `Watch` / `Ship`). 
 | **Build: GUI smoke** (`device-e2e-*.yml`) | via Gate: products (`products_ready`) | via gate | Runtime smokes use **platform tools** on runners: iOS `simctl`, Android `adb`/`uiautomator`, macOS compositor-host script. **No agent-device CLI in Gate.** Agent-device stays for local/lab/vphone. |
 | **Watch: graphics nightly** (`nightly-full-matrix.yml`) | schedule / dispatch | - | Graphics + protocol drift + Weston/XWayland capability (does **not** re-run Gate: products) |
 | **Watch: TestFlight feedback** (`testflight-feedback.yml`) | schedule / dispatch | schedule / dispatch | Poll ASC TestFlight screenshot/crash feedback → GitHub issues (PII stripped). `release-beta` secrets. Not a promote gate |
-| **Watch: idle memory** (`leak-idle-gate.yml`) | via Gate: products (`products_ready`) + schedule + dispatch | via Gate: products | Launch→60s footprint/PSS plateau on product iOS/Android/macOS via **platform tools** (`simctl` / `adb`+`uiautomator` / direct macOS exec). **No agent-device CLI on runners.** Fails with `LEAK_GATE_FAIL targets=…` ([docs/testing/leak-idle-gate.md](./testing/leak-idle-gate.md)). Reuses Gate: products `product-*` artifacts. **Not** a promote blocker (`continue-on-error` on idle-memory jobs) |
+| **Watch: idle memory** (`leak-idle-gate.yml`) | schedule + dispatch | schedule + dispatch | Launch→60s footprint/PSS plateau on product iOS/Android/macOS via **platform tools** (`simctl` / `adb`+`uiautomator` / direct macOS exec). **No agent-device CLI on runners.** Fails with `LEAK_GATE_FAIL targets=…` ([docs/testing/leak-idle-gate.md](./testing/leak-idle-gate.md)). Independent advisory diagnostic, not part of the blocking product gate |
 | **Watch: Appium UI matrix** (`ui-appium.yml`) | nightly + path filter `development` + dispatch | - | Appium 2 pytest matrix (`Tests/appium/`): native UI + Wayland keep-set + catalog clients as real Wayland guests (Colima on Darwin, nested on Linux via `launch-wayland-client.sh`). `macos-26` Apple jobs; `ubuntu-latest` KVM Android + Xvfb Linux. **No agent-device.** Not a promote blocker until native lane replaces Build: GUI smoke ([details](./testing/appium-ui-matrix.md)) |
 | **FlakeHub publish** (`flakehub-publish.yml`) | tags `vYY.M.D` + dispatch | - | Registry only ([`flakehub-registry.md`](./flakehub-registry.md)). **Not** every development push. Binary cache is separate ([`flakehub-cache.md`](./flakehub-cache.md)) |
 | **Ship: beta (stores)** (`release-beta.yml`) | - | after green master **Gate: products** (`workflow_run`) + dispatch | Fastlane TestFlight / Play. **Never** uploads without a green full Gate: products for that SHA (dispatch is the operator escape) |
@@ -284,11 +284,9 @@ Memory plateau after product launch (not Instruments MCP; runners cannot use it;
 iOS 26 sim Allocations are often empty). Runners use **simctl / adb+uiautomator /
 direct macOS exec**. No agent-device CLI. See [testing/leak-idle-gate.md](./testing/leak-idle-gate.md).
 
-On product-path pushes, **Gate: products** calls Watch: idle memory with `products_ready: true`
-after `product-ios` / `product-android` / `product-macos` succeed (parallel with GUI smoke).
-That reuses the same `product-*` artifacts. It must not invoke `product-build` on the
-Gate: products tip_key. Nightly schedule / `workflow_dispatch` build under tip_key
-`leak-idle-*` so they cannot cancel Gate: products.
+Watch: idle memory runs independently by nightly schedule or `workflow_dispatch`.
+It builds under tip_key `leak-idle-*` so it cannot cancel Gate: products. It is an
+advisory diagnostic and does not affect product promotion.
 
 ```bash
 # Local (same script CI runs)
@@ -298,8 +296,8 @@ WAWONA_MACOS_APP=result-macos/Wawona.app ./scripts/leak-idle-gate.sh macos
 ./scripts/leak-idle-gate.sh summary   # prints LEAK_GATE_FAIL targets=…
 ```
 
-CI: Actions → **Gate: products** → job `Watch: idle memory` (or standalone **Watch: idle memory**
-on schedule/dispatch) → `Leak idle summary` lists failing targets.
+CI: Actions → standalone **Watch: idle memory** (schedule/dispatch) → `Leak idle summary`
+lists failing targets.
 
 ## Watch: bundled clients
 

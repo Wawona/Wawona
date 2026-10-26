@@ -218,30 +218,6 @@ jobs:
       id-token: write
       actions: read
 
-  leak-idle:
-    name: "Watch: memory after idle (advisory)"
-    needs: [tip, product-ios, product-android, product-macos]
-    # The reusable workflow reports per-target diagnostics. A queued/cancelled
-    # advisory lane must not turn otherwise passing product builds red.
-    continue-on-error: true
-    if: >-
-      always()
-      && !cancelled()
-      && needs.tip.outputs.is_tip == 'true'
-      && needs.product-ios.result == 'success'
-      && needs.product-android.result == 'success'
-      && needs.product-macos.result == 'success'
-    uses: ./.github/workflows/leak-idle-gate.yml
-    with:
-      checkout_ref: ${{ inputs.checkout_ref || github.sha }}
-      tip_key: ${{ inputs.checkout_ref || github.ref_name }}
-      products_ready: true
-      lanes: all
-    permissions:
-      contents: read
-      id-token: write
-      actions: read
-
   gate:
     name: "RESULT: PASS or FAIL?"
     needs:
