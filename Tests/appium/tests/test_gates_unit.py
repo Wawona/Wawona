@@ -73,6 +73,25 @@ def test_linux_capabilities_select_installed_driver(monkeypatch):
     assert "appium:app" not in caps
 
 
+def test_linux_runtime_deb_postinst_can_resolve_global_appium():
+    workflow = Path(__file__).parents[3] / ".github/workflows/ui-appium.yml"
+    source = workflow.read_text()
+    assert (
+        "sudo env NODE_PATH=/usr/local/lib/node_modules "
+        'apt-get install -y "$package"'
+    ) in source
+
+
+def test_macos_catalog_tip_build_provisions_nix():
+    workflow = Path(__file__).parents[3] / ".github/workflows/ui-appium.yml"
+    source = workflow.read_text()
+    assert "  id-token: write" in source
+    assert (
+        "if: ${{ matrix.platform == 'macos' && !inputs.products_ready }}\n"
+        "        uses: ./.github/actions/setup-nix-flakehub"
+    ) in source
+
+
 @pytest.mark.parametrize(
     "platform,vm,container",
     [

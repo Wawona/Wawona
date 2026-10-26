@@ -71,7 +71,7 @@ impl Dispatch<WpFractionalScaleManagerV1, ()> for CompositorState {
     fn request(
         state: &mut Self,
         _client: &Client,
-        _resource: &WpFractionalScaleManagerV1,
+        resource: &WpFractionalScaleManagerV1,
         request: wp_fractional_scale_manager_v1::Request,
         _data: &(),
         _dhandle: &DisplayHandle,
@@ -79,7 +79,23 @@ impl Dispatch<WpFractionalScaleManagerV1, ()> for CompositorState {
     ) {
         match request {
             wp_fractional_scale_manager_v1::Request::GetFractionalScale { id, surface } => {
-                let surface_id = surface.id().protocol_id();
+                let Some(client_id) = surface.client().map(|client| client.id()) else {
+                    tracing::warn!("GetFractionalScale ignored: surface has no client");
+                    return;
+                };
+                let surface_id = state.ensure_internal_surface_mapping(client_id, &surface);
+                if state
+                    .ext
+                    .fractional_scale
+                    .by_surface
+                    .contains_key(&surface_id)
+                {
+                    resource.post_error(
+                        wp_fractional_scale_manager_v1::Error::FractionalScaleExists,
+                        "the surface already has a fractional scale object",
+                    );
+                    return;
+                }
                 let data = FractionalScaleData { surface_id };
                 let fractional_scale = data_init.init(id, data);
 

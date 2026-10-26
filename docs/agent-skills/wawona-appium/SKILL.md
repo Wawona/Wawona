@@ -186,7 +186,19 @@ path. The former `appium-linux-driver` package name was not published, and
 `automationName=Linux` selected no driver. CI now downloads the x86-64 runtime
 from the pinned upstream release and verifies its SHA-256 before installing.
 The runtime package includes a separately distributed native AT-SPI library.
-See RAG `appium-linux-driver-ci.md` for the incident and evidence.
+Its Debian post-install hook imports the Appium driver peer dependency from
+the global npm root. Set `NODE_PATH=/usr/local/lib/node_modules` on the apt
+install command so dpkg's hook can resolve that module before the later CI
+step installs the pinned Linux driver into `APPIUM_HOME`. Keep a unit assertion
+on this command. See RAG `appium-linux-driver-ci.md` for the incident and
+evidence.
+
+The macOS catalog lane always builds a clean tip host app when no matching
+`Gate: products` artifact is supplied. Install the repository's
+`setup-nix-flakehub` action before catalog capture so `ensure-tip-wawona-macos`
+can generate XcodeGen and build the current checkout. The workflow needs
+`id-token: write` for FlakeHub cache access. Keep the Colima guest launch and
+required screenshot check enabled.
 
 ## Hard rejects
 

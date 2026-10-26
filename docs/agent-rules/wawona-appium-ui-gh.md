@@ -66,13 +66,18 @@ lane under `ui-appium.yml`):
   GitHub macOS runners are virtual machines, so the CI profile selects QEMU
   instead of VZ. Lima falls back from HVF to TCG when HVF is not available.
   Local runs keep the normal Colima VM type.
+- When no successful same-SHA `Gate: products` artifact is supplied, the
+  macOS catalog lane builds a clean tip host app. Install
+  `setup-nix-flakehub` before catalog capture so XcodeGen and the Nix build are
+  available. Grant `id-token: write` for FlakeHub cache access.
 - **Catalog green = Present surface PNG** in
   `.agent-device/test-artifacts/appium/catalog-gallery/<client>.png`
   (non-blank via `require_client_screenshot`). Capture
   `wwn.compositor.surface` after closing Wawona Terminal / Focus. DRY /
   Machines / Settings / desktop PNGs are not catalog proof.
 - Docs: `docs/testing/appium-ui-matrix.md`. RAG:
-  `wwn-mcp/knowledge/wawona/appium-catalog-colima.md`.
+  `wwn-mcp/knowledge/wawona/appium-catalog-colima.md`,
+  `wwn-mcp/knowledge/wawona/appium-linux-driver-ci.md`.
 
 ## Hard rejects
 

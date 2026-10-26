@@ -989,7 +989,7 @@ pub fn build_settings_view_internal(
 }
 
 pub fn show_settings(parent: &adw::ApplicationWindow, state: &SharedAppState, layout: LayoutMode) {
-    let dialog_holder: Rc<RefCell<Option<adw::Window>>> = Rc::new(RefCell::new(None));
+    let dialog_holder: Rc<RefCell<Option<adw::Dialog>>> = Rc::new(RefCell::new(None));
     let dh = dialog_holder.clone();
     let (body, split_view) = build_settings_view_internal(
         state,
@@ -1013,7 +1013,7 @@ pub fn show_settings(parent: &adw::ApplicationWindow, state: &SharedAppState, la
         split_view.set_collapsed(true);
         split_view.set_show_sidebar(true);
     }
-    dialog.present();
+    dialog.present(Some(parent));
 
     *dialog_holder.borrow_mut() = Some(dialog);
 }

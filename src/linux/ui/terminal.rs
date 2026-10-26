@@ -49,7 +49,16 @@ pub fn shell_command(profile: &MachineProfile) -> Option<String> {
                 .as_deref()
                 .map(str::trim)
                 .unwrap_or("");
-            if id == "wawona-shell" {
+            if id == "wawona-wasm"
+                || id == "hello-wasi-gui"
+                || profile.runtime_overrides.wasm_command.is_some()
+                || profile.runtime_overrides.wasm_module_path.is_some()
+            {
+                Some(crate::linux::wasm_launch::effective_wasm_command(profile))
+            } else if id == "wawona-shell"
+                || id.is_empty()
+                || !profile.remote_command.trim().is_empty()
+            {
                 let custom = profile.remote_command.trim();
                 if custom.is_empty() {
                     Some("wawona-shell".to_string())
@@ -60,14 +69,57 @@ pub fn shell_command(profile: &MachineProfile) -> Option<String> {
                 None
             }
         }
+        MachineType::Wasm => Some(crate::linux::wasm_launch::effective_wasm_command(profile)),
+        MachineType::VirtualMachine | MachineType::Container => None,
         _ => None,
     }
 }
 
-/// Open a PTY, start `command`, and present the VT screen.
-pub fn open_shell(parent: &impl IsA<gtk::Window>, command: &str) -> Result<Child, String> {
+/// How Start fills Wawona Terminal.
+#[derive(Clone, Debug)]
+pub enum TerminalLaunch {
+    /// Host login shell. Native Shell, SSH, and Wasm.
+    Shell(String),
+    /// Guest serial console, never a host login shell.
+    Guest {
+        argv: Vec<String>,
+        role: &'static str,
+    },
+}
+
+pub fn terminal_launch(profile: &MachineProfile) -> Option<TerminalLaunch> {
+    match profile.machine_type {
+        MachineType::VirtualMachine | MachineType::Container => {
+            let guest = crate::linux::relay::guest_terminal(profile);
+            Some(TerminalLaunch::Guest {
+                argv: guest.argv,
+                role: guest.role,
+            })
+        }
+        _ => shell_command(profile).map(TerminalLaunch::Shell),
+    }
+}
+
+pub fn launch_subtitle(launch: &TerminalLaunch) -> &'static str {
+    match launch {
+        TerminalLaunch::Shell(_) => "Wawona Terminal (xterm-256color)",
+        TerminalLaunch::Guest { role, .. } => role,
+    }
+}
+
+pub fn start_shell(command: &str) -> Result<(Child, Arc<TerminalSession>, File), String> {
+    start_terminal(&TerminalLaunch::Shell(command.to_string()))
+}
+
+pub fn start_terminal(
+    launch: &TerminalLaunch,
+) -> Result<(Child, Arc<TerminalSession>, File), String> {
     let (master_fd, slave_fd) = open_pty()?;
-    let child = match spawn_on_slave(slave_fd, command) {
+    let child = match launch {
+        TerminalLaunch::Shell(command) => spawn_on_slave(slave_fd, command),
+        TerminalLaunch::Guest { argv, .. } => spawn_direct(slave_fd, argv),
+    };
+    let child = match child {
         Ok(child) => child,
         Err(err) => {
             unsafe { libc::close(master_fd) };
@@ -76,8 +128,27 @@ pub fn open_shell(parent: &impl IsA<gtk::Window>, command: &str) -> Result<Child
     };
     let session = TerminalSession::new(80, 24);
     let master = unsafe { File::from_raw_fd(master_fd) };
-    present(parent, session, master, child.id());
+    Ok((child, session, master))
+}
+
+/// Open a PTY and present the terminal window for a machine launch.
+pub fn open_launched(
+    parent: &impl IsA<gtk::Window>,
+    launch: &TerminalLaunch,
+    title: &str,
+) -> Result<Child, String> {
+    let (child, session, master) = start_terminal(launch)?;
+    present(parent, session, master, child.id(), title);
     Ok(child)
+}
+
+/// Open a PTY, start `command`, and present the VT screen.
+pub fn open_shell(parent: &impl IsA<gtk::Window>, command: &str) -> Result<Child, String> {
+    open_launched(
+        parent,
+        &TerminalLaunch::Shell(command.to_string()),
+        "Wawona Terminal",
+    )
 }
 
 fn quote_sh(text: &str) -> String {
@@ -86,6 +157,33 @@ fn quote_sh(text: &str) -> String {
     } else {
         format!("'{text}'")
     }
+}
+
+fn spawn_direct(slave_fd: i32, argv: &[String]) -> Result<Child, String> {
+    let program = argv
+        .first()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| "guest console has no program".to_string())?;
+    let slave = unsafe { File::from_raw_fd(slave_fd) };
+    let stdin = slave
+        .try_clone()
+        .map_err(|err| err.to_string())
+        .map(Stdio::from)?;
+    let stdout = slave
+        .try_clone()
+        .map_err(|err| err.to_string())
+        .map(Stdio::from)?;
+    let mut command = Command::new(program);
+    command
+        .args(&argv[1..])
+        .stdin(stdin)
+        .stdout(stdout)
+        .stderr(Stdio::from(slave))
+        .env("TERM", "xterm-256color");
+    command
+        .spawn()
+        .map_err(|err| format!("guest console failed to start: {err}"))
 }
 
 fn open_pty() -> Result<(i32, i32), String> {
@@ -118,7 +216,7 @@ fn open_pty() -> Result<(i32, i32), String> {
     Ok((master, slave))
 }
 
-fn spawn_on_slave(slave_fd: i32, command: &str) -> Result<Child, String> {
+fn spawn_on_slave(slave_fd: i32, shell_command: &str) -> Result<Child, String> {
     let slave = unsafe { File::from_raw_fd(slave_fd) };
     let stdin = slave
         .try_clone()
@@ -128,41 +226,103 @@ fn spawn_on_slave(slave_fd: i32, command: &str) -> Result<Child, String> {
         .try_clone()
         .map_err(|err| err.to_string())
         .map(Stdio::from)?;
-    let mut cmd = if command == "wawona-shell" {
+    let mut command = if shell_command == "wawona-shell" {
         let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
-        let mut cmd = Command::new(shell);
-        cmd.arg("-i");
-        cmd
+        let mut command = Command::new(shell);
+        command.arg("-i");
+        command
     } else {
-        let mut cmd = Command::new("/bin/sh");
-        cmd.args(["-c", command]);
-        cmd
+        let mut command = Command::new("/bin/sh");
+        command.args(["-c", shell_command]);
+        command
     };
-    cmd.stdin(stdin)
+    command
+        .stdin(stdin)
         .stdout(stdout)
         .stderr(Stdio::from(slave))
         .env("TERM", "xterm-256color");
-    if let Ok(rt) = crate::linux::runtime::read_runtime_state() {
-        cmd.env("XDG_RUNTIME_DIR", rt.xdg_runtime_dir);
-        cmd.env("WAYLAND_DISPLAY", rt.wayland_display);
+    if let Ok(runtime) = crate::linux::runtime::read_runtime_state() {
+        command.env("XDG_RUNTIME_DIR", runtime.xdg_runtime_dir);
+        command.env("WAYLAND_DISPLAY", runtime.wayland_display);
     }
-    cmd.spawn()
+    command
+        .spawn()
         .map_err(|err| format!("shell failed to start: {err}"))
 }
 
-fn present(parent: &impl IsA<gtk::Window>, session: Arc<TerminalSession>, master: File, pid: u32) {
+fn present(
+    parent: &impl IsA<gtk::Window>,
+    session: Arc<TerminalSession>,
+    master: File,
+    pid: u32,
+    title: &str,
+) {
     let window = adw::Window::builder()
         .transient_for(parent)
         .modal(false)
         .default_width(720)
         .default_height(420)
-        .title("Wawona Terminal")
+        .title(title)
         .build();
-    a11y::set_wwn_a11y(&window, id::TERMINAL_ROOT, Some("Wawona Terminal"));
+    let close_window: Rc<dyn Fn()> = Rc::new({
+        let window = window.clone();
+        move || window.close()
+    });
+    let stop_window: Rc<dyn Fn()> = Rc::new({
+        let window = window.clone();
+        move || window.close()
+    });
+    let terminal = build_terminal_view(
+        session,
+        master,
+        pid,
+        title,
+        "Wawona Terminal (xterm-256color)",
+        close_window,
+        stop_window,
+    );
+    window.set_content(Some(&terminal));
+    window.present();
+}
+
+/// Build an in-app GTK widget hosting Wawona Terminal.
+pub fn build_terminal_view(
+    session: Arc<TerminalSession>,
+    master: File,
+    pid: u32,
+    title: &str,
+    subtitle: &str,
+    on_back: Rc<dyn Fn()>,
+    on_stop: Rc<dyn Fn()>,
+) -> gtk::Widget {
+    let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    root.set_hexpand(true);
+    root.set_vexpand(true);
+    root.add_css_class("wwn-terminal-root");
+    a11y::set_wwn_a11y(&root, id::TERMINAL_ROOT, Some("Wawona Terminal"));
 
     let header = adw::HeaderBar::new();
-    let done = gtk::Button::with_label("Done");
+    header.set_show_end_title_buttons(false);
+    header.set_show_start_title_buttons(false);
+    let back = gtk::Button::builder()
+        .icon_name("go-previous-symbolic")
+        .tooltip_text("Back to Machines")
+        .css_classes(["flat"])
+        .build();
+    let on_back_click = on_back.clone();
+    back.connect_clicked(move |_| on_back_click());
+    header.pack_start(&back);
+
+    let title_widget = adw::WindowTitle::new(title, subtitle);
+    header.set_title_widget(Some(&title_widget));
+    let done = gtk::Button::with_label("Stop Session");
+    done.add_css_class("destructive-action");
     a11y::set_wwn_a11y(&done, id::TERMINAL_DONE, Some("Close Terminal"));
+    let on_stop_click = on_stop.clone();
+    done.connect_clicked(move |_| {
+        unsafe { libc::kill(pid as i32, libc::SIGTERM) };
+        on_stop_click();
+    });
     header.pack_end(&done);
 
     let view = gtk::TextView::new();
@@ -172,6 +332,11 @@ fn present(parent: &impl IsA<gtk::Window>, session: Arc<TerminalSession>, master
     view.set_wrap_mode(gtk::WrapMode::None);
     view.set_focusable(true);
     view.set_can_focus(true);
+    view.set_top_margin(12);
+    view.set_bottom_margin(12);
+    view.set_left_margin(14);
+    view.set_right_margin(14);
+    view.add_css_class("wwn-terminal-view");
     let buffer = view.buffer();
     let pictures: Rc<RefCell<PictureLayer>> = Rc::new(RefCell::new(PictureLayer {
         images: Vec::new(),
@@ -182,7 +347,12 @@ fn present(parent: &impl IsA<gtk::Window>, session: Arc<TerminalSession>, master
         .child(&view)
         .hexpand(true)
         .vexpand(true)
+        .min_content_width(0)
+        .min_content_height(0)
+        .propagate_natural_width(false)
+        .propagate_natural_height(false)
         .build();
+    scroll.add_css_class("wwn-terminal-scroll");
     let back = gtk::DrawingArea::new();
     back.set_hexpand(true);
     back.set_vexpand(true);
@@ -194,14 +364,12 @@ fn present(parent: &impl IsA<gtk::Window>, session: Arc<TerminalSession>, master
     overlay.set_child(Some(&back));
     overlay.add_overlay(&scroll);
     overlay.add_overlay(&front);
-    let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
     root.append(&header);
     root.append(&overlay);
-    window.set_content(Some(&root));
 
     let css = gtk::CssProvider::new();
     css.load_from_data(
-        "textview, textview text { background: transparent; color: #e8e8e8; font-family: monospace, \"DejaVuSansM Nerd Font Mono\"; }",
+        ".wwn-terminal-root { background-color: #0d0f14; } .wwn-terminal-scroll, .wwn-terminal-scroll viewport, .wwn-terminal-view, textview.wwn-terminal-view, textview.wwn-terminal-view text { background-color: #0d0f14; color: #e8e8e8; font-family: \"DejaVu Sans Mono\", \"Fira Code\", monospace; font-size: 13px; }",
     );
     if let Some(display) = gtk::gdk::Display::default() {
         gtk::style_context_add_provider_for_display(
@@ -216,7 +384,7 @@ fn present(parent: &impl IsA<gtk::Window>, session: Arc<TerminalSession>, master
     let view_fd = view.clone();
     let buffer_fd = buffer.clone();
     let session_fd = session.clone();
-    let window_fd = window.clone();
+    let title_fd = title_widget.clone();
     let dec_modes = Rc::new(RefCell::new(HostDecModes::default()));
     let dec_read = dec_modes.clone();
     let master_fd_loop = master.clone();
@@ -250,9 +418,9 @@ fn present(parent: &impl IsA<gtk::Window>, session: Arc<TerminalSession>, master
                     &back_fd,
                     &front_fd,
                 );
-                let title = session_fd.title();
-                if !title.is_empty() {
-                    window_fd.set_title(Some(&title));
+                let terminal_title = session_fd.title();
+                if !terminal_title.is_empty() {
+                    title_fd.set_subtitle(&terminal_title);
                 }
                 let mut end = buffer_fd.end_iter();
                 let _ = view_fd.scroll_to_iter(&mut end, 0.0, true, 0.0, 1.0);
@@ -263,12 +431,22 @@ fn present(parent: &impl IsA<gtk::Window>, session: Arc<TerminalSession>, master
 
     let master_keys = dup_master(fd);
     let session_keys = session.clone();
+    let buffer_keys = buffer.clone();
     let dec_keys = dec_modes.clone();
     let keys = gtk::EventControllerKey::new();
     keys.connect_key_pressed(move |_, key, _, state| {
         if state.contains(gtk::gdk::ModifierType::CONTROL_MASK) {
             if let Some(ch) = key.to_unicode() {
-                if ch.eq_ignore_ascii_case(&'v') {
+                if state.contains(gtk::gdk::ModifierType::SHIFT_MASK) {
+                    if ch.eq_ignore_ascii_case(&'c') {
+                        copy_selection_to_clipboard(&buffer_keys);
+                        return gtk::glib::Propagation::Stop;
+                    }
+                    if ch.eq_ignore_ascii_case(&'v') {
+                        paste_from_clipboard(&session_keys, &master_keys);
+                        return gtk::glib::Propagation::Stop;
+                    }
+                } else if ch.eq_ignore_ascii_case(&'v') {
                     paste_from_clipboard(&session_keys, &master_keys);
                     return gtk::glib::Propagation::Stop;
                 }
@@ -351,10 +529,7 @@ fn present(parent: &impl IsA<gtk::Window>, session: Arc<TerminalSession>, master
     let pictures_fit = pictures.clone();
     let back_fit = back.clone();
     let front_fit = front.clone();
-    window.connect_realize(move |widget| {
-        let Some(surface) = widget.surface() else {
-            return;
-        };
+    let resize_fit = Rc::new(move || {
         let session = session_fit.clone();
         let view = view_fit.clone();
         let buffer = buffer_fit.clone();
@@ -363,12 +538,23 @@ fn present(parent: &impl IsA<gtk::Window>, session: Arc<TerminalSession>, master
         let pictures = pictures_fit.clone();
         let back = back_fit.clone();
         let front = front_fit.clone();
-        surface.connect_layout(move |_, _, _| {
-            fit_grid(
-                &view, &session, fd, &grid, &glyph, &buffer, &pictures, &back, &front,
-            );
-        });
+        fit_grid(
+            &view, &session, fd, &grid, &glyph, &buffer, &pictures, &back, &front,
+        );
     });
+    let resize_tick = resize_fit.clone();
+    let last_size = Rc::new(Cell::new((0i32, 0i32)));
+    let last_size_tick = last_size.clone();
+    root.add_tick_callback(move |widget, _| {
+        let size = (widget.width(), widget.height());
+        if widget.is_mapped() && size.0 > 0 && size.1 > 0 && last_size_tick.get() != size {
+            last_size_tick.set(size);
+            resize_tick();
+        }
+        gtk::glib::ControlFlow::Continue
+    });
+    let resize_map = resize_fit.clone();
+    root.connect_map(move |_| resize_map());
     let session_idle = session.clone();
     let view_idle = view.clone();
     let buffer_idle = buffer.clone();
@@ -405,13 +591,20 @@ fn present(parent: &impl IsA<gtk::Window>, session: Arc<TerminalSession>, master
         glib::ControlFlow::Break
     });
 
-    let window_done = window.clone();
-    done.connect_clicked(move |_| {
-        unsafe { libc::kill(pid as i32, libc::SIGTERM) };
-        window_done.close();
+    let view_focus = view.clone();
+    root.connect_map(move |_| {
+        view_focus.grab_focus();
     });
-    window.present();
-    view.grab_focus();
+    root.upcast()
+}
+
+fn copy_selection_to_clipboard(buffer: &gtk::TextBuffer) {
+    if let Some((start, end)) = buffer.selection_bounds() {
+        let text = buffer.text(&start, &end, false);
+        if let Some(display) = gtk::gdk::Display::default() {
+            display.clipboard().set_text(&text);
+        }
+    }
 }
 
 fn dup_master(fd: i32) -> Rc<RefCell<Option<File>>> {

@@ -43,6 +43,7 @@ on:
 permissions:
   contents: read
   actions: read
+  id-token: write
 
 concurrency:
   group: ui-appium-${{ github.sha }}
@@ -234,7 +235,9 @@ jobs:
           printf '%s  %s\n' \
             'ddad1a23a09aad22dee6a321b7608aac46c031230c184ec9b0d62981326e5fe3' \
             "$package" | sha256sum --check -
-          sudo apt-get install -y "$package"
+          # The Debian postinst imports Appium from the globally installed
+          # package. Node does not search npm's global root from APPIUM_HOME.
+          sudo env NODE_PATH=/usr/local/lib/node_modules apt-get install -y "$package"
           uimate-appium-doctor
       - name: Install Appium Linux driver
         run: |
@@ -359,6 +362,9 @@ jobs:
           eval "$(scripts/appium/ci-prepare-artifacts.sh)"
       - name: Select Xcode
         run: ./.github/scripts/select-xcode.sh
+      - name: Setup Nix for macOS catalog tip build
+        if: ${{ matrix.platform == 'macos' && !inputs.products_ready }}
+        uses: ./.github/actions/setup-nix-flakehub
       # This matrix runs the Appium unit gate in dry mode until product
       # artifacts are wired. Simulator SDK/runtime builds are covered by Gate: products.
       - name: Download product-macos-app

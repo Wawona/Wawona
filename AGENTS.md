@@ -268,6 +268,10 @@ missing patch anchors, meson version floors, or `Cargo.lock` skew.
   before push. Product builds fail closed unless `VERSION` is **today's**
   `YY.M.D` (`wawona-calver-today`, `.github/scripts/verify-calver-today.sh`).
   Escape: `WAWONA_ALLOW_STALE_CALVER=1`.
+- Nix source assembly can expand injected workspaces (for example, uutils
+  coreutils) and add a dependency edge that checkout-only `cargo metadata`
+  does not see. Compare the assembled source `Cargo.lock` with the vendor lock
+  and build the exact Linux product derivation before pushing.
 
 Full rule: workspace `.cursor/rules/wawona-local-before-ci.mdc`.
 

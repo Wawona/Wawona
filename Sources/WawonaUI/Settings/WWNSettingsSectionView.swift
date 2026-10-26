@@ -15,7 +15,7 @@ struct WWNSettingsSectionView: View {
     let section: WWNPreferencesSection
     @ObservedObject var model: WWNSettingsValueModel
     /// Host-owned; Env Vars registers Add for `[+][x]` detail chrome.
-    var chromeBridge: WawonaSettingsChromeBridge? = nil
+    var chromeBridge: WWNSettingsChromeBridge? = nil
 
     private var sectionAccent: Color { section.swiftUIIconColor }
 
@@ -45,8 +45,8 @@ struct WWNSettingsSectionView: View {
                 EnvironmentVariablesView(
                     preferences: WawonaPreferences.shared,
                     perMachine: false,
-                    chromeBridge: chromeBridge
                 )
+                    .environment(\.wwnSettingsChromeBridge, chromeBridge)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if section.accessibilityIdentifier == WWNA11y.settingsAppleWatch {
                 appleWatchDetail

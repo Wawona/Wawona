@@ -250,17 +250,6 @@ impl CompositorState {
             self.sync_surface_outputs(&resource, mapped);
         }
 
-        // wp_viewporter destination/source are double-buffered and take effect
-        // on wl_surface.commit. Destination overrides buffer/scale logical size
-        // so GTK4 + fractional scale (physical buffer, logical dest) present
-        // correctly instead of a single Retina quadrant.
-        if let Some(surface) = self.get_surface(surface_id) {
-            let mut surface = surface.write().unwrap();
-            self.ext
-                .viewporter
-                .apply_on_surface_commit(surface_id, &mut surface.current);
-        }
-
         let client_id = if let Some(surface) = self.get_surface(surface_id) {
             surface.read().unwrap().client_id.clone()
         } else {

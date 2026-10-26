@@ -1,4 +1,5 @@
 import SwiftUI
+import WawonaModel
 #if os(macOS)
 import AppKit
 #elseif os(iOS)
@@ -1053,8 +1054,8 @@ struct WWNMachinesGridViewModern: View {
         summaryPill("Profiles", "\(model.profiles.count)")
         summaryPill("Connected", "\(model.connectedCount)")
         summaryPill("Ready", "\(model.launchableCount)")
-        // Inline with the summary pills so the strip height — and the grid
-        // below it — never shifts when a tag filter toggles.
+        // The strip and grid below it keep a stable height when a tag filter
+        // toggles.
         tagFilterBar
       }
       .padding(.horizontal, 6)
