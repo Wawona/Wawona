@@ -123,9 +123,7 @@ pub fn settings_visible_sections(host: super::settings_catalog::SettingsHost) ->
 }
 
 #[uniffi::export]
-pub fn settings_allowed_vulkan_drivers(
-    host: super::settings_catalog::SettingsHost,
-) -> Vec<String> {
+pub fn settings_allowed_vulkan_drivers(host: super::settings_catalog::SettingsHost) -> Vec<String> {
     super::settings_catalog::allowed_vulkan_drivers(host)
         .iter()
         .map(|&s| s.to_string())
@@ -133,9 +131,7 @@ pub fn settings_allowed_vulkan_drivers(
 }
 
 #[uniffi::export]
-pub fn settings_allowed_opengl_drivers(
-    host: super::settings_catalog::SettingsHost,
-) -> Vec<String> {
+pub fn settings_allowed_opengl_drivers(host: super::settings_catalog::SettingsHost) -> Vec<String> {
     super::settings_catalog::allowed_opengl_drivers(host)
         .iter()
         .map(|&s| s.to_string())

@@ -104,6 +104,10 @@ public protocol WWNKeyboardAccessoryHosting: AnyObject {
 @objc(WWNKeyboardAccessoryView)
 public final class WWNKeyboardAccessoryView: KeyboardAccessoryView, WWNKeyboardAccessoryHosting, KeyboardButtonDelegate {
     @objc public weak var wwnDelegate: WWNKeyboardAccessoryDelegate?
+    /// Set for the key that is about to be delivered. Terminal reads these.
+    public private(set) var lastKeyControl = false
+    public private(set) var lastKeyAlt = false
+    public private(set) var lastKeyShift = false
 
     public override weak var delegate: KeyboardButtonDelegate? {
         get { self }
@@ -224,6 +228,9 @@ public final class WWNKeyboardAccessoryView: KeyboardAccessoryView, WWNKeyboardA
     // MARK: - KeyboardButtonDelegate
 
     public func keyPressed(_ key: String, modifiers: KeyModifiers) {
+        lastKeyControl = modifiers.contains(.control)
+        lastKeyAlt = modifiers.contains(.alt)
+        lastKeyShift = modifiers.contains(.shift)
         var keycode: UInt32 = 0
         var character: String? = key
 

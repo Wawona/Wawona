@@ -8,18 +8,17 @@ mod app {
     use std::sync::Arc;
     use std::time::Duration;
 
+    use adw::prelude::*;
     use gtk4 as gtk;
     use libadwaita as adw;
-    use adw::prelude::*;
 
     use wawona::ffi::api::WawonaCore;
     use wawona::ffi::api::{build_info, version};
     use wawona::ffi::types::{
-        AxisSource, BufferData, DecorationMode, KeyState as WlKeyState, PointerAxis,
-        PointerButton, RenderScene, WindowEvent, WindowId, WindowSizeCause,
+        AxisSource, BufferData, DecorationMode, KeyState as WlKeyState, PointerAxis, PointerButton,
+        RenderScene, WindowEvent, WindowId, WindowSizeCause,
     };
     use wawona::linux::machine_profile::MachineType;
-    use wawona::wlog;
     use wawona::linux::runtime::{
         ensure_runtime_dir, now_unix_ms, now_unix_s, read_runtime_state, write_runtime_env,
         write_runtime_state, RuntimeState,
@@ -29,10 +28,11 @@ mod app {
         build_tab_overview_view, build_work_status_view, clamp_content, ensure_settings_css,
         install_adaptive_split_view, is_touchscreen_active, make_resizable_sidebar,
         maybe_show_welcome, rebuild_home, scrollable_sidebar, show_editor,
-        sidebar_column_with_toggle,
-        AppState, LayoutBinding, MachineSessions, RebuildHome, SharedAppState,
+        sidebar_column_with_toggle, AppState, LayoutBinding, MachineSessions, RebuildHome,
+        SharedAppState,
     };
     use wawona::linux::ui_model::LayoutMode;
+    use wawona::wlog;
 
     struct CachedBuffer {
         pixels: Vec<u8>,
@@ -123,9 +123,13 @@ mod app {
             return;
         };
         last_ms.set(now);
-        if let Err(err) =
-            wawona::linux::thumbnail_store::save_argb32_premul(&machine_id, width, height, stride, &pixels)
-        {
+        if let Err(err) = wawona::linux::thumbnail_store::save_argb32_premul(
+            &machine_id,
+            width,
+            height,
+            stride,
+            &pixels,
+        ) {
             wawona::wlog!("UI", "machine thumbnail save failed: {err}");
         }
     }
@@ -144,12 +148,7 @@ mod app {
             );
             return;
         }
-        if cs
-            .last_dispatched_host_resizes
-            .get(&wid)
-            .copied()
-            == Some((w, h))
-        {
+        if cs.last_dispatched_host_resizes.get(&wid).copied() == Some((w, h)) {
             return;
         }
 
@@ -193,8 +192,7 @@ mod app {
             w,
             h
         );
-        cs.core
-            .end_interactive_resize(WindowId { id: wid }, w, h);
+        cs.core.end_interactive_resize(WindowId { id: wid }, w, h);
     }
 
     fn wayland_socket_exists() -> bool {
@@ -222,8 +220,12 @@ mod app {
             let lock = runtime_dir.join(format!("wawona-{i}.lock"));
             let is_alive = std::os::unix::net::UnixStream::connect(&sock).is_ok();
             if !is_alive {
-                if sock.exists() { let _ = std::fs::remove_file(&sock); }
-                if lock.exists() { let _ = std::fs::remove_file(&lock); }
+                if sock.exists() {
+                    let _ = std::fs::remove_file(&sock);
+                }
+                if lock.exists() {
+                    let _ = std::fs::remove_file(&lock);
+                }
             }
         }
 
@@ -235,7 +237,11 @@ mod app {
             core.set_output_size(1280, 800, 1.0);
             match core.start(Some(candidate.clone())) {
                 Ok(_) => {
-                    wawona::wlog!("COMPOSITOR", "Embedded compositor started socket={}", candidate);
+                    wawona::wlog!(
+                        "COMPOSITOR",
+                        "Embedded compositor started socket={}",
+                        candidate
+                    );
                     let socket_path = core.get_socket_path();
                     let _ = write_runtime_env(&runtime_dir, &candidate);
                     let state = RuntimeState {
@@ -262,11 +268,7 @@ mod app {
         None
     }
 
-    fn setup_input_on_drawing_area(
-        da: &gtk::DrawingArea,
-        core: &Arc<WawonaCore>,
-        wid: u64,
-    ) {
+    fn setup_input_on_drawing_area(da: &gtk::DrawingArea, core: &Arc<WawonaCore>, wid: u64) {
         let window_id = WindowId { id: wid };
 
         // Mouse motion
@@ -299,9 +301,7 @@ mod app {
         da.add_controller(motion_ctrl);
 
         // Mouse buttons
-        let click_ctrl = gtk::GestureClick::builder()
-            .button(0)
-            .build();
+        let click_ctrl = gtk::GestureClick::builder().button(0).build();
         {
             let core = core.clone();
             let wid = window_id;
@@ -368,10 +368,24 @@ mod app {
             scroll_ctrl.connect_scroll(move |_, dx, dy| {
                 let ts = (now_unix_ms() & 0xFFFF_FFFF) as u32;
                 if dy.abs() > 0.001 {
-                    core.inject_pointer_axis(wid, PointerAxis::Vertical, dy * 15.0, 0, AxisSource::Wheel, ts);
+                    core.inject_pointer_axis(
+                        wid,
+                        PointerAxis::Vertical,
+                        dy * 15.0,
+                        0,
+                        AxisSource::Wheel,
+                        ts,
+                    );
                 }
                 if dx.abs() > 0.001 {
-                    core.inject_pointer_axis(wid, PointerAxis::Horizontal, dx * 15.0, 0, AxisSource::Wheel, ts);
+                    core.inject_pointer_axis(
+                        wid,
+                        PointerAxis::Horizontal,
+                        dx * 15.0,
+                        0,
+                        AxisSource::Wheel,
+                        ts,
+                    );
                 }
                 core.inject_pointer_frame(wid);
                 gtk::glib::Propagation::Stop
@@ -404,7 +418,12 @@ mod app {
     }
 
     pub fn run() {
-        wawona::wlog!("UI", "Wawona Linux starting version={} build={}", version(), build_info());
+        wawona::wlog!(
+            "UI",
+            "Wawona Linux starting version={} build={}",
+            version(),
+            build_info()
+        );
 
         if wayland_socket_exists() {
             env::set_var("GDK_BACKEND", "wayland");
@@ -419,8 +438,11 @@ mod app {
             eprintln!("Wawona Linux UI cannot start: {err}");
             return;
         }
-        wawona::wlog!("UI", "GTK initialized backend={}",
-            env::var("GDK_BACKEND").unwrap_or_else(|_| "auto".into()));
+        wawona::wlog!(
+            "UI",
+            "GTK initialized backend={}",
+            env::var("GDK_BACKEND").unwrap_or_else(|_| "auto".into())
+        );
 
         let app = adw::Application::builder()
             .application_id("com.aspauldingcode.wawona.linux")
@@ -472,7 +494,10 @@ mod app {
         let machine_sessions: MachineSessions = Rc::new(RefCell::new(HashMap::new()));
         let comp = Rc::new(RefCell::new(CompositorState {
             core: compositor.clone().unwrap_or_else(|| {
-                wawona::wlog!("COMPOSITOR", "No embedded compositor; windows will not render");
+                wawona::wlog!(
+                    "COMPOSITOR",
+                    "No embedded compositor; windows will not render"
+                );
                 WawonaCore::new()
             }),
             buffer_cache: HashMap::new(),
@@ -508,7 +533,10 @@ mod app {
         let split_view_key = split_view.clone();
         key_controller.connect_key_pressed(move |_, keyval, _, state| {
             let is_ctrl = state.contains(gtk::gdk::ModifierType::CONTROL_MASK);
-            if (is_ctrl && (keyval == gtk::gdk::Key::b || keyval == gtk::gdk::Key::B || keyval == gtk::gdk::Key::backslash))
+            if (is_ctrl
+                && (keyval == gtk::gdk::Key::b
+                    || keyval == gtk::gdk::Key::B
+                    || keyval == gtk::gdk::Key::backslash))
                 || keyval == gtk::gdk::Key::F9
             {
                 let shows = split_view_key.shows_sidebar();
@@ -525,7 +553,10 @@ mod app {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                    if name.contains("adwaita-icon-theme") && !name.ends_with(".drv") && !name.ends_with(".xz") {
+                    if name.contains("adwaita-icon-theme")
+                        && !name.ends_with(".drv")
+                        && !name.ends_with(".xz")
+                    {
                         let icons_dir = path.join("share").join("icons");
                         if icons_dir.is_dir() {
                             icon_theme.add_search_path(&icons_dir);
@@ -540,10 +571,14 @@ mod app {
         // Wawona. No second app-name mark in the header.
         let header = adw::HeaderBar::new();
 
-        let toggle_icon_name = ["sidebar-show-symbolic", "view-sidebar-symbolic", "pan-start-symbolic"]
-            .into_iter()
-            .find(|&ic| icon_theme.has_icon(ic))
-            .unwrap_or("sidebar-show-symbolic");
+        let toggle_icon_name = [
+            "sidebar-show-symbolic",
+            "view-sidebar-symbolic",
+            "pan-start-symbolic",
+        ]
+        .into_iter()
+        .find(|&ic| icon_theme.has_icon(ic))
+        .unwrap_or("sidebar-show-symbolic");
 
         let toggle_sidebar_btn = gtk::Button::from_icon_name(toggle_icon_name);
         toggle_sidebar_btn.set_tooltip_text(Some("Toggle Sidebar (Ctrl+B)"));
@@ -571,11 +606,7 @@ mod app {
         // in before Add to render as [Search][Add][Settings].
         let settings_btn = gtk::Button::from_icon_name("emblem-system-symbolic");
         settings_btn.set_tooltip_text(Some("Settings"));
-        a11y::set_wwn_a11y(
-            &settings_btn,
-            a11y::id::MACHINES_SETTINGS,
-            Some("Settings"),
-        );
+        a11y::set_wwn_a11y(&settings_btn, a11y::id::MACHINES_SETTINGS, Some("Settings"));
         header.pack_end(&settings_btn);
 
         let new_btn = gtk::Button::from_icon_name("list-add-symbolic");
@@ -780,7 +811,11 @@ mod app {
 
         let row_machines = make_sidebar_row(
             "Machines",
-            &["user-desktop-symbolic", "computer-symbolic", "video-display-symbolic"],
+            &[
+                "user-desktop-symbolic",
+                "computer-symbolic",
+                "video-display-symbolic",
+            ],
             "wwn-icon-indigo",
             a11y::id::MACHINES_ROOT,
         );
@@ -796,18 +831,20 @@ mod app {
 
         let row_work_status = make_sidebar_row(
             "Work Status",
-            &["view-list-symbolic", "task-due-symbolic", "checkbox-checked-symbolic"],
+            &[
+                "view-list-symbolic",
+                "task-due-symbolic",
+                "checkbox-checked-symbolic",
+            ],
             "wwn-icon-orange",
             "wwn.projectStatus",
         );
         sidebar_list.append(&row_work_status);
 
-        sidebar_list.set_header_func(move |row, _before| {
-            match row.index() {
-                0 => row.set_header(Some(&make_section_hdr("Machines"))),
-                2 => row.set_header(Some(&make_section_hdr("Project"))),
-                _ => row.set_header(gtk::Widget::NONE),
-            }
+        sidebar_list.set_header_func(move |row, _before| match row.index() {
+            0 => row.set_header(Some(&make_section_hdr("Machines"))),
+            2 => row.set_header(Some(&make_section_hdr("Project"))),
+            _ => row.set_header(gtk::Widget::NONE),
         });
 
         sidebar_box.append(&sidebar_list);
@@ -1092,7 +1129,8 @@ mod app {
                                 }
                             }
                         });
-                        let tab_view = build_tab_overview_view(&state, sessions.clone(), on_select, on_close);
+                        let tab_view =
+                            build_tab_overview_view(&state, sessions.clone(), on_select, on_close);
                         tab_overview_slot.append(&tab_view);
                         content_stack.set_visible_child_name("tab_overview");
                     }
@@ -1185,7 +1223,11 @@ mod app {
                     }
 
                     row.set_child(Some(&row_box));
-                    a11y::set_wwn_a11y(&row, &format!("wwn.sidebar.tag.{}", tag.id), Some(&tag.name));
+                    a11y::set_wwn_a11y(
+                        &row,
+                        &format!("wwn.sidebar.tag.{}", tag.id),
+                        Some(&tag.name),
+                    );
 
                     let right_click = gtk::GestureClick::new();
                     right_click.set_button(3);
@@ -1330,7 +1372,12 @@ mod app {
 
                 match wawona::linux::ui::start_terminal(&launch) {
                     Ok((child, session, master)) => {
-                        wlog!("UI", "Started in-app terminal '{}' pid={}", mname, child.id());
+                        wlog!(
+                            "UI",
+                            "Started in-app terminal '{}' pid={}",
+                            mname,
+                            child.id()
+                        );
                         let pid = child.id();
                         sessions.borrow_mut().insert(mid.clone(), child);
                         {
@@ -1460,10 +1507,23 @@ mod app {
                 while let Some(wb) = cs.core.pop_pending_buffer() {
                     let sid = wb.surface_id.id;
                     let bid = wb.buffer.id.id;
-                    if let BufferData::Shm { pixels, width, height, stride, .. } = wb.buffer.data {
-                        cs.buffer_cache.insert((sid, bid), CachedBuffer {
-                            pixels, width, height, stride,
-                        });
+                    if let BufferData::Shm {
+                        pixels,
+                        width,
+                        height,
+                        stride,
+                        ..
+                    } = wb.buffer.data
+                    {
+                        cs.buffer_cache.insert(
+                            (sid, bid),
+                            CachedBuffer {
+                                pixels,
+                                width,
+                                height,
+                                stride,
+                            },
+                        );
                     }
                 }
 
@@ -1501,8 +1561,14 @@ mod app {
                             }
 
                             let is_csd = config.decoration_mode == DecorationMode::ClientSide;
-                            wawona::wlog!("COMPOSITOR", "Creating host window wid={} title='{}' decoration={:?} client={}",
-                                wid, config.title, config.decoration_mode, cid);
+                            wawona::wlog!(
+                                "COMPOSITOR",
+                                "Creating host window wid={} title='{}' decoration={:?} client={}",
+                                wid,
+                                config.title,
+                                config.decoration_mode,
+                                cid
+                            );
 
                             let client_win = gtk::Window::builder()
                                 .title(&config.title)
@@ -1643,31 +1709,37 @@ mod app {
                                 let core_m = cs.core.clone();
                                 let da_m = da.clone();
                                 let wid_m = wid;
-                                client_win.connect_notify_local(Some("maximized"), move |win, _| {
-                                    let w = da_m.width().max(1) as u32;
-                                    let h = da_m.height().max(1) as u32;
-                                    core_m.apply_host_window_maximized(
-                                        WindowId { id: wid_m },
-                                        win.is_maximized(),
-                                        w,
-                                        h,
-                                    );
-                                });
+                                client_win.connect_notify_local(
+                                    Some("maximized"),
+                                    move |win, _| {
+                                        let w = da_m.width().max(1) as u32;
+                                        let h = da_m.height().max(1) as u32;
+                                        core_m.apply_host_window_maximized(
+                                            WindowId { id: wid_m },
+                                            win.is_maximized(),
+                                            w,
+                                            h,
+                                        );
+                                    },
+                                );
                             }
                             {
                                 let core_f = cs.core.clone();
                                 let da_f = da.clone();
                                 let wid_f = wid;
-                                client_win.connect_notify_local(Some("fullscreened"), move |win, _| {
-                                    let w = da_f.width().max(1) as u32;
-                                    let h = da_f.height().max(1) as u32;
-                                    core_f.apply_host_window_fullscreen(
-                                        WindowId { id: wid_f },
-                                        win.is_fullscreen(),
-                                        w,
-                                        h,
-                                    );
-                                });
+                                client_win.connect_notify_local(
+                                    Some("fullscreened"),
+                                    move |win, _| {
+                                        let w = da_f.width().max(1) as u32;
+                                        let h = da_f.height().max(1) as u32;
+                                        core_f.apply_host_window_fullscreen(
+                                            WindowId { id: wid_f },
+                                            win.is_fullscreen(),
+                                            w,
+                                            h,
+                                        );
+                                    },
+                                );
                             }
 
                             // Per-window resize → host + any fullscreen-shell companions (nested compositor output)
@@ -1676,7 +1748,13 @@ mod app {
                                 da.connect_resize(move |_da, w, h| {
                                     let w = w as u32;
                                     let h = h as u32;
-                                    wawona::wlog!("COMPOSITOR", "Window {} resize {}x{}", wid, w, h);
+                                    wawona::wlog!(
+                                        "COMPOSITOR",
+                                        "Window {} resize {}x{}",
+                                        wid,
+                                        w,
+                                        h
+                                    );
                                     let mut cs = comp_r.borrow_mut();
                                     cs.pending_host_resizes.insert(wid, (w, h));
                                     dispatch_pending_host_resize(&mut cs, wid);
@@ -1740,9 +1818,13 @@ mod app {
                                     }
                                     let sid = node.surface_id.id;
                                     let bid = node.texture.handle;
-                                    if bid == 0 { continue; }
+                                    if bid == 0 {
+                                        continue;
+                                    }
 
-                                    let Some(buf) = cs.buffer_cache.get(&(sid, bid)) else { continue; };
+                                    let Some(buf) = cs.buffer_cache.get(&(sid, bid)) else {
+                                        continue;
+                                    };
 
                                     let surf = cairo::ImageSurface::create_for_data(
                                         buf.pixels.clone(),
@@ -1751,22 +1833,21 @@ mod app {
                                         buf.height as i32,
                                         buf.stride as i32,
                                     );
-                                    let Ok(surf) = surf else { continue; };
+                                    let Ok(surf) = surf else {
+                                        continue;
+                                    };
 
                                     let _ = cr.save();
-                                    let (anchor_x, anchor_y) =
-                                        if node.window_id.id != wid_for_draw {
-                                            let (hx, hy) = host_anchor.unwrap_or((
-                                                node.anchor_output_x,
-                                                node.anchor_output_y,
-                                            ));
-                                            (hx as f64, hy as f64)
-                                        } else {
-                                            (
-                                                node.anchor_output_x as f64,
-                                                node.anchor_output_y as f64,
-                                            )
-                                        };
+                                    let (anchor_x, anchor_y) = if node.window_id.id != wid_for_draw
+                                    {
+                                        let (hx, hy) = host_anchor.unwrap_or((
+                                            node.anchor_output_x,
+                                            node.anchor_output_y,
+                                        ));
+                                        (hx as f64, hy as f64)
+                                    } else {
+                                        (node.anchor_output_x as f64, node.anchor_output_y as f64)
+                                    };
                                     let local_x = node.x as f64 - anchor_x;
                                     let local_y = node.y as f64 - anchor_y;
                                     cr.translate(local_x, local_y);
@@ -1775,8 +1856,10 @@ mod app {
                                     let cr_y = node.content_rect.y as f64;
                                     let cr_w = node.content_rect.w as f64;
                                     let cr_h = node.content_rect.h as f64;
-                                    let has_crop = cr_w > 0.0 && cr_h > 0.0
-                                        && (cr_x > 0.001 || cr_y > 0.001
+                                    let has_crop = cr_w > 0.0
+                                        && cr_h > 0.0
+                                        && (cr_x > 0.001
+                                            || cr_y > 0.001
                                             || (cr_w - 1.0).abs() > 0.001
                                             || (cr_h - 1.0).abs() > 0.001);
 
@@ -1837,15 +1920,18 @@ mod app {
                                 cs.last_dispatched_host_resizes
                                     .insert(wid, (config.width, config.height));
                             }
-                            cs.client_windows.insert(wid, ClientWindow {
-                                gtk_window: client_win,
-                                drawing_area: da,
-                                window_id: wid,
-                                companion_window_ids,
-                                allow_host_close,
-                                client_side_decorated: is_csd,
-                                fills_host,
-                            });
+                            cs.client_windows.insert(
+                                wid,
+                                ClientWindow {
+                                    gtk_window: client_win,
+                                    drawing_area: da,
+                                    window_id: wid,
+                                    companion_window_ids,
+                                    allow_host_close,
+                                    client_side_decorated: is_csd,
+                                    fills_host,
+                                },
+                            );
                         }
                         WindowEvent::Destroyed { window_id } => {
                             let wid = window_id.id;
@@ -1865,7 +1951,11 @@ mod app {
                                 .retain(|_, h| *h != wid);
 
                             if let Some(cw) = cs.client_windows.remove(&wid) {
-                                wawona::wlog!("COMPOSITOR", "Destroying host GtkWindow wid={}", wid);
+                                wawona::wlog!(
+                                    "COMPOSITOR",
+                                    "Destroying host GtkWindow wid={}",
+                                    wid
+                                );
                                 cw.allow_host_close.set(true);
                                 cw.gtk_window.close();
                             } else {
@@ -1884,7 +1974,13 @@ mod app {
                                 cw.gtk_window.set_title(Some(&title));
                             }
                         }
-                        WindowEvent::SizeChanged { window_id, width, height, cause, .. } => {
+                        WindowEvent::SizeChanged {
+                            window_id,
+                            width,
+                            height,
+                            cause,
+                            ..
+                        } => {
                             if let Some(cw) = cs.client_windows.get(&window_id.id) {
                                 if !(cw.fills_host && cause == WindowSizeCause::ClientCommit) {
                                     cw.gtk_window.set_default_size(width as i32, height as i32);
@@ -1902,16 +1998,18 @@ mod app {
                                     // No newer host tick pending. Clear
                                     // xdg_toplevel.state.resizing with a settle
                                     // configure (even if size is unchanged).
-                                    settle_interactive_resize(
-                                        &mut cs,
-                                        window_id.id,
-                                        width,
-                                        height,
-                                    );
+                                    settle_interactive_resize(&mut cs, window_id.id, width, height);
                                 }
                             }
                         }
-                        WindowEvent::PopupCreated { window_id, parent_id, x, y, width, height } => {
+                        WindowEvent::PopupCreated {
+                            window_id,
+                            parent_id,
+                            x,
+                            y,
+                            width,
+                            height,
+                        } => {
                             // Composite the popup inside the host window that
                             // renders its parent (toplevel or another popup's
                             // host). Same mechanism as fullscreen-shell
@@ -1928,7 +2026,13 @@ mod app {
                             wawona::wlog!(
                                 "COMPOSITOR",
                                 "Popup wid={} parent={} at ({},{}) {}x{} → host {:?}",
-                                window_id.id, pid, x, y, width, height, host_wid
+                                window_id.id,
+                                pid,
+                                x,
+                                y,
+                                width,
+                                height,
+                                host_wid
                             );
                             if let Some(hwid) = host_wid {
                                 if let Some(host) = cs.client_windows.get_mut(&hwid) {
@@ -1950,7 +2054,12 @@ mod app {
                         WindowEvent::DecorationModeChanged { window_id, mode } => {
                             let is_csd = mode == DecorationMode::ClientSide;
                             let dims = if let Some(cw) = cs.client_windows.get_mut(&window_id.id) {
-                                wawona::wlog!("COMPOSITOR", "Window {} decoration changed to {:?}", window_id.id, mode);
+                                wawona::wlog!(
+                                    "COMPOSITOR",
+                                    "Window {} decoration changed to {:?}",
+                                    window_id.id,
+                                    mode
+                                );
                                 cw.client_side_decorated = is_csd;
                                 cw.gtk_window.set_decorated(!is_csd);
                                 let w = cw.drawing_area.width().max(1) as u32;
@@ -1969,37 +2078,61 @@ mod app {
                         }
                         WindowEvent::MinimizeRequested { window_id } => {
                             if let Some(cw) = cs.client_windows.get(&window_id.id) {
-                                wawona::wlog!("COMPOSITOR", "MinimizeRequested wid={}", window_id.id);
+                                wawona::wlog!(
+                                    "COMPOSITOR",
+                                    "MinimizeRequested wid={}",
+                                    window_id.id
+                                );
                                 cw.gtk_window.minimize();
                             }
                         }
                         WindowEvent::MaximizeRequested { window_id } => {
                             if let Some(cw) = cs.client_windows.get(&window_id.id) {
-                                wawona::wlog!("COMPOSITOR", "MaximizeRequested wid={}", window_id.id);
+                                wawona::wlog!(
+                                    "COMPOSITOR",
+                                    "MaximizeRequested wid={}",
+                                    window_id.id
+                                );
                                 cw.gtk_window.maximize();
                             }
                         }
                         WindowEvent::UnmaximizeRequested { window_id } => {
                             if let Some(cw) = cs.client_windows.get(&window_id.id) {
-                                wawona::wlog!("COMPOSITOR", "UnmaximizeRequested wid={}", window_id.id);
+                                wawona::wlog!(
+                                    "COMPOSITOR",
+                                    "UnmaximizeRequested wid={}",
+                                    window_id.id
+                                );
                                 cw.gtk_window.unmaximize();
                             }
                         }
                         WindowEvent::FullscreenRequested { window_id } => {
                             if let Some(cw) = cs.client_windows.get(&window_id.id) {
-                                wawona::wlog!("COMPOSITOR", "FullscreenRequested wid={}", window_id.id);
+                                wawona::wlog!(
+                                    "COMPOSITOR",
+                                    "FullscreenRequested wid={}",
+                                    window_id.id
+                                );
                                 cw.gtk_window.fullscreen();
                             }
                         }
                         WindowEvent::UnfullscreenRequested { window_id } => {
                             if let Some(cw) = cs.client_windows.get(&window_id.id) {
-                                wawona::wlog!("COMPOSITOR", "UnfullscreenRequested wid={}", window_id.id);
+                                wawona::wlog!(
+                                    "COMPOSITOR",
+                                    "UnfullscreenRequested wid={}",
+                                    window_id.id
+                                );
                                 cw.gtk_window.unfullscreen();
                             }
                         }
                         WindowEvent::CloseRequested { window_id } => {
                             if let Some(cw) = cs.client_windows.get(&window_id.id) {
-                                wawona::wlog!("COMPOSITOR", "CloseRequested wid={} → host close", window_id.id);
+                                wawona::wlog!(
+                                    "COMPOSITOR",
+                                    "CloseRequested wid={} → host close",
+                                    window_id.id
+                                );
                                 cw.allow_host_close.set(true);
                                 cw.gtk_window.close();
                             }
@@ -2008,6 +2141,16 @@ mod app {
                             if let Some(cw) = cs.client_windows.get(&window_id.id) {
                                 cw.gtk_window.present();
                                 let _ = cw.drawing_area.grab_focus();
+                            }
+                        }
+                        WindowEvent::SystemBell { surface_id } => {
+                            wawona::wlog!(
+                                "COMPOSITOR",
+                                "SystemBell surface_id={} → gdk Display::beep",
+                                surface_id
+                            );
+                            if let Some(display) = gtk::gdk::Display::default() {
+                                display.beep();
                             }
                         }
                         _ => {}
@@ -2119,7 +2262,11 @@ mod app {
     }
 }
 #[cfg(feature = "linux-ui")]
-fn main() { app::run(); }
+fn main() {
+    app::run();
+}
 
 #[cfg(not(feature = "linux-ui"))]
-fn main() { eprintln!("wawona-linux-ui requires --features linux-ui"); }
+fn main() {
+    eprintln!("wawona-linux-ui requires --features linux-ui");
+}

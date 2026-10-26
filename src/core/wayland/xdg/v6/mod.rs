@@ -6,10 +6,10 @@
 
 pub mod protocol;
 
-use std::sync::{Arc, Mutex};
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_positioner;
 use smithay::utils::{Point, Rectangle};
 use smithay::wayland::shell::xdg::PositionerState;
+use std::sync::{Arc, Mutex};
 use wayland_server::protocol::wl_output::WlOutput;
 use wayland_server::protocol::wl_seat::WlSeat;
 use wayland_server::protocol::wl_surface::WlSurface;
@@ -22,9 +22,7 @@ use self::protocol::zxdg_surface_v6::{self, ZxdgSurfaceV6};
 use self::protocol::zxdg_toplevel_v6::{self, ZxdgToplevelV6};
 
 use crate::core::compositor::CompositorEvent;
-use crate::core::state::{
-    CompositorState, XdgPopupData, XdgSurfaceData, XdgToplevelData,
-};
+use crate::core::state::{CompositorState, XdgPopupData, XdgSurfaceData, XdgToplevelData};
 use crate::core::surface::BufferType;
 use crate::core::surface::SurfaceRole;
 use crate::core::window::Window;
@@ -368,12 +366,10 @@ impl Dispatch<ZxdgSurfaceV6, Arc<V6SurfaceUserData>> for CompositorState {
                 let xdg_surf_id = resource.id().protocol_id();
                 let window_id = state.next_window_id();
                 let mut window = Window::new(window_id, data.internal_surface_id);
-                window.decoration_policy =
-                    state.client_decoration_policy.get(&client_id).copied();
+                window.decoration_policy = state.client_decoration_policy.get(&client_id).copied();
                 window.width = 0;
                 window.height = 0;
-                window.size_authority =
-                    crate::core::window::SizeAuthority::AwaitingFirstCommit;
+                window.size_authority = crate::core::window::SizeAuthority::AwaitingFirstCommit;
 
                 let tl_user_data = Arc::new(V6ToplevelUserData {
                     window_id,
@@ -414,9 +410,10 @@ impl Dispatch<ZxdgSurfaceV6, Arc<V6SurfaceUserData>> for CompositorState {
                         title: String::new(),
                         width: 0,
                         height: 0,
-                        decoration_mode: crate::core::state::CompositorState::decoration_mode_for_policy(
-                            state.effective_decoration_policy(Some(&client_id)),
-                        ),
+                        decoration_mode:
+                            crate::core::state::CompositorState::decoration_mode_for_policy(
+                                state.effective_decoration_policy(Some(&client_id)),
+                            ),
                         fullscreen_shell: false,
                         host_locked,
                         fills_host: false,
@@ -482,10 +479,7 @@ impl Dispatch<ZxdgSurfaceV6, Arc<V6SurfaceUserData>> for CompositorState {
 
                 let parent_id = parent.id().protocol_id();
                 let client_id = client.id();
-                let parent_surface = state
-                    .xdg
-                    .surfaces
-                    .get(&(client_id.clone(), parent_id));
+                let parent_surface = state.xdg.surfaces.get(&(client_id.clone(), parent_id));
                 let parent_window_id = parent_surface.and_then(|s| s.window_id);
 
                 let pos_state = match pos_data.to_positioner_state() {
@@ -581,10 +575,8 @@ impl Dispatch<ZxdgSurfaceV6, Arc<V6SurfaceUserData>> for CompositorState {
                     Err(poisoned) => poisoned.into_inner(),
                 };
                 if matches!(surf_state.role, V6Role::Unassigned) {
-                    resource.post_error(
-                        zxdg_surface_v6::Error::NotConstructed,
-                        "role not assigned",
-                    );
+                    resource
+                        .post_error(zxdg_surface_v6::Error::NotConstructed, "role not assigned");
                     return;
                 }
                 if width <= 0 || height <= 0 {
@@ -596,8 +588,10 @@ impl Dispatch<ZxdgSurfaceV6, Arc<V6SurfaceUserData>> for CompositorState {
                 let client_id = client.id();
                 let xdg_surf_id = resource.id().protocol_id();
 
-                if let Some(surface_data) =
-                    state.xdg.surfaces.get_mut(&(client_id.clone(), xdg_surf_id))
+                if let Some(surface_data) = state
+                    .xdg
+                    .surfaces
+                    .get_mut(&(client_id.clone(), xdg_surf_id))
                 {
                     if serial > surface_data.last_acked_serial {
                         surface_data.last_acked_serial = serial;
@@ -619,11 +613,10 @@ impl Dispatch<ZxdgSurfaceV6, Arc<V6SurfaceUserData>> for CompositorState {
                     }
                 }
 
-                if let Some((_, tl_data)) = state
-                    .xdg
-                    .toplevels
-                    .iter_mut()
-                    .find(|((cid, _), tl)| *cid == client_id && tl.xdg_surface_id == xdg_surf_id)
+                if let Some((_, tl_data)) =
+                    state.xdg.toplevels.iter_mut().find(|((cid, _), tl)| {
+                        *cid == client_id && tl.xdg_surface_id == xdg_surf_id
+                    })
                 {
                     if tl_data.pending_serial == serial {
                         if serial > tl_data.last_acked_serial {
@@ -690,23 +683,15 @@ impl Dispatch<ZxdgToplevelV6, Arc<V6ToplevelUserData>> for CompositorState {
                 }
             }
             zxdg_toplevel_v6::Request::SetParent { parent } => {
-                let parent_window_id = parent.as_ref().and_then(|p| {
-                    p.data::<Arc<V6ToplevelUserData>>().map(|u| u.window_id)
-                });
-                if let Some(tl_data) = state
-                    .xdg
-                    .toplevels
-                    .get_mut(&(client_id, toplevel_id))
-                {
+                let parent_window_id = parent
+                    .as_ref()
+                    .and_then(|p| p.data::<Arc<V6ToplevelUserData>>().map(|u| u.window_id));
+                if let Some(tl_data) = state.xdg.toplevels.get_mut(&(client_id, toplevel_id)) {
                     tl_data.parent = parent_window_id;
                 }
             }
             zxdg_toplevel_v6::Request::SetTitle { title } => {
-                if let Some(tl_data) = state
-                    .xdg
-                    .toplevels
-                    .get_mut(&(client_id, toplevel_id))
-                {
+                if let Some(tl_data) = state.xdg.toplevels.get_mut(&(client_id, toplevel_id)) {
                     tl_data.title = title.clone();
                 }
                 state.update_window(data.window_id, |w| {
@@ -714,11 +699,7 @@ impl Dispatch<ZxdgToplevelV6, Arc<V6ToplevelUserData>> for CompositorState {
                 });
             }
             zxdg_toplevel_v6::Request::SetAppId { app_id } => {
-                if let Some(tl_data) = state
-                    .xdg
-                    .toplevels
-                    .get_mut(&(client_id, toplevel_id))
-                {
+                if let Some(tl_data) = state.xdg.toplevels.get_mut(&(client_id, toplevel_id)) {
                     tl_data.app_id = app_id.clone();
                 }
                 state.update_window(data.window_id, |w| {
@@ -758,21 +739,13 @@ impl Dispatch<ZxdgToplevelV6, Arc<V6ToplevelUserData>> for CompositorState {
                     });
             }
             zxdg_toplevel_v6::Request::SetMaxSize { width, height } => {
-                if let Some(tl_data) = state
-                    .xdg
-                    .toplevels
-                    .get_mut(&(client_id, toplevel_id))
-                {
+                if let Some(tl_data) = state.xdg.toplevels.get_mut(&(client_id, toplevel_id)) {
                     tl_data.max_width = width;
                     tl_data.max_height = height;
                 }
             }
             zxdg_toplevel_v6::Request::SetMinSize { width, height } => {
-                if let Some(tl_data) = state
-                    .xdg
-                    .toplevels
-                    .get_mut(&(client_id, toplevel_id))
-                {
+                if let Some(tl_data) = state.xdg.toplevels.get_mut(&(client_id, toplevel_id)) {
                     tl_data.min_width = width;
                     tl_data.min_height = height;
                 }

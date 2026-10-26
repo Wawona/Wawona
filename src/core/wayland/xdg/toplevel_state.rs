@@ -110,7 +110,11 @@ impl CompositorState {
     /// chose (it committed a buffer while floating) is restored; otherwise
     /// 0x0 lets the client decide. The current size is the maximized or
     /// fullscreen size and must never be echoed back.
-    pub(crate) fn restore_floating_geometry(&mut self, key: &ToplevelKey, window_id: u32) -> (u32, u32) {
+    pub(crate) fn restore_floating_geometry(
+        &mut self,
+        key: &ToplevelKey,
+        window_id: u32,
+    ) -> (u32, u32) {
         let saved = self
             .xdg
             .toplevels

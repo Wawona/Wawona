@@ -126,7 +126,10 @@ impl CompositorState {
 
     /// Popup constraint target in the parent's coordinate space (positioner
     /// geometry is parent-relative).
-    pub(crate) fn popup_target_rect_for(&self, parent_window: Option<u32>) -> Rectangle<i32, Logical> {
+    pub(crate) fn popup_target_rect_for(
+        &self,
+        parent_window: Option<u32>,
+    ) -> Rectangle<i32, Logical> {
         let mut rect = self.popup_target_rect();
         if let Some((px, py)) = parent_window.and_then(|wid| self.window_origin(wid)) {
             rect.loc.x -= px;

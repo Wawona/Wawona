@@ -222,7 +222,9 @@ pub extern "C" fn wawona_capability_gate(
 /// 1 if `key` is a UserDefaults key mirrored through CloudKit.
 #[no_mangle]
 pub extern "C" fn wawona_cloud_sync_is_synced_key(key: *const c_char) -> i32 {
-    cstr_to_str(key).map_or(0, |k| i32::from(super::cloud_sync::is_synced_defaults_key(k)))
+    cstr_to_str(key).map_or(0, |k| {
+        i32::from(super::cloud_sync::is_synced_defaults_key(k))
+    })
 }
 
 /// 1 if a HOME-relative path (`/` separators) must not be mirrored.

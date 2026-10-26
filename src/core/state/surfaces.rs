@@ -250,6 +250,17 @@ impl CompositorState {
             self.sync_surface_outputs(&resource, mapped);
         }
 
+        // wp_viewporter destination/source are double-buffered and take effect
+        // on wl_surface.commit. Destination overrides buffer/scale logical size
+        // so GTK4 + fractional scale (physical buffer, logical dest) present
+        // correctly instead of a single Retina quadrant.
+        if let Some(surface) = self.get_surface(surface_id) {
+            let mut surface = surface.write().unwrap();
+            self.ext
+                .viewporter
+                .apply_on_surface_commit(surface_id, &mut surface.current);
+        }
+
         let client_id = if let Some(surface) = self.get_surface(surface_id) {
             surface.read().unwrap().client_id.clone()
         } else {
@@ -517,7 +528,10 @@ impl CompositorState {
                                 // surfaces in the output (flower/smoke 200×200)
                                 // once, when they map. Later commits must not
                                 // undo a compositor or user move.
-                                if first_map && window.size_authority.is_client() && !self.headless_host {
+                                if first_map
+                                    && window.size_authority.is_client()
+                                    && !self.headless_host
+                                {
                                     let (ow, oh) = self
                                         .outputs
                                         .get(self.primary_output)
@@ -592,6 +606,25 @@ impl CompositorState {
             }
 
             let buffer_id = surface.current.buffer_id.map(|id| id as u64);
+            let committed_w = surface.current.width as i32;
+            let committed_h = surface.current.height as i32;
+            if direct_window_id.is_some() && committed_w > 0 && committed_h > 0 {
+                if let Some(popup) = self.xdg.popups.values_mut().find(|p| p.surface_id == id) {
+                    let (px, py, gw, gh) = popup.geometry;
+                    if committed_w != gw || committed_h != gh {
+                        popup.geometry = (px, py, committed_w, committed_h);
+                        self.pending_compositor_events.push(
+                            crate::core::compositor::CompositorEvent::PopupRepositioned {
+                                window_id: popup.window_id,
+                                x: px,
+                                y: py,
+                                width: committed_w.max(1) as u32,
+                                height: committed_h.max(1) as u32,
+                            },
+                        );
+                    }
+                }
+            }
             self.pending_compositor_events.push(
                 crate::core::compositor::CompositorEvent::SurfaceCommitted {
                     client_id: client_id.clone(),

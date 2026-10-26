@@ -125,7 +125,9 @@ impl Dispatch<WlShell, ()> for CompositorState {
                 let width = window.width.max(0) as u32;
                 let height = window.height.max(0) as u32;
                 state.register_window(internal_surface_id, window);
-                state.surface_to_window.insert(internal_surface_id, window_id);
+                state
+                    .surface_to_window
+                    .insert(internal_surface_id, window_id);
 
                 if has_buffer && state.headless_host {
                     state.window_tree.bring_to_front(window_id);
@@ -141,9 +143,10 @@ impl Dispatch<WlShell, ()> for CompositorState {
                         title: String::new(),
                         width,
                         height,
-                        decoration_mode: crate::core::state::CompositorState::decoration_mode_for_policy(
-                            state.effective_decoration_policy(Some(&client_id)),
-                        ),
+                        decoration_mode:
+                            crate::core::state::CompositorState::decoration_mode_for_policy(
+                                state.effective_decoration_policy(Some(&client_id)),
+                            ),
                         fullscreen_shell: false,
                         host_locked,
                         fills_host: false,

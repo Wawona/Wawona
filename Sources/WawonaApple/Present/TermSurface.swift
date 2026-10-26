@@ -116,6 +116,8 @@ public final class WWNTermSurface: NSView {
 
     public override var acceptsFirstResponder: Bool { true }
 
+    public override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
     @objc(feed:)
     public func feed(_ bytes: Data) {
         guard let term, !bytes.isEmpty else { return }
@@ -150,6 +152,7 @@ public final class WWNTermSurface: NSView {
     }
 
     public override func mouseDown(with event: NSEvent) {
+        window?.makeFirstResponder(self)
         sendPointer(event, pressed: true, motion: false)
     }
 
@@ -282,40 +285,107 @@ public final class WWNTermSurface: NSView {
 }
 
 private func macKeyBytes(_ event: NSEvent) -> [UInt8] {
+    let flags = event.modifierFlags
+    let param = 1
+        + (flags.contains(.shift) ? 1 : 0)
+        + (flags.contains(.option) ? 2 : 0)
+        + (flags.contains(.control) ? 4 : 0)
     switch event.keyCode {
-    case 36, 76: return [0x0D]
-    case 51: return [0x7F]
-    case 48: return [0x09]
+    case 36, 76: return param & 2 == 2 ? [0x1B, 0x0D] : [0x0D]
+    case 51:
+        let byte: UInt8 = flags.contains(.control) ? 0x08 : 0x7F
+        return flags.contains(.option) ? [0x1B, byte] : [byte]
+    case 48: return flags.contains(.shift) ? Array("\u{1b}[Z".utf8) : [0x09]
     case 53: return [0x1B]
-    case 126: return Array("\u{1b}[A".utf8)
-    case 125: return Array("\u{1b}[B".utf8)
-    case 124: return Array("\u{1b}[C".utf8)
-    case 123: return Array("\u{1b}[D".utf8)
-    case 115: return Array("\u{1b}[H".utf8)
-    case 119: return Array("\u{1b}[F".utf8)
-    case 116: return Array("\u{1b}[5~".utf8)
-    case 121: return Array("\u{1b}[6~".utf8)
-    case 117: return Array("\u{1b}[3~".utf8)
-    case 122: return Array("\u{1b}OP".utf8)
-    case 120: return Array("\u{1b}OQ".utf8)
-    case 99: return Array("\u{1b}OR".utf8)
-    case 118: return Array("\u{1b}OS".utf8)
-    case 96: return Array("\u{1b}[15~".utf8)
-    case 97: return Array("\u{1b}[17~".utf8)
-    case 98: return Array("\u{1b}[18~".utf8)
-    case 100: return Array("\u{1b}[19~".utf8)
-    case 101: return Array("\u{1b}[20~".utf8)
-    case 109: return Array("\u{1b}[21~".utf8)
-    case 103: return Array("\u{1b}[23~".utf8)
-    case 111: return Array("\u{1b}[24~".utf8)
+    case 49:
+      if flags.contains(.control) {
+        return flags.contains(.option) ? [0x1B, 0x00] : [0x00]
+      }
+      if flags.contains(.option) { return [0x1B, 0x20] }
+      return [0x20]
+    case 126: return macCSI("A", param, "\u{1b}[A")
+    case 125: return macCSI("B", param, "\u{1b}[B")
+    case 124: return macCSI("C", param, "\u{1b}[C")
+    case 123: return macCSI("D", param, "\u{1b}[D")
+    case 115: return macCSI("H", param, "\u{1b}[H")
+    case 119: return macCSI("F", param, "\u{1b}[F")
+    case 116: return macTilde("5", param, "\u{1b}[5~")
+    case 121: return macTilde("6", param, "\u{1b}[6~")
+    case 117: return macTilde("3", param, "\u{1b}[3~")
+    case 114: return macTilde("2", param, "\u{1b}[2~")
+    case 110: return macTilde("29", param, "\u{1b}[29~")
+    case 122: return macCSI("P", param, "\u{1b}OP")
+    case 120: return macCSI("Q", param, "\u{1b}OQ")
+    case 99: return macCSI("R", param, "\u{1b}OR")
+    case 118: return macCSI("S", param, "\u{1b}OS")
+    case 96, 97, 98, 100, 101, 109, 103, 111, 105, 107, 113, 106, 64, 79, 80, 90:
+        return macFnTilde(event.keyCode, param)
+    case 65, 67, 69, 75, 78, 81, 82, 83, 84, 85, 86, 87, 88, 89, 91, 92, 95:
+        if !(event.characters ?? "").isEmpty { break }
+        switch event.keyCode {
+        case 91: return macCSI("A", param, "\u{1b}[A")
+        case 84: return macCSI("B", param, "\u{1b}[B")
+        case 88: return macCSI("C", param, "\u{1b}[C")
+        case 86: return macCSI("D", param, "\u{1b}[D")
+        case 89: return macCSI("H", param, "\u{1b}[H")
+        case 83: return macCSI("F", param, "\u{1b}[F")
+        case 92: return macTilde("5", param, "\u{1b}[5~")
+        case 85: return macTilde("6", param, "\u{1b}[6~")
+        case 65: return macTilde("3", param, "\u{1b}[3~")
+        case 82: return macTilde("2", param, "\u{1b}[2~")
+        case 87: return Array("\u{1b}[E".utf8)
+        case 75: return flags.contains(.option) ? [0x1B, 0x2F] : [0x2F]
+        case 67: return flags.contains(.option) ? [0x1B, 0x2A] : [0x2A]
+        case 78: return flags.contains(.option) ? [0x1B, 0x2D] : [0x2D]
+        case 69: return flags.contains(.option) ? [0x1B, 0x2B] : [0x2B]
+        case 81: return flags.contains(.option) ? [0x1B, 0x3D] : [0x3D]
+        case 95: return flags.contains(.option) ? [0x1B, 0x2C] : [0x2C]
+        default: break
+        }
     default: break
     }
-    if event.modifierFlags.contains(.control), let ch = event.charactersIgnoringModifiers?.lowercased().first,
-        ch.isLetter, let ascii = ch.asciiValue
+    if flags.contains(.control), let byte = macControlByte(event) {
+        return flags.contains(.option) ? [0x1B, byte] : [byte]
+    }
+    if event.modifierFlags.contains(.option),
+        let ch = event.charactersIgnoringModifiers, ch.utf8.count == 1
     {
-        return [ascii - UInt8(ascii: "a") + 1]
+        var bytes = Array(ch.utf8)
+        bytes.insert(0x1B, at: 0)
+        return bytes
     }
     return Array((event.characters ?? "").utf8)
+}
+
+private func macControlByte(_ event: NSEvent) -> UInt8? {
+    if let ch = event.charactersIgnoringModifiers?.uppercased().first,
+        let ascii = ch.asciiValue, (0x40...0x5F).contains(ascii) { return ascii & 0x1F }
+    switch event.keyCode {
+    case 19: return 0x00
+    case 20, 33: return 0x1B
+    case 21, 42: return 0x1C
+    case 23, 30: return 0x1D
+    case 22: return 0x1E
+    case 26, 27: return 0x1F
+    case 28, 44: return event.keyCode == 44 && !event.modifierFlags.contains(.shift) ? 0x1F : 0x7F
+    default: return nil
+    }
+}
+
+private func macCSI(_ letter: String, _ param: Int, _ plain: String) -> [UInt8] {
+    if param == 1 { return Array(plain.utf8) }
+    return Array("\u{1b}[1;\(param)\(letter)".utf8)
+}
+
+private func macFnTilde(_ code: UInt16, _ param: Int) -> [UInt8] {
+    let table = [96: "15", 97: "17", 98: "18", 100: "19", 101: "20", 109: "21", 103: "23", 111: "24", 105: "25", 107: "26", 113: "28", 106: "29", 64: "31", 79: "32", 80: "33", 90: "34"]
+    let n = table[Int(code)] ?? "15"
+    return macTilde(n, param, "\u{1b}[\(n)~")
+}
+
+private func macTilde(_ code: String, _ param: Int, _ plain: String) -> [UInt8] {
+    if param == 1 { return Array(plain.utf8) }
+    return Array("\u{1b}[\(code);\(param)~".utf8)
 }
 
 #elseif os(iOS) || os(tvOS) || os(visionOS)

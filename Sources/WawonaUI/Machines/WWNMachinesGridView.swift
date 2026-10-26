@@ -1,5 +1,4 @@
 import SwiftUI
-import WawonaModel
 #if os(macOS)
 import AppKit
 #elseif os(iOS)
@@ -49,7 +48,6 @@ struct WWNMachinesGridViewModern: View {
 
   @ObservedObject private var model = WWNMachinesViewModel.shared
   @ObservedObject private var tagStore = WWNMachineTagStore.shared
-  @ObservedObject private var windowRouter = WWNMainWindowRouter.shared
   @State private var editorDestination: MachineEditorDestination?
   @State private var searchQuery = ""
   #if os(iOS) || os(visionOS)
@@ -204,17 +202,14 @@ struct WWNMachinesGridViewModern: View {
   #if os(macOS)
   /// Detail pane only. Nested `NavigationStack` + custom toolbar material
   /// broke the unified titlebar vs Settings sections in the split.
-  /// While Settings is up, this pane must not register search or toolbar
-  /// items: both splits share one `NSToolbar`.
   private var macRoot: some View {
     detailPane
-      .navigationTitle(windowRouter.settingsOwnsWindowToolbar ? "" : detailNavigationTitle)
+      .navigationTitle(detailNavigationTitle)
       .toolbarTitleDisplayMode(.inline)
-      .modifier(WWNMacMachinesToolbar(
-        enabled: !windowRouter.settingsOwnsWindowToolbar,
-        searchQuery: $searchQuery,
-        toolbar: detailToolbarContent
-      ))
+      .searchable(text: $searchQuery, placement: .toolbar, prompt: "Search machines")
+      .toolbar {
+        detailToolbarContent
+      }
       .alert(
         "Could not start machine",
         isPresented: Binding(
@@ -258,15 +253,17 @@ struct WWNMachinesGridViewModern: View {
     if #available(iOS 14.0, visionOS 1.0, *) {
       iosRootChrome
         .background {
-          #if os(iOS)
           phoneIntegratedSearchToolbar
-          #endif
         }
         .toolbar {
           detailToolbarContent
           #if os(iOS)
-          // iPhone iOS 26 search and Add live in the controller toolbarItems.
-          if !isIosPhone { iosPadSearchToolbarItem }
+          // iPhone iOS 26 search + Add live in `toolbarItems` (see
+          // WWNPhoneIntegratedSearchToolbar). A SwiftUI bottom-bar search
+          // item vends the placement button from a different navigation item.
+          if !isIosPhone {
+            iosPadSearchToolbarItem
+          }
           #else
           iosPadSearchToolbarItem
           #endif
@@ -337,6 +334,23 @@ struct WWNMachinesGridViewModern: View {
     #endif
   }
 
+  /// iPhone iOS 26: system search button in the navigation controller toolbar.
+  /// Pre-26 keeps the compact safe-area row. iPad / visionOS stay on the overlay.
+  @ViewBuilder
+  private var phoneIntegratedSearchToolbar: some View {
+    #if os(iOS)
+    if isIosPhone && Self.usesNativePhoneSearchToolbar {
+      if #available(iOS 26.0, *) {
+        WWNPhoneIntegratedSearchToolbar(placement: .bottomBar(showsCompose: true)) {
+          editorDestination = .add
+        }
+        .frame(width: 1, height: 1)
+        .accessibilityHidden(true)
+      }
+    }
+    #endif
+  }
+
   /// iOS 26+: system Messages-style bottom search + compose +. Pre-26 keeps
   /// the compact safeAreaInset chrome. Never custom Liquid Glass capsule on 26+.
   private static var usesNativePhoneSearchToolbar: Bool {
@@ -363,31 +377,15 @@ struct WWNMachinesGridViewModern: View {
     }
   }
 
-  #if os(iOS)
-  /// iPhone iOS 26: system search button plus one prominent Add, installed on
-  /// the visible controller's `toolbarItems`. Not `DefaultToolbarItem`.
-  @ViewBuilder
-  private var phoneIntegratedSearchToolbar: some View {
-    if isIosPhone && Self.usesNativePhoneSearchToolbar {
-      if #available(iOS 26.0, *) {
-        WWNPhoneIntegratedSearchToolbar(placement: .bottomBar(showsCompose: true)) {
-          editorDestination = .add
-        }
-        .frame(width: 1, height: 1)
-        .accessibilityHidden(true)
-      }
-    }
-  }
-  #endif
-
-  /// Shared Add: iPhone bottom bar, or iPad/vision top-trailing.
-  /// Plain toolbar `Button` + SF Symbol. Call sites must not mount twice.
+  /// Shared Add: iPhone bottom bar (`toolbarItems`), or iPad/vision `.primaryAction`.
+  /// System prominent style (blue). Call sites must not mount twice.
   private var iosAddMachineToolbarButton: some View {
     Button {
       editorDestination = .add
     } label: {
       Image(systemName: "plus")
     }
+    .backport.glassProminentToolbarButton()
     .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
   }
 
@@ -517,14 +515,18 @@ struct WWNMachinesGridViewModern: View {
   @ToolbarContentBuilder
   private var detailToolbarContent: some ToolbarContent {
     #if os(macOS)
-    // Trailing: Add, filter/sort, Settings. Search is `.searchable` in the toolbar.
-    ToolbarItemGroup(placement: .primaryAction) {
+    // Add is the primary CTA (blue). Sort / Settings stay secondary trailing.
+    // Search is `.searchable` in the toolbar.
+    ToolbarItem(placement: .primaryAction) {
       Button {
         editorDestination = .add
       } label: {
         Label("Add Machine", systemImage: "plus")
       }
+      .backport.glassProminentToolbarButton()
       .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
+    }
+    ToolbarItemGroup(placement: .automatic) {
       sortMenu
       Button {
         WWNMainWindowRouter.shared.showSettings()
@@ -541,16 +543,16 @@ struct WWNMachinesGridViewModern: View {
     // Exactly one Add Machine control per host:
     // - iPhone: bottom compose only (iOS 26 Messages toolbar, or pre-26
     //   safeAreaInset chrome). Never also top-trailing.
-    // - iPad / visionOS: top-trailing only.
+    // - iPad / visionOS: `.primaryAction` only (blue prominent).
     // Top bar on phone is sort + Settings only.
     #if os(iOS)
     if !isIosPhone {
-      ToolbarItem(placement: .topBarTrailing) {
+      ToolbarItem(placement: .primaryAction) {
         iosAddMachineToolbarButton
       }
     }
     #elseif os(visionOS)
-    ToolbarItem(placement: .topBarTrailing) {
+    ToolbarItem(placement: .primaryAction) {
       iosAddMachineToolbarButton
     }
     #endif
@@ -1086,8 +1088,10 @@ private struct WWNIosPhoneSearchable: ViewModifier {
 
   func body(content: Content) -> some View {
     if enabled {
-      // Default placement. The bottom slot is the controller's own
-      // `toolbarItems`, not `DefaultToolbarItem(kind: .search)`.
+      // Default placement. The bottom-bar slot is the view controller's
+      // `searchBarPlacementBarButtonItem` in `toolbarItems`
+      // (`WWNPhoneIntegratedSearchToolbar`), not a second `.searchable`
+      // placement and not `DefaultToolbarItem`.
       content.searchable(text: $text, prompt: "Search")
     } else {
       content
@@ -1562,7 +1566,7 @@ final class WWNMachinesHostingBridge: NSObject {
     window.toolbarStyle = .unified
     window.center()
     window.contentViewController = hosting
-    window.title = "Machine Configuration"
+    window.title = "Wawona Machine Control Panel"
     // Stable id so reopen / Cmd-Shift-M never spawn a second panel.
     window.identifier = NSUserInterfaceItemIdentifier("wwn.machines.control-panel")
     window.isRestorable = false
@@ -1654,27 +1658,6 @@ struct WWNMachinesGridViewLegacy: View {
           model.upsert($0)
         }
       }
-    }
-  }
-}
-#endif
-
-#if os(macOS)
-/// Search and the Machines toolbar share the window bar with Settings.
-/// Omit both while Settings is presented so AppKit does not insert a second
-/// item with the same identifier.
-private struct WWNMacMachinesToolbar<Toolbar: ToolbarContent>: ViewModifier {
-  var enabled: Bool
-  @Binding var searchQuery: String
-  var toolbar: Toolbar
-
-  func body(content: Content) -> some View {
-    if enabled {
-      content
-        .searchable(text: $searchQuery, placement: .toolbar, prompt: "Search machines")
-        .toolbar { toolbar }
-    } else {
-      content
     }
   }
 }

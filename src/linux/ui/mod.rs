@@ -53,7 +53,11 @@ impl AppState {
             .map(|c| c.settings)
             .unwrap_or_default();
         let tags = TagStore::load();
-        Self { store, settings, tags }
+        Self {
+            store,
+            settings,
+            tags,
+        }
     }
 
     pub fn persist_settings(&self) {

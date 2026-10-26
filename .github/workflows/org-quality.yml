@@ -93,6 +93,19 @@ jobs:
         with:
           persist-credentials: false
       - run: rustup component add rustfmt
+      - name: Stub coreutils path dependency for fmt
+        shell: bash
+        run: |
+          # ./coreutils is populated locally by scripts/ensure-coreutils.sh (Nix).
+          # cargo fmt --all resolves workspace metadata for all path deps even when
+          # they are optional; stub the Cargo.toml so metadata load succeeds without
+          # a real source checkout.
+          if [[ ! -f coreutils/Cargo.toml ]]; then
+            mkdir -p coreutils/src
+            printf '[package]\nname = "coreutils"\nversion = "0.0.1"\nedition = "2021"\n' \
+              > coreutils/Cargo.toml
+            printf '// stub\n' > coreutils/src/lib.rs
+          fi
       - run: cargo fmt --all -- --check
 
   dependency-review:

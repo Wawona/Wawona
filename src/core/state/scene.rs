@@ -278,25 +278,29 @@ impl CompositorState {
             let mut states_bytes = Vec::new();
             if pending_maximized {
                 states_bytes.extend_from_slice(
-                    &(crate::core::wayland::xdg::v6::protocol::zxdg_toplevel_v6::State::Maximized as u32)
+                    &(crate::core::wayland::xdg::v6::protocol::zxdg_toplevel_v6::State::Maximized
+                        as u32)
                         .to_ne_bytes(),
                 );
             }
             if pending_fullscreen {
                 states_bytes.extend_from_slice(
-                    &(crate::core::wayland::xdg::v6::protocol::zxdg_toplevel_v6::State::Fullscreen as u32)
+                    &(crate::core::wayland::xdg::v6::protocol::zxdg_toplevel_v6::State::Fullscreen
+                        as u32)
                         .to_ne_bytes(),
                 );
             }
             if interactive_resize {
                 states_bytes.extend_from_slice(
-                    &(crate::core::wayland::xdg::v6::protocol::zxdg_toplevel_v6::State::Resizing as u32)
+                    &(crate::core::wayland::xdg::v6::protocol::zxdg_toplevel_v6::State::Resizing
+                        as u32)
                         .to_ne_bytes(),
                 );
             }
             if activated {
                 states_bytes.extend_from_slice(
-                    &(crate::core::wayland::xdg::v6::protocol::zxdg_toplevel_v6::State::Activated as u32)
+                    &(crate::core::wayland::xdg::v6::protocol::zxdg_toplevel_v6::State::Activated
+                        as u32)
                         .to_ne_bytes(),
                 );
             }
@@ -387,46 +391,146 @@ impl CompositorState {
         false
     }
 
+    /// Restore `wl_keyboard` focus to `window_id` (popup parent after grab
+    /// dismiss). GTK menus need the parent focused again before a second
+    /// `xdg_popup.grab` will succeed.
+    fn restore_keyboard_focus_to_window(&mut self, window_id: u32) {
+        let surface_id = self
+            .surface_to_window
+            .iter()
+            .find(|(_, &wid)| wid == window_id)
+            .map(|(sid, _)| *sid);
+        let Some(sid) = surface_id else {
+            return;
+        };
+        let serial = self.next_serial();
+        let Some(surface) = self.surfaces.get(&sid).cloned() else {
+            return;
+        };
+        let surface = surface.read().unwrap();
+        let Some(res) = surface.resource.as_ref() else {
+            return;
+        };
+        crate::wlog!(
+            crate::util::logging::COMPOSITOR,
+            "Restoring keyboard focus to parent window_id={} surface={}",
+            window_id,
+            sid
+        );
+        self.focus.set_keyboard_focus(Some(window_id));
+        self.seat.keyboard.focus = Some(sid);
+        if let Some(keyboard) = self
+            .smithay_runtime
+            .seat
+            .as_ref()
+            .and_then(|seat| seat.get_keyboard())
+        {
+            keyboard.set_focus(self, Some(res.clone()), serial.into());
+        } else {
+            self.seat.broadcast_keyboard_enter(serial, res, &[]);
+        }
+        self.ext.text_input.enter(res, Some(sid));
+    }
+
     /// Send `xdg_popup.popup_done` for the popup hosted by `window_id` (host
     /// dismissed it: click-away, Escape, parent teardown). Returns `true` if a
     /// matching popup was found.
     pub fn send_popup_done_for_window(&mut self, window_id: u32) -> bool {
-        let Some((key, surface_id, resource, v6_resource)) = self
-            .xdg
-            .popups
-            .iter()
-            .find(|(_, data)| data.window_id == window_id)
-            .map(|(key, data)| {
-                (
-                    key.clone(),
-                    data.surface_id,
-                    data.resource.clone(),
-                    data.v6_resource.clone(),
-                )
-            })
-        else {
+        let mut parent_id = None;
+        let mut found = false;
+        let mut popup_key = None;
+        for ((cid, pid), data) in self.xdg.popups.iter() {
+            if data.window_id == window_id {
+                parent_id = data.parent_id;
+                popup_key = Some((cid.clone(), *pid));
+                crate::wlog!(
+                    crate::util::logging::COMPOSITOR,
+                    "Sending xdg_popup.popup_done for window_id={} popup={}",
+                    window_id,
+                    pid
+                );
+                if let Some(ps) = data.popup_surface.clone() {
+                    ps.send_popup_done();
+                } else if let Some(res) = data.resource.clone() {
+                    res.popup_done();
+                }
+                if let Some(res) = data.v6_resource.clone() {
+                    res.popup_done();
+                }
+                found = true;
+                break;
+            }
+        }
+        if let Some(key) = popup_key {
+            self.seat
+                .popup_grab_stack
+                .retain(|(gcid, gpid)| !(gcid == &key.0 && *gpid == key.1));
+            // Tear down host chrome immediately; client destroy may lag over
+            // waypipe and leave a stuck grab UI.
+            self.pending_compositor_events
+                .push(crate::core::compositor::CompositorEvent::WindowDestroyed { window_id });
+        }
+        if let Some(parent) = parent_id {
+            self.restore_keyboard_focus_to_window(parent);
+        }
+        found
+    }
+
+    /// Returns true when `surface_id` is the grabbed popup or a subsurface in
+    /// its tree (GTK menu rows can live in subsurfaces).
+    fn surface_in_popup_grab_tree(&self, surface_id: u32) -> bool {
+        for &(ref cid, popup_id) in &self.seat.popup_grab_stack {
+            let Some(popup) = self.xdg.popups.get(&(cid.clone(), popup_id)) else {
+                continue;
+            };
+            if popup.surface_id == surface_id {
+                return true;
+            }
+            let mut sid = surface_id;
+            for _ in 0..16 {
+                if sid == popup.surface_id {
+                    return true;
+                }
+                if let Some(sub) = self.subsurfaces.get(&sid) {
+                    sid = sub.parent_id;
+                } else {
+                    break;
+                }
+            }
+            if let Some(&wid) = self.surface_to_window.get(&surface_id) {
+                if wid == popup.window_id {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// xdg_popup grab: dismiss when the user presses a button outside the grab
+    /// tree. Returns true if any popup was dismissed.
+    pub fn maybe_dismiss_popup_grab_on_press(&mut self) -> bool {
+        if self.seat.popup_grab_stack.is_empty() {
             return false;
-        };
-        if let Some(res) = resource {
+        }
+        let focus = self.seat.pointer.focus;
+        let on_grab_tree = focus.is_some_and(|focus_id| self.surface_in_popup_grab_tree(focus_id));
+        if on_grab_tree {
             crate::wlog!(
                 crate::util::logging::COMPOSITOR,
-                "Sending xdg_popup.popup_done for window_id={} popup={}",
-                window_id,
-                key.1
+                "popup grab press on grab tree (focus={:?}); keeping grab",
+                focus
             );
-            res.popup_done();
+            return false;
         }
-        if let Some(res) = v6_resource {
-            crate::wlog!(
-                crate::util::logging::COMPOSITOR,
-                "Sending zxdg_popup_v6.popup_done for window_id={} popup={}",
-                window_id,
-                key.1
-            );
-            res.popup_done();
-        }
-        self.end_popup_grab_for(&key, surface_id);
-        true
+        crate::wlog!(
+            crate::util::logging::COMPOSITOR,
+            "popup grab press outside tree (focus={:?}, stack={}); dismissing",
+            focus,
+            self.seat.popup_grab_stack.len()
+        );
+        let had_grabs = !self.seat.popup_grab_stack.is_empty();
+        self.dismiss_popup_grab();
+        had_grabs
     }
 
     /// Get the geometry of an output (x, y, width, height)
@@ -538,12 +642,39 @@ impl CompositorState {
                             render_height = committed_height;
                         }
                         node.scale = surface_scale as f32;
-                        // Weston-style HiDPI: the client committed a buffer at
-                        // output-scale x window-size without calling
-                        // wl_surface.set_buffer_scale. Present it at logical
-                        // (window) size with the inferred scale so it is not
-                        // drawn double-sized and pointer coords stay aligned.
-                        if surface.current.scale <= 1 && output_scale > 1.0 {
+                        let viewport = self.ext.viewporter.for_surface(window.surface_id);
+                        let has_viewport_dest = viewport.and_then(|v| v.destination).is_some();
+                        // GTK4 / fractional-scale path: buffer is physical,
+                        // current size is viewport destination (logical).
+                        // Present scale must be buffer/logical so CALayer
+                        // contentsScale matches; otherwise only one Retina
+                        // quadrant shows.
+                        if has_viewport_dest {
+                            if let Some((bw, bh)) = surface.current.buffer.dimensions() {
+                                if committed_width > 0 && committed_height > 0 {
+                                    let sx = bw as f32 / committed_width as f32;
+                                    let sy = bh as f32 / committed_height as f32;
+                                    if sx >= 1.0 && sy >= 1.0 {
+                                        node.scale = ((sx + sy) * 0.5).clamp(1.0, 8.0);
+                                    }
+                                }
+                            }
+                            crate::wlog_hot!(
+                                crate::util::logging::STATE,
+                                "Viewport present: surf={} buf={:?} logical={}x{} scale={} dest={:?}",
+                                window.surface_id,
+                                surface.current.buffer.dimensions(),
+                                committed_width,
+                                committed_height,
+                                node.scale,
+                                viewport.and_then(|v| v.destination)
+                            );
+                        } else if surface.current.scale <= 1 && output_scale > 1.0 {
+                            // Weston-style HiDPI: the client committed a buffer at
+                            // output-scale x window-size without calling
+                            // wl_surface.set_buffer_scale. Present it at logical
+                            // (window) size with the inferred scale so it is not
+                            // drawn double-sized and pointer coords stay aligned.
                             let scaled_w = (win_w as f32 * output_scale).round() as u32;
                             let scaled_h = (win_h as f32 * output_scale).round() as u32;
                             if win_w > 0
@@ -613,6 +744,28 @@ impl CompositorState {
                             // Kiosk surfaces stay output-sized; only crop in presentation.
                             if !is_kiosk_window {
                                 node.set_size(inter_w as u32, inter_h as u32);
+                            }
+                        }
+                    }
+                }
+
+                // wp_viewport.set_source is buffer-local; override UV crop when set.
+                if let Some(src) = self
+                    .ext
+                    .viewporter
+                    .for_surface(window.surface_id)
+                    .and_then(|v| v.source)
+                {
+                    if let Some(surf_ref) = self.get_surface(window.surface_id) {
+                        let surf = surf_ref.read().unwrap();
+                        if let Some((bw, bh)) = surf.current.buffer.dimensions() {
+                            if bw > 0 && bh > 0 {
+                                node.content_rect = ContentRect {
+                                    x: (src.x / bw as f64) as f32,
+                                    y: (src.y / bh as f64) as f32,
+                                    w: (src.width / bw as f64) as f32,
+                                    h: (src.height / bh as f64) as f32,
+                                };
                             }
                         }
                     }

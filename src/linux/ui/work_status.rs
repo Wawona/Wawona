@@ -150,10 +150,6 @@ pub fn build_work_status_view(on_toggle_sidebar: Option<std::rc::Rc<dyn Fn()>>) 
     let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
     root.append(&header);
     root.append(&scroller);
-    crate::linux::ui::a11y::set_wwn_a11y(
-        &root,
-        "wwn.projectStatus",
-        Some("Work Status"),
-    );
+    crate::linux::ui::a11y::set_wwn_a11y(&root, "wwn.projectStatus", Some("Work Status"));
     root
 }

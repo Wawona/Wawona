@@ -70,22 +70,20 @@ struct WWNTabOverviewView: View {
         }
         .backport.navigationTitle("Tab Overview")
         .backport.searchable(text: $searchQuery, prompt: "Search Tabs")
-        .backport.background { tabOverviewSearchPlacement }
+        .background { tabOverviewSearchPlacement }
         .accessibility(identifier: "wwn.tabOverview.detail")
     }
 
-    /// Phone iOS 26: keep search in the navigation bar. The Machines bottom
-    /// bar button belongs to a different navigation item and UIKit ignores it
-    /// on this page.
+    /// Keep Tab Overview search in the navigation bar. Bottom-bar integration
+    /// on this column reuses Machine Configuration's placement button and
+    /// UIKit drops it.
     @ViewBuilder
     private var tabOverviewSearchPlacement: some View {
         #if os(iOS)
-        if UIDevice.current.userInterfaceIdiom == .phone {
-            if #available(iOS 26.0, *) {
-                WWNPhoneIntegratedSearchToolbar(placement: .navigationBarStacked, onCompose: {})
-                    .frame(width: 1, height: 1)
-                    .accessibilityHidden(true)
-            }
+        if #available(iOS 26.0, *), UIDevice.current.userInterfaceIdiom == .phone {
+            WWNPhoneIntegratedSearchToolbar(placement: .navigationBarStacked, onCompose: {})
+                .frame(width: 1, height: 1)
+                .accessibilityHidden(true)
         }
         #endif
     }
@@ -192,13 +190,6 @@ private struct WWNTabOverviewCard: View {
     let thumbnail: WWNPlatformImage?
     let onFocus: () -> Void
     let onClose: () -> Void
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var swipeOffset: CGFloat = 0
-
-    private var clientRatio: CGFloat? {
-        guard let thumbnail, thumbnail.size.height > 1 else { return nil }
-        return thumbnail.size.width / thumbnail.size.height
-    }
 
     private var iconName: String {
         let lower = title.lowercased()
@@ -237,12 +228,33 @@ private struct WWNTabOverviewCard: View {
             .padding(.bottom, 6)
 
             Button(action: onFocus) {
-                WWNTabPreviewWell(
-                    iconName: iconName,
-                    statusLabel: statusLabel,
-                    thumbnail: thumbnail,
-                    clientRatio: clientRatio
-                )
+                ZStack {
+                    Color.primary.opacity(0.08)
+                    if let thumbnail {
+                        #if os(macOS)
+                        Image(nsImage: thumbnail)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                        #else
+                        Image(uiImage: thumbnail)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                        #endif
+                    } else {
+                        VStack(spacing: 8) {
+                            Image(systemName: iconName)
+                                .font(.system(size: 28))
+                                .foregroundColor(Color.secondary.opacity(0.5))
+                            Text(statusLabel)
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .aspectRatio(0.72, contentMode: .fit)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
             .buttonStyle(.plain)
             .padding(.horizontal, 6)
@@ -261,72 +273,6 @@ private struct WWNTabOverviewCard: View {
                         )
                 )
         )
-        #if !os(macOS) && !os(tvOS)
-        .offset(x: swipeOffset)
-        .simultaneousGesture(swipeToClose)
-        #endif
-    }
-
-    #if !os(macOS) && !os(tvOS)
-    private var swipeToClose: some Gesture {
-        DragGesture(minimumDistance: 24, coordinateSpace: .local)
-            .onChanged { value in
-                let across = value.translation.width
-                let down = abs(value.translation.height)
-                guard across < 0, down < abs(across) else { return }
-                swipeOffset = across
-            }
-            .onEnded { value in
-                let across = value.translation.width
-                let down = abs(value.translation.height)
-                if across < -56, down < abs(across) {
-                    onClose()
-                } else if reduceMotion {
-                    swipeOffset = 0
-                } else {
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        swipeOffset = 0
-                    }
-                }
-            }
-    }
-    #endif
-}
-
-private struct WWNTabPreviewWell: View {
-    let iconName: String
-    let statusLabel: String
-    let thumbnail: WWNPlatformImage?
-    let clientRatio: CGFloat?
-
-    var body: some View {
-        Group {
-            if let thumbnail {
-                #if os(macOS)
-                Image(nsImage: thumbnail)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                #else
-                Image(uiImage: thumbnail)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                #endif
-            } else {
-                VStack(spacing: 8) {
-                    Image(systemName: iconName)
-                        .font(.system(size: 28))
-                        .foregroundColor(Color.secondary.opacity(0.5))
-                    Text(statusLabel)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                }
-                .padding(.vertical, 12)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .aspectRatio(clientRatio, contentMode: .fit)
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }
 #endif

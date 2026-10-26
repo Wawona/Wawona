@@ -13,7 +13,6 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <signal.h>
-#include <stdbool.h>
 
 typedef void *WawonaCompositorHandle;
 
@@ -180,117 +179,6 @@ int fuzzel_main(int argc, char **argv) {
  * xcodegen.nix OTHER_LDFLAGS[arch=arm64_32]) and therefore needs a fallback.
  * arm64 device + arm64 simulator are LP64 and link the real dispatcher. */
 #if !defined(__LP64__)
-/* The arm64_32 compatibility slice does not link the Nix-built Rust backend,
- * PTY, or terminal archives. The Watch Swift targets still compile for this
- * architecture as part of the universal companion binary, so provide weak
- * fail-closed ABI implementations. The arm64 device slice links the real
- * implementations from libwawona.a and libwwn-pty.a. */
-__attribute__((weak))
-void *WWNCoreNew(void) { return NULL; }
-
-__attribute__((weak))
-bool WWNCoreStart(void *core, const char *socket_name) {
-    (void)core; (void)socket_name;
-    return false;
-}
-
-__attribute__((weak))
-bool WWNCoreStop(void *core) { (void)core; return false; }
-
-__attribute__((weak))
-bool WWNCoreIsRunning(const void *core) { (void)core; return false; }
-
-__attribute__((weak))
-char *WWNCoreGetSocketPath(const void *core) { (void)core; return NULL; }
-
-__attribute__((weak))
-bool WWNCoreProcessEvents(void *core) { (void)core; return false; }
-
-__attribute__((weak))
-void WWNCoreFlushClients(void *core) { (void)core; }
-
-__attribute__((weak))
-void *WWNCorePopPendingBuffer(void *core) { (void)core; return NULL; }
-
-__attribute__((weak))
-void WWNBufferDataFree(void *data) { (void)data; }
-
-__attribute__((weak))
-void WWNCoreNotifyFramePresented(void *core, uint32_t surface_id,
-                                 uint64_t buffer_id, uint32_t timestamp) {
-    (void)core; (void)surface_id; (void)buffer_id; (void)timestamp;
-}
-
-__attribute__((weak))
-uint32_t WWNCoreGetTimestampMs(const void *core) { (void)core; return 0; }
-
-__attribute__((weak))
-uint32_t WWNCoreGetClientCount(const void *core) { (void)core; return 0; }
-
-struct winsize;
-
-__attribute__((weak))
-void *wwn_pty_session_start(const char *shell_path, char *const argv[],
-                            char *const envp[], const struct winsize *ws) {
-    (void)shell_path; (void)argv; (void)envp; (void)ws;
-    return NULL;
-}
-
-__attribute__((weak))
-int32_t wwn_pty_session_master_fd(void *session) { (void)session; return -1; }
-
-__attribute__((weak))
-void wwn_pty_session_destroy(void *session) { (void)session; }
-
-__attribute__((weak))
-int wwn_pty_read(int fd, void *buf, size_t len) {
-    (void)fd; (void)buf; (void)len;
-    return -1;
-}
-
-__attribute__((weak))
-void wwn_pty_ios_stop_shell_session(void) {}
-
-__attribute__((weak))
-void wwn_ios_terminal_set_master(int fd) { (void)fd; }
-
-__attribute__((weak))
-void wwn_ios_terminal_clear_master(int fd) { (void)fd; }
-
-__attribute__((weak))
-int wwn_ios_terminal_inject(const void *buf, size_t len) {
-    (void)buf; (void)len;
-    return -1;
-}
-
-__attribute__((weak))
-void wwn_pty_tty_shim_set_winsize(const struct winsize *ws) { (void)ws; }
-
-typedef void wwn_term;
-
-__attribute__((weak))
-wwn_term *wwn_term_new(uint32_t cols, uint32_t rows) {
-    (void)cols; (void)rows;
-    return NULL;
-}
-
-__attribute__((weak))
-void wwn_term_free(wwn_term *term) { (void)term; }
-
-__attribute__((weak))
-void wwn_term_feed(wwn_term *term, const uint8_t *bytes, size_t len) {
-    (void)term; (void)bytes; (void)len;
-}
-
-__attribute__((weak))
-char *wwn_term_lines_json(const wwn_term *term) { (void)term; return NULL; }
-
-__attribute__((weak))
-void wwn_term_refresh_scrollback_cap(wwn_term *term,
-                                     uint32_t host_factor_permille) {
-    (void)term; (void)host_factor_permille;
-}
-
 __attribute__((weak))
 int wawona_coreutils_main(int argc, char **argv) {
     (void)argc; (void)argv;

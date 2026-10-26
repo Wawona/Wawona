@@ -186,9 +186,7 @@ impl Dispatch<ZwpTextInputV2, ()> for CompositorState {
                     surface.id().protocol_id()
                 );
                 crate::core::wayland::ext::input_method_v1::activate_text_input(
-                    state,
-                    dhandle,
-                    &client_id,
+                    state, dhandle, &client_id,
                 );
             }
             zwp_text_input_v2::Request::Disable { .. } => {
@@ -201,9 +199,15 @@ impl Dispatch<ZwpTextInputV2, ()> for CompositorState {
                 instance.content_type = None;
                 instance.preferred_language = None;
                 tracing::debug!("v2 text input disabled");
-                crate::core::wayland::ext::input_method_v1::deactivate_text_input(state, &client_id);
+                crate::core::wayland::ext::input_method_v1::deactivate_text_input(
+                    state, &client_id,
+                );
             }
-            zwp_text_input_v2::Request::SetSurroundingText { text, cursor, anchor } => {
+            zwp_text_input_v2::Request::SetSurroundingText {
+                text,
+                cursor,
+                anchor,
+            } => {
                 let Some(instance) = state.ext.text_input_v2.instance_mut(&client_id, &id) else {
                     return;
                 };
@@ -231,10 +235,13 @@ impl Dispatch<ZwpTextInputV2, ()> for CompositorState {
                     return;
                 };
                 instance.serial = serial;
-                tracing::debug!("v2 text input update_state serial={} reason={:?}", serial, reason);
+                tracing::debug!(
+                    "v2 text input update_state serial={} reason={:?}",
+                    serial,
+                    reason
+                );
                 crate::core::wayland::ext::input_method_v1::commit_text_input_state(
-                    state,
-                    &client_id,
+                    state, &client_id,
                 );
             }
             _ => {}

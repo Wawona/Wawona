@@ -1,0 +1,4 @@
+enabledWorkflows:
+  - device
+  - simulator
+  - session-management

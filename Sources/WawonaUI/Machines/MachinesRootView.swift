@@ -47,7 +47,7 @@ struct MachinesRootView: View {
                     } label: {
                         WawonaLabel("Add Machine", systemImage: "plus")
                     }
-                    .backport.glassToolbarButton()
+                    .backport.glassProminentToolbarButton()
                     .wwnA11y(WawonaA11y.machinesAdd, label: "Add Machine")
                 }
                 ToolbarItem(placement: .navigation) {
@@ -67,7 +67,7 @@ struct MachinesRootView: View {
                     } label: {
                         WawonaLabel("Add Machine", systemImage: "plus")
                     }
-                    .backport.glassToolbarButton()
+                    .backport.glassProminentToolbarButton()
                     .wwnA11y(WawonaA11y.machinesAdd, label: "Add Machine")
             })
             #endif

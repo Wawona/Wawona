@@ -1,5 +1,4 @@
 import SwiftUI
-import WawonaUIContracts
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -101,36 +100,50 @@ extension WawonaBackport where Content: View {
         }
     }
 
-    /// Global Settings dismiss. Trailing control only (right edge).
-    ///
-    /// - **iOS / iPadOS / visionOS:** plain `xmark` on `.topBarTrailing`
-    ///   (iOS 13: `navigationBarItems` trailing). When `chromeBridge.onAdd`
-    ///   is set, one `ToolbarItemGroup` places plain `plus` left of `xmark`
-    ///   (`[+][x]`). Never put SF Symbols in `.cancellationAction` /
-    ///   `.confirmationAction` on iOS 26 (Liquid Glass doubles close/done).
-    ///   Never make Add `.primaryAction`.
-    /// - **macOS / tvOS:** system `Done` text on `.confirmationAction` (HIG).
+    /// Strip the automatic `NavigationSplitView` sidebar toggle from this
+    /// column. **Legacy HStack only** (pre-16), where a custom leading toggle
+    /// replaces the system control. On the NavigationSplitView path, keep the
+    /// system toggle (Machines parity). No-op before iOS 18 / visionOS 2 /
+    /// macOS 15.
     @ViewBuilder
     @MainActor
-    func settingsCloseAction(onClose: @escaping () -> Void) -> some View {
-        settingsCloseAction(onClose: onClose, chromeBridge: nil)
+    func settingsStripSidebarToggle() -> some View {
+        #if os(iOS) || os(visionOS)
+        if #available(iOS 18.0, visionOS 2.0, *) {
+            content.toolbar(removing: .sidebarToggle)
+        } else {
+            content
+        }
+        #elseif os(macOS)
+        if #available(macOS 15.0, *) {
+            content.toolbar(removing: .sidebarToggle)
+        } else {
+            content
+        }
+        #else
+        content
+        #endif
     }
 
+    /// Global Settings chrome on the detail / split toolbar.
+    ///
+    /// - **iOS / iPadOS / visionOS NavigationSplitView:** do **not** pass
+    ///   `showSidebar`. System split owns the sidebar toggle (same as
+    ///   Machines). Trailing is one `ToolbarItemGroup` (`[+]?` then `xmark`)
+    ///   via `chromeBridge`. Never strip the system toggle on this path.
+    /// - **Pre-16 HStack:** pass `showSidebar` for one custom leading toggle
+    ///   (no system control exists).
+    /// - **macOS / tvOS:** system `Done` on `.confirmationAction` (HIG).
+    ///   macOS keeps the system NavigationSplitView sidebar control.
     @ViewBuilder
     @MainActor
     func settingsCloseAction(
+        showSidebar: Binding<Bool>? = nil,
         onClose: @escaping () -> Void,
-        chromeBridge: WawonaSettingsChromeBridge?
+        chromeBridge: WWNSettingsChromeBridge? = nil
     ) -> some View {
         #if os(macOS) || os(tvOS)
-        if #available(macOS 13.0, tvOS 16.0, *) {
-            content.toolbar {
-                ToolbarItem(id: "wwn.settings.close", placement: .confirmationAction) {
-                    Button("Done", action: onClose)
-                        .accessibility(identifier: "wwn.settings.close")
-                }
-            }
-        } else if #available(macOS 11.0, tvOS 14.0, *) {
+        if #available(macOS 11.0, tvOS 14.0, *) {
             content.toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done", action: onClose)
@@ -141,19 +154,13 @@ extension WawonaBackport where Content: View {
             content
         }
         #elseif os(iOS) || os(visionOS)
-        if #available(iOS 26.0, visionOS 26.0, *) {
-            content.toolbar {
-                SettingsCloseToolbarIOS26(onClose: onClose, chromeBridge: chromeBridge)
-            }
-        } else if #available(iOS 14.0, *) {
-            content.toolbar {
-                SettingsCloseToolbarIOS14(onClose: onClose, chromeBridge: chromeBridge)
-            }
-        } else {
-            content.navigationBarItems(
-                trailing: SettingsCloseTrailingIOS13(onClose: onClose, chromeBridge: chromeBridge)
+        content.modifier(
+            SettingsChromeToolbarModifier(
+                showSidebar: showSidebar,
+                onClose: onClose,
+                chromeBridge: chromeBridge ?? .inactive
             )
-        }
+        )
         #else
         content
         #endif
@@ -232,20 +239,130 @@ extension WawonaBackport where Content: View {
 }
 
 #if os(iOS) || os(visionOS)
-/// Trailing Settings chrome. Plain SF Symbols only. Optional Add left of Close.
-@available(iOS 26.0, visionOS 26.0, *)
-private struct SettingsCloseToolbarIOS26: ToolbarContent {
+/// Observes `WWNSettingsChromeBridge` so Env Vars Add joins the Close group.
+private struct SettingsChromeToolbarModifier: ViewModifier {
+    let showSidebar: Binding<Bool>?
     let onClose: () -> Void
-    @ObservedObject var chromeBridge: WawonaSettingsChromeBridge
+    @ObservedObject var chromeBridge: WWNSettingsChromeBridge
 
-    init(onClose: @escaping () -> Void, chromeBridge: WawonaSettingsChromeBridge?) {
-        self.onClose = onClose
-        self.chromeBridge = chromeBridge ?? WawonaSettingsChromeBridge()
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, visionOS 26.0, *) {
+            if let showSidebar {
+                content.toolbar {
+                    SettingsChromeWithSidebarToolbarIOS26(
+                        showSidebar: showSidebar,
+                        onClose: onClose,
+                        showsAdd: chromeBridge.showsAddEnvironmentVariable,
+                        onAdd: { chromeBridge.performAddEnvironmentVariable() }
+                    )
+                }
+            } else {
+                content.toolbar {
+                    SettingsCloseOnlyToolbarIOS26(
+                        onClose: onClose,
+                        showsAdd: chromeBridge.showsAddEnvironmentVariable,
+                        onAdd: { chromeBridge.performAddEnvironmentVariable() }
+                    )
+                }
+            }
+        } else if #available(iOS 14.0, *) {
+            if let showSidebar {
+                content.toolbar {
+                    SettingsChromeWithSidebarToolbarIOS14(
+                        showSidebar: showSidebar,
+                        onClose: onClose,
+                        showsAdd: chromeBridge.showsAddEnvironmentVariable,
+                        onAdd: { chromeBridge.performAddEnvironmentVariable() }
+                    )
+                }
+            } else {
+                content.toolbar {
+                    SettingsCloseOnlyToolbarIOS14(
+                        onClose: onClose,
+                        showsAdd: chromeBridge.showsAddEnvironmentVariable,
+                        onAdd: { chromeBridge.performAddEnvironmentVariable() }
+                    )
+                }
+            }
+        } else if let showSidebar {
+            content.navigationBarItems(
+                leading: Button {
+                    withAnimation { showSidebar.wrappedValue.toggle() }
+                } label: {
+                    Image(systemName: "list.bullet")
+                }
+                .accessibility(label: Text("Toggle Sidebar"))
+                .accessibility(identifier: "wwn.settings.sidebar"),
+                trailing: settingsTrailingHStackIOS13
+            )
+        } else {
+            content.navigationBarItems(trailing: settingsTrailingHStackIOS13)
+        }
     }
+
+    @ViewBuilder
+    private var settingsTrailingHStackIOS13: some View {
+        HStack(spacing: 12) {
+            if chromeBridge.showsAddEnvironmentVariable {
+                Button(action: { chromeBridge.performAddEnvironmentVariable() }) {
+                    Image(systemName: "plus")
+                }
+                .accessibility(label: Text("Add Variable"))
+                .accessibility(identifier: "wwn.settings.environment.new")
+            }
+            Button(action: onClose) {
+                Image(systemName: "xmark")
+            }
+            .accessibility(label: Text("Close"))
+            .accessibility(identifier: "wwn.settings.close")
+        }
+    }
+}
+
+/// Leading sidebar + trailing `[+]?` / Close in one group (Liquid Glass cluster).
+@available(iOS 26.0, visionOS 26.0, *)
+private struct SettingsChromeWithSidebarToolbarIOS26: ToolbarContent {
+    @Binding var showSidebar: Bool
+    let onClose: () -> Void
+    let showsAdd: Bool
+    let onAdd: () -> Void
+
+    var body: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            Button {
+                withAnimation { showSidebar.toggle() }
+            } label: {
+                Image(systemName: "sidebar.left")
+            }
+            .accessibility(label: Text("Toggle Sidebar"))
+            .accessibility(identifier: "wwn.settings.sidebar")
+        }
+        ToolbarItemGroup(placement: .topBarTrailing) {
+            if showsAdd {
+                Button(action: onAdd) {
+                    Image(systemName: "plus")
+                }
+                .accessibility(label: Text("Add Variable"))
+                .accessibility(identifier: "wwn.settings.environment.new")
+            }
+            Button(action: onClose) {
+                Image(systemName: "xmark")
+            }
+            .accessibility(label: Text("Close"))
+            .accessibility(identifier: "wwn.settings.close")
+        }
+    }
+}
+
+@available(iOS 26.0, visionOS 26.0, *)
+private struct SettingsCloseOnlyToolbarIOS26: ToolbarContent {
+    let onClose: () -> Void
+    let showsAdd: Bool
+    let onAdd: () -> Void
 
     var body: some ToolbarContent {
         ToolbarItemGroup(placement: .topBarTrailing) {
-            if let onAdd = chromeBridge.onAdd {
+            if showsAdd {
                 Button(action: onAdd) {
                     Image(systemName: "plus")
                 }
@@ -262,18 +379,24 @@ private struct SettingsCloseToolbarIOS26: ToolbarContent {
 }
 
 @available(iOS 14.0, *)
-private struct SettingsCloseToolbarIOS14: ToolbarContent {
+private struct SettingsChromeWithSidebarToolbarIOS14: ToolbarContent {
+    @Binding var showSidebar: Bool
     let onClose: () -> Void
-    @ObservedObject var chromeBridge: WawonaSettingsChromeBridge
-
-    init(onClose: @escaping () -> Void, chromeBridge: WawonaSettingsChromeBridge?) {
-        self.onClose = onClose
-        self.chromeBridge = chromeBridge ?? WawonaSettingsChromeBridge()
-    }
+    let showsAdd: Bool
+    let onAdd: () -> Void
 
     var body: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            Button {
+                withAnimation { showSidebar.toggle() }
+            } label: {
+                Image(systemName: "sidebar.left")
+            }
+            .accessibility(label: Text("Toggle Sidebar"))
+            .accessibility(identifier: "wwn.settings.sidebar")
+        }
         ToolbarItemGroup(placement: .topBarTrailing) {
-            if let onAdd = chromeBridge.onAdd {
+            if showsAdd {
                 Button(action: onAdd) {
                     Image(systemName: "plus")
                 }
@@ -289,19 +412,15 @@ private struct SettingsCloseToolbarIOS14: ToolbarContent {
     }
 }
 
-/// iOS 13: no `ToolbarItemGroup`; plain HStack in `navigationBarItems`.
-private struct SettingsCloseTrailingIOS13: View {
+@available(iOS 14.0, *)
+private struct SettingsCloseOnlyToolbarIOS14: ToolbarContent {
     let onClose: () -> Void
-    @ObservedObject var chromeBridge: WawonaSettingsChromeBridge
+    let showsAdd: Bool
+    let onAdd: () -> Void
 
-    init(onClose: @escaping () -> Void, chromeBridge: WawonaSettingsChromeBridge?) {
-        self.onClose = onClose
-        self.chromeBridge = chromeBridge ?? WawonaSettingsChromeBridge()
-    }
-
-    var body: some View {
-        HStack(spacing: 16) {
-            if let onAdd = chromeBridge.onAdd {
+    var body: some ToolbarContent {
+        ToolbarItemGroup(placement: .topBarTrailing) {
+            if showsAdd {
                 Button(action: onAdd) {
                     Image(systemName: "plus")
                 }

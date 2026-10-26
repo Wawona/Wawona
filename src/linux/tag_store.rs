@@ -12,8 +12,8 @@ use serde::{Deserialize, Serialize};
 
 /// 12-color Finder-style palette matching Apple and Android.
 pub const PALETTE_HEX: &[&str] = &[
-    "FF3B30", "FF9500", "FFCC00", "34C759", "00C7A6", "30B0C7",
-    "007AFF", "5957D6", "AF52DE", "FF2D55", "A3855E", "8E8E93",
+    "FF3B30", "FF9500", "FFCC00", "34C759", "00C7A6", "30B0C7", "007AFF", "5957D6", "AF52DE",
+    "FF2D55", "A3855E", "8E8E93",
 ];
 
 /// A colored tag applicable to one or more machines.
@@ -108,7 +108,9 @@ impl TagStore {
         if let Ok(path) = assignments_path() {
             if path.exists() {
                 if let Ok(text) = fs::read_to_string(&path) {
-                    if let Ok(loaded_map) = serde_json::from_str::<HashMap<String, Vec<String>>>(&text) {
+                    if let Ok(loaded_map) =
+                        serde_json::from_str::<HashMap<String, Vec<String>>>(&text)
+                    {
                         store.tag_ids_by_machine = loaded_map;
                     }
                 }
@@ -124,8 +126,8 @@ impl TagStore {
             .with_context(|| format!("failed to create config dir {}", dir.display()))?;
 
         let tags_file = tags_path()?;
-        let tags_json = serde_json::to_string_pretty(&self.tags)
-            .context("failed to serialize machine tags")?;
+        let tags_json =
+            serde_json::to_string_pretty(&self.tags).context("failed to serialize machine tags")?;
         fs::write(&tags_file, tags_json)
             .with_context(|| format!("failed to write {}", tags_file.display()))?;
 
@@ -157,7 +159,10 @@ impl TagStore {
     }
 
     pub fn set_assigned(&mut self, assigned: bool, tag_id: &str, machine_id: &str) {
-        let ids = self.tag_ids_by_machine.entry(machine_id.to_string()).or_default();
+        let ids = self
+            .tag_ids_by_machine
+            .entry(machine_id.to_string())
+            .or_default();
         if assigned {
             if !ids.iter().any(|id| id == tag_id) {
                 ids.push(tag_id.to_string());

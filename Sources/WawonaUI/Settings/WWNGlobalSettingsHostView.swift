@@ -29,10 +29,11 @@ private struct WWNSettingsPhoneSplitStyle: ViewModifier {
 ///
 /// Chrome matches Machines home: system `SidebarListStyle`, section-tinted SF
 /// Symbol sidebar rows (`WawonaSettingsHubChrome.hubRow`), `List` selection.
-/// Dismiss stays on the **detail / split toolbar** via
-/// `backport.settingsCloseAction(onClose:chromeBridge:)` (`[+][x]` when Add
-/// is registered; trailing `xmark` otherwise on iOS / iPadOS / visionOS;
-/// `Done` on macOS / tvOS). Never put a close control on the sidebar list.
+/// Sidebar chrome matches Machines: system `NavigationSplitView` sidebar
+/// toggle (do not strip, do not add a second `sidebar.left`). Detail trailing
+/// is Add? + Close via `settingsCloseAction` + `WWNSettingsChromeBridge`.
+/// Pre-16 HStack has no system toggle: pass `showSidebar` there only.
+/// macOS / tvOS: `Done` only. Never put close on the sidebar list column.
 struct WWNGlobalSettingsHostView: View {
     @ObservedObject var model: WWNSettingsValueModel
     @Binding var selection: GlobalSettingsSectionID?
@@ -42,11 +43,11 @@ struct WWNGlobalSettingsHostView: View {
     /// Local list selection. Never bind `List(selection:)` to `@Published`
     /// (iOS 16 NavigationSplitView AttributeGraph exclusivity crash).
     @State private var listSelection: GlobalSettingsSectionID?
-    /// Env Vars (and similar) register Add so detail trailing stays `[+][x]`.
-    /// iOS 13 floor: `@WawonaStateObject` (not `@StateObject`, iOS 14+).
-    @WawonaStateObject private var chromeBridge = WawonaSettingsChromeBridge()
     #if os(iOS) || os(visionOS)
     @Environment(\.verticalSizeClass) private var verticalSizeClass
+    /// Env Vars registers Add here so chrome owns one trailing Liquid Glass
+    /// group (`[+][x]`). `StateObject` is iOS 14; product floor is 13.
+    @WawonaStateObject private var chromeBridge = WWNSettingsChromeBridge()
     #endif
 
     private var catalogSections: [GlobalSettingsSectionID] {
@@ -159,13 +160,28 @@ struct WWNGlobalSettingsHostView: View {
             .environment(\.horizontalSizeClass, .regular)
             #endif
         } else {
+            // iOS 13-15: no NavigationSplitView / system toggle. Custom
+            // leading toggle via settingsCloseAction(showSidebar:).
             HStack(spacing: 0) {
                 if showSidebar {
                     settingsSidebar.frame(width: 240)
                     Divider()
                 }
                 WawonaBackport<Any>.navigation {
-                    settingsDetail
+                    settingsDetailBody
+                        #if os(iOS) || os(visionOS)
+                        .environment(\.wwnSettingsChromeBridge, chromeBridge)
+                        .backport.settingsCloseAction(
+                            showSidebar: $showSidebar,
+                            onClose: onDismiss,
+                            chromeBridge: chromeBridge
+                        )
+                        #else
+                        .backport.settingsCloseAction(
+                            showSidebar: $showSidebar,
+                            onClose: onDismiss
+                        )
+                        #endif
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -233,6 +249,8 @@ struct WWNGlobalSettingsHostView: View {
 
     // MARK: - Sidebar
 
+    /// Same column chrome as Machines home: `sidebarList` + width + system
+    /// sidebar toggle (never strip on the split path).
     private var settingsSidebar: some View {
         Group {
             if #available(iOS 14.0, macOS 11.0, visionOS 1.0, *) {
@@ -248,6 +266,9 @@ struct WWNGlobalSettingsHostView: View {
         }
         .backport.sidebarList()
         .backport.navigationTitle("Settings")
+        #if os(iOS)
+        .backport.dismissKeyboardOnScroll()
+        #endif
         #if os(macOS) || os(iOS) || os(visionOS)
         .backport.sidebarWidth()
         #endif
@@ -262,23 +283,16 @@ struct WWNGlobalSettingsHostView: View {
         }
     }
 
-    /// Same row shape as Machines home: section-tinted SF Symbol + title.
+    /// Same row shape as Machines home: plain SF Symbol + title.
     @ViewBuilder
     private func settingsSidebarRow(_ id: GlobalSettingsSectionID) -> some View {
         let objc = WawonaMainWindowView.objcSection(id, in: model.sections)
         Group {
-            #if os(macOS)
-            // List selection owns the row. NavigationLink(value:) in this
-            // column has no destination and makes AppKit insert a new toolbar
-            // item on every section change.
-            settingsRowLabel(id)
-            #else
-            if #available(iOS 16.0, visionOS 1.0, *) {
+            if #available(iOS 16.0, macOS 13.0, visionOS 1.0, *) {
                 NavigationLink(value: id) { settingsRowLabel(id) }
             } else {
                 Button { listSelection = id } label: { settingsRowLabel(id) }
             }
-            #endif
         }
         .tag(id)
         .accessibility(identifier: objc?.accessibilityIdentifier ?? "wwn.settings.\(id.rawValue)")
@@ -286,34 +300,61 @@ struct WWNGlobalSettingsHostView: View {
     }
 
     private func settingsRowLabel(_ id: GlobalSettingsSectionID) -> some View {
-        let tint: Color = {
-            if let objc = WawonaMainWindowView.objcSection(id, in: model.sections) {
-                return objc.swiftUIIconColor
-            }
-            return WawonaSettingsHubChrome.accentColor(for: id)
-        }()
+        // Section accent tints the glyph (no rounded tile). Same colors as
+        // detail controls / PreferencesSectionsBuilder.
+        let objc = WawonaMainWindowView.objcSection(id, in: model.sections)
+        let color = objc?.swiftUIIconColor
+            ?? WawonaSettingsHubChrome.accentColor(for: id)
         return WawonaSettingsHubChrome.hubRow(
             title: id.title,
             systemImage: id.systemImage,
-            iconColor: tint
+            iconColor: color
         )
     }
 
     // MARK: - Detail
 
+    /// Split detail: `NavigationStack` for Env Vars drill-in (system back).
+    /// Trailing `[+]?[x]` only. Leading sidebar toggle = system split control
+    /// (Machines parity). Do not pass `showSidebar` here.
     @ViewBuilder
     private var settingsDetail: some View {
-        // Toolbar on the split detail column only (same pattern as Machines
-        // home). Do not nest NavigationStack here: NavigationSplitView already
-        // owns column chrome. Do not put close on the sidebar list.
+        #if os(iOS) || os(visionOS)
+        settingsDetailStack
+            .environment(\.wwnSettingsChromeBridge, chromeBridge)
+            .backport.settingsCloseAction(
+                onClose: onDismiss,
+                chromeBridge: chromeBridge
+            )
+        #else
+        settingsDetailBody
+            .backport.settingsCloseAction(onClose: onDismiss)
+        #endif
+    }
+
+    #if os(iOS) || os(visionOS)
+    /// Detail column stack for deeper pushes (Env Vars row → editor).
+    /// Skill: NavigationStack in the split detail column.
+    @ViewBuilder
+    private var settingsDetailStack: some View {
+        if #available(iOS 16.0, visionOS 1.0, *) {
+            NavigationStack {
+                settingsDetailBody
+            }
+        } else {
+            settingsDetailBody
+        }
+    }
+    #endif
+
+    @ViewBuilder
+    private var settingsDetailBody: some View {
+        // Column chrome (sidebar / close / add) lives on `settingsDetail`.
+        // Do not put close on the sidebar list.
         Group {
             if let id = selection,
                let section = WawonaMainWindowView.objcSection(id, in: model.sections) {
-                WWNSettingsSectionView(
-                    section: section,
-                    model: model,
-                    chromeBridge: chromeBridge
-                )
+                WWNSettingsSectionView(section: section, model: model)
                     .backport.navigationTitle(id.detailTitle)
             } else {
                 WawonaEmptyState(
@@ -323,7 +364,6 @@ struct WWNGlobalSettingsHostView: View {
                 )
             }
         }
-        .backport.settingsCloseAction(onClose: onDismiss, chromeBridge: chromeBridge)
     }
 }
 #endif

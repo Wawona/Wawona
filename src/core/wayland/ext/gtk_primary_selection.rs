@@ -15,9 +15,7 @@ use wayland_protocols_misc::gtk_primary_selection::server::{
 };
 use wayland_server::backend::protocol::Message;
 use wayland_server::backend::{ClientId, Handle, ObjectData, ObjectId};
-use wayland_server::{
-    Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, Resource,
-};
+use wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, Resource};
 
 use crate::core::state::CompositorState;
 
@@ -109,19 +107,25 @@ impl Dispatch<GtkPrimarySelectionDeviceManager, ()> for CompositorState {
                 let device = data_init.init(id, ());
                 if let Some(src) = &state.gtk_primary_selection.current_source {
                     if src.is_alive() {
-                        if let Some(mimes) =
-                            state.gtk_primary_selection.source_mimes.get(&src.id()).cloned()
+                        if let Some(mimes) = state
+                            .gtk_primary_selection
+                            .source_mimes
+                            .get(&src.id())
+                            .cloned()
                         {
                             let client_id = client.id();
                             let backend = dhandle.backend_handle();
-                            let user_data = Arc::new(GtkOfferUserData { source: src.clone() });
+                            let user_data = Arc::new(GtkOfferUserData {
+                                source: src.clone(),
+                            });
                             if let Ok(obj_id) = backend.create_object::<Self>(
                                 client_id,
                                 GtkPrimarySelectionOffer::interface(),
                                 device.version(),
                                 user_data,
                             ) {
-                                if let Ok(offer) = GtkPrimarySelectionOffer::from_id(dhandle, obj_id)
+                                if let Ok(offer) =
+                                    GtkPrimarySelectionOffer::from_id(dhandle, obj_id)
                                 {
                                     device.data_offer(&offer);
                                     for mime in mimes {
@@ -180,7 +184,10 @@ impl Dispatch<GtkPrimarySelectionSource, ()> for CompositorState {
                         }
                     }
                 }
-                state.gtk_primary_selection.source_mimes.remove(&resource.id());
+                state
+                    .gtk_primary_selection
+                    .source_mimes
+                    .remove(&resource.id());
             }
             _ => {}
         }
@@ -206,7 +213,10 @@ impl Dispatch<GtkPrimarySelectionSource, ()> for CompositorState {
                 }
             }
         }
-        state.gtk_primary_selection.source_mimes.remove(&resource.id());
+        state
+            .gtk_primary_selection
+            .source_mimes
+            .remove(&resource.id());
     }
 }
 
@@ -253,14 +263,17 @@ impl Dispatch<GtkPrimarySelectionDevice, ()> for CompositorState {
                                 Ok(c) => c.id(),
                                 Err(_) => continue,
                             };
-                            let user_data = Arc::new(GtkOfferUserData { source: src.clone() });
+                            let user_data = Arc::new(GtkOfferUserData {
+                                source: src.clone(),
+                            });
                             if let Ok(obj_id) = backend.create_object::<Self>(
                                 dev_client,
                                 GtkPrimarySelectionOffer::interface(),
                                 dev.version(),
                                 user_data,
                             ) {
-                                if let Ok(offer) = GtkPrimarySelectionOffer::from_id(dhandle, obj_id)
+                                if let Ok(offer) =
+                                    GtkPrimarySelectionOffer::from_id(dhandle, obj_id)
                                 {
                                     dev.data_offer(&offer);
                                     for mime in &mimes {

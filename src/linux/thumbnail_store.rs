@@ -165,7 +165,9 @@ mod tests {
     #[test]
     fn argb32_frame_encodes_png() {
         // Little-endian cairo ARgb32: B, G, R, A. Opaque red pixel.
-        let pixels = [0u8, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255];
+        let pixels = [
+            0u8, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255,
+        ];
         let png = encode_argb32_premul_png(2, 2, 8, &pixels).unwrap();
         assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n");
     }

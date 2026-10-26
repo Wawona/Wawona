@@ -120,7 +120,10 @@ pub fn build_settings_view_internal(
             for entry in entries.flatten() {
                 let path = entry.path();
                 if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                    if name.contains("adwaita-icon-theme") && !name.ends_with(".drv") && !name.ends_with(".xz") {
+                    if name.contains("adwaita-icon-theme")
+                        && !name.ends_with(".drv")
+                        && !name.ends_with(".xz")
+                    {
                         let icons_dir = path.join("share").join("icons");
                         if icons_dir.is_dir() {
                             theme.add_search_path(&icons_dir);
@@ -129,10 +132,14 @@ pub fn build_settings_view_internal(
                 }
             }
         }
-        ["sidebar-show-symbolic", "view-sidebar-symbolic", "pan-start-symbolic"]
-            .into_iter()
-            .find(|&ic| theme.has_icon(ic))
-            .unwrap_or("sidebar-show-symbolic")
+        [
+            "sidebar-show-symbolic",
+            "view-sidebar-symbolic",
+            "pan-start-symbolic",
+        ]
+        .into_iter()
+        .find(|&ic| theme.has_icon(ic))
+        .unwrap_or("sidebar-show-symbolic")
     } else {
         "sidebar-show-symbolic"
     };
@@ -235,7 +242,11 @@ pub fn build_settings_view_internal(
     display_group.set_description(Some(
         "Nested compositor presentation, color management, and window decorations.",
     ));
-    let color_ops = add_switch_row(&display_group, "Color Operations / HDR", settings.color_operations);
+    let color_ops = add_switch_row(
+        &display_group,
+        "Color Operations / HDR",
+        settings.color_operations,
+    );
     add_combo_row(
         &display_group,
         "Display Backend",
@@ -256,12 +267,17 @@ pub fn build_settings_view_internal(
     add_named_combo_row(
         &display_group,
         "Default Start Type",
-        &[("prompt", "Prompt"), ("newTab", "New Tab"), ("newWindow", "New Window")],
+        &[
+            ("prompt", "Prompt"),
+            ("newTab", "New Tab"),
+            ("newWindow", "New Window"),
+        ],
         &settings.start_behavior,
         start_behavior_value.clone(),
     );
     // Same row as macOS/iOS Machine Settings → Display. Not an environment variable.
-    let wayland_display = add_entry_row(&display_group, "Wayland Display", &settings.wayland_display);
+    let wayland_display =
+        add_entry_row(&display_group, "Wayland Display", &settings.wayland_display);
     let tcp_port = add_spin_row(
         &display_group,
         "TCP Listener Port",
@@ -285,9 +301,24 @@ pub fn build_settings_view_internal(
     input_group.set_description(Some(
         "Keyboard repeat rates, cursor visibility, and clipboard synchronization.",
     ));
-    let input_profile = add_entry_row(&input_group, "Default Input Profile", &settings.input_profile);
-    let key_repeat = add_spin_row(&input_group, "Key Repeat", settings.key_repeat as f64, 1.0, 60.0, 1.0);
-    let virtual_cursor_switch = add_switch_row(&input_group, "Show Virtual Cursor", settings.show_virtual_cursor);
+    let input_profile = add_entry_row(
+        &input_group,
+        "Default Input Profile",
+        &settings.input_profile,
+    );
+    let key_repeat = add_spin_row(
+        &input_group,
+        "Key Repeat",
+        settings.key_repeat as f64,
+        1.0,
+        60.0,
+        1.0,
+    );
+    let virtual_cursor_switch = add_switch_row(
+        &input_group,
+        "Show Virtual Cursor",
+        settings.show_virtual_cursor,
+    );
     let universal_clipboard_switch = add_switch_row(
         &input_group,
         "Universal Clipboard",
@@ -374,12 +405,13 @@ pub fn build_settings_view_internal(
         }
     });
 
-    let (env_manager_view, leave_env_detail, env_chrome) = crate::linux::ui::env_vars::build_env_vars_view(
-        env_overrides_cell.clone(),
-        env_unsets_cell.clone(),
-        settings,
-        on_env_detail,
-    );
+    let (env_manager_view, leave_env_detail, env_chrome) =
+        crate::linux::ui::env_vars::build_env_vars_view(
+            env_overrides_cell.clone(),
+            env_unsets_cell.clone(),
+            settings,
+            on_env_detail,
+        );
     env_chrome.pack_header(&header);
     env_box.append(&env_manager_view);
     {
@@ -401,8 +433,19 @@ pub fn build_settings_view_internal(
     waypipe_group.set_description(Some(
         "Wayland protocol proxy configuration for remote streaming over SSH or unix sockets.",
     ));
-    let wp_enabled = add_switch_row(&waypipe_group, "Default Waypipe Enabled", settings.waypipe_enabled);
-    let wp_display = add_spin_row(&waypipe_group, "Display Number", settings.waypipe_display as f64, 0.0, 99.0, 1.0);
+    let wp_enabled = add_switch_row(
+        &waypipe_group,
+        "Default Waypipe Enabled",
+        settings.waypipe_enabled,
+    );
+    let wp_display = add_spin_row(
+        &waypipe_group,
+        "Display Number",
+        settings.waypipe_display as f64,
+        0.0,
+        99.0,
+        1.0,
+    );
     let wp_socket = add_entry_row(&waypipe_group, "Socket Path", &settings.waypipe_socket);
     add_combo_row(
         &waypipe_group,
@@ -411,8 +454,22 @@ pub fn build_settings_view_internal(
         &settings.waypipe_compression,
         wp_compress_value.clone(),
     );
-    let wp_compress_level = add_spin_row(&waypipe_group, "Compression Level", settings.waypipe_compress_level as f64, 1.0, 22.0, 1.0);
-    let wp_threads = add_spin_row(&waypipe_group, "Worker Threads", settings.waypipe_threads as f64, 0.0, 32.0, 1.0);
+    let wp_compress_level = add_spin_row(
+        &waypipe_group,
+        "Compression Level",
+        settings.waypipe_compress_level as f64,
+        1.0,
+        22.0,
+        1.0,
+    );
+    let wp_threads = add_spin_row(
+        &waypipe_group,
+        "Worker Threads",
+        settings.waypipe_threads as f64,
+        0.0,
+        32.0,
+        1.0,
+    );
     add_combo_row(
         &waypipe_group,
         "Video Compression",
@@ -434,13 +491,34 @@ pub fn build_settings_view_internal(
         &settings.waypipe_video_decoding,
         wp_video_dec_value.clone(),
     );
-    let wp_video_bpf = add_entry_row(&waypipe_group, "Bits Per Frame", &settings.waypipe_video_bpf);
-    let wp_remote_cmd = add_entry_row(&waypipe_group, "Remote Command", &settings.waypipe_remote_command);
-    let wp_title_prefix = add_entry_row(&waypipe_group, "Title Prefix", &settings.waypipe_title_prefix);
-    let wp_no_gpu = add_switch_row(&waypipe_group, "Disable GPU (Force SHM)", settings.waypipe_no_gpu);
+    let wp_video_bpf = add_entry_row(
+        &waypipe_group,
+        "Bits Per Frame",
+        &settings.waypipe_video_bpf,
+    );
+    let wp_remote_cmd = add_entry_row(
+        &waypipe_group,
+        "Remote Command",
+        &settings.waypipe_remote_command,
+    );
+    let wp_title_prefix = add_entry_row(
+        &waypipe_group,
+        "Title Prefix",
+        &settings.waypipe_title_prefix,
+    );
+    let wp_no_gpu = add_switch_row(
+        &waypipe_group,
+        "Disable GPU (Force SHM)",
+        settings.waypipe_no_gpu,
+    );
     let wp_oneshot = add_switch_row(&waypipe_group, "One-shot Exit", settings.waypipe_oneshot);
-    let wp_unlink_socket = add_switch_row(&waypipe_group, "Unlink Socket on Exit", settings.waypipe_unlink_socket);
-    let wp_login_shell = add_switch_row(&waypipe_group, "Login Shell", settings.waypipe_login_shell);
+    let wp_unlink_socket = add_switch_row(
+        &waypipe_group,
+        "Unlink Socket on Exit",
+        settings.waypipe_unlink_socket,
+    );
+    let wp_login_shell =
+        add_switch_row(&waypipe_group, "Login Shell", settings.waypipe_login_shell);
     let wp_debug = add_switch_row(&waypipe_group, "Debug Mode", settings.waypipe_debug);
     waypipe_page.add(&waypipe_group);
     crate::linux::ui::a11y::set_wwn_a11y(
@@ -459,7 +537,14 @@ pub fn build_settings_view_internal(
     ));
     let ssh_host = add_entry_row(&ssh_group, "Host", &settings.ssh_host);
     let ssh_user = add_entry_row(&ssh_group, "User", &settings.ssh_user);
-    let ssh_port = add_spin_row(&ssh_group, "Port", settings.ssh_port as f64, 1.0, 65535.0, 1.0);
+    let ssh_port = add_spin_row(
+        &ssh_group,
+        "Port",
+        settings.ssh_port as f64,
+        1.0,
+        65535.0,
+        1.0,
+    );
     add_combo_row(
         &ssh_group,
         "Auth Method",
@@ -469,7 +554,8 @@ pub fn build_settings_view_internal(
     );
     let ssh_password = add_password_row(&ssh_group, "Password", &settings.ssh_password);
     let ssh_key_path = add_entry_row(&ssh_group, "Key Path", &settings.ssh_key_path);
-    let ssh_key_passphrase = add_password_row(&ssh_group, "Key Passphrase", &settings.ssh_key_passphrase);
+    let ssh_key_passphrase =
+        add_password_row(&ssh_group, "Key Passphrase", &settings.ssh_key_passphrase);
     add_combo_row(
         &ssh_group,
         "Key Type",
@@ -718,8 +804,11 @@ pub fn build_settings_view_internal(
         "Container Runtime",
         "OCI-in-VM. Containers unpack OCI images, then run on the same Relay KVM VM.",
     );
-    let container_image_store =
-        add_entry_row(&vm_group, "Container Image Store", &settings.container_image_store);
+    let container_image_store = add_entry_row(
+        &vm_group,
+        "Container Image Store",
+        &settings.container_image_store,
+    );
     diag_page.add(&vm_group);
     stack.add_named(&diag_page, Some("Diagnostics"));
 
@@ -964,10 +1053,19 @@ fn linux_gpu_driver() -> String {
 }
 
 fn linux_copy_bug_diagnostics() {
-    let mut diag = format!("Wawona Linux UI Diagnostics\nVersion: {}\nBuild: {}\nOS: {}\nCPU: {}\nGPU: {}\n",
-        version(), build_number(), linux_host_os(), linux_cpu_info(), linux_gpu_driver());
+    let mut diag = format!(
+        "Wawona Linux UI Diagnostics\nVersion: {}\nBuild: {}\nOS: {}\nCPU: {}\nGPU: {}\n",
+        version(),
+        build_number(),
+        linux_host_os(),
+        linux_cpu_info(),
+        linux_gpu_driver()
+    );
     if let Ok(rt) = runtime::read_runtime_state() {
-        diag.push_str(&format!("Runtime: healthy={} display={} socket={}\n", rt.healthy, rt.wayland_display, rt.socket_path));
+        diag.push_str(&format!(
+            "Runtime: healthy={} display={} socket={}\n",
+            rt.healthy, rt.wayland_display, rt.socket_path
+        ));
     }
     if let Some(display) = gtk::gdk::Display::default() {
         display.clipboard().set_text(&diag);
@@ -993,7 +1091,16 @@ fn linux_generate_ssh_key(key_type: &str, path: &str, passphrase: &str) -> Resul
         return Err(format!("Key file already exists at {path}"));
     }
     let status = std::process::Command::new("ssh-keygen")
-        .args(["-t", key_type, "-f", &path, "-N", passphrase, "-C", "wawona-linux"])
+        .args([
+            "-t",
+            key_type,
+            "-f",
+            &path,
+            "-N",
+            passphrase,
+            "-C",
+            "wawona-linux",
+        ])
         .status()
         .map_err(|e| e.to_string())?;
     if status.success() {
@@ -1013,13 +1120,25 @@ fn linux_test_ssh_connection(host: &str, user: &str, port: u16) -> Result<String
         format!("{user}@{host}")
     };
     let out = std::process::Command::new("ssh")
-        .args(["-p", &port.to_string(), "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", &target, "echo ok"])
+        .args([
+            "-p",
+            &port.to_string(),
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "ConnectTimeout=5",
+            &target,
+            "echo ok",
+        ])
         .output()
         .map_err(|e| e.to_string())?;
     if out.status.success() {
         Ok("SSH connection succeeded".to_string())
     } else {
-        Err(format!("SSH connection failed: {}", String::from_utf8_lossy(&out.stderr)))
+        Err(format!(
+            "SSH connection failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        ))
     }
 }
 
@@ -1225,9 +1344,7 @@ fn bundled_about_png(name: &str) -> Option<&'static [u8]> {
         "WawonaWebsite.png" => Some(include_bytes!(
             "../../resources/Wawona.icon/Assets/WawonaWebsite.png"
         )),
-        "X.png" => Some(include_bytes!(
-            "../../resources/Wawona.icon/Assets/X.png"
-        )),
+        "X.png" => Some(include_bytes!("../../resources/Wawona.icon/Assets/X.png")),
         "GitHubSponsors.png" => Some(include_bytes!(
             "../../resources/Wawona.icon/Assets/GitHubSponsors.png"
         )),
@@ -1260,7 +1377,11 @@ fn download_url_bytes(url: &str) -> Option<Vec<u8>> {
     }
     let bytes = std::fs::read(&tmp).ok()?;
     let _ = std::fs::remove_file(&tmp);
-    if bytes.is_empty() { None } else { Some(bytes) }
+    if bytes.is_empty() {
+        None
+    } else {
+        Some(bytes)
+    }
 }
 
 fn fnv64(bytes: &[u8]) -> u64 {
@@ -1285,11 +1406,7 @@ fn show_dependency_detail(
     } else {
         format!("{name} {version}")
     };
-    let dialog = adw::MessageDialog::new(
-        parent,
-        Some(&heading),
-        None,
-    );
+    let dialog = adw::MessageDialog::new(parent, Some(&heading), None);
     let mut body = String::new();
     if !role.is_empty() {
         body.push_str(role);
@@ -1351,14 +1468,7 @@ fn add_dependency_row(
 
     row.connect_activated(move |r| {
         let root_win = r.root().and_downcast::<gtk::Window>();
-        show_dependency_detail(
-            root_win.as_ref(),
-            &name,
-            &version,
-            &role,
-            &license,
-            &url,
-        );
+        show_dependency_detail(root_win.as_ref(), &name, &version, &role, &license, &url);
     });
 
     group.add(&row);
@@ -1381,7 +1491,11 @@ fn add_entry_row(group: &adw::PreferencesGroup, title: &str, text: &str) -> adw:
     row
 }
 
-fn add_password_row(group: &adw::PreferencesGroup, title: &str, text: &str) -> adw::PasswordEntryRow {
+fn add_password_row(
+    group: &adw::PreferencesGroup,
+    title: &str,
+    text: &str,
+) -> adw::PasswordEntryRow {
     let row = adw::PasswordEntryRow::new();
     row.set_title(title);
     row.set_text(text);
@@ -1389,7 +1503,14 @@ fn add_password_row(group: &adw::PreferencesGroup, title: &str, text: &str) -> a
     row
 }
 
-fn add_spin_row(group: &adw::PreferencesGroup, title: &str, val: f64, min: f64, max: f64, step: f64) -> adw::SpinRow {
+fn add_spin_row(
+    group: &adw::PreferencesGroup,
+    title: &str,
+    val: f64,
+    min: f64,
+    max: f64,
+    step: f64,
+) -> adw::SpinRow {
     let adj = gtk::Adjustment::new(val, min, max, step, step * 2.0, 0.0);
     let row = adw::SpinRow::new(Some(&adj), 1.0, 0);
     row.set_title(title);
@@ -1441,7 +1562,10 @@ fn add_named_combo_row(
         "window" => "newWindow",
         other => other,
     };
-    if let Some(idx) = choices.iter().position(|(id, _)| *id == norm_current || *id == current) {
+    if let Some(idx) = choices
+        .iter()
+        .position(|(id, _)| *id == norm_current || *id == current)
+    {
         row.set_selected(idx as u32);
     }
     let ids: Vec<String> = choices.iter().map(|(id, _)| id.to_string()).collect();
@@ -1511,7 +1635,8 @@ fn create_rounded_texture(bytes: &[u8], target_size: i32, radius: f64) -> Option
         orig_w,
         orig_h,
         src_stride,
-    ).ok()?;
+    )
+    .ok()?;
 
     cr.scale(w / (orig_w as f64), h / (orig_h as f64));
     cr.set_source_surface(&src_surf, 0.0, 0.0).ok()?;

@@ -101,18 +101,42 @@ fn generate_id() -> String {
     format!("{ts:X}-{r:08X}")
 }
 
-fn default_true() -> bool { true }
-fn default_compositor_backend() -> String { "auto".to_string() }
-fn default_vulkan_driver() -> String { "system".to_string() }
-fn default_opengl_driver() -> String { "system".to_string() }
-fn default_tcp_port() -> u16 { 6000 }
-fn default_ssh_key_type() -> String { "ed25519".to_string() }
-fn default_vm_vsock_port() -> u32 { 1024 }
-fn default_container_image_store() -> String { "~/.local/share/wawona/oci".to_string() }
-fn default_compress_level() -> u32 { 7 }
-fn default_video_encoding() -> String { "hw".to_string() }
-fn default_video_decoding() -> String { "hw".to_string() }
-fn default_start_behavior() -> String { "prompt".to_string() }
+fn default_true() -> bool {
+    true
+}
+fn default_compositor_backend() -> String {
+    "auto".to_string()
+}
+fn default_vulkan_driver() -> String {
+    "system".to_string()
+}
+fn default_opengl_driver() -> String {
+    "system".to_string()
+}
+fn default_tcp_port() -> u16 {
+    6000
+}
+fn default_ssh_key_type() -> String {
+    "ed25519".to_string()
+}
+fn default_vm_vsock_port() -> u32 {
+    1024
+}
+fn default_container_image_store() -> String {
+    "~/.local/share/wawona/oci".to_string()
+}
+fn default_compress_level() -> u32 {
+    7
+}
+fn default_video_encoding() -> String {
+    "hw".to_string()
+}
+fn default_video_decoding() -> String {
+    "hw".to_string()
+}
+fn default_start_behavior() -> String {
+    "prompt".to_string()
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LinuxSettings {
@@ -374,10 +398,10 @@ mod tests {
         std::fs::write(&path, &json).expect("write");
 
         let loaded_text = std::fs::read_to_string(&path).expect("read");
-        let loaded: super::LinuxAppConfig = serde_json::from_str(&loaded_text).expect("deserialize");
+        let loaded: super::LinuxAppConfig =
+            serde_json::from_str(&loaded_text).expect("deserialize");
 
         assert_eq!(loaded.settings.compositor_backend, "drm");
         assert_eq!(loaded.settings.waypipe_threads, 4);
     }
 }
-

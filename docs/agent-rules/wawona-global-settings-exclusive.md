@@ -11,12 +11,12 @@ rebuild them.
 
 | Target / band | Sole Global Settings host |
 |---|---|
-| macOS | In-app `WWNGlobalSettingsHostView` replaces Machines chrome in the main window (gear / Cmd-,). Never a sheet. Section sidebar + detail |
-| iOS / iPadOS | In-app `WWNGlobalSettingsHostView` (gear). Not Machines home sidebar |
-| watchOS | In-app `WatchGlobalSettingsView` on the wrist |
-| tvOS / visionOS | In-app `WWNGlobalSettingsHostView` (gear) |
-| Android | In-app Compose `SettingsDialog` |
-| Linux | In-app libadwaita settings dialog |
+| macOS | In-app `WWNGlobalSettingsHostView` slides up over Machines (gear / Cmd-,). Never a modal sheet (macOS sheet backport is a floating popup). Section sidebar + detail |
+| iOS / iPadOS | In-app `WWNGlobalSettingsHostView` slides up over Machines (gear) |
+| watchOS | In-app `WatchGlobalSettingsView` sheet (system slide-up) |
+| tvOS / visionOS | In-app `WWNGlobalSettingsHostView` slides up over Machines (gear) |
+| Android | In-app Compose `SettingsDialog` with `AnimatedVisibility` slide-up |
+| Linux | In-app `adw::Dialog` `BottomSheet` (slide-up) |
 
 Text and password fields on iOS / tvOS / visionOS use a push editor page
 (Settings.app pattern: row → new view → Save → back), not sheets or inline
@@ -42,8 +42,8 @@ sections live in the dedicated Settings host sidebar (`visibleSections`).
 
 ## Sidebar icons (Apple)
 
-Section-tinted SF Symbols in Machines and Settings sidebars. Section accents also tint
-Settings detail controls only. Never colored rounded-square icon tiles.
+Section-tinted SF Symbols in Machines and Settings sidebars. Same accents
+tint Settings detail controls. Never colored rounded-square icon tiles.
 See `wawona-apple-sidebar-icons`.
 
 ## Hard rejects

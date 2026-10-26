@@ -26,9 +26,7 @@ use wayland_protocols::wp::input_method::zv1::server::{
 };
 use wayland_server::backend::protocol::Message;
 use wayland_server::backend::{ClientId, Handle, ObjectData, ObjectId};
-use wayland_server::{
-    Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
-};
+use wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource};
 
 use crate::core::state::CompositorState;
 use crate::core::wayland::ext::text_input_v2::TextInputV2Instance;
@@ -63,10 +61,18 @@ impl ObjectData<CompositorState> for InputMethodContextV1Data {
                     zwp_input_method_context_v1::Request::CommitString { serial: _, text } => {
                         text_input.resource.commit_string(text);
                     }
-                    zwp_input_method_context_v1::Request::PreeditString { serial: _, text, commit } => {
+                    zwp_input_method_context_v1::Request::PreeditString {
+                        serial: _,
+                        text,
+                        commit,
+                    } => {
                         text_input.resource.preedit_string(text, commit);
                     }
-                    zwp_input_method_context_v1::Request::PreeditStyling { index, length, style } => {
+                    zwp_input_method_context_v1::Request::PreeditStyling {
+                        index,
+                        length,
+                        style,
+                    } => {
                         use wayland_protocols_plasma::text_input::v2::server::zwp_text_input_v2::PreeditStyle;
                         let st = match style {
                             0 => PreeditStyle::Default,
@@ -84,7 +90,10 @@ impl ObjectData<CompositorState> for InputMethodContextV1Data {
                     zwp_input_method_context_v1::Request::PreeditCursor { index } => {
                         text_input.resource.preedit_cursor(index);
                     }
-                    zwp_input_method_context_v1::Request::DeleteSurroundingText { index, length } => {
+                    zwp_input_method_context_v1::Request::DeleteSurroundingText {
+                        index,
+                        length,
+                    } => {
                         let (before, after) = split_surrounding_deletion(index, length);
                         text_input.resource.cursor_position(index, 0);
                         text_input.resource.delete_surrounding_text(before, after);
@@ -95,13 +104,25 @@ impl ObjectData<CompositorState> for InputMethodContextV1Data {
                     zwp_input_method_context_v1::Request::ModifiersMap { map } => {
                         text_input.resource.modifiers_map(map);
                     }
-                    zwp_input_method_context_v1::Request::Keysym { serial: _, time, sym, state: kstate, modifiers } => {
+                    zwp_input_method_context_v1::Request::Keysym {
+                        serial: _,
+                        time,
+                        sym,
+                        state: kstate,
+                        modifiers,
+                    } => {
                         text_input.resource.keysym(time, sym, kstate, modifiers);
                     }
-                    zwp_input_method_context_v1::Request::Language { serial: _, language } => {
+                    zwp_input_method_context_v1::Request::Language {
+                        serial: _,
+                        language,
+                    } => {
                         text_input.resource.language(language);
                     }
-                    zwp_input_method_context_v1::Request::TextDirection { serial: _, direction } => {
+                    zwp_input_method_context_v1::Request::TextDirection {
+                        serial: _,
+                        direction,
+                    } => {
                         let dir = match direction {
                             1 => wayland_protocols_plasma::text_input::v2::server::zwp_text_input_v2::TextDirection::Ltr,
                             2 => wayland_protocols_plasma::text_input::v2::server::zwp_text_input_v2::TextDirection::Rtl,
@@ -240,11 +261,7 @@ pub fn split_surrounding_deletion(index: i32, length: u32) -> (u32, u32) {
 // ============================================================================
 
 /// Activate the input method for the enabled text input of `client`.
-pub fn activate_text_input(
-    state: &mut CompositorState,
-    handle: &DisplayHandle,
-    client: &ClientId,
-) {
+pub fn activate_text_input(state: &mut CompositorState, handle: &DisplayHandle, client: &ClientId) {
     let Some(input_method) = state.ext.input_method_v1.input_method.clone() else {
         return;
     };
@@ -298,8 +315,8 @@ pub fn deactivate_text_input(state: &mut CompositorState, client: &ClientId) {
         return;
     }
     let active_id = state.ext.input_method_v1.active_text_input.clone();
-    let active = active_id
-        .is_some_and(|id| state.ext.text_input_v2.instance_of(client, &id).is_some());
+    let active =
+        active_id.is_some_and(|id| state.ext.text_input_v2.instance_of(client, &id).is_some());
     if !active {
         return;
     }
@@ -332,10 +349,7 @@ pub fn commit_text_input_state(state: &mut CompositorState, client: &ClientId) {
 }
 
 /// The enabled text input object of `client`, if any.
-fn enabled_text_input(
-    state: &CompositorState,
-    client: &ClientId,
-) -> Option<TextInputV2Instance> {
+fn enabled_text_input(state: &CompositorState, client: &ClientId) -> Option<TextInputV2Instance> {
     state
         .ext
         .text_input_v2
@@ -350,9 +364,7 @@ fn enabled_text_input(
 // ============================================================================
 
 /// Register the `zwp_input_method_v1` global.
-pub fn register_input_method_v1(
-    display: &DisplayHandle,
-) -> wayland_server::backend::GlobalId {
+pub fn register_input_method_v1(display: &DisplayHandle) -> wayland_server::backend::GlobalId {
     display.create_global::<CompositorState, ZwpInputMethodV1, ()>(1, ())
 }
 

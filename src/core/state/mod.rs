@@ -16,6 +16,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use crate::core::input::keyboard::KeyboardState;
 use crate::core::input::pointer::PointerState;
 use crate::core::input::touch::TouchState;
+use crate::core::wayland::ext::pointer_gestures::PointerGesturesState;
 
 use wayland_server::Resource;
 
@@ -33,8 +34,8 @@ use crate::core::wayland::protocol::server::xdg::shell::server::{
     xdg_popup, xdg_surface, xdg_toplevel, xdg_wm_base,
 };
 
+use crate::core::wayland::ext::fractional_scale::FractionalScaleState;
 use crate::core::wayland::ext::pointer_constraints::PointerConstraintsState;
-use crate::core::wayland::ext::pointer_gestures::PointerGesturesState;
 use crate::core::wayland::ext::relative_pointer::RelativePointerState;
 use crate::core::wayland::ext::viewporter::{ViewportData, ViewporterState};
 use crate::core::wayland::wlr::export_dmabuf::{DmabufExportFrame, ExportDmabufState};
@@ -351,7 +352,8 @@ pub struct XdgSurfaceData {
     /// The actual protocol resource
     pub resource: Option<xdg_surface::XdgSurface>,
     /// Associated zxdg_surface_v6 resource (if v6 surface)
-    pub v6_resource: Option<crate::core::wayland::xdg::v6::protocol::zxdg_surface_v6::ZxdgSurfaceV6>,
+    pub v6_resource:
+        Option<crate::core::wayland::xdg::v6::protocol::zxdg_surface_v6::ZxdgSurfaceV6>,
     /// Window geometry from set_window_geometry (content rect for CSD); (x, y, width, height)
     pub geometry: Option<(i32, i32, i32, i32)>,
 }
@@ -419,7 +421,8 @@ pub struct XdgToplevelData {
     /// The actual protocol resource
     pub resource: Option<xdg_toplevel::XdgToplevel>,
     /// Associated zxdg_toplevel_v6 resource (if v6 toplevel)
-    pub v6_resource: Option<crate::core::wayland::xdg::v6::protocol::zxdg_toplevel_v6::ZxdgToplevelV6>,
+    pub v6_resource:
+        Option<crate::core::wayland::xdg::v6::protocol::zxdg_toplevel_v6::ZxdgToplevelV6>,
     /// Smithay's `ToplevelSurface` wrapper (owns configure/serial machinery).
     /// Populated when xdg-shell is driven by smithay's `delegate_xdg_shell!`.
     pub toplevel_surface: Option<smithay::wayland::shell::xdg::ToplevelSurface>,
@@ -1279,6 +1282,8 @@ pub struct ExtProtocolState {
     pub viewports: HashMap<u32, ViewportData>,
     /// Viewporter State
     pub viewporter: ViewporterState,
+    /// Fractional scale objects (preferred_scale refresh on output change)
+    pub fractional_scale: FractionalScaleState,
 
     /// Linux DMABUF state
     pub linux_dmabuf: LinuxDmabufState,
@@ -1350,6 +1355,7 @@ impl Default for ExtProtocolState {
             pointer_constraints: PointerConstraintsState::default(),
             viewports: HashMap::new(),
             viewporter: ViewporterState::default(),
+            fractional_scale: FractionalScaleState::default(),
             linux_dmabuf: LinuxDmabufState::default(),
             #[cfg(feature = "desktop-protocols")]
             linux_drm_syncobj: SyncObjState::default(),
@@ -1802,7 +1808,9 @@ impl CompositorState {
             wlr: WlrState::default(),
             xdg_v6: crate::core::wayland::xdg::v6::XdgV6State::default(),
             wl_shell: crate::core::wayland::wl_shell::WlShellState::default(),
-            gtk_primary_selection: crate::core::wayland::ext::gtk_primary_selection::GtkPrimarySelectionState::default(),
+            gtk_primary_selection:
+                crate::core::wayland::ext::gtk_primary_selection::GtkPrimarySelectionState::default(
+                ),
             seat_resources: HashMap::new(),
 
             pending_compositor_events: Vec::new(),
@@ -1971,6 +1979,8 @@ impl CompositorState {
                 scale
             );
         }
+        let preferred_scale = self.primary_output().scale;
+        self.ext.fractional_scale.notify_all(preferred_scale);
     }
 
     /// Get primary output mutably
@@ -2135,6 +2145,7 @@ impl CompositorState {
                 );
             }
         }
+        self.ext.fractional_scale.notify_all(safe_scale);
 
         tracing::info!(
             "Output size set to {}x{} @ {}x (phys: {}x{}mm)",

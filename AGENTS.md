@@ -361,3 +361,4 @@ is on (`wawona-nested-compositor-cursor`). Full rule:
 ## Product map (agents)
 
 See `docs/agent-rules/wawona-product-map.md` and `docs/agent-rules/wawona-product-integration.md` (Swinging Bridge, Desktop/LockScreen, VMs, containers, Wasm Runtime. Do not conflate).
+- If using XcodeBuildMCP, use the installed XcodeBuildMCP skill before calling XcodeBuildMCP tools.

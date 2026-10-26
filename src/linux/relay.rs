@@ -99,7 +99,9 @@ fn guest_console_argv(profile: &MachineProfile) -> Result<Vec<String>> {
             .map(str::trim)
             .filter(|s| !s.is_empty())
             .ok_or_else(|| {
-                anyhow::anyhow!("Container needs an OCI image reference. No host container runtime.")
+                anyhow::anyhow!(
+                    "Container needs an OCI image reference. No host container runtime."
+                )
             })?;
         let entry = profile
             .container_settings
@@ -219,7 +221,11 @@ fn locate_guest(variant: &str) -> Result<(String, String)> {
 
     let mut dirs = Vec::new();
     if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
-        dirs.push(std::path::PathBuf::from(xdg).join("wawona/guests").join(variant));
+        dirs.push(
+            std::path::PathBuf::from(xdg)
+                .join("wawona/guests")
+                .join(variant),
+        );
     }
     if let Ok(home) = std::env::var("HOME") {
         dirs.push(
@@ -279,8 +285,12 @@ mod tests {
             "console=ttyS0",
         );
         assert_eq!(argv[0], "cloud-hypervisor");
-        assert!(argv.windows(2).any(|pair| pair[0] == "--serial" && pair[1] == "tty"));
-        assert!(argv.windows(2).any(|pair| pair[0] == "--console" && pair[1] == "off"));
+        assert!(argv
+            .windows(2)
+            .any(|pair| pair[0] == "--serial" && pair[1] == "tty"));
+        assert!(argv
+            .windows(2)
+            .any(|pair| pair[0] == "--console" && pair[1] == "off"));
         assert!(!argv
             .iter()
             .any(|arg| arg == "-l" || arg == "-i" || arg == "zsh" || arg == "bash"));

@@ -96,50 +96,40 @@ final class IosShellSession {
     private var term: OpaquePointer?
     private var master: Int32 = -1
     private var pump: DispatchSourceRead?
+    private static let queueKey = DispatchSpecificKey<UInt8>()
     private let queue = DispatchQueue(label: "com.aspauldingcode.wawona.ios-shell")
     private var cols: UInt32 = 80
     private var rows: UInt32 = 24
     private var stopped = false
-    private var pressureObservers: [NSObjectProtocol] = []
+    private var owed = Data()
+    private var retryArmed = false
 
     var onScreen: ((String) -> Void)?
     var onPictures: ((String) -> Void)?
     var onFailure: ((String) -> Void)?
 
     func start(cols: UInt32 = 80, rows: UInt32 = 24) {
+        queue.setSpecific(key: Self.queueKey, value: 1)
         stop()
-        stopped = false
-        self.cols = max(20, cols)
-        self.rows = max(8, rows)
+        queue.sync { self.stopped = false; self.owed.removeAll() }
+        (self.cols, self.rows) = (max(20, cols), max(8, rows))
 
         var err: NSError?
         if !WWNRootfsManager.ensureRootfsInstalled(&err) {
             onFailure?(err?.localizedDescription ?? "Rootfs install failed.")
-            return
+            stop(); return
         }
         WWNRootfsManager.applyShellEnvironment()
-        setenv("WAWONA_ZSH_IN_PROCESS", "1", 1)
-        setenv("WAWONA_SHELL", "/usr/bin/zsh", 1)
-        setenv("SHELL", "/usr/bin/zsh", 1)
-        setenv("TERM", "xterm-256color", 1)
-        // Latch ONLCR write path for Simulator real POSIX PTYs. Prefer the
-        // process latch in tip wwn-pty when linked; otherwise setenv only.
-        setenv("WAWONA_PTY_FAKE_TTY", "1", 1)
-        if let sym = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "wwn_pty_ios_force_fake_tty") {
-            typealias ForceFakeTty = @convention(c) () -> Void
-            unsafeBitCast(sym, to: ForceFakeTty.self)()
-        }
+        [("TERM", "xterm-256color"), ("WAWONA_ZSH_IN_PROCESS", "1"), ("WAWONA_SHELL", "/usr/bin/zsh"), ("SHELL", "/usr/bin/zsh")].forEach { setenv($0.0, $0.1, 1) }
+        WWNTerminalCursorMode.observe(Data([0x18, 0x1B, 0x63]))
 
         IosShellABI.allowNewShellSession()
 
         guard let term = IosShellABI.termNew(self.cols, self.rows) else {
             onFailure?("Terminal screen failed to allocate.")
-            return
+            stop(); return
         }
         self.term = term
-        // Term::new already probed RAM/CPU; fold Low Power / thermal in.
-        WawonaTerminalScrollback.apply(to: term)
-        installPressureObservers()
 
         var ws = winsize()
         ws.ws_row = UInt16(self.rows)
@@ -155,9 +145,8 @@ final class IosShellSession {
         guard let started else {
             IosShellABI.termFree(term)
             self.term = nil
-            clearPressureObservers()
             onFailure?("Native Shell failed to start (in-process zsh).")
-            return
+            stop(); return
         }
         session = started
         master = IosShellABI.masterFd(started)
@@ -175,21 +164,6 @@ final class IosShellSession {
         exportScreen()
     }
 
-    private func installPressureObservers() {
-        clearPressureObservers()
-        pressureObservers = WawonaTerminalScrollback.installPressureObservers { [weak self] in
-            guard let self, let term = self.term else { return }
-            WawonaTerminalScrollback.apply(to: term)
-        }
-    }
-
-    private func clearPressureObservers() {
-        for token in pressureObservers {
-            NotificationCenter.default.removeObserver(token)
-        }
-        pressureObservers.removeAll()
-    }
-
     func resize(cols: UInt32, rows: UInt32, cellW: UInt32 = 8, cellH: UInt32 = 16) {
         let cols = min(512, max(20, cols))
         let rows = min(256, max(8, rows))
@@ -197,10 +171,8 @@ final class IosShellSession {
             guard let self, !self.stopped, let term = self.term else { return }
             IosShellABI.termSetCellPx(term, cellW, cellH)
             guard cols != self.cols || rows != self.rows else { return }
-            self.cols = cols
-            self.rows = rows
+            (self.cols, self.rows) = (cols, rows)
             IosShellABI.termResize(term, cols, rows)
-            WawonaTerminalScrollback.apply(to: term)
             var ws = winsize()
             ws.ws_row = UInt16(rows)
             ws.ws_col = UInt16(cols)
@@ -210,9 +182,8 @@ final class IosShellSession {
         }
     }
 
-    /// Bytes for the local VT only. The PTY does not see them.
     func feedLocal(_ data: Data) {
-        guard !stopped, !data.isEmpty else { return }
+        guard !data.isEmpty else { return }
         queue.async { [weak self] in
             guard let self, !self.stopped, let term = self.term else { return }
             data.withUnsafeBytes { raw in
@@ -227,82 +198,80 @@ final class IosShellSession {
         queue.async { [weak self] in
             guard let self, !self.stopped, let term = self.term else { return }
             IosShellABI.termPointer(term, button, col, row, pressed ? 1 : 0, motion ? 1 : 0)
-            var reply = [UInt8](repeating: 0, count: 256)
-            let n = reply.withUnsafeMutableBufferPointer { ptr in
-                IosShellABI.termTakeReply(term, ptr.baseAddress, ptr.count)
-            }
-            if n > 0 {
-                _ = reply.withUnsafeBytes { raw in
-                    IosShellABI.inject(raw.baseAddress, n)
-                }
-            }
+            self.writeReplies(term)
         }
     }
 
     func write(_ data: Data) {
-        guard !stopped, !data.isEmpty else { return }
-        data.withUnsafeBytes { raw in
+        guard !data.isEmpty else { return }
+        let send = { self.injectPty(data) }
+        if DispatchQueue.getSpecific(key: Self.queueKey) != nil { send() } else { queue.sync(execute: send) }
+    }
+
+    private func injectPty(_ data: Data) {
+        guard !stopped else { return }
+        owed.append(data)
+        flushOwed()
+    }
+
+    private func flushOwed() {
+        guard !stopped, !owed.isEmpty else { return }
+        var sent = 0
+        owed.withUnsafeBytes { raw in
             guard let base = raw.baseAddress else { return }
-            _ = IosShellABI.inject(base, data.count)
+            var spins = 0
+            while sent < raw.count, spins < 8 {
+                let n = IosShellABI.inject(base.advanced(by: sent), raw.count - sent)
+                if n > 0 { sent += n; spins = 0 }
+                else if errno == EINTR || errno == EAGAIN { spins += 1 } else if errno == EIO || errno == EPIPE || errno == EBADF { sent = raw.count } else { break }
+            }
+        }
+        if sent > 0 { owed.removeFirst(min(sent, owed.count)) }
+        guard !owed.isEmpty, !retryArmed else { return }
+        retryArmed = true
+        queue.asyncAfter(deadline: .now() + 0.02) { [weak self] in
+            self?.retryArmed = false
+            self?.flushOwed()
         }
     }
 
-    /// Multiline input is a paste. Mode 2004 wraps it on the session queue.
     func writePaste(_ data: Data) {
-        guard !stopped, !data.isEmpty else { return }
+        guard !data.isEmpty else { return }
         queue.async { [weak self] in
             guard let self, !self.stopped else { return }
-            let wrapped: Data
-            if let term = self.term {
-                wrapped = data.withUnsafeBytes { raw in
-                    guard let base = raw.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
-                        return data
-                    }
-                    guard let ptr = IosShellABI.encodePaste(term, base, data.count) else {
-                        return data
-                    }
-                    let text = String(cString: ptr)
-                    IosShellABI.termStringFree(ptr)
-                    return Data(text.utf8)
-                }
-            } else {
-                wrapped = data
-            }
-            wrapped.withUnsafeBytes { raw in
-                guard let base = raw.baseAddress else { return }
-                _ = IosShellABI.inject(base, wrapped.count)
-            }
+            self.write(self.pasteWrapped(data))
+        }
+    }
+
+    private func pasteWrapped(_ data: Data) -> Data {
+        guard let term else { return data }
+        return data.withUnsafeBytes { raw -> Data in
+            guard let base = raw.baseAddress?.assumingMemoryBound(to: UInt8.self),
+                let ptr = IosShellABI.encodePaste(term, base, data.count) else { return data }
+            defer { IosShellABI.termStringFree(ptr) }
+            return Data(String(cString: ptr).utf8)
         }
     }
 
     func stop() {
+        if DispatchQueue.getSpecific(key: Self.queueKey) != nil { halt() } else { queue.sync { self.halt() } }
+    }
+
+    private func halt() {
         stopped = true
-        clearPressureObservers()
-        pump?.cancel()
-        pump = nil
-        if master >= 0 {
-            IosShellABI.clearMaster(master)
-            master = -1
-        }
+        owed.removeAll()
+        pump?.cancel(); pump = nil
+        if master >= 0 { IosShellABI.clearMaster(master); master = -1 }
         IosShellABI.stopShellSession()
-        if let session {
-            IosShellABI.sessionDestroy(session)
-            self.session = nil
-        }
-        if let term {
-            IosShellABI.termFree(term)
-            self.term = nil
-        }
+        if let session { IosShellABI.sessionDestroy(session); self.session = nil }
+        if let term { IosShellABI.termFree(term); self.term = nil }
     }
 
     private func armPump() {
         let fd = master
         guard fd >= 0 else { return }
         let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
-        source.setEventHandler { [weak self] in
-            self?.drainMaster()
-        }
-        source.setCancelHandler { }
+        source.setEventHandler { [weak self] in self?.drainMaster() }
         pump = source
         source.resume()
     }
@@ -315,23 +284,26 @@ final class IosShellSession {
                 IosShellABI.ptyRead(master, raw.baseAddress, raw.count)
             }
             if n > 0 {
-                buf.withUnsafeBufferPointer { ptr in
-                    IosShellABI.termFeed(term, ptr.baseAddress, n)
-                }
-                var reply = [UInt8](repeating: 0, count: 256)
-                let rlen = reply.withUnsafeMutableBufferPointer { ptr in
-                    IosShellABI.termTakeReply(term, ptr.baseAddress, ptr.count)
-                }
-                if rlen > 0 {
-                    _ = reply.withUnsafeBytes { raw in
-                        IosShellABI.inject(raw.baseAddress, rlen)
-                    }
-                }
+                WWNTerminalCursorMode.observe(Data(buf.prefix(n)))
+                buf.withUnsafeBufferPointer { IosShellABI.termFeed(term, $0.baseAddress, n) }
+                writeReplies(term)
                 continue
             }
-            break
+            if n < 0, errno == EINTR { continue }
+            if n < 0, errno == EAGAIN || errno == EWOULDBLOCK { break }
+            exportScreen(); DispatchQueue.main.async { [weak self] in self?.onFailure?("Shell exited.") }; stop(); return
         }
         exportScreen()
+    }
+
+    private func writeReplies(_ term: OpaquePointer) {
+        var reply = [UInt8](repeating: 0, count: 256)
+        while true {
+            let rlen = reply.withUnsafeMutableBufferPointer { IosShellABI.termTakeReply(term, $0.baseAddress, $0.count) }
+            if rlen == 0 { break }
+            write(Data(reply.prefix(rlen)))
+            if rlen < reply.count { break }
+        }
     }
 
     private func exportScreen() {
@@ -357,7 +329,6 @@ final class IosLogTermSession {
         self.rows = max(8, rows)
         guard let term = IosShellABI.termNew(self.cols, self.rows) else { return }
         self.term = term
-        WawonaTerminalScrollback.apply(to: term)
         exportScreen()
     }
 
@@ -368,10 +339,8 @@ final class IosLogTermSession {
             guard let self, !self.stopped, let term = self.term else { return }
             IosShellABI.termSetCellPx(term, cellW, cellH)
             guard cols != self.cols || rows != self.rows else { return }
-            self.cols = cols
-            self.rows = rows
+            (self.cols, self.rows) = (cols, rows)
             IosShellABI.termResize(term, cols, rows)
-            WawonaTerminalScrollback.apply(to: term)
             self.exportScreen()
         }
     }

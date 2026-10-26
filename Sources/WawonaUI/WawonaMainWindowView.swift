@@ -313,21 +313,25 @@ final class WWNMainWindowRouter: ObservableObject {
 
     /// Park compositor chrome; keep session running until Stop.
     func hideSessionSurface() {
+        NotificationCenter.default.post(
+            name: Notification.Name("WWNCaptureActiveMachineThumbnailNotification"),
+            object: nil
+        )
         sessionSurfaceVisible = false
         selection = .machines
     }
 
     func showTabOverview() {
-        // Park compositor chrome; SwiftUI Tab Overview is the detail host.
-        #if os(iOS) || os(visionOS)
+        // Snapshot thumb while Metal is still showing, then park chrome.
+        // Do not Stop the shell / StaticCpu; do not tear down IlandPresenter.
         NotificationCenter.default.post(
-            name: Notification.Name("WWNRelayGuestConsoleNeededNotification"),
-            object: nil,
-            userInfo: [
-                "machineId": WWNMachineProfileStore.activeMachineId() ?? "",
-                "source": "close",
-            ]
+            name: Notification.Name("WWNCaptureActiveMachineThumbnailNotification"),
+            object: nil
         )
+        #if os(iOS) || os(visionOS)
+        MainActor.assumeIsolated {
+            WWNIosGuestConsole.shared.parkForCompositor()
+        }
         #endif
         sessionSurfaceVisible = false
         selection = .tabOverview
@@ -823,8 +827,6 @@ struct WawonaMainWindowView: View {
             if case .projectStatus? = router.selection {
                 WawonaProjectStatusView()
                     .backport.navigationTitle("Work Status")
-            } else if case .tabOverview? = router.selection {
-                WWNTabOverviewView()
             } else if case .settings(let id)? = router.selection {
                 // Deep-link: swap Machines chrome for the in-window Settings host.
                 Color.clear
@@ -832,6 +834,23 @@ struct WawonaMainWindowView: View {
                         router.settingsSelection = id
                         router.showSettings()
                     }
+            } else if case .tabOverview? = router.selection {
+                // Keep CompositorBridge mounted under Tab Overview. Swapping
+                // it out deinits IlandPresenter; Focus then remounts an empty
+                // Metal layer (black) until the client paints again. Static
+                // wasm like hello-wasi-gui often never repaints.
+                ZStack {
+                    if router.sessionSurfaceMounted {
+                        #if !SWIFT_PACKAGE && (os(macOS) || os(iOS) || os(visionOS))
+                        CompositorBridge()
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .opacity(0)
+                            .allowsHitTesting(false)
+                            .accessibility(hidden: true)
+                        #endif
+                    }
+                    WWNTabOverviewView()
+                }
             } else {
                 machinesPane
             }
@@ -917,14 +936,9 @@ struct WawonaMainWindowView: View {
                 }
                 #if os(iOS) || os(visionOS)
                 if case .tabOverview? = newValue {
-                    NotificationCenter.default.post(
-                        name: Notification.Name("WWNRelayGuestConsoleNeededNotification"),
-                        object: nil,
-                        userInfo: [
-                            "machineId": WWNMachineProfileStore.activeMachineId() ?? "",
-                            "source": "close",
-                        ]
-                    )
+                    MainActor.assumeIsolated {
+                        WWNIosGuestConsole.shared.parkForCompositor()
+                    }
                 }
                 #endif
             default:

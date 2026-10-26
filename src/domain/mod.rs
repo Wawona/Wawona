@@ -431,8 +431,12 @@ pub mod settings_catalog {
         fn tvos_has_cloudkit_sync_but_no_local_shell() {
             let tv = visible_sections(SettingsHost::TvOs);
             assert!(tv.contains(&SettingsSectionId::ICloudSync));
-            assert!(visible_sections(SettingsHost::WatchOs).contains(&SettingsSectionId::ICloudSync));
-            assert!(!visible_sections(SettingsHost::Android).contains(&SettingsSectionId::ICloudSync));
+            assert!(
+                visible_sections(SettingsHost::WatchOs).contains(&SettingsSectionId::ICloudSync)
+            );
+            assert!(
+                !visible_sections(SettingsHost::Android).contains(&SettingsSectionId::ICloudSync)
+            );
             assert!(!visible_sections(SettingsHost::Linux).contains(&SettingsSectionId::ICloudSync));
             assert!(!tv.contains(&SettingsSectionId::LocalShell));
             assert!(!tv.contains(&SettingsSectionId::Desktop));
@@ -464,7 +468,10 @@ pub mod settings_catalog {
 
             assert!(!is_valid_vulkan_driver(SettingsHost::Linux, "kosmickrisp"));
             assert!(!is_valid_vulkan_driver(SettingsHost::Linux, "moltenvk"));
-            assert!(!is_valid_vulkan_driver(SettingsHost::Android, "kosmickrisp"));
+            assert!(!is_valid_vulkan_driver(
+                SettingsHost::Android,
+                "kosmickrisp"
+            ));
             assert!(is_valid_vulkan_driver(SettingsHost::Linux, "system"));
             assert!(is_valid_vulkan_driver(SettingsHost::Linux, "swiftshader"));
 
@@ -496,31 +503,82 @@ pub mod settings_catalog {
         #[test]
         fn field_visibility_rules_prevent_ui_lies() {
             // Force SSD is macOS only (other hosts always use SSD)
-            assert!(is_field_allowed(SettingsFieldId::ForceSsd, SettingsHost::MacOs));
-            assert!(!is_field_allowed(SettingsFieldId::ForceSsd, SettingsHost::Linux));
-            assert!(!is_field_allowed(SettingsFieldId::ForceSsd, SettingsHost::Android));
+            assert!(is_field_allowed(
+                SettingsFieldId::ForceSsd,
+                SettingsHost::MacOs
+            ));
+            assert!(!is_field_allowed(
+                SettingsFieldId::ForceSsd,
+                SettingsHost::Linux
+            ));
+            assert!(!is_field_allowed(
+                SettingsFieldId::ForceSsd,
+                SettingsHost::Android
+            ));
 
             // Respect Safe Area is iPhone/iPad only
-            assert!(is_field_allowed(SettingsFieldId::RespectSafeArea, SettingsHost::Ios));
-            assert!(!is_field_allowed(SettingsFieldId::RespectSafeArea, SettingsHost::Linux));
-            assert!(!is_field_allowed(SettingsFieldId::RespectSafeArea, SettingsHost::MacOs));
+            assert!(is_field_allowed(
+                SettingsFieldId::RespectSafeArea,
+                SettingsHost::Ios
+            ));
+            assert!(!is_field_allowed(
+                SettingsFieldId::RespectSafeArea,
+                SettingsHost::Linux
+            ));
+            assert!(!is_field_allowed(
+                SettingsFieldId::RespectSafeArea,
+                SettingsHost::MacOs
+            ));
 
             // Shake to close and swipe back are mobile/wrist only
-            assert!(is_field_allowed(SettingsFieldId::ShakeToClose, SettingsHost::Ios));
-            assert!(is_field_allowed(SettingsFieldId::ShakeToClose, SettingsHost::Android));
-            assert!(!is_field_allowed(SettingsFieldId::ShakeToClose, SettingsHost::Linux));
-            assert!(!is_field_allowed(SettingsFieldId::SwipeBackToClose, SettingsHost::Linux));
+            assert!(is_field_allowed(
+                SettingsFieldId::ShakeToClose,
+                SettingsHost::Ios
+            ));
+            assert!(is_field_allowed(
+                SettingsFieldId::ShakeToClose,
+                SettingsHost::Android
+            ));
+            assert!(!is_field_allowed(
+                SettingsFieldId::ShakeToClose,
+                SettingsHost::Linux
+            ));
+            assert!(!is_field_allowed(
+                SettingsFieldId::SwipeBackToClose,
+                SettingsHost::Linux
+            ));
 
             // Swap Cmd with Alt is macOS/iOS only
-            assert!(is_field_allowed(SettingsFieldId::SwapCmdWithAlt, SettingsHost::MacOs));
-            assert!(is_field_allowed(SettingsFieldId::SwapCmdWithAlt, SettingsHost::Ios));
-            assert!(!is_field_allowed(SettingsFieldId::SwapCmdWithAlt, SettingsHost::Linux));
-            assert!(!is_field_allowed(SettingsFieldId::SwapCmdWithAlt, SettingsHost::Android));
+            assert!(is_field_allowed(
+                SettingsFieldId::SwapCmdWithAlt,
+                SettingsHost::MacOs
+            ));
+            assert!(is_field_allowed(
+                SettingsFieldId::SwapCmdWithAlt,
+                SettingsHost::Ios
+            ));
+            assert!(!is_field_allowed(
+                SettingsFieldId::SwapCmdWithAlt,
+                SettingsHost::Linux
+            ));
+            assert!(!is_field_allowed(
+                SettingsFieldId::SwapCmdWithAlt,
+                SettingsHost::Android
+            ));
 
             // Desktop replacement is forbidden on Linux
-            assert!(!is_field_allowed(SettingsFieldId::DesktopReplacement, SettingsHost::Linux));
-            assert!(is_field_allowed(SettingsFieldId::DesktopReplacement, SettingsHost::MacOs));
-            assert!(is_field_allowed(SettingsFieldId::DesktopReplacement, SettingsHost::Android));
+            assert!(!is_field_allowed(
+                SettingsFieldId::DesktopReplacement,
+                SettingsHost::Linux
+            ));
+            assert!(is_field_allowed(
+                SettingsFieldId::DesktopReplacement,
+                SettingsHost::MacOs
+            ));
+            assert!(is_field_allowed(
+                SettingsFieldId::DesktopReplacement,
+                SettingsHost::Android
+            ));
         }
     }
 }
@@ -653,13 +711,19 @@ pub mod cloud_sync {
             return true;
         }
         let name = rel.rsplit('/').next().unwrap_or(rel);
-        matches!(name, ".DS_Store" | ".zcompdump") || name.starts_with(".zcompdump-") || name.ends_with(".icloud")
+        matches!(name, ".DS_Store" | ".zcompdump")
+            || name.starts_with(".zcompdump-")
+            || name.ends_with(".icloud")
     }
 
     /// Last writer wins. A key or file this device never synced yields to
     /// the cloud copy so a fresh install does not overwrite real data with
     /// defaults. Ties keep the local value.
-    pub fn prefer_remote(local_modified_ms: i64, remote_modified_ms: i64, local_ever_synced: bool) -> bool {
+    pub fn prefer_remote(
+        local_modified_ms: i64,
+        remote_modified_ms: i64,
+        local_ever_synced: bool,
+    ) -> bool {
         if !local_ever_synced {
             return true;
         }
@@ -695,7 +759,11 @@ pub mod cloud_sync {
     /// fields win; secrets for the same machine id come from local. On the
     /// first sync (`bootstrap`) local-only machines are kept so a device's
     /// own machines join the shared set instead of disappearing.
-    pub fn merge_remote_profiles_json(local: &str, remote: &str, bootstrap: bool) -> Result<String, DomainError> {
+    pub fn merge_remote_profiles_json(
+        local: &str,
+        remote: &str,
+        bootstrap: bool,
+    ) -> Result<String, DomainError> {
         let local = parse(local)?;
         let mut merged = parse(remote)?;
         for p in merged.iter_mut() {
@@ -703,7 +771,8 @@ pub mod cloud_sync {
             if let Some(l) = local.iter().find(|l| l.id == p.id) {
                 p.ssh_password = l.ssh_password.clone();
                 p.ssh_key_passphrase = l.ssh_key_passphrase.clone();
-                p.runtime_overrides.waypipe_ssh_password = l.runtime_overrides.waypipe_ssh_password.clone();
+                p.runtime_overrides.waypipe_ssh_password =
+                    l.runtime_overrides.waypipe_ssh_password.clone();
             }
         }
         if bootstrap {
@@ -722,9 +791,19 @@ pub mod cloud_sync {
 
         #[test]
         fn secrets_and_device_prefs_never_sync() {
-            for k in ["SSHPassword", "SSHKeyPassphrase", "wawona.pref.waypipeSSHPassword", "SSHKeyPath",
-                      "VulkanDriver", "OpenGLDriver", "TouchInputType", "AutoScale", "CompositorBackend",
-                      "wawona.pref.cloudKitSyncEnabled", "wawona.pref.localShellICloudSyncEnabled"] {
+            for k in [
+                "SSHPassword",
+                "SSHKeyPassphrase",
+                "wawona.pref.waypipeSSHPassword",
+                "SSHKeyPath",
+                "VulkanDriver",
+                "OpenGLDriver",
+                "TouchInputType",
+                "AutoScale",
+                "CompositorBackend",
+                "wawona.pref.cloudKitSyncEnabled",
+                "wawona.pref.localShellICloudSyncEnabled",
+            ] {
                 assert!(!is_synced_defaults_key(k), "{k}");
             }
             assert!(is_synced_defaults_key(PROFILES_KEY));
@@ -756,17 +835,23 @@ pub mod cloud_sync {
             let up = redact_profiles_json(local).unwrap();
             assert!(!up.contains("pw") && !up.contains("kp") && !up.contains("\"wp\""));
 
-            let remote = r#"[{"id":"a","name":"Renamed","sshPassword":"leak"},{"id":"b","name":"B"}]"#;
+            let remote =
+                r#"[{"id":"a","name":"Renamed","sshPassword":"leak"},{"id":"b","name":"B"}]"#;
             let merged: Vec<MachineProfile> =
-                serde_json::from_str(&merge_remote_profiles_json(local, remote, false).unwrap()).unwrap();
+                serde_json::from_str(&merge_remote_profiles_json(local, remote, false).unwrap())
+                    .unwrap();
             assert_eq!(merged.len(), 2);
             assert_eq!(merged[0].name, "Renamed");
             assert_eq!(merged[0].ssh_password, "pw");
-            assert_eq!(merged[0].runtime_overrides.waypipe_ssh_password.as_deref(), Some("wp"));
+            assert_eq!(
+                merged[0].runtime_overrides.waypipe_ssh_password.as_deref(),
+                Some("wp")
+            );
             assert_eq!(merged[1].ssh_password, "");
 
             let boot: Vec<MachineProfile> =
-                serde_json::from_str(&merge_remote_profiles_json(local, remote, true).unwrap()).unwrap();
+                serde_json::from_str(&merge_remote_profiles_json(local, remote, true).unwrap())
+                    .unwrap();
             assert!(boot.iter().any(|p| p.id == "local"));
         }
     }

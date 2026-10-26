@@ -1,6 +1,8 @@
 import Foundation
 #if os(macOS)
 import AppKit
+#elseif canImport(UIKit)
+import UIKit
 #endif
 
 @objc(WWNMachineThumbnailStore)
@@ -34,15 +36,6 @@ public final class WWNMachineThumbnailStore: NSObject {
     public static func thumbnail(forMachineId machineId: String) -> NSImage? {
         guard let path = thumbnailPath(forMachineId: machineId), !path.isEmpty else { return nil }
         return NSImage(contentsOfFile: path)
-    }
-
-    @objc(saveThumbnailPNGData:forMachineId:)
-    public static func saveThumbnail(pngData: Data, forMachineId machineId: String) -> Bool {
-        guard !pngData.isEmpty, !machineId.isEmpty,
-              let path = thumbnailPath(forMachineId: machineId), !path.isEmpty else {
-            return false
-        }
-        return (pngData as NSData).write(toFile: path, atomically: true)
     }
 
     @objc(saveThumbnailFromWindow:machineId:)
@@ -93,6 +86,22 @@ public final class WWNMachineThumbnailStore: NSObject {
         guard let png = outRep.representation(using: .png, properties: [:]) else { return false }
         return saveThumbnail(pngData: png, forMachineId: machineId)
     }
+    #elseif os(iOS) || os(tvOS) || os(visionOS)
+    @objc(thumbnailForMachineId:)
+    public static func thumbnail(forMachineId machineId: String) -> UIImage? {
+        guard let path = thumbnailPath(forMachineId: machineId), !path.isEmpty else { return nil }
+        return UIImage(contentsOfFile: path)
+    }
+    #endif
+
+    @objc(saveThumbnailPNGData:forMachineId:)
+    public static func saveThumbnail(pngData: Data, forMachineId machineId: String) -> Bool {
+        guard !pngData.isEmpty, !machineId.isEmpty,
+              let path = thumbnailPath(forMachineId: machineId), !path.isEmpty else {
+            return false
+        }
+        return (pngData as NSData).write(toFile: path, atomically: true)
+    }
 
     @objc(captureAndSaveThumbnailForMachineId:)
     public static func captureAndSaveThumbnail(forMachineId machineId: String) -> Bool {
@@ -102,7 +111,6 @@ public final class WWNMachineThumbnailStore: NSObject {
         }
         return saveThumbnail(pngData: png, forMachineId: machineId)
     }
-    #endif
 
     @objc(deleteThumbnailForMachineId:)
     public static func deleteThumbnail(forMachineId machineId: String) {

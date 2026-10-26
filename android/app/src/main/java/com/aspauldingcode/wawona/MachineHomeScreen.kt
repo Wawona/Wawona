@@ -445,12 +445,13 @@ fun MachineWelcomeScreen(
         },
         floatingActionButton = {
             if (navDest !is MachinesNavDest.TabOverview) {
+                // Primary CTA (Apple Add Machine `.primaryAction` / blue parity).
                 FloatingActionButton(
                     onClick = { creating = true },
                     modifier = Modifier.testTag(WawonaTestTags.MACHINES_ADD),
                     shape = MaterialTheme.shapes.large,
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
                     elevation = FloatingActionButtonDefaults.elevation(
                         defaultElevation = 4.dp,
                         pressedElevation = 6.dp,
@@ -2048,8 +2049,14 @@ private fun MachineEditorSheet(
                             subtitle = "Hypervisor is selected automatically for this platform."
                         ) {
                             // VM engine is fixed per build target by wwn-vms and is
-                            // not user-configurable (Residual E).
-                            OutlinedTextField(value = "QEMU/AVF", onValueChange = {}, label = { Text("Backend") }, singleLine = true, readOnly = true, modifier = Modifier.fillMaxWidth())
+                            OutlinedTextField(
+                                value = "QEMU + Android HV (KVM) / TCG+JIT",
+                                onValueChange = {},
+                                label = { Text("Backend") },
+                                singleLine = true,
+                                readOnly = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
                             OutlinedTextField(value = vmIdentifier, onValueChange = { vmIdentifier = it }, label = { Text("VM Identifier") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                             OutlinedTextField(value = vmVsockPort, onValueChange = { vmVsockPort = it }, label = { Text("VSock Port") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                             OutlinedTextField(value = vmNotes, onValueChange = { vmNotes = it }, label = { Text("Notes") }, modifier = Modifier.fillMaxWidth())
