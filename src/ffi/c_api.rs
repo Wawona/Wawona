@@ -28,7 +28,7 @@ pub extern "C" fn WWNCoreStart(
     if core.is_null() {
         return false;
     }
-    
+
     let core = unsafe { &*core };
     let socket = if socket_name.is_null() {
         None
@@ -38,7 +38,7 @@ pub extern "C" fn WWNCoreStart(
             .ok()
             .map(|s| s.to_string())
     };
-    
+
     match core.start(socket) {
         Ok(()) => {
             crate::wlog!(crate::util::logging::C_API, "Compositor started successfully");
@@ -57,7 +57,7 @@ pub extern "C" fn WWNCoreStop(core: *mut WWNCore) -> bool {
     if core.is_null() {
         return false;
     }
-    
+
     let core = unsafe { &*core };
     core.stop().is_ok()
 }
@@ -68,7 +68,7 @@ pub extern "C" fn WWNCoreIsRunning(core: *const WWNCore) -> bool {
     if core.is_null() {
         return false;
     }
-    
+
     let core = unsafe { &*core };
     core.is_running()
 }
@@ -79,10 +79,10 @@ pub extern "C" fn WWNCoreGetSocketPath(core: *const WWNCore) -> *mut c_char {
     if core.is_null() {
         return std::ptr::null_mut();
     }
-    
+
     let core = unsafe { &*core };
     let path = core.get_socket_path();
-    
+
     CString::new(path).ok()
         .map(|s| s.into_raw())
         .unwrap_or(std::ptr::null_mut())
@@ -94,10 +94,10 @@ pub extern "C" fn WWNCoreGetSocketName(core: *const WWNCore) -> *mut c_char {
     if core.is_null() {
         return std::ptr::null_mut();
     }
-    
+
     let core = unsafe { &*core };
     let name = core.get_socket_name();
-    
+
     CString::new(name).ok()
         .map(|s| s.into_raw())
         .unwrap_or(std::ptr::null_mut())
@@ -117,7 +117,7 @@ pub extern "C" fn WWNCoreProcessEvents(core: *mut WWNCore) -> bool {
     if core.is_null() {
         return false;
     }
-    
+
     let core = unsafe { &*core };
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| core.process_events())) {
         Ok(ok) => ok,
@@ -143,7 +143,7 @@ pub extern "C" fn WWNCoreSetOutputSize(
         if core.is_null() {
             return;
         }
-        
+
         let core = unsafe { &*core };
         core.set_output_size(width, height, scale);
     }));
@@ -182,7 +182,7 @@ pub extern "C" fn WWNCoreSetSafeAreaInsets(
         if core.is_null() {
             return;
         }
-        
+
         let core = unsafe { &*core };
         core.set_safe_area_insets(top, right, bottom, left);
     }));
@@ -198,7 +198,7 @@ pub extern "C" fn WWNCoreSetForceSSD(
         if core.is_null() {
             return;
         }
-        
+
         let core = unsafe { &*core };
         core.set_force_ssd(enabled);
     }));
@@ -521,9 +521,9 @@ pub extern "C" fn WWNCorePopWindowEvent(core: *mut WWNCore) -> *mut CWindowEvent
         if core.is_null() {
             return std::ptr::null_mut();
         }
-        
+
         let core = unsafe { &*core };
-        
+
         if let Some(event) = core.pop_window_event() {
             let mut c_event = Box::new(CWindowEvent {
                 event_type: CWindowEventType::Created as u64,
@@ -700,12 +700,12 @@ pub extern "C" fn WWNCorePopWindowEvent(core: *mut WWNCore) -> *mut CWindowEvent
                 // poll paths; C ABI hosts ignore them for now.
                 _ => false
             };
-            
+
             if should_return {
                 return Box::into_raw(c_event);
             }
         }
-        
+
         std::ptr::null_mut()
     })) {
         Ok(ptr) => ptr,
@@ -800,9 +800,9 @@ pub extern "C" fn WWNCorePopPendingBuffer(core: *mut WWNCore) -> *mut CBufferDat
     if core.is_null() {
         return std::ptr::null_mut();
     }
-    
+
     let core = unsafe { &*core };
-    
+
     if let Some(event) = core.pop_pending_buffer() {
         let cpu_y_flip = if core.nested_weston_cpu_y_flip(event.window_id.id) {
             1u8
@@ -824,7 +824,7 @@ pub extern "C" fn WWNCorePopPendingBuffer(core: *mut WWNCore) -> *mut CBufferDat
                     super::types::BufferFormat::Xrgb8888 => 1,
                     _ => 0, // ARGB8888 and other 32bpp RGBA variants
                 };
-                
+
                 let data = Box::new(CBufferData {
                     window_id: event.window_id.id,
                     surface_id: event.surface_id.id,
@@ -839,7 +839,7 @@ pub extern "C" fn WWNCorePopPendingBuffer(core: *mut WWNCore) -> *mut CBufferDat
                     iosurface_id: 0,
                     cpu_y_flip,
                 });
-                
+
                 return Box::into_raw(data);
             },
             super::types::BufferData::Iosurface { id, width, height, format } => {
@@ -849,7 +849,7 @@ pub extern "C" fn WWNCorePopPendingBuffer(core: *mut WWNCore) -> *mut CBufferDat
                     buffer_id: event.buffer.id.id,
                     width,
                     height,
-                    stride: 0, 
+                    stride: 0,
                     format,
                     pixels: std::ptr::null_mut(),
                     size: 0,
@@ -890,7 +890,7 @@ pub extern "C" fn WWNCorePopPendingBuffer(core: *mut WWNCore) -> *mut CBufferDat
             }
         }
     }
-    
+
     std::ptr::null_mut()
     })) {
         Ok(ptr) => ptr,
@@ -935,14 +935,14 @@ pub extern "C" fn WWNCoreNotifyFramePresented(
     let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         if core.is_null() { return; }
         let core = unsafe { &*core };
-        
+
         let sid = super::types::SurfaceId { id: surface_id };
         let bid = if buffer_id != 0 {
             Some(super::types::BufferId { id: buffer_id })
         } else {
             None
         };
-        
+
         core.notify_frame_presented(sid, bid, timestamp);
     }));
 }
@@ -999,10 +999,10 @@ pub extern "C" fn WWNCoreInjectPointerButton(
     let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         if core.is_null() { return; }
         let core = unsafe { &*core };
-        
+
         let button = PointerButton::from_button_code(button_code);
         let button_state = if state == 1 { ButtonState::Pressed } else { ButtonState::Released };
-        
+
         core.inject_pointer_button(WindowId { id: window_id }, button, button_state, timestamp_ms);
     }));
 }
@@ -1113,9 +1113,9 @@ pub extern "C" fn WWNCoreInjectKey(
     let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         if core.is_null() { return; }
         let core = unsafe { &*core };
-        
+
         let key_state = if state == 1 { KeyState::Pressed } else { KeyState::Released };
-        
+
         core.inject_key(keycode, key_state, timestamp_ms);
     }));
 }
@@ -1132,14 +1132,14 @@ pub extern "C" fn WWNCoreInjectModifiers(
     let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         if core.is_null() { return; }
         let core = unsafe { &*core };
-        
+
         let modifiers = KeyboardModifiers {
             mods_depressed,
             mods_latched,
             mods_locked,
             group,
         };
-        
+
         core.inject_modifiers(modifiers);
     }));
 }
@@ -1156,13 +1156,13 @@ pub extern "C" fn WWNCoreInjectKeyboardEnter(
     let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         if core.is_null() { return; }
         let core = unsafe { &*core };
-        
+
         let key_slice = if keys.is_null() || count == 0 {
             &[]
         } else {
             unsafe { std::slice::from_raw_parts(keys, count) }
         };
-        
+
         // Convert slice to Vec for API compliance
         let keys_vec = key_slice.to_vec();
         core.inject_keyboard_enter(WindowId { id: window_id }, keys_vec);
@@ -1367,14 +1367,14 @@ pub extern "C" fn WWNCoreInjectTouchDown(
     let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         if core.is_null() { return; }
         let core = unsafe { &*core };
-        
+
         let event = super::types::InputEvent::TouchDown {
             id,
             x,
             y,
             time_ms: timestamp_ms,
         };
-        
+
         core.inject_input_event(event);
     }));
 }
@@ -1406,12 +1406,12 @@ pub extern "C" fn WWNCoreInjectTouchUp(
     let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         if core.is_null() { return; }
         let core = unsafe { &*core };
-        
+
         let event = super::types::InputEvent::TouchUp {
             id,
             time_ms: timestamp_ms,
         };
-        
+
         core.inject_input_event(event);
     }));
 }
@@ -1443,14 +1443,14 @@ pub extern "C" fn WWNCoreInjectTouchMotion(
     let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         if core.is_null() { return; }
         let core = unsafe { &*core };
-        
+
         let event = super::types::InputEvent::TouchMotion {
             id,
             x,
             y,
             time_ms: timestamp_ms,
         };
-        
+
         core.inject_input_event(event);
     }));
 }
@@ -1480,7 +1480,7 @@ pub extern "C" fn WWNCoreInjectTouchCancel(
     let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         if core.is_null() { return; }
         let core = unsafe { &*core };
-        
+
         let event = super::types::InputEvent::TouchCancel;
         core.inject_input_event(event);
     }));
@@ -1494,7 +1494,7 @@ pub extern "C" fn WWNCoreInject_touch_frame(
     let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         if core.is_null() { return; }
         let core = unsafe { &*core };
-        
+
         let event = super::types::InputEvent::TouchFrame;
         core.inject_input_event(event);
     }));
@@ -1562,17 +1562,17 @@ pub extern "C" fn WWNCoreGetRenderScene(core: *mut WWNCore) -> *mut CRenderScene
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         if core.is_null() { return std::ptr::null_mut(); }
         let core = unsafe { &*core };
-        
+
         let scene = core.get_render_scene();
         let mut c_nodes = Vec::with_capacity(scene.nodes.len());
-        
+
         for node in scene.nodes {
             let buffer_id = node.texture.handle;
             let info = core.get_buffer_render_info(node.texture);
             let (stride, format, iosurface_id, width, height) = (info.stride, info.format, info.iosurface_id, info.width, info.height);
-            
+
             c_nodes.push(CRenderNode {
-                node_id: 0, 
+                node_id: 0,
                 window_id: node.window_id.id,
                 surface_id: node.surface_id.id,
                 buffer_id,
@@ -1583,7 +1583,7 @@ pub extern "C" fn WWNCoreGetRenderScene(core: *mut WWNCore) -> *mut CRenderScene
                 scale: node.scale,
                 opacity: node.opacity,
                 corner_radius: 0.0,
-                is_opaque: false, 
+                is_opaque: false,
                 buffer_width: width,
                 buffer_height: height,
                 buffer_stride: stride,
@@ -1597,7 +1597,7 @@ pub extern "C" fn WWNCoreGetRenderScene(core: *mut WWNCore) -> *mut CRenderScene
                 content_rect_h: node.content_rect.h,
             });
         }
-        
+
         let cursor_info = core.get_cursor_render_info();
 
         let c_scene = Box::new(CRenderScene {
@@ -1618,7 +1618,7 @@ pub extern "C" fn WWNCoreGetRenderScene(core: *mut WWNCore) -> *mut CRenderScene
             cursor_iosurface_id: cursor_info.iosurface_id,
         });
         std::mem::forget(c_nodes);
-        
+
         Box::into_raw(c_scene)
     })) {
         Ok(ptr) => ptr,

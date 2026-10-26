@@ -16,6 +16,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use crate::core::input::keyboard::KeyboardState;
 use crate::core::input::pointer::PointerState;
 use crate::core::input::touch::TouchState;
+use crate::core::wayland::ext::pointer_gestures::PointerGesturesState;
 
 use wayland_server::Resource;
 

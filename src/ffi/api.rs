@@ -4206,7 +4206,9 @@ impl WawonaCore {
             self.flush_clients();
             state = self.state.write_recover();
             state.seat.cleanup_resources();
-            ensure_pointer_focus(&mut state, window_id, &|| self.next_serial());
+            if let Some(window_id) = window_id {
+                ensure_pointer_focus(&mut state, window_id, &|| self.next_serial());
+            }
         }
 
         // Weston desktop-shell tracks the launcher via wl_pointer motion +

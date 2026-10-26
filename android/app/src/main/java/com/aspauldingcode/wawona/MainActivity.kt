@@ -2100,6 +2100,7 @@ private fun terminalEchoForLinuxKey(keycode: Int): String {
  * reveals the compositor (Focus). No auto-dismiss on first frame.
  */
 @Composable
+@Suppress("CyclomaticComplexMethod", "LongMethod")
 internal fun GuestConsoleOverlay(
     term: WawonaAndroidTerm,
     onDismiss: () -> Unit,
@@ -2325,6 +2326,7 @@ internal class WawonaAndroidTerm {
 }
 
 /** xterm F1-F12. Null when the code is not a function key. */
+@Suppress("CyclomaticComplexMethod", "ReturnCount")
 private fun functionKeyBytes(code: Int, param: Int): String? {
     val n = code - android.view.KeyEvent.KEYCODE_F1 + 1
     if (n !in 1..12) return null
@@ -2373,6 +2375,7 @@ internal fun terminalEnterBytes(): String =
     if (WawonaGuestTerm.shellRunning) "\r" else "\n"
 
 /** Hardware keys for the interactive terminal. Soft letters stay on the text field. */
+@Suppress("LongMethod", "MagicNumber", "CyclomaticComplexMethod", "ReturnCount")
 internal fun terminalBytesForKey(event: android.view.KeyEvent): String? {
     if (event.action != android.view.KeyEvent.ACTION_DOWN) return null
     val soft = event.flags and android.view.KeyEvent.FLAG_SOFT_KEYBOARD != 0

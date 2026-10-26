@@ -30,6 +30,7 @@ object WawonaNative {
      * Android plays for volume-key feedback (`ToneGenerator.TONE_PROP_BEEP`).
      */
     @JvmStatic
+    @Suppress("MagicNumber")
     fun ringSystemBell() {
         try {
             val tg = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 80)

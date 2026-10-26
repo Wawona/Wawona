@@ -474,44 +474,6 @@ impl CompositorState {
         found
     }
 
-    /// Dismiss the active popup grab and all its child popups
-    pub fn dismiss_popup_grab(&mut self) {
-        let mut parent_to_restore = None;
-        let mut destroyed = Vec::new();
-        while let Some((cid, pid)) = self.seat.popup_grab_stack.pop() {
-            if let Some(data) = self.xdg.popups.get(&(cid.clone(), pid)) {
-                let window_id = data.window_id;
-                if parent_to_restore.is_none() {
-                    parent_to_restore = data.parent_id;
-                }
-                crate::wlog!(
-                    crate::util::logging::COMPOSITOR,
-                    "Dismissing popup grab window_id={} popup={}",
-                    window_id,
-                    pid
-                );
-                if let Some(ps) = data.popup_surface.clone() {
-                    ps.send_popup_done();
-                } else if let Some(res) = data.resource.clone() {
-                    res.popup_done();
-                }
-                if let Some(res) = data.v6_resource.clone() {
-                    res.popup_done();
-                }
-                destroyed.push(window_id);
-            }
-        }
-        for window_id in destroyed {
-            self.pending_compositor_events
-                .push(crate::core::compositor::CompositorEvent::WindowDestroyed {
-                    window_id,
-                });
-        }
-        if let Some(parent) = parent_to_restore {
-            self.restore_keyboard_focus_to_window(parent);
-        }
-    }
-
     /// Returns true when `surface_id` is the grabbed popup or a subsurface in
     /// its tree (GTK menu rows can live in subsurfaces).
     fn surface_in_popup_grab_tree(&self, surface_id: u32) -> bool {
