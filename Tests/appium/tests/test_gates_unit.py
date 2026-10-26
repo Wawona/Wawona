@@ -40,6 +40,7 @@ def test_linux_capabilities_select_installed_driver(monkeypatch):
     assert caps["platformName"] == "Linux"
     assert caps["appium:automationName"] == "atspi2"
     assert caps["appium:appName"] == "/tmp/Wawona.AppImage"
+    assert "appium:app" not in caps
 
 
 @pytest.mark.parametrize(

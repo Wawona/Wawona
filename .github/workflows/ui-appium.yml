@@ -186,6 +186,23 @@ jobs:
             libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 \
             libxcb-xfixes0 x11-utils at-spi2-core python3-pyatspi \
             weston foot
+      - name: Start D-Bus session for AT-SPI
+        run: |
+          set -euo pipefail
+          runtime_dir="$RUNNER_TEMP/runtime"
+          mkdir -p "$runtime_dir"
+          chmod 700 "$runtime_dir"
+          echo "XDG_RUNTIME_DIR=$runtime_dir" >> "$GITHUB_ENV"
+          dbus-daemon --session --fork --print-address=1 --print-pid=1 \
+            >"$RUNNER_TEMP/dbus-session"
+          address="$(sed -n '1p' "$RUNNER_TEMP/dbus-session")"
+          pid="$(sed -n '2p' "$RUNNER_TEMP/dbus-session")"
+          if [[ -z "$address" || ! "$pid" =~ ^[0-9]+$ ]]; then
+            echo "::error title=AT-SPI D-Bus unavailable::Could not start a session bus."
+            exit 1
+          fi
+          echo "DBUS_SESSION_BUS_ADDRESS=$address" >> "$GITHUB_ENV"
+          echo "DBUS_SESSION_BUS_PID=$pid" >> "$GITHUB_ENV"
       - name: Start Xvfb
         run: |
           /sbin/start-stop-daemon --start --quiet \
