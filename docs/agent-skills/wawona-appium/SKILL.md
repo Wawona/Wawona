@@ -160,6 +160,12 @@ if no PNG. Never `exit 0` + `SKIPPED.txt` (false green on tip `a58384fc`).
 Linux catalog only when `products_ready`. Gallery upload
 `if-no-files-found: error` when that step ran.
 
+For manual runs with `products_ready=true`, also provide `products_run_id` from
+the successful Gate: products run. Cross-workflow artifact downloads must use
+that run ID and verify its conclusion and commit SHA before the Appium lanes
+start. The workflow fails early when the source run is missing, failed, or for
+a different commit.
+
 ## Hard rejects
 
 - Guess driver caps without Appium skills
