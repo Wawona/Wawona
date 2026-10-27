@@ -193,7 +193,12 @@ impl CompositorState {
         let flattened = self.scene.flatten();
 
         for surface in flattened.iter().rev() {
-            let (sx, sy, sw, sh, cropped) = uncropped_input_bounds(surface);
+            let has_viewport = self
+                .ext
+                .viewporter
+                .for_surface(surface.surface_id)
+                .is_some();
+            let (sx, sy, sw, sh, cropped) = input_bounds(surface, has_viewport);
 
             if x >= sx && x < sx + sw && y >= sy && y < sy + sh {
                 let (local_x, local_y) = if cropped {
@@ -1416,9 +1421,29 @@ fn uncropped_input_bounds(
     )
 }
 
+/// Viewport state defines the surface's logical bounds. Other content crops
+/// (such as xdg window geometry) only affect presentation, so their input
+/// bounds expand back to the full client surface.
+fn input_bounds(
+    surface: &crate::core::render::scene::FlattenedSurface,
+    has_viewport: bool,
+) -> (f64, f64, f64, f64, bool) {
+    if has_viewport {
+        (
+            f64::from(surface.x),
+            f64::from(surface.y),
+            f64::from(surface.width),
+            f64::from(surface.height),
+            false,
+        )
+    } else {
+        uncropped_input_bounds(surface)
+    }
+}
+
 #[cfg(test)]
 mod uncropped_input_bounds_tests {
-    use super::uncropped_input_bounds;
+    use super::{input_bounds, uncropped_input_bounds};
     use crate::core::render::scene::FlattenedSurface;
     use crate::ffi::types::ContentRect;
 
@@ -1464,5 +1489,29 @@ mod uncropped_input_bounds_tests {
         };
         let bounds = uncropped_input_bounds(&presented(0, 0, 10, 10, rect));
         assert_eq!(bounds, (0.0, 0.0, 10.0, 10.0, false));
+    }
+
+    #[test]
+    fn viewport_keeps_presented_bounds_for_input() {
+        let surface = presented(
+            10,
+            20,
+            83,
+            20,
+            ContentRect {
+                x: 0.0,
+                y: 0.0,
+                w: 0.83,
+                h: 0.2,
+            },
+        );
+        assert_eq!(
+            input_bounds(&surface, true),
+            (10.0, 20.0, 83.0, 20.0, false)
+        );
+        assert_eq!(
+            input_bounds(&surface, false),
+            (10.0, 20.0, 100.0, 100.0, true)
+        );
     }
 }

@@ -184,26 +184,3 @@ fn uniffi_line(line: StyledLine) -> TerminalLine {
             .collect(),
     }
 }
-
-/// Host pressure as permille (1000 = 1.0). Swift calls this on Low Power and thermal.
-#[no_mangle]
-pub extern "C" fn wwn_term_refresh_scrollback_cap(term: *mut Term, host_factor_permille: u32) {
-    if term.is_null() {
-        return;
-    }
-    let factor = (host_factor_permille as f32) / 1000.0;
-    unsafe { (*term).refresh_scroll_cap(factor) }
-}
-
-#[no_mangle]
-pub extern "C" fn wwn_term_scrollback_cap(term: *const Term) -> u32 {
-    if term.is_null() {
-        return 0;
-    }
-    unsafe { (*term).scroll_cap() as u32 }
-}
-
-#[no_mangle]
-pub extern "C" fn wwn_term_recommended_scrollback_cap(cols: u32) -> u32 {
-    recommended_scroll_cap(cols as usize) as u32
-}

@@ -194,6 +194,8 @@ skill, add one row. Capture flow: `wawona-learn`.
   MAP_JIT write+exec. `launchNiri` must return before `niri_main` when
   `MTLCreateSystemDefaultDevice` is nil. Do not spin ANGLE.
 - Watch-bearing IPA needs `SwiftSupport/`. Watchless tvOS/visionOS must not.
+- Viewporter WLCS source-size failures come from expanding input bounds through the CSD crop path. Track presented bounds for viewport surfaces; see `docs/testing/wlcs-conformance.md`.
+- C exports supplied by linked upstream Terminal source must not be wrapped again in Wawona's UniFFI bridge. Prove with a local Rust test build before pushing.
 - Prove `ld` locally. Do not burn Gate: products to discover duplicates.
 - Relay Wasm ships on every target. Do not size-gate watchOS off.
 - hello-wasi-gui (`wl_shm`) must run on Watch Machines Start. Transfer is not run.

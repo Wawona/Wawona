@@ -45,6 +45,23 @@ It compiles against nixpkgs' WLCS headers and pkg-config metadata. Re-declaring
 the ABI locally is forbidden because that can produce an apparently runnable
 adapter with an incompatible vtable.
 
+## Viewporter pointer-size failures
+
+If only `WpViewporterTest.when_source_but_no_destination_set_window_has_src_size`,
+`WpViewporterTest.when_buffer_is_scaled_source_is_in_scaled_coordinates`, and
+`WpViewporterTest.all_minus_one_source_unsets_source_rect` fail with
+`Surface size too large`, inspect scene input bounds. A viewporter source crop
+changes the surface's logical size, while its content rectangle also crops the
+rendered buffer. Do not treat that rectangle as an xdg window-geometry crop and
+expand pointer bounds back to the full buffer. For a surface with a viewport,
+pointer bounds must follow the presented scene size. Setting all source fields
+to -1 restores the full buffer size.
+
+The fix belongs in the shared input path so WLCS, Linux, and Apple hosts use the
+same geometry. Keep the existing expansion for xdg window geometry, which
+preserves client-side shadow and resize-border input. Cover the distinction
+with a local Rust regression test before pushing.
+
 ## CI policy
 
 `Gate: Wayland conformance` runs the full battery on x86_64 and aarch64 Linux
