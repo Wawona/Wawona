@@ -574,16 +574,16 @@ let
   features =
     # waypipe-ssh = in-process waypipe + libssh2 (never OpenSSH) on Apple mobile.
     if isIOS then
-      [ "waypipe-ssh" "smithay-protocols" "coreutils" ]
+      [ "waypipe-ssh" "smithay-protocols" "coreutils" "terminal-pinned-ffi" ]
       ++ lib.optionals iosModeB [ "profile-ios-mode-b" ]
-    else if isTVOS then [ "waypipe-ssh" "smithay-protocols" "coreutils" ]
-    else if isVisionOS then [ "waypipe-ssh" "smithay-protocols" "coreutils" ]
-    else if isWatchOS then [ "waypipe-ssh" "smithay-protocols" "coreutils" ] # uutils enabled on all targets (per product requirement); Remote via libssh2
+    else if isTVOS then [ "waypipe-ssh" "smithay-protocols" "coreutils" "terminal-pinned-ffi" ]
+    else if isVisionOS then [ "waypipe-ssh" "smithay-protocols" "coreutils" "terminal-pinned-ffi" ]
+    else if isWatchOS then [ "waypipe-ssh" "smithay-protocols" "coreutils" "terminal-pinned-ffi" ] # uutils enabled on all targets (per product requirement); Remote via libssh2
     else if isAndroid then [ "waypipe" "smithay-protocols" "coreutils" ]
     else
       # macOS: smithay desktop paths always; Mode B Cargo gates only for
       # desktop-host / full-dev (dylib still gated separately in macos.nix).
-      [ "smithay-protocols" "smithay-desktop" ]
+      [ "smithay-protocols" "smithay-desktop" "terminal-pinned-ffi" ]
       ++ lib.optionals desktopHost [ "profile-desktop-host" "iland-baremetal" ];
 
   # ── Per-crate build overrides ──────────────────────────────────────

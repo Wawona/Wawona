@@ -13,6 +13,10 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <signal.h>
+#include <stdbool.h>
+#include <sys/types.h>
+
+#include "../../term/wwn_term.h"
 
 typedef void *WawonaCompositorHandle;
 
@@ -179,6 +183,157 @@ int fuzzel_main(int argc, char **argv) {
  * xcodegen.nix OTHER_LDFLAGS[arch=arm64_32]) and therefore needs a fallback.
  * arm64 device + arm64 simulator are LP64 and link the real dispatcher. */
 #if !defined(__LP64__)
+/* arm64_32 is the Watch fat-slice compatibility ABI. Wawona's Rust core,
+ * terminal, and PTY archives are arm64-only, so their Swift entry points need
+ * explicit fail-closed link stubs here. Do not provide these on LP64 slices,
+ * where the real Nix archives must satisfy the same symbols. */
+typedef struct WWNCore WWNCore;
+typedef struct CBufferData CBufferData;
+
+__attribute__((weak))
+WWNCore *WWNCoreNew(void) { return NULL; }
+
+__attribute__((weak))
+bool WWNCoreStart(WWNCore *core, const char *socket_name) {
+    (void)core;
+    (void)socket_name;
+    return false;
+}
+
+__attribute__((weak))
+bool WWNCoreStop(WWNCore *core) {
+    (void)core;
+    return false;
+}
+
+__attribute__((weak))
+bool WWNCoreIsRunning(const WWNCore *core) {
+    (void)core;
+    return false;
+}
+
+__attribute__((weak))
+char *WWNCoreGetSocketPath(const WWNCore *core) {
+    (void)core;
+    return NULL;
+}
+
+__attribute__((weak))
+bool WWNCoreProcessEvents(WWNCore *core) {
+    (void)core;
+    return false;
+}
+
+__attribute__((weak))
+void WWNCoreFlushClients(WWNCore *core) { (void)core; }
+
+__attribute__((weak))
+CBufferData *WWNCorePopPendingBuffer(WWNCore *core) {
+    (void)core;
+    return NULL;
+}
+
+__attribute__((weak))
+void WWNBufferDataFree(CBufferData *data) { (void)data; }
+
+__attribute__((weak))
+void WWNCoreNotifyFramePresented(WWNCore *core, uint32_t surface_id,
+                                 uint64_t buffer_id, uint32_t timestamp_ms) {
+    (void)core;
+    (void)surface_id;
+    (void)buffer_id;
+    (void)timestamp_ms;
+}
+
+__attribute__((weak))
+uint32_t WWNCoreGetTimestampMs(WWNCore *core) {
+    (void)core;
+    return 0;
+}
+
+__attribute__((weak))
+uint32_t WWNCoreGetClientCount(const WWNCore *core) {
+    (void)core;
+    return 0;
+}
+
+__attribute__((weak))
+void wwn_pty_ios_stop_shell_session(void) {}
+
+__attribute__((weak))
+void *wwn_pty_session_start(const char *shell_path, char **argv, char **envp,
+                            const void *winsize_value) {
+    (void)shell_path;
+    (void)argv;
+    (void)envp;
+    (void)winsize_value;
+    return NULL;
+}
+
+__attribute__((weak))
+int32_t wwn_pty_session_master_fd(const void *session) {
+    (void)session;
+    return -1;
+}
+
+__attribute__((weak))
+void wwn_pty_session_destroy(void *session) { (void)session; }
+
+__attribute__((weak))
+ssize_t wwn_pty_read(int32_t fd, void *buffer, size_t len) {
+    (void)fd;
+    (void)buffer;
+    (void)len;
+    return -1;
+}
+
+__attribute__((weak))
+void wwn_ios_terminal_set_master(int32_t fd) { (void)fd; }
+
+__attribute__((weak))
+void wwn_ios_terminal_clear_master(int32_t fd) { (void)fd; }
+
+__attribute__((weak))
+ssize_t wwn_ios_terminal_inject(const void *bytes, size_t len) {
+    (void)bytes;
+    (void)len;
+    return -1;
+}
+
+__attribute__((weak))
+void wwn_pty_tty_shim_set_winsize(const void *winsize_value) {
+    (void)winsize_value;
+}
+
+__attribute__((weak))
+wwn_term *wwn_term_new(uint32_t cols, uint32_t rows) {
+    (void)cols;
+    (void)rows;
+    return NULL;
+}
+
+__attribute__((weak))
+void wwn_term_free(wwn_term *term) { (void)term; }
+
+__attribute__((weak))
+void wwn_term_refresh_scrollback_cap(wwn_term *term, uint32_t host_factor_permille) {
+    (void)term;
+    (void)host_factor_permille;
+}
+
+__attribute__((weak))
+void wwn_term_feed(wwn_term *term, const uint8_t *bytes, size_t len) {
+    (void)term;
+    (void)bytes;
+    (void)len;
+}
+
+__attribute__((weak))
+char *wwn_term_lines_json(const wwn_term *term) {
+    (void)term;
+    return NULL;
+}
+
 __attribute__((weak))
 int wawona_coreutils_main(int argc, char **argv) {
     (void)argc; (void)argv;

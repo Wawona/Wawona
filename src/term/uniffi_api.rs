@@ -8,6 +8,20 @@ use std::sync::{Arc, Mutex};
 
 use super::screen::{recommended_scroll_cap, StyledLine, Term};
 
+// The flake-pinned Terminal source has the Rust method but not this C export.
+// Apple host UI calls it during terminal startup. Newer Terminal revisions
+// provide the export themselves, so rust-backend-c2n enables this only for
+// Apple product builds against the pinned source to avoid a duplicate symbol.
+#[cfg(feature = "terminal-pinned-ffi")]
+#[no_mangle]
+pub extern "C" fn wwn_term_refresh_scrollback_cap(term: *mut Term, host_factor_permille: u32) {
+    if term.is_null() {
+        return;
+    }
+    let factor = (host_factor_permille.clamp(250, 1000) as f32) / 1000.0;
+    unsafe { (*term).refresh_scroll_cap(factor) }
+}
+
 /// Live RAM/CPU scrollback recommendation (same probe as `Term::new`).
 #[uniffi::export]
 pub fn terminal_recommended_scrollback_cap(cols: u32) -> u32 {

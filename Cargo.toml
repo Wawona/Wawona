@@ -166,6 +166,9 @@ profile-ios-mode-b = []
 # Enables Smithay protocol migration scaffolding / compile probes.
 smithay-protocols = []
 smithay-desktop = []
+# The flake-pinned Terminal source predates this host-pressure C export.
+# Keep this compatibility symbol out of builds that use Terminal's own export.
+terminal-pinned-ffi = []
 # iland bare-metal WindowServer-replacement mode (Mode B): Dobby code injection,
 # AMFI bypass, framebufferd/SkyLight, inputd, symrez. macOS-ONLY, opt-in, and
 # NOT App-Store-safe (requires SIP off + root + private entitlements). Must be
