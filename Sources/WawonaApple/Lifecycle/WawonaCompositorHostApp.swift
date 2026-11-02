@@ -1,5 +1,6 @@
 #if os(macOS)
 import AppKit
+import Darwin
 import Foundation
 
 /// Accessory compositor service (`Wawona --compositor-host`).
@@ -106,14 +107,26 @@ enum WawonaCompositorHostApp {
 }
 
 private final class CompositorHostDelegate: NSObject, NSApplicationDelegate {
+    private static func hostReopenOpensUi() -> Bool {
+        typealias Fn = @convention(c) () -> Int32
+        guard let sym = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "wawona_host_reopen_opens_ui") else {
+            return false
+        }
+        let fn = unsafeBitCast(sym, to: Fn.self)
+        return fn() != 0
+    }
+
     func applicationShouldHandleReopen(
         _ sender: NSApplication,
         hasVisibleWindows flag: Bool
     ) -> Bool {
         _ = sender
         _ = flag
-        // Host must never become a Regular Dock UI. Hand off to the UI instance.
-        WawonaLaunchMode.openOrActivateUI(arguments: [])
+        // Quit must stick. A Dock click on this accessory process used to
+        // open Machines again (#223). Policy: wawona_host_reopen_opens_ui.
+        if Self.hostReopenOpensUi() {
+            WawonaLaunchMode.openOrActivateUI(arguments: [])
+        }
         NSApp.setActivationPolicy(.accessory)
         return false
     }

@@ -76,7 +76,14 @@ extension WawonaMenuBarController {
     }
 
     @objc func quitMenuBar() {
-        _ = WWNLaunchAgentManager.sharedManager.stopMenuBarAgent()
+        // Bootout both agents before exit so launchd cannot start them again.
+        _ = WWNLaunchAgentManager.sharedManager.stopCompositorAndMenuAgents()
+        DistributedNotificationCenter.default().postNotificationName(
+            WawonaLaunchMode.quitNotification,
+            object: nil,
+            userInfo: nil,
+            deliverImmediately: true
+        )
         NSApp.terminate(nil)
     }
 

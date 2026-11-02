@@ -1,5 +1,6 @@
 #if os(macOS)
 import AppKit
+import Darwin
 import Foundation
 
 @objc(WWNLaunchAgentManager)
@@ -47,7 +48,7 @@ public final class WWNLaunchAgentManager: NSObject {
             "Label": Self.compositorLabel,
             "ProgramArguments": [execPath, "--compositor-host"],
             "RunAtLoad": true,
-            "KeepAlive": true,
+            "KeepAlive": Self.keepAlive(role: 1),
             "ThrottleInterval": 5,
             "StandardOutPath": "/tmp/wawona-compositor-\(uid).log",
             "StandardErrorPath": "/tmp/wawona-compositor-\(uid).error.log",
@@ -62,7 +63,7 @@ public final class WWNLaunchAgentManager: NSObject {
             "Label": Self.menuBarLabel,
             "ProgramArguments": [execPath, "--menubar"],
             "RunAtLoad": true,
-            "KeepAlive": true,
+            "KeepAlive": Self.keepAlive(role: 2),
             "ThrottleInterval": 5,
             "StandardOutPath": "/tmp/wawona-menubar-\(uid).log",
             "StandardErrorPath": "/tmp/wawona-menubar-\(uid).error.log",
@@ -80,7 +81,7 @@ public final class WWNLaunchAgentManager: NSObject {
             "Label": Self.appLaunchLabel,
             "ProgramArguments": [openToolPath(), bundlePath],
             "RunAtLoad": true,
-            "KeepAlive": false,
+            "KeepAlive": Self.keepAlive(role: 3),
             "StandardOutPath": "/tmp/wawona-applaunch-\(uid).log",
             "StandardErrorPath": "/tmp/wawona-applaunch-\(uid).error.log",
             "EnvironmentVariables": baseEnvironment(),
@@ -108,6 +109,16 @@ public final class WWNLaunchAgentManager: NSObject {
             return false
         }
         return true
+    }
+
+    /// Rust `quit_policy`. Missing symbol fails closed (no respawn).
+    private static func keepAlive(role: Int32) -> Bool {
+        typealias Fn = @convention(c) (Int32) -> Int32
+        guard let sym = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "wawona_launch_agent_keep_alive") else {
+            return false
+        }
+        let fn = unsafeBitCast(sym, to: Fn.self)
+        return fn(role) != 0
     }
 
     @objc public func launchctlDomain() -> String {

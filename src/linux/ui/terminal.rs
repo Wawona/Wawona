@@ -392,17 +392,27 @@ pub fn build_terminal_view(
     let back_fd = back.clone();
     let front_fd = front.clone();
     let grid_fd = grid.clone();
+    let session_alive = Rc::new(Cell::new(true));
+    let alive_read = session_alive.clone();
     glib::unix_fd_add_local(fd, glib::IOCondition::IN, move |_, _| {
         let mut buf = [0u8; 4096];
         let read = {
             let mut file = master_fd_loop.borrow_mut();
             file.read(&mut buf)
         };
-        match read {
-            Ok(0) => glib::ControlFlow::Break,
-            Err(err) if err.kind() == ErrorKind::WouldBlock => glib::ControlFlow::Continue,
-            Err(_) => glib::ControlFlow::Break,
-            Ok(n) => {
+        let (n, errno) = match &read {
+            Ok(n) => (*n as isize, 0),
+            Err(err) => (-1, err.raw_os_error().unwrap_or(0)),
+        };
+        let kind = crate::domain::terminal_liveness::classify_pty_read(n, errno);
+        if crate::domain::terminal_liveness::screen_fate(kind)
+            == crate::domain::terminal_liveness::ScreenFate::Ended
+        {
+            mark_session_ended(&title_fd, &buffer_fd, alive_read.as_ref());
+            return glib::ControlFlow::Break;
+        }
+        if let Ok(n) = read {
+            if n > 0 {
                 session_fd.feed(buf[..n].to_vec());
                 dec_read.borrow_mut().observe(&buf[..n]);
                 let reply = session_fd.take_reply();
@@ -424,11 +434,13 @@ pub fn build_terminal_view(
                 }
                 let mut end = buffer_fd.end_iter();
                 let _ = view_fd.scroll_to_iter(&mut end, 0.0, true, 0.0, 1.0);
-                glib::ControlFlow::Continue
+                return glib::ControlFlow::Continue;
             }
         }
+        glib::ControlFlow::Continue
     });
 
+    let alive_keys = session_alive.clone();
     let master_keys = dup_master(fd);
     let session_keys = session.clone();
     let buffer_keys = buffer.clone();
@@ -455,7 +467,7 @@ pub fn build_terminal_view(
         let bytes = dec_keys
             .borrow()
             .map_key(key, state, bytes_for_key(key, state));
-        if !bytes.is_empty() {
+        if alive_keys.get() && !bytes.is_empty() {
             if let Some(file) = master_keys.borrow_mut().as_mut() {
                 write_pty(file, &bytes);
             }
@@ -565,6 +577,23 @@ pub fn build_terminal_view(
     let front_idle = front.clone();
     let buffer_blink = buffer.clone();
     let blink_on = Rc::new(Cell::new(false));
+    let alive_wait = session_alive.clone();
+    let title_wait = title_widget.clone();
+    let buffer_wait = buffer.clone();
+    let pid_wait = pid;
+    glib::timeout_add_local(Duration::from_millis(1000), move || {
+        if !alive_wait.get() {
+            return glib::ControlFlow::Break;
+        }
+        if pid_wait > 0
+            && crate::domain::terminal_liveness::child_fate(child_exited(pid_wait))
+                == crate::domain::terminal_liveness::ScreenFate::Ended
+        {
+            mark_session_ended(&title_wait, &buffer_wait, alive_wait.as_ref());
+            return glib::ControlFlow::Break;
+        }
+        glib::ControlFlow::Continue
+    });
     glib::timeout_add_local(Duration::from_millis(500), move || {
         let hidden = !blink_on.get();
         blink_on.set(hidden);
@@ -615,6 +644,28 @@ fn dup_master(fd: i32) -> Rc<RefCell<Option<File>>> {
         None
     };
     Rc::new(RefCell::new(file))
+}
+
+fn child_exited(pid: u32) -> bool {
+    if pid == 0 {
+        return false;
+    }
+    let mut status = 0;
+    let rc = unsafe { libc::waitpid(pid as i32, &mut status, libc::WNOHANG) };
+    rc == pid as i32
+}
+
+fn mark_session_ended(title: &adw::WindowTitle, buffer: &gtk::TextBuffer, alive: &Cell<bool>) {
+    if !alive.get() {
+        return;
+    }
+    alive.set(false);
+    title.set_subtitle("Session ended");
+    let mut end = buffer.end_iter();
+    buffer.insert(
+        &mut end,
+        &format!("\n{}\n", crate::domain::terminal_liveness::ENDED_NOTICE),
+    );
 }
 
 fn write_pty(file: &mut File, bytes: &[u8]) {

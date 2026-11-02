@@ -19,6 +19,8 @@ enum WawonaLaunchMode: Equatable {
     case version
 
     static let reopenNotification = Notification.Name("WWNReopenUINotification")
+    /// Menu bar "Quit Wawona" asks the Regular UI process to terminate.
+    static let quitNotification = Notification.Name("WWNQuitUINotification")
 
     static func parse(_ arguments: [String] = CommandLine.arguments) -> WawonaLaunchMode {
         var compositorHost = false

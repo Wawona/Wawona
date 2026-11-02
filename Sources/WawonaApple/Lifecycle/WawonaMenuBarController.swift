@@ -134,7 +134,7 @@ final class WawonaMenuBarController: NSObject, NSMenuDelegate {
         menu.addItem(.separator())
 
         let quit = NSMenuItem(
-            title: "Quit Menu Bar",
+            title: "Quit Wawona",
             action: #selector(quitMenuBar),
             keyEquivalent: "q"
         )
