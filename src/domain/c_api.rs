@@ -310,7 +310,9 @@ pub extern "C" fn wawona_wayland_socket_is_live(path: *const c_char) -> i32 {
     let Some(path) = cstr_to_str(path) else {
         return 0;
     };
-    i32::from(super::quit_policy::wayland_socket_is_live(std::path::Path::new(path)))
+    i32::from(super::quit_policy::wayland_socket_is_live(
+        std::path::Path::new(path),
+    ))
 }
 
 /// 1 if this client / bundled id is forbidden as a Machines profile.
