@@ -93,19 +93,39 @@ jobs:
         with:
           persist-credentials: false
       - run: rustup component add rustfmt
-      - name: Stub coreutils path dependency for fmt
+      - name: Stub optional path dependencies for fmt
         shell: bash
         run: |
-          # ./coreutils is populated locally by scripts/ensure-coreutils.sh (Nix).
-          # cargo fmt --all resolves workspace metadata for all path deps even when
-          # they are optional; stub the Cargo.toml so metadata load succeeds without
-          # a real source checkout.
-          if [[ ! -f coreutils/Cargo.toml ]]; then
-            mkdir -p coreutils/src
-            printf '[package]\nname = "coreutils"\nversion = "0.0.1"\nedition = "2021"\n' \
-              > coreutils/Cargo.toml
-            printf '// stub\n' > coreutils/src/lib.rs
-          fi
+          # ./coreutils and ./waypipe are populated locally by
+          # scripts/ensure-coreutils.sh / ensure-waypipe.sh (Nix).
+          # cargo fmt --all resolves workspace metadata for all path deps even
+          # when they are optional; stub Cargo.toml (with the feature names
+          # Cargo.toml requests) so metadata load succeeds without a real
+          # source checkout.
+          python3 - <<'PY'
+          from pathlib import Path
+          stubs = {
+              "coreutils": [
+                  "ls", "cat", "cp", "mv", "rm", "mkdir", "rmdir", "ln", "touch", "echo",
+                  "pwd", "head", "tail", "wc", "sort", "cut", "tr", "seq", "basename",
+                  "dirname", "stat", "du", "df", "date", "env", "printenv", "uname",
+                  "whoami", "yes", "tee", "nl", "tac", "fold", "expand", "unexpand",
+                  "truncate", "chmod",
+              ],
+              "waypipe": ["lz4", "zstd", "video"],
+          }
+          for name, feats in stubs.items():
+              root = Path(name)
+              if (root / "Cargo.toml").exists():
+                  continue
+              (root / "src").mkdir(parents=True, exist_ok=True)
+              feat_lines = "\n".join(f"{f} = []" for f in feats)
+              (root / "Cargo.toml").write_text(
+                  f"[package]\nname = \"{name}\"\nversion = \"0.0.1\"\nedition = \"2021\"\n\n"
+                  f"[features]\ndefault = []\n{feat_lines}\n"
+              )
+              (root / "src" / "lib.rs").write_text("// stub\n")
+          PY
       - run: cargo fmt --all -- --check
 
   dependency-review:
