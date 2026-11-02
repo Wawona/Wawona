@@ -14,3 +14,4 @@ WWN_WRITE_PROTOCOL_STATUS=1 \
     -- --nocapture --exact
 
 echo "Done. Review docs/protocol-status.md and commit if changed."
+echo "Site copy: in Wawona/wawona.io run scripts/sync-protocol-status.sh (master channel)."
