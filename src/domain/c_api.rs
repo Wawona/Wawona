@@ -304,6 +304,15 @@ pub extern "C" fn wawona_host_reopen_opens_ui() -> i32 {
     i32::from(super::quit_policy::host_reopen_opens_ui())
 }
 
+/// 1 if a peer accepts connect on this Unix Wayland socket path (#223).
+#[no_mangle]
+pub extern "C" fn wawona_wayland_socket_is_live(path: *const c_char) -> i32 {
+    let Some(path) = cstr_to_str(path) else {
+        return 0;
+    };
+    i32::from(super::quit_policy::wayland_socket_is_live(std::path::Path::new(path)))
+}
+
 /// 1 if this client / bundled id is forbidden as a Machines profile.
 #[no_mangle]
 pub extern "C" fn wawona_session_is_forbidden_client_id(id: *const c_char) -> i32 {
