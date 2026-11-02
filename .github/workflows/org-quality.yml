@@ -93,19 +93,34 @@ jobs:
         with:
           persist-credentials: false
       - run: rustup component add rustfmt
-      - name: Stub coreutils path dependency for fmt
+      - name: Stub optional path dependencies for fmt
         shell: bash
         run: |
-          # ./coreutils is populated locally by scripts/ensure-coreutils.sh (Nix).
+          # ./coreutils and ./waypipe are populated locally by ensure-*.sh (Nix).
           # cargo fmt --all resolves workspace metadata for all path deps even when
           # they are optional; stub the Cargo.toml so metadata load succeeds without
           # a real source checkout.
-          if [[ ! -f coreutils/Cargo.toml ]]; then
-            mkdir -p coreutils/src
-            printf '[package]\nname = "coreutils"\nversion = "0.0.1"\nedition = "2021"\n' \
-              > coreutils/Cargo.toml
-            printf '// stub\n' > coreutils/src/lib.rs
-          fi
+          stub_path_crate() {
+            local dir="$1" name="$2"
+            if [[ ! -f "$dir/Cargo.toml" ]]; then
+              mkdir -p "$dir/src"
+              printf '[package]\nname = "%s"\nversion = "0.0.1"\nedition = "2021"\n' "$name" \
+                > "$dir/Cargo.toml"
+              printf '// stub\n' > "$dir/src/lib.rs"
+            fi
+          }
+          stub_path_crate coreutils coreutils
+          stub_path_crate waypipe waypipe
+          # Committed src/term/{screen,kitty}.rs are symlinks into a sibling
+          # Terminal checkout (or Nix flake input). Shallow CI clones leave them
+          # dangling; rustfmt then fails resolving `mod screen` in src/term/mod.rs.
+          # Fmt does not typecheck, so empty stubs are enough (same idea as above).
+          for f in src/term/screen.rs src/term/kitty.rs; do
+            if [[ ! -f "$f" ]]; then
+              rm -f "$f"
+              printf '// stub for cargo fmt (Terminal input not checked out)\n' > "$f"
+            fi
+          done
       - run: cargo fmt --all -- --check
 
   dependency-review:
@@ -175,3 +190,15 @@ jobs:
             exit 0
           fi
           uvx "zizmor==1.30.1" --min-severity high "${workflows[@]}"
+
+  linux-package-wiring:
+    name: Linux package wiring
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Verify Linux package wiring (wawonaLinuxUiBin / #164 / autostart)
+        run: python3 ./.github/scripts/verify-linux-package-wiring.py
+      - name: Verify Linux shell-tool wiring
+        run: python3 ./.github/scripts/verify-linux-shell-tools.py
