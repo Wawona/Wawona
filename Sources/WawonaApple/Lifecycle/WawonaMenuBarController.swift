@@ -134,7 +134,7 @@ final class WawonaMenuBarController: NSObject, NSMenuDelegate {
         menu.addItem(.separator())
 
         let quit = NSMenuItem(
-            title: "Quit Wawona",
+            title: "Quit Menu Bar",
             action: #selector(quitMenuBar),
             keyEquivalent: "q"
         )
@@ -321,15 +321,36 @@ enum WawonaMenuBarApp {
 
         let controller = WawonaMenuBarController()
         controller.start()
+        let delegate = MenuBarDelegate()
+        app.delegate = delegate
         objc_setAssociatedObject(
             app,
             "wawona.menubar.controller",
             controller,
             .OBJC_ASSOCIATION_RETAIN
         )
+        objc_setAssociatedObject(
+            app,
+            "wawona.menubar.delegate",
+            delegate,
+            .OBJC_ASSOCIATION_RETAIN
+        )
         app.run()
         controller.stop()
         WawonaLaunchLockState.releaseAll()
+    }
+}
+
+/// Menu bar is an accessory. Reopen must not raise Wawona.app (#223).
+private final class MenuBarDelegate: NSObject, NSApplicationDelegate {
+    func applicationShouldHandleReopen(
+        _ sender: NSApplication,
+        hasVisibleWindows flag: Bool
+    ) -> Bool {
+        _ = sender
+        _ = flag
+        NSApp.setActivationPolicy(.accessory)
+        return false
     }
 }
 #endif

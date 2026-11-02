@@ -105,7 +105,7 @@ write_agent() {
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
-  <false/>
+  <true/>
   <key>ThrottleInterval</key>
   <integer>5</integer>
   <key>StandardOutPath</key>

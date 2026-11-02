@@ -16,7 +16,7 @@
     <true/>
     
     <key>KeepAlive</key>
-    <false/>
+    <true/>
     
     <key>StandardOutPath</key>
     <string>/tmp/wawona.log</string>

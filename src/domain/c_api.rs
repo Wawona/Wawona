@@ -287,8 +287,9 @@ pub extern "C" fn wawona_cloud_sync_merge_profiles(
     }
 }
 
-/// 1 if launchd should set `KeepAlive` for this role. 0 means quit stays quit.
-/// Roles: 1 compositor host, 2 menu bar, 3 login launch. Unknown is 0.
+/// 1 if launchd should set `KeepAlive` for this role.
+/// Roles: 1 compositor host, 2 menu bar, 3 login `open`. Unknown is 0.
+/// The host and menu bar stay up. The login `open` job must not.
 #[no_mangle]
 pub extern "C" fn wawona_launch_agent_keep_alive(role: i32) -> i32 {
     let Some(role) = super::quit_policy::LaunchAgentRole::from_code(role) else {

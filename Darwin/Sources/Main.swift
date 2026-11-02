@@ -255,12 +255,6 @@ final class AppMainDelegate: NSObject, AppMainDelegateBase {
                 name: WawonaLaunchMode.reopenNotification,
                 object: nil
             )
-            DistributedNotificationCenter.default().addObserver(
-                self,
-                selector: #selector(handleQuitRequest(_:)),
-                name: WawonaLaunchMode.quitNotification,
-                object: nil
-            )
         }
 
         func applicationShouldHandleReopen(
@@ -277,16 +271,10 @@ final class AppMainDelegate: NSObject, AppMainDelegateBase {
         func applicationWillTerminate(_ notification: Notification) {
             _ = notification
             DistributedNotificationCenter.default().removeObserver(self)
-            // #223: Quit removes LaunchAgents. KeepAlive is false, and the
-            // plists are deleted, so launchd cannot reopen the app.
-            _ = WWNLaunchAgentManager.sharedManager.stopCompositorAndMenuAgents()
+            // #223: closing the Machines window leaves the compositor host
+            // and its Wayland socket running.
             SharedAppDelegate.shared.onDestroy()
             WawonaLaunchLockState.releaseAll()
-        }
-
-        @objc private func handleQuitRequest(_ note: Notification) {
-            _ = note
-            NSApp.terminate(nil)
         }
 
         @objc private func handleReopen(_ note: Notification) {

@@ -107,26 +107,16 @@ enum WawonaCompositorHostApp {
 }
 
 private final class CompositorHostDelegate: NSObject, NSApplicationDelegate {
-    private static func hostReopenOpensUi() -> Bool {
-        typealias Fn = @convention(c) () -> Int32
-        guard let sym = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "wawona_host_reopen_opens_ui") else {
-            return false
-        }
-        let fn = unsafeBitCast(sym, to: Fn.self)
-        return fn() != 0
-    }
-
     func applicationShouldHandleReopen(
         _ sender: NSApplication,
         hasVisibleWindows flag: Bool
     ) -> Bool {
         _ = sender
         _ = flag
-        // Quit must stick. A Dock click on this accessory process used to
-        // open Machines again (#223). Policy: wawona_host_reopen_opens_ui.
-        if Self.hostReopenOpensUi() {
-            WawonaLaunchMode.openOrActivateUI(arguments: [])
-        }
+        // #223: this process is the Wayland socket. A Dock click, a launchd
+        // restart, or an Apple Event reopen must not open Wawona.app.
+        // openApplication on this bundle is delivered back here, which used
+        // to open the GUI again on every event.
         NSApp.setActivationPolicy(.accessory)
         return false
     }

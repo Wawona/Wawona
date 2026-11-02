@@ -76,14 +76,8 @@ extension WawonaMenuBarController {
     }
 
     @objc func quitMenuBar() {
-        // Bootout both agents before exit so launchd cannot start them again.
-        _ = WWNLaunchAgentManager.sharedManager.stopCompositorAndMenuAgents()
-        DistributedNotificationCenter.default().postNotificationName(
-            WawonaLaunchMode.quitNotification,
-            object: nil,
-            userInfo: nil,
-            deliverImmediately: true
-        )
+        // Stop this extra only. The compositor host keeps the Wayland socket.
+        _ = WWNLaunchAgentManager.sharedManager.stopMenuBarAgent()
         NSApp.terminate(nil)
     }
 
