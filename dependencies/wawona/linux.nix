@@ -48,7 +48,9 @@ pkgs.writeShellApplication {
     pkgs.lldb
     pkgs.cloud-hypervisor
   ] ++ pkgs.lib.optional (phoon != null) phoon;
-  text = ''
+  # Strip CR so a CRLF-checked-out tree (issue #164) cannot poison the wrapper
+  # (`syntax error near unexpected token $'in\r'`).
+  text = builtins.replaceStrings ["\r"] [""] ''
     set -euo pipefail
     export PATH="''${HOME}/.local/bin:''${PATH:-}"
 

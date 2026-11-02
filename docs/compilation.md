@@ -27,7 +27,16 @@ nix build .#wawona-visionos-sim
 # Android / Linux
 nix run .#wawona-android
 nix run .#wawona-linux
+# On a Linux host, .#wawona and .#default are the same prebuilt UI wrapper:
+nix run .#wawona
+nix build .#wawona-appimage
 ```
+
+Linux wrappers (`wawona-linux-run`, compositor-host, tray) require LF line
+endings. A CRLF git checkout inside Docker/NixOS containers breaks the
+generated shell (`syntax error near unexpected token $'in\r'`; issue #164).
+Keep `.gitattributes` (`*.nix text eol=lf`) and avoid `core.autocrlf=true`
+on the build host.
 
 `--rebuild` is not a Nix flag. Use `nix build --rebuild` only if you mean Nix's
 `--rebuild` (force rebuild of a derivation). For a clean tree, `nix build` the

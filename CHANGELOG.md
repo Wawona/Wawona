@@ -8,6 +8,27 @@ Versioning is **CalVer** `YY.M.D` (year · month · day), Apple-style year major
 bump **build number** only. Historical `0.2.x` / mistaken `2.5.0` tags remain
 as history.
 
+## [26.11.2] - 2026-11-02
+
+### Fixed
+- **Linux `.#wawona` / `.#default` / `.#install`.** Pass `wawonaLinuxUiBin` into
+  the shared `linux.nix` wrapper so `nix run .#wawona` no longer exits with
+  `wawonaLinuxUiBin missing` (issue #90 install/run gate).
+- **Linux compositor-host and tray wrappers.** Exec the ahead-of-time bins from
+  `wawona-linux-ui-bin` instead of JIT `cargo run` (`linux-host.nix`,
+  `linux-tray.nix`).
+- **Linux quit / autostart (#223 analog).** Resolve the flake via `WAWONA_FLAKE`
+  / cwd / `$HOME` clones / `github:Wawona/Wawona` (no `/home/alex` hardcode).
+  Systemd units `WantedBy=graphical-session.target`. XDG autostart launches the
+  compositor host only, not the GTK Machines window.
+- **Issue #164 CRLF.** `.gitattributes` forces LF on Nix/shell sources; Linux
+  wrappers strip `\r` via `builtins.replaceStrings` so Docker checkouts cannot
+  poison `wawona-linux-run`.
+
+### Added
+- CI script `verify-linux-package-wiring.py` (flake wiring, no alex home,
+  autostart policy, LF wrappers).
+
 ## [26.10.10] - 2026-10-10
 
 ### Changed
