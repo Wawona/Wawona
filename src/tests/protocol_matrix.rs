@@ -231,9 +231,7 @@ fn test_generate_protocol_status_manifest() {
     md.push_str("| Functional | Handles requests, mutates state, sends events |\n");
     md.push_str("| Partial | Global registered; some requests handled; incomplete semantics |\n");
     md.push_str("| Stub | Global registered; handlers log or no-op |\n");
-    md.push_str(
-        "| Missing | Not registered / not implemented; tracked gap vs wayland.app |\n\n",
-    );
+    md.push_str("| Missing | Not registered / not implemented; tracked gap vs wayland.app |\n\n");
     md.push_str(
         "Each section table is sorted **Functional → Partial → Stub → Missing**, then by interface name.\n\n",
     );
