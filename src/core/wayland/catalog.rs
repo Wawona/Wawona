@@ -1,17 +1,23 @@
-//! Catalog of every Wayland global Wawona may advertise.
+//! Catalog of every Wayland global Wawona may advertise, plus tracked gaps.
 //!
-//! Status (Functional / Partial / Stub) is a required human-reviewed field.
-//! CI checks registry ⊆ catalog and that catalog rows which claim advertisement
-//! on the active profile appear in the live registry. CI does not infer status.
+//! Status (Functional / Partial / Stub / Missing) is a required human-reviewed
+//! field. CI checks registry ⊆ catalog and that catalog rows which claim
+//! advertisement on the active profile appear in the live registry. CI does
+//! not infer status. `Missing` rows are docs-only: never advertised.
 
 use super::policy::{allow_desktop_extensions, ExposureClass, ProtocolProfile};
 
 /// Human-reviewed implementation depth. Not inferred from the registry.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ProtocolStatus {
+    /// Handles requests, mutates state, sends events.
     Functional,
+    /// Global registered; some requests handled; incomplete semantics.
     Partial,
+    /// Global registered; handlers log or no-op.
     Stub,
+    /// Not registered / not implemented. Tracked for the status matrix only.
+    Missing,
 }
 
 impl ProtocolStatus {
@@ -20,6 +26,17 @@ impl ProtocolStatus {
             Self::Functional => "Functional",
             Self::Partial => "Partial",
             Self::Stub => "Stub",
+            Self::Missing => "Missing",
+        }
+    }
+
+    /// Table sort key: Functional first, Missing last.
+    pub fn sort_rank(self) -> u8 {
+        match self {
+            Self::Functional => 0,
+            Self::Partial => 1,
+            Self::Stub => 2,
+            Self::Missing => 3,
         }
     }
 }
@@ -84,6 +101,10 @@ impl ProtocolCatalogEntry {
     }
 
     pub fn advertised_on(&self, profile: ProtocolProfile) -> bool {
+        // Missing rows are documentation gaps only; never expected in the registry.
+        if self.status == ProtocolStatus::Missing {
+            return false;
+        }
         match self.exposure {
             ExposureClass::StoreSafeCore | ExposureClass::StoreSafeConditional => true,
             ExposureClass::DesktopOnly => allow_desktop_extensions(profile),
@@ -730,6 +751,51 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         Stub,
         DesktopOnly
     ),
+    // Opt-in shell: implemented, but only advertised when
+    // `advertise_fullscreen_shell` is enabled (not the default desktop-host path).
+    // InternalOnly keeps honesty tests from requiring it on desktop-host.
+    cat!(
+        "zwp_fullscreen_shell_v1",
+        "fullscreen-shell-unstable-v1",
+        Ext,
+        "src/core/wayland/ext/fullscreen_shell.rs",
+        Stub,
+        InternalOnly
+    ),
+    // Tracked gaps (Missing): source scaffold and/or wayland.app protocols not
+    // yet registered. `advertised_on` is always false for these rows.
+    cat!(
+        "wp_drm_lease_device_v1",
+        "drm-lease-v1",
+        Ext,
+        "src/core/wayland/ext/drm_lease.rs",
+        Missing,
+        DesktopOnly
+    ),
+    cat!(
+        "wp_linux_drm_syncobj_manager_v1",
+        "linux-drm-syncobj-v1",
+        Ext,
+        "src/core/wayland/ext/linux_drm_syncobj.rs",
+        Missing,
+        DesktopOnly
+    ),
+    cat!(
+        "wl_fixes",
+        "wayland",
+        WaylandCore,
+        "src/core/wayland/mod.rs (smithay fixes; not wired)",
+        Missing,
+        DesktopOnly
+    ),
+    cat!(
+        "zwlr_input_inhibit_manager_v1",
+        "wlr-input-inhibitor-unstable-v1",
+        Wlr,
+        "src/core/wayland/wlr/input_inhibitor.rs (planned)",
+        Missing,
+        DesktopOnly
+    ),
 ];
 
 pub fn catalog_by_interface(interface: &str) -> Option<&'static ProtocolCatalogEntry> {
@@ -764,6 +830,40 @@ mod tests {
                 "{} needs a wayland.app slug or spec_xml",
                 e.interface
             );
+        }
+    }
+
+    #[test]
+    fn status_sort_rank_is_functional_to_missing() {
+        assert!(ProtocolStatus::Functional.sort_rank() < ProtocolStatus::Partial.sort_rank());
+        assert!(ProtocolStatus::Partial.sort_rank() < ProtocolStatus::Stub.sort_rank());
+        assert!(ProtocolStatus::Stub.sort_rank() < ProtocolStatus::Missing.sort_rank());
+    }
+
+    #[test]
+    fn missing_rows_are_never_advertised() {
+        let missing: Vec<_> = PROTOCOL_CATALOG
+            .iter()
+            .filter(|e| e.status == ProtocolStatus::Missing)
+            .collect();
+        assert!(
+            !missing.is_empty(),
+            "catalog should track at least one Missing gap"
+        );
+        for profile in [
+            ProtocolProfile::StoreSafe,
+            ProtocolProfile::StoreSafeRemote,
+            ProtocolProfile::DesktopHost,
+            ProtocolProfile::FullDev,
+        ] {
+            for e in &missing {
+                assert!(
+                    !e.advertised_on(profile),
+                    "{} Missing must not advertise on {}",
+                    e.interface,
+                    profile.as_str()
+                );
+            }
         }
     }
 }
