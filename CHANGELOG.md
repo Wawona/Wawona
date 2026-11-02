@@ -27,7 +27,8 @@ as history.
 
 ### Added
 - CI script `verify-linux-package-wiring.py` (flake wiring, no alex home,
-  autostart policy, LF wrappers).
+  autostart policy, LF wrappers), run from org-quality (not Gate: packages)
+  so editing `nix.yml` does not trip zizmor on pre-existing unpinned uses.
 
 ## [26.10.10] - 2026-10-10
 
