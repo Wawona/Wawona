@@ -53,6 +53,6 @@ handler:
 
 * Agent / Cursor rule: `wawona-wayland-protocol-compat`
   (`docs/agent-rules/wawona-wayland-protocol-compat.md`)
-* Live advertisement table: [`protocol-status.md`](./protocol-status.md)
+* Live protocol matrix (Functional → Partial → Stub → Missing): [`protocol-status.md`](./protocol-status.md)
 * Conformance behaviors: [`compliance/wayland-protocol-conformance-matrix.md`](./compliance/wayland-protocol-conformance-matrix.md)
 * Contributor entry: [`../CONTRIBUTING.md`](../CONTRIBUTING.md)

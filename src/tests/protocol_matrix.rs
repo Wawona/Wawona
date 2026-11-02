@@ -191,11 +191,14 @@ fn test_protocol_catalog_slugs_well_formed() {
     }
 }
 
-/// Generates `docs/protocol-status.md` from the *live* advertised registry plus
-/// PROTOCOL_CATALOG. Do not hand-edit the output. Regenerate via
+/// Generates `docs/protocol-status.md` from PROTOCOL_CATALOG plus the live
+/// advertised registry. Tables are sorted Functional → Partial → Stub →
+/// Missing. Do not hand-edit the output. Regenerate via
 /// `scripts/gen-protocol-status.sh`.
 #[test]
 fn test_generate_protocol_status_manifest() {
+    use crate::core::wayland::catalog::ProtocolStatus;
+
     let mut env = TestEnv::new();
     let profile = env.state.protocol_profile;
     let globals = collect_globals(&mut env);
@@ -204,8 +207,12 @@ fn test_generate_protocol_status_manifest() {
         "registry advertised no globals; manifest would be empty"
     );
 
-    let mut entries: Vec<(&String, &u32)> = globals.iter().collect();
-    entries.sort_by(|a, b| a.0.cmp(b.0));
+    let advertised = globals.len();
+    let missing_count = PROTOCOL_CATALOG
+        .iter()
+        .filter(|e| e.status == ProtocolStatus::Missing)
+        .count();
+    let catalog_count = PROTOCOL_CATALOG.len();
 
     let mut md = String::new();
     md.push_str("# Wayland protocol status\n\n");
@@ -217,19 +224,27 @@ fn test_generate_protocol_status_manifest() {
         "Active profile at generation: `{}`.\n\n",
         profile.as_str()
     ));
-    md.push_str("Status (Functional / Partial / Stub) is a catalog field, not inferred from the registry.\n\n");
+    md.push_str(
+        "Status (Functional / Partial / Stub / Missing) is a catalog field, not inferred from the registry.\n\n",
+    );
     md.push_str("| Status | Meaning |\n|--------|--------|\n");
     md.push_str("| Functional | Handles requests, mutates state, sends events |\n");
     md.push_str("| Partial | Global registered; some requests handled; incomplete semantics |\n");
-    md.push_str("| Stub | Global registered; handlers log or no-op |\n\n");
+    md.push_str("| Stub | Global registered; handlers log or no-op |\n");
+    md.push_str("| Missing | Not registered / not implemented; tracked gap vs wayland.app |\n\n");
+    md.push_str(
+        "Each section table is sorted **Functional → Partial → Stub → Missing**, then by interface name.\n\n",
+    );
     md.push_str("Profiles: `store-safe`, `store-safe-remote`, `desktop-host`, `full-dev`. Plasma and other desktop-only globals follow `ProtocolProfile`.\n\n");
     md.push_str(&format!(
-        "This generation advertised **{}** globals.\n\n",
-        entries.len()
+        "This generation advertised **{}** globals. Catalog tracks **{}** interfaces (**{}** Missing).\n\n",
+        advertised, catalog_count, missing_count
     ));
 
-    let mut by_origin: Vec<(ProtocolOrigin, Vec<(&String, u32, &ProtocolCatalogEntry)>)> =
-        Vec::new();
+    // Row: (optional live version, catalog entry). Include every catalog row so
+    // Missing / InternalOnly gaps appear even when not in the live registry.
+    type StatusRow<'a> = (Option<u32>, &'a ProtocolCatalogEntry);
+    let mut by_origin: Vec<(ProtocolOrigin, Vec<StatusRow<'_>>)> = Vec::new();
     for origin in [
         ProtocolOrigin::WaylandCore,
         ProtocolOrigin::Xdg,
@@ -237,14 +252,17 @@ fn test_generate_protocol_status_manifest() {
         ProtocolOrigin::Ext,
         ProtocolOrigin::Plasma,
     ] {
-        let mut rows = Vec::new();
-        for (iface, version) in &entries {
-            if let Some(cat) = catalog_by_interface(iface) {
-                if cat.origin == origin {
-                    rows.push((*iface, **version, cat));
-                }
-            }
-        }
+        let mut rows: Vec<StatusRow<'_>> = PROTOCOL_CATALOG
+            .iter()
+            .filter(|cat| cat.origin == origin)
+            .map(|cat| (globals.get(cat.interface).copied(), cat))
+            .collect();
+        rows.sort_by(|a, b| {
+            a.1.status
+                .sort_rank()
+                .cmp(&b.1.status.sort_rank())
+                .then_with(|| a.1.interface.cmp(b.1.interface))
+        });
         if !rows.is_empty() {
             by_origin.push((origin, rows));
         }
@@ -254,12 +272,16 @@ fn test_generate_protocol_status_manifest() {
         md.push_str(&format!("## {}\n\n", origin.heading()));
         md.push_str("| Interface | Version | Origin | Implementation | Status | Spec |\n");
         md.push_str("|-----------|---------|--------|----------------|--------|------|\n");
-        for (iface, version, cat) in rows {
+        for (version, cat) in rows {
             let spec = cat.spec_url();
+            let version_cell = match version {
+                Some(v) => v.to_string(),
+                None => "-".to_string(),
+            };
             md.push_str(&format!(
                 "| `{}` | {} | {} | `{}` | {} | [wayland.app]({}) |\n",
-                iface,
-                version,
+                cat.interface,
+                version_cell,
                 cat.origin.as_str(),
                 cat.rust_module,
                 cat.status.as_str(),

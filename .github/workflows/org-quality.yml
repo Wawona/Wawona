@@ -96,29 +96,48 @@ jobs:
       - name: Stub optional path dependencies for fmt
         shell: bash
         run: |
-          # ./coreutils and ./waypipe are populated locally by ensure-*.sh (Nix).
-          # cargo fmt --all resolves workspace metadata for all path deps even when
-          # they are optional; stub the Cargo.toml so metadata load succeeds without
-          # a real source checkout.
-          stub_path_crate() {
-            local dir="$1" name="$2"
-            if [[ ! -f "$dir/Cargo.toml" ]]; then
-              mkdir -p "$dir/src"
-              printf '[package]\nname = "%s"\nversion = "0.0.1"\nedition = "2021"\n' "$name" \
-                > "$dir/Cargo.toml"
-              printf '// stub\n' > "$dir/src/lib.rs"
-            fi
+          # ./coreutils and ./waypipe are populated locally by
+          # scripts/ensure-coreutils.sh / ensure-waypipe.sh (Nix).
+          # cargo fmt --all resolves workspace metadata for all path deps even
+          # when they are optional; stub Cargo.toml (with the feature names
+          # Cargo.toml requests) so metadata load succeeds without a real
+          # source checkout.
+          python3 - <<'PY'
+          from pathlib import Path
+          stubs = {
+              "coreutils": [
+                  "ls", "cat", "cp", "mv", "rm", "mkdir", "rmdir", "ln", "touch", "echo",
+                  "pwd", "head", "tail", "wc", "sort", "cut", "tr", "seq", "basename",
+                  "dirname", "stat", "du", "df", "date", "env", "printenv", "uname",
+                  "whoami", "yes", "tee", "nl", "tac", "fold", "expand", "unexpand",
+                  "truncate", "chmod",
+              ],
+              "waypipe": ["lz4", "zstd", "video"],
           }
-          stub_path_crate coreutils coreutils
-          stub_path_crate waypipe waypipe
-          # Committed src/term/{screen,kitty}.rs are symlinks into a sibling
-          # Terminal checkout (or Nix flake input). Shallow CI clones leave them
-          # dangling; rustfmt then fails resolving `mod screen` in src/term/mod.rs.
-          # Fmt does not typecheck, so empty stubs are enough (same idea as above).
+          for name, feats in stubs.items():
+              root = Path(name)
+              if (root / "Cargo.toml").exists():
+                  continue
+              (root / "src").mkdir(parents=True, exist_ok=True)
+              feat_lines = "\n".join(f"{f} = []" for f in feats)
+              (root / "Cargo.toml").write_text(
+                  f"[package]\nname = \"{name}\"\nversion = \"0.0.1\"\nedition = \"2021\"\n\n"
+                  f"[features]\ndefault = []\n{feat_lines}\n"
+              )
+              (root / "src" / "lib.rs").write_text("// stub\n")
+          PY
+      - name: Stub dangling Terminal symlinks for fmt
+        shell: bash
+        run: |
+          # src/term/{screen,kitty}.rs are committed as symlinks to a sibling
+          # Terminal checkout. CI shallow clones do not have that tree;
+          # scripts/ensure-terminal.sh (Nix) materializes real files for builds.
+          # rustfmt follows the broken links and aborts, so replace them with
+          # tiny stubs for the format check only.
           for f in src/term/screen.rs src/term/kitty.rs; do
-            if [[ ! -f "$f" ]]; then
+            if [[ -L "$f" && ! -e "$f" ]]; then
               rm -f "$f"
-              printf '// stub for cargo fmt (Terminal input not checked out)\n' > "$f"
+              printf '// stub for fmt; real file from scripts/ensure-terminal.sh\n' > "$f"
             fi
           done
       - run: cargo fmt --all -- --check
