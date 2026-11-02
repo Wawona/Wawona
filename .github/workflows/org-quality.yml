@@ -126,6 +126,20 @@ jobs:
               )
               (root / "src" / "lib.rs").write_text("// stub\n")
           PY
+      - name: Stub dangling Terminal symlinks for fmt
+        shell: bash
+        run: |
+          # src/term/{screen,kitty}.rs are committed as symlinks to a sibling
+          # Terminal checkout. CI shallow clones do not have that tree;
+          # scripts/ensure-terminal.sh (Nix) materializes real files for builds.
+          # rustfmt follows the broken links and aborts, so replace them with
+          # tiny stubs for the format check only.
+          for f in src/term/screen.rs src/term/kitty.rs; do
+            if [[ -L "$f" && ! -e "$f" ]]; then
+              rm -f "$f"
+              printf '// stub for fmt; real file from scripts/ensure-terminal.sh\n' > "$f"
+            fi
+          done
       - run: cargo fmt --all -- --check
 
   dependency-review:
