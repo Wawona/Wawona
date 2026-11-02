@@ -792,11 +792,11 @@
     "terminal": {
       "flake": false,
       "locked": {
-        "lastModified": 1792533009,
-        "narHash": "sha256-WCrXWWOsiaivCniyPw1eACIDRJVa8N/VUxAwgvhZEI0=",
+        "lastModified": 1793650738,
+        "narHash": "sha256-jtU7GRQZs1ZSnr0rIqjh6YF0RNMGMl9foGrghJzom5o=",
         "owner": "Wawona",
         "repo": "Terminal",
-        "rev": "389e6f726966dbbb3918f31f91f41cbe09d8a719",
+        "rev": "01583446a84eedbac40940e297333333c3a38407",
         "type": "github"
       },
       "original": {

@@ -627,6 +627,28 @@ final class WWNMachinesViewModel: ObservableObject {
     connectionError = nil
     let machineId = profile.machineId ?? ""
     let isContainer = profile.type == kWWNMachineTypeContainer
+    // Fail closed before session queue work when the Mode A guest tree is
+    // absent. App Store builds ship wawona-nixos-guest-* in the IPA; tip/lab
+    // must ditto the same folder (never download a kernel/rootfs).
+    if profile.type == kWWNMachineTypeVirtualMachine
+      || profile.type == kWWNMachineTypeContainer
+    {
+      let variant = (profile.vmSettings["guestVariant"] as? String).flatMap {
+        ($0 == "4k" || $0 == "16k") ? $0 : nil
+      } ?? "4k"
+      if !WWNRelay.hasGuestManifest(variant: variant) {
+        statusByMachineId[machineId] = .error
+        connectionError =
+          "This build is missing the NixOS guest (wawona-nixos-guest-\(variant)). "
+          + "Relay VMs need that folder inside the app. App Store builds include it."
+        NSLog(
+          "Machine %@ failed to start: missing guest manifest variant=%@",
+          machineId,
+          variant
+        )
+        return
+      }
+    }
     statusByMachineId[machineId] = isContainer ? .preparing : .connecting
     presentGuestConsoleIfNeeded(profile, openInNewWindow: openInNewWindow)
     let generation = bumpSessionGeneration(machineId)

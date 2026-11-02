@@ -138,5 +138,18 @@ enum IlandMetalPipeline {
             zfar: 1
         )
     }
+
+    /// Stretch guest SHM to the full drawable. Mode A often starts at 200×200
+    /// before preferred-mode resize; letterbox leaves a black phone plate.
+    static func fillViewport(targetWidth: Int, targetHeight: Int) -> MTLViewport {
+        MTLViewport(
+            originX: 0,
+            originY: 0,
+            width: Double(targetWidth),
+            height: Double(targetHeight),
+            znear: 0,
+            zfar: 1
+        )
+    }
 }
 #endif

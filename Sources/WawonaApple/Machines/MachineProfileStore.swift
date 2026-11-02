@@ -142,17 +142,8 @@ public final class WWNMachineProfileStore: NSObject {
         ).first
         let guestsRoot = (support?.path ?? "") + "/Wawona/guests"
         let variant: String = {
-            let fm = FileManager.default
-            let bundle = Bundle.main
             for v in ["16k", "4k"] {
-                let name = "wawona-nixos-guest-\(v)"
-                if let bundled = bundle.path(forResource: name, ofType: nil) {
-                    let manifest = (bundled as NSString)
-                        .appendingPathComponent("manifest.json")
-                    if fm.isReadableFile(atPath: manifest) { return v }
-                }
-                let staged = guestsRoot + "/\(name)/manifest.json"
-                if fm.isReadableFile(atPath: staged) { return v }
+                if WWNRelay.resolveGuestDirectory(variant: v) != nil { return v }
             }
             return ""
         }()

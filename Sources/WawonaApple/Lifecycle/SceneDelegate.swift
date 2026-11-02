@@ -118,11 +118,24 @@ public final class WWNSceneDelegate: UIResponder, UIWindowSceneDelegate {
                 NSLog("WWN_AUTO_START_MACHINE: no profile %@", mid)
                 return
             }
-            // Same path as Machines Start: reveal Metal host, then session.
-            NotificationCenter.default.post(
-                name: Notification.Name("WWNShowSessionSurfaceNotification"),
-                object: nil
-            )
+            // Match Machines Start: Mount Metal (opacity 0) for SHM drain, keep
+            // Machines/Terminal up. Do NOT Show yet — empty Metal reads as a
+            // black plate. RelayRunner Shows on the first Mode A SHM frame.
+            WWNMainWindowRouter.shared.mountSessionSurface()
+            let isRelaySurface =
+                profile.type == kWWNMachineTypeVirtualMachine
+                || profile.type == kWWNMachineTypeContainer
+            // Relay VM: open guest serial Terminal during StaticCpu boot.
+            if isRelaySurface {
+                NotificationCenter.default.post(
+                    name: Notification.Name("WWNRelayGuestConsoleNeededNotification"),
+                    object: nil,
+                    userInfo: [
+                        "machineId": mid,
+                        "source": "relay",
+                    ]
+                )
+            }
             // `relay_start` SHA256-verifies grown rootfs on the calling thread
             // (multi-GB). Never block main: CompositorHostView / IlandPresenter
             // need runloop turns while artifacts hash, or Mode A SHM stays nil.
@@ -130,22 +143,8 @@ public final class WWNSceneDelegate: UIResponder, UIWindowSceneDelegate {
                 do {
                     try WWNMachineSessionBridge.connect(profile)
                     DispatchQueue.main.async {
-                        NotificationCenter.default.post(
-                            name: Notification.Name("WWNShowSessionSurfaceNotification"),
-                            object: nil,
-                            userInfo: [
-                                "machineId": mid,
-                                "source": "auto-start",
-                            ]
-                        )
-                        // Native Shell / SSH: open Guest Console (Toolbar Keys).
-                        // Virtual Machine / Container: do NOT. On iOS a
-                        // fullScreenCover before CompositorHostView mounts
-                        // leaves activePresenterForDrain nil (Mode A SHM
-                        // never presents). Session surface owns the pixels.
-                        let isRelaySurface =
-                            profile.type == kWWNMachineTypeVirtualMachine
-                            || profile.type == kWWNMachineTypeContainer
+                        // Native Shell / SSH: Guest Console (Toolbar Keys).
+                        // Relay VM Terminal already opened above for boot log.
                         if !isRelaySurface {
                             let consoleSource: String
                             if WWNNativeShellConfiguration.isNativeShellFamily(profile.type)

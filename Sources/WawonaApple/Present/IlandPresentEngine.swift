@@ -330,14 +330,20 @@ final class IlandPresentEngine {
         let tw = drawable.texture.width
         let th = drawable.texture.height
         if tw > 0, th > 0, tw != source.width || th != source.height {
-            encoder.setViewport(
-                IlandMetalPipeline.letterboxViewport(
+            // Tiny Mode A SHM (e.g. 200×200) → fill the phone drawable. Keep
+            // letterbox only when the guest buffer is already near-screen sized.
+            let guestArea = Double(source.width * source.height)
+            let drawArea = Double(tw * th)
+            let viewport =
+                guestArea * 4.0 < drawArea
+                ? IlandMetalPipeline.fillViewport(targetWidth: tw, targetHeight: th)
+                : IlandMetalPipeline.letterboxViewport(
                     targetWidth: tw,
                     targetHeight: th,
                     sourceWidth: source.width,
                     sourceHeight: source.height
                 )
-            )
+            encoder.setViewport(viewport)
         }
 
         encoder.setFragmentTexture(source, index: 0)
