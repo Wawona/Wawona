@@ -111,6 +111,16 @@ jobs:
           }
           stub_path_crate coreutils coreutils
           stub_path_crate waypipe waypipe
+          # Committed src/term/{screen,kitty}.rs are symlinks into a sibling
+          # Terminal checkout (or Nix flake input). Shallow CI clones leave them
+          # dangling; rustfmt then fails resolving `mod screen` in src/term/mod.rs.
+          # Fmt does not typecheck, so empty stubs are enough (same idea as above).
+          for f in src/term/screen.rs src/term/kitty.rs; do
+            if [[ ! -f "$f" ]]; then
+              rm -f "$f"
+              printf '// stub for cargo fmt (Terminal input not checked out)\n' > "$f"
+            fi
+          done
       - run: cargo fmt --all -- --check
 
   dependency-review:
