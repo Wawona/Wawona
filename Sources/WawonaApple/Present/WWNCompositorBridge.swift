@@ -28,6 +28,8 @@ private func WWNCoreGetClientCount(_ core: UnsafeMutableRawPointer?) -> UInt32
 private func WWNCorePopWindowEvent(_ core: UnsafeMutableRawPointer?) -> UnsafeMutableRawPointer?
 @_silgen_name("WWNWindowEventFree")
 private func WWNWindowEventFree(_ event: UnsafeMutableRawPointer?)
+@_silgen_name("wawona_wayland_socket_is_live")
+private func wawona_wayland_socket_is_live(_ path: UnsafePointer<CChar>?) -> Int32
 
 /// `CWindowEventType` values that mean a client mapped something the user
 /// should see above Wawona Terminal.
@@ -41,6 +43,9 @@ public final class WWNCompositorBridge: NSObject {
 
     private var name = "wayland-0"
     public var core: UnsafeMutableRawPointer?
+    /// #223: compositor-host LaunchAgent already owns the Wayland socket.
+    /// Local bind must not unlink it; UI adopts the external host.
+    private var usingExternalHostCompositor = false
     private var eventPump: Timer?
     private static let eventQueueKey = DispatchSpecificKey<UInt8>()
     /// Compositor event work matches Rust worker QoS (.utility). Never call
@@ -93,6 +98,13 @@ public final class WWNCompositorBridge: NSObject {
     @discardableResult
     public func start(withSocketName socketName: String?) -> Bool {
         name = (socketName?.isEmpty == false) ? socketName! : "wayland-0"
+        // #223: host LaunchAgent may already own wayland-0. Do not bind
+        // (bind_primary used to unlink the live path and orphan the host fd).
+        if core == nil && isExternalHostSocketLive() {
+            usingExternalHostCompositor = true
+            return true
+        }
+        usingExternalHostCompositor = false
         if core == nil {
             core = WWNCoreNew()
         }
@@ -106,6 +118,12 @@ public final class WWNCompositorBridge: NSObject {
     }
 
     @objc public func stop() {
+        // Quitting Machines must leave the compositor-host socket up (#223).
+        if usingExternalHostCompositor {
+            usingExternalHostCompositor = false
+            lastWaylandClientCount = 0
+            return
+        }
         stopEventPump()
         if let core {
             _ = WWNCoreStop(core)
@@ -131,6 +149,10 @@ public final class WWNCompositorBridge: NSObject {
     }
 
     @objc public func isRunning() -> Bool {
+        if usingExternalHostCompositor || (core == nil && isExternalHostSocketLive()) {
+            usingExternalHostCompositor = true
+            return true
+        }
         guard let core else { return false }
         guard WWNCoreIsRunning(core) else { return false }
         // Unlinked socket files leave the listen fd alive while clients get ENOENT.
@@ -145,11 +167,31 @@ public final class WWNCompositorBridge: NSObject {
         return FileManager.default.fileExists(atPath: path)
     }
 
+    /// True when a peer accepts connect (live compositor-host), not a stale inode.
+    @objc public func isExternalHostSocketLive() -> Bool {
+        let path = resolvedSocketPath()
+        guard !path.isEmpty else { return false }
+        return path.withCString { wawona_wayland_socket_is_live($0) != 0 }
+    }
+
+    private func resolvedSocketPath() -> String {
+        let runtime = WWNPreferencesManager.preferredSharedRuntimeDir()
+        return (runtime as NSString).appendingPathComponent(name)
+    }
+
     /// Ensure a live host compositor with a connectable socket path.
     @objc(ensureRunningWithSocketName:)
     @discardableResult
     public func ensureRunning(withSocketName socketName: String?) -> Bool {
+        if let socketName, !socketName.isEmpty {
+            name = socketName
+        }
         if isRunning() { return true }
+        // External host owns a live socket: adopt it. Do not stop/rebind.
+        if core == nil && isExternalHostSocketLive() {
+            usingExternalHostCompositor = true
+            return true
+        }
         // Path gone or never started: tear down so Start can rebind.
         // WWNCoreStart refuses AlreadyStarted while the compositor object lives,
         // even when the socket inode was unlinked.

@@ -137,6 +137,11 @@ final class CompositorHostPlatformView: PlatformView {
         }
         if let p = IlandPresenterObjC(layer: metalLayer, device: metalPresenter?.device) {
             ilandPresenter = p
+            // Arm preferred mode from the view bounds immediately so the guest
+            // Wayland output is phone-sized before the first SHM attach (avoids
+            // a stuck 200×200 black plate after ShowSessionSurface remount).
+            syncMetalLayerGeometry()
+            p.syncPreferredModeFromLayer()
             NSLog(
                 "CompositorHost: IlandPresenter armed reason=%@ layer=%dx%d",
                 reason,

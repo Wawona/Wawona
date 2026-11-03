@@ -100,6 +100,8 @@ public final class WawonaAppDelegate: Sendable {
         setenv("XDG_RUNTIME_DIR", runtime, 1)
         #endif
         let bridge = WWNCompositorBridge.sharedBridge
+        // #223: compositor-host LaunchAgent may already own wayland-0.
+        // start() adopts that socket without unlinking it.
         if bridge.start(withSocketName: "wayland-0") {
             setenv("WAYLAND_DISPLAY", bridge.socketName(), 1)
         }

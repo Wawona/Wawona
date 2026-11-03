@@ -6,9 +6,7 @@
     <string>com.aspauldingcode.wawona.applaunch</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/bin/open</string>
-        <string>-a</string>
-        <string>/Applications/Wawona.app</string>
+        <string>/Applications/Wawona.app/Contents/MacOS/Wawona</string>
     </array>
     <key>RunAtLoad</key>
     <true/>

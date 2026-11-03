@@ -61,9 +61,18 @@ impl WawonaDisplay {
         let runtime_dir = Self::ensure_runtime_dir()?;
 
         let socket_path = format!("{}/wayland-0", runtime_dir);
+        let socket_path_buf = std::path::PathBuf::from(&socket_path);
 
-        // Remove existing socket if present
-        let _ = std::fs::remove_file(&socket_path);
+        // #223: never unlink a live compositor-host socket.
+        if crate::domain::quit_policy::wayland_socket_is_live(&socket_path_buf) {
+            anyhow::bail!(
+                "Wayland socket {} is already owned by a live compositor; refusing to unlink",
+                socket_path
+            );
+        }
+        if crate::domain::quit_policy::may_unlink_wayland_socket(&socket_path_buf) {
+            let _ = std::fs::remove_file(&socket_path_buf);
+        }
 
         let socket = ListeningSocket::bind(&socket_path)
             .context(format!("Failed to bind socket at {}", socket_path))?;

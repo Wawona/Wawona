@@ -83,6 +83,32 @@ public final class WWNRelay: NSObject {
             }
         }
 
+        if kind == "vm" || kind == "container" {
+            let variant = (profile.vmSettings["guestVariant"] as? String).flatMap {
+                ($0 == "4k" || $0 == "16k") ? $0 : nil
+            } ?? "4k"
+            if Self.guestResources(profile: profile, vmSettings: profile.vmSettings) == nil {
+                if !machineId.isEmpty {
+                    lock.withLock { handlesByMachineId.removeValue(forKey: machineId) }
+                }
+                // App Store: guest must ship inside the IPA (2.5.2). Do not
+                // suggest downloading a kernel/rootfs. Lab/TF may stage under
+                // Application Support/Wawona/guests/wawona-nixos-guest-4k.
+                error?.pointee = NSError(
+                    domain: "WWNRelay",
+                    code: 5,
+                    userInfo: [
+                        NSLocalizedDescriptionKey:
+                            "This build is missing the NixOS guest (wawona-nixos-guest-\(variant)/manifest.json). "
+                            + "Relay VMs need the bundled guest folder in the app. "
+                            + "App Store builds include it; Simulator tip builds ditto it next to Wawona. "
+                            + "Lab/TestFlight can stage the same tree under Application Support/Wawona/guests/.",
+                    ]
+                )
+                return false
+            }
+        }
+
         let spec = Self.specJSON(profile: profile, kind: kind)
         var backendOut: UnsafeMutablePointer<CChar>?
         let resolveRc = spec.withCString { RelayABI.resolveBackend($0, &backendOut) }
@@ -205,24 +231,9 @@ public final class WWNRelay: NSObject {
                 guard let self, self.framePresents == 0 else { return }
                 self.startPresenting(handle: hid)
             }
-            // Mode A pixels need IlandPresenter (CompositorHostView). Same
-            // reveal as macOS microvm / compositor client-attach. AUTO_START
-            // used to call connect without Machines Start, leaving presenter nil.
-            let surfaceMachineId = profile.machineId
-            DispatchQueue.main.async {
-                NotificationCenter.default.post(
-                    name: Notification.Name("WWNShowSessionSurfaceNotification"),
-                    object: nil,
-                    userInfo: [
-                        "machineId": surfaceMachineId,
-                        "source": "relay-static-cpu",
-                    ]
-                )
-            }
-            // Do not auto-present Guest Console here. On iOS a fullScreenCover
-            // tears down CompositorHostView (deinit → IlandPresenter nil) and
-            // Mode A SHM present dies after the first frame. Session surface
-            // owns the pixels; open Guest Console only when the user asks.
+            // Presenter must already be Mounted (Machines Start / AUTO_START).
+            // Do not ShowSessionSurface here — empty Metal is a black plate.
+            // First successful SHM blit in pumpGuestFrame posts Show.
             #endif
         }
         return true
@@ -417,8 +428,23 @@ public final class WWNRelay: NSObject {
             frameFails = 0
             framePresents += 1
             if framePresents == 1 {
-                RelaySceneLog.write("relay present Mode A SHM \(srcW)x\(srcH)")
-                NSLog("[WWNRelay] Mode A SHM present \(srcW)x\(srcH)")
+                let nz = pixels.reduce(0) { partial, byte in partial + (byte == 0 ? 0 : 1) }
+                let b0: UInt32 =
+                    pixels.count >= 4
+                    ? UInt32(pixels[0])
+                        | (UInt32(pixels[1]) << 8)
+                        | (UInt32(pixels[2]) << 16)
+                        | (UInt32(pixels[3]) << 24)
+                    : 0
+                RelaySceneLog.write(
+                    "relay present Mode A SHM \(srcW)x\(srcH) nonzero=\(nz)/\(pixels.count) b0=\(String(format: "%08x", b0))"
+                )
+                NSLog(
+                    "[WWNRelay] Mode A SHM present \(srcW)x\(srcH) nonzero=%d/%d b0=%08x",
+                    nz,
+                    pixels.count,
+                    b0
+                )
                 // First pixels: leave Work Status / Machines chrome. Session
                 // surface owns the frame (not the delivery board).
                 NotificationCenter.default.post(
@@ -429,6 +455,13 @@ public final class WWNRelay: NSObject {
                         "width": Int(srcW),
                         "height": Int(srcH),
                     ]
+                )
+                // ShowSessionSurface can recreate CompositorHost; re-arm so the
+                // next pump lands on the visible Metal layer (not the parked one).
+                NotificationCenter.default.post(
+                    name: Notification.Name("WWNEnsureIlandPresenterNotification"),
+                    object: nil,
+                    userInfo: ["source": "relay-mode-a-after-show"]
                 )
             }
         } else {

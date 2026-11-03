@@ -705,6 +705,24 @@ public final class MachineProfileStore: ObservableObject {
         #if os(tvOS) || os(watchOS) || os(visionOS)
         return machines
         #else
+        // One shipped Relay VM card. Same Mode A NixOS guest for every Relay
+        // desktop session — out of the box when wawona-nixos-guest-4k is in
+        // the IPA (App Store–safe: bundled, not downloaded).
+        machines.append(
+            MachineProfile(
+                id: "machine-relay-nixos",
+                name: "NixOS (Relay)",
+                type: .virtualMachine,
+                remoteCommand: "",
+                vmSettings: VirtualMachineSettings(
+                    vmIdentifier: "relay-nixos",
+                    guestVariant: "4k",
+                    memoryMB: 2048,
+                    diskGiB: 8,
+                    notes: "Mode A NixOS guest over Relay. Guest ships Plasma Wayland in the app."
+                )
+            )
+        )
         machines.append(
             MachineProfile(
                 id: "machine-kde",
@@ -714,7 +732,9 @@ public final class MachineProfileStore: ObservableObject {
                 vmSettings: VirtualMachineSettings(
                     vmIdentifier: "kde",
                     guestVariant: "4k",
-                    notes: "KDE Plasma on the NixOS guest."
+                    memoryMB: 4096,
+                    diskGiB: 12,
+                    notes: "KDE Plasma 6 Wayland on the NixOS guest (waypipe SHM → Present)."
                 )
             )
         )

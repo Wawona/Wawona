@@ -11,6 +11,14 @@ as history.
 ## [26.11.2] - 2026-11-02
 
 ### Fixed
+- **macOS compositor host no longer reopens Wawona.app (#223).** The
+  LaunchAgent keeps the Wayland socket up with `KeepAlive` so waypipe,
+  SSH, and native Wayland clients work while the Machines window is
+  closed. Host reopen used to call `NSWorkspace.openApplication` on the
+  same bundle; Launch Services delivered that open back to the host and
+  the window returned forever. Quitting the window leaves the socket
+  running. The optional login agent starts the GUI executable with
+  `KeepAlive` false (no `/usr/bin/open`).
 - **Linux `.#wawona` / `.#default` / `.#install`.** Pass `wawonaLinuxUiBin` into
   the shared `linux.nix` wrapper so `nix run .#wawona` no longer exits with
   `wawonaLinuxUiBin missing` (issue #90 install/run gate).
@@ -24,11 +32,19 @@ as history.
 - **Issue #164 CRLF.** `.gitattributes` forces LF on Nix/shell sources; Linux
   wrappers strip `\r` via `builtins.replaceStrings` so Docker checkouts cannot
   poison `wawona-linux-run`.
+- **Linux terminal paints `[session ended]` when the PTY hangs up**
+  instead of leaving a silent last frame.
 
 ### Added
 - CI script `verify-linux-package-wiring.py` (flake wiring, no alex home,
   autostart policy, LF wrappers), run from org-quality (not Gate: packages)
   so editing `nix.yml` does not trip zizmor on pre-existing unpinned uses.
+
+### Changed
+- CalVer bump to 26.11.2.
+- Org rustfmt CI stubs the optional `./waypipe` path crate the same way
+  as `./coreutils`.
+- `libz-sys` 1.1.31 (OSV RUSTSEC-2026-0418).
 
 ## [26.10.10] - 2026-10-10
 

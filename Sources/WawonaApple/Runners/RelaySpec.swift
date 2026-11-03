@@ -60,10 +60,18 @@ extension WWNRelay {
                 obj["disk_gib"] = guestBlock.diskGiB
                 obj["max_disk_gib"] = guestBlock.maxDiskGiB
                 if let gen = guestBlock.nixosGeneration { obj["nixos_generation"] = gen }
+                if let dir = guestBlock.resources["guest_directory"] as? String {
+                    NSLog("[WWNRelay] guest_directory=%@", dir)
+                }
             }
         }
-        guard let data = try? JSONSerialization.data(withJSONObject: obj),
-              let json = String(data: data, encoding: .utf8) else { return "{}" }
+        guard JSONSerialization.isValidJSONObject(obj),
+              let data = try? JSONSerialization.data(withJSONObject: obj),
+              let json = String(data: data, encoding: .utf8)
+        else {
+            NSLog("[WWNRelay] specJSON: JSONSerialization failed for kind=%@", kind)
+            return "{\"kind\":\"\(kind)\",\"platform\":\"\(platformToken())\",\"artifact\":\"\(artifactClass())\"}"
+        }
         return json
     }
 
@@ -83,6 +91,47 @@ extension WWNRelay {
         let nixosGeneration: Int?
     }
 
+    /// Resolve the Mode A NixOS guest tree (`Image` + `initrd` + `rootfs.img` +
+    /// `manifest.json`). App Store builds ship this inside the `.app` (Guideline
+    /// 2.5.2: self-contained; do not download guest kernels/rootfs). Lab/TF may
+    /// also stage under Application Support when the IPA omits the multi-gig
+    /// tree. `path(forResource:)` alone misses guests ditto'd onto the bundle
+    /// root after install — always probe `resourcePath` / `bundlePath` too.
+    @objc(resolveGuestDirectoryForVariant:)
+    public static func resolveGuestDirectory(variant: String) -> String? {
+        var guestVariant = variant
+        if guestVariant != "4k", guestVariant != "16k" { guestVariant = "4k" }
+        let name = "wawona-nixos-guest-\(guestVariant)"
+        let fm = FileManager.default
+        let bundle = Bundle.main
+        var candidates: [String] = []
+        if let viaResource = bundle.path(forResource: name, ofType: nil) {
+            candidates.append(viaResource)
+        }
+        for root in [bundle.resourcePath, bundle.bundlePath].compactMap({ $0 }) {
+            candidates.append((root as NSString).appendingPathComponent(name))
+        }
+        if let support = FileManager.default.urls(
+            for: .applicationSupportDirectory, in: .userDomainMask
+        ).first?.path {
+            candidates.append(support + "/Wawona/guests/\(name)")
+        }
+        var seen = Set<String>()
+        for dir in candidates where seen.insert(dir).inserted {
+            let manifest = (dir as NSString).appendingPathComponent("manifest.json")
+            if fm.isReadableFile(atPath: manifest) {
+                return dir
+            }
+        }
+        return nil
+    }
+
+    /// True when a readable guest manifest is available (bundled or staged).
+    @objc(hasGuestManifestForVariant:)
+    public static func hasGuestManifest(variant: String = "4k") -> Bool {
+        resolveGuestDirectory(variant: variant) != nil
+    }
+
     static func guestResources(profile: WWNMachineProfile, vmSettings: [String: Any]) -> GuestBlock? {
         let bundle = Bundle.main
         let resourcesRoot = bundle.resourcePath ?? ""
@@ -93,26 +142,12 @@ extension WWNRelay {
         #endif
         var guestVariant = vmSettings["guestVariant"] as? String ?? "4k"
         if guestVariant != "4k", guestVariant != "16k" { guestVariant = "4k" }
-        let guestResource = "wawona-nixos-guest-\(guestVariant)"
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
         let stateDir = (appSupport?.path ?? NSTemporaryDirectory()) + "/Wawona/relay-state"
         try? FileManager.default.createDirectory(atPath: stateDir, withIntermediateDirectories: true)
-        // Prefer the signed embed in the .app. Fall back to Application Support
-        // so lab/TF builds can stage guests without a multi-gig IPA (N16).
-        let bundledGuest = bundle.path(forResource: guestResource, ofType: nil) ?? ""
-        let stagedGuest = (appSupport?.path ?? "") + "/Wawona/guests/\(guestResource)"
-        let guestDir: String = {
-            let fm = FileManager.default
-            let bundledManifest = (bundledGuest as NSString).appendingPathComponent("manifest.json")
-            if !bundledGuest.isEmpty, fm.isReadableFile(atPath: bundledManifest) {
-                return bundledGuest
-            }
-            let stagedManifest = (stagedGuest as NSString).appendingPathComponent("manifest.json")
-            if fm.isReadableFile(atPath: stagedManifest) {
-                return stagedGuest
-            }
-            return bundledGuest
-        }()
+        guard let guestDir = resolveGuestDirectory(variant: guestVariant) else {
+            return nil
+        }
         let manifestPath = (guestDir as NSString).appendingPathComponent("manifest.json")
         guard let data = try? Data(contentsOf: URL(fileURLWithPath: manifestPath)),
               let manifest = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {

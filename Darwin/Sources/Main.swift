@@ -271,6 +271,8 @@ final class AppMainDelegate: NSObject, AppMainDelegateBase {
         func applicationWillTerminate(_ notification: Notification) {
             _ = notification
             DistributedNotificationCenter.default().removeObserver(self)
+            // #223: closing the Machines window leaves the compositor host
+            // and its Wayland socket running.
             SharedAppDelegate.shared.onDestroy()
             WawonaLaunchLockState.releaseAll()
         }

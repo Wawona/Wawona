@@ -325,7 +325,8 @@ final class IosLogTermSession {
     func start(cols: UInt32 = 80, rows: UInt32 = 28) {
         stop()
         stopped = false
-        self.cols = max(20, cols)
+        // Guest serial / Relay log: never start under 80 columns.
+        self.cols = max(80, cols)
         self.rows = max(8, rows)
         guard let term = IosShellABI.termNew(self.cols, self.rows) else { return }
         self.term = term
@@ -333,7 +334,7 @@ final class IosLogTermSession {
     }
 
     func resize(cols: UInt32, rows: UInt32, cellW: UInt32 = 8, cellH: UInt32 = 16) {
-        let cols = min(512, max(20, cols))
+        let cols = min(512, max(80, cols))
         let rows = min(256, max(8, rows))
         queue.async { [weak self] in
             guard let self, !self.stopped, let term = self.term else { return }

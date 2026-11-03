@@ -887,6 +887,7 @@ struct WawonaMainWindowView: View {
                 // chrome is not drawn over Wayland (weston-smoke / SHM).
                 // iOS / visionOS: Respect Safe Area is applied on the pane.
                 CompositorBridge()
+                    .id("wwn-compositor-bridge")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .opacity(router.sessionSurfaceVisible ? 1 : 0)
                     .allowsHitTesting(router.sessionSurfaceVisible)

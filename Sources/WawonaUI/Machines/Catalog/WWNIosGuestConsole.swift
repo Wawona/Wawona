@@ -722,13 +722,18 @@ final class WWNIosGuestConsole: ObservableObject {
     guard size.width > 1, size.height > 1 else { return }
     let cellW = WawonaTerminalFonts.cellWidth
     let cellH = WawonaTerminalFonts.rowHeight
-    let cols = UInt32(min(512, max(20, Int((size.width - 16) / cellW))))
+    let pixelCols = UInt32(min(512, max(20, Int((size.width - 16) / cellW))))
     let rows = UInt32(min(256, max(8, Int((size.height - 16) / cellH))))
     screenRows = rows
     let pxW = UInt32(max(1, cellW.rounded()))
     let pxH = UInt32(max(1, cellH.rounded()))
-    shell?.resize(cols: cols, rows: rows, cellW: pxW, cellH: pxH)
-    logTerm?.resize(cols: cols, rows: rows, cellW: pxW, cellH: pxH)
+    // Native shell: follow the visible grid.
+    shell?.resize(cols: pixelCols, rows: rows, cellW: pxW, cellH: pxH)
+    // Guest serial / systemd / ncurses: floor at 80 columns so in-place
+    // `\r` / ESC M / CSI K rewrites stay one logical line on phone width.
+    // wrap_cont still heals narrower grids; 80 matches classic VT/serial.
+    let logCols = max(pixelCols, 80)
+    logTerm?.resize(cols: logCols, rows: rows, cellW: pxW, cellH: pxH)
   }
 
   func dismiss(machineId: String) {
