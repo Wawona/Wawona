@@ -43,7 +43,9 @@ pub mod workspace;
 #[cfg(feature = "desktop-protocols")]
 pub mod drm_lease;
 pub mod fullscreen_shell;
-#[cfg(feature = "desktop-protocols")]
+// Always compile: cosmic workspace image-capture CreateSource returns
+// ext_image_capture_source_v1, so Dispatch must exist even when the
+// ExtOutput manager global stays behind desktop-protocols.
 pub mod image_capture_source;
 #[cfg(feature = "desktop-protocols")]
 pub mod image_copy_capture;

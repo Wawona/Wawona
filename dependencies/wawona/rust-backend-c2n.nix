@@ -581,9 +581,11 @@ let
     else if isWatchOS then [ "waypipe-ssh" "smithay-protocols" "coreutils" "terminal-pinned-ffi" ] # uutils enabled on all targets (per product requirement); Remote via libssh2
     else if isAndroid then [ "waypipe" "smithay-protocols" "coreutils" ]
     else
-      # macOS: smithay desktop paths always; Mode B Cargo gates only for
-      # desktop-host / full-dev (dylib still gated separately in macos.nix).
-      [ "smithay-protocols" "smithay-desktop" "terminal-pinned-ffi" ]
+      # macOS / Linux: desktop-protocols (implies smithay-desktop) so DRM,
+      # session lock, image capture, and XWayland globals compile+register.
+      # Mode B Cargo gates only for desktop-host / full-dev (dylib still
+      # gated separately in macos.nix).
+      [ "smithay-protocols" "desktop-protocols" "terminal-pinned-ffi" ]
       ++ lib.optionals desktopHost [ "profile-desktop-host" "iland-baremetal" ];
 
   # ── Per-crate build overrides ──────────────────────────────────────
