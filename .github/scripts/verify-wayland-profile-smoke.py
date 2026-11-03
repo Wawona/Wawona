@@ -152,7 +152,13 @@ def main() -> int:
             print(f"{iface}: desktop-only exposure leaks into non-desktop profiles", file=sys.stderr)
             return 1
 
-        if equivalent == "no-equivalent" and ("store-safe" in profiles or "store-safe-remote" in profiles):
+        # Custom store-safe-core rows (e.g. wl_fixes) are allowed: no Smithay
+        # owner yet, but the interface is intentional Mode A surface area.
+        if (
+            equivalent == "no-equivalent"
+            and exposure != "store-safe-core"
+            and ("store-safe" in profiles or "store-safe-remote" in profiles)
+        ):
             print(f"{iface}: no-equivalent protocol must not be in store-safe profiles", file=sys.stderr)
             return 1
 
