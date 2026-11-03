@@ -86,18 +86,21 @@ launch_colima() {
   local cmd="$1"
   local pkg="$cmd"
   case "$cmd" in
-    firefox) pkg=firefox ;;
+    # Prefer deb firefox over snap: snap proxies WAYLAND_DISPLAY under
+    # /run/user/.../snap.firefox/ and EACCES's the waypipe socket.
+    firefox) pkg=firefox; cmd="env MOZ_ENABLE_WAYLAND=1 QT_QPA_PLATFORM=wayland firefox" ;;
     ghostty) pkg=ghostty ;;
-    konsole) pkg=konsole ;;
+    # Qt guests must not fall back to xcb (no DISPLAY on waypipe Colima).
+    konsole) pkg=konsole; cmd="env QT_QPA_PLATFORM=wayland konsole" ;;
     thunar) pkg=thunar ;;
-    dolphin) pkg=dolphin ;;
+    dolphin) pkg=dolphin; cmd="env QT_QPA_PLATFORM=wayland dolphin" ;;
     # nixpkgs#mango (matrix id mangowm). Force wlroots wayland backend for waypipe.
     mango) pkg=mango; cmd="env WLR_BACKENDS=wayland mango -c /home/lima.guest/.config/mango/config.toml" ;;
     cosmic-comp) pkg=cosmic-comp ;;
     # Ubuntu ships phosh at /usr/libexec/phosh (no PATH bin named phosh).
     phosh) pkg=phosh; cmd="/usr/libexec/phosh" ;;
     gnome-shell) pkg=gnome-shell; cmd="gnome-shell --wayland --nested" ;;
-    plasmashell) pkg=plasma-workspace ;;
+    plasmashell) pkg=plasma-workspace; cmd="env QT_QPA_PLATFORM=wayland plasmashell" ;;
     niri) pkg=niri; cmd="env NIRI_BACKEND=nested niri" ;;
     sway) pkg=sway ;;
     Hyprland|hyprland) pkg=hyprland; cmd="Hyprland" ;;

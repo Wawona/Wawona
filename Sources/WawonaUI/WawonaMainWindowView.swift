@@ -743,9 +743,14 @@ struct WawonaMainWindowView: View {
         #endif
     }
 
-    /// Apple TN3154: `List(selection:)` + `NavigationLink(value:)` + `.tag`.
+    /// Apple TN3154 on iOS: `List(selection:)` + `NavigationLink(value:)` + `.tag`.
     /// The split is always regular-width on iOS, so this highlights the row
     /// and swaps the detail column. It does not push a stack page.
+    ///
+    /// macOS: prefer a plain `Button` that writes `listSelection`. A bare
+    /// `NavigationLink(value:)` inside `NavigationSplitView` without a matching
+    /// `.navigationDestination` often fails to update selection, so Tab Overview
+    /// / Machines taps look dead.
     private func sidebarRow(
         destination: WWNMainDestination,
         title: String,
@@ -755,7 +760,20 @@ struct WawonaMainWindowView: View {
         accessibilityID: String? = nil
     ) -> some View {
         Group {
-            if #available(iOS 16.0, tvOS 16.0, macOS 13.0, *) {
+            #if os(macOS)
+            Button {
+                listSelection = destination
+            } label: {
+                sidebarRowLabel(
+                    title: title,
+                    systemImage: systemImage,
+                    color: color,
+                    tagColorHex: tagColorHex
+                )
+            }
+            .buttonStyle(.plain)
+            #else
+            if #available(iOS 16.0, tvOS 16.0, *) {
                 NavigationLink(value: destination) {
                     sidebarRowLabel(
                         title: title,
@@ -776,6 +794,7 @@ struct WawonaMainWindowView: View {
                     )
                 }
             }
+            #endif
         }
         .tag(destination)
         .accessibility(identifier: accessibilityID ?? "")
@@ -988,6 +1007,24 @@ struct WawonaMainWindowView: View {
         #if os(iOS) || os(visionOS)
         WWNHostKeyboard.dismiss()
         #endif
+        // Sidebar List selection only writes `router.selection`. Tab Overview
+        // needs the same path as `showTabOverview()`: snapshot thumbnails while
+        // Metal still shows, then park Present. Without this, macOS
+        // NavigationSplitView row taps land on empty cards / stale chrome.
+        if case .tabOverview? = router.selection {
+            NotificationCenter.default.post(
+                name: Notification.Name("WWNCaptureActiveMachineThumbnailNotification"),
+                object: nil
+            )
+            #if os(iOS) || os(visionOS)
+            MainActor.assumeIsolated {
+                WWNIosGuestConsole.shared.parkForCompositor()
+            }
+            #endif
+            if router.sessionSurfaceVisible {
+                router.sessionSurfaceVisible = false
+            }
+        }
         #if os(iOS)
         if isPhonePortrait {
             // Defer column collapse off the selection write / AG update.
