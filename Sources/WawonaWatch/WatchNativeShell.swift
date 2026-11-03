@@ -41,7 +41,9 @@ final class WatchNativeShellRegistry {
     }
 }
 
-/// In-process Wawona Terminal on watchOS: `wwn_pty` + `wawona_zsh_main` + `wwn_term`.
+/// In-process Wawona Terminal on watchOS: `wwn_pty` + `wawona_zsh_main` + grid.
+/// Product grid is UniFFI `GhosttySurface` / `TerminalSession`; `wwn_term_*` is
+/// the same Term via C until Watch links generated UniFFI Swift.
 final class WatchNativeShellSession {
     /// One queue for every session: `wwn_pty` shell state is process-global,
     /// so a pending stop must finish before the next start touches it.

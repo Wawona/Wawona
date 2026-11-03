@@ -22,7 +22,7 @@ private func wwn_term_bytes_images_json(
     _ cellH: UInt32
 ) -> UnsafeMutablePointer<CChar>?
 
-/// Watch draws the same VT cells as the other hosts. No Metal.
+/// Watch paints UniFFI-shaped lines JSON (same VT as `GhosttySurface`). No Metal.
 struct WatchTerminalScreen: View {
     let text: String
     @State private var cols: UInt32 = 20
