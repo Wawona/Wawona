@@ -67,10 +67,12 @@ rustPlatform.buildRustPackage {
   version = wawonaVersion;
   src = workspaceSrc;
 
-  # Use the in-tree lockfile directly (it already pins waypipe/coreutils and
-  # their sub-crates) to avoid an import-from-derivation on workspaceSrc.
+  # Vendor from the *workspaceSrc* lock, not the raw tree lock. workspace-src
+  # expands uutils pins and rewrites [[package]] dependency lists in
+  # Cargo.lock (uucore thiserror sync, etc.). Vendoring ../../Cargo.lock then
+  # comparing against that patched lock fails cargoSetupPostPatchHook.
   cargoLock = {
-    lockFile = ../../Cargo.lock;
+    lockFile = "${workspaceSrc}/Cargo.lock";
   };
 
   # The GTK UI binaries; the staticlib/cdylib + root binary are not needed here.
