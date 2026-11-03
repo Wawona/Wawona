@@ -4,38 +4,140 @@ import WawonaModel
 
 #if os(macOS)
 import AppKit
+import UniformTypeIdentifiers
 #else
 import UIKit
 #endif
 
-/// Safari-style Tab Overview: search + client preview cards for running sessions.
-/// SwiftUI only. Focus reveals the compositor; Stop parks the machine.
+/// In-section client tab strip while Metal Present is visible under Tab Overview.
+/// One chip per nested Wayland toplevel (`window_id`). Safari: host only when 2+.
+/// Not AppKit window tabs.
+struct WWNTabOverviewSessionTabBar: View {
+    @ObservedObject private var nestedTabs = WWNNestedClientTabStore.shared
+    var onShowOverview: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Button(action: onShowOverview) {
+                Image(systemName: "square.on.square")
+                    .font(.system(size: 13, weight: .semibold))
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.plain)
+            .accessibility(identifier: "wwn.tabOverview.showOverview")
+            .accessibility(label: Text("Show Tab Overview"))
+            #if os(macOS)
+            .help("Show Tab Overview")
+            #endif
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(nestedTabs.nestedTabs) { tab in
+                        tabChip(for: tab)
+                    }
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
+        #if os(macOS)
+        .background(Color(nsColor: .windowBackgroundColor).opacity(0.92))
+        #else
+        .background(Color.primary.opacity(0.06))
+        #endif
+        .accessibility(identifier: "wwn.tabOverview.sessionTabBar")
+    }
+
+    private func tabChip(for tab: WWNNestedClientTab) -> some View {
+        let selected = nestedTabs.focusedId == tab.id
+        return HStack(spacing: 6) {
+            Button {
+                focusTab(tab.id)
+            } label: {
+                Text(tab.displayTitle)
+                    .font(.system(size: 12, weight: selected ? .semibold : .regular))
+                    .lineLimit(1)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+            }
+            .buttonStyle(.plain)
+            Button {
+                closeTab(tab.id)
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .bold))
+                    .frame(width: 18, height: 18)
+            }
+            .buttonStyle(.plain)
+            .accessibility(label: Text("Close \(tab.displayTitle)"))
+        }
+        .foregroundColor(selected ? Color.accentColor : Color.primary)
+        .background(
+            Capsule(style: .continuous)
+                .fill(selected ? Color.accentColor.opacity(0.18) : Color.primary.opacity(0.08))
+        )
+        .accessibility(identifier: "wwn.tabOverview.tab.\(tab.id)")
+        #if os(macOS)
+        .onDrag {
+            NSItemProvider(
+                item: NSNumber(value: tab.id),
+                typeIdentifier: WWNNestedClientTabStore.pasteboardType
+            )
+        }
+        #endif
+    }
+
+    private func focusTab(_ windowId: UInt64) {
+        #if os(macOS)
+        WWNHostWindowController.shared.focusNested(windowId: windowId)
+        #else
+        nestedTabs.focus(id: windowId)
+        #endif
+        WWNMainWindowRouter.shared.selection = .clientTab(windowId)
+        NotificationCenter.default.post(
+            name: Notification.Name("WWNShowSessionSurfaceNotification"),
+            object: nil,
+            userInfo: ["source": "tab-strip", "reason": "window-\(windowId)"]
+        )
+    }
+
+    private func closeTab(_ windowId: UInt64) {
+        #if os(macOS)
+        WWNHostWindowController.shared.closeTab(windowId: windowId)
+        #else
+        WWNNestedClientTabStore.shared.remove(id: windowId)
+        #endif
+    }
+}
+
+/// Safari-style Tab Overview: search + nested Wayland toplevel preview cards.
+/// Opens from the Machines toolbar Tab Overview button. Focus reveals Present.
 struct WWNTabOverviewView: View {
+    @ObservedObject private var nestedTabs = WWNNestedClientTabStore.shared
     @ObservedObject private var model = WWNMachinesViewModel.shared
     @State private var searchQuery = ""
 
-    private var runningProfiles: [WWNMachineProfile] {
-        model.profiles.filter { profile in
-            let status = model.status(for: profile.machineId)
-            let active = WWNMachineProfileStore.activeMachineId() == profile.machineId
-            return status == .connected || status == .connecting || active
-        }
+    private var overviewTabs: [WWNNestedClientTab] {
+        nestedTabs.nestedTabs
     }
 
-    private var filteredProfiles: [WWNMachineProfile] {
-        let titles = runningProfiles.map(\.name)
+    private var filteredTabs: [WWNNestedClientTab] {
+        let titles = overviewTabs.map(\.displayTitle)
         let indices = MachineProfileDomain.tabOverviewFilterIndices(
             query: searchQuery,
             titles: titles
         )
         return indices.compactMap { idx in
-            guard runningProfiles.indices.contains(idx) else { return nil }
-            return runningProfiles[idx]
+            guard overviewTabs.indices.contains(idx) else { return nil }
+            return overviewTabs[idx]
         }
     }
 
     private var tabCountString: String {
-        let n = filteredProfiles.count
+        let n = filteredTabs.count
         return n == 1 ? "1 Tab" : "\(n) Tabs"
     }
 
@@ -62,7 +164,7 @@ struct WWNTabOverviewView: View {
 
     var body: some View {
         Group {
-            if runningProfiles.isEmpty {
+            if overviewTabs.isEmpty {
                 emptyState
             } else {
                 overviewBody
@@ -72,11 +174,16 @@ struct WWNTabOverviewView: View {
         .backport.searchable(text: $searchQuery, prompt: "Search Tabs")
         .background(tabOverviewSearchPlacement)
         .accessibility(identifier: "wwn.tabOverview.detail")
+        #if os(macOS)
+        .onDrop(
+            of: [UTType(exportedAs: WWNNestedClientTabStore.pasteboardType)],
+            isTargeted: nil
+        ) { providers in
+            nestDropped(from: providers)
+        }
+        #endif
     }
 
-    /// Keep Tab Overview search in the navigation bar. Bottom-bar integration
-    /// on this column reuses Machine Configuration's placement button and
-    /// UIKit drops it.
     @ViewBuilder
     private var tabOverviewSearchPlacement: some View {
         #if os(iOS)
@@ -95,7 +202,7 @@ struct WWNTabOverviewView: View {
                 .foregroundColor(.secondary)
             Text("No Active Tabs")
                 .font(.headline)
-            Text("Start a machine, then open Tab Overview to switch sessions.")
+            Text("Start a machine. Nested Wayland windows appear here and in the sidebar Tabs list.")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
@@ -120,7 +227,7 @@ struct WWNTabOverviewView: View {
             .padding(.top, 8)
             .padding(.bottom, 4)
 
-            if filteredProfiles.isEmpty {
+            if filteredTabs.isEmpty {
                 Text("No Matching Tabs")
                     .foregroundColor(.secondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -129,14 +236,14 @@ struct WWNTabOverviewView: View {
                     Group {
                         if #available(iOS 14, tvOS 14, macOS 11, *) {
                             LazyVGrid(columns: columns, spacing: 16) {
-                                ForEach(filteredProfiles, id: \.machineId) { profile in
-                                    card(for: profile)
+                                ForEach(filteredTabs) { tab in
+                                    card(for: tab)
                                 }
                             }
                         } else {
                             VStack(spacing: 16) {
-                                ForEach(filteredProfiles, id: \.machineId) { profile in
-                                    card(for: profile)
+                                ForEach(filteredTabs) { tab in
+                                    card(for: tab)
                                 }
                             }
                         }
@@ -150,37 +257,80 @@ struct WWNTabOverviewView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func card(for profile: WWNMachineProfile) -> some View {
-        let mid = profile.machineId
-        let status = model.status(for: mid)
-        let isActive = WWNMachineProfileStore.activeMachineId() == mid
-        let title = profile.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let displayTitle = title.isEmpty ? "Untitled" : title
+    private func card(for tab: WWNNestedClientTab) -> some View {
+        let selected = nestedTabs.focusedId == tab.id
+        let thumbProfile = model.profiles.first {
+            WWNMachineProfileStore.activeMachineId() == $0.machineId
+        }
         return WWNTabOverviewCard(
-            title: displayTitle,
-            statusLabel: statusLabel(status, isActive: isActive),
-            isSelected: isActive,
-            thumbnail: model.thumbnailImage(for: profile),
+            title: tab.displayTitle,
+            statusLabel: selected ? "Running · Active" : "Running",
+            isSelected: selected,
+            thumbnail: thumbProfile.flatMap { model.thumbnailImage(for: $0) },
             onFocus: {
-                model.focusRunningMachine(profile)
+                focusTab(tab.id)
             },
             onClose: {
-                model.disconnect(profile)
+                closeTab(tab.id)
             }
         )
-        .accessibility(identifier: "wwn.tabOverview.card.\(mid)")
+        .accessibility(identifier: "wwn.tabOverview.card.\(tab.id)")
+        #if os(macOS)
+        .onDrag {
+            NSItemProvider(
+                item: NSNumber(value: tab.id),
+                typeIdentifier: WWNNestedClientTabStore.pasteboardType
+            )
+        }
+        #endif
     }
 
-    private func statusLabel(_ status: WWNMachineTransientStatus, isActive: Bool) -> String {
-        let base: String
-        switch status {
-        case .connected: base = "Running"
-        case .connecting, .preparing: base = "Starting"
-        default: base = "Session"
-        }
-        if isActive { return "\(base) · Active" }
-        return base
+    private func focusTab(_ windowId: UInt64) {
+        #if os(macOS)
+        WWNHostWindowController.shared.focusNested(windowId: windowId)
+        #else
+        nestedTabs.focus(id: windowId)
+        #endif
+        WWNMainWindowRouter.shared.selection = .clientTab(windowId)
+        NotificationCenter.default.post(
+            name: Notification.Name("WWNShowSessionSurfaceNotification"),
+            object: nil,
+            userInfo: ["source": "tab-overview", "reason": "window-\(windowId)"]
+        )
     }
+
+    private func closeTab(_ windowId: UInt64) {
+        #if os(macOS)
+        WWNHostWindowController.shared.closeTab(windowId: windowId)
+        #else
+        WWNNestedClientTabStore.shared.remove(id: windowId)
+        #endif
+    }
+
+    #if os(macOS)
+    private func nestDropped(from providers: [NSItemProvider]) -> Bool {
+        guard let provider = providers.first else { return false }
+        provider.loadItem(
+            forTypeIdentifier: WWNNestedClientTabStore.pasteboardType,
+            options: nil
+        ) { item, _ in
+            let id: UInt64?
+            if let num = item as? NSNumber {
+                id = num.uint64Value
+            } else if let data = item as? Data, data.count >= 8 {
+                id = data.withUnsafeBytes { $0.load(as: UInt64.self) }
+            } else {
+                id = nil
+            }
+            guard let windowId = id else { return }
+            DispatchQueue.main.async {
+                WWNHostWindowController.shared.nest(windowId: windowId)
+                focusTab(windowId)
+            }
+        }
+        return true
+    }
+    #endif
 }
 
 private struct WWNTabOverviewCard: View {
@@ -194,85 +344,72 @@ private struct WWNTabOverviewCard: View {
     private var iconName: String {
         let lower = title.lowercased()
         if lower.contains("term") || lower.contains("zsh") || lower.contains("shell") {
-            return "terminal.fill"
+            return "terminal"
         }
-        if lower.contains("niri") { return "rectangle.split.3x1" }
-        if lower.contains("weston") { return "macwindow" }
-        return "desktopcomputer"
+        if lower.contains("niri") || lower.contains("weston") {
+            return "rectangle.on.rectangle"
+        }
+        return "app.dashed"
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 6) {
-                Image(systemName: iconName)
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(isSelected ? Color.accentColor : Color.secondary)
-                Text(title)
-                    .font(.system(size: 12, weight: isSelected ? .bold : .medium))
-                    .foregroundColor(.primary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                Spacer(minLength: 0)
-                Button(action: onClose) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.white.opacity(0.9))
-                        .frame(width: 22, height: 22)
-                        .background(Circle().fill(Color.black.opacity(0.45)))
-                }
-                .buttonStyle(.plain)
-                .accessibility(label: Text("Close \(title)"))
-            }
-            .padding(.horizontal, 10)
-            .padding(.top, 8)
-            .padding(.bottom, 6)
-
-            Button(action: onFocus) {
-                ZStack {
-                    Color.primary.opacity(0.08)
-                    if let thumbnail {
-                        #if os(macOS)
-                        Image(nsImage: thumbnail)
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                        #else
-                        Image(uiImage: thumbnail)
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                        #endif
-                    } else {
-                        VStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: 8) {
+            ZStack(alignment: .topTrailing) {
+                Button(action: onFocus) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color.primary.opacity(0.06))
+                        if let thumbnail {
+                            #if os(macOS)
+                            Image(nsImage: thumbnail)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                            #else
+                            Image(uiImage: thumbnail)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                            #endif
+                        } else {
                             Image(systemName: iconName)
-                                .font(.system(size: 28))
-                                .foregroundColor(Color.secondary.opacity(0.5))
-                            Text(statusLabel)
-                                .font(.system(size: 11, weight: .medium))
+                                .font(.system(size: 36, weight: .light))
                                 .foregroundColor(.secondary)
-                                .lineLimit(1)
                         }
                     }
+                    .frame(height: 140)
+                    .clipped()
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .strokeBorder(
+                                isSelected ? Color.accentColor : Color.primary.opacity(0.12),
+                                lineWidth: isSelected ? 2 : 1
+                            )
+                    )
                 }
-                .frame(maxWidth: .infinity)
-                .aspectRatio(0.72, contentMode: .fit)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .buttonStyle(.plain)
+
+                Button(action: onClose) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 20))
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(.white, Color.black.opacity(0.55))
+                }
+                .buttonStyle(.plain)
+                .padding(8)
+                .accessibility(label: Text("Close \(title)"))
             }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 6)
-            .padding(.bottom, 6)
-            .accessibility(label: Text("\(title), \(statusLabel)"))
-            .accessibility(hint: Text("Double tap to focus"))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 14, weight: .semibold))
+                    .lineLimit(1)
+                Text(statusLabel)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 4)
         }
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color.primary.opacity(0.06))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(
-                            isSelected ? Color.accentColor : Color.primary.opacity(0.12),
-                            lineWidth: isSelected ? 2.5 : 0.8
-                        )
-                )
-        )
     }
 }
+
 #endif

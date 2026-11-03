@@ -31,12 +31,6 @@ private func WWNWindowEventFree(_ event: UnsafeMutableRawPointer?)
 @_silgen_name("wawona_wayland_socket_is_live")
 private func wawona_wayland_socket_is_live(_ path: UnsafePointer<CChar>?) -> Int32
 
-/// `CWindowEventType` values that mean a client mapped something the user
-/// should see above Wawona Terminal.
-private let wwnWindowEventCreated: UInt64 = 0
-private let wwnWindowEventDestroyed: UInt64 = 1
-private let wwnWindowEventPopupCreated: UInt64 = 4
-
 @objc(WWNCompositorBridge)
 public final class WWNCompositorBridge: NSObject {
     @objc public static let sharedBridge = WWNCompositorBridge()
@@ -134,7 +128,10 @@ public final class WWNCompositorBridge: NSObject {
         }
         lastWaylandClientCount = 0
         mappedWaylandWindowCount = 0
-        clearGuestPresentAfterLastWindow()
+        DispatchQueue.main.async {
+            WWNNestedClientTabStore.shared.clearAll()
+        }
+        clearGuestPresent(reason: "bridge-stop")
     }
 
     private func startEventPumpIfNeeded() {
@@ -236,9 +233,9 @@ public final class WWNCompositorBridge: NSObject {
                     self.requestSessionSurface(reason: "wayland-window")
                 }
                 if drainResult.clearedLastWindow {
-                    self.clearGuestPresentAfterLastWindow()
+                    self.clearGuestPresent(reason: "last-wayland-window-destroyed")
                 }
-                self.requestSessionSurfaceIfClientsAttached()
+                self.syncClientCountPresent()
                 // SHM / IOSurface clients need PopPendingBuffer → Metal.
                 #if canImport(Metal) && !os(watchOS)
                 if let presenter = self.activeIlandPresenterRef() {
@@ -259,44 +256,137 @@ public final class WWNCompositorBridge: NSObject {
         var clearedLastWindow = false
     }
 
-    /// Pop `CWindowEvent`s. A Created or PopupCreated toplevel is a Wayland
-    /// client the Terminal started. Client count alone misses that: the
-    /// connection can already be open, or the count never rises, and the
-    /// Terminal sheet stays on top until Done.
+    /// Pop `CWindowEvent`s. Parse full layout (window_id, title, decoration).
+    /// Created / PopupCreated reveal Present; macOS routes toplevels through
+    /// `WWNHostWindowController` (nest vs standalone `WWNWindow`).
     private func drainWindowEvents() -> WindowDrainResult {
         var result = WindowDrainResult()
         guard let core else { return result }
-        while let event = WWNCorePopWindowEvent(core) {
-            let type = event.load(as: UInt64.self)
-            if type == wwnWindowEventCreated || type == wwnWindowEventPopupCreated {
+        var parsed: [WWNWindowEvent] = []
+        while let raw = WWNCorePopWindowEvent(core) {
+            let event = WWNWindowEvent.parse(raw)
+            parsed.append(event)
+            if event.eventType == WWNWindowEvent.created
+                || event.eventType == WWNWindowEvent.popupCreated
+            {
                 mappedWaylandWindowCount += 1
                 result.mappedWindow = true
-            } else if type == wwnWindowEventDestroyed {
+            } else if event.eventType == WWNWindowEvent.destroyed {
                 mappedWaylandWindowCount = max(0, mappedWaylandWindowCount - 1)
                 if mappedWaylandWindowCount == 0 {
                     result.clearedLastWindow = true
                 }
             }
-            WWNWindowEventFree(event)
+            WWNWindowEventFree(raw)
+        }
+        if !parsed.isEmpty {
+            let events = parsed
+            DispatchQueue.main.async {
+                self.dispatchWindowEvents(events)
+            }
         }
         return result
     }
 
-    private func clearGuestPresentAfterLastWindow() {
+    @MainActor
+    private func dispatchWindowEvents(_ events: [WWNWindowEvent]) {
+        let preferStandalone = WWNNestedClientTabStore.shared.preferStandaloneOnCreate
+        for event in events {
+            switch event.eventType {
+            case WWNWindowEvent.created:
+                #if os(macOS)
+                WWNHostWindowController.shared.handleCreated(
+                    event,
+                    preferStandalone: preferStandalone
+                )
+                #else
+                WWNNestedClientTabStore.shared.upsertCreated(
+                    id: event.windowId,
+                    title: event.title,
+                    width: event.width,
+                    height: event.height,
+                    decorationMode: event.decorationMode,
+                    fillsHost: event.fillsHost != 0,
+                    standalone: false
+                )
+                #endif
+            case WWNWindowEvent.popupCreated:
+                // Popups stay parent-attached; never sidebar tabs.
+                break
+            case WWNWindowEvent.destroyed:
+                #if os(macOS)
+                WWNHostWindowController.shared.handleDestroyed(windowId: event.windowId)
+                #else
+                WWNNestedClientTabStore.shared.remove(id: event.windowId)
+                #endif
+            case WWNWindowEvent.titleChanged:
+                #if os(macOS)
+                WWNHostWindowController.shared.handleTitleChanged(
+                    windowId: event.windowId,
+                    title: event.title
+                )
+                #else
+                WWNNestedClientTabStore.shared.updateTitle(
+                    id: event.windowId,
+                    title: event.title
+                )
+                #endif
+            case WWNWindowEvent.decorationsModeChanged:
+                #if os(macOS)
+                WWNHostWindowController.shared.handleDecorationChanged(
+                    windowId: event.windowId,
+                    mode: event.decorationMode
+                )
+                #else
+                WWNNestedClientTabStore.shared.updateDecoration(
+                    id: event.windowId,
+                    mode: event.decorationMode
+                )
+                #endif
+            case WWNWindowEvent.sizeChanged:
+                #if os(macOS)
+                WWNHostWindowController.shared.handleSizeChanged(
+                    windowId: event.windowId,
+                    width: event.width,
+                    height: event.height
+                )
+                #else
+                WWNNestedClientTabStore.shared.updateSize(
+                    id: event.windowId,
+                    width: event.width,
+                    height: event.height
+                )
+                #endif
+            default:
+                break
+            }
+        }
+    }
+
+    private func clearGuestPresent(reason: String) {
         #if canImport(Metal) && !os(watchOS)
-        activeIlandPresenterRef()?.clearGuestPresent(reason: "last-wayland-window-destroyed")
+        activeIlandPresenterRef()?.clearGuestPresent(reason: reason)
         #endif
-        NSLog("[WWNCompositorBridge] cleared guest present (last window destroyed)")
+        NSLog("[WWNCompositorBridge] cleared guest present reason=%@", reason)
     }
 
     /// CLI MicroVM / external waypipe / Native Shell `wasm` never should
     /// leave the user stuck on Wawona Terminal. When client count rises,
     /// reveal Present (parks Terminal chrome; keeps the PTY alive).
-    private func requestSessionSurfaceIfClientsAttached() {
+    /// When count drops to zero (waypipe kill, guest crash), clear Metal even
+    /// if a Destroy window event was missed so the last compositor plate
+    /// (e.g. sway) cannot linger under the next guest's label.
+    private func syncClientCountPresent() {
         guard let core else { return }
         let count = WWNCoreGetClientCount(core)
         let grew = count > lastWaylandClientCount
+        let droppedToEmpty = lastWaylandClientCount > 0 && count == 0
         lastWaylandClientCount = count
+        if droppedToEmpty {
+            mappedWaylandWindowCount = 0
+            clearGuestPresent(reason: "wayland-client-count-zero")
+            return
+        }
         guard grew, count > 0 else { return }
         requestSessionSurface(reason: "client-count=\(count)")
     }

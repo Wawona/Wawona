@@ -29,10 +29,39 @@ public enum WWNSessionWindowPresenter {
         #endif
     }
 
-    /// New Window for Wawona Terminal. macOS uses `WWNMacGuestConsole`.
+    /// True when a dedicated New Window session is open (macOS).
+    public static var hasOpenSessionWindow: Bool {
+        #if os(macOS)
+        sessionController?.window?.isVisible == true
+        #else
+        false
+        #endif
+    }
+
+    /// Front the New Window session if open. Returns true when it owned Present.
+    @discardableResult
+    public static func orderFrontSessionWindowIfOpen() -> Bool {
+        #if os(macOS)
+        guard let window = sessionController?.window, window.isVisible else {
+            return false
+        }
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        return true
+        #else
+        return false
+        #endif
+    }
+
+    /// New Window for Wawona Terminal. macOS fronts `WWNMacGuestConsole`.
     /// iPad and visionOS get a terminal-only scene. iPhone stays tabbed.
     public static func presentTerminalWindow() {
-        #if os(iOS) || os(visionOS)
+        #if os(macOS)
+        // Console already presented by Start; ensure it is key (not buried
+        // under Machines). Session Present window opens separately for
+        // Wayland clients.
+        NSApp.activate(ignoringOtherApps: true)
+        #elseif os(iOS) || os(visionOS)
         presentUIKitTerminalScene()
         #endif
     }
@@ -50,6 +79,8 @@ public enum WWNSessionWindowPresenter {
         window.title = title.isEmpty ? "Session" : title
         window.setContentSize(NSSize(width: 1024, height: 720))
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+        // Never join the Machines WindowGroup tab strip.
+        window.tabbingMode = .disallowed
         window.isReleasedWhenClosed = false
         window.center()
         let controller = NSWindowController(window: window)

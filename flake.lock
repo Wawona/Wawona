@@ -883,11 +883,11 @@
     "terminal": {
       "flake": false,
       "locked": {
-        "lastModified": 1793734828,
-        "narHash": "sha256-7tKe+6741xALitXpwb6SY9a83etabZpFTe3vpk9zIM8=",
+        "lastModified": 1793735635,
+        "narHash": "sha256-edrG4IRoT1h7N/v3YK6zPYPzOC+ZPuK0xSQXF4dFesM=",
         "owner": "Wawona",
         "repo": "Terminal",
-        "rev": "c660bcbb2b1810dfe2d28b9b7cd19af9516f58bc",
+        "rev": "4a29d27dec75da55e8032ce98d702ad77ecef99b",
         "type": "github"
       },
       "original": {

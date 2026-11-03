@@ -529,9 +529,6 @@ final class WWNMachinesViewModel: ObservableObject {
   ) {
     let machineId = profile.machineId ?? ""
     guard !machineId.isEmpty else { return }
-    #if os(macOS) || os(tvOS) || os(watchOS)
-    _ = openInNewWindow
-    #endif
     let source: String
     if profile.type == kWWNMachineTypeVirtualMachine ||
       profile.type == kWWNMachineTypeContainer {
@@ -554,9 +551,9 @@ final class WWNMachinesViewModel: ObservableObject {
     } else {
       source = "client"
     }
-    #if os(iOS) || os(visionOS)
     let separateWindow = openInNewWindow
       && MachineStartPlacement.allowsWindowedStart(for: GlobalSettingsCatalog.currentHost)
+    #if os(iOS) || os(visionOS)
     WWNIosGuestConsole.openNextInWindow = separateWindow
     #endif
     #if os(iOS) || os(tvOS) || os(visionOS)
@@ -570,9 +567,15 @@ final class WWNMachinesViewModel: ObservableObject {
     }
     #endif
     #elseif os(macOS)
+    // New Window Start: Terminal chrome still opens first; Wayland Present
+    // later lands in the dedicated session window (see revealSessionSurface).
     WWNMacGuestConsole.shared.present(machineId: machineId, source: source)
+    if separateWindow {
+      WWNSessionWindowPresenter.presentTerminalWindow()
+    }
     #else
     _ = source
+    _ = separateWindow
     #endif
   }
 
@@ -738,6 +741,12 @@ final class WWNMachinesViewModel: ObservableObject {
     guard usesSurface else { return }
     if openInNewWindow,
        MachineStartPlacement.allowsWindowedStart(for: GlobalSettingsCatalog.currentHost) {
+      #if os(macOS)
+      // Nest toplevels into the dedicated session window Present. Do not
+      // force floating tear-off: that left an empty session window while
+      // clients appeared only as standalone WWNWindows.
+      WWNNestedClientTabStore.shared.preferStandaloneOnCreate = false
+      #endif
       #if os(macOS) || os(iOS) || os(visionOS)
       let title = profile.name.trimmingCharacters(in: .whitespacesAndNewlines)
       WWNSessionWindowPresenter.presentSessionWindow(

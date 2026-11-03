@@ -39,10 +39,10 @@ final class GhosttyGpuView: MTKView, MTKViewDelegate {
     private var cache: [UInt32: UInt32] = [:]
     private var nextSlot: UInt32 = 1
     private let atlasSide = 16
-    /// Mono cell aspect (~1:2). Square slots stretched into tall cells and made
-    /// glyphs look tiny / smeared. Keep atlas slots on the same aspect.
-    private let glyphW: Int = 16
-    private let glyphH: Int = 32
+    /// Mono cell aspect (~1:2). Scale with backingScale so retina is sharp.
+    private var glyphW: Int = 16
+    private var glyphH: Int = 32
+    private var atlasScale: Int = 1
     private var imagePipeline: MTLRenderPipelineState?
     private var pictures = [TermPicture]()
     private var cellW: Float = 8
@@ -54,16 +54,14 @@ final class GhosttyGpuView: MTKView, MTKViewDelegate {
         delegate = self
         isPaused = true
         enableSetNeedsDisplay = true
+        autoResizeDrawable = false
         colorPixelFormat = .bgra8Unorm
         clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
         framebufferOnly = true
         // Hits must reach WWNTermSurface for focus + keyDown. This view only draws.
         guard let device else { return }
         queue = device.makeCommandQueue()
-        atlas = Self.makeAtlas(device, glyphW: glyphW, glyphH: glyphH, atlasSide: atlasSide)
-        pipeline = Self.makePipeline(
-            device, pixelFormat: colorPixelFormat, atlasSide: atlasSide, glyphW: glyphW)
-        imagePipeline = Self.makeImagePipeline(device, pixelFormat: colorPixelFormat)
+        rebuildAtlas(device: device, scale: 2)
     }
 
     @available(*, unavailable)
@@ -73,6 +71,25 @@ final class GhosttyGpuView: MTKView, MTKViewDelegate {
     override var acceptsFirstResponder: Bool { false }
 
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    /// Rebuild glyph atlas when the host backing scale changes (retina).
+    func syncBackingScale(_ scale: CGFloat) {
+        let s = max(1, Int(scale.rounded()))
+        guard s != atlasScale, let device else { return }
+        rebuildAtlas(device: device, scale: s)
+    }
+
+    private func rebuildAtlas(device: MTLDevice, scale: Int) {
+        atlasScale = max(1, scale)
+        glyphW = 16 * atlasScale
+        glyphH = 32 * atlasScale
+        cache.removeAll()
+        nextSlot = 1
+        atlas = Self.makeAtlas(device, glyphW: glyphW, glyphH: glyphH, atlasSide: atlasSide)
+        pipeline = Self.makePipeline(
+            device, pixelFormat: colorPixelFormat, atlasSide: atlasSide, glyphW: glyphW)
+        imagePipeline = Self.makeImagePipeline(device, pixelFormat: colorPixelFormat)
+    }
 
     func present(
         _ grid: [WwnTermCell], count: Int, cols: Int, rows: Int, blinkOn: Bool,
@@ -294,7 +311,7 @@ final class GhosttyGpuView: MTKView, MTKViewDelegate {
         }
         fragment float4 ghostty_term_fs(VOut in [[stage_in]], texture2d<float> atlas [[texture(0)]],
                                     constant Dim &d [[buffer(0)]]) {
-          constexpr sampler s(filter::nearest, address::clamp_to_edge);
+          constexpr sampler s(filter::linear, address::clamp_to_edge);
           float m = atlas.sample(s, in.uv).r;
           if ((in.attr & 1u) != 0u) m = max(m, atlas.sample(s, in.uv + float2(\(boldUV), 0)).r);
           if ((in.attr & 16u) != 0u && d.phase == 0u) m = 0.0;

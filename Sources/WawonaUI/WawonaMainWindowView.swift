@@ -1,12 +1,83 @@
 #if !SWIFT_PACKAGE && (os(macOS) || os(iOS) || os(tvOS) || os(visionOS))
 #if os(macOS)
 import AppKit
+import UniformTypeIdentifiers
 #else
 import UIKit
 #endif
 import SwiftUI
 import WawonaUIContracts
 import WawonaModel
+
+#if os(macOS)
+/// Client tabs live under Tab Overview only. AppKit window tabs on the
+/// Machines / Settings host look like a second chrome strip (title + Close
+/// tab) and fight the Settings Done toolbar.
+enum WWNMacMainWindowTabbing {
+    static func disallow() {
+        NSWindow.allowsAutomaticWindowTabbing = false
+        for window in NSApp.windows {
+            window.tabbingMode = .disallowed
+            // Hide the AppKit tab strip even when only one tab remains.
+            if let group = window.tabGroup, group.isTabBarVisible {
+                window.toggleTabBar(nil)
+            }
+        }
+    }
+
+    /// WindowGroup uses `.windowToolbarStyle(.unified(showsTitle: true))`.
+    /// Settings cover must not leave a separated titlebar after remount.
+    static func ensureUnifiedToolbar() {
+        disallow()
+        for window in NSApp.windows {
+            guard window.isVisible || window.isKeyWindow else { continue }
+            window.toolbarStyle = .unified
+            window.titleVisibility = .visible
+        }
+    }
+}
+
+/// Drop the Machines `NavigationSplitView` sidebar toggle from NSToolbar while
+/// Global Settings owns Done / Env Vars Add (avoids dual-insert SIGTRAP).
+private struct WWNMacStripSidebarToggleWhenSettings: ViewModifier {
+    let active: Bool
+
+    func body(content: Content) -> some View {
+        if active, #available(macOS 14.0, *) {
+            content.toolbar(removing: .sidebarToggle)
+        } else {
+            content
+        }
+    }
+}
+#endif
+
+/// Bottom cover slide driven by `presented` while the host stays mounted.
+/// Unmount after spring so Done does not hard-pop the cover.
+private struct WWNSettingsCoverPresentation: ViewModifier {
+    let presented: Bool
+    let reduceMotion: Bool
+
+    func body(content: Content) -> some View {
+        GeometryReader { geo in
+            let travel = max(geo.size.height, 1)
+            content
+                .frame(width: geo.size.width, height: geo.size.height)
+                .offset(y: coverOffset(height: travel))
+                .opacity(coverOpacity)
+        }
+    }
+
+    private var coverOpacity: Double {
+        if reduceMotion { return presented ? 1 : 0 }
+        return 1
+    }
+
+    private func coverOffset(height: CGFloat) -> CGFloat {
+        if reduceMotion { return 0 }
+        return presented ? 0 : height
+    }
+}
 
 #if os(iOS)
 /// Phone overlay vs iPad/landscape balanced. Styles are distinct types,
@@ -192,8 +263,10 @@ enum WWNMainDestination: Hashable {
     /// In-window Wayland session surface (tabbed Start). Sidebar Machines
     /// returns here to the grid; no floating overlay button on the client.
     case session
-    /// Running clients; Focus opens the compositor deliberately.
+    /// Safari-style Tab Overview card grid (toolbar button, not a sidebar row).
     case tabOverview
+    /// One nested Wayland toplevel under the expandable "N Tabs" section.
+    case clientTab(UInt64)
     case projectStatus
     /// Rust `settings_catalog` slug (`display`, `input`, …).
     case settings(GlobalSettingsSectionID)
@@ -296,6 +369,17 @@ final class WWNMainWindowRouter: ObservableObject {
         // (keep PTY) so Present is not covered; never require Done/Close.
         #if os(macOS)
         WWNMacGuestConsole.shared.parkForCompositor()
+        // Default Start Type = New Window: Present stays in the dedicated
+        // session window. Machines chrome must not grow a global tab bar.
+        // Router is not @MainActor (ObjC trampolines); this path is main.
+        let deferredWindow = MainActor.assumeIsolated {
+            WWNSessionWindowPresenter.orderFrontSessionWindowIfOpen()
+        }
+        if deferredWindow {
+            sessionSurfaceVisible = false
+            NSLog("WWNShowSessionSurface: deferred to New Window session")
+            return
+        }
         #elseif os(iOS) || os(tvOS) || os(visionOS)
         // Router stays nonisolated for ObjC scene trampolines. Terminal
         // park is MainActor. This path runs on the main thread.
@@ -305,9 +389,24 @@ final class WWNMainWindowRouter: ObservableObject {
         #endif
         sessionSurfaceMounted = true
         sessionSurfaceVisible = true
-        selection = .session
+        // Tabbed Present lives under Tab Overview chrome (not Machines).
+        // Prefer the focused nested client so Focus / attach shows Metal,
+        // not the parked card grid. Overview button parks Present later.
+        #if os(macOS) || os(iOS) || os(tvOS) || os(visionOS)
+        let store = WWNNestedClientTabStore.shared
+        if let focused = store.focusedId {
+            selection = .clientTab(focused)
+        } else if let first = store.nestedTabs.first {
+            selection = .clientTab(first.id)
+        } else {
+            selection = .tabOverview
+        }
+        #else
+        selection = .tabOverview
+        #endif
         NSLog(
-            "WWNShowSessionSurface: mounted=1 visible=1 selection=session settings=0"
+            "WWNShowSessionSurface: mounted=1 visible=1 selection=%@ settings=0",
+            String(describing: selection)
         )
     }
 
@@ -344,11 +443,13 @@ final class WWNMainWindowRouter: ObservableObject {
     /// owns the window toolbar again. Machines must not register search
     /// or toolbar items during this span.
     @Published var settingsOwnsWindowToolbar = false
+    /// Host view is in the ZStack. Must become true **before** the slide so
+    /// Machines does not fade to a blank window.
+    @Published var settingsHostMounted = false
     @Published var settingsSelection: GlobalSettingsSectionID?
 
     /// Opens Global Settings in-app (`wawona-global-settings-exclusive`).
-    /// Slide-up animation is driven from the host view transition; this wraps
-    /// the flag change in the shared spring.
+    /// Mount off-screen first, then spring so open slides up (not a pop).
     func showSettings() {
         sessionSurfaceVisible = false
         settingsOwnsWindowToolbar = true
@@ -357,17 +458,31 @@ final class WWNMainWindowRouter: ObservableObject {
                 for: GlobalSettingsCatalog.currentHost
             ).first
         }
+        // Mount under the fold, then animate present. Pairing both as true in
+        // one shot left the cover at offset 0 with no slide-in.
+        if !settingsHostMounted {
+            settingsHostMounted = true
+            isSettingsPresented = false
+        }
         withAnimation(Self.settingsCoverAnimation) {
             isSettingsPresented = true
         }
     }
 
     func dismissSettings() {
+        // Slide the cover down first; keep it mounted so the motion is not a
+        // hard pop. Unmount + reclaim toolbar after the spring settles.
         withAnimation(Self.settingsCoverAnimation) {
             isSettingsPresented = false
         }
         if case .settings? = selection {
             selection = .machines
+        }
+        let delay = Self.settingsCoverUnmountDelay
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self, !self.isSettingsPresented else { return }
+            self.settingsHostMounted = false
+            self.settingsOwnsWindowToolbar = false
         }
     }
 
@@ -375,6 +490,9 @@ final class WWNMainWindowRouter: ObservableObject {
     static var settingsCoverAnimation: Animation {
         .spring(response: 0.42, dampingFraction: 0.88)
     }
+
+    /// Slightly past spring settle so Done does not pop Machines mid-slide.
+    static var settingsCoverUnmountDelay: TimeInterval { 0.48 }
 
     /// Deep-link into a Settings section inside the dedicated host.
     func selectSettings(title: String) {
@@ -445,34 +563,30 @@ struct WawonaMainWindowView: View {
     @State private var showTagEditor = false
     /// Sidebar column visibility. Phone portrait starts `.detailOnly` so
     /// Machines is the main view; the system sidebar toggle reveals the column.
+    /// macOS / tvOS / visionOS keep the Machines sidebar (Tab Overview lives
+    /// there). Leaving this false on macOS made NavigationSplitView stay
+    /// `.detailOnly`, so Tab Overview looked missing / dead.
+    #if os(iOS)
     @State private var showSidebar = false
+    #else
+    @State private var showSidebar = true
+    #endif
     /// List selection lives in `@State`, not `@Published`. Binding
     /// `List(selection:)` straight to `router.selection` exclusivity-crashes
     /// on iOS 16 NavigationSplitView (Display / Settings tap): AttributeGraph
     /// still reads the `ObservableObject` while `Published` writes.
     @State private var listSelection: WWNMainDestination? = .machines
-    /// Machines `NavigationSplitView` and Settings `NavigationSplitView` share
-    /// one `NSToolbar`. Inserting the sidebar toggle (or Done) while the other
-    /// item is still registered throws, and AppKit turns that into SIGTRAP.
-    /// Drop Machines chrome, let the bar go empty, then mount Settings.
-    @State private var machinesSplitMounted = true
-    @State private var settingsHostMounted = false
+    /// Settings cover sits above Machines. Keep the Machines split **mounted**
+    /// so WindowGroup unified titlebar/toolbar stays intact; strip Machines
+    /// toolbar items via `settingsOwnsWindowToolbar` and hide the split under
+    /// the cover (opacity + hit testing). Unmounting the split used to empty
+    /// NSToolbar safely for Env Vars Add, but broke unified chrome.
+    /// Mount flag lives on `router` so open mounts before the slide.
+    @ObservedObject private var nestedTabs = WWNNestedClientTabStore.shared
     #if os(iOS) || os(visionOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     #endif
-    /// Bottom cover insert/remove. Same motion on every Apple target.
-    /// Reduce Motion (UIKit/AppKit, iOS 13 floor): fade only.
-    private var settingsCoverTransition: AnyTransition {
-        if Self.accessibilityReduceMotionEnabled {
-            return .opacity
-        }
-        return .asymmetric(
-            insertion: .move(edge: .bottom).combined(with: .opacity),
-            removal: .move(edge: .bottom).combined(with: .opacity)
-        )
-    }
-
     private static var accessibilityReduceMotionEnabled: Bool {
         #if os(macOS)
         NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
@@ -496,14 +610,22 @@ struct WawonaMainWindowView: View {
         // Global Settings slides up over Machines (in-window cover). Never
         // sheet / fullScreenCover: on macOS that backport is a floating popup.
         //
-        // Mode A StaticCpu: keep `machinesChrome` mounted under the cover so
-        // CompositorBridge / IlandPresenter stay alive while Settings is up.
+        // Mode A StaticCpu: Machines split stays mounted (Metal Present host
+        // alive). `settingsOwnsWindowToolbar` strips Machines searchable /
+        // toolbar items and sidebar toggle so Settings Done / Env Vars Add
+        // own NSToolbar without SIGTRAP, and unified titlebar stays.
         ZStack {
             machinesChrome
+                .opacity(router.isSettingsPresented ? 0 : 1)
                 .allowsHitTesting(!router.isSettingsPresented)
                 .accessibility(hidden: router.isSettingsPresented)
+                #if os(macOS)
+                .modifier(WWNMacStripSidebarToggleWhenSettings(
+                    active: router.settingsOwnsWindowToolbar
+                ))
+                #endif
 
-            if settingsHostMounted {
+            if router.settingsHostMounted {
                 WWNGlobalSettingsHostView(
                     model: model,
                     selection: $router.settingsSelection,
@@ -512,8 +634,14 @@ struct WawonaMainWindowView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 // Opaque so Machines does not show through mid-slide.
                 .background(settingsCoverBackground.edgesIgnoringSafeArea(.all))
-                .transition(settingsCoverTransition)
+                // Drive slide from isSettingsPresented so Done keeps the host
+                // mounted through the spring (transition alone pops on unmount).
+                .modifier(WWNSettingsCoverPresentation(
+                    presented: router.isSettingsPresented,
+                    reduceMotion: Self.accessibilityReduceMotionEnabled
+                ))
                 .zIndex(1)
+                .allowsHitTesting(router.isSettingsPresented)
             }
         }
         .onReceive(NotificationCenter.default.publisher(
@@ -522,20 +650,26 @@ struct WawonaMainWindowView: View {
             router.showSettings()
         }
         .backport.onChange(of: router.isSettingsPresented) { _, presented in
+            #if os(macOS)
             if presented {
-                router.settingsOwnsWindowToolbar = true
-                machinesSplitMounted = false
-                DispatchQueue.main.async {
-                    settingsHostMounted = true
-                }
+                WWNMacMainWindowTabbing.ensureUnifiedToolbar()
             } else {
-                settingsHostMounted = false
-                DispatchQueue.main.async {
-                    machinesSplitMounted = true
-                    router.settingsOwnsWindowToolbar = false
+                // Toolbar reclaim after cover settles (see dismissSettings delay).
+                DispatchQueue.main.asyncAfter(
+                    deadline: .now() + WWNMainWindowRouter.settingsCoverUnmountDelay
+                ) {
+                    if !router.isSettingsPresented {
+                        WWNMacMainWindowTabbing.ensureUnifiedToolbar()
+                    }
                 }
             }
+            #else
+            _ = presented
+            #endif
         }
+        #if os(macOS)
+        .onAppear { WWNMacMainWindowTabbing.ensureUnifiedToolbar() }
+        #endif
         .backport.onChange(of: model.sections) { _, newValue in
             DispatchQueue.main.async {
                 router.validate(sections: newValue)
@@ -611,9 +745,7 @@ struct WawonaMainWindowView: View {
 
     @ViewBuilder
     private var splitView: some View {
-        if !machinesSplitMounted {
-            detail
-        } else if #available(iOS 16.0, tvOS 16.0, macOS 13.0, *) {
+        if #available(iOS 16.0, tvOS 16.0, macOS 13.0, *) {
             NavigationSplitView(columnVisibility: Binding(
                 get: { showSidebar ? .all : .detailOnly },
                 set: { showSidebar = $0 != .detailOnly }
@@ -653,6 +785,10 @@ struct WawonaMainWindowView: View {
 
     private var sidebar: some View {
         List(selection: $listSelection) {
+            // Safari-style "N Tabs" above Machines. Overview is a toolbar
+            // button, not a flat sidebar row.
+            nTabsSidebarSection
+
             Section(header: Text("Machines")) {
                 // TN3154: NavigationLink(value:) + .tag. Not Button (double chrome).
                 sidebarRow(
@@ -661,13 +797,6 @@ struct WawonaMainWindowView: View {
                     systemImage: "desktopcomputer",
                     color: Self.machinesSidebarIndigo,
                     accessibilityID: WWNA11y.machinesRoot
-                )
-                sidebarRow(
-                    destination: .tabOverview,
-                    title: "Tab Overview",
-                    systemImage: "square.on.square",
-                    color: Self.tabOverviewSidebarBlue,
-                    accessibilityID: "wwn.tabOverview"
                 )
             }
 
@@ -742,6 +871,145 @@ struct WawonaMainWindowView: View {
         Color(UIColor.systemBlue)
         #endif
     }
+
+    /// Safari "N Tabs" expandable group. Children are indented nested toplevels.
+    /// Hidden when there are zero nested tabs. Overview opens from toolbar.
+    @ViewBuilder
+    private var nTabsSidebarSection: some View {
+        if nestedTabs.nestedCount > 0 {
+            let binding = Binding(
+                get: { nestedTabs.tabsSectionExpanded },
+                set: { nestedTabs.tabsSectionExpanded = $0 }
+            )
+            if #available(iOS 14.0, macOS 11.0, tvOS 14.0, visionOS 1.0, *) {
+                DisclosureGroup(isExpanded: binding) {
+                    ForEach(nestedTabs.nestedTabs) { tab in
+                        nestedTabSidebarRow(tab)
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "square.on.square")
+                            .foregroundColor(Self.tabOverviewSidebarBlue)
+                        Text(nestedTabs.tabsSectionTitle)
+                    }
+                    .accessibility(identifier: "wwn.tabs.section")
+                    .accessibility(label: Text(nestedTabs.tabsSectionTitle))
+                }
+                #if os(macOS)
+                .onDrop(
+                    of: [UTType(exportedAs: WWNNestedClientTabStore.pasteboardType)],
+                    isTargeted: nil
+                ) { providers in
+                    nestDroppedWindow(from: providers)
+                }
+                #endif
+            } else {
+                Section(header: Text(nestedTabs.tabsSectionTitle)) {
+                    ForEach(nestedTabs.nestedTabs) { tab in
+                        nestedTabSidebarRow(tab)
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func nestedTabSidebarRow(_ tab: WWNNestedClientTab) -> some View {
+        let destination = WWNMainDestination.clientTab(tab.id)
+        Group {
+            #if os(macOS)
+            Button {
+                selectClientTab(tab.id)
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "macwindow")
+                        .foregroundColor(Self.tabOverviewSidebarBlue)
+                    Text(tab.displayTitle)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    Button {
+                        #if os(macOS)
+                        WWNHostWindowController.shared.closeTab(windowId: tab.id)
+                        #else
+                        WWNNestedClientTabStore.shared.remove(id: tab.id)
+                        #endif
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 9, weight: .bold))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibility(label: Text("Close \(tab.displayTitle)"))
+                }
+                .padding(.leading, 12)
+            }
+            .buttonStyle(.plain)
+            .tag(destination)
+            .onDrag {
+                NSItemProvider(
+                    item: NSNumber(value: tab.id),
+                    typeIdentifier: WWNNestedClientTabStore.pasteboardType
+                )
+            }
+            .contextMenu {
+                Button("Tear Off to Window") {
+                    WWNHostWindowController.shared.tearOff(windowId: tab.id)
+                }
+                Button("Show Tab Overview") {
+                    listSelection = .tabOverview
+                }
+            }
+            #else
+            sidebarRow(
+                destination: destination,
+                title: tab.displayTitle,
+                systemImage: "macwindow",
+                color: Self.tabOverviewSidebarBlue,
+                accessibilityID: "wwn.tabs.tab.\(tab.id)"
+            )
+            .padding(.leading, 12)
+            #endif
+        }
+        .accessibility(identifier: "wwn.tabs.tab.\(tab.id)")
+    }
+
+    private func selectClientTab(_ windowId: UInt64) {
+        listSelection = .clientTab(windowId)
+        #if os(macOS)
+        WWNHostWindowController.shared.focusNested(windowId: windowId)
+        #else
+        WWNNestedClientTabStore.shared.focus(id: windowId)
+        NotificationCenter.default.post(
+            name: Notification.Name("WWNShowSessionSurfaceNotification"),
+            object: nil,
+            userInfo: ["source": "focus-nested-tab", "reason": "window-\(windowId)"]
+        )
+        #endif
+    }
+
+    #if os(macOS)
+    private func nestDroppedWindow(from providers: [NSItemProvider]) -> Bool {
+        guard let provider = providers.first else { return false }
+        provider.loadItem(
+            forTypeIdentifier: WWNNestedClientTabStore.pasteboardType,
+            options: nil
+        ) { item, _ in
+            let id: UInt64?
+            if let num = item as? NSNumber {
+                id = num.uint64Value
+            } else if let data = item as? Data, data.count >= 8 {
+                id = data.withUnsafeBytes { $0.load(as: UInt64.self) }
+            } else {
+                id = nil
+            }
+            guard let windowId = id else { return }
+            DispatchQueue.main.async {
+                WWNHostWindowController.shared.nest(windowId: windowId)
+                selectClientTab(windowId)
+            }
+        }
+        return true
+    }
+    #endif
 
     /// Apple TN3154 on iOS: `List(selection:)` + `NavigationLink(value:)` + `.tag`.
     /// The split is always regular-width on iOS, so this highlights the row
@@ -858,18 +1126,13 @@ struct WawonaMainWindowView: View {
                 // it out deinits IlandPresenter; Focus then remounts an empty
                 // Metal layer (black) until the client paints again. Static
                 // wasm like hello-wasi-gui often never repaints.
-                ZStack {
-                    if router.sessionSurfaceMounted {
-                        #if !SWIFT_PACKAGE && (os(macOS) || os(iOS) || os(visionOS))
-                        CompositorBridge()
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .opacity(0)
-                            .allowsHitTesting(false)
-                            .accessibility(hidden: true)
-                        #endif
-                    }
-                    WWNTabOverviewView()
-                }
+                //
+                // Tabbed Start: Metal Present is visible only here (never on
+                // Machines). Card grid when parked; Focus reveals Present +
+                // the in-section client tab strip (2+ tabs only).
+                tabOverviewPane
+            } else if case .clientTab? = router.selection {
+                tabOverviewPane
             } else {
                 machinesPane
             }
@@ -878,9 +1141,72 @@ struct WawonaMainWindowView: View {
 
     private var isMachinesDestination: Bool {
         switch router.selection {
-        case .machines?, .session?, .tabOverview?, .machinesTag?, nil: return true
+        case .machines?, .session?, .tabOverview?, .clientTab?, .machinesTag?, nil:
+            return true
         default: return false
         }
+    }
+
+    /// Tab Overview hosts the card grid and (when Focused) Metal Present +
+    /// the in-section client tab strip (Safari: only when 2+ nested tabs).
+    /// Never a global AppKit window tab bar. Overview opens from toolbar.
+    @ViewBuilder
+    private var tabOverviewPane: some View {
+        ZStack(alignment: .top) {
+            if router.sessionSurfaceMounted {
+                #if !SWIFT_PACKAGE && (os(macOS) || os(iOS) || os(visionOS))
+                CompositorBridge()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .opacity(router.sessionSurfaceVisible ? 1 : 0)
+                    .allowsHitTesting(router.sessionSurfaceVisible)
+                    .accessibility(hidden: !router.sessionSurfaceVisible)
+                #endif
+            }
+            if !router.sessionSurfaceVisible {
+                #if os(macOS)
+                Color(nsColor: .windowBackgroundColor)
+                    .ignoresSafeArea()
+                #elseif os(iOS) || os(visionOS) || os(tvOS)
+                Color(UIColor.systemBackground)
+                    .edgesIgnoringSafeArea(.all)
+                #endif
+                WWNTabOverviewView()
+            } else if nestedTabs.showsSessionTabBar {
+                WWNTabOverviewSessionTabBar(
+                    onShowOverview: { router.showTabOverview() }
+                )
+            }
+        }
+        #if os(macOS)
+        .onDrop(
+            of: [UTType(exportedAs: WWNNestedClientTabStore.pasteboardType)],
+            isTargeted: nil
+        ) { providers in
+            nestDroppedWindow(from: providers)
+        }
+        #endif
+        #if os(iOS) || os(tvOS) || os(visionOS)
+        .navigationBarHidden(router.sessionSurfaceVisible)
+        #endif
+        #if os(iOS)
+        .modifier(WWNSessionHideToolbarWhenVisible(active: router.sessionSurfaceVisible))
+        #endif
+        #if os(iOS) || os(visionOS)
+        .modifier(WWNSessionSafeAreaModifier(
+            respectSafeArea: respectSafeArea,
+            sessionVisible: router.sessionSurfaceVisible
+        ))
+        .modifier(WWNSessionStatusBarModifier(
+            hideStatusBar: router.sessionSurfaceVisible && !respectSafeArea
+        ))
+        .modifier(WWNSessionSurfaceGestureModifier(
+            showSidebar: $showSidebar,
+            sessionVisible: router.sessionSurfaceVisible,
+            onShakePark: {
+                router.showTabOverview()
+            }
+        ))
+        #endif
     }
 
     private var respectSafeArea: Bool {
@@ -895,72 +1221,35 @@ struct WawonaMainWindowView: View {
     }
 
     private var machinesPane: some View {
-        // Mount Metal when a Wayland/VM session needs the presenter (SHM drain).
-        // Visible only after Focus / Tab Overview. Start keeps Machines + Terminal.
+        // Mount Metal for SHM/DRM drain while Start runs, but never reveal
+        // Present here. Tabbed clients show only under Tab Overview; New
+        // Window uses `WWNSessionWindowPresenter`. Machines stays the grid.
         ZStack {
-            // visible implies mount. visible=1 + mounted=0 was a black empty
-            // ZStack (no Metal, no Machines grid) during AUTO_START.
-            if router.sessionSurfaceMounted || router.sessionSurfaceVisible {
+            if router.sessionSurfaceMounted {
                 #if !SWIFT_PACKAGE && (os(macOS) || os(iOS) || os(visionOS))
-                // macOS: stay inside contentLayoutRect so the titled / tabbed
-                // chrome is not drawn over Wayland (weston-smoke / SHM).
-                // iOS / visionOS: Respect Safe Area is applied on the pane.
                 CompositorBridge()
                     .id("wwn-compositor-bridge")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .opacity(router.sessionSurfaceVisible ? 1 : 0)
-                    .allowsHitTesting(router.sessionSurfaceVisible)
-                    .accessibility(hidden: !router.sessionSurfaceVisible)
+                    .opacity(0)
+                    .allowsHitTesting(false)
+                    .accessibility(hidden: true)
                 #endif
             }
-            if !router.sessionSurfaceVisible {
-                WWNMachinesGridView(
-                    onConnect: onConnect,
-                    filterTagID: activeTagFilterID,
-                    onClearTagFilter: { router.showMachines() }
-                )
-            }
+            WWNMachinesGridView(
+                onConnect: onConnect,
+                filterTagID: activeTagFilterID,
+                onClearTagFilter: { router.showMachines() }
+            )
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        #if os(iOS) || os(visionOS)
-        // Whole pane: Respect Safe Area off → edge-to-edge phone; on → notch/home inset.
-        .modifier(WWNSessionSafeAreaModifier(
-            respectSafeArea: respectSafeArea,
-            sessionVisible: router.sessionSurfaceVisible
-        ))
-        .modifier(WWNSessionStatusBarModifier(
-            hideStatusBar: router.sessionSurfaceVisible && !respectSafeArea
-        ))
-        #endif
-        #if os(iOS) || os(tvOS) || os(visionOS)
-        .navigationBarHidden(router.sessionSurfaceVisible)
-        #endif
-        #if os(iOS)
-        .modifier(WWNSessionHideToolbarWhenVisible(active: router.sessionSurfaceVisible))
-        #endif
-        #if os(iOS) || os(visionOS)
-        .modifier(WWNSessionSurfaceGestureModifier(
-            showSidebar: $showSidebar,
-            sessionVisible: router.sessionSurfaceVisible,
-            onShakePark: {
-                router.hideSessionSurface()
-            }
-        ))
-        #endif
-        // Sidebar Machines / tag / Tab Overview parks compositor chrome.
+        // Sidebar Machines / tag / project parks Present. Tab Overview keeps
+        // Focus Present (showSessionSurface sets selection=.tabOverview).
         .backport.onChange(of: router.selection) { _, newValue in
             switch newValue {
-            case .machines?, .machinesTag?, .tabOverview?, .projectStatus?:
+            case .machines?, .machinesTag?, .projectStatus?, .session?:
                 if router.sessionSurfaceVisible {
                     router.sessionSurfaceVisible = false
                 }
-                #if os(iOS) || os(visionOS)
-                if case .tabOverview? = newValue {
-                    MainActor.assumeIsolated {
-                        WWNIosGuestConsole.shared.parkForCompositor()
-                    }
-                }
-                #endif
             default:
                 break
             }
@@ -1007,23 +1296,26 @@ struct WawonaMainWindowView: View {
         #if os(iOS) || os(visionOS)
         WWNHostKeyboard.dismiss()
         #endif
-        // Sidebar List selection only writes `router.selection`. Tab Overview
-        // needs the same path as `showTabOverview()`: snapshot thumbnails while
-        // Metal still shows, then park Present. Without this, macOS
-        // NavigationSplitView row taps land on empty cards / stale chrome.
+        // Sidebar List → Tab Overview: snapshot thumbs. Do not force-park
+        // Present here; Focus / client-attach calls showSessionSurface with
+        // visible=1 on the same selection. Re-tap Overview via tab-bar
+        // "Show Overview" (`showTabOverview`) parks deliberately.
         if case .tabOverview? = router.selection {
             NotificationCenter.default.post(
                 name: Notification.Name("WWNCaptureActiveMachineThumbnailNotification"),
                 object: nil
             )
-            #if os(iOS) || os(visionOS)
-            MainActor.assumeIsolated {
-                WWNIosGuestConsole.shared.parkForCompositor()
-            }
+        }
+        if case .clientTab(let windowId)? = router.selection {
+            #if os(macOS)
+            WWNHostWindowController.shared.focusNested(windowId: windowId)
+            #else
+            WWNNestedClientTabStore.shared.focus(id: windowId)
             #endif
-            if router.sessionSurfaceVisible {
-                router.sessionSurfaceVisible = false
-            }
+        }
+        // Legacy `.session` destination: Present moved under Tab Overview.
+        if case .session? = router.selection {
+            router.selection = .tabOverview
         }
         #if os(iOS)
         if isPhonePortrait {
@@ -1049,8 +1341,12 @@ struct WawonaMainWindowView: View {
         } else {
             showSidebar = !isPhonePortrait
         }
-        #elseif os(visionOS)
-        showSidebar = true
+        #elseif os(macOS) || os(tvOS) || os(visionOS)
+        // Tab Overview / client tabs keep the sidebar column. Never leave
+        // macOS stuck in `.detailOnly` after onAppear / selection sync.
+        if !router.sessionSurfaceVisible {
+            showSidebar = true
+        }
         #endif
     }
 }

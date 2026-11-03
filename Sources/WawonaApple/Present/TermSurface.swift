@@ -146,7 +146,22 @@ public final class WWNTermSurface: NSView {
     public override func layout() {
         super.layout()
         gpu.frame = bounds
+        syncDrawableScale()
         fit()
+    }
+
+    public override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        syncDrawableScale()
+    }
+
+    private func syncDrawableScale() {
+        let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
+        gpu.layer?.contentsScale = scale
+        gpu.syncBackingScale(scale)
+        let w = max(1, bounds.width * scale)
+        let h = max(1, bounds.height * scale)
+        gpu.drawableSize = CGSize(width: w, height: h)
     }
 
     public override func keyDown(with event: NSEvent) {
