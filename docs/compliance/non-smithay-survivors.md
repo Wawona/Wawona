@@ -55,6 +55,11 @@ These interfaces remain custom-owned in the current runtime and are intentionall
   - Equivalent status: `no-equivalent`
   - Exposure: `desktop-host`, `full-dev`
 
+- `zwlr_input_inhibit_manager_v1`
+  - Module: `src/core/wayland/wlr/input_inhibitor.rs`
+  - Equivalent status: `no-equivalent`
+  - Exposure: `desktop-host`, `full-dev`
+
 - `zwlr_data_control_manager_v1`
   - Module: `src/core/wayland/wlr/mod.rs`
   - Equivalent status: `no-equivalent`
