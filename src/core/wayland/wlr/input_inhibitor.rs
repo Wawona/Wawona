@@ -2,6 +2,8 @@
 //!
 //! Deprecated upstream in favor of `ext-session-lock-v1`, but still required by
 //! older locker clients. At most one inhibitor may be active compositor-wide.
+//!
+//! Runtime gate: caller requires `policy::allow_desktop_extensions(protocol_profile)`.
 
 use wayland_protocols_wlr::input_inhibitor::v1::server::{
     zwlr_input_inhibit_manager_v1::{self, ZwlrInputInhibitManagerV1},

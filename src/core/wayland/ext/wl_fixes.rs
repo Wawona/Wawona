@@ -3,6 +3,9 @@
 //! Smithay 0.7 (`wayland_frontend` only) has no `smithay::wayland::fixes`
 //! module yet; this matches the upstream Smithay master handler shape so a
 //! future crate bump can swap in `FixesState` without protocol churn.
+//!
+//! Runtime gate: store-safe-core. Advertised for every `protocol_profile`
+//! (no `allow_*` desktop/privileged filter).
 
 use wayland_server::{
     protocol::wl_fixes::{self, WlFixes},

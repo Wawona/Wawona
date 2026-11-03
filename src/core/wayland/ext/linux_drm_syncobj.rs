@@ -5,6 +5,9 @@
 //! timeline objects, and treat acquire points as already signalled so commits
 //! proceed. Release points are signalled when the associated buffer is
 //! released by the compositor.
+//!
+//! Runtime gate: caller requires `policy::allow_desktop_extensions(protocol_profile)`
+//! (`desktop-protocols` feature).
 
 use std::collections::HashMap;
 use std::os::fd::OwnedFd;

@@ -4,6 +4,9 @@
 //! not enable (`wayland_frontend` only). This is a protocol-complete path that
 //! opens a DRM node on Linux, advertises zero leaseable connectors by default,
 //! and rejects lease requests until a backend can supply CRTCs/planes.
+//!
+//! Runtime gate: caller requires `policy::allow_desktop_extensions(protocol_profile)`
+//! plus a live DRM node (`register_drm_lease` returns `None` without one).
 
 use std::collections::HashMap;
 use std::fs::OpenOptions;

@@ -18,7 +18,7 @@ Each section table is sorted **Functional → Partial → Stub → Missing**, th
 
 Profiles: `store-safe`, `store-safe-remote`, `desktop-host`, `full-dev`. Plasma and other desktop-only globals follow `ProtocolProfile`.
 
-This generation advertised **167** globals. Catalog tracks **168** interfaces (**0** Missing).
+This generation advertised **166** globals. Catalog tracks **168** interfaces (**0** Missing).
 
 ## Core
 
@@ -88,7 +88,7 @@ This generation advertised **167** globals. Catalog tracks **168** interfaces (*
 | `wp_commit_timing_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/commit_timing.rs` | Functional | [wayland.app](https://wayland.app/protocols/commit-timing-v1#wp_commit_timing_manager_v1) |
 | `wp_content_type_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/content_type.rs` | Functional | [wayland.app](https://wayland.app/protocols/content-type-v1#wp_content_type_manager_v1) |
 | `wp_cursor_shape_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/cursor_shape.rs` | Functional | [wayland.app](https://wayland.app/protocols/cursor-shape-v1#wp_cursor_shape_manager_v1) |
-| `wp_drm_lease_device_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/drm_lease.rs` | Functional | [wayland.app](https://wayland.app/protocols/drm-lease-v1#wp_drm_lease_device_v1) |
+| `wp_drm_lease_device_v1` | - | ext / wayland-protocols | `src/core/wayland/ext/drm_lease.rs` | Functional | [wayland.app](https://wayland.app/protocols/drm-lease-v1#wp_drm_lease_device_v1) |
 | `wp_fifo_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/fifo.rs` | Functional | [wayland.app](https://wayland.app/protocols/fifo-v1#wp_fifo_manager_v1) |
 | `wp_fractional_scale_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/fractional_scale.rs` | Functional | [wayland.app](https://wayland.app/protocols/fractional-scale-v1#wp_fractional_scale_manager_v1) |
 | `wp_linux_drm_syncobj_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/linux_drm_syncobj.rs` | Functional | [wayland.app](https://wayland.app/protocols/linux-drm-syncobj-v1#wp_linux_drm_syncobj_manager_v1) |
