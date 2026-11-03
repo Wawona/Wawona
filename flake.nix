@@ -123,12 +123,14 @@
     # Wawona compiles apple/Keyboard from this tree. Cited: docs/wwn-repo-dag.md.
     toolbar-keys.url = "github:Wawona/ToolbarKeys/development";
     toolbar-keys.flake = false;
-    # VT screen for src/term/screen.rs. Flake input so the sandbox never
-    # follows a host-only sibling symlink (file:// breaks GHA).
+    # Wawona Terminal source (libghostty-rs UniFFI + native hosts). flake=false
+    # so sandbox never follows a host-only sibling symlink (file:// breaks GHA).
+    # Standalone recipe: Terminal/flake.nix (zig2nix + ghostty VT + crane/cargo).
     terminal.url = "github:Wawona/Terminal/development";
     terminal.flake = false;
-    # Rust libghostty product packaging (ghostty_* ABI). VT lives in Terminal.
-    # Wawona Terminal = native chrome + this grid. Cited: docs/wwn-repo-dag.md.
+    # Ghostty VT (Zig). Pin matches Terminal/libghostty-rs GHOSTTY_COMMIT.
+    # Used by `nix run .#terminal` pkg-config path. Cited: docs/wwn-repo-dag.md.
+    ghostty.url = "github:ghostty-org/ghostty/521cf2c5d30bd48028ca61546c64e7913764073d";
   };
 
   outputs = inputs @ {
@@ -807,6 +809,16 @@
           wawona-tools = pkgs.callPackage ./dependencies/clients/wawona-tools {};
           # DejaVu (UI/CSD) + DejaVuSansM Nerd Font Mono (terminals).
           wawona-bundled-fonts = pkgs.callPackage ./dependencies/libs/fonts {};
+
+          # Standalone Wawona Terminal (`nix run .#terminal`).
+          # Zig Ghostty VT (ghostty flake) + Rust libghostty-rs via pkg-config.
+          # Full recipe lives in Terminal/flake.nix (zig2nix + ghostty).
+          terminal = import ./dependencies/wawona/terminal-standalone.nix {
+            inherit pkgs;
+            terminalSrc = inputs.terminal;
+            libghosttyVt = inputs.ghostty.packages.${system}.libghostty-vt;
+          };
+          wawona-terminal = terminal;
 
           # macOS packages the aarch64-linux guest Waypipe tree. Expose the
           # Linux build so CI can warm its closure before the Darwin product
@@ -3219,6 +3231,17 @@
           program = "${systemPackages.local-runner}/bin/local-runner";
         };
       }
+      // (pkgs.lib.optionalAttrs (systemPackages ? terminal) {
+        # Standalone Wawona Terminal (libghostty-rs). macOS or Linux.
+        terminal = {
+          type = "app";
+          program = "${systemPackages.terminal}/bin/wawona-terminal";
+        };
+        wawona-terminal = {
+          type = "app";
+          program = "${systemPackages.terminal}/bin/wawona-terminal";
+        };
+      })
       // (pkgs.lib.optionalAttrs (systemPackages ? wawona-android) {
         # Android apps are host-cross packages; only expose when the package set
         # actually provides them (avoids flake check forcing angle-android on
