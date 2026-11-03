@@ -34,6 +34,7 @@ private func wawona_wayland_socket_is_live(_ path: UnsafePointer<CChar>?) -> Int
 /// `CWindowEventType` values that mean a client mapped something the user
 /// should see above Wawona Terminal.
 private let wwnWindowEventCreated: UInt64 = 0
+private let wwnWindowEventDestroyed: UInt64 = 1
 private let wwnWindowEventPopupCreated: UInt64 = 4
 
 @objc(WWNCompositorBridge)
@@ -62,6 +63,8 @@ public final class WWNCompositorBridge: NSObject {
     /// Last seen Wayland client count. Rising edge reveals Present (Terminal
     /// may spawn clients; one-shot would miss the second `wasm` launch).
     private var lastWaylandClientCount: UInt32 = 0
+    /// Mapped toplevel/popup count. Hits zero → clear frozen last SHM frame.
+    private var mappedWaylandWindowCount: Int = 0
     #if canImport(AppKit)
     @objc public weak var containerView: NSView?
     @objc public weak var externalMirrorView: NSView?
@@ -120,15 +123,18 @@ public final class WWNCompositorBridge: NSObject {
     @objc public func stop() {
         // Quitting Machines must leave the compositor-host socket up (#223).
         if usingExternalHostCompositor {
-            usingExternalHostCompositor = false
-            lastWaylandClientCount = 0
-            return
+        usingExternalHostCompositor = false
+        lastWaylandClientCount = 0
+        mappedWaylandWindowCount = 0
+        return
         }
         stopEventPump()
         if let core {
             _ = WWNCoreStop(core)
         }
         lastWaylandClientCount = 0
+        mappedWaylandWindowCount = 0
+        clearGuestPresentAfterLastWindow()
     }
 
     private func startEventPumpIfNeeded() {
@@ -223,11 +229,14 @@ public final class WWNCompositorBridge: NSObject {
         let process: () -> Void = { [weak self] in
             guard let self else { return }
             _ = WWNCoreProcessEvents(self.core)
-            let mappedWindow = self.drainWindowEvents()
+            let drainResult = self.drainWindowEvents()
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
-                if mappedWindow {
+                if drainResult.mappedWindow {
                     self.requestSessionSurface(reason: "wayland-window")
+                }
+                if drainResult.clearedLastWindow {
+                    self.clearGuestPresentAfterLastWindow()
                 }
                 self.requestSessionSurfaceIfClientsAttached()
                 // SHM / IOSurface clients need PopPendingBuffer → Metal.
@@ -245,21 +254,39 @@ public final class WWNCompositorBridge: NSObject {
         }
     }
 
+    private struct WindowDrainResult {
+        var mappedWindow = false
+        var clearedLastWindow = false
+    }
+
     /// Pop `CWindowEvent`s. A Created or PopupCreated toplevel is a Wayland
     /// client the Terminal started. Client count alone misses that: the
     /// connection can already be open, or the count never rises, and the
     /// Terminal sheet stays on top until Done.
-    private func drainWindowEvents() -> Bool {
-        guard let core else { return false }
-        var mapped = false
+    private func drainWindowEvents() -> WindowDrainResult {
+        var result = WindowDrainResult()
+        guard let core else { return result }
         while let event = WWNCorePopWindowEvent(core) {
             let type = event.load(as: UInt64.self)
             if type == wwnWindowEventCreated || type == wwnWindowEventPopupCreated {
-                mapped = true
+                mappedWaylandWindowCount += 1
+                result.mappedWindow = true
+            } else if type == wwnWindowEventDestroyed {
+                mappedWaylandWindowCount = max(0, mappedWaylandWindowCount - 1)
+                if mappedWaylandWindowCount == 0 {
+                    result.clearedLastWindow = true
+                }
             }
             WWNWindowEventFree(event)
         }
-        return mapped
+        return result
+    }
+
+    private func clearGuestPresentAfterLastWindow() {
+        #if canImport(Metal) && !os(watchOS)
+        activeIlandPresenterRef()?.clearGuestPresent(reason: "last-wayland-window-destroyed")
+        #endif
+        NSLog("[WWNCompositorBridge] cleared guest present (last window destroyed)")
     }
 
     /// CLI MicroVM / external waypipe / Native Shell `wasm` never should

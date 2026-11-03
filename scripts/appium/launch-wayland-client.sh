@@ -37,7 +37,7 @@ recipe_for() {
     niri) echo "colima:niri" ;;
     swaywm) echo "colima:sway" ;;
     hyprland) echo "colima:Hyprland" ;;
-    weston_simple_shm) echo "colima:weston-simple-shm" ;;
+    weston_simple_shm|weston-simple-shm) echo "colima:weston-simple-shm" ;;
     foot) echo "colima:foot" ;;
     ghostty_terminal) echo "colima:ghostty" ;;
     konsole) echo "colima:konsole" ;;
@@ -168,7 +168,7 @@ launch_nested() {
     swaywm) cmd="sway" ;;
     hyprland) cmd="Hyprland" ;;
     weston_terminal) cmd="weston-terminal" ;;
-    weston_simple_shm) cmd="weston-simple-shm" ;;
+    weston_simple_shm|weston-simple-shm) cmd="weston-simple-shm" ;;
     foot) cmd="foot" ;;
     kde_plasma_de|kde_plasma_mobile_de) cmd="plasmashell" ;;
     gnome_de) cmd="gnome-shell --wayland" ;;

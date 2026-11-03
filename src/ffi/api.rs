@@ -1659,6 +1659,11 @@ impl WawonaCore {
                     );
                 }
                 self.ffi_windows.write_recover().remove(&(window_id as u64));
+                // Drop unpresented SHM so Present cannot keep a zombie frame
+                // after weston-simple-shm (or any client) exits.
+                self.pending_buffers.write_recover().remove(&WindowId {
+                    id: window_id as u64,
+                });
                 self.pending_window_events
                     .write_recover()
                     .push(WindowEvent::Destroyed {

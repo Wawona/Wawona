@@ -41,6 +41,19 @@ private enum CBufferDataLayout {
 /// Drain Wayland SHM / IOSurface pending buffers into the host Metal layer.
 /// Android does this in `android_jni.c`. Apple lost the ObjC `WWNView` loop.
 private enum CompositorShmPresent {
+    /// Held after `nextDrawable` fail. Retry next vsync; do not ack yet.
+    /// Ack-without-blit left weston-simple-shm / waypipe on a frozen last frame
+    /// while the client kept running (drawable pool exhausted by the old
+    /// drain-all loop).
+    private static var heldRaw: UnsafeMutableRawPointer?
+
+    static func discardHeld() {
+        if let held = heldRaw {
+            heldRaw = nil
+            WWNBufferDataFree(held)
+        }
+    }
+
     static func drain(core: UnsafeMutableRawPointer?, engine: IlandPresentEngine) {
         guard let core else { return }
         // Late-mounted session surface starts at drawableSize 0. Popping now
@@ -60,47 +73,64 @@ private enum CompositorShmPresent {
             return
         }
 
-        var presented = false
-        while true {
-            guard let raw = WWNCorePopPendingBuffer(core) else { break }
-            let base = UnsafeRawPointer(raw)
-            let surfaceId = base.load(fromByteOffset: CBufferDataLayout.surfaceId, as: UInt32.self)
-            let bufferId = base.load(fromByteOffset: CBufferDataLayout.bufferId, as: UInt64.self)
-            let width = Int(base.load(fromByteOffset: CBufferDataLayout.width, as: UInt32.self))
-            let height = Int(base.load(fromByteOffset: CBufferDataLayout.height, as: UInt32.self))
-            let stride = Int(base.load(fromByteOffset: CBufferDataLayout.stride, as: UInt32.self))
-            let iosurfaceId = base.load(fromByteOffset: CBufferDataLayout.iosurfaceId, as: UInt32.self)
-            let yFlip = base.load(fromByteOffset: CBufferDataLayout.cpuYFlip, as: UInt8.self) != 0
-            let pixels = base.load(
-                fromByteOffset: CBufferDataLayout.pixels, as: UnsafeMutablePointer<UInt8>?.self)
+        // One successful present per pump tick (≈ vsync). Extra pending buffers
+        // stay in Rust until the next tick so CAMetalLayer drawables are not
+        // exhausted inside a single drain.
+        let raw: UnsafeMutableRawPointer
+        if let held = heldRaw {
+            heldRaw = nil
+            raw = held
+        } else if let popped = WWNCorePopPendingBuffer(core) {
+            raw = popped
+        } else {
+            return
+        }
 
-            var ok = false
-            if iosurfaceId != 0, let surface = IOSurfaceLookup(IOSurfaceID(iosurfaceId)) {
-                ok = engine.presentCompositorIOSurface(
-                    surface,
-                    bottomUpRows: yFlip,
-                    normalizedContentRect: CGRect(x: 0, y: 0, width: 1, height: 1)
-                )
-            } else if let pixels, width > 0, height > 0, stride > 0 {
-                ok = engine.presentBGRAPixels(
-                    width: width,
-                    height: height,
-                    stride: stride,
-                    pixels: pixels,
-                    bottomUp: yFlip
-                )
-            }
-            // Always complete the frame callback. A failed Metal blit must not
-            // leave the Wayland client waiting forever (black session surface).
+        let base = UnsafeRawPointer(raw)
+        let surfaceId = base.load(fromByteOffset: CBufferDataLayout.surfaceId, as: UInt32.self)
+        let bufferId = base.load(fromByteOffset: CBufferDataLayout.bufferId, as: UInt64.self)
+        let width = Int(base.load(fromByteOffset: CBufferDataLayout.width, as: UInt32.self))
+        let height = Int(base.load(fromByteOffset: CBufferDataLayout.height, as: UInt32.self))
+        let stride = Int(base.load(fromByteOffset: CBufferDataLayout.stride, as: UInt32.self))
+        let iosurfaceId = base.load(fromByteOffset: CBufferDataLayout.iosurfaceId, as: UInt32.self)
+        let yFlip = base.load(fromByteOffset: CBufferDataLayout.cpuYFlip, as: UInt8.self) != 0
+        let pixels = base.load(
+            fromByteOffset: CBufferDataLayout.pixels, as: UnsafeMutablePointer<UInt8>?.self)
+
+        var ok = false
+        if iosurfaceId != 0, let surface = IOSurfaceLookup(IOSurfaceID(iosurfaceId)) {
+            ok = engine.presentCompositorIOSurface(
+                surface,
+                bottomUpRows: yFlip,
+                normalizedContentRect: CGRect(x: 0, y: 0, width: 1, height: 1)
+            )
+        } else if let pixels, width > 0, height > 0, stride > 0 {
+            ok = engine.presentBGRAPixels(
+                width: width,
+                height: height,
+                stride: stride,
+                pixels: pixels,
+                bottomUp: yFlip
+            )
+        }
+
+        if ok {
             WWNCoreNotifyFramePresented(
                 core, surfaceId, bufferId, WWNCoreGetTimestampMs(core))
-            if ok {
-                presented = true
-            }
             WWNBufferDataFree(raw)
-        }
-        if presented {
             WWNCoreFlushClientsDrain(core)
+        } else {
+            // Keep the buffer for the next tick. Do not frame_done: the client
+            // must wait until Metal actually blits (avoids frozen last frame).
+            heldRaw = raw
+            struct Once { static var logged = false }
+            if !Once.logged {
+                Once.logged = true
+                NSLog(
+                    "WWNShmPresent: present failed; holding buffer surf=%u for retry",
+                    surfaceId
+                )
+            }
         }
     }
 }
@@ -150,6 +180,7 @@ public final class IlandPresenterObjC: NSObject {
 
     @objc
     public func invalidate() {
+        CompositorShmPresent.discardHeld()
         IlandDrmBindings.setPresentCallback(nil, nil)
         if activeIlandPresenter === self {
             activeIlandPresenter = nil
@@ -166,6 +197,13 @@ public final class IlandPresenterObjC: NSObject {
     @objc(presentClearProofWithReason:)
     public func presentClearProof(reason: String) -> Bool {
         engine?.presentClearProof(reason: reason) ?? false
+    }
+
+    /// Hide the last guest frame (client gone). Avoids a frozen SHM plate.
+    @objc(clearGuestPresentWithReason:)
+    public func clearGuestPresent(reason: String) {
+        CompositorShmPresent.discardHeld()
+        engine?.clearGuestPresent(reason: reason)
     }
 
     @objc

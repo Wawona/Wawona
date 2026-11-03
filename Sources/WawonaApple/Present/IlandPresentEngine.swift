@@ -74,6 +74,19 @@ final class IlandPresentEngine {
         return true
     }
 
+    /// Drop the last guest blit when the Wayland toplevel is gone.
+    func clearGuestPresent(reason: String) {
+        if !Thread.isMainThread {
+            DispatchQueue.main.async { [weak self] in
+                self?.clearGuestPresent(reason: reason)
+            }
+            return
+        }
+        layer.opacity = 0
+        lastThumbnailPNG = nil
+        NSLog("[\(presentLogModule)] clearGuestPresent reason=\(reason)")
+    }
+
     func invalidate() {
         IlandDrmBindings.setPresentCallback(nil, nil)
     }
