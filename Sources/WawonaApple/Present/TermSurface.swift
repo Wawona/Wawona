@@ -153,6 +153,7 @@ public final class WWNTermSurface: NSView {
     public override func viewDidChangeBackingProperties() {
         super.viewDidChangeBackingProperties()
         syncDrawableScale()
+        redraw()
     }
 
     private func syncDrawableScale() {
