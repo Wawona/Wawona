@@ -23,8 +23,9 @@ cmake_install.cmake
 .AppleDouble
 .LSOverride
 
-# Wayland runtime
-wayland-*
+# Wayland runtime sockets (display names like wayland-0). Root-only so
+# protocols/**/wayland-*.xml stay trackable (wl_drm needed Functional proofs).
+/wayland-*
 !.github/workflows/wayland-conformance.yml
 !docs/compliance/wayland-protocol-manifest.toml
 !tools/wayland-protocol-gen/**
