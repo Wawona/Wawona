@@ -11,42 +11,42 @@ public typealias WWNTermReply = (Data) -> Void
 
 #if os(macOS)
 
-@_silgen_name("wwn_term_new")
-private func wwn_term_new(_ cols: UInt32, _ rows: UInt32) -> OpaquePointer?
-@_silgen_name("wwn_term_free")
-private func wwn_term_free(_ term: OpaquePointer?)
-@_silgen_name("wwn_term_resize")
-private func wwn_term_resize(_ term: OpaquePointer?, _ cols: UInt32, _ rows: UInt32)
-@_silgen_name("wwn_term_feed")
-private func wwn_term_feed(_ term: OpaquePointer?, _ bytes: UnsafePointer<UInt8>?, _ len: Int)
-@_silgen_name("wwn_term_viewport")
-private func wwn_term_viewport(
+@_silgen_name("ghostty_surface_new")
+private func ghostty_surface_new(_ cols: UInt32, _ rows: UInt32) -> OpaquePointer?
+@_silgen_name("ghostty_surface_free")
+private func ghostty_surface_free(_ term: OpaquePointer?)
+@_silgen_name("ghostty_surface_resize")
+private func ghostty_surface_resize(_ term: OpaquePointer?, _ cols: UInt32, _ rows: UInt32)
+@_silgen_name("ghostty_surface_write")
+private func ghostty_surface_write(_ term: OpaquePointer?, _ bytes: UnsafePointer<UInt8>?, _ len: Int)
+@_silgen_name("ghostty_surface_viewport")
+private func ghostty_surface_viewport(
     _ term: OpaquePointer?, _ origin: UInt32, _ out: UnsafeMutablePointer<WwnTermCell>?,
     _ cap: UInt32, _ cols: UnsafeMutablePointer<UInt32>?, _ rows: UnsafeMutablePointer<UInt32>?
 ) -> UInt32
-@_silgen_name("wwn_term_origin")
-private func wwn_term_origin(_ term: OpaquePointer?) -> UInt32
-@_silgen_name("wwn_term_title")
-private func wwn_term_title(
+@_silgen_name("ghostty_surface_origin")
+private func ghostty_surface_origin(_ term: OpaquePointer?) -> UInt32
+@_silgen_name("ghostty_surface_title")
+private func ghostty_surface_title(
     _ term: OpaquePointer?, _ out: UnsafeMutablePointer<UInt8>?, _ cap: UInt32
 ) -> UInt32
-@_silgen_name("wwn_term_string_free")
-private func wwn_term_string_free(_ ptr: UnsafeMutablePointer<CChar>?)
-@_silgen_name("wwn_term_encode_paste")
-private func wwn_term_encode_paste(
+@_silgen_name("ghostty_string_free")
+private func ghostty_string_free(_ ptr: UnsafeMutablePointer<CChar>?)
+@_silgen_name("ghostty_surface_encode_paste")
+private func ghostty_surface_encode_paste(
     _ term: OpaquePointer?, _ bytes: UnsafePointer<UInt8>?, _ len: Int
 ) -> UnsafeMutablePointer<CChar>?
-@_silgen_name("wwn_term_take_reply")
-private func wwn_term_take_reply(
+@_silgen_name("ghostty_surface_take_reply")
+private func ghostty_surface_take_reply(
     _ term: OpaquePointer?, _ buf: UnsafeMutablePointer<UInt8>?, _ cap: Int
 ) -> Int
-@_silgen_name("wwn_term_pointer")
-private func wwn_term_pointer(
+@_silgen_name("ghostty_surface_pointer")
+private func ghostty_surface_pointer(
     _ term: OpaquePointer?, _ button: UInt8, _ col: UInt32, _ row: UInt32,
     _ pressed: Int32, _ motion: Int32
 )
-@_silgen_name("wwn_term_set_cell_px")
-private func wwn_term_set_cell_px(_ term: OpaquePointer?, _ width: UInt32, _ height: UInt32)
+@_silgen_name("ghostty_surface_set_cell_px")
+private func ghostty_surface_set_cell_px(_ term: OpaquePointer?, _ width: UInt32, _ height: UInt32)
 @_silgen_name("wwn_term_image_count")
 private func wwn_term_image_count(_ term: OpaquePointer?) -> UInt32
 @_silgen_name("wwn_term_image_meta")
@@ -72,7 +72,7 @@ struct WwnTermImage {
     var rgbaLen: UInt32 = 0
 }
 
-/// AppKit host. The Rust viewport uploads once. Metal draws the grid.
+/// AppKit host. Rust libghostty viewport. Native Metal draws the grid (Wawona Terminal).
 @objc(WWNTermSurface)
 public final class WWNTermSurface: NSView {
     @objc public var onReply: WWNTermReply?
@@ -82,7 +82,7 @@ public final class WWNTermSurface: NSView {
     public var gridRows: UInt32 { rows }
 
     private var term: OpaquePointer?
-    private let gpu = TermGpuView(frame: .zero, device: nil)
+    private let gpu = GhosttyGpuView(frame: .zero, device: nil)
     private var grid = [WwnTermCell](repeating: WwnTermCell(cp: 32, fg: 0xE8E8E8, bg: 0, attrs: 0), count: 512 * 32)
     private var cols: UInt32 = 80
     private var rows: UInt32 = 24
@@ -94,7 +94,7 @@ public final class WWNTermSurface: NSView {
 
     public override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        term = wwn_term_new(cols, rows)
+        term = ghostty_surface_new(cols, rows)
         WawonaTerminalScrollback.apply(to: term)
         gpu.autoresizingMask = [.width, .height]
         gpu.frame = bounds
@@ -111,19 +111,32 @@ public final class WWNTermSurface: NSView {
 
     deinit {
         blinkTimer?.invalidate()
-        if let term { wwn_term_free(term) }
+        if let term { ghostty_surface_free(term) }
     }
 
     public override var acceptsFirstResponder: Bool { true }
 
     public override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
+    /// MTKView fills bounds for drawing only. Keep mouse + keys on this view.
+    public override func hitTest(_ point: NSPoint) -> NSView? {
+        bounds.contains(point) ? self : nil
+    }
+
+    public override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        WWNBundleShareEnvironment.registerBundledFontsIfNeeded()
+        guard let window else { return }
+        window.initialFirstResponder = self
+        window.makeFirstResponder(self)
+    }
+
     @objc(feed:)
     public func feed(_ bytes: Data) {
         guard let term, !bytes.isEmpty else { return }
         bytes.withUnsafeBytes { raw in
             guard let base = raw.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return }
-            wwn_term_feed(term, base, bytes.count)
+            ghostty_surface_write(term, base, bytes.count)
         }
         flushReply()
         redraw()
@@ -170,32 +183,43 @@ public final class WWNTermSurface: NSView {
         let data = Data(text.utf8)
         let wrapped = data.withUnsafeBytes { raw -> Data in
             guard let base = raw.baseAddress?.assumingMemoryBound(to: UInt8.self),
-                let ptr = wwn_term_encode_paste(term, base, data.count)
+                let ptr = ghostty_surface_encode_paste(term, base, data.count)
             else { return data }
             let text = String(cString: ptr)
-            wwn_term_string_free(ptr)
+            ghostty_string_free(ptr)
             return Data(text.utf8)
         }
         onReply?(wrapped)
     }
 
+    private func terminalMetricsFont() -> NSFont {
+        WWNBundleShareEnvironment.registerBundledFontsIfNeeded()
+        if let nerd = NSFont(name: "DejaVuSansM Nerd Font Mono", size: pointSize) {
+            return nerd
+        }
+        if let mono = NSFont(name: "DejaVu Sans Mono", size: pointSize) {
+            return mono
+        }
+        return NSFont.monospacedSystemFont(ofSize: pointSize, weight: .regular)
+    }
+
     private func fit() {
         guard let term, bounds.width > 1, bounds.height > 1 else { return }
-        let font = NSFont.monospacedSystemFont(ofSize: pointSize, weight: .regular)
+        let font = terminalMetricsFont()
         let cellW = max(1, ("M" as NSString).size(withAttributes: [.font: font]).width)
         let cellH = max(1, font.ascender - font.descender + font.leading)
         let nextCols = UInt32(min(512, max(20, Int((bounds.width - 16) / cellW))))
         let nextRows = UInt32(min(256, max(8, Int(bounds.height / cellH))))
         cellPxW = cellW
         cellPxH = cellH
-        wwn_term_set_cell_px(term, UInt32(max(1, cellW.rounded())), UInt32(max(1, cellH.rounded())))
+        ghostty_surface_set_cell_px(term, UInt32(max(1, cellW.rounded())), UInt32(max(1, cellH.rounded())))
         guard nextCols != cols || nextRows != rows else {
             redraw()
             return
         }
         cols = nextCols
         rows = nextRows
-        wwn_term_resize(term, cols, rows)
+        ghostty_surface_resize(term, cols, rows)
         onResize?(cols, rows)
         redraw()
     }
@@ -204,7 +228,7 @@ public final class WWNTermSurface: NSView {
         guard let term else { return }
         var buf = [UInt8](repeating: 0, count: 256)
         let n = buf.withUnsafeMutableBytes { raw in
-            wwn_term_title(term, raw.baseAddress?.assumingMemoryBound(to: UInt8.self), UInt32(raw.count))
+            ghostty_surface_title(term, raw.baseAddress?.assumingMemoryBound(to: UInt8.self), UInt32(raw.count))
         }
         guard n > 0, let title = String(bytes: buf.prefix(Int(n)), encoding: .utf8), !title.isEmpty else {
             return
@@ -216,7 +240,7 @@ public final class WWNTermSurface: NSView {
         guard let term else { return }
         var buf = [UInt8](repeating: 0, count: 256)
         let n = buf.withUnsafeMutableBytes { raw in
-            wwn_term_take_reply(term, raw.baseAddress?.assumingMemoryBound(to: UInt8.self), raw.count)
+            ghostty_surface_take_reply(term, raw.baseAddress?.assumingMemoryBound(to: UInt8.self), raw.count)
         }
         if n > 0 { onReply?(Data(buf.prefix(n))) }
     }
@@ -224,7 +248,7 @@ public final class WWNTermSurface: NSView {
     private func sendPointer(_ event: NSEvent, pressed: Bool, motion: Bool) {
         guard let term else { return }
         let point = convert(event.locationInWindow, from: nil)
-        let font = NSFont.monospacedSystemFont(ofSize: pointSize, weight: .regular)
+        let font = terminalMetricsFont()
         let cellW = max(1, ("M" as NSString).size(withAttributes: [.font: font]).width)
         let cellH = max(1, font.ascender - font.descender + font.leading)
         let col = UInt32(min(512, max(1, Int((point.x - 8) / cellW) + 1)))
@@ -236,7 +260,7 @@ public final class WWNTermSurface: NSView {
         case 1: button = 2
         default: button = 0
         }
-        wwn_term_pointer(term, button, col, row, pressed ? 1 : 0, motion ? 1 : 0)
+        ghostty_surface_pointer(term, button, col, row, pressed ? 1 : 0, motion ? 1 : 0)
         flushReply()
     }
 
@@ -252,8 +276,8 @@ public final class WWNTermSurface: NSView {
         var outCols: UInt32 = 0
         var outRows: UInt32 = 0
         let n = grid.withUnsafeMutableBufferPointer { buf in
-            wwn_term_viewport(
-                term, wwn_term_origin(term), buf.baseAddress, UInt32(buf.count), &outCols, &outRows
+            ghostty_surface_viewport(
+                term, ghostty_surface_origin(term), buf.baseAddress, UInt32(buf.count), &outCols, &outRows
             )
         }
         gpu.present(
@@ -347,14 +371,19 @@ private func macKeyBytes(_ event: NSEvent) -> [UInt8] {
     if flags.contains(.control), let byte = macControlByte(event) {
         return flags.contains(.option) ? [0x1B, byte] : [byte]
     }
-    if event.modifierFlags.contains(.option),
-        let ch = event.charactersIgnoringModifiers, ch.utf8.count == 1
+    // Option-as-Meta only when macOS did not compose an alternate glyph (å, Ω, …).
+    if flags.contains(.option),
+        !flags.contains(.command),
+        let ignoring = event.charactersIgnoringModifiers,
+        ignoring.utf8.count == 1,
+        let chars = event.characters,
+        chars == ignoring || chars.isEmpty
     {
-        var bytes = Array(ch.utf8)
+        var bytes = Array(ignoring.utf8)
         bytes.insert(0x1B, at: 0)
         return bytes
     }
-    return Array((event.characters ?? "").utf8)
+    return Array((event.characters ?? event.charactersIgnoringModifiers ?? "").utf8)
 }
 
 private func macControlByte(_ event: NSEvent) -> UInt8? {

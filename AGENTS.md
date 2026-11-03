@@ -76,17 +76,15 @@ not MCP. Skill `wawona-gh`. Rule `wawona-gh`.
   constructors, `WWNCore*` trampolines). Do not write a new Wawona program in C.
   Upstream ports stay in their upstream language. See
   `.cursor/rules/wawona-rust-first.mdc` and `docs/agent-rules/wawona-rust-first.md`.
-- **Ghostty and toolbar keys are separate repos.** Terminal grid:
-  `github.com/Wawona/Ghostty` (Zig, every product target, iOS 13 static
-  archive, no product dylib, no vendored GhosttyKit header). libghostty is
-  Ghostty (Copyright (c) 2024 Mitchell Hashimoto, Ghostty contributors).
-  The iOS embed starts from Rootshell (Copyright (c) 2026 Rootshell LLC,
-  Kit Knox). Toolbar keys: `github.com/Wawona/ToolbarKeys` (Rust + UniFFI,
-  UIKit views in `apple/Keyboard`). That toolbar starts from the same
-  Rootshell implementation. Wawona compiles `apple/Keyboard` from the
-  `toolbar-keys` input. The Wayland accessory bridge stays here. Do not
-  copy the Swift toolbar back into `Sources/WawonaUI`. Relay stays the VM
-  engine. Do not rewrite libghostty to Rust while Zig can target the OS.
+- **Wawona Terminal and ToolbarKeys are UniFFI + native UI.** Grid:
+  `github.com/Wawona/Terminal` Rust UniFFI (`GhosttySurface` /
+  `TerminalSession`), packaged as `github.com/Wawona/Ghostty` (flake
+  `wwn-ghostty`). Native UI stages like ToolbarKeys
+  (`.nix-deps/ghostty/Terminal`). No GhosttyKit, no product `.dylib` on
+  Apple-mobile, iOS 13 static. Credits: Ghostty MIT name/role; Rootshell
+  MIT iOS embed UX. Toolbar keys: `github.com/Wawona/ToolbarKeys` (Rust +
+  UniFFI, `apple/Keyboard`). Do not copy toolbar Swift back into
+  `Sources/WawonaUI`. Zig under Ghostty `upstream/` is reference-only.
 - **Mission-critical assurance.** AI-authored code has the same gates as human
   code. Risk decides the tier. VM memory, MMU, CPU, virtio, privilege, watchdog,
   and display ownership changes require named laws tied to production Rust,

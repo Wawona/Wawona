@@ -15,3 +15,4 @@ mod screen;
 
 pub use screen::*;
 pub use uniffi_api::{TerminalImage, TerminalLine, TerminalSession, TerminalSpan};
+

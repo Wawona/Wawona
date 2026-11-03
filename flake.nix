@@ -127,6 +127,10 @@
     # follows a host-only sibling symlink (file:// breaks GHA).
     terminal.url = "github:Wawona/Terminal/development";
     terminal.flake = false;
+    # Rust libghostty product packaging (ghostty_* ABI). VT lives in Terminal.
+    # Wawona Terminal = native chrome + this grid. Cited: docs/wwn-repo-dag.md.
+    wwn-ghostty.url = "github:Wawona/Ghostty/development";
+    wwn-ghostty.flake = false;
   };
 
   outputs = inputs @ {
@@ -660,6 +664,7 @@
         coreutilsAndroid = coreutils-multicall-android;
         terminalSrc = inputs.terminal;
         toolbarKeysSrc = inputs."toolbar-keys";
+        ghosttySrc = inputs.wwn-ghostty;
         targetPkgs = pkgsAndroidCross;
         waypipe = toolchainsAndroid.buildForAndroid "waypipe" {};
         inherit
@@ -794,6 +799,7 @@
         anowawAndroid = toolchainsAndroid.buildForAndroid "anowaw" {};
         terminalSrc = inputs.terminal;
         toolbarKeysSrc = inputs."toolbar-keys";
+        ghosttySrc = inputs.wwn-ghostty;
       };
 
       # ── Cross-Platform Packages ───────────────────────────────────────
@@ -900,6 +906,7 @@
                   (pkgs.callPackage ./dependencies/generators/xcodegen.nix {
                     inherit wawonaVersion wawonaSrc;
                     toolbarKeysSrc = inputs."toolbar-keys";
+                    ghosttySrc = inputs.wwn-ghostty;
                     terminalSrc = inputs.terminal;
                     macosBackend = null;
                     iosBackend = null;
@@ -1016,6 +1023,7 @@
             # needs these).
             terminalSrc = inputs.terminal;
             toolbarKeysSrc = inputs."toolbar-keys";
+            ghosttySrc = inputs.wwn-ghostty;
             inherit
               androidToolchainNix
               westonSimpleShmPatchedSrcNix
@@ -1572,6 +1580,7 @@
             pkgs.callPackage ./dependencies/generators/xcodegen.nix {
               inherit wawonaVersion wawonaSrc platformFilter simulatorOnly mobileGuestArtifacts mobileGuestArtifacts16k mobileVmEngine;
               toolbarKeysSrc = inputs."toolbar-keys";
+              ghosttySrc = inputs.wwn-ghostty;
               terminalSrc = inputs.terminal;
               includeModeB = includeModeBEngine;
               mobileVmEngineModeB =

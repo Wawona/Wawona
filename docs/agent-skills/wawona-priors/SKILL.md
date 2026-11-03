@@ -35,6 +35,7 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-machine-types` | Machines UI: Native Shell / VM / Container. Sessions under Native Shell. |
 | `wawona-machine-card-actions` | Machines grid Focus/Stop/Edit/Delete must fit inside card. No ViewThatFits HStack clip. |
 | `wawona-ios-native-shell` | Every Start = Wawona Terminal (`$ argv` + CLI logs). Native Shell = live zsh. No StartupLog preview / first-frame auto-dismiss. |
+| `wawona-ghostty-host` | Wawona Terminal = native chrome + UniFFI libghostty-rs + native UI. No GhosttyKit / TermGpu twin. |
 | `wawona-apple-swift` | Apple compositor Swift/SwiftUI. Always load `swiftui-pro` + `swiftui-expert-skill` first. |
 | `wawona-android-compose` | Android Kotlin/Compose. Always load `compose-agent` + `modern-jetpack-compose` first. |
 | `wawona-appium` | Mode A Appium UI on GH runners. Tip host app + clean launch; Darwin catalog = Colima only; Present surface PNG; no local-bundle. |
@@ -73,7 +74,7 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-staticcpu-shm-tip` | Mode A StaticCpu SHM tip: DIFF-before-buffer, lab-synth guest name, evidence order |
 | `wawona-relay-ios-hypervisor` | Mode B iOS/iPadOS Hypervisor.framework window (not HVF-via-qemu) |
 | `wawona-linux-vms-relay-runtime` | NixOS VMs; Mode A/B engines; no QEMU/UTM |
-| `wawona-platform-targets` | Four-state gates. Ghostty grid is `Wawona/Ghostty` (Zig). Toolbar keys are `Wawona/ToolbarKeys`. |
+| `wawona-platform-targets` | Four-state gates. Wawona Terminal = UniFFI libghostty-rs + native UI. Toolbar keys are `Wawona/ToolbarKeys`. |
 | `wawona-ios-min-os` | iOS 13.0 min OS for the app and every bundled archive; latest iPhoneOS SDK only; one ANGLE + one MoltenVK |
 | `wawona-ios-app-entry` | Mobile `@main` / no client C `_main` / XDG_RUNTIME_DIR before compositor |
 | `wawona-ios-link-contract` | Membership + called C symbols before Apple app compile |
@@ -90,7 +91,8 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-local-before-ci` | Link/eval before push |
 | `wawona-branch-workflow` | `development` vs `master` |
 | `wawona-asc-swift-support` | ITMS-90426 |
-| `wawona-release-assets` | Ship filenames; macOS DMG pkg-only |
+| `wawona-release-assets` | Ship filenames; macOS DMG drag-install |
+| `wawona-settings-permissions` | Permissions, Launch Agents, Check for Updates |
 | `wawona-no-em-dash` | Copy |
 | `wawona-host-keymap-bridge` | Keyboard / IME. Bridge host TIS / KeyCharacterMap. No Settings layout. |
 | `wawona-gh` | `gh` via Shell. No GitHub MCP. Authorship ban is not a `gh` ban. |

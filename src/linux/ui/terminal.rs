@@ -1,6 +1,7 @@
 //! In-app Wawona Terminal for Linux.
 //!
-//! Native Shell and SSH terminal sessions draw UniFFI `TerminalSession` lines.
+//! Wawona Terminal on Linux: GTK chrome + Rust libghostty grid
+//! (`TerminalSession` / `ghostty_*`).
 //! This file owns the PTY and the GTK view.
 
 use std::cell::{Cell, RefCell};

@@ -202,21 +202,19 @@ forbidden while iPhone is planned for those features.
     watchOS (`ubiquityIdentityToken` is always nil). That row stays
     **⛔ blocked** (`icloud_drive_home`). Do not add a Drive toggle there.
     Re-check on SDK bumps.
-14. **No Ghostty.** Do not port, vendor, or link libghostty. Do not add a
-    `wwn-ghostty` flake input or a GhosttyKit embed. Relay boot, SSH, and the
-    native shell use Wawona Terminal (`github.com/Wawona/Terminal`, flake
-    input `terminal`, `flake = false`). Rust owns the VT screen. UniFFI
-    hands styled lines to the host. iOS, iPadOS, tvOS, visionOS, and macOS
-    draw `apple/Terminal` (SwiftUI text scroll). Android draws Compose.
-    Linux draws GTK. watchOS uses the same SwiftUI text and does not link
-    Metal. The face is bundled DejaVuSansM Nerd Font Mono. Apple system
-    fonts do not include those icons. The iOS native shell is this
-    terminal. It is not foot and not weston-terminal. Those remain Wayland
-    clients. Phone client tabs are the Rootshell-inspired overview. Toolbar
-    keys above the software keyboard are `github.com/Wawona/ToolbarKeys`
-    (Rust + UniFFI). Wawona draws the slots and does not own the layout
-    rules. VM and container kinds stay forbidden on tvOS, watchOS, and
-    visionOS. The console on those targets is the native shell and SSH.
+14. **Wawona Terminal = UniFFI libghostty-rs + native UI.** Same split as
+    ToolbarKeys and Wawona domain UniFFI. Rust owns the grid
+    (`GhosttySurface` / `TerminalSession` in `github.com/Wawona/Terminal`,
+    packaged as `github.com/Wawona/Ghostty` / flake `wwn-ghostty`). Native
+    frameworks paint: AppKit, UIKit, SwiftUI, WatchKit/SpriteKit, Jetpack
+    Compose, GTK. Targets: macOS, iOS, iPadOS, tvOS, watchOS, visionOS,
+    Android, Linux. Wawona L4 owns Machines chrome, PTY, and ToolbarKeys.
+    Apple-mobile: **static** archive, deployment target **13.0**. **No**
+    product `.dylib`. **No** GhosttyKit. No TermGpu / second VT. Optional
+    C `ghostty_*` is not the product contract. Credits: Ghostty MIT
+    name/role; Rootshell MIT iOS embed UX. Phone client tabs stay
+    Rootshell-inspired overview. VM/container kinds forbidden on tvOS,
+    watchOS, visionOS.
 
 ## Implementation checkpoints
 

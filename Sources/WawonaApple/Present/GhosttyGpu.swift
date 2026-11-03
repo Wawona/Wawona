@@ -1,5 +1,7 @@
 #if os(macOS)
 import AppKit
+import CoreText
+import Darwin
 import Metal
 import MetalKit
 
@@ -23,9 +25,10 @@ private struct GpuCell {
     var attr: UInt32
 }
 
-/// One instanced draw of the Rust viewport. Glyphs are stamped into an atlas
-/// once. The frame does not rebuild an attributed string.
-final class TermGpuView: MTKView, MTKViewDelegate {
+/// Metal paint for Wawona Terminal cells (host GPU path).
+/// Grid ownership is UniFFI `GhosttySurface`; C viewport is a bridge, not a second VT.
+/// Glyphs stamp into an atlas once. Not a second VT engine.
+final class GhosttyGpuView: MTKView, MTKViewDelegate {
     private var pipeline: MTLRenderPipelineState?
     private var queue: MTLCommandQueue?
     private var atlas: MTLTexture?
@@ -36,7 +39,10 @@ final class TermGpuView: MTKView, MTKViewDelegate {
     private var cache: [UInt32: UInt32] = [:]
     private var nextSlot: UInt32 = 1
     private let atlasSide = 16
-    private let glyph: Int = 16
+    /// Mono cell aspect (~1:2). Square slots stretched into tall cells and made
+    /// glyphs look tiny / smeared. Keep atlas slots on the same aspect.
+    private let glyphW: Int = 16
+    private let glyphH: Int = 32
     private var imagePipeline: MTLRenderPipelineState?
     private var pictures = [TermPicture]()
     private var cellW: Float = 8
@@ -51,15 +57,22 @@ final class TermGpuView: MTKView, MTKViewDelegate {
         colorPixelFormat = .bgra8Unorm
         clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
         framebufferOnly = true
+        // Hits must reach WWNTermSurface for focus + keyDown. This view only draws.
         guard let device else { return }
         queue = device.makeCommandQueue()
-        atlas = Self.makeAtlas(device)
-        pipeline = Self.makePipeline(device, pixelFormat: colorPixelFormat)
+        atlas = Self.makeAtlas(device, glyphW: glyphW, glyphH: glyphH, atlasSide: atlasSide)
+        pipeline = Self.makePipeline(
+            device, pixelFormat: colorPixelFormat, atlasSide: atlasSide, glyphW: glyphW)
         imagePipeline = Self.makeImagePipeline(device, pixelFormat: colorPixelFormat)
     }
 
     @available(*, unavailable)
     required init(coder: NSCoder) { fatalError("unused") }
+
+    /// Never become first responder or steal mouse hits from the VT host.
+    override var acceptsFirstResponder: Bool { false }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
     func present(
         _ grid: [WwnTermCell], count: Int, cols: Int, rows: Int, blinkOn: Bool,
@@ -161,6 +174,7 @@ final class TermGpuView: MTKView, MTKViewDelegate {
         if nextSlot >= UInt32(atlasSide * atlasSide) {
             cache.removeAll()
             nextSlot = 1
+            clearAtlas()
         }
         let slot = nextSlot
         nextSlot += 1
@@ -169,42 +183,89 @@ final class TermGpuView: MTKView, MTKViewDelegate {
         return slot
     }
 
+    private func clearAtlas() {
+        guard let atlas else { return }
+        let bytes = glyphW * glyphH
+        var zeros = [UInt8](repeating: 0, count: bytes)
+        for row in 0..<atlasSide {
+            for col in 0..<atlasSide {
+                let region = MTLRegionMake2D(col * glyphW, row * glyphH, glyphW, glyphH)
+                zeros.withUnsafeBytes { raw in
+                    guard let base = raw.baseAddress else { return }
+                    atlas.replace(region: region, mipmapLevel: 0, withBytes: base, bytesPerRow: glyphW)
+                }
+            }
+        }
+    }
+
     private func stamp(_ cp: UInt32, slot: UInt32) {
         guard let atlas, let scalar = UnicodeScalar(cp) else { return }
-        let w = glyph
-        let h = glyph
-        guard let rep = NSBitmapImageRep(
-            bitmapDataPlanes: nil, pixelsWide: w, pixelsHigh: h, bitsPerSample: 8,
-            samplesPerPixel: 1, hasAlpha: false, isPlanar: false, colorSpaceName: .deviceWhite,
-            bytesPerRow: w, bitsPerPixel: 8
-        ), let pixels = rep.bitmapData else { return }
-        let host = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
-        let nerd = NSFont(name: "DejaVuSansM Nerd Font Mono", size: 12)
-        let ch = Character(scalar)
-        let font = macIsNerd(ch) ? (nerd ?? host) : host
-        NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
-        (String(ch) as NSString).draw(
-            at: NSPoint(x: 0, y: 1),
-            withAttributes: [.font: font, .foregroundColor: NSColor.white]
-        )
-        NSGraphicsContext.restoreGraphicsState()
+        let w = glyphW
+        let h = glyphH
+        var pixels = [UInt8](repeating: 0, count: w * h)
+        let pointSize = CGFloat(h) * 0.72
+        let font = Self.resolveMonoFont(size: pointSize)
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: NSColor.white,
+        ]
+        let attr = NSAttributedString(string: String(Character(scalar)), attributes: attrs)
+        let line = CTLineCreateWithAttributedString(attr)
+        pixels.withUnsafeMutableBytes { raw in
+            guard let base = raw.baseAddress,
+                let space = CGColorSpace(name: CGColorSpace.linearGray),
+                let ctx = CGContext(
+                    data: base, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w,
+                    space: space, bitmapInfo: CGImageAlphaInfo.none.rawValue)
+            else { return }
+            // Top-left origin matching Metal. Baseline near bottom of slot.
+            ctx.translateBy(x: 0, y: CGFloat(h))
+            ctx.scaleBy(x: 1, y: -1)
+            ctx.setShouldAntialias(true)
+            ctx.setAllowsAntialiasing(true)
+            let baseline = max(CGFloat(1), -font.descender + 1)
+            ctx.textPosition = CGPoint(x: 1, y: baseline)
+            CTLineDraw(line, ctx)
+        }
         let region = MTLRegionMake2D(
             Int(slot % UInt32(atlasSide)) * w, Int(slot / UInt32(atlasSide)) * h, w, h
         )
-        atlas.replace(region: region, mipmapLevel: 0, withBytes: pixels, bytesPerRow: w)
+        pixels.withUnsafeBytes { raw in
+            guard let base = raw.baseAddress else { return }
+            atlas.replace(region: region, mipmapLevel: 0, withBytes: base, bytesPerRow: w)
+        }
     }
 
-    private static func makeAtlas(_ device: MTLDevice) -> MTLTexture? {
-        let side = 16 * 16
+    private static func resolveMonoFont(size: CGFloat) -> NSFont {
+        WWNBundleShareEnvironment.registerBundledFontsIfNeeded()
+        if let nerd = NSFont(name: "DejaVuSansM Nerd Font Mono", size: size) {
+            return nerd
+        }
+        if let mono = NSFont(name: "DejaVu Sans Mono", size: size) {
+            return mono
+        }
+        return NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
+    }
+
+    private static func makeAtlas(
+        _ device: MTLDevice, glyphW: Int, glyphH: Int, atlasSide: Int
+    ) -> MTLTexture? {
         let desc = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: .r8Unorm, width: side, height: side, mipmapped: false
+            pixelFormat: .r8Unorm,
+            width: glyphW * atlasSide,
+            height: glyphH * atlasSide,
+            mipmapped: false
         )
         desc.usage = [.shaderRead]
         return device.makeTexture(descriptor: desc)
     }
 
-    private static func makePipeline(_ device: MTLDevice, pixelFormat: MTLPixelFormat) -> MTLRenderPipelineState? {
+    private static func makePipeline(
+        _ device: MTLDevice, pixelFormat: MTLPixelFormat, atlasSide: Int, glyphW: Int
+    ) -> MTLRenderPipelineState? {
+        let side = UInt32(atlasSide)
+        // One texel in atlas UV space (atlas width = glyphW * side).
+        let boldUV = String(format: "%.8f", 1.0 / Double(glyphW * atlasSide))
         let src = """
         #include <metal_stdlib>
         using namespace metal;
@@ -214,7 +275,7 @@ final class TermGpuView: MTKView, MTKViewDelegate {
         float4 unpack(uint c) {
           return float4(float((c >> 16) & 255) / 255.0, float((c >> 8) & 255) / 255.0, float(c & 255) / 255.0, 1);
         }
-        vertex VOut wwn_term_vs(uint vid [[vertex_id]], uint iid [[instance_id]],
+        vertex VOut ghostty_term_vs(uint vid [[vertex_id]], uint iid [[instance_id]],
                                 constant Cell *cells [[buffer(0)]], constant Dim &d [[buffer(1)]]) {
           float2 q[6] = { float2(0,0), float2(1,0), float2(0,1), float2(1,0), float2(1,1), float2(0,1) };
           Cell cell = cells[iid];
@@ -225,26 +286,28 @@ final class TermGpuView: MTKView, MTKViewDelegate {
           float2 step = float2(2.0 / float(max(d.cols, 1u)), 2.0 / float(max(d.rows, 1u)));
           float2 ndc = float2(-1.0, 1.0) + float2(float(col) + g.x, -(float(row) + g.y)) * step;
           uint slot = cell.slot;
-          float2 uv = (float2(slot % 16u, slot / 16u) + g) / 16.0;
+          float side = \(side).0;
+          // Stamp atlas is Metal top-down (CGContext flipped at write time).
+          float2 uv = (float2(slot % \(side)u, slot / \(side)u) + g) / side;
           VOut o; o.pos = float4(ndc, 0, 1); o.uv = uv; o.fg = unpack(cell.fg); o.bg = unpack(cell.bg); o.attr = cell.attr;
           return o;
         }
-        fragment float4 wwn_term_fs(VOut in [[stage_in]], texture2d<float> atlas [[texture(0)]],
+        fragment float4 ghostty_term_fs(VOut in [[stage_in]], texture2d<float> atlas [[texture(0)]],
                                     constant Dim &d [[buffer(0)]]) {
-          constexpr sampler s(filter::linear, address::clamp_to_edge);
+          constexpr sampler s(filter::nearest, address::clamp_to_edge);
           float m = atlas.sample(s, in.uv).r;
-          if ((in.attr & 1u) != 0u) m = max(m, atlas.sample(s, in.uv + float2(0.004, 0)).r);
+          if ((in.attr & 1u) != 0u) m = max(m, atlas.sample(s, in.uv + float2(\(boldUV), 0)).r);
           if ((in.attr & 16u) != 0u && d.phase == 0u) m = 0.0;
-          float4 c = mix(in.bg, in.fg, m);
-          float2 local = fract(in.uv * 16.0);
+          float4 c = mix(in.bg, in.fg, step(0.28, m));
+          float2 local = fract(in.uv * \(side).0);
           if ((in.attr & 8u) != 0u && local.y > 0.86) c = in.fg;
           if ((in.attr & 32u) != 0u && abs(local.y - 0.5) < 0.07) c = in.fg;
           return c;
         }
         """
         guard let lib = try? device.makeLibrary(source: src, options: nil),
-            let vs = lib.makeFunction(name: "wwn_term_vs"),
-            let fs = lib.makeFunction(name: "wwn_term_fs")
+            let vs = lib.makeFunction(name: "ghostty_term_vs"),
+            let fs = lib.makeFunction(name: "ghostty_term_fs")
         else { return nil }
         let desc = MTLRenderPipelineDescriptor()
         desc.vertexFunction = vs
@@ -295,12 +358,5 @@ struct TermPicture {
     var pxW: Int
     var pxH: Int
     var rgba: Data
-}
-
-private func macIsNerd(_ ch: Character) -> Bool {
-    ch.unicodeScalars.allSatisfy { u in
-        let v = u.value
-        return (0xE000...0xF8FF).contains(v) || (0xF0000...0xFFFFD).contains(v) || (0x100000...0x10FFFD).contains(v)
-    } && !ch.unicodeScalars.isEmpty
 }
 #endif

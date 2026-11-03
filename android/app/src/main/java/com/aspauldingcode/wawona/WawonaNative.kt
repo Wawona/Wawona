@@ -249,7 +249,7 @@ object WawonaNative {
     /** UniFFI TerminalSession.lines() JSON. Empty array if the screen is absent. */
     external fun nativeTermLines(bytes: ByteArray, cols: Int, rows: Int): String?
 
-    /** Live Guest Console VT. The handle is a Rust `wwn_term`. */
+    /** Live Wawona Terminal grid. UniFFI libghostty-rs / optional C (same Term). */
     external fun nativeTermOpen(cols: Int, rows: Int): Long
     external fun nativeTermClose(handle: Long)
     external fun nativeTermFeed(handle: Long, bytes: ByteArray)

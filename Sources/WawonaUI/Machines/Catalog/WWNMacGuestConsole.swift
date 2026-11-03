@@ -5,6 +5,8 @@ import Darwin
 /// AppKit host for Wawona Terminal on macOS Start. Every machine Start
 /// presents this window with `$ argv` and streamed CLI logs. Close reveals
 /// the compositor (Focus). No auto-dismiss on first frame.
+/// Grid: UniFFI `GhosttySurface` / `TerminalSession`. `WWNTermSurface` paints
+/// via optional C `ghostty_*` until AppKit binds generated UniFFI Swift.
 @objc final class WWNMacGuestConsole: NSObject, NSWindowDelegate {
   @objc static let shared = WWNMacGuestConsole()
 
@@ -55,6 +57,7 @@ import Darwin
     // would deallocate on close while we still hold the reference, then the
     // next Start hits objc_retain on a dangling NSWindow (SIGSEGV).
     window.isReleasedWhenClosed = false
+    window.tabbingMode = .disallowed
     window.delegate = self
     window.title = "Wawona Terminal"
     window.contentView = surface
@@ -126,6 +129,10 @@ import Darwin
     guard !closingId.isEmpty else { return }
     WWNMachineProfileStore.setActiveMachineId(closingId)
     WWNMainWindowRouter.shared.showSessionSurface()
+  }
+
+  func windowDidBecomeKey(_ notification: Notification) {
+    focusShellKeys()
   }
 
   private func clientBanner(machineId: String) -> String {
@@ -239,6 +246,8 @@ import Darwin
   /// Shell keys land on the VT view. Log consoles stay read-only.
   private func focusShellKeys() {
     guard source == "shell", let window, let surface else { return }
+    window.initialFirstResponder = surface
+    window.makeKeyAndOrderFront(nil)
     window.makeFirstResponder(surface)
   }
 
