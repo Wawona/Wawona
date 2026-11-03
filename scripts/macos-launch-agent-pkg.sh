@@ -77,7 +77,9 @@ resolve_target_users() {
     return
   fi
   local console_uid console_user
-  console_uid="$(stat -f %u /dev/console 2>/dev/null || echo "")"
+  # Prefer BSD /usr/bin/stat. nix-darwin PATH may put GNU coreutils first
+  # (GNU `stat -f` is --file-system, not format).
+  console_uid="$(/usr/bin/stat -f %u /dev/console 2>/dev/null || echo "")"
   if [[ -z "$console_uid" || "$console_uid" == "0" ]]; then
     console_uid="$RUNNING_UID"
   fi
@@ -205,9 +207,19 @@ chmod 755 "$SCRIPTS/postinstall"
 # Avoid AppleDouble (._*) junk in the Scripts payload on macOS.
 rm -f "$SCRIPTS"/._* "$SCRIPTS"/.DS_Store
 
+# PackageKit relocates Applications/Wawona.app onto any other registered
+# copy of com.aspauldingcode.Wawona (DerivedData, Simulator, ~/Applications).
+# postinstall then looks for /Applications/Wawona.app and fails. Pin install.
+COMPONENT_PLIST="$WORKDIR/wawona-app-component.plist"
+pkgbuild --analyze --root "$PAYLOAD" "$COMPONENT_PLIST"
+/usr/libexec/PlistBuddy -c 'Set :0:BundleIsRelocatable false' "$COMPONENT_PLIST" \
+  2>/dev/null \
+  || /usr/libexec/PlistBuddy -c 'Add :0:BundleIsRelocatable bool false' "$COMPONENT_PLIST"
+
 COPYFILE_DISABLE=1 pkgbuild \
   --root "$PAYLOAD" \
   --scripts "$SCRIPTS" \
+  --component-plist "$COMPONENT_PLIST" \
   --identifier "$IDENTIFIER" \
   --version "$VERSION" \
   --install-location "/" \

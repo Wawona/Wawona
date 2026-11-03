@@ -76,6 +76,7 @@ extension WawonaMenuBarController {
     }
 
     @objc func quitMenuBar() {
+        // Stop this extra only. The compositor host keeps the Wayland socket.
         _ = WWNLaunchAgentManager.sharedManager.stopMenuBarAgent()
         NSApp.terminate(nil)
     }

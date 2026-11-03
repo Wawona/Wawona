@@ -287,6 +287,34 @@ pub extern "C" fn wawona_cloud_sync_merge_profiles(
     }
 }
 
+/// 1 if launchd should set `KeepAlive` for this role.
+/// Roles: 1 compositor host, 2 menu bar, 3 login `open`. Unknown is 0.
+/// The host and menu bar stay up. The login `open` job must not.
+#[no_mangle]
+pub extern "C" fn wawona_launch_agent_keep_alive(role: i32) -> i32 {
+    let Some(role) = super::quit_policy::LaunchAgentRole::from_code(role) else {
+        return 0;
+    };
+    i32::from(super::quit_policy::keep_alive(role))
+}
+
+/// 1 if the compositor host should open the Machines window on reopen.
+#[no_mangle]
+pub extern "C" fn wawona_host_reopen_opens_ui() -> i32 {
+    i32::from(super::quit_policy::host_reopen_opens_ui())
+}
+
+/// 1 if a peer accepts connect on this Unix Wayland socket path (#223).
+#[no_mangle]
+pub extern "C" fn wawona_wayland_socket_is_live(path: *const c_char) -> i32 {
+    let Some(path) = cstr_to_str(path) else {
+        return 0;
+    };
+    i32::from(super::quit_policy::wayland_socket_is_live(
+        std::path::Path::new(path),
+    ))
+}
+
 /// 1 if this client / bundled id is forbidden as a Machines profile.
 #[no_mangle]
 pub extern "C" fn wawona_session_is_forbidden_client_id(id: *const c_char) -> i32 {

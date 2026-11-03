@@ -67,8 +67,17 @@ impl SocketManager {
     pub fn bind_primary(&mut self, socket_name: &str) -> Result<()> {
         let socket_path = self.runtime_dir.join(socket_name);
 
-        // Remove existing socket if present
-        let _ = std::fs::remove_file(&socket_path);
+        // #223: the compositor-host LaunchAgent may already own this path.
+        // Never unlink a live peer (orphans the host listen fd → ENOENT).
+        if crate::domain::quit_policy::wayland_socket_is_live(&socket_path) {
+            anyhow::bail!(
+                "Wayland socket {} is already owned by a live compositor; refusing to unlink",
+                socket_path.display()
+            );
+        }
+        if crate::domain::quit_policy::may_unlink_wayland_socket(&socket_path) {
+            let _ = std::fs::remove_file(&socket_path);
+        }
 
         tracing::info!("Binding primary socket: {}", socket_path.display());
 
@@ -93,8 +102,15 @@ impl SocketManager {
     pub fn add_unix_socket(&mut self, path: impl AsRef<Path>) -> Result<()> {
         let path = path.as_ref();
 
-        // Remove existing socket if present
-        let _ = std::fs::remove_file(path);
+        if crate::domain::quit_policy::wayland_socket_is_live(path) {
+            anyhow::bail!(
+                "Wayland socket {} is already owned by a live compositor; refusing to unlink",
+                path.display()
+            );
+        }
+        if crate::domain::quit_policy::may_unlink_wayland_socket(path) {
+            let _ = std::fs::remove_file(path);
+        }
 
         tracing::info!("Binding additional Unix socket: {}", path.display());
 

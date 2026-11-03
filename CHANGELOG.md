@@ -8,6 +8,26 @@ Versioning is **CalVer** `YY.M.D` (year · month · day), Apple-style year major
 bump **build number** only. Historical `0.2.x` / mistaken `2.5.0` tags remain
 as history.
 
+## [26.11.2] - 2026-11-02
+
+### Fixed
+- **macOS compositor host no longer reopens Wawona.app (#223).** The
+  LaunchAgent keeps the Wayland socket up with `KeepAlive` so waypipe,
+  SSH, and native Wayland clients work while the Machines window is
+  closed. Host reopen used to call `NSWorkspace.openApplication` on the
+  same bundle; Launch Services delivered that open back to the host and
+  the window returned forever. Quitting the window leaves the socket
+  running. The optional login agent starts the GUI executable with
+  `KeepAlive` false (no `/usr/bin/open`).
+- **Linux terminal paints `[session ended]` when the PTY hangs up**
+  instead of leaving a silent last frame.
+
+### Changed
+- CalVer bump to 26.11.2.
+- Org rustfmt CI stubs the optional `./waypipe` path crate the same way
+  as `./coreutils`.
+- `libz-sys` 1.1.31 (OSV RUSTSEC-2026-0418).
+
 ## [26.10.10] - 2026-10-10
 
 ### Changed

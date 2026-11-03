@@ -66,24 +66,39 @@ enum WawonaLaunchMode: Equatable {
         return .ui(showSettings: showSettings, settingsSection: settingsSection)
     }
 
+    /// The compositor host shares this bundle id. It must never be the
+    /// process that calls `openApplication` on Wawona.app (#223).
+    static func callerIsCompositorHost() -> Bool {
+        if case .compositorHost = parse() {
+            return true
+        }
+        return false
+    }
+
     static func activateExistingUI(panel: String = "machines") {
+        if callerIsCompositorHost() {
+            fputs("Wawona: compositor host will not open Wawona.app\n", stderr)
+            return
+        }
         DistributedNotificationCenter.default().postNotificationName(
             reopenNotification,
             object: nil,
             userInfo: ["panel": panel],
             deliverImmediately: true
         )
-        // Also nudge Launch Services in case the UI is asleep.
-        let bundleURL = URL(fileURLWithPath: "/Applications/Wawona.app")
-        let config = NSWorkspace.OpenConfiguration()
-        config.activates = true
-        config.createsNewApplicationInstance = false
-        NSWorkspace.shared.openApplication(at: bundleURL, configuration: config)
+        // Do not call NSWorkspace.openApplication here. The compositor host
+        // is already an instance of this bundle, so Launch Services delivers
+        // the open to the host. The host used to open the GUI again (#223).
+        // The running UI observes reopenNotification and orders its window front.
     }
 
     /// Launch a Regular UI process only when `instance.lock` is free.
     /// Prefer activate-existing over `open -n` / NSTask of this Mach-O.
     static func openOrActivateUI(arguments: [String] = []) {
+        if callerIsCompositorHost() {
+            fputs("Wawona: compositor host will not open Wawona.app\n", stderr)
+            return
+        }
         if WawonaProcessLock.isHeld("instance.lock") {
             let panel: String
             if arguments.contains("--show-settings") {
@@ -101,7 +116,10 @@ enum WawonaLaunchMode: Equatable {
         let bundleURL = URL(fileURLWithPath: "/Applications/Wawona.app")
         let config = NSWorkspace.OpenConfiguration()
         config.activates = true
-        config.createsNewApplicationInstance = false
+        // The compositor host is already this bundle. `false` only reopens
+        // that host, which must not raise the GUI. A new instance is the
+        // Machines process. instance.lock stops a second one.
+        config.createsNewApplicationInstance = true
         if !arguments.isEmpty {
             config.arguments = arguments
         }

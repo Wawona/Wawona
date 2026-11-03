@@ -112,8 +112,10 @@ private final class CompositorHostDelegate: NSObject, NSApplicationDelegate {
     ) -> Bool {
         _ = sender
         _ = flag
-        // Host must never become a Regular Dock UI. Hand off to the UI instance.
-        WawonaLaunchMode.openOrActivateUI(arguments: [])
+        // #223: this process is the Wayland socket. A Dock click, a launchd
+        // restart, or an Apple Event reopen must not open Wawona.app.
+        // openApplication on this bundle is delivered back here, which used
+        // to open the GUI again on every event.
         NSApp.setActivationPolicy(.accessory)
         return false
     }

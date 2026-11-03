@@ -1,5 +1,6 @@
 #if os(macOS)
 import AppKit
+import Darwin
 import Foundation
 
 @objc(WWNLaunchAgentManager)
@@ -47,7 +48,7 @@ public final class WWNLaunchAgentManager: NSObject {
             "Label": Self.compositorLabel,
             "ProgramArguments": [execPath, "--compositor-host"],
             "RunAtLoad": true,
-            "KeepAlive": true,
+            "KeepAlive": Self.keepAlive(role: 1),
             "ThrottleInterval": 5,
             "StandardOutPath": "/tmp/wawona-compositor-\(uid).log",
             "StandardErrorPath": "/tmp/wawona-compositor-\(uid).error.log",
@@ -62,7 +63,7 @@ public final class WWNLaunchAgentManager: NSObject {
             "Label": Self.menuBarLabel,
             "ProgramArguments": [execPath, "--menubar"],
             "RunAtLoad": true,
-            "KeepAlive": true,
+            "KeepAlive": Self.keepAlive(role: 2),
             "ThrottleInterval": 5,
             "StandardOutPath": "/tmp/wawona-menubar-\(uid).log",
             "StandardErrorPath": "/tmp/wawona-menubar-\(uid).error.log",
@@ -71,16 +72,16 @@ public final class WWNLaunchAgentManager: NSObject {
     }
 
     @objc public func appLaunchAgentPlist() -> [String: Any] {
-        var bundlePath = Bundle.main.bundlePath
-        if bundlePath.isEmpty {
-            bundlePath = "/Applications/Wawona.app"
-        }
+        // Run the GUI executable. Do not use `/usr/bin/open`: that exits
+        // immediately, and KeepAlive would open Wawona.app on every restart.
+        // KeepAlive stays false so quitting the window stays quit (#223).
+        let execPath = mainExecutablePath()
         let uid = getuid()
         return [
             "Label": Self.appLaunchLabel,
-            "ProgramArguments": [openToolPath(), bundlePath],
+            "ProgramArguments": [execPath],
             "RunAtLoad": true,
-            "KeepAlive": false,
+            "KeepAlive": Self.keepAlive(role: 3),
             "StandardOutPath": "/tmp/wawona-applaunch-\(uid).log",
             "StandardErrorPath": "/tmp/wawona-applaunch-\(uid).error.log",
             "EnvironmentVariables": baseEnvironment(),
@@ -108,6 +109,17 @@ public final class WWNLaunchAgentManager: NSObject {
             return false
         }
         return true
+    }
+
+    /// Rust `quit_policy::keep_alive`. Missing symbol: host and menu bar stay
+    /// up (roles 1 and 2). The login `open` job (role 3) does not respawn.
+    private static func keepAlive(role: Int32) -> Bool {
+        typealias Fn = @convention(c) (Int32) -> Int32
+        guard let sym = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "wawona_launch_agent_keep_alive") else {
+            return role == 1 || role == 2
+        }
+        let fn = unsafeBitCast(sym, to: Fn.self)
+        return fn(role) != 0
     }
 
     @objc public func launchctlDomain() -> String {
