@@ -635,7 +635,6 @@
         "rust-overlay": "rust-overlay_2",
         "terminal": "terminal",
         "toolbar-keys": "toolbar-keys",
-        "wwn-ghostty": "wwn-ghostty",
         "wwn-relay": "wwn-relay",
         "wwn-ssh": "wwn-ssh",
         "wwn-swinging-bridge": "wwn-swinging-bridge",
@@ -793,11 +792,11 @@
     "terminal": {
       "flake": false,
       "locked": {
-        "lastModified": 1793728989,
-        "narHash": "sha256-ysT0lVDk/TdCqP+iMj42TNpuuOgpJcw0imxsPx5Ys3U=",
+        "lastModified": 1793729592,
+        "narHash": "sha256-iX7WNiEmOU6eIO4SQ8hHHkpQr8QgAC1ZOuyqJ1rIs9Y=",
         "owner": "Wawona",
         "repo": "Terminal",
-        "rev": "b347bbf4862ec6ee9ceeae38607970ecbaef4872",
+        "rev": "7c4d9153dfd111bf0a5c64be2b4892c7c2a63321",
         "type": "github"
       },
       "original": {
@@ -838,23 +837,6 @@
         "owner": "Lakr233",
         "ref": "2.6.0",
         "repo": "vphone-cli",
-        "type": "github"
-      }
-    },
-    "wwn-ghostty": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1793728991,
-        "narHash": "sha256-HZPNZaM0/1rf7bmHUMcWeS4ndgavs5NowOcKBNfPElA=",
-        "owner": "Wawona",
-        "repo": "Ghostty",
-        "rev": "b7396336073ff61e60028d376e8b16d03100abf2",
-        "type": "github"
-      },
-      "original": {
-        "owner": "Wawona",
-        "ref": "development",
-        "repo": "Ghostty",
         "type": "github"
       }
     },

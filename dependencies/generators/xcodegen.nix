@@ -4,9 +4,6 @@
   wawonaSrc,
   # github:Wawona/ToolbarKeys (flake = false). UIKit toolbar views.
   toolbarKeysSrc,
-  # github:Wawona/Ghostty (flake = false). Native Terminal UI over UniFFI
-  # GhosttySurface (apple/Terminal). Stage like ToolbarKeys.
-  ghosttySrc ? null,
   # github:Wawona/Terminal (flake = false). Materialize src/term/screen.rs
   # (repo symlink breaks under nix noBrokenSymlinks).
   terminalSrc ? null,
@@ -1483,17 +1480,17 @@ PLIST
   # /nix/store entry in project.pbxproj.
   appleMobileEnvUISourcesWithToolbar = appleMobileEnvUISourcesBase ++ [
     { path = ".nix-deps/toolbar-keys/Keyboard"; }
-    # libghostty-rs native UI (UniFFI GhosttySurface). Same stage pattern as ToolbarKeys.
-    { path = ".nix-deps/ghostty/Terminal"; }
+    # Wawona Terminal native UI (UniFFI libghostty-rs). Same stage pattern as ToolbarKeys.
+    { path = ".nix-deps/terminal/Terminal"; }
   ];
   appleMobileEnvUISources = appleMobileEnvUISourcesWithToolbar;
   appleTvEnvUISources = [
     { path = "Sources/WawonaUI"; excludes = [ "Skip/**" "Keyboard/**" ]; }
-    { path = ".nix-deps/ghostty/Terminal"; }
+    { path = ".nix-deps/terminal/Terminal"; }
   ] ++ wawonaAppleSources;
   appleVisionEnvUISources = [
     { path = "Sources/WawonaUI"; excludes = [ "Skip/**" "Keyboard/**" ]; }
-    { path = ".nix-deps/ghostty/Terminal"; }
+    { path = ".nix-deps/terminal/Terminal"; }
   ] ++ wawonaAppleSources;
 
   # Xcode “Update to recommended settings” for framework targets with Swift/ObjC clients.
@@ -3295,16 +3292,13 @@ PLIST
       runHook preInstall
       export HOME="$TMPDIR"
       export USER="nobody"
-      rm -rf .nix-deps/toolbar-keys .nix-deps/ghostty
-      mkdir -p .nix-deps/toolbar-keys .nix-deps/ghostty
+      rm -rf .nix-deps/toolbar-keys .nix-deps/terminal
+      mkdir -p .nix-deps/toolbar-keys .nix-deps/terminal
       cp -R ${toolbarKeysSrc}/apple/Keyboard .nix-deps/toolbar-keys/Keyboard
       chmod -R u+w .nix-deps/toolbar-keys
       ${if terminalSrc != null then ''
-      cp -R ${terminalSrc}/apple/Terminal .nix-deps/ghostty/Terminal
-      chmod -R u+w .nix-deps/ghostty
-      '' else if ghosttySrc != null then ''
-      cp -R ${ghosttySrc}/apple/Terminal .nix-deps/ghostty/Terminal
-      chmod -R u+w .nix-deps/ghostty
+      cp -R ${terminalSrc}/apple/Terminal .nix-deps/terminal/Terminal
+      chmod -R u+w .nix-deps/terminal
       '' else ""}
       ${pkgs.xcodegen}/bin/xcodegen generate --spec project.yml
       mkdir -p $out
@@ -3425,16 +3419,13 @@ EOF
     if [ -n "$EFFECTIVE_TEAM_ID" ]; then
       echo "Applied TEAM_ID=$EFFECTIVE_TEAM_ID to Wawona-iOS, Wawona-iPadOS, Wawona-tvOS, and Wawona-watchOS."
     fi
-    rm -rf "$REPO_ROOT/.nix-deps/toolbar-keys" "$REPO_ROOT/.nix-deps/ghostty"
-    mkdir -p "$REPO_ROOT/.nix-deps/toolbar-keys" "$REPO_ROOT/.nix-deps/ghostty"
+    rm -rf "$REPO_ROOT/.nix-deps/toolbar-keys" "$REPO_ROOT/.nix-deps/terminal"
+    mkdir -p "$REPO_ROOT/.nix-deps/toolbar-keys" "$REPO_ROOT/.nix-deps/terminal"
     cp -R ${toolbarKeysSrc}/apple/Keyboard "$REPO_ROOT/.nix-deps/toolbar-keys/Keyboard"
     chmod -R u+w "$REPO_ROOT/.nix-deps/toolbar-keys"
     ${if terminalSrc != null then ''
-    cp -R ${terminalSrc}/apple/Terminal "$REPO_ROOT/.nix-deps/ghostty/Terminal"
-    chmod -R u+w "$REPO_ROOT/.nix-deps/ghostty"
-    '' else if ghosttySrc != null then ''
-    cp -R ${ghosttySrc}/apple/Terminal "$REPO_ROOT/.nix-deps/ghostty/Terminal"
-    chmod -R u+w "$REPO_ROOT/.nix-deps/ghostty"
+    cp -R ${terminalSrc}/apple/Terminal "$REPO_ROOT/.nix-deps/terminal/Terminal"
+    chmod -R u+w "$REPO_ROOT/.nix-deps/terminal"
     '' else ""}
     ${xcodeUtils.xcodeWrapper}/bin/xcode-wrapper ${pkgs.xcodegen}/bin/xcodegen generate --use-cache --spec "$TMP_SPEC"
 

@@ -35,7 +35,7 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-machine-types` | Machines UI: Native Shell / VM / Container. Sessions under Native Shell. |
 | `wawona-machine-card-actions` | Machines grid Focus/Stop/Edit/Delete must fit inside card. No ViewThatFits HStack clip. |
 | `wawona-ios-native-shell` | Every Start = Wawona Terminal (`$ argv` + CLI logs). Native Shell = live zsh. No StartupLog preview / first-frame auto-dismiss. |
-| `wawona-ghostty-host` | Wawona Terminal = native chrome + UniFFI libghostty-rs + native UI. No GhosttyKit / TermGpu twin. |
+| `wawona-ghostty-host` | Wawona Terminal = one repo (`Terminal`) UniFFI libghostty-rs + native UI. No GhosttyKit / second Ghostty repo. |
 | `wawona-apple-swift` | Apple compositor Swift/SwiftUI. Always load `swiftui-pro` + `swiftui-expert-skill` first. |
 | `wawona-android-compose` | Android Kotlin/Compose. Always load `compose-agent` + `modern-jetpack-compose` first. |
 | `wawona-appium` | Mode A Appium UI on GH runners. Tip host app + clean launch; Darwin catalog = Colima only; Present surface PNG; no local-bundle. |

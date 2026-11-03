@@ -81,9 +81,10 @@ flowchart BT
   `apple/Keyboard` from that input. The Wayland accessory bridge stays
   in Wawona. Do not copy the Swift toolbar back into `Sources/WawonaUI`.
   GhosttyKit headers stay out of Wawona. The terminal grid is
-  `github.com/Wawona/Ghostty`. libghostty is Ghostty (Copyright (c) 2024
-  Mitchell Hashimoto, Ghostty contributors). The iOS embed starts from
-  the same Rootshell port.
+  **libghostty-rs** in `github.com/Wawona/Terminal` (flake `terminal`).
+  Name/role credit: Ghostty MIT (Mitchell Hashimoto et al.). The iOS
+  embed UX starts from the same Rootshell port. Do not keep a second
+  Ghostty packaging repo.
 - Flake-input edges are **already acyclic** L0→L4. No inversions (verified:
   toolchain has no wwn-* inputs; iland → toolchain only; weston → toolchain +
   iland + kmscube; waypipe/swinging-bridge/relay → toolchain (+ iland when GPU);
