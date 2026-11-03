@@ -1061,13 +1061,11 @@
           };
           wawona-linux-compositor-host = pkgs.callPackage ./dependencies/wawona/linux-host.nix {
             inherit wawonaVersion;
-            waypipeSrc = waypipe-src;
-            coreutilsSrc = coreutils-src;
+            wawonaLinuxUiBin = self.packages.${system}.wawona-linux-ui-bin;
           };
           wawona-linux-tray = pkgs.callPackage ./dependencies/wawona/linux-tray.nix {
             inherit wawonaVersion;
-            waypipeSrc = waypipe-src;
-            coreutilsSrc = coreutils-src;
+            wawonaLinuxUiBin = self.packages.${system}.wawona-linux-ui-bin;
           };
           wawona-linux-vm = pkgs.callPackage ./dependencies/wawona/linux-vm.nix {
             inherit wawonaVersion;
@@ -1085,17 +1083,18 @@
             set -euo pipefail
             exec ${pkgs.nix}/bin/nix profile install "${self.outPath}#wawona" "$@"
           '';
+          # Same prebuilt UI wiring as wawona-linux. Without wawonaLinuxUiBin,
+          # linux.nix exits 1 ("wawonaLinuxUiBin missing") and breaks
+          # `nix run .#wawona`, `.#default`, and `nix profile install .#wawona`.
           default = pkgs.callPackage ./dependencies/wawona/linux.nix {
             inherit wawonaVersion;
-            waypipeSrc = waypipe-src;
-            coreutilsSrc = coreutils-src;
+            wawonaLinuxUiBin = self.packages.${system}.wawona-linux-ui-bin;
           };
           # Consumer-facing package name for use as a flake input or overlay,
           # matching the nixpkgs convention of installing `pkgs.wawona`.
           wawona = pkgs.callPackage ./dependencies/wawona/linux.nix {
             inherit wawonaVersion;
-            waypipeSrc = waypipe-src;
-            coreutilsSrc = coreutils-src;
+            wawonaLinuxUiBin = self.packages.${system}.wawona-linux-ui-bin;
           };
           # Host-native phoon CLI for Linux (`nix run .#phoon`).
           phoon-linux = toolchains.buildForLinux "phoon" {};

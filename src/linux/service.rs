@@ -46,9 +46,90 @@ fn remove_file_if_exists(path: &Path) -> Result<()> {
     }
 }
 
+/// Resolve the flake ref used by systemd units / tray Open.
+///
+/// Order: `WAWONA_FLAKE` env, cwd with `flake.nix`, common clones under `$HOME`,
+/// then `github:Wawona/Wawona`. Never hardcode a developer home path.
+pub fn resolve_flake_ref() -> String {
+    if let Ok(v) = std::env::var("WAWONA_FLAKE") {
+        let trimmed = v.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        if cwd.join("flake.nix").is_file() {
+            return cwd.display().to_string();
+        }
+    }
+    if let Ok(home) = std::env::var("HOME") {
+        for rel in ["Wawona", "Wawona/Wawona", "src/Wawona", "code/Wawona"] {
+            let candidate = Path::new(&home).join(rel);
+            if candidate.join("flake.nix").is_file() {
+                return candidate.display().to_string();
+            }
+        }
+    }
+    "github:Wawona/Wawona".to_string()
+}
+
+/// Pure unit body for the compositor host (testable without systemd).
+pub fn render_compositor_unit(flake_ref: &str) -> String {
+    format!(
+        r#"[Unit]
+Description=Wawona Nested Compositor Host
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.nix-profile/bin/nix run {flake_ref}#wawona-linux-compositor-host
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target
+"#
+    )
+}
+
+/// Pure unit body for the tray applet (testable without systemd).
+pub fn render_tray_unit(flake_ref: &str) -> String {
+    format!(
+        r#"[Unit]
+Description=Wawona Linux Tray Applet
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.nix-profile/bin/nix run {flake_ref}#wawona-linux-tray
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target
+"#
+    )
+}
+
+/// XDG autostart: compositor host only. Do not relaunch the GTK Machines UI
+/// (Linux analog of macOS #223: KeepAlive for the socket, not the GUI).
+pub fn render_autostart_desktop(flake_ref: &str) -> String {
+    format!(
+        r#"[Desktop Entry]
+Type=Application
+Name=Wawona Linux Compositor Host
+Comment=Keep the Wayland socket alive without opening the Machines window
+Exec=nix run {flake_ref}#wawona-linux-compositor-host
+Terminal=false
+X-GNOME-Autostart-enabled=true
+"#
+    )
+}
+
 pub fn install_user_units() -> Result<()> {
-    let flake_ref =
-        std::env::var("WAWONA_FLAKE").unwrap_or_else(|_| "/home/alex/Wawona".to_string());
+    let flake_ref = resolve_flake_ref();
     crate::wlog!(
         COMPOSITOR,
         "Installing user units and autostart files for flake={}",
@@ -58,54 +139,22 @@ pub fn install_user_units() -> Result<()> {
     fs::create_dir_all(&unit_dir)
         .with_context(|| format!("failed to create {}", unit_dir.display()))?;
 
-    let compositor = format!(
-        r#"[Unit]
-Description=Wawona Nested Compositor Host
-After=graphical-session.target
-
-[Service]
-Type=simple
-ExecStart=%h/.nix-profile/bin/nix run {flake_ref}#wawona-linux-compositor-host
-Restart=on-failure
-RestartSec=2
-
-[Install]
-WantedBy=default.target
-"#
-    );
-
-    let tray = format!(
-        r#"[Unit]
-Description=Wawona Linux Tray Applet
-After=graphical-session.target
-
-[Service]
-Type=simple
-ExecStart=%h/.nix-profile/bin/nix run {flake_ref}#wawona-linux-tray
-Restart=on-failure
-RestartSec=2
-
-[Install]
-WantedBy=default.target
-"#
-    );
-
-    write_file(&unit_dir.join("wawona-compositor.service"), &compositor)?;
-    write_file(&unit_dir.join("wawona-tray.service"), &tray)?;
+    write_file(
+        &unit_dir.join("wawona-compositor.service"),
+        &render_compositor_unit(&flake_ref),
+    )?;
+    write_file(
+        &unit_dir.join("wawona-tray.service"),
+        &render_tray_unit(&flake_ref),
+    )?;
 
     let auto_dir = autostart_dir()?;
     fs::create_dir_all(&auto_dir)
         .with_context(|| format!("failed to create {}", auto_dir.display()))?;
-    let desktop = format!(
-        r#"[Desktop Entry]
-Type=Application
-Name=Wawona Linux
-Exec=nix run {flake_ref}#wawona-linux
-Terminal=false
-X-GNOME-Autostart-enabled=true
-"#
-    );
-    write_file(&auto_dir.join("wawona.desktop"), &desktop)?;
+    write_file(
+        &auto_dir.join("wawona.desktop"),
+        &render_autostart_desktop(&flake_ref),
+    )?;
 
     run_systemctl_user(["daemon-reload"])?;
     crate::wlog!(COMPOSITOR, "User units installed at {}", unit_dir.display());
@@ -331,4 +380,70 @@ pub fn run_compositor_host(socket_name: Option<String>) -> Result<()> {
     );
     crate::wlog!(COMPOSITOR, "Compositor host shutdown complete");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolve_flake_ref_prefers_wawona_flake_env() {
+        let prev = std::env::var("WAWONA_FLAKE").ok();
+        std::env::set_var("WAWONA_FLAKE", "github:Wawona/Wawona/development");
+        assert_eq!(
+            resolve_flake_ref(),
+            "github:Wawona/Wawona/development".to_string()
+        );
+        match prev {
+            Some(v) => std::env::set_var("WAWONA_FLAKE", v),
+            None => std::env::remove_var("WAWONA_FLAKE"),
+        }
+    }
+
+    #[test]
+    fn resolve_flake_ref_never_hardcodes_alex_home() {
+        let prev = std::env::var("WAWONA_FLAKE").ok();
+        std::env::remove_var("WAWONA_FLAKE");
+        let resolved = resolve_flake_ref();
+        assert!(
+            !resolved.contains("/home/alex"),
+            "resolved flake must not hardcode /home/alex, got {resolved}"
+        );
+        match prev {
+            Some(v) => std::env::set_var("WAWONA_FLAKE", v),
+            None => std::env::remove_var("WAWONA_FLAKE"),
+        }
+    }
+
+    #[test]
+    fn compositor_unit_targets_graphical_session_not_default() {
+        let unit = render_compositor_unit("github:Wawona/Wawona");
+        assert!(unit.contains("WantedBy=graphical-session.target"));
+        assert!(!unit.contains("WantedBy=default.target"));
+        assert!(unit.contains("#wawona-linux-compositor-host"));
+    }
+
+    #[test]
+    fn tray_unit_targets_graphical_session() {
+        let unit = render_tray_unit("/tmp/Wawona");
+        assert!(unit.contains("WantedBy=graphical-session.target"));
+        assert!(unit.contains("#wawona-linux-tray"));
+    }
+
+    #[test]
+    fn autostart_starts_compositor_host_not_gui() {
+        let desktop = render_autostart_desktop("github:Wawona/Wawona");
+        let exec = desktop
+            .lines()
+            .find(|l| l.starts_with("Exec="))
+            .expect("desktop must have Exec=");
+        assert!(
+            exec.ends_with("#wawona-linux-compositor-host"),
+            "autostart must keep the Wayland socket, got {exec}"
+        );
+        assert!(
+            !exec.ends_with("#wawona-linux"),
+            "autostart must not reopen the GTK Machines UI, got {exec}"
+        );
+    }
 }

@@ -1,0 +1,15 @@
+# Keep shell/Nix sources LF. CRLF checkouts poison writeShellApplication
+# wrappers (GitHub issue #164: `syntax error near unexpected token $'in\r'`).
+*.nix text eol=lf
+*.sh text eol=lf
+*.bash text eol=lf
+*.py text eol=lf
+*.rs text eol=lf
+*.toml text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+VERSION text eol=lf
+.gitignore text eol=lf
+.gitattributes text eol=lf

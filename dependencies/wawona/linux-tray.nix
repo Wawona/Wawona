@@ -1,19 +1,15 @@
 {
   pkgs,
   wawonaVersion,
-  wawonaSrc ? ../..,
-  waypipeSrc ? null,
-  coreutilsSrc ? null,
+  wawonaLinuxUiBin ? null,
   ...
 }:
 
+# Prefer the ahead-of-time binary from linux-ui-prebuilt.nix (same pattern as
+# linux.nix). JIT `cargo run` was hermetic-hostile and slow for release gates.
 pkgs.writeShellApplication {
   name = "wawona-linux-tray-run";
   runtimeInputs = [
-    pkgs.cargo
-    pkgs.rustc
-    pkgs.pkg-config
-    pkgs.stdenv.cc
     pkgs.gtk4
     pkgs.libadwaita
     pkgs.glib
@@ -36,38 +32,10 @@ pkgs.writeShellApplication {
     pkgs.coreutils
     pkgs.lldb
   ];
-  text = ''
+  # Strip CR so a CRLF-checked-out tree (issue #164) cannot poison the wrapper.
+  text = builtins.replaceStrings ["\r"] [""] ''
     set -euo pipefail
-    export PKG_CONFIG_PATH="${pkgs.glib.dev}/lib/pkgconfig:${pkgs.gtk4.dev}/lib/pkgconfig:${pkgs.libadwaita.dev}/lib/pkgconfig:${pkgs.cairo.dev}/lib/pkgconfig:${pkgs.pango.dev}/lib/pkgconfig:${pkgs.gdk-pixbuf.dev}/lib/pkgconfig:${pkgs.graphene.dev}/lib/pkgconfig:${pkgs.harfbuzz.dev}/lib/pkgconfig:${pkgs.fribidi.dev}/lib/pkgconfig:${pkgs.freetype.dev}/lib/pkgconfig:${pkgs.fontconfig.dev}/lib/pkgconfig:${pkgs.wayland.dev}/lib/pkgconfig:${pkgs.libxkbcommon.dev}/lib/pkgconfig:${pkgs.openssl.dev}/lib/pkgconfig:${pkgs.libffi.dev}/lib/pkgconfig:${pkgs.zstd.dev}/lib/pkgconfig:${pkgs.lz4.dev}/lib/pkgconfig:${pkgs.vulkan-loader.dev}/lib/pkgconfig"
-    export LD_LIBRARY_PATH="${pkgs.glib.out}/lib:${pkgs.gtk4}/lib:${pkgs.libadwaita}/lib:${pkgs.cairo.out}/lib:${pkgs.pango.out}/lib:${pkgs.gdk-pixbuf.out}/lib:${pkgs.graphene}/lib:${pkgs.harfbuzz.out}/lib:${pkgs.fribidi}/lib:${pkgs.freetype}/lib:${pkgs.fontconfig.lib}/lib:${pkgs.wayland}/lib:${pkgs.libxkbcommon}/lib:${pkgs.openssl.out}/lib:${pkgs.libffi.out}/lib:${pkgs.zstd.out}/lib:${pkgs.lz4}/lib:${pkgs.vulkan-loader}/lib:''${LD_LIBRARY_PATH:-}"
-    export LIBRARY_PATH="$LD_LIBRARY_PATH"
-    workdir="$(mktemp -d)"
-    trap 'rm -rf "$workdir"' EXIT
-
-    cp -rL "${wawonaSrc}"/. "$workdir"/
-    chmod -R u+w "$workdir"
-
-    if [ ! -f "$workdir/waypipe/Cargo.toml" ]; then
-      mkdir -p "$workdir/waypipe"
-      cp -rL "${waypipeSrc}"/. "$workdir/waypipe"/
-      chmod -R u+w "$workdir/waypipe"
-    fi
-
-    if [ ! -f "$workdir/waypipe/Cargo.toml" ]; then
-      echo "Missing ./waypipe dependency and failed to stage waypipe source." >&2
-      exit 1
-    fi
-
-    if [ ! -f "$workdir/coreutils/Cargo.toml" ]; then
-      mkdir -p "$workdir/coreutils"
-      cp -rL "${coreutilsSrc}"/. "$workdir/coreutils"/
-      chmod -R u+w "$workdir/coreutils"
-    fi
-
-    if [ ! -f "$workdir/coreutils/Cargo.toml" ]; then
-      echo "Missing ./coreutils dependency and failed to stage coreutils source." >&2
-      exit 1
-    fi
+    export PATH="''${HOME}/.local/bin:''${PATH:-}"
 
     DEBUG_MODE=false
     while [ "$#" -gt 0 ]; do
@@ -80,15 +48,24 @@ pkgs.writeShellApplication {
     if [ "''${WAWONA_LLDB:-0}" = "1" ]; then DEBUG_MODE=true; fi
     if [ "''${WAWONA_NO_LLDB:-0}" = "1" ]; then DEBUG_MODE=false; fi
 
-    if [ "$DEBUG_MODE" = "true" ]; then
-      echo "[LLDB] Building then launching under LLDB (--debug). Freeze? process interrupt" >&2
-      cargo build --manifest-path "$workdir/Cargo.toml" --bin wawona-linux-tray --features linux-ui
-      BIN="$workdir/target/debug/wawona-linux-tray"
-      [ -x "$BIN" ] || { echo "Error: expected binary missing at $BIN" >&2; exit 1; }
-      exec lldb -O "target create \"$BIN\"" -O "target stop-hook add -o 'thread backtrace all'" -O "run" -- "$@"
+    BIN="${if wawonaLinuxUiBin != null then "${wawonaLinuxUiBin}/bin/wawona-linux-tray" else ""}"
+    if [ -n "''${WAWONA_TRAY_BIN:-}" ] && [ -x "$WAWONA_TRAY_BIN" ]; then
+      BIN="$WAWONA_TRAY_BIN"
+    fi
+    if [ -n "$BIN" ] && [ -x "$BIN" ]; then
+      if [ "$DEBUG_MODE" = "true" ]; then
+        echo "[LLDB] Launching under LLDB (--debug)." >&2
+        exec lldb \
+          -O "target create \"$BIN\"" \
+          -O "target stop-hook add -o 'thread backtrace all'" \
+          -O "run" \
+          -- "$@"
+      fi
+      exec "$BIN" "$@"
     fi
 
-    exec cargo run --manifest-path "$workdir/Cargo.toml" --bin wawona-linux-tray --features linux-ui -- "$@"
+    echo "Error: wawonaLinuxUiBin missing or tray not executable" >&2
+    exit 1
   '';
   meta = {
     description = "Wawona Linux tray applet";

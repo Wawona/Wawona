@@ -24,11 +24,39 @@ on a native machine, not a guest.
 
 ---
 
-## Linux (GTK / X11)
+## Linux (GTK / X11 / Wayland)
+
+Preferred run (prebuilt GTK UI):
 
 ```bash
 nix run .#wawona-linux
+# same binary via consumer package name / default:
+nix run .#wawona
+nix run .
 ```
+
+Install into the user profile:
+
+```bash
+nix run .#install
+# equivalent:
+nix profile install .#wawona
+```
+
+Portable AppImage (CI product artifact `Wawona-{calver}-Linux-{arch}.AppImage`):
+
+```bash
+nix build .#wawona-appimage
+./result/*.AppImage
+```
+
+Autostart / systemd user units keep the **compositor host** (Wayland socket)
+alive. They do **not** reopen the Machines GTK window on login (Linux analog of
+macOS quit policy). Tray Quit tears units down. Override the flake with
+`WAWONA_FLAKE=/path/to/checkout` when needed.
+
+Docker / non-interactive Nix: keep LF line endings on `*.nix` (see
+`.gitattributes`). CRLF checkouts break `wawona-linux-run` (issue #164).
 
 
 ## Guest Machines (planned)

@@ -19,8 +19,26 @@ as history.
   the window returned forever. Quitting the window leaves the socket
   running. The optional login agent starts the GUI executable with
   `KeepAlive` false (no `/usr/bin/open`).
+- **Linux `.#wawona` / `.#default` / `.#install`.** Pass `wawonaLinuxUiBin` into
+  the shared `linux.nix` wrapper so `nix run .#wawona` no longer exits with
+  `wawonaLinuxUiBin missing` (issue #90 install/run gate).
+- **Linux compositor-host and tray wrappers.** Exec the ahead-of-time bins from
+  `wawona-linux-ui-bin` instead of JIT `cargo run` (`linux-host.nix`,
+  `linux-tray.nix`).
+- **Linux quit / autostart (#223 analog).** Resolve the flake via `WAWONA_FLAKE`
+  / cwd / `$HOME` clones / `github:Wawona/Wawona` (no `/home/alex` hardcode).
+  Systemd units `WantedBy=graphical-session.target`. XDG autostart launches the
+  compositor host only, not the GTK Machines window.
+- **Issue #164 CRLF.** `.gitattributes` forces LF on Nix/shell sources; Linux
+  wrappers strip `\r` via `builtins.replaceStrings` so Docker checkouts cannot
+  poison `wawona-linux-run`.
 - **Linux terminal paints `[session ended]` when the PTY hangs up**
   instead of leaving a silent last frame.
+
+### Added
+- CI script `verify-linux-package-wiring.py` (flake wiring, no alex home,
+  autostart policy, LF wrappers), run from org-quality (not Gate: packages)
+  so editing `nix.yml` does not trip zizmor on pre-existing unpinned uses.
 
 ### Changed
 - CalVer bump to 26.11.2.

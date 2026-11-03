@@ -87,8 +87,7 @@ mod applet {
         });
 
         open.connect_clicked(move |_| {
-            let flake_ref =
-                std::env::var("WAWONA_FLAKE").unwrap_or_else(|_| "/home/alex/Wawona".to_string());
+            let flake_ref = service::resolve_flake_ref();
             let _ = std::process::Command::new("sh")
                 .args(["-lc", &format!("nix run {flake_ref}#wawona-linux")])
                 .spawn();
