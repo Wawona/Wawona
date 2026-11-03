@@ -50,6 +50,7 @@ honest warnings for tools that are not yet pinned on Ubuntu 24.04 GHA.
 |---|---|---|
 | Relay VM / MMU / virtio | `Relay/verification/PROOF_OBLIGATIONS.md` | `Relay/scripts/verify-formal.sh` |
 | Clamp / sanitize / generation counter | `src/core/invariants.rs` | `scripts/verify-formal.sh` |
+| Wayland protocol erroneous checks | `src/core/wayland/protocol_proofs.rs` | `scripts/verify-protocol-proofs.sh` (via `verify-formal.sh`) |
 | Owned C helpers / JNI bounds | `src/platform/cproof/wawona_cproof.h` | `scripts/verify-c.sh` |
 | SSH host string policy | `src/domain/validation.rs` + `verification/ssh_host_vector.tsv` | `verify-swift.sh` / `verify-kotlin.sh` |
 | Android MachineInputSanitizer | Kotlin + `verification/kotlin/SanitizeHarness.java` | `scripts/verify-kotlin.sh` |
@@ -101,7 +102,7 @@ Push and PR on `development` / `master`. Final job name **Verification report**
 
 | Script | Surface |
 |---|---|
-| `scripts/verify-formal.sh` | clippy, deny, proptest, Kani, Miri, Loom, Verus (rect + sanitize) |
+| `scripts/verify-formal.sh` | clippy, deny, proptest, Kani, Miri, Loom, Verus (rect + sanitize), protocol proofs |
 | `scripts/verify-heavy.sh` | cargo-fuzz ASan 60s (helpers-check); research installs warn |
 | `scripts/verify-c.sh` | cproof ASan/UBSan, clang-tidy (cert/bugprone on cproof TU), scan-build, CBMC, Valgrind, MSan, CDSChecker harness when installed, TSan; Frama-C/KLEE/CPA/CDSChecker warn if missing |
 | `scripts/verify-swift.sh` | SSH vector (Swift Testing), strict concurrency, ASan/UBSan/TSan |
@@ -109,8 +110,10 @@ Push and PR on `development` / `master`. Final job name **Verification report**
 | `scripts/verify-nix.sh` | parse all `.nix`, alejandra on `flake.nix`, flake metadata; full-tree format and `nix flake check` stay in Gate: packages |
 
 Helpers: `src/core/invariants.rs`, `src/core/generation_counter.rs`,
-`src/platform/cproof/wawona_cproof.h`, `verification/ssh_host_vector.tsv`,
-`fuzz/` → `verification/helpers-check` (not the full compositor crate).
+`src/core/wayland/protocol_proofs.rs`, `src/platform/cproof/wawona_cproof.h`,
+`verification/ssh_host_vector.tsv`, `fuzz/` → `verification/helpers-check`
+(not the full compositor crate). Functional catalog rows must match
+`PROTOCOL_PROOF_OBLIGATIONS` or **compile fails** (`build.rs`).
 
 Reusable floors (other flakes call these; job names are **not**
 "Verification report"):

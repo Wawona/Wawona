@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="treeland_capture_unstable_v1">
+  <copyright>
+
+    SPDX-FileCopyrightText: 2024 UnionTech Software Technology Co., Ltd.
+    SPDX-License-Identifier: MIT
+  </copyright>
+  <interface name="treeland_capture_session_v1" version="1">
+    <enum name="cancel_reason">
+      <entry name="temporary" value="0" summary="temporary error, source will produce more frames"/>
+      <entry name="permanent" value="1" summary="fatal error, source will not produce frames"/>
+      <entry name="resizing" value="2" summary="temporary error, source will produce more frames"/>
+    </enum>
+    <enum name="flags" bitfield="true">
+      <entry name="transient" value="0x1" summary="clients should copy frame before processing"/>
+    </enum>
+    <request name="destroy" type="destructor">
+      <description summary="delete this object">
+        Unreferences the frame. This request must be called as soon as it's no longer valid.
+      </description>
+    </request>
+    <request name="start">
+      <description summary="start session">
+        Start session and keeps sending frame.
+      </description>
+    </request>
+    <request name="frame_done">
+      <description summary="Indicates current frame is done.">
+        This is the ACK to the current "ready" event. The next "frame" event will be sent only when current
+        "ready" event is acknowledged. The timestamp should be the same as the one sent in "ready" event.
+        If the frame has the "transient" flag, all objects sent before become invalid after this event.
+      </description>
+      <arg name="tv_sec_hi" type="uint"/>
+      <arg name="tv_sec_lo" type="uint"/>
+      <arg name="tv_usec" type="uint"/>
+    </request>
+    <event name="frame">
+      <description summary="supply the client with information about the frame">
+        Main event supplying the client with information about the frame. If the capture didn't fail, this event is always
+        emitted first before any other events.
+        When mask is provided, x and y should be offset relative to mask surface origin. Otherwise offset_x and offset_y should always
+        be zero.
+      </description>
+      <arg name="offset_x" type="int" summary="crop offset x"/>
+      <arg name="offset_y" type="int" summary="crop offset y"/>
+      <arg name="width" type="uint"/>
+      <arg name="height" type="uint"/>
+      <arg name="buffer_flags" type="uint"/>
+      <arg name="flags" type="uint" enum="treeland_capture_session_v1.flags"/>
+      <arg name="format" type="uint"/>
+      <arg name="mod_high" type="uint"/>
+      <arg name="mod_low" type="uint"/>
+      <arg name="num_objects" type="uint"/>
+    </event>
+    <event name="object">
+      <description summary="supply the client with object fd">
+      </description>
+      <arg name="index" type="uint"/>
+      <arg name="fd" type="fd"/>
+      <arg name="size" type="uint"/>
+      <arg name="offset" type="uint"/>
+      <arg name="stride" type="uint"/>
+      <arg name="plane_index" type="uint"/>
+    </event>
+    <event name="ready">
+      <description summary="indicates frame is available for reading">
+        This event is sent as soon as the frame is presented, indicating it is available for reading. This event
+        includes the time at which presentation happened at.
+      </description>
+      <arg name="tv_sec_hi" type="uint"/>
+      <arg name="tv_sec_lo" type="uint"/>
+      <arg name="tv_nsec" type="uint"/>
+    </event>
+    <event name="cancel">
+      <description summary="Notifies current frame is no longer valid.">
+        If the capture failed or if the frame is no longer valid after the "frame" event has been emitted, this
+        event will be used to inform the client to scrap the frame.
+      </description>
+      <arg name="reason" type="uint" enum="treeland_capture_session_v1.cancel_reason"/>
+    </event>
+  </interface>
+  <interface name="treeland_capture_frame_v1" version="1">
+    <enum name="flags" bitfield="true">
+      <entry name="y_inverted" value="0x1" summary="contents are y-inverted"/>
+    </enum>
+    <request name="destroy" type="destructor">
+      <description summary="delete this object, used or not">
+        Destroys the context. This request can be sent at any time by the client.
+      </description>
+    </request>
+    <request name="copy">
+      <description summary="copy capture contents">
+        Copy capture contents to provided buffer
+      </description>
+      <arg name="buffer" type="object" interface="wl_buffer"/>
+    </request>
+    <event name="buffer">
+      <description summary="inform client to prepare buffer">
+        Inform client to prepare buffer.
+      </description>
+      <arg name="format" type="uint" enum="wl_shm.format"/>
+      <arg name="width" type="uint"/>
+      <arg name="height" type="uint"/>
+      <arg name="stride" type="uint"/>
+    </event>
+    <event name="buffer_done">
+      <description summary="all buffer formats have done">
+        Inform client that all buffer formats supported are emitted.
+      </description>
+    </event>
+    <event name="flags">
+      <description summary="frame flags">
+        Provides flags about the frame. This event is sent once before the
+        "ready" event.
+      </description>
+      <arg name="flags" type="uint" enum="treeland_capture_frame_v1.flags" summary="frame flags"/>
+    </event>
+    <event name="ready">
+      <description summary="buffer is copied">
+        Inform that buffer is ready for reading
+      </description>
+    </event>
+    <event name="failed">
+      <description summary="frame copy failed">
+        Inform that frame copy fails.
+      </description>
+    </event>
+  </interface>
+  <interface name="treeland_capture_context_v1" version="1">
+    <enum name="source_type" bitfield="true">
+      <entry name="output" value="0x1" summary="output source type"/>
+      <entry name="window" value="0x2" summary="window source type"/>
+      <entry name="region" value="0x4" summary="region source type"/>
+    </enum>
+    <enum name="source_failure">
+      <entry name="selector_busy" value="1" summary="selector is occupied by other context"/>
+      <entry name="user_cancel" value="2" summary="User cancel this context from compositor"/>
+      <entry name="source_destroyed" value="3" summary="Source has been destroyed"/>
+      <entry name="other" value="4" summary="other failure"/>
+    </enum>
+    <request name="destroy" type="destructor">
+      <description summary="delete this object, used or not">
+        Destroys the context. This request can be sent at any time by the client.
+      </description>
+    </request>
+    <request name="select_source">
+      <description summary="select source interactively">
+        Selector is provided by compositor. Client can provide source hint to hint compositor
+        to provide certain kinds of source.
+      </description>
+      <arg name="source_hint" type="uint" enum="source_type"/>
+      <arg name="freeze" type="uint" summary="freeze compositing or not"/>
+      <arg name="with_cursor" type="uint" summary="whether source content contains cursor or not"/>
+      <arg name="mask" type="object" interface="wl_surface" summary="this mask is guaranteed to be at the top most" allow-null="true"/>
+    </request>
+    <request name="capture">
+      <description summary="capture one frame">
+        This event can be called just once. A second call might result in a protocol error cause
+        we just provide transient
+      </description>
+      <arg name="frame" type="new_id" interface="treeland_capture_frame_v1"/>
+    </request>
+    <request name="create_session">
+      <description summary="create a persistent session for capturing">
+        Often used by a screen recorder.
+      </description>
+      <arg name="session" type="new_id" interface="treeland_capture_session_v1"/>
+    </request>
+    <event name="source_ready">
+      <description summary="notify client that source is ready">
+        This event supplies the client some information about the capture source, including
+        the capture region relative to mask and source type.
+      </description>
+      <arg name="region_x" type="int" summary="offset x of capture region relative to mask for capture contents"/>
+      <arg name="region_y" type="int" summary="offset y of capture region relative to mask for capture contents"/>
+      <arg name="region_width" type="uint" summary="width of capture region"/>
+      <arg name="region_height" type="uint" summary="height of capture region"/>
+      <arg name="source_type" type="uint" enum="source_type" summary="final capture source type"/>
+    </event>
+    <event name="source_failed">
+      <description summary="notify client that source selection is failed">
+        There could a lot of reasons but the most common one is that selector is busy
+      </description>
+      <arg name="reason" type="uint" enum="source_failure"/>
+    </event>
+  </interface>
+  <interface name="treeland_capture_manager_v1" version="1">
+    <request name="destroy" type="destructor">
+      <description summary="destroy the capture manager">
+        Destroy the treeland_capture_manager_v1 object.
+      </description>
+    </request>
+    <request name="get_context">
+      <description summary="get a capture context">
+      </description>
+      <arg name="context" type="new_id" interface="treeland_capture_context_v1"/>
+    </request>
+  </interface>
+</protocol>

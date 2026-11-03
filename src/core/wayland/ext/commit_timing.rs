@@ -1,8 +1,8 @@
 //! Commit Timing protocol implementation.
 //!
-//! This protocol allows clients to specify a target presentation time
-//! for their next commit. The compositor can use this to schedule
-//! frame presentation more precisely (e.g., for video playback).
+//! Clients set a target presentation time for the next commit. The compositor
+//! latches that target on commit and must not present that content before the
+//! target (hold-until-target).
 
 use std::collections::HashMap;
 use wayland_protocols::wp::commit_timing::v1::server::{
@@ -13,32 +13,51 @@ use wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, 
 
 use crate::core::state::CompositorState;
 
-// ============================================================================
-// Data Types
-// ============================================================================
+use crate::core::wayland::protocol_proofs::commit_timing_hold_required;
 
-/// Stores target presentation timestamps per surface
+/// Stores target presentation timestamps per surface.
 #[derive(Debug, Clone, Default)]
 pub struct CommitTimingState {
-    /// surface_id → target presentation time in nanoseconds
+    /// surface_id → target presentation time in nanoseconds (pending, pre-commit)
     pub target_times: HashMap<u32, u64>,
+    /// surface_id → earliest present time after latch (hold-until-target)
+    pub held_until: HashMap<u32, u64>,
 }
 
 impl CommitTimingState {
-    /// Get the target presentation time for a surface (if set)
-    pub fn get_target_ns(&self, surface_id: u32) -> Option<u64> {
-        self.target_times.get(&surface_id).copied()
+    /// Latch a pending target on commit. Returns the hold deadline if still future.
+    pub fn latch_on_commit(&mut self, surface_id: u32, now_ns: u64) -> Option<u64> {
+        let target = self.target_times.remove(&surface_id)?;
+        if commit_timing_hold_required(target, now_ns) {
+            self.held_until.insert(surface_id, target);
+            Some(target)
+        } else {
+            self.held_until.remove(&surface_id);
+            None
+        }
     }
 
-    /// Clear the target time (after it's been consumed by the frame scheduler)
-    pub fn consume(&mut self, surface_id: u32) -> Option<u64> {
-        self.target_times.remove(&surface_id)
+    /// True while this surface's latched content must not present yet.
+    pub fn is_held(&self, surface_id: u32, now_ns: u64) -> bool {
+        self.held_until
+            .get(&surface_id)
+            .is_some_and(|t| commit_timing_hold_required(*t, now_ns))
+    }
+
+    /// Drop holds whose deadline has passed. Returns released surface ids.
+    pub fn release_ready(&mut self, now_ns: u64) -> Vec<u32> {
+        let ready: Vec<u32> = self
+            .held_until
+            .iter()
+            .filter(|(_, t)| !commit_timing_hold_required(**t, now_ns))
+            .map(|(s, _)| *s)
+            .collect();
+        for s in &ready {
+            self.held_until.remove(s);
+        }
+        ready
     }
 }
-
-// ============================================================================
-// wp_commit_timing_manager_v1
-// ============================================================================
 
 impl GlobalDispatch<WpCommitTimingManagerV1, ()> for CompositorState {
     fn bind(
@@ -78,10 +97,6 @@ impl Dispatch<WpCommitTimingManagerV1, ()> for CompositorState {
     }
 }
 
-// ============================================================================
-// wp_commit_timer_v1. User data is surface_id: u32
-// ============================================================================
-
 impl Dispatch<WpCommitTimerV1, u32> for CompositorState {
     fn request(
         state: &mut Self,
@@ -114,6 +129,7 @@ impl Dispatch<WpCommitTimerV1, u32> for CompositorState {
             }
             wp_commit_timer_v1::Request::Destroy => {
                 state.ext.commit_timing.target_times.remove(surface_id);
+                state.ext.commit_timing.held_until.remove(surface_id);
                 tracing::debug!("Commit timer destroyed for surface {}", surface_id);
             }
             _ => {}
@@ -125,3 +141,26 @@ impl Dispatch<WpCommitTimerV1, u32> for CompositorState {
 pub fn register_commit_timing(display: &DisplayHandle) -> wayland_server::backend::GlobalId {
     display.create_global::<CompositorState, WpCommitTimingManagerV1, ()>(1, ())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hold_required_when_target_in_future() {
+        assert!(commit_timing_hold_required(200, 100));
+        assert!(!commit_timing_hold_required(100, 100));
+        assert!(!commit_timing_hold_required(50, 100));
+    }
+
+    #[test]
+    fn latch_holds_future_target() {
+        let mut st = CommitTimingState::default();
+        st.target_times.insert(7, 500);
+        assert_eq!(st.latch_on_commit(7, 100), Some(500));
+        assert!(st.is_held(7, 100));
+        assert!(st.release_ready(500).contains(&7));
+        assert!(!st.is_held(7, 500));
+    }
+}
+

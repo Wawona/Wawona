@@ -15,6 +15,10 @@ use wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, 
 
 use crate::core::state::CompositorState;
 use crate::core::surface::surface::SurfaceState;
+use crate::core::wayland::protocol_proofs::{
+    viewport_destination_request_is_valid as destination_request_is_valid,
+    viewport_source_request_is_valid as source_request_is_valid,
+};
 use std::collections::HashMap;
 
 // ============================================================================
@@ -99,17 +103,6 @@ pub fn viewport_surface_size(
     }
 }
 
-/// `set_source` arguments are all -1 (unset) or a non-negative origin with a
-/// positive size.
-fn source_request_is_valid(x: f64, y: f64, width: f64, height: f64) -> bool {
-    let unset = [x, y, width, height].iter().all(|v| *v == -1.0);
-    unset || (x >= 0.0 && y >= 0.0 && width > 0.0 && height > 0.0)
-}
-
-/// `set_destination` arguments are both -1 (unset) or both positive.
-fn destination_request_is_valid(width: i32, height: i32) -> bool {
-    (width == -1 && height == -1) || (width > 0 && height > 0)
-}
 
 /// State for viewporter protocol
 #[derive(Debug, Default)]

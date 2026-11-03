@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="cosmic_atspi_v1">
+  <copyright>
+    Copyright © 2024 System76
+
+    Permission is hereby granted, free of charge, to any person obtaining a
+    copy of this software and associated documentation files (the "Software"),
+    to deal in the Software without restriction, including without limitation
+    the rights to use, copy, modify, merge, publish, distribute, sublicense,
+    and/or sell copies of the Software, and to permit persons to whom the
+    Software is furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice (including the next
+    paragraph) shall be included in all copies or substantial portions of the
+    Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+    THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+    DEALINGS IN THE SOFTWARE.
+  </copyright>
+  <description summary="atspi accessibility protocol">
+    This protocol provides a relatively straightforward mapping of AtspiDevice
+    in the at-spi2-core library, so it's possible to add a Wayland backend for it.
+
+    This provides a way for screen reader key bindings to work.
+
+    This is a temporary solution until a better protocol is available for this purpose.
+  </description>
+  <interface name="cosmic_atspi_manager_v1" version="1">
+    <description summary="atspi manager global">
+      Manager for adding grabs and monitoring key input.
+    </description>
+    <request name="destroy" type="destructor">
+      <description summary="Destroy the global">
+        Any grabs that are still active will be disabled.
+      </description>
+    </request>
+    <request name="add_key_grab">
+      <description summary="Add grab for key combination">
+        Grab the given key combination, so it will not be sent to clients.
+      </description>
+      <arg name="mods" type="uint" summary="modifiers"/>
+      <arg name="virtual_mods" type="array" summary="keycodes of virtual modifiers"/>
+      <arg name="key" type="uint" summary="keycode"/>
+    </request>
+    <request name="remove_key_grab">
+      <description summary="Remove grab for key combination">
+        Disables a grab added with add_key_grab.
+      </description>
+      <arg name="mods" type="uint" summary="modifiers"/>
+      <arg name="virtual_mods" type="array" summary="keycodes of virtual modifiers"/>
+      <arg name="key" type="uint" summary="keycode"/>
+    </request>
+    <request name="grab_keyboard">
+      <description summary="Grab keyboard">
+        Grab keyboard, so key input will not be sent to clients.
+      </description>
+    </request>
+    <request name="ungrab_keyboard">
+      <description summary="Ungrab keyboard">
+        Disables a grab added with grab_keyboard.
+      </description>
+    </request>
+    <event name="key_events_eis">
+      <description summary="Get eis socket fd">
+        Produces an fd that can be used with libei to monitor keyboard input.
+      </description>
+      <arg name="fd" type="fd" summary="eis file descriptor"/>
+    </event>
+  </interface>
+</protocol>

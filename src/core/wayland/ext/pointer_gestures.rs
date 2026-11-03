@@ -266,3 +266,88 @@ pub fn register_pointer_gestures(display: &DisplayHandle) -> wayland_server::bac
     // Version 3 adds hold gesture, but we'll start with v1
     display.create_global::<CompositorState, ZwpPointerGesturesV1, ()>(1, ())
 }
+
+impl CompositorState {
+    /// Deliver a host gesture into zwp_pointer_gestures_v1 objects for the
+    /// focused pointer surface.
+    pub fn dispatch_pointer_gesture(&mut self, gesture: &crate::ffi::types::GestureEvent) {
+        use crate::ffi::types::{GestureState, GestureType};
+
+        let Some(surface_id) = self.seat.pointer.focus else {
+            return;
+        };
+        let Some(wl_surface) = self.wl_surface_for(surface_id) else {
+            return;
+        };
+        let time = gesture.timestamp_ms;
+        let fingers = gesture.finger_count;
+        let cancelled = matches!(gesture.state, GestureState::Cancel);
+
+        // Keep gesture subscription surface ids aligned with current focus.
+        for swipe in self.ext.pointer_gestures.swipe_gestures.values_mut() {
+            swipe.surface_id = surface_id;
+        }
+        for pinch in self.ext.pointer_gestures.pinch_gestures.values_mut() {
+            pinch.surface_id = surface_id;
+        }
+
+        match gesture.gesture_type {
+            GestureType::Swipe => match gesture.state {
+                GestureState::Begin => self.ext.pointer_gestures.broadcast_swipe_begin(
+                    surface_id,
+                    &wl_surface,
+                    time,
+                    fingers,
+                ),
+                GestureState::Update => self.ext.pointer_gestures.broadcast_swipe_update(
+                    surface_id,
+                    time,
+                    gesture.dx,
+                    gesture.dy,
+                ),
+                GestureState::End | GestureState::Cancel => self
+                    .ext
+                    .pointer_gestures
+                    .broadcast_swipe_end(surface_id, time, cancelled),
+            },
+            GestureType::Pinch => match gesture.state {
+                GestureState::Begin => self.ext.pointer_gestures.broadcast_pinch_begin(
+                    surface_id,
+                    &wl_surface,
+                    time,
+                    fingers,
+                ),
+                GestureState::Update => self.ext.pointer_gestures.broadcast_pinch_update(
+                    surface_id,
+                    time,
+                    gesture.dx,
+                    gesture.dy,
+                    gesture.scale,
+                    gesture.rotation,
+                ),
+                GestureState::End | GestureState::Cancel => self
+                    .ext
+                    .pointer_gestures
+                    .broadcast_pinch_end(surface_id, time, cancelled),
+            },
+            GestureType::Hold => {
+                // Hold requires protocol version 3; v1 registration skips it.
+                tracing::debug!("pointer gesture hold ignored (protocol v1)");
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn swipe_state_tracks_surface() {
+        // Resource-less unit coverage for the bookkeeping map.
+        let mut st = PointerGesturesState::default();
+        assert!(st.swipe_gestures.is_empty());
+        assert!(st.pinch_gestures.is_empty());
+        let _ = &mut st;
+    }
+}

@@ -32,7 +32,9 @@ pub struct FractionalScaleState {
 
 impl FractionalScaleState {
     pub fn preferred_scale_units(output_scale: f32) -> u32 {
-        (output_scale.max(1.0) * 120.0).round().max(120.0) as u32
+        // Centi-units of scale (1.0 → 100) feed the proved helper.
+        let centi = (output_scale.max(1.0) * 100.0).round() as u32;
+        crate::core::wayland::protocol_proofs::fractional_scale_units_at_least_120(centi)
     }
 
     pub fn notify_all(&self, output_scale: f32) {

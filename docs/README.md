@@ -15,6 +15,7 @@ onto the site. Everything else stays in GitHub.
 | [wawona-mission-and-architecture.md](wawona-mission-and-architecture.md) | Mission, delivery paths, Mode A/B, decorations |
 | [2026-SOURCE-OF-TRUTH.md](2026-SOURCE-OF-TRUTH.md) | Platform scope, X11 story, settings inventory |
 | [protocol-status.md](protocol-status.md) | Generated protocol matrix (Functional → Missing; never hand-count) |
+| [protocol-milestones.md](protocol-milestones.md) | Explorer → 100% phases; GitHub milestone titles; site sync |
 | [settings.md](settings.md) | Preference keys and Machines overrides |
 | [usage.md](usage.md) | Nested Weston/Niri, bundled clients |
 | [reporting-bugs.md](reporting-bugs.md) | How users copy logs and file GitHub issues |

@@ -418,6 +418,9 @@ impl Dispatch<ZxdgSurfaceV6, Arc<V6SurfaceUserData>> for CompositorState {
                         host_locked,
                         fills_host: false,
                     });
+                crate::core::wayland::ext::foreign_toplevel_list::notify_toplevel_created(
+                    state, window_id,
+                );
                 crate::core::wayland::wlr::foreign_toplevel_management::notify_toplevel_created(
                     state, window_id,
                 );

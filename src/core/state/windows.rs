@@ -365,6 +365,9 @@ impl CompositorState {
             crate::core::wayland::wlr::foreign_toplevel_management::notify_toplevel_destroyed(
                 self, window_id,
             );
+            crate::core::wayland::ext::foreign_toplevel_list::notify_toplevel_destroyed(
+                self, window_id,
+            );
 
             self.pending_compositor_events
                 .push(crate::core::compositor::CompositorEvent::WindowDestroyed { window_id });

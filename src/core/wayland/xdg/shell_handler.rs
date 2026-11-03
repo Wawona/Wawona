@@ -452,6 +452,7 @@ impl XdgShellHandler for CompositorState {
         crate::core::wayland::wlr::foreign_toplevel_management::notify_toplevel_created(
             self, window_id,
         );
+        crate::core::wayland::ext::foreign_toplevel_list::notify_toplevel_created(self, window_id);
         crate::wlog!(
             crate::util::logging::COMPOSITOR,
             "new_toplevel: pushed WindowCreated pending (window_id={})",

@@ -1,0 +1,297 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="cosmic_output_management_unstable_v1">
+  <copyright>
+    Copyright © 2024 Victoria Brekenfeld
+
+    Permission is hereby granted, free of charge, to any person obtaining a
+    copy of this software and associated documentation files (the "Software"),
+    to deal in the Software without restriction, including without limitation
+    the rights to use, copy, modify, merge, publish, distribute, sublicense,
+    and/or sell copies of the Software, and to permit persons to whom the
+    Software is furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice (including the next
+    paragraph) shall be included in all copies or substantial portions of the
+    Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+    THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+    DEALINGS IN THE SOFTWARE.
+  </copyright>
+
+  <description summary="extension protocol to wlr-output-management">
+    This protocol serves as an extension to wlr-output-management.
+
+    It primarily adds explicit output mirroring,
+    while upstream is figuring out how to best support that.
+
+    It was designed against version 4 of wlr-output-management, but tries
+    it's best to be forward compatible.
+  </description>
+
+  <interface name="zcosmic_output_manager_v1" version="3">
+    <description summary="Output configuration manager">
+        This interface provides extension points for wlr-output-management types.
+    </description>
+
+    <enum name="error">
+      <entry name="already_extended" value="1"
+        summary="object already created"/>
+    </enum>
+
+    <request name="get_head">
+        <description summary="Get a zcosmic_output_head_v1 for an existing zwlr_output_head_v1">
+            Gets an extension object for zwlr_output_head_v1.
+
+            As soon as the extended output is created, events will be dispatched with an accompanying
+            `done`-event delivered to the matching `zwlr_output_manager_v1` afterwards.
+
+            Any further updates will produce new events, if properties of the zcosmic_output_head_v1 change,
+            just like for the original `zwlr_output_head_v1`. Events should be handled as atomic, as denoted
+            by `zwlr_output_manager_v1::done`.
+
+            Trying to create more than one zcosmic_output_head_v1 per zwlr_output_head_v1 will raise an
+            "already_extended" error.
+        </description>
+        <arg name="extended" type="new_id" interface="zcosmic_output_head_v1"/>
+        <arg name="head" type="object" interface="zwlr_output_head_v1"/>
+    </request>
+
+    <request name="get_configuration">
+        <description summary="Get a zcosmic_output_configuration_v1 for an existing zwlr_output_configuration_v1">
+            Gets an extension object for zwlr_output_configuration_v1.
+
+            Trying to create more than one zcosmic_output_configuration_v1 per zwlr_output_configuration_v1
+            will raise an "already_extended" error.
+        </description>
+        <arg name="extended" type="new_id" interface="zcosmic_output_configuration_v1"/>
+        <arg name="config" type="object" interface="zwlr_output_configuration_v1"/>
+    </request>
+
+    <request name="get_configuration_head">
+        <description summary="Get a zcosmic_output_configuration_head_v1 for an existing zwlr_output_configuration_head_v1">
+            Gets an extension object for zwlr_output_configuration_head_v1.
+
+            Trying to create more than one zcosmic_output_configuration_head_v1 per
+            zwlr_output_configuration_head_v1 will raise an "already_extended" error.
+        </description>
+        <arg name="extended" type="new_id" interface="zcosmic_output_configuration_head_v1"/>
+        <arg name="config_head" type="object" interface="zwlr_output_configuration_head_v1"/>
+    </request>
+
+    <request name="release" type="destructor">
+      <description summary="Destroy this global">
+        Destroys this global. All previously created objects remain valid.
+      </description>
+    </request>
+
+    <!-- version 3 additions -->
+
+    <request name="set_xwayland_primary" since="3">
+      <description summary="set head as the primary for xwayland">
+        This requests a head to be advertised as the primary output via randr to Xwayland.
+
+        No head has to be marked primary, if `null` is passed Xwayland won't advertise a primary output.
+        Sending a disabled head will be ignored to avoid races.
+      </description>
+      <arg name="head" type="object" interface="zcosmic_output_head_v1" allow-null="true" summary="head to be advertised as primary"/>
+    </request>
+  </interface>
+
+  <interface name="zcosmic_output_head_v1" version="3">
+    <description summary="Output extension object">
+        Extension to zwlr_output_head_v1.
+
+        Adds additional read-only properties.
+
+        Properties sent via this interface are applied atomically via the wlr_output_manager.done event.
+        No guarantees are made regarding the order in which properties are sent.
+    </description>
+
+    <event name="scale_1000">
+      <description summary="current scale">
+        This events describes the scale of the head in the global compositor
+        space multiplied by 1000 for additional precision.
+
+        It is only sent if the output is enabled.
+      </description>
+      <arg name="scale_1000" type="int"/>
+    </event>
+
+    <event name="mirroring">
+      <description summary="mirroring other output">
+        This events describes that the head is mirroring another.
+        In these cases `name` contains the unique name of the matching `zwlr_output_head_v1`.
+        If the name is null, no head is being mirrored onto this one.
+
+        For mirrored heads the `position`-event is meaningless.
+
+        It is only sent if the output is enabled.
+      </description>
+      <arg name="name" type="string" allow-null="true"/>
+    </event>
+
+    <request name="release" type="destructor">
+      <description summary="destroy the output head">
+        Using this request a client can tell the compositor that it is not interested
+        in the head object anymore.
+      </description>
+    </request>
+
+    <!-- version 2 additions -->
+
+    <event name="adaptive_sync_available" since="2">
+      <description summary="is adaptive_sync available for this head">
+        This events describes if adaptive_sync is available for this head.
+
+        It is only sent if the output is enabled.
+      </description>
+      <arg name="available" type="uint" enum="adaptive_sync_availability"/>
+    </event>
+
+    <enum name="adaptive_sync_availability" since="2">
+      <entry name="unsupported" value="0" summary="adaptive sync is not supported"/>
+      <entry name="requires_modeset" value="1" summary="automatic adaptive_sync is unavailable"/>
+      <entry name="supported" value="2" summary="adaptive sync is supported in all states"/>
+    </enum>
+
+    <event name="adaptive_sync_ext" since="2">
+      <description summary="current adaptive_sync state">
+        This events describes the adaptive_sync state of this head.
+
+        It is only sent if the output is enabled.
+      </description>
+      <arg name="state" type="uint" enum="adaptive_sync_state_ext"/>
+    </event>
+
+    <enum name="adaptive_sync_state_ext" since="2">
+      <entry name="disabled" value="0" summary="adaptive sync is disabled"/>
+      <entry name="automatic" value="1" summary="adaptive sync will be actived automatically"/>
+      <entry name="always" value="2" summary="adaptive sync is forced to be always active"/>
+    </enum>
+
+    <!-- version 3 additions -->
+
+    <event name="xwayland_primary" since="3">
+      <description summary="is this head configured as the primary for xwayland">
+        This event describes if this head is advertised as the primary output via randr to Xwayland.
+
+        At most one output is marked primary, but it is not guaranteed that any output is marked.
+        It is only sent if the output is enabled.
+      </description>
+      <arg name="state" type="uint" summary="boolean if primary or not"/>
+    </event>
+  </interface>
+
+  <interface name="zcosmic_output_configuration_v1" version="1">
+    <description summary="Output configuration extension object">
+        Extension to zwlr_output_configuration_v1.
+
+        Adds additional parameters to be tested/applyed via the original zwlr_output_configuration_v1.
+    </description>
+
+    <enum name="error">
+      <entry name="already_finished" value="1"
+        summary="underlying configuration has already been used"/>
+      <entry name="mirrored_head_busy" value="2"
+        summary="mirrored head is not enabled"/>
+    </enum>
+
+    <request name="mirror_head">
+      <description summary="enable and configure a head to mirror another head">
+        Enable a head mirroring another.
+
+        This request creates a head configuration object that can be used to change the head's properties.
+
+        This is an alternative to `zwlr_output_configuration_v1::enable_head` or `zwlr_output_configuration_v1::disable_head`
+        Using either with the same `head` argument will result in an `already_configured_head` error on the original
+        `zwlr_output_configuration_v1` object.
+
+        All properties are still required to be set to the resulting `zwlr_output_configuration_head` by the client
+        as denoted in the original protocol. Some like `set_position` however might be ignored in mirroring configurations.
+
+        Trying to set a disabled or mirroring head as `mirroring` or calling `disable_head`/`mirror_head` after using a head
+        as a `mirroring` argument will raise a `mirrored_head_busy` protocol error.
+      </description>
+      <arg name="id" type="new_id" interface="zwlr_output_configuration_head_v1"
+        summary="a new object to configure the head"/>
+      <arg name="head" type="object" interface="zwlr_output_head_v1"
+        summary="the head to be enabled"/>
+      <arg name="mirroring" type="object" interface="zwlr_output_head_v1"
+        summary="the head to be mirrored"/>
+    </request>
+
+    <event name="finished">
+      <description summary="the configuration was used">
+        This event indicates that the configuration is no longer available.
+
+        This usually happens when the original configuration was `cancelled`, `suceeded` or `failed`.
+
+        Upon receiving this event, the client should destroy this object.
+
+        The configration object becomes inert and any requests other than `destroy` will be ignored.
+      </description>
+    </event>
+
+    <request name="release" type="destructor">
+      <description summary="destroy the output configuration">
+        Using this request a client can tell the compositor that it is not going
+        to use the configuration object anymore. Any changes to the outputs
+        will still be attached to the original `zwlr_output_configuration_head_v1`
+        if it isn't destroyed.
+      </description>
+    </request>
+  </interface>
+
+  <interface name="zcosmic_output_configuration_head_v1" version="2">
+    <description summary="Output configuration head extension object">
+        Extension to zwlr_output_configuration_head_v1.
+
+        Adds additional/alternative parameters to the original zwlr_output_configuration_head_v1.
+
+        Once the original `zwlr_output_configuration_head_v1` is destroyed this object will
+        become inert and all requests except `release` will be ignored.
+    </description>
+
+    <request name="set_scale_1000">
+      <description summary="set the scale multiplied by 1000">
+        This request sets the head's scale multiplied by 1000 for additional precision.
+
+        This request is meant to be used in place of `zwlr_output_configuration_head_v1::set_scale`.
+        Using `set_scale` and `set_scale_1000` at once will thus raise an `already_set` error on the
+        original `zwlr_output_configuration_head_v1`.
+
+        Any request conflicting with `set_scale` will also conflict with `set_scale_1000`.
+      </description>
+      <arg name="scale_1000" type="int"/>
+    </request>
+
+    <request name="release" type="destructor">
+      <description summary="destroy the output configuration head">
+        Using this request a client can tell the compositor that it is not going
+        to use the configuration object anymore. Already issued requests will
+        still be attached to the original `zwlr_output_configuration_head_v1`
+        until it is destroyed.
+      </description>
+    </request>
+
+    <!-- version 2 additions -->
+
+    <request name="set_adaptive_sync_ext" since="2">
+      <description summary="set adaptive sync state">
+        This request requests a new adaptive sync state.
+
+        This request is meant to be used in place of `zwlr_output_configuration_head_v1::set_adaptive_sync`.
+        Using `set_adaptive_sync` and `set_adaptive_sync_ext` at once will thus raise an `already_set` error on the
+        original `zwlr_output_configuration_head_v1`.
+
+        Any request conflicting with `set_adaptive_sync` will also conflict with `set_adaptive_sync_ext`.
+      </description>
+      <arg name="state" type="uint" enum="zcosmic_output_head_v1.adaptive_sync_state_ext"/>
+    </request>
+  </interface>
+</protocol>

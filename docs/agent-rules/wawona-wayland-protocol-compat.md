@@ -21,9 +21,13 @@ older clients.
 - [ ] Back-compat via bind version, not a parallel same-interface impl?
 - [ ] Extra interface name justified by a concrete client/app?
 - [ ] `docs/protocol-status.md` / matrix updated (`scripts/gen-protocol-status.sh`)?
+- [ ] wawona.io `/docs/contributor/protocols/` synced (sibling sync script or master dispatch)?
+- [ ] Issue/PR on matching milestone in [`../protocol-milestones.md`](../protocol-milestones.md)?
+- [ ] Functional row has `PROTOCOL_PROOF_OBLIGATIONS` + Kani helpers (`protocol_proofs.rs`)?
 - [ ] Drop rationale recorded if removing a named interface?
 
 Canonical prose: [`../PROTOCOLS.md`](../PROTOCOLS.md).
 Cursor rule: `wawona-wayland-protocol-compat`.
 See also [`../protocol-status.md`](../protocol-status.md),
+[`../protocol-milestones.md`](../protocol-milestones.md),
 [`../compliance/wayland-protocol-conformance-matrix.md`](../compliance/wayland-protocol-conformance-matrix.md).

@@ -1,0 +1,291 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="treeland_foreign_toplevel_manager_v1">
+  <copyright>
+
+    SPDX-FileCopyrightText: 2024 UnionTech Software Technology Co., Ltd.
+    SPDX-License-Identifier: MIT
+  </copyright>
+  <interface name="treeland_foreign_toplevel_manager_v1" version="2">
+    <description summary="foreign toplevel manager">
+      This interface allows a client to get toplevel some info.
+
+      Warning! The protocol described in this file is currently in the testing
+      phase. Backward compatible changes may be added together with the
+      corresponding interface version bump. Backward incompatible changes can
+      only be done by creating a new major version of the extension.
+    </description>
+    <request name="stop">
+      <description summary="Stop sending events">
+        Indicates the client no longer wishes to receive events for new toplevels.
+        However the compositor may emit further toplevel_created events, until
+        the finished event is emitted.
+
+        The client must not send any more requests after this one.
+      </description>
+    </request>
+    <request name="get_dock_preview_context">
+      <arg name="relative_surface" type="object" interface="wl_surface"/>
+      <arg name="id" type="new_id" interface="treeland_dock_preview_context_v1"/>
+    </request>
+    <event name="toplevel">
+      <description summary="a toplevel has been created">
+        This event is emitted whenever a new toplevel window is created. It
+        is emitted for all toplevels, regardless of the app that has created
+        them.
+
+        All initial details of the toplevel(title, app_id, states, etc.) will
+        be sent immediately after this event via the corresponding events in
+        treeland_foreign_toplevel_handle_v1.
+      </description>
+      <arg name="toplevel" type="new_id" interface="treeland_foreign_toplevel_handle_v1"/>
+    </event>
+    <event name="finished">
+      <description summary="the compositor has finished with the toplevel manager">
+        This event indicates that the compositor is done sending events to the
+        treeland_foreign_toplevel_manager_v1. The server will destroy the object
+        immediately after sending this request, so it will become invalid and
+        the client should free any resources associated with it.
+      </description>
+    </event>
+  </interface>
+  <interface name="treeland_foreign_toplevel_handle_v1" version="2">
+    <description summary="An opened toplevel">
+      A treeland_foreign_toplevel_handle_v1 object represents an opened toplevel window. Each
+      app may have multiple opened toplevels.
+
+      Warning! The protocol described in this file is currently in the testing
+      phase. Backward compatible changes may be added together with the
+      corresponding interface version bump. Backward incompatible changes can
+      only be done by creating a new major version of the extension.
+    </description>
+    <enum name="state">
+      <entry name="maximized" value="0" summary="the toplevel is maximized"/>
+      <entry name="minimized" value="1" summary="the toplevel is minimized"/>
+      <entry name="activated" value="2" summary="the toplevel is active"/>
+      <entry name="fullscreen" value="3" summary="the toplevel is fullscreen"/>
+      <entry name="attention" value="4" summary="the toplevel is demanding attention" since="2"/>
+    </enum>
+    <enum name="error">
+      <entry name="invalid_rectangle" value="0" summary="the provided rectangle is invalid"/>
+    </enum>
+    <request name="set_maximized">
+      <description summary="requests that the toplevel be maximized">
+        Requests that the toplevel be maximized. If the maximized state actually
+        changes, this will be indicated by the state event.
+      </description>
+    </request>
+    <request name="unset_maximized">
+      <description summary="requests that the toplevel be unmaximized">
+        Requests that the toplevel be unmaximized. If the maximized state actually
+        changes, this will be indicated by the state event.
+      </description>
+    </request>
+    <request name="set_minimized">
+      <description summary="requests that the toplevel be minimized">
+        Requests that the toplevel be minimized. If the minimized state actually
+        changes, this will be indicated by the state event.
+      </description>
+    </request>
+    <request name="unset_minimized">
+      <description summary="requests that the toplevel be unminimized">
+        Requests that the toplevel be unminimized. If the minimized state actually
+        changes, this will be indicated by the state event.
+      </description>
+    </request>
+    <request name="activate">
+      <description summary="activate the toplevel">
+        Request that this toplevel be activated on the given seat.
+        There is no guarantee the toplevel will be actually activated.
+      </description>
+      <arg name="seat" type="object" interface="wl_seat"/>
+    </request>
+    <request name="close">
+      <description summary="request that the toplevel be closed">
+        Send a request to the toplevel to close itself. The compositor would
+        typically use a shell-specific method to carry out this request, for
+        example by sending the xdg_toplevel.close event. However, this gives
+        no guarantees the toplevel will actually be destroyed. If and when
+        this happens, the treeland_foreign_toplevel_handle_v1.closed event will
+        be emitted.
+      </description>
+    </request>
+    <request name="set_rectangle">
+      <description summary="the rectangle which represents the toplevel">
+        The rectangle of the surface specified in this request corresponds to
+        the place where the app using this protocol represents the given toplevel.
+        It can be used by the compositor as a hint for some operations, e.g
+        minimizing. The client is however not required to set this, in which
+        case the compositor is free to decide some default value.
+
+        If the client specifies more than one rectangle, only the last one is
+        considered.
+
+        The dimensions are given in surface-local coordinates.
+        Setting width=height=0 removes the already-set rectangle.
+      </description>
+      <arg name="surface" type="object" interface="wl_surface"/>
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+      <arg name="width" type="int"/>
+      <arg name="height" type="int"/>
+    </request>
+    <request name="destroy" type="destructor">
+      <description summary="destroy the treeland_foreign_toplevel_handle_v1 object">
+        Destroys the treeland_foreign_toplevel_handle_v1 object.
+
+        This request should be called either when the client does not want to
+        use the toplevel anymore or after the closed event to finalize the
+        destruction of the object.
+      </description>
+    </request>
+    <request name="set_fullscreen">
+      <description summary="request that the toplevel be fullscreened">
+        Requests that the toplevel be fullscreened on the given output. If the
+        fullscreen state and/or the outputs the toplevel is visible on actually
+        change, this will be indicated by the state and output_enter/leave
+        events.
+
+        The output parameter is only a hint to the compositor. Also, if output
+        is NULL, the compositor should decide which output the toplevel will be
+        fullscreened on, if at all.
+      </description>
+      <arg name="output" type="object" interface="wl_output" allow-null="true"/>
+    </request>
+    <request name="unset_fullscreen">
+      <description summary="request that the toplevel be unfullscreened">
+        Requests that the toplevel be unfullscreened. If the fullscreen state
+        actually changes, this will be indicated by the state event.
+      </description>
+    </request>
+    <event name="pid">
+      <description summary="Process id of application owning the window has changed">
+        This event will be sent when the compositor has set the process id this window
+        belongs to. This should be set once before the initial_state is sent.
+      </description>
+      <arg name="pid" type="uint"/>
+    </event>
+    <event name="title">
+      <description summary="title change">
+        This event is emitted whenever the title of the toplevel changes.
+      </description>
+      <arg name="title" type="string"/>
+    </event>
+    <event name="app_id">
+      <description summary="app-id change">
+        This event is emitted whenever the app-id of the toplevel changes.
+      </description>
+      <arg name="app_id" type="string"/>
+    </event>
+    <event name="identifier">
+      <description summary="a stable identifier for a toplevel">
+        The identifier of each top level and its handle must be unique.
+        Two different top layers cannot have the same identifier.
+        This identifier is only valid as long as the top level is mapped.
+        Identifiers must not be reused if the top level is not mapped.
+        The compositor must not reuse identifiers to ensure there are no races when
+        identifiers are shared between processes.
+      </description>
+      <arg name="identifier" type="uint"/>
+    </event>
+    <event name="output_enter">
+      <description summary="toplevel entered an output">
+        This event is emitted whenever the toplevel becomes visible on
+        the given output. A toplevel may be visible on multiple outputs.
+      </description>
+      <arg name="output" type="object" interface="wl_output"/>
+    </event>
+    <event name="output_leave">
+      <description summary="toplevel left an output">
+        This event is emitted whenever the toplevel stops being visible on
+        the given output. It is guaranteed that an entered-output event
+        with the same output has been emitted before this event.
+      </description>
+      <arg name="output" type="object" interface="wl_output"/>
+    </event>
+    <event name="state">
+      <description summary="the toplevel state changed">
+        This event is emitted immediately after the treeland_foreign_toplevel_handle_v1
+        is created and each time the toplevel state changes, either because of a
+        compositor action or because of a request in this protocol.
+      </description>
+      <arg name="state" type="array"/>
+    </event>
+    <event name="done">
+      <description summary="all information about the toplevel has been sent">
+        This event is sent after all changes in the toplevel state have been
+        sent.
+
+        This allows changes to the treeland_foreign_toplevel_handle_v1 properties
+        to be seen as atomic, even if they happen via multiple events.
+      </description>
+    </event>
+    <event name="closed">
+      <description summary="this toplevel has been destroyed">
+        This event means the toplevel has been destroyed. It is guaranteed there
+        won't be any more events for this treeland_foreign_toplevel_handle_v1. The
+        toplevel itself becomes inert so any requests will be ignored except the
+        destroy request.
+      </description>
+    </event>
+    <event name="parent">
+      <description summary="parent change">
+        This event is emitted whenever the parent of the toplevel changes.
+
+        No event is emitted when the parent handle is destroyed by the client.
+      </description>
+      <arg name="parent" type="object" interface="treeland_foreign_toplevel_handle_v1" allow-null="true"/>
+    </event>
+  </interface>
+  <interface name="treeland_dock_preview_context_v1" version="1">
+    <description summary="handle dock preview">
+      This interface allows dock set windows preview.
+
+      Warning! The protocol described in this file is currently in the testing
+      phase. Backward compatible changes may be added together with the
+      corresponding interface version bump. Backward incompatible changes can
+      only be done by creating a new major version of the extension.
+    </description>
+    <enum name="direction">
+      <entry name="top" value="0" summary="top"/>
+      <entry name="right" value="1" summary="right"/>
+      <entry name="bottom" value="2" summary="bottom"/>
+      <entry name="left" value="3" summary="left"/>
+    </enum>
+    <request name="show">
+      <description summary="set preview surfaces">
+        X and Y are relative to the relative_surface.
+        surfaces wl_array is identifiers.
+      </description>
+      <arg name="surfaces" type="array"/>
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+      <arg name="direction" type="uint"/>
+    </request>
+    <request name="show_tooltip">
+      <arg name="tooltip" type="string"/>
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+      <arg name="direction" type="uint"/>
+    </request>
+    <request name="close">
+      <description summary="close preview box">
+        close preview box
+      </description>
+    </request>
+    <request name="destroy" type="destructor">
+      <description summary="destroy the context object">
+        Destroy the context object.
+      </description>
+    </request>
+    <event name="enter">
+      <description summary="enter preview box">
+        This event is sent after mouse enter preview box.
+      </description>
+    </event>
+    <event name="leave">
+      <description summary="leave preview box">
+        This event is sent after mouse leave preview box.
+      </description>
+    </event>
+  </interface>
+</protocol>

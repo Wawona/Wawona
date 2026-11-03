@@ -572,6 +572,13 @@ impl Compositor {
         crate::core::wayland::xdg::register(state, &dh);
         crate::core::wayland::wlr::register(state, &dh);
         crate::core::wayland::plasma::register(state, &dh);
+        crate::core::wayland::hyprland::register(state, &dh);
+        crate::core::wayland::river::register(state, &dh);
+        crate::core::wayland::cosmic::register(state, &dh);
+        crate::core::wayland::weston::register(state, &dh);
+        crate::core::wayland::treeland::register(state, &dh);
+        crate::core::wayland::external::register(state, &dh);
+        crate::core::wayland::experimental::register(state, &dh);
         crate::core::wayland::ext::register(state, &dh);
         crate::core::wayland::host_im::attach(&mut self.display, state);
 

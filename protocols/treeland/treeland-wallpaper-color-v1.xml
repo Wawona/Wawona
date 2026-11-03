@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="treeland_wallpaper_color_v1">
+  <copyright>
+
+    SPDX-FileCopyrightText: 2024 UnionTech Software Technology Co., Ltd.
+    SPDX-License-Identifier: MIT
+  </copyright>
+  <interface name="treeland_wallpaper_color_manager_v1" version="1">
+    <request name="watch">
+      <description summary="watch wallpaper color">
+        Monitor the wallpaper color of a given screen.
+      </description>
+      <arg name="output" type="string" summary="system output name"/>
+    </request>
+    <request name="unwatch">
+      <description summary="unwatch wallpaper color">
+        Stop monitor the wallpaper color for the given screen.
+      </description>
+      <arg name="output" type="string" summary="system output name"/>
+    </request>
+    <request name="destroy" type="destructor">
+      <description summary="destroy the context object">
+        The client no longer cares about wallpaper_color.
+      </description>
+    </request>
+    <event name="output_color">
+      <description summary="output color changed">
+        Tell the client that the wallpaper color of the screen it is monitoring has changed.
+        This event will also be sent immediately when the client requests a watch.
+      </description>
+      <arg name="output" type="string" summary="system output name"/>
+      <arg name="isdark" type="uint"/>
+    </event>
+  </interface>
+</protocol>

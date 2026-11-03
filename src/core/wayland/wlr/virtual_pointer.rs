@@ -127,6 +127,7 @@ impl VirtualPointerFrame {
                     value: None,
                     discrete: None,
                     source: None,
+                    relative_direction: None,
                     stop: false,
                 });
                 self.axes.len() - 1

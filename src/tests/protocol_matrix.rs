@@ -79,6 +79,7 @@ fn test_protocol_matrix_core_globals_advertised() {
         "wl_seat",
         "wl_output",
         "wl_data_device_manager",
+        "wl_fixes",
         "xdg_wm_base",
         "wp_viewporter",
         "wp_presentation",
@@ -251,6 +252,12 @@ fn test_generate_protocol_status_manifest() {
         ProtocolOrigin::Wlr,
         ProtocolOrigin::Ext,
         ProtocolOrigin::Plasma,
+        ProtocolOrigin::Cosmic,
+        ProtocolOrigin::River,
+        ProtocolOrigin::Hyprland,
+        ProtocolOrigin::Weston,
+        ProtocolOrigin::Treeland,
+        ProtocolOrigin::External,
     ] {
         let mut rows: Vec<StatusRow<'_>> = PROTOCOL_CATALOG
             .iter()

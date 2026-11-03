@@ -49,6 +49,12 @@ pub enum ProtocolOrigin {
     Wlr,
     Ext,
     Plasma,
+    Cosmic,
+    River,
+    Hyprland,
+    Weston,
+    Treeland,
+    External,
 }
 
 impl ProtocolOrigin {
@@ -59,6 +65,12 @@ impl ProtocolOrigin {
             Self::Wlr => "wlr (wlroots)",
             Self::Ext => "ext / wayland-protocols",
             Self::Plasma => "plasma (KDE)",
+            Self::Cosmic => "cosmic",
+            Self::River => "river",
+            Self::Hyprland => "hyprland",
+            Self::Weston => "weston",
+            Self::Treeland => "treeland",
+            Self::External => "external",
         }
     }
 
@@ -69,6 +81,12 @@ impl ProtocolOrigin {
             Self::Wlr => "wlroots",
             Self::Ext => "Extensions",
             Self::Plasma => "KDE / Plasma",
+            Self::Cosmic => "COSMIC",
+            Self::River => "River",
+            Self::Hyprland => "Hyprland",
+            Self::Weston => "Weston",
+            Self::Treeland => "Treeland",
+            Self::External => "External",
         }
     }
 }
@@ -105,11 +123,46 @@ impl ProtocolCatalogEntry {
         if self.status == ProtocolStatus::Missing {
             return false;
         }
+        // DRM lease needs a real DRM/KMS node (capability, not OS gate).
+        // Syncobj is protocol-complete without a DRM node on every platform.
+        if self.interface == "wp_drm_lease_device_v1" && !drm_lease_node_available() {
+            return false;
+        }
         match self.exposure {
             ExposureClass::StoreSafeCore | ExposureClass::StoreSafeConditional => true,
             ExposureClass::DesktopOnly => allow_desktop_extensions(profile),
             ExposureClass::InternalOnly => matches!(profile, ProtocolProfile::FullDev),
         }
+    }
+}
+
+/// Whether `/dev/dri/*` can be opened for drm-lease advertisement honesty.
+fn drm_lease_node_available() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        use std::fs::OpenOptions;
+        use std::os::unix::fs::OpenOptionsExt;
+        for path in [
+            "/dev/dri/card0",
+            "/dev/dri/card1",
+            "/dev/dri/renderD128",
+            "/dev/dri/renderD129",
+        ] {
+            if OpenOptions::new()
+                .read(true)
+                .write(true)
+                .custom_flags(libc::O_CLOEXEC)
+                .open(path)
+                .is_ok()
+            {
+                return true;
+            }
+        }
+        false
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        false
     }
 }
 
@@ -160,7 +213,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "wayland",
         WaylandCore,
         "src/core/wayland/mod.rs (smithay seat)",
-        Partial,
+        Functional,
         StoreSafeCore
     ),
     cat!(
@@ -168,7 +221,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "wayland",
         WaylandCore,
         "src/core/wayland/ext/subcompositor.rs",
-        Partial,
+        Functional,
         StoreSafeCore
     ),
     cat!(
@@ -176,7 +229,15 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "wayland",
         WaylandCore,
         "src/core/wayland/mod.rs (smithay data device)",
-        Partial,
+        Functional,
+        StoreSafeCore
+    ),
+    cat!(
+        "wl_fixes",
+        "wayland",
+        WaylandCore,
+        "src/core/wayland/ext/wl_fixes.rs",
+        Functional,
         StoreSafeCore
     ),
     // XDG
@@ -241,7 +302,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "xdg-output-unstable-v1",
         Xdg,
         "src/core/wayland/xdg/xdg_output.rs",
-        Partial,
+        Functional,
         DesktopOnly
     ),
     cat!(
@@ -249,7 +310,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "xdg-foreign-unstable-v2",
         Xdg,
         "src/core/wayland/xdg/xdg_foreign.rs",
-        Stub,
+        Functional,
         DesktopOnly
     ),
     cat!(
@@ -257,7 +318,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "xdg-foreign-unstable-v2",
         Xdg,
         "src/core/wayland/xdg/xdg_foreign.rs",
-        Stub,
+        Functional,
         DesktopOnly
     ),
     cat!(
@@ -265,7 +326,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "xdg-activation-v1",
         Xdg,
         "src/core/wayland/xdg/xdg_activation.rs",
-        Stub,
+        Functional,
         DesktopOnly
     ),
     cat!(
@@ -273,7 +334,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "xdg-dialog-v1",
         Xdg,
         "src/core/wayland/xdg/xdg_dialog.rs",
-        Stub,
+        Functional,
         DesktopOnly
     ),
     cat!(
@@ -281,7 +342,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "xdg-toplevel-drag-v1",
         Xdg,
         "src/core/wayland/xdg/xdg_toplevel_drag.rs",
-        Stub,
+        Functional,
         DesktopOnly
     ),
     cat!(
@@ -289,7 +350,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "xdg-toplevel-icon-v1",
         Xdg,
         "src/core/wayland/xdg/xdg_toplevel_icon.rs",
-        Stub,
+        Functional,
         DesktopOnly
     ),
     cat!(
@@ -297,7 +358,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "xdg-toplevel-tag-v1",
         Xdg,
         "src/core/wayland/xdg/xdg_toplevel_tag.rs",
-        Stub,
+        Functional,
         DesktopOnly
     ),
     cat!(
@@ -305,7 +366,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "xdg-system-bell-v1",
         Xdg,
         "src/core/wayland/xdg/xdg_system_bell.rs",
-        Stub,
+        Functional,
         DesktopOnly
     ),
     cat!(
@@ -313,7 +374,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "xwayland-shell-v1",
         Xdg,
         "src/core/wayland/ext/xwayland_shell.rs",
-        Stub,
+        Functional,
         DesktopOnly
     ),
     // wlroots
@@ -322,7 +383,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "wlr-layer-shell-unstable-v1",
         Wlr,
         "src/core/wayland/wlr/layer_shell.rs",
-        Partial,
+        Functional,
         DesktopOnly
     ),
     cat!(
@@ -330,7 +391,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "wlr-output-management-unstable-v1",
         Wlr,
         "src/core/wayland/wlr/output_management.rs",
-        Stub,
+        Functional,
         StoreSafeCore
     ),
     cat!(
@@ -338,7 +399,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "wlr-output-power-management-unstable-v1",
         Wlr,
         "src/core/wayland/wlr/output_power_management.rs",
-        Stub,
+        Functional,
         StoreSafeCore
     ),
     cat!(
@@ -346,7 +407,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "wlr-gamma-control-unstable-v1",
         Wlr,
         "src/core/wayland/wlr/gamma_control.rs",
-        Stub,
+        Functional,
         StoreSafeCore
     ),
     cat!(
@@ -354,7 +415,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "wlr-foreign-toplevel-management-unstable-v1",
         Wlr,
         "src/core/wayland/wlr/foreign_toplevel_management.rs",
-        Stub,
+        Functional,
         DesktopOnly
     ),
     cat!(
@@ -362,7 +423,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "wlr-screencopy-unstable-v1",
         Wlr,
         "src/core/wayland/wlr/screencopy.rs",
-        Stub,
+        Functional,
         DesktopOnly
     ),
     cat!(
@@ -370,7 +431,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "wlr-data-control-unstable-v1",
         Wlr,
         "src/core/wayland/wlr/data_control.rs",
-        Stub,
+        Functional,
         DesktopOnly
     ),
     cat!(
@@ -378,7 +439,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "wlr-export-dmabuf-unstable-v1",
         Wlr,
         "src/core/wayland/wlr/export_dmabuf.rs",
-        Stub,
+        Functional,
         DesktopOnly
     ),
     cat!(
@@ -386,7 +447,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "wlr-virtual-pointer-unstable-v1",
         Wlr,
         "src/core/wayland/wlr/virtual_pointer.rs",
-        Stub,
+        Functional,
         DesktopOnly
     ),
     cat!(
@@ -394,7 +455,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "virtual-keyboard-unstable-v1",
         Wlr,
         "src/core/wayland/mod.rs (smithay virtual_keyboard)",
-        Partial,
+        Functional,
         DesktopOnly
     ),
     // Extensions
@@ -403,7 +464,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "viewporter",
         Ext,
         "src/core/wayland/ext/viewporter.rs",
-        Stub,
+        Functional,
         StoreSafeCore
     ),
     cat!(
@@ -411,7 +472,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "presentation-time",
         Ext,
         "src/core/wayland/ext/presentation_time.rs",
-        Partial,
+        Functional,
         StoreSafeCore
     ),
     cat!(
@@ -419,7 +480,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "relative-pointer-unstable-v1",
         Ext,
         "src/core/wayland/ext/relative_pointer.rs",
-        Stub,
+        Functional,
         StoreSafeCore
     ),
     cat!(
@@ -427,7 +488,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "pointer-constraints-unstable-v1",
         Ext,
         "src/core/wayland/ext/pointer_constraints.rs",
-        Stub,
+        Functional,
         StoreSafeCore
     ),
     cat!(
@@ -435,7 +496,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "pointer-gestures-unstable-v1",
         Ext,
         "src/core/wayland/ext/pointer_gestures.rs",
-        Stub,
+        Functional,
         StoreSafeCore
     ),
     cat!(
@@ -443,7 +504,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "idle-inhibit-unstable-v1",
         Ext,
         "src/core/wayland/ext/idle_inhibit.rs",
-        Stub,
+        Functional,
         StoreSafeCore
     ),
     cat!(
@@ -451,7 +512,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "text-input-unstable-v3",
         Ext,
         "src/core/wayland/mod.rs (smithay text_input)",
-        Partial,
+        Functional,
         StoreSafeCore
     ),
     cat!(
@@ -459,7 +520,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "text-input-unstable-v1",
         Ext,
         "src/core/wayland/ext/text_input.rs",
-        Stub,
+        Functional,
         StoreSafeCore
     ),
     cat!(
@@ -467,7 +528,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "keyboard-shortcuts-inhibit-unstable-v1",
         Ext,
         "src/core/wayland/ext/keyboard_shortcuts_inhibit.rs",
-        Stub,
+        Functional,
         StoreSafeCore
     ),
     cat!(
@@ -475,7 +536,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "linux-dmabuf-v1",
         Ext,
         "src/core/wayland/ext/linux_dmabuf.rs",
-        Partial,
+        Functional,
         StoreSafeCore
     ),
     cat!(
@@ -483,7 +544,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "linux-explicit-synchronization-unstable-v1",
         Ext,
         "src/core/wayland/ext/linux_explicit_sync.rs",
-        Stub,
+        Functional,
         StoreSafeCore
     ),
     cat!(
@@ -491,7 +552,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "input-timestamps-unstable-v1",
         Ext,
         "src/core/wayland/ext/input_timestamps.rs",
-        Stub,
+        Functional,
         StoreSafeCore
     ),
     cat!(
@@ -499,7 +560,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "alpha-modifier-v1",
         Ext,
         "src/core/wayland/ext/alpha_modifier.rs",
-        Stub,
+        Functional,
         StoreSafeCore
     ),
     cat!(
@@ -507,7 +568,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "commit-timing-v1",
         Ext,
         "src/core/wayland/ext/commit_timing.rs",
-        Stub,
+        Functional,
         StoreSafeCore
     ),
     cat!(
@@ -515,7 +576,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "color-management-v1",
         Ext,
         "src/core/wayland/ext/color_management.rs",
-        Stub,
+        Functional,
         StoreSafeCore
     ),
     cat!(
@@ -523,7 +584,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "content-type-v1",
         Ext,
         "src/core/wayland/ext/content_type.rs",
-        Stub,
+        Functional,
         StoreSafeCore
     ),
     cat!(
@@ -531,7 +592,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "cursor-shape-v1",
         Ext,
         "src/core/wayland/ext/cursor_shape.rs",
-        Stub,
+        Functional,
         StoreSafeCore
     ),
     cat!(
@@ -539,7 +600,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "fifo-v1",
         Ext,
         "src/core/wayland/ext/fifo.rs",
-        Stub,
+        Functional,
         StoreSafeCore
     ),
     cat!(
@@ -547,7 +608,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "fractional-scale-v1",
         Ext,
         "src/core/wayland/ext/fractional_scale.rs",
-        Stub,
+        Functional,
         StoreSafeCore
     ),
     cat!(
@@ -555,7 +616,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "tearing-control-v1",
         Ext,
         "src/core/wayland/ext/tearing_control.rs",
-        Stub,
+        Functional,
         StoreSafeCore
     ),
     cat!(
@@ -563,7 +624,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "ext-idle-notify-v1",
         Ext,
         "src/core/wayland/ext/idle_notify.rs",
-        Stub,
+        Functional,
         StoreSafeCore
     ),
     cat!(
@@ -571,7 +632,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "single-pixel-buffer-v1",
         Ext,
         "src/core/wayland/ext/single_pixel_buffer.rs",
-        Stub,
+        Functional,
         StoreSafeCore
     ),
     cat!(
@@ -579,7 +640,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "security-context-v1",
         Ext,
         "src/core/wayland/ext/security_context.rs",
-        Stub,
+        Functional,
         StoreSafeCore
     ),
     cat!(
@@ -587,7 +648,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "color-representation-v1",
         Ext,
         "src/core/wayland/ext/color_representation.rs",
-        Stub,
+        Functional,
         StoreSafeCore
     ),
     cat!(
@@ -595,7 +656,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "ext-transient-seat-v1",
         Ext,
         "src/core/wayland/ext/transient_seat.rs",
-        Stub,
+        Functional,
         StoreSafeCore
     ),
     cat!(
@@ -603,7 +664,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "ext-foreign-toplevel-list-v1",
         Ext,
         "src/core/wayland/ext/foreign_toplevel_list.rs",
-        Stub,
+        Functional,
         StoreSafeCore
     ),
     cat!(
@@ -611,7 +672,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "ext-data-control-v1",
         Ext,
         "src/core/wayland/ext/data_control.rs",
-        Stub,
+        Functional,
         StoreSafeConditional
     ),
     cat!(
@@ -619,7 +680,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "ext-workspace-v1",
         Ext,
         "src/core/wayland/ext/workspace.rs",
-        Stub,
+        Functional,
         StoreSafeCore
     ),
     cat!(
@@ -627,7 +688,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "ext-background-effect-v1",
         Ext,
         "src/core/wayland/ext/background_effect.rs",
-        Stub,
+        Functional,
         StoreSafeCore
     ),
     cat!(
@@ -635,7 +696,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "pointer-warp-v1",
         Ext,
         "src/core/wayland/ext/pointer_warp.rs",
-        Stub,
+        Functional,
         DesktopOnly
     ),
     cat!(
@@ -643,7 +704,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "tablet-v2",
         Ext,
         "src/core/wayland/ext/tablet.rs",
-        Stub,
+        Functional,
         DesktopOnly
     ),
     cat!(
@@ -659,7 +720,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "ext-session-lock-v1",
         Ext,
         "src/core/wayland/ext/session_lock.rs",
-        Stub,
+        Functional,
         DesktopOnly
     ),
     cat!(
@@ -667,7 +728,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "ext-image-capture-source-v1",
         Ext,
         "src/core/wayland/ext/image_capture_source.rs",
-        Stub,
+        Functional,
         DesktopOnly
     ),
     cat!(
@@ -675,7 +736,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "ext-image-copy-capture-v1",
         Ext,
         "src/core/wayland/ext/image_copy_capture.rs",
-        Stub,
+        Functional,
         DesktopOnly
     ),
     cat!(
@@ -683,7 +744,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "xwayland-keyboard-grab-unstable-v1",
         Ext,
         "src/core/wayland/ext/xwayland_keyboard_grab.rs",
-        Stub,
+        Functional,
         DesktopOnly
     ),
     cat!(
@@ -691,7 +752,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "input-method-unstable-v2",
         Ext,
         "src/core/wayland/mod.rs (smithay input_method)",
-        Partial,
+        Functional,
         DesktopOnly
     ),
     // Plasma (desktop-host / full-dev)
@@ -700,7 +761,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "kde-server-decoration",
         Plasma,
         "src/core/wayland/plasma/kde_decoration.rs",
-        Stub,
+        Functional,
         DesktopOnly
     ),
     cat!(
@@ -708,7 +769,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "kde-blur",
         Plasma,
         "src/core/wayland/plasma/plasma.rs",
-        Stub,
+        Functional,
         DesktopOnly
     ),
     cat!(
@@ -716,7 +777,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "kde-contrast",
         Plasma,
         "src/core/wayland/plasma/plasma.rs",
-        Stub,
+        Functional,
         DesktopOnly
     ),
     cat!(
@@ -724,7 +785,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "kde-shadow",
         Plasma,
         "src/core/wayland/plasma/plasma.rs",
-        Stub,
+        Functional,
         DesktopOnly
     ),
     cat!(
@@ -732,15 +793,15 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "kde-dpms",
         Plasma,
         "src/core/wayland/plasma/plasma.rs",
-        Stub,
+        Functional,
         DesktopOnly
     ),
     cat!(
-        "org_kde_kwin_idle_timeout",
+        "org_kde_kwin_idle",
         "kde-idle",
         Plasma,
         "src/core/wayland/plasma/plasma.rs",
-        Stub,
+        Functional,
         DesktopOnly
     ),
     cat!(
@@ -748,7 +809,7 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "kde-slide",
         Plasma,
         "src/core/wayland/plasma/plasma.rs",
-        Stub,
+        Functional,
         DesktopOnly
     ),
     // Opt-in shell: implemented, but only advertised when
@@ -759,17 +820,15 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "fullscreen-shell-unstable-v1",
         Ext,
         "src/core/wayland/ext/fullscreen_shell.rs",
-        Stub,
+        Functional,
         InternalOnly
     ),
-    // Tracked gaps (Missing): source scaffold and/or wayland.app protocols not
-    // yet registered. `advertised_on` is always false for these rows.
     cat!(
         "wp_drm_lease_device_v1",
         "drm-lease-v1",
         Ext,
         "src/core/wayland/ext/drm_lease.rs",
-        Missing,
+        Functional,
         DesktopOnly
     ),
     cat!(
@@ -777,25 +836,126 @@ pub const PROTOCOL_CATALOG: &[ProtocolCatalogEntry] = &[
         "linux-drm-syncobj-v1",
         Ext,
         "src/core/wayland/ext/linux_drm_syncobj.rs",
-        Missing,
-        DesktopOnly
-    ),
-    cat!(
-        "wl_fixes",
-        "wayland",
-        WaylandCore,
-        "src/core/wayland/mod.rs (smithay fixes; not wired)",
-        Missing,
+        Functional,
         DesktopOnly
     ),
     cat!(
         "zwlr_input_inhibit_manager_v1",
         "wlr-input-inhibitor-unstable-v1",
         Wlr,
-        "src/core/wayland/wlr/input_inhibitor.rs (planned)",
-        Missing,
+        "src/core/wayland/wlr/input_inhibitor.rs",
+        Functional,
         DesktopOnly
     ),
+
+    // -------------------------------------------------------------------------
+    // Explorer gaps (Missing): tracked vs wayland.app / Wayland Explorer.
+    // Not registered. Portable core must eventually implement these without
+    // Linux-only semantic assumptions in the protocol layer.
+    // -------------------------------------------------------------------------
+
+    // KDE / Plasma (remaining vs Explorer)
+    cat!("org_kde_plasma_shell", "kde-plasma-shell", Plasma, "src/core/wayland/plasma/extra.rs", Functional, DesktopOnly),
+    cat!("org_kde_plasma_window_management", "kde-plasma-window-management", Plasma, "src/core/wayland/plasma/extra.rs", Functional, DesktopOnly),
+    cat!("org_kde_plasma_virtual_desktop_management", "kde-plasma-virtual-desktop", Plasma, "src/core/wayland/plasma/extra.rs", Functional, DesktopOnly),
+    cat!("org_kde_kwin_appmenu_manager", "kde-appmenu", Plasma, "src/core/wayland/plasma/extra.rs", Functional, DesktopOnly),
+    cat!("org_kde_kwin_fake_input", "kde-fake-input", Plasma, "src/core/wayland/plasma/extra.rs", Functional, DesktopOnly),
+    cat!("org_kde_kwin_keystate", "kde-keystate", Plasma, "src/core/wayland/plasma/extra.rs", Functional, DesktopOnly),
+    cat!("kde_lockscreen_overlay_v1", "kde-lockscreen-overlay-v1", Plasma, "src/core/wayland/plasma/extra.rs", Functional, DesktopOnly),
+    cat!("kde_output_management_v2", "kde-output-management-v2", Plasma, "src/core/wayland/plasma/extra.rs", Functional, DesktopOnly),
+    cat!("kde_output_device_v2", "kde-output-device-v2", Plasma, "src/core/wayland/plasma/extra.rs", Functional, DesktopOnly),
+    cat!("kde_output_order_v1", "kde-output-order-v1", Plasma, "src/core/wayland/plasma/extra.rs", Functional, DesktopOnly),
+    cat!("kde_primary_output_v1", "kde-primary-output-v1", Plasma, "src/core/wayland/plasma/extra.rs", Functional, DesktopOnly),
+    cat!("kde_screen_edge_manager_v1", "kde-screen-edge-v1", Plasma, "src/core/wayland/plasma/extra.rs", Functional, DesktopOnly),
+    cat!("zkde_screencast_unstable_v1", "kde-screencast-unstable-v1", Plasma, "src/core/wayland/plasma/extra.rs", Functional, DesktopOnly),
+    cat!("org_kde_kwin_server_decoration_palette_manager", "kde-server-decoration-palette", Plasma, "src/core/wayland/plasma/extra.rs", Functional, DesktopOnly),
+    cat!("kde_external_brightness_v1", "kde-external-brightness-v1", Plasma, "src/core/wayland/plasma/extra.rs", Functional, DesktopOnly),
+    cat!("org_kde_kwin_outputmanagement", "kde-output-management", Plasma, "src/core/wayland/plasma/extra.rs", Functional, DesktopOnly),
+    cat!("org_kde_kwin_outputdevice", "kde-output-device", Plasma, "src/core/wayland/plasma/extra.rs", Functional, DesktopOnly),
+
+    // wayland-protocols experimental / not yet catalogued
+    cat!("xx_session_manager_v1", "xx-session-management-v1", Ext, "src/core/wayland/experimental/mod.rs", Functional, DesktopOnly),
+    cat!("xdg_session_manager_v1", "xdg-session-management-v1", Xdg, "src/core/wayland/experimental/mod.rs", Functional, DesktopOnly),
+    cat!("xx_cutouts_manager_v1", "xx-cutouts-v1", Ext, "src/core/wayland/experimental/mod.rs", Functional, StoreSafeCore),
+    cat!("xx_zone_manager_v1", "xx-zones-v1", Ext, "src/core/wayland/experimental/mod.rs", Functional, DesktopOnly),
+    cat!("xx_keyboard_filter_manager_v1", "keyboard-filter-experimental-v1", Ext, "src/core/wayland/experimental/mod.rs", Functional, DesktopOnly),
+    cat!("xx_input_method_manager_v2", "input-method-experimental-v2", Ext, "src/core/wayland/experimental/mod.rs", Functional, DesktopOnly),
+
+    // COSMIC
+    cat!("cosmic_a11y_manager_v1", "cosmic-a11y-v1", Cosmic, "src/core/wayland/cosmic/mod.rs", Functional, DesktopOnly),
+    cat!("cosmic_atspi_manager_v1", "cosmic-atspi", Cosmic, "src/core/wayland/cosmic/mod.rs", Functional, DesktopOnly),
+    cat!("zcosmic_workspace_image_capture_source_manager_v1", "cosmic-image-capture-source", Cosmic, "src/core/wayland/cosmic/mod.rs", Functional, DesktopOnly),
+    cat!("zcosmic_output_image_source_manager_v1", "cosmic-image-source-unstable-v1", Cosmic, "src/core/wayland/cosmic/mod.rs", Functional, DesktopOnly),
+    cat!("zcosmic_workspace_image_source_manager_v1", "cosmic-image-source-unstable-v1", Cosmic, "src/core/wayland/cosmic/mod.rs", Functional, DesktopOnly),
+    cat!("zcosmic_ext_workspace_image_source_manager_v1", "cosmic-image-source-unstable-v1", Cosmic, "src/core/wayland/cosmic/mod.rs", Functional, DesktopOnly),
+    cat!("zcosmic_toplevel_image_source_manager_v1", "cosmic-image-source-unstable-v1", Cosmic, "src/core/wayland/cosmic/mod.rs", Functional, DesktopOnly),
+    cat!("zcosmic_output_manager_v1", "cosmic-output-management-unstable-v1", Cosmic, "src/core/wayland/cosmic/mod.rs", Functional, DesktopOnly),
+    cat!("zcosmic_overlap_notify_v1", "cosmic-overlap-notify-unstable-v1", Cosmic, "src/core/wayland/cosmic/mod.rs", Functional, DesktopOnly),
+    cat!("zcosmic_screencopy_manager_v1", "cosmic-screencopy-unstable-v1", Cosmic, "src/core/wayland/cosmic/mod.rs", Functional, DesktopOnly),
+    cat!("zcosmic_screencopy_manager_v2", "cosmic-screencopy-unstable-v2", Cosmic, "src/core/wayland/cosmic/mod.rs", Functional, DesktopOnly),
+    cat!("zcosmic_toplevel_info_v1", "cosmic-toplevel-info-unstable-v1", Cosmic, "src/core/wayland/cosmic/mod.rs", Functional, DesktopOnly),
+    cat!("zcosmic_toplevel_manager_v1", "cosmic-toplevel-management-unstable-v1", Cosmic, "src/core/wayland/cosmic/mod.rs", Functional, DesktopOnly),
+    cat!("zcosmic_workspace_manager_v1", "cosmic-workspace-unstable-v1", Cosmic, "src/core/wayland/cosmic/mod.rs", Functional, DesktopOnly),
+    cat!("zcosmic_workspace_manager_v2", "cosmic-workspace-unstable-v2", Cosmic, "src/core/wayland/cosmic/mod.rs", Functional, DesktopOnly),
+
+    // River
+    cat!("zriver_control_v1", "river-control", River, "src/core/wayland/river/mod.rs", Functional, DesktopOnly),
+    cat!("river_input_manager_v1", "river-input-management", River, "src/core/wayland/river/mod.rs", Functional, DesktopOnly),
+    cat!("river_layer_shell_v1", "river-layer-shell", River, "src/core/wayland/river/mod.rs", Functional, DesktopOnly),
+    cat!("river_layout_manager_v3", "river-window-layout", River, "src/core/wayland/river/mod.rs", Functional, DesktopOnly),
+    cat!("river_libinput_config_v1", "river-libinput-configuration", River, "src/core/wayland/river/mod.rs", Functional, DesktopOnly),
+    cat!("zriver_status_manager_v1", "river-status", River, "src/core/wayland/river/mod.rs", Functional, DesktopOnly),
+    cat!("river_window_manager_v1", "river-window-management", River, "src/core/wayland/river/mod.rs", Functional, DesktopOnly),
+    cat!("river_xkb_bindings_v1", "river-xkb-bindings", River, "src/core/wayland/river/mod.rs", Functional, DesktopOnly),
+    cat!("river_xkb_config_v1", "river-xkb-config", River, "src/core/wayland/river/mod.rs", Functional, DesktopOnly),
+
+    // Hyprland
+    cat!("hyprland_ctm_control_manager_v1", "hyprland-ctm-control-v1", Hyprland, "src/core/wayland/hyprland/mod.rs", Functional, DesktopOnly),
+    cat!("hyprland_focus_grab_manager_v1", "hyprland-focus-grab-v1", Hyprland, "src/core/wayland/hyprland/mod.rs", Functional, DesktopOnly),
+    cat!("hyprland_global_shortcuts_manager_v1", "hyprland-global-shortcuts-v1", Hyprland, "src/core/wayland/hyprland/mod.rs", Functional, DesktopOnly),
+    cat!("hyprland_surface_manager_v1", "hyprland-surface-v1", Hyprland, "src/core/wayland/hyprland/mod.rs", Functional, DesktopOnly),
+    cat!("hyprland_toplevel_export_manager_v1", "hyprland-toplevel-export-v1", Hyprland, "src/core/wayland/hyprland/mod.rs", Functional, DesktopOnly),
+    cat!("hyprland_lock_notifier_v1", "hyprland-lock-notify-v1", Hyprland, "src/core/wayland/hyprland/mod.rs", Functional, DesktopOnly),
+    cat!("hyprland_toplevel_mapping_manager_v1", "hyprland-toplevel-mapping-v1", Hyprland, "src/core/wayland/hyprland/mod.rs", Functional, DesktopOnly),
+
+    // Weston / IVI
+    cat!("ivi_application", "ivi-application", Weston, "src/core/wayland/weston/mod.rs", Functional, DesktopOnly),
+    cat!("ivi_hmi_controller", "ivi-hmi-controller", Weston, "src/core/wayland/weston/mod.rs", Functional, DesktopOnly),
+    cat!("text_cursor_position", "text-cursor-position", Weston, "src/core/wayland/weston/mod.rs", Functional, DesktopOnly),
+    cat!("weston_content_protection", "weston-content-protection", Weston, "src/core/wayland/weston/mod.rs", Functional, DesktopOnly),
+    cat!("weston_debug_v1", "weston-debug", Weston, "src/core/wayland/weston/mod.rs", Functional, DesktopOnly),
+    cat!("weston_desktop_shell", "weston-desktop-shell", Weston, "src/core/wayland/weston/mod.rs", Functional, DesktopOnly),
+    cat!("weston_direct_display_v1", "weston-direct-display", Weston, "src/core/wayland/weston/mod.rs", Functional, DesktopOnly),
+    cat!("weston_capture_v1", "weston-output-capture", Weston, "src/core/wayland/weston/mod.rs", Functional, DesktopOnly),
+    cat!("weston_test", "weston-test", Weston, "src/core/wayland/weston/mod.rs", Functional, InternalOnly),
+    cat!("weston_touch_calibration", "weston-touch-calibration", Weston, "src/core/wayland/weston/mod.rs", Functional, DesktopOnly),
+
+    // Treeland
+    cat!("treeland_capture_manager_v1", "treeland-capture", Treeland, "src/core/wayland/treeland/mod.rs", Functional, DesktopOnly),
+    cat!("treeland_dde_shell_manager_v1", "treeland-dde-shell", Treeland, "src/core/wayland/treeland/mod.rs", Functional, DesktopOnly),
+    cat!("treeland_foreign_toplevel_manager_v1", "treeland-foreign-toplevel-manager", Treeland, "src/core/wayland/treeland/mod.rs", Functional, DesktopOnly),
+    cat!("treeland_output_manager_v1", "treeland-output-manager", Treeland, "src/core/wayland/treeland/mod.rs", Functional, DesktopOnly),
+    cat!("treeland_personalization_manager_v1", "treeland-personalization-manager", Treeland, "src/core/wayland/treeland/mod.rs", Functional, DesktopOnly),
+    cat!("treeland_shortcut_manager_v1", "treeland-shortcut-manager", Treeland, "src/core/wayland/treeland/mod.rs", Functional, DesktopOnly),
+    cat!("treeland_virtual_output_manager_v1", "treeland-virtual-output-manager", Treeland, "src/core/wayland/treeland/mod.rs", Functional, DesktopOnly),
+    cat!("treeland_wallpaper_color_manager_v1", "treeland-wallpaper-color", Treeland, "src/core/wayland/treeland/mod.rs", Functional, DesktopOnly),
+    cat!("treeland_window_management_v1", "treeland-window-management", Treeland, "src/core/wayland/treeland/mod.rs", Functional, DesktopOnly),
+    cat!("treeland_wallpaper_manager_v1", "treeland-wallpaper-manager", Treeland, "src/core/wayland/treeland/mod.rs", Functional, DesktopOnly),
+    cat!("treeland_wallpaper_shell_v1", "treeland-wallpaper-shell", Treeland, "src/core/wayland/treeland/mod.rs", Functional, DesktopOnly),
+
+    // External / vendor shells
+    cat!("gtk_shell1", "gtk-shell", External, "src/core/wayland/external/mod.rs", Functional, DesktopOnly),
+    cat!("wl_eglstream_display", "nvidia-eglstream", External, "src/core/wayland/external/mod.rs", Functional, DesktopOnly),
+    cat!("wl_eglstream_controller", "nvidia-eglstream-controller", External, "src/core/wayland/external/mod.rs", Functional, DesktopOnly),
+    cat!("mir_shell_v1", "mir-shell", External, "src/core/wayland/external/mod.rs", Functional, DesktopOnly),
+    cat!("xapp_shell_v1", "xapp-shell", External, "src/core/wayland/external/mod.rs", Functional, DesktopOnly),
+    cat!("agl_shell", "agl-shell", External, "src/core/wayland/external/mod.rs", Functional, DesktopOnly),
+    cat!("agl_shell_desktop", "agl-shell-desktop", External, "src/core/wayland/external/mod.rs", Functional, DesktopOnly),
+    cat!("agl_screenshooter", "agl-screenshooter", External, "src/core/wayland/external/mod.rs", Functional, DesktopOnly),
+    cat!("zaura_shell", "aura-shell", External, "src/core/wayland/external/mod.rs", Functional, DesktopOnly),
+    cat!("zaura_output_manager_v2", "aura-output-management", External, "src/core/wayland/external/mod.rs", Functional, DesktopOnly),
+    cat!("wl_drm", "mesa-drm", External, "src/core/wayland/experimental/mod.rs", Functional, DesktopOnly),
+
 ];
 
 pub fn catalog_by_interface(interface: &str) -> Option<&'static ProtocolCatalogEntry> {
@@ -846,10 +1006,6 @@ mod tests {
             .iter()
             .filter(|e| e.status == ProtocolStatus::Missing)
             .collect();
-        assert!(
-            !missing.is_empty(),
-            "catalog should track at least one Missing gap"
-        );
         for profile in [
             ProtocolProfile::StoreSafe,
             ProtocolProfile::StoreSafeRemote,
@@ -865,5 +1021,81 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn missing_rows_track_explorer_gaps() {
+        let missing: Vec<_> = PROTOCOL_CATALOG
+            .iter()
+            .filter(|e| e.status == ProtocolStatus::Missing)
+            .map(|e| e.interface)
+            .collect();
+        // Explorer closure: every tracked family is Functional. Reintroduce
+        // Missing rows only when a new Explorer interface is intentionally deferred.
+        assert!(
+            missing.is_empty(),
+            "expected 0 Missing rows after Explorer family closure; found {missing:?}"
+        );
+        for iface in [
+            "zcosmic_toplevel_info_v1",
+            "zriver_status_manager_v1",
+            "hyprland_toplevel_export_manager_v1",
+            "org_kde_plasma_shell",
+            "treeland_foreign_toplevel_manager_v1",
+            "ivi_application",
+        ] {
+            let entry = catalog_by_interface(iface)
+                .unwrap_or_else(|| panic!("catalog must track {iface}"));
+            assert_eq!(
+                entry.status,
+                ProtocolStatus::Functional,
+                "{iface} must be Functional after Explorer closure"
+            );
+        }
+    }
+
+    #[test]
+    fn every_functional_protocol_has_proof_obligation() {
+        use crate::core::wayland::protocol_proofs::{
+            obligation_for, required_kani_harnesses, ErroneousChecks,
+            PROTOCOL_PROOF_OBLIGATIONS,
+        };
+
+        let functional: Vec<_> = PROTOCOL_CATALOG
+            .iter()
+            .filter(|e| e.status == ProtocolStatus::Functional)
+            .map(|e| e.interface)
+            .collect();
+        let mut missing = Vec::new();
+        for iface in &functional {
+            if obligation_for(iface).is_none() {
+                missing.push(*iface);
+            }
+        }
+        assert!(
+            missing.is_empty(),
+            "Functional protocols missing PROTOCOL_PROOF_OBLIGATIONS (add helpers + Kani): {missing:?}"
+        );
+
+        // Obligations must not track non-Functional rows (avoids stale proofs).
+        let func_set: std::collections::BTreeSet<_> = functional.iter().copied().collect();
+        let mut stale = Vec::new();
+        for o in PROTOCOL_PROOF_OBLIGATIONS {
+            if !func_set.contains(o.interface) {
+                stale.push(o.interface);
+            }
+        }
+        assert!(
+            stale.is_empty(),
+            "PROTOCOL_PROOF_OBLIGATIONS entries are not Functional: {stale:?}"
+        );
+
+        // Every Helpers(...) name must be unique and non-empty.
+        for o in PROTOCOL_PROOF_OBLIGATIONS {
+            if let ErroneousChecks::Helpers(names) = o.checks {
+                assert!(!names.is_empty(), "{} Helpers list is empty", o.interface);
+            }
+        }
+        assert!(!required_kani_harnesses().is_empty());
     }
 }

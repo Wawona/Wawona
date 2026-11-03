@@ -32,6 +32,13 @@ impl TestEnv {
         crate::core::wayland::xdg::register(&mut state, &handle);
         crate::core::wayland::wlr::register(&mut state, &handle);
         crate::core::wayland::plasma::register(&mut state, &handle);
+        crate::core::wayland::hyprland::register(&mut state, &handle);
+        crate::core::wayland::river::register(&mut state, &handle);
+        crate::core::wayland::cosmic::register(&mut state, &handle);
+        crate::core::wayland::weston::register(&mut state, &handle);
+        crate::core::wayland::treeland::register(&mut state, &handle);
+        crate::core::wayland::external::register(&mut state, &handle);
+        crate::core::wayland::experimental::register(&mut state, &handle);
         crate::core::wayland::ext::register(&mut state, &handle);
         crate::core::wayland::host_im::attach(&mut display, &mut state);
 

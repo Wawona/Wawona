@@ -5036,7 +5036,8 @@ impl WawonaCore {
             gesture.state,
             gesture.finger_count
         );
-        // TODO: Send pointer_gestures protocol events
+        let mut state = self.state.write_recover();
+        state.dispatch_pointer_gesture(&gesture);
     }
 
     // =========================================================================

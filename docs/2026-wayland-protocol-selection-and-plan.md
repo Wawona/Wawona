@@ -1,5 +1,11 @@
 # Wayland Protocol Status, Next Selection, and Implementation Plan (2026)
 
+> **Superseded for phase tracking.** Live matrix:
+> [`protocol-status.md`](./protocol-status.md). Explorer → 100% milestones:
+> [`protocol-milestones.md`](./protocol-milestones.md). Site:
+> https://wawona.io/docs/contributor/protocols/. Keep the deep-dive below for
+> commit-timing design notes only.
+
 ## Why this document exists
 
 This is a deep-dive protocol planning document for Wawona.

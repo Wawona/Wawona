@@ -66,5 +66,5 @@ fn test_presentation_mark_committed() {
     let mut pstate = PresentationState::default();
     assert!(pstate.feedbacks.is_empty());
     // mark_committed on empty list should not panic
-    pstate.mark_committed(42);
+    pstate.mark_committed(42, false);
 }

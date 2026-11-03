@@ -1,0 +1,370 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="treeland_personalization_manager_v1">
+  <copyright>
+
+    SPDX-FileCopyrightText: 2024 UnionTech Software Technology Co., Ltd.
+    SPDX-License-Identifier: MIT
+  </copyright>
+  <interface name="treeland_personalization_manager_v1" version="2">
+    <description summary="personalization manager">
+      This interface allows a client to customized display effects.
+
+      Warning! The protocol described in this file is currently in the testing
+      phase. Backward compatible changes may be added together with the
+      corresponding interface version bump. Backward incompatible changes can
+      only be done by creating a new major version of the extension.
+    </description>
+    <request name="get_window_context">
+      <description summary="get personalization window context">
+        set window background, shadow based on context
+      </description>
+      <arg name="id" type="new_id" interface="treeland_personalization_window_context_v1"/>
+      <arg name="surface" type="object" interface="wl_surface"/>
+    </request>
+    <request name="get_cursor_context">
+      <description summary="custom wallpaper context">
+        custom user cursor
+      </description>
+      <arg name="id" type="new_id" interface="treeland_personalization_cursor_context_v1"/>
+    </request>
+    <request name="get_font_context">
+      <description summary="custom treeland and window global font context">
+        custom treeland and window global font context
+      </description>
+      <arg name="id" type="new_id" interface="treeland_personalization_font_context_v1"/>
+    </request>
+    <request name="get_appearance_context">
+      <description summary="custom treeland window global settings context">
+        custom user treeland window appearance global
+      </description>
+      <arg name="id" type="new_id" interface="treeland_personalization_appearance_context_v1"/>
+    </request>
+    <request name="destroy" type="destructor" since="2">
+      <description summary="destroy treeland_personalization_manager_v1 object">
+      </description>
+    </request>
+  </interface>
+  <interface name="treeland_personalization_cursor_context_v1" version="1">
+    <description summary="client custom cursor context">
+      This interface allows a client personalization cursor.
+
+      Warning! The protocol described in this file is currently in the testing
+      phase. Backward compatible changes may be added together with the
+      corresponding interface version bump. Backward incompatible changes can
+      only be done by creating a new major version of the extension.
+    </description>
+    <request name="set_theme">
+      <description summary="set system cursor theme">
+      </description>
+      <arg name="name" type="string" summary="cursor theme name"/>
+    </request>
+    <request name="get_theme">
+      <description summary="get system cursor theme">
+      </description>
+    </request>
+    <request name="set_size">
+      <description summary="set system cursor size">
+      </description>
+      <arg name="size" type="uint" summary="cursor size"/>
+    </request>
+    <request name="get_size">
+      <description summary="get system cursor size">
+      </description>
+    </request>
+    <request name="commit">
+      <description summary="commit configure">
+        if only one commit fails validation, the commit will fail
+      </description>
+    </request>
+    <request name="destroy" type="destructor">
+      <description summary="destroy the context object">
+        Destroy the context object.
+      </description>
+    </request>
+    <event name="verfity">
+      <description summary="verfity event">
+        Send this signal after commit cursor configure.
+      </description>
+      <arg name="success" type="int" summary="check whether the configuration is successful"/>
+    </event>
+    <event name="theme">
+      <description summary="cursor theme changed event">
+        Send this signal after system cursor theme changed.
+      </description>
+      <arg name="name" type="string" summary="cursor theme name"/>
+    </event>
+    <event name="size">
+      <description summary="cursor size changed event">
+        Send this signal after system cursor size changed.
+      </description>
+      <arg name="size" type="uint" summary="cursor size"/>
+    </event>
+  </interface>
+  <interface name="treeland_personalization_window_context_v1" version="1">
+    <description summary="client custom window context">
+      This interface allows a client personalization window.
+
+      Warning! The protocol described in this file is currently in the testing
+      phase. Backward compatible changes may be added together with the
+      corresponding interface version bump. Backward incompatible changes can
+      only be done by creating a new major version of the extension.
+    </description>
+    <enum name="blend_mode">
+      <entry name="transparent" value="0" summary="Normal blend mode, just composite over background with alpha channel"/>
+      <entry name="wallpaper" value="1" summary="Composite window over wallpaper"/>
+      <entry name="blur" value="2" summary="Blur the content of the window background"/>
+    </enum>
+    <enum name="enable_mode">
+      <entry name="enable" value="0" summary="force enable titlebar"/>
+      <entry name="disable" value="1" summary="force disable titlebar"/>
+    </enum>
+    <request name="set_blend_mode">
+      <description summary="set window background blend mode">
+        Set window background blend mode
+      </description>
+      <arg name="mode" type="int" enum="blend_mode"/>
+    </request>
+    <request name="set_round_corner_radius">
+      <description summary="set window round corner radius">
+        This request will set window round corner radius, invoking this request means user
+        want to
+        manage window round corner radius by itself. If not invoked, window round corner
+        radius will
+        be decided by compositor.
+      </description>
+      <arg name="radius" type="int"/>
+    </request>
+    <request name="set_shadow">
+      <description summary="set window shadow">
+        Set window shadow's radius, offset and color, invoking this request indicates that
+        client want to manage
+        the window shadow by itself. If not invoked, window shadow will be decided by the
+        compositor
+      </description>
+      <arg name="radius" type="int"/>
+      <arg name="offset_x" type="int"/>
+      <arg name="offset_y" type="int"/>
+      <arg name="r" type="int"/>
+      <arg name="g" type="int"/>
+      <arg name="b" type="int"/>
+      <arg name="a" type="int"/>
+    </request>
+    <request name="set_border">
+      <description summary="set window border">
+        Set window border width and color
+      </description>
+      <arg name="width" type="int"/>
+      <arg name="r" type="int"/>
+      <arg name="g" type="int"/>
+      <arg name="b" type="int"/>
+      <arg name="a" type="int"/>
+    </request>
+    <request name="set_titlebar">
+      <description summary="set if system titlebar is enabled">
+        Set if system titlebar is enabled
+      </description>
+      <arg name="mode" type="int" enum="enable_mode"/>
+    </request>
+    <request name="destroy" type="destructor">
+      <description summary="destroy the context object">
+        Destroy the context object.
+      </description>
+    </request>
+  </interface>
+  <interface name="treeland_personalization_font_context_v1" version="1">
+    <description summary="treeland window global font settings">
+      This interface allows set treeland window global font settings.
+
+      Warning! The protocol described in this file is currently in the testing
+      phase. Backward compatible changes may be added together with the
+      corresponding interface version bump. Backward incompatible changes can
+      only be done by creating a new major version of the extension.
+    </description>
+    <request name="set_font_size">
+      <description summary="set system font size">
+        Set the system font size
+      </description>
+      <arg name="size" type="uint" summary="font size"/>
+    </request>
+    <request name="get_font_size">
+      <description summary="get system font size">
+        Get the system font size
+      </description>
+    </request>
+    <request name="set_font">
+      <description summary="set system font">
+        Set the system font
+      </description>
+      <arg name="font_name" type="string" summary="font name"/>
+    </request>
+    <request name="get_font">
+      <description summary="get system font">
+        Get the system font
+      </description>
+    </request>
+    <request name="set_monospace_font">
+      <description summary="set system monospace font">
+        Set the system monospace font
+      </description>
+      <arg name="font_name" type="string" summary="monospace font name"/>
+    </request>
+    <request name="get_monospace_font">
+      <description summary="get system monospace font">
+        Get the system monospace font
+      </description>
+    </request>
+    <request name="destroy" type="destructor">
+      <description summary="destroy the context object">
+        Destroy the context object.
+      </description>
+    </request>
+    <event name="font">
+      <description summary="font event">
+        Send this signal after setting the system font.
+      </description>
+      <arg name="font_name" type="string" summary="font name"/>
+    </event>
+    <event name="monospace_font">
+      <description summary="monospace font event">
+        Send this signal after setting the system monospace font.
+      </description>
+      <arg name="font_name" type="string" summary="monospace font name"/>
+    </event>
+    <event name="font_size">
+      <description summary="font size">
+        Send this signal after setting the system font size.
+      </description>
+      <arg name="font_size" type="uint" summary="font size"/>
+    </event>
+  </interface>
+  <interface name="treeland_personalization_appearance_context_v1" version="1">
+    <description summary="treeland window global appearance settings">
+      This interface allows set treeland window global appearance settings.
+
+      Warning! The protocol described in this file is currently in the testing
+      phase. Backward compatible changes may be added together with the
+      corresponding interface version bump. Backward incompatible changes can
+      only be done by creating a new major version of the extension.
+    </description>
+    <enum name="theme_type">
+      <entry name="auto" value="1" summary="window auto theme"/>
+      <entry name="light" value="2" summary="window light theme"/>
+      <entry name="dark" value="4" summary="window dark theme"/>
+    </enum>
+    <enum name="error">
+      <entry name="invalid_round_corner_radius" value="0" summary="Wrong round corner radius"/>
+      <entry name="invalid_icon_theme" value="1" summary="Wrong icon theme"/>
+      <entry name="invalid_active_color" value="2" summary="Wrong active color"/>
+      <entry name="invalid_window_opacity" value="4" summary="Wrong window opacity"/>
+      <entry name="invalid_window_theme_type" value="8" summary="Wrong theme type"/>
+      <entry name="invalid_window_titlebar_height" value="16" summary="Wrong window titlebar height"/>
+    </enum>
+    <request name="set_round_corner_radius">
+      <description summary="set window round corner radius">
+        Set window round corner radius
+      </description>
+      <arg name="radius" type="int"/>
+    </request>
+    <request name="get_round_corner_radius">
+      <description summary="get window round corner radius">
+        Get window round corner radius
+      </description>
+    </request>
+    <request name="set_icon_theme">
+      <description summary="set system icon theme">
+        Set the system icon theme
+      </description>
+      <arg name="theme" type="string" summary="icon theme"/>
+    </request>
+    <request name="get_icon_theme">
+      <description summary="get system icon theme">
+        Get the system icon theme
+      </description>
+    </request>
+    <request name="set_active_color">
+      <description summary="set system active color">
+        Set the system active color
+      </description>
+      <arg name="color" type="string" summary="rgb"/>
+    </request>
+    <request name="get_active_color">
+      <description summary="get system active color">
+        Get the system active color
+      </description>
+    </request>
+    <request name="set_window_opacity">
+      <description summary="set window window opacity">
+        Set the window window opacity
+      </description>
+      <arg name="opacity" type="uint" summary="opacity"/>
+    </request>
+    <request name="get_window_opacity">
+      <description summary="get window window opacity">
+        Get the window window opacity
+      </description>
+    </request>
+    <request name="set_window_theme_type">
+      <description summary="set window theme type">
+        Set the window theme.
+      </description>
+      <arg name="type" type="uint" enum="theme_type" summary="window theme type"/>
+    </request>
+    <request name="get_window_theme_type">
+      <description summary="get window theme type">
+        Get the window theme type
+      </description>
+    </request>
+    <request name="set_window_titlebar_height">
+      <description summary="set window titlebar height">
+        Set the window titlebar height
+      </description>
+      <arg name="height" type="uint" summary="window titlebar height"/>
+    </request>
+    <request name="get_window_titlebar_height">
+      <description summary="get window titlebar height">
+        Get the window titlebar height
+      </description>
+    </request>
+    <request name="destroy" type="destructor">
+      <description summary="destroy the context object">
+        Destroy the context object.
+      </description>
+    </request>
+    <event name="round_corner_radius">
+      <description summary="round corner radius event">
+        Send this signal after setting the round corner radius.
+      </description>
+      <arg name="radius" type="int" summary="round corner radius"/>
+    </event>
+    <event name="icon_theme">
+      <description summary="icon theme event">
+        Send this signal after setting the system icon theme.
+      </description>
+      <arg name="theme_name" type="string" summary="icon theme name"/>
+    </event>
+    <event name="active_color">
+      <description summary="active color">
+        Send this signal after setting the system active color
+      </description>
+      <arg name="active_color" type="string" summary="active color"/>
+    </event>
+    <event name="window_opacity">
+      <description summary="window opacity">
+        Send this signal after setting the system active color
+      </description>
+      <arg name="opacity" type="uint" summary="window opacity"/>
+    </event>
+    <event name="window_theme_type">
+      <description summary="window theme">
+        Send this signal after setting the system theme
+      </description>
+      <arg name="type" type="uint" enum="theme_type" summary="window theme type"/>
+    </event>
+    <event name="window_titlebar_height">
+      <description summary="window titlebar height">
+        Send this signal after setting the window titlebar height
+      </description>
+      <arg name="height" type="uint" summary="window titlebar height"/>
+    </event>
+  </interface>
+</protocol>

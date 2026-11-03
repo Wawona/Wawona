@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="input_method_experimental_v2">
+  <copyright>
+    Copyright © 2008-2011 Kristian Høgsberg
+    Copyright © 2010-2011 Intel Corporation
+    Copyright © 2012-2013 Collabora, Ltd.
+    Copyright © 2012, 2013 Intel Corporation
+    Copyright © 2015, 2016 Jan Arne Petersen
+    Copyright © 2017, 2018 Red Hat, Inc.
+    Copyright © 2018       Purism SPC
+    Copyright © 2025       DorotaC
+
+    Permission is hereby granted, free of charge, to any person obtaining a
+    copy of this software and associated documentation files (the "Software"),
+    to deal in the Software without restriction, including without limitation
+    the rights to use, copy, modify, merge, publish, distribute, sublicense,
+    and/or sell copies of the Software, and to permit persons to whom the
+    Software is furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice (including the next
+    paragraph) shall be included in all copies or substantial portions of the
+    Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+    THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+    DEALINGS IN THE SOFTWARE.
+  </copyright>
+  <interface name="xx_input_method_v1" version="4">
+    <enum name="error">
+      <entry name="surface_has_role" value="0x0" summary="surface already has a role"/>
+      <entry name="inactive" value="0x1" summary="operation requires the input method to be active"/>
+    </enum>
+    <enum name="protocol_compat">
+      <entry name="text_input_v3" value="0x0" summary="zwp-text-input-v3 semantics"/>
+      <entry name="xx_text_input" value="0x1"/>
+    </enum>
+    <request name="perform_action" since="3">
+      <arg name="action" type="uint" enum="xx_text_input_v3.action" summary="action to perform"/>
+    </request>
+    <request name="commit_string">
+      <arg name="text" type="string"/>
+    </request>
+    <request name="set_preedit_string">
+      <arg name="text" type="string"/>
+      <arg name="cursor_begin" type="int"/>
+      <arg name="cursor_end" type="int"/>
+    </request>
+    <request name="delete_surrounding_text">
+      <arg name="before_length" type="uint"/>
+      <arg name="after_length" type="uint"/>
+    </request>
+    <request name="move_cursor" since="3">
+      <arg name="cursor" type="int"/>
+      <arg name="anchor" type="int"/>
+    </request>
+    <request name="commit">
+      <arg name="serial" type="uint"/>
+    </request>
+    <request name="get_input_popup_surface" since="2">
+      <arg name="id" type="new_id" interface="xx_input_popup_surface_v2"/>
+      <arg name="surface" type="object" interface="wl_surface"/>
+      <arg name="positioner" type="object" interface="xx_input_popup_positioner_v1"/>
+    </request>
+    <request name="destroy" type="destructor">
+    </request>
+    <event name="activate">
+    </event>
+    <event name="deactivate">
+    </event>
+    <event name="surrounding_text">
+      <arg name="text" type="string"/>
+      <arg name="cursor" type="uint"/>
+      <arg name="anchor" type="uint"/>
+    </event>
+    <event name="text_change_cause">
+      <arg name="cause" type="uint" enum="xx_text_input_v3.change_cause"/>
+    </event>
+    <event name="content_type">
+      <arg name="hint" type="uint" enum="xx_text_input_v3.content_hint"/>
+      <arg name="purpose" type="uint" enum="xx_text_input_v3.content_purpose"/>
+    </event>
+    <event name="set_available_actions" since="3">
+      <arg name="available_actions" type="array" summary="available actions"/>
+    </event>
+    <event name="announce_supported_features" since="3">
+      <arg name="features" type="uint" enum="xx_text_input_v3.supported_features"/>
+    </event>
+    <event name="announce_protocol_compat" since="3">
+      <arg name="compat_level" type="uint" enum="protocol_compat"/>
+    </event>
+    <event name="done">
+    </event>
+    <event name="unavailable">
+    </event>
+  </interface>
+  <interface name="xx_input_popup_surface_v2" version="1">
+    <enum name="error">
+      <entry name="invalid_serial" value="0" summary="received acknowledgement for a serial which has already been acknowledged or has never been issued"/>
+    </enum>
+    <request name="ack_configure">
+      <arg name="serial" type="uint" summary="the serial from the configure sequence"/>
+    </request>
+    <request name="reposition">
+      <arg name="positioner" type="object" interface="xx_input_popup_positioner_v1"/>
+      <arg name="token" type="uint" summary="reposition request token"/>
+    </request>
+    <request name="destroy" type="destructor">
+    </request>
+    <event name="start_configure">
+      <arg name="width" type="uint" summary="popup width"/>
+      <arg name="height" type="uint" summary="popup height"/>
+      <arg name="anchor_x" type="int" summary="x position relative to anchor geometry"/>
+      <arg name="anchor_y" type="int" summary="y position relative to anchor geometry"/>
+      <arg name="anchor_width" type="uint" summary="width of the anchor area"/>
+      <arg name="anchor_height" type="uint" summary="height of the anchor area"/>
+      <arg name="serial" type="uint" summary="serial of the configure sequence"/>
+    </event>
+    <event name="repositioned">
+      <arg name="token" type="uint" summary="reposition request token"/>
+    </event>
+  </interface>
+  <interface name="xx_input_popup_positioner_v1" version="1">
+    <enum name="error">
+      <entry name="invalid_input" value="0" summary="invalid input provided"/>
+    </enum>
+    <enum name="anchor">
+      <entry name="none" value="0" summary="no edge, specifies center"/>
+      <entry name="top" value="1"/>
+      <entry name="bottom" value="2"/>
+      <entry name="left" value="3"/>
+      <entry name="right" value="4"/>
+      <entry name="top_left" value="5"/>
+      <entry name="bottom_left" value="6"/>
+      <entry name="top_right" value="7"/>
+      <entry name="bottom_right" value="8"/>
+    </enum>
+    <enum name="gravity">
+      <entry name="none" value="0" summary="center to center"/>
+      <entry name="top" value="1"/>
+      <entry name="bottom" value="2"/>
+      <entry name="left" value="3"/>
+      <entry name="right" value="4"/>
+      <entry name="top_left" value="5"/>
+      <entry name="bottom_left" value="6"/>
+      <entry name="top_right" value="7"/>
+      <entry name="bottom_right" value="8"/>
+    </enum>
+    <enum name="constraint_adjustment" bitfield="true">
+      <entry name="none" value="0"/>
+      <entry name="slide_x" value="1"/>
+      <entry name="slide_y" value="2"/>
+      <entry name="flip_x" value="4"/>
+      <entry name="flip_y" value="8"/>
+      <entry name="resize_x" value="16"/>
+      <entry name="resize_y" value="32"/>
+    </enum>
+    <request name="destroy" type="destructor">
+    </request>
+    <request name="set_size">
+      <arg name="width" type="uint" summary="width of positioned rectangle"/>
+      <arg name="height" type="uint" summary="height of positioned rectangle"/>
+    </request>
+    <request name="set_anchor">
+      <arg name="anchor" type="uint" enum="anchor" summary="anchor"/>
+    </request>
+    <request name="set_gravity">
+      <arg name="gravity" type="uint" enum="gravity" summary="gravity direction"/>
+    </request>
+    <request name="set_constraint_adjustment">
+      <arg name="constraint_adjustment" type="uint" enum="constraint_adjustment" summary="bit mask of constraint adjustments"/>
+    </request>
+    <request name="set_offset">
+      <arg name="x" type="int" summary="surface position x offset"/>
+      <arg name="y" type="int" summary="surface position y offset"/>
+    </request>
+    <request name="set_reactive">
+    </request>
+  </interface>
+  <interface name="xx_input_method_manager_v2" version="4">
+    <request name="get_input_method">
+      <arg name="seat" type="object" interface="wl_seat"/>
+      <arg name="input_method" type="new_id" interface="xx_input_method_v1"/>
+    </request>
+    <request name="get_positioner">
+      <arg name="id" type="new_id" interface="xx_input_popup_positioner_v1"/>
+    </request>
+    <request name="destroy" type="destructor">
+    </request>
+  </interface>
+</protocol>

@@ -7,6 +7,7 @@ pub mod data_control;
 pub mod export_dmabuf;
 pub mod foreign_toplevel_management;
 pub mod gamma_control;
+pub mod input_inhibitor;
 pub mod layer_shell;
 pub mod output_management;
 pub mod output_power_management;
@@ -25,6 +26,7 @@ pub fn register(state: &mut CompositorState, dh: &DisplayHandle) {
     // Android quads). Keep advertisement gated to desktop/dev profiles.
     if policy::allow_desktop_extensions(state.protocol_profile) {
         layer_shell::register_layer_shell(state, dh);
+        input_inhibitor::register_input_inhibitor(dh);
     } else {
         crate::wlog!(
             crate::util::logging::COMPOSITOR,

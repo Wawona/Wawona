@@ -81,9 +81,11 @@ impl Dispatch<ZwpTabletManagerV2, ()> for CompositorState {
         match request {
             zwp_tablet_manager_v2::Request::GetTabletSeat { tablet_seat, seat } => {
                 let seat_id = seat.id().protocol_id();
-                // let data = TabletSeatData { seat_id };
-                let _tablet_seat = data_init.init(tablet_seat, ());
-                tracing::debug!("Created tablet seat for seat {}", seat_id);
+                let _tablet_seat =
+                    data_init.init(tablet_seat, TabletSeatData { seat_id });
+                // Empty seat: no tablet_added / tool_added / pad_added events.
+                // Hosts with a tablet capability inject those events later.
+                tracing::debug!("Created tablet seat for seat {} (empty)", seat_id);
             }
             zwp_tablet_manager_v2::Request::Destroy => {
                 tracing::debug!("zwp_tablet_manager_v2 destroyed");
@@ -97,13 +99,13 @@ impl Dispatch<ZwpTabletManagerV2, ()> for CompositorState {
 // zwp_tablet_seat_v2
 // ============================================================================
 
-impl Dispatch<ZwpTabletSeatV2, ()> for CompositorState {
+impl Dispatch<ZwpTabletSeatV2, TabletSeatData> for CompositorState {
     fn request(
         _state: &mut Self,
         _client: &Client,
         _resource: &ZwpTabletSeatV2,
         request: zwp_tablet_seat_v2::Request,
-        _data: &(),
+        _data: &TabletSeatData,
         _dhandle: &DisplayHandle,
         _data_init: &mut DataInit<'_, Self>,
     ) {

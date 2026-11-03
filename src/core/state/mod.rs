@@ -839,13 +839,15 @@ impl Default for OutputState {
 
 use wayland_server::protocol::{wl_keyboard, wl_pointer, wl_touch};
 
+use crate::core::wayland::protocol::server::ext::data_control::v1::server::ext_data_control_source_v1::ExtDataControlSourceV1;
 use crate::core::wayland::protocol::wlroots::wlr_data_control_unstable_v1::zwlr_data_control_source_v1;
 
-/// Abstract selection source (standard or wlr)
+/// Abstract selection source (standard, wlr, or ext-data-control)
 #[derive(Debug, Clone)]
 pub enum SelectionSource {
     Wayland(wayland_server::protocol::wl_data_source::WlDataSource),
     Wlr(zwlr_data_control_source_v1::ZwlrDataControlSourceV1),
+    Ext(ExtDataControlSourceV1),
 }
 
 /// Bridges the Wayland `wl_data_device` clipboard selection to/from the
@@ -1318,6 +1320,9 @@ pub struct ExtProtocolState {
     pub input_timestamps: crate::core::wayland::ext::input_timestamps::InputTimestampsState,
     /// Idle notification state
     pub idle_notify: crate::core::wayland::ext::idle_notify::IdleNotifyState,
+    /// ext_foreign_toplevel_list_v1 bound lists + handles
+    pub foreign_toplevel_list:
+        crate::core::wayland::ext::foreign_toplevel_list::ForeignToplevelListState,
     /// FIFO barrier state per surface
     pub fifo: crate::core::wayland::ext::fifo::FifoState,
     /// Commit timing (target presentation time) per surface
@@ -1337,6 +1342,16 @@ pub struct ExtProtocolState {
     pub workspace: crate::core::wayland::ext::workspace::WorkspaceState,
     /// Background effect (blur) state
     pub background_effect: crate::core::wayland::ext::background_effect::BackgroundEffectState,
+    /// Color representation metadata per surface
+    pub color_representation:
+        crate::core::wayland::ext::color_representation::ColorRepresentationState,
+    /// ext-data-control clipboard manager state
+    pub data_control: crate::core::wayland::ext::data_control::ExtDataControlState,
+    /// Legacy linux explicit sync (zwp_linux_explicit_synchronization_v1)
+    pub linux_explicit_sync: crate::core::wayland::ext::linux_explicit_sync::LinuxExplicitSyncState,
+    /// xwayland_shell_v1 surface ↔ X11 serial pairing
+    #[cfg(feature = "desktop-protocols")]
+    pub xwayland_shell: crate::core::wayland::ext::xwayland_shell::XwaylandShellState,
     /// Fullscreen shell state (always available. Used as the primary shell on iOS)
     pub fullscreen_shell: crate::core::wayland::ext::fullscreen_shell::FullscreenShellState,
     /// XWayland keyboard grab state
@@ -1371,6 +1386,8 @@ impl Default for ExtProtocolState {
             primary_selection: crate::core::wayland::ext::primary_selection::PrimarySelectionState::default(),
             input_timestamps: crate::core::wayland::ext::input_timestamps::InputTimestampsState::default(),
             idle_notify: crate::core::wayland::ext::idle_notify::IdleNotifyState::default(),
+            foreign_toplevel_list:
+                crate::core::wayland::ext::foreign_toplevel_list::ForeignToplevelListState::default(),
             fifo: crate::core::wayland::ext::fifo::FifoState::default(),
             commit_timing: crate::core::wayland::ext::commit_timing::CommitTimingState::default(),
             text_input: crate::core::wayland::ext::text_input::TextInputState::default(),
@@ -1381,6 +1398,11 @@ impl Default for ExtProtocolState {
             security_context: crate::core::wayland::ext::security_context::SecurityContextState::default(),
             workspace: crate::core::wayland::ext::workspace::WorkspaceState::default(),
             background_effect: crate::core::wayland::ext::background_effect::BackgroundEffectState::default(),
+            color_representation: crate::core::wayland::ext::color_representation::ColorRepresentationState::default(),
+            data_control: crate::core::wayland::ext::data_control::ExtDataControlState::default(),
+            linux_explicit_sync: crate::core::wayland::ext::linux_explicit_sync::LinuxExplicitSyncState::default(),
+            #[cfg(feature = "desktop-protocols")]
+            xwayland_shell: crate::core::wayland::ext::xwayland_shell::XwaylandShellState::default(),
             fullscreen_shell: crate::core::wayland::ext::fullscreen_shell::FullscreenShellState::default(),
             #[cfg(feature = "desktop-protocols")]
             xwayland_keyboard_grab: crate::core::wayland::ext::xwayland_keyboard_grab::XwaylandKeyboardGrabState::default(),
@@ -1396,6 +1418,11 @@ impl Default for ExtProtocolState {
 
 /// wlroots protocol state. Layer shell, virtual pointers/keyboards,
 /// data control (clipboard managers), output management.
+#[derive(Debug, Default)]
+pub struct PlasmaProtocolState {
+    pub effects: crate::core::wayland::plasma::plasma::PlasmaEffectsState,
+}
+
 pub struct WlrState {
     /// All active layer surfaces, keyed by (ClientId, surface_id)
     pub layer_surfaces: HashMap<(ClientId, u32), Arc<RwLock<LayerSurface>>>,
@@ -1407,6 +1434,8 @@ pub struct WlrState {
     pub virtual_keyboards: HashMap<(ClientId, u32), VirtualKeyboardState>,
     /// Data control state
     pub data_control: DataControlState,
+    /// Exclusive input inhibitor (`zwlr_input_inhibit_manager_v1`)
+    pub input_inhibit: crate::core::wayland::wlr::input_inhibitor::InputInhibitState,
     /// Export DMABUF state
     pub export_dmabuf: ExportDmabufState,
     /// Last output manager config serial
@@ -1444,6 +1473,7 @@ impl Default for WlrState {
             virtual_pointers: HashMap::new(),
             virtual_keyboards: HashMap::new(),
             data_control: DataControlState::default(),
+            input_inhibit: crate::core::wayland::wlr::input_inhibitor::InputInhibitState::default(),
             export_dmabuf: ExportDmabufState::default(),
             last_output_manager_serial: 1,
             pending_screencopies: Vec::new(),
@@ -1695,6 +1725,18 @@ pub struct CompositorState {
     /// wlroots protocol state (layer shell, virtual devices, data control)
     pub wlr: WlrState,
 
+    /// KDE/Plasma effect / DPMS / idle state
+    pub plasma: PlasmaProtocolState,
+
+    /// Hyprland protocol state
+    pub hyprland: crate::core::wayland::hyprland::HyprlandState,
+
+    /// River protocol state
+    pub river: crate::core::wayland::river::RiverState,
+
+    /// COSMIC protocol state
+    pub cosmic: crate::core::wayland::cosmic::CosmicState,
+
     /// zxdg_shell_v6 protocol state
     pub xdg_v6: crate::core::wayland::xdg::v6::XdgV6State,
 
@@ -1806,6 +1848,10 @@ impl CompositorState {
             xdg: XdgState::default(),
             ext: ExtProtocolState::default(),
             wlr: WlrState::default(),
+            plasma: PlasmaProtocolState::default(),
+            hyprland: crate::core::wayland::hyprland::HyprlandState::default(),
+            river: crate::core::wayland::river::RiverState::default(),
+            cosmic: crate::core::wayland::cosmic::CosmicState::default(),
             xdg_v6: crate::core::wayland::xdg::v6::XdgV6State::default(),
             wl_shell: crate::core::wayland::wl_shell::WlShellState::default(),
             gtk_primary_selection:
@@ -2383,6 +2429,11 @@ mod state_tests {
 }
 
 impl CompositorState {
+    /// True when any client holds a `zwp_idle_inhibitor_v1` (portable host idle gate).
+    pub fn is_idle_inhibited(&self) -> bool {
+        self.ext.idle_inhibit.is_inhibited()
+    }
+
     /// Remove state owned by a disconnected client.
     ///
     /// Nested compositors can be killed abruptly from the host UI. This keeps

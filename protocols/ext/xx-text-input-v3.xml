@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="xx_text_input_unstable_v3">
+  <interface name="xx_text_input_v3" version="3">
+    <enum name="change_cause">
+      <entry name="input_method" value="0"/>
+      <entry name="other" value="1"/>
+    </enum>
+    <enum name="content_hint" bitfield="true">
+      <entry name="none" value="0x0"/>
+      <entry name="completion" value="0x1"/>
+      <entry name="spellcheck" value="0x2"/>
+      <entry name="auto_capitalization" value="0x4"/>
+      <entry name="lowercase" value="0x8"/>
+      <entry name="uppercase" value="0x10"/>
+      <entry name="titlecase" value="0x20"/>
+      <entry name="hidden_text" value="0x40"/>
+      <entry name="sensitive_data" value="0x80"/>
+      <entry name="latin" value="0x100"/>
+      <entry name="multiline" value="0x200"/>
+    </enum>
+    <enum name="content_purpose">
+      <entry name="normal" value="0"/>
+      <entry name="alpha" value="1"/>
+      <entry name="digits" value="2"/>
+      <entry name="number" value="3"/>
+      <entry name="phone" value="4"/>
+      <entry name="url" value="5"/>
+      <entry name="email" value="6"/>
+      <entry name="name" value="7"/>
+      <entry name="password" value="8"/>
+      <entry name="pin" value="9"/>
+      <entry name="date" value="10"/>
+      <entry name="time" value="11"/>
+      <entry name="datetime" value="12"/>
+      <entry name="terminal" value="13"/>
+    </enum>
+    <enum name="action">
+      <entry name="none" value="1"/>
+      <entry name="finish" value="0"/>
+    </enum>
+    <enum name="supported_features" bitfield="true">
+      <entry name="none" value="0x0"/>
+      <entry name="move_cursor" value="0x1"/>
+    </enum>
+    <request name="destroy" type="destructor">
+    </request>
+    <request name="enable">
+    </request>
+    <request name="disable">
+    </request>
+    <request name="set_surrounding_text">
+      <arg name="text" type="string"/>
+      <arg name="cursor" type="int"/>
+      <arg name="anchor" type="int"/>
+    </request>
+    <request name="set_text_change_cause">
+      <arg name="cause" type="uint" enum="change_cause"/>
+    </request>
+    <request name="set_content_type">
+      <arg name="hint" type="uint" enum="content_hint"/>
+      <arg name="purpose" type="uint" enum="content_purpose"/>
+    </request>
+    <request name="set_cursor_rectangle">
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+      <arg name="width" type="int"/>
+      <arg name="height" type="int"/>
+    </request>
+    <request name="commit">
+    </request>
+    <request name="set_available_actions" since="2">
+      <arg name="available_actions" type="array"/>
+    </request>
+    <request name="announce_supported_features" since="2">
+      <arg name="features" type="uint" enum="xx_text_input_v3.supported_features"/>
+    </request>
+    <event name="enter">
+      <arg name="surface" type="object" interface="wl_surface"/>
+    </event>
+    <event name="leave">
+      <arg name="surface" type="object" interface="wl_surface"/>
+    </event>
+    <event name="preedit_string">
+      <arg name="text" type="string"/>
+      <arg name="cursor_begin" type="int"/>
+      <arg name="cursor_end" type="int"/>
+    </event>
+    <event name="commit_string">
+      <arg name="text" type="string"/>
+    </event>
+    <event name="delete_surrounding_text">
+      <arg name="before_length" type="uint"/>
+      <arg name="after_length" type="uint"/>
+    </event>
+    <event name="move_cursor" since="2">
+      <arg name="cursor" type="int"/>
+      <arg name="anchor" type="int"/>
+    </event>
+    <event name="done">
+      <arg name="serial" type="uint"/>
+    </event>
+    <event name="perform_action" since="2">
+      <arg name="action" type="uint" enum="action"/>
+    </event>
+  </interface>
+  <interface name="xx_text_input_manager_v3" version="3">
+    <request name="destroy" type="destructor">
+    </request>
+    <request name="get_text_input">
+      <arg name="id" type="new_id" interface="xx_text_input_v3"/>
+      <arg name="seat" type="object" interface="wl_seat"/>
+    </request>
+  </interface>
+</protocol>

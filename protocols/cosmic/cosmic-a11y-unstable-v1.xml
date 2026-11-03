@@ -1,0 +1,142 @@
+<protocol name="cosmic_a11y_v1">
+  <copyright>
+    Copyright © 2025 System76
+
+    Permission is hereby granted, free of charge, to any person obtaining a
+    copy of this software and associated documentation files (the "Software"),
+    to deal in the Software without restriction, including without limitation
+    the rights to use, copy, modify, merge, publish, distribute, sublicense,
+    and/or sell copies of the Software, and to permit persons to whom the
+    Software is furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice (including the next
+    paragraph) shall be included in all copies or substantial portions of the
+    Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+    THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+    DEALINGS IN THE SOFTWARE.
+  </copyright>
+
+  <description summary="toggle various accessibility features">
+    This protocols provides way to toggle various accessibility features
+    in the COSMIC desktop environment for shell components.
+  </description>
+
+  <interface name="cosmic_a11y_manager_v1" version="3">
+    <description summary="a11y global">
+      Manager to toggle accessibility features.
+    </description>
+
+    <event name="magnifier">
+      <description summary="State of the screen magnifier">
+        State of the screen magnifier.
+
+        This event will be emitted by the compositor when binding the protocol
+        and whenever the state changes.
+      </description>
+      <arg name="active" type="uint" enum="active_state" summary="If the screen magnifier is enabled"/>
+    </event>
+
+    <request name="set_magnifier">
+      <description summary="Set the screen magnifier on or off">
+        Sets the state of the screen magnifier.
+
+        The client must not assume any requested changes are actually applied and should wait
+        until the next magnifier event before updating it's UI.
+      </description>
+      <arg name="active" type="uint" enum="active_state" summary="If the screen magnifier should be enabled"/>
+    </request>
+
+    <enum name="active_state">
+        <entry name="disabled" value="0" summary="function is disabled"/>
+        <entry name="enabled" value="1" summary="function is enabled"/>
+    </enum>
+
+    <event name="screen_filter" since="2" deprecated-since="3">
+      <description summary="State of screen filtering">
+        Parameters used for screen filtering.
+
+        This event will be emitted by the compositor when binding the protocol
+        and whenever the state changes.
+
+        If a screen filter is used not known to the protocol or the bound version
+        filter will be set to unknown.
+
+        Since version 3 this event will not be emitted anymore, instead use `screen_filter2`.
+      </description>
+      <arg name="inverted" type="uint" enum="active_state" summary="If the screen colors are inverted"/>
+      <arg name="filter" type="uint" enum="filter" summary="Which if any screen filter is enabled"/>
+    </event>
+
+    <request name="set_screen_filter" since="2" deprecated-since="3">
+      <description summary="Set screen filtering">
+        Set the parameters for screen filtering.
+
+        If the filter is set to unknown, the compositor MUST not change the current state
+        of the filter. This is to allow clients to update the inverted state, even if they
+        don't know about the current active filter.
+
+        The client must not assume any requested changes are actually applied and should wait
+        until the next screen_filter event before updating it's UI.
+
+        Send this request will raised a "deprecated" protocol error, if version 3 or higher was bound.
+        Use `set_screen_filter2` instead.
+      </description>
+      <arg name="inverted" type="uint" enum="active_state" summary="If the screen colors should be inverted"/>
+      <arg name="filter" type="uint" enum="filter" summary="Which if any filter should be used"/>
+    </request>
+
+    <enum name="filter" since="2">
+        <entry name="disabled" value="0" summary="No screen filter is set" deprecated-since="3"/>
+        <entry name="unknown" value="1" summary="A custom or unknown screen filter"/>
+        <entry name="greyscale" value="2" summary="Greyscale colors"/>
+        <entry name="daltonize_protanopia" value="3" summary="Daltonize for Protanopia"/>
+        <entry name="daltonize_deuteranopia" value="4" summary="Daltonize for Deuteranopia"/>
+        <entry name="daltonize_tritanopia" value="5" summary="Daltonize for Tritanopia"/>
+    </enum>
+
+    <event name="screen_filter2" since="3">
+      <description summary="State of screen filtering">
+        Parameters used for screen filtering.
+
+        This event will be emitted by the compositor when binding the protocol
+        and whenever the state changes.
+
+        If a screen filter is used not known to the protocol or the bound version
+        filter will be set to unknown.
+
+        The compositor must never send "disabled" as the "filter" argument.
+      </description>
+      <arg name="inverted" type="uint" enum="active_state" summary="If the screen colors are inverted"/>
+      <arg name="filter" type="uint" enum="filter" summary="Which if any screen filter is selected"/>
+      <arg name="filter_state" type="uint" enum="active_state" summary="If the screen filter is active"/>
+    </event>
+
+    <request name="set_screen_filter2" since="3">
+      <description summary="Set screen filtering">
+        Set the parameters for screen filtering.
+
+        If the filter is set to unknown, the compositor MUST not change the currently set
+        filter. This is to allow clients to update the inverted state or toggle the screen filter,
+        even if they don't know about the currently selected filter.
+
+        The client must not assume any requested changes are actually applied and should wait
+        until the next screen_filter event before updating it's UI.
+
+        The "deprecated" protocol error is raised, if "disabled" is set for "filter".
+      </description>
+      <arg name="inverted" type="uint" enum="active_state" summary="If the screen colors should be inverted"/>
+      <arg name="filter" type="uint" enum="filter" summary="Which if filter should be used"/>
+      <arg name="filter_state" type="uint" enum="active_state" summary="If the screen filter should be active"/>
+    </request>
+
+    <enum name="error" since="3">
+        <entry name="deprecated" value="0" summary="A deprecated request or value was used"/>
+    </enum>
+  </interface>
+</protocol>

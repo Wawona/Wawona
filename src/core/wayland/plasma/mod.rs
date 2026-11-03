@@ -1,3 +1,4 @@
+pub mod extra;
 pub mod kde_decoration;
 pub mod plasma;
 
@@ -24,7 +25,6 @@ pub fn register(state: &mut CompositorState, dh: &DisplayHandle) {
         contrast::server::org_kde_kwin_contrast_manager::OrgKdeKwinContrastManager,
         shadow::server::org_kde_kwin_shadow_manager::OrgKdeKwinShadowManager,
         dpms::server::org_kde_kwin_dpms_manager::OrgKdeKwinDpmsManager,
-        idle::server::org_kde_kwin_idle_timeout::OrgKdeKwinIdleTimeout,
         slide::server::org_kde_kwin_slide_manager::OrgKdeKwinSlideManager,
     };
 
@@ -46,12 +46,16 @@ pub fn register(state: &mut CompositorState, dh: &DisplayHandle) {
         1,
         ShadowManagerGlobal,
     );
+    use crate::core::wayland::protocol::server::plasma::idle::server::org_kde_kwin_idle::OrgKdeKwinIdle;
+
     dh.create_global::<CompositorState, OrgKdeKwinDpmsManager, _>(1, ());
-    dh.create_global::<CompositorState, OrgKdeKwinIdleTimeout, _>(1, ());
+    dh.create_global::<CompositorState, OrgKdeKwinIdle, _>(1, ());
     dh.create_global::<CompositorState, OrgKdeKwinSlideManager, _>(1, ());
+
+    extra::register(dh);
 
     crate::wlog!(
         crate::util::logging::COMPOSITOR,
-        "Registered KDE/Plasma globals (blur, contrast, shadow, dpms, idle, slide)"
+        "Registered KDE/Plasma globals"
     );
 }

@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="treeland_wallpaper_manager_unstable_v1">
+  <copyright>
+
+    SPDX-FileCopyrightText: 2025 UnionTech Software Technology Co., Ltd.
+    SPDX-License-Identifier: MIT
+  </copyright>
+  <interface name="treeland_wallpaper_manager_v1" version="1">
+    <description summary="Wallpaper manager interface">
+      The treeland_wallpaper_manager_v1 interface is a global object used to
+      create wallpaper objects for specific outputs.
+    </description>
+    <request name="destroy" type="destructor">
+      <description summary="destroy treeland_wallpaper_manager_v1">
+        Destroy this treeland_wallpaper_manager_v1 object.
+
+        Destroying a bound treeland_wallpaper_manager_v1 object while there
+        are wallpapers still alive created by this treeland_wallpaper_manager_v1
+        object instance is illegal and will result in a protocol error.
+      </description>
+    </request>
+    <request name="get_treeland_wallpaper">
+      <description summary="Create a wallpaper object for an output.">
+        Creates a treeland_wallpaper_v1 object bound to the specified wl_output.
+
+        The compositor may enforce that only one wallpaper exists for a given
+        (output, role) combination.
+
+        When a surface is associated, the compositor will track the workspace
+        the surface belongs to. Whenever the workspace changes, the compositor
+        may notify the client of the current wallpaper file path used by that
+        workspace.
+
+        Note:
+        1. The treeland_wallpaper_v1 object must be destroyed before
+        the associated wl_output is destroyed.
+        1. The treeland_wallpaper_v1 object must be destroyed before
+        the associated wl_surface is destroyed.
+      </description>
+      <arg name="id" type="new_id" interface="treeland_wallpaper_v1"/>
+      <arg name="output" type="object" interface="wl_output"/>
+      <arg name="surface" type="object" interface="wl_surface" summary="The wl_surface associated with this wallpaper, or null to unset it" allow-null="true"/>
+    </request>
+  </interface>
+  <interface name="treeland_wallpaper_v1" version="1">
+    <description summary="Wallpaper object interface for setting and managing wallpaper content">
+      The treeland_wallpaper_v1 interface represents a wallpaper instance
+      created by the compositor for a specific output, role.
+
+      The wallpaper source provided by the client is stored and managed on
+      the compositor side. Once a wallpaper source has been set,
+      the compositor may cache, reuse, or persist the source independently
+      of the client.
+    </description>
+    <enum name="error">
+      <entry name="already_used" value="0" summary="wallpaper file has already been used and is cached on the wallpaper side"/>
+      <entry name="invalid_source" value="1" summary="The specified wallpaper source is invalid, unsupported, or failed to load."/>
+      <entry name="permission_denied" value="2" summary="Permission denied when opening the specified wallpaper source"/>
+    </enum>
+    <enum name="wallpaper_source_type">
+      <entry name="image" value="0" summary="The wallpaper source is an image"/>
+      <entry name="video" value="1" summary="The wallpaper source is a video"/>
+    </enum>
+    <enum name="wallpaper_role">
+      <entry name="desktop" value="0x1" summary="Wallpaper for the desktop environment"/>
+      <entry name="lockscreen" value="0x2" summary="Wallpaper for the lock screen"/>
+    </enum>
+    <request name="destroy" type="destructor">
+      <description summary="Destroy the wallpaper object">
+        Destroys the treeland_wallpaper_v1 object and releases all resources
+        associated with it on the compositor side.
+
+        After calling this request, the client must not use the wallpaper
+        object anymore.
+      </description>
+    </request>
+    <request name="set_image_source">
+      <description summary="Set an image wallpaper source">
+        Sets an image as the wallpaper source, apply to the current
+        wl_output and the active workspace. except for lockscreen
+        wallpapers, only one wallpaper can be set per wl_output.
+        Supported formats:
+
+        - JPG / JPEG (Joint Photographic Experts Group)
+
+        The compositor will attempt to load and display the specified image
+        file. If the file cannot be accessed, decoded, or is in an unsupported
+        format, the compositor will emit a failed event with an appropriate
+        error code.
+
+        Access Control: This protocol accepts file_source such
+        as /usr/share/wallpapers/xxx  or /var/cache/wallpapers/xxxx provided
+        by the client. the compositor will perform file verification.
+      </description>
+      <arg name="file_source" type="string" summary="Path to the image file to be used as the wallpaper"/>
+      <arg name="role" type="uint" summary="wallpaper role"/>
+    </request>
+    <request name="set_video_source">
+      <description summary="Set a video wallpaper source">
+        Sets a video file as the wallpaper source, apply to the current
+        wl_output and the active workspace. except for lockscreen
+        wallpapers, only one wallpaper can be set per wl_output.
+        Supported formats:
+
+        - MP4
+        - AVI
+        - MOV
+
+        The compositor is responsible for decoding and presenting the video.
+        Playback behavior such as looping, synchronization, and performance
+        characteristics are compositor-defined.
+
+        If the video source cannot be opened or decoded, a failed event
+        will be emitted.
+
+        Access Control: This protocol accepts file_source such
+        as /usr/share/wallpapers/xxx or /var/cache/wallpapers/xxxx provided
+        by the client. the compositor will perform file verification.
+      </description>
+      <arg name="file_source" type="string" summary="Path to the video file to be used as the wallpaper"/>
+      <arg name="role" type="uint" summary="wallpaper role"/>
+    </request>
+    <event name="failed">
+      <description summary="Indicates a wallpaper operation failure">
+        This event is emitted when a wallpaper-related request fails.
+
+        The failure may occur during source loading, validation, or runtime
+        setup. The error code provides additional information about the cause
+        of the failure.
+
+        Possible error values include:
+        - already_used: The wallpaper source is already configured. This is
+        not a fatal error and serves as a notification to the client.
+        - invalid_source: The specified wallpaper source is invalid,
+        unsupported, or could not be processed. This is a fatal error and
+        the client should verify the source before retrying.
+        - Permission denied, check file permissions.
+      </description>
+      <arg name="file_source" type="string" summary="Path to the file to be used as the wallpaper"/>
+      <arg name="error" type="uint" enum="error" summary="The error code indicating the failure reason"/>
+    </event>
+    <event name="changed">
+      <description summary="Indicates that the wallpaper source has changed">
+        This event is emitted by the compositor to notify the client that the
+        wallpaper source associated with this treeland_wallpaper_v1 object
+        has changed.
+
+        The event may be emitted during initial object setup or when the
+        wallpaper is changed due to external factors not initiated by this
+        client, such as compositor policy decisions, workspace switches
+        (except for lockscreen wallpapers) that affect the active
+        wallpaper, or other system components.
+
+        Because the desktop wallpaper is designed to support different
+        workspaces. if the client is a surface, changes to its displayed
+        workspace will also send (reference set_reference_surface).
+
+        The event provides the current wallpaper source type and the
+        corresponding source file path.
+      </description>
+      <arg name="role" type="uint" enum="wallpaper_role"/>
+      <arg name="source_type" type="uint" enum="wallpaper_source_type" summary="The type of the current wallpaper source"/>
+      <arg name="file_source" type="string" summary="The file path of the current wallpaper source"/>
+    </event>
+  </interface>
+</protocol>

@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="treeland_virtual_output_manager_v1">
+  <copyright>
+
+    SPDX-FileCopyrightText: 2024 UnionTech Software Technology Co., Ltd.
+    SPDX-License-Identifier: MIT
+  </copyright>
+  <interface name="treeland_virtual_output_manager_v1" version="2">
+    <description summary="Manager creates virtual output">
+      This interface is a manager that allows the creation of copied output.
+    </description>
+    <request name="create_virtual_output">
+      <description summary="Create a virtual output">
+        Create virtual output that can be used when setting screen copy mode for use
+        on multiple screens. Virtual outputs are created to mirror multiple wl_output
+        outputs.
+
+        The name argument must not be empty. If name is empty, the compositor
+        emits an error event with code invalid_group_name.
+
+        The element of the array is the name of the screen.
+
+        The first element of the array outputs is the screen to be copied, and
+        the subsequent elements are the screens to be mirrored.
+
+        The outputs array must contain at least two elements. If the number
+        of elements is less than two, the compositor emits an error event
+        with code invalid_screen_number.
+
+        If any output name in the outputs array does not exist, the compositor
+        emits an error event with code invalid_output.
+
+        The client calling this interface will not generate an additional wl_output
+        object on the client.
+      </description>
+      <arg name="id" type="new_id" interface="treeland_virtual_output_v1"/>
+      <arg name="name" type="string" summary="The name of the user readable virtual output"/>
+      <arg name="outputs" type="array" summary="Screen name array"/>
+    </request>
+    <request name="get_virtual_output_list">
+      <description summary="Gets a list of virtual output names">
+        Gets a list of virtual output names.
+
+        The compositor emits one virtual_output_list event for each request.
+        Clients should avoid issuing a new get_virtual_output_list request
+        before receiving the corresponding event.
+      </description>
+    </request>
+    <request name="get_virtual_output">
+      <description summary="Get virtual output">
+        The client obtains the corresponding virtual_output_v1 object
+        through the virtual output name.
+      </description>
+      <arg name="name" type="string" summary="The name of the user readable virtual output"/>
+      <arg name="id" type="new_id" interface="treeland_virtual_output_v1"/>
+    </request>
+    <request name="destroy" type="destructor" since="2">
+      <description summary="destroy treeland_virtual_output_manager_v1 object">
+      </description>
+    </request>
+    <event name="virtual_output_list">
+      <description summary="Send a list of virtual output names">
+        Sends a list of virtual output names to the client.
+      </description>
+      <arg name="names" type="array" summary="List of virtual output names"/>
+    </event>
+  </interface>
+  <interface name="treeland_virtual_output_v1" version="1">
+    <description summary="screen output object">
+      A treeland_virtual_output_v1 represents a set virtual screen output object.
+    </description>
+    <enum name="error">
+      <entry name="invalid_group_name" value="0" summary="Group name is empty"/>
+      <entry name="invalid_screen_number" value="1" summary="The number of screens applying for copy mode is less than 2"/>
+      <entry name="invalid_output" value="2" summary="Output does not exist"/>
+    </enum>
+    <request name="destroy" type="destructor">
+      <description summary="destroy the output">
+        Destroy the output.
+      </description>
+    </request>
+    <event name="outputs">
+      <description summary="screen output changes">
+        This event is sent to the client when any screen in the array changes.
+
+        The element of the array is the name of the screen.
+
+        The first element of the array outputs is the screen to be copied, and
+        the subsequent elements are the screens to be mirrored.
+
+        When the primary screen (the screen being copied) is removed, a successor
+        is selected from the queue as the primary screen, and the queue information
+        is updated.
+      </description>
+      <arg name="name" type="string" summary="The name of the user readable virtual output"/>
+      <arg name="outputs" type="array" summary="Screen name array"/>
+    </event>
+    <event name="error">
+      <description summary="Screen copy mode error event">
+        When an error occurs, an error event is emitted, terminating the replication
+        mode request issued by the client.
+
+        The code argument uses treeland_virtual_output_v1.error.
+      </description>
+      <arg name="code" type="uint" enum="treeland_virtual_output_v1.error" summary="error code"/>
+      <arg name="message" type="string" summary="error description"/>
+    </event>
+  </interface>
+</protocol>

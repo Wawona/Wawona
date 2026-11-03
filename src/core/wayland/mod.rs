@@ -6,13 +6,21 @@
 use smithay::reexports::wayland_server::Resource;
 
 pub mod catalog;
+pub mod cosmic;
 pub mod ext;
+pub mod experimental;
+pub mod external;
 pub mod host_im;
+pub mod hyprland;
 pub mod im_relay;
 pub mod plasma;
 pub mod protocol;
+pub mod protocol_proofs;
+pub mod river;
 pub mod selection_proxy;
+pub mod treeland;
 pub mod wayland;
+pub mod weston;
 pub mod wl_shell;
 pub mod wlr;
 pub mod xdg;
@@ -818,7 +826,7 @@ pub mod smithay_runtime {
         },
         SmithayRuntimeBinding {
             interface: "wl_fixes",
-            module_path: "smithay::wayland::fixes",
+            module_path: "crate::core::wayland::ext::wl_fixes (smithay 0.7 has no fixes module)",
         },
         SmithayRuntimeBinding {
             interface: "xdg_wm_base",

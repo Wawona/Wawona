@@ -34,6 +34,7 @@ pub mod text_input;
 pub mod text_input_v2;
 pub mod transient_seat;
 pub mod viewporter;
+pub mod wl_fixes;
 pub mod workspace;
 
 // --- Linux/desktop-only protocols (not for App Store) ---
@@ -69,6 +70,9 @@ use wayland_server::DisplayHandle;
 ///   session lock protocols that are not applicable or allowed on
 ///   mobile/App Store platforms.
 pub fn register(_state: &mut CompositorState, dh: &DisplayHandle) {
+    // Core Wayland `wl_fixes` (Smithay 0.7 has no fixes module yet).
+    wl_fixes::register_wl_fixes(dh);
+
     // ── Core WP Protocols ─────────────────────────────────────────
     viewporter::register_viewporter(dh);
     presentation_time::register_presentation_time(dh);
@@ -142,6 +146,16 @@ pub fn register(_state: &mut CompositorState, dh: &DisplayHandle) {
             image_copy_capture::register_image_copy_capture(dh);
             xwayland_keyboard_grab::register_xwayland_keyboard_grab(dh);
             xwayland_shell::register_xwayland_shell(dh);
+            // DRM lease: capability-gated (needs a DRM/KMS node), not OS-gated.
+            // Syncobj is protocol-complete under wayland_frontend on every OS
+            // (acquire treated as signalled until a GPU backend waits fences).
+            if drm_lease::register_drm_lease(dh).is_none() {
+                crate::wlog!(
+                    crate::util::logging::COMPOSITOR,
+                    "wp_drm_lease_device_v1 not advertised (no DRM node)"
+                );
+            }
+            linux_drm_syncobj::register_linux_drm_syncobj(dh);
         } else {
             crate::wlog!(
                 crate::util::logging::COMPOSITOR,

@@ -154,6 +154,9 @@ impl Dispatch<WlShell, ()> for CompositorState {
                 crate::core::wayland::wlr::foreign_toplevel_management::notify_toplevel_created(
                     state, window_id,
                 );
+                crate::core::wayland::ext::foreign_toplevel_list::notify_toplevel_created(
+                    state, window_id,
+                );
 
                 let user_data = Arc::new(WlShellSurfaceUserData {
                     window_id,

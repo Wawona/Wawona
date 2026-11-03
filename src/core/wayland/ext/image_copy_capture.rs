@@ -138,11 +138,13 @@ impl Dispatch<ExtImageCopyCaptureSessionV1, CaptureSessionData> for CompositorSt
     ) {
         match request {
             ext_image_copy_capture_session_v1::Request::CreateFrame { frame } => {
-                if state
+                let already = state
                     .ext
                     .image_copy_capture_active_frame
-                    .contains_key(&resource.id())
-                {
+                    .contains_key(&resource.id());
+                if crate::core::wayland::protocol_proofs::image_copy_capture_rejects_duplicate_frame(
+                    already,
+                ) {
                     resource.post_error(
                         ext_image_copy_capture_session_v1::Error::DuplicateFrame,
                         "create_frame sent before destroying previous frame",

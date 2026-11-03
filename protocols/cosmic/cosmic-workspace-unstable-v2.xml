@@ -1,0 +1,206 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="cosmic_workspace_unstable_v2">
+  <copyright>
+    Copyright © 2025 System76
+
+    Permission to use, copy, modify, distribute, and sell this
+    software and its documentation for any purpose is hereby granted
+    without fee, provided that the above copyright notice appear in
+    all copies and that both that copyright notice and this permission
+    notice appear in supporting documentation, and that the name of
+    the copyright holders not be used in advertising or publicity
+    pertaining to distribution of the software without specific,
+    written prior permission.  The copyright holders make no
+    representations about the suitability of this software for any
+    purpose.  It is provided "as is" without express or implied
+    warranty.
+
+    THE COPYRIGHT HOLDERS DISCLAIM ALL WARRANTIES WITH REGARD TO THIS
+    SOFTWARE, INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
+    FITNESS, IN NO EVENT SHALL THE COPYRIGHT HOLDERS BE LIABLE FOR ANY
+    SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+    WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN
+    AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,
+    ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
+    THIS SOFTWARE.
+  </copyright>
+
+  <interface name="zcosmic_workspace_manager_v2" version="2">
+    <description summary="list and control workspaces">
+      This protocol extends `ext-workspace-v1` with addtional requests and events.
+
+      The caller should call `get_cosmic_workspace` whenever a new ext workspace is
+      created.
+    </description>
+
+    <request name="get_cosmic_workspace" since="2">
+      <description summary="get cosmic workspace extension object">
+        Request a `zcosmic_workspace_handle_v2` extension object for an existing
+        `ext_workspace_handle_v1`.
+
+        If a `zcosmic_workspace_handle_v2` already exists for the `ext_workspace_handle_v1`, this
+        will raise a `workspace_exists` protocol error.
+      </description>
+      <arg name="cosmic_workspace" type="new_id" interface="zcosmic_workspace_handle_v2"/>
+      <arg name="workspace" type="object" interface="ext_workspace_handle_v1"/>
+    </request>
+
+    <request name="destroy" type="destructor">
+      <description summary="destroy the zcosmic_workspace_manager_v2 object">
+        This request should be called either when the client will no longer
+        use the `zcosmic_workspace_manager_v2`.
+      </description>
+    </request>
+
+    <enum name="error">
+      <entry name="workspace_exists" value="0" summary="zcosmic_workspace_handle_v2 already exists for ext_workspace_handle_v1"/>
+    </enum>
+  </interface>
+
+  <interface name="zcosmic_workspace_handle_v2" version="2">
+    <description summary="a workspace handing a group of surfaces">
+      A zcosmic_workspace_handle_v2 object represents a a workspace that handles a
+      group of surfaces.
+
+      Each workspace has a name, conveyed to the client with the name event; a
+      list of states, conveyed to the client with the state event; and
+      optionally a set of coordinates, conveyed to the client with the
+      coordinates event. The client may request that the compositor activate or
+      deactivate the workspace.
+
+      Each workspace can belong to only a single workspace group.
+      Depepending on the compositor policy, there might be workspaces with
+      the same name in different workspace groups, but these workspaces are still
+      separate (e.g. one of them might be active while the other is not).
+    </description>
+
+    <request name="destroy" type="destructor">
+      <description summary="destroy the zcosmic_workspace_handle_v1 object">
+        This request should be called either when the client will no longer
+        use the `zcosmic_workspace_handle_v1`.
+      </description>
+    </request>
+
+    <enum name="workspace_capabilities" bitfield="true">
+      <entry name="rename" value="1" summary="rename request is available"/>
+      <entry name="set_tiling_state" value="2" summary="set_tiling_state request is available"/>
+      <entry name="pin" value="3" since="2" summary="pin and unpin requests are available"/>
+      <entry name="move" value="4" since="2" summary="move_before and move_after requests are available"/>
+    </enum>
+
+    <event name="capabilities">
+      <description summary="compositor capabilities">
+        This event advertises the capabilities supported by the compositor. If
+        a capability isn't supported, clients should hide or disable the UI
+        elements that expose this functionality. For instance, if the
+        compositor doesn't advertise support for removing workspaces, a button
+        triggering the remove request should not be displayed.
+
+        The compositor will ignore requests it doesn't support. For instance,
+        a compositor which doesn't advertise support for remove will ignore
+        remove requests.
+
+        Compositors must send this event once after creation of a
+        `zcosmic_workspace_handle_v2`. When the capabilities change, compositors
+        must send this event again.
+      </description>
+      <arg name="capabilities" type="uint" summary="capabilities" enum="workspace_capabilities"/>
+    </event>
+
+    <event name="tiling_state">
+      <description summary="indicates if tiling behavior is enabled for this workspace">
+        This event is emitted immediately after the zcosmic_workspace_handle_v2 is created
+        and each time the workspace tiling state changes, either because of a
+        compositor action or because of a request in this protocol.
+      </description>
+      <arg name="state" type="uint" enum="tiling_state"/>
+    </event>
+
+    <event name="state" since="2">
+      <description summary="the state of the workspace changed">
+        This event is emitted immediately after the zcosmic_workspace_handle_v2 is
+        created and each time the workspace state changes, either because of a
+        compositor action or because of a request in this protocol.
+      </description>
+      <arg name="state" type="uint" enum="state"/>
+    </event>
+
+    <enum name="tiling_state">
+      <description summary="types of tiling state a workspace may have"/>
+
+      <entry name="floating_only" value="0" summary="The workspace has no active tiling properties"/>
+      <entry name="tiling_enabled" value="1" summary="Tiling behavior is enabled for the workspace"/>
+    </enum>
+
+    <enum name="state" bitfield="true" since="2">
+      <description summary="state of the workspace, extending the ext workspace state"/>
+      <entry name="pinned" value="1" summary="the workspace is pinned"/>
+    </enum>
+
+    <request name="rename">
+      <description summary="rename this workspace">
+        Request that this workspace is renamed.
+
+        There is no guarantee the workspace will actually be renamed.
+      </description>
+      <arg name="name" type="string" summary="new name of the workspace"/>
+    </request>
+
+    <request name="set_tiling_state">
+      <description summary="change the tiling state of this workspace">
+        Request that this workspace's tiling state is changed.
+
+        There is no guarantee the workspace will actually change it's tiling state.
+      </description>
+      <arg name="state" type="uint" enum="tiling_state" summary="the new tiling state of the workspace"/>
+    </request>
+
+    <request name="move_before" since="2">
+      <description summary="move before a different workspace">
+        Move a workspace to be before another workspace along a given axis.
+
+        `other_workspace` may be on the same workspace group, or on a different group.
+        If it's a different set, the workspace will also be moved to that group.
+
+        `axis` should be a valid index in the coordinates on the workspace group
+        `other_workspace` is on. The workspace will be positioned on the target group
+        to have a coordinate with this component less than the value of the component for
+        `other_workspace`. The exact coordinate values, or how other workspaces are moved
+        to accommodate the workspace, is unspecified.
+
+        The request will be ignored if `axis` is invalid or the compositor is otherwise
+        unable to move the workspace.
+
+        There is no guarantee the workspace will actually be moved.
+      </description>
+      <arg name="other_workspace" type="object" interface="ext_workspace_handle_v1"/>
+      <arg name="axis" type="uint"/>
+    </request>
+
+    <request name="move_after" since="2">
+      <description summary="move after a different workspace">
+        Move a workspace to be after another workspace along a given axis.
+
+        See `move_before`.
+      </description>
+      <arg name="other_workspace" type="object" interface="ext_workspace_handle_v1"/>
+      <arg name="axis" type="uint"/>
+    </request>
+
+    <request name="pin" since="2">
+      <description summary="pin the workspace">
+        Request that this workspace be pinned.
+
+        There is no guarantee the workspace will be actually pinned.
+      </description>
+    </request>
+
+    <request name="unpin" since="2">
+      <description summary="pin the workspace">
+        Request that this workspace be unpinned.
+
+        There is no guarantee the workspace will be actually unpinned.
+      </description>
+    </request>
+  </interface>
+</protocol>

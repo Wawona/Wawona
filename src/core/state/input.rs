@@ -15,6 +15,11 @@ impl CompositorState {
     /// Inject a key event and broadcast to all bound keyboards
     pub fn inject_key(&mut self, key: u32, key_state: wl_keyboard::KeyState, time: u32) {
         self.ext.idle_notify.record_activity();
+        let time_ns = time as u64 * 1_000_000;
+        self.ext.input_timestamps.broadcast_timestamp(
+            crate::core::wayland::ext::input_timestamps::InputTimestampKind::Keyboard,
+            time_ns,
+        );
 
         // Instrumentation for remote-compositor keyboard bugs (issues #55/#56).
         // `key` is a Linux evdev scancode; the XKB keycode is `key + 8`. Logging
@@ -230,6 +235,11 @@ impl CompositorState {
     /// During an active drag, sends wl_data_device enter/leave/motion instead.
     pub fn inject_pointer_motion_absolute(&mut self, x: f64, y: f64, time: u32) {
         self.ext.idle_notify.record_activity();
+        let time_ns = time as u64 * 1_000_000;
+        self.ext.input_timestamps.broadcast_timestamp(
+            crate::core::wayland::ext::input_timestamps::InputTimestampKind::Pointer,
+            time_ns,
+        );
         self.seat.pointer.x = x;
         self.seat.pointer.y = y;
         self.seat.cleanup_resources();
@@ -1032,6 +1042,7 @@ impl CompositorState {
                     .and_then(|res| res.client())
             })
         })
+        .filter(|client| !self.input_inhibited_for(client))
     }
 
     /// Get the client of the currently focused pointer surface
@@ -1045,6 +1056,7 @@ impl CompositorState {
                     .and_then(|res| res.client())
             })
         })
+        .filter(|client| !self.input_inhibited_for(client))
     }
 
     /// Get focused window

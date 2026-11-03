@@ -1,0 +1,215 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="treeland_wallpaper_shell_unstable_v1">
+  <copyright>
+
+    SPDX-FileCopyrightText: 2025 UnionTech Software Technology Co., Ltd.
+    SPDX-License-Identifier: MIT
+  </copyright>
+  <interface name="treeland_wallpaper_notifier_v1" version="1">
+    <description summary="Notification interface for wallpaper source changes">
+      The treeland_wallpaper_notifier_v1 interface provides notifications
+      about the availability and lifetime of wallpaper sources managed by
+      the compositor.
+
+      This interface is purely event-driven. Clients receive events when
+      wallpaper sources are added, become active, or are removed, and may
+      update their internal state or user interface accordingly.
+    </description>
+    <enum name="wallpaper_source_type">
+      <entry name="image" value="0" summary="The wallpaper source is an image"/>
+      <entry name="video" value="1" summary="The wallpaper source is a video"/>
+    </enum>
+    <request name="destroy" type="destructor">
+      <description summary="Destroy the wallpaper notifier object">
+        Destroys this treeland_wallpaper_notifier_v1 object.
+
+        Destroying a bound treeland_wallpaper_notifier_v1 object while
+        wallpaper surface objects created from it are still alive is
+        illegal and will result in a protocol error.
+      </description>
+    </request>
+    <event name="add">
+      <description summary="Notify about a new wallpaper source">
+        This event is sent by the compositor when a new wallpaper source
+        is added or becomes active.
+
+        The source_type argument describes the type of the wallpaper
+        source. The meaning of the file_source argument depends on the
+        reported source_type.
+      </description>
+      <arg name="source_type" type="uint" enum="wallpaper_source_type" summary="The type of the wallpaper source"/>
+      <arg name="file_source" type="string" summary="The file path or identifier of the wallpaper source"/>
+    </event>
+    <event name="remove">
+      <description summary="Notify that a wallpaper source has been removed">
+        This event indicates that the wallpaper source identified by
+        file_source is no longer available.
+
+        After receiving this event, the client should discard any internal
+        state associated with the wallpaper source and must not reference
+        it anymore.
+      </description>
+      <arg name="file_source" type="string" summary="The file path or identifier of the wallpaper source"/>
+    </event>
+  </interface>
+  <interface name="treeland_wallpaper_shell_v1" version="2">
+    <description summary="Wallpaper shell global">
+      The treeland_wallpaper_shell_v1 interface is a global object exposed by
+      the compositor that allows a client to assign the wallpaper role to
+      a wl_surface and create wallpaper surface objects.
+
+      A wallpaper surface represents content intended to be displayed as
+      the desktop wallpaper, such as a static image or a dynamic media
+      source, and is associated with exactly one wl_surface.
+
+      This interface follows the shell pattern used by other Wayland
+      protocols: it assigns a specific role to a wl_surface and manages
+      the lifetime and behavior of wallpaper surfaces.
+
+      This interface is a singleton. At most one client may bind to
+      treeland_wallpaper_shell_v1 at any given time.
+    </description>
+    <request name="destroy" type="destructor">
+      <description summary="Destroy the wallpaper shell object">
+        Destroys this treeland_wallpaper_shell_v1 object.
+
+        Destroying a bound treeland_wallpaper_shell_v1 object while there
+        are still treeland_wallpaper_surface_v1 objects created from it
+        is illegal and will result in a protocol error.
+      </description>
+    </request>
+    <request name="get_treeland_wallpaper_surface">
+      <description summary="Create a wallpaper surface">
+        Creates a treeland_wallpaper_surface_v1 object and assigns the
+        wallpaper role to the given wl_surface.
+
+        The provided wl_surface must not already have a role, and while
+        it is used as a wallpaper surface, it must not be assigned any
+        other role.
+
+        The file_source argument specifies the initial wallpaper source
+        identifier. Its interpretation depends on the wallpaper source
+        type selected by the compositor.
+      </description>
+      <arg name="id" type="new_id" interface="treeland_wallpaper_surface_v1" summary="The newly created wallpaper surface object"/>
+      <arg name="surface" type="object" interface="wl_surface" summary="The wl_surface to which the wallpaper role is assigned"/>
+      <arg name="file_source" type="string" summary="The initial wallpaper source identifier"/>
+    </request>
+  </interface>
+  <interface name="treeland_wallpaper_surface_v1" version="2">
+    <description summary="Wallpaper surface controller">
+      The treeland_wallpaper_surface_v1 interface controls the behavior of a
+      wallpaper surface.
+
+      A wallpaper surface is bound to exactly one wl_surface and defines how
+      that surface should be sized, positioned, and synchronized with the
+      compositor's wallpaper management logic.
+    </description>
+    <enum name="error">
+      <entry name="invalid_source" value="1" summary="The specified wallpaper source is invalid, unsupported, or failed to load."/>
+      <entry name="permission_denied" value="2" summary="Permission denied when opening the specified wallpaper source"/>
+    </enum>
+    <request name="destroy" type="destructor">
+      <description summary="Destroy the wallpaper surface">
+        Destroy the wallpaper surface object and release its association with
+        the underlying wl_surface.
+
+        After calling this request, the wallpaper surface object becomes
+        invalid and must not be used again.
+
+        This request should only be sent when the client intends to
+        permanently stop using the wallpaper surface, such as when the
+        client is shutting down or after receiving the
+        treeland_wallpaper_produce_v1.removed event for this surface.
+      </description>
+    </request>
+    <request name="source_failed">
+      <description summary="Report a wallpaper source failure">
+        Reports to the compositor that a wallpaper-related operation has
+        failed on the client side.
+
+        This request may be sent by the client when it fails to open,
+        load, or otherwise process the configured wallpaper source.
+        The compositor may use this information for diagnostics, policy
+        decisions, or to adjust internal state.
+
+        Possible error values include:
+        - invalid_source: The specified wallpaper source is invalid,
+        unsupported, or could not be processed. This is a fatal error and
+        indicates that the source should be verified before retrying.
+        - permission_denied: The client does not have permission to access
+        the specified wallpaper source.
+      </description>
+      <arg name="error" type="uint" enum="error" summary="The error code indicating the failure reason"/>
+    </request>
+    <request name="ready" since="2">
+      <description summary="Notify that wallpaper content is ready">
+        Informs the compositor that the wallpaper surface has completed
+        its initial rendering and is ready to be displayed.
+
+        The client should send this request only after a valid buffer
+        has been attached and committed to the associated wl_surface.
+
+        Before receiving this request, the compositor may keep the
+        wallpaper hidden or continue displaying a fallback wallpaper.
+
+        This request is typically used to avoid visual glitches such as
+        black frames, incomplete rendering, or uninitialized content
+        during wallpaper startup.
+
+        Calling this request multiple times has no additional effect.
+      </description>
+    </request>
+    <event name="position">
+      <description summary="Update wallpaper position or progress">
+        This event provides a position value associated with the wallpaper.
+
+        The semantic meaning of the position value is compositor-defined.
+        It may represent a scroll offset, animation progress, or playback
+        position. The value is expressed as a fixed-point number[0, 1.0].
+      </description>
+      <arg name="position" type="fixed" summary="Position or progress value in fixed-point format"/>
+    </event>
+    <event name="pause">
+      <description summary="Pause wallpaper updates">
+        This event instructs the client to pause wallpaper updates or
+        animations.
+
+        After receiving this event, the client should stop advancing any
+        time-based or animated wallpaper content until a play event is
+        received.
+      </description>
+    </event>
+    <event name="set_playback_rate">
+      <description summary="Set wallpaper playback rate">
+        Sets the playback speed of the wallpaper content.
+
+        A rate of 1.0 represents normal speed.
+        A rate of 0.0 represents a paused state.
+      </description>
+      <arg name="rate" type="fixed" summary="Playback rate multiplier"/>
+    </event>
+    <event name="play">
+      <description summary="Resume wallpaper updates">
+        This event instructs the client to resume wallpaper updates or
+        animations after a pause.
+      </description>
+    </event>
+    <event name="slow_down">
+      <description summary="Request a gradual slowdown of wallpaper updates">
+        This event instructs the client to progressively reduce the playback
+        or animation update rate of the wallpaper content until it comes to
+        a complete stop.
+
+        The slowdown should be smooth and continuous rather than abrupt.
+
+        The duration argument specifies the amount of time, in milliseconds,
+        over which the slowdown should occur. After this duration has elapsed,
+        the client should consider the wallpaper paused.
+
+        A duration of 0 means the client should pause immediately.
+      </description>
+      <arg name="duration" type="uint" summary="Duration in milliseconds over which the slowdown occurs"/>
+    </event>
+  </interface>
+</protocol>

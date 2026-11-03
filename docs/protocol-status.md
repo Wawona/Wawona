@@ -18,112 +18,228 @@ Each section table is sorted **Functional → Partial → Stub → Missing**, th
 
 Profiles: `store-safe`, `store-safe-remote`, `desktop-host`, `full-dev`. Plasma and other desktop-only globals follow `ProtocolProfile`.
 
-This generation advertised **77** globals. Catalog tracks **82** interfaces (**4** Missing).
+This generation advertised **167** globals. Catalog tracks **168** interfaces (**0** Missing).
 
 ## Core
 
 | Interface | Version | Origin | Implementation | Status | Spec |
 |-----------|---------|--------|----------------|--------|------|
 | `wl_compositor` | 6 | wayland core | `src/core/wayland/mod.rs (smithay compositor)` | Functional | [wayland.app](https://wayland.app/protocols/wayland#wl_compositor) |
+| `wl_data_device_manager` | 3 | wayland core | `src/core/wayland/mod.rs (smithay data device)` | Functional | [wayland.app](https://wayland.app/protocols/wayland#wl_data_device_manager) |
+| `wl_fixes` | 1 | wayland core | `src/core/wayland/ext/wl_fixes.rs` | Functional | [wayland.app](https://wayland.app/protocols/wayland#wl_fixes) |
 | `wl_output` | 4 | wayland core | `src/core/wayland/mod.rs (smithay output)` | Functional | [wayland.app](https://wayland.app/protocols/wayland#wl_output) |
+| `wl_seat` | 9 | wayland core | `src/core/wayland/mod.rs (smithay seat)` | Functional | [wayland.app](https://wayland.app/protocols/wayland#wl_seat) |
 | `wl_shell` | 1 | wayland core | `src/core/wayland/wl_shell.rs` | Functional | [wayland.app](https://wayland.app/protocols/wayland#wl_shell) |
 | `wl_shm` | 2 | wayland core | `src/core/wayland/mod.rs (smithay shm)` | Functional | [wayland.app](https://wayland.app/protocols/wayland#wl_shm) |
-| `wl_data_device_manager` | 3 | wayland core | `src/core/wayland/mod.rs (smithay data device)` | Partial | [wayland.app](https://wayland.app/protocols/wayland#wl_data_device_manager) |
-| `wl_seat` | 9 | wayland core | `src/core/wayland/mod.rs (smithay seat)` | Partial | [wayland.app](https://wayland.app/protocols/wayland#wl_seat) |
-| `wl_subcompositor` | 1 | wayland core | `src/core/wayland/ext/subcompositor.rs` | Partial | [wayland.app](https://wayland.app/protocols/wayland#wl_subcompositor) |
-| `wl_fixes` | - | wayland core | `src/core/wayland/mod.rs (smithay fixes; not wired)` | Missing | [wayland.app](https://wayland.app/protocols/wayland#wl_fixes) |
+| `wl_subcompositor` | 1 | wayland core | `src/core/wayland/ext/subcompositor.rs` | Functional | [wayland.app](https://wayland.app/protocols/wayland#wl_subcompositor) |
 
 ## XDG
 
 | Interface | Version | Origin | Implementation | Status | Spec |
 |-----------|---------|--------|----------------|--------|------|
+| `xdg_activation_v1` | 1 | xdg / wayland-protocols | `src/core/wayland/xdg/xdg_activation.rs` | Functional | [wayland.app](https://wayland.app/protocols/xdg-activation-v1#xdg_activation_v1) |
+| `xdg_session_manager_v1` | 1 | xdg / wayland-protocols | `src/core/wayland/experimental/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/xdg-session-management-v1#xdg_session_manager_v1) |
+| `xdg_system_bell_v1` | 1 | xdg / wayland-protocols | `src/core/wayland/xdg/xdg_system_bell.rs` | Functional | [wayland.app](https://wayland.app/protocols/xdg-system-bell-v1#xdg_system_bell_v1) |
+| `xdg_toplevel_drag_manager_v1` | 1 | xdg / wayland-protocols | `src/core/wayland/xdg/xdg_toplevel_drag.rs` | Functional | [wayland.app](https://wayland.app/protocols/xdg-toplevel-drag-v1#xdg_toplevel_drag_manager_v1) |
+| `xdg_toplevel_icon_manager_v1` | 1 | xdg / wayland-protocols | `src/core/wayland/xdg/xdg_toplevel_icon.rs` | Functional | [wayland.app](https://wayland.app/protocols/xdg-toplevel-icon-v1#xdg_toplevel_icon_manager_v1) |
+| `xdg_toplevel_tag_manager_v1` | 1 | xdg / wayland-protocols | `src/core/wayland/xdg/xdg_toplevel_tag.rs` | Functional | [wayland.app](https://wayland.app/protocols/xdg-toplevel-tag-v1#xdg_toplevel_tag_manager_v1) |
 | `xdg_wm_base` | 6 | xdg / wayland-protocols | `src/core/wayland/xdg/xdg_wm_base.rs` | Functional | [wayland.app](https://wayland.app/protocols/xdg-shell#xdg_wm_base) |
+| `xdg_wm_dialog_v1` | 1 | xdg / wayland-protocols | `src/core/wayland/xdg/xdg_dialog.rs` | Functional | [wayland.app](https://wayland.app/protocols/xdg-dialog-v1#xdg_wm_dialog_v1) |
+| `xwayland_shell_v1` | 1 | xdg / wayland-protocols | `src/core/wayland/ext/xwayland_shell.rs` | Functional | [wayland.app](https://wayland.app/protocols/xwayland-shell-v1#xwayland_shell_v1) |
 | `zxdg_decoration_manager_v1` | 1 | xdg / wayland-protocols | `src/core/wayland/xdg/decoration.rs` | Functional | [wayland.app](https://wayland.app/protocols/xdg-decoration-unstable-v1#zxdg_decoration_manager_v1) |
+| `zxdg_exporter_v2` | 1 | xdg / wayland-protocols | `src/core/wayland/xdg/xdg_foreign.rs` | Functional | [wayland.app](https://wayland.app/protocols/xdg-foreign-unstable-v2#zxdg_exporter_v2) |
+| `zxdg_importer_v2` | 1 | xdg / wayland-protocols | `src/core/wayland/xdg/xdg_foreign.rs` | Functional | [wayland.app](https://wayland.app/protocols/xdg-foreign-unstable-v2#zxdg_importer_v2) |
+| `zxdg_output_manager_v1` | 3 | xdg / wayland-protocols | `src/core/wayland/xdg/xdg_output.rs` | Functional | [wayland.app](https://wayland.app/protocols/xdg-output-unstable-v1#zxdg_output_manager_v1) |
 | `zxdg_shell_v6` | 1 | xdg / wayland-protocols | `src/core/wayland/xdg/v6/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/xdg-shell-unstable-v6#zxdg_shell_v6) |
-| `zxdg_output_manager_v1` | 3 | xdg / wayland-protocols | `src/core/wayland/xdg/xdg_output.rs` | Partial | [wayland.app](https://wayland.app/protocols/xdg-output-unstable-v1#zxdg_output_manager_v1) |
-| `xdg_activation_v1` | 1 | xdg / wayland-protocols | `src/core/wayland/xdg/xdg_activation.rs` | Stub | [wayland.app](https://wayland.app/protocols/xdg-activation-v1#xdg_activation_v1) |
-| `xdg_system_bell_v1` | 1 | xdg / wayland-protocols | `src/core/wayland/xdg/xdg_system_bell.rs` | Stub | [wayland.app](https://wayland.app/protocols/xdg-system-bell-v1#xdg_system_bell_v1) |
-| `xdg_toplevel_drag_manager_v1` | 1 | xdg / wayland-protocols | `src/core/wayland/xdg/xdg_toplevel_drag.rs` | Stub | [wayland.app](https://wayland.app/protocols/xdg-toplevel-drag-v1#xdg_toplevel_drag_manager_v1) |
-| `xdg_toplevel_icon_manager_v1` | 1 | xdg / wayland-protocols | `src/core/wayland/xdg/xdg_toplevel_icon.rs` | Stub | [wayland.app](https://wayland.app/protocols/xdg-toplevel-icon-v1#xdg_toplevel_icon_manager_v1) |
-| `xdg_toplevel_tag_manager_v1` | 1 | xdg / wayland-protocols | `src/core/wayland/xdg/xdg_toplevel_tag.rs` | Stub | [wayland.app](https://wayland.app/protocols/xdg-toplevel-tag-v1#xdg_toplevel_tag_manager_v1) |
-| `xdg_wm_dialog_v1` | 1 | xdg / wayland-protocols | `src/core/wayland/xdg/xdg_dialog.rs` | Stub | [wayland.app](https://wayland.app/protocols/xdg-dialog-v1#xdg_wm_dialog_v1) |
-| `xwayland_shell_v1` | 1 | xdg / wayland-protocols | `src/core/wayland/ext/xwayland_shell.rs` | Stub | [wayland.app](https://wayland.app/protocols/xwayland-shell-v1#xwayland_shell_v1) |
-| `zxdg_exporter_v2` | 1 | xdg / wayland-protocols | `src/core/wayland/xdg/xdg_foreign.rs` | Stub | [wayland.app](https://wayland.app/protocols/xdg-foreign-unstable-v2#zxdg_exporter_v2) |
-| `zxdg_importer_v2` | 1 | xdg / wayland-protocols | `src/core/wayland/xdg/xdg_foreign.rs` | Stub | [wayland.app](https://wayland.app/protocols/xdg-foreign-unstable-v2#zxdg_importer_v2) |
 
 ## wlroots
 
 | Interface | Version | Origin | Implementation | Status | Spec |
 |-----------|---------|--------|----------------|--------|------|
-| `zwlr_layer_shell_v1` | 4 | wlr (wlroots) | `src/core/wayland/wlr/layer_shell.rs` | Partial | [wayland.app](https://wayland.app/protocols/wlr-layer-shell-unstable-v1#zwlr_layer_shell_v1) |
-| `zwp_virtual_keyboard_manager_v1` | 1 | wlr (wlroots) | `src/core/wayland/mod.rs (smithay virtual_keyboard)` | Partial | [wayland.app](https://wayland.app/protocols/virtual-keyboard-unstable-v1#zwp_virtual_keyboard_manager_v1) |
-| `zwlr_data_control_manager_v1` | 1 | wlr (wlroots) | `src/core/wayland/wlr/data_control.rs` | Stub | [wayland.app](https://wayland.app/protocols/wlr-data-control-unstable-v1#zwlr_data_control_manager_v1) |
-| `zwlr_export_dmabuf_manager_v1` | 1 | wlr (wlroots) | `src/core/wayland/wlr/export_dmabuf.rs` | Stub | [wayland.app](https://wayland.app/protocols/wlr-export-dmabuf-unstable-v1#zwlr_export_dmabuf_manager_v1) |
-| `zwlr_foreign_toplevel_manager_v1` | 3 | wlr (wlroots) | `src/core/wayland/wlr/foreign_toplevel_management.rs` | Stub | [wayland.app](https://wayland.app/protocols/wlr-foreign-toplevel-management-unstable-v1#zwlr_foreign_toplevel_manager_v1) |
-| `zwlr_gamma_control_manager_v1` | 1 | wlr (wlroots) | `src/core/wayland/wlr/gamma_control.rs` | Stub | [wayland.app](https://wayland.app/protocols/wlr-gamma-control-unstable-v1#zwlr_gamma_control_manager_v1) |
-| `zwlr_output_manager_v1` | 1 | wlr (wlroots) | `src/core/wayland/wlr/output_management.rs` | Stub | [wayland.app](https://wayland.app/protocols/wlr-output-management-unstable-v1#zwlr_output_manager_v1) |
-| `zwlr_output_power_manager_v1` | 1 | wlr (wlroots) | `src/core/wayland/wlr/output_power_management.rs` | Stub | [wayland.app](https://wayland.app/protocols/wlr-output-power-management-unstable-v1#zwlr_output_power_manager_v1) |
-| `zwlr_screencopy_manager_v1` | 1 | wlr (wlroots) | `src/core/wayland/wlr/screencopy.rs` | Stub | [wayland.app](https://wayland.app/protocols/wlr-screencopy-unstable-v1#zwlr_screencopy_manager_v1) |
-| `zwlr_virtual_pointer_manager_v1` | 2 | wlr (wlroots) | `src/core/wayland/wlr/virtual_pointer.rs` | Stub | [wayland.app](https://wayland.app/protocols/wlr-virtual-pointer-unstable-v1#zwlr_virtual_pointer_manager_v1) |
-| `zwlr_input_inhibit_manager_v1` | - | wlr (wlroots) | `src/core/wayland/wlr/input_inhibitor.rs (planned)` | Missing | [wayland.app](https://wayland.app/protocols/wlr-input-inhibitor-unstable-v1#zwlr_input_inhibit_manager_v1) |
+| `zwlr_data_control_manager_v1` | 1 | wlr (wlroots) | `src/core/wayland/wlr/data_control.rs` | Functional | [wayland.app](https://wayland.app/protocols/wlr-data-control-unstable-v1#zwlr_data_control_manager_v1) |
+| `zwlr_export_dmabuf_manager_v1` | 1 | wlr (wlroots) | `src/core/wayland/wlr/export_dmabuf.rs` | Functional | [wayland.app](https://wayland.app/protocols/wlr-export-dmabuf-unstable-v1#zwlr_export_dmabuf_manager_v1) |
+| `zwlr_foreign_toplevel_manager_v1` | 3 | wlr (wlroots) | `src/core/wayland/wlr/foreign_toplevel_management.rs` | Functional | [wayland.app](https://wayland.app/protocols/wlr-foreign-toplevel-management-unstable-v1#zwlr_foreign_toplevel_manager_v1) |
+| `zwlr_gamma_control_manager_v1` | 1 | wlr (wlroots) | `src/core/wayland/wlr/gamma_control.rs` | Functional | [wayland.app](https://wayland.app/protocols/wlr-gamma-control-unstable-v1#zwlr_gamma_control_manager_v1) |
+| `zwlr_input_inhibit_manager_v1` | 1 | wlr (wlroots) | `src/core/wayland/wlr/input_inhibitor.rs` | Functional | [wayland.app](https://wayland.app/protocols/wlr-input-inhibitor-unstable-v1#zwlr_input_inhibit_manager_v1) |
+| `zwlr_layer_shell_v1` | 4 | wlr (wlroots) | `src/core/wayland/wlr/layer_shell.rs` | Functional | [wayland.app](https://wayland.app/protocols/wlr-layer-shell-unstable-v1#zwlr_layer_shell_v1) |
+| `zwlr_output_manager_v1` | 1 | wlr (wlroots) | `src/core/wayland/wlr/output_management.rs` | Functional | [wayland.app](https://wayland.app/protocols/wlr-output-management-unstable-v1#zwlr_output_manager_v1) |
+| `zwlr_output_power_manager_v1` | 1 | wlr (wlroots) | `src/core/wayland/wlr/output_power_management.rs` | Functional | [wayland.app](https://wayland.app/protocols/wlr-output-power-management-unstable-v1#zwlr_output_power_manager_v1) |
+| `zwlr_screencopy_manager_v1` | 1 | wlr (wlroots) | `src/core/wayland/wlr/screencopy.rs` | Functional | [wayland.app](https://wayland.app/protocols/wlr-screencopy-unstable-v1#zwlr_screencopy_manager_v1) |
+| `zwlr_virtual_pointer_manager_v1` | 2 | wlr (wlroots) | `src/core/wayland/wlr/virtual_pointer.rs` | Functional | [wayland.app](https://wayland.app/protocols/wlr-virtual-pointer-unstable-v1#zwlr_virtual_pointer_manager_v1) |
+| `zwp_virtual_keyboard_manager_v1` | 1 | wlr (wlroots) | `src/core/wayland/mod.rs (smithay virtual_keyboard)` | Functional | [wayland.app](https://wayland.app/protocols/virtual-keyboard-unstable-v1#zwp_virtual_keyboard_manager_v1) |
 
 ## Extensions
 
 | Interface | Version | Origin | Implementation | Status | Spec |
 |-----------|---------|--------|----------------|--------|------|
+| `ext_background_effect_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/background_effect.rs` | Functional | [wayland.app](https://wayland.app/protocols/ext-background-effect-v1#ext_background_effect_manager_v1) |
+| `ext_data_control_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/data_control.rs` | Functional | [wayland.app](https://wayland.app/protocols/ext-data-control-v1#ext_data_control_manager_v1) |
+| `ext_foreign_toplevel_list_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/foreign_toplevel_list.rs` | Functional | [wayland.app](https://wayland.app/protocols/ext-foreign-toplevel-list-v1#ext_foreign_toplevel_list_v1) |
+| `ext_idle_notifier_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/idle_notify.rs` | Functional | [wayland.app](https://wayland.app/protocols/ext-idle-notify-v1#ext_idle_notifier_v1) |
+| `ext_image_copy_capture_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/image_copy_capture.rs` | Functional | [wayland.app](https://wayland.app/protocols/ext-image-copy-capture-v1#ext_image_copy_capture_manager_v1) |
+| `ext_output_image_capture_source_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/image_capture_source.rs` | Functional | [wayland.app](https://wayland.app/protocols/ext-image-capture-source-v1#ext_output_image_capture_source_manager_v1) |
+| `ext_session_lock_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/session_lock.rs` | Functional | [wayland.app](https://wayland.app/protocols/ext-session-lock-v1#ext_session_lock_manager_v1) |
+| `ext_transient_seat_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/transient_seat.rs` | Functional | [wayland.app](https://wayland.app/protocols/ext-transient-seat-v1#ext_transient_seat_manager_v1) |
+| `ext_workspace_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/workspace.rs` | Functional | [wayland.app](https://wayland.app/protocols/ext-workspace-v1#ext_workspace_manager_v1) |
 | `gtk_primary_selection_device_manager` | 1 | ext / wayland-protocols | `src/core/wayland/ext/gtk_primary_selection.rs` | Functional | [wayland.app](https://wayland.app/protocols/gtk-primary-selection#gtk_primary_selection_device_manager) |
+| `wp_alpha_modifier_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/alpha_modifier.rs` | Functional | [wayland.app](https://wayland.app/protocols/alpha-modifier-v1#wp_alpha_modifier_v1) |
+| `wp_color_manager_v1` | 2 | ext / wayland-protocols | `src/core/wayland/ext/color_management.rs` | Functional | [wayland.app](https://wayland.app/protocols/color-management-v1#wp_color_manager_v1) |
+| `wp_color_representation_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/color_representation.rs` | Functional | [wayland.app](https://wayland.app/protocols/color-representation-v1#wp_color_representation_manager_v1) |
+| `wp_commit_timing_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/commit_timing.rs` | Functional | [wayland.app](https://wayland.app/protocols/commit-timing-v1#wp_commit_timing_manager_v1) |
+| `wp_content_type_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/content_type.rs` | Functional | [wayland.app](https://wayland.app/protocols/content-type-v1#wp_content_type_manager_v1) |
+| `wp_cursor_shape_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/cursor_shape.rs` | Functional | [wayland.app](https://wayland.app/protocols/cursor-shape-v1#wp_cursor_shape_manager_v1) |
+| `wp_drm_lease_device_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/drm_lease.rs` | Functional | [wayland.app](https://wayland.app/protocols/drm-lease-v1#wp_drm_lease_device_v1) |
+| `wp_fifo_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/fifo.rs` | Functional | [wayland.app](https://wayland.app/protocols/fifo-v1#wp_fifo_manager_v1) |
+| `wp_fractional_scale_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/fractional_scale.rs` | Functional | [wayland.app](https://wayland.app/protocols/fractional-scale-v1#wp_fractional_scale_manager_v1) |
+| `wp_linux_drm_syncobj_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/linux_drm_syncobj.rs` | Functional | [wayland.app](https://wayland.app/protocols/linux-drm-syncobj-v1#wp_linux_drm_syncobj_manager_v1) |
+| `wp_pointer_warp_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/pointer_warp.rs` | Functional | [wayland.app](https://wayland.app/protocols/pointer-warp-v1#wp_pointer_warp_v1) |
+| `wp_presentation` | 1 | ext / wayland-protocols | `src/core/wayland/ext/presentation_time.rs` | Functional | [wayland.app](https://wayland.app/protocols/presentation-time#wp_presentation) |
+| `wp_security_context_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/security_context.rs` | Functional | [wayland.app](https://wayland.app/protocols/security-context-v1#wp_security_context_manager_v1) |
+| `wp_single_pixel_buffer_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/single_pixel_buffer.rs` | Functional | [wayland.app](https://wayland.app/protocols/single-pixel-buffer-v1#wp_single_pixel_buffer_manager_v1) |
+| `wp_tearing_control_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/tearing_control.rs` | Functional | [wayland.app](https://wayland.app/protocols/tearing-control-v1#wp_tearing_control_manager_v1) |
+| `wp_viewporter` | 1 | ext / wayland-protocols | `src/core/wayland/ext/viewporter.rs` | Functional | [wayland.app](https://wayland.app/protocols/viewporter#wp_viewporter) |
+| `xx_cutouts_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/experimental/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/xx-cutouts-v1#xx_cutouts_manager_v1) |
+| `xx_input_method_manager_v2` | 4 | ext / wayland-protocols | `src/core/wayland/experimental/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/input-method-experimental-v2#xx_input_method_manager_v2) |
+| `xx_keyboard_filter_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/experimental/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/keyboard-filter-experimental-v1#xx_keyboard_filter_manager_v1) |
+| `xx_session_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/experimental/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/xx-session-management-v1#xx_session_manager_v1) |
+| `xx_zone_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/experimental/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/xx-zones-v1#xx_zone_manager_v1) |
+| `zwp_fullscreen_shell_v1` | - | ext / wayland-protocols | `src/core/wayland/ext/fullscreen_shell.rs` | Functional | [wayland.app](https://wayland.app/protocols/fullscreen-shell-unstable-v1#zwp_fullscreen_shell_v1) |
+| `zwp_idle_inhibit_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/idle_inhibit.rs` | Functional | [wayland.app](https://wayland.app/protocols/idle-inhibit-unstable-v1#zwp_idle_inhibit_manager_v1) |
+| `zwp_input_method_manager_v2` | 1 | ext / wayland-protocols | `src/core/wayland/mod.rs (smithay input_method)` | Functional | [wayland.app](https://wayland.app/protocols/input-method-unstable-v2#zwp_input_method_manager_v2) |
 | `zwp_input_method_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/input_method_v1.rs` | Functional | [wayland.app](https://wayland.app/protocols/input-method-unstable-v1#zwp_input_method_v1) |
+| `zwp_input_timestamps_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/input_timestamps.rs` | Functional | [wayland.app](https://wayland.app/protocols/input-timestamps-unstable-v1#zwp_input_timestamps_manager_v1) |
+| `zwp_keyboard_shortcuts_inhibit_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/keyboard_shortcuts_inhibit.rs` | Functional | [wayland.app](https://wayland.app/protocols/keyboard-shortcuts-inhibit-unstable-v1#zwp_keyboard_shortcuts_inhibit_manager_v1) |
+| `zwp_linux_dmabuf_v1` | 4 | ext / wayland-protocols | `src/core/wayland/ext/linux_dmabuf.rs` | Functional | [wayland.app](https://wayland.app/protocols/linux-dmabuf-v1#zwp_linux_dmabuf_v1) |
+| `zwp_linux_explicit_synchronization_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/linux_explicit_sync.rs` | Functional | [wayland.app](https://wayland.app/protocols/linux-explicit-synchronization-unstable-v1#zwp_linux_explicit_synchronization_v1) |
+| `zwp_pointer_constraints_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/pointer_constraints.rs` | Functional | [wayland.app](https://wayland.app/protocols/pointer-constraints-unstable-v1#zwp_pointer_constraints_v1) |
+| `zwp_pointer_gestures_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/pointer_gestures.rs` | Functional | [wayland.app](https://wayland.app/protocols/pointer-gestures-unstable-v1#zwp_pointer_gestures_v1) |
 | `zwp_primary_selection_device_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/mod.rs (smithay primary_selection)` | Functional | [wayland.app](https://wayland.app/protocols/primary-selection-unstable-v1#zwp_primary_selection_device_manager_v1) |
-| `wp_presentation` | 1 | ext / wayland-protocols | `src/core/wayland/ext/presentation_time.rs` | Partial | [wayland.app](https://wayland.app/protocols/presentation-time#wp_presentation) |
-| `zwp_input_method_manager_v2` | 1 | ext / wayland-protocols | `src/core/wayland/mod.rs (smithay input_method)` | Partial | [wayland.app](https://wayland.app/protocols/input-method-unstable-v2#zwp_input_method_manager_v2) |
-| `zwp_linux_dmabuf_v1` | 4 | ext / wayland-protocols | `src/core/wayland/ext/linux_dmabuf.rs` | Partial | [wayland.app](https://wayland.app/protocols/linux-dmabuf-v1#zwp_linux_dmabuf_v1) |
-| `zwp_text_input_manager_v3` | 1 | ext / wayland-protocols | `src/core/wayland/mod.rs (smithay text_input)` | Partial | [wayland.app](https://wayland.app/protocols/text-input-unstable-v3#zwp_text_input_manager_v3) |
-| `ext_background_effect_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/background_effect.rs` | Stub | [wayland.app](https://wayland.app/protocols/ext-background-effect-v1#ext_background_effect_manager_v1) |
-| `ext_data_control_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/data_control.rs` | Stub | [wayland.app](https://wayland.app/protocols/ext-data-control-v1#ext_data_control_manager_v1) |
-| `ext_foreign_toplevel_list_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/foreign_toplevel_list.rs` | Stub | [wayland.app](https://wayland.app/protocols/ext-foreign-toplevel-list-v1#ext_foreign_toplevel_list_v1) |
-| `ext_idle_notifier_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/idle_notify.rs` | Stub | [wayland.app](https://wayland.app/protocols/ext-idle-notify-v1#ext_idle_notifier_v1) |
-| `ext_image_copy_capture_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/image_copy_capture.rs` | Stub | [wayland.app](https://wayland.app/protocols/ext-image-copy-capture-v1#ext_image_copy_capture_manager_v1) |
-| `ext_output_image_capture_source_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/image_capture_source.rs` | Stub | [wayland.app](https://wayland.app/protocols/ext-image-capture-source-v1#ext_output_image_capture_source_manager_v1) |
-| `ext_session_lock_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/session_lock.rs` | Stub | [wayland.app](https://wayland.app/protocols/ext-session-lock-v1#ext_session_lock_manager_v1) |
-| `ext_transient_seat_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/transient_seat.rs` | Stub | [wayland.app](https://wayland.app/protocols/ext-transient-seat-v1#ext_transient_seat_manager_v1) |
-| `ext_workspace_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/workspace.rs` | Stub | [wayland.app](https://wayland.app/protocols/ext-workspace-v1#ext_workspace_manager_v1) |
-| `wp_alpha_modifier_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/alpha_modifier.rs` | Stub | [wayland.app](https://wayland.app/protocols/alpha-modifier-v1#wp_alpha_modifier_v1) |
-| `wp_color_manager_v1` | 2 | ext / wayland-protocols | `src/core/wayland/ext/color_management.rs` | Stub | [wayland.app](https://wayland.app/protocols/color-management-v1#wp_color_manager_v1) |
-| `wp_color_representation_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/color_representation.rs` | Stub | [wayland.app](https://wayland.app/protocols/color-representation-v1#wp_color_representation_manager_v1) |
-| `wp_commit_timing_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/commit_timing.rs` | Stub | [wayland.app](https://wayland.app/protocols/commit-timing-v1#wp_commit_timing_manager_v1) |
-| `wp_content_type_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/content_type.rs` | Stub | [wayland.app](https://wayland.app/protocols/content-type-v1#wp_content_type_manager_v1) |
-| `wp_cursor_shape_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/cursor_shape.rs` | Stub | [wayland.app](https://wayland.app/protocols/cursor-shape-v1#wp_cursor_shape_manager_v1) |
-| `wp_fifo_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/fifo.rs` | Stub | [wayland.app](https://wayland.app/protocols/fifo-v1#wp_fifo_manager_v1) |
-| `wp_fractional_scale_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/fractional_scale.rs` | Stub | [wayland.app](https://wayland.app/protocols/fractional-scale-v1#wp_fractional_scale_manager_v1) |
-| `wp_pointer_warp_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/pointer_warp.rs` | Stub | [wayland.app](https://wayland.app/protocols/pointer-warp-v1#wp_pointer_warp_v1) |
-| `wp_security_context_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/security_context.rs` | Stub | [wayland.app](https://wayland.app/protocols/security-context-v1#wp_security_context_manager_v1) |
-| `wp_single_pixel_buffer_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/single_pixel_buffer.rs` | Stub | [wayland.app](https://wayland.app/protocols/single-pixel-buffer-v1#wp_single_pixel_buffer_manager_v1) |
-| `wp_tearing_control_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/tearing_control.rs` | Stub | [wayland.app](https://wayland.app/protocols/tearing-control-v1#wp_tearing_control_manager_v1) |
-| `wp_viewporter` | 1 | ext / wayland-protocols | `src/core/wayland/ext/viewporter.rs` | Stub | [wayland.app](https://wayland.app/protocols/viewporter#wp_viewporter) |
-| `zwp_fullscreen_shell_v1` | - | ext / wayland-protocols | `src/core/wayland/ext/fullscreen_shell.rs` | Stub | [wayland.app](https://wayland.app/protocols/fullscreen-shell-unstable-v1#zwp_fullscreen_shell_v1) |
-| `zwp_idle_inhibit_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/idle_inhibit.rs` | Stub | [wayland.app](https://wayland.app/protocols/idle-inhibit-unstable-v1#zwp_idle_inhibit_manager_v1) |
-| `zwp_input_timestamps_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/input_timestamps.rs` | Stub | [wayland.app](https://wayland.app/protocols/input-timestamps-unstable-v1#zwp_input_timestamps_manager_v1) |
-| `zwp_keyboard_shortcuts_inhibit_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/keyboard_shortcuts_inhibit.rs` | Stub | [wayland.app](https://wayland.app/protocols/keyboard-shortcuts-inhibit-unstable-v1#zwp_keyboard_shortcuts_inhibit_manager_v1) |
-| `zwp_linux_explicit_synchronization_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/linux_explicit_sync.rs` | Stub | [wayland.app](https://wayland.app/protocols/linux-explicit-synchronization-unstable-v1#zwp_linux_explicit_synchronization_v1) |
-| `zwp_pointer_constraints_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/pointer_constraints.rs` | Stub | [wayland.app](https://wayland.app/protocols/pointer-constraints-unstable-v1#zwp_pointer_constraints_v1) |
-| `zwp_pointer_gestures_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/pointer_gestures.rs` | Stub | [wayland.app](https://wayland.app/protocols/pointer-gestures-unstable-v1#zwp_pointer_gestures_v1) |
-| `zwp_relative_pointer_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/relative_pointer.rs` | Stub | [wayland.app](https://wayland.app/protocols/relative-pointer-unstable-v1#zwp_relative_pointer_manager_v1) |
-| `zwp_tablet_manager_v2` | 1 | ext / wayland-protocols | `src/core/wayland/ext/tablet.rs` | Stub | [wayland.app](https://wayland.app/protocols/tablet-v2#zwp_tablet_manager_v2) |
-| `zwp_text_input_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/text_input.rs` | Stub | [wayland.app](https://wayland.app/protocols/text-input-unstable-v1#zwp_text_input_manager_v1) |
-| `zwp_xwayland_keyboard_grab_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/xwayland_keyboard_grab.rs` | Stub | [wayland.app](https://wayland.app/protocols/xwayland-keyboard-grab-unstable-v1#zwp_xwayland_keyboard_grab_manager_v1) |
-| `wp_drm_lease_device_v1` | - | ext / wayland-protocols | `src/core/wayland/ext/drm_lease.rs` | Missing | [wayland.app](https://wayland.app/protocols/drm-lease-v1#wp_drm_lease_device_v1) |
-| `wp_linux_drm_syncobj_manager_v1` | - | ext / wayland-protocols | `src/core/wayland/ext/linux_drm_syncobj.rs` | Missing | [wayland.app](https://wayland.app/protocols/linux-drm-syncobj-v1#wp_linux_drm_syncobj_manager_v1) |
+| `zwp_relative_pointer_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/relative_pointer.rs` | Functional | [wayland.app](https://wayland.app/protocols/relative-pointer-unstable-v1#zwp_relative_pointer_manager_v1) |
+| `zwp_tablet_manager_v2` | 1 | ext / wayland-protocols | `src/core/wayland/ext/tablet.rs` | Functional | [wayland.app](https://wayland.app/protocols/tablet-v2#zwp_tablet_manager_v2) |
+| `zwp_text_input_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/text_input.rs` | Functional | [wayland.app](https://wayland.app/protocols/text-input-unstable-v1#zwp_text_input_manager_v1) |
+| `zwp_text_input_manager_v3` | 1 | ext / wayland-protocols | `src/core/wayland/mod.rs (smithay text_input)` | Functional | [wayland.app](https://wayland.app/protocols/text-input-unstable-v3#zwp_text_input_manager_v3) |
+| `zwp_xwayland_keyboard_grab_manager_v1` | 1 | ext / wayland-protocols | `src/core/wayland/ext/xwayland_keyboard_grab.rs` | Functional | [wayland.app](https://wayland.app/protocols/xwayland-keyboard-grab-unstable-v1#zwp_xwayland_keyboard_grab_manager_v1) |
 
 ## KDE / Plasma
 
 | Interface | Version | Origin | Implementation | Status | Spec |
 |-----------|---------|--------|----------------|--------|------|
+| `kde_external_brightness_v1` | 1 | plasma (KDE) | `src/core/wayland/plasma/extra.rs` | Functional | [wayland.app](https://wayland.app/protocols/kde-external-brightness-v1#kde_external_brightness_v1) |
+| `kde_lockscreen_overlay_v1` | 1 | plasma (KDE) | `src/core/wayland/plasma/extra.rs` | Functional | [wayland.app](https://wayland.app/protocols/kde-lockscreen-overlay-v1#kde_lockscreen_overlay_v1) |
+| `kde_output_device_v2` | 1 | plasma (KDE) | `src/core/wayland/plasma/extra.rs` | Functional | [wayland.app](https://wayland.app/protocols/kde-output-device-v2#kde_output_device_v2) |
+| `kde_output_management_v2` | 1 | plasma (KDE) | `src/core/wayland/plasma/extra.rs` | Functional | [wayland.app](https://wayland.app/protocols/kde-output-management-v2#kde_output_management_v2) |
+| `kde_output_order_v1` | 1 | plasma (KDE) | `src/core/wayland/plasma/extra.rs` | Functional | [wayland.app](https://wayland.app/protocols/kde-output-order-v1#kde_output_order_v1) |
+| `kde_primary_output_v1` | 2 | plasma (KDE) | `src/core/wayland/plasma/extra.rs` | Functional | [wayland.app](https://wayland.app/protocols/kde-primary-output-v1#kde_primary_output_v1) |
+| `kde_screen_edge_manager_v1` | 1 | plasma (KDE) | `src/core/wayland/plasma/extra.rs` | Functional | [wayland.app](https://wayland.app/protocols/kde-screen-edge-v1#kde_screen_edge_manager_v1) |
+| `org_kde_kwin_appmenu_manager` | 1 | plasma (KDE) | `src/core/wayland/plasma/extra.rs` | Functional | [wayland.app](https://wayland.app/protocols/kde-appmenu#org_kde_kwin_appmenu_manager) |
+| `org_kde_kwin_blur_manager` | 1 | plasma (KDE) | `src/core/wayland/plasma/plasma.rs` | Functional | [wayland.app](https://wayland.app/protocols/kde-blur#org_kde_kwin_blur_manager) |
+| `org_kde_kwin_contrast_manager` | 1 | plasma (KDE) | `src/core/wayland/plasma/plasma.rs` | Functional | [wayland.app](https://wayland.app/protocols/kde-contrast#org_kde_kwin_contrast_manager) |
+| `org_kde_kwin_dpms_manager` | 1 | plasma (KDE) | `src/core/wayland/plasma/plasma.rs` | Functional | [wayland.app](https://wayland.app/protocols/kde-dpms#org_kde_kwin_dpms_manager) |
+| `org_kde_kwin_fake_input` | 5 | plasma (KDE) | `src/core/wayland/plasma/extra.rs` | Functional | [wayland.app](https://wayland.app/protocols/kde-fake-input#org_kde_kwin_fake_input) |
+| `org_kde_kwin_idle` | 1 | plasma (KDE) | `src/core/wayland/plasma/plasma.rs` | Functional | [wayland.app](https://wayland.app/protocols/kde-idle#org_kde_kwin_idle) |
+| `org_kde_kwin_keystate` | 5 | plasma (KDE) | `src/core/wayland/plasma/extra.rs` | Functional | [wayland.app](https://wayland.app/protocols/kde-keystate#org_kde_kwin_keystate) |
+| `org_kde_kwin_outputdevice` | 1 | plasma (KDE) | `src/core/wayland/plasma/extra.rs` | Functional | [wayland.app](https://wayland.app/protocols/kde-output-device#org_kde_kwin_outputdevice) |
+| `org_kde_kwin_outputmanagement` | 4 | plasma (KDE) | `src/core/wayland/plasma/extra.rs` | Functional | [wayland.app](https://wayland.app/protocols/kde-output-management#org_kde_kwin_outputmanagement) |
+| `org_kde_kwin_server_decoration_manager` | 1 | plasma (KDE) | `src/core/wayland/plasma/kde_decoration.rs` | Functional | [wayland.app](https://wayland.app/protocols/kde-server-decoration#org_kde_kwin_server_decoration_manager) |
+| `org_kde_kwin_server_decoration_palette_manager` | 1 | plasma (KDE) | `src/core/wayland/plasma/extra.rs` | Functional | [wayland.app](https://wayland.app/protocols/kde-server-decoration-palette#org_kde_kwin_server_decoration_palette_manager) |
+| `org_kde_kwin_shadow_manager` | 1 | plasma (KDE) | `src/core/wayland/plasma/plasma.rs` | Functional | [wayland.app](https://wayland.app/protocols/kde-shadow#org_kde_kwin_shadow_manager) |
+| `org_kde_kwin_slide_manager` | 1 | plasma (KDE) | `src/core/wayland/plasma/plasma.rs` | Functional | [wayland.app](https://wayland.app/protocols/kde-slide#org_kde_kwin_slide_manager) |
+| `org_kde_plasma_shell` | 8 | plasma (KDE) | `src/core/wayland/plasma/extra.rs` | Functional | [wayland.app](https://wayland.app/protocols/kde-plasma-shell#org_kde_plasma_shell) |
+| `org_kde_plasma_virtual_desktop_management` | 2 | plasma (KDE) | `src/core/wayland/plasma/extra.rs` | Functional | [wayland.app](https://wayland.app/protocols/kde-plasma-virtual-desktop#org_kde_plasma_virtual_desktop_management) |
+| `org_kde_plasma_window_management` | 18 | plasma (KDE) | `src/core/wayland/plasma/extra.rs` | Functional | [wayland.app](https://wayland.app/protocols/kde-plasma-window-management#org_kde_plasma_window_management) |
+| `zkde_screencast_unstable_v1` | 4 | plasma (KDE) | `src/core/wayland/plasma/extra.rs` | Functional | [wayland.app](https://wayland.app/protocols/kde-screencast-unstable-v1#zkde_screencast_unstable_v1) |
 | `zwp_text_input_manager_v2` | 1 | plasma (KDE) | `src/core/wayland/ext/text_input_v2.rs` | Functional | [wayland.app](https://wayland.app/protocols/text-input-unstable-v2#zwp_text_input_manager_v2) |
-| `org_kde_kwin_blur_manager` | 1 | plasma (KDE) | `src/core/wayland/plasma/plasma.rs` | Stub | [wayland.app](https://wayland.app/protocols/kde-blur#org_kde_kwin_blur_manager) |
-| `org_kde_kwin_contrast_manager` | 1 | plasma (KDE) | `src/core/wayland/plasma/plasma.rs` | Stub | [wayland.app](https://wayland.app/protocols/kde-contrast#org_kde_kwin_contrast_manager) |
-| `org_kde_kwin_dpms_manager` | 1 | plasma (KDE) | `src/core/wayland/plasma/plasma.rs` | Stub | [wayland.app](https://wayland.app/protocols/kde-dpms#org_kde_kwin_dpms_manager) |
-| `org_kde_kwin_idle_timeout` | 1 | plasma (KDE) | `src/core/wayland/plasma/plasma.rs` | Stub | [wayland.app](https://wayland.app/protocols/kde-idle#org_kde_kwin_idle_timeout) |
-| `org_kde_kwin_server_decoration_manager` | 1 | plasma (KDE) | `src/core/wayland/plasma/kde_decoration.rs` | Stub | [wayland.app](https://wayland.app/protocols/kde-server-decoration#org_kde_kwin_server_decoration_manager) |
-| `org_kde_kwin_shadow_manager` | 1 | plasma (KDE) | `src/core/wayland/plasma/plasma.rs` | Stub | [wayland.app](https://wayland.app/protocols/kde-shadow#org_kde_kwin_shadow_manager) |
-| `org_kde_kwin_slide_manager` | 1 | plasma (KDE) | `src/core/wayland/plasma/plasma.rs` | Stub | [wayland.app](https://wayland.app/protocols/kde-slide#org_kde_kwin_slide_manager) |
+
+## COSMIC
+
+| Interface | Version | Origin | Implementation | Status | Spec |
+|-----------|---------|--------|----------------|--------|------|
+| `cosmic_a11y_manager_v1` | 3 | cosmic | `src/core/wayland/cosmic/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/cosmic-a11y-v1#cosmic_a11y_manager_v1) |
+| `cosmic_atspi_manager_v1` | 1 | cosmic | `src/core/wayland/cosmic/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/cosmic-atspi#cosmic_atspi_manager_v1) |
+| `zcosmic_ext_workspace_image_source_manager_v1` | 1 | cosmic | `src/core/wayland/cosmic/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/cosmic-image-source-unstable-v1#zcosmic_ext_workspace_image_source_manager_v1) |
+| `zcosmic_output_image_source_manager_v1` | 1 | cosmic | `src/core/wayland/cosmic/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/cosmic-image-source-unstable-v1#zcosmic_output_image_source_manager_v1) |
+| `zcosmic_output_manager_v1` | 3 | cosmic | `src/core/wayland/cosmic/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/cosmic-output-management-unstable-v1#zcosmic_output_manager_v1) |
+| `zcosmic_overlap_notify_v1` | 1 | cosmic | `src/core/wayland/cosmic/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/cosmic-overlap-notify-unstable-v1#zcosmic_overlap_notify_v1) |
+| `zcosmic_screencopy_manager_v1` | 1 | cosmic | `src/core/wayland/cosmic/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/cosmic-screencopy-unstable-v1#zcosmic_screencopy_manager_v1) |
+| `zcosmic_screencopy_manager_v2` | 1 | cosmic | `src/core/wayland/cosmic/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/cosmic-screencopy-unstable-v2#zcosmic_screencopy_manager_v2) |
+| `zcosmic_toplevel_image_source_manager_v1` | 1 | cosmic | `src/core/wayland/cosmic/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/cosmic-image-source-unstable-v1#zcosmic_toplevel_image_source_manager_v1) |
+| `zcosmic_toplevel_info_v1` | 3 | cosmic | `src/core/wayland/cosmic/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/cosmic-toplevel-info-unstable-v1#zcosmic_toplevel_info_v1) |
+| `zcosmic_toplevel_manager_v1` | 4 | cosmic | `src/core/wayland/cosmic/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/cosmic-toplevel-management-unstable-v1#zcosmic_toplevel_manager_v1) |
+| `zcosmic_workspace_image_capture_source_manager_v1` | 1 | cosmic | `src/core/wayland/cosmic/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/cosmic-image-capture-source#zcosmic_workspace_image_capture_source_manager_v1) |
+| `zcosmic_workspace_image_source_manager_v1` | 1 | cosmic | `src/core/wayland/cosmic/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/cosmic-image-source-unstable-v1#zcosmic_workspace_image_source_manager_v1) |
+| `zcosmic_workspace_manager_v1` | 2 | cosmic | `src/core/wayland/cosmic/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/cosmic-workspace-unstable-v1#zcosmic_workspace_manager_v1) |
+| `zcosmic_workspace_manager_v2` | 2 | cosmic | `src/core/wayland/cosmic/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/cosmic-workspace-unstable-v2#zcosmic_workspace_manager_v2) |
+
+## River
+
+| Interface | Version | Origin | Implementation | Status | Spec |
+|-----------|---------|--------|----------------|--------|------|
+| `river_input_manager_v1` | 2 | river | `src/core/wayland/river/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/river-input-management#river_input_manager_v1) |
+| `river_layer_shell_v1` | 1 | river | `src/core/wayland/river/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/river-layer-shell#river_layer_shell_v1) |
+| `river_layout_manager_v3` | 2 | river | `src/core/wayland/river/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/river-window-layout#river_layout_manager_v3) |
+| `river_libinput_config_v1` | 2 | river | `src/core/wayland/river/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/river-libinput-configuration#river_libinput_config_v1) |
+| `river_window_manager_v1` | 6 | river | `src/core/wayland/river/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/river-window-management#river_window_manager_v1) |
+| `river_xkb_bindings_v1` | 3 | river | `src/core/wayland/river/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/river-xkb-bindings#river_xkb_bindings_v1) |
+| `river_xkb_config_v1` | 3 | river | `src/core/wayland/river/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/river-xkb-config#river_xkb_config_v1) |
+| `zriver_control_v1` | 1 | river | `src/core/wayland/river/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/river-control#zriver_control_v1) |
+| `zriver_status_manager_v1` | 4 | river | `src/core/wayland/river/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/river-status#zriver_status_manager_v1) |
+
+## Hyprland
+
+| Interface | Version | Origin | Implementation | Status | Spec |
+|-----------|---------|--------|----------------|--------|------|
+| `hyprland_ctm_control_manager_v1` | 1 | hyprland | `src/core/wayland/hyprland/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/hyprland-ctm-control-v1#hyprland_ctm_control_manager_v1) |
+| `hyprland_focus_grab_manager_v1` | 1 | hyprland | `src/core/wayland/hyprland/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/hyprland-focus-grab-v1#hyprland_focus_grab_manager_v1) |
+| `hyprland_global_shortcuts_manager_v1` | 1 | hyprland | `src/core/wayland/hyprland/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/hyprland-global-shortcuts-v1#hyprland_global_shortcuts_manager_v1) |
+| `hyprland_lock_notifier_v1` | 1 | hyprland | `src/core/wayland/hyprland/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/hyprland-lock-notify-v1#hyprland_lock_notifier_v1) |
+| `hyprland_surface_manager_v1` | 1 | hyprland | `src/core/wayland/hyprland/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/hyprland-surface-v1#hyprland_surface_manager_v1) |
+| `hyprland_toplevel_export_manager_v1` | 1 | hyprland | `src/core/wayland/hyprland/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/hyprland-toplevel-export-v1#hyprland_toplevel_export_manager_v1) |
+| `hyprland_toplevel_mapping_manager_v1` | 1 | hyprland | `src/core/wayland/hyprland/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/hyprland-toplevel-mapping-v1#hyprland_toplevel_mapping_manager_v1) |
+
+## Weston
+
+| Interface | Version | Origin | Implementation | Status | Spec |
+|-----------|---------|--------|----------------|--------|------|
+| `ivi_application` | 1 | weston | `src/core/wayland/weston/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/ivi-application#ivi_application) |
+| `ivi_hmi_controller` | 1 | weston | `src/core/wayland/weston/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/ivi-hmi-controller#ivi_hmi_controller) |
+| `text_cursor_position` | 1 | weston | `src/core/wayland/weston/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/text-cursor-position#text_cursor_position) |
+| `weston_capture_v1` | 2 | weston | `src/core/wayland/weston/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/weston-output-capture#weston_capture_v1) |
+| `weston_content_protection` | 1 | weston | `src/core/wayland/weston/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/weston-content-protection#weston_content_protection) |
+| `weston_debug_v1` | 1 | weston | `src/core/wayland/weston/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/weston-debug#weston_debug_v1) |
+| `weston_desktop_shell` | 1 | weston | `src/core/wayland/weston/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/weston-desktop-shell#weston_desktop_shell) |
+| `weston_direct_display_v1` | 2 | weston | `src/core/wayland/weston/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/weston-direct-display#weston_direct_display_v1) |
+| `weston_test` | 1 | weston | `src/core/wayland/weston/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/weston-test#weston_test) |
+| `weston_touch_calibration` | 1 | weston | `src/core/wayland/weston/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/weston-touch-calibration#weston_touch_calibration) |
+
+## Treeland
+
+| Interface | Version | Origin | Implementation | Status | Spec |
+|-----------|---------|--------|----------------|--------|------|
+| `treeland_capture_manager_v1` | 1 | treeland | `src/core/wayland/treeland/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/treeland-capture#treeland_capture_manager_v1) |
+| `treeland_dde_shell_manager_v1` | 2 | treeland | `src/core/wayland/treeland/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/treeland-dde-shell#treeland_dde_shell_manager_v1) |
+| `treeland_foreign_toplevel_manager_v1` | 2 | treeland | `src/core/wayland/treeland/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/treeland-foreign-toplevel-manager#treeland_foreign_toplevel_manager_v1) |
+| `treeland_output_manager_v1` | 2 | treeland | `src/core/wayland/treeland/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/treeland-output-manager#treeland_output_manager_v1) |
+| `treeland_personalization_manager_v1` | 2 | treeland | `src/core/wayland/treeland/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/treeland-personalization-manager#treeland_personalization_manager_v1) |
+| `treeland_shortcut_manager_v1` | 2 | treeland | `src/core/wayland/treeland/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/treeland-shortcut-manager#treeland_shortcut_manager_v1) |
+| `treeland_virtual_output_manager_v1` | 2 | treeland | `src/core/wayland/treeland/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/treeland-virtual-output-manager#treeland_virtual_output_manager_v1) |
+| `treeland_wallpaper_color_manager_v1` | 1 | treeland | `src/core/wayland/treeland/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/treeland-wallpaper-color#treeland_wallpaper_color_manager_v1) |
+| `treeland_wallpaper_manager_v1` | 1 | treeland | `src/core/wayland/treeland/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/treeland-wallpaper-manager#treeland_wallpaper_manager_v1) |
+| `treeland_wallpaper_shell_v1` | 2 | treeland | `src/core/wayland/treeland/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/treeland-wallpaper-shell#treeland_wallpaper_shell_v1) |
+| `treeland_window_management_v1` | 1 | treeland | `src/core/wayland/treeland/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/treeland-window-management#treeland_window_management_v1) |
+
+## External
+
+| Interface | Version | Origin | Implementation | Status | Spec |
+|-----------|---------|--------|----------------|--------|------|
+| `agl_screenshooter` | 1 | external | `src/core/wayland/external/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/agl-screenshooter#agl_screenshooter) |
+| `agl_shell` | 11 | external | `src/core/wayland/external/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/agl-shell#agl_shell) |
+| `agl_shell_desktop` | 2 | external | `src/core/wayland/external/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/agl-shell-desktop#agl_shell_desktop) |
+| `gtk_shell1` | 5 | external | `src/core/wayland/external/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/gtk-shell#gtk_shell1) |
+| `mir_shell_v1` | 1 | external | `src/core/wayland/external/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/mir-shell#mir_shell_v1) |
+| `wl_drm` | 2 | external | `src/core/wayland/experimental/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/mesa-drm#wl_drm) |
+| `wl_eglstream_controller` | 2 | external | `src/core/wayland/external/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/nvidia-eglstream-controller#wl_eglstream_controller) |
+| `wl_eglstream_display` | 1 | external | `src/core/wayland/external/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/nvidia-eglstream#wl_eglstream_display) |
+| `xapp_shell_v1` | 1 | external | `src/core/wayland/external/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/xapp-shell#xapp_shell_v1) |
+| `zaura_output_manager_v2` | 1 | external | `src/core/wayland/external/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/aura-output-management#zaura_output_manager_v2) |
+| `zaura_shell` | 65 | external | `src/core/wayland/external/mod.rs` | Functional | [wayland.app](https://wayland.app/protocols/aura-shell#zaura_shell) |
 

@@ -165,3 +165,23 @@ impl Dispatch<ExtIdleNotificationV1, ()> for CompositorState {
 pub fn register_idle_notify(display: &DisplayHandle) -> wayland_server::backend::GlobalId {
     display.create_global::<CompositorState, ExtIdleNotifierV1, ()>(1, ())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn record_activity_resets_idle_flags_without_resources() {
+        let mut st = IdleNotifyState::default();
+        st.notifications.clear();
+        st.record_activity();
+        assert!(st.last_activity.elapsed().as_millis() < 1000);
+    }
+
+    #[test]
+    fn check_idle_noop_when_empty() {
+        let mut st = IdleNotifyState::default();
+        st.check_idle();
+        assert!(st.notifications.is_empty());
+    }
+}

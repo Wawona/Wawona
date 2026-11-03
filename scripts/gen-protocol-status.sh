@@ -14,4 +14,12 @@ WWN_WRITE_PROTOCOL_STATUS=1 \
     -- --nocapture --exact
 
 echo "Done. Review docs/protocol-status.md and commit if changed."
-echo "Site copy: in Wawona/wawona.io run scripts/sync-protocol-status.sh (master channel)."
+
+SITE_SYNC="$(cd "$(dirname "$0")/../.." && pwd)/wawona.io/scripts/sync-protocol-status.sh"
+if [[ -x "$SITE_SYNC" ]]; then
+  echo "Syncing wawona.io contributor protocols page..."
+  WAWONA_REPO="$(pwd)" "$SITE_SYNC"
+else
+  echo "Site copy: in Wawona/wawona.io run scripts/sync-protocol-status.sh (master channel)."
+fi
+echo "Milestones: docs/protocol-milestones.md (create/update with scripts/sync-protocol-milestones.sh)."

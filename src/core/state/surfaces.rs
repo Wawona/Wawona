@@ -38,6 +38,7 @@ impl CompositorState {
         }
         self.surfaces.remove(&surface_id);
         self.frame_callbacks.remove(&surface_id);
+        self.ext.presentation.discard_for_surface(surface_id);
 
         if self.focus.grabbed_surface == Some(surface_id) {
             self.focus.grabbed_surface = None;
@@ -268,7 +269,13 @@ impl CompositorState {
             }
         }
 
-        self.ext.presentation.mark_committed(surface_id);
+        let allow_tearing = self.ext.tearing_control.prefers_tearing(surface_id);
+        self.ext
+            .presentation
+            .mark_committed(surface_id, allow_tearing);
+        // Latch commit-timing hold-until-target for this surface.
+        let now_ns = crate::core::Compositor::timestamp_ms() as u64 * 1_000_000;
+        let _ = self.ext.commit_timing.latch_on_commit(surface_id, now_ns);
         self.finalize_surface_commit(surface_id);
         self.repick_headless_global_pointer();
     }

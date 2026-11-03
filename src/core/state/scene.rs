@@ -23,9 +23,27 @@ impl CompositorState {
 
         let ts_ns = crate::core::Compositor::timestamp_ms() as u64 * 1_000_000;
 
+        // Release commit-timing holds that have reached their target.
+        let _ = self.ext.commit_timing.release_ready(ts_ns);
+
+        // Collect surface ids that completed presentation this frame, then
+        // clear FIFO barriers for them.
+        let presented_surfaces: Vec<u32> = self
+            .ext
+            .presentation
+            .feedbacks
+            .iter()
+            .filter(|f| f.committed)
+            .map(|f| f.surface_id)
+            .collect();
+
         self.ext
             .presentation
             .send_presented_events(ts_ns, refresh_ns, seq);
+
+        for sid in presented_surfaces {
+            self.ext.fifo.on_presented(sid);
+        }
     }
 
     /// If an `xdg_surface.configure` is still unacked, queue this size and return `None`.

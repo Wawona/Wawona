@@ -21,6 +21,7 @@ Findings                          → NDJSON via scripts/verification-report.py
 | Change | Helper / vector | Script |
 |---|---|---|
 | Rect clamp, generation counter | `src/core/invariants.rs` | `verify-formal.sh`, `verify-heavy.sh` |
+| Wayland protocol erroneous checks | `src/core/wayland/protocol_proofs.rs` | `verify-protocol-proofs.sh` |
 | SSH host policy | `src/domain/validation.rs` + `verification/ssh_host_vector.tsv` | `verify-swift.sh`, `verify-kotlin.sh` |
 | C bounds / atomics | `src/platform/cproof/wawona_cproof.h` | `verify-c.sh` |
 | Relay VM / MMU | production helpers + Verus models | `Relay/scripts/verify-formal.sh` |

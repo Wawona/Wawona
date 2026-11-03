@@ -1,10 +1,7 @@
 //! WP Idle Inhibit protocol implementation.
 //!
-//! This protocol allows clients to prevent the system from going idle,
-//! useful for:
-//! - Video players during playback
-//! - Presentation software
-//! - Games
+//! Clients create inhibitors while a surface should keep the session awake
+//! (video, presentations, games). Hosts query [`IdleInhibitState::is_inhibited`].
 
 use wayland_protocols::wp::idle_inhibit::zv1::server::{
     zwp_idle_inhibit_manager_v1::{self, ZwpIdleInhibitManagerV1},
@@ -13,10 +10,7 @@ use wayland_protocols::wp::idle_inhibit::zv1::server::{
 use wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource};
 
 use crate::core::state::CompositorState;
-
-// ============================================================================
-// Data Types
-// ============================================================================
+use std::collections::HashMap;
 
 /// Data stored with each idle inhibitor
 #[derive(Debug, Clone)]
@@ -25,17 +19,24 @@ pub struct IdleInhibitorData {
     pub inhibitor_id: u32,
 }
 
-use std::collections::HashMap;
-
 #[derive(Debug, Default)]
 pub struct IdleInhibitState {
-    pub inhibitors: HashMap<u32, u32>, // inhibitor_id -> surface_id
+    /// inhibitor protocol id → surface id
+    pub inhibitors: HashMap<u32, u32>,
     pub next_id: u32,
 }
 
-// ============================================================================
-// zwp_idle_inhibit_manager_v1
-// ============================================================================
+impl IdleInhibitState {
+    /// True when any live inhibitor exists (any surface).
+    pub fn is_inhibited(&self) -> bool {
+        !self.inhibitors.is_empty()
+    }
+
+    /// True when the given surface currently holds an inhibitor.
+    pub fn is_surface_inhibited(&self, surface_id: u32) -> bool {
+        self.inhibitors.values().any(|&sid| sid == surface_id)
+    }
+}
 
 impl GlobalDispatch<ZwpIdleInhibitManagerV1, ()> for CompositorState {
     fn bind(
@@ -65,25 +66,26 @@ impl Dispatch<ZwpIdleInhibitManagerV1, ()> for CompositorState {
             zwp_idle_inhibit_manager_v1::Request::CreateInhibitor { id, surface } => {
                 let surface_id = surface.id().protocol_id();
                 let inhibitor_id = state.ext.idle_inhibit.next_id;
-                state.ext.idle_inhibit.next_id += 1;
+                state.ext.idle_inhibit.next_id = state.ext.idle_inhibit.next_id.wrapping_add(1);
 
-                // let data = IdleInhibitorData {
-                //     surface_id,
-                //     inhibitor_id,
-                // };
-
-                let _inhibitor = data_init.init(id, ());
-
-                // Register the inhibitor
+                let inhibitor = data_init.init(
+                    id,
+                    IdleInhibitorData {
+                        surface_id,
+                        inhibitor_id,
+                    },
+                );
+                let proto_id = inhibitor.id().protocol_id();
                 state
                     .ext
                     .idle_inhibit
                     .inhibitors
-                    .insert(inhibitor_id, surface_id);
+                    .insert(proto_id, surface_id);
 
                 tracing::debug!(
-                    "Created idle inhibitor {} for surface {}",
+                    "Created idle inhibitor {} (proto={}) for surface {}",
                     inhibitor_id,
+                    proto_id,
                     surface_id
                 );
             }
@@ -95,24 +97,21 @@ impl Dispatch<ZwpIdleInhibitManagerV1, ()> for CompositorState {
     }
 }
 
-// ============================================================================
-// zwp_idle_inhibitor_v1
-// ============================================================================
-
-impl Dispatch<ZwpIdleInhibitorV1, ()> for CompositorState {
+impl Dispatch<ZwpIdleInhibitorV1, IdleInhibitorData> for CompositorState {
     fn request(
-        _state: &mut Self,
+        state: &mut Self,
         _client: &Client,
-        _resource: &ZwpIdleInhibitorV1,
+        resource: &ZwpIdleInhibitorV1,
         request: zwp_idle_inhibitor_v1::Request,
-        _data: &(),
+        _data: &IdleInhibitorData,
         _dhandle: &DisplayHandle,
         _data_init: &mut DataInit<'_, Self>,
     ) {
         match request {
             zwp_idle_inhibitor_v1::Request::Destroy => {
-                // state.remove_idle_inhibitor(data.inhibitor_id);
-                tracing::debug!("Idle inhibitor destroyed");
+                let proto_id = resource.id().protocol_id();
+                state.ext.idle_inhibit.inhibitors.remove(&proto_id);
+                tracing::debug!("Idle inhibitor {} destroyed", proto_id);
             }
             _ => {}
         }

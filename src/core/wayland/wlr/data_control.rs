@@ -206,6 +206,10 @@ impl Dispatch<zwlr_data_control_offer_v1::ZwlrDataControlOfferV1, ()> for Compos
                             src.send(mime_type, fd.as_fd());
                             tracing::debug!("Forwarded data_control receive to wlr source");
                         }
+                        crate::core::state::SelectionSource::Ext(src) => {
+                            src.send(mime_type, fd.as_fd());
+                            tracing::debug!("Forwarded data_control receive to ext source");
+                        }
                     }
                 }
                 drop(fd);

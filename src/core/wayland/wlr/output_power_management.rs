@@ -1,11 +1,24 @@
-use wayland_server::{Dispatch, DisplayHandle, GlobalDispatch, WEnum};
+//! zwlr_output_power_management_unstable_v1.
+//!
+//! Protocol state lives in Rust core (`OutputState.power_mode`). Hosts apply
+//! DPMS / blanking via a capability hook when they support it.
+
+use wayland_server::{Dispatch, DisplayHandle, GlobalDispatch, Resource, WEnum};
 
 use crate::core::state::CompositorState;
+use crate::core::wayland::protocol_proofs::output_power_mode_is_on_or_off;
 use crate::core::wayland::protocol::wlroots::wlr_output_power_management_unstable_v1::{
     zwlr_output_power_manager_v1, zwlr_output_power_v1,
 };
 
-pub struct OutputPowerManagerData;
+fn output_id_from_wl_output(
+    state: &CompositorState,
+    _output: &wayland_server::protocol::wl_output::WlOutput,
+) -> u32 {
+    // Prefer primary / first advertised output until wl_output user-data is
+    // wired uniformly across backends.
+    state.outputs.first().map(|o| o.id).unwrap_or(0)
+}
 
 impl GlobalDispatch<zwlr_output_power_manager_v1::ZwlrOutputPowerManagerV1, ()>
     for CompositorState
@@ -33,14 +46,10 @@ impl Dispatch<zwlr_output_power_manager_v1::ZwlrOutputPowerManagerV1, ()> for Co
         data_init: &mut wayland_server::DataInit<'_, Self>,
     ) {
         match request {
-            zwlr_output_power_manager_v1::Request::GetOutputPower { id, output: _ } => {
-                // Get the output ID from the wl_output resource
-                // The wl_output user data is u32 as defined in output.rs
-                let output_id = 0; // output.data::<u32>().copied().unwrap_or(0);
-
-                let power: zwlr_output_power_v1::ZwlrOutputPowerV1 = data_init.init(id, ());
-
-                // Send initial mode
+            zwlr_output_power_manager_v1::Request::GetOutputPower { id, output } => {
+                let output_id = output_id_from_wl_output(state, &output);
+                let power: zwlr_output_power_v1::ZwlrOutputPowerV1 =
+                    data_init.init(id, output_id);
                 if let Some(output_state) = state.outputs.iter().find(|o| o.id == output_id) {
                     let mode = if output_state.power_mode == 0 {
                         zwlr_output_power_v1::Mode::Off
@@ -48,54 +57,47 @@ impl Dispatch<zwlr_output_power_manager_v1::ZwlrOutputPowerManagerV1, ()> for Co
                         zwlr_output_power_v1::Mode::On
                     };
                     power.mode(mode);
+                } else {
+                    power.mode(zwlr_output_power_v1::Mode::On);
                 }
             }
-            zwlr_output_power_manager_v1::Request::Destroy => {
-                // Destructor
-            }
+            zwlr_output_power_manager_v1::Request::Destroy => {}
             _ => {}
         }
     }
 }
 
-impl Dispatch<zwlr_output_power_v1::ZwlrOutputPowerV1, ()> for CompositorState {
+impl Dispatch<zwlr_output_power_v1::ZwlrOutputPowerV1, u32> for CompositorState {
     fn request(
         state: &mut Self,
         _client: &wayland_server::Client,
         resource: &zwlr_output_power_v1::ZwlrOutputPowerV1,
         request: zwlr_output_power_v1::Request,
-        _data: &(),
+        output_id: &u32,
         _dhandle: &DisplayHandle,
         _data_init: &mut wayland_server::DataInit<'_, Self>,
     ) {
-        // Fallback to first output
-        let output_id = state.outputs.first().map(|o| o.id).unwrap_or(0);
         match request {
             zwlr_output_power_v1::Request::SetMode { mode } => {
                 let mode_val = match mode {
                     WEnum::Value(zwlr_output_power_v1::Mode::Off) => 0,
                     WEnum::Value(zwlr_output_power_v1::Mode::On) => 1,
-                    _ => {
-                        // Protocol error if invalid enum value
-                        return;
-                    }
+                    _ => return,
                 };
+                if !output_power_mode_is_on_or_off(mode_val) {
+                    return;
+                }
 
-                if let Some(output_state) = state.outputs.iter_mut().find(|o| o.id == output_id) {
+                if let Some(output_state) = state.outputs.iter_mut().find(|o| o.id == *output_id) {
                     output_state.power_mode = mode_val;
                     tracing::debug!("Output {} power mode set to {}", output_id, mode_val);
+                }
 
-                    // Acknowledge the change
-                    if let WEnum::Value(m) = mode {
-                        resource.mode(m);
-                    }
-
-                    // Power mode stored; platform can query via output state
+                if let WEnum::Value(m) = mode {
+                    resource.mode(m);
                 }
             }
-            zwlr_output_power_v1::Request::Destroy => {
-                // Destructor
-            }
+            zwlr_output_power_v1::Request::Destroy => {}
             _ => {}
         }
     }
@@ -106,4 +108,16 @@ pub fn register_output_power_management(
     display: &DisplayHandle,
 ) -> wayland_server::backend::GlobalId {
     display.create_global::<CompositorState, zwlr_output_power_manager_v1::ZwlrOutputPowerManagerV1, ()>(1, ())
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::core::wayland::protocol_proofs::output_power_mode_is_on_or_off;
+
+    #[test]
+    fn power_mode_values_are_off_zero_on_one() {
+        assert!(output_power_mode_is_on_or_off(0));
+        assert!(output_power_mode_is_on_or_off(1));
+        assert!(!output_power_mode_is_on_or_off(2));
+    }
 }

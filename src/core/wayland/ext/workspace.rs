@@ -49,15 +49,60 @@ pub struct WorkspaceData {
 
 impl GlobalDispatch<ExtWorkspaceManagerV1, ()> for CompositorState {
     fn bind(
-        _state: &mut Self,
-        _handle: &DisplayHandle,
-        _client: &Client,
+        state: &mut Self,
+        handle: &DisplayHandle,
+        client: &Client,
         resource: New<ExtWorkspaceManagerV1>,
         _global_data: &(),
         data_init: &mut DataInit<'_, Self>,
     ) {
         let mgr = data_init.init(resource, ());
-        tracing::debug!("Bound ext_workspace_manager_v1 (version {})", mgr.version());
+        let version = mgr.version();
+
+        // Ensure at least one workspace exists in compositor state.
+        if state.ext.workspace.workspaces.is_empty() {
+            let ws_id = state.ext.workspace.alloc_id();
+            state.ext.workspace.workspaces.insert(
+                ws_id,
+                WorkspaceInfo {
+                    name: "default".into(),
+                    active: true,
+                },
+            );
+        }
+
+        // Advertise one group + current workspaces.
+        match client.create_resource::<ExtWorkspaceGroupHandleV1, WorkspaceGroupData, CompositorState>(
+            handle,
+            version,
+            WorkspaceGroupData { group_id: 1 },
+        ) {
+            Ok(group) => {
+                mgr.workspace_group(&group);
+                let ids: Vec<(u32, String)> = state
+                    .ext
+                    .workspace
+                    .workspaces
+                    .iter()
+                    .map(|(id, info)| (*id, info.name.clone()))
+                    .collect();
+                for (ws_id, name) in ids {
+                    if let Ok(ws) = client.create_resource::<
+                        ExtWorkspaceHandleV1,
+                        WorkspaceData,
+                        CompositorState,
+                    >(
+                        handle, version, WorkspaceData { workspace_id: ws_id }
+                    ) {
+                        group.workspace_enter(&ws);
+                        ws.name(name);
+                    }
+                }
+            }
+            Err(err) => tracing::warn!("workspace group create failed: {err:?}"),
+        }
+        mgr.done();
+        tracing::debug!("Bound ext_workspace_manager_v1 (version {})", version);
     }
 }
 

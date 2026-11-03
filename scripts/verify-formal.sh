@@ -67,6 +67,19 @@ else
     "cargo-kani is not installed" "install Kani 0.68.0"
 fi
 
+# Wayland protocol erroneous-check proofs (fail closed).
+if [[ -x scripts/verify-protocol-proofs.sh ]]; then
+  if ! scripts/verify-protocol-proofs.sh "$(dirname "$OUT")/protocol-proofs.ndjson"; then
+    emit kani "src/core/wayland/protocol_proofs.rs" 1 "protocol-proofs" \
+      "protocol erroneous-check proofs failed" \
+      "scripts/verify-protocol-proofs.sh"
+  fi
+else
+  emit kani "scripts/verify-protocol-proofs.sh" 1 "missing-script" \
+    "verify-protocol-proofs.sh is missing" \
+    "restore scripts/verify-protocol-proofs.sh"
+fi
+
 if rustup toolchain list 2>/dev/null | grep -q 'nightly-2026-09-29'; then
   # proptest FileFailurePersistence calls getcwd; isolation blocks that.
   if ! MIRIFLAGS="${MIRIFLAGS:--Zmiri-disable-isolation}" \

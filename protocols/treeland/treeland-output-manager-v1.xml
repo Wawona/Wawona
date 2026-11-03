@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="treeland_output_manager_v1">
+  <copyright>
+
+    SPDX-FileCopyrightText: 2024-2025 UnionTech Software Technology Co., Ltd.
+    SPDX-License-Identifier: MIT
+  </copyright>
+  <interface name="treeland_output_manager_v1" version="2">
+    <description summary="expose which is the primary display">
+      Protocol for telling which is the primary display among the selection of enabled
+      outputs.
+    </description>
+    <request name="set_primary_output">
+      <description summary="Select which primary output to use">
+      </description>
+      <arg name="output" type="string" allow-null="true"/>
+    </request>
+    <request name="get_color_control" since="2">
+      <description summary="Get color control interface for output.">
+      </description>
+      <arg name="id" type="new_id" interface="treeland_output_color_control_v1"/>
+      <arg name="output" type="object" interface="wl_output"/>
+    </request>
+    <request name="destroy" type="destructor" since="2">
+      <description summary="Destroy the primary output notifier.">
+      </description>
+    </request>
+    <event name="primary_output">
+      <description summary="Provide the current primary output's name">
+        Specifies which output is the primary one identified by their name.
+      </description>
+      <arg name="output_name" type="string" summary="the name of the output"/>
+    </event>
+  </interface>
+  <interface name="treeland_output_color_control_v1" version="1">
+    <description summary="Color control interface for output.">
+      Protocol for controlling color temperature and brightness settings of a specific output.
+    </description>
+    <enum name="error">
+      <entry name="invalid_color_temperature" value="1" summary="Invalid color temperature value provided."/>
+      <entry name="invalid_brightness" value="2" summary="Invalid brightness value provided."/>
+    </enum>
+    <request name="set_color_temperature">
+      <description summary="Set color temperature for output">
+        Color temperature settings are applied only after a commit request is made.
+        Setting a value outside the range [1000, 20000] is a protocol error.
+      </description>
+      <arg name="temperature" type="uint" summary="color temperature in Kelvin"/>
+    </request>
+    <request name="set_brightness">
+      <description summary="Set brightness for output.">
+        Brightness settings are applied only after a commit request is made.
+        Setting a value outside the range [0.0, 100.0] is a protocol error.
+      </description>
+      <arg name="brightness" type="fixed" summary="brightness level (in range [0.0, 100.0])"/>
+    </request>
+    <request name="commit">
+      <description summary="Commit the pending color settings changes for output.">
+      </description>
+    </request>
+    <request name="destroy" type="destructor">
+      <description summary="Destroy the color control interface.">
+      </description>
+    </request>
+    <event name="result">
+      <description summary="The result of the last commit request.">
+      </description>
+      <arg name="success" type="uint" summary="1 if the commit was successful, 0 otherwise."/>
+    </event>
+    <event name="color_temperature">
+      <description summary="Current color temperature for output.">
+        Provides the current color temperature setting of the output.
+        Color temperature is valued in the range [1000, 20000].
+        Color temperature is defined as the corresponding temperature (in Kelvin) of the current white point
+        of the display on a Planckian locus.
+        With the current implementation, the neutral temperature is 6600K.
+        This event is sent once after the treeland_output_color_control_v1 object is created,
+        or right after when a color temperature change for the output is successfully commited.
+      </description>
+      <arg name="temperature" type="uint" summary="current color temperature in Kelvin"/>
+    </event>
+    <event name="brightness">
+      <description summary="Current brightness for output.">
+        Provides the current brightness setting of the output.
+        Brightness is valued in the range [0.0, 100.0].
+        This event is sent once after the treeland_output_color_control_v1 object is created,
+        or right after when a brightness change for the output is successfully commited.
+      </description>
+      <arg name="brightness" type="fixed" summary="current brightness level (in range [0.0, 100.0])"/>
+    </event>
+  </interface>
+</protocol>

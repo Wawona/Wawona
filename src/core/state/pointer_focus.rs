@@ -18,7 +18,21 @@ pub struct PointerAxisEvent {
     pub value: Option<f64>,
     pub discrete: Option<i32>,
     pub source: Option<wl_pointer::AxisSource>,
+    pub relative_direction: Option<wl_pointer::AxisRelativeDirection>,
     pub stop: bool,
+}
+
+impl Default for PointerAxisEvent {
+    fn default() -> Self {
+        Self {
+            axis: wl_pointer::Axis::VerticalScroll,
+            value: None,
+            discrete: None,
+            source: None,
+            relative_direction: None,
+            stop: false,
+        }
+    }
 }
 
 impl CompositorState {
@@ -155,6 +169,11 @@ impl CompositorState {
             }
             if let Some(value) = axis.value {
                 ptr.axis(time, axis.axis, value);
+            }
+            if version >= 9 {
+                if let Some(dir) = axis.relative_direction {
+                    ptr.axis_relative_direction(axis.axis, dir);
+                }
             }
             if axis.stop && version >= 5 {
                 ptr.axis_stop(time, axis.axis);

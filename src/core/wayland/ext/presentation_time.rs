@@ -14,6 +14,8 @@ pub struct PresentationFeedback {
     pub surface_id: u32,
     pub callback: wp_presentation_feedback::WpPresentationFeedback,
     pub committed: bool,
+    /// From `wp_tearing_control_v1` at commit: prefer async over vsync.
+    pub allow_tearing: bool,
 }
 
 #[derive(Debug)]
@@ -23,10 +25,11 @@ pub struct PresentationState {
 }
 
 impl PresentationState {
-    pub fn mark_committed(&mut self, surface_id: u32) {
+    pub fn mark_committed(&mut self, surface_id: u32, allow_tearing: bool) {
         for feedback in &mut self.feedbacks {
             if feedback.surface_id == surface_id {
                 feedback.committed = true;
+                feedback.allow_tearing = allow_tearing;
             }
         }
     }
@@ -41,6 +44,13 @@ impl PresentationState {
         while i < self.feedbacks.len() {
             if self.feedbacks[i].committed {
                 let feedback = self.feedbacks.remove(i);
+                // VSync is the default. Clients that opted into tearing get
+                // presented without the Vsync bit so they can schedule async.
+                let kind = if feedback.allow_tearing {
+                    wp_presentation_feedback::Kind::empty()
+                } else {
+                    wp_presentation_feedback::Kind::Vsync
+                };
                 feedback.callback.presented(
                     tv_sec_hi,
                     tv_sec_lo,
@@ -48,8 +58,33 @@ impl PresentationState {
                     refresh_ns as u32,
                     (seq >> 32) as u32,
                     (seq & 0xFFFFFFFF) as u32,
-                    wp_presentation_feedback::Kind::Vsync,
+                    kind,
                 );
+            } else {
+                i += 1;
+            }
+        }
+    }
+
+    /// Discard outstanding feedback that never reached a presented commit
+    /// (surface destroyed, client gone, or frame dropped).
+    pub fn discard_pending(&mut self) {
+        for feedback in self.feedbacks.drain(..) {
+            if feedback.callback.is_alive() {
+                feedback.callback.discarded();
+            }
+        }
+    }
+
+    /// Discard feedback queued for a single surface.
+    pub fn discard_for_surface(&mut self, surface_id: u32) {
+        let mut i = 0;
+        while i < self.feedbacks.len() {
+            if self.feedbacks[i].surface_id == surface_id {
+                let feedback = self.feedbacks.remove(i);
+                if feedback.callback.is_alive() {
+                    feedback.callback.discarded();
+                }
             } else {
                 i += 1;
             }
@@ -107,6 +142,7 @@ impl Dispatch<wp_presentation::WpPresentation, ()> for CompositorState {
                     surface_id,
                     callback: feedback_resource,
                     committed: false, // Will be marked true on surface commit
+                    allow_tearing: false,
                 });
             }
             wp_presentation::Request::Destroy => {

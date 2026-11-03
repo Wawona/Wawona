@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="treeland_window_management_v1">
+  <copyright>
+
+    SPDX-FileCopyrightText: 2024 UnionTech Software Technology Co., Ltd.
+    SPDX-License-Identifier: MIT
+  </copyright>
+  <interface name="treeland_window_management_v1" version="1">
+    <description summary="application windows management">
+      This interface manages application windows.
+      It provides requests to show and hide the desktop and emits
+      an event every time a window is created so that the client can
+      use it to manage the window.
+
+      Only one client can bind this interface at a time.
+    </description>
+    <enum name="desktop_state">
+      <entry name="normal" value="0"/>
+      <entry name="show" value="1"/>
+      <entry name="preview_show" value="2"/>
+    </enum>
+    <request name="set_desktop">
+      <description summary="show/hide the desktop">
+        Tell the compositor to show/hide the desktop.
+      </description>
+      <arg name="state" type="uint" summary="requested state"/>
+    </request>
+    <request name="destroy" type="destructor">
+      <description summary="destroy the window manager object">
+      </description>
+    </request>
+    <event name="show_desktop">
+      <description summary="notify the client when the show desktop mode is entered/left">
+        This event will be sent whenever the show desktop mode changes. E.g. when it is
+        entered
+        or left.
+
+        On binding the interface the current state is sent.
+      </description>
+      <arg name="state" type="uint" summary="new state"/>
+    </event>
+  </interface>
+</protocol>

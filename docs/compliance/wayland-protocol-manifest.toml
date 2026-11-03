@@ -92,12 +92,12 @@ notes = "Clipboard + DnD baseline path"
 [[protocol]]
 interface = "wl_fixes"
 smithay_module = "none"
-exposure = "desktop-only"
-profiles = ["desktop-host", "full-dev"]
-source_module = "src/core/wayland/ext/mod.rs"
+exposure = "store-safe-core"
+profiles = ["store-safe", "store-safe-remote", "desktop-host", "full-dev"]
+source_module = "src/core/wayland/ext/wl_fixes.rs"
 compile_expectation = "all-targets"
 equivalent = "no-equivalent"
-notes = "No active smithay runtime wiring in this release; kept as custom compatibility path"
+notes = "Custom wl_fixes (destroy_registry) until Smithay ships wayland::fixes under wayland_frontend"
 
 [[protocol]]
 interface = "xdg_wm_base"
@@ -554,20 +554,30 @@ interface = "wp_drm_lease_device_v1"
 smithay_module = "none"
 exposure = "desktop-only"
 profiles = ["desktop-host", "full-dev"]
-source_module = "src/core/wayland/ext/mod.rs"
+source_module = "src/core/wayland/ext/drm_lease.rs"
 compile_expectation = "linux-desktop-only"
 equivalent = "no-equivalent"
-notes = "No active smithay runtime wiring in this release; kept as custom Linux path"
+notes = "Custom Linux drm-lease (wayland_frontend only; Smithay path needs backend_drm). Advertised when a DRM node opens."
 
 [[protocol]]
 interface = "wp_linux_drm_syncobj_manager_v1"
 smithay_module = "none"
 exposure = "desktop-only"
 profiles = ["desktop-host", "full-dev"]
-source_module = "src/core/wayland/ext/mod.rs"
+source_module = "src/core/wayland/ext/linux_drm_syncobj.rs"
 compile_expectation = "linux-desktop-only"
 equivalent = "no-equivalent"
-notes = "No active smithay runtime wiring in this release; kept as custom Linux path"
+notes = "Custom Linux drm-syncobj under wayland_frontend; acquire treated as signalled until backend_drm DrmSyncobjState is enabled."
+
+[[protocol]]
+interface = "zwlr_input_inhibit_manager_v1"
+smithay_module = "none"
+exposure = "desktop-only"
+profiles = ["desktop-host", "full-dev"]
+source_module = "src/core/wayland/wlr/input_inhibitor.rs"
+compile_expectation = "all-targets"
+equivalent = "no-equivalent"
+notes = "Deprecated wlr input inhibitor; exclusive grab for legacy lockers. Prefer ext-session-lock-v1."
 
 [[protocol]]
 interface = "org_kde_kwin_server_decoration_manager"

@@ -43,10 +43,18 @@ handler:
 4. **No speculative legacy.** Do not land an older named interface "just in
    case."
 5. **Status docs.** Refresh `docs/protocol-status.md` via
-   `scripts/gen-protocol-status.sh` (or the cargo test that generates it). Update
+   `scripts/gen-protocol-status.sh` (or the cargo test that generates it). That
+   script also syncs https://wawona.io/docs/contributor/protocols/ when the
+   sibling `wawona.io` checkout is present. Update
    `docs/compliance/wayland-protocol-conformance-matrix.md` when behavior gates
    change.
-6. **Removals.** If removing an older named interface, note which clients break
+6. **Milestones.** Attach the PR/issue to the matching title in
+   [`protocol-milestones.md`](./protocol-milestones.md) (P0–P6 / Proof).
+7. **Proofs.** Every Functional protocol must have a row in
+   `src/core/wayland/protocol_proofs.rs`. Erroneous checks are pure helpers with
+   Kani harnesses (`scripts/verify-protocol-proofs.sh`). Inventory drift fails
+   **compile** (`build.rs`); Kani failures fail **Verification report**.
+8. **Removals.** If removing an older named interface, note which clients break
    and why the drop is acceptable.
 
 ## Related
@@ -54,5 +62,7 @@ handler:
 * Agent / Cursor rule: `wawona-wayland-protocol-compat`
   (`docs/agent-rules/wawona-wayland-protocol-compat.md`)
 * Live protocol matrix (Functional → Partial → Stub → Missing): [`protocol-status.md`](./protocol-status.md)
+* Explorer → 100% phases / GitHub milestones: [`protocol-milestones.md`](./protocol-milestones.md)
+* Site page: https://wawona.io/docs/contributor/protocols/
 * Conformance behaviors: [`compliance/wayland-protocol-conformance-matrix.md`](./compliance/wayland-protocol-conformance-matrix.md)
 * Contributor entry: [`../CONTRIBUTING.md`](../CONTRIBUTING.md)

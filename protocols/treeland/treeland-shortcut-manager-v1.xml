@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="treeland_shortcut_manager_v1">
+  <copyright>
+
+    SPDX-FileCopyrightText: 2024 UnionTech Software Technology Co., Ltd.
+    SPDX-License-Identifier: MIT
+  </copyright>
+  <interface name="treeland_shortcut_manager_v1" version="2">
+    <description summary="shortcut manager">
+      This interface allows a client to get some shell's info.
+
+      Warning! The protocol described in this file is currently in the testing
+      phase. Backward compatible changes may be added together with the
+      corresponding interface version bump. Backward incompatible changes can
+      only be done by creating a new major version of the extension.
+    </description>
+    <request name="register_shortcut_context">
+      <description summary="register shortcut key">
+        The format of the shortcut key is 'Modify+Key', such as 'Ctrl+Alt+T'.
+        If the format is wrong, the synthesizer will give a "format error". If the shortcut
+        key is already registered,
+        the compositor will give a "register error" and issue a destruction to the context.
+      </description>
+      <arg name="key" type="string"/>
+      <arg name="id" type="new_id" interface="treeland_shortcut_context_v1"/>
+    </request>
+    <request name="destroy" type="destructor" since="2">
+      <description summary="destroy treeland_shortcut_manager_v1 object">
+      </description>
+    </request>
+  </interface>
+  <interface name="treeland_shortcut_context_v1" version="1">
+    <description summary="client shortcut context">
+      This interface allows a client to listen a shortcut action.
+
+      Warning! The protocol described in this file is currently in the testing
+      phase. Backward compatible changes may be added together with the
+      corresponding interface version bump. Backward incompatible changes can
+      only be done by creating a new major version of the extension.
+    </description>
+    <enum name="error">
+      <entry name="register_failed" value="1" summary="shortcut register failed"/>
+    </enum>
+    <request name="destroy" type="destructor">
+      <description summary="destroy the context object">
+        Destroy the context object.
+      </description>
+    </request>
+    <event name="shortcut">
+    </event>
+  </interface>
+</protocol>

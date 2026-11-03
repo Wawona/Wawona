@@ -6,6 +6,9 @@ use std::os::unix::io::AsRawFd;
 use wayland_server::{Dispatch, DisplayHandle, GlobalDispatch, Resource};
 
 use crate::core::state::{CompositorState, GammaRampApply};
+use crate::core::wayland::protocol_proofs::{
+    gamma_control_rejects_second_active, gamma_ramp_byte_len_matches,
+};
 use crate::core::wayland::protocol::wlroots::wlr_gamma_control_unstable_v1::{
     zwlr_gamma_control_manager_v1, zwlr_gamma_control_v1,
 };
@@ -47,12 +50,12 @@ impl Dispatch<zwlr_gamma_control_manager_v1::ZwlrGammaControlManagerV1, ()> for 
         match request {
             zwlr_gamma_control_manager_v1::Request::GetGammaControl { id, output } => {
                 let output_id = output_id_from_wl_output(state, &output);
-                if state
+                let already = state
                     .wlr
                     .gamma_control
                     .active_controls
-                    .contains_key(&output_id)
-                {
+                    .contains_key(&output_id);
+                if gamma_control_rejects_second_active(already) {
                     let control: zwlr_gamma_control_v1::ZwlrGammaControlV1 =
                         data_init.init(id, output_id);
                     control.failed();
@@ -100,10 +103,11 @@ impl Dispatch<zwlr_gamma_control_v1::ZwlrGammaControlV1, u32> for CompositorStat
                         expected_len,
                     )
                 };
-                if n != expected_len as isize {
+                let nbytes = if n < 0 { 0 } else { n as usize };
+                if !gamma_ramp_byte_len_matches(GAMMA_SIZE, nbytes) {
                     tracing::warn!(
                         "Gamma control SetGamma: read failed (got {} expected {})",
-                        n,
+                        nbytes,
                         expected_len
                     );
                     resource.failed();
@@ -152,4 +156,23 @@ pub fn pop_pending_gamma_restore(state: &mut CompositorState) -> Option<u32> {
 /// Register zwlr_gamma_control_manager_v1 global
 pub fn register_gamma_control(display: &DisplayHandle) -> wayland_server::backend::GlobalId {
     display.create_global::<CompositorState, zwlr_gamma_control_manager_v1::ZwlrGammaControlManagerV1, ()>(1, ())
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::core::wayland::protocol_proofs::{
+        gamma_control_rejects_second_active, gamma_ramp_byte_len_matches,
+    };
+
+    #[test]
+    fn second_active_rejected() {
+        assert!(gamma_control_rejects_second_active(true));
+        assert!(!gamma_control_rejects_second_active(false));
+    }
+
+    #[test]
+    fn ramp_len_for_256() {
+        assert!(gamma_ramp_byte_len_matches(256, 256 * 3 * 2));
+        assert!(!gamma_ramp_byte_len_matches(256, 0));
+    }
 }
