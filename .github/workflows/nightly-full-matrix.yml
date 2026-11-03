@@ -66,6 +66,13 @@ jobs:
           git diff --exit-code -- docs/protocol-status.md \
             || { echo "::error::docs/protocol-status.md stale; run scripts/gen-protocol-status.sh"; exit 1; }
 
+      - name: Regenerate + assert protocol-expect is current
+        run: |
+          WWN_WRITE_PROTOCOL_EXPECT=1 nix develop -c cargo test --lib \
+            core::wayland::catalog::tests::test_generate_protocol_expect_manifests -- --exact --nocapture
+          git diff --exit-code -- docs/protocol-expect \
+            || { echo "::error::docs/protocol-expect stale; run scripts/gen-protocol-expect.sh"; exit 1; }
+
   capability-lane:
     name: "Layer 2: nested Weston + XWayland capability"
     runs-on: ubuntu-latest

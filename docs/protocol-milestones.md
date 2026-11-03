@@ -93,9 +93,11 @@ the matching milestone can stay closed.
 
 1. Update `PROTOCOL_CATALOG` status honestly.
 2. `scripts/gen-protocol-status.sh`
-3. `../wawona.io/scripts/sync-protocol-status.sh` (or CI dispatch after master merge)
-4. Attach issues/PRs to the matching milestone title above.
-5. Proof helpers for new erroneous checks (see Verification report / Kani).
+3. `scripts/gen-protocol-expect.sh` (guest probe expect JSON + sync into
+   `repo.wawona.io` `protocol-probe`)
+4. `../wawona.io/scripts/sync-protocol-status.sh` (or CI dispatch after master merge)
+5. Attach issues/PRs to the matching milestone title above.
+6. Proof helpers for new erroneous checks (see Verification report / Kani).
 
 ## Related
 

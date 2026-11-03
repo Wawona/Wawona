@@ -62,6 +62,7 @@ handler:
 * Agent / Cursor rule: `wawona-wayland-protocol-compat`
   (`docs/agent-rules/wawona-wayland-protocol-compat.md`)
 * Live protocol matrix (Functional → Partial → Stub → Missing): [`protocol-status.md`](./protocol-status.md)
+* Guest expect sets (WASI P1 `protocol-probe`): [`protocol-expect/`](./protocol-expect/)
 * Explorer → 100% phases / GitHub milestones: [`protocol-milestones.md`](./protocol-milestones.md)
 * Site page: https://wawona.io/docs/contributor/protocols/
 * Conformance behaviors: [`compliance/wayland-protocol-conformance-matrix.md`](./compliance/wayland-protocol-conformance-matrix.md)

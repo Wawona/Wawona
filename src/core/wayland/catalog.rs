@@ -134,6 +134,38 @@ impl ProtocolCatalogEntry {
             ExposureClass::InternalOnly => matches!(profile, ProtocolProfile::FullDev),
         }
     }
+
+    /// Stable guest-side expect classification (ignores live DRM node).
+    ///
+    /// Used by `docs/protocol-expect/*.json` and the WASI P1
+    /// `protocol-probe` client. Capability-gated globals are `optional`.
+    pub fn expect_on(&self, profile: ProtocolProfile) -> ProtocolExpect {
+        if self.status == ProtocolStatus::Missing {
+            return ProtocolExpect::Absent;
+        }
+        let profile_ok = match self.exposure {
+            ExposureClass::StoreSafeCore | ExposureClass::StoreSafeConditional => true,
+            ExposureClass::DesktopOnly => allow_desktop_extensions(profile),
+            ExposureClass::InternalOnly => matches!(profile, ProtocolProfile::FullDev),
+        };
+        if !profile_ok {
+            return ProtocolExpect::Absent;
+        }
+        if self.interface == "wp_drm_lease_device_v1" {
+            return ProtocolExpect::Optional {
+                capability: "drm_lease",
+            };
+        }
+        ProtocolExpect::Required
+    }
+}
+
+/// How a guest probe should treat a catalog global for a profile.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProtocolExpect {
+    Absent,
+    Required,
+    Optional { capability: &'static str },
 }
 
 /// Whether `/dev/dri/*` can be opened for drm-lease advertisement honesty.
@@ -1097,5 +1129,91 @@ mod tests {
             }
         }
         assert!(!required_kani_harnesses().is_empty());
+    }
+
+    #[test]
+    fn test_generate_protocol_expect_manifests() {
+        use super::{ProtocolExpect, PROTOCOL_CATALOG};
+        use crate::core::wayland::policy::ProtocolProfile;
+        use std::fs;
+        use std::path::PathBuf;
+
+        if std::env::var_os("WWN_WRITE_PROTOCOL_EXPECT").is_none() {
+            return;
+        }
+
+        let out_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("docs/protocol-expect");
+        fs::create_dir_all(&out_dir).expect("create docs/protocol-expect");
+
+        for profile in [
+            ProtocolProfile::StoreSafe,
+            ProtocolProfile::StoreSafeRemote,
+            ProtocolProfile::DesktopHost,
+            ProtocolProfile::FullDev,
+        ] {
+            let mut required = Vec::new();
+            let mut optional = Vec::new();
+            for e in PROTOCOL_CATALOG {
+                match e.expect_on(profile) {
+                    ProtocolExpect::Absent => {}
+                    ProtocolExpect::Required => required.push(e.interface),
+                    ProtocolExpect::Optional { capability } => {
+                        optional.push((e.interface, capability));
+                    }
+                }
+            }
+            required.sort_unstable();
+            optional.sort_by(|a, b| a.0.cmp(b.0));
+
+            let mut json = String::new();
+            json.push_str("{\n");
+            json.push_str(&format!("  \"profile\": \"{}\",\n", profile.as_str()));
+            json.push_str(
+                "  \"generated_by\": \"test_generate_protocol_expect_manifests\",\n",
+            );
+            json.push_str("  \"required\": [\n");
+            for (i, iface) in required.iter().enumerate() {
+                let comma = if i + 1 == required.len() { "" } else { "," };
+                json.push_str(&format!("    \"{iface}\"{comma}\n"));
+            }
+            json.push_str("  ],\n");
+            json.push_str("  \"optional\": [\n");
+            for (i, (iface, cap)) in optional.iter().enumerate() {
+                let comma = if i + 1 == optional.len() { "" } else { "," };
+                json.push_str(&format!(
+                    "    {{\"interface\": \"{iface}\", \"capability\": \"{cap}\"}}{comma}\n"
+                ));
+            }
+            json.push_str("  ]\n}\n");
+
+            let path = out_dir.join(format!("{}.json", profile.as_str()));
+            fs::write(&path, json).unwrap_or_else(|err| {
+                panic!("write {}: {err}", path.display());
+            });
+            eprintln!("wrote {}", path.display());
+        }
+    }
+
+    #[test]
+    fn expect_on_marks_drm_lease_optional_on_desktop() {
+        use super::{catalog_by_interface, ProtocolExpect};
+        use crate::core::wayland::policy::ProtocolProfile;
+
+        let lease = catalog_by_interface("wp_drm_lease_device_v1").expect("drm lease catalogued");
+        assert_eq!(
+            lease.expect_on(ProtocolProfile::DesktopHost),
+            ProtocolExpect::Optional {
+                capability: "drm_lease"
+            }
+        );
+        assert_eq!(
+            lease.expect_on(ProtocolProfile::StoreSafe),
+            ProtocolExpect::Absent
+        );
+        let core = catalog_by_interface("wl_compositor").expect("compositor");
+        assert_eq!(
+            core.expect_on(ProtocolProfile::StoreSafe),
+            ProtocolExpect::Required
+        );
     }
 }
