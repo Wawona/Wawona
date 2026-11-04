@@ -391,7 +391,8 @@ public enum PlatformCapabilities: Sendable {
         // watchOS runs a single client at a time (stub host WM, no tab surface);
         // native + remote only per wawona-platform-targets. No tab consumer.
         return false
-        #elseif os(iOS)
+        #elseif os(iOS) || os(visionOS)
+        // Phone, iPad primary scene, visionOS (multi-scene fill-primary).
         return true
         #else
         return false
