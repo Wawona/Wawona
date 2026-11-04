@@ -157,10 +157,13 @@ final class WWNIosGuestConsole: ObservableObject {
     }
   }
 
-  /// Done = Focus: park Terminal, reveal mounted Wayland / Metal client.
+  /// Done = Focus for Wayland / client sessions (reveal mounted Metal).
+  /// Shell-only (zsh / SSH) returns to Machines: empty Present is a blank
+  /// screen on visionOS (and looks dead on iPad).
   func userDismiss() {
     let mid = machineId
     let wasWindow = windowed
+    let shellOnly = isShell || source == "ssh"
     dismiss(machineId: mid)
     #if os(iOS) || os(visionOS)
     if wasWindow {
@@ -169,6 +172,10 @@ final class WWNIosGuestConsole: ObservableObject {
     #endif
     guard !mid.isEmpty else { return }
     WWNMachineProfileStore.setActiveMachineId(mid)
+    if shellOnly {
+      WWNMainWindowRouter.shared.showMachines()
+      return
+    }
     WWNMainWindowRouter.shared.showSessionSurface()
     NotificationCenter.default.post(
       name: .WWNClientFocusRequested,
