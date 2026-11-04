@@ -669,7 +669,7 @@ in
     postPatch = ''
       mkdir -p src/term
       rm -f src/term/screen.rs src/term/kitty.rs
-      for f in cell.rs engine.rs ffi_surface.rs; do
+      for f in cell.rs engine.rs ffi_surface.rs key_input.rs; do
         if [ -L "src/term/$f" ] || [ ! -e "src/term/$f" ]; then
           rm -f "src/term/$f"
           if [ -n "${toString xcodeProject}" ] && [ -f "${xcodeProject}/src/term/$f" ]; then
@@ -1283,7 +1283,7 @@ SHELL_EOF
               rm -rf "$project/_xcode_project/DerivedData" "$project/DerivedData"
               if [ -n "${toString xcodeProject}" ]; then
                 rm -f "$project/src/term/screen.rs" "$project/src/term/kitty.rs"
-                rm -f "$project/src/term/cell.rs" "$project/src/term/engine.rs" "$project/src/term/ffi_surface.rs"
+                rm -f "$project/src/term/cell.rs" "$project/src/term/engine.rs" "$project/src/term/ffi_surface.rs" "$project/src/term/key_input.rs"
                 cp -r ${xcodeProject}/* "$project/"
                 chmod -R u+w $project
               fi
@@ -1309,7 +1309,7 @@ SHELL_EOF
             rm -rf "$project/_xcode_project/DerivedData" "$project/DerivedData"
             if [ -n "${toString xcodeProject}" ]; then
               rm -f "$project/src/term/screen.rs" "$project/src/term/kitty.rs"
-              rm -f "$project/src/term/cell.rs" "$project/src/term/engine.rs" "$project/src/term/ffi_surface.rs"
+              rm -f "$project/src/term/cell.rs" "$project/src/term/engine.rs" "$project/src/term/ffi_surface.rs" "$project/src/term/key_input.rs"
               cp -r ${xcodeProject}/* "$project/"
               chmod -R u+w $project
             fi

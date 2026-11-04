@@ -3288,11 +3288,12 @@ PLIST
     postPatch = lib.optionalString (terminalSrc != null) ''
       mkdir -p src/term
       rm -f src/term/screen.rs src/term/kitty.rs
-      rm -f src/term/cell.rs src/term/engine.rs src/term/ffi_surface.rs
+      rm -f src/term/cell.rs src/term/engine.rs src/term/ffi_surface.rs src/term/key_input.rs
       cp ${terminalSrc}/src/cell.rs src/term/cell.rs
       cp ${terminalSrc}/src/engine.rs src/term/engine.rs
       cp ${terminalSrc}/src/ffi_surface.rs src/term/ffi_surface.rs
-      chmod u+w src/term/cell.rs src/term/engine.rs src/term/ffi_surface.rs
+      cp ${terminalSrc}/src/key_input.rs src/term/key_input.rs
+      chmod u+w src/term/cell.rs src/term/engine.rs src/term/ffi_surface.rs src/term/key_input.rs
     '';
 
     buildPhase = ''

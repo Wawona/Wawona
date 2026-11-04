@@ -122,12 +122,13 @@ PY
     ${if terminalSrc != null then ''
     mkdir -p $out/src/term
     rm -f $out/src/term/screen.rs $out/src/term/kitty.rs
-    rm -f $out/src/term/cell.rs $out/src/term/engine.rs $out/src/term/ffi_surface.rs
+    rm -f $out/src/term/cell.rs $out/src/term/engine.rs $out/src/term/ffi_surface.rs $out/src/term/key_input.rs
     cp ${terminalSrc}/src/cell.rs $out/src/term/cell.rs
     cp ${terminalSrc}/src/engine.rs $out/src/term/engine.rs
     cp ${terminalSrc}/src/ffi_surface.rs $out/src/term/ffi_surface.rs
-    chmod u+w $out/src/term/cell.rs $out/src/term/engine.rs $out/src/term/ffi_surface.rs
-    echo "✓ Terminal cell/engine/ffi_surface injected"
+    cp ${terminalSrc}/src/key_input.rs $out/src/term/key_input.rs
+    chmod u+w $out/src/term/cell.rs $out/src/term/engine.rs $out/src/term/ffi_surface.rs $out/src/term/key_input.rs
+    echo "✓ Terminal cell/engine/ffi_surface/key_input injected"
     '' else ''
     echo "note: terminalSrc unset; keeping workspace term engine as packaged"
     ''}
