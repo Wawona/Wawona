@@ -3,6 +3,7 @@ import Combine
 import CoreGraphics
 import CoreText
 import SwiftUI
+import WawonaModel
 
 @_silgen_name("wwn_term_bytes_lines_json")
 private func wwn_term_bytes_lines_json(

@@ -113,12 +113,11 @@ impl VtEngine {
                 }
                 c if !c.is_control() => {
                     let row = g.cursor_row as usize;
+                    let col = g.cursor_col as usize;
                     while g.lines.len() <= row {
                         g.lines.push(String::new());
                     }
-                    let line = &mut g.lines[row];
-                    let col = g.cursor_col as usize;
-                    let mut chars: Vec<char> = line.chars().collect();
+                    let mut chars: Vec<char> = g.lines[row].chars().collect();
                     while chars.len() < col {
                         chars.push(' ');
                     }
@@ -127,7 +126,7 @@ impl VtEngine {
                     } else {
                         chars.push(c);
                     }
-                    *line = chars.into_iter().collect();
+                    g.lines[row] = chars.into_iter().collect();
                     g.cursor_col = g.cursor_col.saturating_add(1);
                     if g.cursor_col >= g.cols {
                         g.cursor_col = 0;
