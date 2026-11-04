@@ -88,8 +88,8 @@ archives. Apple's `libswift*` / SwiftSupport is the store exception. macOS
 Desktop Mode B `libwayland-mac.dylib` stays in `.#wawona-macos-desktop-host`
 only.
 
-Wawona Terminal grid is Zig **libghostty** from `github.com/Wawona/Ghostty`
-(flake `wwn-ghostty`): static archive at deployment target **13.0**, export
-`ghostty_*` only. Interim VT path may use `Terminal` / `libghostty-vt`. Never
-link published GhosttyKit (iOS 17). Never raise the shared floor. Never ship
-a product Terminal `.dylib` in store IPA. Rule: `wawona-ghostty-host`.
+Wawona Terminal grid is **libghostty-rs** from `github.com/Wawona/Terminal`
+(flake `terminal`): static archive at deployment target **13.0**. UniFFI is
+the product contract. Never link published GhosttyKit (iOS 17). Never raise
+the shared floor. Never ship a product Terminal `.dylib` in store IPA. Shell
+backends: `wawona-terminal-shell-backend`. Rule: `wawona-ghostty-host`.

@@ -1,0 +1,27 @@
+---
+description: Wawona Terminal = Rust libghostty-rs + UniFFI + native paint (Wawona/Terminal). Not Zig Ghostty surface.
+globs:
+alwaysApply: false
+---
+
+# Wawona Terminal host (libghostty-rs + UniFFI)
+
+**Product crate:** `github.com/Wawona/Terminal` (flake `terminal`).
+
+**Product grid** = Rust **libghostty-rs** (`libghostty-vt`) behind UniFFI
+(`GhosttySurface` / `TerminalSession`). Native UI paints only. Shell
+backends: `wawona-terminal-shell-backend` / `domain::terminal_shell`.
+
+## Hard rejects
+
+- GhosttyKit as a product input
+- Product `.dylib` on Apple-mobile
+- Homemade VT branded as libghostty
+- Hardcoded `/bin/zsh` instead of the shell resolver
+- Vision Pro dogfood for Terminal when the task is macOS
+- New Zig `ghostty_surface_*` product work (`Wawona/Ghostty` archived)
+
+Credits: Ghostty MIT; libghostty-rs; Rootshell MIT UX ideas only.
+
+Canonical: `docs/agent-rules/wawona-ghostty-host.md`, `docs/ghostty-host.md`.
+Skill: `wawona-ghostty-host`.

@@ -1,0 +1,236 @@
+---
+description: Per-target Wawona capability matrix (machines, windows, GPU, Wawona Swinging Bridge)
+alwaysApply: true
+---
+
+# Wawona platform targets
+
+Authority for feature gating across Apple + Android. Prefer this over older
+docs when they conflict (e.g. watchOS is no longer remote-only).
+
+## Full Apple support (non-negotiable)
+
+The **entire Apple family** must be fully supported as first-class product
+targets. Not best-effort, not “ship iOS first and defer the rest”:
+
+- **macOS**, **iOS**, **iPadOS**, **tvOS**, **watchOS**, **visionOS**
+
+“Fully supported” means each target builds, archives, runs, and ships within
+its row in the matrix below (native/remote/VM/GPU/windows as allowed). Do not
+drop schemes from TestFlight/CI, leave link/deps broken, or treat a platform
+as optional to unblock another. Fix the failing target (or its allowed
+fallback) instead of removing it from the product surface.
+
+## Capability matrix
+
+| Capability | macOS | Android | iPadOS | visionOS | iOS (phone) | tvOS | watchOS |
+|---|---|---|---|---|---|---|---|
+| Native machines | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Remote (SSH/waypipe) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| VM / containers | ⏳ planned | ⏳ planned | ⏳ planned | ⏳ planned | ⏳ planned | ❌ | ❌ |
+| Multi-window (1 window per Wayland client) | ✅ | ✅ (if OS allows) | ✅ **required** | ✅ **required** | ⚠️ single primary | ❌ | ❌ |
+| Nested compositors + bundled clients | ✅ | ✅ | ✅ | ✅ **macOS parity** | ✅ | ✅ | ⚠️ limited |
+| Vulkan / OpenGL / ANGLE bundle | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⛔ blocked |
+| Watch SpriteKit present | n/a | n/a | n/a | n/a | n/a | n/a | ✅ |
+| Desktop + LockScreen replacement | ⏳ planned | ⏳ planned | ❌ App Store | ❌ | ❌ App Store | ❌ | ❌ |
+| Wawona Swinging Bridge | ⏳ Mode A+B | ⏳ Mode A+B | ❌ App Store (Mode B only) | ❌ | ❌ App Store (Mode B only) | ❌ | ❌ |
+| iCloud Sync (CloudKit) | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| iCloud Drive (shell HOME) | ✅ | ❌ | ✅ | ✅ | ✅ | ⛔ blocked | ⛔ blocked |
+| Relay Wasm (WASI / `wpm`) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+### Legend. The four gate states
+
+Never collapse these into "unsupported". Each has a different correct response,
+and mixing them is how unfinished work turns into a permanent exclusion.
+
+| Mark | State | Meaning | What to do |
+|---|---|---|---|
+| ✅ | available | Shipping | Keep it green |
+| ⏳ | **planned** | Our work is unfinished; platform allows it | Finish it; never remove the target |
+| ⛔ | **blocked** | We want it; no public platform API exists | Re-check on SDK updates; never use private API |
+| ❌ | **forbidden** | Product/store policy | Never enable; refuse features of that class |
+
+Mirrored in code by `CapabilityGate` in
+`Wawona/Sources/WawonaModel/PlatformCapabilities.swift`. A gate change belongs
+in both places.
+
+**Linux** (not in the Apple/Android columns): native + remote ✅; Relay Wasm ✅;
+VM/containers ⏳ planned; Desktop/LockScreen ❌; Wawona Swinging Bridge ❌.
+
+**iOS and iPadOS are the same** for Desktop/LockScreen and Wawona Swinging Bridge
+(store Mode A vs TrollStore / Sileo Mode B). Do not special-case iPadOS as
+forbidden while iPhone is planned for those features.
+
+**Desktop / LockScreen vs Wawona Swinging Bridge vs local shell vs VMs (do not conflate):**
+
+- **Desktop + LockScreen**. Host DE / greeter. macOS + Android ⏳; **iOS and
+  iPadOS** via **TrollStore** (IOMobileFramebuffer own-display) and **Sileo**
+  (`repo.wawona.io`, + ElleKit SpringBoard tweaks). App Store builds ❌ and must
+  never mention jailbreak. Not Linux. Not tvOS/watchOS/visionOS.
+- **Wawona Swinging Bridge**. MacOS/Android (and iOS **Sileo** Mode B only) apps →
+  Wayland (+ waypipe to Linux). See `wawona-swinging-bridge`. Not Desktop/LockScreen.
+  Not available on TrollStore alone.
+- **On-device shell**. Bundled **zsh** + Weston terminal (native port path).
+  Not a VM and not a container. Separate from `virtual_machine` / `container`
+  machine kinds.
+- **VM / containers**. Machines GUI kinds `virtual_machine` / `container`,
+  configured per-machine. ⏳ on **macOS, iOS, iPadOS, visionOS, Android, Linux**. ❌ on
+  **tvOS and watchOS**. Design **Mode A and Mode B** together
+  (`wawona-mode-a-b`, `docs/mode-a-b.md`); never ship Mode B to App Store/Play.
+  Engines (planned): NixOS prebuilts only. Guest GUI is Wayland into Wawona
+  (iland), not UTM. See `wawona-linux-vms-relay-runtime`.
+  - **iOS / iPadOS Mode A (store):** Wawona App Store-compliant runtime only
+    (Relay / jitless). Containers = OCI-in-VM on that engine.
+  - **iOS / iPadOS Mode B (TrollStore `.tipa`):** Mode A runtime **plus**
+    Wawona Mode B runtime (JIT) for VMs **and** containers;
+    IOMobileFramebuffer Desktop/LockScreen; **no** Swinging
+    Bridge / host APT. **absent** from store IPA.
+  - **iOS / iPadOS Mode B (Sileo from `repo.wawona.io`):** same JIT + Desktop
+    engines; plus unsandboxed shell, host APT, ElleKit tweaks, Swinging Bridge.
+    Auto-package Mode B IPA / `.deb` on the repo. **absent** from store IPA.
+  - Website may document TrollStore and Sileo; App Store copy must not.
+  - **macOS:** Linux VMs use the Wawona runtime (Mode A, plus Mode B runtime
+    on desktop-host). Apple Containerization (`Containerization.framework`)
+    stays **macOS-only** (`appleContainerizationGate`); never evaluate that
+    engine on iOS/Android/Linux. Do not use UTM.
+  - **Android / Linux:** same NixOS prebuilts and Wawona runtimes via Machines
+    (`wwn-vms` / `wwn-containers`); Play = Mode A, root = Mode B.
+
+## Hard rules
+
+0. **All Apple platforms**. Keep every Apple target green and in scope.
+   Temporary CI skips need an explicit follow-up; never “solve” breakage by
+   permanently excluding macOS/iOS/iPadOS/tvOS/watchOS/visionOS.
+1. **watchOS / tvOS machines**. Native + remote only. VM/container machine
+   types, engines, and UI are **❌ forbidden** on these targets: that is policy,
+   not a gap. GPU is a *separate* question, and the two platforms differ -
+   verified against the 26.5 SDKs, re-verify rather than trusting memory:
+   - **tvOS GPU is bundled.** `AppleTVOS26.5.sdk` ships `Metal.framework`,
+     `MetalKit`, `MetalFX`, MPS/MPSGraph, **and** `OpenGLES.framework`, and
+     `CAMetalLayer` is available since tvOS 9. ANGLE (OpenGL ES to Metal,
+     `target_platform=tvos`) and MoltenVK (Vulkan to Metal) link when
+     `WWN_TVOS_GPU_BUNDLED`. Gate: `WWN_TVOS_GPU=1` in
+     `verify-iland-graphics-bundle.sh` requires both. The Vulkan **loader** does not
+     work on tvOS: dispatch straight into the ICD, as `WWN_VULKAN_LIBRARY`
+     already does. Rendered-frame PROPER is still pending. Never drop tvOS
+     from the graphics roadmap.
+   - **watchOS public Metal / MoltenVK / `CAMetalLayer` stay ⛔ blocked.**
+     `WatchOS26.5.sdk` ships **no `Metal.framework`**. Do **not** "fix" that
+     with private Metal or SpriteKit/SceneKit as a shader backdoor.
+   - **watchOS client GLES/VK is ⏳ planned → ✅ when `WWN_WATCH_SWIFTSHADER=1`.**
+     CPU SwiftShader (+ ANGLE) ICD path (`watchSoftwareGlesVkGate`). Never
+     MoltenVK. Never public Metal. Default store Watch IPA may omit the ICD
+     until the flag is on; verifier then requires SwiftShader+ANGLE markers.
+   - **watchOS present accelerator is ✅ available.** SpriteKit `SKTexture` blit
+     of Wayland SHM frames (`watchPresentAcceleratorGate`). Present is not
+     GLES/Vulkan. Verifier requires SpriteKit and forbids Metal unless
+     `WWN_WATCHOS_METAL=1` (research only; never store).
+2. **visionOS / iPadOS**. Multi-window is mandatory: one host window/scene per
+   Wayland client, same model as macOS. Android should match when the OS can
+   host multiple app windows.
+3. **visionOS ≈ macOS product parity** for bundled software, nested
+   compositors/clients, Vulkan/OpenGL, and Machines UX (including Add New
+   Machine). VM/container machine kinds follow the iOS/iPadOS Relay static-CPU
+   path. Do not leave visionOS on a reduced iOS-phone feature set.
+4. **Desktop / LockScreen replacement**. **macOS + Android** (⏳ planned),
+   plus **iOS and iPadOS** via TrollStore (IOMFB) and Sileo (`repo.wawona.io`,
+   ElleKit tweaks). Documented on the website; **forbidden** on Linux and on
+   App Store builds of iOS/iPadOS (and all of tvOS/watchOS/visionOS). Machine
+   profiles for Desktop/LockScreen: **native ports only**. macOS engage path:
+   SIP **fully disabled** (`csrutil disable`) + `.dylib`. Partial SIP
+   (`csrutil enable --without debug`) is refused. Android: Default Home App + LockScreen APIs.
+   **no root required, no fallback tier required**. Never wire Desktop/LockScreen
+   UI into App Store Apple-mobile builds; never mention jailbreak in those
+   binaries.
+5. **iLand**. Platforms without IOKit / without GL (watchOS, tvOS, …)
+   need a non-IOKit, non-GL fallback path. See `iland-apple-fallback`.
+6. **iland Mode B dylib**. `libwayland-mac.dylib` is **macOS desktop-host
+   only** (`wawona-macos-desktop-host`). SIP-gated Desktop/LockScreen
+   Replacement (`WWNSipStatus` + Settings Desktop). Engage only when SIP is
+   **fully disabled**. Never ship in store-safe
+   `wawona-macos`, iOS family, or Android. Default present path is Mode A
+   (`libiland_userland.a`). See `wawona-iland-mode-b-desktop` and
+   `Wawona/docs/iland-mode-a-b-desktop.md`. This dylib is **not** Wawona Swinging Bridge.
+7. **SSH backend**. Apple mobile (iOS / iPadOS / tvOS / watchOS / visionOS)
+   uses **libssh2 in-process only** (including `libwwn-ssh-cli` /
+   `ssh_main` over libssh2). Never link or ship OpenSSH
+   (`libssh-inprocess.a`) on those targets. **macOS** uses regular OpenSSH;
+   **Android** uses OpenSSH portable (`libssh_bin.so` / keygen / scp).
+   Remote/waypipe on Apple mobile goes through libssh2.
+8. **Wawona Swinging Bridge** (formerly anowaW). Cocoa/Android/(future UIKit)
+   apps as Wayland clients, including **waypipe-rs** to a Linux compositor.
+   **macOS + Android:** ⏳ Mode A + Mode B. **iOS/iPadOS:** Mode B only
+   (`repo.wawona.io` / jailbreak). **forbidden** in the App Store IPA.
+   **Not** Desktop/LockScreen. **Not** MediaProjection-as-desktop.
+   Full rule: `wawona-swinging-bridge`.
+9. **VM / containers**. ⏳ planned for macOS, iOS, iPadOS, Android, Linux via
+   Machines profiles. ❌ on tvOS, watchOS, visionOS. Do not document as shipping
+   until gates flip. Local shell is not a substitute for a VM.
+10. **Host window manager**. MacOS = AppKit zoom/fullscreen/miniaturize.
+    iOS/iPadOS/tvOS/visionOS/Android = **fill-primary**: maximize and
+    fullscreen both configure to the host surface bounds and sync xdg
+    state (no floating restore geometry). Minimize parks the session to
+    Machines without terminating the client; **Focus** reveals the
+    compositor again. watchOS stubs ignore WM requests. See
+    `PlatformCapabilities.hostWindowManagerPolicy` and
+    `docs/wslg-weston-desktop-map.md`.
+11. **Weston + Niri ports**. Both stay real compositor ports (no stubs). They
+  ship as **debs** (jailbreak iOS, Termux, Linux) and optionally wasm, not as
+  mandatory link-ins of every store app. Keep-set in the app is zsh, uutils,
+  fastfetch, compositor, Relay wasm (`wawona-optional-software`). tvOS/watchOS
+  must not gain forbidden GPU bundles. Fix packaging/unlink; never delete the
+  recipe to make the matrix green.
+  **Relay Wasm** is the same class of mandatory bundle on every row including
+  Linux (`wawona-relay-wasm`). Do not size-gate watchOS off. iOS and iPadOS
+  through OS 26 execute with Pulley. OS 27 Mode A executes the same bytecode
+  with Wasmer WASIX in a hidden WKWebView when WasmerSDK is linked. Cranelift
+  and MAP_JIT stay out of the store IPA. tvOS, watchOS, and visionOS stay
+  on Pulley.
+12. **Runtime-only graphics**. Iland DRM/KMS/GBM is userland emulation.
+    Wawona code must never open real `/dev/dri` or `/dev/kgsl` nodes, forward
+    real DRM/KMS/KGSL ioctls, ship kernel code, or require kernel patches.
+    Mode B `baremetal` is a legacy package name, not kernel access. Android
+    direct Turnip/KGSL is forbidden; use system Vulkan/Metal or SwiftShader.
+13. **iCloud Sync is CloudKit on every Apple target.** Settings → iCloud Sync
+    syncs through CloudKit (container `iCloud.com.aspauldingcode.Wawona`,
+    private database, zone `WawonaSync`, `CKRecord` + `CKAsset`,
+    `CKDatabaseSubscription`, manual Sync Now, `accountStatus` first) on
+    macOS, iOS, iPadOS, visionOS, tvOS and watchOS. Scope: machine profiles
+    (secrets redacted, merged by Rust), tags, pins, env vars, allowlisted
+    preferences, and HOME files. Rust `domain::cloud_sync` owns the key
+    allowlist, HOME exclusions and caps, conflict choice, and profile
+    merge. Swift (`WWNCloudSync`) is transport only. Gate rows:
+    `cloudkit_sync` (Apple ✅, Android/Linux ❌). Fail closed without the
+    CloudKit entitlement (`CloudSyncEntitlement` scans the signature);
+    never construct `CKContainer` unsigned. Async CloudKit needs iOS 15 /
+    tvOS 15 / watchOS 8 / macOS 12; older OS shows a status, no fake sync.
+    **iCloud Drive HOME** (`WWNRootfsICloudSync`, ubiquity Documents) is a
+    separate toggle: Apple QA1935 makes Drive unavailable on tvOS and
+    watchOS (`ubiquityIdentityToken` is always nil). That row stays
+    **⛔ blocked** (`icloud_drive_home`). Do not add a Drive toggle there.
+    Re-check on SDK bumps.
+14. **Wawona Terminal = Rust libghostty-rs + UniFFI + native UI.** Repo
+    `github.com/Wawona/Terminal` (flake `terminal`). Rust owns VT, key/mouse
+    encode, selection, render frame, tabs. Native frameworks paint:
+    AppKit, UIKit, SwiftUI, SpriteKit, Jetpack Compose, GTK. Shell:
+    system login shell on macOS/Linux/Mode B; Wawona PTY on Mode A
+    (`wawona-terminal-shell-backend`). Wawona L4 owns Machines chrome and
+    ToolbarKeys when bundled. Apple-mobile: **static** archive,
+    deployment target **13.0**. **No** product `.dylib`. **No** GhosttyKit.
+    Zig surface / GhosttyGpu atlas are retire targets. Credits: Ghostty
+    MIT; libghostty-rs; Rootshell MIT iOS UX ideas. Rule:
+    `wawona-ghostty-host`. VM/container kinds forbidden on tvOS, watchOS,
+    visionOS.
+
+
+## Implementation checkpoints
+
+- Gate in `mobile-platform-deps.nix` variants, `xcodegen.nix` `OTHER_LDFLAGS`,
+  Machines profile kinds, and platform UI. Not ad-hoc `#ifdef` sprawl.
+- tvOS/watchOS link flags must not pull `-framework IOKit`. watchOS must
+  not pull ANGLE, MoltenVK, or Vulkan ICDs (no Metal). tvOS links ANGLE and
+  MoltenVK when `WWN_TVOS_GPU=1`.
+- When adding a Machines feature: classify it (native / remote / VM /
+  container) and refuse it on targets that forbid that class.
+- iOS / iPadOS Mach-O min OS is 13.0 against the latest iPhoneOS SDK only.
+  Never downgrade the SDK. One ANGLE, one MoltenVK. See `wawona-ios-min-os`.
