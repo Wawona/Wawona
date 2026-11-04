@@ -1,4 +1,5 @@
 import Foundation
+import CoreText
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -11,6 +12,7 @@ import UIKit
 @objc(WWNBundleShareEnvironment)
 public final class WWNBundleShareEnvironment: NSObject {
     private override init() {}
+    private static var fontsRegistered = false
 
     @objc public static func apply() {
         let fm = FileManager.default
@@ -22,6 +24,7 @@ public final class WWNBundleShareEnvironment: NSObject {
         if fm.fileExists(atPath: shareRoot), getenv("XDG_DATA_DIRS") == nil {
             shareRoot.withCString { setenv("XDG_DATA_DIRS", $0, 1) }
         }
+        registerBundledFontsIfNeeded()
 
         let xkbRules = (bundledSharePath("X11/xkb") as NSString).appendingPathComponent("rules/evdev")
         if !xkbRules.isEmpty, fm.fileExists(atPath: xkbRules), getenv("XKB_CONFIG_ROOT") == nil {
@@ -48,6 +51,24 @@ public final class WWNBundleShareEnvironment: NSObject {
         }
 
         configureFontconfig()
+    }
+
+    /// Register TTFs with Core Text so `NSFont(name:)` / `UIFont(name:)` /
+    /// SwiftUI `Font.custom` resolve DejaVuSansM for Wawona Terminal.
+    @objc public static func registerBundledFontsIfNeeded() {
+        guard !fontsRegistered else { return }
+        let fm = FileManager.default
+        let fontDir = bundledSharePath("fonts")
+        guard !fontDir.isEmpty, fm.fileExists(atPath: fontDir) else { return }
+        fontsRegistered = true
+        guard let enumerator = fm.enumerator(atPath: fontDir) else { return }
+        for case let rel as String in enumerator {
+            let lower = rel.lowercased()
+            guard lower.hasSuffix(".ttf") || lower.hasSuffix(".otf") else { continue }
+            let path = (fontDir as NSString).appendingPathComponent(rel)
+            let url = URL(fileURLWithPath: path) as CFURL
+            CTFontManagerRegisterFontsForURL(url, .process, nil)
+        }
     }
 
     private static func configureFontconfig() {
