@@ -257,6 +257,37 @@ case "${TARGET_NAME:-}" in
     ;;
 esac
 
+# Optional Zig GhosttyLib tip link (Phase 5). Rust VT is wwn_term_* only, so
+# ghostty_surface_* from libghostty-internal.a no longer collide. Paint stays
+# GhosttyGpu until a Metal host calls ghostty_surface_draw. Opt-in:
+#   WAWONA_LINK_LIBGHOSTTY=1
+# Stage first: scripts/stage-libghostty-macos.sh (or set WAWONA_LIBGHOSTTY_A).
+case "${TARGET_NAME:-}" in
+  Wawona-macOS)
+    _lg_xcconfig="$derived/wwn-libghostty-link.xcconfig"
+    # Always write (xcodegen outputFiles). Empty when Zig link is off.
+    echo "// Zig GhosttyLib tip link off (set WAWONA_LINK_LIBGHOSTTY=1)." >"$_lg_xcconfig"
+    if [ "${WAWONA_LINK_LIBGHOSTTY:-0}" = "1" ]; then
+      _lg_a="${WAWONA_LIBGHOSTTY_A:-}"
+      if [ -z "$_lg_a" ] || [ ! -f "$_lg_a" ]; then
+        if [ -f "${SRCROOT:-}/.nix-deps/libghostty-macos/lib/libghostty-internal.a" ]; then
+          _lg_a="${SRCROOT}/.nix-deps/libghostty-macos/lib/libghostty-internal.a"
+        fi
+      fi
+      if [ -n "$_lg_a" ] && [ -f "$_lg_a" ]; then
+        cp -f "$_lg_a" "$derived/libghostty-internal.a"
+        {
+          echo "// Opt-in Zig GhosttyLib (WAWONA_LINK_LIBGHOSTTY=1). Paint still GhosttyGpu."
+          echo "OTHER_LDFLAGS = \$(inherited) -force_load \$(DERIVED_FILE_DIR)/libghostty-internal.a -lc++ -lz -lbz2 -framework Metal -framework MetalKit -framework QuartzCore -framework CoreText -framework CoreGraphics -framework CoreVideo -framework CoreImage -framework IOKit -framework Security -framework UniformTypeIdentifiers -framework Carbon -framework GameController -framework IOSurface -framework SystemConfiguration -framework Network"
+        } >"$_lg_xcconfig"
+        echo "Linking Zig libghostty-internal.a from $_lg_a (symbols resolve; paint GhosttyGpu)"
+      else
+        echo "warning: WAWONA_LINK_LIBGHOSTTY=1 but libghostty-internal.a missing; run stage-libghostty-macos.sh" >&2
+      fi
+    fi
+    ;;
+esac
+
 # Product keep-set no longer force-loads libniri.a. Keep Rust std in
 # libwawona.a so -lwawona / coreutils resolve without a second compositor archive.
 

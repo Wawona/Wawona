@@ -16,7 +16,7 @@ PTY, ToolbarKeys.
 | `Wawona/Ghostty` | Zig static `ghostty_*` (goal: Metal/GL/software) |
 | `Wawona/Terminal` | Interim UniFFI over `libghostty-vt` until Metal surface |
 | `Terminal/apple/Terminal/GhosttyGpuView` | **Interim** atlas paint (default / `WAWONA_GHOSTTY_GPU`). Do not grow |
-| `wwn-ghostty#libghostty-macos-draw-proof` | Link + `ghostty_surface_draw` proof. Not tip (ABI gap) |
+| `wwn-ghostty#libghostty-macos-draw-proof` | Link + `ghostty_surface_draw` proof. Tip optional via `WAWONA_LINK_LIBGHOSTTY=1` (paint still GhosttyGpu) |
 | Rootshell `vendor/rootshell` | Reference for iOS Metal embed. Not a product dep |
 
 ## Dogfood (Nix only, macOS)

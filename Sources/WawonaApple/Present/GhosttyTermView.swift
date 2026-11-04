@@ -4,7 +4,7 @@ import SwiftUI
 
 /// UIKit host for Wawona Terminal grid on iOS / tvOS / visionOS.
 /// Product contract is UniFFI `GhosttySurface` (see staged `apple/Terminal`).
-/// This view still uses optional C `ghostty_*` until UniFFI Swift is linked.
+/// This view still uses optional C `wwn_term_*` until UniFFI Swift is linked.
 @objc(WWNGhosttyTermView)
 public final class WWNGhosttyTermView: UIView {
   public var onReply: WWNTermReply?
@@ -31,22 +31,22 @@ public final class WWNGhosttyTermView: UIView {
       textView.leadingAnchor.constraint(equalTo: leadingAnchor),
       textView.trailingAnchor.constraint(equalTo: trailingAnchor),
     ])
-    ghostty_init()
-    surface = ghostty_surface_new(cols, rows)
+    wwn_term_init()
+    surface = wwn_term_new(cols, rows)
   }
 
   @available(*, unavailable)
   required init?(coder: NSCoder) { nil }
 
   deinit {
-    if let surface { ghostty_surface_free(surface) }
+    if let surface { wwn_term_free(surface) }
   }
 
   public func feed(_ data: Data) {
     guard let surface, !data.isEmpty else { return }
     data.withUnsafeBytes { raw in
       guard let base = raw.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return }
-      ghostty_surface_write(surface, base, data.count)
+      wwn_term_feed(surface, base, data.count)
     }
     flushReply()
     redraw()
@@ -59,7 +59,7 @@ public final class WWNGhosttyTermView: UIView {
     guard nextCols != cols || nextRows != rows, let surface else { return }
     cols = nextCols
     rows = nextRows
-    ghostty_surface_resize(surface, cols, rows)
+    wwn_term_resize(surface, cols, rows)
     redraw()
   }
 
@@ -67,7 +67,7 @@ public final class WWNGhosttyTermView: UIView {
     guard let surface else { return }
     var buf = [UInt8](repeating: 0, count: 256)
     let n = buf.withUnsafeMutableBytes { raw in
-      ghostty_surface_take_reply(surface, raw.baseAddress?.assumingMemoryBound(to: UInt8.self), raw.count)
+      wwn_term_take_reply(surface, raw.baseAddress?.assumingMemoryBound(to: UInt8.self), raw.count)
     }
     if n > 0 { onReply?(Data(buf.prefix(n))) }
   }
@@ -78,9 +78,9 @@ public final class WWNGhosttyTermView: UIView {
     var cells = [GhosttyCell](repeating: GhosttyCell(cp: 32, fg: 0xE8E8E8, bg: 0, attrs: 0), count: cap)
     var outCols: UInt32 = 0
     var outRows: UInt32 = 0
-    let origin = ghostty_surface_origin(surface)
+    let origin = wwn_term_origin(surface)
     let n = cells.withUnsafeMutableBufferPointer { buf in
-      ghostty_surface_viewport(surface, origin, buf.baseAddress, UInt32(cap), &outCols, &outRows)
+      wwn_term_viewport(surface, origin, buf.baseAddress, UInt32(cap), &outCols, &outRows)
     }
     var lines = [String]()
     let c = Int(outCols == 0 ? cols : outCols)
@@ -112,25 +112,25 @@ private struct GhosttyCell {
   var attrs: UInt32
 }
 
-@_silgen_name("ghostty_init")
-private func ghostty_init() -> Int32
-@_silgen_name("ghostty_surface_new")
-private func ghostty_surface_new(_ cols: UInt32, _ rows: UInt32) -> OpaquePointer?
-@_silgen_name("ghostty_surface_free")
-private func ghostty_surface_free(_ s: OpaquePointer?)
-@_silgen_name("ghostty_surface_resize")
-private func ghostty_surface_resize(_ s: OpaquePointer?, _ cols: UInt32, _ rows: UInt32)
-@_silgen_name("ghostty_surface_write")
-private func ghostty_surface_write(_ s: OpaquePointer?, _ bytes: UnsafePointer<UInt8>?, _ len: Int)
-@_silgen_name("ghostty_surface_take_reply")
-private func ghostty_surface_take_reply(_ s: OpaquePointer?, _ buf: UnsafeMutablePointer<UInt8>?, _ cap: Int) -> Int
-@_silgen_name("ghostty_surface_viewport")
-private func ghostty_surface_viewport(
+@_silgen_name("wwn_term_init")
+private func wwn_term_init() -> Int32
+@_silgen_name("wwn_term_new")
+private func wwn_term_new(_ cols: UInt32, _ rows: UInt32) -> OpaquePointer?
+@_silgen_name("wwn_term_free")
+private func wwn_term_free(_ s: OpaquePointer?)
+@_silgen_name("wwn_term_resize")
+private func wwn_term_resize(_ s: OpaquePointer?, _ cols: UInt32, _ rows: UInt32)
+@_silgen_name("wwn_term_feed")
+private func wwn_term_feed(_ s: OpaquePointer?, _ bytes: UnsafePointer<UInt8>?, _ len: Int)
+@_silgen_name("wwn_term_take_reply")
+private func wwn_term_take_reply(_ s: OpaquePointer?, _ buf: UnsafeMutablePointer<UInt8>?, _ cap: Int) -> Int
+@_silgen_name("wwn_term_viewport")
+private func wwn_term_viewport(
   _ s: OpaquePointer?, _ origin: UInt32, _ out: UnsafeMutablePointer<GhosttyCell>?, _ cap: UInt32,
   _ cols: UnsafeMutablePointer<UInt32>?, _ rows: UnsafeMutablePointer<UInt32>?
 ) -> UInt32
-@_silgen_name("ghostty_surface_origin")
-private func ghostty_surface_origin(_ s: OpaquePointer?) -> UInt32
+@_silgen_name("wwn_term_origin")
+private func wwn_term_origin(_ s: OpaquePointer?) -> UInt32
 
 public struct WWNGhosttyTermRepresentable: UIViewRepresentable {
   public var feed: Data

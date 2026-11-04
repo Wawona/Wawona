@@ -24,8 +24,7 @@ Canonical RAG: `ghostty-host.md`. Skill: `wawona-ghostty-host`.
   Wawona). **Forbidden to grow.** Default / `WAWONA_GHOSTTY_GPU=1` until tip
   ABI swap (`Ghostty/docs/METAL-SURFACE.md`).
 - `wwn-ghostty#libghostty-macos` ships GhosttyLib static; draw proof:
-  `#libghostty-macos-draw-proof`. Tip must not dual-link with Rust
-  `ghostty_surface_*`. Stage: `scripts/stage-libghostty-macos.sh`.
+  `#libghostty-macos-draw-proof`. Phase 5: Rust VT is `wwn_term_*`; Zig keeps `ghostty_surface_*`. Optional tip link: `WAWONA_LINK_LIBGHOSTTY=1`. Stage: `scripts/stage-libghostty-macos.sh`.
 - Prefer plan: paint via Zig Ghostty surface, not atlas stamp.
 
 ## Hard rejects

@@ -1024,11 +1024,11 @@
     "terminal": {
       "flake": false,
       "locked": {
-        "lastModified": 1793760965,
-        "narHash": "sha256-nbZxtxjcw8y/dZq/NuwFhQiuIXwGOSUo8S6QQ7Ip4z0=",
+        "lastModified": 1793761816,
+        "narHash": "sha256-4Vc08qBTGPaNU2sHVvT3Dq5CB+PyLU2czkZLuY7MLc4=",
         "owner": "Wawona",
         "repo": "Terminal",
-        "rev": "024bc6efc944ce8975ba50d2d28893e37215ce58",
+        "rev": "66e9b930e2e23560810c81e5cfd0ba6541142cf6",
         "type": "github"
       },
       "original": {

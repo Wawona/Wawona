@@ -675,6 +675,7 @@ let
       ++ [
         "$(DERIVED_FILE_DIR)/libwawona_terminal.a"
         "$(DERIVED_FILE_DIR)/wwn-terminal-force-load.xcconfig"
+        "$(DERIVED_FILE_DIR)/wwn-libghostty-link.xcconfig"
       ];
   };
 

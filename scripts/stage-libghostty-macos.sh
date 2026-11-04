@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Stage wwn-ghostty#libghostty-macos into .nix-deps for tip link experiments.
-# Does NOT force-load into Wawona.app (Rust ghostty_surface_* ABI collision).
+# Stages archive for optional tip link (WAWONA_LINK_LIBGHOSTTY=1). Rust VT is
+# wwn_term_* only (Phase 5); Zig keeps ghostty_surface_*. Paint still GhosttyGpu.
 # Prove draw: nix build .#libghostty-macos-draw-proof (or path-override Ghostty).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

@@ -14,9 +14,7 @@ Metal. The grid there is software, presented with SpriteKit.
 **Today:** VT via `libghostty-vt` + interim `GhosttyGpu` atlas paint
 (default / `WAWONA_GHOSTTY_GPU=1`). `wwn-ghostty#libghostty-macos` builds a
 real ~26 MiB GhosttyLib archive; `#libghostty-macos-draw-proof` links and
-calls `ghostty_surface_draw`. Tip cannot dual-link that archive yet (Rust
-vs Zig `ghostty_surface_*` ABI). See `Ghostty/docs/METAL-SURFACE.md`. Do
-not claim tip Metal done while GhosttyGpu paints.
+calls `ghostty_surface_draw`. Phase 5: Rust VT is `wwn_term_*` only so tip can dual-link Zig `ghostty_surface_*`. Paint still GhosttyGpu until Metal host wires `nsview`. See `Ghostty/docs/METAL-SURFACE.md`. Do not claim tip Metal done while GhosttyGpu paints.
 
 libghostty is Ghostty. Copyright (c) 2024 Mitchell Hashimoto, Ghostty
 contributors. MIT. https://github.com/ghostty-org/ghostty

@@ -12,42 +12,42 @@ public typealias WWNTermReply = (Data) -> Void
 
 #if os(macOS)
 
-@_silgen_name("ghostty_surface_new")
-private func ghostty_surface_new(_ cols: UInt32, _ rows: UInt32) -> OpaquePointer?
-@_silgen_name("ghostty_surface_free")
-private func ghostty_surface_free(_ term: OpaquePointer?)
-@_silgen_name("ghostty_surface_resize")
-private func ghostty_surface_resize(_ term: OpaquePointer?, _ cols: UInt32, _ rows: UInt32)
-@_silgen_name("ghostty_surface_write")
-private func ghostty_surface_write(_ term: OpaquePointer?, _ bytes: UnsafePointer<UInt8>?, _ len: Int)
-@_silgen_name("ghostty_surface_viewport")
-private func ghostty_surface_viewport(
+@_silgen_name("wwn_term_new")
+private func wwn_term_new(_ cols: UInt32, _ rows: UInt32) -> OpaquePointer?
+@_silgen_name("wwn_term_free")
+private func wwn_term_free(_ term: OpaquePointer?)
+@_silgen_name("wwn_term_resize")
+private func wwn_term_resize(_ term: OpaquePointer?, _ cols: UInt32, _ rows: UInt32)
+@_silgen_name("wwn_term_feed")
+private func wwn_term_feed(_ term: OpaquePointer?, _ bytes: UnsafePointer<UInt8>?, _ len: Int)
+@_silgen_name("wwn_term_viewport")
+private func wwn_term_viewport(
     _ term: OpaquePointer?, _ origin: UInt32, _ out: UnsafeMutablePointer<WwnTermCell>?,
     _ cap: UInt32, _ cols: UnsafeMutablePointer<UInt32>?, _ rows: UnsafeMutablePointer<UInt32>?
 ) -> UInt32
-@_silgen_name("ghostty_surface_origin")
-private func ghostty_surface_origin(_ term: OpaquePointer?) -> UInt32
-@_silgen_name("ghostty_surface_title")
-private func ghostty_surface_title(
+@_silgen_name("wwn_term_origin")
+private func wwn_term_origin(_ term: OpaquePointer?) -> UInt32
+@_silgen_name("wwn_term_title")
+private func wwn_term_title(
     _ term: OpaquePointer?, _ out: UnsafeMutablePointer<UInt8>?, _ cap: UInt32
 ) -> UInt32
-@_silgen_name("ghostty_string_free")
-private func ghostty_string_free(_ ptr: UnsafeMutablePointer<CChar>?)
-@_silgen_name("ghostty_surface_encode_paste")
-private func ghostty_surface_encode_paste(
+@_silgen_name("wwn_term_string_free")
+private func wwn_term_string_free(_ ptr: UnsafeMutablePointer<CChar>?)
+@_silgen_name("wwn_term_encode_paste")
+private func wwn_term_encode_paste(
     _ term: OpaquePointer?, _ bytes: UnsafePointer<UInt8>?, _ len: Int
 ) -> UnsafeMutablePointer<CChar>?
-@_silgen_name("ghostty_surface_take_reply")
-private func ghostty_surface_take_reply(
+@_silgen_name("wwn_term_take_reply")
+private func wwn_term_take_reply(
     _ term: OpaquePointer?, _ buf: UnsafeMutablePointer<UInt8>?, _ cap: Int
 ) -> Int
-@_silgen_name("ghostty_surface_pointer")
-private func ghostty_surface_pointer(
+@_silgen_name("wwn_term_pointer")
+private func wwn_term_pointer(
     _ term: OpaquePointer?, _ button: UInt8, _ col: UInt32, _ row: UInt32,
     _ pressed: Int32, _ motion: Int32
 )
-@_silgen_name("ghostty_surface_set_cell_px")
-private func ghostty_surface_set_cell_px(_ term: OpaquePointer?, _ width: UInt32, _ height: UInt32)
+@_silgen_name("wwn_term_set_cell_px")
+private func wwn_term_set_cell_px(_ term: OpaquePointer?, _ width: UInt32, _ height: UInt32)
 @_silgen_name("wwn_term_image_count")
 private func wwn_term_image_count(_ term: OpaquePointer?) -> UInt32
 @_silgen_name("wwn_term_image_meta")
@@ -77,7 +77,7 @@ struct WwnTermImage {
 /// `GhosttyGpuView` (staged `.nix-deps/terminal`; `WAWONA_GHOSTTY_GPU=1`
 /// default). Do not grow the atlas.
 /// TODO(metal-surface): tip cannot dual-link Zig `libghostty-internal.a`
-/// yet (Rust vs Zig `ghostty_surface_*` ABI). Draw proof:
+/// yet (Zig Metal host unfinished). Rust VT is `wwn_term_*`. Draw proof:
 /// `nix build .#libghostty-macos-draw-proof`. See
 /// `Ghostty/docs/METAL-SURFACE.md`.
 @objc(WWNTermSurface)
@@ -107,7 +107,7 @@ public final class WWNTermSurface: NSView {
 
     public override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        term = ghostty_surface_new(cols, rows)
+        term = wwn_term_new(cols, rows)
         // Scrollback host factor is applied after the first layout once the
         // surface paints. Calling refresh in init raced a tip ABI mismatch
         // (SEGV in VtEngine.cols / snap at +0x790 on Start).
@@ -129,7 +129,7 @@ public final class WWNTermSurface: NSView {
 
     deinit {
         blinkTimer?.invalidate()
-        if let term { ghostty_surface_free(term) }
+        if let term { wwn_term_free(term) }
     }
 
     public override var acceptsFirstResponder: Bool { true }
@@ -154,7 +154,7 @@ public final class WWNTermSurface: NSView {
         guard let term, !bytes.isEmpty else { return }
         bytes.withUnsafeBytes { raw in
             guard let base = raw.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return }
-            ghostty_surface_write(term, base, bytes.count)
+            wwn_term_feed(term, base, bytes.count)
         }
         flushReply()
         redraw()
@@ -296,10 +296,10 @@ public final class WWNTermSurface: NSView {
         let data = Data(text.utf8)
         let wrapped = data.withUnsafeBytes { raw -> Data in
             guard let base = raw.baseAddress?.assumingMemoryBound(to: UInt8.self),
-                let ptr = ghostty_surface_encode_paste(term, base, data.count)
+                let ptr = wwn_term_encode_paste(term, base, data.count)
             else { return data }
             let text = String(cString: ptr)
-            ghostty_string_free(ptr)
+            wwn_term_string_free(ptr)
             return Data(text.utf8)
         }
         onReply?(wrapped)
@@ -331,14 +331,14 @@ public final class WWNTermSurface: NSView {
         let nextRows = UInt32(min(256, max(8, Int(bounds.height / cellH))))
         cellPxW = cellW
         cellPxH = cellH
-        ghostty_surface_set_cell_px(term, UInt32(max(1, cellW.rounded())), UInt32(max(1, cellH.rounded())))
+        wwn_term_set_cell_px(term, UInt32(max(1, cellW.rounded())), UInt32(max(1, cellH.rounded())))
         guard nextCols != cols || nextRows != rows else {
             redraw()
             return
         }
         cols = nextCols
         rows = nextRows
-        ghostty_surface_resize(term, cols, rows)
+        wwn_term_resize(term, cols, rows)
         onResize?(cols, rows)
         redraw()
     }
@@ -347,7 +347,7 @@ public final class WWNTermSurface: NSView {
         guard let term else { return }
         var buf = [UInt8](repeating: 0, count: 256)
         let n = buf.withUnsafeMutableBytes { raw in
-            ghostty_surface_title(term, raw.baseAddress?.assumingMemoryBound(to: UInt8.self), UInt32(raw.count))
+            wwn_term_title(term, raw.baseAddress?.assumingMemoryBound(to: UInt8.self), UInt32(raw.count))
         }
         guard n > 0, let title = String(bytes: buf.prefix(Int(n)), encoding: .utf8), !title.isEmpty else {
             return
@@ -359,7 +359,7 @@ public final class WWNTermSurface: NSView {
         guard let term else { return }
         var buf = [UInt8](repeating: 0, count: 256)
         let n = buf.withUnsafeMutableBytes { raw in
-            ghostty_surface_take_reply(term, raw.baseAddress?.assumingMemoryBound(to: UInt8.self), raw.count)
+            wwn_term_take_reply(term, raw.baseAddress?.assumingMemoryBound(to: UInt8.self), raw.count)
         }
         if n > 0 { onReply?(Data(buf.prefix(n))) }
     }
@@ -386,7 +386,7 @@ public final class WWNTermSurface: NSView {
         case 1: button = 2
         default: button = 0
         }
-        ghostty_surface_pointer(term, button, col, row, pressed ? 1 : 0, motion ? 1 : 0)
+        wwn_term_pointer(term, button, col, row, pressed ? 1 : 0, motion ? 1 : 0)
         flushReply()
     }
 
@@ -474,8 +474,8 @@ public final class WWNTermSurface: NSView {
         var outCols: UInt32 = 0
         var outRows: UInt32 = 0
         let n = grid.withUnsafeMutableBufferPointer { buf in
-            ghostty_surface_viewport(
-                term, ghostty_surface_origin(term), buf.baseAddress, UInt32(buf.count), &outCols, &outRows
+            wwn_term_viewport(
+                term, wwn_term_origin(term), buf.baseAddress, UInt32(buf.count), &outCols, &outRows
             )
         }
         if let cursorIdx = grid.prefix(Int(n)).firstIndex(where: { $0.attrs & 64 != 0 }) {

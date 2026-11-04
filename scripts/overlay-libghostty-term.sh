@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Hide stub ghostty_surface_* / wwn_term_* in libwawona.a and inject the
-# real Terminal crate (libghostty-vt) objects.
+# Hide stub / stale ghostty_surface_* and wwn_term_* in libwawona.a and inject
+# the real Terminal crate (libghostty-vt) objects. Product Rust ABI is
+# wwn_term_* only (Phase 5); stale ghostty_* names stay on the hide map.
 #
 # Fallback only. Prefer macOS/Linux `nix-ghostty-vt` in rust-backend-c2n so
 # engine.rs lands in libwawona.a. Forced via WAWONA_TERMINAL_OVERLAY=1 or when
@@ -84,7 +85,7 @@ done
 
 hid=0
 for o in *.o; do
-  # Homemade ghostty_* / wwn_term_* live in wawona (screen shim + uniffi_api).
+  # Homemade / stale term ABI lives in wawona (screen shim + uniffi_api).
   if "$LLVM_NM" --defined-only "$o" 2>/dev/null | grep -Eq ' T _(ghostty_|wwn_term_)'; then
     "$OBJCOPY" --redefine-syms="$map" "$o" "$o.re"
     mv "$o.re" "$o"
