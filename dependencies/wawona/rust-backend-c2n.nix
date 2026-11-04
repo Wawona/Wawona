@@ -624,10 +624,11 @@ let
       '';
     };
 
-    # nix 0.30.1: libc omits sockaddr_ctl (macos-only) and fork/exec* on
-    # watchOS/tvOS. Gate those APIs so waypipe's nix features still compile.
+    # nix 0.30.1: libc omits sockaddr_ctl / AF_SYS_CONTROL outside macOS, and
+    # fork/exec* on watchOS/tvOS. Apply on all Apple-mobile cross (iOS/iPadOS/
+    # tvOS/watchOS/visionOS) so tip xcodebuild backends compile.
     # 0.31.x may already cfg-gate some of these; only patch when anchors match.
-    nix = attrs: lib.optionalAttrs (isWatchOS || isTVOS) {
+    nix = attrs: lib.optionalAttrs isAppleCross {
       postPatch = (attrs.postPatch or "") + ''
         if [ -f src/sys/socket/addr.rs ] \
           && grep -q 'sockaddr_ctl' src/sys/socket/addr.rs 2>/dev/null \
