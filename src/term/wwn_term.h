@@ -58,6 +58,12 @@ uint32_t wwn_term_viewport(const wwn_term *term, uint32_t origin,
                            wwn_term_cell *out, uint32_t cap, uint32_t *cols,
                            uint32_t *rows);
 uint32_t wwn_term_origin(const wwn_term *term);
+void wwn_term_scroll_to(wwn_term *term, uint32_t origin);
+void wwn_term_scroll_delta(wwn_term *term, int32_t delta);
+void wwn_term_scroll_bottom(wwn_term *term);
+uint32_t wwn_term_scroll_total(const wwn_term *term);
+/* Ghostty active selection plain text, or empty. Hosts install selection. */
+uint32_t wwn_term_selection_text(const wwn_term *term, uint8_t *out, uint32_t cap);
 /* OSC 0 / OSC 2 title. Writes a NUL and returns the length without it. */
 uint32_t wwn_term_title(const wwn_term *term, uint8_t *out, uint32_t cap);
 

@@ -45,6 +45,8 @@ struct Inner {
     cols: u32,
     rows: u32,
     scroll_cap: usize,
+    scroll_origin: u32,
+    scroll_total: u32,
     cell_w: u32,
     cell_h: u32,
     title: String,
@@ -72,6 +74,8 @@ impl VtEngine {
                 cols,
                 rows,
                 scroll_cap: DEFAULT_SCROLLBACK,
+                scroll_origin: 0,
+                scroll_total: rows,
                 cell_w: 8,
                 cell_h: 16,
                 title: String::new(),
@@ -166,7 +170,24 @@ impl VtEngine {
             .unwrap_or(DEFAULT_SCROLLBACK)
     }
 
-    pub fn scroll_to_origin(&self, _origin: u32) {}
+    pub fn scroll_to_origin(&self, origin: u32) {
+        if let Ok(mut g) = self.inner.lock() {
+            g.scroll_origin = origin;
+        }
+    }
+
+    pub fn scroll_delta(&self, delta: i32) {
+        if let Ok(mut g) = self.inner.lock() {
+            let next = (g.scroll_origin as i64) + i64::from(delta);
+            g.scroll_origin = next.clamp(0, i64::from(u32::MAX)) as u32;
+        }
+    }
+
+    pub fn scroll_to_bottom(&self) {
+        if let Ok(mut g) = self.inner.lock() {
+            g.scroll_origin = g.scroll_total.saturating_sub(g.rows);
+        }
+    }
 
     pub fn pointer(&self, _button: u8, _col: u32, _row: u32, _pressed: bool, _motion: bool) {}
 
@@ -291,7 +312,22 @@ impl VtEngine {
     }
 
     pub fn origin(&self) -> u32 {
-        0
+        self.inner
+            .lock()
+            .map(|g| g.scroll_origin)
+            .unwrap_or(0)
+    }
+
+    pub fn scroll_total(&self) -> u32 {
+        self.inner
+            .lock()
+            .map(|g| g.scroll_total)
+            .unwrap_or(0)
+    }
+
+    /// Stub has no Ghostty selection. Always empty (do not invent text).
+    pub fn selection_text(&self) -> String {
+        String::new()
     }
 }
 

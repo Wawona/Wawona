@@ -120,6 +120,34 @@ impl TerminalSession {
         self.inner.set_cell_px(width, height);
     }
 
+    /// Absolute scrollback row (Ghostty scrollbar offset). 0 = top of history.
+    pub fn scroll_origin(&self) -> u32 {
+        self.inner.origin()
+    }
+
+    pub fn set_scroll_origin(&self, origin: u32) {
+        self.inner.scroll_to_origin(origin);
+    }
+
+    /// Relative scroll. Negative into history, positive toward bottom.
+    pub fn scroll_delta(&self, delta: i32) {
+        self.inner.scroll_delta(delta);
+    }
+
+    pub fn scroll_to_bottom(&self) {
+        self.inner.scroll_to_bottom();
+    }
+
+    pub fn scroll_total(&self) -> u32 {
+        self.inner.scroll_total()
+    }
+
+    /// Plain text of Ghostty's active selection, or empty if none.
+    /// Hosts install selection via Ghostty gestures; do not invent one here.
+    pub fn selection_text(&self) -> String {
+        self.inner.selection_text()
+    }
+
     pub fn images(&self) -> Vec<TerminalImage> {
         self.inner
             .placed_images()
