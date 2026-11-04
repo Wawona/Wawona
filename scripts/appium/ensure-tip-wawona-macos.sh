@@ -13,8 +13,9 @@
 #                             never Gate UI. Catalog may use when tip.bin exists.
 #   WAWONA_TIP_SKIP_LAUNCH=1  build/resolve only (no quit/relaunch)
 #   WAWONA_ALLOW_STALE_TEST_APP=1  lab escape (never for catalog)
-#   WAWONA_LINK_LIBGHOSTTY=1|0    tip Zig paint (default 1). 0 → GhosttyGpu.
-#                                 Stages libghostty-macos when archive missing.
+#   WAWONA_LINK_LIBGHOSTTY=1|0    optional Zig archive link (default 0).
+#                                 Product paint is TerminalMetalPresent.
+#                                 1 stages libghostty-macos when archive missing.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -107,48 +108,55 @@ if [[ "$need_build" -eq 1 ]]; then
     echo "FAIL: Wawona.xcodeproj missing; generate via nix/xcodegen first" >&2
     exit 2
   fi
-  # Tip dogfood default: Zig GhosttyLib paint (GhosttySurfaceHost). Stage
-  # archive when missing. Opt out: WAWONA_LINK_LIBGHOSTTY=0 → GhosttyGpu.
-  # Write SRCROOT/.build/wwn-libghostty-link.xcconfig BEFORE xcodebuild so
-  # wwn-version.xcconfig #include? sees OTHER_LDFLAGS (DERIVED_FILE_DIR is late).
+  # Tip dogfood: TerminalMetalPresent (product). Optional Zig archive only if
+  # WAWONA_LINK_LIBGHOSTTY=1. Write SRCROOT/.build/wwn-libghostty-link.xcconfig
+  # BEFORE xcodebuild so wwn-version.xcconfig #include? sees OTHER_LDFLAGS.
   mkdir -p "$ROOT/.build"
   _lg_build_xc="$ROOT/.build/wwn-libghostty-link.xcconfig"
   _lg_a="$ROOT/.nix-deps/libghostty-macos/lib/libghostty-internal.a"
   _lg_inc="$ROOT/.nix-deps/libghostty-macos/include"
-  # Default on for tip (unset → 1). Explicit 0 keeps GhosttyGpu.
-  export WAWONA_LINK_LIBGHOSTTY="${WAWONA_LINK_LIBGHOSTTY:-1}"
+  # Default off: Metal Present. Explicit 1 still force_loads Zig archive.
+  export WAWONA_LINK_LIBGHOSTTY="${WAWONA_LINK_LIBGHOSTTY:-0}"
   if [[ "${WAWONA_LINK_LIBGHOSTTY}" = "1" ]]; then
     if [[ ! -f "$_lg_a" ]]; then
-      echo "ensure-tip-wawona-macos: staging libghostty-macos for Zig paint" >&2
+      echo "ensure-tip-wawona-macos: staging libghostty-macos (WAWONA_LINK_LIBGHOSTTY=1)" >&2
       WAWONA_GHOSTTY_SRC="${WAWONA_GHOSTTY_SRC:-$ROOT/../Ghostty}" \
         "$ROOT/scripts/stage-libghostty-macos.sh" >&2
     fi
     if [[ -f "$_lg_a" ]]; then
       {
-        echo "// ensure-tip default: GhosttySurfaceHost Zig paint (WAWONA_LINK_LIBGHOSTTY=1)."
+        echo "// Optional Zig archive link (WAWONA_LINK_LIBGHOSTTY=1). Paint is Metal."
         echo "HEADER_SEARCH_PATHS = \$(inherited) ${_lg_inc} \$(DERIVED_FILE_DIR)"
         echo "OTHER_CFLAGS = \$(inherited) -I${_lg_inc} -I\$(DERIVED_FILE_DIR)"
         echo "OTHER_LDFLAGS = \$(inherited) -force_load ${_lg_a} -lc++ -lz -lbz2 -framework Metal -framework MetalKit -framework QuartzCore -framework CoreText -framework CoreGraphics -framework CoreVideo -framework CoreImage -framework IOKit -framework Security -framework UniformTypeIdentifiers -framework Carbon -framework GameController -framework IOSurface -framework SystemConfiguration -framework Network"
       } >"$_lg_build_xc"
-      echo "ensure-tip-wawona-macos: Zig GhosttyLib default-on; wrote $_lg_build_xc" >&2
+      echo "ensure-tip-wawona-macos: Zig archive link-on; wrote $_lg_build_xc" >&2
     else
       echo "// Zig GhosttyLib missing archive." >"$_lg_build_xc"
       echo "FAIL: WAWONA_LINK_LIBGHOSTTY=1 but $_lg_a missing" >&2
       exit 2
     fi
   else
-    echo "// Zig GhosttyLib tip link off (WAWONA_LINK_LIBGHOSTTY=0)." >"$_lg_build_xc"
-    echo "ensure-tip-wawona-macos: Zig paint opted out; GhosttyGpu fallback" >&2
+    echo "// Zig GhosttyLib tip link off (default). TerminalMetalPresent." >"$_lg_build_xc"
+    echo "ensure-tip-wawona-macos: TerminalMetalPresent tip (WAWONA_LINK_LIBGHOSTTY=0)" >&2
   fi
-  # Sync sibling Terminal apple/Terminal (GhosttySurfaceHost) into tip deps.
+  # Sync sibling Terminal apple/Terminal (Metal Present) into tip deps.
   if [[ -d "$ROOT/../Terminal/apple/Terminal" ]]; then
     mkdir -p "$ROOT/.nix-deps/terminal"
     rm -rf "$ROOT/.nix-deps/terminal/Terminal"
     cp -R "$ROOT/../Terminal/apple/Terminal" "$ROOT/.nix-deps/terminal/Terminal"
     chmod -R u+w "$ROOT/.nix-deps/terminal/Terminal"
   fi
+  # Always refresh xcodegen before tip xcodebuild (macOS dogfood contract).
+  if command -v nix >/dev/null 2>&1; then
+    echo "ensure-tip-wawona-macos: nix run .#xcodegen-macos" >&2
+    if ! nix run "$ROOT#xcodegen-macos" -- >&2; then
+      echo "FAIL: nix run .#xcodegen-macos" >&2
+      exit 2
+    fi
+  fi
   # Target OTHER_LDFLAGS overrides xcconfig includes for list merge in practice;
-  # pass force_load on the xcodebuild CLI when Zig paint is requested.
+  # pass force_load on the xcodebuild CLI when Zig archive link is requested.
   _xg_extra=()
   if [[ "${WAWONA_LINK_LIBGHOSTTY}" = "1" && -f "$_lg_a" ]]; then
     _xg_extra+=(
