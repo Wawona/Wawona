@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Stage wwn-ghostty#libghostty-macos into .nix-deps for tip link.
-# Opt-in tip: WAWONA_LINK_LIBGHOSTTY=1 → GhosttySurfaceHost paints via
-# ghostty_surface_draw. Rust VT stays wwn_term_*; Zig owns ghostty_surface_*.
-# Default tip (flag off): GhosttyGpu atlas fallback.
+# Tip dogfood (ensure-tip) defaults WAWONA_LINK_LIBGHOSTTY=1 and calls this
+# when the archive is missing. GhosttySurfaceHost paints via
+# ghostty_surface_draw; GhosttyGpu only if flag=0 or host.start fails.
+# Rust VT stays wwn_term_*; Zig owns ghostty_surface_*.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -27,5 +28,5 @@ SIZE=$(stat -f%z "$DEST/lib/libghostty-internal.a" 2>/dev/null || stat -c%s "$DE
 echo "staged $DEST/lib/libghostty-internal.a ($SIZE bytes)"
 nm -gU "$DEST/lib/libghostty-internal.a" 2>/dev/null | grep 'T _ghostty_surface_draw' | head -1 \
   || (grep -a -q 'ghostty_surface_draw' "$DEST/lib/libghostty-internal.a" && echo "ghostty_surface_draw present (archive)")
-echo "OK. Tip with WAWONA_LINK_LIBGHOSTTY=1 → GhosttySurfaceHost Zig paint."
+echo "OK. Tip dogfood defaults Zig GhosttySurfaceHost (opt out: WAWONA_LINK_LIBGHOSTTY=0)."
 echo "Draw proof: nix build .#libghostty-macos-draw-proof ${OVERRIDE[*]:-}"

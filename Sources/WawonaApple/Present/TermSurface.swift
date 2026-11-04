@@ -74,8 +74,8 @@ struct WwnTermImage {
 }
 
 /// AppKit host. Rust VT is `wwn_term_*`. Paint is `GhosttySurfaceHost`:
-/// Zig `ghostty_surface_draw` when tip links `libghostty-internal.a`
-/// (`WAWONA_LINK_LIBGHOSTTY=1`), else interim `GhosttyGpuView` atlas.
+/// tip prefers Zig `ghostty_surface_draw` when libghostty is linked;
+/// interim `GhosttyGpuView` atlas is fallback only.
 /// Do not grow the atlas. See `Ghostty/docs/METAL-SURFACE.md`.
 @objc(WWNTermSurface)
 public final class WWNTermSurface: NSView {

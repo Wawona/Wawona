@@ -12,11 +12,14 @@ libghostty to Rust while those triples can emit objects. watchOS has no
 Metal. The grid there is software, presented with SpriteKit.
 
 **Today:** VT via `libghostty-vt` (`wwn_term_*`). Paint is
-`GhosttySurfaceHost`: Zig `ghostty_surface_draw` when tip sets
-`WAWONA_LINK_LIBGHOSTTY=1` (stage `scripts/stage-libghostty-macos.sh`); else
-interim `GhosttyGpu` atlas. `#libghostty-macos-draw-proof` stays the Nix
-link proof. Gap: Zig paint owns its own shell PTY, not Machines feed bytes.
-GhosttyGpu not retired as default. See `Ghostty/docs/METAL-SURFACE.md`.
+`GhosttySurfaceHost`: tip dogfood defaults Zig `ghostty_surface_draw`
+(`ensure-tip` sets `WAWONA_LINK_LIBGHOSTTY=1`, stages
+`scripts/stage-libghostty-macos.sh` when missing). Prebuild also auto-links
+when `.nix-deps/libghostty-macos` is already staged. `GhosttyGpu` atlas is
+fallback only (`WAWONA_LINK_LIBGHOSTTY=0` or `host.start` fail).
+`#libghostty-macos-draw-proof` stays the Nix link proof. Gap: Zig paint owns
+its own shell PTY, not Machines feed bytes. Product nix package still does
+not force Zig by default (tip path first). See `Ghostty/docs/METAL-SURFACE.md`.
 
 libghostty is Ghostty. Copyright (c) 2024 Mitchell Hashimoto, Ghostty
 contributors. MIT. https://github.com/ghostty-org/ghostty

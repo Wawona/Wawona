@@ -129,7 +129,7 @@
     terminal.url = "github:Wawona/Terminal/development";
     terminal.flake = false;
     # L3′ Zig libghostty (VT re-export + Darwin GhosttyLib + draw-proof).
-    # Tip Zig paint: WAWONA_LINK_LIBGHOSTTY=1. Else GhosttyGpu. Cited: docs/ghostty-host.md.
+    # Tip Zig paint: ensure-tip defaults WAWONA_LINK_LIBGHOSTTY=1. GhosttyGpu fallback. Cited: docs/ghostty-host.md.
     wwn-ghostty.url = "github:Wawona/Ghostty/development";
     # Upstream Ghostty VT (Zig). Pin matches Terminal/libghostty-rs GHOSTTY_COMMIT.
     # Used by `nix run .#terminal` pkg-config path until wwn-ghostty owns Metal.
@@ -966,7 +966,7 @@
       packages =
         commonPackages
         # Zig GhosttyLib (Metal). Re-export from wwn-ghostty on Darwin. Tip paint
-        # via GhosttySurfaceHost when WAWONA_LINK_LIBGHOSTTY=1; else GhosttyGpu.
+        # via GhosttySurfaceHost (ensure-tip default-on); GhosttyGpu fallback.
         # See Ghostty/docs/METAL-SURFACE.md.
         // (pkgs.lib.optionalAttrs (
           pkgs.stdenv.hostPlatform.isDarwin
