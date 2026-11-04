@@ -49,6 +49,10 @@ struct WWNMachinesGridViewModern: View {
 
   @ObservedObject private var model = WWNMachinesViewModel.shared
   @ObservedObject private var tagStore = WWNMachineTagStore.shared
+  #if os(macOS)
+  /// Strip searchable / Machines toolbar while Global Settings owns NSToolbar.
+  @ObservedObject private var mainRouter = WWNMainWindowRouter.shared
+  #endif
   @State private var editorDestination: MachineEditorDestination?
   @State private var searchQuery = ""
   #if os(iOS) || os(visionOS)
@@ -62,6 +66,9 @@ struct WWNMachinesGridViewModern: View {
   @State private var showTagEditor = false
   #if os(tvOS)
   @FocusState private var focusedMachineId: String?
+  /// Keep `.searchable` collapsed until the Search toolbar item opens it.
+  /// Auto-presented search stole focus and hid Sort / Settings on launch.
+  @State private var isSearchPresented = false
   #endif
 
   var body: some View {
@@ -106,96 +113,99 @@ struct WWNMachinesGridViewModern: View {
   }
 
   #if os(tvOS)
-  /// 10-foot Machines UI: card focusables + NavigationStack (no FAB / split / sheets).
+  /// 10-foot Machines detail. Parent `WawonaMainWindowView` owns the fixed
+  /// sidebar + `NavigationStack`. Toolbar hosts Search / Sort / Settings.
   private var tvosRoot: some View {
-    NavigationStack {
-      ScrollView {
-        VStack(alignment: .leading, spacing: 28) {
-          if visibleProfiles.isEmpty {
-            ContentUnavailableView(
-              "No Machines",
-              systemImage: "tv",
-              description: Text("Add a Local or Remote machine profile, then Start it with the Siri Remote.")
-            )
-            .frame(maxWidth: .infinity, minHeight: 420)
-          } else {
-            LazyVStack(spacing: 22) {
-              ForEach(visibleProfiles, id: \.machineId) { profile in
-                let machineStatus = model.status(for: profile.machineId)
-                let running = machineStatus == .connected || machineStatus == .connecting
-                NavigationLink {
-                  WWNMachineTVDetailView(
-                    profile: profile,
-                    status: machineStatus,
-                    typeLabel: model.machineTypeLabel(for: profile),
-                    scopeLabel: model.machineScopeLabel(for: profile),
-                    subtitle: model.machineSubtitle(for: profile),
-                    summary: model.machineConfigurationSummary(for: profile),
-                    launchSupported: model.launchSupported(for: profile),
-                    isActive: profile.machineId == model.activeMachineId,
-                    isRunning: running,
-                    onEdit: { editorDestination = .edit(profile) },
-                    onDelete: { model.delete(profile) },
-                    onConnect: {
-                      model.connect(profile) {
-                        onConnect?()
-                      }
-                    },
-                    onStop: { model.disconnect(profile) },
-                    onFocus: { model.focusRunningMachine(profile) }
-                  )
-                } label: {
-                  WWNMachineTVRow(
-                    profile: profile,
-                    status: machineStatus,
-                    typeLabel: model.machineTypeLabel(for: profile),
-                    scopeLabel: model.machineScopeLabel(for: profile),
-                    subtitle: model.machineSubtitle(for: profile),
-                    isActive: profile.machineId == model.activeMachineId,
-                    isRunning: running
-                  )
-                  .frame(maxWidth: .infinity, alignment: .leading)
-                  .padding(28)
-                }
-                .buttonStyle(.card)
-                .focused($focusedMachineId, equals: profile.machineId)
+    ScrollView {
+      VStack(alignment: .leading, spacing: 28) {
+        if visibleProfiles.isEmpty {
+          ContentUnavailableView(
+            "No Machines",
+            systemImage: "tv",
+            description: Text("Add a Local or Remote machine profile, then Start it with the Siri Remote.")
+          )
+          .frame(maxWidth: .infinity, minHeight: 420)
+        } else {
+          LazyVStack(spacing: 22) {
+            ForEach(visibleProfiles, id: \.machineId) { profile in
+              let machineStatus = model.status(for: profile.machineId)
+              let running = machineStatus == .connected || machineStatus == .connecting
+              NavigationLink {
+                WWNMachineTVDetailView(
+                  profile: profile,
+                  status: machineStatus,
+                  typeLabel: model.machineTypeLabel(for: profile),
+                  scopeLabel: model.machineScopeLabel(for: profile),
+                  subtitle: model.machineSubtitle(for: profile),
+                  summary: model.machineConfigurationSummary(for: profile),
+                  launchSupported: model.launchSupported(for: profile),
+                  isActive: profile.machineId == model.activeMachineId,
+                  isRunning: running,
+                  onEdit: { editorDestination = .edit(profile) },
+                  onDelete: { model.delete(profile) },
+                  onConnect: {
+                    model.connect(profile) {
+                      onConnect?()
+                    }
+                  },
+                  onStop: { model.disconnect(profile) },
+                  onFocus: { model.focusRunningMachine(profile) }
+                )
+              } label: {
+                WWNMachineTVRow(
+                  profile: profile,
+                  status: machineStatus,
+                  typeLabel: model.machineTypeLabel(for: profile),
+                  scopeLabel: model.machineScopeLabel(for: profile),
+                  subtitle: model.machineSubtitle(for: profile),
+                  isActive: profile.machineId == model.activeMachineId,
+                  isRunning: running
+                )
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(28)
               }
+              .buttonStyle(.card)
+              .focused($focusedMachineId, equals: profile.machineId)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
           }
-
-          Text("\(model.profiles.count) profiles · \(model.connectedCount) connected · \(model.launchableCount) ready")
-            .font(.title3)
-            .foregroundStyle(.secondary)
-
-          HStack(spacing: 24) {
-            Button {
-              editorDestination = .add
-            } label: {
-              Label("Add Machine", systemImage: "plus")
-                .font(.title3.weight(.semibold))
-                .frame(minWidth: 260, minHeight: 52)
-            }
-            .buttonStyle(.borderedProminent)
-            .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
-          }
+          .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(48)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-      }
-      .frame(maxWidth: .infinity, maxHeight: .infinity)
-      .navigationTitle("Machines")
-      .onAppear {
-        if focusedMachineId == nil {
-          focusedMachineId = visibleProfiles.first?.machineId
+
+        Text("\(model.profiles.count) profiles · \(model.connectedCount) connected · \(model.launchableCount) ready")
+          .font(.title3)
+          .foregroundStyle(.secondary)
+
+        Button {
+          editorDestination = .add
+        } label: {
+          Label("Add Machine", systemImage: "plus")
+            .font(.title3.weight(.semibold))
+            .frame(minWidth: 260, minHeight: 52)
         }
+        .buttonStyle(.borderedProminent)
+        .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
       }
-      .fullScreenCover(item: $editorDestination) { destination in
-        machineEditor(for: destination)
-          .presentationBackground(Color(white: 0.07))
-      }
+      .padding(48)
+      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .backport.navigationTitle(detailNavigationTitle)
+    .modifier(WWNTvosMachinesSearchable(
+      text: $searchQuery,
+      isPresented: $isSearchPresented
+    ))
+    .toolbar {
+      detailToolbarContent
+    }
+    .onAppear {
+      if focusedMachineId == nil {
+        focusedMachineId = visibleProfiles.first?.machineId
+      }
+    }
+    .fullScreenCover(item: $editorDestination) { destination in
+      machineEditor(for: destination)
+        .presentationBackground(Color(white: 0.07))
+    }
     .preferredColorScheme(.dark)
   }
   #endif
@@ -203,25 +213,37 @@ struct WWNMachinesGridViewModern: View {
   #if os(macOS)
   /// Detail pane only. Nested `NavigationStack` + custom toolbar material
   /// broke the unified titlebar vs Settings sections in the split.
+  ///
+  /// When Global Settings owns the window toolbar, strip searchable + Machines
+  /// items. Sharing an NSToolbar with Settings Done / Env Vars Add SIGTRAPs.
+  @ViewBuilder
   private var macRoot: some View {
-    detailPane
-      .navigationTitle(detailNavigationTitle)
-      .toolbarTitleDisplayMode(.inline)
-      .searchable(text: $searchQuery, placement: .toolbar, prompt: "Search machines")
-      .toolbar {
-        detailToolbarContent
+    Group {
+      if mainRouter.settingsOwnsWindowToolbar {
+        detailPane
+          .navigationTitle(detailNavigationTitle)
+          .toolbarTitleDisplayMode(.inline)
+      } else {
+        detailPane
+          .navigationTitle(detailNavigationTitle)
+          .toolbarTitleDisplayMode(.inline)
+          .searchable(text: $searchQuery, placement: .toolbar, prompt: "Search machines")
+          .toolbar {
+            detailToolbarContent
+          }
       }
-      .alert(
-        "Could not start machine",
-        isPresented: Binding(
-          get: { model.connectionError != nil },
-          set: { if !$0 { model.connectionError = nil } }
-        )
-      ) {
-        Button("OK", role: .cancel) { model.connectionError = nil }
-      } message: {
-        Text(model.connectionError ?? "")
-      }
+    }
+    .alert(
+      "Could not start machine",
+      isPresented: Binding(
+        get: { model.connectionError != nil },
+        set: { if !$0 { model.connectionError = nil } }
+      )
+    ) {
+      Button("OK", role: .cancel) { model.connectionError = nil }
+    } message: {
+      Text(model.connectionError ?? "")
+    }
   }
   #else
   private var macRoot: some View {
@@ -528,6 +550,13 @@ struct WWNMachinesGridViewModern: View {
       .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
     }
     ToolbarItemGroup(placement: .automatic) {
+      Button {
+        WWNMainWindowRouter.shared.showTabOverview()
+      } label: {
+        Label("Tab Overview", systemImage: "square.on.square")
+      }
+      .help("Show Tab Overview")
+      .accessibility(identifier: "wwn.tabOverview.toolbar")
       sortMenu
       Button {
         WWNMainWindowRouter.shared.showSettings()
@@ -537,8 +566,22 @@ struct WWNMachinesGridViewModern: View {
       .wwnA11y(WWNA11y.machinesSettings, label: "Settings")
     }
     #elseif os(tvOS)
-    ToolbarItem(placement: .automatic) {
-      EmptyView()
+    // 10-foot chrome: icon-only Search + Sort + Settings (labels truncate in
+    // tvOS toolbar pills). Sidebar Tags filter machines.
+    ToolbarItemGroup(placement: .primaryAction) {
+      Button {
+        isSearchPresented = true
+      } label: {
+        Image(systemName: "magnifyingglass")
+      }
+      .accessibility(label: Text("Search machines"))
+      sortMenu
+      Button {
+        WWNMainWindowRouter.shared.showSettings()
+      } label: {
+        Image(systemName: "gearshape")
+      }
+      .wwnA11y(WWNA11y.machinesSettings, label: "Settings")
     }
     #else
     // Exactly one Add Machine control per host:
@@ -557,6 +600,15 @@ struct WWNMachinesGridViewModern: View {
       iosAddMachineToolbarButton
     }
     #endif
+    ToolbarItem(placement: .topBarTrailing) {
+      Button {
+        WWNMainWindowRouter.shared.showTabOverview()
+      } label: {
+        Label("Tab Overview", systemImage: "square.on.square")
+      }
+      .backport.glassToolbarButton()
+      .accessibility(identifier: "wwn.tabOverview.toolbar")
+    }
     ToolbarItem(placement: .topBarTrailing) {
       sortMenu
         .backport.glassToolbarButton()
@@ -577,7 +629,7 @@ struct WWNMachinesGridViewModern: View {
 
   /// Finder-style sort control: grid + chevron toolbar button; picking a
   /// criterion switches to it, picking the active one flips the direction.
-  #if !os(tvOS)
+  /// tvOS uses the same Menu (focusable on the Siri Remote).
   @ViewBuilder
   private var sortMenu: some View {
     Menu {
@@ -612,11 +664,12 @@ struct WWNMachinesGridViewModern: View {
     } label: {
       Image(systemName: "line.3.horizontal.decrease")
     }
+    #if !os(tvOS)
     .menuIndicator(.hidden)
     .help("Sort: pinned machines stay on top")
+    #endif
     .wwnA11y(WWNA11y.machinesSort, label: "Sort")
   }
-  #endif
 
   // MARK: - Detail
 
@@ -1079,6 +1132,44 @@ struct WWNMachinesGridViewModern: View {
 
 }
 
+#if os(tvOS)
+/// tvOS has no `searchable(isPresented:)`. Toolbar Search toggles this field
+/// so launch focus stays on machine cards (not a full-screen keyboard).
+private struct WWNTvosMachinesSearchable: ViewModifier {
+  @Binding var text: String
+  @Binding var isPresented: Bool
+
+  func body(content: Content) -> some View {
+    VStack(spacing: 16) {
+      if isPresented {
+        HStack(spacing: 24) {
+          TextField("Search machines", text: $text)
+            .textFieldStyle(.plain)
+            .frame(maxWidth: 640)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+            .background(Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+            .accessibility(identifier: "wwn.machines.search")
+          Button("Done") {
+            isPresented = false
+          }
+          .buttonStyle(.bordered)
+          if !text.isEmpty {
+            Button("Clear") {
+              text = ""
+            }
+            .buttonStyle(.bordered)
+          }
+        }
+        .padding(.horizontal, 48)
+        .padding(.top, 24)
+      }
+      content
+    }
+  }
+}
+#endif
+
 #if os(iOS) || os(visionOS)
 /// iPhone: system `.searchable` owned by the split-detail navigation item.
 /// Keep dismissing via `WWNHostKeyboard` when the split column changes.
@@ -1340,6 +1431,8 @@ struct WWNMachineTVDetailView: View {
           title: "Stop",
           systemImage: "stop.fill",
           role: .destructive,
+          prominent: true,
+          tint: .red,
           accessibilityID: WWNA11y.machinesStop,
           accessibilityLabel: "Stop Session",
           action: onStop
@@ -1516,10 +1609,31 @@ private struct WWNMachineKeyboardInputGate: NSViewRepresentable {
          keyWindow.isKind(of: wwnWindowClass) {
         return false
       }
+      // Wawona Terminal hosts keys on WWNTermSurface inside a plain NSWindow.
+      // Swallowing printable keys here left the VT with a dead keyboard.
+      if isTerminalKeySurfaceFocused() {
+        return false
+      }
       let blockedModifiers = event.modifierFlags.intersection([.command, .control, .option, .function])
       guard blockedModifiers.isEmpty else { return false }
       guard !isTextInputFocused() else { return false }
       return isTypingKey(event)
+    }
+
+    private static func isTerminalKeySurfaceFocused() -> Bool {
+      guard let window = NSApp.keyWindow,
+            let surfaceClass = NSClassFromString("WWNTermSurface") else { return false }
+      if let content = window.contentView, content.isKind(of: surfaceClass) {
+        return true
+      }
+      if let responder = window.firstResponder as? NSView {
+        var view: NSView? = responder
+        while let current = view {
+          if current.isKind(of: surfaceClass) { return true }
+          view = current.superview
+        }
+      }
+      return false
     }
 
     private static func isTextInputFocused() -> Bool {

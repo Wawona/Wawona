@@ -787,7 +787,22 @@ struct WawonaMainWindowView: View {
 
     @ViewBuilder
     private var splitView: some View {
-        if #available(iOS 16.0, tvOS 16.0, macOS 13.0, *) {
+        #if os(tvOS)
+        // tvOS NavigationSplitView collapses the Machines column to zero width
+        // and drops detail toolbars. Fixed HStack + NavigationStack keeps
+        // sidebar / Tags / Search / Sort / Settings reachable on the Siri Remote.
+        HStack(spacing: 0) {
+            sidebar
+                .frame(width: 360)
+                .frame(maxHeight: .infinity)
+            NavigationStack {
+                detail
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .preferredColorScheme(.dark)
+        #elseif os(iOS) || os(macOS) || os(visionOS)
+        if #available(iOS 16.0, macOS 13.0, *) {
             NavigationSplitView(columnVisibility: Binding(
                 get: { showSidebar ? .all : .detailOnly },
                 set: { showSidebar = $0 != .detailOnly }
@@ -821,6 +836,7 @@ struct WawonaMainWindowView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+        #endif
     }
 
     // MARK: - Sidebar
@@ -852,7 +868,6 @@ struct WawonaMainWindowView: View {
                 )
             }
 
-            #if !os(tvOS)
             if !tagStore.tags.isEmpty {
                 Section(header: Text("Tags")) {
                     ForEach(tagStore.tags) { tag in
@@ -861,6 +876,7 @@ struct WawonaMainWindowView: View {
                             title: tag.name,
                             tagColorHex: tag.colorHex
                         )
+                        #if !os(tvOS)
                         .contextMenu {
                             WawonaButton {
                                 tagEditorTag = tag
@@ -874,10 +890,10 @@ struct WawonaMainWindowView: View {
                                 WawonaLabel("Delete Tag", systemImage: "trash")
                             }
                         }
+                        #endif
                     }
                 }
             }
-            #endif
         }
         #if os(tvOS)
         .listStyle(.plain)
@@ -919,11 +935,19 @@ struct WawonaMainWindowView: View {
     @ViewBuilder
     private var nTabsSidebarSection: some View {
         if nestedTabs.nestedCount > 0 {
+            #if os(tvOS)
+            // DisclosureGroup is unavailable on tvOS.
+            Section(header: Text(nestedTabs.tabsSectionTitle)) {
+                ForEach(nestedTabs.nestedTabs) { tab in
+                    nestedTabSidebarRow(tab)
+                }
+            }
+            #else
             let binding = Binding(
                 get: { nestedTabs.tabsSectionExpanded },
                 set: { nestedTabs.tabsSectionExpanded = $0 }
             )
-            if #available(iOS 14.0, macOS 11.0, tvOS 14.0, visionOS 1.0, *) {
+            if #available(iOS 14.0, macOS 11.0, visionOS 1.0, *) {
                 DisclosureGroup(isExpanded: binding) {
                     ForEach(nestedTabs.nestedTabs) { tab in
                         nestedTabSidebarRow(tab)
@@ -952,6 +976,7 @@ struct WawonaMainWindowView: View {
                     }
                 }
             }
+            #endif
         }
     }
 
@@ -1057,10 +1082,9 @@ struct WawonaMainWindowView: View {
     /// The split is always regular-width on iOS, so this highlights the row
     /// and swaps the detail column. It does not push a stack page.
     ///
-    /// macOS: prefer a plain `Button` that writes `listSelection`. A bare
-    /// `NavigationLink(value:)` inside `NavigationSplitView` without a matching
-    /// `.navigationDestination` often fails to update selection, so Tab Overview
-    /// / Machines taps look dead.
+    /// macOS / tvOS: plain `Button` that writes `listSelection`. tvOS uses a
+    /// fixed HStack sidebar (not NavigationSplitView), so NavigationLink would
+    /// not swap the detail column. macOS bare NavigationLink often looks dead.
     private func sidebarRow(
         destination: WWNMainDestination,
         title: String,
@@ -1070,7 +1094,7 @@ struct WawonaMainWindowView: View {
         accessibilityID: String? = nil
     ) -> some View {
         Group {
-            #if os(macOS)
+            #if os(macOS) || os(tvOS)
             Button {
                 listSelection = destination
             } label: {
@@ -1083,7 +1107,7 @@ struct WawonaMainWindowView: View {
             }
             .buttonStyle(.plain)
             #else
-            if #available(iOS 16.0, tvOS 16.0, *) {
+            if #available(iOS 16.0, *) {
                 NavigationLink(value: destination) {
                     sidebarRowLabel(
                         title: title,
@@ -1228,7 +1252,10 @@ struct WawonaMainWindowView: View {
                 #if os(macOS)
                 Color(nsColor: .windowBackgroundColor)
                     .ignoresSafeArea()
-                #elseif os(iOS) || os(visionOS) || os(tvOS)
+                #elseif os(tvOS)
+                Color.black
+                    .edgesIgnoringSafeArea(.all)
+                #elseif os(iOS) || os(visionOS)
                 Color(UIColor.systemBackground)
                     .edgesIgnoringSafeArea(.all)
                 #endif
