@@ -282,6 +282,9 @@ final class WWNIosGuestConsole: ObservableObject {
     session.onPictures = { [weak self] data in
       self?.termModel.applyPictures(data)
     }
+    session.onCells = { [weak self] cells, cols, rows in
+      self?.termModel.applyCells(cells, cols: Int(cols), rows: Int(rows))
+    }
     session.onFailure = { [weak self] message in
       self?.statusMessage = message
       self?.appendLog(message + "\n")
@@ -304,6 +307,9 @@ final class WWNIosGuestConsole: ObservableObject {
     }
     session.onPictures = { [weak self] data in
       self?.termModel.applyPictures(data)
+    }
+    session.onCells = { [weak self] cells, cols, rows in
+      self?.termModel.applyCells(cells, cols: Int(cols), rows: Int(rows))
     }
     logTerm = session
     session.start(cols: 80, rows: 28)

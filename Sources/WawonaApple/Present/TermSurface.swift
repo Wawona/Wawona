@@ -73,9 +73,8 @@ struct WwnTermImage {
     var rgbaLen: UInt32 = 0
 }
 
-/// AppKit host. Rust VT is `wwn_term_*`. Paint is `GhosttySurfaceHost`:
-/// tip prefers Zig `ghostty_surface_draw` when libghostty is linked;
-/// interim `GhosttyGpuView` atlas is fallback only.
+/// AppKit host. Rust VT is `wwn_term_*`. Paint is `GhosttySurfaceHost` →
+/// product `TerminalMetalPresent` (Metal atlas). Zig surface path retired.
 /// Do not grow the atlas. See `Ghostty/docs/METAL-SURFACE.md`.
 @objc(WWNTermSurface)
 public final class WWNTermSurface: NSView {

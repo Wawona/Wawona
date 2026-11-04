@@ -15,7 +15,11 @@ Shell backend is separate (`wawona-terminal-shell-backend`).
 |------|------|
 | `Wawona/Terminal` | Product: VT, encode, selection, frame, tabs, UniFFI |
 | `Terminal/apple/Terminal` | SwiftUI / AppKit / UIKit paint + input |
-| `GhosttyGpuView` / `GhosttySurfaceHost` | Interim retire targets. Do not grow |
+| `TerminalMetalPresent` | Product Apple Metal Present (atlas). macOS + iOS family |
+| `TerminalMetalHostView` | UIKit SwiftUI host (touch → VT pointer) |
+| `GhosttySurfaceHost` | macOS Start/Focus wrapper → `TerminalMetalPresent` |
+| `GhosttyGpuView` | Typealias to `TerminalMetalPresent`. Do not grow |
+| Watch `WatchTerminalSpritePresent` | SpriteKit present (no Metal) |
 | `ToolbarKeys` | Soft keys where supported |
 | Rootshell `vendor/rootshell` | UX reference only. Not a product dep |
 
@@ -40,9 +44,10 @@ WAWONA_TEST_REBUILD=1 eval "$(scripts/appium/ensure-tip-wawona-macos.sh)"
 ## Do not
 
 - GhosttyKit XCFramework in store IPA.
-- Grow TermGpu / GhosttyGpu atlas.
+- Grow a second Metal atlas beside `TerminalMetalPresent`.
 - Second homemade VT.
-- New Zig `ghostty_surface_*` product work (`Wawona/Ghostty` archived).
+- New Zig `ghostty_surface_*` product paint (`Wawona/Ghostty` archived).
+- Prefer span/`UITextView` Present when viewport cells exist (Metal primary).
 
 ## Rules
 

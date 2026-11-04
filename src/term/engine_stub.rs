@@ -9,6 +9,24 @@ const DEFAULT_SCROLLBACK: usize = 10_000;
 const FG: u32 = 0x00E8E8E8;
 const BG: u32 = 0x00000000;
 
+/// Selection gesture mode (matches real `engine::SelectMode`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SelectMode {
+    Cell = 0,
+    Word = 1,
+    Row = 2,
+}
+
+impl SelectMode {
+    pub fn from_u32(v: u32) -> Self {
+        match v {
+            1 => Self::Word,
+            2 => Self::Row,
+            _ => Self::Cell,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct StyledSpan {
     pub text: String,
@@ -189,6 +207,21 @@ impl VtEngine {
     }
 
     pub fn pointer(&self, _button: u8, _col: u32, _row: u32, _pressed: bool, _motion: bool) {}
+
+    /// Soft-key / host keypath. Stub feeds printable UTF-8 into the line buffer.
+    pub fn key(&self, _keycode: u32, _mods: u32, _action: u32, text: &[u8]) {
+        if !text.is_empty() {
+            self.feed(text);
+        }
+    }
+
+    pub fn select_begin(&self, _col: u32, _row: u32, _mode: SelectMode) {}
+
+    pub fn select_extend(&self, _col: u32, _row: u32) {}
+
+    pub fn select_clear(&self) {}
+
+    pub fn select_all(&self) {}
 
     pub fn take_reply(&self) -> Vec<u8> {
         self.inner

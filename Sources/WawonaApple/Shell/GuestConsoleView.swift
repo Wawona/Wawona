@@ -64,6 +64,19 @@ enum IosShellABI {
     @_silgen_name("wwn_term_images_json")
     static func termImagesJson(_ term: OpaquePointer?) -> UnsafeMutablePointer<CChar>?
 
+    @_silgen_name("wwn_term_viewport")
+    static func termViewport(
+        _ term: OpaquePointer?,
+        _ origin: UInt32,
+        _ out: UnsafeMutablePointer<WwnTermCell>?,
+        _ cap: UInt32,
+        _ cols: UnsafeMutablePointer<UInt32>?,
+        _ rows: UnsafeMutablePointer<UInt32>?
+    ) -> UInt32
+
+    @_silgen_name("wwn_term_origin")
+    static func termOrigin(_ term: OpaquePointer?) -> UInt32
+
     @_silgen_name("wwn_term_set_cell_px")
     static func termSetCellPx(_ term: OpaquePointer?, _ width: UInt32, _ height: UInt32)
 
@@ -106,6 +119,8 @@ final class IosShellSession {
 
     var onScreen: ((String) -> Void)?
     var onPictures: ((String) -> Void)?
+    /// Viewport cells for Metal Present (`TerminalMetalPresent`).
+    var onCells: (([WwnTermCell], UInt32, UInt32) -> Void)?
     var onFailure: ((String) -> Void)?
 
     func start(cols: UInt32 = 80, rows: UInt32 = 24) {
@@ -307,7 +322,7 @@ final class IosShellSession {
     }
 
     private func exportScreen() {
-        publishTerm(term, onScreen: onScreen, onPictures: onPictures)
+        publishTerm(term, onScreen: onScreen, onPictures: onPictures, onCells: onCells)
     }
 
     deinit { stop() }
@@ -321,6 +336,7 @@ final class IosLogTermSession {
 
     var onScreen: ((String) -> Void)?
     var onPictures: ((String) -> Void)?
+    var onCells: (([WwnTermCell], UInt32, UInt32) -> Void)?
 
     func start(cols: UInt32 = 80, rows: UInt32 = 28) {
         stop()
@@ -372,7 +388,7 @@ final class IosLogTermSession {
     }
 
     private func exportScreen() {
-        publishTerm(term, onScreen: onScreen, onPictures: onPictures)
+        publishTerm(term, onScreen: onScreen, onPictures: onPictures, onCells: onCells)
     }
 
     deinit { stop() }
@@ -381,15 +397,39 @@ final class IosLogTermSession {
 private func publishTerm(
     _ term: OpaquePointer?,
     onScreen: ((String) -> Void)?,
-    onPictures: ((String) -> Void)?
+    onPictures: ((String) -> Void)?,
+    onCells: (([WwnTermCell], UInt32, UInt32) -> Void)?
 ) {
     guard let term else { return }
     let lines = takeTermString(IosShellABI.termLinesJson(term))
     let pictures = takeTermString(IosShellABI.termImagesJson(term))
+    let cellsPayload = dumpViewport(term)
     DispatchQueue.main.async {
         onScreen?(lines)
         onPictures?(pictures)
+        if let cellsPayload {
+            onCells?(cellsPayload.0, cellsPayload.1, cellsPayload.2)
+        }
     }
+}
+
+private func dumpViewport(_ term: OpaquePointer) -> ([WwnTermCell], UInt32, UInt32)? {
+    let origin = IosShellABI.termOrigin(term)
+    let cap: UInt32 = 512 * 256
+    var storage = [WwnTermCell](
+        repeating: WwnTermCell(cp: 32, fg: 0xE8E8E8, bg: 0, attrs: 0),
+        count: Int(cap)
+    )
+    var outCols: UInt32 = 0
+    var outRows: UInt32 = 0
+    let n = storage.withUnsafeMutableBufferPointer { buf -> UInt32 in
+        IosShellABI.termViewport(
+            term, origin, buf.baseAddress, cap, &outCols, &outRows
+        )
+    }
+    let count = Int(n)
+    guard count > 0, outCols > 0, outRows > 0 else { return nil }
+    return (Array(storage.prefix(count)), outCols, outRows)
 }
 
 private func takeTermString(_ ptr: UnsafeMutablePointer<CChar>?) -> String {
