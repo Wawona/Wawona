@@ -1,31 +1,17 @@
 //! UniFFI host API for Wawona Terminal.
 //!
 //! Same records as the Terminal crate (`TerminalSession`, `TerminalLine`,
-//! `TerminalSpan`). SwiftUI, Compose, and GTK draw those records. The VT
-//! screen stays in `screen.rs`.
+//! `TerminalSpan`). SwiftUI, Compose, and GTK draw those records. VT is
+//! [`super::engine::VtEngine`] (libghostty-vt or mobile stub).
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
-use super::screen::{recommended_scroll_cap, StyledLine, Term};
+use super::engine::{recommended_scroll_cap, StyledLine, VtEngine};
 
-// The flake-pinned Terminal source has the Rust method but not this C export.
-// Apple host UI calls it during terminal startup. Newer Terminal revisions
-// provide the export themselves, so rust-backend-c2n enables this only for
-// Apple product builds against the pinned source to avoid a duplicate symbol.
-#[cfg(feature = "terminal-pinned-ffi")]
-#[no_mangle]
-pub extern "C" fn wwn_term_refresh_scrollback_cap(term: *mut Term, host_factor_permille: u32) {
-    if term.is_null() {
-        return;
-    }
-    let factor = (host_factor_permille.clamp(250, 1000) as f32) / 1000.0;
-    unsafe { (*term).refresh_scroll_cap(factor) }
-}
-
-/// Live RAM/CPU scrollback recommendation (same probe as `Term::new`).
+/// Live RAM/CPU scrollback recommendation (same probe as `VtEngine::new`).
 #[uniffi::export]
 pub fn terminal_recommended_scrollback_cap(cols: u32) -> u32 {
-    recommended_scroll_cap(cols as usize) as u32
+    u32::try_from(recommended_scroll_cap(cols)).unwrap_or(u32::MAX)
 }
 
 #[derive(uniffi::Record)]
@@ -62,7 +48,7 @@ pub struct TerminalImage {
 
 #[derive(uniffi::Object)]
 pub struct TerminalSession {
-    inner: Mutex<Term>,
+    inner: VtEngine,
 }
 
 #[uniffi::export]
@@ -70,98 +56,73 @@ impl TerminalSession {
     #[uniffi::constructor]
     pub fn new(cols: u32, rows: u32) -> Arc<Self> {
         Arc::new(Self {
-            inner: Mutex::new(Term::new(cols as usize, rows as usize)),
+            inner: VtEngine::new(cols, rows),
         })
     }
 
     pub fn resize(&self, cols: u32, rows: u32) {
-        if let Ok(mut term) = self.inner.lock() {
-            term.resize(cols as usize, rows as usize);
-            // Columns change bytes-per-row; re-probe available RAM/CPU.
-            term.refresh_scroll_cap(1.0);
-        }
+        self.inner.resize(cols, rows);
+        self.inner.set_scroll_cap(recommended_scroll_cap(cols));
     }
 
     pub fn set_scrollback_cap(&self, rows: u32) {
-        if let Ok(mut term) = self.inner.lock() {
-            term.set_scroll_cap(rows as usize);
-        }
+        self.inner.set_scroll_cap(rows as usize);
     }
 
     pub fn scrollback_cap(&self) -> u32 {
-        self.inner
-            .lock()
-            .map(|term| term.scroll_cap() as u32)
-            .unwrap_or(0)
+        u32::try_from(self.inner.scroll_cap()).unwrap_or(u32::MAX)
     }
 
     /// Re-probe RAM/CPU. `host_factor` in 0.25…1.0 for Low Power / thermal.
     pub fn refresh_scrollback_cap(&self, host_factor: f32) {
-        if let Ok(mut term) = self.inner.lock() {
-            term.refresh_scroll_cap(host_factor);
-        }
+        let factor = host_factor.clamp(0.25, 1.0);
+        let cols = self.inner.cols();
+        let base = recommended_scroll_cap(cols);
+        let capped = ((base as f32) * factor).round() as usize;
+        self.inner.set_scroll_cap(capped.clamp(1_000, 100_000));
     }
 
     pub fn feed(&self, bytes: Vec<u8>) {
-        if let Ok(mut term) = self.inner.lock() {
-            term.feed(&bytes);
-        }
+        self.inner.feed(&bytes);
     }
 
     pub fn take_reply(&self) -> Vec<u8> {
-        self.inner
-            .lock()
-            .map(|mut term| term.drain_reply())
-            .unwrap_or_default()
+        self.inner.take_reply()
     }
 
     pub fn lines(&self) -> Vec<TerminalLine> {
-        let Ok(term) = self.inner.lock() else {
-            return Vec::new();
-        };
-        term.styled_lines().into_iter().map(uniffi_line).collect()
+        self.inner
+            .styled_lines()
+            .into_iter()
+            .map(uniffi_line)
+            .collect()
     }
 
     /// Same document as [`Self::lines`], for a host that has not compiled the
     /// generated module yet.
     pub fn lines_json(&self) -> String {
-        self.inner
-            .lock()
-            .map(|term| term.lines_json())
-            .unwrap_or_else(|_| "[]".to_string())
+        self.inner.lines_json()
     }
 
     pub fn encode_paste(&self, text: String) -> Vec<u8> {
-        self.inner
-            .lock()
-            .map(|term| term.encode_paste(&text))
-            .unwrap_or_else(|_| text.into_bytes())
+        self.inner.encode_paste(&text)
     }
 
     pub fn pointer(&self, button: u8, col: u32, row: u32, pressed: bool, motion: bool) {
-        if let Ok(mut term) = self.inner.lock() {
-            term.pointer(button, col, row, pressed, motion);
-        }
+        self.inner.pointer(button, col, row, pressed, motion);
     }
 
     pub fn title(&self) -> String {
-        self.inner
-            .lock()
-            .map(|term| term.title().to_string())
-            .unwrap_or_default()
+        self.inner.title()
     }
 
     pub fn set_cell_px(&self, width: u32, height: u32) {
-        if let Ok(mut term) = self.inner.lock() {
-            term.set_cell_px(width, height);
-        }
+        self.inner.set_cell_px(width, height);
     }
 
     pub fn images(&self) -> Vec<TerminalImage> {
-        let Ok(term) = self.inner.lock() else {
-            return Vec::new();
-        };
-        term.placed_images()
+        self.inner
+            .placed_images()
             .into_iter()
             .map(|image| TerminalImage {
                 id: image.id,

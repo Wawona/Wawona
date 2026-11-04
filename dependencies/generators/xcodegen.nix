@@ -4,8 +4,9 @@
   wawonaSrc,
   # github:Wawona/ToolbarKeys (flake = false). UIKit toolbar views.
   toolbarKeysSrc,
-  # github:Wawona/Terminal (flake = false). Materialize src/term/screen.rs
-  # (repo symlink breaks under nix noBrokenSymlinks).
+  # github:Wawona/Terminal (flake = false). Materialize src/term/{cell,engine,
+  # ffi_surface}.rs (repo symlinks break under nix noBrokenSymlinks). Also
+  # stage apple/Terminal (GhosttyGpuView + WawonaTerminalView) like ToolbarKeys.
   terminalSrc ? null,
   macosBackend ? null,
   iosBackend ? null,
@@ -669,7 +670,13 @@ let
 
   tvosPreBuild = mkPreBuildPhase { withZsh = true; withGetprogname = true; };
 
-  macosPreBuild = mkPreBuildPhase { };
+  macosPreBuild = mkPreBuildPhase { } // {
+    outputFiles = libwawonaOutputPaths { }
+      ++ [
+        "$(DERIVED_FILE_DIR)/libwawona_terminal.a"
+        "$(DERIVED_FILE_DIR)/wwn-terminal-force-load.xcconfig"
+      ];
+  };
 
   visionosPreBuild = mkPreBuildPhase { withZsh = true; withGetprogname = true; };
 
@@ -2189,6 +2196,9 @@ PLIST
           { path = "Darwin/Sources/Main.swift"; type = "file"; }
           { path = "Sources/WawonaUI"; excludes = [ "Skip/**" "VisionOS/**" ]; }
           { path = "Sources/WawonaApple"; excludes = commonExcludes; }
+          # Terminal Metal GPU (interim GhosttyGpuView) + native Terminal UI.
+          # Staged like ToolbarKeys from flake input `terminal` apple/Terminal.
+          { path = ".nix-deps/terminal/Terminal"; }
           # main.m retired: Darwin/Sources/Main.swift owns @main + launch modes.
           { path = "src/platform/macos"; excludes = commonExcludes ++ [ "**/main.m" ]; }
           # Darwin CLI setters live in libwawona; weak stubs so skip-nix /
@@ -3269,17 +3279,17 @@ PLIST
 
     nativeBuildInputs = [ pkgs.xcodegen ];
 
-    # Repo keeps src/term/screen.rs and src/term/kitty.rs as sibling
-    # symlinks. Sandbox/store copies leave them dangling
-    # (/nix/store/Terminal/...), which fails noBrokenSymlinks and breaks
-    # later `cp` into product $project outputs. Replace with the Terminal
-    # flake input files after unpack. screen.rs loads kitty.rs via #[path].
+    # Repo keeps src/term/{cell,engine,ffi_surface}.rs as sibling symlinks.
+    # Sandbox/store copies leave them dangling. Replace with Terminal flake
+    # input files after unpack. Drop retired homemade screen/kitty if present.
     postPatch = lib.optionalString (terminalSrc != null) ''
       mkdir -p src/term
       rm -f src/term/screen.rs src/term/kitty.rs
-      cp ${terminalSrc}/src/screen.rs src/term/screen.rs
-      cp ${terminalSrc}/src/kitty.rs src/term/kitty.rs
-      chmod u+w src/term/screen.rs src/term/kitty.rs
+      rm -f src/term/cell.rs src/term/engine.rs src/term/ffi_surface.rs
+      cp ${terminalSrc}/src/cell.rs src/term/cell.rs
+      cp ${terminalSrc}/src/engine.rs src/term/engine.rs
+      cp ${terminalSrc}/src/ffi_surface.rs src/term/ffi_surface.rs
+      chmod u+w src/term/cell.rs src/term/engine.rs src/term/ffi_surface.rs
     '';
 
     buildPhase = ''

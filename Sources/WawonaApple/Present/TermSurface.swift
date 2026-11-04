@@ -1,6 +1,7 @@
 import Foundation
 #if canImport(AppKit) && os(macOS)
 import AppKit
+import QuartzCore
 public typealias WWNTermPlatformView = NSView
 #elseif canImport(UIKit)
 import UIKit
@@ -72,7 +73,9 @@ struct WwnTermImage {
     var rgbaLen: UInt32 = 0
 }
 
-/// AppKit host. Rust libghostty viewport. Native Metal draws the grid (Wawona Terminal).
+/// AppKit host. Rust libghostty viewport. Metal paint is interim
+/// `GhosttyGpuView` from Terminal `apple/Terminal/` (staged `.nix-deps/terminal`).
+/// Phase 1 consolidation: do not grow the atlas; Zig libghostty Metal is next.
 @objc(WWNTermSurface)
 public final class WWNTermSurface: NSView {
     @objc public var onReply: WWNTermReply?
@@ -91,17 +94,28 @@ public final class WWNTermSurface: NSView {
     private let pointSize: CGFloat = 13
     private var cellPxW: CGFloat = 8
     private var cellPxH: CGFloat = 16
+    private var selAnchor: (col: Int, row: Int)?
+    private var selEnd: (col: Int, row: Int)?
+    private var selecting = false
+    private var lastCursor: (col: Int, row: Int)?
+    private var prevCursor: (col: Int, row: Int)?
+    private var cursorJumpAt: CFTimeInterval = 0
 
     public override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         term = ghostty_surface_new(cols, rows)
-        WawonaTerminalScrollback.apply(to: term)
+        // Scrollback host factor is applied after the first layout once the
+        // surface paints. Calling refresh in init raced a tip ABI mismatch
+        // (SEGV in VtEngine.cols / snap at +0x790 on Start).
         gpu.autoresizingMask = [.width, .height]
         gpu.frame = bounds
         addSubview(gpu)
         blinkTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
-            guard let self, self.grid.contains(where: { $0.attrs & 16 != 0 }) else { return }
-            self.blinkOn.toggle()
+            guard let self else { return }
+            let blink = self.grid.contains(where: { $0.attrs & 16 != 0 })
+            let jump = CACurrentMediaTime() - self.cursorJumpAt < 0.35
+            guard blink || jump else { return }
+            if blink { self.blinkOn.toggle() }
             self.redraw()
         }
     }
@@ -150,6 +164,16 @@ public final class WWNTermSurface: NSView {
         fit()
     }
 
+    /// After reparent into main Present (Focus embed). Force Metal + grid fit.
+    @objc public func refreshAfterHostMove() {
+        needsLayout = true
+        layoutSubtreeIfNeeded()
+        gpu.frame = bounds
+        syncDrawableScale()
+        fit()
+        redraw()
+    }
+
     public override func viewDidChangeBackingProperties() {
         super.viewDidChangeBackingProperties()
         syncDrawableScale()
@@ -167,6 +191,13 @@ public final class WWNTermSurface: NSView {
 
     public override func keyDown(with event: NSEvent) {
         if event.modifierFlags.contains(.command) {
+            let ch = event.charactersIgnoringModifiers?.lowercased()
+            switch ch {
+            case "c": copySelection(nil); return
+            case "v": paste(nil); return
+            case "a": selectAll(nil); return
+            default: break
+            }
             super.keyDown(with: event)
             return
         }
@@ -182,15 +213,71 @@ public final class WWNTermSurface: NSView {
 
     public override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
+        if event.type == .rightMouseDown || event.buttonNumber == 1 {
+            showContextMenu(event)
+            return
+        }
+        let cell = cellAt(event)
+        // Option-drag = host selection (Ghostty-style). Plain click = VT mouse.
+        if event.modifierFlags.contains(.option) {
+            selecting = true
+            selAnchor = cell
+            selEnd = cell
+            redraw()
+            return
+        }
+        if event.clickCount >= 3 {
+            selectLine(cell.row)
+            return
+        }
+        if event.clickCount == 2 {
+            selectWord(at: cell)
+            return
+        }
+        selecting = false
+        selAnchor = nil
+        selEnd = nil
         sendPointer(event, pressed: true, motion: false)
+        redraw()
     }
 
     public override func mouseUp(with event: NSEvent) {
+        if selecting {
+            selecting = false
+            if let text = selectedText(), !text.isEmpty {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(text, forType: .string)
+            }
+            redraw()
+            return
+        }
         sendPointer(event, pressed: false, motion: false)
     }
 
     public override func mouseDragged(with event: NSEvent) {
+        if selecting || event.modifierFlags.contains(.option) {
+            selecting = true
+            if selAnchor == nil { selAnchor = cellAt(event) }
+            selEnd = cellAt(event)
+            redraw()
+            return
+        }
         sendPointer(event, pressed: true, motion: true)
+    }
+
+    public override func rightMouseDown(with event: NSEvent) {
+        window?.makeFirstResponder(self)
+        showContextMenu(event)
+    }
+
+    public override func menu(for event: NSEvent) -> NSMenu? {
+        contextMenu()
+    }
+
+    @objc public func copySelection(_ sender: Any?) {
+        guard let text = selectedText(), !text.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
     }
 
     @objc public func paste(_ sender: Any?) {
@@ -206,6 +293,12 @@ public final class WWNTermSurface: NSView {
             return Data(text.utf8)
         }
         onReply?(wrapped)
+    }
+
+    @objc public override func selectAll(_ sender: Any?) {
+        selAnchor = (0, 0)
+        selEnd = (max(0, Int(cols) - 1), max(0, Int(rows) - 1))
+        redraw()
     }
 
     private func terminalMetricsFont() -> NSFont {
@@ -261,15 +354,22 @@ public final class WWNTermSurface: NSView {
         if n > 0 { onReply?(Data(buf.prefix(n))) }
     }
 
-    private func sendPointer(_ event: NSEvent, pressed: Bool, motion: Bool) {
-        guard let term else { return }
+    private func cellAt(_ event: NSEvent) -> (col: Int, row: Int) {
         let point = convert(event.locationInWindow, from: nil)
         let font = terminalMetricsFont()
         let cellW = max(1, ("M" as NSString).size(withAttributes: [.font: font]).width)
         let cellH = max(1, font.ascender - font.descender + font.leading)
-        let col = UInt32(min(512, max(1, Int((point.x - 8) / cellW) + 1)))
-        let rowFromTop = Int((bounds.height - point.y) / cellH) + 1
-        let row = UInt32(min(256, max(1, rowFromTop)))
+        let col = min(max(0, Int((point.x - 8) / cellW)), max(0, Int(cols) - 1))
+        let row = min(max(0, Int((bounds.height - point.y) / cellH)), max(0, Int(rows) - 1))
+        return (col, row)
+    }
+
+    private func sendPointer(_ event: NSEvent, pressed: Bool, motion: Bool) {
+        guard let term else { return }
+        let cell = cellAt(event)
+        // VT mouse is 1-based.
+        let col = UInt32(cell.col + 1)
+        let row = UInt32(cell.row + 1)
         let button: UInt8
         switch event.buttonNumber {
         case 2: button = 1
@@ -278,6 +378,78 @@ public final class WWNTermSurface: NSView {
         }
         ghostty_surface_pointer(term, button, col, row, pressed ? 1 : 0, motion ? 1 : 0)
         flushReply()
+    }
+
+    private func selectionRange() -> (start: Int, end: Int)? {
+        guard let a = selAnchor, let b = selEnd else { return nil }
+        let i0 = a.row * Int(cols) + a.col
+        let i1 = b.row * Int(cols) + b.col
+        return (min(i0, i1), max(i0, i1))
+    }
+
+    private func selectedText() -> String? {
+        guard let range = selectionRange() else { return nil }
+        var out = ""
+        let c = Int(cols)
+        for i in range.start...range.end {
+            if i > range.start, c > 0, i % c == 0 { out.append("\n") }
+            guard i < grid.count else { break }
+            let cp = grid[i].cp
+            if let scalar = UnicodeScalar(cp), cp >= 32 {
+                out.append(Character(scalar))
+            } else {
+                out.append(" ")
+            }
+        }
+        return out
+    }
+
+    private func selectLine(_ row: Int) {
+        let r = min(max(0, row), max(0, Int(rows) - 1))
+        selAnchor = (0, r)
+        selEnd = (max(0, Int(cols) - 1), r)
+        if let text = selectedText(), !text.isEmpty {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+        }
+        redraw()
+    }
+
+    private func selectWord(at cell: (col: Int, row: Int)) {
+        let c = Int(cols)
+        let base = cell.row * c
+        guard base < grid.count else { return }
+        var lo = cell.col
+        var hi = cell.col
+        func isWord(_ cp: UInt32) -> Bool {
+            guard let s = UnicodeScalar(cp) else { return false }
+            return Character(s).isLetter || Character(s).isNumber || s == "_"
+        }
+        while lo > 0, base + lo - 1 < grid.count, isWord(grid[base + lo - 1].cp) { lo -= 1 }
+        while hi + 1 < c, base + hi + 1 < grid.count, isWord(grid[base + hi + 1].cp) { hi += 1 }
+        selAnchor = (lo, cell.row)
+        selEnd = (hi, cell.row)
+        if let text = selectedText(), !text.isEmpty {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+        }
+        redraw()
+    }
+
+    private func contextMenu() -> NSMenu {
+        let menu = NSMenu(title: "Terminal")
+        menu.addItem(withTitle: "Copy", action: #selector(copySelection(_:)), keyEquivalent: "c")
+        menu.addItem(withTitle: "Paste", action: #selector(paste(_:)), keyEquivalent: "v")
+        menu.addItem(withTitle: "Select All", action: #selector(selectAll(_:)), keyEquivalent: "a")
+        for item in menu.items {
+            item.target = self
+            item.keyEquivalentModifierMask = [.command]
+        }
+        return menu
+    }
+
+    private func showContextMenu(_ event: NSEvent) {
+        NSMenu.popUpContextMenu(contextMenu(), with: event, for: self)
     }
 
     private func redraw() {
@@ -296,9 +468,21 @@ public final class WWNTermSurface: NSView {
                 term, ghostty_surface_origin(term), buf.baseAddress, UInt32(buf.count), &outCols, &outRows
             )
         }
+        if let cursorIdx = grid.prefix(Int(n)).firstIndex(where: { $0.attrs & 64 != 0 }) {
+            let c = Int(max(outCols, 1))
+            let cur = (col: cursorIdx % c, row: cursorIdx / c)
+            if let last = lastCursor, last != cur {
+                prevCursor = last
+                cursorJumpAt = CACurrentMediaTime()
+            }
+            lastCursor = cur
+        }
+        let jumpT = Float(max(0, 1 - (CACurrentMediaTime() - cursorJumpAt) / 0.28))
         gpu.present(
             grid, count: Int(n), cols: Int(outCols), rows: Int(outRows), blinkOn: blinkOn,
-            pictures: termPictures(term), cellW: cellPxW, cellH: cellPxH
+            pictures: termPictures(term), cellW: cellPxW, cellH: cellPxH,
+            selection: selectionRange(),
+            cursorJumpFrom: prevCursor, cursorJumpTo: lastCursor, cursorJumpT: jumpT
         )
     }
 

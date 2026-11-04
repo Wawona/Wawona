@@ -963,8 +963,8 @@
               wawonaSrc = src;
               waypipeSrc = waypipe-src;
               coreutilsSrc = coreutils-src;
-              # Committed src/term/screen.rs and kitty.rs are symlinks into
-              # Terminal/; sandbox needs the flake input copies.
+              # Committed src/term/{cell,engine,ffi_surface}.rs are symlinks
+              # into Terminal/; sandbox needs the flake input copies.
               terminalSrc = inputs.terminal;
               platform = "linux";
               inherit wawonaVersion;

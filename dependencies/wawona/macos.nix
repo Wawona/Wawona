@@ -663,26 +663,21 @@ in
       fi
     '';
 
-    # Repo keeps src/term/screen.rs as a sibling symlink; nix src copies leave
-    # it dangling. Materialize from the Xcode project tree when present, else
-    # drop the link so later cp into $project does not refuse to overwrite.
+    # Repo keeps src/term/{cell,engine,ffi_surface}.rs as sibling symlinks;
+    # nix src copies leave them dangling. Materialize from the Xcode project
+    # tree when present, else drop the link so later cp into $project works.
     postPatch = ''
-      if [ -L src/term/screen.rs ] || [ ! -e src/term/screen.rs ]; then
-        rm -f src/term/screen.rs
-        if [ -n "${toString xcodeProject}" ] && [ -f "${xcodeProject}/src/term/screen.rs" ]; then
-          mkdir -p src/term
-          cp -L "${xcodeProject}/src/term/screen.rs" src/term/screen.rs
-          chmod u+w src/term/screen.rs
+      mkdir -p src/term
+      rm -f src/term/screen.rs src/term/kitty.rs
+      for f in cell.rs engine.rs ffi_surface.rs; do
+        if [ -L "src/term/$f" ] || [ ! -e "src/term/$f" ]; then
+          rm -f "src/term/$f"
+          if [ -n "${toString xcodeProject}" ] && [ -f "${xcodeProject}/src/term/$f" ]; then
+            cp -L "${xcodeProject}/src/term/$f" "src/term/$f"
+            chmod u+w "src/term/$f"
+          fi
         fi
-      fi
-      if [ -L src/term/kitty.rs ] || [ ! -e src/term/kitty.rs ]; then
-        rm -f src/term/kitty.rs
-        if [ -n "${toString xcodeProject}" ] && [ -f "${xcodeProject}/src/term/kitty.rs" ]; then
-          mkdir -p src/term
-          cp -L "${xcodeProject}/src/term/kitty.rs" src/term/kitty.rs
-          chmod u+w src/term/kitty.rs
-        fi
-      fi
+      done
     '';
 
     preBuild = ''
@@ -1288,6 +1283,7 @@ SHELL_EOF
               rm -rf "$project/_xcode_project/DerivedData" "$project/DerivedData"
               if [ -n "${toString xcodeProject}" ]; then
                 rm -f "$project/src/term/screen.rs" "$project/src/term/kitty.rs"
+                rm -f "$project/src/term/cell.rs" "$project/src/term/engine.rs" "$project/src/term/ffi_surface.rs"
                 cp -r ${xcodeProject}/* "$project/"
                 chmod -R u+w $project
               fi
@@ -1313,6 +1309,7 @@ SHELL_EOF
             rm -rf "$project/_xcode_project/DerivedData" "$project/DerivedData"
             if [ -n "${toString xcodeProject}" ]; then
               rm -f "$project/src/term/screen.rs" "$project/src/term/kitty.rs"
+              rm -f "$project/src/term/cell.rs" "$project/src/term/engine.rs" "$project/src/term/ffi_surface.rs"
               cp -r ${xcodeProject}/* "$project/"
               chmod -R u+w $project
             fi

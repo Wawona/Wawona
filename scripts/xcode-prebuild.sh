@@ -213,6 +213,36 @@ rm -f "$derived/libwawona.a"
 cp -f "$active_out/lib/libwawona.a" "$derived/libwawona.a"
 echo "Copied $derived/libwawona.a <- $active_out/lib/libwawona.a"
 
+# Tip path: replace engine_stub C ABI with real libghostty Terminal until
+# macOS/Linux backends enable `nix-ghostty-vt` (engine.rs in libwawona).
+case "${TARGET_NAME:-}" in
+  Wawona-macOS)
+    _term_a="${WAWONA_TERMINAL_LIB:-}"
+    if [ -z "$_term_a" ] || [ ! -f "$_term_a" ]; then
+      for _cand in /nix/store/*/lib/libwawona_terminal.a; do
+        if [ -f "$_cand" ] && strings "$_cand" 2>/dev/null | grep -q 'VtEngine\|libghostty_vt'; then
+          _term_a="$_cand"
+          break
+        fi
+      done
+    fi
+    _overlay_sh="${SRCROOT:-}/scripts/overlay-libghostty-term.sh"
+    if [ ! -x "$_overlay_sh" ] && [ ! -f "$_overlay_sh" ]; then
+      _overlay_sh="$(cd "$(dirname "$0")" && pwd)/overlay-libghostty-term.sh"
+    fi
+    if [ -n "$_term_a" ] && [ -f "$_term_a" ] && [ -f "$_overlay_sh" ]; then
+      echo "Overlaying libghostty Terminal from $_term_a"
+      bash "$_overlay_sh" "$derived/libwawona.a" "$_term_a" \
+        || echo "warning: libghostty term overlay failed; tip may keep homemade VT" >&2
+      # Archive is self-contained after overlay merge; no second -lwawona_terminal.
+      rm -f "$derived/libwawona_terminal.a" "$derived/wwn-terminal-force-load.xcconfig"
+    else
+      rm -f "$derived/wwn-terminal-force-load.xcconfig"
+      echo "warning: libwawona_terminal.a not found; tip keeps homemade VT" >&2
+    fi
+    ;;
+esac
+
 # Product keep-set no longer force-loads libniri.a. Keep Rust std in
 # libwawona.a so -lwawona / coreutils resolve without a second compositor archive.
 

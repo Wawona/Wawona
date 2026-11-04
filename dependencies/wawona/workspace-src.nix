@@ -109,27 +109,21 @@ PY
       echo "✓ coreutils source injected (uutils workspace pins expanded)"
     fi
 
-    # Terminal screen. The committed path is a symlink to the sibling repo.
-    # Replace it with the flake input so the sandbox does not follow the link.
+    # Terminal VT (libghostty-vt). Committed paths are sibling symlinks;
+    # replace with flake input so the sandbox does not follow the link.
     # installPhase is a Nix string: a null terminalSrc must not appear in path
     # interpolation (cannot coerce null to a string).
     ${if terminalSrc != null then ''
     mkdir -p $out/src/term
     rm -f $out/src/term/screen.rs $out/src/term/kitty.rs
-    cp ${terminalSrc}/src/screen.rs $out/src/term/screen.rs
-    chmod u+w $out/src/term/screen.rs
-    # kitty.rs landed in Terminal after some pins. The pinned screen does not
-    # reference it until that file exists. Do not fail the app link on an
-    # older Terminal input.
-    if [ -f ${terminalSrc}/src/kitty.rs ]; then
-      cp ${terminalSrc}/src/kitty.rs $out/src/term/kitty.rs
-      chmod u+w $out/src/term/kitty.rs
-      echo "✓ Terminal screen and kitty injected"
-    else
-      echo "✓ Terminal screen injected"
-    fi
+    rm -f $out/src/term/cell.rs $out/src/term/engine.rs $out/src/term/ffi_surface.rs
+    cp ${terminalSrc}/src/cell.rs $out/src/term/cell.rs
+    cp ${terminalSrc}/src/engine.rs $out/src/term/engine.rs
+    cp ${terminalSrc}/src/ffi_surface.rs $out/src/term/ffi_surface.rs
+    chmod u+w $out/src/term/cell.rs $out/src/term/engine.rs $out/src/term/ffi_surface.rs
+    echo "✓ Terminal cell/engine/ffi_surface injected"
     '' else ''
-    echo "note: terminalSrc unset; keeping workspace term screen as packaged"
+    echo "note: terminalSrc unset; keeping workspace term engine as packaged"
     ''}
 
     # Patch root Cargo.toml version and Cargo.lock consistency

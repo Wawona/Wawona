@@ -3,7 +3,7 @@ members = ["."]
 
 [package]
 name = "wawona"
-version = "26.11.2"
+version = "26.11.3"
 edition = "2021"
 
 [lints.rust]
@@ -98,9 +98,10 @@ libadwaita = { version = "0.7", optional = true, features = ["v1_5"] }
 # use come from uniffi_macros (default features); the uniffi-bindgen CLI binary
 # is not built here, so cli is unnecessary.
 uniffi = { version = "0.30.0" }
-# Kitty graphics in src/term (RGBA, zlib, PNG). Pure Rust inflate.
-flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"] }
-png = "0.17.16"
+# Terminal VT (libghostty-rs). Optional until every product target has a
+# Ghostty VT archive (macOS/Linux Nix enable `nix-ghostty-vt`).
+libghostty-vt = { git = "https://github.com/uzaaft/libghostty-rs", package = "libghostty-vt", rev = "575ed6b8ceb79ffaf247ecf7e34333876b0d5be4", optional = true }
+libghostty-vt-sys = { git = "https://github.com/uzaaft/libghostty-rs", package = "libghostty-vt-sys", rev = "575ed6b8ceb79ffaf247ecf7e34333876b0d5be4", optional = true }
 
 # Core Wayland
 wayland-server = "0.31.13"
@@ -166,9 +167,13 @@ profile-ios-mode-b = []
 # Enables Smithay protocol migration scaffolding / compile probes.
 smithay-protocols = []
 smithay-desktop = []
-# The flake-pinned Terminal source predates this host-pressure C export.
-# Keep this compatibility symbol out of builds that use Terminal's own export.
+# Legacy: homemade screen C export. Prefer Terminal `ffi_surface` /
+# `libghostty-term`. Kept for older tip overlays only.
 terminal-pinned-ffi = []
+# Compile Terminal `engine.rs` + link libghostty-vt (not the mobile stub).
+libghostty-term = ["dep:libghostty-vt", "dep:libghostty-vt-sys"]
+# Nix builds: pkg-config Ghostty VT (no host zig in cargo).
+nix-ghostty-vt = ["libghostty-term", "libghostty-vt-sys/pkg-config"]
 # iland bare-metal WindowServer-replacement mode (Mode B): Dobby code injection,
 # AMFI bypass, framebufferd/SkyLight, inputd, symrez. macOS-ONLY, opt-in, and
 # NOT App-Store-safe (requires SIP off + root + private entitlements). Must be

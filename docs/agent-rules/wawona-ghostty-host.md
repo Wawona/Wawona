@@ -20,7 +20,8 @@ Canonical RAG: `ghostty-host.md`. Skill: `wawona-ghostty-host`.
 ## Interim (today)
 
 - VT: upstream `libghostty-vt` via flake `ghostty` + `Terminal` (`GhosttySurface`).
-- Paint: `GhosttyGpu` / TermGpu atlas on macOS. **Forbidden to grow.** Plan:
+- Paint: `Terminal/apple/Terminal/GhosttyGpuView` (interim atlas, staged into
+  Wawona). **Forbidden to grow.** Plan:
   retire after Zig Metal surface green (`Ghostty/docs/METAL-SURFACE.md`).
 - Prefer plan: paint via Zig Ghostty surface, not atlas stamp.
 

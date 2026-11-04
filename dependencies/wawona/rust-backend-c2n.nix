@@ -573,19 +573,23 @@ let
   # ── Features to enable ─────────────────────────────────────────────
   features =
     # waypipe-ssh = in-process waypipe + libssh2 (never OpenSSH) on Apple mobile.
+    # VT: default builds use `engine_stub` until `nix-ghostty-vt` +
+    # libghosttyVt PKG_CONFIG are wired per backend. Tip macOS overlays
+    # libwawona_terminal.a (real VtEngine). Enable `nix-ghostty-vt` here
+    # only after Cargo.lock + crateOverrides for libghostty-vt-sys land.
     if isIOS then
-      [ "waypipe-ssh" "smithay-protocols" "coreutils" "terminal-pinned-ffi" ]
+      [ "waypipe-ssh" "smithay-protocols" "coreutils" ]
       ++ lib.optionals iosModeB [ "profile-ios-mode-b" ]
-    else if isTVOS then [ "waypipe-ssh" "smithay-protocols" "coreutils" "terminal-pinned-ffi" ]
-    else if isVisionOS then [ "waypipe-ssh" "smithay-protocols" "coreutils" "terminal-pinned-ffi" ]
-    else if isWatchOS then [ "waypipe-ssh" "smithay-protocols" "coreutils" "terminal-pinned-ffi" ] # uutils enabled on all targets (per product requirement); Remote via libssh2
+    else if isTVOS then [ "waypipe-ssh" "smithay-protocols" "coreutils" ]
+    else if isVisionOS then [ "waypipe-ssh" "smithay-protocols" "coreutils" ]
+    else if isWatchOS then [ "waypipe-ssh" "smithay-protocols" "coreutils" ] # uutils enabled on all targets (per product requirement); Remote via libssh2
     else if isAndroid then [ "waypipe" "smithay-protocols" "coreutils" ]
     else
       # macOS / Linux: desktop-protocols (implies smithay-desktop) so DRM,
       # session lock, image capture, and XWayland globals compile+register.
       # Mode B Cargo gates only for desktop-host / full-dev (dylib still
       # gated separately in macos.nix).
-      [ "smithay-protocols" "desktop-protocols" "terminal-pinned-ffi" ]
+      [ "smithay-protocols" "desktop-protocols" ]
       ++ lib.optionals desktopHost [ "profile-desktop-host" "iland-baremetal" ];
 
   # ── Per-crate build overrides ──────────────────────────────────────

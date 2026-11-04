@@ -15,7 +15,7 @@ PTY, ToolbarKeys.
 |------|------|
 | `Wawona/Ghostty` | Zig static `ghostty_*` (goal: Metal/GL/software) |
 | `Wawona/Terminal` | Interim UniFFI over `libghostty-vt` until Metal surface |
-| Wawona `GhosttyGpu` | **Interim** atlas paint. Do not patch further |
+| `Terminal/apple/Terminal/GhosttyGpuView` | **Interim** atlas paint (staged into Wawona). Do not grow |
 | Rootshell `vendor/rootshell` | Reference for iOS Metal embed. Not a product dep |
 
 ## Dogfood (Nix only, macOS)

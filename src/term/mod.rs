@@ -1,18 +1,32 @@
-//! In-process link of the Terminal crate screen.
-//! Canonical source: github.com/Wawona/Terminal `src/screen.rs`.
-//! `screen.rs` in this directory is a symlink. Nix replaces it from the
-//! `terminal` flake input in workspace-src. Do not grow a second parser here.
+//! In-process Terminal VT (libghostty-vt via Terminal `engine.rs`).
 //!
-//! Hosts draw [`TerminalSession`] lines. The C exports feed the in-process PTY.
+//! Materialized from flake input `terminal`: `cell.rs`, `engine.rs`,
+//! `ffi_surface.rs`. Homemade `screen.rs` / `kitty.rs` are gone.
+//!
+//! Feature `libghostty-term` (Nix: `nix-ghostty-vt`) compiles the real
+//! engine. Without it (Apple-mobile / Android crate2nix until VT cross
+//! exists), [`engine_stub`] keeps UniFFI + C ABI linkable. Tip macOS may
+//! still overlay `libwawona_terminal.a` until the macOS backend always
+//! enables `nix-ghostty-vt`.
 
 #[cfg(target_os = "android")]
 mod android_shell;
 
+mod cell;
+
+#[cfg(feature = "libghostty-term")]
+#[path = "engine.rs"]
+mod engine;
+
+#[cfg(not(feature = "libghostty-term"))]
+#[path = "engine_stub.rs"]
+mod engine;
+
+mod ffi_surface;
 mod uniffi_api;
 
-#[path = "screen.rs"]
-mod screen;
-
-pub use screen::*;
+pub use cell::WwnTermCell;
+pub use engine::{
+    recommended_scroll_cap, PlacedImage, StyledLine, StyledSpan, VtEngine,
+};
 pub use uniffi_api::{TerminalImage, TerminalLine, TerminalSession, TerminalSpan};
-
