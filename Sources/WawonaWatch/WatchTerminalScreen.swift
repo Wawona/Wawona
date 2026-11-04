@@ -23,6 +23,8 @@ private func wwn_term_bytes_images_json(
 ) -> UnsafeMutablePointer<CChar>?
 
 /// Watch paints UniFFI-shaped lines JSON (same VT as `GhosttySurface`). No Metal.
+/// Default present: CoreText raster → SpriteKit (`WatchTerminalSpritePresent`).
+/// `WWN_WATCH_SK_PRESENT=0` / SpritePresentAccelerator off keeps SwiftUI Text.
 struct WatchTerminalScreen: View {
     let text: String
     @State private var cols: UInt32 = 20
@@ -31,22 +33,22 @@ struct WatchTerminalScreen: View {
     @State private var pictures: [WatchTermPicture] = []
     @State private var blinkOn = true
 
+    private var useSpritePresent: Bool {
+        PlatformCapabilities.watchPresentAcceleratorEnabled
+    }
+
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(rows) { row in
-                        WatchTerminalRow(spans: row.spans, blinkOn: blinkOn)
-                            .id(row.id)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(watchPictures(behind: true))
-                .overlay(watchPictures(behind: false), alignment: .topLeading)
-            }
-            .onChange(of: rows.count) { _, _ in
-                guard let id = rows.last?.id else { return }
-                proxy.scrollTo(id, anchor: .bottom)
+        Group {
+            if useSpritePresent {
+                WatchTerminalSpritePresent(
+                    rows: rows.map(\.spans),
+                    pictures: pictures,
+                    cols: cols,
+                    gridRows: gridRows,
+                    blinkOn: blinkOn
+                )
+            } else {
+                textGridPresent
             }
         }
         .background(Color.black)
@@ -70,6 +72,26 @@ struct WatchTerminalScreen: View {
         .onReceive(Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()) { _ in
             if rows.contains(where: { $0.spans.contains(where: \.blink) }) {
                 blinkOn.toggle()
+            }
+        }
+    }
+
+    private var textGridPresent: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(rows) { row in
+                        WatchTerminalRow(spans: row.spans, blinkOn: blinkOn)
+                            .id(row.id)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(watchPictures(behind: true))
+                .overlay(watchPictures(behind: false), alignment: .topLeading)
+            }
+            .onChange(of: rows.count) { _, _ in
+                guard let id = rows.last?.id else { return }
+                proxy.scrollTo(id, anchor: .bottom)
             }
         }
     }
@@ -153,7 +175,7 @@ private func alignWatchLineIDs(oldIDs: [Int], oldKeys: [String], newKeys: [Strin
     return ids
 }
 
-private enum WatchTerminalFonts {
+enum WatchTerminalFonts {
     static let pointSize: CGFloat = 9
     static var host: Font { Font.system(size: pointSize, design: .monospaced) }
     static var nerd: Font { Font.custom("DejaVuSansM Nerd Font Mono", size: pointSize) }
@@ -206,7 +228,7 @@ private enum WatchTerminalFonts {
     }
 }
 
-private struct WatchTerminalSpan {
+struct WatchTerminalSpan {
     let text: String
     let fg: UInt32
     let bg: UInt32
@@ -381,7 +403,7 @@ private enum WatchTerminalSnapshot {
     }
 }
 
-private struct WatchTermPicture: Identifiable {
+struct WatchTermPicture: Identifiable {
     let id: Int
     let col: Int
     let row: Int

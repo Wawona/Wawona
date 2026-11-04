@@ -21,7 +21,7 @@ struct WatchGraphicsSettingsPage: View {
                     .onChange(of: preferences.spritePresentAccelerator) { _, _ in preferences.save() }
                     .accessibilityIdentifier("wwn.settings.graphics.spritePresent")
             } footer: {
-                Text("SpriteKit composites the software frame onto the watch. Off uses a CPU image blit.")
+                Text("SpriteKit composites Wayland SHM and Terminal cell rasters. Off uses SwiftUI Image / Text.")
             }
             Section {
             Toggle("Session Thumbnails", isOn: $preferences.machineSessionThumbnailsEnabled)
