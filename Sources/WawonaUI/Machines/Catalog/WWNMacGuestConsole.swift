@@ -22,10 +22,19 @@ import Darwin
   private var shellPid: pid_t = -1
   private var shellReader: DispatchSourceRead?
   private var stopped = false
+  /// TermSurface is reparented into the main Machines Present area (Focus).
+  private var embeddedInMainWindow = false
+
+  /// True while a Terminal session (standalone or embedded) owns a surface.
+  var hasLiveSurface: Bool { surface != nil && !machineId.isEmpty }
 
   func present(machineId: String, source: String) {
     guard !machineId.isEmpty else { return }
     if let existing = window, self.machineId == machineId {
+      if embeddedInMainWindow {
+        // Already painting in main Present; keep embed, do not tear PTY.
+        return
+      }
       existing.makeKeyAndOrderFront(nil)
       focusShellKeys()
       return
@@ -94,9 +103,75 @@ import Darwin
     NSLog("WWNMacGuestConsole: parked Terminal (shell kept alive) mid=%@", machineId)
   }
 
+  /// Mark Focus embed. Reparent happens in `installSurface` once the host
+  /// has a non-zero frame (SwiftUI NSViewRepresentable often starts at 0x0).
+  func beginMainWindowEmbed() {
+    embeddedInMainWindow = true
+    window?.orderOut(nil)
+    NSLog("WWNMacGuestConsole: begin embed mid=%@", machineId)
+  }
+
+  /// Install (or reinstall) the live surface as a filling subview of `host`.
+  func installSurface(into host: NSView) {
+    guard let surface else { return }
+    // Prefer AppKit layout bounds; fall back to the SwiftUI-proposed frame.
+    var hostBounds = host.bounds
+    if hostBounds.width <= 1 || hostBounds.height <= 1 {
+      hostBounds = host.frame
+    }
+    guard hostBounds.width > 1, hostBounds.height > 1 else {
+      NSLog(
+        "WWNMacGuestConsole: installSurface wait (host still %.0fx%.0f)",
+        host.bounds.width,
+        host.bounds.height
+      )
+      return
+    }
+    if embeddedInMainWindow, let window, window.contentView === surface {
+      window.contentView = NSView(frame: window.contentLayoutRect)
+    }
+    if surface.superview !== host {
+      surface.removeFromSuperview()
+      surface.translatesAutoresizingMaskIntoConstraints = true
+      surface.autoresizingMask = [.width, .height]
+      surface.frame = CGRect(origin: .zero, size: hostBounds.size)
+      host.addSubview(surface)
+    } else if surface.frame.size != hostBounds.size {
+      surface.frame = CGRect(origin: .zero, size: hostBounds.size)
+    }
+    surface.refreshAfterHostMove()
+    fputs(
+      "WWNMacGuestConsole: installSurface host=\(Int(hostBounds.width))x\(Int(hostBounds.height)) surface=\(Int(surface.bounds.width))x\(Int(surface.bounds.height))\n",
+      stderr
+    )
+    host.window?.makeFirstResponder(surface)
+    focusShellKeysEmbedded(in: host.window)
+  }
+
+  /// Leave main Present: restore TermSurface to the standalone window (or keep parked).
+  func endMainWindowEmbed(restoreWindow: Bool) {
+    guard embeddedInMainWindow else { return }
+    embeddedInMainWindow = false
+    guard let surface, let window else { return }
+    surface.removeFromSuperview()
+    window.contentView = surface
+    if restoreWindow {
+      window.makeKeyAndOrderFront(nil)
+      focusShellKeys()
+    } else {
+      window.orderOut(nil)
+    }
+    NSLog(
+      "WWNMacGuestConsole: end main embed restore=%d mid=%@",
+      restoreWindow ? 1 : 0,
+      machineId
+    )
+  }
+
   func dismiss(machineId: String) {
     if !self.machineId.isEmpty, machineId != self.machineId { return }
     stopped = true
+    embeddedInMainWindow = false
     if let obs = launchLogObserver {
       NotificationCenter.default.removeObserver(obs)
       launchLogObserver = nil
@@ -113,6 +188,7 @@ import Darwin
       close(master)
       master = -1
     }
+    surface?.removeFromSuperview()
     if let window {
       window.delegate = nil
       window.orderOut(nil)
@@ -122,13 +198,20 @@ import Darwin
     self.machineId = ""
   }
 
-  func windowWillClose(_ notification: Notification) {
+  func windowShouldClose(_ sender: NSWindow) -> Bool {
     let closingId = machineId
-    // Close = Focus: park chrome, keep shell, reveal Present.
-    parkForCompositor()
-    guard !closingId.isEmpty else { return }
+    guard !closingId.isEmpty else { return true }
     WWNMachineProfileStore.setActiveMachineId(closingId)
-    WWNMainWindowRouter.shared.showSessionSurface()
+    // Close = Focus. Terminal-only (no nested Wayland): embed into main Present.
+    // With nested clients: park Terminal and reveal Metal. Never destroy the
+    // window (isReleasedWhenClosed=false); keep PTY + surface alive.
+    if WWNNestedClientTabStore.shared.nestedCount == 0 {
+      WWNMainWindowRouter.shared.showTerminalSessionSurface()
+    } else {
+      parkForCompositor()
+      WWNMainWindowRouter.shared.showSessionSurface()
+    }
+    return false
   }
 
   func windowDidBecomeKey(_ notification: Notification) {
@@ -251,6 +334,11 @@ import Darwin
     window.makeFirstResponder(surface)
   }
 
+  private func focusShellKeysEmbedded(in hostWindow: NSWindow?) {
+    guard source == "shell", let surface else { return }
+    hostWindow?.makeFirstResponder(surface)
+  }
+
   private func writeMaster(_ data: Data) {
     let fd = master
     guard fd >= 0, !data.isEmpty else { return }
@@ -291,6 +379,61 @@ import Darwin
     }
     guard let surface else { return }
     surface.feed(data)
+  }
+}
+
+import SwiftUI
+
+/// Layout-driven host so TermSurface gets a non-zero frame after SwiftUI sizes Present.
+private final class WWNMacTerminalEmbedHostView: NSView {
+  override init(frame frameRect: NSRect) {
+    super.init(frame: frameRect)
+    wantsLayer = true
+    layer?.backgroundColor = NSColor.black.cgColor
+    setContentHuggingPriority(.defaultLow, for: .horizontal)
+    setContentHuggingPriority(.defaultLow, for: .vertical)
+    setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+    setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+  }
+
+  @available(*, unavailable)
+  required init?(coder: NSCoder) { nil }
+
+  // Non-flipped host: MTKView / CAMetalLayer stay upright like the standalone
+  // Terminal NSWindow. A flipped embed host geometry-flipped the Metal layer
+  // and Focus painted the grid 180°.
+
+  override var intrinsicContentSize: NSSize {
+    // Expand inside SwiftUI .frame(maxWidth/Height: .infinity).
+    NSSize(width: NSView.noIntrinsicMetric, height: NSView.noIntrinsicMetric)
+  }
+
+  override func layout() {
+    super.layout()
+    WWNMacGuestConsole.shared.installSurface(into: self)
+  }
+
+  override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    needsLayout = true
+    DispatchQueue.main.async { [weak self] in
+      guard let self else { return }
+      self.needsLayout = true
+      self.layoutSubtreeIfNeeded()
+      WWNMacGuestConsole.shared.installSurface(into: self)
+    }
+  }
+}
+
+/// Hosts the live `WWNTermSurface` inside main Present (Focus, Terminal-only).
+struct WWNMacEmbeddedTerminalHost: NSViewRepresentable {
+  func makeNSView(context: Context) -> NSView {
+    WWNMacTerminalEmbedHostView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
+  }
+
+  func updateNSView(_ nsView: NSView, context: Context) {
+    nsView.needsLayout = true
+    WWNMacGuestConsole.shared.installSurface(into: nsView)
   }
 }
 #endif

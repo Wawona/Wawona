@@ -1,24 +1,23 @@
 ---
 name: wawona-ghostty-host
-description: Wawona Terminal grid = Zig libghostty (Wawona/Ghostty, wwn-ghostty). Native chrome only. Open when editing Ghostty surface, GhosttyGpu interim, or Terminal UniFFI.
+description: Wawona Terminal = Rust libghostty-rs + UniFFI + native UI (Wawona/Terminal). Open when editing Terminal VT, paint hosts, shell backend, or retiring GhosttyGpu/Zig surface.
 ---
 
-# Ghostty host
+# Wawona Terminal host
 
 ## Shape
 
-**Zig libghostty** owns the grid (L3′ `github.com/Wawona/Ghostty`, flake
-`wwn-ghostty`). **Native UI** paints chrome around it. Wawona L4 owns Machines,
-PTY, ToolbarKeys.
+**Rust** `github.com/Wawona/Terminal` (flake `terminal`) on **libghostty-rs**
+(`libghostty-vt`). **UniFFI** to Swift/Kotlin. **Native UI** paints.
+Shell backend is separate (`wawona-terminal-shell-backend`).
 
 | Tree | Role |
 |------|------|
-| `Wawona/Ghostty` | Zig static `ghostty_*` (goal: Metal/GL/software) |
-| `Wawona/Terminal` | Interim UniFFI over `libghostty-vt` until Metal surface |
-| `Terminal/apple/Terminal/GhosttySurfaceHost` | Tip default Zig paint (`ensure-tip` / staged archive); else GhosttyGpu |
-| `Terminal/apple/Terminal/GhosttyGpuView` | **Interim** atlas fallback only. Do not grow |
-| `wwn-ghostty#libghostty-macos-draw-proof` | Nix link + `ghostty_surface_draw` proof |
-| Rootshell `vendor/rootshell` | Reference for iOS Metal embed. Not a product dep |
+| `Wawona/Terminal` | Product: VT, encode, selection, frame, tabs, UniFFI |
+| `Terminal/apple/Terminal` | SwiftUI / AppKit / UIKit paint + input |
+| `GhosttyGpuView` / `GhosttySurfaceHost` | Interim retire targets. Do not grow |
+| `ToolbarKeys` | Soft keys where supported |
+| Rootshell `vendor/rootshell` | UX reference only. Not a product dep |
 
 ## Dogfood (Nix only, macOS)
 
@@ -29,22 +28,24 @@ nix run .#terminal --override-input terminal path:/Users/8amps/Wawona/Terminal
 WAWONA_TEST_REBUILD=1 eval "$(scripts/appium/ensure-tip-wawona-macos.sh)"
 ```
 
-**Never** Vision Pro / visionOS for Terminal. **Never** `/Applications/Wawona.app`.
+**Never** Vision Pro / visionOS for Terminal unless the task is visionOS.
+**Never** `/Applications/Wawona.app`.
 
 ## Do
 
 - Query `ghostty-host.md` / rule `wawona-ghostty-host` before paint changes.
-- Prefer linking `wwn-ghostty` / full `libghostty.a` for Metal.
 - Keep iOS floor **13.0**. Static only on Apple-mobile.
+- System shell vs Wawona PTY via Rust resolver. Never hardcode in hosts.
 
 ## Do not
 
 - GhosttyKit XCFramework in store IPA.
-- Grow TermGpu / GhosttyGpu atlas (UV flips, stamp hacks).
+- Grow TermGpu / GhosttyGpu atlas.
 - Second homemade VT.
-- Claim Metal Ghostty while atlas still owns paint (`Ghostty/docs/METAL-SURFACE.md`).
+- New Zig `ghostty_surface_*` product work (`Wawona/Ghostty` archived).
 
 ## Rules
 
-`wawona-ghostty-host`, `wawona-platform-targets` §14, `wawona-ios-min-os`,
+`wawona-ghostty-host`, `wawona-terminal-shell-backend`,
+`wawona-platform-targets` §14, `wawona-ios-min-os`,
 `wawona-nix-fresh-build`, `wawona-rust-first`.

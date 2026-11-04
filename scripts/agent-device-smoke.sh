@@ -36,6 +36,11 @@ ARTIFACTS="$ROOT/.agent-device/test-artifacts"
 IOS_DEVICE="${WAWONA_IOS_SIM:-iPhone 17 Pro}"
 LANE="${1:-all}"
 
+# shellcheck source=/dev/null
+source "$ROOT/scripts/lib/refuse-visionos-target.sh"
+# xkb-visionos also needs WAWONA_TARGET_VISIONOS=1 (lane name matches).
+wawona_refuse_visionos_target "$IOS_DEVICE" "$LANE" || exit 3
+
 mkdir -p "$ARTIFACTS"
 cd "$ROOT"
 

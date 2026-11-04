@@ -76,14 +76,17 @@ not MCP. Skill `wawona-gh`. Rule `wawona-gh`.
   constructors, `WWNCore*` trampolines). Do not write a new Wawona program in C.
   Upstream ports stay in their upstream language. See
   `.cursor/rules/wawona-rust-first.mdc` and `docs/agent-rules/wawona-rust-first.md`.
-- **Wawona Terminal = Zig libghostty + native chrome.** L3′
-  `github.com/Wawona/Ghostty` (flake `wwn-ghostty`). Ghostty owns the grid
-  (`ghostty_*`). Wawona owns Machines chrome / PTY. **Interim:** `Terminal`
-  UniFFI over `libghostty-vt` + `GhosttyGpu` atlas until Metal `libghostty.a`
-  (do not grow atlas). No GhosttyKit, no product `.dylib` on Apple-mobile,
-  iOS 13 static. Credits: Ghostty MIT; Rootshell MIT iOS embed UX. Toolbar
-  keys: `github.com/Wawona/ToolbarKeys`. Rule: `wawona-ghostty-host`.
-  Do not copy toolbar Swift back into `Sources/WawonaUI`.
+- **Wawona Terminal = Rust libghostty-rs + UniFFI + native UI.** Repo
+  `github.com/Wawona/Terminal` (flake `terminal`). Rust owns VT, key/mouse
+  encode, selection, render frame, tabs, and shell attach. Native hosts
+  paint (SwiftUI/AppKit/UIKit, SpriteKit, Compose, GTK). Shell backend:
+  system login shell on macOS/Linux/Mode B; Wawona PTY on Mode A
+  (`wawona-terminal-shell-backend`). No GhosttyKit, no product `.dylib` on
+  Apple-mobile, iOS 13 static. Zig `GhosttySurfaceHost` / `GhosttyGpu`
+  atlas are retire targets. Credits: Ghostty MIT; libghostty-rs; Rootshell
+  MIT iOS UX ideas. Toolbar keys: `github.com/Wawona/ToolbarKeys`. Rule:
+  `wawona-ghostty-host`. Do not copy toolbar Swift back into
+  `Sources/WawonaUI`.
 - **Mission-critical assurance.** AI-authored code has the same gates as human
   code. Risk decides the tier. VM memory, MMU, CPU, virtio, privilege, watchdog,
   and display ownership changes require named laws tied to production Rust,

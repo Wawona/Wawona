@@ -1,0 +1,21 @@
+---
+description: Wawona Terminal shell backend. System shell on macOS, Linux, iOS Mode B, Android Mode B. Wawona PTY shell on all Mode A products.
+alwaysApply: true
+---
+# Terminal shell backend (system shell vs Wawona PTY)
+
+| Product | Backend |
+|---|---|
+| macOS, Linux | **System shell**: user's login shell `-l`, real pty |
+| iOS / iPadOS Mode B (TrollStore, Sileo) | **System shell**: jailbreak / bootstrap login shell |
+| Android Mode B (root, outside Play) | **System shell** |
+| iOS / iPadOS / tvOS / watchOS / visionOS Mode A, Android Play | **Wawona PTY shell**: in-process `wawona_zsh_main` + `wwn_pty`, no fork/exec |
+
+- Rust `domain::terminal_shell` decides. Hosts never hardcode the shell.
+- Rust Terminal (libghostty-rs) is the grid on both. System shell: Rust opens
+  a real pty and spawns the resolved login shell. Wawona PTY: Rust attaches
+  to `wwn_pty`. Nothing spawns a process in Mode A.
+- Never a placeholder/demo command in a Terminal tab.
+- Mode A artifacts must not contain the system-shell spawn path.
+
+Canonical: `Wawona/docs/agent-rules/wawona-terminal-shell-backend.md`.

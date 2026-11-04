@@ -20,6 +20,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 # shellcheck source=/dev/null
 source "$ROOT/scripts/lib/require-tip-wawona-app.sh"
+# shellcheck source=/dev/null
+source "$ROOT/scripts/lib/refuse-visionos-target.sh"
+wawona_refuse_visionos_target || exit 3
 
 export PATH="/usr/bin:/bin:/usr/sbin:/sbin:/nix/var/nix/profiles/default/bin:${HOME}/.nix-profile/bin:${PATH:-}"
 
