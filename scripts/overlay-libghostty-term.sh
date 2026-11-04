@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# Hide homemade ghostty_surface_* / wwn_term_* in libwawona.a and inject the
-# real Terminal crate (libghostty-vt) objects. Tip / Xcode prebuild path until
-# the Rust backend compiles engine.rs in-tree.
+# Hide stub ghostty_surface_* / wwn_term_* in libwawona.a and inject the
+# real Terminal crate (libghostty-vt) objects.
+#
+# Fallback only. Prefer macOS/Linux `nix-ghostty-vt` in rust-backend-c2n so
+# engine.rs lands in libwawona.a. Forced via WAWONA_TERMINAL_OVERLAY=1 or when
+# the backend still ships engine_stub.
 set -euo pipefail
-
 LIB_A="${1:?libwawona.a}"
 TERM_A="${2:?libwawona_terminal.a}"
 

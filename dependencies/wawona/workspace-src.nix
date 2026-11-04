@@ -11,7 +11,12 @@
 # the lock file to satisfy `cargo metadata --locked` in crate2nix.
 #
 { pkgs, wawonaSrc, waypipeSrc, wawonaVersion, platform ? "ios", coreutilsSrc ? null, terminalSrc ? null
+  # Full uzaaft/libghostty-rs checkout (same rev as Cargo.toml). When set,
+  # stage expanded path crates under vendor/ so crate2nix does not hit
+  # `edition.workspace` after git cargo-vendor of a workspace member.
+, libghosttyRsSrc ? null
 , expandUutilsScript ? ../../scripts/lib/expand_uutils_workspace_deps.py
+, stageLibghosttyScript ? ../../scripts/lib/stage_libghostty_rs_path_crates.py
 }:
 
 pkgs.stdenvNoCC.mkDerivation {
@@ -24,6 +29,7 @@ pkgs.stdenvNoCC.mkDerivation {
   # always see the same script as scripts/prepare-cargo-path-deps.sh.
   passAsFile = [ ];
   expandUutilsScript = expandUutilsScript;
+  stageLibghosttyScript = stageLibghosttyScript;
 
   dontBuild = true;
   dontFixup = true;
@@ -124,6 +130,15 @@ PY
     echo "✓ Terminal cell/engine/ffi_surface injected"
     '' else ''
     echo "note: terminalSrc unset; keeping workspace term engine as packaged"
+    ''}
+
+    # libghostty-rs path crates (macOS/Linux nix-ghostty-vt). Expand workspace
+    # inheritance so crate2nix cargo metadata can resolve them.
+    ${if libghosttyRsSrc != null then ''
+    ${pkgs.python3}/bin/python3 ${stageLibghosttyScript} ${libghosttyRsSrc} $out
+    echo "✓ libghostty-vt path crates staged under vendor/"
+    '' else ''
+    echo "note: libghosttyRsSrc unset; Cargo keeps optional git libghostty pins"
     ''}
 
     # Patch root Cargo.toml version and Cargo.lock consistency

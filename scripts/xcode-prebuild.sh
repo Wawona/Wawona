@@ -213,32 +213,46 @@ rm -f "$derived/libwawona.a"
 cp -f "$active_out/lib/libwawona.a" "$derived/libwawona.a"
 echo "Copied $derived/libwawona.a <- $active_out/lib/libwawona.a"
 
-# Tip path: replace engine_stub C ABI with real libghostty Terminal until
-# macOS/Linux backends enable `nix-ghostty-vt` (engine.rs in libwawona).
+# Tip path: prefer in-tree `nix-ghostty-vt` (engine.rs in libwawona). Overlay
+# libwawona_terminal.a only as fallback when the backend still ships the stub
+# ABI, or when WAWONA_TERMINAL_OVERLAY=1 forces it.
 case "${TARGET_NAME:-}" in
   Wawona-macOS)
-    _term_a="${WAWONA_TERMINAL_LIB:-}"
-    if [ -z "$_term_a" ] || [ ! -f "$_term_a" ]; then
-      for _cand in /nix/store/*/lib/libwawona_terminal.a; do
-        if [ -f "$_cand" ] && strings "$_cand" 2>/dev/null | grep -q 'VtEngine\|libghostty_vt'; then
-          _term_a="$_cand"
-          break
-        fi
-      done
+    _has_real_vt=0
+    # Grep the archive directly. `strings | grep -q` under `set -o pipefail`
+    # returns 141 (SIGPIPE) when grep exits early, so the if always fails.
+    if grep -Eqa 'wawona-ghostty-vt|libghostty_vt::' "$derived/libwawona.a" 2>/dev/null; then
+      _has_real_vt=1
     fi
-    _overlay_sh="${SRCROOT:-}/scripts/overlay-libghostty-term.sh"
-    if [ ! -x "$_overlay_sh" ] && [ ! -f "$_overlay_sh" ]; then
-      _overlay_sh="$(cd "$(dirname "$0")" && pwd)/overlay-libghostty-term.sh"
+    if [ "${WAWONA_TERMINAL_OVERLAY:-0}" = "1" ]; then
+      _has_real_vt=0
     fi
-    if [ -n "$_term_a" ] && [ -f "$_term_a" ] && [ -f "$_overlay_sh" ]; then
-      echo "Overlaying libghostty Terminal from $_term_a"
-      bash "$_overlay_sh" "$derived/libwawona.a" "$_term_a" \
-        || echo "warning: libghostty term overlay failed; tip may keep homemade VT" >&2
-      # Archive is self-contained after overlay merge; no second -lwawona_terminal.
+    if [ "$_has_real_vt" = "1" ]; then
       rm -f "$derived/libwawona_terminal.a" "$derived/wwn-terminal-force-load.xcconfig"
+      echo "libwawona.a already has nix-ghostty-vt; skipping Terminal overlay"
     else
-      rm -f "$derived/wwn-terminal-force-load.xcconfig"
-      echo "warning: libwawona_terminal.a not found; tip keeps homemade VT" >&2
+      _term_a="${WAWONA_TERMINAL_LIB:-}"
+      if [ -z "$_term_a" ] || [ ! -f "$_term_a" ]; then
+        for _cand in /nix/store/*/lib/libwawona_terminal.a; do
+          if [ -f "$_cand" ] && grep -Eqa 'VtEngine|libghostty_vt' "$_cand" 2>/dev/null; then
+            _term_a="$_cand"
+            break
+          fi
+        done
+      fi
+      _overlay_sh="${SRCROOT:-}/scripts/overlay-libghostty-term.sh"
+      if [ ! -x "$_overlay_sh" ] && [ ! -f "$_overlay_sh" ]; then
+        _overlay_sh="$(cd "$(dirname "$0")" && pwd)/overlay-libghostty-term.sh"
+      fi
+      if [ -n "$_term_a" ] && [ -f "$_term_a" ] && [ -f "$_overlay_sh" ]; then
+        echo "Overlaying libghostty Terminal from $_term_a (fallback; prefer nix-ghostty-vt)"
+        bash "$_overlay_sh" "$derived/libwawona.a" "$_term_a" \
+          || echo "warning: libghostty term overlay failed; tip may keep VT stub" >&2
+        rm -f "$derived/libwawona_terminal.a" "$derived/wwn-terminal-force-load.xcconfig"
+      else
+        rm -f "$derived/wwn-terminal-force-load.xcconfig"
+        echo "warning: no in-tree nix-ghostty-vt and no libwawona_terminal.a overlay" >&2
+      fi
     fi
     ;;
 esac

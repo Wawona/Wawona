@@ -47,6 +47,10 @@
   # iOS product channel floor.  All iOS channels compile for 13.0; the separate
   # TrollStore installer has its own OS window. SDK selection remains latest-only.
 , iosDeploymentTarget ? null
+  # Ghostty VT archive from flake input `ghostty` (`libghostty-vt`). When set on
+  # macOS/Linux, enable `nix-ghostty-vt` and pkg-config link (same as Terminal
+  # `nix/package.nix`). Leave null on Apple-mobile / Android (engine_stub).
+, libghosttyVt ? null
   # Extracted-repo toolchain handles (default to legacy in-tree copies; Wawona's
   # flake injects wwn-toolchain store paths via the pkgs overlay).
 , applePath
@@ -570,13 +574,22 @@ let
     cargoNix.rootCrate or cargoNix.workspaceMembers.wawona or
     (throw "crate2nix output missing rootCrate and workspaceMembers.wawona");
 
+  # Ghostty VT pkg-config paths (headers + static .a live on `.dev`).
+  ghosttyVtPkgConfigPath = lib.optionals (libghosttyVt != null) (
+    [ "${libghosttyVt}/share/pkgconfig" ]
+    ++ lib.optionals (libghosttyVt ? dev) [ "${libghosttyVt.dev}/share/pkgconfig" ]
+  );
+  ghosttyVtBuildInputs = lib.optionals (libghosttyVt != null) (
+    [ libghosttyVt ] ++ lib.optionals (libghosttyVt ? dev) [ libghosttyVt.dev ]
+  );
+  enableNixGhosttyVt = (isMacOS || isLinux) && libghosttyVt != null;
+
   # ── Features to enable ─────────────────────────────────────────────
   features =
     # waypipe-ssh = in-process waypipe + libssh2 (never OpenSSH) on Apple mobile.
-    # VT: default builds use `engine_stub` until `nix-ghostty-vt` +
-    # libghosttyVt PKG_CONFIG are wired per backend. Tip macOS overlays
-    # libwawona_terminal.a (real VtEngine). Enable `nix-ghostty-vt` here
-    # only after Cargo.lock + crateOverrides for libghostty-vt-sys land.
+    # VT: macOS/Linux enable `nix-ghostty-vt` when libghosttyVt is passed
+    # (pkg-config → libghostty-vt-static). Apple-mobile / Android keep
+    # engine_stub until VT cross exists. Tip overlay remains fallback only.
     if isIOS then
       [ "waypipe-ssh" "smithay-protocols" "coreutils" ]
       ++ lib.optionals iosModeB [ "profile-ios-mode-b" ]
@@ -590,7 +603,8 @@ let
       # Mode B Cargo gates only for desktop-host / full-dev (dylib still
       # gated separately in macos.nix).
       [ "smithay-protocols" "desktop-protocols" ]
-      ++ lib.optionals desktopHost [ "profile-desktop-host" "iland-baremetal" ];
+      ++ lib.optionals desktopHost [ "profile-desktop-host" "iland-baremetal" ]
+      ++ lib.optionals enableNixGhosttyVt [ "nix-ghostty-vt" ];
 
   # ── Per-crate build overrides ──────────────────────────────────────
   crateOverrides = pkgs.defaultCrateOverrides // {
@@ -634,6 +648,19 @@ let
         buildInputs = [ zlibDep ];
         extraLinkFlags = [ "-L${zlibDep}/lib" ];
       };
+
+    # ── libghostty-vt-sys (pkg-config Ghostty VT; no host zig) ─────
+    libghostty-vt-sys = attrs: lib.optionalAttrs enableNixGhosttyVt {
+      nativeBuildInputs = (attrs.nativeBuildInputs or []) ++ [ pkgs.pkg-config ];
+      buildInputs = (attrs.buildInputs or []) ++ ghosttyVtBuildInputs;
+      PKG_CONFIG_PATH = lib.concatStringsSep ":" ghosttyVtPkgConfigPath;
+    };
+
+    libghostty-vt = attrs: lib.optionalAttrs enableNixGhosttyVt {
+      nativeBuildInputs = (attrs.nativeBuildInputs or []) ++ [ pkgs.pkg-config ];
+      buildInputs = (attrs.buildInputs or []) ++ ghosttyVtBuildInputs;
+      PKG_CONFIG_PATH = lib.concatStringsSep ":" ghosttyVtPkgConfigPath;
+    };
 
     # ── wawona (root crate) ────────────────────────────────────────
     wawona = attrs: {
@@ -694,7 +721,8 @@ let
           (nativeDeps.pixman or pkgs.pixman)
           pkgs.vulkan-loader
         ]
-        else []);
+        else [])
+        ++ ghosttyVtBuildInputs;
 
       crateType = if isAppleCross then [ "lib" "staticlib" ]
                   else if isAndroid then [ "lib" "staticlib" "cdylib" ]
@@ -712,6 +740,8 @@ let
       # For iOS and Android, wawona is purely a shared/static library
       buildBin = if isMacOS then true else false;
 
+    } // lib.optionalAttrs enableNixGhosttyVt {
+      PKG_CONFIG_PATH = lib.concatStringsSep ":" ghosttyVtPkgConfigPath;
     } // lib.optionalAttrs isAppleCross {
       __noChroot = true;
       PKG_CONFIG_ALLOW_CROSS = "1";

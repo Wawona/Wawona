@@ -4,10 +4,10 @@
 //! `ffi_surface.rs`. Homemade `screen.rs` / `kitty.rs` are gone.
 //!
 //! Feature `libghostty-term` (Nix: `nix-ghostty-vt`) compiles the real
-//! engine. Without it (Apple-mobile / Android crate2nix until VT cross
-//! exists), [`engine_stub`] keeps UniFFI + C ABI linkable. Tip macOS may
-//! still overlay `libwawona_terminal.a` until the macOS backend always
-//! enables `nix-ghostty-vt`.
+//! engine. macOS/Linux product backends pass flake `ghostty` `libghostty-vt`
+//! and enable that feature. Without it (Apple-mobile / Android until VT
+//! cross exists), [`engine_stub`] keeps UniFFI + C ABI linkable. Tip overlay
+//! of `libwawona_terminal.a` is fallback only when the stub is still linked.
 
 #[cfg(target_os = "android")]
 mod android_shell;

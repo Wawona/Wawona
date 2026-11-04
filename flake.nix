@@ -901,6 +901,11 @@
                       platform = "macos";
                     };
                     terminalSrc = inputs.terminal;
+                    libghosttyRsSrc = builtins.fetchTree {
+                      type = "git";
+                      url = "https://github.com/uzaaft/libghostty-rs";
+                      rev = "575ed6b8ceb79ffaf247ecf7e34333876b0d5be4";
+                    };
                     platform = "macos";
                     inherit wawonaVersion;
                   };
@@ -912,6 +917,7 @@
                     waypipe = toolchains.buildForMacOS "waypipe" {};
                     sshpass = toolchains.buildForMacOS "sshpass" {};
                   };
+                  libghosttyVt = inputs.ghostty.packages.${system}.libghostty-vt;
                 };
                 xcodeProject =
                   (pkgs.callPackage ./dependencies/generators/xcodegen.nix {
@@ -966,6 +972,11 @@
               # Committed src/term/{cell,engine,ffi_surface}.rs are symlinks
               # into Terminal/; sandbox needs the flake input copies.
               terminalSrc = inputs.terminal;
+              libghosttyRsSrc = builtins.fetchTree {
+                type = "git";
+                url = "https://github.com/uzaaft/libghostty-rs";
+                rev = "575ed6b8ceb79ffaf247ecf7e34333876b0d5be4";
+              };
               platform = "linux";
               inherit wawonaVersion;
             };
@@ -985,6 +996,7 @@
                 libffi = pkgs.libffi;
                 openssl = pkgs.openssl;
               };
+              libghosttyVt = inputs.ghostty.packages.${system}.libghostty-vt;
             };
           in {
             wawona-wlcs-run = pkgs.callPackage ./dependencies/tests/wlcs.nix {
@@ -1171,11 +1183,19 @@
           coreutils-multicall-macos = pkgs.callPackage coreutilsMulticallNix {
             inherit coreutils-src;
           };
+          # Same rev as Cargo.toml optional libghostty-vt pins. Path-staged in
+          # workspace-src so crate2nix does not vendor broken workspace members.
+          libghosttyRsSrc = builtins.fetchTree {
+            type = "git";
+            url = "https://github.com/uzaaft/libghostty-rs";
+            rev = "575ed6b8ceb79ffaf247ecf7e34333876b0d5be4";
+          };
           workspace-src-macos = pkgs.callPackage ./dependencies/wawona/workspace-src.nix {
             wawonaSrc = src;
             waypipeSrc = waypipe-patched-macos;
             coreutilsSrc = coreutils-patched-macos;
             terminalSrc = inputs.terminal;
+            inherit libghosttyRsSrc;
             platform = "macos";
             inherit wawonaVersion;
           };
@@ -1183,6 +1203,8 @@
             wawonaSrc = src;
             waypipeSrc = waypipe-src;
             coreutilsSrc = coreutils-src;
+            terminalSrc = inputs.terminal;
+            inherit libghosttyRsSrc;
             platform = "linux";
             inherit wawonaVersion;
           };
@@ -1440,6 +1462,8 @@
             nativeDeps = macosDeps;
             cargoNixDrv = sharedMacosCargoNix;
             desktopHost = true;
+            # Real libghostty-vt in product path (engine.rs, not engine_stub).
+            libghosttyVt = inputs.ghostty.packages.${system}.libghostty-vt;
           };
           backend-linux = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
             inherit crate2nix wawonaVersion toolchains nixpkgs;
@@ -1453,6 +1477,7 @@
               libffi = pkgs.libffi;
               openssl = pkgs.openssl;
             };
+            libghosttyVt = inputs.ghostty.packages.${system}.libghostty-vt;
           };
           backend-ios = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
             inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
