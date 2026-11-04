@@ -74,10 +74,12 @@ struct WwnTermImage {
 }
 
 /// AppKit host. Rust libghostty-vt viewport. Metal paint is interim
-/// `GhosttyGpuView` (staged `.nix-deps/terminal`). Do not grow the atlas.
-/// TODO(metal-surface): swap to Zig GhosttyLib when
-/// `wwn-ghostty#libghostty-macos` is green (fails closed today; see
-/// `Ghostty/docs/METAL-SURFACE.md`).
+/// `GhosttyGpuView` (staged `.nix-deps/terminal`; `WAWONA_GHOSTTY_GPU=1`
+/// default). Do not grow the atlas.
+/// TODO(metal-surface): tip cannot dual-link Zig `libghostty-internal.a`
+/// yet (Rust vs Zig `ghostty_surface_*` ABI). Draw proof:
+/// `nix build .#libghostty-macos-draw-proof`. See
+/// `Ghostty/docs/METAL-SURFACE.md`.
 @objc(WWNTermSurface)
 public final class WWNTermSurface: NSView {
     @objc public var onReply: WWNTermReply?

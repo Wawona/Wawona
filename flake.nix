@@ -128,8 +128,8 @@
     # Standalone recipe: Terminal/flake.nix (zig2nix + ghostty VT + crane/cargo).
     terminal.url = "github:Wawona/Terminal/development";
     terminal.flake = false;
-    # L3′ Zig libghostty packaging (Metal surface goal). Re-exports VT today.
-    # Cited: docs/ghostty-host.md, docs/wwn-repo-dag.md, Ghostty/docs/METAL-SURFACE.md.
+    # L3′ Zig libghostty (VT re-export + Darwin GhosttyLib + draw-proof).
+    # Tip paint still GhosttyGpu until ABI swap. Cited: docs/ghostty-host.md.
     wwn-ghostty.url = "github:Wawona/Ghostty/development";
     # Upstream Ghostty VT (Zig). Pin matches Terminal/libghostty-rs GHOSTTY_COMMIT.
     # Used by `nix run .#terminal` pkg-config path until wwn-ghostty owns Metal.
@@ -965,6 +965,17 @@
 
       packages =
         commonPackages
+        # Zig GhosttyLib (Metal). Re-export from wwn-ghostty on Darwin. Tip paint
+        # still GhosttyGpu (Rust vs Zig ghostty_surface_* ABI). Draw proof is a
+        # separate binary. See Ghostty/docs/METAL-SURFACE.md.
+        // (pkgs.lib.optionalAttrs (
+          pkgs.stdenv.hostPlatform.isDarwin
+          && (inputs.wwn-ghostty.packages.${system} ? libghostty-macos)
+        ) {
+          libghostty-macos = inputs.wwn-ghostty.packages.${system}.libghostty-macos;
+          libghostty-macos-draw-proof =
+            inputs.wwn-ghostty.packages.${system}.libghostty-macos-draw-proof;
+        })
         # WLCS conformance runner (ci-l2-wlcs). Linux-only; production WWNCore ABI.
         # backend-linux lives in the Darwin packages let only; define a Linux
         # scoped backend here so nix run .#wawona-wlcs-run evaluates on GHA.
@@ -3265,6 +3276,12 @@
         wawona-terminal = {
           type = "app";
           program = "${systemPackages.terminal}/bin/wawona-terminal";
+        };
+      })
+      // (pkgs.lib.optionalAttrs (systemPackages ? libghostty-macos-draw-proof) {
+        libghostty-macos-draw-proof = {
+          type = "app";
+          program = "${systemPackages.libghostty-macos-draw-proof}/bin/libghostty-macos-draw-proof";
         };
       })
       // (pkgs.lib.optionalAttrs (systemPackages ? wawona-android) {

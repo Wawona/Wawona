@@ -21,11 +21,11 @@ Canonical RAG: `ghostty-host.md`. Skill: `wawona-ghostty-host`.
 
 - VT: upstream `libghostty-vt` via flake `ghostty` + `Terminal` (`GhosttySurface`).
 - Paint: `Terminal/apple/Terminal/GhosttyGpuView` (interim atlas, staged into
-  Wawona). **Forbidden to grow.** Plan:
-  retire after Zig Metal surface green (`Ghostty/docs/METAL-SURFACE.md`).
-- `wwn-ghostty#libghostty-macos` **fails closed** until Darwin attaches
-  GhosttyLib install (probe: `#libghostty-macos-probe`). Terminal
-  `libghostty.a` alias of `libwawona_terminal.a` is not Metal.
+  Wawona). **Forbidden to grow.** Default / `WAWONA_GHOSTTY_GPU=1` until tip
+  ABI swap (`Ghostty/docs/METAL-SURFACE.md`).
+- `wwn-ghostty#libghostty-macos` ships GhosttyLib static; draw proof:
+  `#libghostty-macos-draw-proof`. Tip must not dual-link with Rust
+  `ghostty_surface_*`. Stage: `scripts/stage-libghostty-macos.sh`.
 - Prefer plan: paint via Zig Ghostty surface, not atlas stamp.
 
 ## Hard rejects

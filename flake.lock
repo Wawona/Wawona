@@ -1024,11 +1024,11 @@
     "terminal": {
       "flake": false,
       "locked": {
-        "lastModified": 1793758158,
-        "narHash": "sha256-FGPYNDTfDvrNJE50j5v39x0NtZc8RPIp3nbaPjm9mC8=",
+        "lastModified": 1793760965,
+        "narHash": "sha256-nbZxtxjcw8y/dZq/NuwFhQiuIXwGOSUo8S6QQ7Ip4z0=",
         "owner": "Wawona",
         "repo": "Terminal",
-        "rev": "631914c6bef092deb9d73f7a3b42a4a9008b2ecb",
+        "rev": "024bc6efc944ce8975ba50d2d28893e37215ce58",
         "type": "github"
       },
       "original": {
@@ -1079,11 +1079,11 @@
         "nixpkgs": "nixpkgs_5"
       },
       "locked": {
-        "lastModified": 1793750715,
-        "narHash": "sha256-Bd/CUTACHJdB/rzf57JnVMoHlaPE6yIVr8C0MCfC4Zw=",
+        "lastModified": 1793760949,
+        "narHash": "sha256-L661ikj1g4nPD8ytDbdEpXkDrspOPPDqYvxi7Jzt/i0=",
         "owner": "Wawona",
         "repo": "Ghostty",
-        "rev": "3e7a6ed5996ccaa396f12aa3ed4b1becb3caa629",
+        "rev": "c250cbc05cf7991ea69082e7241963d6575dd5f7",
         "type": "github"
       },
       "original": {
