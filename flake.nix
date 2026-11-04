@@ -1072,6 +1072,11 @@
             coreutilsSrc = coreutils-src;
             # Sandbox cannot follow the gitignored Terminal symlink; inject.
             terminalSrc = inputs.terminal;
+            libghosttyRsSrc = builtins.fetchTree {
+              type = "git";
+              url = "https://github.com/uzaaft/libghostty-rs";
+              rev = "575ed6b8ceb79ffaf247ecf7e34333876b0d5be4";
+            };
           };
           wawona-linux = pkgs.callPackage ./dependencies/wawona/linux.nix {
             inherit wawonaVersion;

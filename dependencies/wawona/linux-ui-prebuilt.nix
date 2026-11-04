@@ -13,12 +13,15 @@
   waypipeSrc,
   coreutilsSrc,
   terminalSrc ? null,
+  # Same fetchTree as flake libghosttyRsSrc. Path-stages VT crates so
+  # importCargoLock does not need git outputHashes for libghostty-vt.
+  libghosttyRsSrc ? null,
   westonSimpleShmLinuxNix,
 }:
 
 let
   workspaceSrc = pkgs.callPackage ./workspace-src.nix {
-    inherit wawonaSrc waypipeSrc wawonaVersion coreutilsSrc terminalSrc;
+    inherit wawonaSrc waypipeSrc wawonaVersion coreutilsSrc terminalSrc libghosttyRsSrc;
     platform = "macos"; # keep the [[bin]] targets + lib crate-types
   };
 
