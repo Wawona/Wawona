@@ -341,6 +341,12 @@ final class WWNMainWindowRouter: ObservableObject {
     }
 
     func showMachines() {
+        #if os(macOS)
+        if sessionShowsEmbeddedTerminal {
+            WWNMacGuestConsole.shared.endMainWindowEmbed(restoreWindow: false)
+            sessionShowsEmbeddedTerminal = false
+        }
+        #endif
         sessionSurfaceVisible = false
         selection = .machines
     }
@@ -349,11 +355,31 @@ final class WWNMainWindowRouter: ObservableObject {
     @Published var sessionSurfaceMounted = false
     /// When true, the Wayland compositor fills the detail (Focus / Tab Overview).
     @Published var sessionSurfaceVisible = false
+    /// Focus for Terminal-only Native Shell: TermSurface fills Present (not empty Metal).
+    @Published var sessionShowsEmbeddedTerminal = false
 
     /// Mount presenter without covering Machines / Terminal (Start path).
     func mountSessionSurface() {
         sessionSurfaceMounted = true
         NSLog("WWNMountSessionSurface: mounted=1 visible=%d", sessionSurfaceVisible ? 1 : 0)
+    }
+
+    /// Focus when there is no nested Wayland toplevel: paint Wawona Terminal
+    /// in the main window Present area instead of empty CompositorHostView.
+    func showTerminalSessionSurface() {
+        if isSettingsPresented {
+            isSettingsPresented = false
+        }
+        #if os(macOS)
+        sessionShowsEmbeddedTerminal = true
+        sessionSurfaceMounted = true
+        sessionSurfaceVisible = true
+        selection = .tabOverview
+        WWNMacGuestConsole.shared.beginMainWindowEmbed()
+        NSLog("WWNShowTerminalSessionSurface: embedded TermSurface in main Present")
+        #else
+        showSessionSurface()
+        #endif
     }
 
     func showSessionSurface() {
@@ -368,6 +394,10 @@ final class WWNMainWindowRouter: ObservableObject {
         // Wawona Terminal can start Wayland clients. Park Terminal chrome
         // (keep PTY) so Present is not covered; never require Done/Close.
         #if os(macOS)
+        if sessionShowsEmbeddedTerminal {
+            WWNMacGuestConsole.shared.endMainWindowEmbed(restoreWindow: false)
+            sessionShowsEmbeddedTerminal = false
+        }
         WWNMacGuestConsole.shared.parkForCompositor()
         // Default Start Type = New Window: Present stays in the dedicated
         // session window. Machines chrome must not grow a global tab bar.
@@ -416,6 +446,12 @@ final class WWNMainWindowRouter: ObservableObject {
             name: Notification.Name("WWNCaptureActiveMachineThumbnailNotification"),
             object: nil
         )
+        #if os(macOS)
+        if sessionShowsEmbeddedTerminal {
+            WWNMacGuestConsole.shared.endMainWindowEmbed(restoreWindow: true)
+            sessionShowsEmbeddedTerminal = false
+        }
+        #endif
         sessionSurfaceVisible = false
         selection = .machines
     }
@@ -427,6 +463,12 @@ final class WWNMainWindowRouter: ObservableObject {
             name: Notification.Name("WWNCaptureActiveMachineThumbnailNotification"),
             object: nil
         )
+        #if os(macOS)
+        if sessionShowsEmbeddedTerminal {
+            WWNMacGuestConsole.shared.endMainWindowEmbed(restoreWindow: true)
+            sessionShowsEmbeddedTerminal = false
+        }
+        #endif
         #if os(iOS) || os(visionOS)
         MainActor.assumeIsolated {
             WWNIosGuestConsole.shared.parkForCompositor()
@@ -1154,7 +1196,27 @@ struct WawonaMainWindowView: View {
     private var tabOverviewPane: some View {
         ZStack(alignment: .top) {
             if router.sessionSurfaceMounted {
-                #if !SWIFT_PACKAGE && (os(macOS) || os(iOS) || os(visionOS))
+                #if os(macOS)
+                // Metal Present ignores SwiftUI opacity. Terminal Focus must
+                // swap CompositorHostView out or TermSurface stays covered black.
+                if router.sessionShowsEmbeddedTerminal && router.sessionSurfaceVisible {
+                    GeometryReader { geo in
+                        WWNMacEmbeddedTerminalHost()
+                            .frame(width: geo.size.width, height: geo.size.height)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .accessibility(identifier: WWNA11y.compositorSurface)
+                    .accessibility(label: Text("Wawona Terminal"))
+                } else {
+                    #if !SWIFT_PACKAGE
+                    CompositorBridge()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .opacity(router.sessionSurfaceVisible ? 1 : 0)
+                        .allowsHitTesting(router.sessionSurfaceVisible)
+                        .accessibility(hidden: !router.sessionSurfaceVisible)
+                    #endif
+                }
+                #elseif !SWIFT_PACKAGE && (os(iOS) || os(visionOS))
                 CompositorBridge()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .opacity(router.sessionSurfaceVisible ? 1 : 0)

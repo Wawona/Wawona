@@ -826,14 +826,27 @@ final class WWNMachinesViewModel: ObservableObject {
     }
     touchLastUsed(profile.machineId)
     WWNMachineProfileStore.setActiveMachineId(profile.machineId)
-    #if os(iOS) || os(visionOS)
+    #if os(macOS)
+    // Terminal-only Native Shell with no nested Wayland toplevel: Focus must
+    // show the TermSurface grid in main Present. Parking Terminal and
+    // revealing empty CompositorHostView left a black Focus pane.
+    if shouldEmbedTerminalOnFocus(profile) {
+      WWNMainWindowRouter.shared.showTerminalSessionSurface()
+      return
+    }
+    WWNMainWindowRouter.shared.showSessionSurface()
+    _ = WWNCompositorBridge.sharedBridge.focusClientWindows(forMachineId: profile.machineId)
+    #elseif os(iOS) || os(visionOS)
     // Park Terminal chrome; do not Stop the shell (Focus is not Close).
     WWNIosGuestConsole.shared.parkForCompositor()
-    #endif
     WWNMainWindowRouter.shared.showSessionSurface()
-    #if os(macOS)
-    _ = WWNCompositorBridge.sharedBridge.focusClientWindows(forMachineId: profile.machineId)
-    #elseif os(iOS) || os(tvOS) || os(visionOS)
+    NotificationCenter.default.post(
+      name: .WWNClientFocusRequested,
+      object: nil,
+      userInfo: ["machineId": profile.machineId]
+    )
+    #elseif os(tvOS)
+    WWNMainWindowRouter.shared.showSessionSurface()
     NotificationCenter.default.post(
       name: .WWNClientFocusRequested,
       object: nil,
@@ -843,6 +856,18 @@ final class WWNMachinesViewModel: ObservableObject {
     _ = profile
     #endif
   }
+
+  #if os(macOS)
+  /// Native Shell Terminal with no nested Wayland client → embed TermSurface.
+  private func shouldEmbedTerminalOnFocus(_ profile: WWNMachineProfile) -> Bool {
+    guard WWNNestedClientTabStore.shared.nestedCount == 0 else { return false }
+    guard WWNNativeShellConfiguration.isNativeShellFamily(profile.type)
+      || profile.type == kWWNMachineTypeNative else {
+      return false
+    }
+    return WWNNativeShellConfiguration.kind(for: profile) == kWWNNativeShellKindTerminal
+  }
+  #endif
 
   func thumbnailImage(for profile: WWNMachineProfile) -> WWNPlatformImage? {
     #if os(macOS) || os(iOS) || os(tvOS) || os(visionOS)
