@@ -141,26 +141,24 @@ if [[ "$need_build" -eq 1 ]]; then
     echo "ensure-tip-wawona-macos: TerminalMetalPresent tip (WAWONA_LINK_LIBGHOSTTY=0)" >&2
   fi
   # Always refresh xcodegen before tip xcodebuild (macOS dogfood contract).
-  # Note: xcodegen-macos stages flake `terminal` into .nix-deps/terminal and
-  # wipes a prior sibling copy. Overlay sibling AFTER xcodegen.
-  if command -v nix >/dev/null 2>&1; then
+  # Sibling Terminal (Metal Present) overrides flake pin so pbxproj lists
+  # TerminalMetalPresent.swift. Flake pin alone can lag local Terminal tip.
+  _xg_nix_args=(run "$ROOT#xcodegen-macos")
+  if [[ -d "$ROOT/../Terminal/apple/Terminal" ]]; then
+    _xg_nix_args+=(--override-input terminal "path:$ROOT/../Terminal")
+    echo "ensure-tip-wawona-macos: xcodegen-macos + sibling Terminal override" >&2
+  else
     echo "ensure-tip-wawona-macos: nix run .#xcodegen-macos" >&2
-    if ! nix run "$ROOT#xcodegen-macos" -- >&2; then
+  fi
+  if command -v nix >/dev/null 2>&1; then
+    if ! nix "${_xg_nix_args[@]}" -- >&2; then
       echo "FAIL: nix run .#xcodegen-macos" >&2
       exit 2
     fi
   fi
-  # Sibling Terminal apple/Terminal (TerminalMetalPresent) wins over flake pin.
-  if [[ -d "$ROOT/../Terminal/apple/Terminal" ]]; then
-    mkdir -p "$ROOT/.nix-deps/terminal"
-    rm -rf "$ROOT/.nix-deps/terminal/Terminal"
-    cp -R "$ROOT/../Terminal/apple/Terminal" "$ROOT/.nix-deps/terminal/Terminal"
-    chmod -R u+w "$ROOT/.nix-deps/terminal/Terminal"
-    if [[ ! -f "$ROOT/.nix-deps/terminal/Terminal/TerminalMetalPresent.swift" ]]; then
-      echo "FAIL: sibling Terminal missing TerminalMetalPresent.swift" >&2
-      exit 2
-    fi
-    echo "ensure-tip-wawona-macos: overlaid sibling Terminal (Metal Present)" >&2
+  if [[ ! -f "$ROOT/.nix-deps/terminal/Terminal/TerminalMetalPresent.swift" ]]; then
+    echo "FAIL: tip .nix-deps missing TerminalMetalPresent.swift after xcodegen" >&2
+    exit 2
   fi
   # Target OTHER_LDFLAGS overrides xcconfig includes for list merge in practice;
   # pass force_load on the xcodebuild CLI when Zig archive link is requested.
