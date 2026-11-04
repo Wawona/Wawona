@@ -1,7 +1,6 @@
-/* Guest console screen. The VT screen lives in github.com/Wawona/Terminal.
-   wwn_term_viewport is the GPU upload. lines_json remains until generated
-   UniFFI Swift/Kotlin is on the compile. This crate does not link a GPU
-   library. Hosts pick the face. */
+/* Rust VT C ABI for Wawona Terminal hosts (libghostty-vt via VtEngine).
+   Grid only. Chrome (windows, PTY, ToolbarKeys) stays in Wawona L4.
+   Zig GhosttyLib keeps ghostty_surface_* for Metal. Do not collide. */
 #ifndef WWN_TERM_H
 #define WWN_TERM_H
 
@@ -12,84 +11,53 @@
 extern "C" {
 #endif
 
-typedef struct wwn_term wwn_term;
+int wwn_term_init(void);
+void wwn_term_shutdown(void);
 
-typedef struct wwn_term_cell {
+typedef struct WwnTermSurface WwnTermSurface;
+
+typedef struct WwnTermCell {
   uint32_t cp;
   uint32_t fg;
   uint32_t bg;
   uint32_t attrs;
-} wwn_term_cell;
+} WwnTermCell;
 
 #define WWN_TERM_BOLD 1u
 #define WWN_TERM_DIM 2u
 #define WWN_TERM_ITALIC 4u
 #define WWN_TERM_UNDERLINE 8u
 
-wwn_term *wwn_term_new(uint32_t cols, uint32_t rows);
-void wwn_term_free(wwn_term *term);
-/* host_factor_permille: 1000 is 1.0. Low Power and thermal pass a lower value. */
-void wwn_term_refresh_scrollback_cap(wwn_term *term, uint32_t host_factor_permille);
-uint32_t wwn_term_scrollback_cap(const wwn_term *term);
-uint32_t wwn_term_recommended_scrollback_cap(uint32_t cols);
-void wwn_term_resize(wwn_term *term, uint32_t cols, uint32_t rows);
-void wwn_term_feed(wwn_term *term, const uint8_t *bytes, size_t len);
-/* Bytes the host must write back to the PTY (cursor reports). */
-size_t wwn_term_take_reply(wwn_term *term, uint8_t *buf, size_t cap);
-uint32_t wwn_term_cols(const wwn_term *term);
-uint32_t wwn_term_line_count(const wwn_term *term);
-uint32_t wwn_term_line_cells(const wwn_term *term, uint32_t line,
-                             wwn_term_cell *out, uint32_t cap);
-void wwn_term_cursor(const wwn_term *term, uint32_t *line, uint32_t *col);
-
-/* JSON array of UniFFI TerminalLine records. Free with wwn_term_string_free. */
-char *wwn_term_lines_json(const wwn_term *term);
-char *wwn_term_bytes_lines_json(const uint8_t *bytes, size_t len, uint32_t cols,
-                                uint32_t rows);
+WwnTermSurface *wwn_term_new(uint32_t cols, uint32_t rows);
+void wwn_term_free(WwnTermSurface *s);
+void wwn_term_resize(WwnTermSurface *s, uint32_t cols, uint32_t rows);
+void wwn_term_feed(WwnTermSurface *s, const uint8_t *bytes, size_t len);
+void wwn_term_key(
+    WwnTermSurface *s, uint32_t keycode, uint32_t mods, uint32_t action, const uint8_t *text,
+    size_t text_len);
+/* Selection: mode 0=cell, 1=word, 2=row. Coords are viewport cells. */
+void wwn_term_select_begin(WwnTermSurface *s, uint32_t col, uint32_t row, uint32_t mode);
+void wwn_term_select_extend(WwnTermSurface *s, uint32_t col, uint32_t row);
+void wwn_term_select_clear(WwnTermSurface *s);
+void wwn_term_select_all(WwnTermSurface *s);
+size_t wwn_term_take_reply(WwnTermSurface *s, uint8_t *buf, size_t cap);
+uint32_t wwn_term_cols(const WwnTermSurface *s);
+uint32_t wwn_term_line_count(const WwnTermSurface *s);
+uint32_t wwn_term_viewport(
+    const WwnTermSurface *s, uint32_t origin, WwnTermCell *out, uint32_t cap, uint32_t *cols,
+    uint32_t *rows);
+uint32_t wwn_term_origin(const WwnTermSurface *s);
+void wwn_term_scroll_to(WwnTermSurface *s, uint32_t origin);
+void wwn_term_scroll_delta(WwnTermSurface *s, int32_t delta);
+void wwn_term_scroll_bottom(WwnTermSurface *s);
+uint32_t wwn_term_scroll_total(const WwnTermSurface *s);
+uint32_t wwn_term_selection_text(const WwnTermSurface *s, uint8_t *out, uint32_t cap);
+uint32_t wwn_term_title(const WwnTermSurface *s, uint8_t *out, uint32_t cap);
+void wwn_term_set_cell_px(WwnTermSurface *s, uint32_t width, uint32_t height);
+void wwn_term_pointer(
+    WwnTermSurface *s, uint8_t button, uint32_t col, uint32_t row, int pressed, int motion);
+char *wwn_term_encode_paste(WwnTermSurface *s, const uint8_t *bytes, size_t len);
 void wwn_term_string_free(char *ptr);
-/* Paste bytes for the PTY. Wraps with mode 2004 when that mode is on. */
-char *wwn_term_encode_paste(const wwn_term *term, const uint8_t *bytes, size_t len);
-/* button: 0 left, 1 middle, 2 right. Reports land in take_reply. */
-void wwn_term_pointer(wwn_term *term, uint8_t button, uint32_t col, uint32_t row,
-                      int pressed, int motion);
-
-/* Visible grid, one GPU upload. origin is a scrollback row. */
-uint32_t wwn_term_viewport(const wwn_term *term, uint32_t origin,
-                           wwn_term_cell *out, uint32_t cap, uint32_t *cols,
-                           uint32_t *rows);
-uint32_t wwn_term_origin(const wwn_term *term);
-void wwn_term_scroll_to(wwn_term *term, uint32_t origin);
-void wwn_term_scroll_delta(wwn_term *term, int32_t delta);
-void wwn_term_scroll_bottom(wwn_term *term);
-uint32_t wwn_term_scroll_total(const wwn_term *term);
-/* Ghostty active selection plain text, or empty. Hosts install selection. */
-uint32_t wwn_term_selection_text(const wwn_term *term, uint8_t *out, uint32_t cap);
-/* OSC 0 / OSC 2 title. Writes a NUL and returns the length without it. */
-uint32_t wwn_term_title(const wwn_term *term, uint8_t *out, uint32_t cap);
-
-/* Kitty graphics. RGBA8 placements. Copy pixels out before the next feed. */
-typedef struct wwn_term_image {
-  uint32_t id;
-  int32_t col;
-  int32_t row;
-  int32_t x_px;
-  int32_t y_px;
-  uint32_t px_w;
-  uint32_t px_h;
-  uint32_t cols;
-  uint32_t rows;
-  int32_t z;
-  uint32_t rgba_len;
-} wwn_term_image;
-
-void wwn_term_set_cell_px(wwn_term *term, uint32_t width, uint32_t height);
-uint32_t wwn_term_image_count(const wwn_term *term);
-int wwn_term_image_meta(const wwn_term *term, uint32_t index, wwn_term_image *out);
-uint32_t wwn_term_image_rgba(const wwn_term *term, uint32_t index, uint8_t *out,
-                             uint32_t cap);
-char *wwn_term_images_json(const wwn_term *term);
-char *wwn_term_bytes_images_json(const uint8_t *bytes, size_t len, uint32_t cols,
-                                 uint32_t rows, uint32_t cell_w, uint32_t cell_h);
 
 #ifdef __cplusplus
 }

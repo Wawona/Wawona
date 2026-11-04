@@ -15,6 +15,9 @@ mod android_shell;
 mod cell;
 
 #[cfg(feature = "libghostty-term")]
+mod key_input;
+
+#[cfg(feature = "libghostty-term")]
 #[path = "engine.rs"]
 mod engine;
 

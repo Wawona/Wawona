@@ -17,6 +17,7 @@ pub mod quit_policy;
 pub mod sanitize_ssh_host;
 pub mod tab_overview;
 pub mod terminal_liveness;
+pub mod terminal_shell;
 pub mod uniffi_api;
 pub mod validation;
 pub mod welcome_copy;

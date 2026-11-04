@@ -272,7 +272,22 @@ import Darwin
     }
   }
 
+  /// macOS always uses SystemLoginShell per `domain::terminal_shell::resolve`.
+  /// Prefer login shell from passwd; fall back to `/bin/zsh`. UniFFI export of
+  /// the resolver is the next bridge step (hosts must not pick Mode A PTY here).
+  private func resolvedMacSystemShellPath() -> String {
+    if let pw = getpwuid(getuid()), let shell = pw.pointee.pw_shell {
+      let path = String(cString: shell)
+      if !path.isEmpty {
+        return path
+      }
+    }
+    return "/bin/zsh"
+  }
+
   private func startShell() {
+    // Policy: resolve(MacOs, ModeA|ModeB) -> SystemLoginShell (never Wawona PTY).
+    let shellPath = resolvedMacSystemShellPath()
     var masterFd: Int32 = -1
     var slaveFd: Int32 = -1
     var win = winsize(ws_row: 24, ws_col: 80, ws_xpixel: 0, ws_ypixel: 0)
@@ -287,7 +302,7 @@ import Darwin
     posix_spawnattr_init(&attr)
     posix_spawnattr_setflags(&attr, Int16(POSIX_SPAWN_SETSID))
     var pid: pid_t = 0
-    let path = strdup("/bin/zsh")
+    let path = strdup(shellPath)
     let arg = strdup("-l")
     var argv: [UnsafeMutablePointer<CChar>?] = [path, arg, nil]
     let rc: Int32 = name.withUnsafeBufferPointer { buf in
@@ -296,7 +311,7 @@ import Darwin
       posix_spawn_file_actions_adddup2(&actions, 0, 2)
       posix_spawn_file_actions_addclose(&actions, masterFd)
       posix_spawn_file_actions_addclose(&actions, slaveFd)
-      return posix_spawn(&pid, "/bin/zsh", &actions, &attr, &argv, environ)
+      return posix_spawn(&pid, shellPath, &actions, &attr, &argv, environ)
     }
     free(path)
     free(arg)
