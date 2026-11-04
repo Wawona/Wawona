@@ -6,7 +6,7 @@ import Foundation
 // (wwn-containers `wwn-oci`). The JSON key casing matches the CLI output exactly.
 
 /// One repository hit from a Docker Hub search.
-public struct ContainerSearchHit: Codable, Hashable, Sendable {
+public struct ContainerSearchHit: Codable, Hashable, Identifiable, Sendable {
     public var repoName: String
     /// The resolved pullable registry reference (e.g. `docker.io/library/python`),
     /// computed by `wwn-oci` so GUI and CLI share one resolution rule.
@@ -16,6 +16,8 @@ public struct ContainerSearchHit: Codable, Hashable, Sendable {
     public var pullCount: UInt64
     public var isOfficial: Bool
     public var isAutomated: Bool
+
+    public var id: String { pullableRef }
 
     private enum CodingKeys: String, CodingKey {
         case repoName = "repo_name"

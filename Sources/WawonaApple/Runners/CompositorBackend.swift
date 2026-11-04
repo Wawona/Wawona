@@ -59,7 +59,7 @@ public func WWNCompositorBackendCLIOverride() -> NSString? {
 @_cdecl("WWNResolveCompositorBackend")
 public func WWNResolveCompositorBackend(_ overrideValue: NSString?) -> NSString {
     let classic = WWNHostSessionUsesOwnDisplayDRM()
-    var pref = UserDefaults.standard.string(forKey: "CompositorBackend") ?? "auto"
+    let pref = UserDefaults.standard.string(forKey: "CompositorBackend") ?? "auto"
     var cli = overrideValue as String?
     if cli?.isEmpty != false {
         cli = cliCompositorBackendOverride

@@ -19,12 +19,18 @@ final class WatchNativeShellRegistry {
         if let shell = shells[sessionId], shell.isRunning {
             shell.onScreen = onScreen
             shell.onFailure = onFailure
+            shell.onEnded = { [weak self] in
+                self?.handleEnded(sessionId: sessionId)
+            }
             shell.republishScreen()
             return shell
         }
         let shell = WatchNativeShellSession()
         shell.onScreen = onScreen
         shell.onFailure = onFailure
+        shell.onEnded = { [weak self] in
+            self?.handleEnded(sessionId: sessionId)
+        }
         shells[sessionId] = shell
         shell.start()
         return shell
@@ -34,11 +40,40 @@ final class WatchNativeShellRegistry {
         guard let shell = shells[sessionId] else { return }
         shell.onScreen = nil
         shell.onFailure = nil
+        shell.onEnded = nil
     }
 
     func stop(sessionId: UUID) {
         shells.removeValue(forKey: sessionId)?.stop()
     }
+
+    /// Soft EOF: restart the live shell. Crash-loop paints `[session ended]`.
+    private func handleEnded(sessionId: UUID) {
+        guard let shell = shells[sessionId] else { return }
+        let onScreen = shell.onScreen
+        let onFailure = shell.onFailure
+        shell.onEnded = nil
+        shell.stop()
+        shells.removeValue(forKey: sessionId)
+        let now = Date()
+        let count: Int
+        if let last = shellEndedAt[sessionId], now.timeIntervalSince(last) < 2.0 {
+            count = (shellRestartCount[sessionId] ?? 0) + 1
+        } else {
+            count = 0
+        }
+        shellEndedAt[sessionId] = now
+        shellRestartCount[sessionId] = count
+        if count >= 3 {
+            onFailure?("[session ended]")
+            return
+        }
+        guard let onScreen, let onFailure else { return }
+        _ = attach(sessionId: sessionId, onScreen: onScreen, onFailure: onFailure)
+    }
+
+    private var shellRestartCount: [UUID: Int] = [:]
+    private var shellEndedAt: [UUID: Date] = [:]
 }
 
 /// In-process Wawona Terminal on watchOS: `wwn_pty` + `wawona_zsh_main` + grid.
@@ -59,6 +94,7 @@ final class WatchNativeShellSession {
 
     var onScreen: ((String) -> Void)?
     var onFailure: ((String) -> Void)?
+    var onEnded: (() -> Void)?
 
     var isRunning: Bool { !stopped }
 
@@ -138,6 +174,7 @@ final class WatchNativeShellSession {
         stopped = true
         onScreen = nil
         onFailure = nil
+        onEnded = nil
         Self.queue.async { [self] in teardownLocked() }
     }
 
@@ -187,9 +224,11 @@ final class WatchNativeShellSession {
             if n < 0, errno == EINTR { continue }
             if n == 0 || (n < 0 && errno != EAGAIN) {
                 // Shell side closed: the master stays readable at EOF forever.
-                // (`n < 0` other than EAGAIN means the fd is gone.)
+                // Host restarts via onEnded (same as iOS/visionOS GuestConsole).
                 pump?.cancel()
                 pump = nil
+                let ended = onEnded
+                DispatchQueue.main.async { ended?() }
             }
             break
         }

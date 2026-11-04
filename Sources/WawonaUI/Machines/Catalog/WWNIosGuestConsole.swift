@@ -1,5 +1,6 @@
 #if os(iOS) || os(tvOS) || os(visionOS)
 import Combine
+import notify
 import SwiftUI
 import UIKit
 
@@ -28,11 +29,17 @@ final class WWNIosGuestConsole: ObservableObject {
   private var observer: NSObjectProtocol?
   private var launchLogObserver: NSObjectProtocol?
   private var started = false
+  private var labDismissToken: Int32 = 0
   private var shell: IosShellSession?
   private var logTerm: IosLogTermSession?
   private var keyRepeatTimer: Timer?
   private var keyRepeatBytes: [UInt8]?
   private var keyRepeatTicks = 0
+  /// Soft-exit restart budget. Immediate crash-loop stops after 3.
+  private var shellRestartCount = 0
+  private var shellEndedAt: Date?
+  /// Matches Rust `terminal_liveness::ENDED_NOTICE`.
+  private static let sessionEndedNotice = "[session ended]"
 
   var isShell: Bool { source == "shell" }
 
@@ -56,10 +63,42 @@ final class WWNIosGuestConsole: ObservableObject {
       let mid = info["machineId"] as? String ?? ""
       let src = info["source"] as? String ?? "relay"
       if src == "close" {
-        console.dismiss(machineId: mid)
+        // Stop already owns session teardown. Chrome only (no re-disconnect).
+        console.dismissChrome(machineId: mid)
       } else {
         console.present(machineId: mid, source: src)
       }
+    }
+    // Lab / simctl: `notifyutil -p com.aspauldingcode.wawona.lab-dismiss-terminal`
+    // (visionOS AX often reports Done at window origin; hands/eyes still hit it).
+    // Dual register: CF Darwin center (proven on vision/tv tips) + notify(3).
+    CFNotificationCenterAddObserver(
+      CFNotificationCenterGetDarwinNotifyCenter(),
+      UnsafeRawPointer(bitPattern: 1),
+      { _, _, _, _, _ in
+        NSLog("WWNIosGuestConsole: lab-dismiss CFNotification fired")
+        DispatchQueue.main.async {
+          WWNIosGuestConsole.shared.userDismiss()
+        }
+      },
+      "com.aspauldingcode.wawona.lab-dismiss-terminal" as CFString,
+      nil,
+      .deliverImmediately
+    )
+    var token: Int32 = 0
+    let status = notify_register_dispatch(
+      "com.aspauldingcode.wawona.lab-dismiss-terminal",
+      &token,
+      DispatchQueue.main
+    ) { _ in
+      NSLog("WWNIosGuestConsole: lab-dismiss notify fired")
+      WWNIosGuestConsole.shared.userDismiss()
+    }
+    if status == NOTIFY_STATUS_OK {
+      labDismissToken = token
+      NSLog("WWNIosGuestConsole: lab-dismiss notify token=%d", token)
+    } else {
+      NSLog("WWNIosGuestConsole: lab-dismiss notify register failed status=%d", status)
     }
     launchLogObserver = NotificationCenter.default.addObserver(
       forName: Notification.Name("WWNClientLaunchLogNotification"),
@@ -78,9 +117,10 @@ final class WWNIosGuestConsole: ObservableObject {
     guard !machineId.isEmpty else { return }
     if self.machineId == machineId, self.source == source {
       if !isPresented {
-        windowed = Self.openNextInWindow
+        windowed = Self.resolveWindowed(source: source)
         Self.openNextInWindow = false
         isPresented = true
+        presentTerminalSceneIfNeeded(source: source)
       }
       return
     }
@@ -92,8 +132,10 @@ final class WWNIosGuestConsole: ObservableObject {
     fed = 0
     inputLine = ""
     statusMessage = ""
+    shellRestartCount = 0
+    shellEndedAt = nil
     termModel.reset()
-    windowed = Self.openNextInWindow
+    windowed = Self.resolveWindowed(source: source)
     Self.openNextInWindow = false
     title = "Wawona Terminal"
     switch source {
@@ -109,9 +151,45 @@ final class WWNIosGuestConsole: ObservableObject {
       startLogTerm()
       appendLog("Wawona Terminal\n")
     }
+    // Shell / SSH Terminal must sit above Machines. If sessionSurfaceVisible
+    // is true (AUTO_START mount + accidental Show), the ZStack hides this
+    // sheet and the user only sees Machines / empty Metal.
+    if source == "shell" || source == "ssh" {
+      WWNMainWindowRouter.shared.hideSessionSurface()
+      WWNMainWindowRouter.shared.showMachines()
+    }
+    // visionOS shell/ssh: dedicated Terminal scene so system close / Done
+    // leave Machines alive. Overlay Exclusive swap stays for iPhone / tvOS
+    // and for scene-activation fallback.
     isPresented = true
+    presentTerminalSceneIfNeeded(source: source)
     if source == "relay" || source == "client" {
       startPump()
+    }
+    // Lab only: SIMCTL_CHILD_WWN_LAB_TYPE_TEXT='echo hi' (+ optional delay).
+    // xrSimulator AX taps miss the floating window; prove PTY inject this way.
+    if let labType = ProcessInfo.processInfo.environment["WWN_LAB_TYPE_TEXT"],
+      !labType.isEmpty
+    {
+      let typeMs = Int(ProcessInfo.processInfo.environment["WWN_LAB_TYPE_AFTER_MS"] ?? "800") ?? 800
+      let typeDelay = TimeInterval(max(0, typeMs)) / 1000.0
+      DispatchQueue.main.asyncAfter(deadline: .now() + typeDelay) {
+        let line = labType.hasSuffix("\n") ? labType : labType + "\n"
+        NSLog("WWNIosGuestConsole: lab type inject n=%d", line.utf8.count)
+        WWNIosGuestConsole.shared.injectTerminalText(line)
+      }
+    }
+    // Lab only: SIMCTL_CHILD_WWN_LAB_DISMISS_AFTER_MS=2500. Product Done is
+    // the in-window UIKit button / Escape / window disconnect → userDismiss.
+    if let raw = ProcessInfo.processInfo.environment["WWN_LAB_DISMISS_AFTER_MS"],
+      let ms = Int(raw), ms > 0
+    {
+      let delay = TimeInterval(ms) / 1000.0
+      NSLog("WWNIosGuestConsole: lab auto-dismiss in %.2fs", delay)
+      DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+        NSLog("WWNIosGuestConsole: lab auto-dismiss firing")
+        WWNIosGuestConsole.shared.userDismiss()
+      }
     }
   }
 
@@ -157,22 +235,52 @@ final class WWNIosGuestConsole: ObservableObject {
     }
   }
 
-  /// Done = Focus for Wayland / client sessions (reveal mounted Metal).
-  /// Shell-only (zsh / SSH) returns to Machines: empty Present is a blank
-  /// screen on visionOS (and looks dead on iPad).
-  func userDismiss() {
-    let mid = machineId
+  /// visionOS / iPad New Window: Terminal owns its own scene so closing it
+  /// does not terminate the Machines window.
+  private static func resolveWindowed(source: String) -> Bool {
+    if openNextInWindow { return true }
+    #if os(visionOS)
+    return source == "shell" || source == "ssh"
+    #else
+    return false
+    #endif
+  }
+
+  private func presentTerminalSceneIfNeeded(source: String) {
+    #if os(iOS) || os(visionOS)
+    guard windowed else { return }
+    _ = source
+    WWNSessionWindowPresenter.presentTerminalWindow()
+    #else
+    _ = source
+    #endif
+  }
+
+  /// Stop / scene close: tear down Terminal chrome only. Session disconnect
+  /// already ran (or is running) in `WWNMachinesViewModel.disconnect`.
+  func dismissChrome(machineId mid: String) {
     let wasWindow = windowed
     let shellOnly = isShell || source == "ssh"
-    dismiss(machineId: mid)
+    let nested = WWNNestedClientTabStore.shared.nestedCount
+    dismiss(machineId: mid.isEmpty ? machineId : mid)
+    isPresented = false
+    windowed = false
     #if os(iOS) || os(visionOS)
     if wasWindow {
       WWNSessionWindowPresenter.closeTerminalWindow()
     }
     #endif
-    guard !mid.isEmpty else { return }
-    WWNMachineProfileStore.setActiveMachineId(mid)
-    if shellOnly {
+    if shellOnly || nested == 0 {
+      WWNMainWindowRouter.shared.hideSessionSurface()
+      WWNMainWindowRouter.shared.showMachines()
+      NSLog(
+        "WWNIosGuestConsole: Stop → Machines mid=%@ shell=%d nested=%d",
+        mid, shellOnly ? 1 : 0, nested
+      )
+      return
+    }
+    guard !mid.isEmpty else {
+      WWNMainWindowRouter.shared.hideSessionSurface()
       WWNMainWindowRouter.shared.showMachines()
       return
     }
@@ -182,6 +290,29 @@ final class WWNIosGuestConsole: ObservableObject {
       object: nil,
       userInfo: ["machineId": mid]
     )
+  }
+
+  /// Done leaves Terminal chrome and stops the Machines session (Stop parity).
+  /// Shell / SSH / Terminal-only Native Shell return to Machines. Never reveal
+  /// empty CompositorBridge (blank Metal on visionOS / tvOS / iPad).
+  func userDismiss() {
+    // Drop visionOS / iOS soft IME so it cannot keep covering Done.
+    UIApplication.shared.sendAction(
+      #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil
+    )
+    let mid = machineId
+    dismissChrome(machineId: mid)
+    if !mid.isEmpty {
+      WWNMachineProfileStore.setActiveMachineId(mid)
+    }
+    // Done = Stop: tear down PTY / native session, not chrome alone.
+    if !mid.isEmpty,
+      let profile = WWNMachineProfileStore.profile(byId: mid),
+      WWNMachinesViewModel.shared.status(for: mid) != .disconnected
+    {
+      WWNMachinesViewModel.shared.disconnect(profile)
+    }
+    NSLog("WWNIosGuestConsole: Done → Machines mid=%@", mid)
   }
 
   private func appendLog(_ chunk: String) {
@@ -293,15 +424,50 @@ final class WWNIosGuestConsole: ObservableObject {
       self?.termModel.applyCells(cells, cols: Int(cols), rows: Int(rows))
     }
     session.onFailure = { [weak self] message in
+      // Hard start failure only. Never the old "Shell exited." string.
       self?.statusMessage = message
       self?.appendLog(message + "\n")
+    }
+    session.onEnded = { [weak self] in
+      self?.handleShellEnded()
     }
     shell = session
     session.start(cols: 80, rows: 28)
   }
 
+  /// Soft EOF (`exit`, soft-exit, hangup). Restart a live shell; crash-loop
+  /// paints `[session ended]` once instead of a useless "Shell exited." toast.
+  private func handleShellEnded() {
+    guard isPresented, isShell else {
+      shell = nil
+      return
+    }
+    let now = Date()
+    if let last = shellEndedAt, now.timeIntervalSince(last) < 2.0 {
+      shellRestartCount += 1
+    } else {
+      shellRestartCount = 0
+    }
+    shellEndedAt = now
+    NSLog(
+      "WWNIosGuestConsole: shell ended mid=%@ restartCount=%d",
+      machineId, shellRestartCount
+    )
+    cancelKeyRepeat()
+    shell = nil
+    if shellRestartCount >= 3 {
+      statusMessage = Self.sessionEndedNotice
+      appendLog("\n\(Self.sessionEndedNotice)\n")
+      return
+    }
+    statusMessage = ""
+    startShell()
+  }
+
   private func stopShell() {
     cancelKeyRepeat()
+    shell?.onEnded = nil
+    shell?.onFailure = nil
     shell?.stop()
     shell = nil
   }
@@ -387,75 +553,36 @@ struct WWNIosGuestConsoleSheet: View {
   @State private var keyFocus = 0
 
   var body: some View {
+    #if os(visionOS)
+    // No NavigationView: its 92pt bar reports the same 2D frame as a top
+    // ornament Done (hittable=false / covered). In-window chrome + Escape
+    // are the exit surfaces; host swaps Machines out while presented.
+    terminalBody
+      .background(Color.black)
+      .preferredColorScheme(.dark)
+      .background(WWNTerminalEscapeDismissHost(onEscape: { console.userDismiss() }))
+      .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
+        guard console.isShell, let bytes = WWNTerminalCursorMode.focusReport(false) else { return }
+        console.injectTerminalData(bytes)
+      }
+      .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+        guard console.isShell, let bytes = WWNTerminalCursorMode.focusReport(true) else { return }
+        console.injectTerminalData(bytes)
+      }
+    #else
     NavigationView {
-      VStack(spacing: 0) {
-        WawonaTerminalView(model: console.termModel, screenRows: console.screenRows) { col, row, button, pressed, motion in
-          console.pointer(button: button, col: col, row: row, pressed: pressed, motion: motion)
-          if !pressed { keyFocus += 1 }
-        }
-          .background(
-            GeometryReader { geo in
-              Color.clear.preference(key: WawonaTerminalViewportKey.self, value: geo.size)
-            }
-          )
-          .onPreferenceChange(WawonaTerminalViewportKey.self) { size in
-            console.fitTerminal(to: size)
-          }
-        if !console.statusMessage.isEmpty {
-          Text(console.statusMessage)
-            .font(.system(.caption, design: .monospaced))
-            .foregroundColor(.orange)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 4)
-        }
+      terminalBody
+        .background(Color.black)
+        .backport.navigationTitle(console.title, inline: true)
         #if os(iOS)
-        // Toolbar Keys owns soft-keyboard chrome (Esc/Tab/arrows/modifiers).
-        // Host is near-invisible; accessory draws above the system keyboard.
-        WWNTerminalToolbarHost(
-          isShell: console.isShell,
-          onInjectData: { console.injectTerminalData($0) },
-          onInjectText: { console.injectTerminalText($0) },
-          onPaste: { console.injectTerminalPaste($0) },
-          onDismissKeyboard: {},
-          autoFocus: true,
-          focusTick: keyFocus,
-          onKeyRepeat: { console.armKeyRepeat($0) },
-          onKeyUp: { console.cancelKeyRepeat() }
-        )
-        .frame(width: 1, height: 1)
-        .accessibility(identifier: "wwn.guestConsole.send")
-        #elseif os(tvOS) || os(visionOS)
-        if console.isShell {
-          WWNTerminalKeyHost(
-            onInjectData: { console.injectTerminalData($0) },
-            onInjectText: { console.injectTerminalText($0) },
-            autoFocus: true,
-            focusTick: keyFocus
-          )
-          .frame(width: 1, height: 1)
-          .accessibility(identifier: "wwn.guestConsole.send")
-          #if os(visionOS)
-          HStack {
-            Button("^C") { console.sendControl(0x03) }
-              .accessibility(identifier: "wwn.guestConsole.ctrlC")
-          }
-          .padding(8)
-          .background(Color.black)
-          #endif
+        .backport.navigationActions {
+          Button("Done") { console.userDismiss() }
+            .accessibility(identifier: WWNA11y.terminalDone)
+        } trailing: {
+          Button("Clear") { console.clearScreen() }
+            .accessibility(identifier: "wwn.terminal.clear")
         }
         #endif
-      }
-      .background(Color.black)
-      .accessibility(identifier: WWNA11y.terminalRoot)
-      .backport.navigationTitle(console.title, inline: true)
-      .backport.navigationActions {
-        Button("Done") { console.userDismiss() }
-          .accessibility(identifier: WWNA11y.terminalDone)
-      } trailing: {
-        Button("Clear") { console.clearScreen() }
-          .accessibility(identifier: "wwn.terminal.clear")
-      }
     }
     .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
       guard console.isShell, let bytes = WWNTerminalCursorMode.focusReport(false) else { return }
@@ -467,6 +594,128 @@ struct WWNIosGuestConsoleSheet: View {
     }
     .navigationViewStyle(StackNavigationViewStyle())
     .preferredColorScheme(.dark)
+    #endif
   }
+
+  @ViewBuilder
+  private var terminalBody: some View {
+    VStack(spacing: 0) {
+      #if os(tvOS) || os(visionOS)
+      // Real layout row (not safeAreaInset / ornament). UIViewRepresentable
+      // grid still hit-tests under insets; top ornament shares the nav bar's
+      // 2D frame on visionOS and stays covered.
+      visionTerminalChrome
+      #endif
+      WawonaTerminalView(model: console.termModel, screenRows: console.screenRows) { col, row, button, pressed, motion in
+        console.pointer(button: button, col: col, row: row, pressed: pressed, motion: motion)
+        if !pressed { keyFocus += 1 }
+      }
+        .background(
+          GeometryReader { geo in
+            Color.clear.preference(key: WawonaTerminalViewportKey.self, value: geo.size)
+          }
+        )
+        .onPreferenceChange(WawonaTerminalViewportKey.self) { size in
+          console.fitTerminal(to: size)
+        }
+        .accessibility(identifier: WWNA11y.terminalRoot)
+      if !console.statusMessage.isEmpty {
+        Text(console.statusMessage)
+          .font(.system(.caption, design: .monospaced))
+          .foregroundColor(.orange)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .padding(.horizontal, 12)
+          .padding(.vertical, 4)
+      }
+      #if os(iOS)
+      WWNTerminalToolbarHost(
+        isShell: console.isShell,
+        onInjectData: { console.injectTerminalData($0) },
+        onInjectText: { console.injectTerminalText($0) },
+        onPaste: { console.injectTerminalPaste($0) },
+        onDismissKeyboard: {},
+        autoFocus: true,
+        focusTick: keyFocus,
+        onKeyRepeat: { console.armKeyRepeat($0) },
+        onKeyUp: { console.cancelKeyRepeat() }
+      )
+      .frame(width: 1, height: 1)
+      .accessibility(identifier: "wwn.guestConsole.send")
+      #elseif os(tvOS) || os(visionOS)
+      // visionOS: do NOT auto-focus on appear. Soft IME covers exit chrome.
+      // Tap the grid (focusTick) when the user wants to type.
+      if console.isShell {
+        WWNTerminalKeyHost(
+          onInjectData: { console.injectTerminalData($0) },
+          onInjectText: { console.injectTerminalText($0) },
+          autoFocus: false,
+          focusTick: keyFocus
+        )
+        .frame(width: 1, height: 1)
+        .accessibility(hidden: true)
+      }
+      #endif
+    }
+  }
+
+  #if os(tvOS) || os(visionOS)
+  /// Exit / Clear / ^C as a layout sibling above the grid (not an inset).
+  @ViewBuilder
+  private var visionTerminalChrome: some View {
+    HStack(spacing: 16) {
+      // tvOS + visionOS: UIKit Done implements accessibilityActivate (gaze /
+      // AX) after resigning soft IME. SwiftUI Button actions were a no-op
+      // under xrSimulator coordinate taps; Escape host is the keyboard path.
+      WWNTerminalDoneButton(
+        title: "Done",
+        accessibilityId: WWNA11y.terminalDone
+      ) {
+        NSLog("WWNIosGuestConsole: chrome Done UIKit")
+        console.userDismiss()
+      }
+      #if os(visionOS)
+      .frame(minWidth: 96, minHeight: 44)
+      #else
+      .frame(width: 72, height: 36)
+      #endif
+      WWNTerminalDoneButton(
+        title: "Clear",
+        accessibilityId: "wwn.terminal.clear"
+      ) {
+        console.clearScreen()
+      }
+      #if os(visionOS)
+      .frame(minWidth: 96, minHeight: 44)
+      #else
+      .frame(width: 72, height: 36)
+      #endif
+      if console.isShell {
+        WWNTerminalDoneButton(
+          title: "^C",
+          accessibilityId: "wwn.guestConsole.ctrlC"
+        ) {
+          console.sendControl(0x03)
+        }
+        #if os(visionOS)
+        .frame(minWidth: 72, minHeight: 44)
+        #else
+        .frame(width: 56, height: 36)
+        #endif
+      }
+      #if os(visionOS)
+      Text(console.title)
+        .font(.headline)
+        .foregroundColor(.white)
+        .padding(.leading, 8)
+      #endif
+      Spacer(minLength: 0)
+    }
+    .padding(8)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(Color.black.opacity(0.92))
+    .zIndex(10)
+  }
+  #endif
 }
+
 #endif

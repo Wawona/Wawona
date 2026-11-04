@@ -509,11 +509,3 @@ struct ContainerImagesView: View {
     @Environment(\.presentationMode) private var presentationMode
     private func dismiss() { presentationMode.wrappedValue.dismiss() }
 }
-
-extension ContainerSearchHit: Identifiable {
-    public var id: String { pullableRef }
-}
-
-extension ContainerImageEntry: Identifiable {
-    public var id: String { canonical }
-}

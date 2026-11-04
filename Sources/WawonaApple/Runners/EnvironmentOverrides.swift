@@ -14,7 +14,7 @@ public final class WWNEnvironmentOverrides: NSObject {
         let stripBanned = false
         #endif
         let merged = mergedOverrides(machineEnvironment: machineEnvironment)
-        for case let name as String in merged.keys {
+        for name in merged.keys {
             applyOne(name: name, entry: merged[name], stripBanned: stripBanned)
         }
     }
@@ -24,8 +24,7 @@ public final class WWNEnvironmentOverrides: NSObject {
         var machineEnv: NSDictionary?
         if let activeId = WWNMachineProfileStore.activeMachineId(), !activeId.isEmpty,
            let profile = WWNMachineProfileStore.profile(byId: activeId),
-           let runtime = profile.runtimeOverrides as? [String: Any],
-           let env = runtime["environment"] as? NSDictionary {
+           let env = profile.runtimeOverrides["environment"] as? NSDictionary {
             machineEnv = env
         }
         apply(machineEnv)
@@ -37,7 +36,7 @@ public final class WWNEnvironmentOverrides: NSObject {
         machineEnvironment: NSDictionary?
     ) {
         let merged = mergedOverrides(machineEnvironment: machineEnvironment)
-        for case let name as String in merged.keys {
+        for name in merged.keys {
             guard let entry = merged[name] as? [String: Any],
                   let action = entry["action"] as? String else { continue }
             if action == "unset" {

@@ -73,8 +73,21 @@ so SHM can drain before the first client maps.
 (that was the old StartupLog / Mode A SHM bug). Auto-reveal is tied to
 **Wayland client count rising**, not to Metal present alone.
 
+## Soft exit / visionOS window (2026-11-04)
+
+PTY hangup must **not** toast **"Shell exited."** Host auto-restarts the
+in-process shell; crash-loop (≥3 soft exits within 2s) paints
+`[session ended]` (same string as Linux `ENDED_NOTICE`).
+
+**visionOS:** Wawona Terminal for shell/SSH always opens a dedicated
+terminal scene (`WWNSessionWindowPresenter`). Closing that window or Done
+dismisses Terminal and leaves Machines alive. Never force overlay-only
+shell on visionOS (system close would quit the only app window).
+
 ## Hard rejects
 
+- Guest console toast **"Shell exited."** on soft EOF / hangup
+- visionOS shell/SSH forced `windowed=false` (closes whole app on window X)
 - Guest console text **"Native Shell starting"** (or any static splash) as the
   Terminal Start UX
 - `StartupLogOverlay` / `WWNStartupLogViewController` preview as Start UI

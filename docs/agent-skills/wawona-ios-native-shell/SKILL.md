@@ -73,7 +73,9 @@ unwinding). Every global it touched survives into the next `zsh_main`.
 |---|---|
 | Shell owned by the SwiftUI view, stopped in `onDisappear` | Process registry owns it. Views attach/detach. Stop only on Close / Stop |
 | `pthread_join` before closing the input pipe write end (0x8BADF00D) | `wwn_pty_ios_stop_shell_session` closes every `input_write` first |
-| Master pump spins at EOF | Cancel the pump on `read` == 0 |
+| Master pump spins at EOF | Cancel the pump on `read` == 0; host `onEnded` restarts shell (never toast "Shell exited.") |
+| Crash-loop soft-exit | After 3 ends within 2s paint `[session ended]` (Linux `ENDED_NOTICE`) |
+| visionOS shell in only app window | Always dedicated terminal scene; Done / window close leaves Machines |
 | Trust zsh statics on re-entry | `wwn-zsh` resets: `zleactive`, `errflag`, signal queue (stop SIGINT stays queued), feature `ADDED` marks, special params (`patch-zsh-reentry.py`) |
 | `tcgetattr` on SHTTY (pipe dup above fd 10) | `patch-zsh-fake-tty.py`. libwwn-pty interpose does not apply inside the static app |
 
@@ -84,6 +86,8 @@ Prove: Close then Start shows the banner and `~ %`, `cd; pwd` prints HOME.
 ## Hard rejects
 
 - Splash-only Terminal Start
+- Toast **"Shell exited."** on soft EOF (restart or `[session ended]`)
+- visionOS shell/SSH forced into the only app window (`windowed=false`)
 - `StartupLogOverlay` / `WWNStartupLogViewController` preview as Start UI
 - Requiring Done / Close to see a Wayland client from Terminal
 - Killing the shell when parking Terminal for Present

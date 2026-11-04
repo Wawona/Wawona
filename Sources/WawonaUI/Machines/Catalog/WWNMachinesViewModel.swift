@@ -551,7 +551,14 @@ final class WWNMachinesViewModel: ObservableObject {
     } else {
       source = "client"
     }
-    let separateWindow = openInNewWindow
+    // visionOS Terminal must be its own scene: closing the only app window
+    // would quit Wawona. Shell/SSH always window even when Start Type is Tab.
+    #if os(visionOS)
+    let forceTerminalWindow = source == "shell" || source == "ssh"
+    #else
+    let forceTerminalWindow = false
+    #endif
+    let separateWindow = (openInNewWindow || forceTerminalWindow)
       && MachineStartPlacement.allowsWindowedStart(for: GlobalSettingsCatalog.currentHost)
     #if os(iOS) || os(visionOS)
     WWNIosGuestConsole.openNextInWindow = separateWindow
@@ -836,16 +843,20 @@ final class WWNMachinesViewModel: ObservableObject {
     }
     WWNMainWindowRouter.shared.showSessionSurface()
     _ = WWNCompositorBridge.sharedBridge.focusClientWindows(forMachineId: profile.machineId)
-    #elseif os(iOS) || os(visionOS)
-    // Park Terminal chrome; do not Stop the shell (Focus is not Close).
+    #elseif os(iOS) || os(tvOS) || os(visionOS)
+    // Terminal-only Native Shell: keep / re-present Terminal. Parking chrome
+    // and revealing empty CompositorBridge is a blank Focus pane (vision /
+    // tv / iPad). Same rule as macOS showTerminalSessionSurface.
+    if shouldKeepTerminalOnFocus(profile) {
+      WWNIosGuestConsole.shared.present(
+        machineId: profile.machineId ?? "",
+        source: "shell"
+      )
+      WWNMainWindowRouter.shared.showMachines()
+      NSLog("WWNFocus: Terminal-only → keep Wawona Terminal mid=%@", profile.machineId ?? "")
+      return
+    }
     WWNIosGuestConsole.shared.parkForCompositor()
-    WWNMainWindowRouter.shared.showSessionSurface()
-    NotificationCenter.default.post(
-      name: .WWNClientFocusRequested,
-      object: nil,
-      userInfo: ["machineId": profile.machineId]
-    )
-    #elseif os(tvOS)
     WWNMainWindowRouter.shared.showSessionSurface()
     NotificationCenter.default.post(
       name: .WWNClientFocusRequested,
@@ -857,15 +868,20 @@ final class WWNMachinesViewModel: ObservableObject {
     #endif
   }
 
-  #if os(macOS)
-  /// Native Shell Terminal with no nested Wayland client → embed TermSurface.
-  private func shouldEmbedTerminalOnFocus(_ profile: WWNMachineProfile) -> Bool {
+  /// Native Shell Terminal with no nested Wayland client → keep Terminal UI.
+  private func shouldKeepTerminalOnFocus(_ profile: WWNMachineProfile) -> Bool {
     guard WWNNestedClientTabStore.shared.nestedCount == 0 else { return false }
     guard WWNNativeShellConfiguration.isNativeShellFamily(profile.type)
       || profile.type == kWWNMachineTypeNative else {
       return false
     }
     return WWNNativeShellConfiguration.kind(for: profile) == kWWNNativeShellKindTerminal
+  }
+
+  #if os(macOS)
+  /// Native Shell Terminal with no nested Wayland client → embed TermSurface.
+  private func shouldEmbedTerminalOnFocus(_ profile: WWNMachineProfile) -> Bool {
+    shouldKeepTerminalOnFocus(profile)
   }
   #endif
 

@@ -121,7 +121,10 @@ final class IosShellSession {
     var onPictures: ((String) -> Void)?
     /// Viewport cells for Metal Present (`TerminalMetalPresent`).
     var onCells: (([WwnTermCell], UInt32, UInt32) -> Void)?
+    /// Hard start failures only (rootfs, allocate, zsh start). Not PTY hangup.
     var onFailure: ((String) -> Void)?
+    /// Soft EOF / hangup. Host restarts or paints `[session ended]`.
+    var onEnded: (() -> Void)?
 
     func start(cols: UInt32 = 80, rows: UInt32 = 24) {
         queue.setSpecific(key: Self.queueKey, value: 1)
@@ -299,14 +302,33 @@ final class IosShellSession {
                 IosShellABI.ptyRead(master, raw.baseAddress, raw.count)
             }
             if n > 0 {
-                WWNTerminalCursorMode.observe(Data(buf.prefix(n)))
-                buf.withUnsafeBufferPointer { IosShellABI.termFeed(term, $0.baseAddress, n) }
+                let chunk = Data(buf.prefix(n))
+                WWNTerminalCursorMode.observe(chunk)
+                // Lab: prove whether MotD ESC (0x1b) reaches VT feed. Remove once
+                // CSI paint is green on visionOS/tvOS Metal Present.
+                if chunk.contains(0x1b) || chunk.contains(0x9b) {
+                    let hex = chunk.prefix(64).map { String(format: "%02x", $0) }.joined(separator: " ")
+                    NSLog("IosShellSession: pty→term ESC/C1 present n=%d head=%@", n, hex)
+                } else if chunk.contains(UInt8(ascii: "[")) {
+                    let hex = chunk.prefix(64).map { String(format: "%02x", $0) }.joined(separator: " ")
+                    NSLog("IosShellSession: pty→term no ESC but '[' n=%d head=%@", n, hex)
+                }
+                chunk.withUnsafeBytes { raw in
+                    guard let base = raw.bindMemory(to: UInt8.self).baseAddress else { return }
+                    IosShellABI.termFeed(term, base, chunk.count)
+                }
                 writeReplies(term)
                 continue
             }
             if n < 0, errno == EINTR { continue }
             if n < 0, errno == EAGAIN || errno == EWOULDBLOCK { break }
-            exportScreen(); DispatchQueue.main.async { [weak self] in self?.onFailure?("Shell exited.") }; stop(); return
+            // PTY hangup / soft-exit: not a start failure. Cancel the pump
+            // (EOF stays readable forever) and let the host restart.
+            exportScreen()
+            let ended = onEnded
+            DispatchQueue.main.async { ended?() }
+            halt()
+            return
         }
         exportScreen()
     }

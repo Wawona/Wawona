@@ -22,7 +22,7 @@ public final class WWNBundleShareEnvironment: NSObject {
             if fm.fileExists(atPath: alt) { shareRoot = alt }
         }
         if fm.fileExists(atPath: shareRoot), getenv("XDG_DATA_DIRS") == nil {
-            shareRoot.withCString { setenv("XDG_DATA_DIRS", $0, 1) }
+            _ = shareRoot.withCString { setenv("XDG_DATA_DIRS", $0, 1) }
         }
         registerBundledFontsIfNeeded()
 
@@ -30,23 +30,23 @@ public final class WWNBundleShareEnvironment: NSObject {
         if !xkbRules.isEmpty, fm.fileExists(atPath: xkbRules), getenv("XKB_CONFIG_ROOT") == nil {
             let root = ((xkbRules as NSString).deletingLastPathComponent as NSString)
                 .deletingLastPathComponent
-            root.withCString { setenv("XKB_CONFIG_ROOT", $0, 1) }
+            _ = root.withCString { setenv("XKB_CONFIG_ROOT", $0, 1) }
         }
 
         let compose = (bundledSharePath("X11/locale") as NSString).appendingPathComponent("compose.dir")
         if !compose.isEmpty, fm.fileExists(atPath: compose), getenv("XLOCALEDIR") == nil {
             let dir = (compose as NSString).deletingLastPathComponent
-            dir.withCString { setenv("XLOCALEDIR", $0, 1) }
+            _ = dir.withCString { setenv("XLOCALEDIR", $0, 1) }
         }
 
         let westonData = bundledSharePath("weston")
         if !westonData.isEmpty, fm.fileExists(atPath: westonData) {
-            westonData.withCString { setenv("WESTON_DATA_DIR", $0, 1) }
+            _ = westonData.withCString { setenv("WESTON_DATA_DIR", $0, 1) }
         }
 
         let cursors = bundledSharePath("icons/Adwaita/cursors")
         if !cursors.isEmpty, fm.fileExists(atPath: cursors) {
-            bundledSharePath("icons").withCString { setenv("XCURSOR_PATH", $0, 1) }
+            _ = bundledSharePath("icons").withCString { setenv("XCURSOR_PATH", $0, 1) }
             setenv("XCURSOR_THEME", "Adwaita", 1)
         }
 
@@ -103,8 +103,8 @@ public final class WWNBundleShareEnvironment: NSObject {
         guard (try? conf.write(toFile: confPath, atomically: true, encoding: .utf8)) != nil else {
             return
         }
-        confPath.withCString { setenv("FONTCONFIG_FILE", $0, 1) }
-        xdg.withCString { setenv("FONTCONFIG_PATH", $0, 1) }
+        _ = confPath.withCString { setenv("FONTCONFIG_FILE", $0, 1) }
+        _ = xdg.withCString { setenv("FONTCONFIG_PATH", $0, 1) }
 
         let mono = firstExistingFont(
             [
@@ -114,12 +114,12 @@ public final class WWNBundleShareEnvironment: NSObject {
             ],
             under: fontDir
         )
-        if !mono.isEmpty { mono.withCString { setenv("WAWONA_MONO_FONT", $0, 1) } }
+        if !mono.isEmpty { _ = mono.withCString { setenv("WAWONA_MONO_FONT", $0, 1) } }
         let sans = firstExistingFont(
             ["truetype/DejaVuSans.ttf", "truetype/dejavu/DejaVuSans.ttf"],
             under: fontDir
         )
-        if !sans.isEmpty { sans.withCString { setenv("WAWONA_SANS_FONT", $0, 1) } }
+        if !sans.isEmpty { _ = sans.withCString { setenv("WAWONA_SANS_FONT", $0, 1) } }
     }
 
     public static func bundledSharePath(_ sub: String) -> String {

@@ -3,7 +3,7 @@ import Foundation
 // MARK: - Local catalog model (mirrors wwn-oci `catalog::ImageEntry`)
 
 /// One pulled image in the local catalog (`container images --json`).
-public struct ContainerImageEntry: Codable, Hashable, Sendable {
+public struct ContainerImageEntry: Codable, Hashable, Identifiable, Sendable {
     public let reference: String
     public let canonical: String
     public let manifestDigest: String
@@ -11,6 +11,8 @@ public struct ContainerImageEntry: Codable, Hashable, Sendable {
     public let layerDigests: [String]
     public let pulledAtUnix: UInt64
     public let rootfs: String?
+
+    public var id: String { canonical }
 
     enum CodingKeys: String, CodingKey {
         case reference
