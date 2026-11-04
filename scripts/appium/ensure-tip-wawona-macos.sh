@@ -102,6 +102,50 @@ if [[ "$need_build" -eq 1 ]]; then
     echo "FAIL: Wawona.xcodeproj missing; generate via nix/xcodegen first" >&2
     exit 2
   fi
+  # Optional Zig GhosttyLib paint: WAWONA_LINK_LIBGHOSTTY=1 (stage archive first).
+  # Write SRCROOT/.build/wwn-libghostty-link.xcconfig BEFORE xcodebuild so
+  # wwn-version.xcconfig #include? sees OTHER_LDFLAGS (DERIVED_FILE_DIR is late).
+  mkdir -p "$ROOT/.build"
+  _lg_build_xc="$ROOT/.build/wwn-libghostty-link.xcconfig"
+  _lg_a="$ROOT/.nix-deps/libghostty-macos/lib/libghostty-internal.a"
+  _lg_inc="$ROOT/.nix-deps/libghostty-macos/include"
+  if [[ "${WAWONA_LINK_LIBGHOSTTY:-0}" = "1" ]]; then
+    if [[ ! -f "$_lg_a" ]]; then
+      echo "ensure-tip-wawona-macos: staging libghostty-macos for Zig paint" >&2
+      WAWONA_GHOSTTY_SRC="${WAWONA_GHOSTTY_SRC:-$ROOT/../Ghostty}" \
+        "$ROOT/scripts/stage-libghostty-macos.sh" >&2
+    fi
+    if [[ -f "$_lg_a" ]]; then
+      {
+        echo "// ensure-tip: WAWONA_LINK_LIBGHOSTTY=1 → GhosttySurfaceHost Zig paint."
+        echo "HEADER_SEARCH_PATHS = \$(inherited) ${_lg_inc} \$(DERIVED_FILE_DIR)"
+        echo "OTHER_CFLAGS = \$(inherited) -I${_lg_inc} -I\$(DERIVED_FILE_DIR)"
+        echo "OTHER_LDFLAGS = \$(inherited) -force_load ${_lg_a} -lc++ -lz -lbz2 -framework Metal -framework MetalKit -framework QuartzCore -framework CoreText -framework CoreGraphics -framework CoreVideo -framework CoreImage -framework IOKit -framework Security -framework UniformTypeIdentifiers -framework Carbon -framework GameController -framework IOSurface -framework SystemConfiguration -framework Network"
+      } >"$_lg_build_xc"
+      echo "ensure-tip-wawona-macos: wrote $_lg_build_xc" >&2
+    else
+      echo "// Zig GhosttyLib missing archive." >"$_lg_build_xc"
+      echo "FAIL: WAWONA_LINK_LIBGHOSTTY=1 but $_lg_a missing" >&2
+      exit 2
+    fi
+  else
+    echo "// Zig GhosttyLib tip link off (set WAWONA_LINK_LIBGHOSTTY=1)." >"$_lg_build_xc"
+  fi
+  # Sync sibling Terminal apple/Terminal (GhosttySurfaceHost) into tip deps.
+  if [[ -d "$ROOT/../Terminal/apple/Terminal" ]]; then
+    mkdir -p "$ROOT/.nix-deps/terminal"
+    rm -rf "$ROOT/.nix-deps/terminal/Terminal"
+    cp -R "$ROOT/../Terminal/apple/Terminal" "$ROOT/.nix-deps/terminal/Terminal"
+    chmod -R u+w "$ROOT/.nix-deps/terminal/Terminal"
+  fi
+  # Target OTHER_LDFLAGS overrides xcconfig includes for list merge in practice;
+  # pass force_load on the xcodebuild CLI when Zig paint is requested.
+  _xg_extra=()
+  if [[ "${WAWONA_LINK_LIBGHOSTTY:-0}" = "1" && -f "$_lg_a" ]]; then
+    _xg_extra+=(
+      "OTHER_LDFLAGS=\$(inherited) -force_load ${_lg_a} -lc++ -lz -lbz2 -framework Metal -framework MetalKit -framework QuartzCore -framework CoreText -framework CoreGraphics -framework CoreVideo -framework CoreImage -framework IOKit -framework Security -framework UniformTypeIdentifiers -framework Carbon -framework GameController -framework IOSurface -framework SystemConfiguration -framework Network"
+    )
+  fi
   xcodebuild \
     -project "$ROOT/Wawona.xcodeproj" \
     -scheme Wawona-macOS \
@@ -110,6 +154,7 @@ if [[ "$need_build" -eq 1 ]]; then
     -destination 'platform=macOS,arch=arm64' \
     CODE_SIGNING_ALLOWED=YES \
     CODE_SIGN_IDENTITY=- \
+    "${_xg_extra[@]}" \
     build >&2
   echo "$HEAD" >"$STAMP"
   ln -sfn "$APP" "$LINK"

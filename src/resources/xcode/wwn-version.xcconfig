@@ -1,4 +1,8 @@
 // Build number is stamped before compile (scheme pre-action + build phase).
 // Fallback applies only if the stamp script did not run (should not happen in Xcode).
 #include? "$(SRCROOT)/.build/wwn-build-number.xcconfig"
+#include? "$(DERIVED_FILE_DIR)/wwn-terminal-force-load.xcconfig"
+// Zig GhosttyLib: SRCROOT/.build only. DERIVED_FILE_DIR include is too late
+// for OTHER_LDFLAGS (same as wwn-build-number). ensure-tip / prebuild write it.
+#include? "$(SRCROOT)/.build/wwn-libghostty-link.xcconfig"
 CURRENT_PROJECT_VERSION = 1

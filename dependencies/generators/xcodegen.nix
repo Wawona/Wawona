@@ -676,6 +676,8 @@ let
         "$(DERIVED_FILE_DIR)/libwawona_terminal.a"
         "$(DERIVED_FILE_DIR)/wwn-terminal-force-load.xcconfig"
         "$(DERIVED_FILE_DIR)/wwn-libghostty-link.xcconfig"
+        # Bridge.c includes this; prebuild must run before CompileC.
+        "$(DERIVED_FILE_DIR)/wwn_ghostty_host_config.h"
       ];
   };
 

@@ -11,10 +11,12 @@ Android is `linux` plus the Android ABI, OpenGL renderer. Do not rewrite
 libghostty to Rust while those triples can emit objects. watchOS has no
 Metal. The grid there is software, presented with SpriteKit.
 
-**Today:** VT via `libghostty-vt` + interim `GhosttyGpu` atlas paint
-(default / `WAWONA_GHOSTTY_GPU=1`). `wwn-ghostty#libghostty-macos` builds a
-real ~26 MiB GhosttyLib archive; `#libghostty-macos-draw-proof` links and
-calls `ghostty_surface_draw`. Phase 5: Rust VT is `wwn_term_*` only so tip can dual-link Zig `ghostty_surface_*`. Paint still GhosttyGpu until Metal host wires `nsview`. See `Ghostty/docs/METAL-SURFACE.md`. Do not claim tip Metal done while GhosttyGpu paints.
+**Today:** VT via `libghostty-vt` (`wwn_term_*`). Paint is
+`GhosttySurfaceHost`: Zig `ghostty_surface_draw` when tip sets
+`WAWONA_LINK_LIBGHOSTTY=1` (stage `scripts/stage-libghostty-macos.sh`); else
+interim `GhosttyGpu` atlas. `#libghostty-macos-draw-proof` stays the Nix
+link proof. Gap: Zig paint owns its own shell PTY, not Machines feed bytes.
+GhosttyGpu not retired as default. See `Ghostty/docs/METAL-SURFACE.md`.
 
 libghostty is Ghostty. Copyright (c) 2024 Mitchell Hashimoto, Ghostty
 contributors. MIT. https://github.com/ghostty-org/ghostty

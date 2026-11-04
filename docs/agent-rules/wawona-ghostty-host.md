@@ -20,12 +20,19 @@ Canonical RAG: `ghostty-host.md`. Skill: `wawona-ghostty-host`.
 ## Interim (today)
 
 - VT: upstream `libghostty-vt` via flake `ghostty` + `Terminal` (`GhosttySurface`).
-- Paint: `Terminal/apple/Terminal/GhosttyGpuView` (interim atlas, staged into
-  Wawona). **Forbidden to grow.** Default / `WAWONA_GHOSTTY_GPU=1` until tip
-  ABI swap (`Ghostty/docs/METAL-SURFACE.md`).
+- Paint: `Terminal/apple/Terminal/GhosttySurfaceHost` (Zig
+  `ghostty_surface_draw` when `WAWONA_LINK_LIBGHOSTTY=1`; else
+  `GhosttyGpuView` atlas). **Forbidden to grow the atlas.**
 - `wwn-ghostty#libghostty-macos` ships GhosttyLib static; draw proof:
-  `#libghostty-macos-draw-proof`. Phase 5: Rust VT is `wwn_term_*`; Zig keeps `ghostty_surface_*`. Optional tip link: `WAWONA_LINK_LIBGHOSTTY=1`. Stage: `scripts/stage-libghostty-macos.sh`.
-- Prefer plan: paint via Zig Ghostty surface, not atlas stamp.
+  `#libghostty-macos-draw-proof`. Rust VT is `wwn_term_*`; Zig keeps
+  `ghostty_surface_*`. Stage: `scripts/stage-libghostty-macos.sh`.
+- Tip opt-in: `WAWONA_LINK_LIBGHOSTTY=1` + `ensure-tip-wawona-macos.sh`
+  writes `.build/wwn-libghostty-link.xcconfig` and passes
+  `-force_load` on the `xcodebuild` CLI (target `OTHER_LDFLAGS` does not
+  pick up late DERIVED_FILE_DIR includes). Bridge compile flag is
+  `wwn_ghostty_host_config.h` in `DERIVED_FILE_DIR`, not
+  `GCC_PREPROCESSOR_DEFINITIONS` from that xcconfig.
+- GhosttyGpu not retired (default tip). PTY unify (Machines feed → Zig) open.
 
 ## Hard rejects
 

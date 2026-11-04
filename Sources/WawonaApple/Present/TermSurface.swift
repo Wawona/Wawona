@@ -73,13 +73,10 @@ struct WwnTermImage {
     var rgbaLen: UInt32 = 0
 }
 
-/// AppKit host. Rust libghostty-vt viewport. Metal paint is interim
-/// `GhosttyGpuView` (staged `.nix-deps/terminal`; `WAWONA_GHOSTTY_GPU=1`
-/// default). Do not grow the atlas.
-/// TODO(metal-surface): tip cannot dual-link Zig `libghostty-internal.a`
-/// yet (Zig Metal host unfinished). Rust VT is `wwn_term_*`. Draw proof:
-/// `nix build .#libghostty-macos-draw-proof`. See
-/// `Ghostty/docs/METAL-SURFACE.md`.
+/// AppKit host. Rust VT is `wwn_term_*`. Paint is `GhosttySurfaceHost`:
+/// Zig `ghostty_surface_draw` when tip links `libghostty-internal.a`
+/// (`WAWONA_LINK_LIBGHOSTTY=1`), else interim `GhosttyGpuView` atlas.
+/// Do not grow the atlas. See `Ghostty/docs/METAL-SURFACE.md`.
 @objc(WWNTermSurface)
 public final class WWNTermSurface: NSView {
     @objc public var onReply: WWNTermReply?
@@ -89,7 +86,7 @@ public final class WWNTermSurface: NSView {
     public var gridRows: UInt32 { rows }
 
     private var term: OpaquePointer?
-    private let gpu = GhosttyGpuView(frame: .zero, device: nil)
+    private let gpu = GhosttySurfaceHost(frame: .zero)
     private var grid = [WwnTermCell](repeating: WwnTermCell(cp: 32, fg: 0xE8E8E8, bg: 0, attrs: 0), count: 512 * 32)
     private var cols: UInt32 = 80
     private var rows: UInt32 = 24
