@@ -612,11 +612,39 @@ let
       features = lib.unique ((attrs.features or []) ++ [ "errno" ]);
     };
 
-    # platform-info 2.1.0 only excludes domainname for macos/ios; tvOS/watchOS/
-    # visionOS libc::utsname also lacks that GNU field (ITMS/tvOS backend build).
+    # platform-info 2.1.0 listed macos/ios only for domainname. 2.2.1+ already
+    # uses target_vendor = "apple" (covers watchOS/tvOS/visionOS). Patch only
+    # when the old per-OS list is still present.
     platform-info = attrs: lib.optionalAttrs isAppleCross {
       postPatch = (attrs.postPatch or "") + ''
-        patch -p1 < ${../patches/platform-info-2.1.0-apple-utsname-domainname.patch}
+        if grep -q 'target_os = "macos"' src/platform/unix.rs \
+          && ! grep -q 'target_vendor = "apple"' src/platform/unix.rs; then
+          patch -p1 < ${../patches/platform-info-2.1.0-apple-utsname-domainname.patch}
+        fi
+      '';
+    };
+
+    # nix 0.30.1: libc omits sockaddr_ctl (macos-only) and fork/exec* on
+    # watchOS/tvOS. Gate those APIs so waypipe's nix features still compile.
+    # 0.31.x may already cfg-gate some of these; only patch when anchors match.
+    nix = attrs: lib.optionalAttrs (isWatchOS || isTVOS) {
+      postPatch = (attrs.postPatch or "") + ''
+        if [ -f src/sys/socket/addr.rs ] \
+          && grep -q 'sockaddr_ctl' src/sys/socket/addr.rs 2>/dev/null \
+          && grep -q 'apple_targets' src/sys/socket/addr.rs 2>/dev/null; then
+          patch -p1 < ${../patches/nix-0.30.1-watchos-tvos-no-fork-sysctl.patch}
+        fi
+      '';
+    };
+
+    # uu_env 0.12: imports nix::unistd::execvp under cfg(unix). watchOS/tvOS
+    # libc has no execvp (nix gates it out). Keep print/set; command-run uses
+    # the non-unix Command fallback path.
+    uu_env = attrs: lib.optionalAttrs (isWatchOS || isTVOS) {
+      postPatch = (attrs.postPatch or "") + ''
+        if grep -q 'use nix::unistd::execvp' src/env.rs; then
+          patch -p1 < ${../patches/uu_env-0.12.0-watchos-tvos-no-execvp.patch}
+        fi
       '';
     };
 

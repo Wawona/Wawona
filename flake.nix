@@ -379,6 +379,14 @@
     # Use a minimal pkgs for version lookup to avoid recursion
     bootstrapPkgs = import nixpkgs {system = "x86_64-linux";};
     wawonaVersion = bootstrapPkgs.lib.removeSuffix "\n" (builtins.readFile (./. + "/VERSION"));
+    # Same rev as Cargo.toml optional libghostty-vt pins. Path-staged in
+    # workspace-src so crate2nix does not vendor broken workspace members
+    # (`edition.workspace` with no workspace root).
+    libghosttyRsSrc = builtins.fetchTree {
+      type = "git";
+      url = "https://github.com/uzaaft/libghostty-rs";
+      rev = "575ed6b8ceb79ffaf247ecf7e34333876b0d5be4";
+    };
 
     # --- wwn-* extracted-repo wiring ------------------------------------------
     # Moved recipe trees now live in their own repos; these aliases repoint the
@@ -631,6 +639,7 @@
         waypipeSrc = waypipe-patched-android;
         coreutilsSrc = coreutils-patched-android;
         terminalSrc = inputs.terminal;
+        inherit libghosttyRsSrc;
         platform = "android";
         inherit wawonaVersion;
       };
@@ -901,11 +910,7 @@
                       platform = "macos";
                     };
                     terminalSrc = inputs.terminal;
-                    libghosttyRsSrc = builtins.fetchTree {
-                      type = "git";
-                      url = "https://github.com/uzaaft/libghostty-rs";
-                      rev = "575ed6b8ceb79ffaf247ecf7e34333876b0d5be4";
-                    };
+                    inherit libghosttyRsSrc;
                     platform = "macos";
                     inherit wawonaVersion;
                   };
@@ -972,11 +977,7 @@
               # Committed src/term/{cell,engine,ffi_surface}.rs are symlinks
               # into Terminal/; sandbox needs the flake input copies.
               terminalSrc = inputs.terminal;
-              libghosttyRsSrc = builtins.fetchTree {
-                type = "git";
-                url = "https://github.com/uzaaft/libghostty-rs";
-                rev = "575ed6b8ceb79ffaf247ecf7e34333876b0d5be4";
-              };
+              inherit libghosttyRsSrc;
               platform = "linux";
               inherit wawonaVersion;
             };
@@ -1072,11 +1073,7 @@
             coreutilsSrc = coreutils-src;
             # Sandbox cannot follow the gitignored Terminal symlink; inject.
             terminalSrc = inputs.terminal;
-            libghosttyRsSrc = builtins.fetchTree {
-              type = "git";
-              url = "https://github.com/uzaaft/libghostty-rs";
-              rev = "575ed6b8ceb79ffaf247ecf7e34333876b0d5be4";
-            };
+            inherit libghosttyRsSrc;
           };
           wawona-linux = pkgs.callPackage ./dependencies/wawona/linux.nix {
             inherit wawonaVersion;
@@ -1188,13 +1185,6 @@
           coreutils-multicall-macos = pkgs.callPackage coreutilsMulticallNix {
             inherit coreutils-src;
           };
-          # Same rev as Cargo.toml optional libghostty-vt pins. Path-staged in
-          # workspace-src so crate2nix does not vendor broken workspace members.
-          libghosttyRsSrc = builtins.fetchTree {
-            type = "git";
-            url = "https://github.com/uzaaft/libghostty-rs";
-            rev = "575ed6b8ceb79ffaf247ecf7e34333876b0d5be4";
-          };
           workspace-src-macos = pkgs.callPackage ./dependencies/wawona/workspace-src.nix {
             wawonaSrc = src;
             waypipeSrc = waypipe-patched-macos;
@@ -1218,6 +1208,7 @@
             waypipeSrc = waypipe-patched-ios;
             coreutilsSrc = coreutils-patched-ios;
             terminalSrc = inputs.terminal;
+            inherit libghosttyRsSrc;
             platform = "ios";
             inherit wawonaVersion;
           };
@@ -1226,6 +1217,7 @@
             waypipeSrc = waypipe-patched-watchos;
             coreutilsSrc = coreutils-patched-ios;
             terminalSrc = inputs.terminal;
+            inherit libghosttyRsSrc;
             platform = "watchos";
             inherit wawonaVersion;
           };

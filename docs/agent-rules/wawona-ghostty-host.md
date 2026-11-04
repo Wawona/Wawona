@@ -23,6 +23,9 @@ Canonical RAG: `ghostty-host.md`. Skill: `wawona-ghostty-host`.
 - Paint: `Terminal/apple/Terminal/GhosttyGpuView` (interim atlas, staged into
   Wawona). **Forbidden to grow.** Plan:
   retire after Zig Metal surface green (`Ghostty/docs/METAL-SURFACE.md`).
+- `wwn-ghostty#libghostty-macos` **fails closed** until Darwin attaches
+  GhosttyLib install (probe: `#libghostty-macos-probe`). Terminal
+  `libghostty.a` alias of `libwawona_terminal.a` is not Metal.
 - Prefer plan: paint via Zig Ghostty surface, not atlas stamp.
 
 ## Hard rejects

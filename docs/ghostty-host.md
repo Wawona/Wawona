@@ -6,10 +6,15 @@ One terminal grid for the local shell, SSH, and the Relay guest console, on
 macOS, iOS, iPadOS, tvOS, watchOS, visionOS, Android, and Linux. Bytes come
 from `wawona-pty` or Relay `relay_copy_log`.
 
-Zig 0.16 stays. Its OS tags include `ios`, `tvos`, `visionos`, `watchos`,
-and `macos`. Android is `linux` plus the Android ABI, OpenGL renderer.
-Do not rewrite libghostty to Rust while those triples can emit objects.
-watchOS has no Metal. The grid there is software, presented with SpriteKit.
+Zig OS tags include `ios`, `tvos`, `visionos`, `watchos`, and `macos`.
+Android is `linux` plus the Android ABI, OpenGL renderer. Do not rewrite
+libghostty to Rust while those triples can emit objects. watchOS has no
+Metal. The grid there is software, presented with SpriteKit.
+
+**Today:** VT via `libghostty-vt` + interim `GhosttyGpu` atlas paint.
+`wwn-ghostty#libghostty-macos` fails closed until Darwin GhosttyLib
+installs (see `Ghostty/docs/METAL-SURFACE.md`). Do not claim Metal done
+while GhosttyGpu paints.
 
 libghostty is Ghostty. Copyright (c) 2024 Mitchell Hashimoto, Ghostty
 contributors. MIT. https://github.com/ghostty-org/ghostty

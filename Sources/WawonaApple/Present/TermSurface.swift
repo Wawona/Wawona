@@ -73,9 +73,11 @@ struct WwnTermImage {
     var rgbaLen: UInt32 = 0
 }
 
-/// AppKit host. Rust libghostty viewport. Metal paint is interim
-/// `GhosttyGpuView` from Terminal `apple/Terminal/` (staged `.nix-deps/terminal`).
-/// Phase 1 consolidation: do not grow the atlas; Zig libghostty Metal is next.
+/// AppKit host. Rust libghostty-vt viewport. Metal paint is interim
+/// `GhosttyGpuView` (staged `.nix-deps/terminal`). Do not grow the atlas.
+/// TODO(metal-surface): swap to Zig GhosttyLib when
+/// `wwn-ghostty#libghostty-macos` is green (fails closed today; see
+/// `Ghostty/docs/METAL-SURFACE.md`).
 @objc(WWNTermSurface)
 public final class WWNTermSurface: NSView {
     @objc public var onReply: WWNTermReply?
@@ -187,6 +189,12 @@ public final class WWNTermSurface: NSView {
         let w = max(1, bounds.width * scale)
         let h = max(1, bounds.height * scale)
         gpu.drawableSize = CGSize(width: w, height: h)
+        // Identity only. Focus embed must not affine- or geometry-flip Metal;
+        // that parked the prompt or painted the grid 180° vs standalone.
+        gpu.layer?.setAffineTransform(.identity)
+        if let layer = gpu.layer {
+            layer.isGeometryFlipped = false
+        }
     }
 
     public override func keyDown(with event: NSEvent) {

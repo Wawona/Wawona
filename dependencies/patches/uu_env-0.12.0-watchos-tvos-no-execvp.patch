@@ -1,0 +1,32 @@
+--- a/src/env.rs	2026-11-03 17:53:30
++++ b/src/env.rs	2026-11-03 17:53:37
+@@ -23,7 +23,7 @@
+ use nix::libc;
+ #[cfg(all(unix, not(target_os = "fuchsia")))]
+ use nix::sys::signal::{SigSet, SigmaskHow, Signal, sigprocmask};
+-#[cfg(unix)]
++#[cfg(all(unix, not(any(target_os = "watchos", target_os = "tvos"))))]
+ use nix::unistd::execvp;
+ use std::borrow::Cow;
+ #[cfg(all(unix, not(target_os = "fuchsia")))]
+@@ -921,7 +921,7 @@
+             }
+         }
+ 
+-        #[cfg(unix)]
++        #[cfg(all(unix, not(any(target_os = "watchos", target_os = "tvos"))))]
+         {
+             // Use execvp() directly to preserve signal handlers set by apply_signal_action().
+             // Command::exec() would reset SIGPIPE, interfering with --ignore-signal=PIPE.
+@@ -964,9 +964,9 @@
+             }
+         }
+ 
+-        #[cfg(not(unix))]
++        #[cfg(any(not(unix), target_os = "watchos", target_os = "tvos"))]
+         {
+-            // Fallback to Command::status for non-Unix systems
++            // Fallback to Command::status when execvp is unavailable (non-Unix, watchOS, tvOS)
+             let mut cmd = std::process::Command::new(&*prog);
+             cmd.args(args);
+ 
