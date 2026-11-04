@@ -123,13 +123,16 @@
     # Wawona compiles apple/Keyboard from this tree. Cited: docs/wwn-repo-dag.md.
     toolbar-keys.url = "github:Wawona/ToolbarKeys/development";
     toolbar-keys.flake = false;
-    # Wawona Terminal source (libghostty-rs UniFFI + native hosts). flake=false
-    # so sandbox never follows a host-only sibling symlink (file:// breaks GHA).
+    # Wawona Terminal source (interim UniFFI over libghostty-vt + native hosts).
+    # flake=false so sandbox never follows a host-only sibling symlink.
     # Standalone recipe: Terminal/flake.nix (zig2nix + ghostty VT + crane/cargo).
     terminal.url = "github:Wawona/Terminal/development";
     terminal.flake = false;
-    # Ghostty VT (Zig). Pin matches Terminal/libghostty-rs GHOSTTY_COMMIT.
-    # Used by `nix run .#terminal` pkg-config path. Cited: docs/wwn-repo-dag.md.
+    # L3′ Zig libghostty packaging (Metal surface goal). Re-exports VT today.
+    # Cited: docs/ghostty-host.md, docs/wwn-repo-dag.md, Ghostty/docs/METAL-SURFACE.md.
+    wwn-ghostty.url = "github:Wawona/Ghostty/development";
+    # Upstream Ghostty VT (Zig). Pin matches Terminal/libghostty-rs GHOSTTY_COMMIT.
+    # Used by `nix run .#terminal` pkg-config path until wwn-ghostty owns Metal.
     ghostty.url = "github:ghostty-org/ghostty/521cf2c5d30bd48028ca61546c64e7913764073d";
   };
 

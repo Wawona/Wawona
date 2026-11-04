@@ -1,63 +1,48 @@
 ---
 name: wawona-ghostty-host
-description: Wawona Terminal = UniFFI/C over uzaaft/libghostty-rs (Ghostty VT) + native paint. Open when editing GhosttySurface, TerminalSession, GhosttyGpu, or GuestTerm. Standalone: nix run .#terminal.
+description: Wawona Terminal grid = Zig libghostty (Wawona/Ghostty, wwn-ghostty). Native chrome only. Open when editing Ghostty surface, GhosttyGpu interim, or Terminal UniFFI.
 ---
 
-# Wawona Terminal / libghostty-vt
+# Ghostty host
 
-## Shape (ToolbarKeys twin)
+## Shape
 
-**Rust** owns the grid via [`uzaaft/libghostty-rs`](https://github.com/uzaaft/libghostty-rs)
-(`libghostty-vt` → Ghostty VT archive). UniFFI (`GhosttySurface` /
-`TerminalSession`) and C `ghostty_surface_*` wrap that engine.
-**Native UI** paints on every target (AppKit Metal, UIKit/SwiftUI, Watch,
-Compose, GTK). Wawona L4 owns Machines chrome, PTY, ToolbarKeys.
+**Zig libghostty** owns the grid (L3′ `github.com/Wawona/Ghostty`, flake
+`wwn-ghostty`). **Native UI** paints chrome around it. Wawona L4 owns Machines,
+PTY, ToolbarKeys.
 
 | Tree | Role |
 |------|------|
-| `Wawona/Terminal` `src/` | UniFFI + C over `libghostty-vt` |
-| `Wawona/Terminal` `apple/Terminal/` | Apple UniFFI line paint (iOS family) |
-| `Wawona/Terminal` `apple/Standalone/` | macOS Metal standalone host |
-| `Wawona/Terminal` `src/bin/wawona-terminal.rs` | Linux GTK standalone |
-| Wawona `GhosttyGpu` / `WWNTermSurface` | In-app macOS Metal paint |
+| `Wawona/Ghostty` | Zig static `ghostty_*` (goal: Metal/GL/software) |
+| `Wawona/Terminal` | Interim UniFFI over `libghostty-vt` until Metal surface |
+| Wawona `GhosttyGpu` | **Interim** atlas paint. Do not patch further |
+| Rootshell `vendor/rootshell` | Reference for iOS Metal embed. Not a product dep |
 
-## Standalone dogfood
+## Dogfood (Nix only, macOS)
 
 ```bash
-# From Wawona (uses flake input `terminal`)
-nix run .#terminal
-# Local sibling Terminal tree:
-nix run .#terminal --override-input terminal path:../Terminal
-
-# From Terminal repo itself
-nix run .#terminal
-./scripts/run-standalone-macos.sh   # after scripts/build-static.sh macos
+cd /Users/8amps/Wawona/Wawona
+nix run .#terminal --override-input terminal path:/Users/8amps/Wawona/Terminal
+# In-app tip:
+WAWONA_TEST_REBUILD=1 eval "$(scripts/appium/ensure-tip-wawona-macos.sh)"
 ```
 
-macOS: AppKit + Metal. Linux: GTK + `TerminalSession` UniFFI.
-
-**Nix owns Zig.** Terminal flake pulls `zig2nix` (Zig 0.17) + `ghostty`
-(`libghostty-vt` + `.dev`). Rust links via `pkg-config` and feature
-`nix-ghostty-vt`. Do not ad-hoc host `zig` / `cargo` for the VT core.
-Wawona `.#terminal` reuses `Terminal/nix/package.nix` + flake input
-`ghostty` (same commit as Terminal).
+**Never** Vision Pro / visionOS for Terminal. **Never** `/Applications/Wawona.app`.
 
 ## Do
 
-- Feed / resize / lines via UniFFI or C into the same VT worker.
-- Stage native UI like ToolbarKeys Keyboard (`.nix-deps`).
-- iOS floor **13.0**. Static only on Apple-mobile.
-- Real `libghostty-vt.a` from Ghostty (via libghostty-vt-sys).
+- Query `ghostty-host.md` / rule `wawona-ghostty-host` before paint changes.
+- Prefer linking `wwn-ghostty` / full `libghostty.a` for Metal.
+- Keep iOS floor **13.0**. Static only on Apple-mobile.
 
 ## Do not
 
-- GhosttyKit XCFramework.
-- Product `.dylib` on Apple-mobile.
-- Homemade VT branded as libghostty.
-- Second VT in SwiftUI Text / Compose Text alone as the engine.
-- Ship empty stub viewports.
+- GhosttyKit XCFramework in store IPA.
+- Grow TermGpu / GhosttyGpu atlas (UV flips, stamp hacks).
+- Second homemade VT.
+- Claim Metal Ghostty while atlas still owns paint (`Ghostty/docs/METAL-SURFACE.md`).
 
 ## Rules
 
-`wawona-platform-targets` §14, `wawona-ios-min-os`, `wawona-uniffi-domain`,
-`wawona-rust-first`, `wawona-ios-native-shell`.
+`wawona-ghostty-host`, `wawona-platform-targets` §14, `wawona-ios-min-os`,
+`wawona-nix-fresh-build`, `wawona-rust-first`.

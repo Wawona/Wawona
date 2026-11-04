@@ -1,21 +1,39 @@
-# Wawona Terminal / libghostty-vt (Rust)
+# Ghostty host (Zig libghostty L3′)
 
-**One repo:** `github.com/Wawona/Terminal` (flake input `terminal`).
+**L3′ repo:** `github.com/Wawona/Ghostty` (flake input `wwn-ghostty`).
 
-**Wawona Terminal** = UniFFI + C host API over
-[`uzaaft/libghostty-rs`](https://github.com/uzaaft/libghostty-rs)
-(`libghostty-vt`: safe Rust on Ghostty's extracted VT). Native UI paints cells
-(ToolbarKeys shape). Standalone terminal or linked into Wawona L4.
+**Product grid** = Zig **libghostty** (`ghostty_*`). Native UI owns chrome
+only (windows, sheets, ToolbarKeys, Machines Start). Bytes from `wawona-pty`
+or Relay `relay_copy_log`.
 
-- Rust product API: `GhosttySurface` / `TerminalSession` in `Wawona/Terminal`
-- VT engine: `libghostty-vt` (not a homemade `screen.rs` VT)
-- Native: `apple/Terminal/`, Compose, GTK, Watch; macOS Metal via
-  `GhosttyGpu` / `WWNTermSurface` (in-app) or `apple/Standalone` (dogfood)
-- Standalone: `nix run .#terminal` (macOS Metal or Linux GTK)
-- VT build: Terminal flake `zig2nix` + `ghostty` `libghostty-vt` (pkg-config,
-  feature `nix-ghostty-vt`). Wawona passes the same `ghostty` input into
-  `terminal-standalone.nix`. No host zig for the core.
-- Not GhosttyKit. Not a second hand-rolled VT under a libghostty name.
-- Optional C `ghostty_surface_*` is a bridge into the same engine.
+Canonical RAG: `ghostty-host.md`. Skill: `wawona-ghostty-host`.
 
-Skill: `wawona-ghostty-host`.
+## Target shape
+
+| Layer | Owns |
+|-------|------|
+| `Wawona/Ghostty` | VT, font atlas, resize, GPU/software draw, `ghostty_*` C ABI |
+| Wawona L4 | Start/Focus/park, PTY/session, ToolbarKeys host |
+| `ToolbarKeys` | Soft key slots |
+| `Wawona/Terminal` | Interim UniFFI over `libghostty-vt` + host paint until Metal surface links |
+
+## Interim (today)
+
+- VT: upstream `libghostty-vt` via flake `ghostty` + `Terminal` (`GhosttySurface`).
+- Paint: `GhosttyGpu` / TermGpu atlas on macOS. **Forbidden to grow.** Plan:
+  retire after Zig Metal surface green (`Ghostty/docs/METAL-SURFACE.md`).
+- Prefer plan: paint via Zig Ghostty surface, not atlas stamp.
+
+## Hard rejects
+
+- Published GhosttyKit (iOS 17) as a product input
+- Product `.dylib` on Apple-mobile
+- Homemade VT branded as libghostty
+- Rewriting libghostty to Rust while Zig triples emit objects
+- Claiming Metal libghostty ships while GhosttyGpu still paints
+- Vision Pro dogfood for Terminal when the task is macOS
+
+## Credits
+
+Ghostty MIT (Mitchell Hashimoto et al.). Rootshell MIT (Kit Knox) for iOS
+embed starting point. Port into `Wawona/Ghostty`; do not link Rootshell app.

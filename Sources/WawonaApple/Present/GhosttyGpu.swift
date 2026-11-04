@@ -16,6 +16,12 @@ private struct GpuDim {
     var cols: UInt32
     var rows: UInt32
     var phase: UInt32
+    var selStart: UInt32
+    var selEnd: UInt32
+    var jumpFrom: UInt32
+    var jumpTo: UInt32
+    var jumpT: Float
+    var _pad: Float = 0
 }
 
 private struct GpuCell {
@@ -25,9 +31,9 @@ private struct GpuCell {
     var attr: UInt32
 }
 
-/// Metal paint for Wawona Terminal cells (host GPU path).
-/// Grid ownership is UniFFI `GhosttySurface`; C viewport is a bridge, not a second VT.
-/// Glyphs stamp into an atlas once. Not a second VT engine.
+/// INTERIM Metal paint (TermGpu atlas stamp). Product goal: Zig libghostty
+/// surface from `Wawona/Ghostty` (`ghostty_*`). Do not grow this atlas path.
+/// See `Ghostty/docs/METAL-SURFACE.md` and rule `wawona-ghostty-host`.
 final class GhosttyGpuView: MTKView, MTKViewDelegate {
     private var pipeline: MTLRenderPipelineState?
     private var queue: MTLCommandQueue?
@@ -47,6 +53,12 @@ final class GhosttyGpuView: MTKView, MTKViewDelegate {
     private var pictures = [TermPicture]()
     private var cellW: Float = 8
     private var cellH: Float = 16
+    private var selStart: UInt32 = 0
+    private var selEnd: UInt32 = 0
+    private var hasSelection = false
+    private var jumpFrom: UInt32 = 0
+    private var jumpTo: UInt32 = 0
+    private var jumpT: Float = 0
 
     override init(frame frameRect: NSRect, device: MTLDevice?) {
         let device = device ?? MTLCreateSystemDefaultDevice()
@@ -93,7 +105,11 @@ final class GhosttyGpuView: MTKView, MTKViewDelegate {
 
     func present(
         _ grid: [WwnTermCell], count: Int, cols: Int, rows: Int, blinkOn: Bool,
-        pictures: [TermPicture], cellW: CGFloat, cellH: CGFloat
+        pictures: [TermPicture], cellW: CGFloat, cellH: CGFloat,
+        selection: (start: Int, end: Int)?,
+        cursorJumpFrom: (col: Int, row: Int)?,
+        cursorJumpTo: (col: Int, row: Int)?,
+        cursorJumpT: Float
     ) {
         self.cols = max(1, cols)
         self.rows = max(1, rows)
@@ -101,6 +117,25 @@ final class GhosttyGpuView: MTKView, MTKViewDelegate {
         self.pictures = pictures
         self.cellW = Float(max(cellW, 1))
         self.cellH = Float(max(cellH, 1))
+        if let selection {
+            hasSelection = true
+            selStart = UInt32(max(0, selection.start))
+            selEnd = UInt32(max(0, selection.end))
+        } else {
+            hasSelection = false
+            selStart = 0
+            selEnd = 0
+        }
+        let c = max(self.cols, 1)
+        if let f = cursorJumpFrom, let t = cursorJumpTo, cursorJumpT > 0.01 {
+            jumpFrom = UInt32(f.row * c + f.col)
+            jumpTo = UInt32(t.row * c + t.col)
+            jumpT = cursorJumpT
+        } else {
+            jumpFrom = 0
+            jumpTo = 0
+            jumpT = 0
+        }
         let n = min(count, cols * rows)
         if cells.count != n { cells = Array(repeating: GpuCell(slot: 0, fg: 0, bg: 0, attr: 0), count: n) }
         for i in 0..<n {
@@ -123,7 +158,12 @@ final class GhosttyGpuView: MTKView, MTKViewDelegate {
         guard let buffer, let cmd = queue.makeCommandBuffer(),
             let enc = cmd.makeRenderCommandEncoder(descriptor: pass)
         else { return }
-        var dim = GpuDim(cols: UInt32(cols), rows: UInt32(rows), phase: blinkOn ? 1 : 0)
+        var dim = GpuDim(
+            cols: UInt32(cols), rows: UInt32(rows), phase: blinkOn ? 1 : 0,
+            selStart: hasSelection ? selStart : 0xFFFF_FFFF,
+            selEnd: hasSelection ? selEnd : 0,
+            jumpFrom: jumpFrom, jumpTo: jumpTo, jumpT: jumpT, _pad: 0
+        )
         let behind = drawImages(enc, device, behind: true)
         enc.setRenderPipelineState(pipeline)
         enc.setVertexBuffer(buffer, offset: 0, index: 0)
@@ -287,8 +327,15 @@ final class GhosttyGpuView: MTKView, MTKViewDelegate {
         #include <metal_stdlib>
         using namespace metal;
         struct Cell { uint slot; uint fg; uint bg; uint attr; };
-        struct VOut { float4 pos [[position]]; float2 uv; float4 fg; float4 bg; uint attr [[flat]]; };
-        struct Dim { uint cols; uint rows; uint phase; };
+        struct VOut {
+          float4 pos [[position]]; float2 uv; float4 fg; float4 bg;
+          uint attr [[flat]]; uint iid [[flat]];
+        };
+        struct Dim {
+          uint cols; uint rows; uint phase;
+          uint selStart; uint selEnd;
+          uint jumpFrom; uint jumpTo; float jumpT;
+        };
         float4 unpack(uint c) {
           return float4(float((c >> 16) & 255) / 255.0, float((c >> 8) & 255) / 255.0, float(c & 255) / 255.0, 1);
         }
@@ -304,9 +351,9 @@ final class GhosttyGpuView: MTKView, MTKViewDelegate {
           float2 ndc = float2(-1.0, 1.0) + float2(float(col) + g.x, -(float(row) + g.y)) * step;
           uint slot = cell.slot;
           float side = \(side).0;
-          // Stamp atlas is Metal top-down (CGContext flipped at write time).
           float2 uv = (float2(slot % \(side)u, slot / \(side)u) + g) / side;
-          VOut o; o.pos = float4(ndc, 0, 1); o.uv = uv; o.fg = unpack(cell.fg); o.bg = unpack(cell.bg); o.attr = cell.attr;
+          VOut o; o.pos = float4(ndc, 0, 1); o.uv = uv; o.fg = unpack(cell.fg); o.bg = unpack(cell.bg);
+          o.attr = cell.attr; o.iid = iid;
           return o;
         }
         fragment float4 ghostty_term_fs(VOut in [[stage_in]], texture2d<float> atlas [[texture(0)]],
@@ -315,10 +362,31 @@ final class GhosttyGpuView: MTKView, MTKViewDelegate {
           float m = atlas.sample(s, in.uv).r;
           if ((in.attr & 1u) != 0u) m = max(m, atlas.sample(s, in.uv + float2(\(boldUV), 0)).r);
           if ((in.attr & 16u) != 0u && d.phase == 0u) m = 0.0;
-          float4 c = mix(in.bg, in.fg, step(0.28, m));
+          float4 fg = in.fg;
+          float4 bg = in.bg;
+          if (d.selStart != 0xFFFFFFFFu && in.iid >= d.selStart && in.iid <= d.selEnd) {
+            bg = float4(0.20, 0.45, 0.85, 1.0);
+            fg = float4(1.0, 1.0, 1.0, 1.0);
+          }
+          float4 c = mix(bg, fg, step(0.28, m));
           float2 local = fract(in.uv * \(side).0);
-          if ((in.attr & 8u) != 0u && local.y > 0.86) c = in.fg;
-          if ((in.attr & 32u) != 0u && abs(local.y - 0.5) < 0.07) c = in.fg;
+          if ((in.attr & 8u) != 0u && local.y > 0.86) c = fg;
+          if ((in.attr & 32u) != 0u && abs(local.y - 0.5) < 0.07) c = fg;
+          // Ghostty-style cursor jump trail between previous and current cursor cell.
+          if (d.jumpT > 0.01) {
+            uint cols = max(d.cols, 1u);
+            float2 a = float2(float(d.jumpFrom % cols), float(d.jumpFrom / cols));
+            float2 b = float2(float(d.jumpTo % cols), float(d.jumpTo / cols));
+            float2 p = float2(float(in.iid % cols), float(in.iid / cols));
+            float2 ab = b - a;
+            float len2 = max(dot(ab, ab), 0.0001);
+            float t = clamp(dot(p - a, ab) / len2, 0.0, 1.0);
+            float2 closest = a + ab * t;
+            float dist = length(p - closest);
+            float beam = smoothstep(1.35, 0.15, dist) * d.jumpT;
+            float4 trail = float4(0.55, 0.85, 1.0, 1.0);
+            c = mix(c, trail, beam * 0.55);
+          }
           return c;
         }
         """

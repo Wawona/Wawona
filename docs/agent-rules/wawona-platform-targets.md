@@ -202,20 +202,16 @@ forbidden while iPhone is planned for those features.
     watchOS (`ubiquityIdentityToken` is always nil). That row stays
     **⛔ blocked** (`icloud_drive_home`). Do not add a Drive toggle there.
     Re-check on SDK bumps.
-14. **Wawona Terminal = UniFFI libghostty-rs + native UI.** Same split as
-    ToolbarKeys and Wawona domain UniFFI. **One repo**
-    `github.com/Wawona/Terminal` (flake `terminal`). Rust owns the grid
-    (`GhosttySurface` / `TerminalSession`). Native frameworks paint:
-    AppKit, UIKit, SwiftUI, WatchKit/SpriteKit, Jetpack Compose, GTK.
-    Standalone terminal or linked into Wawona. Targets: macOS, iOS,
-    iPadOS, tvOS, watchOS, visionOS, Android, Linux. Wawona L4 owns
-    Machines chrome, PTY, and ToolbarKeys when bundled. Apple-mobile:
-    **static** archive, deployment target **13.0**. **No** product
-    `.dylib`. **No** GhosttyKit. **No** second Ghostty packaging repo.
-    No TermGpu / second VT. Optional C `ghostty_*` is not the product
-    contract. Credits: Ghostty MIT name/role; Rootshell MIT iOS embed UX.
-    Phone client tabs stay Rootshell-inspired overview. VM/container
-    kinds forbidden on tvOS, watchOS, visionOS.
+14. **Wawona Terminal = Zig libghostty grid + native chrome.** L3′ repo
+    `github.com/Wawona/Ghostty` (flake `wwn-ghostty`). Ghostty owns VT, font
+    atlas, resize, and GPU/software draw (`ghostty_*`). Wawona owns windows,
+    sheets, ToolbarKeys, PTY/session. Apple-mobile: **static** archive,
+    deployment target **13.0**. **No** product `.dylib`. **No** GhosttyKit.
+    **No** homemade VT. **Interim:** `Terminal` UniFFI over `libghostty-vt` +
+    `GhosttyGpu` atlas paint until Metal `libghostty.a` links (do not grow
+    the atlas). Credits: Ghostty MIT; Rootshell MIT (iOS embed starting
+    point). Rule: `wawona-ghostty-host`. VM/container kinds forbidden on
+    tvOS, watchOS, visionOS.
 
 ## Implementation checkpoints
 

@@ -76,14 +76,13 @@ not MCP. Skill `wawona-gh`. Rule `wawona-gh`.
   constructors, `WWNCore*` trampolines). Do not write a new Wawona program in C.
   Upstream ports stay in their upstream language. See
   `.cursor/rules/wawona-rust-first.mdc` and `docs/agent-rules/wawona-rust-first.md`.
-- **Wawona Terminal and ToolbarKeys are UniFFI + native UI.** One repo:
-  `github.com/Wawona/Terminal` (flake `terminal`). Rust **libghostty-rs**
-  UniFFI (`GhosttySurface` / `TerminalSession`) + native paint
-  (`apple/Terminal`, Compose, GTK). Stage like ToolbarKeys
-  (`.nix-deps/terminal/Terminal`). Standalone terminal or linked into
-  Wawona. No GhosttyKit, no second Ghostty packaging repo, no product
-  `.dylib` on Apple-mobile, iOS 13 static. Credits: Ghostty MIT name/role;
-  Rootshell MIT iOS embed UX. Toolbar keys: `github.com/Wawona/ToolbarKeys`.
+- **Wawona Terminal = Zig libghostty + native chrome.** L3′
+  `github.com/Wawona/Ghostty` (flake `wwn-ghostty`). Ghostty owns the grid
+  (`ghostty_*`). Wawona owns Machines chrome / PTY. **Interim:** `Terminal`
+  UniFFI over `libghostty-vt` + `GhosttyGpu` atlas until Metal `libghostty.a`
+  (do not grow atlas). No GhosttyKit, no product `.dylib` on Apple-mobile,
+  iOS 13 static. Credits: Ghostty MIT; Rootshell MIT iOS embed UX. Toolbar
+  keys: `github.com/Wawona/ToolbarKeys`. Rule: `wawona-ghostty-host`.
   Do not copy toolbar Swift back into `Sources/WawonaUI`.
 - **Mission-critical assurance.** AI-authored code has the same gates as human
   code. Risk decides the tier. VM memory, MMU, CPU, virtio, privilege, watchdog,
@@ -246,6 +245,14 @@ not MCP. Skill `wawona-gh`. Rule `wawona-gh`.
   `guest-4k`). AUTH + 64x625 ≠ 800x600 face. Completely complete stays 0%
   until store TF. Skill/rule `wawona-staticcpu-shm-tip`. RAG
   `staticcpu-shm-tip.md`. Graph: `Relay/docs/agentic-graph-staticcpu.md`.
+
+## Nix fresh builds (hard)
+
+Products and Terminal are **Nix**. `nix run .#wawona-macos`, `nix run .#terminal`,
+or tip via `WAWONA_TEST_REBUILD=1` + `ensure-tip-wawona-macos.sh`. Never
+`/Applications/Wawona.app`. Never host-cargo `/tmp` overlays as the ship path.
+Never boot Vision Pro when the task is Wawona Terminal on macOS. Rule/skill:
+`wawona-nix-fresh-build`. Guide: `docs/compilation.md`. Query wwn-mcp first.
 
 ## Local before CI (do not burn the queue)
 
