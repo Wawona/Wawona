@@ -551,6 +551,9 @@ final class WWNIosGuestConsole: ObservableObject {
 struct WWNIosGuestConsoleSheet: View {
   @ObservedObject var console: WWNIosGuestConsole
   @State private var keyFocus = 0
+  #if os(tvOS)
+  @FocusState private var doneFocused: Bool
+  #endif
 
   var body: some View {
     #if os(visionOS)
@@ -584,6 +587,17 @@ struct WWNIosGuestConsoleSheet: View {
         }
         #endif
     }
+    #if os(tvOS)
+    // Menu / Escape leave Terminal when UIKit Done is off-focus or clipped.
+    .background(WWNTerminalEscapeDismissHost(onEscape: { console.userDismiss() }))
+    .onReceive(NotificationCenter.default.publisher(for: .WWNTvRemoteMenuBeganNotification)) { _ in
+      console.userDismiss()
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .WWNTvRemoteShakeNotification)) { _ in
+      guard WWNMachineProfileStore.resolvedShakeToCloseActive() else { return }
+      console.userDismiss()
+    }
+    #endif
     .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
       guard console.isShell, let bytes = WWNTerminalCursorMode.focusReport(false) else { return }
       console.injectTerminalData(bytes)
@@ -662,10 +676,64 @@ struct WWNIosGuestConsoleSheet: View {
   /// Exit / Clear / ^C as a layout sibling above the grid (not an inset).
   @ViewBuilder
   private var visionTerminalChrome: some View {
+    #if os(tvOS)
+    // 10-foot: SwiftUI focusable Buttons. Tiny UIKit 72×36 pills clipped to
+    // unreadable glyphs and never took Menu / Focus Engine correctly.
+    HStack(spacing: 28) {
+      Button {
+        NSLog("WWNIosGuestConsole: chrome Done tvOS shell=%d", console.isShell ? 1 : 0)
+        if console.isShell {
+          console.userDismiss()
+        } else {
+          // Match launch banner: Done focuses compositor (keep session alive).
+          console.parkForCompositor()
+          WWNMainWindowRouter.shared.showSessionSurface()
+        }
+      } label: {
+        Text("Done")
+          .font(.headline.weight(.semibold))
+          .frame(minWidth: 160, minHeight: 44)
+      }
+      .buttonStyle(.borderedProminent)
+      .tint(.accentColor)
+      .focused($doneFocused)
+      .wwnA11y(WWNA11y.terminalDone, label: "Done")
+      .onAppear { doneFocused = true }
+
+      Button {
+        console.clearScreen()
+      } label: {
+        Text("Clear")
+          .font(.headline.weight(.semibold))
+          .frame(minWidth: 140, minHeight: 44)
+      }
+      .buttonStyle(.bordered)
+      .wwnA11y("wwn.terminal.clear", label: "Clear")
+
+      if console.isShell {
+        Button {
+          console.sendControl(0x03)
+        } label: {
+          Text("^C")
+            .font(.headline.weight(.semibold))
+            .frame(minWidth: 100, minHeight: 44)
+        }
+        .buttonStyle(.bordered)
+        .wwnA11y("wwn.guestConsole.ctrlC", label: "Control C")
+      }
+
+      Spacer(minLength: 0)
+    }
+    .padding(.horizontal, 24)
+    .padding(.vertical, 16)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(Color.black.opacity(0.92))
+    .zIndex(10)
+    #else
     HStack(spacing: 16) {
-      // tvOS + visionOS: UIKit Done implements accessibilityActivate (gaze /
-      // AX) after resigning soft IME. SwiftUI Button actions were a no-op
-      // under xrSimulator coordinate taps; Escape host is the keyboard path.
+      // visionOS: UIKit Done implements accessibilityActivate (gaze / AX)
+      // after resigning soft IME. SwiftUI Button actions were a no-op under
+      // xrSimulator coordinate taps; Escape host is the keyboard path.
       WWNTerminalDoneButton(
         title: "Done",
         accessibilityId: WWNA11y.terminalDone
@@ -673,22 +741,14 @@ struct WWNIosGuestConsoleSheet: View {
         NSLog("WWNIosGuestConsole: chrome Done UIKit")
         console.userDismiss()
       }
-      #if os(visionOS)
       .frame(minWidth: 96, minHeight: 44)
-      #else
-      .frame(width: 72, height: 36)
-      #endif
       WWNTerminalDoneButton(
         title: "Clear",
         accessibilityId: "wwn.terminal.clear"
       ) {
         console.clearScreen()
       }
-      #if os(visionOS)
       .frame(minWidth: 96, minHeight: 44)
-      #else
-      .frame(width: 72, height: 36)
-      #endif
       if console.isShell {
         WWNTerminalDoneButton(
           title: "^C",
@@ -696,24 +756,19 @@ struct WWNIosGuestConsoleSheet: View {
         ) {
           console.sendControl(0x03)
         }
-        #if os(visionOS)
         .frame(minWidth: 72, minHeight: 44)
-        #else
-        .frame(width: 56, height: 36)
-        #endif
       }
-      #if os(visionOS)
       Text(console.title)
         .font(.headline)
-        .foregroundColor(.white)
+        .foregroundStyle(.white)
         .padding(.leading, 8)
-      #endif
       Spacer(minLength: 0)
     }
     .padding(8)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(Color.black.opacity(0.92))
     .zIndex(10)
+    #endif
   }
   #endif
 }

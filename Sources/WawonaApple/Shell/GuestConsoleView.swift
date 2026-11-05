@@ -271,18 +271,44 @@ final class IosShellSession {
         }
     }
 
+    /// Stop the in-process shell. Join must run **off** the PTY drain queue.
+    /// Joining on `queue` deadlocks Done / Stop: `zexit`/`savehistfile` write
+    /// the socketpair while the pump that drains it is starved behind
+    /// `pthread_join` (tvOS Terminal Done hang). Keep the pump alive until
+    /// after `wwn_pty_ios_stop_shell_session` returns.
     func stop() {
-        if DispatchQueue.getSpecific(key: Self.queueKey) != nil { halt() } else { queue.sync { self.halt() } }
+        if DispatchQueue.getSpecific(key: Self.queueKey) != nil {
+            // Rare nested path: hop to main so join is not on the drain queue.
+            NSLog("IosShellSession: stop on drain queue; deferring to main")
+            DispatchQueue.main.async { [weak self] in self?.stop() }
+            return
+        }
+        queue.sync { self.prepareHalt() }
+        IosShellABI.stopShellSession()
+        queue.sync { self.finishHalt() }
     }
 
-    private func halt() {
+    private func prepareHalt() {
         stopped = true
         owed.removeAll()
-        pump?.cancel(); pump = nil
-        if master >= 0 { IosShellABI.clearMaster(master); master = -1 }
-        IosShellABI.stopShellSession()
-        if let session { IosShellABI.sessionDestroy(session); self.session = nil }
-        if let term { IosShellABI.termFree(term); self.term = nil }
+        // Leave pump running so zsh exit writes do not fill the socketpair.
+    }
+
+    private func finishHalt() {
+        pump?.cancel()
+        pump = nil
+        if master >= 0 {
+            IosShellABI.clearMaster(master)
+            master = -1
+        }
+        if let session {
+            IosShellABI.sessionDestroy(session)
+            self.session = nil
+        }
+        if let term {
+            IosShellABI.termFree(term)
+            self.term = nil
+        }
     }
 
     private func armPump() {
@@ -327,7 +353,25 @@ final class IosShellSession {
             exportScreen()
             let ended = onEnded
             DispatchQueue.main.async { ended?() }
-            halt()
+            // Already on the drain queue; shell thread is gone. Do not
+            // pthread_join here. Reap job table off-queue.
+            stopped = true
+            owed.removeAll()
+            pump?.cancel()
+            pump = nil
+            if master >= 0 {
+                IosShellABI.clearMaster(master)
+                master = -1
+            }
+            let sessionPtr = session
+            let termPtr = term
+            session = nil
+            self.term = nil
+            DispatchQueue.global(qos: .userInitiated).async {
+                IosShellABI.stopShellSession()
+                if let sessionPtr { IosShellABI.sessionDestroy(sessionPtr) }
+                IosShellABI.termFree(termPtr)
+            }
             return
         }
         exportScreen()
@@ -347,7 +391,19 @@ final class IosShellSession {
         publishTerm(term, onScreen: onScreen, onPictures: onPictures, onCells: onCells)
     }
 
-    deinit { stop() }
+    deinit {
+        // Last-chance reap. Prefer stop() from Done / Stop on a non-drain queue.
+        stopped = true
+        pump?.cancel()
+        pump = nil
+        if master >= 0 {
+            IosShellABI.clearMaster(master)
+            master = -1
+        }
+        IosShellABI.stopShellSession()
+        if let session { IosShellABI.sessionDestroy(session) }
+        if let term { IosShellABI.termFree(term) }
+    }
 }
 final class IosLogTermSession {
     private var term: OpaquePointer?

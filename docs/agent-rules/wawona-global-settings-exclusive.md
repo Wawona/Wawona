@@ -14,13 +14,14 @@ rebuild them.
 | macOS | In-app `WWNGlobalSettingsHostView` slides up over Machines (gear / Cmd-,). Never a modal sheet (macOS sheet backport is a floating popup). Section sidebar + detail |
 | iOS / iPadOS | In-app `WWNGlobalSettingsHostView` slides up over Machines (gear) |
 | watchOS | In-app `WatchGlobalSettingsView` sheet (system slide-up) |
-| tvOS / visionOS | In-app `WWNGlobalSettingsHostView` slides up over Machines (gear) |
+| tvOS / visionOS | In-app `WWNGlobalSettingsHostView` slides up over Machines (gear). tvOS uses system `NavigationSplitView` Liquid Glass sidebar (`columnVisibility` toggle; detail `backgroundExtensionEffect`) + detail `NavigationStack` for push editors (Cancel / Back / Menu). Never an opaque hand-rolled HStack sidebar on SDK 26+ |
 | Android | In-app Compose `SettingsDialog` with `AnimatedVisibility` slide-up |
 | Linux | In-app `adw::Dialog` `BottomSheet` (slide-up) |
 
 Text and password fields on iOS / tvOS / visionOS use a push editor page
 (Settings.app pattern: row → new view → Save → back), not sheets or inline
-fields in the section list.
+fields in the section list. On tvOS every push destination must expose Cancel
+or Back so focus can leave the subview without dismissing Global Settings.
 
 Storage is the **app container**: `UserDefaults.standard` on Apple,
 app `SharedPreferences` on Android. Never a PrefPane suite

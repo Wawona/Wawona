@@ -36,7 +36,8 @@ extension Notification.Name {
 /// Resolves Native Shell session mode from a profile (including legacy types).
 public enum WWNNativeShellConfiguration {
     public static func kind(for profile: WWNMachineProfile) -> String {
-        let overrides = profile.settingsOverrides as? [String: Any] ?? [:]
+        // settingsOverrides is already [String: Any] on WWNMachineProfile.
+        let overrides = profile.settingsOverrides
         if let stored = overrides[kWWNPrefsNativeShellKind] as? String, !stored.isEmpty {
             return stored
         }
@@ -68,7 +69,7 @@ public enum WWNNativeShellConfiguration {
     }
 
     public static func usesSSH(for profile: WWNMachineProfile) -> Bool {
-        let overrides = profile.settingsOverrides as? [String: Any] ?? [:]
+        let overrides = profile.settingsOverrides
         if let stored = overrides[kWWNPrefsNativeShellUseSSH] as? Bool {
             return stored
         }
@@ -103,12 +104,10 @@ public enum WWNNativeShellConfiguration {
     }
 
     public static func bundledClientId(in profile: WWNMachineProfile) -> String? {
-        if let runtime = profile.runtimeOverrides as? [String: Any],
-           let bundled = runtime["bundledAppID"] as? String, !bundled.isEmpty {
+        if let bundled = profile.runtimeOverrides["bundledAppID"] as? String, !bundled.isEmpty {
             return bundled
         }
-        if let overrides = profile.settingsOverrides as? [String: Any],
-           let native = overrides["NativeClientId"] as? String, !native.isEmpty {
+        if let native = profile.settingsOverrides["NativeClientId"] as? String, !native.isEmpty {
             return native
         }
         return nil

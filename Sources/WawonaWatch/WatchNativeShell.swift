@@ -168,32 +168,36 @@ final class WatchNativeShellSession {
         Self.queue.async { [weak self] in self?.exportScreen() }
     }
 
-    /// Never blocks the caller. Joining the zsh thread happens on the shell
-    /// queue; the main thread must stay responsive or the watchdog kills us.
+    /// Never blocks the caller. Join runs off the PTY drain queue so zsh
+    /// exit writes can still be pumped (same Done/Stop deadlock as iOS/tvOS).
     func stop() {
         stopped = true
         onScreen = nil
         onFailure = nil
         onEnded = nil
-        Self.queue.async { [self] in teardownLocked() }
-    }
-
-    private func teardownLocked() {
-        stopped = true
-        pump?.cancel()
-        pump = nil
-        if master >= 0 {
-            WatchShellABI.clearMaster(master)
-            master = -1
+        Self.queue.async { [self] in
+            stopped = true
+            // Keep pump alive through join.
         }
-        if let session {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             WatchShellABI.stopShellSession()
-            WatchShellABI.sessionDestroy(session)
-            self.session = nil
-        }
-        if let term {
-            WatchShellABI.termFree(term)
-            self.term = nil
+            Self.queue.async {
+                guard let self else { return }
+                self.pump?.cancel()
+                self.pump = nil
+                if self.master >= 0 {
+                    WatchShellABI.clearMaster(self.master)
+                    self.master = -1
+                }
+                if let session = self.session {
+                    WatchShellABI.sessionDestroy(session)
+                    self.session = nil
+                }
+                if let term = self.term {
+                    WatchShellABI.termFree(term)
+                    self.term = nil
+                }
+            }
         }
     }
 

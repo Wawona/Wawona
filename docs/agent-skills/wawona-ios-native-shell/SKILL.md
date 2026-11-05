@@ -73,6 +73,7 @@ unwinding). Every global it touched survives into the next `zsh_main`.
 |---|---|
 | Shell owned by the SwiftUI view, stopped in `onDisappear` | Process registry owns it. Views attach/detach. Stop only on Close / Stop |
 | `pthread_join` before closing the input pipe write end (0x8BADF00D) | `wwn_pty_ios_stop_shell_session` closes every `input_write` first |
+| `pthread_join` on the PTY drain GCD queue (Done hang in `savehistfile`) | Join **off** the drain queue; keep the master pump alive until join returns so zexit writes do not fill the socketpair |
 | Master pump spins at EOF | Cancel the pump on `read` == 0; host `onEnded` restarts shell (never toast "Shell exited.") |
 | Crash-loop soft-exit | After 3 ends within 2s paint `[session ended]` (Linux `ENDED_NOTICE`) |
 | visionOS shell in only app window | Always dedicated terminal scene; Done / window close leaves Machines |

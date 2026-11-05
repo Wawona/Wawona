@@ -112,6 +112,22 @@ public extension WawonaBackport where Content: View {
         #endif
     }
 
+    /// Adopting Liquid Glass: let detail artwork extend under the floating
+    /// `NavigationSplitView` sidebar (mirrored + blurred in the safe area).
+    /// Never hand-roll an opaque HStack sidebar on SDK 26+.
+    @ViewBuilder
+    func liquidGlassBackgroundExtension() -> some View {
+        #if os(visionOS)
+        content
+        #else
+        if #available(iOS 26.0, tvOS 26.0, macOS 26.0, *) {
+            content.backgroundExtensionEffect()
+        } else {
+            content
+        }
+        #endif
+    }
+
     /// Keeps the modern glass button on new systems without raising the app floor.
     @ViewBuilder
     @MainActor
@@ -140,7 +156,11 @@ public extension WawonaBackport where Content: View {
     @ViewBuilder
     @MainActor
     func glassProminentButtonStyle() -> some View {
-        #if !os(visionOS)
+        #if os(visionOS)
+        content
+            .buttonStyle(.borderedProminent)
+            .tint(Color.blue)
+        #else
         if #available(iOS 26.0, tvOS 26.0, macOS 26.0, *) {
             content.buttonStyle(.glassProminent)
         } else if #available(iOS 15.0, tvOS 15.0, macOS 12.0, *) {
@@ -148,19 +168,23 @@ public extension WawonaBackport where Content: View {
         } else {
             content.buttonStyle(DefaultButtonStyle())
         }
-        #else
-        content.buttonStyle(.borderedProminent)
         #endif
     }
 
     /// Native prominent liquid glass toolbar button on modern OS, with prominent fallback.
     /// On macOS, toolbar items use native borderedProminent to avoid glass-on-glass.
+    /// visionOS: borderedProminent alone is white glass; tint forces primary blue
+    /// (Add Machine and other primary toolbar CTAs).
     @ViewBuilder
     @MainActor
     func glassProminentToolbarButton() -> some View {
         #if os(macOS)
         content.buttonStyle(.borderedProminent)
-        #elseif !os(visionOS)
+        #elseif os(visionOS)
+        content
+            .buttonStyle(.borderedProminent)
+            .tint(Color.blue)
+        #else
         if #available(iOS 26.0, tvOS 26.0, *) {
             content.buttonStyle(.glassProminent)
         } else if #available(iOS 15.0, tvOS 15.0, macOS 12.0, *) {
@@ -168,8 +192,6 @@ public extension WawonaBackport where Content: View {
         } else {
             content.buttonStyle(DefaultButtonStyle())
         }
-        #else
-        content.buttonStyle(.borderedProminent)
         #endif
     }
 
@@ -241,7 +263,7 @@ public extension WawonaBackport where Content: View {
         content
             .buttonStyle(.borderedProminent)
             .buttonBorderShape(.circle)
-            .tint(Color.accentColor)
+            .tint(Color.blue)
             .frame(width: size, height: size)
         #endif
     }

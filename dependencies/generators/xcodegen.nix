@@ -1512,6 +1512,12 @@ PLIST
 
   projectConfig = {
     name = "Wawona";
+    # Silence Xcode “Update to recommended settings” (was LastUpgradeCheck 1430).
+    # Bump with the local GM Xcode major.minor (26.6 → 2660).
+    attributes = {
+      LastUpgradeCheck = "2660";
+      LastSwiftUpdateCheck = "2660";
+    };
     configFiles = {
       Debug = "src/resources/xcode/wwn-version.xcconfig";
       Release = "src/resources/xcode/wwn-version.xcconfig";

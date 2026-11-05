@@ -31,7 +31,10 @@ Canonical backends: `wawona-apple-mobile-mode-a-backends`. Machines kinds:
    (`WawonaTerminalView` / styled lines). Face: bundled DejaVuSansM Nerd Font Mono.
 5. Soft keyboard → `wwn_ios_terminal_inject` (not `write` to the master socket).
 6. Stop → `wwn_pty_ios_stop_shell_session` then destroy. Fake_pid is not a
-   real process; do not rely on `kill` alone.
+   real process; do not rely on `kill` alone. Join **off** the PTY drain
+   GCD queue and keep the master pump alive until join returns. Joining on
+   the drain queue deadlocks Done / Stop (`zexit`/`savehistfile` fills the
+   socketpair while the pump is starved behind `pthread_join`).
 
 Code today: `Sources/WawonaApple/Shell/GuestConsoleView.swift` (`IosShellSession`),
 `Sources/WawonaUI/Machines/Catalog/WWNIosGuestConsole.swift`. Guest console

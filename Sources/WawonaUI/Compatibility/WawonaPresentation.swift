@@ -133,8 +133,10 @@ extension WawonaBackport where Content: View {
     ///   via `chromeBridge`. Never strip the system toggle on this path.
     /// - **Pre-16 HStack:** pass `showSidebar` for one custom leading toggle
     ///   (no system control exists).
-    /// - **macOS / tvOS:** system `Done` on `.confirmationAction` (HIG).
-    ///   macOS keeps the system NavigationSplitView sidebar control.
+    /// - **macOS:** system `Done` on `.confirmationAction` (HIG). Env Vars Add
+    ///   joins the same chrome via `chromeBridge` (never a second primary Add
+    ///   that fights Machines NSToolbar items). Keeps the system sidebar toggle.
+    /// - **tvOS:** system `Done` only.
     @ViewBuilder
     @MainActor
     func settingsCloseAction(
@@ -142,10 +144,20 @@ extension WawonaBackport where Content: View {
         onClose: @escaping () -> Void,
         chromeBridge: WWNSettingsChromeBridge? = nil
     ) -> some View {
-        #if os(macOS) || os(tvOS)
-        if #available(macOS 11.0, tvOS 14.0, *) {
+        #if os(macOS)
+        content.modifier(
+            SettingsChromeToolbarModifierMac(
+                onClose: onClose,
+                chromeBridge: chromeBridge ?? .inactive
+            )
+        )
+        #elseif os(tvOS)
+        // cancellationAction: leaves room for Env Vars Add on `.primaryAction`.
+        // confirmationAction alone often never focuses in a NavigationSplitView
+        // sidebar on tvOS 26 Liquid Glass chrome.
+        if #available(tvOS 14.0, *) {
             content.toolbar {
-                ToolbarItem(placement: .confirmationAction) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Done", action: onClose)
                         .accessibility(identifier: "wwn.settings.close")
                 }
@@ -237,6 +249,57 @@ extension WawonaBackport where Content: View {
         #endif
     }
 }
+
+#if os(macOS)
+/// Observes `WWNSettingsChromeBridge` so Env Vars Add joins Done (one NSToolbar).
+/// Keep both `ToolbarItem` slots always declared. Conditionally *inserting*
+/// a new item when Env Vars appears still hits AppKit
+/// `NSToolbar _insertNewItemWithItemIdentifier` SIGTRAP on macOS 26.
+private struct SettingsChromeToolbarModifierMac: ViewModifier {
+    let onClose: () -> Void
+    @ObservedObject var chromeBridge: WWNSettingsChromeBridge
+
+    func body(content: Content) -> some View {
+        if #available(macOS 13.0, *) {
+            content.toolbar {
+                ToolbarItem(id: "wwn.settings.environment.new", placement: .primaryAction) {
+                    if chromeBridge.showsAddEnvironmentVariable {
+                        Button {
+                            chromeBridge.performAddEnvironmentVariable()
+                        } label: {
+                            Label("Add Variable", systemImage: "plus")
+                        }
+                        .accessibility(identifier: "wwn.settings.environment.new")
+                    }
+                }
+                ToolbarItem(id: "wwn.settings.close", placement: .confirmationAction) {
+                    Button("Done", action: onClose)
+                        .accessibility(identifier: "wwn.settings.close")
+                }
+            }
+        } else if #available(macOS 11.0, *) {
+            content.toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    if chromeBridge.showsAddEnvironmentVariable {
+                        Button {
+                            chromeBridge.performAddEnvironmentVariable()
+                        } label: {
+                            Label("Add Variable", systemImage: "plus")
+                        }
+                        .accessibility(identifier: "wwn.settings.environment.new")
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done", action: onClose)
+                        .accessibility(identifier: "wwn.settings.close")
+                }
+            }
+        } else {
+            content
+        }
+    }
+}
+#endif
 
 #if os(iOS) || os(visionOS)
 /// Observes `WWNSettingsChromeBridge` so Env Vars Add joins the Close group.
@@ -694,8 +757,16 @@ extension WawonaBackport where Content: View {
     }
 
     @ViewBuilder func sidebarList() -> some View {
-        #if os(macOS) || os(iOS) || os(visionOS)
-        if #available(iOS 14.0, tvOS 14.0, macOS 11.0, *) {
+        #if os(tvOS)
+        // SidebarListStyle is unavailable on tvOS. Plain List inside
+        // NavigationSplitView still gets the system Liquid Glass sidebar
+        // chrome on tvOS 26 (Adopting Liquid Glass: standard split + focus).
+        // Never paint custom glass on row content.
+        content.listStyle(DefaultListStyle())
+        #elseif os(macOS) || os(iOS) || os(visionOS)
+        if #available(iOS 14.0, macOS 11.0, *) {
+            // System SidebarListStyle (Liquid Glass on 26+). Never custom
+            // glass-on-glass row chrome (Adopting Liquid Glass).
             content.listStyle(SidebarListStyle())
         } else { content.listStyle(DefaultListStyle()) }
         #else
@@ -708,6 +779,13 @@ extension WawonaBackport where Content: View {
         if #available(iOS 16.0, macOS 13.0, visionOS 1.0, *) {
             content.navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 300)
         } else { content }
+        #elseif os(tvOS)
+        // 10-foot focus morph needs room; narrow columns clip titles + glass.
+        if #available(tvOS 16.0, *) {
+            content.navigationSplitViewColumnWidth(min: 380, ideal: 440, max: 520)
+        } else {
+            content.frame(minWidth: 380, idealWidth: 440, maxWidth: 520)
+        }
         #else
         content
         #endif

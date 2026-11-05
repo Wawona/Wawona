@@ -469,7 +469,7 @@ final class WWNMainWindowRouter: ObservableObject {
             sessionShowsEmbeddedTerminal = false
         }
         #endif
-        #if os(iOS) || os(visionOS)
+        #if os(iOS) || os(tvOS) || os(visionOS)
         MainActor.assumeIsolated {
             WWNIosGuestConsole.shared.parkForCompositor()
         }
@@ -729,7 +729,22 @@ struct WawonaMainWindowView: View {
                 #if os(iOS) || os(tvOS) || os(visionOS)
                 guestConsole.startObservingIfNeeded()
                 #endif
+                #if os(tvOS)
+                // Must start before Terminal exclusive overlay. tabOverviewPane
+                // never appears while Guest Console replaces Machines chrome,
+                // so Menu / shake notifications would never fire from there.
+                GameControllerBridge.sharedManager().start()
+                #endif
             }
+            #if os(tvOS)
+            .onReceive(NotificationCenter.default.publisher(for: .WWNTvRemoteMenuBeganNotification)) { _ in
+                tvosHandleRemoteMenu()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .WWNTvRemoteShakeNotification)) { _ in
+                guard WWNMachineProfileStore.resolvedShakeToCloseActive() else { return }
+                tvosHandleRemoteMenu()
+            }
+            #endif
             #if os(iOS) || os(tvOS) || os(visionOS)
             .modifier(
                 WWNGuestConsoleHostModifier(
@@ -788,19 +803,60 @@ struct WawonaMainWindowView: View {
     @ViewBuilder
     private var splitView: some View {
         #if os(tvOS)
-        // tvOS NavigationSplitView collapses the Machines column to zero width
-        // and drops detail toolbars. Fixed HStack + NavigationStack keeps
-        // sidebar / Tags / Search / Sort / Settings reachable on the Siri Remote.
-        HStack(spacing: 0) {
-            sidebar
-                .frame(width: 360)
-                .frame(maxHeight: .infinity)
-            NavigationStack {
-                detail
+        // Adopting Liquid Glass (WWDC25 / SDK 26): system NavigationSplitView
+        // owns the floating glass sidebar. Never replace with an opaque HStack.
+        // columnVisibility Binding (not `.constant(.all)`) restores Hide/Show.
+        // Detail uses backgroundExtensionEffect so Machines cards peek under glass.
+        if #available(tvOS 16.0, *) {
+            NavigationSplitView(columnVisibility: Binding(
+                get: { showSidebar ? .all : .detailOnly },
+                set: { showSidebar = $0 != .detailOnly }
+            )) {
+                sidebar
+                    .backport.sidebarWidth()
+            } detail: {
+                NavigationStack {
+                    detail
+                        .backport.liquidGlassBackgroundExtension()
+                        .toolbar {
+                            ToolbarItem(placement: .navigationBarLeading) {
+                                Button {
+                                    withAnimation {
+                                        showSidebar.toggle()
+                                    }
+                                } label: {
+                                    Label(
+                                        showSidebar ? "Hide Sidebar" : "Show Sidebar",
+                                        systemImage: "sidebar.leading"
+                                    )
+                                }
+                                .accessibility(identifier: "wwn.sidebar.toggle")
+                                .accessibility(label: Text(
+                                    showSidebar ? "Hide Sidebar" : "Show Sidebar"
+                                ))
+                            }
+                        }
+                }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .preferredColorScheme(.dark)
+            .backport.onChange(of: router.sessionSurfaceVisible) { _, visible in
+                // Present: park sidebar (detailOnly) so Metal is not under glass.
+                if visible {
+                    withAnimation { showSidebar = false }
+                }
+            }
+        } else {
+            HStack(spacing: 0) {
+                if showSidebar {
+                    sidebar
+                        .frame(minWidth: 380, idealWidth: 440, maxWidth: 520)
+                        .frame(maxHeight: .infinity)
+                }
+                NavigationStack { detail }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .preferredColorScheme(.dark)
         }
-        .preferredColorScheme(.dark)
         #elseif os(iOS) || os(macOS) || os(visionOS)
         if #available(iOS 16.0, macOS 13.0, *) {
             NavigationSplitView(columnVisibility: Binding(
@@ -847,7 +903,7 @@ struct WawonaMainWindowView: View {
             // button, not a flat sidebar row.
             nTabsSidebarSection
 
-            Section(header: Text("Machines")) {
+            Section(header: sidebarSectionHeader("Machines")) {
                 // TN3154: NavigationLink(value:) + .tag. Not Button (double chrome).
                 sidebarRow(
                     destination: .machines,
@@ -858,7 +914,7 @@ struct WawonaMainWindowView: View {
                 )
             }
 
-            Section(header: Text("Project")) {
+            Section(header: sidebarSectionHeader("Project")) {
                 sidebarRow(
                     destination: .projectStatus,
                     title: "Work Status",
@@ -869,7 +925,7 @@ struct WawonaMainWindowView: View {
             }
 
             if !tagStore.tags.isEmpty {
-                Section(header: Text("Tags")) {
+                Section(header: sidebarSectionHeader("Tags")) {
                     ForEach(tagStore.tags) { tag in
                         sidebarRow(
                             destination: .machinesTag(tag.id),
@@ -895,20 +951,33 @@ struct WawonaMainWindowView: View {
                 }
             }
         }
-        #if os(tvOS)
-        .listStyle(.plain)
-        #else
         .backport.sidebarList()
-        #endif
         .backport.navigationTitle("Wawona")
+        #if os(tvOS)
+        // Native focus targets. Do not hand-roll Liquid Glass chrome
+        // (Adopting Liquid Glass: system NavigationSplitView sidebar).
+        .environment(\.defaultMinListRowHeight, 66)
+        #endif
         #if os(iOS)
         .backport.dismissKeyboardOnScroll()
         #endif
-        #if os(macOS) || os(iOS)
+        #if os(macOS) || os(iOS) || os(tvOS)
         .backport.sidebarWidth()
         #endif
         #if os(iOS)
         .modifier(WWNPhoneLandscapeSidebarSafeArea(active: isPhoneLandscape))
+        #endif
+    }
+
+    /// Section header with 10-foot breathing room on tvOS.
+    @ViewBuilder
+    private func sidebarSectionHeader(_ title: String) -> some View {
+        #if os(tvOS)
+        Text(title)
+            .padding(.top, 12)
+            .padding(.bottom, 4)
+        #else
+        Text(title)
         #endif
     }
 
@@ -937,7 +1006,7 @@ struct WawonaMainWindowView: View {
         if nestedTabs.nestedCount > 0 {
             #if os(tvOS)
             // DisclosureGroup is unavailable on tvOS.
-            Section(header: Text(nestedTabs.tabsSectionTitle)) {
+            Section(header: sidebarSectionHeader(nestedTabs.tabsSectionTitle)) {
                 ForEach(nestedTabs.nestedTabs) { tab in
                     nestedTabSidebarRow(tab)
                 }
@@ -1082,9 +1151,9 @@ struct WawonaMainWindowView: View {
     /// The split is always regular-width on iOS, so this highlights the row
     /// and swaps the detail column. It does not push a stack page.
     ///
-    /// macOS / tvOS: plain `Button` that writes `listSelection`. tvOS uses a
-    /// fixed HStack sidebar (not NavigationSplitView), so NavigationLink would
-    /// not swap the detail column. macOS bare NavigationLink often looks dead.
+    /// macOS / tvOS: plain `Button` that writes `listSelection`. NavigationLink
+    /// would push instead of swapping the split detail. macOS bare
+    /// NavigationLink often looks dead.
     private func sidebarRow(
         destination: WWNMainDestination,
         title: String,
@@ -1131,6 +1200,10 @@ struct WawonaMainWindowView: View {
             #endif
         }
         .tag(destination)
+        #if os(tvOS)
+        // Inset enough for focus morph, not so much that titles clip.
+        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+        #endif
         .accessibility(identifier: accessibilityID ?? "")
         .accessibility(addTraits: listSelection == destination ? .isSelected : [])
     }
@@ -1144,11 +1217,23 @@ struct WawonaMainWindowView: View {
         tagColorHex: String?
     ) -> some View {
         if let tagColorHex {
+            #if os(tvOS)
+            HStack(spacing: 16) {
+                WWNTagDot(colorHex: tagColorHex, size: 14)
+                Text(title)
+                    .font(.body)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                Spacer(minLength: 0)
+            }
+            .padding(.vertical, 4)
+            #else
             HStack(spacing: 12) {
                 WWNTagDot(colorHex: tagColorHex, size: 10)
                 Text(title)
                 Spacer(minLength: 0)
             }
+            #endif
         } else if let systemImage {
             WawonaSettingsHubChrome.hubRow(
                 title: title,
@@ -1240,7 +1325,7 @@ struct WawonaMainWindowView: View {
                         .accessibility(hidden: !router.sessionSurfaceVisible)
                     #endif
                 }
-                #elseif !SWIFT_PACKAGE && (os(iOS) || os(visionOS))
+                #elseif !SWIFT_PACKAGE && (os(iOS) || os(tvOS) || os(visionOS))
                 CompositorBridge()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .opacity(router.sessionSurfaceVisible ? 1 : 0)
@@ -1265,6 +1350,15 @@ struct WawonaMainWindowView: View {
                     onShowOverview: { router.showTabOverview() }
                 )
             }
+            #if os(tvOS)
+            // Present fills the detail with no system nav. Always-on Done so
+            // Hello WASI / Wayland clients are not a dead end without Menu.
+            if router.sessionSurfaceVisible {
+                WWNTvosPresentExitChrome(
+                    onDone: { tvosExitFocusedSession() }
+                )
+            }
+            #endif
         }
         #if os(macOS)
         .onDrop(
@@ -1279,6 +1373,15 @@ struct WawonaMainWindowView: View {
         #endif
         #if os(iOS)
         .modifier(WWNSessionHideToolbarWhenVisible(active: router.sessionSurfaceVisible))
+        #endif
+        #if os(tvOS)
+        .background(
+            Group {
+                if router.sessionSurfaceVisible {
+                    WWNTerminalEscapeDismissHost(onEscape: { tvosExitFocusedSession() })
+                }
+            }
+        )
         #endif
         #if os(iOS) || os(visionOS)
         .modifier(WWNSessionSafeAreaModifier(
@@ -1315,7 +1418,7 @@ struct WawonaMainWindowView: View {
         // Window uses `WWNSessionWindowPresenter`. Machines stays the grid.
         ZStack {
             if router.sessionSurfaceMounted {
-                #if !SWIFT_PACKAGE && (os(macOS) || os(iOS) || os(visionOS))
+                #if !SWIFT_PACKAGE && (os(macOS) || os(iOS) || os(tvOS) || os(visionOS))
                 CompositorBridge()
                     .id("wwn-compositor-bridge")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1381,6 +1484,34 @@ struct WawonaMainWindowView: View {
     }
     #endif
 
+    #if os(tvOS)
+    /// Park Present (keep session) or Stop Terminal chrome. Menu / Done share this.
+    private func tvosExitFocusedSession() {
+        if guestConsole.isPresented, !guestConsole.windowed, !router.sessionSurfaceVisible {
+            // Client launch log: Done focuses compositor. Shell Done = Stop.
+            if guestConsole.isShell {
+                guestConsole.userDismiss()
+            } else {
+                guestConsole.parkForCompositor()
+                router.showSessionSurface()
+            }
+            return
+        }
+        router.showTabOverview()
+    }
+
+    private func tvosHandleRemoteMenu() {
+        if guestConsole.isPresented, !guestConsole.windowed, !router.sessionSurfaceVisible {
+            // Menu always leaves Terminal (Stop). Focus Present is the Done button.
+            guestConsole.userDismiss()
+            return
+        }
+        if router.sessionSurfaceVisible {
+            tvosExitFocusedSession()
+        }
+    }
+    #endif
+
     private func handleSelectionChange() {
         #if os(iOS) || os(visionOS)
         WWNHostKeyboard.dismiss()
@@ -1430,15 +1561,57 @@ struct WawonaMainWindowView: View {
         } else {
             showSidebar = !isPhonePortrait
         }
-        #elseif os(macOS) || os(tvOS) || os(visionOS)
+        #elseif os(macOS) || os(visionOS)
         // Tab Overview / client tabs keep the sidebar column. Never leave
         // macOS stuck in `.detailOnly` after onAppear / selection sync.
         if !router.sessionSurfaceVisible {
             showSidebar = true
         }
+        #elseif os(tvOS)
+        // Push sidebar is user-toggled. Present hides it for full-width Metal.
+        // Do not force `.all` open (that fought Hide Sidebar and overlayed UI).
+        if router.sessionSurfaceVisible {
+            showSidebar = false
+        }
         #endif
     }
 }
+
+#if os(tvOS)
+/// Always-visible Present exit on the 10-foot UI. tvOS has no swipe-back /
+/// nav bar while Metal fills the detail.
+private struct WWNTvosPresentExitChrome: View {
+    let onDone: () -> Void
+    @FocusState private var doneFocused: Bool
+
+    var body: some View {
+        VStack {
+            HStack {
+                Button(action: onDone) {
+                    Text("Done")
+                        .font(.headline.weight(.semibold))
+                        .frame(minWidth: 160, minHeight: 44)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.accentColor)
+                .focused($doneFocused)
+                .wwnA11y(WWNA11y.terminalDone, label: "Done")
+                .onAppear { doneFocused = true }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 16)
+            .padding(.bottom, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.black.opacity(0.72))
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .allowsHitTesting(true)
+        .zIndex(20)
+    }
+}
+#endif
 
 #if os(iOS) || os(tvOS) || os(visionOS)
 /// Host Guest Console without killing Mode A Metal. A fullScreenCover can
@@ -1456,10 +1629,17 @@ private struct WWNGuestConsoleHostModifier: ViewModifier {
         // ZStack (not overlay{}) for iOS 13 floor.
         // A mapped Wayland client sets sessionSurfaceVisible. The Terminal
         // sheet must not stay above that surface until Done.
-        return ZStack {
-            content
-            if console.isPresented && !console.windowed && !sessionSurfaceVisible {
+        // Terminal exclusive: replace Machines chrome while presented. A
+        // ZStack overlay left Machines/nav AX frames covering Done (visionOS
+        // 2D hit test) even with allowsHitTesting(false). Keep Metal mounted
+        // under sessionSurfaceMounted paths via the outer host, not here.
+        let terminalOverlay =
+            console.isPresented && !console.windowed && !sessionSurfaceVisible
+        return Group {
+            if terminalOverlay {
                 WWNIosGuestConsoleSheet(console: console)
+            } else {
+                content
             }
         }
     }

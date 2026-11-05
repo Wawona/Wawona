@@ -29,11 +29,13 @@ private struct WWNSettingsPhoneSplitStyle: ViewModifier {
 ///
 /// Chrome matches Machines home: system `SidebarListStyle`, section-tinted SF
 /// Symbol sidebar rows (`WawonaSettingsHubChrome.hubRow`), `List` selection.
-/// Sidebar chrome matches Machines: system `NavigationSplitView` sidebar
-/// toggle (do not strip, do not add a second `sidebar.left`). Detail trailing
-/// is Add? + Close via `settingsCloseAction` + `WWNSettingsChromeBridge`.
-/// Pre-16 HStack has no system toggle: pass `showSidebar` there only.
-/// macOS / tvOS: `Done` only. Never put close on the sidebar list column.
+/// Sidebar chrome matches Machines. System `NavigationSplitView` sidebar
+/// (Liquid Glass on SDK 26+). Do not strip the system toggle; do not replace
+/// with an opaque HStack. tvOS: `columnVisibility` Binding + leading Hide/Show
+/// (never `.constant(.all)`). Detail trailing is Add? + Close via
+/// `settingsCloseAction` + `WWNSettingsChromeBridge`. Pre-16 HStack has no
+/// system toggle: pass `showSidebar` there only. macOS / tvOS: `Done` only.
+/// Never put close on the sidebar list column.
 struct WWNGlobalSettingsHostView: View {
     @ObservedObject var model: WWNSettingsValueModel
     @Binding var selection: GlobalSettingsSectionID?
@@ -45,8 +47,11 @@ struct WWNGlobalSettingsHostView: View {
     @State private var listSelection: GlobalSettingsSectionID?
     #if os(iOS) || os(visionOS)
     @Environment(\.verticalSizeClass) private var verticalSizeClass
-    /// Env Vars registers Add here so chrome owns one trailing Liquid Glass
-    /// group (`[+][x]`). `StateObject` is iOS 14; product floor is 13.
+    #endif
+    #if os(macOS) || os(iOS) || os(visionOS)
+    /// Env Vars registers Add here so chrome owns one trailing group
+    /// (`[+]?` + Done / close). Never a second Machines-style primary Add.
+    /// `StateObject` is iOS 14; product floor is 13 (`WawonaStateObject`).
     @WawonaStateObject private var chromeBridge = WWNSettingsChromeBridge()
     #endif
 
@@ -137,7 +142,7 @@ struct WWNGlobalSettingsHostView: View {
         } else {
             showSidebar = true
         }
-        #elseif os(macOS) || os(visionOS)
+        #elseif os(macOS) || os(tvOS) || os(visionOS)
         showSidebar = true
         #endif
     }
@@ -169,7 +174,7 @@ struct WWNGlobalSettingsHostView: View {
                 }
                 WawonaBackport<Any>.navigation {
                     settingsDetailBody
-                        #if os(iOS) || os(visionOS)
+                        #if os(macOS) || os(iOS) || os(visionOS)
                         .environment(\.wwnSettingsChromeBridge, chromeBridge)
                         .backport.settingsCloseAction(
                             showSidebar: $showSidebar,
@@ -188,61 +193,63 @@ struct WWNGlobalSettingsHostView: View {
         }
     }
 
-    // MARK: - tvOS (10-foot: stack, not phone-style overlay split)
+    // MARK: - tvOS (Liquid Glass sidebar + detail, macOS Settings parity)
 
     #if os(tvOS)
+    /// Adopting Liquid Glass: system `NavigationSplitView` floating sidebar.
+    /// `columnVisibility` Binding (not `.constant(.all)`) for Hide/Show.
+    /// Detail `NavigationStack` owns pushes (text editor, Env Vars, pickers)
+    /// so Menu / Cancel pop the stack. Done on both columns: focus can sit
+    /// on the sidebar list.
     @ViewBuilder
     private var tvSettingsBody: some View {
         if #available(tvOS 16.0, *) {
-            NavigationStack {
-                List(selection: $listSelection) {
-                    Section {
-                        ForEach(catalogSections, id: \.self) { id in
-                            settingsSidebarRow(id)
+            NavigationSplitView(columnVisibility: Binding(
+                get: { showSidebar ? .all : .detailOnly },
+                set: { showSidebar = $0 != .detailOnly }
+            )) {
+                settingsSidebar
+                    .backport.sidebarWidth()
+                    .backport.settingsCloseAction(onClose: onDismiss)
+            } detail: {
+                NavigationStack {
+                    settingsDetailBody
+                        .backport.liquidGlassBackgroundExtension()
+                        .toolbar {
+                            ToolbarItem(placement: .navigationBarLeading) {
+                                Button {
+                                    withAnimation { showSidebar.toggle() }
+                                } label: {
+                                    Label(
+                                        showSidebar ? "Hide Sidebar" : "Show Sidebar",
+                                        systemImage: "sidebar.leading"
+                                    )
+                                }
+                                .accessibility(identifier: "wwn.settings.sidebar.toggle")
+                                .accessibility(label: Text(
+                                    showSidebar ? "Hide Sidebar" : "Show Sidebar"
+                                ))
+                            }
                         }
-                    }
-                }
-                .listStyle(.plain)
-                .backport.navigationTitle("Settings")
-                .backport.settingsCloseAction(onClose: onDismiss)
-                .navigationDestination(for: GlobalSettingsSectionID.self) { id in
-                    tvDetail(for: id)
+                        .backport.settingsCloseAction(onClose: onDismiss)
                 }
             }
-            .backport.onChange(of: listSelection) { _, newValue in
-                selection = newValue
-            }
+            .preferredColorScheme(.dark)
         } else {
-            WawonaBackport<Any>.navigation {
-                List {
-                    ForEach(catalogSections, id: \.self) { id in
-                        Button {
-                            listSelection = id
-                            selection = id
-                        } label: {
-                            settingsRowLabel(id)
-                        }
-                        .accessibility(identifier: "wwn.settings.\(id.rawValue)")
-                    }
+            HStack(spacing: 0) {
+                if showSidebar {
+                    settingsSidebar
+                        .frame(minWidth: 380, idealWidth: 440, maxWidth: 520)
+                        .frame(maxHeight: .infinity)
+                        .backport.settingsCloseAction(onClose: onDismiss)
                 }
-                .listStyle(.plain)
-                .backport.navigationTitle("Settings")
-                .backport.settingsCloseAction(onClose: onDismiss)
+                NavigationStack {
+                    settingsDetailBody
+                        .backport.settingsCloseAction(onClose: onDismiss)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-        }
-    }
-
-    @ViewBuilder
-    private func tvDetail(for id: GlobalSettingsSectionID) -> some View {
-        if let section = WawonaMainWindowView.objcSection(id, in: model.sections) {
-            WWNSettingsSectionView(section: section, model: model)
-                .backport.navigationTitle(id.detailTitle)
-        } else {
-            WawonaEmptyState(
-                "Settings",
-                systemImage: "gearshape",
-                description: Text("Choose a section.")
-            )
+            .preferredColorScheme(.dark)
         }
     }
     #endif
@@ -253,7 +260,7 @@ struct WWNGlobalSettingsHostView: View {
     /// sidebar toggle (never strip on the split path).
     private var settingsSidebar: some View {
         Group {
-            if #available(iOS 14.0, macOS 11.0, visionOS 1.0, *) {
+            if #available(iOS 14.0, tvOS 14.0, macOS 11.0, visionOS 1.0, *) {
                 List(selection: $listSelection) {
                     sidebarSection
                 }
@@ -266,35 +273,87 @@ struct WWNGlobalSettingsHostView: View {
         }
         .backport.sidebarList()
         .backport.navigationTitle("Settings")
+        #if os(tvOS)
+        .environment(\.defaultMinListRowHeight, 66)
+        #endif
         #if os(iOS)
         .backport.dismissKeyboardOnScroll()
         #endif
-        #if os(macOS) || os(iOS) || os(visionOS)
+        #if os(macOS) || os(iOS) || os(visionOS) || os(tvOS)
         .backport.sidebarWidth()
         #endif
     }
 
     @ViewBuilder
     private var sidebarSection: some View {
-        Section(header: Text("Settings")) {
+        #if os(tvOS)
+        // Always-visible dismiss: toolbar Done can miss focus after section
+        // browsing; this row closes the Settings cover from the sidebar.
+        Section {
+            Button {
+                onDismiss()
+            } label: {
+                HStack(spacing: 16) {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                    Text("Done")
+                        .font(.body.weight(.semibold))
+                    Spacer(minLength: 0)
+                }
+                .padding(.vertical, 4)
+            }
+            .buttonStyle(.plain)
+            .accessibility(identifier: "wwn.settings.close")
+        }
+        #endif
+        Section(header: settingsSidebarSectionHeader) {
             ForEach(catalogSections, id: \.self) { id in
                 settingsSidebarRow(id)
             }
         }
     }
 
+    @ViewBuilder
+    private var settingsSidebarSectionHeader: some View {
+        #if os(tvOS)
+        Text("Settings")
+            .padding(.top, 12)
+            .padding(.bottom, 4)
+        #else
+        Text("Settings")
+        #endif
+    }
+
     /// Same row shape as Machines home: plain SF Symbol + title.
+    /// macOS / tvOS: plain `Button` writing `listSelection` (Machines parity).
+    /// A bare `NavigationLink(value:)` in `NavigationSplitView` often fails to
+    /// update selection on macOS, so Env Vars / other sections look dead.
     @ViewBuilder
     private func settingsSidebarRow(_ id: GlobalSettingsSectionID) -> some View {
         let objc = WawonaMainWindowView.objcSection(id, in: model.sections)
         Group {
-            if #available(iOS 16.0, macOS 13.0, visionOS 1.0, *) {
+            #if os(macOS) || os(tvOS)
+            Button {
+                // Write both: detail binds `selection`; List highlights
+                // `listSelection`. Async-only sync left Env Vars looking dead.
+                listSelection = id
+                selection = id
+            } label: {
+                settingsRowLabel(id)
+            }
+            .buttonStyle(.plain)
+            #else
+            if #available(iOS 16.0, visionOS 1.0, *) {
                 NavigationLink(value: id) { settingsRowLabel(id) }
             } else {
                 Button { listSelection = id } label: { settingsRowLabel(id) }
             }
+            #endif
         }
         .tag(id)
+        #if os(tvOS)
+        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+        #endif
         .accessibility(identifier: objc?.accessibilityIdentifier ?? "wwn.settings.\(id.rawValue)")
         .accessibility(addTraits: listSelection == id ? .isSelected : [])
     }
@@ -319,7 +378,14 @@ struct WWNGlobalSettingsHostView: View {
     /// (Machines parity). Do not pass `showSidebar` here.
     @ViewBuilder
     private var settingsDetail: some View {
-        #if os(iOS) || os(visionOS)
+        #if os(macOS)
+        settingsDetailBody
+            .environment(\.wwnSettingsChromeBridge, chromeBridge)
+            .backport.settingsCloseAction(
+                onClose: onDismiss,
+                chromeBridge: chromeBridge
+            )
+        #elseif os(iOS) || os(visionOS)
         settingsDetailStack
             .environment(\.wwnSettingsChromeBridge, chromeBridge)
             .backport.settingsCloseAction(
