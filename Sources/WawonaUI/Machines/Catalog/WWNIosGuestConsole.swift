@@ -215,11 +215,13 @@ final class WWNIosGuestConsole: ObservableObject {
     if !self.machineId.isEmpty, !machineId.isEmpty, machineId != self.machineId {
       return
     }
+    // Drop chrome before PTY join so Done never looks stuck behind
+    // `wwn_pty_ios_stop_shell_session` (tvOS 10-foot + soft-exit).
+    isPresented = false
+    windowed = false
     stopPump()
     stopShell()
     stopLogTerm()
-    isPresented = false
-    windowed = false
     self.machineId = ""
     source = "relay"
     fed = 0
@@ -296,11 +298,13 @@ final class WWNIosGuestConsole: ObservableObject {
   /// Shell / SSH / Terminal-only Native Shell return to Machines. Never reveal
   /// empty CompositorBridge (blank Metal on visionOS / tvOS / iPad).
   func userDismiss() {
+    NSLog("WWNIosGuestConsole: userDismiss begin mid=%@", machineId)
     // Drop visionOS / iOS soft IME so it cannot keep covering Done.
     UIApplication.shared.sendAction(
       #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil
     )
     let mid = machineId
+    // Hide Terminal overlay first, then join PTY / disconnect.
     dismissChrome(machineId: mid)
     if !mid.isEmpty {
       WWNMachineProfileStore.setActiveMachineId(mid)
@@ -713,6 +717,8 @@ struct WWNIosGuestConsoleSheet: View {
       if console.isShell {
         Button {
           console.sendControl(0x03)
+          // Soft ^C must not steal focus forever; Done stays the escape.
+          doneFocused = true
         } label: {
           Text("^C")
             .font(.headline.weight(.semibold))
