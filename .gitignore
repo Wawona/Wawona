@@ -1,8 +1,11 @@
 # Build directories
 build/
 cmake-build-*/
-*.xcodeproj/
+*.xcodeproj/*
+!Wawona.xcodeproj/project.xcproj
+!Wawona.xcodeproj/xcshareddata/
 *.xcworkspace/
+xcuserdata/
 target/
 
 # Compiled binaries
@@ -118,9 +121,6 @@ local.properties
 /res/mipmap-*/
 /res/mipmap-anydpi-v26/
 
-# generated xcode proj
-Wawona.xcodeproj/
-dependencies/generators/xcodegen/output/
 
 # Nix-generated UniFFI (rust backend $out/uniffi). Never commit.
 Sources/Generated/
@@ -209,6 +209,8 @@ scripts/__pycache__/
 .derivedData*/
 .ccache/
 .nix-deps/
+# nix run .#deps -- <platform>
+.deps/
 fastlane/report.xml
 .agents/
 

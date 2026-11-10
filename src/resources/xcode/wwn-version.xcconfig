@@ -1,8 +1,20 @@
-// Build number is stamped before compile (scheme pre-action + build phase).
-// Fallback applies only if the stamp script did not run (should not happen in Xcode).
-#include? "$(SRCROOT)/.build/wwn-build-number.xcconfig"
-#include? "$(DERIVED_FILE_DIR)/wwn-terminal-force-load.xcconfig"
-// Zig GhosttyLib: SRCROOT/.build only. DERIVED_FILE_DIR include is too late
-// for OTHER_LDFLAGS (same as wwn-build-number). ensure-tip / prebuild write it.
-#include? "$(SRCROOT)/.build/wwn-libghostty-link.xcconfig"
+// Project configuration file. Everything Nix provides (store paths, link
+// flags, MARKETING_VERSION, dependency versions) is in the per-SDK file that
+// `nix run .#deps -- <sdk>` links, named by Xcode's PLATFORM_NAME. An SDK
+// without one fails at link time, never at project open.
 CURRENT_PROJECT_VERSION = 1
+#include? "$(SRCROOT)/.deps/macosx/Wawona.xcconfig"
+#include? "$(SRCROOT)/.deps/iphoneos/Wawona.xcconfig"
+#include? "$(SRCROOT)/.deps/iphonesimulator/Wawona.xcconfig"
+#include? "$(SRCROOT)/.deps/iphoneos-modeb/Wawona.xcconfig"
+#include? "$(SRCROOT)/.deps/appletvos/Wawona.xcconfig"
+#include? "$(SRCROOT)/.deps/appletvsimulator/Wawona.xcconfig"
+#include? "$(SRCROOT)/.deps/xros/Wawona.xcconfig"
+#include? "$(SRCROOT)/.deps/xrsimulator/Wawona.xcconfig"
+#include? "$(SRCROOT)/.deps/watchos/Wawona.xcconfig"
+#include? "$(SRCROOT)/.deps/watchsimulator/Wawona.xcconfig"
+// DEVELOPMENT_TEAM, untracked.
+#include? "$(SRCROOT)/.deps/signing.xcconfig"
+// Stamped before compile by scripts/xcode-stamp-build-number.sh.
+#include? "$(SRCROOT)/.build/wwn-build-number.xcconfig"
+#include? "$(SRCROOT)/.build/wwn-libghostty-link.xcconfig"

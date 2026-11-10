@@ -32,17 +32,6 @@
   # legacy in-tree copy; Wawona's flake overrides this with the wwn-toolchain
   # input store path so the moved dir can be deleted.
   applePath,
-  # First-class Rust backend so product xcodebuild copies libwawona.a instead of
-  # nested `nix build --impure` (Gate: products iOS sim was recompiling rust).
-  rustBackend ? null,
-  # Absolute paths to libwawona-zsh.a / libfastfetch.a (skip nested nix in sandbox).
-  zshLib ? null,
-  fastfetchLib ? null,
-  mobileGuestArtifacts ? null,
-  mobileGuestArtifacts16k ? null,
-  mobileContainerGuestArtifacts ? null,
-  companionBackends ? { },
-  companionShellLibs ? { },
   ...
 }:
 
@@ -124,18 +113,6 @@ in
     ++ lib.optionals (deploymentTarget != null) [
       ''IPHONEOS_DEPLOYMENT_TARGET=${deploymentTarget}''
     ]
-    ++ lib.optionals (mobileGuestArtifacts != null) [
-      # xcodebuild does not preserve arbitrary process environment variables
-      # in Run Script phases. Pass these as build settings so the guest embed
-      # scripts receive the resolved artifact paths.
-      ''WAWONA_MOBILE_GUEST_DIR="${mobileGuestArtifacts}"''
-    ]
-    ++ lib.optionals (mobileGuestArtifacts16k != null) [
-      ''WAWONA_MOBILE_GUEST_16K_DIR="${mobileGuestArtifacts16k}"''
-    ]
-    ++ lib.optionals (mobileContainerGuestArtifacts != null) [
-      ''WAWONA_MOBILE_CONTAINER_GUEST_DIR="${mobileContainerGuestArtifacts}"''
-    ]
     # Impure Ship: beta (stores): fastlane match installs App Store profiles; force
     # Manual signing so xcodebuild does not look for a Development account.
     ++ lib.optionals (releaseBuild && generateIPA) [
@@ -152,22 +129,7 @@ in
     ]
   );
 }).overrideAttrs (old:
-let
-  injected = (import ./inject-xcode-backend-env.nix {
-  inherit
-    lib
-    rustBackend
-    xcodeTarget
-    companionBackends
-    companionShellLibs
-    zshLib
-    fastfetchLib
-    mobileGuestArtifacts
-    mobileGuestArtifacts16k
-    mobileContainerGuestArtifacts
-    ;
-  }) old;
-in injected // {
+(import ./match-host-signing-attrs.nix { inherit lib; }) old // {
   # Validate the final bundle after all Xcode and stdenv packaging phases.
   postFixup = (old.postFixup or "") + lib.optionalString
     (nativeSdk == "iphoneos" && !releaseBuild) ''

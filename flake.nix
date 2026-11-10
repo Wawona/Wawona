@@ -876,74 +876,12 @@
             then toolchains.buildForMacOS "angle" {}
             else pkgs.angle;
 
-          # Wawona (Native on Linux, Cross-wrapped on Darwin)
-          wawona =
-            if pkgs.stdenv.hostPlatform.isDarwin
-            then
-              (import ./dependencies/wawona/shell-wrappers.nix).macosWrapper pkgs
-              (pkgs.callPackage ./dependencies/wawona/macos.nix {
-                buildModule = toolchains;
-                inherit wawonaSrc wawonaVersion;
-                waypipe = toolchains.buildForMacOS "waypipe" {};
-                weston = toolchains.buildForMacOS "weston" {};
-                moltenvk = toolchains.buildForMacOS "moltenvk" {};
-                kosmickrisp = toolchains.buildForMacOS "kosmickrisp" {};
-                foot = toolchains.buildForMacOS "foot" {};
-                niri = toolchains.buildForMacOS "niri" {};
-                fuzzel = toolchains.buildForMacOS "fuzzel" {};
-                fastfetch = toolchains.buildForMacOS "fastfetch" {};
-                # Legacy commonPackages.wawona path (apps use wawona-macos +
-                # sharedMacosCargoNix). Keep a self-contained backend here so this
-                # attrset does not forward-ref the later packages let-binding.
-                rustBackend = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
-                  inherit crate2nix wawonaVersion toolchains nixpkgs;
-                  workspaceSrc = pkgs.callPackage ./dependencies/wawona/workspace-src.nix {
-                    wawonaSrc = src;
-                    waypipeSrc = pkgs.callPackage waypipePatchedSrcNix {
-                      inherit waypipe-src;
-                      patchScript = waypipePatchSourceSh;
-                      platform = "macos";
-                    };
-                    coreutilsSrc = pkgs.callPackage coreutilsPatchedSrcNix {
-                      inherit coreutils-src;
-                      patchScript = coreutilsPatchSourceSh;
-                      platform = "macos";
-                    };
-                    terminalSrc = inputs.terminal;
-                    inherit libghosttyRsSrc;
-                    platform = "macos";
-                    inherit wawonaVersion;
-                  };
-                  platform = "macos";
-                  nativeDeps = {
-                    libwayland = toolchains.buildForMacOS "libwayland" {};
-                    xkbcommon = toolchains.buildForMacOS "xkbcommon" {};
-                    pixman = toolchains.buildForMacOS "pixman" {};
-                    waypipe = toolchains.buildForMacOS "waypipe" {};
-                    sshpass = toolchains.buildForMacOS "sshpass" {};
-                  };
-                  libghosttyVt = inputs.ghostty.packages.${system}.libghostty-vt;
-                };
-                xcodeProject =
-                  (pkgs.callPackage ./dependencies/generators/xcodegen.nix {
-                    inherit wawonaVersion wawonaSrc;
-                    toolbarKeysSrc = inputs."toolbar-keys";
-                    terminalSrc = inputs.terminal;
-                    macosBackend = null;
-                    iosBackend = null;
-                    iosSimBackend = null;
-                    macosDeps = {};
-                    iosDeps = {};
-                    iosSimDeps = {};
-                    macosWeston = toolchains.buildForMacOS "weston" {};
-                  }).project;
-              })
-            else
-              pkgs.callPackage ./dependencies/wawona/linux.nix {
-                inherit wawonaVersion;
-                waypipeSrc = waypipe-src;
-                coreutilsSrc = coreutils-src;
-              };
+          # Linux. Darwin's `wawona` wraps wawona-macos (packages below).
+          wawona = pkgs.callPackage ./dependencies/wawona/linux.nix {
+            inherit wawonaVersion;
+            waypipeSrc = waypipe-src;
+            coreutilsSrc = coreutils-src;
+          };
         }
         // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin {
           # ANGLE companion: iland userland graphics core (GBM/EGL/DRM over IOSurface).
@@ -1579,239 +1517,49 @@
             # Product-sim + iOS-embedded watch companion: skip thin LTO / O3.
             release = false;
           };
-          # Signed NixOS guest images are aarch64-linux only. Referencing
-          # wwn-relay.packages.aarch64-linux.* from Darwin forces
-          # wawona-arm64-16k.config (platform mismatch). Mode A Apple product
-          # builds embed guests via env (WAWONA_MOBILE_GUEST_*_DIR) when a
-          # Linux builder / cache already produced them; do not realize here.
-          mobileGuestArtifacts = null;
-          mobileGuestArtifacts16k = null;
-          mobileVmEngine = null;
-          mobileVmEngineModeB = null;
-          mkXcodegen = {
-            platformFilter ? null,
-            simulatorOnly ? false,
-            includeModeBEngine ? false,
-            # waypipe-on-watch currently fails openssl-sys (ios vs watch
-            # -m*-simulator-version-min clash). Drop it so project.yml can still
-            # emit Wawona-watchOS; LDFLAGS already treat waypipe as optional.
-            dropWatchWaypipe ? false,
-          }: let
-            want = p: platformFilter == null || builtins.elem p platformFilter;
-            # Empty unused platform deps so filterAttrs-forced targets do not
-            # realize heavy closures (eval may still walk attrs; builds do not).
-            empty = {};
-            # Wawona-iOS embeds the watch companion for App Store / TF (#136),
-            # so ios-filtered projects must still realize watch deps.
-            wantWatch = want "watchos" || want "ios";
-            watchDepsForXcodegen =
-              if !wantWatch
-              then empty
-              else if simulatorOnly
-              then empty
-              else if dropWatchWaypipe
-              then (watchosDeps // {waypipe = null;})
-              else watchosDeps;
-            watchSimDepsForXcodegen =
-              if !wantWatch
-              then empty
-              else if dropWatchWaypipe
-              then (watchosSimDeps // {waypipe = null;})
-              else watchosSimDeps;
-          in
-            pkgs.callPackage ./dependencies/generators/xcodegen.nix {
-              inherit wawonaVersion wawonaSrc platformFilter simulatorOnly mobileGuestArtifacts mobileGuestArtifacts16k mobileVmEngine;
-              toolbarKeysSrc = inputs."toolbar-keys";
-              terminalSrc = inputs.terminal;
-              includeModeB = includeModeBEngine;
-              mobileVmEngineModeB =
-                if includeModeBEngine
-                then mobileVmEngineModeB
-                else null;
-              iosDeps =
-                if want "ios" || want "ipados"
-                then
-                  (
-                    if simulatorOnly
-                    then empty
-                    else iosDeps
-                  )
-                else empty;
-              iosSimDeps =
-                if want "ios" || want "ipados"
-                then iosSimDeps
-                else empty;
-              ipadosDeps =
-                if want "ipados"
-                then
-                  (
-                    if simulatorOnly
-                    then empty
-                    else iosDeps
-                  )
-                else empty;
-              ipadosSimDeps =
-                if want "ipados"
-                then iosSimDeps
-                else empty;
-              tvosDeps =
-                if want "tvos"
-                then
-                  (
-                    if simulatorOnly
-                    then empty
-                    else tvosDeps
-                  )
-                else empty;
-              tvosSimDeps =
-                if want "tvos"
-                then tvosSimDeps
-                else empty;
-              visionosDeps =
-                if want "visionos"
-                then
-                  (
-                    if simulatorOnly
-                    then empty
-                    else visionosDeps
-                  )
-                else empty;
-              visionosSimDeps =
-                if want "visionos"
-                then visionosSimDeps
-                else empty;
-              watchosDeps = watchDepsForXcodegen;
-              watchosSimDeps = watchSimDepsForXcodegen;
-              macosDeps =
-                if want "macos"
-                then macosDeps
-                else empty;
-              macosBackend =
-                if want "macos"
-                then backend-macos
-                else null;
-              iosBackend =
-                if (want "ios" || want "ipados") && !simulatorOnly
-                then backend-ios
-                else null;
-              iosSimBackend =
-                if want "ios" || want "ipados"
-                then backend-ios-sim
-                else null;
-              ipadosBackend =
-                if want "ipados" && !simulatorOnly
-                then backend-ios
-                else null;
-              ipadosSimBackend =
-                if want "ipados"
-                then backend-ios-sim
-                else null;
-              tvosBackend =
-                if want "tvos" && !simulatorOnly
-                then backend-tvos
-                else null;
-              tvosSimBackend =
-                if want "tvos"
-                then backend-tvos-sim
-                else null;
-              visionosBackend =
-                if want "visionos" && !simulatorOnly
-                then backend-visionos
-                else null;
-              visionosSimBackend =
-                if want "visionos"
-                then backend-visionos-sim
-                else null;
-              watchosBackend =
-                if wantWatch && !simulatorOnly
-                then backend-watchos
-                else null;
-              watchosSimBackend =
-                if wantWatch
-                then backend-watchos-sim
-                else null;
-              macosWeston =
-                if want "macos"
-                then toolchains.buildForMacOS "weston" {}
-                else null;
-              macosFoot =
-                if want "macos"
-                then toolchains.buildForMacOS "foot" {}
-                else null;
-              # wwn-fastfetch, not pkgs.fastfetch. nixpkgs fastfetch enables
-              # ImageMagick, which pulls libtiff docs → Sphinx → mypy pytest.
-              macosFastfetch =
-                if want "macos"
-                then toolchains.buildForMacOS "fastfetch" {}
-                else null;
-              macosPhoon =
-                if want "macos"
-                then toolchains.buildForMacOS "phoon" {}
-                else null;
-              macosZsh =
-                if want "macos"
-                then pkgs.zsh
-                else null;
-              macosKmscube =
-                if want "macos"
-                then pkgs.callPackage kmscubeMacosNix {buildModule = toolchains;}
-                else null;
-              macosModebTty =
-                if want "macos"
-                then iGetty.packages.${system}.wwn-igetty
-                else null;
-              macosOpenglCube =
-                if want "macos"
-                then toolchains.buildForMacOS "opengl-cube" {}
-                else null;
-              macosVkcube =
-                if want "macos"
-                then toolchains.buildForMacOS "vkcube" {}
-                else null;
-              macosGbmEs2Demo =
-                if want "macos"
-                then toolchains.buildForMacOS "gbm-es2-demo" {}
-                else null;
-              macosWestonSimpleEgl =
-                if want "macos"
-                then toolchains.buildForMacOS "weston-simple-egl" {}
-                else null;
-              macosNiri =
-                if want "macos"
-                then toolchains.buildForMacOS "niri" {}
-                else null;
-              macosFuzzel =
-                if want "macos"
-                then toolchains.buildForMacOS "fuzzel" {}
-                else null;
+          wawonaDeps = import ./dependencies/wawona/deps.nix {
+            inherit (pkgs) lib;
+            inherit pkgs wawonaVersion wawonaSrc ilandGlLdflagsNix;
+            slices = {
+              macosx = { deps = macosDeps; backend = backend-macos; };
+              iphoneos = { deps = iosDeps; backend = backend-ios; };
+              iphonesimulator = { deps = iosSimDeps; backend = backend-ios-sim; };
+              appletvos = { deps = tvosDeps; backend = backend-tvos; };
+              appletvsimulator = { deps = tvosSimDeps; backend = backend-tvos-sim; };
+              xros = { deps = visionosDeps; backend = backend-visionos; };
+              xrsimulator = { deps = visionosSimDeps; backend = backend-visionos-sim; };
+              watchos = { deps = watchosDeps; backend = backend-watchos; };
+              watchsimulator = { deps = watchosSimDeps; backend = backend-watchos-sim; };
             };
-          xcodegenOutputs = mkXcodegen {};
-          xcodegenIosOutputs = mkXcodegen {platformFilter = ["ios" "ipados"];};
-          xcodegenIosModeBOutputs = mkXcodegen {
-            platformFilter = ["ios"];
-            includeModeBEngine = true;
+            macosExtras = {
+              fastfetch = toolchains.buildForMacOS "fastfetch" {};
+              zsh = pkgs.zsh;
+              igetty = iGetty.packages.${system}.wwn-igetty;
+              moltenvk = pkgs.moltenvk;
+            };
+            modeB = {
+              iomfb = iosDeps."iomfb-ios";
+              igetty = iosDeps."igetty-ios";
+              backend = backend-ios-modeb-sileo;
+            };
           };
-          xcodegenIosSimOutputs = mkXcodegen {
-            platformFilter = ["ios"];
-            simulatorOnly = true;
-          };
-          # Standalone watch sim/device apps: do not realize the full Apple
-          # matrix or Mode B iomfb just to emit Wawona-watchOS.
-          xcodegenWatchosSimOutputs = mkXcodegen {
-            platformFilter = ["watchos"];
-            simulatorOnly = true;
-          };
-          xcodegenWatchosOutputs = mkXcodegen {
-            platformFilter = ["watchos"];
-          };
-          xcodegenMacosOutputs = mkXcodegen {platformFilter = ["macos"];};
-          xcodegenAppleOutputs = mkXcodegen {platformFilter = ["ios" "ipados" "macos"];};
-          # Full Apple matrix minus visionOS. Used when vision deps fail to
-          # configure (e.g. lz4 -mvisionos-simulator-version-min clang gap).
-          xcodegenNoVisionOutputs = mkXcodegen {
-            platformFilter = ["ios" "ipados" "macos" "tvos" "watchos"];
-            dropWatchWaypipe = true;
-          };
+          # The committed project with .deps linked as `nix run .#deps` links it.
+          appleProject = slices:
+            pkgs.runCommand "wawona-xcode-project" {} (''
+              cp -R ${wawonaSrc} $out
+              chmod -R u+w $out
+              mkdir $out/.deps
+              ln -s ${inputs.terminal} $out/.deps/terminal
+              ln -s ${inputs."toolbar-keys"} $out/.deps/toolbar-keys
+              ln -s ${slices.${builtins.head (builtins.attrNames slices)}}/uniffi $out/.deps/uniffi
+            ''
+            + pkgs.lib.concatStrings (pkgs.lib.mapAttrsToList (sdk: d: "ln -s ${d} $out/.deps/${sdk}\n") slices));
+          sliceSet = names: pkgs.lib.genAttrs names (n: wawonaDeps.${n});
+          depsPackages =
+            removeAttrs wawonaDeps ["modeBSlice"]
+            // pkgs.lib.optionalAttrs (inputs.wwn-ghostty.packages.${system} ? libghostty-macos) {
+              inherit (inputs.wwn-ghostty.packages.${system}) libghostty-macos;
+            };
           wawona-macos = pkgs.callPackage ./dependencies/wawona/macos.nix {
             buildModule = toolchains;
             inherit wawonaSrc wawonaVersion;
@@ -1858,11 +1606,8 @@
             zsh = pkgs.zsh;
             kmscube = pkgs.callPackage kmscubeMacosNix {buildModule = toolchains;};
             modebTty = iGetty.packages.${system}.wwn-igetty;
-            # macOS-only xcodegen project (platformFilter = ["macos"]) so product
-            # builds use the same Wawona-macOS scheme as local xcodebuild, without
-            # pulling iOS/device backend graphs.
             rustBackend = backend-macos;
-            xcodeProject = xcodegenMacosOutputs.project;
+            xcodeProject = appleProject (sliceSet ["macosx"]);
             # Mode B dylib enabled for all macOS builds (Wawona macOS is non-App Store).
             ilandBaremetal = toolchains.buildForMacOS "iland-baremetal" {};
             # L3' Watchdog tools (github.com/Wawona/iowatchdog-tools).
@@ -1874,88 +1619,52 @@
           wawona-ios-app-sim = pkgs.callPackage ./dependencies/wawona/ios.nix {
             inherit wawonaSrc wawonaVersion teamId;
             TEAM_ID = teamId;
-            # iOS-sim-only project: no macOS/iPadOS/device native fan-out.
-            xcodeProject = xcodegenIosSimOutputs.project;
+            xcodeProject = appleProject (sliceSet ["iphonesimulator" "watchsimulator"]);
             simulator = true;
-            rustBackend = backend-ios-sim;
-            # Same Relay NixOS guests as device Mode A: StaticCpu VM Start needs
-            # wawona-nixos-guest-{4k,16k} inside the .app (embed script).
-            inherit mobileGuestArtifacts mobileGuestArtifacts16k;
-            companionBackends = {"Wawona-watchOS" = backend-watchos-sim;};
-            zshLib = "${iosSimDeps.zsh}/lib/libwawona-zsh.a";
-            fastfetchLib = "${iosSimDeps.fastfetch}/lib/libfastfetch.a";
-            companionShellLibs = {
-              "Wawona-watchOS" = {
-                zshLib = "${watchosSimDeps.zsh}/lib/libwawona-zsh.a";
-                fastfetchLib = "${watchosSimDeps.fastfetch}/lib/libfastfetch.a";
-              };
-            };
           };
           wawona-watchos-app-sim = pkgs.callPackage ./dependencies/wawona/watchos.nix {
             inherit wawonaSrc wawonaVersion teamId;
             TEAM_ID = teamId;
-            xcodeProject = xcodegenWatchosSimOutputs.project;
+            xcodeProject = appleProject (sliceSet ["watchsimulator"]);
             simulator = true;
-            rustBackend = backend-watchos-sim;
-            zshLib = "${watchosSimDeps.zsh}/lib/libwawona-zsh.a";
-            fastfetchLib = "${watchosSimDeps.fastfetch}/lib/libfastfetch.a";
           };
           wawona-watchos-app-device = pkgs.callPackage ./dependencies/wawona/watchos.nix {
             inherit wawonaSrc wawonaVersion;
             TEAM_ID = teamId;
-            xcodeProject = xcodegenWatchosOutputs.project;
+            xcodeProject = appleProject (sliceSet ["watchos"]);
             simulator = false;
-            rustBackend = backend-watchos;
-            zshLib = "${watchosDeps.zsh}/lib/libwawona-zsh.a";
-            fastfetchLib = "${watchosDeps.fastfetch}/lib/libfastfetch.a";
           };
           wawona-ios-app-device = pkgs.callPackage ./dependencies/wawona/ios.nix {
             inherit wawonaSrc wawonaVersion;
             TEAM_ID = teamId;
-            xcodeProject = xcodegenOutputs.project;
+            xcodeProject = appleProject (sliceSet ["iphoneos" "watchos"]);
             simulator = false;
             deploymentTarget = "13.0";
-            rustBackend = backend-ios;
-            inherit mobileGuestArtifacts mobileGuestArtifacts16k;
-            companionBackends = {"Wawona-watchOS" = backend-watchos;};
-            zshLib = "${iosDeps.zsh}/lib/libwawona-zsh.a";
-            fastfetchLib = "${iosDeps.fastfetch}/lib/libfastfetch.a";
-            companionShellLibs = {
-              "Wawona-watchOS" = {
-                zshLib = "${watchosDeps.zsh}/lib/libwawona-zsh.a";
-                fastfetchLib = "${watchosDeps.fastfetch}/lib/libfastfetch.a";
-              };
-            };
           };
           wawona-ios-modeb-sileo-app-device = pkgs.callPackage ./dependencies/wawona/ios.nix {
             inherit wawonaSrc wawonaVersion;
             TEAM_ID = null;
-            xcodeProject = xcodegenIosModeBOutputs.project;
+            xcodeProject = appleProject (sliceSet ["iphoneos-modeb" "watchos"]);
             xcodeTarget = "Wawona-iOS-ModeB";
             bundleId = "com.aspauldingcode.Wawona.ModeB";
             simulator = false;
             release = true;
             modeB = true;
             deploymentTarget = "13.0";
-            rustBackend = backend-ios-modeb-sileo;
-            companionBackends = {};
-            zshLib = "${iosDeps.zsh}/lib/libwawona-zsh.a";
-            fastfetchLib = "${iosDeps.fastfetch}/lib/libfastfetch.a";
           };
           wawona-ios-modeb-tipa-app-device = pkgs.callPackage ./dependencies/wawona/ios.nix {
             inherit wawonaSrc wawonaVersion;
             TEAM_ID = null;
-            xcodeProject = xcodegenIosModeBOutputs.project;
+            xcodeProject = appleProject {
+              iphoneos-modeb = wawonaDeps.modeBSlice backend-ios-modeb-tipa;
+              inherit (wawonaDeps) watchos;
+            };
             xcodeTarget = "Wawona-iOS-ModeB";
             bundleId = "com.aspauldingcode.Wawona.ModeB";
             simulator = false;
             release = true;
             modeB = true;
             deploymentTarget = "14.0";
-            rustBackend = backend-ios-modeb-tipa;
-            companionBackends = {};
-            zshLib = "${iosDeps.zsh}/lib/libwawona-zsh.a";
-            fastfetchLib = "${iosDeps.fastfetch}/lib/libfastfetch.a";
           };
           # Historical name remains the Sileo iOS 13+ app.  New callers must
           # choose the explicit channel output above.
@@ -2140,73 +1849,41 @@
           wawona-ipados-app-sim = pkgs.callPackage ./dependencies/wawona/ipados.nix {
             inherit wawonaSrc wawonaVersion teamId;
             TEAM_ID = teamId;
-            xcodeProject = xcodegenOutputs.project;
+            xcodeProject = appleProject (sliceSet ["iphonesimulator" "watchsimulator"]);
             simulator = true;
             # iPadOS began at 13. iPads on 11-12 run the shared iOS product.
             deploymentTarget = "13.0";
-            rustBackend = backend-ios-sim;
-            companionBackends = {"Wawona-watchOS" = backend-watchos-sim;};
-            zshLib = "${iosSimDeps.zsh}/lib/libwawona-zsh.a";
-            fastfetchLib = "${iosSimDeps.fastfetch}/lib/libfastfetch.a";
-            companionShellLibs = {
-              "Wawona-watchOS" = {
-                zshLib = "${watchosSimDeps.zsh}/lib/libwawona-zsh.a";
-                fastfetchLib = "${watchosSimDeps.fastfetch}/lib/libfastfetch.a";
-              };
-            };
           };
           wawona-ipados-app-device = pkgs.callPackage ./dependencies/wawona/ipados.nix {
             inherit wawonaSrc wawonaVersion;
             TEAM_ID = teamId;
-            xcodeProject = xcodegenOutputs.project;
+            xcodeProject = appleProject (sliceSet ["iphoneos" "watchos"]);
             simulator = false;
             deploymentTarget = "13.0";
-            rustBackend = backend-ios;
-            companionBackends = {"Wawona-watchOS" = backend-watchos;};
-            zshLib = "${iosDeps.zsh}/lib/libwawona-zsh.a";
-            fastfetchLib = "${iosDeps.fastfetch}/lib/libfastfetch.a";
-            companionShellLibs = {
-              "Wawona-watchOS" = {
-                zshLib = "${watchosDeps.zsh}/lib/libwawona-zsh.a";
-                fastfetchLib = "${watchosDeps.fastfetch}/lib/libfastfetch.a";
-              };
-            };
           };
           wawona-tvos-app-sim = pkgs.callPackage ./dependencies/wawona/tvos.nix {
             inherit wawonaSrc wawonaVersion teamId;
             TEAM_ID = teamId;
-            xcodeProject = xcodegenOutputs.project;
+            xcodeProject = appleProject (sliceSet ["appletvsimulator"]);
             simulator = true;
-            rustBackend = backend-tvos-sim;
-            zshLib = "${tvosSimDeps.zsh}/lib/libwawona-zsh.a";
-            fastfetchLib = "${tvosSimDeps.fastfetch}/lib/libfastfetch.a";
           };
           wawona-tvos-app-device = pkgs.callPackage ./dependencies/wawona/tvos.nix {
             inherit wawonaSrc wawonaVersion;
             TEAM_ID = teamId;
-            xcodeProject = xcodegenOutputs.project;
+            xcodeProject = appleProject (sliceSet ["appletvos"]);
             simulator = false;
-            rustBackend = backend-tvos;
-            zshLib = "${tvosDeps.zsh}/lib/libwawona-zsh.a";
-            fastfetchLib = "${tvosDeps.fastfetch}/lib/libfastfetch.a";
           };
           wawona-visionos-app-sim = pkgs.callPackage ./dependencies/wawona/visionos.nix {
             inherit wawonaSrc wawonaVersion teamId;
             TEAM_ID = teamId;
-            xcodeProject = xcodegenOutputs.project;
+            xcodeProject = appleProject (sliceSet ["xrsimulator"]);
             simulator = true;
-            rustBackend = backend-visionos-sim;
-            zshLib = "${visionosSimDeps.zsh}/lib/libwawona-zsh.a";
-            fastfetchLib = "${visionosSimDeps.fastfetch}/lib/libfastfetch.a";
           };
           wawona-visionos-app-device = pkgs.callPackage ./dependencies/wawona/visionos.nix {
             inherit wawonaSrc wawonaVersion;
             TEAM_ID = teamId;
-            xcodeProject = xcodegenOutputs.project;
+            xcodeProject = appleProject (sliceSet ["xros"]);
             simulator = false;
-            rustBackend = backend-visionos;
-            zshLib = "${visionosDeps.zsh}/lib/libwawona-zsh.a";
-            fastfetchLib = "${visionosDeps.fastfetch}/lib/libfastfetch.a";
           };
           wawona-ios-ipa =
             if teamId != null
@@ -2214,20 +1891,10 @@
               pkgs.callPackage ./dependencies/wawona/ios.nix {
                 inherit wawonaSrc wawonaVersion;
                 TEAM_ID = teamId;
-                xcodeProject = xcodegenOutputs.project;
+                xcodeProject = appleProject (sliceSet ["iphoneos" "watchos"]);
                 simulator = false;
                 generateIPA = true;
                 deploymentTarget = "13.0";
-                rustBackend = backend-ios;
-                companionBackends = {"Wawona-watchOS" = backend-watchos;};
-                zshLib = "${iosDeps.zsh}/lib/libwawona-zsh.a";
-                fastfetchLib = "${iosDeps.fastfetch}/lib/libfastfetch.a";
-                companionShellLibs = {
-                  "Wawona-watchOS" = {
-                    zshLib = "${watchosDeps.zsh}/lib/libwawona-zsh.a";
-                    fastfetchLib = "${watchosDeps.fastfetch}/lib/libfastfetch.a";
-                  };
-                };
               }
             else missingTeamRelease "wawona-ios-ipa";
           wawona-ios-xcarchive =
@@ -2236,20 +1903,10 @@
               pkgs.callPackage ./dependencies/wawona/ios.nix {
                 inherit wawonaSrc wawonaVersion;
                 TEAM_ID = teamId;
-                xcodeProject = xcodegenOutputs.project;
+                xcodeProject = appleProject (sliceSet ["iphoneos" "watchos"]);
                 simulator = false;
                 generateXCArchive = true;
                 deploymentTarget = "13.0";
-                rustBackend = backend-ios;
-                companionBackends = {"Wawona-watchOS" = backend-watchos;};
-                zshLib = "${iosDeps.zsh}/lib/libwawona-zsh.a";
-                fastfetchLib = "${iosDeps.fastfetch}/lib/libfastfetch.a";
-                companionShellLibs = {
-                  "Wawona-watchOS" = {
-                    zshLib = "${watchosDeps.zsh}/lib/libwawona-zsh.a";
-                    fastfetchLib = "${watchosDeps.fastfetch}/lib/libfastfetch.a";
-                  };
-                };
               }
             else missingTeamRelease "wawona-ios-xcarchive";
           mkPlatformIpa = name: file: args:
@@ -2259,38 +1916,19 @@
                 // {
                   inherit wawonaSrc wawonaVersion;
                   TEAM_ID = teamId;
-                  xcodeProject = xcodegenOutputs.project;
+                  xcodeProject = appleProject (sliceSet ["iphoneos" "watchos" "appletvos" "xros"]);
                   simulator = false;
                   generateIPA = true;
                 })
             else missingTeamRelease name;
           wawona-ipados-ipa = mkPlatformIpa "wawona-ipados-ipa" ./dependencies/wawona/ipados.nix {
             deploymentTarget = "13.0";
-            rustBackend = backend-ios;
-            companionBackends = {"Wawona-watchOS" = backend-watchos;};
-            zshLib = "${iosDeps.zsh}/lib/libwawona-zsh.a";
-            fastfetchLib = "${iosDeps.fastfetch}/lib/libfastfetch.a";
-            companionShellLibs = {
-              "Wawona-watchOS" = {
-                zshLib = "${watchosDeps.zsh}/lib/libwawona-zsh.a";
-                fastfetchLib = "${watchosDeps.fastfetch}/lib/libfastfetch.a";
-              };
-            };
           };
           wawona-tvos-ipa = mkPlatformIpa "wawona-tvos-ipa" ./dependencies/wawona/tvos.nix {
-            rustBackend = backend-tvos;
-            zshLib = "${tvosDeps.zsh}/lib/libwawona-zsh.a";
-            fastfetchLib = "${tvosDeps.fastfetch}/lib/libfastfetch.a";
           };
           wawona-visionos-ipa = mkPlatformIpa "wawona-visionos-ipa" ./dependencies/wawona/visionos.nix {
-            rustBackend = backend-visionos;
-            zshLib = "${visionosDeps.zsh}/lib/libwawona-zsh.a";
-            fastfetchLib = "${visionosDeps.fastfetch}/lib/libfastfetch.a";
           };
           wawona-watchos-ipa = mkPlatformIpa "wawona-watchos-ipa" ./dependencies/wawona/watchos.nix {
-            rustBackend = backend-watchos;
-            zshLib = "${watchosDeps.zsh}/lib/libwawona-zsh.a";
-            fastfetchLib = "${watchosDeps.fastfetch}/lib/libfastfetch.a";
           };
           wawona-ios-simulator = apple.simulateApp {
             name = "wawona-ios-simulator";
@@ -2301,7 +1939,8 @@
             pkgs.writeShellScript "wawona-macos-cli-bins"
             (builtins.readFile ./scripts/macos-register-cli-bins.sh);
         in
-          {
+          pkgs.lib.mapAttrs' (n: pkgs.lib.nameValuePair "deps-${n}") depsPackages
+          // {
             install = pkgs.writeShellScriptBin "install" ''
                           set -eu
                           uid="$(id -u)"
@@ -2734,18 +2373,34 @@
             wawona-visionos-sim-backend = backend-visionos-sim;
             wawona-watchos-backend = backend-watchos;
             wawona-watchos-sim-backend = backend-watchos-sim;
-            wawona-macos-project = xcodegenOutputs.app;
-            wawona-ios-project = xcodegenOutputs.app;
             wawona-ios-provision = apple.provisionXcodeScript;
             wawona-ios-xcode-wrapper = apple.xcodeWrapperDrv;
-            xcodegen = xcodegenOutputs.app;
-            xcodegen-ios = xcodegenIosOutputs.app;
-            xcodegen-ios-sim = xcodegenIosSimOutputs.app;
-            xcodegen-macos = xcodegenMacosOutputs.app;
-            xcodegen-apple = xcodegenAppleOutputs.app;
-            xcodegen-fast = xcodegenAppleOutputs.app;
-            xcodegen-novision = xcodegenNoVisionOutputs.app;
-            xcodegenProject = xcodegenOutputs.project;
+            deps = pkgs.writeShellScriptBin "deps" ''
+              # Links .deps/<sdk> for each SDK named (Xcode PLATFORM_NAME), the
+              # Swift sources the project shares, and DEVELOPMENT_TEAM from TEAM_ID.
+              set -eu
+              [ $# -gt 0 ] || { echo "usage: nix run .#deps -- <sdk>... (${pkgs.lib.concatStringsSep " " (builtins.attrNames depsPackages)})" >&2; exit 2; }
+              root=$(git rev-parse --show-toplevel)
+              mkdir -p "$root/.deps"
+              sdks=""
+              for sdk in "$@"; do
+                case $sdk in
+                  iphoneos|iphoneos-modeb) sdks="$sdks $sdk watchos" ;;
+                  iphonesimulator) sdks="$sdks $sdk watchsimulator" ;;
+                  *) sdks="$sdks $sdk" ;;
+                esac
+              done
+              for sdk in $sdks; do
+                nix build "$root#deps-$sdk" --out-link "$root/.deps/$sdk"
+                if [ -e "$root/.deps/$sdk/uniffi" ]; then ln -sfn "$sdk/uniffi" "$root/.deps/uniffi"; fi
+              done
+              for src in terminal=${inputs.terminal} toolbar-keys=${inputs."toolbar-keys"}; do
+                nix-store --realise "''${src#*=}" --add-root "$root/.deps/''${src%%=*}" >/dev/null
+              done
+              if [ -n "''${TEAM_ID:-}" ]; then
+                echo "DEVELOPMENT_TEAM = $TEAM_ID" > "$root/.deps/signing.xcconfig"
+              fi
+            '';
             weston-debug = toolchains.buildForMacOS "weston" {debug = true;};
             weston-simple-shm = toolchains.buildForMacOS "weston-simple-shm" {};
             weston-terminal = weston-terminal-pkg;
@@ -3373,6 +3028,10 @@
             type = "app";
             program = "${systemPackages.install}/bin/install";
           };
+          deps = {
+            type = "app";
+            program = "${systemPackages.deps}/bin/deps";
+          };
           wawona = {
             type = "app";
             program = "${systemPackages.wawona}/bin/wawona";
@@ -3388,10 +3047,6 @@
           wawona-macos = {
             type = "app";
             program = "${systemPackages.wawona}/bin/wawona";
-          };
-          wawona-macos-project = {
-            type = "app";
-            program = "${systemPackages.wawona-macos-project}/bin/xcodegen";
           };
           wawona-ios = {
             type = "app";
@@ -3412,26 +3067,6 @@
           wawona-visionos = {
             type = "app";
             program = appPrograms.wawonaVisionos;
-          };
-          wawona-ios-project = {
-            type = "app";
-            program = "${systemPackages.wawona-ios-project}/bin/xcodegen";
-          };
-          xcodegen-ios = {
-            type = "app";
-            program = "${systemPackages.xcodegen-ios}/bin/xcodegen";
-          };
-          xcodegen-macos = {
-            type = "app";
-            program = "${systemPackages.xcodegen-macos}/bin/xcodegen";
-          };
-          xcodegen-apple = {
-            type = "app";
-            program = "${systemPackages.xcodegen-apple}/bin/xcodegen";
-          };
-          xcodegen-novision = {
-            type = "app";
-            program = "${systemPackages.xcodegen-novision}/bin/xcodegen";
           };
           wawona-ios-provision = {
             type = "app";

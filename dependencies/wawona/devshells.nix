@@ -132,7 +132,7 @@ builtins.listToAttrs (map (system: let
 
       ${darwinXcodeShellHook}
 
-      echo "Contributors: nix run .#xcodegen-ios | export WAWONA_SKIP_NIX_PREBUILD=1 for UI iteration"
+      echo "Xcode: nix run .#deps -- <sdk>, then open Wawona.xcodeproj"
       ${releaseShellHook}
     '';
   };

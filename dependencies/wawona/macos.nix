@@ -774,7 +774,7 @@ in
       # Build timestamp: 2026-01-17-09:00 - Added Swift compiler!
 
       # PHASE 1: Compile Swift bindings when the manual fallback path runs.
-      # Product Machines UI is Sources/WawonaUI (xcodegen). No ObjC Machines UI.
+      # Product Machines UI is Sources/WawonaUI (Wawona.xcodeproj). No ObjC Machines UI.
       echo "📦 Phase 1: Compiling Swift sources..."
       SWIFT_OBJ=""
       SWIFT_SOURCES=(

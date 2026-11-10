@@ -27,7 +27,7 @@ rec {
     "Sources/WawonaUI/WawonaApp.swift"
     "Sources/WawonaUI/MachineRuntimeSettingsApplicator.swift"
     "Sources/WawonaUI/MachineSessionBridge.swift"
-    # Sources/WawonaApple is compiled via xcodegen wawonaAppleSources (full tree).
+    # Sources/WawonaApple is a synchronized folder in Wawona.xcodeproj.
     "Sources/WawonaUI/CompositorBridge.swift"
     "Sources/WawonaUI/WelcomeView.swift"
     "Sources/WawonaUI/ContentView.swift"
@@ -53,7 +53,7 @@ rec {
     # That implementation starts from Rootshell
     # (Copyright (c) 2026 Rootshell LLC, Kit Knox).
     # The Wayland bridge, WWNKeyboardAccessoryView.swift, is compiled
-    # with Sources/WawonaUI by xcodegen. Do not list a second toolbar here.
+    # with Sources/WawonaUI by Wawona.xcodeproj. Do not list a second toolbar here.
     "Sources/WawonaWatch/WawonaWatchApp.swift"
     "Sources/WawonaWatch/MachineStatusView.swift"
     "Sources/WawonaWatch/QuickConnectView.swift"
